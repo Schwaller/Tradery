@@ -73,6 +73,11 @@ public class ChartsPanel extends JPanel {
     private JScrollBar timeScrollBar;
     private JPanel mainPanel;
 
+    // Zoom support
+    private int zoomedChartIndex = -1; // -1 = none zoomed
+    private JPanel[] chartWrappers;
+    private JButton[] zoomButtons;
+
     public ChartsPanel() {
         setLayout(new BorderLayout());
         setBorder(null);
@@ -175,13 +180,21 @@ public class ChartsPanel extends JPanel {
     }
 
     private void setupScrollableContainer() {
-        // Create container for all charts
-        chartsContainer = new JPanel(new GridLayout(5, 1, 0, 1));
-        chartsContainer.add(priceChartPanel);
-        chartsContainer.add(equityChartPanel);
-        chartsContainer.add(comparisonChartPanel);
-        chartsContainer.add(capitalUsageChartPanel);
-        chartsContainer.add(tradePLChartPanel);
+        // Create wrappers with zoom buttons for each chart
+        org.jfree.chart.ChartPanel[] chartPanels = {
+            priceChartPanel, equityChartPanel, comparisonChartPanel,
+            capitalUsageChartPanel, tradePLChartPanel
+        };
+        chartWrappers = new JPanel[5];
+        zoomButtons = new JButton[5];
+
+        for (int i = 0; i < chartPanels.length; i++) {
+            chartWrappers[i] = createChartWrapper(chartPanels[i], i);
+        }
+
+        // Create container for all charts using GridBagLayout for variable sizing
+        chartsContainer = new JPanel(new GridBagLayout());
+        updateChartLayout();
 
         // Time scrollbar for fixed-width mode (hidden by default)
         timeScrollBar = new JScrollBar(JScrollBar.HORIZONTAL);
@@ -214,6 +227,107 @@ public class ChartsPanel extends JPanel {
         mainPanel.add(timeScrollBar, BorderLayout.SOUTH);
 
         add(mainPanel, BorderLayout.CENTER);
+    }
+
+    /**
+     * Create a wrapper panel for a chart with a zoom button overlay
+     */
+    private JPanel createChartWrapper(org.jfree.chart.ChartPanel chartPanel, int chartIndex) {
+        // Create zoom button
+        JButton zoomBtn = new JButton("⤢");
+        zoomBtn.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 11));
+        zoomBtn.setMargin(new Insets(2, 4, 1, 4));
+        zoomBtn.setFocusPainted(false);
+        zoomBtn.setToolTipText("Zoom chart");
+        zoomBtn.addActionListener(e -> toggleZoom(chartIndex));
+        zoomButtons[chartIndex] = zoomBtn;
+
+        // Use JLayeredPane with manual positioning for the button
+        JLayeredPane layeredPane = new JLayeredPane();
+
+        // Add chart panel to fill the space
+        chartPanel.setBounds(0, 0, 100, 100); // Will be updated on resize
+        layeredPane.add(chartPanel, JLayeredPane.DEFAULT_LAYER);
+
+        // Add button in upper right (position updated on resize)
+        Dimension btnSize = zoomBtn.getPreferredSize();
+        zoomBtn.setBounds(0, 5, btnSize.width, btnSize.height);
+        layeredPane.add(zoomBtn, JLayeredPane.PALETTE_LAYER);
+
+        // Update positions when resized
+        layeredPane.addComponentListener(new java.awt.event.ComponentAdapter() {
+            @Override
+            public void componentResized(java.awt.event.ComponentEvent e) {
+                int w = layeredPane.getWidth();
+                int h = layeredPane.getHeight();
+                chartPanel.setBounds(0, 0, w, h);
+                Dimension btnSize = zoomBtn.getPreferredSize();
+                zoomBtn.setBounds(w - btnSize.width - 12, 8, btnSize.width, btnSize.height);
+            }
+        });
+
+        // Wrapper to give layeredPane proper layout behavior
+        JPanel wrapper = new JPanel(new BorderLayout());
+        wrapper.add(layeredPane, BorderLayout.CENTER);
+        return wrapper;
+    }
+
+    /**
+     * Toggle zoom state for a chart
+     */
+    private void toggleZoom(int chartIndex) {
+        if (zoomedChartIndex == chartIndex) {
+            // Unzoom
+            zoomedChartIndex = -1;
+        } else {
+            // Zoom this chart (and unzoom any other)
+            zoomedChartIndex = chartIndex;
+        }
+        updateChartLayout();
+        updateZoomButtonStates();
+    }
+
+    /**
+     * Update chart layout based on zoom state
+     */
+    private void updateChartLayout() {
+        chartsContainer.removeAll();
+        GridBagConstraints gbc = new GridBagConstraints();
+        gbc.gridx = 0;
+        gbc.fill = GridBagConstraints.BOTH;
+        gbc.weightx = 1.0;
+
+        for (int i = 0; i < chartWrappers.length; i++) {
+            gbc.gridy = i;
+            if (zoomedChartIndex == i) {
+                gbc.weighty = 0.65; // 65% for zoomed chart
+            } else if (zoomedChartIndex >= 0) {
+                gbc.weighty = 0.0875; // 8.75% each for 4 non-zoomed charts
+            } else {
+                gbc.weighty = 0.2; // 20% each when none zoomed
+            }
+            chartsContainer.add(chartWrappers[i], gbc);
+        }
+
+        chartsContainer.revalidate();
+        chartsContainer.repaint();
+    }
+
+    /**
+     * Update zoom button appearance based on zoom state
+     */
+    private void updateZoomButtonStates() {
+        for (int i = 0; i < zoomButtons.length; i++) {
+            if (zoomButtons[i] != null) {
+                if (zoomedChartIndex == i) {
+                    zoomButtons[i].setText("⤡"); // Different icon when zoomed
+                    zoomButtons[i].setToolTipText("Restore chart size");
+                } else {
+                    zoomButtons[i].setText("⤢");
+                    zoomButtons[i].setToolTipText("Zoom chart");
+                }
+            }
+        }
     }
 
     /**

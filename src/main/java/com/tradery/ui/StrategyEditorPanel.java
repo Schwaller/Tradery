@@ -25,10 +25,11 @@ public class StrategyEditorPanel extends JPanel {
     private JSpinner dcaMaxEntriesSpinner;
     private JSpinner dcaBarsBetweenSpinner;
     private JComboBox<String> dcaModeCombo;
+    private JPanel dcaDetailsPanel;
 
     private static final String[] SL_TYPES = {"No Stop Loss", "Stop Loss %", "Trailing Stop %", "Stop Loss ATR", "Trailing Stop ATR"};
     private static final String[] TP_TYPES = {"No Take Profit", "Take Profit %", "Take Profit ATR"};
-    private static final String[] DCA_MODES = {"Signal Required", "Continue Always"};
+    private static final String[] DCA_MODES = {"Abort if signal lost", "Continue regardless"};
 
     private Strategy strategy;
     private Runnable onChange;
@@ -99,9 +100,15 @@ public class StrategyEditorPanel extends JPanel {
 
     private void updateDcaVisibility() {
         boolean enabled = dcaEnabledCheckbox.isSelected();
-        dcaMaxEntriesSpinner.setEnabled(enabled);
-        dcaBarsBetweenSpinner.setEnabled(enabled);
-        dcaModeCombo.setEnabled(enabled);
+        dcaDetailsPanel.setVisible(enabled);
+        // Revalidate up the hierarchy to ensure layout recalculates
+        Container parent = getParent();
+        if (parent != null) {
+            parent.revalidate();
+            parent.repaint();
+        }
+        revalidate();
+        repaint();
     }
 
     private void fireChange() {
@@ -139,22 +146,55 @@ public class StrategyEditorPanel extends JPanel {
         JScrollPane entryScroll = new JScrollPane(entryEditor);
         entryPanel.add(entryScroll, BorderLayout.CENTER);
 
-        // DCA options below entry
-        JPanel dcaPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 2));
-        dcaPanel.setOpaque(false);
-        dcaPanel.add(dcaEnabledCheckbox);
-        dcaPanel.add(dcaMaxEntriesSpinner);
-        dcaPanel.add(new JLabel("x every"));
-        dcaPanel.add(dcaBarsBetweenSpinner);
-        dcaPanel.add(new JLabel("bars"));
-        dcaMaxEntriesSpinner.setEnabled(false);
-        dcaBarsBetweenSpinner.setEnabled(false);
-        dcaModeCombo.setEnabled(false);
+        // DCA checkbox on its own line
+        JPanel dcaCheckboxPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 2));
+        dcaCheckboxPanel.setOpaque(false);
+        dcaCheckboxPanel.add(dcaEnabledCheckbox);
 
-        JPanel dcaWrapper = new JPanel(new BorderLayout(0, 2));
+        // DCA details panel (hidden by default, shown when DCA enabled)
+        dcaDetailsPanel = new JPanel();
+        dcaDetailsPanel.setLayout(new BoxLayout(dcaDetailsPanel, BoxLayout.Y_AXIS));
+        dcaDetailsPanel.setOpaque(false);
+        dcaDetailsPanel.setVisible(false);
+
+        // Fixed label width for alignment
+        int dcaLabelWidth = 90;
+
+        // Max entries row
+        JPanel maxEntriesRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 2));
+        maxEntriesRow.setOpaque(false);
+        JLabel maxEntriesLabel = new JLabel("Max entries:");
+        maxEntriesLabel.setForeground(Color.GRAY);
+        maxEntriesLabel.setPreferredSize(new Dimension(dcaLabelWidth, maxEntriesLabel.getPreferredSize().height));
+        maxEntriesRow.add(maxEntriesLabel);
+        maxEntriesRow.add(dcaMaxEntriesSpinner);
+
+        // Bars between row
+        JPanel barsBetweenRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 2));
+        barsBetweenRow.setOpaque(false);
+        JLabel barsBetweenLabel = new JLabel("Bars between:");
+        barsBetweenLabel.setForeground(Color.GRAY);
+        barsBetweenLabel.setPreferredSize(new Dimension(dcaLabelWidth, barsBetweenLabel.getPreferredSize().height));
+        barsBetweenRow.add(barsBetweenLabel);
+        barsBetweenRow.add(dcaBarsBetweenSpinner);
+
+        // Mode row
+        JPanel modeRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 2));
+        modeRow.setOpaque(false);
+        JLabel modeLabel = new JLabel("Mode:");
+        modeLabel.setForeground(Color.GRAY);
+        modeLabel.setPreferredSize(new Dimension(dcaLabelWidth, modeLabel.getPreferredSize().height));
+        modeRow.add(modeLabel);
+        modeRow.add(dcaModeCombo);
+
+        dcaDetailsPanel.add(maxEntriesRow);
+        dcaDetailsPanel.add(barsBetweenRow);
+        dcaDetailsPanel.add(modeRow);
+
+        JPanel dcaWrapper = new JPanel(new BorderLayout(0, 0));
         dcaWrapper.setOpaque(false);
-        dcaWrapper.add(dcaPanel, BorderLayout.NORTH);
-        dcaWrapper.add(dcaModeCombo, BorderLayout.SOUTH);
+        dcaWrapper.add(dcaCheckboxPanel, BorderLayout.NORTH);
+        dcaWrapper.add(dcaDetailsPanel, BorderLayout.CENTER);
         entryPanel.add(dcaWrapper, BorderLayout.SOUTH);
 
         // Exit condition

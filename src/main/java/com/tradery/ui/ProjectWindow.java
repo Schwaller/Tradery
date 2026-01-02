@@ -183,7 +183,7 @@ public class ProjectWindow extends JFrame {
         progressLabel.setForeground(Color.GRAY);
         progressLabel.setVisible(false);
 
-        // Width toggle group (Fit / Fixed)
+        // Width toggle group (Fidt / Fixed)
         fitWidthBtn = new JToggleButton("Fit");
         fixedWidthBtn = new JToggleButton("Fixed");
         ButtonGroup widthGroup = new ButtonGroup();
