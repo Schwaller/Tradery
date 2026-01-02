@@ -27,6 +27,7 @@ import org.jfree.data.time.TimeSeriesCollection;
 import org.jfree.data.time.Millisecond;
 
 import javax.swing.*;
+import javax.swing.SwingUtilities;
 import java.awt.*;
 import java.awt.BasicStroke;
 import java.awt.geom.Rectangle2D;
@@ -63,12 +64,22 @@ public class ChartsPanel extends JPanel {
     private List<Candle> currentCandles;
     private final SimpleDateFormat dateFormat = new SimpleDateFormat("MMM d, yyyy HH:mm");
 
+    // Fixed width mode support
+    private JPanel chartsContainer;
+    private boolean fixedWidthMode = false;
+    private boolean fitYAxisToVisible = true;
+    private static final int PIXELS_PER_CANDLE = 4;
+    private JScrollBar timeScrollBar;
+    private JPanel mainPanel;
+
     public ChartsPanel() {
-        setLayout(new GridLayout(5, 1, 0, 1));
+        setLayout(new BorderLayout());
         setBorder(null);
 
         initializeCharts();
         setupCrosshairs();
+        setupScrollableContainer();
+        syncDomainAxes();
     }
 
     public void setOnStatusUpdate(Consumer<String> callback) {
@@ -89,9 +100,9 @@ public class ChartsPanel extends JPanel {
         stylizeChart(priceChart, "Price");
 
         priceChartPanel = new org.jfree.chart.ChartPanel(priceChart);
-        priceChartPanel.setMouseWheelEnabled(true);
-        priceChartPanel.setDomainZoomable(true);
-        priceChartPanel.setRangeZoomable(true);
+        priceChartPanel.setMouseWheelEnabled(false);
+        priceChartPanel.setDomainZoomable(false);
+        priceChartPanel.setRangeZoomable(false);
 
         // Equity chart (placeholder)
         equityChart = ChartFactory.createTimeSeriesChart(
@@ -106,7 +117,9 @@ public class ChartsPanel extends JPanel {
         stylizeChart(equityChart, "Equity");
 
         equityChartPanel = new org.jfree.chart.ChartPanel(equityChart);
-        equityChartPanel.setMouseWheelEnabled(true);
+        equityChartPanel.setMouseWheelEnabled(false);
+        equityChartPanel.setDomainZoomable(false);
+        equityChartPanel.setRangeZoomable(false);
 
         // Comparison chart (Strategy vs Buy & Hold)
         comparisonChart = ChartFactory.createTimeSeriesChart(
@@ -121,7 +134,9 @@ public class ChartsPanel extends JPanel {
         stylizeChart(comparisonChart, "Strategy vs Buy & Hold");
 
         comparisonChartPanel = new org.jfree.chart.ChartPanel(comparisonChart);
-        comparisonChartPanel.setMouseWheelEnabled(true);
+        comparisonChartPanel.setMouseWheelEnabled(false);
+        comparisonChartPanel.setDomainZoomable(false);
+        comparisonChartPanel.setRangeZoomable(false);
 
         // Capital usage chart
         capitalUsageChart = ChartFactory.createTimeSeriesChart(
@@ -136,7 +151,9 @@ public class ChartsPanel extends JPanel {
         stylizeChart(capitalUsageChart, "Capital Usage");
 
         capitalUsageChartPanel = new org.jfree.chart.ChartPanel(capitalUsageChart);
-        capitalUsageChartPanel.setMouseWheelEnabled(true);
+        capitalUsageChartPanel.setMouseWheelEnabled(false);
+        capitalUsageChartPanel.setDomainZoomable(false);
+        capitalUsageChartPanel.setRangeZoomable(false);
 
         // Trade P&L chart
         tradePLChart = ChartFactory.createTimeSeriesChart(
@@ -151,13 +168,253 @@ public class ChartsPanel extends JPanel {
         stylizeChart(tradePLChart, "Trade P&L %");
 
         tradePLChartPanel = new org.jfree.chart.ChartPanel(tradePLChart);
-        tradePLChartPanel.setMouseWheelEnabled(true);
+        tradePLChartPanel.setMouseWheelEnabled(false);
+        tradePLChartPanel.setDomainZoomable(false);
+        tradePLChartPanel.setRangeZoomable(false);
+    }
 
-        add(priceChartPanel);
-        add(equityChartPanel);
-        add(comparisonChartPanel);
-        add(capitalUsageChartPanel);
-        add(tradePLChartPanel);
+    private void setupScrollableContainer() {
+        // Create container for all charts
+        chartsContainer = new JPanel(new GridLayout(5, 1, 0, 1));
+        chartsContainer.add(priceChartPanel);
+        chartsContainer.add(equityChartPanel);
+        chartsContainer.add(comparisonChartPanel);
+        chartsContainer.add(capitalUsageChartPanel);
+        chartsContainer.add(tradePLChartPanel);
+
+        // Time scrollbar for fixed-width mode (hidden by default)
+        timeScrollBar = new JScrollBar(JScrollBar.HORIZONTAL);
+        timeScrollBar.setVisible(false);
+        timeScrollBar.addAdjustmentListener(e -> {
+            if (!e.getValueIsAdjusting()) {
+                updateVisibleTimeRange();
+            }
+        });
+
+        // Add mouse wheel listener to all chart panels for scrolling
+        java.awt.event.MouseWheelListener wheelListener = e -> {
+            if (fixedWidthMode && timeScrollBar.isVisible()) {
+                int scrollAmount = e.getWheelRotation() * timeScrollBar.getUnitIncrement();
+                int newValue = timeScrollBar.getValue() + scrollAmount;
+                newValue = Math.max(timeScrollBar.getMinimum(),
+                           Math.min(newValue, timeScrollBar.getMaximum() - timeScrollBar.getVisibleAmount()));
+                timeScrollBar.setValue(newValue);
+            }
+        };
+        priceChartPanel.addMouseWheelListener(wheelListener);
+        equityChartPanel.addMouseWheelListener(wheelListener);
+        comparisonChartPanel.addMouseWheelListener(wheelListener);
+        capitalUsageChartPanel.addMouseWheelListener(wheelListener);
+        tradePLChartPanel.addMouseWheelListener(wheelListener);
+
+        // Main panel with charts and scrollbar
+        mainPanel = new JPanel(new BorderLayout());
+        mainPanel.add(chartsContainer, BorderLayout.CENTER);
+        mainPanel.add(timeScrollBar, BorderLayout.SOUTH);
+
+        add(mainPanel, BorderLayout.CENTER);
+    }
+
+    /**
+     * Toggle between fit-to-width and fixed-width modes.
+     * In fixed-width mode, each candle takes PIXELS_PER_CANDLE pixels.
+     */
+    public void setFixedWidthMode(boolean enabled) {
+        this.fixedWidthMode = enabled;
+        updateFixedWidthMode();
+
+        // Update Y-axis when switching modes
+        if (fitYAxisToVisible) {
+            updateYAxisAutoRange();
+        }
+    }
+
+    /**
+     * Toggle Y-axis auto-fitting to visible data range.
+     */
+    public void setFitYAxisToVisibleData(boolean enabled) {
+        this.fitYAxisToVisible = enabled;
+        updateYAxisAutoRange();
+    }
+
+    private void updateYAxisAutoRange() {
+        JFreeChart[] charts = {priceChart, equityChart, comparisonChart, tradePLChart};
+
+        for (JFreeChart chart : charts) {
+            if (chart == null) continue;
+            XYPlot plot = chart.getXYPlot();
+            ValueAxis rangeAxis = plot.getRangeAxis();
+
+            if (fitYAxisToVisible) {
+                // Fit to visible data only
+                rangeAxis.setAutoRange(true);
+                plot.configureRangeAxes();
+            } else {
+                // Show full data range - temporarily reset domain to get full range
+                rangeAxis.setAutoRange(true);
+
+                // Save current domain range
+                DateAxis domainAxis = (DateAxis) plot.getDomainAxis();
+                double domainLower = domainAxis.getLowerBound();
+                double domainUpper = domainAxis.getUpperBound();
+
+                // Temporarily show all data to calculate full range
+                domainAxis.setAutoRange(true);
+                plot.configureRangeAxes();
+
+                // Capture the full Y range
+                double fullLower = rangeAxis.getLowerBound();
+                double fullUpper = rangeAxis.getUpperBound();
+
+                // Restore domain range
+                domainAxis.setAutoRange(false);
+                domainAxis.setRange(domainLower, domainUpper);
+
+                // Set Y to full range
+                rangeAxis.setAutoRange(false);
+                rangeAxis.setRange(fullLower, fullUpper);
+            }
+        }
+
+        // Capital usage: 0-100% when not fitting visible, auto when fitting
+        if (capitalUsageChart != null) {
+            ValueAxis capitalAxis = capitalUsageChart.getXYPlot().getRangeAxis();
+            if (fitYAxisToVisible) {
+                capitalAxis.setAutoRange(true);
+                capitalUsageChart.getXYPlot().configureRangeAxes();
+            } else {
+                capitalAxis.setAutoRange(false);
+                capitalAxis.setRange(0, 100);
+            }
+        }
+    }
+
+    private void updateFixedWidthMode() {
+        if (currentCandles == null || currentCandles.isEmpty()) {
+            timeScrollBar.setVisible(false);
+            return;
+        }
+
+        if (fixedWidthMode) {
+            // Calculate how many candles fit in the viewport at 4px each
+            int viewportWidth = chartsContainer.getWidth();
+            if (viewportWidth <= 0) viewportWidth = getWidth() - 50;
+            int visibleCandles = Math.max(1, viewportWidth / PIXELS_PER_CANDLE);
+            int totalCandles = currentCandles.size();
+
+            if (visibleCandles < totalCandles) {
+                // Need scrolling
+                boolean wasVisible = timeScrollBar.isVisible();
+                int oldValue = timeScrollBar.getValue();
+                int oldMax = timeScrollBar.getMaximum();
+
+                timeScrollBar.setMinimum(0);
+                timeScrollBar.setMaximum(totalCandles);
+                timeScrollBar.setVisibleAmount(visibleCandles);
+                timeScrollBar.setBlockIncrement(visibleCandles / 2);
+                timeScrollBar.setUnitIncrement(10);
+
+                // Only set to end if scrollbar is newly shown or data changed
+                if (!wasVisible || oldMax != totalCandles) {
+                    timeScrollBar.setValue(totalCandles - visibleCandles);
+                } else {
+                    // Keep current position (adjusted for new visible amount)
+                    timeScrollBar.setValue(Math.min(oldValue, totalCandles - visibleCandles));
+                }
+
+                timeScrollBar.setVisible(true);
+                updateVisibleTimeRange();
+            } else {
+                timeScrollBar.setVisible(false);
+                resetDomainAxisRange();
+            }
+        } else {
+            timeScrollBar.setVisible(false);
+            resetDomainAxisRange();
+        }
+    }
+
+    private void updateVisibleTimeRange() {
+        if (!fixedWidthMode || currentCandles == null || currentCandles.isEmpty()) return;
+
+        int startIndex = timeScrollBar.getValue();
+        int visibleCandles = timeScrollBar.getVisibleAmount();
+        int endIndex = Math.min(startIndex + visibleCandles, currentCandles.size() - 1);
+        startIndex = Math.max(0, startIndex);
+
+        if (startIndex >= currentCandles.size() || endIndex < 0) return;
+
+        long startTime = currentCandles.get(startIndex).timestamp();
+        long endTime = currentCandles.get(endIndex).timestamp();
+
+        // Add small padding
+        long range = endTime - startTime;
+        long padding = range / 50;
+        startTime -= padding;
+        endTime += padding;
+
+        setDomainAxisRange(startTime, endTime);
+
+        // Update Y-axis to fit visible data if enabled
+        if (fitYAxisToVisible) {
+            updateYAxisAutoRange();
+        }
+    }
+
+    private void setDomainAxisRange(long startTime, long endTime) {
+        JFreeChart[] charts = {priceChart, equityChart, comparisonChart, capitalUsageChart, tradePLChart};
+
+        for (JFreeChart chart : charts) {
+            if (chart == null) continue;
+            XYPlot plot = chart.getXYPlot();
+            if (plot.getDomainAxis() instanceof DateAxis dateAxis) {
+                dateAxis.setAutoRange(false);
+                dateAxis.setRange(new Date(startTime), new Date(endTime));
+            }
+        }
+    }
+
+    private void resetDomainAxisRange() {
+        JFreeChart[] charts = {priceChart, equityChart, comparisonChart, capitalUsageChart, tradePLChart};
+
+        for (JFreeChart chart : charts) {
+            if (chart == null) continue;
+            XYPlot plot = chart.getXYPlot();
+            if (plot.getDomainAxis() instanceof DateAxis dateAxis) {
+                dateAxis.setAutoRange(true);
+            }
+        }
+    }
+
+    private void syncDomainAxes() {
+        // Use price chart as the master - sync all others to it
+        DateAxis masterAxis = (DateAxis) priceChart.getXYPlot().getDomainAxis();
+
+        // When master axis changes, update all other axes
+        masterAxis.addChangeListener(event -> {
+            if (masterAxis.getRange() == null) return;
+
+            double lower = masterAxis.getLowerBound();
+            double upper = masterAxis.getUpperBound();
+
+            JFreeChart[] otherCharts = {equityChart, comparisonChart, capitalUsageChart, tradePLChart};
+            for (JFreeChart chart : otherCharts) {
+                if (chart == null) continue;
+                DateAxis axis = (DateAxis) chart.getXYPlot().getDomainAxis();
+                if (axis.getLowerBound() != lower || axis.getUpperBound() != upper) {
+                    axis.setRange(lower, upper);
+                }
+            }
+        });
+    }
+
+    @Override
+    public void setBounds(int x, int y, int width, int height) {
+        super.setBounds(x, y, width, height);
+        // Update visible range when panel resizes
+        if (fixedWidthMode) {
+            SwingUtilities.invokeLater(this::updateFixedWidthMode);
+        }
     }
 
     private void setupCrosshairs() {
@@ -321,6 +578,11 @@ public class ChartsPanel extends JPanel {
         updateComparisonChart(candles, trades, initialCapital);
         updateCapitalUsageChart(candles, trades, initialCapital);
         updateTradePLChart(candles, trades);
+
+        // Update fixed-width mode scrollbar if active
+        if (fixedWidthMode) {
+            updateFixedWidthMode();
+        }
     }
 
     private void updatePriceChart(List<Candle> candles, List<Trade> trades) {
@@ -441,7 +703,7 @@ public class ChartsPanel extends JPanel {
 
         XYPlot plot = comparisonChart.getXYPlot();
         plot.setDataset(dataset);
-        plot.getRenderer().setSeriesPaint(0, new Color(100, 149, 237)); // Strategy - blue
+        plot.getRenderer().setSeriesPaint(0, new Color(77, 77, 255));   // Strategy - same blue as equity
         plot.getRenderer().setSeriesPaint(1, new Color(255, 193, 7));   // Buy & Hold - amber
     }
 

@@ -46,6 +46,8 @@ public class ProjectWindow extends JFrame {
     private JSpinner capitalSpinner;
     private JProgressBar progressBar;
     private JLabel progressLabel;
+    private JToggleButton zoomToggle;
+    private JToggleButton fitYToggle;
 
     private static final String[] SYMBOLS = {
         "BTCUSDT", "ETHUSDT", "BNBUSDT", "XRPUSDT", "ADAUSDT",
@@ -91,11 +93,8 @@ public class ProjectWindow extends JFrame {
         loadStrategyData();
         startFileWatcher();
 
-        // Load latest result for this project
-        BacktestResult latest = resultStore.loadLatest();
-        if (latest != null) {
-            displayResult(latest);
-        }
+        // Run backtest on startup (after window is shown)
+        SwingUtilities.invokeLater(this::runBacktest);
     }
 
     private void initializeFrame() {
@@ -174,6 +173,17 @@ public class ProjectWindow extends JFrame {
         progressLabel.setForeground(Color.GRAY);
         progressLabel.setVisible(false);
 
+        // Zoom toggle (fit vs fixed width)
+        zoomToggle = new JToggleButton("Fixed Width");
+        zoomToggle.setFont(zoomToggle.getFont().deriveFont(11f));
+        zoomToggle.addActionListener(e -> chartPanel.setFixedWidthMode(zoomToggle.isSelected()));
+
+        // Fit Y-axis toggle
+        fitYToggle = new JToggleButton("Fit Y");
+        fitYToggle.setFont(fitYToggle.getFont().deriveFont(11f));
+        fitYToggle.setSelected(true); // Default on
+        fitYToggle.addActionListener(e -> chartPanel.setFitYAxisToVisibleData(fitYToggle.isSelected()));
+
         // Auto-save timer
         autoSaveTimer = new Timer(AUTO_SAVE_DELAY_MS, e -> saveStrategyQuietly());
         autoSaveTimer.setRepeats(false);
@@ -230,6 +240,9 @@ public class ProjectWindow extends JFrame {
         toolbarLeft.add(capitalSpinner);
         toolbarLeft.add(Box.createHorizontalStrut(16));
         toolbarLeft.add(runButton);
+        toolbarLeft.add(Box.createHorizontalStrut(8));
+        toolbarLeft.add(zoomToggle);
+        toolbarLeft.add(fitYToggle);
 
         // Progress bar panel (right side of toolbar)
         JPanel toolbarRight = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 4));

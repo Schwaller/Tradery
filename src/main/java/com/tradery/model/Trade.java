@@ -55,13 +55,17 @@ public record Trade(
     /**
      * Close this trade with exit reason and calculate P&L
      */
-    public Trade close(int exitBar, long exitTime, double exitPrice, double commission, String exitReason) {
+    public Trade close(int exitBar, long exitTime, double exitPrice, double commissionRate, String exitReason) {
         double grossPnl = (exitPrice - entryPrice) * quantity;
         if ("short".equals(side)) {
             grossPnl = -grossPnl;
         }
 
-        double totalCommission = (this.commission != null ? this.commission : 0) + commission;
+        // Commission is a percentage rate - calculate actual dollar amounts
+        double entryCommission = entryPrice * quantity * (this.commission != null ? this.commission : 0);
+        double exitCommission = exitPrice * quantity * commissionRate;
+        double totalCommission = entryCommission + exitCommission;
+
         double netPnl = grossPnl - totalCommission;
         double pnlPct = (netPnl / (entryPrice * quantity)) * 100;
 
