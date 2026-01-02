@@ -173,12 +173,11 @@ public class ProjectWindow extends JFrame {
         progressLabel.setForeground(Color.GRAY);
         progressLabel.setVisible(false);
 
-        // Zoom toggle (fit vs fixed width)
+        // Chart view toggles
         zoomToggle = new JToggleButton("Fixed Width");
         zoomToggle.setFont(zoomToggle.getFont().deriveFont(11f));
         zoomToggle.addActionListener(e -> chartPanel.setFixedWidthMode(zoomToggle.isSelected()));
 
-        // Fit Y-axis toggle
         fitYToggle = new JToggleButton("Fit Y");
         fitYToggle.setFont(fitYToggle.getFont().deriveFont(11f));
         fitYToggle.setSelected(true); // Default on
@@ -240,9 +239,17 @@ public class ProjectWindow extends JFrame {
         toolbarLeft.add(capitalSpinner);
         toolbarLeft.add(Box.createHorizontalStrut(16));
         toolbarLeft.add(runButton);
-        toolbarLeft.add(Box.createHorizontalStrut(8));
-        toolbarLeft.add(zoomToggle);
-        toolbarLeft.add(fitYToggle);
+        toolbarLeft.add(Box.createHorizontalStrut(12));
+
+        // Toggle button group for chart view options
+        JPanel toggleGroup = new JPanel(new GridLayout(1, 2, 0, 0));
+        toggleGroup.setBorder(BorderFactory.createCompoundBorder(
+            BorderFactory.createLineBorder(new Color(180, 180, 180), 1, true),
+            BorderFactory.createEmptyBorder(0, 0, 0, 0)
+        ));
+        toggleGroup.add(zoomToggle);
+        toggleGroup.add(fitYToggle);
+        toolbarLeft.add(toggleGroup);
 
         // Progress bar panel (right side of toolbar)
         JPanel toolbarRight = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 4));
