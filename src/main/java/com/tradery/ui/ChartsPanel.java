@@ -82,7 +82,7 @@ public class ChartsPanel extends JPanel {
             null,
             null,
             new TimeSeriesCollection(),
-            false,
+            true,  // legend
             true,
             false
         );
@@ -99,7 +99,7 @@ public class ChartsPanel extends JPanel {
             null,
             null,
             new TimeSeriesCollection(),
-            false,
+            true,  // legend
             true,
             false
         );
@@ -129,7 +129,7 @@ public class ChartsPanel extends JPanel {
             null,
             null,
             new TimeSeriesCollection(),
-            false,
+            true,  // legend
             true,
             false
         );
@@ -298,6 +298,9 @@ public class ChartsPanel extends JPanel {
             chart.getLegend().setBackgroundPaint(new Color(0, 0, 0, 0));
             chart.getLegend().setFrame(BlockBorder.NONE);
             chart.getLegend().setItemPaint(Color.LIGHT_GRAY);
+            chart.getLegend().setPosition(org.jfree.chart.ui.RectangleEdge.TOP);
+            chart.getLegend().setItemFont(new Font(Font.SANS_SERIF, Font.PLAIN, 10));
+            chart.getLegend().setPadding(new org.jfree.chart.ui.RectangleInsets(2, 2, 2, 2));
         }
     }
 

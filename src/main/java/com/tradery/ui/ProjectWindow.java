@@ -7,10 +7,13 @@ import com.tradery.engine.BacktestEngine;
 import com.tradery.io.FileWatcher;
 import com.tradery.io.ResultStore;
 import com.tradery.io.StrategyStore;
+import com.tradery.io.WindowStateStore;
 import com.tradery.model.*;
 
 import javax.swing.*;
 import java.awt.*;
+import java.awt.event.ComponentAdapter;
+import java.awt.event.ComponentEvent;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.io.File;
