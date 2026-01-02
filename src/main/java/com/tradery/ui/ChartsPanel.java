@@ -286,6 +286,11 @@ public class ChartsPanel extends JPanel {
         plot.getRangeAxis().setAxisLinePaint(Color.GRAY);
         plot.getRangeAxis().setFixedDimension(60);  // Fixed width for alignment
 
+        // Set thin line stroke with rounded joins for all series
+        if (plot.getRenderer() != null) {
+            plot.getRenderer().setDefaultStroke(ChartStyles.LINE_STROKE);
+        }
+
         // Add title as annotation in top-left corner
         TextTitle textTitle = new TextTitle(title, new Font(Font.SANS_SERIF, Font.PLAIN, 11));
         textTitle.setPaint(new Color(150, 150, 150));
@@ -319,36 +324,16 @@ public class ChartsPanel extends JPanel {
     }
 
     private void updatePriceChart(List<Candle> candles, List<Trade> trades) {
-        int n = candles.size();
-        Date[] dates = new Date[n];
-        double[] highs = new double[n];
-        double[] lows = new double[n];
-        double[] opens = new double[n];
-        double[] closes = new double[n];
-        double[] volumes = new double[n];
+        TimeSeries priceSeries = new TimeSeries("Price");
 
-        for (int i = 0; i < n; i++) {
-            Candle c = candles.get(i);
-            dates[i] = new Date(c.timestamp());
-            highs[i] = c.high();
-            lows[i] = c.low();
-            opens[i] = c.open();
-            closes[i] = c.close();
-            volumes[i] = c.volume();
+        for (Candle c : candles) {
+            priceSeries.addOrUpdate(new Millisecond(new Date(c.timestamp())), c.close());
         }
 
-        OHLCDataset dataset = new DefaultHighLowDataset(
-            "Price", dates, highs, lows, opens, closes, volumes
-        );
-
+        TimeSeriesCollection dataset = new TimeSeriesCollection(priceSeries);
         XYPlot plot = priceChart.getXYPlot();
         plot.setDataset(dataset);
-
-        CandlestickRenderer renderer = new CandlestickRenderer();
-        renderer.setUpPaint(new Color(76, 175, 80));      // Green
-        renderer.setDownPaint(new Color(244, 67, 54));    // Red
-        renderer.setSeriesPaint(0, Color.LIGHT_GRAY);
-        plot.setRenderer(renderer);
+        plot.getRenderer().setSeriesPaint(0, new Color(255, 255, 255, 180)); // Slightly transparent white
 
         // Clear existing trade annotations (keep title annotation)
         plot.getAnnotations().stream()
@@ -356,9 +341,8 @@ public class ChartsPanel extends JPanel {
             .toList()
             .forEach(plot::removeAnnotation);
 
-        // Add trade lines
+        // Add trade lines - green for wins, red for losses
         if (trades != null) {
-            BasicStroke tradeStroke = new BasicStroke(2.0f);
             Color winColor = new Color(76, 175, 80, 180);   // Green with transparency
             Color lossColor = new Color(244, 67, 54, 180);  // Red with transparency
 
@@ -370,7 +354,7 @@ public class ChartsPanel extends JPanel {
                     XYLineAnnotation tradeLine = new XYLineAnnotation(
                         t.entryTime(), t.entryPrice(),
                         t.exitTime(), t.exitPrice(),
-                        tradeStroke, color
+                        ChartStyles.TRADE_LINE_STROKE, color
                     );
                     plot.addAnnotation(tradeLine);
                 }
@@ -416,7 +400,7 @@ public class ChartsPanel extends JPanel {
         TimeSeriesCollection dataset = new TimeSeriesCollection(equitySeries);
         XYPlot plot = equityChart.getXYPlot();
         plot.setDataset(dataset);
-        plot.getRenderer().setSeriesPaint(0, new Color(100, 149, 237)); // Cornflower blue
+        plot.getRenderer().setSeriesPaint(0, new Color(77, 77, 255)); // Neon blue
     }
 
     private void updateComparisonChart(List<Candle> candles, List<Trade> trades, double initialCapital) {
@@ -517,7 +501,7 @@ public class ChartsPanel extends JPanel {
         TimeSeriesCollection dataset = new TimeSeriesCollection(usageSeries);
         XYPlot plot = capitalUsageChart.getXYPlot();
         plot.setDataset(dataset);
-        plot.getRenderer().setSeriesPaint(0, new Color(156, 39, 176)); // Purple
+        plot.getRenderer().setSeriesPaint(0, new Color(57, 255, 20)); // Neon green
         plot.getRangeAxis().setRange(0, 100);
     }
 
@@ -532,16 +516,6 @@ public class ChartsPanel extends JPanel {
             }
 
             int tradeNum = 0;
-            Color[] colors = {
-                new Color(100, 149, 237),  // Cornflower blue
-                new Color(255, 193, 7),    // Amber
-                new Color(156, 39, 176),   // Purple
-                new Color(0, 188, 212),    // Cyan
-                new Color(255, 87, 34),    // Deep orange
-                new Color(139, 195, 74),   // Light green
-                new Color(233, 30, 99),    // Pink
-                new Color(63, 81, 181)     // Indigo
-            };
 
             for (Trade t : trades) {
                 if (t.exitTime() == null) continue;
@@ -565,11 +539,11 @@ public class ChartsPanel extends JPanel {
                 tradeNum++;
             }
 
-            // Set colors for each series
+            // Set rainbow colors for each series
             XYPlot plot = tradePLChart.getXYPlot();
             plot.setDataset(dataset);
-            for (int i = 0; i < Math.min(tradeNum, colors.length); i++) {
-                plot.getRenderer().setSeriesPaint(i, colors[i % colors.length]);
+            for (int i = 0; i < tradeNum; i++) {
+                plot.getRenderer().setSeriesPaint(i, ChartStyles.RAINBOW_COLORS[i % ChartStyles.RAINBOW_COLORS.length]);
             }
         } else {
             tradePLChart.getXYPlot().setDataset(dataset);

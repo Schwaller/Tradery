@@ -4,10 +4,13 @@ import com.tradery.ApplicationContext;
 import com.tradery.TraderyApp;
 import com.tradery.io.FileWatcher;
 import com.tradery.io.StrategyStore;
+import com.tradery.io.WindowStateStore;
 import com.tradery.model.Strategy;
 
 import javax.swing.*;
 import java.awt.*;
+import java.awt.event.ComponentAdapter;
+import java.awt.event.ComponentEvent;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Path;
@@ -52,11 +55,37 @@ public class LauncherFrame extends JFrame {
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setSize(400, 500);
         setMinimumSize(new Dimension(300, 400));
-        setLocationRelativeTo(null);
+
+        // Restore saved position or center on screen
+        Rectangle savedBounds = WindowStateStore.getInstance().getLauncherBounds();
+        if (savedBounds != null) {
+            setBounds(savedBounds);
+        } else {
+            setLocationRelativeTo(null);
+        }
 
         // macOS-specific settings
         getRootPane().putClientProperty("apple.awt.fullWindowContent", true);
         getRootPane().putClientProperty("apple.awt.transparentTitleBar", true);
+
+        // Save position on move/resize
+        addComponentListener(new ComponentAdapter() {
+            @Override
+            public void componentMoved(ComponentEvent e) {
+                saveLauncherState();
+            }
+
+            @Override
+            public void componentResized(ComponentEvent e) {
+                saveLauncherState();
+            }
+        });
+    }
+
+    private void saveLauncherState() {
+        if (isVisible()) {
+            WindowStateStore.getInstance().saveLauncherBounds(getBounds());
+        }
     }
 
     private void initializeComponents() {
@@ -261,6 +290,28 @@ public class LauncherFrame extends JFrame {
 
     private void onWindowClosed(String strategyId) {
         openWindows.remove(strategyId);
+    }
+
+    @Override
+    public void setVisible(boolean visible) {
+        super.setVisible(visible);
+        if (visible) {
+            // Restore previously open windows
+            restorePreviouslyOpenWindows();
+        }
+    }
+
+    private void restorePreviouslyOpenWindows() {
+        List<String> openIds = WindowStateStore.getInstance().getOpenProjectIds();
+        for (String strategyId : openIds) {
+            // Check if strategy still exists
+            Strategy strategy = strategyStore.load(strategyId);
+            if (strategy != null && !openWindows.containsKey(strategyId)) {
+                ProjectWindow window = new ProjectWindow(strategy, this::onWindowClosed);
+                openWindows.put(strategyId, window);
+                window.setVisible(true);
+            }
+        }
     }
 
     @Override

@@ -11,8 +11,6 @@ import java.awt.*;
  */
 public class MetricsPanel extends JPanel {
 
-    private JProgressBar progressBar;
-
     private JLabel totalTradesLabel;
     private JLabel winRateLabel;
     private JLabel profitFactorLabel;
@@ -35,11 +33,6 @@ public class MetricsPanel extends JPanel {
     }
 
     private void initializeComponents() {
-        // Progress bar (hidden by default)
-        progressBar = new JProgressBar(0, 100);
-        progressBar.setStringPainted(true);
-        progressBar.setVisible(false);
-
         totalTradesLabel = createValueLabel("-");
         winRateLabel = createValueLabel("-");
         profitFactorLabel = createValueLabel("-");
@@ -60,16 +53,6 @@ public class MetricsPanel extends JPanel {
     }
 
     private void layoutComponents() {
-        // Top: Progress bar
-        JPanel progressPanel = new JPanel(new BorderLayout());
-        progressPanel.setOpaque(false);
-        progressPanel.add(progressBar, BorderLayout.CENTER);
-        progressPanel.setBorder(BorderFactory.createEmptyBorder(0, 0, 8, 0));
-
-        // Metrics section
-        JPanel metricsSection = new JPanel(new BorderLayout(0, 4));
-        metricsSection.setOpaque(false);
-
         JLabel title = new JLabel("Performance Metrics");
         title.setFont(title.getFont().deriveFont(Font.BOLD, 12f));
         title.setForeground(Color.GRAY);
@@ -87,11 +70,8 @@ public class MetricsPanel extends JPanel {
         addMetricRow(gridPanel, "Total Fees", totalFeesLabel);
         addMetricRow(gridPanel, "Final Equity", finalEquityLabel);
 
-        metricsSection.add(title, BorderLayout.NORTH);
-        metricsSection.add(gridPanel, BorderLayout.CENTER);
-
-        add(progressPanel, BorderLayout.NORTH);
-        add(metricsSection, BorderLayout.CENTER);
+        add(title, BorderLayout.NORTH);
+        add(gridPanel, BorderLayout.CENTER);
     }
 
     private void addMetricRow(JPanel panel, String name, JLabel valueLabel) {
@@ -154,17 +134,5 @@ public class MetricsPanel extends JPanel {
         totalFeesLabel.setText("-");
         totalFeesLabel.setForeground(Color.GRAY);
         finalEquityLabel.setText("-");
-    }
-
-    public void setProgress(int percentage, String message) {
-        SwingUtilities.invokeLater(() -> {
-            if (percentage >= 100 || message.equals("Error")) {
-                progressBar.setVisible(false);
-            } else {
-                progressBar.setVisible(true);
-                progressBar.setValue(percentage);
-                progressBar.setString(message);
-            }
-        });
     }
 }

@@ -44,6 +44,8 @@ public class ProjectWindow extends JFrame {
     private JComboBox<String> symbolCombo;
     private JComboBox<String> timeframeCombo;
     private JSpinner capitalSpinner;
+    private JProgressBar progressBar;
+    private JLabel progressLabel;
 
     private static final String[] SYMBOLS = {
         "BTCUSDT", "ETHUSDT", "BNBUSDT", "XRPUSDT", "ADAUSDT",
@@ -100,7 +102,14 @@ public class ProjectWindow extends JFrame {
         setDefaultCloseOperation(JFrame.DO_NOTHING_ON_CLOSE);
         setSize(1200, 800);
         setMinimumSize(new Dimension(900, 600));
-        setLocationRelativeTo(null);
+
+        // Restore saved position or center on screen
+        Rectangle savedBounds = WindowStateStore.getInstance().getProjectBounds(strategy.getId());
+        if (savedBounds != null) {
+            setBounds(savedBounds);
+        } else {
+            setLocationRelativeTo(null);
+        }
 
         // macOS-specific settings
         getRootPane().putClientProperty("apple.awt.fullWindowContent", true);
@@ -112,6 +121,25 @@ public class ProjectWindow extends JFrame {
                 closeWindow();
             }
         });
+
+        // Save position on move/resize
+        addComponentListener(new ComponentAdapter() {
+            @Override
+            public void componentMoved(ComponentEvent e) {
+                saveWindowState();
+            }
+
+            @Override
+            public void componentResized(ComponentEvent e) {
+                saveWindowState();
+            }
+        });
+    }
+
+    private void saveWindowState() {
+        if (strategy != null && isVisible()) {
+            WindowStateStore.getInstance().saveProjectBounds(strategy.getId(), getBounds());
+        }
     }
 
     private void initializeComponents() {
@@ -136,6 +164,15 @@ public class ProjectWindow extends JFrame {
         // Toolbar buttons
         runButton = new JButton("Run Backtest");
         runButton.addActionListener(e -> runBacktest());
+
+        // Progress bar (hidden by default)
+        progressBar = new JProgressBar(0, 100);
+        progressBar.setPreferredSize(new Dimension(120, 16));
+        progressBar.setVisible(false);
+        progressLabel = new JLabel("");
+        progressLabel.setFont(progressLabel.getFont().deriveFont(11f));
+        progressLabel.setForeground(Color.GRAY);
+        progressLabel.setVisible(false);
 
         // Auto-save timer
         autoSaveTimer = new Timer(AUTO_SAVE_DELAY_MS, e -> saveStrategyQuietly());
@@ -182,20 +219,26 @@ public class ProjectWindow extends JFrame {
         setContentPane(contentPane);
 
         // Top: Toolbar with symbol, timeframe, capital, Save and Run buttons
-        JPanel toolbarPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 4));
-        toolbarPanel.add(new JLabel("Symbol:"));
-        toolbarPanel.add(symbolCombo);
-        toolbarPanel.add(Box.createHorizontalStrut(8));
-        toolbarPanel.add(new JLabel("Timeframe:"));
-        toolbarPanel.add(timeframeCombo);
-        toolbarPanel.add(Box.createHorizontalStrut(8));
-        toolbarPanel.add(new JLabel("Capital:"));
-        toolbarPanel.add(capitalSpinner);
-        toolbarPanel.add(Box.createHorizontalStrut(16));
-        toolbarPanel.add(runButton);
+        JPanel toolbarLeft = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 4));
+        toolbarLeft.add(new JLabel("Symbol:"));
+        toolbarLeft.add(symbolCombo);
+        toolbarLeft.add(Box.createHorizontalStrut(8));
+        toolbarLeft.add(new JLabel("Timeframe:"));
+        toolbarLeft.add(timeframeCombo);
+        toolbarLeft.add(Box.createHorizontalStrut(8));
+        toolbarLeft.add(new JLabel("Capital:"));
+        toolbarLeft.add(capitalSpinner);
+        toolbarLeft.add(Box.createHorizontalStrut(16));
+        toolbarLeft.add(runButton);
+
+        // Progress bar panel (right side of toolbar)
+        JPanel toolbarRight = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 4));
+        toolbarRight.add(progressLabel);
+        toolbarRight.add(progressBar);
 
         JPanel topPanel = new JPanel(new BorderLayout(0, 0));
-        topPanel.add(toolbarPanel, BorderLayout.CENTER);
+        topPanel.add(toolbarLeft, BorderLayout.CENTER);
+        topPanel.add(toolbarRight, BorderLayout.EAST);
         JPanel separator = new JPanel();
         separator.setPreferredSize(new Dimension(0, 1));
         separator.setBackground(new Color(200, 200, 200));
@@ -378,7 +421,7 @@ public class ProjectWindow extends JFrame {
 
         // Run in background
         runButton.setEnabled(false);
-        metricsPanel.setProgress(0, "Starting...");
+        setProgress(0, "Starting...");
 
         SwingWorker<BacktestResult, BacktestEngine.Progress> worker = new SwingWorker<>() {
             @Override
@@ -404,7 +447,7 @@ public class ProjectWindow extends JFrame {
             @Override
             protected void process(List<BacktestEngine.Progress> chunks) {
                 BacktestEngine.Progress latest = chunks.get(chunks.size() - 1);
-                metricsPanel.setProgress(latest.percentage(), latest.message());
+                ProjectWindow.this.setProgress(latest.percentage(), latest.message());
                 setStatus(latest.message());
             }
 
@@ -420,11 +463,11 @@ public class ProjectWindow extends JFrame {
                     // Display result
                     displayResult(result);
 
-                    metricsPanel.setProgress(100, "Complete");
+                    ProjectWindow.this.setProgress(100, "Complete");
                     setStatus(result.getSummary());
 
                 } catch (Exception e) {
-                    metricsPanel.setProgress(0, "Error");
+                    ProjectWindow.this.setProgress(0, "Error");
                     setStatus("Error: " + e.getMessage());
                     e.printStackTrace();
                 }
@@ -451,7 +494,24 @@ public class ProjectWindow extends JFrame {
         statusBar.setText(" " + message);
     }
 
+    private void setProgress(int percentage, String message) {
+        SwingUtilities.invokeLater(() -> {
+            if (percentage >= 100 || message.equals("Error") || message.equals("Complete")) {
+                progressBar.setVisible(false);
+                progressLabel.setVisible(false);
+            } else {
+                progressBar.setVisible(true);
+                progressBar.setValue(percentage);
+                progressLabel.setVisible(true);
+                progressLabel.setText(message);
+            }
+        });
+    }
+
     private void closeWindow() {
+        // Mark as closed in window state
+        WindowStateStore.getInstance().setProjectOpen(strategy.getId(), false);
+
         if (fileWatcher != null) {
             fileWatcher.stop();
         }
@@ -459,6 +519,15 @@ public class ProjectWindow extends JFrame {
             onClose.accept(strategy.getId());
         }
         dispose();
+    }
+
+    @Override
+    public void setVisible(boolean visible) {
+        super.setVisible(visible);
+        if (visible && strategy != null) {
+            // Mark as open in window state
+            WindowStateStore.getInstance().setProjectOpen(strategy.getId(), true);
+        }
     }
 
     public String getStrategyId() {
