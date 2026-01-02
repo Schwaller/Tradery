@@ -6,23 +6,24 @@ import javax.swing.*;
 import javax.swing.table.AbstractTableModel;
 import javax.swing.table.DefaultTableCellRenderer;
 import java.awt.*;
-import java.text.SimpleDateFormat;
 import java.util.ArrayList;
-import java.util.Date;
 import java.util.List;
 
 /**
- * Panel displaying the list of trades from a backtest.
- * Shows entry/exit times, prices, P&L, etc.
+ * Simplified panel displaying trades from a backtest.
+ * Shows only essential info (#, P&L, Return) with a Details button.
  */
 public class TradeTablePanel extends JPanel {
 
     private JTable table;
     private TradeTableModel tableModel;
+    private JButton detailsButton;
+    private List<Trade> currentTrades = new ArrayList<>();
 
     public TradeTablePanel() {
         setLayout(new BorderLayout());
-        setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
+        setBackground(Color.WHITE);
+        setOpaque(true);
 
         initializeTable();
         layoutComponents();
@@ -33,63 +34,101 @@ public class TradeTablePanel extends JPanel {
         table = new JTable(tableModel);
 
         table.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 11));
-        table.setRowHeight(22);
+        table.setRowHeight(20);
         table.setShowGrid(false);
         table.setIntercellSpacing(new Dimension(0, 0));
         table.getTableHeader().setReorderingAllowed(false);
 
-        // Column widths
+        // Column widths - simplified to 3 columns
         table.getColumnModel().getColumn(0).setPreferredWidth(30);   // #
-        table.getColumnModel().getColumn(1).setPreferredWidth(100);  // Entry Time
-        table.getColumnModel().getColumn(2).setPreferredWidth(100);  // Exit Time
-        table.getColumnModel().getColumn(3).setPreferredWidth(70);   // Entry Price
-        table.getColumnModel().getColumn(4).setPreferredWidth(70);   // Exit Price
-        table.getColumnModel().getColumn(5).setPreferredWidth(70);   // P&L
-        table.getColumnModel().getColumn(6).setPreferredWidth(60);   // Return
+        table.getColumnModel().getColumn(1).setPreferredWidth(70);   // P&L
+        table.getColumnModel().getColumn(2).setPreferredWidth(60);   // Return
 
         // Custom renderers
-        TradeRowRenderer rightRenderer = new TradeRowRenderer(tableModel, SwingConstants.RIGHT);
         TradeRowRenderer leftRenderer = new TradeRowRenderer(tableModel, SwingConstants.LEFT);
         table.getColumnModel().getColumn(0).setCellRenderer(leftRenderer);   // #
-        table.getColumnModel().getColumn(1).setCellRenderer(rightRenderer);  // Entry time
-        table.getColumnModel().getColumn(2).setCellRenderer(rightRenderer);  // Exit time
-        table.getColumnModel().getColumn(3).setCellRenderer(rightRenderer);  // Entry $
-        table.getColumnModel().getColumn(4).setCellRenderer(rightRenderer);  // Exit $
-        table.getColumnModel().getColumn(5).setCellRenderer(new PnlCellRenderer(tableModel));
-        table.getColumnModel().getColumn(6).setCellRenderer(new PnlCellRenderer(tableModel));
+        table.getColumnModel().getColumn(1).setCellRenderer(new PnlCellRenderer(tableModel));
+        table.getColumnModel().getColumn(2).setCellRenderer(new PnlCellRenderer(tableModel));
+
+        // Double-click to open details
+        table.addMouseListener(new java.awt.event.MouseAdapter() {
+            @Override
+            public void mouseClicked(java.awt.event.MouseEvent e) {
+                if (e.getClickCount() == 2 && table.getSelectedRow() >= 0) {
+                    openDetailsWindow();
+                }
+            }
+        });
     }
 
     private void layoutComponents() {
+        // Header with title and Details button
+        JPanel headerPanel = new JPanel(new BorderLayout(8, 0));
+        headerPanel.setBackground(Color.WHITE);
+        headerPanel.setOpaque(true);
+
         JLabel title = new JLabel("Trades");
         title.setFont(title.getFont().deriveFont(Font.BOLD, 12f));
         title.setForeground(Color.GRAY);
 
-        JScrollPane scrollPane = new JScrollPane(table);
+        detailsButton = new JButton("Details...");
+        detailsButton.setFont(detailsButton.getFont().deriveFont(11f));
+        detailsButton.setEnabled(false);
+        detailsButton.addActionListener(e -> openDetailsWindow());
 
-        add(title, BorderLayout.NORTH);
+        headerPanel.add(title, BorderLayout.WEST);
+        headerPanel.add(detailsButton, BorderLayout.EAST);
+
+        JScrollPane scrollPane = new JScrollPane(table);
+        scrollPane.setBorder(BorderFactory.createEmptyBorder());
+
+        // Header with separator below
+        JPanel headerWrapper = new JPanel(new BorderLayout(0, 4));
+        headerWrapper.setBackground(Color.WHITE);
+        JPanel headerSeparator = new JPanel();
+        headerSeparator.setPreferredSize(new Dimension(0, 1));
+        headerSeparator.setBackground(new Color(200, 200, 200));
+        headerWrapper.add(headerPanel, BorderLayout.CENTER);
+        headerWrapper.add(headerSeparator, BorderLayout.SOUTH);
+
+        add(headerWrapper, BorderLayout.NORTH);
         add(scrollPane, BorderLayout.CENTER);
+    }
+
+    private void openDetailsWindow() {
+        if (currentTrades.isEmpty()) return;
+
+        // Find parent frame
+        Window parentWindow = SwingUtilities.getWindowAncestor(this);
+        Frame parentFrame = parentWindow instanceof Frame ? (Frame) parentWindow : null;
+
+        TradeDetailsWindow detailsWindow = new TradeDetailsWindow(parentFrame, currentTrades);
+        detailsWindow.setVisible(true);
     }
 
     /**
      * Update table with new trades
      */
     public void updateTrades(List<Trade> trades) {
-        tableModel.setTrades(trades);
+        this.currentTrades = trades != null ? trades : new ArrayList<>();
+        tableModel.setTrades(currentTrades);
+        detailsButton.setEnabled(!currentTrades.isEmpty());
     }
 
     /**
      * Clear all trades
      */
     public void clear() {
-        tableModel.setTrades(new ArrayList<>());
+        this.currentTrades = new ArrayList<>();
+        tableModel.setTrades(currentTrades);
+        detailsButton.setEnabled(false);
     }
 
     /**
-     * Table model for trades
+     * Simplified table model for trades - only 3 columns
      */
     private static class TradeTableModel extends AbstractTableModel {
-        private static final String[] COLUMNS = {"#", "Entry", "Exit", "Entry $", "Exit $", "P&L", "Return"};
-        private static final SimpleDateFormat DATE_FORMAT = new SimpleDateFormat("MMM d HH:mm");
+        private static final String[] COLUMNS = {"#", "P&L", "Return"};
 
         private List<Trade> trades = new ArrayList<>();
 
@@ -120,15 +159,9 @@ public class TradeTablePanel extends JPanel {
 
             return switch (columnIndex) {
                 case 0 -> rowIndex + 1;
-                case 1 -> DATE_FORMAT.format(new Date(trade.entryTime()));
-                case 2 -> isRejected ? "-" : (trade.exitTime() != null ?
-                    DATE_FORMAT.format(new Date(trade.exitTime())) : "-");
-                case 3 -> formatPrice(trade.entryPrice());
-                case 4 -> isRejected ? "-" : (trade.exitPrice() != null ?
-                    formatPrice(trade.exitPrice()) : "-");
-                case 5 -> isRejected ? "NO CAPITAL" : (trade.pnl() != null ?
+                case 1 -> isRejected ? "NO CAPITAL" : (trade.pnl() != null ?
                     String.format("%+.2f", trade.pnl()) : "-");
-                case 6 -> isRejected ? "-" : (trade.pnlPercent() != null ?
+                case 2 -> isRejected ? "-" : (trade.pnlPercent() != null ?
                     String.format("%+.2f%%", trade.pnlPercent()) : "-");
                 default -> "";
             };
@@ -136,16 +169,6 @@ public class TradeTablePanel extends JPanel {
 
         public Trade getTradeAt(int rowIndex) {
             return trades.get(rowIndex);
-        }
-
-        private String formatPrice(double price) {
-            if (price >= 100) {
-                return String.format("%,.0f", price);  // Full dollars, no decimals
-            } else if (price >= 1) {
-                return String.format("%.2f", price);
-            } else {
-                return String.format("%.6f", price);
-            }
         }
     }
 

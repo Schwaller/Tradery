@@ -25,6 +25,15 @@ public class Strategy {
     private Instant created;
     private Instant updated;
 
+    // Project configuration (backtest settings)
+    private String symbol = "BTCUSDT";
+    private String timeframe = "1h";
+    private double initialCapital = 10000.0;
+    private String positionSizingType = "fixed_percent";
+    private double positionSizingValue = 10.0;
+    private double feePercent = 0.10;
+    private double slippagePercent = 0.05;
+
     public Strategy() {
         // For Jackson
     }
@@ -172,6 +181,76 @@ public class Strategy {
 
     public void setUpdated(Instant updated) {
         this.updated = updated;
+    }
+
+    // Project configuration getters and setters
+
+    public String getSymbol() {
+        return symbol != null ? symbol : "BTCUSDT";
+    }
+
+    public void setSymbol(String symbol) {
+        this.symbol = symbol;
+        this.updated = Instant.now();
+    }
+
+    public String getTimeframe() {
+        return timeframe != null ? timeframe : "1h";
+    }
+
+    public void setTimeframe(String timeframe) {
+        this.timeframe = timeframe;
+        this.updated = Instant.now();
+    }
+
+    public double getInitialCapital() {
+        return initialCapital > 0 ? initialCapital : 10000.0;
+    }
+
+    public void setInitialCapital(double initialCapital) {
+        this.initialCapital = initialCapital > 0 ? initialCapital : 10000.0;
+        this.updated = Instant.now();
+    }
+
+    public String getPositionSizingType() {
+        return positionSizingType != null ? positionSizingType : "fixed_percent";
+    }
+
+    public void setPositionSizingType(String positionSizingType) {
+        this.positionSizingType = positionSizingType;
+        this.updated = Instant.now();
+    }
+
+    public double getPositionSizingValue() {
+        return positionSizingValue > 0 ? positionSizingValue : 10.0;
+    }
+
+    public void setPositionSizingValue(double positionSizingValue) {
+        this.positionSizingValue = positionSizingValue > 0 ? positionSizingValue : 10.0;
+        this.updated = Instant.now();
+    }
+
+    public double getFeePercent() {
+        return feePercent >= 0 ? feePercent : 0.10;
+    }
+
+    public void setFeePercent(double feePercent) {
+        this.feePercent = feePercent >= 0 ? feePercent : 0.10;
+        this.updated = Instant.now();
+    }
+
+    public double getSlippagePercent() {
+        return slippagePercent >= 0 ? slippagePercent : 0.05;
+    }
+
+    public void setSlippagePercent(double slippagePercent) {
+        this.slippagePercent = slippagePercent >= 0 ? slippagePercent : 0.05;
+        this.updated = Instant.now();
+    }
+
+    /** Get total commission (fee + slippage) as decimal */
+    public double getTotalCommission() {
+        return (getFeePercent() + getSlippagePercent()) / 100.0;
     }
 
     @Override

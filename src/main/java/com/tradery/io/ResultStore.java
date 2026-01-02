@@ -16,8 +16,8 @@ import java.util.List;
 
 /**
  * Stores backtest results as JSON files.
- * - latest.json: Most recent result
- * - history/DATE_STRATEGY.json: Historical results
+ * - Per-project: ~/.tradery/results/{strategyId}/latest.json and history/
+ * - Global: ~/.tradery/results/latest.json (for backward compatibility)
  *
  * Claude Code can directly read these files.
  */
@@ -28,9 +28,30 @@ public class ResultStore {
     private final File resultsDir;
     private final File historyDir;
     private final ObjectMapper mapper;
+    private final String strategyId;
 
+    /**
+     * Create a global result store (backward compatible)
+     */
     public ResultStore() {
-        this.resultsDir = new File(TraderyApp.USER_DIR, "results");
+        this(null);
+    }
+
+    /**
+     * Create a per-project result store
+     * @param strategyId The strategy ID for per-project storage, or null for global storage
+     */
+    public ResultStore(String strategyId) {
+        this.strategyId = strategyId;
+
+        if (strategyId != null && !strategyId.isEmpty()) {
+            // Per-project storage: ~/.tradery/results/{strategyId}/
+            this.resultsDir = new File(TraderyApp.USER_DIR, "results/" + strategyId);
+        } else {
+            // Global storage: ~/.tradery/results/
+            this.resultsDir = new File(TraderyApp.USER_DIR, "results");
+        }
+
         this.historyDir = new File(resultsDir, "history");
         this.mapper = new ObjectMapper();
         this.mapper.registerModule(new JavaTimeModule());
@@ -40,6 +61,13 @@ public class ResultStore {
         // Ensure directories exist
         resultsDir.mkdirs();
         historyDir.mkdirs();
+    }
+
+    /**
+     * Get the strategy ID this store is for (null if global)
+     */
+    public String getStrategyId() {
+        return strategyId;
     }
 
     /**

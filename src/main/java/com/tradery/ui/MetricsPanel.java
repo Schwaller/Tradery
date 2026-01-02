@@ -12,10 +12,6 @@ import java.awt.*;
 public class MetricsPanel extends JPanel {
 
     private JProgressBar progressBar;
-    private JSpinner capitalSpinner;
-    private JComboBox<String> positionSizingCombo;
-    private JSpinner feeSpinner;
-    private JSpinner slippageSpinner;
 
     private JLabel totalTradesLabel;
     private JLabel winRateLabel;
@@ -30,7 +26,9 @@ public class MetricsPanel extends JPanel {
 
     public MetricsPanel() {
         setLayout(new BorderLayout());
-        setBorder(BorderFactory.createEmptyBorder(0, 8, 8, 8));
+        setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
+        setBackground(Color.WHITE);
+        setOpaque(true);
 
         initializeComponents();
         layoutComponents();
@@ -41,26 +39,6 @@ public class MetricsPanel extends JPanel {
         progressBar = new JProgressBar(0, 100);
         progressBar.setStringPainted(true);
         progressBar.setVisible(false);
-
-        capitalSpinner = new JSpinner(new SpinnerNumberModel(10000, 100, 10000000, 1000));
-        ((JSpinner.NumberEditor) capitalSpinner.getEditor()).getFormat().setGroupingUsed(true);
-
-        positionSizingCombo = new JComboBox<>(new String[]{
-            "Fixed 1%", "Fixed 5%", "Fixed 10%",
-            "$100 per trade", "$500 per trade", "$1000 per trade",
-            "Risk 1% per trade", "Risk 2% per trade",
-            "Kelly Criterion", "Volatility-based"
-        });
-
-        // Fee: 0.1% default (Binance spot), range 0-1%
-        feeSpinner = new JSpinner(new SpinnerNumberModel(0.10, 0.0, 1.0, 0.01));
-        JSpinner.NumberEditor feeEditor = new JSpinner.NumberEditor(feeSpinner, "0.00'%'");
-        feeSpinner.setEditor(feeEditor);
-
-        // Slippage: 0.05% default, range 0-1%
-        slippageSpinner = new JSpinner(new SpinnerNumberModel(0.05, 0.0, 1.0, 0.01));
-        JSpinner.NumberEditor slipEditor = new JSpinner.NumberEditor(slippageSpinner, "0.00'%'");
-        slippageSpinner.setEditor(slipEditor);
 
         totalTradesLabel = createValueLabel("-");
         winRateLabel = createValueLabel("-");
@@ -84,49 +62,20 @@ public class MetricsPanel extends JPanel {
     private void layoutComponents() {
         // Top: Progress bar
         JPanel progressPanel = new JPanel(new BorderLayout());
+        progressPanel.setOpaque(false);
         progressPanel.add(progressBar, BorderLayout.CENTER);
-
-        // Capital row
-        JPanel capitalPanel = new JPanel(new BorderLayout(8, 0));
-        capitalPanel.add(new JLabel("Capital:"), BorderLayout.WEST);
-        capitalPanel.add(capitalSpinner, BorderLayout.CENTER);
-
-        // Size row
-        JPanel sizePanel = new JPanel(new BorderLayout(8, 0));
-        sizePanel.add(new JLabel("Size:"), BorderLayout.WEST);
-        sizePanel.add(positionSizingCombo, BorderLayout.CENTER);
-
-        // Fee row
-        JPanel feePanel = new JPanel(new BorderLayout(8, 0));
-        feePanel.add(new JLabel("Fee:"), BorderLayout.WEST);
-        feePanel.add(feeSpinner, BorderLayout.CENTER);
-
-        // Slippage row
-        JPanel slippagePanel = new JPanel(new BorderLayout(8, 0));
-        slippagePanel.add(new JLabel("Slippage:"), BorderLayout.WEST);
-        slippagePanel.add(slippageSpinner, BorderLayout.CENTER);
-
-        // Settings combined
-        JPanel settingsPanel = new JPanel(new GridLayout(4, 1, 0, 4));
-        settingsPanel.add(capitalPanel);
-        settingsPanel.add(sizePanel);
-        settingsPanel.add(feePanel);
-        settingsPanel.add(slippagePanel);
-
-        // Combine progress and settings
-        JPanel topPanel = new JPanel(new BorderLayout(0, 8));
-        topPanel.setBorder(BorderFactory.createEmptyBorder(0, 0, 8, 0));
-        topPanel.add(progressPanel, BorderLayout.NORTH);
-        topPanel.add(settingsPanel, BorderLayout.SOUTH);
+        progressPanel.setBorder(BorderFactory.createEmptyBorder(0, 0, 8, 0));
 
         // Metrics section
         JPanel metricsSection = new JPanel(new BorderLayout(0, 4));
+        metricsSection.setOpaque(false);
 
         JLabel title = new JLabel("Performance Metrics");
         title.setFont(title.getFont().deriveFont(Font.BOLD, 12f));
         title.setForeground(Color.GRAY);
 
         JPanel gridPanel = new JPanel(new GridLayout(0, 2, 8, 4));
+        gridPanel.setOpaque(false);
         addMetricRow(gridPanel, "Total Trades", totalTradesLabel);
         addMetricRow(gridPanel, "Win Rate", winRateLabel);
         addMetricRow(gridPanel, "Profit Factor", profitFactorLabel);
@@ -141,7 +90,7 @@ public class MetricsPanel extends JPanel {
         metricsSection.add(title, BorderLayout.NORTH);
         metricsSection.add(gridPanel, BorderLayout.CENTER);
 
-        add(topPanel, BorderLayout.NORTH);
+        add(progressPanel, BorderLayout.NORTH);
         add(metricsSection, BorderLayout.CENTER);
     }
 
@@ -217,34 +166,5 @@ public class MetricsPanel extends JPanel {
                 progressBar.setString(message);
             }
         });
-    }
-
-    public double getInitialCapital() {
-        return ((Number) capitalSpinner.getValue()).doubleValue();
-    }
-
-    public String getPositionSizing() {
-        return (String) positionSizingCombo.getSelectedItem();
-    }
-
-    /**
-     * Get fee percentage (e.g., 0.1 for 0.1%)
-     */
-    public double getFeePercent() {
-        return ((Number) feeSpinner.getValue()).doubleValue();
-    }
-
-    /**
-     * Get slippage percentage (e.g., 0.05 for 0.05%)
-     */
-    public double getSlippagePercent() {
-        return ((Number) slippageSpinner.getValue()).doubleValue();
-    }
-
-    /**
-     * Get combined fee + slippage as decimal (e.g., 0.0015 for 0.15%)
-     */
-    public double getTotalCommission() {
-        return (getFeePercent() + getSlippagePercent()) / 100.0;
     }
 }

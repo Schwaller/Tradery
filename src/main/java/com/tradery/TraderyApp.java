@@ -1,9 +1,8 @@
 package com.tradery;
 
-import com.tradery.ui.MainFrame;
+import com.tradery.ui.LauncherFrame;
 
 import javax.swing.*;
-import java.awt.*;
 import java.io.File;
 
 /**
@@ -31,10 +30,13 @@ public class TraderyApp {
         // Ensure user data directory exists
         ensureUserDirectories();
 
+        // Initialize shared application context
+        ApplicationContext.getInstance();
+
         // Launch UI on Event Dispatch Thread
         SwingUtilities.invokeLater(() -> {
-            MainFrame frame = new MainFrame();
-            frame.setVisible(true);
+            LauncherFrame launcher = new LauncherFrame();
+            launcher.setVisible(true);
         });
     }
 
