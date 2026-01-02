@@ -21,6 +21,10 @@ public class Strategy {
     private Double takeProfitValue;    // Percent or ATR multiplier
     private int maxOpenTrades = 1;     // Max parallel open trades
     private int minCandlesBetweenTrades = 0;  // Minimum candles between trade entries
+    private boolean dcaEnabled = false;       // Dollar cost averaging mode
+    private int dcaMaxEntries = 3;            // Max DCA entries when dcaEnabled
+    private int dcaBarsBetween = 1;           // Min bars between DCA entries
+    private String dcaMode = "require_signal"; // "require_signal" or "continue_always"
     private boolean enabled;
     private Instant created;
     private Instant updated;
@@ -156,6 +160,42 @@ public class Strategy {
 
     public void setMinCandlesBetweenTrades(int minCandlesBetweenTrades) {
         this.minCandlesBetweenTrades = minCandlesBetweenTrades >= 0 ? minCandlesBetweenTrades : 0;
+        this.updated = Instant.now();
+    }
+
+    public boolean isDcaEnabled() {
+        return dcaEnabled;
+    }
+
+    public void setDcaEnabled(boolean dcaEnabled) {
+        this.dcaEnabled = dcaEnabled;
+        this.updated = Instant.now();
+    }
+
+    public int getDcaMaxEntries() {
+        return dcaMaxEntries > 0 ? dcaMaxEntries : 3;
+    }
+
+    public void setDcaMaxEntries(int dcaMaxEntries) {
+        this.dcaMaxEntries = dcaMaxEntries > 0 ? dcaMaxEntries : 1;
+        this.updated = Instant.now();
+    }
+
+    public int getDcaBarsBetween() {
+        return dcaBarsBetween >= 0 ? dcaBarsBetween : 1;
+    }
+
+    public void setDcaBarsBetween(int dcaBarsBetween) {
+        this.dcaBarsBetween = dcaBarsBetween >= 0 ? dcaBarsBetween : 0;
+        this.updated = Instant.now();
+    }
+
+    public String getDcaMode() {
+        return dcaMode != null ? dcaMode : "require_signal";
+    }
+
+    public void setDcaMode(String dcaMode) {
+        this.dcaMode = dcaMode;
         this.updated = Instant.now();
     }
 

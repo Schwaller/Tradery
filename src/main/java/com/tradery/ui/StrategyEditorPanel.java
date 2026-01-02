@@ -21,9 +21,14 @@ public class StrategyEditorPanel extends JPanel {
     private JSpinner takeProfitValueSpinner;
     private JSpinner maxOpenTradesSpinner;
     private JSpinner minCandlesBetweenSpinner;
+    private JCheckBox dcaEnabledCheckbox;
+    private JSpinner dcaMaxEntriesSpinner;
+    private JSpinner dcaBarsBetweenSpinner;
+    private JComboBox<String> dcaModeCombo;
 
     private static final String[] SL_TYPES = {"No Stop Loss", "Stop Loss %", "Trailing Stop %", "Stop Loss ATR", "Trailing Stop ATR"};
     private static final String[] TP_TYPES = {"No Take Profit", "Take Profit %", "Take Profit ATR"};
+    private static final String[] DCA_MODES = {"Signal Required", "Continue Always"};
 
     private Strategy strategy;
     private Runnable onChange;
@@ -63,6 +68,13 @@ public class StrategyEditorPanel extends JPanel {
         maxOpenTradesSpinner = new JSpinner(new SpinnerNumberModel(1, 1, 100, 1));
         minCandlesBetweenSpinner = new JSpinner(new SpinnerNumberModel(0, 0, 1000, 1));
 
+        // DCA fields
+        dcaEnabledCheckbox = new JCheckBox("DCA");
+        dcaMaxEntriesSpinner = new JSpinner(new SpinnerNumberModel(3, 1, 20, 1));
+        dcaBarsBetweenSpinner = new JSpinner(new SpinnerNumberModel(1, 0, 100, 1));
+        dcaModeCombo = new JComboBox<>(DCA_MODES);
+        dcaEnabledCheckbox.addActionListener(e -> updateDcaVisibility());
+
         // Wire up change listeners
         DocumentListener docListener = new DocumentListener() {
             public void insertUpdate(DocumentEvent e) { fireChange(); }
@@ -79,6 +91,17 @@ public class StrategyEditorPanel extends JPanel {
         takeProfitValueSpinner.addChangeListener(e -> fireChange());
         maxOpenTradesSpinner.addChangeListener(e -> fireChange());
         minCandlesBetweenSpinner.addChangeListener(e -> fireChange());
+        dcaEnabledCheckbox.addActionListener(e -> fireChange());
+        dcaMaxEntriesSpinner.addChangeListener(e -> fireChange());
+        dcaBarsBetweenSpinner.addChangeListener(e -> fireChange());
+        dcaModeCombo.addActionListener(e -> fireChange());
+    }
+
+    private void updateDcaVisibility() {
+        boolean enabled = dcaEnabledCheckbox.isSelected();
+        dcaMaxEntriesSpinner.setEnabled(enabled);
+        dcaBarsBetweenSpinner.setEnabled(enabled);
+        dcaModeCombo.setEnabled(enabled);
     }
 
     private void fireChange() {
@@ -115,6 +138,24 @@ public class StrategyEditorPanel extends JPanel {
         entryPanel.add(entryLabel, BorderLayout.NORTH);
         JScrollPane entryScroll = new JScrollPane(entryEditor);
         entryPanel.add(entryScroll, BorderLayout.CENTER);
+
+        // DCA options below entry
+        JPanel dcaPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 2));
+        dcaPanel.setOpaque(false);
+        dcaPanel.add(dcaEnabledCheckbox);
+        dcaPanel.add(dcaMaxEntriesSpinner);
+        dcaPanel.add(new JLabel("x every"));
+        dcaPanel.add(dcaBarsBetweenSpinner);
+        dcaPanel.add(new JLabel("bars"));
+        dcaMaxEntriesSpinner.setEnabled(false);
+        dcaBarsBetweenSpinner.setEnabled(false);
+        dcaModeCombo.setEnabled(false);
+
+        JPanel dcaWrapper = new JPanel(new BorderLayout(0, 2));
+        dcaWrapper.setOpaque(false);
+        dcaWrapper.add(dcaPanel, BorderLayout.NORTH);
+        dcaWrapper.add(dcaModeCombo, BorderLayout.SOUTH);
+        entryPanel.add(dcaWrapper, BorderLayout.SOUTH);
 
         // Exit condition
         JPanel exitPanel = new JPanel(new BorderLayout(0, 2));
@@ -199,6 +240,13 @@ public class StrategyEditorPanel extends JPanel {
                 // Set trade management values
                 maxOpenTradesSpinner.setValue(strategy.getMaxOpenTrades());
                 minCandlesBetweenSpinner.setValue(strategy.getMinCandlesBetweenTrades());
+
+                // Set DCA values
+                dcaEnabledCheckbox.setSelected(strategy.isDcaEnabled());
+                dcaMaxEntriesSpinner.setValue(strategy.getDcaMaxEntries());
+                dcaBarsBetweenSpinner.setValue(strategy.getDcaBarsBetween());
+                dcaModeCombo.setSelectedIndex("continue_always".equals(strategy.getDcaMode()) ? 1 : 0);
+                updateDcaVisibility();
             } else {
                 entryEditor.setText("");
                 exitEditor.setText("");
@@ -206,6 +254,11 @@ public class StrategyEditorPanel extends JPanel {
                 takeProfitTypeCombo.setSelectedIndex(0);
                 maxOpenTradesSpinner.setValue(1);
                 minCandlesBetweenSpinner.setValue(0);
+                dcaEnabledCheckbox.setSelected(false);
+                dcaMaxEntriesSpinner.setValue(3);
+                dcaBarsBetweenSpinner.setValue(1);
+                dcaModeCombo.setSelectedIndex(0);
+                updateDcaVisibility();
             }
         } finally {
             suppressChangeEvents = false;
@@ -231,6 +284,11 @@ public class StrategyEditorPanel extends JPanel {
 
         strategy.setMaxOpenTrades(((Number) maxOpenTradesSpinner.getValue()).intValue());
         strategy.setMinCandlesBetweenTrades(((Number) minCandlesBetweenSpinner.getValue()).intValue());
+
+        strategy.setDcaEnabled(dcaEnabledCheckbox.isSelected());
+        strategy.setDcaMaxEntries(((Number) dcaMaxEntriesSpinner.getValue()).intValue());
+        strategy.setDcaBarsBetween(((Number) dcaBarsBetweenSpinner.getValue()).intValue());
+        strategy.setDcaMode(dcaModeCombo.getSelectedIndex() == 1 ? "continue_always" : "require_signal");
     }
 
     /**

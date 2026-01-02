@@ -78,7 +78,8 @@ public class BacktestEngine {
         double currentEquity = config.initialCapital();
         int lastEntryBar = -9999;  // Track last entry bar for min candle distance
 
-        int maxOpenTrades = strategy.getMaxOpenTrades();
+        // DCA mode uses dcaMaxEntries, otherwise use maxOpenTrades
+        int maxOpenTrades = strategy.isDcaEnabled() ? strategy.getDcaMaxEntries() : strategy.getMaxOpenTrades();
         int minCandlesBetween = strategy.getMinCandlesBetweenTrades();
 
         if (onProgress != null) {
@@ -184,10 +185,18 @@ public class BacktestEngine {
 
                 // Check entry condition if we can open more trades
                 boolean canOpenMore = openTrades.size() < maxOpenTrades;
-                boolean passesMinDistance = (i - lastEntryBar) >= minCandlesBetween;
+                boolean isDcaEntry = strategy.isDcaEnabled() && !openTrades.isEmpty();
+                int requiredDistance = isDcaEntry ? strategy.getDcaBarsBetween() : minCandlesBetween;
+                boolean passesMinDistance = (i - lastEntryBar) >= requiredDistance;
 
                 if (canOpenMore && passesMinDistance) {
-                    boolean shouldEnter = evaluator.evaluate(entryResult.ast(), i);
+                    boolean shouldEnter;
+                    if (isDcaEntry && "continue_always".equals(strategy.getDcaMode())) {
+                        // In continue_always mode, DCA entries don't require signal
+                        shouldEnter = true;
+                    } else {
+                        shouldEnter = evaluator.evaluate(entryResult.ast(), i);
+                    }
 
                     if (shouldEnter) {
                         // Calculate position size

@@ -549,12 +549,14 @@ public class ChartsPanel extends JPanel {
             plot.getRenderer().setDefaultStroke(ChartStyles.LINE_STROKE);
         }
 
-        // Add title as annotation in top-left corner
-        TextTitle textTitle = new TextTitle(title, new Font(Font.SANS_SERIF, Font.PLAIN, 11));
-        textTitle.setPaint(new Color(150, 150, 150));
-        textTitle.setBackgroundPaint(null);
-        XYTitleAnnotation titleAnnotation = new XYTitleAnnotation(0.01, 0.98, textTitle, RectangleAnchor.TOP_LEFT);
-        plot.addAnnotation(titleAnnotation);
+        // Add title as annotation only if chart has no legend
+        if (chart.getLegend() == null) {
+            TextTitle textTitle = new TextTitle(title, new Font(Font.SANS_SERIF, Font.PLAIN, 11));
+            textTitle.setPaint(new Color(150, 150, 150));
+            textTitle.setBackgroundPaint(null);
+            XYTitleAnnotation titleAnnotation = new XYTitleAnnotation(0.01, 0.98, textTitle, RectangleAnchor.TOP_LEFT);
+            plot.addAnnotation(titleAnnotation);
+        }
 
         // Make legend background transparent if present
         if (chart.getLegend() != null) {
@@ -563,7 +565,7 @@ public class ChartsPanel extends JPanel {
             chart.getLegend().setItemPaint(Color.LIGHT_GRAY);
             chart.getLegend().setPosition(org.jfree.chart.ui.RectangleEdge.TOP);
             chart.getLegend().setItemFont(new Font(Font.SANS_SERIF, Font.PLAIN, 10));
-            chart.getLegend().setPadding(new org.jfree.chart.ui.RectangleInsets(2, 2, 2, 2));
+            chart.getLegend().setPadding(new org.jfree.chart.ui.RectangleInsets(8, 2, 0, 2));
         }
     }
 
