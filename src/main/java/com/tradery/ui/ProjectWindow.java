@@ -43,6 +43,7 @@ public class ProjectWindow extends JFrame {
     // Toolbar controls
     private JComboBox<String> symbolCombo;
     private JComboBox<String> timeframeCombo;
+    private JComboBox<String> durationCombo;
     private JSpinner capitalSpinner;
     private JProgressBar progressBar;
     private JLabel progressLabel;
@@ -73,9 +74,11 @@ public class ProjectWindow extends JFrame {
     // Flag to ignore self-triggered file changes
     private volatile boolean ignoringFileChanges = false;
 
-    // Auto-save debounce timer
+    // Auto-save and auto-backtest debounce timers
     private Timer autoSaveTimer;
-    private static final int AUTO_SAVE_DELAY_MS = 1000;
+    private Timer autoBacktestTimer;
+    private static final int AUTO_SAVE_DELAY_MS = 500;
+    private static final int AUTO_BACKTEST_DELAY_MS = 800;
 
     public ProjectWindow(Strategy strategy, Consumer<String> onClose) {
         super(strategy.getName() + " - " + TraderyApp.APP_NAME);
@@ -158,6 +161,10 @@ public class ProjectWindow extends JFrame {
         symbolCombo = new JComboBox<>(SYMBOLS);
         timeframeCombo = new JComboBox<>(TIMEFRAMES);
         timeframeCombo.setSelectedItem("1h");
+        timeframeCombo.addActionListener(e -> updateDurationOptions());
+
+        durationCombo = new JComboBox<>();
+        updateDurationOptions();
 
         capitalSpinner = new JSpinner(new SpinnerNumberModel(10000, 100, 10000000, 1000));
         ((JSpinner.NumberEditor) capitalSpinner.getEditor()).getFormat().setGroupingUsed(true);
@@ -199,19 +206,108 @@ public class ProjectWindow extends JFrame {
         autoSaveTimer = new Timer(AUTO_SAVE_DELAY_MS, e -> saveStrategyQuietly());
         autoSaveTimer.setRepeats(false);
 
-        // Wire up change listeners for auto-save
-        symbolCombo.addActionListener(e -> scheduleAutoSave());
-        timeframeCombo.addActionListener(e -> scheduleAutoSave());
-        capitalSpinner.addChangeListener(e -> scheduleAutoSave());
+        // Auto-backtest timer (runs after save)
+        autoBacktestTimer = new Timer(AUTO_BACKTEST_DELAY_MS, e -> runBacktest());
+        autoBacktestTimer.setRepeats(false);
+
+        // Wire up change listeners for auto-save and auto-backtest
+        symbolCombo.addActionListener(e -> scheduleAutoUpdate());
+        timeframeCombo.addActionListener(e -> scheduleAutoUpdate());
+        durationCombo.addActionListener(e -> scheduleAutoUpdate());
+        capitalSpinner.addChangeListener(e -> scheduleAutoUpdate());
 
         // Wire up panel change listeners
-        editorPanel.setOnChange(this::scheduleAutoSave);
-        settingsPanel.setOnChange(this::scheduleAutoSave);
+        editorPanel.setOnChange(this::scheduleAutoUpdate);
+        settingsPanel.setOnChange(this::scheduleAutoUpdate);
     }
 
-    private void scheduleAutoSave() {
+    private void updateDurationOptions() {
+        String timeframe = (String) timeframeCombo.getSelectedItem();
+        durationCombo.removeAllItems();
+
+        // Provide sensible duration options based on timeframe
+        switch (timeframe) {
+            case "1m" -> {
+                durationCombo.addItem("1 day");
+                durationCombo.addItem("3 days");
+                durationCombo.addItem("1 week");
+                durationCombo.addItem("2 weeks");
+            }
+            case "5m" -> {
+                durationCombo.addItem("1 week");
+                durationCombo.addItem("2 weeks");
+                durationCombo.addItem("1 month");
+                durationCombo.addItem("3 months");
+            }
+            case "15m" -> {
+                durationCombo.addItem("2 weeks");
+                durationCombo.addItem("1 month");
+                durationCombo.addItem("3 months");
+                durationCombo.addItem("6 months");
+            }
+            case "30m" -> {
+                durationCombo.addItem("1 month");
+                durationCombo.addItem("3 months");
+                durationCombo.addItem("6 months");
+                durationCombo.addItem("1 year");
+            }
+            case "1h" -> {
+                durationCombo.addItem("3 months");
+                durationCombo.addItem("6 months");
+                durationCombo.addItem("1 year");
+                durationCombo.addItem("2 years");
+            }
+            case "4h" -> {
+                durationCombo.addItem("6 months");
+                durationCombo.addItem("1 year");
+                durationCombo.addItem("2 years");
+                durationCombo.addItem("3 years");
+            }
+            case "1d" -> {
+                durationCombo.addItem("1 year");
+                durationCombo.addItem("2 years");
+                durationCombo.addItem("3 years");
+                durationCombo.addItem("5 years");
+            }
+            case "1w" -> {
+                durationCombo.addItem("2 years");
+                durationCombo.addItem("3 years");
+                durationCombo.addItem("5 years");
+                durationCombo.addItem("10 years");
+            }
+            default -> {
+                durationCombo.addItem("1 year");
+            }
+        }
+    }
+
+    private long getDurationMillis() {
+        String duration = (String) durationCombo.getSelectedItem();
+        if (duration == null) return 365L * 24 * 60 * 60 * 1000; // Default 1 year
+
+        long day = 24L * 60 * 60 * 1000;
+        return switch (duration) {
+            case "1 day" -> day;
+            case "3 days" -> 3 * day;
+            case "1 week" -> 7 * day;
+            case "2 weeks" -> 14 * day;
+            case "1 month" -> 30 * day;
+            case "2 months" -> 60 * day;
+            case "3 months" -> 90 * day;
+            case "6 months" -> 180 * day;
+            case "1 year" -> 365 * day;
+            case "2 years" -> 2 * 365 * day;
+            case "3 years" -> 3 * 365 * day;
+            case "5 years" -> 5 * 365 * day;
+            case "10 years" -> 10 * 365 * day;
+            default -> 365 * day;
+        };
+    }
+
+    private void scheduleAutoUpdate() {
         if (ignoringFileChanges) return;
         autoSaveTimer.restart();
+        autoBacktestTimer.restart();
     }
 
     private void saveStrategyQuietly() {
@@ -246,6 +342,7 @@ public class ProjectWindow extends JFrame {
         toolbarLeft.add(Box.createHorizontalStrut(8));
         toolbarLeft.add(new JLabel("Timeframe:"));
         toolbarLeft.add(timeframeCombo);
+        toolbarLeft.add(durationCombo);
         toolbarLeft.add(Box.createHorizontalStrut(8));
         toolbarLeft.add(new JLabel("Capital:"));
         toolbarLeft.add(capitalSpinner);
@@ -425,7 +522,7 @@ public class ProjectWindow extends JFrame {
         BacktestConfig config = new BacktestConfig(
             symbol,
             resolution,
-            System.currentTimeMillis() - (365L * 24 * 60 * 60 * 1000), // 1 year ago
+            System.currentTimeMillis() - getDurationMillis(),
             System.currentTimeMillis(),
             capital,
             sizingType,

@@ -32,6 +32,7 @@ import java.awt.*;
 import java.awt.BasicStroke;
 import java.awt.geom.Rectangle2D;
 import java.text.SimpleDateFormat;
+import java.time.Year;
 import java.util.Date;
 import java.util.List;
 import java.util.function.Consumer;
@@ -567,12 +568,42 @@ public class ChartsPanel extends JPanel {
     }
 
     /**
+     * Update date axis format on all charts based on data range.
+     * Shows year when data spans beyond current year.
+     */
+    private void updateDateAxisFormat(List<Candle> candles) {
+        if (candles == null || candles.isEmpty()) return;
+
+        long firstTimestamp = candles.getFirst().timestamp();
+        int currentYear = Year.now().getValue();
+        int dataStartYear = Year.from(java.time.Instant.ofEpochMilli(firstTimestamp)
+            .atZone(java.time.ZoneId.systemDefault())).getValue();
+
+        // Use format with year if data spans beyond current year
+        SimpleDateFormat format = (dataStartYear < currentYear)
+            ? new SimpleDateFormat("MMM d ''yy")  // e.g., "Jan 1 '24"
+            : new SimpleDateFormat("MMM d");      // e.g., "Jan 1"
+
+        // Apply to all charts
+        JFreeChart[] charts = {priceChart, equityChart, comparisonChart, capitalUsageChart, tradePLChart};
+        for (JFreeChart chart : charts) {
+            if (chart != null && chart.getXYPlot().getDomainAxis() instanceof DateAxis dateAxis) {
+                dateAxis.setDateFormatOverride(format);
+            }
+        }
+    }
+
+    /**
      * Update charts with new candle data and trades
      */
     public void updateCharts(List<Candle> candles, List<Trade> trades, double initialCapital) {
         if (candles == null || candles.isEmpty()) return;
 
         this.currentCandles = candles;
+
+        // Update date format based on data range
+        updateDateAxisFormat(candles);
+
         updatePriceChart(candles, trades);
         updateEquityChart(candles, trades, initialCapital);
         updateComparisonChart(candles, trades, initialCapital);
