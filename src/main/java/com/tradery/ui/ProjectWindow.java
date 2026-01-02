@@ -46,8 +46,10 @@ public class ProjectWindow extends JFrame {
     private JSpinner capitalSpinner;
     private JProgressBar progressBar;
     private JLabel progressLabel;
-    private JToggleButton zoomToggle;
-    private JToggleButton fitYToggle;
+    private JToggleButton fitWidthBtn;
+    private JToggleButton fixedWidthBtn;
+    private JToggleButton fitYBtn;
+    private JToggleButton fullYBtn;
 
     private static final String[] SYMBOLS = {
         "BTCUSDT", "ETHUSDT", "BNBUSDT", "XRPUSDT", "ADAUSDT",
@@ -173,15 +175,33 @@ public class ProjectWindow extends JFrame {
         progressLabel.setForeground(Color.GRAY);
         progressLabel.setVisible(false);
 
-        // Chart view toggles
-        zoomToggle = new JToggleButton("Fixed Width");
-        zoomToggle.setFont(zoomToggle.getFont().deriveFont(11f));
-        zoomToggle.addActionListener(e -> chartPanel.setFixedWidthMode(zoomToggle.isSelected()));
+        // Width toggle group (Fit / Fixed) - macOS segmented control
+        fitWidthBtn = new JToggleButton("Fit");
+        fixedWidthBtn = new JToggleButton("Fixed");
+        fitWidthBtn.putClientProperty("JButton.buttonType", "segmented");
+        fitWidthBtn.putClientProperty("JButton.segmentPosition", "first");
+        fixedWidthBtn.putClientProperty("JButton.buttonType", "segmented");
+        fixedWidthBtn.putClientProperty("JButton.segmentPosition", "last");
+        ButtonGroup widthGroup = new ButtonGroup();
+        widthGroup.add(fitWidthBtn);
+        widthGroup.add(fixedWidthBtn);
+        fitWidthBtn.setSelected(true); // Default: fit to width
+        fitWidthBtn.addActionListener(e -> chartPanel.setFixedWidthMode(false));
+        fixedWidthBtn.addActionListener(e -> chartPanel.setFixedWidthMode(true));
 
-        fitYToggle = new JToggleButton("Fit Y");
-        fitYToggle.setFont(fitYToggle.getFont().deriveFont(11f));
-        fitYToggle.setSelected(true); // Default on
-        fitYToggle.addActionListener(e -> chartPanel.setFitYAxisToVisibleData(fitYToggle.isSelected()));
+        // Y-axis toggle group (Fit / Full) - macOS segmented control
+        fitYBtn = new JToggleButton("Fit Y");
+        fullYBtn = new JToggleButton("Full Y");
+        fitYBtn.putClientProperty("JButton.buttonType", "segmented");
+        fitYBtn.putClientProperty("JButton.segmentPosition", "first");
+        fullYBtn.putClientProperty("JButton.buttonType", "segmented");
+        fullYBtn.putClientProperty("JButton.segmentPosition", "last");
+        ButtonGroup yGroup = new ButtonGroup();
+        yGroup.add(fitYBtn);
+        yGroup.add(fullYBtn);
+        fitYBtn.setSelected(true); // Default: fit Y to visible
+        fitYBtn.addActionListener(e -> chartPanel.setFitYAxisToVisibleData(true));
+        fullYBtn.addActionListener(e -> chartPanel.setFitYAxisToVisibleData(false));
 
         // Auto-save timer
         autoSaveTimer = new Timer(AUTO_SAVE_DELAY_MS, e -> saveStrategyQuietly());
@@ -241,15 +261,19 @@ public class ProjectWindow extends JFrame {
         toolbarLeft.add(runButton);
         toolbarLeft.add(Box.createHorizontalStrut(12));
 
-        // Toggle button group for chart view options
-        JPanel toggleGroup = new JPanel(new GridLayout(1, 2, 0, 0));
-        toggleGroup.setBorder(BorderFactory.createCompoundBorder(
-            BorderFactory.createLineBorder(new Color(180, 180, 180), 1, true),
-            BorderFactory.createEmptyBorder(0, 0, 0, 0)
-        ));
-        toggleGroup.add(zoomToggle);
-        toggleGroup.add(fitYToggle);
-        toolbarLeft.add(toggleGroup);
+        // Width toggle group (native macOS segmented control)
+        JPanel widthGroup = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
+        widthGroup.add(fitWidthBtn);
+        widthGroup.add(fixedWidthBtn);
+        toolbarLeft.add(widthGroup);
+
+        toolbarLeft.add(Box.createHorizontalStrut(8));
+
+        // Y-axis toggle group (native macOS segmented control)
+        JPanel yGroup = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
+        yGroup.add(fitYBtn);
+        yGroup.add(fullYBtn);
+        toolbarLeft.add(yGroup);
 
         // Progress bar panel (right side of toolbar)
         JPanel toolbarRight = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 4));
