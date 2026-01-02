@@ -25,8 +25,6 @@ public class MetricsPanel extends JPanel {
     public MetricsPanel() {
         setLayout(new BorderLayout());
         setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
-        setBackground(Color.WHITE);
-        setOpaque(true);
 
         initializeComponents();
         layoutComponents();

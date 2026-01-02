@@ -15,7 +15,6 @@ public class StrategyEditorPanel extends JPanel {
 
     private JTextArea entryEditor;
     private JTextArea exitEditor;
-    private JTextField nameField;
     private JComboBox<String> stopLossTypeCombo;
     private JSpinner stopLossValueSpinner;
     private JComboBox<String> takeProfitTypeCombo;
@@ -33,17 +32,12 @@ public class StrategyEditorPanel extends JPanel {
     public StrategyEditorPanel() {
         setLayout(new BorderLayout(0, 8));
         setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
-        setBackground(Color.WHITE);
-        setOpaque(true);
 
         initializeComponents();
         layoutComponents();
     }
 
     private void initializeComponents() {
-        // Name field
-        nameField = new JTextField();
-        nameField.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 13));
 
         // Entry/Exit editors
         entryEditor = new JTextArea(3, 20);
@@ -76,7 +70,6 @@ public class StrategyEditorPanel extends JPanel {
             public void changedUpdate(DocumentEvent e) { fireChange(); }
         };
 
-        nameField.getDocument().addDocumentListener(docListener);
         entryEditor.getDocument().addDocumentListener(docListener);
         exitEditor.getDocument().addDocumentListener(docListener);
 
@@ -113,12 +106,6 @@ public class StrategyEditorPanel extends JPanel {
         JLabel title = new JLabel("Strategy");
         title.setFont(title.getFont().deriveFont(Font.BOLD, 12f));
         title.setForeground(Color.GRAY);
-
-        // Name panel
-        JPanel namePanel = new JPanel(new BorderLayout(4, 0));
-        namePanel.setOpaque(false);
-        namePanel.add(new JLabel("Name:"), BorderLayout.WEST);
-        namePanel.add(nameField, BorderLayout.CENTER);
 
         // Entry condition
         JPanel entryPanel = new JPanel(new BorderLayout(0, 2));
@@ -183,13 +170,7 @@ public class StrategyEditorPanel extends JPanel {
         contentPanel.add(entryExitPanel, BorderLayout.CENTER);
         contentPanel.add(settingsPanel, BorderLayout.SOUTH);
 
-        // Header with title and name
-        JPanel headerPanel = new JPanel(new BorderLayout(0, 4));
-        headerPanel.setOpaque(false);
-        headerPanel.add(title, BorderLayout.NORTH);
-        headerPanel.add(namePanel, BorderLayout.CENTER);
-
-        add(headerPanel, BorderLayout.NORTH);
+        add(title, BorderLayout.NORTH);
         add(contentPanel, BorderLayout.CENTER);
     }
 
@@ -202,7 +183,6 @@ public class StrategyEditorPanel extends JPanel {
 
         try {
             if (strategy != null) {
-                nameField.setText(strategy.getName());
                 entryEditor.setText(strategy.getEntry());
                 exitEditor.setText(strategy.getExit());
 
@@ -220,7 +200,6 @@ public class StrategyEditorPanel extends JPanel {
                 maxOpenTradesSpinner.setValue(strategy.getMaxOpenTrades());
                 minCandlesBetweenSpinner.setValue(strategy.getMinCandlesBetweenTrades());
             } else {
-                nameField.setText("");
                 entryEditor.setText("");
                 exitEditor.setText("");
                 stopLossTypeCombo.setSelectedIndex(0);
@@ -239,7 +218,6 @@ public class StrategyEditorPanel extends JPanel {
     public void applyToStrategy(Strategy strategy) {
         if (strategy == null) return;
 
-        strategy.setName(nameField.getText().trim());
         strategy.setEntry(entryEditor.getText().trim());
         strategy.setExit(exitEditor.getText().trim());
 

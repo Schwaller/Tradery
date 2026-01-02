@@ -1,5 +1,6 @@
 package com.tradery;
 
+import com.formdev.flatlaf.FlatDarkLaf;
 import com.tradery.ui.LauncherFrame;
 
 import javax.swing.*;
@@ -18,13 +19,13 @@ public class TraderyApp {
     public static final File USER_DIR = new File(System.getProperty("user.home"), ".tradery");
 
     public static void main(String[] args) {
-        // Set native look and feel (macOS Aqua)
+        // Set FlatLaf macOS theme
         try {
             System.setProperty("apple.laf.useScreenMenuBar", "true");
             System.setProperty("apple.awt.application.name", APP_NAME);
-            UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
+            FlatDarkLaf.setup();
         } catch (Exception e) {
-            System.err.println("Could not set native look and feel: " + e.getMessage());
+            System.err.println("Could not set FlatLaf look and feel: " + e.getMessage());
         }
 
         // Ensure user data directory exists

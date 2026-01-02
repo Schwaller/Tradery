@@ -31,6 +31,7 @@ public class LauncherFrame extends JFrame {
     private DefaultListModel<Strategy> listModel;
     private JButton openButton;
     private JButton newButton;
+    private JButton renameButton;
     private JButton deleteButton;
 
     private final StrategyStore strategyStore;
@@ -64,9 +65,10 @@ public class LauncherFrame extends JFrame {
             setLocationRelativeTo(null);
         }
 
-        // macOS-specific settings
+        // Integrated title bar look
         getRootPane().putClientProperty("apple.awt.fullWindowContent", true);
         getRootPane().putClientProperty("apple.awt.transparentTitleBar", true);
+        getRootPane().putClientProperty("apple.awt.windowTitleVisible", false);
 
         // Save position on move/resize
         addComponentListener(new ComponentAdapter() {
@@ -110,6 +112,10 @@ public class LauncherFrame extends JFrame {
         newButton = new JButton("New Project");
         newButton.addActionListener(e -> createProject());
 
+        renameButton = new JButton("Rename");
+        renameButton.addActionListener(e -> renameProject());
+        renameButton.setEnabled(false);
+
         deleteButton = new JButton("Delete");
         deleteButton.addActionListener(e -> deleteProject());
         deleteButton.setEnabled(false);
@@ -132,6 +138,7 @@ public class LauncherFrame extends JFrame {
         // Button panel
         JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 8));
         buttonPanel.add(deleteButton);
+        buttonPanel.add(renameButton);
         buttonPanel.add(newButton);
         buttonPanel.add(openButton);
 
@@ -202,6 +209,7 @@ public class LauncherFrame extends JFrame {
     private void updateButtonStates() {
         boolean hasSelection = projectList.getSelectedValue() != null;
         openButton.setEnabled(hasSelection);
+        renameButton.setEnabled(hasSelection);
         deleteButton.setEnabled(hasSelection);
     }
 
@@ -263,6 +271,27 @@ public class LauncherFrame extends JFrame {
 
             // Open the new project
             openProject();
+        }
+    }
+
+    private void renameProject() {
+        Strategy selected = projectList.getSelectedValue();
+        if (selected == null) return;
+
+        String newName = JOptionPane.showInputDialog(this,
+            "Enter new name:",
+            selected.getName());
+
+        if (newName != null && !newName.trim().isEmpty() && !newName.equals(selected.getName())) {
+            selected.setName(newName.trim());
+            strategyStore.save(selected);
+            loadProjects();
+
+            // Update window title if open
+            ProjectWindow window = openWindows.get(selected.getId());
+            if (window != null) {
+                window.setTitle(newName.trim() + " - " + TraderyApp.APP_NAME);
+            }
         }
     }
 

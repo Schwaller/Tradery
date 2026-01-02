@@ -30,8 +30,6 @@ public class ProjectSettingsPanel extends JPanel {
     public ProjectSettingsPanel() {
         setLayout(new BorderLayout(0, 8));
         setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
-        setBackground(Color.WHITE);
-        setOpaque(true);
 
         initializeComponents();
         layoutComponents();

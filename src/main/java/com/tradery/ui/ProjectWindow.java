@@ -112,9 +112,10 @@ public class ProjectWindow extends JFrame {
             setLocationRelativeTo(null);
         }
 
-        // macOS-specific settings
+        // Integrated title bar look
         getRootPane().putClientProperty("apple.awt.fullWindowContent", true);
         getRootPane().putClientProperty("apple.awt.transparentTitleBar", true);
+        getRootPane().putClientProperty("apple.awt.windowTitleVisible", false);
 
         addWindowListener(new WindowAdapter() {
             @Override
@@ -160,7 +161,6 @@ public class ProjectWindow extends JFrame {
 
         capitalSpinner = new JSpinner(new SpinnerNumberModel(10000, 100, 10000000, 1000));
         ((JSpinner.NumberEditor) capitalSpinner.getEditor()).getFormat().setGroupingUsed(true);
-        capitalSpinner.setPreferredSize(new Dimension(100, capitalSpinner.getPreferredSize().height));
 
         // Toolbar buttons
         runButton = new JButton("Run Backtest");
@@ -175,31 +175,23 @@ public class ProjectWindow extends JFrame {
         progressLabel.setForeground(Color.GRAY);
         progressLabel.setVisible(false);
 
-        // Width toggle group (Fit / Fixed) - macOS segmented control
+        // Width toggle group (Fit / Fixed)
         fitWidthBtn = new JToggleButton("Fit");
         fixedWidthBtn = new JToggleButton("Fixed");
-        fitWidthBtn.putClientProperty("JButton.buttonType", "segmented");
-        fitWidthBtn.putClientProperty("JButton.segmentPosition", "first");
-        fixedWidthBtn.putClientProperty("JButton.buttonType", "segmented");
-        fixedWidthBtn.putClientProperty("JButton.segmentPosition", "last");
         ButtonGroup widthGroup = new ButtonGroup();
         widthGroup.add(fitWidthBtn);
         widthGroup.add(fixedWidthBtn);
-        fitWidthBtn.setSelected(true); // Default: fit to width
+        fitWidthBtn.setSelected(true);
         fitWidthBtn.addActionListener(e -> chartPanel.setFixedWidthMode(false));
         fixedWidthBtn.addActionListener(e -> chartPanel.setFixedWidthMode(true));
 
-        // Y-axis toggle group (Fit / Full) - macOS segmented control
+        // Y-axis toggle group (Fit / Full)
         fitYBtn = new JToggleButton("Fit Y");
         fullYBtn = new JToggleButton("Full Y");
-        fitYBtn.putClientProperty("JButton.buttonType", "segmented");
-        fitYBtn.putClientProperty("JButton.segmentPosition", "first");
-        fullYBtn.putClientProperty("JButton.buttonType", "segmented");
-        fullYBtn.putClientProperty("JButton.segmentPosition", "last");
         ButtonGroup yGroup = new ButtonGroup();
         yGroup.add(fitYBtn);
         yGroup.add(fullYBtn);
-        fitYBtn.setSelected(true); // Default: fit Y to visible
+        fitYBtn.setSelected(true);
         fitYBtn.addActionListener(e -> chartPanel.setFitYAxisToVisibleData(true));
         fullYBtn.addActionListener(e -> chartPanel.setFitYAxisToVisibleData(false));
 
@@ -261,19 +253,12 @@ public class ProjectWindow extends JFrame {
         toolbarLeft.add(runButton);
         toolbarLeft.add(Box.createHorizontalStrut(12));
 
-        // Width toggle group (native macOS segmented control)
-        JPanel widthGroup = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
-        widthGroup.add(fitWidthBtn);
-        widthGroup.add(fixedWidthBtn);
-        toolbarLeft.add(widthGroup);
-
+        // Toggle buttons
+        toolbarLeft.add(fitWidthBtn);
+        toolbarLeft.add(fixedWidthBtn);
         toolbarLeft.add(Box.createHorizontalStrut(8));
-
-        // Y-axis toggle group (native macOS segmented control)
-        JPanel yGroup = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
-        yGroup.add(fitYBtn);
-        yGroup.add(fullYBtn);
-        toolbarLeft.add(yGroup);
+        toolbarLeft.add(fitYBtn);
+        toolbarLeft.add(fullYBtn);
 
         // Progress bar panel (right side of toolbar)
         JPanel toolbarRight = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 4));
@@ -283,10 +268,7 @@ public class ProjectWindow extends JFrame {
         JPanel topPanel = new JPanel(new BorderLayout(0, 0));
         topPanel.add(toolbarLeft, BorderLayout.CENTER);
         topPanel.add(toolbarRight, BorderLayout.EAST);
-        JPanel separator = new JPanel();
-        separator.setPreferredSize(new Dimension(0, 1));
-        separator.setBackground(new Color(200, 200, 200));
-        topPanel.add(separator, BorderLayout.SOUTH);
+        topPanel.add(new JSeparator(), BorderLayout.SOUTH);
         contentPane.add(topPanel, BorderLayout.NORTH);
 
         // Left side: Editor only
@@ -295,9 +277,7 @@ public class ProjectWindow extends JFrame {
         leftPanel.add(editorPanel, BorderLayout.CENTER);
 
         // Add vertical separator on the right
-        JPanel verticalSeparator = new JPanel();
-        verticalSeparator.setPreferredSize(new Dimension(1, 0));
-        verticalSeparator.setBackground(new Color(200, 200, 200));
+        JSeparator verticalSeparator = new JSeparator(SwingConstants.VERTICAL);
         leftPanel.add(verticalSeparator, BorderLayout.EAST);
 
         // Center: Charts
@@ -307,10 +287,7 @@ public class ProjectWindow extends JFrame {
         // Right side: Settings above Metrics above Trade table
         // Metrics panel with separator line above
         JPanel metricsWrapper = new JPanel(new BorderLayout(0, 0));
-        JPanel metricsSeparator = new JPanel();
-        metricsSeparator.setPreferredSize(new Dimension(0, 1));
-        metricsSeparator.setBackground(new Color(200, 200, 200));
-        metricsWrapper.add(metricsSeparator, BorderLayout.NORTH);
+        metricsWrapper.add(new JSeparator(), BorderLayout.NORTH);
         metricsWrapper.add(metricsPanel, BorderLayout.CENTER);
 
         JPanel rightTopPanel = new JPanel(new BorderLayout(0, 0));
@@ -322,13 +299,9 @@ public class ProjectWindow extends JFrame {
         rightContent.add(tradeTablePanel, BorderLayout.CENTER);
 
         // Wrap with vertical separator on left
-        JPanel rightVerticalSeparator = new JPanel();
-        rightVerticalSeparator.setPreferredSize(new Dimension(1, 0));
-        rightVerticalSeparator.setBackground(new Color(200, 200, 200));
-
         JPanel rightPanel = new JPanel(new BorderLayout(0, 0));
         rightPanel.setPreferredSize(new Dimension(280, 0));
-        rightPanel.add(rightVerticalSeparator, BorderLayout.WEST);
+        rightPanel.add(new JSeparator(SwingConstants.VERTICAL), BorderLayout.WEST);
         rightPanel.add(rightContent, BorderLayout.CENTER);
 
         // Split: Center (charts) | Right (metrics+trades)
@@ -355,10 +328,7 @@ public class ProjectWindow extends JFrame {
 
         // Status bar
         JPanel bottomPanel = new JPanel(new BorderLayout(0, 0));
-        JPanel bottomSeparator = new JPanel();
-        bottomSeparator.setPreferredSize(new Dimension(0, 1));
-        bottomSeparator.setBackground(new Color(200, 200, 200));
-        bottomPanel.add(bottomSeparator, BorderLayout.NORTH);
+        bottomPanel.add(new JSeparator(), BorderLayout.NORTH);
 
         statusBar = new JLabel(" Ready");
         statusBar.setBorder(BorderFactory.createEmptyBorder(4, 8, 4, 8));

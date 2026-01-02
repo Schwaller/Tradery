@@ -22,8 +22,6 @@ public class TradeTablePanel extends JPanel {
 
     public TradeTablePanel() {
         setLayout(new BorderLayout());
-        setBackground(Color.WHITE);
-        setOpaque(true);
 
         initializeTable();
         layoutComponents();
@@ -38,11 +36,6 @@ public class TradeTablePanel extends JPanel {
         table.setShowGrid(false);
         table.setIntercellSpacing(new Dimension(0, 0));
         table.getTableHeader().setReorderingAllowed(false);
-
-        // Center table header
-        DefaultTableCellRenderer headerRenderer = new DefaultTableCellRenderer();
-        headerRenderer.setHorizontalAlignment(SwingConstants.CENTER);
-        table.getTableHeader().setDefaultRenderer(headerRenderer);
 
         // Column widths - simplified to 3 columns
         table.getColumnModel().getColumn(0).setPreferredWidth(30);   // #
@@ -69,8 +62,6 @@ public class TradeTablePanel extends JPanel {
     private void layoutComponents() {
         // Header with title and Details button
         JPanel headerPanel = new JPanel(new BorderLayout(8, 0));
-        headerPanel.setBackground(Color.WHITE);
-        headerPanel.setOpaque(true);
 
         JLabel title = new JLabel("Trades");
         title.setFont(title.getFont().deriveFont(Font.BOLD, 12f));
@@ -89,18 +80,14 @@ public class TradeTablePanel extends JPanel {
 
         // Header with padding
         JPanel headerWrapper = new JPanel(new BorderLayout(0, 0));
-        headerWrapper.setBackground(Color.WHITE);
         headerWrapper.setBorder(BorderFactory.createEmptyBorder(8, 8, 4, 8));
         headerWrapper.add(headerPanel, BorderLayout.CENTER);
 
         // Full-width separator below header
-        JPanel headerSeparator = new JPanel();
-        headerSeparator.setPreferredSize(new Dimension(0, 1));
-        headerSeparator.setBackground(new Color(200, 200, 200));
+        JSeparator headerSeparator = new JSeparator();
 
         // Combine header + separator
         JPanel topWrapper = new JPanel(new BorderLayout(0, 0));
-        topWrapper.setBackground(Color.WHITE);
         topWrapper.add(headerWrapper, BorderLayout.CENTER);
         topWrapper.add(headerSeparator, BorderLayout.SOUTH);
 
