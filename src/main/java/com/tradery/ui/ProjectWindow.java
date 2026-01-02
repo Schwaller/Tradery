@@ -227,16 +227,19 @@ public class ProjectWindow extends JFrame {
         rightTopPanel.add(settingsPanel, BorderLayout.NORTH);
         rightTopPanel.add(metricsWrapper, BorderLayout.CENTER);
 
-        JPanel rightPanel = new JPanel(new BorderLayout(0, 0));
-        rightPanel.setPreferredSize(new Dimension(280, 0));
-        rightPanel.add(rightTopPanel, BorderLayout.NORTH);
-        rightPanel.add(tradeTablePanel, BorderLayout.CENTER);
+        JPanel rightContent = new JPanel(new BorderLayout(0, 0));
+        rightContent.add(rightTopPanel, BorderLayout.NORTH);
+        rightContent.add(tradeTablePanel, BorderLayout.CENTER);
 
-        // Add vertical separator on left of right panel
+        // Wrap with vertical separator on left
         JPanel rightVerticalSeparator = new JPanel();
         rightVerticalSeparator.setPreferredSize(new Dimension(1, 0));
         rightVerticalSeparator.setBackground(new Color(200, 200, 200));
+
+        JPanel rightPanel = new JPanel(new BorderLayout(0, 0));
+        rightPanel.setPreferredSize(new Dimension(280, 0));
         rightPanel.add(rightVerticalSeparator, BorderLayout.WEST);
+        rightPanel.add(rightContent, BorderLayout.CENTER);
 
         // Split: Center (charts) | Right (metrics+trades)
         // resizeWeight=1.0 means all extra space goes to charts, right panel stays fixed width
