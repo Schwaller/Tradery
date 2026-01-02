@@ -1,0 +1,327 @@
+package com.tradery.dsl;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Set;
+
+/**
+ * Recursive descent parser for strategy DSL.
+ *
+ * Grammar (highest to lowest precedence):
+ * expression     = logical_or
+ * logical_or     = logical_and ( "OR" logical_and )*
+ * logical_and    = comparison ( "AND" comparison )*
+ * comparison     = arithmetic ( OPERATOR arithmetic | CROSS_OP arithmetic )?
+ * arithmetic     = term ( (MULTIPLY | DIVIDE | PLUS | MINUS) term )*
+ * term           = function_call | price_ref | number | boolean | "(" expression ")"
+ */
+public class Parser {
+
+    private List<Token> tokens = new ArrayList<>();
+    private int position = 0;
+
+    /**
+     * Parse source string into an AST
+     */
+    public ParseResult parse(String source) {
+        try {
+            this.tokens = Lexer.tokenize(source);
+            this.position = 0;
+
+            AstNode ast = expression();
+
+            // Ensure we consumed all tokens
+            if (current().type() != TokenType.EOF) {
+                throw new ParserException("Unexpected token '" + current().value() +
+                    "' at position " + current().position());
+            }
+
+            return new ParseResult(true, ast, null, null);
+        } catch (Exception e) {
+            return new ParseResult(false, null, e.getMessage(),
+                position < tokens.size() ? tokens.get(position).position() : 0);
+        }
+    }
+
+    // ========== Parser Methods ==========
+
+    private AstNode expression() {
+        return logicalOr();
+    }
+
+    private AstNode logicalOr() {
+        AstNode left = logicalAnd();
+
+        while (check(TokenType.LOGICAL) && "OR".equals(current().value())) {
+            advance();
+            AstNode right = logicalAnd();
+            left = new AstNode.LogicalExpression("OR", left, right);
+        }
+
+        return left;
+    }
+
+    private AstNode logicalAnd() {
+        AstNode left = comparison();
+
+        while (check(TokenType.LOGICAL) && "AND".equals(current().value())) {
+            advance();
+            AstNode right = comparison();
+            left = new AstNode.LogicalExpression("AND", left, right);
+        }
+
+        return left;
+    }
+
+    private AstNode comparison() {
+        AstNode left = arithmetic();
+
+        // Check for comparison operator
+        if (check(TokenType.OPERATOR)) {
+            String operator = current().value();
+            advance();
+            AstNode right = arithmetic();
+            return new AstNode.Comparison(left, operator, right);
+        }
+
+        // Check for cross operator
+        if (check(TokenType.CROSS_OP)) {
+            String operator = current().value();
+            advance();
+            AstNode right = arithmetic();
+            return new AstNode.CrossComparison(left, operator, right);
+        }
+
+        return left;
+    }
+
+    private AstNode arithmetic() {
+        AstNode left = term();
+
+        while (check(TokenType.MULTIPLY) || check(TokenType.DIVIDE) ||
+               check(TokenType.PLUS) || check(TokenType.MINUS)) {
+            String operator = current().value();
+            advance();
+            AstNode right = term();
+            left = new AstNode.ArithmeticExpression(operator, left, right);
+        }
+
+        return left;
+    }
+
+    private AstNode term() {
+        // Parenthesized expression
+        if (check(TokenType.LPAREN)) {
+            advance();
+            AstNode expr = expression();
+            expect(TokenType.RPAREN, "Expected ')' after expression");
+            return expr;
+        }
+
+        // Boolean literal
+        if (check(TokenType.BOOLEAN)) {
+            boolean value = "true".equals(current().value());
+            advance();
+            return new AstNode.BooleanLiteral(value);
+        }
+
+        // Number literal
+        if (check(TokenType.NUMBER)) {
+            double value = Double.parseDouble(current().value());
+            advance();
+            return new AstNode.NumberLiteral(value);
+        }
+
+        // Price reference
+        if (check(TokenType.PRICE)) {
+            String field = current().value();
+            advance();
+            return new AstNode.PriceReference(field);
+        }
+
+        // Indicator call
+        if (check(TokenType.INDICATOR)) {
+            return indicatorCall();
+        }
+
+        // Range function
+        if (check(TokenType.RANGE_FUNC)) {
+            return rangeFunctionCall();
+        }
+
+        // Volume function
+        if (check(TokenType.VOLUME_FUNC)) {
+            return volumeFunctionCall();
+        }
+
+        throw new ParserException("Unexpected token '" + current().value() +
+            "' at position " + current().position());
+    }
+
+    private AstNode indicatorCall() {
+        String indicator = current().value();
+        advance();
+
+        expect(TokenType.LPAREN, "Expected '(' after " + indicator);
+        List<Double> params = parseNumberList();
+        expect(TokenType.RPAREN, "Expected ')' after " + indicator + " parameters");
+
+        // Validate parameter count
+        validateIndicatorParams(indicator, params);
+
+        AstNode.IndicatorCall indicatorNode = new AstNode.IndicatorCall(indicator, params);
+
+        // Check for property access
+        if (check(TokenType.DOT)) {
+            advance();
+            if (!check(TokenType.PROPERTY)) {
+                throw new ParserException("Expected property name after '.', got '" + current().value() + "'");
+            }
+            String property = current().value();
+            advance();
+
+            // Validate property for indicator
+            validateProperty(indicator, property);
+
+            return new AstNode.PropertyAccess(indicatorNode, property);
+        }
+
+        return indicatorNode;
+    }
+
+    private void validateIndicatorParams(String indicator, List<Double> params) {
+        switch (indicator) {
+            case "MACD" -> {
+                if (params.size() != 3) {
+                    throw new ParserException("MACD requires 3 parameters (fast, slow, signal), got " + params.size());
+                }
+            }
+            case "BBANDS" -> {
+                if (params.size() != 2) {
+                    throw new ParserException("BBANDS requires 2 parameters (period, stdDev), got " + params.size());
+                }
+            }
+            case "SMA", "EMA", "RSI", "ATR" -> {
+                if (params.size() != 1) {
+                    throw new ParserException(indicator + " requires 1 parameter (period), got " + params.size());
+                }
+            }
+        }
+    }
+
+    private void validateProperty(String indicator, String property) {
+        Set<String> macdProps = Set.of("signal", "histogram", "line");
+        Set<String> bbandsProps = Set.of("upper", "lower", "middle");
+
+        switch (indicator) {
+            case "MACD" -> {
+                if (!macdProps.contains(property)) {
+                    throw new ParserException("MACD only has properties: signal, histogram, line");
+                }
+            }
+            case "BBANDS" -> {
+                if (!bbandsProps.contains(property)) {
+                    throw new ParserException("BBANDS only has properties: upper, lower, middle");
+                }
+            }
+            case "SMA", "EMA", "RSI", "ATR" -> {
+                throw new ParserException(indicator + " does not have properties");
+            }
+        }
+    }
+
+    private AstNode.RangeFunctionCall rangeFunctionCall() {
+        String func = current().value();
+        advance();
+
+        expect(TokenType.LPAREN, "Expected '(' after " + func);
+        List<Double> params = parseNumberList();
+        expect(TokenType.RPAREN, "Expected ')' after " + func + " parameters");
+
+        if (params.size() != 1) {
+            throw new ParserException(func + " requires 1 parameter (period), got " + params.size());
+        }
+
+        return new AstNode.RangeFunctionCall(func, params.get(0).intValue());
+    }
+
+    private AstNode.VolumeFunctionCall volumeFunctionCall() {
+        String func = current().value();
+        advance();
+
+        expect(TokenType.LPAREN, "Expected '(' after " + func);
+        List<Double> params = parseNumberList();
+        expect(TokenType.RPAREN, "Expected ')' after " + func + " parameters");
+
+        if (params.size() != 1) {
+            throw new ParserException(func + " requires 1 parameter (period), got " + params.size());
+        }
+
+        return new AstNode.VolumeFunctionCall(func, params.get(0).intValue());
+    }
+
+    private List<Double> parseNumberList() {
+        List<Double> numbers = new ArrayList<>();
+
+        if (check(TokenType.NUMBER)) {
+            numbers.add(Double.parseDouble(current().value()));
+            advance();
+
+            while (check(TokenType.COMMA)) {
+                advance();
+                if (!check(TokenType.NUMBER)) {
+                    throw new ParserException("Expected number after ',', got '" + current().value() + "'");
+                }
+                numbers.add(Double.parseDouble(current().value()));
+                advance();
+            }
+        }
+
+        return numbers;
+    }
+
+    // ========== Helper Methods ==========
+
+    private Token current() {
+        if (position >= tokens.size()) {
+            return Token.eof(position);
+        }
+        return tokens.get(position);
+    }
+
+    private boolean check(TokenType type) {
+        return current().type() == type;
+    }
+
+    private Token advance() {
+        Token token = current();
+        if (token.type() != TokenType.EOF) {
+            position++;
+        }
+        return token;
+    }
+
+    private void expect(TokenType type, String message) {
+        if (!check(type)) {
+            throw new ParserException(message + ", got '" + current().value() +
+                "' at position " + current().position());
+        }
+        advance();
+    }
+
+    // ========== Result Types ==========
+
+    /**
+     * Result of parsing
+     */
+    public record ParseResult(boolean success, AstNode ast, String error, Integer errorPosition) {}
+
+    /**
+     * Exception thrown during parsing
+     */
+    public static class ParserException extends RuntimeException {
+        public ParserException(String message) {
+            super(message);
+        }
+    }
+}

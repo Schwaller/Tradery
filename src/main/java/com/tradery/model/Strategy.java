@@ -1,0 +1,181 @@
+package com.tradery.model;
+
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import java.time.Instant;
+
+/**
+ * Trading strategy with DSL-based entry/exit conditions.
+ * Stored as JSON in ~/.tradery/strategies/
+ */
+@JsonIgnoreProperties(ignoreUnknown = true)
+public class Strategy {
+
+    private String id;
+    private String name;
+    private String description;
+    private String entry;
+    private String exit;
+    private String stopLossType;       // "none", "fixed_percent", "trailing_percent", "fixed_atr", "trailing_atr"
+    private Double stopLossValue;      // Percent or ATR multiplier
+    private String takeProfitType;     // "none", "fixed_percent", "fixed_atr"
+    private Double takeProfitValue;    // Percent or ATR multiplier
+    private int maxOpenTrades = 1;     // Max parallel open trades
+    private int minCandlesBetweenTrades = 0;  // Minimum candles between trade entries
+    private boolean enabled;
+    private Instant created;
+    private Instant updated;
+
+    public Strategy() {
+        // For Jackson
+    }
+
+    public Strategy(String id, String name, String description, String entry, String exit, boolean enabled) {
+        this(id, name, description, entry, exit, "none", null, "none", null, enabled);
+    }
+
+    public Strategy(String id, String name, String description, String entry, String exit,
+                    String stopLossType, Double stopLossValue, String takeProfitType, Double takeProfitValue, boolean enabled) {
+        this.id = id;
+        this.name = name;
+        this.description = description;
+        this.entry = entry;
+        this.exit = exit;
+        this.stopLossType = stopLossType != null ? stopLossType : "none";
+        this.stopLossValue = stopLossValue;
+        this.takeProfitType = takeProfitType != null ? takeProfitType : "none";
+        this.takeProfitValue = takeProfitValue;
+        this.enabled = enabled;
+        this.created = Instant.now();
+        this.updated = Instant.now();
+    }
+
+    // Getters and setters
+
+    public String getId() {
+        return id;
+    }
+
+    public void setId(String id) {
+        this.id = id;
+    }
+
+    public String getName() {
+        return name;
+    }
+
+    public void setName(String name) {
+        this.name = name;
+        this.updated = Instant.now();
+    }
+
+    public String getDescription() {
+        return description;
+    }
+
+    public void setDescription(String description) {
+        this.description = description;
+        this.updated = Instant.now();
+    }
+
+    public String getEntry() {
+        return entry;
+    }
+
+    public void setEntry(String entry) {
+        this.entry = entry;
+        this.updated = Instant.now();
+    }
+
+    public String getExit() {
+        return exit;
+    }
+
+    public void setExit(String exit) {
+        this.exit = exit;
+        this.updated = Instant.now();
+    }
+
+    public String getStopLossType() {
+        return stopLossType != null ? stopLossType : "none";
+    }
+
+    public void setStopLossType(String stopLossType) {
+        this.stopLossType = stopLossType;
+        this.updated = Instant.now();
+    }
+
+    public Double getStopLossValue() {
+        return stopLossValue;
+    }
+
+    public void setStopLossValue(Double stopLossValue) {
+        this.stopLossValue = stopLossValue;
+        this.updated = Instant.now();
+    }
+
+    public String getTakeProfitType() {
+        return takeProfitType != null ? takeProfitType : "none";
+    }
+
+    public void setTakeProfitType(String takeProfitType) {
+        this.takeProfitType = takeProfitType;
+        this.updated = Instant.now();
+    }
+
+    public Double getTakeProfitValue() {
+        return takeProfitValue;
+    }
+
+    public void setTakeProfitValue(Double takeProfitValue) {
+        this.takeProfitValue = takeProfitValue;
+        this.updated = Instant.now();
+    }
+
+    public int getMaxOpenTrades() {
+        return maxOpenTrades > 0 ? maxOpenTrades : 1;
+    }
+
+    public void setMaxOpenTrades(int maxOpenTrades) {
+        this.maxOpenTrades = maxOpenTrades > 0 ? maxOpenTrades : 1;
+        this.updated = Instant.now();
+    }
+
+    public int getMinCandlesBetweenTrades() {
+        return minCandlesBetweenTrades >= 0 ? minCandlesBetweenTrades : 0;
+    }
+
+    public void setMinCandlesBetweenTrades(int minCandlesBetweenTrades) {
+        this.minCandlesBetweenTrades = minCandlesBetweenTrades >= 0 ? minCandlesBetweenTrades : 0;
+        this.updated = Instant.now();
+    }
+
+    public boolean isEnabled() {
+        return enabled;
+    }
+
+    public void setEnabled(boolean enabled) {
+        this.enabled = enabled;
+        this.updated = Instant.now();
+    }
+
+    public Instant getCreated() {
+        return created;
+    }
+
+    public void setCreated(Instant created) {
+        this.created = created;
+    }
+
+    public Instant getUpdated() {
+        return updated;
+    }
+
+    public void setUpdated(Instant updated) {
+        this.updated = updated;
+    }
+
+    @Override
+    public String toString() {
+        return name;
+    }
+}

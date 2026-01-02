@@ -1,0 +1,56 @@
+plugins {
+    id 'java'
+    id 'application'
+}
+
+group = 'com.tradery'
+version = '1.0.0'
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
+application {
+    mainClass = 'com.tradery.TraderyApp'
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    // JSON serialization
+    implementation 'com.fasterxml.jackson.core:jackson-databind:2.16.0'
+    implementation 'com.fasterxml.jackson.datatype:jackson-datatype-jsr310:2.16.0'
+
+    // HTTP client for Binance API
+    implementation 'com.squareup.okhttp3:okhttp:4.12.0'
+
+    // Charts (Swing-compatible)
+    implementation 'org.jfree:jfreechart:1.5.4'
+
+    // File watching
+    implementation 'io.methvin:directory-watcher:0.18.0'
+
+    // Testing
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.10.1'
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+}
+
+// Create fat JAR for easy distribution
+tasks.register('fatJar', Jar) {
+    archiveClassifier = 'all'
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    manifest {
+        attributes 'Main-Class': application.mainClass
+    }
+    from {
+        configurations.runtimeClasspath.collect { it.isDirectory() ? it : zipTree(it) }
+    }
+    with jar
+}
