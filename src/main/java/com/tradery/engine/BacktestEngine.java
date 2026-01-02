@@ -47,10 +47,16 @@ public class BacktestEngine {
                 "Entry condition parse error: " + entryResult.error());
         }
 
-        Parser.ParseResult exitResult = parser.parse(strategy.getExit());
-        if (!exitResult.success()) {
-            return createErrorResult(strategy, config, startTime,
-                "Exit condition parse error: " + exitResult.error());
+        // Exit condition is optional - if empty, only SL/TP will trigger exits
+        String exitCondition = strategy.getExit();
+        boolean hasExitCondition = exitCondition != null && !exitCondition.trim().isEmpty();
+        Parser.ParseResult exitResult = null;
+        if (hasExitCondition) {
+            exitResult = parser.parse(exitCondition);
+            if (!exitResult.success()) {
+                return createErrorResult(strategy, config, startTime,
+                    "Exit condition parse error: " + exitResult.error());
+            }
         }
 
         // Initialize indicator engine
@@ -151,8 +157,8 @@ public class BacktestEngine {
                         }
                     }
 
-                    // Check DSL exit condition
-                    if (exitReason == null) {
+                    // Check DSL exit condition (only if one was specified)
+                    if (exitReason == null && hasExitCondition) {
                         boolean shouldExit = evaluator.evaluate(exitResult.ast(), i);
                         if (shouldExit) {
                             exitReason = "signal";
