@@ -48,8 +48,6 @@ public class TraderyApp {
         File[] dirs = {
             USER_DIR,
             new File(USER_DIR, "strategies"),
-            new File(USER_DIR, "results"),
-            new File(USER_DIR, "results/history"),
             new File(USER_DIR, "data")
         };
 

@@ -123,17 +123,27 @@ public class LauncherFrame extends JFrame {
 
     private void layoutComponents() {
         JPanel contentPane = new JPanel(new BorderLayout());
-        contentPane.setBorder(BorderFactory.createEmptyBorder(32, 12, 12, 12));
         setContentPane(contentPane);
 
-        // Title
-        JLabel titleLabel = new JLabel("Projects");
-        titleLabel.setFont(titleLabel.getFont().deriveFont(Font.BOLD, 14f));
-        titleLabel.setBorder(BorderFactory.createEmptyBorder(0, 4, 8, 0));
+        // Title bar area (28px height for macOS traffic lights)
+        JPanel titleBar = new JPanel(new BorderLayout());
+        titleBar.setPreferredSize(new Dimension(0, 28));
+        JLabel titleLabel = new JLabel(TraderyApp.APP_NAME, SwingConstants.CENTER);
+        titleLabel.setFont(titleLabel.getFont().deriveFont(Font.BOLD, 13f));
+        titleBar.add(titleLabel, BorderLayout.CENTER);
 
-        // List with scroll
+        // Main content - full width
+        JPanel mainContent = new JPanel(new BorderLayout());
+
+        // List with scroll - no border, full width
         JScrollPane scrollPane = new JScrollPane(projectList);
-        scrollPane.setBorder(BorderFactory.createLineBorder(new Color(200, 200, 200)));
+        scrollPane.setBorder(BorderFactory.createEmptyBorder());
+
+        // Wrap list with separators above and below
+        JPanel listWrapper = new JPanel(new BorderLayout());
+        listWrapper.add(new JSeparator(), BorderLayout.NORTH);
+        listWrapper.add(scrollPane, BorderLayout.CENTER);
+        listWrapper.add(new JSeparator(), BorderLayout.SOUTH);
 
         // Button panel
         JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 8));
@@ -142,9 +152,11 @@ public class LauncherFrame extends JFrame {
         buttonPanel.add(newButton);
         buttonPanel.add(openButton);
 
-        contentPane.add(titleLabel, BorderLayout.NORTH);
-        contentPane.add(scrollPane, BorderLayout.CENTER);
-        contentPane.add(buttonPanel, BorderLayout.SOUTH);
+        mainContent.add(listWrapper, BorderLayout.CENTER);
+        mainContent.add(buttonPanel, BorderLayout.SOUTH);
+
+        contentPane.add(titleBar, BorderLayout.NORTH);
+        contentPane.add(mainContent, BorderLayout.CENTER);
     }
 
     private void loadProjects() {

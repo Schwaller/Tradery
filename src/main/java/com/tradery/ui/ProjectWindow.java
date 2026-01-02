@@ -38,6 +38,7 @@ public class ProjectWindow extends JFrame {
     private MetricsPanel metricsPanel;
     private TradeTablePanel tradeTablePanel;
     private JLabel statusBar;
+    private JLabel titleLabel;
     private JButton runButton;
 
     // Toolbar controls
@@ -321,6 +322,7 @@ public class ProjectWindow extends JFrame {
 
         strategyStore.save(strategy);
         setTitle(strategy.getName() + " - " + TraderyApp.APP_NAME);
+        titleLabel.setText(strategy.getName());
         setStatus("Auto-saved");
 
         // Re-enable file watching after a short delay
@@ -335,8 +337,15 @@ public class ProjectWindow extends JFrame {
         contentPane.setBorder(BorderFactory.createEmptyBorder(28, 0, 0, 0));
         setContentPane(contentPane);
 
-        // Top: Toolbar with symbol, timeframe, capital, Save and Run buttons
+        // Top: Toolbar with title, symbol, timeframe, capital, Run button
         JPanel toolbarLeft = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 4));
+
+        // Window title (since macOS title bar is hidden)
+        titleLabel = new JLabel(strategy.getName());
+        titleLabel.setFont(titleLabel.getFont().deriveFont(Font.BOLD, 13f));
+        toolbarLeft.add(titleLabel);
+        toolbarLeft.add(Box.createHorizontalStrut(16));
+
         toolbarLeft.add(new JLabel("Symbol:"));
         toolbarLeft.add(symbolCombo);
         toolbarLeft.add(Box.createHorizontalStrut(8));
@@ -446,6 +455,9 @@ public class ProjectWindow extends JFrame {
             // Toolbar controls
             symbolCombo.setSelectedItem(strategy.getSymbol());
             timeframeCombo.setSelectedItem(strategy.getTimeframe());
+            // Duration options depend on timeframe, so update them first
+            updateDurationOptions();
+            durationCombo.setSelectedItem(strategy.getDuration());
             capitalSpinner.setValue(strategy.getInitialCapital());
         } finally {
             ignoringFileChanges = false;
@@ -455,6 +467,7 @@ public class ProjectWindow extends JFrame {
     private void applyToolbarToStrategy() {
         strategy.setSymbol((String) symbolCombo.getSelectedItem());
         strategy.setTimeframe((String) timeframeCombo.getSelectedItem());
+        strategy.setDuration((String) durationCombo.getSelectedItem());
         strategy.setInitialCapital(((Number) capitalSpinner.getValue()).doubleValue());
     }
 
@@ -486,6 +499,7 @@ public class ProjectWindow extends JFrame {
                 this.strategy = reloaded;
                 loadStrategyData();
                 setTitle(strategy.getName() + " - " + TraderyApp.APP_NAME);
+                titleLabel.setText(strategy.getName());
                 runBacktest();
             }
         });

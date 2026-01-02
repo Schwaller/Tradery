@@ -28,6 +28,7 @@ public class Strategy {
     // Project configuration (backtest settings)
     private String symbol = "BTCUSDT";
     private String timeframe = "1h";
+    private String duration = "1 year";
     private double initialCapital = 10000.0;
     private String positionSizingType = "fixed_percent";
     private double positionSizingValue = 10.0;
@@ -200,6 +201,15 @@ public class Strategy {
 
     public void setTimeframe(String timeframe) {
         this.timeframe = timeframe;
+        this.updated = Instant.now();
+    }
+
+    public String getDuration() {
+        return duration != null ? duration : "1 year";
+    }
+
+    public void setDuration(String duration) {
+        this.duration = duration;
         this.updated = Instant.now();
     }
 

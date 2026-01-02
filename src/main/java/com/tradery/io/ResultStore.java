@@ -15,9 +15,9 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Stores backtest results as JSON files.
- * - Per-project: ~/.tradery/results/{strategyId}/latest.json and history/
- * - Global: ~/.tradery/results/latest.json (for backward compatibility)
+ * Stores backtest results as JSON files within the strategy folder.
+ * - ~/.tradery/strategies/{strategyId}/latest.json
+ * - ~/.tradery/strategies/{strategyId}/history/
  *
  * Claude Code can directly read these files.
  */
@@ -25,46 +25,34 @@ public class ResultStore {
 
     private static final DateTimeFormatter DATE_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm");
 
-    private final File resultsDir;
+    private final File strategyDir;
     private final File historyDir;
     private final ObjectMapper mapper;
     private final String strategyId;
 
     /**
-     * Create a global result store (backward compatible)
-     */
-    public ResultStore() {
-        this(null);
-    }
-
-    /**
-     * Create a per-project result store
-     * @param strategyId The strategy ID for per-project storage, or null for global storage
+     * Create a result store for a specific strategy
+     * @param strategyId The strategy ID
      */
     public ResultStore(String strategyId) {
         this.strategyId = strategyId;
 
-        if (strategyId != null && !strategyId.isEmpty()) {
-            // Per-project storage: ~/.tradery/results/{strategyId}/
-            this.resultsDir = new File(TraderyApp.USER_DIR, "results/" + strategyId);
-        } else {
-            // Global storage: ~/.tradery/results/
-            this.resultsDir = new File(TraderyApp.USER_DIR, "results");
-        }
+        // Store results in strategy folder: ~/.tradery/strategies/{strategyId}/
+        this.strategyDir = new File(TraderyApp.USER_DIR, "strategies/" + strategyId);
+        this.historyDir = new File(strategyDir, "history");
 
-        this.historyDir = new File(resultsDir, "history");
         this.mapper = new ObjectMapper();
         this.mapper.registerModule(new JavaTimeModule());
         this.mapper.enable(SerializationFeature.INDENT_OUTPUT);
         this.mapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
 
         // Ensure directories exist
-        resultsDir.mkdirs();
+        strategyDir.mkdirs();
         historyDir.mkdirs();
     }
 
     /**
-     * Get the strategy ID this store is for (null if global)
+     * Get the strategy ID this store is for
      */
     public String getStrategyId() {
         return strategyId;
@@ -75,7 +63,7 @@ public class ResultStore {
      */
     public void save(BacktestResult result) throws IOException {
         // Save as latest
-        File latestFile = new File(resultsDir, "latest.json");
+        File latestFile = new File(strategyDir, "latest.json");
         mapper.writeValue(latestFile, result);
         System.out.println("Saved result to: " + latestFile.getAbsolutePath());
 
@@ -83,7 +71,7 @@ public class ResultStore {
         String timestamp = Instant.ofEpochMilli(result.endTime())
             .atZone(ZoneOffset.UTC)
             .format(DATE_FORMAT);
-        String historyFilename = timestamp + "_" + result.strategyId() + ".json";
+        String historyFilename = timestamp + ".json";
         File historyFile = new File(historyDir, historyFilename);
         mapper.writeValue(historyFile, result);
     }
@@ -92,7 +80,7 @@ public class ResultStore {
      * Load the latest result
      */
     public BacktestResult loadLatest() {
-        File latestFile = new File(resultsDir, "latest.json");
+        File latestFile = new File(strategyDir, "latest.json");
         if (!latestFile.exists()) {
             return null;
         }
@@ -132,7 +120,7 @@ public class ResultStore {
      * Clear all results
      */
     public void clearAll() {
-        File latestFile = new File(resultsDir, "latest.json");
+        File latestFile = new File(strategyDir, "latest.json");
         if (latestFile.exists()) {
             latestFile.delete();
         }

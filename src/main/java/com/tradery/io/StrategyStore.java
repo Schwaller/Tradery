@@ -12,7 +12,7 @@ import java.util.List;
 
 /**
  * Reads and writes Strategy JSON files.
- * Files stored in ~/.tradery/strategies/ as plain JSON.
+ * Each strategy has its own folder: ~/.tradery/strategies/{id}/strategy.json
  *
  * Claude Code can directly read/write these files.
  */
@@ -39,15 +39,18 @@ public class StrategyStore {
      */
     public List<Strategy> loadAll() {
         List<Strategy> strategies = new ArrayList<>();
-        File[] files = directory.listFiles((dir, name) -> name.endsWith(".json"));
+        File[] strategyDirs = directory.listFiles(File::isDirectory);
 
-        if (files != null) {
-            for (File file : files) {
-                try {
-                    Strategy strategy = mapper.readValue(file, Strategy.class);
-                    strategies.add(strategy);
-                } catch (IOException e) {
-                    System.err.println("Failed to load strategy from " + file.getName() + ": " + e.getMessage());
+        if (strategyDirs != null) {
+            for (File strategyDir : strategyDirs) {
+                File strategyFile = new File(strategyDir, "strategy.json");
+                if (strategyFile.exists()) {
+                    try {
+                        Strategy strategy = mapper.readValue(strategyFile, Strategy.class);
+                        strategies.add(strategy);
+                    } catch (IOException e) {
+                        System.err.println("Failed to load strategy from " + strategyFile + ": " + e.getMessage());
+                    }
                 }
             }
         }
@@ -59,7 +62,7 @@ public class StrategyStore {
      * Load a single strategy by ID
      */
     public Strategy load(String id) {
-        File file = new File(directory, id + ".json");
+        File file = new File(directory, id + "/strategy.json");
         if (!file.exists()) {
             return null;
         }
@@ -76,7 +79,12 @@ public class StrategyStore {
      * Save a strategy to disk
      */
     public void save(Strategy strategy) {
-        File file = new File(directory, strategy.getId() + ".json");
+        File strategyDir = new File(directory, strategy.getId());
+        if (!strategyDir.exists()) {
+            strategyDir.mkdirs();
+        }
+
+        File file = new File(strategyDir, "strategy.json");
 
         try {
             mapper.writeValue(file, strategy);
@@ -87,28 +95,47 @@ public class StrategyStore {
     }
 
     /**
-     * Delete a strategy file
+     * Delete a strategy folder and all its contents
      */
     public boolean delete(String id) {
-        File file = new File(directory, id + ".json");
-        if (file.exists()) {
-            return file.delete();
+        File strategyDir = new File(directory, id);
+        if (strategyDir.exists()) {
+            return deleteRecursively(strategyDir);
         }
         return false;
+    }
+
+    private boolean deleteRecursively(File file) {
+        if (file.isDirectory()) {
+            File[] children = file.listFiles();
+            if (children != null) {
+                for (File child : children) {
+                    deleteRecursively(child);
+                }
+            }
+        }
+        return file.delete();
     }
 
     /**
      * Check if a strategy exists
      */
     public boolean exists(String id) {
-        File file = new File(directory, id + ".json");
+        File file = new File(directory, id + "/strategy.json");
         return file.exists();
     }
 
     /**
-     * Get the file path for a strategy
+     * Get the strategy.json file path for a strategy
      */
     public File getFile(String id) {
-        return new File(directory, id + ".json");
+        return new File(directory, id + "/strategy.json");
+    }
+
+    /**
+     * Get the strategy folder for a strategy
+     */
+    public File getFolder(String id) {
+        return new File(directory, id);
     }
 }
