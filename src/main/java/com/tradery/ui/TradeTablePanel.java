@@ -85,6 +85,7 @@ public class TradeTablePanel extends JPanel {
         // Header with separator below
         JPanel headerWrapper = new JPanel(new BorderLayout(0, 4));
         headerWrapper.setBackground(Color.WHITE);
+        headerWrapper.setBorder(BorderFactory.createEmptyBorder(8, 8, 0, 8));
         JPanel headerSeparator = new JPanel();
         headerSeparator.setPreferredSize(new Dimension(0, 1));
         headerSeparator.setBackground(new Color(200, 200, 200));

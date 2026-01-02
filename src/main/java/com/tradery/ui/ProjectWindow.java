@@ -245,17 +245,19 @@ public class ProjectWindow extends JFrame {
         // resizeWeight=1.0 means all extra space goes to charts, right panel stays fixed width
         JSplitPane rightSplit = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT);
         rightSplit.setBorder(null);
-        rightSplit.setDividerSize(6);
+        rightSplit.setDividerSize(1);
         rightSplit.setResizeWeight(1.0);
+        rightSplit.setContinuousLayout(true);
         rightSplit.setLeftComponent(centerPanel);
         rightSplit.setRightComponent(rightPanel);
-        rightPanel.setMinimumSize(new Dimension(200, 0));
+        rightPanel.setMinimumSize(new Dimension(250, 0));
 
         // Main split: Left | Center+Right
         JSplitPane mainSplit = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT);
         mainSplit.setBorder(null);
-        mainSplit.setDividerSize(6);
-        mainSplit.setDividerLocation(280);
+        mainSplit.setDividerSize(1);
+        mainSplit.setDividerLocation(200);
+        mainSplit.setContinuousLayout(true);
         mainSplit.setLeftComponent(leftPanel);
         mainSplit.setRightComponent(rightSplit);
 
