@@ -20,17 +20,18 @@ public record Trade(
     Double pnl,
     Double pnlPercent,
     Double commission,
-    String exitReason  // "signal", "stop_loss", "take_profit", "trailing_stop"
+    String exitReason,  // "signal", "stop_loss", "take_profit", "trailing_stop"
+    String groupId      // Groups DCA entries together
 ) {
     /**
      * Create a new open trade
      */
     public static Trade open(String strategyId, String side, int bar, long timestamp,
-                             double price, double quantity, double commission) {
+                             double price, double quantity, double commission, String groupId) {
         String id = "trade-" + timestamp + "-" + (int)(Math.random() * 10000);
         return new Trade(
             id, strategyId, side, bar, timestamp, price, quantity,
-            null, null, null, null, null, commission, null
+            null, null, null, null, null, commission, null, groupId
         );
     }
 
@@ -41,7 +42,7 @@ public record Trade(
         String id = "trade-" + timestamp + "-" + (int)(Math.random() * 10000);
         return new Trade(
             id, strategyId, side, bar, timestamp, price, 0,
-            bar, timestamp, price, null, null, null, "rejected"
+            bar, timestamp, price, null, null, null, "rejected", null
         );
     }
 
@@ -71,7 +72,7 @@ public record Trade(
 
         return new Trade(
             id, strategyId, side, entryBar, entryTime, entryPrice, quantity,
-            exitBar, exitTime, exitPrice, netPnl, pnlPct, totalCommission, exitReason
+            exitBar, exitTime, exitPrice, netPnl, pnlPct, totalCommission, exitReason, groupId
         );
     }
 

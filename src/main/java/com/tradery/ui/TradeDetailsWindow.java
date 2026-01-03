@@ -292,23 +292,11 @@ public class TradeDetailsWindow extends JDialog {
                 .sorted((a, b) -> Long.compare(a.entryTime(), b.entryTime()))
                 .toList();
 
-            List<List<Trade>> tradeGroups = new ArrayList<>();
+            // Group trades by groupId
+            java.util.Map<String, List<Trade>> tradesByGroup = new java.util.LinkedHashMap<>();
             for (Trade t : validTrades) {
-                List<Trade> matchingGroup = null;
-                for (List<Trade> group : tradeGroups) {
-                    Trade firstInGroup = group.getFirst();
-                    if (firstInGroup.exitTime() != null && t.entryTime() < firstInGroup.exitTime()) {
-                        matchingGroup = group;
-                        break;
-                    }
-                }
-                if (matchingGroup != null) {
-                    matchingGroup.add(t);
-                } else {
-                    List<Trade> newGroup = new ArrayList<>();
-                    newGroup.add(t);
-                    tradeGroups.add(newGroup);
-                }
+                String groupId = t.groupId() != null ? t.groupId() : "single-" + t.id();
+                tradesByGroup.computeIfAbsent(groupId, k -> new ArrayList<>()).add(t);
             }
 
             List<Trade> rejectedTrades = allTrades.stream()
@@ -316,7 +304,7 @@ public class TradeDetailsWindow extends JDialog {
                 .toList();
 
             int index = 1;
-            for (List<Trade> group : tradeGroups) {
+            for (List<Trade> group : tradesByGroup.values()) {
                 if (group.size() == 1) {
                     groupRows.add(TableRow.single(index, group.getFirst()));
                 } else {

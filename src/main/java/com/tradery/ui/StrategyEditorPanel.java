@@ -21,6 +21,7 @@ public class StrategyEditorPanel extends JPanel {
     private JSpinner takeProfitValueSpinner;
     private JSpinner maxOpenTradesSpinner;
     private JSpinner minCandlesBetweenSpinner;
+    private JSpinner minBarsBeforeExitSpinner;
     private JCheckBox dcaEnabledCheckbox;
     private JSpinner dcaMaxEntriesSpinner;
     private JSpinner dcaBarsBetweenSpinner;
@@ -68,6 +69,7 @@ public class StrategyEditorPanel extends JPanel {
         // Trade management fields
         maxOpenTradesSpinner = new JSpinner(new SpinnerNumberModel(1, 1, 100, 1));
         minCandlesBetweenSpinner = new JSpinner(new SpinnerNumberModel(0, 0, 1000, 1));
+        minBarsBeforeExitSpinner = new JSpinner(new SpinnerNumberModel(0, 0, 1000, 1));
 
         // DCA fields
         dcaEnabledCheckbox = new JCheckBox("DCA");
@@ -92,6 +94,7 @@ public class StrategyEditorPanel extends JPanel {
         takeProfitValueSpinner.addChangeListener(e -> fireChange());
         maxOpenTradesSpinner.addChangeListener(e -> fireChange());
         minCandlesBetweenSpinner.addChangeListener(e -> fireChange());
+        minBarsBeforeExitSpinner.addChangeListener(e -> fireChange());
         dcaEnabledCheckbox.addActionListener(e -> fireChange());
         dcaMaxEntriesSpinner.addChangeListener(e -> fireChange());
         dcaBarsBetweenSpinner.addChangeListener(e -> fireChange());
@@ -199,25 +202,31 @@ public class StrategyEditorPanel extends JPanel {
         JPanel settingsPanel = new JPanel(new GridBagLayout());
         settingsPanel.setOpaque(false);
 
+        // Min Bars Before Exit row (first exit option)
+        JLabel minBarsBeforeExitLabel = new JLabel("Min Bars Before Exit:");
+        minBarsBeforeExitLabel.setForeground(Color.GRAY);
+        settingsPanel.add(minBarsBeforeExitLabel, new GridBagConstraints(0, 0, 1, 1, 1, 0, GridBagConstraints.WEST, GridBagConstraints.HORIZONTAL, new Insets(2, 0, 2, 4), 0, 0));
+        settingsPanel.add(minBarsBeforeExitSpinner, new GridBagConstraints(1, 0, 1, 1, 0, 0, GridBagConstraints.WEST, GridBagConstraints.NONE, new Insets(2, 0, 2, 4), 0, 0));
+
         // Stop Loss row
-        settingsPanel.add(stopLossTypeCombo, new GridBagConstraints(0, 0, 1, 1, 1, 0, GridBagConstraints.WEST, GridBagConstraints.HORIZONTAL, new Insets(2, 0, 2, 4), 0, 0));
-        settingsPanel.add(stopLossValueSpinner, new GridBagConstraints(1, 0, 1, 1, 0, 0, GridBagConstraints.WEST, GridBagConstraints.NONE, new Insets(2, 0, 2, 4), 0, 0));
+        settingsPanel.add(stopLossTypeCombo, new GridBagConstraints(0, 1, 1, 1, 1, 0, GridBagConstraints.WEST, GridBagConstraints.HORIZONTAL, new Insets(2, 0, 2, 4), 0, 0));
+        settingsPanel.add(stopLossValueSpinner, new GridBagConstraints(1, 1, 1, 1, 0, 0, GridBagConstraints.WEST, GridBagConstraints.NONE, new Insets(2, 0, 2, 4), 0, 0));
 
         // Take Profit row
-        settingsPanel.add(takeProfitTypeCombo, new GridBagConstraints(0, 1, 1, 1, 1, 0, GridBagConstraints.WEST, GridBagConstraints.HORIZONTAL, new Insets(2, 0, 2, 4), 0, 0));
-        settingsPanel.add(takeProfitValueSpinner, new GridBagConstraints(1, 1, 1, 1, 0, 0, GridBagConstraints.WEST, GridBagConstraints.NONE, new Insets(2, 0, 2, 4), 0, 0));
+        settingsPanel.add(takeProfitTypeCombo, new GridBagConstraints(0, 2, 1, 1, 1, 0, GridBagConstraints.WEST, GridBagConstraints.HORIZONTAL, new Insets(2, 0, 2, 4), 0, 0));
+        settingsPanel.add(takeProfitValueSpinner, new GridBagConstraints(1, 2, 1, 1, 0, 0, GridBagConstraints.WEST, GridBagConstraints.NONE, new Insets(2, 0, 2, 4), 0, 0));
 
         // Max Open Trades row
         JLabel maxTradesLabel = new JLabel("Max Open Trades:");
         maxTradesLabel.setForeground(Color.GRAY);
-        settingsPanel.add(maxTradesLabel, new GridBagConstraints(0, 2, 1, 1, 1, 0, GridBagConstraints.WEST, GridBagConstraints.HORIZONTAL, new Insets(2, 0, 2, 4), 0, 0));
-        settingsPanel.add(maxOpenTradesSpinner, new GridBagConstraints(1, 2, 1, 1, 0, 0, GridBagConstraints.WEST, GridBagConstraints.NONE, new Insets(2, 0, 2, 4), 0, 0));
+        settingsPanel.add(maxTradesLabel, new GridBagConstraints(0, 3, 1, 1, 1, 0, GridBagConstraints.WEST, GridBagConstraints.HORIZONTAL, new Insets(2, 0, 2, 4), 0, 0));
+        settingsPanel.add(maxOpenTradesSpinner, new GridBagConstraints(1, 3, 1, 1, 0, 0, GridBagConstraints.WEST, GridBagConstraints.NONE, new Insets(2, 0, 2, 4), 0, 0));
 
         // Min Candles Between row
         JLabel minCandlesLabel = new JLabel("Min Candles Between:");
         minCandlesLabel.setForeground(Color.GRAY);
-        settingsPanel.add(minCandlesLabel, new GridBagConstraints(0, 3, 1, 1, 1, 0, GridBagConstraints.WEST, GridBagConstraints.HORIZONTAL, new Insets(2, 0, 2, 4), 0, 0));
-        settingsPanel.add(minCandlesBetweenSpinner, new GridBagConstraints(1, 3, 1, 1, 0, 0, GridBagConstraints.WEST, GridBagConstraints.NONE, new Insets(2, 0, 2, 4), 0, 0));
+        settingsPanel.add(minCandlesLabel, new GridBagConstraints(0, 4, 1, 1, 1, 0, GridBagConstraints.WEST, GridBagConstraints.HORIZONTAL, new Insets(2, 0, 2, 4), 0, 0));
+        settingsPanel.add(minCandlesBetweenSpinner, new GridBagConstraints(1, 4, 1, 1, 0, 0, GridBagConstraints.WEST, GridBagConstraints.NONE, new Insets(2, 0, 2, 4), 0, 0));
 
         // Main content
         JPanel contentPanel = new JPanel(new BorderLayout(0, 8));
@@ -254,6 +263,7 @@ public class StrategyEditorPanel extends JPanel {
                 // Set trade management values
                 maxOpenTradesSpinner.setValue(strategy.getMaxOpenTrades());
                 minCandlesBetweenSpinner.setValue(strategy.getMinCandlesBetweenTrades());
+                minBarsBeforeExitSpinner.setValue(strategy.getMinBarsBeforeExit());
 
                 // Set DCA values
                 dcaEnabledCheckbox.setSelected(strategy.isDcaEnabled());
@@ -298,6 +308,7 @@ public class StrategyEditorPanel extends JPanel {
 
         strategy.setMaxOpenTrades(((Number) maxOpenTradesSpinner.getValue()).intValue());
         strategy.setMinCandlesBetweenTrades(((Number) minCandlesBetweenSpinner.getValue()).intValue());
+        strategy.setMinBarsBeforeExit(((Number) minBarsBeforeExitSpinner.getValue()).intValue());
 
         strategy.setDcaEnabled(dcaEnabledCheckbox.isSelected());
         strategy.setDcaMaxEntries(((Number) dcaMaxEntriesSpinner.getValue()).intValue());

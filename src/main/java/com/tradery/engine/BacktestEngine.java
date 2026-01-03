@@ -77,6 +77,8 @@ public class BacktestEngine {
         List<OpenTradeState> openTrades = new ArrayList<>();
         double currentEquity = config.initialCapital();
         int lastEntryBar = -9999;  // Track last entry bar for min candle distance
+        String currentGroupId = null;  // Groups DCA entries together
+        int groupCounter = 0;
 
         // DCA mode uses dcaMaxEntries, otherwise use maxOpenTrades
         int maxOpenTrades = strategy.isDcaEnabled() ? strategy.getDcaMaxEntries() : strategy.getMaxOpenTrades();
@@ -102,13 +104,16 @@ public class BacktestEngine {
                 // In DCA mode, only check exits after all entries are complete
                 boolean dcaComplete = !strategy.isDcaEnabled() || openTrades.size() >= maxOpenTrades;
 
+                // Check if enough bars have passed since last entry
+                boolean passedMinBarsBeforeExit = (i - lastEntryBar) >= strategy.getMinBarsBeforeExit();
+
                 // Check exit conditions for all open trades
                 List<OpenTradeState> toClose = new ArrayList<>();
                 String dcaExitReason = null;
                 double dcaExitPrice = candle.close();
 
-                // Skip exit checks if DCA is still accumulating
-                if (dcaComplete) {
+                // Skip exit checks if DCA is still accumulating or min bars haven't passed
+                if (dcaComplete && passedMinBarsBeforeExit) {
                     // For DCA mode, calculate exits based on weighted average entry
                     boolean isDcaPosition = strategy.isDcaEnabled() && openTrades.size() > 1;
                     double avgEntryPrice = 0;
@@ -255,6 +260,14 @@ public class BacktestEngine {
                         double quantity = calculatePositionSize(config, strategy, currentEquity, candle.close(), candles, i);
 
                         if (quantity > 0) {
+                            // Generate new groupId for first entry of a DCA position
+                            if (strategy.isDcaEnabled() && openTrades.isEmpty()) {
+                                groupCounter++;
+                                currentGroupId = "dca-" + groupCounter;
+                            } else if (!strategy.isDcaEnabled()) {
+                                currentGroupId = null;  // No grouping for non-DCA
+                            }
+
                             Trade newTrade = Trade.open(
                                 strategy.getId(),
                                 "long",
@@ -262,7 +275,8 @@ public class BacktestEngine {
                                 candle.timestamp(),
                                 candle.close(),
                                 quantity,
-                                config.commission()
+                                config.commission(),
+                                currentGroupId
                             );
 
                             OpenTradeState ots = new OpenTradeState(newTrade, candle.close());

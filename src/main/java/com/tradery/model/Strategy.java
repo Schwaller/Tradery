@@ -25,6 +25,7 @@ public class Strategy {
     private int dcaMaxEntries = 3;            // Max DCA entries when dcaEnabled
     private int dcaBarsBetween = 1;           // Min bars between DCA entries
     private String dcaMode = "require_signal"; // "require_signal" or "continue_always"
+    private int minBarsBeforeExit = 0;        // Min bars after last entry before exit is evaluated
     private boolean enabled;
     private Instant created;
     private Instant updated;
@@ -196,6 +197,15 @@ public class Strategy {
 
     public void setDcaMode(String dcaMode) {
         this.dcaMode = dcaMode;
+        this.updated = Instant.now();
+    }
+
+    public int getMinBarsBeforeExit() {
+        return minBarsBeforeExit >= 0 ? minBarsBeforeExit : 0;
+    }
+
+    public void setMinBarsBeforeExit(int minBarsBeforeExit) {
+        this.minBarsBeforeExit = minBarsBeforeExit >= 0 ? minBarsBeforeExit : 0;
         this.updated = Instant.now();
     }
 

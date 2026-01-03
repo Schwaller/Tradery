@@ -758,34 +758,18 @@ public class ChartsPanel extends JPanel {
             Color lossColor = new Color(244, 67, 54, 180);  // Red with transparency
             BasicStroke thinStroke = new BasicStroke(1.0f);
 
-            // Group overlapping trades to identify DCA positions
-            // Trades overlap if one entry is before another's exit (concurrent positions)
-            java.util.List<java.util.List<Trade>> tradeGroups = new java.util.ArrayList<>();
+            // Group trades by groupId
             java.util.List<Trade> validTrades = trades.stream()
                 .filter(t -> t.exitTime() != null && t.exitPrice() != null && !"rejected".equals(t.exitReason()))
                 .sorted((a, b) -> Long.compare(a.entryTime(), b.entryTime()))
                 .toList();
 
+            java.util.Map<String, java.util.List<Trade>> tradesByGroup = new java.util.LinkedHashMap<>();
             for (Trade t : validTrades) {
-                // Find existing group where this trade overlaps
-                java.util.List<Trade> matchingGroup = null;
-                for (java.util.List<Trade> group : tradeGroups) {
-                    // Check if this trade overlaps with any trade in the group
-                    // (entered before the group's exit time)
-                    Trade firstInGroup = group.getFirst();
-                    if (firstInGroup.exitTime() != null && t.entryTime() < firstInGroup.exitTime()) {
-                        matchingGroup = group;
-                        break;
-                    }
-                }
-                if (matchingGroup != null) {
-                    matchingGroup.add(t);
-                } else {
-                    java.util.List<Trade> newGroup = new java.util.ArrayList<>();
-                    newGroup.add(t);
-                    tradeGroups.add(newGroup);
-                }
+                String groupId = t.groupId() != null ? t.groupId() : "single-" + t.id();
+                tradesByGroup.computeIfAbsent(groupId, k -> new java.util.ArrayList<>()).add(t);
             }
+            java.util.List<java.util.List<Trade>> tradeGroups = new java.util.ArrayList<>(tradesByGroup.values());
 
             for (java.util.List<Trade> group : tradeGroups) {
                 if (group.size() == 1) {
