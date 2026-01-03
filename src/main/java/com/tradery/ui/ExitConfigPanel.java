@@ -120,23 +120,32 @@ public class ExitConfigPanel extends JPanel {
         exitZonesWrapper.add(exitZonesPanel, BorderLayout.CENTER);
         conditionPanel.add(exitZonesWrapper, BorderLayout.SOUTH);
 
-        // Settings panel
+        // Settings panel - trade settings on two lines
         JPanel settingsPanel = new JPanel(new GridBagLayout());
         settingsPanel.setOpaque(false);
 
-        // Min Bars Before Exit row
-        JLabel minBarsBeforeExitLabel = new JLabel("Min Bars Before Exit:");
-        minBarsBeforeExitLabel.setForeground(Color.GRAY);
-        settingsPanel.add(minBarsBeforeExitLabel, gbc(0, 0, true));
-        settingsPanel.add(minBarsBeforeExitSpinner, gbc(1, 0, false));
+        GridBagConstraints c = new GridBagConstraints();
+        c.insets = new Insets(2, 0, 2, 4);
+        c.anchor = GridBagConstraints.WEST;
 
-        // Stop Loss row
-        settingsPanel.add(stopLossTypeCombo, gbc(0, 1, true));
-        settingsPanel.add(stopLossValueSpinner, gbc(1, 1, false));
+        // Row 0: Min Bars Before Exit + Stop Loss
+        JLabel minBarsLabel = new JLabel("Min Bars:");
+        minBarsLabel.setForeground(Color.GRAY);
+        c.gridx = 0; c.gridy = 0; c.fill = GridBagConstraints.NONE; c.weightx = 0;
+        settingsPanel.add(minBarsLabel, c);
+        c.gridx = 1;
+        settingsPanel.add(minBarsBeforeExitSpinner, c);
 
-        // Take Profit row
-        settingsPanel.add(takeProfitTypeCombo, gbc(0, 2, true));
-        settingsPanel.add(takeProfitValueSpinner, gbc(1, 2, false));
+        c.gridx = 2; c.insets = new Insets(2, 12, 2, 4);
+        settingsPanel.add(stopLossTypeCombo, c);
+        c.gridx = 3; c.insets = new Insets(2, 0, 2, 0); c.weightx = 1;
+        settingsPanel.add(stopLossValueSpinner, c);
+
+        // Row 1: Take Profit (right-aligned to match SL position)
+        c.gridx = 2; c.gridy = 1; c.insets = new Insets(2, 12, 2, 4); c.weightx = 0;
+        settingsPanel.add(takeProfitTypeCombo, c);
+        c.gridx = 3; c.insets = new Insets(2, 0, 2, 0); c.weightx = 1;
+        settingsPanel.add(takeProfitValueSpinner, c);
 
         add(conditionPanel, BorderLayout.CENTER);
         add(settingsPanel, BorderLayout.SOUTH);
