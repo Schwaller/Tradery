@@ -138,6 +138,7 @@ public class ExitConfigPanel extends JPanel {
         private JCheckBox hasMinPnl;
         private JCheckBox hasMaxPnl;
         private JTextArea exitConditionArea;
+        private JScrollPane exitConditionScroll;
         private JCheckBox exitImmediatelyCheckbox;
         private JComboBox<String> slTypeCombo;
         private JSpinner slValueSpinner;
@@ -203,11 +204,6 @@ public class ExitConfigPanel extends JPanel {
             exitConditionArea.setEnabled(!exitImmediatelyCheckbox.isSelected());
             exitConditionArea.getDocument().addDocumentListener(docListener(onChange));
 
-            exitImmediatelyCheckbox.addActionListener(e -> {
-                exitConditionArea.setEnabled(!exitImmediatelyCheckbox.isSelected());
-                onChange.run();
-            });
-
             slTypeCombo = new JComboBox<>(SL_TYPES);
             slValueSpinner = new JSpinner(new SpinnerNumberModel(
                 zone != null && zone.stopLossValue() != null ? zone.stopLossValue() : 2.0,
@@ -236,6 +232,29 @@ public class ExitConfigPanel extends JPanel {
                 zone != null ? zone.minBarsBeforeExit() : 0, 0, 1000, 1));
             minBarsSpinner.addChangeListener(e -> onChange.run());
 
+            // Exit condition scroll pane (created here so we can control visibility)
+            exitConditionScroll = new JScrollPane(exitConditionArea);
+            exitConditionScroll.setPreferredSize(new Dimension(180, 24));
+
+            // Exit immediately toggle - hides exit condition and SL/TP
+            exitImmediatelyCheckbox.addActionListener(e -> {
+                boolean immediate = exitImmediatelyCheckbox.isSelected();
+                exitConditionScroll.setVisible(!immediate);
+                slTypeCombo.setVisible(!immediate);
+                slValueSpinner.setVisible(!immediate);
+                tpTypeCombo.setVisible(!immediate);
+                tpValueSpinner.setVisible(!immediate);
+                onChange.run();
+            });
+
+            // Set initial visibility based on exitImmediately
+            boolean exitImmediate = zone != null && zone.exitImmediately();
+            exitConditionScroll.setVisible(!exitImmediate);
+            slTypeCombo.setVisible(!exitImmediate);
+            slValueSpinner.setVisible(!exitImmediate);
+            tpTypeCombo.setVisible(!exitImmediate);
+            tpValueSpinner.setVisible(!exitImmediate);
+
             // Build rows - each attribute on its own line
             JPanel centerPanel = new JPanel(new GridBagLayout());
             centerPanel.setOpaque(false);
@@ -256,14 +275,22 @@ public class ExitConfigPanel extends JPanel {
             c.gridx = 1; c.weightx = 1; c.fill = GridBagConstraints.HORIZONTAL;
             centerPanel.add(maxPnlSpinner, c);
 
-            // Exit condition row
-            c.gridy++; c.gridx = 0; c.gridwidth = 2; c.weightx = 1;
+            // Min bars row
+            c.gridy++; c.gridx = 0; c.weightx = 0; c.fill = GridBagConstraints.NONE;
+            JLabel barsLabel = new JLabel("Min Bars:");
+            barsLabel.setForeground(Color.GRAY);
+            centerPanel.add(barsLabel, c);
+            c.gridx = 1; c.weightx = 1; c.fill = GridBagConstraints.HORIZONTAL;
+            centerPanel.add(minBarsSpinner, c);
+
+            // Exit immediately row
+            c.gridy++; c.gridx = 0; c.gridwidth = 2; c.weightx = 1; c.fill = GridBagConstraints.NONE;
             centerPanel.add(exitImmediatelyCheckbox, c);
 
-            c.gridy++; c.fill = GridBagConstraints.HORIZONTAL;
-            JScrollPane exitScroll = new JScrollPane(exitConditionArea);
-            exitScroll.setPreferredSize(new Dimension(180, 24));
-            centerPanel.add(exitScroll, c);
+            // Exit condition row - takes extra vertical space
+            c.gridy++; c.gridx = 0; c.gridwidth = 2; c.weighty = 1; c.fill = GridBagConstraints.BOTH;
+            centerPanel.add(exitConditionScroll, c);
+            c.weighty = 0;
 
             // Stop Loss row
             c.gridy++; c.gridwidth = 1; c.gridx = 0; c.weightx = 0; c.fill = GridBagConstraints.NONE;
@@ -276,14 +303,6 @@ public class ExitConfigPanel extends JPanel {
             centerPanel.add(tpTypeCombo, c);
             c.gridx = 1; c.weightx = 1; c.fill = GridBagConstraints.HORIZONTAL;
             centerPanel.add(tpValueSpinner, c);
-
-            // Min bars row
-            c.gridy++; c.gridx = 0; c.weightx = 0; c.fill = GridBagConstraints.NONE;
-            JLabel barsLabel = new JLabel("Min Bars:");
-            barsLabel.setForeground(Color.GRAY);
-            centerPanel.add(barsLabel, c);
-            c.gridx = 1; c.weightx = 1; c.fill = GridBagConstraints.HORIZONTAL;
-            centerPanel.add(minBarsSpinner, c);
 
             add(topRow, BorderLayout.NORTH);
             add(centerPanel, BorderLayout.CENTER);
