@@ -332,19 +332,18 @@ public class ProjectWindow extends JFrame {
     }
 
     private void layoutComponents() {
-        // Main content pane with padding for macOS title bar
         JPanel contentPane = new JPanel(new BorderLayout());
-        contentPane.setBorder(BorderFactory.createEmptyBorder(28, 0, 0, 0));
         setContentPane(contentPane);
 
-        // Top: Toolbar with title, symbol, timeframe, capital, Run button
-        JPanel toolbarLeft = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 4));
-
-        // Window title (since macOS title bar is hidden)
-        titleLabel = new JLabel(strategy.getName());
+        // Title bar (centered, like LauncherFrame)
+        JPanel titleBar = new JPanel(new BorderLayout());
+        titleBar.setPreferredSize(new Dimension(0, 28));
+        titleLabel = new JLabel(strategy.getName(), SwingConstants.CENTER);
         titleLabel.setFont(titleLabel.getFont().deriveFont(Font.BOLD, 13f));
-        toolbarLeft.add(titleLabel);
-        toolbarLeft.add(Box.createHorizontalStrut(16));
+        titleBar.add(titleLabel, BorderLayout.CENTER);
+
+        // Toolbar with symbol, timeframe, capital, Run button
+        JPanel toolbarLeft = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 4));
 
         toolbarLeft.add(new JLabel("Symbol:"));
         toolbarLeft.add(symbolCombo);
@@ -371,10 +370,14 @@ public class ProjectWindow extends JFrame {
         toolbarRight.add(progressLabel);
         toolbarRight.add(progressBar);
 
+        JPanel toolbarPanel = new JPanel(new BorderLayout(0, 0));
+        toolbarPanel.add(toolbarLeft, BorderLayout.CENTER);
+        toolbarPanel.add(toolbarRight, BorderLayout.EAST);
+        toolbarPanel.add(new JSeparator(), BorderLayout.SOUTH);
+
         JPanel topPanel = new JPanel(new BorderLayout(0, 0));
-        topPanel.add(toolbarLeft, BorderLayout.CENTER);
-        topPanel.add(toolbarRight, BorderLayout.EAST);
-        topPanel.add(new JSeparator(), BorderLayout.SOUTH);
+        topPanel.add(titleBar, BorderLayout.NORTH);
+        topPanel.add(toolbarPanel, BorderLayout.CENTER);
         contentPane.add(topPanel, BorderLayout.NORTH);
 
         // Left side: Editor only

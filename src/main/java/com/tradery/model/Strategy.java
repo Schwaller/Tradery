@@ -2,6 +2,8 @@ package com.tradery.model;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Trading strategy with DSL-based entry/exit conditions.
@@ -19,6 +21,11 @@ public class Strategy {
     private Double stopLossValue;      // Percent or ATR multiplier
     private String takeProfitType;     // "none", "fixed_percent", "fixed_atr"
     private Double takeProfitValue;    // Percent or ATR multiplier
+
+    // Exit zones - multiple exit configurations based on P&L percentage ranges
+    private List<ExitZone> exitZones = new ArrayList<>();
+    private String zoneEvaluation = "candle_close";  // "immediate" or "candle_close"
+
     private int maxOpenTrades = 1;     // Max parallel open trades
     private int minCandlesBetweenTrades = 0;  // Minimum candles between trade entries
     private boolean dcaEnabled = false;       // Dollar cost averaging mode
@@ -30,15 +37,8 @@ public class Strategy {
     private Instant created;
     private Instant updated;
 
-    // Project configuration (backtest settings)
-    private String symbol = "BTCUSDT";
-    private String timeframe = "1h";
-    private String duration = "1 year";
-    private double initialCapital = 10000.0;
-    private String positionSizingType = "fixed_percent";
-    private double positionSizingValue = 10.0;
-    private double feePercent = 0.10;
-    private double slippagePercent = 0.05;
+    // Backtest settings (nested object)
+    private BacktestSettings backtestSettings = new BacktestSettings();
 
     public Strategy() {
         // For Jackson
@@ -146,6 +146,44 @@ public class Strategy {
         this.updated = Instant.now();
     }
 
+    public List<ExitZone> getExitZones() {
+        return exitZones != null ? exitZones : new ArrayList<>();
+    }
+
+    public void setExitZones(List<ExitZone> exitZones) {
+        this.exitZones = exitZones != null ? exitZones : new ArrayList<>();
+        this.updated = Instant.now();
+    }
+
+    public String getZoneEvaluation() {
+        return zoneEvaluation != null ? zoneEvaluation : "candle_close";
+    }
+
+    public void setZoneEvaluation(String zoneEvaluation) {
+        this.zoneEvaluation = zoneEvaluation;
+        this.updated = Instant.now();
+    }
+
+    /**
+     * Find the exit zone that matches the given P&L percentage.
+     * Returns null if no zone matches.
+     */
+    public ExitZone findMatchingZone(double pnlPercent) {
+        for (ExitZone zone : getExitZones()) {
+            if (zone.matches(pnlPercent)) {
+                return zone;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Check if exit zones are configured.
+     */
+    public boolean hasExitZones() {
+        return exitZones != null && !exitZones.isEmpty();
+    }
+
     public int getMaxOpenTrades() {
         return maxOpenTrades > 0 ? maxOpenTrades : 1;
     }
@@ -238,83 +276,97 @@ public class Strategy {
         this.updated = updated;
     }
 
-    // Project configuration getters and setters
+    // Backtest settings accessor
+
+    public BacktestSettings getBacktestSettings() {
+        if (backtestSettings == null) {
+            backtestSettings = new BacktestSettings();
+        }
+        return backtestSettings;
+    }
+
+    public void setBacktestSettings(BacktestSettings backtestSettings) {
+        this.backtestSettings = backtestSettings != null ? backtestSettings : new BacktestSettings();
+        this.updated = Instant.now();
+    }
+
+    // Delegate getters/setters for backward compatibility
 
     public String getSymbol() {
-        return symbol != null ? symbol : "BTCUSDT";
+        return getBacktestSettings().getSymbol();
     }
 
     public void setSymbol(String symbol) {
-        this.symbol = symbol;
+        getBacktestSettings().setSymbol(symbol);
         this.updated = Instant.now();
     }
 
     public String getTimeframe() {
-        return timeframe != null ? timeframe : "1h";
+        return getBacktestSettings().getTimeframe();
     }
 
     public void setTimeframe(String timeframe) {
-        this.timeframe = timeframe;
+        getBacktestSettings().setTimeframe(timeframe);
         this.updated = Instant.now();
     }
 
     public String getDuration() {
-        return duration != null ? duration : "1 year";
+        return getBacktestSettings().getDuration();
     }
 
     public void setDuration(String duration) {
-        this.duration = duration;
+        getBacktestSettings().setDuration(duration);
         this.updated = Instant.now();
     }
 
     public double getInitialCapital() {
-        return initialCapital > 0 ? initialCapital : 10000.0;
+        return getBacktestSettings().getInitialCapital();
     }
 
     public void setInitialCapital(double initialCapital) {
-        this.initialCapital = initialCapital > 0 ? initialCapital : 10000.0;
+        getBacktestSettings().setInitialCapital(initialCapital);
         this.updated = Instant.now();
     }
 
     public String getPositionSizingType() {
-        return positionSizingType != null ? positionSizingType : "fixed_percent";
+        return getBacktestSettings().getPositionSizingType();
     }
 
     public void setPositionSizingType(String positionSizingType) {
-        this.positionSizingType = positionSizingType;
+        getBacktestSettings().setPositionSizingType(positionSizingType);
         this.updated = Instant.now();
     }
 
     public double getPositionSizingValue() {
-        return positionSizingValue > 0 ? positionSizingValue : 10.0;
+        return getBacktestSettings().getPositionSizingValue();
     }
 
     public void setPositionSizingValue(double positionSizingValue) {
-        this.positionSizingValue = positionSizingValue > 0 ? positionSizingValue : 10.0;
+        getBacktestSettings().setPositionSizingValue(positionSizingValue);
         this.updated = Instant.now();
     }
 
     public double getFeePercent() {
-        return feePercent >= 0 ? feePercent : 0.10;
+        return getBacktestSettings().getFeePercent();
     }
 
     public void setFeePercent(double feePercent) {
-        this.feePercent = feePercent >= 0 ? feePercent : 0.10;
+        getBacktestSettings().setFeePercent(feePercent);
         this.updated = Instant.now();
     }
 
     public double getSlippagePercent() {
-        return slippagePercent >= 0 ? slippagePercent : 0.05;
+        return getBacktestSettings().getSlippagePercent();
     }
 
     public void setSlippagePercent(double slippagePercent) {
-        this.slippagePercent = slippagePercent >= 0 ? slippagePercent : 0.05;
+        getBacktestSettings().setSlippagePercent(slippagePercent);
         this.updated = Instant.now();
     }
 
     /** Get total commission (fee + slippage) as decimal */
     public double getTotalCommission() {
-        return (getFeePercent() + getSlippagePercent()) / 100.0;
+        return getBacktestSettings().getTotalCommission();
     }
 
     @Override

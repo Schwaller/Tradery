@@ -21,7 +21,8 @@ public record Trade(
     Double pnlPercent,
     Double commission,
     String exitReason,  // "signal", "stop_loss", "take_profit", "trailing_stop"
-    String groupId      // Groups DCA entries together
+    String groupId,     // Groups DCA entries together
+    String exitZone     // Name of the exit zone that triggered the exit
 ) {
     /**
      * Create a new open trade
@@ -31,7 +32,7 @@ public record Trade(
         String id = "trade-" + timestamp + "-" + (int)(Math.random() * 10000);
         return new Trade(
             id, strategyId, side, bar, timestamp, price, quantity,
-            null, null, null, null, null, commission, null, groupId
+            null, null, null, null, null, commission, null, groupId, null
         );
     }
 
@@ -42,7 +43,7 @@ public record Trade(
         String id = "trade-" + timestamp + "-" + (int)(Math.random() * 10000);
         return new Trade(
             id, strategyId, side, bar, timestamp, price, 0,
-            bar, timestamp, price, null, null, null, "rejected", null
+            bar, timestamp, price, null, null, null, "rejected", null, null
         );
     }
 
@@ -50,13 +51,20 @@ public record Trade(
      * Close this trade and calculate P&L
      */
     public Trade close(int exitBar, long exitTime, double exitPrice, double commission) {
-        return close(exitBar, exitTime, exitPrice, commission, "signal");
+        return close(exitBar, exitTime, exitPrice, commission, "signal", null);
     }
 
     /**
      * Close this trade with exit reason and calculate P&L
      */
     public Trade close(int exitBar, long exitTime, double exitPrice, double commissionRate, String exitReason) {
+        return close(exitBar, exitTime, exitPrice, commissionRate, exitReason, null);
+    }
+
+    /**
+     * Close this trade with exit reason, zone, and calculate P&L
+     */
+    public Trade close(int exitBar, long exitTime, double exitPrice, double commissionRate, String exitReason, String exitZone) {
         double grossPnl = (exitPrice - entryPrice) * quantity;
         if ("short".equals(side)) {
             grossPnl = -grossPnl;
@@ -72,7 +80,7 @@ public record Trade(
 
         return new Trade(
             id, strategyId, side, entryBar, entryTime, entryPrice, quantity,
-            exitBar, exitTime, exitPrice, netPnl, pnlPct, totalCommission, exitReason, groupId
+            exitBar, exitTime, exitPrice, netPnl, pnlPct, totalCommission, exitReason, groupId, exitZone
         );
     }
 

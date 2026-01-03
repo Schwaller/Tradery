@@ -59,6 +59,25 @@ public class BacktestEngine {
             }
         }
 
+        // Parse exit zone conditions
+        List<ParsedExitZone> parsedZones = new ArrayList<>();
+        boolean hasExitZones = strategy.hasExitZones();
+        if (hasExitZones) {
+            for (ExitZone zone : strategy.getExitZones()) {
+                AstNode zoneExitAst = null;
+                String zoneExitCond = zone.exitCondition();
+                if (zoneExitCond != null && !zoneExitCond.trim().isEmpty()) {
+                    Parser.ParseResult zoneResult = parser.parse(zoneExitCond);
+                    if (!zoneResult.success()) {
+                        return createErrorResult(strategy, config, startTime,
+                            "Exit zone '" + zone.name() + "' parse error: " + zoneResult.error());
+                    }
+                    zoneExitAst = zoneResult.ast();
+                }
+                parsedZones.add(new ParsedExitZone(zone, zoneExitAst));
+            }
+        }
+
         // Initialize indicator engine
         if (onProgress != null) {
             onProgress.accept(new Progress(0, candles.size(), 0, "Calculating indicators..."));
@@ -146,11 +165,68 @@ public class BacktestEngine {
                         double entryPrice = (isDcaPosition && avgEntryPrice > 0) ? avgEntryPrice : openTrade.entryPrice();
                         String exitReason = null;
                         double exitPrice = candle.close();
+                        String exitZoneName = null;
 
-                        String slType = strategy.getStopLossType();
-                        Double slValue = strategy.getStopLossValue();
-                        String tpType = strategy.getTakeProfitType();
-                        Double tpValue = strategy.getTakeProfitValue();
+                        // Determine which exit config to use (zone-based or legacy)
+                        String slType;
+                        Double slValue;
+                        String tpType;
+                        Double tpValue;
+                        AstNode exitConditionAst = hasExitCondition ? exitResult.ast() : null;
+                        boolean useZoneConfig = false;
+
+                        if (hasExitZones) {
+                            // Calculate current P&L % to find matching zone
+                            double currentPnlPercent = calculatePnlPercent(openTrade, candle.close());
+
+                            // Find matching zone
+                            ParsedExitZone matchingZone = null;
+                            for (ParsedExitZone pz : parsedZones) {
+                                if (pz.zone.matches(currentPnlPercent)) {
+                                    matchingZone = pz;
+                                    break;
+                                }
+                            }
+
+                            if (matchingZone != null) {
+                                ExitZone zone = matchingZone.zone;
+                                exitZoneName = zone.name();
+
+                                // Check if zone requires immediate exit
+                                if (zone.exitImmediately()) {
+                                    exitReason = "zone_exit";
+                                    exitPrice = candle.close();
+                                    ots.exitReason = exitReason;
+                                    ots.exitPrice = exitPrice;
+                                    ots.exitZone = exitZoneName;
+                                    if (isDcaPosition) {
+                                        dcaExitReason = exitReason;
+                                        dcaExitPrice = exitPrice;
+                                        break;
+                                    } else {
+                                        toClose.add(ots);
+                                        continue;
+                                    }
+                                }
+
+                                // Use zone's exit configuration
+                                slType = zone.stopLossType();
+                                slValue = zone.stopLossValue();
+                                tpType = zone.takeProfitType();
+                                tpValue = zone.takeProfitValue();
+                                exitConditionAst = matchingZone.exitConditionAst;
+                                useZoneConfig = true;
+                            } else {
+                                // No matching zone - skip exit evaluation for this trade
+                                continue;
+                            }
+                        } else {
+                            // Legacy mode - use strategy's exit config
+                            slType = strategy.getStopLossType();
+                            slValue = strategy.getStopLossValue();
+                            tpType = strategy.getTakeProfitType();
+                            tpValue = strategy.getTakeProfitValue();
+                        }
 
                         // Calculate stop distance based on type
                         double stopDistance = 0;
@@ -198,9 +274,9 @@ public class BacktestEngine {
                             }
                         }
 
-                        // Check DSL exit condition (only if one was specified)
-                        if (exitReason == null && hasExitCondition) {
-                            boolean shouldExit = evaluator.evaluate(exitResult.ast(), i);
+                        // Check DSL exit condition (zone's or strategy's)
+                        if (exitReason == null && exitConditionAst != null) {
+                            boolean shouldExit = evaluator.evaluate(exitConditionAst, i);
                             if (shouldExit) {
                                 exitReason = "signal";
                                 exitPrice = candle.close();
@@ -217,6 +293,7 @@ public class BacktestEngine {
                                 // Mark for closing
                                 ots.exitReason = exitReason;
                                 ots.exitPrice = exitPrice;
+                                ots.exitZone = exitZoneName;
                                 toClose.add(ots);
                             }
                         }
@@ -234,7 +311,7 @@ public class BacktestEngine {
 
                 // Close marked trades
                 for (OpenTradeState ots : toClose) {
-                    Trade closedTrade = ots.trade.close(i, candle.timestamp(), ots.exitPrice, config.commission(), ots.exitReason);
+                    Trade closedTrade = ots.trade.close(i, candle.timestamp(), ots.exitPrice, config.commission(), ots.exitReason, ots.exitZone);
                     trades.add(closedTrade);
                     currentEquity += closedTrade.pnl() != null ? closedTrade.pnl() : 0;
                     openTrades.remove(ots);
@@ -259,7 +336,7 @@ public class BacktestEngine {
                     }
                     // Close the aborted trades
                     for (OpenTradeState ots : toClose) {
-                        Trade closedTrade = ots.trade.close(i, candle.timestamp(), ots.exitPrice, config.commission(), ots.exitReason);
+                        Trade closedTrade = ots.trade.close(i, candle.timestamp(), ots.exitPrice, config.commission(), ots.exitReason, ots.exitZone);
                         trades.add(closedTrade);
                         currentEquity += closedTrade.pnl() != null ? closedTrade.pnl() : 0;
                         openTrades.remove(ots);
@@ -544,11 +621,36 @@ public class BacktestEngine {
         double trailingStopPrice;
         String exitReason;
         double exitPrice;
+        String exitZone;
 
         OpenTradeState(Trade trade, double entryPrice) {
             this.trade = trade;
             this.highestPriceSinceEntry = entryPrice;
             this.trailingStopPrice = 0;
         }
+    }
+
+    /**
+     * Holds parsed exit zone information
+     */
+    private static class ParsedExitZone {
+        ExitZone zone;
+        AstNode exitConditionAst;
+
+        ParsedExitZone(ExitZone zone, AstNode exitConditionAst) {
+            this.zone = zone;
+            this.exitConditionAst = exitConditionAst;
+        }
+    }
+
+    /**
+     * Calculate current P&L percentage for an open trade at a given price
+     */
+    private double calculatePnlPercent(Trade trade, double currentPrice) {
+        double pnl = (currentPrice - trade.entryPrice()) * trade.quantity();
+        if ("short".equals(trade.side())) {
+            pnl = -pnl;
+        }
+        return (pnl / (trade.entryPrice() * trade.quantity())) * 100;
     }
 }

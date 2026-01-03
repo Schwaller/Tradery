@@ -52,7 +52,7 @@ public class TradeDetailsWindow extends JDialog {
         table.setAutoResizeMode(JTable.AUTO_RESIZE_OFF);
 
         // Column widths (entry/exit columns 20% wider)
-        int[] widths = {40, 45, 50, 132, 132, 90, 90, 80, 80, 75, 75, 70, 80};
+        int[] widths = {40, 45, 50, 132, 132, 90, 90, 80, 80, 75, 75, 70, 80, 70};
         for (int i = 0; i < widths.length && i < table.getColumnCount(); i++) {
             table.getColumnModel().getColumn(i).setPreferredWidth(widths[i]);
         }
@@ -71,6 +71,7 @@ public class TradeDetailsWindow extends JDialog {
         table.getColumnModel().getColumn(10).setCellRenderer(new PnlCellRenderer(tableModel));  // Return
         table.getColumnModel().getColumn(11).setCellRenderer(new TradeRowRenderer(tableModel, SwingConstants.RIGHT));  // Commission
         table.getColumnModel().getColumn(12).setCellRenderer(new TradeRowRenderer(tableModel, SwingConstants.CENTER)); // Exit Reason
+        table.getColumnModel().getColumn(13).setCellRenderer(new TradeRowRenderer(tableModel, SwingConstants.CENTER)); // Zone
 
         // Click handling for expand/collapse
         table.addMouseListener(new MouseAdapter() {
@@ -271,6 +272,10 @@ public class TradeDetailsWindow extends JDialog {
             return trades.isEmpty() ? null : trades.getFirst().exitReason();
         }
 
+        String getExitZone() {
+            return trades.isEmpty() ? null : trades.getFirst().exitZone();
+        }
+
         boolean isRejected() {
             return singleTrade != null && "rejected".equals(singleTrade.exitReason());
         }
@@ -282,7 +287,7 @@ public class TradeDetailsWindow extends JDialog {
     private static class TreeDetailedTableModel extends AbstractTableModel {
         private static final String[] COLUMNS = {
             "#", "Entries", "Side", "Entry Time", "Exit Time", "Entry $", "Exit $",
-            "Quantity", "Value", "P&L", "Return", "Commission", "Exit Reason"
+            "Quantity", "Value", "P&L", "Return", "Commission", "Exit Reason", "Zone"
         };
         private static final SimpleDateFormat DATE_FORMAT = new SimpleDateFormat("yyyy-MM-dd HH:mm");
 
@@ -388,6 +393,7 @@ public class TradeDetailsWindow extends JDialog {
                     case 10 -> String.format("%+.2f%%", row.getAvgPnlPercent());
                     case 11 -> String.format("%.2f", row.getTotalCommission());
                     case 12 -> formatExitReason(row.getExitReason());
+                    case 13 -> row.getExitZone() != null ? row.getExitZone() : "-";
                     default -> "";
                 };
             } else {
@@ -409,6 +415,7 @@ public class TradeDetailsWindow extends JDialog {
                     case 10 -> isRejected ? "-" : (trade.pnlPercent() != null ? String.format("%+.2f%%", trade.pnlPercent()) : "-");
                     case 11 -> isRejected ? "-" : (trade.commission() != null ? String.format("%.2f", trade.commission()) : "-");
                     case 12 -> formatExitReason(trade.exitReason());
+                    case 13 -> trade.exitZone() != null ? trade.exitZone() : "-";
                     default -> "";
                 };
             }
@@ -427,6 +434,7 @@ public class TradeDetailsWindow extends JDialog {
                 case "stop_loss" -> "Stop Loss";
                 case "take_profit" -> "Take Profit";
                 case "trailing_stop" -> "Trail Stop";
+                case "zone_exit" -> "Zone Exit";
                 case "rejected" -> "Rejected";
                 default -> reason;
             };

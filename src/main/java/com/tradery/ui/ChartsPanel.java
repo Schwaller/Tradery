@@ -748,7 +748,7 @@ public class ChartsPanel extends JPanel {
 
         // Clear existing trade annotations (keep title annotation)
         plot.getAnnotations().stream()
-            .filter(a -> a instanceof XYLineAnnotation)
+            .filter(a -> !(a instanceof XYTitleAnnotation))
             .toList()
             .forEach(plot::removeAnnotation);
 
@@ -836,24 +836,22 @@ public class ChartsPanel extends JPanel {
 
                     // Draw 6px dots at start and end of diagonal line
                     double dotSize = 6.0;
-                    Ellipse2D startDot = new Ellipse2D.Double(-dotSize/2, -dotSize/2, dotSize, dotSize);
-                    Ellipse2D endDot = new Ellipse2D.Double(-dotSize/2, -dotSize/2, dotSize, dotSize);
-                    plot.addAnnotation(new XYShapeAnnotation(startDot, null, null, color) {
+                    final long cTime = centerTime;
+                    final double avgPrice = avgEntryPrice;
+                    final long exitTime = lastTrade.exitTime();
+                    final double exitPrice = lastTrade.exitPrice();
+                    final Color dotColor = color;
+
+                    plot.addAnnotation(new org.jfree.chart.annotations.AbstractXYAnnotation() {
                         @Override public void draw(java.awt.Graphics2D g2, XYPlot plot, java.awt.geom.Rectangle2D dataArea,
                                 ValueAxis domainAxis, ValueAxis rangeAxis, int rendererIndex, org.jfree.chart.plot.PlotRenderingInfo info) {
-                            double x = domainAxis.valueToJava2D(centerTime, dataArea, plot.getDomainAxisEdge());
-                            double y = rangeAxis.valueToJava2D(avgEntryPrice, dataArea, plot.getRangeAxisEdge());
-                            g2.setColor(color);
-                            g2.fill(new Ellipse2D.Double(x - dotSize/2, y - dotSize/2, dotSize, dotSize));
-                        }
-                    });
-                    plot.addAnnotation(new XYShapeAnnotation(endDot, null, null, color) {
-                        @Override public void draw(java.awt.Graphics2D g2, XYPlot plot, java.awt.geom.Rectangle2D dataArea,
-                                ValueAxis domainAxis, ValueAxis rangeAxis, int rendererIndex, org.jfree.chart.plot.PlotRenderingInfo info) {
-                            double x = domainAxis.valueToJava2D(lastTrade.exitTime(), dataArea, plot.getDomainAxisEdge());
-                            double y = rangeAxis.valueToJava2D(lastTrade.exitPrice(), dataArea, plot.getRangeAxisEdge());
-                            g2.setColor(color);
-                            g2.fill(new Ellipse2D.Double(x - dotSize/2, y - dotSize/2, dotSize, dotSize));
+                            double x1 = domainAxis.valueToJava2D(cTime, dataArea, plot.getDomainAxisEdge());
+                            double y1 = rangeAxis.valueToJava2D(avgPrice, dataArea, plot.getRangeAxisEdge());
+                            double x2 = domainAxis.valueToJava2D(exitTime, dataArea, plot.getDomainAxisEdge());
+                            double y2 = rangeAxis.valueToJava2D(exitPrice, dataArea, plot.getRangeAxisEdge());
+                            g2.setColor(dotColor);
+                            g2.fill(new Ellipse2D.Double(x1 - dotSize/2, y1 - dotSize/2, dotSize, dotSize));
+                            g2.fill(new Ellipse2D.Double(x2 - dotSize/2, y2 - dotSize/2, dotSize, dotSize));
                         }
                     });
                 }
