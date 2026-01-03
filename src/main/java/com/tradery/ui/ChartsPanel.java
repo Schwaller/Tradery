@@ -401,7 +401,7 @@ public class ChartsPanel extends JPanel {
                 capitalUsageChart.getXYPlot().configureRangeAxes();
             } else {
                 capitalAxis.setAutoRange(false);
-                capitalAxis.setRange(0, 100);
+                capitalAxis.setRange(0, 105);
             }
         }
     }
@@ -1004,7 +1004,7 @@ public class ChartsPanel extends JPanel {
         XYPlot plot = capitalUsageChart.getXYPlot();
         plot.setDataset(dataset);
         plot.getRenderer().setSeriesPaint(0, new Color(57, 255, 20)); // Neon green
-        plot.getRangeAxis().setRange(0, 100);
+        plot.getRangeAxis().setRange(0, 105);
     }
 
     private void updateTradePLChart(List<Candle> candles, List<Trade> trades) {

@@ -54,15 +54,8 @@ public class ExitConfigPanel extends JPanel {
         zoneListPanel.setLayout(new BoxLayout(zoneListPanel, BoxLayout.Y_AXIS));
         zoneListPanel.setOpaque(false);
 
-        JScrollPane scrollPane = new JScrollPane(zoneListPanel);
-        scrollPane.setBorder(BorderFactory.createEmptyBorder());
-        scrollPane.setOpaque(false);
-        scrollPane.getViewport().setOpaque(false);
-        scrollPane.setHorizontalScrollBarPolicy(JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
-        scrollPane.setVerticalScrollBarPolicy(JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED);
-
         add(headerPanel, BorderLayout.NORTH);
-        add(scrollPane, BorderLayout.CENTER);
+        add(zoneListPanel, BorderLayout.CENTER);
     }
 
     private void addZoneEditor(ExitZone zone) {
@@ -310,16 +303,19 @@ public class ExitConfigPanel extends JPanel {
             // Exit immediately row
             centerPanel.add(exitImmediatelyCheckbox, new GridBagConstraints(0, row++, 2, 1, 1, 0, WEST, NONE, new Insets(0, 0, 4, 0), 0, 0));
 
-            // Exit condition row - takes extra vertical space
+            // Exit condition row - can expand vertically when visible
             centerPanel.add(exitConditionScroll, new GridBagConstraints(0, row++, 2, 1, 1, 1, WEST, BOTH, new Insets(0, 0, 4, 0), 0, 0));
 
             // Stop Loss row
             centerPanel.add(slTypeCombo, new GridBagConstraints(0, row, 1, 1, 0, 0, WEST, NONE, new Insets(0, 0, 4, 4), 0, 0));
             centerPanel.add(slValueSpinner, new GridBagConstraints(1, row++, 1, 1, 1, 0, WEST, HORIZONTAL, new Insets(0, 0, 4, 0), 0, 0));
 
-            // Take Profit row (last row - no bottom inset)
+            // Take Profit row
             centerPanel.add(tpTypeCombo, new GridBagConstraints(0, row, 1, 1, 0, 0, WEST, NONE, new Insets(0, 0, 0, 4), 0, 0));
-            centerPanel.add(tpValueSpinner, new GridBagConstraints(1, row, 1, 1, 1, 0, WEST, HORIZONTAL, new Insets(0, 0, 0, 0), 0, 0));
+            centerPanel.add(tpValueSpinner, new GridBagConstraints(1, row++, 1, 1, 1, 0, WEST, HORIZONTAL, new Insets(0, 0, 0, 0), 0, 0));
+
+            // Vertical filler to absorb extra space and keep content anchored to top
+            centerPanel.add(Box.createVerticalGlue(), new GridBagConstraints(0, row, 2, 1, 0, 1, NORTH, VERTICAL, new Insets(0, 0, 0, 0), 0, 0));
 
             add(topRow, BorderLayout.NORTH);
             add(centerPanel, BorderLayout.CENTER);
