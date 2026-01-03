@@ -104,79 +104,126 @@ public class BacktestEngine {
 
                 // Check exit conditions for all open trades
                 List<OpenTradeState> toClose = new ArrayList<>();
-                for (OpenTradeState ots : openTrades) {
-                    // Skip exit checks if DCA is still accumulating
-                    if (!dcaComplete) continue;
-                    Trade openTrade = ots.trade;
-                    double entryPrice = openTrade.entryPrice();
-                    String exitReason = null;
-                    double exitPrice = candle.close();
+                String dcaExitReason = null;
+                double dcaExitPrice = candle.close();
 
-                    String slType = strategy.getStopLossType();
-                    Double slValue = strategy.getStopLossValue();
-                    String tpType = strategy.getTakeProfitType();
-                    Double tpValue = strategy.getTakeProfitValue();
+                // Skip exit checks if DCA is still accumulating
+                if (dcaComplete) {
+                    // For DCA mode, calculate exits based on weighted average entry
+                    boolean isDcaPosition = strategy.isDcaEnabled() && openTrades.size() > 1;
+                    double avgEntryPrice = 0;
+                    OpenTradeState firstTrade = openTrades.isEmpty() ? null : openTrades.getFirst();
 
-                    // Calculate stop distance based on type
-                    double stopDistance = 0;
-                    if (slValue != null && !"none".equals(slType)) {
-                        if (slType.contains("percent")) {
-                            stopDistance = entryPrice * (slValue / 100.0);
-                        } else if (slType.contains("atr")) {
-                            stopDistance = calculateATR(candles, i, 14) * slValue;
+                    if (isDcaPosition) {
+                        double totalValue = 0;
+                        double totalQty = 0;
+                        for (OpenTradeState ots : openTrades) {
+                            totalValue += ots.trade.entryPrice() * ots.trade.quantity();
+                            totalQty += ots.trade.quantity();
+                        }
+                        avgEntryPrice = totalQty > 0 ? totalValue / totalQty : 0;
+
+                        // For DCA, use first trade's price tracking (it's been open longest)
+                        // and sync all other trades to it
+                        if (firstTrade != null) {
+                            for (OpenTradeState ots : openTrades) {
+                                if (ots != firstTrade) {
+                                    ots.highestPriceSinceEntry = firstTrade.highestPriceSinceEntry;
+                                    ots.trailingStopPrice = firstTrade.trailingStopPrice;
+                                }
+                            }
                         }
                     }
 
-                    // Handle trailing stop
-                    if (slType != null && slType.startsWith("trailing") && stopDistance > 0) {
-                        if (candle.high() > ots.highestPriceSinceEntry) {
-                            ots.highestPriceSinceEntry = candle.high();
-                            ots.trailingStopPrice = ots.highestPriceSinceEntry - stopDistance;
+                    for (OpenTradeState ots : openTrades) {
+                        Trade openTrade = ots.trade;
+                        // Use average entry for DCA, individual entry otherwise
+                        double entryPrice = (isDcaPosition && avgEntryPrice > 0) ? avgEntryPrice : openTrade.entryPrice();
+                        String exitReason = null;
+                        double exitPrice = candle.close();
+
+                        String slType = strategy.getStopLossType();
+                        Double slValue = strategy.getStopLossValue();
+                        String tpType = strategy.getTakeProfitType();
+                        Double tpValue = strategy.getTakeProfitValue();
+
+                        // Calculate stop distance based on type
+                        double stopDistance = 0;
+                        if (slValue != null && !"none".equals(slType)) {
+                            if (slType.contains("percent")) {
+                                stopDistance = entryPrice * (slValue / 100.0);
+                            } else if (slType.contains("atr")) {
+                                stopDistance = calculateATR(candles, i, 14) * slValue;
+                            }
                         }
-                        if (candle.low() <= ots.trailingStopPrice) {
-                            exitReason = "trailing_stop";
-                            exitPrice = ots.trailingStopPrice;
+
+                        // Handle trailing stop
+                        if (slType != null && slType.startsWith("trailing") && stopDistance > 0) {
+                            if (candle.high() > ots.highestPriceSinceEntry) {
+                                ots.highestPriceSinceEntry = candle.high();
+                                ots.trailingStopPrice = ots.highestPriceSinceEntry - stopDistance;
+                            }
+                            if (candle.low() <= ots.trailingStopPrice) {
+                                exitReason = "trailing_stop";
+                                exitPrice = ots.trailingStopPrice;
+                            }
                         }
-                    }
-                    // Handle fixed stop-loss
-                    else if (slType != null && slType.startsWith("fixed") && stopDistance > 0) {
-                        double stopPrice = entryPrice - stopDistance;
-                        if (candle.low() <= stopPrice) {
-                            exitReason = "stop_loss";
-                            exitPrice = stopPrice;
+                        // Handle fixed stop-loss
+                        else if (slType != null && slType.startsWith("fixed") && stopDistance > 0) {
+                            double stopPrice = entryPrice - stopDistance;
+                            if (candle.low() <= stopPrice) {
+                                exitReason = "stop_loss";
+                                exitPrice = stopPrice;
+                            }
+                        }
+
+                        // Check take-profit
+                        if (exitReason == null && tpValue != null && !"none".equals(tpType)) {
+                            double tpDistance = 0;
+                            if (tpType.contains("percent")) {
+                                tpDistance = entryPrice * (tpValue / 100.0);
+                            } else if (tpType.contains("atr")) {
+                                tpDistance = calculateATR(candles, i, 14) * tpValue;
+                            }
+
+                            double tpPrice = entryPrice + tpDistance;
+                            if (candle.high() >= tpPrice) {
+                                exitReason = "take_profit";
+                                exitPrice = tpPrice;
+                            }
+                        }
+
+                        // Check DSL exit condition (only if one was specified)
+                        if (exitReason == null && hasExitCondition) {
+                            boolean shouldExit = evaluator.evaluate(exitResult.ast(), i);
+                            if (shouldExit) {
+                                exitReason = "signal";
+                                exitPrice = candle.close();
+                            }
+                        }
+
+                        if (exitReason != null) {
+                            // In DCA mode, one exit triggers all exits
+                            if (isDcaPosition) {
+                                dcaExitReason = exitReason;
+                                dcaExitPrice = exitPrice;
+                                break;  // Exit the loop - we'll close all trades
+                            } else {
+                                // Mark for closing
+                                ots.exitReason = exitReason;
+                                ots.exitPrice = exitPrice;
+                                toClose.add(ots);
+                            }
                         }
                     }
 
-                    // Check take-profit
-                    if (exitReason == null && tpValue != null && !"none".equals(tpType)) {
-                        double tpDistance = 0;
-                        if (tpType.contains("percent")) {
-                            tpDistance = entryPrice * (tpValue / 100.0);
-                        } else if (tpType.contains("atr")) {
-                            tpDistance = calculateATR(candles, i, 14) * tpValue;
+                    // In DCA mode, if any exit triggered, close ALL open trades
+                    if (dcaExitReason != null) {
+                        for (OpenTradeState ots : openTrades) {
+                            ots.exitReason = dcaExitReason;
+                            ots.exitPrice = dcaExitPrice;
+                            toClose.add(ots);
                         }
-
-                        double tpPrice = entryPrice + tpDistance;
-                        if (candle.high() >= tpPrice) {
-                            exitReason = "take_profit";
-                            exitPrice = tpPrice;
-                        }
-                    }
-
-                    // Check DSL exit condition (only if one was specified)
-                    if (exitReason == null && hasExitCondition) {
-                        boolean shouldExit = evaluator.evaluate(exitResult.ast(), i);
-                        if (shouldExit) {
-                            exitReason = "signal";
-                            exitPrice = candle.close();
-                        }
-                    }
-
-                    if (exitReason != null) {
-                        // Mark for closing
-                        ots.exitReason = exitReason;
-                        ots.exitPrice = exitPrice;
-                        toClose.add(ots);
                     }
                 }
 
