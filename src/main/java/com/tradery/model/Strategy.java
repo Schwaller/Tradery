@@ -16,13 +16,16 @@ public class Strategy {
     private String name;
     private String description;
     private String entry;
-    private String exit;
-    private String stopLossType;       // "none", "fixed_percent", "trailing_percent", "fixed_atr", "trailing_atr"
-    private Double stopLossValue;      // Percent or ATR multiplier
-    private String takeProfitType;     // "none", "fixed_percent", "fixed_atr"
-    private Double takeProfitValue;    // Percent or ATR multiplier
 
-    // Exit zones - multiple exit configurations based on P&L percentage ranges
+    // Legacy fields - kept for JSON backward compatibility, migrated to exitZones on load
+    private String exit;
+    private String stopLossType;
+    private Double stopLossValue;
+    private String takeProfitType;
+    private Double takeProfitValue;
+    private boolean legacyMigrated = false;
+
+    // Exit zones - all exit configuration is now zone-based
     private List<ExitZone> exitZones = new ArrayList<>();
     private String zoneEvaluation = "candle_close";  // "immediate" or "candle_close"
 
@@ -41,27 +44,34 @@ public class Strategy {
     private BacktestSettings backtestSettings = new BacktestSettings();
 
     public Strategy() {
-        // For Jackson
+        // For Jackson - legacy fields will be migrated on first getExitZones() call
     }
 
-    public Strategy(String id, String name, String description, String entry, String exit, boolean enabled) {
-        this(id, name, description, entry, exit, "none", null, "none", null, enabled);
-    }
-
-    public Strategy(String id, String name, String description, String entry, String exit,
-                    String stopLossType, Double stopLossValue, String takeProfitType, Double takeProfitValue, boolean enabled) {
+    public Strategy(String id, String name, String description, String entry, boolean enabled) {
         this.id = id;
         this.name = name;
         this.description = description;
         this.entry = entry;
-        this.exit = exit;
-        this.stopLossType = stopLossType != null ? stopLossType : "none";
-        this.stopLossValue = stopLossValue;
-        this.takeProfitType = takeProfitType != null ? takeProfitType : "none";
-        this.takeProfitValue = takeProfitValue;
         this.enabled = enabled;
         this.created = Instant.now();
         this.updated = Instant.now();
+        this.legacyMigrated = true;  // New strategies start with empty zones
+    }
+
+    public Strategy(String id, String name, String description, String entry, String exitCondition, boolean enabled) {
+        this(id, name, description, entry, exitCondition, "none", null, "none", null, enabled);
+    }
+
+    public Strategy(String id, String name, String description, String entry, String exitCondition,
+                    String stopLossType, Double stopLossValue, String takeProfitType, Double takeProfitValue, boolean enabled) {
+        this(id, name, description, entry, enabled);
+        // Create a default zone with the provided exit configuration
+        ExitZone defaultZone = ExitZone.builder("Default")
+            .exitCondition(exitCondition != null ? exitCondition : "")
+            .stopLoss(stopLossType != null ? stopLossType : "none", stopLossValue)
+            .takeProfit(takeProfitType != null ? takeProfitType : "none", takeProfitValue)
+            .build();
+        this.exitZones.add(defaultZone);
     }
 
     // Getters and setters
@@ -146,13 +156,42 @@ public class Strategy {
         this.updated = Instant.now();
     }
 
+    /**
+     * Get exit zones, ensuring at least one default zone exists.
+     * Migrates legacy exit/SL/TP fields to a default zone if needed.
+     */
     public List<ExitZone> getExitZones() {
-        return exitZones != null ? exitZones : new ArrayList<>();
+        ensureDefaultZone();
+        return exitZones;
     }
 
     public void setExitZones(List<ExitZone> exitZones) {
         this.exitZones = exitZones != null ? exitZones : new ArrayList<>();
+        this.legacyMigrated = true;  // Mark as migrated when explicitly set
         this.updated = Instant.now();
+    }
+
+    /**
+     * Ensures at least one exit zone exists, migrating legacy fields if necessary.
+     */
+    private void ensureDefaultZone() {
+        if (exitZones == null) {
+            exitZones = new ArrayList<>();
+        }
+        if (exitZones.isEmpty() && !legacyMigrated) {
+            // Migrate legacy fields to a default zone
+            ExitZone defaultZone = ExitZone.builder("Default")
+                .exitCondition(exit != null ? exit : "")
+                .stopLoss(stopLossType != null ? stopLossType : "none", stopLossValue)
+                .takeProfit(takeProfitType != null ? takeProfitType : "none", takeProfitValue)
+                .minBarsBeforeExit(minBarsBeforeExit)
+                .build();
+            exitZones.add(defaultZone);
+            legacyMigrated = true;
+        } else if (exitZones.isEmpty()) {
+            // No legacy fields and no zones - add empty default
+            exitZones.add(ExitZone.defaultZone());
+        }
     }
 
     public String getZoneEvaluation() {
@@ -166,7 +205,7 @@ public class Strategy {
 
     /**
      * Find the exit zone that matches the given P&L percentage.
-     * Returns null if no zone matches.
+     * Returns the first zone if none match (default catch-all behavior).
      */
     public ExitZone findMatchingZone(double pnlPercent) {
         for (ExitZone zone : getExitZones()) {
@@ -174,14 +213,23 @@ public class Strategy {
                 return zone;
             }
         }
-        return null;
+        // Return first zone as fallback
+        List<ExitZone> zones = getExitZones();
+        return zones.isEmpty() ? null : zones.get(0);
     }
 
     /**
-     * Check if exit zones are configured.
+     * Check if multiple exit zones are configured.
+     */
+    public boolean hasMultipleZones() {
+        return getExitZones().size() > 1;
+    }
+
+    /**
+     * Check if any exit zones are configured.
      */
     public boolean hasExitZones() {
-        return exitZones != null && !exitZones.isEmpty();
+        return !getExitZones().isEmpty();
     }
 
     public int getMaxOpenTrades() {

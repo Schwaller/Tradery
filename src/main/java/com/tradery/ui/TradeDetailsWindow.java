@@ -52,7 +52,7 @@ public class TradeDetailsWindow extends JDialog {
         table.setAutoResizeMode(JTable.AUTO_RESIZE_OFF);
 
         // Column widths (entry/exit columns 20% wider)
-        int[] widths = {40, 45, 50, 132, 132, 90, 90, 80, 80, 75, 75, 70, 80, 70};
+        int[] widths = {120, 45, 50, 132, 132, 135, 135, 80, 80, 75, 75, 105, 80, 70};
         for (int i = 0; i < widths.length && i < table.getColumnCount(); i++) {
             table.getColumnModel().getColumn(i).setPreferredWidth(widths[i]);
         }

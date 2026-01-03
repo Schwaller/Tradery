@@ -59,23 +59,21 @@ public class BacktestEngine {
             }
         }
 
-        // Parse exit zone conditions
+        // Parse exit zone conditions (zones are always present now)
         List<ParsedExitZone> parsedZones = new ArrayList<>();
-        boolean hasExitZones = strategy.hasExitZones();
-        if (hasExitZones) {
-            for (ExitZone zone : strategy.getExitZones()) {
-                AstNode zoneExitAst = null;
-                String zoneExitCond = zone.exitCondition();
-                if (zoneExitCond != null && !zoneExitCond.trim().isEmpty()) {
-                    Parser.ParseResult zoneResult = parser.parse(zoneExitCond);
-                    if (!zoneResult.success()) {
-                        return createErrorResult(strategy, config, startTime,
-                            "Exit zone '" + zone.name() + "' parse error: " + zoneResult.error());
-                    }
-                    zoneExitAst = zoneResult.ast();
+        List<ExitZone> exitZones = strategy.getExitZones();
+        for (ExitZone zone : exitZones) {
+            AstNode zoneExitAst = null;
+            String zoneExitCond = zone.exitCondition();
+            if (zoneExitCond != null && !zoneExitCond.trim().isEmpty()) {
+                Parser.ParseResult zoneResult = parser.parse(zoneExitCond);
+                if (!zoneResult.success()) {
+                    return createErrorResult(strategy, config, startTime,
+                        "Exit zone '" + zone.name() + "' parse error: " + zoneResult.error());
                 }
-                parsedZones.add(new ParsedExitZone(zone, zoneExitAst));
+                zoneExitAst = zoneResult.ast();
             }
+            parsedZones.add(new ParsedExitZone(zone, zoneExitAst));
         }
 
         // Initialize indicator engine
@@ -123,16 +121,13 @@ public class BacktestEngine {
                 // In DCA mode, only check exits after all entries are complete
                 boolean dcaComplete = !strategy.isDcaEnabled() || openTrades.size() >= maxOpenTrades;
 
-                // Check if enough bars have passed since last entry
-                boolean passedMinBarsBeforeExit = (i - lastEntryBar) >= strategy.getMinBarsBeforeExit();
-
                 // Check exit conditions for all open trades
                 List<OpenTradeState> toClose = new ArrayList<>();
                 String dcaExitReason = null;
                 double dcaExitPrice = candle.close();
 
-                // Skip exit checks if DCA is still accumulating or min bars haven't passed
-                if (dcaComplete && passedMinBarsBeforeExit) {
+                // Skip exit checks if DCA is still accumulating
+                if (dcaComplete) {
                     // For DCA mode, calculate exits based on weighted average entry
                     boolean isDcaPosition = strategy.isDcaEnabled() && openTrades.size() > 1;
                     double avgEntryPrice = 0;
@@ -167,66 +162,57 @@ public class BacktestEngine {
                         double exitPrice = candle.close();
                         String exitZoneName = null;
 
-                        // Determine which exit config to use (zone-based or legacy)
-                        String slType;
-                        Double slValue;
-                        String tpType;
-                        Double tpValue;
-                        AstNode exitConditionAst = hasExitCondition ? exitResult.ast() : null;
-                        boolean useZoneConfig = false;
+                        // Find matching exit zone based on current P&L
+                        double currentPnlPercent = calculatePnlPercent(openTrade, candle.close());
 
-                        if (hasExitZones) {
-                            // Calculate current P&L % to find matching zone
-                            double currentPnlPercent = calculatePnlPercent(openTrade, candle.close());
-
-                            // Find matching zone
-                            ParsedExitZone matchingZone = null;
-                            for (ParsedExitZone pz : parsedZones) {
-                                if (pz.zone.matches(currentPnlPercent)) {
-                                    matchingZone = pz;
-                                    break;
-                                }
+                        ParsedExitZone matchingZone = null;
+                        for (ParsedExitZone pz : parsedZones) {
+                            if (pz.zone.matches(currentPnlPercent)) {
+                                matchingZone = pz;
+                                break;
                             }
+                        }
 
-                            if (matchingZone != null) {
-                                ExitZone zone = matchingZone.zone;
-                                exitZoneName = zone.name();
+                        // If no zone matches, use first zone as fallback
+                        if (matchingZone == null && !parsedZones.isEmpty()) {
+                            matchingZone = parsedZones.getFirst();
+                        }
 
-                                // Check if zone requires immediate exit
-                                if (zone.exitImmediately()) {
-                                    exitReason = "zone_exit";
-                                    exitPrice = candle.close();
-                                    ots.exitReason = exitReason;
-                                    ots.exitPrice = exitPrice;
-                                    ots.exitZone = exitZoneName;
-                                    if (isDcaPosition) {
-                                        dcaExitReason = exitReason;
-                                        dcaExitPrice = exitPrice;
-                                        break;
-                                    } else {
-                                        toClose.add(ots);
-                                        continue;
-                                    }
-                                }
+                        if (matchingZone == null) {
+                            continue;  // No exit config available
+                        }
 
-                                // Use zone's exit configuration
-                                slType = zone.stopLossType();
-                                slValue = zone.stopLossValue();
-                                tpType = zone.takeProfitType();
-                                tpValue = zone.takeProfitValue();
-                                exitConditionAst = matchingZone.exitConditionAst;
-                                useZoneConfig = true;
+                        ExitZone zone = matchingZone.zone;
+                        exitZoneName = zone.name();
+
+                        // Check if enough bars have passed for this zone's minBarsBeforeExit
+                        if ((i - lastEntryBar) < zone.minBarsBeforeExit()) {
+                            continue;  // Not enough bars passed yet
+                        }
+
+                        // Check if zone requires immediate exit
+                        if (zone.exitImmediately()) {
+                            exitReason = "zone_exit";
+                            exitPrice = candle.close();
+                            ots.exitReason = exitReason;
+                            ots.exitPrice = exitPrice;
+                            ots.exitZone = exitZoneName;
+                            if (isDcaPosition) {
+                                dcaExitReason = exitReason;
+                                dcaExitPrice = exitPrice;
+                                break;
                             } else {
-                                // No matching zone - skip exit evaluation for this trade
+                                toClose.add(ots);
                                 continue;
                             }
-                        } else {
-                            // Legacy mode - use strategy's exit config
-                            slType = strategy.getStopLossType();
-                            slValue = strategy.getStopLossValue();
-                            tpType = strategy.getTakeProfitType();
-                            tpValue = strategy.getTakeProfitValue();
                         }
+
+                        // Use zone's exit configuration
+                        String slType = zone.stopLossType();
+                        Double slValue = zone.stopLossValue();
+                        String tpType = zone.takeProfitType();
+                        Double tpValue = zone.takeProfitValue();
+                        AstNode exitConditionAst = matchingZone.exitConditionAst;
 
                         // Calculate stop distance based on type
                         double stopDistance = 0;

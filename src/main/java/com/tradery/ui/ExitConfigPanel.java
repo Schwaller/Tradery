@@ -11,173 +11,65 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Panel for configuring exit conditions, exit zones, and SL/TP settings.
+ * Panel for configuring exit zones. All exit configuration is now zone-based.
  */
 public class ExitConfigPanel extends JPanel {
 
-    private JTextArea exitEditor;
-    private JCheckBox exitZonesEnabledCheckbox;
-    private JPanel exitZonesPanel;
     private JPanel zoneListPanel;
     private List<ZoneEditor> zoneEditors = new ArrayList<>();
-    private JSpinner minBarsBeforeExitSpinner;
-    private JComboBox<String> stopLossTypeCombo;
-    private JSpinner stopLossValueSpinner;
-    private JComboBox<String> takeProfitTypeCombo;
-    private JSpinner takeProfitValueSpinner;
-
-    private static final String[] SL_TYPES = {"No Stop Loss", "Stop Loss %", "Trailing Stop %", "Stop Loss ATR", "Trailing Stop ATR"};
-    private static final String[] TP_TYPES = {"No Take Profit", "Take Profit %", "Take Profit ATR"};
 
     private Runnable onChange;
     private boolean suppressChangeEvents = false;
 
+    private static final String[] SL_TYPES = {"No SL", "SL %", "Trail %", "SL ATR", "Trail ATR"};
+    private static final String[] TP_TYPES = {"No TP", "TP %", "TP ATR"};
+
     public ExitConfigPanel() {
         setLayout(new BorderLayout(0, 8));
         setOpaque(false);
-        initializeComponents();
         layoutComponents();
     }
 
-    private void initializeComponents() {
-        exitEditor = new JTextArea(3, 20);
-        exitEditor.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
-        exitEditor.setLineWrap(true);
-        exitEditor.setWrapStyleWord(true);
-
-        exitZonesEnabledCheckbox = new JCheckBox("Exit Zones");
-        exitZonesEnabledCheckbox.addActionListener(e -> updateExitZonesVisibility());
-
-        minBarsBeforeExitSpinner = new JSpinner(new SpinnerNumberModel(0, 0, 1000, 1));
-
-        stopLossTypeCombo = new JComboBox<>(SL_TYPES);
-        stopLossValueSpinner = new JSpinner(new SpinnerNumberModel(2.0, 0.1, 100.0, 0.5));
-        stopLossTypeCombo.addActionListener(e -> updateSlSpinnerVisibility());
-
-        takeProfitTypeCombo = new JComboBox<>(TP_TYPES);
-        takeProfitValueSpinner = new JSpinner(new SpinnerNumberModel(5.0, 0.1, 100.0, 0.5));
-        takeProfitTypeCombo.addActionListener(e -> updateTpSpinnerVisibility());
-
-        // Wire up change listeners
-        DocumentListener docListener = new DocumentListener() {
-            public void insertUpdate(DocumentEvent e) { fireChange(); }
-            public void removeUpdate(DocumentEvent e) { fireChange(); }
-            public void changedUpdate(DocumentEvent e) { fireChange(); }
-        };
-
-        exitEditor.getDocument().addDocumentListener(docListener);
-        exitZonesEnabledCheckbox.addActionListener(e -> fireChange());
-        minBarsBeforeExitSpinner.addChangeListener(e -> fireChange());
-        stopLossTypeCombo.addActionListener(e -> fireChange());
-        stopLossValueSpinner.addChangeListener(e -> fireChange());
-        takeProfitTypeCombo.addActionListener(e -> fireChange());
-        takeProfitValueSpinner.addChangeListener(e -> fireChange());
-    }
-
     private void layoutComponents() {
-        // Exit condition
-        JPanel conditionPanel = new JPanel(new BorderLayout(0, 2));
-        conditionPanel.setOpaque(false);
-        JLabel exitLabel = new JLabel("Exit Condition:");
-        exitLabel.setForeground(Color.GRAY);
-        conditionPanel.add(exitLabel, BorderLayout.NORTH);
-        JScrollPane exitScroll = new JScrollPane(exitEditor);
-        conditionPanel.add(exitScroll, BorderLayout.CENTER);
+        // Header with label and add button
+        JPanel headerPanel = new JPanel(new BorderLayout());
+        headerPanel.setOpaque(false);
+        JLabel label = new JLabel("Exit Zones:");
+        label.setForeground(Color.GRAY);
+        headerPanel.add(label, BorderLayout.WEST);
 
-        // Exit Zones section
-        JPanel exitZonesCheckboxPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 2));
-        exitZonesCheckboxPanel.setOpaque(false);
-        exitZonesCheckboxPanel.add(exitZonesEnabledCheckbox);
-
-        exitZonesPanel = new JPanel(new BorderLayout(0, 4));
-        exitZonesPanel.setOpaque(false);
-        exitZonesPanel.setVisible(false);
-
-        zoneListPanel = new JPanel();
-        zoneListPanel.setLayout(new BoxLayout(zoneListPanel, BoxLayout.Y_AXIS));
-        zoneListPanel.setOpaque(false);
-
-        JButton addZoneBtn = new JButton("+ Add Zone");
+        JButton addZoneBtn = new JButton("+");
+        addZoneBtn.setMargin(new Insets(0, 6, 0, 6));
         addZoneBtn.addActionListener(e -> {
             ExitZone newZone = ExitZone.builder("Zone " + (zoneEditors.size() + 1))
-                .minPnl(null)
-                .maxPnl(0.0)
-                .exitImmediately(false)
                 .build();
             addZoneEditor(newZone);
         });
+        headerPanel.add(addZoneBtn, BorderLayout.EAST);
 
-        JPanel addZoneBtnPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 4));
-        addZoneBtnPanel.setOpaque(false);
-        addZoneBtnPanel.add(addZoneBtn);
+        // Zone list - horizontal layout
+        zoneListPanel = new JPanel();
+        zoneListPanel.setLayout(new BoxLayout(zoneListPanel, BoxLayout.X_AXIS));
+        zoneListPanel.setOpaque(false);
 
-        exitZonesPanel.add(zoneListPanel, BorderLayout.CENTER);
-        exitZonesPanel.add(addZoneBtnPanel, BorderLayout.SOUTH);
+        JScrollPane scrollPane = new JScrollPane(zoneListPanel);
+        scrollPane.setBorder(BorderFactory.createEmptyBorder());
+        scrollPane.setOpaque(false);
+        scrollPane.getViewport().setOpaque(false);
+        scrollPane.setHorizontalScrollBarPolicy(JScrollPane.HORIZONTAL_SCROLLBAR_AS_NEEDED);
+        scrollPane.setVerticalScrollBarPolicy(JScrollPane.VERTICAL_SCROLLBAR_NEVER);
 
-        JPanel exitZonesWrapper = new JPanel(new BorderLayout(0, 0));
-        exitZonesWrapper.setOpaque(false);
-        exitZonesWrapper.add(exitZonesCheckboxPanel, BorderLayout.NORTH);
-        exitZonesWrapper.add(exitZonesPanel, BorderLayout.CENTER);
-        conditionPanel.add(exitZonesWrapper, BorderLayout.SOUTH);
-
-        // Settings panel - trade settings on two lines
-        JPanel settingsPanel = new JPanel(new GridBagLayout());
-        settingsPanel.setOpaque(false);
-
-        GridBagConstraints c = new GridBagConstraints();
-        c.insets = new Insets(2, 0, 2, 4);
-        c.anchor = GridBagConstraints.WEST;
-
-        // Row 0: Min Bars Before Exit + Stop Loss
-        JLabel minBarsLabel = new JLabel("Min Bars:");
-        minBarsLabel.setForeground(Color.GRAY);
-        c.gridx = 0; c.gridy = 0; c.fill = GridBagConstraints.NONE; c.weightx = 0;
-        settingsPanel.add(minBarsLabel, c);
-        c.gridx = 1;
-        settingsPanel.add(minBarsBeforeExitSpinner, c);
-
-        c.gridx = 2; c.insets = new Insets(2, 12, 2, 4);
-        settingsPanel.add(stopLossTypeCombo, c);
-        c.gridx = 3; c.insets = new Insets(2, 0, 2, 0); c.weightx = 1;
-        settingsPanel.add(stopLossValueSpinner, c);
-
-        // Row 1: Take Profit (right-aligned to match SL position)
-        c.gridx = 2; c.gridy = 1; c.insets = new Insets(2, 12, 2, 4); c.weightx = 0;
-        settingsPanel.add(takeProfitTypeCombo, c);
-        c.gridx = 3; c.insets = new Insets(2, 0, 2, 0); c.weightx = 1;
-        settingsPanel.add(takeProfitValueSpinner, c);
-
-        add(conditionPanel, BorderLayout.CENTER);
-        add(settingsPanel, BorderLayout.SOUTH);
-    }
-
-    private GridBagConstraints gbc(int x, int y, boolean fill) {
-        return new GridBagConstraints(x, y, 1, 1, fill ? 1 : 0, 0,
-            GridBagConstraints.WEST, fill ? GridBagConstraints.HORIZONTAL : GridBagConstraints.NONE,
-            new Insets(2, 0, 2, 4), 0, 0);
-    }
-
-    private void updateExitZonesVisibility() {
-        exitZonesPanel.setVisible(exitZonesEnabledCheckbox.isSelected());
-        revalidate();
-        repaint();
-    }
-
-    private void updateSlSpinnerVisibility() {
-        boolean hasValue = stopLossTypeCombo.getSelectedIndex() > 0;
-        stopLossValueSpinner.setEnabled(hasValue);
-    }
-
-    private void updateTpSpinnerVisibility() {
-        boolean hasValue = takeProfitTypeCombo.getSelectedIndex() > 0;
-        takeProfitValueSpinner.setEnabled(hasValue);
+        add(headerPanel, BorderLayout.NORTH);
+        add(scrollPane, BorderLayout.CENTER);
     }
 
     private void addZoneEditor(ExitZone zone) {
         final ZoneEditor[] editorHolder = new ZoneEditor[1];
         ZoneEditor editor = new ZoneEditor(zone, () -> {
-            removeZoneEditor(editorHolder[0]);
-            fireChange();
+            if (zoneEditors.size() > 1) {
+                removeZoneEditor(editorHolder[0]);
+                fireChange();
+            }
         }, this::fireChange);
         editorHolder[0] = editor;
         zoneEditors.add(editor);
@@ -207,42 +99,20 @@ public class ExitConfigPanel extends JPanel {
     public void loadFrom(Strategy strategy) {
         suppressChangeEvents = true;
         try {
+            zoneEditors.clear();
+            zoneListPanel.removeAll();
+
             if (strategy != null) {
-                exitEditor.setText(strategy.getExit());
-
-                // SL type and value
-                stopLossTypeCombo.setSelectedIndex(slTypeToIndex(strategy.getStopLossType()));
-                stopLossValueSpinner.setValue(strategy.getStopLossValue() != null ? strategy.getStopLossValue() : 2.0);
-                updateSlSpinnerVisibility();
-
-                // TP type and value
-                takeProfitTypeCombo.setSelectedIndex(tpTypeToIndex(strategy.getTakeProfitType()));
-                takeProfitValueSpinner.setValue(strategy.getTakeProfitValue() != null ? strategy.getTakeProfitValue() : 5.0);
-                updateTpSpinnerVisibility();
-
-                minBarsBeforeExitSpinner.setValue(strategy.getMinBarsBeforeExit());
-
-                // Exit zones
-                zoneEditors.clear();
-                zoneListPanel.removeAll();
-                boolean hasZones = strategy.hasExitZones();
-                exitZonesEnabledCheckbox.setSelected(hasZones);
-                if (hasZones) {
-                    for (ExitZone zone : strategy.getExitZones()) {
-                        addZoneEditor(zone);
-                    }
+                // Load zones (always at least one due to Strategy.getExitZones())
+                for (ExitZone zone : strategy.getExitZones()) {
+                    addZoneEditor(zone);
                 }
-                updateExitZonesVisibility();
             } else {
-                exitEditor.setText("");
-                stopLossTypeCombo.setSelectedIndex(0);
-                takeProfitTypeCombo.setSelectedIndex(0);
-                minBarsBeforeExitSpinner.setValue(0);
-                exitZonesEnabledCheckbox.setSelected(false);
-                zoneEditors.clear();
-                zoneListPanel.removeAll();
-                updateExitZonesVisibility();
+                addZoneEditor(ExitZone.defaultZone());
             }
+
+            zoneListPanel.revalidate();
+            zoneListPanel.repaint();
         } finally {
             suppressChangeEvents = false;
         }
@@ -251,74 +121,17 @@ public class ExitConfigPanel extends JPanel {
     public void applyTo(Strategy strategy) {
         if (strategy == null) return;
 
-        strategy.setExit(exitEditor.getText().trim());
-
-        String slType = indexToSlType(stopLossTypeCombo.getSelectedIndex());
-        strategy.setStopLossType(slType);
-        strategy.setStopLossValue("none".equals(slType) ? null : ((Number) stopLossValueSpinner.getValue()).doubleValue());
-
-        String tpType = indexToTpType(takeProfitTypeCombo.getSelectedIndex());
-        strategy.setTakeProfitType(tpType);
-        strategy.setTakeProfitValue("none".equals(tpType) ? null : ((Number) takeProfitValueSpinner.getValue()).doubleValue());
-
-        strategy.setMinBarsBeforeExit(((Number) minBarsBeforeExitSpinner.getValue()).intValue());
-
-        // Exit zones
-        if (exitZonesEnabledCheckbox.isSelected() && !zoneEditors.isEmpty()) {
-            List<ExitZone> zones = new ArrayList<>();
-            for (ZoneEditor editor : zoneEditors) {
-                zones.add(editor.toExitZone());
-            }
-            strategy.setExitZones(zones);
-        } else {
-            strategy.setExitZones(new ArrayList<>());
+        List<ExitZone> zones = new ArrayList<>();
+        for (ZoneEditor editor : zoneEditors) {
+            zones.add(editor.toExitZone());
         }
-    }
-
-    // Type conversion helpers
-
-    private int slTypeToIndex(String type) {
-        if (type == null) return 0;
-        return switch (type) {
-            case "fixed_percent" -> 1;
-            case "trailing_percent" -> 2;
-            case "fixed_atr" -> 3;
-            case "trailing_atr" -> 4;
-            default -> 0;
-        };
-    }
-
-    private String indexToSlType(int index) {
-        return switch (index) {
-            case 1 -> "fixed_percent";
-            case 2 -> "trailing_percent";
-            case 3 -> "fixed_atr";
-            case 4 -> "trailing_atr";
-            default -> "none";
-        };
-    }
-
-    private int tpTypeToIndex(String type) {
-        if (type == null) return 0;
-        return switch (type) {
-            case "fixed_percent" -> 1;
-            case "fixed_atr" -> 2;
-            default -> 0;
-        };
-    }
-
-    private String indexToTpType(int index) {
-        return switch (index) {
-            case 1 -> "fixed_percent";
-            case 2 -> "fixed_atr";
-            default -> "none";
-        };
+        strategy.setExitZones(zones);
     }
 
     /**
-     * Inner panel for editing a single exit zone
+     * Inner panel for editing a single exit zone with full configuration.
      */
-    private static class ZoneEditor extends JPanel {
+    private class ZoneEditor extends JPanel {
         private JTextField nameField;
         private JSpinner minPnlSpinner;
         private JSpinner maxPnlSpinner;
@@ -326,26 +139,29 @@ public class ExitConfigPanel extends JPanel {
         private JCheckBox hasMaxPnl;
         private JTextArea exitConditionArea;
         private JCheckBox exitImmediatelyCheckbox;
+        private JComboBox<String> slTypeCombo;
+        private JSpinner slValueSpinner;
+        private JComboBox<String> tpTypeCombo;
+        private JSpinner tpValueSpinner;
+        private JSpinner minBarsSpinner;
 
         ZoneEditor(ExitZone zone, Runnable onRemove, Runnable onChange) {
-            setLayout(new BorderLayout(4, 4));
+            setLayout(new BorderLayout(4, 2));
             setBorder(BorderFactory.createCompoundBorder(
-                BorderFactory.createMatteBorder(0, 0, 1, 0, Color.LIGHT_GRAY),
-                BorderFactory.createEmptyBorder(4, 0, 8, 0)
+                BorderFactory.createMatteBorder(0, 0, 0, 1, Color.LIGHT_GRAY),
+                BorderFactory.createEmptyBorder(4, 4, 4, 8)
             ));
             setOpaque(false);
-            setMaximumSize(new Dimension(Integer.MAX_VALUE, 120));
+            setPreferredSize(new Dimension(200, 220));
+            setMinimumSize(new Dimension(200, 220));
+            setMaximumSize(new Dimension(200, 250));
 
             // Top row: Name and remove button
             JPanel topRow = new JPanel(new BorderLayout(4, 0));
             topRow.setOpaque(false);
 
-            nameField = new JTextField(zone != null ? zone.name() : "Zone", 10);
-            nameField.getDocument().addDocumentListener(new DocumentListener() {
-                public void insertUpdate(DocumentEvent e) { onChange.run(); }
-                public void removeUpdate(DocumentEvent e) { onChange.run(); }
-                public void changedUpdate(DocumentEvent e) { onChange.run(); }
-            });
+            nameField = new JTextField(zone != null ? zone.name() : "Default", 10);
+            nameField.getDocument().addDocumentListener(docListener(onChange));
 
             JButton removeBtn = new JButton("×");
             removeBtn.setMargin(new Insets(0, 4, 0, 4));
@@ -354,11 +170,8 @@ public class ExitConfigPanel extends JPanel {
             topRow.add(nameField, BorderLayout.CENTER);
             topRow.add(removeBtn, BorderLayout.EAST);
 
-            // P&L range row
-            JPanel rangeRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
-            rangeRow.setOpaque(false);
-
-            hasMinPnl = new JCheckBox("Min:");
+            // Initialize all components
+            hasMinPnl = new JCheckBox("Min %:");
             minPnlSpinner = new JSpinner(new SpinnerNumberModel(
                 zone != null && zone.minPnlPercent() != null ? zone.minPnlPercent() : -5.0,
                 -100.0, 100.0, 0.5));
@@ -370,7 +183,7 @@ public class ExitConfigPanel extends JPanel {
             });
             minPnlSpinner.addChangeListener(e -> onChange.run());
 
-            hasMaxPnl = new JCheckBox("Max:");
+            hasMaxPnl = new JCheckBox("Max %:");
             maxPnlSpinner = new JSpinner(new SpinnerNumberModel(
                 zone != null && zone.maxPnlPercent() != null ? zone.maxPnlPercent() : 0.0,
                 -100.0, 100.0, 0.5));
@@ -382,60 +195,160 @@ public class ExitConfigPanel extends JPanel {
             });
             maxPnlSpinner.addChangeListener(e -> onChange.run());
 
-            rangeRow.add(hasMinPnl);
-            rangeRow.add(minPnlSpinner);
-            rangeRow.add(new JLabel("%"));
-            rangeRow.add(Box.createHorizontalStrut(8));
-            rangeRow.add(hasMaxPnl);
-            rangeRow.add(maxPnlSpinner);
-            rangeRow.add(new JLabel("%"));
-
-            // Exit immediately checkbox
             exitImmediatelyCheckbox = new JCheckBox("Exit Immediately");
             exitImmediatelyCheckbox.setSelected(zone != null && zone.exitImmediately());
+
+            exitConditionArea = new JTextArea(zone != null ? zone.exitCondition() : "", 1, 15);
+            exitConditionArea.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 11));
+            exitConditionArea.setEnabled(!exitImmediatelyCheckbox.isSelected());
+            exitConditionArea.getDocument().addDocumentListener(docListener(onChange));
+
             exitImmediatelyCheckbox.addActionListener(e -> {
                 exitConditionArea.setEnabled(!exitImmediatelyCheckbox.isSelected());
                 onChange.run();
             });
 
-            // Exit condition
-            exitConditionArea = new JTextArea(zone != null ? zone.exitCondition() : "", 1, 20);
-            exitConditionArea.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 11));
-            exitConditionArea.setEnabled(!exitImmediatelyCheckbox.isSelected());
-            exitConditionArea.getDocument().addDocumentListener(new DocumentListener() {
-                public void insertUpdate(DocumentEvent e) { onChange.run(); }
-                public void removeUpdate(DocumentEvent e) { onChange.run(); }
-                public void changedUpdate(DocumentEvent e) { onChange.run(); }
+            slTypeCombo = new JComboBox<>(SL_TYPES);
+            slValueSpinner = new JSpinner(new SpinnerNumberModel(
+                zone != null && zone.stopLossValue() != null ? zone.stopLossValue() : 2.0,
+                0.1, 100.0, 0.5));
+            slTypeCombo.setSelectedIndex(slTypeToIndex(zone != null ? zone.stopLossType() : "none"));
+            slValueSpinner.setEnabled(slTypeCombo.getSelectedIndex() > 0);
+            slTypeCombo.addActionListener(e -> {
+                slValueSpinner.setEnabled(slTypeCombo.getSelectedIndex() > 0);
+                onChange.run();
             });
+            slValueSpinner.addChangeListener(e -> onChange.run());
 
-            JPanel exitRow = new JPanel(new BorderLayout(4, 0));
-            exitRow.setOpaque(false);
-            exitRow.add(exitImmediatelyCheckbox, BorderLayout.WEST);
-            exitRow.add(new JScrollPane(exitConditionArea), BorderLayout.CENTER);
+            tpTypeCombo = new JComboBox<>(TP_TYPES);
+            tpValueSpinner = new JSpinner(new SpinnerNumberModel(
+                zone != null && zone.takeProfitValue() != null ? zone.takeProfitValue() : 5.0,
+                0.1, 100.0, 0.5));
+            tpTypeCombo.setSelectedIndex(tpTypeToIndex(zone != null ? zone.takeProfitType() : "none"));
+            tpValueSpinner.setEnabled(tpTypeCombo.getSelectedIndex() > 0);
+            tpTypeCombo.addActionListener(e -> {
+                tpValueSpinner.setEnabled(tpTypeCombo.getSelectedIndex() > 0);
+                onChange.run();
+            });
+            tpValueSpinner.addChangeListener(e -> onChange.run());
 
-            // Combine
-            JPanel centerPanel = new JPanel();
-            centerPanel.setLayout(new BoxLayout(centerPanel, BoxLayout.Y_AXIS));
+            minBarsSpinner = new JSpinner(new SpinnerNumberModel(
+                zone != null ? zone.minBarsBeforeExit() : 0, 0, 1000, 1));
+            minBarsSpinner.addChangeListener(e -> onChange.run());
+
+            // Build rows - each attribute on its own line
+            JPanel centerPanel = new JPanel(new GridBagLayout());
             centerPanel.setOpaque(false);
-            rangeRow.setAlignmentX(LEFT_ALIGNMENT);
-            exitRow.setAlignmentX(LEFT_ALIGNMENT);
-            centerPanel.add(rangeRow);
-            centerPanel.add(Box.createVerticalStrut(4));
-            centerPanel.add(exitRow);
+            GridBagConstraints c = new GridBagConstraints();
+            c.anchor = GridBagConstraints.WEST;
+            c.insets = new Insets(1, 0, 1, 4);
+            c.gridy = 0;
+
+            // Min P&L row
+            c.gridx = 0; c.weightx = 0;
+            centerPanel.add(hasMinPnl, c);
+            c.gridx = 1; c.weightx = 1; c.fill = GridBagConstraints.HORIZONTAL;
+            centerPanel.add(minPnlSpinner, c);
+
+            // Max P&L row
+            c.gridy++; c.gridx = 0; c.weightx = 0; c.fill = GridBagConstraints.NONE;
+            centerPanel.add(hasMaxPnl, c);
+            c.gridx = 1; c.weightx = 1; c.fill = GridBagConstraints.HORIZONTAL;
+            centerPanel.add(maxPnlSpinner, c);
+
+            // Exit condition row
+            c.gridy++; c.gridx = 0; c.gridwidth = 2; c.weightx = 1;
+            centerPanel.add(exitImmediatelyCheckbox, c);
+
+            c.gridy++; c.fill = GridBagConstraints.HORIZONTAL;
+            JScrollPane exitScroll = new JScrollPane(exitConditionArea);
+            exitScroll.setPreferredSize(new Dimension(180, 24));
+            centerPanel.add(exitScroll, c);
+
+            // Stop Loss row
+            c.gridy++; c.gridwidth = 1; c.gridx = 0; c.weightx = 0; c.fill = GridBagConstraints.NONE;
+            centerPanel.add(slTypeCombo, c);
+            c.gridx = 1; c.weightx = 1; c.fill = GridBagConstraints.HORIZONTAL;
+            centerPanel.add(slValueSpinner, c);
+
+            // Take Profit row
+            c.gridy++; c.gridx = 0; c.weightx = 0; c.fill = GridBagConstraints.NONE;
+            centerPanel.add(tpTypeCombo, c);
+            c.gridx = 1; c.weightx = 1; c.fill = GridBagConstraints.HORIZONTAL;
+            centerPanel.add(tpValueSpinner, c);
+
+            // Min bars row
+            c.gridy++; c.gridx = 0; c.weightx = 0; c.fill = GridBagConstraints.NONE;
+            JLabel barsLabel = new JLabel("Min Bars:");
+            barsLabel.setForeground(Color.GRAY);
+            centerPanel.add(barsLabel, c);
+            c.gridx = 1; c.weightx = 1; c.fill = GridBagConstraints.HORIZONTAL;
+            centerPanel.add(minBarsSpinner, c);
 
             add(topRow, BorderLayout.NORTH);
             add(centerPanel, BorderLayout.CENTER);
         }
 
+        private DocumentListener docListener(Runnable onChange) {
+            return new DocumentListener() {
+                public void insertUpdate(DocumentEvent e) { onChange.run(); }
+                public void removeUpdate(DocumentEvent e) { onChange.run(); }
+                public void changedUpdate(DocumentEvent e) { onChange.run(); }
+            };
+        }
+
+        private int slTypeToIndex(String type) {
+            if (type == null) return 0;
+            return switch (type) {
+                case "fixed_percent" -> 1;
+                case "trailing_percent" -> 2;
+                case "fixed_atr" -> 3;
+                case "trailing_atr" -> 4;
+                default -> 0;
+            };
+        }
+
+        private String indexToSlType(int index) {
+            return switch (index) {
+                case 1 -> "fixed_percent";
+                case 2 -> "trailing_percent";
+                case 3 -> "fixed_atr";
+                case 4 -> "trailing_atr";
+                default -> "none";
+            };
+        }
+
+        private int tpTypeToIndex(String type) {
+            if (type == null) return 0;
+            return switch (type) {
+                case "fixed_percent" -> 1;
+                case "fixed_atr" -> 2;
+                default -> 0;
+            };
+        }
+
+        private String indexToTpType(int index) {
+            return switch (index) {
+                case 1 -> "fixed_percent";
+                case 2 -> "fixed_atr";
+                default -> "none";
+            };
+        }
+
         ExitZone toExitZone() {
+            String slType = indexToSlType(slTypeCombo.getSelectedIndex());
+            String tpType = indexToTpType(tpTypeCombo.getSelectedIndex());
             return new ExitZone(
                 nameField.getText().trim(),
                 hasMinPnl.isSelected() ? ((Number) minPnlSpinner.getValue()).doubleValue() : null,
                 hasMaxPnl.isSelected() ? ((Number) maxPnlSpinner.getValue()).doubleValue() : null,
                 exitConditionArea.getText().trim(),
-                "none", null,  // SL type/value (not editable in basic UI)
-                "none", null,  // TP type/value (not editable in basic UI)
-                exitImmediatelyCheckbox.isSelected()
+                slType,
+                "none".equals(slType) ? null : ((Number) slValueSpinner.getValue()).doubleValue(),
+                tpType,
+                "none".equals(tpType) ? null : ((Number) tpValueSpinner.getValue()).doubleValue(),
+                exitImmediatelyCheckbox.isSelected(),
+                ((Number) minBarsSpinner.getValue()).intValue()
             );
         }
     }

@@ -267,7 +267,9 @@ public class LauncherFrame extends JFrame {
                 name.trim(),
                 "",
                 "RSI(14) < 30",
-                "RSI(14) > 70",
+                "RSI(14) > 70",  // exit condition for default zone
+                "none", null,   // no stop loss
+                "none", null,   // no take profit
                 true
             );
             strategyStore.save(strategy);

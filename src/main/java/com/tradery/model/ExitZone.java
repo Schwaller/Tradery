@@ -13,7 +13,8 @@ public record ExitZone(
     Double stopLossValue,     // Percent or ATR multiplier
     String takeProfitType,    // "none", "fixed_percent", "fixed_atr"
     Double takeProfitValue,   // Percent or ATR multiplier
-    boolean exitImmediately   // If true, exit as soon as P&L enters this zone
+    boolean exitImmediately,  // If true, exit as soon as P&L enters this zone
+    int minBarsBeforeExit     // Min bars after entry before exit is evaluated
 ) {
     /**
      * Check if a given P&L percentage falls within this zone's range.
@@ -37,7 +38,8 @@ public record ExitZone(
             null,
             "none",
             null,
-            false
+            false,
+            0
         );
     }
 
@@ -58,6 +60,7 @@ public record ExitZone(
         private String takeProfitType = "none";
         private Double takeProfitValue;
         private boolean exitImmediately = false;
+        private int minBarsBeforeExit = 0;
 
         public Builder(String name) {
             this.name = name;
@@ -95,6 +98,11 @@ public record ExitZone(
             return this;
         }
 
+        public Builder minBarsBeforeExit(int bars) {
+            this.minBarsBeforeExit = bars;
+            return this;
+        }
+
         public ExitZone build() {
             return new ExitZone(
                 name,
@@ -105,7 +113,8 @@ public record ExitZone(
                 stopLossValue,
                 takeProfitType,
                 takeProfitValue,
-                exitImmediately
+                exitImmediately,
+                minBarsBeforeExit
             );
         }
     }
