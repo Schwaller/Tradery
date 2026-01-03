@@ -5,7 +5,10 @@ import com.tradery.io.AppLock;
 import com.tradery.ui.LauncherFrame;
 
 import javax.swing.*;
+import java.awt.*;
 import java.io.File;
+import java.io.InputStream;
+import javax.imageio.ImageIO;
 
 /**
  * Tradery - Java Desktop Trading Strategy Backtester
@@ -29,6 +32,9 @@ public class TraderyApp {
             System.err.println("Could not set FlatLaf look and feel: " + e.getMessage());
         }
 
+        // Set application dock icon (macOS)
+        setApplicationIcon();
+
         // Ensure user data directory exists
         ensureUserDirectories();
 
@@ -51,6 +57,29 @@ public class TraderyApp {
             LauncherFrame launcher = new LauncherFrame();
             launcher.setVisible(true);
         });
+    }
+
+    /**
+     * Set the application dock icon for macOS
+     */
+    private static void setApplicationIcon() {
+        try {
+            InputStream iconStream = TraderyApp.class.getResourceAsStream("/icons/application-icon.png");
+            if (iconStream != null) {
+                Image icon = ImageIO.read(iconStream);
+                iconStream.close();
+
+                // Use Taskbar API for macOS dock icon (Java 9+)
+                if (Taskbar.isTaskbarSupported()) {
+                    Taskbar taskbar = Taskbar.getTaskbar();
+                    if (taskbar.isSupported(Taskbar.Feature.ICON_IMAGE)) {
+                        taskbar.setIconImage(icon);
+                    }
+                }
+            }
+        } catch (Exception e) {
+            System.err.println("Could not set application icon: " + e.getMessage());
+        }
     }
 
     /**

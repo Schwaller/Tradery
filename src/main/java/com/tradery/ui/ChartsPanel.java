@@ -17,6 +17,9 @@ import org.jfree.chart.plot.Crosshair;
 import org.jfree.chart.plot.XYPlot;
 import org.jfree.chart.panel.CrosshairOverlay;
 import org.jfree.chart.renderer.xy.CandlestickRenderer;
+import org.jfree.chart.renderer.xy.XYBarRenderer;
+import org.jfree.data.xy.XYSeries;
+import org.jfree.data.xy.XYSeriesCollection;
 import org.jfree.chart.title.TextTitle;
 import org.jfree.chart.ui.RectangleAnchor;
 import org.jfree.data.general.DatasetUtils;
@@ -50,18 +53,21 @@ public class ChartsPanel extends JPanel {
     private org.jfree.chart.ChartPanel comparisonChartPanel;
     private org.jfree.chart.ChartPanel capitalUsageChartPanel;
     private org.jfree.chart.ChartPanel tradePLChartPanel;
+    private org.jfree.chart.ChartPanel volumeChartPanel;
 
     private JFreeChart priceChart;
     private JFreeChart equityChart;
     private JFreeChart comparisonChart;
     private JFreeChart capitalUsageChart;
     private JFreeChart tradePLChart;
+    private JFreeChart volumeChart;
 
     private Crosshair priceCrosshair;
     private Crosshair equityCrosshair;
     private Crosshair comparisonCrosshair;
     private Crosshair capitalUsageCrosshair;
     private Crosshair tradePLCrosshair;
+    private Crosshair volumeCrosshair;
 
     private Consumer<String> onStatusUpdate;
     private List<Candle> currentCandles;
@@ -179,16 +185,35 @@ public class ChartsPanel extends JPanel {
         tradePLChartPanel.setMouseWheelEnabled(false);
         tradePLChartPanel.setDomainZoomable(false);
         tradePLChartPanel.setRangeZoomable(false);
+
+        // Volume chart with colored bars
+        volumeChart = ChartFactory.createXYBarChart(
+            null,
+            null,
+            true,  // dateAxis
+            null,
+            new XYSeriesCollection(),
+            org.jfree.chart.plot.PlotOrientation.VERTICAL,
+            false, // legend
+            false, // tooltips
+            false  // urls
+        );
+        stylizeChart(volumeChart, "Volume");
+
+        volumeChartPanel = new org.jfree.chart.ChartPanel(volumeChart);
+        volumeChartPanel.setMouseWheelEnabled(false);
+        volumeChartPanel.setDomainZoomable(false);
+        volumeChartPanel.setRangeZoomable(false);
     }
 
     private void setupScrollableContainer() {
         // Create wrappers with zoom buttons for each chart
         org.jfree.chart.ChartPanel[] chartPanels = {
             priceChartPanel, equityChartPanel, comparisonChartPanel,
-            capitalUsageChartPanel, tradePLChartPanel
+            capitalUsageChartPanel, tradePLChartPanel, volumeChartPanel
         };
-        chartWrappers = new JPanel[5];
-        zoomButtons = new JButton[5];
+        chartWrappers = new JPanel[6];
+        zoomButtons = new JButton[6];
 
         for (int i = 0; i < chartPanels.length; i++) {
             chartWrappers[i] = createChartWrapper(chartPanels[i], i);
@@ -222,6 +247,7 @@ public class ChartsPanel extends JPanel {
         comparisonChartPanel.addMouseWheelListener(wheelListener);
         capitalUsageChartPanel.addMouseWheelListener(wheelListener);
         tradePLChartPanel.addMouseWheelListener(wheelListener);
+        volumeChartPanel.addMouseWheelListener(wheelListener);
 
         // Main panel with charts and scrollbar
         mainPanel = new JPanel(new BorderLayout());
@@ -304,9 +330,9 @@ public class ChartsPanel extends JPanel {
             if (zoomedChartIndex == i) {
                 gbc.weighty = 0.65; // 65% for zoomed chart
             } else if (zoomedChartIndex >= 0) {
-                gbc.weighty = 0.0875; // 8.75% each for 4 non-zoomed charts
+                gbc.weighty = 0.07; // 7% each for 5 non-zoomed charts
             } else {
-                gbc.weighty = 0.2; // 20% each when none zoomed
+                gbc.weighty = 1.0 / 6.0; // ~16.67% each when none zoomed
             }
             chartsContainer.add(chartWrappers[i], gbc);
         }
@@ -514,7 +540,7 @@ public class ChartsPanel extends JPanel {
             double lower = masterAxis.getLowerBound();
             double upper = masterAxis.getUpperBound();
 
-            JFreeChart[] otherCharts = {equityChart, comparisonChart, capitalUsageChart, tradePLChart};
+            JFreeChart[] otherCharts = {equityChart, comparisonChart, capitalUsageChart, tradePLChart, volumeChart};
             for (JFreeChart chart : otherCharts) {
                 if (chart == null) continue;
                 DateAxis axis = (DateAxis) chart.getXYPlot().getDomainAxis();
@@ -572,6 +598,13 @@ public class ChartsPanel extends JPanel {
         tradePLOverlay.addDomainCrosshair(tradePLCrosshair);
         tradePLChartPanel.addOverlay(tradePLOverlay);
 
+        // Volume chart crosshair
+        volumeCrosshair = new Crosshair(Double.NaN);
+        volumeCrosshair.setPaint(crosshairColor);
+        CrosshairOverlay volumeOverlay = new CrosshairOverlay();
+        volumeOverlay.addDomainCrosshair(volumeCrosshair);
+        volumeChartPanel.addOverlay(volumeOverlay);
+
         // Add mouse listeners to sync crosshairs
         ChartMouseListener listener = new ChartMouseListener() {
             @Override
@@ -589,6 +622,7 @@ public class ChartsPanel extends JPanel {
         comparisonChartPanel.addChartMouseListener(listener);
         capitalUsageChartPanel.addChartMouseListener(listener);
         tradePLChartPanel.addChartMouseListener(listener);
+        volumeChartPanel.addChartMouseListener(listener);
     }
 
     private void updateCrosshairs(ChartMouseEvent event) {
@@ -611,6 +645,7 @@ public class ChartsPanel extends JPanel {
         comparisonCrosshair.setValue(domainValue);
         capitalUsageCrosshair.setValue(domainValue);
         tradePLCrosshair.setValue(domainValue);
+        volumeCrosshair.setValue(domainValue);
 
         // Update status bar
         updateStatus(domainValue);
@@ -727,6 +762,7 @@ public class ChartsPanel extends JPanel {
         updateComparisonChart(candles, trades, initialCapital);
         updateCapitalUsageChart(candles, trades, initialCapital);
         updateTradePLChart(candles, trades);
+        updateVolumeChart(candles);
 
         // Update fixed-width mode scrollbar if active
         if (fixedWidthMode) {
@@ -1053,6 +1089,83 @@ public class ChartsPanel extends JPanel {
     }
 
     /**
+     * Update volume chart with colored bars based on relative volume (Wyckoff-style)
+     */
+    private void updateVolumeChart(List<Candle> candles) {
+        if (candles == null || candles.isEmpty()) return;
+
+        // Calculate average volume over lookback period
+        int lookback = 20;
+        double[] avgVolumes = new double[candles.size()];
+
+        for (int i = 0; i < candles.size(); i++) {
+            double sum = 0;
+            int count = 0;
+            for (int j = Math.max(0, i - lookback + 1); j <= i; j++) {
+                sum += candles.get(j).volume();
+                count++;
+            }
+            avgVolumes[i] = sum / count;
+        }
+
+        // Create series for different volume levels (will be colored differently)
+        XYSeries[] volumeSeries = new XYSeries[7];
+        String[] seriesNames = {"Ultra Low", "Very Low", "Low", "Average", "High", "Very High", "Ultra High"};
+        for (int i = 0; i < 7; i++) {
+            volumeSeries[i] = new XYSeries(seriesNames[i]);
+        }
+
+        // Classify each bar by relative volume
+        for (int i = 0; i < candles.size(); i++) {
+            Candle c = candles.get(i);
+            double relVol = c.volume() / avgVolumes[i];
+
+            // Determine which series this bar belongs to
+            int seriesIdx;
+            if (relVol >= 2.2) seriesIdx = 6;       // Ultra High (magenta)
+            else if (relVol >= 1.8) seriesIdx = 5;  // Very High (red)
+            else if (relVol >= 1.2) seriesIdx = 4;  // High (orange)
+            else if (relVol >= 0.8) seriesIdx = 3;  // Average (yellow/green)
+            else if (relVol >= 0.5) seriesIdx = 2;  // Low (cyan)
+            else if (relVol >= 0.3) seriesIdx = 1;  // Very Low (blue)
+            else seriesIdx = 0;                      // Ultra Low (purple)
+
+            volumeSeries[seriesIdx].add(c.timestamp(), c.volume());
+        }
+
+        // Create dataset and set colors
+        XYSeriesCollection dataset = new XYSeriesCollection();
+        for (XYSeries series : volumeSeries) {
+            dataset.addSeries(series);
+        }
+
+        XYPlot plot = volumeChart.getXYPlot();
+        plot.setDataset(dataset);
+
+        // Create custom renderer with colors
+        XYBarRenderer renderer = new XYBarRenderer(0.0);
+        renderer.setShadowVisible(false);
+        renderer.setDrawBarOutline(false);
+
+        // Wyckoff-style colors: cool (low) to warm (high)
+        Color[] volumeColors = {
+            new Color(128, 0, 255),    // Ultra Low - purple
+            new Color(0, 100, 255),    // Very Low - blue
+            new Color(0, 200, 200),    // Low - cyan
+            new Color(100, 200, 100),  // Average - green
+            new Color(255, 180, 0),    // High - orange
+            new Color(255, 80, 80),    // Very High - red
+            new Color(255, 0, 200)     // Ultra High - magenta
+        };
+
+        for (int i = 0; i < 7; i++) {
+            renderer.setSeriesPaint(i, volumeColors[i]);
+        }
+
+        plot.setRenderer(renderer);
+    }
+
+    /**
      * Clear charts
      */
     public void clear() {
@@ -1061,5 +1174,6 @@ public class ChartsPanel extends JPanel {
         comparisonChart.getXYPlot().setDataset(new TimeSeriesCollection());
         capitalUsageChart.getXYPlot().setDataset(new TimeSeriesCollection());
         tradePLChart.getXYPlot().setDataset(new TimeSeriesCollection());
+        volumeChart.getXYPlot().setDataset(new XYSeriesCollection());
     }
 }
