@@ -154,8 +154,8 @@ public class ExitConfigPanel extends JPanel {
             ));
             setOpaque(false);
             setPreferredSize(new Dimension(200, 220));
-            setMinimumSize(new Dimension(200, 220));
-            setMaximumSize(new Dimension(200, 250));
+            setMinimumSize(new Dimension(200, 100));
+            setMaximumSize(new Dimension(200, Integer.MAX_VALUE));
 
             // Top row: Name and remove button
             JPanel topRow = new JPanel(new BorderLayout(4, 0));
