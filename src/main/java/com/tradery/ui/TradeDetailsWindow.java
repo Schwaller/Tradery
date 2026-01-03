@@ -91,7 +91,16 @@ public class TradeDetailsWindow extends JDialog {
 
     private void layoutComponents() {
         JPanel contentPane = new JPanel(new BorderLayout(0, 8));
-        contentPane.setBorder(BorderFactory.createEmptyBorder(12, 12, 12, 12));
+        // Extra top padding for macOS transparent title bar
+        contentPane.setBorder(BorderFactory.createEmptyBorder(28, 12, 12, 12));
+
+        // Top panel with title and summary
+        JPanel topPanel = new JPanel(new BorderLayout(0, 8));
+
+        // Title label (since macOS title bar is hidden)
+        JLabel titleLabel = new JLabel("Trade Details - " + strategyName);
+        titleLabel.setFont(titleLabel.getFont().deriveFont(Font.BOLD, 13f));
+        topPanel.add(titleLabel, BorderLayout.NORTH);
 
         // Summary header
         JPanel headerPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 16, 0));
@@ -135,7 +144,8 @@ public class TradeDetailsWindow extends JDialog {
         closeButton.addActionListener(e -> dispose());
         buttonPanel.add(closeButton);
 
-        contentPane.add(headerPanel, BorderLayout.NORTH);
+        topPanel.add(headerPanel, BorderLayout.CENTER);
+        contentPane.add(topPanel, BorderLayout.NORTH);
         contentPane.add(scrollPane, BorderLayout.CENTER);
         contentPane.add(buttonPanel, BorderLayout.SOUTH);
 
