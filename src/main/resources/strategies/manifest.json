@@ -1,0 +1,20 @@
+{
+  "version": "1.0",
+  "strategies": [
+    {
+      "id": "rsi-trend-filter",
+      "name": "RSI Trend Filter",
+      "version": "1.0"
+    },
+    {
+      "id": "bollinger-mean-reversion",
+      "name": "Bollinger Mean Reversion",
+      "version": "1.0"
+    },
+    {
+      "id": "ema-volume-crossover",
+      "name": "EMA Volume Crossover",
+      "version": "1.0"
+    }
+  ]
+}

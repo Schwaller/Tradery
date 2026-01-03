@@ -1,0 +1,43 @@
+{
+  "strategyId" : "bollinger-mean-reversion",
+  "strategyName" : "Bollinger Mean Reversion",
+  "config" : {
+    "symbol" : "SOLUSDT",
+    "resolution" : "5m",
+    "startDate" : 1766848232377,
+    "endDate" : 1767453032377,
+    "initialCapital" : 3000.0,
+    "positionSizingType" : "fixed_dollar",
+    "positionSizingValue" : 1000.0,
+    "commission" : 0.0015000000000000002
+  },
+  "trades" : [ ],
+  "metrics" : {
+    "totalTrades" : 0,
+    "winningTrades" : 0,
+    "losingTrades" : 0,
+    "winRate" : 0.0,
+    "profitFactor" : 0.0,
+    "totalReturn" : 0.0,
+    "totalReturnPercent" : 0.0,
+    "maxDrawdown" : 0.0,
+    "maxDrawdownPercent" : 0.0,
+    "sharpeRatio" : 0.0,
+    "averageWin" : 0.0,
+    "averageLoss" : 0.0,
+    "largestWin" : 0.0,
+    "largestLoss" : 0.0,
+    "averageHoldingPeriod" : 0.0,
+    "finalEquity" : 3000.0,
+    "totalFees" : 0.0,
+    "maxCapitalUsage" : 0.0,
+    "maxCapitalDollars" : 0.0
+  },
+  "startTime" : 1767453033842,
+  "endTime" : 1767453033843,
+  "barsProcessed" : 0,
+  "duration" : 1,
+  "errors" : [ "Entry condition parse error: Unknown identifier 'BB' at position 8" ],
+  "successful" : false,
+  "summary" : "Bollinger Mean Reversion: 0 trades, 0.0% win rate, 0.00 profit factor, +0.00% return"
+}

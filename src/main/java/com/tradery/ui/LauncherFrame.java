@@ -33,6 +33,7 @@ public class LauncherFrame extends JFrame {
     private JButton newButton;
     private JButton renameButton;
     private JButton deleteButton;
+    private JButton restorePresetsButton;
 
     private final StrategyStore strategyStore;
     private final Map<String, ProjectWindow> openWindows = new HashMap<>();
@@ -119,6 +120,43 @@ public class LauncherFrame extends JFrame {
         deleteButton = new JButton("Delete");
         deleteButton.addActionListener(e -> deleteProject());
         deleteButton.setEnabled(false);
+
+        restorePresetsButton = new JButton("Restore Presets");
+        restorePresetsButton.addActionListener(e -> restorePresets());
+
+        // Context menu for right-click
+        JPopupMenu contextMenu = new JPopupMenu();
+        JMenuItem openItem = new JMenuItem("Open");
+        openItem.addActionListener(e -> openProject());
+        JMenuItem renameItem = new JMenuItem("Rename");
+        renameItem.addActionListener(e -> renameProject());
+        JMenuItem deleteItem = new JMenuItem("Delete");
+        deleteItem.addActionListener(e -> deleteProject());
+        JMenuItem restoreItem = new JMenuItem("Restore to Default");
+        restoreItem.addActionListener(e -> restoreSelectedPreset());
+
+        contextMenu.add(openItem);
+        contextMenu.addSeparator();
+        contextMenu.add(renameItem);
+        contextMenu.add(restoreItem);
+        contextMenu.addSeparator();
+        contextMenu.add(deleteItem);
+
+        projectList.setComponentPopupMenu(contextMenu);
+        projectList.addMouseListener(new java.awt.event.MouseAdapter() {
+            @Override
+            public void mousePressed(java.awt.event.MouseEvent e) {
+                if (SwingUtilities.isRightMouseButton(e)) {
+                    int index = projectList.locationToIndex(e.getPoint());
+                    if (index >= 0) {
+                        projectList.setSelectedIndex(index);
+                        Strategy selected = projectList.getSelectedValue();
+                        // Only show "Restore to Default" for preset strategies
+                        restoreItem.setVisible(selected != null && selected.isPreset());
+                    }
+                }
+            }
+        });
     }
 
     private void layoutComponents() {
@@ -145,12 +183,17 @@ public class LauncherFrame extends JFrame {
         listWrapper.add(scrollPane, BorderLayout.CENTER);
         listWrapper.add(new JSeparator(), BorderLayout.SOUTH);
 
-        // Button panel
-        JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 8));
-        buttonPanel.add(deleteButton);
-        buttonPanel.add(renameButton);
-        buttonPanel.add(newButton);
-        buttonPanel.add(openButton);
+        // Button panel with left and right sections
+        JPanel buttonPanel = new JPanel(new BorderLayout());
+        JPanel leftButtons = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 8));
+        leftButtons.add(restorePresetsButton);
+        JPanel rightButtons = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 8));
+        rightButtons.add(deleteButton);
+        rightButtons.add(renameButton);
+        rightButtons.add(newButton);
+        rightButtons.add(openButton);
+        buttonPanel.add(leftButtons, BorderLayout.WEST);
+        buttonPanel.add(rightButtons, BorderLayout.EAST);
 
         mainContent.add(listWrapper, BorderLayout.CENTER);
         mainContent.add(buttonPanel, BorderLayout.SOUTH);
@@ -335,6 +378,49 @@ public class LauncherFrame extends JFrame {
         openWindows.remove(strategyId);
     }
 
+    private void restorePresets() {
+        int result = JOptionPane.showConfirmDialog(this,
+            "Restore all preset strategies to their default settings?\n\n" +
+            "This will overwrite any modifications you've made to preset strategies.",
+            "Restore Presets",
+            JOptionPane.YES_NO_OPTION,
+            JOptionPane.QUESTION_MESSAGE);
+
+        if (result == JOptionPane.YES_OPTION) {
+            strategyStore.restoreAllPresets();
+            loadProjects();
+            JOptionPane.showMessageDialog(this,
+                "Presets have been restored to their default settings.",
+                "Presets Restored",
+                JOptionPane.INFORMATION_MESSAGE);
+        }
+    }
+
+    private void restoreSelectedPreset() {
+        Strategy selected = projectList.getSelectedValue();
+        if (selected == null || !selected.isPreset()) return;
+
+        int result = JOptionPane.showConfirmDialog(this,
+            "Restore '" + selected.getName() + "' to its default settings?\n\n" +
+            "This will overwrite any modifications you've made.",
+            "Restore Preset",
+            JOptionPane.YES_NO_OPTION,
+            JOptionPane.QUESTION_MESSAGE);
+
+        if (result == JOptionPane.YES_OPTION) {
+            Strategy restored = strategyStore.installPreset(selected.getPresetId());
+            if (restored != null) {
+                loadProjects();
+
+                // Update window if open
+                ProjectWindow window = openWindows.get(selected.getId());
+                if (window != null) {
+                    window.reloadStrategy();
+                }
+            }
+        }
+    }
+
     @Override
     public void setVisible(boolean visible) {
         super.setVisible(visible);
@@ -397,7 +483,12 @@ public class LauncherFrame extends JFrame {
         public Component getListCellRendererComponent(JList<? extends Strategy> list, Strategy value,
                 int index, boolean isSelected, boolean cellHasFocus) {
 
-            nameLabel.setText(value.getName());
+            // Show preset indicator in name
+            String displayName = value.getName();
+            if (value.isPreset()) {
+                displayName += "  [Preset]";
+            }
+            nameLabel.setText(displayName);
 
             // Build details string
             String symbol = value.getSymbol();
@@ -406,7 +497,11 @@ public class LauncherFrame extends JFrame {
                 ? value.getUpdated().atZone(ZoneId.systemDefault()).format(DATE_FORMAT)
                 : "Never";
 
-            detailsLabel.setText(symbol + " • " + timeframe + " • Updated: " + lastUpdated);
+            String details = symbol + " • " + timeframe + " • Updated: " + lastUpdated;
+            if (value.isPreset()) {
+                details += " • v" + value.getPresetVersion();
+            }
+            detailsLabel.setText(details);
 
             if (isSelected) {
                 setBackground(list.getSelectionBackground());

@@ -45,6 +45,61 @@ tasks.named('test') {
     useJUnitPlatform()
 }
 
+// macOS app bundle using jpackage (included in JDK 14+)
+tasks.register('jpackageApp', Exec) {
+    dependsOn 'fatJar'
+
+    def outputDir = layout.buildDirectory.dir('jpackage').get().asFile
+    def fatJarFile = layout.buildDirectory.file("libs/${project.name}-${project.version}-all.jar").get().asFile
+
+    doFirst {
+        outputDir.mkdirs()
+    }
+
+    def args = [
+            'jpackage',
+            '--type', 'app-image',
+            '--name', 'Tradery',
+            '--app-version', project.version,
+            '--input', fatJarFile.parentFile.absolutePath,
+            '--main-jar', fatJarFile.name,
+            '--main-class', application.mainClass.get(),
+            '--dest', outputDir.absolutePath,
+            '--java-options', '-Xmx512m',
+            '--mac-package-name', 'Tradery'
+    ]
+
+    // Add icon if it exists
+    def iconFile = file('src/main/resources/icon.icns')
+    if (iconFile.exists()) {
+        args.addAll(['--icon', iconFile.absolutePath])
+    }
+
+    commandLine args
+
+    doLast {
+        println "Created: ${outputDir}/Tradery.app"
+    }
+}
+
+// Create DMG installer
+tasks.register('jpackageDmg', Exec) {
+    dependsOn 'jpackageApp'
+
+    def outputDir = layout.buildDirectory.dir('jpackage').get().asFile
+    def appPath = new File(outputDir, 'Tradery.app')
+    def dmgPath = new File(outputDir, "Tradery-${project.version}.dmg")
+
+    commandLine 'hdiutil', 'create', '-volname', 'Tradery',
+            '-srcfolder', appPath.absolutePath,
+            '-ov', '-format', 'UDZO',
+            dmgPath.absolutePath
+
+    doLast {
+        println "Created: ${dmgPath}"
+    }
+}
+
 // Create fat JAR for easy distribution
 tasks.register('fatJar', Jar) {
     archiveClassifier = 'all'

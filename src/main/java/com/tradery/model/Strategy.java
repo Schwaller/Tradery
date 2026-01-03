@@ -17,6 +17,10 @@ public class Strategy {
     private String description;
     private String entry;
 
+    // Preset tracking - null for user-created strategies
+    private String presetId;      // Matches the bundled preset ID (e.g., "rsi-reversal")
+    private String presetVersion; // Version of the preset (e.g., "1.0")
+
     // Legacy fields - kept for JSON backward compatibility, migrated to exitZones on load
     private String exit;
     private String stopLossType;
@@ -109,6 +113,29 @@ public class Strategy {
     public void setEntry(String entry) {
         this.entry = entry;
         this.updated = Instant.now();
+    }
+
+    public String getPresetId() {
+        return presetId;
+    }
+
+    public void setPresetId(String presetId) {
+        this.presetId = presetId;
+    }
+
+    public String getPresetVersion() {
+        return presetVersion;
+    }
+
+    public void setPresetVersion(String presetVersion) {
+        this.presetVersion = presetVersion;
+    }
+
+    /**
+     * Check if this strategy is a preset (bundled with the app)
+     */
+    public boolean isPreset() {
+        return presetId != null && !presetId.isEmpty();
     }
 
     public String getExit() {

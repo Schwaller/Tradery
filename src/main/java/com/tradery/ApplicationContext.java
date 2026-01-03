@@ -19,6 +19,9 @@ public class ApplicationContext {
     private ApplicationContext() {
         this.candleStore = new CandleStore();
         this.strategyStore = new StrategyStore(new File(TraderyApp.USER_DIR, "strategies"));
+
+        // Install any missing preset strategies on startup
+        this.strategyStore.installMissingPresets();
     }
 
     public static synchronized ApplicationContext getInstance() {

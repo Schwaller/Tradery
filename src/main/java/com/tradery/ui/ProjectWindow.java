@@ -680,6 +680,19 @@ public class ProjectWindow extends JFrame {
         return strategy.getId();
     }
 
+    /**
+     * Reload strategy from disk and refresh all UI components.
+     * Called when the preset is restored externally.
+     */
+    public void reloadStrategy() {
+        Strategy reloaded = strategyStore.load(strategy.getId());
+        if (reloaded != null) {
+            this.strategy = reloaded;
+            loadStrategyData();
+            runBacktest();
+        }
+    }
+
     public void bringToFront() {
         toFront();
         requestFocus();
