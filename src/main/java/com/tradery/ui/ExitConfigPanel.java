@@ -148,10 +148,7 @@ public class ExitConfigPanel extends JPanel {
 
         ZoneEditor(ExitZone zone, Runnable onRemove, Runnable onChange) {
             setLayout(new BorderLayout(4, 2));
-            setBorder(BorderFactory.createCompoundBorder(
-                BorderFactory.createMatteBorder(0, 0, 0, 1, Color.LIGHT_GRAY),
-                BorderFactory.createEmptyBorder(4, 4, 4, 8)
-            ));
+            setBorder(BorderFactory.createEmptyBorder(4, 4, 4, 8));
             setOpaque(false);
             setPreferredSize(new Dimension(200, 220));
             setMinimumSize(new Dimension(200, 100));
@@ -177,9 +174,11 @@ public class ExitConfigPanel extends JPanel {
                 zone != null && zone.minPnlPercent() != null ? zone.minPnlPercent() : -5.0,
                 -100.0, 100.0, 0.5));
             hasMinPnl.setSelected(zone != null && zone.minPnlPercent() != null);
-            minPnlSpinner.setEnabled(hasMinPnl.isSelected());
+            minPnlSpinner.setVisible(hasMinPnl.isSelected());
             hasMinPnl.addActionListener(e -> {
-                minPnlSpinner.setEnabled(hasMinPnl.isSelected());
+                minPnlSpinner.setVisible(hasMinPnl.isSelected());
+                revalidate();
+                repaint();
                 onChange.run();
             });
             minPnlSpinner.addChangeListener(e -> onChange.run());
@@ -189,9 +188,11 @@ public class ExitConfigPanel extends JPanel {
                 zone != null && zone.maxPnlPercent() != null ? zone.maxPnlPercent() : 0.0,
                 -100.0, 100.0, 0.5));
             hasMaxPnl.setSelected(zone != null && zone.maxPnlPercent() != null);
-            maxPnlSpinner.setEnabled(hasMaxPnl.isSelected());
+            maxPnlSpinner.setVisible(hasMaxPnl.isSelected());
             hasMaxPnl.addActionListener(e -> {
-                maxPnlSpinner.setEnabled(hasMaxPnl.isSelected());
+                maxPnlSpinner.setVisible(hasMaxPnl.isSelected());
+                revalidate();
+                repaint();
                 onChange.run();
             });
             maxPnlSpinner.addChangeListener(e -> onChange.run());
@@ -209,21 +210,26 @@ public class ExitConfigPanel extends JPanel {
                 zone != null && zone.stopLossValue() != null ? zone.stopLossValue() : 2.0,
                 0.1, 100.0, 0.5));
             slTypeCombo.setSelectedIndex(slTypeToIndex(zone != null ? zone.stopLossType() : "none"));
-            slValueSpinner.setEnabled(slTypeCombo.getSelectedIndex() > 0);
+            slValueSpinner.setVisible(slTypeCombo.getSelectedIndex() > 0);
             slTypeCombo.addActionListener(e -> {
-                slValueSpinner.setEnabled(slTypeCombo.getSelectedIndex() > 0);
+                slValueSpinner.setVisible(slTypeCombo.getSelectedIndex() > 0);
+                revalidate();
+                repaint();
                 onChange.run();
             });
             slValueSpinner.addChangeListener(e -> onChange.run());
 
             tpTypeCombo = new JComboBox<>(TP_TYPES);
+            tpTypeCombo.setPreferredSize(slTypeCombo.getPreferredSize());
             tpValueSpinner = new JSpinner(new SpinnerNumberModel(
                 zone != null && zone.takeProfitValue() != null ? zone.takeProfitValue() : 5.0,
                 0.1, 100.0, 0.5));
             tpTypeCombo.setSelectedIndex(tpTypeToIndex(zone != null ? zone.takeProfitType() : "none"));
-            tpValueSpinner.setEnabled(tpTypeCombo.getSelectedIndex() > 0);
+            tpValueSpinner.setVisible(tpTypeCombo.getSelectedIndex() > 0);
             tpTypeCombo.addActionListener(e -> {
-                tpValueSpinner.setEnabled(tpTypeCombo.getSelectedIndex() > 0);
+                tpValueSpinner.setVisible(tpTypeCombo.getSelectedIndex() > 0);
+                revalidate();
+                repaint();
                 onChange.run();
             });
             tpValueSpinner.addChangeListener(e -> onChange.run());
@@ -244,6 +250,8 @@ public class ExitConfigPanel extends JPanel {
                 slValueSpinner.setVisible(!immediate);
                 tpTypeCombo.setVisible(!immediate);
                 tpValueSpinner.setVisible(!immediate);
+                revalidate();
+                repaint();
                 onChange.run();
             });
 
@@ -260,7 +268,7 @@ public class ExitConfigPanel extends JPanel {
             centerPanel.setOpaque(false);
             GridBagConstraints c = new GridBagConstraints();
             c.anchor = GridBagConstraints.WEST;
-            c.insets = new Insets(1, 0, 1, 4);
+            c.insets = new Insets(1, 0, 2, 4);
             c.gridy = 0;
 
             // Min P&L row
@@ -303,6 +311,12 @@ public class ExitConfigPanel extends JPanel {
             centerPanel.add(tpTypeCombo, c);
             c.gridx = 1; c.weightx = 1; c.fill = GridBagConstraints.HORIZONTAL;
             centerPanel.add(tpValueSpinner, c);
+
+            // Bottom filler to push content to top when exit DSL is hidden
+            c.gridy++; c.gridx = 0; c.gridwidth = 2; c.weighty = 1; c.fill = GridBagConstraints.BOTH;
+            JPanel filler = new JPanel();
+            filler.setOpaque(false);
+            centerPanel.add(filler, c);
 
             add(topRow, BorderLayout.NORTH);
             add(centerPanel, BorderLayout.CENTER);
