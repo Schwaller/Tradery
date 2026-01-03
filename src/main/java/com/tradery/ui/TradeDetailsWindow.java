@@ -383,7 +383,7 @@ public class TradeDetailsWindow extends JDialog {
             } else {
                 Trade trade = row.singleTrade;
                 boolean isRejected = row.isRejected();
-                String prefix = row.isChild ? "    " + row.groupIndex + "." + row.childIndex : "   " + row.groupIndex;
+                String prefix = row.isChild ? "    " + row.groupIndex + "." + row.childIndex : "  " + row.groupIndex;
 
                 return switch (columnIndex) {
                     case 0 -> prefix;

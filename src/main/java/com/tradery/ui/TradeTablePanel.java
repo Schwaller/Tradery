@@ -309,11 +309,11 @@ public class TradeTablePanel extends JPanel {
             return switch (columnIndex) {
                 case 0 -> {
                     if (row.isGroup) {
-                        yield (row.expanded ? "▼ " : "▶ ") + row.groupIndex + " (" + row.trades.size() + ")";
+                        yield (row.expanded ? "▼ " : "▶ ") + row.groupIndex;
                     } else if (row.isChild) {
                         yield "    " + row.groupIndex + "." + row.childIndex;
                     } else {
-                        yield "   " + row.groupIndex;  // Pad to align with group numbers
+                        yield "  " + row.groupIndex;  // Pad to align with group numbers
                     }
                 }
                 case 1 -> {
