@@ -56,6 +56,7 @@ public class MetricsPanel extends JPanel {
         JLabel title = new JLabel("Performance Metrics");
         title.setFont(title.getFont().deriveFont(Font.BOLD, 12f));
         title.setForeground(Color.GRAY);
+        title.setBorder(BorderFactory.createEmptyBorder(0, 0, 8, 0));
 
         JPanel gridPanel = new JPanel(new GridLayout(0, 2, 8, 4));
         gridPanel.setOpaque(false);
@@ -113,7 +114,7 @@ public class MetricsPanel extends JPanel {
         totalFeesLabel.setText(String.format("$%.2f", metrics.totalFees()));
         totalFeesLabel.setForeground(new Color(244, 67, 54));
 
-        maxCapitalUsageLabel.setText(String.format("%.1f%%", metrics.maxCapitalUsage()));
+        maxCapitalUsageLabel.setText(String.format("$%,.0f (%.1f%%)", metrics.maxCapitalDollars(), metrics.maxCapitalUsage()));
 
         finalEquityLabel.setText(String.format("$%,.2f", metrics.finalEquity()));
     }

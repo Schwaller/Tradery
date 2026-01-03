@@ -24,14 +24,15 @@ public record PerformanceMetrics(
     double averageHoldingPeriod,
     double finalEquity,
     double totalFees,
-    double maxCapitalUsage
+    double maxCapitalUsage,
+    double maxCapitalDollars
 ) {
     /**
      * Create empty metrics (no trades)
      */
     public static PerformanceMetrics empty(double initialCapital) {
         return new PerformanceMetrics(
-            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, initialCapital, 0, 0
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, initialCapital, 0, 0, 0
         );
     }
 
@@ -119,25 +120,25 @@ public record PerformanceMetrics(
         }
 
         // Calculate max capital usage
-        double maxCapUsage = calculateMaxCapitalUsage(trades, initialCapital);
+        double[] maxCap = calculateMaxCapitalUsage(trades, initialCapital);
 
         return new PerformanceMetrics(
             total, winners, losers, winRate, profitFactor,
             totalReturn, totalReturnPct, maxDD, maxDDPct, sharpe,
-            avgWin, avgLoss, largestWin, largestLoss, avgHolding, equity, totalFees, maxCapUsage
+            avgWin, avgLoss, largestWin, largestLoss, avgHolding, equity, totalFees, maxCap[0], maxCap[1]
         );
     }
 
     /**
-     * Calculate max capital usage percentage from trades
+     * Calculate max capital usage (percentage and dollars) from trades
      */
-    private static double calculateMaxCapitalUsage(java.util.List<Trade> trades, double initialCapital) {
+    private static double[] calculateMaxCapitalUsage(java.util.List<Trade> trades, double initialCapital) {
         // Filter valid trades (non-rejected)
         java.util.List<Trade> validTrades = trades.stream()
             .filter(t -> t.quantity() > 0)
             .toList();
 
-        if (validTrades.isEmpty()) return 0;
+        if (validTrades.isEmpty()) return new double[] { 0, 0 };
 
         // Build timeline of events
         record Event(long time, boolean isEntry, double value, double pnl) {}
@@ -162,6 +163,7 @@ public record PerformanceMetrics(
         double equity = initialCapital;
         double invested = 0;
         double maxUsage = 0;
+        double dollarsAtMaxUsage = 0;
 
         for (Event e : events) {
             if (e.isEntry()) {
@@ -172,9 +174,12 @@ public record PerformanceMetrics(
             }
             invested = Math.max(0, invested);
             double usage = equity > 0 ? (invested / equity) * 100 : 0;
-            maxUsage = Math.max(maxUsage, usage);
+            if (usage > maxUsage) {
+                maxUsage = usage;
+                dollarsAtMaxUsage = invested;
+            }
         }
 
-        return maxUsage;
+        return new double[] { maxUsage, dollarsAtMaxUsage };
     }
 }
