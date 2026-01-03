@@ -24,7 +24,7 @@ public class Strategy {
     private boolean dcaEnabled = false;       // Dollar cost averaging mode
     private int dcaMaxEntries = 3;            // Max DCA entries when dcaEnabled
     private int dcaBarsBetween = 1;           // Min bars between DCA entries
-    private String dcaMode = "require_signal"; // "require_signal" or "continue_always"
+    private String dcaMode = "pause"; // "pause", "abort", or "continue"
     private int minBarsBeforeExit = 0;        // Min bars after last entry before exit is evaluated
     private boolean enabled;
     private Instant created;
@@ -192,7 +192,11 @@ public class Strategy {
     }
 
     public String getDcaMode() {
-        return dcaMode != null ? dcaMode : "require_signal";
+        if (dcaMode == null) return "pause";
+        // Handle legacy values
+        if ("require_signal".equals(dcaMode)) return "pause";
+        if ("continue_always".equals(dcaMode)) return "continue";
+        return dcaMode;
     }
 
     public void setDcaMode(String dcaMode) {

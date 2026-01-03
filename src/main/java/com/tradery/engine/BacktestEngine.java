@@ -245,14 +245,36 @@ public class BacktestEngine {
                 boolean isDcaEntry = strategy.isDcaEnabled() && !openTrades.isEmpty();
                 int requiredDistance = isDcaEntry ? strategy.getDcaBarsBetween() : minCandlesBetween;
                 boolean passesMinDistance = (i - lastEntryBar) >= requiredDistance;
+                String dcaMode = strategy.getDcaMode();
+
+                // Check if entry signal is present
+                boolean signalPresent = evaluator.evaluate(entryResult.ast(), i);
+
+                // Handle DCA abort mode - close all trades if signal lost
+                if (isDcaEntry && "abort".equals(dcaMode) && !signalPresent && toClose.isEmpty()) {
+                    for (OpenTradeState ots : openTrades) {
+                        ots.exitReason = "signal_lost";
+                        ots.exitPrice = candle.close();
+                        toClose.add(ots);
+                    }
+                    // Close the aborted trades
+                    for (OpenTradeState ots : toClose) {
+                        Trade closedTrade = ots.trade.close(i, candle.timestamp(), ots.exitPrice, config.commission(), ots.exitReason);
+                        trades.add(closedTrade);
+                        currentEquity += closedTrade.pnl() != null ? closedTrade.pnl() : 0;
+                        openTrades.remove(ots);
+                    }
+                    toClose.clear();
+                }
 
                 if (canOpenMore && passesMinDistance) {
                     boolean shouldEnter;
-                    if (isDcaEntry && "continue_always".equals(strategy.getDcaMode())) {
-                        // In continue_always mode, DCA entries don't require signal
+                    if (isDcaEntry && "continue".equals(dcaMode)) {
+                        // In continue mode, DCA entries don't require signal
                         shouldEnter = true;
                     } else {
-                        shouldEnter = evaluator.evaluate(entryResult.ast(), i);
+                        // pause mode or first entry - require signal
+                        shouldEnter = signalPresent;
                     }
 
                     if (shouldEnter) {

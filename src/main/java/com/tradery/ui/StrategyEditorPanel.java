@@ -30,7 +30,7 @@ public class StrategyEditorPanel extends JPanel {
 
     private static final String[] SL_TYPES = {"No Stop Loss", "Stop Loss %", "Trailing Stop %", "Stop Loss ATR", "Trailing Stop ATR"};
     private static final String[] TP_TYPES = {"No Take Profit", "Take Profit %", "Take Profit ATR"};
-    private static final String[] DCA_MODES = {"Abort if signal lost", "Continue regardless"};
+    private static final String[] DCA_MODES = {"Pause", "Abort", "Continue"};
 
     private Strategy strategy;
     private Runnable onChange;
@@ -135,11 +135,6 @@ public class StrategyEditorPanel extends JPanel {
     }
 
     private void layoutComponents() {
-        // Title
-        JLabel title = new JLabel("Strategy");
-        title.setFont(title.getFont().deriveFont(Font.BOLD, 12f));
-        title.setForeground(Color.GRAY);
-
         // Entry condition
         JPanel entryPanel = new JPanel(new BorderLayout(0, 2));
         entryPanel.setOpaque(false);
@@ -172,7 +167,7 @@ public class StrategyEditorPanel extends JPanel {
         dcaDetailsPanel.add(dcaBarsBetweenSpinner, new GridBagConstraints(1, 1, 1, 1, 1, 0, GridBagConstraints.WEST, GridBagConstraints.HORIZONTAL, new Insets(2, 0, 2, 4), 0, 0));
 
         // Mode row
-        JLabel modeLabel = new JLabel("Mode:");
+        JLabel modeLabel = new JLabel("Signal Loss:");
         modeLabel.setForeground(Color.GRAY);
         dcaDetailsPanel.add(modeLabel, new GridBagConstraints(0, 2, 1, 1, 0, 0, GridBagConstraints.WEST, GridBagConstraints.NONE, new Insets(2, 0, 2, 4), 0, 0));
         dcaDetailsPanel.add(dcaModeCombo, new GridBagConstraints(1, 2, 1, 1, 1, 0, GridBagConstraints.WEST, GridBagConstraints.HORIZONTAL, new Insets(2, 0, 2, 4), 0, 0));
@@ -234,7 +229,6 @@ public class StrategyEditorPanel extends JPanel {
         contentPanel.add(entryExitPanel, BorderLayout.CENTER);
         contentPanel.add(settingsPanel, BorderLayout.SOUTH);
 
-        add(title, BorderLayout.NORTH);
         add(contentPanel, BorderLayout.CENTER);
     }
 
@@ -269,7 +263,8 @@ public class StrategyEditorPanel extends JPanel {
                 dcaEnabledCheckbox.setSelected(strategy.isDcaEnabled());
                 dcaMaxEntriesSpinner.setValue(strategy.getDcaMaxEntries());
                 dcaBarsBetweenSpinner.setValue(strategy.getDcaBarsBetween());
-                dcaModeCombo.setSelectedIndex("continue_always".equals(strategy.getDcaMode()) ? 1 : 0);
+                String mode = strategy.getDcaMode();
+                dcaModeCombo.setSelectedIndex("abort".equals(mode) ? 1 : "continue".equals(mode) ? 2 : 0);
                 updateDcaVisibility();
             } else {
                 entryEditor.setText("");
@@ -313,7 +308,8 @@ public class StrategyEditorPanel extends JPanel {
         strategy.setDcaEnabled(dcaEnabledCheckbox.isSelected());
         strategy.setDcaMaxEntries(((Number) dcaMaxEntriesSpinner.getValue()).intValue());
         strategy.setDcaBarsBetween(((Number) dcaBarsBetweenSpinner.getValue()).intValue());
-        strategy.setDcaMode(dcaModeCombo.getSelectedIndex() == 1 ? "continue_always" : "require_signal");
+        String[] modes = {"pause", "abort", "continue"};
+        strategy.setDcaMode(modes[dcaModeCombo.getSelectedIndex()]);
     }
 
     /**
