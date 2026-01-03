@@ -7,14 +7,16 @@ import java.awt.*;
 
 /**
  * Panel for editing project-specific backtest settings.
- * Includes position sizing, fees, and slippage.
- * (Symbol, timeframe, and capital are in the toolbar)
+ * Includes capital, position sizing, fees, and slippage.
+ * (Symbol and timeframe are in the toolbar)
  */
 public class ProjectSettingsPanel extends JPanel {
 
+    private JSpinner capitalSpinner;
     private JComboBox<String> positionSizingCombo;
     private JSpinner feeSpinner;
     private JSpinner slippageSpinner;
+    private JLabel capitalLabel;
 
     private static final String[] POSITION_SIZING_TYPES = {
         "Fixed 1%", "Fixed 5%", "Fixed 10%",
@@ -36,6 +38,10 @@ public class ProjectSettingsPanel extends JPanel {
     }
 
     private void initializeComponents() {
+        // Capital spinner: default $10,000, range $100 to $10M
+        capitalSpinner = new JSpinner(new SpinnerNumberModel(10000, 100, 10000000, 1000));
+        ((JSpinner.NumberEditor) capitalSpinner.getEditor()).getFormat().setGroupingUsed(true);
+
         positionSizingCombo = new JComboBox<>(POSITION_SIZING_TYPES);
 
         // Fee: 0.1% default (Binance spot), range 0-1%
@@ -49,6 +55,7 @@ public class ProjectSettingsPanel extends JPanel {
         slippageSpinner.setEditor(slipEditor);
 
         // Wire up change listeners
+        capitalSpinner.addChangeListener(e -> fireChange());
         positionSizingCombo.addActionListener(e -> fireChange());
         feeSpinner.addChangeListener(e -> fireChange());
         slippageSpinner.addChangeListener(e -> fireChange());
@@ -74,17 +81,21 @@ public class ProjectSettingsPanel extends JPanel {
         JPanel settingsGrid = new JPanel(new GridBagLayout());
         settingsGrid.setOpaque(false);
 
+        // Capital row
+        settingsGrid.add(new JLabel("Capital:"), new GridBagConstraints(0, 0, 1, 1, 0, 0, GridBagConstraints.WEST, GridBagConstraints.NONE, new Insets(2, 0, 2, 8), 0, 0));
+        settingsGrid.add(capitalSpinner, new GridBagConstraints(1, 0, 1, 1, 1, 0, GridBagConstraints.WEST, GridBagConstraints.HORIZONTAL, new Insets(2, 0, 2, 0), 0, 0));
+
         // Position sizing row
-        settingsGrid.add(new JLabel("Position Size:"), new GridBagConstraints(0, 0, 1, 1, 0, 0, GridBagConstraints.WEST, GridBagConstraints.NONE, new Insets(2, 0, 2, 8), 0, 0));
-        settingsGrid.add(positionSizingCombo, new GridBagConstraints(1, 0, 1, 1, 1, 0, GridBagConstraints.WEST, GridBagConstraints.HORIZONTAL, new Insets(2, 0, 2, 8), 0, 0));
+        settingsGrid.add(new JLabel("Position Size:"), new GridBagConstraints(0, 1, 1, 1, 0, 0, GridBagConstraints.WEST, GridBagConstraints.NONE, new Insets(2, 0, 2, 8), 0, 0));
+        settingsGrid.add(positionSizingCombo, new GridBagConstraints(1, 1, 1, 1, 1, 0, GridBagConstraints.WEST, GridBagConstraints.HORIZONTAL, new Insets(2, 0, 2, 0), 0, 0));
 
         // Fee row
-        settingsGrid.add(new JLabel("Fee:"), new GridBagConstraints(0, 1, 1, 1, 0, 0, GridBagConstraints.WEST, GridBagConstraints.NONE, new Insets(2, 0, 2, 8), 0, 0));
-        settingsGrid.add(feeSpinner, new GridBagConstraints(1, 1, 1, 1, 1, 0, GridBagConstraints.WEST, GridBagConstraints.HORIZONTAL, new Insets(2, 0, 2, 8), 0, 0));
+        settingsGrid.add(new JLabel("Fee:"), new GridBagConstraints(0, 2, 1, 1, 0, 0, GridBagConstraints.WEST, GridBagConstraints.NONE, new Insets(2, 0, 2, 8), 0, 0));
+        settingsGrid.add(feeSpinner, new GridBagConstraints(1, 2, 1, 1, 1, 0, GridBagConstraints.WEST, GridBagConstraints.HORIZONTAL, new Insets(2, 0, 2, 0), 0, 0));
 
         // Slippage row
-        settingsGrid.add(new JLabel("Slippage:"), new GridBagConstraints(0, 2, 1, 1, 0, 0, GridBagConstraints.WEST, GridBagConstraints.NONE, new Insets(2, 0, 2, 8), 0, 0));
-        settingsGrid.add(slippageSpinner, new GridBagConstraints(1, 2, 1, 1, 1, 0, GridBagConstraints.WEST, GridBagConstraints.HORIZONTAL, new Insets(2, 0, 2, 8), 0, 0));
+        settingsGrid.add(new JLabel("Slippage:"), new GridBagConstraints(0, 3, 1, 1, 0, 0, GridBagConstraints.WEST, GridBagConstraints.NONE, new Insets(2, 0, 2, 8), 0, 0));
+        settingsGrid.add(slippageSpinner, new GridBagConstraints(1, 3, 1, 1, 1, 0, GridBagConstraints.WEST, GridBagConstraints.HORIZONTAL, new Insets(2, 0, 2, 0), 0, 0));
 
         add(title, BorderLayout.NORTH);
         add(settingsGrid, BorderLayout.CENTER);
@@ -99,6 +110,7 @@ public class ProjectSettingsPanel extends JPanel {
 
         try {
             if (strategy != null) {
+                capitalSpinner.setValue(strategy.getInitialCapital());
                 positionSizingCombo.setSelectedItem(positionSizingTypeToDisplay(strategy.getPositionSizingType(), strategy.getPositionSizingValue()));
                 feeSpinner.setValue(strategy.getFeePercent());
                 slippageSpinner.setValue(strategy.getSlippagePercent());
@@ -114,6 +126,8 @@ public class ProjectSettingsPanel extends JPanel {
     public void applyToStrategy(Strategy strategy) {
         if (strategy == null) return;
 
+        strategy.setInitialCapital(((Number) capitalSpinner.getValue()).doubleValue());
+
         String sizingDisplay = (String) positionSizingCombo.getSelectedItem();
         strategy.setPositionSizingType(displayToPositionSizingType(sizingDisplay));
         strategy.setPositionSizingValue(displayToPositionSizingValue(sizingDisplay));
@@ -123,6 +137,10 @@ public class ProjectSettingsPanel extends JPanel {
     }
 
     // Getters for direct access
+
+    public double getCapital() {
+        return ((Number) capitalSpinner.getValue()).doubleValue();
+    }
 
     public String getPositionSizing() {
         return (String) positionSizingCombo.getSelectedItem();

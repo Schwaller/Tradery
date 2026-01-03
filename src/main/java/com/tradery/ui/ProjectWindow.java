@@ -39,19 +39,18 @@ public class ProjectWindow extends JFrame {
     private TradeTablePanel tradeTablePanel;
     private JLabel statusBar;
     private JLabel titleLabel;
-    private JButton runButton;
 
     // Toolbar controls
     private JComboBox<String> symbolCombo;
     private JComboBox<String> timeframeCombo;
     private JComboBox<String> durationCombo;
-    private JSpinner capitalSpinner;
     private JProgressBar progressBar;
     private JLabel progressLabel;
     private JToggleButton fitWidthBtn;
     private JToggleButton fixedWidthBtn;
     private JToggleButton fitYBtn;
     private JToggleButton fullYBtn;
+    private JButton clearCacheBtn;
 
     private static final String[] SYMBOLS = {
         "BTCUSDT", "ETHUSDT", "BNBUSDT", "XRPUSDT", "ADAUSDT",
@@ -167,13 +166,6 @@ public class ProjectWindow extends JFrame {
         durationCombo = new JComboBox<>();
         updateDurationOptions();
 
-        capitalSpinner = new JSpinner(new SpinnerNumberModel(10000, 100, 10000000, 1000));
-        ((JSpinner.NumberEditor) capitalSpinner.getEditor()).getFormat().setGroupingUsed(true);
-
-        // Toolbar buttons
-        runButton = new JButton("Run Backtest");
-        runButton.addActionListener(e -> runBacktest());
-
         // Progress bar (hidden by default)
         progressBar = new JProgressBar(0, 100);
         progressBar.setPreferredSize(new Dimension(120, 16));
@@ -203,6 +195,11 @@ public class ProjectWindow extends JFrame {
         fitYBtn.addActionListener(e -> chartPanel.setFitYAxisToVisibleData(true));
         fullYBtn.addActionListener(e -> chartPanel.setFitYAxisToVisibleData(false));
 
+        // Clear cache button
+        clearCacheBtn = new JButton("Reload Data");
+        clearCacheBtn.setToolTipText("Clear cached OHLC data and redownload from Binance");
+        clearCacheBtn.addActionListener(e -> clearCacheAndReload());
+
         // Auto-save timer
         autoSaveTimer = new Timer(AUTO_SAVE_DELAY_MS, e -> saveStrategyQuietly());
         autoSaveTimer.setRepeats(false);
@@ -215,7 +212,6 @@ public class ProjectWindow extends JFrame {
         symbolCombo.addActionListener(e -> scheduleAutoUpdate());
         timeframeCombo.addActionListener(e -> scheduleAutoUpdate());
         durationCombo.addActionListener(e -> scheduleAutoUpdate());
-        capitalSpinner.addChangeListener(e -> scheduleAutoUpdate());
 
         // Wire up panel change listeners
         editorPanel.setOnChange(this::scheduleAutoUpdate);
@@ -342,7 +338,7 @@ public class ProjectWindow extends JFrame {
         titleLabel.setFont(titleLabel.getFont().deriveFont(Font.BOLD, 13f));
         titleBar.add(titleLabel, BorderLayout.CENTER);
 
-        // Toolbar with symbol, timeframe, capital, Run button
+        // Toolbar with symbol, timeframe, Run button
         JPanel toolbarLeft = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 4));
 
         toolbarLeft.add(new JLabel("Symbol:"));
@@ -351,12 +347,7 @@ public class ProjectWindow extends JFrame {
         toolbarLeft.add(new JLabel("Timeframe:"));
         toolbarLeft.add(timeframeCombo);
         toolbarLeft.add(durationCombo);
-        toolbarLeft.add(Box.createHorizontalStrut(8));
-        toolbarLeft.add(new JLabel("Capital:"));
-        toolbarLeft.add(capitalSpinner);
         toolbarLeft.add(Box.createHorizontalStrut(16));
-        toolbarLeft.add(runButton);
-        toolbarLeft.add(Box.createHorizontalStrut(12));
 
         // Toggle buttons
         toolbarLeft.add(fitWidthBtn);
@@ -367,6 +358,8 @@ public class ProjectWindow extends JFrame {
 
         // Progress bar panel (right side of toolbar)
         JPanel toolbarRight = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 4));
+        toolbarRight.add(clearCacheBtn);
+        toolbarRight.add(Box.createHorizontalStrut(8));
         toolbarRight.add(progressLabel);
         toolbarRight.add(progressBar);
 
@@ -461,7 +454,6 @@ public class ProjectWindow extends JFrame {
             // Duration options depend on timeframe, so update them first
             updateDurationOptions();
             durationCombo.setSelectedItem(strategy.getDuration());
-            capitalSpinner.setValue(strategy.getInitialCapital());
         } finally {
             ignoringFileChanges = false;
         }
@@ -471,7 +463,6 @@ public class ProjectWindow extends JFrame {
         strategy.setSymbol((String) symbolCombo.getSelectedItem());
         strategy.setTimeframe((String) timeframeCombo.getSelectedItem());
         strategy.setDuration((String) durationCombo.getSelectedItem());
-        strategy.setInitialCapital(((Number) capitalSpinner.getValue()).doubleValue());
     }
 
     private void startFileWatcher() {
@@ -522,6 +513,35 @@ public class ProjectWindow extends JFrame {
         });
     }
 
+    private void clearCacheAndReload() {
+        String symbol = (String) symbolCombo.getSelectedItem();
+
+        clearCacheBtn.setEnabled(false);
+        setStatus("Clearing cache for " + symbol + "...");
+
+        SwingWorker<Void, Void> worker = new SwingWorker<>() {
+            @Override
+            protected Void doInBackground() throws Exception {
+                candleStore.clearCache(symbol);
+                return null;
+            }
+
+            @Override
+            protected void done() {
+                clearCacheBtn.setEnabled(true);
+                try {
+                    get();
+                    setStatus("Cache cleared - reloading data...");
+                    runBacktest();
+                } catch (Exception e) {
+                    setStatus("Error clearing cache: " + e.getMessage());
+                }
+            }
+        };
+
+        worker.execute();
+    }
+
     private void runBacktest() {
         // Apply current UI values
         editorPanel.applyToStrategy(strategy);
@@ -531,7 +551,7 @@ public class ProjectWindow extends JFrame {
         // Build config from toolbar and settings panel
         String symbol = (String) symbolCombo.getSelectedItem();
         String resolution = (String) timeframeCombo.getSelectedItem();
-        double capital = ((Number) capitalSpinner.getValue()).doubleValue();
+        double capital = settingsPanel.getCapital();
         String sizingType = strategy.getPositionSizingType();
         double sizingValue = strategy.getPositionSizingValue();
         double commission = strategy.getTotalCommission();
@@ -548,7 +568,6 @@ public class ProjectWindow extends JFrame {
         );
 
         // Run in background
-        runButton.setEnabled(false);
         setProgress(0, "Starting...");
 
         SwingWorker<BacktestResult, BacktestEngine.Progress> worker = new SwingWorker<>() {
@@ -581,7 +600,6 @@ public class ProjectWindow extends JFrame {
 
             @Override
             protected void done() {
-                runButton.setEnabled(true);
                 try {
                     BacktestResult result = get();
 

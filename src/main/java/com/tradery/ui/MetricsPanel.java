@@ -21,6 +21,7 @@ public class MetricsPanel extends JPanel {
     private JLabel avgLossLabel;
     private JLabel finalEquityLabel;
     private JLabel totalFeesLabel;
+    private JLabel maxCapitalUsageLabel;
 
     public MetricsPanel() {
         setLayout(new BorderLayout());
@@ -41,6 +42,7 @@ public class MetricsPanel extends JPanel {
         avgLossLabel = createValueLabel("-");
         finalEquityLabel = createValueLabel("-");
         totalFeesLabel = createValueLabel("-");
+        maxCapitalUsageLabel = createValueLabel("-");
     }
 
     private JLabel createValueLabel(String text) {
@@ -66,6 +68,7 @@ public class MetricsPanel extends JPanel {
         addMetricRow(gridPanel, "Avg Win", avgWinLabel);
         addMetricRow(gridPanel, "Avg Loss", avgLossLabel);
         addMetricRow(gridPanel, "Total Fees", totalFeesLabel);
+        addMetricRow(gridPanel, "Max Capital", maxCapitalUsageLabel);
         addMetricRow(gridPanel, "Final Equity", finalEquityLabel);
 
         add(title, BorderLayout.NORTH);
@@ -110,6 +113,8 @@ public class MetricsPanel extends JPanel {
         totalFeesLabel.setText(String.format("$%.2f", metrics.totalFees()));
         totalFeesLabel.setForeground(new Color(244, 67, 54));
 
+        maxCapitalUsageLabel.setText(String.format("%.1f%%", metrics.maxCapitalUsage()));
+
         finalEquityLabel.setText(String.format("$%,.2f", metrics.finalEquity()));
     }
 
@@ -131,6 +136,7 @@ public class MetricsPanel extends JPanel {
         avgLossLabel.setForeground(Color.GRAY);
         totalFeesLabel.setText("-");
         totalFeesLabel.setForeground(Color.GRAY);
+        maxCapitalUsageLabel.setText("-");
         finalEquityLabel.setText("-");
     }
 }

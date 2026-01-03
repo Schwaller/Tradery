@@ -945,7 +945,12 @@ public class ChartsPanel extends JPanel {
     private void updateCapitalUsageChart(List<Candle> candles, List<Trade> trades, double initialCapital) {
         TimeSeries usageSeries = new TimeSeries("Capital Usage");
 
-        if (trades == null || trades.isEmpty()) {
+        // Filter out rejected trades (quantity = 0)
+        List<Trade> validTrades = trades == null ? List.of() : trades.stream()
+            .filter(t -> t.quantity() > 0)
+            .toList();
+
+        if (validTrades.isEmpty()) {
             // No trades, show 0% usage
             for (Candle c : candles) {
                 usageSeries.addOrUpdate(new Millisecond(new Date(c.timestamp())), 0.0);
@@ -955,7 +960,7 @@ public class ChartsPanel extends JPanel {
             java.util.Map<Long, Double> entryValues = new java.util.HashMap<>();
             java.util.Map<Long, Double> exitValues = new java.util.HashMap<>();
 
-            for (Trade t : trades) {
+            for (Trade t : validTrades) {
                 double tradeValue = t.entryPrice() * t.quantity();
                 entryValues.merge(t.entryTime(), tradeValue, Double::sum);
                 if (t.exitTime() != null) {
@@ -968,7 +973,7 @@ public class ChartsPanel extends JPanel {
 
             // Build P&L map for equity tracking
             java.util.Map<Long, Double> tradePnL = new java.util.HashMap<>();
-            for (Trade t : trades) {
+            for (Trade t : validTrades) {
                 if (t.exitTime() != null && t.pnl() != null) {
                     tradePnL.merge(t.exitTime(), t.pnl(), Double::sum);
                 }
@@ -989,8 +994,8 @@ public class ChartsPanel extends JPanel {
                 }
                 invested = Math.max(0, invested);
 
-                // Calculate usage percentage
-                double usagePercent = equity > 0 ? (invested / equity) * 100 : 0;
+                // Calculate usage percentage (cap at 100% - can appear higher if equity dropped)
+                double usagePercent = equity > 0 ? Math.min((invested / equity) * 100, 100.0) : 0;
                 usageSeries.addOrUpdate(new Millisecond(new Date(c.timestamp())), usagePercent);
             }
         }

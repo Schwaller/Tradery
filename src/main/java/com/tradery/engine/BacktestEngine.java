@@ -97,8 +97,9 @@ public class BacktestEngine {
         String currentGroupId = null;  // Groups DCA entries together
         int groupCounter = 0;
 
-        // DCA mode uses dcaMaxEntries, otherwise use maxOpenTrades
-        int maxOpenTrades = strategy.isDcaEnabled() ? strategy.getDcaMaxEntries() : strategy.getMaxOpenTrades();
+        // maxOpenTrades limits concurrent positions (DCA groups count as one position)
+        int maxPositions = strategy.getMaxOpenTrades();
+        int maxEntriesPerPosition = strategy.isDcaEnabled() ? strategy.getDcaMaxEntries() : 1;
         int minCandlesBetween = strategy.getMinCandlesBetweenTrades();
 
         if (onProgress != null) {
@@ -118,16 +119,59 @@ public class BacktestEngine {
             }
 
             try {
-                // In DCA mode, only check exits after all entries are complete
-                boolean dcaComplete = !strategy.isDcaEnabled() || openTrades.size() >= maxOpenTrades;
+                // Count open positions (trades with same groupId count as one position)
+                long openPositions = openTrades.stream()
+                    .map(ots -> ots.trade.groupId())
+                    .distinct()
+                    .count();
+
+                // Count entries in current position (for DCA)
+                final String groupIdForCount = currentGroupId;
+                int entriesInCurrentPosition = groupIdForCount == null ? 0 :
+                    (int) openTrades.stream()
+                        .filter(ots -> groupIdForCount.equals(ots.trade.groupId()))
+                        .count();
+
+                // In DCA mode, only check normal exits after current position has all entries
+                boolean dcaComplete = !strategy.isDcaEnabled() || entriesInCurrentPosition >= maxEntriesPerPosition;
 
                 // Check exit conditions for all open trades
                 List<OpenTradeState> toClose = new ArrayList<>();
                 String dcaExitReason = null;
                 double dcaExitPrice = candle.close();
 
-                // Skip exit checks if DCA is still accumulating
-                if (dcaComplete) {
+                // First, check for emergency exits (exitImmediately zones) - always checked even during DCA
+                for (OpenTradeState ots : openTrades) {
+                    double currentPnlPercent = calculatePnlPercent(ots.trade, candle.close());
+                    for (ParsedExitZone pz : parsedZones) {
+                        if (pz.zone.matches(currentPnlPercent) && pz.zone.exitImmediately()) {
+                            ots.exitReason = "zone_exit";
+                            ots.exitPrice = candle.close();
+                            ots.exitZone = pz.zone.name();
+                            if (strategy.isDcaEnabled()) {
+                                dcaExitReason = "zone_exit";
+                                dcaExitPrice = candle.close();
+                            } else {
+                                toClose.add(ots);
+                            }
+                            break;
+                        }
+                    }
+                }
+
+                // If emergency exit triggered in DCA mode, close all trades in the position
+                if (dcaExitReason != null) {
+                    for (OpenTradeState ots : openTrades) {
+                        ots.exitReason = dcaExitReason;
+                        ots.exitPrice = dcaExitPrice;
+                        if (!toClose.contains(ots)) {
+                            toClose.add(ots);
+                        }
+                    }
+                }
+
+                // Check normal exit conditions only if DCA is complete and no emergency exit
+                if (dcaComplete && dcaExitReason == null) {
                     // For DCA mode, calculate exits based on weighted average entry
                     boolean isDcaPosition = strategy.isDcaEnabled() && openTrades.size() > 1;
                     double avgEntryPrice = 0;
@@ -173,9 +217,11 @@ public class BacktestEngine {
                             }
                         }
 
-                        // If no zone matches, use first zone as fallback
+                        // If no zone matches, use first zone as fallback (but don't apply exitImmediately)
+                        boolean isZoneFallback = false;
                         if (matchingZone == null && !parsedZones.isEmpty()) {
                             matchingZone = parsedZones.getFirst();
+                            isZoneFallback = true;
                         }
 
                         if (matchingZone == null) {
@@ -190,8 +236,8 @@ public class BacktestEngine {
                             continue;  // Not enough bars passed yet
                         }
 
-                        // Check if zone requires immediate exit
-                        if (zone.exitImmediately()) {
+                        // Check if zone requires immediate exit (only for directly matched zones, not fallback)
+                        if (!isZoneFallback && zone.exitImmediately()) {
                             exitReason = "zone_exit";
                             exitPrice = candle.close();
                             ots.exitReason = exitReason;
@@ -303,9 +349,36 @@ public class BacktestEngine {
                     openTrades.remove(ots);
                 }
 
-                // Check entry condition if we can open more trades
-                boolean canOpenMore = openTrades.size() < maxOpenTrades;
-                boolean isDcaEntry = strategy.isDcaEnabled() && !openTrades.isEmpty();
+                // Reset currentGroupId if position was closed (so next signal starts new position)
+                if (!toClose.isEmpty() && strategy.isDcaEnabled()) {
+                    // Check if current group still has open trades
+                    final String groupIdForCheck = currentGroupId;
+                    boolean currentGroupStillOpen = groupIdForCheck != null && openTrades.stream()
+                        .anyMatch(ots -> groupIdForCheck.equals(ots.trade.groupId()));
+                    if (!currentGroupStillOpen) {
+                        currentGroupId = null;
+                    }
+                }
+
+                // Recalculate after closes
+                long openPositionsAfterClose = openTrades.stream()
+                    .map(ots -> ots.trade.groupId())
+                    .distinct()
+                    .count();
+                final String groupIdAfterClose = currentGroupId;
+                int entriesInCurrentPositionAfterClose = groupIdAfterClose == null ? 0 :
+                    (int) openTrades.stream()
+                        .filter(ots -> groupIdAfterClose.equals(ots.trade.groupId()))
+                        .count();
+
+                // Check entry condition if we can open more positions
+                boolean canAddToCurrentPosition = strategy.isDcaEnabled() &&
+                    currentGroupId != null &&
+                    entriesInCurrentPositionAfterClose > 0 &&
+                    entriesInCurrentPositionAfterClose < maxEntriesPerPosition;
+                boolean canStartNewPosition = openPositionsAfterClose < maxPositions;
+                boolean canOpenMore = canAddToCurrentPosition || canStartNewPosition;
+                boolean isDcaEntry = canAddToCurrentPosition;
                 int requiredDistance = isDcaEntry ? strategy.getDcaBarsBetween() : minCandlesBetween;
                 boolean passesMinDistance = (i - lastEntryBar) >= requiredDistance;
                 String dcaMode = strategy.getDcaMode();
@@ -341,16 +414,30 @@ public class BacktestEngine {
                     }
 
                     if (shouldEnter) {
+                        // Calculate current capital usage
+                        double usedCapital = openTrades.stream()
+                            .mapToDouble(ots -> ots.trade.entryPrice() * ots.trade.quantity())
+                            .sum();
+                        double availableCapital = currentEquity - usedCapital;
+
                         // Calculate position size
                         double quantity = calculatePositionSize(config, strategy, currentEquity, candle.close(), candles, i);
+                        double positionValue = quantity * candle.close();
+
+                        // Check if we have enough capital (reject if would exceed 100% usage)
+                        if (positionValue > availableCapital) {
+                            quantity = 0;  // Will trigger rejection
+                        }
 
                         if (quantity > 0) {
-                            // Generate new groupId for first entry of a DCA position
-                            if (strategy.isDcaEnabled() && openTrades.isEmpty()) {
+                            // Determine if this is a new position or adding to existing
+                            boolean startingNewPosition = !isDcaEntry;
+
+                            // Generate new groupId for first entry of a new position
+                            // Every position gets a groupId (DCA or not) for consistent counting
+                            if (startingNewPosition) {
                                 groupCounter++;
-                                currentGroupId = "dca-" + groupCounter;
-                            } else if (!strategy.isDcaEnabled()) {
-                                currentGroupId = null;  // No grouping for non-DCA
+                                currentGroupId = strategy.isDcaEnabled() ? "dca-" + groupCounter : "pos-" + groupCounter;
                             }
 
                             Trade newTrade = Trade.open(
@@ -444,7 +531,7 @@ public class BacktestEngine {
 
         switch (config.positionSizingType()) {
             case "fixed_percent" -> positionValue = equity * (config.positionSizingValue() / 100.0);
-            case "fixed_amount" -> positionValue = config.positionSizingValue();
+            case "fixed_dollar", "fixed_amount" -> positionValue = config.positionSizingValue();
             case "risk_percent" -> {
                 // Risk a percentage of equity based on stop-loss distance
                 String slType = strategy.getStopLossType();

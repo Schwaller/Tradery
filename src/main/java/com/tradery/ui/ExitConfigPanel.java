@@ -104,20 +104,39 @@ public class ExitConfigPanel extends JPanel {
     public void loadFrom(Strategy strategy) {
         suppressChangeEvents = true;
         try {
-            zoneEditors.clear();
-            zoneListPanel.removeAll();
+            List<ExitZone> zones = strategy != null ? strategy.getExitZones() : List.of(ExitZone.defaultZone());
 
-            if (strategy != null) {
-                // Load zones (always at least one due to Strategy.getExitZones())
-                for (ExitZone zone : strategy.getExitZones()) {
+            // Update existing editors or add new ones
+            for (int i = 0; i < zones.size(); i++) {
+                ExitZone zone = zones.get(i);
+                if (i < zoneEditors.size()) {
+                    // Update existing editor
+                    zoneEditors.get(i).updateFrom(zone);
+                } else {
+                    // Add new editor
                     addZoneEditor(zone);
                 }
-            } else {
-                addZoneEditor(ExitZone.defaultZone());
             }
 
-            // Push zones to top
-            zoneListPanel.add(Box.createVerticalGlue());
+            // Remove extra editors if we have more than needed
+            while (zoneEditors.size() > zones.size()) {
+                ZoneEditor editor = zoneEditors.remove(zoneEditors.size() - 1);
+                zoneListPanel.remove(editor);
+                // Also remove the spacer before it if present
+                int lastIdx = zoneListPanel.getComponentCount() - 1;
+                if (lastIdx >= 0 && zoneListPanel.getComponent(lastIdx) instanceof Box.Filler) {
+                    zoneListPanel.remove(lastIdx);
+                }
+            }
+
+            // Ensure vertical glue is at the end (only add if not already there)
+            int componentCount = zoneListPanel.getComponentCount();
+            boolean hasGlue = componentCount > 0 &&
+                zoneListPanel.getComponent(componentCount - 1) instanceof Box.Filler &&
+                ((Box.Filler) zoneListPanel.getComponent(componentCount - 1)).getMaximumSize().height == Short.MAX_VALUE;
+            if (!hasGlue) {
+                zoneListPanel.add(Box.createVerticalGlue());
+            }
 
             zoneListPanel.revalidate();
             zoneListPanel.repaint();
@@ -253,21 +272,21 @@ public class ExitConfigPanel extends JPanel {
                 boolean immediate = exitImmediatelyCheckbox.isSelected();
                 exitConditionScroll.setVisible(!immediate);
                 slTypeCombo.setVisible(!immediate);
-                slValueSpinner.setVisible(!immediate);
+                slValueSpinner.setVisible(!immediate && slTypeCombo.getSelectedIndex() > 0);
                 tpTypeCombo.setVisible(!immediate);
-                tpValueSpinner.setVisible(!immediate);
+                tpValueSpinner.setVisible(!immediate && tpTypeCombo.getSelectedIndex() > 0);
                 revalidate();
                 repaint();
                 onChange.run();
             });
 
-            // Set initial visibility based on exitImmediately
+            // Set initial visibility based on exitImmediately and type selection
             boolean exitImmediate = zone != null && zone.exitImmediately();
             exitConditionScroll.setVisible(!exitImmediate);
             slTypeCombo.setVisible(!exitImmediate);
-            slValueSpinner.setVisible(!exitImmediate);
+            slValueSpinner.setVisible(!exitImmediate && slTypeCombo.getSelectedIndex() > 0);
             tpTypeCombo.setVisible(!exitImmediate);
-            tpValueSpinner.setVisible(!exitImmediate);
+            tpValueSpinner.setVisible(!exitImmediate && tpTypeCombo.getSelectedIndex() > 0);
 
             // Build rows - each attribute on its own line
             JPanel centerPanel = new JPanel(new GridBagLayout());
@@ -367,6 +386,70 @@ public class ExitConfigPanel extends JPanel {
                 exitImmediatelyCheckbox.isSelected(),
                 ((Number) minBarsSpinner.getValue()).intValue()
             );
+        }
+
+        void updateFrom(ExitZone zone) {
+            if (zone == null) return;
+
+            // Only update fields if values differ to avoid unnecessary events
+            if (!nameField.getText().equals(zone.name())) {
+                nameField.setText(zone.name());
+            }
+
+            boolean hasMin = zone.minPnlPercent() != null;
+            if (hasMinPnl.isSelected() != hasMin) {
+                hasMinPnl.setSelected(hasMin);
+                minPnlSpinner.setVisible(hasMin);
+            }
+            if (hasMin && !minPnlSpinner.getValue().equals(zone.minPnlPercent())) {
+                minPnlSpinner.setValue(zone.minPnlPercent());
+            }
+
+            boolean hasMax = zone.maxPnlPercent() != null;
+            if (hasMaxPnl.isSelected() != hasMax) {
+                hasMaxPnl.setSelected(hasMax);
+                maxPnlSpinner.setVisible(hasMax);
+            }
+            if (hasMax && !maxPnlSpinner.getValue().equals(zone.maxPnlPercent())) {
+                maxPnlSpinner.setValue(zone.maxPnlPercent());
+            }
+
+            if (!exitConditionArea.getText().equals(zone.exitCondition())) {
+                exitConditionArea.setText(zone.exitCondition());
+            }
+
+            if (exitImmediatelyCheckbox.isSelected() != zone.exitImmediately()) {
+                exitImmediatelyCheckbox.setSelected(zone.exitImmediately());
+                boolean immediate = zone.exitImmediately();
+                exitConditionScroll.setVisible(!immediate);
+                slTypeCombo.setVisible(!immediate);
+                tpTypeCombo.setVisible(!immediate);
+            }
+
+            int slIdx = slTypeToIndex(zone.stopLossType());
+            if (slTypeCombo.getSelectedIndex() != slIdx) {
+                slTypeCombo.setSelectedIndex(slIdx);
+                slValueSpinner.setVisible(slIdx > 0);
+            }
+            if (zone.stopLossValue() != null && !slValueSpinner.getValue().equals(zone.stopLossValue())) {
+                slValueSpinner.setValue(zone.stopLossValue());
+            }
+
+            int tpIdx = tpTypeToIndex(zone.takeProfitType());
+            if (tpTypeCombo.getSelectedIndex() != tpIdx) {
+                tpTypeCombo.setSelectedIndex(tpIdx);
+                tpValueSpinner.setVisible(tpIdx > 0);
+            }
+            if (zone.takeProfitValue() != null && !tpValueSpinner.getValue().equals(zone.takeProfitValue())) {
+                tpValueSpinner.setValue(zone.takeProfitValue());
+            }
+
+            if (!minBarsSpinner.getValue().equals(zone.minBarsBeforeExit())) {
+                minBarsSpinner.setValue(zone.minBarsBeforeExit());
+            }
+
+            revalidate();
+            repaint();
         }
     }
 }

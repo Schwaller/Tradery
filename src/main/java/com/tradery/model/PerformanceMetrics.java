@@ -23,14 +23,15 @@ public record PerformanceMetrics(
     double largestLoss,
     double averageHoldingPeriod,
     double finalEquity,
-    double totalFees
+    double totalFees,
+    double maxCapitalUsage
 ) {
     /**
      * Create empty metrics (no trades)
      */
     public static PerformanceMetrics empty(double initialCapital) {
         return new PerformanceMetrics(
-            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, initialCapital, 0
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, initialCapital, 0, 0
         );
     }
 
@@ -117,10 +118,63 @@ public record PerformanceMetrics(
             }
         }
 
+        // Calculate max capital usage
+        double maxCapUsage = calculateMaxCapitalUsage(trades, initialCapital);
+
         return new PerformanceMetrics(
             total, winners, losers, winRate, profitFactor,
             totalReturn, totalReturnPct, maxDD, maxDDPct, sharpe,
-            avgWin, avgLoss, largestWin, largestLoss, avgHolding, equity, totalFees
+            avgWin, avgLoss, largestWin, largestLoss, avgHolding, equity, totalFees, maxCapUsage
         );
+    }
+
+    /**
+     * Calculate max capital usage percentage from trades
+     */
+    private static double calculateMaxCapitalUsage(java.util.List<Trade> trades, double initialCapital) {
+        // Filter valid trades (non-rejected)
+        java.util.List<Trade> validTrades = trades.stream()
+            .filter(t -> t.quantity() > 0)
+            .toList();
+
+        if (validTrades.isEmpty()) return 0;
+
+        // Build timeline of events
+        record Event(long time, boolean isEntry, double value, double pnl) {}
+        java.util.List<Event> events = new java.util.ArrayList<>();
+
+        for (Trade t : validTrades) {
+            double value = t.entryPrice() * t.quantity();
+            double pnl = t.pnl() != null ? t.pnl() : 0;
+            events.add(new Event(t.entryTime(), true, value, 0));
+            if (t.exitTime() != null) {
+                events.add(new Event(t.exitTime(), false, value, pnl));
+            }
+        }
+
+        // Sort: by time, exits before entries at same time
+        events.sort((a, b) -> {
+            int cmp = Long.compare(a.time(), b.time());
+            if (cmp != 0) return cmp;
+            return Boolean.compare(a.isEntry(), b.isEntry()); // false (exit) before true (entry)
+        });
+
+        double equity = initialCapital;
+        double invested = 0;
+        double maxUsage = 0;
+
+        for (Event e : events) {
+            if (e.isEntry()) {
+                invested += e.value();
+            } else {
+                invested -= e.value();
+                equity += e.pnl();
+            }
+            invested = Math.max(0, invested);
+            double usage = equity > 0 ? (invested / equity) * 100 : 0;
+            maxUsage = Math.max(maxUsage, usage);
+        }
+
+        return maxUsage;
     }
 }
