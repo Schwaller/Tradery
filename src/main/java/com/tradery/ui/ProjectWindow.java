@@ -425,7 +425,7 @@ public class ProjectWindow extends JFrame {
         JSplitPane mainSplit = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT);
         mainSplit.setBorder(null);
         mainSplit.setDividerSize(1);
-        mainSplit.setDividerLocation(200);
+        mainSplit.setDividerLocation(250);
         mainSplit.setContinuousLayout(true);
         mainSplit.setLeftComponent(leftPanel);
         mainSplit.setRightComponent(rightSplit);

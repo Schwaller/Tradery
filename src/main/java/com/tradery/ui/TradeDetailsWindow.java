@@ -377,18 +377,19 @@ public class TradeDetailsWindow extends JDialog {
 
             if (row.isGroup) {
                 return switch (columnIndex) {
-                    case 0 -> (row.expanded ? "▼ " : "▶ ") + row.groupIndex + " (" + row.trades.size() + ")";
-                    case 1 -> row.getSide().toUpperCase();
-                    case 2 -> DATE_FORMAT.format(new Date(row.getFirstEntryTime()));
-                    case 3 -> row.getExitTime() != null ? DATE_FORMAT.format(new Date(row.getExitTime())) : "-";
-                    case 4 -> formatPrice(row.getAvgEntryPrice()) + " (avg)";
-                    case 5 -> row.getExitPrice() != null ? formatPrice(row.getExitPrice()) : "-";
-                    case 6 -> String.format("%.6f", row.getTotalQuantity());
-                    case 7 -> String.format("%.2f", row.getTotalValue());
-                    case 8 -> String.format("%+.2f", row.getTotalPnl());
-                    case 9 -> String.format("%+.2f%%", row.getAvgPnlPercent());
-                    case 10 -> String.format("%.2f", row.getTotalCommission());
-                    case 11 -> formatExitReason(row.getExitReason());
+                    case 0 -> (row.expanded ? "▼ " : "▶ ") + row.groupIndex;
+                    case 1 -> row.trades.size();  // Entries count
+                    case 2 -> row.getSide().toUpperCase();
+                    case 3 -> DATE_FORMAT.format(new Date(row.getFirstEntryTime()));
+                    case 4 -> row.getExitTime() != null ? DATE_FORMAT.format(new Date(row.getExitTime())) : "-";
+                    case 5 -> formatPrice(row.getAvgEntryPrice()) + " (avg)";
+                    case 6 -> row.getExitPrice() != null ? formatPrice(row.getExitPrice()) : "-";
+                    case 7 -> String.format("%.6f", row.getTotalQuantity());
+                    case 8 -> String.format("%.2f", row.getTotalValue());
+                    case 9 -> String.format("%+.2f", row.getTotalPnl());
+                    case 10 -> String.format("%+.2f%%", row.getAvgPnlPercent());
+                    case 11 -> String.format("%.2f", row.getTotalCommission());
+                    case 12 -> formatExitReason(row.getExitReason());
                     default -> "";
                 };
             } else {
@@ -398,17 +399,18 @@ public class TradeDetailsWindow extends JDialog {
 
                 return switch (columnIndex) {
                     case 0 -> prefix;
-                    case 1 -> trade.side().toUpperCase();
-                    case 2 -> DATE_FORMAT.format(new Date(trade.entryTime()));
-                    case 3 -> isRejected ? "-" : (trade.exitTime() != null ? DATE_FORMAT.format(new Date(trade.exitTime())) : "-");
-                    case 4 -> formatPrice(trade.entryPrice());
-                    case 5 -> isRejected ? "-" : (trade.exitPrice() != null ? formatPrice(trade.exitPrice()) : "-");
-                    case 6 -> isRejected ? "-" : String.format("%.6f", trade.quantity());
-                    case 7 -> isRejected ? "-" : String.format("%.2f", trade.value());
-                    case 8 -> isRejected ? "NO CAPITAL" : (trade.pnl() != null ? String.format("%+.2f", trade.pnl()) : "-");
-                    case 9 -> isRejected ? "-" : (trade.pnlPercent() != null ? String.format("%+.2f%%", trade.pnlPercent()) : "-");
-                    case 10 -> isRejected ? "-" : (trade.commission() != null ? String.format("%.2f", trade.commission()) : "-");
-                    case 11 -> formatExitReason(trade.exitReason());
+                    case 1 -> "";  // Entries (empty for single/child)
+                    case 2 -> trade.side().toUpperCase();
+                    case 3 -> DATE_FORMAT.format(new Date(trade.entryTime()));
+                    case 4 -> isRejected ? "-" : (trade.exitTime() != null ? DATE_FORMAT.format(new Date(trade.exitTime())) : "-");
+                    case 5 -> formatPrice(trade.entryPrice());
+                    case 6 -> isRejected ? "-" : (trade.exitPrice() != null ? formatPrice(trade.exitPrice()) : "-");
+                    case 7 -> isRejected ? "-" : String.format("%.6f", trade.quantity());
+                    case 8 -> isRejected ? "-" : String.format("%.2f", trade.value());
+                    case 9 -> isRejected ? "NO CAPITAL" : (trade.pnl() != null ? String.format("%+.2f", trade.pnl()) : "-");
+                    case 10 -> isRejected ? "-" : (trade.pnlPercent() != null ? String.format("%+.2f%%", trade.pnlPercent()) : "-");
+                    case 11 -> isRejected ? "-" : (trade.commission() != null ? String.format("%.2f", trade.commission()) : "-");
+                    case 12 -> formatExitReason(trade.exitReason());
                     default -> "";
                 };
             }
