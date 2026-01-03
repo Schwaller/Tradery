@@ -10,6 +10,8 @@ import java.awt.*;
 import java.util.ArrayList;
 import java.util.List;
 
+import static java.awt.GridBagConstraints.*;
+
 /**
  * Panel for configuring exit zones. All exit configuration is now zone-based.
  */
@@ -153,8 +155,8 @@ public class ExitConfigPanel extends JPanel {
         private JSpinner minBarsSpinner;
 
         ZoneEditor(ExitZone zone, Runnable onRemove, Runnable onChange) {
-            setLayout(new BorderLayout(4, 2));
-            setBorder(BorderFactory.createEmptyBorder(4, 0, 4, 0));
+            setLayout(new BorderLayout(4, 4));
+            setBorder(BorderFactory.createEmptyBorder(4, 0, 0, 0));
             setOpaque(false);
             setAlignmentX(Component.LEFT_ALIGNMENT);
 
@@ -270,51 +272,35 @@ public class ExitConfigPanel extends JPanel {
             // Build rows - each attribute on its own line
             JPanel centerPanel = new JPanel(new GridBagLayout());
             centerPanel.setOpaque(false);
-            GridBagConstraints c = new GridBagConstraints();
-            c.anchor = GridBagConstraints.WEST;
-            c.insets = new Insets(1, 0, 2, 0);
-            c.gridy = 0;
+            int row = 0;
 
             // Min P&L row
-            c.gridx = 0; c.weightx = 0;
-            centerPanel.add(hasMinPnl, c);
-            c.gridx = 1; c.weightx = 1; c.fill = GridBagConstraints.HORIZONTAL;
-            centerPanel.add(minPnlSpinner, c);
+            centerPanel.add(hasMinPnl, new GridBagConstraints(0, row, 1, 1, 0, 0, WEST, NONE, new Insets(0, 0, 4, 4), 0, 0));
+            centerPanel.add(minPnlSpinner, new GridBagConstraints(1, row++, 1, 1, 1, 0, WEST, HORIZONTAL, new Insets(0, 0, 4, 0), 0, 0));
 
             // Max P&L row
-            c.gridy++; c.gridx = 0; c.weightx = 0; c.fill = GridBagConstraints.NONE;
-            centerPanel.add(hasMaxPnl, c);
-            c.gridx = 1; c.weightx = 1; c.fill = GridBagConstraints.HORIZONTAL;
-            centerPanel.add(maxPnlSpinner, c);
+            centerPanel.add(hasMaxPnl, new GridBagConstraints(0, row, 1, 1, 0, 0, WEST, NONE, new Insets(0, 0, 4, 4), 0, 0));
+            centerPanel.add(maxPnlSpinner, new GridBagConstraints(1, row++, 1, 1, 1, 0, WEST, HORIZONTAL, new Insets(0, 0, 4, 0), 0, 0));
 
             // Min bars row
-            c.gridy++; c.gridx = 0; c.weightx = 0; c.fill = GridBagConstraints.NONE;
             JLabel barsLabel = new JLabel("Min Bars:");
             barsLabel.setForeground(Color.GRAY);
-            centerPanel.add(barsLabel, c);
-            c.gridx = 1; c.weightx = 1; c.fill = GridBagConstraints.HORIZONTAL;
-            centerPanel.add(minBarsSpinner, c);
+            centerPanel.add(barsLabel, new GridBagConstraints(0, row, 1, 1, 0, 0, WEST, NONE, new Insets(0, 0, 4, 4), 0, 0));
+            centerPanel.add(minBarsSpinner, new GridBagConstraints(1, row++, 1, 1, 1, 0, WEST, HORIZONTAL, new Insets(0, 0, 4, 0), 0, 0));
 
             // Exit immediately row
-            c.gridy++; c.gridx = 0; c.gridwidth = 2; c.weightx = 1; c.fill = GridBagConstraints.NONE;
-            centerPanel.add(exitImmediatelyCheckbox, c);
+            centerPanel.add(exitImmediatelyCheckbox, new GridBagConstraints(0, row++, 2, 1, 1, 0, WEST, NONE, new Insets(0, 0, 4, 0), 0, 0));
 
             // Exit condition row - takes extra vertical space
-            c.gridy++; c.gridx = 0; c.gridwidth = 2; c.weighty = 1; c.fill = GridBagConstraints.BOTH;
-            centerPanel.add(exitConditionScroll, c);
-            c.weighty = 0;
+            centerPanel.add(exitConditionScroll, new GridBagConstraints(0, row++, 2, 1, 1, 1, WEST, BOTH, new Insets(0, 0, 4, 0), 0, 0));
 
             // Stop Loss row
-            c.gridy++; c.gridwidth = 1; c.gridx = 0; c.weightx = 0; c.fill = GridBagConstraints.NONE;
-            centerPanel.add(slTypeCombo, c);
-            c.gridx = 1; c.weightx = 1; c.fill = GridBagConstraints.HORIZONTAL;
-            centerPanel.add(slValueSpinner, c);
+            centerPanel.add(slTypeCombo, new GridBagConstraints(0, row, 1, 1, 0, 0, WEST, NONE, new Insets(0, 0, 4, 4), 0, 0));
+            centerPanel.add(slValueSpinner, new GridBagConstraints(1, row++, 1, 1, 1, 0, WEST, HORIZONTAL, new Insets(0, 0, 4, 0), 0, 0));
 
-            // Take Profit row
-            c.gridy++; c.gridx = 0; c.weightx = 0; c.fill = GridBagConstraints.NONE;
-            centerPanel.add(tpTypeCombo, c);
-            c.gridx = 1; c.weightx = 1; c.fill = GridBagConstraints.HORIZONTAL;
-            centerPanel.add(tpValueSpinner, c);
+            // Take Profit row (last row - no bottom inset)
+            centerPanel.add(tpTypeCombo, new GridBagConstraints(0, row, 1, 1, 0, 0, WEST, NONE, new Insets(0, 0, 0, 4), 0, 0));
+            centerPanel.add(tpValueSpinner, new GridBagConstraints(1, row, 1, 1, 1, 0, WEST, HORIZONTAL, new Insets(0, 0, 0, 0), 0, 0));
 
             add(topRow, BorderLayout.NORTH);
             add(centerPanel, BorderLayout.CENTER);
