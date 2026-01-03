@@ -65,10 +65,28 @@ public class EntryConfigPanel extends JPanel {
         entryLabel.setForeground(Color.GRAY);
         conditionPanel.add(entryLabel, BorderLayout.NORTH);
         JScrollPane entryScroll = new JScrollPane(entryEditor);
+
+        // Wrap scroll pane in layered pane for info button overlay
+        JLayeredPane layeredPane = new JLayeredPane();
+        layeredPane.setPreferredSize(new Dimension(200, 60));
+
+        JButton infoButton = createInfoButton();
+        layeredPane.add(entryScroll, JLayeredPane.DEFAULT_LAYER);
+        layeredPane.add(infoButton, JLayeredPane.PALETTE_LAYER);
+
+        // Layout components on resize
+        layeredPane.addComponentListener(new java.awt.event.ComponentAdapter() {
+            @Override
+            public void componentResized(java.awt.event.ComponentEvent e) {
+                entryScroll.setBounds(0, 0, layeredPane.getWidth(), layeredPane.getHeight());
+                infoButton.setBounds(layeredPane.getWidth() - 22, layeredPane.getHeight() - 22, 18, 18);
+            }
+        });
+
         JPanel scrollWrapper = new JPanel(new BorderLayout());
         scrollWrapper.setOpaque(false);
         scrollWrapper.add(Box.createVerticalStrut(12), BorderLayout.NORTH);
-        scrollWrapper.add(entryScroll, BorderLayout.CENTER);
+        scrollWrapper.add(layeredPane, BorderLayout.CENTER);
         conditionPanel.add(scrollWrapper, BorderLayout.CENTER);
 
         // DCA section
@@ -108,6 +126,34 @@ public class EntryConfigPanel extends JPanel {
         return new GridBagConstraints(x, y, 1, 1, fill ? 1 : 0, 0,
             GridBagConstraints.WEST, fill ? GridBagConstraints.HORIZONTAL : GridBagConstraints.NONE,
             new Insets(2, 0, 2, 4), 0, 0);
+    }
+
+    private JButton createInfoButton() {
+        JButton btn = new JButton("\u24D8"); // circled i
+        btn.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 12));
+        btn.setMargin(new Insets(0, 0, 0, 0));
+        btn.setFocusPainted(false);
+        btn.setBorderPainted(false);
+        btn.setContentAreaFilled(false);
+        Color normal = UIManager.getColor("Label.disabledForeground");
+        Color hover = UIManager.getColor("Component.accentColor");
+        if (normal == null) normal = Color.GRAY;
+        if (hover == null) hover = new Color(70, 130, 180);
+        final Color normalColor = normal;
+        final Color hoverColor = hover;
+        btn.setForeground(normalColor);
+        btn.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+        btn.setToolTipText("DSL Reference");
+        btn.addActionListener(e -> DslHelpDialog.show(this));
+        btn.addMouseListener(new java.awt.event.MouseAdapter() {
+            public void mouseEntered(java.awt.event.MouseEvent e) {
+                btn.setForeground(hoverColor);
+            }
+            public void mouseExited(java.awt.event.MouseEvent e) {
+                btn.setForeground(normalColor);
+            }
+        });
+        return btn;
     }
 
     private void updateDcaVisibility() {

@@ -1,6 +1,8 @@
 {
   "id" : "ema-volume-crossover",
   "name" : "EMA Volume Crossover",
+  "presetId": "ema-volume-crossover",
+  "presetVersion": "1.0",
   "description" : "EMA crossover confirmed by volume spike",
   "entry" : "EMA(9) crosses_above EMA(21) AND volume > AVG_VOLUME(20) * 1.2",
   "exit" : "EMA(9) crosses_below EMA(21)",

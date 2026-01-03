@@ -7,6 +7,8 @@ import javax.swing.*;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
 import java.awt.*;
+import java.awt.event.ComponentAdapter;
+import java.awt.event.ComponentEvent;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -148,6 +150,34 @@ public class ExitConfigPanel extends JPanel {
         strategy.setExitZones(zones);
     }
 
+    private JButton createInfoButton() {
+        JButton btn = new JButton("\u24D8"); // circled i
+        btn.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 10));
+        btn.setMargin(new Insets(0, 0, 0, 0));
+        btn.setFocusPainted(false);
+        btn.setBorderPainted(false);
+        btn.setContentAreaFilled(false);
+        Color normal = UIManager.getColor("Label.disabledForeground");
+        Color hover = UIManager.getColor("Component.accentColor");
+        if (normal == null) normal = Color.GRAY;
+        if (hover == null) hover = new Color(70, 130, 180);
+        final Color normalColor = normal;
+        final Color hoverColor = hover;
+        btn.setForeground(normalColor);
+        btn.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+        btn.setToolTipText("DSL Reference");
+        btn.addActionListener(e -> DslHelpDialog.show(this));
+        btn.addMouseListener(new java.awt.event.MouseAdapter() {
+            public void mouseEntered(java.awt.event.MouseEvent e) {
+                btn.setForeground(hoverColor);
+            }
+            public void mouseExited(java.awt.event.MouseEvent e) {
+                btn.setForeground(normalColor);
+            }
+        });
+        return btn;
+    }
+
     /**
      * Inner panel for editing a single exit zone with full configuration.
      */
@@ -158,7 +188,7 @@ public class ExitConfigPanel extends JPanel {
         private JCheckBox hasMinPnl;
         private JCheckBox hasMaxPnl;
         private JTextArea exitConditionArea;
-        private JScrollPane exitConditionScroll;
+        private JPanel exitConditionScroll;
         private JCheckBox exitImmediatelyCheckbox;
         private JComboBox<String> slTypeCombo;
         private JSpinner slValueSpinner;
@@ -260,8 +290,26 @@ public class ExitConfigPanel extends JPanel {
                 zone != null ? zone.minBarsBeforeExit() : 0, 0, 1000, 1));
             minBarsSpinner.addChangeListener(e -> onChange.run());
 
-            // Exit condition scroll pane (created here so we can control visibility)
-            exitConditionScroll = new JScrollPane(exitConditionArea);
+            // Exit condition scroll pane with info button overlay
+            JScrollPane rawScroll = new JScrollPane(exitConditionArea);
+
+            JLayeredPane exitLayered = new JLayeredPane();
+            exitLayered.setPreferredSize(new Dimension(180, 24));
+
+            JButton exitInfoBtn = createInfoButton();
+            exitLayered.add(rawScroll, JLayeredPane.DEFAULT_LAYER);
+            exitLayered.add(exitInfoBtn, JLayeredPane.PALETTE_LAYER);
+
+            exitLayered.addComponentListener(new java.awt.event.ComponentAdapter() {
+                @Override
+                public void componentResized(java.awt.event.ComponentEvent e) {
+                    rawScroll.setBounds(0, 0, exitLayered.getWidth(), exitLayered.getHeight());
+                    exitInfoBtn.setBounds(exitLayered.getWidth() - 20, exitLayered.getHeight() - 18, 16, 16);
+                }
+            });
+
+            exitConditionScroll = new JPanel(new BorderLayout());
+            exitConditionScroll.add(exitLayered, BorderLayout.CENTER);
             exitConditionScroll.setPreferredSize(new Dimension(180, 24));
 
             // Exit immediately toggle - hides exit condition and SL/TP

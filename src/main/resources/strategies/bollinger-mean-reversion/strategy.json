@@ -1,6 +1,8 @@
 {
   "id" : "bollinger-mean-reversion",
   "name" : "Bollinger Mean Reversion",
+  "presetId": "bollinger-mean-reversion",
+  "presetVersion": "1.0",
   "description" : "Buy lower band touches with RSI confirmation",
   "entry" : "close < BBANDS(20,2).lower AND RSI(14) < 35",
   "exit" : "close > BBANDS(20,2).middle",

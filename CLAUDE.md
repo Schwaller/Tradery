@@ -152,7 +152,19 @@ With files on disk, Claude Code can:
 - See results: `~/.tradery/results/latest.json`
 - Query OHLC data: `~/.tradery/data/{symbol}/{timeframe}/*.csv`
 
+## Maintenance Notes
+
+### DSL Help Dialog
+When extending the DSL (adding new indicators, functions, or operators), update these files:
+1. `dsl/Lexer.java` - Add keywords to KEYWORDS map
+2. `dsl/Parser.java` - Update grammar/validation
+3. `engine/ConditionEvaluator.java` - Add evaluation logic
+4. **`ui/DslHelpDialog.java`** - Update HELP_CONTENT to document new features
+
+The help dialog is accessible via the info icon (ⓘ) in the lower-right corner of DSL text boxes (entry conditions and exit zone conditions).
+
 ## Recent Changes (Latest Session)
+- Added DSL help dialog with info icons on text boxes
 - Added 5th chart for Trade P&L % tracking
 - Added rejected trades display (no capital)
 - Added max open trades and min candles between entries settings

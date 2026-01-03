@@ -1,6 +1,7 @@
 package com.tradery;
 
 import com.formdev.flatlaf.FlatDarkLaf;
+import com.tradery.io.AppLock;
 import com.tradery.ui.LauncherFrame;
 
 import javax.swing.*;
@@ -30,6 +31,17 @@ public class TraderyApp {
 
         // Ensure user data directory exists
         ensureUserDirectories();
+
+        // Check for existing instance and acquire lock
+        AppLock appLock = AppLock.getInstance();
+        if (appLock.isAnotherInstanceRunning()) {
+            JOptionPane.showMessageDialog(null,
+                "Tradery is already running.\n\nCheck your running applications.",
+                "Already Running",
+                JOptionPane.WARNING_MESSAGE);
+            System.exit(0);
+        }
+        appLock.acquire();
 
         // Initialize shared application context
         ApplicationContext.getInstance();

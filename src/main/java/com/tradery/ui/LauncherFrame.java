@@ -238,7 +238,47 @@ public class LauncherFrame extends JFrame {
     }
 
     private void onFileModified(Path path) {
-        SwingUtilities.invokeLater(this::loadProjects);
+        SwingUtilities.invokeLater(() -> {
+            loadProjects();
+
+            // Check if this is a strategy.json file
+            if (!path.getFileName().toString().equals("strategy.json")) {
+                return;
+            }
+
+            // Extract strategy ID from path (parent directory name)
+            Path parent = path.getParent();
+            if (parent == null) return;
+            String strategyId = parent.getFileName().toString();
+
+            // Skip if window is already open (it handles its own reloading)
+            if (openWindows.containsKey(strategyId)) {
+                return;
+            }
+
+            // Load the strategy to get its name
+            Strategy strategy = strategyStore.load(strategyId);
+            if (strategy == null) return;
+
+            // Ask user if they want to open it
+            int result = JOptionPane.showConfirmDialog(this,
+                "Strategy '" + strategy.getName() + "' was modified externally.\n\n" +
+                "Open it to run the backtest?",
+                "Strategy Modified",
+                JOptionPane.YES_NO_OPTION,
+                JOptionPane.QUESTION_MESSAGE);
+
+            if (result == JOptionPane.YES_OPTION) {
+                // Select and open the strategy
+                for (int i = 0; i < listModel.size(); i++) {
+                    if (listModel.get(i).getId().equals(strategyId)) {
+                        projectList.setSelectedIndex(i);
+                        break;
+                    }
+                }
+                openProject();
+            }
+        });
     }
 
     private void onFileDeleted(Path path) {
