@@ -99,9 +99,14 @@ public class BacktestEngine {
             }
 
             try {
+                // In DCA mode, only check exits after all entries are complete
+                boolean dcaComplete = !strategy.isDcaEnabled() || openTrades.size() >= maxOpenTrades;
+
                 // Check exit conditions for all open trades
                 List<OpenTradeState> toClose = new ArrayList<>();
                 for (OpenTradeState ots : openTrades) {
+                    // Skip exit checks if DCA is still accumulating
+                    if (!dcaComplete) continue;
                     Trade openTrade = ots.trade;
                     double entryPrice = openTrade.entryPrice();
                     String exitReason = null;

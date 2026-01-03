@@ -152,44 +152,27 @@ public class StrategyEditorPanel extends JPanel {
         dcaCheckboxPanel.add(dcaEnabledCheckbox);
 
         // DCA details panel (hidden by default, shown when DCA enabled)
-        dcaDetailsPanel = new JPanel();
-        dcaDetailsPanel.setLayout(new BoxLayout(dcaDetailsPanel, BoxLayout.Y_AXIS));
+        dcaDetailsPanel = new JPanel(new GridBagLayout());
         dcaDetailsPanel.setOpaque(false);
         dcaDetailsPanel.setVisible(false);
 
-        // Fixed label width for alignment
-        int dcaLabelWidth = 90;
-
         // Max entries row
-        JPanel maxEntriesRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 2));
-        maxEntriesRow.setOpaque(false);
         JLabel maxEntriesLabel = new JLabel("Max entries:");
         maxEntriesLabel.setForeground(Color.GRAY);
-        maxEntriesLabel.setPreferredSize(new Dimension(dcaLabelWidth, maxEntriesLabel.getPreferredSize().height));
-        maxEntriesRow.add(maxEntriesLabel);
-        maxEntriesRow.add(dcaMaxEntriesSpinner);
+        dcaDetailsPanel.add(maxEntriesLabel, new GridBagConstraints(0, 0, 1, 1, 0, 0, GridBagConstraints.WEST, GridBagConstraints.NONE, new Insets(2, 0, 2, 4), 0, 0));
+        dcaDetailsPanel.add(dcaMaxEntriesSpinner, new GridBagConstraints(1, 0, 1, 1, 1, 0, GridBagConstraints.WEST, GridBagConstraints.HORIZONTAL, new Insets(2, 0, 2, 4), 0, 0));
 
         // Bars between row
-        JPanel barsBetweenRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 2));
-        barsBetweenRow.setOpaque(false);
         JLabel barsBetweenLabel = new JLabel("Bars between:");
         barsBetweenLabel.setForeground(Color.GRAY);
-        barsBetweenLabel.setPreferredSize(new Dimension(dcaLabelWidth, barsBetweenLabel.getPreferredSize().height));
-        barsBetweenRow.add(barsBetweenLabel);
-        barsBetweenRow.add(dcaBarsBetweenSpinner);
+        dcaDetailsPanel.add(barsBetweenLabel, new GridBagConstraints(0, 1, 1, 1, 0, 0, GridBagConstraints.WEST, GridBagConstraints.NONE, new Insets(2, 0, 2, 4), 0, 0));
+        dcaDetailsPanel.add(dcaBarsBetweenSpinner, new GridBagConstraints(1, 1, 1, 1, 1, 0, GridBagConstraints.WEST, GridBagConstraints.HORIZONTAL, new Insets(2, 0, 2, 4), 0, 0));
 
         // Mode row
-        JPanel modeRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 2));
-        modeRow.setOpaque(false);
         JLabel modeLabel = new JLabel("Mode:");
         modeLabel.setForeground(Color.GRAY);
-        modeLabel.setPreferredSize(new Dimension(dcaLabelWidth, modeLabel.getPreferredSize().height));
-        modeRow.add(modeLabel);
-        modeRow.add(dcaModeCombo);
-
-        dcaDetailsPanel.add(maxEntriesRow);
-        dcaDetailsPanel.add(barsBetweenRow);
-        dcaDetailsPanel.add(modeRow);
+        dcaDetailsPanel.add(modeLabel, new GridBagConstraints(0, 2, 1, 1, 0, 0, GridBagConstraints.WEST, GridBagConstraints.NONE, new Insets(2, 0, 2, 4), 0, 0));
+        dcaDetailsPanel.add(dcaModeCombo, new GridBagConstraints(1, 2, 1, 1, 1, 0, GridBagConstraints.WEST, GridBagConstraints.HORIZONTAL, new Insets(2, 0, 2, 4), 0, 0));
 
         JPanel dcaWrapper = new JPanel(new BorderLayout(0, 0));
         dcaWrapper.setOpaque(false);
@@ -213,37 +196,28 @@ public class StrategyEditorPanel extends JPanel {
         entryExitPanel.add(exitPanel);
 
         // Stop-loss / Take-profit / Trade management rows
-        JPanel settingsPanel = new JPanel(new GridLayout(4, 1, 0, 4));
+        JPanel settingsPanel = new JPanel(new GridBagLayout());
         settingsPanel.setOpaque(false);
 
-        JPanel slPanel = new JPanel(new BorderLayout(4, 0));
-        slPanel.setOpaque(false);
-        slPanel.add(stopLossTypeCombo, BorderLayout.CENTER);
-        slPanel.add(stopLossValueSpinner, BorderLayout.EAST);
+        // Stop Loss row
+        settingsPanel.add(stopLossTypeCombo, new GridBagConstraints(0, 0, 1, 1, 1, 0, GridBagConstraints.WEST, GridBagConstraints.HORIZONTAL, new Insets(2, 0, 2, 4), 0, 0));
+        settingsPanel.add(stopLossValueSpinner, new GridBagConstraints(1, 0, 1, 1, 0, 0, GridBagConstraints.WEST, GridBagConstraints.NONE, new Insets(2, 0, 2, 4), 0, 0));
 
-        JPanel tpPanel = new JPanel(new BorderLayout(4, 0));
-        tpPanel.setOpaque(false);
-        tpPanel.add(takeProfitTypeCombo, BorderLayout.CENTER);
-        tpPanel.add(takeProfitValueSpinner, BorderLayout.EAST);
+        // Take Profit row
+        settingsPanel.add(takeProfitTypeCombo, new GridBagConstraints(0, 1, 1, 1, 1, 0, GridBagConstraints.WEST, GridBagConstraints.HORIZONTAL, new Insets(2, 0, 2, 4), 0, 0));
+        settingsPanel.add(takeProfitValueSpinner, new GridBagConstraints(1, 1, 1, 1, 0, 0, GridBagConstraints.WEST, GridBagConstraints.NONE, new Insets(2, 0, 2, 4), 0, 0));
 
-        JPanel maxTradesPanel = new JPanel(new BorderLayout(4, 0));
-        maxTradesPanel.setOpaque(false);
+        // Max Open Trades row
         JLabel maxTradesLabel = new JLabel("Max Open Trades:");
         maxTradesLabel.setForeground(Color.GRAY);
-        maxTradesPanel.add(maxTradesLabel, BorderLayout.CENTER);
-        maxTradesPanel.add(maxOpenTradesSpinner, BorderLayout.EAST);
+        settingsPanel.add(maxTradesLabel, new GridBagConstraints(0, 2, 1, 1, 1, 0, GridBagConstraints.WEST, GridBagConstraints.HORIZONTAL, new Insets(2, 0, 2, 4), 0, 0));
+        settingsPanel.add(maxOpenTradesSpinner, new GridBagConstraints(1, 2, 1, 1, 0, 0, GridBagConstraints.WEST, GridBagConstraints.NONE, new Insets(2, 0, 2, 4), 0, 0));
 
-        JPanel minCandlesPanel = new JPanel(new BorderLayout(4, 0));
-        minCandlesPanel.setOpaque(false);
+        // Min Candles Between row
         JLabel minCandlesLabel = new JLabel("Min Candles Between:");
         minCandlesLabel.setForeground(Color.GRAY);
-        minCandlesPanel.add(minCandlesLabel, BorderLayout.CENTER);
-        minCandlesPanel.add(minCandlesBetweenSpinner, BorderLayout.EAST);
-
-        settingsPanel.add(slPanel);
-        settingsPanel.add(tpPanel);
-        settingsPanel.add(maxTradesPanel);
-        settingsPanel.add(minCandlesPanel);
+        settingsPanel.add(minCandlesLabel, new GridBagConstraints(0, 3, 1, 1, 1, 0, GridBagConstraints.WEST, GridBagConstraints.HORIZONTAL, new Insets(2, 0, 2, 4), 0, 0));
+        settingsPanel.add(minCandlesBetweenSpinner, new GridBagConstraints(1, 3, 1, 1, 0, 0, GridBagConstraints.WEST, GridBagConstraints.NONE, new Insets(2, 0, 2, 4), 0, 0));
 
         // Main content
         JPanel contentPanel = new JPanel(new BorderLayout(0, 8));

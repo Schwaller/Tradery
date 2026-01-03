@@ -8,6 +8,7 @@ import org.jfree.chart.ChartMouseEvent;
 import org.jfree.chart.ChartMouseListener;
 import org.jfree.chart.JFreeChart;
 import org.jfree.chart.annotations.XYLineAnnotation;
+import org.jfree.chart.annotations.XYShapeAnnotation;
 import org.jfree.chart.annotations.XYTitleAnnotation;
 import org.jfree.chart.axis.DateAxis;
 import org.jfree.chart.axis.ValueAxis;
@@ -30,6 +31,7 @@ import javax.swing.*;
 import javax.swing.SwingUtilities;
 import java.awt.*;
 import java.awt.BasicStroke;
+import java.awt.geom.Ellipse2D;
 import java.awt.geom.Rectangle2D;
 import java.text.SimpleDateFormat;
 import java.time.Year;
@@ -754,9 +756,41 @@ public class ChartsPanel extends JPanel {
         if (trades != null) {
             Color winColor = new Color(76, 175, 80, 180);   // Green with transparency
             Color lossColor = new Color(244, 67, 54, 180);  // Red with transparency
+            BasicStroke thinStroke = new BasicStroke(1.0f);
 
-            for (Trade t : trades) {
-                if (t.exitTime() != null && t.exitPrice() != null) {
+            // Group overlapping trades to identify DCA positions
+            // Trades overlap if one entry is before another's exit (concurrent positions)
+            java.util.List<java.util.List<Trade>> tradeGroups = new java.util.ArrayList<>();
+            java.util.List<Trade> validTrades = trades.stream()
+                .filter(t -> t.exitTime() != null && t.exitPrice() != null && !"rejected".equals(t.exitReason()))
+                .sorted((a, b) -> Long.compare(a.entryTime(), b.entryTime()))
+                .toList();
+
+            for (Trade t : validTrades) {
+                // Find existing group where this trade overlaps
+                java.util.List<Trade> matchingGroup = null;
+                for (java.util.List<Trade> group : tradeGroups) {
+                    // Check if this trade overlaps with any trade in the group
+                    // (entered before the group's exit time)
+                    Trade firstInGroup = group.getFirst();
+                    if (firstInGroup.exitTime() != null && t.entryTime() < firstInGroup.exitTime()) {
+                        matchingGroup = group;
+                        break;
+                    }
+                }
+                if (matchingGroup != null) {
+                    matchingGroup.add(t);
+                } else {
+                    java.util.List<Trade> newGroup = new java.util.ArrayList<>();
+                    newGroup.add(t);
+                    tradeGroups.add(newGroup);
+                }
+            }
+
+            for (java.util.List<Trade> group : tradeGroups) {
+                if (group.size() == 1) {
+                    // Single trade - draw simple diagonal line
+                    Trade t = group.get(0);
                     boolean isWin = t.pnl() != null && t.pnl() > 0;
                     Color color = isWin ? winColor : lossColor;
 
@@ -766,6 +800,78 @@ public class ChartsPanel extends JPanel {
                         ChartStyles.TRADE_LINE_STROKE, color
                     );
                     plot.addAnnotation(tradeLine);
+                } else {
+                    // DCA position - multiple entries with same exit
+                    // Calculate weighted average entry price
+                    double totalValue = 0;
+                    double totalQuantity = 0;
+                    double totalPnl = 0;
+                    long firstEntryTime = Long.MAX_VALUE;
+                    long lastEntryTime = Long.MIN_VALUE;
+
+                    for (Trade t : group) {
+                        totalValue += t.entryPrice() * t.quantity();
+                        totalQuantity += t.quantity();
+                        if (t.pnl() != null) totalPnl += t.pnl();
+                        firstEntryTime = Math.min(firstEntryTime, t.entryTime());
+                        lastEntryTime = Math.max(lastEntryTime, t.entryTime());
+                    }
+
+                    double avgEntryPrice = totalValue / totalQuantity;
+                    boolean isWin = totalPnl > 0;
+                    Color color = isWin ? winColor : lossColor;
+                    Trade lastTrade = group.get(0); // All have same exit time/price
+
+                    // Draw vertical lines from each entry to the average line (35% alpha)
+                    Color verticalColor = new Color(color.getRed(), color.getGreen(), color.getBlue(), 89);
+                    for (Trade t : group) {
+                        XYLineAnnotation verticalLine = new XYLineAnnotation(
+                            t.entryTime(), t.entryPrice(),
+                            t.entryTime(), avgEntryPrice,
+                            thinStroke, verticalColor
+                        );
+                        plot.addAnnotation(verticalLine);
+                    }
+
+                    // Draw horizontal line at average entry price (from first entry to last entry)
+                    XYLineAnnotation avgLine = new XYLineAnnotation(
+                        firstEntryTime, avgEntryPrice,
+                        lastEntryTime, avgEntryPrice,
+                        ChartStyles.TRADE_LINE_STROKE, color
+                    );
+                    plot.addAnnotation(avgLine);
+
+                    // Draw diagonal line from center of avg line to exit point
+                    long centerTime = (firstEntryTime + lastEntryTime) / 2;
+                    XYLineAnnotation exitLine = new XYLineAnnotation(
+                        centerTime, avgEntryPrice,
+                        lastTrade.exitTime(), lastTrade.exitPrice(),
+                        ChartStyles.TRADE_LINE_STROKE, color
+                    );
+                    plot.addAnnotation(exitLine);
+
+                    // Draw 6px dots at start and end of diagonal line
+                    double dotSize = 6.0;
+                    Ellipse2D startDot = new Ellipse2D.Double(-dotSize/2, -dotSize/2, dotSize, dotSize);
+                    Ellipse2D endDot = new Ellipse2D.Double(-dotSize/2, -dotSize/2, dotSize, dotSize);
+                    plot.addAnnotation(new XYShapeAnnotation(startDot, null, null, color) {
+                        @Override public void draw(java.awt.Graphics2D g2, XYPlot plot, java.awt.geom.Rectangle2D dataArea,
+                                ValueAxis domainAxis, ValueAxis rangeAxis, int rendererIndex, org.jfree.chart.plot.PlotRenderingInfo info) {
+                            double x = domainAxis.valueToJava2D(centerTime, dataArea, plot.getDomainAxisEdge());
+                            double y = rangeAxis.valueToJava2D(avgEntryPrice, dataArea, plot.getRangeAxisEdge());
+                            g2.setColor(color);
+                            g2.fill(new Ellipse2D.Double(x - dotSize/2, y - dotSize/2, dotSize, dotSize));
+                        }
+                    });
+                    plot.addAnnotation(new XYShapeAnnotation(endDot, null, null, color) {
+                        @Override public void draw(java.awt.Graphics2D g2, XYPlot plot, java.awt.geom.Rectangle2D dataArea,
+                                ValueAxis domainAxis, ValueAxis rangeAxis, int rendererIndex, org.jfree.chart.plot.PlotRenderingInfo info) {
+                            double x = domainAxis.valueToJava2D(lastTrade.exitTime(), dataArea, plot.getDomainAxisEdge());
+                            double y = rangeAxis.valueToJava2D(lastTrade.exitPrice(), dataArea, plot.getRangeAxisEdge());
+                            g2.setColor(color);
+                            g2.fill(new Ellipse2D.Double(x - dotSize/2, y - dotSize/2, dotSize, dotSize));
+                        }
+                    });
                 }
             }
         }

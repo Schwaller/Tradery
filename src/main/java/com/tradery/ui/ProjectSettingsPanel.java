@@ -70,30 +70,21 @@ public class ProjectSettingsPanel extends JPanel {
         title.setFont(title.getFont().deriveFont(Font.BOLD, 12f));
         title.setForeground(Color.GRAY);
 
+        // Settings grid with GridBagLayout
+        JPanel settingsGrid = new JPanel(new GridBagLayout());
+        settingsGrid.setOpaque(false);
+
         // Position sizing row
-        JPanel sizePanel = new JPanel(new BorderLayout(8, 0));
-        sizePanel.setOpaque(false);
-        sizePanel.add(new JLabel("Position Size:"), BorderLayout.WEST);
-        sizePanel.add(positionSizingCombo, BorderLayout.CENTER);
+        settingsGrid.add(new JLabel("Position Size:"), new GridBagConstraints(0, 0, 1, 1, 0, 0, GridBagConstraints.WEST, GridBagConstraints.NONE, new Insets(2, 0, 2, 8), 0, 0));
+        settingsGrid.add(positionSizingCombo, new GridBagConstraints(1, 0, 1, 1, 1, 0, GridBagConstraints.WEST, GridBagConstraints.HORIZONTAL, new Insets(2, 0, 2, 8), 0, 0));
 
         // Fee row
-        JPanel feePanel = new JPanel(new BorderLayout(8, 0));
-        feePanel.setOpaque(false);
-        feePanel.add(new JLabel("Fee:"), BorderLayout.WEST);
-        feePanel.add(feeSpinner, BorderLayout.CENTER);
+        settingsGrid.add(new JLabel("Fee:"), new GridBagConstraints(0, 1, 1, 1, 0, 0, GridBagConstraints.WEST, GridBagConstraints.NONE, new Insets(2, 0, 2, 8), 0, 0));
+        settingsGrid.add(feeSpinner, new GridBagConstraints(1, 1, 1, 1, 1, 0, GridBagConstraints.WEST, GridBagConstraints.HORIZONTAL, new Insets(2, 0, 2, 8), 0, 0));
 
         // Slippage row
-        JPanel slippagePanel = new JPanel(new BorderLayout(8, 0));
-        slippagePanel.setOpaque(false);
-        slippagePanel.add(new JLabel("Slippage:"), BorderLayout.WEST);
-        slippagePanel.add(slippageSpinner, BorderLayout.CENTER);
-
-        // All settings in a grid
-        JPanel settingsGrid = new JPanel(new GridLayout(3, 1, 0, 4));
-        settingsGrid.setOpaque(false);
-        settingsGrid.add(sizePanel);
-        settingsGrid.add(feePanel);
-        settingsGrid.add(slippagePanel);
+        settingsGrid.add(new JLabel("Slippage:"), new GridBagConstraints(0, 2, 1, 1, 0, 0, GridBagConstraints.WEST, GridBagConstraints.NONE, new Insets(2, 0, 2, 8), 0, 0));
+        settingsGrid.add(slippageSpinner, new GridBagConstraints(1, 2, 1, 1, 1, 0, GridBagConstraints.WEST, GridBagConstraints.HORIZONTAL, new Insets(2, 0, 2, 8), 0, 0));
 
         add(title, BorderLayout.NORTH);
         add(settingsGrid, BorderLayout.CENTER);
