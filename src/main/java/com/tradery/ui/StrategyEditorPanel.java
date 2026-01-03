@@ -48,15 +48,15 @@ public class StrategyEditorPanel extends JPanel {
         topPanel.add(tradeSettingsPanel, BorderLayout.NORTH);
         topPanel.add(new JSeparator(), BorderLayout.SOUTH);
 
-        // Center: entry and exit panels split vertically
-        JPanel centerPanel = new JPanel(new GridLayout(2, 1, 0, 0));
+        // Center: entry and exit panels side by side
+        JPanel centerPanel = new JPanel(new GridLayout(1, 2, 0, 0));
         centerPanel.setOpaque(false);
 
-        // Entry with separator below
+        // Entry with separator on right
         JPanel entryWrapper = new JPanel(new BorderLayout());
         entryWrapper.setOpaque(false);
         entryWrapper.add(entryConfigPanel, BorderLayout.CENTER);
-        entryWrapper.add(new JSeparator(), BorderLayout.SOUTH);
+        entryWrapper.add(new JSeparator(JSeparator.VERTICAL), BorderLayout.EAST);
 
         centerPanel.add(entryWrapper);
         centerPanel.add(exitConfigPanel);

@@ -34,7 +34,7 @@ public class ExitConfigPanel extends JPanel {
         // Header with label and add button
         JPanel headerPanel = new JPanel(new BorderLayout());
         headerPanel.setOpaque(false);
-        JLabel label = new JLabel("Exit Zones:");
+        JLabel label = new JLabel("Exit");
         label.setForeground(Color.GRAY);
         headerPanel.add(label, BorderLayout.WEST);
 
@@ -47,17 +47,17 @@ public class ExitConfigPanel extends JPanel {
         });
         headerPanel.add(addZoneBtn, BorderLayout.EAST);
 
-        // Zone list - horizontal layout
+        // Zone list - vertical layout
         zoneListPanel = new JPanel();
-        zoneListPanel.setLayout(new BoxLayout(zoneListPanel, BoxLayout.X_AXIS));
+        zoneListPanel.setLayout(new BoxLayout(zoneListPanel, BoxLayout.Y_AXIS));
         zoneListPanel.setOpaque(false);
 
         JScrollPane scrollPane = new JScrollPane(zoneListPanel);
         scrollPane.setBorder(BorderFactory.createEmptyBorder());
         scrollPane.setOpaque(false);
         scrollPane.getViewport().setOpaque(false);
-        scrollPane.setHorizontalScrollBarPolicy(JScrollPane.HORIZONTAL_SCROLLBAR_AS_NEEDED);
-        scrollPane.setVerticalScrollBarPolicy(JScrollPane.VERTICAL_SCROLLBAR_NEVER);
+        scrollPane.setHorizontalScrollBarPolicy(JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
+        scrollPane.setVerticalScrollBarPolicy(JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED);
 
         add(headerPanel, BorderLayout.NORTH);
         add(scrollPane, BorderLayout.CENTER);
@@ -73,6 +73,9 @@ public class ExitConfigPanel extends JPanel {
         }, this::fireChange);
         editorHolder[0] = editor;
         zoneEditors.add(editor);
+        if (!zoneEditors.isEmpty() && zoneEditors.size() > 1) {
+            zoneListPanel.add(Box.createVerticalStrut(40));
+        }
         zoneListPanel.add(editor);
         zoneListPanel.revalidate();
         zoneListPanel.repaint();
@@ -111,6 +114,9 @@ public class ExitConfigPanel extends JPanel {
                 addZoneEditor(ExitZone.defaultZone());
             }
 
+            // Push zones to top
+            zoneListPanel.add(Box.createVerticalGlue());
+
             zoneListPanel.revalidate();
             zoneListPanel.repaint();
         } finally {
@@ -148,11 +154,9 @@ public class ExitConfigPanel extends JPanel {
 
         ZoneEditor(ExitZone zone, Runnable onRemove, Runnable onChange) {
             setLayout(new BorderLayout(4, 2));
-            setBorder(BorderFactory.createEmptyBorder(4, 4, 4, 8));
+            setBorder(BorderFactory.createEmptyBorder(4, 0, 4, 0));
             setOpaque(false);
-            setPreferredSize(new Dimension(200, 220));
-            setMinimumSize(new Dimension(200, 100));
-            setMaximumSize(new Dimension(200, Integer.MAX_VALUE));
+            setAlignmentX(Component.LEFT_ALIGNMENT);
 
             // Top row: Name and remove button
             JPanel topRow = new JPanel(new BorderLayout(4, 0));
@@ -268,7 +272,7 @@ public class ExitConfigPanel extends JPanel {
             centerPanel.setOpaque(false);
             GridBagConstraints c = new GridBagConstraints();
             c.anchor = GridBagConstraints.WEST;
-            c.insets = new Insets(1, 0, 2, 4);
+            c.insets = new Insets(1, 0, 2, 0);
             c.gridy = 0;
 
             // Min P&L row
@@ -311,12 +315,6 @@ public class ExitConfigPanel extends JPanel {
             centerPanel.add(tpTypeCombo, c);
             c.gridx = 1; c.weightx = 1; c.fill = GridBagConstraints.HORIZONTAL;
             centerPanel.add(tpValueSpinner, c);
-
-            // Bottom filler to push content to top when exit DSL is hidden
-            c.gridy++; c.gridx = 0; c.gridwidth = 2; c.weighty = 1; c.fill = GridBagConstraints.BOTH;
-            JPanel filler = new JPanel();
-            filler.setOpaque(false);
-            centerPanel.add(filler, c);
 
             add(topRow, BorderLayout.NORTH);
             add(centerPanel, BorderLayout.CENTER);

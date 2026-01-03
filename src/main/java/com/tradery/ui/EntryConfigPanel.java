@@ -61,11 +61,15 @@ public class EntryConfigPanel extends JPanel {
         // Entry condition
         JPanel conditionPanel = new JPanel(new BorderLayout(0, 2));
         conditionPanel.setOpaque(false);
-        JLabel entryLabel = new JLabel("Entry Condition:");
+        JLabel entryLabel = new JLabel("Entry");
         entryLabel.setForeground(Color.GRAY);
         conditionPanel.add(entryLabel, BorderLayout.NORTH);
         JScrollPane entryScroll = new JScrollPane(entryEditor);
-        conditionPanel.add(entryScroll, BorderLayout.CENTER);
+        JPanel scrollWrapper = new JPanel(new BorderLayout());
+        scrollWrapper.setOpaque(false);
+        scrollWrapper.add(Box.createVerticalStrut(12), BorderLayout.NORTH);
+        scrollWrapper.add(entryScroll, BorderLayout.CENTER);
+        conditionPanel.add(scrollWrapper, BorderLayout.CENTER);
 
         // DCA section
         JPanel dcaCheckboxPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 2));
