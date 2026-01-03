@@ -196,6 +196,7 @@ public class ExitConfigPanel extends JPanel {
             hasMinPnl.addActionListener(e -> {
                 minPnlSpinner.setVisible(hasMinPnl.isSelected());
                 revalidate();
+                updateMaxSize();
                 repaint();
                 onChange.run();
             });
@@ -210,6 +211,7 @@ public class ExitConfigPanel extends JPanel {
             hasMaxPnl.addActionListener(e -> {
                 maxPnlSpinner.setVisible(hasMaxPnl.isSelected());
                 revalidate();
+                updateMaxSize();
                 repaint();
                 onChange.run();
             });
@@ -232,6 +234,7 @@ public class ExitConfigPanel extends JPanel {
             slTypeCombo.addActionListener(e -> {
                 slValueSpinner.setVisible(slTypeCombo.getSelectedIndex() > 0);
                 revalidate();
+                updateMaxSize();
                 repaint();
                 onChange.run();
             });
@@ -247,6 +250,7 @@ public class ExitConfigPanel extends JPanel {
             tpTypeCombo.addActionListener(e -> {
                 tpValueSpinner.setVisible(tpTypeCombo.getSelectedIndex() > 0);
                 revalidate();
+                updateMaxSize();
                 repaint();
                 onChange.run();
             });
@@ -269,6 +273,7 @@ public class ExitConfigPanel extends JPanel {
                 tpTypeCombo.setVisible(!immediate);
                 tpValueSpinner.setVisible(!immediate && tpTypeCombo.getSelectedIndex() > 0);
                 revalidate();
+                updateMaxSize();
                 repaint();
                 onChange.run();
             });
@@ -303,7 +308,7 @@ public class ExitConfigPanel extends JPanel {
             // Exit immediately row
             centerPanel.add(exitImmediatelyCheckbox, new GridBagConstraints(0, row++, 2, 1, 1, 0, WEST, NONE, new Insets(0, 0, 4, 0), 0, 0));
 
-            // Exit condition row - can expand vertically when visible
+            // Exit condition row - expands vertically
             centerPanel.add(exitConditionScroll, new GridBagConstraints(0, row++, 2, 1, 1, 1, WEST, BOTH, new Insets(0, 0, 4, 0), 0, 0));
 
             // Stop Loss row
@@ -312,13 +317,23 @@ public class ExitConfigPanel extends JPanel {
 
             // Take Profit row
             centerPanel.add(tpTypeCombo, new GridBagConstraints(0, row, 1, 1, 0, 0, WEST, NONE, new Insets(0, 0, 0, 4), 0, 0));
-            centerPanel.add(tpValueSpinner, new GridBagConstraints(1, row++, 1, 1, 1, 0, WEST, HORIZONTAL, new Insets(0, 0, 0, 0), 0, 0));
-
-            // Vertical filler to absorb extra space and keep content anchored to top
-            centerPanel.add(Box.createVerticalGlue(), new GridBagConstraints(0, row, 2, 1, 0, 1, NORTH, VERTICAL, new Insets(0, 0, 0, 0), 0, 0));
+            centerPanel.add(tpValueSpinner, new GridBagConstraints(1, row, 1, 1, 1, 0, WEST, HORIZONTAL, new Insets(0, 0, 0, 0), 0, 0));
 
             add(topRow, BorderLayout.NORTH);
             add(centerPanel, BorderLayout.CENTER);
+
+            // Only constrain height when exit condition is hidden
+            updateMaxSize();
+        }
+
+        private void updateMaxSize() {
+            if (exitConditionScroll.isVisible()) {
+                // Allow expansion when exit condition is visible
+                setMaximumSize(new Dimension(Integer.MAX_VALUE, Integer.MAX_VALUE));
+            } else {
+                // Lock height when exit condition is hidden
+                setMaximumSize(new Dimension(Integer.MAX_VALUE, getPreferredSize().height));
+            }
         }
 
         private DocumentListener docListener(Runnable onChange) {
@@ -445,6 +460,7 @@ public class ExitConfigPanel extends JPanel {
             }
 
             revalidate();
+            updateMaxSize();
             repaint();
         }
     }
