@@ -48,6 +48,34 @@ import java.util.function.Consumer;
  */
 public class ChartsPanel extends JPanel {
 
+    // Color constants
+    private static final Color BACKGROUND_COLOR = new Color(30, 30, 35);
+    private static final Color PLOT_BACKGROUND_COLOR = new Color(20, 20, 25);
+    private static final Color GRIDLINE_COLOR = new Color(60, 60, 65);
+    private static final Color TEXT_COLOR = new Color(150, 150, 150);
+    private static final Color CROSSHAIR_COLOR = new Color(150, 150, 150, 180);
+    private static final Color PRICE_LINE_COLOR = new Color(255, 255, 255, 180);
+    private static final Color WIN_COLOR = new Color(76, 175, 80, 180);
+    private static final Color LOSS_COLOR = new Color(244, 67, 54, 180);
+    private static final Color EQUITY_COLOR = new Color(77, 77, 255);
+    private static final Color BUY_HOLD_COLOR = new Color(255, 193, 7);
+    private static final Color CAPITAL_USAGE_COLOR = new Color(57, 255, 20);
+    private static final Color SMA_COLOR = new Color(255, 193, 7, 200);
+    private static final Color EMA_COLOR = new Color(0, 200, 255, 200);
+    private static final Color BB_COLOR = new Color(180, 100, 255, 180);
+    private static final Color BB_MIDDLE_COLOR = new Color(180, 100, 255, 120);
+
+    // Volume colors (Wyckoff-style: cool to warm)
+    private static final Color[] VOLUME_COLORS = {
+        new Color(100, 100, 100),  // Ultra Low - grey
+        new Color(0, 100, 255),    // Very Low - blue
+        new Color(0, 200, 200),    // Low - cyan
+        new Color(100, 200, 100),  // Average - green
+        new Color(255, 180, 0),    // High - orange
+        new Color(255, 80, 80),    // Very High - red
+        new Color(255, 0, 200)     // Ultra High - magenta
+    };
+
     private org.jfree.chart.ChartPanel priceChartPanel;
     private org.jfree.chart.ChartPanel equityChartPanel;
     private org.jfree.chart.ChartPanel comparisonChartPanel;
@@ -262,7 +290,7 @@ public class ChartsPanel extends JPanel {
         legendPanel.setPreferredSize(new Dimension(LEGEND_WIDTH, 0));
         legendPanel.setMinimumSize(new Dimension(LEGEND_WIDTH, 0));
         legendPanel.setMaximumSize(new Dimension(LEGEND_WIDTH, Integer.MAX_VALUE));
-        legendPanel.setBackground(new Color(30, 30, 35));
+        legendPanel.setBackground(BACKGROUND_COLOR);
         legendPanel.setBorder(BorderFactory.createEmptyBorder(0, 0, 18, 0)); // Match chart axis height
         legendRows = new JPanel[6];
 
@@ -322,11 +350,11 @@ public class ChartsPanel extends JPanel {
     private JPanel createLegendRow(String title) {
         JPanel row = new JPanel();
         row.setLayout(new BoxLayout(row, BoxLayout.Y_AXIS));
-        row.setBackground(new Color(30, 30, 35));
+        row.setBackground(BACKGROUND_COLOR);
         row.setBorder(BorderFactory.createEmptyBorder(4, 4, 4, 4));
 
         JLabel titleLabel = new JLabel(title);
-        titleLabel.setForeground(new Color(150, 150, 150));
+        titleLabel.setForeground(TEXT_COLOR);
         titleLabel.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 10));
         titleLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
         row.add(titleLabel);
@@ -443,7 +471,7 @@ public class ChartsPanel extends JPanel {
             }
             chartsContainer.add(chartWrappers[i], gbc);
         }
-
+        chartsContainer.setBackground(BACKGROUND_COLOR);
         chartsContainer.revalidate();
         chartsContainer.repaint();
     }
@@ -668,7 +696,7 @@ public class ChartsPanel extends JPanel {
     }
 
     private void setupCrosshairs() {
-        Color crosshairColor = new Color(150, 150, 150, 180);
+        Color crosshairColor = CROSSHAIR_COLOR;
 
         // Price chart crosshair
         priceCrosshair = new Crosshair(Double.NaN);
@@ -783,12 +811,12 @@ public class ChartsPanel extends JPanel {
     }
 
     private void stylizeChart(JFreeChart chart, String title) {
-        chart.setBackgroundPaint(new Color(30, 30, 35));
+        chart.setBackgroundPaint(BACKGROUND_COLOR);
 
         XYPlot plot = chart.getXYPlot();
-        plot.setBackgroundPaint(new Color(20, 20, 25));
-        plot.setDomainGridlinePaint(new Color(60, 60, 65));
-        plot.setRangeGridlinePaint(new Color(60, 60, 65));
+        plot.setBackgroundPaint(PLOT_BACKGROUND_COLOR);
+        plot.setDomainGridlinePaint(GRIDLINE_COLOR);
+        plot.setRangeGridlinePaint(GRIDLINE_COLOR);
         plot.setOutlineVisible(false);
 
         // Date axis formatting
@@ -810,7 +838,7 @@ public class ChartsPanel extends JPanel {
         // Add title as annotation only if chart has no legend
         if (chart.getLegend() == null) {
             TextTitle textTitle = new TextTitle(title, new Font(Font.SANS_SERIF, Font.PLAIN, 11));
-            textTitle.setPaint(new Color(150, 150, 150));
+            textTitle.setPaint(TEXT_COLOR);
             textTitle.setBackgroundPaint(null);
             XYTitleAnnotation titleAnnotation = new XYTitleAnnotation(0.01, 0.98, textTitle, RectangleAnchor.TOP_LEFT);
             plot.addAnnotation(titleAnnotation);
@@ -879,7 +907,7 @@ public class ChartsPanel extends JPanel {
         TimeSeriesCollection dataset = new TimeSeriesCollection(priceSeries);
         XYPlot plot = priceChart.getXYPlot();
         plot.setDataset(dataset);
-        plot.getRenderer().setSeriesPaint(0, new Color(255, 255, 255, 180)); // Slightly transparent white
+        plot.getRenderer().setSeriesPaint(0, PRICE_LINE_COLOR);
 
         // Clear existing trade annotations (keep title annotation)
         plot.getAnnotations().stream()
@@ -889,8 +917,8 @@ public class ChartsPanel extends JPanel {
 
         // Add trade lines - green for wins, red for losses
         if (trades != null) {
-            Color winColor = new Color(76, 175, 80, 180);   // Green with transparency
-            Color lossColor = new Color(244, 67, 54, 180);  // Red with transparency
+            Color winColor = WIN_COLOR;
+            Color lossColor = LOSS_COLOR;
             BasicStroke thinStroke = new BasicStroke(1.0f);
 
             // Group trades by groupId
@@ -1032,7 +1060,7 @@ public class ChartsPanel extends JPanel {
         TimeSeriesCollection dataset = new TimeSeriesCollection(equitySeries);
         XYPlot plot = equityChart.getXYPlot();
         plot.setDataset(dataset);
-        plot.getRenderer().setSeriesPaint(0, new Color(77, 77, 255)); // Neon blue
+        plot.getRenderer().setSeriesPaint(0, EQUITY_COLOR);
     }
 
     private void updateComparisonChart(List<Candle> candles, List<Trade> trades, double initialCapital) {
@@ -1073,8 +1101,8 @@ public class ChartsPanel extends JPanel {
 
         XYPlot plot = comparisonChart.getXYPlot();
         plot.setDataset(dataset);
-        plot.getRenderer().setSeriesPaint(0, new Color(77, 77, 255));   // Strategy - same blue as equity
-        plot.getRenderer().setSeriesPaint(1, new Color(255, 193, 7));   // Buy & Hold - amber
+        plot.getRenderer().setSeriesPaint(0, EQUITY_COLOR);
+        plot.getRenderer().setSeriesPaint(1, BUY_HOLD_COLOR);
     }
 
     private void updateCapitalUsageChart(List<Candle> candles, List<Trade> trades, double initialCapital) {
@@ -1138,7 +1166,7 @@ public class ChartsPanel extends JPanel {
         TimeSeriesCollection dataset = new TimeSeriesCollection(usageSeries);
         XYPlot plot = capitalUsageChart.getXYPlot();
         plot.setDataset(dataset);
-        plot.getRenderer().setSeriesPaint(0, new Color(57, 255, 20)); // Neon green
+        plot.getRenderer().setSeriesPaint(0, CAPITAL_USAGE_COLOR);
         plot.getRangeAxis().setRange(-5, 105);
     }
 
@@ -1246,19 +1274,8 @@ public class ChartsPanel extends JPanel {
         renderer.setShadowVisible(false);
         renderer.setDrawBarOutline(false);
 
-        // Wyckoff-style colors: cool (low) to warm (high)
-        Color[] volumeColors = {
-            new Color(100, 100, 100),  // Ultra Low - grey
-            new Color(0, 100, 255),    // Very Low - blue
-            new Color(0, 200, 200),    // Low - cyan
-            new Color(100, 200, 100),  // Average - green
-            new Color(255, 180, 0),    // High - orange
-            new Color(255, 80, 80),    // Very High - red
-            new Color(255, 0, 200)     // Ultra High - magenta
-        };
-
-        for (int i = 0; i < 7; i++) {
-            renderer.setSeriesPaint(i, volumeColors[i]);
+        for (int i = 0; i < VOLUME_COLORS.length; i++) {
+            renderer.setSeriesPaint(i, VOLUME_COLORS[i]);
         }
 
         plot.setRenderer(renderer);
@@ -1319,7 +1336,7 @@ public class ChartsPanel extends JPanel {
         // Style the SMA line
         org.jfree.chart.renderer.xy.XYLineAndShapeRenderer smaRenderer =
             new org.jfree.chart.renderer.xy.XYLineAndShapeRenderer(true, false);
-        smaRenderer.setSeriesPaint(0, new Color(255, 193, 7, 200)); // Amber color
+        smaRenderer.setSeriesPaint(0, SMA_COLOR);
         smaRenderer.setSeriesStroke(0, new BasicStroke(1.5f));
         plot.setRenderer(smaDatasetIndex, smaRenderer);
     }
@@ -1385,7 +1402,7 @@ public class ChartsPanel extends JPanel {
         // Style the EMA line - cyan color to distinguish from SMA
         org.jfree.chart.renderer.xy.XYLineAndShapeRenderer emaRenderer =
             new org.jfree.chart.renderer.xy.XYLineAndShapeRenderer(true, false);
-        emaRenderer.setSeriesPaint(0, new Color(0, 200, 255, 200)); // Cyan color
+        emaRenderer.setSeriesPaint(0, EMA_COLOR);
         emaRenderer.setSeriesStroke(0, new BasicStroke(1.5f));
         plot.setRenderer(emaDatasetIndex, emaRenderer);
     }
@@ -1461,10 +1478,9 @@ public class ChartsPanel extends JPanel {
         // Style: purple bands with semi-transparent fill effect
         org.jfree.chart.renderer.xy.XYLineAndShapeRenderer bbRenderer =
             new org.jfree.chart.renderer.xy.XYLineAndShapeRenderer(true, false);
-        Color bbColor = new Color(180, 100, 255, 180); // Purple
-        bbRenderer.setSeriesPaint(0, bbColor); // Upper
-        bbRenderer.setSeriesPaint(1, new Color(180, 100, 255, 120)); // Middle (lighter)
-        bbRenderer.setSeriesPaint(2, bbColor); // Lower
+        bbRenderer.setSeriesPaint(0, BB_COLOR); // Upper
+        bbRenderer.setSeriesPaint(1, BB_MIDDLE_COLOR); // Middle (lighter)
+        bbRenderer.setSeriesPaint(2, BB_COLOR); // Lower
         bbRenderer.setSeriesStroke(0, new BasicStroke(1.0f));
         bbRenderer.setSeriesStroke(1, new BasicStroke(1.0f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER, 10.0f, new float[]{4.0f}, 0.0f)); // Dashed middle
         bbRenderer.setSeriesStroke(2, new BasicStroke(1.0f));
@@ -1528,8 +1544,8 @@ public class ChartsPanel extends JPanel {
         // Style: green for high (resistance), red for low (support)
         org.jfree.chart.renderer.xy.XYLineAndShapeRenderer hlRenderer =
             new org.jfree.chart.renderer.xy.XYLineAndShapeRenderer(true, false);
-        hlRenderer.setSeriesPaint(0, new Color(76, 175, 80, 180));  // Green - resistance
-        hlRenderer.setSeriesPaint(1, new Color(244, 67, 54, 180));  // Red - support
+        hlRenderer.setSeriesPaint(0, WIN_COLOR);  // Green - resistance
+        hlRenderer.setSeriesPaint(1, LOSS_COLOR);  // Red - support
         hlRenderer.setSeriesStroke(0, new BasicStroke(1.2f));
         hlRenderer.setSeriesStroke(1, new BasicStroke(1.2f));
         plot.setRenderer(hlDatasetIndex, hlRenderer);
