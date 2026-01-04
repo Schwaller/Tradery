@@ -33,7 +33,7 @@ public class TraderyApp {
         }
 
         // Set application dock icon (macOS)
-        setApplicationIcon();
+//        setApplicationIcon();
 
         // Ensure user data directory exists
         ensureUserDirectories();
