@@ -86,6 +86,11 @@ public class ChartsPanel extends JPanel {
     private JPanel[] chartWrappers;
     private JButton[] zoomButtons;
 
+    // Custom legend panel
+    private static final int LEGEND_WIDTH = 90;
+    private JPanel legendPanel;
+    private JPanel[] legendRows;
+
     // Indicator overlays
     private TimeSeries smaSeries;
     private int smaDatasetIndex = -1;
@@ -115,7 +120,7 @@ public class ChartsPanel extends JPanel {
             null,
             null,
             new TimeSeriesCollection(),
-            true,  // legend
+            false,  // no JFreeChart legend - using custom
             true,
             false
         );
@@ -125,6 +130,10 @@ public class ChartsPanel extends JPanel {
         priceChartPanel.setMouseWheelEnabled(false);
         priceChartPanel.setDomainZoomable(false);
         priceChartPanel.setRangeZoomable(false);
+        priceChartPanel.setMinimumDrawWidth(0);
+        priceChartPanel.setMinimumDrawHeight(0);
+        priceChartPanel.setMaximumDrawWidth(Integer.MAX_VALUE);
+        priceChartPanel.setMaximumDrawHeight(Integer.MAX_VALUE);
 
         // Equity chart (placeholder)
         equityChart = ChartFactory.createTimeSeriesChart(
@@ -132,7 +141,7 @@ public class ChartsPanel extends JPanel {
             null,
             null,
             new TimeSeriesCollection(),
-            true,  // legend
+            false,  // no JFreeChart legend - using custom
             true,
             false
         );
@@ -142,6 +151,10 @@ public class ChartsPanel extends JPanel {
         equityChartPanel.setMouseWheelEnabled(false);
         equityChartPanel.setDomainZoomable(false);
         equityChartPanel.setRangeZoomable(false);
+        equityChartPanel.setMinimumDrawWidth(0);
+        equityChartPanel.setMinimumDrawHeight(0);
+        equityChartPanel.setMaximumDrawWidth(Integer.MAX_VALUE);
+        equityChartPanel.setMaximumDrawHeight(Integer.MAX_VALUE);
 
         // Comparison chart (Strategy vs Buy & Hold)
         comparisonChart = ChartFactory.createTimeSeriesChart(
@@ -149,7 +162,7 @@ public class ChartsPanel extends JPanel {
             null,
             null,
             new TimeSeriesCollection(),
-            true,  // legend
+            false,  // no JFreeChart legend - using custom
             true,
             false
         );
@@ -159,6 +172,10 @@ public class ChartsPanel extends JPanel {
         comparisonChartPanel.setMouseWheelEnabled(false);
         comparisonChartPanel.setDomainZoomable(false);
         comparisonChartPanel.setRangeZoomable(false);
+        comparisonChartPanel.setMinimumDrawWidth(0);
+        comparisonChartPanel.setMinimumDrawHeight(0);
+        comparisonChartPanel.setMaximumDrawWidth(Integer.MAX_VALUE);
+        comparisonChartPanel.setMaximumDrawHeight(Integer.MAX_VALUE);
 
         // Capital usage chart
         capitalUsageChart = ChartFactory.createTimeSeriesChart(
@@ -166,7 +183,7 @@ public class ChartsPanel extends JPanel {
             null,
             null,
             new TimeSeriesCollection(),
-            true,  // legend
+            false,  // no JFreeChart legend - using custom
             true,
             false
         );
@@ -176,6 +193,10 @@ public class ChartsPanel extends JPanel {
         capitalUsageChartPanel.setMouseWheelEnabled(false);
         capitalUsageChartPanel.setDomainZoomable(false);
         capitalUsageChartPanel.setRangeZoomable(false);
+        capitalUsageChartPanel.setMinimumDrawWidth(0);
+        capitalUsageChartPanel.setMinimumDrawHeight(0);
+        capitalUsageChartPanel.setMaximumDrawWidth(Integer.MAX_VALUE);
+        capitalUsageChartPanel.setMaximumDrawHeight(Integer.MAX_VALUE);
 
         // Trade P&L chart
         tradePLChart = ChartFactory.createTimeSeriesChart(
@@ -193,6 +214,10 @@ public class ChartsPanel extends JPanel {
         tradePLChartPanel.setMouseWheelEnabled(false);
         tradePLChartPanel.setDomainZoomable(false);
         tradePLChartPanel.setRangeZoomable(false);
+        tradePLChartPanel.setMinimumDrawWidth(0);
+        tradePLChartPanel.setMinimumDrawHeight(0);
+        tradePLChartPanel.setMaximumDrawWidth(Integer.MAX_VALUE);
+        tradePLChartPanel.setMaximumDrawHeight(Integer.MAX_VALUE);
 
         // Volume chart with colored bars
         volumeChart = ChartFactory.createXYBarChart(
@@ -202,7 +227,7 @@ public class ChartsPanel extends JPanel {
             null,
             new XYSeriesCollection(),
             org.jfree.chart.plot.PlotOrientation.VERTICAL,
-            false, // legend
+            false,  // no JFreeChart legend - using custom
             false, // tooltips
             false  // urls
         );
@@ -212,6 +237,10 @@ public class ChartsPanel extends JPanel {
         volumeChartPanel.setMouseWheelEnabled(false);
         volumeChartPanel.setDomainZoomable(false);
         volumeChartPanel.setRangeZoomable(false);
+        volumeChartPanel.setMinimumDrawWidth(0);
+        volumeChartPanel.setMinimumDrawHeight(0);
+        volumeChartPanel.setMaximumDrawWidth(Integer.MAX_VALUE);
+        volumeChartPanel.setMaximumDrawHeight(Integer.MAX_VALUE);
     }
 
     private void setupScrollableContainer() {
@@ -227,6 +256,22 @@ public class ChartsPanel extends JPanel {
         for (int i = 0; i < chartPanels.length; i++) {
             chartWrappers[i] = createChartWrapper(chartPanels[i], i);
         }
+
+        // Create custom legend panel with fixed width
+        legendPanel = new JPanel(new GridBagLayout());
+        legendPanel.setPreferredSize(new Dimension(LEGEND_WIDTH, 0));
+        legendPanel.setMinimumSize(new Dimension(LEGEND_WIDTH, 0));
+        legendPanel.setMaximumSize(new Dimension(LEGEND_WIDTH, Integer.MAX_VALUE));
+        legendPanel.setBackground(new Color(30, 30, 35));
+        legendPanel.setBorder(BorderFactory.createEmptyBorder(0, 0, 18, 0)); // Match chart axis height
+        legendRows = new JPanel[6];
+
+        // Create legend rows - content will be set by updateLegends()
+        String[] defaultTitles = {"Price", "Volume", "Equity", "Strategy vs B&H", "Capital Usage", "Trade P&L %"};
+        for (int i = 0; i < 6; i++) {
+            legendRows[i] = createLegendRow(defaultTitles[i]);
+        }
+        updateLegendLayout();
 
         // Create container for all charts using GridBagLayout for variable sizing
         chartsContainer = new JPanel(new GridBagLayout());
@@ -258,13 +303,64 @@ public class ChartsPanel extends JPanel {
         tradePLChartPanel.addMouseWheelListener(wheelListener);
         volumeChartPanel.addMouseWheelListener(wheelListener);
 
+        // Panel combining legend and charts
+        JPanel chartsWithLegend = new JPanel(new BorderLayout());
+        chartsWithLegend.add(legendPanel, BorderLayout.WEST);
+        chartsWithLegend.add(chartsContainer, BorderLayout.CENTER);
+
         // Main panel with charts and scrollbar
         mainPanel = new JPanel(new BorderLayout());
-        mainPanel.add(chartsContainer, BorderLayout.CENTER);
+        mainPanel.add(chartsWithLegend, BorderLayout.CENTER);
         mainPanel.add(timeScrollBar, BorderLayout.SOUTH);
 
         add(mainPanel, BorderLayout.CENTER);
     }
+
+    /**
+     * Create a legend row panel
+     */
+    private JPanel createLegendRow(String title) {
+        JPanel row = new JPanel();
+        row.setLayout(new BoxLayout(row, BoxLayout.Y_AXIS));
+        row.setBackground(new Color(30, 30, 35));
+        row.setBorder(BorderFactory.createEmptyBorder(4, 4, 4, 4));
+
+        JLabel titleLabel = new JLabel(title);
+        titleLabel.setForeground(new Color(150, 150, 150));
+        titleLabel.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 10));
+        titleLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
+        row.add(titleLabel);
+
+        return row;
+    }
+
+    /**
+     * Update legend layout to match chart layout weights
+     */
+    private void updateLegendLayout() {
+        legendPanel.removeAll();
+        GridBagConstraints gbc = new GridBagConstraints();
+        gbc.gridx = 0;
+        gbc.fill = GridBagConstraints.BOTH;
+        gbc.weightx = 1.0;
+
+        for (int i = 0; i < legendRows.length; i++) {
+            gbc.gridy = i;
+            if (zoomedChartIndex == i) {
+                gbc.weighty = 0.65;
+            } else if (zoomedChartIndex >= 0) {
+                gbc.weighty = 0.07;
+            } else {
+                gbc.weighty = 1.0 / 6.0;
+            }
+            legendPanel.add(legendRows[i], gbc);
+        }
+
+        legendPanel.revalidate();
+        legendPanel.repaint();
+    }
+
+    private static final int MIN_CHART_HEIGHT = 60;
 
     /**
      * Create a wrapper panel for a chart with a zoom button overlay
@@ -306,6 +402,7 @@ public class ChartsPanel extends JPanel {
         // Wrapper to give layeredPane proper layout behavior
         JPanel wrapper = new JPanel(new BorderLayout());
         wrapper.add(layeredPane, BorderLayout.CENTER);
+        wrapper.setMinimumSize(new Dimension(100, MIN_CHART_HEIGHT));
         return wrapper;
     }
 
@@ -321,6 +418,7 @@ public class ChartsPanel extends JPanel {
             zoomedChartIndex = chartIndex;
         }
         updateChartLayout();
+        updateLegendLayout();
         updateZoomButtonStates();
     }
 
@@ -691,17 +789,17 @@ public class ChartsPanel extends JPanel {
         plot.setBackgroundPaint(new Color(20, 20, 25));
         plot.setDomainGridlinePaint(new Color(60, 60, 65));
         plot.setRangeGridlinePaint(new Color(60, 60, 65));
-        plot.setOutlinePaint(new Color(60, 60, 65));
+        plot.setOutlineVisible(false);
 
         // Date axis formatting
         if (plot.getDomainAxis() instanceof DateAxis dateAxis) {
             dateAxis.setDateFormatOverride(new SimpleDateFormat("MMM d"));
             dateAxis.setTickLabelPaint(Color.LIGHT_GRAY);
-            dateAxis.setAxisLinePaint(Color.GRAY);
+            dateAxis.setAxisLineVisible(false);
         }
 
         plot.getRangeAxis().setTickLabelPaint(Color.LIGHT_GRAY);
-        plot.getRangeAxis().setAxisLinePaint(Color.GRAY);
+        plot.getRangeAxis().setAxisLineVisible(false);
         plot.getRangeAxis().setFixedDimension(60);  // Fixed width for alignment
 
         // Set thin line stroke with rounded joins for all series
@@ -718,15 +816,7 @@ public class ChartsPanel extends JPanel {
             plot.addAnnotation(titleAnnotation);
         }
 
-        // Make legend background transparent if present
-        if (chart.getLegend() != null) {
-            chart.getLegend().setBackgroundPaint(new Color(0, 0, 0, 0));
-            chart.getLegend().setFrame(BlockBorder.NONE);
-            chart.getLegend().setItemPaint(Color.LIGHT_GRAY);
-            chart.getLegend().setPosition(org.jfree.chart.ui.RectangleEdge.TOP);
-            chart.getLegend().setItemFont(new Font(Font.SANS_SERIF, Font.PLAIN, 10));
-            chart.getLegend().setPadding(new org.jfree.chart.ui.RectangleInsets(8, 2, 0, 2));
-        }
+        // Legends are handled by custom legend panel for consistent alignment
     }
 
     /**
@@ -1158,7 +1248,7 @@ public class ChartsPanel extends JPanel {
 
         // Wyckoff-style colors: cool (low) to warm (high)
         Color[] volumeColors = {
-            new Color(128, 0, 255),    // Ultra Low - purple
+            new Color(100, 100, 100),  // Ultra Low - grey
             new Color(0, 100, 255),    // Very Low - blue
             new Color(0, 200, 200),    // Low - cyan
             new Color(100, 200, 100),  // Average - green
