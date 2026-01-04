@@ -227,11 +227,11 @@ public class ProjectWindow extends JFrame {
 
         smaSlider = new JSlider(5, 200, 50);
         smaSlider.setPreferredSize(new Dimension(100, 20));
-        smaSlider.setEnabled(false);
+        smaSlider.setVisible(false);
 
         smaSpinner = new JSpinner(new SpinnerNumberModel(50, 5, 500, 1));
         smaSpinner.setPreferredSize(new Dimension(55, 22));
-        smaSpinner.setEnabled(false);
+        smaSpinner.setVisible(false);
 
         // Debounce timer for slider updates (100ms)
         smaDebounceTimer = new Timer(100, e -> updateSmaOverlay());
@@ -252,8 +252,8 @@ public class ProjectWindow extends JFrame {
 
         smaCheckbox.addActionListener(e -> {
             boolean enabled = smaCheckbox.isSelected();
-            smaSlider.setEnabled(enabled);
-            smaSpinner.setEnabled(enabled);
+            smaSlider.setVisible(enabled);
+            smaSpinner.setVisible(enabled);
             updateSmaOverlay();
         });
 
@@ -263,11 +263,11 @@ public class ProjectWindow extends JFrame {
 
         emaSlider = new JSlider(5, 200, 20);
         emaSlider.setPreferredSize(new Dimension(100, 20));
-        emaSlider.setEnabled(false);
+        emaSlider.setVisible(false);
 
         emaSpinner = new JSpinner(new SpinnerNumberModel(20, 5, 500, 1));
         emaSpinner.setPreferredSize(new Dimension(55, 22));
-        emaSpinner.setEnabled(false);
+        emaSpinner.setVisible(false);
 
         emaDebounceTimer = new Timer(100, e -> updateEmaOverlay());
         emaDebounceTimer.setRepeats(false);
@@ -286,8 +286,8 @@ public class ProjectWindow extends JFrame {
 
         emaCheckbox.addActionListener(e -> {
             boolean enabled = emaCheckbox.isSelected();
-            emaSlider.setEnabled(enabled);
-            emaSpinner.setEnabled(enabled);
+            emaSlider.setVisible(enabled);
+            emaSpinner.setVisible(enabled);
             updateEmaOverlay();
         });
 
@@ -297,11 +297,11 @@ public class ProjectWindow extends JFrame {
 
         bbSlider = new JSlider(5, 100, 20);
         bbSlider.setPreferredSize(new Dimension(80, 20));
-        bbSlider.setEnabled(false);
+        bbSlider.setVisible(false);
 
         bbSpinner = new JSpinner(new SpinnerNumberModel(20, 5, 200, 1));
         bbSpinner.setPreferredSize(new Dimension(50, 22));
-        bbSpinner.setEnabled(false);
+        bbSpinner.setVisible(false);
 
         bbDebounceTimer = new Timer(100, e -> updateBbOverlay());
         bbDebounceTimer.setRepeats(false);
@@ -320,8 +320,8 @@ public class ProjectWindow extends JFrame {
 
         bbCheckbox.addActionListener(e -> {
             boolean enabled = bbCheckbox.isSelected();
-            bbSlider.setEnabled(enabled);
-            bbSpinner.setEnabled(enabled);
+            bbSlider.setVisible(enabled);
+            bbSpinner.setVisible(enabled);
             updateBbOverlay();
         });
 
@@ -331,11 +331,11 @@ public class ProjectWindow extends JFrame {
 
         hlSlider = new JSlider(5, 100, 20);
         hlSlider.setPreferredSize(new Dimension(80, 20));
-        hlSlider.setEnabled(false);
+        hlSlider.setVisible(false);
 
         hlSpinner = new JSpinner(new SpinnerNumberModel(20, 5, 200, 1));
         hlSpinner.setPreferredSize(new Dimension(50, 22));
-        hlSpinner.setEnabled(false);
+        hlSpinner.setVisible(false);
 
         hlDebounceTimer = new Timer(100, e -> updateHlOverlay());
         hlDebounceTimer.setRepeats(false);
@@ -354,8 +354,8 @@ public class ProjectWindow extends JFrame {
 
         hlCheckbox.addActionListener(e -> {
             boolean enabled = hlCheckbox.isSelected();
-            hlSlider.setEnabled(enabled);
-            hlSpinner.setEnabled(enabled);
+            hlSlider.setVisible(enabled);
+            hlSpinner.setVisible(enabled);
             updateHlOverlay();
         });
 

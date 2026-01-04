@@ -114,11 +114,6 @@ public class ChartsPanel extends JPanel {
     private JPanel[] chartWrappers;
     private JButton[] zoomButtons;
 
-    // Custom legend panel
-    private static final int LEGEND_WIDTH = 90;
-    private JPanel legendPanel;
-    private JPanel[] legendRows;
-
     // Indicator overlays
     private TimeSeries smaSeries;
     private int smaDatasetIndex = -1;
@@ -285,22 +280,6 @@ public class ChartsPanel extends JPanel {
             chartWrappers[i] = createChartWrapper(chartPanels[i], i);
         }
 
-        // Create custom legend panel with fixed width
-        legendPanel = new JPanel(new GridBagLayout());
-        legendPanel.setPreferredSize(new Dimension(LEGEND_WIDTH, 0));
-        legendPanel.setMinimumSize(new Dimension(LEGEND_WIDTH, 0));
-        legendPanel.setMaximumSize(new Dimension(LEGEND_WIDTH, Integer.MAX_VALUE));
-        legendPanel.setBackground(BACKGROUND_COLOR);
-        legendPanel.setBorder(BorderFactory.createEmptyBorder(0, 0, 18, 0)); // Match chart axis height
-        legendRows = new JPanel[6];
-
-        // Create legend rows - content will be set by updateLegends()
-        String[] defaultTitles = {"Price", "Volume", "Equity", "Strategy vs B&H", "Capital Usage", "Trade P&L %"};
-        for (int i = 0; i < 6; i++) {
-            legendRows[i] = createLegendRow(defaultTitles[i]);
-        }
-        updateLegendLayout();
-
         // Create container for all charts using GridBagLayout for variable sizing
         chartsContainer = new JPanel(new GridBagLayout());
         updateChartLayout();
@@ -331,61 +310,12 @@ public class ChartsPanel extends JPanel {
         tradePLChartPanel.addMouseWheelListener(wheelListener);
         volumeChartPanel.addMouseWheelListener(wheelListener);
 
-        // Panel combining legend and charts
-        JPanel chartsWithLegend = new JPanel(new BorderLayout());
-        chartsWithLegend.add(legendPanel, BorderLayout.WEST);
-        chartsWithLegend.add(chartsContainer, BorderLayout.CENTER);
-
         // Main panel with charts and scrollbar
         mainPanel = new JPanel(new BorderLayout());
-        mainPanel.add(chartsWithLegend, BorderLayout.CENTER);
+        mainPanel.add(chartsContainer, BorderLayout.CENTER);
         mainPanel.add(timeScrollBar, BorderLayout.SOUTH);
 
         add(mainPanel, BorderLayout.CENTER);
-    }
-
-    /**
-     * Create a legend row panel
-     */
-    private JPanel createLegendRow(String title) {
-        JPanel row = new JPanel();
-        row.setLayout(new BoxLayout(row, BoxLayout.Y_AXIS));
-        row.setBackground(BACKGROUND_COLOR);
-        row.setBorder(BorderFactory.createEmptyBorder(4, 4, 4, 4));
-
-        JLabel titleLabel = new JLabel(title);
-        titleLabel.setForeground(TEXT_COLOR);
-        titleLabel.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 10));
-        titleLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
-        row.add(titleLabel);
-
-        return row;
-    }
-
-    /**
-     * Update legend layout to match chart layout weights
-     */
-    private void updateLegendLayout() {
-        legendPanel.removeAll();
-        GridBagConstraints gbc = new GridBagConstraints();
-        gbc.gridx = 0;
-        gbc.fill = GridBagConstraints.BOTH;
-        gbc.weightx = 1.0;
-
-        for (int i = 0; i < legendRows.length; i++) {
-            gbc.gridy = i;
-            if (zoomedChartIndex == i) {
-                gbc.weighty = 0.65;
-            } else if (zoomedChartIndex >= 0) {
-                gbc.weighty = 0.07;
-            } else {
-                gbc.weighty = 1.0 / 6.0;
-            }
-            legendPanel.add(legendRows[i], gbc);
-        }
-
-        legendPanel.revalidate();
-        legendPanel.repaint();
     }
 
     private static final int MIN_CHART_HEIGHT = 60;
@@ -446,7 +376,6 @@ public class ChartsPanel extends JPanel {
             zoomedChartIndex = chartIndex;
         }
         updateChartLayout();
-        updateLegendLayout();
         updateZoomButtonStates();
     }
 
