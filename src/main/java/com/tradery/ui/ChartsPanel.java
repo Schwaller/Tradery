@@ -846,8 +846,6 @@ public class ChartsPanel extends JPanel {
 
         // Add trade lines - green for wins, red for losses
         if (trades != null) {
-            Color winColor = WIN_COLOR;
-            Color lossColor = LOSS_COLOR;
             BasicStroke thinStroke = new BasicStroke(1.0f);
 
             // Group trades by groupId
@@ -868,7 +866,7 @@ public class ChartsPanel extends JPanel {
                     // Single trade - draw simple diagonal line
                     Trade t = group.get(0);
                     boolean isWin = t.pnl() != null && t.pnl() > 0;
-                    Color color = isWin ? winColor : lossColor;
+                    Color color = isWin ? WIN_COLOR : LOSS_COLOR;
 
                     XYLineAnnotation tradeLine = new XYLineAnnotation(
                         t.entryTime(), t.entryPrice(),
@@ -895,7 +893,7 @@ public class ChartsPanel extends JPanel {
 
                     double avgEntryPrice = totalValue / totalQuantity;
                     boolean isWin = totalPnl > 0;
-                    Color color = isWin ? winColor : lossColor;
+                    Color color = isWin ? WIN_COLOR : LOSS_COLOR;
                     Trade lastTrade = group.get(0); // All have same exit time/price
 
                     // Draw vertical lines from each entry to the average line (35% alpha)
