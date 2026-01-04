@@ -91,6 +91,8 @@ public class ChartsPanel extends JPanel {
     private int smaDatasetIndex = -1;
     private TimeSeries emaSeries;
     private int emaDatasetIndex = -1;
+    private int bbDatasetIndex = -1;
+    private int hlDatasetIndex = -1;
 
     public ChartsPanel() {
         setLayout(new BorderLayout());
@@ -214,9 +216,10 @@ public class ChartsPanel extends JPanel {
 
     private void setupScrollableContainer() {
         // Create wrappers with zoom buttons for each chart
+        // Volume is placed right after price for better correlation viewing
         org.jfree.chart.ChartPanel[] chartPanels = {
-            priceChartPanel, equityChartPanel, comparisonChartPanel,
-            capitalUsageChartPanel, tradePLChartPanel, volumeChartPanel
+            priceChartPanel, volumeChartPanel, equityChartPanel,
+            comparisonChartPanel, capitalUsageChartPanel, tradePLChartPanel
         };
         chartWrappers = new JPanel[6];
         zoomButtons = new JButton[6];
@@ -1183,6 +1186,8 @@ public class ChartsPanel extends JPanel {
         volumeChart.getXYPlot().setDataset(new XYSeriesCollection());
         clearSmaOverlay();
         clearEmaOverlay();
+        clearBollingerOverlay();
+        clearHighLowOverlay();
     }
 
     /**
@@ -1304,5 +1309,149 @@ public class ChartsPanel extends JPanel {
             plot.setDataset(emaDatasetIndex, null);
         }
         emaSeries = null;
+    }
+
+    /**
+     * Set Bollinger Bands overlay on price chart
+     */
+    public void setBollingerOverlay(int period, double stdDevMultiplier, List<Candle> candles) {
+        if (candles == null || candles.size() < period) {
+            clearBollingerOverlay();
+            return;
+        }
+
+        XYPlot plot = priceChart.getXYPlot();
+
+        // Calculate Bollinger Bands
+        TimeSeries upperSeries = new TimeSeries("BB Upper");
+        TimeSeries middleSeries = new TimeSeries("BB Middle");
+        TimeSeries lowerSeries = new TimeSeries("BB Lower");
+
+        for (int i = period - 1; i < candles.size(); i++) {
+            // Calculate SMA (middle band)
+            double sum = 0;
+            for (int j = 0; j < period; j++) {
+                sum += candles.get(i - j).close();
+            }
+            double sma = sum / period;
+
+            // Calculate standard deviation
+            double sumSquaredDiff = 0;
+            for (int j = 0; j < period; j++) {
+                double diff = candles.get(i - j).close() - sma;
+                sumSquaredDiff += diff * diff;
+            }
+            double stdDev = Math.sqrt(sumSquaredDiff / period);
+
+            // Calculate bands
+            double upper = sma + (stdDevMultiplier * stdDev);
+            double lower = sma - (stdDevMultiplier * stdDev);
+
+            Millisecond time = new Millisecond(new Date(candles.get(i).timestamp()));
+            upperSeries.addOrUpdate(time, upper);
+            middleSeries.addOrUpdate(time, sma);
+            lowerSeries.addOrUpdate(time, lower);
+        }
+
+        // Add as dataset with 3 series
+        TimeSeriesCollection bbDataset = new TimeSeriesCollection();
+        bbDataset.addSeries(upperSeries);
+        bbDataset.addSeries(middleSeries);
+        bbDataset.addSeries(lowerSeries);
+
+        if (bbDatasetIndex < 0) {
+            bbDatasetIndex = Math.max(3, Math.max(smaDatasetIndex, emaDatasetIndex) + 1);
+            while (plot.getDataset(bbDatasetIndex) != null) {
+                bbDatasetIndex++;
+            }
+        }
+
+        plot.setDataset(bbDatasetIndex, bbDataset);
+
+        // Style: purple bands with semi-transparent fill effect
+        org.jfree.chart.renderer.xy.XYLineAndShapeRenderer bbRenderer =
+            new org.jfree.chart.renderer.xy.XYLineAndShapeRenderer(true, false);
+        Color bbColor = new Color(180, 100, 255, 180); // Purple
+        bbRenderer.setSeriesPaint(0, bbColor); // Upper
+        bbRenderer.setSeriesPaint(1, new Color(180, 100, 255, 120)); // Middle (lighter)
+        bbRenderer.setSeriesPaint(2, bbColor); // Lower
+        bbRenderer.setSeriesStroke(0, new BasicStroke(1.0f));
+        bbRenderer.setSeriesStroke(1, new BasicStroke(1.0f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER, 10.0f, new float[]{4.0f}, 0.0f)); // Dashed middle
+        bbRenderer.setSeriesStroke(2, new BasicStroke(1.0f));
+        plot.setRenderer(bbDatasetIndex, bbRenderer);
+    }
+
+    /**
+     * Clear Bollinger Bands overlay from price chart
+     */
+    public void clearBollingerOverlay() {
+        if (bbDatasetIndex >= 0 && priceChart != null) {
+            XYPlot plot = priceChart.getXYPlot();
+            plot.setDataset(bbDatasetIndex, null);
+        }
+    }
+
+    /**
+     * Set High/Low overlay on price chart (support/resistance levels)
+     */
+    public void setHighLowOverlay(int period, List<Candle> candles) {
+        if (candles == null || candles.size() < period) {
+            clearHighLowOverlay();
+            return;
+        }
+
+        XYPlot plot = priceChart.getXYPlot();
+
+        // Calculate rolling high/low
+        TimeSeries highSeries = new TimeSeries("High(" + period + ")");
+        TimeSeries lowSeries = new TimeSeries("Low(" + period + ")");
+
+        for (int i = period - 1; i < candles.size(); i++) {
+            double high = Double.MIN_VALUE;
+            double low = Double.MAX_VALUE;
+
+            for (int j = 0; j < period; j++) {
+                Candle c = candles.get(i - j);
+                high = Math.max(high, c.high());
+                low = Math.min(low, c.low());
+            }
+
+            Millisecond time = new Millisecond(new Date(candles.get(i).timestamp()));
+            highSeries.addOrUpdate(time, high);
+            lowSeries.addOrUpdate(time, low);
+        }
+
+        // Add as dataset
+        TimeSeriesCollection hlDataset = new TimeSeriesCollection();
+        hlDataset.addSeries(highSeries);
+        hlDataset.addSeries(lowSeries);
+
+        if (hlDatasetIndex < 0) {
+            hlDatasetIndex = Math.max(4, Math.max(Math.max(smaDatasetIndex, emaDatasetIndex), bbDatasetIndex) + 1);
+            while (plot.getDataset(hlDatasetIndex) != null) {
+                hlDatasetIndex++;
+            }
+        }
+
+        plot.setDataset(hlDatasetIndex, hlDataset);
+
+        // Style: green for high (resistance), red for low (support)
+        org.jfree.chart.renderer.xy.XYLineAndShapeRenderer hlRenderer =
+            new org.jfree.chart.renderer.xy.XYLineAndShapeRenderer(true, false);
+        hlRenderer.setSeriesPaint(0, new Color(76, 175, 80, 180));  // Green - resistance
+        hlRenderer.setSeriesPaint(1, new Color(244, 67, 54, 180));  // Red - support
+        hlRenderer.setSeriesStroke(0, new BasicStroke(1.2f));
+        hlRenderer.setSeriesStroke(1, new BasicStroke(1.2f));
+        plot.setRenderer(hlDatasetIndex, hlRenderer);
+    }
+
+    /**
+     * Clear High/Low overlay from price chart
+     */
+    public void clearHighLowOverlay() {
+        if (hlDatasetIndex >= 0 && priceChart != null) {
+            XYPlot plot = priceChart.getXYPlot();
+            plot.setDataset(hlDatasetIndex, null);
+        }
     }
 }

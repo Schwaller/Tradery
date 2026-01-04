@@ -63,6 +63,16 @@ public class ProjectWindow extends JFrame {
     private JSpinner emaSpinner;
     private Timer emaDebounceTimer;
 
+    private JCheckBox bbCheckbox;
+    private JSlider bbSlider;
+    private JSpinner bbSpinner;
+    private Timer bbDebounceTimer;
+
+    private JCheckBox hlCheckbox;
+    private JSlider hlSlider;
+    private JSpinner hlSpinner;
+    private Timer hlDebounceTimer;
+
     private static final String[] SYMBOLS = {
         "BTCUSDT", "ETHUSDT", "BNBUSDT", "XRPUSDT", "ADAUSDT",
         "SOLUSDT", "DOGEUSDT", "DOTUSDT", "MATICUSDT", "LTCUSDT"
@@ -281,6 +291,74 @@ public class ProjectWindow extends JFrame {
             updateEmaOverlay();
         });
 
+        // Bollinger Bands controls
+        bbCheckbox = new JCheckBox("BB");
+        bbCheckbox.setToolTipText("Show Bollinger Bands on price chart");
+
+        bbSlider = new JSlider(5, 100, 20);
+        bbSlider.setPreferredSize(new Dimension(80, 20));
+        bbSlider.setEnabled(false);
+
+        bbSpinner = new JSpinner(new SpinnerNumberModel(20, 5, 200, 1));
+        bbSpinner.setPreferredSize(new Dimension(50, 22));
+        bbSpinner.setEnabled(false);
+
+        bbDebounceTimer = new Timer(100, e -> updateBbOverlay());
+        bbDebounceTimer.setRepeats(false);
+
+        bbSlider.addChangeListener(e -> {
+            bbSpinner.setValue(bbSlider.getValue());
+            bbDebounceTimer.restart();
+        });
+        bbSpinner.addChangeListener(e -> {
+            int val = ((Number) bbSpinner.getValue()).intValue();
+            if (val >= 5 && val <= 100) {
+                bbSlider.setValue(val);
+            }
+            bbDebounceTimer.restart();
+        });
+
+        bbCheckbox.addActionListener(e -> {
+            boolean enabled = bbCheckbox.isSelected();
+            bbSlider.setEnabled(enabled);
+            bbSpinner.setEnabled(enabled);
+            updateBbOverlay();
+        });
+
+        // High/Low controls
+        hlCheckbox = new JCheckBox("H/L");
+        hlCheckbox.setToolTipText("Show High/Low of period on price chart");
+
+        hlSlider = new JSlider(5, 100, 20);
+        hlSlider.setPreferredSize(new Dimension(80, 20));
+        hlSlider.setEnabled(false);
+
+        hlSpinner = new JSpinner(new SpinnerNumberModel(20, 5, 200, 1));
+        hlSpinner.setPreferredSize(new Dimension(50, 22));
+        hlSpinner.setEnabled(false);
+
+        hlDebounceTimer = new Timer(100, e -> updateHlOverlay());
+        hlDebounceTimer.setRepeats(false);
+
+        hlSlider.addChangeListener(e -> {
+            hlSpinner.setValue(hlSlider.getValue());
+            hlDebounceTimer.restart();
+        });
+        hlSpinner.addChangeListener(e -> {
+            int val = ((Number) hlSpinner.getValue()).intValue();
+            if (val >= 5 && val <= 100) {
+                hlSlider.setValue(val);
+            }
+            hlDebounceTimer.restart();
+        });
+
+        hlCheckbox.addActionListener(e -> {
+            boolean enabled = hlCheckbox.isSelected();
+            hlSlider.setEnabled(enabled);
+            hlSpinner.setEnabled(enabled);
+            updateHlOverlay();
+        });
+
         // Auto-save timer
         autoSaveTimer = new Timer(AUTO_SAVE_DELAY_MS, e -> saveStrategyQuietly());
         autoSaveTimer.setRepeats(false);
@@ -446,6 +524,14 @@ public class ProjectWindow extends JFrame {
         toolbarLeft.add(emaCheckbox);
         toolbarLeft.add(emaSlider);
         toolbarLeft.add(emaSpinner);
+        toolbarLeft.add(Box.createHorizontalStrut(8));
+        toolbarLeft.add(bbCheckbox);
+        toolbarLeft.add(bbSlider);
+        toolbarLeft.add(bbSpinner);
+        toolbarLeft.add(Box.createHorizontalStrut(8));
+        toolbarLeft.add(hlCheckbox);
+        toolbarLeft.add(hlSlider);
+        toolbarLeft.add(hlSpinner);
 
         // Progress bar panel (right side of toolbar)
         JPanel toolbarRight = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 4));
@@ -655,6 +741,28 @@ public class ProjectWindow extends JFrame {
         }
     }
 
+    private void updateBbOverlay() {
+        if (currentCandles == null || currentCandles.isEmpty()) return;
+
+        if (bbCheckbox.isSelected()) {
+            int period = ((Number) bbSpinner.getValue()).intValue();
+            chartPanel.setBollingerOverlay(period, 2.0, currentCandles);
+        } else {
+            chartPanel.clearBollingerOverlay();
+        }
+    }
+
+    private void updateHlOverlay() {
+        if (currentCandles == null || currentCandles.isEmpty()) return;
+
+        if (hlCheckbox.isSelected()) {
+            int period = ((Number) hlSpinner.getValue()).intValue();
+            chartPanel.setHighLowOverlay(period, currentCandles);
+        } else {
+            chartPanel.clearHighLowOverlay();
+        }
+    }
+
     private void runBacktest() {
         // Apply current UI values
         editorPanel.applyToStrategy(strategy);
@@ -748,6 +856,8 @@ public class ProjectWindow extends JFrame {
             chartPanel.updateCharts(currentCandles, result.trades(), result.config().initialCapital());
             updateSmaOverlay();
             updateEmaOverlay();
+            updateBbOverlay();
+            updateHlOverlay();
         }
     }
 
