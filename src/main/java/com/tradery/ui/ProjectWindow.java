@@ -52,6 +52,17 @@ public class ProjectWindow extends JFrame {
     private JToggleButton fullYBtn;
     private JButton clearCacheBtn;
 
+    // Indicator controls
+    private JCheckBox smaCheckbox;
+    private JSlider smaSlider;
+    private JSpinner smaSpinner;
+    private Timer smaDebounceTimer;
+
+    private JCheckBox emaCheckbox;
+    private JSlider emaSlider;
+    private JSpinner emaSpinner;
+    private Timer emaDebounceTimer;
+
     private static final String[] SYMBOLS = {
         "BTCUSDT", "ETHUSDT", "BNBUSDT", "XRPUSDT", "ADAUSDT",
         "SOLUSDT", "DOGEUSDT", "DOTUSDT", "MATICUSDT", "LTCUSDT"
@@ -199,6 +210,76 @@ public class ProjectWindow extends JFrame {
         clearCacheBtn = new JButton("Reload Data");
         clearCacheBtn.setToolTipText("Clear cached OHLC data and redownload from Binance");
         clearCacheBtn.addActionListener(e -> clearCacheAndReload());
+
+        // SMA indicator controls
+        smaCheckbox = new JCheckBox("SMA");
+        smaCheckbox.setToolTipText("Show Simple Moving Average on price chart");
+
+        smaSlider = new JSlider(5, 200, 50);
+        smaSlider.setPreferredSize(new Dimension(100, 20));
+        smaSlider.setEnabled(false);
+
+        smaSpinner = new JSpinner(new SpinnerNumberModel(50, 5, 500, 1));
+        smaSpinner.setPreferredSize(new Dimension(55, 22));
+        smaSpinner.setEnabled(false);
+
+        // Debounce timer for slider updates (100ms)
+        smaDebounceTimer = new Timer(100, e -> updateSmaOverlay());
+        smaDebounceTimer.setRepeats(false);
+
+        // Sync slider and spinner with debounced updates
+        smaSlider.addChangeListener(e -> {
+            smaSpinner.setValue(smaSlider.getValue());
+            smaDebounceTimer.restart();
+        });
+        smaSpinner.addChangeListener(e -> {
+            int val = ((Number) smaSpinner.getValue()).intValue();
+            if (val >= 5 && val <= 200) {
+                smaSlider.setValue(val);
+            }
+            smaDebounceTimer.restart();
+        });
+
+        smaCheckbox.addActionListener(e -> {
+            boolean enabled = smaCheckbox.isSelected();
+            smaSlider.setEnabled(enabled);
+            smaSpinner.setEnabled(enabled);
+            updateSmaOverlay();
+        });
+
+        // EMA indicator controls
+        emaCheckbox = new JCheckBox("EMA");
+        emaCheckbox.setToolTipText("Show Exponential Moving Average on price chart");
+
+        emaSlider = new JSlider(5, 200, 20);
+        emaSlider.setPreferredSize(new Dimension(100, 20));
+        emaSlider.setEnabled(false);
+
+        emaSpinner = new JSpinner(new SpinnerNumberModel(20, 5, 500, 1));
+        emaSpinner.setPreferredSize(new Dimension(55, 22));
+        emaSpinner.setEnabled(false);
+
+        emaDebounceTimer = new Timer(100, e -> updateEmaOverlay());
+        emaDebounceTimer.setRepeats(false);
+
+        emaSlider.addChangeListener(e -> {
+            emaSpinner.setValue(emaSlider.getValue());
+            emaDebounceTimer.restart();
+        });
+        emaSpinner.addChangeListener(e -> {
+            int val = ((Number) emaSpinner.getValue()).intValue();
+            if (val >= 5 && val <= 200) {
+                emaSlider.setValue(val);
+            }
+            emaDebounceTimer.restart();
+        });
+
+        emaCheckbox.addActionListener(e -> {
+            boolean enabled = emaCheckbox.isSelected();
+            emaSlider.setEnabled(enabled);
+            emaSpinner.setEnabled(enabled);
+            updateEmaOverlay();
+        });
 
         // Auto-save timer
         autoSaveTimer = new Timer(AUTO_SAVE_DELAY_MS, e -> saveStrategyQuietly());
@@ -355,6 +436,16 @@ public class ProjectWindow extends JFrame {
         toolbarLeft.add(Box.createHorizontalStrut(8));
         toolbarLeft.add(fitYBtn);
         toolbarLeft.add(fullYBtn);
+        toolbarLeft.add(Box.createHorizontalStrut(16));
+
+        // Indicator controls
+        toolbarLeft.add(smaCheckbox);
+        toolbarLeft.add(smaSlider);
+        toolbarLeft.add(smaSpinner);
+        toolbarLeft.add(Box.createHorizontalStrut(8));
+        toolbarLeft.add(emaCheckbox);
+        toolbarLeft.add(emaSlider);
+        toolbarLeft.add(emaSpinner);
 
         // Progress bar panel (right side of toolbar)
         JPanel toolbarRight = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 4));
@@ -542,6 +633,28 @@ public class ProjectWindow extends JFrame {
         worker.execute();
     }
 
+    private void updateSmaOverlay() {
+        if (currentCandles == null || currentCandles.isEmpty()) return;
+
+        if (smaCheckbox.isSelected()) {
+            int period = ((Number) smaSpinner.getValue()).intValue();
+            chartPanel.setSmaOverlay(period, currentCandles);
+        } else {
+            chartPanel.clearSmaOverlay();
+        }
+    }
+
+    private void updateEmaOverlay() {
+        if (currentCandles == null || currentCandles.isEmpty()) return;
+
+        if (emaCheckbox.isSelected()) {
+            int period = ((Number) emaSpinner.getValue()).intValue();
+            chartPanel.setEmaOverlay(period, currentCandles);
+        } else {
+            chartPanel.clearEmaOverlay();
+        }
+    }
+
     private void runBacktest() {
         // Apply current UI values
         editorPanel.applyToStrategy(strategy);
@@ -633,6 +746,8 @@ public class ProjectWindow extends JFrame {
         // Update charts
         if (currentCandles != null && !currentCandles.isEmpty()) {
             chartPanel.updateCharts(currentCandles, result.trades(), result.config().initialCapital());
+            updateSmaOverlay();
+            updateEmaOverlay();
         }
     }
 

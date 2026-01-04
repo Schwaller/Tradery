@@ -86,6 +86,12 @@ public class ChartsPanel extends JPanel {
     private JPanel[] chartWrappers;
     private JButton[] zoomButtons;
 
+    // Indicator overlays
+    private TimeSeries smaSeries;
+    private int smaDatasetIndex = -1;
+    private TimeSeries emaSeries;
+    private int emaDatasetIndex = -1;
+
     public ChartsPanel() {
         setLayout(new BorderLayout());
         setBorder(null);
@@ -1175,5 +1181,128 @@ public class ChartsPanel extends JPanel {
         capitalUsageChart.getXYPlot().setDataset(new TimeSeriesCollection());
         tradePLChart.getXYPlot().setDataset(new TimeSeriesCollection());
         volumeChart.getXYPlot().setDataset(new XYSeriesCollection());
+        clearSmaOverlay();
+        clearEmaOverlay();
+    }
+
+    /**
+     * Set SMA overlay on price chart
+     */
+    public void setSmaOverlay(int period, List<Candle> candles) {
+        if (candles == null || candles.size() < period) {
+            clearSmaOverlay();
+            return;
+        }
+
+        XYPlot plot = priceChart.getXYPlot();
+
+        // Calculate SMA values
+        smaSeries = new TimeSeries("SMA(" + period + ")");
+
+        for (int i = period - 1; i < candles.size(); i++) {
+            double sum = 0;
+            for (int j = 0; j < period; j++) {
+                sum += candles.get(i - j).close();
+            }
+            double sma = sum / period;
+            smaSeries.addOrUpdate(new Millisecond(new Date(candles.get(i).timestamp())), sma);
+        }
+
+        // Add as secondary dataset
+        TimeSeriesCollection smaDataset = new TimeSeriesCollection(smaSeries);
+
+        if (smaDatasetIndex < 0) {
+            // Find next available index
+            smaDatasetIndex = 1;
+            while (plot.getDataset(smaDatasetIndex) != null) {
+                smaDatasetIndex++;
+            }
+        }
+
+        plot.setDataset(smaDatasetIndex, smaDataset);
+
+        // Style the SMA line
+        org.jfree.chart.renderer.xy.XYLineAndShapeRenderer smaRenderer =
+            new org.jfree.chart.renderer.xy.XYLineAndShapeRenderer(true, false);
+        smaRenderer.setSeriesPaint(0, new Color(255, 193, 7, 200)); // Amber color
+        smaRenderer.setSeriesStroke(0, new BasicStroke(1.5f));
+        plot.setRenderer(smaDatasetIndex, smaRenderer);
+    }
+
+    /**
+     * Clear SMA overlay from price chart
+     */
+    public void clearSmaOverlay() {
+        if (smaDatasetIndex >= 0 && priceChart != null) {
+            XYPlot plot = priceChart.getXYPlot();
+            plot.setDataset(smaDatasetIndex, null);
+        }
+        smaSeries = null;
+    }
+
+    /**
+     * Set EMA overlay on price chart
+     */
+    public void setEmaOverlay(int period, List<Candle> candles) {
+        if (candles == null || candles.size() < period) {
+            clearEmaOverlay();
+            return;
+        }
+
+        XYPlot plot = priceChart.getXYPlot();
+
+        // Calculate EMA values
+        emaSeries = new TimeSeries("EMA(" + period + ")");
+        double multiplier = 2.0 / (period + 1);
+        double ema = 0;
+
+        for (int i = 0; i < candles.size(); i++) {
+            if (i < period - 1) {
+                // Build up initial SMA
+                continue;
+            } else if (i == period - 1) {
+                // First EMA is SMA of first 'period' values
+                double sum = 0;
+                for (int j = 0; j < period; j++) {
+                    sum += candles.get(j).close();
+                }
+                ema = sum / period;
+            } else {
+                // EMA = (close - prevEMA) * multiplier + prevEMA
+                ema = (candles.get(i).close() - ema) * multiplier + ema;
+            }
+            emaSeries.addOrUpdate(new Millisecond(new Date(candles.get(i).timestamp())), ema);
+        }
+
+        // Add as secondary dataset
+        TimeSeriesCollection emaDataset = new TimeSeriesCollection(emaSeries);
+
+        if (emaDatasetIndex < 0) {
+            // Find next available index (after SMA if present)
+            emaDatasetIndex = Math.max(2, smaDatasetIndex + 1);
+            while (plot.getDataset(emaDatasetIndex) != null) {
+                emaDatasetIndex++;
+            }
+        }
+
+        plot.setDataset(emaDatasetIndex, emaDataset);
+
+        // Style the EMA line - cyan color to distinguish from SMA
+        org.jfree.chart.renderer.xy.XYLineAndShapeRenderer emaRenderer =
+            new org.jfree.chart.renderer.xy.XYLineAndShapeRenderer(true, false);
+        emaRenderer.setSeriesPaint(0, new Color(0, 200, 255, 200)); // Cyan color
+        emaRenderer.setSeriesStroke(0, new BasicStroke(1.5f));
+        plot.setRenderer(emaDatasetIndex, emaRenderer);
+    }
+
+    /**
+     * Clear EMA overlay from price chart
+     */
+    public void clearEmaOverlay() {
+        if (emaDatasetIndex >= 0 && priceChart != null) {
+            XYPlot plot = priceChart.getXYPlot();
+            plot.setDataset(emaDatasetIndex, null);
+        }
+        emaSeries = null;
     }
 }
