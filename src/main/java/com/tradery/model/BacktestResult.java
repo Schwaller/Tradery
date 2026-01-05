@@ -3,6 +3,9 @@ package com.tradery.model;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 
 import java.util.List;
+import java.util.UUID;
+import java.security.MessageDigest;
+import java.nio.charset.StandardCharsets;
 
 /**
  * Result of a backtest run.
@@ -10,8 +13,11 @@ import java.util.List;
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
 public record BacktestResult(
+    String runId,           // Unique ID for this run (for change detection)
+    String configHash,      // Hash of strategy config (to verify results match input)
     String strategyId,
     String strategyName,
+    Strategy strategy,      // Full strategy definition (for Claude Code)
     BacktestConfig config,
     List<Trade> trades,
     PerformanceMetrics metrics,
@@ -21,6 +27,30 @@ public record BacktestResult(
     long duration,
     List<String> errors
 ) {
+    /**
+     * Generate a new unique run ID
+     */
+    public static String newRunId() {
+        return UUID.randomUUID().toString().substring(0, 8);
+    }
+
+    /**
+     * Generate a hash of the strategy configuration for change detection
+     */
+    public static String hashConfig(String entry, String exitZonesJson, String symbol, String timeframe, String duration) {
+        try {
+            String content = entry + "|" + exitZonesJson + "|" + symbol + "|" + timeframe + "|" + duration;
+            MessageDigest md = MessageDigest.getInstance("SHA-256");
+            byte[] hash = md.digest(content.getBytes(StandardCharsets.UTF_8));
+            StringBuilder hex = new StringBuilder();
+            for (int i = 0; i < 4; i++) {  // First 8 hex chars
+                hex.append(String.format("%02x", hash[i]));
+            }
+            return hex.toString();
+        } catch (Exception e) {
+            return "unknown";
+        }
+    }
     /**
      * Check if the backtest completed successfully
      */

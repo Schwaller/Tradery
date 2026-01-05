@@ -8,6 +8,9 @@ import javax.swing.*;
 import java.awt.*;
 import java.io.File;
 import java.io.InputStream;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.StandardCopyOption;
 import javax.imageio.ImageIO;
 
 /**
@@ -37,6 +40,9 @@ public class TraderyApp {
 
         // Ensure user data directory exists
         ensureUserDirectories();
+
+        // Ensure Claude integration files exist
+        ensureClaudeFiles();
 
         // Check for existing instance and acquire lock
         AppLock appLock = AppLock.getInstance();
@@ -98,6 +104,24 @@ public class TraderyApp {
                 if (created) {
                     System.out.println("Created directory: " + dir.getAbsolutePath());
                 }
+            }
+        }
+    }
+
+    /**
+     * Create Claude integration files (CLAUDE.md)
+     */
+    private static void ensureClaudeFiles() {
+        // Copy CLAUDE.md from resources if it doesn't exist
+        File claudeMd = new File(USER_DIR, "CLAUDE.md");
+        if (!claudeMd.exists()) {
+            try (InputStream is = TraderyApp.class.getResourceAsStream("/CLAUDE.md")) {
+                if (is != null) {
+                    Files.copy(is, claudeMd.toPath(), StandardCopyOption.REPLACE_EXISTING);
+                    System.out.println("Created: " + claudeMd.getAbsolutePath());
+                }
+            } catch (IOException e) {
+                System.err.println("Could not create CLAUDE.md: " + e.getMessage());
             }
         }
     }

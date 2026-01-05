@@ -1,5 +1,6 @@
 package com.tradery.engine;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tradery.dsl.AstNode;
 import com.tradery.dsl.Parser;
 import com.tradery.indicators.IndicatorEngine;
@@ -508,9 +509,25 @@ public class BacktestEngine {
 
         long endTime = System.currentTimeMillis();
 
+        // Generate config hash for change detection
+        String exitZonesJson = "";
+        try {
+            exitZonesJson = new ObjectMapper().writeValueAsString(strategy.getExitZones());
+        } catch (Exception ignored) {}
+        String configHash = BacktestResult.hashConfig(
+            strategy.getEntry(),
+            exitZonesJson,
+            config.symbol(),
+            config.resolution(),
+            String.valueOf(config.startDate()) + "-" + config.endDate()
+        );
+
         return new BacktestResult(
+            BacktestResult.newRunId(),
+            configHash,
             strategy.getId(),
             strategy.getName(),
+            strategy,
             config,
             trades,
             metrics,
@@ -666,9 +683,25 @@ public class BacktestEngine {
      * Create an error result
      */
     private BacktestResult createErrorResult(Strategy strategy, BacktestConfig config, long startTime, String error) {
+        // Generate config hash for change detection
+        String exitZonesJson = "";
+        try {
+            exitZonesJson = new ObjectMapper().writeValueAsString(strategy.getExitZones());
+        } catch (Exception ignored) {}
+        String configHash = BacktestResult.hashConfig(
+            strategy.getEntry(),
+            exitZonesJson,
+            config.symbol(),
+            config.resolution(),
+            String.valueOf(config.startDate()) + "-" + config.endDate()
+        );
+
         return new BacktestResult(
+            BacktestResult.newRunId(),
+            configHash,
             strategy.getId(),
             strategy.getName(),
+            strategy,
             config,
             List.of(),
             PerformanceMetrics.empty(config.initialCapital()),
