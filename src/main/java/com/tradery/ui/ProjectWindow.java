@@ -54,6 +54,7 @@ public class ProjectWindow extends JFrame {
     private JButton clearCacheBtn;
     private JButton claudeBtn;
     private JButton codexBtn;
+    private JButton historyBtn;
 
     // Indicator controls
     private JCheckBox smaCheckbox;
@@ -247,6 +248,11 @@ public class ProjectWindow extends JFrame {
         codexBtn = new JButton("Codex");
         codexBtn.setToolTipText("Open Codex CLI to help optimize this strategy");
         codexBtn.addActionListener(e -> openCodexTerminal());
+
+        // History button - browse and restore previous versions
+        historyBtn = new JButton("History");
+        historyBtn.setToolTipText("Browse strategy history and restore previous versions");
+        historyBtn.addActionListener(e -> showHistory());
 
         // SMA indicator controls
         smaCheckbox = new JCheckBox("SMA");
@@ -663,6 +669,8 @@ public class ProjectWindow extends JFrame {
 
         // Progress bar panel (right side of toolbar)
         JPanel toolbarRight = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 4));
+        toolbarRight.add(historyBtn);
+        toolbarRight.add(Box.createHorizontalStrut(8));
         toolbarRight.add(claudeBtn);
         toolbarRight.add(codexBtn);
         toolbarRight.add(Box.createHorizontalStrut(8));
@@ -954,6 +962,30 @@ public class ProjectWindow extends JFrame {
                 "Error",
                 JOptionPane.ERROR_MESSAGE);
         }
+    }
+
+    private void showHistory() {
+        File strategyDir = strategyStore.getFolder(strategy.getId());
+        HistoryDialog.show(this, strategyDir, restoredStrategy -> {
+            // Update the current strategy with restored values
+            strategy.setEntryCondition(restoredStrategy.getEntryCondition());
+            strategy.setExitZones(restoredStrategy.getExitZones());
+            strategy.setZoneEvaluation(restoredStrategy.getZoneEvaluation());
+            strategy.setMaxOpenTrades(restoredStrategy.getMaxOpenTrades());
+            strategy.setMinCandlesBetweenTrades(restoredStrategy.getMinCandlesBetweenTrades());
+            strategy.setDcaEnabled(restoredStrategy.isDcaEnabled());
+            strategy.setDcaMaxEntries(restoredStrategy.getDcaMaxEntries());
+            strategy.setDcaBarsBetween(restoredStrategy.getDcaBarsBetween());
+            strategy.setDcaMode(restoredStrategy.getDcaMode());
+
+            // Reload UI panels
+            editorPanel.setStrategy(strategy);
+
+            // Save and re-run backtest
+            strategyStore.save(strategy);
+            setStatus("Restored strategy from history");
+            runBacktest();
+        });
     }
 
     private void updateSmaOverlay() {

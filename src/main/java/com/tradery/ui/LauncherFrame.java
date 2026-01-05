@@ -35,6 +35,7 @@ public class LauncherFrame extends JFrame {
     private JButton renameButton;
     private JButton deleteButton;
     private JButton restorePresetsButton;
+    private JButton manageDataButton;
 
     private final StrategyStore strategyStore;
     private final Map<String, ProjectWindow> openWindows = new HashMap<>();
@@ -125,6 +126,9 @@ public class LauncherFrame extends JFrame {
         restorePresetsButton = new JButton("Restore Presets");
         restorePresetsButton.addActionListener(e -> restorePresets());
 
+        manageDataButton = new JButton("Manage Data");
+        manageDataButton.addActionListener(e -> DataManagementDialog.show(this));
+
         // Context menu for right-click
         JPopupMenu contextMenu = new JPopupMenu();
         JMenuItem openItem = new JMenuItem("Open");
@@ -188,6 +192,7 @@ public class LauncherFrame extends JFrame {
         JPanel buttonPanel = new JPanel(new BorderLayout());
         JPanel leftButtons = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 8));
         leftButtons.add(restorePresetsButton);
+        leftButtons.add(manageDataButton);
         JPanel rightButtons = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 8));
         rightButtons.add(deleteButton);
         rightButtons.add(renameButton);
