@@ -65,6 +65,27 @@ public class ChartsPanel extends JPanel {
     private static final Color BB_COLOR = new Color(180, 100, 255, 180);
     private static final Color BB_MIDDLE_COLOR = new Color(180, 100, 255, 120);
 
+    // Mayer Multiple zone colors (rainbow spectrum)
+    private static final Color MAYER_DEEP_UNDERVALUED = new Color(0, 200, 255);    // Cyan - deeply undervalued
+    private static final Color MAYER_UNDERVALUED = new Color(0, 255, 100);         // Green - undervalued
+    private static final Color MAYER_NEUTRAL = new Color(255, 255, 0);             // Yellow - fair value
+    private static final Color MAYER_OVERVALUED = new Color(255, 140, 0);          // Orange - overvalued
+    private static final Color MAYER_DEEP_OVERVALUED = new Color(255, 0, 100);     // Magenta - deeply overvalued
+
+    // RSI chart colors
+    private static final Color RSI_COLOR = new Color(255, 193, 7);
+    private static final Color RSI_OVERBOUGHT = new Color(255, 80, 80, 50);
+    private static final Color RSI_OVERSOLD = new Color(80, 255, 80, 50);
+
+    // MACD chart colors
+    private static final Color MACD_LINE_COLOR = new Color(0, 150, 255);
+    private static final Color MACD_SIGNAL_COLOR = new Color(255, 140, 0);
+    private static final Color MACD_HIST_POS = new Color(76, 175, 80);
+    private static final Color MACD_HIST_NEG = new Color(244, 67, 54);
+
+    // ATR chart color
+    private static final Color ATR_COLOR = new Color(180, 100, 255);
+
     // Volume colors (Wyckoff-style: cool to warm)
     private static final Color[] VOLUME_COLORS = {
         new Color(100, 100, 100),  // Ultra Low - grey
@@ -121,6 +142,40 @@ public class ChartsPanel extends JPanel {
     private int emaDatasetIndex = -1;
     private int bbDatasetIndex = -1;
     private int hlDatasetIndex = -1;
+
+    // Mayer Multiple mode
+    private boolean mayerMultipleEnabled = false;
+    private int mayerPeriod = 200;
+
+    // Indicator chart panels (optional, toggled)
+    private org.jfree.chart.ChartPanel rsiChartPanel;
+    private org.jfree.chart.ChartPanel macdChartPanel;
+    private org.jfree.chart.ChartPanel atrChartPanel;
+    private JFreeChart rsiChart;
+    private JFreeChart macdChart;
+    private JFreeChart atrChart;
+    private Crosshair rsiCrosshair;
+    private Crosshair macdCrosshair;
+    private Crosshair atrCrosshair;
+    private JPanel rsiChartWrapper;
+    private JPanel macdChartWrapper;
+    private JPanel atrChartWrapper;
+    private JButton rsiZoomBtn;
+    private JButton macdZoomBtn;
+    private JButton atrZoomBtn;
+
+    // Zoom state for indicator charts (-1 = none, 0=RSI, 1=MACD, 2=ATR)
+    private int indicatorZoomedIndex = -1;
+
+    // Indicator chart toggle state
+    private boolean rsiChartEnabled = false;
+    private boolean macdChartEnabled = false;
+    private boolean atrChartEnabled = false;
+    private int rsiPeriod = 14;
+    private int macdFast = 12;
+    private int macdSlow = 26;
+    private int macdSignal = 9;
+    private int atrPeriod = 14;
 
     public ChartsPanel() {
         setLayout(new BorderLayout());
@@ -264,6 +319,59 @@ public class ChartsPanel extends JPanel {
         volumeChartPanel.setMinimumDrawHeight(0);
         volumeChartPanel.setMaximumDrawWidth(Integer.MAX_VALUE);
         volumeChartPanel.setMaximumDrawHeight(Integer.MAX_VALUE);
+
+        // RSI chart (optional, toggled)
+        rsiChart = ChartFactory.createTimeSeriesChart(
+            null, null, null,
+            new TimeSeriesCollection(),
+            false, true, false
+        );
+        stylizeChart(rsiChart, "RSI");
+        // Set fixed Y range 0-100 for RSI
+        rsiChart.getXYPlot().getRangeAxis().setRange(0, 100);
+
+        rsiChartPanel = new org.jfree.chart.ChartPanel(rsiChart);
+        rsiChartPanel.setMouseWheelEnabled(false);
+        rsiChartPanel.setDomainZoomable(false);
+        rsiChartPanel.setRangeZoomable(false);
+        rsiChartPanel.setMinimumDrawWidth(0);
+        rsiChartPanel.setMinimumDrawHeight(0);
+        rsiChartPanel.setMaximumDrawWidth(Integer.MAX_VALUE);
+        rsiChartPanel.setMaximumDrawHeight(Integer.MAX_VALUE);
+
+        // MACD chart (optional, toggled)
+        macdChart = ChartFactory.createTimeSeriesChart(
+            null, null, null,
+            new TimeSeriesCollection(),
+            false, true, false
+        );
+        stylizeChart(macdChart, "MACD");
+
+        macdChartPanel = new org.jfree.chart.ChartPanel(macdChart);
+        macdChartPanel.setMouseWheelEnabled(false);
+        macdChartPanel.setDomainZoomable(false);
+        macdChartPanel.setRangeZoomable(false);
+        macdChartPanel.setMinimumDrawWidth(0);
+        macdChartPanel.setMinimumDrawHeight(0);
+        macdChartPanel.setMaximumDrawWidth(Integer.MAX_VALUE);
+        macdChartPanel.setMaximumDrawHeight(Integer.MAX_VALUE);
+
+        // ATR chart (optional, toggled)
+        atrChart = ChartFactory.createTimeSeriesChart(
+            null, null, null,
+            new TimeSeriesCollection(),
+            false, true, false
+        );
+        stylizeChart(atrChart, "ATR");
+
+        atrChartPanel = new org.jfree.chart.ChartPanel(atrChart);
+        atrChartPanel.setMouseWheelEnabled(false);
+        atrChartPanel.setDomainZoomable(false);
+        atrChartPanel.setRangeZoomable(false);
+        atrChartPanel.setMinimumDrawWidth(0);
+        atrChartPanel.setMinimumDrawHeight(0);
+        atrChartPanel.setMaximumDrawWidth(Integer.MAX_VALUE);
+        atrChartPanel.setMaximumDrawHeight(Integer.MAX_VALUE);
     }
 
     private void setupScrollableContainer() {
@@ -279,6 +387,14 @@ public class ChartsPanel extends JPanel {
         for (int i = 0; i < chartPanels.length; i++) {
             chartWrappers[i] = createChartWrapper(chartPanels[i], i);
         }
+
+        // Create wrappers for optional indicator charts with zoom buttons
+        rsiZoomBtn = new JButton("⤢");
+        macdZoomBtn = new JButton("⤢");
+        atrZoomBtn = new JButton("⤢");
+        rsiChartWrapper = createIndicatorChartWrapper(rsiChartPanel, rsiZoomBtn, 0);
+        macdChartWrapper = createIndicatorChartWrapper(macdChartPanel, macdZoomBtn, 1);
+        atrChartWrapper = createIndicatorChartWrapper(atrChartPanel, atrZoomBtn, 2);
 
         // Create container for all charts using GridBagLayout for variable sizing
         chartsContainer = new JPanel(new GridBagLayout());
@@ -309,6 +425,9 @@ public class ChartsPanel extends JPanel {
         capitalUsageChartPanel.addMouseWheelListener(wheelListener);
         tradePLChartPanel.addMouseWheelListener(wheelListener);
         volumeChartPanel.addMouseWheelListener(wheelListener);
+        rsiChartPanel.addMouseWheelListener(wheelListener);
+        macdChartPanel.addMouseWheelListener(wheelListener);
+        atrChartPanel.addMouseWheelListener(wheelListener);
 
         // Main panel with charts and scrollbar
         mainPanel = new JPanel(new BorderLayout());
@@ -316,6 +435,67 @@ public class ChartsPanel extends JPanel {
         mainPanel.add(timeScrollBar, BorderLayout.SOUTH);
 
         add(mainPanel, BorderLayout.CENTER);
+    }
+
+    /**
+     * Create a wrapper for indicator charts with zoom button
+     */
+    private JPanel createIndicatorChartWrapper(org.jfree.chart.ChartPanel chartPanel, JButton zoomBtn, int indicatorIndex) {
+        zoomBtn.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 11));
+        zoomBtn.setMargin(new Insets(2, 4, 1, 4));
+        zoomBtn.setFocusPainted(false);
+        zoomBtn.setToolTipText("Zoom chart");
+        zoomBtn.addActionListener(e -> toggleIndicatorZoom(indicatorIndex));
+
+        JLayeredPane layeredPane = new JLayeredPane();
+        chartPanel.setBounds(0, 0, 100, 100);
+        layeredPane.add(chartPanel, JLayeredPane.DEFAULT_LAYER);
+
+        Dimension btnSize = zoomBtn.getPreferredSize();
+        zoomBtn.setBounds(0, 5, btnSize.width, btnSize.height);
+        layeredPane.add(zoomBtn, JLayeredPane.PALETTE_LAYER);
+
+        layeredPane.addComponentListener(new java.awt.event.ComponentAdapter() {
+            @Override
+            public void componentResized(java.awt.event.ComponentEvent e) {
+                int w = layeredPane.getWidth();
+                int h = layeredPane.getHeight();
+                chartPanel.setBounds(0, 0, w, h);
+                Dimension bs = zoomBtn.getPreferredSize();
+                zoomBtn.setBounds(w - bs.width - 12, 8, bs.width, bs.height);
+            }
+        });
+
+        JPanel wrapper = new JPanel(new BorderLayout());
+        wrapper.add(layeredPane, BorderLayout.CENTER);
+        wrapper.setMinimumSize(new Dimension(100, MIN_CHART_HEIGHT));
+        return wrapper;
+    }
+
+    private void toggleIndicatorZoom(int index) {
+        if (indicatorZoomedIndex == index) {
+            indicatorZoomedIndex = -1; // Unzoom
+        } else {
+            indicatorZoomedIndex = index; // Zoom this indicator
+            zoomedChartIndex = -1; // Reset core chart zoom
+        }
+        updateChartLayout();
+        updateIndicatorZoomButtonStates();
+    }
+
+    private void updateIndicatorZoomButtonStates() {
+        JButton[] btns = {rsiZoomBtn, macdZoomBtn, atrZoomBtn};
+        for (int i = 0; i < btns.length; i++) {
+            if (btns[i] != null) {
+                if (indicatorZoomedIndex == i) {
+                    btns[i].setText("⤡");
+                    btns[i].setToolTipText("Restore chart size");
+                } else {
+                    btns[i].setText("⤢");
+                    btns[i].setToolTipText("Zoom chart");
+                }
+            }
+        }
     }
 
     private static final int MIN_CHART_HEIGHT = 60;
@@ -374,9 +554,11 @@ public class ChartsPanel extends JPanel {
         } else {
             // Zoom this chart (and unzoom any other)
             zoomedChartIndex = chartIndex;
+            indicatorZoomedIndex = -1; // Reset indicator zoom
         }
         updateChartLayout();
         updateZoomButtonStates();
+        updateIndicatorZoomButtonStates();
     }
 
     /**
@@ -389,18 +571,83 @@ public class ChartsPanel extends JPanel {
         gbc.fill = GridBagConstraints.BOTH;
         gbc.weightx = 1.0;
 
-        for (int i = 0; i < chartWrappers.length; i++) {
+        // Build list of visible charts in order:
+        // Price, Volume, [RSI], [MACD], [ATR], Equity, Comparison, CapitalUsage, TradeP&L
+        java.util.List<JPanel> visibleCharts = new java.util.ArrayList<>();
+        visibleCharts.add(chartWrappers[0]); // Price
+        visibleCharts.add(chartWrappers[1]); // Volume
+        if (rsiChartEnabled) visibleCharts.add(rsiChartWrapper);
+        if (macdChartEnabled) visibleCharts.add(macdChartWrapper);
+        if (atrChartEnabled) visibleCharts.add(atrChartWrapper);
+        visibleCharts.add(chartWrappers[2]); // Equity
+        visibleCharts.add(chartWrappers[3]); // Comparison
+        visibleCharts.add(chartWrappers[4]); // Capital Usage
+        visibleCharts.add(chartWrappers[5]); // Trade P&L
+
+        // Map indicator wrappers to their zoom indices
+        JPanel[] indicatorWrappers = {rsiChartWrapper, macdChartWrapper, atrChartWrapper};
+
+        int totalCharts = visibleCharts.size();
+        for (int i = 0; i < totalCharts; i++) {
             gbc.gridy = i;
-            if (zoomedChartIndex == i) {
-                gbc.weighty = 0.65; // 65% for zoomed chart
-            } else if (zoomedChartIndex >= 0) {
-                gbc.weighty = 0.07; // 7% each for 5 non-zoomed charts
-            } else {
-                gbc.weighty = 1.0 / 6.0; // ~16.67% each when none zoomed
+            JPanel panel = visibleCharts.get(i);
+
+            // Check if this is a zoomed chart
+            boolean isZoomed = false;
+
+            // Check core chart zoom
+            if (zoomedChartIndex >= 0 && zoomedChartIndex < 6) {
+                for (int j = 0; j < 6; j++) {
+                    if (chartWrappers[j] == panel && j == zoomedChartIndex) {
+                        isZoomed = true;
+                        break;
+                    }
+                }
             }
-            chartsContainer.add(chartWrappers[i], gbc);
+
+            // Check indicator chart zoom
+            if (indicatorZoomedIndex >= 0) {
+                for (int j = 0; j < 3; j++) {
+                    if (indicatorWrappers[j] == panel && j == indicatorZoomedIndex) {
+                        isZoomed = true;
+                        break;
+                    }
+                }
+            }
+
+            // Set weight based on zoom state
+            if (isZoomed) {
+                gbc.weighty = 0.65;
+            } else if (zoomedChartIndex >= 0 || indicatorZoomedIndex >= 0) {
+                gbc.weighty = 0.35 / (totalCharts - 1);
+            } else {
+                gbc.weighty = 1.0 / totalCharts;
+            }
+            chartsContainer.add(panel, gbc);
         }
         chartsContainer.setBackground(BACKGROUND_COLOR);
+
+        // Show time labels only on first (price) and last chart
+        // Price chart labels on top, last chart labels on bottom
+        JFreeChart[] allCharts = {priceChart, volumeChart, rsiChart, macdChart, atrChart,
+                                  equityChart, comparisonChart, capitalUsageChart, tradePLChart};
+        JPanel[] allWrappers = {chartWrappers[0], chartWrappers[1], rsiChartWrapper, macdChartWrapper, atrChartWrapper,
+                                chartWrappers[2], chartWrappers[3], chartWrappers[4], chartWrappers[5]};
+
+        for (int i = 0; i < allCharts.length; i++) {
+            if (allCharts[i] != null) {
+                XYPlot plot = allCharts[i].getXYPlot();
+                DateAxis axis = (DateAxis) plot.getDomainAxis();
+                boolean isFirst = (allWrappers[i] == visibleCharts.get(0));
+                boolean isLast = (allWrappers[i] == visibleCharts.get(visibleCharts.size() - 1));
+                boolean showLabels = isFirst || isLast;
+                axis.setTickLabelsVisible(showLabels);
+                axis.setTickMarksVisible(showLabels);
+                // Keep all axes at bottom for alignment
+                plot.setDomainAxisLocation(org.jfree.chart.axis.AxisLocation.BOTTOM_OR_LEFT);
+            }
+        }
+
         chartsContainer.revalidate();
         chartsContainer.repaint();
     }
@@ -582,14 +829,19 @@ public class ChartsPanel extends JPanel {
     }
 
     private void resetDomainAxisRange() {
-        JFreeChart[] charts = {priceChart, equityChart, comparisonChart, capitalUsageChart, tradePLChart};
+        if (currentCandles == null || currentCandles.isEmpty()) return;
+
+        // Set consistent domain axis range for ALL charts (same as updateCharts)
+        long startTime = currentCandles.get(0).timestamp();
+        long endTime = currentCandles.get(currentCandles.size() - 1).timestamp();
+        JFreeChart[] charts = {priceChart, volumeChart, equityChart, comparisonChart,
+                               capitalUsageChart, tradePLChart, rsiChart, macdChart, atrChart};
 
         for (JFreeChart chart : charts) {
             if (chart == null) continue;
-            XYPlot plot = chart.getXYPlot();
-            if (plot.getDomainAxis() instanceof DateAxis dateAxis) {
-                dateAxis.setAutoRange(true);
-            }
+            DateAxis axis = (DateAxis) chart.getXYPlot().getDomainAxis();
+            axis.setAutoRange(false);
+            axis.setRange(startTime, endTime);
         }
     }
 
@@ -604,7 +856,8 @@ public class ChartsPanel extends JPanel {
             double lower = masterAxis.getLowerBound();
             double upper = masterAxis.getUpperBound();
 
-            JFreeChart[] otherCharts = {equityChart, comparisonChart, capitalUsageChart, tradePLChart, volumeChart};
+            JFreeChart[] otherCharts = {equityChart, comparisonChart, capitalUsageChart, tradePLChart, volumeChart,
+                                        rsiChart, macdChart, atrChart};
             for (JFreeChart chart : otherCharts) {
                 if (chart == null) continue;
                 DateAxis axis = (DateAxis) chart.getXYPlot().getDomainAxis();
@@ -669,6 +922,27 @@ public class ChartsPanel extends JPanel {
         volumeOverlay.addDomainCrosshair(volumeCrosshair);
         volumeChartPanel.addOverlay(volumeOverlay);
 
+        // RSI chart crosshair
+        rsiCrosshair = new Crosshair(Double.NaN);
+        rsiCrosshair.setPaint(crosshairColor);
+        CrosshairOverlay rsiOverlay = new CrosshairOverlay();
+        rsiOverlay.addDomainCrosshair(rsiCrosshair);
+        rsiChartPanel.addOverlay(rsiOverlay);
+
+        // MACD chart crosshair
+        macdCrosshair = new Crosshair(Double.NaN);
+        macdCrosshair.setPaint(crosshairColor);
+        CrosshairOverlay macdOverlay = new CrosshairOverlay();
+        macdOverlay.addDomainCrosshair(macdCrosshair);
+        macdChartPanel.addOverlay(macdOverlay);
+
+        // ATR chart crosshair
+        atrCrosshair = new Crosshair(Double.NaN);
+        atrCrosshair.setPaint(crosshairColor);
+        CrosshairOverlay atrOverlay = new CrosshairOverlay();
+        atrOverlay.addDomainCrosshair(atrCrosshair);
+        atrChartPanel.addOverlay(atrOverlay);
+
         // Add mouse listeners to sync crosshairs
         ChartMouseListener listener = new ChartMouseListener() {
             @Override
@@ -687,6 +961,9 @@ public class ChartsPanel extends JPanel {
         capitalUsageChartPanel.addChartMouseListener(listener);
         tradePLChartPanel.addChartMouseListener(listener);
         volumeChartPanel.addChartMouseListener(listener);
+        rsiChartPanel.addChartMouseListener(listener);
+        macdChartPanel.addChartMouseListener(listener);
+        atrChartPanel.addChartMouseListener(listener);
     }
 
     private void updateCrosshairs(ChartMouseEvent event) {
@@ -710,6 +987,9 @@ public class ChartsPanel extends JPanel {
         capitalUsageCrosshair.setValue(domainValue);
         tradePLCrosshair.setValue(domainValue);
         volumeCrosshair.setValue(domainValue);
+        rsiCrosshair.setValue(domainValue);
+        macdCrosshair.setValue(domainValue);
+        atrCrosshair.setValue(domainValue);
 
         // Update status bar
         updateStatus(domainValue);
@@ -777,6 +1057,17 @@ public class ChartsPanel extends JPanel {
     }
 
     /**
+     * Add title annotation to chart plot (for re-adding after clearAnnotations)
+     */
+    private void addChartTitleAnnotation(XYPlot plot, String title) {
+        TextTitle textTitle = new TextTitle(title, new Font(Font.SANS_SERIF, Font.PLAIN, 11));
+        textTitle.setPaint(TEXT_COLOR);
+        textTitle.setBackgroundPaint(null);
+        XYTitleAnnotation titleAnnotation = new XYTitleAnnotation(0.01, 0.98, textTitle, RectangleAnchor.TOP_LEFT);
+        plot.addAnnotation(titleAnnotation);
+    }
+
+    /**
      * Update date axis format on all charts based on data range.
      * Shows year when data spans beyond current year.
      */
@@ -820,6 +1111,24 @@ public class ChartsPanel extends JPanel {
         updateTradePLChart(candles, trades);
         updateVolumeChart(candles);
 
+        // Update optional indicator charts
+        updateRsiChart(candles);
+        updateMacdChart(candles);
+        updateAtrChart(candles);
+
+        // Set consistent domain axis range for ALL charts
+        long startTime = candles.get(0).timestamp();
+        long endTime = candles.get(candles.size() - 1).timestamp();
+        JFreeChart[] allCharts = {priceChart, volumeChart, equityChart, comparisonChart,
+                                  capitalUsageChart, tradePLChart, rsiChart, macdChart, atrChart};
+        for (JFreeChart chart : allCharts) {
+            if (chart != null) {
+                DateAxis axis = (DateAxis) chart.getXYPlot().getDomainAxis();
+                axis.setAutoRange(false);
+                axis.setRange(startTime, endTime);
+            }
+        }
+
         // Update fixed-width mode scrollbar if active
         if (fixedWidthMode) {
             updateFixedWidthMode();
@@ -827,22 +1136,69 @@ public class ChartsPanel extends JPanel {
     }
 
     private void updatePriceChart(List<Candle> candles, List<Trade> trades) {
-        TimeSeries priceSeries = new TimeSeries("Price");
+        XYPlot plot = priceChart.getXYPlot();
 
+        // Clear existing annotations first (keep title annotation)
+        plot.getAnnotations().stream()
+            .filter(a -> !(a instanceof XYTitleAnnotation))
+            .toList()
+            .forEach(plot::removeAnnotation);
+
+        // Standard price line
+        TimeSeries priceSeries = new TimeSeries("Price");
         for (Candle c : candles) {
             priceSeries.addOrUpdate(new Millisecond(new Date(c.timestamp())), c.close());
         }
 
         TimeSeriesCollection dataset = new TimeSeriesCollection(priceSeries);
-        XYPlot plot = priceChart.getXYPlot();
         plot.setDataset(dataset);
-        plot.getRenderer().setSeriesPaint(0, PRICE_LINE_COLOR);
 
-        // Clear existing trade annotations (keep title annotation)
-        plot.getAnnotations().stream()
-            .filter(a -> !(a instanceof XYTitleAnnotation))
-            .toList()
-            .forEach(plot::removeAnnotation);
+        org.jfree.chart.renderer.xy.XYLineAndShapeRenderer renderer =
+            new org.jfree.chart.renderer.xy.XYLineAndShapeRenderer(true, false);
+        renderer.setSeriesPaint(0, PRICE_LINE_COLOR);
+        renderer.setSeriesStroke(0, ChartStyles.LINE_STROKE);
+        plot.setRenderer(renderer);
+
+        // Add Mayer Multiple threshold lines if enabled
+        if (mayerMultipleEnabled && candles.size() >= mayerPeriod) {
+            // Calculate SMA for Mayer Multiple
+            double[] sma = new double[candles.size()];
+            for (int i = mayerPeriod - 1; i < candles.size(); i++) {
+                double sum = 0;
+                for (int j = 0; j < mayerPeriod; j++) {
+                    sum += candles.get(i - j).close();
+                }
+                sma[i] = sum / mayerPeriod;
+            }
+
+            // Draw threshold lines at Mayer levels (tighter for short timeframes)
+            double[] thresholds = {0.95, 0.98, 1.0, 1.02, 1.05};
+            Color[] colors = {MAYER_DEEP_UNDERVALUED, MAYER_UNDERVALUED, MAYER_NEUTRAL, MAYER_OVERVALUED, MAYER_DEEP_OVERVALUED};
+            BasicStroke solidStroke = new BasicStroke(1.5f);
+            BasicStroke dashedStroke = new BasicStroke(1.5f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER,
+                10.0f, new float[]{6.0f, 4.0f}, 0.0f);
+
+            for (int t = 0; t < thresholds.length; t++) {
+                double mult = thresholds[t];
+                Color color = colors[t];
+
+                // Draw line segments for this threshold
+                for (int i = mayerPeriod; i < candles.size(); i++) {
+                    Candle prev = candles.get(i - 1);
+                    Candle curr = candles.get(i);
+
+                    double prevPrice = sma[i - 1] * mult;
+                    double currPrice = sma[i] * mult;
+
+                    XYLineAnnotation segment = new XYLineAnnotation(
+                        prev.timestamp(), prevPrice,
+                        curr.timestamp(), currPrice,
+                        dashedStroke, color
+                    );
+                    plot.addAnnotation(segment);
+                }
+            }
+        }
 
         // Add trade lines - green for wins, red for losses
         if (trades != null) {
@@ -1486,5 +1842,313 @@ public class ChartsPanel extends JPanel {
             XYPlot plot = priceChart.getXYPlot();
             plot.setDataset(hlDatasetIndex, null);
         }
+    }
+
+    /**
+     * Enable or disable Mayer Multiple color-coded price display
+     */
+    public void setMayerMultipleEnabled(boolean enabled, int period) {
+        this.mayerMultipleEnabled = enabled;
+        this.mayerPeriod = period;
+    }
+
+    public boolean isMayerMultipleEnabled() {
+        return mayerMultipleEnabled;
+    }
+
+    /**
+     * Get color for Mayer Multiple value using smooth gradient
+     */
+    private Color getMayerColor(double mayer) {
+        // Smooth gradient from green (undervalued) through white (fair) to red (overvalued)
+        if (mayer < 0.6) {
+            return MAYER_DEEP_UNDERVALUED;
+        } else if (mayer < 0.8) {
+            // Gradient from deep green to light green
+            float t = (float) ((mayer - 0.6) / 0.2);
+            return interpolateColor(MAYER_DEEP_UNDERVALUED, MAYER_UNDERVALUED, t);
+        } else if (mayer < 1.0) {
+            // Gradient from light green to neutral
+            float t = (float) ((mayer - 0.8) / 0.2);
+            return interpolateColor(MAYER_UNDERVALUED, MAYER_NEUTRAL, t);
+        } else if (mayer < 1.5) {
+            // Gradient from neutral to orange
+            float t = (float) ((mayer - 1.0) / 0.5);
+            return interpolateColor(MAYER_NEUTRAL, MAYER_OVERVALUED, t);
+        } else if (mayer < 2.4) {
+            // Gradient from orange to red
+            float t = (float) ((mayer - 1.5) / 0.9);
+            return interpolateColor(MAYER_OVERVALUED, MAYER_DEEP_OVERVALUED, t);
+        } else {
+            return MAYER_DEEP_OVERVALUED;
+        }
+    }
+
+    private Color interpolateColor(Color c1, Color c2, float t) {
+        t = Math.max(0, Math.min(1, t));
+        int r = (int) (c1.getRed() + t * (c2.getRed() - c1.getRed()));
+        int g = (int) (c1.getGreen() + t * (c2.getGreen() - c1.getGreen()));
+        int b = (int) (c1.getBlue() + t * (c2.getBlue() - c1.getBlue()));
+        return new Color(r, g, b);
+    }
+
+    // ===== RSI Chart Methods =====
+
+    public void setRsiChartEnabled(boolean enabled, int period) {
+        this.rsiChartEnabled = enabled;
+        this.rsiPeriod = period;
+        updateChartLayout();
+    }
+
+    public boolean isRsiChartEnabled() {
+        return rsiChartEnabled;
+    }
+
+    private void updateRsiChart(List<Candle> candles) {
+        if (!rsiChartEnabled || candles == null || candles.size() < rsiPeriod + 1) {
+            return;
+        }
+
+        XYPlot plot = rsiChart.getXYPlot();
+        TimeSeriesCollection dataset = new TimeSeriesCollection();
+        TimeSeries rsiSeries = new TimeSeries("RSI(" + rsiPeriod + ")");
+
+        // Calculate RSI
+        double[] gains = new double[candles.size()];
+        double[] losses = new double[candles.size()];
+
+        for (int i = 1; i < candles.size(); i++) {
+            double change = candles.get(i).close() - candles.get(i - 1).close();
+            gains[i] = change > 0 ? change : 0;
+            losses[i] = change < 0 ? -change : 0;
+        }
+
+        // Calculate initial averages
+        double avgGain = 0, avgLoss = 0;
+        for (int i = 1; i <= rsiPeriod; i++) {
+            avgGain += gains[i];
+            avgLoss += losses[i];
+        }
+        avgGain /= rsiPeriod;
+        avgLoss /= rsiPeriod;
+
+        // Calculate RSI values
+        for (int i = rsiPeriod; i < candles.size(); i++) {
+            if (i > rsiPeriod) {
+                avgGain = (avgGain * (rsiPeriod - 1) + gains[i]) / rsiPeriod;
+                avgLoss = (avgLoss * (rsiPeriod - 1) + losses[i]) / rsiPeriod;
+            }
+
+            double rs = avgLoss == 0 ? 100 : avgGain / avgLoss;
+            double rsi = 100 - (100 / (1 + rs));
+
+            Candle c = candles.get(i);
+            rsiSeries.addOrUpdate(new Millisecond(new Date(c.timestamp())), rsi);
+        }
+
+        dataset.addSeries(rsiSeries);
+        plot.setDataset(dataset);
+
+        // Style the RSI line
+        org.jfree.chart.renderer.xy.XYLineAndShapeRenderer renderer =
+            new org.jfree.chart.renderer.xy.XYLineAndShapeRenderer(true, false);
+        renderer.setSeriesPaint(0, RSI_COLOR);
+        renderer.setSeriesStroke(0, new BasicStroke(1.5f));
+        plot.setRenderer(renderer);
+
+        // Add reference lines at 30, 50, 70
+        plot.clearAnnotations();
+        addChartTitleAnnotation(plot, "RSI");
+        BasicStroke dashedStroke = new BasicStroke(1.0f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER,
+            10.0f, new float[]{4.0f, 4.0f}, 0.0f);
+
+        if (!candles.isEmpty()) {
+            long startTime = candles.get(0).timestamp();
+            long endTime = candles.get(candles.size() - 1).timestamp();
+
+            // Oversold line at 30
+            plot.addAnnotation(new XYLineAnnotation(startTime, 30, endTime, 30, dashedStroke, RSI_OVERSOLD));
+            // Neutral line at 50
+            plot.addAnnotation(new XYLineAnnotation(startTime, 50, endTime, 50, dashedStroke, TEXT_COLOR));
+            // Overbought line at 70
+            plot.addAnnotation(new XYLineAnnotation(startTime, 70, endTime, 70, dashedStroke, RSI_OVERBOUGHT));
+        }
+    }
+
+    // ===== MACD Chart Methods =====
+
+    public void setMacdChartEnabled(boolean enabled, int fast, int slow, int signal) {
+        this.macdChartEnabled = enabled;
+        this.macdFast = fast;
+        this.macdSlow = slow;
+        this.macdSignal = signal;
+        updateChartLayout();
+    }
+
+    public boolean isMacdChartEnabled() {
+        return macdChartEnabled;
+    }
+
+    private void updateMacdChart(List<Candle> candles) {
+        if (!macdChartEnabled || candles == null || candles.size() < macdSlow + macdSignal) {
+            return;
+        }
+
+        XYPlot plot = macdChart.getXYPlot();
+        TimeSeriesCollection lineDataset = new TimeSeriesCollection();
+        TimeSeries macdLine = new TimeSeries("MACD");
+        TimeSeries signalLine = new TimeSeries("Signal");
+
+        // Calculate EMAs
+        double[] fastEma = calculateEMA(candles, macdFast);
+        double[] slowEma = calculateEMA(candles, macdSlow);
+        double[] macdValues = new double[candles.size()];
+
+        for (int i = 0; i < candles.size(); i++) {
+            macdValues[i] = fastEma[i] - slowEma[i];
+        }
+
+        // Calculate signal line (EMA of MACD)
+        double[] signalValues = new double[candles.size()];
+        double multiplier = 2.0 / (macdSignal + 1);
+        signalValues[macdSlow - 1] = macdValues[macdSlow - 1];
+        for (int i = macdSlow; i < candles.size(); i++) {
+            signalValues[i] = (macdValues[i] - signalValues[i - 1]) * multiplier + signalValues[i - 1];
+        }
+
+        // Build series and histogram data
+        XYSeriesCollection histogramDataset = new XYSeriesCollection();
+        XYSeries histogramSeries = new XYSeries("Histogram");
+
+        for (int i = macdSlow + macdSignal - 1; i < candles.size(); i++) {
+            Candle c = candles.get(i);
+            Millisecond ms = new Millisecond(new Date(c.timestamp()));
+            macdLine.addOrUpdate(ms, macdValues[i]);
+            signalLine.addOrUpdate(ms, signalValues[i]);
+            histogramSeries.add(c.timestamp(), macdValues[i] - signalValues[i]);
+        }
+
+        lineDataset.addSeries(macdLine);
+        lineDataset.addSeries(signalLine);
+        histogramDataset.addSeries(histogramSeries);
+
+        // Set up renderers
+        plot.setDataset(0, histogramDataset);
+        plot.setDataset(1, lineDataset);
+
+        // Histogram renderer with color based on value
+        XYBarRenderer histRenderer = new XYBarRenderer() {
+            @Override
+            public java.awt.Paint getItemPaint(int series, int item) {
+                double value = histogramDataset.getYValue(series, item);
+                return value >= 0 ? MACD_HIST_POS : MACD_HIST_NEG;
+            }
+        };
+        histRenderer.setShadowVisible(false);
+        histRenderer.setBarPainter(new org.jfree.chart.renderer.xy.StandardXYBarPainter());
+        plot.setRenderer(0, histRenderer);
+
+        // Line renderer for MACD and signal
+        org.jfree.chart.renderer.xy.XYLineAndShapeRenderer lineRenderer =
+            new org.jfree.chart.renderer.xy.XYLineAndShapeRenderer(true, false);
+        lineRenderer.setSeriesPaint(0, MACD_LINE_COLOR);
+        lineRenderer.setSeriesPaint(1, MACD_SIGNAL_COLOR);
+        lineRenderer.setSeriesStroke(0, new BasicStroke(1.5f));
+        lineRenderer.setSeriesStroke(1, new BasicStroke(1.5f));
+        plot.setRenderer(1, lineRenderer);
+
+        // Add zero line
+        plot.clearAnnotations();
+        addChartTitleAnnotation(plot, "MACD");
+        if (!candles.isEmpty()) {
+            long startTime = candles.get(0).timestamp();
+            long endTime = candles.get(candles.size() - 1).timestamp();
+            BasicStroke dashedStroke = new BasicStroke(1.0f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER,
+                10.0f, new float[]{4.0f, 4.0f}, 0.0f);
+            plot.addAnnotation(new XYLineAnnotation(startTime, 0, endTime, 0, dashedStroke, TEXT_COLOR));
+        }
+    }
+
+    private double[] calculateEMA(List<Candle> candles, int period) {
+        double[] ema = new double[candles.size()];
+        double multiplier = 2.0 / (period + 1);
+
+        // Start with SMA for first value
+        double sum = 0;
+        for (int i = 0; i < period && i < candles.size(); i++) {
+            sum += candles.get(i).close();
+        }
+        ema[period - 1] = sum / period;
+
+        // Calculate EMA
+        for (int i = period; i < candles.size(); i++) {
+            ema[i] = (candles.get(i).close() - ema[i - 1]) * multiplier + ema[i - 1];
+        }
+
+        return ema;
+    }
+
+    // ===== ATR Chart Methods =====
+
+    public void setAtrChartEnabled(boolean enabled, int period) {
+        this.atrChartEnabled = enabled;
+        this.atrPeriod = period;
+        updateChartLayout();
+    }
+
+    public boolean isAtrChartEnabled() {
+        return atrChartEnabled;
+    }
+
+    private void updateAtrChart(List<Candle> candles) {
+        if (!atrChartEnabled || candles == null || candles.size() < atrPeriod + 1) {
+            return;
+        }
+
+        XYPlot plot = atrChart.getXYPlot();
+        TimeSeriesCollection dataset = new TimeSeriesCollection();
+        TimeSeries atrSeries = new TimeSeries("ATR(" + atrPeriod + ")");
+
+        // Calculate True Range and ATR
+        double[] tr = new double[candles.size()];
+        tr[0] = candles.get(0).high() - candles.get(0).low();
+
+        for (int i = 1; i < candles.size(); i++) {
+            Candle curr = candles.get(i);
+            Candle prev = candles.get(i - 1);
+            double highLow = curr.high() - curr.low();
+            double highClose = Math.abs(curr.high() - prev.close());
+            double lowClose = Math.abs(curr.low() - prev.close());
+            tr[i] = Math.max(highLow, Math.max(highClose, lowClose));
+        }
+
+        // Calculate ATR using Wilder's smoothing
+        double atr = 0;
+        for (int i = 0; i < atrPeriod; i++) {
+            atr += tr[i];
+        }
+        atr /= atrPeriod;
+
+        for (int i = atrPeriod; i < candles.size(); i++) {
+            if (i > atrPeriod) {
+                atr = (atr * (atrPeriod - 1) + tr[i]) / atrPeriod;
+            }
+            Candle c = candles.get(i);
+            atrSeries.addOrUpdate(new Millisecond(new Date(c.timestamp())), atr);
+        }
+
+        dataset.addSeries(atrSeries);
+        plot.setDataset(dataset);
+
+        // Style the ATR line
+        org.jfree.chart.renderer.xy.XYLineAndShapeRenderer renderer =
+            new org.jfree.chart.renderer.xy.XYLineAndShapeRenderer(true, false);
+        renderer.setSeriesPaint(0, ATR_COLOR);
+        renderer.setSeriesStroke(0, new BasicStroke(1.5f));
+        plot.setRenderer(renderer);
+
+        // Clear any annotations and re-add title
+        plot.clearAnnotations();
+        addChartTitleAnnotation(plot, "ATR");
     }
 }

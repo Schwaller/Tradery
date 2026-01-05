@@ -11,6 +11,7 @@ import com.tradery.io.WindowStateStore;
 import com.tradery.model.*;
 
 import javax.swing.*;
+import javax.swing.event.ChangeListener;
 import java.awt.*;
 import java.awt.event.ComponentAdapter;
 import java.awt.event.ComponentEvent;
@@ -72,6 +73,20 @@ public class ProjectWindow extends JFrame {
     private JSlider hlSlider;
     private JSpinner hlSpinner;
     private Timer hlDebounceTimer;
+
+    private JCheckBox mayerCheckbox;
+
+    // Indicator chart panel controls
+    private JCheckBox rsiChartCheckbox;
+    private JSpinner rsiSpinner;
+
+    private JCheckBox macdChartCheckbox;
+    private JSpinner macdFastSpinner;
+    private JSpinner macdSlowSpinner;
+    private JSpinner macdSignalSpinner;
+
+    private JCheckBox atrChartCheckbox;
+    private JSpinner atrSpinner;
 
     private static final String[] SYMBOLS = {
         "BTCUSDT", "ETHUSDT", "BNBUSDT", "XRPUSDT", "ADAUSDT",
@@ -359,6 +374,84 @@ public class ProjectWindow extends JFrame {
             updateHlOverlay();
         });
 
+        // Mayer Multiple control
+        mayerCheckbox = new JCheckBox("Mayer");
+        mayerCheckbox.setToolTipText("Color-code price by Mayer Multiple (price/200-SMA)");
+        mayerCheckbox.addActionListener(e -> {
+            chartPanel.setMayerMultipleEnabled(mayerCheckbox.isSelected(), 200);
+            runBacktest(); // Refresh charts
+        });
+
+        // RSI chart panel control
+        rsiChartCheckbox = new JCheckBox("RSI");
+        rsiChartCheckbox.setToolTipText("Show RSI indicator chart panel");
+        rsiSpinner = new JSpinner(new SpinnerNumberModel(14, 2, 50, 1));
+        rsiSpinner.setPreferredSize(new Dimension(50, 22));
+        rsiSpinner.setVisible(false);
+        rsiChartCheckbox.addActionListener(e -> {
+            boolean enabled = rsiChartCheckbox.isSelected();
+            rsiSpinner.setVisible(enabled);
+            int period = ((Number) rsiSpinner.getValue()).intValue();
+            chartPanel.setRsiChartEnabled(enabled, period);
+            runBacktest();
+        });
+        rsiSpinner.addChangeListener(e -> {
+            if (rsiChartCheckbox.isSelected()) {
+                int period = ((Number) rsiSpinner.getValue()).intValue();
+                chartPanel.setRsiChartEnabled(true, period);
+                runBacktest();
+            }
+        });
+
+        // MACD chart panel control
+        macdChartCheckbox = new JCheckBox("MACD");
+        macdChartCheckbox.setToolTipText("Show MACD indicator chart panel");
+        macdFastSpinner = new JSpinner(new SpinnerNumberModel(12, 2, 50, 1));
+        macdFastSpinner.setPreferredSize(new Dimension(40, 22));
+        macdFastSpinner.setVisible(false);
+        macdSlowSpinner = new JSpinner(new SpinnerNumberModel(26, 2, 100, 1));
+        macdSlowSpinner.setPreferredSize(new Dimension(40, 22));
+        macdSlowSpinner.setVisible(false);
+        macdSignalSpinner = new JSpinner(new SpinnerNumberModel(9, 2, 50, 1));
+        macdSignalSpinner.setPreferredSize(new Dimension(40, 22));
+        macdSignalSpinner.setVisible(false);
+        macdChartCheckbox.addActionListener(e -> {
+            boolean enabled = macdChartCheckbox.isSelected();
+            macdFastSpinner.setVisible(enabled);
+            macdSlowSpinner.setVisible(enabled);
+            macdSignalSpinner.setVisible(enabled);
+            updateMacdChart();
+        });
+        ChangeListener macdChangeListener = e -> {
+            if (macdChartCheckbox.isSelected()) {
+                updateMacdChart();
+            }
+        };
+        macdFastSpinner.addChangeListener(macdChangeListener);
+        macdSlowSpinner.addChangeListener(macdChangeListener);
+        macdSignalSpinner.addChangeListener(macdChangeListener);
+
+        // ATR chart panel control
+        atrChartCheckbox = new JCheckBox("ATR");
+        atrChartCheckbox.setToolTipText("Show ATR volatility chart panel");
+        atrSpinner = new JSpinner(new SpinnerNumberModel(14, 2, 50, 1));
+        atrSpinner.setPreferredSize(new Dimension(50, 22));
+        atrSpinner.setVisible(false);
+        atrChartCheckbox.addActionListener(e -> {
+            boolean enabled = atrChartCheckbox.isSelected();
+            atrSpinner.setVisible(enabled);
+            int period = ((Number) atrSpinner.getValue()).intValue();
+            chartPanel.setAtrChartEnabled(enabled, period);
+            runBacktest();
+        });
+        atrSpinner.addChangeListener(e -> {
+            if (atrChartCheckbox.isSelected()) {
+                int period = ((Number) atrSpinner.getValue()).intValue();
+                chartPanel.setAtrChartEnabled(true, period);
+                runBacktest();
+            }
+        });
+
         // Auto-save timer
         autoSaveTimer = new Timer(AUTO_SAVE_DELAY_MS, e -> saveStrategyQuietly());
         autoSaveTimer.setRepeats(false);
@@ -532,6 +625,29 @@ public class ProjectWindow extends JFrame {
         toolbarLeft.add(hlCheckbox);
         toolbarLeft.add(hlSlider);
         toolbarLeft.add(hlSpinner);
+        toolbarLeft.add(Box.createHorizontalStrut(8));
+        toolbarLeft.add(mayerCheckbox);
+
+        // Separator before chart panel indicators
+        toolbarLeft.add(Box.createHorizontalStrut(12));
+        toolbarLeft.add(new JSeparator(JSeparator.VERTICAL));
+        toolbarLeft.add(Box.createHorizontalStrut(8));
+
+        // RSI chart panel control
+        toolbarLeft.add(rsiChartCheckbox);
+        toolbarLeft.add(rsiSpinner);
+        toolbarLeft.add(Box.createHorizontalStrut(6));
+
+        // MACD chart panel control
+        toolbarLeft.add(macdChartCheckbox);
+        toolbarLeft.add(macdFastSpinner);
+        toolbarLeft.add(macdSlowSpinner);
+        toolbarLeft.add(macdSignalSpinner);
+        toolbarLeft.add(Box.createHorizontalStrut(6));
+
+        // ATR chart panel control
+        toolbarLeft.add(atrChartCheckbox);
+        toolbarLeft.add(atrSpinner);
 
         // Progress bar panel (right side of toolbar)
         JPanel toolbarRight = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 4));
@@ -761,6 +877,14 @@ public class ProjectWindow extends JFrame {
         } else {
             chartPanel.clearHighLowOverlay();
         }
+    }
+
+    private void updateMacdChart() {
+        int fast = ((Number) macdFastSpinner.getValue()).intValue();
+        int slow = ((Number) macdSlowSpinner.getValue()).intValue();
+        int signal = ((Number) macdSignalSpinner.getValue()).intValue();
+        chartPanel.setMacdChartEnabled(macdChartCheckbox.isSelected(), fast, slow, signal);
+        runBacktest();
     }
 
     private void runBacktest() {
