@@ -967,16 +967,9 @@ public class ProjectWindow extends JFrame {
     private void showHistory() {
         File strategyDir = strategyStore.getFolder(strategy.getId());
         HistoryDialog.show(this, strategyDir, restoredStrategy -> {
-            // Update the current strategy with restored values
-            strategy.setEntryCondition(restoredStrategy.getEntryCondition());
-            strategy.setExitZones(restoredStrategy.getExitZones());
-            strategy.setZoneEvaluation(restoredStrategy.getZoneEvaluation());
-            strategy.setMaxOpenTrades(restoredStrategy.getMaxOpenTrades());
-            strategy.setMinCandlesBetweenTrades(restoredStrategy.getMinCandlesBetweenTrades());
-            strategy.setDcaEnabled(restoredStrategy.isDcaEnabled());
-            strategy.setDcaMaxEntries(restoredStrategy.getDcaMaxEntries());
-            strategy.setDcaBarsBetween(restoredStrategy.getDcaBarsBetween());
-            strategy.setDcaMode(restoredStrategy.getDcaMode());
+            // Update the current strategy with restored settings
+            strategy.setEntrySettings(restoredStrategy.getEntrySettings());
+            strategy.setExitSettings(restoredStrategy.getExitSettings());
 
             // Reload UI panels
             editorPanel.setStrategy(strategy);

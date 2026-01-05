@@ -2,8 +2,6 @@ package com.tradery.model;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import java.time.Instant;
-import java.util.ArrayList;
-import java.util.List;
 
 /**
  * Trading strategy with DSL-based entry/exit conditions.
@@ -12,33 +10,24 @@ import java.util.List;
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class Strategy {
 
+    // Identity
     private String id;
     private String name;
     private String description;
 
-    // Entry condition
-    private EntryCondition entryCondition;
-
-    // Preset tracking - null for user-created strategies
+    // Preset tracking
     private String presetId;
     private String presetVersion;
 
-    // Exit zones - all exit configuration is zone-based
-    private List<ExitZone> exitZones = new ArrayList<>();
-    private ZoneEvaluation zoneEvaluation = ZoneEvaluation.CANDLE_CLOSE;
+    // Grouped settings
+    private EntrySettings entrySettings = new EntrySettings();
+    private ExitSettings exitSettings = new ExitSettings();
+    private BacktestSettings backtestSettings = new BacktestSettings();
 
-    private int maxOpenTrades = 1;
-    private int minCandlesBetweenTrades = 0;
-    private boolean dcaEnabled = false;
-    private int dcaMaxEntries = 3;
-    private int dcaBarsBetween = 1;
-    private DcaMode dcaMode = DcaMode.PAUSE;
+    // Metadata
     private boolean enabled;
     private Instant created;
     private Instant updated;
-
-    // Backtest settings (nested object)
-    private BacktestSettings backtestSettings = new BacktestSettings();
 
     public Strategy() {
         // For Jackson
@@ -48,13 +37,13 @@ public class Strategy {
         this.id = id;
         this.name = name;
         this.description = description;
-        this.entryCondition = EntryCondition.of(entry);
+        this.entrySettings = EntrySettings.of(entry);
         this.enabled = enabled;
         this.created = Instant.now();
         this.updated = Instant.now();
     }
 
-    // Getters and setters
+    // Identity getters/setters
 
     public String getId() {
         return id;
@@ -82,35 +71,7 @@ public class Strategy {
         this.updated = Instant.now();
     }
 
-    /**
-     * Get the entry condition.
-     */
-    public EntryCondition getEntryCondition() {
-        if (entryCondition == null) {
-            entryCondition = EntryCondition.defaultCondition();
-        }
-        return entryCondition;
-    }
-
-    public void setEntryCondition(EntryCondition entryCondition) {
-        this.entryCondition = entryCondition;
-        this.updated = Instant.now();
-    }
-
-    /**
-     * Get entry condition string (convenience method).
-     */
-    public String getEntry() {
-        return getEntryCondition().condition();
-    }
-
-    /**
-     * Set entry condition from string (convenience method).
-     */
-    public void setEntry(String entry) {
-        this.entryCondition = EntryCondition.of(entry);
-        this.updated = Instant.now();
-    }
+    // Preset getters/setters
 
     public String getPresetId() {
         return presetId;
@@ -128,122 +89,53 @@ public class Strategy {
         this.presetVersion = presetVersion;
     }
 
-    /**
-     * Check if this strategy is a preset (bundled with the app)
-     */
     public boolean isPreset() {
         return presetId != null && !presetId.isEmpty();
     }
 
-    /**
-     * Get exit zones, ensuring at least one default zone exists.
-     */
-    public List<ExitZone> getExitZones() {
-        if (exitZones == null) {
-            exitZones = new ArrayList<>();
+    // Entry settings
+
+    public EntrySettings getEntrySettings() {
+        if (entrySettings == null) {
+            entrySettings = new EntrySettings();
         }
-        if (exitZones.isEmpty()) {
-            exitZones.add(ExitZone.defaultZone());
+        return entrySettings;
+    }
+
+    public void setEntrySettings(EntrySettings entrySettings) {
+        this.entrySettings = entrySettings != null ? entrySettings : new EntrySettings();
+        this.updated = Instant.now();
+    }
+
+    // Exit settings
+
+    public ExitSettings getExitSettings() {
+        if (exitSettings == null) {
+            exitSettings = new ExitSettings();
         }
-        return exitZones;
+        return exitSettings;
     }
 
-    public void setExitZones(List<ExitZone> exitZones) {
-        this.exitZones = exitZones != null ? exitZones : new ArrayList<>();
+    public void setExitSettings(ExitSettings exitSettings) {
+        this.exitSettings = exitSettings != null ? exitSettings : new ExitSettings();
         this.updated = Instant.now();
     }
 
-    public ZoneEvaluation getZoneEvaluation() {
-        return zoneEvaluation != null ? zoneEvaluation : ZoneEvaluation.CANDLE_CLOSE;
-    }
+    // Backtest settings
 
-    public void setZoneEvaluation(ZoneEvaluation zoneEvaluation) {
-        this.zoneEvaluation = zoneEvaluation;
-        this.updated = Instant.now();
-    }
-
-    /**
-     * Find the exit zone that matches the given P&L percentage.
-     * Returns the first zone if none match (default catch-all behavior).
-     */
-    public ExitZone findMatchingZone(double pnlPercent) {
-        for (ExitZone zone : getExitZones()) {
-            if (zone.matches(pnlPercent)) {
-                return zone;
-            }
+    public BacktestSettings getBacktestSettings() {
+        if (backtestSettings == null) {
+            backtestSettings = new BacktestSettings();
         }
-        // Return first zone as fallback
-        List<ExitZone> zones = getExitZones();
-        return zones.isEmpty() ? null : zones.get(0);
+        return backtestSettings;
     }
 
-    /**
-     * Check if multiple exit zones are configured.
-     */
-    public boolean hasMultipleZones() {
-        return getExitZones().size() > 1;
-    }
-
-    /**
-     * Check if any exit zones are configured.
-     */
-    public boolean hasExitZones() {
-        return !getExitZones().isEmpty();
-    }
-
-    public int getMaxOpenTrades() {
-        return maxOpenTrades > 0 ? maxOpenTrades : 1;
-    }
-
-    public void setMaxOpenTrades(int maxOpenTrades) {
-        this.maxOpenTrades = maxOpenTrades > 0 ? maxOpenTrades : 1;
+    public void setBacktestSettings(BacktestSettings backtestSettings) {
+        this.backtestSettings = backtestSettings != null ? backtestSettings : new BacktestSettings();
         this.updated = Instant.now();
     }
 
-    public int getMinCandlesBetweenTrades() {
-        return minCandlesBetweenTrades >= 0 ? minCandlesBetweenTrades : 0;
-    }
-
-    public void setMinCandlesBetweenTrades(int minCandlesBetweenTrades) {
-        this.minCandlesBetweenTrades = minCandlesBetweenTrades >= 0 ? minCandlesBetweenTrades : 0;
-        this.updated = Instant.now();
-    }
-
-    public boolean isDcaEnabled() {
-        return dcaEnabled;
-    }
-
-    public void setDcaEnabled(boolean dcaEnabled) {
-        this.dcaEnabled = dcaEnabled;
-        this.updated = Instant.now();
-    }
-
-    public int getDcaMaxEntries() {
-        return dcaMaxEntries > 0 ? dcaMaxEntries : 3;
-    }
-
-    public void setDcaMaxEntries(int dcaMaxEntries) {
-        this.dcaMaxEntries = dcaMaxEntries > 0 ? dcaMaxEntries : 1;
-        this.updated = Instant.now();
-    }
-
-    public int getDcaBarsBetween() {
-        return dcaBarsBetween >= 0 ? dcaBarsBetween : 1;
-    }
-
-    public void setDcaBarsBetween(int dcaBarsBetween) {
-        this.dcaBarsBetween = dcaBarsBetween >= 0 ? dcaBarsBetween : 0;
-        this.updated = Instant.now();
-    }
-
-    public DcaMode getDcaMode() {
-        return dcaMode != null ? dcaMode : DcaMode.PAUSE;
-    }
-
-    public void setDcaMode(DcaMode dcaMode) {
-        this.dcaMode = dcaMode;
-        this.updated = Instant.now();
-    }
+    // Metadata getters/setters
 
     public boolean isEnabled() {
         return enabled;
@@ -270,21 +162,98 @@ public class Strategy {
         this.updated = updated;
     }
 
-    // Backtest settings accessor
+    // Convenience methods - Entry settings delegates
 
-    public BacktestSettings getBacktestSettings() {
-        if (backtestSettings == null) {
-            backtestSettings = new BacktestSettings();
-        }
-        return backtestSettings;
+    public String getEntry() {
+        return getEntrySettings().getCondition();
     }
 
-    public void setBacktestSettings(BacktestSettings backtestSettings) {
-        this.backtestSettings = backtestSettings != null ? backtestSettings : new BacktestSettings();
+    public void setEntry(String entry) {
+        getEntrySettings().setCondition(entry);
         this.updated = Instant.now();
     }
 
-    // Delegate getters/setters for backward compatibility
+    public int getMaxOpenTrades() {
+        return getEntrySettings().getMaxOpenTrades();
+    }
+
+    public void setMaxOpenTrades(int maxOpenTrades) {
+        getEntrySettings().setMaxOpenTrades(maxOpenTrades);
+        this.updated = Instant.now();
+    }
+
+    public int getMinCandlesBetweenTrades() {
+        return getEntrySettings().getMinCandlesBetween();
+    }
+
+    public void setMinCandlesBetweenTrades(int minCandlesBetween) {
+        getEntrySettings().setMinCandlesBetween(minCandlesBetween);
+        this.updated = Instant.now();
+    }
+
+    // DCA delegates
+
+    public boolean isDcaEnabled() {
+        return getEntrySettings().getDca().isEnabled();
+    }
+
+    public void setDcaEnabled(boolean enabled) {
+        getEntrySettings().getDca().setEnabled(enabled);
+        this.updated = Instant.now();
+    }
+
+    public int getDcaMaxEntries() {
+        return getEntrySettings().getDca().getMaxEntries();
+    }
+
+    public void setDcaMaxEntries(int maxEntries) {
+        getEntrySettings().getDca().setMaxEntries(maxEntries);
+        this.updated = Instant.now();
+    }
+
+    public int getDcaBarsBetween() {
+        return getEntrySettings().getDca().getBarsBetween();
+    }
+
+    public void setDcaBarsBetween(int barsBetween) {
+        getEntrySettings().getDca().setBarsBetween(barsBetween);
+        this.updated = Instant.now();
+    }
+
+    public DcaMode getDcaMode() {
+        return getEntrySettings().getDca().getMode();
+    }
+
+    public void setDcaMode(DcaMode mode) {
+        getEntrySettings().getDca().setMode(mode);
+        this.updated = Instant.now();
+    }
+
+    // Convenience methods - Exit settings delegates
+
+    public java.util.List<ExitZone> getExitZones() {
+        return getExitSettings().getZones();
+    }
+
+    public void setExitZones(java.util.List<ExitZone> zones) {
+        getExitSettings().setZones(zones);
+        this.updated = Instant.now();
+    }
+
+    public ZoneEvaluation getZoneEvaluation() {
+        return getExitSettings().getEvaluation();
+    }
+
+    public void setZoneEvaluation(ZoneEvaluation evaluation) {
+        getExitSettings().setEvaluation(evaluation);
+        this.updated = Instant.now();
+    }
+
+    public ExitZone findMatchingZone(double pnlPercent) {
+        return getExitSettings().findMatchingZone(pnlPercent);
+    }
+
+    // Convenience methods - Backtest settings delegates
 
     public String getSymbol() {
         return getBacktestSettings().getSymbol();
@@ -326,8 +295,8 @@ public class Strategy {
         return getBacktestSettings().getPositionSizingType();
     }
 
-    public void setPositionSizingType(PositionSizingType positionSizingType) {
-        getBacktestSettings().setPositionSizingType(positionSizingType);
+    public void setPositionSizingType(PositionSizingType type) {
+        getBacktestSettings().setPositionSizingType(type);
         this.updated = Instant.now();
     }
 
@@ -335,8 +304,8 @@ public class Strategy {
         return getBacktestSettings().getPositionSizingValue();
     }
 
-    public void setPositionSizingValue(double positionSizingValue) {
-        getBacktestSettings().setPositionSizingValue(positionSizingValue);
+    public void setPositionSizingValue(double value) {
+        getBacktestSettings().setPositionSizingValue(value);
         this.updated = Instant.now();
     }
 
@@ -358,7 +327,6 @@ public class Strategy {
         this.updated = Instant.now();
     }
 
-    /** Get total commission (fee + slippage) as decimal */
     public double getTotalCommission() {
         return getBacktestSettings().getTotalCommission();
     }

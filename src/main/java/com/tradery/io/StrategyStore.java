@@ -49,10 +49,8 @@ public class StrategyStore {
                 File strategyFile = new File(strategyDir, "strategy.json");
                 if (strategyFile.exists()) {
                     try {
-                        Strategy strategy = loadAndMigrate(strategyFile);
-                        if (strategy != null) {
-                            strategies.add(strategy);
-                        }
+                        Strategy strategy = mapper.readValue(strategyFile, Strategy.class);
+                        strategies.add(strategy);
                     } catch (IOException e) {
                         System.err.println("Failed to load strategy from " + strategyFile + ": " + e.getMessage());
                     }
@@ -73,96 +71,11 @@ public class StrategyStore {
         }
 
         try {
-            return loadAndMigrate(file);
+            return mapper.readValue(file, Strategy.class);
         } catch (IOException e) {
             System.err.println("Failed to load strategy " + id + ": " + e.getMessage());
             return null;
         }
-    }
-
-    /**
-     * Load strategy from file, migrating legacy format if needed
-     */
-    private Strategy loadAndMigrate(File file) throws IOException {
-        JsonNode root = mapper.readTree(file);
-        boolean needsMigration = false;
-
-        // Check for legacy fields
-        boolean hasLegacyEntry = root.has("entry") && !root.has("entryCondition");
-        boolean hasLegacyExit = root.has("exit");
-        boolean hasLegacyStopLoss = root.has("stopLossType") && root.get("stopLossType").isTextual();
-
-        if (hasLegacyEntry || hasLegacyExit || hasLegacyStopLoss) {
-            needsMigration = true;
-            System.out.println("Migrating legacy strategy: " + file.getName());
-        }
-
-        // Parse the strategy
-        Strategy strategy = mapper.treeToValue(root, Strategy.class);
-
-        if (needsMigration) {
-            // Migrate entry condition
-            if (hasLegacyEntry) {
-                String entryText = root.get("entry").asText("");
-                strategy.setEntryCondition(EntryCondition.of(entryText));
-            }
-
-            // Migrate exit zones from legacy fields
-            if (hasLegacyExit || hasLegacyStopLoss) {
-                String exitText = hasLegacyExit ? root.get("exit").asText("") : "";
-                StopLossType slType = StopLossType.NONE;
-                Double slValue = null;
-                TakeProfitType tpType = TakeProfitType.NONE;
-                Double tpValue = null;
-
-                if (root.has("stopLossType") && !root.get("stopLossType").isNull()) {
-                    slType = parseStopLossType(root.get("stopLossType").asText("none"));
-                    if (root.has("stopLossValue") && !root.get("stopLossValue").isNull()) {
-                        slValue = root.get("stopLossValue").asDouble();
-                    }
-                }
-                if (root.has("takeProfitType") && !root.get("takeProfitType").isNull()) {
-                    tpType = parseTakeProfitType(root.get("takeProfitType").asText("none"));
-                    if (root.has("takeProfitValue") && !root.get("takeProfitValue").isNull()) {
-                        tpValue = root.get("takeProfitValue").asDouble();
-                    }
-                }
-
-                // Create default zone with migrated settings
-                ExitZone defaultZone = new ExitZone(
-                    "Default",
-                    null, null,
-                    exitText,
-                    slType, slValue,
-                    tpType, tpValue,
-                    false, 0
-                );
-                strategy.setExitZones(List.of(defaultZone));
-            }
-
-            // Save migrated strategy
-            save(strategy);
-        }
-
-        return strategy;
-    }
-
-    private StopLossType parseStopLossType(String value) {
-        return switch (value.toLowerCase()) {
-            case "fixed_percent" -> StopLossType.FIXED_PERCENT;
-            case "trailing_percent" -> StopLossType.TRAILING_PERCENT;
-            case "fixed_atr" -> StopLossType.FIXED_ATR;
-            case "trailing_atr" -> StopLossType.TRAILING_ATR;
-            default -> StopLossType.NONE;
-        };
-    }
-
-    private TakeProfitType parseTakeProfitType(String value) {
-        return switch (value.toLowerCase()) {
-            case "fixed_percent" -> TakeProfitType.FIXED_PERCENT;
-            case "fixed_atr" -> TakeProfitType.FIXED_ATR;
-            default -> TakeProfitType.NONE;
-        };
     }
 
     /**

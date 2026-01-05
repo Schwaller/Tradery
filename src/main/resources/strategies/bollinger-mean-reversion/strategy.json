@@ -1,56 +1,48 @@
 {
-  "id" : "bollinger-mean-reversion",
-  "name" : "Bollinger Mean Reversion",
-  "description" : "Buy lower band touches with RSI confirmation",
-  "entryCondition" : {
-    "name" : "Primary",
-    "condition" : "close < BBANDS(20,2).lower AND RSI(14) < 35",
-    "enabled" : true
+  "id": "bollinger-mean-reversion",
+  "name": "Bollinger Mean Reversion",
+  "description": "Buy lower band touches with RSI confirmation",
+  "presetId": "bollinger-mean-reversion",
+  "presetVersion": "1.0",
+  "entrySettings": {
+    "condition": "close < BB(20).lower AND RSI(14) < 35",
+    "maxOpenTrades": 3,
+    "minCandlesBetween": 30,
+    "dca": {
+      "enabled": true,
+      "maxEntries": 5,
+      "barsBetween": 50,
+      "mode": "continue"
+    }
   },
-  "presetId" : null,
-  "presetVersion" : null,
-  "exitZones" : [ {
-    "name" : "Default",
-    "minPnlPercent" : null,
-    "maxPnlPercent" : null,
-    "exitCondition" : "close > BBANDS(20,2).middle",
-    "stopLossType" : "none",
-    "stopLossValue" : null,
-    "takeProfitType" : "none",
-    "takeProfitValue" : null,
-    "exitImmediately" : false,
-    "minBarsBeforeExit" : 0
-  } ],
-  "zoneEvaluation" : "candle_close",
-  "maxOpenTrades" : 3,
-  "minCandlesBetweenTrades" : 30,
-  "dcaEnabled" : true,
-  "dcaMaxEntries" : 5,
-  "dcaBarsBetween" : 50,
-  "dcaMode" : "continue",
-  "enabled" : true,
-  "created" : "2026-01-03T15:45:00Z",
-  "updated" : "2026-01-05T20:47:38.361937Z",
-  "backtestSettings" : {
-    "symbol" : "SOLUSDT",
-    "timeframe" : "5m",
-    "duration" : "1 week",
-    "initialCapital" : 3000.0,
-    "positionSizingType" : "fixed_dollar",
-    "positionSizingValue" : 1000.0,
-    "feePercent" : 0.1,
-    "slippagePercent" : 0.05,
-    "totalCommission" : 0.0015000000000000002
+  "exitSettings": {
+    "zones": [
+      {
+        "name": "Default",
+        "minPnlPercent": null,
+        "maxPnlPercent": null,
+        "exitCondition": "close > BB(20).middle",
+        "stopLossType": "none",
+        "stopLossValue": null,
+        "takeProfitType": "none",
+        "takeProfitValue": null,
+        "exitImmediately": false,
+        "minBarsBeforeExit": 0
+      }
+    ],
+    "evaluation": "candle_close"
   },
-  "initialCapital" : 3000.0,
-  "positionSizingType" : "fixed_dollar",
-  "positionSizingValue" : 1000.0,
-  "slippagePercent" : 0.05,
-  "totalCommission" : 0.0015000000000000002,
-  "preset" : false,
-  "symbol" : "SOLUSDT",
-  "timeframe" : "5m",
-  "duration" : "1 week",
-  "feePercent" : 0.1,
-  "entry" : "close < BBANDS(20,2).lower AND RSI(14) < 35"
+  "backtestSettings": {
+    "symbol": "SOLUSDT",
+    "timeframe": "5m",
+    "duration": "1 week",
+    "initialCapital": 3000.0,
+    "positionSizingType": "fixed_dollar",
+    "positionSizingValue": 1000.0,
+    "feePercent": 0.1,
+    "slippagePercent": 0.05
+  },
+  "enabled": true,
+  "created": "2026-01-03T15:45:00Z",
+  "updated": "2026-01-05T22:00:00Z"
 }
