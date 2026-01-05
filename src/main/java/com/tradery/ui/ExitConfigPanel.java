@@ -27,7 +27,7 @@ public class ExitConfigPanel extends JPanel {
     private Runnable onChange;
     private boolean suppressChangeEvents = false;
 
-    private static final String[] SL_TYPES = {"No SL", "SL %", "Trail %", "SL ATR", "Trail ATR"};
+    private static final String[] SL_TYPES = {"No SL", "Clear SL", "SL %", "Trail %", "SL ATR", "Trail ATR"};
     private static final String[] TP_TYPES = {"No TP", "TP %", "TP ATR"};
 
     public ExitConfigPanel() {
@@ -262,9 +262,9 @@ public class ExitConfigPanel extends JPanel {
             slValueSpinner = new JSpinner(new SpinnerNumberModel(
                 Math.max(0.1, slVal), 0.1, 100.0, 0.5));
             slTypeCombo.setSelectedIndex(slTypeToIndex(zone != null ? zone.stopLossType() : StopLossType.NONE));
-            slValueSpinner.setVisible(slTypeCombo.getSelectedIndex() > 0);
+            slValueSpinner.setVisible(slTypeCombo.getSelectedIndex() > 1); // Hide for No SL and Clear SL
             slTypeCombo.addActionListener(e -> {
-                slValueSpinner.setVisible(slTypeCombo.getSelectedIndex() > 0);
+                slValueSpinner.setVisible(slTypeCombo.getSelectedIndex() > 1); // Hide for No SL and Clear SL
                 revalidate();
                 updateMaxSize();
                 repaint();
@@ -319,7 +319,7 @@ public class ExitConfigPanel extends JPanel {
                 boolean immediate = exitImmediatelyCheckbox.isSelected();
                 exitConditionScroll.setVisible(!immediate);
                 slTypeCombo.setVisible(!immediate);
-                slValueSpinner.setVisible(!immediate && slTypeCombo.getSelectedIndex() > 0);
+                slValueSpinner.setVisible(!immediate && slTypeCombo.getSelectedIndex() > 1);
                 tpTypeCombo.setVisible(!immediate);
                 tpValueSpinner.setVisible(!immediate && tpTypeCombo.getSelectedIndex() > 0);
                 revalidate();
@@ -332,7 +332,7 @@ public class ExitConfigPanel extends JPanel {
             boolean exitImmediate = zone != null && zone.exitImmediately();
             exitConditionScroll.setVisible(!exitImmediate);
             slTypeCombo.setVisible(!exitImmediate);
-            slValueSpinner.setVisible(!exitImmediate && slTypeCombo.getSelectedIndex() > 0);
+            slValueSpinner.setVisible(!exitImmediate && slTypeCombo.getSelectedIndex() > 1);
             tpTypeCombo.setVisible(!exitImmediate);
             tpValueSpinner.setVisible(!exitImmediate && tpTypeCombo.getSelectedIndex() > 0);
 
@@ -397,20 +397,22 @@ public class ExitConfigPanel extends JPanel {
         private int slTypeToIndex(StopLossType type) {
             if (type == null) return 0;
             return switch (type) {
-                case FIXED_PERCENT -> 1;
-                case TRAILING_PERCENT -> 2;
-                case FIXED_ATR -> 3;
-                case TRAILING_ATR -> 4;
+                case CLEAR -> 1;
+                case FIXED_PERCENT -> 2;
+                case TRAILING_PERCENT -> 3;
+                case FIXED_ATR -> 4;
+                case TRAILING_ATR -> 5;
                 default -> 0;
             };
         }
 
         private StopLossType indexToSlType(int index) {
             return switch (index) {
-                case 1 -> StopLossType.FIXED_PERCENT;
-                case 2 -> StopLossType.TRAILING_PERCENT;
-                case 3 -> StopLossType.FIXED_ATR;
-                case 4 -> StopLossType.TRAILING_ATR;
+                case 1 -> StopLossType.CLEAR;
+                case 2 -> StopLossType.FIXED_PERCENT;
+                case 3 -> StopLossType.TRAILING_PERCENT;
+                case 4 -> StopLossType.FIXED_ATR;
+                case 5 -> StopLossType.TRAILING_ATR;
                 default -> StopLossType.NONE;
             };
         }
@@ -435,13 +437,15 @@ public class ExitConfigPanel extends JPanel {
         ExitZone toExitZone() {
             StopLossType slType = indexToSlType(slTypeCombo.getSelectedIndex());
             TakeProfitType tpType = indexToTpType(tpTypeCombo.getSelectedIndex());
+            // No value for NONE or CLEAR
+            boolean slNeedsValue = slType != StopLossType.NONE && slType != StopLossType.CLEAR;
             return new ExitZone(
                 nameField.getText().trim(),
                 hasMinPnl.isSelected() ? ((Number) minPnlSpinner.getValue()).doubleValue() : null,
                 hasMaxPnl.isSelected() ? ((Number) maxPnlSpinner.getValue()).doubleValue() : null,
                 exitConditionArea.getText().trim(),
                 slType,
-                slType == StopLossType.NONE ? null : ((Number) slValueSpinner.getValue()).doubleValue(),
+                slNeedsValue ? ((Number) slValueSpinner.getValue()).doubleValue() : null,
                 tpType,
                 tpType == TakeProfitType.NONE ? null : ((Number) tpValueSpinner.getValue()).doubleValue(),
                 exitImmediatelyCheckbox.isSelected(),
@@ -490,7 +494,7 @@ public class ExitConfigPanel extends JPanel {
             int slIdx = slTypeToIndex(zone.stopLossType());
             if (slTypeCombo.getSelectedIndex() != slIdx) {
                 slTypeCombo.setSelectedIndex(slIdx);
-                slValueSpinner.setVisible(slIdx > 0);
+                slValueSpinner.setVisible(slIdx > 1); // Hide for No SL and Clear SL
             }
             if (zone.stopLossValue() != null && !slValueSpinner.getValue().equals(zone.stopLossValue())) {
                 slValueSpinner.setValue(zone.stopLossValue());

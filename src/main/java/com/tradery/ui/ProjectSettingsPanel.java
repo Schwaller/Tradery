@@ -20,10 +20,12 @@ public class ProjectSettingsPanel extends JPanel {
     private JLabel capitalLabel;
 
     private static final String[] POSITION_SIZING_TYPES = {
-        "Fixed 1%", "Fixed 5%", "Fixed 10%",
+        "Fixed 1%", "Fixed 5%", "Fixed 10%", "Fixed 20%",
         "$100 per trade", "$500 per trade", "$1000 per trade",
+        "$2000 per trade", "$3000 per trade", "$5000 per trade",
         "Risk 1% per trade", "Risk 2% per trade",
-        "Kelly Criterion", "Volatility-based"
+        "Kelly Criterion", "Volatility-based",
+        "All In (100%)"
     };
 
     private Strategy strategy;
@@ -168,16 +170,21 @@ public class ProjectSettingsPanel extends JPanel {
             case FIXED_PERCENT -> {
                 if (value == 1.0) yield "Fixed 1%";
                 else if (value == 5.0) yield "Fixed 5%";
+                else if (value == 20.0) yield "Fixed 20%";
                 else yield "Fixed 10%";
             }
             case FIXED_DOLLAR -> {
                 if (value == 100.0) yield "$100 per trade";
                 else if (value == 500.0) yield "$500 per trade";
+                else if (value == 2000.0) yield "$2000 per trade";
+                else if (value == 3000.0) yield "$3000 per trade";
+                else if (value == 5000.0) yield "$5000 per trade";
                 else yield "$1000 per trade";
             }
             case RISK_PERCENT -> value == 1.0 ? "Risk 1% per trade" : "Risk 2% per trade";
             case KELLY -> "Kelly Criterion";
             case VOLATILITY -> "Volatility-based";
+            case ALL_IN -> "All In (100%)";
         };
     }
 
@@ -189,6 +196,7 @@ public class ProjectSettingsPanel extends JPanel {
         if (display.startsWith("Risk")) return PositionSizingType.RISK_PERCENT;
         if (display.equals("Kelly Criterion")) return PositionSizingType.KELLY;
         if (display.equals("Volatility-based")) return PositionSizingType.VOLATILITY;
+        if (display.equals("All In (100%)")) return PositionSizingType.ALL_IN;
 
         return PositionSizingType.FIXED_PERCENT;
     }
@@ -200,13 +208,18 @@ public class ProjectSettingsPanel extends JPanel {
             case "Fixed 1%" -> 1.0;
             case "Fixed 5%" -> 5.0;
             case "Fixed 10%" -> 10.0;
+            case "Fixed 20%" -> 20.0;
             case "$100 per trade" -> 100.0;
             case "$500 per trade" -> 500.0;
             case "$1000 per trade" -> 1000.0;
+            case "$2000 per trade" -> 2000.0;
+            case "$3000 per trade" -> 3000.0;
+            case "$5000 per trade" -> 5000.0;
             case "Risk 1% per trade" -> 1.0;
             case "Risk 2% per trade" -> 2.0;
             case "Kelly Criterion" -> 0.0;
             case "Volatility-based" -> 0.0;
+            case "All In (100%)" -> 100.0;
             default -> 10.0;
         };
     }

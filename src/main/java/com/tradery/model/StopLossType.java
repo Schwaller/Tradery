@@ -7,6 +7,7 @@ import com.fasterxml.jackson.annotation.JsonValue;
  */
 public enum StopLossType {
     NONE("none"),
+    CLEAR("clear"),
     FIXED_PERCENT("fixed_percent"),
     TRAILING_PERCENT("trailing_percent"),
     FIXED_ATR("fixed_atr"),

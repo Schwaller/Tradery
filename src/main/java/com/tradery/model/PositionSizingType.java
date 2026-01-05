@@ -10,7 +10,8 @@ public enum PositionSizingType {
     FIXED_DOLLAR("fixed_dollar"),
     RISK_PERCENT("risk_percent"),
     KELLY("kelly"),
-    VOLATILITY("volatility");
+    VOLATILITY("volatility"),
+    ALL_IN("all_in");
 
     private final String value;
 

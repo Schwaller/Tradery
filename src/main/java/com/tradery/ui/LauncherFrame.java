@@ -32,9 +32,6 @@ public class LauncherFrame extends JFrame {
     private DefaultListModel<Strategy> listModel;
     private JButton openButton;
     private JButton newButton;
-    private JButton renameButton;
-    private JButton deleteButton;
-    private JButton restorePresetsButton;
     private JButton manageDataButton;
 
     private final StrategyStore strategyStore;
@@ -115,17 +112,6 @@ public class LauncherFrame extends JFrame {
         newButton = new JButton("New Project");
         newButton.addActionListener(e -> createProject());
 
-        renameButton = new JButton("Rename");
-        renameButton.addActionListener(e -> renameProject());
-        renameButton.setEnabled(false);
-
-        deleteButton = new JButton("Delete");
-        deleteButton.addActionListener(e -> deleteProject());
-        deleteButton.setEnabled(false);
-
-        restorePresetsButton = new JButton("Restore Presets");
-        restorePresetsButton.addActionListener(e -> restorePresets());
-
         manageDataButton = new JButton("Manage Data");
         manageDataButton.addActionListener(e -> DataManagementDialog.show(this));
 
@@ -191,11 +177,8 @@ public class LauncherFrame extends JFrame {
         // Button panel with left and right sections
         JPanel buttonPanel = new JPanel(new BorderLayout());
         JPanel leftButtons = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 8));
-        leftButtons.add(restorePresetsButton);
         leftButtons.add(manageDataButton);
         JPanel rightButtons = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 8));
-        rightButtons.add(deleteButton);
-        rightButtons.add(renameButton);
         rightButtons.add(newButton);
         rightButtons.add(openButton);
         buttonPanel.add(leftButtons, BorderLayout.WEST);
@@ -310,8 +293,6 @@ public class LauncherFrame extends JFrame {
     private void updateButtonStates() {
         boolean hasSelection = projectList.getSelectedValue() != null;
         openButton.setEnabled(hasSelection);
-        renameButton.setEnabled(hasSelection);
-        deleteButton.setEnabled(hasSelection);
     }
 
     private void openProject() {

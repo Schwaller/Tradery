@@ -261,6 +261,12 @@ public class BacktestEngine {
                         Double tpValue = zone.takeProfitValue();
                         AstNode exitConditionAst = matchingZone.exitConditionAst;
 
+                        // Handle CLEAR - reset trailing stop state
+                        if (slType == StopLossType.CLEAR) {
+                            ots.trailingStopPrice = 0;
+                            ots.highestPriceSinceEntry = candle.close();
+                        }
+
                         // Calculate stop distance based on type
                         double stopDistance = 0;
                         if (slValue != null && slType != StopLossType.NONE) {
@@ -421,8 +427,11 @@ public class BacktestEngine {
                             .sum();
                         double availableCapital = currentEquity - usedCapital;
 
-                        // Calculate position size
+                        // Calculate position size (divide by max entries when DCA enabled)
                         double quantity = calculatePositionSize(config, strategy, currentEquity, candle.close(), candles, i);
+                        if (strategy.isDcaEnabled() && maxEntriesPerPosition > 1) {
+                            quantity = quantity / maxEntriesPerPosition;
+                        }
                         double positionValue = quantity * candle.close();
 
                         // Check if we have enough capital (reject if would exceed 100% usage)
@@ -594,10 +603,12 @@ public class BacktestEngine {
                     positionValue = equity * 0.10;
                 }
             }
+            case ALL_IN -> positionValue = equity; // Use all available capital
         }
 
-        // Ensure we don't exceed available equity
-        positionValue = Math.min(positionValue, equity * 0.95);
+        // Ensure we don't exceed available equity (allow 100% for ALL_IN)
+        double maxAllocation = config.positionSizingType() == PositionSizingType.ALL_IN ? 1.0 : 0.95;
+        positionValue = Math.min(positionValue, equity * maxAllocation);
 
         return positionValue / price;
     }
