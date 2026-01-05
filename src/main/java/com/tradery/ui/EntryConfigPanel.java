@@ -1,5 +1,6 @@
 package com.tradery.ui;
 
+import com.tradery.model.DcaMode;
 import com.tradery.model.Strategy;
 
 import javax.swing.*;
@@ -180,8 +181,8 @@ public class EntryConfigPanel extends JPanel {
                 dcaEnabledCheckbox.setSelected(strategy.isDcaEnabled());
                 dcaMaxEntriesSpinner.setValue(strategy.getDcaMaxEntries());
                 dcaBarsBetweenSpinner.setValue(strategy.getDcaBarsBetween());
-                String mode = strategy.getDcaMode();
-                dcaModeCombo.setSelectedIndex("abort".equals(mode) ? 1 : "continue".equals(mode) ? 2 : 0);
+                DcaMode mode = strategy.getDcaMode();
+                dcaModeCombo.setSelectedIndex(mode == DcaMode.ABORT ? 1 : mode == DcaMode.CONTINUE ? 2 : 0);
                 updateDcaVisibility();
             } else {
                 entryEditor.setText("");
@@ -202,7 +203,7 @@ public class EntryConfigPanel extends JPanel {
         strategy.setDcaEnabled(dcaEnabledCheckbox.isSelected());
         strategy.setDcaMaxEntries(((Number) dcaMaxEntriesSpinner.getValue()).intValue());
         strategy.setDcaBarsBetween(((Number) dcaBarsBetweenSpinner.getValue()).intValue());
-        String[] modes = {"pause", "abort", "continue"};
+        DcaMode[] modes = {DcaMode.PAUSE, DcaMode.ABORT, DcaMode.CONTINUE};
         strategy.setDcaMode(modes[dcaModeCombo.getSelectedIndex()]);
     }
 }

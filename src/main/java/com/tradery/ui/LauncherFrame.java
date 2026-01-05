@@ -5,6 +5,7 @@ import com.tradery.TraderyApp;
 import com.tradery.io.FileWatcher;
 import com.tradery.io.StrategyStore;
 import com.tradery.io.WindowStateStore;
+import com.tradery.model.ExitZone;
 import com.tradery.model.Strategy;
 
 import javax.swing.*;
@@ -350,11 +351,14 @@ public class LauncherFrame extends JFrame {
                 name.trim(),
                 "",
                 "RSI(14) < 30",
-                "RSI(14) > 70",  // exit condition for default zone
-                "none", null,   // no stop loss
-                "none", null,   // no take profit
                 true
             );
+            // Add default exit zone with exit condition
+            strategy.setExitZones(List.of(
+                ExitZone.builder("Default")
+                    .exitCondition("RSI(14) > 70")
+                    .build()
+            ));
             strategyStore.save(strategy);
 
             // Reload and select the new project

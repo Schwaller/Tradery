@@ -48,15 +48,15 @@ public class BacktestEngine {
                 "Entry condition parse error: " + entryResult.error());
         }
 
-        // Exit condition is optional - if empty, only SL/TP will trigger exits
-        String exitCondition = strategy.getExit();
-        boolean hasExitCondition = exitCondition != null && !exitCondition.trim().isEmpty();
-        Parser.ParseResult exitResult = null;
-        if (hasExitCondition) {
-            exitResult = parser.parse(exitCondition);
-            if (!exitResult.success()) {
-                return createErrorResult(strategy, config, startTime,
-                    "Exit condition parse error: " + exitResult.error());
+        // Parse exit conditions from all zones
+        for (ExitZone zone : strategy.getExitZones()) {
+            String exitCondition = zone.exitCondition();
+            if (exitCondition != null && !exitCondition.trim().isEmpty()) {
+                Parser.ParseResult exitResult = parser.parse(exitCondition);
+                if (!exitResult.success()) {
+                    return createErrorResult(strategy, config, startTime,
+                        "Exit condition parse error in zone '" + zone.name() + "': " + exitResult.error());
+                }
             }
         }
 
@@ -255,24 +255,24 @@ public class BacktestEngine {
                         }
 
                         // Use zone's exit configuration
-                        String slType = zone.stopLossType();
+                        StopLossType slType = zone.stopLossType();
                         Double slValue = zone.stopLossValue();
-                        String tpType = zone.takeProfitType();
+                        TakeProfitType tpType = zone.takeProfitType();
                         Double tpValue = zone.takeProfitValue();
                         AstNode exitConditionAst = matchingZone.exitConditionAst;
 
                         // Calculate stop distance based on type
                         double stopDistance = 0;
-                        if (slValue != null && !"none".equals(slType)) {
-                            if (slType.contains("percent")) {
+                        if (slValue != null && slType != StopLossType.NONE) {
+                            if (slType.isPercent()) {
                                 stopDistance = entryPrice * (slValue / 100.0);
-                            } else if (slType.contains("atr")) {
+                            } else if (slType.isAtr()) {
                                 stopDistance = calculateATR(candles, i, 14) * slValue;
                             }
                         }
 
                         // Handle trailing stop
-                        if (slType != null && slType.startsWith("trailing") && stopDistance > 0) {
+                        if (slType != null && slType.isTrailing() && stopDistance > 0) {
                             if (candle.high() > ots.highestPriceSinceEntry) {
                                 ots.highestPriceSinceEntry = candle.high();
                                 ots.trailingStopPrice = ots.highestPriceSinceEntry - stopDistance;
@@ -283,7 +283,7 @@ public class BacktestEngine {
                             }
                         }
                         // Handle fixed stop-loss
-                        else if (slType != null && slType.startsWith("fixed") && stopDistance > 0) {
+                        else if (slType != null && !slType.isTrailing() && slType != StopLossType.NONE && stopDistance > 0) {
                             double stopPrice = entryPrice - stopDistance;
                             if (candle.low() <= stopPrice) {
                                 exitReason = "stop_loss";
@@ -292,11 +292,11 @@ public class BacktestEngine {
                         }
 
                         // Check take-profit
-                        if (exitReason == null && tpValue != null && !"none".equals(tpType)) {
+                        if (exitReason == null && tpValue != null && tpType != TakeProfitType.NONE) {
                             double tpDistance = 0;
-                            if (tpType.contains("percent")) {
+                            if (tpType.isPercent()) {
                                 tpDistance = entryPrice * (tpValue / 100.0);
-                            } else if (tpType.contains("atr")) {
+                            } else if (tpType.isAtr()) {
                                 tpDistance = calculateATR(candles, i, 14) * tpValue;
                             }
 
@@ -382,13 +382,13 @@ public class BacktestEngine {
                 boolean isDcaEntry = canAddToCurrentPosition;
                 int requiredDistance = isDcaEntry ? strategy.getDcaBarsBetween() : minCandlesBetween;
                 boolean passesMinDistance = (i - lastEntryBar) >= requiredDistance;
-                String dcaMode = strategy.getDcaMode();
+                DcaMode dcaMode = strategy.getDcaMode();
 
                 // Check if entry signal is present
                 boolean signalPresent = evaluator.evaluate(entryResult.ast(), i);
 
                 // Handle DCA abort mode - close all trades if signal lost
-                if (isDcaEntry && "abort".equals(dcaMode) && !signalPresent && toClose.isEmpty()) {
+                if (isDcaEntry && dcaMode == DcaMode.ABORT && !signalPresent && toClose.isEmpty()) {
                     for (OpenTradeState ots : openTrades) {
                         ots.exitReason = "signal_lost";
                         ots.exitPrice = candle.close();
@@ -406,7 +406,7 @@ public class BacktestEngine {
 
                 if (canOpenMore && passesMinDistance) {
                     boolean shouldEnter;
-                    if (isDcaEntry && "continue".equals(dcaMode)) {
+                    if (isDcaEntry && dcaMode == DcaMode.CONTINUE) {
                         // In continue mode, DCA entries don't require signal
                         shouldEnter = true;
                     } else {
@@ -454,17 +454,20 @@ public class BacktestEngine {
 
                             OpenTradeState ots = new OpenTradeState(newTrade, candle.close());
 
-                            // Initialize trailing stop if enabled
-                            String slType = strategy.getStopLossType();
-                            Double slValue = strategy.getStopLossValue();
-                            if (slType != null && slType.startsWith("trailing") && slValue != null) {
-                                double stopDistance = 0;
-                                if (slType.contains("percent")) {
-                                    stopDistance = candle.close() * (slValue / 100.0);
-                                } else if (slType.contains("atr")) {
-                                    stopDistance = calculateATR(candles, i, 14) * slValue;
+                            // Initialize trailing stop from default zone (zone matching 0% PnL)
+                            ExitZone defaultZone = strategy.findMatchingZone(0.0);
+                            if (defaultZone != null) {
+                                StopLossType slType = defaultZone.stopLossType();
+                                Double slValue = defaultZone.stopLossValue();
+                                if (slType != null && slType.isTrailing() && slValue != null && slValue > 0) {
+                                    double stopDistance = 0;
+                                    if (slType.isPercent()) {
+                                        stopDistance = candle.close() * (slValue / 100.0);
+                                    } else if (slType.isAtr()) {
+                                        stopDistance = calculateATR(candles, i, 14) * slValue;
+                                    }
+                                    ots.trailingStopPrice = candle.close() - stopDistance;
                                 }
-                                ots.trailingStopPrice = candle.close() - stopDistance;
                             }
 
                             openTrades.add(ots);
@@ -544,19 +547,20 @@ public class BacktestEngine {
      */
     private double calculatePositionSize(BacktestConfig config, Strategy strategy, double equity,
                                          double price, List<Candle> candles, int barIndex) {
-        double positionValue;
+        double positionValue = equity * 0.10; // Default to 10% of equity
 
         switch (config.positionSizingType()) {
-            case "fixed_percent" -> positionValue = equity * (config.positionSizingValue() / 100.0);
-            case "fixed_dollar", "fixed_amount" -> positionValue = config.positionSizingValue();
-            case "risk_percent" -> {
-                // Risk a percentage of equity based on stop-loss distance
-                String slType = strategy.getStopLossType();
-                Double slValue = strategy.getStopLossValue();
-                if (slValue != null && slValue > 0 && !"none".equals(slType)) {
+            case FIXED_PERCENT -> positionValue = equity * (config.positionSizingValue() / 100.0);
+            case FIXED_DOLLAR -> positionValue = config.positionSizingValue();
+            case RISK_PERCENT -> {
+                // Risk a percentage of equity based on stop-loss distance from default zone
+                ExitZone defaultZone = strategy.findMatchingZone(0.0);
+                StopLossType slType = defaultZone != null ? defaultZone.stopLossType() : StopLossType.NONE;
+                Double slValue = defaultZone != null ? defaultZone.stopLossValue() : null;
+                if (slValue != null && slValue > 0 && slType != StopLossType.NONE) {
                     double riskAmount = equity * (config.positionSizingValue() / 100.0);
                     double stopDistance;
-                    if (slType.contains("percent")) {
+                    if (slType.isPercent()) {
                         stopDistance = price * (slValue / 100.0);
                     } else {
                         // ATR-based
@@ -572,14 +576,14 @@ public class BacktestEngine {
                     positionValue = equity * (config.positionSizingValue() / 100.0);
                 }
             }
-            case "kelly" -> {
+            case KELLY -> {
                 // Kelly Criterion: f = (bp - q) / b
                 // where b = win/loss ratio, p = win rate, q = loss rate
                 // Simplified: use half-Kelly for safety
                 double kellyFraction = calculateKellyFraction(config);
                 positionValue = equity * Math.max(0, Math.min(kellyFraction * 0.5, 0.25)); // Cap at 25%
             }
-            case "volatility" -> {
+            case VOLATILITY -> {
                 // Volatility-based: size inversely proportional to ATR
                 double atr = calculateATR(candles, barIndex, 14);
                 if (atr > 0) {
@@ -590,7 +594,6 @@ public class BacktestEngine {
                     positionValue = equity * 0.10;
                 }
             }
-            default -> positionValue = equity * 0.10; // Default 10%
         }
 
         // Ensure we don't exceed available equity
@@ -646,9 +649,15 @@ public class BacktestEngine {
     private int calculateWarmupPeriod(Strategy strategy, BacktestConfig config) {
         List<Integer> periods = new ArrayList<>();
 
-        // Extract from entry/exit conditions
+        // Extract from entry condition
         periods.addAll(extractPeriods(strategy.getEntry()));
-        periods.addAll(extractPeriods(strategy.getExit()));
+
+        // Extract from all exit zone conditions
+        for (ExitZone zone : strategy.getExitZones()) {
+            if (zone.exitCondition() != null) {
+                periods.addAll(extractPeriods(zone.exitCondition()));
+            }
+        }
 
         if (periods.isEmpty()) {
             return 50; // Default warmup

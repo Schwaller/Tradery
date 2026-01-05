@@ -12,9 +12,9 @@ public record BacktestConfig(
     long startDate,
     long endDate,
     double initialCapital,
-    String positionSizingType,   // "fixed_percent", "fixed_amount"
-    double positionSizingValue,  // Percent or dollar amount
-    double commission            // Per-trade commission
+    PositionSizingType positionSizingType,
+    double positionSizingValue,
+    double commission
 ) {
     /**
      * Create default config
@@ -29,9 +29,9 @@ public record BacktestConfig(
             oneYearAgo,
             now,
             10000.0,
-            "fixed_percent",
+            PositionSizingType.FIXED_PERCENT,
             10.0,
-            0.001  // 0.1% commission
+            0.001
         );
     }
 }

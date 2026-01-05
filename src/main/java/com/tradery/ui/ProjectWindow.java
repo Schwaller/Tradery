@@ -958,7 +958,7 @@ public class ProjectWindow extends JFrame {
         String symbol = (String) symbolCombo.getSelectedItem();
         String resolution = (String) timeframeCombo.getSelectedItem();
         double capital = settingsPanel.getCapital();
-        String sizingType = strategy.getPositionSizingType();
+        PositionSizingType sizingType = strategy.getPositionSizingType();
         double sizingValue = strategy.getPositionSizingValue();
         double commission = strategy.getTotalCommission();
 

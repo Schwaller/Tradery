@@ -1,7 +1,9 @@
 package com.tradery.ui;
 
 import com.tradery.model.ExitZone;
+import com.tradery.model.StopLossType;
 import com.tradery.model.Strategy;
+import com.tradery.model.TakeProfitType;
 
 import javax.swing.*;
 import javax.swing.event.DocumentEvent;
@@ -259,7 +261,7 @@ public class ExitConfigPanel extends JPanel {
             double slVal = zone != null && zone.stopLossValue() != null ? zone.stopLossValue() : 2.0;
             slValueSpinner = new JSpinner(new SpinnerNumberModel(
                 Math.max(0.1, slVal), 0.1, 100.0, 0.5));
-            slTypeCombo.setSelectedIndex(slTypeToIndex(zone != null ? zone.stopLossType() : "none"));
+            slTypeCombo.setSelectedIndex(slTypeToIndex(zone != null ? zone.stopLossType() : StopLossType.NONE));
             slValueSpinner.setVisible(slTypeCombo.getSelectedIndex() > 0);
             slTypeCombo.addActionListener(e -> {
                 slValueSpinner.setVisible(slTypeCombo.getSelectedIndex() > 0);
@@ -275,7 +277,7 @@ public class ExitConfigPanel extends JPanel {
             double tpVal = zone != null && zone.takeProfitValue() != null ? zone.takeProfitValue() : 5.0;
             tpValueSpinner = new JSpinner(new SpinnerNumberModel(
                 Math.max(0.1, tpVal), 0.1, 100.0, 0.5));
-            tpTypeCombo.setSelectedIndex(tpTypeToIndex(zone != null ? zone.takeProfitType() : "none"));
+            tpTypeCombo.setSelectedIndex(tpTypeToIndex(zone != null ? zone.takeProfitType() : TakeProfitType.NONE));
             tpValueSpinner.setVisible(tpTypeCombo.getSelectedIndex() > 0);
             tpTypeCombo.addActionListener(e -> {
                 tpValueSpinner.setVisible(tpTypeCombo.getSelectedIndex() > 0);
@@ -392,56 +394,56 @@ public class ExitConfigPanel extends JPanel {
             };
         }
 
-        private int slTypeToIndex(String type) {
+        private int slTypeToIndex(StopLossType type) {
             if (type == null) return 0;
             return switch (type) {
-                case "fixed_percent" -> 1;
-                case "trailing_percent" -> 2;
-                case "fixed_atr" -> 3;
-                case "trailing_atr" -> 4;
+                case FIXED_PERCENT -> 1;
+                case TRAILING_PERCENT -> 2;
+                case FIXED_ATR -> 3;
+                case TRAILING_ATR -> 4;
                 default -> 0;
             };
         }
 
-        private String indexToSlType(int index) {
+        private StopLossType indexToSlType(int index) {
             return switch (index) {
-                case 1 -> "fixed_percent";
-                case 2 -> "trailing_percent";
-                case 3 -> "fixed_atr";
-                case 4 -> "trailing_atr";
-                default -> "none";
+                case 1 -> StopLossType.FIXED_PERCENT;
+                case 2 -> StopLossType.TRAILING_PERCENT;
+                case 3 -> StopLossType.FIXED_ATR;
+                case 4 -> StopLossType.TRAILING_ATR;
+                default -> StopLossType.NONE;
             };
         }
 
-        private int tpTypeToIndex(String type) {
+        private int tpTypeToIndex(TakeProfitType type) {
             if (type == null) return 0;
             return switch (type) {
-                case "fixed_percent" -> 1;
-                case "fixed_atr" -> 2;
+                case FIXED_PERCENT -> 1;
+                case FIXED_ATR -> 2;
                 default -> 0;
             };
         }
 
-        private String indexToTpType(int index) {
+        private TakeProfitType indexToTpType(int index) {
             return switch (index) {
-                case 1 -> "fixed_percent";
-                case 2 -> "fixed_atr";
-                default -> "none";
+                case 1 -> TakeProfitType.FIXED_PERCENT;
+                case 2 -> TakeProfitType.FIXED_ATR;
+                default -> TakeProfitType.NONE;
             };
         }
 
         ExitZone toExitZone() {
-            String slType = indexToSlType(slTypeCombo.getSelectedIndex());
-            String tpType = indexToTpType(tpTypeCombo.getSelectedIndex());
+            StopLossType slType = indexToSlType(slTypeCombo.getSelectedIndex());
+            TakeProfitType tpType = indexToTpType(tpTypeCombo.getSelectedIndex());
             return new ExitZone(
                 nameField.getText().trim(),
                 hasMinPnl.isSelected() ? ((Number) minPnlSpinner.getValue()).doubleValue() : null,
                 hasMaxPnl.isSelected() ? ((Number) maxPnlSpinner.getValue()).doubleValue() : null,
                 exitConditionArea.getText().trim(),
                 slType,
-                "none".equals(slType) ? null : ((Number) slValueSpinner.getValue()).doubleValue(),
+                slType == StopLossType.NONE ? null : ((Number) slValueSpinner.getValue()).doubleValue(),
                 tpType,
-                "none".equals(tpType) ? null : ((Number) tpValueSpinner.getValue()).doubleValue(),
+                tpType == TakeProfitType.NONE ? null : ((Number) tpValueSpinner.getValue()).doubleValue(),
                 exitImmediatelyCheckbox.isSelected(),
                 ((Number) minBarsSpinner.getValue()).intValue()
             );

@@ -1,5 +1,6 @@
 package com.tradery.ui;
 
+import com.tradery.model.PositionSizingType;
 import com.tradery.model.Strategy;
 
 import javax.swing.*;
@@ -160,37 +161,36 @@ public class ProjectSettingsPanel extends JPanel {
 
     // Conversion helpers
 
-    private String positionSizingTypeToDisplay(String type, double value) {
-        if (type == null) type = "fixed_percent";
+    private String positionSizingTypeToDisplay(PositionSizingType type, double value) {
+        if (type == null) type = PositionSizingType.FIXED_PERCENT;
 
         return switch (type) {
-            case "fixed_percent" -> {
+            case FIXED_PERCENT -> {
                 if (value == 1.0) yield "Fixed 1%";
                 else if (value == 5.0) yield "Fixed 5%";
                 else yield "Fixed 10%";
             }
-            case "fixed_dollar" -> {
+            case FIXED_DOLLAR -> {
                 if (value == 100.0) yield "$100 per trade";
                 else if (value == 500.0) yield "$500 per trade";
                 else yield "$1000 per trade";
             }
-            case "risk_percent" -> value == 1.0 ? "Risk 1% per trade" : "Risk 2% per trade";
-            case "kelly" -> "Kelly Criterion";
-            case "volatility" -> "Volatility-based";
-            default -> "Fixed 10%";
+            case RISK_PERCENT -> value == 1.0 ? "Risk 1% per trade" : "Risk 2% per trade";
+            case KELLY -> "Kelly Criterion";
+            case VOLATILITY -> "Volatility-based";
         };
     }
 
-    private String displayToPositionSizingType(String display) {
-        if (display == null) return "fixed_percent";
+    private PositionSizingType displayToPositionSizingType(String display) {
+        if (display == null) return PositionSizingType.FIXED_PERCENT;
 
-        if (display.startsWith("Fixed")) return "fixed_percent";
-        if (display.startsWith("$")) return "fixed_dollar";
-        if (display.startsWith("Risk")) return "risk_percent";
-        if (display.equals("Kelly Criterion")) return "kelly";
-        if (display.equals("Volatility-based")) return "volatility";
+        if (display.startsWith("Fixed")) return PositionSizingType.FIXED_PERCENT;
+        if (display.startsWith("$")) return PositionSizingType.FIXED_DOLLAR;
+        if (display.startsWith("Risk")) return PositionSizingType.RISK_PERCENT;
+        if (display.equals("Kelly Criterion")) return PositionSizingType.KELLY;
+        if (display.equals("Volatility-based")) return PositionSizingType.VOLATILITY;
 
-        return "fixed_percent";
+        return PositionSizingType.FIXED_PERCENT;
     }
 
     private double displayToPositionSizingValue(String display) {

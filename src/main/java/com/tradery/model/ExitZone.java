@@ -5,16 +5,16 @@ package com.tradery.model;
  * Each zone can have its own exit conditions, SL/TP settings, and behavior.
  */
 public record ExitZone(
-    String name,              // e.g., "Profit", "Small Loss", "Big Loss"
-    Double minPnlPercent,     // Lower bound (null = no lower bound, i.e., -infinity)
-    Double maxPnlPercent,     // Upper bound (null = no upper bound, i.e., +infinity)
-    String exitCondition,     // DSL expression for exit signal (optional)
-    String stopLossType,      // "none", "fixed_percent", "trailing_percent", "fixed_atr", "trailing_atr"
-    Double stopLossValue,     // Percent or ATR multiplier
-    String takeProfitType,    // "none", "fixed_percent", "fixed_atr"
-    Double takeProfitValue,   // Percent or ATR multiplier
-    boolean exitImmediately,  // If true, exit as soon as P&L enters this zone
-    int minBarsBeforeExit     // Min bars after entry before exit is evaluated
+    String name,
+    Double minPnlPercent,
+    Double maxPnlPercent,
+    String exitCondition,
+    StopLossType stopLossType,
+    Double stopLossValue,
+    TakeProfitType takeProfitType,
+    Double takeProfitValue,
+    boolean exitImmediately,
+    int minBarsBeforeExit
 ) {
     /**
      * Check if a given P&L percentage falls within this zone's range.
@@ -34,9 +34,9 @@ public record ExitZone(
             null,
             null,
             "",
-            "none",
+            StopLossType.NONE,
             null,
-            "none",
+            TakeProfitType.NONE,
             null,
             false,
             0
@@ -55,9 +55,9 @@ public record ExitZone(
         private Double minPnlPercent;
         private Double maxPnlPercent;
         private String exitCondition = "";
-        private String stopLossType = "none";
+        private StopLossType stopLossType = StopLossType.NONE;
         private Double stopLossValue;
-        private String takeProfitType = "none";
+        private TakeProfitType takeProfitType = TakeProfitType.NONE;
         private Double takeProfitValue;
         private boolean exitImmediately = false;
         private int minBarsBeforeExit = 0;
@@ -81,13 +81,13 @@ public record ExitZone(
             return this;
         }
 
-        public Builder stopLoss(String type, Double value) {
+        public Builder stopLoss(StopLossType type, Double value) {
             this.stopLossType = type;
             this.stopLossValue = value;
             return this;
         }
 
-        public Builder takeProfit(String type, Double value) {
+        public Builder takeProfit(TakeProfitType type, Double value) {
             this.takeProfitType = type;
             this.takeProfitValue = value;
             return this;

@@ -47,11 +47,15 @@ To verify results are current after an edit, compare `strategy.entry` (or other 
   "exitZones": [
     {
       "name": "Default",
-      "exitCondition": "RSI(14) > 70",
+      "minPnlPercent": null,
+      "maxPnlPercent": null,
+      "exitCondition": "",
       "stopLossType": "trailing_percent",
       "stopLossValue": 2.0,
-      "takeProfitType": "fixed_percent",
-      "takeProfitValue": 5.0
+      "takeProfitType": "none",
+      "takeProfitValue": null,
+      "exitImmediately": false,
+      "minBarsBeforeExit": 0
     }
   ],
   "maxOpenTrades": 1,
@@ -66,6 +70,56 @@ To verify results are current after an edit, compare `strategy.entry` (or other 
   }
 }
 ```
+
+## Exit Zones
+
+Exit zones define how trades are managed based on their current P&L. Each zone can have different SL/TP settings.
+
+### Zone Fields
+- `name` - Display name for the zone
+- `minPnlPercent` - Zone activates when P&L >= this (null = no minimum)
+- `maxPnlPercent` - Zone activates when P&L < this (null = no maximum)
+- `exitCondition` - DSL condition to trigger exit (optional)
+- `stopLossType` / `stopLossValue` - Stop-loss for this zone
+- `takeProfitType` / `takeProfitValue` - Take-profit for this zone
+- `exitImmediately` - If true, exit as soon as trade enters this zone
+- `minBarsBeforeExit` - Minimum bars before exit conditions are evaluated
+
+### Example: Multi-Zone Strategy
+
+```json
+"exitZones": [
+  {
+    "name": "Default",
+    "minPnlPercent": null,
+    "maxPnlPercent": 2.0,
+    "stopLossType": "trailing_percent",
+    "stopLossValue": 1.5,
+    "takeProfitType": "none",
+    "takeProfitValue": null
+  },
+  {
+    "name": "Lock Gains",
+    "minPnlPercent": 2.0,
+    "maxPnlPercent": 5.0,
+    "stopLossType": "trailing_percent",
+    "stopLossValue": 0.5,
+    "takeProfitType": "none",
+    "takeProfitValue": null
+  },
+  {
+    "name": "Take Profit",
+    "minPnlPercent": 5.0,
+    "maxPnlPercent": null,
+    "exitImmediately": true
+  }
+]
+```
+
+This example:
+1. **Default** (P&L < 2%): 1.5% trailing stop
+2. **Lock Gains** (2% <= P&L < 5%): Tighten to 0.5% trailing stop
+3. **Take Profit** (P&L >= 5%): Exit immediately
 
 ## DSL Syntax for Entry/Exit Conditions
 
@@ -146,5 +200,6 @@ Key metrics to analyze:
 - Watch the win rate vs profit factor tradeoff
 - High win rate with low profit factor = taking profits too early
 - Low win rate with high profit factor = good risk/reward but few signals
+- Use exit zones to protect gains (tighten stops as profit grows)
 - Check rejected trades in results - may need to adjust position sizing or max trades
 - Consider market conditions - strategies that work in trends may fail in ranges

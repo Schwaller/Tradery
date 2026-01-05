@@ -15,31 +15,24 @@ public class Strategy {
     private String id;
     private String name;
     private String description;
-    private String entry;
+
+    // Entry condition
+    private EntryCondition entryCondition;
 
     // Preset tracking - null for user-created strategies
-    private String presetId;      // Matches the bundled preset ID (e.g., "rsi-reversal")
-    private String presetVersion; // Version of the preset (e.g., "1.0")
+    private String presetId;
+    private String presetVersion;
 
-    // Legacy fields - kept for JSON backward compatibility, migrated to exitZones on load
-    private String exit;
-    private String stopLossType;
-    private Double stopLossValue;
-    private String takeProfitType;
-    private Double takeProfitValue;
-    private boolean legacyMigrated = false;
-
-    // Exit zones - all exit configuration is now zone-based
+    // Exit zones - all exit configuration is zone-based
     private List<ExitZone> exitZones = new ArrayList<>();
-    private String zoneEvaluation = "candle_close";  // "immediate" or "candle_close"
+    private ZoneEvaluation zoneEvaluation = ZoneEvaluation.CANDLE_CLOSE;
 
-    private int maxOpenTrades = 1;     // Max parallel open trades
-    private int minCandlesBetweenTrades = 0;  // Minimum candles between trade entries
-    private boolean dcaEnabled = false;       // Dollar cost averaging mode
-    private int dcaMaxEntries = 3;            // Max DCA entries when dcaEnabled
-    private int dcaBarsBetween = 1;           // Min bars between DCA entries
-    private String dcaMode = "pause"; // "pause", "abort", or "continue"
-    private int minBarsBeforeExit = 0;        // Min bars after last entry before exit is evaluated
+    private int maxOpenTrades = 1;
+    private int minCandlesBetweenTrades = 0;
+    private boolean dcaEnabled = false;
+    private int dcaMaxEntries = 3;
+    private int dcaBarsBetween = 1;
+    private DcaMode dcaMode = DcaMode.PAUSE;
     private boolean enabled;
     private Instant created;
     private Instant updated;
@@ -48,34 +41,17 @@ public class Strategy {
     private BacktestSettings backtestSettings = new BacktestSettings();
 
     public Strategy() {
-        // For Jackson - legacy fields will be migrated on first getExitZones() call
+        // For Jackson
     }
 
     public Strategy(String id, String name, String description, String entry, boolean enabled) {
         this.id = id;
         this.name = name;
         this.description = description;
-        this.entry = entry;
+        this.entryCondition = EntryCondition.of(entry);
         this.enabled = enabled;
         this.created = Instant.now();
         this.updated = Instant.now();
-        this.legacyMigrated = true;  // New strategies start with empty zones
-    }
-
-    public Strategy(String id, String name, String description, String entry, String exitCondition, boolean enabled) {
-        this(id, name, description, entry, exitCondition, "none", null, "none", null, enabled);
-    }
-
-    public Strategy(String id, String name, String description, String entry, String exitCondition,
-                    String stopLossType, Double stopLossValue, String takeProfitType, Double takeProfitValue, boolean enabled) {
-        this(id, name, description, entry, enabled);
-        // Create a default zone with the provided exit configuration
-        ExitZone defaultZone = ExitZone.builder("Default")
-            .exitCondition(exitCondition != null ? exitCondition : "")
-            .stopLoss(stopLossType != null ? stopLossType : "none", stopLossValue)
-            .takeProfit(takeProfitType != null ? takeProfitType : "none", takeProfitValue)
-            .build();
-        this.exitZones.add(defaultZone);
     }
 
     // Getters and setters
@@ -106,12 +82,33 @@ public class Strategy {
         this.updated = Instant.now();
     }
 
-    public String getEntry() {
-        return entry;
+    /**
+     * Get the entry condition.
+     */
+    public EntryCondition getEntryCondition() {
+        if (entryCondition == null) {
+            entryCondition = EntryCondition.defaultCondition();
+        }
+        return entryCondition;
     }
 
+    public void setEntryCondition(EntryCondition entryCondition) {
+        this.entryCondition = entryCondition;
+        this.updated = Instant.now();
+    }
+
+    /**
+     * Get entry condition string (convenience method).
+     */
+    public String getEntry() {
+        return getEntryCondition().condition();
+    }
+
+    /**
+     * Set entry condition from string (convenience method).
+     */
     public void setEntry(String entry) {
-        this.entry = entry;
+        this.entryCondition = EntryCondition.of(entry);
         this.updated = Instant.now();
     }
 
@@ -138,94 +135,29 @@ public class Strategy {
         return presetId != null && !presetId.isEmpty();
     }
 
-    public String getExit() {
-        return exit;
-    }
-
-    public void setExit(String exit) {
-        this.exit = exit;
-        this.updated = Instant.now();
-    }
-
-    public String getStopLossType() {
-        return stopLossType != null ? stopLossType : "none";
-    }
-
-    public void setStopLossType(String stopLossType) {
-        this.stopLossType = stopLossType;
-        this.updated = Instant.now();
-    }
-
-    public Double getStopLossValue() {
-        return stopLossValue;
-    }
-
-    public void setStopLossValue(Double stopLossValue) {
-        this.stopLossValue = stopLossValue;
-        this.updated = Instant.now();
-    }
-
-    public String getTakeProfitType() {
-        return takeProfitType != null ? takeProfitType : "none";
-    }
-
-    public void setTakeProfitType(String takeProfitType) {
-        this.takeProfitType = takeProfitType;
-        this.updated = Instant.now();
-    }
-
-    public Double getTakeProfitValue() {
-        return takeProfitValue;
-    }
-
-    public void setTakeProfitValue(Double takeProfitValue) {
-        this.takeProfitValue = takeProfitValue;
-        this.updated = Instant.now();
-    }
-
     /**
      * Get exit zones, ensuring at least one default zone exists.
-     * Migrates legacy exit/SL/TP fields to a default zone if needed.
      */
     public List<ExitZone> getExitZones() {
-        ensureDefaultZone();
+        if (exitZones == null) {
+            exitZones = new ArrayList<>();
+        }
+        if (exitZones.isEmpty()) {
+            exitZones.add(ExitZone.defaultZone());
+        }
         return exitZones;
     }
 
     public void setExitZones(List<ExitZone> exitZones) {
         this.exitZones = exitZones != null ? exitZones : new ArrayList<>();
-        this.legacyMigrated = true;  // Mark as migrated when explicitly set
         this.updated = Instant.now();
     }
 
-    /**
-     * Ensures at least one exit zone exists, migrating legacy fields if necessary.
-     */
-    private void ensureDefaultZone() {
-        if (exitZones == null) {
-            exitZones = new ArrayList<>();
-        }
-        if (exitZones.isEmpty() && !legacyMigrated) {
-            // Migrate legacy fields to a default zone
-            ExitZone defaultZone = ExitZone.builder("Default")
-                .exitCondition(exit != null ? exit : "")
-                .stopLoss(stopLossType != null ? stopLossType : "none", stopLossValue)
-                .takeProfit(takeProfitType != null ? takeProfitType : "none", takeProfitValue)
-                .minBarsBeforeExit(minBarsBeforeExit)
-                .build();
-            exitZones.add(defaultZone);
-            legacyMigrated = true;
-        } else if (exitZones.isEmpty()) {
-            // No legacy fields and no zones - add empty default
-            exitZones.add(ExitZone.defaultZone());
-        }
+    public ZoneEvaluation getZoneEvaluation() {
+        return zoneEvaluation != null ? zoneEvaluation : ZoneEvaluation.CANDLE_CLOSE;
     }
 
-    public String getZoneEvaluation() {
-        return zoneEvaluation != null ? zoneEvaluation : "candle_close";
-    }
-
-    public void setZoneEvaluation(String zoneEvaluation) {
+    public void setZoneEvaluation(ZoneEvaluation zoneEvaluation) {
         this.zoneEvaluation = zoneEvaluation;
         this.updated = Instant.now();
     }
@@ -304,25 +236,12 @@ public class Strategy {
         this.updated = Instant.now();
     }
 
-    public String getDcaMode() {
-        if (dcaMode == null) return "pause";
-        // Handle legacy values
-        if ("require_signal".equals(dcaMode)) return "pause";
-        if ("continue_always".equals(dcaMode)) return "continue";
-        return dcaMode;
+    public DcaMode getDcaMode() {
+        return dcaMode != null ? dcaMode : DcaMode.PAUSE;
     }
 
-    public void setDcaMode(String dcaMode) {
+    public void setDcaMode(DcaMode dcaMode) {
         this.dcaMode = dcaMode;
-        this.updated = Instant.now();
-    }
-
-    public int getMinBarsBeforeExit() {
-        return minBarsBeforeExit >= 0 ? minBarsBeforeExit : 0;
-    }
-
-    public void setMinBarsBeforeExit(int minBarsBeforeExit) {
-        this.minBarsBeforeExit = minBarsBeforeExit >= 0 ? minBarsBeforeExit : 0;
         this.updated = Instant.now();
     }
 
@@ -403,11 +322,11 @@ public class Strategy {
         this.updated = Instant.now();
     }
 
-    public String getPositionSizingType() {
+    public PositionSizingType getPositionSizingType() {
         return getBacktestSettings().getPositionSizingType();
     }
 
-    public void setPositionSizingType(String positionSizingType) {
+    public void setPositionSizingType(PositionSizingType positionSizingType) {
         getBacktestSettings().setPositionSizingType(positionSizingType);
         this.updated = Instant.now();
     }

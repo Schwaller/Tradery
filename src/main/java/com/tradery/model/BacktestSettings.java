@@ -13,7 +13,7 @@ public class BacktestSettings {
     private String timeframe = "1h";
     private String duration = "1 year";
     private double initialCapital = 10000.0;
-    private String positionSizingType = "fixed_percent";
+    private PositionSizingType positionSizingType = PositionSizingType.FIXED_PERCENT;
     private double positionSizingValue = 10.0;
     private double feePercent = 0.10;
     private double slippagePercent = 0.05;
@@ -23,7 +23,7 @@ public class BacktestSettings {
     }
 
     public BacktestSettings(String symbol, String timeframe, String duration,
-                            double initialCapital, String positionSizingType,
+                            double initialCapital, PositionSizingType positionSizingType,
                             double positionSizingValue, double feePercent, double slippagePercent) {
         this.symbol = symbol;
         this.timeframe = timeframe;
@@ -76,11 +76,11 @@ public class BacktestSettings {
         this.initialCapital = initialCapital > 0 ? initialCapital : 10000.0;
     }
 
-    public String getPositionSizingType() {
-        return positionSizingType != null ? positionSizingType : "fixed_percent";
+    public PositionSizingType getPositionSizingType() {
+        return positionSizingType != null ? positionSizingType : PositionSizingType.FIXED_PERCENT;
     }
 
-    public void setPositionSizingType(String positionSizingType) {
+    public void setPositionSizingType(PositionSizingType positionSizingType) {
         this.positionSizingType = positionSizingType;
     }
 
