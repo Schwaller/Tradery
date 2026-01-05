@@ -53,6 +53,7 @@ public class ProjectWindow extends JFrame {
     private JToggleButton fullYBtn;
     private JButton clearCacheBtn;
     private JButton claudeBtn;
+    private JButton codexBtn;
 
     // Indicator controls
     private JCheckBox smaCheckbox;
@@ -241,6 +242,11 @@ public class ProjectWindow extends JFrame {
         claudeBtn = new JButton("Claude");
         claudeBtn.setToolTipText("Open Claude CLI to help optimize this strategy");
         claudeBtn.addActionListener(e -> openClaudeTerminal());
+
+        // Codex button - opens terminal with Codex CLI
+        codexBtn = new JButton("Codex");
+        codexBtn.setToolTipText("Open Codex CLI to help optimize this strategy");
+        codexBtn.addActionListener(e -> openCodexTerminal());
 
         // SMA indicator controls
         smaCheckbox = new JCheckBox("SMA");
@@ -658,6 +664,7 @@ public class ProjectWindow extends JFrame {
         // Progress bar panel (right side of toolbar)
         JPanel toolbarRight = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 4));
         toolbarRight.add(claudeBtn);
+        toolbarRight.add(codexBtn);
         toolbarRight.add(Box.createHorizontalStrut(8));
         toolbarRight.add(clearCacheBtn);
         toolbarRight.add(Box.createHorizontalStrut(8));
@@ -887,6 +894,59 @@ public class ProjectWindow extends JFrame {
 
             Runtime.getRuntime().exec(osascript);
             setStatus("Opened Claude CLI for " + strategyName);
+        } catch (IOException e) {
+            setStatus("Error opening terminal: " + e.getMessage());
+            JOptionPane.showMessageDialog(this,
+                "Could not open Terminal: " + e.getMessage(),
+                "Error",
+                JOptionPane.ERROR_MESSAGE);
+        }
+    }
+
+    private void openCodexTerminal() {
+        // Open in ~/.tradery where CLAUDE.md provides context
+        String traderyDir = System.getProperty("user.home") + "/.tradery";
+        String strategyId = strategy.getId();
+        String strategyName = strategy.getName();
+
+        // Get current backtest settings for context
+        String symbol = (String) symbolCombo.getSelectedItem();
+        String timeframe = (String) timeframeCombo.getSelectedItem();
+        String duration = (String) durationCombo.getSelectedItem();
+
+        // Build the initial prompt for Codex with full context
+        String initialPrompt = String.format(
+            "[Launched from Tradery app] " +
+            "Currently open: Strategy '%s' (id: %s), " +
+            "backtesting %s on %s timeframe for %s. " +
+            "Read strategies/%s/strategy.json and strategies/%s/latest.json, " +
+            "then help me optimize entry/exit conditions for better performance. " +
+            "The app auto-reloads when you save changes to strategy.json.",
+            strategyName, strategyId, symbol, timeframe, duration,
+            strategyId, strategyId
+        );
+
+        String command = String.format(
+            "cd '%s' && codex '%s'",
+            traderyDir.replace("'", "'\\''"),
+            initialPrompt.replace("'", "'\\''")
+        );
+
+        try {
+            // Use osascript to open Terminal.app with the command (macOS)
+            String[] osascript = {
+                "osascript", "-e",
+                String.format(
+                    "tell application \"Terminal\"\n" +
+                    "    activate\n" +
+                    "    do script \"%s\"\n" +
+                    "end tell",
+                    command.replace("\\", "\\\\").replace("\"", "\\\"")
+                )
+            };
+
+            Runtime.getRuntime().exec(osascript);
+            setStatus("Opened Codex CLI for " + strategyName);
         } catch (IOException e) {
             setStatus("Error opening terminal: " + e.getMessage());
             JOptionPane.showMessageDialog(this,

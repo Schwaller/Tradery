@@ -109,19 +109,22 @@ public class TraderyApp {
     }
 
     /**
-     * Create Claude integration files (CLAUDE.md)
+     * Create AI assistant integration files (CLAUDE.md, CODEX.md, AGENTS.md)
      */
     private static void ensureClaudeFiles() {
-        // Copy CLAUDE.md from resources if it doesn't exist
-        File claudeMd = new File(USER_DIR, "CLAUDE.md");
-        if (!claudeMd.exists()) {
-            try (InputStream is = TraderyApp.class.getResourceAsStream("/CLAUDE.md")) {
-                if (is != null) {
-                    Files.copy(is, claudeMd.toPath(), StandardCopyOption.REPLACE_EXISTING);
-                    System.out.println("Created: " + claudeMd.getAbsolutePath());
+        // Copy instruction files from resources if they don't exist
+        String[] files = {"CLAUDE.md", "CODEX.md", "AGENTS.md"};
+        for (String filename : files) {
+            File target = new File(USER_DIR, filename);
+            if (!target.exists()) {
+                try (InputStream is = TraderyApp.class.getResourceAsStream("/" + filename)) {
+                    if (is != null) {
+                        Files.copy(is, target.toPath(), StandardCopyOption.REPLACE_EXISTING);
+                        System.out.println("Created: " + target.getAbsolutePath());
+                    }
+                } catch (IOException e) {
+                    System.err.println("Could not create " + filename + ": " + e.getMessage());
                 }
-            } catch (IOException e) {
-                System.err.println("Could not create CLAUDE.md: " + e.getMessage());
             }
         }
     }
