@@ -692,7 +692,8 @@ public class ChartsPanel extends JPanel {
     }
 
     private void updateYAxisAutoRange() {
-        JFreeChart[] charts = {priceChart, equityChart, comparisonChart, tradePLChart};
+        // Charts that follow standard auto-range behavior
+        JFreeChart[] charts = {priceChart, volumeChart, equityChart, comparisonChart, tradePLChart, macdChart, atrChart};
 
         for (JFreeChart chart : charts) {
             if (chart == null) continue;
@@ -739,6 +740,18 @@ public class ChartsPanel extends JPanel {
             } else {
                 capitalAxis.setAutoRange(false);
                 capitalAxis.setRange(-5, 105);
+            }
+        }
+
+        // RSI: fixed 0-100 range in Full Y mode, auto in Fit Y mode
+        if (rsiChart != null) {
+            ValueAxis rsiAxis = rsiChart.getXYPlot().getRangeAxis();
+            if (fitYAxisToVisible) {
+                rsiAxis.setAutoRange(true);
+                rsiChart.getXYPlot().configureRangeAxes();
+            } else {
+                rsiAxis.setAutoRange(false);
+                rsiAxis.setRange(0, 100);
             }
         }
     }
