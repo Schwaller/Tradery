@@ -256,9 +256,9 @@ public class ExitConfigPanel extends JPanel {
             exitConditionArea.getDocument().addDocumentListener(docListener(onChange));
 
             slTypeCombo = new JComboBox<>(SL_TYPES);
+            double slVal = zone != null && zone.stopLossValue() != null ? zone.stopLossValue() : 2.0;
             slValueSpinner = new JSpinner(new SpinnerNumberModel(
-                zone != null && zone.stopLossValue() != null ? zone.stopLossValue() : 2.0,
-                0.1, 100.0, 0.5));
+                Math.max(0.1, slVal), 0.1, 100.0, 0.5));
             slTypeCombo.setSelectedIndex(slTypeToIndex(zone != null ? zone.stopLossType() : "none"));
             slValueSpinner.setVisible(slTypeCombo.getSelectedIndex() > 0);
             slTypeCombo.addActionListener(e -> {
@@ -272,9 +272,9 @@ public class ExitConfigPanel extends JPanel {
 
             tpTypeCombo = new JComboBox<>(TP_TYPES);
             tpTypeCombo.setPreferredSize(slTypeCombo.getPreferredSize());
+            double tpVal = zone != null && zone.takeProfitValue() != null ? zone.takeProfitValue() : 5.0;
             tpValueSpinner = new JSpinner(new SpinnerNumberModel(
-                zone != null && zone.takeProfitValue() != null ? zone.takeProfitValue() : 5.0,
-                0.1, 100.0, 0.5));
+                Math.max(0.1, tpVal), 0.1, 100.0, 0.5));
             tpTypeCombo.setSelectedIndex(tpTypeToIndex(zone != null ? zone.takeProfitType() : "none"));
             tpValueSpinner.setVisible(tpTypeCombo.getSelectedIndex() > 0);
             tpTypeCombo.addActionListener(e -> {
