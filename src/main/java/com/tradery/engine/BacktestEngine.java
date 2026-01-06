@@ -1,11 +1,13 @@
 package com.tradery.engine;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.tradery.data.CandleStore;
 import com.tradery.dsl.AstNode;
 import com.tradery.dsl.Parser;
 import com.tradery.indicators.IndicatorEngine;
 import com.tradery.model.*;
 
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -20,13 +22,20 @@ import java.util.regex.Pattern;
 public class BacktestEngine {
 
     private final IndicatorEngine indicatorEngine;
+    private final CandleStore candleStore;
 
     public BacktestEngine() {
         this.indicatorEngine = new IndicatorEngine();
+        this.candleStore = null;
+    }
+
+    public BacktestEngine(CandleStore candleStore) {
+        this.indicatorEngine = new IndicatorEngine();
+        this.candleStore = candleStore;
     }
 
     /**
-     * Run a backtest for a strategy on historical data
+     * Run a backtest for a strategy on historical data (without phases)
      */
     public BacktestResult run(
             Strategy strategy,
@@ -34,8 +43,42 @@ public class BacktestEngine {
             List<Candle> candles,
             Consumer<Progress> onProgress
     ) {
+        return run(strategy, config, candles, List.of(), onProgress);
+    }
+
+    /**
+     * Run a backtest for a strategy on historical data with phase filtering
+     *
+     * @param requiredPhases List of Phase objects that must all be active for entry
+     */
+    public BacktestResult run(
+            Strategy strategy,
+            BacktestConfig config,
+            List<Candle> candles,
+            List<Phase> requiredPhases,
+            Consumer<Progress> onProgress
+    ) {
         long startTime = System.currentTimeMillis();
         List<String> errors = new ArrayList<>();
+
+        // Evaluate phases upfront if any are required
+        Map<String, boolean[]> phaseStates = new HashMap<>();
+        List<String> requiredPhaseIds = strategy.getRequiredPhaseIds();
+
+        if (!requiredPhases.isEmpty() && candleStore != null) {
+            if (onProgress != null) {
+                onProgress.accept(new Progress(0, candles.size(), 0, "Evaluating phases..."));
+            }
+            try {
+                PhaseEvaluator phaseEvaluator = new PhaseEvaluator(candleStore);
+                phaseStates = phaseEvaluator.evaluatePhases(
+                    requiredPhases, candles, config.resolution()
+                );
+            } catch (IOException e) {
+                return createErrorResult(strategy, config, startTime,
+                    "Failed to evaluate phases: " + e.getMessage());
+            }
+        }
 
         if (onProgress != null) {
             onProgress.accept(new Progress(0, candles.size(), 0, "Parsing strategy..."));
@@ -553,6 +596,16 @@ public class BacktestEngine {
                     } else {
                         // pause mode or first entry - require signal
                         shouldEnter = signalPresent;
+                    }
+
+                    // Check if all required phases are active
+                    if (shouldEnter && !requiredPhaseIds.isEmpty()) {
+                        boolean phasesActive = PhaseEvaluator.allPhasesActive(
+                            phaseStates, requiredPhaseIds, i
+                        );
+                        if (!phasesActive) {
+                            shouldEnter = false; // Skip entry - phases not active
+                        }
                     }
 
                     if (shouldEnter) {

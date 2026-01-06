@@ -5,6 +5,7 @@ import com.tradery.TraderyApp;
 import com.tradery.data.CandleStore;
 import com.tradery.engine.BacktestEngine;
 import com.tradery.io.FileWatcher;
+import com.tradery.io.PhaseStore;
 import com.tradery.io.ResultStore;
 import com.tradery.io.StrategyStore;
 import com.tradery.io.WindowStateStore;
@@ -20,6 +21,7 @@ import java.awt.event.WindowEvent;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Consumer;
 
@@ -106,6 +108,7 @@ public class ProjectWindow extends JFrame {
     private final ResultStore resultStore;
     private final BacktestEngine backtestEngine;
     private FileWatcher fileWatcher;
+    private FileWatcher phaseWatcher;
 
     // Current backtest data for charts
     private List<Candle> currentCandles;
@@ -129,7 +132,7 @@ public class ProjectWindow extends JFrame {
         this.candleStore = ApplicationContext.getInstance().getCandleStore();
         // Per-project result storage
         this.resultStore = new ResultStore(strategy.getId());
-        this.backtestEngine = new BacktestEngine();
+        this.backtestEngine = new BacktestEngine(candleStore);
 
         initializeFrame();
         initializeComponents();
@@ -795,6 +798,47 @@ public class ProjectWindow extends JFrame {
         } catch (IOException e) {
             System.err.println("Failed to start file watcher: " + e.getMessage());
         }
+
+        // Watch phases directory for changes to required phases
+        startPhaseWatcher();
+    }
+
+    private void startPhaseWatcher() {
+        PhaseStore phaseStore = ApplicationContext.getInstance().getPhaseStore();
+        Path phasesDir = phaseStore.getDirectory().toPath();
+
+        phaseWatcher = FileWatcher.forDirectory(
+            phasesDir,
+            this::onPhaseFileChanged,  // onModified
+            this::onPhaseFileChanged,  // onDeleted
+            this::onPhaseFileChanged   // onCreated
+        );
+
+        try {
+            phaseWatcher.start();
+        } catch (IOException e) {
+            System.err.println("Failed to start phase watcher: " + e.getMessage());
+        }
+    }
+
+    private void onPhaseFileChanged(Path path) {
+        if (ignoringFileChanges) return;
+
+        // Check if this phase is one of our required phases
+        String filename = path.getFileName().toString();
+        String phaseId = path.getParent().getFileName().toString();
+
+        // Only react to phase.json files
+        if (!filename.equals("phase.json")) return;
+
+        // Check if this phase is required by current strategy
+        List<String> requiredPhaseIds = strategy.getRequiredPhaseIds();
+        if (requiredPhaseIds.contains(phaseId)) {
+            SwingUtilities.invokeLater(() -> {
+                setStatus("Phase '" + phaseId + "' changed - re-running backtest...");
+                runBacktest();
+            });
+        }
     }
 
     private void onStrategyFileChanged(Path path) {
@@ -1124,8 +1168,18 @@ public class ProjectWindow extends JFrame {
                     throw new Exception("No candle data available for " + config.symbol());
                 }
 
-                // Run backtest
-                return backtestEngine.run(strategy, config, currentCandles, this::publish);
+                // Load required phases
+                List<Phase> requiredPhases = new ArrayList<>();
+                PhaseStore phaseStore = ApplicationContext.getInstance().getPhaseStore();
+                for (String phaseId : strategy.getRequiredPhaseIds()) {
+                    Phase phase = phaseStore.load(phaseId);
+                    if (phase != null) {
+                        requiredPhases.add(phase);
+                    }
+                }
+
+                // Run backtest with phase filtering
+                return backtestEngine.run(strategy, config, currentCandles, requiredPhases, this::publish);
             }
 
             @Override
@@ -1201,6 +1255,9 @@ public class ProjectWindow extends JFrame {
 
         if (fileWatcher != null) {
             fileWatcher.stop();
+        }
+        if (phaseWatcher != null) {
+            phaseWatcher.stop();
         }
         if (onClose != null) {
             onClose.accept(strategy.getId());

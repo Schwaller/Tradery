@@ -23,6 +23,7 @@ public class Strategy {
     private EntrySettings entrySettings = new EntrySettings();
     private ExitSettings exitSettings = new ExitSettings();
     private BacktestSettings backtestSettings = new BacktestSettings();
+    private PhaseSettings phaseSettings = new PhaseSettings();
 
     // Metadata
     private boolean enabled;
@@ -132,6 +133,20 @@ public class Strategy {
 
     public void setBacktestSettings(BacktestSettings backtestSettings) {
         this.backtestSettings = backtestSettings != null ? backtestSettings : new BacktestSettings();
+        this.updated = Instant.now();
+    }
+
+    // Phase settings
+
+    public PhaseSettings getPhaseSettings() {
+        if (phaseSettings == null) {
+            phaseSettings = new PhaseSettings();
+        }
+        return phaseSettings;
+    }
+
+    public void setPhaseSettings(PhaseSettings phaseSettings) {
+        this.phaseSettings = phaseSettings != null ? phaseSettings : new PhaseSettings();
         this.updated = Instant.now();
     }
 
@@ -329,6 +344,21 @@ public class Strategy {
 
     public double getTotalCommission() {
         return getBacktestSettings().getTotalCommission();
+    }
+
+    // Convenience methods - Phase settings delegates
+
+    public java.util.List<String> getRequiredPhaseIds() {
+        return getPhaseSettings().getRequiredPhaseIds();
+    }
+
+    public void setRequiredPhaseIds(java.util.List<String> ids) {
+        getPhaseSettings().setRequiredPhaseIds(ids);
+        this.updated = Instant.now();
+    }
+
+    public boolean hasRequiredPhases() {
+        return getPhaseSettings().hasRequiredPhases();
     }
 
     @Override

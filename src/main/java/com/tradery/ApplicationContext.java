@@ -1,6 +1,7 @@
 package com.tradery;
 
 import com.tradery.data.CandleStore;
+import com.tradery.io.PhaseStore;
 import com.tradery.io.StrategyStore;
 
 import java.io.File;
@@ -15,10 +16,12 @@ public class ApplicationContext {
 
     private final CandleStore candleStore;
     private final StrategyStore strategyStore;
+    private final PhaseStore phaseStore;
 
     private ApplicationContext() {
         this.candleStore = new CandleStore();
         this.strategyStore = new StrategyStore(new File(TraderyApp.USER_DIR, "strategies"));
+        this.phaseStore = new PhaseStore(new File(TraderyApp.USER_DIR, "phases"));
 
         // Install any missing preset strategies on startup
         this.strategyStore.installMissingPresets();
@@ -37,5 +40,9 @@ public class ApplicationContext {
 
     public StrategyStore getStrategyStore() {
         return strategyStore;
+    }
+
+    public PhaseStore getPhaseStore() {
+        return phaseStore;
     }
 }
