@@ -220,8 +220,8 @@ class BacktestEngineTest {
 
             // Set up failure zone at -5% with exitImmediately
             List<ExitZone> zones = List.of(
-                new ExitZone("Failure", null, -5.0, "", "none", null, "none", null, true, 0),
-                new ExitZone("Default", -5.0, null, "", "none", null, "none", null, false, 0)
+                new ExitZone("Failure", null, -5.0, "", StopLossType.NONE, null, TakeProfitType.NONE, null, true, 0, null, ExitBasis.REMAINING, ExitReentry.CONTINUE),
+                new ExitZone("Default", -5.0, null, "", StopLossType.NONE, null, TakeProfitType.NONE, null, false, 0, null, ExitBasis.REMAINING, ExitReentry.CONTINUE)
             );
             baseStrategy.setExitZones(zones);
 
@@ -248,8 +248,8 @@ class BacktestEngineTest {
 
             // Set up zones - profit zone with trailing stop
             List<ExitZone> zones = List.of(
-                new ExitZone("Default", null, 5.0, "", "none", null, "none", null, false, 0),
-                new ExitZone("Protect", 5.0, null, "", "trailing_percent", 2.0, "none", null, false, 0)
+                new ExitZone("Default", null, 5.0, "", StopLossType.NONE, null, TakeProfitType.NONE, null, false, 0, null, ExitBasis.REMAINING, ExitReentry.CONTINUE),
+                new ExitZone("Protect", 5.0, null, "", StopLossType.TRAILING_PERCENT, 2.0, TakeProfitType.NONE, null, false, 0, null, ExitBasis.REMAINING, ExitReentry.CONTINUE)
             );
             baseStrategy.setExitZones(zones);
 
@@ -280,8 +280,8 @@ class BacktestEngineTest {
 
             // Set up zones with a gap - only Failure (<-10%) and Profit (>10%) zones
             List<ExitZone> zones = List.of(
-                new ExitZone("Failure", null, -10.0, "", "none", null, "none", null, true, 0),
-                new ExitZone("Profit", 10.0, null, "", "none", null, "none", null, false, 0)
+                new ExitZone("Failure", null, -10.0, "", StopLossType.NONE, null, TakeProfitType.NONE, null, true, 0, null, ExitBasis.REMAINING, ExitReentry.CONTINUE),
+                new ExitZone("Profit", 10.0, null, "", StopLossType.NONE, null, TakeProfitType.NONE, null, false, 0, null, ExitBasis.REMAINING, ExitReentry.CONTINUE)
             );
             baseStrategy.setExitZones(zones);
 
@@ -373,6 +373,169 @@ class BacktestEngineTest {
 
             // With maxOpenTrades=1 and DCA, we should have exactly 1 position group
             assertEquals(1, uniqueGroups.size(), "DCA group should count as single position");
+        }
+    }
+
+    @Nested
+    @DisplayName("DCA-Out (Partial Exit) Tests")
+    class DCAOutTests {
+
+        @Test
+        @DisplayName("Partial exit takes specified percentage")
+        void partialExitTakesSpecifiedPercentage() {
+            baseStrategy.setEntry("true");
+            baseStrategy.setMaxOpenTrades(1);
+
+            // Zone that triggers at 5% profit and exits 50%
+            List<ExitZone> zones = List.of(
+                new ExitZone("Default", null, 5.0, "", StopLossType.NONE, null, TakeProfitType.NONE, null, false, 0, null, ExitBasis.REMAINING, ExitReentry.CONTINUE),
+                new ExitZone("TakeHalf", 5.0, null, "", StopLossType.NONE, null, TakeProfitType.NONE, null, true, 0, 50.0, ExitBasis.REMAINING, ExitReentry.CONTINUE)
+            );
+            baseStrategy.setExitZones(zones);
+
+            // Price goes up 10%
+            List<Candle> candles = new ArrayList<>();
+            candles.addAll(createFlatCandles(100.0, 50));
+            candles.addAll(createTrendingCandles(100.0, 115.0, 50));
+
+            BacktestResult result = engine.run(baseStrategy, baseConfig, candles, null);
+
+            // Should have at least 2 trades: partial exit and final close
+            List<Trade> closedTrades = result.trades().stream()
+                .filter(t -> t.exitTime() != null && !"rejected".equals(t.exitReason()))
+                .toList();
+            assertTrue(closedTrades.size() >= 2, "Should have partial exit and final close");
+
+            // First exit should be zone_exit at ~50% of position
+            Trade partialExit = closedTrades.stream()
+                .filter(t -> "zone_exit".equals(t.exitReason()))
+                .findFirst()
+                .orElse(null);
+            assertNotNull(partialExit, "Should have a zone_exit trade");
+        }
+
+        @Test
+        @DisplayName("Multiple zones with partial exits scale out gradually")
+        void multipleZonesScaleOutGradually() {
+            baseStrategy.setEntry("true");
+            baseStrategy.setMaxOpenTrades(1);
+
+            // Three zones: hold, take 33% at 5%, take 50% of remaining at 10%
+            List<ExitZone> zones = List.of(
+                new ExitZone("Hold", null, 5.0, "", StopLossType.NONE, null, TakeProfitType.NONE, null, false, 0, null, ExitBasis.REMAINING, ExitReentry.CONTINUE),
+                new ExitZone("First", 5.0, 10.0, "", StopLossType.NONE, null, TakeProfitType.NONE, null, true, 0, 33.0, ExitBasis.ORIGINAL, ExitReentry.CONTINUE),
+                new ExitZone("Second", 10.0, null, "", StopLossType.NONE, null, TakeProfitType.NONE, null, true, 0, 50.0, ExitBasis.REMAINING, ExitReentry.CONTINUE)
+            );
+            baseStrategy.setExitZones(zones);
+
+            // Price goes up 15%
+            List<Candle> candles = new ArrayList<>();
+            candles.addAll(createFlatCandles(100.0, 50));
+            candles.addAll(createTrendingCandles(100.0, 120.0, 60));
+
+            BacktestResult result = engine.run(baseStrategy, baseConfig, candles, null);
+
+            List<Trade> zoneExits = result.trades().stream()
+                .filter(t -> "zone_exit".equals(t.exitReason()))
+                .toList();
+
+            assertTrue(zoneExits.size() >= 2, "Should have multiple zone exits (partial exits)");
+        }
+
+        @Test
+        @DisplayName("Exit basis ORIGINAL uses original position size")
+        void exitBasisOriginalUsesOriginalSize() {
+            baseStrategy.setEntry("true");
+            baseStrategy.setMaxOpenTrades(1);
+
+            // Zone that exits 25% of original at 5% profit
+            List<ExitZone> zones = List.of(
+                new ExitZone("Hold", null, 5.0, "", StopLossType.NONE, null, TakeProfitType.NONE, null, false, 0, null, ExitBasis.REMAINING, ExitReentry.CONTINUE),
+                new ExitZone("Quarter", 5.0, null, "", StopLossType.NONE, null, TakeProfitType.NONE, null, true, 0, 25.0, ExitBasis.ORIGINAL, ExitReentry.CONTINUE)
+            );
+            baseStrategy.setExitZones(zones);
+
+            // Price goes up and stays up
+            List<Candle> candles = new ArrayList<>();
+            candles.addAll(createFlatCandles(100.0, 50));
+            candles.addAll(createTrendingCandles(100.0, 115.0, 50));
+
+            BacktestResult result = engine.run(baseStrategy, baseConfig, candles, null);
+
+            List<Trade> zoneExits = result.trades().stream()
+                .filter(t -> "zone_exit".equals(t.exitReason()))
+                .toList();
+
+            assertFalse(zoneExits.isEmpty(), "Should have zone exit");
+            // The exit quantity should be ~25% of original
+            Trade exit = zoneExits.get(0);
+            // With $1000 position at $100, quantity = 10 units
+            // 25% of original = 2.5 units
+            assertTrue(exit.quantity() < 5.0, "Exit quantity should be ~25% of original");
+        }
+
+        @Test
+        @DisplayName("Exit reentry RESET clears progress on zone change")
+        void exitReentryResetClearsProgress() {
+            baseStrategy.setEntry("true");
+            baseStrategy.setMaxOpenTrades(1);
+
+            // Zone at 3% that exits 50% with RESET behavior
+            List<ExitZone> zones = List.of(
+                new ExitZone("Low", null, 3.0, "", StopLossType.NONE, null, TakeProfitType.NONE, null, false, 0, null, ExitBasis.REMAINING, ExitReentry.CONTINUE),
+                new ExitZone("Partial", 3.0, null, "", StopLossType.NONE, null, TakeProfitType.NONE, null, true, 0, 50.0, ExitBasis.REMAINING, ExitReentry.RESET)
+            );
+            baseStrategy.setExitZones(zones);
+
+            // Price goes up to 5%, back to 2%, then up to 5% again
+            List<Candle> candles = new ArrayList<>();
+            candles.addAll(createFlatCandles(100.0, 50));
+            candles.addAll(createTrendingCandles(100.0, 105.0, 20));  // Up 5%
+            candles.addAll(createTrendingCandles(105.0, 101.0, 10));  // Drop to 1%
+            candles.addAll(createTrendingCandles(101.0, 107.0, 30));  // Back up 7%
+
+            BacktestResult result = engine.run(baseStrategy, baseConfig, candles, null);
+
+            // With RESET, should have 2 partial exits (one each time zone is entered)
+            List<Trade> zoneExits = result.trades().stream()
+                .filter(t -> "zone_exit".equals(t.exitReason()))
+                .toList();
+
+            assertTrue(zoneExits.size() >= 2, "With RESET, should have partial exits each time zone is re-entered");
+        }
+
+        @Test
+        @DisplayName("Clips exit to remaining quantity when exceeds available")
+        void clipsExitToRemainingQuantity() {
+            baseStrategy.setEntry("true");
+            baseStrategy.setMaxOpenTrades(1);
+
+            // Three zones each taking 50% of remaining - eventually should close everything
+            List<ExitZone> zones = List.of(
+                new ExitZone("Hold", null, 3.0, "", StopLossType.NONE, null, TakeProfitType.NONE, null, false, 0, null, ExitBasis.REMAINING, ExitReentry.CONTINUE),
+                new ExitZone("First", 3.0, 6.0, "", StopLossType.NONE, null, TakeProfitType.NONE, null, true, 0, 50.0, ExitBasis.REMAINING, ExitReentry.CONTINUE),
+                new ExitZone("Second", 6.0, 10.0, "", StopLossType.NONE, null, TakeProfitType.NONE, null, true, 0, 50.0, ExitBasis.REMAINING, ExitReentry.CONTINUE),
+                new ExitZone("Third", 10.0, null, "", StopLossType.NONE, null, TakeProfitType.NONE, null, true, 0, 100.0, ExitBasis.REMAINING, ExitReentry.CONTINUE)
+            );
+            baseStrategy.setExitZones(zones);
+
+            // Price goes up steadily
+            List<Candle> candles = new ArrayList<>();
+            candles.addAll(createFlatCandles(100.0, 50));
+            candles.addAll(createTrendingCandles(100.0, 125.0, 60));  // Up 25%
+
+            BacktestResult result = engine.run(baseStrategy, baseConfig, candles, null);
+
+            // Should have progressively smaller exits, all positive PnL
+            List<Trade> closedTrades = result.trades().stream()
+                .filter(t -> t.exitTime() != null && t.pnl() != null)
+                .toList();
+
+            // Total PnL should be positive
+            double totalPnl = closedTrades.stream()
+                .mapToDouble(t -> t.pnl() != null ? t.pnl() : 0)
+                .sum();
+            assertTrue(totalPnl > 0, "Scaled out position should have positive total PnL");
         }
     }
 

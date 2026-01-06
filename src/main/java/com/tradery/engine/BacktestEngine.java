@@ -7,7 +7,9 @@ import com.tradery.indicators.IndicatorEngine;
 import com.tradery.model.*;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.function.Consumer;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -149,6 +151,7 @@ public class BacktestEngine {
                             ots.exitReason = "zone_exit";
                             ots.exitPrice = candle.close();
                             ots.exitZone = pz.zone.name();
+                            ots.matchedZone = pz.zone;
                             if (strategy.isDcaEnabled()) {
                                 dcaExitReason = "zone_exit";
                                 dcaExitPrice = candle.close();
@@ -161,10 +164,19 @@ public class BacktestEngine {
                 }
 
                 // If emergency exit triggered in DCA mode, close all trades in the position
+                ExitZone dcaMatchedZone = null;
                 if (dcaExitReason != null) {
+                    // Find the zone that triggered the exit
+                    for (OpenTradeState ots : openTrades) {
+                        if (ots.matchedZone != null) {
+                            dcaMatchedZone = ots.matchedZone;
+                            break;
+                        }
+                    }
                     for (OpenTradeState ots : openTrades) {
                         ots.exitReason = dcaExitReason;
                         ots.exitPrice = dcaExitPrice;
+                        ots.matchedZone = dcaMatchedZone;
                         if (!toClose.contains(ots)) {
                             toClose.add(ots);
                         }
@@ -244,9 +256,11 @@ public class BacktestEngine {
                             ots.exitReason = exitReason;
                             ots.exitPrice = exitPrice;
                             ots.exitZone = exitZoneName;
+                            ots.matchedZone = zone;
                             if (isDcaPosition) {
                                 dcaExitReason = exitReason;
                                 dcaExitPrice = exitPrice;
+                                dcaMatchedZone = zone;
                                 break;
                             } else {
                                 toClose.add(ots);
@@ -327,12 +341,14 @@ public class BacktestEngine {
                             if (isDcaPosition) {
                                 dcaExitReason = exitReason;
                                 dcaExitPrice = exitPrice;
+                                dcaMatchedZone = zone;
                                 break;  // Exit the loop - we'll close all trades
                             } else {
                                 // Mark for closing
                                 ots.exitReason = exitReason;
                                 ots.exitPrice = exitPrice;
                                 ots.exitZone = exitZoneName;
+                                ots.matchedZone = zone;
                                 toClose.add(ots);
                             }
                         }
@@ -343,16 +359,129 @@ public class BacktestEngine {
                         for (OpenTradeState ots : openTrades) {
                             ots.exitReason = dcaExitReason;
                             ots.exitPrice = dcaExitPrice;
-                            toClose.add(ots);
+                            ots.matchedZone = dcaMatchedZone;
+                            ots.exitZone = dcaMatchedZone != null ? dcaMatchedZone.name() : null;
+                            if (!toClose.contains(ots)) {
+                                toClose.add(ots);
+                            }
                         }
                     }
                 }
 
-                // Close marked trades
-                for (OpenTradeState ots : toClose) {
-                    Trade closedTrade = ots.trade.close(i, candle.timestamp(), ots.exitPrice, config.commission(), ots.exitReason, ots.exitZone);
-                    trades.add(closedTrade);
-                    currentEquity += closedTrade.pnl() != null ? closedTrade.pnl() : 0;
+                // Close marked trades (with partial exit support)
+                List<OpenTradeState> fullyClosedTrades = new ArrayList<>();
+
+                // For DCA positions, calculate proportional exits
+                boolean isDcaPartialExit = strategy.isDcaEnabled() && toClose.size() > 1;
+
+                if (isDcaPartialExit && !toClose.isEmpty()) {
+                    // DCA mode: distribute exit proportionally across all entries
+                    OpenTradeState firstTrade = toClose.get(0);
+                    ExitZone zone = firstTrade.matchedZone;
+
+                    if (zone != null && zone.exitPercent() != null && zone.exitPercent() < 100) {
+                        // Calculate total remaining across all DCA entries
+                        double totalRemaining = toClose.stream().mapToDouble(o -> o.remainingQuantity).sum();
+                        double totalOriginal = toClose.stream().mapToDouble(o -> o.originalQuantity).sum();
+
+                        // Check zone exit count (use first trade as representative)
+                        String zoneName = zone.name();
+                        int exitsDone = firstTrade.zoneExitCount.getOrDefault(zoneName, 0);
+                        int maxExits = zone.getEffectiveMaxExits();
+
+                        // Only proceed if max exits not reached
+                        if (exitsDone < maxExits) {
+                            // Calculate target exit based on zone config
+                            double exitPercent = zone.getEffectiveExitPercent();
+                            double toExit;
+                            if (zone.exitBasis() == ExitBasis.ORIGINAL) {
+                                toExit = totalOriginal * (exitPercent / 100.0);
+                            } else {
+                                toExit = totalRemaining * (exitPercent / 100.0);
+                            }
+                            toExit = Math.min(toExit, totalRemaining);
+
+                            // Check minBarsBetweenExits constraint (using first trade as representative)
+                            boolean canExit = firstTrade.canExitInZone(zone, i);
+
+                            if (toExit > 0 && canExit) {
+                                // Distribute proportionally across entries
+                                for (OpenTradeState ots : toClose) {
+                                    double proportion = totalRemaining > 0 ? ots.remainingQuantity / totalRemaining : 0;
+                                    double exitQty = toExit * proportion;
+                                    exitQty = Math.min(exitQty, ots.remainingQuantity);
+
+                                    if (exitQty > 0.0001) {
+                                        Trade partialTrade = ots.trade.partialClose(
+                                            i, candle.timestamp(), ots.exitPrice, exitQty,
+                                            config.commission(), ots.exitReason, ots.exitZone
+                                        );
+                                        trades.add(partialTrade);
+                                        currentEquity += partialTrade.pnl() != null ? partialTrade.pnl() : 0;
+                                        ots.recordPartialExit(zoneName, exitQty, i);
+                                    }
+
+                                    if (ots.isFullyClosed()) {
+                                        fullyClosedTrades.add(ots);
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        // No partial exit configured, close everything
+                        for (OpenTradeState ots : toClose) {
+                            Trade closedTrade = ots.trade.partialClose(
+                                i, candle.timestamp(), ots.exitPrice, ots.remainingQuantity,
+                                config.commission(), ots.exitReason, ots.exitZone
+                            );
+                            trades.add(closedTrade);
+                            currentEquity += closedTrade.pnl() != null ? closedTrade.pnl() : 0;
+                            ots.remainingQuantity = 0;
+                            fullyClosedTrades.add(ots);
+                        }
+                    }
+                } else {
+                    // Non-DCA or single trade: handle each individually
+                    for (OpenTradeState ots : toClose) {
+                        ExitZone zone = ots.matchedZone;
+                        double exitQty;
+                        boolean isPartialExit = zone != null && zone.exitPercent() != null && zone.exitPercent() < 100;
+
+                        if (isPartialExit) {
+                            // Check minBarsBetweenExits constraint
+                            if (!ots.canExitInZone(zone, i)) {
+                                continue;  // Skip this partial exit, not enough bars passed
+                            }
+                            // Partial exit
+                            exitQty = ots.calculateExitQuantity(zone);
+                        } else {
+                            // Full exit - no bars between constraint for full exits
+                            exitQty = ots.remainingQuantity;
+                        }
+
+                        if (exitQty > 0.0001) {
+                            Trade partialTrade = ots.trade.partialClose(
+                                i, candle.timestamp(), ots.exitPrice, exitQty,
+                                config.commission(), ots.exitReason, ots.exitZone
+                            );
+                            trades.add(partialTrade);
+                            currentEquity += partialTrade.pnl() != null ? partialTrade.pnl() : 0;
+
+                            if (zone != null) {
+                                ots.recordPartialExit(zone.name(), exitQty, i);
+                            } else {
+                                ots.remainingQuantity -= exitQty;
+                            }
+                        }
+
+                        if (ots.isFullyClosed()) {
+                            fullyClosedTrades.add(ots);
+                        }
+                    }
+                }
+
+                // Remove fully closed trades
+                for (OpenTradeState ots : fullyClosedTrades) {
                     openTrades.remove(ots);
                 }
 
@@ -395,19 +524,25 @@ public class BacktestEngine {
 
                 // Handle DCA abort mode - close all trades if signal lost
                 if (isDcaEntry && dcaMode == DcaMode.ABORT && !signalPresent && toClose.isEmpty()) {
+                    List<OpenTradeState> abortedTrades = new ArrayList<>();
                     for (OpenTradeState ots : openTrades) {
                         ots.exitReason = "signal_lost";
                         ots.exitPrice = candle.close();
-                        toClose.add(ots);
+                        abortedTrades.add(ots);
                     }
-                    // Close the aborted trades
-                    for (OpenTradeState ots : toClose) {
-                        Trade closedTrade = ots.trade.close(i, candle.timestamp(), ots.exitPrice, config.commission(), ots.exitReason, ots.exitZone);
-                        trades.add(closedTrade);
-                        currentEquity += closedTrade.pnl() != null ? closedTrade.pnl() : 0;
+                    // Close the aborted trades (close remaining quantity)
+                    for (OpenTradeState ots : abortedTrades) {
+                        if (ots.remainingQuantity > 0.0001) {
+                            Trade closedTrade = ots.trade.partialClose(
+                                i, candle.timestamp(), ots.exitPrice, ots.remainingQuantity,
+                                config.commission(), ots.exitReason, ots.exitZone
+                            );
+                            trades.add(closedTrade);
+                            currentEquity += closedTrade.pnl() != null ? closedTrade.pnl() : 0;
+                            ots.remainingQuantity = 0;
+                        }
                         openTrades.remove(ots);
                     }
-                    toClose.clear();
                 }
 
                 if (canOpenMore && passesMinDistance) {
@@ -421,9 +556,9 @@ public class BacktestEngine {
                     }
 
                     if (shouldEnter) {
-                        // Calculate current capital usage
+                        // Calculate current capital usage (based on remaining quantities)
                         double usedCapital = openTrades.stream()
-                            .mapToDouble(ots -> ots.trade.entryPrice() * ots.trade.quantity())
+                            .mapToDouble(ots -> ots.trade.entryPrice() * ots.remainingQuantity)
                             .sum();
                         double availableCapital = currentEquity - usedCapital;
 
@@ -499,17 +634,22 @@ public class BacktestEngine {
             }
         }
 
-        // Close all open trades at the end
+        // Close all open trades at the end (close remaining quantities)
         Candle lastCandle = candles.get(candles.size() - 1);
         for (OpenTradeState ots : openTrades) {
-            Trade closedTrade = ots.trade.close(
-                candles.size() - 1,
-                lastCandle.timestamp(),
-                lastCandle.close(),
-                config.commission()
-            );
-            trades.add(closedTrade);
-            currentEquity += closedTrade.pnl() != null ? closedTrade.pnl() : 0;
+            if (ots.remainingQuantity > 0.0001) {
+                Trade closedTrade = ots.trade.partialClose(
+                    candles.size() - 1,
+                    lastCandle.timestamp(),
+                    lastCandle.close(),
+                    ots.remainingQuantity,
+                    config.commission(),
+                    "end_of_data",
+                    null
+                );
+                trades.add(closedTrade);
+                currentEquity += closedTrade.pnl() != null ? closedTrade.pnl() : 0;
+            }
         }
 
         // Calculate metrics
@@ -748,11 +888,87 @@ public class BacktestEngine {
         String exitReason;
         double exitPrice;
         String exitZone;
+        ExitZone matchedZone;  // The zone that triggered the exit (for partial exit calculation)
+        // DCA-out tracking
+        double originalQuantity;              // Original quantity at entry
+        double remainingQuantity;             // Current remaining quantity
+        Map<String, Integer> zoneExitCount;   // zoneName -> number of exits done in this zone
+        String lastZoneName;                  // Track zone transitions for RESET logic
+        int lastExitBar;                      // Track last partial exit bar for minBarsBetweenExits
 
         OpenTradeState(Trade trade, double entryPrice) {
             this.trade = trade;
             this.highestPriceSinceEntry = entryPrice;
             this.trailingStopPrice = 0;
+            this.originalQuantity = trade.quantity();
+            this.remainingQuantity = trade.quantity();
+            this.zoneExitCount = new HashMap<>();
+            this.lastZoneName = null;
+            this.lastExitBar = -9999;
+        }
+
+        /**
+         * Calculate exit quantity for a zone based on its configuration.
+         * Returns the quantity to exit (clipped to remaining), or 0 if max exits reached.
+         */
+        double calculateExitQuantity(ExitZone zone) {
+            double exitPercent = zone.getEffectiveExitPercent();
+            int maxExits = zone.getEffectiveMaxExits();
+            ExitBasis basis = zone.exitBasis();
+            ExitReentry reentry = zone.exitReentry();
+            String zoneName = zone.name();
+
+            // Handle zone transition - reset count if configured
+            if (lastZoneName != null && !lastZoneName.equals(zoneName) && reentry == ExitReentry.RESET) {
+                zoneExitCount.clear();
+            }
+            lastZoneName = zoneName;
+
+            // Check if max exits reached for this zone
+            int exitsDone = zoneExitCount.getOrDefault(zoneName, 0);
+            if (exitsDone >= maxExits) {
+                return 0;  // No more exits allowed in this zone
+            }
+
+            // Calculate target quantity based on basis
+            double targetQty;
+            if (basis == ExitBasis.ORIGINAL) {
+                targetQty = originalQuantity * (exitPercent / 100.0);
+            } else {
+                // REMAINING basis
+                targetQty = remainingQuantity * (exitPercent / 100.0);
+            }
+
+            // Clip to remaining
+            targetQty = Math.min(targetQty, remainingQuantity);
+            targetQty = Math.max(targetQty, 0); // Can't be negative
+
+            return targetQty;
+        }
+
+        /**
+         * Check if enough bars have passed since last exit for this zone.
+         */
+        boolean canExitInZone(ExitZone zone, int currentBar) {
+            int minBarsBetween = zone.minBarsBetweenExits();
+            return (currentBar - lastExitBar) >= minBarsBetween;
+        }
+
+        /**
+         * Record a partial exit in a zone.
+         */
+        void recordPartialExit(String zoneName, double quantity, int currentBar) {
+            int current = zoneExitCount.getOrDefault(zoneName, 0);
+            zoneExitCount.put(zoneName, current + 1);
+            remainingQuantity -= quantity;
+            lastExitBar = currentBar;
+        }
+
+        /**
+         * Check if this position is fully closed.
+         */
+        boolean isFullyClosed() {
+            return remainingQuantity <= 0.0001; // Small epsilon for floating point
         }
     }
 

@@ -65,21 +65,35 @@ public record Trade(
      * Close this trade with exit reason, zone, and calculate P&L
      */
     public Trade close(int exitBar, long exitTime, double exitPrice, double commissionRate, String exitReason, String exitZone) {
-        double grossPnl = (exitPrice - entryPrice) * quantity;
+        return partialClose(exitBar, exitTime, exitPrice, quantity, commissionRate, exitReason, exitZone);
+    }
+
+    /**
+     * Partially close this trade - close a portion of the position.
+     * Creates a new Trade record representing the closed portion.
+     */
+    public Trade partialClose(int exitBar, long exitTime, double exitPrice, double exitQuantity,
+                              double commissionRate, String exitReason, String exitZone) {
+        double grossPnl = (exitPrice - entryPrice) * exitQuantity;
         if ("short".equals(side)) {
             grossPnl = -grossPnl;
         }
 
         // Commission is a percentage rate - calculate actual dollar amounts
-        double entryCommission = entryPrice * quantity * (this.commission != null ? this.commission : 0);
-        double exitCommission = exitPrice * quantity * commissionRate;
+        // For partial close, entry commission is proportional to exit quantity
+        double entryCommissionRate = this.commission != null ? this.commission : 0;
+        double entryCommission = entryPrice * exitQuantity * entryCommissionRate;
+        double exitCommission = exitPrice * exitQuantity * commissionRate;
         double totalCommission = entryCommission + exitCommission;
 
         double netPnl = grossPnl - totalCommission;
-        double pnlPct = (netPnl / (entryPrice * quantity)) * 100;
+        double pnlPct = (netPnl / (entryPrice * exitQuantity)) * 100;
+
+        // Generate unique ID for partial exit
+        String exitId = id + "-exit-" + exitBar;
 
         return new Trade(
-            id, strategyId, side, entryBar, entryTime, entryPrice, quantity,
+            exitId, strategyId, side, entryBar, entryTime, entryPrice, exitQuantity,
             exitBar, exitTime, exitPrice, netPnl, pnlPct, totalCommission, exitReason, groupId, exitZone
         );
     }

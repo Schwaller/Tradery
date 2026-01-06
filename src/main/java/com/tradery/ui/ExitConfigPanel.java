@@ -1,5 +1,7 @@
 package com.tradery.ui;
 
+import com.tradery.model.ExitBasis;
+import com.tradery.model.ExitReentry;
 import com.tradery.model.ExitZone;
 import com.tradery.model.StopLossType;
 import com.tradery.model.Strategy;
@@ -197,6 +199,17 @@ public class ExitConfigPanel extends JPanel {
         private JComboBox<String> tpTypeCombo;
         private JSpinner tpValueSpinner;
         private JSpinner minBarsSpinner;
+        // Scale Out (DCA-out) fields
+        private JCheckBox scaleOutCheckbox;
+        private JPanel scaleOutDetailsPanel;
+        private JSpinner exitPercentSpinner;
+        private JSpinner maxExitsSpinner;
+        private JComboBox<String> exitBasisCombo;
+        private JComboBox<String> exitReentryCombo;
+        private JSpinner barsBetweenExitsSpinner;
+
+        private static final String[] EXIT_BASIS_OPTIONS = {"% of Remaining", "% of Original"};
+        private static final String[] EXIT_REENTRY_OPTIONS = {"Continue", "Reset"};
 
         ZoneEditor(ExitZone zone, Runnable onRemove, Runnable onChange) {
             setLayout(new BorderLayout(4, 4));
@@ -292,6 +305,71 @@ public class ExitConfigPanel extends JPanel {
                 zone != null ? zone.minBarsBeforeExit() : 0, 0, 1000, 1));
             minBarsSpinner.addChangeListener(e -> onChange.run());
 
+            // Scale Out (DCA-out) section - structured like DCA-in
+            scaleOutCheckbox = new JCheckBox("Scale Out");
+            boolean hasScaleOut = zone != null && zone.exitPercent() != null;
+            scaleOutCheckbox.setSelected(hasScaleOut);
+
+            exitPercentSpinner = new JSpinner(new SpinnerNumberModel(
+                zone != null && zone.exitPercent() != null ? zone.exitPercent() : 50.0,
+                1.0, 100.0, 5.0));
+            exitPercentSpinner.addChangeListener(e -> onChange.run());
+
+            maxExitsSpinner = new JSpinner(new SpinnerNumberModel(
+                zone != null && zone.maxExits() != null ? zone.maxExits() : 1,
+                1, 100, 1));
+            maxExitsSpinner.addChangeListener(e -> onChange.run());
+
+            exitBasisCombo = new JComboBox<>(EXIT_BASIS_OPTIONS);
+            exitBasisCombo.setSelectedIndex(exitBasisToIndex(zone != null ? zone.exitBasis() : ExitBasis.REMAINING));
+            exitBasisCombo.addActionListener(e -> onChange.run());
+
+            exitReentryCombo = new JComboBox<>(EXIT_REENTRY_OPTIONS);
+            exitReentryCombo.setSelectedIndex(exitReentryToIndex(zone != null ? zone.exitReentry() : ExitReentry.CONTINUE));
+            exitReentryCombo.addActionListener(e -> onChange.run());
+
+            barsBetweenExitsSpinner = new JSpinner(new SpinnerNumberModel(
+                zone != null ? zone.minBarsBetweenExits() : 0, 0, 1000, 1));
+            barsBetweenExitsSpinner.addChangeListener(e -> onChange.run());
+
+            // Scale out details panel (like DCA details panel)
+            scaleOutDetailsPanel = new JPanel(new GridBagLayout());
+            scaleOutDetailsPanel.setOpaque(false);
+            scaleOutDetailsPanel.setVisible(hasScaleOut);
+
+            JLabel exitPctLabel = new JLabel("Exit %:");
+            exitPctLabel.setForeground(Color.GRAY);
+            scaleOutDetailsPanel.add(exitPctLabel, new GridBagConstraints(0, 0, 1, 1, 0, 0, WEST, NONE, new Insets(2, 12, 2, 4), 0, 0));
+            scaleOutDetailsPanel.add(exitPercentSpinner, new GridBagConstraints(1, 0, 1, 1, 1, 0, WEST, HORIZONTAL, new Insets(2, 0, 2, 0), 0, 0));
+
+            JLabel maxExitsLabel = new JLabel("Max Exits:");
+            maxExitsLabel.setForeground(Color.GRAY);
+            scaleOutDetailsPanel.add(maxExitsLabel, new GridBagConstraints(0, 1, 1, 1, 0, 0, WEST, NONE, new Insets(2, 12, 2, 4), 0, 0));
+            scaleOutDetailsPanel.add(maxExitsSpinner, new GridBagConstraints(1, 1, 1, 1, 1, 0, WEST, HORIZONTAL, new Insets(2, 0, 2, 0), 0, 0));
+
+            JLabel basisLabel = new JLabel("Basis:");
+            basisLabel.setForeground(Color.GRAY);
+            scaleOutDetailsPanel.add(basisLabel, new GridBagConstraints(0, 2, 1, 1, 0, 0, WEST, NONE, new Insets(2, 12, 2, 4), 0, 0));
+            scaleOutDetailsPanel.add(exitBasisCombo, new GridBagConstraints(1, 2, 1, 1, 1, 0, WEST, HORIZONTAL, new Insets(2, 0, 2, 0), 0, 0));
+
+            JLabel reentryLabel = new JLabel("Re-entry:");
+            reentryLabel.setForeground(Color.GRAY);
+            scaleOutDetailsPanel.add(reentryLabel, new GridBagConstraints(0, 3, 1, 1, 0, 0, WEST, NONE, new Insets(2, 12, 2, 4), 0, 0));
+            scaleOutDetailsPanel.add(exitReentryCombo, new GridBagConstraints(1, 3, 1, 1, 1, 0, WEST, HORIZONTAL, new Insets(2, 0, 2, 0), 0, 0));
+
+            JLabel barsBetweenLabel = new JLabel("Bars Between:");
+            barsBetweenLabel.setForeground(Color.GRAY);
+            scaleOutDetailsPanel.add(barsBetweenLabel, new GridBagConstraints(0, 4, 1, 1, 0, 0, WEST, NONE, new Insets(2, 12, 2, 4), 0, 0));
+            scaleOutDetailsPanel.add(barsBetweenExitsSpinner, new GridBagConstraints(1, 4, 1, 1, 1, 0, WEST, HORIZONTAL, new Insets(2, 0, 2, 0), 0, 0));
+
+            scaleOutCheckbox.addActionListener(e -> {
+                scaleOutDetailsPanel.setVisible(scaleOutCheckbox.isSelected());
+                revalidate();
+                updateMaxSize();
+                repaint();
+                onChange.run();
+            });
+
             // Exit condition scroll pane with info button overlay
             JScrollPane rawScroll = new JScrollPane(exitConditionArea);
 
@@ -366,8 +444,15 @@ public class ExitConfigPanel extends JPanel {
             centerPanel.add(slValueSpinner, new GridBagConstraints(1, row++, 1, 1, 1, 0, WEST, HORIZONTAL, new Insets(0, 0, 4, 0), 0, 0));
 
             // Take Profit row
-            centerPanel.add(tpTypeCombo, new GridBagConstraints(0, row, 1, 1, 0, 0, WEST, NONE, new Insets(0, 0, 0, 4), 0, 0));
-            centerPanel.add(tpValueSpinner, new GridBagConstraints(1, row, 1, 1, 1, 0, WEST, HORIZONTAL, new Insets(0, 0, 0, 0), 0, 0));
+            centerPanel.add(tpTypeCombo, new GridBagConstraints(0, row, 1, 1, 0, 0, WEST, NONE, new Insets(0, 0, 4, 4), 0, 0));
+            centerPanel.add(tpValueSpinner, new GridBagConstraints(1, row++, 1, 1, 1, 0, WEST, HORIZONTAL, new Insets(0, 0, 4, 0), 0, 0));
+
+            // Scale Out section (like DCA section in EntryConfigPanel)
+            JPanel scaleOutWrapper = new JPanel(new BorderLayout(0, 0));
+            scaleOutWrapper.setOpaque(false);
+            scaleOutWrapper.add(scaleOutCheckbox, BorderLayout.NORTH);
+            scaleOutWrapper.add(scaleOutDetailsPanel, BorderLayout.CENTER);
+            centerPanel.add(scaleOutWrapper, new GridBagConstraints(0, row, 2, 1, 1, 0, WEST, HORIZONTAL, new Insets(4, 0, 0, 0), 0, 0));
 
             add(topRow, BorderLayout.NORTH);
             add(centerPanel, BorderLayout.CENTER);
@@ -434,11 +519,43 @@ public class ExitConfigPanel extends JPanel {
             };
         }
 
+        private int exitBasisToIndex(ExitBasis basis) {
+            if (basis == null) return 0;
+            return switch (basis) {
+                case ORIGINAL -> 1;
+                default -> 0; // REMAINING
+            };
+        }
+
+        private ExitBasis exitBasisToType(int index) {
+            return switch (index) {
+                case 1 -> ExitBasis.ORIGINAL;
+                default -> ExitBasis.REMAINING;
+            };
+        }
+
+        private int exitReentryToIndex(ExitReentry reentry) {
+            if (reentry == null) return 0;
+            return switch (reentry) {
+                case RESET -> 1;
+                default -> 0; // CONTINUE
+            };
+        }
+
+        private ExitReentry exitReentryToType(int index) {
+            return switch (index) {
+                case 1 -> ExitReentry.RESET;
+                default -> ExitReentry.CONTINUE;
+            };
+        }
+
         ExitZone toExitZone() {
             StopLossType slType = indexToSlType(slTypeCombo.getSelectedIndex());
             TakeProfitType tpType = indexToTpType(tpTypeCombo.getSelectedIndex());
             // No value for NONE or CLEAR
             boolean slNeedsValue = slType != StopLossType.NONE && slType != StopLossType.CLEAR;
+            boolean hasScaleOut = scaleOutCheckbox.isSelected();
+            int maxExits = ((Number) maxExitsSpinner.getValue()).intValue();
             return new ExitZone(
                 nameField.getText().trim(),
                 hasMinPnl.isSelected() ? ((Number) minPnlSpinner.getValue()).doubleValue() : null,
@@ -449,7 +566,12 @@ public class ExitConfigPanel extends JPanel {
                 tpType,
                 tpType == TakeProfitType.NONE ? null : ((Number) tpValueSpinner.getValue()).doubleValue(),
                 exitImmediatelyCheckbox.isSelected(),
-                ((Number) minBarsSpinner.getValue()).intValue()
+                ((Number) minBarsSpinner.getValue()).intValue(),
+                hasScaleOut ? ((Number) exitPercentSpinner.getValue()).doubleValue() : null,
+                hasScaleOut ? maxExits : null,
+                exitBasisToType(exitBasisCombo.getSelectedIndex()),
+                exitReentryToType(exitReentryCombo.getSelectedIndex()),
+                ((Number) barsBetweenExitsSpinner.getValue()).intValue()
             );
         }
 
@@ -511,6 +633,35 @@ public class ExitConfigPanel extends JPanel {
 
             if (!minBarsSpinner.getValue().equals(zone.minBarsBeforeExit())) {
                 minBarsSpinner.setValue(zone.minBarsBeforeExit());
+            }
+
+            // Scale Out fields
+            boolean hasPercent = zone.exitPercent() != null;
+            if (scaleOutCheckbox.isSelected() != hasPercent) {
+                scaleOutCheckbox.setSelected(hasPercent);
+                scaleOutDetailsPanel.setVisible(hasPercent);
+            }
+            if (hasPercent && !exitPercentSpinner.getValue().equals(zone.exitPercent())) {
+                exitPercentSpinner.setValue(zone.exitPercent());
+            }
+
+            int maxExits = zone.maxExits() != null ? zone.maxExits() : 1;
+            if (!maxExitsSpinner.getValue().equals(maxExits)) {
+                maxExitsSpinner.setValue(maxExits);
+            }
+
+            int basisIdx = exitBasisToIndex(zone.exitBasis());
+            if (exitBasisCombo.getSelectedIndex() != basisIdx) {
+                exitBasisCombo.setSelectedIndex(basisIdx);
+            }
+
+            int reentryIdx = exitReentryToIndex(zone.exitReentry());
+            if (exitReentryCombo.getSelectedIndex() != reentryIdx) {
+                exitReentryCombo.setSelectedIndex(reentryIdx);
+            }
+
+            if (!barsBetweenExitsSpinner.getValue().equals(zone.minBarsBetweenExits())) {
+                barsBetweenExitsSpinner.setValue(zone.minBarsBetweenExits());
             }
 
             revalidate();

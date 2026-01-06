@@ -858,7 +858,39 @@ public class ProjectWindow extends JFrame {
         worker.execute();
     }
 
+    private boolean isCommandAvailable(String command) {
+        try {
+            Process process = Runtime.getRuntime().exec(new String[]{"which", command});
+            int exitCode = process.waitFor();
+            return exitCode == 0;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private void openUrl(String url) {
+        try {
+            Desktop.getDesktop().browse(new java.net.URI(url));
+        } catch (Exception e) {
+            setStatus("Could not open browser: " + e.getMessage());
+        }
+    }
+
     private void openClaudeTerminal() {
+        // Check if claude CLI is installed
+        if (!isCommandAvailable("claude")) {
+            int result = JOptionPane.showConfirmDialog(this,
+                "Claude Code CLI is not installed.\n\n" +
+                "Would you like to open the installation instructions?",
+                "Claude Code Not Found",
+                JOptionPane.YES_NO_OPTION,
+                JOptionPane.QUESTION_MESSAGE);
+            if (result == JOptionPane.YES_OPTION) {
+                openUrl("https://docs.anthropic.com/en/docs/claude-code");
+            }
+            return;
+        }
+
         // Open in ~/.tradery where CLAUDE.md provides context
         String traderyDir = System.getProperty("user.home") + "/.tradery";
         String strategyId = strategy.getId();
@@ -912,6 +944,20 @@ public class ProjectWindow extends JFrame {
     }
 
     private void openCodexTerminal() {
+        // Check if codex CLI is installed
+        if (!isCommandAvailable("codex")) {
+            int result = JOptionPane.showConfirmDialog(this,
+                "OpenAI Codex CLI is not installed.\n\n" +
+                "Would you like to open the installation instructions?",
+                "Codex CLI Not Found",
+                JOptionPane.YES_NO_OPTION,
+                JOptionPane.QUESTION_MESSAGE);
+            if (result == JOptionPane.YES_OPTION) {
+                openUrl("https://github.com/openai/codex");
+            }
+            return;
+        }
+
         // Open in ~/.tradery where CLAUDE.md provides context
         String traderyDir = System.getProperty("user.home") + "/.tradery";
         String strategyId = strategy.getId();
