@@ -55,6 +55,7 @@ public class ProjectWindow extends JFrame {
     private JToggleButton fitYBtn;
     private JToggleButton fullYBtn;
     private JButton clearCacheBtn;
+    private JButton dataHealthBtn;
     private JButton claudeBtn;
     private JButton codexBtn;
     private JButton historyBtn;
@@ -204,6 +205,11 @@ public class ProjectWindow extends JFrame {
         clearCacheBtn.setToolTipText("Clear cached OHLC data and redownload from Binance");
         clearCacheBtn.addActionListener(e -> clearCacheAndReload());
 
+        // Data Health button - view and repair data
+        dataHealthBtn = new JButton("Data Health");
+        dataHealthBtn.setToolTipText("View data completeness and repair gaps");
+        dataHealthBtn.addActionListener(e -> showDataHealth());
+
         // Claude button - opens terminal with Claude CLI
         claudeBtn = new JButton("Claude");
         claudeBtn.setToolTipText("Open Claude CLI to help optimize this strategy");
@@ -233,9 +239,31 @@ public class ProjectWindow extends JFrame {
         backtestCoordinator.setOnComplete(this::displayResult);
         backtestCoordinator.setOnStatus(this::setStatus);
 
+        // Wire up data fetch progress (shows in same progress bar)
+        candleStore.setProgressCallback(progress -> {
+            SwingUtilities.invokeLater(() -> {
+                if (progress.message().equals("Complete") || progress.message().equals("Cancelled")) {
+                    progressBar.setVisible(false);
+                    progressLabel.setVisible(false);
+                } else {
+                    progressBar.setVisible(true);
+                    progressBar.setValue(progress.percentComplete());
+                    progressLabel.setVisible(true);
+                    progressLabel.setText(progress.message());
+                }
+            });
+        });
+
         // Wire up change listeners for auto-save and auto-backtest
-        symbolCombo.addActionListener(e -> autoSaveScheduler.scheduleUpdate());
-        timeframeCombo.addActionListener(e -> autoSaveScheduler.scheduleUpdate());
+        // Cancel any ongoing data fetch when switching symbol/resolution
+        symbolCombo.addActionListener(e -> {
+            candleStore.cancelCurrentFetch();
+            autoSaveScheduler.scheduleUpdate();
+        });
+        timeframeCombo.addActionListener(e -> {
+            candleStore.cancelCurrentFetch();
+            autoSaveScheduler.scheduleUpdate();
+        });
         durationCombo.addActionListener(e -> autoSaveScheduler.scheduleUpdate());
 
         // Wire up panel change listeners
@@ -358,6 +386,7 @@ public class ProjectWindow extends JFrame {
         toolbarRight.add(codexBtn);
         toolbarRight.add(Box.createHorizontalStrut(8));
         toolbarRight.add(clearCacheBtn);
+        toolbarRight.add(dataHealthBtn);
         toolbarRight.add(Box.createHorizontalStrut(8));
         toolbarRight.add(progressLabel);
         toolbarRight.add(progressBar);
@@ -507,14 +536,26 @@ public class ProjectWindow extends JFrame {
         // Only react to phase.json files
         if (!filename.equals("phase.json")) return;
 
-        // Check if this phase is required by current strategy
-        List<String> requiredPhaseIds = strategy.getRequiredPhaseIds();
-        if (requiredPhaseIds.contains(phaseId)) {
+        // Check if this phase is used by current strategy (entry or exit zones)
+        if (isPhaseUsedByStrategy(phaseId)) {
             SwingUtilities.invokeLater(() -> {
                 setStatus("Phase '" + phaseId + "' changed - re-running backtest...");
                 runBacktest();
             });
         }
+    }
+
+    private boolean isPhaseUsedByStrategy(String phaseId) {
+        // Check strategy-level phases
+        if (strategy.getRequiredPhaseIds().contains(phaseId)) return true;
+        if (strategy.getExcludedPhaseIds().contains(phaseId)) return true;
+
+        // Check exit zone phases
+        for (ExitZone zone : strategy.getExitZones()) {
+            if (zone.requiredPhaseIds().contains(phaseId)) return true;
+            if (zone.excludedPhaseIds().contains(phaseId)) return true;
+        }
+        return false;
     }
 
     private void onStrategyFileChanged(Path path) {
@@ -745,6 +786,10 @@ public class ProjectWindow extends JFrame {
             setStatus("Restored strategy from history");
             runBacktest();
         });
+    }
+
+    private void showDataHealth() {
+        DataHealthDialog.show(this, candleStore);
     }
 
     private void runBacktest() {

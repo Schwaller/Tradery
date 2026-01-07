@@ -61,9 +61,10 @@ public class BacktestEngine {
         long startTime = System.currentTimeMillis();
         List<String> errors = new ArrayList<>();
 
-        // Evaluate phases upfront if any are required
+        // Evaluate phases upfront if any are required or excluded
         Map<String, boolean[]> phaseStates = new HashMap<>();
         List<String> requiredPhaseIds = strategy.getRequiredPhaseIds();
+        List<String> excludedPhaseIds = strategy.getExcludedPhaseIds();
 
         if (!requiredPhases.isEmpty() && candleStore != null) {
             if (onProgress != null) {
@@ -191,6 +192,15 @@ public class BacktestEngine {
                     double currentPnlPercent = calculatePnlPercent(ots.trade, candle.close());
                     for (ParsedExitZone pz : parsedZones) {
                         if (pz.zone.matches(currentPnlPercent) && pz.zone.exitImmediately()) {
+                            // Check zone phase filters
+                            if (pz.zone.hasPhaseFilters()) {
+                                boolean zonePhasesActive = PhaseEvaluator.allPhasesActive(
+                                    phaseStates, pz.zone.requiredPhaseIds(), pz.zone.excludedPhaseIds(), i
+                                );
+                                if (!zonePhasesActive) {
+                                    continue;  // Zone phases not satisfied, try next zone
+                                }
+                            }
                             ots.exitReason = "zone_exit";
                             ots.exitPrice = candle.close();
                             ots.exitZone = pz.zone.name();
@@ -268,6 +278,15 @@ public class BacktestEngine {
                         ParsedExitZone matchingZone = null;
                         for (ParsedExitZone pz : parsedZones) {
                             if (pz.zone.matches(currentPnlPercent)) {
+                                // Check zone phase filters
+                                if (pz.zone.hasPhaseFilters()) {
+                                    boolean zonePhasesActive = PhaseEvaluator.allPhasesActive(
+                                        phaseStates, pz.zone.requiredPhaseIds(), pz.zone.excludedPhaseIds(), i
+                                    );
+                                    if (!zonePhasesActive) {
+                                        continue;  // Zone phases not satisfied, try next zone
+                                    }
+                                }
                                 matchingZone = pz;
                                 break;
                             }
@@ -598,13 +617,13 @@ public class BacktestEngine {
                         shouldEnter = signalPresent;
                     }
 
-                    // Check if all required phases are active
-                    if (shouldEnter && !requiredPhaseIds.isEmpty()) {
+                    // Check if all required phases are active and no excluded phases are active
+                    if (shouldEnter && (!requiredPhaseIds.isEmpty() || !excludedPhaseIds.isEmpty())) {
                         boolean phasesActive = PhaseEvaluator.allPhasesActive(
-                            phaseStates, requiredPhaseIds, i
+                            phaseStates, requiredPhaseIds, excludedPhaseIds, i
                         );
                         if (!phasesActive) {
-                            shouldEnter = false; // Skip entry - phases not active
+                            shouldEnter = false; // Skip entry - phase filter not met
                         }
                     }
 

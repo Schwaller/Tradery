@@ -11,8 +11,6 @@ import javax.swing.*;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
 import java.awt.*;
-import java.awt.event.ComponentAdapter;
-import java.awt.event.ComponentEvent;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -75,7 +73,7 @@ public class ExitConfigPanel extends JPanel {
         editorHolder[0] = editor;
         zoneEditors.add(editor);
         if (!zoneEditors.isEmpty() && zoneEditors.size() > 1) {
-            zoneListPanel.add(Box.createVerticalStrut(40));
+            zoneListPanel.add(Box.createVerticalStrut(12));
         }
         zoneListPanel.add(editor);
         zoneListPanel.revalidate();
@@ -208,14 +206,30 @@ public class ExitConfigPanel extends JPanel {
         private JComboBox<String> exitBasisCombo;
         private JComboBox<String> exitReentryCombo;
         private JSpinner barsBetweenExitsSpinner;
+        // Phase filtering
+        private PhaseListPanel phaseListPanel;
 
         private static final String[] EXIT_BASIS_OPTIONS = {"% of Remaining", "% of Original"};
         private static final String[] EXIT_REENTRY_OPTIONS = {"Continue", "Reset"};
 
         ZoneEditor(ExitZone zone, Runnable onRemove, Runnable onChange) {
             setLayout(new BorderLayout(4, 4));
-            setBorder(BorderFactory.createEmptyBorder(4, 0, 0, 0));
-            setOpaque(false);
+
+            // Subtle grouped background with rounded border
+            setOpaque(true);
+            Color baseColor = UIManager.getColor("Panel.background");
+            Color tint = UIManager.getColor("Component.accentColor");
+            if (tint == null) tint = new Color(100, 140, 180);
+            // Mix 5% of accent color with background for subtle tint
+            setBackground(new Color(
+                (int)(baseColor.getRed() * 0.95 + tint.getRed() * 0.05),
+                (int)(baseColor.getGreen() * 0.95 + tint.getGreen() * 0.05),
+                (int)(baseColor.getBlue() * 0.95 + tint.getBlue() * 0.05)
+            ));
+            setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(new Color(tint.getRed(), tint.getGreen(), tint.getBlue(), 60), 1, true),
+                BorderFactory.createEmptyBorder(8, 10, 10, 10)
+            ));
             setAlignmentX(Component.LEFT_ALIGNMENT);
 
             // Top row: Name and remove button
@@ -394,6 +408,13 @@ public class ExitConfigPanel extends JPanel {
                 onChange.run();
             });
 
+            // Phase filtering section
+            phaseListPanel = new PhaseListPanel();
+            if (zone != null) {
+                phaseListPanel.setPhases(zone.requiredPhaseIds(), zone.excludedPhaseIds());
+            }
+            phaseListPanel.setOnChange(onChange);
+
             // Exit condition scroll pane with info button overlay
             JScrollPane rawScroll = new JScrollPane(exitConditionArea);
 
@@ -481,7 +502,13 @@ public class ExitConfigPanel extends JPanel {
             scaleOutWrapper.setOpaque(false);
             scaleOutWrapper.add(scaleOutHeader, BorderLayout.NORTH);
             scaleOutWrapper.add(scaleOutDetailsPanel, BorderLayout.CENTER);
-            centerPanel.add(scaleOutWrapper, new GridBagConstraints(0, row, 2, 1, 1, 0, WEST, HORIZONTAL, new Insets(4, 0, 0, 0), 0, 0));
+            centerPanel.add(scaleOutWrapper, new GridBagConstraints(0, row++, 2, 1, 1, 0, WEST, HORIZONTAL, new Insets(4, 0, 0, 0), 0, 0));
+
+            // Phase filtering section
+            JLabel phaseLabel = new JLabel("Phases:");
+            phaseLabel.setForeground(Color.GRAY);
+            centerPanel.add(phaseLabel, new GridBagConstraints(0, row, 1, 1, 0, 0, NORTHWEST, NONE, new Insets(4, 0, 0, 4), 0, 0));
+            centerPanel.add(phaseListPanel, new GridBagConstraints(1, row++, 1, 1, 1, 0, WEST, HORIZONTAL, new Insets(4, 0, 0, 0), 0, 0));
 
             // Initialize badge visibility
             updateSimplifyBadgeVisibility();
@@ -610,7 +637,9 @@ public class ExitConfigPanel extends JPanel {
                 hasScaleOut ? maxExits : null,
                 exitBasisToType(exitBasisCombo.getSelectedIndex()),
                 exitReentryToType(exitReentryCombo.getSelectedIndex()),
-                ((Number) barsBetweenExitsSpinner.getValue()).intValue()
+                ((Number) barsBetweenExitsSpinner.getValue()).intValue(),
+                phaseListPanel.getRequiredPhaseIds(),
+                phaseListPanel.getExcludedPhaseIds()
             );
         }
 
@@ -702,6 +731,9 @@ public class ExitConfigPanel extends JPanel {
             if (!barsBetweenExitsSpinner.getValue().equals(zone.minBarsBetweenExits())) {
                 barsBetweenExitsSpinner.setValue(zone.minBarsBetweenExits());
             }
+
+            // Phase filtering
+            phaseListPanel.setPhases(zone.requiredPhaseIds(), zone.excludedPhaseIds());
 
             revalidate();
             updateMaxSize();

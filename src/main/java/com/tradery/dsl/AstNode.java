@@ -44,6 +44,16 @@ public sealed interface AstNode {
     record VolumeFunctionCall(String func, Integer period) implements AstNode {}
 
     /**
+     * Time function call: DAYOFWEEK, HOUR, DAY, MONTH (no parameters)
+     */
+    record TimeFunctionCall(String func) implements AstNode {}
+
+    /**
+     * Moon function call: MOON_PHASE (returns 0-1 where 0.5 = full moon)
+     */
+    record MoonFunctionCall(String func) implements AstNode {}
+
+    /**
      * Property access: MACD(12,26,9).signal, BBANDS(20,2).upper
      */
     record PropertyAccess(IndicatorCall object, String property) implements AstNode {}

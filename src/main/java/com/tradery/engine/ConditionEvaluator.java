@@ -42,6 +42,8 @@ public class ConditionEvaluator {
             case AstNode.PropertyAccess p -> evaluateProperty(p, barIndex);
             case AstNode.RangeFunctionCall r -> evaluateRangeFunction(r, barIndex);
             case AstNode.VolumeFunctionCall v -> evaluateVolumeFunction(v, barIndex);
+            case AstNode.TimeFunctionCall t -> evaluateTimeFunction(t, barIndex);
+            case AstNode.MoonFunctionCall m -> evaluateMoonFunction(m, barIndex);
             case AstNode.PriceReference p -> evaluatePrice(p, barIndex);
             case AstNode.NumberLiteral n -> n.value();
             case AstNode.BooleanLiteral b -> b.value();
@@ -189,6 +191,23 @@ public class ConditionEvaluator {
         return switch (node.func()) {
             case "AVG_VOLUME" -> engine.getAvgVolumeAt(node.period(), barIndex);
             default -> throw new EvaluationException("Unknown volume function: " + node.func());
+        };
+    }
+
+    private double evaluateTimeFunction(AstNode.TimeFunctionCall node, int barIndex) {
+        return switch (node.func()) {
+            case "DAYOFWEEK" -> engine.getDayOfWeekAt(barIndex);
+            case "HOUR" -> engine.getHourAt(barIndex);
+            case "DAY" -> engine.getDayAt(barIndex);
+            case "MONTH" -> engine.getMonthAt(barIndex);
+            default -> throw new EvaluationException("Unknown time function: " + node.func());
+        };
+    }
+
+    private double evaluateMoonFunction(AstNode.MoonFunctionCall node, int barIndex) {
+        return switch (node.func()) {
+            case "MOON_PHASE" -> engine.getMoonPhaseAt(barIndex);
+            default -> throw new EvaluationException("Unknown moon function: " + node.func());
         };
     }
 

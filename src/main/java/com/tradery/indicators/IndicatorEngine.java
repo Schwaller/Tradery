@@ -2,6 +2,9 @@ package com.tradery.indicators;
 
 import com.tradery.model.Candle;
 
+import java.time.Instant;
+import java.time.ZoneOffset;
+import java.time.ZonedDateTime;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -220,5 +223,85 @@ public class IndicatorEngine {
     public double getVolumeAt(int barIndex) {
         Candle c = getCandleAt(barIndex);
         return c != null ? c.volume() : Double.NaN;
+    }
+
+    // ========== Time Functions ==========
+
+    /**
+     * Get timestamp at bar index
+     */
+    public long getTimestampAt(int barIndex) {
+        Candle c = getCandleAt(barIndex);
+        return c != null ? c.timestamp() : 0;
+    }
+
+    /**
+     * Get day of week at bar index (1=Monday, 7=Sunday)
+     */
+    public double getDayOfWeekAt(int barIndex) {
+        long timestamp = getTimestampAt(barIndex);
+        if (timestamp == 0) return Double.NaN;
+        ZonedDateTime dt = Instant.ofEpochMilli(timestamp).atZone(ZoneOffset.UTC);
+        return dt.getDayOfWeek().getValue(); // 1=Monday to 7=Sunday
+    }
+
+    /**
+     * Get hour at bar index (0-23)
+     */
+    public double getHourAt(int barIndex) {
+        long timestamp = getTimestampAt(barIndex);
+        if (timestamp == 0) return Double.NaN;
+        ZonedDateTime dt = Instant.ofEpochMilli(timestamp).atZone(ZoneOffset.UTC);
+        return dt.getHour();
+    }
+
+    /**
+     * Get day of month at bar index (1-31)
+     */
+    public double getDayAt(int barIndex) {
+        long timestamp = getTimestampAt(barIndex);
+        if (timestamp == 0) return Double.NaN;
+        ZonedDateTime dt = Instant.ofEpochMilli(timestamp).atZone(ZoneOffset.UTC);
+        return dt.getDayOfMonth();
+    }
+
+    /**
+     * Get month at bar index (1-12)
+     */
+    public double getMonthAt(int barIndex) {
+        long timestamp = getTimestampAt(barIndex);
+        if (timestamp == 0) return Double.NaN;
+        ZonedDateTime dt = Instant.ofEpochMilli(timestamp).atZone(ZoneOffset.UTC);
+        return dt.getMonthValue();
+    }
+
+    // ========== Moon Functions ==========
+
+    // Known new moon reference: January 6, 2000 at 18:14 UTC
+    private static final long NEW_MOON_REFERENCE = 947182440000L;
+    // Synodic month (moon cycle) in milliseconds: 29.53059 days
+    private static final double SYNODIC_MONTH_MS = 29.53059 * 24 * 60 * 60 * 1000;
+
+    /**
+     * Get moon phase at bar index.
+     * Returns a value from 0 to 1 where:
+     * - 0.0 = new moon
+     * - 0.25 = first quarter
+     * - 0.5 = full moon
+     * - 0.75 = last quarter
+     * - 1.0 = new moon (wraps around)
+     */
+    public double getMoonPhaseAt(int barIndex) {
+        long timestamp = getTimestampAt(barIndex);
+        if (timestamp == 0) return Double.NaN;
+
+        // Calculate how many synodic months since reference new moon
+        double timeSinceRef = timestamp - NEW_MOON_REFERENCE;
+        double phase = (timeSinceRef % SYNODIC_MONTH_MS) / SYNODIC_MONTH_MS;
+
+        // Handle negative timestamps (before reference)
+        if (phase < 0) phase += 1.0;
+
+        return phase;
     }
 }

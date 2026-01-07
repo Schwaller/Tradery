@@ -14,6 +14,7 @@ public class StrategyEditorPanel extends JPanel {
 
     private TradeSettingsPanel tradeSettingsPanel;
     private PhaseSelectionPanel phaseSelectionPanel;
+    private FlowDiagramPanel flowDiagramPanel;
     private EntryConfigPanel entryConfigPanel;
     private ExitConfigPanel exitConfigPanel;
 
@@ -32,38 +33,53 @@ public class StrategyEditorPanel extends JPanel {
         phaseSelectionPanel = new PhaseSelectionPanel(
             ApplicationContext.getInstance().getPhaseStore()
         );
+        flowDiagramPanel = new FlowDiagramPanel();
         entryConfigPanel = new EntryConfigPanel();
         exitConfigPanel = new ExitConfigPanel();
 
         // Add padding to sub-panels
         tradeSettingsPanel.setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
         phaseSelectionPanel.setBorder(BorderFactory.createEmptyBorder(0, 8, 8, 8));
+        flowDiagramPanel.setBorder(BorderFactory.createEmptyBorder(4, 8, 4, 8));
         entryConfigPanel.setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
         exitConfigPanel.setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
 
         // Wire up change listeners
         tradeSettingsPanel.setOnChange(this::fireChange);
         phaseSelectionPanel.setOnChange(this::fireChange);
-        entryConfigPanel.setOnChange(this::fireChange);
-        exitConfigPanel.setOnChange(this::fireChange);
+        entryConfigPanel.setOnChange(this::onEntryExitChange);
+        exitConfigPanel.setOnChange(this::onEntryExitChange);
+    }
+
+    private void onEntryExitChange() {
+        // Update flow diagram when entry/exit changes
+        if (strategy != null) {
+            exitConfigPanel.applyTo(strategy);
+            flowDiagramPanel.setStrategy(strategy);
+        }
+        fireChange();
     }
 
     private void layoutComponents() {
-        // Top section: trade settings and phase selection
+        // Top section: trade settings + flow diagram
         JPanel topPanel = new JPanel(new BorderLayout());
         topPanel.setOpaque(false);
+        topPanel.add(tradeSettingsPanel, BorderLayout.NORTH);
 
-        JPanel settingsPanel = new JPanel(new BorderLayout());
-        settingsPanel.setOpaque(false);
-        settingsPanel.add(tradeSettingsPanel, BorderLayout.NORTH);
-        settingsPanel.add(phaseSelectionPanel, BorderLayout.CENTER);
+        // Flow diagram between settings and entry/exit
+        JPanel flowWrapper = new JPanel(new BorderLayout());
+        flowWrapper.setOpaque(false);
+        flowWrapper.add(new JSeparator(), BorderLayout.NORTH);
+        flowWrapper.add(flowDiagramPanel, BorderLayout.CENTER);
+        flowWrapper.add(new JSeparator(), BorderLayout.SOUTH);
+        topPanel.add(flowWrapper, BorderLayout.SOUTH);
 
-        topPanel.add(settingsPanel, BorderLayout.NORTH);
-        topPanel.add(new JSeparator(), BorderLayout.SOUTH);
-
-        // Center: entry and exit panels side by side
+        // Center: entry and exit panels side by side (50/50)
         JPanel centerPanel = new JPanel(new GridLayout(1, 2, 0, 0));
         centerPanel.setOpaque(false);
+
+        // Entry panel with phase selection injected
+        entryConfigPanel.setPhaseSelectionPanel(phaseSelectionPanel);
 
         // Entry with separator on right
         JPanel entryWrapper = new JPanel(new BorderLayout());
@@ -95,6 +111,7 @@ public class StrategyEditorPanel extends JPanel {
         this.strategy = strategy;
         tradeSettingsPanel.loadFrom(strategy);
         phaseSelectionPanel.loadFrom(strategy);
+        flowDiagramPanel.setStrategy(strategy);
         entryConfigPanel.loadFrom(strategy);
         exitConfigPanel.loadFrom(strategy);
     }

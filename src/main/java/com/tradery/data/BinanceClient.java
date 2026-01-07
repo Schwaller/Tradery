@@ -3,6 +3,7 @@ package com.tradery.data;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tradery.model.Candle;
+import com.tradery.model.FetchProgress;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
@@ -12,6 +13,8 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Consumer;
 
 /**
  * Binance API client for fetching OHLC kline data.
@@ -95,13 +98,49 @@ public class BinanceClient {
      */
     public List<Candle> fetchAllKlines(String symbol, String interval, long startTime, long endTime)
             throws IOException {
+        return fetchAllKlines(symbol, interval, startTime, endTime, null, null);
+    }
+
+    /**
+     * Fetch all klines between start and end time with cancellation and progress support.
+     * Handles pagination automatically.
+     *
+     * @param symbol     Trading pair (e.g., "BTCUSDT")
+     * @param interval   Kline interval (e.g., "1h", "4h", "1d")
+     * @param startTime  Start time in milliseconds
+     * @param endTime    End time in milliseconds
+     * @param cancelled  Optional AtomicBoolean to signal cancellation
+     * @param onProgress Optional callback for progress updates
+     * @return List of candles (may be partial if cancelled)
+     */
+    public List<Candle> fetchAllKlines(String symbol, String interval, long startTime, long endTime,
+                                        AtomicBoolean cancelled, Consumer<FetchProgress> onProgress)
+            throws IOException {
 
         List<Candle> allCandles = new ArrayList<>();
         long currentStart = startTime;
+        long intervalMs = getIntervalMs(interval);
+
+        // Estimate total candles
+        int estimatedTotal = (int) ((endTime - startTime) / intervalMs);
 
         System.out.println("Fetching " + symbol + " " + interval + " data from Binance...");
 
+        // Report starting
+        if (onProgress != null) {
+            onProgress.accept(FetchProgress.starting(symbol, interval));
+        }
+
         while (currentStart < endTime) {
+            // Check for cancellation before each request
+            if (cancelled != null && cancelled.get()) {
+                System.out.println("  Fetch cancelled. Returning " + allCandles.size() + " candles.");
+                if (onProgress != null) {
+                    onProgress.accept(FetchProgress.cancelled(allCandles.size()));
+                }
+                return allCandles;  // Return what we have so far
+            }
+
             List<Candle> batch = fetchKlines(symbol, interval, currentStart, endTime, MAX_KLINES_PER_REQUEST);
 
             if (batch.isEmpty()) {
@@ -112,7 +151,13 @@ public class BinanceClient {
 
             // Update start time for next batch
             Candle lastCandle = batch.get(batch.size() - 1);
-            currentStart = lastCandle.timestamp() + getIntervalMs(interval);
+            currentStart = lastCandle.timestamp() + intervalMs;
+
+            // Report progress
+            if (onProgress != null) {
+                String msg = "Fetching " + symbol + " " + interval + ": " + allCandles.size() + " candles...";
+                onProgress.accept(new FetchProgress(allCandles.size(), estimatedTotal, msg));
+            }
 
             System.out.println("  Fetched " + allCandles.size() + " candles so far...");
 
@@ -121,11 +166,20 @@ public class BinanceClient {
                 Thread.sleep(100);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
-                break;
+                if (onProgress != null) {
+                    onProgress.accept(FetchProgress.cancelled(allCandles.size()));
+                }
+                return allCandles;
             }
         }
 
         System.out.println("  Done! Total: " + allCandles.size() + " candles");
+
+        // Report completion
+        if (onProgress != null) {
+            onProgress.accept(FetchProgress.complete(allCandles.size()));
+        }
+
         return allCandles;
     }
 

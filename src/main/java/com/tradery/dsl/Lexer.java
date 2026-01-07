@@ -25,6 +25,15 @@ public class Lexer {
         // Volume functions
         Map.entry("AVG_VOLUME", TokenType.VOLUME_FUNC),
 
+        // Time functions
+        Map.entry("DAYOFWEEK", TokenType.TIME_FUNC),
+        Map.entry("HOUR", TokenType.TIME_FUNC),
+        Map.entry("DAY", TokenType.TIME_FUNC),
+        Map.entry("MONTH", TokenType.TIME_FUNC),
+
+        // Moon functions
+        Map.entry("MOON_PHASE", TokenType.MOON_FUNC),
+
         // Price references
         Map.entry("price", TokenType.PRICE),
         Map.entry("open", TokenType.PRICE),

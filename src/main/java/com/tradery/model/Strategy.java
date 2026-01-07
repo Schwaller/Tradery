@@ -361,6 +361,19 @@ public class Strategy {
         return getPhaseSettings().hasRequiredPhases();
     }
 
+    public java.util.List<String> getExcludedPhaseIds() {
+        return getPhaseSettings().getExcludedPhaseIds();
+    }
+
+    public void setExcludedPhaseIds(java.util.List<String> ids) {
+        getPhaseSettings().setExcludedPhaseIds(ids);
+        this.updated = Instant.now();
+    }
+
+    public boolean hasExcludedPhases() {
+        return getPhaseSettings().hasExcludedPhases();
+    }
+
     @Override
     public String toString() {
         return name;

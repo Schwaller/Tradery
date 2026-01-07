@@ -107,18 +107,39 @@ public class BacktestCoordinator {
                     throw new Exception("No candle data available for " + config.symbol());
                 }
 
-                // Load required phases
-                List<Phase> requiredPhases = new ArrayList<>();
+                // Load required and excluded phases (strategy-level)
+                List<Phase> allPhases = new ArrayList<>();
                 PhaseStore phaseStore = ApplicationContext.getInstance().getPhaseStore();
                 for (String phaseId : strategy.getRequiredPhaseIds()) {
                     Phase phase = phaseStore.load(phaseId);
                     if (phase != null) {
-                        requiredPhases.add(phase);
+                        allPhases.add(phase);
+                    }
+                }
+                for (String phaseId : strategy.getExcludedPhaseIds()) {
+                    Phase phase = phaseStore.load(phaseId);
+                    if (phase != null && !allPhases.contains(phase)) {
+                        allPhases.add(phase);
+                    }
+                }
+                // Also load phases referenced by exit zones
+                for (ExitZone zone : strategy.getExitZones()) {
+                    for (String phaseId : zone.requiredPhaseIds()) {
+                        Phase phase = phaseStore.load(phaseId);
+                        if (phase != null && !allPhases.contains(phase)) {
+                            allPhases.add(phase);
+                        }
+                    }
+                    for (String phaseId : zone.excludedPhaseIds()) {
+                        Phase phase = phaseStore.load(phaseId);
+                        if (phase != null && !allPhases.contains(phase)) {
+                            allPhases.add(phase);
+                        }
                     }
                 }
 
                 // Run backtest with phase filtering
-                return backtestEngine.run(strategy, config, currentCandles, requiredPhases, this::publish);
+                return backtestEngine.run(strategy, config, currentCandles, allPhases, this::publish);
             }
 
             @Override

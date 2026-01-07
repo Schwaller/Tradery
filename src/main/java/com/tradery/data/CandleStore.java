@@ -2,16 +2,21 @@ package com.tradery.data;
 
 import com.tradery.TraderyApp;
 import com.tradery.model.Candle;
+import com.tradery.model.FetchProgress;
+import com.tradery.model.Gap;
 
 import java.io.*;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.YearMonth;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Consumer;
 
 /**
  * Stores and retrieves candle data as CSV files.
@@ -26,6 +31,10 @@ public class CandleStore {
     private final File dataDir;
     private final BinanceClient binanceClient;
 
+    // Cancellation support for long-running fetches
+    private final AtomicBoolean fetchCancelled = new AtomicBoolean(false);
+    private Consumer<FetchProgress> progressCallback;
+
     public CandleStore() {
         this.dataDir = new File(TraderyApp.USER_DIR, "data");
         this.binanceClient = new BinanceClient();
@@ -36,12 +45,37 @@ public class CandleStore {
     }
 
     /**
+     * Cancel any ongoing fetch operation.
+     * Partial data will be saved as .partial.csv
+     */
+    public void cancelCurrentFetch() {
+        fetchCancelled.set(true);
+    }
+
+    /**
+     * Set a callback to receive fetch progress updates.
+     */
+    public void setProgressCallback(Consumer<FetchProgress> callback) {
+        this.progressCallback = callback;
+    }
+
+    /**
+     * Check if a fetch is currently cancelled.
+     */
+    public boolean isFetchCancelled() {
+        return fetchCancelled.get();
+    }
+
+    /**
      * Get candles for a symbol and resolution between two dates.
      * Fetches from Binance if not cached locally.
      * Smart caching: only fetches missing data, skips complete historical months.
      */
     public List<Candle> getCandles(String symbol, String resolution, long startTime, long endTime)
             throws IOException {
+
+        // Reset cancellation flag at start of new fetch
+        fetchCancelled.set(false);
 
         List<Candle> allCandles = new ArrayList<>();
         File symbolDir = new File(dataDir, symbol + "/" + resolution);
@@ -57,8 +91,19 @@ public class CandleStore {
 
         LocalDate current = start;
         while (!current.isAfter(end)) {
+            // Check for cancellation
+            if (fetchCancelled.get()) {
+                System.out.println("Fetch cancelled by user");
+                break;
+            }
+
             String monthKey = current.format(YEAR_MONTH);
-            File monthFile = new File(symbolDir, monthKey + ".csv");
+
+            // Check for both complete and partial files
+            File completeFile = new File(symbolDir, monthKey + ".csv");
+            File partialFile = new File(symbolDir, monthKey + ".partial.csv");
+            File monthFile = completeFile.exists() ? completeFile :
+                             partialFile.exists() ? partialFile : null;
 
             // Calculate month boundaries
             long monthStart = current.atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli();
@@ -70,10 +115,10 @@ public class CandleStore {
             long fetchEnd = Math.min(monthEnd, endTime);
 
             boolean isCurrentMonth = monthKey.equals(currentMonth);
-            boolean fileExists = monthFile.exists();
+            boolean fileExists = monthFile != null;
 
-            if (fileExists && !isCurrentMonth) {
-                // Historical month with data - use cache, don't refetch
+            if (fileExists && !isCurrentMonth && completeFile.exists()) {
+                // Historical month with complete data - use cache, don't refetch
                 System.out.println("Using cached data for " + monthKey);
                 allCandles.addAll(loadCsvFile(monthFile));
             } else if (fileExists && isCurrentMonth) {
@@ -85,19 +130,31 @@ public class CandleStore {
                 long resolutionMs = getResolutionMs(resolution);
                 if (System.currentTimeMillis() - lastCachedTime > resolutionMs * 2) {
                     System.out.println("Updating current month " + monthKey + " from " + lastCachedTime);
-                    List<Candle> fresh = binanceClient.fetchAllKlines(symbol, resolution, lastCachedTime, fetchEnd);
-                    saveToCache(symbol, resolution, fresh);
-                    allCandles.addAll(loadCsvFile(monthFile)); // Reload merged data
+                    List<Candle> fresh = binanceClient.fetchAllKlines(symbol, resolution, lastCachedTime, fetchEnd,
+                            fetchCancelled, progressCallback);
+                    boolean wasCancelled = fetchCancelled.get();
+                    saveToCache(symbol, resolution, fresh, wasCancelled);
+                    allCandles.addAll(loadCsvFile(completeFile.exists() ? completeFile : partialFile)); // Reload merged data
                 } else {
                     System.out.println("Using recent cached data for " + monthKey);
                     allCandles.addAll(cached);
                 }
+            } else if (fileExists && partialFile.exists()) {
+                // Historical partial file - use what we have but could repair later
+                System.out.println("Using partial cached data for " + monthKey);
+                allCandles.addAll(loadCsvFile(partialFile));
             } else {
                 // No cache - fetch from Binance
                 System.out.println("Fetching " + monthKey + " from Binance...");
-                List<Candle> fresh = binanceClient.fetchAllKlines(symbol, resolution, fetchStart, fetchEnd);
-                saveToCache(symbol, resolution, fresh);
+                List<Candle> fresh = binanceClient.fetchAllKlines(symbol, resolution, fetchStart, fetchEnd,
+                        fetchCancelled, progressCallback);
+                boolean wasCancelled = fetchCancelled.get();
+                saveToCache(symbol, resolution, fresh, wasCancelled);
                 allCandles.addAll(fresh);
+
+                if (wasCancelled) {
+                    break;
+                }
             }
 
             current = nextMonth;
@@ -163,9 +220,22 @@ public class CandleStore {
     }
 
     /**
-     * Save candles to local CSV cache
+     * Save candles to local CSV cache (complete data).
      */
     private void saveToCache(String symbol, String resolution, List<Candle> candles) throws IOException {
+        saveToCache(symbol, resolution, candles, false);
+    }
+
+    /**
+     * Save candles to local CSV cache.
+     *
+     * @param symbol     Trading pair
+     * @param resolution Time resolution
+     * @param candles    Candles to save
+     * @param isPartial  If true, save as .partial.csv instead of .csv
+     */
+    private void saveToCache(String symbol, String resolution, List<Candle> candles, boolean isPartial)
+            throws IOException {
         if (candles.isEmpty()) return;
 
         File symbolDir = new File(dataDir, symbol + "/" + resolution);
@@ -182,10 +252,16 @@ public class CandleStore {
 
         // Write each month file
         for (var entry : byMonth.entrySet()) {
-            File file = new File(symbolDir, entry.getKey() + ".csv");
+            String monthKey = entry.getKey();
+            File completeFile = new File(symbolDir, monthKey + ".csv");
+            File partialFile = new File(symbolDir, monthKey + ".partial.csv");
+
+            // Determine which file to read existing data from
+            File existingFile = completeFile.exists() ? completeFile :
+                                partialFile.exists() ? partialFile : null;
 
             // Load existing data and merge
-            List<Candle> existing = file.exists() ? loadCsvFile(file) : new ArrayList<>();
+            List<Candle> existing = existingFile != null ? loadCsvFile(existingFile) : new ArrayList<>();
             List<Candle> merged = new ArrayList<>(mergeCandles(existing, entry.getValue(), 0, Long.MAX_VALUE));
 
             // Sort by timestamp
@@ -201,9 +277,45 @@ public class CandleStore {
                 }
             }
 
-            // Write to file
-            writeCsvFile(file, deduplicated);
+            // Determine if data is complete for this month
+            YearMonth ym = YearMonth.parse(monthKey, YEAR_MONTH);
+            boolean isComplete = !isPartial && isMonthComplete(deduplicated, resolution, ym);
+
+            // Write to appropriate file
+            File targetFile = isComplete ? completeFile : partialFile;
+            writeCsvFile(targetFile, deduplicated);
+
+            // Clean up: if we wrote to complete, remove partial; if partial, leave complete alone
+            if (isComplete && partialFile.exists()) {
+                partialFile.delete();
+                System.out.println("Upgraded " + monthKey + " from partial to complete");
+            }
         }
+    }
+
+    /**
+     * Check if candle data is complete for a month.
+     */
+    private boolean isMonthComplete(List<Candle> candles, String resolution, YearMonth month) {
+        if (candles.isEmpty()) return false;
+
+        // Current month is never considered complete
+        if (month.equals(YearMonth.now())) return false;
+
+        int expectedCandles = calculateExpectedCandles(resolution, month);
+        // Allow 1% tolerance
+        return candles.size() >= expectedCandles * 0.99;
+    }
+
+    /**
+     * Calculate expected number of candles for a month.
+     */
+    private int calculateExpectedCandles(String resolution, YearMonth month) {
+        int daysInMonth = month.lengthOfMonth();
+        long resolutionMs = getResolutionMs(resolution);
+        long minutesInResolution = resolutionMs / 60_000;
+        long minutesInMonth = daysInMonth * 24L * 60L;
+        return (int) (minutesInMonth / minutesInResolution);
     }
 
     /**
@@ -288,5 +400,83 @@ public class CandleStore {
                 .map(Path::toFile)
                 .forEach(File::delete);
         }
+    }
+
+    /**
+     * Repair a specific month by re-fetching all data.
+     * Merges with existing data and upgrades partial to complete if possible.
+     */
+    public void repairMonth(String symbol, String resolution, YearMonth month) throws IOException {
+        fetchCancelled.set(false);
+
+        File symbolDir = new File(dataDir, symbol + "/" + resolution);
+        symbolDir.mkdirs();
+
+        // Calculate month boundaries
+        long monthStart = month.atDay(1).atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli();
+        long monthEnd = month.plusMonths(1).atDay(1).atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli() - 1;
+
+        System.out.println("Repairing " + month + " for " + symbol + " " + resolution);
+
+        // Fetch entire month
+        List<Candle> fresh = binanceClient.fetchAllKlines(symbol, resolution, monthStart, monthEnd,
+                fetchCancelled, progressCallback);
+
+        boolean wasCancelled = fetchCancelled.get();
+        saveToCache(symbol, resolution, fresh, wasCancelled);
+
+        System.out.println("Repair complete for " + month + ": " + fresh.size() + " candles");
+    }
+
+    /**
+     * Repair specific gaps within a month.
+     */
+    public void repairGaps(String symbol, String resolution, YearMonth month, List<Gap> gaps) throws IOException {
+        if (gaps.isEmpty()) return;
+
+        fetchCancelled.set(false);
+        List<Candle> allFresh = new ArrayList<>();
+
+        for (Gap gap : gaps) {
+            if (fetchCancelled.get()) break;
+
+            System.out.println("Repairing gap: " + gap.startTimestamp() + " - " + gap.endTimestamp());
+            List<Candle> fresh = binanceClient.fetchAllKlines(symbol, resolution,
+                    gap.startTimestamp(), gap.endTimestamp(),
+                    fetchCancelled, progressCallback);
+            allFresh.addAll(fresh);
+        }
+
+        boolean wasCancelled = fetchCancelled.get();
+        saveToCache(symbol, resolution, allFresh, wasCancelled);
+
+        System.out.println("Gap repair complete: " + allFresh.size() + " candles fetched");
+    }
+
+    /**
+     * Delete cached data for a specific month.
+     */
+    public void deleteMonth(String symbol, String resolution, YearMonth month) {
+        File symbolDir = new File(dataDir, symbol + "/" + resolution);
+        String monthKey = month.format(YEAR_MONTH);
+
+        File completeFile = new File(symbolDir, monthKey + ".csv");
+        File partialFile = new File(symbolDir, monthKey + ".partial.csv");
+
+        if (completeFile.exists()) {
+            completeFile.delete();
+            System.out.println("Deleted " + completeFile.getAbsolutePath());
+        }
+        if (partialFile.exists()) {
+            partialFile.delete();
+            System.out.println("Deleted " + partialFile.getAbsolutePath());
+        }
+    }
+
+    /**
+     * Get the BinanceClient for external use.
+     */
+    public BinanceClient getBinanceClient() {
+        return binanceClient;
     }
 }

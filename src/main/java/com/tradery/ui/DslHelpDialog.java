@@ -148,6 +148,25 @@ public class DslHelpDialog extends JDialog {
             </div>
 
             <div class="section">
+            <h3>Time Functions</h3>
+            <table>
+                <tr><td><code>DAYOFWEEK</code></td><td>Day of week (1=Mon, 2=Tue, ..., 7=Sun)</td></tr>
+                <tr><td><code>HOUR</code></td><td>Hour of day (0-23, UTC)</td></tr>
+                <tr><td><code>DAY</code></td><td>Day of month (1-31)</td></tr>
+                <tr><td><code>MONTH</code></td><td>Month of year (1-12)</td></tr>
+            </table>
+            <div class="example">DAYOFWEEK == 1<br>HOUR >= 8 AND HOUR &lt;= 16</div>
+            </div>
+
+            <div class="section">
+            <h3>Moon Functions</h3>
+            <table>
+                <tr><td><code>MOON_PHASE</code></td><td>Moon phase (0.0=new, 0.5=full, 1.0=new)</td></tr>
+            </table>
+            <div class="example">MOON_PHASE >= 0.48 AND MOON_PHASE &lt;= 0.52<br>MOON_PHASE &lt;= 0.02 OR MOON_PHASE >= 0.98</div>
+            </div>
+
+            <div class="section">
             <h3>Comparison Operators</h3>
             <table>
                 <tr><td><code>&gt;</code></td><td>Greater than</td></tr>

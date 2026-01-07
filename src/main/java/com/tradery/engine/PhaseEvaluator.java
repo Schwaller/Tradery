@@ -211,23 +211,53 @@ public class PhaseEvaluator {
             List<String> requiredPhaseIds,
             int barIndex
     ) {
-        if (requiredPhaseIds == null || requiredPhaseIds.isEmpty()) {
-            return true; // No phases required
+        return allPhasesActive(phaseStates, requiredPhaseIds, null, barIndex);
+    }
+
+    /**
+     * Check if all required phases are active AND no excluded phases are active.
+     *
+     * @param phaseStates Map of phase ID to boolean state array
+     * @param requiredPhaseIds List of required phase IDs (all must be active)
+     * @param excludedPhaseIds List of excluded phase IDs (none must be active)
+     * @param barIndex Current bar index in strategy candles
+     * @return true if conditions are met
+     */
+    public static boolean allPhasesActive(
+            Map<String, boolean[]> phaseStates,
+            List<String> requiredPhaseIds,
+            List<String> excludedPhaseIds,
+            int barIndex
+    ) {
+        // Check required phases (all must be active)
+        if (requiredPhaseIds != null && !requiredPhaseIds.isEmpty()) {
+            for (String phaseId : requiredPhaseIds) {
+                boolean[] state = phaseStates.get(phaseId);
+                if (state == null) {
+                    return false; // Phase not found
+                }
+                if (barIndex < 0 || barIndex >= state.length) {
+                    return false; // Index out of bounds
+                }
+                if (!state[barIndex]) {
+                    return false; // Required phase not active
+                }
+            }
         }
 
-        for (String phaseId : requiredPhaseIds) {
-            boolean[] state = phaseStates.get(phaseId);
-            if (state == null) {
-                return false; // Phase not found
-            }
-            if (barIndex < 0 || barIndex >= state.length) {
-                return false; // Index out of bounds
-            }
-            if (!state[barIndex]) {
-                return false; // Phase not active
+        // Check excluded phases (none must be active)
+        if (excludedPhaseIds != null && !excludedPhaseIds.isEmpty()) {
+            for (String phaseId : excludedPhaseIds) {
+                boolean[] state = phaseStates.get(phaseId);
+                if (state == null) {
+                    continue; // Phase not found - treat as inactive
+                }
+                if (barIndex >= 0 && barIndex < state.length && state[barIndex]) {
+                    return false; // Excluded phase is active - block entry
+                }
             }
         }
 
-        return true; // All phases active
+        return true;
     }
 }

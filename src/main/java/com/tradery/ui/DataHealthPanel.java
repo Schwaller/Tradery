@@ -1,0 +1,389 @@
+package com.tradery.ui;
+
+import com.tradery.data.DataIntegrityChecker;
+import com.tradery.model.DataHealth;
+import com.tradery.model.DataStatus;
+import com.tradery.model.Gap;
+
+import javax.swing.*;
+import java.awt.*;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
+import java.awt.geom.RoundRectangle2D;
+import java.time.Instant;
+import java.time.YearMonth;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
+import java.util.*;
+import java.util.List;
+import java.util.function.Consumer;
+
+/**
+ * 2D block diagram visualization of data health.
+ * Shows months as colored blocks organized by year.
+ */
+public class DataHealthPanel extends JPanel {
+
+    // Colors for status blocks
+    private static final Color COMPLETE_COLOR = new Color(76, 175, 80);
+    private static final Color PARTIAL_COLOR_HIGH = new Color(255, 193, 7);  // Yellow (>75%)
+    private static final Color PARTIAL_COLOR_MED = new Color(255, 140, 0);   // Orange (50-75%)
+    private static final Color PARTIAL_COLOR_LOW = new Color(244, 67, 54);   // Red (<50%)
+    private static final Color MISSING_COLOR = new Color(60, 60, 65);
+    private static final Color UNKNOWN_COLOR = new Color(100, 100, 100);
+    private static final Color HOVER_BORDER = new Color(255, 255, 255, 180);
+    private static final Color SELECTED_BORDER = new Color(0, 150, 255);
+
+    private static final int BLOCK_WIDTH = 36;
+    private static final int BLOCK_HEIGHT = 24;
+    private static final int BLOCK_GAP = 4;
+    private static final int YEAR_LABEL_WIDTH = 50;
+    private static final int PADDING = 16;
+
+    private static final String[] MONTH_LABELS = {"J", "F", "M", "A", "M", "J", "J", "A", "S", "O", "N", "D"};
+    private static final DateTimeFormatter YEAR_FORMAT = DateTimeFormatter.ofPattern("yyyy");
+
+    private final DataIntegrityChecker checker;
+
+    private String symbol;
+    private String resolution;
+    private List<DataHealth> healthData = new ArrayList<>();
+    private Map<YearMonth, Rectangle> blockBounds = new HashMap<>();
+
+    private YearMonth hoveredMonth;
+    private YearMonth selectedMonth;
+    private Consumer<DataHealth> onMonthSelected;
+
+    public DataHealthPanel(DataIntegrityChecker checker) {
+        this.checker = checker;
+
+        setBackground(new Color(30, 30, 35));
+        setPreferredSize(new Dimension(500, 300));
+
+        // Mouse handling
+        MouseAdapter mouseHandler = new MouseAdapter() {
+            @Override
+            public void mouseMoved(MouseEvent e) {
+                YearMonth newHovered = findMonthAt(e.getX(), e.getY());
+                if (!Objects.equals(newHovered, hoveredMonth)) {
+                    hoveredMonth = newHovered;
+                    updateTooltip(e);
+                    repaint();
+                }
+            }
+
+            @Override
+            public void mouseClicked(MouseEvent e) {
+                YearMonth clicked = findMonthAt(e.getX(), e.getY());
+                if (clicked != null) {
+                    selectedMonth = clicked;
+                    repaint();
+                    notifyMonthSelected(clicked);
+                }
+            }
+
+            @Override
+            public void mouseExited(MouseEvent e) {
+                hoveredMonth = null;
+                setToolTipText(null);
+                repaint();
+            }
+        };
+
+        addMouseListener(mouseHandler);
+        addMouseMotionListener(mouseHandler);
+    }
+
+    /**
+     * Set the symbol and resolution to display, and refresh data.
+     */
+    public void setData(String symbol, String resolution) {
+        this.symbol = symbol;
+        this.resolution = resolution;
+        this.selectedMonth = null;
+        refreshData();
+    }
+
+    /**
+     * Refresh data from the integrity checker.
+     */
+    public void refreshData() {
+        healthData.clear();
+        blockBounds.clear();
+
+        if (symbol == null || resolution == null) {
+            repaint();
+            return;
+        }
+
+        // Get available data range
+        Optional<YearMonth[]> range = checker.getDataRange(symbol, resolution);
+        if (range.isEmpty()) {
+            repaint();
+            return;
+        }
+
+        YearMonth start = range.get()[0];
+        YearMonth end = range.get()[1];
+
+        // Expand to full years
+        start = start.withMonth(1);
+        end = YearMonth.now();  // Always show up to current month
+
+        healthData = checker.analyzeRange(symbol, resolution, start, end);
+        repaint();
+    }
+
+    /**
+     * Set callback for when a month is selected.
+     */
+    public void setOnMonthSelected(Consumer<DataHealth> callback) {
+        this.onMonthSelected = callback;
+    }
+
+    /**
+     * Get the currently selected month's health data.
+     */
+    public DataHealth getSelectedHealth() {
+        if (selectedMonth == null) return null;
+        return healthData.stream()
+                .filter(h -> h.month().equals(selectedMonth))
+                .findFirst()
+                .orElse(null);
+    }
+
+    @Override
+    protected void paintComponent(Graphics g) {
+        super.paintComponent(g);
+        Graphics2D g2 = (Graphics2D) g.create();
+        g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+
+        blockBounds.clear();
+
+        if (healthData.isEmpty()) {
+            drawEmptyState(g2);
+            g2.dispose();
+            return;
+        }
+
+        // Group by year
+        Map<Integer, List<DataHealth>> byYear = new TreeMap<>(Collections.reverseOrder());
+        for (DataHealth h : healthData) {
+            byYear.computeIfAbsent(h.month().getYear(), k -> new ArrayList<>()).add(h);
+        }
+
+        int y = PADDING;
+
+        // Draw month header
+        g2.setColor(new Color(150, 150, 150));
+        g2.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 10));
+        for (int m = 0; m < 12; m++) {
+            int x = PADDING + YEAR_LABEL_WIDTH + m * (BLOCK_WIDTH + BLOCK_GAP);
+            g2.drawString(MONTH_LABELS[m], x + BLOCK_WIDTH / 2 - 3, y + 12);
+        }
+        y += 20;
+
+        // Draw each year row
+        g2.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 11));
+        for (Map.Entry<Integer, List<DataHealth>> entry : byYear.entrySet()) {
+            int year = entry.getKey();
+            List<DataHealth> months = entry.getValue();
+
+            // Year label
+            g2.setColor(new Color(180, 180, 180));
+            g2.drawString(String.valueOf(year), PADDING, y + BLOCK_HEIGHT / 2 + 4);
+
+            // Month blocks
+            for (DataHealth h : months) {
+                int monthIndex = h.month().getMonthValue() - 1;
+                int x = PADDING + YEAR_LABEL_WIDTH + monthIndex * (BLOCK_WIDTH + BLOCK_GAP);
+
+                Rectangle bounds = new Rectangle(x, y, BLOCK_WIDTH, BLOCK_HEIGHT);
+                blockBounds.put(h.month(), bounds);
+
+                drawBlock(g2, bounds, h);
+            }
+
+            y += BLOCK_HEIGHT + BLOCK_GAP + 4;
+        }
+
+        // Draw legend
+        y += 10;
+        drawLegend(g2, PADDING, y);
+
+        g2.dispose();
+    }
+
+    private void drawBlock(Graphics2D g2, Rectangle bounds, DataHealth health) {
+        Color fillColor = getBlockColor(health);
+
+        // Draw rounded rectangle
+        RoundRectangle2D.Double rect = new RoundRectangle2D.Double(
+                bounds.x, bounds.y, bounds.width, bounds.height, 6, 6);
+
+        g2.setColor(fillColor);
+        g2.fill(rect);
+
+        // Hover effect
+        if (health.month().equals(hoveredMonth)) {
+            g2.setColor(HOVER_BORDER);
+            g2.setStroke(new BasicStroke(2f));
+            g2.draw(rect);
+        }
+
+        // Selected effect
+        if (health.month().equals(selectedMonth)) {
+            g2.setColor(SELECTED_BORDER);
+            g2.setStroke(new BasicStroke(2.5f));
+            g2.draw(rect);
+        }
+
+        // Draw percentage text for partial data
+        if (health.status() == DataStatus.PARTIAL) {
+            int pct = (int) health.completenessPercent();
+            g2.setColor(Color.WHITE);
+            g2.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 9));
+            String text = pct + "%";
+            FontMetrics fm = g2.getFontMetrics();
+            int textX = bounds.x + (bounds.width - fm.stringWidth(text)) / 2;
+            int textY = bounds.y + bounds.height / 2 + fm.getAscent() / 2 - 1;
+            g2.drawString(text, textX, textY);
+        }
+    }
+
+    private Color getBlockColor(DataHealth health) {
+        return switch (health.status()) {
+            case COMPLETE -> COMPLETE_COLOR;
+            case PARTIAL -> {
+                double pct = health.completenessPercent();
+                if (pct >= 75) yield PARTIAL_COLOR_HIGH;
+                else if (pct >= 50) yield PARTIAL_COLOR_MED;
+                else yield PARTIAL_COLOR_LOW;
+            }
+            case MISSING -> MISSING_COLOR;
+            case UNKNOWN -> UNKNOWN_COLOR;
+        };
+    }
+
+    private void drawLegend(Graphics2D g2, int x, int y) {
+        g2.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 10));
+        g2.setColor(new Color(150, 150, 150));
+
+        int legendX = x;
+
+        // Complete
+        g2.setColor(COMPLETE_COLOR);
+        g2.fillRoundRect(legendX, y, 14, 14, 4, 4);
+        g2.setColor(new Color(150, 150, 150));
+        g2.drawString("Complete", legendX + 18, y + 11);
+        legendX += 80;
+
+        // Partial
+        g2.setColor(PARTIAL_COLOR_HIGH);
+        g2.fillRoundRect(legendX, y, 14, 14, 4, 4);
+        g2.setColor(new Color(150, 150, 150));
+        g2.drawString("Partial", legendX + 18, y + 11);
+        legendX += 60;
+
+        // Missing
+        g2.setColor(MISSING_COLOR);
+        g2.fillRoundRect(legendX, y, 14, 14, 4, 4);
+        g2.setColor(new Color(150, 150, 150));
+        g2.drawString("Missing", legendX + 18, y + 11);
+    }
+
+    private void drawEmptyState(Graphics2D g2) {
+        g2.setColor(new Color(100, 100, 100));
+        g2.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 14));
+
+        String msg = symbol == null ? "Select a symbol and resolution"
+                : "No data available for " + symbol + " " + resolution;
+
+        FontMetrics fm = g2.getFontMetrics();
+        int x = (getWidth() - fm.stringWidth(msg)) / 2;
+        int y = getHeight() / 2;
+        g2.drawString(msg, x, y);
+    }
+
+    private YearMonth findMonthAt(int x, int y) {
+        for (Map.Entry<YearMonth, Rectangle> entry : blockBounds.entrySet()) {
+            if (entry.getValue().contains(x, y)) {
+                return entry.getKey();
+            }
+        }
+        return null;
+    }
+
+    private void updateTooltip(MouseEvent e) {
+        if (hoveredMonth == null) {
+            setToolTipText(null);
+            return;
+        }
+
+        DataHealth health = healthData.stream()
+                .filter(h -> h.month().equals(hoveredMonth))
+                .findFirst()
+                .orElse(null);
+
+        if (health == null) {
+            setToolTipText(null);
+            return;
+        }
+
+        StringBuilder tip = new StringBuilder("<html>");
+        tip.append("<b>").append(hoveredMonth.format(DateTimeFormatter.ofPattern("MMMM yyyy"))).append("</b><br>");
+        tip.append("Status: ").append(health.status()).append("<br>");
+        tip.append("Candles: ").append(health.actualCandles()).append(" / ").append(health.expectedCandles());
+        tip.append(" (").append(String.format("%.1f%%", health.completenessPercent())).append(")<br>");
+
+        if (!health.gaps().isEmpty()) {
+            tip.append("Gaps: ").append(health.gaps().size()).append("<br>");
+            // Show first few gaps
+            int shown = 0;
+            for (Gap gap : health.gaps()) {
+                if (shown++ >= 3) {
+                    tip.append("  ...and ").append(health.gaps().size() - 3).append(" more<br>");
+                    break;
+                }
+                String start = Instant.ofEpochMilli(gap.startTimestamp())
+                        .atZone(ZoneOffset.UTC)
+                        .format(DateTimeFormatter.ofPattern("MM-dd HH:mm"));
+                tip.append("  ").append(start).append(" (").append(gap.missingCount()).append(" candles)<br>");
+            }
+        }
+
+        tip.append("</html>");
+        setToolTipText(tip.toString());
+    }
+
+    private void notifyMonthSelected(YearMonth month) {
+        if (onMonthSelected == null) return;
+
+        DataHealth health = healthData.stream()
+                .filter(h -> h.month().equals(month))
+                .findFirst()
+                .orElse(null);
+
+        if (health != null) {
+            onMonthSelected.accept(health);
+        }
+    }
+
+    @Override
+    public Dimension getPreferredSize() {
+        if (healthData.isEmpty()) {
+            return new Dimension(500, 200);
+        }
+
+        // Calculate based on content
+        Set<Integer> years = new HashSet<>();
+        for (DataHealth h : healthData) {
+            years.add(h.month().getYear());
+        }
+
+        int width = PADDING * 2 + YEAR_LABEL_WIDTH + 12 * (BLOCK_WIDTH + BLOCK_GAP);
+        int height = PADDING + 20 + years.size() * (BLOCK_HEIGHT + BLOCK_GAP + 4) + 40;
+
+        return new Dimension(width, height);
+    }
+}

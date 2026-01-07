@@ -3,9 +3,13 @@ package com.tradery.model;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 
+import java.util.ArrayList;
+import java.util.List;
+
 /**
  * Represents an exit zone configuration based on P&L percentage ranges.
- * Each zone can have its own exit conditions, SL/TP settings, and behavior.
+ * Each zone can have its own exit conditions, SL/TP settings, behavior,
+ * and phase filters.
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
 public record ExitZone(
@@ -23,7 +27,9 @@ public record ExitZone(
     Integer maxExits,           // null = unlimited, max number of partial exits in this zone
     ExitBasis exitBasis,        // ORIGINAL or REMAINING (default: REMAINING)
     ExitReentry exitReentry,    // CONTINUE or RESET (default: CONTINUE)
-    Integer minBarsBetweenExits // Minimum bars between partial exits (null = 0)
+    Integer minBarsBetweenExits, // Minimum bars between partial exits (null = 0)
+    List<String> requiredPhaseIds,  // Zone only active when all these phases active
+    List<String> excludedPhaseIds   // Zone inactive when any of these phases active
 ) {
     /**
      * Compact constructor to set defaults for missing fields.
@@ -34,6 +40,17 @@ public record ExitZone(
         if (exitBasis == null) exitBasis = ExitBasis.REMAINING;
         if (exitReentry == null) exitReentry = ExitReentry.CONTINUE;
         if (minBarsBetweenExits == null) minBarsBetweenExits = 0;
+        if (requiredPhaseIds == null) requiredPhaseIds = new ArrayList<>();
+        if (excludedPhaseIds == null) excludedPhaseIds = new ArrayList<>();
+    }
+
+    /**
+     * Check if this zone has any phase filters.
+     */
+    @JsonIgnore
+    public boolean hasPhaseFilters() {
+        return (requiredPhaseIds != null && !requiredPhaseIds.isEmpty())
+            || (excludedPhaseIds != null && !excludedPhaseIds.isEmpty());
     }
 
     /**
@@ -80,7 +97,9 @@ public record ExitZone(
             null,
             ExitBasis.REMAINING,
             ExitReentry.CONTINUE,
-            0
+            0,
+            new ArrayList<>(),
+            new ArrayList<>()
         );
     }
 
@@ -107,6 +126,8 @@ public record ExitZone(
         private ExitBasis exitBasis = ExitBasis.REMAINING;
         private ExitReentry exitReentry = ExitReentry.CONTINUE;
         private Integer minBarsBetweenExits = 0;
+        private List<String> requiredPhaseIds = new ArrayList<>();
+        private List<String> excludedPhaseIds = new ArrayList<>();
 
         public Builder(String name) {
             this.name = name;
@@ -174,6 +195,16 @@ public record ExitZone(
             return this;
         }
 
+        public Builder requiredPhases(List<String> phaseIds) {
+            this.requiredPhaseIds = phaseIds != null ? phaseIds : new ArrayList<>();
+            return this;
+        }
+
+        public Builder excludedPhases(List<String> phaseIds) {
+            this.excludedPhaseIds = phaseIds != null ? phaseIds : new ArrayList<>();
+            return this;
+        }
+
         public ExitZone build() {
             return new ExitZone(
                 name,
@@ -190,7 +221,9 @@ public record ExitZone(
                 maxExits,
                 exitBasis,
                 exitReentry,
-                minBarsBetweenExits
+                minBarsBetweenExits,
+                requiredPhaseIds,
+                excludedPhaseIds
             );
         }
     }

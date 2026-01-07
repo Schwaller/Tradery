@@ -19,6 +19,7 @@ public class EntryConfigPanel extends JPanel {
     private JSpinner dcaBarsBetweenSpinner;
     private JComboBox<String> dcaModeCombo;
     private JPanel dcaDetailsPanel;
+    private JPanel phaseContainer;
 
     private static final String[] DCA_MODES = {"Pause", "Abort", "Continue"};
 
@@ -59,12 +60,40 @@ public class EntryConfigPanel extends JPanel {
     }
 
     private void layoutComponents() {
-        // Entry condition
-        JPanel conditionPanel = new JPanel(new BorderLayout(0, 2));
-        conditionPanel.setOpaque(false);
+        // Header with label (outside the blue box)
         JLabel entryLabel = new JLabel("Entry");
         entryLabel.setForeground(Color.GRAY);
-        conditionPanel.add(entryLabel, BorderLayout.NORTH);
+
+        JPanel headerPanel = new JPanel(new BorderLayout());
+        headerPanel.setOpaque(false);
+        headerPanel.add(entryLabel, BorderLayout.CENTER);
+
+        // Blue-bordered content panel
+        JPanel conditionPanel = new JPanel(new BorderLayout(0, 2));
+
+        // Container for phase selection panel (inside the blue box)
+        phaseContainer = new JPanel(new BorderLayout());
+        phaseContainer.setOpaque(false);
+
+        // Subtle grouped background with rounded border (matching exit zones)
+        conditionPanel.setOpaque(true);
+        Color baseColor = UIManager.getColor("Panel.background");
+        Color tint = UIManager.getColor("Component.accentColor");
+        if (tint == null) tint = new Color(100, 140, 180);
+        // Mix 5% of accent color with background for subtle tint
+        conditionPanel.setBackground(new Color(
+            (int)(baseColor.getRed() * 0.95 + tint.getRed() * 0.05),
+            (int)(baseColor.getGreen() * 0.95 + tint.getGreen() * 0.05),
+            (int)(baseColor.getBlue() * 0.95 + tint.getBlue() * 0.05)
+        ));
+        conditionPanel.setBorder(BorderFactory.createCompoundBorder(
+            BorderFactory.createLineBorder(new Color(tint.getRed(), tint.getGreen(), tint.getBlue(), 60), 1, true),
+            BorderFactory.createEmptyBorder(8, 10, 10, 10)
+        ));
+
+        // Add phase selection at top of blue box
+        conditionPanel.add(phaseContainer, BorderLayout.NORTH);
+
         JScrollPane entryScroll = new JScrollPane(entryEditor);
 
         // Wrap scroll pane in layered pane for info button overlay
@@ -86,7 +115,7 @@ public class EntryConfigPanel extends JPanel {
 
         JPanel scrollWrapper = new JPanel(new BorderLayout());
         scrollWrapper.setOpaque(false);
-        scrollWrapper.add(Box.createVerticalStrut(12), BorderLayout.NORTH);
+        scrollWrapper.add(Box.createVerticalStrut(4), BorderLayout.NORTH);
         scrollWrapper.add(layeredPane, BorderLayout.CENTER);
         conditionPanel.add(scrollWrapper, BorderLayout.CENTER);
 
@@ -120,7 +149,13 @@ public class EntryConfigPanel extends JPanel {
         dcaWrapper.add(dcaDetailsPanel, BorderLayout.CENTER);
         conditionPanel.add(dcaWrapper, BorderLayout.SOUTH);
 
-        add(conditionPanel, BorderLayout.CENTER);
+        // Combine header (outside blue box) and content (blue box)
+        JPanel wrapper = new JPanel(new BorderLayout(0, 4));
+        wrapper.setOpaque(false);
+        wrapper.add(headerPanel, BorderLayout.NORTH);
+        wrapper.add(conditionPanel, BorderLayout.CENTER);
+
+        add(wrapper, BorderLayout.CENTER);
     }
 
     private GridBagConstraints gbc(int x, int y, boolean fill) {
@@ -171,6 +206,18 @@ public class EntryConfigPanel extends JPanel {
 
     public void setOnChange(Runnable onChange) {
         this.onChange = onChange;
+    }
+
+    /**
+     * Inject the phase selection panel to display between label and DSL field.
+     */
+    public void setPhaseSelectionPanel(JPanel panel) {
+        phaseContainer.removeAll();
+        if (panel != null) {
+            phaseContainer.add(panel, BorderLayout.CENTER);
+        }
+        phaseContainer.revalidate();
+        phaseContainer.repaint();
     }
 
     public void loadFrom(Strategy strategy) {

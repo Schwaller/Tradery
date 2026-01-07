@@ -10,6 +10,8 @@ public enum TokenType {
     // Functions
     RANGE_FUNC,     // HIGH_OF, LOW_OF
     VOLUME_FUNC,    // AVG_VOLUME
+    TIME_FUNC,      // DAYOFWEEK, HOUR, DAY, MONTH
+    MOON_FUNC,      // MOON_PHASE
 
     // Properties
     PROPERTY,       // .signal, .histogram, .upper, .lower, .middle

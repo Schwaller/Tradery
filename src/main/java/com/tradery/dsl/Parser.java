@@ -154,6 +154,20 @@ public class Parser {
             return volumeFunctionCall();
         }
 
+        // Time function (DAYOFWEEK, HOUR, DAY, MONTH - no parameters)
+        if (check(TokenType.TIME_FUNC)) {
+            String func = current().value();
+            advance();
+            return new AstNode.TimeFunctionCall(func);
+        }
+
+        // Moon function (MOON_PHASE - no parameters)
+        if (check(TokenType.MOON_FUNC)) {
+            String func = current().value();
+            advance();
+            return new AstNode.MoonFunctionCall(func);
+        }
+
         throw new ParserException("Unexpected token '" + current().value() +
             "' at position " + current().position());
     }

@@ -6,8 +6,8 @@ import java.util.List;
 
 /**
  * Phase filtering configuration for a Strategy.
- * Contains the list of required phase IDs that must all be active
- * for the strategy to enter trades.
+ * Contains required phase IDs (all must be active) and
+ * excluded phase IDs (none must be active) for entry.
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class PhaseSettings {
@@ -15,8 +15,12 @@ public class PhaseSettings {
     // List of required phase IDs - ALL must be active for entry
     private List<String> requiredPhaseIds;
 
+    // List of excluded phase IDs - NONE must be active for entry
+    private List<String> excludedPhaseIds;
+
     public PhaseSettings() {
         this.requiredPhaseIds = new ArrayList<>();
+        this.excludedPhaseIds = new ArrayList<>();
     }
 
     public List<String> getRequiredPhaseIds() {
@@ -30,23 +34,28 @@ public class PhaseSettings {
         this.requiredPhaseIds = requiredPhaseIds != null ? requiredPhaseIds : new ArrayList<>();
     }
 
+    public List<String> getExcludedPhaseIds() {
+        if (excludedPhaseIds == null) {
+            excludedPhaseIds = new ArrayList<>();
+        }
+        return excludedPhaseIds;
+    }
+
+    public void setExcludedPhaseIds(List<String> excludedPhaseIds) {
+        this.excludedPhaseIds = excludedPhaseIds != null ? excludedPhaseIds : new ArrayList<>();
+    }
+
+    public boolean hasPhaseFilters() {
+        return (requiredPhaseIds != null && !requiredPhaseIds.isEmpty())
+            || (excludedPhaseIds != null && !excludedPhaseIds.isEmpty());
+    }
+
     public boolean hasRequiredPhases() {
         return requiredPhaseIds != null && !requiredPhaseIds.isEmpty();
     }
 
-    public void addRequiredPhase(String phaseId) {
-        if (requiredPhaseIds == null) {
-            requiredPhaseIds = new ArrayList<>();
-        }
-        if (!requiredPhaseIds.contains(phaseId)) {
-            requiredPhaseIds.add(phaseId);
-        }
-    }
-
-    public void removeRequiredPhase(String phaseId) {
-        if (requiredPhaseIds != null) {
-            requiredPhaseIds.remove(phaseId);
-        }
+    public boolean hasExcludedPhases() {
+        return excludedPhaseIds != null && !excludedPhaseIds.isEmpty();
     }
 
     public static PhaseSettings defaults() {
