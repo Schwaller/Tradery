@@ -29,6 +29,19 @@ public class PhaseListPanel extends JPanel {
         setLayout(new BorderLayout(4, 0));
         setOpaque(false);
 
+        // Titled border with "Phase Filter"
+        setBorder(BorderFactory.createCompoundBorder(
+            BorderFactory.createTitledBorder(
+                BorderFactory.createLineBorder(UIManager.getColor("Component.borderColor"), 1),
+                "Phase Filter",
+                javax.swing.border.TitledBorder.LEFT,
+                javax.swing.border.TitledBorder.TOP,
+                getFont().deriveFont(10f),
+                Color.GRAY
+            ),
+            BorderFactory.createEmptyBorder(2, 6, 6, 6)
+        ));
+
         // List model and JList - no scroll, size to content
         listModel = new DefaultListModel<>();
         phaseList = new JList<>(listModel);

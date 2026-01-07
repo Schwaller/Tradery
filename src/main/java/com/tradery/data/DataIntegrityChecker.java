@@ -236,16 +236,36 @@ public class DataIntegrityChecker {
 
     /**
      * Calculate expected number of candles for a month.
+     * For the current month, only counts up to the current time.
      */
     private int calculateExpectedCandles(String resolution, YearMonth month) {
-        int daysInMonth = month.lengthOfMonth();
         long resolutionMs = getResolutionMs(resolution);
-        long minutesInResolution = resolutionMs / 60_000;
 
-        // Minutes in the month
-        long minutesInMonth = daysInMonth * 24L * 60L;
+        // Month start timestamp
+        long monthStart = month.atDay(1)
+                .atStartOfDay(ZoneOffset.UTC)
+                .toInstant()
+                .toEpochMilli();
 
-        return (int) (minutesInMonth / minutesInResolution);
+        // Month end timestamp - for current month, use current time
+        long monthEnd;
+        YearMonth now = YearMonth.now(ZoneOffset.UTC);
+        if (month.equals(now)) {
+            // Current month: only expect candles up to now
+            monthEnd = Instant.now().toEpochMilli();
+        } else if (month.isAfter(now)) {
+            // Future month: no candles expected
+            return 0;
+        } else {
+            // Historical month: full month
+            monthEnd = month.plusMonths(1).atDay(1)
+                    .atStartOfDay(ZoneOffset.UTC)
+                    .toInstant()
+                    .toEpochMilli();
+        }
+
+        long durationMs = monthEnd - monthStart;
+        return (int) (durationMs / resolutionMs);
     }
 
     /**

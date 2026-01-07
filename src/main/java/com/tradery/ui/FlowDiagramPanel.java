@@ -111,7 +111,6 @@ public class FlowDiagramPanel extends JPanel {
         int entryX = margin;
         int entryY = (getHeight() - entryBoxHeight) / 2;
         int entryRight = entryX + entryBoxWidth;
-        int entryCenterY = entryY + entryBoxHeight / 2;
 
         // Draw entry box (rounded on left, square on right)
         int radius = 6;
@@ -168,27 +167,38 @@ public class FlowDiagramPanel extends JPanel {
 
             // Draw curved flow band from entry to zone bar (Sankey-style)
             g2.setColor(arrowColor);
-            Path2D flow = new Path2D.Float();
 
             // Control point X for bezier curves (midpoint)
             float cpX = (entryRight + 2 + zonesX) / 2f;
 
-            // Entry connection points - spread across entry box height proportionally
-            float entryTopY = entryY - 2;
-            float entryBotY = entryY + entryBoxHeight + 2;
+            // Entry connection points - align with entry box corners
+            float entryTopY = entryY;
+            float entryBotY = entryY + entryBoxHeight;
 
-            // Top edge: from entry top to zone top
+            // Full flow shape for fill
+            Path2D flow = new Path2D.Float();
             flow.moveTo(entryRight + 2, entryTopY);
             flow.curveTo(cpX, entryTopY, cpX, zoneTopY, zonesX, zoneTopY);
-
-            // Right edge: down the zone bar
             flow.lineTo(zonesX, zoneBotY);
-
-            // Bottom edge: from zone bottom back to entry bottom
             flow.curveTo(cpX, zoneBotY, cpX, entryBotY, entryRight + 2, entryBotY);
-
             flow.closePath();
             g2.fill(flow);
+
+            // Draw white edge lines on top and bottom curves
+            g2.setColor(new Color(255, 255, 255, 180));
+            g2.setStroke(new BasicStroke(1f));
+
+            // Top edge curve
+            Path2D topEdge = new Path2D.Float();
+            topEdge.moveTo(entryRight + 2, entryTopY);
+            topEdge.curveTo(cpX, entryTopY, cpX, zoneTopY, zonesX, zoneTopY);
+            g2.draw(topEdge);
+
+            // Bottom edge curve
+            Path2D botEdge = new Path2D.Float();
+            botEdge.moveTo(entryRight + 2, entryBotY);
+            botEdge.curveTo(cpX, entryBotY, cpX, zoneBotY, zonesX, zoneBotY);
+            g2.draw(botEdge);
 
             // Zone bar - 50% transparent fill
             Color barFill = new Color(accentColor.getRed(), accentColor.getGreen(), accentColor.getBlue(), 80);
