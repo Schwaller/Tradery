@@ -201,6 +201,7 @@ public class ExitConfigPanel extends JPanel {
         private JSpinner minBarsSpinner;
         // Scale Out (DCA-out) fields
         private JCheckBox scaleOutCheckbox;
+        private JButton simplifyBadge;
         private JPanel scaleOutDetailsPanel;
         private JSpinner exitPercentSpinner;
         private JSpinner maxExitsSpinner;
@@ -310,10 +311,32 @@ public class ExitConfigPanel extends JPanel {
             boolean hasScaleOut = zone != null && zone.exitPercent() != null;
             scaleOutCheckbox.setSelected(hasScaleOut);
 
+            // Simplify badge - shown when scale out is 100% (redundant config)
+            simplifyBadge = new JButton("Simplify");
+            simplifyBadge.setFont(simplifyBadge.getFont().deriveFont(Font.PLAIN, 10f));
+            simplifyBadge.setForeground(new Color(0, 100, 200));
+            simplifyBadge.setBorderPainted(false);
+            simplifyBadge.setContentAreaFilled(false);
+            simplifyBadge.setCursor(new java.awt.Cursor(java.awt.Cursor.HAND_CURSOR));
+            simplifyBadge.setToolTipText("Scale Out 100% is redundant - click to simplify");
+            simplifyBadge.setVisible(false);
+            simplifyBadge.addActionListener(e -> {
+                scaleOutCheckbox.setSelected(false);
+                scaleOutDetailsPanel.setVisible(false);
+                simplifyBadge.setVisible(false);
+                revalidate();
+                updateMaxSize();
+                repaint();
+                onChange.run();
+            });
+
             exitPercentSpinner = new JSpinner(new SpinnerNumberModel(
                 zone != null && zone.exitPercent() != null ? zone.exitPercent() : 50.0,
                 1.0, 100.0, 5.0));
-            exitPercentSpinner.addChangeListener(e -> onChange.run());
+            exitPercentSpinner.addChangeListener(e -> {
+                updateSimplifyBadgeVisibility();
+                onChange.run();
+            });
 
             maxExitsSpinner = new JSpinner(new SpinnerNumberModel(
                 zone != null && zone.maxExits() != null ? zone.maxExits() : 1,
@@ -364,6 +387,7 @@ public class ExitConfigPanel extends JPanel {
 
             scaleOutCheckbox.addActionListener(e -> {
                 scaleOutDetailsPanel.setVisible(scaleOutCheckbox.isSelected());
+                updateSimplifyBadgeVisibility();
                 revalidate();
                 updateMaxSize();
                 repaint();
@@ -448,11 +472,19 @@ public class ExitConfigPanel extends JPanel {
             centerPanel.add(tpValueSpinner, new GridBagConstraints(1, row++, 1, 1, 1, 0, WEST, HORIZONTAL, new Insets(0, 0, 4, 0), 0, 0));
 
             // Scale Out section (like DCA section in EntryConfigPanel)
+            JPanel scaleOutHeader = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
+            scaleOutHeader.setOpaque(false);
+            scaleOutHeader.add(scaleOutCheckbox);
+            scaleOutHeader.add(simplifyBadge);
+
             JPanel scaleOutWrapper = new JPanel(new BorderLayout(0, 0));
             scaleOutWrapper.setOpaque(false);
-            scaleOutWrapper.add(scaleOutCheckbox, BorderLayout.NORTH);
+            scaleOutWrapper.add(scaleOutHeader, BorderLayout.NORTH);
             scaleOutWrapper.add(scaleOutDetailsPanel, BorderLayout.CENTER);
             centerPanel.add(scaleOutWrapper, new GridBagConstraints(0, row, 2, 1, 1, 0, WEST, HORIZONTAL, new Insets(4, 0, 0, 0), 0, 0));
+
+            // Initialize badge visibility
+            updateSimplifyBadgeVisibility();
 
             add(topRow, BorderLayout.NORTH);
             add(centerPanel, BorderLayout.CENTER);
@@ -469,6 +501,13 @@ public class ExitConfigPanel extends JPanel {
                 // Lock height when exit condition is hidden
                 setMaximumSize(new Dimension(Integer.MAX_VALUE, getPreferredSize().height));
             }
+        }
+
+        private void updateSimplifyBadgeVisibility() {
+            // Show simplify badge when scale out is enabled with 100% (redundant)
+            boolean show = scaleOutCheckbox.isSelected() &&
+                ((Number) exitPercentSpinner.getValue()).doubleValue() >= 100.0;
+            simplifyBadge.setVisible(show);
         }
 
         private DocumentListener docListener(Runnable onChange) {

@@ -1,5 +1,6 @@
 package com.tradery.io;
 
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
@@ -30,6 +31,8 @@ public class StrategyStore {
         this.mapper.registerModule(new JavaTimeModule());
         this.mapper.enable(SerializationFeature.INDENT_OUTPUT);
         this.mapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
+        // Handle missing fields gracefully during deserialization
+        this.mapper.disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
 
         // Ensure directory exists
         if (!directory.exists()) {

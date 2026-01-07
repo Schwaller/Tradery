@@ -10,9 +10,11 @@ import com.tradery.io.ResultStore;
 import com.tradery.io.StrategyStore;
 import com.tradery.io.WindowStateStore;
 import com.tradery.model.*;
+import com.tradery.ui.controls.IndicatorControlsPanel;
+import com.tradery.ui.coordination.AutoSaveScheduler;
+import com.tradery.ui.coordination.BacktestCoordinator;
 
 import javax.swing.*;
-import javax.swing.event.ChangeListener;
 import java.awt.*;
 import java.awt.event.ComponentAdapter;
 import java.awt.event.ComponentEvent;
@@ -21,7 +23,6 @@ import java.awt.event.WindowEvent;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Consumer;
 
@@ -58,40 +59,8 @@ public class ProjectWindow extends JFrame {
     private JButton codexBtn;
     private JButton historyBtn;
 
-    // Indicator controls
-    private JCheckBox smaCheckbox;
-    private JSlider smaSlider;
-    private JSpinner smaSpinner;
-    private Timer smaDebounceTimer;
-
-    private JCheckBox emaCheckbox;
-    private JSlider emaSlider;
-    private JSpinner emaSpinner;
-    private Timer emaDebounceTimer;
-
-    private JCheckBox bbCheckbox;
-    private JSlider bbSlider;
-    private JSpinner bbSpinner;
-    private Timer bbDebounceTimer;
-
-    private JCheckBox hlCheckbox;
-    private JSlider hlSlider;
-    private JSpinner hlSpinner;
-    private Timer hlDebounceTimer;
-
-    private JCheckBox mayerCheckbox;
-
-    // Indicator chart panel controls
-    private JCheckBox rsiChartCheckbox;
-    private JSpinner rsiSpinner;
-
-    private JCheckBox macdChartCheckbox;
-    private JSpinner macdFastSpinner;
-    private JSpinner macdSlowSpinner;
-    private JSpinner macdSignalSpinner;
-
-    private JCheckBox atrChartCheckbox;
-    private JSpinner atrSpinner;
+    // Indicator controls panel (extracted)
+    private IndicatorControlsPanel indicatorControls;
 
     private static final String[] SYMBOLS = {
         "BTCUSDT", "ETHUSDT", "BNBUSDT", "XRPUSDT", "ADAUSDT",
@@ -105,22 +74,12 @@ public class ProjectWindow extends JFrame {
     // Data stores
     private final StrategyStore strategyStore;
     private final CandleStore candleStore;
-    private final ResultStore resultStore;
-    private final BacktestEngine backtestEngine;
     private FileWatcher fileWatcher;
     private FileWatcher phaseWatcher;
 
-    // Current backtest data for charts
-    private List<Candle> currentCandles;
-
-    // Flag to ignore self-triggered file changes
-    private volatile boolean ignoringFileChanges = false;
-
-    // Auto-save and auto-backtest debounce timers
-    private Timer autoSaveTimer;
-    private Timer autoBacktestTimer;
-    private static final int AUTO_SAVE_DELAY_MS = 500;
-    private static final int AUTO_BACKTEST_DELAY_MS = 800;
+    // Extracted coordinators
+    private final BacktestCoordinator backtestCoordinator;
+    private final AutoSaveScheduler autoSaveScheduler;
 
     public ProjectWindow(Strategy strategy, Consumer<String> onClose) {
         super(strategy.getName() + " - " + TraderyApp.APP_NAME);
@@ -130,9 +89,12 @@ public class ProjectWindow extends JFrame {
         // Use shared stores from ApplicationContext
         this.strategyStore = ApplicationContext.getInstance().getStrategyStore();
         this.candleStore = ApplicationContext.getInstance().getCandleStore();
-        // Per-project result storage
-        this.resultStore = new ResultStore(strategy.getId());
-        this.backtestEngine = new BacktestEngine(candleStore);
+
+        // Initialize coordinators
+        ResultStore resultStore = new ResultStore(strategy.getId());
+        BacktestEngine backtestEngine = new BacktestEngine(candleStore);
+        this.backtestCoordinator = new BacktestCoordinator(backtestEngine, candleStore, resultStore);
+        this.autoSaveScheduler = new AutoSaveScheduler();
 
         initializeFrame();
         initializeComponents();
@@ -257,238 +219,28 @@ public class ProjectWindow extends JFrame {
         historyBtn.setToolTipText("Browse strategy history and restore previous versions");
         historyBtn.addActionListener(e -> showHistory());
 
-        // SMA indicator controls
-        smaCheckbox = new JCheckBox("SMA");
-        smaCheckbox.setToolTipText("Show Simple Moving Average on price chart");
+        // Indicator controls panel (extracted to separate class)
+        indicatorControls = new IndicatorControlsPanel();
+        indicatorControls.setChartPanel(chartPanel);
+        indicatorControls.setOnBacktestNeeded(this::runBacktest);
 
-        smaSlider = new JSlider(5, 200, 50);
-        smaSlider.setPreferredSize(new Dimension(100, 20));
-        smaSlider.setVisible(false);
+        // Wire up auto-save scheduler
+        autoSaveScheduler.setOnSave(this::saveStrategyQuietly);
+        autoSaveScheduler.setOnBacktest(this::runBacktest);
 
-        smaSpinner = new JSpinner(new SpinnerNumberModel(50, 5, 500, 1));
-        smaSpinner.setPreferredSize(new Dimension(55, 22));
-        smaSpinner.setVisible(false);
-
-        // Debounce timer for slider updates (100ms)
-        smaDebounceTimer = new Timer(100, e -> updateSmaOverlay());
-        smaDebounceTimer.setRepeats(false);
-
-        // Sync slider and spinner with debounced updates
-        smaSlider.addChangeListener(e -> {
-            smaSpinner.setValue(smaSlider.getValue());
-            smaDebounceTimer.restart();
-        });
-        smaSpinner.addChangeListener(e -> {
-            int val = ((Number) smaSpinner.getValue()).intValue();
-            if (val >= 5 && val <= 200) {
-                smaSlider.setValue(val);
-            }
-            smaDebounceTimer.restart();
-        });
-
-        smaCheckbox.addActionListener(e -> {
-            boolean enabled = smaCheckbox.isSelected();
-            smaSlider.setVisible(enabled);
-            smaSpinner.setVisible(enabled);
-            updateSmaOverlay();
-        });
-
-        // EMA indicator controls
-        emaCheckbox = new JCheckBox("EMA");
-        emaCheckbox.setToolTipText("Show Exponential Moving Average on price chart");
-
-        emaSlider = new JSlider(5, 200, 20);
-        emaSlider.setPreferredSize(new Dimension(100, 20));
-        emaSlider.setVisible(false);
-
-        emaSpinner = new JSpinner(new SpinnerNumberModel(20, 5, 500, 1));
-        emaSpinner.setPreferredSize(new Dimension(55, 22));
-        emaSpinner.setVisible(false);
-
-        emaDebounceTimer = new Timer(100, e -> updateEmaOverlay());
-        emaDebounceTimer.setRepeats(false);
-
-        emaSlider.addChangeListener(e -> {
-            emaSpinner.setValue(emaSlider.getValue());
-            emaDebounceTimer.restart();
-        });
-        emaSpinner.addChangeListener(e -> {
-            int val = ((Number) emaSpinner.getValue()).intValue();
-            if (val >= 5 && val <= 200) {
-                emaSlider.setValue(val);
-            }
-            emaDebounceTimer.restart();
-        });
-
-        emaCheckbox.addActionListener(e -> {
-            boolean enabled = emaCheckbox.isSelected();
-            emaSlider.setVisible(enabled);
-            emaSpinner.setVisible(enabled);
-            updateEmaOverlay();
-        });
-
-        // Bollinger Bands controls
-        bbCheckbox = new JCheckBox("BB");
-        bbCheckbox.setToolTipText("Show Bollinger Bands on price chart");
-
-        bbSlider = new JSlider(5, 100, 20);
-        bbSlider.setPreferredSize(new Dimension(80, 20));
-        bbSlider.setVisible(false);
-
-        bbSpinner = new JSpinner(new SpinnerNumberModel(20, 5, 200, 1));
-        bbSpinner.setPreferredSize(new Dimension(50, 22));
-        bbSpinner.setVisible(false);
-
-        bbDebounceTimer = new Timer(100, e -> updateBbOverlay());
-        bbDebounceTimer.setRepeats(false);
-
-        bbSlider.addChangeListener(e -> {
-            bbSpinner.setValue(bbSlider.getValue());
-            bbDebounceTimer.restart();
-        });
-        bbSpinner.addChangeListener(e -> {
-            int val = ((Number) bbSpinner.getValue()).intValue();
-            if (val >= 5 && val <= 100) {
-                bbSlider.setValue(val);
-            }
-            bbDebounceTimer.restart();
-        });
-
-        bbCheckbox.addActionListener(e -> {
-            boolean enabled = bbCheckbox.isSelected();
-            bbSlider.setVisible(enabled);
-            bbSpinner.setVisible(enabled);
-            updateBbOverlay();
-        });
-
-        // High/Low controls
-        hlCheckbox = new JCheckBox("H/L");
-        hlCheckbox.setToolTipText("Show High/Low of period on price chart");
-
-        hlSlider = new JSlider(5, 100, 20);
-        hlSlider.setPreferredSize(new Dimension(80, 20));
-        hlSlider.setVisible(false);
-
-        hlSpinner = new JSpinner(new SpinnerNumberModel(20, 5, 200, 1));
-        hlSpinner.setPreferredSize(new Dimension(50, 22));
-        hlSpinner.setVisible(false);
-
-        hlDebounceTimer = new Timer(100, e -> updateHlOverlay());
-        hlDebounceTimer.setRepeats(false);
-
-        hlSlider.addChangeListener(e -> {
-            hlSpinner.setValue(hlSlider.getValue());
-            hlDebounceTimer.restart();
-        });
-        hlSpinner.addChangeListener(e -> {
-            int val = ((Number) hlSpinner.getValue()).intValue();
-            if (val >= 5 && val <= 100) {
-                hlSlider.setValue(val);
-            }
-            hlDebounceTimer.restart();
-        });
-
-        hlCheckbox.addActionListener(e -> {
-            boolean enabled = hlCheckbox.isSelected();
-            hlSlider.setVisible(enabled);
-            hlSpinner.setVisible(enabled);
-            updateHlOverlay();
-        });
-
-        // Mayer Multiple control
-        mayerCheckbox = new JCheckBox("Mayer");
-        mayerCheckbox.setToolTipText("Color-code price by Mayer Multiple (price/200-SMA)");
-        mayerCheckbox.addActionListener(e -> {
-            chartPanel.setMayerMultipleEnabled(mayerCheckbox.isSelected(), 200);
-            runBacktest(); // Refresh charts
-        });
-
-        // RSI chart panel control
-        rsiChartCheckbox = new JCheckBox("RSI");
-        rsiChartCheckbox.setToolTipText("Show RSI indicator chart panel");
-        rsiSpinner = new JSpinner(new SpinnerNumberModel(14, 2, 50, 1));
-        rsiSpinner.setPreferredSize(new Dimension(50, 22));
-        rsiSpinner.setVisible(false);
-        rsiChartCheckbox.addActionListener(e -> {
-            boolean enabled = rsiChartCheckbox.isSelected();
-            rsiSpinner.setVisible(enabled);
-            int period = ((Number) rsiSpinner.getValue()).intValue();
-            chartPanel.setRsiChartEnabled(enabled, period);
-            runBacktest();
-        });
-        rsiSpinner.addChangeListener(e -> {
-            if (rsiChartCheckbox.isSelected()) {
-                int period = ((Number) rsiSpinner.getValue()).intValue();
-                chartPanel.setRsiChartEnabled(true, period);
-                runBacktest();
-            }
-        });
-
-        // MACD chart panel control
-        macdChartCheckbox = new JCheckBox("MACD");
-        macdChartCheckbox.setToolTipText("Show MACD indicator chart panel");
-        macdFastSpinner = new JSpinner(new SpinnerNumberModel(12, 2, 50, 1));
-        macdFastSpinner.setPreferredSize(new Dimension(40, 22));
-        macdFastSpinner.setVisible(false);
-        macdSlowSpinner = new JSpinner(new SpinnerNumberModel(26, 2, 100, 1));
-        macdSlowSpinner.setPreferredSize(new Dimension(40, 22));
-        macdSlowSpinner.setVisible(false);
-        macdSignalSpinner = new JSpinner(new SpinnerNumberModel(9, 2, 50, 1));
-        macdSignalSpinner.setPreferredSize(new Dimension(40, 22));
-        macdSignalSpinner.setVisible(false);
-        macdChartCheckbox.addActionListener(e -> {
-            boolean enabled = macdChartCheckbox.isSelected();
-            macdFastSpinner.setVisible(enabled);
-            macdSlowSpinner.setVisible(enabled);
-            macdSignalSpinner.setVisible(enabled);
-            updateMacdChart();
-        });
-        ChangeListener macdChangeListener = e -> {
-            if (macdChartCheckbox.isSelected()) {
-                updateMacdChart();
-            }
-        };
-        macdFastSpinner.addChangeListener(macdChangeListener);
-        macdSlowSpinner.addChangeListener(macdChangeListener);
-        macdSignalSpinner.addChangeListener(macdChangeListener);
-
-        // ATR chart panel control
-        atrChartCheckbox = new JCheckBox("ATR");
-        atrChartCheckbox.setToolTipText("Show ATR volatility chart panel");
-        atrSpinner = new JSpinner(new SpinnerNumberModel(14, 2, 50, 1));
-        atrSpinner.setPreferredSize(new Dimension(50, 22));
-        atrSpinner.setVisible(false);
-        atrChartCheckbox.addActionListener(e -> {
-            boolean enabled = atrChartCheckbox.isSelected();
-            atrSpinner.setVisible(enabled);
-            int period = ((Number) atrSpinner.getValue()).intValue();
-            chartPanel.setAtrChartEnabled(enabled, period);
-            runBacktest();
-        });
-        atrSpinner.addChangeListener(e -> {
-            if (atrChartCheckbox.isSelected()) {
-                int period = ((Number) atrSpinner.getValue()).intValue();
-                chartPanel.setAtrChartEnabled(true, period);
-                runBacktest();
-            }
-        });
-
-        // Auto-save timer
-        autoSaveTimer = new Timer(AUTO_SAVE_DELAY_MS, e -> saveStrategyQuietly());
-        autoSaveTimer.setRepeats(false);
-
-        // Auto-backtest timer (runs after save)
-        autoBacktestTimer = new Timer(AUTO_BACKTEST_DELAY_MS, e -> runBacktest());
-        autoBacktestTimer.setRepeats(false);
+        // Wire up backtest coordinator callbacks
+        backtestCoordinator.setOnProgress(this::setProgress);
+        backtestCoordinator.setOnComplete(this::displayResult);
+        backtestCoordinator.setOnStatus(this::setStatus);
 
         // Wire up change listeners for auto-save and auto-backtest
-        symbolCombo.addActionListener(e -> scheduleAutoUpdate());
-        timeframeCombo.addActionListener(e -> scheduleAutoUpdate());
-        durationCombo.addActionListener(e -> scheduleAutoUpdate());
+        symbolCombo.addActionListener(e -> autoSaveScheduler.scheduleUpdate());
+        timeframeCombo.addActionListener(e -> autoSaveScheduler.scheduleUpdate());
+        durationCombo.addActionListener(e -> autoSaveScheduler.scheduleUpdate());
 
         // Wire up panel change listeners
-        editorPanel.setOnChange(this::scheduleAutoUpdate);
-        settingsPanel.setOnChange(this::scheduleAutoUpdate);
+        editorPanel.setOnChange(autoSaveScheduler::scheduleUpdate);
+        settingsPanel.setOnChange(autoSaveScheduler::scheduleUpdate);
     }
 
     private void updateDurationOptions() {
@@ -551,53 +303,18 @@ public class ProjectWindow extends JFrame {
         }
     }
 
-    private long getDurationMillis() {
-        String duration = (String) durationCombo.getSelectedItem();
-        if (duration == null) return 365L * 24 * 60 * 60 * 1000; // Default 1 year
-
-        long day = 24L * 60 * 60 * 1000;
-        return switch (duration) {
-            case "1 day" -> day;
-            case "3 days" -> 3 * day;
-            case "1 week" -> 7 * day;
-            case "2 weeks" -> 14 * day;
-            case "1 month" -> 30 * day;
-            case "2 months" -> 60 * day;
-            case "3 months" -> 90 * day;
-            case "6 months" -> 180 * day;
-            case "1 year" -> 365 * day;
-            case "2 years" -> 2 * 365 * day;
-            case "3 years" -> 3 * 365 * day;
-            case "5 years" -> 5 * 365 * day;
-            case "10 years" -> 10 * 365 * day;
-            default -> 365 * day;
-        };
-    }
-
-    private void scheduleAutoUpdate() {
-        if (ignoringFileChanges) return;
-        autoSaveTimer.restart();
-        autoBacktestTimer.restart();
-    }
-
     private void saveStrategyQuietly() {
         // Apply UI values to strategy
         editorPanel.applyToStrategy(strategy);
         settingsPanel.applyToStrategy(strategy);
         applyToolbarToStrategy();
 
-        // Temporarily ignore file changes
-        ignoringFileChanges = true;
-
+        // Save and mark that save occurred (temporarily ignores file changes)
+        autoSaveScheduler.markSaveOccurred();
         strategyStore.save(strategy);
         setTitle(strategy.getName() + " - " + TraderyApp.APP_NAME);
         titleLabel.setText(strategy.getName());
         setStatus("Auto-saved");
-
-        // Re-enable file watching after a short delay
-        Timer timer = new Timer(600, e -> ignoringFileChanges = false);
-        timer.setRepeats(false);
-        timer.start();
     }
 
     private void layoutComponents() {
@@ -630,45 +347,8 @@ public class ProjectWindow extends JFrame {
         toolbarLeft.add(fullYBtn);
         toolbarLeft.add(Box.createHorizontalStrut(16));
 
-        // Indicator controls
-        toolbarLeft.add(smaCheckbox);
-        toolbarLeft.add(smaSlider);
-        toolbarLeft.add(smaSpinner);
-        toolbarLeft.add(Box.createHorizontalStrut(8));
-        toolbarLeft.add(emaCheckbox);
-        toolbarLeft.add(emaSlider);
-        toolbarLeft.add(emaSpinner);
-        toolbarLeft.add(Box.createHorizontalStrut(8));
-        toolbarLeft.add(bbCheckbox);
-        toolbarLeft.add(bbSlider);
-        toolbarLeft.add(bbSpinner);
-        toolbarLeft.add(Box.createHorizontalStrut(8));
-        toolbarLeft.add(hlCheckbox);
-        toolbarLeft.add(hlSlider);
-        toolbarLeft.add(hlSpinner);
-        toolbarLeft.add(Box.createHorizontalStrut(8));
-        toolbarLeft.add(mayerCheckbox);
-
-        // Separator before chart panel indicators
-        toolbarLeft.add(Box.createHorizontalStrut(12));
-        toolbarLeft.add(new JSeparator(JSeparator.VERTICAL));
-        toolbarLeft.add(Box.createHorizontalStrut(8));
-
-        // RSI chart panel control
-        toolbarLeft.add(rsiChartCheckbox);
-        toolbarLeft.add(rsiSpinner);
-        toolbarLeft.add(Box.createHorizontalStrut(6));
-
-        // MACD chart panel control
-        toolbarLeft.add(macdChartCheckbox);
-        toolbarLeft.add(macdFastSpinner);
-        toolbarLeft.add(macdSlowSpinner);
-        toolbarLeft.add(macdSignalSpinner);
-        toolbarLeft.add(Box.createHorizontalStrut(6));
-
-        // ATR chart panel control
-        toolbarLeft.add(atrChartCheckbox);
-        toolbarLeft.add(atrSpinner);
+        // Indicator controls (extracted to IndicatorControlsPanel)
+        toolbarLeft.add(indicatorControls);
 
         // Progress bar panel (right side of toolbar)
         JPanel toolbarRight = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 4));
@@ -761,9 +441,7 @@ public class ProjectWindow extends JFrame {
 
     private void loadStrategyData() {
         // Suppress auto-save while loading
-        ignoringFileChanges = true;
-
-        try {
+        autoSaveScheduler.withIgnoredFileChanges(() -> {
             editorPanel.setStrategy(strategy);
             settingsPanel.setStrategy(strategy);
 
@@ -773,9 +451,7 @@ public class ProjectWindow extends JFrame {
             // Duration options depend on timeframe, so update them first
             updateDurationOptions();
             durationCombo.setSelectedItem(strategy.getDuration());
-        } finally {
-            ignoringFileChanges = false;
-        }
+        });
     }
 
     private void applyToolbarToStrategy() {
@@ -822,7 +498,7 @@ public class ProjectWindow extends JFrame {
     }
 
     private void onPhaseFileChanged(Path path) {
-        if (ignoringFileChanges) return;
+        if (autoSaveScheduler.isIgnoringFileChanges()) return;
 
         // Check if this phase is one of our required phases
         String filename = path.getFileName().toString();
@@ -842,7 +518,7 @@ public class ProjectWindow extends JFrame {
     }
 
     private void onStrategyFileChanged(Path path) {
-        if (ignoringFileChanges) return;
+        if (autoSaveScheduler.isIgnoringFileChanges()) return;
 
         SwingUtilities.invokeLater(() -> {
             setStatus("File changed externally - reloading...");
@@ -1071,147 +747,26 @@ public class ProjectWindow extends JFrame {
         });
     }
 
-    private void updateSmaOverlay() {
-        if (currentCandles == null || currentCandles.isEmpty()) return;
-
-        if (smaCheckbox.isSelected()) {
-            int period = ((Number) smaSpinner.getValue()).intValue();
-            chartPanel.setSmaOverlay(period, currentCandles);
-        } else {
-            chartPanel.clearSmaOverlay();
-        }
-    }
-
-    private void updateEmaOverlay() {
-        if (currentCandles == null || currentCandles.isEmpty()) return;
-
-        if (emaCheckbox.isSelected()) {
-            int period = ((Number) emaSpinner.getValue()).intValue();
-            chartPanel.setEmaOverlay(period, currentCandles);
-        } else {
-            chartPanel.clearEmaOverlay();
-        }
-    }
-
-    private void updateBbOverlay() {
-        if (currentCandles == null || currentCandles.isEmpty()) return;
-
-        if (bbCheckbox.isSelected()) {
-            int period = ((Number) bbSpinner.getValue()).intValue();
-            chartPanel.setBollingerOverlay(period, 2.0, currentCandles);
-        } else {
-            chartPanel.clearBollingerOverlay();
-        }
-    }
-
-    private void updateHlOverlay() {
-        if (currentCandles == null || currentCandles.isEmpty()) return;
-
-        if (hlCheckbox.isSelected()) {
-            int period = ((Number) hlSpinner.getValue()).intValue();
-            chartPanel.setHighLowOverlay(period, currentCandles);
-        } else {
-            chartPanel.clearHighLowOverlay();
-        }
-    }
-
-    private void updateMacdChart() {
-        int fast = ((Number) macdFastSpinner.getValue()).intValue();
-        int slow = ((Number) macdSlowSpinner.getValue()).intValue();
-        int signal = ((Number) macdSignalSpinner.getValue()).intValue();
-        chartPanel.setMacdChartEnabled(macdChartCheckbox.isSelected(), fast, slow, signal);
-        runBacktest();
-    }
-
     private void runBacktest() {
         // Apply current UI values
         editorPanel.applyToStrategy(strategy);
         settingsPanel.applyToStrategy(strategy);
         applyToolbarToStrategy();
 
-        // Build config from toolbar and settings panel
+        // Get config from UI
         String symbol = (String) symbolCombo.getSelectedItem();
         String resolution = (String) timeframeCombo.getSelectedItem();
+        String duration = (String) durationCombo.getSelectedItem();
         double capital = settingsPanel.getCapital();
-        PositionSizingType sizingType = strategy.getPositionSizingType();
-        double sizingValue = strategy.getPositionSizingValue();
-        double commission = strategy.getTotalCommission();
 
-        BacktestConfig config = new BacktestConfig(
+        // Run backtest via coordinator
+        backtestCoordinator.runBacktest(
+            strategy,
             symbol,
             resolution,
-            System.currentTimeMillis() - getDurationMillis(),
-            System.currentTimeMillis(),
-            capital,
-            sizingType,
-            sizingValue,
-            commission
+            BacktestCoordinator.parseDurationMillis(duration),
+            capital
         );
-
-        // Run in background
-        setProgress(0, "Starting...");
-
-        SwingWorker<BacktestResult, BacktestEngine.Progress> worker = new SwingWorker<>() {
-            @Override
-            protected BacktestResult doInBackground() throws Exception {
-                // Fetch candles
-                publish(new BacktestEngine.Progress(0, 0, 0, "Fetching data from Binance..."));
-
-                currentCandles = candleStore.getCandles(
-                    config.symbol(),
-                    config.resolution(),
-                    config.startDate(),
-                    config.endDate()
-                );
-
-                if (currentCandles.isEmpty()) {
-                    throw new Exception("No candle data available for " + config.symbol());
-                }
-
-                // Load required phases
-                List<Phase> requiredPhases = new ArrayList<>();
-                PhaseStore phaseStore = ApplicationContext.getInstance().getPhaseStore();
-                for (String phaseId : strategy.getRequiredPhaseIds()) {
-                    Phase phase = phaseStore.load(phaseId);
-                    if (phase != null) {
-                        requiredPhases.add(phase);
-                    }
-                }
-
-                // Run backtest with phase filtering
-                return backtestEngine.run(strategy, config, currentCandles, requiredPhases, this::publish);
-            }
-
-            @Override
-            protected void process(List<BacktestEngine.Progress> chunks) {
-                BacktestEngine.Progress latest = chunks.get(chunks.size() - 1);
-                ProjectWindow.this.setProgress(latest.percentage(), latest.message());
-                setStatus(latest.message());
-            }
-
-            @Override
-            protected void done() {
-                try {
-                    BacktestResult result = get();
-
-                    // Save result to per-project storage
-                    resultStore.save(result);
-
-                    // Display result
-                    displayResult(result);
-
-                    ProjectWindow.this.setProgress(100, "Complete");
-                    setStatus(result.getSummary());
-
-                } catch (Exception e) {
-                    ProjectWindow.this.setProgress(0, "Error");
-                    setStatus("Error: " + e.getMessage());
-                    e.printStackTrace();
-                }
-            }
-        };
-
-        worker.execute();
     }
 
     private void displayResult(BacktestResult result) {
@@ -1221,13 +776,14 @@ public class ProjectWindow extends JFrame {
         // Update trade table
         tradeTablePanel.updateTrades(result.trades());
 
-        // Update charts
-        if (currentCandles != null && !currentCandles.isEmpty()) {
-            chartPanel.updateCharts(currentCandles, result.trades(), result.config().initialCapital());
-            updateSmaOverlay();
-            updateEmaOverlay();
-            updateBbOverlay();
-            updateHlOverlay();
+        // Update charts with candles from coordinator
+        List<Candle> candles = backtestCoordinator.getCurrentCandles();
+        if (candles != null && !candles.isEmpty()) {
+            chartPanel.updateCharts(candles, result.trades(), result.config().initialCapital());
+
+            // Update indicator controls with current candle data
+            indicatorControls.setCurrentCandles(candles);
+            indicatorControls.refreshOverlays();
         }
     }
 

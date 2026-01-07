@@ -1,11 +1,13 @@
 package com.tradery.model;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 
 /**
  * Represents an exit zone configuration based on P&L percentage ranges.
  * Each zone can have its own exit conditions, SL/TP settings, and behavior.
  */
+@JsonIgnoreProperties(ignoreUnknown = true)
 public record ExitZone(
     String name,
     Double minPnlPercent,
@@ -15,20 +17,23 @@ public record ExitZone(
     Double stopLossValue,
     TakeProfitType takeProfitType,
     Double takeProfitValue,
-    boolean exitImmediately,
-    int minBarsBeforeExit,
+    Boolean exitImmediately,    // Use wrapper for null-safety during deserialization
+    Integer minBarsBeforeExit,  // Use wrapper for null-safety during deserialization
     Double exitPercent,         // null = 100% (close all), 1-100 for partial per trigger
     Integer maxExits,           // null = unlimited, max number of partial exits in this zone
     ExitBasis exitBasis,        // ORIGINAL or REMAINING (default: REMAINING)
     ExitReentry exitReentry,    // CONTINUE or RESET (default: CONTINUE)
-    int minBarsBetweenExits     // Minimum bars between partial exits (default: 0)
+    Integer minBarsBetweenExits // Minimum bars between partial exits (null = 0)
 ) {
     /**
-     * Compact constructor to set defaults for new fields.
+     * Compact constructor to set defaults for missing fields.
      */
     public ExitZone {
+        if (exitImmediately == null) exitImmediately = false;
+        if (minBarsBeforeExit == null) minBarsBeforeExit = 0;
         if (exitBasis == null) exitBasis = ExitBasis.REMAINING;
         if (exitReentry == null) exitReentry = ExitReentry.CONTINUE;
+        if (minBarsBetweenExits == null) minBarsBetweenExits = 0;
     }
 
     /**
@@ -95,13 +100,13 @@ public record ExitZone(
         private Double stopLossValue;
         private TakeProfitType takeProfitType = TakeProfitType.NONE;
         private Double takeProfitValue;
-        private boolean exitImmediately = false;
-        private int minBarsBeforeExit = 0;
+        private Boolean exitImmediately = false;
+        private Integer minBarsBeforeExit = 0;
         private Double exitPercent;
         private Integer maxExits;
         private ExitBasis exitBasis = ExitBasis.REMAINING;
         private ExitReentry exitReentry = ExitReentry.CONTINUE;
-        private int minBarsBetweenExits = 0;
+        private Integer minBarsBetweenExits = 0;
 
         public Builder(String name) {
             this.name = name;
@@ -134,12 +139,12 @@ public record ExitZone(
             return this;
         }
 
-        public Builder exitImmediately(boolean immediate) {
+        public Builder exitImmediately(Boolean immediate) {
             this.exitImmediately = immediate;
             return this;
         }
 
-        public Builder minBarsBeforeExit(int bars) {
+        public Builder minBarsBeforeExit(Integer bars) {
             this.minBarsBeforeExit = bars;
             return this;
         }
@@ -164,7 +169,7 @@ public record ExitZone(
             return this;
         }
 
-        public Builder minBarsBetweenExits(int bars) {
+        public Builder minBarsBetweenExits(Integer bars) {
             this.minBarsBetweenExits = bars;
             return this;
         }
