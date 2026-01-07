@@ -93,6 +93,20 @@ close > HIGH_OF(20) AND volume > AVG_VOLUME(20) * 1.5
 - **Max Open Trades**: Limit concurrent positions (default: 1)
 - **Min Candles Between**: Minimum bars between new entries (default: 0)
 
+### Exit Zones
+Exit zones define behavior at different P&L levels. Each zone has:
+- **P&L Range**: `minPnlPercent` / `maxPnlPercent` (null = unbounded)
+- **Exit Condition**: DSL expression for conditional exits
+- **SL/TP**: Zone-specific stop loss and take profit
+- **Exit Immediately**: Exit full position instantly when zone is entered (no conditions checked)
+- **Scale Out**: Partial exits (`exitPercent` < 100) with `maxExits`, `exitBasis`, `exitReentry`
+
+**AI Guidance for Exit Zones:**
+- Use `exitImmediately: true` for instant full-position exits - this is the simple approach
+- Only use Scale Out (`exitPercent`) for actual partial exits (25%, 50%, etc.)
+- Never set `exitPercent: 100` - that's redundant; use `exitImmediately` or just omit scale-out
+- If `exitPercent` is null/omitted, exits are 100% by default (full position)
+
 ### Position Sizing Options
 - Fixed percent of equity (1%, 5%, 10%)
 - Fixed dollar amount ($100, $500, $1000)
