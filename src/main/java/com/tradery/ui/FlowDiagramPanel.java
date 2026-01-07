@@ -30,7 +30,7 @@ public class FlowDiagramPanel extends JPanel {
 
     @Override
     public Dimension getPreferredSize() {
-        return new Dimension(200, SCALE_HEIGHT + 20);
+        return new Dimension(300, SCALE_HEIGHT + 20);
     }
 
     @Override
@@ -52,11 +52,9 @@ public class FlowDiagramPanel extends JPanel {
         Color dimColor = new Color(textColor.getRed(), textColor.getGreen(), textColor.getBlue(), 100);
         Color axisColor = new Color(180, 180, 180);
 
-        Font mainFont = getFont().deriveFont(Font.PLAIN, 10f);
-        Font smallFont = getFont().deriveFont(Font.PLAIN, 8f);
+        Font mainFont = getFont().deriveFont(Font.PLAIN, 12f);
         g2.setFont(mainFont);
         FontMetrics fm = g2.getFontMetrics();
-        FontMetrics fmSmall = g2.getFontMetrics(smallFont);
 
         // Get exit zones
         List<ExitZone> zones = strategy.getExitZones();
@@ -115,12 +113,23 @@ public class FlowDiagramPanel extends JPanel {
         int entryRight = entryX + entryBoxWidth;
         int entryCenterY = entryY + entryBoxHeight / 2;
 
-        // Draw entry box
+        // Draw entry box (rounded on left, square on right)
+        int radius = 6;
+        Path2D entryBox = new Path2D.Float();
+        entryBox.moveTo(entryX + radius, entryY);
+        entryBox.lineTo(entryX + entryBoxWidth, entryY);  // top edge
+        entryBox.lineTo(entryX + entryBoxWidth, entryY + entryBoxHeight);  // right edge (square)
+        entryBox.lineTo(entryX + radius, entryY + entryBoxHeight);  // bottom edge
+        entryBox.quadTo(entryX, entryY + entryBoxHeight, entryX, entryY + entryBoxHeight - radius);  // bottom-left corner
+        entryBox.lineTo(entryX, entryY + radius);  // left edge
+        entryBox.quadTo(entryX, entryY, entryX + radius, entryY);  // top-left corner
+        entryBox.closePath();
+
         g2.setColor(boxBg);
-        g2.fillRoundRect(entryX, entryY, entryBoxWidth, entryBoxHeight, 6, 6);
+        g2.fill(entryBox);
         g2.setColor(accentColor);
         g2.setStroke(new BasicStroke(1.5f));
-        g2.drawRoundRect(entryX, entryY, entryBoxWidth, entryBoxHeight, 6, 6);
+        g2.draw(entryBox);
         g2.setColor(textColor);
         g2.setFont(mainFont);
         String entryText = "Entry";
@@ -130,16 +139,18 @@ public class FlowDiagramPanel extends JPanel {
 
         // Zone area starts here
         int zonesX = entryRight + arrowGap;
-        int barWidth = 5;
         int labelGapBar = 6;
 
-        // Draw 0% reference line (dashed, subtle)
-        int zeroY = pnlToY(0, minPnl, maxPnl, scaleTop, scaleBottom);
-        g2.setColor(new Color(180, 180, 180, 60));
-        g2.setStroke(new BasicStroke(1f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER, 1f, new float[]{3, 3}, 0));
-        g2.drawLine(entryRight + 5, zeroY, zonesX + barWidth, zeroY);
+        // Calculate bar width to fit all zone names with "Exit: " prefix
+        int barPadding = 8;
+        int barWidth = 60;  // minimum width
+        for (ExitZone zone : zones) {
+            String name = zone.name() != null && !zone.name().isEmpty() ? zone.name() : "Default";
+            String label = "Exit: " + name;
+            barWidth = Math.max(barWidth, fm.stringWidth(label) + barPadding * 2);
+        }
 
-        // Draw zones as thin bars with labels
+        // Draw zones as bars with labels inside
         g2.setStroke(new BasicStroke(1.5f));
 
         for (int i = 0; i < zones.size(); i++) {
@@ -155,15 +166,29 @@ public class FlowDiagramPanel extends JPanel {
             int zoneBotY = pnlToY(zMin, minPnl, maxPnl, scaleTop, scaleBottom);
             int zoneHeight = Math.max(zoneBotY - zoneTopY, 4);
 
-            // Draw arrow/band from entry to zone bar
+            // Draw curved flow band from entry to zone bar (Sankey-style)
             g2.setColor(arrowColor);
-            Path2D arrow = new Path2D.Float();
-            arrow.moveTo(entryRight + 2, entryY);
-            arrow.lineTo(zonesX - 2, zoneTopY);
-            arrow.lineTo(zonesX - 2, zoneBotY);
-            arrow.lineTo(entryRight + 2, entryY + entryBoxHeight);
-            arrow.closePath();
-            g2.fill(arrow);
+            Path2D flow = new Path2D.Float();
+
+            // Control point X for bezier curves (midpoint)
+            float cpX = (entryRight + 2 + zonesX) / 2f;
+
+            // Entry connection points - spread across entry box height proportionally
+            float entryTopY = entryY - 2;
+            float entryBotY = entryY + entryBoxHeight + 2;
+
+            // Top edge: from entry top to zone top
+            flow.moveTo(entryRight + 2, entryTopY);
+            flow.curveTo(cpX, entryTopY, cpX, zoneTopY, zonesX, zoneTopY);
+
+            // Right edge: down the zone bar
+            flow.lineTo(zonesX, zoneBotY);
+
+            // Bottom edge: from zone bottom back to entry bottom
+            flow.curveTo(cpX, zoneBotY, cpX, entryBotY, entryRight + 2, entryBotY);
+
+            flow.closePath();
+            g2.fill(flow);
 
             // Zone bar - 50% transparent fill
             Color barFill = new Color(accentColor.getRed(), accentColor.getGreen(), accentColor.getBlue(), 80);
@@ -176,9 +201,9 @@ public class FlowDiagramPanel extends JPanel {
                 g2.setStroke(new BasicStroke(2f));
                 g2.drawLine(zonesX, zoneTopY, zonesX + barWidth, zoneTopY);
             } else {
-                // Dashed line for unbounded
+                // Dotted line for unbounded
                 g2.setColor(dimColor);
-                g2.setStroke(new BasicStroke(1f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER, 1f, new float[]{2, 2}, 0));
+                g2.setStroke(new BasicStroke(1.5f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND, 1f, new float[]{1, 3}, 0));
                 g2.drawLine(zonesX, zoneTopY, zonesX + barWidth, zoneTopY);
             }
 
@@ -188,41 +213,38 @@ public class FlowDiagramPanel extends JPanel {
                 g2.setStroke(new BasicStroke(2f));
                 g2.drawLine(zonesX, zoneBotY, zonesX + barWidth, zoneBotY);
             } else {
-                // Dashed line for unbounded
+                // Dotted line for unbounded
                 g2.setColor(dimColor);
-                g2.setStroke(new BasicStroke(1f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER, 1f, new float[]{2, 2}, 0));
+                g2.setStroke(new BasicStroke(1.5f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND, 1f, new float[]{1, 3}, 0));
                 g2.drawLine(zonesX, zoneBotY, zonesX + barWidth, zoneBotY);
             }
 
-            // P&L labels at actual boundary positions (first, right after bar)
-            g2.setFont(smallFont);
+            // Zone name inside the bar - vertically centered
+            String name = zone.name() != null && !zone.name().isEmpty() ? zone.name() : "Default";
+            String zoneLabel = "Exit: " + name;
+            g2.setFont(mainFont);
+            g2.setColor(textColor);
+            int labelX = zonesX + barPadding;
+            int labelY = zoneTopY + (zoneHeight + fm.getAscent()) / 2 - 2;
+            // Clamp label Y to visible range
+            labelY = Math.max(scaleTop + fm.getAscent(), Math.min(scaleBottom - 2, labelY));
+            g2.drawString(zoneLabel, labelX, labelY);
+
+            // P&L labels to the right of bar
             g2.setColor(dimColor);
             int pctLabelX = zonesX + barWidth + labelGapBar;
 
-            // Calculate max width of percentage labels for alignment
-            String maxLabel = unboundedTop ? "+∞" : formatPct(zone.maxPnlPercent());
-            String minLabel = unboundedBottom ? "−∞" : formatPct(zone.minPnlPercent());
-            int maxPctWidth = Math.max(fmSmall.stringWidth(maxLabel), fmSmall.stringWidth(minLabel));
-
             // Top boundary percentage (max)
-            int maxLabelY = zoneTopY + fmSmall.getAscent() / 2;
+            String maxLabel = unboundedTop ? "+∞" : formatPct(zone.maxPnlPercent());
+            int maxLabelY = zoneTopY + fm.getAscent() / 2;
             g2.drawString(maxLabel, pctLabelX, maxLabelY);
 
             // Bottom boundary percentage (min) - only if different position
-            if (zoneHeight > fmSmall.getHeight() + 4) {
-                int minLabelY = zoneBotY + fmSmall.getAscent() / 2;
+            if (zoneHeight > fm.getHeight() + 4) {
+                String minLabel = unboundedBottom ? "−∞" : formatPct(zone.minPnlPercent());
+                int minLabelY = zoneBotY + fm.getAscent() / 2;
                 g2.drawString(minLabel, pctLabelX, minLabelY);
             }
-
-            // Zone name - to the right of percentage labels, vertically centered
-            String name = zone.name() != null && !zone.name().isEmpty() ? zone.name() : "Zone " + (i + 1);
-            g2.setFont(mainFont);
-            g2.setColor(textColor);
-            int nameX = pctLabelX + maxPctWidth + 8;
-            int nameLabelY = zoneTopY + (zoneHeight + fm.getAscent()) / 2 - 2;
-            // Clamp label Y to visible range
-            nameLabelY = Math.max(scaleTop + fm.getAscent(), Math.min(scaleBottom - 2, nameLabelY));
-            g2.drawString(name, nameX, nameLabelY);
         }
 
         g2.dispose();

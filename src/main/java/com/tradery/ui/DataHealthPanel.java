@@ -126,9 +126,14 @@ public class DataHealthPanel extends JPanel {
         YearMonth start = range.get()[0];
         YearMonth end = range.get()[1];
 
-        // Expand to full years
+        // Expand to full years - from January of earliest year to December of latest (or now if current year)
         start = start.withMonth(1);
-        end = YearMonth.now();  // Always show up to current month
+        YearMonth now = YearMonth.now();
+        if (end.getYear() == now.getYear()) {
+            end = now;  // Current year: show up to current month
+        } else {
+            end = end.withMonth(12);  // Historical year: show full year
+        }
 
         healthData = checker.analyzeRange(symbol, resolution, start, end);
         repaint();
