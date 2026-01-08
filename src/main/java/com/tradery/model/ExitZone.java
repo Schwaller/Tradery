@@ -29,7 +29,9 @@ public record ExitZone(
     ExitReentry exitReentry,    // CONTINUE or RESET (default: CONTINUE)
     Integer minBarsBetweenExits, // Minimum bars between partial exits (null = 0)
     List<String> requiredPhaseIds,  // Zone only active when all these phases active
-    List<String> excludedPhaseIds   // Zone inactive when any of these phases active
+    List<String> excludedPhaseIds,  // Zone inactive when any of these phases active
+    List<String> requiredHoopPatternIds,  // All these patterns must complete to trigger exit
+    List<String> excludedHoopPatternIds   // Exit blocked if any of these patterns complete
 ) {
     /**
      * Compact constructor to set defaults for missing fields.
@@ -42,6 +44,8 @@ public record ExitZone(
         if (minBarsBetweenExits == null) minBarsBetweenExits = 0;
         if (requiredPhaseIds == null) requiredPhaseIds = new ArrayList<>();
         if (excludedPhaseIds == null) excludedPhaseIds = new ArrayList<>();
+        if (requiredHoopPatternIds == null) requiredHoopPatternIds = new ArrayList<>();
+        if (excludedHoopPatternIds == null) excludedHoopPatternIds = new ArrayList<>();
     }
 
     /**
@@ -99,6 +103,8 @@ public record ExitZone(
             ExitReentry.CONTINUE,
             0,
             new ArrayList<>(),
+            new ArrayList<>(),
+            new ArrayList<>(),
             new ArrayList<>()
         );
     }
@@ -128,6 +134,8 @@ public record ExitZone(
         private Integer minBarsBetweenExits = 0;
         private List<String> requiredPhaseIds = new ArrayList<>();
         private List<String> excludedPhaseIds = new ArrayList<>();
+        private List<String> requiredHoopPatternIds = new ArrayList<>();
+        private List<String> excludedHoopPatternIds = new ArrayList<>();
 
         public Builder(String name) {
             this.name = name;
@@ -205,6 +213,16 @@ public record ExitZone(
             return this;
         }
 
+        public Builder requiredHoopPatterns(List<String> patternIds) {
+            this.requiredHoopPatternIds = patternIds != null ? patternIds : new ArrayList<>();
+            return this;
+        }
+
+        public Builder excludedHoopPatterns(List<String> patternIds) {
+            this.excludedHoopPatternIds = patternIds != null ? patternIds : new ArrayList<>();
+            return this;
+        }
+
         public ExitZone build() {
             return new ExitZone(
                 name,
@@ -223,7 +241,9 @@ public record ExitZone(
                 exitReentry,
                 minBarsBetweenExits,
                 requiredPhaseIds,
-                excludedPhaseIds
+                excludedPhaseIds,
+                requiredHoopPatternIds,
+                excludedHoopPatternIds
             );
         }
     }

@@ -20,6 +20,7 @@ public class EntryConfigPanel extends JPanel {
     private JComboBox<String> dcaModeCombo;
     private JPanel dcaDetailsPanel;
     private JPanel phaseContainer;
+    private JPanel hoopContainer;
 
     private static final String[] DCA_MODES = {"Pause", "Abort", "Continue"};
 
@@ -75,6 +76,10 @@ public class EntryConfigPanel extends JPanel {
         phaseContainer = new JPanel(new BorderLayout());
         phaseContainer.setOpaque(false);
 
+        // Container for hoop pattern selection panel
+        hoopContainer = new JPanel(new BorderLayout());
+        hoopContainer.setOpaque(false);
+
         // Subtle grouped background with rounded border (matching exit zones)
         conditionPanel.setOpaque(true);
         Color baseColor = UIManager.getColor("Panel.background");
@@ -91,8 +96,13 @@ public class EntryConfigPanel extends JPanel {
             BorderFactory.createEmptyBorder(8, 10, 10, 10)
         ));
 
-        // Add phase selection at top of blue box
-        conditionPanel.add(phaseContainer, BorderLayout.NORTH);
+        // Add phase and hoop selection at top of blue box
+        JPanel filterStack = new JPanel();
+        filterStack.setLayout(new BoxLayout(filterStack, BoxLayout.Y_AXIS));
+        filterStack.setOpaque(false);
+        filterStack.add(phaseContainer);
+        filterStack.add(hoopContainer);
+        conditionPanel.add(filterStack, BorderLayout.NORTH);
 
         JScrollPane entryScroll = new JScrollPane(entryEditor);
 
@@ -218,6 +228,18 @@ public class EntryConfigPanel extends JPanel {
         }
         phaseContainer.revalidate();
         phaseContainer.repaint();
+    }
+
+    /**
+     * Inject the hoop pattern selection panel to display below phase selection.
+     */
+    public void setHoopPatternSelectionPanel(JPanel panel) {
+        hoopContainer.removeAll();
+        if (panel != null) {
+            hoopContainer.add(panel, BorderLayout.CENTER);
+        }
+        hoopContainer.revalidate();
+        hoopContainer.repaint();
     }
 
     public void loadFrom(Strategy strategy) {

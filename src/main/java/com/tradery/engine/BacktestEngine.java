@@ -5,13 +5,17 @@ import com.tradery.data.CandleStore;
 import com.tradery.dsl.AstNode;
 import com.tradery.dsl.Parser;
 import com.tradery.indicators.IndicatorEngine;
+import com.tradery.io.HoopPatternStore;
 import com.tradery.model.*;
 
+import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Consumer;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -78,6 +82,42 @@ public class BacktestEngine {
             } catch (IOException e) {
                 return createErrorResult(strategy, config, startTime,
                     "Failed to evaluate phases: " + e.getMessage());
+            }
+        }
+
+        // Evaluate hoop patterns upfront if any are configured
+        Map<String, boolean[]> hoopPatternStates = new HashMap<>();
+        HoopPatternSettings hoopSettings = strategy.getHoopPatternSettings();
+        List<String> requiredEntryPatternIds = hoopSettings.getRequiredEntryPatternIds();
+        List<String> excludedEntryPatternIds = hoopSettings.getExcludedEntryPatternIds();
+        List<String> requiredExitPatternIds = hoopSettings.getRequiredExitPatternIds();
+        List<String> excludedExitPatternIds = hoopSettings.getExcludedExitPatternIds();
+
+        if (hoopSettings.hasAnyPatterns() && candleStore != null) {
+            if (onProgress != null) {
+                onProgress.accept(new Progress(0, candles.size(), 0, "Evaluating hoop patterns..."));
+            }
+            try {
+                HoopPatternEvaluator hoopEvaluator = new HoopPatternEvaluator(candleStore);
+
+                // Collect all needed pattern IDs
+                Set<String> neededPatternIds = new HashSet<>();
+                neededPatternIds.addAll(requiredEntryPatternIds);
+                neededPatternIds.addAll(excludedEntryPatternIds);
+                neededPatternIds.addAll(requiredExitPatternIds);
+                neededPatternIds.addAll(excludedExitPatternIds);
+
+                // Load patterns from store
+                File hoopsDir = new File(System.getProperty("user.home"), ".tradery/hoops");
+                HoopPatternStore hoopStore = new HoopPatternStore(hoopsDir);
+                List<HoopPattern> patterns = hoopStore.loadByIds(neededPatternIds);
+
+                hoopPatternStates = hoopEvaluator.evaluatePatterns(
+                    patterns, candles, config.resolution()
+                );
+            } catch (IOException e) {
+                return createErrorResult(strategy, config, startTime,
+                    "Failed to evaluate hoop patterns: " + e.getMessage());
             }
         }
 
@@ -389,9 +429,24 @@ public class BacktestEngine {
                             }
                         }
 
-                        // Check DSL exit condition (zone's or strategy's)
-                        if (exitReason == null && exitConditionAst != null) {
-                            boolean shouldExit = evaluator.evaluate(exitConditionAst, i);
+                        // Check DSL exit condition (zone's or strategy's) and hoop patterns
+                        if (exitReason == null) {
+                            // Evaluate DSL exit condition
+                            boolean dslExitSignal = exitConditionAst != null && evaluator.evaluate(exitConditionAst, i);
+
+                            // Evaluate hoop exit pattern
+                            boolean hoopExitSignal = HoopPatternEvaluator.patternsMatch(
+                                hoopPatternStates, requiredExitPatternIds, excludedExitPatternIds, i
+                            );
+
+                            // Combine based on exit mode
+                            boolean shouldExit = switch (hoopSettings.getExitMode()) {
+                                case DSL_ONLY -> dslExitSignal;
+                                case HOOP_ONLY -> hoopExitSignal;
+                                case AND -> dslExitSignal && hoopExitSignal;
+                                case OR -> dslExitSignal || hoopExitSignal;
+                            };
+
                             if (shouldExit) {
                                 exitReason = "signal";
                                 exitPrice = candle.close();
@@ -581,8 +636,21 @@ public class BacktestEngine {
                 boolean passesMinDistance = (i - lastEntryBar) >= requiredDistance;
                 DcaMode dcaMode = strategy.getDcaMode();
 
-                // Check if entry signal is present
-                boolean signalPresent = evaluator.evaluate(entryResult.ast(), i);
+                // Check if entry signal is present (DSL condition)
+                boolean dslSignal = evaluator.evaluate(entryResult.ast(), i);
+
+                // Check if hoop pattern signal is present
+                boolean hoopSignal = HoopPatternEvaluator.patternsMatch(
+                    hoopPatternStates, requiredEntryPatternIds, excludedEntryPatternIds, i
+                );
+
+                // Combine DSL and hoop signals based on entry mode
+                boolean signalPresent = switch (hoopSettings.getEntryMode()) {
+                    case DSL_ONLY -> dslSignal;
+                    case HOOP_ONLY -> hoopSignal;
+                    case AND -> dslSignal && hoopSignal;
+                    case OR -> dslSignal || hoopSignal;
+                };
 
                 // Handle DCA abort mode - close all trades if signal lost
                 if (isDcaEntry && dcaMode == DcaMode.ABORT && !signalPresent && toClose.isEmpty()) {

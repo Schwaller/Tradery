@@ -14,6 +14,7 @@ import java.time.Instant;
 public class PhaseEditorPanel extends JPanel {
 
     private JTextField nameField;
+    private JComboBox<String> categoryCombo;
     private JTextArea descriptionArea;
     private JComboBox<String> symbolCombo;
     private JComboBox<String> timeframeCombo;
@@ -22,6 +23,10 @@ public class PhaseEditorPanel extends JPanel {
     private Phase phase;
     private Runnable onChange;
     private boolean suppressChangeEvents = false;
+
+    private static final String[] CATEGORIES = {
+        "Trend", "Time", "Moon", "Custom"
+    };
 
     private static final String[] SYMBOLS = {
         "BTCUSDT", "ETHUSDT", "BNBUSDT", "XRPUSDT", "ADAUSDT",
@@ -42,6 +47,9 @@ public class PhaseEditorPanel extends JPanel {
     private void initializeComponents() {
         nameField = new JTextField();
         nameField.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 13));
+
+        categoryCombo = new JComboBox<>(CATEGORIES);
+        categoryCombo.setSelectedItem("Custom");
 
         descriptionArea = new JTextArea(2, 20);
         descriptionArea.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 12));
@@ -69,6 +77,7 @@ public class PhaseEditorPanel extends JPanel {
         nameField.getDocument().addDocumentListener(docListener);
         descriptionArea.getDocument().addDocumentListener(docListener);
         conditionArea.getDocument().addDocumentListener(docListener);
+        categoryCombo.addActionListener(e -> fireChange());
         symbolCombo.addActionListener(e -> fireChange());
         timeframeCombo.addActionListener(e -> fireChange());
     }
@@ -94,8 +103,21 @@ public class PhaseEditorPanel extends JPanel {
         gbc.weightx = 1;
         formPanel.add(nameField, gbc);
 
-        // Symbol
+        // Category
         gbc.gridx = 0; gbc.gridy = 1;
+        gbc.fill = GridBagConstraints.NONE;
+        gbc.weightx = 0;
+        JLabel categoryLabel = new JLabel("Category:");
+        categoryLabel.setForeground(Color.GRAY);
+        formPanel.add(categoryLabel, gbc);
+
+        gbc.gridx = 1;
+        gbc.fill = GridBagConstraints.HORIZONTAL;
+        gbc.weightx = 1;
+        formPanel.add(categoryCombo, gbc);
+
+        // Symbol
+        gbc.gridx = 0; gbc.gridy = 2;
         gbc.fill = GridBagConstraints.NONE;
         gbc.weightx = 0;
         JLabel symbolLabel = new JLabel("Symbol:");
@@ -108,7 +130,7 @@ public class PhaseEditorPanel extends JPanel {
         formPanel.add(symbolCombo, gbc);
 
         // Timeframe
-        gbc.gridx = 0; gbc.gridy = 2;
+        gbc.gridx = 0; gbc.gridy = 3;
         gbc.fill = GridBagConstraints.NONE;
         gbc.weightx = 0;
         JLabel tfLabel = new JLabel("Timeframe:");
@@ -121,7 +143,7 @@ public class PhaseEditorPanel extends JPanel {
         formPanel.add(timeframeCombo, gbc);
 
         // Condition with DSL help
-        gbc.gridx = 0; gbc.gridy = 3;
+        gbc.gridx = 0; gbc.gridy = 4;
         gbc.fill = GridBagConstraints.NONE;
         gbc.weightx = 0;
         gbc.anchor = GridBagConstraints.NORTHWEST;
@@ -155,7 +177,7 @@ public class PhaseEditorPanel extends JPanel {
         formPanel.add(layeredPane, gbc);
 
         // Description
-        gbc.gridx = 0; gbc.gridy = 4;
+        gbc.gridx = 0; gbc.gridy = 5;
         gbc.fill = GridBagConstraints.NONE;
         gbc.weightx = 0;
         gbc.weighty = 0;
@@ -219,12 +241,14 @@ public class PhaseEditorPanel extends JPanel {
         try {
             if (phase != null) {
                 nameField.setText(phase.getName() != null ? phase.getName() : "");
+                categoryCombo.setSelectedItem(phase.getCategory() != null ? phase.getCategory() : "Custom");
                 descriptionArea.setText(phase.getDescription() != null ? phase.getDescription() : "");
                 symbolCombo.setSelectedItem(phase.getSymbol() != null ? phase.getSymbol() : "BTCUSDT");
                 timeframeCombo.setSelectedItem(phase.getTimeframe() != null ? phase.getTimeframe() : "1d");
                 conditionArea.setText(phase.getCondition() != null ? phase.getCondition() : "");
             } else {
                 nameField.setText("");
+                categoryCombo.setSelectedItem("Custom");
                 descriptionArea.setText("");
                 symbolCombo.setSelectedItem("BTCUSDT");
                 timeframeCombo.setSelectedItem("1d");
@@ -238,6 +262,7 @@ public class PhaseEditorPanel extends JPanel {
     public void applyTo(Phase phase) {
         if (phase == null) return;
         phase.setName(nameField.getText().trim());
+        phase.setCategory((String) categoryCombo.getSelectedItem());
         phase.setDescription(descriptionArea.getText().trim());
         phase.setSymbol((String) symbolCombo.getSelectedItem());
         phase.setTimeframe((String) timeframeCombo.getSelectedItem());
@@ -254,6 +279,7 @@ public class PhaseEditorPanel extends JPanel {
     public void setEnabled(boolean enabled) {
         super.setEnabled(enabled);
         nameField.setEnabled(enabled);
+        categoryCombo.setEnabled(enabled);
         descriptionArea.setEnabled(enabled);
         symbolCombo.setEnabled(enabled);
         timeframeCombo.setEnabled(enabled);

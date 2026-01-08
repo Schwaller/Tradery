@@ -3,6 +3,8 @@ package com.tradery.ui;
 import com.tradery.ApplicationContext;
 import com.tradery.TraderyApp;
 import com.tradery.io.FileWatcher;
+import com.tradery.io.HoopPatternStore;
+import com.tradery.io.PhaseStore;
 import com.tradery.io.StrategyStore;
 import com.tradery.io.WindowStateStore;
 import com.tradery.model.ExitZone;
@@ -33,6 +35,8 @@ public class LauncherFrame extends JFrame {
     private JButton openButton;
     private JButton newButton;
     private JButton manageDataButton;
+    private JButton phasesButton;
+    private JButton hoopsButton;
 
     private final StrategyStore strategyStore;
     private final Map<String, ProjectWindow> openWindows = new HashMap<>();
@@ -115,6 +119,14 @@ public class LauncherFrame extends JFrame {
         manageDataButton = new JButton("Manage Data");
         manageDataButton.addActionListener(e -> DataManagementDialog.show(this));
 
+        phasesButton = new JButton("Phases");
+        phasesButton.setToolTipText("Manage market phase definitions");
+        phasesButton.addActionListener(e -> openPhasesWindow());
+
+        hoopsButton = new JButton("Hoops");
+        hoopsButton.setToolTipText("Manage hoop pattern definitions");
+        hoopsButton.addActionListener(e -> openHoopsWindow());
+
         // Context menu for right-click
         JPopupMenu contextMenu = new JPopupMenu();
         JMenuItem openItem = new JMenuItem("Open");
@@ -177,6 +189,8 @@ public class LauncherFrame extends JFrame {
         // Button panel with left and right sections
         JPanel buttonPanel = new JPanel(new BorderLayout());
         JPanel leftButtons = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 8));
+        leftButtons.add(phasesButton);
+        leftButtons.add(hoopsButton);
         leftButtons.add(manageDataButton);
         JPanel rightButtons = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 8));
         rightButtons.add(newButton);
@@ -449,6 +463,20 @@ public class LauncherFrame extends JFrame {
                 }
             }
         }
+    }
+
+    private void openPhasesWindow() {
+        PhaseStore phaseStore = ApplicationContext.getInstance().getPhaseStore();
+        PhaseChooserFrame frame = new PhaseChooserFrame(phaseStore);
+        frame.setLocationRelativeTo(this);
+        frame.setVisible(true);
+    }
+
+    private void openHoopsWindow() {
+        HoopPatternStore hoopPatternStore = ApplicationContext.getInstance().getHoopPatternStore();
+        HoopPatternChooserFrame frame = new HoopPatternChooserFrame(hoopPatternStore);
+        frame.setLocationRelativeTo(this);
+        frame.setVisible(true);
     }
 
     @Override

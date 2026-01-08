@@ -16,6 +16,10 @@ A Java Swing desktop application for building and backtesting trading strategies
 ~/.tradery/                           # User data directory (created on first run)
 ├── strategies/                       # Strategy JSON files
 │   └── rsi-reversal.json
+├── phases/                           # Phase definitions (market regimes)
+│   └── {id}/phase.json
+├── hoops/                            # Hoop pattern definitions
+│   └── {id}/hoop.json
 ├── results/
 │   └── latest.json                   # Most recent backtest result
 └── data/
@@ -42,7 +46,9 @@ A Java Swing desktop application for building and backtesting trading strategies
 │   │   └── IndicatorEngine.java      # SMA, EMA, RSI, MACD, Bollinger Bands
 │   ├── engine/
 │   │   ├── BacktestEngine.java       # Main simulation loop
-│   │   └── ConditionEvaluator.java   # Evaluate DSL conditions
+│   │   ├── ConditionEvaluator.java   # Evaluate DSL conditions
+│   │   ├── PhaseEvaluator.java       # Evaluate market phases
+│   │   └── HoopPatternEvaluator.java # Evaluate hoop pattern matches
 │   ├── data/
 │   │   ├── BinanceClient.java        # Fetch OHLC from Binance API
 │   │   └── CandleStore.java          # Read/write CSV, smart caching
@@ -52,11 +58,18 @@ A Java Swing desktop application for building and backtesting trading strategies
 │   │   ├── BacktestConfig.java       # Backtest configuration
 │   │   ├── BacktestResult.java       # Results with trades and metrics
 │   │   ├── PerformanceMetrics.java   # Calculated performance stats
-│   │   └── Candle.java               # OHLC record
+│   │   ├── Candle.java               # OHLC record
+│   │   ├── Phase.java                # Market phase definition
+│   │   ├── Hoop.java                 # Single price checkpoint (record)
+│   │   ├── HoopPattern.java          # Full pattern with hoops list
+│   │   ├── HoopPatternSettings.java  # Strategy hoop settings
+│   │   └── HoopMatchResult.java      # Pattern match details
 │   └── io/
 │       ├── StrategyStore.java        # Read/write strategy JSON
 │       ├── ResultStore.java          # Save/load backtest results
-│       └── FileWatcher.java          # Watch for external file changes
+│       ├── FileWatcher.java          # Watch for external file changes
+│       ├── PhaseStore.java           # Read/write phase JSON
+│       └── HoopPatternStore.java     # Read/write hoop pattern JSON
 ```
 
 ## Development Commands
@@ -106,6 +119,65 @@ Exit zones define behavior at different P&L levels. Each zone has:
 - Only use Scale Out (`exitPercent`) for actual partial exits (25%, 50%, etc.)
 - Never set `exitPercent: 100` - that's redundant; use `exitImmediately` or just omit scale-out
 - If `exitPercent` is null/omitted, exits are 100% by default (full position)
+
+### Hoop Patterns
+Hoop patterns are sequential price-checkpoint matching for detecting chart patterns. Each hoop is a "gate" that price must pass through within a time window.
+
+**Hoop Definition:**
+- `name`: Identifier for the checkpoint
+- `minPricePercent` / `maxPricePercent`: Price bounds as % from anchor (null = unbounded)
+- `distance`: Expected bars from previous hoop
+- `tolerance`: ±N bars flexibility
+- `anchorMode`: `ACTUAL_HIT` (use hit price) or `AVG_RANGE` (use average of range)
+
+**Pattern Matching:**
+1. Start at each candle as potential anchor
+2. For each hoop in sequence, scan [distance - tolerance, distance + tolerance] bars
+3. Look for close price within [anchor * (1 + min%), anchor * (1 + max%)]
+4. If hit: update anchor, advance to next hoop
+5. If all hoops match: pattern completes at that bar
+
+**Combine Modes (Entry & Exit):**
+- `DSL_ONLY`: Use only DSL conditions (ignore hoops)
+- `HOOP_ONLY`: Use only hoop pattern matches (ignore DSL)
+- `AND`: Both DSL and hoop patterns must trigger
+- `OR`: Either DSL or hoop patterns can trigger
+
+**Strategy Integration:**
+```json
+{
+  "hoopPatternSettings": {
+    "entryMode": "AND",
+    "exitMode": "DSL_ONLY",
+    "requiredEntryPatternIds": ["double-bottom"],
+    "excludedEntryPatternIds": [],
+    "requiredExitPatternIds": [],
+    "excludedExitPatternIds": []
+  }
+}
+```
+
+**Example Pattern (Double Bottom):**
+```json
+{
+  "id": "double-bottom",
+  "name": "Double Bottom Pattern",
+  "hoops": [
+    { "name": "first-low", "minPricePercent": -3.0, "maxPricePercent": -1.0,
+      "distance": 5, "tolerance": 2, "anchorMode": "ACTUAL_HIT" },
+    { "name": "middle-peak", "minPricePercent": 1.0, "maxPricePercent": 4.0,
+      "distance": 7, "tolerance": 3, "anchorMode": "ACTUAL_HIT" },
+    { "name": "second-low", "minPricePercent": -3.0, "maxPricePercent": 0.5,
+      "distance": 7, "tolerance": 3, "anchorMode": "ACTUAL_HIT" },
+    { "name": "breakout", "minPricePercent": 2.0, "maxPricePercent": null,
+      "distance": 5, "tolerance": 3, "anchorMode": "ACTUAL_HIT" }
+  ],
+  "symbol": "BTCUSDT",
+  "timeframe": "1h",
+  "cooldownBars": 20,
+  "allowOverlap": false
+}
+```
 
 ### Position Sizing Options
 - Fixed percent of equity (1%, 5%, 10%)
@@ -178,6 +250,11 @@ When extending the DSL (adding new indicators, functions, or operators), update 
 The help dialog is accessible via the info icon (ⓘ) in the lower-right corner of DSL text boxes (entry conditions and exit zone conditions).
 
 ## Recent Changes (Latest Session)
+- Added hoop-based pattern matching system for entry/exit triggers
+  - Sequential price-checkpoint matching (hoops)
+  - Combine modes: DSL_ONLY, HOOP_ONLY, AND, OR
+  - Full UI: pattern editor, pattern selector in strategies
+  - "Phases" and "Hoops" buttons in toolbar
 - Added DSL help dialog with info icons on text boxes
 - Added 5th chart for Trade P&L % tracking
 - Added rejected trades display (no capital)

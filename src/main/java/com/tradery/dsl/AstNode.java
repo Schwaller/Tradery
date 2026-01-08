@@ -54,6 +54,11 @@ public sealed interface AstNode {
     record MoonFunctionCall(String func) implements AstNode {}
 
     /**
+     * Holiday function call: IS_US_HOLIDAY (returns 1 on US bank holidays, 0 otherwise)
+     */
+    record HolidayFunctionCall(String func) implements AstNode {}
+
+    /**
      * Property access: MACD(12,26,9).signal, BBANDS(20,2).upper
      */
     record PropertyAccess(IndicatorCall object, String property) implements AstNode {}

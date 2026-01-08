@@ -44,6 +44,7 @@ public class ConditionEvaluator {
             case AstNode.VolumeFunctionCall v -> evaluateVolumeFunction(v, barIndex);
             case AstNode.TimeFunctionCall t -> evaluateTimeFunction(t, barIndex);
             case AstNode.MoonFunctionCall m -> evaluateMoonFunction(m, barIndex);
+            case AstNode.HolidayFunctionCall h -> evaluateHolidayFunction(h, barIndex);
             case AstNode.PriceReference p -> evaluatePrice(p, barIndex);
             case AstNode.NumberLiteral n -> n.value();
             case AstNode.BooleanLiteral b -> b.value();
@@ -131,6 +132,9 @@ public class ConditionEvaluator {
             case "EMA" -> engine.getEMAAt(params.get(0).intValue(), barIndex);
             case "RSI" -> engine.getRSIAt(params.get(0).intValue(), barIndex);
             case "ATR" -> engine.getATRAt(params.get(0).intValue(), barIndex);
+            case "ADX" -> engine.getADXAt(params.get(0).intValue(), barIndex);
+            case "PLUS_DI" -> engine.getPlusDIAt(params.get(0).intValue(), barIndex);
+            case "MINUS_DI" -> engine.getMinusDIAt(params.get(0).intValue(), barIndex);
             case "MACD" -> engine.getMACDLineAt(
                 params.get(0).intValue(),
                 params.get(1).intValue(),
@@ -208,6 +212,13 @@ public class ConditionEvaluator {
         return switch (node.func()) {
             case "MOON_PHASE" -> engine.getMoonPhaseAt(barIndex);
             default -> throw new EvaluationException("Unknown moon function: " + node.func());
+        };
+    }
+
+    private double evaluateHolidayFunction(AstNode.HolidayFunctionCall node, int barIndex) {
+        return switch (node.func()) {
+            case "IS_US_HOLIDAY" -> engine.isUSHolidayAt(barIndex) ? 1.0 : 0.0;
+            default -> throw new EvaluationException("Unknown holiday function: " + node.func());
         };
     }
 

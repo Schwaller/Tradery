@@ -208,6 +208,8 @@ public class ExitConfigPanel extends JPanel {
         private JSpinner barsBetweenExitsSpinner;
         // Phase filtering
         private PhaseListPanel phaseListPanel;
+        // Hoop patterns for exit
+        private HoopPatternListPanel hoopPatternListPanel;
 
         private static final String[] EXIT_BASIS_OPTIONS = {"% of Remaining", "% of Original"};
         private static final String[] EXIT_REENTRY_OPTIONS = {"Continue", "Reset"};
@@ -252,12 +254,9 @@ public class ExitConfigPanel extends JPanel {
                 zone != null && zone.minPnlPercent() != null ? zone.minPnlPercent() : -5.0,
                 -100.0, 100.0, 0.5));
             hasMinPnl.setSelected(zone != null && zone.minPnlPercent() != null);
-            minPnlSpinner.setVisible(hasMinPnl.isSelected());
+            minPnlSpinner.setEnabled(hasMinPnl.isSelected());
             hasMinPnl.addActionListener(e -> {
-                minPnlSpinner.setVisible(hasMinPnl.isSelected());
-                revalidate();
-                updateMaxSize();
-                repaint();
+                minPnlSpinner.setEnabled(hasMinPnl.isSelected());
                 onChange.run();
             });
             minPnlSpinner.addChangeListener(e -> onChange.run());
@@ -267,12 +266,9 @@ public class ExitConfigPanel extends JPanel {
                 zone != null && zone.maxPnlPercent() != null ? zone.maxPnlPercent() : 0.0,
                 -100.0, 100.0, 0.5));
             hasMaxPnl.setSelected(zone != null && zone.maxPnlPercent() != null);
-            maxPnlSpinner.setVisible(hasMaxPnl.isSelected());
+            maxPnlSpinner.setEnabled(hasMaxPnl.isSelected());
             hasMaxPnl.addActionListener(e -> {
-                maxPnlSpinner.setVisible(hasMaxPnl.isSelected());
-                revalidate();
-                updateMaxSize();
-                repaint();
+                maxPnlSpinner.setEnabled(hasMaxPnl.isSelected());
                 onChange.run();
             });
             maxPnlSpinner.addChangeListener(e -> onChange.run());
@@ -415,6 +411,16 @@ public class ExitConfigPanel extends JPanel {
             }
             phaseListPanel.setOnChange(onChange);
 
+            // Hoop patterns for exit
+            hoopPatternListPanel = new HoopPatternListPanel("Exit Hoops");
+            if (zone != null) {
+                hoopPatternListPanel.setPatterns(
+                    zone.requiredHoopPatternIds(),
+                    zone.excludedHoopPatternIds()
+                );
+            }
+            hoopPatternListPanel.setOnChange(onChange);
+
             // Exit condition scroll pane with info button overlay
             JScrollPane rawScroll = new JScrollPane(exitConditionArea);
 
@@ -464,13 +470,13 @@ public class ExitConfigPanel extends JPanel {
             centerPanel.setOpaque(false);
             int row = 0;
 
-            // Min P&L row
-            centerPanel.add(hasMinPnl, new GridBagConstraints(0, row, 1, 1, 0, 0, WEST, NONE, new Insets(0, 0, 4, 4), 0, 0));
-            centerPanel.add(minPnlSpinner, new GridBagConstraints(1, row++, 1, 1, 1, 0, WEST, HORIZONTAL, new Insets(0, 0, 4, 0), 0, 0));
-
-            // Max P&L row
+            // Max P&L row (top - higher P&L is visually above)
             centerPanel.add(hasMaxPnl, new GridBagConstraints(0, row, 1, 1, 0, 0, WEST, NONE, new Insets(0, 0, 4, 4), 0, 0));
             centerPanel.add(maxPnlSpinner, new GridBagConstraints(1, row++, 1, 1, 1, 0, WEST, HORIZONTAL, new Insets(0, 0, 4, 0), 0, 0));
+
+            // Min P&L row (bottom)
+            centerPanel.add(hasMinPnl, new GridBagConstraints(0, row, 1, 1, 0, 0, WEST, NONE, new Insets(0, 0, 4, 4), 0, 0));
+            centerPanel.add(minPnlSpinner, new GridBagConstraints(1, row++, 1, 1, 1, 0, WEST, HORIZONTAL, new Insets(0, 0, 4, 0), 0, 0));
 
             // Min bars row
             JLabel barsLabel = new JLabel("Min Bars:");
@@ -504,11 +510,11 @@ public class ExitConfigPanel extends JPanel {
             scaleOutWrapper.add(scaleOutDetailsPanel, BorderLayout.CENTER);
             centerPanel.add(scaleOutWrapper, new GridBagConstraints(0, row++, 2, 1, 1, 0, WEST, HORIZONTAL, new Insets(4, 0, 0, 0), 0, 0));
 
-            // Phase filtering section
-            JLabel phaseLabel = new JLabel("Phases:");
-            phaseLabel.setForeground(Color.GRAY);
-            centerPanel.add(phaseLabel, new GridBagConstraints(0, row, 1, 1, 0, 0, NORTHWEST, NONE, new Insets(4, 0, 0, 4), 0, 0));
-            centerPanel.add(phaseListPanel, new GridBagConstraints(1, row++, 1, 1, 1, 0, WEST, HORIZONTAL, new Insets(4, 0, 0, 0), 0, 0));
+            // Phase filtering section (no label)
+            centerPanel.add(phaseListPanel, new GridBagConstraints(0, row++, 2, 1, 1, 0, WEST, HORIZONTAL, new Insets(4, 0, 0, 0), 0, 0));
+
+            // Hoop patterns section (no label)
+            centerPanel.add(hoopPatternListPanel, new GridBagConstraints(0, row++, 2, 1, 1, 0, WEST, HORIZONTAL, new Insets(4, 0, 0, 0), 0, 0));
 
             // Initialize badge visibility
             updateSimplifyBadgeVisibility();
@@ -639,7 +645,9 @@ public class ExitConfigPanel extends JPanel {
                 exitReentryToType(exitReentryCombo.getSelectedIndex()),
                 ((Number) barsBetweenExitsSpinner.getValue()).intValue(),
                 phaseListPanel.getRequiredPhaseIds(),
-                phaseListPanel.getExcludedPhaseIds()
+                phaseListPanel.getExcludedPhaseIds(),
+                hoopPatternListPanel.getRequiredPatternIds(),
+                hoopPatternListPanel.getExcludedPatternIds()
             );
         }
 
@@ -654,7 +662,7 @@ public class ExitConfigPanel extends JPanel {
             boolean hasMin = zone.minPnlPercent() != null;
             if (hasMinPnl.isSelected() != hasMin) {
                 hasMinPnl.setSelected(hasMin);
-                minPnlSpinner.setVisible(hasMin);
+                minPnlSpinner.setEnabled(hasMin);
             }
             if (hasMin && !minPnlSpinner.getValue().equals(zone.minPnlPercent())) {
                 minPnlSpinner.setValue(zone.minPnlPercent());
@@ -663,7 +671,7 @@ public class ExitConfigPanel extends JPanel {
             boolean hasMax = zone.maxPnlPercent() != null;
             if (hasMaxPnl.isSelected() != hasMax) {
                 hasMaxPnl.setSelected(hasMax);
-                maxPnlSpinner.setVisible(hasMax);
+                maxPnlSpinner.setEnabled(hasMax);
             }
             if (hasMax && !maxPnlSpinner.getValue().equals(zone.maxPnlPercent())) {
                 maxPnlSpinner.setValue(zone.maxPnlPercent());
@@ -734,6 +742,12 @@ public class ExitConfigPanel extends JPanel {
 
             // Phase filtering
             phaseListPanel.setPhases(zone.requiredPhaseIds(), zone.excludedPhaseIds());
+
+            // Hoop patterns
+            hoopPatternListPanel.setPatterns(
+                zone.requiredHoopPatternIds(),
+                zone.excludedHoopPatternIds()
+            );
 
             revalidate();
             updateMaxSize();

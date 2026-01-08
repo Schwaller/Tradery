@@ -16,7 +16,7 @@ import java.util.List;
 public class FlowDiagramPanel extends JPanel {
 
     private Strategy strategy;
-    private static final int SCALE_HEIGHT = 80;
+    private static final int SCALE_HEIGHT = 160;
 
     public FlowDiagramPanel() {
         setOpaque(false);
@@ -28,9 +28,15 @@ public class FlowDiagramPanel extends JPanel {
         repaint();
     }
 
+    private static final int MIN_ZONE_HEIGHT = 16;
+
     @Override
     public Dimension getPreferredSize() {
-        return new Dimension(300, SCALE_HEIGHT + 20);
+        // Calculate height based on number of zones (at least MIN_ZONE_HEIGHT each)
+        int zoneCount = strategy != null && strategy.getExitZones() != null
+            ? Math.max(1, strategy.getExitZones().size()) : 1;
+        int minHeight = zoneCount * MIN_ZONE_HEIGHT + 40;  // 40 for margins
+        return new Dimension(300, Math.max(minHeight, SCALE_HEIGHT + 20));
     }
 
     @Override
@@ -59,7 +65,7 @@ public class FlowDiagramPanel extends JPanel {
         // Get exit zones
         List<ExitZone> zones = strategy.getExitZones();
         if (zones == null || zones.isEmpty()) {
-            zones = List.of(new ExitZone("Default", null, null, "", null, null, null, null, false, 0, null, null, null, null, 0, List.of(), List.of()));
+            zones = List.of(ExitZone.defaultZone());
         }
 
         // Calculate P&L range based only on actual defined boundaries
@@ -98,18 +104,31 @@ public class FlowDiagramPanel extends JPanel {
         if (maxPnl < 0) maxPnl = 2;
 
         // Layout
-        int margin = 10;
         int entryBoxWidth = fm.stringWidth("Entry") + 12;
         int entryBoxHeight = fm.getHeight() + 8;  // Just enough for text
-        int arrowGap = 30;
-        int labelGap = 4;
+        int arrowGap = 60;
+        int labelGapBar = 6;
+
+        // Calculate bar width to fit all zone names with "Exit: " prefix
+        int barPadding = 8;
+        int barWidth = 60;  // minimum width
+        for (ExitZone zone : zones) {
+            String name = zone.name() != null && !zone.name().isEmpty() ? zone.name() : "Default";
+            String label = "Exit: " + name;
+            barWidth = Math.max(barWidth, fm.stringWidth(label) + barPadding * 2);
+        }
+
+        // Calculate total diagram width and center it
+        int pctLabelWidth = fm.stringWidth("+100%");  // estimate for percentage labels
+        int totalWidth = entryBoxWidth + arrowGap + barWidth + labelGapBar + pctLabelWidth;
+        int entryX = (getWidth() - totalWidth) / 2;
 
         int scaleTop = (getHeight() - SCALE_HEIGHT) / 2;
         int scaleBottom = scaleTop + SCALE_HEIGHT;
 
-        // Entry box (text height only, vertically centered)
-        int entryX = margin;
-        int entryY = (getHeight() - entryBoxHeight) / 2;
+        // Entry box centered at 0% P&L position
+        int zeroY = pnlToY(0, minPnl, maxPnl, scaleTop, scaleBottom);
+        int entryY = zeroY - entryBoxHeight / 2;
         int entryRight = entryX + entryBoxWidth;
 
         // Draw entry box (rounded on left, square on right)
@@ -138,16 +157,6 @@ public class FlowDiagramPanel extends JPanel {
 
         // Zone area starts here
         int zonesX = entryRight + arrowGap;
-        int labelGapBar = 6;
-
-        // Calculate bar width to fit all zone names with "Exit: " prefix
-        int barPadding = 8;
-        int barWidth = 60;  // minimum width
-        for (ExitZone zone : zones) {
-            String name = zone.name() != null && !zone.name().isEmpty() ? zone.name() : "Default";
-            String label = "Exit: " + name;
-            barWidth = Math.max(barWidth, fm.stringWidth(label) + barPadding * 2);
-        }
 
         // Draw zones as bars with labels inside
         g2.setStroke(new BasicStroke(1.5f));
@@ -163,7 +172,7 @@ public class FlowDiagramPanel extends JPanel {
 
             int zoneTopY = pnlToY(zMax, minPnl, maxPnl, scaleTop, scaleBottom);
             int zoneBotY = pnlToY(zMin, minPnl, maxPnl, scaleTop, scaleBottom);
-            int zoneHeight = Math.max(zoneBotY - zoneTopY, 4);
+            int zoneHeight = Math.max(zoneBotY - zoneTopY, MIN_ZONE_HEIGHT);
 
             // Draw curved flow band from entry to zone bar (Sankey-style)
             g2.setColor(arrowColor);
@@ -240,22 +249,25 @@ public class FlowDiagramPanel extends JPanel {
             labelY = Math.max(scaleTop + fm.getAscent(), Math.min(scaleBottom - 2, labelY));
             g2.drawString(zoneLabel, labelX, labelY);
 
-            // P&L labels to the right of bar
+            // P&L labels to the right of bar - only for defined boundaries
             g2.setColor(dimColor);
             int pctLabelX = zonesX + barWidth + labelGapBar;
 
-            // Top boundary percentage (max)
-            String maxLabel = unboundedTop ? "+∞" : formatPct(zone.maxPnlPercent());
-            int maxLabelY = zoneTopY + fm.getAscent() / 2;
-            g2.drawString(maxLabel, pctLabelX, maxLabelY);
+            // Top boundary percentage (max) - only show if defined
+            if (!unboundedTop) {
+                String maxLabel = formatPct(zone.maxPnlPercent());
+                int maxLabelY = zoneTopY + fm.getAscent() / 2;
+                g2.drawString(maxLabel, pctLabelX, maxLabelY);
+            }
 
-            // Bottom boundary percentage (min) - only if different position
-            if (zoneHeight > fm.getHeight() + 4) {
-                String minLabel = unboundedBottom ? "−∞" : formatPct(zone.minPnlPercent());
+            // Bottom boundary percentage (min) - only show if defined
+            if (!unboundedBottom) {
+                String minLabel = formatPct(zone.minPnlPercent());
                 int minLabelY = zoneBotY + fm.getAscent() / 2;
                 g2.drawString(minLabel, pctLabelX, minLabelY);
             }
         }
+
 
         g2.dispose();
     }

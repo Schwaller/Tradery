@@ -17,6 +17,9 @@ public class Lexer {
         Map.entry("MACD", TokenType.INDICATOR),
         Map.entry("BBANDS", TokenType.INDICATOR),
         Map.entry("ATR", TokenType.INDICATOR),
+        Map.entry("ADX", TokenType.INDICATOR),
+        Map.entry("PLUS_DI", TokenType.INDICATOR),
+        Map.entry("MINUS_DI", TokenType.INDICATOR),
 
         // Range functions
         Map.entry("HIGH_OF", TokenType.RANGE_FUNC),
@@ -33,6 +36,9 @@ public class Lexer {
 
         // Moon functions
         Map.entry("MOON_PHASE", TokenType.MOON_FUNC),
+
+        // Holiday functions
+        Map.entry("IS_US_HOLIDAY", TokenType.HOLIDAY_FUNC),
 
         // Price references
         Map.entry("price", TokenType.PRICE),

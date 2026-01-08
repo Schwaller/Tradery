@@ -12,6 +12,7 @@ public enum TokenType {
     VOLUME_FUNC,    // AVG_VOLUME
     TIME_FUNC,      // DAYOFWEEK, HOUR, DAY, MONTH
     MOON_FUNC,      // MOON_PHASE
+    HOLIDAY_FUNC,   // IS_US_HOLIDAY
 
     // Properties
     PROPERTY,       // .signal, .histogram, .upper, .lower, .middle

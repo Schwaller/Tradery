@@ -24,6 +24,7 @@ public class Strategy {
     private ExitSettings exitSettings = new ExitSettings();
     private BacktestSettings backtestSettings = new BacktestSettings();
     private PhaseSettings phaseSettings = new PhaseSettings();
+    private HoopPatternSettings hoopPatternSettings = new HoopPatternSettings();
 
     // Metadata
     private boolean enabled;
@@ -147,6 +148,20 @@ public class Strategy {
 
     public void setPhaseSettings(PhaseSettings phaseSettings) {
         this.phaseSettings = phaseSettings != null ? phaseSettings : new PhaseSettings();
+        this.updated = Instant.now();
+    }
+
+    // Hoop pattern settings
+
+    public HoopPatternSettings getHoopPatternSettings() {
+        if (hoopPatternSettings == null) {
+            hoopPatternSettings = new HoopPatternSettings();
+        }
+        return hoopPatternSettings;
+    }
+
+    public void setHoopPatternSettings(HoopPatternSettings hoopPatternSettings) {
+        this.hoopPatternSettings = hoopPatternSettings != null ? hoopPatternSettings : new HoopPatternSettings();
         this.updated = Instant.now();
     }
 
@@ -372,6 +387,70 @@ public class Strategy {
 
     public boolean hasExcludedPhases() {
         return getPhaseSettings().hasExcludedPhases();
+    }
+
+    // Convenience methods - Hoop pattern settings delegates
+
+    public HoopPatternSettings.CombineMode getHoopEntryMode() {
+        return getHoopPatternSettings().getEntryMode();
+    }
+
+    public void setHoopEntryMode(HoopPatternSettings.CombineMode mode) {
+        getHoopPatternSettings().setEntryMode(mode);
+        this.updated = Instant.now();
+    }
+
+    public HoopPatternSettings.CombineMode getHoopExitMode() {
+        return getHoopPatternSettings().getExitMode();
+    }
+
+    public void setHoopExitMode(HoopPatternSettings.CombineMode mode) {
+        getHoopPatternSettings().setExitMode(mode);
+        this.updated = Instant.now();
+    }
+
+    public java.util.List<String> getRequiredEntryPatternIds() {
+        return getHoopPatternSettings().getRequiredEntryPatternIds();
+    }
+
+    public void setRequiredEntryPatternIds(java.util.List<String> ids) {
+        getHoopPatternSettings().setRequiredEntryPatternIds(ids);
+        this.updated = Instant.now();
+    }
+
+    public java.util.List<String> getExcludedEntryPatternIds() {
+        return getHoopPatternSettings().getExcludedEntryPatternIds();
+    }
+
+    public void setExcludedEntryPatternIds(java.util.List<String> ids) {
+        getHoopPatternSettings().setExcludedEntryPatternIds(ids);
+        this.updated = Instant.now();
+    }
+
+    public java.util.List<String> getRequiredExitPatternIds() {
+        return getHoopPatternSettings().getRequiredExitPatternIds();
+    }
+
+    public void setRequiredExitPatternIds(java.util.List<String> ids) {
+        getHoopPatternSettings().setRequiredExitPatternIds(ids);
+        this.updated = Instant.now();
+    }
+
+    public java.util.List<String> getExcludedExitPatternIds() {
+        return getHoopPatternSettings().getExcludedExitPatternIds();
+    }
+
+    public void setExcludedExitPatternIds(java.util.List<String> ids) {
+        getHoopPatternSettings().setExcludedExitPatternIds(ids);
+        this.updated = Instant.now();
+    }
+
+    public boolean hasEntryHoopPatterns() {
+        return getHoopPatternSettings().hasEntryPatterns();
+    }
+
+    public boolean hasExitHoopPatterns() {
+        return getHoopPatternSettings().hasExitPatterns();
     }
 
     @Override

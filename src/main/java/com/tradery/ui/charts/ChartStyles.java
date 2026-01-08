@@ -63,6 +63,18 @@ public final class ChartStyles {
     // ===== ATR Chart Color =====
     public static final Color ATR_COLOR = new Color(180, 100, 255);
 
+    // ===== Hoop Pattern Colors =====
+    public static final Color[] HOOP_COLORS = {
+        new Color(76, 175, 80),   // Green
+        new Color(33, 150, 243),  // Blue
+        new Color(255, 152, 0),   // Orange
+        new Color(156, 39, 176),  // Purple
+        new Color(0, 188, 212),   // Cyan
+        new Color(255, 87, 34),   // Deep Orange
+    };
+    public static final Color HOOP_MATCH_COLOR = new Color(76, 175, 80, 200);  // Green for matches
+    public static final Color HOOP_ANCHOR_COLOR = new Color(255, 215, 0);  // Gold for anchor point
+
     // ===== Volume Colors (Wyckoff-style: cool to warm) =====
     public static final Color[] VOLUME_COLORS = {
         new Color(100, 100, 100),  // Ultra Low - grey

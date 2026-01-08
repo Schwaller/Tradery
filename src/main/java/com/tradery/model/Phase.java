@@ -17,6 +17,7 @@ public class Phase {
     private String id;           // e.g., "trending-up"
     private String name;         // e.g., "Trending Up"
     private String description;  // e.g., "Price above 200 SMA with positive slope"
+    private String category;     // e.g., "Trend", "Time", "Moon", "Custom"
 
     // Phase definition
     private String condition;    // DSL condition, e.g., "close > SMA(200) AND SMA(50) > SMA(200)"
@@ -66,6 +67,15 @@ public class Phase {
 
     public void setDescription(String description) {
         this.description = description;
+        this.updated = Instant.now();
+    }
+
+    public String getCategory() {
+        return category;
+    }
+
+    public void setCategory(String category) {
+        this.category = category;
         this.updated = Instant.now();
     }
 

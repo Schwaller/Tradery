@@ -120,10 +120,13 @@ public class DslHelpDialog extends JDialog {
                 <tr><td>EMA</td><td><code>EMA(period)</code></td><td>Exponential Moving Average</td><td></td></tr>
                 <tr><td>RSI</td><td><code>RSI(period)</code></td><td>Relative Strength Index (0-100)</td><td></td></tr>
                 <tr><td>ATR</td><td><code>ATR(period)</code></td><td>Average True Range</td><td></td></tr>
+                <tr><td>ADX</td><td><code>ADX(period)</code></td><td>Average Directional Index (0-100, trend strength)</td><td></td></tr>
+                <tr><td>+DI</td><td><code>PLUS_DI(period)</code></td><td>Plus Directional Indicator (upward pressure)</td><td></td></tr>
+                <tr><td>-DI</td><td><code>MINUS_DI(period)</code></td><td>Minus Directional Indicator (downward pressure)</td><td></td></tr>
                 <tr><td>MACD</td><td><code>MACD(fast,slow,signal)</code></td><td>MACD</td><td><code>.line</code> <code>.signal</code> <code>.histogram</code></td></tr>
                 <tr><td>Bollinger</td><td><code>BBANDS(period,stdDev)</code></td><td>Bollinger Bands</td><td><code>.upper</code> <code>.middle</code> <code>.lower</code></td></tr>
             </table>
-            <div class="example">MACD(12,26,9).histogram > 0<br>close &lt; BBANDS(20,2).lower</div>
+            <div class="example">MACD(12,26,9).histogram > 0<br>close &lt; BBANDS(20,2).lower<br>ADX(14) > 25 AND PLUS_DI(14) > MINUS_DI(14)</div>
             </div>
 
             <div class="section">
@@ -164,6 +167,15 @@ public class DslHelpDialog extends JDialog {
                 <tr><td><code>MOON_PHASE</code></td><td>Moon phase (0.0=new, 0.5=full, 1.0=new)</td></tr>
             </table>
             <div class="example">MOON_PHASE >= 0.48 AND MOON_PHASE &lt;= 0.52<br>MOON_PHASE &lt;= 0.02 OR MOON_PHASE >= 0.98</div>
+            </div>
+
+            <div class="section">
+            <h3>Holiday Functions</h3>
+            <table>
+                <tr><td><code>IS_US_HOLIDAY</code></td><td>US Federal Reserve bank holiday (1=yes, 0=no)</td></tr>
+            </table>
+            <div class="example">IS_US_HOLIDAY == 1</div>
+            <span style="color: %s; font-size: 10px;">Includes: New Year's, MLK Day, Presidents Day, Memorial Day, Juneteenth, July 4th, Labor Day, Columbus Day, Veterans Day, Thanksgiving, Christmas</span>
             </div>
 
             <div class="section">
@@ -215,7 +227,7 @@ public class DslHelpDialog extends JDialog {
 
             </body>
             </html>
-            """.formatted(bgHex, fgHex, fgHex, fgSecHex, codeBgHex, fgHex, borderHex, codeBgHex, codeBgHex, accentHex);
+            """.formatted(bgHex, fgHex, fgHex, fgSecHex, codeBgHex, fgHex, borderHex, codeBgHex, codeBgHex, accentHex, fgSecHex);
     }
 
     private String toHex(Color c) {

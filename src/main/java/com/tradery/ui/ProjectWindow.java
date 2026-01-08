@@ -55,13 +55,19 @@ public class ProjectWindow extends JFrame {
     private JToggleButton fitYBtn;
     private JToggleButton fullYBtn;
     private JButton clearCacheBtn;
-    private JButton dataHealthBtn;
     private JButton claudeBtn;
     private JButton codexBtn;
     private JButton historyBtn;
 
     // Indicator controls panel (extracted)
     private IndicatorControlsPanel indicatorControls;
+
+    // Embedded AI terminal (for Claude)
+    private AiTerminalFrame aiTerminalFrame;
+    private AiTerminalPanel dockedTerminalPanel;
+    private JPanel dockedTerminalWrapper;
+    private JSplitPane tradeTerminalSplit;
+    private boolean terminalDocked = true;
 
     private static final String[] SYMBOLS = {
         "BTCUSDT", "ETHUSDT", "BNBUSDT", "XRPUSDT", "ADAUSDT",
@@ -71,6 +77,9 @@ public class ProjectWindow extends JFrame {
     private static final String[] TIMEFRAMES = {
         "1m", "5m", "15m", "30m", "1h", "4h", "1d", "1w"
     };
+
+    // Use embedded AI terminal instead of OS terminal (for Claude)
+    private static final boolean USE_EMBEDDED_AI_TERMINAL = true;
 
     // Data stores
     private final StrategyStore strategyStore;
@@ -204,11 +213,6 @@ public class ProjectWindow extends JFrame {
         clearCacheBtn = new JButton("Reload Data");
         clearCacheBtn.setToolTipText("Clear cached OHLC data and redownload from Binance");
         clearCacheBtn.addActionListener(e -> clearCacheAndReload());
-
-        // Data Health button - view and repair data
-        dataHealthBtn = new JButton("Data Health");
-        dataHealthBtn.setToolTipText("View data completeness and repair gaps");
-        dataHealthBtn.addActionListener(e -> showDataHealth());
 
         // Claude button - opens terminal with Claude CLI
         claudeBtn = new JButton("Claude");
@@ -386,7 +390,6 @@ public class ProjectWindow extends JFrame {
         toolbarRight.add(codexBtn);
         toolbarRight.add(Box.createHorizontalStrut(8));
         toolbarRight.add(clearCacheBtn);
-        toolbarRight.add(dataHealthBtn);
         toolbarRight.add(Box.createHorizontalStrut(8));
         toolbarRight.add(progressLabel);
         toolbarRight.add(progressBar);
@@ -424,9 +427,46 @@ public class ProjectWindow extends JFrame {
         rightTopPanel.add(settingsPanel, BorderLayout.NORTH);
         rightTopPanel.add(metricsWrapper, BorderLayout.CENTER);
 
+        // Create docked terminal panel (initially hidden)
+        dockedTerminalPanel = new AiTerminalPanel();
+        dockedTerminalPanel.setOnFileChange(this::runBacktest);
+
+        // Terminal wrapper with header (undock button)
+        dockedTerminalWrapper = new JPanel(new BorderLayout(0, 0));
+        dockedTerminalWrapper.setVisible(false);
+
+        JPanel terminalHeader = new JPanel(new BorderLayout());
+        terminalHeader.setBorder(BorderFactory.createEmptyBorder(2, 4, 2, 4));
+        JLabel terminalTitle = new JLabel("Claude");
+        terminalTitle.setFont(terminalTitle.getFont().deriveFont(Font.BOLD, 11f));
+        JButton undockBtn = new JButton("Undock");
+        undockBtn.setFont(undockBtn.getFont().deriveFont(10f));
+        undockBtn.setMargin(new Insets(1, 4, 1, 4));
+        undockBtn.addActionListener(e -> undockTerminal());
+        terminalHeader.add(terminalTitle, BorderLayout.WEST);
+        terminalHeader.add(undockBtn, BorderLayout.EAST);
+
+        dockedTerminalWrapper.add(new JSeparator(), BorderLayout.NORTH);
+        dockedTerminalWrapper.add(terminalHeader, BorderLayout.CENTER);
+        dockedTerminalWrapper.add(dockedTerminalPanel, BorderLayout.SOUTH);
+
+        // Actually put terminal in center with header at north
+        dockedTerminalWrapper.removeAll();
+        dockedTerminalWrapper.add(terminalHeader, BorderLayout.NORTH);
+        dockedTerminalWrapper.add(dockedTerminalPanel, BorderLayout.CENTER);
+
+        // Vertical split: trade table | terminal
+        tradeTerminalSplit = new JSplitPane(JSplitPane.VERTICAL_SPLIT);
+        tradeTerminalSplit.setBorder(null);
+        tradeTerminalSplit.setDividerSize(4);
+        tradeTerminalSplit.setResizeWeight(0.6);
+        tradeTerminalSplit.setContinuousLayout(true);
+        tradeTerminalSplit.setTopComponent(tradeTablePanel);
+        tradeTerminalSplit.setBottomComponent(dockedTerminalWrapper);
+
         JPanel rightContent = new JPanel(new BorderLayout(0, 0));
         rightContent.add(rightTopPanel, BorderLayout.NORTH);
-        rightContent.add(tradeTablePanel, BorderLayout.CENTER);
+        rightContent.add(tradeTerminalSplit, BorderLayout.CENTER);
 
         // Wrap with vertical separator on left
         JPanel rightPanel = new JPanel(new BorderLayout(0, 0));
@@ -667,13 +707,101 @@ public class ProjectWindow extends JFrame {
             "[Launched from Tradery app] " +
             "Currently open: Strategy '%s' (id: %s), " +
             "backtesting %s on %s timeframe for %s. " +
-            "Read strategies/%s/strategy.json and strategies/%s/latest.json, " +
-            "then help me optimize entry/exit conditions for better performance. " +
+            "Read strategies/%s/strategy.json and strategies/%s/latest.json to understand the current setup. " +
+            "Then WAIT for instructions - do not make changes until I say 'go' or give specific directions. " +
             "The app auto-reloads when you save changes to strategy.json.",
             strategyName, strategyId, symbol, timeframe, duration,
             strategyId, strategyId
         );
 
+        // Use embedded terminal or OS terminal based on setting
+        if (USE_EMBEDDED_AI_TERMINAL) {
+            openEmbeddedClaudeTerminal(traderyDir, initialPrompt, strategyName);
+        } else {
+            openOsClaudeTerminal(traderyDir, initialPrompt, strategyName);
+        }
+    }
+
+    private void openEmbeddedClaudeTerminal(String traderyDir, String initialPrompt, String strategyName) {
+        // If terminal is docked, use the docked panel
+        if (terminalDocked) {
+            // If already running, just make sure it's visible
+            if (dockedTerminalPanel.isRunning()) {
+                if (!dockedTerminalWrapper.isVisible()) {
+                    dockedTerminalWrapper.setVisible(true);
+                    tradeTerminalSplit.setDividerLocation(0.5);
+                }
+                setStatus("Claude CLI already running");
+                return;
+            }
+
+            // Show the docked terminal and start Claude
+            dockedTerminalWrapper.setVisible(true);
+            tradeTerminalSplit.setDividerLocation(0.5);
+            dockedTerminalPanel.startClaude(traderyDir, initialPrompt);
+            setStatus("Opened embedded Claude CLI for " + strategyName);
+        } else {
+            // Terminal is undocked - use the floating frame
+            if (aiTerminalFrame == null) {
+                aiTerminalFrame = new AiTerminalFrame(strategyName, this::runBacktest, this::redockTerminal);
+            }
+
+            // If already running, just show and focus
+            if (aiTerminalFrame.isClaudeRunning()) {
+                aiTerminalFrame.showAndFocus();
+                setStatus("Claude CLI already running");
+                return;
+            }
+
+            // Start Claude in the floating frame
+            aiTerminalFrame.startClaude(traderyDir, initialPrompt);
+            setStatus("Opened embedded Claude CLI for " + strategyName);
+        }
+    }
+
+    private void undockTerminal() {
+        if (!terminalDocked) return;
+
+        terminalDocked = false;
+
+        // Hide the docked wrapper
+        dockedTerminalWrapper.setVisible(false);
+
+        // Create floating frame if needed, passing the existing terminal panel
+        if (aiTerminalFrame == null) {
+            aiTerminalFrame = new AiTerminalFrame(strategy.getName(), this::runBacktest, this::redockTerminal);
+        }
+
+        // Transfer the terminal panel to the frame
+        aiTerminalFrame.setTerminalPanel(dockedTerminalPanel);
+        aiTerminalFrame.setVisible(true);
+        aiTerminalFrame.toFront();
+
+        setStatus("Undocked Claude terminal");
+    }
+
+    private void redockTerminal() {
+        if (terminalDocked) return;
+
+        terminalDocked = true;
+
+        // Take back the terminal panel from the frame
+        if (aiTerminalFrame != null) {
+            aiTerminalFrame.setVisible(false);
+            aiTerminalFrame.removeTerminalPanel();
+        }
+
+        // Re-add to docked wrapper
+        dockedTerminalWrapper.add(dockedTerminalPanel, BorderLayout.CENTER);
+        dockedTerminalWrapper.setVisible(true);
+        tradeTerminalSplit.setDividerLocation(0.5);
+        dockedTerminalWrapper.revalidate();
+        dockedTerminalWrapper.repaint();
+
+        setStatus("Redocked Claude terminal");
+    }
+
+    private void openOsClaudeTerminal(String traderyDir, String initialPrompt, String strategyName) {
         String command = String.format(
             "cd '%s' && claude '%s'",
             traderyDir.replace("'", "'\\''"),
@@ -788,10 +916,6 @@ public class ProjectWindow extends JFrame {
         });
     }
 
-    private void showDataHealth() {
-        DataHealthDialog.show(this, candleStore);
-    }
-
     private void runBacktest() {
         // Apply current UI values
         editorPanel.applyToStrategy(strategy);
@@ -859,6 +983,14 @@ public class ProjectWindow extends JFrame {
         }
         if (phaseWatcher != null) {
             phaseWatcher.stop();
+        }
+        // Dispose terminal (docked or undocked)
+        if (dockedTerminalPanel != null) {
+            dockedTerminalPanel.dispose();
+        }
+        if (aiTerminalFrame != null) {
+            aiTerminalFrame.dispose();
+            aiTerminalFrame = null;
         }
         if (onClose != null) {
             onClose.accept(strategy.getId());

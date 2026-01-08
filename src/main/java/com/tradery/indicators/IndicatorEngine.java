@@ -2,12 +2,17 @@ package com.tradery.indicators;
 
 import com.tradery.model.Candle;
 
+import java.time.DayOfWeek;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
+import java.time.temporal.TemporalAdjusters;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Indicator Engine - unified access to all indicators with caching.
@@ -275,6 +280,31 @@ public class IndicatorEngine {
         return dt.getMonthValue();
     }
 
+    // ========== ADX / DMI ==========
+
+    public Indicators.ADXResult getADX(int period) {
+        String key = "adx:" + period;
+        if (!cache.containsKey(key)) {
+            cache.put(key, Indicators.adx(candles, period));
+        }
+        return (Indicators.ADXResult) cache.get(key);
+    }
+
+    public double getADXAt(int period, int barIndex) {
+        Indicators.ADXResult result = getADX(period);
+        return barIndex < result.adx().length ? result.adx()[barIndex] : Double.NaN;
+    }
+
+    public double getPlusDIAt(int period, int barIndex) {
+        Indicators.ADXResult result = getADX(period);
+        return barIndex < result.plusDI().length ? result.plusDI()[barIndex] : Double.NaN;
+    }
+
+    public double getMinusDIAt(int period, int barIndex) {
+        Indicators.ADXResult result = getADX(period);
+        return barIndex < result.minusDI().length ? result.minusDI()[barIndex] : Double.NaN;
+    }
+
     // ========== Moon Functions ==========
 
     // Known new moon reference: January 6, 2000 at 18:14 UTC
@@ -303,5 +333,90 @@ public class IndicatorEngine {
         if (phase < 0) phase += 1.0;
 
         return phase;
+    }
+
+    // ========== Holiday Functions ==========
+
+    // Cache for US holidays by year
+    private final Map<Integer, Set<LocalDate>> usHolidayCache = new HashMap<>();
+
+    /**
+     * Check if bar is on a US federal bank holiday.
+     */
+    public boolean isUSHolidayAt(int barIndex) {
+        long timestamp = getTimestampAt(barIndex);
+        if (timestamp == 0) return false;
+
+        LocalDate date = Instant.ofEpochMilli(timestamp).atZone(ZoneOffset.UTC).toLocalDate();
+        int year = date.getYear();
+
+        // Get or compute holidays for this year
+        Set<LocalDate> holidays = usHolidayCache.computeIfAbsent(year, this::computeUSHolidays);
+
+        return holidays.contains(date);
+    }
+
+    /**
+     * Compute all US federal holidays for a given year.
+     * These are days when the Federal Reserve is closed.
+     */
+    private Set<LocalDate> computeUSHolidays(int year) {
+        Set<LocalDate> holidays = new HashSet<>();
+
+        // New Year's Day - January 1 (observed on nearest weekday if weekend)
+        holidays.add(observedDate(LocalDate.of(year, 1, 1)));
+
+        // MLK Day - 3rd Monday in January
+        holidays.add(nthDayOfWeek(year, 1, DayOfWeek.MONDAY, 3));
+
+        // Presidents Day - 3rd Monday in February
+        holidays.add(nthDayOfWeek(year, 2, DayOfWeek.MONDAY, 3));
+
+        // Memorial Day - Last Monday in May
+        holidays.add(LocalDate.of(year, 5, 1).with(TemporalAdjusters.lastInMonth(DayOfWeek.MONDAY)));
+
+        // Juneteenth - June 19 (observed on nearest weekday if weekend)
+        holidays.add(observedDate(LocalDate.of(year, 6, 19)));
+
+        // Independence Day - July 4 (observed on nearest weekday if weekend)
+        holidays.add(observedDate(LocalDate.of(year, 7, 4)));
+
+        // Labor Day - 1st Monday in September
+        holidays.add(nthDayOfWeek(year, 9, DayOfWeek.MONDAY, 1));
+
+        // Columbus Day - 2nd Monday in October
+        holidays.add(nthDayOfWeek(year, 10, DayOfWeek.MONDAY, 2));
+
+        // Veterans Day - November 11 (observed on nearest weekday if weekend)
+        holidays.add(observedDate(LocalDate.of(year, 11, 11)));
+
+        // Thanksgiving - 4th Thursday in November
+        holidays.add(nthDayOfWeek(year, 11, DayOfWeek.THURSDAY, 4));
+
+        // Christmas Day - December 25 (observed on nearest weekday if weekend)
+        holidays.add(observedDate(LocalDate.of(year, 12, 25)));
+
+        return holidays;
+    }
+
+    /**
+     * Get the nth occurrence of a day of week in a month.
+     */
+    private LocalDate nthDayOfWeek(int year, int month, DayOfWeek dayOfWeek, int n) {
+        LocalDate first = LocalDate.of(year, month, 1).with(TemporalAdjusters.firstInMonth(dayOfWeek));
+        return first.plusWeeks(n - 1);
+    }
+
+    /**
+     * Get the observed date for a holiday (Friday if Saturday, Monday if Sunday).
+     */
+    private LocalDate observedDate(LocalDate date) {
+        DayOfWeek dow = date.getDayOfWeek();
+        if (dow == DayOfWeek.SATURDAY) {
+            return date.minusDays(1); // Friday
+        } else if (dow == DayOfWeek.SUNDAY) {
+            return date.plusDays(1); // Monday
+        }
+        return date;
     }
 }

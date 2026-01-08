@@ -1,0 +1,20 @@
+{
+  "version": "1.0",
+  "phases": [
+    {
+      "id": "uptrend",
+      "name": "Uptrend",
+      "version": "1.0"
+    },
+    {
+      "id": "downtrend",
+      "name": "Downtrend",
+      "version": "1.0"
+    },
+    {
+      "id": "ranging",
+      "name": "Ranging",
+      "version": "1.0"
+    }
+  ]
+}

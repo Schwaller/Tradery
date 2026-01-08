@@ -28,6 +28,8 @@ public class PhaseChooserFrame extends JFrame {
     private PhaseEditorPanel editorPanel;
     private JButton newButton;
     private JButton deleteButton;
+    private JButton previewButton;
+    private PhasePreviewWindow previewWindow;
 
     private final PhaseStore phaseStore;
     private FileWatcher fileWatcher;
@@ -91,6 +93,10 @@ public class PhaseChooserFrame extends JFrame {
         deleteButton.addActionListener(e -> deletePhase());
         deleteButton.setEnabled(false);
 
+        previewButton = new JButton("Preview Chart");
+        previewButton.addActionListener(e -> openPreviewWindow());
+        previewButton.setEnabled(false);
+
         // Auto-save timer
         autoSaveTimer = new Timer(AUTO_SAVE_DELAY_MS, e -> saveCurrentPhase());
         autoSaveTimer.setRepeats(false);
@@ -112,18 +118,14 @@ public class PhaseChooserFrame extends JFrame {
         titleLabel.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 13));
         titleBar.add(titleLabel, BorderLayout.CENTER);
 
-        // Left panel: phase list with buttons
-        JPanel listPanel = new JPanel(new BorderLayout(0, 8));
-        listPanel.setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 0));
+        // Left panel: phase list (snug to all edges)
+        JPanel listPanel = new JPanel(new BorderLayout(0, 0));
+        listPanel.setBorder(BorderFactory.createEmptyBorder(0, 0, 0, 0));
         listPanel.setPreferredSize(new Dimension(200, 0));
 
         JScrollPane listScroll = new JScrollPane(phaseList);
+        listScroll.setBorder(BorderFactory.createEmptyBorder());
         listPanel.add(listScroll, BorderLayout.CENTER);
-
-        JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
-        buttonPanel.add(newButton);
-        buttonPanel.add(deleteButton);
-        listPanel.add(buttonPanel, BorderLayout.SOUTH);
 
         // Right panel: editor
         JPanel editorWrapper = new JPanel(new BorderLayout());
@@ -137,15 +139,44 @@ public class PhaseChooserFrame extends JFrame {
         splitPane.setDividerLocation(200);
         splitPane.setResizeWeight(0);
 
+        // Bottom bar with separator line above
+        JPanel bottomContainer = new JPanel(new BorderLayout(0, 0));
+        bottomContainer.add(new JSeparator(), BorderLayout.NORTH);
+
+        JPanel bottomBar = new JPanel(new BorderLayout());
+        bottomBar.setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
+
+        JPanel leftButtons = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
+        leftButtons.add(newButton);
+        leftButtons.add(deleteButton);
+
+        JPanel rightButtons = new JPanel(new FlowLayout(FlowLayout.RIGHT, 4, 0));
+        rightButtons.add(previewButton);
+
+        bottomBar.add(leftButtons, BorderLayout.WEST);
+        bottomBar.add(rightButtons, BorderLayout.EAST);
+        bottomContainer.add(bottomBar, BorderLayout.CENTER);
+
+        // Top container with title and separator below
+        JPanel topContainer = new JPanel(new BorderLayout(0, 0));
+        topContainer.add(titleBar, BorderLayout.CENTER);
+        topContainer.add(new JSeparator(), BorderLayout.SOUTH);
+
         // Main layout
         setLayout(new BorderLayout());
-        add(titleBar, BorderLayout.NORTH);
+        add(topContainer, BorderLayout.NORTH);
         add(splitPane, BorderLayout.CENTER);
+        add(bottomContainer, BorderLayout.SOUTH);
     }
 
     private void loadPhases() {
         List<Phase> phases = phaseStore.loadAll();
+        // Sort by category first, then by name
         phases.sort((a, b) -> {
+            String c1 = a.getCategory() != null ? a.getCategory() : "Custom";
+            String c2 = b.getCategory() != null ? b.getCategory() : "Custom";
+            int catCompare = c1.compareTo(c2);
+            if (catCompare != 0) return catCompare;
             String n1 = a.getName() != null ? a.getName() : "";
             String n2 = b.getName() != null ? b.getName() : "";
             return n1.compareToIgnoreCase(n2);
@@ -165,6 +196,10 @@ public class PhaseChooserFrame extends JFrame {
             currentPhase = selected;
             editorPanel.loadFrom(selected);
             editorPanel.setEnabled(true);
+            // Update preview window if open
+            if (previewWindow != null && previewWindow.isVisible()) {
+                previewWindow.setPhase(selected);
+            }
         } else {
             currentPhase = null;
             editorPanel.loadFrom(null);
@@ -176,6 +211,7 @@ public class PhaseChooserFrame extends JFrame {
     private void updateButtonStates() {
         boolean hasSelection = phaseList.getSelectedValue() != null;
         deleteButton.setEnabled(hasSelection);
+        previewButton.setEnabled(hasSelection);
     }
 
     private void createPhase() {
@@ -224,6 +260,19 @@ public class PhaseChooserFrame extends JFrame {
         }
     }
 
+    private void openPreviewWindow() {
+        if (currentPhase == null) return;
+
+        if (previewWindow == null) {
+            previewWindow = new PhasePreviewWindow();
+        }
+
+        previewWindow.setPhase(currentPhase);
+        previewWindow.setLocationRelativeTo(this);
+        previewWindow.setVisible(true);
+        previewWindow.toFront();
+    }
+
     private void scheduleAutoSave() {
         if (ignoringFileChanges || currentPhase == null) return;
         autoSaveTimer.restart();
@@ -243,6 +292,11 @@ public class PhaseChooserFrame extends JFrame {
             int selectedIndex = phaseList.getSelectedIndex();
             if (selectedIndex >= 0) {
                 listModel.set(selectedIndex, currentPhase);
+            }
+
+            // Refresh the preview window if open
+            if (previewWindow != null && previewWindow.isVisible()) {
+                previewWindow.setPhase(currentPhase);
             }
         } finally {
             // Reset flag after a delay to allow file system to settle
@@ -295,25 +349,53 @@ public class PhaseChooserFrame extends JFrame {
     }
 
     /**
-     * Custom renderer for phase list items.
+     * Custom renderer for phase list items with category grouping.
      */
     private class PhaseCellRenderer extends JPanel implements ListCellRenderer<Phase> {
+        private final JPanel headerPanel;
+        private final JLabel headerLabel;
+        private final JSeparator headerSeparator;
+        private final JPanel contentPanel;
         private final JLabel nameLabel;
         private final JLabel detailsLabel;
 
         public PhaseCellRenderer() {
-            setLayout(new BorderLayout(4, 0));
-            setBorder(BorderFactory.createEmptyBorder(6, 8, 6, 8));
+            setLayout(new BorderLayout(0, 0));
+
+            // Header panel for category (with separator above for non-first groups)
+            headerPanel = new JPanel(new BorderLayout(0, 0));
+
+            // Separator line above header (hidden for first group)
+            headerSeparator = new JSeparator();
+            headerPanel.add(headerSeparator, BorderLayout.NORTH);
+
+            // Category label
+            JPanel labelWrapper = new JPanel(new BorderLayout());
+            labelWrapper.setBorder(BorderFactory.createEmptyBorder(6, 8, 4, 8));
+            labelWrapper.setOpaque(false);
+            headerLabel = new JLabel();
+            headerLabel.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 10));
+            headerLabel.setForeground(UIManager.getColor("Component.accentColor"));
+            labelWrapper.add(headerLabel, BorderLayout.WEST);
+            headerPanel.add(labelWrapper, BorderLayout.CENTER);
+            headerPanel.setOpaque(false);
+
+            // Content panel for phase info
+            contentPanel = new JPanel(new BorderLayout(4, 0));
+            contentPanel.setBorder(BorderFactory.createEmptyBorder(4, 16, 6, 8));
+            contentPanel.setOpaque(false);
 
             nameLabel = new JLabel();
-            nameLabel.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 12));
+            nameLabel.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 12));
 
             detailsLabel = new JLabel();
             detailsLabel.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 10));
             detailsLabel.setForeground(Color.GRAY);
 
-            add(nameLabel, BorderLayout.CENTER);
-            add(detailsLabel, BorderLayout.SOUTH);
+            contentPanel.add(nameLabel, BorderLayout.CENTER);
+            contentPanel.add(detailsLabel, BorderLayout.EAST);
+
+            add(contentPanel, BorderLayout.CENTER);
         }
 
         @Override
@@ -325,22 +407,47 @@ public class PhaseChooserFrame extends JFrame {
                 boolean cellHasFocus
         ) {
             String name = value.getName() != null ? value.getName() : "Unnamed";
+            String category = value.getCategory() != null ? value.getCategory() : "Custom";
             String symbol = value.getSymbol() != null ? value.getSymbol() : "?";
             String tf = value.getTimeframe() != null ? value.getTimeframe() : "?";
+
+            // Check if we need to show category header
+            boolean showHeader = false;
+            if (index == 0) {
+                showHeader = true;
+            } else if (index > 0) {
+                Phase prev = list.getModel().getElementAt(index - 1);
+                String prevCategory = prev.getCategory() != null ? prev.getCategory() : "Custom";
+                showHeader = !category.equals(prevCategory);
+            }
+
+            // Remove header if present, then add if needed
+            remove(headerPanel);
+            if (showHeader) {
+                headerLabel.setText(category.toUpperCase());
+                // Show separator only for non-first groups
+                headerSeparator.setVisible(index > 0);
+                add(headerPanel, BorderLayout.NORTH);
+            }
 
             nameLabel.setText(name);
             detailsLabel.setText(symbol + " / " + tf);
 
+            // Only content panel gets selection background, not the header
             if (isSelected) {
-                setBackground(list.getSelectionBackground());
+                contentPanel.setBackground(list.getSelectionBackground());
+                contentPanel.setOpaque(true);
                 nameLabel.setForeground(list.getSelectionForeground());
                 detailsLabel.setForeground(list.getSelectionForeground());
             } else {
-                setBackground(list.getBackground());
+                contentPanel.setBackground(list.getBackground());
+                contentPanel.setOpaque(false);
                 nameLabel.setForeground(list.getForeground());
                 detailsLabel.setForeground(Color.GRAY);
             }
 
+            // Main panel stays transparent so header doesn't get colored
+            setBackground(list.getBackground());
             setOpaque(true);
             return this;
         }

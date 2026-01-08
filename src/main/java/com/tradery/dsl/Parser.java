@@ -168,6 +168,13 @@ public class Parser {
             return new AstNode.MoonFunctionCall(func);
         }
 
+        // Holiday function (IS_US_HOLIDAY - no parameters)
+        if (check(TokenType.HOLIDAY_FUNC)) {
+            String func = current().value();
+            advance();
+            return new AstNode.HolidayFunctionCall(func);
+        }
+
         throw new ParserException("Unexpected token '" + current().value() +
             "' at position " + current().position());
     }

@@ -14,6 +14,7 @@ public class StrategyEditorPanel extends JPanel {
 
     private TradeSettingsPanel tradeSettingsPanel;
     private PhaseSelectionPanel phaseSelectionPanel;
+    private HoopPatternSelectionPanel hoopPatternSelectionPanel;
     private FlowDiagramPanel flowDiagramPanel;
     private EntryConfigPanel entryConfigPanel;
     private ExitConfigPanel exitConfigPanel;
@@ -33,6 +34,7 @@ public class StrategyEditorPanel extends JPanel {
         phaseSelectionPanel = new PhaseSelectionPanel(
             ApplicationContext.getInstance().getPhaseStore()
         );
+        hoopPatternSelectionPanel = new HoopPatternSelectionPanel();
         flowDiagramPanel = new FlowDiagramPanel();
         entryConfigPanel = new EntryConfigPanel();
         exitConfigPanel = new ExitConfigPanel();
@@ -40,6 +42,7 @@ public class StrategyEditorPanel extends JPanel {
         // Add padding to sub-panels
         tradeSettingsPanel.setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
         phaseSelectionPanel.setBorder(BorderFactory.createEmptyBorder(0, 8, 8, 8));
+        hoopPatternSelectionPanel.setBorder(BorderFactory.createEmptyBorder(0, 8, 8, 8));
         flowDiagramPanel.setBorder(BorderFactory.createEmptyBorder(4, 8, 4, 8));
         entryConfigPanel.setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
         exitConfigPanel.setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
@@ -47,6 +50,7 @@ public class StrategyEditorPanel extends JPanel {
         // Wire up change listeners
         tradeSettingsPanel.setOnChange(this::fireChange);
         phaseSelectionPanel.setOnChange(this::fireChange);
+        hoopPatternSelectionPanel.setOnChange(this::fireChange);
         entryConfigPanel.setOnChange(this::onEntryExitChange);
         exitConfigPanel.setOnChange(this::onEntryExitChange);
     }
@@ -78,8 +82,9 @@ public class StrategyEditorPanel extends JPanel {
         JPanel centerPanel = new JPanel(new GridLayout(1, 2, 0, 0));
         centerPanel.setOpaque(false);
 
-        // Entry panel with phase selection injected
+        // Entry panel with phase and hoop pattern selection injected
         entryConfigPanel.setPhaseSelectionPanel(phaseSelectionPanel);
+        entryConfigPanel.setHoopPatternSelectionPanel(hoopPatternSelectionPanel);
 
         // Entry with separator on right
         JPanel entryWrapper = new JPanel(new BorderLayout());
@@ -111,6 +116,7 @@ public class StrategyEditorPanel extends JPanel {
         this.strategy = strategy;
         tradeSettingsPanel.loadFrom(strategy);
         phaseSelectionPanel.loadFrom(strategy);
+        hoopPatternSelectionPanel.loadFrom(strategy);
         flowDiagramPanel.setStrategy(strategy);
         entryConfigPanel.loadFrom(strategy);
         exitConfigPanel.loadFrom(strategy);
@@ -123,6 +129,7 @@ public class StrategyEditorPanel extends JPanel {
         if (strategy == null) return;
         tradeSettingsPanel.applyTo(strategy);
         phaseSelectionPanel.applyTo(strategy);
+        hoopPatternSelectionPanel.applyTo(strategy);
         entryConfigPanel.applyTo(strategy);
         exitConfigPanel.applyTo(strategy);
     }

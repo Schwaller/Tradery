@@ -1,6 +1,7 @@
 package com.tradery;
 
 import com.tradery.data.CandleStore;
+import com.tradery.io.HoopPatternStore;
 import com.tradery.io.PhaseStore;
 import com.tradery.io.StrategyStore;
 
@@ -17,14 +18,17 @@ public class ApplicationContext {
     private final CandleStore candleStore;
     private final StrategyStore strategyStore;
     private final PhaseStore phaseStore;
+    private final HoopPatternStore hoopPatternStore;
 
     private ApplicationContext() {
         this.candleStore = new CandleStore();
         this.strategyStore = new StrategyStore(new File(TraderyApp.USER_DIR, "strategies"));
         this.phaseStore = new PhaseStore(new File(TraderyApp.USER_DIR, "phases"));
+        this.hoopPatternStore = new HoopPatternStore(new File(TraderyApp.USER_DIR, "hoops"));
 
-        // Install any missing preset strategies on startup
+        // Install any missing presets on startup
         this.strategyStore.installMissingPresets();
+        this.phaseStore.installMissingPresets();
     }
 
     public static synchronized ApplicationContext getInstance() {
@@ -44,5 +48,9 @@ public class ApplicationContext {
 
     public PhaseStore getPhaseStore() {
         return phaseStore;
+    }
+
+    public HoopPatternStore getHoopPatternStore() {
+        return hoopPatternStore;
     }
 }

@@ -1,5 +1,6 @@
 package com.tradery.io;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
@@ -7,6 +8,7 @@ import com.tradery.model.Phase;
 
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -144,5 +146,72 @@ public class PhaseStore {
      */
     public File getDirectory() {
         return directory;
+    }
+
+    // ========== Preset Management ==========
+
+    private static final String PRESET_MANIFEST = "/phases/manifest.json";
+
+    public record PresetInfo(String id, String name, String version) {}
+
+    /**
+     * Load the list of available presets from the bundled manifest
+     */
+    public List<PresetInfo> getAvailablePresets() {
+        List<PresetInfo> presets = new ArrayList<>();
+        try (InputStream is = getClass().getResourceAsStream(PRESET_MANIFEST)) {
+            if (is == null) {
+                System.err.println("Phase preset manifest not found in resources");
+                return presets;
+            }
+            JsonNode root = mapper.readTree(is);
+            JsonNode phases = root.get("phases");
+            if (phases != null && phases.isArray()) {
+                for (JsonNode node : phases) {
+                    presets.add(new PresetInfo(
+                        node.get("id").asText(),
+                        node.get("name").asText(),
+                        node.get("version").asText()
+                    ));
+                }
+            }
+        } catch (IOException e) {
+            System.err.println("Failed to load phase preset manifest: " + e.getMessage());
+        }
+        return presets;
+    }
+
+    /**
+     * Install missing presets on first run.
+     * Only installs presets that don't already exist in the user's directory.
+     */
+    public void installMissingPresets() {
+        List<PresetInfo> presets = getAvailablePresets();
+        for (PresetInfo preset : presets) {
+            if (!exists(preset.id())) {
+                installPreset(preset.id());
+            }
+        }
+    }
+
+    /**
+     * Install or restore a preset phase from bundled resources.
+     * This will overwrite any existing phase with the same ID.
+     */
+    public Phase installPreset(String presetId) {
+        String resourcePath = "/phases/" + presetId + "/phase.json";
+        try (InputStream is = getClass().getResourceAsStream(resourcePath)) {
+            if (is == null) {
+                System.err.println("Phase preset not found: " + presetId);
+                return null;
+            }
+            Phase phase = mapper.readValue(is, Phase.class);
+            save(phase);
+            System.out.println("Installed phase preset: " + phase.getName());
+            return phase;
+        } catch (IOException e) {
+            System.err.println("Failed to install phase preset " + presetId + ": " + e.getMessage());
+            return null;
+        }
     }
 }
