@@ -61,6 +61,10 @@ public class ChartsPanel extends JPanel {
 
     // Current data
     private List<Candle> currentCandles;
+    private List<Trade> currentTrades;
+
+    // Highlight state
+    private List<org.jfree.chart.annotations.XYAnnotation> highlightAnnotations = new java.util.ArrayList<>();
 
     // UI components
     private JPanel chartsContainer;
@@ -443,7 +447,9 @@ public class ChartsPanel extends JPanel {
         if (candles == null || candles.isEmpty()) return;
 
         this.currentCandles = candles;
+        this.currentTrades = trades;
         crosshairManager.setCurrentCandles(candles);
+        clearTradeHighlight();
 
         updateDateAxisFormat(candles);
 
@@ -615,6 +621,86 @@ public class ChartsPanel extends JPanel {
                 });
             }
         }
+    }
+
+    /**
+     * Highlight specific trades on the chart (draw highlight overlay without moving view).
+     */
+    public void highlightTrades(List<Trade> trades) {
+        clearTradeHighlight();
+
+        if (trades == null || trades.isEmpty()) return;
+
+        XYPlot plot = priceChart.getXYPlot();
+
+        // Draw highlight for each trade (no zoom - just overlay)
+        BasicStroke highlightStroke = new BasicStroke(4.0f);
+
+        for (Trade t : trades) {
+            long entryTime = t.entryTime();
+            long exitTime = t.exitTime() != null ? t.exitTime() : entryTime;
+            double entryPrice = t.entryPrice();
+            double exitPrice = t.exitPrice() != null ? t.exitPrice() : entryPrice;
+
+            // Draw highlight line (thicker, brighter)
+            XYLineAnnotation highlight = new XYLineAnnotation(
+                entryTime, entryPrice,
+                exitTime, exitPrice,
+                highlightStroke, new Color(255, 215, 0)); // Gold
+            plot.addAnnotation(highlight);
+            highlightAnnotations.add(highlight);
+
+            // Draw entry/exit markers
+            double markerSize = 10.0;
+            org.jfree.chart.annotations.AbstractXYAnnotation entryMarker =
+                new org.jfree.chart.annotations.AbstractXYAnnotation() {
+                    @Override
+                    public void draw(java.awt.Graphics2D g2, XYPlot plot, java.awt.geom.Rectangle2D dataArea,
+                            ValueAxis domainAxis, ValueAxis rangeAxis, int rendererIndex,
+                            org.jfree.chart.plot.PlotRenderingInfo info) {
+                        double x = domainAxis.valueToJava2D(entryTime, dataArea, plot.getDomainAxisEdge());
+                        double y = rangeAxis.valueToJava2D(entryPrice, dataArea, plot.getRangeAxisEdge());
+                        g2.setColor(new Color(255, 215, 0));
+                        g2.setStroke(new BasicStroke(2.0f));
+                        g2.draw(new Ellipse2D.Double(x - markerSize/2, y - markerSize/2, markerSize, markerSize));
+                        g2.fill(new Ellipse2D.Double(x - 3, y - 3, 6, 6));
+                    }
+                };
+            plot.addAnnotation(entryMarker);
+            highlightAnnotations.add(entryMarker);
+
+            if (t.exitTime() != null && t.exitPrice() != null) {
+                org.jfree.chart.annotations.AbstractXYAnnotation exitMarker =
+                    new org.jfree.chart.annotations.AbstractXYAnnotation() {
+                        @Override
+                        public void draw(java.awt.Graphics2D g2, XYPlot plot, java.awt.geom.Rectangle2D dataArea,
+                                ValueAxis domainAxis, ValueAxis rangeAxis, int rendererIndex,
+                                org.jfree.chart.plot.PlotRenderingInfo info) {
+                            double x = domainAxis.valueToJava2D(exitTime, dataArea, plot.getDomainAxisEdge());
+                            double y = rangeAxis.valueToJava2D(exitPrice, dataArea, plot.getRangeAxisEdge());
+                            g2.setColor(new Color(255, 215, 0));
+                            g2.setStroke(new BasicStroke(2.0f));
+                            g2.draw(new Ellipse2D.Double(x - markerSize/2, y - markerSize/2, markerSize, markerSize));
+                            g2.fill(new Ellipse2D.Double(x - 3, y - 3, 6, 6));
+                        }
+                    };
+                plot.addAnnotation(exitMarker);
+                highlightAnnotations.add(exitMarker);
+            }
+        }
+    }
+
+    /**
+     * Clear any trade highlight annotations.
+     */
+    public void clearTradeHighlight() {
+        if (highlightAnnotations.isEmpty()) return;
+
+        XYPlot plot = priceChart.getXYPlot();
+        for (org.jfree.chart.annotations.XYAnnotation ann : highlightAnnotations) {
+            plot.removeAnnotation(ann);
+        }
+        highlightAnnotations.clear();
     }
 
     private void updateEquityChart(List<Candle> candles, List<Trade> trades, double initialCapital) {

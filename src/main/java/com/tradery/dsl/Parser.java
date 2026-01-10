@@ -175,6 +175,13 @@ public class Parser {
             return new AstNode.HolidayFunctionCall(func);
         }
 
+        // FOMC function (IS_FOMC_MEETING - no parameters)
+        if (check(TokenType.FOMC_FUNC)) {
+            String func = current().value();
+            advance();
+            return new AstNode.FomcFunctionCall(func);
+        }
+
         throw new ParserException("Unexpected token '" + current().value() +
             "' at position " + current().position());
     }

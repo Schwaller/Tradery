@@ -2,6 +2,7 @@ package com.tradery.ui;
 
 import com.tradery.model.Candle;
 import com.tradery.model.Hoop;
+import com.tradery.model.HoopMatchResult;
 import com.tradery.model.HoopPattern;
 import com.tradery.ui.charts.ChartStyles;
 import org.jfree.chart.ChartPanel;
@@ -25,6 +26,8 @@ import java.awt.*;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.awt.event.MouseMotionAdapter;
+import java.awt.event.MouseWheelEvent;
+import java.awt.event.MouseWheelListener;
 import java.awt.geom.Point2D;
 import java.awt.geom.Rectangle2D;
 import java.util.ArrayList;
@@ -55,8 +58,18 @@ public class HoopPatternChartPanel extends JPanel {
     private int draggingHoopIndex = -1;
     private static final double EDGE_TOLERANCE = 8.0;
 
+    // Pan state
+    private Point panStart = null;
+    private double panStartDomainMin, panStartDomainMax;
+    private double panStartRangeMin, panStartRangeMax;
+
+    // Axis drag state
+    private boolean draggingYAxis = false;
+    private int yAxisDragStartY;
+    private double yAxisDragStartRangeMin, yAxisDragStartRangeMax;
+
     // Match highlights
-    private final List<Integer> matchBars = new ArrayList<>();
+    private final List<HoopMatchResult> matches = new ArrayList<>();
     private boolean showMatches = true;
 
     // Callbacks
@@ -74,13 +87,14 @@ public class HoopPatternChartPanel extends JPanel {
         dateAxis.setTickLabelPaint(Color.LIGHT_GRAY);
         dateAxis.setAxisLineVisible(false);
 
-        // Price subplot (80% weight)
+        // Price subplot (80% weight) - Y axis on right side
         NumberAxis priceAxis = new NumberAxis();
         priceAxis.setAutoRangeIncludesZero(false);
         priceAxis.setTickLabelPaint(Color.LIGHT_GRAY);
         priceAxis.setAxisLineVisible(false);
 
         pricePlot = new XYPlot(new TimeSeriesCollection(), null, priceAxis, createPriceRenderer());
+        pricePlot.setRangeAxisLocation(org.jfree.chart.axis.AxisLocation.TOP_OR_RIGHT);
         pricePlot.setBackgroundPaint(ChartStyles.PLOT_BACKGROUND_COLOR);
         pricePlot.setDomainGridlinePaint(ChartStyles.GRIDLINE_COLOR);
         pricePlot.setRangeGridlinePaint(ChartStyles.GRIDLINE_COLOR);
@@ -113,13 +127,16 @@ public class HoopPatternChartPanel extends JPanel {
 
         // Create chart panel
         chartPanel = new ChartPanel(chart);
-        chartPanel.setMouseWheelEnabled(true);
-        chartPanel.setDomainZoomable(true);
-        chartPanel.setRangeZoomable(true);
 
-        // Add mouse listeners
+        // Disable built-in zoom/pan - we handle it ourselves
+        chartPanel.setMouseWheelEnabled(false);
+        chartPanel.setDomainZoomable(false);
+        chartPanel.setRangeZoomable(false);
+
+        // Add mouse listeners for hoop interaction, panning, and zooming
         chartPanel.addMouseListener(createMouseListener());
         chartPanel.addMouseMotionListener(createMouseMotionListener());
+        chartPanel.addMouseWheelListener(createMouseWheelListener());
 
         add(chartPanel, BorderLayout.CENTER);
     }
@@ -175,10 +192,10 @@ public class HoopPatternChartPanel extends JPanel {
         return selectedHoopIndex;
     }
 
-    public void setMatchBars(List<Integer> bars) {
-        this.matchBars.clear();
-        if (bars != null) {
-            this.matchBars.addAll(bars);
+    public void setMatches(List<HoopMatchResult> matchResults) {
+        this.matches.clear();
+        if (matchResults != null) {
+            this.matches.addAll(matchResults);
         }
         renderHoopOverlays();
     }
@@ -267,7 +284,7 @@ public class HoopPatternChartPanel extends JPanel {
         }
 
         // Draw match highlights
-        if (showMatches && !matchBars.isEmpty()) {
+        if (showMatches && !matches.isEmpty()) {
             drawMatchHighlights(pricePlot);
         }
 
@@ -316,27 +333,71 @@ public class HoopPatternChartPanel extends JPanel {
     }
 
     private void drawMatchHighlights(XYPlot plot) {
-        for (int barIndex : matchBars) {
-            if (barIndex < 0 || barIndex >= candles.size()) continue;
+        for (HoopMatchResult match : matches) {
+            int[] hitBars = match.hoopHitBars();
+            double[] hitPrices = match.hoopHitPrices();
 
-            long timestamp = candles.get(barIndex).timestamp();
+            if (hitBars == null || hitBars.length == 0) continue;
 
-            // Dashed vertical line
-            plot.addAnnotation(new XYLineAnnotation(
-                timestamp, plot.getRangeAxis().getLowerBound(),
-                timestamp, plot.getRangeAxis().getUpperBound(),
-                new BasicStroke(2.0f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER,
-                    10.0f, new float[]{5.0f, 5.0f}, 0.0f),
-                ChartStyles.HOOP_MATCH_COLOR
-            ));
+            // Draw anchor point (pattern start)
+            if (match.anchorBar() >= 0 && match.anchorBar() < candles.size()) {
+                long anchorTime = candles.get(match.anchorBar()).timestamp();
+                double anchorPrice = match.anchorPrice();
 
-            // Checkmark label
-            XYTextAnnotation label = new XYTextAnnotation(
-                "✓", timestamp, plot.getRangeAxis().getUpperBound() * 0.98
-            );
-            label.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 14));
-            label.setPaint(ChartStyles.HOOP_MATCH_COLOR);
-            plot.addAnnotation(label);
+                // Anchor dot (larger, hollow)
+                plot.addAnnotation(new org.jfree.chart.annotations.XYShapeAnnotation(
+                    new java.awt.geom.Ellipse2D.Double(anchorTime - 2000000, anchorPrice - 0.5, 4000000, 1),
+                    new BasicStroke(2.0f), ChartStyles.HOOP_MATCH_COLOR
+                ));
+            }
+
+            // Draw path connecting hoop hits
+            double prevTime = match.anchorBar() >= 0 && match.anchorBar() < candles.size()
+                ? candles.get(match.anchorBar()).timestamp() : 0;
+            double prevPrice = match.anchorPrice();
+
+            for (int i = 0; i < hitBars.length; i++) {
+                int bar = hitBars[i];
+                if (bar < 0 || bar >= candles.size()) continue;
+
+                long hitTime = candles.get(bar).timestamp();
+                double hitPrice = hitPrices[i];
+
+                // Line from previous hit to this hit
+                if (prevTime > 0) {
+                    plot.addAnnotation(new XYLineAnnotation(
+                        prevTime, prevPrice, hitTime, hitPrice,
+                        new BasicStroke(1.5f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND),
+                        ChartStyles.HOOP_MATCH_COLOR
+                    ));
+                }
+
+                // Dot at this hit point
+                double dotRadius = (plot.getRangeAxis().getUpperBound() - plot.getRangeAxis().getLowerBound()) * 0.01;
+                long timeRadius = (long) ((combinedPlot.getDomainAxis().getUpperBound() - combinedPlot.getDomainAxis().getLowerBound()) * 0.005);
+
+                plot.addAnnotation(new org.jfree.chart.annotations.XYShapeAnnotation(
+                    new java.awt.geom.Ellipse2D.Double(
+                        hitTime - timeRadius, hitPrice - dotRadius,
+                        timeRadius * 2, dotRadius * 2
+                    ),
+                    new BasicStroke(1.0f), ChartStyles.HOOP_MATCH_COLOR, ChartStyles.HOOP_MATCH_COLOR
+                ));
+
+                prevTime = hitTime;
+                prevPrice = hitPrice;
+            }
+
+            // Draw checkmark at completion
+            if (match.completionBar() >= 0 && match.completionBar() < candles.size()) {
+                long completeTime = candles.get(match.completionBar()).timestamp();
+                double completePrice = hitPrices[hitPrices.length - 1];
+
+                XYTextAnnotation label = new XYTextAnnotation("✓", completeTime, completePrice * 1.01);
+                label.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 12));
+                label.setPaint(ChartStyles.HOOP_MATCH_COLOR);
+                plot.addAnnotation(label);
+            }
         }
     }
 
@@ -362,6 +423,12 @@ public class HoopPatternChartPanel extends JPanel {
 
                 Point screenPoint = e.getPoint();
 
+                // Check if clicking on Y axis area (for scaling)
+                if (isOnYAxis(screenPoint)) {
+                    startYAxisDrag(screenPoint.y);
+                    return;
+                }
+
                 // Check if near any hoop edge (in price area) - for dragging
                 for (HoopZoneBounds zone : hoopZones) {
                     updateZoneScreenBounds(zone);
@@ -374,16 +441,17 @@ public class HoopPatternChartPanel extends JPanel {
                     }
                 }
 
-                // Check if inside a hoop zone - for selection
+                // Check if inside a hoop zone - for selection (but also allow pan)
                 for (HoopZoneBounds zone : hoopZones) {
                     if (zone.contains(screenPoint)) {
                         setSelectedHoop(zone.getHoopIndex());
-                        return;
+                        // Don't return - allow panning even when clicking on hoop
+                        break;
                     }
                 }
 
-                // Click outside hoops - deselect
-                setSelectedHoop(-1);
+                // Start panning
+                startPan(screenPoint);
             }
 
             @Override
@@ -401,8 +469,33 @@ public class HoopPatternChartPanel extends JPanel {
                 }
                 currentDrag = HoopZoneBounds.Edge.NONE;
                 draggingHoopIndex = -1;
+                panStart = null;
+                draggingYAxis = false;
             }
         };
+    }
+
+    private boolean isOnYAxis(Point point) {
+        Rectangle2D dataArea = getPriceSubplotDataArea();
+        if (dataArea == null) return false;
+        // Y axis is to the right of the data area
+        return point.x > dataArea.getMaxX() && point.x < dataArea.getMaxX() + 60;
+    }
+
+    private void startYAxisDrag(int y) {
+        draggingYAxis = true;
+        yAxisDragStartY = y;
+        yAxisDragStartRangeMin = pricePlot.getRangeAxis().getLowerBound();
+        yAxisDragStartRangeMax = pricePlot.getRangeAxis().getUpperBound();
+    }
+
+    private void startPan(Point point) {
+        panStart = point;
+        // Store current axis ranges
+        panStartDomainMin = combinedPlot.getDomainAxis().getLowerBound();
+        panStartDomainMax = combinedPlot.getDomainAxis().getUpperBound();
+        panStartRangeMin = pricePlot.getRangeAxis().getLowerBound();
+        panStartRangeMax = pricePlot.getRangeAxis().getUpperBound();
     }
 
     private void showContextMenu(MouseEvent e) {
@@ -420,7 +513,6 @@ public class HoopPatternChartPanel extends JPanel {
             menu.add(setAnchorItem);
 
             if (anchorBarIndex >= 0) {
-                menu.addSeparator();
                 JMenuItem clearAnchorItem = new JMenuItem("Clear Anchor");
                 clearAnchorItem.addActionListener(evt -> {
                     anchorBarIndex = -1;
@@ -428,9 +520,51 @@ public class HoopPatternChartPanel extends JPanel {
                 });
                 menu.add(clearAnchorItem);
             }
+
+            menu.addSeparator();
         }
 
+        // Fit options
+        JMenuItem fitAllItem = new JMenuItem("Fit All");
+        fitAllItem.addActionListener(evt -> fitAll());
+        menu.add(fitAllItem);
+
+        JMenuItem fitXItem = new JMenuItem("Fit X Axis");
+        fitXItem.addActionListener(evt -> fitXAxis());
+        menu.add(fitXItem);
+
+        JMenuItem fitYItem = new JMenuItem("Fit Y Axis");
+        fitYItem.addActionListener(evt -> fitYAxis());
+        menu.add(fitYItem);
+
         menu.show(chartPanel, e.getX(), e.getY());
+    }
+
+    private void fitAll() {
+        fitXAxis();
+        fitYAxis();
+    }
+
+    private void fitXAxis() {
+        if (candles.isEmpty()) return;
+        long minTime = candles.get(0).timestamp();
+        long maxTime = candles.get(candles.size() - 1).timestamp();
+        // Add some padding
+        long padding = (maxTime - minTime) / 20;
+        combinedPlot.getDomainAxis().setRange(minTime - padding, maxTime + padding);
+    }
+
+    private void fitYAxis() {
+        if (candles.isEmpty()) return;
+        double minPrice = Double.MAX_VALUE;
+        double maxPrice = Double.MIN_VALUE;
+        for (Candle c : candles) {
+            minPrice = Math.min(minPrice, c.low());
+            maxPrice = Math.max(maxPrice, c.high());
+        }
+        // Add some padding
+        double padding = (maxPrice - minPrice) * 0.05;
+        pricePlot.getRangeAxis().setRange(minPrice - padding, maxPrice + padding);
     }
 
     /**
@@ -470,67 +604,37 @@ public class HoopPatternChartPanel extends JPanel {
         return new MouseMotionAdapter() {
             @Override
             public void mouseDragged(MouseEvent e) {
-                if (currentDrag == HoopZoneBounds.Edge.NONE || draggingHoopIndex < 0) return;
-                if (pattern == null || draggingHoopIndex >= pattern.getHoops().size()) return;
-
                 Point screenPoint = e.getPoint();
 
-                // Try to translate to data space, with fallbacks
-                Point2D dataPoint = translateToDataSpace(screenPoint);
-                Double dragY = dataPoint != null ? dataPoint.getY() : getPriceFromScreenY(screenPoint.y);
-                int targetBar = dataPoint != null
-                    ? findNearestBar(dataPoint.getX())
-                    : findBarFromScreenX(screenPoint.x);
+                // Handle Y-axis scaling
+                if (draggingYAxis) {
+                    handleYAxisDrag(screenPoint.y);
+                    return;
+                }
 
-                Hoop hoop = pattern.getHoops().get(draggingHoopIndex);
-                double anchorPrice = getAnchorPriceForHoop(draggingHoopIndex);
+                // Handle hoop edge dragging
+                if (currentDrag != HoopZoneBounds.Edge.NONE && draggingHoopIndex >= 0) {
+                    handleHoopDrag(screenPoint);
+                    return;
+                }
 
-                Hoop newHoop = switch (currentDrag) {
-                    case TOP -> {
-                        if (dragY == null || anchorPrice == 0) yield hoop;
-                        double newMaxPercent = ((dragY / anchorPrice) - 1.0) * 100.0;
-                        yield new Hoop(hoop.name(), hoop.minPricePercent(), newMaxPercent,
-                            hoop.distance(), hoop.tolerance(), hoop.anchorMode());
-                    }
-                    case BOTTOM -> {
-                        if (dragY == null || anchorPrice == 0) yield hoop;
-                        double newMinPercent = ((dragY / anchorPrice) - 1.0) * 100.0;
-                        yield new Hoop(hoop.name(), newMinPercent, hoop.maxPricePercent(),
-                            hoop.distance(), hoop.tolerance(), hoop.anchorMode());
-                    }
-                    case LEFT, RIGHT -> {
-                        if (targetBar < 0) yield hoop;
-                        int prevBar = draggingHoopIndex == 0 ? anchorBarIndex :
-                            hoopZones.get(draggingHoopIndex - 1).getEndBar();
-                        int delta = targetBar - prevBar;
-
-                        if (currentDrag == HoopZoneBounds.Edge.LEFT) {
-                            // Adjust distance - tolerance (window start)
-                            int newDistance = delta + hoop.tolerance();
-                            yield new Hoop(hoop.name(), hoop.minPricePercent(), hoop.maxPricePercent(),
-                                Math.max(1, newDistance), hoop.tolerance(), hoop.anchorMode());
-                        } else {
-                            // Adjust distance + tolerance (window end)
-                            int newTolerance = delta - hoop.distance();
-                            yield new Hoop(hoop.name(), hoop.minPricePercent(), hoop.maxPricePercent(),
-                                hoop.distance(), Math.max(0, newTolerance), hoop.anchorMode());
-                        }
-                    }
-                    default -> hoop;
-                };
-
-                // Update pattern
-                List<Hoop> hoops = new ArrayList<>(pattern.getHoops());
-                hoops.set(draggingHoopIndex, newHoop);
-                pattern.setHoops(hoops);
-
-                renderHoopOverlays();
+                // Handle panning
+                if (panStart != null) {
+                    handlePan(screenPoint);
+                }
             }
 
             @Override
             public void mouseMoved(MouseEvent e) {
-                // Update cursor based on edge proximity
-                Point2D screenPoint = e.getPoint();
+                Point screenPoint = e.getPoint();
+
+                // Check if on Y axis - show vertical resize cursor
+                if (isOnYAxis(screenPoint)) {
+                    chartPanel.setCursor(Cursor.getPredefinedCursor(Cursor.N_RESIZE_CURSOR));
+                    return;
+                }
+
+                // Update cursor based on hoop edge proximity
                 for (HoopZoneBounds zone : hoopZones) {
                     updateZoneScreenBounds(zone);
                     HoopZoneBounds.Edge edge = zone.getNearEdge(screenPoint, EDGE_TOLERANCE);
@@ -548,6 +652,133 @@ public class HoopPatternChartPanel extends JPanel {
                 chartPanel.setCursor(Cursor.getDefaultCursor());
             }
         };
+    }
+
+    private MouseWheelListener createMouseWheelListener() {
+        return e -> {
+            // Zoom centered on mouse position
+            Point point = e.getPoint();
+            Rectangle2D dataArea = getPriceSubplotDataArea();
+            if (dataArea == null) return;
+
+            // Calculate zoom factor (scroll up = zoom in, scroll down = zoom out)
+            double zoomFactor = e.getWheelRotation() < 0 ? 0.9 : 1.1;
+
+            // Get current mouse position in data coordinates
+            double mouseX = combinedPlot.getDomainAxis().java2DToValue(
+                point.getX(), dataArea, combinedPlot.getDomainAxisEdge()
+            );
+
+            // Zoom domain axis centered on mouse X
+            double domainMin = combinedPlot.getDomainAxis().getLowerBound();
+            double domainMax = combinedPlot.getDomainAxis().getUpperBound();
+            double domainRange = domainMax - domainMin;
+            double newRange = domainRange * zoomFactor;
+
+            // Keep mouse position at same screen location
+            double mouseRatio = (mouseX - domainMin) / domainRange;
+            double newMin = mouseX - mouseRatio * newRange;
+            double newMax = newMin + newRange;
+
+            combinedPlot.getDomainAxis().setRange(newMin, newMax);
+        };
+    }
+
+    private void handleHoopDrag(Point screenPoint) {
+        if (pattern == null || draggingHoopIndex >= pattern.getHoops().size()) return;
+
+        // Try to translate to data space, with fallbacks
+        Point2D dataPoint = translateToDataSpace(screenPoint);
+        Double dragY = dataPoint != null ? dataPoint.getY() : getPriceFromScreenY(screenPoint.y);
+        int targetBar = dataPoint != null
+            ? findNearestBar(dataPoint.getX())
+            : findBarFromScreenX(screenPoint.x);
+
+        Hoop hoop = pattern.getHoops().get(draggingHoopIndex);
+        double anchorPrice = getAnchorPriceForHoop(draggingHoopIndex);
+
+        Hoop newHoop = switch (currentDrag) {
+            case TOP -> {
+                if (dragY == null || anchorPrice == 0) yield hoop;
+                double newMaxPercent = ((dragY / anchorPrice) - 1.0) * 100.0;
+                yield new Hoop(hoop.name(), hoop.minPricePercent(), newMaxPercent,
+                    hoop.distance(), hoop.tolerance(), hoop.anchorMode());
+            }
+            case BOTTOM -> {
+                if (dragY == null || anchorPrice == 0) yield hoop;
+                double newMinPercent = ((dragY / anchorPrice) - 1.0) * 100.0;
+                yield new Hoop(hoop.name(), newMinPercent, hoop.maxPricePercent(),
+                    hoop.distance(), hoop.tolerance(), hoop.anchorMode());
+            }
+            case LEFT, RIGHT -> {
+                if (targetBar < 0) yield hoop;
+                int prevBar = draggingHoopIndex == 0 ? anchorBarIndex :
+                    hoopZones.get(draggingHoopIndex - 1).getEndBar();
+                int delta = targetBar - prevBar;
+
+                if (currentDrag == HoopZoneBounds.Edge.LEFT) {
+                    // Adjust distance - tolerance (window start)
+                    int newDistance = delta + hoop.tolerance();
+                    yield new Hoop(hoop.name(), hoop.minPricePercent(), hoop.maxPricePercent(),
+                        Math.max(1, newDistance), hoop.tolerance(), hoop.anchorMode());
+                } else {
+                    // Adjust distance + tolerance (window end)
+                    int newTolerance = delta - hoop.distance();
+                    yield new Hoop(hoop.name(), hoop.minPricePercent(), hoop.maxPricePercent(),
+                        hoop.distance(), Math.max(0, newTolerance), hoop.anchorMode());
+                }
+            }
+            default -> hoop;
+        };
+
+        // Update pattern
+        List<Hoop> hoops = new ArrayList<>(pattern.getHoops());
+        hoops.set(draggingHoopIndex, newHoop);
+        pattern.setHoops(hoops);
+
+        renderHoopOverlays();
+    }
+
+    private void handlePan(Point currentPoint) {
+        Rectangle2D dataArea = getPriceSubplotDataArea();
+        if (dataArea == null) return;
+
+        // Calculate pixel delta
+        int dx = currentPoint.x - panStart.x;
+        int dy = currentPoint.y - panStart.y;
+
+        // Convert pixel delta to data delta
+        double domainRange = panStartDomainMax - panStartDomainMin;
+        double rangeRange = panStartRangeMax - panStartRangeMin;
+
+        double domainDelta = -dx * domainRange / dataArea.getWidth();
+        double rangeDelta = dy * rangeRange / dataArea.getHeight();
+
+        // Apply new bounds
+        combinedPlot.getDomainAxis().setRange(
+            panStartDomainMin + domainDelta,
+            panStartDomainMax + domainDelta
+        );
+        pricePlot.getRangeAxis().setRange(
+            panStartRangeMin + rangeDelta,
+            panStartRangeMax + rangeDelta
+        );
+    }
+
+    private void handleYAxisDrag(int currentY) {
+        // Scale Y axis based on drag distance
+        // Dragging up = zoom in (smaller range), dragging down = zoom out (larger range)
+        int dy = currentY - yAxisDragStartY;
+        double scaleFactor = Math.pow(1.01, dy);  // 1% per pixel
+
+        double originalRange = yAxisDragStartRangeMax - yAxisDragStartRangeMin;
+        double originalCenter = (yAxisDragStartRangeMax + yAxisDragStartRangeMin) / 2.0;
+
+        double newRange = originalRange * scaleFactor;
+        double newMin = originalCenter - newRange / 2.0;
+        double newMax = originalCenter + newRange / 2.0;
+
+        pricePlot.getRangeAxis().setRange(newMin, newMax);
     }
 
     private Point2D translateToDataSpace(Point point) {

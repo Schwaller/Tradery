@@ -182,21 +182,19 @@ public class PhaseStore {
     }
 
     /**
-     * Install missing presets on first run.
-     * Only installs presets that don't already exist in the user's directory.
+     * Install/update all built-in presets on startup.
+     * Always overwrites to ensure latest versions.
      */
-    public void installMissingPresets() {
+    public void installBuiltInPresets() {
         List<PresetInfo> presets = getAvailablePresets();
         for (PresetInfo preset : presets) {
-            if (!exists(preset.id())) {
-                installPreset(preset.id());
-            }
+            installPreset(preset.id());
         }
     }
 
     /**
      * Install or restore a preset phase from bundled resources.
-     * This will overwrite any existing phase with the same ID.
+     * Marks the phase as builtIn so it can't be edited.
      */
     public Phase installPreset(String presetId) {
         String resourcePath = "/phases/" + presetId + "/phase.json";
@@ -206,12 +204,20 @@ public class PhaseStore {
                 return null;
             }
             Phase phase = mapper.readValue(is, Phase.class);
+            phase.setBuiltIn(true);  // Mark as built-in
             save(phase);
-            System.out.println("Installed phase preset: " + phase.getName());
+            System.out.println("Installed built-in phase: " + phase.getName());
             return phase;
         } catch (IOException e) {
             System.err.println("Failed to install phase preset " + presetId + ": " + e.getMessage());
             return null;
         }
+    }
+
+    /**
+     * Check if a phase ID is a built-in preset
+     */
+    public boolean isBuiltInPreset(String id) {
+        return getAvailablePresets().stream().anyMatch(p -> p.id().equals(id));
     }
 }

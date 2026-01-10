@@ -102,15 +102,15 @@ public class AiTerminalFrame extends JFrame {
     }
 
     /**
-     * Start Claude with the given context (creates own terminal panel if needed).
+     * Start an AI CLI with the given context (creates own terminal panel if needed).
      */
-    public void startClaude(String workingDir, String initialPrompt) {
+    public void startAi(String aiType, String workingDir, String initialPrompt) {
         if (terminalPanel == null) {
             terminalPanel = new AiTerminalPanel();
             terminalPanel.setOnFileChange(onFileChange);
             contentPanel.add(terminalPanel, BorderLayout.CENTER);
         }
-        terminalPanel.startClaude(workingDir, initialPrompt);
+        terminalPanel.startAi(aiType, workingDir, initialPrompt);
         setVisible(true);
         toFront();
     }
@@ -125,9 +125,9 @@ public class AiTerminalFrame extends JFrame {
     }
 
     /**
-     * Check if Claude process is currently running.
+     * Check if AI process is currently running.
      */
-    public boolean isClaudeRunning() {
+    public boolean isAiRunning() {
         return terminalPanel != null && terminalPanel.isRunning();
     }
 

@@ -14,7 +14,7 @@ import java.time.Instant;
 public class PhaseEditorPanel extends JPanel {
 
     private JTextField nameField;
-    private JComboBox<String> categoryCombo;
+    private JTextField categoryField;
     private JTextArea descriptionArea;
     private JComboBox<String> symbolCombo;
     private JComboBox<String> timeframeCombo;
@@ -23,10 +23,6 @@ public class PhaseEditorPanel extends JPanel {
     private Phase phase;
     private Runnable onChange;
     private boolean suppressChangeEvents = false;
-
-    private static final String[] CATEGORIES = {
-        "Trend", "Time", "Moon", "Custom"
-    };
 
     private static final String[] SYMBOLS = {
         "BTCUSDT", "ETHUSDT", "BNBUSDT", "XRPUSDT", "ADAUSDT",
@@ -48,8 +44,8 @@ public class PhaseEditorPanel extends JPanel {
         nameField = new JTextField();
         nameField.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 13));
 
-        categoryCombo = new JComboBox<>(CATEGORIES);
-        categoryCombo.setSelectedItem("Custom");
+        categoryField = new JTextField();
+        categoryField.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 12));
 
         descriptionArea = new JTextArea(2, 20);
         descriptionArea.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 12));
@@ -75,9 +71,9 @@ public class PhaseEditorPanel extends JPanel {
         };
 
         nameField.getDocument().addDocumentListener(docListener);
+        categoryField.getDocument().addDocumentListener(docListener);
         descriptionArea.getDocument().addDocumentListener(docListener);
         conditionArea.getDocument().addDocumentListener(docListener);
-        categoryCombo.addActionListener(e -> fireChange());
         symbolCombo.addActionListener(e -> fireChange());
         timeframeCombo.addActionListener(e -> fireChange());
     }
@@ -114,7 +110,7 @@ public class PhaseEditorPanel extends JPanel {
         gbc.gridx = 1;
         gbc.fill = GridBagConstraints.HORIZONTAL;
         gbc.weightx = 1;
-        formPanel.add(categoryCombo, gbc);
+        formPanel.add(categoryField, gbc);
 
         // Symbol
         gbc.gridx = 0; gbc.gridy = 2;
@@ -241,14 +237,14 @@ public class PhaseEditorPanel extends JPanel {
         try {
             if (phase != null) {
                 nameField.setText(phase.getName() != null ? phase.getName() : "");
-                categoryCombo.setSelectedItem(phase.getCategory() != null ? phase.getCategory() : "Custom");
+                categoryField.setText(phase.getCategory() != null ? phase.getCategory() : "");
                 descriptionArea.setText(phase.getDescription() != null ? phase.getDescription() : "");
                 symbolCombo.setSelectedItem(phase.getSymbol() != null ? phase.getSymbol() : "BTCUSDT");
                 timeframeCombo.setSelectedItem(phase.getTimeframe() != null ? phase.getTimeframe() : "1d");
                 conditionArea.setText(phase.getCondition() != null ? phase.getCondition() : "");
             } else {
                 nameField.setText("");
-                categoryCombo.setSelectedItem("Custom");
+                categoryField.setText("");
                 descriptionArea.setText("");
                 symbolCombo.setSelectedItem("BTCUSDT");
                 timeframeCombo.setSelectedItem("1d");
@@ -262,7 +258,8 @@ public class PhaseEditorPanel extends JPanel {
     public void applyTo(Phase phase) {
         if (phase == null) return;
         phase.setName(nameField.getText().trim());
-        phase.setCategory((String) categoryCombo.getSelectedItem());
+        String cat = categoryField.getText().trim();
+        phase.setCategory(cat.isEmpty() ? null : cat);
         phase.setDescription(descriptionArea.getText().trim());
         phase.setSymbol((String) symbolCombo.getSelectedItem());
         phase.setTimeframe((String) timeframeCombo.getSelectedItem());
@@ -279,7 +276,7 @@ public class PhaseEditorPanel extends JPanel {
     public void setEnabled(boolean enabled) {
         super.setEnabled(enabled);
         nameField.setEnabled(enabled);
-        categoryCombo.setEnabled(enabled);
+        categoryField.setEnabled(enabled);
         descriptionArea.setEnabled(enabled);
         symbolCombo.setEnabled(enabled);
         timeframeCombo.setEnabled(enabled);

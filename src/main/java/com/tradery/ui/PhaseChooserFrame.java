@@ -195,7 +195,8 @@ public class PhaseChooserFrame extends JFrame {
         if (selected != null) {
             currentPhase = selected;
             editorPanel.loadFrom(selected);
-            editorPanel.setEnabled(true);
+            // Disable editing for built-in phases
+            editorPanel.setEnabled(!selected.isBuiltIn());
             // Update preview window if open
             if (previewWindow != null && previewWindow.isVisible()) {
                 previewWindow.setPhase(selected);
@@ -209,8 +210,10 @@ public class PhaseChooserFrame extends JFrame {
     }
 
     private void updateButtonStates() {
-        boolean hasSelection = phaseList.getSelectedValue() != null;
-        deleteButton.setEnabled(hasSelection);
+        Phase selected = phaseList.getSelectedValue();
+        boolean hasSelection = selected != null;
+        boolean isBuiltIn = hasSelection && selected.isBuiltIn();
+        deleteButton.setEnabled(hasSelection && !isBuiltIn);  // Can't delete built-in
         previewButton.setEnabled(hasSelection);
     }
 
@@ -224,6 +227,7 @@ public class PhaseChooserFrame extends JFrame {
         }
 
         Phase phase = new Phase(id, "New Phase", "close > SMA(200)", "1d", "BTCUSDT");
+        phase.setCategory("Custom");
         phase.setCreated(Instant.now());
         phase.setUpdated(Instant.now());
 

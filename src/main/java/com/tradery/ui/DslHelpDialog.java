@@ -170,12 +170,13 @@ public class DslHelpDialog extends JDialog {
             </div>
 
             <div class="section">
-            <h3>Holiday Functions</h3>
+            <h3>Calendar Functions</h3>
             <table>
                 <tr><td><code>IS_US_HOLIDAY</code></td><td>US Federal Reserve bank holiday (1=yes, 0=no)</td></tr>
+                <tr><td><code>IS_FOMC_MEETING</code></td><td>FOMC meeting day (1=yes, 0=no)</td></tr>
             </table>
-            <div class="example">IS_US_HOLIDAY == 1</div>
-            <span style="color: %s; font-size: 10px;">Includes: New Year's, MLK Day, Presidents Day, Memorial Day, Juneteenth, July 4th, Labor Day, Columbus Day, Veterans Day, Thanksgiving, Christmas</span>
+            <div class="example">IS_US_HOLIDAY == 1<br>IS_FOMC_MEETING == 1</div>
+            <span style="color: %s; font-size: 10px;">Holidays: New Year's, MLK Day, Presidents Day, Memorial Day, Juneteenth, July 4th, Labor Day, Columbus Day, Veterans Day, Thanksgiving, Christmas<br>FOMC: 8 meetings/year (2024-2026 schedule built-in)</span>
             </div>
 
             <div class="section">

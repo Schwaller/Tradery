@@ -13,6 +13,7 @@ public enum TokenType {
     TIME_FUNC,      // DAYOFWEEK, HOUR, DAY, MONTH
     MOON_FUNC,      // MOON_PHASE
     HOLIDAY_FUNC,   // IS_US_HOLIDAY
+    FOMC_FUNC,      // IS_FOMC_MEETING
 
     // Properties
     PROPERTY,       // .signal, .histogram, .upper, .lower, .middle

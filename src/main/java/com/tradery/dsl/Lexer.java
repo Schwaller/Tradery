@@ -40,6 +40,9 @@ public class Lexer {
         // Holiday functions
         Map.entry("IS_US_HOLIDAY", TokenType.HOLIDAY_FUNC),
 
+        // FOMC functions
+        Map.entry("IS_FOMC_MEETING", TokenType.FOMC_FUNC),
+
         // Price references
         Map.entry("price", TokenType.PRICE),
         Map.entry("open", TokenType.PRICE),

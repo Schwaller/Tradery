@@ -7,6 +7,7 @@ import com.tradery.engine.HoopPatternEvaluator;
 import com.tradery.io.HoopPatternStore;
 import com.tradery.model.Candle;
 import com.tradery.model.Hoop;
+import com.tradery.model.HoopMatchResult;
 import com.tradery.model.HoopPattern;
 
 import javax.swing.*;
@@ -322,31 +323,18 @@ public class InteractiveHoopEditorFrame extends JFrame {
 
         statusLabel.setText("Finding matches...");
 
-        SwingWorker<List<Integer>, Void> worker = new SwingWorker<>() {
+        SwingWorker<List<HoopMatchResult>, Void> worker = new SwingWorker<>() {
             @Override
-            protected List<Integer> doInBackground() throws Exception {
+            protected List<HoopMatchResult> doInBackground() throws Exception {
                 HoopPatternEvaluator evaluator = new HoopPatternEvaluator(candleStore);
-                Map<String, boolean[]> results = evaluator.evaluatePatterns(
-                    List.of(pattern), candles, pattern.getTimeframe()
-                );
-
-                boolean[] completions = results.get(pattern.getId());
-                List<Integer> matches = new ArrayList<>();
-                if (completions != null) {
-                    for (int i = 0; i < completions.length; i++) {
-                        if (completions[i]) {
-                            matches.add(i);
-                        }
-                    }
-                }
-                return matches;
+                return evaluator.findPatternCompletions(pattern, candles);
             }
 
             @Override
             protected void done() {
                 try {
-                    List<Integer> matches = get();
-                    chartPanel.setMatchBars(matches);
+                    List<HoopMatchResult> matches = get();
+                    chartPanel.setMatches(matches);
                     statusLabel.setText("Found " + matches.size() + " pattern matches");
                 } catch (Exception ex) {
                     statusLabel.setText("Error finding matches: " + ex.getMessage());

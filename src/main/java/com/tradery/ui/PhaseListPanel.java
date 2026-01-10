@@ -135,7 +135,13 @@ public class PhaseListPanel extends JPanel {
         JPopupMenu popup = new JPopupMenu();
         PhaseStore phaseStore = ApplicationContext.getInstance().getPhaseStore();
         List<Phase> phases = phaseStore.loadAll();
+
+        // Sort by category, then by name
         phases.sort((a, b) -> {
+            String c1 = a.getCategory() != null ? a.getCategory() : "Custom";
+            String c2 = b.getCategory() != null ? b.getCategory() : "Custom";
+            int catCompare = c1.compareTo(c2);
+            if (catCompare != 0) return catCompare;
             String n1 = a.getName() != null ? a.getName() : "";
             String n2 = b.getName() != null ? b.getName() : "";
             return n1.compareToIgnoreCase(n2);
@@ -147,43 +153,11 @@ public class PhaseListPanel extends JPanel {
             popup.add(empty);
         } else {
             JMenu requireMenu = new JMenu("Require");
-            for (Phase phase : phases) {
-                String id = phase.getId();
-                if (!requiredPhaseIds.contains(id) && !excludedPhaseIds.contains(id)) {
-                    JMenuItem item = new JMenuItem(phase.getName());
-                    item.addActionListener(e -> {
-                        requiredPhaseIds.add(id);
-                        updateListModel();
-                        fireChange();
-                    });
-                    requireMenu.add(item);
-                }
-            }
-            if (requireMenu.getItemCount() == 0) {
-                JMenuItem none = new JMenuItem("(none available)");
-                none.setEnabled(false);
-                requireMenu.add(none);
-            }
+            buildCategorySubmenus(requireMenu, phases, true);
             popup.add(requireMenu);
 
             JMenu excludeMenu = new JMenu("Exclude (NOT)");
-            for (Phase phase : phases) {
-                String id = phase.getId();
-                if (!requiredPhaseIds.contains(id) && !excludedPhaseIds.contains(id)) {
-                    JMenuItem item = new JMenuItem(phase.getName());
-                    item.addActionListener(e -> {
-                        excludedPhaseIds.add(id);
-                        updateListModel();
-                        fireChange();
-                    });
-                    excludeMenu.add(item);
-                }
-            }
-            if (excludeMenu.getItemCount() == 0) {
-                JMenuItem none = new JMenuItem("(none available)");
-                none.setEnabled(false);
-                excludeMenu.add(none);
-            }
+            buildCategorySubmenus(excludeMenu, phases, false);
             popup.add(excludeMenu);
 
             if (!requiredPhaseIds.isEmpty() || !excludedPhaseIds.isEmpty()) {
@@ -199,6 +173,53 @@ public class PhaseListPanel extends JPanel {
             }
         }
         popup.show(addButton, 0, addButton.getHeight());
+    }
+
+    private void buildCategorySubmenus(JMenu parentMenu, List<Phase> phases, boolean isRequired) {
+        // Group phases by category
+        java.util.Map<String, java.util.List<Phase>> byCategory = new java.util.LinkedHashMap<>();
+        for (Phase phase : phases) {
+            String cat = phase.getCategory() != null ? phase.getCategory() : "Custom";
+            byCategory.computeIfAbsent(cat, k -> new ArrayList<>()).add(phase);
+        }
+
+        int totalAdded = 0;
+        for (var entry : byCategory.entrySet()) {
+            String category = entry.getKey();
+            java.util.List<Phase> categoryPhases = entry.getValue();
+
+            JMenu categoryMenu = new JMenu(category);
+            int itemsInCategory = 0;
+
+            for (Phase phase : categoryPhases) {
+                String id = phase.getId();
+                if (!requiredPhaseIds.contains(id) && !excludedPhaseIds.contains(id)) {
+                    JMenuItem item = new JMenuItem(phase.getName());
+                    item.addActionListener(e -> {
+                        if (isRequired) {
+                            requiredPhaseIds.add(id);
+                        } else {
+                            excludedPhaseIds.add(id);
+                        }
+                        updateListModel();
+                        fireChange();
+                    });
+                    categoryMenu.add(item);
+                    itemsInCategory++;
+                }
+            }
+
+            if (itemsInCategory > 0) {
+                parentMenu.add(categoryMenu);
+                totalAdded += itemsInCategory;
+            }
+        }
+
+        if (totalAdded == 0) {
+            JMenuItem none = new JMenuItem("(none available)");
+            none.setEnabled(false);
+            parentMenu.add(none);
+        }
     }
 
     private void removeSelected() {

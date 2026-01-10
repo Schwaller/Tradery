@@ -26,9 +26,9 @@ public class ApplicationContext {
         this.phaseStore = new PhaseStore(new File(TraderyApp.USER_DIR, "phases"));
         this.hoopPatternStore = new HoopPatternStore(new File(TraderyApp.USER_DIR, "hoops"));
 
-        // Install any missing presets on startup
+        // Install/update presets on startup
         this.strategyStore.installMissingPresets();
-        this.phaseStore.installMissingPresets();
+        this.phaseStore.installBuiltInPresets();  // Always update built-in phases
     }
 
     public static synchronized ApplicationContext getInstance() {

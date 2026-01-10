@@ -27,6 +27,7 @@ public class Phase {
     // Metadata
     private Instant created;
     private Instant updated;
+    private boolean builtIn;  // True for preset phases that shouldn't be edited
 
     public Phase() {
         // For Jackson
@@ -124,6 +125,14 @@ public class Phase {
 
     public void setUpdated(Instant updated) {
         this.updated = updated;
+    }
+
+    public boolean isBuiltIn() {
+        return builtIn;
+    }
+
+    public void setBuiltIn(boolean builtIn) {
+        this.builtIn = builtIn;
     }
 
     @Override

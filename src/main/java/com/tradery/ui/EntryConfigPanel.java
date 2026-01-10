@@ -4,6 +4,7 @@ import com.tradery.model.DcaMode;
 import com.tradery.model.Strategy;
 
 import javax.swing.*;
+import javax.swing.border.EmptyBorder;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
 import java.awt.*;
@@ -48,9 +49,17 @@ public class EntryConfigPanel extends JPanel {
 
         // Wire up change listeners
         DocumentListener docListener = new DocumentListener() {
-            public void insertUpdate(DocumentEvent e) { fireChange(); }
-            public void removeUpdate(DocumentEvent e) { fireChange(); }
-            public void changedUpdate(DocumentEvent e) { fireChange(); }
+            public void insertUpdate(DocumentEvent e) {
+                fireChange();
+            }
+
+            public void removeUpdate(DocumentEvent e) {
+                fireChange();
+            }
+
+            public void changedUpdate(DocumentEvent e) {
+                fireChange();
+            }
         };
 
         entryEditor.getDocument().addDocumentListener(docListener);
@@ -68,6 +77,7 @@ public class EntryConfigPanel extends JPanel {
         JPanel headerPanel = new JPanel(new BorderLayout());
         headerPanel.setOpaque(false);
         headerPanel.add(entryLabel, BorderLayout.CENTER);
+        headerPanel.setBorder(new EmptyBorder(0, 0, 4, 0));
 
         // Blue-bordered content panel
         JPanel conditionPanel = new JPanel(new BorderLayout(0, 2));
@@ -87,13 +97,13 @@ public class EntryConfigPanel extends JPanel {
         if (tint == null) tint = new Color(100, 140, 180);
         // Mix 5% of accent color with background for subtle tint
         conditionPanel.setBackground(new Color(
-            (int)(baseColor.getRed() * 0.95 + tint.getRed() * 0.05),
-            (int)(baseColor.getGreen() * 0.95 + tint.getGreen() * 0.05),
-            (int)(baseColor.getBlue() * 0.95 + tint.getBlue() * 0.05)
+                (int) (baseColor.getRed() * 0.95 + tint.getRed() * 0.05),
+                (int) (baseColor.getGreen() * 0.95 + tint.getGreen() * 0.05),
+                (int) (baseColor.getBlue() * 0.95 + tint.getBlue() * 0.05)
         ));
         conditionPanel.setBorder(BorderFactory.createCompoundBorder(
-            BorderFactory.createLineBorder(new Color(tint.getRed(), tint.getGreen(), tint.getBlue(), 60), 1, true),
-            BorderFactory.createEmptyBorder(8, 10, 10, 10)
+                BorderFactory.createLineBorder(new Color(tint.getRed(), tint.getGreen(), tint.getBlue(), 60), 1, true),
+                BorderFactory.createEmptyBorder(8, 10, 10, 10)
         ));
 
         // Add phase and hoop selection at top of blue box
@@ -160,7 +170,7 @@ public class EntryConfigPanel extends JPanel {
         conditionPanel.add(dcaWrapper, BorderLayout.SOUTH);
 
         // Combine header (outside blue box) and content (blue box)
-        JPanel wrapper = new JPanel(new BorderLayout(0, 4));
+        JPanel wrapper = new JPanel(new BorderLayout(0, 6));
         wrapper.setOpaque(false);
         wrapper.add(headerPanel, BorderLayout.NORTH);
         wrapper.add(conditionPanel, BorderLayout.CENTER);
@@ -170,8 +180,8 @@ public class EntryConfigPanel extends JPanel {
 
     private GridBagConstraints gbc(int x, int y, boolean fill) {
         return new GridBagConstraints(x, y, 1, 1, fill ? 1 : 0, 0,
-            GridBagConstraints.WEST, fill ? GridBagConstraints.HORIZONTAL : GridBagConstraints.NONE,
-            new Insets(2, 0, 2, 4), 0, 0);
+                GridBagConstraints.WEST, fill ? GridBagConstraints.HORIZONTAL : GridBagConstraints.NONE,
+                new Insets(2, 0, 2, 4), 0, 0);
     }
 
     private JButton createInfoButton() {
@@ -195,6 +205,7 @@ public class EntryConfigPanel extends JPanel {
             public void mouseEntered(java.awt.event.MouseEvent e) {
                 btn.setForeground(hoverColor);
             }
+
             public void mouseExited(java.awt.event.MouseEvent e) {
                 btn.setForeground(normalColor);
             }

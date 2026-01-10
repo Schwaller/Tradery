@@ -62,12 +62,14 @@ public class ProjectWindow extends JFrame {
     // Indicator controls panel (extracted)
     private IndicatorControlsPanel indicatorControls;
 
-    // Embedded AI terminal (for Claude)
+    // Embedded AI terminal (for Claude/Codex)
     private AiTerminalFrame aiTerminalFrame;
     private AiTerminalPanel dockedTerminalPanel;
     private JPanel dockedTerminalWrapper;
+    private JLabel terminalTitleLabel;
     private JSplitPane tradeTerminalSplit;
     private boolean terminalDocked = true;
+    private String currentAiType = null;  // "claude" or "codex" or null
 
     private static final String[] SYMBOLS = {
         "BTCUSDT", "ETHUSDT", "BNBUSDT", "XRPUSDT", "ADAUSDT",
@@ -170,6 +172,10 @@ public class ProjectWindow extends JFrame {
 
         // Wire up chart status callback
         chartPanel.setOnStatusUpdate(this::setStatus);
+
+        // Wire up trade table hover/select to chart highlight
+        tradeTablePanel.setOnTradeHover(chartPanel::highlightTrades);
+        tradeTablePanel.setOnTradeSelect(chartPanel::highlightTrades);
 
         // Toolbar controls
         symbolCombo = new JComboBox<>(SYMBOLS);
@@ -437,13 +443,13 @@ public class ProjectWindow extends JFrame {
 
         JPanel terminalHeader = new JPanel(new BorderLayout());
         terminalHeader.setBorder(BorderFactory.createEmptyBorder(2, 4, 2, 4));
-        JLabel terminalTitle = new JLabel("Claude");
-        terminalTitle.setFont(terminalTitle.getFont().deriveFont(Font.BOLD, 11f));
+        terminalTitleLabel = new JLabel("AI Terminal");
+        terminalTitleLabel.setFont(terminalTitleLabel.getFont().deriveFont(Font.BOLD, 11f));
         JButton undockBtn = new JButton("Undock");
         undockBtn.setFont(undockBtn.getFont().deriveFont(10f));
         undockBtn.setMargin(new Insets(1, 4, 1, 4));
         undockBtn.addActionListener(e -> undockTerminal());
-        terminalHeader.add(terminalTitle, BorderLayout.WEST);
+        terminalHeader.add(terminalTitleLabel, BorderLayout.WEST);
         terminalHeader.add(undockBtn, BorderLayout.EAST);
 
         dockedTerminalWrapper.add(new JSeparator(), BorderLayout.NORTH);
@@ -692,17 +698,12 @@ public class ProjectWindow extends JFrame {
             return;
         }
 
-        // Open in ~/.tradery where CLAUDE.md provides context
-        String traderyDir = System.getProperty("user.home") + "/.tradery";
         String strategyId = strategy.getId();
         String strategyName = strategy.getName();
-
-        // Get current backtest settings for context
         String symbol = (String) symbolCombo.getSelectedItem();
         String timeframe = (String) timeframeCombo.getSelectedItem();
         String duration = (String) durationCombo.getSelectedItem();
 
-        // Build the initial prompt for Claude with full context
         String initialPrompt = String.format(
             "[Launched from Tradery app] " +
             "Currently open: Strategy '%s' (id: %s), " +
@@ -714,48 +715,60 @@ public class ProjectWindow extends JFrame {
             strategyId, strategyId
         );
 
-        // Use embedded terminal or OS terminal based on setting
-        if (USE_EMBEDDED_AI_TERMINAL) {
-            openEmbeddedClaudeTerminal(traderyDir, initialPrompt, strategyName);
-        } else {
-            openOsClaudeTerminal(traderyDir, initialPrompt, strategyName);
-        }
+        openAiTerminal("claude", initialPrompt);
     }
 
-    private void openEmbeddedClaudeTerminal(String traderyDir, String initialPrompt, String strategyName) {
-        // If terminal is docked, use the docked panel
-        if (terminalDocked) {
-            // If already running, just make sure it's visible
-            if (dockedTerminalPanel.isRunning()) {
-                if (!dockedTerminalWrapper.isVisible()) {
-                    dockedTerminalWrapper.setVisible(true);
-                    tradeTerminalSplit.setDividerLocation(0.5);
-                }
-                setStatus("Claude CLI already running");
+    private void openAiTerminal(String aiType, String initialPrompt) {
+        String traderyDir = System.getProperty("user.home") + "/.tradery";
+        String strategyName = strategy.getName();
+        String displayName = aiType.substring(0, 1).toUpperCase() + aiType.substring(1);
+
+        // Check if a different AI is currently running
+        if (currentAiType != null && !currentAiType.equals(aiType) && dockedTerminalPanel.isRunning()) {
+            String currentName = currentAiType.substring(0, 1).toUpperCase() + currentAiType.substring(1);
+            int result = JOptionPane.showConfirmDialog(this,
+                currentName + " is currently running.\n\n" +
+                "Switch to " + displayName + "? This will terminate the current session.",
+                "Switch AI Assistant",
+                JOptionPane.YES_NO_OPTION,
+                JOptionPane.WARNING_MESSAGE);
+            if (result != JOptionPane.YES_OPTION) {
                 return;
             }
+            // Kill the current session
+            dockedTerminalPanel.stopProcess();
+        }
 
-            // Show the docked terminal and start Claude
+        // Toggle off: if same AI is visible and running, hide and stop
+        if (aiType.equals(currentAiType) && dockedTerminalWrapper.isVisible() && dockedTerminalPanel.isRunning()) {
+            dockedTerminalPanel.stopProcess();
+            dockedTerminalWrapper.setVisible(false);
+            currentAiType = null;
+            setStatus(displayName + " stopped");
+            return;
+        }
+
+        // Update title and tracking
+        currentAiType = aiType;
+        terminalTitleLabel.setText(displayName);
+        if (aiTerminalFrame != null) {
+            aiTerminalFrame.setTitle(displayName + " - " + strategyName);
+        }
+
+        // Show and start
+        if (terminalDocked) {
             dockedTerminalWrapper.setVisible(true);
             tradeTerminalSplit.setDividerLocation(0.5);
-            dockedTerminalPanel.startClaude(traderyDir, initialPrompt);
-            setStatus("Opened embedded Claude CLI for " + strategyName);
+            dockedTerminalPanel.startAi(aiType, traderyDir, initialPrompt);
+            dockedTerminalPanel.grabFocus();
+            setStatus("Opened " + displayName + " for " + strategyName);
         } else {
-            // Terminal is undocked - use the floating frame
             if (aiTerminalFrame == null) {
                 aiTerminalFrame = new AiTerminalFrame(strategyName, this::runBacktest, this::redockTerminal);
             }
-
-            // If already running, just show and focus
-            if (aiTerminalFrame.isClaudeRunning()) {
-                aiTerminalFrame.showAndFocus();
-                setStatus("Claude CLI already running");
-                return;
-            }
-
-            // Start Claude in the floating frame
-            aiTerminalFrame.startClaude(traderyDir, initialPrompt);
-            setStatus("Opened embedded Claude CLI for " + strategyName);
+            aiTerminalFrame.setTitle(displayName + " - " + strategyName);
+            aiTerminalFrame.startAi(aiType, traderyDir, initialPrompt);
+            setStatus("Opened " + displayName + " for " + strategyName);
         }
     }
 
@@ -847,56 +860,24 @@ public class ProjectWindow extends JFrame {
             return;
         }
 
-        // Open in ~/.tradery where CLAUDE.md provides context
-        String traderyDir = System.getProperty("user.home") + "/.tradery";
         String strategyId = strategy.getId();
         String strategyName = strategy.getName();
-
-        // Get current backtest settings for context
         String symbol = (String) symbolCombo.getSelectedItem();
         String timeframe = (String) timeframeCombo.getSelectedItem();
         String duration = (String) durationCombo.getSelectedItem();
 
-        // Build the initial prompt for Codex with full context
         String initialPrompt = String.format(
             "[Launched from Tradery app] " +
             "Currently open: Strategy '%s' (id: %s), " +
             "backtesting %s on %s timeframe for %s. " +
-            "Read strategies/%s/strategy.json and strategies/%s/latest.json, " +
-            "then help me optimize entry/exit conditions for better performance. " +
+            "Read strategies/%s/strategy.json and strategies/%s/latest.json. " +
+            "Then WAIT for instructions - do not make changes until I say 'go' or give specific directions. " +
             "The app auto-reloads when you save changes to strategy.json.",
             strategyName, strategyId, symbol, timeframe, duration,
             strategyId, strategyId
         );
 
-        String command = String.format(
-            "cd '%s' && codex '%s'",
-            traderyDir.replace("'", "'\\''"),
-            initialPrompt.replace("'", "'\\''")
-        );
-
-        try {
-            // Use osascript to open Terminal.app with the command (macOS)
-            String[] osascript = {
-                "osascript", "-e",
-                String.format(
-                    "tell application \"Terminal\"\n" +
-                    "    activate\n" +
-                    "    do script \"%s\"\n" +
-                    "end tell",
-                    command.replace("\\", "\\\\").replace("\"", "\\\"")
-                )
-            };
-
-            Runtime.getRuntime().exec(osascript);
-            setStatus("Opened Codex CLI for " + strategyName);
-        } catch (IOException e) {
-            setStatus("Error opening terminal: " + e.getMessage());
-            JOptionPane.showMessageDialog(this,
-                "Could not open Terminal: " + e.getMessage(),
-                "Error",
-                JOptionPane.ERROR_MESSAGE);
-        }
+        openAiTerminal("codex", initialPrompt);
     }
 
     private void showHistory() {

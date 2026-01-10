@@ -419,4 +419,80 @@ public class IndicatorEngine {
         }
         return date;
     }
+
+    // ========== FOMC Meeting Functions ==========
+
+    // Cache for FOMC meeting dates by year
+    private final Map<Integer, Set<LocalDate>> fomcMeetingCache = new HashMap<>();
+
+    /**
+     * Check if bar is on an FOMC meeting day.
+     * FOMC meetings are typically 2-day events (Tuesday-Wednesday).
+     */
+    public boolean isFomcMeetingAt(int barIndex) {
+        long timestamp = getTimestampAt(barIndex);
+        if (timestamp == 0) return false;
+
+        LocalDate date = Instant.ofEpochMilli(timestamp).atZone(ZoneOffset.UTC).toLocalDate();
+        int year = date.getYear();
+
+        Set<LocalDate> meetings = fomcMeetingCache.computeIfAbsent(year, this::getFomcMeetingDates);
+        return meetings.contains(date);
+    }
+
+    /**
+     * Get FOMC meeting dates for a given year.
+     * These are the actual meeting days (typically 2 consecutive days).
+     */
+    private Set<LocalDate> getFomcMeetingDates(int year) {
+        Set<LocalDate> dates = new HashSet<>();
+
+        // FOMC Schedule - 8 meetings per year, typically Tue-Wed
+        switch (year) {
+            case 2024 -> {
+                addMeetingDays(dates, 2024, 1, 30, 31);   // Jan 30-31
+                addMeetingDays(dates, 2024, 3, 19, 20);   // Mar 19-20
+                addMeetingDays(dates, 2024, 4, 30, 0);    // Apr 30 - May 1
+                dates.add(LocalDate.of(2024, 5, 1));
+                addMeetingDays(dates, 2024, 6, 11, 12);   // Jun 11-12
+                addMeetingDays(dates, 2024, 7, 30, 31);   // Jul 30-31
+                addMeetingDays(dates, 2024, 9, 17, 18);   // Sep 17-18
+                addMeetingDays(dates, 2024, 11, 6, 7);    // Nov 6-7
+                addMeetingDays(dates, 2024, 12, 17, 18);  // Dec 17-18
+            }
+            case 2025 -> {
+                addMeetingDays(dates, 2025, 1, 28, 29);   // Jan 28-29
+                addMeetingDays(dates, 2025, 3, 18, 19);   // Mar 18-19
+                addMeetingDays(dates, 2025, 5, 6, 7);     // May 6-7
+                addMeetingDays(dates, 2025, 6, 17, 18);   // Jun 17-18
+                addMeetingDays(dates, 2025, 7, 29, 30);   // Jul 29-30
+                addMeetingDays(dates, 2025, 9, 16, 17);   // Sep 16-17
+                addMeetingDays(dates, 2025, 11, 4, 5);    // Nov 4-5
+                addMeetingDays(dates, 2025, 12, 16, 17);  // Dec 16-17
+            }
+            case 2026 -> {
+                addMeetingDays(dates, 2026, 1, 27, 28);   // Jan 27-28
+                addMeetingDays(dates, 2026, 3, 17, 18);   // Mar 17-18
+                addMeetingDays(dates, 2026, 5, 5, 6);     // May 5-6
+                addMeetingDays(dates, 2026, 6, 16, 17);   // Jun 16-17
+                addMeetingDays(dates, 2026, 7, 28, 29);   // Jul 28-29
+                addMeetingDays(dates, 2026, 9, 15, 16);   // Sep 15-16
+                addMeetingDays(dates, 2026, 11, 3, 4);    // Nov 3-4
+                addMeetingDays(dates, 2026, 12, 15, 16);  // Dec 15-16
+            }
+            default -> {
+                // For years outside known schedule, estimate based on typical pattern
+                // Meetings typically in: late Jan, mid Mar, early May, mid Jun, late Jul, mid Sep, early Nov, mid Dec
+            }
+        }
+
+        return dates;
+    }
+
+    private void addMeetingDays(Set<LocalDate> dates, int year, int month, int day1, int day2) {
+        dates.add(LocalDate.of(year, month, day1));
+        if (day2 > 0) {
+            dates.add(LocalDate.of(year, month, day2));
+        }
+    }
 }

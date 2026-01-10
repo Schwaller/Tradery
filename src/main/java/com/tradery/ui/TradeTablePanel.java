@@ -22,6 +22,9 @@ public class TradeTablePanel extends JPanel {
     private JButton detailsButton;
     private List<Trade> currentTrades = new ArrayList<>();
     private String strategyName = "";
+    private int hoveredRow = -1;
+    private java.util.function.Consumer<List<Trade>> onTradeHover;
+    private java.util.function.Consumer<List<Trade>> onTradeSelect;
 
     public TradeTablePanel() {
         setLayout(new BorderLayout());
@@ -50,7 +53,7 @@ public class TradeTablePanel extends JPanel {
         table.getColumnModel().getColumn(1).setCellRenderer(new PnlCellRenderer(tableModel));
         table.getColumnModel().getColumn(2).setCellRenderer(new PnlCellRenderer(tableModel));
 
-        // Click handling for expand/collapse
+        // Click handling for expand/collapse and selection
         table.addMouseListener(new MouseAdapter() {
             @Override
             public void mouseClicked(MouseEvent e) {
@@ -68,9 +71,52 @@ public class TradeTablePanel extends JPanel {
 
                 if (e.getClickCount() == 2 && row >= 0) {
                     openDetailsWindow();
+                } else if (e.getClickCount() == 1 && row >= 0) {
+                    // Single click - notify selection
+                    TableRow tableRow = tableModel.getRowAt(row);
+                    if (onTradeSelect != null && tableRow != null) {
+                        onTradeSelect.accept(tableRow.trades);
+                    }
+                }
+            }
+
+            @Override
+            public void mouseExited(MouseEvent e) {
+                if (hoveredRow != -1) {
+                    hoveredRow = -1;
+                    if (onTradeHover != null) {
+                        onTradeHover.accept(null);
+                    }
                 }
             }
         });
+
+        // Hover handling
+        table.addMouseMotionListener(new java.awt.event.MouseMotionAdapter() {
+            @Override
+            public void mouseMoved(MouseEvent e) {
+                int row = table.rowAtPoint(e.getPoint());
+                if (row != hoveredRow) {
+                    hoveredRow = row;
+                    if (onTradeHover != null) {
+                        if (row >= 0 && row < tableModel.getRowCount()) {
+                            TableRow tableRow = tableModel.getRowAt(row);
+                            onTradeHover.accept(tableRow != null ? tableRow.trades : null);
+                        } else {
+                            onTradeHover.accept(null);
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    public void setOnTradeHover(java.util.function.Consumer<List<Trade>> callback) {
+        this.onTradeHover = callback;
+    }
+
+    public void setOnTradeSelect(java.util.function.Consumer<List<Trade>> callback) {
+        this.onTradeSelect = callback;
     }
 
     private void layoutComponents() {

@@ -45,6 +45,7 @@ public class ConditionEvaluator {
             case AstNode.TimeFunctionCall t -> evaluateTimeFunction(t, barIndex);
             case AstNode.MoonFunctionCall m -> evaluateMoonFunction(m, barIndex);
             case AstNode.HolidayFunctionCall h -> evaluateHolidayFunction(h, barIndex);
+            case AstNode.FomcFunctionCall f -> evaluateFomcFunction(f, barIndex);
             case AstNode.PriceReference p -> evaluatePrice(p, barIndex);
             case AstNode.NumberLiteral n -> n.value();
             case AstNode.BooleanLiteral b -> b.value();
@@ -219,6 +220,13 @@ public class ConditionEvaluator {
         return switch (node.func()) {
             case "IS_US_HOLIDAY" -> engine.isUSHolidayAt(barIndex) ? 1.0 : 0.0;
             default -> throw new EvaluationException("Unknown holiday function: " + node.func());
+        };
+    }
+
+    private double evaluateFomcFunction(AstNode.FomcFunctionCall node, int barIndex) {
+        return switch (node.func()) {
+            case "IS_FOMC_MEETING" -> engine.isFomcMeetingAt(barIndex) ? 1.0 : 0.0;
+            default -> throw new EvaluationException("Unknown FOMC function: " + node.func());
         };
     }
 

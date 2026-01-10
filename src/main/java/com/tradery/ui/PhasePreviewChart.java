@@ -8,20 +8,29 @@ import com.tradery.indicators.IndicatorEngine;
 import com.tradery.model.Candle;
 import com.tradery.model.Phase;
 import com.tradery.ui.charts.ChartStyles;
-import org.jfree.chart.ChartFactory;
 import org.jfree.chart.ChartPanel;
 import org.jfree.chart.JFreeChart;
 import org.jfree.chart.axis.DateAxis;
 import org.jfree.chart.axis.NumberAxis;
+import org.jfree.chart.plot.CombinedDomainXYPlot;
 import org.jfree.chart.plot.IntervalMarker;
+import org.jfree.chart.plot.PlotRenderingInfo;
 import org.jfree.chart.plot.XYPlot;
+import org.jfree.chart.renderer.xy.XYAreaRenderer;
 import org.jfree.chart.renderer.xy.XYLineAndShapeRenderer;
 import org.jfree.chart.ui.Layer;
-import org.jfree.data.xy.XYSeries;
-import org.jfree.data.xy.XYSeriesCollection;
+import org.jfree.data.time.FixedMillisecond;
+import org.jfree.data.time.TimeSeries;
+import org.jfree.data.time.TimeSeriesCollection;
 
 import javax.swing.*;
 import java.awt.*;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
+import java.awt.event.MouseMotionAdapter;
+import java.awt.event.MouseWheelListener;
+import java.awt.geom.Point2D;
+import java.awt.geom.Rectangle2D;
 import java.io.IOException;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
@@ -36,6 +45,9 @@ public class PhasePreviewChart extends JPanel {
 
     private JFreeChart chart;
     private ChartPanel chartPanel;
+    private CombinedDomainXYPlot combinedPlot;
+    private XYPlot pricePlot;
+    private XYPlot volumePlot;
     private JLabel statusLabel;
     private Phase phase;
     private List<Candle> candles = new ArrayList<>();
@@ -47,6 +59,16 @@ public class PhasePreviewChart extends JPanel {
     // Data range - 4 years for a full crypto cycle
     private static final int YEARS_OF_DATA = 4;
 
+    // Pan state
+    private Point panStart = null;
+    private double panStartDomainMin, panStartDomainMax;
+    private double panStartRangeMin, panStartRangeMax;
+
+    // Y-axis drag state
+    private boolean draggingYAxis = false;
+    private int yAxisDragStartY;
+    private double yAxisDragStartRangeMin, yAxisDragStartRangeMax;
+
     public PhasePreviewChart() {
         setLayout(new BorderLayout());
         initializeChart();
@@ -54,38 +76,266 @@ public class PhasePreviewChart extends JPanel {
     }
 
     private void initializeChart() {
-        // Create empty XY chart
-        XYSeriesCollection dataset = new XYSeriesCollection();
-        chart = ChartFactory.createTimeSeriesChart(
-            null, null, null, dataset, false, false, false
-        );
-
-        ChartStyles.stylizeChart(chart, "Phase Preview");
-
-        XYPlot plot = chart.getXYPlot();
-
-        // Configure line renderer
-        XYLineAndShapeRenderer renderer = new XYLineAndShapeRenderer(true, false);
-        renderer.setSeriesPaint(0, ChartStyles.PRICE_LINE_COLOR);
-        renderer.setSeriesStroke(0, new BasicStroke(1.0f));
-        plot.setRenderer(renderer);
-
-        // Configure axes
-        DateAxis dateAxis = (DateAxis) plot.getDomainAxis();
+        // Shared date axis
+        DateAxis dateAxis = new DateAxis();
         dateAxis.setTickLabelPaint(Color.LIGHT_GRAY);
+        dateAxis.setAxisLineVisible(false);
 
-        NumberAxis priceAxis = (NumberAxis) plot.getRangeAxis();
+        // Price subplot (80% weight) - Y axis on right side
+        NumberAxis priceAxis = new NumberAxis();
         priceAxis.setAutoRangeIncludesZero(false);
         priceAxis.setTickLabelPaint(Color.LIGHT_GRAY);
+        priceAxis.setAxisLineVisible(false);
 
-        // Create chart panel
+        pricePlot = new XYPlot(new TimeSeriesCollection(), null, priceAxis, createPriceRenderer());
+        pricePlot.setRangeAxisLocation(org.jfree.chart.axis.AxisLocation.TOP_OR_RIGHT);
+        pricePlot.setBackgroundPaint(ChartStyles.PLOT_BACKGROUND_COLOR);
+        pricePlot.setDomainGridlinePaint(ChartStyles.GRIDLINE_COLOR);
+        pricePlot.setRangeGridlinePaint(ChartStyles.GRIDLINE_COLOR);
+        pricePlot.setOutlineVisible(false);
+
+        // Volume subplot (20% weight)
+        NumberAxis volumeAxis = new NumberAxis();
+        volumeAxis.setAutoRangeIncludesZero(true);
+        volumeAxis.setTickLabelPaint(Color.LIGHT_GRAY);
+        volumeAxis.setAxisLineVisible(false);
+        volumeAxis.setTickLabelsVisible(false);
+
+        volumePlot = new XYPlot(new TimeSeriesCollection(), null, volumeAxis, createVolumeRenderer());
+        volumePlot.setBackgroundPaint(ChartStyles.PLOT_BACKGROUND_COLOR);
+        volumePlot.setDomainGridlinePaint(ChartStyles.GRIDLINE_COLOR);
+        volumePlot.setRangeGridlinePaint(ChartStyles.GRIDLINE_COLOR);
+        volumePlot.setOutlineVisible(false);
+
+        // Combined plot: price (80%) + volume (20%)
+        combinedPlot = new CombinedDomainXYPlot(dateAxis);
+        combinedPlot.setGap(0);
+        combinedPlot.add(pricePlot, 4);   // 80%
+        combinedPlot.add(volumePlot, 1);  // 20%
+        combinedPlot.setBackgroundPaint(ChartStyles.BACKGROUND_COLOR);
+        combinedPlot.setOutlineVisible(false);
+
+        // Create chart
+        chart = new JFreeChart(null, null, combinedPlot, false);
+        chart.setBackgroundPaint(ChartStyles.BACKGROUND_COLOR);
+
+        // Create chart panel with custom controls
         chartPanel = new ChartPanel(chart);
-        chartPanel.setMouseWheelEnabled(true);
-        chartPanel.setDomainZoomable(true);
-        chartPanel.setRangeZoomable(true);
+        chartPanel.setMouseWheelEnabled(false);  // We handle it ourselves
+        chartPanel.setDomainZoomable(false);
+        chartPanel.setRangeZoomable(false);
         chartPanel.setPreferredSize(new Dimension(400, 200));
 
+        // Add mouse listeners for pan, zoom, and Y-axis scaling
+        chartPanel.addMouseListener(createMouseListener());
+        chartPanel.addMouseMotionListener(createMouseMotionListener());
+        chartPanel.addMouseWheelListener(createMouseWheelListener());
+
         add(chartPanel, BorderLayout.CENTER);
+    }
+
+    private XYLineAndShapeRenderer createPriceRenderer() {
+        XYLineAndShapeRenderer renderer = new XYLineAndShapeRenderer(true, false);
+        renderer.setSeriesPaint(0, ChartStyles.PRICE_LINE_COLOR);
+        renderer.setSeriesStroke(0, new BasicStroke(1.0f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        return renderer;
+    }
+
+    private XYAreaRenderer createVolumeRenderer() {
+        XYAreaRenderer renderer = new XYAreaRenderer(XYAreaRenderer.AREA);
+        renderer.setSeriesPaint(0, new Color(100, 100, 100, 150));
+        renderer.setOutline(false);
+        return renderer;
+    }
+
+    private MouseAdapter createMouseListener() {
+        return new MouseAdapter() {
+            @Override
+            public void mousePressed(MouseEvent e) {
+                if (e.isPopupTrigger()) {
+                    showContextMenu(e);
+                    return;
+                }
+
+                Point screenPoint = e.getPoint();
+
+                // Check if on Y axis for scaling
+                if (isOnYAxis(screenPoint)) {
+                    startYAxisDrag(screenPoint.y);
+                    return;
+                }
+
+                // Start panning
+                startPan(screenPoint);
+            }
+
+            @Override
+            public void mouseReleased(MouseEvent e) {
+                if (e.isPopupTrigger()) {
+                    showContextMenu(e);
+                    return;
+                }
+                panStart = null;
+                draggingYAxis = false;
+            }
+        };
+    }
+
+    private MouseMotionAdapter createMouseMotionListener() {
+        return new MouseMotionAdapter() {
+            @Override
+            public void mouseDragged(MouseEvent e) {
+                Point screenPoint = e.getPoint();
+
+                if (draggingYAxis) {
+                    handleYAxisDrag(screenPoint.y);
+                    return;
+                }
+
+                if (panStart != null) {
+                    handlePan(screenPoint);
+                }
+            }
+
+            @Override
+            public void mouseMoved(MouseEvent e) {
+                // Show resize cursor on Y axis
+                if (isOnYAxis(e.getPoint())) {
+                    chartPanel.setCursor(Cursor.getPredefinedCursor(Cursor.N_RESIZE_CURSOR));
+                } else {
+                    chartPanel.setCursor(Cursor.getDefaultCursor());
+                }
+            }
+        };
+    }
+
+    private MouseWheelListener createMouseWheelListener() {
+        return e -> {
+            Rectangle2D dataArea = getPriceSubplotDataArea();
+            if (dataArea == null) return;
+
+            double zoomFactor = e.getWheelRotation() < 0 ? 0.9 : 1.1;
+
+            double mouseX = combinedPlot.getDomainAxis().java2DToValue(
+                e.getPoint().getX(), dataArea, combinedPlot.getDomainAxisEdge()
+            );
+
+            double domainMin = combinedPlot.getDomainAxis().getLowerBound();
+            double domainMax = combinedPlot.getDomainAxis().getUpperBound();
+            double domainRange = domainMax - domainMin;
+            double newRange = domainRange * zoomFactor;
+
+            double mouseRatio = (mouseX - domainMin) / domainRange;
+            double newMin = mouseX - mouseRatio * newRange;
+            double newMax = newMin + newRange;
+
+            combinedPlot.getDomainAxis().setRange(newMin, newMax);
+        };
+    }
+
+    private boolean isOnYAxis(Point point) {
+        Rectangle2D dataArea = getPriceSubplotDataArea();
+        if (dataArea == null) return false;
+        return point.x > dataArea.getMaxX() && point.x < dataArea.getMaxX() + 60;
+    }
+
+    private void startYAxisDrag(int y) {
+        draggingYAxis = true;
+        yAxisDragStartY = y;
+        yAxisDragStartRangeMin = pricePlot.getRangeAxis().getLowerBound();
+        yAxisDragStartRangeMax = pricePlot.getRangeAxis().getUpperBound();
+    }
+
+    private void startPan(Point point) {
+        panStart = point;
+        panStartDomainMin = combinedPlot.getDomainAxis().getLowerBound();
+        panStartDomainMax = combinedPlot.getDomainAxis().getUpperBound();
+        panStartRangeMin = pricePlot.getRangeAxis().getLowerBound();
+        panStartRangeMax = pricePlot.getRangeAxis().getUpperBound();
+    }
+
+    /**
+     * Gets the data area for the price subplot (first subplot in combined plot).
+     */
+    private Rectangle2D getPriceSubplotDataArea() {
+        if (chartPanel.getChartRenderingInfo() == null) return null;
+        PlotRenderingInfo plotInfo = chartPanel.getChartRenderingInfo().getPlotInfo();
+        if (plotInfo == null || plotInfo.getSubplotCount() == 0) return null;
+        return plotInfo.getSubplotInfo(0).getDataArea();
+    }
+
+    private void handleYAxisDrag(int currentY) {
+        int dy = currentY - yAxisDragStartY;
+        double scaleFactor = Math.pow(1.01, dy);
+
+        double originalRange = yAxisDragStartRangeMax - yAxisDragStartRangeMin;
+        double originalCenter = (yAxisDragStartRangeMax + yAxisDragStartRangeMin) / 2.0;
+
+        double newRange = originalRange * scaleFactor;
+        double newMin = originalCenter - newRange / 2.0;
+        double newMax = originalCenter + newRange / 2.0;
+
+        pricePlot.getRangeAxis().setRange(newMin, newMax);
+    }
+
+    private void handlePan(Point currentPoint) {
+        Rectangle2D dataArea = getPriceSubplotDataArea();
+        if (dataArea == null) return;
+
+        int dx = currentPoint.x - panStart.x;
+        int dy = currentPoint.y - panStart.y;
+
+        double domainRange = panStartDomainMax - panStartDomainMin;
+        double rangeRange = panStartRangeMax - panStartRangeMin;
+
+        double domainDelta = -dx * domainRange / dataArea.getWidth();
+        double rangeDelta = dy * rangeRange / dataArea.getHeight();
+
+        combinedPlot.getDomainAxis().setRange(panStartDomainMin + domainDelta, panStartDomainMax + domainDelta);
+        pricePlot.getRangeAxis().setRange(panStartRangeMin + rangeDelta, panStartRangeMax + rangeDelta);
+    }
+
+    private void showContextMenu(MouseEvent e) {
+        JPopupMenu menu = new JPopupMenu();
+
+        JMenuItem fitAllItem = new JMenuItem("Fit All");
+        fitAllItem.addActionListener(evt -> fitAll());
+        menu.add(fitAllItem);
+
+        JMenuItem fitXItem = new JMenuItem("Fit X Axis");
+        fitXItem.addActionListener(evt -> fitXAxis());
+        menu.add(fitXItem);
+
+        JMenuItem fitYItem = new JMenuItem("Fit Y Axis");
+        fitYItem.addActionListener(evt -> fitYAxis());
+        menu.add(fitYItem);
+
+        menu.show(chartPanel, e.getX(), e.getY());
+    }
+
+    private void fitAll() {
+        fitXAxis();
+        fitYAxis();
+    }
+
+    private void fitXAxis() {
+        if (candles.isEmpty()) return;
+        long minTime = candles.get(0).timestamp();
+        long maxTime = candles.get(candles.size() - 1).timestamp();
+        long padding = (maxTime - minTime) / 20;
+        combinedPlot.getDomainAxis().setRange(minTime - padding, maxTime + padding);
+    }
+
+    private void fitYAxis() {
+        if (candles.isEmpty()) return;
+        double minPrice = Double.MAX_VALUE;
+        double maxPrice = Double.MIN_VALUE;
+        for (Candle c : candles) {
+            minPrice = Math.min(minPrice, c.low());
+            maxPrice = Math.max(maxPrice, c.high());
+        }
+        double padding = (maxPrice - minPrice) * 0.05;
+        pricePlot.getRangeAxis().setRange(minPrice - padding, maxPrice + padding);
     }
 
     private void initializeStatusLabel() {
@@ -210,9 +460,9 @@ public class PhasePreviewChart extends JPanel {
     }
 
     private void clearChart() {
-        XYPlot plot = chart.getXYPlot();
-        plot.setDataset(new XYSeriesCollection());
-        plot.clearDomainMarkers();
+        pricePlot.setDataset(new TimeSeriesCollection());
+        volumePlot.setDataset(new TimeSeriesCollection());
+        pricePlot.clearDomainMarkers();
         chart.fireChartChanged();
     }
 
@@ -222,29 +472,29 @@ public class PhasePreviewChart extends JPanel {
             return;
         }
 
-        XYPlot plot = chart.getXYPlot();
-
-        // Create price series using raw timestamps
-        XYSeries priceSeries = new XYSeries("Price", false, true);
+        // Create price and volume series using TimeSeries for combined plot
+        TimeSeries priceSeries = new TimeSeries("Price");
+        TimeSeries volumeSeries = new TimeSeries("Volume");
 
         for (Candle candle : candles) {
-            priceSeries.add(candle.timestamp(), candle.close());
+            FixedMillisecond time = new FixedMillisecond(candle.timestamp());
+            priceSeries.addOrUpdate(time, candle.close());
+            volumeSeries.addOrUpdate(time, candle.volume());
         }
 
-        XYSeriesCollection dataset = new XYSeriesCollection();
-        dataset.addSeries(priceSeries);
-        plot.setDataset(dataset);
+        pricePlot.setDataset(new TimeSeriesCollection(priceSeries));
+        volumePlot.setDataset(new TimeSeriesCollection(volumeSeries));
 
         // Clear existing markers
-        plot.clearDomainMarkers();
+        pricePlot.clearDomainMarkers();
 
         // Add phase active/inactive markers as background bands
-        addPhaseMarkers(plot);
+        addPhaseMarkers();
 
         chart.fireChartChanged();
     }
 
-    private void addPhaseMarkers(XYPlot plot) {
+    private void addPhaseMarkers() {
         if (phaseActive == null || candles.isEmpty()) return;
 
         // Calculate bar width for single-bar markers (use gap between candles)
@@ -271,7 +521,7 @@ public class PhasePreviewChart extends JPanel {
                 IntervalMarker marker = new IntervalMarker(startTime, endTime);
                 marker.setPaint(PHASE_ACTIVE_COLOR);
                 marker.setOutlinePaint(null);
-                plot.addDomainMarker(marker, Layer.BACKGROUND);
+                pricePlot.addDomainMarker(marker, Layer.BACKGROUND);
             } else {
                 i++;
             }

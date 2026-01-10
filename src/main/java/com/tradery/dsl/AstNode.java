@@ -59,6 +59,11 @@ public sealed interface AstNode {
     record HolidayFunctionCall(String func) implements AstNode {}
 
     /**
+     * FOMC function call: IS_FOMC_MEETING (returns 1 on FOMC meeting days, 0 otherwise)
+     */
+    record FomcFunctionCall(String func) implements AstNode {}
+
+    /**
      * Property access: MACD(12,26,9).signal, BBANDS(20,2).upper
      */
     record PropertyAccess(IndicatorCall object, String property) implements AstNode {}
