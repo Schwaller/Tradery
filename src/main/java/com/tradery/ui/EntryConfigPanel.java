@@ -1,6 +1,7 @@
 package com.tradery.ui;
 
 import com.tradery.model.DcaMode;
+import com.tradery.model.EntryOrderType;
 import com.tradery.model.Strategy;
 
 import javax.swing.*;
@@ -23,7 +24,18 @@ public class EntryConfigPanel extends JPanel {
     private JPanel phaseContainer;
     private JPanel hoopContainer;
 
+    // Order type controls
+    private JComboBox<String> orderTypeCombo;
+    private JSpinner offsetPercentSpinner;
+    private JSpinner trailingReverseSpinner;
+    private JSpinner expirationBarsSpinner;
+    private JLabel offsetLabel;
+    private JLabel trailingLabel;
+    private JLabel expirationLabel;
+    private JPanel orderTypeDetailsPanel;
+
     private static final String[] DCA_MODES = {"Pause", "Abort", "Continue"};
+    private static final String[] ORDER_TYPES = {"Market", "Limit", "Stop", "Trailing"};
 
     private Runnable onChange;
     private boolean suppressChangeEvents = false;
@@ -47,6 +59,13 @@ public class EntryConfigPanel extends JPanel {
         dcaModeCombo = new JComboBox<>(DCA_MODES);
         dcaEnabledCheckbox.addActionListener(e -> updateDcaVisibility());
 
+        // Order type controls
+        orderTypeCombo = new JComboBox<>(ORDER_TYPES);
+        offsetPercentSpinner = new JSpinner(new SpinnerNumberModel(-1.0, -50.0, 50.0, 0.1));
+        trailingReverseSpinner = new JSpinner(new SpinnerNumberModel(1.5, 0.1, 20.0, 0.1));
+        expirationBarsSpinner = new JSpinner(new SpinnerNumberModel(10, 1, 500, 1));
+        orderTypeCombo.addActionListener(e -> updateOrderTypeVisibility());
+
         // Wire up change listeners
         DocumentListener docListener = new DocumentListener() {
             public void insertUpdate(DocumentEvent e) {
@@ -67,6 +86,12 @@ public class EntryConfigPanel extends JPanel {
         dcaMaxEntriesSpinner.addChangeListener(e -> fireChange());
         dcaBarsBetweenSpinner.addChangeListener(e -> fireChange());
         dcaModeCombo.addActionListener(e -> fireChange());
+
+        // Order type change listeners
+        orderTypeCombo.addActionListener(e -> fireChange());
+        offsetPercentSpinner.addChangeListener(e -> fireChange());
+        trailingReverseSpinner.addChangeListener(e -> fireChange());
+        expirationBarsSpinner.addChangeListener(e -> fireChange());
     }
 
     private void layoutComponents() {
@@ -123,6 +148,38 @@ public class EntryConfigPanel extends JPanel {
         scrollWrapper.add(layeredPane, BorderLayout.CENTER);
         conditionPanel.add(scrollWrapper, BorderLayout.CENTER);
 
+        // Order Type section
+        JPanel orderTypePanel = new JPanel(new GridBagLayout());
+        orderTypePanel.setOpaque(false);
+
+        JLabel orderTypeLabel = new JLabel("Order:");
+        orderTypeLabel.setForeground(Color.GRAY);
+        orderTypePanel.add(orderTypeLabel, gbc(0, 0, false));
+        orderTypePanel.add(orderTypeCombo, gbc(1, 0, true));
+
+        orderTypeDetailsPanel = new JPanel(new GridBagLayout());
+        orderTypeDetailsPanel.setOpaque(false);
+
+        offsetLabel = new JLabel("Offset %:");
+        offsetLabel.setForeground(Color.GRAY);
+        orderTypeDetailsPanel.add(offsetLabel, gbc(0, 0, false));
+        orderTypeDetailsPanel.add(offsetPercentSpinner, gbc(1, 0, true));
+
+        trailingLabel = new JLabel("Reversal %:");
+        trailingLabel.setForeground(Color.GRAY);
+        orderTypeDetailsPanel.add(trailingLabel, gbc(0, 1, false));
+        orderTypeDetailsPanel.add(trailingReverseSpinner, gbc(1, 1, true));
+
+        expirationLabel = new JLabel("Expires (bars):");
+        expirationLabel.setForeground(Color.GRAY);
+        orderTypeDetailsPanel.add(expirationLabel, gbc(0, 2, false));
+        orderTypeDetailsPanel.add(expirationBarsSpinner, gbc(1, 2, true));
+
+        JPanel orderTypeWrapper = new JPanel(new BorderLayout(0, 0));
+        orderTypeWrapper.setOpaque(false);
+        orderTypeWrapper.add(orderTypePanel, BorderLayout.NORTH);
+        orderTypeWrapper.add(orderTypeDetailsPanel, BorderLayout.CENTER);
+
         // DCA section
         JPanel dcaCheckboxPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 2));
         dcaCheckboxPanel.setOpaque(false);
@@ -151,7 +208,15 @@ public class EntryConfigPanel extends JPanel {
         dcaWrapper.setOpaque(false);
         dcaWrapper.add(dcaCheckboxPanel, BorderLayout.NORTH);
         dcaWrapper.add(dcaDetailsPanel, BorderLayout.CENTER);
-        conditionPanel.add(dcaWrapper, BorderLayout.SOUTH);
+
+        // Combine order type and DCA sections
+        JPanel bottomSection = new JPanel();
+        bottomSection.setLayout(new BoxLayout(bottomSection, BoxLayout.Y_AXIS));
+        bottomSection.setOpaque(false);
+        bottomSection.add(orderTypeWrapper);
+        bottomSection.add(Box.createVerticalStrut(4));
+        bottomSection.add(dcaWrapper);
+        conditionPanel.add(bottomSection, BorderLayout.SOUTH);
 
         // Combine header (outside blue box) and content (blue box)
         JPanel wrapper = new JPanel(new BorderLayout(0, 6));
@@ -203,6 +268,26 @@ public class EntryConfigPanel extends JPanel {
         repaint();
     }
 
+    private void updateOrderTypeVisibility() {
+        int idx = orderTypeCombo.getSelectedIndex();
+        boolean isMarket = (idx == 0);
+        boolean isLimit = (idx == 1);
+        boolean isStop = (idx == 2);
+        boolean isTrailing = (idx == 3);
+
+        // Show/hide based on order type
+        offsetLabel.setVisible(isLimit || isStop);
+        offsetPercentSpinner.setVisible(isLimit || isStop);
+        trailingLabel.setVisible(isTrailing);
+        trailingReverseSpinner.setVisible(isTrailing);
+        expirationLabel.setVisible(!isMarket);
+        expirationBarsSpinner.setVisible(!isMarket);
+
+        orderTypeDetailsPanel.setVisible(!isMarket);
+        revalidate();
+        repaint();
+    }
+
     private void fireChange() {
         if (!suppressChangeEvents && onChange != null) {
             onChange.run();
@@ -248,6 +333,21 @@ public class EntryConfigPanel extends JPanel {
                 DcaMode mode = strategy.getDcaMode();
                 dcaModeCombo.setSelectedIndex(mode == DcaMode.ABORT ? 1 : mode == DcaMode.CONTINUE ? 2 : 0);
                 updateDcaVisibility();
+
+                // Load order type settings
+                EntryOrderType orderType = strategy.getEntrySettings().getOrderType();
+                orderTypeCombo.setSelectedIndex(
+                    orderType == EntryOrderType.LIMIT ? 1 :
+                    orderType == EntryOrderType.STOP ? 2 :
+                    orderType == EntryOrderType.TRAILING ? 3 : 0
+                );
+                Double offset = strategy.getEntrySettings().getOrderOffsetPercent();
+                offsetPercentSpinner.setValue(offset != null ? offset : -1.0);
+                Double reversal = strategy.getEntrySettings().getTrailingReversePercent();
+                trailingReverseSpinner.setValue(reversal != null ? reversal : 1.5);
+                Integer expiration = strategy.getEntrySettings().getExpirationBars();
+                expirationBarsSpinner.setValue(expiration != null ? expiration : 10);
+                updateOrderTypeVisibility();
             } else {
                 entryEditor.setText("");
                 dcaEnabledCheckbox.setSelected(false);
@@ -255,6 +355,11 @@ public class EntryConfigPanel extends JPanel {
                 dcaBarsBetweenSpinner.setValue(1);
                 dcaModeCombo.setSelectedIndex(0);
                 updateDcaVisibility();
+                orderTypeCombo.setSelectedIndex(0);
+                offsetPercentSpinner.setValue(-1.0);
+                trailingReverseSpinner.setValue(1.5);
+                expirationBarsSpinner.setValue(10);
+                updateOrderTypeVisibility();
             }
         } finally {
             suppressChangeEvents = false;
@@ -269,6 +374,29 @@ public class EntryConfigPanel extends JPanel {
         strategy.setDcaBarsBetween(((Number) dcaBarsBetweenSpinner.getValue()).intValue());
         DcaMode[] modes = {DcaMode.PAUSE, DcaMode.ABORT, DcaMode.CONTINUE};
         strategy.setDcaMode(modes[dcaModeCombo.getSelectedIndex()]);
+
+        // Apply order type settings
+        EntryOrderType[] orderTypes = {EntryOrderType.MARKET, EntryOrderType.LIMIT, EntryOrderType.STOP, EntryOrderType.TRAILING};
+        strategy.getEntrySettings().setOrderType(orderTypes[orderTypeCombo.getSelectedIndex()]);
+
+        int orderIdx = orderTypeCombo.getSelectedIndex();
+        if (orderIdx == 1 || orderIdx == 2) {  // LIMIT or STOP
+            strategy.getEntrySettings().setOrderOffsetPercent(((Number) offsetPercentSpinner.getValue()).doubleValue());
+        } else {
+            strategy.getEntrySettings().setOrderOffsetPercent(null);
+        }
+
+        if (orderIdx == 3) {  // TRAILING
+            strategy.getEntrySettings().setTrailingReversePercent(((Number) trailingReverseSpinner.getValue()).doubleValue());
+        } else {
+            strategy.getEntrySettings().setTrailingReversePercent(null);
+        }
+
+        if (orderIdx != 0) {  // Not MARKET
+            strategy.getEntrySettings().setExpirationBars(((Number) expirationBarsSpinner.getValue()).intValue());
+        } else {
+            strategy.getEntrySettings().setExpirationBars(null);
+        }
     }
 
 }

@@ -220,6 +220,8 @@ public class BacktestEngine {
         int lastEntryBar = -9999;  // Track last entry bar for min candle distance
         String currentGroupId = null;  // Groups DCA entries together
         int groupCounter = 0;
+        PendingOrder pendingOrder = null;  // Tracks pending entry order (LIMIT/STOP/TRAILING)
+        List<Trade> expiredOrders = new ArrayList<>();  // Track expired pending orders
 
         // maxOpenTrades limits concurrent positions (DCA groups count as one position)
         int maxPositions = strategy.getMaxOpenTrades();
@@ -666,6 +668,107 @@ public class BacktestEngine {
                         .filter(ots -> groupIdAfterClose.equals(ots.trade.groupId()))
                         .count();
 
+                // Process pending entry order (LIMIT/STOP/TRAILING)
+                boolean pendingOrderFilled = false;
+                if (pendingOrder != null) {
+                    // Check expiration first
+                    if (pendingOrder.isExpired(i)) {
+                        // Record expired order
+                        Trade expiredTrade = Trade.expired(
+                            strategy.getId(),
+                            "long",
+                            pendingOrder.signalBar,
+                            candles.get(pendingOrder.signalBar).timestamp(),
+                            pendingOrder.signalPrice,
+                            i  // Expiration bar
+                        );
+                        expiredOrders.add(expiredTrade);
+                        trades.add(expiredTrade);
+                        pendingOrder = null;
+                    } else {
+                        // Check fill conditions based on order type
+                        Double fillPrice = null;
+
+                        if (pendingOrder.shouldFillLimit(candle.low())) {
+                            fillPrice = pendingOrder.getFillPrice();
+                        } else if (pendingOrder.shouldFillStop(candle.high())) {
+                            fillPrice = pendingOrder.getFillPrice();
+                        } else if (pendingOrder.orderType == EntryOrderType.TRAILING) {
+                            fillPrice = pendingOrder.updateTrailingAndCheckFill(
+                                candle.high(), candle.low(), candle.close()
+                            );
+                        }
+
+                        if (fillPrice != null) {
+                            // Calculate position size at fill time
+                            double usedCapital = openTrades.stream()
+                                .mapToDouble(ots -> ots.trade.entryPrice() * ots.remainingQuantity)
+                                .sum();
+                            double availableCapital = currentEquity - usedCapital;
+
+                            double quantity = calculatePositionSize(config, strategy, currentEquity, fillPrice, candles, i);
+                            if (strategy.isDcaEnabled() && maxEntriesPerPosition > 1) {
+                                quantity = quantity / maxEntriesPerPosition;
+                            }
+                            double positionValue = quantity * fillPrice;
+
+                            if (positionValue > availableCapital) {
+                                quantity = 0;
+                            }
+
+                            if (quantity > 0) {
+                                // Execute the fill
+                                groupCounter++;
+                                currentGroupId = strategy.isDcaEnabled() ? "dca-" + groupCounter : "pos-" + groupCounter;
+
+                                Trade newTrade = Trade.open(
+                                    strategy.getId(),
+                                    "long",
+                                    i,
+                                    candle.timestamp(),
+                                    fillPrice,
+                                    quantity,
+                                    config.commission(),
+                                    currentGroupId
+                                );
+
+                                OpenTradeState ots = new OpenTradeState(newTrade, fillPrice);
+
+                                // Initialize trailing stop from default zone
+                                ExitZone defaultZone = strategy.findMatchingZone(0.0);
+                                if (defaultZone != null) {
+                                    StopLossType slType = defaultZone.stopLossType();
+                                    Double slValue = defaultZone.stopLossValue();
+                                    if (slType != null && slType.isTrailing() && slValue != null && slValue > 0) {
+                                        double stopDistance = 0;
+                                        if (slType.isPercent()) {
+                                            stopDistance = fillPrice * (slValue / 100.0);
+                                        } else if (slType.isAtr()) {
+                                            stopDistance = calculateATR(candles, i, 14) * slValue;
+                                        }
+                                        ots.trailingStopPrice = fillPrice - stopDistance;
+                                    }
+                                }
+
+                                openTrades.add(ots);
+                                lastEntryBar = i;
+                                pendingOrderFilled = true;
+                            } else {
+                                // Rejected due to no capital
+                                Trade rejectedTrade = Trade.rejected(
+                                    strategy.getId(),
+                                    "long",
+                                    i,
+                                    candle.timestamp(),
+                                    fillPrice
+                                );
+                                trades.add(rejectedTrade);
+                            }
+                            pendingOrder = null;
+                        }
+                    }
+                }
+
                 // Check entry condition if we can open more positions
                 boolean canAddToCurrentPosition = strategy.isDcaEnabled() &&
                     currentGroupId != null &&
@@ -714,7 +817,8 @@ public class BacktestEngine {
                     }
                 }
 
-                if (canOpenMore && passesMinDistance) {
+                // Skip new entry signals if a pending order was just filled this bar
+                if (!pendingOrderFilled && canOpenMore && passesMinDistance) {
                     boolean shouldEnter;
                     if (isDcaEntry && dcaMode == DcaMode.CONTINUE) {
                         // In continue mode, DCA entries don't require signal
@@ -735,76 +839,85 @@ public class BacktestEngine {
                     }
 
                     if (shouldEnter) {
-                        // Calculate current capital usage (based on remaining quantities)
-                        double usedCapital = openTrades.stream()
-                            .mapToDouble(ots -> ots.trade.entryPrice() * ots.remainingQuantity)
-                            .sum();
-                        double availableCapital = currentEquity - usedCapital;
+                        // Get entry order type from strategy
+                        EntryOrderType orderType = strategy.getEntrySettings().getOrderType();
 
-                        // Calculate position size (divide by max entries when DCA enabled)
-                        double quantity = calculatePositionSize(config, strategy, currentEquity, candle.close(), candles, i);
-                        if (strategy.isDcaEnabled() && maxEntriesPerPosition > 1) {
-                            quantity = quantity / maxEntriesPerPosition;
-                        }
-                        double positionValue = quantity * candle.close();
+                        if (orderType == EntryOrderType.MARKET) {
+                            // MARKET order: immediate entry (original behavior)
+                            double usedCapital = openTrades.stream()
+                                .mapToDouble(ots -> ots.trade.entryPrice() * ots.remainingQuantity)
+                                .sum();
+                            double availableCapital = currentEquity - usedCapital;
 
-                        // Check if we have enough capital (reject if would exceed 100% usage)
-                        if (positionValue > availableCapital) {
-                            quantity = 0;  // Will trigger rejection
-                        }
+                            double quantity = calculatePositionSize(config, strategy, currentEquity, candle.close(), candles, i);
+                            if (strategy.isDcaEnabled() && maxEntriesPerPosition > 1) {
+                                quantity = quantity / maxEntriesPerPosition;
+                            }
+                            double positionValue = quantity * candle.close();
 
-                        if (quantity > 0) {
-                            // Determine if this is a new position or adding to existing
-                            boolean startingNewPosition = !isDcaEntry;
-
-                            // Generate new groupId for first entry of a new position
-                            // Every position gets a groupId (DCA or not) for consistent counting
-                            if (startingNewPosition) {
-                                groupCounter++;
-                                currentGroupId = strategy.isDcaEnabled() ? "dca-" + groupCounter : "pos-" + groupCounter;
+                            if (positionValue > availableCapital) {
+                                quantity = 0;
                             }
 
-                            Trade newTrade = Trade.open(
-                                strategy.getId(),
-                                "long",
-                                i,
-                                candle.timestamp(),
-                                candle.close(),
-                                quantity,
-                                config.commission(),
-                                currentGroupId
-                            );
+                            if (quantity > 0) {
+                                boolean startingNewPosition = !isDcaEntry;
 
-                            OpenTradeState ots = new OpenTradeState(newTrade, candle.close());
-
-                            // Initialize trailing stop from default zone (zone matching 0% PnL)
-                            ExitZone defaultZone = strategy.findMatchingZone(0.0);
-                            if (defaultZone != null) {
-                                StopLossType slType = defaultZone.stopLossType();
-                                Double slValue = defaultZone.stopLossValue();
-                                if (slType != null && slType.isTrailing() && slValue != null && slValue > 0) {
-                                    double stopDistance = 0;
-                                    if (slType.isPercent()) {
-                                        stopDistance = candle.close() * (slValue / 100.0);
-                                    } else if (slType.isAtr()) {
-                                        stopDistance = calculateATR(candles, i, 14) * slValue;
-                                    }
-                                    ots.trailingStopPrice = candle.close() - stopDistance;
+                                if (startingNewPosition) {
+                                    groupCounter++;
+                                    currentGroupId = strategy.isDcaEnabled() ? "dca-" + groupCounter : "pos-" + groupCounter;
                                 }
-                            }
 
-                            openTrades.add(ots);
-                            lastEntryBar = i;
+                                Trade newTrade = Trade.open(
+                                    strategy.getId(),
+                                    "long",
+                                    i,
+                                    candle.timestamp(),
+                                    candle.close(),
+                                    quantity,
+                                    config.commission(),
+                                    currentGroupId
+                                );
+
+                                OpenTradeState ots = new OpenTradeState(newTrade, candle.close());
+
+                                ExitZone defaultZone = strategy.findMatchingZone(0.0);
+                                if (defaultZone != null) {
+                                    StopLossType slType = defaultZone.stopLossType();
+                                    Double slValue = defaultZone.stopLossValue();
+                                    if (slType != null && slType.isTrailing() && slValue != null && slValue > 0) {
+                                        double stopDistance = 0;
+                                        if (slType.isPercent()) {
+                                            stopDistance = candle.close() * (slValue / 100.0);
+                                        } else if (slType.isAtr()) {
+                                            stopDistance = calculateATR(candles, i, 14) * slValue;
+                                        }
+                                        ots.trailingStopPrice = candle.close() - stopDistance;
+                                    }
+                                }
+
+                                openTrades.add(ots);
+                                lastEntryBar = i;
+                            } else {
+                                Trade rejectedTrade = Trade.rejected(
+                                    strategy.getId(),
+                                    "long",
+                                    i,
+                                    candle.timestamp(),
+                                    candle.close()
+                                );
+                                trades.add(rejectedTrade);
+                            }
                         } else {
-                            // Record rejected trade (no capital available)
-                            Trade rejectedTrade = Trade.rejected(
-                                strategy.getId(),
-                                "long",
+                            // LIMIT, STOP, or TRAILING order: create pending order
+                            // New signal replaces any existing pending order
+                            pendingOrder = new PendingOrder(
                                 i,
-                                candle.timestamp(),
-                                candle.close()
+                                candle.close(),
+                                orderType,
+                                strategy.getEntrySettings().getOrderOffsetPercent(),
+                                strategy.getEntrySettings().getTrailingReversePercent(),
+                                strategy.getEntrySettings().getExpirationBars()
                             );
-                            trades.add(rejectedTrade);
                         }
                     }
                 }
@@ -1219,6 +1332,92 @@ public class BacktestEngine {
         ParsedExitZone(ExitZone zone, AstNode exitConditionAst) {
             this.zone = zone;
             this.exitConditionAst = exitConditionAst;
+        }
+    }
+
+    /**
+     * Tracks a pending entry order (LIMIT, STOP, or TRAILING).
+     * Created when DSL signal fires with non-MARKET order type.
+     */
+    private static class PendingOrder {
+        final int signalBar;              // Bar when DSL signal triggered
+        final double signalPrice;         // Price at signal bar
+        final double orderPrice;          // Target fill price (for LIMIT/STOP)
+        double trailPrice;                // For TRAILING: lowest price seen (tracks down)
+        final EntryOrderType orderType;
+        final Integer expirationBar;      // Bar when order expires (null = never)
+        final double trailingReversePercent;  // For TRAILING: reversal % to trigger
+
+        PendingOrder(int signalBar, double signalPrice, EntryOrderType orderType,
+                     Double offsetPercent, Double trailingReversePercent, Integer expirationBars) {
+            this.signalBar = signalBar;
+            this.signalPrice = signalPrice;
+            this.orderType = orderType;
+            this.trailingReversePercent = trailingReversePercent != null ? trailingReversePercent : 1.0;
+
+            // Calculate order price for LIMIT/STOP
+            if (offsetPercent != null && (orderType == EntryOrderType.LIMIT || orderType == EntryOrderType.STOP)) {
+                this.orderPrice = signalPrice * (1 + offsetPercent / 100.0);
+            } else {
+                this.orderPrice = signalPrice;
+            }
+
+            // Initialize trail price for TRAILING
+            this.trailPrice = signalPrice;
+
+            // Calculate expiration bar
+            this.expirationBar = expirationBars != null ? signalBar + expirationBars : null;
+        }
+
+        /**
+         * Check if this order has expired.
+         */
+        boolean isExpired(int currentBar) {
+            return expirationBar != null && currentBar > expirationBar;
+        }
+
+        /**
+         * Check if LIMIT order should fill at current bar.
+         * LIMIT fills when price drops TO or BELOW the order price.
+         */
+        boolean shouldFillLimit(double low) {
+            return orderType == EntryOrderType.LIMIT && low <= orderPrice;
+        }
+
+        /**
+         * Check if STOP order should fill at current bar.
+         * STOP fills when price rises TO or ABOVE the order price.
+         */
+        boolean shouldFillStop(double high) {
+            return orderType == EntryOrderType.STOP && high >= orderPrice;
+        }
+
+        /**
+         * Update trailing price and check if TRAILING order should fill.
+         * Returns the fill price if should fill, null otherwise.
+         */
+        Double updateTrailingAndCheckFill(double high, double low, double close) {
+            if (orderType != EntryOrderType.TRAILING) return null;
+
+            // Trail down - update to lowest low seen
+            if (low < trailPrice) {
+                trailPrice = low;
+            }
+
+            // Check for reversal - price has bounced up from trail by X%
+            double reversalTarget = trailPrice * (1 + trailingReversePercent / 100.0);
+            if (close >= reversalTarget) {
+                return close;  // Fill at close price on reversal
+            }
+
+            return null;  // No fill yet
+        }
+
+        /**
+         * Get the fill price for LIMIT/STOP orders.
+         */
+        double getFillPrice() {
+            return orderPrice;
         }
     }
 

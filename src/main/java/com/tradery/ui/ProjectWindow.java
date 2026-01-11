@@ -83,7 +83,7 @@ public class ProjectWindow extends JFrame {
     };
 
     private static final String[] TIMEFRAMES = {
-        "1m", "5m", "15m", "30m", "1h", "4h", "1d", "1w"
+        "10s", "15s", "1m", "5m", "15m", "30m", "1h", "4h", "1d", "1w"
     };
 
     // Use embedded AI terminal instead of OS terminal (for Claude)
@@ -309,6 +309,18 @@ public class ProjectWindow extends JFrame {
 
         // Provide sensible duration options based on timeframe
         switch (timeframe) {
+            case "10s", "15s" -> {
+                // Sub-minute: requires aggTrades
+                durationCombo.addItem("1 hour");
+                durationCombo.addItem("3 hours");
+                durationCombo.addItem("6 hours");
+                durationCombo.addItem("12 hours");
+                durationCombo.addItem("1 day");
+                durationCombo.addItem("3 days");
+                durationCombo.addItem("1 week");
+                durationCombo.addItem("2 weeks");
+                durationCombo.addItem("4 weeks");
+            }
             case "1m" -> {
                 durationCombo.addItem("1 day");
                 durationCombo.addItem("3 days");

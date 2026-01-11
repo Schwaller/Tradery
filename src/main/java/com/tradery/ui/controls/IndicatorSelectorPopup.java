@@ -40,6 +40,9 @@ public class IndicatorSelectorPopup extends JDialog {
     private JLabel mayerLabel;
     private JSpinner mayerSpinner;
 
+    private JCheckBox dailyPocCheckbox;
+    private JCheckBox floatingPocCheckbox;
+
     // Oscillator controls
     private JCheckBox rsiCheckbox;
     private JLabel rsiLabel;
@@ -141,6 +144,8 @@ public class IndicatorSelectorPopup extends JDialog {
         contentPane.add(createBollingerRow());
         contentPane.add(createHighLowRow());
         contentPane.add(createMayerRow());
+        contentPane.add(createDailyPocRow());
+        contentPane.add(createFloatingPocRow());
 
         contentPane.add(Box.createVerticalStrut(8));
 
@@ -240,6 +245,26 @@ public class IndicatorSelectorPopup extends JDialog {
         mayerLabel = new JLabel("Period:");
         mayerSpinner = createPeriodSpinner(200, 50, 365);
         return createIndicatorRow(mayerCheckbox, mayerLabel, mayerSpinner);
+    }
+
+    private JPanel createDailyPocRow() {
+        dailyPocCheckbox = new JCheckBox("Daily POC");
+        dailyPocCheckbox.setToolTipText("Show previous day's Point of Control");
+        JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
+        row.setAlignmentX(Component.LEFT_ALIGNMENT);
+        row.add(dailyPocCheckbox);
+        dailyPocCheckbox.addActionListener(e -> scheduleUpdate());
+        return row;
+    }
+
+    private JPanel createFloatingPocRow() {
+        floatingPocCheckbox = new JCheckBox("Floating POC");
+        floatingPocCheckbox.setToolTipText("Show developing Point of Control for current day");
+        JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
+        row.setAlignmentX(Component.LEFT_ALIGNMENT);
+        row.add(floatingPocCheckbox);
+        floatingPocCheckbox.addActionListener(e -> scheduleUpdate());
+        return row;
     }
 
     private JPanel createRsiRow() {
@@ -503,6 +528,8 @@ public class IndicatorSelectorPopup extends JDialog {
         hlSpinner.setValue(config.getHighLowPeriod());
         mayerCheckbox.setSelected(config.isMayerEnabled());
         mayerSpinner.setValue(config.getMayerPeriod());
+        dailyPocCheckbox.setSelected(config.isDailyPocEnabled());
+        floatingPocCheckbox.setSelected(config.isFloatingPocEnabled());
 
         // Oscillators
         rsiCheckbox.setSelected(config.isRsiEnabled());
@@ -574,6 +601,18 @@ public class IndicatorSelectorPopup extends JDialog {
             chartPanel.setMayerMultipleEnabled(false, 200);
         }
 
+        if (dailyPocCheckbox.isSelected()) {
+            chartPanel.setDailyPocOverlay(null);
+        } else {
+            chartPanel.clearDailyPocOverlay();
+        }
+
+        if (floatingPocCheckbox.isSelected()) {
+            chartPanel.setFloatingPocOverlay(null);
+        } else {
+            chartPanel.clearFloatingPocOverlay();
+        }
+
         // Save overlay settings to config
         config.setSmaEnabled(smaCheckbox.isSelected());
         config.setSmaPeriod(smaPeriod);
@@ -586,6 +625,8 @@ public class IndicatorSelectorPopup extends JDialog {
         config.setHighLowPeriod(hlPeriod);
         config.setMayerEnabled(mayerCheckbox.isSelected());
         config.setMayerPeriod(mayerPeriod);
+        config.setDailyPocEnabled(dailyPocCheckbox.isSelected());
+        config.setFloatingPocEnabled(floatingPocCheckbox.isSelected());
 
         // Oscillators
         int rsiPeriod = (int) rsiSpinner.getValue();

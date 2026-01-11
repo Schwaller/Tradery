@@ -53,6 +53,10 @@ public class ChartConfig {
     // Funding chart
     private boolean fundingEnabled = false;
 
+    // POC overlays
+    private boolean dailyPocEnabled = false;
+    private boolean floatingPocEnabled = false;
+
     // Core charts
     private boolean volumeChartEnabled = true;
     private boolean equityChartEnabled = true;
@@ -151,6 +155,14 @@ public class ChartConfig {
     public boolean isFundingEnabled() { return fundingEnabled; }
     public void setFundingEnabled(boolean enabled) { this.fundingEnabled = enabled; save(); }
 
+    // ===== POC Overlay Getters/Setters =====
+
+    public boolean isDailyPocEnabled() { return dailyPocEnabled; }
+    public void setDailyPocEnabled(boolean enabled) { this.dailyPocEnabled = enabled; save(); }
+
+    public boolean isFloatingPocEnabled() { return floatingPocEnabled; }
+    public void setFloatingPocEnabled(boolean enabled) { this.floatingPocEnabled = enabled; save(); }
+
     // ===== Core Chart Getters/Setters =====
 
     public boolean isVolumeChartEnabled() { return volumeChartEnabled; }
@@ -208,6 +220,10 @@ public class ChartConfig {
         // Funding
         this.fundingEnabled = other.fundingEnabled;
 
+        // POC overlays
+        this.dailyPocEnabled = other.dailyPocEnabled;
+        this.floatingPocEnabled = other.floatingPocEnabled;
+
         // Core charts
         this.volumeChartEnabled = other.volumeChartEnabled;
         this.equityChartEnabled = other.equityChartEnabled;
@@ -258,6 +274,10 @@ public class ChartConfig {
 
         // Funding - off by default
         fundingEnabled = false;
+
+        // POC overlays - off by default
+        dailyPocEnabled = false;
+        floatingPocEnabled = false;
 
         // Core charts - all on by default
         volumeChartEnabled = true;
@@ -360,6 +380,10 @@ public class ChartConfig {
 
         // Funding
         this.fundingEnabled = other.fundingEnabled;
+
+        // POC overlays
+        this.dailyPocEnabled = other.dailyPocEnabled;
+        this.floatingPocEnabled = other.floatingPocEnabled;
 
         // Core charts
         this.volumeChartEnabled = other.volumeChartEnabled;

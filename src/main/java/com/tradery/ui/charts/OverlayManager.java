@@ -1,5 +1,6 @@
 package com.tradery.ui.charts;
 
+import com.tradery.indicators.IndicatorEngine;
 import com.tradery.model.Candle;
 import org.jfree.chart.JFreeChart;
 import org.jfree.chart.annotations.XYLineAnnotation;
@@ -25,6 +26,8 @@ public class OverlayManager {
     private int emaDatasetIndex = -1;
     private int bbDatasetIndex = -1;
     private int hlDatasetIndex = -1;
+    private int dailyPocDatasetIndex = -1;
+    private int floatingPocDatasetIndex = -1;
 
     // Overlay series references
     private TimeSeries smaSeries;
@@ -33,6 +36,9 @@ public class OverlayManager {
     // Mayer Multiple state
     private boolean mayerMultipleEnabled = false;
     private int mayerPeriod = 200;
+
+    // IndicatorEngine for POC calculations
+    private IndicatorEngine indicatorEngine;
 
     public OverlayManager(JFreeChart priceChart) {
         this.priceChart = priceChart;
@@ -348,6 +354,118 @@ public class OverlayManager {
         }
     }
 
+    // ===== IndicatorEngine Setter =====
+
+    public void setIndicatorEngine(IndicatorEngine engine) {
+        this.indicatorEngine = engine;
+    }
+
+    // ===== Daily POC Overlay =====
+
+    /**
+     * Shows previous day's POC as a horizontal line extending across the current day.
+     */
+    public void setDailyPocOverlay(List<Candle> candles) {
+        if (candles == null || candles.isEmpty() || indicatorEngine == null) {
+            clearDailyPocOverlay();
+            return;
+        }
+
+        XYPlot plot = priceChart.getXYPlot();
+
+        TimeSeries pocSeries = new TimeSeries("Daily POC");
+
+        for (int i = 0; i < candles.size(); i++) {
+            double poc = indicatorEngine.getPrevDayPOCAt(i);
+            if (!Double.isNaN(poc)) {
+                pocSeries.addOrUpdate(new Millisecond(new Date(candles.get(i).timestamp())), poc);
+            }
+        }
+
+        if (pocSeries.isEmpty()) {
+            clearDailyPocOverlay();
+            return;
+        }
+
+        TimeSeriesCollection dataset = new TimeSeriesCollection(pocSeries);
+
+        if (dailyPocDatasetIndex < 0) {
+            dailyPocDatasetIndex = findNextAvailableDatasetIndex(plot, 10);
+        }
+
+        plot.setDataset(dailyPocDatasetIndex, dataset);
+
+        // Style: cyan dashed line for previous day's POC
+        XYLineAndShapeRenderer renderer = new XYLineAndShapeRenderer(true, false);
+        renderer.setSeriesPaint(0, ChartStyles.DAILY_POC_COLOR);
+        renderer.setSeriesStroke(0, ChartStyles.DASHED_STROKE);
+        plot.setRenderer(dailyPocDatasetIndex, renderer);
+    }
+
+    public void clearDailyPocOverlay() {
+        if (dailyPocDatasetIndex >= 0 && priceChart != null) {
+            XYPlot plot = priceChart.getXYPlot();
+            plot.setDataset(dailyPocDatasetIndex, null);
+        }
+    }
+
+    public boolean isDailyPocEnabled() {
+        return dailyPocDatasetIndex >= 0 && priceChart.getXYPlot().getDataset(dailyPocDatasetIndex) != null;
+    }
+
+    // ===== Floating POC Overlay =====
+
+    /**
+     * Shows the developing (floating) POC that updates throughout the current day.
+     */
+    public void setFloatingPocOverlay(List<Candle> candles) {
+        if (candles == null || candles.isEmpty() || indicatorEngine == null) {
+            clearFloatingPocOverlay();
+            return;
+        }
+
+        XYPlot plot = priceChart.getXYPlot();
+
+        TimeSeries pocSeries = new TimeSeries("Floating POC");
+
+        for (int i = 0; i < candles.size(); i++) {
+            double poc = indicatorEngine.getTodayPOCAt(i);
+            if (!Double.isNaN(poc)) {
+                pocSeries.addOrUpdate(new Millisecond(new Date(candles.get(i).timestamp())), poc);
+            }
+        }
+
+        if (pocSeries.isEmpty()) {
+            clearFloatingPocOverlay();
+            return;
+        }
+
+        TimeSeriesCollection dataset = new TimeSeriesCollection(pocSeries);
+
+        if (floatingPocDatasetIndex < 0) {
+            floatingPocDatasetIndex = findNextAvailableDatasetIndex(plot, 11);
+        }
+
+        plot.setDataset(floatingPocDatasetIndex, dataset);
+
+        // Style: magenta solid line for floating/developing POC
+        XYLineAndShapeRenderer renderer = new XYLineAndShapeRenderer(true, false);
+        renderer.setSeriesPaint(0, ChartStyles.FLOATING_POC_COLOR);
+        renderer.setSeriesStroke(0, ChartStyles.MEDIUM_STROKE);
+        plot.setRenderer(floatingPocDatasetIndex, renderer);
+    }
+
+    public void clearFloatingPocOverlay() {
+        if (floatingPocDatasetIndex >= 0 && priceChart != null) {
+            XYPlot plot = priceChart.getXYPlot();
+            plot.setDataset(floatingPocDatasetIndex, null);
+        }
+    }
+
+    public boolean isFloatingPocEnabled() {
+        return floatingPocDatasetIndex >= 0 && priceChart.getXYPlot().getDataset(floatingPocDatasetIndex) != null;
+    }
+
     // ===== Clear All =====
 
     public void clearAll() {
@@ -355,6 +473,8 @@ public class OverlayManager {
         clearEmaOverlay();
         clearBollingerOverlay();
         clearHighLowOverlay();
+        clearDailyPocOverlay();
+        clearFloatingPocOverlay();
     }
 
     // ===== Helper Methods =====

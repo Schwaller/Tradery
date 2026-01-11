@@ -13,6 +13,12 @@ public class EntrySettings {
     private int minCandlesBetween = 0;
     private DcaSettings dca = new DcaSettings();
 
+    // Pending order settings
+    private EntryOrderType orderType = EntryOrderType.MARKET;
+    private Double orderOffsetPercent;      // For LIMIT (negative) / STOP (positive)
+    private Double trailingReversePercent;  // For TRAILING: reversal % to trigger entry
+    private Integer expirationBars;         // Optional: cancel pending order after X bars
+
     public EntrySettings() {}
 
     public EntrySettings(String condition, int maxOpenTrades, int minCandlesBetween, DcaSettings dca) {
@@ -55,6 +61,38 @@ public class EntrySettings {
 
     public void setDca(DcaSettings dca) {
         this.dca = dca != null ? dca : new DcaSettings();
+    }
+
+    public EntryOrderType getOrderType() {
+        return orderType != null ? orderType : EntryOrderType.MARKET;
+    }
+
+    public void setOrderType(EntryOrderType orderType) {
+        this.orderType = orderType != null ? orderType : EntryOrderType.MARKET;
+    }
+
+    public Double getOrderOffsetPercent() {
+        return orderOffsetPercent;
+    }
+
+    public void setOrderOffsetPercent(Double orderOffsetPercent) {
+        this.orderOffsetPercent = orderOffsetPercent;
+    }
+
+    public Double getTrailingReversePercent() {
+        return trailingReversePercent;
+    }
+
+    public void setTrailingReversePercent(Double trailingReversePercent) {
+        this.trailingReversePercent = trailingReversePercent;
+    }
+
+    public Integer getExpirationBars() {
+        return expirationBars;
+    }
+
+    public void setExpirationBars(Integer expirationBars) {
+        this.expirationBars = expirationBars;
     }
 
     public static EntrySettings defaults() {

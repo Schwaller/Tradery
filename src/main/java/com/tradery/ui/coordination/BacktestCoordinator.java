@@ -4,6 +4,7 @@ import com.tradery.ApplicationContext;
 import com.tradery.data.AggTradesStore;
 import com.tradery.data.CandleStore;
 import com.tradery.data.FundingRateStore;
+import com.tradery.data.SubMinuteCandleGenerator;
 import com.tradery.engine.BacktestEngine;
 import com.tradery.io.PhaseStore;
 import com.tradery.io.ResultStore;
@@ -107,8 +108,13 @@ public class BacktestCoordinator {
         long endTime = System.currentTimeMillis();
         long startTime = endTime - durationMillis;
 
+        // Check if sub-minute timeframe (requires aggTrades)
+        int subMinuteInterval = SubMinuteCandleGenerator.parseSubMinuteInterval(resolution);
+        boolean isSubMinute = subMinuteInterval > 0;
+
         // Check if strategy has orderflow enabled (for loading aggTrades if available)
-        boolean needsAggTrades = strategy.getOrderflowMode() == OrderflowSettings.Mode.ENABLED;
+        // Sub-minute timeframes always need aggTrades
+        boolean needsAggTrades = isSubMinute || strategy.getOrderflowMode() == OrderflowSettings.Mode.ENABLED;
 
         BacktestConfig config = new BacktestConfig(
             symbol,
@@ -126,39 +132,81 @@ public class BacktestCoordinator {
         SwingWorker<BacktestResult, BacktestEngine.Progress> worker = new SwingWorker<>() {
             @Override
             protected BacktestResult doInBackground() throws Exception {
-                // Fetch candles
-                publish(new BacktestEngine.Progress(0, 0, 0, "Fetching data from Binance..."));
+                // For sub-minute timeframes, load aggTrades first and generate candles
+                if (isSubMinute) {
+                    publish(new BacktestEngine.Progress(0, 0, 0, "Loading aggTrades for " + resolution + " candles..."));
 
-                currentCandles = candleStore.getCandles(
-                    config.symbol(),
-                    config.resolution(),
-                    config.startDate(),
-                    config.endDate()
-                );
+                    if (aggTradesStore == null) {
+                        throw new Exception("AggTrades store not available for sub-minute timeframes");
+                    }
 
-                if (currentCandles.isEmpty()) {
-                    throw new Exception("No candle data available for " + config.symbol());
-                }
+                    // Set progress callback
+                    aggTradesStore.setProgressCallback(progress -> {
+                        publish(new BacktestEngine.Progress(
+                            progress.percentComplete(),
+                            0, 0,
+                            progress.message()
+                        ));
+                    });
 
-                // Load aggTrades if orderflow mode is enabled
-                currentAggTrades = null;
-                if (needsAggTrades && aggTradesStore != null) {
-                    publish(new BacktestEngine.Progress(0, 0, 0, "Loading aggTrades data..."));
                     try {
-                        // Set progress callback to show aggTrades loading in status bar
-                        aggTradesStore.setProgressCallback(progress -> {
-                            publish(new BacktestEngine.Progress(
-                                progress.percentComplete(),
-                                0, 0,
-                                progress.message()
-                            ));
-                        });
                         currentAggTrades = aggTradesStore.getAggTrades(symbol, startTime, endTime);
+                    } finally {
                         aggTradesStore.setProgressCallback(null);
-                    } catch (Exception e) {
-                        // Log warning but continue - delta indicators won't work
-                        System.err.println("Failed to load aggTrades: " + e.getMessage());
-                        aggTradesStore.setProgressCallback(null);
+                    }
+
+                    if (currentAggTrades == null || currentAggTrades.isEmpty()) {
+                        throw new Exception("No aggTrades data available for " + config.symbol() +
+                            ". Enable orderflow and sync data first.");
+                    }
+
+                    // Generate candles from aggTrades
+                    publish(new BacktestEngine.Progress(0, 0, 0, "Generating " + resolution + " candles..."));
+                    SubMinuteCandleGenerator generator = new SubMinuteCandleGenerator();
+                    currentCandles = generator.generate(currentAggTrades, subMinuteInterval, startTime, endTime);
+
+                    if (currentCandles.isEmpty()) {
+                        throw new Exception("No candles generated from aggTrades data");
+                    }
+
+                    System.out.println("Generated " + currentCandles.size() + " " + resolution + " candles from " +
+                        currentAggTrades.size() + " aggTrades");
+
+                } else {
+                    // Standard timeframe - fetch candles from Binance
+                    publish(new BacktestEngine.Progress(0, 0, 0, "Fetching data from Binance..."));
+
+                    currentCandles = candleStore.getCandles(
+                        config.symbol(),
+                        config.resolution(),
+                        config.startDate(),
+                        config.endDate()
+                    );
+
+                    if (currentCandles.isEmpty()) {
+                        throw new Exception("No candle data available for " + config.symbol());
+                    }
+
+                    // Load aggTrades if orderflow mode is enabled
+                    currentAggTrades = null;
+                    if (needsAggTrades && aggTradesStore != null) {
+                        publish(new BacktestEngine.Progress(0, 0, 0, "Loading aggTrades data..."));
+                        try {
+                            // Set progress callback to show aggTrades loading in status bar
+                            aggTradesStore.setProgressCallback(progress -> {
+                                publish(new BacktestEngine.Progress(
+                                    progress.percentComplete(),
+                                    0, 0,
+                                    progress.message()
+                                ));
+                            });
+                            currentAggTrades = aggTradesStore.getAggTrades(symbol, startTime, endTime);
+                            aggTradesStore.setProgressCallback(null);
+                        } catch (Exception e) {
+                            // Log warning but continue - delta indicators won't work
+                            System.err.println("Failed to load aggTrades: " + e.getMessage());
+                            aggTradesStore.setProgressCallback(null);
+                        }
                     }
                 }
 
@@ -268,8 +316,13 @@ public class BacktestCoordinator {
     public static long parseDurationMillis(String duration) {
         if (duration == null) return 365L * 24 * 60 * 60 * 1000; // Default 1 year
 
-        long day = 24L * 60 * 60 * 1000;
+        long hour = 60L * 60 * 1000;
+        long day = 24 * hour;
         return switch (duration) {
+            case "1 hour" -> hour;
+            case "3 hours" -> 3 * hour;
+            case "6 hours" -> 6 * hour;
+            case "12 hours" -> 12 * hour;
             case "1 day" -> day;
             case "3 days" -> 3 * day;
             case "1 week" -> 7 * day;

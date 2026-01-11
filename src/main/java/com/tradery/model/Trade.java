@@ -55,6 +55,19 @@ public record Trade(
     }
 
     /**
+     * Create an expired trade (pending order expired without filling)
+     */
+    public static Trade expired(String strategyId, String side, int signalBar, long signalTimestamp,
+                                double signalPrice, int expirationBar) {
+        String id = "trade-" + signalTimestamp + "-" + (int)(Math.random() * 10000);
+        return new Trade(
+            id, strategyId, side, signalBar, signalTimestamp, signalPrice, 0,
+            expirationBar, signalTimestamp, signalPrice, null, null, null, "expired", null, null,
+            null, null, null, null  // No analytics for expired orders
+        );
+    }
+
+    /**
      * Close this trade and calculate P&L
      */
     public Trade close(int exitBar, long exitTime, double exitPrice, double commission) {

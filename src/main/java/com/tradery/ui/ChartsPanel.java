@@ -147,6 +147,12 @@ public class ChartsPanel extends JPanel {
         if (config.isMayerEnabled()) {
             overlayManager.setMayerMultipleEnabled(true, config.getMayerPeriod());
         }
+        if (config.isDailyPocEnabled()) {
+            overlayManager.setDailyPocOverlay(candles);
+        }
+        if (config.isFloatingPocEnabled()) {
+            overlayManager.setFloatingPocOverlay(candles);
+        }
     }
 
     private void initializeCharts() {
@@ -499,6 +505,30 @@ public class ChartsPanel extends JPanel {
         return overlayManager.isMayerMultipleEnabled();
     }
 
+    public void setDailyPocOverlay(List<Candle> candles) {
+        overlayManager.setDailyPocOverlay(candles);
+    }
+
+    public void clearDailyPocOverlay() {
+        overlayManager.clearDailyPocOverlay();
+    }
+
+    public boolean isDailyPocEnabled() {
+        return overlayManager.isDailyPocEnabled();
+    }
+
+    public void setFloatingPocOverlay(List<Candle> candles) {
+        overlayManager.setFloatingPocOverlay(candles);
+    }
+
+    public void clearFloatingPocOverlay() {
+        overlayManager.clearFloatingPocOverlay();
+    }
+
+    public boolean isFloatingPocEnabled() {
+        return overlayManager.isFloatingPocEnabled();
+    }
+
     // ===== Indicator Chart Delegation =====
 
     public void setRsiChartEnabled(boolean enabled, int period) {
@@ -583,6 +613,7 @@ public class ChartsPanel extends JPanel {
 
     public void setIndicatorEngine(com.tradery.indicators.IndicatorEngine engine) {
         indicatorManager.setIndicatorEngine(engine);
+        overlayManager.setIndicatorEngine(engine);
     }
 
     // ===== Core Chart Toggles =====

@@ -1,6 +1,5 @@
 package com.tradery.data;
 
-import com.tradery.TraderyApp;
 import com.tradery.model.AggTrade;
 import com.tradery.model.FetchProgress;
 
@@ -9,6 +8,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
@@ -17,15 +17,24 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 
 /**
- * Stores and retrieves aggregated trade data as daily CSV files.
- * Files organized by symbol/aggTrades/yyyy-MM-dd.csv (one file per day).
+ * Stores and retrieves aggregated trade data as hourly CSV files in daily folders.
  *
- * Storage path: ~/.tradery/data/SYMBOL/aggTrades/
+ * Storage structure:
+ * ~/.tradery/data/BTCUSDT/aggTrades/
+ * ├── 2026-01-11/
+ * │   ├── 00.csv  (complete hour)
+ * │   ├── 01.csv
+ * │   ├── ...
+ * │   └── 23.partial.csv  (current hour, incomplete)
+ * └── 2026-01-12/
+ *     └── ...
  */
 public class AggTradesStore {
 
     private static final DateTimeFormatter DATE_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd");
+    private static final DateTimeFormatter HOUR_FORMAT = DateTimeFormatter.ofPattern("HH");
     private static final String AGG_TRADES_DIR = "aggTrades";
+    private static final long ONE_HOUR_MS = 60 * 60 * 1000;
 
     private final File dataDir;
     private final AggTradesClient client;
@@ -44,11 +53,30 @@ public class AggTradesStore {
     }
 
     /**
-     * Get the aggTrades directory for a symbol.
+     * Get the aggTrades base directory for a symbol.
      * Path: ~/.tradery/data/{symbol}/aggTrades/
      */
     private File getAggTradesDir(String symbol) {
         return new File(new File(dataDir, symbol), AGG_TRADES_DIR);
+    }
+
+    /**
+     * Get the daily folder for a specific date.
+     * Path: ~/.tradery/data/{symbol}/aggTrades/{yyyy-MM-dd}/
+     */
+    private File getDayDir(String symbol, LocalDate date) {
+        return new File(getAggTradesDir(symbol), date.format(DATE_FORMAT));
+    }
+
+    /**
+     * Get the hourly file path.
+     * @param complete true for complete file (.csv), false for partial (.partial.csv)
+     */
+    private File getHourFile(String symbol, LocalDateTime dateTime, boolean complete) {
+        File dayDir = getDayDir(symbol, dateTime.toLocalDate());
+        String hourStr = dateTime.format(HOUR_FORMAT);
+        String filename = complete ? hourStr + ".csv" : hourStr + ".partial.csv";
+        return new File(dayDir, filename);
     }
 
     /**
@@ -81,58 +109,45 @@ public class AggTradesStore {
     }
 
     /**
-     * Get sync status for a time range.
+     * Get sync status for a time range (hourly granularity).
      */
     public SyncStatus getSyncStatus(String symbol, long startTime, long endTime) {
-        File symbolDir = getAggTradesDir(symbol);
-        if (!symbolDir.exists()) {
-            return new SyncStatus(false, 0, countDays(startTime, endTime), startTime, endTime);
-        }
+        LocalDateTime start = LocalDateTime.ofInstant(Instant.ofEpochMilli(startTime), ZoneOffset.UTC)
+            .withMinute(0).withSecond(0).withNano(0);
+        LocalDateTime end = LocalDateTime.ofInstant(Instant.ofEpochMilli(endTime), ZoneOffset.UTC);
+        LocalDateTime now = LocalDateTime.now(ZoneOffset.UTC);
 
-        LocalDate start = Instant.ofEpochMilli(startTime).atZone(ZoneOffset.UTC).toLocalDate();
-        LocalDate end = Instant.ofEpochMilli(endTime).atZone(ZoneOffset.UTC).toLocalDate();
-
-        int daysComplete = 0;
-        int daysTotal = 0;
+        int hoursComplete = 0;
+        int hoursTotal = 0;
         long gapStart = -1;
         long gapEnd = -1;
 
-        LocalDate current = start;
+        LocalDateTime current = start;
         while (!current.isAfter(end)) {
-            daysTotal++;
-            String dateKey = current.format(DATE_FORMAT);
-            File completeFile = new File(symbolDir, dateKey + ".csv");
-            File partialFile = new File(symbolDir, dateKey + ".partial.csv");
+            hoursTotal++;
 
-            if (completeFile.exists()) {
-                daysComplete++;
+            File completeFile = getHourFile(symbol, current, true);
+            File partialFile = getHourFile(symbol, current, false);
+            boolean isCurrentHour = current.getHour() == now.getHour() &&
+                                    current.toLocalDate().equals(now.toLocalDate());
+
+            if (completeFile.exists() || (isCurrentHour && partialFile.exists())) {
+                hoursComplete++;
             } else if (!partialFile.exists()) {
-                // This day is missing
+                // This hour is missing
                 if (gapStart < 0) {
-                    gapStart = current.atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli();
+                    gapStart = current.toInstant(ZoneOffset.UTC).toEpochMilli();
                 }
-                gapEnd = current.plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli() - 1;
+                gapEnd = current.plusHours(1).toInstant(ZoneOffset.UTC).toEpochMilli() - 1;
             }
 
-            current = current.plusDays(1);
+            current = current.plusHours(1);
         }
 
-        boolean hasData = daysComplete == daysTotal;
-        return new SyncStatus(hasData, daysComplete, daysTotal,
+        boolean hasData = hoursComplete == hoursTotal;
+        return new SyncStatus(hasData, hoursComplete, hoursTotal,
             gapStart > 0 ? gapStart : startTime,
             gapEnd > 0 ? gapEnd : endTime);
-    }
-
-    private int countDays(long startTime, long endTime) {
-        LocalDate start = Instant.ofEpochMilli(startTime).atZone(ZoneOffset.UTC).toLocalDate();
-        LocalDate end = Instant.ofEpochMilli(endTime).atZone(ZoneOffset.UTC).toLocalDate();
-        int count = 0;
-        LocalDate current = start;
-        while (!current.isAfter(end)) {
-            count++;
-            current = current.plusDays(1);
-        }
-        return count;
     }
 
     /**
@@ -140,16 +155,16 @@ public class AggTradesStore {
      */
     public record SyncStatus(
         boolean hasData,
-        int daysComplete,
-        int daysTotal,
+        int hoursComplete,
+        int hoursTotal,
         long gapStartTime,
         long gapEndTime
     ) {
         public String getStatusMessage() {
             if (hasData) {
-                return "Data synced: " + daysComplete + " days";
-            } else if (daysComplete > 0) {
-                return "Partial: " + daysComplete + "/" + daysTotal + " days";
+                return "Data synced: " + hoursComplete + " hours";
+            } else if (hoursComplete > 0) {
+                return "Partial: " + hoursComplete + "/" + hoursTotal + " hours";
             } else {
                 return "Not synced";
             }
@@ -167,110 +182,133 @@ public class AggTradesStore {
         fetchCancelled.set(false);
 
         List<AggTrade> allTrades = new ArrayList<>();
-        File symbolDir = getAggTradesDir(symbol);
-        symbolDir.mkdirs();
+        LocalDateTime now = LocalDateTime.now(ZoneOffset.UTC);
 
-        // Current day - may have incomplete data
-        LocalDate today = LocalDate.now(ZoneOffset.UTC);
+        // Round start down to hour boundary
+        LocalDateTime start = LocalDateTime.ofInstant(Instant.ofEpochMilli(startTime), ZoneOffset.UTC)
+            .withMinute(0).withSecond(0).withNano(0);
+        LocalDateTime end = LocalDateTime.ofInstant(Instant.ofEpochMilli(endTime), ZoneOffset.UTC);
 
-        // Iterate through each day in the range
-        LocalDate start = Instant.ofEpochMilli(startTime).atZone(ZoneOffset.UTC).toLocalDate();
-        LocalDate end = Instant.ofEpochMilli(endTime).atZone(ZoneOffset.UTC).toLocalDate();
+        // Count hours to fetch for progress tracking
+        int hoursToFetch = 0;
+        LocalDateTime checkTime = start;
+        while (!checkTime.isAfter(end)) {
+            File completeFile = getHourFile(symbol, checkTime, true);
+            boolean isCurrentHour = checkTime.getHour() == now.getHour() &&
+                                    checkTime.toLocalDate().equals(now.toLocalDate());
 
-        // Count days to fetch for progress tracking
-        int totalDays = 0;
-        int daysToFetch = 0;
-        LocalDate checkDate = start;
-        while (!checkDate.isAfter(end)) {
-            totalDays++;
-            File completeFile = new File(symbolDir, checkDate.format(DATE_FORMAT) + ".csv");
-            if (!completeFile.exists() || checkDate.equals(today)) {
-                daysToFetch++;
+            if (!completeFile.exists() || isCurrentHour) {
+                hoursToFetch++;
             }
-            checkDate = checkDate.plusDays(1);
+            checkTime = checkTime.plusHours(1);
         }
 
-        final int[] currentDayIndex = {0};
-        final int finalDaysToFetch = daysToFetch;
+        final int[] currentHourIndex = {0};
+        final int finalHoursToFetch = hoursToFetch;
 
-        // Wrapper callback for overall progress
-        Consumer<FetchProgress> dayProgressCallback = progress -> {
-            if (progressCallback != null && finalDaysToFetch > 0) {
-                // Calculate overall percentage: completed days + current day progress
-                int dayPercent = progress.percentComplete();
-                int overallPercent = ((currentDayIndex[0] * 100) + dayPercent) / finalDaysToFetch;
+        // Progress callback wrapper
+        Consumer<FetchProgress> hourProgressCallback = progress -> {
+            if (progressCallback != null && finalHoursToFetch > 0) {
+                int hourPercent = progress.percentComplete();
+                int overallPercent = ((currentHourIndex[0] * 100) + hourPercent) / finalHoursToFetch;
                 overallPercent = Math.min(99, Math.max(0, overallPercent));
 
-                String msg = String.format("Day %d/%d: %s",
-                    currentDayIndex[0] + 1, finalDaysToFetch, progress.message());
+                String msg = String.format("Hour %d/%d: %s",
+                    currentHourIndex[0] + 1, finalHoursToFetch, progress.message());
                 progressCallback.accept(new FetchProgress(overallPercent, 100, msg));
             }
         };
 
         // Report starting
-        if (progressCallback != null && daysToFetch > 0) {
+        if (progressCallback != null && hoursToFetch > 0) {
             progressCallback.accept(new FetchProgress(0, 100,
-                String.format("Fetching %d day(s) of %s aggTrades...", daysToFetch, symbol)));
+                String.format("Fetching %d hour(s) of %s aggTrades...", hoursToFetch, symbol)));
         }
 
-        LocalDate current = start;
+        LocalDateTime current = start;
         while (!current.isAfter(end)) {
             if (fetchCancelled.get()) {
                 System.out.println("Fetch cancelled by user");
                 break;
             }
 
-            String dateKey = current.format(DATE_FORMAT);
-
-            // Check for both complete and partial files
-            File completeFile = new File(symbolDir, dateKey + ".csv");
-            File partialFile = new File(symbolDir, dateKey + ".partial.csv");
-            File dayFile = completeFile.exists() ? completeFile :
-                           partialFile.exists() ? partialFile : null;
-
-            // Calculate day boundaries
-            long dayStart = current.atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli();
-            LocalDate nextDay = current.plusDays(1);
-            long dayEnd = nextDay.atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli() - 1;
+            // Hour boundaries
+            long hourStart = current.toInstant(ZoneOffset.UTC).toEpochMilli();
+            long hourEnd = current.plusHours(1).toInstant(ZoneOffset.UTC).toEpochMilli() - 1;
 
             // Clamp to requested range
-            long fetchStart = Math.max(dayStart, startTime);
-            long fetchEnd = Math.min(dayEnd, endTime);
+            long fetchStart = Math.max(hourStart, startTime);
+            long fetchEnd = Math.min(hourEnd, endTime);
 
-            boolean isToday = current.equals(today);
-            boolean fileExists = dayFile != null;
+            File completeFile = getHourFile(symbol, current, true);
+            File partialFile = getHourFile(symbol, current, false);
 
-            if (fileExists && !isToday && completeFile.exists()) {
-                // Historical day with complete data - use cache
-                allTrades.addAll(loadCsvFile(dayFile));
-            } else if (fileExists && isToday) {
-                // Today - check if we need to update
-                List<AggTrade> cached = loadCsvFile(dayFile);
-                long lastCachedTime = cached.isEmpty() ? 0 : cached.get(cached.size() - 1).timestamp();
+            boolean isCurrentHour = current.getHour() == now.getHour() &&
+                                    current.toLocalDate().equals(now.toLocalDate());
 
-                // Only fetch if last cached trade is old (more than 5 minutes)
-                if (System.currentTimeMillis() - lastCachedTime > 5 * 60 * 1000) {
-                    System.out.println("Updating today's " + dateKey + " aggTrades...");
+            if (completeFile.exists() && !isCurrentHour) {
+                // Historical hour with complete data - use cache
+                allTrades.addAll(loadCsvFile(completeFile));
+            } else if (isCurrentHour) {
+                // Current hour - check if we need to update
+                File existingFile = completeFile.exists() ? completeFile :
+                                    partialFile.exists() ? partialFile : null;
+                List<AggTrade> cached = existingFile != null ? loadCsvFile(existingFile) : new ArrayList<>();
+                long lastCachedTime = cached.isEmpty() ? hourStart : cached.get(cached.size() - 1).timestamp();
+
+                // Only fetch if last cached trade is old (more than 1 minute for current hour)
+                if (System.currentTimeMillis() - lastCachedTime > 60 * 1000) {
+                    System.out.println("Updating current hour " + current.format(DATE_FORMAT) + " " + current.format(HOUR_FORMAT) + ":xx...");
                     List<AggTrade> fresh = client.fetchAllAggTrades(symbol, lastCachedTime + 1, fetchEnd,
-                            fetchCancelled, dayProgressCallback);
-                    currentDayIndex[0]++;
+                            fetchCancelled, hourProgressCallback);
+                    currentHourIndex[0]++;
                     boolean wasCancelled = fetchCancelled.get();
-                    saveToCache(symbol, fresh, wasCancelled);
-                    allTrades.addAll(loadCsvFile(completeFile.exists() ? completeFile : partialFile));
+
+                    // Merge and save
+                    List<AggTrade> merged = mergeTrades(cached, fresh);
+                    saveHourFile(symbol, current, merged, true); // Current hour is always partial
+                    allTrades.addAll(merged);
                 } else {
                     allTrades.addAll(cached);
                 }
-            } else if (fileExists && partialFile.exists()) {
-                // Historical partial file - use what we have
-                allTrades.addAll(loadCsvFile(partialFile));
+            } else if (partialFile.exists()) {
+                // Historical partial file - need to complete it
+                List<AggTrade> cached = loadCsvFile(partialFile);
+                long lastCachedTime = cached.isEmpty() ? hourStart : cached.get(cached.size() - 1).timestamp();
+
+                // Check if actually complete (within 1 min of hour end)
+                if (hourEnd - lastCachedTime < 60 * 1000) {
+                    // Actually complete - promote to complete file
+                    saveHourFile(symbol, current, cached, false);
+                    partialFile.delete();
+                    allTrades.addAll(cached);
+                } else {
+                    // Need to fetch remaining data
+                    System.out.println("Completing hour " + current.format(DATE_FORMAT) + " " + current.format(HOUR_FORMAT) + ":xx...");
+                    List<AggTrade> fresh = client.fetchAllAggTrades(symbol, lastCachedTime + 1, hourEnd,
+                            fetchCancelled, hourProgressCallback);
+                    currentHourIndex[0]++;
+                    boolean wasCancelled = fetchCancelled.get();
+
+                    List<AggTrade> merged = mergeTrades(cached, fresh);
+                    saveHourFile(symbol, current, merged, wasCancelled);
+                    allTrades.addAll(merged);
+
+                    if (wasCancelled) {
+                        break;
+                    }
+                }
             } else {
                 // No cache - fetch from Binance
-                System.out.println("Fetching " + dateKey + " aggTrades from Binance...");
+                System.out.println("Fetching hour " + current.format(DATE_FORMAT) + " " + current.format(HOUR_FORMAT) + ":xx...");
                 List<AggTrade> fresh = client.fetchAllAggTrades(symbol, fetchStart, fetchEnd,
-                        fetchCancelled, dayProgressCallback);
-                currentDayIndex[0]++;
+                        fetchCancelled, hourProgressCallback);
+                currentHourIndex[0]++;
                 boolean wasCancelled = fetchCancelled.get();
-                saveToCache(symbol, fresh, wasCancelled);
+
+                // For historical hours, mark as complete if we got all the way to hour end
+                boolean isPartial = wasCancelled || isCurrentHour;
+                saveHourFile(symbol, current, fresh, isPartial);
                 allTrades.addAll(fresh);
 
                 if (wasCancelled) {
@@ -278,7 +316,7 @@ public class AggTradesStore {
                 }
             }
 
-            current = nextDay;
+            current = current.plusHours(1);
         }
 
         // Report completion
@@ -295,68 +333,24 @@ public class AggTradesStore {
     }
 
     /**
-     * Save trades to local CSV cache.
+     * Save trades to an hourly file.
      */
-    private void saveToCache(String symbol, List<AggTrade> trades, boolean isPartial)
+    private void saveHourFile(String symbol, LocalDateTime hour, List<AggTrade> trades, boolean isPartial)
             throws IOException {
         if (trades.isEmpty()) return;
 
-        File symbolDir = getAggTradesDir(symbol);
-        symbolDir.mkdirs();
+        File dayDir = getDayDir(symbol, hour.toLocalDate());
+        dayDir.mkdirs();
 
-        // Group trades by day
-        java.util.Map<String, List<AggTrade>> byDay = new java.util.LinkedHashMap<>();
+        File targetFile = getHourFile(symbol, hour, !isPartial);
+        File otherFile = getHourFile(symbol, hour, isPartial);
 
-        for (AggTrade t : trades) {
-            LocalDate date = Instant.ofEpochMilli(t.timestamp()).atZone(ZoneOffset.UTC).toLocalDate();
-            String key = date.format(DATE_FORMAT);
-            byDay.computeIfAbsent(key, k -> new ArrayList<>()).add(t);
+        writeCsvFile(targetFile, trades);
+
+        // Clean up the other file type if it exists
+        if (otherFile.exists()) {
+            otherFile.delete();
         }
-
-        // Write each day file
-        for (var entry : byDay.entrySet()) {
-            String dateKey = entry.getKey();
-            File completeFile = new File(symbolDir, dateKey + ".csv");
-            File partialFile = new File(symbolDir, dateKey + ".partial.csv");
-
-            // Determine which file to read existing data from
-            File existingFile = completeFile.exists() ? completeFile :
-                                partialFile.exists() ? partialFile : null;
-
-            // Load existing data and merge
-            List<AggTrade> existing = existingFile != null ? loadCsvFile(existingFile) : new ArrayList<>();
-            List<AggTrade> merged = mergeTrades(existing, entry.getValue());
-
-            // Determine if data is complete for this day
-            LocalDate day = LocalDate.parse(dateKey, DATE_FORMAT);
-            boolean isComplete = !isPartial && isDayComplete(merged, day);
-
-            // Write to appropriate file
-            File targetFile = isComplete ? completeFile : partialFile;
-            writeCsvFile(targetFile, merged);
-
-            // Clean up
-            if (isComplete && partialFile.exists()) {
-                partialFile.delete();
-            }
-        }
-    }
-
-    /**
-     * Check if trade data is complete for a day.
-     */
-    private boolean isDayComplete(List<AggTrade> trades, LocalDate day) {
-        if (trades.isEmpty()) return false;
-
-        // Current day is never complete
-        if (day.equals(LocalDate.now(ZoneOffset.UTC))) return false;
-
-        // Check if we have trades near the end of the day
-        long dayEndMs = day.plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli();
-        long lastTradeTs = trades.get(trades.size() - 1).timestamp();
-
-        // Last trade should be within 5 minutes of day end
-        return dayEndMs - lastTradeTs < 5 * 60 * 1000;
     }
 
     /**
@@ -419,7 +413,7 @@ public class AggTradesStore {
                 writer.println(t.toCsv());
             }
         }
-        System.out.println("Saved " + trades.size() + " aggTrades to " + file.getAbsolutePath());
+        System.out.println("Saved " + formatCount(trades.size()) + " aggTrades to " + file.getPath());
     }
 
     /**
@@ -447,5 +441,14 @@ public class AggTradesStore {
      */
     public AggTradesClient getClient() {
         return client;
+    }
+
+    private String formatCount(int count) {
+        if (count >= 1_000_000) {
+            return String.format("%.1fM", count / 1_000_000.0);
+        } else if (count >= 1_000) {
+            return String.format("%.1fK", count / 1_000.0);
+        }
+        return String.valueOf(count);
     }
 }

@@ -96,10 +96,15 @@ public class DataManagementDialog extends JDialog {
         storageLabel.setBorder(BorderFactory.createEmptyBorder(6, 8, 6, 8));
         updateStorageLabel();
 
-        // Left content (browser + storage label)
+        // Storage label with separator above
+        JPanel storagePanel = new JPanel(new BorderLayout(0, 0));
+        storagePanel.add(new JSeparator(), BorderLayout.NORTH);
+        storagePanel.add(storageLabel, BorderLayout.CENTER);
+
+        // Left content (browser + storage panel)
         JPanel leftContent = new JPanel(new BorderLayout(0, 0));
         leftContent.add(browserScroll, BorderLayout.CENTER);
-        leftContent.add(storageLabel, BorderLayout.SOUTH);
+        leftContent.add(storagePanel, BorderLayout.SOUTH);
 
         // Left panel with separator on the right edge
         JPanel leftPanel = new JPanel(new BorderLayout(0, 0));
