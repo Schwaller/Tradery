@@ -28,6 +28,7 @@ public class Phase {
     private Instant created;
     private Instant updated;
     private boolean builtIn;  // True for preset phases that shouldn't be edited
+    private String version;   // Version string for builtin phases (e.g., "1.0")
 
     public Phase() {
         // For Jackson
@@ -133,6 +134,14 @@ public class Phase {
 
     public void setBuiltIn(boolean builtIn) {
         this.builtIn = builtIn;
+    }
+
+    public String getVersion() {
+        return version;
+    }
+
+    public void setVersion(String version) {
+        this.version = version;
     }
 
     @Override

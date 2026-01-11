@@ -2,6 +2,7 @@ package com.tradery.ui;
 
 import com.tradery.ApplicationContext;
 import com.tradery.TraderyApp;
+import com.tradery.data.CandleStore;
 import com.tradery.io.FileWatcher;
 import com.tradery.io.HoopPatternStore;
 import com.tradery.io.PhaseStore;
@@ -117,7 +118,10 @@ public class LauncherFrame extends JFrame {
         newButton.addActionListener(e -> createProject());
 
         manageDataButton = new JButton("Manage Data");
-        manageDataButton.addActionListener(e -> DataManagementDialog.show(this));
+        manageDataButton.addActionListener(e -> {
+            CandleStore candleStore = ApplicationContext.getInstance().getCandleStore();
+            DataHealthDialog.show(this, candleStore);
+        });
 
         phasesButton = new JButton("Phases");
         phasesButton.setToolTipText("Manage market phase definitions");

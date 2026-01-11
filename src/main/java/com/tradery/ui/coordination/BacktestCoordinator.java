@@ -204,6 +204,7 @@ public class BacktestCoordinator {
             case "3 days" -> 3 * day;
             case "1 week" -> 7 * day;
             case "2 weeks" -> 14 * day;
+            case "4 weeks" -> 28 * day;
             case "1 month" -> 30 * day;
             case "2 months" -> 60 * day;
             case "3 months" -> 90 * day;

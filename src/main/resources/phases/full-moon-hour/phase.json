@@ -1,0 +1,11 @@
+{
+  "id": "full-moon-hour",
+  "name": "Full Moon Hour",
+  "category": "Moon",
+  "description": "Active within approximately 1 hour of the exact full moon",
+  "condition": "MOON_PHASE >= 0.499 AND MOON_PHASE <= 0.501",
+  "timeframe": "1h",
+  "symbol": "BTCUSDT",
+  "created": "2026-01-07T00:00:00Z",
+  "updated": "2026-01-07T00:00:00Z"
+}

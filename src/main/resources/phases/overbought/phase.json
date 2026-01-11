@@ -1,0 +1,11 @@
+{
+  "id": "overbought",
+  "name": "Overbought",
+  "category": "Technical",
+  "description": "RSI indicates overbought conditions",
+  "condition": "RSI(14) > 70",
+  "timeframe": "1d",
+  "symbol": "BTCUSDT",
+  "created": "2026-01-08T00:00:00Z",
+  "updated": "2026-01-08T00:00:00Z"
+}

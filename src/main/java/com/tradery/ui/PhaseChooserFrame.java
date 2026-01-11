@@ -7,6 +7,8 @@ import com.tradery.model.Phase;
 
 import javax.swing.*;
 import javax.swing.Timer;
+import javax.swing.event.PopupMenuEvent;
+import javax.swing.event.PopupMenuListener;
 import java.awt.*;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
@@ -106,6 +108,17 @@ public class PhaseChooserFrame extends JFrame {
         JMenuItem deleteItem = new JMenuItem("Delete");
         deleteItem.addActionListener(e -> deletePhase());
         contextMenu.add(deleteItem);
+        contextMenu.addPopupMenuListener(new PopupMenuListener() {
+            @Override
+            public void popupMenuWillBecomeVisible(PopupMenuEvent e) {
+                Phase selected = phaseList.getSelectedValue();
+                deleteItem.setEnabled(selected != null && !selected.isBuiltIn());
+            }
+            @Override
+            public void popupMenuWillBecomeInvisible(PopupMenuEvent e) {}
+            @Override
+            public void popupMenuCanceled(PopupMenuEvent e) {}
+        });
         phaseList.setComponentPopupMenu(contextMenu);
     }
 
@@ -246,6 +259,7 @@ public class PhaseChooserFrame extends JFrame {
     private void deletePhase() {
         Phase selected = phaseList.getSelectedValue();
         if (selected == null) return;
+        if (selected.isBuiltIn()) return;  // Never delete builtin phases
 
         int result = JOptionPane.showConfirmDialog(
             this,
@@ -284,6 +298,7 @@ public class PhaseChooserFrame extends JFrame {
 
     private void saveCurrentPhase() {
         if (currentPhase == null) return;
+        if (currentPhase.isBuiltIn()) return;  // Never save builtin phases
 
         editorPanel.applyTo(currentPhase);
         currentPhase.setUpdated(Instant.now());

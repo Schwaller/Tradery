@@ -292,44 +292,60 @@ public class ProjectWindow extends JFrame {
                 durationCombo.addItem("3 days");
                 durationCombo.addItem("1 week");
                 durationCombo.addItem("2 weeks");
+                durationCombo.addItem("4 weeks");
+                durationCombo.addItem("2 months");
+                durationCombo.addItem("3 months");
             }
             case "5m" -> {
                 durationCombo.addItem("1 week");
                 durationCombo.addItem("2 weeks");
                 durationCombo.addItem("1 month");
+                durationCombo.addItem("2 months");
                 durationCombo.addItem("3 months");
+                durationCombo.addItem("6 months");
             }
             case "15m" -> {
                 durationCombo.addItem("2 weeks");
                 durationCombo.addItem("1 month");
-                durationCombo.addItem("3 months");
-                durationCombo.addItem("6 months");
-            }
-            case "30m" -> {
-                durationCombo.addItem("1 month");
+                durationCombo.addItem("2 months");
                 durationCombo.addItem("3 months");
                 durationCombo.addItem("6 months");
                 durationCombo.addItem("1 year");
             }
-            case "1h" -> {
+            case "30m" -> {
+                durationCombo.addItem("1 month");
+                durationCombo.addItem("2 months");
                 durationCombo.addItem("3 months");
                 durationCombo.addItem("6 months");
                 durationCombo.addItem("1 year");
                 durationCombo.addItem("2 years");
             }
-            case "4h" -> {
+            case "1h" -> {
+                durationCombo.addItem("1 month");
+                durationCombo.addItem("3 months");
                 durationCombo.addItem("6 months");
                 durationCombo.addItem("1 year");
                 durationCombo.addItem("2 years");
                 durationCombo.addItem("3 years");
             }
-            case "1d" -> {
+            case "4h" -> {
+                durationCombo.addItem("3 months");
+                durationCombo.addItem("6 months");
                 durationCombo.addItem("1 year");
                 durationCombo.addItem("2 years");
                 durationCombo.addItem("3 years");
                 durationCombo.addItem("5 years");
             }
+            case "1d" -> {
+                durationCombo.addItem("6 months");
+                durationCombo.addItem("1 year");
+                durationCombo.addItem("2 years");
+                durationCombo.addItem("3 years");
+                durationCombo.addItem("5 years");
+                durationCombo.addItem("10 years");
+            }
             case "1w" -> {
+                durationCombo.addItem("1 year");
                 durationCombo.addItem("2 years");
                 durationCombo.addItem("3 years");
                 durationCombo.addItem("5 years");

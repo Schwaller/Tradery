@@ -1,0 +1,11 @@
+{
+  "id": "new-moon-hour",
+  "name": "New Moon Hour",
+  "category": "Moon",
+  "description": "Active within approximately 1 hour of the exact new moon",
+  "condition": "MOON_PHASE <= 0.001 OR MOON_PHASE >= 0.999",
+  "timeframe": "1h",
+  "symbol": "BTCUSDT",
+  "created": "2026-01-08T00:00:00Z",
+  "updated": "2026-01-08T00:00:00Z"
+}

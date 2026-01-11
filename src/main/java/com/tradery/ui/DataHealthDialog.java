@@ -9,6 +9,8 @@ import javax.swing.*;
 import java.awt.*;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
+import java.io.File;
+import java.text.DecimalFormat;
 import java.time.format.DateTimeFormatter;
 
 /**
@@ -19,15 +21,20 @@ import java.time.format.DateTimeFormatter;
 public class DataHealthDialog extends JDialog {
 
     private static final DateTimeFormatter MONTH_FORMAT = DateTimeFormatter.ofPattern("MMMM yyyy");
+    private static final DecimalFormat SIZE_FORMAT = new DecimalFormat("#,##0.0");
 
     private final DataIntegrityChecker checker;
     private final CandleStore candleStore;
+    private final File dataDir;
 
     private DataBrowserPanel browserPanel;
     private DataHealthPanel healthPanel;
     private JLabel detailLabel;
+    private JLabel storageLabel;
     private JButton repairButton;
     private JButton deleteButton;
+    private JButton deleteSeriesButton;
+    private JButton deleteAllButton;
     private JProgressBar progressBar;
 
     private String currentSymbol;
@@ -38,6 +45,7 @@ public class DataHealthDialog extends JDialog {
         super(owner, "Data Health", true);
         this.candleStore = candleStore;
         this.checker = new DataIntegrityChecker();
+        this.dataDir = new File(System.getProperty("user.home") + "/.tradery/data");
 
         initUI();
 
@@ -76,9 +84,17 @@ public class DataHealthDialog extends JDialog {
         browserScroll.setPreferredSize(new Dimension(220, 0));
         browserScroll.getViewport().setBackground(new Color(30, 30, 35));
 
+        // Storage info at bottom of left panel
+        storageLabel = new JLabel();
+        storageLabel.setForeground(new Color(150, 150, 150));
+        storageLabel.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 11));
+        storageLabel.setBorder(BorderFactory.createEmptyBorder(6, 8, 6, 8));
+        updateStorageLabel();
+
         JPanel leftPanel = new JPanel(new BorderLayout(0, 0));
         leftPanel.setBackground(new Color(30, 30, 35));
         leftPanel.add(browserScroll, BorderLayout.CENTER);
+        leftPanel.add(storageLabel, BorderLayout.SOUTH);
         leftPanel.add(new JSeparator(SwingConstants.VERTICAL), BorderLayout.EAST);
 
         add(leftPanel, BorderLayout.WEST);
@@ -109,24 +125,35 @@ public class DataHealthDialog extends JDialog {
         panel.add(detailLabel, BorderLayout.CENTER);
 
         // Button panel
-        JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
+        JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 6, 0));
         buttonPanel.setOpaque(false);
 
-        JButton fetchButton = new JButton("Fetch New Data...");
+        JButton fetchButton = new JButton("Fetch New...");
         fetchButton.addActionListener(e -> showFetchDialog());
         buttonPanel.add(fetchButton);
 
-        buttonPanel.add(Box.createHorizontalStrut(16));
+        buttonPanel.add(Box.createHorizontalStrut(12));
 
         repairButton = new JButton("Repair Month");
         repairButton.setEnabled(false);
         repairButton.addActionListener(e -> repairSelectedMonth());
         buttonPanel.add(repairButton);
 
-        deleteButton = new JButton("Delete");
+        deleteButton = new JButton("Delete Month");
         deleteButton.setEnabled(false);
         deleteButton.addActionListener(e -> deleteSelectedMonth());
         buttonPanel.add(deleteButton);
+
+        deleteSeriesButton = new JButton("Delete Series");
+        deleteSeriesButton.setEnabled(false);
+        deleteSeriesButton.addActionListener(e -> deleteSelectedSeries());
+        buttonPanel.add(deleteSeriesButton);
+
+        deleteAllButton = new JButton("Delete All");
+        deleteAllButton.addActionListener(e -> deleteAllData());
+        buttonPanel.add(deleteAllButton);
+
+        buttonPanel.add(Box.createHorizontalStrut(12));
 
         JButton closeButton = new JButton("Close");
         closeButton.addActionListener(e -> {
@@ -215,11 +242,14 @@ public class DataHealthDialog extends JDialog {
                 (selectedHealth.status() == DataStatus.PARTIAL ||
                  selectedHealth.status() == DataStatus.MISSING);
 
-        boolean canDelete = selectedHealth != null &&
+        boolean canDeleteMonth = selectedHealth != null &&
                 selectedHealth.status() != DataStatus.MISSING;
 
+        boolean canDeleteSeries = currentSymbol != null && currentResolution != null;
+
         repairButton.setEnabled(canRepair);
-        deleteButton.setEnabled(canDelete);
+        deleteButton.setEnabled(canDeleteMonth);
+        deleteSeriesButton.setEnabled(canDeleteSeries);
     }
 
     private void repairSelectedMonth() {
@@ -288,12 +318,129 @@ public class DataHealthDialog extends JDialog {
 
         if (result == JOptionPane.YES_OPTION) {
             candleStore.deleteMonth(currentSymbol, currentResolution, selectedHealth.month());
-            browserPanel.refreshData();
-            healthPanel.refreshData();
-            selectedHealth = null;
-            updateDetailLabel();
-            updateButtons();
+            refreshAll();
         }
+    }
+
+    private void deleteSelectedSeries() {
+        if (currentSymbol == null || currentResolution == null) return;
+
+        File seriesDir = new File(dataDir, currentSymbol + "/" + currentResolution);
+        long size = calculateDirectorySize(seriesDir);
+
+        int result = JOptionPane.showConfirmDialog(this,
+                "Delete all data for " + currentSymbol + " / " + currentResolution + "?\n\n" +
+                "This will remove " + formatSize(size) + " of cached data.",
+                "Confirm Delete Series", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE);
+
+        if (result == JOptionPane.YES_OPTION) {
+            deleteDirectory(seriesDir);
+            // Also delete parent symbol dir if empty
+            File symbolDir = seriesDir.getParentFile();
+            if (symbolDir != null && symbolDir.isDirectory()) {
+                String[] remaining = symbolDir.list();
+                if (remaining != null && remaining.length == 0) {
+                    symbolDir.delete();
+                }
+            }
+            currentSymbol = null;
+            currentResolution = null;
+            selectedHealth = null;
+            refreshAll();
+        }
+    }
+
+    private void deleteAllData() {
+        if (!dataDir.exists()) {
+            JOptionPane.showMessageDialog(this, "No cached data to delete.");
+            return;
+        }
+
+        long totalSize = calculateDirectorySize(dataDir);
+        if (totalSize == 0) {
+            JOptionPane.showMessageDialog(this, "No cached data to delete.");
+            return;
+        }
+
+        int result = JOptionPane.showConfirmDialog(this,
+                "Delete ALL cached OHLC data?\n\n" +
+                "This will remove " + formatSize(totalSize) + " of data.\n" +
+                "Data will be re-downloaded from Binance when needed.",
+                "Confirm Delete All", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE);
+
+        if (result == JOptionPane.YES_OPTION) {
+            deleteDirectory(dataDir);
+            dataDir.mkdirs();
+            currentSymbol = null;
+            currentResolution = null;
+            selectedHealth = null;
+            refreshAll();
+            JOptionPane.showMessageDialog(this, "All cached data deleted.",
+                    "Deleted", JOptionPane.INFORMATION_MESSAGE);
+        }
+    }
+
+    private void refreshAll() {
+        browserPanel.refreshData();
+        healthPanel.refreshData();
+        updateDetailLabel();
+        updateButtons();
+        updateStorageLabel();
+    }
+
+    private void updateStorageLabel() {
+        long totalSize = calculateDirectorySize(dataDir);
+        int seriesCount = countSeries();
+        storageLabel.setText(formatSize(totalSize) + " (" + seriesCount + " series)");
+    }
+
+    private int countSeries() {
+        int count = 0;
+        if (!dataDir.exists()) return 0;
+
+        File[] symbolDirs = dataDir.listFiles(File::isDirectory);
+        if (symbolDirs == null) return 0;
+
+        for (File symbolDir : symbolDirs) {
+            File[] tfDirs = symbolDir.listFiles(File::isDirectory);
+            if (tfDirs != null) {
+                count += tfDirs.length;
+            }
+        }
+        return count;
+    }
+
+    private long calculateDirectorySize(File dir) {
+        if (!dir.exists()) return 0;
+        if (dir.isFile()) return dir.length();
+
+        long size = 0;
+        File[] files = dir.listFiles();
+        if (files != null) {
+            for (File f : files) {
+                size += calculateDirectorySize(f);
+            }
+        }
+        return size;
+    }
+
+    private void deleteDirectory(File dir) {
+        if (dir.isDirectory()) {
+            File[] children = dir.listFiles();
+            if (children != null) {
+                for (File child : children) {
+                    deleteDirectory(child);
+                }
+            }
+        }
+        dir.delete();
+    }
+
+    private String formatSize(long bytes) {
+        if (bytes < 1024) return bytes + " B";
+        if (bytes < 1024 * 1024) return SIZE_FORMAT.format(bytes / 1024.0) + " KB";
+        if (bytes < 1024 * 1024 * 1024) return SIZE_FORMAT.format(bytes / (1024.0 * 1024)) + " MB";
+        return SIZE_FORMAT.format(bytes / (1024.0 * 1024 * 1024)) + " GB";
     }
 
     /**

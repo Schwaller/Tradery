@@ -183,12 +183,38 @@ public class PhaseStore {
 
     /**
      * Install/update all built-in presets on startup.
-     * Always overwrites to ensure latest versions.
+     * Only updates if the resource version is newer than the installed version.
      */
     public void installBuiltInPresets() {
         List<PresetInfo> presets = getAvailablePresets();
         for (PresetInfo preset : presets) {
-            installPreset(preset.id());
+            Phase existing = load(preset.id());
+            if (existing == null || isNewerVersion(preset.version(), existing.getVersion())) {
+                installPreset(preset.id(), preset.version());
+            }
+        }
+    }
+
+    /**
+     * Compare version strings. Returns true if v1 is newer than v2.
+     * Supports formats like "1.0", "1.1", "2.0", etc.
+     */
+    private boolean isNewerVersion(String v1, String v2) {
+        if (v2 == null || v2.isEmpty()) return true;
+        if (v1 == null || v1.isEmpty()) return false;
+        try {
+            String[] parts1 = v1.split("\\.");
+            String[] parts2 = v2.split("\\.");
+            int len = Math.max(parts1.length, parts2.length);
+            for (int i = 0; i < len; i++) {
+                int p1 = i < parts1.length ? Integer.parseInt(parts1[i]) : 0;
+                int p2 = i < parts2.length ? Integer.parseInt(parts2[i]) : 0;
+                if (p1 > p2) return true;
+                if (p1 < p2) return false;
+            }
+            return false;  // Equal versions
+        } catch (NumberFormatException e) {
+            return v1.compareTo(v2) > 0;  // Fall back to string comparison
         }
     }
 
@@ -196,7 +222,7 @@ public class PhaseStore {
      * Install or restore a preset phase from bundled resources.
      * Marks the phase as builtIn so it can't be edited.
      */
-    public Phase installPreset(String presetId) {
+    public Phase installPreset(String presetId, String version) {
         String resourcePath = "/phases/" + presetId + "/phase.json";
         try (InputStream is = getClass().getResourceAsStream(resourcePath)) {
             if (is == null) {
@@ -205,8 +231,9 @@ public class PhaseStore {
             }
             Phase phase = mapper.readValue(is, Phase.class);
             phase.setBuiltIn(true);  // Mark as built-in
+            phase.setVersion(version);  // Set version from manifest
             save(phase);
-            System.out.println("Installed built-in phase: " + phase.getName());
+            System.out.println("Installed built-in phase: " + phase.getName() + " v" + version);
             return phase;
         } catch (IOException e) {
             System.err.println("Failed to install phase preset " + presetId + ": " + e.getMessage());

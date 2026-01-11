@@ -1,0 +1,11 @@
+{
+  "id": "european-session",
+  "name": "European Session",
+  "category": "Session",
+  "description": "European trading hours (07:00-16:00 UTC / London/Frankfurt)",
+  "condition": "HOUR >= 7 AND HOUR < 16",
+  "timeframe": "1h",
+  "symbol": "BTCUSDT",
+  "created": "2026-01-08T00:00:00Z",
+  "updated": "2026-01-08T00:00:00Z"
+}

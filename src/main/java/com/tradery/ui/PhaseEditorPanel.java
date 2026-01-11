@@ -19,6 +19,7 @@ public class PhaseEditorPanel extends JPanel {
     private JComboBox<String> symbolCombo;
     private JComboBox<String> timeframeCombo;
     private JTextArea conditionArea;
+    private JLabel builtInBadge;
 
     private Phase phase;
     private Runnable onChange;
@@ -63,6 +64,15 @@ public class PhaseEditorPanel extends JPanel {
         conditionArea.setLineWrap(true);
         conditionArea.setWrapStyleWord(true);
 
+        builtInBadge = new JLabel("BUILT-IN");
+        builtInBadge.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 10));
+        builtInBadge.setForeground(new Color(100, 100, 100));
+        builtInBadge.setBorder(BorderFactory.createCompoundBorder(
+            BorderFactory.createLineBorder(new Color(150, 150, 150), 1),
+            BorderFactory.createEmptyBorder(2, 6, 2, 6)
+        ));
+        builtInBadge.setVisible(false);
+
         // Wire up change listeners
         DocumentListener docListener = new DocumentListener() {
             public void insertUpdate(DocumentEvent e) { fireChange(); }
@@ -86,7 +96,7 @@ public class PhaseEditorPanel extends JPanel {
         gbc.insets = new Insets(4, 4, 4, 4);
         gbc.anchor = GridBagConstraints.WEST;
 
-        // Name
+        // Name with badge
         gbc.gridx = 0; gbc.gridy = 0;
         gbc.fill = GridBagConstraints.NONE;
         gbc.weightx = 0;
@@ -97,7 +107,11 @@ public class PhaseEditorPanel extends JPanel {
         gbc.gridx = 1;
         gbc.fill = GridBagConstraints.HORIZONTAL;
         gbc.weightx = 1;
-        formPanel.add(nameField, gbc);
+        JPanel nameRow = new JPanel(new BorderLayout(8, 0));
+        nameRow.setOpaque(false);
+        nameRow.add(nameField, BorderLayout.CENTER);
+        nameRow.add(builtInBadge, BorderLayout.EAST);
+        formPanel.add(nameRow, gbc);
 
         // Category
         gbc.gridx = 0; gbc.gridy = 1;
@@ -242,6 +256,7 @@ public class PhaseEditorPanel extends JPanel {
                 symbolCombo.setSelectedItem(phase.getSymbol() != null ? phase.getSymbol() : "BTCUSDT");
                 timeframeCombo.setSelectedItem(phase.getTimeframe() != null ? phase.getTimeframe() : "1d");
                 conditionArea.setText(phase.getCondition() != null ? phase.getCondition() : "");
+                builtInBadge.setVisible(phase.isBuiltIn());
             } else {
                 nameField.setText("");
                 categoryField.setText("");
@@ -249,6 +264,7 @@ public class PhaseEditorPanel extends JPanel {
                 symbolCombo.setSelectedItem("BTCUSDT");
                 timeframeCombo.setSelectedItem("1d");
                 conditionArea.setText("");
+                builtInBadge.setVisible(false);
             }
         } finally {
             suppressChangeEvents = false;
@@ -273,13 +289,18 @@ public class PhaseEditorPanel extends JPanel {
         return phase;
     }
 
+    @Override
     public void setEnabled(boolean enabled) {
         super.setEnabled(enabled);
         nameField.setEnabled(enabled);
+        nameField.setEditable(enabled);
         categoryField.setEnabled(enabled);
+        categoryField.setEditable(enabled);
         descriptionArea.setEnabled(enabled);
+        descriptionArea.setEditable(enabled);
         symbolCombo.setEnabled(enabled);
         timeframeCombo.setEnabled(enabled);
         conditionArea.setEnabled(enabled);
+        conditionArea.setEditable(enabled);
     }
 }
