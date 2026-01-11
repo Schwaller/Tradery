@@ -24,18 +24,27 @@ import java.util.*;
 public class FundingRateStore {
 
     private static final DateTimeFormatter MONTH_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM");
+    private static final String FUNDING_DIR = "funding";
     private static final String CSV_HEADER = "symbol,fundingRate,fundingTime,markPrice";
 
     private final File dataDir;
     private final FundingRateClient client;
 
     public FundingRateStore() {
-        this.dataDir = new File(TraderyApp.USER_DIR, "funding");
+        this.dataDir = new File(TraderyApp.USER_DIR, "data");
         this.client = new FundingRateClient();
 
         if (!dataDir.exists()) {
             dataDir.mkdirs();
         }
+    }
+
+    /**
+     * Get the funding directory for a symbol.
+     * Path: ~/.tradery/data/{symbol}/funding/
+     */
+    private File getFundingDir(String symbol) {
+        return new File(new File(dataDir, symbol), FUNDING_DIR);
     }
 
     /**
@@ -80,7 +89,7 @@ public class FundingRateStore {
      */
     private void loadCachedRates(String symbol, long startTime, long endTime,
                                   Map<Long, FundingRate> ratesMap) {
-        File symbolDir = new File(dataDir, symbol);
+        File symbolDir = getFundingDir(symbol);
         if (!symbolDir.exists()) {
             return;
         }
@@ -174,7 +183,7 @@ public class FundingRateStore {
     private void saveToCache(String symbol, List<FundingRate> rates) throws IOException {
         if (rates.isEmpty()) return;
 
-        File symbolDir = new File(dataDir, symbol);
+        File symbolDir = getFundingDir(symbol);
         if (!symbolDir.exists()) {
             symbolDir.mkdirs();
         }
@@ -216,7 +225,7 @@ public class FundingRateStore {
      * Clear cache for a symbol.
      */
     public void clearCache(String symbol) {
-        File symbolDir = new File(dataDir, symbol);
+        File symbolDir = getFundingDir(symbol);
         if (symbolDir.exists()) {
             File[] files = symbolDir.listFiles();
             if (files != null) {

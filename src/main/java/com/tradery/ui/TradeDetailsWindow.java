@@ -51,8 +51,8 @@ public class TradeDetailsWindow extends JDialog {
         table.getTableHeader().setReorderingAllowed(false);
         table.setAutoResizeMode(JTable.AUTO_RESIZE_OFF);
 
-        // Column widths (entry/exit columns 20% wider)
-        int[] widths = {120, 45, 50, 132, 132, 135, 135, 80, 80, 75, 75, 105, 80, 70};
+        // Column widths
+        int[] widths = {50, 45, 50, 130, 130, 100, 100, 75, 75, 70, 65, 55, 55, 50, 35, 80, 80, 70};
         for (int i = 0; i < widths.length && i < table.getColumnCount(); i++) {
             table.getColumnModel().getColumn(i).setPreferredWidth(widths[i]);
         }
@@ -67,11 +67,15 @@ public class TradeDetailsWindow extends JDialog {
         table.getColumnModel().getColumn(6).setCellRenderer(new TradeRowRenderer(tableModel, SwingConstants.RIGHT));   // Exit Price
         table.getColumnModel().getColumn(7).setCellRenderer(new TradeRowRenderer(tableModel, SwingConstants.RIGHT));   // Quantity
         table.getColumnModel().getColumn(8).setCellRenderer(new TradeRowRenderer(tableModel, SwingConstants.RIGHT));   // Value
-        table.getColumnModel().getColumn(9).setCellRenderer(new PnlCellRenderer(tableModel));  // P&L
+        table.getColumnModel().getColumn(9).setCellRenderer(new PnlCellRenderer(tableModel));   // P&L
         table.getColumnModel().getColumn(10).setCellRenderer(new PnlCellRenderer(tableModel));  // Return
-        table.getColumnModel().getColumn(11).setCellRenderer(new TradeRowRenderer(tableModel, SwingConstants.RIGHT));  // Commission
-        table.getColumnModel().getColumn(12).setCellRenderer(new TradeRowRenderer(tableModel, SwingConstants.CENTER)); // Exit Reason
-        table.getColumnModel().getColumn(13).setCellRenderer(new TradeRowRenderer(tableModel, SwingConstants.CENTER)); // Zone
+        table.getColumnModel().getColumn(11).setCellRenderer(new MfeCellRenderer(tableModel));  // MFE
+        table.getColumnModel().getColumn(12).setCellRenderer(new MaeCellRenderer(tableModel));  // MAE
+        table.getColumnModel().getColumn(13).setCellRenderer(new CaptureCellRenderer(tableModel));  // Capture
+        table.getColumnModel().getColumn(14).setCellRenderer(new TradeRowRenderer(tableModel, SwingConstants.RIGHT));  // Duration
+        table.getColumnModel().getColumn(15).setCellRenderer(new TradeRowRenderer(tableModel, SwingConstants.RIGHT));  // Commission
+        table.getColumnModel().getColumn(16).setCellRenderer(new TradeRowRenderer(tableModel, SwingConstants.CENTER)); // Exit Reason
+        table.getColumnModel().getColumn(17).setCellRenderer(new TradeRowRenderer(tableModel, SwingConstants.CENTER)); // Zone
 
         // Click handling for expand/collapse
         table.addMouseListener(new MouseAdapter() {
@@ -279,6 +283,59 @@ public class TradeDetailsWindow extends JDialog {
         boolean isRejected() {
             return singleTrade != null && "rejected".equals(singleTrade.exitReason());
         }
+
+        Double getMfe() {
+            if (singleTrade != null) {
+                return singleTrade.mfe();
+            }
+            // For groups, return the best MFE across all trades
+            Double best = null;
+            for (Trade t : trades) {
+                if (t.mfe() != null && (best == null || t.mfe() > best)) {
+                    best = t.mfe();
+                }
+            }
+            return best;
+        }
+
+        Double getMae() {
+            if (singleTrade != null) {
+                return singleTrade.mae();
+            }
+            // For groups, return the worst MAE across all trades
+            Double worst = null;
+            for (Trade t : trades) {
+                if (t.mae() != null && (worst == null || t.mae() < worst)) {
+                    worst = t.mae();
+                }
+            }
+            return worst;
+        }
+
+        Double getCaptureRatio() {
+            if (singleTrade != null) {
+                return singleTrade.captureRatio();
+            }
+            // For groups, calculate aggregate capture ratio
+            Double mfe = getMfe();
+            if (mfe == null || mfe <= 0) return null;
+            double avgPnl = getAvgPnlPercent();
+            return avgPnl / mfe;
+        }
+
+        Integer getDuration() {
+            if (singleTrade != null) {
+                return singleTrade.duration();
+            }
+            // For groups, return duration from first entry to last exit
+            if (trades.isEmpty()) return null;
+            int firstEntry = trades.stream().mapToInt(Trade::entryBar).min().orElse(0);
+            int lastExit = trades.stream()
+                .filter(t -> t.exitBar() != null)
+                .mapToInt(Trade::exitBar)
+                .max().orElse(firstEntry);
+            return lastExit - firstEntry;
+        }
     }
 
     /**
@@ -287,7 +344,8 @@ public class TradeDetailsWindow extends JDialog {
     private static class TreeDetailedTableModel extends AbstractTableModel {
         private static final String[] COLUMNS = {
             "#", "Entries", "Side", "Entry Time", "Exit Time", "Entry $", "Exit $",
-            "Quantity", "Value", "P&L", "Return", "Commission", "Exit Reason", "Zone"
+            "Quantity", "Value", "P&L", "Return", "MFE", "MAE", "Capture", "Dur",
+            "Commission", "Exit Reason", "Zone"
         };
         private static final SimpleDateFormat DATE_FORMAT = new SimpleDateFormat("yyyy-MM-dd HH:mm");
 
@@ -391,9 +449,13 @@ public class TradeDetailsWindow extends JDialog {
                     case 8 -> String.format("%.2f", row.getTotalValue());
                     case 9 -> String.format("%+.2f", row.getTotalPnl());
                     case 10 -> String.format("%+.2f%%", row.getAvgPnlPercent());
-                    case 11 -> String.format("%.2f", row.getTotalCommission());
-                    case 12 -> formatExitReason(row.getExitReason());
-                    case 13 -> row.getExitZone() != null ? row.getExitZone() : "-";
+                    case 11 -> formatMfe(row.getMfe());       // MFE
+                    case 12 -> formatMae(row.getMae());       // MAE
+                    case 13 -> formatCapture(row.getCaptureRatio());  // Capture
+                    case 14 -> row.getDuration() != null ? String.valueOf(row.getDuration()) : "-";  // Duration
+                    case 15 -> String.format("%.2f", row.getTotalCommission());
+                    case 16 -> formatExitReason(row.getExitReason());
+                    case 17 -> row.getExitZone() != null ? row.getExitZone() : "-";
                     default -> "";
                 };
             } else {
@@ -413,12 +475,28 @@ public class TradeDetailsWindow extends JDialog {
                     case 8 -> isRejected ? "-" : String.format("%.2f", trade.value());
                     case 9 -> isRejected ? "NO CAPITAL" : (trade.pnl() != null ? String.format("%+.2f", trade.pnl()) : "-");
                     case 10 -> isRejected ? "-" : (trade.pnlPercent() != null ? String.format("%+.2f%%", trade.pnlPercent()) : "-");
-                    case 11 -> isRejected ? "-" : (trade.commission() != null ? String.format("%.2f", trade.commission()) : "-");
-                    case 12 -> formatExitReason(trade.exitReason());
-                    case 13 -> trade.exitZone() != null ? trade.exitZone() : "-";
+                    case 11 -> isRejected ? "-" : formatMfe(trade.mfe());       // MFE
+                    case 12 -> isRejected ? "-" : formatMae(trade.mae());       // MAE
+                    case 13 -> isRejected ? "-" : formatCapture(trade.captureRatio());  // Capture
+                    case 14 -> isRejected ? "-" : (trade.duration() != null ? String.valueOf(trade.duration()) : "-");  // Duration
+                    case 15 -> isRejected ? "-" : (trade.commission() != null ? String.format("%.2f", trade.commission()) : "-");
+                    case 16 -> formatExitReason(trade.exitReason());
+                    case 17 -> trade.exitZone() != null ? trade.exitZone() : "-";
                     default -> "";
                 };
             }
+        }
+
+        private String formatMfe(Double mfe) {
+            return mfe != null ? String.format("+%.1f%%", mfe) : "-";
+        }
+
+        private String formatMae(Double mae) {
+            return mae != null ? String.format("%.1f%%", mae) : "-";
+        }
+
+        private String formatCapture(Double capture) {
+            return capture != null ? String.format("%.0f%%", capture * 100) : "-";
         }
 
         private String formatPrice(double price) {

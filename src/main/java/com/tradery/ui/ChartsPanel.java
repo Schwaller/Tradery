@@ -502,6 +502,48 @@ public class ChartsPanel extends JPanel {
         indicatorManager.setIndicatorEngine(engine);
     }
 
+    // ===== Core Chart Toggles =====
+
+    public void setVolumeChartEnabled(boolean enabled) {
+        zoomManager.setVolumeChartEnabled(enabled);
+    }
+
+    public boolean isVolumeChartEnabled() {
+        return zoomManager.isVolumeChartEnabled();
+    }
+
+    public void setEquityChartEnabled(boolean enabled) {
+        zoomManager.setEquityChartEnabled(enabled);
+    }
+
+    public boolean isEquityChartEnabled() {
+        return zoomManager.isEquityChartEnabled();
+    }
+
+    public void setComparisonChartEnabled(boolean enabled) {
+        zoomManager.setComparisonChartEnabled(enabled);
+    }
+
+    public boolean isComparisonChartEnabled() {
+        return zoomManager.isComparisonChartEnabled();
+    }
+
+    public void setCapitalUsageChartEnabled(boolean enabled) {
+        zoomManager.setCapitalUsageChartEnabled(enabled);
+    }
+
+    public boolean isCapitalUsageChartEnabled() {
+        return zoomManager.isCapitalUsageChartEnabled();
+    }
+
+    public void setTradePLChartEnabled(boolean enabled) {
+        zoomManager.setTradePLChartEnabled(enabled);
+    }
+
+    public boolean isTradePLChartEnabled() {
+        return zoomManager.isTradePLChartEnabled();
+    }
+
     // ===== Chart Update Methods =====
 
     public void updateCharts(List<Candle> candles, List<Trade> trades, double initialCapital) {

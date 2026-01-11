@@ -63,6 +63,13 @@ public class IndicatorSelectorPopup extends JDialog {
     // Funding checkbox
     private JCheckBox fundingCheckbox;
 
+    // Core chart checkboxes
+    private JCheckBox volumeChartCheckbox;
+    private JCheckBox equityChartCheckbox;
+    private JCheckBox comparisonChartCheckbox;
+    private JCheckBox capitalUsageChartCheckbox;
+    private JCheckBox tradePLChartCheckbox;
+
     // Debounce timer
     private Timer updateTimer;
     private static final int DEBOUNCE_MS = 150;
@@ -137,6 +144,16 @@ public class IndicatorSelectorPopup extends JDialog {
         // === FUNDING ===
         contentPane.add(createSectionHeader("FUNDING"));
         contentPane.add(createFundingRow());
+
+        contentPane.add(Box.createVerticalStrut(8));
+
+        // === CORE CHARTS ===
+        contentPane.add(createSectionHeader("CORE CHARTS"));
+        contentPane.add(createVolumeChartRow());
+        contentPane.add(createEquityChartRow());
+        contentPane.add(createComparisonChartRow());
+        contentPane.add(createCapitalUsageChartRow());
+        contentPane.add(createTradePLChartRow());
 
         setContentPane(contentPane);
         pack();
@@ -263,8 +280,8 @@ public class IndicatorSelectorPopup extends JDialog {
     }
 
     private JPanel createVolumeRatioRow() {
-        volumeRatioCheckbox = new JCheckBox("Buy/Sell Ratio");
-        volumeRatioCheckbox.setToolTipText("Show buy volume as % of total volume");
+        volumeRatioCheckbox = new JCheckBox("Buy/Sell Volume");
+        volumeRatioCheckbox.setToolTipText("Show buy/sell volume divergence around zero line");
         JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
         row.setAlignmentX(Component.LEFT_ALIGNMENT);
         row.add(volumeRatioCheckbox);
@@ -292,6 +309,56 @@ public class IndicatorSelectorPopup extends JDialog {
         row.setAlignmentX(Component.LEFT_ALIGNMENT);
         row.add(fundingCheckbox);
         fundingCheckbox.addActionListener(e -> scheduleUpdate());
+        return row;
+    }
+
+    private JPanel createVolumeChartRow() {
+        volumeChartCheckbox = new JCheckBox("Volume");
+        volumeChartCheckbox.setToolTipText("Show volume chart");
+        JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
+        row.setAlignmentX(Component.LEFT_ALIGNMENT);
+        row.add(volumeChartCheckbox);
+        volumeChartCheckbox.addActionListener(e -> scheduleUpdate());
+        return row;
+    }
+
+    private JPanel createEquityChartRow() {
+        equityChartCheckbox = new JCheckBox("Equity");
+        equityChartCheckbox.setToolTipText("Show portfolio equity chart");
+        JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
+        row.setAlignmentX(Component.LEFT_ALIGNMENT);
+        row.add(equityChartCheckbox);
+        equityChartCheckbox.addActionListener(e -> scheduleUpdate());
+        return row;
+    }
+
+    private JPanel createComparisonChartRow() {
+        comparisonChartCheckbox = new JCheckBox("Strategy vs Buy & Hold");
+        comparisonChartCheckbox.setToolTipText("Show strategy comparison chart");
+        JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
+        row.setAlignmentX(Component.LEFT_ALIGNMENT);
+        row.add(comparisonChartCheckbox);
+        comparisonChartCheckbox.addActionListener(e -> scheduleUpdate());
+        return row;
+    }
+
+    private JPanel createCapitalUsageChartRow() {
+        capitalUsageChartCheckbox = new JCheckBox("Capital Usage");
+        capitalUsageChartCheckbox.setToolTipText("Show capital usage percentage chart");
+        JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
+        row.setAlignmentX(Component.LEFT_ALIGNMENT);
+        row.add(capitalUsageChartCheckbox);
+        capitalUsageChartCheckbox.addActionListener(e -> scheduleUpdate());
+        return row;
+    }
+
+    private JPanel createTradePLChartRow() {
+        tradePLChartCheckbox = new JCheckBox("Trade P&L");
+        tradePLChartCheckbox.setToolTipText("Show individual trade P&L chart");
+        JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
+        row.setAlignmentX(Component.LEFT_ALIGNMENT);
+        row.add(tradePLChartCheckbox);
+        tradePLChartCheckbox.addActionListener(e -> scheduleUpdate());
         return row;
     }
 
@@ -403,6 +470,13 @@ public class IndicatorSelectorPopup extends JDialog {
 
         // Funding
         fundingCheckbox.setSelected(chartPanel.isFundingChartEnabled());
+
+        // Core charts
+        volumeChartCheckbox.setSelected(chartPanel.isVolumeChartEnabled());
+        equityChartCheckbox.setSelected(chartPanel.isEquityChartEnabled());
+        comparisonChartCheckbox.setSelected(chartPanel.isComparisonChartEnabled());
+        capitalUsageChartCheckbox.setSelected(chartPanel.isCapitalUsageChartEnabled());
+        tradePLChartCheckbox.setSelected(chartPanel.isTradePLChartEnabled());
     }
 
     private void applyChanges() {
@@ -454,6 +528,13 @@ public class IndicatorSelectorPopup extends JDialog {
 
         // Funding
         chartPanel.setFundingChartEnabled(fundingCheckbox.isSelected());
+
+        // Core charts
+        chartPanel.setVolumeChartEnabled(volumeChartCheckbox.isSelected());
+        chartPanel.setEquityChartEnabled(equityChartCheckbox.isSelected());
+        chartPanel.setComparisonChartEnabled(comparisonChartCheckbox.isSelected());
+        chartPanel.setCapitalUsageChartEnabled(capitalUsageChartCheckbox.isSelected());
+        chartPanel.setTradePLChartEnabled(tradePLChartCheckbox.isSelected());
 
         // Trigger backtest if needed (for orderflow/funding data)
         if (onBacktestNeeded != null) {

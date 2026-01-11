@@ -22,7 +22,12 @@ public record Trade(
     Double commission,
     String exitReason,  // "signal", "stop_loss", "take_profit", "trailing_stop"
     String groupId,     // Groups DCA entries together
-    String exitZone     // Name of the exit zone that triggered the exit
+    String exitZone,    // Name of the exit zone that triggered the exit
+    // Trade analytics for AI improvement
+    Double mfe,         // Maximum Favorable Excursion (best P&L % during trade)
+    Double mae,         // Maximum Adverse Excursion (worst drawdown % during trade)
+    Integer mfeBar,     // Bar when MFE was reached
+    Integer maeBar      // Bar when MAE was reached
 ) {
     /**
      * Create a new open trade
@@ -32,7 +37,8 @@ public record Trade(
         String id = "trade-" + timestamp + "-" + (int)(Math.random() * 10000);
         return new Trade(
             id, strategyId, side, bar, timestamp, price, quantity,
-            null, null, null, null, null, commission, null, groupId, null
+            null, null, null, null, null, commission, null, groupId, null,
+            null, null, null, null  // MFE/MAE analytics - populated on close
         );
     }
 
@@ -43,7 +49,8 @@ public record Trade(
         String id = "trade-" + timestamp + "-" + (int)(Math.random() * 10000);
         return new Trade(
             id, strategyId, side, bar, timestamp, price, 0,
-            bar, timestamp, price, null, null, null, "rejected", null, null
+            bar, timestamp, price, null, null, null, "rejected", null, null,
+            null, null, null, null  // No analytics for rejected trades
         );
     }
 
@@ -65,7 +72,17 @@ public record Trade(
      * Close this trade with exit reason, zone, and calculate P&L
      */
     public Trade close(int exitBar, long exitTime, double exitPrice, double commissionRate, String exitReason, String exitZone) {
-        return partialClose(exitBar, exitTime, exitPrice, quantity, commissionRate, exitReason, exitZone);
+        return closeWithAnalytics(exitBar, exitTime, exitPrice, commissionRate, exitReason, exitZone, null, null, null, null);
+    }
+
+    /**
+     * Close this trade with full analytics (MFE/MAE tracking)
+     */
+    public Trade closeWithAnalytics(int exitBar, long exitTime, double exitPrice, double commissionRate,
+                                    String exitReason, String exitZone,
+                                    Double mfe, Double mae, Integer mfeBar, Integer maeBar) {
+        return partialCloseWithAnalytics(exitBar, exitTime, exitPrice, quantity, commissionRate, exitReason, exitZone,
+                                         mfe, mae, mfeBar, maeBar);
     }
 
     /**
@@ -74,6 +91,16 @@ public record Trade(
      */
     public Trade partialClose(int exitBar, long exitTime, double exitPrice, double exitQuantity,
                               double commissionRate, String exitReason, String exitZone) {
+        return partialCloseWithAnalytics(exitBar, exitTime, exitPrice, exitQuantity, commissionRate, exitReason, exitZone,
+                                         null, null, null, null);
+    }
+
+    /**
+     * Partially close with analytics - the core close method.
+     */
+    public Trade partialCloseWithAnalytics(int exitBar, long exitTime, double exitPrice, double exitQuantity,
+                                           double commissionRate, String exitReason, String exitZone,
+                                           Double mfe, Double mae, Integer mfeBar, Integer maeBar) {
         double grossPnl = (exitPrice - entryPrice) * exitQuantity;
         if ("short".equals(side)) {
             grossPnl = -grossPnl;
@@ -94,7 +121,8 @@ public record Trade(
 
         return new Trade(
             exitId, strategyId, side, entryBar, entryTime, entryPrice, exitQuantity,
-            exitBar, exitTime, exitPrice, netPnl, pnlPct, totalCommission, exitReason, groupId, exitZone
+            exitBar, exitTime, exitPrice, netPnl, pnlPct, totalCommission, exitReason, groupId, exitZone,
+            mfe, mae, mfeBar, maeBar
         );
     }
 
@@ -117,5 +145,46 @@ public record Trade(
      */
     public double value() {
         return entryPrice * quantity;
+    }
+
+    /**
+     * Get duration in bars (null if trade is open)
+     */
+    public Integer duration() {
+        return exitBar != null ? exitBar - entryBar : null;
+    }
+
+    /**
+     * Get capture ratio: actual P&L / MFE (how much of potential profit was captured)
+     * Returns null if MFE not available, 0 if MFE is 0
+     * Value > 1 means exited better than peak (rare), < 1 means left money on table
+     */
+    public Double captureRatio() {
+        if (pnlPercent == null || mfe == null) return null;
+        if (mfe <= 0) return pnlPercent > 0 ? 1.0 : 0.0;  // No favorable excursion
+        return pnlPercent / mfe;
+    }
+
+    /**
+     * Get pain ratio: MAE / MFE (how much pain endured vs reward)
+     * Lower is better. null if either metric unavailable
+     */
+    public Double painRatio() {
+        if (mae == null || mfe == null || mfe <= 0) return null;
+        return Math.abs(mae) / mfe;
+    }
+
+    /**
+     * Get bars from entry to MFE (null if not available)
+     */
+    public Integer barsToMfe() {
+        return mfeBar != null ? mfeBar - entryBar : null;
+    }
+
+    /**
+     * Get bars from entry to MAE (null if not available)
+     */
+    public Integer barsToMae() {
+        return maeBar != null ? maeBar - entryBar : null;
     }
 }

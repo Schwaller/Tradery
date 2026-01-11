@@ -233,6 +233,12 @@ public class BacktestEngine {
         for (int i = warmupBars; i < candles.size(); i++) {
             Candle candle = candles.get(i);
 
+            // Update MFE/MAE tracking for all open trades
+            for (OpenTradeState ots : openTrades) {
+                boolean isLong = "long".equalsIgnoreCase(ots.trade.side());
+                ots.updateExcursions(candle.high(), candle.low(), i, isLong);
+            }
+
             // Report progress
             if (i % 500 == 0 || i == candles.size() - 1) {
                 int percentage = (int) (((double)(i - warmupBars) / (candles.size() - warmupBars)) * 100);
@@ -566,9 +572,10 @@ public class BacktestEngine {
                                     exitQty = Math.min(exitQty, ots.remainingQuantity);
 
                                     if (exitQty > 0.0001) {
-                                        Trade partialTrade = ots.trade.partialClose(
+                                        Trade partialTrade = ots.trade.partialCloseWithAnalytics(
                                             i, candle.timestamp(), ots.exitPrice, exitQty,
-                                            config.commission(), ots.exitReason, ots.exitZone
+                                            config.commission(), ots.exitReason, ots.exitZone,
+                                            ots.mfePercent, ots.maePercent, ots.mfeBar, ots.maeBar
                                         );
                                         trades.add(partialTrade);
                                         currentEquity += partialTrade.pnl() != null ? partialTrade.pnl() : 0;
@@ -584,9 +591,10 @@ public class BacktestEngine {
                     } else {
                         // No partial exit configured, close everything
                         for (OpenTradeState ots : toClose) {
-                            Trade closedTrade = ots.trade.partialClose(
+                            Trade closedTrade = ots.trade.partialCloseWithAnalytics(
                                 i, candle.timestamp(), ots.exitPrice, ots.remainingQuantity,
-                                config.commission(), ots.exitReason, ots.exitZone
+                                config.commission(), ots.exitReason, ots.exitZone,
+                                ots.mfePercent, ots.maePercent, ots.mfeBar, ots.maeBar
                             );
                             trades.add(closedTrade);
                             currentEquity += closedTrade.pnl() != null ? closedTrade.pnl() : 0;
@@ -614,9 +622,10 @@ public class BacktestEngine {
                         }
 
                         if (exitQty > 0.0001) {
-                            Trade partialTrade = ots.trade.partialClose(
+                            Trade partialTrade = ots.trade.partialCloseWithAnalytics(
                                 i, candle.timestamp(), ots.exitPrice, exitQty,
-                                config.commission(), ots.exitReason, ots.exitZone
+                                config.commission(), ots.exitReason, ots.exitZone,
+                                ots.mfePercent, ots.maePercent, ots.mfeBar, ots.maeBar
                             );
                             trades.add(partialTrade);
                             currentEquity += partialTrade.pnl() != null ? partialTrade.pnl() : 0;
@@ -700,9 +709,10 @@ public class BacktestEngine {
                     // Close the aborted trades (close remaining quantity)
                     for (OpenTradeState ots : abortedTrades) {
                         if (ots.remainingQuantity > 0.0001) {
-                            Trade closedTrade = ots.trade.partialClose(
+                            Trade closedTrade = ots.trade.partialCloseWithAnalytics(
                                 i, candle.timestamp(), ots.exitPrice, ots.remainingQuantity,
-                                config.commission(), ots.exitReason, ots.exitZone
+                                config.commission(), ots.exitReason, ots.exitZone,
+                                ots.mfePercent, ots.maePercent, ots.mfeBar, ots.maeBar
                             );
                             trades.add(closedTrade);
                             currentEquity += closedTrade.pnl() != null ? closedTrade.pnl() : 0;
@@ -813,16 +823,21 @@ public class BacktestEngine {
 
         // Close all open trades at the end (close remaining quantities)
         Candle lastCandle = candles.get(candles.size() - 1);
+        int lastBar = candles.size() - 1;
         for (OpenTradeState ots : openTrades) {
+            // Final MFE/MAE update for last candle
+            boolean isLong = "long".equalsIgnoreCase(ots.trade.side());
+            ots.updateExcursions(lastCandle.high(), lastCandle.low(), lastBar, isLong);
             if (ots.remainingQuantity > 0.0001) {
-                Trade closedTrade = ots.trade.partialClose(
-                    candles.size() - 1,
+                Trade closedTrade = ots.trade.partialCloseWithAnalytics(
+                    lastBar,
                     lastCandle.timestamp(),
                     lastCandle.close(),
                     ots.remainingQuantity,
                     config.commission(),
                     "end_of_data",
-                    null
+                    null,
+                    ots.mfePercent, ots.maePercent, ots.mfeBar, ots.maeBar
                 );
                 trades.add(closedTrade);
                 currentEquity += closedTrade.pnl() != null ? closedTrade.pnl() : 0;
@@ -1061,6 +1076,7 @@ public class BacktestEngine {
     private static class OpenTradeState {
         Trade trade;
         double highestPriceSinceEntry;
+        double lowestPriceSinceEntry;  // For MAE tracking
         double trailingStopPrice;
         String exitReason;
         double exitPrice;
@@ -1072,16 +1088,68 @@ public class BacktestEngine {
         Map<String, Integer> zoneExitCount;   // zoneName -> number of exits done in this zone
         String lastZoneName;                  // Track zone transitions for RESET logic
         int lastExitBar;                      // Track last partial exit bar for minBarsBetweenExits
+        // Trade analytics (MFE/MAE)
+        double mfePercent;    // Maximum Favorable Excursion (best P&L %)
+        double maePercent;    // Maximum Adverse Excursion (worst P&L %)
+        int mfeBar;           // Bar when MFE was reached
+        int maeBar;           // Bar when MAE was reached
 
         OpenTradeState(Trade trade, double entryPrice) {
             this.trade = trade;
             this.highestPriceSinceEntry = entryPrice;
+            this.lowestPriceSinceEntry = entryPrice;
             this.trailingStopPrice = 0;
             this.originalQuantity = trade.quantity();
             this.remainingQuantity = trade.quantity();
             this.zoneExitCount = new HashMap<>();
             this.lastZoneName = null;
             this.lastExitBar = -9999;
+            // Initialize MFE/MAE at entry
+            this.mfePercent = 0;
+            this.maePercent = 0;
+            this.mfeBar = trade.entryBar();
+            this.maeBar = trade.entryBar();
+        }
+
+        /**
+         * Update MFE/MAE tracking based on current bar's price action.
+         * Call this at the start of each bar while trade is open.
+         */
+        void updateExcursions(double high, double low, int barIndex, boolean isLong) {
+            // Track price extremes
+            if (high > highestPriceSinceEntry) {
+                highestPriceSinceEntry = high;
+            }
+            if (low < lowestPriceSinceEntry) {
+                lowestPriceSinceEntry = low;
+            }
+
+            double entryPrice = trade.entryPrice();
+
+            // Calculate P&L % at high and low of bar
+            double pnlAtHigh, pnlAtLow;
+            if (isLong) {
+                pnlAtHigh = ((high - entryPrice) / entryPrice) * 100;
+                pnlAtLow = ((low - entryPrice) / entryPrice) * 100;
+            } else {
+                // Short: profit when price goes down
+                pnlAtHigh = ((entryPrice - high) / entryPrice) * 100;
+                pnlAtLow = ((entryPrice - low) / entryPrice) * 100;
+            }
+
+            // Update MFE (best P&L) - for longs use high, for shorts use low
+            double bestPnl = isLong ? pnlAtHigh : pnlAtLow;
+            if (bestPnl > mfePercent) {
+                mfePercent = bestPnl;
+                mfeBar = barIndex;
+            }
+
+            // Update MAE (worst P&L) - for longs use low, for shorts use high
+            double worstPnl = isLong ? pnlAtLow : pnlAtHigh;
+            if (worstPnl < maePercent) {
+                maePercent = worstPnl;
+                maeBar = barIndex;
+            }
         }
 
         /**

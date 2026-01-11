@@ -6,6 +6,7 @@ import org.jfree.chart.ChartFactory;
 import org.jfree.chart.JFreeChart;
 import org.jfree.chart.annotations.XYLineAnnotation;
 import org.jfree.chart.plot.XYPlot;
+import org.jfree.chart.renderer.xy.XYAreaRenderer;
 import org.jfree.chart.renderer.xy.XYBarRenderer;
 import org.jfree.chart.renderer.xy.XYLineAndShapeRenderer;
 import org.jfree.chart.renderer.xy.StandardXYBarPainter;
@@ -631,34 +632,54 @@ public class IndicatorChartsManager {
         double[] sellVolume = indicatorEngine.getSellVolume();
         if (buyVolume == null || sellVolume == null) return;
 
-        TimeSeriesCollection ratioDataset = new TimeSeriesCollection();
-        TimeSeries ratioSeries = new TimeSeries("Buy %");
+        // Create single series with net volume (buy - sell)
+        // Positive = more buying, Negative = more selling
+        TimeSeriesCollection dataset = new TimeSeriesCollection();
+        TimeSeries buySeries = new TimeSeries("Buy");
+        TimeSeries sellSeries = new TimeSeries("Sell");
 
+        double maxVolume = 0;
         for (int i = 0; i < candles.size() && i < buyVolume.length && i < sellVolume.length; i++) {
             Candle c = candles.get(i);
-            double total = buyVolume[i] + sellVolume[i];
-            if (total > 0) {
-                double buyPercent = (buyVolume[i] / total) * 100;
-                ratioSeries.addOrUpdate(new Millisecond(new Date(c.timestamp())), buyPercent);
-            }
+            double buy = buyVolume[i];
+            double sell = sellVolume[i];
+            maxVolume = Math.max(maxVolume, Math.max(buy, sell));
+
+            // Buy volume as positive, sell volume as negative
+            buySeries.addOrUpdate(new Millisecond(new Date(c.timestamp())), buy);
+            sellSeries.addOrUpdate(new Millisecond(new Date(c.timestamp())), -sell);
         }
-        ratioDataset.addSeries(ratioSeries);
-        plot.setDataset(0, ratioDataset);
 
-        XYLineAndShapeRenderer ratioRenderer = new XYLineAndShapeRenderer(true, false);
-        ratioRenderer.setSeriesPaint(0, ChartStyles.BUY_VOLUME_COLOR);
-        ratioRenderer.setSeriesStroke(0, ChartStyles.MEDIUM_STROKE);
-        plot.setRenderer(0, ratioRenderer);
+        dataset.addSeries(buySeries);
+        dataset.addSeries(sellSeries);
+        plot.setDataset(0, dataset);
 
-        // Add 50% reference line
+        // Single renderer with two series (green for buy, red for sell)
+        XYBarRenderer renderer = new XYBarRenderer(0.0);
+        renderer.setShadowVisible(false);
+        renderer.setBarPainter(new StandardXYBarPainter());
+        renderer.setSeriesPaint(0, new Color(38, 166, 91, 200));  // Buy - green
+        renderer.setSeriesPaint(1, new Color(231, 76, 60, 200));  // Sell - red
+        renderer.setDrawBarOutline(false);
+        plot.setRenderer(0, renderer);
+
+        // Map dataset to range axis
+        plot.mapDatasetToRangeAxis(0, 0);
+
+        // Set symmetric Y axis range around zero
+        double padding = maxVolume * 1.1;
+        if (padding > 0) {
+            plot.getRangeAxis().setRange(-padding, padding);
+        }
+
+        // Add zero reference line
         plot.clearAnnotations();
-        ChartStyles.addChartTitleAnnotation(plot, "Buy/Sell Ratio (%)");
-        plot.getRangeAxis().setRange(0, 100);
+        ChartStyles.addChartTitleAnnotation(plot, "Buy/Sell Volume");
         if (!candles.isEmpty()) {
             long startTime = candles.get(0).timestamp();
             long endTime = candles.get(candles.size() - 1).timestamp();
-            plot.addAnnotation(new XYLineAnnotation(startTime, 50, endTime, 50,
-                ChartStyles.DASHED_STROKE, new Color(149, 165, 166, 150)));
+            plot.addAnnotation(new XYLineAnnotation(startTime, 0, endTime, 0,
+                new BasicStroke(1.0f), new Color(149, 165, 166, 200)));
         }
     }
 
@@ -747,32 +768,40 @@ public class IndicatorChartsManager {
     public JFreeChart getMacdChart() { return macdChart; }
     public JFreeChart getAtrChart() { return atrChart; }
     public JFreeChart getDeltaChart() { return deltaChart; }
+    public JFreeChart getCvdChart() { return cvdChart; }
+    public JFreeChart getVolumeRatioChart() { return volumeRatioChart; }
     public JFreeChart getFundingChart() { return fundingChart; }
 
     public org.jfree.chart.ChartPanel getRsiChartPanel() { return rsiChartPanel; }
     public org.jfree.chart.ChartPanel getMacdChartPanel() { return macdChartPanel; }
     public org.jfree.chart.ChartPanel getAtrChartPanel() { return atrChartPanel; }
     public org.jfree.chart.ChartPanel getDeltaChartPanel() { return deltaChartPanel; }
+    public org.jfree.chart.ChartPanel getCvdChartPanel() { return cvdChartPanel; }
+    public org.jfree.chart.ChartPanel getVolumeRatioChartPanel() { return volumeRatioChartPanel; }
     public org.jfree.chart.ChartPanel getFundingChartPanel() { return fundingChartPanel; }
 
     public JPanel getRsiChartWrapper() { return rsiChartWrapper; }
     public JPanel getMacdChartWrapper() { return macdChartWrapper; }
     public JPanel getAtrChartWrapper() { return atrChartWrapper; }
     public JPanel getDeltaChartWrapper() { return deltaChartWrapper; }
+    public JPanel getCvdChartWrapper() { return cvdChartWrapper; }
+    public JPanel getVolumeRatioChartWrapper() { return volumeRatioChartWrapper; }
     public JPanel getFundingChartWrapper() { return fundingChartWrapper; }
 
     public JButton getRsiZoomBtn() { return rsiZoomBtn; }
     public JButton getMacdZoomBtn() { return macdZoomBtn; }
     public JButton getAtrZoomBtn() { return atrZoomBtn; }
     public JButton getDeltaZoomBtn() { return deltaZoomBtn; }
+    public JButton getCvdZoomBtn() { return cvdZoomBtn; }
+    public JButton getVolumeRatioZoomBtn() { return volumeRatioZoomBtn; }
     public JButton getFundingZoomBtn() { return fundingZoomBtn; }
 
     /**
      * Update zoom button states.
-     * @param zoomedIndex Index of zoomed indicator (-1 for none, 0=RSI, 1=MACD, 2=ATR, 3=Delta, 4=Funding)
+     * @param zoomedIndex Index of zoomed indicator (-1 for none, 0=RSI, 1=MACD, 2=ATR, 3=Delta, 4=CVD, 5=VolumeRatio, 6=Funding)
      */
     public void updateZoomButtonStates(int zoomedIndex) {
-        JButton[] btns = {rsiZoomBtn, macdZoomBtn, atrZoomBtn, deltaZoomBtn, fundingZoomBtn};
+        JButton[] btns = {rsiZoomBtn, macdZoomBtn, atrZoomBtn, deltaZoomBtn, cvdZoomBtn, volumeRatioZoomBtn, fundingZoomBtn};
         for (int i = 0; i < btns.length; i++) {
             if (btns[i] != null) {
                 if (zoomedIndex == i) {
@@ -794,6 +823,8 @@ public class IndicatorChartsManager {
         macdChartPanel.addMouseWheelListener(listener);
         atrChartPanel.addMouseWheelListener(listener);
         deltaChartPanel.addMouseWheelListener(listener);
+        cvdChartPanel.addMouseWheelListener(listener);
+        volumeRatioChartPanel.addMouseWheelListener(listener);
         fundingChartPanel.addMouseWheelListener(listener);
     }
 
@@ -805,6 +836,8 @@ public class IndicatorChartsManager {
         updateMacdChart(candles);
         updateAtrChart(candles);
         updateDeltaChart(candles);
+        updateCvdChart(candles);
+        updateVolumeRatioChart(candles);
         updateFundingChart(candles);
     }
 

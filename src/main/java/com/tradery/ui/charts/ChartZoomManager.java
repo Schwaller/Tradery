@@ -28,6 +28,13 @@ public class ChartZoomManager {
     private boolean fixedWidthMode = false;
     private boolean fitYAxisToVisible = true;
 
+    // Core chart enable state (default all on)
+    private boolean volumeChartEnabled = true;
+    private boolean equityChartEnabled = true;
+    private boolean comparisonChartEnabled = true;
+    private boolean capitalUsageChartEnabled = true;
+    private boolean tradePLChartEnabled = true;
+
     // Chart wrappers and zoom buttons
     private JPanel[] chartWrappers;
     private JButton[] zoomButtons;
@@ -52,6 +59,53 @@ public class ChartZoomManager {
 
     public void setOnLayoutChange(Runnable callback) {
         this.onLayoutChange = callback;
+    }
+
+    // ===== Core Chart Toggles =====
+
+    public void setVolumeChartEnabled(boolean enabled) {
+        this.volumeChartEnabled = enabled;
+        if (onLayoutChange != null) onLayoutChange.run();
+    }
+
+    public boolean isVolumeChartEnabled() {
+        return volumeChartEnabled;
+    }
+
+    public void setEquityChartEnabled(boolean enabled) {
+        this.equityChartEnabled = enabled;
+        if (onLayoutChange != null) onLayoutChange.run();
+    }
+
+    public boolean isEquityChartEnabled() {
+        return equityChartEnabled;
+    }
+
+    public void setComparisonChartEnabled(boolean enabled) {
+        this.comparisonChartEnabled = enabled;
+        if (onLayoutChange != null) onLayoutChange.run();
+    }
+
+    public boolean isComparisonChartEnabled() {
+        return comparisonChartEnabled;
+    }
+
+    public void setCapitalUsageChartEnabled(boolean enabled) {
+        this.capitalUsageChartEnabled = enabled;
+        if (onLayoutChange != null) onLayoutChange.run();
+    }
+
+    public boolean isCapitalUsageChartEnabled() {
+        return capitalUsageChartEnabled;
+    }
+
+    public void setTradePLChartEnabled(boolean enabled) {
+        this.tradePLChartEnabled = enabled;
+        if (onLayoutChange != null) onLayoutChange.run();
+    }
+
+    public boolean isTradePLChartEnabled() {
+        return tradePLChartEnabled;
     }
 
     /**
@@ -169,10 +223,13 @@ public class ChartZoomManager {
         gbc.weightx = 1.0;
 
         // Build list of visible charts in order:
-        // Price, Volume, [RSI], [MACD], [ATR], Equity, Comparison, CapitalUsage, TradeP&L
+        // Price (always shown), [Volume], [RSI], [MACD], [ATR], [Delta], [CVD], [VolumeRatio], [Funding], [Equity], [Comparison], [CapitalUsage], [TradeP&L]
         java.util.List<JPanel> visibleCharts = new java.util.ArrayList<>();
-        visibleCharts.add(chartWrappers[0]); // Price
-        visibleCharts.add(chartWrappers[1]); // Volume
+        visibleCharts.add(chartWrappers[0]); // Price - always shown
+
+        if (volumeChartEnabled) {
+            visibleCharts.add(chartWrappers[1]); // Volume
+        }
 
         if (indicatorManager != null) {
             if (indicatorManager.isRsiChartEnabled()) {
@@ -184,19 +241,33 @@ public class ChartZoomManager {
             if (indicatorManager.isAtrChartEnabled()) {
                 visibleCharts.add(indicatorManager.getAtrChartWrapper());
             }
-            // Orderflow charts (any of: delta, cvd, volume ratio)
-            if (indicatorManager.isAnyOrderflowEnabled()) {
+            // Orderflow charts - each has its own panel
+            if (indicatorManager.isDeltaChartEnabled()) {
                 visibleCharts.add(indicatorManager.getDeltaChartWrapper());
+            }
+            if (indicatorManager.isCvdChartEnabled()) {
+                visibleCharts.add(indicatorManager.getCvdChartWrapper());
+            }
+            if (indicatorManager.isVolumeRatioChartEnabled()) {
+                visibleCharts.add(indicatorManager.getVolumeRatioChartWrapper());
             }
             if (indicatorManager.isFundingChartEnabled()) {
                 visibleCharts.add(indicatorManager.getFundingChartWrapper());
             }
         }
 
-        visibleCharts.add(chartWrappers[2]); // Equity
-        visibleCharts.add(chartWrappers[3]); // Comparison
-        visibleCharts.add(chartWrappers[4]); // Capital Usage
-        visibleCharts.add(chartWrappers[5]); // Trade P&L
+        if (equityChartEnabled) {
+            visibleCharts.add(chartWrappers[2]); // Equity
+        }
+        if (comparisonChartEnabled) {
+            visibleCharts.add(chartWrappers[3]); // Comparison
+        }
+        if (capitalUsageChartEnabled) {
+            visibleCharts.add(chartWrappers[4]); // Capital Usage
+        }
+        if (tradePLChartEnabled) {
+            visibleCharts.add(chartWrappers[5]); // Trade P&L
+        }
 
         // Map indicator wrappers for zoom detection
         JPanel[] indicatorWrappers = indicatorManager != null ?
@@ -204,6 +275,8 @@ public class ChartZoomManager {
                          indicatorManager.getMacdChartWrapper(),
                          indicatorManager.getAtrChartWrapper(),
                          indicatorManager.getDeltaChartWrapper(),
+                         indicatorManager.getCvdChartWrapper(),
+                         indicatorManager.getVolumeRatioChartWrapper(),
                          indicatorManager.getFundingChartWrapper()} :
             new JPanel[0];
 
