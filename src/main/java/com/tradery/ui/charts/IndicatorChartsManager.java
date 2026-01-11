@@ -22,49 +22,20 @@ import java.util.Date;
 import java.util.List;
 
 /**
- * Manages optional indicator charts (RSI, MACD, ATR).
+ * Manages optional indicator charts (RSI, MACD, ATR, Orderflow, Funding).
  */
 public class IndicatorChartsManager {
 
-    // Chart panels
-    private org.jfree.chart.ChartPanel rsiChartPanel;
-    private org.jfree.chart.ChartPanel macdChartPanel;
-    private org.jfree.chart.ChartPanel atrChartPanel;
-    private org.jfree.chart.ChartPanel deltaChartPanel;
-    private org.jfree.chart.ChartPanel cvdChartPanel;
-    private org.jfree.chart.ChartPanel volumeRatioChartPanel;
-    private org.jfree.chart.ChartPanel whaleChartPanel;
-    private org.jfree.chart.ChartPanel fundingChartPanel;
-
-    // Charts
-    private JFreeChart rsiChart;
-    private JFreeChart macdChart;
-    private JFreeChart atrChart;
-    private JFreeChart deltaChart;
-    private JFreeChart cvdChart;
-    private JFreeChart volumeRatioChart;
-    private JFreeChart whaleChart;
-    private JFreeChart fundingChart;
-
-    // Wrapper panels with zoom buttons
-    private JPanel rsiChartWrapper;
-    private JPanel macdChartWrapper;
-    private JPanel atrChartWrapper;
-    private JPanel deltaChartWrapper;
-    private JPanel cvdChartWrapper;
-    private JPanel volumeRatioChartWrapper;
-    private JPanel whaleChartWrapper;
-    private JPanel fundingChartWrapper;
-
-    // Zoom buttons
-    private JButton rsiZoomBtn;
-    private JButton macdZoomBtn;
-    private JButton atrZoomBtn;
-    private JButton deltaZoomBtn;
-    private JButton cvdZoomBtn;
-    private JButton volumeRatioZoomBtn;
-    private JButton whaleZoomBtn;
-    private JButton fundingZoomBtn;
+    // Chart components (each contains chart, panel, wrapper, zoom button)
+    private ChartComponent rsiComponent;
+    private ChartComponent macdComponent;
+    private ChartComponent atrComponent;
+    private ChartComponent deltaComponent;
+    private ChartComponent cvdComponent;
+    private ChartComponent volumeRatioComponent;
+    private ChartComponent whaleComponent;
+    private ChartComponent retailComponent;
+    private ChartComponent fundingComponent;
 
     // Enable state
     private boolean rsiChartEnabled = false;
@@ -74,6 +45,7 @@ public class IndicatorChartsManager {
     private boolean cvdChartEnabled = false;
     private boolean volumeRatioChartEnabled = false;
     private boolean whaleChartEnabled = false;
+    private boolean retailChartEnabled = false;
     private boolean fundingChartEnabled = false;
 
     // Indicator parameters
@@ -102,155 +74,31 @@ public class IndicatorChartsManager {
     }
 
     private void initializeCharts() {
-        // RSI chart
-        rsiChart = ChartFactory.createTimeSeriesChart(
-            null, null, null,
-            new TimeSeriesCollection(),
-            false, true, false
-        );
-        ChartStyles.stylizeChart(rsiChart, "RSI");
-        rsiChart.getXYPlot().getRangeAxis().setRange(0, 100);
-
-        rsiChartPanel = new org.jfree.chart.ChartPanel(rsiChart);
-        configureChartPanel(rsiChartPanel);
-
-        // MACD chart
-        macdChart = ChartFactory.createTimeSeriesChart(
-            null, null, null,
-            new TimeSeriesCollection(),
-            false, true, false
-        );
-        ChartStyles.stylizeChart(macdChart, "MACD");
-
-        macdChartPanel = new org.jfree.chart.ChartPanel(macdChart);
-        configureChartPanel(macdChartPanel);
-
-        // ATR chart
-        atrChart = ChartFactory.createTimeSeriesChart(
-            null, null, null,
-            new TimeSeriesCollection(),
-            false, true, false
-        );
-        ChartStyles.stylizeChart(atrChart, "ATR");
-
-        atrChartPanel = new org.jfree.chart.ChartPanel(atrChart);
-        configureChartPanel(atrChartPanel);
-
-        // Delta chart (orderflow - per bar)
-        deltaChart = ChartFactory.createTimeSeriesChart(
-            null, null, null,
-            new TimeSeriesCollection(),
-            false, true, false
-        );
-        ChartStyles.stylizeChart(deltaChart, "Delta");
-        deltaChartPanel = new org.jfree.chart.ChartPanel(deltaChart);
-        configureChartPanel(deltaChartPanel);
-
-        // CVD chart (cumulative volume delta)
-        cvdChart = ChartFactory.createTimeSeriesChart(
-            null, null, null,
-            new TimeSeriesCollection(),
-            false, true, false
-        );
-        ChartStyles.stylizeChart(cvdChart, "CVD");
-        cvdChartPanel = new org.jfree.chart.ChartPanel(cvdChart);
-        configureChartPanel(cvdChartPanel);
-
-        // Volume Ratio chart (buy/sell volume)
-        volumeRatioChart = ChartFactory.createTimeSeriesChart(
-            null, null, null,
-            new TimeSeriesCollection(),
-            false, true, false
-        );
-        ChartStyles.stylizeChart(volumeRatioChart, "Buy/Sell Volume");
-        volumeRatioChartPanel = new org.jfree.chart.ChartPanel(volumeRatioChart);
-        configureChartPanel(volumeRatioChartPanel);
-
-        // Whale Delta chart (large trades only)
-        whaleChart = ChartFactory.createTimeSeriesChart(
-            null, null, null,
-            new TimeSeriesCollection(),
-            false, true, false
-        );
-        ChartStyles.stylizeChart(whaleChart, "Whale Delta");
-        whaleChartPanel = new org.jfree.chart.ChartPanel(whaleChart);
-        configureChartPanel(whaleChartPanel);
-
-        // Funding chart
-        fundingChart = ChartFactory.createTimeSeriesChart(
-            null, null, null,
-            new TimeSeriesCollection(),
-            false, true, false
-        );
-        ChartStyles.stylizeChart(fundingChart, "Funding");
-        fundingChartPanel = new org.jfree.chart.ChartPanel(fundingChart);
-        configureChartPanel(fundingChartPanel);
-    }
-
-    private void configureChartPanel(org.jfree.chart.ChartPanel panel) {
-        panel.setMouseWheelEnabled(false);
-        panel.setDomainZoomable(false);
-        panel.setRangeZoomable(false);
-        panel.setMinimumDrawWidth(0);
-        panel.setMinimumDrawHeight(0);
-        panel.setMaximumDrawWidth(Integer.MAX_VALUE);
-        panel.setMaximumDrawHeight(Integer.MAX_VALUE);
+        rsiComponent = new ChartComponent("RSI", new double[]{0, 100});
+        macdComponent = new ChartComponent("MACD");
+        atrComponent = new ChartComponent("ATR");
+        deltaComponent = new ChartComponent("Delta");
+        cvdComponent = new ChartComponent("CVD");
+        volumeRatioComponent = new ChartComponent("Buy/Sell Volume");
+        whaleComponent = new ChartComponent("Whale Delta");
+        retailComponent = new ChartComponent("Retail Delta");
+        fundingComponent = new ChartComponent("Funding");
     }
 
     /**
      * Create wrapper panels with zoom buttons.
-     * @param zoomCallback Callback to handle zoom toggle (index: 0=RSI, 1=MACD, 2=ATR, 3=Delta, 4=CVD, 5=VolumeRatio, 6=Whale, 7=Funding)
+     * @param zoomCallback Callback to handle zoom toggle (index: 0=RSI, 1=MACD, 2=ATR, 3=Delta, 4=CVD, 5=VolumeRatio, 6=Whale, 7=Retail, 8=Funding)
      */
     public void createWrappers(java.util.function.IntConsumer zoomCallback) {
-        rsiZoomBtn = new JButton("\u2922"); // ⤢
-        macdZoomBtn = new JButton("\u2922");
-        atrZoomBtn = new JButton("\u2922");
-        deltaZoomBtn = new JButton("\u2922");
-        cvdZoomBtn = new JButton("\u2922");
-        volumeRatioZoomBtn = new JButton("\u2922");
-        whaleZoomBtn = new JButton("\u2922");
-        fundingZoomBtn = new JButton("\u2922");
-
-        rsiChartWrapper = createChartWrapper(rsiChartPanel, rsiZoomBtn, () -> zoomCallback.accept(0));
-        macdChartWrapper = createChartWrapper(macdChartPanel, macdZoomBtn, () -> zoomCallback.accept(1));
-        atrChartWrapper = createChartWrapper(atrChartPanel, atrZoomBtn, () -> zoomCallback.accept(2));
-        deltaChartWrapper = createChartWrapper(deltaChartPanel, deltaZoomBtn, () -> zoomCallback.accept(3));
-        cvdChartWrapper = createChartWrapper(cvdChartPanel, cvdZoomBtn, () -> zoomCallback.accept(4));
-        volumeRatioChartWrapper = createChartWrapper(volumeRatioChartPanel, volumeRatioZoomBtn, () -> zoomCallback.accept(5));
-        whaleChartWrapper = createChartWrapper(whaleChartPanel, whaleZoomBtn, () -> zoomCallback.accept(6));
-        fundingChartWrapper = createChartWrapper(fundingChartPanel, fundingZoomBtn, () -> zoomCallback.accept(7));
-    }
-
-    private JPanel createChartWrapper(org.jfree.chart.ChartPanel chartPanel, JButton zoomBtn, Runnable onZoom) {
-        zoomBtn.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 11));
-        zoomBtn.setMargin(new Insets(2, 4, 1, 4));
-        zoomBtn.setFocusPainted(false);
-        zoomBtn.setToolTipText("Zoom chart");
-        zoomBtn.addActionListener(e -> onZoom.run());
-
-        JLayeredPane layeredPane = new JLayeredPane();
-        chartPanel.setBounds(0, 0, 100, 100);
-        layeredPane.add(chartPanel, JLayeredPane.DEFAULT_LAYER);
-
-        Dimension btnSize = zoomBtn.getPreferredSize();
-        zoomBtn.setBounds(0, 5, btnSize.width, btnSize.height);
-        layeredPane.add(zoomBtn, JLayeredPane.PALETTE_LAYER);
-
-        layeredPane.addComponentListener(new java.awt.event.ComponentAdapter() {
-            @Override
-            public void componentResized(java.awt.event.ComponentEvent e) {
-                int w = layeredPane.getWidth();
-                int h = layeredPane.getHeight();
-                chartPanel.setBounds(0, 0, w, h);
-                Dimension bs = zoomBtn.getPreferredSize();
-                zoomBtn.setBounds(w - bs.width - 12, 8, bs.width, bs.height);
-            }
-        });
-
-        JPanel wrapper = new JPanel(new BorderLayout());
-        wrapper.add(layeredPane, BorderLayout.CENTER);
-        wrapper.setMinimumSize(new Dimension(100, MIN_CHART_HEIGHT));
-        return wrapper;
+        rsiComponent.createWrapper(() -> zoomCallback.accept(0));
+        macdComponent.createWrapper(() -> zoomCallback.accept(1));
+        atrComponent.createWrapper(() -> zoomCallback.accept(2));
+        deltaComponent.createWrapper(() -> zoomCallback.accept(3));
+        cvdComponent.createWrapper(() -> zoomCallback.accept(4));
+        volumeRatioComponent.createWrapper(() -> zoomCallback.accept(5));
+        whaleComponent.createWrapper(() -> zoomCallback.accept(6));
+        retailComponent.createWrapper(() -> zoomCallback.accept(7));
+        fundingComponent.createWrapper(() -> zoomCallback.accept(8));
     }
 
     // ===== RSI Methods =====
@@ -272,7 +120,7 @@ public class IndicatorChartsManager {
             return;
         }
 
-        XYPlot plot = rsiChart.getXYPlot();
+        XYPlot plot = rsiComponent.getChart().getXYPlot();
         TimeSeriesCollection dataset = new TimeSeriesCollection();
         TimeSeries rsiSeries = new TimeSeries("RSI(" + rsiPeriod + ")");
 
@@ -356,7 +204,7 @@ public class IndicatorChartsManager {
             return;
         }
 
-        XYPlot plot = macdChart.getXYPlot();
+        XYPlot plot = macdComponent.getChart().getXYPlot();
         TimeSeriesCollection lineDataset = new TimeSeriesCollection();
         TimeSeries macdLine = new TimeSeries("MACD");
         TimeSeries signalLine = new TimeSeries("Signal");
@@ -467,7 +315,7 @@ public class IndicatorChartsManager {
             return;
         }
 
-        XYPlot plot = atrChart.getXYPlot();
+        XYPlot plot = atrComponent.getChart().getXYPlot();
         TimeSeriesCollection dataset = new TimeSeriesCollection();
         TimeSeries atrSeries = new TimeSeries("ATR(" + atrPeriod + ")");
 
@@ -569,11 +417,27 @@ public class IndicatorChartsManager {
         this.whaleThreshold = threshold;
     }
 
+    public double getWhaleThreshold() {
+        return whaleThreshold;
+    }
+
+    public void setRetailChartEnabled(boolean enabled, double threshold) {
+        this.retailChartEnabled = enabled;
+        this.whaleThreshold = threshold;
+        if (onLayoutChange != null) {
+            onLayoutChange.run();
+        }
+    }
+
+    public boolean isRetailChartEnabled() {
+        return retailChartEnabled;
+    }
+
     /**
      * Check if any orderflow chart is enabled.
      */
     public boolean isAnyOrderflowEnabled() {
-        return deltaChartEnabled || cvdChartEnabled || volumeRatioChartEnabled || whaleChartEnabled;
+        return deltaChartEnabled || cvdChartEnabled || volumeRatioChartEnabled || whaleChartEnabled || retailChartEnabled;
     }
 
     public void updateDeltaChart(List<Candle> candles) {
@@ -581,7 +445,7 @@ public class IndicatorChartsManager {
             return;
         }
 
-        XYPlot plot = deltaChart.getXYPlot();
+        XYPlot plot = deltaComponent.getChart().getXYPlot();
         double[] delta = indicatorEngine.getDelta();
         if (delta == null) return;
 
@@ -626,7 +490,7 @@ public class IndicatorChartsManager {
             return;
         }
 
-        XYPlot plot = cvdChart.getXYPlot();
+        XYPlot plot = cvdComponent.getChart().getXYPlot();
         double[] cumDelta = indicatorEngine.getCumulativeDelta();
         if (cumDelta == null) return;
 
@@ -656,7 +520,7 @@ public class IndicatorChartsManager {
             return;
         }
 
-        XYPlot plot = volumeRatioChart.getXYPlot();
+        XYPlot plot = volumeRatioComponent.getChart().getXYPlot();
         double[] buyVolume = indicatorEngine.getBuyVolume();
         double[] sellVolume = indicatorEngine.getSellVolume();
         if (buyVolume == null || sellVolume == null) return;
@@ -717,7 +581,7 @@ public class IndicatorChartsManager {
             return;
         }
 
-        XYPlot plot = whaleChart.getXYPlot();
+        XYPlot plot = whaleComponent.getChart().getXYPlot();
         double[] whaleDelta = indicatorEngine.getWhaleDelta(whaleThreshold);
         if (whaleDelta == null) return;
 
@@ -771,6 +635,65 @@ public class IndicatorChartsManager {
         }
     }
 
+    public void updateRetailChart(List<Candle> candles) {
+        if (!retailChartEnabled || candles == null || candles.isEmpty() || indicatorEngine == null) {
+            return;
+        }
+
+        XYPlot plot = retailComponent.getChart().getXYPlot();
+        double[] retailDelta = indicatorEngine.getRetailDelta(whaleThreshold);
+        if (retailDelta == null) return;
+
+        XYSeriesCollection dataset = new XYSeriesCollection();
+        XYSeries series = new XYSeries("Retail Delta");
+
+        double maxDelta = 0;
+        for (int i = 0; i < candles.size() && i < retailDelta.length; i++) {
+            Candle c = candles.get(i);
+            if (!Double.isNaN(retailDelta[i])) {
+                series.add(c.timestamp(), retailDelta[i]);
+                maxDelta = Math.max(maxDelta, Math.abs(retailDelta[i]));
+            }
+        }
+        dataset.addSeries(series);
+        plot.setDataset(0, dataset);
+
+        // Color-coded bar renderer (blue/cyan for retail trades)
+        final XYSeriesCollection finalDataset = dataset;
+        XYBarRenderer renderer = new XYBarRenderer(0.0) {
+            @Override
+            public java.awt.Paint getItemPaint(int seriesIdx, int item) {
+                double val = finalDataset.getYValue(seriesIdx, item);
+                if (val >= 0) {
+                    return new Color(52, 152, 219);   // Blue for buy
+                } else {
+                    return new Color(231, 76, 60);    // Red for sell
+                }
+            }
+        };
+        renderer.setShadowVisible(false);
+        renderer.setBarPainter(new StandardXYBarPainter());
+        renderer.setDrawBarOutline(false);
+        plot.setRenderer(0, renderer);
+
+        // Set symmetric Y axis range around zero
+        double padding = maxDelta * 1.1;
+        if (padding > 0) {
+            plot.getRangeAxis().setRange(-padding, padding);
+        }
+
+        // Add zero reference line and title
+        plot.clearAnnotations();
+        String title = String.format("Retail Delta (<$%.0fK)", whaleThreshold / 1000);
+        ChartStyles.addChartTitleAnnotation(plot, title);
+        if (!candles.isEmpty()) {
+            long startTime = candles.get(0).timestamp();
+            long endTime = candles.get(candles.size() - 1).timestamp();
+            plot.addAnnotation(new XYLineAnnotation(startTime, 0, endTime, 0,
+                new BasicStroke(1.0f), new Color(149, 165, 166, 200)));
+        }
+    }
+
     // ===== Funding Methods =====
 
     public void setFundingChartEnabled(boolean enabled) {
@@ -789,7 +712,7 @@ public class IndicatorChartsManager {
             return;
         }
 
-        XYPlot plot = fundingChart.getXYPlot();
+        XYPlot plot = fundingComponent.getChart().getXYPlot();
 
         double[] funding = indicatorEngine.getFunding();
         double[] funding8H = indicatorEngine.getFunding8H();
@@ -852,56 +775,54 @@ public class IndicatorChartsManager {
 
     // ===== Accessors =====
 
-    public JFreeChart getRsiChart() { return rsiChart; }
-    public JFreeChart getMacdChart() { return macdChart; }
-    public JFreeChart getAtrChart() { return atrChart; }
-    public JFreeChart getDeltaChart() { return deltaChart; }
-    public JFreeChart getCvdChart() { return cvdChart; }
-    public JFreeChart getVolumeRatioChart() { return volumeRatioChart; }
-    public JFreeChart getFundingChart() { return fundingChart; }
+    public JFreeChart getRsiChart() { return rsiComponent.getChart(); }
+    public JFreeChart getMacdChart() { return macdComponent.getChart(); }
+    public JFreeChart getAtrChart() { return atrComponent.getChart(); }
+    public JFreeChart getDeltaChart() { return deltaComponent.getChart(); }
+    public JFreeChart getCvdChart() { return cvdComponent.getChart(); }
+    public JFreeChart getVolumeRatioChart() { return volumeRatioComponent.getChart(); }
+    public JFreeChart getFundingChart() { return fundingComponent.getChart(); }
+    public JFreeChart getWhaleChart() { return whaleComponent.getChart(); }
+    public JFreeChart getRetailChart() { return retailComponent.getChart(); }
 
-    public org.jfree.chart.ChartPanel getRsiChartPanel() { return rsiChartPanel; }
-    public org.jfree.chart.ChartPanel getMacdChartPanel() { return macdChartPanel; }
-    public org.jfree.chart.ChartPanel getAtrChartPanel() { return atrChartPanel; }
-    public org.jfree.chart.ChartPanel getDeltaChartPanel() { return deltaChartPanel; }
-    public org.jfree.chart.ChartPanel getCvdChartPanel() { return cvdChartPanel; }
-    public org.jfree.chart.ChartPanel getVolumeRatioChartPanel() { return volumeRatioChartPanel; }
-    public org.jfree.chart.ChartPanel getFundingChartPanel() { return fundingChartPanel; }
+    public org.jfree.chart.ChartPanel getRsiChartPanel() { return rsiComponent.getChartPanel(); }
+    public org.jfree.chart.ChartPanel getMacdChartPanel() { return macdComponent.getChartPanel(); }
+    public org.jfree.chart.ChartPanel getAtrChartPanel() { return atrComponent.getChartPanel(); }
+    public org.jfree.chart.ChartPanel getDeltaChartPanel() { return deltaComponent.getChartPanel(); }
+    public org.jfree.chart.ChartPanel getCvdChartPanel() { return cvdComponent.getChartPanel(); }
+    public org.jfree.chart.ChartPanel getVolumeRatioChartPanel() { return volumeRatioComponent.getChartPanel(); }
+    public org.jfree.chart.ChartPanel getFundingChartPanel() { return fundingComponent.getChartPanel(); }
+    public org.jfree.chart.ChartPanel getWhaleChartPanel() { return whaleComponent.getChartPanel(); }
+    public org.jfree.chart.ChartPanel getRetailChartPanel() { return retailComponent.getChartPanel(); }
 
-    public JPanel getRsiChartWrapper() { return rsiChartWrapper; }
-    public JPanel getMacdChartWrapper() { return macdChartWrapper; }
-    public JPanel getAtrChartWrapper() { return atrChartWrapper; }
-    public JPanel getDeltaChartWrapper() { return deltaChartWrapper; }
-    public JPanel getCvdChartWrapper() { return cvdChartWrapper; }
-    public JPanel getVolumeRatioChartWrapper() { return volumeRatioChartWrapper; }
-    public JPanel getWhaleChartWrapper() { return whaleChartWrapper; }
-    public JPanel getFundingChartWrapper() { return fundingChartWrapper; }
+    public JPanel getRsiChartWrapper() { return rsiComponent.getWrapper(); }
+    public JPanel getMacdChartWrapper() { return macdComponent.getWrapper(); }
+    public JPanel getAtrChartWrapper() { return atrComponent.getWrapper(); }
+    public JPanel getDeltaChartWrapper() { return deltaComponent.getWrapper(); }
+    public JPanel getCvdChartWrapper() { return cvdComponent.getWrapper(); }
+    public JPanel getVolumeRatioChartWrapper() { return volumeRatioComponent.getWrapper(); }
+    public JPanel getWhaleChartWrapper() { return whaleComponent.getWrapper(); }
+    public JPanel getRetailChartWrapper() { return retailComponent.getWrapper(); }
+    public JPanel getFundingChartWrapper() { return fundingComponent.getWrapper(); }
 
-    public JButton getRsiZoomBtn() { return rsiZoomBtn; }
-    public JButton getMacdZoomBtn() { return macdZoomBtn; }
-    public JButton getAtrZoomBtn() { return atrZoomBtn; }
-    public JButton getDeltaZoomBtn() { return deltaZoomBtn; }
-    public JButton getCvdZoomBtn() { return cvdZoomBtn; }
-    public JButton getVolumeRatioZoomBtn() { return volumeRatioZoomBtn; }
-    public JButton getWhaleZoomBtn() { return whaleZoomBtn; }
-    public JButton getFundingZoomBtn() { return fundingZoomBtn; }
+    public JButton getRsiZoomBtn() { return rsiComponent.getZoomButton(); }
+    public JButton getMacdZoomBtn() { return macdComponent.getZoomButton(); }
+    public JButton getAtrZoomBtn() { return atrComponent.getZoomButton(); }
+    public JButton getDeltaZoomBtn() { return deltaComponent.getZoomButton(); }
+    public JButton getCvdZoomBtn() { return cvdComponent.getZoomButton(); }
+    public JButton getVolumeRatioZoomBtn() { return volumeRatioComponent.getZoomButton(); }
+    public JButton getWhaleZoomBtn() { return whaleComponent.getZoomButton(); }
+    public JButton getRetailZoomBtn() { return retailComponent.getZoomButton(); }
+    public JButton getFundingZoomBtn() { return fundingComponent.getZoomButton(); }
 
     /**
      * Update zoom button states.
-     * @param zoomedIndex Index of zoomed indicator (-1 for none, 0=RSI, 1=MACD, 2=ATR, 3=Delta, 4=CVD, 5=VolumeRatio, 6=Whale, 7=Funding)
+     * @param zoomedIndex Index of zoomed indicator (-1 for none, 0=RSI, 1=MACD, 2=ATR, 3=Delta, 4=CVD, 5=VolumeRatio, 6=Whale, 7=Retail, 8=Funding)
      */
     public void updateZoomButtonStates(int zoomedIndex) {
-        JButton[] btns = {rsiZoomBtn, macdZoomBtn, atrZoomBtn, deltaZoomBtn, cvdZoomBtn, volumeRatioZoomBtn, whaleZoomBtn, fundingZoomBtn};
-        for (int i = 0; i < btns.length; i++) {
-            if (btns[i] != null) {
-                if (zoomedIndex == i) {
-                    btns[i].setText("\u2921"); // ⤡
-                    btns[i].setToolTipText("Restore chart size");
-                } else {
-                    btns[i].setText("\u2922"); // ⤢
-                    btns[i].setToolTipText("Zoom chart");
-                }
-            }
+        ChartComponent[] components = {rsiComponent, macdComponent, atrComponent, deltaComponent, cvdComponent, volumeRatioComponent, whaleComponent, retailComponent, fundingComponent};
+        for (int i = 0; i < components.length; i++) {
+            components[i].setZoomed(zoomedIndex == i);
         }
     }
 
@@ -909,14 +830,15 @@ public class IndicatorChartsManager {
      * Add mouse wheel listener to all chart panels.
      */
     public void addMouseWheelListener(java.awt.event.MouseWheelListener listener) {
-        rsiChartPanel.addMouseWheelListener(listener);
-        macdChartPanel.addMouseWheelListener(listener);
-        atrChartPanel.addMouseWheelListener(listener);
-        deltaChartPanel.addMouseWheelListener(listener);
-        cvdChartPanel.addMouseWheelListener(listener);
-        volumeRatioChartPanel.addMouseWheelListener(listener);
-        whaleChartPanel.addMouseWheelListener(listener);
-        fundingChartPanel.addMouseWheelListener(listener);
+        rsiComponent.getChartPanel().addMouseWheelListener(listener);
+        macdComponent.getChartPanel().addMouseWheelListener(listener);
+        atrComponent.getChartPanel().addMouseWheelListener(listener);
+        deltaComponent.getChartPanel().addMouseWheelListener(listener);
+        cvdComponent.getChartPanel().addMouseWheelListener(listener);
+        volumeRatioComponent.getChartPanel().addMouseWheelListener(listener);
+        whaleComponent.getChartPanel().addMouseWheelListener(listener);
+        retailComponent.getChartPanel().addMouseWheelListener(listener);
+        fundingComponent.getChartPanel().addMouseWheelListener(listener);
     }
 
     /**
@@ -930,6 +852,7 @@ public class IndicatorChartsManager {
         updateCvdChart(candles);
         updateVolumeRatioChart(candles);
         updateWhaleChart(candles);
+        updateRetailChart(candles);
         updateFundingChart(candles);
     }
 
@@ -938,9 +861,9 @@ public class IndicatorChartsManager {
      */
     public void updateYAxisAutoRange(boolean fitYAxisToVisible) {
         // MACD, ATR, Delta, Funding follow standard auto-range
-        JFreeChart[] charts = {macdChart, atrChart, deltaChart, fundingChart};
-        for (JFreeChart chart : charts) {
-            if (chart == null) continue;
+        ChartComponent[] standardCharts = {macdComponent, atrComponent, deltaComponent, fundingComponent};
+        for (ChartComponent comp : standardCharts) {
+            JFreeChart chart = comp.getChart();
             XYPlot plot = chart.getXYPlot();
             plot.getRangeAxis().setAutoRange(true);
             if (fitYAxisToVisible) {
@@ -949,14 +872,12 @@ public class IndicatorChartsManager {
         }
 
         // RSI: fixed 0-100 range in Full Y mode, auto in Fit Y mode
-        if (rsiChart != null) {
-            if (fitYAxisToVisible) {
-                rsiChart.getXYPlot().getRangeAxis().setAutoRange(true);
-                rsiChart.getXYPlot().configureRangeAxes();
-            } else {
-                rsiChart.getXYPlot().getRangeAxis().setAutoRange(false);
-                rsiChart.getXYPlot().getRangeAxis().setRange(0, 100);
-            }
+        if (fitYAxisToVisible) {
+            rsiComponent.getChart().getXYPlot().getRangeAxis().setAutoRange(true);
+            rsiComponent.getChart().getXYPlot().configureRangeAxes();
+        } else {
+            rsiComponent.getChart().getXYPlot().getRangeAxis().setAutoRange(false);
+            rsiComponent.getChart().getXYPlot().getRangeAxis().setRange(0, 100);
         }
     }
 }

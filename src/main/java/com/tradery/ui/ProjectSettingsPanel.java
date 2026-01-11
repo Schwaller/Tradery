@@ -2,13 +2,15 @@ package com.tradery.ui;
 
 import com.tradery.model.PositionSizingType;
 import com.tradery.model.Strategy;
+import com.tradery.ui.theme.Theme;
+import com.tradery.ui.theme.ThemeManager;
 
 import javax.swing.*;
 import java.awt.*;
 
 /**
  * Panel for editing project-specific backtest settings.
- * Includes capital, position sizing, fees, and slippage.
+ * Includes capital, position sizing, fees, slippage, and theme.
  * (Symbol and timeframe are in the toolbar)
  */
 public class ProjectSettingsPanel extends JPanel {
@@ -17,6 +19,7 @@ public class ProjectSettingsPanel extends JPanel {
     private JComboBox<String> positionSizingCombo;
     private JSpinner feeSpinner;
     private JSpinner slippageSpinner;
+    private JComboBox<String> themeCombo;
     private JLabel capitalLabel;
 
     private static final String[] POSITION_SIZING_TYPES = {
@@ -56,6 +59,19 @@ public class ProjectSettingsPanel extends JPanel {
         slippageSpinner = new JSpinner(new SpinnerNumberModel(0.05, 0.0, 1.0, 0.01));
         JSpinner.NumberEditor slipEditor = new JSpinner.NumberEditor(slippageSpinner, "0.00'%'");
         slippageSpinner.setEditor(slipEditor);
+
+        // Theme selector
+        themeCombo = new JComboBox<>();
+        for (Theme theme : ThemeManager.getInstance().getAvailableThemes()) {
+            themeCombo.addItem(theme.getName());
+        }
+        themeCombo.setSelectedItem(ThemeManager.getInstance().getCurrentTheme().getName());
+        themeCombo.addActionListener(e -> {
+            String selected = (String) themeCombo.getSelectedItem();
+            if (selected != null) {
+                ThemeManager.getInstance().setTheme(selected);
+            }
+        });
 
         // Wire up change listeners
         capitalSpinner.addChangeListener(e -> fireChange());
@@ -99,6 +115,10 @@ public class ProjectSettingsPanel extends JPanel {
         // Slippage row
         settingsGrid.add(new JLabel("Slippage:"), new GridBagConstraints(0, 3, 1, 1, 0, 0, GridBagConstraints.WEST, GridBagConstraints.NONE, new Insets(2, 0, 2, 8), 0, 0));
         settingsGrid.add(slippageSpinner, new GridBagConstraints(1, 3, 1, 1, 1, 0, GridBagConstraints.WEST, GridBagConstraints.HORIZONTAL, new Insets(2, 0, 2, 0), 0, 0));
+
+        // Theme row
+        settingsGrid.add(new JLabel("Theme:"), new GridBagConstraints(0, 4, 1, 1, 0, 0, GridBagConstraints.WEST, GridBagConstraints.NONE, new Insets(2, 0, 2, 8), 0, 0));
+        settingsGrid.add(themeCombo, new GridBagConstraints(1, 4, 1, 1, 1, 0, GridBagConstraints.WEST, GridBagConstraints.HORIZONTAL, new Insets(2, 0, 2, 0), 0, 0));
 
         add(title, BorderLayout.NORTH);
         add(settingsGrid, BorderLayout.CENTER);

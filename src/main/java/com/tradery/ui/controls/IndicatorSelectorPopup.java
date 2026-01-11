@@ -58,6 +58,7 @@ public class IndicatorSelectorPopup extends JDialog {
     private JCheckBox cvdCheckbox;
     private JCheckBox volumeRatioCheckbox;
     private JCheckBox whaleCheckbox;
+    private JCheckBox retailCheckbox;
     private JLabel whaleLabel;
     private JSpinner whaleThresholdSpinner;
 
@@ -139,6 +140,7 @@ public class IndicatorSelectorPopup extends JDialog {
         contentPane.add(createCvdRow());
         contentPane.add(createVolumeRatioRow());
         contentPane.add(createWhaleRow());
+        contentPane.add(createRetailRow());
 
         contentPane.add(Box.createVerticalStrut(8));
 
@@ -311,6 +313,16 @@ public class IndicatorSelectorPopup extends JDialog {
         return row;
     }
 
+    private JPanel createRetailRow() {
+        retailCheckbox = new JCheckBox("Retail Delta");
+        retailCheckbox.setToolTipText("Show delta from trades below whale threshold");
+        JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
+        row.setAlignmentX(Component.LEFT_ALIGNMENT);
+        row.add(retailCheckbox);
+        retailCheckbox.addActionListener(e -> scheduleUpdate());
+        return row;
+    }
+
     private JPanel createFundingRow() {
         fundingCheckbox = new JCheckBox("Funding Rate");
         JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
@@ -476,6 +488,8 @@ public class IndicatorSelectorPopup extends JDialog {
         cvdCheckbox.setSelected(chartPanel.isCvdChartEnabled());
         volumeRatioCheckbox.setSelected(chartPanel.isVolumeRatioChartEnabled());
         whaleCheckbox.setSelected(chartPanel.isWhaleChartEnabled());
+        retailCheckbox.setSelected(chartPanel.isRetailChartEnabled());
+        whaleThresholdSpinner.setValue((int) chartPanel.getWhaleThreshold());
 
         // Funding
         fundingCheckbox.setSelected(chartPanel.isFundingChartEnabled());
@@ -534,6 +548,7 @@ public class IndicatorSelectorPopup extends JDialog {
         chartPanel.setCvdChartEnabled(cvdCheckbox.isSelected());
         chartPanel.setVolumeRatioChartEnabled(volumeRatioCheckbox.isSelected());
         chartPanel.setWhaleChartEnabled(whaleCheckbox.isSelected(), threshold);
+        chartPanel.setRetailChartEnabled(retailCheckbox.isSelected(), threshold);
 
         // Funding
         chartPanel.setFundingChartEnabled(fundingCheckbox.isSelected());

@@ -34,6 +34,10 @@ public class CrosshairManager {
     private Crosshair macdCrosshair;
     private Crosshair atrCrosshair;
     private Crosshair deltaCrosshair;
+    private Crosshair cvdCrosshair;
+    private Crosshair volumeRatioCrosshair;
+    private Crosshair whaleCrosshair;
+    private Crosshair retailCrosshair;
     private Crosshair fundingCrosshair;
 
     // Status update callback
@@ -100,18 +104,30 @@ public class CrosshairManager {
             org.jfree.chart.ChartPanel macdPanel,
             org.jfree.chart.ChartPanel atrPanel,
             org.jfree.chart.ChartPanel deltaPanel,
+            org.jfree.chart.ChartPanel cvdPanel,
+            org.jfree.chart.ChartPanel volumeRatioPanel,
+            org.jfree.chart.ChartPanel whalePanel,
+            org.jfree.chart.ChartPanel retailPanel,
             org.jfree.chart.ChartPanel fundingPanel) {
 
         rsiCrosshair = createCrosshair();
         macdCrosshair = createCrosshair();
         atrCrosshair = createCrosshair();
         deltaCrosshair = createCrosshair();
+        cvdCrosshair = createCrosshair();
+        volumeRatioCrosshair = createCrosshair();
+        whaleCrosshair = createCrosshair();
+        retailCrosshair = createCrosshair();
         fundingCrosshair = createCrosshair();
 
         addCrosshairOverlay(rsiPanel, rsiCrosshair);
         addCrosshairOverlay(macdPanel, macdCrosshair);
         addCrosshairOverlay(atrPanel, atrCrosshair);
         if (deltaPanel != null) addCrosshairOverlay(deltaPanel, deltaCrosshair);
+        if (cvdPanel != null) addCrosshairOverlay(cvdPanel, cvdCrosshair);
+        if (volumeRatioPanel != null) addCrosshairOverlay(volumeRatioPanel, volumeRatioCrosshair);
+        if (whalePanel != null) addCrosshairOverlay(whalePanel, whaleCrosshair);
+        if (retailPanel != null) addCrosshairOverlay(retailPanel, retailCrosshair);
         if (fundingPanel != null) addCrosshairOverlay(fundingPanel, fundingCrosshair);
 
         ChartMouseListener listener = createMouseListener();
@@ -119,6 +135,10 @@ public class CrosshairManager {
         macdPanel.addChartMouseListener(listener);
         atrPanel.addChartMouseListener(listener);
         if (deltaPanel != null) deltaPanel.addChartMouseListener(listener);
+        if (cvdPanel != null) cvdPanel.addChartMouseListener(listener);
+        if (volumeRatioPanel != null) volumeRatioPanel.addChartMouseListener(listener);
+        if (whalePanel != null) whalePanel.addChartMouseListener(listener);
+        if (retailPanel != null) retailPanel.addChartMouseListener(listener);
         if (fundingPanel != null) fundingPanel.addChartMouseListener(listener);
     }
 
@@ -181,6 +201,10 @@ public class CrosshairManager {
         if (macdCrosshair != null) macdCrosshair.setValue(domainValue);
         if (atrCrosshair != null) atrCrosshair.setValue(domainValue);
         if (deltaCrosshair != null) deltaCrosshair.setValue(domainValue);
+        if (cvdCrosshair != null) cvdCrosshair.setValue(domainValue);
+        if (volumeRatioCrosshair != null) volumeRatioCrosshair.setValue(domainValue);
+        if (whaleCrosshair != null) whaleCrosshair.setValue(domainValue);
+        if (retailCrosshair != null) retailCrosshair.setValue(domainValue);
         if (fundingCrosshair != null) fundingCrosshair.setValue(domainValue);
     }
 

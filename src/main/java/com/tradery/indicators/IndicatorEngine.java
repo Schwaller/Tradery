@@ -657,6 +657,22 @@ public class IndicatorEngine {
     }
 
     /**
+     * Get retail delta array for all bars - delta from trades below threshold only.
+     */
+    public double[] getRetailDelta(double threshold) {
+        if (!hasAggTrades()) {
+            double[] result = new double[candles != null ? candles.size() : 0];
+            java.util.Arrays.fill(result, Double.NaN);
+            return result;
+        }
+        String key = "retailDelta:" + threshold;
+        if (!cache.containsKey(key)) {
+            cache.put(key, OrderflowIndicators.retailDelta(aggTrades, candles, resolution, threshold));
+        }
+        return (double[]) cache.get(key);
+    }
+
+    /**
      * Get buy volume array for all bars.
      */
     public double[] getBuyVolume() {

@@ -168,13 +168,18 @@ public class ChartsPanel extends JPanel {
             indicatorManager.getMacdChartPanel(),
             indicatorManager.getAtrChartPanel(),
             indicatorManager.getDeltaChartPanel(),
+            indicatorManager.getCvdChartPanel(),
+            indicatorManager.getVolumeRatioChartPanel(),
+            indicatorManager.getWhaleChartPanel(),
+            indicatorManager.getRetailChartPanel(),
             indicatorManager.getFundingChartPanel());
 
         // Sync domain axes
         JFreeChart[] otherCharts = {
             volumeChart, equityChart, comparisonChart, capitalUsageChart, tradePLChart,
             indicatorManager.getRsiChart(), indicatorManager.getMacdChart(), indicatorManager.getAtrChart(),
-            indicatorManager.getDeltaChart(), indicatorManager.getFundingChart()
+            indicatorManager.getDeltaChart(), indicatorManager.getCvdChart(), indicatorManager.getVolumeRatioChart(),
+            indicatorManager.getWhaleChart(), indicatorManager.getRetailChart(), indicatorManager.getFundingChart()
         };
         crosshairManager.syncDomainAxes(priceChart, otherCharts);
     }
@@ -498,6 +503,18 @@ public class ChartsPanel extends JPanel {
         indicatorManager.setWhaleThreshold(threshold);
     }
 
+    public double getWhaleThreshold() {
+        return indicatorManager.getWhaleThreshold();
+    }
+
+    public void setRetailChartEnabled(boolean enabled, double threshold) {
+        indicatorManager.setRetailChartEnabled(enabled, threshold);
+    }
+
+    public boolean isRetailChartEnabled() {
+        return indicatorManager.isRetailChartEnabled();
+    }
+
     public void setFundingChartEnabled(boolean enabled) {
         indicatorManager.setFundingChartEnabled(enabled);
     }
@@ -550,6 +567,36 @@ public class ChartsPanel extends JPanel {
 
     public boolean isTradePLChartEnabled() {
         return zoomManager.isTradePLChartEnabled();
+    }
+
+    /**
+     * Refresh all chart styles when theme changes.
+     */
+    public void refreshTheme() {
+        // Re-stylize all core charts
+        ChartStyles.stylizeChart(priceChart, "Price");
+        ChartStyles.stylizeChart(volumeChart, "Volume");
+        ChartStyles.stylizeChart(equityChart, "Equity");
+        ChartStyles.stylizeChart(comparisonChart, "Strategy vs Buy & Hold");
+        ChartStyles.stylizeChart(capitalUsageChart, "Capital Usage");
+        ChartStyles.stylizeChart(tradePLChart, "Trade P&L");
+
+        // Re-stylize indicator charts
+        ChartStyles.stylizeChart(indicatorManager.getRsiChart(), "RSI");
+        ChartStyles.stylizeChart(indicatorManager.getMacdChart(), "MACD");
+        ChartStyles.stylizeChart(indicatorManager.getAtrChart(), "ATR");
+        ChartStyles.stylizeChart(indicatorManager.getDeltaChart(), "Delta");
+        ChartStyles.stylizeChart(indicatorManager.getCvdChart(), "CVD");
+        ChartStyles.stylizeChart(indicatorManager.getVolumeRatioChart(), "Buy/Sell Volume");
+        ChartStyles.stylizeChart(indicatorManager.getWhaleChart(), "Whale Delta");
+        ChartStyles.stylizeChart(indicatorManager.getRetailChart(), "Retail Delta");
+        ChartStyles.stylizeChart(indicatorManager.getFundingChart(), "Funding");
+
+        // Update container background
+        chartsContainer.setBackground(ChartStyles.BACKGROUND_COLOR());
+
+        // Force repaint
+        repaint();
     }
 
     // ===== Chart Update Methods =====

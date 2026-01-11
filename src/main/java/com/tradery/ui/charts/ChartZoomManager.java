@@ -254,6 +254,9 @@ public class ChartZoomManager {
             if (indicatorManager.isWhaleChartEnabled()) {
                 visibleCharts.add(indicatorManager.getWhaleChartWrapper());
             }
+            if (indicatorManager.isRetailChartEnabled()) {
+                visibleCharts.add(indicatorManager.getRetailChartWrapper());
+            }
             if (indicatorManager.isFundingChartEnabled()) {
                 visibleCharts.add(indicatorManager.getFundingChartWrapper());
             }
@@ -281,6 +284,7 @@ public class ChartZoomManager {
                          indicatorManager.getCvdChartWrapper(),
                          indicatorManager.getVolumeRatioChartWrapper(),
                          indicatorManager.getWhaleChartWrapper(),
+                         indicatorManager.getRetailChartWrapper(),
                          indicatorManager.getFundingChartWrapper()} :
             new JPanel[0];
 
@@ -311,7 +315,7 @@ public class ChartZoomManager {
                 }
             }
 
-            // Set weight based on zoom state
+            // Set weight based on zoom state - equal height for all charts
             if (isZoomed) {
                 gbc.weighty = 0.65;
             } else if (zoomedChartIndex >= 0 || indicatorZoomedIndex >= 0) {

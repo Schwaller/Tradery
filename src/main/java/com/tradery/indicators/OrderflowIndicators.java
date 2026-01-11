@@ -421,6 +421,49 @@ public final class OrderflowIndicators {
     }
 
     /**
+     * Calculate retail delta array for all candles (trades below threshold).
+     */
+    public static double[] retailDelta(List<AggTrade> trades, List<Candle> candles,
+                                        String resolution, double threshold) {
+        int n = candles.size();
+        double[] result = new double[n];
+
+        if (trades == null || trades.isEmpty() || candles.isEmpty()) {
+            java.util.Arrays.fill(result, Double.NaN);
+            return result;
+        }
+
+        long resolutionMs = getResolutionMs(resolution);
+        int tradeIdx = 0;
+
+        for (int i = 0; i < n; i++) {
+            long candleStart = candles.get(i).timestamp();
+            long candleEnd = candleStart + resolutionMs;
+
+            double delta = 0;
+
+            // Skip trades before this candle
+            while (tradeIdx < trades.size() && trades.get(tradeIdx).timestamp() < candleStart) {
+                tradeIdx++;
+            }
+
+            // Process trades within this candle (trades below threshold)
+            int tempIdx = tradeIdx;
+            while (tempIdx < trades.size() && trades.get(tempIdx).timestamp() < candleEnd) {
+                AggTrade trade = trades.get(tempIdx);
+                if (trade.notional() < threshold) {
+                    delta += trade.delta();
+                }
+                tempIdx++;
+            }
+
+            result[i] = delta;
+        }
+
+        return result;
+    }
+
+    /**
      * Calculate whale buy volume array for all candles.
      */
     public static double[] whaleBuyVolume(List<AggTrade> trades, List<Candle> candles,

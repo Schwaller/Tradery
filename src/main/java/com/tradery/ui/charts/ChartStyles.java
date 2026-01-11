@@ -1,5 +1,7 @@
 package com.tradery.ui.charts;
 
+import com.tradery.ui.theme.Theme;
+import com.tradery.ui.theme.ThemeManager;
 import org.jfree.chart.JFreeChart;
 import org.jfree.chart.annotations.XYTitleAnnotation;
 import org.jfree.chart.axis.DateAxis;
@@ -14,12 +16,23 @@ import java.text.SimpleDateFormat;
 
 /**
  * Central styling constants and methods for charts.
+ * Uses ThemeManager for dynamic theme colors.
  */
 public final class ChartStyles {
 
     private ChartStyles() {} // Prevent instantiation
 
-    // ===== Background Colors =====
+    // ===== Theme-aware color getters =====
+    private static Theme theme() { return ThemeManager.theme(); }
+
+    // ===== Background Colors (dynamic) =====
+    public static Color BACKGROUND_COLOR() { return theme().getBackgroundColor(); }
+    public static Color PLOT_BACKGROUND_COLOR() { return theme().getPlotBackgroundColor(); }
+    public static Color GRIDLINE_COLOR() { return theme().getGridlineColor(); }
+    public static Color TEXT_COLOR() { return theme().getTextColor(); }
+    public static Color CROSSHAIR_COLOR() { return theme().getCrosshairColor(); }
+
+    // ===== Legacy static fields (for compatibility) =====
     public static final Color BACKGROUND_COLOR = new Color(30, 30, 35);
     public static final Color PLOT_BACKGROUND_COLOR = new Color(20, 20, 25);
     public static final Color GRIDLINE_COLOR = new Color(60, 60, 65);
@@ -127,25 +140,26 @@ public final class ChartStyles {
     // ===== Styling Methods =====
 
     /**
-     * Apply standard dark theme styling to a chart.
+     * Apply theme styling to a chart.
      */
     public static void stylizeChart(JFreeChart chart, String title) {
-        chart.setBackgroundPaint(BACKGROUND_COLOR);
+        Theme t = theme();
+        chart.setBackgroundPaint(t.getBackgroundColor());
 
         XYPlot plot = chart.getXYPlot();
-        plot.setBackgroundPaint(PLOT_BACKGROUND_COLOR);
-        plot.setDomainGridlinePaint(GRIDLINE_COLOR);
-        plot.setRangeGridlinePaint(GRIDLINE_COLOR);
+        plot.setBackgroundPaint(t.getPlotBackgroundColor());
+        plot.setDomainGridlinePaint(t.getGridlineColor());
+        plot.setRangeGridlinePaint(t.getGridlineColor());
         plot.setOutlineVisible(false);
 
         // Date axis formatting
         if (plot.getDomainAxis() instanceof DateAxis dateAxis) {
             dateAxis.setDateFormatOverride(new SimpleDateFormat("MMM d"));
-            dateAxis.setTickLabelPaint(Color.LIGHT_GRAY);
+            dateAxis.setTickLabelPaint(t.getAxisLabelColor());
             dateAxis.setAxisLineVisible(false);
         }
 
-        plot.getRangeAxis().setTickLabelPaint(Color.LIGHT_GRAY);
+        plot.getRangeAxis().setTickLabelPaint(t.getAxisLabelColor());
         plot.getRangeAxis().setAxisLineVisible(false);
         plot.getRangeAxis().setFixedDimension(60);  // Fixed width for alignment
 

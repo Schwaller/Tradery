@@ -7,7 +7,11 @@ import com.tradery.model.*;
 import com.tradery.model.PhaseAnalysisResult.Recommendation;
 
 import javax.swing.*;
+import javax.swing.event.ListSelectionEvent;
+import javax.swing.event.ListSelectionListener;
 import javax.swing.table.DefaultTableCellRenderer;
+import javax.swing.table.JTableHeader;
+import javax.swing.table.TableColumn;
 import java.awt.*;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
@@ -29,6 +33,23 @@ public class PhaseAnalysisWindow extends JFrame {
     private JLabel statusLabel;
     private JButton applyButton;
     private JButton closeButton;
+    private JPanel detailsPanel;
+    private JLabel detailsLabel;
+
+    // Column tooltips
+    private static final String[] COLUMN_TOOLTIPS = {
+        "Phase name",
+        "Phase category (Technical, Time, Calendar, Moon, Funding, Custom)",
+        "Number of trades that entered while this phase was ACTIVE",
+        "Win rate (%) for trades that entered while phase was ACTIVE",
+        "Total return (%) for trades that entered while phase was ACTIVE",
+        "Profit Factor for trades that entered while phase was ACTIVE",
+        "Number of trades that entered while this phase was INACTIVE",
+        "Win rate (%) for trades that entered while phase was INACTIVE",
+        "Total return (%) for trades that entered while phase was INACTIVE",
+        "Profit Factor for trades that entered while phase was INACTIVE",
+        "Recommendation: REQUIRE (better in phase), EXCLUDE (worse in phase), or neutral"
+    };
 
     private final CandleStore candleStore;
     private final PhaseStore phaseStore;
@@ -120,6 +141,36 @@ public class PhaseAnalysisWindow extends JFrame {
         }
         table.getColumnModel().getColumn(10).setCellRenderer(new RecommendationCellRenderer());
 
+        // Column header tooltips
+        table.setTableHeader(new JTableHeader(table.getColumnModel()) {
+            @Override
+            public String getToolTipText(MouseEvent e) {
+                int col = columnAtPoint(e.getPoint());
+                if (col >= 0 && col < COLUMN_TOOLTIPS.length) {
+                    return COLUMN_TOOLTIPS[col];
+                }
+                return null;
+            }
+        });
+
+        // Row selection listener for details panel
+        table.getSelectionModel().addListSelectionListener(e -> {
+            if (!e.getValueIsAdjusting()) {
+                updateDetailsPanel();
+            }
+        });
+
+        // Details panel
+        detailsPanel = new JPanel(new BorderLayout(8, 4));
+        detailsPanel.setBorder(BorderFactory.createCompoundBorder(
+            BorderFactory.createMatteBorder(1, 0, 0, 0, Color.LIGHT_GRAY),
+            BorderFactory.createEmptyBorder(8, 0, 0, 0)
+        ));
+        detailsLabel = new JLabel("Select a phase to see details");
+        detailsLabel.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 11));
+        detailsLabel.setForeground(Color.GRAY);
+        detailsPanel.add(detailsLabel, BorderLayout.CENTER);
+
         // Progress bar
         progressBar = new JProgressBar(0, 100);
         progressBar.setStringPainted(true);
@@ -156,10 +207,18 @@ public class PhaseAnalysisWindow extends JFrame {
 
         contentPane.add(topPanel, BorderLayout.NORTH);
 
+        // Center panel with table and details
+        JPanel centerPanel = new JPanel(new BorderLayout(0, 8));
+
         // Table scroll pane
         JScrollPane scrollPane = new JScrollPane(table);
         scrollPane.setHorizontalScrollBarPolicy(JScrollPane.HORIZONTAL_SCROLLBAR_AS_NEEDED);
-        contentPane.add(scrollPane, BorderLayout.CENTER);
+        centerPanel.add(scrollPane, BorderLayout.CENTER);
+
+        // Details panel below table
+        centerPanel.add(detailsPanel, BorderLayout.SOUTH);
+
+        contentPane.add(centerPanel, BorderLayout.CENTER);
 
         // Bottom panel with progress and buttons
         JPanel bottomPanel = new JPanel(new BorderLayout(8, 8));
@@ -293,6 +352,90 @@ public class PhaseAnalysisWindow extends JFrame {
         statusLabel.setText("Applied " + toRequire.size() + " required, " + toExclude.size() + " excluded phases");
     }
 
+    private void updateDetailsPanel() {
+        int row = table.getSelectedRow();
+        if (row < 0) {
+            detailsLabel.setText("Select a phase to see details");
+            detailsLabel.setForeground(Color.GRAY);
+            return;
+        }
+
+        PhaseAnalysisResult r = tableModel.getResultAt(row);
+        if (r == null) {
+            detailsLabel.setText("No data");
+            return;
+        }
+
+        // Build detailed HTML summary
+        StringBuilder sb = new StringBuilder("<html><body style='font-family: monospace; font-size: 11px;'>");
+
+        // Phase info
+        sb.append("<b>").append(r.phaseName()).append("</b> (").append(r.phaseCategory()).append(")<br><br>");
+
+        // Comparison table
+        sb.append("<table cellpadding='2'>");
+        sb.append("<tr><td></td><td><b>In Phase</b></td><td><b>Out of Phase</b></td><td><b>Difference</b></td></tr>");
+
+        // Trades
+        sb.append("<tr><td>Trades:</td><td>").append(r.tradesInPhase()).append("</td>");
+        sb.append("<td>").append(r.tradesOutOfPhase()).append("</td>");
+        sb.append("<td>-</td></tr>");
+
+        // Get theme colors
+        String successHex = getSuccessHex();
+        String errorHex = getErrorHex();
+        String neutralHex = getNeutralHex();
+
+        // Win Rate
+        double wrDiff = r.winRateDifference();
+        String wrColor = wrDiff > 0 ? successHex : (wrDiff < 0 ? errorHex : neutralHex);
+        sb.append("<tr><td>Win Rate:</td><td>").append(String.format("%.1f%%", r.winRateInPhase())).append("</td>");
+        sb.append("<td>").append(String.format("%.1f%%", r.winRateOutOfPhase())).append("</td>");
+        sb.append("<td style='color:").append(wrColor).append("'>").append(String.format("%+.1f%%", wrDiff)).append("</td></tr>");
+
+        // Return
+        double retDiff = r.returnDifference();
+        String retColor = retDiff > 0 ? successHex : (retDiff < 0 ? errorHex : neutralHex);
+        sb.append("<tr><td>Return:</td><td>").append(String.format("%.1f%%", r.totalReturnInPhase())).append("</td>");
+        sb.append("<td>").append(String.format("%.1f%%", r.totalReturnOutOfPhase())).append("</td>");
+        sb.append("<td style='color:").append(retColor).append("'>").append(String.format("%+.1f%%", retDiff)).append("</td></tr>");
+
+        // Profit Factor
+        double pfDiff = r.profitFactorDifference();
+        String pfColor = pfDiff > 0 ? successHex : (pfDiff < 0 ? errorHex : neutralHex);
+        String pfIn = r.profitFactorInPhase() > 99 ? ">99" : String.format("%.2f", r.profitFactorInPhase());
+        String pfOut = r.profitFactorOutOfPhase() > 99 ? ">99" : String.format("%.2f", r.profitFactorOutOfPhase());
+        sb.append("<tr><td>Profit Factor:</td><td>").append(pfIn).append("</td>");
+        sb.append("<td>").append(pfOut).append("</td>");
+        sb.append("<td style='color:").append(pfColor).append("'>").append(String.format("%+.2f", pfDiff)).append("</td></tr>");
+
+        sb.append("</table><br>");
+
+        // Recommendation explanation
+        String recText;
+        String recColor;
+        switch (r.recommendation()) {
+            case REQUIRE -> {
+                recText = "REQUIRE this phase - performance is significantly better when active";
+                recColor = successHex;
+            }
+            case EXCLUDE -> {
+                recText = "EXCLUDE this phase - performance is significantly worse when active";
+                recColor = errorHex;
+            }
+            default -> {
+                recText = "No strong recommendation - difference not significant or insufficient data";
+                recColor = neutralHex;
+            }
+        }
+        sb.append("<span style='color:").append(recColor).append("'><b>").append(recText).append("</b></span>");
+
+        sb.append("</body></html>");
+
+        detailsLabel.setText(sb.toString());
+        detailsLabel.setForeground(Color.BLACK);
+    }
+
     /**
      * Renderer for numeric columns with formatting.
      */
@@ -321,9 +464,6 @@ public class PhaseAnalysisWindow extends JFrame {
      * Renderer for recommendation column with color coding.
      */
     private class RecommendationCellRenderer extends DefaultTableCellRenderer {
-        private static final Color REQUIRE_COLOR = new Color(76, 175, 80);
-        private static final Color EXCLUDE_COLOR = new Color(244, 67, 54);
-
         RecommendationCellRenderer() {
             setHorizontalAlignment(SwingConstants.CENTER);
             setFont(getFont().deriveFont(Font.BOLD));
@@ -337,15 +477,42 @@ public class PhaseAnalysisWindow extends JFrame {
             if (!isSelected) {
                 String text = value != null ? value.toString() : "";
                 if ("REQUIRE".equals(text)) {
-                    setForeground(REQUIRE_COLOR);
+                    setForeground(getSuccessColor());
                 } else if ("EXCLUDE".equals(text)) {
-                    setForeground(EXCLUDE_COLOR);
+                    setForeground(getErrorColor());
                 } else {
-                    setForeground(Color.GRAY);
+                    setForeground(UIManager.getColor("Label.disabledForeground"));
                 }
             }
 
             return c;
         }
+    }
+
+    // Theme-aware colors using FlatLaf
+    private static Color getSuccessColor() {
+        Color c = UIManager.getColor("Actions.Green");
+        return c != null ? c : new Color(76, 175, 80);
+    }
+
+    private static Color getErrorColor() {
+        Color c = UIManager.getColor("Actions.Red");
+        return c != null ? c : new Color(244, 67, 54);
+    }
+
+    private static String getSuccessHex() {
+        Color c = getSuccessColor();
+        return String.format("#%02x%02x%02x", c.getRed(), c.getGreen(), c.getBlue());
+    }
+
+    private static String getErrorHex() {
+        Color c = getErrorColor();
+        return String.format("#%02x%02x%02x", c.getRed(), c.getGreen(), c.getBlue());
+    }
+
+    private static String getNeutralHex() {
+        Color c = UIManager.getColor("Label.disabledForeground");
+        if (c == null) c = Color.GRAY;
+        return String.format("#%02x%02x%02x", c.getRed(), c.getGreen(), c.getBlue());
     }
 }

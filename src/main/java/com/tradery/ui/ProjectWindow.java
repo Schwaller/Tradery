@@ -182,6 +182,9 @@ public class ProjectWindow extends JFrame {
         // Wire up chart status callback
         chartPanel.setOnStatusUpdate(this::setStatus);
 
+        // Wire up theme change listener
+        com.tradery.ui.theme.ThemeManager.getInstance().addThemeChangeListener(chartPanel::refreshTheme);
+
         // Wire up trade table hover/select to chart highlight
         tradeTablePanel.setOnTradeHover(chartPanel::highlightTrades);
         tradeTablePanel.setOnTradeSelect(chartPanel::highlightTrades);
