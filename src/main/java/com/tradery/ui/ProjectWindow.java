@@ -38,7 +38,7 @@ public class ProjectWindow extends JFrame {
 
     // Panels
     private StrategyEditorPanel editorPanel;
-    private ProjectSettingsPanel settingsPanel;
+    private BacktestSettingsPanel settingsPanel;
     private ChartsPanel chartPanel;
     private MetricsPanel metricsPanel;
     private TradeTablePanel tradeTablePanel;
@@ -73,7 +73,7 @@ public class ProjectWindow extends JFrame {
     private AiTerminalPanel dockedTerminalPanel;
     private JPanel dockedTerminalWrapper;
     private JLabel terminalTitleLabel;
-    private JSplitPane tradeTerminalSplit;
+    private JSplitPane editorTerminalSplit;  // Vertical split: editor | terminal (left side)
     private boolean terminalDocked = true;
     private String currentAiType = null;  // "claude" or "codex" or null
 
@@ -174,7 +174,7 @@ public class ProjectWindow extends JFrame {
 
     private void initializeComponents() {
         editorPanel = new StrategyEditorPanel();
-        settingsPanel = new ProjectSettingsPanel();
+        settingsPanel = new BacktestSettingsPanel();
         chartPanel = new ChartsPanel();
         metricsPanel = new MetricsPanel();
         tradeTablePanel = new TradeTablePanel();
@@ -445,10 +445,40 @@ public class ProjectWindow extends JFrame {
         topPanel.add(toolbarPanel, BorderLayout.CENTER);
         contentPane.add(topPanel, BorderLayout.NORTH);
 
-        // Left side: Editor only
+        // Create docked terminal panel (initially hidden)
+        dockedTerminalPanel = new AiTerminalPanel();
+        dockedTerminalPanel.setOnFileChange(this::runBacktest);
+
+        // Terminal wrapper with header (undock button)
+        dockedTerminalWrapper = new JPanel(new BorderLayout(0, 0));
+        dockedTerminalWrapper.setVisible(false);
+
+        JPanel terminalHeader = new JPanel(new BorderLayout());
+        terminalHeader.setBorder(BorderFactory.createEmptyBorder(2, 4, 2, 4));
+        terminalTitleLabel = new JLabel("AI Terminal");
+        terminalTitleLabel.setFont(terminalTitleLabel.getFont().deriveFont(Font.BOLD, 11f));
+        JButton undockBtn = new JButton("Undock");
+        undockBtn.setFont(undockBtn.getFont().deriveFont(10f));
+        undockBtn.setMargin(new Insets(1, 4, 1, 4));
+        undockBtn.addActionListener(e -> undockTerminal());
+        terminalHeader.add(terminalTitleLabel, BorderLayout.WEST);
+        terminalHeader.add(undockBtn, BorderLayout.EAST);
+
+        dockedTerminalWrapper.add(terminalHeader, BorderLayout.NORTH);
+        dockedTerminalWrapper.add(dockedTerminalPanel, BorderLayout.CENTER);
+
+        // Left side: Editor on top, terminal on bottom (in vertical split)
+        editorTerminalSplit = new JSplitPane(JSplitPane.VERTICAL_SPLIT);
+        editorTerminalSplit.setBorder(null);
+        editorTerminalSplit.setDividerSize(4);
+        editorTerminalSplit.setResizeWeight(0.6);
+        editorTerminalSplit.setContinuousLayout(true);
+        editorTerminalSplit.setTopComponent(editorPanel);
+        editorTerminalSplit.setBottomComponent(dockedTerminalWrapper);
+
         JPanel leftPanel = new JPanel(new BorderLayout(0, 0));
         leftPanel.setPreferredSize(new Dimension(280, 0));
-        leftPanel.add(editorPanel, BorderLayout.CENTER);
+        leftPanel.add(editorTerminalSplit, BorderLayout.CENTER);
 
         // Add vertical separator on the right
         JSeparator verticalSeparator = new JSeparator(SwingConstants.VERTICAL);
@@ -469,46 +499,9 @@ public class ProjectWindow extends JFrame {
         rightTopPanel.add(settingsPanel, BorderLayout.NORTH);
         rightTopPanel.add(metricsWrapper, BorderLayout.CENTER);
 
-        // Create docked terminal panel (initially hidden)
-        dockedTerminalPanel = new AiTerminalPanel();
-        dockedTerminalPanel.setOnFileChange(this::runBacktest);
-
-        // Terminal wrapper with header (undock button)
-        dockedTerminalWrapper = new JPanel(new BorderLayout(0, 0));
-        dockedTerminalWrapper.setVisible(false);
-
-        JPanel terminalHeader = new JPanel(new BorderLayout());
-        terminalHeader.setBorder(BorderFactory.createEmptyBorder(2, 4, 2, 4));
-        terminalTitleLabel = new JLabel("AI Terminal");
-        terminalTitleLabel.setFont(terminalTitleLabel.getFont().deriveFont(Font.BOLD, 11f));
-        JButton undockBtn = new JButton("Undock");
-        undockBtn.setFont(undockBtn.getFont().deriveFont(10f));
-        undockBtn.setMargin(new Insets(1, 4, 1, 4));
-        undockBtn.addActionListener(e -> undockTerminal());
-        terminalHeader.add(terminalTitleLabel, BorderLayout.WEST);
-        terminalHeader.add(undockBtn, BorderLayout.EAST);
-
-        dockedTerminalWrapper.add(new JSeparator(), BorderLayout.NORTH);
-        dockedTerminalWrapper.add(terminalHeader, BorderLayout.CENTER);
-        dockedTerminalWrapper.add(dockedTerminalPanel, BorderLayout.SOUTH);
-
-        // Actually put terminal in center with header at north
-        dockedTerminalWrapper.removeAll();
-        dockedTerminalWrapper.add(terminalHeader, BorderLayout.NORTH);
-        dockedTerminalWrapper.add(dockedTerminalPanel, BorderLayout.CENTER);
-
-        // Vertical split: trade table | terminal
-        tradeTerminalSplit = new JSplitPane(JSplitPane.VERTICAL_SPLIT);
-        tradeTerminalSplit.setBorder(null);
-        tradeTerminalSplit.setDividerSize(4);
-        tradeTerminalSplit.setResizeWeight(0.6);
-        tradeTerminalSplit.setContinuousLayout(true);
-        tradeTerminalSplit.setTopComponent(tradeTablePanel);
-        tradeTerminalSplit.setBottomComponent(dockedTerminalWrapper);
-
         JPanel rightContent = new JPanel(new BorderLayout(0, 0));
         rightContent.add(rightTopPanel, BorderLayout.NORTH);
-        rightContent.add(tradeTerminalSplit, BorderLayout.CENTER);
+        rightContent.add(tradeTablePanel, BorderLayout.CENTER);
 
         // Wrap with vertical separator on left
         JPanel rightPanel = new JPanel(new BorderLayout(0, 0));
@@ -806,7 +799,7 @@ public class ProjectWindow extends JFrame {
         // Show and start
         if (terminalDocked) {
             dockedTerminalWrapper.setVisible(true);
-            tradeTerminalSplit.setDividerLocation(0.5);
+            editorTerminalSplit.setDividerLocation(0.5);
             dockedTerminalPanel.startAi(aiType, traderyDir, initialPrompt);
             dockedTerminalPanel.grabFocus();
             setStatus("Opened " + displayName + " for " + strategyName);
@@ -855,7 +848,7 @@ public class ProjectWindow extends JFrame {
         // Re-add to docked wrapper
         dockedTerminalWrapper.add(dockedTerminalPanel, BorderLayout.CENTER);
         dockedTerminalWrapper.setVisible(true);
-        tradeTerminalSplit.setDividerLocation(0.5);
+        editorTerminalSplit.setDividerLocation(0.5);
         dockedTerminalWrapper.revalidate();
         dockedTerminalWrapper.repaint();
 

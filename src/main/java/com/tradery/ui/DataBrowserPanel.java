@@ -1,5 +1,6 @@
 package com.tradery.ui;
 
+import com.tradery.data.DataConfig;
 import com.tradery.data.DataIntegrityChecker;
 import com.tradery.model.DataHealth;
 import com.tradery.model.DataStatus;
@@ -8,7 +9,10 @@ import javax.swing.*;
 import java.awt.*;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
+import java.io.BufferedReader;
 import java.io.File;
+import java.io.FileReader;
+import java.io.IOException;
 import java.time.YearMonth;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
@@ -60,7 +64,7 @@ public class DataBrowserPanel extends JPanel {
 
     public DataBrowserPanel() {
         this.checker = new DataIntegrityChecker();
-        this.aggTradesDir = new File(System.getProperty("user.home") + "/.tradery/data");
+        this.aggTradesDir = DataConfig.getInstance().getDataDir();
 
         setBackground(BACKGROUND);
         setPreferredSize(new Dimension(200, 300));

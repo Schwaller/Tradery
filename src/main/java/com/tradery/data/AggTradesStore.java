@@ -35,7 +35,7 @@ public class AggTradesStore {
     private Consumer<FetchProgress> progressCallback;
 
     public AggTradesStore() {
-        this.dataDir = new File(TraderyApp.USER_DIR, "data");
+        this.dataDir = DataConfig.getInstance().getDataDir();
         this.client = new AggTradesClient();
 
         if (!dataDir.exists()) {

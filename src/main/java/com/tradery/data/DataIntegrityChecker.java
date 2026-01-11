@@ -22,7 +22,7 @@ public class DataIntegrityChecker {
     private final File dataDir;
 
     public DataIntegrityChecker() {
-        this.dataDir = new File(TraderyApp.USER_DIR, "data");
+        this.dataDir = DataConfig.getInstance().getDataDir();
     }
 
     /**

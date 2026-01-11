@@ -740,16 +740,15 @@ public class IndicatorChartsManager {
         plot.setDataset(0, fundingDataset);
         plot.setDataset(1, avgDataset);
 
-        // Funding bar renderer (orange/blue based on sign)
-        XYBarRenderer fundingRenderer = new XYBarRenderer() {
+        // Funding line renderer (colored segments based on sign)
+        XYLineAndShapeRenderer fundingRenderer = new XYLineAndShapeRenderer(true, false) {
             @Override
             public Paint getItemPaint(int series, int item) {
                 double value = fundingDataset.getYValue(series, item);
                 return value >= 0 ? ChartStyles.FUNDING_POSITIVE : ChartStyles.FUNDING_NEGATIVE;
             }
         };
-        fundingRenderer.setShadowVisible(false);
-        fundingRenderer.setBarPainter(new StandardXYBarPainter());
+        fundingRenderer.setSeriesStroke(0, ChartStyles.THIN_STROKE);
         plot.setRenderer(0, fundingRenderer);
 
         // 8H average line renderer

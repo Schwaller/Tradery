@@ -1,336 +1,470 @@
 package com.tradery.ui;
 
+import com.tradery.ApplicationContext;
+import com.tradery.data.AggTradesStore;
+import com.tradery.data.CandleStore;
+import com.tradery.data.DataConfig;
+import com.tradery.data.DataIntegrityChecker;
+import com.tradery.model.DataHealth;
+import com.tradery.model.DataStatus;
+
 import javax.swing.*;
-import javax.swing.table.AbstractTableModel;
-import javax.swing.table.DefaultTableCellRenderer;
 import java.awt.*;
+import java.awt.event.WindowAdapter;
+import java.awt.event.WindowEvent;
 import java.io.File;
 import java.text.DecimalFormat;
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.List;
+import java.time.format.DateTimeFormatter;
 
 /**
- * Dialog for managing cached data (OHLC candles and AggTrades).
- * Shows disk space usage per symbol/timeframe and allows deletion.
+ * Dialog for managing cached data (candles, aggTrades, funding).
+ * Left side: tree-style navigation of symbol/timeframe
+ * Right side: 2D block diagram of data completeness by month.
  */
 public class DataManagementDialog extends JDialog {
 
-    private final File dataDir;
-    private final File aggTradesDir;
-    private final List<DataEntry> candleEntries = new ArrayList<>();
-    private final List<DataEntry> aggTradesEntries = new ArrayList<>();
-    private JTable candleTable;
-    private JTable aggTradesTable;
-    private JLabel totalSizeLabel;
-    private CandleTableModel candleTableModel;
-    private AggTradesTableModel aggTradesTableModel;
-    private JTabbedPane tabbedPane;
-
+    private static final DateTimeFormatter MONTH_FORMAT = DateTimeFormatter.ofPattern("MMMM yyyy");
     private static final DecimalFormat SIZE_FORMAT = new DecimalFormat("#,##0.0");
 
-    public DataManagementDialog(Frame owner) {
-        super(owner, "Data Management", true);
-        this.dataDir = new File(System.getProperty("user.home") + "/.tradery/data");
-        this.aggTradesDir = this.dataDir; // aggTrades are now under data/{symbol}/aggTrades/
+    private final DataIntegrityChecker checker;
+    private final CandleStore candleStore;
+    private final File dataDir;
+    private final File aggTradesDir;
 
-        setSize(650, 500);
-        setLocationRelativeTo(owner);
+    private DataBrowserPanel browserPanel;
+    private DataHealthPanel healthPanel;
+    private JLabel detailLabel;
+    private JLabel storageLabel;
+    private JButton repairButton;
+    private JButton deleteButton;
+    private JButton deleteSeriesButton;
+    private JButton deleteAllButton;
+    private JProgressBar progressBar;
 
-        // Load data entries
-        loadCandleEntries();
-        loadAggTradesEntries();
+    private String currentSymbol;
+    private String currentResolution;
+    private DataHealth selectedHealth;
+    private Timer refreshTimer;
+
+    public DataManagementDialog(Frame owner, CandleStore candleStore) {
+        super(owner, "Manage Data", true);
+        this.candleStore = candleStore;
+        this.checker = new DataIntegrityChecker();
+        this.dataDir = DataConfig.getInstance().getDataDir();
+        this.aggTradesDir = DataConfig.getInstance().getDataDir();
 
         initUI();
+
+        setSize(800, 550);
+        setLocationRelativeTo(owner);
+
+        // Auto-refresh every 10 seconds to show progress while data is loading
+        refreshTimer = new Timer(10000, e -> {
+            browserPanel.refreshData();
+            if (currentSymbol != null && currentResolution != null) {
+                healthPanel.refreshKeepSelection();
+            }
+            updateStorageLabel();
+        });
+        refreshTimer.start();
+
+        // Handle close
+        addWindowListener(new WindowAdapter() {
+            @Override
+            public void windowClosing(WindowEvent e) {
+                refreshTimer.stop();
+                candleStore.cancelCurrentFetch();
+            }
+        });
     }
 
     private void initUI() {
+        setLayout(new BorderLayout(0, 0));
         getContentPane().setBackground(new Color(40, 40, 45));
 
-        JPanel mainPanel = new JPanel(new BorderLayout(8, 8));
-        mainPanel.setBackground(new Color(40, 40, 45));
-        mainPanel.setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
 
-        // Create tabbed pane
-        tabbedPane = new JTabbedPane();
+        // Left side: Data browser (tree-style navigation)
+        browserPanel = new DataBrowserPanel();
+        browserPanel.setOnSelectionChanged(this::onSeriesSelected);
 
-        // Candles tab
-        candleTableModel = new CandleTableModel();
-        candleTable = new JTable(candleTableModel);
-        candleTable.setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
-        candleTable.setRowHeight(24);
-        setupCandleTableColumns();
-        JScrollPane candleScroll = new JScrollPane(candleTable);
-        tabbedPane.addTab("Candles (OHLCV)", candleScroll);
+        JScrollPane browserScroll = new JScrollPane(browserPanel);
+        browserScroll.setBorder(BorderFactory.createEmptyBorder());
+        browserScroll.setPreferredSize(new Dimension(220, 0));
+        browserScroll.getViewport().setBackground(new Color(40, 40, 45));
 
-        // AggTrades tab
-        aggTradesTableModel = new AggTradesTableModel();
-        aggTradesTable = new JTable(aggTradesTableModel);
-        aggTradesTable.setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
-        aggTradesTable.setRowHeight(24);
-        setupAggTradesTableColumns();
-        JScrollPane aggTradesScroll = new JScrollPane(aggTradesTable);
-        tabbedPane.addTab("AggTrades (Delta)", aggTradesScroll);
+        // Storage info at bottom of left panel
+        storageLabel = new JLabel();
+        storageLabel.setForeground(new Color(150, 150, 150));
+        storageLabel.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 11));
+        storageLabel.setBorder(BorderFactory.createEmptyBorder(6, 8, 6, 8));
+        updateStorageLabel();
 
-        mainPanel.add(tabbedPane, BorderLayout.CENTER);
+        // Left content (browser + storage label)
+        JPanel leftContent = new JPanel(new BorderLayout(0, 0));
+        leftContent.setBackground(new Color(40, 40, 45));
+        leftContent.add(browserScroll, BorderLayout.CENTER);
+        leftContent.add(storageLabel, BorderLayout.SOUTH);
 
-        // Total size label
-        totalSizeLabel = new JLabel();
-        updateTotalSize();
+        // Left panel with separator on the right edge
+        JPanel leftPanel = new JPanel(new BorderLayout(0, 0));
+        leftPanel.setBackground(new Color(40, 40, 45));
+        leftPanel.add(leftContent, BorderLayout.CENTER);
+        leftPanel.add(new JSeparator(SwingConstants.VERTICAL), BorderLayout.EAST);
 
-        // Buttons
-        JButton deleteBtn = new JButton("Delete Selected");
-        deleteBtn.addActionListener(e -> deleteSelected());
+        add(leftPanel, BorderLayout.WEST);
 
-        JButton deleteAllBtn = new JButton("Delete All");
-        deleteAllBtn.addActionListener(e -> deleteAll());
+        // Right side: Title + Health panel (block diagram)
+        detailLabel = new JLabel("Select a data series from the left");
+        detailLabel.setForeground(new Color(200, 200, 200));
+        detailLabel.setFont(detailLabel.getFont().deriveFont(Font.BOLD, 12f));
+        detailLabel.setBorder(BorderFactory.createEmptyBorder(8, 12, 8, 12));
 
-        JButton refreshBtn = new JButton("Refresh");
-        refreshBtn.addActionListener(e -> refresh());
+        healthPanel = new DataHealthPanel(checker);
+        healthPanel.setOnMonthSelected(this::onMonthSelected);
 
-        JButton closeBtn = new JButton("Close");
-        closeBtn.addActionListener(e -> dispose());
+        JScrollPane healthScroll = new JScrollPane(healthPanel);
+        healthScroll.setBorder(BorderFactory.createEmptyBorder());
+        healthScroll.getViewport().setBackground(new Color(40, 40, 45));
 
-        JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
-        buttonPanel.add(deleteBtn);
-        buttonPanel.add(deleteAllBtn);
-        buttonPanel.add(refreshBtn);
-        buttonPanel.add(closeBtn);
+        JPanel rightPanel = new JPanel(new BorderLayout(0, 0));
+        rightPanel.setBackground(new Color(40, 40, 45));
+        rightPanel.add(detailLabel, BorderLayout.NORTH);
+        rightPanel.add(healthScroll, BorderLayout.CENTER);
 
-        // Info panel
-        JPanel infoPanel = new JPanel(new BorderLayout());
-        infoPanel.setBorder(BorderFactory.createEmptyBorder(4, 8, 4, 8));
-        infoPanel.add(totalSizeLabel, BorderLayout.WEST);
-        infoPanel.add(new JLabel("Select rows and click Delete to remove cached data"), BorderLayout.EAST);
+        add(rightPanel, BorderLayout.CENTER);
 
-        JPanel bottomPanel = new JPanel(new BorderLayout());
-        bottomPanel.add(infoPanel, BorderLayout.NORTH);
-        bottomPanel.add(buttonPanel, BorderLayout.SOUTH);
-        mainPanel.add(bottomPanel, BorderLayout.SOUTH);
-
-        setContentPane(mainPanel);
+        // Bottom panel with actions
+        JPanel bottomPanel = createBottomPanel();
+        add(bottomPanel, BorderLayout.SOUTH);
     }
 
-    private void setupCandleTableColumns() {
-        candleTable.getColumnModel().getColumn(0).setPreferredWidth(120); // Symbol
-        candleTable.getColumnModel().getColumn(1).setPreferredWidth(80);  // Timeframe
-        candleTable.getColumnModel().getColumn(2).setPreferredWidth(100); // Size
-        candleTable.getColumnModel().getColumn(3).setPreferredWidth(80);  // Files
-        candleTable.getColumnModel().getColumn(4).setPreferredWidth(150); // Date Range
+    private JPanel createBottomPanel() {
+        JPanel panel = new JPanel(new BorderLayout(8, 8));
+        panel.setBackground(new Color(40, 40, 45));
+        panel.setBorder(BorderFactory.createEmptyBorder(8, 12, 12, 12));
 
-        DefaultTableCellRenderer rightRenderer = new DefaultTableCellRenderer();
-        rightRenderer.setHorizontalAlignment(SwingConstants.RIGHT);
-        candleTable.getColumnModel().getColumn(2).setCellRenderer(rightRenderer);
-        candleTable.getColumnModel().getColumn(3).setCellRenderer(rightRenderer);
+        // Button panel
+        JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 6, 0));
+        buttonPanel.setOpaque(false);
+
+        JButton fetchButton = new JButton("Fetch New...");
+        fetchButton.addActionListener(e -> showFetchDialog());
+        buttonPanel.add(fetchButton);
+
+        buttonPanel.add(Box.createHorizontalStrut(12));
+
+        repairButton = new JButton("Repair Month");
+        repairButton.setEnabled(false);
+        repairButton.addActionListener(e -> repairSelectedMonth());
+        buttonPanel.add(repairButton);
+
+        deleteButton = new JButton("Delete Month");
+        deleteButton.setEnabled(false);
+        deleteButton.addActionListener(e -> deleteSelectedMonth());
+        buttonPanel.add(deleteButton);
+
+        deleteSeriesButton = new JButton("Delete Series");
+        deleteSeriesButton.setEnabled(false);
+        deleteSeriesButton.addActionListener(e -> deleteSelectedSeries());
+        buttonPanel.add(deleteSeriesButton);
+
+        deleteAllButton = new JButton("Delete All");
+        deleteAllButton.addActionListener(e -> deleteAllData());
+        buttonPanel.add(deleteAllButton);
+
+        buttonPanel.add(Box.createHorizontalStrut(12));
+
+        JButton closeButton = new JButton("Close");
+        closeButton.addActionListener(e -> {
+            candleStore.cancelCurrentFetch();
+            dispose();
+        });
+        buttonPanel.add(closeButton);
+
+        panel.add(buttonPanel, BorderLayout.EAST);
+
+        // Progress bar (hidden by default)
+        progressBar = new JProgressBar();
+        progressBar.setVisible(false);
+        progressBar.setStringPainted(true);
+        panel.add(progressBar, BorderLayout.SOUTH);
+
+        return panel;
     }
 
-    private void setupAggTradesTableColumns() {
-        aggTradesTable.getColumnModel().getColumn(0).setPreferredWidth(150); // Symbol
-        aggTradesTable.getColumnModel().getColumn(1).setPreferredWidth(100); // Size
-        aggTradesTable.getColumnModel().getColumn(2).setPreferredWidth(80);  // Files
-        aggTradesTable.getColumnModel().getColumn(3).setPreferredWidth(150); // Date Range
-
-        DefaultTableCellRenderer rightRenderer = new DefaultTableCellRenderer();
-        rightRenderer.setHorizontalAlignment(SwingConstants.RIGHT);
-        aggTradesTable.getColumnModel().getColumn(1).setCellRenderer(rightRenderer);
-        aggTradesTable.getColumnModel().getColumn(2).setCellRenderer(rightRenderer);
+    private void showFetchDialog() {
+        AggTradesStore aggTradesStore = ApplicationContext.getInstance().getAggTradesStore();
+        FetchDataDialog.show((Frame) getOwner(), candleStore, aggTradesStore, () -> {
+            // Refresh after fetch completes
+            browserPanel.refreshData();
+            if (currentSymbol != null && currentResolution != null) {
+                healthPanel.refreshData();
+            }
+        });
     }
 
-    private void loadCandleEntries() {
-        candleEntries.clear();
+    private void onSeriesSelected(String symbol, String resolution) {
+        currentSymbol = symbol;
+        currentResolution = resolution;
 
-        if (!dataDir.exists()) return;
+        if (symbol == null || resolution == null) {
+            healthPanel.setData(null, null);
+            detailLabel.setText("Select a data series from the left");
+            return;
+        }
+
+        // Handle aggTrades selection
+        if ("aggTrades".equals(resolution)) {
+            healthPanel.setAggTradesData(symbol);
+            detailLabel.setText(getAggTradesInfo(symbol));
+            selectedHealth = null;
+            updateButtons();
+            return;
+        }
+
+        // Handle fundingRate selection
+        if ("fundingRate".equals(resolution)) {
+            healthPanel.setFundingRateData(symbol);
+            detailLabel.setText(getFundingRateInfo(symbol));
+            selectedHealth = null;
+            updateButtons();
+            return;
+        }
+
+        healthPanel.setData(symbol, resolution);
+        selectedHealth = null;
+        updateDetailLabel();
+        updateButtons();
+    }
+
+    private void onMonthSelected(DataHealth health) {
+        selectedHealth = health;
+        updateDetailLabel();
+        updateButtons();
+    }
+
+    private void updateDetailLabel() {
+        // Don't overwrite aggTrades or funding rate info
+        if ("aggTrades".equals(currentResolution) || "fundingRate".equals(currentResolution)) {
+            return;
+        }
+
+        if (currentSymbol == null || currentResolution == null) {
+            detailLabel.setText("Select a data series from the left");
+            return;
+        }
+
+        if (selectedHealth == null) {
+            detailLabel.setText(currentSymbol + " / " + currentResolution + " - Click a month block to select");
+            return;
+        }
+
+        StringBuilder sb = new StringBuilder();
+        sb.append(selectedHealth.month().format(MONTH_FORMAT));
+        sb.append(" - ");
+        sb.append(selectedHealth.status());
+        sb.append(" (");
+        sb.append(selectedHealth.actualCandles());
+        sb.append("/");
+        sb.append(selectedHealth.expectedCandles());
+        sb.append(" candles, ");
+        sb.append(String.format("%.1f%%", selectedHealth.completenessPercent()));
+        sb.append(")");
+
+        if (!selectedHealth.gaps().isEmpty()) {
+            sb.append(" - ");
+            sb.append(selectedHealth.gaps().size());
+            sb.append(" gap(s)");
+        }
+
+        detailLabel.setText(sb.toString());
+    }
+
+    private void updateButtons() {
+        boolean canRepair = selectedHealth != null &&
+                (selectedHealth.status() == DataStatus.PARTIAL ||
+                 selectedHealth.status() == DataStatus.MISSING);
+
+        boolean canDeleteMonth = selectedHealth != null &&
+                selectedHealth.status() != DataStatus.MISSING;
+
+        boolean canDeleteSeries = currentSymbol != null && currentResolution != null;
+
+        repairButton.setEnabled(canRepair);
+        deleteButton.setEnabled(canDeleteMonth);
+        deleteSeriesButton.setEnabled(canDeleteSeries);
+    }
+
+    private void repairSelectedMonth() {
+        if (selectedHealth == null || currentSymbol == null || currentResolution == null) return;
+
+        repairButton.setEnabled(false);
+        deleteButton.setEnabled(false);
+        progressBar.setVisible(true);
+        progressBar.setIndeterminate(true);
+        progressBar.setString("Repairing " + selectedHealth.month().format(MONTH_FORMAT) + "...");
+
+        // Set up progress callback
+        candleStore.setProgressCallback(progress -> {
+            SwingUtilities.invokeLater(() -> {
+                if (progress.estimatedTotal() > 0) {
+                    progressBar.setIndeterminate(false);
+                    progressBar.setValue(progress.percentComplete());
+                }
+                progressBar.setString(progress.message());
+            });
+        });
+
+        // Run repair in background
+        String symbol = currentSymbol;
+        String resolution = currentResolution;
+        DataHealth health = selectedHealth;
+
+        SwingWorker<Void, Void> worker = new SwingWorker<>() {
+            @Override
+            protected Void doInBackground() throws Exception {
+                candleStore.repairMonth(symbol, resolution, health.month());
+                return null;
+            }
+
+            @Override
+            protected void done() {
+                progressBar.setVisible(false);
+                candleStore.setProgressCallback(null);
+
+                try {
+                    get();
+                    JOptionPane.showMessageDialog(DataManagementDialog.this,
+                            "Repair complete for " + health.month().format(MONTH_FORMAT),
+                            "Repair Complete", JOptionPane.INFORMATION_MESSAGE);
+                } catch (Exception e) {
+                    JOptionPane.showMessageDialog(DataManagementDialog.this,
+                            "Repair failed: " + e.getMessage(),
+                            "Repair Error", JOptionPane.ERROR_MESSAGE);
+                }
+
+                // Refresh both panels
+                browserPanel.refreshData();
+                healthPanel.refreshData();
+                updateButtons();
+            }
+        };
+        worker.execute();
+    }
+
+    private void deleteSelectedMonth() {
+        if (selectedHealth == null || currentSymbol == null || currentResolution == null) return;
+
+        int result = JOptionPane.showConfirmDialog(this,
+                "Delete all data for " + selectedHealth.month().format(MONTH_FORMAT) + "?",
+                "Confirm Delete", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE);
+
+        if (result == JOptionPane.YES_OPTION) {
+            candleStore.deleteMonth(currentSymbol, currentResolution, selectedHealth.month());
+            refreshAll();
+        }
+    }
+
+    private void deleteSelectedSeries() {
+        if (currentSymbol == null || currentResolution == null) return;
+
+        File seriesDir = new File(dataDir, currentSymbol + "/" + currentResolution);
+        long size = calculateDirectorySize(seriesDir);
+
+        int result = JOptionPane.showConfirmDialog(this,
+                "Delete all data for " + currentSymbol + " / " + currentResolution + "?\n\n" +
+                "This will remove " + formatSize(size) + " of cached data.",
+                "Confirm Delete Series", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE);
+
+        if (result == JOptionPane.YES_OPTION) {
+            deleteDirectory(seriesDir);
+            // Also delete parent symbol dir if empty
+            File symbolDir = seriesDir.getParentFile();
+            if (symbolDir != null && symbolDir.isDirectory()) {
+                String[] remaining = symbolDir.list();
+                if (remaining != null && remaining.length == 0) {
+                    symbolDir.delete();
+                }
+            }
+            currentSymbol = null;
+            currentResolution = null;
+            selectedHealth = null;
+            refreshAll();
+        }
+    }
+
+    private void deleteAllData() {
+        if (!dataDir.exists()) {
+            JOptionPane.showMessageDialog(this, "No cached data to delete.");
+            return;
+        }
+
+        long totalSize = calculateDirectorySize(dataDir);
+        if (totalSize == 0) {
+            JOptionPane.showMessageDialog(this, "No cached data to delete.");
+            return;
+        }
+
+        int result = JOptionPane.showConfirmDialog(this,
+                "Delete ALL cached OHLC data?\n\n" +
+                "This will remove " + formatSize(totalSize) + " of data.\n" +
+                "Data will be re-downloaded from Binance when needed.",
+                "Confirm Delete All", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE);
+
+        if (result == JOptionPane.YES_OPTION) {
+            deleteDirectory(dataDir);
+            dataDir.mkdirs();
+            currentSymbol = null;
+            currentResolution = null;
+            selectedHealth = null;
+            refreshAll();
+            JOptionPane.showMessageDialog(this, "All cached data deleted.",
+                    "Deleted", JOptionPane.INFORMATION_MESSAGE);
+        }
+    }
+
+    private void refreshAll() {
+        browserPanel.refreshData();
+        healthPanel.refreshData();
+        updateDetailLabel();
+        updateButtons();
+        updateStorageLabel();
+    }
+
+    private void updateStorageLabel() {
+        long totalSize = calculateDirectorySize(dataDir);
+        int seriesCount = countSeries();
+        storageLabel.setText(formatSize(totalSize) + " (" + seriesCount + " series)");
+    }
+
+    private int countSeries() {
+        int count = 0;
+        if (!dataDir.exists()) return 0;
 
         File[] symbolDirs = dataDir.listFiles(File::isDirectory);
-        if (symbolDirs == null) return;
+        if (symbolDirs == null) return 0;
 
         for (File symbolDir : symbolDirs) {
-            String symbol = symbolDir.getName();
-            File[] timeframeDirs = symbolDir.listFiles(File::isDirectory);
-            if (timeframeDirs == null) continue;
-
-            for (File tfDir : timeframeDirs) {
-                String timeframe = tfDir.getName();
-                DataEntry entry = new DataEntry();
-                entry.symbol = symbol;
-                entry.timeframe = timeframe;
-                entry.directory = tfDir;
-
-                File[] files = tfDir.listFiles((dir, name) -> name.endsWith(".csv"));
-                if (files != null) {
-                    entry.fileCount = files.length;
-                    long totalBytes = 0;
-                    String minDate = null;
-                    String maxDate = null;
-
-                    for (File f : files) {
-                        totalBytes += f.length();
-                        String name = f.getName().replace(".csv", "");
-                        if (minDate == null || name.compareTo(minDate) < 0) minDate = name;
-                        if (maxDate == null || name.compareTo(maxDate) > 0) maxDate = name;
-                    }
-
-                    entry.sizeBytes = totalBytes;
-                    entry.dateRange = (minDate != null && maxDate != null)
-                        ? minDate + " to " + maxDate
-                        : "-";
-                }
-
-                candleEntries.add(entry);
+            File[] tfDirs = symbolDir.listFiles(File::isDirectory);
+            if (tfDirs != null) {
+                count += tfDirs.length;
             }
         }
-
-        candleEntries.sort(Comparator.comparing((DataEntry e) -> e.symbol)
-            .thenComparing(e -> e.timeframe));
+        return count;
     }
 
-    private void loadAggTradesEntries() {
-        aggTradesEntries.clear();
+    private long calculateDirectorySize(File dir) {
+        if (!dir.exists()) return 0;
+        if (dir.isFile()) return dir.length();
 
-        if (!aggTradesDir.exists()) return;
-
-        File[] symbolDirs = aggTradesDir.listFiles(File::isDirectory);
-        if (symbolDirs == null) return;
-
-        for (File symbolDir : symbolDirs) {
-            // Look for aggTrades subdirectory under each symbol
-            File aggDir = new File(symbolDir, "aggTrades");
-            if (!aggDir.exists() || !aggDir.isDirectory()) continue;
-
-            String symbol = symbolDir.getName();
-            DataEntry entry = new DataEntry();
-            entry.symbol = symbol;
-            entry.timeframe = null; // AggTrades don't have timeframes
-            entry.directory = aggDir;
-
-            File[] files = aggDir.listFiles((dir, name) -> name.endsWith(".csv"));
-            if (files != null) {
-                entry.fileCount = files.length;
-                long totalBytes = 0;
-                String minDate = null;
-                String maxDate = null;
-
-                for (File f : files) {
-                    totalBytes += f.length();
-                    String name = f.getName().replace(".partial.csv", "").replace(".csv", "");
-                    if (minDate == null || name.compareTo(minDate) < 0) minDate = name;
-                    if (maxDate == null || name.compareTo(maxDate) > 0) maxDate = name;
-                }
-
-                entry.sizeBytes = totalBytes;
-                entry.dateRange = (minDate != null && maxDate != null)
-                    ? minDate + " to " + maxDate
-                    : "-";
-            }
-
-            if (entry.fileCount > 0) {
-                aggTradesEntries.add(entry);
+        long size = 0;
+        File[] files = dir.listFiles();
+        if (files != null) {
+            for (File f : files) {
+                size += calculateDirectorySize(f);
             }
         }
-
-        aggTradesEntries.sort(Comparator.comparing((DataEntry e) -> e.symbol));
-    }
-
-    private void updateTotalSize() {
-        long candleTotal = candleEntries.stream().mapToLong(e -> e.sizeBytes).sum();
-        long aggTradesTotal = aggTradesEntries.stream().mapToLong(e -> e.sizeBytes).sum();
-        long total = candleTotal + aggTradesTotal;
-        totalSizeLabel.setText("Total: " + formatSize(total) +
-            " (Candles: " + formatSize(candleTotal) + ", AggTrades: " + formatSize(aggTradesTotal) + ")");
-    }
-
-    private String formatSize(long bytes) {
-        if (bytes < 1024) return bytes + " B";
-        if (bytes < 1024 * 1024) return SIZE_FORMAT.format(bytes / 1024.0) + " KB";
-        if (bytes < 1024 * 1024 * 1024) return SIZE_FORMAT.format(bytes / (1024.0 * 1024)) + " MB";
-        return SIZE_FORMAT.format(bytes / (1024.0 * 1024 * 1024)) + " GB";
-    }
-
-    private void deleteSelected() {
-        boolean isCandleTab = tabbedPane.getSelectedIndex() == 0;
-        JTable table = isCandleTab ? candleTable : aggTradesTable;
-        List<DataEntry> entries = isCandleTab ? candleEntries : aggTradesEntries;
-        String dataType = isCandleTab ? "candle" : "aggTrades";
-
-        int[] rows = table.getSelectedRows();
-        if (rows.length == 0) {
-            JOptionPane.showMessageDialog(this, "Please select data to delete.");
-            return;
-        }
-
-        StringBuilder sb = new StringBuilder("Delete cached " + dataType + " data for:\n\n");
-        long totalSize = 0;
-        for (int row : rows) {
-            DataEntry entry = entries.get(row);
-            if (entry.timeframe != null) {
-                sb.append("  • ").append(entry.symbol).append(" / ").append(entry.timeframe);
-            } else {
-                sb.append("  • ").append(entry.symbol);
-            }
-            sb.append(" (").append(formatSize(entry.sizeBytes)).append(")\n");
-            totalSize += entry.sizeBytes;
-        }
-        sb.append("\nTotal: ").append(formatSize(totalSize));
-
-        int confirm = JOptionPane.showConfirmDialog(this,
-            sb.toString(),
-            "Confirm Delete",
-            JOptionPane.YES_NO_OPTION,
-            JOptionPane.WARNING_MESSAGE);
-
-        if (confirm == JOptionPane.YES_OPTION) {
-            List<DataEntry> toDelete = new ArrayList<>();
-            for (int row : rows) {
-                toDelete.add(entries.get(row));
-            }
-
-            for (DataEntry entry : toDelete) {
-                deleteDirectory(entry.directory);
-                File parent = entry.directory.getParentFile();
-                if (parent != null && parent.isDirectory()) {
-                    String[] remaining = parent.list();
-                    if (remaining != null && remaining.length == 0) {
-                        parent.delete();
-                    }
-                }
-            }
-
-            refresh();
-            JOptionPane.showMessageDialog(this,
-                "Deleted " + toDelete.size() + " cached " + dataType + " folder(s).",
-                "Deleted", JOptionPane.INFORMATION_MESSAGE);
-        }
-    }
-
-    private void deleteAll() {
-        boolean isCandleTab = tabbedPane.getSelectedIndex() == 0;
-        List<DataEntry> entries = isCandleTab ? candleEntries : aggTradesEntries;
-        File targetDir = isCandleTab ? dataDir : aggTradesDir;
-        String dataType = isCandleTab ? "candle" : "aggTrades";
-
-        if (entries.isEmpty()) {
-            JOptionPane.showMessageDialog(this, "No cached " + dataType + " data to delete.");
-            return;
-        }
-
-        long totalSize = entries.stream().mapToLong(e -> e.sizeBytes).sum();
-
-        int confirm = JOptionPane.showConfirmDialog(this,
-            "Delete ALL cached " + dataType + " data?\n\n" +
-            "This will remove " + entries.size() + " folder(s) totaling " + formatSize(totalSize) + ".\n" +
-            "Data will be re-downloaded from Binance when needed.",
-            "Confirm Delete All",
-            JOptionPane.YES_NO_OPTION,
-            JOptionPane.WARNING_MESSAGE);
-
-        if (confirm == JOptionPane.YES_OPTION) {
-            deleteDirectory(targetDir);
-            targetDir.mkdirs();
-            refresh();
-            JOptionPane.showMessageDialog(this,
-                "All cached " + dataType + " data deleted.",
-                "Deleted", JOptionPane.INFORMATION_MESSAGE);
-        }
+        return size;
     }
 
     private void deleteDirectory(File dir) {
@@ -345,91 +479,109 @@ public class DataManagementDialog extends JDialog {
         dir.delete();
     }
 
-    private void refresh() {
-        loadCandleEntries();
-        loadAggTradesEntries();
-        candleTableModel.fireTableDataChanged();
-        aggTradesTableModel.fireTableDataChanged();
-        updateTotalSize();
-    }
-
-    private class CandleTableModel extends AbstractTableModel {
-        private final String[] columns = {"Symbol", "Timeframe", "Size", "Files", "Date Range"};
-
-        @Override
-        public int getRowCount() {
-            return candleEntries.size();
-        }
-
-        @Override
-        public int getColumnCount() {
-            return columns.length;
-        }
-
-        @Override
-        public String getColumnName(int column) {
-            return columns[column];
-        }
-
-        @Override
-        public Object getValueAt(int row, int column) {
-            DataEntry entry = candleEntries.get(row);
-            return switch (column) {
-                case 0 -> entry.symbol;
-                case 1 -> entry.timeframe;
-                case 2 -> formatSize(entry.sizeBytes);
-                case 3 -> entry.fileCount;
-                case 4 -> entry.dateRange;
-                default -> "";
-            };
-        }
-    }
-
-    private class AggTradesTableModel extends AbstractTableModel {
-        private final String[] columns = {"Symbol", "Size", "Files", "Date Range"};
-
-        @Override
-        public int getRowCount() {
-            return aggTradesEntries.size();
-        }
-
-        @Override
-        public int getColumnCount() {
-            return columns.length;
-        }
-
-        @Override
-        public String getColumnName(int column) {
-            return columns[column];
-        }
-
-        @Override
-        public Object getValueAt(int row, int column) {
-            DataEntry entry = aggTradesEntries.get(row);
-            return switch (column) {
-                case 0 -> entry.symbol;
-                case 1 -> formatSize(entry.sizeBytes);
-                case 2 -> entry.fileCount;
-                case 3 -> entry.dateRange;
-                default -> "";
-            };
-        }
-    }
-
-    private static class DataEntry {
-        String symbol;
-        String timeframe;
-        File directory;
-        long sizeBytes;
-        int fileCount;
-        String dateRange;
+    private String formatSize(long bytes) {
+        if (bytes < 1024) return bytes + " B";
+        if (bytes < 1024 * 1024) return SIZE_FORMAT.format(bytes / 1024.0) + " KB";
+        if (bytes < 1024 * 1024 * 1024) return SIZE_FORMAT.format(bytes / (1024.0 * 1024)) + " MB";
+        return SIZE_FORMAT.format(bytes / (1024.0 * 1024 * 1024)) + " GB";
     }
 
     /**
-     * Show the data management dialog
+     * Get info string for aggTrades data.
      */
-    public static void show(Frame owner) {
-        DataManagementDialog dialog = new DataManagementDialog(owner);
+    private String getAggTradesInfo(String symbol) {
+        File symbolDir = new File(new File(aggTradesDir, symbol), "aggTrades");
+        if (!symbolDir.exists()) {
+            return symbol + " / AggTrades - No data. Use 'Fetch New' to download.";
+        }
+
+        File[] csvFiles = symbolDir.listFiles((dir, name) -> name.endsWith(".csv"));
+        if (csvFiles == null || csvFiles.length == 0) {
+            return symbol + " / AggTrades - No data. Use 'Fetch New' to download.";
+        }
+
+        // Find date range and stats
+        String minDate = null;
+        String maxDate = null;
+        int completeCount = 0;
+        int partialCount = 0;
+        long totalSize = 0;
+
+        for (File f : csvFiles) {
+            String name = f.getName();
+            boolean isPartial = name.endsWith(".partial.csv");
+            String date = name.replace(".partial.csv", "").replace(".csv", "");
+
+            if (isPartial) partialCount++; else completeCount++;
+            totalSize += f.length();
+
+            if (minDate == null || date.compareTo(minDate) < 0) minDate = date;
+            if (maxDate == null || date.compareTo(maxDate) > 0) maxDate = date;
+        }
+
+        StringBuilder sb = new StringBuilder();
+        sb.append(symbol).append(" / AggTrades - ");
+        sb.append(completeCount + partialCount).append(" days (");
+        sb.append(minDate).append(" to ").append(maxDate).append("), ");
+        sb.append(formatSize(totalSize));
+        if (partialCount > 0) {
+            sb.append(" [").append(partialCount).append(" partial]");
+        }
+        return sb.toString();
+    }
+
+    /**
+     * Get info string for funding rate data.
+     */
+    private String getFundingRateInfo(String symbol) {
+        File fundingDir = new File(dataDir, symbol + "/funding");
+        if (!fundingDir.exists()) {
+            return symbol + " / Funding Rate - No data. Funding rates are auto-fetched when needed.";
+        }
+
+        File[] csvFiles = fundingDir.listFiles((dir, name) -> name.endsWith(".csv"));
+        if (csvFiles == null || csvFiles.length == 0) {
+            return symbol + " / Funding Rate - No data. Funding rates are auto-fetched when needed.";
+        }
+
+        // Find month range and count
+        String minMonth = null;
+        String maxMonth = null;
+        int totalRates = 0;
+        long totalSize = 0;
+
+        for (File f : csvFiles) {
+            String name = f.getName().replace(".csv", "");
+            totalSize += f.length();
+
+            if (minMonth == null || name.compareTo(minMonth) < 0) minMonth = name;
+            if (maxMonth == null || name.compareTo(maxMonth) > 0) maxMonth = name;
+
+            // Count lines (minus header)
+            try (java.io.BufferedReader reader = new java.io.BufferedReader(new java.io.FileReader(f))) {
+                int lines = 0;
+                while (reader.readLine() != null) lines++;
+                totalRates += Math.max(0, lines - 1);
+            } catch (java.io.IOException e) {
+                // Ignore
+            }
+        }
+
+        StringBuilder sb = new StringBuilder();
+        sb.append(symbol).append(" / Funding Rate - ");
+        sb.append(csvFiles.length).append(" months (");
+        sb.append(minMonth).append(" to ").append(maxMonth).append("), ");
+        sb.append(totalRates).append(" rates, ");
+        sb.append(formatSize(totalSize));
+        sb.append(" [8h resolution]");
+        return sb.toString();
+    }
+
+    /**
+     * Show the dialog.
+     */
+    public static void show(Frame owner, CandleStore candleStore) {
+        DataManagementDialog dialog = new DataManagementDialog(owner, candleStore);
         dialog.setVisible(true);
     }
 }

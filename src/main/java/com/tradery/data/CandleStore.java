@@ -36,7 +36,7 @@ public class CandleStore {
     private Consumer<FetchProgress> progressCallback;
 
     public CandleStore() {
-        this.dataDir = new File(TraderyApp.USER_DIR, "data");
+        this.dataDir = DataConfig.getInstance().getDataDir();
         this.binanceClient = new BinanceClient();
 
         if (!dataDir.exists()) {

@@ -37,9 +37,11 @@ public class ExitConfigPanel extends JPanel {
     }
 
     private void layoutComponents() {
-        // Header with label and add button
+        // Header with label and add button (inside scrollable area)
         JPanel headerPanel = new JPanel(new BorderLayout());
         headerPanel.setOpaque(false);
+        headerPanel.setAlignmentX(Component.LEFT_ALIGNMENT);
+        headerPanel.setMaximumSize(new Dimension(Integer.MAX_VALUE, 30));
         JLabel label = new JLabel("Exit");
         label.setForeground(Color.GRAY);
         headerPanel.add(label, BorderLayout.WEST);
@@ -58,8 +60,24 @@ public class ExitConfigPanel extends JPanel {
         zoneListPanel.setLayout(new BoxLayout(zoneListPanel, BoxLayout.Y_AXIS));
         zoneListPanel.setOpaque(false);
 
-        add(headerPanel, BorderLayout.NORTH);
-        add(zoneListPanel, BorderLayout.CENTER);
+        // Content panel with header + zones
+        JPanel contentPanel = new JPanel();
+        contentPanel.setLayout(new BoxLayout(contentPanel, BoxLayout.Y_AXIS));
+        contentPanel.setOpaque(false);
+        contentPanel.add(headerPanel);
+        contentPanel.add(Box.createVerticalStrut(8));
+        contentPanel.add(zoneListPanel);
+
+        // Wrap in scroll pane
+        JScrollPane scrollPane = new JScrollPane(contentPanel);
+        scrollPane.setBorder(null);
+        scrollPane.setOpaque(false);
+        scrollPane.getViewport().setOpaque(false);
+        scrollPane.setHorizontalScrollBarPolicy(ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
+        scrollPane.setVerticalScrollBarPolicy(ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED);
+        scrollPane.getVerticalScrollBar().setUnitIncrement(16);
+
+        add(scrollPane, BorderLayout.CENTER);
     }
 
     private void addZoneEditor(ExitZone zone) {
@@ -423,7 +441,9 @@ public class ExitConfigPanel extends JPanel {
                 }
             });
 
-            exitConditionScroll = new JPanel(new BorderLayout());
+            exitConditionScroll = new JPanel(new BorderLayout(0, 0));
+            exitConditionScroll.setOpaque(false);
+            exitConditionScroll.setBorder(null);
             exitConditionScroll.add(exitLayered, BorderLayout.CENTER);
             exitConditionScroll.setPreferredSize(new Dimension(180, 24));
 
@@ -471,6 +491,12 @@ public class ExitConfigPanel extends JPanel {
             // Exit immediately row
             centerPanel.add(exitImmediatelyCheckbox, new GridBagConstraints(0, row++, 2, 1, 1, 0, WEST, NONE, new Insets(0, 0, 4, 0), 0, 0));
 
+            // Phase filtering section (above DSL)
+            centerPanel.add(phaseListPanel, new GridBagConstraints(0, row++, 2, 1, 1, 0, WEST, HORIZONTAL, new Insets(4, 0, 4, 0), 0, 0));
+
+            // Hoop patterns section (above DSL)
+            centerPanel.add(hoopPatternListPanel, new GridBagConstraints(0, row++, 2, 1, 1, 0, WEST, HORIZONTAL, new Insets(0, 0, 4, 0), 0, 0));
+
             // Exit condition row - expands vertically
             centerPanel.add(exitConditionScroll, new GridBagConstraints(0, row++, 2, 1, 1, 1, WEST, BOTH, new Insets(0, 0, 4, 0), 0, 0));
 
@@ -493,12 +519,6 @@ public class ExitConfigPanel extends JPanel {
             scaleOutWrapper.add(scaleOutHeader, BorderLayout.NORTH);
             scaleOutWrapper.add(scaleOutDetailsPanel, BorderLayout.CENTER);
             centerPanel.add(scaleOutWrapper, new GridBagConstraints(0, row++, 2, 1, 1, 0, WEST, HORIZONTAL, new Insets(4, 0, 0, 0), 0, 0));
-
-            // Phase filtering section (no label)
-            centerPanel.add(phaseListPanel, new GridBagConstraints(0, row++, 2, 1, 1, 0, WEST, HORIZONTAL, new Insets(4, 0, 0, 0), 0, 0));
-
-            // Hoop patterns section (no label)
-            centerPanel.add(hoopPatternListPanel, new GridBagConstraints(0, row++, 2, 1, 1, 0, WEST, HORIZONTAL, new Insets(4, 0, 0, 0), 0, 0));
 
             // Initialize badge visibility
             updateSimplifyBadgeVisibility();

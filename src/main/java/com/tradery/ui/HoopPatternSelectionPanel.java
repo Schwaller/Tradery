@@ -19,18 +19,8 @@ public class HoopPatternSelectionPanel extends JPanel {
     private boolean suppressChangeEvents = false;
 
     public HoopPatternSelectionPanel() {
-        setLayout(new BorderLayout(0, 4));
-        setBorder(BorderFactory.createCompoundBorder(
-            BorderFactory.createTitledBorder(
-                BorderFactory.createLineBorder(UIManager.getColor("Component.borderColor"), 1),
-                "Entry Hoop Patterns",
-                javax.swing.border.TitledBorder.LEFT,
-                javax.swing.border.TitledBorder.TOP,
-                getFont().deriveFont(Font.BOLD, 11f),
-                UIManager.getColor("Label.foreground")
-            ),
-            BorderFactory.createEmptyBorder(8, 8, 8, 8)
-        ));
+        setLayout(new BorderLayout(0, 0));
+        setOpaque(false);
 
         initializeComponents();
         layoutComponents();

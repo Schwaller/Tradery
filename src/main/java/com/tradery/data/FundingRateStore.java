@@ -31,7 +31,7 @@ public class FundingRateStore {
     private final FundingRateClient client;
 
     public FundingRateStore() {
-        this.dataDir = new File(TraderyApp.USER_DIR, "data");
+        this.dataDir = DataConfig.getInstance().getDataDir();
         this.client = new FundingRateClient();
 
         if (!dataDir.exists()) {

@@ -1,5 +1,6 @@
 package com.tradery.ui;
 
+import com.tradery.data.DataConfig;
 import com.tradery.data.DataIntegrityChecker;
 import com.tradery.model.DataHealth;
 import com.tradery.model.DataStatus;
@@ -161,13 +162,28 @@ public class DataHealthPanel extends JPanel {
     }
 
     /**
+     * Load funding rate data and show month-based summary.
+     */
+    public void setFundingRateData(String symbol) {
+        this.symbol = symbol;
+        this.resolution = "fundingRate";
+        this.customMessage = null;
+        this.selectedMonth = null;
+        this.dailyDetails.clear();
+        loadFundingRateHealth(symbol);
+        repaint();
+    }
+
+    /**
      * Refresh data while preserving the current selection.
      * Used for auto-refresh to avoid losing user's month selection.
      */
     public void refreshKeepSelection() {
         YearMonth savedMonth = selectedMonth;
 
-        if ("aggTrades".equals(resolution) && symbol != null) {
+        if ("fundingRate".equals(resolution) && symbol != null) {
+            loadFundingRateHealth(symbol);
+        } else if ("aggTrades".equals(resolution) && symbol != null) {
             loadAggTradesHealth(symbol);
         } else if (symbol != null && resolution != null) {
             refreshData();
@@ -191,7 +207,7 @@ public class DataHealthPanel extends JPanel {
         healthData.clear();
         blockBounds.clear();
 
-        java.io.File aggDir = new java.io.File(System.getProperty("user.home") + "/.tradery/data/" + symbol + "/aggTrades");
+        java.io.File aggDir = new java.io.File(DataConfig.getInstance().getDataDir(), symbol + "/aggTrades");
         if (!aggDir.exists()) return;
 
         java.io.File[] files = aggDir.listFiles((dir, name) -> name.endsWith(".csv"));
@@ -240,6 +256,59 @@ public class DataHealthPanel extends JPanel {
         }
     }
 
+    private void loadFundingRateHealth(String symbol) {
+        healthData.clear();
+        blockBounds.clear();
+
+        File fundingDir = new File(DataConfig.getInstance().getDataDir(), symbol + "/funding");
+        if (!fundingDir.exists()) return;
+
+        File[] files = fundingDir.listFiles((dir, name) -> name.endsWith(".csv"));
+        if (files == null || files.length == 0) return;
+
+        // Each file is a month: yyyy-MM.csv
+        // Funding rates occur every 8 hours (~90 per month)
+        YearMonth now = YearMonth.now();
+
+        for (File f : files) {
+            String name = f.getName().replace(".csv", "");
+            try {
+                YearMonth month = YearMonth.parse(name);
+
+                // Count rates in file (lines minus header)
+                int rateCount = 0;
+                try (java.io.BufferedReader reader = new java.io.BufferedReader(new java.io.FileReader(f))) {
+                    while (reader.readLine() != null) rateCount++;
+                    rateCount = Math.max(0, rateCount - 1); // Subtract header
+                } catch (java.io.IOException e) {
+                    // Ignore
+                }
+
+                // Expected rates: ~90 per month (3 per day * 30 days)
+                int expectedRates = month.lengthOfMonth() * 3;
+                if (month.equals(now)) {
+                    expectedRates = LocalDate.now().getDayOfMonth() * 3;
+                }
+
+                DataStatus status;
+                if (rateCount >= expectedRates * 0.9) {
+                    status = DataStatus.COMPLETE;
+                } else if (rateCount > 0) {
+                    status = DataStatus.PARTIAL;
+                } else {
+                    status = DataStatus.MISSING;
+                }
+
+                healthData.add(new DataHealth(symbol, "fundingRate", month, expectedRates, rateCount, List.of(), status));
+            } catch (Exception e) {
+                // Skip invalid filenames
+            }
+        }
+
+        // Sort by month
+        healthData.sort((a, b) -> a.month().compareTo(b.month()));
+    }
+
     /**
      * Load daily details for the selected month.
      */
@@ -247,15 +316,78 @@ public class DataHealthPanel extends JPanel {
         dailyDetails.clear();
         if (month == null || symbol == null) return;
 
-        if ("aggTrades".equals(resolution)) {
+        if ("fundingRate".equals(resolution)) {
+            loadFundingRateDailyDetails(month);
+        } else if ("aggTrades".equals(resolution)) {
             loadAggTradesDailyDetails(month);
         } else {
             loadCandleDailyDetails(month);
         }
     }
 
+    private void loadFundingRateDailyDetails(YearMonth month) {
+        File fundingDir = new File(DataConfig.getInstance().getDataDir(), symbol + "/funding");
+        if (!fundingDir.exists()) return;
+
+        File monthFile = new File(fundingDir, month.toString() + ".csv");
+        if (!monthFile.exists()) return;
+
+        // Read all funding rates from the month file
+        Map<LocalDate, Integer> ratesPerDay = new TreeMap<>();
+
+        try (java.io.BufferedReader reader = new java.io.BufferedReader(new java.io.FileReader(monthFile))) {
+            String line;
+            boolean firstLine = true;
+            while ((line = reader.readLine()) != null) {
+                if (firstLine) {
+                    firstLine = false;
+                    if (line.startsWith("symbol")) continue; // Skip header
+                }
+                if (line.isBlank()) continue;
+
+                // CSV format: symbol,fundingRate,fundingTime,markPrice
+                String[] parts = line.split(",");
+                if (parts.length >= 3) {
+                    try {
+                        long fundingTime = Long.parseLong(parts[2].trim());
+                        LocalDate date = Instant.ofEpochMilli(fundingTime).atZone(ZoneOffset.UTC).toLocalDate();
+                        ratesPerDay.merge(date, 1, Integer::sum);
+                    } catch (NumberFormatException e) {
+                        // Skip malformed lines
+                    }
+                }
+            }
+        } catch (java.io.IOException e) {
+            // Ignore
+        }
+
+        // Build daily details
+        LocalDate today = LocalDate.now();
+        int daysInMonth = month.equals(YearMonth.now()) ? today.getDayOfMonth() : month.lengthOfMonth();
+
+        for (int day = 1; day <= daysInMonth; day++) {
+            LocalDate date = month.atDay(day);
+            int count = ratesPerDay.getOrDefault(date, 0);
+
+            DataStatus status;
+            String details;
+            if (count >= 3) {
+                status = DataStatus.COMPLETE;
+                details = String.format("%s - %d rates (00:00, 08:00, 16:00)", date, count);
+            } else if (count > 0) {
+                status = DataStatus.PARTIAL;
+                details = String.format("%s - %d/3 rates", date, count);
+            } else {
+                status = DataStatus.MISSING;
+                details = date + " - Missing";
+            }
+
+            dailyDetails.add(new DayInfo(date, status, details));
+        }
+    }
+
     private void loadAggTradesDailyDetails(YearMonth month) {
-        File aggDir = new File(System.getProperty("user.home") + "/.tradery/data/" + symbol + "/aggTrades");
+        File aggDir = new File(DataConfig.getInstance().getDataDir(), symbol + "/aggTrades");
         if (!aggDir.exists()) return;
 
         LocalDate today = LocalDate.now();

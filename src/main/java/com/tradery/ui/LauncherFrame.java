@@ -36,6 +36,7 @@ public class LauncherFrame extends JFrame {
     private JButton openButton;
     private JButton newButton;
     private JButton manageDataButton;
+    private JButton settingsButton;
     private JButton phasesButton;
     private JButton hoopsButton;
 
@@ -120,7 +121,14 @@ public class LauncherFrame extends JFrame {
         manageDataButton = new JButton("Manage Data");
         manageDataButton.addActionListener(e -> {
             CandleStore candleStore = ApplicationContext.getInstance().getCandleStore();
-            DataHealthDialog.show(this, candleStore);
+            DataManagementDialog.show(this, candleStore);
+        });
+
+        settingsButton = new JButton("Settings");
+        settingsButton.setToolTipText("Configure theme and data storage");
+        settingsButton.addActionListener(e -> {
+            SettingsDialog dialog = new SettingsDialog(this);
+            dialog.setVisible(true);
         });
 
         phasesButton = new JButton("Phases");
@@ -196,6 +204,7 @@ public class LauncherFrame extends JFrame {
         leftButtons.add(phasesButton);
         leftButtons.add(hoopsButton);
         leftButtons.add(manageDataButton);
+        leftButtons.add(settingsButton);
         JPanel rightButtons = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 8));
         rightButtons.add(newButton);
         rightButtons.add(openButton);

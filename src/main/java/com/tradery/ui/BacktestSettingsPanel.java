@@ -2,23 +2,21 @@ package com.tradery.ui;
 
 import com.tradery.model.PositionSizingType;
 import com.tradery.model.Strategy;
-import com.tradery.ui.theme.ThemeManager;
 
 import javax.swing.*;
 import java.awt.*;
 
 /**
- * Panel for editing project-specific backtest settings.
- * Includes capital, position sizing, fees, slippage, and theme.
+ * Panel for editing backtest settings.
+ * Includes capital, position sizing, fees, slippage.
  * (Symbol and timeframe are in the toolbar)
  */
-public class ProjectSettingsPanel extends JPanel {
+public class BacktestSettingsPanel extends JPanel {
 
     private JSpinner capitalSpinner;
     private JComboBox<String> positionSizingCombo;
     private JSpinner feeSpinner;
     private JSpinner slippageSpinner;
-    private JComboBox<String> themeCombo;
     private JLabel capitalLabel;
 
     private static final String[] POSITION_SIZING_TYPES = {
@@ -34,7 +32,7 @@ public class ProjectSettingsPanel extends JPanel {
     private Runnable onChange;
     private boolean suppressChangeEvents = false;
 
-    public ProjectSettingsPanel() {
+    public BacktestSettingsPanel() {
         setLayout(new BorderLayout(0, 8));
         setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
 
@@ -59,19 +57,6 @@ public class ProjectSettingsPanel extends JPanel {
         JSpinner.NumberEditor slipEditor = new JSpinner.NumberEditor(slippageSpinner, "0.00'%'");
         slippageSpinner.setEditor(slipEditor);
 
-        // Theme selector - full FlatLaf themes
-        themeCombo = new JComboBox<>();
-        for (String themeName : ThemeManager.getInstance().getAvailableThemeNames()) {
-            themeCombo.addItem(themeName);
-        }
-        themeCombo.setSelectedItem(ThemeManager.getInstance().getCurrentThemeName());
-        themeCombo.addActionListener(e -> {
-            String selected = (String) themeCombo.getSelectedItem();
-            if (selected != null) {
-                ThemeManager.getInstance().setTheme(selected);
-            }
-        });
-
         // Wire up change listeners
         capitalSpinner.addChangeListener(e -> fireChange());
         positionSizingCombo.addActionListener(e -> fireChange());
@@ -91,7 +76,7 @@ public class ProjectSettingsPanel extends JPanel {
 
     private void layoutComponents() {
         // Title
-        JLabel title = new JLabel("Settings");
+        JLabel title = new JLabel("Backtest Settings");
         title.setFont(title.getFont().deriveFont(Font.BOLD, 12f));
         title.setForeground(Color.GRAY);
 
@@ -114,10 +99,6 @@ public class ProjectSettingsPanel extends JPanel {
         // Slippage row
         settingsGrid.add(new JLabel("Slippage:"), new GridBagConstraints(0, 3, 1, 1, 0, 0, GridBagConstraints.WEST, GridBagConstraints.NONE, new Insets(2, 0, 2, 8), 0, 0));
         settingsGrid.add(slippageSpinner, new GridBagConstraints(1, 3, 1, 1, 1, 0, GridBagConstraints.WEST, GridBagConstraints.HORIZONTAL, new Insets(2, 0, 2, 0), 0, 0));
-
-        // Theme row
-        settingsGrid.add(new JLabel("Theme:"), new GridBagConstraints(0, 4, 1, 1, 0, 0, GridBagConstraints.WEST, GridBagConstraints.NONE, new Insets(2, 0, 2, 8), 0, 0));
-        settingsGrid.add(themeCombo, new GridBagConstraints(1, 4, 1, 1, 1, 0, GridBagConstraints.WEST, GridBagConstraints.HORIZONTAL, new Insets(2, 0, 2, 0), 0, 0));
 
         add(title, BorderLayout.NORTH);
         add(settingsGrid, BorderLayout.CENTER);
