@@ -32,8 +32,8 @@ public class DataHealthPanel extends JPanel {
     private static final Color PARTIAL_COLOR_HIGH = new Color(255, 193, 7);  // Yellow (>75%)
     private static final Color PARTIAL_COLOR_MED = new Color(255, 140, 0);   // Orange (50-75%)
     private static final Color PARTIAL_COLOR_LOW = new Color(244, 67, 54);   // Red (<50%)
-    private static final Color MISSING_COLOR = new Color(60, 60, 65);
-    private static final Color UNKNOWN_COLOR = new Color(100, 100, 100);
+    private static final Color MISSING_COLOR = UIManager.getColor("Separator.foreground");
+    private static final Color UNKNOWN_COLOR = UIManager.getColor("Label.disabledForeground");
     private static final Color HOVER_BORDER = new Color(255, 255, 255, 180);
     private static final Color SELECTED_BORDER = new Color(0, 150, 255);
 
@@ -72,7 +72,6 @@ public class DataHealthPanel extends JPanel {
     public DataHealthPanel(DataIntegrityChecker checker) {
         this.checker = checker;
 
-        setBackground(new Color(30, 30, 35));
         setPreferredSize(new Dimension(500, 300));
 
         // Mouse handling
@@ -537,7 +536,7 @@ public class DataHealthPanel extends JPanel {
         int y = PADDING;
 
         // Draw month header
-        g2.setColor(new Color(150, 150, 150));
+        g2.setColor(UIManager.getColor("Label.disabledForeground"));
         g2.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 10));
         for (int m = 0; m < 12; m++) {
             int x = PADDING + YEAR_LABEL_WIDTH + m * (BLOCK_WIDTH + BLOCK_GAP);
@@ -552,7 +551,7 @@ public class DataHealthPanel extends JPanel {
             List<DataHealth> months = entry.getValue();
 
             // Year label
-            g2.setColor(new Color(180, 180, 180));
+            g2.setColor(UIManager.getColor("Label.foreground"));
             g2.drawString(String.valueOf(year), PADDING, y + BLOCK_HEIGHT / 2 + 4);
 
             // Month blocks
@@ -578,7 +577,7 @@ public class DataHealthPanel extends JPanel {
 
         // Draw horizontal divider line
         y = dividerY;
-        g2.setColor(new Color(60, 60, 65));
+        g2.setColor(UIManager.getColor("Separator.foreground"));
         g2.drawLine(PADDING, y, getWidth() - PADDING, y);
 
         // Draw daily details section (bottom half)
@@ -587,7 +586,7 @@ public class DataHealthPanel extends JPanel {
             drawDailyDetails(g2, y);
         } else {
             // Placeholder when no month selected
-            g2.setColor(new Color(100, 100, 100));
+            g2.setColor(UIManager.getColor("Label.disabledForeground"));
             g2.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 12));
             String msg = "Click a month above to see daily details";
             FontMetrics fm = g2.getFontMetrics();
@@ -603,7 +602,7 @@ public class DataHealthPanel extends JPanel {
         dayBounds.clear();
 
         // Header
-        g2.setColor(new Color(180, 180, 180));
+        g2.setColor(UIManager.getColor("Label.foreground"));
         g2.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 11));
         String header = selectedMonth.format(DateTimeFormatter.ofPattern("MMMM yyyy")) + " - Daily View";
         g2.drawString(header, PADDING, startY);
@@ -617,7 +616,7 @@ public class DataHealthPanel extends JPanel {
         // Day of week labels
         String[] dowLabels = {"M", "T", "W", "T", "F", "S", "S"};
         for (int i = 0; i < 7; i++) {
-            g2.setColor(new Color(120, 120, 120));
+            g2.setColor(UIManager.getColor("Label.disabledForeground"));
             g2.drawString(dowLabels[i], x + i * (DAY_BLOCK_SIZE + DAY_BLOCK_GAP) + (DAY_BLOCK_SIZE / 2) - 3, y);
         }
         y += 16;
@@ -724,33 +723,33 @@ public class DataHealthPanel extends JPanel {
 
     private void drawLegend(Graphics2D g2, int x, int y) {
         g2.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 10));
-        g2.setColor(new Color(150, 150, 150));
+        g2.setColor(UIManager.getColor("Label.disabledForeground"));
 
         int legendX = x;
 
         // Complete
         g2.setColor(COMPLETE_COLOR);
         g2.fillRoundRect(legendX, y, 14, 14, 4, 4);
-        g2.setColor(new Color(150, 150, 150));
+        g2.setColor(UIManager.getColor("Label.disabledForeground"));
         g2.drawString("Complete", legendX + 18, y + 11);
         legendX += 80;
 
         // Partial
         g2.setColor(PARTIAL_COLOR_HIGH);
         g2.fillRoundRect(legendX, y, 14, 14, 4, 4);
-        g2.setColor(new Color(150, 150, 150));
+        g2.setColor(UIManager.getColor("Label.disabledForeground"));
         g2.drawString("Partial", legendX + 18, y + 11);
         legendX += 60;
 
         // Missing
         g2.setColor(MISSING_COLOR);
         g2.fillRoundRect(legendX, y, 14, 14, 4, 4);
-        g2.setColor(new Color(150, 150, 150));
+        g2.setColor(UIManager.getColor("Label.disabledForeground"));
         g2.drawString("Missing", legendX + 18, y + 11);
     }
 
     private void drawEmptyState(Graphics2D g2) {
-        g2.setColor(new Color(100, 100, 100));
+        g2.setColor(UIManager.getColor("Label.disabledForeground"));
         g2.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 14));
 
         String msg;

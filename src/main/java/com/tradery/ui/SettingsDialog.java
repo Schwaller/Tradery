@@ -2,6 +2,7 @@ package com.tradery.ui;
 
 import com.tradery.TraderyApp;
 import com.tradery.data.DataConfig;
+import com.tradery.ui.charts.ChartConfig;
 import com.tradery.ui.theme.ThemeManager;
 
 import javax.swing.*;
@@ -27,7 +28,7 @@ public class SettingsDialog extends JDialog {
 
         initComponents();
         pack();
-        setMinimumSize(new Dimension(450, 300));
+        setMinimumSize(new Dimension(450, 400));
         setLocationRelativeTo(owner);
     }
 
@@ -38,6 +39,9 @@ public class SettingsDialog extends JDialog {
         // Theme section
         JPanel themeSection = createThemeSection();
 
+        // Charts section
+        JPanel chartsSection = createChartsSection();
+
         // Data section
         JPanel dataSection = createDataSection();
 
@@ -45,6 +49,8 @@ public class SettingsDialog extends JDialog {
         JPanel sectionsPanel = new JPanel();
         sectionsPanel.setLayout(new BoxLayout(sectionsPanel, BoxLayout.Y_AXIS));
         sectionsPanel.add(themeSection);
+        sectionsPanel.add(Box.createVerticalStrut(12));
+        sectionsPanel.add(chartsSection);
         sectionsPanel.add(Box.createVerticalStrut(12));
         sectionsPanel.add(dataSection);
 
@@ -90,6 +96,92 @@ public class SettingsDialog extends JDialog {
         panel.add(themeCombo, gbc);
 
         return panel;
+    }
+
+    private JPanel createChartsSection() {
+        JPanel panel = new JPanel(new GridBagLayout());
+        panel.setBorder(BorderFactory.createTitledBorder(
+            BorderFactory.createEtchedBorder(), "Chart Defaults",
+            TitledBorder.LEFT, TitledBorder.TOP));
+
+        GridBagConstraints gbc = new GridBagConstraints();
+        gbc.insets = new Insets(4, 8, 4, 8);
+        gbc.anchor = GridBagConstraints.WEST;
+
+        ChartConfig config = ChartConfig.getInstance();
+
+        // Status summary
+        gbc.gridx = 0; gbc.gridy = 0; gbc.gridwidth = 2;
+        JLabel summaryLabel = new JLabel(getChartConfigSummary(config));
+        panel.add(summaryLabel, gbc);
+
+        // Info label
+        gbc.gridy = 1;
+        JLabel infoLabel = new JLabel("<html><small>Chart visibility is remembered between sessions.<br>Change which charts are shown using the Indicators button in chart view.</small></html>");
+        infoLabel.setForeground(UIManager.getColor("Label.disabledForeground"));
+        panel.add(infoLabel, gbc);
+
+        // Reset button
+        gbc.gridy = 2; gbc.gridwidth = 2;
+        gbc.fill = GridBagConstraints.NONE;
+        gbc.anchor = GridBagConstraints.EAST;
+
+        JButton resetChartsBtn = new JButton("Reset Charts to Defaults");
+        resetChartsBtn.setToolTipText("Disable all overlays and optional charts, enable core charts");
+        resetChartsBtn.addActionListener(e -> {
+            int option = JOptionPane.showConfirmDialog(this,
+                "<html>Reset all chart settings to defaults?<br><br>" +
+                "This will:<br>" +
+                "• Disable all overlay indicators (SMA, EMA, etc.)<br>" +
+                "• Disable all optional charts (RSI, MACD, etc.)<br>" +
+                "• Enable all core charts (Volume, Equity, etc.)<br><br>" +
+                "You will need to reopen any project windows to see changes.</html>",
+                "Reset Chart Defaults",
+                JOptionPane.OK_CANCEL_OPTION,
+                JOptionPane.QUESTION_MESSAGE);
+
+            if (option == JOptionPane.OK_OPTION) {
+                ChartConfig.getInstance().resetToDefaults();
+                summaryLabel.setText(getChartConfigSummary(ChartConfig.getInstance()));
+                JOptionPane.showMessageDialog(this,
+                    "Chart settings reset to defaults.\nReopen project windows to apply changes.",
+                    "Chart Settings Reset",
+                    JOptionPane.INFORMATION_MESSAGE);
+            }
+        });
+        panel.add(resetChartsBtn, gbc);
+
+        return panel;
+    }
+
+    private String getChartConfigSummary(ChartConfig config) {
+        int overlaysEnabled = 0;
+        if (config.isSmaEnabled()) overlaysEnabled++;
+        if (config.isEmaEnabled()) overlaysEnabled++;
+        if (config.isBollingerEnabled()) overlaysEnabled++;
+        if (config.isHighLowEnabled()) overlaysEnabled++;
+        if (config.isMayerEnabled()) overlaysEnabled++;
+
+        int indicatorChartsEnabled = 0;
+        if (config.isRsiEnabled()) indicatorChartsEnabled++;
+        if (config.isMacdEnabled()) indicatorChartsEnabled++;
+        if (config.isAtrEnabled()) indicatorChartsEnabled++;
+        if (config.isDeltaEnabled()) indicatorChartsEnabled++;
+        if (config.isCvdEnabled()) indicatorChartsEnabled++;
+        if (config.isVolumeRatioEnabled()) indicatorChartsEnabled++;
+        if (config.isWhaleEnabled()) indicatorChartsEnabled++;
+        if (config.isRetailEnabled()) indicatorChartsEnabled++;
+        if (config.isFundingEnabled()) indicatorChartsEnabled++;
+
+        int coreChartsEnabled = 0;
+        if (config.isVolumeChartEnabled()) coreChartsEnabled++;
+        if (config.isEquityChartEnabled()) coreChartsEnabled++;
+        if (config.isComparisonChartEnabled()) coreChartsEnabled++;
+        if (config.isCapitalUsageChartEnabled()) coreChartsEnabled++;
+        if (config.isTradePLChartEnabled()) coreChartsEnabled++;
+
+        return String.format("%d overlays, %d indicator charts, %d/5 core charts enabled",
+            overlaysEnabled, indicatorChartsEnabled, coreChartsEnabled);
     }
 
     private JPanel createDataSection() {

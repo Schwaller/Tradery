@@ -26,13 +26,7 @@ import java.util.function.BiConsumer;
  */
 public class DataBrowserPanel extends JPanel {
 
-    private static final Color BACKGROUND = new Color(40, 40, 45);
-    private static final Color HOVER_BG = new Color(50, 50, 55);
-    private static final Color SELECTED_BG = new Color(60, 80, 120);
-    private static final Color SYMBOL_COLOR = new Color(220, 220, 220);
-    private static final Color TIMEFRAME_COLOR = new Color(180, 180, 180);
-    private static final Color INFO_COLOR = new Color(120, 120, 120);
-    private static final Color SECTION_COLOR = new Color(100, 140, 180);
+    // Status colors (fixed)
     private static final Color COMPLETE_COLOR = new Color(76, 175, 80);
     private static final Color PARTIAL_COLOR = new Color(255, 193, 7);
     private static final Color MISSING_COLOR = new Color(100, 100, 100);
@@ -66,7 +60,6 @@ public class DataBrowserPanel extends JPanel {
         this.checker = new DataIntegrityChecker();
         this.aggTradesDir = DataConfig.getInstance().getDataDir();
 
-        setBackground(BACKGROUND);
         setPreferredSize(new Dimension(200, 300));
 
         MouseAdapter mouseHandler = new MouseAdapter() {
@@ -376,10 +369,10 @@ public class DataBrowserPanel extends JPanel {
 
             // Background
             if (isSelected) {
-                g2.setColor(SELECTED_BG);
+                g2.setColor(UIManager.getColor("List.selectionBackground"));
                 g2.fillRect(0, y, getWidth(), ROW_HEIGHT);
             } else if (isHovered) {
-                g2.setColor(HOVER_BG);
+                g2.setColor(UIManager.getColor("List.selectionInactiveBackground"));
                 g2.fillRect(0, y, getWidth(), ROW_HEIGHT);
             }
 
@@ -403,17 +396,17 @@ public class DataBrowserPanel extends JPanel {
 
     private void drawSectionHeader(Graphics2D g2, String title, int y) {
         // Draw separator line
-        g2.setColor(new Color(60, 60, 65));
+        g2.setColor(UIManager.getColor("Separator.foreground"));
         g2.fillRect(0, y, getWidth(), ROW_HEIGHT);
 
         g2.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 10));
-        g2.setColor(SECTION_COLOR);
+        g2.setColor(UIManager.getColor("Label.foreground"));
         g2.drawString(title, 8, y + 15);
     }
 
     private void drawSymbolRow(Graphics2D g2, RowData row, int y) {
         g2.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 12));
-        g2.setColor(row.hasData ? SYMBOL_COLOR : INFO_COLOR);
+        g2.setColor(row.hasData ? UIManager.getColor("Label.foreground") : UIManager.getColor("Label.disabledForeground"));
         g2.drawString(row.symbol, 8, y + 16);
     }
 
@@ -423,7 +416,7 @@ public class DataBrowserPanel extends JPanel {
 
         // Timeframe label
         g2.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 11));
-        g2.setColor(TIMEFRAME_COLOR);
+        g2.setColor(UIManager.getColor("Label.foreground"));
         g2.drawString(row.timeframe, INDENT + 8, y + 15);
 
         // Status dot
@@ -441,7 +434,7 @@ public class DataBrowserPanel extends JPanel {
         // Date range
         if (summary != null) {
             g2.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 10));
-            g2.setColor(INFO_COLOR);
+            g2.setColor(UIManager.getColor("Label.disabledForeground"));
             String range = formatRange(summary.start, summary.end);
             g2.drawString(range, INDENT + 54, y + 15);
         }
@@ -452,7 +445,7 @@ public class DataBrowserPanel extends JPanel {
 
         // Symbol label (indented)
         g2.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 11));
-        g2.setColor(TIMEFRAME_COLOR);
+        g2.setColor(UIManager.getColor("Label.foreground"));
         g2.drawString(row.symbol, INDENT + 8, y + 15);
 
         if (summary != null) {
@@ -463,7 +456,7 @@ public class DataBrowserPanel extends JPanel {
 
             // Date range (show abbreviated: MM-dd → MM-dd)
             g2.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 10));
-            g2.setColor(INFO_COLOR);
+            g2.setColor(UIManager.getColor("Label.disabledForeground"));
             String startShort = summary.startDate.length() > 5 ? summary.startDate.substring(5) : summary.startDate;
             String endShort = summary.endDate.length() > 5 ? summary.endDate.substring(5) : summary.endDate;
             String info = startShort + "→" + endShort + " (" + summary.fileCount + "d)";
@@ -476,7 +469,7 @@ public class DataBrowserPanel extends JPanel {
 
         // Symbol label (indented)
         g2.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 11));
-        g2.setColor(TIMEFRAME_COLOR);
+        g2.setColor(UIManager.getColor("Label.foreground"));
         g2.drawString(row.symbol, INDENT + 8, y + 15);
 
         if (summary != null) {
@@ -486,7 +479,7 @@ public class DataBrowserPanel extends JPanel {
 
             // Month range and rate count
             g2.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 10));
-            g2.setColor(INFO_COLOR);
+            g2.setColor(UIManager.getColor("Label.disabledForeground"));
             String info = summary.startMonth + "→" + summary.endMonth + " (" + summary.rateCount + ")";
             g2.drawString(info, INDENT + 90, y + 15);
         }

@@ -1,6 +1,7 @@
 package com.tradery.ui.controls;
 
 import com.tradery.ui.ChartsPanel;
+import com.tradery.ui.charts.ChartConfig;
 
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
@@ -488,76 +489,124 @@ public class IndicatorSelectorPopup extends JDialog {
     }
 
     private void syncFromChartPanel() {
-        // Overlays
-        smaCheckbox.setSelected(chartPanel.isSmaEnabled());
-        emaCheckbox.setSelected(chartPanel.isEmaEnabled());
-        bbCheckbox.setSelected(chartPanel.isBollingerEnabled());
-        hlCheckbox.setSelected(chartPanel.isHighLowEnabled());
-        mayerCheckbox.setSelected(chartPanel.isMayerMultipleEnabled());
+        ChartConfig config = ChartConfig.getInstance();
+
+        // Overlays - use ChartConfig for state and parameters
+        smaCheckbox.setSelected(config.isSmaEnabled());
+        smaSpinner.setValue(config.getSmaPeriod());
+        emaCheckbox.setSelected(config.isEmaEnabled());
+        emaSpinner.setValue(config.getEmaPeriod());
+        bbCheckbox.setSelected(config.isBollingerEnabled());
+        bbPeriodSpinner.setValue(config.getBollingerPeriod());
+        bbStdSpinner.setValue(config.getBollingerStdDev());
+        hlCheckbox.setSelected(config.isHighLowEnabled());
+        hlSpinner.setValue(config.getHighLowPeriod());
+        mayerCheckbox.setSelected(config.isMayerEnabled());
+        mayerSpinner.setValue(config.getMayerPeriod());
 
         // Oscillators
-        rsiCheckbox.setSelected(chartPanel.isRsiChartEnabled());
-        macdCheckbox.setSelected(chartPanel.isMacdChartEnabled());
-        atrCheckbox.setSelected(chartPanel.isAtrChartEnabled());
+        rsiCheckbox.setSelected(config.isRsiEnabled());
+        rsiSpinner.setValue(config.getRsiPeriod());
+        macdCheckbox.setSelected(config.isMacdEnabled());
+        macdFastSpinner.setValue(config.getMacdFast());
+        macdSlowSpinner.setValue(config.getMacdSlow());
+        macdSignalSpinner.setValue(config.getMacdSignal());
+        atrCheckbox.setSelected(config.isAtrEnabled());
+        atrSpinner.setValue(config.getAtrPeriod());
 
         // Orderflow
-        deltaCheckbox.setSelected(chartPanel.isDeltaChartEnabled());
-        cvdCheckbox.setSelected(chartPanel.isCvdChartEnabled());
-        volumeRatioCheckbox.setSelected(chartPanel.isVolumeRatioChartEnabled());
-        whaleCheckbox.setSelected(chartPanel.isWhaleChartEnabled());
-        retailCheckbox.setSelected(chartPanel.isRetailChartEnabled());
-        whaleThresholdSpinner.setValue((int) chartPanel.getWhaleThreshold());
+        deltaCheckbox.setSelected(config.isDeltaEnabled());
+        cvdCheckbox.setSelected(config.isCvdEnabled());
+        volumeRatioCheckbox.setSelected(config.isVolumeRatioEnabled());
+        whaleCheckbox.setSelected(config.isWhaleEnabled());
+        retailCheckbox.setSelected(config.isRetailEnabled());
+        whaleThresholdSpinner.setValue((int) config.getWhaleThreshold());
 
         // Funding
-        fundingCheckbox.setSelected(chartPanel.isFundingChartEnabled());
+        fundingCheckbox.setSelected(config.isFundingEnabled());
 
         // Core charts
-        volumeChartCheckbox.setSelected(chartPanel.isVolumeChartEnabled());
-        equityChartCheckbox.setSelected(chartPanel.isEquityChartEnabled());
-        comparisonChartCheckbox.setSelected(chartPanel.isComparisonChartEnabled());
-        capitalUsageChartCheckbox.setSelected(chartPanel.isCapitalUsageChartEnabled());
-        tradePLChartCheckbox.setSelected(chartPanel.isTradePLChartEnabled());
+        volumeChartCheckbox.setSelected(config.isVolumeChartEnabled());
+        equityChartCheckbox.setSelected(config.isEquityChartEnabled());
+        comparisonChartCheckbox.setSelected(config.isComparisonChartEnabled());
+        capitalUsageChartCheckbox.setSelected(config.isCapitalUsageChartEnabled());
+        tradePLChartCheckbox.setSelected(config.isTradePLChartEnabled());
     }
 
     private void applyChanges() {
+        ChartConfig config = ChartConfig.getInstance();
+
         // Overlays
+        int smaPeriod = (int) smaSpinner.getValue();
+        int emaPeriod = (int) emaSpinner.getValue();
+        int bbPeriod = (int) bbPeriodSpinner.getValue();
+        double bbStd = (double) bbStdSpinner.getValue();
+        int hlPeriod = (int) hlSpinner.getValue();
+        int mayerPeriod = (int) mayerSpinner.getValue();
+
         if (smaCheckbox.isSelected()) {
-            chartPanel.setSmaOverlay((int) smaSpinner.getValue(), null);
+            chartPanel.setSmaOverlay(smaPeriod, null);
         } else {
             chartPanel.clearSmaOverlay();
         }
 
         if (emaCheckbox.isSelected()) {
-            chartPanel.setEmaOverlay((int) emaSpinner.getValue(), null);
+            chartPanel.setEmaOverlay(emaPeriod, null);
         } else {
             chartPanel.clearEmaOverlay();
         }
 
         if (bbCheckbox.isSelected()) {
-            chartPanel.setBollingerOverlay((int) bbPeriodSpinner.getValue(), (double) bbStdSpinner.getValue(), null);
+            chartPanel.setBollingerOverlay(bbPeriod, bbStd, null);
         } else {
             chartPanel.clearBollingerOverlay();
         }
 
         if (hlCheckbox.isSelected()) {
-            chartPanel.setHighLowOverlay((int) hlSpinner.getValue(), null);
+            chartPanel.setHighLowOverlay(hlPeriod, null);
         } else {
             chartPanel.clearHighLowOverlay();
         }
 
         if (mayerCheckbox.isSelected()) {
-            chartPanel.setMayerMultipleEnabled(true, (int) mayerSpinner.getValue());
+            chartPanel.setMayerMultipleEnabled(true, mayerPeriod);
         } else {
             chartPanel.setMayerMultipleEnabled(false, 200);
         }
 
+        // Save overlay settings to config
+        config.setSmaEnabled(smaCheckbox.isSelected());
+        config.setSmaPeriod(smaPeriod);
+        config.setEmaEnabled(emaCheckbox.isSelected());
+        config.setEmaPeriod(emaPeriod);
+        config.setBollingerEnabled(bbCheckbox.isSelected());
+        config.setBollingerPeriod(bbPeriod);
+        config.setBollingerStdDev(bbStd);
+        config.setHighLowEnabled(hlCheckbox.isSelected());
+        config.setHighLowPeriod(hlPeriod);
+        config.setMayerEnabled(mayerCheckbox.isSelected());
+        config.setMayerPeriod(mayerPeriod);
+
         // Oscillators
-        chartPanel.setRsiChartEnabled(rsiCheckbox.isSelected(), (int) rsiSpinner.getValue());
-        chartPanel.setMacdChartEnabled(macdCheckbox.isSelected(),
-            (int) macdFastSpinner.getValue(),
-            (int) macdSlowSpinner.getValue(),
-            (int) macdSignalSpinner.getValue());
-        chartPanel.setAtrChartEnabled(atrCheckbox.isSelected(), (int) atrSpinner.getValue());
+        int rsiPeriod = (int) rsiSpinner.getValue();
+        int macdFast = (int) macdFastSpinner.getValue();
+        int macdSlow = (int) macdSlowSpinner.getValue();
+        int macdSignal = (int) macdSignalSpinner.getValue();
+        int atrPeriod = (int) atrSpinner.getValue();
+
+        chartPanel.setRsiChartEnabled(rsiCheckbox.isSelected(), rsiPeriod);
+        chartPanel.setMacdChartEnabled(macdCheckbox.isSelected(), macdFast, macdSlow, macdSignal);
+        chartPanel.setAtrChartEnabled(atrCheckbox.isSelected(), atrPeriod);
+
+        // Save indicator settings to config
+        config.setRsiEnabled(rsiCheckbox.isSelected());
+        config.setRsiPeriod(rsiPeriod);
+        config.setMacdEnabled(macdCheckbox.isSelected());
+        config.setMacdFast(macdFast);
+        config.setMacdSlow(macdSlow);
+        config.setMacdSignal(macdSignal);
+        config.setAtrEnabled(atrCheckbox.isSelected());
+        config.setAtrPeriod(atrPeriod);
 
         // Orderflow
         double threshold = ((Number) whaleThresholdSpinner.getValue()).doubleValue();
@@ -567,8 +616,17 @@ public class IndicatorSelectorPopup extends JDialog {
         chartPanel.setWhaleChartEnabled(whaleCheckbox.isSelected(), threshold);
         chartPanel.setRetailChartEnabled(retailCheckbox.isSelected(), threshold);
 
+        // Save orderflow settings to config
+        config.setDeltaEnabled(deltaCheckbox.isSelected());
+        config.setCvdEnabled(cvdCheckbox.isSelected());
+        config.setVolumeRatioEnabled(volumeRatioCheckbox.isSelected());
+        config.setWhaleEnabled(whaleCheckbox.isSelected());
+        config.setRetailEnabled(retailCheckbox.isSelected());
+        config.setWhaleThreshold(threshold);
+
         // Funding
         chartPanel.setFundingChartEnabled(fundingCheckbox.isSelected());
+        config.setFundingEnabled(fundingCheckbox.isSelected());
 
         // Core charts
         chartPanel.setVolumeChartEnabled(volumeChartCheckbox.isSelected());
@@ -576,6 +634,13 @@ public class IndicatorSelectorPopup extends JDialog {
         chartPanel.setComparisonChartEnabled(comparisonChartCheckbox.isSelected());
         chartPanel.setCapitalUsageChartEnabled(capitalUsageChartCheckbox.isSelected());
         chartPanel.setTradePLChartEnabled(tradePLChartCheckbox.isSelected());
+
+        // Save core chart settings to config
+        config.setVolumeChartEnabled(volumeChartCheckbox.isSelected());
+        config.setEquityChartEnabled(equityChartCheckbox.isSelected());
+        config.setComparisonChartEnabled(comparisonChartCheckbox.isSelected());
+        config.setCapitalUsageChartEnabled(capitalUsageChartCheckbox.isSelected());
+        config.setTradePLChartEnabled(tradePLChartCheckbox.isSelected());
 
         // Trigger backtest if needed (for orderflow/funding data)
         if (onBacktestNeeded != null) {

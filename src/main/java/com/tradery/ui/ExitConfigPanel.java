@@ -31,8 +31,9 @@ public class ExitConfigPanel extends JPanel {
     private static final String[] TP_TYPES = {"No TP", "TP %", "TP ATR"};
 
     public ExitConfigPanel() {
-        setLayout(new BorderLayout(0, 8));
+        setLayout(new BorderLayout(0, 0));
         setOpaque(false);
+        setBorder(null);
         layoutComponents();
     }
 
@@ -60,12 +61,13 @@ public class ExitConfigPanel extends JPanel {
         zoneListPanel.setLayout(new BoxLayout(zoneListPanel, BoxLayout.Y_AXIS));
         zoneListPanel.setOpaque(false);
 
-        // Content panel with header + zones
+        // Content panel with header + zones (padding inside scroll)
         JPanel contentPanel = new JPanel();
         contentPanel.setLayout(new BoxLayout(contentPanel, BoxLayout.Y_AXIS));
         contentPanel.setOpaque(false);
+        contentPanel.setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
         contentPanel.add(headerPanel);
-        contentPanel.add(Box.createVerticalStrut(8));
+        contentPanel.add(Box.createVerticalStrut(4));
         contentPanel.add(zoneListPanel);
 
         // Wrap in scroll pane
@@ -278,7 +280,7 @@ public class ExitConfigPanel extends JPanel {
             exitImmediatelyCheckbox = new JCheckBox("Exit Immediately");
             exitImmediatelyCheckbox.setSelected(zone != null && zone.exitImmediately());
 
-            exitConditionArea = new JTextArea(zone != null ? zone.exitCondition() : "", 1, 15);
+            exitConditionArea = new JTextArea(zone != null ? zone.exitCondition() : "", 4, 15);
             exitConditionArea.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 11));
             exitConditionArea.setEnabled(!exitImmediatelyCheckbox.isSelected());
             exitConditionArea.getDocument().addDocumentListener(docListener(onChange));
@@ -427,7 +429,7 @@ public class ExitConfigPanel extends JPanel {
             JScrollPane rawScroll = new JScrollPane(exitConditionArea);
 
             JLayeredPane exitLayered = new JLayeredPane();
-            exitLayered.setPreferredSize(new Dimension(180, 24));
+            exitLayered.setPreferredSize(new Dimension(180, 64));
 
             JButton exitInfoBtn = createInfoButton();
             exitLayered.add(rawScroll, JLayeredPane.DEFAULT_LAYER);
@@ -445,7 +447,7 @@ public class ExitConfigPanel extends JPanel {
             exitConditionScroll.setOpaque(false);
             exitConditionScroll.setBorder(null);
             exitConditionScroll.add(exitLayered, BorderLayout.CENTER);
-            exitConditionScroll.setPreferredSize(new Dimension(180, 24));
+            exitConditionScroll.setPreferredSize(new Dimension(180, 64));
 
             // Exit immediately toggle - hides exit condition and SL/TP
             exitImmediatelyCheckbox.addActionListener(e -> {

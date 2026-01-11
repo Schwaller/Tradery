@@ -80,8 +80,6 @@ public class DataManagementDialog extends JDialog {
 
     private void initUI() {
         setLayout(new BorderLayout(0, 0));
-        getContentPane().setBackground(new Color(40, 40, 45));
-
 
         // Left side: Data browser (tree-style navigation)
         browserPanel = new DataBrowserPanel();
@@ -90,24 +88,21 @@ public class DataManagementDialog extends JDialog {
         JScrollPane browserScroll = new JScrollPane(browserPanel);
         browserScroll.setBorder(BorderFactory.createEmptyBorder());
         browserScroll.setPreferredSize(new Dimension(220, 0));
-        browserScroll.getViewport().setBackground(new Color(40, 40, 45));
 
         // Storage info at bottom of left panel
         storageLabel = new JLabel();
-        storageLabel.setForeground(new Color(150, 150, 150));
+        storageLabel.setForeground(UIManager.getColor("Label.disabledForeground"));
         storageLabel.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 11));
         storageLabel.setBorder(BorderFactory.createEmptyBorder(6, 8, 6, 8));
         updateStorageLabel();
 
         // Left content (browser + storage label)
         JPanel leftContent = new JPanel(new BorderLayout(0, 0));
-        leftContent.setBackground(new Color(40, 40, 45));
         leftContent.add(browserScroll, BorderLayout.CENTER);
         leftContent.add(storageLabel, BorderLayout.SOUTH);
 
         // Left panel with separator on the right edge
         JPanel leftPanel = new JPanel(new BorderLayout(0, 0));
-        leftPanel.setBackground(new Color(40, 40, 45));
         leftPanel.add(leftContent, BorderLayout.CENTER);
         leftPanel.add(new JSeparator(SwingConstants.VERTICAL), BorderLayout.EAST);
 
@@ -115,7 +110,6 @@ public class DataManagementDialog extends JDialog {
 
         // Right side: Title + Health panel (block diagram)
         detailLabel = new JLabel("Select a data series from the left");
-        detailLabel.setForeground(new Color(200, 200, 200));
         detailLabel.setFont(detailLabel.getFont().deriveFont(Font.BOLD, 12f));
         detailLabel.setBorder(BorderFactory.createEmptyBorder(8, 12, 8, 12));
 
@@ -124,10 +118,8 @@ public class DataManagementDialog extends JDialog {
 
         JScrollPane healthScroll = new JScrollPane(healthPanel);
         healthScroll.setBorder(BorderFactory.createEmptyBorder());
-        healthScroll.getViewport().setBackground(new Color(40, 40, 45));
 
         JPanel rightPanel = new JPanel(new BorderLayout(0, 0));
-        rightPanel.setBackground(new Color(40, 40, 45));
         rightPanel.add(detailLabel, BorderLayout.NORTH);
         rightPanel.add(healthScroll, BorderLayout.CENTER);
 
@@ -140,8 +132,14 @@ public class DataManagementDialog extends JDialog {
 
     private JPanel createBottomPanel() {
         JPanel panel = new JPanel(new BorderLayout(8, 8));
-        panel.setBackground(new Color(40, 40, 45));
-        panel.setBorder(BorderFactory.createEmptyBorder(8, 12, 12, 12));
+        panel.setBorder(BorderFactory.createEmptyBorder(0, 0, 8, 0));
+
+        // Separator line at top
+        panel.add(new JSeparator(), BorderLayout.NORTH);
+
+        // Button wrapper with padding
+        JPanel buttonWrapper = new JPanel(new BorderLayout());
+        buttonWrapper.setBorder(BorderFactory.createEmptyBorder(8, 12, 4, 12));
 
         // Button panel
         JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 6, 0));
@@ -181,13 +179,15 @@ public class DataManagementDialog extends JDialog {
         });
         buttonPanel.add(closeButton);
 
-        panel.add(buttonPanel, BorderLayout.EAST);
+        buttonWrapper.add(buttonPanel, BorderLayout.EAST);
 
         // Progress bar (hidden by default)
         progressBar = new JProgressBar();
         progressBar.setVisible(false);
         progressBar.setStringPainted(true);
-        panel.add(progressBar, BorderLayout.SOUTH);
+        buttonWrapper.add(progressBar, BorderLayout.SOUTH);
+
+        panel.add(buttonWrapper, BorderLayout.CENTER);
 
         return panel;
     }

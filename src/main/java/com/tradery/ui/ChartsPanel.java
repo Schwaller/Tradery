@@ -93,6 +93,62 @@ public class ChartsPanel extends JPanel {
         crosshairManager.setOnStatusUpdate(callback);
     }
 
+    /**
+     * Apply saved chart configuration from ChartConfig.
+     * Call this after the panel is fully initialized.
+     */
+    public void applySavedConfig() {
+        ChartConfig config = ChartConfig.getInstance();
+
+        // Apply indicator chart settings
+        setRsiChartEnabled(config.isRsiEnabled(), config.getRsiPeriod());
+        setMacdChartEnabled(config.isMacdEnabled(), config.getMacdFast(), config.getMacdSlow(), config.getMacdSignal());
+        setAtrChartEnabled(config.isAtrEnabled(), config.getAtrPeriod());
+
+        // Apply orderflow chart settings
+        double threshold = config.getWhaleThreshold();
+        setDeltaChartEnabled(config.isDeltaEnabled(), threshold);
+        setCvdChartEnabled(config.isCvdEnabled());
+        setVolumeRatioChartEnabled(config.isVolumeRatioEnabled());
+        setWhaleChartEnabled(config.isWhaleEnabled(), threshold);
+        setRetailChartEnabled(config.isRetailEnabled(), threshold);
+
+        // Apply funding chart setting
+        setFundingChartEnabled(config.isFundingEnabled());
+
+        // Apply core chart settings
+        setVolumeChartEnabled(config.isVolumeChartEnabled());
+        setEquityChartEnabled(config.isEquityChartEnabled());
+        setComparisonChartEnabled(config.isComparisonChartEnabled());
+        setCapitalUsageChartEnabled(config.isCapitalUsageChartEnabled());
+        setTradePLChartEnabled(config.isTradePLChartEnabled());
+
+        // Note: Overlays are applied in updateCharts() when candles are available
+    }
+
+    /**
+     * Apply saved overlay configuration. Call this after candles are loaded.
+     */
+    public void applySavedOverlays(List<Candle> candles) {
+        ChartConfig config = ChartConfig.getInstance();
+
+        if (config.isSmaEnabled()) {
+            overlayManager.setSmaOverlay(config.getSmaPeriod(), candles);
+        }
+        if (config.isEmaEnabled()) {
+            overlayManager.setEmaOverlay(config.getEmaPeriod(), candles);
+        }
+        if (config.isBollingerEnabled()) {
+            overlayManager.setBollingerOverlay(config.getBollingerPeriod(), config.getBollingerStdDev(), candles);
+        }
+        if (config.isHighLowEnabled()) {
+            overlayManager.setHighLowOverlay(config.getHighLowPeriod(), candles);
+        }
+        if (config.isMayerEnabled()) {
+            overlayManager.setMayerMultipleEnabled(true, config.getMayerPeriod());
+        }
+    }
+
     private void initializeCharts() {
         // Price chart
         priceChart = ChartFactory.createTimeSeriesChart(

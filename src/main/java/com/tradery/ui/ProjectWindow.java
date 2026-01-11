@@ -261,6 +261,9 @@ public class ProjectWindow extends JFrame {
         indicatorControls.setChartPanel(chartPanel);
         indicatorControls.setOnBacktestNeeded(this::runBacktest);
 
+        // Apply saved chart configuration
+        chartPanel.applySavedConfig();
+
         // Wire up auto-save scheduler
         autoSaveScheduler.setOnSave(this::saveStrategyQuietly);
         autoSaveScheduler.setOnBacktest(this::runBacktest);
@@ -477,7 +480,7 @@ public class ProjectWindow extends JFrame {
         editorTerminalSplit.setBottomComponent(dockedTerminalWrapper);
 
         JPanel leftPanel = new JPanel(new BorderLayout(0, 0));
-        leftPanel.setPreferredSize(new Dimension(280, 0));
+        leftPanel.setPreferredSize(new Dimension(320, 0));
         leftPanel.add(editorTerminalSplit, BorderLayout.CENTER);
 
         // Add vertical separator on the right
@@ -1028,6 +1031,9 @@ public class ProjectWindow extends JFrame {
             chartPanel.setIndicatorEngine(backtestCoordinator.getIndicatorEngine());
 
             chartPanel.updateCharts(candles, result.trades(), result.config().initialCapital());
+
+            // Apply saved overlays
+            chartPanel.applySavedOverlays(candles);
 
             // Update indicator controls with current candle data
             indicatorControls.setCurrentCandles(candles);

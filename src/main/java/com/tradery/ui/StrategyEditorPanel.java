@@ -45,7 +45,7 @@ public class StrategyEditorPanel extends JPanel {
         hoopPatternSelectionPanel.setBorder(BorderFactory.createEmptyBorder(0, 8, 8, 8));
         flowDiagramPanel.setBorder(BorderFactory.createEmptyBorder(4, 8, 4, 8));
         entryConfigPanel.setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
-        exitConfigPanel.setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
+        exitConfigPanel.setBorder(null);
 
         // Wire up change listeners
         tradeSettingsPanel.setOnChange(this::fireChange);
