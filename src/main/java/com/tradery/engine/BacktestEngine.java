@@ -1265,161 +1265,6 @@ public class BacktestEngine {
     public record Progress(int current, int total, int percentage, String message) {}
 
     /**
-     * Helper class to track state for each open trade
-     */
-    private static class OpenTradeState {
-        Trade trade;
-        double highestPriceSinceEntry;
-        double lowestPriceSinceEntry;  // For MAE tracking
-        double trailingStopPrice;
-        String exitReason;
-        double exitPrice;
-        String exitZone;
-        ExitZone matchedZone;  // The zone that triggered the exit (for partial exit calculation)
-        // DCA-out tracking
-        double originalQuantity;              // Original quantity at entry
-        double remainingQuantity;             // Current remaining quantity
-        Map<String, Integer> zoneExitCount;   // zoneName -> number of exits done in this zone
-        String lastZoneName;                  // Track zone transitions for RESET logic
-        int lastExitBar;                      // Track last partial exit bar for minBarsBetweenExits
-        // Trade analytics (MFE/MAE)
-        double mfePercent;    // Maximum Favorable Excursion (best P&L %)
-        double maePercent;    // Maximum Adverse Excursion (worst P&L %)
-        int mfeBar;           // Bar when MFE was reached
-        int maeBar;           // Bar when MAE was reached
-        // Phase context
-        List<String> activePhasesAtEntry;  // Phases active when trade was opened
-
-        OpenTradeState(Trade trade, double entryPrice) {
-            this(trade, entryPrice, null);
-        }
-
-        OpenTradeState(Trade trade, double entryPrice, List<String> activePhasesAtEntry) {
-            this.trade = trade;
-            this.highestPriceSinceEntry = entryPrice;
-            this.lowestPriceSinceEntry = entryPrice;
-            this.trailingStopPrice = 0;
-            this.originalQuantity = trade.quantity();
-            this.remainingQuantity = trade.quantity();
-            this.zoneExitCount = new HashMap<>();
-            this.lastZoneName = null;
-            this.lastExitBar = -9999;
-            // Initialize MFE/MAE at entry
-            this.mfePercent = 0;
-            this.maePercent = 0;
-            this.mfeBar = trade.entryBar();
-            this.maeBar = trade.entryBar();
-            // Phase context
-            this.activePhasesAtEntry = activePhasesAtEntry;
-        }
-
-        /**
-         * Update MFE/MAE tracking based on current bar's price action.
-         * Call this at the start of each bar while trade is open.
-         */
-        void updateExcursions(double high, double low, int barIndex, boolean isLong) {
-            // Track price extremes
-            if (high > highestPriceSinceEntry) {
-                highestPriceSinceEntry = high;
-            }
-            if (low < lowestPriceSinceEntry) {
-                lowestPriceSinceEntry = low;
-            }
-
-            double entryPrice = trade.entryPrice();
-
-            // Calculate P&L % at high and low of bar
-            double pnlAtHigh, pnlAtLow;
-            if (isLong) {
-                pnlAtHigh = ((high - entryPrice) / entryPrice) * 100;
-                pnlAtLow = ((low - entryPrice) / entryPrice) * 100;
-            } else {
-                // Short: profit when price goes down
-                pnlAtHigh = ((entryPrice - high) / entryPrice) * 100;
-                pnlAtLow = ((entryPrice - low) / entryPrice) * 100;
-            }
-
-            // Update MFE (best P&L) - for longs use high, for shorts use low
-            double bestPnl = isLong ? pnlAtHigh : pnlAtLow;
-            if (bestPnl > mfePercent) {
-                mfePercent = bestPnl;
-                mfeBar = barIndex;
-            }
-
-            // Update MAE (worst P&L) - for longs use low, for shorts use high
-            double worstPnl = isLong ? pnlAtLow : pnlAtHigh;
-            if (worstPnl < maePercent) {
-                maePercent = worstPnl;
-                maeBar = barIndex;
-            }
-        }
-
-        /**
-         * Calculate exit quantity for a zone based on its configuration.
-         * Returns the quantity to exit (clipped to remaining), or 0 if max exits reached.
-         */
-        double calculateExitQuantity(ExitZone zone) {
-            double exitPercent = zone.getEffectiveExitPercent();
-            int maxExits = zone.getEffectiveMaxExits();
-            ExitBasis basis = zone.exitBasis();
-            ExitReentry reentry = zone.exitReentry();
-            String zoneName = zone.name();
-
-            // Handle zone transition - reset count if configured
-            if (lastZoneName != null && !lastZoneName.equals(zoneName) && reentry == ExitReentry.RESET) {
-                zoneExitCount.clear();
-            }
-            lastZoneName = zoneName;
-
-            // Check if max exits reached for this zone
-            int exitsDone = zoneExitCount.getOrDefault(zoneName, 0);
-            if (exitsDone >= maxExits) {
-                return 0;  // No more exits allowed in this zone
-            }
-
-            // Calculate target quantity based on basis
-            double targetQty;
-            if (basis == ExitBasis.ORIGINAL) {
-                targetQty = originalQuantity * (exitPercent / 100.0);
-            } else {
-                // REMAINING basis
-                targetQty = remainingQuantity * (exitPercent / 100.0);
-            }
-
-            // Clip to remaining
-            targetQty = Math.min(targetQty, remainingQuantity);
-            targetQty = Math.max(targetQty, 0); // Can't be negative
-
-            return targetQty;
-        }
-
-        /**
-         * Check if enough bars have passed since last exit for this zone.
-         */
-        boolean canExitInZone(ExitZone zone, int currentBar) {
-            int minBarsBetween = zone.minBarsBetweenExits();
-            return (currentBar - lastExitBar) >= minBarsBetween;
-        }
-
-        /**
-         * Record a partial exit in a zone.
-         */
-        void recordPartialExit(String zoneName, double quantity, int currentBar) {
-            int current = zoneExitCount.getOrDefault(zoneName, 0);
-            zoneExitCount.put(zoneName, current + 1);
-            remainingQuantity -= quantity;
-            lastExitBar = currentBar;
-        }
-
-        /**
-         * Check if this position is fully closed.
-         */
-        boolean isFullyClosed() {
-            return remainingQuantity <= 0.0001; // Small epsilon for floating point
-        }
-    }
-
-    /**
      * Holds parsed exit zone information
      */
     private static class ParsedExitZone {
@@ -1429,92 +1274,6 @@ public class BacktestEngine {
         ParsedExitZone(ExitZone zone, AstNode exitConditionAst) {
             this.zone = zone;
             this.exitConditionAst = exitConditionAst;
-        }
-    }
-
-    /**
-     * Tracks a pending entry order (LIMIT, STOP, or TRAILING).
-     * Created when DSL signal fires with non-MARKET order type.
-     */
-    private static class PendingOrder {
-        final int signalBar;              // Bar when DSL signal triggered
-        final double signalPrice;         // Price at signal bar
-        final double orderPrice;          // Target fill price (for LIMIT/STOP)
-        double trailPrice;                // For TRAILING: lowest price seen (tracks down)
-        final EntryOrderType orderType;
-        final Integer expirationBar;      // Bar when order expires (null = never)
-        final double trailingReversePercent;  // For TRAILING: reversal % to trigger
-
-        PendingOrder(int signalBar, double signalPrice, EntryOrderType orderType,
-                     Double offsetPercent, Double trailingReversePercent, Integer expirationBars) {
-            this.signalBar = signalBar;
-            this.signalPrice = signalPrice;
-            this.orderType = orderType;
-            this.trailingReversePercent = trailingReversePercent != null ? trailingReversePercent : 1.0;
-
-            // Calculate order price for LIMIT/STOP
-            if (offsetPercent != null && (orderType == EntryOrderType.LIMIT || orderType == EntryOrderType.STOP)) {
-                this.orderPrice = signalPrice * (1 + offsetPercent / 100.0);
-            } else {
-                this.orderPrice = signalPrice;
-            }
-
-            // Initialize trail price for TRAILING
-            this.trailPrice = signalPrice;
-
-            // Calculate expiration bar
-            this.expirationBar = expirationBars != null ? signalBar + expirationBars : null;
-        }
-
-        /**
-         * Check if this order has expired.
-         */
-        boolean isExpired(int currentBar) {
-            return expirationBar != null && currentBar > expirationBar;
-        }
-
-        /**
-         * Check if LIMIT order should fill at current bar.
-         * LIMIT fills when price drops TO or BELOW the order price.
-         */
-        boolean shouldFillLimit(double low) {
-            return orderType == EntryOrderType.LIMIT && low <= orderPrice;
-        }
-
-        /**
-         * Check if STOP order should fill at current bar.
-         * STOP fills when price rises TO or ABOVE the order price.
-         */
-        boolean shouldFillStop(double high) {
-            return orderType == EntryOrderType.STOP && high >= orderPrice;
-        }
-
-        /**
-         * Update trailing price and check if TRAILING order should fill.
-         * Returns the fill price if should fill, null otherwise.
-         */
-        Double updateTrailingAndCheckFill(double high, double low, double close) {
-            if (orderType != EntryOrderType.TRAILING) return null;
-
-            // Trail down - update to lowest low seen
-            if (low < trailPrice) {
-                trailPrice = low;
-            }
-
-            // Check for reversal - price has bounced up from trail by X%
-            double reversalTarget = trailPrice * (1 + trailingReversePercent / 100.0);
-            if (close >= reversalTarget) {
-                return close;  // Fill at close price on reversal
-            }
-
-            return null;  // No fill yet
-        }
-
-        /**
-         * Get the fill price for LIMIT/STOP orders.
-         */
-        double getFillPrice() {
-            return orderPrice;
         }
     }
 
@@ -1564,26 +1323,16 @@ public class BacktestEngine {
 
         String expr = allExpressions.toString();
 
-        // Extract and evaluate SMA indicators
-        extractAndEvaluateSMA(expr, barIndex, values);
+        // Extract single-parameter indicators (SMA, EMA, RSI, ATR)
+        extractSimpleIndicator(expr, barIndex, values, "SMA", indicatorEngine::getSMAAt);
+        extractSimpleIndicator(expr, barIndex, values, "EMA", indicatorEngine::getEMAAt);
+        extractSimpleIndicator(expr, barIndex, values, "RSI", indicatorEngine::getRSIAt);
+        extractSimpleIndicator(expr, barIndex, values, "ATR", indicatorEngine::getATRAt);
 
-        // Extract and evaluate EMA indicators
-        extractAndEvaluateEMA(expr, barIndex, values);
-
-        // Extract and evaluate RSI indicators
-        extractAndEvaluateRSI(expr, barIndex, values);
-
-        // Extract and evaluate ADX/DI indicators
-        extractAndEvaluateADX(expr, barIndex, values);
-
-        // Extract and evaluate MACD indicators
-        extractAndEvaluateMACD(expr, barIndex, values);
-
-        // Extract and evaluate Bollinger Bands
-        extractAndEvaluateBBands(expr, barIndex, values);
-
-        // Extract and evaluate ATR
-        extractAndEvaluateATR(expr, barIndex, values);
+        // Extract multi-value indicators
+        extractADXIndicators(expr, barIndex, values);
+        extractMACDIndicators(expr, barIndex, values);
+        extractBBandsIndicators(expr, barIndex, values);
 
         // Always include price for context
         Candle candle = indicatorEngine.getCandleAt(barIndex);
@@ -1595,14 +1344,19 @@ public class BacktestEngine {
         return values;
     }
 
-    private void extractAndEvaluateSMA(String expr, int barIndex, Map<String, Double> values) {
-        Pattern pattern = Pattern.compile("SMA\\((\\d+)\\)");
+    /**
+     * Generic extraction for single-parameter indicators (SMA, EMA, RSI, ATR).
+     * Reduces code duplication by using a functional interface for evaluation.
+     */
+    private void extractSimpleIndicator(String expr, int barIndex, Map<String, Double> values,
+                                        String indicatorName, java.util.function.BiFunction<Integer, Integer, Double> evaluator) {
+        Pattern pattern = Pattern.compile(indicatorName + "\\((\\d+)\\)");
         Matcher matcher = pattern.matcher(expr);
         while (matcher.find()) {
             int period = Integer.parseInt(matcher.group(1));
-            String key = "SMA(" + period + ")";
+            String key = indicatorName + "(" + period + ")";
             if (!values.containsKey(key)) {
-                double value = indicatorEngine.getSMAAt(period, barIndex);
+                double value = evaluator.apply(period, barIndex);
                 if (!Double.isNaN(value)) {
                     values.put(key, value);
                 }
@@ -1610,38 +1364,7 @@ public class BacktestEngine {
         }
     }
 
-    private void extractAndEvaluateEMA(String expr, int barIndex, Map<String, Double> values) {
-        Pattern pattern = Pattern.compile("EMA\\((\\d+)\\)");
-        Matcher matcher = pattern.matcher(expr);
-        while (matcher.find()) {
-            int period = Integer.parseInt(matcher.group(1));
-            String key = "EMA(" + period + ")";
-            if (!values.containsKey(key)) {
-                double value = indicatorEngine.getEMAAt(period, barIndex);
-                if (!Double.isNaN(value)) {
-                    values.put(key, value);
-                }
-            }
-        }
-    }
-
-    private void extractAndEvaluateRSI(String expr, int barIndex, Map<String, Double> values) {
-        Pattern pattern = Pattern.compile("RSI\\((\\d+)\\)");
-        Matcher matcher = pattern.matcher(expr);
-        while (matcher.find()) {
-            int period = Integer.parseInt(matcher.group(1));
-            String key = "RSI(" + period + ")";
-            if (!values.containsKey(key)) {
-                double value = indicatorEngine.getRSIAt(period, barIndex);
-                if (!Double.isNaN(value)) {
-                    values.put(key, value);
-                }
-            }
-        }
-    }
-
-    private void extractAndEvaluateADX(String expr, int barIndex, Map<String, Double> values) {
-        // ADX, PLUS_DI, MINUS_DI all use same period pattern
+    private void extractADXIndicators(String expr, int barIndex, Map<String, Double> values) {
         Pattern pattern = Pattern.compile("(ADX|PLUS_DI|MINUS_DI)\\((\\d+)\\)");
         Matcher matcher = pattern.matcher(expr);
         Set<Integer> periods = new HashSet<>();
@@ -1649,7 +1372,6 @@ public class BacktestEngine {
             periods.add(Integer.parseInt(matcher.group(2)));
         }
         for (int period : periods) {
-            // Get all three values for this period
             double adx = indicatorEngine.getADXAt(period, barIndex);
             double plusDi = indicatorEngine.getPlusDIAt(period, barIndex);
             double minusDi = indicatorEngine.getMinusDIAt(period, barIndex);
@@ -1659,7 +1381,7 @@ public class BacktestEngine {
         }
     }
 
-    private void extractAndEvaluateMACD(String expr, int barIndex, Map<String, Double> values) {
+    private void extractMACDIndicators(String expr, int barIndex, Map<String, Double> values) {
         Pattern pattern = Pattern.compile("MACD\\((\\d+)\\s*,\\s*(\\d+)\\s*,\\s*(\\d+)\\)");
         Matcher matcher = pattern.matcher(expr);
         while (matcher.find()) {
@@ -1678,7 +1400,7 @@ public class BacktestEngine {
         }
     }
 
-    private void extractAndEvaluateBBands(String expr, int barIndex, Map<String, Double> values) {
+    private void extractBBandsIndicators(String expr, int barIndex, Map<String, Double> values) {
         Pattern pattern = Pattern.compile("BBANDS\\((\\d+)\\s*,\\s*([\\d.]+)\\)");
         Matcher matcher = pattern.matcher(expr);
         while (matcher.find()) {
@@ -1692,21 +1414,6 @@ public class BacktestEngine {
                 if (!Double.isNaN(upper)) values.put(prefix + ".upper", upper);
                 if (!Double.isNaN(middle)) values.put(prefix + ".middle", middle);
                 if (!Double.isNaN(lower)) values.put(prefix + ".lower", lower);
-            }
-        }
-    }
-
-    private void extractAndEvaluateATR(String expr, int barIndex, Map<String, Double> values) {
-        Pattern pattern = Pattern.compile("ATR\\((\\d+)\\)");
-        Matcher matcher = pattern.matcher(expr);
-        while (matcher.find()) {
-            int period = Integer.parseInt(matcher.group(1));
-            String key = "ATR(" + period + ")";
-            if (!values.containsKey(key)) {
-                double value = indicatorEngine.getATRAt(period, barIndex);
-                if (!Double.isNaN(value)) {
-                    values.put(key, value);
-                }
             }
         }
     }

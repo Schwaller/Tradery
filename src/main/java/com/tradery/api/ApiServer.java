@@ -1,6 +1,5 @@
 package com.tradery.api;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -12,17 +11,16 @@ import com.tradery.data.CandleStore;
 import com.tradery.data.FundingRateStore;
 import com.tradery.data.OpenInterestStore;
 import com.tradery.dsl.Parser;
-import com.tradery.model.AggTrade;
-import com.tradery.engine.BacktestEngine;
 import com.tradery.engine.ConditionEvaluator;
 import com.tradery.indicators.IndicatorEngine;
 import com.tradery.io.PhaseStore;
-import com.tradery.io.ResultStore;
 import com.tradery.io.StrategyStore;
-import com.tradery.model.*;
+import com.tradery.model.AggTrade;
+import com.tradery.model.Candle;
+import com.tradery.model.FundingRate;
+import com.tradery.model.OpenInterest;
 
 import java.io.IOException;
-import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.net.URLDecoder;
@@ -65,10 +63,12 @@ public class ApiServer {
     private final AggTradesStore aggTradesStore;
     private final FundingRateStore fundingRateStore;
     private final OpenInterestStore openInterestStore;
-    private final StrategyStore strategyStore;
-    private final PhaseStore phaseStore;
     private final String sessionToken;
     private int actualPort;
+
+    // Extracted handlers
+    private final StrategyHandler strategyHandler;
+    private final PhaseHandler phaseHandler;
 
     public ApiServer(CandleStore candleStore, AggTradesStore aggTradesStore,
                      FundingRateStore fundingRateStore, OpenInterestStore openInterestStore,
@@ -77,9 +77,11 @@ public class ApiServer {
         this.aggTradesStore = aggTradesStore;
         this.fundingRateStore = fundingRateStore;
         this.openInterestStore = openInterestStore;
-        this.strategyStore = strategyStore;
-        this.phaseStore = phaseStore;
         this.sessionToken = generateSessionToken();
+
+        // Initialize extracted handlers
+        this.strategyHandler = new StrategyHandler(strategyStore, phaseStore, candleStore);
+        this.phaseHandler = new PhaseHandler(phaseStore, candleStore);
     }
 
     private String generateSessionToken() {
@@ -119,10 +121,10 @@ public class ApiServer {
         server.createContext("/indicator", this::handleIndicator);
         server.createContext("/indicators", this::handleIndicators);
         server.createContext("/eval", this::handleEval);
-        server.createContext("/strategies", this::handleStrategies);
-        server.createContext("/strategy/", this::handleStrategy);
-        server.createContext("/phases", this::handlePhases);
-        server.createContext("/phase/", this::handlePhase);
+        server.createContext("/strategies", ex -> { if (validateToken(ex)) strategyHandler.handleStrategies(ex); else sendError(ex, 401, "Invalid token"); });
+        server.createContext("/strategy/", ex -> { if (validateToken(ex)) strategyHandler.handleStrategy(ex); else sendError(ex, 401, "Invalid token"); });
+        server.createContext("/phases", ex -> { if (validateToken(ex)) phaseHandler.handlePhases(ex); else sendError(ex, 401, "Invalid token"); });
+        server.createContext("/phase/", ex -> { if (validateToken(ex)) phaseHandler.handlePhase(ex); else sendError(ex, 401, "Invalid token"); });
 
         server.start();
         System.out.println("API server started on http://localhost:" + actualPort + " (token: " + sessionToken.substring(0, 8) + "...)");
@@ -487,451 +489,6 @@ public class ApiServer {
             sendJson(exchange, 200, response);
         } catch (Exception e) {
             sendError(exchange, 500, "Failed to evaluate condition: " + e.getMessage());
-        }
-    }
-
-    // ========== Strategy Management Handlers ==========
-
-    private void handleStrategies(HttpExchange exchange) throws IOException {
-        if (!checkMethod(exchange, "GET")) return;
-        if (!validateToken(exchange)) {
-            sendError(exchange, 401, "Invalid or missing session token");
-            return;
-        }
-
-        try {
-            List<Strategy> strategies = strategyStore.loadAll();
-
-            ObjectNode response = mapper.createObjectNode();
-            ArrayNode strategiesArray = response.putArray("strategies");
-
-            for (Strategy s : strategies) {
-                ObjectNode node = strategiesArray.addObject();
-                node.put("id", s.getId());
-                node.put("name", s.getName());
-                node.put("enabled", s.isEnabled());
-                node.put("symbol", s.getSymbol());
-                node.put("timeframe", s.getTimeframe());
-            }
-
-            sendJson(exchange, 200, response);
-        } catch (Exception e) {
-            sendError(exchange, 500, "Failed to list strategies: " + e.getMessage());
-        }
-    }
-
-    private void handleStrategy(HttpExchange exchange) throws IOException {
-        if (!validateToken(exchange)) {
-            sendError(exchange, 401, "Invalid or missing session token");
-            return;
-        }
-
-        String path = exchange.getRequestURI().getPath();
-        // Path format: /strategy/{id} or /strategy/{id}/backtest or /strategy/{id}/results
-
-        String[] parts = path.split("/");
-        if (parts.length < 3) {
-            sendError(exchange, 400, "Invalid path. Use /strategy/{id}");
-            return;
-        }
-
-        String strategyId = parts[2];
-        String action = parts.length > 3 ? parts[3] : null;
-
-        String method = exchange.getRequestMethod();
-
-        if (action == null) {
-            // /strategy/{id}
-            if ("GET".equalsIgnoreCase(method)) {
-                handleGetStrategy(exchange, strategyId);
-            } else if ("POST".equalsIgnoreCase(method)) {
-                handleUpdateStrategy(exchange, strategyId);
-            } else {
-                sendError(exchange, 405, "Method not allowed");
-            }
-        } else if ("backtest".equals(action)) {
-            // /strategy/{id}/backtest
-            if ("POST".equalsIgnoreCase(method)) {
-                handleBacktest(exchange, strategyId);
-            } else {
-                sendError(exchange, 405, "Use POST for /backtest");
-            }
-        } else if ("results".equals(action)) {
-            // /strategy/{id}/results
-            if ("GET".equalsIgnoreCase(method)) {
-                handleGetResults(exchange, strategyId);
-            } else {
-                sendError(exchange, 405, "Use GET for /results");
-            }
-        } else {
-            sendError(exchange, 404, "Unknown action: " + action);
-        }
-    }
-
-    private void handleGetStrategy(HttpExchange exchange, String strategyId) throws IOException {
-        try {
-            Strategy strategy = strategyStore.load(strategyId);
-            if (strategy == null) {
-                sendError(exchange, 404, "Strategy not found: " + strategyId);
-                return;
-            }
-
-            String json = mapper.writerWithDefaultPrettyPrinter().writeValueAsString(strategy);
-            byte[] response = json.getBytes(StandardCharsets.UTF_8);
-            exchange.getResponseHeaders().set("Content-Type", "application/json");
-            exchange.sendResponseHeaders(200, response.length);
-            try (OutputStream os = exchange.getResponseBody()) {
-                os.write(response);
-            }
-        } catch (Exception e) {
-            sendError(exchange, 500, "Failed to get strategy: " + e.getMessage());
-        }
-    }
-
-    private void handleUpdateStrategy(HttpExchange exchange, String strategyId) throws IOException {
-        try {
-            Strategy existing = strategyStore.load(strategyId);
-            if (existing == null) {
-                sendError(exchange, 404, "Strategy not found: " + strategyId);
-                return;
-            }
-
-            // Read request body
-            String body;
-            try (InputStream is = exchange.getRequestBody()) {
-                body = new String(is.readAllBytes(), StandardCharsets.UTF_8);
-            }
-
-            // Parse as JSON and merge with existing strategy
-            JsonNode updates = mapper.readTree(body);
-
-            // Apply updates to existing strategy
-            if (updates.has("name")) {
-                existing.setName(updates.get("name").asText());
-            }
-            if (updates.has("enabled")) {
-                existing.setEnabled(updates.get("enabled").asBoolean());
-            }
-            if (updates.has("entrySettings")) {
-                EntrySettings entry = mapper.treeToValue(updates.get("entrySettings"), EntrySettings.class);
-                existing.setEntrySettings(entry);
-            }
-            if (updates.has("exitSettings")) {
-                ExitSettings exit = mapper.treeToValue(updates.get("exitSettings"), ExitSettings.class);
-                existing.setExitSettings(exit);
-            }
-            if (updates.has("backtestSettings")) {
-                BacktestSettings backtest = mapper.treeToValue(updates.get("backtestSettings"), BacktestSettings.class);
-                existing.setBacktestSettings(backtest);
-            }
-            if (updates.has("phaseSettings")) {
-                PhaseSettings phases = mapper.treeToValue(updates.get("phaseSettings"), PhaseSettings.class);
-                existing.setPhaseSettings(phases);
-            }
-
-            // Save
-            strategyStore.save(existing);
-
-            ObjectNode response = mapper.createObjectNode();
-            response.put("success", true);
-            response.put("strategyId", strategyId);
-            response.put("message", "Strategy updated");
-
-            sendJson(exchange, 200, response);
-        } catch (Exception e) {
-            sendError(exchange, 500, "Failed to update strategy: " + e.getMessage());
-        }
-    }
-
-    private void handleBacktest(HttpExchange exchange, String strategyId) throws IOException {
-        try {
-            Strategy strategy = strategyStore.load(strategyId);
-            if (strategy == null) {
-                sendError(exchange, 404, "Strategy not found: " + strategyId);
-                return;
-            }
-
-            // Calculate date range from duration
-            long endDate = System.currentTimeMillis();
-            long startDate = endDate - parseDurationMillis(strategy.getDuration());
-
-            // Build config from strategy settings
-            BacktestConfig config = strategy.getBacktestSettings().toBacktestConfig(startDate, endDate);
-
-            // Load candles
-            List<Candle> candles = candleStore.getCandles(
-                config.symbol(), config.resolution(), config.startDate(), config.endDate()
-            );
-
-            if (candles.isEmpty()) {
-                sendError(exchange, 400, "No candle data available for " + config.symbol() + " " + config.resolution());
-                return;
-            }
-
-            // Load required phases
-            List<Phase> requiredPhases = new ArrayList<>();
-            for (String phaseId : strategy.getRequiredPhaseIds()) {
-                Phase phase = phaseStore.load(phaseId);
-                if (phase != null) {
-                    requiredPhases.add(phase);
-                }
-            }
-            for (String phaseId : strategy.getExcludedPhaseIds()) {
-                Phase phase = phaseStore.load(phaseId);
-                if (phase != null) {
-                    requiredPhases.add(phase);
-                }
-            }
-
-            // Run backtest (blocking)
-            BacktestEngine engine = new BacktestEngine(candleStore);
-            BacktestResult result = engine.run(strategy, config, candles, requiredPhases, null);
-
-            // Save results
-            ResultStore resultStore = new ResultStore(strategyId);
-            resultStore.save(result);
-
-            // Return summary
-            ObjectNode response = mapper.createObjectNode();
-            response.put("success", true);
-            response.put("strategyId", strategyId);
-
-            ObjectNode metrics = response.putObject("metrics");
-            PerformanceMetrics m = result.metrics();
-            metrics.put("totalTrades", m.totalTrades());
-            metrics.put("winningTrades", m.winningTrades());
-            metrics.put("losingTrades", m.losingTrades());
-            metrics.put("winRate", Math.round(m.winRate() * 100) / 100.0);
-            metrics.put("profitFactor", Math.round(m.profitFactor() * 100) / 100.0);
-            metrics.put("totalReturnPercent", Math.round(m.totalReturnPercent() * 100) / 100.0);
-            metrics.put("maxDrawdownPercent", Math.round(m.maxDrawdownPercent() * 100) / 100.0);
-            metrics.put("sharpeRatio", Math.round(m.sharpeRatio() * 100) / 100.0);
-
-            response.put("tradesCount", result.trades().size());
-            response.put("barsProcessed", result.barsProcessed());
-            response.put("durationMs", result.duration());
-
-            sendJson(exchange, 200, response);
-        } catch (Exception e) {
-            e.printStackTrace();
-            sendError(exchange, 500, "Backtest failed: " + e.getMessage());
-        }
-    }
-
-    private void handleGetResults(HttpExchange exchange, String strategyId) throws IOException {
-        try {
-            ResultStore resultStore = new ResultStore(strategyId);
-            BacktestResult result = resultStore.loadLatest();
-
-            if (result == null) {
-                sendError(exchange, 404, "No results found for strategy: " + strategyId);
-                return;
-            }
-
-            // Return the full result as JSON
-            String json = mapper.writerWithDefaultPrettyPrinter().writeValueAsString(result);
-            byte[] response = json.getBytes(StandardCharsets.UTF_8);
-            exchange.getResponseHeaders().set("Content-Type", "application/json");
-            exchange.sendResponseHeaders(200, response.length);
-            try (OutputStream os = exchange.getResponseBody()) {
-                os.write(response);
-            }
-        } catch (Exception e) {
-            sendError(exchange, 500, "Failed to get results: " + e.getMessage());
-        }
-    }
-
-    // ========== Phase Handlers ==========
-
-    private void handlePhases(HttpExchange exchange) throws IOException {
-        if (!checkMethod(exchange, "GET")) return;
-        if (!validateToken(exchange)) {
-            sendError(exchange, 401, "Invalid or missing session token");
-            return;
-        }
-
-        try {
-            List<Phase> phases = phaseStore.loadAll();
-
-            ObjectNode response = mapper.createObjectNode();
-            ArrayNode phasesArray = response.putArray("phases");
-
-            for (Phase p : phases) {
-                ObjectNode node = phasesArray.addObject();
-                node.put("id", p.getId());
-                node.put("name", p.getName());
-                node.put("category", p.getCategory());
-                node.put("description", p.getDescription());
-                node.put("condition", p.getCondition());
-                node.put("timeframe", p.getTimeframe());
-                node.put("builtIn", p.isBuiltIn());
-            }
-
-            sendJson(exchange, 200, response);
-        } catch (Exception e) {
-            sendError(exchange, 500, "Failed to list phases: " + e.getMessage());
-        }
-    }
-
-    private void handlePhase(HttpExchange exchange) throws IOException {
-        if (!validateToken(exchange)) {
-            sendError(exchange, 401, "Invalid or missing session token");
-            return;
-        }
-
-        String path = exchange.getRequestURI().getPath();
-        // Path format: /phase/{id} or /phase/{id}/bounds
-
-        String[] parts = path.split("/");
-        if (parts.length < 3) {
-            sendError(exchange, 400, "Invalid path. Use /phase/{id} or /phase/{id}/bounds");
-            return;
-        }
-
-        String phaseId = parts[2];
-        String action = parts.length > 3 ? parts[3] : null;
-
-        if (!checkMethod(exchange, "GET")) return;
-
-        if (action == null) {
-            // GET /phase/{id} - return phase details
-            handleGetPhase(exchange, phaseId);
-        } else if ("bounds".equals(action)) {
-            // GET /phase/{id}/bounds?symbol=BTCUSDT&bars=500 - find where phase is active
-            handlePhaseBounds(exchange, phaseId);
-        } else {
-            sendError(exchange, 404, "Unknown action: " + action);
-        }
-    }
-
-    private void handleGetPhase(HttpExchange exchange, String phaseId) throws IOException {
-        try {
-            Phase phase = phaseStore.load(phaseId);
-            if (phase == null) {
-                sendError(exchange, 404, "Phase not found: " + phaseId);
-                return;
-            }
-
-            String json = mapper.writerWithDefaultPrettyPrinter().writeValueAsString(phase);
-            byte[] response = json.getBytes(StandardCharsets.UTF_8);
-            exchange.getResponseHeaders().set("Content-Type", "application/json");
-            exchange.sendResponseHeaders(200, response.length);
-            try (OutputStream os = exchange.getResponseBody()) {
-                os.write(response);
-            }
-        } catch (Exception e) {
-            sendError(exchange, 500, "Failed to get phase: " + e.getMessage());
-        }
-    }
-
-    private void handlePhaseBounds(HttpExchange exchange, String phaseId) throws IOException {
-        Map<String, String> params = parseQuery(exchange.getRequestURI().getQuery());
-
-        try {
-            Phase phase = phaseStore.load(phaseId);
-            if (phase == null) {
-                sendError(exchange, 404, "Phase not found: " + phaseId);
-                return;
-            }
-
-            // Use phase's timeframe, or override from params
-            String symbol = params.getOrDefault("symbol", phase.getSymbol() != null ? phase.getSymbol() : "BTCUSDT");
-            String timeframe = params.getOrDefault("timeframe", phase.getTimeframe() != null ? phase.getTimeframe() : "1h");
-            int bars = Integer.parseInt(params.getOrDefault("bars", "500"));
-
-            // Load candles for the phase's timeframe
-            List<Candle> candles = loadCandles(symbol, timeframe, bars);
-
-            if (candles.isEmpty()) {
-                sendError(exchange, 400, "No candle data available for " + symbol + " " + timeframe);
-                return;
-            }
-
-            // Parse phase condition
-            Parser parser = new Parser();
-            Parser.ParseResult parseResult = parser.parse(phase.getCondition());
-            if (!parseResult.success()) {
-                sendError(exchange, 400, "Phase condition parse error: " + parseResult.error());
-                return;
-            }
-
-            // Set up indicator engine and evaluator
-            IndicatorEngine engine = new IndicatorEngine();
-            engine.setCandles(candles, timeframe);
-            ConditionEvaluator evaluator = new ConditionEvaluator(engine);
-
-            // Find bounds where phase is active
-            ObjectNode response = mapper.createObjectNode();
-            response.put("phaseId", phaseId);
-            response.put("phaseName", phase.getName());
-            response.put("condition", phase.getCondition());
-            response.put("symbol", symbol);
-            response.put("timeframe", timeframe);
-            response.put("barsScanned", candles.size());
-
-            ArrayNode boundsArray = response.putArray("bounds");
-
-            boolean inPhase = false;
-            long startTime = 0;
-            int startBar = 0;
-            int activeBars = 0;
-
-            // Start from bar 50 for indicator warmup
-            int evalStart = Math.min(50, candles.size() / 4);
-
-            for (int i = evalStart; i < candles.size(); i++) {
-                boolean active;
-                try {
-                    active = evaluator.evaluate(parseResult.ast(), i);
-                } catch (Exception e) {
-                    active = false;
-                }
-
-                if (active && !inPhase) {
-                    // Phase started
-                    inPhase = true;
-                    startTime = candles.get(i).timestamp();
-                    startBar = i;
-                } else if (!active && inPhase) {
-                    // Phase ended
-                    inPhase = false;
-                    long endTime = candles.get(i - 1).timestamp();
-
-                    ObjectNode bound = boundsArray.addObject();
-                    bound.put("startBar", startBar);
-                    bound.put("endBar", i - 1);
-                    bound.put("startTime", startTime);
-                    bound.put("endTime", endTime);
-                    bound.put("bars", i - startBar);
-
-                    activeBars += (i - startBar);
-                }
-
-                if (active) {
-                    activeBars++;
-                }
-            }
-
-            // If still in phase at the end
-            if (inPhase) {
-                long endTime = candles.get(candles.size() - 1).timestamp();
-                ObjectNode bound = boundsArray.addObject();
-                bound.put("startBar", startBar);
-                bound.put("endBar", candles.size() - 1);
-                bound.put("startTime", startTime);
-                bound.put("endTime", endTime);
-                bound.put("bars", candles.size() - startBar);
-                bound.put("ongoing", true);
-            }
-
-            response.put("activeBars", activeBars);
-            response.put("activePercent", Math.round((double) activeBars / (candles.size() - evalStart) * 10000) / 100.0);
-            response.put("boundCount", boundsArray.size());
-
-            sendJson(exchange, 200, response);
-        } catch (Exception e) {
-            e.printStackTrace();
-            sendError(exchange, 500, "Failed to evaluate phase bounds: " + e.getMessage());
         }
     }
 

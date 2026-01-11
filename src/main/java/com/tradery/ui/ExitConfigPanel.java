@@ -6,6 +6,7 @@ import com.tradery.model.ExitZone;
 import com.tradery.model.StopLossType;
 import com.tradery.model.Strategy;
 import com.tradery.model.TakeProfitType;
+import com.tradery.ui.base.ConfigurationPanel;
 
 import javax.swing.*;
 import javax.swing.event.DocumentEvent;
@@ -19,13 +20,10 @@ import static java.awt.GridBagConstraints.*;
 /**
  * Panel for configuring exit zones. All exit configuration is now zone-based.
  */
-public class ExitConfigPanel extends JPanel {
+public class ExitConfigPanel extends ConfigurationPanel {
 
     private JPanel zoneListPanel;
     private List<ZoneEditor> zoneEditors = new ArrayList<>();
-
-    private Runnable onChange;
-    private boolean suppressChangeEvents = false;
 
     private static final String[] SL_TYPES = {"No SL", "Clear SL", "SL %", "Trail %", "SL ATR", "Trail ATR"};
     private static final String[] TP_TYPES = {"No TP", "TP %", "TP ATR"};
@@ -116,18 +114,8 @@ public class ExitConfigPanel extends JPanel {
         zoneListPanel.repaint();
     }
 
-    private void fireChange() {
-        if (!suppressChangeEvents && onChange != null) {
-            onChange.run();
-        }
-    }
-
-    public void setOnChange(Runnable onChange) {
-        this.onChange = onChange;
-    }
-
     public void loadFrom(Strategy strategy) {
-        suppressChangeEvents = true;
+        setSuppressChangeEvents(true);
         try {
             List<ExitZone> zones = strategy != null ? strategy.getExitZones() : List.of(ExitZone.defaultZone());
 
@@ -166,7 +154,7 @@ public class ExitConfigPanel extends JPanel {
             zoneListPanel.revalidate();
             zoneListPanel.repaint();
         } finally {
-            suppressChangeEvents = false;
+            setSuppressChangeEvents(false);
         }
     }
 

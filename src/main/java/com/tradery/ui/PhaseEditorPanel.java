@@ -1,6 +1,7 @@
 package com.tradery.ui;
 
 import com.tradery.model.Phase;
+import com.tradery.ui.base.ConfigurationPanel;
 
 import javax.swing.*;
 import javax.swing.event.DocumentEvent;
@@ -11,7 +12,7 @@ import java.time.Instant;
 /**
  * Panel for editing a single phase definition.
  */
-public class PhaseEditorPanel extends JPanel {
+public class PhaseEditorPanel extends ConfigurationPanel {
 
     private JTextField nameField;
     private JTextField categoryField;
@@ -22,8 +23,6 @@ public class PhaseEditorPanel extends JPanel {
     private JLabel builtInBadge;
 
     private Phase phase;
-    private Runnable onChange;
-    private boolean suppressChangeEvents = false;
 
     private static final String[] SYMBOLS = {
         "BTCUSDT", "ETHUSDT", "BNBUSDT", "XRPUSDT", "ADAUSDT",
@@ -235,19 +234,9 @@ public class PhaseEditorPanel extends JPanel {
         return btn;
     }
 
-    private void fireChange() {
-        if (!suppressChangeEvents && onChange != null) {
-            onChange.run();
-        }
-    }
-
-    public void setOnChange(Runnable onChange) {
-        this.onChange = onChange;
-    }
-
     public void loadFrom(Phase phase) {
         this.phase = phase;
-        suppressChangeEvents = true;
+        setSuppressChangeEvents(true);
         try {
             if (phase != null) {
                 nameField.setText(phase.getName() != null ? phase.getName() : "");
@@ -267,7 +256,7 @@ public class PhaseEditorPanel extends JPanel {
                 builtInBadge.setVisible(false);
             }
         } finally {
-            suppressChangeEvents = false;
+            setSuppressChangeEvents(false);
         }
     }
 

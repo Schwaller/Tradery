@@ -5,6 +5,7 @@ import com.tradery.ui.theme.ThemeManager;
 import org.jfree.chart.JFreeChart;
 import org.jfree.chart.annotations.XYTitleAnnotation;
 import org.jfree.chart.axis.DateAxis;
+import org.jfree.chart.axis.NumberAxis;
 import org.jfree.chart.plot.XYPlot;
 import org.jfree.chart.title.TextTitle;
 import org.jfree.chart.ui.RectangleAnchor;
@@ -12,6 +13,7 @@ import org.jfree.chart.ui.RectangleAnchor;
 import java.awt.BasicStroke;
 import java.awt.Color;
 import java.awt.Font;
+import java.text.DecimalFormat;
 import java.text.SimpleDateFormat;
 
 /**
@@ -171,6 +173,11 @@ public final class ChartStyles {
         plot.getRangeAxis().setTickLabelPaint(t.getAxisLabelColor());
         plot.getRangeAxis().setAxisLineVisible(false);
         plot.getRangeAxis().setFixedDimension(60);  // Fixed width for alignment
+
+        // Avoid scientific notation on Y-axis (e.g., 1E4 instead of 10000)
+        if (plot.getRangeAxis() instanceof NumberAxis numberAxis) {
+            numberAxis.setNumberFormatOverride(new DecimalFormat("#,##0.####"));
+        }
 
         // Set thin line stroke with rounded joins for all series
         if (plot.getRenderer() != null) {

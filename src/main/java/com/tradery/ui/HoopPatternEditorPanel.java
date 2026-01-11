@@ -2,6 +2,7 @@ package com.tradery.ui;
 
 import com.tradery.model.Hoop;
 import com.tradery.model.HoopPattern;
+import com.tradery.ui.base.ConfigurationPanel;
 
 import javax.swing.*;
 import javax.swing.event.DocumentEvent;
@@ -12,7 +13,7 @@ import java.util.ArrayList;
 /**
  * Panel for editing a single hoop pattern definition.
  */
-public class HoopPatternEditorPanel extends JPanel {
+public class HoopPatternEditorPanel extends ConfigurationPanel {
 
     private JTextField nameField;
     private JTextArea descriptionArea;
@@ -23,8 +24,6 @@ public class HoopPatternEditorPanel extends JPanel {
     private HoopListPanel hoopListPanel;
 
     private HoopPattern pattern;
-    private Runnable onChange;
-    private boolean suppressChangeEvents = false;
 
     private static final String[] SYMBOLS = {
         "BTCUSDT", "ETHUSDT", "BNBUSDT", "XRPUSDT", "ADAUSDT",
@@ -187,19 +186,9 @@ public class HoopPatternEditorPanel extends JPanel {
         add(formPanel, BorderLayout.CENTER);
     }
 
-    private void fireChange() {
-        if (!suppressChangeEvents && onChange != null) {
-            onChange.run();
-        }
-    }
-
-    public void setOnChange(Runnable onChange) {
-        this.onChange = onChange;
-    }
-
     public void loadFrom(HoopPattern pattern) {
         this.pattern = pattern;
-        suppressChangeEvents = true;
+        setSuppressChangeEvents(true);
         try {
             if (pattern != null) {
                 nameField.setText(pattern.getName() != null ? pattern.getName() : "");
@@ -219,7 +208,7 @@ public class HoopPatternEditorPanel extends JPanel {
                 hoopListPanel.setHoops(new ArrayList<>());
             }
         } finally {
-            suppressChangeEvents = false;
+            setSuppressChangeEvents(false);
         }
     }
 

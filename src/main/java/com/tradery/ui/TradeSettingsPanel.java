@@ -1,6 +1,7 @@
 package com.tradery.ui;
 
 import com.tradery.model.Strategy;
+import com.tradery.ui.base.ConfigurationPanel;
 
 import javax.swing.*;
 import java.awt.*;
@@ -8,13 +9,10 @@ import java.awt.*;
 /**
  * Panel for configuring trade management settings (max trades, spacing).
  */
-public class TradeSettingsPanel extends JPanel {
+public class TradeSettingsPanel extends ConfigurationPanel {
 
     private JSpinner maxOpenTradesSpinner;
     private JSpinner minCandlesBetweenSpinner;
-
-    private Runnable onChange;
-    private boolean suppressChangeEvents = false;
 
     public TradeSettingsPanel() {
         setLayout(new GridBagLayout());
@@ -81,18 +79,8 @@ public class TradeSettingsPanel extends JPanel {
         return btn;
     }
 
-    private void fireChange() {
-        if (!suppressChangeEvents && onChange != null) {
-            onChange.run();
-        }
-    }
-
-    public void setOnChange(Runnable onChange) {
-        this.onChange = onChange;
-    }
-
     public void loadFrom(Strategy strategy) {
-        suppressChangeEvents = true;
+        setSuppressChangeEvents(true);
         try {
             if (strategy != null) {
                 maxOpenTradesSpinner.setValue(strategy.getMaxOpenTrades());
@@ -102,7 +90,7 @@ public class TradeSettingsPanel extends JPanel {
                 minCandlesBetweenSpinner.setValue(0);
             }
         } finally {
-            suppressChangeEvents = false;
+            setSuppressChangeEvents(false);
         }
     }
 

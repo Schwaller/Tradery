@@ -3,6 +3,7 @@ package com.tradery.ui;
 import com.tradery.data.SyncEstimator;
 import com.tradery.model.OrderflowSettings;
 import com.tradery.model.Strategy;
+import com.tradery.ui.base.ConfigurationPanel;
 
 import javax.swing.*;
 import java.awt.*;
@@ -12,11 +13,9 @@ import java.awt.*;
  * Shows mode dropdown with dynamic sync time estimates.
  * Data syncs automatically when backtest runs (like candle data).
  */
-public class OrderflowSettingsPanel extends JPanel {
+public class OrderflowSettingsPanel extends ConfigurationPanel {
 
     private JComboBox<ModeItem> modeCombo;
-    private Runnable onChange;
-    private boolean suppressChangeEvents = false;
 
     // Current context for dynamic estimates
     private String currentSymbol = "BTCUSDT";
@@ -36,14 +35,14 @@ public class OrderflowSettingsPanel extends JPanel {
         updateModeItems();
         modeCombo.setRenderer(new ModeItemRenderer());
         modeCombo.addActionListener(e -> {
-            if (!suppressChangeEvents) {
+            if (!isSuppressingChanges()) {
                 fireChange();
             }
         });
     }
 
     private void updateModeItems() {
-        suppressChangeEvents = true;
+        setSuppressChangeEvents(true);
         ModeItem selected = (ModeItem) modeCombo.getSelectedItem();
         OrderflowSettings.Mode selectedMode = selected != null ? selected.mode : OrderflowSettings.Mode.DISABLED;
 
@@ -65,7 +64,7 @@ public class OrderflowSettingsPanel extends JPanel {
                 break;
             }
         }
-        suppressChangeEvents = false;
+        setSuppressChangeEvents(false);
     }
 
     private void layoutComponents() {
@@ -91,16 +90,6 @@ public class OrderflowSettingsPanel extends JPanel {
         add(Box.createHorizontalGlue(), gbc);
     }
 
-    private void fireChange() {
-        if (!suppressChangeEvents && onChange != null) {
-            onChange.run();
-        }
-    }
-
-    public void setOnChange(Runnable onChange) {
-        this.onChange = onChange;
-    }
-
     /**
      * Update the sync time estimate context.
      * Called when symbol or duration changes.
@@ -113,7 +102,7 @@ public class OrderflowSettingsPanel extends JPanel {
     }
 
     public void loadFrom(Strategy strategy) {
-        suppressChangeEvents = true;
+        setSuppressChangeEvents(true);
         try {
             if (strategy != null) {
                 OrderflowSettings.Mode mode = strategy.getOrderflowMode();
@@ -127,7 +116,7 @@ public class OrderflowSettingsPanel extends JPanel {
                 modeCombo.setSelectedIndex(0); // Disabled
             }
         } finally {
-            suppressChangeEvents = false;
+            setSuppressChangeEvents(false);
         }
     }
 

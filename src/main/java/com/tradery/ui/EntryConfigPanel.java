@@ -3,6 +3,7 @@ package com.tradery.ui;
 import com.tradery.model.DcaMode;
 import com.tradery.model.EntryOrderType;
 import com.tradery.model.Strategy;
+import com.tradery.ui.base.ConfigurationPanel;
 
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
@@ -13,7 +14,7 @@ import java.awt.*;
 /**
  * Panel for configuring entry conditions and related settings.
  */
-public class EntryConfigPanel extends JPanel {
+public class EntryConfigPanel extends ConfigurationPanel {
 
     private JTextArea entryEditor;
     private JCheckBox dcaEnabledCheckbox;
@@ -36,9 +37,6 @@ public class EntryConfigPanel extends JPanel {
 
     private static final String[] DCA_MODES = {"Pause", "Abort", "Continue"};
     private static final String[] ORDER_TYPES = {"Market", "Limit", "Stop", "Trailing"};
-
-    private Runnable onChange;
-    private boolean suppressChangeEvents = false;
 
     public EntryConfigPanel() {
         setLayout(new BorderLayout(0, 8));
@@ -288,16 +286,6 @@ public class EntryConfigPanel extends JPanel {
         repaint();
     }
 
-    private void fireChange() {
-        if (!suppressChangeEvents && onChange != null) {
-            onChange.run();
-        }
-    }
-
-    public void setOnChange(Runnable onChange) {
-        this.onChange = onChange;
-    }
-
     /**
      * Inject the phase selection panel to display between label and DSL field.
      */
@@ -323,7 +311,7 @@ public class EntryConfigPanel extends JPanel {
     }
 
     public void loadFrom(Strategy strategy) {
-        suppressChangeEvents = true;
+        setSuppressChangeEvents(true);
         try {
             if (strategy != null) {
                 entryEditor.setText(strategy.getEntry());
@@ -362,7 +350,7 @@ public class EntryConfigPanel extends JPanel {
                 updateOrderTypeVisibility();
             }
         } finally {
-            suppressChangeEvents = false;
+            setSuppressChangeEvents(false);
         }
     }
 

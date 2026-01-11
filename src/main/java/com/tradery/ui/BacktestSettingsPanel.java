@@ -2,6 +2,7 @@ package com.tradery.ui;
 
 import com.tradery.model.PositionSizingType;
 import com.tradery.model.Strategy;
+import com.tradery.ui.base.ConfigurationPanel;
 
 import javax.swing.*;
 import java.awt.*;
@@ -11,7 +12,7 @@ import java.awt.*;
  * Includes capital, position sizing, fees, slippage.
  * (Symbol and timeframe are in the toolbar)
  */
-public class BacktestSettingsPanel extends JPanel {
+public class BacktestSettingsPanel extends ConfigurationPanel {
 
     private JSpinner capitalSpinner;
     private JComboBox<String> positionSizingCombo;
@@ -29,8 +30,6 @@ public class BacktestSettingsPanel extends JPanel {
     };
 
     private Strategy strategy;
-    private Runnable onChange;
-    private boolean suppressChangeEvents = false;
 
     public BacktestSettingsPanel() {
         setLayout(new BorderLayout(0, 8));
@@ -62,16 +61,6 @@ public class BacktestSettingsPanel extends JPanel {
         positionSizingCombo.addActionListener(e -> fireChange());
         feeSpinner.addChangeListener(e -> fireChange());
         slippageSpinner.addChangeListener(e -> fireChange());
-    }
-
-    private void fireChange() {
-        if (!suppressChangeEvents && onChange != null) {
-            onChange.run();
-        }
-    }
-
-    public void setOnChange(Runnable onChange) {
-        this.onChange = onChange;
     }
 
     private void layoutComponents() {
@@ -109,7 +98,7 @@ public class BacktestSettingsPanel extends JPanel {
      */
     public void setStrategy(Strategy strategy) {
         this.strategy = strategy;
-        suppressChangeEvents = true;
+        setSuppressChangeEvents(true);
 
         try {
             if (strategy != null) {
@@ -119,7 +108,7 @@ public class BacktestSettingsPanel extends JPanel {
                 slippageSpinner.setValue(strategy.getSlippagePercent());
             }
         } finally {
-            suppressChangeEvents = false;
+            setSuppressChangeEvents(false);
         }
     }
 

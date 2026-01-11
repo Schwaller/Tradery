@@ -2,6 +2,7 @@ package com.tradery.ui;
 
 import com.tradery.io.PhaseStore;
 import com.tradery.model.Strategy;
+import com.tradery.ui.base.ConfigurationPanel;
 
 import javax.swing.*;
 import java.awt.*;
@@ -11,13 +12,11 @@ import java.util.ArrayList;
  * Phase selection panel for strategy-level entry filtering.
  * Wraps PhaseListPanel and adds strategy load/apply functionality.
  */
-public class PhaseSelectionPanel extends JPanel {
+public class PhaseSelectionPanel extends ConfigurationPanel {
 
     private final PhaseStore phaseStore;
     private final PhaseListPanel phaseListPanel;
     private Strategy strategy;
-    private Runnable onChange;
-    private boolean suppressChangeEvents = false;
 
     public PhaseSelectionPanel(PhaseStore phaseStore) {
         this.phaseStore = phaseStore;
@@ -31,7 +30,7 @@ public class PhaseSelectionPanel extends JPanel {
 
     public void loadFrom(Strategy strategy) {
         this.strategy = strategy;
-        suppressChangeEvents = true;
+        setSuppressChangeEvents(true);
         try {
             if (strategy != null) {
                 phaseListPanel.setPhases(
@@ -42,7 +41,7 @@ public class PhaseSelectionPanel extends JPanel {
                 phaseListPanel.setPhases(null, null);
             }
         } finally {
-            suppressChangeEvents = false;
+            setSuppressChangeEvents(false);
         }
     }
 
@@ -50,16 +49,6 @@ public class PhaseSelectionPanel extends JPanel {
         if (strategy == null) return;
         strategy.setRequiredPhaseIds(new ArrayList<>(phaseListPanel.getRequiredPhaseIds()));
         strategy.setExcludedPhaseIds(new ArrayList<>(phaseListPanel.getExcludedPhaseIds()));
-    }
-
-    private void fireChange() {
-        if (!suppressChangeEvents && onChange != null) {
-            onChange.run();
-        }
-    }
-
-    public void setOnChange(Runnable onChange) {
-        this.onChange = onChange;
     }
 
     /**

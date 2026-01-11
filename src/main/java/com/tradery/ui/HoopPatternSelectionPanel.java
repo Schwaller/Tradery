@@ -2,6 +2,7 @@ package com.tradery.ui;
 
 import com.tradery.model.HoopPatternSettings;
 import com.tradery.model.Strategy;
+import com.tradery.ui.base.ConfigurationPanel;
 
 import javax.swing.*;
 import java.awt.*;
@@ -11,12 +12,9 @@ import java.awt.*;
  * Hoops are always AND'ed with DSL conditions (like phases).
  * Exit hoop patterns are configured per exit zone.
  */
-public class HoopPatternSelectionPanel extends JPanel {
+public class HoopPatternSelectionPanel extends ConfigurationPanel {
 
     private HoopPatternListPanel entryPatternsPanel;
-
-    private Runnable onChange;
-    private boolean suppressChangeEvents = false;
 
     public HoopPatternSelectionPanel() {
         setLayout(new BorderLayout(0, 0));
@@ -36,18 +34,8 @@ public class HoopPatternSelectionPanel extends JPanel {
         add(entryPatternsPanel, BorderLayout.CENTER);
     }
 
-    private void fireChange() {
-        if (!suppressChangeEvents && onChange != null) {
-            onChange.run();
-        }
-    }
-
-    public void setOnChange(Runnable onChange) {
-        this.onChange = onChange;
-    }
-
     public void loadFrom(Strategy strategy) {
-        suppressChangeEvents = true;
+        setSuppressChangeEvents(true);
         try {
             if (strategy != null) {
                 HoopPatternSettings settings = strategy.getHoopPatternSettings();
@@ -59,7 +47,7 @@ public class HoopPatternSelectionPanel extends JPanel {
                 entryPatternsPanel.setPatterns(null, null);
             }
         } finally {
-            suppressChangeEvents = false;
+            setSuppressChangeEvents(false);
         }
     }
 
