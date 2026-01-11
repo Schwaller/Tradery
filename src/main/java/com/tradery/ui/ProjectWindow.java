@@ -58,7 +58,12 @@ public class ProjectWindow extends JFrame {
     private JButton claudeBtn;
     private JButton codexBtn;
     private JButton historyBtn;
+    private JButton phaseAnalysisBtn;
     private JCheckBox orderflowCheckbox;
+
+    // Phase analysis window
+    private PhaseAnalysisWindow phaseAnalysisWindow;
+    private BacktestResult currentResult;
 
     // Indicator controls panel (extracted)
     private IndicatorControlsPanel indicatorControls;
@@ -229,6 +234,12 @@ public class ProjectWindow extends JFrame {
         historyBtn = new JButton("History");
         historyBtn.setToolTipText("Browse strategy history and restore previous versions");
         historyBtn.addActionListener(e -> showHistory());
+
+        // Phase Analysis button - analyze phase correlation with trade performance
+        phaseAnalysisBtn = new JButton("Phase Analysis");
+        phaseAnalysisBtn.setToolTipText("Analyze which phases correlate with trade performance");
+        phaseAnalysisBtn.setEnabled(false);  // Enabled after backtest completes
+        phaseAnalysisBtn.addActionListener(e -> openPhaseAnalysis());
 
         // Orderflow checkbox - enables delta indicators (requires aggTrades data)
         orderflowCheckbox = new JCheckBox("Orderflow");
@@ -411,6 +422,7 @@ public class ProjectWindow extends JFrame {
 
         // Right side of toolbar
         JPanel toolbarRight = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 4));
+        toolbarRight.add(phaseAnalysisBtn);
         toolbarRight.add(historyBtn);
         toolbarRight.add(Box.createHorizontalStrut(8));
         toolbarRight.add(claudeBtn);
@@ -929,6 +941,57 @@ public class ProjectWindow extends JFrame {
         });
     }
 
+    private void openPhaseAnalysis() {
+        if (currentResult == null) {
+            setStatus("Run a backtest first");
+            return;
+        }
+
+        List<Candle> candles = backtestCoordinator.getCurrentCandles();
+        if (candles == null || candles.isEmpty()) {
+            setStatus("No candle data available");
+            return;
+        }
+
+        // Create window if needed
+        if (phaseAnalysisWindow == null) {
+            PhaseStore phaseStore = ApplicationContext.getInstance().getPhaseStore();
+            phaseAnalysisWindow = new PhaseAnalysisWindow(this, candleStore, phaseStore);
+
+            // Wire up callbacks to apply phases to strategy
+            phaseAnalysisWindow.setOnRequirePhases(phaseIds -> {
+                // Add to existing required phases (don't replace)
+                List<String> existing = new java.util.ArrayList<>(strategy.getRequiredPhaseIds());
+                for (String id : phaseIds) {
+                    if (!existing.contains(id)) {
+                        existing.add(id);
+                    }
+                }
+                strategy.setRequiredPhaseIds(existing);
+                editorPanel.setStrategy(strategy);
+                autoSaveScheduler.scheduleUpdate();
+            });
+
+            phaseAnalysisWindow.setOnExcludePhases(phaseIds -> {
+                // Add to existing excluded phases (don't replace)
+                List<String> existing = new java.util.ArrayList<>(strategy.getExcludedPhaseIds());
+                for (String id : phaseIds) {
+                    if (!existing.contains(id)) {
+                        existing.add(id);
+                    }
+                }
+                strategy.setExcludedPhaseIds(existing);
+                editorPanel.setStrategy(strategy);
+                autoSaveScheduler.scheduleUpdate();
+            });
+        }
+
+        String timeframe = (String) timeframeCombo.getSelectedItem();
+        phaseAnalysisWindow.analyze(currentResult.trades(), candles, timeframe, strategy);
+        phaseAnalysisWindow.setVisible(true);
+        phaseAnalysisWindow.toFront();
+    }
+
     private void runBacktest() {
         // Apply current UI values
         editorPanel.applyToStrategy(strategy);
@@ -952,6 +1015,9 @@ public class ProjectWindow extends JFrame {
     }
 
     private void displayResult(BacktestResult result) {
+        // Store for phase analysis
+        this.currentResult = result;
+
         // Update metrics panel
         metricsPanel.updateMetrics(result.metrics());
 
@@ -970,6 +1036,9 @@ public class ProjectWindow extends JFrame {
             indicatorControls.setCurrentCandles(candles);
             indicatorControls.refreshOverlays();
         }
+
+        // Enable phase analysis button if we have trades
+        phaseAnalysisBtn.setEnabled(result.trades() != null && !result.trades().isEmpty());
     }
 
     private void setStatus(String message) {

@@ -57,6 +57,7 @@ public class IndicatorSelectorPopup extends JDialog {
     private JCheckBox deltaCheckbox;
     private JCheckBox cvdCheckbox;
     private JCheckBox volumeRatioCheckbox;
+    private JCheckBox whaleCheckbox;
     private JLabel whaleLabel;
     private JSpinner whaleThresholdSpinner;
 
@@ -137,7 +138,7 @@ public class IndicatorSelectorPopup extends JDialog {
         contentPane.add(createDeltaRow());
         contentPane.add(createCvdRow());
         contentPane.add(createVolumeRatioRow());
-        contentPane.add(createWhaleThresholdRow());
+        contentPane.add(createWhaleRow());
 
         contentPane.add(Box.createVerticalStrut(8));
 
@@ -289,16 +290,23 @@ public class IndicatorSelectorPopup extends JDialog {
         return row;
     }
 
-    private JPanel createWhaleThresholdRow() {
-        whaleLabel = new JLabel("Whale threshold:");
+    private JPanel createWhaleRow() {
+        whaleCheckbox = new JCheckBox("Whale Delta");
+        whaleCheckbox.setToolTipText("Show delta from large trades only");
+        whaleLabel = new JLabel("Min $:");
         whaleThresholdSpinner = new JSpinner(new SpinnerNumberModel(50000, 1000, 1000000, 10000));
         whaleThresholdSpinner.setPreferredSize(new Dimension(80, 24));
         whaleThresholdSpinner.setToolTipText("Min trade size ($) to count as whale");
 
         JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
         row.setAlignmentX(Component.LEFT_ALIGNMENT);
+        row.add(whaleCheckbox);
         row.add(whaleLabel);
         row.add(whaleThresholdSpinner);
+        whaleCheckbox.addActionListener(e -> {
+            updateControlVisibility();
+            scheduleUpdate();
+        });
         whaleThresholdSpinner.addChangeListener(e -> scheduleUpdate());
         return row;
     }
@@ -441,10 +449,10 @@ public class IndicatorSelectorPopup extends JDialog {
         atrLabel.setVisible(atrEnabled);
         atrSpinner.setVisible(atrEnabled);
 
-        // Orderflow - whale threshold always visible when any orderflow is enabled
-        boolean anyOrderflow = deltaCheckbox.isSelected() || cvdCheckbox.isSelected() || volumeRatioCheckbox.isSelected();
-        whaleLabel.setVisible(anyOrderflow);
-        whaleThresholdSpinner.setVisible(anyOrderflow);
+        // Orderflow - whale threshold visible only when whale checkbox is enabled
+        boolean whaleEnabled = whaleCheckbox.isSelected();
+        whaleLabel.setVisible(whaleEnabled);
+        whaleThresholdSpinner.setVisible(whaleEnabled);
 
         // Repack to adjust size
         pack();
@@ -467,6 +475,7 @@ public class IndicatorSelectorPopup extends JDialog {
         deltaCheckbox.setSelected(chartPanel.isDeltaChartEnabled());
         cvdCheckbox.setSelected(chartPanel.isCvdChartEnabled());
         volumeRatioCheckbox.setSelected(chartPanel.isVolumeRatioChartEnabled());
+        whaleCheckbox.setSelected(chartPanel.isWhaleChartEnabled());
 
         // Funding
         fundingCheckbox.setSelected(chartPanel.isFundingChartEnabled());
@@ -524,7 +533,7 @@ public class IndicatorSelectorPopup extends JDialog {
         chartPanel.setDeltaChartEnabled(deltaCheckbox.isSelected(), threshold);
         chartPanel.setCvdChartEnabled(cvdCheckbox.isSelected());
         chartPanel.setVolumeRatioChartEnabled(volumeRatioCheckbox.isSelected());
-        chartPanel.setWhaleThreshold(threshold);
+        chartPanel.setWhaleChartEnabled(whaleCheckbox.isSelected(), threshold);
 
         // Funding
         chartPanel.setFundingChartEnabled(fundingCheckbox.isSelected());

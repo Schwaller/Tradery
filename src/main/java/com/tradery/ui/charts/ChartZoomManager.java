@@ -251,6 +251,9 @@ public class ChartZoomManager {
             if (indicatorManager.isVolumeRatioChartEnabled()) {
                 visibleCharts.add(indicatorManager.getVolumeRatioChartWrapper());
             }
+            if (indicatorManager.isWhaleChartEnabled()) {
+                visibleCharts.add(indicatorManager.getWhaleChartWrapper());
+            }
             if (indicatorManager.isFundingChartEnabled()) {
                 visibleCharts.add(indicatorManager.getFundingChartWrapper());
             }
@@ -277,6 +280,7 @@ public class ChartZoomManager {
                          indicatorManager.getDeltaChartWrapper(),
                          indicatorManager.getCvdChartWrapper(),
                          indicatorManager.getVolumeRatioChartWrapper(),
+                         indicatorManager.getWhaleChartWrapper(),
                          indicatorManager.getFundingChartWrapper()} :
             new JPanel[0];
 

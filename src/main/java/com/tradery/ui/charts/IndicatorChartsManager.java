@@ -33,6 +33,7 @@ public class IndicatorChartsManager {
     private org.jfree.chart.ChartPanel deltaChartPanel;
     private org.jfree.chart.ChartPanel cvdChartPanel;
     private org.jfree.chart.ChartPanel volumeRatioChartPanel;
+    private org.jfree.chart.ChartPanel whaleChartPanel;
     private org.jfree.chart.ChartPanel fundingChartPanel;
 
     // Charts
@@ -42,6 +43,7 @@ public class IndicatorChartsManager {
     private JFreeChart deltaChart;
     private JFreeChart cvdChart;
     private JFreeChart volumeRatioChart;
+    private JFreeChart whaleChart;
     private JFreeChart fundingChart;
 
     // Wrapper panels with zoom buttons
@@ -51,6 +53,7 @@ public class IndicatorChartsManager {
     private JPanel deltaChartWrapper;
     private JPanel cvdChartWrapper;
     private JPanel volumeRatioChartWrapper;
+    private JPanel whaleChartWrapper;
     private JPanel fundingChartWrapper;
 
     // Zoom buttons
@@ -60,6 +63,7 @@ public class IndicatorChartsManager {
     private JButton deltaZoomBtn;
     private JButton cvdZoomBtn;
     private JButton volumeRatioZoomBtn;
+    private JButton whaleZoomBtn;
     private JButton fundingZoomBtn;
 
     // Enable state
@@ -69,6 +73,7 @@ public class IndicatorChartsManager {
     private boolean deltaChartEnabled = false;
     private boolean cvdChartEnabled = false;
     private boolean volumeRatioChartEnabled = false;
+    private boolean whaleChartEnabled = false;
     private boolean fundingChartEnabled = false;
 
     // Indicator parameters
@@ -151,15 +156,25 @@ public class IndicatorChartsManager {
         cvdChartPanel = new org.jfree.chart.ChartPanel(cvdChart);
         configureChartPanel(cvdChartPanel);
 
-        // Volume Ratio chart (buy volume %)
+        // Volume Ratio chart (buy/sell volume)
         volumeRatioChart = ChartFactory.createTimeSeriesChart(
             null, null, null,
             new TimeSeriesCollection(),
             false, true, false
         );
-        ChartStyles.stylizeChart(volumeRatioChart, "Buy/Sell Ratio");
+        ChartStyles.stylizeChart(volumeRatioChart, "Buy/Sell Volume");
         volumeRatioChartPanel = new org.jfree.chart.ChartPanel(volumeRatioChart);
         configureChartPanel(volumeRatioChartPanel);
+
+        // Whale Delta chart (large trades only)
+        whaleChart = ChartFactory.createTimeSeriesChart(
+            null, null, null,
+            new TimeSeriesCollection(),
+            false, true, false
+        );
+        ChartStyles.stylizeChart(whaleChart, "Whale Delta");
+        whaleChartPanel = new org.jfree.chart.ChartPanel(whaleChart);
+        configureChartPanel(whaleChartPanel);
 
         // Funding chart
         fundingChart = ChartFactory.createTimeSeriesChart(
@@ -184,7 +199,7 @@ public class IndicatorChartsManager {
 
     /**
      * Create wrapper panels with zoom buttons.
-     * @param zoomCallback Callback to handle zoom toggle (index: 0=RSI, 1=MACD, 2=ATR, 3=Delta, 4=CVD, 5=VolumeRatio, 6=Funding)
+     * @param zoomCallback Callback to handle zoom toggle (index: 0=RSI, 1=MACD, 2=ATR, 3=Delta, 4=CVD, 5=VolumeRatio, 6=Whale, 7=Funding)
      */
     public void createWrappers(java.util.function.IntConsumer zoomCallback) {
         rsiZoomBtn = new JButton("\u2922"); // ⤢
@@ -193,6 +208,7 @@ public class IndicatorChartsManager {
         deltaZoomBtn = new JButton("\u2922");
         cvdZoomBtn = new JButton("\u2922");
         volumeRatioZoomBtn = new JButton("\u2922");
+        whaleZoomBtn = new JButton("\u2922");
         fundingZoomBtn = new JButton("\u2922");
 
         rsiChartWrapper = createChartWrapper(rsiChartPanel, rsiZoomBtn, () -> zoomCallback.accept(0));
@@ -201,7 +217,8 @@ public class IndicatorChartsManager {
         deltaChartWrapper = createChartWrapper(deltaChartPanel, deltaZoomBtn, () -> zoomCallback.accept(3));
         cvdChartWrapper = createChartWrapper(cvdChartPanel, cvdZoomBtn, () -> zoomCallback.accept(4));
         volumeRatioChartWrapper = createChartWrapper(volumeRatioChartPanel, volumeRatioZoomBtn, () -> zoomCallback.accept(5));
-        fundingChartWrapper = createChartWrapper(fundingChartPanel, fundingZoomBtn, () -> zoomCallback.accept(6));
+        whaleChartWrapper = createChartWrapper(whaleChartPanel, whaleZoomBtn, () -> zoomCallback.accept(6));
+        fundingChartWrapper = createChartWrapper(fundingChartPanel, fundingZoomBtn, () -> zoomCallback.accept(7));
     }
 
     private JPanel createChartWrapper(org.jfree.chart.ChartPanel chartPanel, JButton zoomBtn, Runnable onZoom) {
@@ -536,6 +553,18 @@ public class IndicatorChartsManager {
         return volumeRatioChartEnabled;
     }
 
+    public void setWhaleChartEnabled(boolean enabled, double threshold) {
+        this.whaleChartEnabled = enabled;
+        this.whaleThreshold = threshold;
+        if (onLayoutChange != null) {
+            onLayoutChange.run();
+        }
+    }
+
+    public boolean isWhaleChartEnabled() {
+        return whaleChartEnabled;
+    }
+
     public void setWhaleThreshold(double threshold) {
         this.whaleThreshold = threshold;
     }
@@ -544,7 +573,7 @@ public class IndicatorChartsManager {
      * Check if any orderflow chart is enabled.
      */
     public boolean isAnyOrderflowEnabled() {
-        return deltaChartEnabled || cvdChartEnabled || volumeRatioChartEnabled;
+        return deltaChartEnabled || cvdChartEnabled || volumeRatioChartEnabled || whaleChartEnabled;
     }
 
     public void updateDeltaChart(List<Candle> candles) {
@@ -683,6 +712,65 @@ public class IndicatorChartsManager {
         }
     }
 
+    public void updateWhaleChart(List<Candle> candles) {
+        if (!whaleChartEnabled || candles == null || candles.isEmpty() || indicatorEngine == null) {
+            return;
+        }
+
+        XYPlot plot = whaleChart.getXYPlot();
+        double[] whaleDelta = indicatorEngine.getWhaleDelta(whaleThreshold);
+        if (whaleDelta == null) return;
+
+        XYSeriesCollection dataset = new XYSeriesCollection();
+        XYSeries series = new XYSeries("Whale Delta");
+
+        double maxDelta = 0;
+        for (int i = 0; i < candles.size() && i < whaleDelta.length; i++) {
+            Candle c = candles.get(i);
+            if (!Double.isNaN(whaleDelta[i])) {
+                series.add(c.timestamp(), whaleDelta[i]);
+                maxDelta = Math.max(maxDelta, Math.abs(whaleDelta[i]));
+            }
+        }
+        dataset.addSeries(series);
+        plot.setDataset(0, dataset);
+
+        // Color-coded bar renderer (purple for whale trades)
+        final XYSeriesCollection finalDataset = dataset;
+        XYBarRenderer renderer = new XYBarRenderer(0.0) {
+            @Override
+            public java.awt.Paint getItemPaint(int seriesIdx, int item) {
+                double val = finalDataset.getYValue(seriesIdx, item);
+                if (val >= 0) {
+                    return ChartStyles.WHALE_DELTA_POS;  // Purple for buy
+                } else {
+                    return ChartStyles.WHALE_DELTA_NEG;  // Orange for sell
+                }
+            }
+        };
+        renderer.setShadowVisible(false);
+        renderer.setBarPainter(new StandardXYBarPainter());
+        renderer.setDrawBarOutline(false);
+        plot.setRenderer(0, renderer);
+
+        // Set symmetric Y axis range around zero
+        double padding = maxDelta * 1.1;
+        if (padding > 0) {
+            plot.getRangeAxis().setRange(-padding, padding);
+        }
+
+        // Add zero reference line and title
+        plot.clearAnnotations();
+        String title = String.format("Whale Delta ($%.0fK+)", whaleThreshold / 1000);
+        ChartStyles.addChartTitleAnnotation(plot, title);
+        if (!candles.isEmpty()) {
+            long startTime = candles.get(0).timestamp();
+            long endTime = candles.get(candles.size() - 1).timestamp();
+            plot.addAnnotation(new XYLineAnnotation(startTime, 0, endTime, 0,
+                new BasicStroke(1.0f), new Color(149, 165, 166, 200)));
+        }
+    }
+
     // ===== Funding Methods =====
 
     public void setFundingChartEnabled(boolean enabled) {
@@ -786,6 +874,7 @@ public class IndicatorChartsManager {
     public JPanel getDeltaChartWrapper() { return deltaChartWrapper; }
     public JPanel getCvdChartWrapper() { return cvdChartWrapper; }
     public JPanel getVolumeRatioChartWrapper() { return volumeRatioChartWrapper; }
+    public JPanel getWhaleChartWrapper() { return whaleChartWrapper; }
     public JPanel getFundingChartWrapper() { return fundingChartWrapper; }
 
     public JButton getRsiZoomBtn() { return rsiZoomBtn; }
@@ -794,14 +883,15 @@ public class IndicatorChartsManager {
     public JButton getDeltaZoomBtn() { return deltaZoomBtn; }
     public JButton getCvdZoomBtn() { return cvdZoomBtn; }
     public JButton getVolumeRatioZoomBtn() { return volumeRatioZoomBtn; }
+    public JButton getWhaleZoomBtn() { return whaleZoomBtn; }
     public JButton getFundingZoomBtn() { return fundingZoomBtn; }
 
     /**
      * Update zoom button states.
-     * @param zoomedIndex Index of zoomed indicator (-1 for none, 0=RSI, 1=MACD, 2=ATR, 3=Delta, 4=CVD, 5=VolumeRatio, 6=Funding)
+     * @param zoomedIndex Index of zoomed indicator (-1 for none, 0=RSI, 1=MACD, 2=ATR, 3=Delta, 4=CVD, 5=VolumeRatio, 6=Whale, 7=Funding)
      */
     public void updateZoomButtonStates(int zoomedIndex) {
-        JButton[] btns = {rsiZoomBtn, macdZoomBtn, atrZoomBtn, deltaZoomBtn, cvdZoomBtn, volumeRatioZoomBtn, fundingZoomBtn};
+        JButton[] btns = {rsiZoomBtn, macdZoomBtn, atrZoomBtn, deltaZoomBtn, cvdZoomBtn, volumeRatioZoomBtn, whaleZoomBtn, fundingZoomBtn};
         for (int i = 0; i < btns.length; i++) {
             if (btns[i] != null) {
                 if (zoomedIndex == i) {
@@ -825,6 +915,7 @@ public class IndicatorChartsManager {
         deltaChartPanel.addMouseWheelListener(listener);
         cvdChartPanel.addMouseWheelListener(listener);
         volumeRatioChartPanel.addMouseWheelListener(listener);
+        whaleChartPanel.addMouseWheelListener(listener);
         fundingChartPanel.addMouseWheelListener(listener);
     }
 
@@ -838,6 +929,7 @@ public class IndicatorChartsManager {
         updateDeltaChart(candles);
         updateCvdChart(candles);
         updateVolumeRatioChart(candles);
+        updateWhaleChart(candles);
         updateFundingChart(candles);
     }
 

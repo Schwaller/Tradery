@@ -36,7 +36,7 @@ public class TradeDetailsWindow extends JDialog {
         initializeComponents();
         layoutComponents();
 
-        setSize(950, 500);
+        setSize(1150, 500);
         setLocationRelativeTo(parent);
     }
 
@@ -610,6 +610,105 @@ public class TradeDetailsWindow extends JDialog {
                 else setForeground(Color.GRAY);
             } else {
                 setForeground(Color.GRAY);
+            }
+
+            return this;
+        }
+    }
+
+    /**
+     * Cell renderer for MFE column (green)
+     */
+    private static class MfeCellRenderer extends DefaultTableCellRenderer {
+        private final TreeDetailedTableModel model;
+
+        MfeCellRenderer(TreeDetailedTableModel model) {
+            this.model = model;
+        }
+
+        @Override
+        public Component getTableCellRendererComponent(JTable table, Object value,
+                boolean isSelected, boolean hasFocus, int row, int column) {
+            super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column);
+            setHorizontalAlignment(SwingConstants.RIGHT);
+
+            TableRow tableRow = model.getRowAt(row);
+            if (tableRow.isRejected() || "-".equals(value)) {
+                setForeground(new Color(180, 180, 180));
+            } else if (tableRow.isChild) {
+                setForeground(new Color(120, 180, 120));
+            } else {
+                setForeground(new Color(76, 175, 80));
+            }
+
+            return this;
+        }
+    }
+
+    /**
+     * Cell renderer for MAE column (red)
+     */
+    private static class MaeCellRenderer extends DefaultTableCellRenderer {
+        private final TreeDetailedTableModel model;
+
+        MaeCellRenderer(TreeDetailedTableModel model) {
+            this.model = model;
+        }
+
+        @Override
+        public Component getTableCellRendererComponent(JTable table, Object value,
+                boolean isSelected, boolean hasFocus, int row, int column) {
+            super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column);
+            setHorizontalAlignment(SwingConstants.RIGHT);
+
+            TableRow tableRow = model.getRowAt(row);
+            if (tableRow.isRejected() || "-".equals(value)) {
+                setForeground(new Color(180, 180, 180));
+            } else if (tableRow.isChild) {
+                setForeground(new Color(200, 120, 120));
+            } else {
+                setForeground(new Color(244, 67, 54));
+            }
+
+            return this;
+        }
+    }
+
+    /**
+     * Cell renderer for Capture ratio column
+     */
+    private static class CaptureCellRenderer extends DefaultTableCellRenderer {
+        private final TreeDetailedTableModel model;
+
+        CaptureCellRenderer(TreeDetailedTableModel model) {
+            this.model = model;
+        }
+
+        @Override
+        public Component getTableCellRendererComponent(JTable table, Object value,
+                boolean isSelected, boolean hasFocus, int row, int column) {
+            super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column);
+            setHorizontalAlignment(SwingConstants.RIGHT);
+
+            TableRow tableRow = model.getRowAt(row);
+            if (tableRow.isRejected() || "-".equals(value)) {
+                setForeground(new Color(180, 180, 180));
+            } else if (value instanceof String s) {
+                // Color based on capture percentage: >70% green, 40-70% yellow, <40% red
+                try {
+                    int pct = Integer.parseInt(s.replace("%", ""));
+                    if (tableRow.isChild) {
+                        if (pct >= 70) setForeground(new Color(120, 180, 120));
+                        else if (pct >= 40) setForeground(new Color(180, 180, 100));
+                        else setForeground(new Color(200, 120, 120));
+                    } else {
+                        if (pct >= 70) setForeground(new Color(76, 175, 80));
+                        else if (pct >= 40) setForeground(new Color(255, 193, 7));
+                        else setForeground(new Color(244, 67, 54));
+                    }
+                } catch (NumberFormatException e) {
+                    setForeground(Color.GRAY);
+                }
             }
 
             return this;

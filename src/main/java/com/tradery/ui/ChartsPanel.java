@@ -486,6 +486,14 @@ public class ChartsPanel extends JPanel {
         return indicatorManager.isVolumeRatioChartEnabled();
     }
 
+    public void setWhaleChartEnabled(boolean enabled, double threshold) {
+        indicatorManager.setWhaleChartEnabled(enabled, threshold);
+    }
+
+    public boolean isWhaleChartEnabled() {
+        return indicatorManager.isWhaleChartEnabled();
+    }
+
     public void setWhaleThreshold(double threshold) {
         indicatorManager.setWhaleThreshold(threshold);
     }
