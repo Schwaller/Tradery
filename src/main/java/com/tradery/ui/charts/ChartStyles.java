@@ -63,6 +63,21 @@ public final class ChartStyles {
     // ===== ATR Chart Color =====
     public static final Color ATR_COLOR = new Color(180, 100, 255);
 
+    // ===== Orderflow/Delta Colors =====
+    public static final Color DELTA_POSITIVE = new Color(38, 166, 91);      // Green
+    public static final Color DELTA_NEGATIVE = new Color(231, 76, 60);      // Red
+    public static final Color CVD_COLOR = new Color(52, 152, 219);          // Blue
+    public static final Color WHALE_DELTA_POS = new Color(155, 89, 182);    // Purple
+    public static final Color WHALE_DELTA_NEG = new Color(211, 84, 0);      // Dark Orange
+    public static final Color BUY_VOLUME_COLOR = new Color(38, 166, 91);    // Green
+    public static final Color SELL_VOLUME_COLOR = new Color(231, 76, 60);   // Red
+    public static final Color TRADE_COUNT_COLOR = new Color(149, 165, 166); // Gray
+
+    // ===== Funding Rate Colors =====
+    public static final Color FUNDING_POSITIVE = new Color(230, 126, 34);   // Orange (longs pay)
+    public static final Color FUNDING_NEGATIVE = new Color(52, 152, 219);   // Blue (shorts pay)
+    public static final Color FUNDING_8H_COLOR = new Color(149, 165, 166);  // Gray
+
     // ===== Hoop Pattern Colors =====
     public static final Color[] HOOP_COLORS = {
         new Color(76, 175, 80),   // Green

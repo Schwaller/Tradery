@@ -50,6 +50,14 @@ public class Lexer {
         Map.entry("VAL", TokenType.ORDERFLOW_FUNC),
         Map.entry("DELTA", TokenType.ORDERFLOW_FUNC),
         Map.entry("CUM_DELTA", TokenType.ORDERFLOW_FUNC),
+        Map.entry("WHALE_DELTA", TokenType.ORDERFLOW_FUNC),
+        Map.entry("WHALE_BUY_VOL", TokenType.ORDERFLOW_FUNC),
+        Map.entry("WHALE_SELL_VOL", TokenType.ORDERFLOW_FUNC),
+        Map.entry("LARGE_TRADE_COUNT", TokenType.ORDERFLOW_FUNC),
+
+        // Funding rate functions
+        Map.entry("FUNDING", TokenType.FUNDING_FUNC),
+        Map.entry("FUNDING_8H", TokenType.FUNDING_FUNC),
 
         // Price references
         Map.entry("price", TokenType.PRICE),

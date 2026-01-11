@@ -33,6 +33,8 @@ public class CrosshairManager {
     private Crosshair rsiCrosshair;
     private Crosshair macdCrosshair;
     private Crosshair atrCrosshair;
+    private Crosshair deltaCrosshair;
+    private Crosshair fundingCrosshair;
 
     // Status update callback
     private Consumer<String> onStatusUpdate;
@@ -96,20 +98,28 @@ public class CrosshairManager {
     public void setupIndicatorChartCrosshairs(
             org.jfree.chart.ChartPanel rsiPanel,
             org.jfree.chart.ChartPanel macdPanel,
-            org.jfree.chart.ChartPanel atrPanel) {
+            org.jfree.chart.ChartPanel atrPanel,
+            org.jfree.chart.ChartPanel deltaPanel,
+            org.jfree.chart.ChartPanel fundingPanel) {
 
         rsiCrosshair = createCrosshair();
         macdCrosshair = createCrosshair();
         atrCrosshair = createCrosshair();
+        deltaCrosshair = createCrosshair();
+        fundingCrosshair = createCrosshair();
 
         addCrosshairOverlay(rsiPanel, rsiCrosshair);
         addCrosshairOverlay(macdPanel, macdCrosshair);
         addCrosshairOverlay(atrPanel, atrCrosshair);
+        if (deltaPanel != null) addCrosshairOverlay(deltaPanel, deltaCrosshair);
+        if (fundingPanel != null) addCrosshairOverlay(fundingPanel, fundingCrosshair);
 
         ChartMouseListener listener = createMouseListener();
         rsiPanel.addChartMouseListener(listener);
         macdPanel.addChartMouseListener(listener);
         atrPanel.addChartMouseListener(listener);
+        if (deltaPanel != null) deltaPanel.addChartMouseListener(listener);
+        if (fundingPanel != null) fundingPanel.addChartMouseListener(listener);
     }
 
     private Crosshair createCrosshair() {
@@ -170,6 +180,8 @@ public class CrosshairManager {
         if (rsiCrosshair != null) rsiCrosshair.setValue(domainValue);
         if (macdCrosshair != null) macdCrosshair.setValue(domainValue);
         if (atrCrosshair != null) atrCrosshair.setValue(domainValue);
+        if (deltaCrosshair != null) deltaCrosshair.setValue(domainValue);
+        if (fundingCrosshair != null) fundingCrosshair.setValue(domainValue);
     }
 
     private void updateStatus(double timestamp) {

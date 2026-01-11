@@ -202,6 +202,350 @@ public final class OrderflowIndicators {
     }
 
     /**
+     * Calculate trade count per candle.
+     */
+    public static double[] tradeCount(List<AggTrade> trades, List<Candle> candles, String resolution) {
+        int n = candles.size();
+        double[] result = new double[n];
+        java.util.Arrays.fill(result, 0);
+
+        if (trades == null || trades.isEmpty() || candles.isEmpty()) {
+            java.util.Arrays.fill(result, Double.NaN);
+            return result;
+        }
+
+        long resolutionMs = getResolutionMs(resolution);
+        int tradeIdx = 0;
+
+        for (int i = 0; i < n && tradeIdx < trades.size(); i++) {
+            long candleStart = candles.get(i).timestamp();
+            long candleEnd = candleStart + resolutionMs;
+
+            int count = 0;
+            boolean hasData = false;
+
+            while (tradeIdx < trades.size()) {
+                AggTrade trade = trades.get(tradeIdx);
+                if (trade.timestamp() < candleStart) {
+                    tradeIdx++;
+                } else if (trade.timestamp() < candleEnd) {
+                    count++;
+                    hasData = true;
+                    tradeIdx++;
+                } else {
+                    break;
+                }
+            }
+
+            result[i] = hasData ? count : Double.NaN;
+        }
+
+        return result;
+    }
+
+    // ========== Large Trade / Whale Detection ==========
+
+    /**
+     * Calculate whale delta - delta from trades above the notional threshold only.
+     * Isolates institutional/large player activity from retail noise.
+     *
+     * @param trades     List of aggregated trades
+     * @param candles    List of candles
+     * @param resolution Timeframe resolution
+     * @param threshold  Minimum notional value in USD (e.g., 50000 for $50K trades)
+     * @param barIndex   Bar index to calculate
+     * @return Delta from large trades only
+     */
+    public static double whaleDeltaAt(List<AggTrade> trades, List<Candle> candles,
+                                       String resolution, double threshold, int barIndex) {
+        if (trades == null || trades.isEmpty() || candles == null || candles.isEmpty()) {
+            return Double.NaN;
+        }
+        if (barIndex < 0 || barIndex >= candles.size()) {
+            return Double.NaN;
+        }
+
+        long candleStart = candles.get(barIndex).timestamp();
+        long candleEnd = candleStart + getResolutionMs(resolution);
+
+        double delta = 0;
+        boolean hasData = false;
+
+        for (AggTrade trade : trades) {
+            if (trade.timestamp() >= candleStart && trade.timestamp() < candleEnd) {
+                if (trade.notional() >= threshold) {
+                    delta += trade.delta();
+                    hasData = true;
+                }
+            } else if (trade.timestamp() >= candleEnd) {
+                break; // Trades are sorted by time, no need to check further
+            }
+        }
+
+        return hasData ? delta : 0; // Return 0 if no large trades (not NaN)
+    }
+
+    /**
+     * Calculate whale buy volume - buy volume from trades above the threshold only.
+     */
+    public static double whaleBuyVolumeAt(List<AggTrade> trades, List<Candle> candles,
+                                           String resolution, double threshold, int barIndex) {
+        if (trades == null || trades.isEmpty() || candles == null || candles.isEmpty()) {
+            return Double.NaN;
+        }
+        if (barIndex < 0 || barIndex >= candles.size()) {
+            return Double.NaN;
+        }
+
+        long candleStart = candles.get(barIndex).timestamp();
+        long candleEnd = candleStart + getResolutionMs(resolution);
+
+        double volume = 0;
+
+        for (AggTrade trade : trades) {
+            if (trade.timestamp() >= candleStart && trade.timestamp() < candleEnd) {
+                if (trade.notional() >= threshold) {
+                    volume += trade.buyVolume();
+                }
+            } else if (trade.timestamp() >= candleEnd) {
+                break;
+            }
+        }
+
+        return volume;
+    }
+
+    /**
+     * Calculate whale sell volume - sell volume from trades above the threshold only.
+     */
+    public static double whaleSellVolumeAt(List<AggTrade> trades, List<Candle> candles,
+                                            String resolution, double threshold, int barIndex) {
+        if (trades == null || trades.isEmpty() || candles == null || candles.isEmpty()) {
+            return Double.NaN;
+        }
+        if (barIndex < 0 || barIndex >= candles.size()) {
+            return Double.NaN;
+        }
+
+        long candleStart = candles.get(barIndex).timestamp();
+        long candleEnd = candleStart + getResolutionMs(resolution);
+
+        double volume = 0;
+
+        for (AggTrade trade : trades) {
+            if (trade.timestamp() >= candleStart && trade.timestamp() < candleEnd) {
+                if (trade.notional() >= threshold) {
+                    volume += trade.sellVolume();
+                }
+            } else if (trade.timestamp() >= candleEnd) {
+                break;
+            }
+        }
+
+        return volume;
+    }
+
+    /**
+     * Count large trades - number of trades above the threshold in the candle.
+     */
+    public static double largeTradeCountAt(List<AggTrade> trades, List<Candle> candles,
+                                            String resolution, double threshold, int barIndex) {
+        if (trades == null || trades.isEmpty() || candles == null || candles.isEmpty()) {
+            return Double.NaN;
+        }
+        if (barIndex < 0 || barIndex >= candles.size()) {
+            return Double.NaN;
+        }
+
+        long candleStart = candles.get(barIndex).timestamp();
+        long candleEnd = candleStart + getResolutionMs(resolution);
+
+        int count = 0;
+
+        for (AggTrade trade : trades) {
+            if (trade.timestamp() >= candleStart && trade.timestamp() < candleEnd) {
+                if (trade.notional() >= threshold) {
+                    count++;
+                }
+            } else if (trade.timestamp() >= candleEnd) {
+                break;
+            }
+        }
+
+        return count;
+    }
+
+    // ========== Whale Detection Array Methods ==========
+
+    /**
+     * Calculate whale delta array for all candles.
+     */
+    public static double[] whaleDelta(List<AggTrade> trades, List<Candle> candles,
+                                       String resolution, double threshold) {
+        int n = candles.size();
+        double[] result = new double[n];
+
+        if (trades == null || trades.isEmpty() || candles.isEmpty()) {
+            java.util.Arrays.fill(result, Double.NaN);
+            return result;
+        }
+
+        long resolutionMs = getResolutionMs(resolution);
+        int tradeIdx = 0;
+
+        for (int i = 0; i < n; i++) {
+            long candleStart = candles.get(i).timestamp();
+            long candleEnd = candleStart + resolutionMs;
+
+            double delta = 0;
+
+            // Skip trades before this candle
+            while (tradeIdx < trades.size() && trades.get(tradeIdx).timestamp() < candleStart) {
+                tradeIdx++;
+            }
+
+            // Process trades within this candle (without advancing tradeIdx beyond candle)
+            int tempIdx = tradeIdx;
+            while (tempIdx < trades.size() && trades.get(tempIdx).timestamp() < candleEnd) {
+                AggTrade trade = trades.get(tempIdx);
+                if (trade.notional() >= threshold) {
+                    delta += trade.delta();
+                }
+                tempIdx++;
+            }
+
+            result[i] = delta;
+        }
+
+        return result;
+    }
+
+    /**
+     * Calculate whale buy volume array for all candles.
+     */
+    public static double[] whaleBuyVolume(List<AggTrade> trades, List<Candle> candles,
+                                           String resolution, double threshold) {
+        int n = candles.size();
+        double[] result = new double[n];
+
+        if (trades == null || trades.isEmpty() || candles.isEmpty()) {
+            java.util.Arrays.fill(result, Double.NaN);
+            return result;
+        }
+
+        long resolutionMs = getResolutionMs(resolution);
+        int tradeIdx = 0;
+
+        for (int i = 0; i < n; i++) {
+            long candleStart = candles.get(i).timestamp();
+            long candleEnd = candleStart + resolutionMs;
+
+            double volume = 0;
+
+            while (tradeIdx < trades.size() && trades.get(tradeIdx).timestamp() < candleStart) {
+                tradeIdx++;
+            }
+
+            int tempIdx = tradeIdx;
+            while (tempIdx < trades.size() && trades.get(tempIdx).timestamp() < candleEnd) {
+                AggTrade trade = trades.get(tempIdx);
+                if (trade.notional() >= threshold) {
+                    volume += trade.buyVolume();
+                }
+                tempIdx++;
+            }
+
+            result[i] = volume;
+        }
+
+        return result;
+    }
+
+    /**
+     * Calculate whale sell volume array for all candles.
+     */
+    public static double[] whaleSellVolume(List<AggTrade> trades, List<Candle> candles,
+                                            String resolution, double threshold) {
+        int n = candles.size();
+        double[] result = new double[n];
+
+        if (trades == null || trades.isEmpty() || candles.isEmpty()) {
+            java.util.Arrays.fill(result, Double.NaN);
+            return result;
+        }
+
+        long resolutionMs = getResolutionMs(resolution);
+        int tradeIdx = 0;
+
+        for (int i = 0; i < n; i++) {
+            long candleStart = candles.get(i).timestamp();
+            long candleEnd = candleStart + resolutionMs;
+
+            double volume = 0;
+
+            while (tradeIdx < trades.size() && trades.get(tradeIdx).timestamp() < candleStart) {
+                tradeIdx++;
+            }
+
+            int tempIdx = tradeIdx;
+            while (tempIdx < trades.size() && trades.get(tempIdx).timestamp() < candleEnd) {
+                AggTrade trade = trades.get(tempIdx);
+                if (trade.notional() >= threshold) {
+                    volume += trade.sellVolume();
+                }
+                tempIdx++;
+            }
+
+            result[i] = volume;
+        }
+
+        return result;
+    }
+
+    /**
+     * Calculate large trade count array for all candles.
+     */
+    public static double[] largeTradeCount(List<AggTrade> trades, List<Candle> candles,
+                                            String resolution, double threshold) {
+        int n = candles.size();
+        double[] result = new double[n];
+
+        if (trades == null || trades.isEmpty() || candles.isEmpty()) {
+            java.util.Arrays.fill(result, Double.NaN);
+            return result;
+        }
+
+        long resolutionMs = getResolutionMs(resolution);
+        int tradeIdx = 0;
+
+        for (int i = 0; i < n; i++) {
+            long candleStart = candles.get(i).timestamp();
+            long candleEnd = candleStart + resolutionMs;
+
+            int count = 0;
+
+            while (tradeIdx < trades.size() && trades.get(tradeIdx).timestamp() < candleStart) {
+                tradeIdx++;
+            }
+
+            int tempIdx = tradeIdx;
+            while (tempIdx < trades.size() && trades.get(tempIdx).timestamp() < candleEnd) {
+                AggTrade trade = trades.get(tempIdx);
+                if (trade.notional() >= threshold) {
+                    count++;
+                }
+                tempIdx++;
+            }
+
+            result[i] = count;
+        }
+
+        return result;
+    }
+
+    // ========== Utilities ==========
+
+    /**
      * Get resolution in milliseconds.
      */
     private static long getResolutionMs(String resolution) {

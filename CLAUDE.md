@@ -170,6 +170,18 @@ VAL(period)              # Value Area Low
 ```
 DELTA                    # Buy volume - sell volume for current bar
 CUM_DELTA                # Cumulative delta from session start
+WHALE_DELTA(threshold)   # Delta from trades > $threshold only
+WHALE_BUY_VOL(threshold) # Buy volume from large trades only
+WHALE_SELL_VOL(threshold)# Sell volume from large trades only
+LARGE_TRADE_COUNT(threshold) # Count of trades > $threshold in bar
+```
+
+### Funding Rate Functions
+Requires funding data (auto-fetched from Binance Futures API).
+
+```
+FUNDING                  # Current funding rate (as %, e.g., 0.01 = 0.01%)
+FUNDING_8H               # 8-hour rolling average funding rate
 ```
 
 ### Operators
@@ -233,6 +245,15 @@ MOON_PHASE >= 0.48 AND MOON_PHASE <= 0.52
 close > VWAP
 close > POC(20)
 DELTA > 0 AND CUM_DELTA > 0
+
+# Whale / Large Trade Detection
+WHALE_DELTA(50000) > 0                    # Net buying from large trades
+WHALE_BUY_VOL(100000) > WHALE_SELL_VOL(100000)  # Whales buying more
+LARGE_TRADE_COUNT(50000) > 10             # Many large trades
+
+# Funding rate
+FUNDING > 0.05                            # High funding = overleveraged longs
+FUNDING < 0 AND WHALE_DELTA(50000) > 0    # Shorts paying + whale buying
 ```
 
 ---
@@ -312,6 +333,14 @@ Phases are market regime conditions that filter when strategies can trade. They 
 | `full-moon-hour` | `MOON_PHASE >= 0.499 AND MOON_PHASE <= 0.501` | ~1 hour precision |
 | `new-moon-day` | `MOON_PHASE <= 0.02 OR MOON_PHASE >= 0.98` | ~1 day around new moon |
 | `new-moon-hour` | `MOON_PHASE <= 0.001 OR MOON_PHASE >= 0.999` | ~1 hour precision |
+
+**Funding (4):**
+| ID | Condition | Description |
+|----|-----------|-------------|
+| `high-funding` | `FUNDING > 0.05` | Overleveraged longs |
+| `negative-funding` | `FUNDING < 0` | Shorts paying longs |
+| `extreme-funding` | `FUNDING > 0.1 OR FUNDING < -0.05` | Extreme positioning |
+| `neutral-funding` | `FUNDING >= -0.01 AND FUNDING <= 0.02` | Balanced market |
 
 ### Strategy Phase Integration
 ```json
@@ -496,11 +525,12 @@ Sequential price-checkpoint matching for detecting chart patterns.
 5. **Trend detection** - ADX, PLUS_DI, MINUS_DI + built-in uptrend/downtrend phases
 6. **Moon phases** - `MOON_PHASE` function + full-moon/new-moon phases
 7. **Orderflow** - VWAP, POC, VAH, VAL, DELTA, CUM_DELTA (Tier 1 + Full modes)
+8. **Large trade detection** - WHALE_DELTA, WHALE_BUY_VOL, WHALE_SELL_VOL, LARGE_TRADE_COUNT
+9. **Funding rate** - FUNDING, FUNDING_8H + built-in funding phases (high/negative/extreme/neutral)
 
 **What's NOT yet implemented (potential future features):**
-- Funding rate / Open Interest (requires Binance Futures API)
+- Open Interest (historical data limited to 30 days on Binance)
 - Liquidation data (requires external API like Coinglass)
-- Large trade detection / whale filtering from aggTrades
 - Cross-symbol correlation (BTC dominance, ETH/BTC ratio)
 
 ---

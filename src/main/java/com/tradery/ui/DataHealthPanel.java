@@ -191,7 +191,7 @@ public class DataHealthPanel extends JPanel {
         healthData.clear();
         blockBounds.clear();
 
-        java.io.File aggDir = new java.io.File(System.getProperty("user.home") + "/.tradery/aggtrades/" + symbol);
+        java.io.File aggDir = new java.io.File(System.getProperty("user.home") + "/.tradery/data/" + symbol + "/aggTrades");
         if (!aggDir.exists()) return;
 
         java.io.File[] files = aggDir.listFiles((dir, name) -> name.endsWith(".csv"));
@@ -255,7 +255,7 @@ public class DataHealthPanel extends JPanel {
     }
 
     private void loadAggTradesDailyDetails(YearMonth month) {
-        File aggDir = new File(System.getProperty("user.home") + "/.tradery/aggtrades/" + symbol);
+        File aggDir = new File(System.getProperty("user.home") + "/.tradery/data/" + symbol + "/aggTrades");
         if (!aggDir.exists()) return;
 
         LocalDate today = LocalDate.now();
@@ -480,15 +480,15 @@ public class DataHealthPanel extends JPanel {
         int x = PADDING;
 
         // Draw day blocks in a grid (7 columns for days of week)
-        g2.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 8));
+        g2.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 10));
 
         // Day of week labels
         String[] dowLabels = {"M", "T", "W", "T", "F", "S", "S"};
         for (int i = 0; i < 7; i++) {
             g2.setColor(new Color(120, 120, 120));
-            g2.drawString(dowLabels[i], x + i * (DAY_BLOCK_SIZE + DAY_BLOCK_GAP) + 4, y);
+            g2.drawString(dowLabels[i], x + i * (DAY_BLOCK_SIZE + DAY_BLOCK_GAP) + (DAY_BLOCK_SIZE / 2) - 3, y);
         }
-        y += 12;
+        y += 16;
 
         // Offset for first day of month
         LocalDate firstDay = selectedMonth.atDay(1);
@@ -522,9 +522,14 @@ public class DataHealthPanel extends JPanel {
                 g2.drawRoundRect(bx, by, DAY_BLOCK_SIZE, DAY_BLOCK_SIZE, 3, 3);
             }
 
-            // Day number
-            g2.setColor(new Color(255, 255, 255, 180));
-            g2.drawString(String.valueOf(day.date().getDayOfMonth()), bx + 2, by + 10);
+            // Day number (centered)
+            g2.setColor(new Color(255, 255, 255, 200));
+            g2.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 10));
+            String dayNum = String.valueOf(day.date().getDayOfMonth());
+            FontMetrics fm = g2.getFontMetrics();
+            int textX = bx + (DAY_BLOCK_SIZE - fm.stringWidth(dayNum)) / 2;
+            int textY = by + (DAY_BLOCK_SIZE + fm.getAscent()) / 2 - 2;
+            g2.drawString(dayNum, textX, textY);
 
             col++;
             if (col >= 7) {

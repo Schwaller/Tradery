@@ -184,6 +184,13 @@ public class ChartZoomManager {
             if (indicatorManager.isAtrChartEnabled()) {
                 visibleCharts.add(indicatorManager.getAtrChartWrapper());
             }
+            // Orderflow charts (any of: delta, cvd, volume ratio)
+            if (indicatorManager.isAnyOrderflowEnabled()) {
+                visibleCharts.add(indicatorManager.getDeltaChartWrapper());
+            }
+            if (indicatorManager.isFundingChartEnabled()) {
+                visibleCharts.add(indicatorManager.getFundingChartWrapper());
+            }
         }
 
         visibleCharts.add(chartWrappers[2]); // Equity
@@ -195,7 +202,9 @@ public class ChartZoomManager {
         JPanel[] indicatorWrappers = indicatorManager != null ?
             new JPanel[]{indicatorManager.getRsiChartWrapper(),
                          indicatorManager.getMacdChartWrapper(),
-                         indicatorManager.getAtrChartWrapper()} :
+                         indicatorManager.getAtrChartWrapper(),
+                         indicatorManager.getDeltaChartWrapper(),
+                         indicatorManager.getFundingChartWrapper()} :
             new JPanel[0];
 
         int totalCharts = visibleCharts.size();

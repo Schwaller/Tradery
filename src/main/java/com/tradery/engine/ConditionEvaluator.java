@@ -47,6 +47,7 @@ public class ConditionEvaluator {
             case AstNode.HolidayFunctionCall h -> evaluateHolidayFunction(h, barIndex);
             case AstNode.FomcFunctionCall f -> evaluateFomcFunction(f, barIndex);
             case AstNode.OrderflowFunctionCall o -> evaluateOrderflowFunction(o, barIndex);
+            case AstNode.FundingFunctionCall f -> evaluateFundingFunction(f, barIndex);
             case AstNode.PriceReference p -> evaluatePrice(p, barIndex);
             case AstNode.NumberLiteral n -> n.value();
             case AstNode.BooleanLiteral b -> b.value();
@@ -241,7 +242,20 @@ public class ConditionEvaluator {
             case "VAL" -> engine.getVALAt(period != null ? period : 20, barIndex);
             case "DELTA" -> engine.getDeltaAt(barIndex);
             case "CUM_DELTA" -> engine.getCumulativeDeltaAt(barIndex);
+            // Whale / Large Trade Detection (threshold is passed as period)
+            case "WHALE_DELTA" -> engine.getWhaleDeltaAt(period != null ? period.doubleValue() : 0, barIndex);
+            case "WHALE_BUY_VOL" -> engine.getWhaleBuyVolAt(period != null ? period.doubleValue() : 0, barIndex);
+            case "WHALE_SELL_VOL" -> engine.getWhaleSellVolAt(period != null ? period.doubleValue() : 0, barIndex);
+            case "LARGE_TRADE_COUNT" -> engine.getLargeTradeCountAt(period != null ? period.doubleValue() : 0, barIndex);
             default -> throw new EvaluationException("Unknown orderflow function: " + node.func());
+        };
+    }
+
+    private double evaluateFundingFunction(AstNode.FundingFunctionCall node, int barIndex) {
+        return switch (node.func()) {
+            case "FUNDING" -> engine.getFundingAt(barIndex);
+            case "FUNDING_8H" -> engine.getFunding8HAvgAt(barIndex);
+            default -> throw new EvaluationException("Unknown funding function: " + node.func());
         };
     }
 

@@ -32,7 +32,7 @@ public class DataManagementDialog extends JDialog {
     public DataManagementDialog(Frame owner) {
         super(owner, "Data Management", true);
         this.dataDir = new File(System.getProperty("user.home") + "/.tradery/data");
-        this.aggTradesDir = new File(System.getProperty("user.home") + "/.tradery/aggtrades");
+        this.aggTradesDir = this.dataDir; // aggTrades are now under data/{symbol}/aggTrades/
 
         setSize(650, 500);
         setLocationRelativeTo(owner);
@@ -193,13 +193,17 @@ public class DataManagementDialog extends JDialog {
         if (symbolDirs == null) return;
 
         for (File symbolDir : symbolDirs) {
+            // Look for aggTrades subdirectory under each symbol
+            File aggDir = new File(symbolDir, "aggTrades");
+            if (!aggDir.exists() || !aggDir.isDirectory()) continue;
+
             String symbol = symbolDir.getName();
             DataEntry entry = new DataEntry();
             entry.symbol = symbol;
             entry.timeframe = null; // AggTrades don't have timeframes
-            entry.directory = symbolDir;
+            entry.directory = aggDir;
 
-            File[] files = symbolDir.listFiles((dir, name) -> name.endsWith(".csv"));
+            File[] files = aggDir.listFiles((dir, name) -> name.endsWith(".csv"));
             if (files != null) {
                 entry.fileCount = files.length;
                 long totalBytes = 0;
@@ -208,7 +212,7 @@ public class DataManagementDialog extends JDialog {
 
                 for (File f : files) {
                     totalBytes += f.length();
-                    String name = f.getName().replace(".csv", "");
+                    String name = f.getName().replace(".partial.csv", "").replace(".csv", "");
                     if (minDate == null || name.compareTo(minDate) < 0) minDate = name;
                     if (maxDate == null || name.compareTo(maxDate) > 0) maxDate = name;
                 }

@@ -84,6 +84,10 @@ public class OverlayManager {
         smaSeries = null;
     }
 
+    public boolean isSmaEnabled() {
+        return smaSeries != null;
+    }
+
     // ===== EMA Overlay =====
 
     public void setEmaOverlay(int period, List<Candle> candles) {
@@ -137,6 +141,10 @@ public class OverlayManager {
             plot.setDataset(emaDatasetIndex, null);
         }
         emaSeries = null;
+    }
+
+    public boolean isEmaEnabled() {
+        return emaSeries != null;
     }
 
     // ===== Bollinger Bands Overlay =====
@@ -207,7 +215,12 @@ public class OverlayManager {
         if (bbDatasetIndex >= 0 && priceChart != null) {
             XYPlot plot = priceChart.getXYPlot();
             plot.setDataset(bbDatasetIndex, null);
+            bbDatasetIndex = -1;
         }
+    }
+
+    public boolean isBollingerEnabled() {
+        return bbDatasetIndex >= 0 && priceChart.getXYPlot().getDataset(bbDatasetIndex) != null;
     }
 
     // ===== High/Low Overlay =====
@@ -262,7 +275,12 @@ public class OverlayManager {
         if (hlDatasetIndex >= 0 && priceChart != null) {
             XYPlot plot = priceChart.getXYPlot();
             plot.setDataset(hlDatasetIndex, null);
+            hlDatasetIndex = -1;
         }
+    }
+
+    public boolean isHighLowEnabled() {
+        return hlDatasetIndex >= 0 && priceChart.getXYPlot().getDataset(hlDatasetIndex) != null;
     }
 
     // ===== Mayer Multiple =====

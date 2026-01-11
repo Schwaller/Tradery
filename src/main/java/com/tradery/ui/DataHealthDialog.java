@@ -50,7 +50,7 @@ public class DataHealthDialog extends JDialog {
         this.candleStore = candleStore;
         this.checker = new DataIntegrityChecker();
         this.dataDir = new File(System.getProperty("user.home") + "/.tradery/data");
-        this.aggTradesDir = new File(System.getProperty("user.home") + "/.tradery/aggtrades");
+        this.aggTradesDir = new File(System.getProperty("user.home") + "/.tradery/data");
 
         initUI();
 
@@ -469,7 +469,7 @@ public class DataHealthDialog extends JDialog {
      * Get info string for aggTrades data.
      */
     private String getAggTradesInfo(String symbol) {
-        File symbolDir = new File(aggTradesDir, symbol);
+        File symbolDir = new File(new File(aggTradesDir, symbol), "aggTrades");
         if (!symbolDir.exists()) {
             return symbol + " / AggTrades - No data. Use 'Fetch New' to download.";
         }

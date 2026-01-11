@@ -108,7 +108,8 @@ public class ProjectWindow extends JFrame {
         // Initialize coordinators
         ResultStore resultStore = new ResultStore(strategy.getId());
         BacktestEngine backtestEngine = new BacktestEngine(candleStore);
-        this.backtestCoordinator = new BacktestCoordinator(backtestEngine, candleStore, aggTradesStore, resultStore);
+        com.tradery.data.FundingRateStore fundingRateStore = new com.tradery.data.FundingRateStore();
+        this.backtestCoordinator = new BacktestCoordinator(backtestEngine, candleStore, aggTradesStore, fundingRateStore, resultStore);
         this.autoSaveScheduler = new AutoSaveScheduler();
 
         initializeFrame();
@@ -960,6 +961,9 @@ public class ProjectWindow extends JFrame {
         // Update charts with candles from coordinator
         List<Candle> candles = backtestCoordinator.getCurrentCandles();
         if (candles != null && !candles.isEmpty()) {
+            // Pass indicator engine to charts for orderflow/funding data
+            chartPanel.setIndicatorEngine(backtestCoordinator.getIndicatorEngine());
+
             chartPanel.updateCharts(candles, result.trades(), result.config().initialCapital());
 
             // Update indicator controls with current candle data

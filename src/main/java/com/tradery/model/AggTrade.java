@@ -2,7 +2,7 @@ package com.tradery.model;
 
 /**
  * Aggregated trade data from Binance.
- * Stored as CSV in ~/.tradery/aggtrades/SYMBOL/
+ * Stored as CSV in ~/.tradery/data/SYMBOL/aggTrades/
  *
  * isBuyerMaker: true = the buyer is the maker (i.e., this is a sell/down-tick)
  *               false = the seller is the maker (i.e., this is a buy/up-tick)

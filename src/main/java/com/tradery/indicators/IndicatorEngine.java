@@ -2,6 +2,7 @@ package com.tradery.indicators;
 
 import com.tradery.model.AggTrade;
 import com.tradery.model.Candle;
+import com.tradery.model.FundingRate;
 
 import java.time.DayOfWeek;
 import java.time.Instant;
@@ -592,5 +593,291 @@ public class IndicatorEngine {
             return Double.NaN;
         }
         return OrderflowIndicators.cumulativeDeltaAt(aggTrades, candles, resolution, barIndex);
+    }
+
+    // ========== Whale / Large Trade Detection (Tier 2 - requires aggTrades) ==========
+
+    /**
+     * Get whale delta at bar index - delta from trades above threshold only.
+     * @param threshold Minimum notional value in USD (e.g., 50000 for $50K)
+     */
+    public double getWhaleDeltaAt(double threshold, int barIndex) {
+        if (!hasAggTrades()) {
+            return Double.NaN;
+        }
+        return OrderflowIndicators.whaleDeltaAt(aggTrades, candles, resolution, threshold, barIndex);
+    }
+
+    /**
+     * Get whale buy volume at bar index - buy volume from trades above threshold only.
+     */
+    public double getWhaleBuyVolAt(double threshold, int barIndex) {
+        if (!hasAggTrades()) {
+            return Double.NaN;
+        }
+        return OrderflowIndicators.whaleBuyVolumeAt(aggTrades, candles, resolution, threshold, barIndex);
+    }
+
+    /**
+     * Get whale sell volume at bar index - sell volume from trades above threshold only.
+     */
+    public double getWhaleSellVolAt(double threshold, int barIndex) {
+        if (!hasAggTrades()) {
+            return Double.NaN;
+        }
+        return OrderflowIndicators.whaleSellVolumeAt(aggTrades, candles, resolution, threshold, barIndex);
+    }
+
+    /**
+     * Get large trade count at bar index - number of trades above threshold.
+     */
+    public double getLargeTradeCountAt(double threshold, int barIndex) {
+        if (!hasAggTrades()) {
+            return Double.NaN;
+        }
+        return OrderflowIndicators.largeTradeCountAt(aggTrades, candles, resolution, threshold, barIndex);
+    }
+
+    // ========== Orderflow Arrays for Charts ==========
+
+    /**
+     * Get whale delta array for all bars - delta from trades above threshold only.
+     */
+    public double[] getWhaleDelta(double threshold) {
+        if (!hasAggTrades()) {
+            double[] result = new double[candles != null ? candles.size() : 0];
+            java.util.Arrays.fill(result, Double.NaN);
+            return result;
+        }
+        String key = "whaleDelta:" + threshold;
+        if (!cache.containsKey(key)) {
+            cache.put(key, OrderflowIndicators.whaleDelta(aggTrades, candles, resolution, threshold));
+        }
+        return (double[]) cache.get(key);
+    }
+
+    /**
+     * Get buy volume array for all bars.
+     */
+    public double[] getBuyVolume() {
+        if (!hasAggTrades()) {
+            double[] result = new double[candles != null ? candles.size() : 0];
+            java.util.Arrays.fill(result, Double.NaN);
+            return result;
+        }
+        String key = "buyVolume";
+        if (!cache.containsKey(key)) {
+            cache.put(key, OrderflowIndicators.buyVolume(aggTrades, candles, resolution));
+        }
+        return (double[]) cache.get(key);
+    }
+
+    /**
+     * Get sell volume array for all bars.
+     */
+    public double[] getSellVolume() {
+        if (!hasAggTrades()) {
+            double[] result = new double[candles != null ? candles.size() : 0];
+            java.util.Arrays.fill(result, Double.NaN);
+            return result;
+        }
+        String key = "sellVolume";
+        if (!cache.containsKey(key)) {
+            cache.put(key, OrderflowIndicators.sellVolume(aggTrades, candles, resolution));
+        }
+        return (double[]) cache.get(key);
+    }
+
+    /**
+     * Get trade count array for all bars.
+     */
+    public double[] getTradeCount() {
+        if (!hasAggTrades()) {
+            double[] result = new double[candles != null ? candles.size() : 0];
+            java.util.Arrays.fill(result, Double.NaN);
+            return result;
+        }
+        String key = "tradeCount";
+        if (!cache.containsKey(key)) {
+            cache.put(key, OrderflowIndicators.tradeCount(aggTrades, candles, resolution));
+        }
+        return (double[]) cache.get(key);
+    }
+
+    /**
+     * Get large trade count array for all bars.
+     */
+    public double[] getLargeTradeCount(double threshold) {
+        if (!hasAggTrades()) {
+            double[] result = new double[candles != null ? candles.size() : 0];
+            java.util.Arrays.fill(result, Double.NaN);
+            return result;
+        }
+        String key = "largeTradeCount:" + threshold;
+        if (!cache.containsKey(key)) {
+            cache.put(key, OrderflowIndicators.largeTradeCount(aggTrades, candles, resolution, threshold));
+        }
+        return (double[]) cache.get(key);
+    }
+
+    /**
+     * Get whale buy volume array for all bars.
+     */
+    public double[] getWhaleBuyVolume(double threshold) {
+        if (!hasAggTrades()) {
+            double[] result = new double[candles != null ? candles.size() : 0];
+            java.util.Arrays.fill(result, Double.NaN);
+            return result;
+        }
+        String key = "whaleBuyVol:" + threshold;
+        if (!cache.containsKey(key)) {
+            cache.put(key, OrderflowIndicators.whaleBuyVolume(aggTrades, candles, resolution, threshold));
+        }
+        return (double[]) cache.get(key);
+    }
+
+    /**
+     * Get whale sell volume array for all bars.
+     */
+    public double[] getWhaleSellVolume(double threshold) {
+        if (!hasAggTrades()) {
+            double[] result = new double[candles != null ? candles.size() : 0];
+            java.util.Arrays.fill(result, Double.NaN);
+            return result;
+        }
+        String key = "whaleSellVol:" + threshold;
+        if (!cache.containsKey(key)) {
+            cache.put(key, OrderflowIndicators.whaleSellVolume(aggTrades, candles, resolution, threshold));
+        }
+        return (double[]) cache.get(key);
+    }
+
+    // ========== Funding Rate (requires funding data to be loaded) ==========
+
+    private List<FundingRate> fundingRates;
+
+    /**
+     * Set funding rate data for funding indicators.
+     */
+    public void setFundingRates(List<FundingRate> fundingRates) {
+        this.fundingRates = fundingRates;
+    }
+
+    /**
+     * Check if funding rate data is available.
+     */
+    public boolean hasFundingRates() {
+        return fundingRates != null && !fundingRates.isEmpty();
+    }
+
+    /**
+     * Get the current funding rate at bar index.
+     * Returns the most recent funding rate before or at the candle timestamp.
+     * Funding rate is returned as percentage (e.g., 0.01 = 0.01%)
+     */
+    public double getFundingAt(int barIndex) {
+        if (!hasFundingRates()) {
+            return Double.NaN;
+        }
+
+        long candleTime = getTimestampAt(barIndex);
+        if (candleTime == 0) return Double.NaN;
+
+        // Find the most recent funding rate at or before this candle
+        FundingRate latest = null;
+        for (FundingRate fr : fundingRates) {
+            if (fr.fundingTime() <= candleTime) {
+                latest = fr;
+            } else {
+                break; // Funding rates are sorted by time
+            }
+        }
+
+        if (latest == null) return Double.NaN;
+
+        // Convert to percentage (Binance returns as decimal, e.g., 0.0001 = 0.01%)
+        return latest.fundingRate() * 100;
+    }
+
+    /**
+     * Get the 8-hour average funding rate at bar index.
+     * Averages the last 3 funding rates (24 hours of data).
+     */
+    public double getFunding8HAvgAt(int barIndex) {
+        if (!hasFundingRates()) {
+            return Double.NaN;
+        }
+
+        long candleTime = getTimestampAt(barIndex);
+        if (candleTime == 0) return Double.NaN;
+
+        // Find funding rates in the last 24 hours (3 x 8h intervals)
+        long twentyFourHoursAgo = candleTime - (24 * 60 * 60 * 1000);
+        double sum = 0;
+        int count = 0;
+
+        for (FundingRate fr : fundingRates) {
+            if (fr.fundingTime() > candleTime) break;
+            if (fr.fundingTime() >= twentyFourHoursAgo && fr.fundingTime() <= candleTime) {
+                sum += fr.fundingRate();
+                count++;
+            }
+        }
+
+        if (count == 0) return Double.NaN;
+
+        // Convert to percentage
+        return (sum / count) * 100;
+    }
+
+    // ========== Funding Arrays for Charts ==========
+
+    /**
+     * Get funding rate array for all bars.
+     */
+    public double[] getFunding() {
+        int size = candles != null ? candles.size() : 0;
+        if (!hasFundingRates() || size == 0) {
+            double[] result = new double[size];
+            java.util.Arrays.fill(result, Double.NaN);
+            return result;
+        }
+        String key = "fundingArray";
+        if (!cache.containsKey(key)) {
+            double[] result = new double[size];
+            for (int i = 0; i < size; i++) {
+                result[i] = getFundingAt(i);
+            }
+            cache.put(key, result);
+        }
+        return (double[]) cache.get(key);
+    }
+
+    /**
+     * Get 8-hour average funding rate array for all bars.
+     */
+    public double[] getFunding8H() {
+        int size = candles != null ? candles.size() : 0;
+        if (!hasFundingRates() || size == 0) {
+            double[] result = new double[size];
+            java.util.Arrays.fill(result, Double.NaN);
+            return result;
+        }
+        String key = "funding8HArray";
+        if (!cache.containsKey(key)) {
+            double[] result = new double[size];
+            for (int i = 0; i < size; i++) {
+                result[i] = getFunding8HAvgAt(i);
+            }
+            cache.put(key, result);
+        }
+        return (double[]) cache.get(key);
+    }
+
+    /**
+     * Get candles list for chart access.
+     */
+    public List<Candle> getCandles() {
+        return candles;
     }
 }

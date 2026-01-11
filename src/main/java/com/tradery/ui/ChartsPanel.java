@@ -166,12 +166,15 @@ public class ChartsPanel extends JPanel {
         crosshairManager.setupIndicatorChartCrosshairs(
             indicatorManager.getRsiChartPanel(),
             indicatorManager.getMacdChartPanel(),
-            indicatorManager.getAtrChartPanel());
+            indicatorManager.getAtrChartPanel(),
+            indicatorManager.getDeltaChartPanel(),
+            indicatorManager.getFundingChartPanel());
 
         // Sync domain axes
         JFreeChart[] otherCharts = {
             volumeChart, equityChart, comparisonChart, capitalUsageChart, tradePLChart,
-            indicatorManager.getRsiChart(), indicatorManager.getMacdChart(), indicatorManager.getAtrChart()
+            indicatorManager.getRsiChart(), indicatorManager.getMacdChart(), indicatorManager.getAtrChart(),
+            indicatorManager.getDeltaChart(), indicatorManager.getFundingChart()
         };
         crosshairManager.syncDomainAxes(priceChart, otherCharts);
     }
@@ -223,11 +226,13 @@ public class ChartsPanel extends JPanel {
         JFreeChart[] allCharts = {
             priceChart, volumeChart,
             indicatorManager.getRsiChart(), indicatorManager.getMacdChart(), indicatorManager.getAtrChart(),
+            indicatorManager.getDeltaChart(), indicatorManager.getFundingChart(),
             equityChart, comparisonChart, capitalUsageChart, tradePLChart
         };
         JPanel[] allWrappers = {
             zoomManager.getChartWrappers()[0], zoomManager.getChartWrappers()[1],
             indicatorManager.getRsiChartWrapper(), indicatorManager.getMacdChartWrapper(), indicatorManager.getAtrChartWrapper(),
+            indicatorManager.getDeltaChartWrapper(), indicatorManager.getFundingChartWrapper(),
             zoomManager.getChartWrappers()[2], zoomManager.getChartWrappers()[3],
             zoomManager.getChartWrappers()[4], zoomManager.getChartWrappers()[5]
         };
@@ -383,12 +388,20 @@ public class ChartsPanel extends JPanel {
         overlayManager.clearSmaOverlay();
     }
 
+    public boolean isSmaEnabled() {
+        return overlayManager.isSmaEnabled();
+    }
+
     public void setEmaOverlay(int period, List<Candle> candles) {
         overlayManager.setEmaOverlay(period, candles);
     }
 
     public void clearEmaOverlay() {
         overlayManager.clearEmaOverlay();
+    }
+
+    public boolean isEmaEnabled() {
+        return overlayManager.isEmaEnabled();
     }
 
     public void setBollingerOverlay(int period, double stdDevMultiplier, List<Candle> candles) {
@@ -399,12 +412,20 @@ public class ChartsPanel extends JPanel {
         overlayManager.clearBollingerOverlay();
     }
 
+    public boolean isBollingerEnabled() {
+        return overlayManager.isBollingerEnabled();
+    }
+
     public void setHighLowOverlay(int period, List<Candle> candles) {
         overlayManager.setHighLowOverlay(period, candles);
     }
 
     public void clearHighLowOverlay() {
         overlayManager.clearHighLowOverlay();
+    }
+
+    public boolean isHighLowEnabled() {
+        return overlayManager.isHighLowEnabled();
     }
 
     public void setMayerMultipleEnabled(boolean enabled, int period) {
@@ -441,6 +462,46 @@ public class ChartsPanel extends JPanel {
         return indicatorManager.isAtrChartEnabled();
     }
 
+    public void setDeltaChartEnabled(boolean enabled, double threshold) {
+        indicatorManager.setDeltaChartEnabled(enabled, threshold);
+    }
+
+    public boolean isDeltaChartEnabled() {
+        return indicatorManager.isDeltaChartEnabled();
+    }
+
+    public void setCvdChartEnabled(boolean enabled) {
+        indicatorManager.setCvdChartEnabled(enabled);
+    }
+
+    public boolean isCvdChartEnabled() {
+        return indicatorManager.isCvdChartEnabled();
+    }
+
+    public void setVolumeRatioChartEnabled(boolean enabled) {
+        indicatorManager.setVolumeRatioChartEnabled(enabled);
+    }
+
+    public boolean isVolumeRatioChartEnabled() {
+        return indicatorManager.isVolumeRatioChartEnabled();
+    }
+
+    public void setWhaleThreshold(double threshold) {
+        indicatorManager.setWhaleThreshold(threshold);
+    }
+
+    public void setFundingChartEnabled(boolean enabled) {
+        indicatorManager.setFundingChartEnabled(enabled);
+    }
+
+    public boolean isFundingChartEnabled() {
+        return indicatorManager.isFundingChartEnabled();
+    }
+
+    public void setIndicatorEngine(com.tradery.indicators.IndicatorEngine engine) {
+        indicatorManager.setIndicatorEngine(engine);
+    }
+
     // ===== Chart Update Methods =====
 
     public void updateCharts(List<Candle> candles, List<Trade> trades, double initialCapital) {
@@ -467,7 +528,8 @@ public class ChartsPanel extends JPanel {
         long endTime = candles.get(candles.size() - 1).timestamp();
         JFreeChart[] allCharts = {
             priceChart, volumeChart, equityChart, comparisonChart, capitalUsageChart, tradePLChart,
-            indicatorManager.getRsiChart(), indicatorManager.getMacdChart(), indicatorManager.getAtrChart()
+            indicatorManager.getRsiChart(), indicatorManager.getMacdChart(), indicatorManager.getAtrChart(),
+            indicatorManager.getDeltaChart(), indicatorManager.getFundingChart()
         };
         for (JFreeChart chart : allCharts) {
             if (chart != null) {

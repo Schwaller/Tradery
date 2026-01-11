@@ -64,11 +64,19 @@ public sealed interface AstNode {
     record FomcFunctionCall(String func) implements AstNode {}
 
     /**
-     * Orderflow function call: VWAP, POC(20), VAH(20), VAL(20), DELTA, CUM_DELTA
-     * VWAP, DELTA, CUM_DELTA have no parameters
-     * POC, VAH, VAL have an optional period parameter (default 20)
+     * Orderflow function call:
+     * - VWAP, DELTA, CUM_DELTA: no parameters
+     * - POC(period), VAH(period), VAL(period): optional period (default 20)
+     * - WHALE_DELTA(threshold), WHALE_BUY_VOL(threshold), WHALE_SELL_VOL(threshold),
+     *   LARGE_TRADE_COUNT(threshold): required threshold in USD
      */
     record OrderflowFunctionCall(String func, Integer period) implements AstNode {}
+
+    /**
+     * Funding rate function call: FUNDING, FUNDING_8H (no parameters)
+     * Returns funding rate as percentage (e.g., 0.01 = 0.01%)
+     */
+    record FundingFunctionCall(String func) implements AstNode {}
 
     /**
      * Property access: MACD(12,26,9).signal, BBANDS(20,2).upper

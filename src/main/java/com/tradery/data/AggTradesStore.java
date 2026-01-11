@@ -18,13 +18,14 @@ import java.util.function.Consumer;
 
 /**
  * Stores and retrieves aggregated trade data as daily CSV files.
- * Files organized by symbol/yyyy-MM-dd.csv (one file per day).
+ * Files organized by symbol/aggTrades/yyyy-MM-dd.csv (one file per day).
  *
- * Storage path: ~/.tradery/aggtrades/SYMBOL/
+ * Storage path: ~/.tradery/data/SYMBOL/aggTrades/
  */
 public class AggTradesStore {
 
     private static final DateTimeFormatter DATE_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd");
+    private static final String AGG_TRADES_DIR = "aggTrades";
 
     private final File dataDir;
     private final AggTradesClient client;
@@ -34,12 +35,20 @@ public class AggTradesStore {
     private Consumer<FetchProgress> progressCallback;
 
     public AggTradesStore() {
-        this.dataDir = new File(TraderyApp.USER_DIR, "aggtrades");
+        this.dataDir = new File(TraderyApp.USER_DIR, "data");
         this.client = new AggTradesClient();
 
         if (!dataDir.exists()) {
             dataDir.mkdirs();
         }
+    }
+
+    /**
+     * Get the aggTrades directory for a symbol.
+     * Path: ~/.tradery/data/{symbol}/aggTrades/
+     */
+    private File getAggTradesDir(String symbol) {
+        return new File(new File(dataDir, symbol), AGG_TRADES_DIR);
     }
 
     /**
@@ -75,7 +84,7 @@ public class AggTradesStore {
      * Get sync status for a time range.
      */
     public SyncStatus getSyncStatus(String symbol, long startTime, long endTime) {
-        File symbolDir = new File(dataDir, symbol);
+        File symbolDir = getAggTradesDir(symbol);
         if (!symbolDir.exists()) {
             return new SyncStatus(false, 0, countDays(startTime, endTime), startTime, endTime);
         }
@@ -158,7 +167,7 @@ public class AggTradesStore {
         fetchCancelled.set(false);
 
         List<AggTrade> allTrades = new ArrayList<>();
-        File symbolDir = new File(dataDir, symbol);
+        File symbolDir = getAggTradesDir(symbol);
         symbolDir.mkdirs();
 
         // Current day - may have incomplete data
@@ -167,6 +176,42 @@ public class AggTradesStore {
         // Iterate through each day in the range
         LocalDate start = Instant.ofEpochMilli(startTime).atZone(ZoneOffset.UTC).toLocalDate();
         LocalDate end = Instant.ofEpochMilli(endTime).atZone(ZoneOffset.UTC).toLocalDate();
+
+        // Count days to fetch for progress tracking
+        int totalDays = 0;
+        int daysToFetch = 0;
+        LocalDate checkDate = start;
+        while (!checkDate.isAfter(end)) {
+            totalDays++;
+            File completeFile = new File(symbolDir, checkDate.format(DATE_FORMAT) + ".csv");
+            if (!completeFile.exists() || checkDate.equals(today)) {
+                daysToFetch++;
+            }
+            checkDate = checkDate.plusDays(1);
+        }
+
+        final int[] currentDayIndex = {0};
+        final int finalDaysToFetch = daysToFetch;
+
+        // Wrapper callback for overall progress
+        Consumer<FetchProgress> dayProgressCallback = progress -> {
+            if (progressCallback != null && finalDaysToFetch > 0) {
+                // Calculate overall percentage: completed days + current day progress
+                int dayPercent = progress.percentComplete();
+                int overallPercent = ((currentDayIndex[0] * 100) + dayPercent) / finalDaysToFetch;
+                overallPercent = Math.min(99, Math.max(0, overallPercent));
+
+                String msg = String.format("Day %d/%d: %s",
+                    currentDayIndex[0] + 1, finalDaysToFetch, progress.message());
+                progressCallback.accept(new FetchProgress(overallPercent, 100, msg));
+            }
+        };
+
+        // Report starting
+        if (progressCallback != null && daysToFetch > 0) {
+            progressCallback.accept(new FetchProgress(0, 100,
+                String.format("Fetching %d day(s) of %s aggTrades...", daysToFetch, symbol)));
+        }
 
         LocalDate current = start;
         while (!current.isAfter(end)) {
@@ -207,7 +252,8 @@ public class AggTradesStore {
                 if (System.currentTimeMillis() - lastCachedTime > 5 * 60 * 1000) {
                     System.out.println("Updating today's " + dateKey + " aggTrades...");
                     List<AggTrade> fresh = client.fetchAllAggTrades(symbol, lastCachedTime + 1, fetchEnd,
-                            fetchCancelled, progressCallback);
+                            fetchCancelled, dayProgressCallback);
+                    currentDayIndex[0]++;
                     boolean wasCancelled = fetchCancelled.get();
                     saveToCache(symbol, fresh, wasCancelled);
                     allTrades.addAll(loadCsvFile(completeFile.exists() ? completeFile : partialFile));
@@ -221,7 +267,8 @@ public class AggTradesStore {
                 // No cache - fetch from Binance
                 System.out.println("Fetching " + dateKey + " aggTrades from Binance...");
                 List<AggTrade> fresh = client.fetchAllAggTrades(symbol, fetchStart, fetchEnd,
-                        fetchCancelled, progressCallback);
+                        fetchCancelled, dayProgressCallback);
+                currentDayIndex[0]++;
                 boolean wasCancelled = fetchCancelled.get();
                 saveToCache(symbol, fresh, wasCancelled);
                 allTrades.addAll(fresh);
@@ -232,6 +279,11 @@ public class AggTradesStore {
             }
 
             current = nextDay;
+        }
+
+        // Report completion
+        if (progressCallback != null) {
+            progressCallback.accept(new FetchProgress(100, 100, "AggTrades fetch complete"));
         }
 
         // Filter to requested range and sort
@@ -249,7 +301,7 @@ public class AggTradesStore {
             throws IOException {
         if (trades.isEmpty()) return;
 
-        File symbolDir = new File(dataDir, symbol);
+        File symbolDir = getAggTradesDir(symbol);
         symbolDir.mkdirs();
 
         // Group trades by day
@@ -371,17 +423,17 @@ public class AggTradesStore {
     }
 
     /**
-     * Get the data directory path for a symbol.
+     * Get the data directory path for a symbol's aggTrades.
      */
     public Path getDataPath(String symbol) {
-        return new File(dataDir, symbol).toPath();
+        return getAggTradesDir(symbol).toPath();
     }
 
     /**
      * Clear cached data for a symbol.
      */
     public void clearCache(String symbol) throws IOException {
-        File symbolDir = new File(dataDir, symbol);
+        File symbolDir = getAggTradesDir(symbol);
         if (symbolDir.exists()) {
             Files.walk(symbolDir.toPath())
                 .sorted((a, b) -> -a.compareTo(b))

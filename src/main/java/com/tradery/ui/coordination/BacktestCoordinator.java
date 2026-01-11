@@ -3,6 +3,7 @@ package com.tradery.ui.coordination;
 import com.tradery.ApplicationContext;
 import com.tradery.data.AggTradesStore;
 import com.tradery.data.CandleStore;
+import com.tradery.data.FundingRateStore;
 import com.tradery.engine.BacktestEngine;
 import com.tradery.io.PhaseStore;
 import com.tradery.io.ResultStore;
@@ -23,11 +24,13 @@ public class BacktestCoordinator {
     private final BacktestEngine backtestEngine;
     private final CandleStore candleStore;
     private final AggTradesStore aggTradesStore;
+    private final FundingRateStore fundingRateStore;
     private final ResultStore resultStore;
 
     // Current data
     private List<Candle> currentCandles;
     private List<AggTrade> currentAggTrades;
+    private List<FundingRate> currentFundingRates;
 
     // Callbacks
     private BiConsumer<Integer, String> onProgress;
@@ -36,10 +39,12 @@ public class BacktestCoordinator {
     private Consumer<String> onStatus;
 
     public BacktestCoordinator(BacktestEngine backtestEngine, CandleStore candleStore,
-                               AggTradesStore aggTradesStore, ResultStore resultStore) {
+                               AggTradesStore aggTradesStore, FundingRateStore fundingRateStore,
+                               ResultStore resultStore) {
         this.backtestEngine = backtestEngine;
         this.candleStore = candleStore;
         this.aggTradesStore = aggTradesStore;
+        this.fundingRateStore = fundingRateStore;
         this.resultStore = resultStore;
     }
 
@@ -69,6 +74,10 @@ public class BacktestCoordinator {
 
     public List<AggTrade> getCurrentAggTrades() {
         return currentAggTrades;
+    }
+
+    public com.tradery.indicators.IndicatorEngine getIndicatorEngine() {
+        return backtestEngine.getIndicatorEngine();
     }
 
     /**
@@ -153,6 +162,17 @@ public class BacktestCoordinator {
                     }
                 }
 
+                // Always load funding rates (needed for FUNDING DSL function and chart)
+                currentFundingRates = null;
+                if (fundingRateStore != null) {
+                    publish(new BacktestEngine.Progress(0, 0, 0, "Loading funding rate data..."));
+                    try {
+                        currentFundingRates = fundingRateStore.getFundingRates(symbol, startTime, endTime);
+                    } catch (Exception e) {
+                        System.err.println("Failed to load funding rates: " + e.getMessage());
+                    }
+                }
+
                 // Load required and excluded phases (strategy-level)
                 List<Phase> allPhases = new ArrayList<>();
                 PhaseStore phaseStore = ApplicationContext.getInstance().getPhaseStore();
@@ -184,8 +204,9 @@ public class BacktestCoordinator {
                     }
                 }
 
-                // Pass aggTrades to engine if available
+                // Pass orderflow data to engine if available
                 backtestEngine.setAggTrades(currentAggTrades);
+                backtestEngine.setFundingRates(currentFundingRates);
 
                 // Run backtest with phase filtering
                 return backtestEngine.run(strategy, config, currentCandles, allPhases, this::publish);

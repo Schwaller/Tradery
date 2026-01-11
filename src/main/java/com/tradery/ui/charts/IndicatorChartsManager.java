@@ -1,5 +1,6 @@
 package com.tradery.ui.charts;
 
+import com.tradery.indicators.IndicatorEngine;
 import com.tradery.model.Candle;
 import org.jfree.chart.ChartFactory;
 import org.jfree.chart.JFreeChart;
@@ -28,26 +29,46 @@ public class IndicatorChartsManager {
     private org.jfree.chart.ChartPanel rsiChartPanel;
     private org.jfree.chart.ChartPanel macdChartPanel;
     private org.jfree.chart.ChartPanel atrChartPanel;
+    private org.jfree.chart.ChartPanel deltaChartPanel;
+    private org.jfree.chart.ChartPanel cvdChartPanel;
+    private org.jfree.chart.ChartPanel volumeRatioChartPanel;
+    private org.jfree.chart.ChartPanel fundingChartPanel;
 
     // Charts
     private JFreeChart rsiChart;
     private JFreeChart macdChart;
     private JFreeChart atrChart;
+    private JFreeChart deltaChart;
+    private JFreeChart cvdChart;
+    private JFreeChart volumeRatioChart;
+    private JFreeChart fundingChart;
 
     // Wrapper panels with zoom buttons
     private JPanel rsiChartWrapper;
     private JPanel macdChartWrapper;
     private JPanel atrChartWrapper;
+    private JPanel deltaChartWrapper;
+    private JPanel cvdChartWrapper;
+    private JPanel volumeRatioChartWrapper;
+    private JPanel fundingChartWrapper;
 
     // Zoom buttons
     private JButton rsiZoomBtn;
     private JButton macdZoomBtn;
     private JButton atrZoomBtn;
+    private JButton deltaZoomBtn;
+    private JButton cvdZoomBtn;
+    private JButton volumeRatioZoomBtn;
+    private JButton fundingZoomBtn;
 
     // Enable state
     private boolean rsiChartEnabled = false;
     private boolean macdChartEnabled = false;
     private boolean atrChartEnabled = false;
+    private boolean deltaChartEnabled = false;
+    private boolean cvdChartEnabled = false;
+    private boolean volumeRatioChartEnabled = false;
+    private boolean fundingChartEnabled = false;
 
     // Indicator parameters
     private int rsiPeriod = 14;
@@ -55,6 +76,10 @@ public class IndicatorChartsManager {
     private int macdSlow = 26;
     private int macdSignal = 9;
     private int atrPeriod = 14;
+    private double whaleThreshold = 50000;
+
+    // IndicatorEngine for orderflow/funding data
+    private IndicatorEngine indicatorEngine;
 
     // Callback for layout updates
     private Runnable onLayoutChange;
@@ -104,6 +129,46 @@ public class IndicatorChartsManager {
 
         atrChartPanel = new org.jfree.chart.ChartPanel(atrChart);
         configureChartPanel(atrChartPanel);
+
+        // Delta chart (orderflow - per bar)
+        deltaChart = ChartFactory.createTimeSeriesChart(
+            null, null, null,
+            new TimeSeriesCollection(),
+            false, true, false
+        );
+        ChartStyles.stylizeChart(deltaChart, "Delta");
+        deltaChartPanel = new org.jfree.chart.ChartPanel(deltaChart);
+        configureChartPanel(deltaChartPanel);
+
+        // CVD chart (cumulative volume delta)
+        cvdChart = ChartFactory.createTimeSeriesChart(
+            null, null, null,
+            new TimeSeriesCollection(),
+            false, true, false
+        );
+        ChartStyles.stylizeChart(cvdChart, "CVD");
+        cvdChartPanel = new org.jfree.chart.ChartPanel(cvdChart);
+        configureChartPanel(cvdChartPanel);
+
+        // Volume Ratio chart (buy volume %)
+        volumeRatioChart = ChartFactory.createTimeSeriesChart(
+            null, null, null,
+            new TimeSeriesCollection(),
+            false, true, false
+        );
+        ChartStyles.stylizeChart(volumeRatioChart, "Buy/Sell Ratio");
+        volumeRatioChartPanel = new org.jfree.chart.ChartPanel(volumeRatioChart);
+        configureChartPanel(volumeRatioChartPanel);
+
+        // Funding chart
+        fundingChart = ChartFactory.createTimeSeriesChart(
+            null, null, null,
+            new TimeSeriesCollection(),
+            false, true, false
+        );
+        ChartStyles.stylizeChart(fundingChart, "Funding");
+        fundingChartPanel = new org.jfree.chart.ChartPanel(fundingChart);
+        configureChartPanel(fundingChartPanel);
     }
 
     private void configureChartPanel(org.jfree.chart.ChartPanel panel) {
@@ -118,16 +183,24 @@ public class IndicatorChartsManager {
 
     /**
      * Create wrapper panels with zoom buttons.
-     * @param zoomCallback Callback to handle zoom toggle (index: 0=RSI, 1=MACD, 2=ATR)
+     * @param zoomCallback Callback to handle zoom toggle (index: 0=RSI, 1=MACD, 2=ATR, 3=Delta, 4=CVD, 5=VolumeRatio, 6=Funding)
      */
     public void createWrappers(java.util.function.IntConsumer zoomCallback) {
         rsiZoomBtn = new JButton("\u2922"); // ⤢
         macdZoomBtn = new JButton("\u2922");
         atrZoomBtn = new JButton("\u2922");
+        deltaZoomBtn = new JButton("\u2922");
+        cvdZoomBtn = new JButton("\u2922");
+        volumeRatioZoomBtn = new JButton("\u2922");
+        fundingZoomBtn = new JButton("\u2922");
 
         rsiChartWrapper = createChartWrapper(rsiChartPanel, rsiZoomBtn, () -> zoomCallback.accept(0));
         macdChartWrapper = createChartWrapper(macdChartPanel, macdZoomBtn, () -> zoomCallback.accept(1));
         atrChartWrapper = createChartWrapper(atrChartPanel, atrZoomBtn, () -> zoomCallback.accept(2));
+        deltaChartWrapper = createChartWrapper(deltaChartPanel, deltaZoomBtn, () -> zoomCallback.accept(3));
+        cvdChartWrapper = createChartWrapper(cvdChartPanel, cvdZoomBtn, () -> zoomCallback.accept(4));
+        volumeRatioChartWrapper = createChartWrapper(volumeRatioChartPanel, volumeRatioZoomBtn, () -> zoomCallback.accept(5));
+        fundingChartWrapper = createChartWrapper(fundingChartPanel, fundingZoomBtn, () -> zoomCallback.accept(6));
     }
 
     private JPanel createChartWrapper(org.jfree.chart.ChartPanel chartPanel, JButton zoomBtn, Runnable onZoom) {
@@ -422,30 +495,284 @@ public class IndicatorChartsManager {
         ChartStyles.addChartTitleAnnotation(plot, "ATR");
     }
 
+    // ===== Delta Methods =====
+
+    public void setIndicatorEngine(IndicatorEngine engine) {
+        this.indicatorEngine = engine;
+    }
+
+    public void setDeltaChartEnabled(boolean enabled, double threshold) {
+        this.deltaChartEnabled = enabled;
+        this.whaleThreshold = threshold;
+        if (onLayoutChange != null) {
+            onLayoutChange.run();
+        }
+    }
+
+    public boolean isDeltaChartEnabled() {
+        return deltaChartEnabled;
+    }
+
+    public void setCvdChartEnabled(boolean enabled) {
+        this.cvdChartEnabled = enabled;
+        if (onLayoutChange != null) {
+            onLayoutChange.run();
+        }
+    }
+
+    public boolean isCvdChartEnabled() {
+        return cvdChartEnabled;
+    }
+
+    public void setVolumeRatioChartEnabled(boolean enabled) {
+        this.volumeRatioChartEnabled = enabled;
+        if (onLayoutChange != null) {
+            onLayoutChange.run();
+        }
+    }
+
+    public boolean isVolumeRatioChartEnabled() {
+        return volumeRatioChartEnabled;
+    }
+
+    public void setWhaleThreshold(double threshold) {
+        this.whaleThreshold = threshold;
+    }
+
+    /**
+     * Check if any orderflow chart is enabled.
+     */
+    public boolean isAnyOrderflowEnabled() {
+        return deltaChartEnabled || cvdChartEnabled || volumeRatioChartEnabled;
+    }
+
+    public void updateDeltaChart(List<Candle> candles) {
+        if (!deltaChartEnabled || candles == null || candles.isEmpty() || indicatorEngine == null) {
+            return;
+        }
+
+        XYPlot plot = deltaChart.getXYPlot();
+        double[] delta = indicatorEngine.getDelta();
+        if (delta == null) return;
+
+        XYSeriesCollection deltaDataset = new XYSeriesCollection();
+        XYSeries deltaSeries = new XYSeries("Delta");
+
+        for (int i = 0; i < candles.size() && i < delta.length; i++) {
+            Candle c = candles.get(i);
+            if (!Double.isNaN(delta[i])) {
+                deltaSeries.add(c.timestamp(), delta[i]);
+            }
+        }
+        deltaDataset.addSeries(deltaSeries);
+        plot.setDataset(0, deltaDataset);
+
+        // Color-coded bar renderer
+        final XYSeriesCollection finalDeltaDataset = deltaDataset;
+        XYBarRenderer deltaRenderer = new XYBarRenderer() {
+            @Override
+            public Paint getItemPaint(int series, int item) {
+                double value = finalDeltaDataset.getYValue(series, item);
+                return value >= 0 ? ChartStyles.DELTA_POSITIVE : ChartStyles.DELTA_NEGATIVE;
+            }
+        };
+        deltaRenderer.setShadowVisible(false);
+        deltaRenderer.setBarPainter(new StandardXYBarPainter());
+        plot.setRenderer(0, deltaRenderer);
+
+        // Add zero line
+        plot.clearAnnotations();
+        ChartStyles.addChartTitleAnnotation(plot, "Delta");
+        if (!candles.isEmpty()) {
+            long startTime = candles.get(0).timestamp();
+            long endTime = candles.get(candles.size() - 1).timestamp();
+            plot.addAnnotation(new XYLineAnnotation(startTime, 0, endTime, 0,
+                ChartStyles.DASHED_STROKE, ChartStyles.TEXT_COLOR));
+        }
+    }
+
+    public void updateCvdChart(List<Candle> candles) {
+        if (!cvdChartEnabled || candles == null || candles.isEmpty() || indicatorEngine == null) {
+            return;
+        }
+
+        XYPlot plot = cvdChart.getXYPlot();
+        double[] cumDelta = indicatorEngine.getCumulativeDelta();
+        if (cumDelta == null) return;
+
+        TimeSeriesCollection cvdDataset = new TimeSeriesCollection();
+        TimeSeries cvdSeries = new TimeSeries("CVD");
+
+        for (int i = 0; i < candles.size() && i < cumDelta.length; i++) {
+            Candle c = candles.get(i);
+            if (!Double.isNaN(cumDelta[i])) {
+                cvdSeries.addOrUpdate(new Millisecond(new Date(c.timestamp())), cumDelta[i]);
+            }
+        }
+        cvdDataset.addSeries(cvdSeries);
+        plot.setDataset(0, cvdDataset);
+
+        XYLineAndShapeRenderer cvdRenderer = new XYLineAndShapeRenderer(true, false);
+        cvdRenderer.setSeriesPaint(0, ChartStyles.CVD_COLOR);
+        cvdRenderer.setSeriesStroke(0, ChartStyles.MEDIUM_STROKE);
+        plot.setRenderer(0, cvdRenderer);
+
+        plot.clearAnnotations();
+        ChartStyles.addChartTitleAnnotation(plot, "CVD (Cumulative Delta)");
+    }
+
+    public void updateVolumeRatioChart(List<Candle> candles) {
+        if (!volumeRatioChartEnabled || candles == null || candles.isEmpty() || indicatorEngine == null) {
+            return;
+        }
+
+        XYPlot plot = volumeRatioChart.getXYPlot();
+        double[] buyVolume = indicatorEngine.getBuyVolume();
+        double[] sellVolume = indicatorEngine.getSellVolume();
+        if (buyVolume == null || sellVolume == null) return;
+
+        TimeSeriesCollection ratioDataset = new TimeSeriesCollection();
+        TimeSeries ratioSeries = new TimeSeries("Buy %");
+
+        for (int i = 0; i < candles.size() && i < buyVolume.length && i < sellVolume.length; i++) {
+            Candle c = candles.get(i);
+            double total = buyVolume[i] + sellVolume[i];
+            if (total > 0) {
+                double buyPercent = (buyVolume[i] / total) * 100;
+                ratioSeries.addOrUpdate(new Millisecond(new Date(c.timestamp())), buyPercent);
+            }
+        }
+        ratioDataset.addSeries(ratioSeries);
+        plot.setDataset(0, ratioDataset);
+
+        XYLineAndShapeRenderer ratioRenderer = new XYLineAndShapeRenderer(true, false);
+        ratioRenderer.setSeriesPaint(0, ChartStyles.BUY_VOLUME_COLOR);
+        ratioRenderer.setSeriesStroke(0, ChartStyles.MEDIUM_STROKE);
+        plot.setRenderer(0, ratioRenderer);
+
+        // Add 50% reference line
+        plot.clearAnnotations();
+        ChartStyles.addChartTitleAnnotation(plot, "Buy/Sell Ratio (%)");
+        plot.getRangeAxis().setRange(0, 100);
+        if (!candles.isEmpty()) {
+            long startTime = candles.get(0).timestamp();
+            long endTime = candles.get(candles.size() - 1).timestamp();
+            plot.addAnnotation(new XYLineAnnotation(startTime, 50, endTime, 50,
+                ChartStyles.DASHED_STROKE, new Color(149, 165, 166, 150)));
+        }
+    }
+
+    // ===== Funding Methods =====
+
+    public void setFundingChartEnabled(boolean enabled) {
+        this.fundingChartEnabled = enabled;
+        if (onLayoutChange != null) {
+            onLayoutChange.run();
+        }
+    }
+
+    public boolean isFundingChartEnabled() {
+        return fundingChartEnabled;
+    }
+
+    public void updateFundingChart(List<Candle> candles) {
+        if (!fundingChartEnabled || candles == null || candles.isEmpty() || indicatorEngine == null) {
+            return;
+        }
+
+        XYPlot plot = fundingChart.getXYPlot();
+
+        double[] funding = indicatorEngine.getFunding();
+        double[] funding8H = indicatorEngine.getFunding8H();
+
+        // Build datasets
+        XYSeriesCollection fundingDataset = new XYSeriesCollection();
+        XYSeries fundingSeries = new XYSeries("Funding");
+
+        TimeSeriesCollection avgDataset = new TimeSeriesCollection();
+        TimeSeries avgSeries = new TimeSeries("Funding 8H Avg");
+
+        for (int i = 0; i < candles.size(); i++) {
+            Candle c = candles.get(i);
+            if (!Double.isNaN(funding[i])) {
+                fundingSeries.add(c.timestamp(), funding[i]);
+            }
+            if (!Double.isNaN(funding8H[i])) {
+                avgSeries.addOrUpdate(new Millisecond(new Date(c.timestamp())), funding8H[i]);
+            }
+        }
+
+        fundingDataset.addSeries(fundingSeries);
+        avgDataset.addSeries(avgSeries);
+
+        plot.setDataset(0, fundingDataset);
+        plot.setDataset(1, avgDataset);
+
+        // Funding bar renderer (orange/blue based on sign)
+        XYBarRenderer fundingRenderer = new XYBarRenderer() {
+            @Override
+            public Paint getItemPaint(int series, int item) {
+                double value = fundingDataset.getYValue(series, item);
+                return value >= 0 ? ChartStyles.FUNDING_POSITIVE : ChartStyles.FUNDING_NEGATIVE;
+            }
+        };
+        fundingRenderer.setShadowVisible(false);
+        fundingRenderer.setBarPainter(new StandardXYBarPainter());
+        plot.setRenderer(0, fundingRenderer);
+
+        // 8H average line renderer
+        XYLineAndShapeRenderer avgRenderer = new XYLineAndShapeRenderer(true, false);
+        avgRenderer.setSeriesPaint(0, ChartStyles.FUNDING_8H_COLOR);
+        avgRenderer.setSeriesStroke(0, ChartStyles.MEDIUM_STROKE);
+        plot.setRenderer(1, avgRenderer);
+
+        // Add reference lines at 0, 0.05, -0.05
+        plot.clearAnnotations();
+        ChartStyles.addChartTitleAnnotation(plot, "Funding Rate (%)");
+        if (!candles.isEmpty()) {
+            long startTime = candles.get(0).timestamp();
+            long endTime = candles.get(candles.size() - 1).timestamp();
+            plot.addAnnotation(new XYLineAnnotation(startTime, 0, endTime, 0,
+                ChartStyles.DASHED_STROKE, ChartStyles.TEXT_COLOR));
+            plot.addAnnotation(new XYLineAnnotation(startTime, 0.05, endTime, 0.05,
+                ChartStyles.DASHED_STROKE, new Color(230, 126, 34, 100)));
+            plot.addAnnotation(new XYLineAnnotation(startTime, -0.05, endTime, -0.05,
+                ChartStyles.DASHED_STROKE, new Color(52, 152, 219, 100)));
+        }
+    }
+
     // ===== Accessors =====
 
     public JFreeChart getRsiChart() { return rsiChart; }
     public JFreeChart getMacdChart() { return macdChart; }
     public JFreeChart getAtrChart() { return atrChart; }
+    public JFreeChart getDeltaChart() { return deltaChart; }
+    public JFreeChart getFundingChart() { return fundingChart; }
 
     public org.jfree.chart.ChartPanel getRsiChartPanel() { return rsiChartPanel; }
     public org.jfree.chart.ChartPanel getMacdChartPanel() { return macdChartPanel; }
     public org.jfree.chart.ChartPanel getAtrChartPanel() { return atrChartPanel; }
+    public org.jfree.chart.ChartPanel getDeltaChartPanel() { return deltaChartPanel; }
+    public org.jfree.chart.ChartPanel getFundingChartPanel() { return fundingChartPanel; }
 
     public JPanel getRsiChartWrapper() { return rsiChartWrapper; }
     public JPanel getMacdChartWrapper() { return macdChartWrapper; }
     public JPanel getAtrChartWrapper() { return atrChartWrapper; }
+    public JPanel getDeltaChartWrapper() { return deltaChartWrapper; }
+    public JPanel getFundingChartWrapper() { return fundingChartWrapper; }
 
     public JButton getRsiZoomBtn() { return rsiZoomBtn; }
     public JButton getMacdZoomBtn() { return macdZoomBtn; }
     public JButton getAtrZoomBtn() { return atrZoomBtn; }
+    public JButton getDeltaZoomBtn() { return deltaZoomBtn; }
+    public JButton getFundingZoomBtn() { return fundingZoomBtn; }
 
     /**
      * Update zoom button states.
-     * @param zoomedIndex Index of zoomed indicator (-1 for none, 0=RSI, 1=MACD, 2=ATR)
+     * @param zoomedIndex Index of zoomed indicator (-1 for none, 0=RSI, 1=MACD, 2=ATR, 3=Delta, 4=Funding)
      */
     public void updateZoomButtonStates(int zoomedIndex) {
-        JButton[] btns = {rsiZoomBtn, macdZoomBtn, atrZoomBtn};
+        JButton[] btns = {rsiZoomBtn, macdZoomBtn, atrZoomBtn, deltaZoomBtn, fundingZoomBtn};
         for (int i = 0; i < btns.length; i++) {
             if (btns[i] != null) {
                 if (zoomedIndex == i) {
@@ -466,6 +793,8 @@ public class IndicatorChartsManager {
         rsiChartPanel.addMouseWheelListener(listener);
         macdChartPanel.addMouseWheelListener(listener);
         atrChartPanel.addMouseWheelListener(listener);
+        deltaChartPanel.addMouseWheelListener(listener);
+        fundingChartPanel.addMouseWheelListener(listener);
     }
 
     /**
@@ -475,14 +804,16 @@ public class IndicatorChartsManager {
         updateRsiChart(candles);
         updateMacdChart(candles);
         updateAtrChart(candles);
+        updateDeltaChart(candles);
+        updateFundingChart(candles);
     }
 
     /**
      * Update Y-axis auto-range for indicator charts.
      */
     public void updateYAxisAutoRange(boolean fitYAxisToVisible) {
-        // MACD and ATR follow standard auto-range
-        JFreeChart[] charts = {macdChart, atrChart};
+        // MACD, ATR, Delta, Funding follow standard auto-range
+        JFreeChart[] charts = {macdChart, atrChart, deltaChart, fundingChart};
         for (JFreeChart chart : charts) {
             if (chart == null) continue;
             XYPlot plot = chart.getXYPlot();

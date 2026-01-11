@@ -59,7 +59,7 @@ public class DataBrowserPanel extends JPanel {
 
     public DataBrowserPanel() {
         this.checker = new DataIntegrityChecker();
-        this.aggTradesDir = new File(System.getProperty("user.home") + "/.tradery/aggtrades");
+        this.aggTradesDir = new File(System.getProperty("user.home") + "/.tradery/data");
 
         setBackground(BACKGROUND);
         setPreferredSize(new Dimension(200, 300));
@@ -189,8 +189,12 @@ public class DataBrowserPanel extends JPanel {
         if (symbolDirs == null) return;
 
         for (File symbolDir : symbolDirs) {
+            // Look for aggTrades subdirectory under each symbol
+            File aggDir = new File(symbolDir, "aggTrades");
+            if (!aggDir.exists() || !aggDir.isDirectory()) continue;
+
             String symbol = symbolDir.getName();
-            File[] csvFiles = symbolDir.listFiles((dir, name) -> name.endsWith(".csv"));
+            File[] csvFiles = aggDir.listFiles((dir, name) -> name.endsWith(".csv"));
             if (csvFiles == null || csvFiles.length == 0) continue;
 
             // Find date range and count files

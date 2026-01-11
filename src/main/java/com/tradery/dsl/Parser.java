@@ -182,9 +182,14 @@ public class Parser {
             return new AstNode.FomcFunctionCall(func);
         }
 
-        // Orderflow function (VWAP, POC, VAH, VAL, DELTA, CUM_DELTA)
+        // Orderflow function (VWAP, POC, VAH, VAL, DELTA, CUM_DELTA, WHALE_*, LARGE_TRADE_COUNT)
         if (check(TokenType.ORDERFLOW_FUNC)) {
             return orderflowFunctionCall();
+        }
+
+        // Funding function (FUNDING, FUNDING_8H)
+        if (check(TokenType.FUNDING_FUNC)) {
+            return fundingFunctionCall();
         }
 
         throw new ParserException("Unexpected token '" + current().value() +
@@ -197,7 +202,7 @@ public class Parser {
 
         Integer period = null;
 
-        // Check for optional period parameter
+        // Check for optional/required period parameter
         if (check(TokenType.LPAREN)) {
             advance();
             List<Double> params = parseNumberList();
@@ -208,7 +213,7 @@ public class Parser {
             }
         }
 
-        // Set default periods for volume profile functions
+        // Handle different function types
         switch (func) {
             case "POC", "VAH", "VAL" -> {
                 if (period == null) period = 20; // Default period
@@ -216,9 +221,22 @@ public class Parser {
             case "VWAP", "DELTA", "CUM_DELTA" -> {
                 // No parameters needed
             }
+            case "WHALE_DELTA", "WHALE_BUY_VOL", "WHALE_SELL_VOL", "LARGE_TRADE_COUNT" -> {
+                // Threshold is required for whale/large trade functions
+                if (period == null) {
+                    throw new ParserException(func + " requires a threshold parameter, e.g., " + func + "(50000)");
+                }
+            }
         }
 
         return new AstNode.OrderflowFunctionCall(func, period);
+    }
+
+    private AstNode.FundingFunctionCall fundingFunctionCall() {
+        String func = current().value();
+        advance();
+        // FUNDING and FUNDING_8H have no parameters
+        return new AstNode.FundingFunctionCall(func);
     }
 
     private AstNode indicatorCall() {

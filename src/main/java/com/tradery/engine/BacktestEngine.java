@@ -8,6 +8,7 @@ import com.tradery.indicators.IndicatorEngine;
 import com.tradery.io.HoopPatternStore;
 import com.tradery.model.*;
 import com.tradery.model.AggTrade;
+import com.tradery.model.FundingRate;
 
 import java.io.File;
 import java.io.IOException;
@@ -29,6 +30,7 @@ public class BacktestEngine {
     private final IndicatorEngine indicatorEngine;
     private final CandleStore candleStore;
     private List<AggTrade> aggTrades;
+    private List<FundingRate> fundingRates;
 
     public BacktestEngine() {
         this.indicatorEngine = new IndicatorEngine();
@@ -41,11 +43,26 @@ public class BacktestEngine {
     }
 
     /**
+     * Get the indicator engine for chart access.
+     */
+    public IndicatorEngine getIndicatorEngine() {
+        return indicatorEngine;
+    }
+
+    /**
      * Set aggregated trades data for orderflow indicators (Delta, CumDelta).
      * Must be called before run() for Tier 2 orderflow indicators to work.
      */
     public void setAggTrades(List<AggTrade> aggTrades) {
         this.aggTrades = aggTrades;
+    }
+
+    /**
+     * Set funding rate data for funding indicators (FUNDING, FUNDING_8H).
+     * Must be called before run() for funding indicators to work.
+     */
+    public void setFundingRates(List<FundingRate> fundingRates) {
+        this.fundingRates = fundingRates;
     }
 
     /**
@@ -183,6 +200,11 @@ public class BacktestEngine {
         // Set aggTrades for orderflow indicators if available
         if (aggTrades != null && !aggTrades.isEmpty()) {
             indicatorEngine.setAggTrades(aggTrades);
+        }
+
+        // Set funding rates if available
+        if (fundingRates != null && !fundingRates.isEmpty()) {
+            indicatorEngine.setFundingRates(fundingRates);
         }
 
         // Create evaluator

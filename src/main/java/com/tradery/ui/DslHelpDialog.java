@@ -161,8 +161,23 @@ public class DslHelpDialog extends JDialog {
                 <tr><td><code>VAL(period)</code></td><td>1</td><td>Value Area Low - bottom of 70%% volume zone (default: 20)</td></tr>
                 <tr><td><code>DELTA</code></td><td>2</td><td>Bar delta (buy volume - sell volume)</td></tr>
                 <tr><td><code>CUM_DELTA</code></td><td>2</td><td>Cumulative delta from session start</td></tr>
+                <tr><td><code>WHALE_DELTA(threshold)</code></td><td>2</td><td>Delta from trades &gt; $threshold only</td></tr>
+                <tr><td><code>WHALE_BUY_VOL(threshold)</code></td><td>2</td><td>Buy volume from trades &gt; $threshold</td></tr>
+                <tr><td><code>WHALE_SELL_VOL(threshold)</code></td><td>2</td><td>Sell volume from trades &gt; $threshold</td></tr>
+                <tr><td><code>LARGE_TRADE_COUNT(threshold)</code></td><td>2</td><td>Number of trades &gt; $threshold in bar</td></tr>
             </table>
-            <div class="example">close > VWAP<br>price crosses_above POC(20)<br>DELTA > 0 AND close > VAH(20)</div>
+            <div class="example">close > VWAP<br>WHALE_DELTA(50000) > 0<br>LARGE_TRADE_COUNT(100000) > 5</div>
+            </div>
+
+            <div class="section">
+            <h3>Funding Rate Functions</h3>
+            <span style="color: %s; font-size: 10px;">Requires funding data (auto-fetched from Binance Futures).</span>
+            <table>
+                <tr><td><code>FUNDING</code></td><td>Current funding rate (%%, e.g., 0.01 = 0.01%%)</td></tr>
+                <tr><td><code>FUNDING_8H</code></td><td>8-hour rolling average funding rate</td></tr>
+            </table>
+            <div class="example">FUNDING > 0.05<br>FUNDING &lt; 0 AND WHALE_DELTA(50000) > 0</div>
+            <span style="color: %s; font-size: 10px;">Positive funding = longs pay shorts (overleveraged longs). Negative = shorts pay longs.</span>
             </div>
 
             <div class="section">
@@ -243,7 +258,7 @@ public class DslHelpDialog extends JDialog {
 
             </body>
             </html>
-            """.formatted(bgHex, fgHex, fgHex, fgSecHex, codeBgHex, fgHex, borderHex, codeBgHex, codeBgHex, accentHex, fgSecHex, fgSecHex);
+            """.formatted(bgHex, fgHex, fgHex, fgSecHex, codeBgHex, fgHex, borderHex, codeBgHex, codeBgHex, accentHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex);
     }
 
     private String toHex(Color c) {

@@ -14,7 +14,8 @@ public enum TokenType {
     MOON_FUNC,      // MOON_PHASE
     HOLIDAY_FUNC,   // IS_US_HOLIDAY
     FOMC_FUNC,      // IS_FOMC_MEETING
-    ORDERFLOW_FUNC, // VWAP, POC, VAH, VAL, DELTA, CUM_DELTA
+    ORDERFLOW_FUNC, // VWAP, POC, VAH, VAL, DELTA, CUM_DELTA, WHALE_DELTA, WHALE_BUY_VOL, WHALE_SELL_VOL, LARGE_TRADE_COUNT
+    FUNDING_FUNC,   // FUNDING, FUNDING_8H
 
     // Properties
     PROPERTY,       // .signal, .histogram, .upper, .lower, .middle
