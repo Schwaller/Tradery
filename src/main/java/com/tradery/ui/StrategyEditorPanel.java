@@ -68,6 +68,7 @@ public class StrategyEditorPanel extends JPanel {
         // Top section: trade settings + flow diagram
         JPanel topPanel = new JPanel(new BorderLayout());
         topPanel.setOpaque(false);
+
         topPanel.add(tradeSettingsPanel, BorderLayout.NORTH);
 
         // Flow diagram between settings and entry/exit

@@ -1,5 +1,6 @@
 package com.tradery;
 
+import com.tradery.data.AggTradesStore;
 import com.tradery.data.CandleStore;
 import com.tradery.io.HoopPatternStore;
 import com.tradery.io.PhaseStore;
@@ -16,12 +17,14 @@ public class ApplicationContext {
     private static ApplicationContext instance;
 
     private final CandleStore candleStore;
+    private final AggTradesStore aggTradesStore;
     private final StrategyStore strategyStore;
     private final PhaseStore phaseStore;
     private final HoopPatternStore hoopPatternStore;
 
     private ApplicationContext() {
         this.candleStore = new CandleStore();
+        this.aggTradesStore = new AggTradesStore();
         this.strategyStore = new StrategyStore(new File(TraderyApp.USER_DIR, "strategies"));
         this.phaseStore = new PhaseStore(new File(TraderyApp.USER_DIR, "phases"));
         this.hoopPatternStore = new HoopPatternStore(new File(TraderyApp.USER_DIR, "hoops"));
@@ -40,6 +43,10 @@ public class ApplicationContext {
 
     public CandleStore getCandleStore() {
         return candleStore;
+    }
+
+    public AggTradesStore getAggTradesStore() {
+        return aggTradesStore;
     }
 
     public StrategyStore getStrategyStore() {

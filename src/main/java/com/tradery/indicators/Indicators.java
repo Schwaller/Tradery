@@ -559,4 +559,198 @@ public final class Indicators {
         ADXResult result = adx(candles.subList(0, barIndex + 1), period);
         return result.minusDI()[barIndex];
     }
+
+    // ========== VWAP (Volume Weighted Average Price) ==========
+
+    /**
+     * Session VWAP - cumulative from start of data.
+     * Formula: Sum(Typical Price * Volume) / Sum(Volume)
+     * Typical Price = (High + Low + Close) / 3
+     */
+    public static double[] vwap(List<Candle> candles) {
+        int n = candles.size();
+        double[] result = new double[n];
+        java.util.Arrays.fill(result, Double.NaN);
+
+        if (n == 0) {
+            return result;
+        }
+
+        double cumulativeTPV = 0;  // Cumulative (Typical Price * Volume)
+        double cumulativeVolume = 0;
+
+        for (int i = 0; i < n; i++) {
+            Candle c = candles.get(i);
+            double typicalPrice = (c.high() + c.low() + c.close()) / 3.0;
+            cumulativeTPV += typicalPrice * c.volume();
+            cumulativeVolume += c.volume();
+
+            if (cumulativeVolume > 0) {
+                result[i] = cumulativeTPV / cumulativeVolume;
+            }
+        }
+
+        return result;
+    }
+
+    public static double vwapAt(List<Candle> candles, int barIndex) {
+        if (barIndex < 0 || barIndex >= candles.size()) {
+            return Double.NaN;
+        }
+
+        double cumulativeTPV = 0;
+        double cumulativeVolume = 0;
+
+        for (int i = 0; i <= barIndex; i++) {
+            Candle c = candles.get(i);
+            double typicalPrice = (c.high() + c.low() + c.close()) / 3.0;
+            cumulativeTPV += typicalPrice * c.volume();
+            cumulativeVolume += c.volume();
+        }
+
+        return cumulativeVolume > 0 ? cumulativeTPV / cumulativeVolume : Double.NaN;
+    }
+
+    // ========== Volume Profile / POC / VAH / VAL ==========
+
+    /**
+     * Volume Profile result containing POC, VAH, VAL
+     */
+    public record VolumeProfileResult(
+        double poc,    // Point of Control - price with highest volume
+        double vah,    // Value Area High
+        double val,    // Value Area Low
+        double[] priceLevels,  // Price bin centers
+        double[] volumes       // Volume at each bin
+    ) {}
+
+    /**
+     * Calculate Volume Profile over a lookback period.
+     * Divides price range into bins and aggregates volume at each level.
+     *
+     * @param period         Lookback period in bars
+     * @param numBins        Number of price bins (default 24)
+     * @param valueAreaPct   Percentage of volume for value area (typically 70%)
+     */
+    public static VolumeProfileResult volumeProfile(List<Candle> candles, int period, int numBins, double valueAreaPct) {
+        if (candles.isEmpty() || period <= 0) {
+            return new VolumeProfileResult(Double.NaN, Double.NaN, Double.NaN, new double[0], new double[0]);
+        }
+
+        // Get the range of candles to analyze
+        int startIdx = Math.max(0, candles.size() - period);
+        int endIdx = candles.size();
+
+        // Find price range
+        double minPrice = Double.MAX_VALUE;
+        double maxPrice = Double.MIN_VALUE;
+        for (int i = startIdx; i < endIdx; i++) {
+            Candle c = candles.get(i);
+            minPrice = Math.min(minPrice, c.low());
+            maxPrice = Math.max(maxPrice, c.high());
+        }
+
+        if (maxPrice <= minPrice) {
+            double price = (maxPrice + minPrice) / 2;
+            return new VolumeProfileResult(price, price, price, new double[]{price}, new double[]{1});
+        }
+
+        // Create price bins
+        double binSize = (maxPrice - minPrice) / numBins;
+        double[] priceLevels = new double[numBins];
+        double[] volumes = new double[numBins];
+
+        for (int i = 0; i < numBins; i++) {
+            priceLevels[i] = minPrice + binSize * (i + 0.5);  // Center of bin
+        }
+
+        // Distribute volume across bins
+        // For each candle, distribute its volume proportionally across price levels it touched
+        for (int i = startIdx; i < endIdx; i++) {
+            Candle c = candles.get(i);
+            double typicalPrice = (c.high() + c.low() + c.close()) / 3.0;
+
+            // Find which bin the typical price falls into
+            int binIdx = (int) ((typicalPrice - minPrice) / binSize);
+            binIdx = Math.max(0, Math.min(numBins - 1, binIdx));
+            volumes[binIdx] += c.volume();
+        }
+
+        // Find POC (bin with highest volume)
+        int pocIdx = 0;
+        double maxVol = volumes[0];
+        for (int i = 1; i < numBins; i++) {
+            if (volumes[i] > maxVol) {
+                maxVol = volumes[i];
+                pocIdx = i;
+            }
+        }
+        double poc = priceLevels[pocIdx];
+
+        // Calculate Value Area (70% of volume centered on POC)
+        double totalVolume = 0;
+        for (double v : volumes) {
+            totalVolume += v;
+        }
+
+        double targetVolume = totalVolume * valueAreaPct / 100.0;
+        double areaVolume = volumes[pocIdx];
+        int lowIdx = pocIdx;
+        int highIdx = pocIdx;
+
+        // Expand from POC until we capture target volume
+        while (areaVolume < targetVolume && (lowIdx > 0 || highIdx < numBins - 1)) {
+            double lowVol = lowIdx > 0 ? volumes[lowIdx - 1] : 0;
+            double highVol = highIdx < numBins - 1 ? volumes[highIdx + 1] : 0;
+
+            if (lowVol >= highVol && lowIdx > 0) {
+                lowIdx--;
+                areaVolume += volumes[lowIdx];
+            } else if (highIdx < numBins - 1) {
+                highIdx++;
+                areaVolume += volumes[highIdx];
+            } else if (lowIdx > 0) {
+                lowIdx--;
+                areaVolume += volumes[lowIdx];
+            }
+        }
+
+        double val = priceLevels[lowIdx] - binSize / 2;   // Lower edge of lowest bin
+        double vah = priceLevels[highIdx] + binSize / 2;  // Upper edge of highest bin
+
+        return new VolumeProfileResult(poc, vah, val, priceLevels, volumes);
+    }
+
+    /**
+     * Get POC at a specific bar index.
+     */
+    public static double pocAt(List<Candle> candles, int period, int barIndex) {
+        if (barIndex < period - 1 || barIndex >= candles.size()) {
+            return Double.NaN;
+        }
+        VolumeProfileResult result = volumeProfile(candles.subList(0, barIndex + 1), period, 24, 70.0);
+        return result.poc();
+    }
+
+    /**
+     * Get VAH (Value Area High) at a specific bar index.
+     */
+    public static double vahAt(List<Candle> candles, int period, int barIndex) {
+        if (barIndex < period - 1 || barIndex >= candles.size()) {
+            return Double.NaN;
+        }
+        VolumeProfileResult result = volumeProfile(candles.subList(0, barIndex + 1), period, 24, 70.0);
+        return result.vah();
+    }
+
+    /**
+     * Get VAL (Value Area Low) at a specific bar index.
+     */
+    public static double valAt(List<Candle> candles, int period, int barIndex) {
+        if (barIndex < period - 1 || barIndex >= candles.size()) {
+            return Double.NaN;
+        }
+        VolumeProfileResult result = volumeProfile(candles.subList(0, barIndex + 1), period, 24, 70.0);
+        return result.val();
+    }
 }

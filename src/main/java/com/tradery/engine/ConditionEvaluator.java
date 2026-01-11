@@ -46,6 +46,7 @@ public class ConditionEvaluator {
             case AstNode.MoonFunctionCall m -> evaluateMoonFunction(m, barIndex);
             case AstNode.HolidayFunctionCall h -> evaluateHolidayFunction(h, barIndex);
             case AstNode.FomcFunctionCall f -> evaluateFomcFunction(f, barIndex);
+            case AstNode.OrderflowFunctionCall o -> evaluateOrderflowFunction(o, barIndex);
             case AstNode.PriceReference p -> evaluatePrice(p, barIndex);
             case AstNode.NumberLiteral n -> n.value();
             case AstNode.BooleanLiteral b -> b.value();
@@ -227,6 +228,20 @@ public class ConditionEvaluator {
         return switch (node.func()) {
             case "IS_FOMC_MEETING" -> engine.isFomcMeetingAt(barIndex) ? 1.0 : 0.0;
             default -> throw new EvaluationException("Unknown FOMC function: " + node.func());
+        };
+    }
+
+    private double evaluateOrderflowFunction(AstNode.OrderflowFunctionCall node, int barIndex) {
+        Integer period = node.period();
+
+        return switch (node.func()) {
+            case "VWAP" -> engine.getVWAPAt(barIndex);
+            case "POC" -> engine.getPOCAt(period != null ? period : 20, barIndex);
+            case "VAH" -> engine.getVAHAt(period != null ? period : 20, barIndex);
+            case "VAL" -> engine.getVALAt(period != null ? period : 20, barIndex);
+            case "DELTA" -> engine.getDeltaAt(barIndex);
+            case "CUM_DELTA" -> engine.getCumulativeDeltaAt(barIndex);
+            default -> throw new EvaluationException("Unknown orderflow function: " + node.func());
         };
     }
 

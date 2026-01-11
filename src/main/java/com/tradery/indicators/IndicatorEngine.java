@@ -1,5 +1,6 @@
 package com.tradery.indicators;
 
+import com.tradery.model.AggTrade;
 import com.tradery.model.Candle;
 
 import java.time.DayOfWeek;
@@ -21,6 +22,7 @@ import java.util.Set;
 public class IndicatorEngine {
 
     private List<Candle> candles;
+    private List<AggTrade> aggTrades;
     private String resolution = "1h";
     private final Map<String, Object> cache = new HashMap<>();
 
@@ -31,6 +33,24 @@ public class IndicatorEngine {
         this.candles = candles;
         this.resolution = resolution;
         clearCache();
+    }
+
+    /**
+     * Set aggregated trades data for orderflow indicators.
+     * Must be called before using delta indicators.
+     */
+    public void setAggTrades(List<AggTrade> aggTrades) {
+        this.aggTrades = aggTrades;
+        // Clear orderflow-related cache entries
+        cache.remove("delta");
+        cache.remove("cumDelta");
+    }
+
+    /**
+     * Check if aggregated trades data is available.
+     */
+    public boolean hasAggTrades() {
+        return aggTrades != null && !aggTrades.isEmpty();
     }
 
     /**
@@ -494,5 +514,83 @@ public class IndicatorEngine {
         if (day2 > 0) {
             dates.add(LocalDate.of(year, month, day2));
         }
+    }
+
+    // ========== VWAP (Tier 1 - Orderflow) ==========
+
+    public double[] getVWAP() {
+        String key = "vwap";
+        if (!cache.containsKey(key)) {
+            cache.put(key, Indicators.vwap(candles));
+        }
+        return (double[]) cache.get(key);
+    }
+
+    public double getVWAPAt(int barIndex) {
+        return Indicators.vwapAt(candles, barIndex);
+    }
+
+    // ========== Volume Profile / POC / VAH / VAL (Tier 1 - Orderflow) ==========
+
+    public Indicators.VolumeProfileResult getVolumeProfile(int period) {
+        String key = "volumeProfile:" + period;
+        if (!cache.containsKey(key)) {
+            cache.put(key, Indicators.volumeProfile(candles, period, 24, 70.0));
+        }
+        return (Indicators.VolumeProfileResult) cache.get(key);
+    }
+
+    public double getPOCAt(int period, int barIndex) {
+        return Indicators.pocAt(candles, period, barIndex);
+    }
+
+    public double getVAHAt(int period, int barIndex) {
+        return Indicators.vahAt(candles, period, barIndex);
+    }
+
+    public double getVALAt(int period, int barIndex) {
+        return Indicators.valAt(candles, period, barIndex);
+    }
+
+    // ========== Delta / Cumulative Delta (Tier 2 - Orderflow, requires aggTrades) ==========
+
+    public double[] getDelta() {
+        if (!hasAggTrades()) {
+            double[] result = new double[candles != null ? candles.size() : 0];
+            java.util.Arrays.fill(result, Double.NaN);
+            return result;
+        }
+        String key = "delta";
+        if (!cache.containsKey(key)) {
+            cache.put(key, OrderflowIndicators.delta(aggTrades, candles, resolution));
+        }
+        return (double[]) cache.get(key);
+    }
+
+    public double getDeltaAt(int barIndex) {
+        if (!hasAggTrades()) {
+            return Double.NaN;
+        }
+        return OrderflowIndicators.deltaAt(aggTrades, candles, resolution, barIndex);
+    }
+
+    public double[] getCumulativeDelta() {
+        if (!hasAggTrades()) {
+            double[] result = new double[candles != null ? candles.size() : 0];
+            java.util.Arrays.fill(result, Double.NaN);
+            return result;
+        }
+        String key = "cumDelta";
+        if (!cache.containsKey(key)) {
+            cache.put(key, OrderflowIndicators.cumulativeDelta(aggTrades, candles, resolution));
+        }
+        return (double[]) cache.get(key);
+    }
+
+    public double getCumulativeDeltaAt(int barIndex) {
+        if (!hasAggTrades()) {
+            return Double.NaN;
+        }
+        return OrderflowIndicators.cumulativeDeltaAt(aggTrades, candles, resolution, barIndex);
     }
 }

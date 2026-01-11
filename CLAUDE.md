@@ -22,10 +22,13 @@ A Java Swing desktop application for building and backtesting trading strategies
 │   └── {id}/hoop.json
 ├── results/
 │   └── latest.json                   # Most recent backtest result
-└── data/
+├── data/
+│   └── BTCUSDT/
+│       └── 1h/
+│           └── 2024-01.csv           # Cached OHLC data
+└── aggtrades/                        # Aggregated trade data for orderflow
     └── BTCUSDT/
-        └── 1h/
-            └── 2024-01.csv           # Cached OHLC data
+        └── 2024-01.csv
 
 /Users/martinschwaller/Code/Tradery/  # Project source
 ├── build.gradle
@@ -43,7 +46,7 @@ A Java Swing desktop application for building and backtesting trading strategies
 │   │   ├── Parser.java               # Build AST from tokens
 │   │   └── AstNode.java              # AST node types
 │   ├── indicators/
-│   │   └── IndicatorEngine.java      # SMA, EMA, RSI, MACD, Bollinger Bands
+│   │   └── IndicatorEngine.java      # All indicator calculations
 │   ├── engine/
 │   │   ├── BacktestEngine.java       # Main simulation loop
 │   │   ├── ConditionEvaluator.java   # Evaluate DSL conditions
@@ -51,23 +54,24 @@ A Java Swing desktop application for building and backtesting trading strategies
 │   │   └── HoopPatternEvaluator.java # Evaluate hoop pattern matches
 │   ├── data/
 │   │   ├── BinanceClient.java        # Fetch OHLC from Binance API
+│   │   ├── AggTradesClient.java      # Fetch aggregated trades for orderflow
 │   │   └── CandleStore.java          # Read/write CSV, smart caching
 │   ├── model/
-│   │   ├── Strategy.java             # Strategy with entry/exit DSL, SL/TP settings
-│   │   ├── Trade.java                # Trade record (open, close, rejected)
-│   │   ├── BacktestConfig.java       # Backtest configuration
-│   │   ├── BacktestResult.java       # Results with trades and metrics
-│   │   ├── PerformanceMetrics.java   # Calculated performance stats
+│   │   ├── Strategy.java             # Strategy with grouped settings
+│   │   ├── EntrySettings.java        # Entry conditions & DCA
+│   │   ├── ExitSettings.java         # Exit zones & evaluation
+│   │   ├── BacktestSettings.java     # Symbol, timeframe, capital, fees
+│   │   ├── PhaseSettings.java        # Required/excluded phases
+│   │   ├── HoopPatternSettings.java  # Hoop pattern configuration
+│   │   ├── OrderflowSettings.java    # Orderflow mode & settings
+│   │   ├── Trade.java                # Trade record
 │   │   ├── Candle.java               # OHLC record
+│   │   ├── AggTrade.java             # Aggregated trade for orderflow
 │   │   ├── Phase.java                # Market phase definition
-│   │   ├── Hoop.java                 # Single price checkpoint (record)
-│   │   ├── HoopPattern.java          # Full pattern with hoops list
-│   │   ├── HoopPatternSettings.java  # Strategy hoop settings
-│   │   └── HoopMatchResult.java      # Pattern match details
+│   │   ├── Hoop.java                 # Single price checkpoint
+│   │   └── HoopPattern.java          # Full pattern with hoops list
 │   └── io/
 │       ├── StrategyStore.java        # Read/write strategy JSON
-│       ├── ResultStore.java          # Save/load backtest results
-│       ├── FileWatcher.java          # Watch for external file changes
 │       ├── PhaseStore.java           # Read/write phase JSON
 │       └── HoopPatternStore.java     # Read/write hoop pattern JSON
 ```
@@ -88,80 +92,376 @@ A Java Swing desktop application for building and backtesting trading strategies
 ./gradlew clean
 ```
 
-## Key Features
+---
 
-### DSL Syntax for Entry/Exit Conditions
+## DSL Reference (Complete)
+
+The DSL (Domain Specific Language) is used for entry conditions, exit conditions, and phase definitions.
+
+### Price References
 ```
+price, close    # Current bar close price
+open            # Current bar open price
+high            # Current bar high price
+low             # Current bar low price
+volume          # Current bar volume
+```
+
+### Technical Indicators
+```
+SMA(period)              # Simple Moving Average
+EMA(period)              # Exponential Moving Average
+RSI(period)              # Relative Strength Index (0-100)
+ATR(period)              # Average True Range
+
+ADX(period)              # Average Directional Index (trend strength)
+PLUS_DI(period)          # Positive Directional Indicator
+MINUS_DI(period)         # Negative Directional Indicator
+
+MACD(fast, slow, signal)           # MACD line value
+MACD(fast, slow, signal).line      # MACD line (explicit)
+MACD(fast, slow, signal).signal    # MACD signal line
+MACD(fast, slow, signal).histogram # MACD histogram
+
+BBANDS(period, stdDev)             # Bollinger middle band
+BBANDS(period, stdDev).upper       # Bollinger upper band
+BBANDS(period, stdDev).middle      # Bollinger middle band
+BBANDS(period, stdDev).lower       # Bollinger lower band
+```
+
+### Range & Volume Functions
+```
+HIGH_OF(period)          # Highest high of last N bars
+LOW_OF(period)           # Lowest low of last N bars
+AVG_VOLUME(period)       # Average volume of last N bars
+```
+
+### Time Functions
+```
+HOUR                     # Hour of candle (0-23 UTC)
+DAYOFWEEK                # Day of week (1=Monday, 7=Sunday)
+DAY                      # Day of month (1-31)
+MONTH                    # Month (1-12)
+```
+
+### Calendar Functions
+```
+IS_US_HOLIDAY            # 1 if US Federal Reserve holiday, 0 otherwise
+IS_FOMC_MEETING          # 1 if FOMC meeting day, 0 otherwise
+```
+
+### Moon Functions
+```
+MOON_PHASE               # 0.0 = new moon, 0.5 = full moon, 1.0 = new moon
+```
+
+### Orderflow Functions
+Require `orderflowSettings.mode` to be enabled in strategy.
+
+**Tier 1 (calculated from OHLCV - instant):**
+```
+VWAP                     # Volume Weighted Average Price (session)
+POC(period)              # Point of Control - highest volume price level
+VAH(period)              # Value Area High (default 70% of volume)
+VAL(period)              # Value Area Low
+```
+
+**Full (requires aggTrades sync):**
+```
+DELTA                    # Buy volume - sell volume for current bar
+CUM_DELTA                # Cumulative delta from session start
+```
+
+### Operators
+
+**Comparison:**
+```
+>   <   >=   <=   ==
+```
+
+**Cross Detection:**
+```
+crosses_above            # Left crossed above right this bar
+crosses_below            # Left crossed below right this bar
+```
+
+**Logical:**
+```
+AND                      # Both conditions must be true
+OR                       # Either condition can be true
+```
+
+**Arithmetic:**
+```
++   -   *   /
+```
+
+### DSL Examples
+```
+# Basic indicators
 RSI(14) < 30
 price > SMA(200)
 EMA(20) crosses_above EMA(50)
+
+# MACD
 MACD(12,26,9).histogram > 0
-close > HIGH_OF(20) AND volume > AVG_VOLUME(20) * 1.5
+MACD(12,26,9).line crosses_above MACD(12,26,9).signal
+
+# Bollinger Bands
+close < BBANDS(20, 2).lower
+close > BBANDS(20, 2).upper
+
+# Trend detection with ADX
+ADX(14) > 25 AND PLUS_DI(14) > MINUS_DI(14)
+
+# Volume confirmation
+volume > AVG_VOLUME(20) * 1.5
+close > HIGH_OF(20)
+
+# Time-based (typically used in phases)
+HOUR >= 14 AND HOUR < 21
+DAYOFWEEK >= 1 AND DAYOFWEEK <= 5
+
+# Calendar events
+IS_FOMC_MEETING == 1
+IS_US_HOLIDAY == 0
+
+# Moon phase
+MOON_PHASE >= 0.48 AND MOON_PHASE <= 0.52
+
+# Orderflow
+close > VWAP
+close > POC(20)
+DELTA > 0 AND CUM_DELTA > 0
 ```
 
-### Strategy Settings
-- **Entry/Exit conditions**: DSL expressions
-- **Stop Loss**: None, Fixed %, Trailing %, Fixed ATR, Trailing ATR
-- **Take Profit**: None, Fixed %, Fixed ATR
-- **Max Open Trades**: Limit concurrent positions (default: 1)
-- **Min Candles Between**: Minimum bars between new entries (default: 0)
+---
 
-### Exit Zones
-Exit zones define behavior at different P&L levels. Each zone has:
-- **P&L Range**: `minPnlPercent` / `maxPnlPercent` (null = unbounded)
-- **Exit Condition**: DSL expression for conditional exits
-- **SL/TP**: Zone-specific stop loss and take profit
-- **Exit Immediately**: Exit full position instantly when zone is entered (no conditions checked)
-- **Scale Out**: Partial exits (`exitPercent` < 100) with `maxExits`, `exitBasis`, `exitReentry`
+## Phase System
 
-**AI Guidance for Exit Zones:**
-- Use `exitImmediately: true` for instant full-position exits - this is the simple approach
-- Only use Scale Out (`exitPercent`) for actual partial exits (25%, 50%, etc.)
-- Never set `exitPercent: 100` - that's redundant; use `exitImmediately` or just omit scale-out
-- If `exitPercent` is null/omitted, exits are 100% by default (full position)
+Phases are market regime conditions that filter when strategies can trade. They enable:
+- **Multi-timeframe analysis**: A 1h strategy can require a daily uptrend phase
+- **Calendar awareness**: Avoid trading during FOMC, holidays, weekends
+- **Session filtering**: Only trade during London or US hours
+- **Technical regimes**: Only trade during trends, avoid ranging markets
 
-### Hoop Patterns
-Hoop patterns are sequential price-checkpoint matching for detecting chart patterns. Each hoop is a "gate" that price must pass through within a time window.
+### How Phases Work
+1. Each phase has its own DSL condition and timeframe (e.g., `SMA(50) > SMA(200)` on `1d`)
+2. Phase is evaluated on its timeframe, producing true/false for each bar
+3. Results are mapped down to the strategy's timeframe
+4. Strategy entry only allowed when all required phases are active AND no excluded phases are active
 
-**Hoop Definition:**
-- `name`: Identifier for the checkpoint
-- `minPricePercent` / `maxPricePercent`: Price bounds as % from anchor (null = unbounded)
-- `distance`: Expected bars from previous hoop
-- `tolerance`: ±N bars flexibility
-- `anchorMode`: `ACTUAL_HIT` (use hit price) or `AVG_RANGE` (use average of range)
-
-**Pattern Matching:**
-1. Start at each candle as potential anchor
-2. For each hoop in sequence, scan [distance - tolerance, distance + tolerance] bars
-3. Look for close price within [anchor * (1 + min%), anchor * (1 + max%)]
-4. If hit: update anchor, advance to next hoop
-5. If all hoops match: pattern completes at that bar
-
-**Combine Modes (Entry & Exit):**
-- `DSL_ONLY`: Use only DSL conditions (ignore hoops)
-- `HOOP_ONLY`: Use only hoop pattern matches (ignore DSL)
-- `AND`: Both DSL and hoop patterns must trigger
-- `OR`: Either DSL or hoop patterns can trigger
-
-**Strategy Integration:**
+### Phase Definition
 ```json
 {
-  "hoopPatternSettings": {
-    "entryMode": "AND",
-    "exitMode": "DSL_ONLY",
-    "requiredEntryPatternIds": ["double-bottom"],
-    "excludedEntryPatternIds": [],
-    "requiredExitPatternIds": [],
-    "excludedExitPatternIds": []
+  "id": "uptrend",
+  "name": "Uptrend",
+  "description": "Strong uptrend using ADX",
+  "category": "Technical",
+  "condition": "ADX(14) > 25 AND PLUS_DI(14) > MINUS_DI(14)",
+  "timeframe": "1d",
+  "symbol": "BTCUSDT",
+  "builtIn": true
+}
+```
+
+### Built-In Phases (32 total)
+
+**Session (5):**
+| ID | Condition | Description |
+|----|-----------|-------------|
+| `asian-session` | `HOUR >= 0 AND HOUR < 9` | Tokyo/HK hours |
+| `european-session` | `HOUR >= 7 AND HOUR < 16` | London/Frankfurt |
+| `us-market-hours` | `HOUR >= 14 AND HOUR < 21` | NYSE/NASDAQ including open |
+| `us-market-core` | `HOUR >= 15 AND HOUR < 21` | NYSE/NASDAQ core hours |
+| `session-overlap` | `HOUR >= 14 AND HOUR < 16` | US/Europe overlap - highest liquidity |
+
+**Time (9):**
+| ID | Condition |
+|----|-----------|
+| `monday` - `sunday` | `DAYOFWEEK == N` |
+| `weekdays` | `DAYOFWEEK >= 1 AND DAYOFWEEK <= 5` |
+| `weekend` | `DAYOFWEEK >= 6` |
+
+**Technical (7):**
+| ID | Condition | Timeframe |
+|----|-----------|-----------|
+| `uptrend` | `ADX(14) > 25 AND PLUS_DI(14) > MINUS_DI(14)` | 1d |
+| `downtrend` | `ADX(14) > 25 AND MINUS_DI(14) > PLUS_DI(14)` | 1d |
+| `ranging` | `ADX(14) < 20` | 1d |
+| `golden-cross` | `SMA(50) > SMA(200)` | 1d |
+| `death-cross` | `SMA(50) < SMA(200)` | 1d |
+| `overbought` | `RSI(14) > 70` | 1d |
+| `oversold` | `RSI(14) < 30` | 1d |
+
+**Calendar (7):**
+| ID | Condition | Description |
+|----|-----------|-------------|
+| `month-start` | `DAY <= 5` | Fresh capital inflows |
+| `month-end` | `DAY >= 25` | Rebalancing flows |
+| `quarter-end` | `(MONTH == 3,6,9,12) AND DAY >= 25` | Window dressing |
+| `us-bank-holiday` | `IS_US_HOLIDAY == 1` | Fed holidays |
+| `fomc-meeting-day` | `IS_FOMC_MEETING == 1` | FOMC days (1d) |
+| `fomc-meeting-hour` | `IS_FOMC_MEETING == 1` | FOMC days (1h precision) |
+| `fomc-meeting-week` | `IS_FOMC_MEETING == 1` | FOMC weeks (1w) |
+
+**Moon (4):**
+| ID | Condition | Description |
+|----|-----------|-------------|
+| `full-moon-day` | `MOON_PHASE >= 0.48 AND MOON_PHASE <= 0.52` | ~1 day around full moon |
+| `full-moon-hour` | `MOON_PHASE >= 0.499 AND MOON_PHASE <= 0.501` | ~1 hour precision |
+| `new-moon-day` | `MOON_PHASE <= 0.02 OR MOON_PHASE >= 0.98` | ~1 day around new moon |
+| `new-moon-hour` | `MOON_PHASE <= 0.001 OR MOON_PHASE >= 0.999` | ~1 hour precision |
+
+### Strategy Phase Integration
+```json
+{
+  "phaseSettings": {
+    "requiredPhaseIds": ["uptrend", "weekdays"],
+    "excludedPhaseIds": ["fomc-meeting-day", "us-bank-holiday"]
+  }
+}
+```
+- **requiredPhaseIds**: ALL must be active for entry
+- **excludedPhaseIds**: NONE must be active for entry
+
+---
+
+## Orderflow System
+
+Orderflow indicators provide insight into buying/selling pressure beyond standard OHLCV data.
+
+### Modes
+```json
+{
+  "orderflowSettings": {
+    "mode": "tier1",           // "disabled", "tier1", or "full"
+    "volumeProfilePeriod": 20,
+    "valueAreaPercent": 70.0
   }
 }
 ```
 
-**Example Pattern (Double Bottom):**
+| Mode | Indicators | Data Source |
+|------|------------|-------------|
+| `disabled` | None | - |
+| `tier1` | VWAP, POC, VAH, VAL | OHLCV (instant) |
+| `full` | Tier 1 + DELTA, CUM_DELTA | Requires aggTrades sync |
+
+### Indicator Descriptions
+- **VWAP**: Volume-weighted average price for the session
+- **POC**: Price level with highest volume (Point of Control)
+- **VAH/VAL**: Value area high/low - range containing X% of volume
+- **DELTA**: Buy volume minus sell volume per bar
+- **CUM_DELTA**: Running total of delta from session start
+
+---
+
+## Strategy Settings Structure
+
+Strategies use grouped settings for organization:
+
+```json
+{
+  "id": "my-strategy",
+  "name": "My Strategy",
+  "enabled": true,
+
+  "entrySettings": {
+    "condition": "RSI(14) < 30 AND close > SMA(200)",
+    "maxOpenTrades": 3,
+    "minCandlesBetween": 5,
+    "dca": {
+      "enabled": false,
+      "maxEntries": 3,
+      "barsBetween": 10,
+      "mode": "FIXED_PERCENT"
+    }
+  },
+
+  "exitSettings": {
+    "zones": [...],
+    "evaluation": "FIRST_MATCH"
+  },
+
+  "backtestSettings": {
+    "symbol": "BTCUSDT",
+    "timeframe": "1h",
+    "duration": "1y",
+    "initialCapital": 10000,
+    "positionSizingType": "PERCENT_EQUITY",
+    "positionSizingValue": 10,
+    "feePercent": 0.1,
+    "slippagePercent": 0.05
+  },
+
+  "phaseSettings": {
+    "requiredPhaseIds": ["uptrend"],
+    "excludedPhaseIds": ["weekend"]
+  },
+
+  "hoopPatternSettings": {
+    "entryMode": "DSL_ONLY",
+    "exitMode": "DSL_ONLY",
+    "requiredEntryPatternIds": [],
+    "excludedEntryPatternIds": []
+  },
+
+  "orderflowSettings": {
+    "mode": "tier1",
+    "volumeProfilePeriod": 20,
+    "valueAreaPercent": 70.0
+  }
+}
+```
+
+---
+
+## Exit Zones
+
+Exit zones define behavior at different P&L levels:
+
+```json
+{
+  "zones": [
+    {
+      "name": "Stop Loss",
+      "minPnlPercent": null,
+      "maxPnlPercent": -5.0,
+      "exitImmediately": true
+    },
+    {
+      "name": "Take Profit",
+      "minPnlPercent": 10.0,
+      "maxPnlPercent": null,
+      "exitImmediately": true
+    },
+    {
+      "name": "Breakeven Exit",
+      "minPnlPercent": 0.0,
+      "maxPnlPercent": 5.0,
+      "condition": "RSI(14) > 70",
+      "exitImmediately": false
+    }
+  ]
+}
+```
+
+**AI Guidance for Exit Zones:**
+- Use `exitImmediately: true` for instant full-position exits
+- Use `condition` for conditional exits within a P&L range
+- Only use `exitPercent` for actual partial exits (scale-out)
+
+---
+
+## Hoop Patterns
+
+Sequential price-checkpoint matching for detecting chart patterns.
+
 ```json
 {
   "id": "double-bottom",
-  "name": "Double Bottom Pattern",
+  "name": "Double Bottom",
   "hoops": [
     { "name": "first-low", "minPricePercent": -3.0, "maxPricePercent": -1.0,
       "distance": 5, "tolerance": 2, "anchorMode": "ACTUAL_HIT" },
@@ -172,94 +472,66 @@ Hoop patterns are sequential price-checkpoint matching for detecting chart patte
     { "name": "breakout", "minPricePercent": 2.0, "maxPricePercent": null,
       "distance": 5, "tolerance": 3, "anchorMode": "ACTUAL_HIT" }
   ],
-  "symbol": "BTCUSDT",
-  "timeframe": "1h",
   "cooldownBars": 20,
   "allowOverlap": false
 }
 ```
 
-### Position Sizing Options
-- Fixed percent of equity (1%, 5%, 10%)
-- Fixed dollar amount ($100, $500, $1000)
-- Risk-based (1%, 2% risk per trade)
-- Kelly Criterion
-- Volatility-based (ATR)
+**Combine Modes:**
+- `DSL_ONLY`: Ignore hoops, use only DSL
+- `HOOP_ONLY`: Ignore DSL, use only hoops
+- `AND`: Both must trigger
+- `OR`: Either can trigger
 
-### Charts (5 panels, synced crosshair)
-1. **Price**: Candlesticks with trade entry/exit lines (green=win, red=loss)
-2. **Equity**: Portfolio value over time
-3. **Strategy vs Buy & Hold**: Comparison chart with legend
-4. **Capital Usage**: % of capital invested
-5. **Trade P&L %**: Each trade's P&L progression from entry to exit
+---
 
-### Performance Metrics
-- Total trades, win rate, profit factor
-- Total return, max drawdown
-- Sharpe ratio
-- Average win/loss
-- Total fees paid
-- Final equity
+## AI Guidance
 
-### Fee Configuration
-- **Fee**: Default 0.10% (Binance spot rate)
-- **Slippage**: Default 0.05%
-- Both configurable in the settings panel
+**Before suggesting new features, check:**
 
-### Trade Table
-- Shows all executed trades with entry/exit times and prices
-- Rejected trades (no capital available) shown grayed out with "NO CAPITAL"
-- P&L colored green/red for wins/losses
+1. **Time-based filtering** - Already implemented via phases with `HOUR`, `DAYOFWEEK`, `DAY`, `MONTH`
+2. **Session filtering** - Built-in phases: asian-session, european-session, us-market-hours, etc.
+3. **Calendar awareness** - `IS_US_HOLIDAY`, `IS_FOMC_MEETING` functions + built-in phases
+4. **Multi-timeframe** - Phases can run on different timeframes than the strategy
+5. **Trend detection** - ADX, PLUS_DI, MINUS_DI + built-in uptrend/downtrend phases
+6. **Moon phases** - `MOON_PHASE` function + full-moon/new-moon phases
+7. **Orderflow** - VWAP, POC, VAH, VAL, DELTA, CUM_DELTA (Tier 1 + Full modes)
 
-## Architecture Notes
+**What's NOT yet implemented (potential future features):**
+- Funding rate / Open Interest (requires Binance Futures API)
+- Liquidation data (requires external API like Coinglass)
+- Large trade detection / whale filtering from aggTrades
+- Cross-symbol correlation (BTC dominance, ETH/BTC ratio)
 
-### File-Based Storage
-All data stored as plain files for Claude Code integration:
-- Strategies: JSON in `~/.tradery/strategies/`
-- Results: JSON in `~/.tradery/results/`
-- OHLC data: CSV in `~/.tradery/data/{symbol}/{timeframe}/`
+---
 
-### Auto-Reload
-FileWatcher monitors `~/.tradery/strategies/` for changes. When a strategy file is modified externally (e.g., by Claude Code), the app automatically reloads and re-runs the backtest.
+## Maintenance Notes
 
-### Smart Data Caching
-CandleStore only fetches missing months from Binance API. Historical months that are complete are never re-downloaded.
+### DSL Extension Checklist
+When adding new DSL functions:
+1. `dsl/Lexer.java` - Add keywords
+2. `dsl/Parser.java` - Update grammar
+3. `dsl/AstNode.java` - Add node type if needed
+4. `engine/ConditionEvaluator.java` - Add evaluation logic
+5. `indicators/IndicatorEngine.java` - Add calculation if needed
+6. `ui/DslHelpDialog.java` - Update help content
+7. **This file (CLAUDE.md)** - Document the new function
 
-### Multiple Open Trades
-BacktestEngine supports multiple concurrent positions with:
-- Per-trade trailing stop tracking
-- Max open trades limit
-- Minimum candle distance between entries
+### Adding Built-in Phases
+1. Create JSON in `~/.tradery/phases/{id}/phase.json`
+2. Set `builtIn: true` and `version: "1.0"`
+3. Update this file to document it
+
+---
 
 ## Claude Code Integration
 
 With files on disk, Claude Code can:
 - View/edit strategies: `~/.tradery/strategies/*.json`
+- View/edit phases: `~/.tradery/phases/*/phase.json`
+- View/edit hoop patterns: `~/.tradery/hoops/*/hoop.json`
 - See results: `~/.tradery/results/latest.json`
 - Query OHLC data: `~/.tradery/data/{symbol}/{timeframe}/*.csv`
 
-## Maintenance Notes
-
-### DSL Help Dialog
-When extending the DSL (adding new indicators, functions, or operators), update these files:
-1. `dsl/Lexer.java` - Add keywords to KEYWORDS map
-2. `dsl/Parser.java` - Update grammar/validation
-3. `engine/ConditionEvaluator.java` - Add evaluation logic
-4. **`ui/DslHelpDialog.java`** - Update HELP_CONTENT to document new features
-
-The help dialog is accessible via the info icon (ⓘ) in the lower-right corner of DSL text boxes (entry conditions and exit zone conditions).
-
-## Recent Changes (Latest Session)
-- Added hoop-based pattern matching system for entry/exit triggers
-  - Sequential price-checkpoint matching (hoops)
-  - Combine modes: DSL_ONLY, HOOP_ONLY, AND, OR
-  - Full UI: pattern editor, pattern selector in strategies
-  - "Phases" and "Hoops" buttons in toolbar
-- Added DSL help dialog with info icons on text boxes
-- Added 5th chart for Trade P&L % tracking
-- Added rejected trades display (no capital)
-- Added max open trades and min candles between entries settings
-- Added fee and slippage configuration
-- Added total fees to performance metrics
-- Fixed stop-loss/take-profit to use current UI values
-- Improved trade table formatting and alignment
+### Auto-Reload
+FileWatcher monitors strategy/phase/hoop directories. External edits trigger automatic reload and backtest re-run.

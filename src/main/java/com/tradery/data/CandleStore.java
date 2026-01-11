@@ -295,16 +295,32 @@ public class CandleStore {
 
     /**
      * Check if candle data is complete for a month.
+     * A month is complete when:
+     * 1. It's not the current month
+     * 2. We have the last candle of the month (within tolerance)
+     * 3. We have at least 95% of expected candles
      */
     private boolean isMonthComplete(List<Candle> candles, String resolution, YearMonth month) {
         if (candles.isEmpty()) return false;
 
         // Current month is never considered complete
-        if (month.equals(YearMonth.now())) return false;
+        if (month.equals(YearMonth.now(ZoneOffset.UTC))) return false;
 
+        // Check if we have the LAST candle of the month
+        long monthEndMs = month.plusMonths(1).atDay(1)
+            .atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli();
+        long lastCandleTs = candles.get(candles.size() - 1).timestamp();
+        long resolutionMs = getResolutionMs(resolution);
+
+        // Last candle should be within two resolution periods of month end
+        // This handles the case where data was fetched mid-month and is incomplete
+        if (monthEndMs - lastCandleTs > resolutionMs * 2) {
+            return false;  // Missing end-of-month data
+        }
+
+        // Also check expected count (with tolerance)
         int expectedCandles = calculateExpectedCandles(resolution, month);
-        // Allow 1% tolerance
-        return candles.size() >= expectedCandles * 0.99;
+        return candles.size() >= expectedCandles * 0.95;
     }
 
     /**

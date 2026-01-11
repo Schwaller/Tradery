@@ -43,6 +43,14 @@ public class Lexer {
         // FOMC functions
         Map.entry("IS_FOMC_MEETING", TokenType.FOMC_FUNC),
 
+        // Orderflow functions
+        Map.entry("VWAP", TokenType.ORDERFLOW_FUNC),
+        Map.entry("POC", TokenType.ORDERFLOW_FUNC),
+        Map.entry("VAH", TokenType.ORDERFLOW_FUNC),
+        Map.entry("VAL", TokenType.ORDERFLOW_FUNC),
+        Map.entry("DELTA", TokenType.ORDERFLOW_FUNC),
+        Map.entry("CUM_DELTA", TokenType.ORDERFLOW_FUNC),
+
         // Price references
         Map.entry("price", TokenType.PRICE),
         Map.entry("open", TokenType.PRICE),

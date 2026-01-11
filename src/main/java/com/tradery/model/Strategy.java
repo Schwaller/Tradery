@@ -25,6 +25,7 @@ public class Strategy {
     private BacktestSettings backtestSettings = new BacktestSettings();
     private PhaseSettings phaseSettings = new PhaseSettings();
     private HoopPatternSettings hoopPatternSettings = new HoopPatternSettings();
+    private OrderflowSettings orderflowSettings = new OrderflowSettings();
 
     // Metadata
     private boolean enabled;
@@ -162,6 +163,20 @@ public class Strategy {
 
     public void setHoopPatternSettings(HoopPatternSettings hoopPatternSettings) {
         this.hoopPatternSettings = hoopPatternSettings != null ? hoopPatternSettings : new HoopPatternSettings();
+        this.updated = Instant.now();
+    }
+
+    // Orderflow settings
+
+    public OrderflowSettings getOrderflowSettings() {
+        if (orderflowSettings == null) {
+            orderflowSettings = new OrderflowSettings();
+        }
+        return orderflowSettings;
+    }
+
+    public void setOrderflowSettings(OrderflowSettings orderflowSettings) {
+        this.orderflowSettings = orderflowSettings != null ? orderflowSettings : new OrderflowSettings();
         this.updated = Instant.now();
     }
 
@@ -451,6 +466,25 @@ public class Strategy {
 
     public boolean hasExitHoopPatterns() {
         return getHoopPatternSettings().hasExitPatterns();
+    }
+
+    // Convenience methods - Orderflow settings delegates
+
+    public OrderflowSettings.Mode getOrderflowMode() {
+        return getOrderflowSettings().getMode();
+    }
+
+    public void setOrderflowMode(OrderflowSettings.Mode mode) {
+        getOrderflowSettings().setMode(mode);
+        this.updated = Instant.now();
+    }
+
+    public boolean isOrderflowEnabled() {
+        return getOrderflowSettings().isEnabled();
+    }
+
+    public boolean requiresAggTrades() {
+        return getOrderflowSettings().isEnabled();
     }
 
     @Override

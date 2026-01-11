@@ -1,5 +1,7 @@
 package com.tradery.ui;
 
+import com.tradery.ApplicationContext;
+import com.tradery.data.AggTradesStore;
 import com.tradery.data.CandleStore;
 import com.tradery.data.DataIntegrityChecker;
 import com.tradery.model.DataHealth;
@@ -26,6 +28,7 @@ public class DataHealthDialog extends JDialog {
     private final DataIntegrityChecker checker;
     private final CandleStore candleStore;
     private final File dataDir;
+    private final File aggTradesDir;
 
     private DataBrowserPanel browserPanel;
     private DataHealthPanel healthPanel;
@@ -40,22 +43,35 @@ public class DataHealthDialog extends JDialog {
     private String currentSymbol;
     private String currentResolution;
     private DataHealth selectedHealth;
+    private Timer refreshTimer;
 
     public DataHealthDialog(Frame owner, CandleStore candleStore) {
         super(owner, "Data Health", true);
         this.candleStore = candleStore;
         this.checker = new DataIntegrityChecker();
         this.dataDir = new File(System.getProperty("user.home") + "/.tradery/data");
+        this.aggTradesDir = new File(System.getProperty("user.home") + "/.tradery/aggtrades");
 
         initUI();
 
         setSize(800, 550);
         setLocationRelativeTo(owner);
 
+        // Auto-refresh every 10 seconds to show progress while data is loading
+        refreshTimer = new Timer(10000, e -> {
+            browserPanel.refreshData();
+            if (currentSymbol != null && currentResolution != null) {
+                healthPanel.refreshKeepSelection();
+            }
+            updateStorageLabel();
+        });
+        refreshTimer.start();
+
         // Handle close
         addWindowListener(new WindowAdapter() {
             @Override
             public void windowClosing(WindowEvent e) {
+                refreshTimer.stop();
                 candleStore.cancelCurrentFetch();
             }
         });
@@ -63,17 +79,8 @@ public class DataHealthDialog extends JDialog {
 
     private void initUI() {
         setLayout(new BorderLayout(0, 0));
-        getContentPane().setBackground(new Color(30, 30, 35));
+        getContentPane().setBackground(new Color(40, 40, 45));
 
-        // macOS styling
-        getRootPane().putClientProperty("apple.awt.fullWindowContent", true);
-        getRootPane().putClientProperty("apple.awt.transparentTitleBar", true);
-
-        // Title bar spacer
-        JPanel titleSpacer = new JPanel();
-        titleSpacer.setPreferredSize(new Dimension(0, 28));
-        titleSpacer.setBackground(new Color(40, 40, 45));
-        add(titleSpacer, BorderLayout.NORTH);
 
         // Left side: Data browser (tree-style navigation)
         browserPanel = new DataBrowserPanel();
@@ -82,7 +89,7 @@ public class DataHealthDialog extends JDialog {
         JScrollPane browserScroll = new JScrollPane(browserPanel);
         browserScroll.setBorder(BorderFactory.createEmptyBorder());
         browserScroll.setPreferredSize(new Dimension(220, 0));
-        browserScroll.getViewport().setBackground(new Color(30, 30, 35));
+        browserScroll.getViewport().setBackground(new Color(40, 40, 45));
 
         // Storage info at bottom of left panel
         storageLabel = new JLabel();
@@ -92,7 +99,7 @@ public class DataHealthDialog extends JDialog {
         updateStorageLabel();
 
         JPanel leftPanel = new JPanel(new BorderLayout(0, 0));
-        leftPanel.setBackground(new Color(30, 30, 35));
+        leftPanel.setBackground(new Color(40, 40, 45));
         leftPanel.add(browserScroll, BorderLayout.CENTER);
         leftPanel.add(storageLabel, BorderLayout.SOUTH);
         leftPanel.add(new JSeparator(SwingConstants.VERTICAL), BorderLayout.EAST);
@@ -105,7 +112,7 @@ public class DataHealthDialog extends JDialog {
 
         JScrollPane healthScroll = new JScrollPane(healthPanel);
         healthScroll.setBorder(BorderFactory.createEmptyBorder());
-        healthScroll.getViewport().setBackground(new Color(30, 30, 35));
+        healthScroll.getViewport().setBackground(new Color(40, 40, 45));
 
         add(healthScroll, BorderLayout.CENTER);
 
@@ -174,7 +181,8 @@ public class DataHealthDialog extends JDialog {
     }
 
     private void showFetchDialog() {
-        FetchDataDialog.show((Frame) getOwner(), candleStore, () -> {
+        AggTradesStore aggTradesStore = ApplicationContext.getInstance().getAggTradesStore();
+        FetchDataDialog.show((Frame) getOwner(), candleStore, aggTradesStore, () -> {
             // Refresh after fetch completes
             browserPanel.refreshData();
             if (currentSymbol != null && currentResolution != null) {
@@ -193,6 +201,15 @@ public class DataHealthDialog extends JDialog {
             return;
         }
 
+        // Handle aggTrades selection
+        if ("aggTrades".equals(resolution)) {
+            healthPanel.setAggTradesData(symbol);
+            detailLabel.setText(getAggTradesInfo(symbol));
+            selectedHealth = null;
+            updateButtons();
+            return;
+        }
+
         healthPanel.setData(symbol, resolution);
         selectedHealth = null;
         updateDetailLabel();
@@ -206,6 +223,11 @@ public class DataHealthDialog extends JDialog {
     }
 
     private void updateDetailLabel() {
+        // Don't overwrite aggTrades info
+        if ("aggTrades".equals(currentResolution)) {
+            return;
+        }
+
         if (currentSymbol == null || currentResolution == null) {
             detailLabel.setText("Select a data series from the left");
             return;
@@ -441,6 +463,50 @@ public class DataHealthDialog extends JDialog {
         if (bytes < 1024 * 1024) return SIZE_FORMAT.format(bytes / 1024.0) + " KB";
         if (bytes < 1024 * 1024 * 1024) return SIZE_FORMAT.format(bytes / (1024.0 * 1024)) + " MB";
         return SIZE_FORMAT.format(bytes / (1024.0 * 1024 * 1024)) + " GB";
+    }
+
+    /**
+     * Get info string for aggTrades data.
+     */
+    private String getAggTradesInfo(String symbol) {
+        File symbolDir = new File(aggTradesDir, symbol);
+        if (!symbolDir.exists()) {
+            return symbol + " / AggTrades - No data. Use 'Fetch New' to download.";
+        }
+
+        File[] csvFiles = symbolDir.listFiles((dir, name) -> name.endsWith(".csv"));
+        if (csvFiles == null || csvFiles.length == 0) {
+            return symbol + " / AggTrades - No data. Use 'Fetch New' to download.";
+        }
+
+        // Find date range and stats
+        String minDate = null;
+        String maxDate = null;
+        int completeCount = 0;
+        int partialCount = 0;
+        long totalSize = 0;
+
+        for (File f : csvFiles) {
+            String name = f.getName();
+            boolean isPartial = name.endsWith(".partial.csv");
+            String date = name.replace(".partial.csv", "").replace(".csv", "");
+
+            if (isPartial) partialCount++; else completeCount++;
+            totalSize += f.length();
+
+            if (minDate == null || date.compareTo(minDate) < 0) minDate = date;
+            if (maxDate == null || date.compareTo(maxDate) > 0) maxDate = date;
+        }
+
+        StringBuilder sb = new StringBuilder();
+        sb.append(symbol).append(" / AggTrades - ");
+        sb.append(completeCount + partialCount).append(" days (");
+        sb.append(minDate).append(" to ").append(maxDate).append("), ");
+        sb.append(formatSize(totalSize));
+        if (partialCount > 0) {
+            sb.append(" [").append(partialCount).append(" partial]");
+        }
+        return sb.toString();
     }
 
     /**

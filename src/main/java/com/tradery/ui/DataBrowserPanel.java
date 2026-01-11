@@ -8,6 +8,7 @@ import javax.swing.*;
 import java.awt.*;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
+import java.io.File;
 import java.time.YearMonth;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
@@ -17,15 +18,17 @@ import java.util.function.BiConsumer;
 /**
  * Left-side browser panel showing available data series.
  * Displays symbols with timeframes indented underneath, plus data health info.
+ * Also shows AggTrades data at the bottom.
  */
 public class DataBrowserPanel extends JPanel {
 
-    private static final Color BACKGROUND = new Color(30, 30, 35);
+    private static final Color BACKGROUND = new Color(40, 40, 45);
     private static final Color HOVER_BG = new Color(50, 50, 55);
     private static final Color SELECTED_BG = new Color(60, 80, 120);
     private static final Color SYMBOL_COLOR = new Color(220, 220, 220);
     private static final Color TIMEFRAME_COLOR = new Color(180, 180, 180);
     private static final Color INFO_COLOR = new Color(120, 120, 120);
+    private static final Color SECTION_COLOR = new Color(100, 140, 180);
     private static final Color COMPLETE_COLOR = new Color(76, 175, 80);
     private static final Color PARTIAL_COLOR = new Color(255, 193, 7);
     private static final Color MISSING_COLOR = new Color(100, 100, 100);
@@ -43,8 +46,10 @@ public class DataBrowserPanel extends JPanel {
     };
 
     private final DataIntegrityChecker checker;
+    private final File aggTradesDir;
     private final List<RowData> rows = new ArrayList<>();
     private final Map<String, Map<String, DataSummary>> dataSummaries = new HashMap<>();
+    private final Map<String, AggTradesSummary> aggTradesSummaries = new HashMap<>();
 
     private String selectedSymbol;
     private String selectedTimeframe;
@@ -54,6 +59,7 @@ public class DataBrowserPanel extends JPanel {
 
     public DataBrowserPanel() {
         this.checker = new DataIntegrityChecker();
+        this.aggTradesDir = new File(System.getProperty("user.home") + "/.tradery/aggtrades");
 
         setBackground(BACKGROUND);
         setPreferredSize(new Dimension(200, 300));
@@ -64,7 +70,11 @@ public class DataBrowserPanel extends JPanel {
                 int row = e.getY() / ROW_HEIGHT;
                 if (row >= 0 && row < rows.size()) {
                     RowData data = rows.get(row);
-                    if (data.timeframe != null) {
+                    if (data.isAggTrades && data.symbol != null) {
+                        // AggTrades row - use "aggTrades" as timeframe marker
+                        setSelection(data.symbol, "aggTrades");
+                    } else if (data.timeframe != null && !data.isAggTrades) {
+                        // Candle timeframe row
                         setSelection(data.symbol, data.timeframe);
                     }
                 }
@@ -130,7 +140,9 @@ public class DataBrowserPanel extends JPanel {
      */
     public void refreshData() {
         dataSummaries.clear();
+        aggTradesSummaries.clear();
 
+        // Load candle data summaries
         for (String symbol : ALL_SYMBOLS) {
             Map<String, DataSummary> tfSummaries = new HashMap<>();
 
@@ -162,15 +174,63 @@ public class DataBrowserPanel extends JPanel {
             }
         }
 
+        // Load aggTrades summaries
+        loadAggTradesSummaries();
+
         rebuildRows();
         revalidate();
         repaint();
     }
 
+    private void loadAggTradesSummaries() {
+        if (!aggTradesDir.exists()) return;
+
+        File[] symbolDirs = aggTradesDir.listFiles(File::isDirectory);
+        if (symbolDirs == null) return;
+
+        for (File symbolDir : symbolDirs) {
+            String symbol = symbolDir.getName();
+            File[] csvFiles = symbolDir.listFiles((dir, name) -> name.endsWith(".csv"));
+            if (csvFiles == null || csvFiles.length == 0) continue;
+
+            // Find date range and count files
+            String minDate = null;
+            String maxDate = null;
+            int fileCount = 0;
+            long totalSize = 0;
+            boolean hasPartial = false;
+
+            for (File f : csvFiles) {
+                String name = f.getName();
+                boolean isPartial = name.endsWith(".partial.csv");
+                String date = name.replace(".partial.csv", "").replace(".csv", "");
+
+                if (isPartial) hasPartial = true;
+                fileCount++;
+                totalSize += f.length();
+
+                if (minDate == null || date.compareTo(minDate) < 0) minDate = date;
+                if (maxDate == null || date.compareTo(maxDate) > 0) maxDate = date;
+            }
+
+            if (minDate != null) {
+                aggTradesSummaries.put(symbol, new AggTradesSummary(
+                    minDate, maxDate, fileCount, totalSize, hasPartial
+                ));
+            }
+        }
+    }
+
     private void rebuildRows() {
         rows.clear();
 
-        // Only show symbols that have data
+        // Candles section header
+        boolean hasCandleData = !dataSummaries.isEmpty();
+        if (hasCandleData) {
+            rows.add(new RowData(null, null, false, true, false)); // Section header for Candles
+        }
+
+        // Candle data - only show symbols that have data
         for (String symbol : ALL_SYMBOLS) {
             Map<String, DataSummary> tfData = dataSummaries.get(symbol);
             if (tfData == null || tfData.isEmpty()) {
@@ -178,12 +238,23 @@ public class DataBrowserPanel extends JPanel {
             }
 
             // Add symbol row
-            rows.add(new RowData(symbol, null, true));
+            rows.add(new RowData(symbol, null, true, false, false));
 
             // Add timeframe rows (only those with data)
             for (String tf : ALL_TIMEFRAMES) {
                 if (tfData.containsKey(tf)) {
-                    rows.add(new RowData(symbol, tf, true));
+                    rows.add(new RowData(symbol, tf, true, false, false));
+                }
+            }
+        }
+
+        // AggTrades section
+        if (!aggTradesSummaries.isEmpty()) {
+            rows.add(new RowData(null, null, false, true, true)); // Section header for AggTrades
+
+            for (String symbol : ALL_SYMBOLS) {
+                if (aggTradesSummaries.containsKey(symbol)) {
+                    rows.add(new RowData(symbol, null, true, false, true));
                 }
             }
         }
@@ -199,10 +270,30 @@ public class DataBrowserPanel extends JPanel {
         int y = 0;
         for (int i = 0; i < rows.size(); i++) {
             RowData row = rows.get(i);
-            boolean isSelected = row.timeframe != null &&
-                    row.symbol.equals(selectedSymbol) &&
-                    row.timeframe.equals(selectedTimeframe);
-            boolean isHovered = i == hoveredRow && row.timeframe != null;
+
+            // Section headers
+            if (row.isSectionHeader) {
+                drawSectionHeader(g2, row.isAggTrades ? "AggTrades (Delta)" : "Candles (OHLCV)", y);
+                y += ROW_HEIGHT;
+                continue;
+            }
+
+            boolean isSelected;
+            boolean isHovered;
+
+            if (row.isAggTrades && row.symbol != null) {
+                // AggTrades row
+                isSelected = row.symbol.equals(selectedSymbol) && "aggTrades".equals(selectedTimeframe);
+                isHovered = i == hoveredRow;
+            } else if (row.timeframe != null) {
+                // Candle timeframe row
+                isSelected = row.symbol.equals(selectedSymbol) && row.timeframe.equals(selectedTimeframe);
+                isHovered = i == hoveredRow;
+            } else {
+                // Symbol header row - not selectable
+                isSelected = false;
+                isHovered = false;
+            }
 
             // Background
             if (isSelected) {
@@ -213,7 +304,9 @@ public class DataBrowserPanel extends JPanel {
                 g2.fillRect(0, y, getWidth(), ROW_HEIGHT);
             }
 
-            if (row.timeframe == null) {
+            if (row.isAggTrades) {
+                drawAggTradesRow(g2, row, y);
+            } else if (row.timeframe == null) {
                 // Symbol row
                 drawSymbolRow(g2, row, y);
             } else {
@@ -225,6 +318,16 @@ public class DataBrowserPanel extends JPanel {
         }
 
         g2.dispose();
+    }
+
+    private void drawSectionHeader(Graphics2D g2, String title, int y) {
+        // Draw separator line
+        g2.setColor(new Color(60, 60, 65));
+        g2.fillRect(0, y, getWidth(), ROW_HEIGHT);
+
+        g2.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 10));
+        g2.setColor(SECTION_COLOR);
+        g2.drawString(title, 8, y + 15);
     }
 
     private void drawSymbolRow(Graphics2D g2, RowData row, int y) {
@@ -263,6 +366,30 @@ public class DataBrowserPanel extends JPanel {
         }
     }
 
+    private void drawAggTradesRow(Graphics2D g2, RowData row, int y) {
+        AggTradesSummary summary = aggTradesSummaries.get(row.symbol);
+
+        // Symbol label (indented)
+        g2.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 11));
+        g2.setColor(TIMEFRAME_COLOR);
+        g2.drawString(row.symbol, INDENT + 8, y + 15);
+
+        if (summary != null) {
+            // Status dot
+            Color statusColor = summary.hasPartial ? PARTIAL_COLOR : COMPLETE_COLOR;
+            g2.setColor(statusColor);
+            g2.fillOval(INDENT + 75, y + 8, 8, 8);
+
+            // Date range (show abbreviated: MM-dd → MM-dd)
+            g2.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 10));
+            g2.setColor(INFO_COLOR);
+            String startShort = summary.startDate.length() > 5 ? summary.startDate.substring(5) : summary.startDate;
+            String endShort = summary.endDate.length() > 5 ? summary.endDate.substring(5) : summary.endDate;
+            String info = startShort + "→" + endShort + " (" + summary.fileCount + "d)";
+            g2.drawString(info, INDENT + 90, y + 15);
+        }
+    }
+
     private String formatRange(YearMonth start, YearMonth end) {
         DateTimeFormatter fmt = DateTimeFormatter.ofPattern("yy-MM");
         if (end.equals(YearMonth.now())) {
@@ -278,6 +405,7 @@ public class DataBrowserPanel extends JPanel {
     }
 
     // Internal data classes
-    private record RowData(String symbol, String timeframe, boolean hasData) {}
+    private record RowData(String symbol, String timeframe, boolean hasData, boolean isSectionHeader, boolean isAggTrades) {}
     private record DataSummary(YearMonth start, YearMonth end, DataStatus status) {}
+    private record AggTradesSummary(String startDate, String endDate, int fileCount, long totalSize, boolean hasPartial) {}
 }

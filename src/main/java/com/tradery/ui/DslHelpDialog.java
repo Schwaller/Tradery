@@ -151,6 +151,21 @@ public class DslHelpDialog extends JDialog {
             </div>
 
             <div class="section">
+            <h3>Orderflow Functions</h3>
+            <span style="color: %s; font-size: 10px;">Enable Orderflow Mode in strategy settings. Tier 1 = instant, Tier 2 = requires sync.</span>
+            <table>
+                <tr><th>Function</th><th>Tier</th><th>Description</th></tr>
+                <tr><td><code>VWAP</code></td><td>1</td><td>Volume Weighted Average Price (session)</td></tr>
+                <tr><td><code>POC(period)</code></td><td>1</td><td>Point of Control - price level with most volume (default: 20)</td></tr>
+                <tr><td><code>VAH(period)</code></td><td>1</td><td>Value Area High - top of 70%% volume zone (default: 20)</td></tr>
+                <tr><td><code>VAL(period)</code></td><td>1</td><td>Value Area Low - bottom of 70%% volume zone (default: 20)</td></tr>
+                <tr><td><code>DELTA</code></td><td>2</td><td>Bar delta (buy volume - sell volume)</td></tr>
+                <tr><td><code>CUM_DELTA</code></td><td>2</td><td>Cumulative delta from session start</td></tr>
+            </table>
+            <div class="example">close > VWAP<br>price crosses_above POC(20)<br>DELTA > 0 AND close > VAH(20)</div>
+            </div>
+
+            <div class="section">
             <h3>Time Functions</h3>
             <table>
                 <tr><td><code>DAYOFWEEK</code></td><td>Day of week (1=Mon, 2=Tue, ..., 7=Sun)</td></tr>
@@ -228,7 +243,7 @@ public class DslHelpDialog extends JDialog {
 
             </body>
             </html>
-            """.formatted(bgHex, fgHex, fgHex, fgSecHex, codeBgHex, fgHex, borderHex, codeBgHex, codeBgHex, accentHex, fgSecHex);
+            """.formatted(bgHex, fgHex, fgHex, fgSecHex, codeBgHex, fgHex, borderHex, codeBgHex, codeBgHex, accentHex, fgSecHex, fgSecHex);
     }
 
     private String toHex(Color c) {

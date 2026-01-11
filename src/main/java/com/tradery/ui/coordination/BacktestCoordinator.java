@@ -1,6 +1,7 @@
 package com.tradery.ui.coordination;
 
 import com.tradery.ApplicationContext;
+import com.tradery.data.AggTradesStore;
 import com.tradery.data.CandleStore;
 import com.tradery.engine.BacktestEngine;
 import com.tradery.io.PhaseStore;
@@ -21,10 +22,12 @@ public class BacktestCoordinator {
 
     private final BacktestEngine backtestEngine;
     private final CandleStore candleStore;
+    private final AggTradesStore aggTradesStore;
     private final ResultStore resultStore;
 
     // Current data
     private List<Candle> currentCandles;
+    private List<AggTrade> currentAggTrades;
 
     // Callbacks
     private BiConsumer<Integer, String> onProgress;
@@ -32,10 +35,16 @@ public class BacktestCoordinator {
     private Consumer<String> onError;
     private Consumer<String> onStatus;
 
-    public BacktestCoordinator(BacktestEngine backtestEngine, CandleStore candleStore, ResultStore resultStore) {
+    public BacktestCoordinator(BacktestEngine backtestEngine, CandleStore candleStore,
+                               AggTradesStore aggTradesStore, ResultStore resultStore) {
         this.backtestEngine = backtestEngine;
         this.candleStore = candleStore;
+        this.aggTradesStore = aggTradesStore;
         this.resultStore = resultStore;
+    }
+
+    public AggTradesStore getAggTradesStore() {
+        return aggTradesStore;
     }
 
     public void setOnProgress(BiConsumer<Integer, String> callback) {
@@ -58,6 +67,18 @@ public class BacktestCoordinator {
         return currentCandles;
     }
 
+    public List<AggTrade> getCurrentAggTrades() {
+        return currentAggTrades;
+    }
+
+    /**
+     * Get sync status for the given symbol and time range.
+     */
+    public AggTradesStore.SyncStatus getSyncStatus(String symbol, long startTime, long endTime) {
+        if (aggTradesStore == null) return null;
+        return aggTradesStore.getSyncStatus(symbol, startTime, endTime);
+    }
+
     /**
      * Run a backtest with the given strategy and configuration.
      *
@@ -76,6 +97,9 @@ public class BacktestCoordinator {
 
         long endTime = System.currentTimeMillis();
         long startTime = endTime - durationMillis;
+
+        // Check if strategy has orderflow enabled (for loading aggTrades if available)
+        boolean needsAggTrades = strategy.getOrderflowMode() == OrderflowSettings.Mode.ENABLED;
 
         BacktestConfig config = new BacktestConfig(
             symbol,
@@ -105,6 +129,28 @@ public class BacktestCoordinator {
 
                 if (currentCandles.isEmpty()) {
                     throw new Exception("No candle data available for " + config.symbol());
+                }
+
+                // Load aggTrades if orderflow mode is enabled
+                currentAggTrades = null;
+                if (needsAggTrades && aggTradesStore != null) {
+                    publish(new BacktestEngine.Progress(0, 0, 0, "Loading aggTrades data..."));
+                    try {
+                        // Set progress callback to show aggTrades loading in status bar
+                        aggTradesStore.setProgressCallback(progress -> {
+                            publish(new BacktestEngine.Progress(
+                                progress.percentComplete(),
+                                0, 0,
+                                progress.message()
+                            ));
+                        });
+                        currentAggTrades = aggTradesStore.getAggTrades(symbol, startTime, endTime);
+                        aggTradesStore.setProgressCallback(null);
+                    } catch (Exception e) {
+                        // Log warning but continue - delta indicators won't work
+                        System.err.println("Failed to load aggTrades: " + e.getMessage());
+                        aggTradesStore.setProgressCallback(null);
+                    }
                 }
 
                 // Load required and excluded phases (strategy-level)
@@ -137,6 +183,9 @@ public class BacktestCoordinator {
                         }
                     }
                 }
+
+                // Pass aggTrades to engine if available
+                backtestEngine.setAggTrades(currentAggTrades);
 
                 // Run backtest with phase filtering
                 return backtestEngine.run(strategy, config, currentCandles, allPhases, this::publish);

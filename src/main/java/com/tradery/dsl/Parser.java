@@ -182,8 +182,43 @@ public class Parser {
             return new AstNode.FomcFunctionCall(func);
         }
 
+        // Orderflow function (VWAP, POC, VAH, VAL, DELTA, CUM_DELTA)
+        if (check(TokenType.ORDERFLOW_FUNC)) {
+            return orderflowFunctionCall();
+        }
+
         throw new ParserException("Unexpected token '" + current().value() +
             "' at position " + current().position());
+    }
+
+    private AstNode.OrderflowFunctionCall orderflowFunctionCall() {
+        String func = current().value();
+        advance();
+
+        Integer period = null;
+
+        // Check for optional period parameter
+        if (check(TokenType.LPAREN)) {
+            advance();
+            List<Double> params = parseNumberList();
+            expect(TokenType.RPAREN, "Expected ')' after " + func + " parameters");
+
+            if (!params.isEmpty()) {
+                period = params.get(0).intValue();
+            }
+        }
+
+        // Set default periods for volume profile functions
+        switch (func) {
+            case "POC", "VAH", "VAL" -> {
+                if (period == null) period = 20; // Default period
+            }
+            case "VWAP", "DELTA", "CUM_DELTA" -> {
+                // No parameters needed
+            }
+        }
+
+        return new AstNode.OrderflowFunctionCall(func, period);
     }
 
     private AstNode indicatorCall() {

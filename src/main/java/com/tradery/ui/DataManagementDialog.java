@@ -7,54 +7,72 @@ import java.awt.*;
 import java.io.File;
 import java.text.DecimalFormat;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
 
 /**
- * Dialog for managing cached OHLC data.
+ * Dialog for managing cached data (OHLC candles and AggTrades).
  * Shows disk space usage per symbol/timeframe and allows deletion.
  */
 public class DataManagementDialog extends JDialog {
 
     private final File dataDir;
-    private final List<DataEntry> entries = new ArrayList<>();
-    private final JTable dataTable;
-    private final JLabel totalSizeLabel;
-    private final DataTableModel tableModel;
+    private final File aggTradesDir;
+    private final List<DataEntry> candleEntries = new ArrayList<>();
+    private final List<DataEntry> aggTradesEntries = new ArrayList<>();
+    private JTable candleTable;
+    private JTable aggTradesTable;
+    private JLabel totalSizeLabel;
+    private CandleTableModel candleTableModel;
+    private AggTradesTableModel aggTradesTableModel;
+    private JTabbedPane tabbedPane;
 
     private static final DecimalFormat SIZE_FORMAT = new DecimalFormat("#,##0.0");
 
     public DataManagementDialog(Frame owner) {
         super(owner, "Data Management", true);
         this.dataDir = new File(System.getProperty("user.home") + "/.tradery/data");
+        this.aggTradesDir = new File(System.getProperty("user.home") + "/.tradery/aggtrades");
 
-        setSize(600, 450);
+        setSize(650, 500);
         setLocationRelativeTo(owner);
 
         // Load data entries
-        loadDataEntries();
+        loadCandleEntries();
+        loadAggTradesEntries();
 
-        // Create table
-        tableModel = new DataTableModel();
-        dataTable = new JTable(tableModel);
-        dataTable.setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
-        dataTable.setRowHeight(24);
+        initUI();
+    }
 
-        // Set column widths
-        dataTable.getColumnModel().getColumn(0).setPreferredWidth(120); // Symbol
-        dataTable.getColumnModel().getColumn(1).setPreferredWidth(80);  // Timeframe
-        dataTable.getColumnModel().getColumn(2).setPreferredWidth(100); // Size
-        dataTable.getColumnModel().getColumn(3).setPreferredWidth(80);  // Files
-        dataTable.getColumnModel().getColumn(4).setPreferredWidth(150); // Date Range
+    private void initUI() {
+        getContentPane().setBackground(new Color(40, 40, 45));
 
-        // Right-align size column
-        DefaultTableCellRenderer rightRenderer = new DefaultTableCellRenderer();
-        rightRenderer.setHorizontalAlignment(SwingConstants.RIGHT);
-        dataTable.getColumnModel().getColumn(2).setCellRenderer(rightRenderer);
-        dataTable.getColumnModel().getColumn(3).setCellRenderer(rightRenderer);
+        JPanel mainPanel = new JPanel(new BorderLayout(8, 8));
+        mainPanel.setBackground(new Color(40, 40, 45));
+        mainPanel.setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
 
-        JScrollPane tableScroll = new JScrollPane(dataTable);
+        // Create tabbed pane
+        tabbedPane = new JTabbedPane();
+
+        // Candles tab
+        candleTableModel = new CandleTableModel();
+        candleTable = new JTable(candleTableModel);
+        candleTable.setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
+        candleTable.setRowHeight(24);
+        setupCandleTableColumns();
+        JScrollPane candleScroll = new JScrollPane(candleTable);
+        tabbedPane.addTab("Candles (OHLCV)", candleScroll);
+
+        // AggTrades tab
+        aggTradesTableModel = new AggTradesTableModel();
+        aggTradesTable = new JTable(aggTradesTableModel);
+        aggTradesTable.setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
+        aggTradesTable.setRowHeight(24);
+        setupAggTradesTableColumns();
+        JScrollPane aggTradesScroll = new JScrollPane(aggTradesTable);
+        tabbedPane.addTab("AggTrades (Delta)", aggTradesScroll);
+
+        mainPanel.add(tabbedPane, BorderLayout.CENTER);
 
         // Total size label
         totalSizeLabel = new JLabel();
@@ -85,12 +103,6 @@ public class DataManagementDialog extends JDialog {
         infoPanel.add(totalSizeLabel, BorderLayout.WEST);
         infoPanel.add(new JLabel("Select rows and click Delete to remove cached data"), BorderLayout.EAST);
 
-        // Layout
-        JPanel mainPanel = new JPanel(new BorderLayout(8, 8));
-        mainPanel.setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
-        mainPanel.add(new JLabel("Cached OHLC Data:"), BorderLayout.NORTH);
-        mainPanel.add(tableScroll, BorderLayout.CENTER);
-
         JPanel bottomPanel = new JPanel(new BorderLayout());
         bottomPanel.add(infoPanel, BorderLayout.NORTH);
         bottomPanel.add(buttonPanel, BorderLayout.SOUTH);
@@ -99,8 +111,33 @@ public class DataManagementDialog extends JDialog {
         setContentPane(mainPanel);
     }
 
-    private void loadDataEntries() {
-        entries.clear();
+    private void setupCandleTableColumns() {
+        candleTable.getColumnModel().getColumn(0).setPreferredWidth(120); // Symbol
+        candleTable.getColumnModel().getColumn(1).setPreferredWidth(80);  // Timeframe
+        candleTable.getColumnModel().getColumn(2).setPreferredWidth(100); // Size
+        candleTable.getColumnModel().getColumn(3).setPreferredWidth(80);  // Files
+        candleTable.getColumnModel().getColumn(4).setPreferredWidth(150); // Date Range
+
+        DefaultTableCellRenderer rightRenderer = new DefaultTableCellRenderer();
+        rightRenderer.setHorizontalAlignment(SwingConstants.RIGHT);
+        candleTable.getColumnModel().getColumn(2).setCellRenderer(rightRenderer);
+        candleTable.getColumnModel().getColumn(3).setCellRenderer(rightRenderer);
+    }
+
+    private void setupAggTradesTableColumns() {
+        aggTradesTable.getColumnModel().getColumn(0).setPreferredWidth(150); // Symbol
+        aggTradesTable.getColumnModel().getColumn(1).setPreferredWidth(100); // Size
+        aggTradesTable.getColumnModel().getColumn(2).setPreferredWidth(80);  // Files
+        aggTradesTable.getColumnModel().getColumn(3).setPreferredWidth(150); // Date Range
+
+        DefaultTableCellRenderer rightRenderer = new DefaultTableCellRenderer();
+        rightRenderer.setHorizontalAlignment(SwingConstants.RIGHT);
+        aggTradesTable.getColumnModel().getColumn(1).setCellRenderer(rightRenderer);
+        aggTradesTable.getColumnModel().getColumn(2).setCellRenderer(rightRenderer);
+    }
+
+    private void loadCandleEntries() {
+        candleEntries.clear();
 
         if (!dataDir.exists()) return;
 
@@ -119,7 +156,6 @@ public class DataManagementDialog extends JDialog {
                 entry.timeframe = timeframe;
                 entry.directory = tfDir;
 
-                // Calculate size and count files
                 File[] files = tfDir.listFiles((dir, name) -> name.endsWith(".csv"));
                 if (files != null) {
                     entry.fileCount = files.length;
@@ -140,18 +176,63 @@ public class DataManagementDialog extends JDialog {
                         : "-";
                 }
 
-                entries.add(entry);
+                candleEntries.add(entry);
             }
         }
 
-        // Sort by symbol, then timeframe
-        entries.sort(Comparator.comparing((DataEntry e) -> e.symbol)
+        candleEntries.sort(Comparator.comparing((DataEntry e) -> e.symbol)
             .thenComparing(e -> e.timeframe));
     }
 
+    private void loadAggTradesEntries() {
+        aggTradesEntries.clear();
+
+        if (!aggTradesDir.exists()) return;
+
+        File[] symbolDirs = aggTradesDir.listFiles(File::isDirectory);
+        if (symbolDirs == null) return;
+
+        for (File symbolDir : symbolDirs) {
+            String symbol = symbolDir.getName();
+            DataEntry entry = new DataEntry();
+            entry.symbol = symbol;
+            entry.timeframe = null; // AggTrades don't have timeframes
+            entry.directory = symbolDir;
+
+            File[] files = symbolDir.listFiles((dir, name) -> name.endsWith(".csv"));
+            if (files != null) {
+                entry.fileCount = files.length;
+                long totalBytes = 0;
+                String minDate = null;
+                String maxDate = null;
+
+                for (File f : files) {
+                    totalBytes += f.length();
+                    String name = f.getName().replace(".csv", "");
+                    if (minDate == null || name.compareTo(minDate) < 0) minDate = name;
+                    if (maxDate == null || name.compareTo(maxDate) > 0) maxDate = name;
+                }
+
+                entry.sizeBytes = totalBytes;
+                entry.dateRange = (minDate != null && maxDate != null)
+                    ? minDate + " to " + maxDate
+                    : "-";
+            }
+
+            if (entry.fileCount > 0) {
+                aggTradesEntries.add(entry);
+            }
+        }
+
+        aggTradesEntries.sort(Comparator.comparing((DataEntry e) -> e.symbol));
+    }
+
     private void updateTotalSize() {
-        long total = entries.stream().mapToLong(e -> e.sizeBytes).sum();
-        totalSizeLabel.setText("Total: " + formatSize(total));
+        long candleTotal = candleEntries.stream().mapToLong(e -> e.sizeBytes).sum();
+        long aggTradesTotal = aggTradesEntries.stream().mapToLong(e -> e.sizeBytes).sum();
+        long total = candleTotal + aggTradesTotal;
+        totalSizeLabel.setText("Total: " + formatSize(total) +
+            " (Candles: " + formatSize(candleTotal) + ", AggTrades: " + formatSize(aggTradesTotal) + ")");
     }
 
     private String formatSize(long bytes) {
@@ -162,18 +243,27 @@ public class DataManagementDialog extends JDialog {
     }
 
     private void deleteSelected() {
-        int[] rows = dataTable.getSelectedRows();
+        boolean isCandleTab = tabbedPane.getSelectedIndex() == 0;
+        JTable table = isCandleTab ? candleTable : aggTradesTable;
+        List<DataEntry> entries = isCandleTab ? candleEntries : aggTradesEntries;
+        String dataType = isCandleTab ? "candle" : "aggTrades";
+
+        int[] rows = table.getSelectedRows();
         if (rows.length == 0) {
             JOptionPane.showMessageDialog(this, "Please select data to delete.");
             return;
         }
 
-        StringBuilder sb = new StringBuilder("Delete cached data for:\n\n");
+        StringBuilder sb = new StringBuilder("Delete cached " + dataType + " data for:\n\n");
         long totalSize = 0;
         for (int row : rows) {
             DataEntry entry = entries.get(row);
-            sb.append("  • ").append(entry.symbol).append(" / ").append(entry.timeframe)
-              .append(" (").append(formatSize(entry.sizeBytes)).append(")\n");
+            if (entry.timeframe != null) {
+                sb.append("  • ").append(entry.symbol).append(" / ").append(entry.timeframe);
+            } else {
+                sb.append("  • ").append(entry.symbol);
+            }
+            sb.append(" (").append(formatSize(entry.sizeBytes)).append(")\n");
             totalSize += entry.sizeBytes;
         }
         sb.append("\nTotal: ").append(formatSize(totalSize));
@@ -185,7 +275,6 @@ public class DataManagementDialog extends JDialog {
             JOptionPane.WARNING_MESSAGE);
 
         if (confirm == JOptionPane.YES_OPTION) {
-            // Delete in reverse order to maintain indices
             List<DataEntry> toDelete = new ArrayList<>();
             for (int row : rows) {
                 toDelete.add(entries.get(row));
@@ -193,7 +282,6 @@ public class DataManagementDialog extends JDialog {
 
             for (DataEntry entry : toDelete) {
                 deleteDirectory(entry.directory);
-                // Also delete parent if empty
                 File parent = entry.directory.getParentFile();
                 if (parent != null && parent.isDirectory()) {
                     String[] remaining = parent.list();
@@ -205,21 +293,26 @@ public class DataManagementDialog extends JDialog {
 
             refresh();
             JOptionPane.showMessageDialog(this,
-                "Deleted " + toDelete.size() + " cached data folder(s).",
+                "Deleted " + toDelete.size() + " cached " + dataType + " folder(s).",
                 "Deleted", JOptionPane.INFORMATION_MESSAGE);
         }
     }
 
     private void deleteAll() {
+        boolean isCandleTab = tabbedPane.getSelectedIndex() == 0;
+        List<DataEntry> entries = isCandleTab ? candleEntries : aggTradesEntries;
+        File targetDir = isCandleTab ? dataDir : aggTradesDir;
+        String dataType = isCandleTab ? "candle" : "aggTrades";
+
         if (entries.isEmpty()) {
-            JOptionPane.showMessageDialog(this, "No cached data to delete.");
+            JOptionPane.showMessageDialog(this, "No cached " + dataType + " data to delete.");
             return;
         }
 
         long totalSize = entries.stream().mapToLong(e -> e.sizeBytes).sum();
 
         int confirm = JOptionPane.showConfirmDialog(this,
-            "Delete ALL cached OHLC data?\n\n" +
+            "Delete ALL cached " + dataType + " data?\n\n" +
             "This will remove " + entries.size() + " folder(s) totaling " + formatSize(totalSize) + ".\n" +
             "Data will be re-downloaded from Binance when needed.",
             "Confirm Delete All",
@@ -227,11 +320,11 @@ public class DataManagementDialog extends JDialog {
             JOptionPane.WARNING_MESSAGE);
 
         if (confirm == JOptionPane.YES_OPTION) {
-            deleteDirectory(dataDir);
-            dataDir.mkdirs();
+            deleteDirectory(targetDir);
+            targetDir.mkdirs();
             refresh();
             JOptionPane.showMessageDialog(this,
-                "All cached data deleted.",
+                "All cached " + dataType + " data deleted.",
                 "Deleted", JOptionPane.INFORMATION_MESSAGE);
         }
     }
@@ -249,17 +342,19 @@ public class DataManagementDialog extends JDialog {
     }
 
     private void refresh() {
-        loadDataEntries();
-        tableModel.fireTableDataChanged();
+        loadCandleEntries();
+        loadAggTradesEntries();
+        candleTableModel.fireTableDataChanged();
+        aggTradesTableModel.fireTableDataChanged();
         updateTotalSize();
     }
 
-    private class DataTableModel extends AbstractTableModel {
+    private class CandleTableModel extends AbstractTableModel {
         private final String[] columns = {"Symbol", "Timeframe", "Size", "Files", "Date Range"};
 
         @Override
         public int getRowCount() {
-            return entries.size();
+            return candleEntries.size();
         }
 
         @Override
@@ -274,13 +369,44 @@ public class DataManagementDialog extends JDialog {
 
         @Override
         public Object getValueAt(int row, int column) {
-            DataEntry entry = entries.get(row);
+            DataEntry entry = candleEntries.get(row);
             return switch (column) {
                 case 0 -> entry.symbol;
                 case 1 -> entry.timeframe;
                 case 2 -> formatSize(entry.sizeBytes);
                 case 3 -> entry.fileCount;
                 case 4 -> entry.dateRange;
+                default -> "";
+            };
+        }
+    }
+
+    private class AggTradesTableModel extends AbstractTableModel {
+        private final String[] columns = {"Symbol", "Size", "Files", "Date Range"};
+
+        @Override
+        public int getRowCount() {
+            return aggTradesEntries.size();
+        }
+
+        @Override
+        public int getColumnCount() {
+            return columns.length;
+        }
+
+        @Override
+        public String getColumnName(int column) {
+            return columns[column];
+        }
+
+        @Override
+        public Object getValueAt(int row, int column) {
+            DataEntry entry = aggTradesEntries.get(row);
+            return switch (column) {
+                case 0 -> entry.symbol;
+                case 1 -> formatSize(entry.sizeBytes);
+                case 2 -> entry.fileCount;
+                case 3 -> entry.dateRange;
                 default -> "";
             };
         }

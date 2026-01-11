@@ -2,6 +2,7 @@ package com.tradery.ui;
 
 import com.tradery.ApplicationContext;
 import com.tradery.TraderyApp;
+import com.tradery.data.AggTradesStore;
 import com.tradery.data.CandleStore;
 import com.tradery.engine.BacktestEngine;
 import com.tradery.io.FileWatcher;
@@ -42,14 +43,13 @@ public class ProjectWindow extends JFrame {
     private MetricsPanel metricsPanel;
     private TradeTablePanel tradeTablePanel;
     private JLabel statusBar;
+    private JProgressBar statusProgressBar;
     private JLabel titleLabel;
 
     // Toolbar controls
     private JComboBox<String> symbolCombo;
     private JComboBox<String> timeframeCombo;
     private JComboBox<String> durationCombo;
-    private JProgressBar progressBar;
-    private JLabel progressLabel;
     private JToggleButton fitWidthBtn;
     private JToggleButton fixedWidthBtn;
     private JToggleButton fitYBtn;
@@ -58,6 +58,7 @@ public class ProjectWindow extends JFrame {
     private JButton claudeBtn;
     private JButton codexBtn;
     private JButton historyBtn;
+    private JCheckBox orderflowCheckbox;
 
     // Indicator controls panel (extracted)
     private IndicatorControlsPanel indicatorControls;
@@ -86,6 +87,7 @@ public class ProjectWindow extends JFrame {
     // Data stores
     private final StrategyStore strategyStore;
     private final CandleStore candleStore;
+    private final AggTradesStore aggTradesStore;
     private FileWatcher fileWatcher;
     private FileWatcher phaseWatcher;
 
@@ -101,11 +103,12 @@ public class ProjectWindow extends JFrame {
         // Use shared stores from ApplicationContext
         this.strategyStore = ApplicationContext.getInstance().getStrategyStore();
         this.candleStore = ApplicationContext.getInstance().getCandleStore();
+        this.aggTradesStore = ApplicationContext.getInstance().getAggTradesStore();
 
         // Initialize coordinators
         ResultStore resultStore = new ResultStore(strategy.getId());
         BacktestEngine backtestEngine = new BacktestEngine(candleStore);
-        this.backtestCoordinator = new BacktestCoordinator(backtestEngine, candleStore, resultStore);
+        this.backtestCoordinator = new BacktestCoordinator(backtestEngine, candleStore, aggTradesStore, resultStore);
         this.autoSaveScheduler = new AutoSaveScheduler();
 
         initializeFrame();
@@ -186,16 +189,7 @@ public class ProjectWindow extends JFrame {
         durationCombo = new JComboBox<>();
         updateDurationOptions();
 
-        // Progress bar (hidden by default)
-        progressBar = new JProgressBar(0, 100);
-        progressBar.setPreferredSize(new Dimension(120, 16));
-        progressBar.setVisible(false);
-        progressLabel = new JLabel("");
-        progressLabel.setFont(progressLabel.getFont().deriveFont(11f));
-        progressLabel.setForeground(Color.GRAY);
-        progressLabel.setVisible(false);
-
-        // Width toggle group (Fidt / Fixed)
+        // Width toggle group (Fit / Fixed)
         fitWidthBtn = new JToggleButton("Fit");
         fixedWidthBtn = new JToggleButton("Fixed");
         ButtonGroup widthGroup = new ButtonGroup();
@@ -235,6 +229,18 @@ public class ProjectWindow extends JFrame {
         historyBtn.setToolTipText("Browse strategy history and restore previous versions");
         historyBtn.addActionListener(e -> showHistory());
 
+        // Orderflow checkbox - enables delta indicators (requires aggTrades data)
+        orderflowCheckbox = new JCheckBox("Orderflow");
+        orderflowCheckbox.setToolTipText("Enable orderflow indicators (DELTA, CUM_DELTA) - requires loading trade data");
+        orderflowCheckbox.addActionListener(e -> {
+            if (strategy != null) {
+                strategy.setOrderflowMode(orderflowCheckbox.isSelected()
+                    ? OrderflowSettings.Mode.ENABLED
+                    : OrderflowSettings.Mode.DISABLED);
+                autoSaveScheduler.scheduleUpdate();
+            }
+        });
+
         // Indicator controls panel (extracted to separate class)
         indicatorControls = new IndicatorControlsPanel();
         indicatorControls.setChartPanel(chartPanel);
@@ -249,17 +255,15 @@ public class ProjectWindow extends JFrame {
         backtestCoordinator.setOnComplete(this::displayResult);
         backtestCoordinator.setOnStatus(this::setStatus);
 
-        // Wire up data fetch progress (shows in same progress bar)
+        // Wire up data fetch progress (shows in status bar)
         candleStore.setProgressCallback(progress -> {
             SwingUtilities.invokeLater(() -> {
                 if (progress.message().equals("Complete") || progress.message().equals("Cancelled")) {
-                    progressBar.setVisible(false);
-                    progressLabel.setVisible(false);
+                    statusProgressBar.setVisible(false);
                 } else {
-                    progressBar.setVisible(true);
-                    progressBar.setValue(progress.percentComplete());
-                    progressLabel.setVisible(true);
-                    progressLabel.setText(progress.message());
+                    setStatus(progress.message());
+                    statusProgressBar.setVisible(true);
+                    statusProgressBar.setValue(progress.percentComplete());
                 }
             });
         });
@@ -404,17 +408,16 @@ public class ProjectWindow extends JFrame {
         // Indicator controls (extracted to IndicatorControlsPanel)
         toolbarLeft.add(indicatorControls);
 
-        // Progress bar panel (right side of toolbar)
+        // Right side of toolbar
         JPanel toolbarRight = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 4));
         toolbarRight.add(historyBtn);
         toolbarRight.add(Box.createHorizontalStrut(8));
         toolbarRight.add(claudeBtn);
         toolbarRight.add(codexBtn);
         toolbarRight.add(Box.createHorizontalStrut(8));
-        toolbarRight.add(clearCacheBtn);
+        toolbarRight.add(orderflowCheckbox);
         toolbarRight.add(Box.createHorizontalStrut(8));
-        toolbarRight.add(progressLabel);
-        toolbarRight.add(progressBar);
+        toolbarRight.add(clearCacheBtn);
 
         JPanel toolbarPanel = new JPanel(new BorderLayout(0, 0));
         toolbarPanel.add(toolbarLeft, BorderLayout.CENTER);
@@ -518,14 +521,23 @@ public class ProjectWindow extends JFrame {
 
         contentPane.add(mainSplit, BorderLayout.CENTER);
 
-        // Status bar
+        // Status bar with progress bar
         JPanel bottomPanel = new JPanel(new BorderLayout(0, 0));
         bottomPanel.add(new JSeparator(), BorderLayout.NORTH);
 
-        statusBar = new JLabel(" Ready");
-        statusBar.setBorder(BorderFactory.createEmptyBorder(4, 8, 4, 8));
+        JPanel statusPanel = new JPanel(new BorderLayout(8, 0));
+        statusPanel.setBorder(BorderFactory.createEmptyBorder(4, 8, 4, 8));
+
+        statusBar = new JLabel("Ready");
         statusBar.setFont(statusBar.getFont().deriveFont(11f));
-        bottomPanel.add(statusBar, BorderLayout.CENTER);
+        statusPanel.add(statusBar, BorderLayout.CENTER);
+
+        statusProgressBar = new JProgressBar(0, 100);
+        statusProgressBar.setPreferredSize(new Dimension(120, 14));
+        statusProgressBar.setVisible(false);
+        statusPanel.add(statusProgressBar, BorderLayout.EAST);
+
+        bottomPanel.add(statusPanel, BorderLayout.CENTER);
 
         contentPane.add(bottomPanel, BorderLayout.SOUTH);
     }
@@ -542,6 +554,9 @@ public class ProjectWindow extends JFrame {
             // Duration options depend on timeframe, so update them first
             updateDurationOptions();
             durationCombo.setSelectedItem(strategy.getDuration());
+
+            // Orderflow checkbox
+            orderflowCheckbox.setSelected(strategy.getOrderflowMode() == OrderflowSettings.Mode.ENABLED);
         });
     }
 
@@ -960,13 +975,11 @@ public class ProjectWindow extends JFrame {
     private void setProgress(int percentage, String message) {
         SwingUtilities.invokeLater(() -> {
             if (percentage >= 100 || message.equals("Error") || message.equals("Complete")) {
-                progressBar.setVisible(false);
-                progressLabel.setVisible(false);
+                statusProgressBar.setVisible(false);
             } else {
-                progressBar.setVisible(true);
-                progressBar.setValue(percentage);
-                progressLabel.setVisible(true);
-                progressLabel.setText(message);
+                setStatus(message);
+                statusProgressBar.setVisible(true);
+                statusProgressBar.setValue(percentage);
             }
         });
     }

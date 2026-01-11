@@ -64,6 +64,13 @@ public sealed interface AstNode {
     record FomcFunctionCall(String func) implements AstNode {}
 
     /**
+     * Orderflow function call: VWAP, POC(20), VAH(20), VAL(20), DELTA, CUM_DELTA
+     * VWAP, DELTA, CUM_DELTA have no parameters
+     * POC, VAH, VAL have an optional period parameter (default 20)
+     */
+    record OrderflowFunctionCall(String func, Integer period) implements AstNode {}
+
+    /**
      * Property access: MACD(12,26,9).signal, BBANDS(20,2).upper
      */
     record PropertyAccess(IndicatorCall object, String property) implements AstNode {}

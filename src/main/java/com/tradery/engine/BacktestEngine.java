@@ -7,6 +7,7 @@ import com.tradery.dsl.Parser;
 import com.tradery.indicators.IndicatorEngine;
 import com.tradery.io.HoopPatternStore;
 import com.tradery.model.*;
+import com.tradery.model.AggTrade;
 
 import java.io.File;
 import java.io.IOException;
@@ -27,6 +28,7 @@ public class BacktestEngine {
 
     private final IndicatorEngine indicatorEngine;
     private final CandleStore candleStore;
+    private List<AggTrade> aggTrades;
 
     public BacktestEngine() {
         this.indicatorEngine = new IndicatorEngine();
@@ -36,6 +38,14 @@ public class BacktestEngine {
     public BacktestEngine(CandleStore candleStore) {
         this.indicatorEngine = new IndicatorEngine();
         this.candleStore = candleStore;
+    }
+
+    /**
+     * Set aggregated trades data for orderflow indicators (Delta, CumDelta).
+     * Must be called before run() for Tier 2 orderflow indicators to work.
+     */
+    public void setAggTrades(List<AggTrade> aggTrades) {
+        this.aggTrades = aggTrades;
     }
 
     /**
@@ -169,6 +179,11 @@ public class BacktestEngine {
         }
 
         indicatorEngine.setCandles(candles, config.resolution());
+
+        // Set aggTrades for orderflow indicators if available
+        if (aggTrades != null && !aggTrades.isEmpty()) {
+            indicatorEngine.setAggTrades(aggTrades);
+        }
 
         // Create evaluator
         ConditionEvaluator evaluator = new ConditionEvaluator(indicatorEngine);
