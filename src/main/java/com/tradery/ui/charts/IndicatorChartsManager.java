@@ -5,6 +5,7 @@ import com.tradery.model.Candle;
 import org.jfree.chart.ChartFactory;
 import org.jfree.chart.JFreeChart;
 import org.jfree.chart.annotations.XYLineAnnotation;
+import org.jfree.chart.axis.NumberAxis;
 import org.jfree.chart.plot.XYPlot;
 import org.jfree.chart.renderer.xy.XYAreaRenderer;
 import org.jfree.chart.renderer.xy.XYBarRenderer;
@@ -36,6 +37,7 @@ public class IndicatorChartsManager {
     private ChartComponent whaleComponent;
     private ChartComponent retailComponent;
     private ChartComponent fundingComponent;
+    private ChartComponent oiComponent;
 
     // Enable state
     private boolean rsiChartEnabled = false;
@@ -47,6 +49,7 @@ public class IndicatorChartsManager {
     private boolean whaleChartEnabled = false;
     private boolean retailChartEnabled = false;
     private boolean fundingChartEnabled = false;
+    private boolean oiChartEnabled = false;
 
     // Indicator parameters
     private int rsiPeriod = 14;
@@ -83,11 +86,12 @@ public class IndicatorChartsManager {
         whaleComponent = new ChartComponent("Whale Delta");
         retailComponent = new ChartComponent("Retail Delta");
         fundingComponent = new ChartComponent("Funding");
+        oiComponent = new ChartComponent("Open Interest");
     }
 
     /**
      * Create wrapper panels with zoom buttons.
-     * @param zoomCallback Callback to handle zoom toggle (index: 0=RSI, 1=MACD, 2=ATR, 3=Delta, 4=CVD, 5=VolumeRatio, 6=Whale, 7=Retail, 8=Funding)
+     * @param zoomCallback Callback to handle zoom toggle (index: 0=RSI, 1=MACD, 2=ATR, 3=Delta, 4=CVD, 5=VolumeRatio, 6=Whale, 7=Retail, 8=Funding, 9=OI)
      */
     public void createWrappers(java.util.function.IntConsumer zoomCallback) {
         rsiComponent.createWrapper(() -> zoomCallback.accept(0));
@@ -99,6 +103,7 @@ public class IndicatorChartsManager {
         whaleComponent.createWrapper(() -> zoomCallback.accept(6));
         retailComponent.createWrapper(() -> zoomCallback.accept(7));
         fundingComponent.createWrapper(() -> zoomCallback.accept(8));
+        oiComponent.createWrapper(() -> zoomCallback.accept(9));
     }
 
     // ===== RSI Methods =====
@@ -717,6 +722,11 @@ public class IndicatorChartsManager {
         double[] funding = indicatorEngine.getFunding();
         double[] funding8H = indicatorEngine.getFunding8H();
 
+        // Check if funding data is available
+        if (funding == null || funding.length == 0) {
+            return;
+        }
+
         // Build datasets
         XYSeriesCollection fundingDataset = new XYSeriesCollection();
         XYSeries fundingSeries = new XYSeries("Funding");
@@ -757,7 +767,11 @@ public class IndicatorChartsManager {
         avgRenderer.setSeriesStroke(0, ChartStyles.MEDIUM_STROKE);
         plot.setRenderer(1, avgRenderer);
 
-        // Add reference lines at 0, 0.05, -0.05
+        // Format Y-axis to avoid scientific notation for small values
+        NumberAxis rangeAxis = (NumberAxis) plot.getRangeAxis();
+        rangeAxis.setNumberFormatOverride(new java.text.DecimalFormat("0.####"));
+
+        // Add reference lines at 0, 0.01 (typical high funding), -0.01 (negative funding)
         plot.clearAnnotations();
         ChartStyles.addChartTitleAnnotation(plot, "Funding Rate (%)");
         if (!candles.isEmpty()) {
@@ -765,10 +779,88 @@ public class IndicatorChartsManager {
             long endTime = candles.get(candles.size() - 1).timestamp();
             plot.addAnnotation(new XYLineAnnotation(startTime, 0, endTime, 0,
                 ChartStyles.DASHED_STROKE, ChartStyles.TEXT_COLOR));
-            plot.addAnnotation(new XYLineAnnotation(startTime, 0.05, endTime, 0.05,
+            plot.addAnnotation(new XYLineAnnotation(startTime, 0.01, endTime, 0.01,
                 ChartStyles.DASHED_STROKE, new Color(230, 126, 34, 100)));
-            plot.addAnnotation(new XYLineAnnotation(startTime, -0.05, endTime, -0.05,
+            plot.addAnnotation(new XYLineAnnotation(startTime, -0.01, endTime, -0.01,
                 ChartStyles.DASHED_STROKE, new Color(52, 152, 219, 100)));
+        }
+    }
+
+    // ===== Open Interest Methods =====
+
+    public void setOiChartEnabled(boolean enabled) {
+        this.oiChartEnabled = enabled;
+        if (onLayoutChange != null) {
+            onLayoutChange.run();
+        }
+    }
+
+    public boolean isOiChartEnabled() {
+        return oiChartEnabled;
+    }
+
+    public void updateOiChart(List<Candle> candles) {
+        if (!oiChartEnabled || candles == null || candles.isEmpty() || indicatorEngine == null) {
+            return;
+        }
+
+        XYPlot plot = oiComponent.getChart().getXYPlot();
+
+        double[] oi = indicatorEngine.getOI();
+        double[] oiChange = indicatorEngine.getOIChange();
+
+        // Build datasets - OI value as line, OI change as bars
+        TimeSeriesCollection oiLineDataset = new TimeSeriesCollection();
+        TimeSeries oiSeries = new TimeSeries("Open Interest");
+
+        XYSeriesCollection oiChangeDataset = new XYSeriesCollection();
+        XYSeries oiChangeSeries = new XYSeries("OI Change");
+
+        for (int i = 0; i < candles.size(); i++) {
+            Candle c = candles.get(i);
+            if (i < oi.length && !Double.isNaN(oi[i])) {
+                oiSeries.addOrUpdate(new Millisecond(new Date(c.timestamp())), oi[i]);
+            }
+            if (i < oiChange.length && !Double.isNaN(oiChange[i])) {
+                oiChangeSeries.add(c.timestamp(), oiChange[i]);
+            }
+        }
+
+        oiLineDataset.addSeries(oiSeries);
+        oiChangeDataset.addSeries(oiChangeSeries);
+
+        // OI change bars on primary dataset
+        plot.setDataset(0, oiChangeDataset);
+        // OI line on secondary dataset
+        plot.setDataset(1, oiLineDataset);
+
+        // OI change bar renderer (green for increase, red for decrease)
+        final XYSeriesCollection finalOiChangeDataset = oiChangeDataset;
+        XYBarRenderer changeRenderer = new XYBarRenderer() {
+            @Override
+            public Paint getItemPaint(int series, int item) {
+                double value = finalOiChangeDataset.getYValue(series, item);
+                return value >= 0 ? ChartStyles.OI_POSITIVE : ChartStyles.OI_NEGATIVE;
+            }
+        };
+        changeRenderer.setShadowVisible(false);
+        changeRenderer.setBarPainter(new StandardXYBarPainter());
+        plot.setRenderer(0, changeRenderer);
+
+        // OI line renderer
+        XYLineAndShapeRenderer oiLineRenderer = new XYLineAndShapeRenderer(true, false);
+        oiLineRenderer.setSeriesPaint(0, ChartStyles.OI_LINE_COLOR);
+        oiLineRenderer.setSeriesStroke(0, ChartStyles.MEDIUM_STROKE);
+        plot.setRenderer(1, oiLineRenderer);
+
+        // Add zero line and title
+        plot.clearAnnotations();
+        ChartStyles.addChartTitleAnnotation(plot, "Open Interest (B)");
+        if (!candles.isEmpty()) {
+            long startTime = candles.get(0).timestamp();
+            long endTime = candles.get(candles.size() - 1).timestamp();
+            plot.addAnnotation(new XYLineAnnotation(startTime, 0, endTime, 0,
+                ChartStyles.DASHED_STROKE, ChartStyles.TEXT_COLOR));
         }
     }
 
@@ -783,6 +875,7 @@ public class IndicatorChartsManager {
     public JFreeChart getFundingChart() { return fundingComponent.getChart(); }
     public JFreeChart getWhaleChart() { return whaleComponent.getChart(); }
     public JFreeChart getRetailChart() { return retailComponent.getChart(); }
+    public JFreeChart getOiChart() { return oiComponent.getChart(); }
 
     public org.jfree.chart.ChartPanel getRsiChartPanel() { return rsiComponent.getChartPanel(); }
     public org.jfree.chart.ChartPanel getMacdChartPanel() { return macdComponent.getChartPanel(); }
@@ -793,6 +886,7 @@ public class IndicatorChartsManager {
     public org.jfree.chart.ChartPanel getFundingChartPanel() { return fundingComponent.getChartPanel(); }
     public org.jfree.chart.ChartPanel getWhaleChartPanel() { return whaleComponent.getChartPanel(); }
     public org.jfree.chart.ChartPanel getRetailChartPanel() { return retailComponent.getChartPanel(); }
+    public org.jfree.chart.ChartPanel getOiChartPanel() { return oiComponent.getChartPanel(); }
 
     public JPanel getRsiChartWrapper() { return rsiComponent.getWrapper(); }
     public JPanel getMacdChartWrapper() { return macdComponent.getWrapper(); }
@@ -803,6 +897,7 @@ public class IndicatorChartsManager {
     public JPanel getWhaleChartWrapper() { return whaleComponent.getWrapper(); }
     public JPanel getRetailChartWrapper() { return retailComponent.getWrapper(); }
     public JPanel getFundingChartWrapper() { return fundingComponent.getWrapper(); }
+    public JPanel getOiChartWrapper() { return oiComponent.getWrapper(); }
 
     public JButton getRsiZoomBtn() { return rsiComponent.getZoomButton(); }
     public JButton getMacdZoomBtn() { return macdComponent.getZoomButton(); }
@@ -813,13 +908,14 @@ public class IndicatorChartsManager {
     public JButton getWhaleZoomBtn() { return whaleComponent.getZoomButton(); }
     public JButton getRetailZoomBtn() { return retailComponent.getZoomButton(); }
     public JButton getFundingZoomBtn() { return fundingComponent.getZoomButton(); }
+    public JButton getOiZoomBtn() { return oiComponent.getZoomButton(); }
 
     /**
      * Update zoom button states.
-     * @param zoomedIndex Index of zoomed indicator (-1 for none, 0=RSI, 1=MACD, 2=ATR, 3=Delta, 4=CVD, 5=VolumeRatio, 6=Whale, 7=Retail, 8=Funding)
+     * @param zoomedIndex Index of zoomed indicator (-1 for none, 0=RSI, 1=MACD, 2=ATR, 3=Delta, 4=CVD, 5=VolumeRatio, 6=Whale, 7=Retail, 8=Funding, 9=OI)
      */
     public void updateZoomButtonStates(int zoomedIndex) {
-        ChartComponent[] components = {rsiComponent, macdComponent, atrComponent, deltaComponent, cvdComponent, volumeRatioComponent, whaleComponent, retailComponent, fundingComponent};
+        ChartComponent[] components = {rsiComponent, macdComponent, atrComponent, deltaComponent, cvdComponent, volumeRatioComponent, whaleComponent, retailComponent, fundingComponent, oiComponent};
         for (int i = 0; i < components.length; i++) {
             components[i].setZoomed(zoomedIndex == i);
         }
@@ -838,6 +934,7 @@ public class IndicatorChartsManager {
         whaleComponent.getChartPanel().addMouseWheelListener(listener);
         retailComponent.getChartPanel().addMouseWheelListener(listener);
         fundingComponent.getChartPanel().addMouseWheelListener(listener);
+        oiComponent.getChartPanel().addMouseWheelListener(listener);
     }
 
     /**
@@ -853,6 +950,7 @@ public class IndicatorChartsManager {
         updateWhaleChart(candles);
         updateRetailChart(candles);
         updateFundingChart(candles);
+        updateOiChart(candles);
     }
 
     /**

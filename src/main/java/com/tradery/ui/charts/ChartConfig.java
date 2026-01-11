@@ -53,6 +53,9 @@ public class ChartConfig {
     // Funding chart
     private boolean fundingEnabled = false;
 
+    // Open Interest chart
+    private boolean oiEnabled = false;
+
     // POC overlays
     private boolean dailyPocEnabled = false;
     private boolean floatingPocEnabled = false;
@@ -155,6 +158,11 @@ public class ChartConfig {
     public boolean isFundingEnabled() { return fundingEnabled; }
     public void setFundingEnabled(boolean enabled) { this.fundingEnabled = enabled; save(); }
 
+    // ===== Open Interest Chart Getters/Setters =====
+
+    public boolean isOiEnabled() { return oiEnabled; }
+    public void setOiEnabled(boolean enabled) { this.oiEnabled = enabled; save(); }
+
     // ===== POC Overlay Getters/Setters =====
 
     public boolean isDailyPocEnabled() { return dailyPocEnabled; }
@@ -220,6 +228,9 @@ public class ChartConfig {
         // Funding
         this.fundingEnabled = other.fundingEnabled;
 
+        // Open Interest
+        this.oiEnabled = other.oiEnabled;
+
         // POC overlays
         this.dailyPocEnabled = other.dailyPocEnabled;
         this.floatingPocEnabled = other.floatingPocEnabled;
@@ -274,6 +285,9 @@ public class ChartConfig {
 
         // Funding - off by default
         fundingEnabled = false;
+
+        // Open Interest - off by default
+        oiEnabled = false;
 
         // POC overlays - off by default
         dailyPocEnabled = false;
@@ -380,6 +394,9 @@ public class ChartConfig {
 
         // Funding
         this.fundingEnabled = other.fundingEnabled;
+
+        // Open Interest
+        this.oiEnabled = other.oiEnabled;
 
         // POC overlays
         this.dailyPocEnabled = other.dailyPocEnabled;

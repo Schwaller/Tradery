@@ -14,12 +14,15 @@ import java.util.List;
 /**
  * Panel displaying trades from a backtest with tree-like DCA grouping.
  * DCA positions show as expandable parent rows with individual entries as children.
+ * Includes a detail panel that shows explanatory information about selected trades.
  */
 public class TradeTablePanel extends JPanel {
 
     private JTable table;
     private TreeTradeTableModel tableModel;
     private JButton detailsButton;
+    private TradeDetailPanel detailPanel;
+    private JSplitPane splitPane;
     private List<Trade> currentTrades = new ArrayList<>();
     private String strategyName = "";
     private int hoveredRow = -1;
@@ -30,6 +33,7 @@ public class TradeTablePanel extends JPanel {
         setLayout(new BorderLayout());
 
         initializeTable();
+        initializeDetailPanel();
         layoutComponents();
     }
 
@@ -72,10 +76,13 @@ public class TradeTablePanel extends JPanel {
                 if (e.getClickCount() == 2 && row >= 0) {
                     openDetailsWindow();
                 } else if (e.getClickCount() == 1 && row >= 0) {
-                    // Single click - notify selection
+                    // Single click - notify selection and update detail panel
                     TableRow tableRow = tableModel.getRowAt(row);
-                    if (onTradeSelect != null && tableRow != null) {
-                        onTradeSelect.accept(tableRow.trades);
+                    if (tableRow != null) {
+                        updateDetailPanel(tableRow.trades);
+                        if (onTradeSelect != null) {
+                            onTradeSelect.accept(tableRow.trades);
+                        }
                     }
                 }
             }
@@ -111,12 +118,27 @@ public class TradeTablePanel extends JPanel {
         });
     }
 
+    private void initializeDetailPanel() {
+        detailPanel = new TradeDetailPanel();
+        detailPanel.setPreferredSize(new Dimension(0, 150));
+        detailPanel.setMinimumSize(new Dimension(0, 100));
+    }
+
     public void setOnTradeHover(java.util.function.Consumer<List<Trade>> callback) {
         this.onTradeHover = callback;
     }
 
     public void setOnTradeSelect(java.util.function.Consumer<List<Trade>> callback) {
         this.onTradeSelect = callback;
+    }
+
+    /**
+     * Update the detail panel when a trade is selected
+     */
+    private void updateDetailPanel(List<Trade> trades) {
+        if (detailPanel != null) {
+            detailPanel.setTrades(trades);
+        }
     }
 
     private void layoutComponents() {
@@ -126,7 +148,7 @@ public class TradeTablePanel extends JPanel {
         title.setFont(title.getFont().deriveFont(Font.BOLD, 12f));
         title.setForeground(Color.GRAY);
 
-        detailsButton = new JButton("Details...");
+        detailsButton = new JButton("Export...");
         detailsButton.setFont(detailsButton.getFont().deriveFont(11f));
         detailsButton.setEnabled(false);
         detailsButton.addActionListener(e -> openDetailsWindow());
@@ -134,8 +156,8 @@ public class TradeTablePanel extends JPanel {
         headerPanel.add(title, BorderLayout.WEST);
         headerPanel.add(detailsButton, BorderLayout.EAST);
 
-        JScrollPane scrollPane = new JScrollPane(table);
-        scrollPane.setBorder(BorderFactory.createEmptyBorder());
+        JScrollPane tableScrollPane = new JScrollPane(table);
+        tableScrollPane.setBorder(BorderFactory.createEmptyBorder());
 
         JPanel headerWrapper = new JPanel(new BorderLayout(0, 0));
         headerWrapper.setBorder(BorderFactory.createEmptyBorder(8, 8, 4, 8));
@@ -147,8 +169,15 @@ public class TradeTablePanel extends JPanel {
         topWrapper.add(headerWrapper, BorderLayout.CENTER);
         topWrapper.add(headerSeparator, BorderLayout.SOUTH);
 
+        // Create split pane with table on top and detail panel on bottom
+        splitPane = new JSplitPane(JSplitPane.VERTICAL_SPLIT, tableScrollPane, detailPanel);
+        splitPane.setResizeWeight(0.65);  // Give more space to table by default
+        splitPane.setDividerSize(5);
+        splitPane.setBorder(BorderFactory.createEmptyBorder());
+        splitPane.setContinuousLayout(true);
+
         add(topWrapper, BorderLayout.NORTH);
-        add(scrollPane, BorderLayout.CENTER);
+        add(splitPane, BorderLayout.CENTER);
     }
 
     private void openDetailsWindow() {
@@ -176,6 +205,9 @@ public class TradeTablePanel extends JPanel {
         this.currentTrades = new ArrayList<>();
         tableModel.setTrades(currentTrades);
         detailsButton.setEnabled(false);
+        if (detailPanel != null) {
+            detailPanel.clear();
+        }
     }
 
     /**

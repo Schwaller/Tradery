@@ -11,6 +11,7 @@ import com.tradery.io.ResultStore;
 import com.tradery.io.StrategyStore;
 import com.tradery.io.WindowStateStore;
 import com.tradery.model.*;
+import com.tradery.ui.charts.ChartConfig;
 import com.tradery.ui.controls.IndicatorControlsPanel;
 import com.tradery.ui.coordination.AutoSaveScheduler;
 import com.tradery.ui.coordination.BacktestCoordinator;
@@ -44,6 +45,8 @@ public class ProjectWindow extends JFrame {
     private TradeTablePanel tradeTablePanel;
     private JLabel statusBar;
     private JProgressBar statusProgressBar;
+    private JProgressBar dataLoadingProgressBar;
+    private JLabel dataLoadingLabel;
     private JLabel titleLabel;
 
     // Toolbar controls
@@ -59,7 +62,11 @@ public class ProjectWindow extends JFrame {
     private JButton codexBtn;
     private JButton historyBtn;
     private JButton phaseAnalysisBtn;
-    private JCheckBox orderflowCheckbox;
+    private JPanel dataStatusPanel;
+    private JLabel ohlcStatusLabel;
+    private JLabel aggTradesStatusLabel;
+    private JLabel fundingStatusLabel;
+    private JLabel oiStatusLabel;
 
     // Phase analysis window
     private PhaseAnalysisWindow phaseAnalysisWindow;
@@ -114,7 +121,8 @@ public class ProjectWindow extends JFrame {
         ResultStore resultStore = new ResultStore(strategy.getId());
         BacktestEngine backtestEngine = new BacktestEngine(candleStore);
         com.tradery.data.FundingRateStore fundingRateStore = new com.tradery.data.FundingRateStore();
-        this.backtestCoordinator = new BacktestCoordinator(backtestEngine, candleStore, aggTradesStore, fundingRateStore, resultStore);
+        com.tradery.data.OpenInterestStore openInterestStore = new com.tradery.data.OpenInterestStore();
+        this.backtestCoordinator = new BacktestCoordinator(backtestEngine, candleStore, aggTradesStore, fundingRateStore, openInterestStore, resultStore);
         this.autoSaveScheduler = new AutoSaveScheduler();
 
         initializeFrame();
@@ -244,17 +252,7 @@ public class ProjectWindow extends JFrame {
         phaseAnalysisBtn.setEnabled(false);  // Enabled after backtest completes
         phaseAnalysisBtn.addActionListener(e -> openPhaseAnalysis());
 
-        // Orderflow checkbox - enables delta indicators (requires aggTrades data)
-        orderflowCheckbox = new JCheckBox("Orderflow");
-        orderflowCheckbox.setToolTipText("Enable orderflow indicators (DELTA, CUM_DELTA) - requires loading trade data");
-        orderflowCheckbox.addActionListener(e -> {
-            if (strategy != null) {
-                strategy.setOrderflowMode(orderflowCheckbox.isSelected()
-                    ? OrderflowSettings.Mode.ENABLED
-                    : OrderflowSettings.Mode.DISABLED);
-                autoSaveScheduler.scheduleUpdate();
-            }
-        });
+        // Data status panel created later in status bar
 
         // Indicator controls panel (extracted to separate class)
         indicatorControls = new IndicatorControlsPanel();
@@ -272,6 +270,13 @@ public class ProjectWindow extends JFrame {
         backtestCoordinator.setOnProgress(this::setProgress);
         backtestCoordinator.setOnComplete(this::displayResult);
         backtestCoordinator.setOnStatus(this::setStatus);
+        backtestCoordinator.setOnError(this::showBacktestError);
+        backtestCoordinator.setOnDataStatus(this::handleDataStatus);
+        backtestCoordinator.setOnViewDataReady(this::handleViewDataReady);
+        backtestCoordinator.setOnDataLoadingProgress(this::handleDataLoadingProgress);
+
+        // Wire up chart config changes to update badges
+        ChartConfig.getInstance().addChangeListener(this::updateDataRequirementsBadges);
 
         // Wire up data fetch progress (shows in status bar)
         candleStore.setProgressCallback(progress -> {
@@ -295,11 +300,15 @@ public class ProjectWindow extends JFrame {
         timeframeCombo.addActionListener(e -> {
             candleStore.cancelCurrentFetch();
             autoSaveScheduler.scheduleUpdate();
+            updateDataRequirementsBadges();
         });
         durationCombo.addActionListener(e -> autoSaveScheduler.scheduleUpdate());
 
         // Wire up panel change listeners
-        editorPanel.setOnChange(autoSaveScheduler::scheduleUpdate);
+        editorPanel.setOnChange(() -> {
+            autoSaveScheduler.scheduleUpdate();
+            updateDataRequirementsBadges();
+        });
         settingsPanel.setOnChange(autoSaveScheduler::scheduleUpdate);
     }
 
@@ -446,8 +455,6 @@ public class ProjectWindow extends JFrame {
         toolbarRight.add(claudeBtn);
         toolbarRight.add(codexBtn);
         toolbarRight.add(Box.createHorizontalStrut(8));
-        toolbarRight.add(orderflowCheckbox);
-        toolbarRight.add(Box.createHorizontalStrut(8));
         toolbarRight.add(clearCacheBtn);
 
         JPanel toolbarPanel = new JPanel(new BorderLayout(0, 0));
@@ -492,7 +499,7 @@ public class ProjectWindow extends JFrame {
         editorTerminalSplit.setBottomComponent(dockedTerminalWrapper);
 
         JPanel leftPanel = new JPanel(new BorderLayout(0, 0));
-        leftPanel.setPreferredSize(new Dimension(320, 0));
+        leftPanel.setPreferredSize(new Dimension(0, 0));
         leftPanel.add(editorTerminalSplit, BorderLayout.CENTER);
 
         // Add vertical separator on the right
@@ -539,7 +546,7 @@ public class ProjectWindow extends JFrame {
         JSplitPane mainSplit = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT);
         mainSplit.setBorder(null);
         mainSplit.setDividerSize(1);
-        mainSplit.setDividerLocation(450);
+        mainSplit.setDividerLocation(500);
         mainSplit.setContinuousLayout(true);
         mainSplit.setLeftComponent(leftPanel);
         mainSplit.setRightComponent(rightSplit);
@@ -553,10 +560,35 @@ public class ProjectWindow extends JFrame {
         JPanel statusPanel = new JPanel(new BorderLayout(8, 0));
         statusPanel.setBorder(BorderFactory.createEmptyBorder(4, 8, 4, 8));
 
+        // Left side: status text + data loading progress
+        JPanel leftStatusPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
+        leftStatusPanel.setOpaque(false);
+
         statusBar = new JLabel("Ready");
         statusBar.setFont(statusBar.getFont().deriveFont(11f));
-        statusPanel.add(statusBar, BorderLayout.CENTER);
+        leftStatusPanel.add(statusBar);
 
+        // Data loading progress bar (shows when loading OI, Funding, etc.)
+        dataLoadingLabel = new JLabel("");
+        dataLoadingLabel.setFont(dataLoadingLabel.getFont().deriveFont(10f));
+        dataLoadingLabel.setForeground(new Color(100, 100, 180));
+        dataLoadingLabel.setVisible(false);
+        leftStatusPanel.add(dataLoadingLabel);
+
+        dataLoadingProgressBar = new JProgressBar(0, 100);
+        dataLoadingProgressBar.setPreferredSize(new Dimension(100, 12));
+        dataLoadingProgressBar.setStringPainted(true);
+        dataLoadingProgressBar.setFont(dataLoadingProgressBar.getFont().deriveFont(9f));
+        dataLoadingProgressBar.setVisible(false);
+        leftStatusPanel.add(dataLoadingProgressBar);
+
+        statusPanel.add(leftStatusPanel, BorderLayout.WEST);
+
+        // Data status panel (center) - shows status for each data type
+        dataStatusPanel = createDataStatusPanel();
+        statusPanel.add(dataStatusPanel, BorderLayout.CENTER);
+
+        // Progress bar (right) - for backtest progress
         statusProgressBar = new JProgressBar(0, 100);
         statusProgressBar.setPreferredSize(new Dimension(120, 14));
         statusProgressBar.setVisible(false);
@@ -580,8 +612,8 @@ public class ProjectWindow extends JFrame {
             updateDurationOptions();
             durationCombo.setSelectedItem(strategy.getDuration());
 
-            // Orderflow checkbox
-            orderflowCheckbox.setSelected(strategy.getOrderflowMode() == OrderflowSettings.Mode.ENABLED);
+            // Update data requirements badges (auto-detected from DSL)
+            updateDataRequirementsBadges();
         });
     }
 
@@ -722,13 +754,41 @@ public class ProjectWindow extends JFrame {
     }
 
     private boolean isCommandAvailable(String command) {
+        // Try multiple methods to find the command since Java doesn't inherit full shell PATH
+
+        // Method 1: Use login shell to get full PATH (includes ~/.zshrc, ~/.bashrc paths)
         try {
-            Process process = Runtime.getRuntime().exec(new String[]{"which", command});
+            ProcessBuilder pb = new ProcessBuilder("/bin/bash", "-l", "-c", "which " + command);
+            pb.redirectErrorStream(true);
+            Process process = pb.start();
             int exitCode = process.waitFor();
-            return exitCode == 0;
-        } catch (Exception e) {
-            return false;
+            if (exitCode == 0) return true;
+        } catch (Exception ignored) {}
+
+        // Method 2: Try zsh login shell (default on macOS)
+        try {
+            ProcessBuilder pb = new ProcessBuilder("/bin/zsh", "-l", "-c", "which " + command);
+            pb.redirectErrorStream(true);
+            Process process = pb.start();
+            int exitCode = process.waitFor();
+            if (exitCode == 0) return true;
+        } catch (Exception ignored) {}
+
+        // Method 3: Check common installation paths directly
+        String[] commonPaths = {
+            "/usr/local/bin/" + command,
+            "/opt/homebrew/bin/" + command,
+            System.getProperty("user.home") + "/.local/bin/" + command,
+            System.getProperty("user.home") + "/.npm-global/bin/" + command,
+            "/usr/bin/" + command
+        };
+        for (String path : commonPaths) {
+            if (new java.io.File(path).exists()) {
+                return true;
+            }
         }
+
+        return false;
     }
 
     private void openUrl(String url) {
@@ -921,6 +981,7 @@ public class ProjectWindow extends JFrame {
         String symbol = (String) symbolCombo.getSelectedItem();
         String timeframe = (String) timeframeCombo.getSelectedItem();
         String duration = (String) durationCombo.getSelectedItem();
+        String traderyDir = System.getProperty("user.home") + "/.tradery";
 
         String initialPrompt = String.format(
             "[Launched from Tradery app] " +
@@ -933,7 +994,40 @@ public class ProjectWindow extends JFrame {
             strategyId, strategyId
         );
 
-        openAiTerminal("codex", initialPrompt);
+        // Open Codex in OS Terminal (embedded terminal has compatibility issues)
+        openOsCodexTerminal(traderyDir, initialPrompt, strategyName);
+    }
+
+    private void openOsCodexTerminal(String traderyDir, String initialPrompt, String strategyName) {
+        // Build command: cd to tradery dir and run codex with prompt
+        String command = String.format(
+            "cd '%s' && codex '%s'",
+            traderyDir.replace("'", "'\\''"),
+            initialPrompt.replace("'", "'\\''")
+        );
+
+        try {
+            // Use osascript to open Terminal.app with the command (macOS)
+            String[] osascript = {
+                "osascript", "-e",
+                String.format(
+                    "tell application \"Terminal\"\n" +
+                    "    activate\n" +
+                    "    do script \"%s\"\n" +
+                    "end tell",
+                    command.replace("\\", "\\\\").replace("\"", "\\\"")
+                )
+            };
+
+            Runtime.getRuntime().exec(osascript);
+            setStatus("Opened Codex CLI for " + strategyName);
+        } catch (IOException e) {
+            setStatus("Error opening terminal: " + e.getMessage());
+            JOptionPane.showMessageDialog(this,
+                "Could not open Terminal: " + e.getMessage(),
+                "Error",
+                JOptionPane.ERROR_MESSAGE);
+        }
     }
 
     private void showHistory() {
@@ -1058,6 +1152,203 @@ public class ProjectWindow extends JFrame {
 
     private void setStatus(String message) {
         statusBar.setText(" " + message);
+    }
+
+    private void showBacktestError(String error) {
+        SwingUtilities.invokeLater(() -> {
+            JOptionPane.showMessageDialog(this,
+                error,
+                "Missing Required Data",
+                JOptionPane.WARNING_MESSAGE);
+        });
+    }
+
+    /**
+     * Create the data status panel for the status bar.
+     * Shows status for each data type: OHLC, AggTrades, Funding, OI
+     */
+    private JPanel createDataStatusPanel() {
+        JPanel panel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 12, 0));
+        panel.setOpaque(false);
+
+        // Create status labels for each data type
+        ohlcStatusLabel = createStatusLabel("OHLC");
+        aggTradesStatusLabel = createStatusLabel("AggTrades");
+        fundingStatusLabel = createStatusLabel("Funding");
+        oiStatusLabel = createStatusLabel("OI");
+
+        panel.add(ohlcStatusLabel);
+        panel.add(aggTradesStatusLabel);
+        panel.add(fundingStatusLabel);
+        panel.add(oiStatusLabel);
+
+        return panel;
+    }
+
+    private JLabel createStatusLabel(String dataType) {
+        JLabel label = new JLabel();
+        label.setFont(label.getFont().deriveFont(Font.PLAIN, 10f));
+        label.setName(dataType); // Store data type for updates
+        return label;
+    }
+
+    /**
+     * Update data status labels based on requirements and availability.
+     * Shows: "--" (not required) / "required" / "ready"
+     */
+    private void updateDataRequirementsBadges() {
+        if (ohlcStatusLabel == null) return;
+
+        // Get chart config for active indicators
+        ChartConfig chartConfig = ChartConfig.getInstance();
+
+        // Check what data is required from DSL
+        boolean needsAggTradesFromDSL = strategy != null && strategy.requiresAggTrades();
+        boolean needsOIFromDSL = strategy != null && strategy.usesOpenInterest();
+
+        // Check what data is required from active charts
+        boolean needsAggTradesFromCharts = chartConfig.isDeltaEnabled() ||
+                                           chartConfig.isCvdEnabled() ||
+                                           chartConfig.isWhaleEnabled() ||
+                                           chartConfig.isRetailEnabled();
+        boolean needsFundingFromCharts = chartConfig.isFundingEnabled();
+        boolean needsOIFromCharts = chartConfig.isOiEnabled();
+
+        // Check if sub-minute timeframe (always needs aggTrades, no separate OHLC)
+        String timeframe = (String) timeframeCombo.getSelectedItem();
+        boolean isSubMinute = timeframe != null && timeframe.endsWith("s");
+
+        // Combine requirements
+        boolean needsOHLC = !isSubMinute; // Sub-minute generates candles from aggTrades
+        boolean needsAggTrades = isSubMinute || needsAggTradesFromDSL || needsAggTradesFromCharts;
+        boolean needsFunding = needsFundingFromCharts;
+        boolean needsOI = needsOIFromDSL || needsOIFromCharts;
+
+        // Update status labels
+        updateStatusLabel(ohlcStatusLabel, "OHLC", needsOHLC);
+        updateStatusLabel(aggTradesStatusLabel, "AggTrades", needsAggTrades);
+        updateStatusLabel(fundingStatusLabel, "Funding", needsFunding);
+        updateStatusLabel(oiStatusLabel, "OI", needsOI);
+    }
+
+    private void updateStatusLabel(JLabel label, String dataType, boolean required) {
+        if (!required) {
+            label.setText(dataType + ": not used");
+            label.setForeground(new Color(150, 150, 150));
+            label.setToolTipText(dataType + " not required for current strategy");
+        } else {
+            // Check if data is loaded (simplified - actual check would need backtest coordinator state)
+            boolean isLoaded = isDataLoaded(dataType);
+            if (isLoaded) {
+                label.setText(dataType + ": ready");
+                label.setForeground(new Color(60, 140, 60));
+                label.setToolTipText(dataType + " data loaded");
+            } else {
+                label.setText(dataType + ": required");
+                label.setForeground(new Color(180, 120, 40));
+                label.setToolTipText(dataType + " will be fetched on next backtest");
+            }
+        }
+    }
+
+    /**
+     * Check if data type is currently loaded.
+     * Returns true if last backtest loaded this data type.
+     */
+    private boolean isDataLoaded(String dataType) {
+        // Check if we have data from last backtest
+        return switch (dataType) {
+            case "OHLC" -> backtestCoordinator.getCurrentCandles() != null &&
+                          !backtestCoordinator.getCurrentCandles().isEmpty();
+            case "AggTrades" -> backtestCoordinator.getCurrentAggTrades() != null &&
+                               !backtestCoordinator.getCurrentAggTrades().isEmpty();
+            case "Funding" -> backtestCoordinator.getCurrentFundingRates() != null &&
+                             !backtestCoordinator.getCurrentFundingRates().isEmpty();
+            case "OI" -> backtestCoordinator.getCurrentOpenInterest() != null &&
+                        !backtestCoordinator.getCurrentOpenInterest().isEmpty();
+            default -> false;
+        };
+    }
+
+    /**
+     * Handle data status updates from backtest coordinator.
+     * @param dataType One of: "OHLC", "AggTrades", "Funding", "OI"
+     * @param status One of: "loading", "ready", "error"
+     */
+    private void handleDataStatus(String dataType, String status) {
+        JLabel label = switch (dataType) {
+            case "OHLC" -> ohlcStatusLabel;
+            case "AggTrades" -> aggTradesStatusLabel;
+            case "Funding" -> fundingStatusLabel;
+            case "OI" -> oiStatusLabel;
+            default -> null;
+        };
+        if (label == null) return;
+
+        switch (status) {
+            case "loading" -> {
+                label.setText(dataType + ": loading...");
+                label.setForeground(new Color(100, 100, 180));
+                label.setToolTipText("Loading " + dataType + " data...");
+            }
+            case "ready" -> {
+                label.setText(dataType + ": ready");
+                label.setForeground(new Color(60, 140, 60));
+                label.setToolTipText(dataType + " data loaded");
+            }
+            case "error" -> {
+                label.setText(dataType + ": unavailable");
+                label.setForeground(new Color(180, 80, 80));
+                label.setToolTipText(dataType + " data could not be loaded");
+            }
+        }
+    }
+
+    /**
+     * Handle VIEW tier data becoming ready asynchronously.
+     * Refreshes the corresponding chart without re-running the backtest.
+     */
+    private void handleViewDataReady(String dataType) {
+        switch (dataType) {
+            case "Funding" -> {
+                System.out.println("VIEW data ready: Funding - refreshing chart");
+                chartPanel.setIndicatorEngine(backtestCoordinator.getIndicatorEngine());
+                chartPanel.refreshFundingChart();
+            }
+            case "OI" -> {
+                System.out.println("VIEW data ready: OI - refreshing chart");
+                chartPanel.setIndicatorEngine(backtestCoordinator.getIndicatorEngine());
+                chartPanel.refreshOiChart();
+            }
+            case "AggTrades" -> {
+                System.out.println("VIEW data ready: AggTrades - refreshing orderflow charts");
+                chartPanel.setIndicatorEngine(backtestCoordinator.getIndicatorEngine());
+                chartPanel.refreshOrderflowCharts();
+            }
+        }
+    }
+
+    /**
+     * Handle data loading progress updates for the progress bar.
+     * @param dataType Data type being loaded (e.g., "OI", "Funding")
+     * @param loaded Number of records loaded so far
+     * @param expected Expected total records (-1 to hide progress bar)
+     */
+    private void handleDataLoadingProgress(String dataType, int loaded, int expected) {
+        if (loaded < 0 || expected < 0) {
+            // Hide progress bar
+            dataLoadingLabel.setVisible(false);
+            dataLoadingProgressBar.setVisible(false);
+        } else {
+            // Show and update progress bar
+            dataLoadingLabel.setText(dataType + ":");
+            dataLoadingLabel.setVisible(true);
+
+            int percent = expected > 0 ? Math.min(100, (loaded * 100) / expected) : 0;
+            dataLoadingProgressBar.setValue(percent);
+            dataLoadingProgressBar.setString(loaded + "/" + expected);
+            dataLoadingProgressBar.setVisible(true);
+        }
     }
 
     private void setProgress(int percentage, String message) {

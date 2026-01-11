@@ -465,8 +465,141 @@ public class Strategy {
         return getOrderflowSettings().isEnabled();
     }
 
+    /**
+     * Check if strategy requires aggTrades data.
+     * Auto-detects from DSL conditions - no manual checkbox needed.
+     *
+     * AggTrades required for:
+     * - Tier 2 orderflow: DELTA, CUM_DELTA, WHALE_DELTA, WHALE_BUY_VOL, WHALE_SELL_VOL, LARGE_TRADE_COUNT
+     * - Sub-minute timeframes (checked separately in BacktestCoordinator)
+     *
+     * NOT required for Tier 1 (calculated from candles):
+     * - VWAP, POC, VAH, VAL, PREV_DAY_*, TODAY_*
+     */
     public boolean requiresAggTrades() {
-        return getOrderflowSettings().isEnabled();
+        // Check entry condition
+        String entry = getEntrySettings().getCondition();
+        if (entry != null && containsAggTradesFunction(entry)) {
+            return true;
+        }
+
+        // Check exit zone conditions
+        for (ExitZone zone : getExitZones()) {
+            String condition = zone.exitCondition();
+            if (condition != null && containsAggTradesFunction(condition)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Check if a DSL condition contains functions that require aggTrades.
+     * Tier 2 orderflow functions that need tick-level data.
+     */
+    private boolean containsAggTradesFunction(String condition) {
+        String upper = condition.toUpperCase();
+        // Only delta-based functions need aggTrades
+        // VWAP, POC, VAH, VAL, PREV_DAY_*, TODAY_* are Tier 1 (candle-based)
+        return upper.contains("DELTA") ||           // DELTA, CUM_DELTA, WHALE_DELTA
+               upper.contains("WHALE_BUY_VOL") ||
+               upper.contains("WHALE_SELL_VOL") ||
+               upper.contains("LARGE_TRADE_COUNT");
+    }
+
+    /**
+     * Check if strategy uses any orderflow functions (Tier 1 or Tier 2).
+     * Used for informational display, not data requirements.
+     */
+    public boolean usesOrderflow() {
+        String entry = getEntrySettings().getCondition();
+        if (entry != null && containsOrderflowFunction(entry)) {
+            return true;
+        }
+
+        for (ExitZone zone : getExitZones()) {
+            String condition = zone.exitCondition();
+            if (condition != null && containsOrderflowFunction(condition)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private boolean containsOrderflowFunction(String condition) {
+        String upper = condition.toUpperCase();
+        return upper.contains("VWAP") ||
+               upper.contains("POC") ||
+               upper.contains("VAH") ||
+               upper.contains("VAL") ||
+               upper.contains("DELTA") ||
+               upper.contains("WHALE") ||
+               upper.contains("LARGE_TRADE_COUNT") ||
+               upper.contains("PREV_DAY_") ||
+               upper.contains("TODAY_");
+    }
+
+    /**
+     * Check if strategy uses Open Interest functions (OI, OI_CHANGE, OI_DELTA).
+     */
+    public boolean usesOpenInterest() {
+        // Check entry condition
+        String entry = getEntrySettings().getCondition();
+        if (entry != null && containsOiFunction(entry)) {
+            return true;
+        }
+
+        // Check exit zone conditions
+        for (ExitZone zone : getExitZones()) {
+            String condition = zone.exitCondition();
+            if (condition != null && containsOiFunction(condition)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private boolean containsOiFunction(String condition) {
+        String upper = condition.toUpperCase();
+        return upper.contains("OI_CHANGE") || upper.contains("OI_DELTA") ||
+               upper.matches(".*\\bOI\\b.*");
+    }
+
+    /**
+     * Check if strategy DSL requires Open Interest data.
+     * Alias for usesOpenInterest() for clearer API in data requirements.
+     */
+    public boolean requiresOpenInterest() {
+        return usesOpenInterest();
+    }
+
+    /**
+     * Check if strategy DSL uses Funding Rate functions (FUNDING, FUNDING_8H).
+     */
+    public boolean requiresFunding() {
+        // Check entry condition
+        String entry = getEntrySettings().getCondition();
+        if (entry != null && containsFundingFunction(entry)) {
+            return true;
+        }
+
+        // Check exit zone conditions
+        for (ExitZone zone : getExitZones()) {
+            String condition = zone.exitCondition();
+            if (condition != null && containsFundingFunction(condition)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private boolean containsFundingFunction(String condition) {
+        String upper = condition.toUpperCase();
+        return upper.contains("FUNDING");
     }
 
     @Override

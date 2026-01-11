@@ -110,11 +110,11 @@ public class TraderyApp {
     }
 
     /**
-     * Create AI assistant integration files (CLAUDE.md, CODEX.md, AGENTS.md)
+     * Create AI assistant integration files (CLAUDE.md, CODEX.md, AGENTS.md, STRATEGY_GUIDE.md)
      */
     private static void ensureClaudeFiles() {
         // Copy instruction files from resources if they don't exist
-        String[] files = {"CLAUDE.md", "CODEX.md", "AGENTS.md"};
+        String[] files = {"CLAUDE.md", "CODEX.md", "AGENTS.md", "STRATEGY_GUIDE.md"};
         for (String filename : files) {
             File target = new File(USER_DIR, filename);
             if (!target.exists()) {

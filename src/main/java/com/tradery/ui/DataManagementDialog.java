@@ -236,6 +236,15 @@ public class DataManagementDialog extends JDialog {
             return;
         }
 
+        // Handle openInterest selection
+        if ("openInterest".equals(resolution)) {
+            healthPanel.setOpenInterestData(symbol);
+            detailLabel.setText(getOpenInterestInfo(symbol));
+            selectedHealth = null;
+            updateButtons();
+            return;
+        }
+
         healthPanel.setData(symbol, resolution);
         selectedHealth = null;
         updateDetailLabel();
@@ -249,8 +258,9 @@ public class DataManagementDialog extends JDialog {
     }
 
     private void updateDetailLabel() {
-        // Don't overwrite aggTrades or funding rate info
-        if ("aggTrades".equals(currentResolution) || "fundingRate".equals(currentResolution)) {
+        // Don't overwrite aggTrades, funding rate, or OI info
+        if ("aggTrades".equals(currentResolution) || "fundingRate".equals(currentResolution) ||
+            "openInterest".equals(currentResolution)) {
             return;
         }
 
@@ -579,6 +589,50 @@ public class DataManagementDialog extends JDialog {
         sb.append(totalRates).append(" rates, ");
         sb.append(formatSize(totalSize));
         sb.append(" [8h resolution]");
+        return sb.toString();
+    }
+
+    private String getOpenInterestInfo(String symbol) {
+        File oiDir = new File(dataDir, symbol + "/openinterest");
+        if (!oiDir.exists()) {
+            return symbol + " / Open Interest - No data. OI is auto-fetched during backtest.";
+        }
+
+        File[] csvFiles = oiDir.listFiles((dir, name) -> name.endsWith(".csv"));
+        if (csvFiles == null || csvFiles.length == 0) {
+            return symbol + " / Open Interest - No data. OI is auto-fetched during backtest.";
+        }
+
+        // Find month range and count
+        String minMonth = null;
+        String maxMonth = null;
+        int totalRecords = 0;
+        long totalSize = 0;
+
+        for (File f : csvFiles) {
+            String name = f.getName().replace(".csv", "");
+            totalSize += f.length();
+
+            if (minMonth == null || name.compareTo(minMonth) < 0) minMonth = name;
+            if (maxMonth == null || name.compareTo(maxMonth) > 0) maxMonth = name;
+
+            // Count lines (minus header)
+            try (java.io.BufferedReader reader = new java.io.BufferedReader(new java.io.FileReader(f))) {
+                int lines = 0;
+                while (reader.readLine() != null) lines++;
+                totalRecords += Math.max(0, lines - 1);
+            } catch (java.io.IOException e) {
+                // Ignore
+            }
+        }
+
+        StringBuilder sb = new StringBuilder();
+        sb.append(symbol).append(" / Open Interest - ");
+        sb.append(csvFiles.length).append(" months (");
+        sb.append(minMonth).append(" to ").append(maxMonth).append("), ");
+        sb.append(totalRecords).append(" records, ");
+        sb.append(formatSize(totalSize));
+        sb.append(" [5m resolution]");
         return sb.toString();
     }
 

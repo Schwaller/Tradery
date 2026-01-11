@@ -69,6 +69,9 @@ public class IndicatorSelectorPopup extends JDialog {
     // Funding checkbox
     private JCheckBox fundingCheckbox;
 
+    // Open Interest checkbox
+    private JCheckBox oiCheckbox;
+
     // Core chart checkboxes
     private JCheckBox volumeChartCheckbox;
     private JCheckBox equityChartCheckbox;
@@ -170,6 +173,12 @@ public class IndicatorSelectorPopup extends JDialog {
         // === FUNDING ===
         contentPane.add(createSectionHeader("FUNDING"));
         contentPane.add(createFundingRow());
+
+        contentPane.add(Box.createVerticalStrut(8));
+
+        // === OPEN INTEREST ===
+        contentPane.add(createSectionHeader("OPEN INTEREST"));
+        contentPane.add(createOiRow());
 
         contentPane.add(Box.createVerticalStrut(8));
 
@@ -375,6 +384,16 @@ public class IndicatorSelectorPopup extends JDialog {
         return row;
     }
 
+    private JPanel createOiRow() {
+        oiCheckbox = new JCheckBox("Open Interest");
+        oiCheckbox.setToolTipText("Show OI value and change chart (Binance 5m data)");
+        JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
+        row.setAlignmentX(Component.LEFT_ALIGNMENT);
+        row.add(oiCheckbox);
+        oiCheckbox.addActionListener(e -> scheduleUpdate());
+        return row;
+    }
+
     private JPanel createVolumeChartRow() {
         volumeChartCheckbox = new JCheckBox("Volume");
         volumeChartCheckbox.setToolTipText("Show volume chart");
@@ -552,6 +571,9 @@ public class IndicatorSelectorPopup extends JDialog {
         // Funding
         fundingCheckbox.setSelected(config.isFundingEnabled());
 
+        // Open Interest
+        oiCheckbox.setSelected(config.isOiEnabled());
+
         // Core charts
         volumeChartCheckbox.setSelected(config.isVolumeChartEnabled());
         equityChartCheckbox.setSelected(config.isEquityChartEnabled());
@@ -668,6 +690,10 @@ public class IndicatorSelectorPopup extends JDialog {
         // Funding
         chartPanel.setFundingChartEnabled(fundingCheckbox.isSelected());
         config.setFundingEnabled(fundingCheckbox.isSelected());
+
+        // Open Interest
+        chartPanel.setOiChartEnabled(oiCheckbox.isSelected());
+        config.setOiEnabled(oiCheckbox.isSelected());
 
         // Core charts
         chartPanel.setVolumeChartEnabled(volumeChartCheckbox.isSelected());

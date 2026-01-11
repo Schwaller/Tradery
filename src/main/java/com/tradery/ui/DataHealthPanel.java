@@ -174,13 +174,28 @@ public class DataHealthPanel extends JPanel {
     }
 
     /**
+     * Load open interest data and show month-based summary.
+     */
+    public void setOpenInterestData(String symbol) {
+        this.symbol = symbol;
+        this.resolution = "openInterest";
+        this.customMessage = null;
+        this.selectedMonth = null;
+        this.dailyDetails.clear();
+        loadOpenInterestHealth(symbol);
+        repaint();
+    }
+
+    /**
      * Refresh data while preserving the current selection.
      * Used for auto-refresh to avoid losing user's month selection.
      */
     public void refreshKeepSelection() {
         YearMonth savedMonth = selectedMonth;
 
-        if ("fundingRate".equals(resolution) && symbol != null) {
+        if ("openInterest".equals(resolution) && symbol != null) {
+            loadOpenInterestHealth(symbol);
+        } else if ("fundingRate".equals(resolution) && symbol != null) {
             loadFundingRateHealth(symbol);
         } else if ("aggTrades".equals(resolution) && symbol != null) {
             loadAggTradesHealth(symbol);
@@ -209,24 +224,45 @@ public class DataHealthPanel extends JPanel {
         java.io.File aggDir = new java.io.File(DataConfig.getInstance().getDataDir(), symbol + "/aggTrades");
         if (!aggDir.exists()) return;
 
-        java.io.File[] files = aggDir.listFiles((dir, name) -> name.endsWith(".csv"));
-        if (files == null || files.length == 0) return;
+        // AggTrades are stored as hourly files in daily directories:
+        // aggTrades/2026-01-11/00.csv, 01.csv, ..., 23.partial.csv
+        java.io.File[] dayDirs = aggDir.listFiles(File::isDirectory);
+        if (dayDirs == null || dayDirs.length == 0) return;
 
-        // Group files by month and count days
-        Map<YearMonth, int[]> monthStats = new TreeMap<>(); // [complete, partial]
+        // Group days by month and track completeness
+        Map<YearMonth, int[]> monthStats = new TreeMap<>(); // [complete days, partial days]
 
-        for (java.io.File f : files) {
-            String name = f.getName();
-            boolean isPartial = name.endsWith(".partial.csv");
-            String dateStr = name.replace(".partial.csv", "").replace(".csv", "");
-
+        for (java.io.File dayDir : dayDirs) {
+            String dateStr = dayDir.getName();
             try {
                 java.time.LocalDate date = java.time.LocalDate.parse(dateStr);
                 YearMonth ym = YearMonth.from(date);
+
+                // Count hourly files in this day
+                java.io.File[] hourFiles = dayDir.listFiles((dir, name) -> name.endsWith(".csv"));
+                if (hourFiles == null || hourFiles.length == 0) continue;
+
+                // Check if day is complete (24 hours) or partial
+                int completeHours = 0;
+                int partialHours = 0;
+                for (java.io.File hf : hourFiles) {
+                    if (hf.getName().endsWith(".partial.csv")) {
+                        partialHours++;
+                    } else {
+                        completeHours++;
+                    }
+                }
+
                 int[] stats = monthStats.computeIfAbsent(ym, k -> new int[2]);
-                if (isPartial) stats[1]++; else stats[0]++;
+                // Consider a day "complete" if it has 24 complete hours OR it's today with some data
+                boolean isToday = date.equals(java.time.LocalDate.now());
+                if (completeHours >= 24 || (isToday && (completeHours + partialHours) > 0)) {
+                    stats[0]++; // complete day
+                } else if (completeHours + partialHours > 0) {
+                    stats[1]++; // partial day
+                }
             } catch (Exception e) {
-                // Skip invalid filenames
+                // Skip invalid directory names
             }
         }
 
@@ -234,24 +270,24 @@ public class DataHealthPanel extends JPanel {
         YearMonth now = YearMonth.now();
         for (Map.Entry<YearMonth, int[]> entry : monthStats.entrySet()) {
             YearMonth month = entry.getKey();
-            int complete = entry.getValue()[0];
-            int partial = entry.getValue()[1];
-            int total = complete + partial;
+            int completeDays = entry.getValue()[0];
+            int partialDays = entry.getValue()[1];
+            int totalDays = completeDays + partialDays;
             int expectedDays = month.lengthOfMonth();
             if (month.equals(now)) {
                 expectedDays = java.time.LocalDate.now().getDayOfMonth();
             }
 
             DataStatus status;
-            if (total >= expectedDays * 0.9) {
+            if (totalDays >= expectedDays * 0.9) {
                 status = DataStatus.COMPLETE;
-            } else if (total > 0) {
+            } else if (totalDays > 0) {
                 status = DataStatus.PARTIAL;
             } else {
                 status = DataStatus.MISSING;
             }
 
-            healthData.add(new DataHealth(symbol, "aggTrades", month, expectedDays, total, List.of(), status));
+            healthData.add(new DataHealth(symbol, "aggTrades", month, expectedDays, totalDays, List.of(), status));
         }
     }
 
@@ -308,6 +344,59 @@ public class DataHealthPanel extends JPanel {
         healthData.sort((a, b) -> a.month().compareTo(b.month()));
     }
 
+    private void loadOpenInterestHealth(String symbol) {
+        healthData.clear();
+        blockBounds.clear();
+
+        File oiDir = new File(DataConfig.getInstance().getDataDir(), symbol + "/openinterest");
+        if (!oiDir.exists()) return;
+
+        File[] files = oiDir.listFiles((dir, name) -> name.endsWith(".csv"));
+        if (files == null || files.length == 0) return;
+
+        // Each file is a month: yyyy-MM.csv
+        // OI data at 5-minute resolution: ~288 records per day, ~8640 per month
+        YearMonth now = YearMonth.now();
+
+        for (File f : files) {
+            String name = f.getName().replace(".csv", "");
+            try {
+                YearMonth month = YearMonth.parse(name);
+
+                // Count records in file (lines minus header)
+                int recordCount = 0;
+                try (java.io.BufferedReader reader = new java.io.BufferedReader(new java.io.FileReader(f))) {
+                    while (reader.readLine() != null) recordCount++;
+                    recordCount = Math.max(0, recordCount - 1); // Subtract header
+                } catch (java.io.IOException e) {
+                    // Ignore
+                }
+
+                // Expected records: ~288 per day (12 per hour * 24 hours)
+                int expectedRecords = month.lengthOfMonth() * 288;
+                if (month.equals(now)) {
+                    expectedRecords = LocalDate.now().getDayOfMonth() * 288;
+                }
+
+                DataStatus status;
+                if (recordCount >= expectedRecords * 0.9) {
+                    status = DataStatus.COMPLETE;
+                } else if (recordCount > 0) {
+                    status = DataStatus.PARTIAL;
+                } else {
+                    status = DataStatus.MISSING;
+                }
+
+                healthData.add(new DataHealth(symbol, "openInterest", month, expectedRecords, recordCount, List.of(), status));
+            } catch (Exception e) {
+                // Skip invalid filenames
+            }
+        }
+
+        // Sort by month
+        healthData.sort((a, b) -> a.month().compareTo(b.month()));
+    }
+
     /**
      * Load daily details for the selected month.
      */
@@ -315,7 +404,9 @@ public class DataHealthPanel extends JPanel {
         dailyDetails.clear();
         if (month == null || symbol == null) return;
 
-        if ("fundingRate".equals(resolution)) {
+        if ("openInterest".equals(resolution)) {
+            loadOpenInterestDailyDetails(month);
+        } else if ("fundingRate".equals(resolution)) {
             loadFundingRateDailyDetails(month);
         } else if ("aggTrades".equals(resolution)) {
             loadAggTradesDailyDetails(month);
@@ -396,19 +487,109 @@ public class DataHealthPanel extends JPanel {
             LocalDate date = month.atDay(day);
             String dateStr = date.toString(); // yyyy-MM-dd
 
-            File completeFile = new File(aggDir, dateStr + ".csv");
-            File partialFile = new File(aggDir, dateStr + ".partial.csv");
+            // AggTrades are stored as hourly files in daily directories
+            File dayDir = new File(aggDir, dateStr);
 
             DataStatus status;
             String details;
-            if (completeFile.exists()) {
-                long sizeKb = completeFile.length() / 1024;
+            if (dayDir.exists() && dayDir.isDirectory()) {
+                // Count hourly files
+                File[] hourFiles = dayDir.listFiles((dir, name) -> name.endsWith(".csv"));
+                if (hourFiles != null && hourFiles.length > 0) {
+                    int completeHours = 0;
+                    int partialHours = 0;
+                    long totalSize = 0;
+
+                    for (File hf : hourFiles) {
+                        totalSize += hf.length();
+                        if (hf.getName().endsWith(".partial.csv")) {
+                            partialHours++;
+                        } else {
+                            completeHours++;
+                        }
+                    }
+
+                    long sizeKb = totalSize / 1024;
+                    boolean isToday = date.equals(today);
+
+                    if (completeHours >= 24) {
+                        status = DataStatus.COMPLETE;
+                        details = String.format("%s - Complete (%d hours, %d KB)", date, completeHours, sizeKb);
+                    } else if (isToday && (completeHours + partialHours) > 0) {
+                        status = DataStatus.COMPLETE; // Today with data is considered complete
+                        details = String.format("%s - Today (%d hours, %d KB)", date, completeHours + partialHours, sizeKb);
+                    } else {
+                        status = DataStatus.PARTIAL;
+                        details = String.format("%s - Partial (%d/24 hours, %d KB)", date, completeHours + partialHours, sizeKb);
+                    }
+                } else {
+                    status = DataStatus.MISSING;
+                    details = date + " - Missing (empty directory)";
+                }
+            } else {
+                status = DataStatus.MISSING;
+                details = date + " - Missing";
+            }
+
+            dailyDetails.add(new DayInfo(date, status, details));
+        }
+    }
+
+    private void loadOpenInterestDailyDetails(YearMonth month) {
+        File oiDir = new File(DataConfig.getInstance().getDataDir(), symbol + "/openinterest");
+        if (!oiDir.exists()) return;
+
+        File monthFile = new File(oiDir, month.toString() + ".csv");
+        if (!monthFile.exists()) return;
+
+        // Read all OI records from the month file
+        Map<LocalDate, Integer> recordsPerDay = new TreeMap<>();
+
+        try (java.io.BufferedReader reader = new java.io.BufferedReader(new java.io.FileReader(monthFile))) {
+            String line;
+            boolean firstLine = true;
+            while ((line = reader.readLine()) != null) {
+                if (firstLine) {
+                    firstLine = false;
+                    if (line.startsWith("symbol")) continue; // Skip header
+                }
+                if (line.isBlank()) continue;
+
+                // CSV format: symbol,timestamp,openInterest,openInterestValue
+                String[] parts = line.split(",");
+                if (parts.length >= 2) {
+                    try {
+                        long timestamp = Long.parseLong(parts[1].trim());
+                        LocalDate date = Instant.ofEpochMilli(timestamp).atZone(ZoneOffset.UTC).toLocalDate();
+                        recordsPerDay.merge(date, 1, Integer::sum);
+                    } catch (NumberFormatException e) {
+                        // Skip malformed lines
+                    }
+                }
+            }
+        } catch (java.io.IOException e) {
+            // Ignore
+        }
+
+        // Build daily details
+        LocalDate today = LocalDate.now();
+        int daysInMonth = month.equals(YearMonth.now()) ? today.getDayOfMonth() : month.lengthOfMonth();
+
+        // Expected: ~288 records per day (12 per hour * 24 hours)
+        int expectedPerDay = 288;
+
+        for (int day = 1; day <= daysInMonth; day++) {
+            LocalDate date = month.atDay(day);
+            int count = recordsPerDay.getOrDefault(date, 0);
+
+            DataStatus status;
+            String details;
+            if (count >= expectedPerDay * 0.9) {
                 status = DataStatus.COMPLETE;
-                details = String.format("%s - Complete (%d KB)", date, sizeKb);
-            } else if (partialFile.exists()) {
-                long sizeKb = partialFile.length() / 1024;
+                details = String.format("%s - %d records (5m intervals)", date, count);
+            } else if (count > 0) {
                 status = DataStatus.PARTIAL;
-                details = String.format("%s - Partial (%d KB)", date, sizeKb);
+                details = String.format("%s - %d/%d records", date, count, expectedPerDay);
             } else {
                 status = DataStatus.MISSING;
                 details = date + " - Missing";

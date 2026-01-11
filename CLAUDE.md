@@ -14,21 +14,33 @@ A Java Swing desktop application for building and backtesting trading strategies
 
 ```
 ~/.tradery/                           # User data directory (created on first run)
-├── strategies/                       # Strategy JSON files
-│   └── rsi-reversal.json
+├── api.json                          # API connection info (port, token) - written on startup
+├── strategies/                       # Strategy folders (one per strategy)
+│   └── {id}/                         # Each strategy has its own folder
+│       ├── strategy.json             # Strategy definition
+│       ├── summary.json              # Metrics + pre-computed analysis (AI-friendly)
+│       ├── latest.json               # Full backtest result (backward compat)
+│       ├── trades/                   # Individual trade files with descriptive names
+│       │   ├── 0001_WIN_+2p5pct_uptrend_weekdays.json
+│       │   ├── 0002_LOSS_-1p2pct_ranging.json
+│       │   └── 0003_REJECTED_0pct.json
+│       └── history/                  # Historical backtest runs
+│           └── YYYY-MM-DD_HH-mm.json # Timestamped full results
 ├── phases/                           # Phase definitions (market regimes)
 │   └── {id}/phase.json
 ├── hoops/                            # Hoop pattern definitions
 │   └── {id}/hoop.json
-├── results/
-│   └── latest.json                   # Most recent backtest result
 ├── data/
 │   └── BTCUSDT/
 │       └── 1h/
 │           └── 2024-01.csv           # Cached OHLC data
-└── aggtrades/                        # Aggregated trade data for orderflow
-    └── BTCUSDT/
-        └── 2024-01.csv
+├── aggtrades/                        # Aggregated trade data for orderflow
+│   └── BTCUSDT/
+│       └── 2024-01.csv
+├── funding/                          # Funding rate cache
+│   └── BTCUSDT.csv
+└── openinterest/                     # Open interest data (5m resolution)
+    └── BTCUSDT.csv
 
 /Users/martinschwaller/Code/Tradery/  # Project source
 ├── build.gradle
@@ -72,6 +84,7 @@ A Java Swing desktop application for building and backtesting trading strategies
 │   │   └── HoopPattern.java          # Full pattern with hoops list
 │   └── io/
 │       ├── StrategyStore.java        # Read/write strategy JSON
+│       ├── ResultStore.java          # Read/write backtest results per strategy
 │       ├── PhaseStore.java           # Read/write phase JSON
 │       └── HoopPatternStore.java     # Read/write hoop pattern JSON
 ```
@@ -194,6 +207,17 @@ FUNDING                  # Current funding rate (as %, e.g., 0.01 = 0.01%)
 FUNDING_8H               # 8-hour rolling average funding rate
 ```
 
+### Open Interest Functions
+Requires OI data (auto-fetched from Binance Futures API at 5-minute resolution).
+Note: Binance limits historical OI to 30 days, but local cache persists indefinitely.
+Running the app regularly builds unlimited historical OI data.
+
+```
+OI                       # Current open interest value (in billions USD)
+OI_CHANGE                # OI change from previous bar
+OI_DELTA(period)         # OI change over N bars
+```
+
 ### Operators
 
 **Comparison:**
@@ -264,6 +288,11 @@ LARGE_TRADE_COUNT(50000) > 10             # Many large trades
 # Funding rate
 FUNDING > 0.05                            # High funding = overleveraged longs
 FUNDING < 0 AND WHALE_DELTA(50000) > 0    # Shorts paying + whale buying
+
+# Open Interest
+OI_CHANGE > 0 AND close > close[1]        # Rising OI + rising price = new longs
+OI_CHANGE < 0 AND close > close[1]        # Falling OI + rising price = short covering
+OI_DELTA(12) < 0 AND close > SMA(20)      # OI decrease over 12 bars + price above MA
 
 # Daily Session Volume Profile
 close crosses_above PREV_DAY_POC          # Price reclaims yesterday's POC
@@ -529,6 +558,157 @@ Sequential price-checkpoint matching for detecting chart patterns.
 
 ---
 
+## Trade Analytics (AI-Friendly Data)
+
+Each trade includes rich analytics data for AI analysis:
+
+### Per-Trade Fields
+```json
+{
+  "id": "trade-1234567890-1234",
+  "side": "long",
+  "entryBar": 100,
+  "entryTime": 1704067200000,
+  "entryPrice": 42000.0,
+  "quantity": 0.1,
+  "exitBar": 115,
+  "exitTime": 1704153600000,
+  "exitPrice": 43500.0,
+  "pnl": 145.50,
+  "pnlPercent": 3.57,
+  "exitReason": "take_profit",
+  "exitZone": "Take Profit",
+
+  // Trade quality analytics
+  "mfe": 4.2,              // Max Favorable Excursion (best unrealized P&L %)
+  "mae": -1.5,             // Max Adverse Excursion (worst unrealized P&L %)
+  "mfeBar": 110,           // Bar when MFE occurred
+  "maeBar": 103,           // Bar when MAE occurred
+
+  // Phase context for pattern analysis
+  "activePhasesAtEntry": ["uptrend", "weekdays", "us-market-hours"],
+  "activePhasesAtExit": ["uptrend", "weekdays"],
+
+  // Indicator values at entry/exit (for AI analysis of what triggered the trade)
+  "entryIndicators": {
+    "RSI(14)": 28.5,
+    "SMA(200)": 41500.0,
+    "price": 42000.0,
+    "volume": 1250000.0
+  },
+  "exitIndicators": {
+    "RSI(14)": 72.3,
+    "SMA(200)": 42100.0,
+    "price": 43500.0,
+    "volume": 980000.0
+  },
+
+  // Indicator values at MFE/MAE points (for analyzing what led to best/worst moments)
+  "mfeIndicators": {
+    "RSI(14)": 68.2,
+    "SMA(200)": 41800.0,
+    "price": 43800.0,
+    "volume": 1100000.0
+  },
+  "maeIndicators": {
+    "RSI(14)": 32.1,
+    "SMA(200)": 41550.0,
+    "price": 41700.0,
+    "volume": 850000.0
+  }
+}
+```
+
+**Derived metrics** (via Trade methods):
+- `captureRatio()` = pnlPercent / mfe (how much of the move was captured)
+- `painRatio()` = |mae| / mfe (drawdown relative to potential)
+- `barsToMfe()` = mfeBar - entryBar (time to reach best price)
+- `barsToMae()` = maeBar - entryBar (time to reach worst price)
+
+### Performance Metrics
+```json
+{
+  "totalTrades": 45,
+  "winningTrades": 28,
+  "losingTrades": 17,
+  "winRate": 62.2,
+  "profitFactor": 2.15,
+  "totalReturnPercent": 34.5,
+  "maxDrawdownPercent": 8.2,
+
+  // Risk-adjusted metrics
+  "sharpeRatio": 1.85,
+  "sortinoRatio": 2.42,      // Uses only downside deviation
+
+  // Streak analysis
+  "maxConsecutiveWins": 7,
+  "maxConsecutiveLosses": 3,
+
+  // Aggregate trade quality
+  "averageMfe": 3.8,         // Average best unrealized P&L %
+  "averageMae": -2.1         // Average worst unrealized P&L %
+}
+```
+
+### AI Analysis Patterns
+
+**Using phase context to identify edge:**
+```
+If trades with activePhasesAtEntry containing "uptrend" have higher win rate:
+  → Strategy works better in trending markets
+  → Consider adding "uptrend" as required phase
+
+If trades exiting during "us-market-hours" have better P&L:
+  → US session exits capture more profit
+  → Consider time-based exit logic
+```
+
+**Using MFE/MAE for exit optimization:**
+```
+If averageMfe >> pnlPercent (low captureRatio):
+  → Exits are too early, leaving profit on table
+  → Consider wider take-profit or trailing stop
+
+If |averageMae| is high but winRate is good:
+  → Trades endure significant drawdown before winning
+  → Stop-loss might be appropriate or too wide
+
+If maeBar consistently < mfeBar for winners:
+  → Trades hit drawdown first, then recover
+  → Normal pattern, validates hold strategy
+```
+
+**Using indicator values for entry/exit optimization:**
+```
+If winning trades have entryIndicators["RSI(14)"] < 25 on average:
+  → Oversold entries perform better
+  → Consider tightening RSI threshold from 30 to 25
+
+If losing trades have entryIndicators["price"] > entryIndicators["SMA(200)"]:
+  → Entries above SMA(200) underperform
+  → Ensure "price > SMA(200)" is in entry condition
+
+If exitIndicators["RSI(14)"] is consistently > 70 for profitable exits:
+  → RSI overbought is a good exit signal
+  → Consider adding RSI exit condition to take profit zone
+
+Compare entryIndicators to exitIndicators:
+  → Track which indicators moved most during profitable trades
+  → Identify which indicator crossovers correlate with good exits
+
+Analyze mfeIndicators to find what conditions led to peak profit:
+  → If mfeIndicators["RSI(14)"] is consistently high at MFE
+  → Consider adding RSI-based trailing stop or take profit
+  → Compare mfeIndicators to exitIndicators to see what changed
+
+Analyze maeIndicators to understand drawdown causes:
+  → If maeIndicators show specific indicator levels at worst points
+  → Identify early warning signals for exits
+  → Use to optimize stop-loss placement
+```
+
+---
+
 ## AI Guidance
 
 **Before suggesting new features, check:**
@@ -543,9 +723,9 @@ Sequential price-checkpoint matching for detecting chart patterns.
 8. **Daily session levels** - PREV_DAY_POC/VAH/VAL, TODAY_POC/VAH/VAL (UTC day boundary)
 9. **Large trade detection** - WHALE_DELTA, WHALE_BUY_VOL, WHALE_SELL_VOL, LARGE_TRADE_COUNT
 10. **Funding rate** - FUNDING, FUNDING_8H + built-in funding phases (high/negative/extreme/neutral)
+11. **Open Interest** - OI, OI_CHANGE, OI_DELTA (auto-fetched 5m resolution, cache persists)
 
 **What's NOT yet implemented (potential future features):**
-- Open Interest (historical data limited to 30 days on Binance)
 - Liquidation data (requires external API like Coinglass)
 - Cross-symbol correlation (BTC dominance, ETH/BTC ratio)
 
@@ -572,12 +752,207 @@ When adding new DSL functions:
 
 ## Claude Code Integration
 
+### HTTP API
+
+When Tradery is running, an HTTP API is available for querying indicators, evaluating DSL conditions, and managing strategies. This uses the exact same calculation logic as backtests.
+
+**Connection Info:**
+
+The API uses dynamic port allocation and session-based authentication. On startup, Tradery writes `~/.tradery/api.json`:
+
+```json
+{
+  "port": 7842,
+  "token": "a1b2c3d4e5f6...",
+  "baseUrl": "http://localhost:7842"
+}
+```
+
+**Authentication:**
+
+All endpoints require a session token. Provide via:
+- Header: `X-Session-Token: <token>`
+- Query param: `?token=<token>`
+
+```bash
+# Read connection info
+API_INFO=$(cat ~/.tradery/api.json)
+PORT=$(echo $API_INFO | jq -r '.port')
+TOKEN=$(echo $API_INFO | jq -r '.token')
+
+# Use header auth (recommended)
+curl -H "X-Session-Token: $TOKEN" "http://localhost:$PORT/candles?symbol=BTCUSDT&timeframe=1h&bars=100"
+
+# Or query param auth
+curl "http://localhost:$PORT/candles?symbol=BTCUSDT&timeframe=1h&bars=100&token=$TOKEN"
+```
+
+**Endpoints:**
+
+```bash
+# Check if API is running
+curl -H "X-Session-Token: $TOKEN" "http://localhost:$PORT/status"
+
+# Get candle data
+curl -H "X-Session-Token: $TOKEN" "http://localhost:$PORT/candles?symbol=BTCUSDT&timeframe=1h&bars=100"
+
+# Get a single indicator
+curl -H "X-Session-Token: $TOKEN" "http://localhost:$PORT/indicator?name=RSI(14)&symbol=BTCUSDT&timeframe=1h&bars=100"
+
+# Get multiple indicators at once
+curl -H "X-Session-Token: $TOKEN" "http://localhost:$PORT/indicators?names=RSI(14),SMA(200),ATR(14)&symbol=BTCUSDT&timeframe=1h&bars=100"
+
+# Evaluate a DSL condition - find bars where condition is true
+curl -H "X-Session-Token: $TOKEN" "http://localhost:$PORT/eval?condition=RSI(14)<30&symbol=BTCUSDT&timeframe=1h&bars=500"
+```
+
+**Supported indicators:**
+- SMA(n), EMA(n), RSI(n), ATR(n)
+- ADX(n), PLUS_DI(n), MINUS_DI(n)
+- MACD(fast,slow,signal), MACD(12,26,9).line/signal/histogram
+- BBANDS(period,stdDev), BBANDS(20,2).upper/middle/lower
+- price, close, volume
+
+**Example: Find oversold conditions**
+```bash
+curl "http://localhost:7842/eval?condition=RSI(14)<30%20AND%20price>SMA(200)&symbol=BTCUSDT&timeframe=1h&bars=1000"
+# Returns: { "matches": [{ "bar": 45, "time": 1704067200000, "price": 42350 }, ...] }
+```
+
+**Strategy Management Endpoints:**
+
+```bash
+# List all strategies
+curl -H "X-Session-Token: $TOKEN" "http://localhost:$PORT/strategies"
+# Returns: { "strategies": [{ "id": "rsi-reversal", "name": "RSI Reversal", ... }] }
+
+# Get a strategy
+curl -H "X-Session-Token: $TOKEN" "http://localhost:$PORT/strategy/rsi-reversal"
+
+# Update a strategy (partial update)
+curl -X POST -H "X-Session-Token: $TOKEN" -H "Content-Type: application/json" \
+  "http://localhost:$PORT/strategy/rsi-reversal" \
+  -d '{"entrySettings": {"condition": "RSI(14) < 25"}}'
+
+# Run backtest (blocking - waits for completion)
+curl -X POST -H "X-Session-Token: $TOKEN" "http://localhost:$PORT/strategy/rsi-reversal/backtest"
+# Returns: { "success": true, "metrics": { "winRate": 62.5, ... }, "tradesCount": 48 }
+
+# Get latest results
+curl -H "X-Session-Token: $TOKEN" "http://localhost:$PORT/strategy/rsi-reversal/results"
+```
+
+**Phase Endpoints:**
+
+```bash
+# List all phases
+curl -H "X-Session-Token: $TOKEN" "http://localhost:$PORT/phases"
+# Returns: { "phases": [{ "id": "uptrend", "name": "Uptrend", "condition": "...", ... }] }
+
+# Get a specific phase
+curl -H "X-Session-Token: $TOKEN" "http://localhost:$PORT/phase/uptrend"
+
+# Find where a phase is active (phase bounds)
+curl -H "X-Session-Token: $TOKEN" "http://localhost:$PORT/phase/uptrend/bounds?symbol=BTCUSDT&bars=500"
+# Returns time ranges when the phase condition was true:
+# {
+#   "phaseId": "uptrend",
+#   "phaseName": "Uptrend",
+#   "bounds": [
+#     { "startBar": 50, "endBar": 120, "startTime": 1704067200000, "endTime": 1704319200000, "bars": 70 },
+#     { "startBar": 200, "endBar": 350, "startTime": ..., "ongoing": true }
+#   ],
+#   "activeBars": 221,
+#   "activePercent": 49.22,
+#   "boundCount": 2
+# }
+
+# Evaluate phase on different timeframe/symbol
+curl -H "X-Session-Token: $TOKEN" "http://localhost:$PORT/phase/uptrend/bounds?symbol=ETHUSDT&timeframe=4h&bars=200"
+```
+
+**AI Workflow Example:**
+```bash
+# Read connection info once
+API_INFO=$(cat ~/.tradery/api.json)
+PORT=$(echo $API_INFO | jq -r '.port')
+TOKEN=$(echo $API_INFO | jq -r '.token')
+
+# 1. Check current strategy
+curl -H "X-Session-Token: $TOKEN" "http://localhost:$PORT/strategy/my-strategy"
+
+# 2. Check when uptrend phase is active
+curl -H "X-Session-Token: $TOKEN" "http://localhost:$PORT/phase/uptrend/bounds?bars=500"
+
+# 3. Analyze market conditions
+curl -H "X-Session-Token: $TOKEN" "http://localhost:$PORT/eval?condition=RSI(14)<30&symbol=BTCUSDT&timeframe=1d&bars=200"
+
+# 4. Update entry condition based on analysis
+curl -X POST -H "X-Session-Token: $TOKEN" -H "Content-Type: application/json" \
+  "http://localhost:$PORT/strategy/my-strategy" \
+  -d '{"entrySettings": {"condition": "RSI(14) < 25 AND ADX(14) > 25"}}'
+
+# 5. Run backtest to validate
+curl -X POST -H "X-Session-Token: $TOKEN" "http://localhost:$PORT/strategy/my-strategy/backtest"
+
+# 6. If improved, keep changes. If not, try different parameters.
+```
+
+### File-Based Access
+
 With files on disk, Claude Code can:
-- View/edit strategies: `~/.tradery/strategies/*.json`
-- View/edit phases: `~/.tradery/phases/*/phase.json`
-- View/edit hoop patterns: `~/.tradery/hoops/*/hoop.json`
-- See results: `~/.tradery/results/latest.json`
+- View/edit strategies: `~/.tradery/strategies/{id}/strategy.json`
+- View summary + analysis: `~/.tradery/strategies/{id}/summary.json`
+- Browse trades by filename: `~/.tradery/strategies/{id}/trades/`
+- View full results: `~/.tradery/strategies/{id}/latest.json`
+- View result history: `~/.tradery/strategies/{id}/history/*.json`
+- View/edit phases: `~/.tradery/phases/{id}/phase.json`
+- View/edit hoop patterns: `~/.tradery/hoops/{id}/hoop.json`
 - Query OHLC data: `~/.tradery/data/{symbol}/{timeframe}/*.csv`
+
+### AI-Friendly Result Structure
+
+**summary.json** - Quick overview without parsing all trades:
+```json
+{
+  "metrics": { "winRate": 62.5, "sharpeRatio": 1.85, ... },
+  "tradeCounts": { "total": 48, "winners": 30, "losers": 18 },
+  "analysis": {
+    "byPhase": {
+      "uptrend": { "count": 20, "winRate": 75, "vsOverall": +12.5 },
+      "ranging": { "count": 15, "winRate": 46.7, "vsOverall": -15.8 }
+    },
+    "byHour": { "14": { "winRate": 80 }, "03": { "winRate": 40 } },
+    "byDayOfWeek": { "Mon": { "winRate": 70 }, "Fri": { "winRate": 55 } },
+    "suggestions": [
+      "Consider requiring 'uptrend' phase (+13% win rate, 20 trades)",
+      "Exits may be too early - capturing only 45% of average MFE"
+    ]
+  }
+}
+```
+
+**trades/** - Individual files with descriptive names:
+```
+ls trades/
+0001_WIN_+2p5pct_uptrend_weekdays.json
+0002_LOSS_-1p2pct_ranging.json
+0003_WIN_+4p1pct_uptrend_us-market-hours.json
+0004_REJECTED_0pct.json
+```
+
+AI can glob filenames to quickly understand:
+- `ls *_WIN_*` → Count/list winners
+- `ls *_LOSS_*uptrend*` → Find losses during uptrend
+- `ls *REJECTED*` → See rejected signals
+
+### Workflow for AI Analysis
+
+1. **Read summary.json** for overview and pre-computed suggestions
+2. **Glob trade filenames** to understand distribution
+3. **Sample specific trades** (e.g., read 5 biggest losses) for deeper analysis
+4. **Modify strategy.json** based on findings
+5. App auto-reloads and re-runs backtest
 
 ### Auto-Reload
 FileWatcher monitors strategy/phase/hoop directories. External edits trigger automatic reload and backtest re-run.

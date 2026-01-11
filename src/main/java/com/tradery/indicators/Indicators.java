@@ -261,6 +261,55 @@ public final class Indicators {
         return new BollingerResult(upper, middle, lower);
     }
 
+    /**
+     * Bollinger upper band at specific bar
+     */
+    public static double bbandsUpperAt(List<Candle> candles, int period, double stdDevMultiplier, int barIndex) {
+        if (barIndex < period - 1 || barIndex >= candles.size()) {
+            return Double.NaN;
+        }
+        double mean = 0;
+        for (int j = barIndex - period + 1; j <= barIndex; j++) {
+            mean += candles.get(j).close();
+        }
+        mean /= period;
+        double sumSquaredDiff = 0;
+        for (int j = barIndex - period + 1; j <= barIndex; j++) {
+            double diff = candles.get(j).close() - mean;
+            sumSquaredDiff += diff * diff;
+        }
+        double stdDev = Math.sqrt(sumSquaredDiff / period);
+        return mean + stdDevMultiplier * stdDev;
+    }
+
+    /**
+     * Bollinger middle band at specific bar
+     */
+    public static double bbandsMiddleAt(List<Candle> candles, int period, double stdDevMultiplier, int barIndex) {
+        return smaAt(candles, period, barIndex);
+    }
+
+    /**
+     * Bollinger lower band at specific bar
+     */
+    public static double bbandsLowerAt(List<Candle> candles, int period, double stdDevMultiplier, int barIndex) {
+        if (barIndex < period - 1 || barIndex >= candles.size()) {
+            return Double.NaN;
+        }
+        double mean = 0;
+        for (int j = barIndex - period + 1; j <= barIndex; j++) {
+            mean += candles.get(j).close();
+        }
+        mean /= period;
+        double sumSquaredDiff = 0;
+        for (int j = barIndex - period + 1; j <= barIndex; j++) {
+            double diff = candles.get(j).close() - mean;
+            sumSquaredDiff += diff * diff;
+        }
+        double stdDev = Math.sqrt(sumSquaredDiff / period);
+        return mean - stdDevMultiplier * stdDev;
+    }
+
     // ========== ATR ==========
 
     /**

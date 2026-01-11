@@ -67,6 +67,11 @@ public class Lexer {
         Map.entry("FUNDING", TokenType.FUNDING_FUNC),
         Map.entry("FUNDING_8H", TokenType.FUNDING_FUNC),
 
+        // Open Interest functions
+        Map.entry("OI", TokenType.OI_FUNC),
+        Map.entry("OI_CHANGE", TokenType.OI_FUNC),
+        Map.entry("OI_DELTA", TokenType.OI_FUNC),
+
         // Price references
         Map.entry("price", TokenType.PRICE),
         Map.entry("open", TokenType.PRICE),

@@ -95,6 +95,11 @@ public final class ChartStyles {
     public static final Color FUNDING_NEGATIVE = new Color(52, 152, 219);   // Blue (shorts pay)
     public static final Color FUNDING_8H_COLOR = new Color(149, 165, 166);  // Gray
 
+    // ===== Open Interest Colors =====
+    public static final Color OI_LINE_COLOR = new Color(155, 89, 182);      // Purple for OI line
+    public static final Color OI_POSITIVE = new Color(38, 166, 91);         // Green (OI increasing)
+    public static final Color OI_NEGATIVE = new Color(231, 76, 60);         // Red (OI decreasing)
+
     // ===== Hoop Pattern Colors =====
     public static final Color[] HOOP_COLORS = {
         new Color(76, 175, 80),   // Green

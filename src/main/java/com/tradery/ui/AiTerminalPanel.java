@@ -116,7 +116,18 @@ public class AiTerminalPanel extends JPanel {
             env.put("LANG", "en_US.UTF-8");
 
             // Build command based on AI type
-            String[] command;
+            // Use login shell to ensure full PATH is available (npm, homebrew, etc.)
+            String shell = System.getenv("SHELL");
+            if (shell == null || shell.isEmpty()) {
+                shell = "/bin/zsh";  // Default on macOS
+            }
+
+            // Start interactive login shell - we'll send the command after it starts
+            // This ensures we see any error messages if the command fails
+            String[] command = new String[]{shell, "-l", "-i"};
+
+            // Build the actual AI command to send after shell starts
+            String aiCommand;
             if ("claude".equals(aiType)) {
                 // Pre-approve edit/write permissions for strategy files
                 String traderyPath = System.getProperty("user.home") + "/.tradery";
@@ -124,10 +135,9 @@ public class AiTerminalPanel extends JPanel {
                     "Edit:%s/**,Write:%s/**,Read:%s/**",
                     traderyPath, traderyPath, traderyPath
                 );
-                command = new String[]{"claude", "--allowedTools", allowedTools};
+                aiCommand = "claude --allowedTools '" + allowedTools + "'";
             } else {
-                // Codex or other AI - just use the command directly
-                command = new String[]{aiType};
+                aiCommand = aiType;
             }
 
             // Build PTY process
@@ -154,21 +164,34 @@ public class AiTerminalPanel extends JPanel {
                 terminalWidget.getTerminalPanel().requestFocusInWindow();
             });
 
-            // Send initial prompt after delay (wait for AI to fully initialize)
-            if (initialPrompt != null && !initialPrompt.isEmpty()) {
-                Thread promptSender = new Thread(() -> {
-                    try {
-                        Thread.sleep(2000);  // Wait 2 seconds for AI to be ready
+            // Send AI command after shell starts, then send initial prompt
+            final String finalAiCommand = aiCommand;
+            Thread commandSender = new Thread(() -> {
+                try {
+                    // Wait for shell to fully initialize (prompt rendered)
+                    Thread.sleep(1000);
+
+                    // Send the AI command (e.g., "codex" or "claude --allowedTools ...")
+                    connector.write(finalAiCommand);
+                    Thread.sleep(100);
+                    // Use newline to execute (some terminals need \n, others \r)
+                    connector.write("\n");
+
+                    // Wait for AI to start up
+                    Thread.sleep(3000);
+
+                    // Send initial prompt if provided
+                    if (initialPrompt != null && !initialPrompt.isEmpty()) {
                         connector.write(initialPrompt);
-                        Thread.sleep(500);   // Pause before enter
-                        connector.write("\r");  // Try carriage return
-                    } catch (Exception e) {
-                        e.printStackTrace();
+                        Thread.sleep(300);
+                        connector.write("\n");
                     }
-                });
-                promptSender.setDaemon(true);
-                promptSender.start();
-            }
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+            });
+            commandSender.setDaemon(true);
+            commandSender.start();
 
             // Monitor process completion
             Thread monitor = new Thread(() -> {

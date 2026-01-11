@@ -1,6 +1,8 @@
 package com.tradery.model;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import java.util.List;
+import java.util.Map;
 
 /**
  * Represents a completed or open trade.
@@ -27,18 +29,47 @@ public record Trade(
     Double mfe,         // Maximum Favorable Excursion (best P&L % during trade)
     Double mae,         // Maximum Adverse Excursion (worst drawdown % during trade)
     Integer mfeBar,     // Bar when MFE was reached
-    Integer maeBar      // Bar when MAE was reached
+    Integer maeBar,     // Bar when MAE was reached
+    // Phase context for AI analysis
+    List<String> activePhasesAtEntry,  // Phase IDs that were active when trade opened
+    List<String> activePhasesAtExit,   // Phase IDs that were active when trade closed
+    // Indicator values for AI analysis (what triggered the trade)
+    Map<String, Double> entryIndicators,  // Indicator values at entry (e.g., "RSI(14)" -> 28.5)
+    Map<String, Double> exitIndicators,   // Indicator values at exit
+    Map<String, Double> mfeIndicators,    // Indicator values at MFE point (best price reached)
+    Map<String, Double> maeIndicators     // Indicator values at MAE point (worst drawdown)
 ) {
     /**
      * Create a new open trade
      */
     public static Trade open(String strategyId, String side, int bar, long timestamp,
                              double price, double quantity, double commission, String groupId) {
+        return open(strategyId, side, bar, timestamp, price, quantity, commission, groupId, null, null);
+    }
+
+    /**
+     * Create a new open trade with phase context
+     */
+    public static Trade open(String strategyId, String side, int bar, long timestamp,
+                             double price, double quantity, double commission, String groupId,
+                             List<String> activePhasesAtEntry) {
+        return open(strategyId, side, bar, timestamp, price, quantity, commission, groupId, activePhasesAtEntry, null);
+    }
+
+    /**
+     * Create a new open trade with phase context and indicator values
+     */
+    public static Trade open(String strategyId, String side, int bar, long timestamp,
+                             double price, double quantity, double commission, String groupId,
+                             List<String> activePhasesAtEntry, Map<String, Double> entryIndicators) {
         String id = "trade-" + timestamp + "-" + (int)(Math.random() * 10000);
         return new Trade(
             id, strategyId, side, bar, timestamp, price, quantity,
             null, null, null, null, null, commission, null, groupId, null,
-            null, null, null, null  // MFE/MAE analytics - populated on close
+            null, null, null, null,  // MFE/MAE analytics - populated on close
+            activePhasesAtEntry, null,  // Phases at entry, exit populated on close
+            entryIndicators, null,  // Indicators at entry, exit populated on close
+            null, null  // MFE/MAE indicators - populated on close
         );
     }
 
@@ -46,11 +77,30 @@ public record Trade(
      * Create a rejected trade (signal fired but no capital available)
      */
     public static Trade rejected(String strategyId, String side, int bar, long timestamp, double price) {
+        return rejected(strategyId, side, bar, timestamp, price, null, null);
+    }
+
+    /**
+     * Create a rejected trade with phase context
+     */
+    public static Trade rejected(String strategyId, String side, int bar, long timestamp, double price,
+                                  List<String> activePhases) {
+        return rejected(strategyId, side, bar, timestamp, price, activePhases, null);
+    }
+
+    /**
+     * Create a rejected trade with phase context and indicators
+     */
+    public static Trade rejected(String strategyId, String side, int bar, long timestamp, double price,
+                                  List<String> activePhases, Map<String, Double> indicators) {
         String id = "trade-" + timestamp + "-" + (int)(Math.random() * 10000);
         return new Trade(
             id, strategyId, side, bar, timestamp, price, 0,
             bar, timestamp, price, null, null, null, "rejected", null, null,
-            null, null, null, null  // No analytics for rejected trades
+            null, null, null, null,  // No analytics for rejected trades
+            activePhases, activePhases,  // Same phases for entry/exit (instant rejection)
+            indicators, indicators,  // Same indicators for entry/exit
+            null, null  // No MFE/MAE indicators for rejected trades
         );
     }
 
@@ -63,7 +113,10 @@ public record Trade(
         return new Trade(
             id, strategyId, side, signalBar, signalTimestamp, signalPrice, 0,
             expirationBar, signalTimestamp, signalPrice, null, null, null, "expired", null, null,
-            null, null, null, null  // No analytics for expired orders
+            null, null, null, null,  // No analytics for expired orders
+            null, null,  // No phase context for expired orders
+            null, null,  // No indicator context for expired orders
+            null, null   // No MFE/MAE indicators for expired orders
         );
     }
 
@@ -95,7 +148,7 @@ public record Trade(
                                     String exitReason, String exitZone,
                                     Double mfe, Double mae, Integer mfeBar, Integer maeBar) {
         return partialCloseWithAnalytics(exitBar, exitTime, exitPrice, quantity, commissionRate, exitReason, exitZone,
-                                         mfe, mae, mfeBar, maeBar);
+                                         mfe, mae, mfeBar, maeBar, null, null);
     }
 
     /**
@@ -105,15 +158,49 @@ public record Trade(
     public Trade partialClose(int exitBar, long exitTime, double exitPrice, double exitQuantity,
                               double commissionRate, String exitReason, String exitZone) {
         return partialCloseWithAnalytics(exitBar, exitTime, exitPrice, exitQuantity, commissionRate, exitReason, exitZone,
-                                         null, null, null, null);
+                                         null, null, null, null, null, null);
     }
 
     /**
-     * Partially close with analytics - the core close method.
+     * Partially close with analytics - delegates to full version.
      */
     public Trade partialCloseWithAnalytics(int exitBar, long exitTime, double exitPrice, double exitQuantity,
                                            double commissionRate, String exitReason, String exitZone,
                                            Double mfe, Double mae, Integer mfeBar, Integer maeBar) {
+        return partialCloseWithAnalytics(exitBar, exitTime, exitPrice, exitQuantity, commissionRate, exitReason, exitZone,
+                                         mfe, mae, mfeBar, maeBar, null, null);
+    }
+
+    /**
+     * Partially close with analytics and phase context.
+     */
+    public Trade partialCloseWithAnalytics(int exitBar, long exitTime, double exitPrice, double exitQuantity,
+                                           double commissionRate, String exitReason, String exitZone,
+                                           Double mfe, Double mae, Integer mfeBar, Integer maeBar,
+                                           List<String> activePhasesAtExit) {
+        return partialCloseWithAnalytics(exitBar, exitTime, exitPrice, exitQuantity, commissionRate, exitReason, exitZone,
+                                         mfe, mae, mfeBar, maeBar, activePhasesAtExit, null, null, null);
+    }
+
+    /**
+     * Partially close with analytics, phase context, and exit indicator values.
+     */
+    public Trade partialCloseWithAnalytics(int exitBar, long exitTime, double exitPrice, double exitQuantity,
+                                           double commissionRate, String exitReason, String exitZone,
+                                           Double mfe, Double mae, Integer mfeBar, Integer maeBar,
+                                           List<String> activePhasesAtExit, Map<String, Double> exitIndicators) {
+        return partialCloseWithAnalytics(exitBar, exitTime, exitPrice, exitQuantity, commissionRate, exitReason, exitZone,
+                                         mfe, mae, mfeBar, maeBar, activePhasesAtExit, exitIndicators, null, null);
+    }
+
+    /**
+     * Partially close with full analytics, phase context, exit and MFE/MAE indicator values - the core close method.
+     */
+    public Trade partialCloseWithAnalytics(int exitBar, long exitTime, double exitPrice, double exitQuantity,
+                                           double commissionRate, String exitReason, String exitZone,
+                                           Double mfe, Double mae, Integer mfeBar, Integer maeBar,
+                                           List<String> activePhasesAtExit, Map<String, Double> exitIndicators,
+                                           Map<String, Double> mfeIndicators, Map<String, Double> maeIndicators) {
         double grossPnl = (exitPrice - entryPrice) * exitQuantity;
         if ("short".equals(side)) {
             grossPnl = -grossPnl;
@@ -135,7 +222,10 @@ public record Trade(
         return new Trade(
             exitId, strategyId, side, entryBar, entryTime, entryPrice, exitQuantity,
             exitBar, exitTime, exitPrice, netPnl, pnlPct, totalCommission, exitReason, groupId, exitZone,
-            mfe, mae, mfeBar, maeBar
+            mfe, mae, mfeBar, maeBar,
+            this.activePhasesAtEntry, activePhasesAtExit,  // Preserve entry phases, add exit phases
+            this.entryIndicators, exitIndicators,  // Preserve entry indicators, add exit indicators
+            mfeIndicators, maeIndicators  // Indicator values at MFE/MAE points
         );
     }
 

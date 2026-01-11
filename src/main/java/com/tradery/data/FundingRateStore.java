@@ -73,12 +73,24 @@ public class FundingRateStore {
             saveToCache(symbol, new ArrayList<>(ratesMap.values()));
         }
 
-        // Filter to requested range
+        // Filter to requested range, but include one rate before startTime for lookback
+        // (funding rates come every 8 hours, so a 1-hour window might have no rates)
         List<FundingRate> result = new ArrayList<>();
+        FundingRate latestBeforeStart = null;
+
         for (FundingRate fr : ratesMap.values()) {
-            if (fr.fundingTime() >= startTime && fr.fundingTime() <= endTime) {
+            if (fr.fundingTime() < startTime) {
+                // Track the most recent rate before our window
+                latestBeforeStart = fr;
+            } else if (fr.fundingTime() <= endTime) {
+                // Include rates within the window
                 result.add(fr);
             }
+        }
+
+        // Add the lookback rate at the beginning if we have one
+        if (latestBeforeStart != null) {
+            result.add(0, latestBeforeStart);
         }
 
         return result;
@@ -97,7 +109,8 @@ public class FundingRateStore {
         YearMonth startMonth = YearMonth.from(Instant.ofEpochMilli(startTime).atZone(ZoneOffset.UTC));
         YearMonth endMonth = YearMonth.from(Instant.ofEpochMilli(endTime).atZone(ZoneOffset.UTC));
 
-        YearMonth current = startMonth;
+        // Load one month before startMonth for lookback (funding rates come every 8h)
+        YearMonth current = startMonth.minusMonths(1);
         while (!current.isAfter(endMonth)) {
             String monthKey = current.format(MONTH_FORMAT);
             File cacheFile = new File(symbolDir, monthKey + ".csv");

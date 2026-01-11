@@ -590,8 +590,19 @@ public final class OrderflowIndicators {
 
     /**
      * Get resolution in milliseconds.
+     * Supports sub-minute resolutions like "15s", "30s".
      */
     private static long getResolutionMs(String resolution) {
+        // Handle sub-minute resolutions (e.g., "15s", "30s")
+        if (resolution.endsWith("s")) {
+            try {
+                int seconds = Integer.parseInt(resolution.substring(0, resolution.length() - 1));
+                return seconds * 1000L;
+            } catch (NumberFormatException e) {
+                // Fall through to switch
+            }
+        }
+
         return switch (resolution) {
             case "1m" -> 60_000L;
             case "3m" -> 3 * 60_000L;

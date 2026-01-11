@@ -199,6 +199,11 @@ public class Parser {
             return new AstNode.SessionOrderflowFunctionCall(func);
         }
 
+        // Open Interest function (OI, OI_CHANGE, OI_DELTA)
+        if (check(TokenType.OI_FUNC)) {
+            return oiFunctionCall();
+        }
+
         throw new ParserException("Unexpected token '" + current().value() +
             "' at position " + current().position());
     }
@@ -244,6 +249,38 @@ public class Parser {
         advance();
         // FUNDING and FUNDING_8H have no parameters
         return new AstNode.FundingFunctionCall(func);
+    }
+
+    private AstNode.OIFunctionCall oiFunctionCall() {
+        String func = current().value();
+        advance();
+
+        Integer period = null;
+
+        // OI_DELTA requires a period parameter, OI and OI_CHANGE do not
+        if (check(TokenType.LPAREN)) {
+            advance();
+            List<Double> params = parseNumberList();
+            expect(TokenType.RPAREN, "Expected ')' after " + func + " parameters");
+
+            if (!params.isEmpty()) {
+                period = params.get(0).intValue();
+            }
+        }
+
+        // Validate based on function type
+        switch (func) {
+            case "OI", "OI_CHANGE" -> {
+                // No parameters needed
+            }
+            case "OI_DELTA" -> {
+                if (period == null) {
+                    throw new ParserException("OI_DELTA requires a period parameter, e.g., OI_DELTA(12)");
+                }
+            }
+        }
+
+        return new AstNode.OIFunctionCall(func, period);
     }
 
     private AstNode indicatorCall() {

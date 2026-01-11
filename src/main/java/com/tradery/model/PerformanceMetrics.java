@@ -25,14 +25,21 @@ public record PerformanceMetrics(
     double finalEquity,
     double totalFees,
     double maxCapitalUsage,
-    double maxCapitalDollars
+    double maxCapitalDollars,
+    // Additional risk metrics for AI analysis
+    double sortinoRatio,        // Risk-adjusted return using only downside deviation
+    int maxConsecutiveWins,     // Longest winning streak
+    int maxConsecutiveLosses,   // Longest losing streak
+    double averageMfe,          // Average Maximum Favorable Excursion (%)
+    double averageMae           // Average Maximum Adverse Excursion (%)
 ) {
     /**
      * Create empty metrics (no trades)
      */
     public static PerformanceMetrics empty(double initialCapital) {
         return new PerformanceMetrics(
-            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, initialCapital, 0, 0, 0
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, initialCapital, 0, 0, 0,
+            0, 0, 0, 0, 0  // New risk metrics
         );
     }
 
@@ -58,6 +65,19 @@ public record PerformanceMetrics(
         double maxDD = 0;
 
         java.util.List<Double> returns = new java.util.ArrayList<>();
+        java.util.List<Double> negativeReturns = new java.util.ArrayList<>();  // For Sortino
+
+        // Streak tracking
+        int currentWinStreak = 0;
+        int currentLossStreak = 0;
+        int maxWinStreak = 0;
+        int maxLossStreak = 0;
+
+        // MFE/MAE tracking
+        double totalMfe = 0;
+        double totalMae = 0;
+        int mfeCount = 0;
+        int maeCount = 0;
 
         for (Trade t : trades) {
             // Track fees for all trades (including rejected)
@@ -74,10 +94,18 @@ public record PerformanceMetrics(
                 winners++;
                 totalWins += pnl;
                 largestWin = Math.max(largestWin, pnl);
+                // Streak tracking
+                currentWinStreak++;
+                maxWinStreak = Math.max(maxWinStreak, currentWinStreak);
+                currentLossStreak = 0;
             } else if (pnl < 0) {
                 losers++;
                 totalLosses += Math.abs(pnl);
                 largestLoss = Math.max(largestLoss, Math.abs(pnl));
+                // Streak tracking
+                currentLossStreak++;
+                maxLossStreak = Math.max(maxLossStreak, currentLossStreak);
+                currentWinStreak = 0;
             }
 
             // Track drawdown
@@ -87,14 +115,27 @@ public record PerformanceMetrics(
             double dd = peak - equity;
             maxDD = Math.max(maxDD, dd);
 
-            // Returns for Sharpe calculation
+            // Returns for Sharpe/Sortino calculation
             if (t.pnlPercent() != null) {
                 returns.add(t.pnlPercent());
+                if (t.pnlPercent() < 0) {
+                    negativeReturns.add(t.pnlPercent());
+                }
             }
 
             // Holding period
             if (t.exitTime() != null) {
                 totalHoldingPeriod += (t.exitTime() - t.entryTime());
+            }
+
+            // MFE/MAE aggregation
+            if (t.mfe() != null) {
+                totalMfe += t.mfe();
+                mfeCount++;
+            }
+            if (t.mae() != null) {
+                totalMae += t.mae();
+                maeCount++;
             }
         }
 
@@ -108,16 +149,31 @@ public record PerformanceMetrics(
         double maxDDPct = peak > 0 ? (maxDD / peak) * 100 : 0;
         double avgHolding = total > 0 ? totalHoldingPeriod / total / (60 * 60 * 1000) : 0; // in hours
 
-        // Sharpe Ratio (annualized, assuming 252 trading days)
+        // Sharpe and Sortino Ratios (annualized, assuming 252 trading days)
         double sharpe = 0;
+        double sortino = 0;
         if (!returns.isEmpty()) {
-            double mean = returns.stream().mapToDouble(d -> d).average().orElse(0);
+            final double mean = returns.stream().mapToDouble(d -> d).average().orElse(0);
             double variance = returns.stream().mapToDouble(d -> Math.pow(d - mean, 2)).average().orElse(0);
             double stdDev = Math.sqrt(variance);
             if (stdDev > 0) {
                 sharpe = (mean / stdDev) * Math.sqrt(252);
             }
+
+            // Sortino Ratio (uses only downside deviation)
+            double downsideVariance = returns.stream()
+                .mapToDouble(r -> r < 0 ? r * r : 0)
+                .average()
+                .orElse(0);
+            double downsideDeviation = Math.sqrt(downsideVariance);
+            if (downsideDeviation > 0) {
+                sortino = (mean / downsideDeviation) * Math.sqrt(252);
+            }
         }
+
+        // Average MFE/MAE
+        double avgMfe = mfeCount > 0 ? totalMfe / mfeCount : 0;
+        double avgMae = maeCount > 0 ? totalMae / maeCount : 0;
 
         // Calculate max capital usage
         double[] maxCap = calculateMaxCapitalUsage(trades, initialCapital);
@@ -125,7 +181,8 @@ public record PerformanceMetrics(
         return new PerformanceMetrics(
             total, winners, losers, winRate, profitFactor,
             totalReturn, totalReturnPct, maxDD, maxDDPct, sharpe,
-            avgWin, avgLoss, largestWin, largestLoss, avgHolding, equity, totalFees, maxCap[0], maxCap[1]
+            avgWin, avgLoss, largestWin, largestLoss, avgHolding, equity, totalFees, maxCap[0], maxCap[1],
+            sortino, maxWinStreak, maxLossStreak, avgMfe, avgMae
         );
     }
 

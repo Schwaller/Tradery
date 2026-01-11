@@ -70,8 +70,16 @@ public class ExitConfigPanel extends JPanel {
         contentPanel.add(Box.createVerticalStrut(4));
         contentPanel.add(zoneListPanel);
 
-        // Wrap in scroll pane
-        JScrollPane scrollPane = new JScrollPane(contentPanel);
+        // Wrap in scroll pane - override updateUI to preserve borderless look across theme changes
+        JScrollPane scrollPane = new JScrollPane(contentPanel) {
+            @Override
+            public void updateUI() {
+                super.updateUI();
+                setBorder(null);
+                setOpaque(false);
+                getViewport().setOpaque(false);
+            }
+        };
         scrollPane.setBorder(null);
         scrollPane.setOpaque(false);
         scrollPane.getViewport().setOpaque(false);

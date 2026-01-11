@@ -86,6 +86,14 @@ public sealed interface AstNode {
     record SessionOrderflowFunctionCall(String func) implements AstNode {}
 
     /**
+     * Open Interest function call:
+     * - OI: Current open interest value
+     * - OI_CHANGE: OI change from previous bar
+     * - OI_DELTA(period): OI change over N bars
+     */
+    record OIFunctionCall(String func, Integer period) implements AstNode {}
+
+    /**
      * Property access: MACD(12,26,9).signal, BBANDS(20,2).upper
      */
     record PropertyAccess(IndicatorCall object, String property) implements AstNode {}

@@ -116,6 +116,9 @@ public class ChartsPanel extends JPanel {
         // Apply funding chart setting
         setFundingChartEnabled(config.isFundingEnabled());
 
+        // Apply OI chart setting
+        setOiChartEnabled(config.isOiEnabled());
+
         // Apply core chart settings
         setVolumeChartEnabled(config.isVolumeChartEnabled());
         setEquityChartEnabled(config.isEquityChartEnabled());
@@ -234,14 +237,16 @@ public class ChartsPanel extends JPanel {
             indicatorManager.getVolumeRatioChartPanel(),
             indicatorManager.getWhaleChartPanel(),
             indicatorManager.getRetailChartPanel(),
-            indicatorManager.getFundingChartPanel());
+            indicatorManager.getFundingChartPanel(),
+            indicatorManager.getOiChartPanel());
 
         // Sync domain axes
         JFreeChart[] otherCharts = {
             volumeChart, equityChart, comparisonChart, capitalUsageChart, tradePLChart,
             indicatorManager.getRsiChart(), indicatorManager.getMacdChart(), indicatorManager.getAtrChart(),
             indicatorManager.getDeltaChart(), indicatorManager.getCvdChart(), indicatorManager.getVolumeRatioChart(),
-            indicatorManager.getWhaleChart(), indicatorManager.getRetailChart(), indicatorManager.getFundingChart()
+            indicatorManager.getWhaleChart(), indicatorManager.getRetailChart(), indicatorManager.getFundingChart(),
+            indicatorManager.getOiChart()
         };
         crosshairManager.syncDomainAxes(priceChart, otherCharts);
     }
@@ -292,16 +297,21 @@ public class ChartsPanel extends JPanel {
     }
 
     private void updateChartLayout() {
+        // Include ALL charts so axis visibility can be controlled for each
         JFreeChart[] allCharts = {
             priceChart, volumeChart,
             indicatorManager.getRsiChart(), indicatorManager.getMacdChart(), indicatorManager.getAtrChart(),
-            indicatorManager.getDeltaChart(), indicatorManager.getFundingChart(),
+            indicatorManager.getDeltaChart(), indicatorManager.getCvdChart(), indicatorManager.getVolumeRatioChart(),
+            indicatorManager.getWhaleChart(), indicatorManager.getRetailChart(),
+            indicatorManager.getFundingChart(), indicatorManager.getOiChart(),
             equityChart, comparisonChart, capitalUsageChart, tradePLChart
         };
         JPanel[] allWrappers = {
             zoomManager.getChartWrappers()[0], zoomManager.getChartWrappers()[1],
             indicatorManager.getRsiChartWrapper(), indicatorManager.getMacdChartWrapper(), indicatorManager.getAtrChartWrapper(),
-            indicatorManager.getDeltaChartWrapper(), indicatorManager.getFundingChartWrapper(),
+            indicatorManager.getDeltaChartWrapper(), indicatorManager.getCvdChartWrapper(), indicatorManager.getVolumeRatioChartWrapper(),
+            indicatorManager.getWhaleChartWrapper(), indicatorManager.getRetailChartWrapper(),
+            indicatorManager.getFundingChartWrapper(), indicatorManager.getOiChartWrapper(),
             zoomManager.getChartWrappers()[2], zoomManager.getChartWrappers()[3],
             zoomManager.getChartWrappers()[4], zoomManager.getChartWrappers()[5]
         };
@@ -611,6 +621,14 @@ public class ChartsPanel extends JPanel {
         return indicatorManager.isFundingChartEnabled();
     }
 
+    public void setOiChartEnabled(boolean enabled) {
+        indicatorManager.setOiChartEnabled(enabled);
+    }
+
+    public boolean isOiChartEnabled() {
+        return indicatorManager.isOiChartEnabled();
+    }
+
     public void setIndicatorEngine(com.tradery.indicators.IndicatorEngine engine) {
         indicatorManager.setIndicatorEngine(engine);
         overlayManager.setIndicatorEngine(engine);
@@ -680,6 +698,7 @@ public class ChartsPanel extends JPanel {
         ChartStyles.stylizeChart(indicatorManager.getWhaleChart(), "Whale Delta");
         ChartStyles.stylizeChart(indicatorManager.getRetailChart(), "Retail Delta");
         ChartStyles.stylizeChart(indicatorManager.getFundingChart(), "Funding");
+        ChartStyles.stylizeChart(indicatorManager.getOiChart(), "Open Interest");
 
         // Update container background
         chartsContainer.setBackground(ChartStyles.BACKGROUND_COLOR());
@@ -715,7 +734,7 @@ public class ChartsPanel extends JPanel {
         JFreeChart[] allCharts = {
             priceChart, volumeChart, equityChart, comparisonChart, capitalUsageChart, tradePLChart,
             indicatorManager.getRsiChart(), indicatorManager.getMacdChart(), indicatorManager.getAtrChart(),
-            indicatorManager.getDeltaChart(), indicatorManager.getFundingChart()
+            indicatorManager.getDeltaChart(), indicatorManager.getFundingChart(), indicatorManager.getOiChart()
         };
         for (JFreeChart chart : allCharts) {
             if (chart != null) {
@@ -1175,5 +1194,48 @@ public class ChartsPanel extends JPanel {
         tradePLChart.getXYPlot().setDataset(new TimeSeriesCollection());
         volumeChart.getXYPlot().setDataset(new XYSeriesCollection());
         overlayManager.clearAll();
+    }
+
+    // ===== Chart Refresh Methods (for async VIEW data loading) =====
+
+    /**
+     * Refresh the funding chart with new data.
+     * Called when VIEW tier funding data arrives asynchronously.
+     */
+    public void refreshFundingChart() {
+        if (currentCandles != null && !currentCandles.isEmpty()) {
+            indicatorManager.updateFundingChart(currentCandles);
+        }
+    }
+
+    /**
+     * Refresh the OI chart with new data.
+     * Called when VIEW tier OI data arrives asynchronously.
+     */
+    public void refreshOiChart() {
+        if (currentCandles != null && !currentCandles.isEmpty()) {
+            indicatorManager.updateOiChart(currentCandles);
+        }
+    }
+
+    /**
+     * Refresh orderflow charts (delta, CVD, volume ratio, etc.) with new data.
+     * Called when VIEW tier aggTrades data arrives asynchronously.
+     */
+    public void refreshOrderflowCharts() {
+        if (currentCandles != null && !currentCandles.isEmpty()) {
+            indicatorManager.updateDeltaChart(currentCandles);
+            indicatorManager.updateCvdChart(currentCandles);
+            indicatorManager.updateVolumeRatioChart(currentCandles);
+            indicatorManager.updateWhaleChart(currentCandles);
+            indicatorManager.updateRetailChart(currentCandles);
+        }
+    }
+
+    /**
+     * Get the current candles for external use.
+     */
+    public List<Candle> getCurrentCandles() {
+        return currentCandles;
     }
 }

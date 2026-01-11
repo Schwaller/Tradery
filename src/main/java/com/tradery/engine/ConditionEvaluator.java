@@ -49,6 +49,7 @@ public class ConditionEvaluator {
             case AstNode.OrderflowFunctionCall o -> evaluateOrderflowFunction(o, barIndex);
             case AstNode.FundingFunctionCall f -> evaluateFundingFunction(f, barIndex);
             case AstNode.SessionOrderflowFunctionCall s -> evaluateSessionOrderflowFunction(s, barIndex);
+            case AstNode.OIFunctionCall o -> evaluateOIFunction(o, barIndex);
             case AstNode.PriceReference p -> evaluatePrice(p, barIndex);
             case AstNode.NumberLiteral n -> n.value();
             case AstNode.BooleanLiteral b -> b.value();
@@ -269,6 +270,15 @@ public class ConditionEvaluator {
             case "TODAY_VAH" -> engine.getTodayVAHAt(barIndex);
             case "TODAY_VAL" -> engine.getTodayVALAt(barIndex);
             default -> throw new EvaluationException("Unknown session orderflow function: " + node.func());
+        };
+    }
+
+    private double evaluateOIFunction(AstNode.OIFunctionCall node, int barIndex) {
+        return switch (node.func()) {
+            case "OI" -> engine.getOIAt(barIndex);
+            case "OI_CHANGE" -> engine.getOIChangeAt(barIndex);
+            case "OI_DELTA" -> engine.getOIDeltaAt(node.period(), barIndex);
+            default -> throw new EvaluationException("Unknown OI function: " + node.func());
         };
     }
 

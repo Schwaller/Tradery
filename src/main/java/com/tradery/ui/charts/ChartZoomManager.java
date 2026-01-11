@@ -262,6 +262,9 @@ public class ChartZoomManager {
             if (indicatorManager.isFundingChartEnabled()) {
                 visibleCharts.add(indicatorManager.getFundingChartWrapper());
             }
+            if (indicatorManager.isOiChartEnabled()) {
+                visibleCharts.add(indicatorManager.getOiChartWrapper());
+            }
         }
 
         if (equityChartEnabled) {
@@ -287,7 +290,8 @@ public class ChartZoomManager {
                          indicatorManager.getVolumeRatioChartWrapper(),
                          indicatorManager.getWhaleChartWrapper(),
                          indicatorManager.getRetailChartWrapper(),
-                         indicatorManager.getFundingChartWrapper()} :
+                         indicatorManager.getFundingChartWrapper(),
+                         indicatorManager.getOiChartWrapper()} :
             new JPanel[0];
 
         int totalCharts = visibleCharts.size();

@@ -3,6 +3,7 @@ package com.tradery.indicators;
 import com.tradery.model.AggTrade;
 import com.tradery.model.Candle;
 import com.tradery.model.FundingRate;
+import com.tradery.model.OpenInterest;
 
 import java.time.DayOfWeek;
 import java.time.Instant;
@@ -52,6 +53,13 @@ public class IndicatorEngine {
      */
     public boolean hasAggTrades() {
         return aggTrades != null && !aggTrades.isEmpty();
+    }
+
+    /**
+     * Check if candle data is available.
+     */
+    public boolean hasCandles() {
+        return candles != null && !candles.isEmpty();
     }
 
     /**
@@ -169,6 +177,19 @@ public class IndicatorEngine {
     public double getBollingerLowerAt(int period, double stdDev, int barIndex) {
         Indicators.BollingerResult result = getBollingerBands(period, stdDev);
         return barIndex < result.lower().length ? result.lower()[barIndex] : Double.NaN;
+    }
+
+    // Aliases for BBANDS syntax
+    public double getBBandsUpperAt(int period, double stdDev, int barIndex) {
+        return getBollingerUpperAt(period, stdDev, barIndex);
+    }
+
+    public double getBBandsMiddleAt(int period, double stdDev, int barIndex) {
+        return getBollingerMiddleAt(period, stdDev, barIndex);
+    }
+
+    public double getBBandsLowerAt(int period, double stdDev, int barIndex) {
+        return getBollingerLowerAt(period, stdDev, barIndex);
     }
 
     // ========== ATR ==========
@@ -557,7 +578,7 @@ public class IndicatorEngine {
     // ========== Delta / Cumulative Delta (Tier 2 - Orderflow, requires aggTrades) ==========
 
     public double[] getDelta() {
-        if (!hasAggTrades()) {
+        if (!hasAggTrades() || !hasCandles()) {
             double[] result = new double[candles != null ? candles.size() : 0];
             java.util.Arrays.fill(result, Double.NaN);
             return result;
@@ -570,14 +591,14 @@ public class IndicatorEngine {
     }
 
     public double getDeltaAt(int barIndex) {
-        if (!hasAggTrades()) {
+        if (!hasAggTrades() || !hasCandles()) {
             return Double.NaN;
         }
         return OrderflowIndicators.deltaAt(aggTrades, candles, resolution, barIndex);
     }
 
     public double[] getCumulativeDelta() {
-        if (!hasAggTrades()) {
+        if (!hasAggTrades() || !hasCandles()) {
             double[] result = new double[candles != null ? candles.size() : 0];
             java.util.Arrays.fill(result, Double.NaN);
             return result;
@@ -590,7 +611,7 @@ public class IndicatorEngine {
     }
 
     public double getCumulativeDeltaAt(int barIndex) {
-        if (!hasAggTrades()) {
+        if (!hasAggTrades() || !hasCandles()) {
             return Double.NaN;
         }
         return OrderflowIndicators.cumulativeDeltaAt(aggTrades, candles, resolution, barIndex);
@@ -603,7 +624,7 @@ public class IndicatorEngine {
      * @param threshold Minimum notional value in USD (e.g., 50000 for $50K)
      */
     public double getWhaleDeltaAt(double threshold, int barIndex) {
-        if (!hasAggTrades()) {
+        if (!hasAggTrades() || !hasCandles()) {
             return Double.NaN;
         }
         return OrderflowIndicators.whaleDeltaAt(aggTrades, candles, resolution, threshold, barIndex);
@@ -613,7 +634,7 @@ public class IndicatorEngine {
      * Get whale buy volume at bar index - buy volume from trades above threshold only.
      */
     public double getWhaleBuyVolAt(double threshold, int barIndex) {
-        if (!hasAggTrades()) {
+        if (!hasAggTrades() || !hasCandles()) {
             return Double.NaN;
         }
         return OrderflowIndicators.whaleBuyVolumeAt(aggTrades, candles, resolution, threshold, barIndex);
@@ -623,7 +644,7 @@ public class IndicatorEngine {
      * Get whale sell volume at bar index - sell volume from trades above threshold only.
      */
     public double getWhaleSellVolAt(double threshold, int barIndex) {
-        if (!hasAggTrades()) {
+        if (!hasAggTrades() || !hasCandles()) {
             return Double.NaN;
         }
         return OrderflowIndicators.whaleSellVolumeAt(aggTrades, candles, resolution, threshold, barIndex);
@@ -633,7 +654,7 @@ public class IndicatorEngine {
      * Get large trade count at bar index - number of trades above threshold.
      */
     public double getLargeTradeCountAt(double threshold, int barIndex) {
-        if (!hasAggTrades()) {
+        if (!hasAggTrades() || !hasCandles()) {
             return Double.NaN;
         }
         return OrderflowIndicators.largeTradeCountAt(aggTrades, candles, resolution, threshold, barIndex);
@@ -645,7 +666,7 @@ public class IndicatorEngine {
      * Get whale delta array for all bars - delta from trades above threshold only.
      */
     public double[] getWhaleDelta(double threshold) {
-        if (!hasAggTrades()) {
+        if (!hasAggTrades() || !hasCandles()) {
             double[] result = new double[candles != null ? candles.size() : 0];
             java.util.Arrays.fill(result, Double.NaN);
             return result;
@@ -661,7 +682,7 @@ public class IndicatorEngine {
      * Get retail delta array for all bars - delta from trades below threshold only.
      */
     public double[] getRetailDelta(double threshold) {
-        if (!hasAggTrades()) {
+        if (!hasAggTrades() || !hasCandles()) {
             double[] result = new double[candles != null ? candles.size() : 0];
             java.util.Arrays.fill(result, Double.NaN);
             return result;
@@ -677,7 +698,7 @@ public class IndicatorEngine {
      * Get buy volume array for all bars.
      */
     public double[] getBuyVolume() {
-        if (!hasAggTrades()) {
+        if (!hasAggTrades() || !hasCandles()) {
             double[] result = new double[candles != null ? candles.size() : 0];
             java.util.Arrays.fill(result, Double.NaN);
             return result;
@@ -693,7 +714,7 @@ public class IndicatorEngine {
      * Get sell volume array for all bars.
      */
     public double[] getSellVolume() {
-        if (!hasAggTrades()) {
+        if (!hasAggTrades() || !hasCandles()) {
             double[] result = new double[candles != null ? candles.size() : 0];
             java.util.Arrays.fill(result, Double.NaN);
             return result;
@@ -709,7 +730,7 @@ public class IndicatorEngine {
      * Get trade count array for all bars.
      */
     public double[] getTradeCount() {
-        if (!hasAggTrades()) {
+        if (!hasAggTrades() || !hasCandles()) {
             double[] result = new double[candles != null ? candles.size() : 0];
             java.util.Arrays.fill(result, Double.NaN);
             return result;
@@ -725,7 +746,7 @@ public class IndicatorEngine {
      * Get large trade count array for all bars.
      */
     public double[] getLargeTradeCount(double threshold) {
-        if (!hasAggTrades()) {
+        if (!hasAggTrades() || !hasCandles()) {
             double[] result = new double[candles != null ? candles.size() : 0];
             java.util.Arrays.fill(result, Double.NaN);
             return result;
@@ -778,6 +799,9 @@ public class IndicatorEngine {
      */
     public void setFundingRates(List<FundingRate> fundingRates) {
         this.fundingRates = fundingRates;
+        // Clear funding-related cache entries
+        cache.remove("fundingArray");
+        cache.remove("funding8HArray");
     }
 
     /**
@@ -896,6 +920,136 @@ public class IndicatorEngine {
      */
     public List<Candle> getCandles() {
         return candles;
+    }
+
+    // ========== Open Interest (requires OI data to be loaded) ==========
+
+    private List<OpenInterest> openInterestData;
+
+    /**
+     * Set open interest data for OI indicators.
+     */
+    public void setOpenInterest(List<OpenInterest> openInterestData) {
+        this.openInterestData = openInterestData;
+        // Clear OI-related cache entries
+        cache.remove("oiArray");
+        cache.remove("oiChangeArray");
+    }
+
+    /**
+     * Check if open interest data is available.
+     */
+    public boolean hasOpenInterest() {
+        return openInterestData != null && !openInterestData.isEmpty();
+    }
+
+    /**
+     * Get the open interest value at bar index.
+     * Returns the most recent OI data before or at the candle timestamp.
+     */
+    public double getOIAt(int barIndex) {
+        if (!hasOpenInterest()) {
+            return Double.NaN;
+        }
+
+        long candleTime = getTimestampAt(barIndex);
+        if (candleTime == 0) return Double.NaN;
+
+        // Find the most recent OI at or before this candle
+        OpenInterest latest = null;
+        for (OpenInterest oi : openInterestData) {
+            if (oi.timestamp() <= candleTime) {
+                latest = oi;
+            } else {
+                break; // OI data is sorted by time
+            }
+        }
+
+        if (latest == null) return Double.NaN;
+
+        // Return OI value in billions for readability
+        return latest.openInterestValueBillions();
+    }
+
+    /**
+     * Get the OI change from previous bar at bar index.
+     */
+    public double getOIChangeAt(int barIndex) {
+        if (!hasOpenInterest() || barIndex < 1) {
+            return Double.NaN;
+        }
+
+        double current = getOIAt(barIndex);
+        double previous = getOIAt(barIndex - 1);
+
+        if (Double.isNaN(current) || Double.isNaN(previous)) {
+            return Double.NaN;
+        }
+
+        return current - previous;
+    }
+
+    /**
+     * Get the OI change over N bars (delta).
+     */
+    public double getOIDeltaAt(int period, int barIndex) {
+        if (!hasOpenInterest() || barIndex < period) {
+            return Double.NaN;
+        }
+
+        double current = getOIAt(barIndex);
+        double past = getOIAt(barIndex - period);
+
+        if (Double.isNaN(current) || Double.isNaN(past)) {
+            return Double.NaN;
+        }
+
+        return current - past;
+    }
+
+    // ========== Open Interest Arrays for Charts ==========
+
+    /**
+     * Get OI array for all bars.
+     */
+    public double[] getOI() {
+        int size = candles != null ? candles.size() : 0;
+        if (!hasOpenInterest() || size == 0) {
+            double[] result = new double[size];
+            java.util.Arrays.fill(result, Double.NaN);
+            return result;
+        }
+        String key = "oiArray";
+        if (!cache.containsKey(key)) {
+            double[] result = new double[size];
+            for (int i = 0; i < size; i++) {
+                result[i] = getOIAt(i);
+            }
+            cache.put(key, result);
+        }
+        return (double[]) cache.get(key);
+    }
+
+    /**
+     * Get OI change array for all bars.
+     */
+    public double[] getOIChange() {
+        int size = candles != null ? candles.size() : 0;
+        if (!hasOpenInterest() || size == 0) {
+            double[] result = new double[size];
+            java.util.Arrays.fill(result, Double.NaN);
+            return result;
+        }
+        String key = "oiChangeArray";
+        if (!cache.containsKey(key)) {
+            double[] result = new double[size];
+            result[0] = Double.NaN; // No change for first bar
+            for (int i = 1; i < size; i++) {
+                result[i] = getOIChangeAt(i);
+            }
+            cache.put(key, result);
+        }
+        return (double[]) cache.get(key);
     }
 
     // ========== Daily Session Volume Profile (PREV_DAY / TODAY POC/VAH/VAL) ==========

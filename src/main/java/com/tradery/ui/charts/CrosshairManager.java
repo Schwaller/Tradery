@@ -39,6 +39,7 @@ public class CrosshairManager {
     private Crosshair whaleCrosshair;
     private Crosshair retailCrosshair;
     private Crosshair fundingCrosshair;
+    private Crosshair oiCrosshair;
 
     // Status update callback
     private Consumer<String> onStatusUpdate;
@@ -108,7 +109,8 @@ public class CrosshairManager {
             org.jfree.chart.ChartPanel volumeRatioPanel,
             org.jfree.chart.ChartPanel whalePanel,
             org.jfree.chart.ChartPanel retailPanel,
-            org.jfree.chart.ChartPanel fundingPanel) {
+            org.jfree.chart.ChartPanel fundingPanel,
+            org.jfree.chart.ChartPanel oiPanel) {
 
         rsiCrosshair = createCrosshair();
         macdCrosshair = createCrosshair();
@@ -119,6 +121,7 @@ public class CrosshairManager {
         whaleCrosshair = createCrosshair();
         retailCrosshair = createCrosshair();
         fundingCrosshair = createCrosshair();
+        oiCrosshair = createCrosshair();
 
         addCrosshairOverlay(rsiPanel, rsiCrosshair);
         addCrosshairOverlay(macdPanel, macdCrosshair);
@@ -129,6 +132,7 @@ public class CrosshairManager {
         if (whalePanel != null) addCrosshairOverlay(whalePanel, whaleCrosshair);
         if (retailPanel != null) addCrosshairOverlay(retailPanel, retailCrosshair);
         if (fundingPanel != null) addCrosshairOverlay(fundingPanel, fundingCrosshair);
+        if (oiPanel != null) addCrosshairOverlay(oiPanel, oiCrosshair);
 
         ChartMouseListener listener = createMouseListener();
         rsiPanel.addChartMouseListener(listener);
@@ -140,6 +144,7 @@ public class CrosshairManager {
         if (whalePanel != null) whalePanel.addChartMouseListener(listener);
         if (retailPanel != null) retailPanel.addChartMouseListener(listener);
         if (fundingPanel != null) fundingPanel.addChartMouseListener(listener);
+        if (oiPanel != null) oiPanel.addChartMouseListener(listener);
     }
 
     private Crosshair createCrosshair() {
@@ -206,6 +211,7 @@ public class CrosshairManager {
         if (whaleCrosshair != null) whaleCrosshair.setValue(domainValue);
         if (retailCrosshair != null) retailCrosshair.setValue(domainValue);
         if (fundingCrosshair != null) fundingCrosshair.setValue(domainValue);
+        if (oiCrosshair != null) oiCrosshair.setValue(domainValue);
     }
 
     private void updateStatus(double timestamp) {

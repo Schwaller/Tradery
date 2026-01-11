@@ -196,6 +196,18 @@ public class DslHelpDialog extends JDialog {
             </div>
 
             <div class="section">
+            <h3>Open Interest Functions</h3>
+            <span style="color: %s; font-size: 10px;">Requires OI data (auto-fetched from Binance Futures, 5m resolution).</span>
+            <table>
+                <tr><td><code>OI</code></td><td>Current open interest value (in billions USD)</td></tr>
+                <tr><td><code>OI_CHANGE</code></td><td>OI change from previous bar</td></tr>
+                <tr><td><code>OI_DELTA(period)</code></td><td>OI change over N bars</td></tr>
+            </table>
+            <div class="example">OI_CHANGE > 0 AND close > close[1]<br>OI_DELTA(12) &lt; 0 AND close > SMA(20)</div>
+            <span style="color: %s; font-size: 10px;">Rising OI + rising price = new longs. Falling OI + rising price = short covering.</span>
+            </div>
+
+            <div class="section">
             <h3>Time Functions</h3>
             <table>
                 <tr><td><code>DAYOFWEEK</code></td><td>Day of week (1=Mon, 2=Tue, ..., 7=Sun)</td></tr>
@@ -273,7 +285,7 @@ public class DslHelpDialog extends JDialog {
 
             </body>
             </html>
-            """.formatted(bgHex, fgHex, fgHex, fgSecHex, codeBgHex, fgHex, borderHex, codeBgHex, codeBgHex, accentHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex);
+            """.formatted(bgHex, fgHex, fgHex, fgSecHex, codeBgHex, fgHex, borderHex, codeBgHex, codeBgHex, accentHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex);
     }
 
     private String toHex(Color c) {

@@ -61,6 +61,24 @@ public class TradeSettingsPanel extends JPanel {
         gbc.weightx = 1;
         gbc.fill = GridBagConstraints.HORIZONTAL;
         add(Box.createHorizontalGlue(), gbc);
+
+        // Help button (right-aligned)
+        gbc.gridx = 5;
+        gbc.weightx = 0;
+        gbc.fill = GridBagConstraints.NONE;
+        gbc.insets = new Insets(2, 8, 2, 0);
+        add(createHelpButton(), gbc);
+    }
+
+    private JButton createHelpButton() {
+        JButton btn = new JButton("?");
+        btn.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 11));
+        btn.setMargin(new Insets(2, 6, 2, 6));
+        btn.setFocusPainted(false);
+        btn.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+        btn.setToolTipText("Strategy Guide");
+        btn.addActionListener(e -> StrategyHelpDialog.show(this));
+        return btn;
     }
 
     private void fireChange() {
