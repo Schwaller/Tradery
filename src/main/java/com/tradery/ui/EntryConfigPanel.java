@@ -79,32 +79,16 @@ public class EntryConfigPanel extends JPanel {
         headerPanel.add(entryLabel, BorderLayout.CENTER);
         headerPanel.setBorder(new EmptyBorder(0, 0, 4, 0));
 
-        // Blue-bordered content panel
-        JPanel conditionPanel = new JPanel(new BorderLayout(0, 2));
+        // Badge-styled content panel
+        BadgePanel conditionPanel = new BadgePanel(new BorderLayout(0, 2));
 
-        // Container for phase selection panel (inside the blue box)
+        // Container for phase selection panel (inside the badge)
         phaseContainer = new JPanel(new BorderLayout());
         phaseContainer.setOpaque(false);
 
         // Container for hoop pattern selection panel
         hoopContainer = new JPanel(new BorderLayout());
         hoopContainer.setOpaque(false);
-
-        // Subtle grouped background with rounded border (matching exit zones)
-        conditionPanel.setOpaque(true);
-        Color baseColor = UIManager.getColor("Panel.background");
-        Color tint = UIManager.getColor("Component.accentColor");
-        if (tint == null) tint = new Color(100, 140, 180);
-        // Mix 5% of accent color with background for subtle tint
-        conditionPanel.setBackground(new Color(
-                (int) (baseColor.getRed() * 0.95 + tint.getRed() * 0.05),
-                (int) (baseColor.getGreen() * 0.95 + tint.getGreen() * 0.05),
-                (int) (baseColor.getBlue() * 0.95 + tint.getBlue() * 0.05)
-        ));
-        conditionPanel.setBorder(BorderFactory.createCompoundBorder(
-                BorderFactory.createLineBorder(new Color(tint.getRed(), tint.getGreen(), tint.getBlue(), 60), 1, true),
-                BorderFactory.createEmptyBorder(8, 10, 10, 10)
-        ));
 
         // Add phase and hoop selection at top of blue box
         JPanel filterStack = new JPanel();
@@ -286,4 +270,5 @@ public class EntryConfigPanel extends JPanel {
         DcaMode[] modes = {DcaMode.PAUSE, DcaMode.ABORT, DcaMode.CONTINUE};
         strategy.setDcaMode(modes[dcaModeCombo.getSelectedIndex()]);
     }
+
 }

@@ -55,6 +55,14 @@ public class Lexer {
         Map.entry("WHALE_SELL_VOL", TokenType.ORDERFLOW_FUNC),
         Map.entry("LARGE_TRADE_COUNT", TokenType.ORDERFLOW_FUNC),
 
+        // Daily session orderflow functions (no parameters)
+        Map.entry("PREV_DAY_POC", TokenType.SESSION_ORDERFLOW_FUNC),
+        Map.entry("PREV_DAY_VAH", TokenType.SESSION_ORDERFLOW_FUNC),
+        Map.entry("PREV_DAY_VAL", TokenType.SESSION_ORDERFLOW_FUNC),
+        Map.entry("TODAY_POC", TokenType.SESSION_ORDERFLOW_FUNC),
+        Map.entry("TODAY_VAH", TokenType.SESSION_ORDERFLOW_FUNC),
+        Map.entry("TODAY_VAL", TokenType.SESSION_ORDERFLOW_FUNC),
+
         // Funding rate functions
         Map.entry("FUNDING", TokenType.FUNDING_FUNC),
         Map.entry("FUNDING_8H", TokenType.FUNDING_FUNC),

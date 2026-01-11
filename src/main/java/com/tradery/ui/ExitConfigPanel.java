@@ -183,7 +183,7 @@ public class ExitConfigPanel extends JPanel {
     /**
      * Inner panel for editing a single exit zone with full configuration.
      */
-    private class ZoneEditor extends JPanel {
+    private class ZoneEditor extends BadgePanel {
         private JTextField nameField;
         private JSpinner minPnlSpinner;
         private JSpinner maxPnlSpinner;
@@ -215,23 +215,7 @@ public class ExitConfigPanel extends JPanel {
         private static final String[] EXIT_REENTRY_OPTIONS = {"Continue", "Reset"};
 
         ZoneEditor(ExitZone zone, Runnable onRemove, Runnable onChange) {
-            setLayout(new BorderLayout(4, 4));
-
-            // Subtle grouped background with rounded border
-            setOpaque(true);
-            Color baseColor = UIManager.getColor("Panel.background");
-            Color tint = UIManager.getColor("Component.accentColor");
-            if (tint == null) tint = new Color(100, 140, 180);
-            // Mix 5% of accent color with background for subtle tint
-            setBackground(new Color(
-                (int)(baseColor.getRed() * 0.95 + tint.getRed() * 0.05),
-                (int)(baseColor.getGreen() * 0.95 + tint.getGreen() * 0.05),
-                (int)(baseColor.getBlue() * 0.95 + tint.getBlue() * 0.05)
-            ));
-            setBorder(BorderFactory.createCompoundBorder(
-                BorderFactory.createLineBorder(new Color(tint.getRed(), tint.getGreen(), tint.getBlue(), 60), 1, true),
-                BorderFactory.createEmptyBorder(8, 10, 10, 10)
-            ));
+            super(new BorderLayout(4, 4));
             setAlignmentX(Component.LEFT_ALIGNMENT);
 
             // Top row: Name and remove button
@@ -754,4 +738,5 @@ public class ExitConfigPanel extends JPanel {
             repaint();
         }
     }
+
 }

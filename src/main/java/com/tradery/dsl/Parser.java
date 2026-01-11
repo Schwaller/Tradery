@@ -192,6 +192,13 @@ public class Parser {
             return fundingFunctionCall();
         }
 
+        // Session orderflow function (PREV_DAY_POC, TODAY_POC, etc. - no parameters)
+        if (check(TokenType.SESSION_ORDERFLOW_FUNC)) {
+            String func = current().value();
+            advance();
+            return new AstNode.SessionOrderflowFunctionCall(func);
+        }
+
         throw new ParserException("Unexpected token '" + current().value() +
             "' at position " + current().position());
     }

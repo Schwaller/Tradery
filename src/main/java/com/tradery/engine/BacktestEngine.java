@@ -482,13 +482,9 @@ public class BacktestEngine {
                                 hoopPatternStates, requiredExitPatternIds, excludedExitPatternIds, i
                             );
 
-                            // Combine based on exit mode
-                            boolean shouldExit = switch (hoopSettings.getExitMode()) {
-                                case DSL_ONLY -> dslExitSignal;
-                                case HOOP_ONLY -> hoopExitSignal;
-                                case AND -> dslExitSignal && hoopExitSignal;
-                                case OR -> dslExitSignal || hoopExitSignal;
-                            };
+                            // Hoops are always AND'ed with DSL (like phases)
+                            // DSL must trigger AND all required hoops must match AND no excluded hoops active
+                            boolean shouldExit = dslExitSignal && hoopExitSignal;
 
                             if (shouldExit) {
                                 exitReason = "signal";
@@ -690,13 +686,9 @@ public class BacktestEngine {
                     hoopPatternStates, requiredEntryPatternIds, excludedEntryPatternIds, i
                 );
 
-                // Combine DSL and hoop signals based on entry mode
-                boolean signalPresent = switch (hoopSettings.getEntryMode()) {
-                    case DSL_ONLY -> dslSignal;
-                    case HOOP_ONLY -> hoopSignal;
-                    case AND -> dslSignal && hoopSignal;
-                    case OR -> dslSignal || hoopSignal;
-                };
+                // Hoops are always AND'ed with DSL (like phases)
+                // DSL must trigger AND all required hoops must match AND no excluded hoops active
+                boolean signalPresent = dslSignal && hoopSignal;
 
                 // Handle DCA abort mode - close all trades if signal lost
                 if (isDcaEntry && dcaMode == DcaMode.ABORT && !signalPresent && toClose.isEmpty()) {

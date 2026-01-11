@@ -170,6 +170,21 @@ public class DslHelpDialog extends JDialog {
             </div>
 
             <div class="section">
+            <h3>Daily Session Volume Profile</h3>
+            <span style="color: %s; font-size: 10px;">Key support/resistance levels from daily sessions (UTC day boundary).</span>
+            <table>
+                <tr><th>Function</th><th>Description</th></tr>
+                <tr><td><code>PREV_DAY_POC</code></td><td>Previous day's Point of Control</td></tr>
+                <tr><td><code>PREV_DAY_VAH</code></td><td>Previous day's Value Area High</td></tr>
+                <tr><td><code>PREV_DAY_VAL</code></td><td>Previous day's Value Area Low</td></tr>
+                <tr><td><code>TODAY_POC</code></td><td>Current day's developing POC (updates each bar)</td></tr>
+                <tr><td><code>TODAY_VAH</code></td><td>Current day's developing VAH (updates each bar)</td></tr>
+                <tr><td><code>TODAY_VAL</code></td><td>Current day's developing VAL (updates each bar)</td></tr>
+            </table>
+            <div class="example">close crosses_above PREV_DAY_POC<br>close > PREV_DAY_VAH AND TODAY_POC > PREV_DAY_POC<br>close &lt; TODAY_VAL AND close > PREV_DAY_VAL</div>
+            </div>
+
+            <div class="section">
             <h3>Funding Rate Functions</h3>
             <span style="color: %s; font-size: 10px;">Requires funding data (auto-fetched from Binance Futures).</span>
             <table>
@@ -258,7 +273,7 @@ public class DslHelpDialog extends JDialog {
 
             </body>
             </html>
-            """.formatted(bgHex, fgHex, fgHex, fgSecHex, codeBgHex, fgHex, borderHex, codeBgHex, codeBgHex, accentHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex);
+            """.formatted(bgHex, fgHex, fgHex, fgSecHex, codeBgHex, fgHex, borderHex, codeBgHex, codeBgHex, accentHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex);
     }
 
     private String toHex(Color c) {

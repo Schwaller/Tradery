@@ -218,9 +218,9 @@ public class ProjectWindow extends JFrame {
         fitYBtn.addActionListener(e -> chartPanel.setFitYAxisToVisibleData(true));
         fullYBtn.addActionListener(e -> chartPanel.setFitYAxisToVisibleData(false));
 
-        // Clear cache button
-        clearCacheBtn = new JButton("Reload Data");
-        clearCacheBtn.setToolTipText("Clear cached OHLC data and redownload from Binance");
+        // Sync data button
+        clearCacheBtn = new JButton("Sync Data");
+        clearCacheBtn.setToolTipText("Fetch latest OHLC data from Binance");
         clearCacheBtn.addActionListener(e -> clearCacheAndReload());
 
         // Claude button - opens terminal with Claude CLI
@@ -455,7 +455,8 @@ public class ProjectWindow extends JFrame {
         leftPanel.add(verticalSeparator, BorderLayout.EAST);
 
         // Center: Charts
-        JPanel centerPanel = new JPanel(new BorderLayout());
+        JPanel centerPanel = new JPanel(new BorderLayout(0, 0));
+        centerPanel.setBorder(null);
         centerPanel.add(chartPanel, BorderLayout.CENTER);
 
         // Right side: Settings above Metrics above Trade table

@@ -50,6 +50,7 @@ public class DataBrowserPanel extends JPanel {
     private final List<RowData> rows = new ArrayList<>();
     private final Map<String, Map<String, DataSummary>> dataSummaries = new HashMap<>();
     private final Map<String, AggTradesSummary> aggTradesSummaries = new HashMap<>();
+    private final Map<String, FundingRateSummary> fundingRateSummaries = new HashMap<>();
 
     private String selectedSymbol;
     private String selectedTimeframe;
@@ -70,10 +71,13 @@ public class DataBrowserPanel extends JPanel {
                 int row = e.getY() / ROW_HEIGHT;
                 if (row >= 0 && row < rows.size()) {
                     RowData data = rows.get(row);
-                    if (data.isAggTrades && data.symbol != null) {
+                    if (data.isFundingRate && data.symbol != null) {
+                        // Funding rate row - use "fundingRate" as timeframe marker
+                        setSelection(data.symbol, "fundingRate");
+                    } else if (data.isAggTrades && data.symbol != null) {
                         // AggTrades row - use "aggTrades" as timeframe marker
                         setSelection(data.symbol, "aggTrades");
-                    } else if (data.timeframe != null && !data.isAggTrades) {
+                    } else if (data.timeframe != null && !data.isAggTrades && !data.isFundingRate) {
                         // Candle timeframe row
                         setSelection(data.symbol, data.timeframe);
                     }
@@ -141,6 +145,7 @@ public class DataBrowserPanel extends JPanel {
     public void refreshData() {
         dataSummaries.clear();
         aggTradesSummaries.clear();
+        fundingRateSummaries.clear();
 
         // Load candle data summaries
         for (String symbol : ALL_SYMBOLS) {
@@ -176,6 +181,9 @@ public class DataBrowserPanel extends JPanel {
 
         // Load aggTrades summaries
         loadAggTradesSummaries();
+
+        // Load funding rate summaries
+        loadFundingRateSummaries();
 
         rebuildRows();
         revalidate();
@@ -225,13 +233,59 @@ public class DataBrowserPanel extends JPanel {
         }
     }
 
+    private void loadFundingRateSummaries() {
+        if (!aggTradesDir.exists()) return;
+
+        File[] symbolDirs = aggTradesDir.listFiles(File::isDirectory);
+        if (symbolDirs == null) return;
+
+        for (File symbolDir : symbolDirs) {
+            // Look for funding subdirectory under each symbol
+            File fundingDir = new File(symbolDir, "funding");
+            if (!fundingDir.exists() || !fundingDir.isDirectory()) continue;
+
+            String symbol = symbolDir.getName();
+            File[] csvFiles = fundingDir.listFiles((dir, name) -> name.endsWith(".csv"));
+            if (csvFiles == null || csvFiles.length == 0) continue;
+
+            // Find month range and count files
+            String minMonth = null;
+            String maxMonth = null;
+            int rateCount = 0;
+            long totalSize = 0;
+
+            for (File f : csvFiles) {
+                String name = f.getName().replace(".csv", "");
+                totalSize += f.length();
+
+                if (minMonth == null || name.compareTo(minMonth) < 0) minMonth = name;
+                if (maxMonth == null || name.compareTo(maxMonth) > 0) maxMonth = name;
+
+                // Count lines (minus header) to get rate count
+                try (BufferedReader reader = new BufferedReader(new FileReader(f))) {
+                    int lines = 0;
+                    while (reader.readLine() != null) lines++;
+                    rateCount += Math.max(0, lines - 1); // Subtract header
+                } catch (IOException e) {
+                    // Ignore
+                }
+            }
+
+            if (minMonth != null) {
+                fundingRateSummaries.put(symbol, new FundingRateSummary(
+                    minMonth, maxMonth, csvFiles.length, rateCount, totalSize
+                ));
+            }
+        }
+    }
+
     private void rebuildRows() {
         rows.clear();
 
         // Candles section header
         boolean hasCandleData = !dataSummaries.isEmpty();
         if (hasCandleData) {
-            rows.add(new RowData(null, null, false, true, false)); // Section header for Candles
+            rows.add(new RowData(null, null, false, true, false, false)); // Section header for Candles
         }
 
         // Candle data - only show symbols that have data
@@ -242,23 +296,34 @@ public class DataBrowserPanel extends JPanel {
             }
 
             // Add symbol row
-            rows.add(new RowData(symbol, null, true, false, false));
+            rows.add(new RowData(symbol, null, true, false, false, false));
 
             // Add timeframe rows (only those with data)
             for (String tf : ALL_TIMEFRAMES) {
                 if (tfData.containsKey(tf)) {
-                    rows.add(new RowData(symbol, tf, true, false, false));
+                    rows.add(new RowData(symbol, tf, true, false, false, false));
                 }
             }
         }
 
         // AggTrades section
         if (!aggTradesSummaries.isEmpty()) {
-            rows.add(new RowData(null, null, false, true, true)); // Section header for AggTrades
+            rows.add(new RowData(null, null, false, true, true, false)); // Section header for AggTrades
 
             for (String symbol : ALL_SYMBOLS) {
                 if (aggTradesSummaries.containsKey(symbol)) {
-                    rows.add(new RowData(symbol, null, true, false, true));
+                    rows.add(new RowData(symbol, null, true, false, true, false));
+                }
+            }
+        }
+
+        // Funding Rate section
+        if (!fundingRateSummaries.isEmpty()) {
+            rows.add(new RowData(null, null, false, true, false, true)); // Section header for Funding Rate
+
+            for (String symbol : ALL_SYMBOLS) {
+                if (fundingRateSummaries.containsKey(symbol)) {
+                    rows.add(new RowData(symbol, null, true, false, false, true));
                 }
             }
         }
@@ -277,7 +342,9 @@ public class DataBrowserPanel extends JPanel {
 
             // Section headers
             if (row.isSectionHeader) {
-                drawSectionHeader(g2, row.isAggTrades ? "AggTrades (Delta)" : "Candles (OHLCV)", y);
+                String title = row.isFundingRate ? "Funding Rate (8h)" :
+                               row.isAggTrades ? "AggTrades (Delta)" : "Candles (OHLCV)";
+                drawSectionHeader(g2, title, y);
                 y += ROW_HEIGHT;
                 continue;
             }
@@ -285,7 +352,11 @@ public class DataBrowserPanel extends JPanel {
             boolean isSelected;
             boolean isHovered;
 
-            if (row.isAggTrades && row.symbol != null) {
+            if (row.isFundingRate && row.symbol != null) {
+                // Funding rate row
+                isSelected = row.symbol.equals(selectedSymbol) && "fundingRate".equals(selectedTimeframe);
+                isHovered = i == hoveredRow;
+            } else if (row.isAggTrades && row.symbol != null) {
                 // AggTrades row
                 isSelected = row.symbol.equals(selectedSymbol) && "aggTrades".equals(selectedTimeframe);
                 isHovered = i == hoveredRow;
@@ -308,7 +379,9 @@ public class DataBrowserPanel extends JPanel {
                 g2.fillRect(0, y, getWidth(), ROW_HEIGHT);
             }
 
-            if (row.isAggTrades) {
+            if (row.isFundingRate) {
+                drawFundingRateRow(g2, row, y);
+            } else if (row.isAggTrades) {
                 drawAggTradesRow(g2, row, y);
             } else if (row.timeframe == null) {
                 // Symbol row
@@ -394,6 +467,27 @@ public class DataBrowserPanel extends JPanel {
         }
     }
 
+    private void drawFundingRateRow(Graphics2D g2, RowData row, int y) {
+        FundingRateSummary summary = fundingRateSummaries.get(row.symbol);
+
+        // Symbol label (indented)
+        g2.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 11));
+        g2.setColor(TIMEFRAME_COLOR);
+        g2.drawString(row.symbol, INDENT + 8, y + 15);
+
+        if (summary != null) {
+            // Status dot (always green for funding since it's auto-fetched)
+            g2.setColor(COMPLETE_COLOR);
+            g2.fillOval(INDENT + 75, y + 8, 8, 8);
+
+            // Month range and rate count
+            g2.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 10));
+            g2.setColor(INFO_COLOR);
+            String info = summary.startMonth + "→" + summary.endMonth + " (" + summary.rateCount + ")";
+            g2.drawString(info, INDENT + 90, y + 15);
+        }
+    }
+
     private String formatRange(YearMonth start, YearMonth end) {
         DateTimeFormatter fmt = DateTimeFormatter.ofPattern("yy-MM");
         if (end.equals(YearMonth.now())) {
@@ -409,7 +503,8 @@ public class DataBrowserPanel extends JPanel {
     }
 
     // Internal data classes
-    private record RowData(String symbol, String timeframe, boolean hasData, boolean isSectionHeader, boolean isAggTrades) {}
+    private record RowData(String symbol, String timeframe, boolean hasData, boolean isSectionHeader, boolean isAggTrades, boolean isFundingRate) {}
     private record DataSummary(YearMonth start, YearMonth end, DataStatus status) {}
     private record AggTradesSummary(String startDate, String endDate, int fileCount, long totalSize, boolean hasPartial) {}
+    private record FundingRateSummary(String startMonth, String endMonth, int monthCount, int rateCount, long totalSize) {}
 }

@@ -89,14 +89,20 @@ public class IndicatorSelectorPopup extends JDialog {
         syncFromChartPanel();
         updateControlVisibility();
 
-        // Close on focus lost
+        // Close on focus lost (with delay to handle focus transfer to spinners)
         addWindowFocusListener(new WindowFocusListener() {
             @Override
             public void windowGainedFocus(WindowEvent e) {}
 
             @Override
             public void windowLostFocus(WindowEvent e) {
-                dispose();
+                // Small delay to check if focus went to a child component
+                SwingUtilities.invokeLater(() -> {
+                    Window focusedWindow = KeyboardFocusManager.getCurrentKeyboardFocusManager().getFocusedWindow();
+                    if (focusedWindow != IndicatorSelectorPopup.this) {
+                        dispose();
+                    }
+                });
             }
         });
 
@@ -106,6 +112,17 @@ public class IndicatorSelectorPopup extends JDialog {
             KeyStroke.getKeyStroke(KeyEvent.VK_ESCAPE, 0),
             JComponent.WHEN_IN_FOCUSED_WINDOW
         );
+
+        // Add global mouse listener to close on click outside
+        Toolkit.getDefaultToolkit().addAWTEventListener(e -> {
+            if (e instanceof MouseEvent me && me.getID() == MouseEvent.MOUSE_PRESSED) {
+                Point clickPoint = me.getLocationOnScreen();
+                Rectangle popupBounds = getBounds();
+                if (isVisible() && !popupBounds.contains(clickPoint)) {
+                    dispose();
+                }
+            }
+        }, AWTEvent.MOUSE_EVENT_MASK);
     }
 
     private void initComponents() {

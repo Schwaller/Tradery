@@ -166,6 +166,16 @@ VAH(period)              # Value Area High (default 70% of volume)
 VAL(period)              # Value Area Low
 ```
 
+**Daily Session Volume Profile (Tier 1):**
+```
+PREV_DAY_POC             # Previous day's Point of Control
+PREV_DAY_VAH             # Previous day's Value Area High
+PREV_DAY_VAL             # Previous day's Value Area Low
+TODAY_POC                # Current day's developing POC (updates each bar)
+TODAY_VAH                # Current day's developing VAH (updates each bar)
+TODAY_VAL                # Current day's developing VAL (updates each bar)
+```
+
 **Full (requires aggTrades sync):**
 ```
 DELTA                    # Buy volume - sell volume for current bar
@@ -254,6 +264,11 @@ LARGE_TRADE_COUNT(50000) > 10             # Many large trades
 # Funding rate
 FUNDING > 0.05                            # High funding = overleveraged longs
 FUNDING < 0 AND WHALE_DELTA(50000) > 0    # Shorts paying + whale buying
+
+# Daily Session Volume Profile
+close crosses_above PREV_DAY_POC          # Price reclaims yesterday's POC
+close > PREV_DAY_VAH AND TODAY_POC > PREV_DAY_POC  # Acceptance above value
+close < TODAY_VAL AND close > PREV_DAY_VAL         # Mean reversion setup
 ```
 
 ---
@@ -525,8 +540,9 @@ Sequential price-checkpoint matching for detecting chart patterns.
 5. **Trend detection** - ADX, PLUS_DI, MINUS_DI + built-in uptrend/downtrend phases
 6. **Moon phases** - `MOON_PHASE` function + full-moon/new-moon phases
 7. **Orderflow** - VWAP, POC, VAH, VAL, DELTA, CUM_DELTA (Tier 1 + Full modes)
-8. **Large trade detection** - WHALE_DELTA, WHALE_BUY_VOL, WHALE_SELL_VOL, LARGE_TRADE_COUNT
-9. **Funding rate** - FUNDING, FUNDING_8H + built-in funding phases (high/negative/extreme/neutral)
+8. **Daily session levels** - PREV_DAY_POC/VAH/VAL, TODAY_POC/VAH/VAL (UTC day boundary)
+9. **Large trade detection** - WHALE_DELTA, WHALE_BUY_VOL, WHALE_SELL_VOL, LARGE_TRADE_COUNT
+10. **Funding rate** - FUNDING, FUNDING_8H + built-in funding phases (high/negative/extreme/neutral)
 
 **What's NOT yet implemented (potential future features):**
 - Open Interest (historical data limited to 30 days on Binance)

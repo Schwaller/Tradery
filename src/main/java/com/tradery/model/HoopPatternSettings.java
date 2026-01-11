@@ -1,51 +1,17 @@
 package com.tradery.model;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
-import com.fasterxml.jackson.annotation.JsonValue;
 import java.util.ArrayList;
 import java.util.List;
 
 /**
  * Hoop pattern filtering configuration for a Strategy.
- * Mirrors PhaseSettings structure for consistency but adds
- * combine modes and separate entry/exit pattern lists.
+ * Mirrors PhaseSettings structure - hoops are always AND'ed with DSL conditions.
+ * If required patterns are set, they must complete AND the DSL must trigger.
+ * If excluded patterns are set, entry is blocked when they're active.
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class HoopPatternSettings {
-
-    /**
-     * How hoop patterns combine with DSL conditions.
-     */
-    public enum CombineMode {
-        DSL_ONLY("dsl_only"),       // Only check DSL conditions (hoops ignored) - default
-        HOOP_ONLY("hoop_only"),     // Only check hoop patterns (DSL ignored)
-        AND("and"),                  // Both hoop pattern AND DSL must trigger
-        OR("or");                    // Either hoop pattern OR DSL can trigger
-
-        private final String value;
-
-        CombineMode(String value) {
-            this.value = value;
-        }
-
-        @JsonValue
-        public String getValue() {
-            return value;
-        }
-
-        public static CombineMode fromString(String value) {
-            for (CombineMode mode : values()) {
-                if (mode.value.equalsIgnoreCase(value) || mode.name().equalsIgnoreCase(value)) {
-                    return mode;
-                }
-            }
-            return DSL_ONLY;
-        }
-    }
-
-    // Mode selection
-    private CombineMode entryMode = CombineMode.DSL_ONLY;
-    private CombineMode exitMode = CombineMode.DSL_ONLY;
 
     // Entry hoop patterns - ALL required must complete, NONE of excluded must be active
     private List<String> requiredEntryPatternIds = new ArrayList<>();
@@ -57,26 +23,6 @@ public class HoopPatternSettings {
 
     public HoopPatternSettings() {
         // For Jackson
-    }
-
-    // Entry mode
-
-    public CombineMode getEntryMode() {
-        return entryMode != null ? entryMode : CombineMode.DSL_ONLY;
-    }
-
-    public void setEntryMode(CombineMode mode) {
-        this.entryMode = mode != null ? mode : CombineMode.DSL_ONLY;
-    }
-
-    // Exit mode
-
-    public CombineMode getExitMode() {
-        return exitMode != null ? exitMode : CombineMode.DSL_ONLY;
-    }
-
-    public void setExitMode(CombineMode mode) {
-        this.exitMode = mode != null ? mode : CombineMode.DSL_ONLY;
     }
 
     // Entry pattern IDs
@@ -135,14 +81,6 @@ public class HoopPatternSettings {
 
     public boolean hasExitPatterns() {
         return !getRequiredExitPatternIds().isEmpty() || !getExcludedExitPatternIds().isEmpty();
-    }
-
-    public boolean usesHoopsForEntry() {
-        return entryMode != CombineMode.DSL_ONLY && hasEntryPatterns();
-    }
-
-    public boolean usesHoopsForExit() {
-        return exitMode != CombineMode.DSL_ONLY && hasExitPatterns();
     }
 
     public boolean hasAnyPatterns() {

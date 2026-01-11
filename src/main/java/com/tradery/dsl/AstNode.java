@@ -79,6 +79,13 @@ public sealed interface AstNode {
     record FundingFunctionCall(String func) implements AstNode {}
 
     /**
+     * Session-based orderflow function call (no parameters):
+     * - PREV_DAY_POC, PREV_DAY_VAH, PREV_DAY_VAL: Previous day's volume profile levels
+     * - TODAY_POC, TODAY_VAH, TODAY_VAL: Current day's developing volume profile levels
+     */
+    record SessionOrderflowFunctionCall(String func) implements AstNode {}
+
+    /**
      * Property access: MACD(12,26,9).signal, BBANDS(20,2).upper
      */
     record PropertyAccess(IndicatorCall object, String property) implements AstNode {}

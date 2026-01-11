@@ -190,6 +190,7 @@ public class ChartsPanel extends JPanel {
 
     private void setupScrollableContainer() {
         chartsContainer = new JPanel(new GridBagLayout());
+        chartsContainer.setBorder(null);
         updateChartLayout();
 
         // Time scrollbar for fixed-width mode
@@ -220,7 +221,8 @@ public class ChartsPanel extends JPanel {
         volumeChartPanel.addMouseWheelListener(wheelListener);
         indicatorManager.addMouseWheelListener(wheelListener);
 
-        mainPanel = new JPanel(new BorderLayout());
+        mainPanel = new JPanel(new BorderLayout(0, 0));
+        mainPanel.setBorder(null);
         mainPanel.add(chartsContainer, BorderLayout.CENTER);
         mainPanel.add(timeScrollBar, BorderLayout.SOUTH);
 

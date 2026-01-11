@@ -59,6 +59,7 @@ public class IndicatorEngine {
      */
     public void clearCache() {
         cache.clear();
+        dailyProfileCache.clear();
     }
 
     /**
@@ -895,5 +896,159 @@ public class IndicatorEngine {
      */
     public List<Candle> getCandles() {
         return candles;
+    }
+
+    // ========== Daily Session Volume Profile (PREV_DAY / TODAY POC/VAH/VAL) ==========
+
+    // Cache for daily volume profiles: key = "date:YYYY-MM-DD", value = VolumeProfileResult
+    private final Map<String, Indicators.VolumeProfileResult> dailyProfileCache = new HashMap<>();
+
+    /**
+     * Get the UTC date for a bar index.
+     */
+    private LocalDate getDateAt(int barIndex) {
+        long timestamp = getTimestampAt(barIndex);
+        if (timestamp == 0) return null;
+        return Instant.ofEpochMilli(timestamp).atZone(ZoneOffset.UTC).toLocalDate();
+    }
+
+    /**
+     * Find the start bar index for a given UTC date.
+     * Returns -1 if no bars exist for that date.
+     */
+    private int findDayStartIndex(LocalDate targetDate) {
+        if (candles == null || candles.isEmpty()) return -1;
+
+        for (int i = 0; i < candles.size(); i++) {
+            LocalDate barDate = getDateAt(i);
+            if (barDate != null && barDate.equals(targetDate)) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    /**
+     * Find the end bar index (inclusive) for a given UTC date.
+     * Returns -1 if no bars exist for that date.
+     */
+    private int findDayEndIndex(LocalDate targetDate) {
+        if (candles == null || candles.isEmpty()) return -1;
+
+        int lastIdx = -1;
+        for (int i = 0; i < candles.size(); i++) {
+            LocalDate barDate = getDateAt(i);
+            if (barDate != null && barDate.equals(targetDate)) {
+                lastIdx = i;
+            } else if (lastIdx >= 0) {
+                // We've moved past the target date
+                break;
+            }
+        }
+        return lastIdx;
+    }
+
+    /**
+     * Calculate volume profile for a specific day's candles.
+     */
+    private Indicators.VolumeProfileResult calculateDayProfile(LocalDate date) {
+        String cacheKey = "day:" + date.toString();
+        if (dailyProfileCache.containsKey(cacheKey)) {
+            return dailyProfileCache.get(cacheKey);
+        }
+
+        int startIdx = findDayStartIndex(date);
+        int endIdx = findDayEndIndex(date);
+
+        if (startIdx < 0 || endIdx < 0) {
+            return new Indicators.VolumeProfileResult(Double.NaN, Double.NaN, Double.NaN, new double[0], new double[0]);
+        }
+
+        // Extract candles for this day
+        List<Candle> dayCandles = candles.subList(startIdx, endIdx + 1);
+        Indicators.VolumeProfileResult result = Indicators.volumeProfile(dayCandles, dayCandles.size(), 24, 70.0);
+
+        dailyProfileCache.put(cacheKey, result);
+        return result;
+    }
+
+    /**
+     * Calculate volume profile for today's candles up to and including barIndex.
+     * This is the "developing" profile that updates throughout the day.
+     */
+    private Indicators.VolumeProfileResult calculateTodayProfile(int barIndex) {
+        LocalDate today = getDateAt(barIndex);
+        if (today == null) {
+            return new Indicators.VolumeProfileResult(Double.NaN, Double.NaN, Double.NaN, new double[0], new double[0]);
+        }
+
+        int startIdx = findDayStartIndex(today);
+        if (startIdx < 0 || startIdx > barIndex) {
+            return new Indicators.VolumeProfileResult(Double.NaN, Double.NaN, Double.NaN, new double[0], new double[0]);
+        }
+
+        // Extract candles from day start to current bar
+        List<Candle> todayCandles = candles.subList(startIdx, barIndex + 1);
+        return Indicators.volumeProfile(todayCandles, todayCandles.size(), 24, 70.0);
+    }
+
+    /**
+     * Get the previous day's POC at a bar index.
+     */
+    public double getPrevDayPOCAt(int barIndex) {
+        LocalDate today = getDateAt(barIndex);
+        if (today == null) return Double.NaN;
+
+        LocalDate prevDay = today.minusDays(1);
+        Indicators.VolumeProfileResult profile = calculateDayProfile(prevDay);
+        return profile.poc();
+    }
+
+    /**
+     * Get the previous day's VAH at a bar index.
+     */
+    public double getPrevDayVAHAt(int barIndex) {
+        LocalDate today = getDateAt(barIndex);
+        if (today == null) return Double.NaN;
+
+        LocalDate prevDay = today.minusDays(1);
+        Indicators.VolumeProfileResult profile = calculateDayProfile(prevDay);
+        return profile.vah();
+    }
+
+    /**
+     * Get the previous day's VAL at a bar index.
+     */
+    public double getPrevDayVALAt(int barIndex) {
+        LocalDate today = getDateAt(barIndex);
+        if (today == null) return Double.NaN;
+
+        LocalDate prevDay = today.minusDays(1);
+        Indicators.VolumeProfileResult profile = calculateDayProfile(prevDay);
+        return profile.val();
+    }
+
+    /**
+     * Get today's developing POC at a bar index.
+     */
+    public double getTodayPOCAt(int barIndex) {
+        Indicators.VolumeProfileResult profile = calculateTodayProfile(barIndex);
+        return profile.poc();
+    }
+
+    /**
+     * Get today's developing VAH at a bar index.
+     */
+    public double getTodayVAHAt(int barIndex) {
+        Indicators.VolumeProfileResult profile = calculateTodayProfile(barIndex);
+        return profile.vah();
+    }
+
+    /**
+     * Get today's developing VAL at a bar index.
+     */
+    public double getTodayVALAt(int barIndex) {
+        Indicators.VolumeProfileResult profile = calculateTodayProfile(barIndex);
+        return profile.val();
     }
 }

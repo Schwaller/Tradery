@@ -2,7 +2,6 @@ package com.tradery.ui;
 
 import com.tradery.model.PositionSizingType;
 import com.tradery.model.Strategy;
-import com.tradery.ui.theme.Theme;
 import com.tradery.ui.theme.ThemeManager;
 
 import javax.swing.*;
@@ -60,12 +59,12 @@ public class ProjectSettingsPanel extends JPanel {
         JSpinner.NumberEditor slipEditor = new JSpinner.NumberEditor(slippageSpinner, "0.00'%'");
         slippageSpinner.setEditor(slipEditor);
 
-        // Theme selector
+        // Theme selector - full FlatLaf themes
         themeCombo = new JComboBox<>();
-        for (Theme theme : ThemeManager.getInstance().getAvailableThemes()) {
-            themeCombo.addItem(theme.getName());
+        for (String themeName : ThemeManager.getInstance().getAvailableThemeNames()) {
+            themeCombo.addItem(themeName);
         }
-        themeCombo.setSelectedItem(ThemeManager.getInstance().getCurrentTheme().getName());
+        themeCombo.setSelectedItem(ThemeManager.getInstance().getCurrentThemeName());
         themeCombo.addActionListener(e -> {
             String selected = (String) themeCombo.getSelectedItem();
             if (selected != null) {

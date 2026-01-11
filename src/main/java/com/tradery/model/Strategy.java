@@ -406,24 +406,6 @@ public class Strategy {
 
     // Convenience methods - Hoop pattern settings delegates
 
-    public HoopPatternSettings.CombineMode getHoopEntryMode() {
-        return getHoopPatternSettings().getEntryMode();
-    }
-
-    public void setHoopEntryMode(HoopPatternSettings.CombineMode mode) {
-        getHoopPatternSettings().setEntryMode(mode);
-        this.updated = Instant.now();
-    }
-
-    public HoopPatternSettings.CombineMode getHoopExitMode() {
-        return getHoopPatternSettings().getExitMode();
-    }
-
-    public void setHoopExitMode(HoopPatternSettings.CombineMode mode) {
-        getHoopPatternSettings().setExitMode(mode);
-        this.updated = Instant.now();
-    }
-
     public java.util.List<String> getRequiredEntryPatternIds() {
         return getHoopPatternSettings().getRequiredEntryPatternIds();
     }

@@ -93,9 +93,11 @@ public class ChartComponent {
             }
         });
 
-        wrapper = new JPanel(new BorderLayout());
+        wrapper = new JPanel(new BorderLayout(0, 0));
+        wrapper.setBorder(null);
         wrapper.add(layeredPane, BorderLayout.CENTER);
         wrapper.setMinimumSize(new Dimension(100, MIN_CHART_HEIGHT));
+        wrapper.setPreferredSize(new Dimension(100, MIN_CHART_HEIGHT));
         return wrapper;
     }
 

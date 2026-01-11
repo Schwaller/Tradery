@@ -48,6 +48,7 @@ public class ConditionEvaluator {
             case AstNode.FomcFunctionCall f -> evaluateFomcFunction(f, barIndex);
             case AstNode.OrderflowFunctionCall o -> evaluateOrderflowFunction(o, barIndex);
             case AstNode.FundingFunctionCall f -> evaluateFundingFunction(f, barIndex);
+            case AstNode.SessionOrderflowFunctionCall s -> evaluateSessionOrderflowFunction(s, barIndex);
             case AstNode.PriceReference p -> evaluatePrice(p, barIndex);
             case AstNode.NumberLiteral n -> n.value();
             case AstNode.BooleanLiteral b -> b.value();
@@ -256,6 +257,18 @@ public class ConditionEvaluator {
             case "FUNDING" -> engine.getFundingAt(barIndex);
             case "FUNDING_8H" -> engine.getFunding8HAvgAt(barIndex);
             default -> throw new EvaluationException("Unknown funding function: " + node.func());
+        };
+    }
+
+    private double evaluateSessionOrderflowFunction(AstNode.SessionOrderflowFunctionCall node, int barIndex) {
+        return switch (node.func()) {
+            case "PREV_DAY_POC" -> engine.getPrevDayPOCAt(barIndex);
+            case "PREV_DAY_VAH" -> engine.getPrevDayVAHAt(barIndex);
+            case "PREV_DAY_VAL" -> engine.getPrevDayVALAt(barIndex);
+            case "TODAY_POC" -> engine.getTodayPOCAt(barIndex);
+            case "TODAY_VAH" -> engine.getTodayVAHAt(barIndex);
+            case "TODAY_VAL" -> engine.getTodayVALAt(barIndex);
+            default -> throw new EvaluationException("Unknown session orderflow function: " + node.func());
         };
     }
 

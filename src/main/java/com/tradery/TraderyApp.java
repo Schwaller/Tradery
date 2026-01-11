@@ -1,8 +1,8 @@
 package com.tradery;
 
-import com.formdev.flatlaf.FlatDarkLaf;
 import com.tradery.io.AppLock;
 import com.tradery.ui.LauncherFrame;
+import com.tradery.ui.theme.ThemeManager;
 
 import javax.swing.*;
 import java.awt.*;
@@ -26,11 +26,11 @@ public class TraderyApp {
     public static final File USER_DIR = new File(System.getProperty("user.home"), ".tradery");
 
     public static void main(String[] args) {
-        // Set FlatLaf macOS theme
+        // Set FlatLaf theme from saved preference
         try {
             System.setProperty("apple.laf.useScreenMenuBar", "true");
             System.setProperty("apple.awt.application.name", APP_NAME);
-            FlatDarkLaf.setup();
+            ThemeManager.getInstance().applyCurrentTheme();
         } catch (Exception e) {
             System.err.println("Could not set FlatLaf look and feel: " + e.getMessage());
         }
