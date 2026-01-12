@@ -362,10 +362,14 @@ public class IndicatorSelectorPopup extends JDialog {
     private JPanel createStochasticRow() {
         stochasticCheckbox = new JCheckBox("Stochastic");
         stochasticKLabel = new JLabel("K:");
-        stochasticKSpinner = createPeriodSpinner(14, 2, 50);
+        Object[] kControls = createSliderSpinner(14, 2, 50);
+        stochasticKSlider = (JSlider) kControls[0];
+        stochasticKSpinner = (JSpinner) kControls[1];
         stochasticKSpinner.setToolTipText("%K period");
         stochasticDLabel = new JLabel("D:");
-        stochasticDSpinner = createPeriodSpinner(3, 1, 20);
+        Object[] dControls = createSliderSpinner(3, 1, 20);
+        stochasticDSlider = (JSlider) dControls[0];
+        stochasticDSpinner = (JSpinner) dControls[1];
         stochasticDSpinner.setToolTipText("%D smoothing period");
 
         JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
@@ -373,16 +377,16 @@ public class IndicatorSelectorPopup extends JDialog {
         row.add(stochasticCheckbox);
         row.add(Box.createHorizontalGlue());
         row.add(stochasticKLabel);
+        row.add(stochasticKSlider);
         row.add(stochasticKSpinner);
         row.add(stochasticDLabel);
+        row.add(stochasticDSlider);
         row.add(stochasticDSpinner);
 
         stochasticCheckbox.addActionListener(e -> {
             updateControlVisibility();
             scheduleUpdate();
         });
-        stochasticKSpinner.addChangeListener(e -> scheduleUpdate());
-        stochasticDSpinner.addChangeListener(e -> scheduleUpdate());
         return row;
     }
 
@@ -390,8 +394,10 @@ public class IndicatorSelectorPopup extends JDialog {
         rangePositionCheckbox = new JCheckBox("Range Position");
         rangePositionCheckbox.setToolTipText("Shows position within range (-1 to +1), extends beyond for breakouts");
         rangePositionLabel = new JLabel("Period:");
-        rangePositionSpinner = createPeriodSpinner(200, 5, 500);
-        return createIndicatorRow(rangePositionCheckbox, rangePositionLabel, rangePositionSpinner);
+        Object[] controls = createSliderSpinner(200, 5, 500);
+        rangePositionSlider = (JSlider) controls[0];
+        rangePositionSpinner = (JSpinner) controls[1];
+        return createIndicatorRowWithSlider(rangePositionCheckbox, rangePositionLabel, rangePositionSlider, rangePositionSpinner);
     }
 
     private JPanel createDeltaRow() {
@@ -540,6 +546,22 @@ public class IndicatorSelectorPopup extends JDialog {
         return row;
     }
 
+    private JPanel createIndicatorRowWithSlider(JCheckBox checkbox, JLabel label, JSlider slider, JSpinner spinner) {
+        JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
+        row.setAlignmentX(Component.LEFT_ALIGNMENT);
+        row.add(checkbox);
+        row.add(Box.createHorizontalGlue());
+        row.add(label);
+        row.add(slider);
+        row.add(spinner);
+
+        checkbox.addActionListener(e -> {
+            updateControlVisibility();
+            scheduleUpdate();
+        });
+        return row;
+    }
+
     private JSpinner createPeriodSpinner(int value, int min, int max) {
         JSpinner spinner = new JSpinner(new SpinnerNumberModel(value, min, max, 1));
         spinner.setPreferredSize(new Dimension(55, 24));
@@ -564,11 +586,14 @@ public class IndicatorSelectorPopup extends JDialog {
         JSpinner spinner = new JSpinner(new SpinnerNumberModel(value, min, max, 1));
         spinner.setPreferredSize(new Dimension(55, 24));
 
-        // Synchronize slider -> spinner
+        // Synchronize slider -> spinner and trigger updates while dragging
         slider.addChangeListener(e -> {
-            if (!slider.getValueIsAdjusting()) {
-                spinner.setValue(slider.getValue());
+            int sliderValue = slider.getValue();
+            if ((int) spinner.getValue() != sliderValue) {
+                spinner.setValue(sliderValue);
             }
+            // Always schedule update (debounce handles rate limiting)
+            scheduleUpdate();
         });
 
         // Synchronize spinner -> slider
@@ -578,13 +603,6 @@ public class IndicatorSelectorPopup extends JDialog {
                 slider.setValue(spinnerValue);
             }
             scheduleUpdate();
-        });
-
-        // Also schedule update on slider drag
-        slider.addChangeListener(e -> {
-            if (!slider.getValueIsAdjusting()) {
-                scheduleUpdate();
-            }
         });
 
         return new Object[]{slider, spinner};
@@ -607,48 +625,61 @@ public class IndicatorSelectorPopup extends JDialog {
         // Overlays
         boolean smaEnabled = smaCheckbox.isSelected();
         smaLabel.setVisible(smaEnabled);
+        smaSlider.setVisible(smaEnabled);
         smaSpinner.setVisible(smaEnabled);
 
         boolean emaEnabled = emaCheckbox.isSelected();
         emaLabel.setVisible(emaEnabled);
+        emaSlider.setVisible(emaEnabled);
         emaSpinner.setVisible(emaEnabled);
 
         boolean bbEnabled = bbCheckbox.isSelected();
         bbPeriodLabel.setVisible(bbEnabled);
+        bbPeriodSlider.setVisible(bbEnabled);
         bbPeriodSpinner.setVisible(bbEnabled);
         bbStdLabel.setVisible(bbEnabled);
         bbStdSpinner.setVisible(bbEnabled);
 
         boolean hlEnabled = hlCheckbox.isSelected();
         hlLabel.setVisible(hlEnabled);
+        hlSlider.setVisible(hlEnabled);
         hlSpinner.setVisible(hlEnabled);
 
         boolean mayerEnabled = mayerCheckbox.isSelected();
         mayerLabel.setVisible(mayerEnabled);
+        mayerSlider.setVisible(mayerEnabled);
         mayerSpinner.setVisible(mayerEnabled);
 
         // Oscillators
         boolean rsiEnabled = rsiCheckbox.isSelected();
         rsiLabel.setVisible(rsiEnabled);
+        rsiSlider.setVisible(rsiEnabled);
         rsiSpinner.setVisible(rsiEnabled);
 
         boolean macdEnabled = macdCheckbox.isSelected();
+        macdFastSlider.setVisible(macdEnabled);
         macdFastSpinner.setVisible(macdEnabled);
+        macdSlowSlider.setVisible(macdEnabled);
         macdSlowSpinner.setVisible(macdEnabled);
+        macdSignalSlider.setVisible(macdEnabled);
         macdSignalSpinner.setVisible(macdEnabled);
 
         boolean atrEnabled = atrCheckbox.isSelected();
         atrLabel.setVisible(atrEnabled);
+        atrSlider.setVisible(atrEnabled);
         atrSpinner.setVisible(atrEnabled);
 
         boolean stochasticEnabled = stochasticCheckbox.isSelected();
         stochasticKLabel.setVisible(stochasticEnabled);
+        stochasticKSlider.setVisible(stochasticEnabled);
         stochasticKSpinner.setVisible(stochasticEnabled);
         stochasticDLabel.setVisible(stochasticEnabled);
+        stochasticDSlider.setVisible(stochasticEnabled);
         stochasticDSpinner.setVisible(stochasticEnabled);
 
         boolean rangePositionEnabled = rangePositionCheckbox.isSelected();
         rangePositionLabel.setVisible(rangePositionEnabled);
+        rangePositionSlider.setVisible(rangePositionEnabled);
         rangePositionSpinner.setVisible(rangePositionEnabled);
 
         // Orderflow - whale threshold visible only when whale checkbox is enabled

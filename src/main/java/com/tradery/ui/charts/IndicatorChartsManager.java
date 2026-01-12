@@ -795,19 +795,20 @@ public class IndicatorChartsManager {
         oiLineRenderer.setSeriesStroke(0, ChartStyles.MEDIUM_STROKE);
         plot.setRenderer(1, oiLineRenderer);
 
-        // Primary Y-axis for OI change bars (centered around zero)
+        // Primary Y-axis for OI change bars (centered around zero, hidden)
         NumberAxis changeAxis = (NumberAxis) plot.getRangeAxis();
         changeAxis.setAutoRangeIncludesZero(true);
         changeAxis.setAutoRange(true);
-        changeAxis.setVisible(false); // Hide the change axis, show only OI line axis
+        changeAxis.setVisible(false);
 
-        // Secondary Y-axis for OI line (scale to data, not zero)
+        // Secondary Y-axis for OI line (scale to data, not zero) - on LEFT side
         NumberAxis oiAxis = new NumberAxis();
         oiAxis.setAutoRangeIncludesZero(false);
         oiAxis.setAutoRange(true);
         oiAxis.setLabelPaint(ChartStyles.TEXT_COLOR);
         oiAxis.setTickLabelPaint(ChartStyles.TEXT_COLOR);
         plot.setRangeAxis(1, oiAxis);
+        plot.setRangeAxisLocation(1, org.jfree.chart.axis.AxisLocation.BOTTOM_OR_LEFT);
         plot.mapDatasetToRangeAxis(1, 1);
 
         // Add zero line and title

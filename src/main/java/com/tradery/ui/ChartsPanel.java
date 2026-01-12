@@ -240,7 +240,9 @@ public class ChartsPanel extends JPanel {
             indicatorManager.getWhaleChartPanel(),
             indicatorManager.getRetailChartPanel(),
             indicatorManager.getFundingChartPanel(),
-            indicatorManager.getOiChartPanel());
+            indicatorManager.getOiChartPanel(),
+            indicatorManager.getStochasticChartPanel(),
+            indicatorManager.getRangePositionChartPanel());
 
         // Sync domain axes
         JFreeChart[] otherCharts = {
@@ -248,7 +250,7 @@ public class ChartsPanel extends JPanel {
             indicatorManager.getRsiChart(), indicatorManager.getMacdChart(), indicatorManager.getAtrChart(),
             indicatorManager.getDeltaChart(), indicatorManager.getCvdChart(), indicatorManager.getVolumeRatioChart(),
             indicatorManager.getWhaleChart(), indicatorManager.getRetailChart(), indicatorManager.getFundingChart(),
-            indicatorManager.getOiChart()
+            indicatorManager.getOiChart(), indicatorManager.getStochasticChart(), indicatorManager.getRangePositionChart()
         };
         crosshairManager.syncDomainAxes(priceChart, otherCharts);
     }

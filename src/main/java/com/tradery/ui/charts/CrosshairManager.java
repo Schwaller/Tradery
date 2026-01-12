@@ -40,6 +40,8 @@ public class CrosshairManager {
     private Crosshair retailCrosshair;
     private Crosshair fundingCrosshair;
     private Crosshair oiCrosshair;
+    private Crosshair stochasticCrosshair;
+    private Crosshair rangePositionCrosshair;
 
     // Status update callback
     private Consumer<String> onStatusUpdate;
@@ -110,7 +112,9 @@ public class CrosshairManager {
             org.jfree.chart.ChartPanel whalePanel,
             org.jfree.chart.ChartPanel retailPanel,
             org.jfree.chart.ChartPanel fundingPanel,
-            org.jfree.chart.ChartPanel oiPanel) {
+            org.jfree.chart.ChartPanel oiPanel,
+            org.jfree.chart.ChartPanel stochasticPanel,
+            org.jfree.chart.ChartPanel rangePositionPanel) {
 
         rsiCrosshair = createCrosshair();
         macdCrosshair = createCrosshair();
@@ -122,6 +126,8 @@ public class CrosshairManager {
         retailCrosshair = createCrosshair();
         fundingCrosshair = createCrosshair();
         oiCrosshair = createCrosshair();
+        stochasticCrosshair = createCrosshair();
+        rangePositionCrosshair = createCrosshair();
 
         addCrosshairOverlay(rsiPanel, rsiCrosshair);
         addCrosshairOverlay(macdPanel, macdCrosshair);
@@ -133,6 +139,8 @@ public class CrosshairManager {
         if (retailPanel != null) addCrosshairOverlay(retailPanel, retailCrosshair);
         if (fundingPanel != null) addCrosshairOverlay(fundingPanel, fundingCrosshair);
         if (oiPanel != null) addCrosshairOverlay(oiPanel, oiCrosshair);
+        if (stochasticPanel != null) addCrosshairOverlay(stochasticPanel, stochasticCrosshair);
+        if (rangePositionPanel != null) addCrosshairOverlay(rangePositionPanel, rangePositionCrosshair);
 
         ChartMouseListener listener = createMouseListener();
         rsiPanel.addChartMouseListener(listener);
@@ -145,6 +153,8 @@ public class CrosshairManager {
         if (retailPanel != null) retailPanel.addChartMouseListener(listener);
         if (fundingPanel != null) fundingPanel.addChartMouseListener(listener);
         if (oiPanel != null) oiPanel.addChartMouseListener(listener);
+        if (stochasticPanel != null) stochasticPanel.addChartMouseListener(listener);
+        if (rangePositionPanel != null) rangePositionPanel.addChartMouseListener(listener);
     }
 
     private Crosshair createCrosshair() {
@@ -212,6 +222,8 @@ public class CrosshairManager {
         if (retailCrosshair != null) retailCrosshair.setValue(domainValue);
         if (fundingCrosshair != null) fundingCrosshair.setValue(domainValue);
         if (oiCrosshair != null) oiCrosshair.setValue(domainValue);
+        if (stochasticCrosshair != null) stochasticCrosshair.setValue(domainValue);
+        if (rangePositionCrosshair != null) rangePositionCrosshair.setValue(domainValue);
     }
 
     private void updateStatus(double timestamp) {
