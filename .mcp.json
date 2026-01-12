@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "tradery": {
+      "command": "node",
+      "args": ["/Users/martinschwaller/.tradery/mcp-server/index.js"]
+    }
+  }
+}

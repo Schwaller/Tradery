@@ -147,21 +147,37 @@ public class CandleStore {
                     allCandles.addAll(cached);
                 }
             } else if (fileExists && partialFile.exists()) {
-                // Historical partial file - complete it by fetching missing data
-                log.info("Completing partial data for {}", monthKey);
+                // Historical partial file - complete it by fetching ALL missing data
                 List<Candle> cached = loadCsvFile(partialFile);
-                long lastCachedTime = cached.isEmpty() ? fetchStart : cached.get(cached.size() - 1).timestamp();
+                long firstCachedTime = cached.isEmpty() ? Long.MAX_VALUE : cached.get(0).timestamp();
+                long lastCachedTime = cached.isEmpty() ? 0 : cached.get(cached.size() - 1).timestamp();
+                boolean needsFetch = false;
 
-                // Fetch data after the last cached candle
-                if (lastCachedTime < fetchEnd) {
-                    List<Candle> fresh = binanceClient.fetchAllKlines(symbol, resolution, lastCachedTime, fetchEnd,
+                // Fetch missing data BEFORE first cached candle (gap at start)
+                if (fetchStart < firstCachedTime) {
+                    log.info("Completing partial {} - fetching data before {}", monthKey, firstCachedTime);
+                    List<Candle> beforeData = binanceClient.fetchAllKlines(symbol, resolution, fetchStart, firstCachedTime,
                             fetchCancelled, progressCallback);
-                    if (!fresh.isEmpty()) {
-                        saveToCache(symbol, resolution, fresh, fetchCancelled.get());
-                        allCandles.addAll(loadCsvFile(partialFile.exists() ? partialFile : completeFile));
-                    } else {
-                        allCandles.addAll(cached);
+                    if (!beforeData.isEmpty()) {
+                        saveToCache(symbol, resolution, beforeData, fetchCancelled.get());
+                        needsFetch = true;
                     }
+                }
+
+                // Fetch missing data AFTER last cached candle (gap at end)
+                if (lastCachedTime < fetchEnd && !fetchCancelled.get()) {
+                    log.info("Completing partial {} - fetching data after {}", monthKey, lastCachedTime);
+                    List<Candle> afterData = binanceClient.fetchAllKlines(symbol, resolution, lastCachedTime, fetchEnd,
+                            fetchCancelled, progressCallback);
+                    if (!afterData.isEmpty()) {
+                        saveToCache(symbol, resolution, afterData, fetchCancelled.get());
+                        needsFetch = true;
+                    }
+                }
+
+                // Reload merged data or use cached
+                if (needsFetch) {
+                    allCandles.addAll(loadCsvFile(partialFile.exists() ? partialFile : completeFile));
                 } else {
                     allCandles.addAll(cached);
                 }
