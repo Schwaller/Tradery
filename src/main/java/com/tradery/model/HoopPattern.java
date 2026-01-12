@@ -12,7 +12,7 @@ import java.util.List;
  * Similar to Phase but for price-checkpoint patterns rather than DSL conditions.
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
-public class HoopPattern {
+public class HoopPattern implements Identifiable {
 
     // Identity
     private String id;           // e.g., "double-bottom"

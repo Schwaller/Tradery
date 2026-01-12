@@ -2,6 +2,8 @@ package com.tradery.data;
 
 import com.tradery.model.AggTrade;
 import com.tradery.model.FetchProgress;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.*;
 import java.nio.file.Files;
@@ -31,9 +33,11 @@ import java.util.function.Consumer;
  */
 public class AggTradesStore {
 
+    private static final Logger log = LoggerFactory.getLogger(AggTradesStore.class);
     private static final DateTimeFormatter DATE_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd");
     private static final DateTimeFormatter HOUR_FORMAT = DateTimeFormatter.ofPattern("HH");
     private static final String AGG_TRADES_DIR = "aggTrades";
+    private static final String CSV_HEADER = "aggTradeId,price,quantity,firstTradeId,lastTradeId,timestamp,isBuyerMaker";
     private static final long ONE_HOUR_MS = 60 * 60 * 1000;
 
     private final File dataDir;
@@ -44,8 +48,12 @@ public class AggTradesStore {
     private Consumer<FetchProgress> progressCallback;
 
     public AggTradesStore() {
+        this(new AggTradesClient());
+    }
+
+    public AggTradesStore(AggTradesClient client) {
         this.dataDir = DataConfig.getInstance().getDataDir();
-        this.client = new AggTradesClient();
+        this.client = client;
 
         if (!dataDir.exists()) {
             dataDir.mkdirs();
@@ -228,7 +236,7 @@ public class AggTradesStore {
         LocalDateTime current = start;
         while (!current.isAfter(end)) {
             if (fetchCancelled.get()) {
-                System.out.println("Fetch cancelled by user");
+                log.debug("Fetch cancelled by user");
                 break;
             }
 
@@ -258,7 +266,7 @@ public class AggTradesStore {
 
                 // Only fetch if last cached trade is old (more than 1 minute for current hour)
                 if (System.currentTimeMillis() - lastCachedTime > 60 * 1000) {
-                    System.out.println("Updating current hour " + current.format(DATE_FORMAT) + " " + current.format(HOUR_FORMAT) + ":xx...");
+                    log.debug("Updating current hour {} {}:xx...", current.format(DATE_FORMAT), current.format(HOUR_FORMAT));
                     List<AggTrade> fresh = client.fetchAllAggTrades(symbol, lastCachedTime + 1, fetchEnd,
                             fetchCancelled, hourProgressCallback);
                     currentHourIndex[0]++;
@@ -284,7 +292,7 @@ public class AggTradesStore {
                     allTrades.addAll(cached);
                 } else {
                     // Need to fetch remaining data
-                    System.out.println("Completing hour " + current.format(DATE_FORMAT) + " " + current.format(HOUR_FORMAT) + ":xx...");
+                    log.debug("Completing hour {} {}:xx...", current.format(DATE_FORMAT), current.format(HOUR_FORMAT));
                     List<AggTrade> fresh = client.fetchAllAggTrades(symbol, lastCachedTime + 1, hourEnd,
                             fetchCancelled, hourProgressCallback);
                     currentHourIndex[0]++;
@@ -300,7 +308,7 @@ public class AggTradesStore {
                 }
             } else {
                 // No cache - fetch from Binance
-                System.out.println("Fetching hour " + current.format(DATE_FORMAT) + " " + current.format(HOUR_FORMAT) + ":xx...");
+                log.info("Fetching hour {} {}:xx...", current.format(DATE_FORMAT), current.format(HOUR_FORMAT));
                 List<AggTrade> fresh = client.fetchAllAggTrades(symbol, fetchStart, fetchEnd,
                         fetchCancelled, hourProgressCallback);
                 currentHourIndex[0]++;
@@ -395,7 +403,7 @@ public class AggTradesStore {
                 try {
                     trades.add(AggTrade.fromCsv(line));
                 } catch (Exception e) {
-                    System.err.println("Failed to parse line: " + line);
+                    log.warn("Failed to parse CSV line: {}", line);
                 }
             }
         }
@@ -413,7 +421,7 @@ public class AggTradesStore {
                 writer.println(t.toCsv());
             }
         }
-        System.out.println("Saved " + formatCount(trades.size()) + " aggTrades to " + file.getPath());
+        log.debug("Saved {} aggTrades to {}", formatCount(trades.size()), file.getPath());
     }
 
     /**

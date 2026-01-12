@@ -1,11 +1,10 @@
 package com.tradery.data;
 
-import com.tradery.TraderyApp;
 import com.tradery.model.FundingRate;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.*;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.time.Instant;
 import java.time.YearMonth;
 import java.time.ZoneOffset;
@@ -23,6 +22,7 @@ import java.util.*;
  */
 public class FundingRateStore {
 
+    private static final Logger log = LoggerFactory.getLogger(FundingRateStore.class);
     private static final DateTimeFormatter MONTH_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM");
     private static final String FUNDING_DIR = "funding";
     private static final String CSV_HEADER = "symbol,fundingRate,fundingTime,markPrice";
@@ -31,8 +31,12 @@ public class FundingRateStore {
     private final FundingRateClient client;
 
     public FundingRateStore() {
+        this(new FundingRateClient());
+    }
+
+    public FundingRateStore(FundingRateClient client) {
         this.dataDir = DataConfig.getInstance().getDataDir();
-        this.client = new FundingRateClient();
+        this.client = client;
 
         if (!dataDir.exists()) {
             dataDir.mkdirs();
@@ -120,7 +124,7 @@ public class FundingRateStore {
                     loadCsvFile(cacheFile, ratesMap);
                 } catch (IOException e) {
                     // Ignore corrupt cache files
-                    System.err.println("Error loading funding cache: " + cacheFile + " - " + e.getMessage());
+                    log.warn("Error loading funding cache: {} - {}", cacheFile, e.getMessage());
                 }
             }
 

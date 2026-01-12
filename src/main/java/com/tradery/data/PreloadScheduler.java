@@ -1,5 +1,8 @@
 package com.tradery.data;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -13,6 +16,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  */
 public final class PreloadScheduler {
 
+    private static final Logger log = LoggerFactory.getLogger(PreloadScheduler.class);
     private static final long RATE_LIMIT_DELAY_MS = 500;  // Delay between API calls
     private static final long PAUSE_CHECK_INTERVAL_MS = 100;
 
@@ -67,7 +71,7 @@ public final class PreloadScheduler {
         workerThread.setDaemon(true);
         workerThread.start();
 
-        System.out.println("PreloadScheduler started");
+        log.info("PreloadScheduler started");
     }
 
     /**
@@ -78,7 +82,7 @@ public final class PreloadScheduler {
             return;
         }
 
-        System.out.println("PreloadScheduler shutting down...");
+        log.info("PreloadScheduler shutting down...");
         shuttingDown.set(true);
         running.set(false);
 
@@ -91,7 +95,7 @@ public final class PreloadScheduler {
             }
         }
 
-        System.out.println("PreloadScheduler stopped");
+        log.info("PreloadScheduler stopped");
     }
 
     /**
@@ -108,7 +112,7 @@ public final class PreloadScheduler {
         }
 
         queue.offer(request);
-        System.out.println("Preload queued: " + request);
+        log.debug("Preload queued: {}", request);
     }
 
     /**
@@ -140,7 +144,7 @@ public final class PreloadScheduler {
      */
     public void pauseForTradingLoad() {
         tradingLoadActive.set(true);
-        System.out.println("PreloadScheduler paused for trading load");
+        log.debug("PreloadScheduler paused for trading load");
     }
 
     /**
@@ -148,7 +152,7 @@ public final class PreloadScheduler {
      */
     public void resumeAfterTradingLoad() {
         tradingLoadActive.set(false);
-        System.out.println("PreloadScheduler resumed");
+        log.debug("PreloadScheduler resumed");
     }
 
     /**
@@ -208,11 +212,11 @@ public final class PreloadScheduler {
 
             } catch (InterruptedException e) {
                 if (!shuttingDown.get()) {
-                    System.err.println("PreloadScheduler interrupted");
+                    log.debug("PreloadScheduler interrupted");
                 }
                 break;
             } catch (Exception e) {
-                System.err.println("PreloadScheduler error: " + e.getMessage());
+                log.warn("PreloadScheduler error: {}", e.getMessage());
                 e.printStackTrace();
             }
         }
@@ -230,7 +234,7 @@ public final class PreloadScheduler {
                 case OI -> processOI(request);
             }
         } catch (Exception e) {
-            System.err.println("Preload failed for " + request + ": " + e.getMessage());
+            log.warn("Preload failed for {}: {}", request, e.getMessage());
         }
     }
 
@@ -240,12 +244,12 @@ public final class PreloadScheduler {
             request.symbol(), request.timeframe(), request.startTime(), request.endTime());
 
         if (gaps.isEmpty()) {
-            System.out.println("Preload skipped (already cached): " + request);
+            log.debug("Preload skipped (already cached): {}", request);
             return;
         }
 
         if (candleStore == null) {
-            System.err.println("CandleStore not set, skipping preload");
+            log.warn("CandleStore not set, skipping preload");
             return;
         }
 
@@ -260,8 +264,8 @@ public final class PreloadScheduler {
                 return;
             }
 
-            System.out.println("Preloading candles: " + request.symbol() + "/" +
-                request.timeframe() + " gap " + formatDuration(gap.duration()));
+            log.info("Preloading candles: {}/{} gap {}", request.symbol(),
+                request.timeframe(), formatDuration(gap.duration()));
 
             candleStore.getCandles(request.symbol(), request.timeframe(),
                 gap.start(), gap.end());
@@ -278,12 +282,12 @@ public final class PreloadScheduler {
             request.symbol(), request.startTime(), request.endTime());
 
         if (gaps.isEmpty()) {
-            System.out.println("Preload skipped (already cached): " + request);
+            log.debug("Preload skipped (already cached): {}", request);
             return;
         }
 
         if (aggTradesStore == null) {
-            System.err.println("AggTradesStore not set, skipping preload");
+            log.warn("AggTradesStore not set, skipping preload");
             return;
         }
 
@@ -296,8 +300,7 @@ public final class PreloadScheduler {
                 return;
             }
 
-            System.out.println("Preloading aggTrades: " + request.symbol() +
-                " gap " + formatDuration(gap.duration()));
+            log.info("Preloading aggTrades: {} gap {}", request.symbol(), formatDuration(gap.duration()));
 
             aggTradesStore.getAggTrades(request.symbol(), gap.start(), gap.end());
 
@@ -311,12 +314,12 @@ public final class PreloadScheduler {
             request.symbol(), request.startTime(), request.endTime());
 
         if (gaps.isEmpty()) {
-            System.out.println("Preload skipped (already cached): " + request);
+            log.debug("Preload skipped (already cached): {}", request);
             return;
         }
 
         if (fundingRateStore == null) {
-            System.err.println("FundingRateStore not set, skipping preload");
+            log.warn("FundingRateStore not set, skipping preload");
             return;
         }
 
@@ -328,8 +331,7 @@ public final class PreloadScheduler {
                 return;
             }
 
-            System.out.println("Preloading funding: " + request.symbol() +
-                " gap " + formatDuration(gap.duration()));
+            log.info("Preloading funding: {} gap {}", request.symbol(), formatDuration(gap.duration()));
 
             fundingRateStore.getFundingRates(request.symbol(), gap.start(), gap.end());
 
@@ -343,12 +345,12 @@ public final class PreloadScheduler {
             request.symbol(), request.startTime(), request.endTime());
 
         if (gaps.isEmpty()) {
-            System.out.println("Preload skipped (already cached): " + request);
+            log.debug("Preload skipped (already cached): {}", request);
             return;
         }
 
         if (openInterestStore == null) {
-            System.err.println("OpenInterestStore not set, skipping preload");
+            log.warn("OpenInterestStore not set, skipping preload");
             return;
         }
 
@@ -370,8 +372,7 @@ public final class PreloadScheduler {
                 continue;  // Gap is too old to fetch
             }
 
-            System.out.println("Preloading OI: " + request.symbol() +
-                " gap " + formatDuration(gap.end() - effectiveStart));
+            log.info("Preloading OI: {} gap {}", request.symbol(), formatDuration(gap.end() - effectiveStart));
 
             openInterestStore.getOpenInterest(request.symbol(), effectiveStart, gap.end());
 

@@ -8,7 +8,7 @@ import java.time.Instant;
  * Stored as JSON in ~/.tradery/strategies/
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
-public class Strategy {
+public class Strategy implements Identifiable {
 
     // Identity
     private String id;

@@ -7,11 +7,12 @@ import com.tradery.model.FetchProgress;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 
@@ -21,6 +22,7 @@ import java.util.function.Consumer;
  */
 public class AggTradesClient {
 
+    private static final Logger log = LoggerFactory.getLogger(AggTradesClient.class);
     private static final String BASE_URL = "https://api.binance.com/api/v3";
     private static final int MAX_TRADES_PER_REQUEST = 1000;
 
@@ -28,11 +30,8 @@ public class AggTradesClient {
     private final ObjectMapper mapper;
 
     public AggTradesClient() {
-        this.client = new OkHttpClient.Builder()
-            .connectTimeout(30, TimeUnit.SECONDS)
-            .readTimeout(30, TimeUnit.SECONDS)
-            .build();
-        this.mapper = new ObjectMapper();
+        this.client = HttpClientFactory.getClient();
+        this.mapper = HttpClientFactory.getMapper();
     }
 
     /**
@@ -113,7 +112,7 @@ public class AggTradesClient {
         long days = Math.max(1, (endTime - startTime) / (24 * 60 * 60 * 1000));
         long estimatedTotal = days * estimatedTradesPerDay;
 
-        System.out.println("Fetching " + symbol + " aggTrades from Binance...");
+        log.info("Fetching {} aggTrades from Binance...", symbol);
 
         // Report starting
         if (onProgress != null) {
@@ -123,7 +122,7 @@ public class AggTradesClient {
         while (currentStart < endTime) {
             // Check for cancellation before each request
             if (cancelled != null && cancelled.get()) {
-                System.out.println("  Fetch cancelled. Returning " + allTrades.size() + " trades.");
+                log.debug("Fetch cancelled. Returning {} trades.", allTrades.size());
                 if (onProgress != null) {
                     onProgress.accept(FetchProgress.cancelled(allTrades.size()));
                 }
@@ -155,7 +154,7 @@ public class AggTradesClient {
             }
 
             if (allTrades.size() % 50000 == 0) {
-                System.out.println("  Fetched " + formatCount(allTrades.size()) + " trades...");
+                log.debug("Fetched {} trades so far...", formatCount(allTrades.size()));
             }
 
             // Rate limiting - Binance allows 1200 requests per minute
@@ -170,7 +169,7 @@ public class AggTradesClient {
             }
         }
 
-        System.out.println("  Done! Total: " + formatCount(allTrades.size()) + " trades");
+        log.info("Fetch complete. Total: {} trades", formatCount(allTrades.size()));
 
         // Report completion
         if (onProgress != null) {

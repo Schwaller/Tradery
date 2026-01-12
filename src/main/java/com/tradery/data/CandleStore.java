@@ -1,9 +1,10 @@
 package com.tradery.data;
 
-import com.tradery.TraderyApp;
 import com.tradery.model.Candle;
 import com.tradery.model.FetchProgress;
 import com.tradery.model.Gap;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.*;
 import java.nio.file.Files;
@@ -26,7 +27,9 @@ import java.util.function.Consumer;
  */
 public class CandleStore {
 
+    private static final Logger log = LoggerFactory.getLogger(CandleStore.class);
     private static final DateTimeFormatter YEAR_MONTH = DateTimeFormatter.ofPattern("yyyy-MM");
+    private static final String CSV_HEADER = "timestamp,open,high,low,close,volume";
 
     private final File dataDir;
     private final BinanceClient binanceClient;
@@ -36,8 +39,12 @@ public class CandleStore {
     private Consumer<FetchProgress> progressCallback;
 
     public CandleStore() {
+        this(new BinanceClient());
+    }
+
+    public CandleStore(BinanceClient binanceClient) {
         this.dataDir = DataConfig.getInstance().getDataDir();
-        this.binanceClient = new BinanceClient();
+        this.binanceClient = binanceClient;
 
         if (!dataDir.exists()) {
             dataDir.mkdirs();
@@ -93,7 +100,7 @@ public class CandleStore {
         while (!current.isAfter(end)) {
             // Check for cancellation
             if (fetchCancelled.get()) {
-                System.out.println("Fetch cancelled by user");
+                log.debug("Fetch cancelled by user");
                 break;
             }
 
@@ -119,7 +126,7 @@ public class CandleStore {
 
             if (fileExists && !isCurrentMonth && completeFile.exists()) {
                 // Historical month with complete data - use cache, don't refetch
-                System.out.println("Using cached data for " + monthKey);
+                log.debug("Using cached data for {}", monthKey);
                 allCandles.addAll(loadCsvFile(monthFile));
             } else if (fileExists && isCurrentMonth) {
                 // Current month - check if we need to update
@@ -129,23 +136,38 @@ public class CandleStore {
                 // Only fetch if last cached candle is old (more than resolution interval)
                 long resolutionMs = getResolutionMs(resolution);
                 if (System.currentTimeMillis() - lastCachedTime > resolutionMs * 2) {
-                    System.out.println("Updating current month " + monthKey + " from " + lastCachedTime);
+                    log.debug("Updating current month {} from {}", monthKey, lastCachedTime);
                     List<Candle> fresh = binanceClient.fetchAllKlines(symbol, resolution, lastCachedTime, fetchEnd,
                             fetchCancelled, progressCallback);
                     boolean wasCancelled = fetchCancelled.get();
                     saveToCache(symbol, resolution, fresh, wasCancelled);
                     allCandles.addAll(loadCsvFile(completeFile.exists() ? completeFile : partialFile)); // Reload merged data
                 } else {
-                    System.out.println("Using recent cached data for " + monthKey);
+                    log.debug("Using recent cached data for {}", monthKey);
                     allCandles.addAll(cached);
                 }
             } else if (fileExists && partialFile.exists()) {
-                // Historical partial file - use what we have but could repair later
-                System.out.println("Using partial cached data for " + monthKey);
-                allCandles.addAll(loadCsvFile(partialFile));
+                // Historical partial file - complete it by fetching missing data
+                log.info("Completing partial data for {}", monthKey);
+                List<Candle> cached = loadCsvFile(partialFile);
+                long lastCachedTime = cached.isEmpty() ? fetchStart : cached.get(cached.size() - 1).timestamp();
+
+                // Fetch data after the last cached candle
+                if (lastCachedTime < fetchEnd) {
+                    List<Candle> fresh = binanceClient.fetchAllKlines(symbol, resolution, lastCachedTime, fetchEnd,
+                            fetchCancelled, progressCallback);
+                    if (!fresh.isEmpty()) {
+                        saveToCache(symbol, resolution, fresh, fetchCancelled.get());
+                        allCandles.addAll(loadCsvFile(partialFile.exists() ? partialFile : completeFile));
+                    } else {
+                        allCandles.addAll(cached);
+                    }
+                } else {
+                    allCandles.addAll(cached);
+                }
             } else {
                 // No cache - fetch from Binance
-                System.out.println("Fetching " + monthKey + " from Binance...");
+                log.info("Fetching {} from Binance...", monthKey);
                 List<Candle> fresh = binanceClient.fetchAllKlines(symbol, resolution, fetchStart, fetchEnd,
                         fetchCancelled, progressCallback);
                 boolean wasCancelled = fetchCancelled.get();
@@ -209,7 +231,7 @@ public class CandleStore {
                 try {
                     candles.addAll(loadCsvFile(file));
                 } catch (IOException e) {
-                    System.err.println("Failed to load " + file + ": " + e.getMessage());
+                    log.warn("Failed to load {}: {}", file, e.getMessage());
                 }
             }
 
@@ -288,7 +310,7 @@ public class CandleStore {
             // Clean up: if we wrote to complete, remove partial; if partial, leave complete alone
             if (isComplete && partialFile.exists()) {
                 partialFile.delete();
-                System.out.println("Upgraded " + monthKey + " from partial to complete");
+                log.info("Upgraded {} from partial to complete", monthKey);
             }
         }
     }
@@ -358,7 +380,7 @@ public class CandleStore {
                 try {
                     candles.add(Candle.fromCsv(line));
                 } catch (Exception e) {
-                    System.err.println("Failed to parse line: " + line);
+                    log.warn("Failed to parse CSV line: {}", line);
                 }
             }
         }
@@ -376,7 +398,7 @@ public class CandleStore {
                 writer.println(c.toCsv());
             }
         }
-        System.out.println("Saved " + candles.size() + " candles to " + file.getAbsolutePath());
+        log.debug("Saved {} candles to {}", candles.size(), file.getAbsolutePath());
     }
 
     /**
@@ -432,7 +454,7 @@ public class CandleStore {
         long monthStart = month.atDay(1).atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli();
         long monthEnd = month.plusMonths(1).atDay(1).atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli() - 1;
 
-        System.out.println("Repairing " + month + " for " + symbol + " " + resolution);
+        log.info("Repairing {} for {} {}", month, symbol, resolution);
 
         // Fetch entire month
         List<Candle> fresh = binanceClient.fetchAllKlines(symbol, resolution, monthStart, monthEnd,
@@ -441,7 +463,7 @@ public class CandleStore {
         boolean wasCancelled = fetchCancelled.get();
         saveToCache(symbol, resolution, fresh, wasCancelled);
 
-        System.out.println("Repair complete for " + month + ": " + fresh.size() + " candles");
+        log.info("Repair complete for {}: {} candles", month, fresh.size());
     }
 
     /**
@@ -456,7 +478,7 @@ public class CandleStore {
         for (Gap gap : gaps) {
             if (fetchCancelled.get()) break;
 
-            System.out.println("Repairing gap: " + gap.startTimestamp() + " - " + gap.endTimestamp());
+            log.debug("Repairing gap: {} - {}", gap.startTimestamp(), gap.endTimestamp());
             List<Candle> fresh = binanceClient.fetchAllKlines(symbol, resolution,
                     gap.startTimestamp(), gap.endTimestamp(),
                     fetchCancelled, progressCallback);
@@ -466,7 +488,7 @@ public class CandleStore {
         boolean wasCancelled = fetchCancelled.get();
         saveToCache(symbol, resolution, allFresh, wasCancelled);
 
-        System.out.println("Gap repair complete: " + allFresh.size() + " candles fetched");
+        log.info("Gap repair complete: {} candles fetched", allFresh.size());
     }
 
     /**
@@ -481,11 +503,11 @@ public class CandleStore {
 
         if (completeFile.exists()) {
             completeFile.delete();
-            System.out.println("Deleted " + completeFile.getAbsolutePath());
+            log.debug("Deleted {}", completeFile.getAbsolutePath());
         }
         if (partialFile.exists()) {
             partialFile.delete();
-            System.out.println("Deleted " + partialFile.getAbsolutePath());
+            log.debug("Deleted {}", partialFile.getAbsolutePath());
         }
     }
 

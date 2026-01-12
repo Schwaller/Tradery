@@ -436,6 +436,13 @@ public class BacktestCoordinator {
                     reportProgress(100, "Complete");
                     reportStatus(result.getSummary());
 
+                    // Report warnings if any
+                    if (result.hasWarnings()) {
+                        for (String warning : result.warnings()) {
+                            reportStatus("Warning: " + warning);
+                        }
+                    }
+
                 } catch (Exception e) {
                     reportProgress(0, "Error");
                     String errorMsg = e.getCause() != null ? e.getCause().getMessage() : e.getMessage();

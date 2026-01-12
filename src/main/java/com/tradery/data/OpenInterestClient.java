@@ -6,6 +6,8 @@ import com.tradery.model.OpenInterest;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.time.Instant;
@@ -13,7 +15,6 @@ import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 
 /**
@@ -26,6 +27,7 @@ import java.util.function.Consumer;
  */
 public class OpenInterestClient {
 
+    private static final Logger log = LoggerFactory.getLogger(OpenInterestClient.class);
     private static final String BASE_URL = "https://fapi.binance.com/futures/data";
     private static final int MAX_RECORDS_PER_REQUEST = 500;
     private static final String DEFAULT_PERIOD = "5m";
@@ -35,11 +37,8 @@ public class OpenInterestClient {
     private final ObjectMapper mapper;
 
     public OpenInterestClient() {
-        this.client = new OkHttpClient.Builder()
-            .connectTimeout(30, TimeUnit.SECONDS)
-            .readTimeout(30, TimeUnit.SECONDS)
-            .build();
-        this.mapper = new ObjectMapper();
+        this.client = HttpClientFactory.getClient();
+        this.mapper = HttpClientFactory.getMapper();
     }
 
     /**

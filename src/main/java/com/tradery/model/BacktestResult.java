@@ -25,7 +25,8 @@ public record BacktestResult(
     long endTime,
     int barsProcessed,
     long duration,
-    List<String> errors
+    List<String> errors,
+    List<String> warnings   // Non-fatal issues (e.g., overlapping exit zones)
 ) {
     /**
      * Generate a new unique run ID
@@ -52,10 +53,17 @@ public record BacktestResult(
         }
     }
     /**
-     * Check if the backtest completed successfully
+     * Check if the backtest completed successfully (no errors)
      */
     public boolean isSuccessful() {
         return errors == null || errors.isEmpty();
+    }
+
+    /**
+     * Check if the backtest has warnings
+     */
+    public boolean hasWarnings() {
+        return warnings != null && !warnings.isEmpty();
     }
 
     /**

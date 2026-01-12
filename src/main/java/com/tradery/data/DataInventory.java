@@ -2,6 +2,8 @@ package com.tradery.data;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.File;
 import java.io.IOException;
@@ -17,6 +19,7 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public final class DataInventory {
 
+    private static final Logger log = LoggerFactory.getLogger(DataInventory.class);
     private static final String INVENTORY_FILE = "inventory.json";
 
     // Coverage maps - key format documented per type
@@ -161,7 +164,7 @@ public final class DataInventory {
 
             mapper.writeValue(file, state);
         } catch (IOException e) {
-            System.err.println("Failed to save DataInventory: " + e.getMessage());
+            log.warn("Failed to save DataInventory: {}", e.getMessage());
         }
     }
 
@@ -195,11 +198,10 @@ public final class DataInventory {
             deserializeCoverage((Map<String, List<List<Number>>>) state.get("oi"), oiCoverage);
 
             CoverageStats stats = getStats();
-            System.out.println("DataInventory loaded: " + stats.candleSymbols() + " candle symbols, " +
-                stats.aggTradesSymbols() + " aggTrades symbols, " +
-                stats.totalCandleCoverageHours() + "h candle coverage");
+            log.info("DataInventory loaded: {} candle symbols, {} aggTrades symbols, {}h candle coverage",
+                stats.candleSymbols(), stats.aggTradesSymbols(), stats.totalCandleCoverageHours());
         } catch (IOException e) {
-            System.err.println("Failed to load DataInventory: " + e.getMessage());
+            log.warn("Failed to load DataInventory: {}", e.getMessage());
         }
     }
 

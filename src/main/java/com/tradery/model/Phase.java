@@ -11,7 +11,7 @@ import java.time.Instant;
  * Stored as JSON in ~/.tradery/phases/{id}/phase.json
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
-public class Phase {
+public class Phase implements Identifiable {
 
     // Identity
     private String id;           // e.g., "trending-up"

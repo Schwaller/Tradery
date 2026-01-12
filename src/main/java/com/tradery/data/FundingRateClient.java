@@ -6,11 +6,12 @@ import com.tradery.model.FundingRate;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.TimeUnit;
 
 /**
  * Binance Futures API client for fetching funding rate data.
@@ -21,6 +22,7 @@ import java.util.concurrent.TimeUnit;
  */
 public class FundingRateClient {
 
+    private static final Logger log = LoggerFactory.getLogger(FundingRateClient.class);
     private static final String BASE_URL = "https://fapi.binance.com/fapi/v1";
     private static final int MAX_RECORDS_PER_REQUEST = 1000;
 
@@ -28,11 +30,8 @@ public class FundingRateClient {
     private final ObjectMapper mapper;
 
     public FundingRateClient() {
-        this.client = new OkHttpClient.Builder()
-            .connectTimeout(30, TimeUnit.SECONDS)
-            .readTimeout(30, TimeUnit.SECONDS)
-            .build();
-        this.mapper = new ObjectMapper();
+        this.client = HttpClientFactory.getClient();
+        this.mapper = HttpClientFactory.getMapper();
     }
 
     /**

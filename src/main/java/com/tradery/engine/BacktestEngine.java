@@ -30,6 +30,8 @@ public class BacktestEngine {
 
     private final IndicatorEngine indicatorEngine;
     private final CandleStore candleStore;
+    private final PositionSizer positionSizer;
+    private final TradeAnalytics tradeAnalytics;
     private List<AggTrade> aggTrades;
     private List<FundingRate> fundingRates;
     private List<OpenInterest> openInterestData;
@@ -37,11 +39,15 @@ public class BacktestEngine {
     public BacktestEngine() {
         this.indicatorEngine = new IndicatorEngine();
         this.candleStore = null;
+        this.positionSizer = new PositionSizer();
+        this.tradeAnalytics = new TradeAnalytics(indicatorEngine);
     }
 
     public BacktestEngine(CandleStore candleStore) {
         this.indicatorEngine = new IndicatorEngine();
         this.candleStore = candleStore;
+        this.positionSizer = new PositionSizer();
+        this.tradeAnalytics = new TradeAnalytics(indicatorEngine);
     }
 
     /**
@@ -201,6 +207,13 @@ public class BacktestEngine {
                 zoneExitAst = zoneResult.ast();
             }
             parsedZones.add(new ParsedExitZone(zone, zoneExitAst));
+        }
+
+        // Check for overlapping exit zones (warning, not error)
+        List<String> warnings = new ArrayList<>();
+        ExitSettings exitSettings = strategy.getExitSettings();
+        if (exitSettings != null) {
+            warnings.addAll(exitSettings.findOverlappingZones());
         }
 
         // Create evaluator (indicator engine was already initialized above)
@@ -430,7 +443,7 @@ public class BacktestEngine {
                             if (slType.isPercent()) {
                                 stopDistance = entryPrice * (slValue / 100.0);
                             } else if (slType.isAtr()) {
-                                stopDistance = calculateATR(candles, i, 14) * slValue;
+                                stopDistance = positionSizer.calculateATR(candles, i, 14) * slValue;
                             }
                         }
 
@@ -460,7 +473,7 @@ public class BacktestEngine {
                             if (tpType.isPercent()) {
                                 tpDistance = entryPrice * (tpValue / 100.0);
                             } else if (tpType.isAtr()) {
-                                tpDistance = calculateATR(candles, i, 14) * tpValue;
+                                tpDistance = positionSizer.calculateATR(candles, i, 14) * tpValue;
                             }
 
                             double tpPrice = entryPrice + tpDistance;
@@ -560,8 +573,8 @@ public class BacktestEngine {
 
                             if (toExit > 0 && canExit) {
                                 // Capture phases and indicators once for this bar
-                                List<String> exitPhases = getActivePhasesAtBar(phaseStates, i);
-                                Map<String, Double> exitIndicators = getIndicatorValuesAtBar(strategy, i);
+                                List<String> exitPhases = tradeAnalytics.getActivePhasesAtBar(phaseStates, i);
+                                Map<String, Double> exitIndicators = tradeAnalytics.getIndicatorValuesAtBar(strategy, i);
 
                                 // Distribute proportionally across entries
                                 for (OpenTradeState ots : toClose) {
@@ -571,8 +584,8 @@ public class BacktestEngine {
 
                                     if (exitQty > 0.0001) {
                                         // Capture indicators at MFE/MAE points
-                                        Map<String, Double> mfeIndicators = getIndicatorValuesAtBar(strategy, ots.mfeBar);
-                                        Map<String, Double> maeIndicators = getIndicatorValuesAtBar(strategy, ots.maeBar);
+                                        Map<String, Double> mfeIndicators = tradeAnalytics.getIndicatorValuesAtBar(strategy, ots.mfeBar);
+                                        Map<String, Double> maeIndicators = tradeAnalytics.getIndicatorValuesAtBar(strategy, ots.maeBar);
                                         Trade partialTrade = ots.trade.partialCloseWithAnalytics(
                                             i, candle.timestamp(), ots.exitPrice, exitQty,
                                             config.commission(), ots.exitReason, ots.exitZone,
@@ -593,12 +606,12 @@ public class BacktestEngine {
                     } else {
                         // No partial exit configured, close everything
                         // Capture phases and indicators at exit once for this bar
-                        List<String> exitPhases = getActivePhasesAtBar(phaseStates, i);
-                        Map<String, Double> exitIndicators = getIndicatorValuesAtBar(strategy, i);
+                        List<String> exitPhases = tradeAnalytics.getActivePhasesAtBar(phaseStates, i);
+                        Map<String, Double> exitIndicators = tradeAnalytics.getIndicatorValuesAtBar(strategy, i);
                         for (OpenTradeState ots : toClose) {
                             // Capture indicators at MFE/MAE points
-                            Map<String, Double> mfeIndicators = getIndicatorValuesAtBar(strategy, ots.mfeBar);
-                            Map<String, Double> maeIndicators = getIndicatorValuesAtBar(strategy, ots.maeBar);
+                            Map<String, Double> mfeIndicators = tradeAnalytics.getIndicatorValuesAtBar(strategy, ots.mfeBar);
+                            Map<String, Double> maeIndicators = tradeAnalytics.getIndicatorValuesAtBar(strategy, ots.maeBar);
                             Trade closedTrade = ots.trade.partialCloseWithAnalytics(
                                 i, candle.timestamp(), ots.exitPrice, ots.remainingQuantity,
                                 config.commission(), ots.exitReason, ots.exitZone,
@@ -632,11 +645,11 @@ public class BacktestEngine {
 
                         if (exitQty > 0.0001) {
                             // Capture phases and indicators at exit
-                            List<String> exitPhases = getActivePhasesAtBar(phaseStates, i);
-                            Map<String, Double> exitIndicators = getIndicatorValuesAtBar(strategy, i);
+                            List<String> exitPhases = tradeAnalytics.getActivePhasesAtBar(phaseStates, i);
+                            Map<String, Double> exitIndicators = tradeAnalytics.getIndicatorValuesAtBar(strategy, i);
                             // Capture indicators at MFE/MAE points
-                            Map<String, Double> mfeIndicators = getIndicatorValuesAtBar(strategy, ots.mfeBar);
-                            Map<String, Double> maeIndicators = getIndicatorValuesAtBar(strategy, ots.maeBar);
+                            Map<String, Double> mfeIndicators = tradeAnalytics.getIndicatorValuesAtBar(strategy, ots.mfeBar);
+                            Map<String, Double> maeIndicators = tradeAnalytics.getIndicatorValuesAtBar(strategy, ots.maeBar);
                             Trade partialTrade = ots.trade.partialCloseWithAnalytics(
                                 i, candle.timestamp(), ots.exitPrice, exitQty,
                                 config.commission(), ots.exitReason, ots.exitZone,
@@ -724,7 +737,7 @@ public class BacktestEngine {
                                 .sum();
                             double availableCapital = currentEquity - usedCapital;
 
-                            double quantity = calculatePositionSize(config, strategy, currentEquity, fillPrice, candles, i);
+                            double quantity = positionSizer.calculate(config, strategy, currentEquity, fillPrice, candles, i);
                             if (strategy.isDcaEnabled() && maxEntriesPerPosition > 1) {
                                 quantity = quantity / maxEntriesPerPosition;
                             }
@@ -740,8 +753,8 @@ public class BacktestEngine {
                                 currentGroupId = strategy.isDcaEnabled() ? "dca-" + groupCounter : "pos-" + groupCounter;
 
                                 // Capture active phases and indicators at entry
-                                List<String> entryPhases = getActivePhasesAtBar(phaseStates, i);
-                                Map<String, Double> entryIndicators = getIndicatorValuesAtBar(strategy, i);
+                                List<String> entryPhases = tradeAnalytics.getActivePhasesAtBar(phaseStates, i);
+                                Map<String, Double> entryIndicators = tradeAnalytics.getIndicatorValuesAtBar(strategy, i);
 
                                 Trade newTrade = Trade.open(
                                     strategy.getId(),
@@ -768,7 +781,7 @@ public class BacktestEngine {
                                         if (slType.isPercent()) {
                                             stopDistance = fillPrice * (slValue / 100.0);
                                         } else if (slType.isAtr()) {
-                                            stopDistance = calculateATR(candles, i, 14) * slValue;
+                                            stopDistance = positionSizer.calculateATR(candles, i, 14) * slValue;
                                         }
                                         ots.trailingStopPrice = fillPrice - stopDistance;
                                     }
@@ -779,8 +792,8 @@ public class BacktestEngine {
                                 pendingOrderFilled = true;
                             } else {
                                 // Rejected due to no capital
-                                List<String> rejectedPhases = getActivePhasesAtBar(phaseStates, i);
-                                Map<String, Double> rejectedIndicators = getIndicatorValuesAtBar(strategy, i);
+                                List<String> rejectedPhases = tradeAnalytics.getActivePhasesAtBar(phaseStates, i);
+                                Map<String, Double> rejectedIndicators = tradeAnalytics.getIndicatorValuesAtBar(strategy, i);
                                 Trade rejectedTrade = Trade.rejected(
                                     strategy.getId(),
                                     "long",
@@ -831,13 +844,13 @@ public class BacktestEngine {
                     }
                     // Close the aborted trades (close remaining quantity)
                     // Capture phases and indicators at exit once for this bar
-                    List<String> abortExitPhases = getActivePhasesAtBar(phaseStates, i);
-                    Map<String, Double> abortExitIndicators = getIndicatorValuesAtBar(strategy, i);
+                    List<String> abortExitPhases = tradeAnalytics.getActivePhasesAtBar(phaseStates, i);
+                    Map<String, Double> abortExitIndicators = tradeAnalytics.getIndicatorValuesAtBar(strategy, i);
                     for (OpenTradeState ots : abortedTrades) {
                         if (ots.remainingQuantity > 0.0001) {
                             // Capture indicators at MFE/MAE points
-                            Map<String, Double> mfeIndicators = getIndicatorValuesAtBar(strategy, ots.mfeBar);
-                            Map<String, Double> maeIndicators = getIndicatorValuesAtBar(strategy, ots.maeBar);
+                            Map<String, Double> mfeIndicators = tradeAnalytics.getIndicatorValuesAtBar(strategy, ots.mfeBar);
+                            Map<String, Double> maeIndicators = tradeAnalytics.getIndicatorValuesAtBar(strategy, ots.maeBar);
                             Trade closedTrade = ots.trade.partialCloseWithAnalytics(
                                 i, candle.timestamp(), ots.exitPrice, ots.remainingQuantity,
                                 config.commission(), ots.exitReason, ots.exitZone,
@@ -884,7 +897,7 @@ public class BacktestEngine {
                                 .sum();
                             double availableCapital = currentEquity - usedCapital;
 
-                            double quantity = calculatePositionSize(config, strategy, currentEquity, candle.close(), candles, i);
+                            double quantity = positionSizer.calculate(config, strategy, currentEquity, candle.close(), candles, i);
                             if (strategy.isDcaEnabled() && maxEntriesPerPosition > 1) {
                                 quantity = quantity / maxEntriesPerPosition;
                             }
@@ -903,8 +916,8 @@ public class BacktestEngine {
                                 }
 
                                 // Capture active phases and indicators at entry
-                                List<String> entryPhases = getActivePhasesAtBar(phaseStates, i);
-                                Map<String, Double> entryIndicators = getIndicatorValuesAtBar(strategy, i);
+                                List<String> entryPhases = tradeAnalytics.getActivePhasesAtBar(phaseStates, i);
+                                Map<String, Double> entryIndicators = tradeAnalytics.getIndicatorValuesAtBar(strategy, i);
 
                                 Trade newTrade = Trade.open(
                                     strategy.getId(),
@@ -930,7 +943,7 @@ public class BacktestEngine {
                                         if (slType.isPercent()) {
                                             stopDistance = candle.close() * (slValue / 100.0);
                                         } else if (slType.isAtr()) {
-                                            stopDistance = calculateATR(candles, i, 14) * slValue;
+                                            stopDistance = positionSizer.calculateATR(candles, i, 14) * slValue;
                                         }
                                         ots.trailingStopPrice = candle.close() - stopDistance;
                                     }
@@ -940,8 +953,8 @@ public class BacktestEngine {
                                 lastEntryBar = i;
                             } else {
                                 // Capture active phases and indicators for rejected trade too
-                                List<String> rejectedPhases = getActivePhasesAtBar(phaseStates, i);
-                                Map<String, Double> rejectedIndicators = getIndicatorValuesAtBar(strategy, i);
+                                List<String> rejectedPhases = tradeAnalytics.getActivePhasesAtBar(phaseStates, i);
+                                Map<String, Double> rejectedIndicators = tradeAnalytics.getIndicatorValuesAtBar(strategy, i);
                                 Trade rejectedTrade = Trade.rejected(
                                     strategy.getId(),
                                     "long",
@@ -976,16 +989,16 @@ public class BacktestEngine {
         Candle lastCandle = candles.get(candles.size() - 1);
         int lastBar = candles.size() - 1;
         // Capture phases and indicators at end of data
-        List<String> endPhases = getActivePhasesAtBar(phaseStates, lastBar);
-        Map<String, Double> endIndicators = getIndicatorValuesAtBar(strategy, lastBar);
+        List<String> endPhases = tradeAnalytics.getActivePhasesAtBar(phaseStates, lastBar);
+        Map<String, Double> endIndicators = tradeAnalytics.getIndicatorValuesAtBar(strategy, lastBar);
         for (OpenTradeState ots : openTrades) {
             // Final MFE/MAE update for last candle
             boolean isLong = "long".equalsIgnoreCase(ots.trade.side());
             ots.updateExcursions(lastCandle.high(), lastCandle.low(), lastBar, isLong);
             if (ots.remainingQuantity > 0.0001) {
                 // Capture indicators at MFE/MAE points
-                Map<String, Double> mfeIndicators = getIndicatorValuesAtBar(strategy, ots.mfeBar);
-                Map<String, Double> maeIndicators = getIndicatorValuesAtBar(strategy, ots.maeBar);
+                Map<String, Double> mfeIndicators = tradeAnalytics.getIndicatorValuesAtBar(strategy, ots.mfeBar);
+                Map<String, Double> maeIndicators = tradeAnalytics.getIndicatorValuesAtBar(strategy, ots.maeBar);
                 Trade closedTrade = ots.trade.partialCloseWithAnalytics(
                     lastBar,
                     lastCandle.timestamp(),
@@ -1037,111 +1050,9 @@ public class BacktestEngine {
             endTime,
             candles.size() - warmupBars,
             endTime - startTime,
-            errors.size() > 100 ? errors.subList(0, 100) : errors
+            errors.size() > 100 ? errors.subList(0, 100) : errors,
+            warnings
         );
-    }
-
-    /**
-     * Calculate position size based on config and strategy
-     */
-    private double calculatePositionSize(BacktestConfig config, Strategy strategy, double equity,
-                                         double price, List<Candle> candles, int barIndex) {
-        double positionValue = equity * 0.10; // Default to 10% of equity
-
-        switch (config.positionSizingType()) {
-            case FIXED_PERCENT -> positionValue = equity * (config.positionSizingValue() / 100.0);
-            case FIXED_DOLLAR -> positionValue = config.positionSizingValue();
-            case RISK_PERCENT -> {
-                // Risk a percentage of equity based on stop-loss distance from default zone
-                ExitZone defaultZone = strategy.findMatchingZone(0.0);
-                StopLossType slType = defaultZone != null ? defaultZone.stopLossType() : StopLossType.NONE;
-                Double slValue = defaultZone != null ? defaultZone.stopLossValue() : null;
-                if (slValue != null && slValue > 0 && slType != StopLossType.NONE) {
-                    double riskAmount = equity * (config.positionSizingValue() / 100.0);
-                    double stopDistance;
-                    if (slType.isPercent()) {
-                        stopDistance = price * (slValue / 100.0);
-                    } else {
-                        // ATR-based
-                        stopDistance = calculateATR(candles, barIndex, 14) * slValue;
-                    }
-                    if (stopDistance > 0) {
-                        positionValue = (riskAmount / stopDistance) * price;
-                    } else {
-                        positionValue = equity * (config.positionSizingValue() / 100.0);
-                    }
-                } else {
-                    // No SL defined, fall back to fixed percent
-                    positionValue = equity * (config.positionSizingValue() / 100.0);
-                }
-            }
-            case KELLY -> {
-                // Kelly Criterion: f = (bp - q) / b
-                // where b = win/loss ratio, p = win rate, q = loss rate
-                // Simplified: use half-Kelly for safety
-                double kellyFraction = calculateKellyFraction(config);
-                positionValue = equity * Math.max(0, Math.min(kellyFraction * 0.5, 0.25)); // Cap at 25%
-            }
-            case VOLATILITY -> {
-                // Volatility-based: size inversely proportional to ATR
-                double atr = calculateATR(candles, barIndex, 14);
-                if (atr > 0) {
-                    double targetRisk = equity * 0.02; // Risk 2% of equity
-                    double atrMultiple = 2.0; // Stop at 2x ATR
-                    positionValue = (targetRisk / (atr * atrMultiple)) * price;
-                } else {
-                    positionValue = equity * 0.10;
-                }
-            }
-            case ALL_IN -> positionValue = equity; // Use all available capital
-        }
-
-        // Ensure we don't exceed available equity (allow 100% for ALL_IN)
-        double maxAllocation = config.positionSizingType() == PositionSizingType.ALL_IN ? 1.0 : 0.95;
-        positionValue = Math.min(positionValue, equity * maxAllocation);
-
-        return positionValue / price;
-    }
-
-    /**
-     * Calculate Kelly fraction based on recent trades (simplified)
-     */
-    private double calculateKellyFraction(BacktestConfig config) {
-        // In a real implementation, this would use historical trade data
-        // For now, use conservative estimates
-        double winRate = 0.55;  // Assume 55% win rate
-        double avgWin = 1.5;    // Avg win is 1.5x avg loss
-        double avgLoss = 1.0;
-
-        double b = avgWin / avgLoss;
-        double p = winRate;
-        double q = 1 - p;
-
-        return (b * p - q) / b;
-    }
-
-    /**
-     * Calculate Average True Range
-     */
-    private double calculateATR(List<Candle> candles, int barIndex, int period) {
-        if (barIndex < period) return 0;
-
-        double sum = 0;
-        for (int i = barIndex - period + 1; i <= barIndex; i++) {
-            Candle curr = candles.get(i);
-            Candle prev = candles.get(i - 1);
-
-            double tr = Math.max(
-                curr.high() - curr.low(),
-                Math.max(
-                    Math.abs(curr.high() - prev.close()),
-                    Math.abs(curr.low() - prev.close())
-                )
-            );
-            sum += tr;
-        }
-
-        return sum / period;
     }
 
     /**
@@ -1235,7 +1146,8 @@ public class BacktestEngine {
             System.currentTimeMillis(),
             0,
             System.currentTimeMillis() - startTime,
-            List.of(error)
+            List.of(error),
+            List.of()  // No warnings on error result
         );
     }
 
@@ -1266,166 +1178,5 @@ public class BacktestEngine {
             pnl = -pnl;
         }
         return (pnl / (trade.entryPrice() * trade.quantity())) * 100;
-    }
-
-    /**
-     * Get list of active phase IDs at a given bar index.
-     * Returns phase IDs where the phase condition was true at that bar.
-     */
-    private List<String> getActivePhasesAtBar(Map<String, boolean[]> phaseStates, int barIndex) {
-        List<String> activePhases = new ArrayList<>();
-        for (Map.Entry<String, boolean[]> entry : phaseStates.entrySet()) {
-            boolean[] states = entry.getValue();
-            if (states != null && barIndex < states.length && states[barIndex]) {
-                activePhases.add(entry.getKey());
-            }
-        }
-        return activePhases;
-    }
-
-    /**
-     * Extract indicator values at a given bar based on indicators used in DSL expressions.
-     * Parses the entry/exit conditions to find indicator references and captures their values.
-     */
-    private Map<String, Double> getIndicatorValuesAtBar(Strategy strategy, int barIndex) {
-        Map<String, Double> values = new HashMap<>();
-
-        // Collect all DSL expressions to analyze
-        StringBuilder allExpressions = new StringBuilder();
-        if (strategy.getEntry() != null) {
-            allExpressions.append(strategy.getEntry()).append(" ");
-        }
-        for (ExitZone zone : strategy.getExitZones()) {
-            if (zone.exitCondition() != null) {
-                allExpressions.append(zone.exitCondition()).append(" ");
-            }
-        }
-
-        String expr = allExpressions.toString();
-
-        // Extract single-parameter indicators (SMA, EMA, RSI, ATR)
-        extractSimpleIndicator(expr, barIndex, values, "SMA", indicatorEngine::getSMAAt);
-        extractSimpleIndicator(expr, barIndex, values, "EMA", indicatorEngine::getEMAAt);
-        extractSimpleIndicator(expr, barIndex, values, "RSI", indicatorEngine::getRSIAt);
-        extractSimpleIndicator(expr, barIndex, values, "ATR", indicatorEngine::getATRAt);
-
-        // Extract multi-value indicators
-        extractADXIndicators(expr, barIndex, values);
-        extractMACDIndicators(expr, barIndex, values);
-        extractBBandsIndicators(expr, barIndex, values);
-
-        // Always add context indicators for AI analysis (regardless of DSL)
-        addContextIndicators(barIndex, values);
-
-        // Always include price for context
-        Candle candle = indicatorEngine.getCandleAt(barIndex);
-        if (candle != null) {
-            values.put("price", candle.close());
-            values.put("volume", candle.volume());
-        }
-
-        return values;
-    }
-
-    /**
-     * Add standard context indicators for AI analysis.
-     * These are always captured regardless of what's in the DSL conditions.
-     */
-    private void addContextIndicators(int barIndex, Map<String, Double> values) {
-        // Volatility context
-        double atr14 = indicatorEngine.getATRAt(14, barIndex);
-        if (!Double.isNaN(atr14)) values.putIfAbsent("ATR(14)", atr14);
-
-        // Trend context - short and long term
-        double sma50 = indicatorEngine.getSMAAt(50, barIndex);
-        double sma200 = indicatorEngine.getSMAAt(200, barIndex);
-        if (!Double.isNaN(sma50)) values.putIfAbsent("SMA(50)", sma50);
-        if (!Double.isNaN(sma200)) values.putIfAbsent("SMA(200)", sma200);
-
-        // Momentum context
-        double rsi14 = indicatorEngine.getRSIAt(14, barIndex);
-        if (!Double.isNaN(rsi14)) values.putIfAbsent("RSI(14)", rsi14);
-
-        // Trend strength
-        double adx14 = indicatorEngine.getADXAt(14, barIndex);
-        if (!Double.isNaN(adx14)) values.putIfAbsent("ADX(14)", adx14);
-
-        // Volume context
-        double avgVol20 = indicatorEngine.getAvgVolumeAt(20, barIndex);
-        if (!Double.isNaN(avgVol20)) values.putIfAbsent("AVG_VOLUME(20)", avgVol20);
-    }
-
-    /**
-     * Generic extraction for single-parameter indicators (SMA, EMA, RSI, ATR).
-     * Reduces code duplication by using a functional interface for evaluation.
-     */
-    private void extractSimpleIndicator(String expr, int barIndex, Map<String, Double> values,
-                                        String indicatorName, java.util.function.BiFunction<Integer, Integer, Double> evaluator) {
-        Pattern pattern = Pattern.compile(indicatorName + "\\((\\d+)\\)");
-        Matcher matcher = pattern.matcher(expr);
-        while (matcher.find()) {
-            int period = Integer.parseInt(matcher.group(1));
-            String key = indicatorName + "(" + period + ")";
-            if (!values.containsKey(key)) {
-                double value = evaluator.apply(period, barIndex);
-                if (!Double.isNaN(value)) {
-                    values.put(key, value);
-                }
-            }
-        }
-    }
-
-    private void extractADXIndicators(String expr, int barIndex, Map<String, Double> values) {
-        Pattern pattern = Pattern.compile("(ADX|PLUS_DI|MINUS_DI)\\((\\d+)\\)");
-        Matcher matcher = pattern.matcher(expr);
-        Set<Integer> periods = new HashSet<>();
-        while (matcher.find()) {
-            periods.add(Integer.parseInt(matcher.group(2)));
-        }
-        for (int period : periods) {
-            double adx = indicatorEngine.getADXAt(period, barIndex);
-            double plusDi = indicatorEngine.getPlusDIAt(period, barIndex);
-            double minusDi = indicatorEngine.getMinusDIAt(period, barIndex);
-            if (!Double.isNaN(adx)) values.put("ADX(" + period + ")", adx);
-            if (!Double.isNaN(plusDi)) values.put("PLUS_DI(" + period + ")", plusDi);
-            if (!Double.isNaN(minusDi)) values.put("MINUS_DI(" + period + ")", minusDi);
-        }
-    }
-
-    private void extractMACDIndicators(String expr, int barIndex, Map<String, Double> values) {
-        Pattern pattern = Pattern.compile("MACD\\((\\d+)\\s*,\\s*(\\d+)\\s*,\\s*(\\d+)\\)");
-        Matcher matcher = pattern.matcher(expr);
-        while (matcher.find()) {
-            int fast = Integer.parseInt(matcher.group(1));
-            int slow = Integer.parseInt(matcher.group(2));
-            int signal = Integer.parseInt(matcher.group(3));
-            String prefix = "MACD(" + fast + "," + slow + "," + signal + ")";
-            if (!values.containsKey(prefix + ".line")) {
-                double line = indicatorEngine.getMACDLineAt(fast, slow, signal, barIndex);
-                double sig = indicatorEngine.getMACDSignalAt(fast, slow, signal, barIndex);
-                double hist = indicatorEngine.getMACDHistogramAt(fast, slow, signal, barIndex);
-                if (!Double.isNaN(line)) values.put(prefix + ".line", line);
-                if (!Double.isNaN(sig)) values.put(prefix + ".signal", sig);
-                if (!Double.isNaN(hist)) values.put(prefix + ".histogram", hist);
-            }
-        }
-    }
-
-    private void extractBBandsIndicators(String expr, int barIndex, Map<String, Double> values) {
-        Pattern pattern = Pattern.compile("BBANDS\\((\\d+)\\s*,\\s*([\\d.]+)\\)");
-        Matcher matcher = pattern.matcher(expr);
-        while (matcher.find()) {
-            int period = Integer.parseInt(matcher.group(1));
-            double stdDev = Double.parseDouble(matcher.group(2));
-            String prefix = "BBANDS(" + period + "," + (int) stdDev + ")";
-            if (!values.containsKey(prefix + ".upper")) {
-                double upper = indicatorEngine.getBollingerUpperAt(period, stdDev, barIndex);
-                double middle = indicatorEngine.getBollingerMiddleAt(period, stdDev, barIndex);
-                double lower = indicatorEngine.getBollingerLowerAt(period, stdDev, barIndex);
-                if (!Double.isNaN(upper)) values.put(prefix + ".upper", upper);
-                if (!Double.isNaN(middle)) values.put(prefix + ".middle", middle);
-                if (!Double.isNaN(lower)) values.put(prefix + ".lower", lower);
-            }
-        }
     }
 }

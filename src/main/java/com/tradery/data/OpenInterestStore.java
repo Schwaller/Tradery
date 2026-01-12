@@ -1,6 +1,8 @@
 package com.tradery.data;
 
 import com.tradery.model.OpenInterest;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.*;
 import java.time.Instant;
@@ -21,6 +23,7 @@ import java.util.function.Consumer;
  */
 public class OpenInterestStore {
 
+    private static final Logger log = LoggerFactory.getLogger(OpenInterestStore.class);
     private static final DateTimeFormatter MONTH_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM");
     private static final String OI_DIR = "openinterest";
     private static final String CSV_HEADER = "symbol,timestamp,openInterest,openInterestValue";
@@ -36,8 +39,12 @@ public class OpenInterestStore {
     private final OpenInterestClient client;
 
     public OpenInterestStore() {
+        this(new OpenInterestClient());
+    }
+
+    public OpenInterestStore(OpenInterestClient client) {
         this.dataDir = DataConfig.getInstance().getDataDir();
-        this.client = new OpenInterestClient();
+        this.client = client;
 
         if (!dataDir.exists()) {
             dataDir.mkdirs();
@@ -116,7 +123,7 @@ public class OpenInterestStore {
                         saveToCache(symbol, new ArrayList<>(oiMap.values()));
                     }
                 } catch (Exception e) {
-                    System.err.println("OI: Failed to fetch: " + e.getMessage());
+                    log.warn("OI: Failed to fetch: {}", e.getMessage());
                     // Continue with cached data
                 }
             }
@@ -159,7 +166,7 @@ public class OpenInterestStore {
                 try {
                     loadCsvFile(cacheFile, oiMap);
                 } catch (IOException e) {
-                    System.err.println("Error loading OI cache: " + cacheFile + " - " + e.getMessage());
+                    log.warn("Error loading OI cache: {} - {}", cacheFile, e.getMessage());
                 }
             }
 
@@ -281,15 +288,15 @@ public class OpenInterestStore {
      */
     private void saveToCache(String symbol, List<OpenInterest> data) throws IOException {
         if (data.isEmpty()) {
-            System.out.println("OI Cache: No data to save");
+            log.debug("OI Cache: No data to save");
             return;
         }
 
         File symbolDir = getOIDir(symbol);
-        System.out.println("OI Cache: Saving " + data.size() + " records to " + symbolDir.getAbsolutePath());
+        log.debug("OI Cache: Saving {} records to {}", data.size(), symbolDir.getAbsolutePath());
         if (!symbolDir.exists()) {
             boolean created = symbolDir.mkdirs();
-            System.out.println("OI Cache: Created directory: " + created);
+            log.debug("OI Cache: Created directory: {}", created);
         }
 
         // Group data by month
@@ -332,19 +339,17 @@ public class OpenInterestStore {
         new Thread(() -> {
             try {
                 long durationHours = (endTime - startTime) / (60 * 60 * 1000);
-                System.out.println("OI: Background fetch starting for " + symbol +
-                    " (" + durationHours + " hours of data)");
+                log.info("OI: Background fetch starting for {} ({} hours of data)", symbol, durationHours);
                 List<OpenInterest> fetched = client.fetchOpenInterest(symbol, startTime, endTime,
-                    msg -> System.out.println("OI: " + msg));
+                    msg -> log.debug("OI: {}", msg));
                 if (fetched.isEmpty()) {
-                    System.out.println("OI: Background fetch returned 0 records (Binance may not have data for this range)");
+                    log.info("OI: Background fetch returned 0 records (Binance may not have data for this range)");
                 } else {
                     saveToCache(symbol, fetched);
-                    System.out.println("OI: Background fetch saved " + fetched.size() + " records");
+                    log.info("OI: Background fetch saved {} records", fetched.size());
                 }
             } catch (Exception e) {
-                System.out.println("OI: Background fetch failed: " + e.getMessage());
-                e.printStackTrace();
+                log.error("OI: Background fetch failed: {}", e.getMessage(), e);
             }
         }, "OI-Background-Update").start();
     }

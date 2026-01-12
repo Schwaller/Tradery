@@ -92,11 +92,38 @@ public class ResultStore {
         File historyFile = new File(historyDir, historyFilename);
         mapper.writeValue(historyFile, result);
 
-        // Also write latest.json for backward compatibility
+        // Write latest.json WITHOUT trades (use trades/ folder instead)
+        // Keeps metrics, strategy, config but strips the large trades array
         File latestFile = new File(strategyDir, "latest.json");
-        mapper.writeValue(latestFile, result);
+        writeLatestWithoutTrades(latestFile, result);
 
         System.out.println("Saved " + result.trades().size() + " trade files to: " + tradesDir.getAbsolutePath());
+    }
+
+    /**
+     * Write latest.json without the trades array (trades are in separate files).
+     * Keeps: runId, configHash, strategy info, config, metrics, timing, errors/warnings
+     * Removes: trades array (can be 1000s of entries)
+     */
+    private void writeLatestWithoutTrades(File file, BacktestResult result) throws IOException {
+        Map<String, Object> stripped = new LinkedHashMap<>();
+        stripped.put("runId", result.runId());
+        stripped.put("configHash", result.configHash());
+        stripped.put("strategyId", result.strategyId());
+        stripped.put("strategyName", result.strategyName());
+        stripped.put("strategy", result.strategy());
+        stripped.put("config", result.config());
+        // trades intentionally omitted - use trades/ folder
+        stripped.put("tradesCount", result.trades() != null ? result.trades().size() : 0);
+        stripped.put("tradesFolder", "trades/");
+        stripped.put("metrics", result.metrics());
+        stripped.put("startTime", result.startTime());
+        stripped.put("endTime", result.endTime());
+        stripped.put("barsProcessed", result.barsProcessed());
+        stripped.put("duration", result.duration());
+        stripped.put("errors", result.errors());
+        stripped.put("warnings", result.warnings());
+        mapper.writeValue(file, stripped);
     }
 
     /**

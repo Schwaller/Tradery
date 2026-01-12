@@ -1,5 +1,8 @@
 package com.tradery.data;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.io.*;
 import java.nio.file.*;
 import java.util.*;
@@ -11,6 +14,7 @@ import java.util.*;
  */
 public class DataConfig {
 
+    private static final Logger log = LoggerFactory.getLogger(DataConfig.class);
     private static final DataConfig INSTANCE = new DataConfig();
 
     private Path configFile; // Lazy initialized
@@ -122,7 +126,7 @@ public class DataConfig {
                 Files.writeString(configPath, dataDir.getAbsolutePath());
             }
         } catch (IOException e) {
-            System.err.println("Failed to save data location: " + e.getMessage());
+            log.warn("Failed to save data location: {}", e.getMessage());
         }
     }
 
