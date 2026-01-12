@@ -358,6 +358,24 @@ public class IndicatorEngine {
         return barIndex < result.minusDI().length ? result.minusDI()[barIndex] : Double.NaN;
     }
 
+    // ========== Stochastic ==========
+
+    public Indicators.StochasticResult getStochastic(int kPeriod, int dPeriod) {
+        String key = "stochastic:" + kPeriod + ":" + dPeriod;
+        if (!cache.containsKey(key)) {
+            cache.put(key, Indicators.stochastic(candles, kPeriod, dPeriod));
+        }
+        return (Indicators.StochasticResult) cache.get(key);
+    }
+
+    public double getStochasticKAt(int kPeriod, int barIndex) {
+        return Indicators.stochasticKAt(candles, kPeriod, barIndex);
+    }
+
+    public double getStochasticDAt(int kPeriod, int dPeriod, int barIndex) {
+        return Indicators.stochasticDAt(candles, kPeriod, dPeriod, barIndex);
+    }
+
     // ========== Moon Functions ==========
 
     /**

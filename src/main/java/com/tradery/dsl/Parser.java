@@ -326,6 +326,11 @@ public class Parser {
                     throw new ParserException("BBANDS requires 2 parameters (period, stdDev), got " + params.size());
                 }
             }
+            case "STOCHASTIC" -> {
+                if (params.size() < 1 || params.size() > 2) {
+                    throw new ParserException("STOCHASTIC requires 1-2 parameters (kPeriod, dPeriod), got " + params.size());
+                }
+            }
             case "SMA", "EMA", "RSI", "ATR" -> {
                 if (params.size() != 1) {
                     throw new ParserException(indicator + " requires 1 parameter (period), got " + params.size());
@@ -337,6 +342,7 @@ public class Parser {
     private void validateProperty(String indicator, String property) {
         Set<String> macdProps = Set.of("signal", "histogram", "line");
         Set<String> bbandsProps = Set.of("upper", "lower", "middle");
+        Set<String> stochProps = Set.of("k", "d");
 
         switch (indicator) {
             case "MACD" -> {
@@ -347,6 +353,11 @@ public class Parser {
             case "BBANDS" -> {
                 if (!bbandsProps.contains(property)) {
                     throw new ParserException("BBANDS only has properties: upper, lower, middle");
+                }
+            }
+            case "STOCHASTIC" -> {
+                if (!stochProps.contains(property)) {
+                    throw new ParserException("STOCHASTIC only has properties: k, d");
                 }
             }
             case "SMA", "EMA", "RSI", "ATR" -> {

@@ -104,6 +104,8 @@ public class ChartsPanel extends JPanel {
         setRsiChartEnabled(config.isRsiEnabled(), config.getRsiPeriod());
         setMacdChartEnabled(config.isMacdEnabled(), config.getMacdFast(), config.getMacdSlow(), config.getMacdSignal());
         setAtrChartEnabled(config.isAtrEnabled(), config.getAtrPeriod());
+        setStochasticChartEnabled(config.isStochasticEnabled(), config.getStochasticKPeriod(), config.getStochasticDPeriod());
+        setRangePositionChartEnabled(config.isRangePositionEnabled(), config.getRangePositionPeriod());
 
         // Apply orderflow chart settings
         double threshold = config.getWhaleThreshold();
@@ -304,6 +306,7 @@ public class ChartsPanel extends JPanel {
             indicatorManager.getDeltaChart(), indicatorManager.getCvdChart(), indicatorManager.getVolumeRatioChart(),
             indicatorManager.getWhaleChart(), indicatorManager.getRetailChart(),
             indicatorManager.getFundingChart(), indicatorManager.getOiChart(),
+            indicatorManager.getStochasticChart(), indicatorManager.getRangePositionChart(),
             equityChart, comparisonChart, capitalUsageChart, tradePLChart
         };
         JPanel[] allWrappers = {
@@ -312,6 +315,7 @@ public class ChartsPanel extends JPanel {
             indicatorManager.getDeltaChartWrapper(), indicatorManager.getCvdChartWrapper(), indicatorManager.getVolumeRatioChartWrapper(),
             indicatorManager.getWhaleChartWrapper(), indicatorManager.getRetailChartWrapper(),
             indicatorManager.getFundingChartWrapper(), indicatorManager.getOiChartWrapper(),
+            indicatorManager.getStochasticChartWrapper(), indicatorManager.getRangePositionChartWrapper(),
             zoomManager.getChartWrappers()[2], zoomManager.getChartWrappers()[3],
             zoomManager.getChartWrappers()[4], zoomManager.getChartWrappers()[5]
         };
@@ -565,6 +569,22 @@ public class ChartsPanel extends JPanel {
         return indicatorManager.isAtrChartEnabled();
     }
 
+    public void setStochasticChartEnabled(boolean enabled, int kPeriod, int dPeriod) {
+        indicatorManager.setStochasticChartEnabled(enabled, kPeriod, dPeriod);
+    }
+
+    public boolean isStochasticChartEnabled() {
+        return indicatorManager.isStochasticChartEnabled();
+    }
+
+    public void setRangePositionChartEnabled(boolean enabled, int period) {
+        indicatorManager.setRangePositionChartEnabled(enabled, period, 0);
+    }
+
+    public boolean isRangePositionChartEnabled() {
+        return indicatorManager.isRangePositionChartEnabled();
+    }
+
     public void setDeltaChartEnabled(boolean enabled, double threshold) {
         indicatorManager.setDeltaChartEnabled(enabled, threshold);
     }
@@ -734,7 +754,10 @@ public class ChartsPanel extends JPanel {
         JFreeChart[] allCharts = {
             priceChart, volumeChart, equityChart, comparisonChart, capitalUsageChart, tradePLChart,
             indicatorManager.getRsiChart(), indicatorManager.getMacdChart(), indicatorManager.getAtrChart(),
-            indicatorManager.getDeltaChart(), indicatorManager.getFundingChart(), indicatorManager.getOiChart()
+            indicatorManager.getDeltaChart(), indicatorManager.getCvdChart(), indicatorManager.getVolumeRatioChart(),
+            indicatorManager.getWhaleChart(), indicatorManager.getRetailChart(),
+            indicatorManager.getFundingChart(), indicatorManager.getOiChart(),
+            indicatorManager.getStochasticChart(), indicatorManager.getRangePositionChart()
         };
         for (JFreeChart chart : allCharts) {
             if (chart != null) {

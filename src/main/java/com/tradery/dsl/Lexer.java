@@ -100,7 +100,9 @@ public class Lexer {
         Map.entry("upper", TokenType.PROPERTY),
         Map.entry("lower", TokenType.PROPERTY),
         Map.entry("middle", TokenType.PROPERTY),
-        Map.entry("line", TokenType.PROPERTY)
+        Map.entry("line", TokenType.PROPERTY),
+        Map.entry("k", TokenType.PROPERTY),
+        Map.entry("d", TokenType.PROPERTY)
     );
 
     private final String source;

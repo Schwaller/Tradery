@@ -200,6 +200,9 @@ public class ResultStore {
         // Pre-computed analysis for AI
         summary.put("analysis", computeAnalysis(result.trades(), result.metrics()));
 
+        // History trends (compare with previous runs)
+        summary.put("historyTrends", computeHistoryTrends(result));
+
         // Errors
         summary.put("errors", result.errors());
 
@@ -239,6 +242,237 @@ public class ResultStore {
         analysis.put("suggestions", generateSuggestions(validTrades, overall));
 
         return analysis;
+    }
+
+    /**
+     * Compute trends by comparing with historical runs.
+     * Shows metric changes, config differences, and performance trajectory.
+     */
+    private Map<String, Object> computeHistoryTrends(BacktestResult current) {
+        Map<String, Object> trends = new LinkedHashMap<>();
+
+        // Load history (already sorted newest first)
+        List<BacktestResult> history = loadHistory();
+
+        // Filter to only include runs with same configHash (to exclude the current run we're about to save)
+        // and runs from before this one
+        List<BacktestResult> previousRuns = history.stream()
+            .filter(r -> r.endTime() < current.startTime())
+            .limit(10)  // Last 10 runs max
+            .toList();
+
+        if (previousRuns.isEmpty()) {
+            trends.put("hasHistory", false);
+            trends.put("message", "No previous runs to compare");
+            return trends;
+        }
+
+        trends.put("hasHistory", true);
+        trends.put("comparedRuns", previousRuns.size());
+
+        // Get the most recent previous run for direct comparison
+        BacktestResult lastRun = previousRuns.get(0);
+        trends.put("lastRunTime", lastRun.endTime());
+
+        // Metric deltas vs last run
+        Map<String, Object> vsLastRun = new LinkedHashMap<>();
+        PerformanceMetrics curr = current.metrics();
+        PerformanceMetrics prev = lastRun.metrics();
+
+        vsLastRun.put("winRate", formatDelta(curr.winRate(), prev.winRate(), "%"));
+        vsLastRun.put("profitFactor", formatDelta(curr.profitFactor(), prev.profitFactor(), "x"));
+        vsLastRun.put("totalReturnPercent", formatDelta(curr.totalReturnPercent(), prev.totalReturnPercent(), "%"));
+        vsLastRun.put("maxDrawdownPercent", formatDelta(curr.maxDrawdownPercent(), prev.maxDrawdownPercent(), "%"));
+        vsLastRun.put("sharpeRatio", formatDelta(curr.sharpeRatio(), prev.sharpeRatio(), ""));
+        vsLastRun.put("totalTrades", curr.totalTrades() - prev.totalTrades());
+        trends.put("vsLastRun", vsLastRun);
+
+        // Config change detection
+        boolean configChanged = !current.configHash().equals(lastRun.configHash());
+        trends.put("configChanged", configChanged);
+
+        if (configChanged) {
+            // Try to identify what changed
+            List<String> changes = detectConfigChanges(current, lastRun);
+            trends.put("configChanges", changes);
+        }
+
+        // Performance trajectory over last N runs
+        if (previousRuns.size() >= 3) {
+            Map<String, Object> trajectory = new LinkedHashMap<>();
+
+            // Win rate trend
+            List<Double> winRates = new ArrayList<>();
+            winRates.add(curr.winRate());
+            previousRuns.stream().limit(5).forEach(r -> winRates.add(r.metrics().winRate()));
+            trajectory.put("winRate", computeTrend(winRates));
+
+            // Profit factor trend
+            List<Double> profitFactors = new ArrayList<>();
+            profitFactors.add(curr.profitFactor());
+            previousRuns.stream().limit(5)
+                .filter(r -> !Double.isInfinite(r.metrics().profitFactor()))
+                .forEach(r -> profitFactors.add(r.metrics().profitFactor()));
+            if (profitFactors.size() >= 3) {
+                trajectory.put("profitFactor", computeTrend(profitFactors));
+            }
+
+            // Drawdown trend
+            List<Double> drawdowns = new ArrayList<>();
+            drawdowns.add(curr.maxDrawdownPercent());
+            previousRuns.stream().limit(5).forEach(r -> drawdowns.add(r.metrics().maxDrawdownPercent()));
+            trajectory.put("maxDrawdown", computeTrend(drawdowns));
+
+            trends.put("trajectory", trajectory);
+        }
+
+        // Best/worst historical performance
+        if (previousRuns.size() >= 2) {
+            Map<String, Object> historical = new LinkedHashMap<>();
+
+            double bestWinRate = previousRuns.stream()
+                .mapToDouble(r -> r.metrics().winRate())
+                .max().orElse(0);
+            double worstWinRate = previousRuns.stream()
+                .mapToDouble(r -> r.metrics().winRate())
+                .min().orElse(0);
+
+            historical.put("bestWinRate", Math.round(bestWinRate * 10) / 10.0);
+            historical.put("worstWinRate", Math.round(worstWinRate * 10) / 10.0);
+            historical.put("currentVsBest", formatDelta(curr.winRate(), bestWinRate, "%"));
+            historical.put("isNewBest", curr.winRate() > bestWinRate);
+
+            double bestReturn = previousRuns.stream()
+                .mapToDouble(r -> r.metrics().totalReturnPercent())
+                .max().orElse(0);
+            historical.put("bestReturn", Math.round(bestReturn * 100) / 100.0);
+            historical.put("isNewBestReturn", curr.totalReturnPercent() > bestReturn);
+
+            trends.put("historical", historical);
+        }
+
+        return trends;
+    }
+
+    private Map<String, Object> formatDelta(double current, double previous, String suffix) {
+        Map<String, Object> delta = new LinkedHashMap<>();
+
+        // Handle infinity and NaN
+        if (Double.isInfinite(current) || Double.isInfinite(previous) || Double.isNaN(current) || Double.isNaN(previous)) {
+            delta.put("current", Double.isInfinite(current) ? "∞" : (Double.isNaN(current) ? "N/A" : current));
+            delta.put("previous", Double.isInfinite(previous) ? "∞" : (Double.isNaN(previous) ? "N/A" : previous));
+            delta.put("delta", "N/A");
+            delta.put("improved", false);
+            delta.put("display", "N/A");
+            return delta;
+        }
+
+        double diff = current - previous;
+        delta.put("current", Math.round(current * 100) / 100.0);
+        delta.put("previous", Math.round(previous * 100) / 100.0);
+        delta.put("delta", Math.round(diff * 100) / 100.0);
+        delta.put("improved", diff > 0);
+
+        String direction = diff > 0 ? "+" : "";
+        delta.put("display", String.format("%s%.2f%s", direction, diff, suffix));
+
+        return delta;
+    }
+
+    private List<String> detectConfigChanges(BacktestResult current, BacktestResult previous) {
+        List<String> changes = new ArrayList<>();
+
+        // Compare config objects
+        var currConfig = current.config();
+        var prevConfig = previous.config();
+
+        if (currConfig == null || prevConfig == null) {
+            changes.add("Config comparison unavailable");
+            return changes;
+        }
+
+        if (!currConfig.symbol().equals(prevConfig.symbol())) {
+            changes.add("Symbol: " + prevConfig.symbol() + " → " + currConfig.symbol());
+        }
+        if (!currConfig.resolution().equals(prevConfig.resolution())) {
+            changes.add("Timeframe: " + prevConfig.resolution() + " → " + currConfig.resolution());
+        }
+        if (currConfig.commission() != prevConfig.commission()) {
+            changes.add(String.format("Commission: %.4f → %.4f", prevConfig.commission(), currConfig.commission()));
+        }
+
+        // Compare strategy definition if available
+        if (current.strategy() != null && previous.strategy() != null) {
+            String currEntry = current.strategy().getEntry();
+            String prevEntry = previous.strategy().getEntry();
+            if (currEntry != null && !currEntry.equals(prevEntry)) {
+                changes.add("Entry condition changed");
+            }
+
+            // Compare exit zones count
+            int currZones = current.strategy().getExitZones() != null ? current.strategy().getExitZones().size() : 0;
+            int prevZones = previous.strategy().getExitZones() != null ? previous.strategy().getExitZones().size() : 0;
+            if (currZones != prevZones) {
+                changes.add("Exit zones: " + prevZones + " → " + currZones);
+            }
+
+            // Compare phases
+            var currPhases = current.strategy().getPhaseSettings();
+            var prevPhases = previous.strategy().getPhaseSettings();
+            if (currPhases != null && prevPhases != null) {
+                int currRequired = currPhases.getRequiredPhaseIds() != null ? currPhases.getRequiredPhaseIds().size() : 0;
+                int prevRequired = prevPhases.getRequiredPhaseIds() != null ? prevPhases.getRequiredPhaseIds().size() : 0;
+                if (currRequired != prevRequired) {
+                    changes.add("Required phases: " + prevRequired + " → " + currRequired);
+                }
+            }
+        }
+
+        if (changes.isEmpty()) {
+            changes.add("Minor config adjustments");
+        }
+
+        return changes;
+    }
+
+    private Map<String, Object> computeTrend(List<Double> values) {
+        Map<String, Object> trend = new LinkedHashMap<>();
+
+        if (values.size() < 2) {
+            trend.put("direction", "insufficient_data");
+            return trend;
+        }
+
+        // Simple linear regression to determine trend
+        double sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0;
+        int n = values.size();
+
+        for (int i = 0; i < n; i++) {
+            double x = i;  // 0 = current, 1 = previous, etc.
+            double y = values.get(i);
+            sumX += x;
+            sumY += y;
+            sumXY += x * y;
+            sumX2 += x * x;
+        }
+
+        double slope = (n * sumXY - sumX * sumY) / (n * sumX2 - sumX * sumX);
+
+        // Negative slope means improving (since index 0 is current/newest)
+        String direction;
+        if (slope < -0.5) {
+            direction = "improving";
+        } else if (slope > 0.5) {
+            direction = "declining";
+        } else {
+            direction = "stable";
+        }
+
+        trend.put("direction", direction);
+        trend.put("slope", Math.round(slope * 100) / 100.0);
+        trend.put("values", values.stream().map(v -> Math.round(v * 100) / 100.0).toList());
+
+        return trend;
     }
 
     private Map<String, Object> analyzeByPhase(List<Trade> trades, double overallWinRate) {

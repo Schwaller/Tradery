@@ -151,6 +151,11 @@ public class ConditionEvaluator {
                 params.get(1),
                 barIndex
             );
+            case "STOCHASTIC" -> {
+                int kPeriod = params.get(0).intValue();
+                int dPeriod = params.size() > 1 ? params.get(1).intValue() : 3;
+                yield engine.getStochasticKAt(kPeriod, barIndex);
+            }
             default -> throw new EvaluationException("Unknown indicator: " + node.indicator());
         };
     }
@@ -180,6 +185,15 @@ public class ConditionEvaluator {
                     case "middle" -> engine.getBollingerMiddleAt(period, stdDev, barIndex);
                     case "lower" -> engine.getBollingerLowerAt(period, stdDev, barIndex);
                     default -> throw new EvaluationException("Unknown BBANDS property: " + property);
+                };
+            }
+            case "STOCHASTIC" -> {
+                int kPeriod = params.get(0).intValue();
+                int dPeriod = params.size() > 1 ? params.get(1).intValue() : 3;
+                yield switch (property) {
+                    case "k" -> engine.getStochasticKAt(kPeriod, barIndex);
+                    case "d" -> engine.getStochasticDAt(kPeriod, dPeriod, barIndex);
+                    default -> throw new EvaluationException("Unknown STOCHASTIC property: " + property);
                 };
             }
             default -> throw new EvaluationException("Unknown indicator for property access: " + indicator.indicator());

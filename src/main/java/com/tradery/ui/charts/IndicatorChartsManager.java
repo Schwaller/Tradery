@@ -39,6 +39,8 @@ public class IndicatorChartsManager {
     private ChartComponent retailComponent;
     private ChartComponent fundingComponent;
     private ChartComponent oiComponent;
+    private ChartComponent stochasticComponent;
+    private ChartComponent rangePositionComponent;
 
     // Enable state
     private boolean rsiChartEnabled = false;
@@ -51,6 +53,8 @@ public class IndicatorChartsManager {
     private boolean retailChartEnabled = false;
     private boolean fundingChartEnabled = false;
     private boolean oiChartEnabled = false;
+    private boolean stochasticChartEnabled = false;
+    private boolean rangePositionChartEnabled = false;
 
     // Indicator parameters
     private int rsiPeriod = 14;
@@ -59,6 +63,10 @@ public class IndicatorChartsManager {
     private int macdSignal = 9;
     private int atrPeriod = 14;
     private double whaleThreshold = 50000;
+    private int stochasticKPeriod = 14;
+    private int stochasticDPeriod = 3;
+    private int rangePositionPeriod = 200;
+    private int rangePositionSkip = 0;
 
     // IndicatorEngine for orderflow/funding data
     private IndicatorEngine indicatorEngine;
@@ -88,11 +96,13 @@ public class IndicatorChartsManager {
         retailComponent = new ChartComponent("Retail Delta");
         fundingComponent = new ChartComponent("Funding");
         oiComponent = new ChartComponent("Open Interest");
+        stochasticComponent = new ChartComponent("Stochastic", new double[]{0, 100});
+        rangePositionComponent = new ChartComponent("Range Position", new double[]{-2, 2});
     }
 
     /**
      * Create wrapper panels with zoom buttons.
-     * @param zoomCallback Callback to handle zoom toggle (index: 0=RSI, 1=MACD, 2=ATR, 3=Delta, 4=CVD, 5=VolumeRatio, 6=Whale, 7=Retail, 8=Funding, 9=OI)
+     * @param zoomCallback Callback to handle zoom toggle (index: 0=RSI, 1=MACD, 2=ATR, 3=Delta, 4=CVD, 5=VolumeRatio, 6=Whale, 7=Retail, 8=Funding, 9=OI, 10=Stochastic, 11=RangePosition)
      */
     public void createWrappers(java.util.function.IntConsumer zoomCallback) {
         rsiComponent.createWrapper(() -> zoomCallback.accept(0));
@@ -105,6 +115,8 @@ public class IndicatorChartsManager {
         retailComponent.createWrapper(() -> zoomCallback.accept(7));
         fundingComponent.createWrapper(() -> zoomCallback.accept(8));
         oiComponent.createWrapper(() -> zoomCallback.accept(9));
+        stochasticComponent.createWrapper(() -> zoomCallback.accept(10));
+        rangePositionComponent.createWrapper(() -> zoomCallback.accept(11));
     }
 
     // ===== RSI Methods =====
@@ -783,12 +795,170 @@ public class IndicatorChartsManager {
         oiLineRenderer.setSeriesStroke(0, ChartStyles.MEDIUM_STROKE);
         plot.setRenderer(1, oiLineRenderer);
 
+        // Primary Y-axis for OI change bars (centered around zero)
+        NumberAxis changeAxis = (NumberAxis) plot.getRangeAxis();
+        changeAxis.setAutoRangeIncludesZero(true);
+        changeAxis.setAutoRange(true);
+        changeAxis.setVisible(false); // Hide the change axis, show only OI line axis
+
+        // Secondary Y-axis for OI line (scale to data, not zero)
+        NumberAxis oiAxis = new NumberAxis();
+        oiAxis.setAutoRangeIncludesZero(false);
+        oiAxis.setAutoRange(true);
+        oiAxis.setLabelPaint(ChartStyles.TEXT_COLOR);
+        oiAxis.setTickLabelPaint(ChartStyles.TEXT_COLOR);
+        plot.setRangeAxis(1, oiAxis);
+        plot.mapDatasetToRangeAxis(1, 1);
+
         // Add zero line and title
         plot.clearAnnotations();
         ChartStyles.addChartTitleAnnotation(plot, "Open Interest (B)");
         if (!candles.isEmpty()) {
             long startTime = candles.get(0).timestamp();
             long endTime = candles.get(candles.size() - 1).timestamp();
+            plot.addAnnotation(new XYLineAnnotation(startTime, 0, endTime, 0,
+                ChartStyles.DASHED_STROKE, ChartStyles.TEXT_COLOR));
+        }
+    }
+
+    // ===== Stochastic Methods =====
+
+    public void setStochasticChartEnabled(boolean enabled, int kPeriod, int dPeriod) {
+        this.stochasticChartEnabled = enabled;
+        this.stochasticKPeriod = kPeriod;
+        this.stochasticDPeriod = dPeriod;
+        if (onLayoutChange != null) {
+            onLayoutChange.run();
+        }
+    }
+
+    public boolean isStochasticChartEnabled() {
+        return stochasticChartEnabled;
+    }
+
+    public void updateStochasticChart(List<Candle> candles) {
+        if (!stochasticChartEnabled || candles == null || candles.size() < stochasticKPeriod + stochasticDPeriod) {
+            return;
+        }
+
+        XYPlot plot = stochasticComponent.getChart().getXYPlot();
+        TimeSeriesCollection dataset = new TimeSeriesCollection();
+        TimeSeries kSeries = new TimeSeries("%K(" + stochasticKPeriod + ")");
+        TimeSeries dSeries = new TimeSeries("%D(" + stochasticDPeriod + ")");
+
+        Indicators.StochasticResult result = Indicators.stochastic(candles, stochasticKPeriod, stochasticDPeriod);
+        double[] kValues = result.k();
+        double[] dValues = result.d();
+
+        for (int i = stochasticKPeriod - 1; i < candles.size(); i++) {
+            Candle c = candles.get(i);
+            if (!Double.isNaN(kValues[i])) {
+                kSeries.addOrUpdate(new Millisecond(new Date(c.timestamp())), kValues[i]);
+            }
+            if (!Double.isNaN(dValues[i])) {
+                dSeries.addOrUpdate(new Millisecond(new Date(c.timestamp())), dValues[i]);
+            }
+        }
+
+        dataset.addSeries(kSeries);
+        dataset.addSeries(dSeries);
+        plot.setDataset(dataset);
+
+        // Style the lines
+        XYLineAndShapeRenderer renderer = new XYLineAndShapeRenderer(true, false);
+        renderer.setSeriesPaint(0, ChartStyles.RSI_COLOR);           // %K - same color as RSI
+        renderer.setSeriesPaint(1, ChartStyles.MACD_SIGNAL_COLOR);   // %D - signal line color
+        renderer.setSeriesStroke(0, ChartStyles.MEDIUM_STROKE);
+        renderer.setSeriesStroke(1, ChartStyles.MEDIUM_STROKE);
+        plot.setRenderer(renderer);
+
+        // Add reference lines at 20, 50, 80
+        plot.clearAnnotations();
+        ChartStyles.addChartTitleAnnotation(plot, "Stochastic");
+
+        if (!candles.isEmpty()) {
+            long startTime = candles.get(0).timestamp();
+            long endTime = candles.get(candles.size() - 1).timestamp();
+
+            plot.addAnnotation(new XYLineAnnotation(startTime, 20, endTime, 20,
+                ChartStyles.DASHED_STROKE, ChartStyles.RSI_OVERSOLD));
+            plot.addAnnotation(new XYLineAnnotation(startTime, 50, endTime, 50,
+                ChartStyles.DASHED_STROKE, ChartStyles.TEXT_COLOR));
+            plot.addAnnotation(new XYLineAnnotation(startTime, 80, endTime, 80,
+                ChartStyles.DASHED_STROKE, ChartStyles.RSI_OVERBOUGHT));
+        }
+    }
+
+    // ===== Range Position Methods =====
+
+    public void setRangePositionChartEnabled(boolean enabled, int period, int skip) {
+        this.rangePositionChartEnabled = enabled;
+        this.rangePositionPeriod = period;
+        this.rangePositionSkip = skip;
+        if (onLayoutChange != null) {
+            onLayoutChange.run();
+        }
+    }
+
+    public boolean isRangePositionChartEnabled() {
+        return rangePositionChartEnabled;
+    }
+
+    public void updateRangePositionChart(List<Candle> candles) {
+        if (!rangePositionChartEnabled || candles == null || candles.size() < rangePositionPeriod + rangePositionSkip + 1) {
+            return;
+        }
+
+        XYPlot plot = rangePositionComponent.getChart().getXYPlot();
+        TimeSeriesCollection dataset = new TimeSeriesCollection();
+        String label = rangePositionSkip > 0
+            ? "RANGE_POSITION(" + rangePositionPeriod + "," + rangePositionSkip + ")"
+            : "RANGE_POSITION(" + rangePositionPeriod + ")";
+        TimeSeries series = new TimeSeries(label);
+
+        double[] values = Indicators.rangePosition(candles, rangePositionPeriod, rangePositionSkip);
+
+        for (int i = rangePositionPeriod + rangePositionSkip; i < candles.size(); i++) {
+            Candle c = candles.get(i);
+            if (!Double.isNaN(values[i])) {
+                series.addOrUpdate(new Millisecond(new Date(c.timestamp())), values[i]);
+            }
+        }
+
+        dataset.addSeries(series);
+        plot.setDataset(dataset);
+
+        // Style the line - color changes based on position (breakout = highlighted)
+        XYLineAndShapeRenderer renderer = new XYLineAndShapeRenderer(true, false) {
+            @Override
+            public Paint getItemPaint(int seriesIdx, int item) {
+                double val = dataset.getYValue(seriesIdx, item);
+                if (val > 1.0) {
+                    return ChartStyles.DELTA_POSITIVE;  // Green - above range (breakout)
+                } else if (val < -1.0) {
+                    return ChartStyles.DELTA_NEGATIVE;  // Red - below range (breakdown)
+                } else {
+                    return ChartStyles.ATR_COLOR;       // Normal - within range
+                }
+            }
+        };
+        renderer.setSeriesStroke(0, ChartStyles.MEDIUM_STROKE);
+        plot.setRenderer(renderer);
+
+        // Add reference lines at -1, 0, +1
+        plot.clearAnnotations();
+        ChartStyles.addChartTitleAnnotation(plot, "Range Position");
+
+        if (!candles.isEmpty()) {
+            long startTime = candles.get(0).timestamp();
+            long endTime = candles.get(candles.size() - 1).timestamp();
+
+            // Breakout levels
+            plot.addAnnotation(new XYLineAnnotation(startTime, 1, endTime, 1,
+                ChartStyles.DASHED_STROKE, ChartStyles.DELTA_POSITIVE));
+            plot.addAnnotation(new XYLineAnnotation(startTime, -1, endTime, -1,
+                ChartStyles.DASHED_STROKE, ChartStyles.DELTA_NEGATIVE));
+            // Center line
             plot.addAnnotation(new XYLineAnnotation(startTime, 0, endTime, 0,
                 ChartStyles.DASHED_STROKE, ChartStyles.TEXT_COLOR));
         }
@@ -806,6 +976,8 @@ public class IndicatorChartsManager {
     public JFreeChart getWhaleChart() { return whaleComponent.getChart(); }
     public JFreeChart getRetailChart() { return retailComponent.getChart(); }
     public JFreeChart getOiChart() { return oiComponent.getChart(); }
+    public JFreeChart getStochasticChart() { return stochasticComponent.getChart(); }
+    public JFreeChart getRangePositionChart() { return rangePositionComponent.getChart(); }
 
     public org.jfree.chart.ChartPanel getRsiChartPanel() { return rsiComponent.getChartPanel(); }
     public org.jfree.chart.ChartPanel getMacdChartPanel() { return macdComponent.getChartPanel(); }
@@ -817,6 +989,8 @@ public class IndicatorChartsManager {
     public org.jfree.chart.ChartPanel getWhaleChartPanel() { return whaleComponent.getChartPanel(); }
     public org.jfree.chart.ChartPanel getRetailChartPanel() { return retailComponent.getChartPanel(); }
     public org.jfree.chart.ChartPanel getOiChartPanel() { return oiComponent.getChartPanel(); }
+    public org.jfree.chart.ChartPanel getStochasticChartPanel() { return stochasticComponent.getChartPanel(); }
+    public org.jfree.chart.ChartPanel getRangePositionChartPanel() { return rangePositionComponent.getChartPanel(); }
 
     public JPanel getRsiChartWrapper() { return rsiComponent.getWrapper(); }
     public JPanel getMacdChartWrapper() { return macdComponent.getWrapper(); }
@@ -828,6 +1002,8 @@ public class IndicatorChartsManager {
     public JPanel getRetailChartWrapper() { return retailComponent.getWrapper(); }
     public JPanel getFundingChartWrapper() { return fundingComponent.getWrapper(); }
     public JPanel getOiChartWrapper() { return oiComponent.getWrapper(); }
+    public JPanel getStochasticChartWrapper() { return stochasticComponent.getWrapper(); }
+    public JPanel getRangePositionChartWrapper() { return rangePositionComponent.getWrapper(); }
 
     public JButton getRsiZoomBtn() { return rsiComponent.getZoomButton(); }
     public JButton getMacdZoomBtn() { return macdComponent.getZoomButton(); }
@@ -839,13 +1015,15 @@ public class IndicatorChartsManager {
     public JButton getRetailZoomBtn() { return retailComponent.getZoomButton(); }
     public JButton getFundingZoomBtn() { return fundingComponent.getZoomButton(); }
     public JButton getOiZoomBtn() { return oiComponent.getZoomButton(); }
+    public JButton getStochasticZoomBtn() { return stochasticComponent.getZoomButton(); }
+    public JButton getRangePositionZoomBtn() { return rangePositionComponent.getZoomButton(); }
 
     /**
      * Update zoom button states.
-     * @param zoomedIndex Index of zoomed indicator (-1 for none, 0=RSI, 1=MACD, 2=ATR, 3=Delta, 4=CVD, 5=VolumeRatio, 6=Whale, 7=Retail, 8=Funding, 9=OI)
+     * @param zoomedIndex Index of zoomed indicator (-1 for none, 0=RSI, 1=MACD, 2=ATR, 3=Delta, 4=CVD, 5=VolumeRatio, 6=Whale, 7=Retail, 8=Funding, 9=OI, 10=Stochastic, 11=RangePosition)
      */
     public void updateZoomButtonStates(int zoomedIndex) {
-        ChartComponent[] components = {rsiComponent, macdComponent, atrComponent, deltaComponent, cvdComponent, volumeRatioComponent, whaleComponent, retailComponent, fundingComponent, oiComponent};
+        ChartComponent[] components = {rsiComponent, macdComponent, atrComponent, deltaComponent, cvdComponent, volumeRatioComponent, whaleComponent, retailComponent, fundingComponent, oiComponent, stochasticComponent, rangePositionComponent};
         for (int i = 0; i < components.length; i++) {
             components[i].setZoomed(zoomedIndex == i);
         }
@@ -865,6 +1043,8 @@ public class IndicatorChartsManager {
         retailComponent.getChartPanel().addMouseWheelListener(listener);
         fundingComponent.getChartPanel().addMouseWheelListener(listener);
         oiComponent.getChartPanel().addMouseWheelListener(listener);
+        stochasticComponent.getChartPanel().addMouseWheelListener(listener);
+        rangePositionComponent.getChartPanel().addMouseWheelListener(listener);
     }
 
     /**
@@ -881,6 +1061,8 @@ public class IndicatorChartsManager {
         updateRetailChart(candles);
         updateFundingChart(candles);
         updateOiChart(candles);
+        updateStochasticChart(candles);
+        updateRangePositionChart(candles);
     }
 
     /**

@@ -1,7 +1,10 @@
 package com.tradery.ui;
 
+import com.tradery.model.EntryOrderType;
 import com.tradery.model.ExitZone;
+import com.tradery.model.StopLossType;
 import com.tradery.model.Strategy;
+import com.tradery.model.TakeProfitType;
 
 import javax.swing.*;
 import java.awt.*;
@@ -103,18 +106,43 @@ public class FlowDiagramPanel extends JPanel {
         if (minPnl > 0) minPnl = -2;
         if (maxPnl < 0) maxPnl = 2;
 
+        // Determine entry label based on order type
+        EntryOrderType orderType = strategy.getEntrySettings().getOrderType();
+        Double offsetPct = strategy.getEntrySettings().getOrderOffsetPercent();
+        String entryText = switch (orderType) {
+            case MARKET -> "Market Entry";
+            case LIMIT -> {
+                if (offsetPct != null && offsetPct != 0) {
+                    yield "Limit Entry " + formatPctSigned(-offsetPct);  // negative = below signal
+                }
+                yield "Limit Entry";
+            }
+            case STOP -> {
+                if (offsetPct != null && offsetPct != 0) {
+                    yield "Stop Entry " + formatPctSigned(offsetPct);  // positive = above signal
+                }
+                yield "Stop Entry";
+            }
+            case TRAILING -> {
+                Double reversePct = strategy.getEntrySettings().getTrailingReversePercent();
+                if (reversePct != null && reversePct != 0) {
+                    yield "Trailing Entry " + formatPctSigned(reversePct);
+                }
+                yield "Trailing Entry";
+            }
+        };
+
         // Layout
-        int entryBoxWidth = fm.stringWidth("Entry") + 12;
+        int entryBoxWidth = fm.stringWidth(entryText) + 12;
         int entryBoxHeight = fm.getHeight() + 8;  // Just enough for text
         int arrowGap = 60;
         int labelGapBar = 6;
 
-        // Calculate bar width to fit all zone names with "Exit: " prefix
+        // Calculate bar width to fit all zone labels
         int barPadding = 8;
         int barWidth = 60;  // minimum width
         for (ExitZone zone : zones) {
-            String name = zone.name() != null && !zone.name().isEmpty() ? zone.name() : "Default";
-            String label = "Exit: " + name;
+            String label = formatExitLabel(zone);
             barWidth = Math.max(barWidth, fm.stringWidth(label) + barPadding * 2);
         }
 
@@ -150,10 +178,23 @@ public class FlowDiagramPanel extends JPanel {
         g2.draw(entryBox);
         g2.setColor(textColor);
         g2.setFont(mainFont);
-        String entryText = "Entry";
         int textX = entryX + (entryBoxWidth - fm.stringWidth(entryText)) / 2;
         int textY = entryY + ((entryBoxHeight - fm.getHeight()) / 2) + fm.getAscent();
         g2.drawString(entryText, textX, textY);
+
+        // Expiration label below entry box (if applicable)
+        Integer expirationBars = strategy.getEntrySettings().getExpirationBars();
+        if (expirationBars != null && expirationBars > 0) {
+            String expLabel = "Expires: " + expirationBars + " bar" + (expirationBars > 1 ? "s" : "");
+            g2.setColor(dimColor);
+            Font smallFont = mainFont.deriveFont(Font.PLAIN, 10f);
+            g2.setFont(smallFont);
+            FontMetrics smallFm = g2.getFontMetrics();
+            int expX = entryX + (entryBoxWidth - smallFm.stringWidth(expLabel)) / 2;
+            int expY = entryY + entryBoxHeight + smallFm.getAscent() + 2;
+            g2.drawString(expLabel, expX, expY);
+            g2.setFont(mainFont);  // restore
+        }
 
         // Zone area starts here
         int zonesX = entryRight + arrowGap;
@@ -239,8 +280,7 @@ public class FlowDiagramPanel extends JPanel {
             }
 
             // Zone name inside the bar - vertically centered
-            String name = zone.name() != null && !zone.name().isEmpty() ? zone.name() : "Default";
-            String zoneLabel = "Exit: " + name;
+            String zoneLabel = formatExitLabel(zone);
             g2.setFont(mainFont);
             g2.setColor(textColor);
             int labelX = zonesX + barPadding;
@@ -298,5 +338,32 @@ public class FlowDiagramPanel extends JPanel {
             return (int) val + "%";
         }
         return String.format("%.1f%%", val);
+    }
+
+    private String formatPctSigned(double val) {
+        String sign = val >= 0 ? "+" : "";
+        if (val == (int) val) {
+            return sign + (int) val + "%";
+        }
+        return String.format("%s%.1f%%", sign, val);
+    }
+
+    private String formatExitLabel(ExitZone zone) {
+        String name = zone.name() != null && !zone.name().isEmpty() ? zone.name() : "Default";
+        String type;
+
+        if (zone.exitImmediately()) {
+            type = "Immediate Exit";
+        } else if (zone.stopLossType() != null && zone.stopLossType() != StopLossType.NONE) {
+            type = zone.stopLossType().isTrailing() ? "Trailing SL Exit" : "SL Exit";
+        } else if (zone.takeProfitType() != null && zone.takeProfitType() != TakeProfitType.NONE) {
+            type = "TP Exit";
+        } else if (zone.exitCondition() != null && !zone.exitCondition().isBlank()) {
+            type = "Conditional Exit";
+        } else {
+            type = "Exit";
+        }
+
+        return type + ": " + name;
     }
 }

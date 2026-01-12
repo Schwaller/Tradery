@@ -41,6 +41,11 @@ public class ChartConfig {
     private int macdSignal = 9;
     private boolean atrEnabled = false;
     private int atrPeriod = 14;
+    private boolean stochasticEnabled = false;
+    private int stochasticKPeriod = 14;
+    private int stochasticDPeriod = 3;
+    private boolean rangePositionEnabled = false;
+    private int rangePositionPeriod = 200;
 
     // Orderflow charts
     private boolean deltaEnabled = false;
@@ -133,6 +138,18 @@ public class ChartConfig {
     public int getAtrPeriod() { return atrPeriod; }
     public void setAtrPeriod(int period) { this.atrPeriod = period; save(); }
 
+    public boolean isStochasticEnabled() { return stochasticEnabled; }
+    public void setStochasticEnabled(boolean enabled) { this.stochasticEnabled = enabled; save(); }
+    public int getStochasticKPeriod() { return stochasticKPeriod; }
+    public void setStochasticKPeriod(int period) { this.stochasticKPeriod = period; save(); }
+    public int getStochasticDPeriod() { return stochasticDPeriod; }
+    public void setStochasticDPeriod(int period) { this.stochasticDPeriod = period; save(); }
+
+    public boolean isRangePositionEnabled() { return rangePositionEnabled; }
+    public void setRangePositionEnabled(boolean enabled) { this.rangePositionEnabled = enabled; save(); }
+    public int getRangePositionPeriod() { return rangePositionPeriod; }
+    public void setRangePositionPeriod(int period) { this.rangePositionPeriod = period; save(); }
+
     // ===== Orderflow Chart Getters/Setters =====
 
     public boolean isDeltaEnabled() { return deltaEnabled; }
@@ -216,6 +233,11 @@ public class ChartConfig {
         this.macdSignal = other.macdSignal;
         this.atrEnabled = other.atrEnabled;
         this.atrPeriod = other.atrPeriod;
+        this.stochasticEnabled = other.stochasticEnabled;
+        this.stochasticKPeriod = other.stochasticKPeriod;
+        this.stochasticDPeriod = other.stochasticDPeriod;
+        this.rangePositionEnabled = other.rangePositionEnabled;
+        this.rangePositionPeriod = other.rangePositionPeriod;
 
         // Orderflow
         this.deltaEnabled = other.deltaEnabled;
@@ -274,6 +296,11 @@ public class ChartConfig {
         macdSignal = 9;
         atrEnabled = false;
         atrPeriod = 14;
+        stochasticEnabled = false;
+        stochasticKPeriod = 14;
+        stochasticDPeriod = 3;
+        rangePositionEnabled = false;
+        rangePositionPeriod = 200;
 
         // Orderflow - all off by default
         deltaEnabled = false;
@@ -383,6 +410,11 @@ public class ChartConfig {
         this.macdSignal = other.macdSignal;
         this.atrEnabled = other.atrEnabled;
         this.atrPeriod = other.atrPeriod;
+        this.stochasticEnabled = other.stochasticEnabled;
+        this.stochasticKPeriod = other.stochasticKPeriod;
+        this.stochasticDPeriod = other.stochasticDPeriod;
+        this.rangePositionEnabled = other.rangePositionEnabled;
+        this.rangePositionPeriod = other.rangePositionPeriod;
 
         // Orderflow
         this.deltaEnabled = other.deltaEnabled;

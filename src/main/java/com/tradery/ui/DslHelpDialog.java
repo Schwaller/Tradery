@@ -125,8 +125,9 @@ public class DslHelpDialog extends JDialog {
                 <tr><td>-DI</td><td><code>MINUS_DI(period)</code></td><td>Minus Directional Indicator (downward pressure)</td><td></td></tr>
                 <tr><td>MACD</td><td><code>MACD(fast,slow,signal)</code></td><td>MACD</td><td><code>.line</code> <code>.signal</code> <code>.histogram</code></td></tr>
                 <tr><td>Bollinger</td><td><code>BBANDS(period,stdDev)</code></td><td>Bollinger Bands</td><td><code>.upper</code> <code>.middle</code> <code>.lower</code></td></tr>
+                <tr><td>Stochastic</td><td><code>STOCHASTIC(kPeriod)</code> or <code>STOCHASTIC(kPeriod,dPeriod)</code></td><td>Stochastic Oscillator (0-100)</td><td><code>.k</code> <code>.d</code></td></tr>
             </table>
-            <div class="example">MACD(12,26,9).histogram > 0<br>close &lt; BBANDS(20,2).lower<br>ADX(14) > 25 AND PLUS_DI(14) > MINUS_DI(14)</div>
+            <div class="example">MACD(12,26,9).histogram > 0<br>close &lt; BBANDS(20,2).lower<br>ADX(14) > 25 AND PLUS_DI(14) > MINUS_DI(14)<br>STOCHASTIC(14).k crosses_above STOCHASTIC(14).d</div>
             </div>
 
             <div class="section">
@@ -146,8 +147,11 @@ public class DslHelpDialog extends JDialog {
                 <tr><td><code>HIGH_OF(period)</code></td><td>Highest high over period</td></tr>
                 <tr><td><code>LOW_OF(period)</code></td><td>Lowest low over period</td></tr>
                 <tr><td><code>AVG_VOLUME(period)</code></td><td>Average volume over period</td></tr>
+                <tr><td><code>RANGE_POSITION(period)</code></td><td>Position in range: -1=low, 0=mid, +1=high (extends beyond for breakouts)</td></tr>
+                <tr><td><code>RANGE_POSITION(period,skip)</code></td><td>Same as above, but skip last N bars before calculating range</td></tr>
             </table>
-            <div class="example">close > HIGH_OF(20)<br>volume > AVG_VOLUME(20) * 1.5</div>
+            <div class="example">close > HIGH_OF(20)<br>volume > AVG_VOLUME(20) * 1.5<br>RANGE_POSITION(20) > 1<br>RANGE_POSITION(50,5) &lt; -1</div>
+            <span style="color: %s; font-size: 10px;">RANGE_POSITION extends beyond ±1 for breakouts (e.g., 1.5 if 50%% above range). Use STOCHASTIC (clamped 0-100) for traditional oscillator.</span>
             </div>
 
             <div class="section">
@@ -285,7 +289,7 @@ public class DslHelpDialog extends JDialog {
 
             </body>
             </html>
-            """.formatted(bgHex, fgHex, fgHex, fgSecHex, codeBgHex, fgHex, borderHex, codeBgHex, codeBgHex, accentHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex);
+            """.formatted(bgHex, fgHex, fgHex, fgSecHex, codeBgHex, fgHex, borderHex, codeBgHex, codeBgHex, accentHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex);
     }
 
     private String toHex(Color c) {

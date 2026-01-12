@@ -896,6 +896,35 @@ public class ApiServer {
             return result;
         }
 
+        // ========== Stochastic Oscillator ==========
+
+        // STOCHASTIC(kPeriod) or STOCHASTIC(kPeriod,dPeriod) with optional .k or .d
+        Pattern stochPattern = Pattern.compile("STOCHASTIC\\((\\d+)(?:,(\\d+))?\\)(?:\\.(k|d))?", Pattern.CASE_INSENSITIVE);
+        Matcher stochMatcher = stochPattern.matcher(name);
+        if (stochMatcher.matches()) {
+            int kPeriod = Integer.parseInt(stochMatcher.group(1));
+            int dPeriod = stochMatcher.group(2) != null ? Integer.parseInt(stochMatcher.group(2)) : 3;
+            String component = stochMatcher.group(3);
+
+            var stoch = engine.getStochastic(kPeriod, dPeriod);
+            double[] values = "d".equalsIgnoreCase(component) ? stoch.d() : stoch.k();
+            System.arraycopy(values, 0, result, 0, Math.min(values.length, size));
+            return result;
+        }
+
+        // ========== Range Position ==========
+
+        // RANGE_POSITION(period) or RANGE_POSITION(period,skip)
+        Pattern rangePosPattern = Pattern.compile("RANGE_POSITION\\((\\d+)(?:,(\\d+))?\\)", Pattern.CASE_INSENSITIVE);
+        Matcher rangePosMatcher = rangePosPattern.matcher(name);
+        if (rangePosMatcher.matches()) {
+            int period = Integer.parseInt(rangePosMatcher.group(1));
+            int skip = rangePosMatcher.group(2) != null ? Integer.parseInt(rangePosMatcher.group(2)) : 0;
+            double[] rangePos = engine.getRangePosition(period, skip);
+            System.arraycopy(rangePos, 0, result, 0, Math.min(rangePos.length, size));
+            return result;
+        }
+
         throw new IllegalArgumentException("Unknown indicator: " + name);
     }
 

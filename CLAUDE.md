@@ -140,6 +140,11 @@ BBANDS(period, stdDev)             # Bollinger middle band
 BBANDS(period, stdDev).upper       # Bollinger upper band
 BBANDS(period, stdDev).middle      # Bollinger middle band
 BBANDS(period, stdDev).lower       # Bollinger lower band
+
+STOCHASTIC(kPeriod)                # Stochastic %K (0-100, default dPeriod=3)
+STOCHASTIC(kPeriod, dPeriod)       # Stochastic with custom smoothing
+STOCHASTIC(kPeriod, dPeriod).k     # Stochastic %K line
+STOCHASTIC(kPeriod, dPeriod).d     # Stochastic %D line (smoothed %K)
 ```
 
 ### Range & Volume Functions
@@ -147,7 +152,13 @@ BBANDS(period, stdDev).lower       # Bollinger lower band
 HIGH_OF(period)          # Highest high of last N bars
 LOW_OF(period)           # Lowest low of last N bars
 AVG_VOLUME(period)       # Average volume of last N bars
+RANGE_POSITION(period)   # Position within range: -1=low, 0=mid, +1=high
+RANGE_POSITION(period, skip)  # With skip bars before range calculation
 ```
+
+**RANGE_POSITION vs STOCHASTIC:**
+- `STOCHASTIC` is clamped to 0-100 (traditional momentum oscillator)
+- `RANGE_POSITION` extends beyond ±1 for breakouts (returns -1.5 if below range, +1.5 if above)
 
 ### Time Functions
 ```
@@ -256,6 +267,16 @@ MACD(12,26,9).line crosses_above MACD(12,26,9).signal
 # Bollinger Bands
 close < BBANDS(20, 2).lower
 close > BBANDS(20, 2).upper
+
+# Stochastic
+STOCHASTIC(14).k < 20                     # Oversold condition
+STOCHASTIC(14).k crosses_above STOCHASTIC(14).d  # Bullish crossover
+STOCHASTIC(14, 3).d > 80                  # Overbought with custom smoothing
+
+# Range Position (breakout detection)
+RANGE_POSITION(20) > 1                    # Price above 20-bar range (breakout)
+RANGE_POSITION(20) < -1                   # Price below 20-bar range (breakdown)
+RANGE_POSITION(50, 5) > 0.8               # Near top of 50-bar range, skip last 5 bars
 
 # Trend detection with ADX
 ADX(14) > 25 AND PLUS_DI(14) > MINUS_DI(14)
@@ -590,15 +611,26 @@ Each trade includes rich analytics data for AI analysis:
   "activePhasesAtExit": ["uptrend", "weekdays"],
 
   // Indicator values at entry/exit (for AI analysis of what triggered the trade)
+  // NOTE: Context indicators are ALWAYS captured regardless of DSL conditions:
+  //   ATR(14), SMA(50), SMA(200), RSI(14), ADX(14), AVG_VOLUME(20)
+  // Plus any indicators explicitly used in entry/exit conditions
   "entryIndicators": {
     "RSI(14)": 28.5,
+    "SMA(50)": 41200.0,
     "SMA(200)": 41500.0,
+    "ATR(14)": 850.0,
+    "ADX(14)": 32.5,
+    "AVG_VOLUME(20)": 1500000.0,
     "price": 42000.0,
     "volume": 1250000.0
   },
   "exitIndicators": {
     "RSI(14)": 72.3,
+    "SMA(50)": 42000.0,
     "SMA(200)": 42100.0,
+    "ATR(14)": 920.0,
+    "ADX(14)": 28.1,
+    "AVG_VOLUME(20)": 1800000.0,
     "price": 43500.0,
     "volume": 980000.0
   },
@@ -924,13 +956,70 @@ With files on disk, Claude Code can:
     },
     "byHour": { "14": { "winRate": 80 }, "03": { "winRate": 40 } },
     "byDayOfWeek": { "Mon": { "winRate": 70 }, "Fri": { "winRate": 55 } },
+    "byExitReason": { "take_profit": { "count": 20, "avgPnlPercent": 3.5 } },
     "suggestions": [
       "Consider requiring 'uptrend' phase (+13% win rate, 20 trades)",
+      "Hour 15 UTC shows +18% win rate (12 trades) - consider time filter",
+      "Mon shows +12% win rate (15 trades) - consider day filter",
+      "Losers hit -4.5% MAE vs winners -1.2% - tighter stop-loss may cut losses earlier",
+      "Quick trades (<=10 bars) have 72% win rate vs 55% for longer - consider time-based exit",
+      "Tighten RSI entry threshold - winners avg 25 vs losers 35",
+      "Add 'price > SMA(200)' filter - 70% of winners vs 45% of losers entered above",
       "Exits may be too early - capturing only 45% of average MFE"
     ]
+  },
+  "historyTrends": {
+    "hasHistory": true,
+    "comparedRuns": 10,
+    "vsLastRun": {
+      "winRate": { "current": 62.5, "previous": 58.0, "delta": 4.5, "improved": true, "display": "+4.50%" },
+      "profitFactor": { "current": 2.1, "previous": 1.8, "delta": 0.3, "improved": true },
+      "totalReturnPercent": { "current": 34.5, "previous": 28.2, "delta": 6.3, "improved": true },
+      "maxDrawdownPercent": { "current": 8.2, "previous": 12.1, "delta": -3.9, "improved": true }
+    },
+    "configChanged": true,
+    "configChanges": ["Entry condition changed", "Required phases: 0 → 1"],
+    "trajectory": {
+      "winRate": { "direction": "improving", "slope": -2.5, "values": [62.5, 58.0, 55.2, 52.0] },
+      "profitFactor": { "direction": "stable", "slope": 0.1, "values": [2.1, 2.0, 1.9, 2.0] },
+      "maxDrawdown": { "direction": "improving", "slope": 1.2, "values": [8.2, 10.5, 12.1, 11.0] }
+    },
+    "historical": {
+      "bestWinRate": 62.5,
+      "worstWinRate": 45.0,
+      "isNewBest": true,
+      "bestReturn": 34.5,
+      "isNewBestReturn": true
+    }
   }
 }
 ```
+
+**Suggestion Types Generated:**
+| Type | Example | Trigger Condition |
+|------|---------|-------------------|
+| Phase | "Consider requiring 'uptrend' phase" | Win rate diff > 10% |
+| Hour | "Hour 15 UTC shows +18% win rate" | Win rate diff > 12%, 5+ trades |
+| Day | "Mon shows +12% win rate" | Win rate diff > 10%, 5+ trades |
+| Exit Zone | "Stop losses avg -5% vs take profits +3%" | SL avg > 1.5x TP avg |
+| MAE | "Losers hit -4.5% MAE vs winners -1.2%" | Loser MAE > winner MAE + 2% |
+| Holding Period | "Quick trades have 72% win rate" | Short/long win rate diff > 12% |
+| RSI | "Tighten RSI entry threshold" | Winner/loser avg diff > 5 |
+| ADX | "Add ADX filter" | Winner/loser avg diff > 3 |
+| ATR | "Winning entries have 20% lower ATR" | Volatility diff > 15% |
+| SMA Position | "Add 'price > SMA(200)' filter" | Above/below ratio diff > 15% |
+| MFE Capture | "Exits may be too early" | Capture ratio < 50% |
+| Streaks | "Max 5 consecutive losses detected" | 5+ consecutive losses |
+
+**History Trends Fields:**
+| Field | Description |
+|-------|-------------|
+| `vsLastRun.*` | Delta vs previous backtest for each metric |
+| `configChanged` | Whether strategy config changed since last run |
+| `configChanges` | List of detected config differences |
+| `trajectory.*.direction` | "improving", "stable", or "declining" based on linear regression |
+| `trajectory.*.values` | Last 5-6 metric values (newest first) |
+| `historical.isNewBest` | Whether current run beat all previous runs |
 
 **trades/** - Individual files with descriptive names:
 ```
