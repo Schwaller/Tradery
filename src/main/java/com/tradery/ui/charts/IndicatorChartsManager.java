@@ -807,6 +807,7 @@ public class IndicatorChartsManager {
         oiAxis.setAutoRange(true);
         oiAxis.setLabelPaint(ChartStyles.TEXT_COLOR);
         oiAxis.setTickLabelPaint(ChartStyles.TEXT_COLOR);
+        oiAxis.setFixedDimension(60); // Match width with other chart axes
         plot.setRangeAxis(1, oiAxis);
         plot.setRangeAxisLocation(1, org.jfree.chart.axis.AxisLocation.BOTTOM_OR_LEFT);
         plot.mapDatasetToRangeAxis(1, 1);
