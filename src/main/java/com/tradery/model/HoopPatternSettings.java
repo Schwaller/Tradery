@@ -1,5 +1,6 @@
 package com.tradery.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import java.util.ArrayList;
 import java.util.List;
@@ -89,7 +90,9 @@ public class HoopPatternSettings {
 
     /**
      * Get all unique pattern IDs referenced by this settings object.
+     * Not serialized - computed on demand.
      */
+    @JsonIgnore
     public List<String> getAllPatternIds() {
         List<String> allIds = new ArrayList<>();
         allIds.addAll(getRequiredEntryPatternIds());

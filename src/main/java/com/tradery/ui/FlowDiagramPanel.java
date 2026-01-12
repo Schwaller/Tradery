@@ -204,8 +204,8 @@ public class FlowDiagramPanel extends JPanel {
                 totalCondHeight += hoopLines.size() * lineHeight + condBoxPadding * 2;
             }
 
-            // Center condition boxes vertically around entry box
-            int condY = entryY + entryBoxHeight / 2 - totalCondHeight / 2;
+            // Center condition boxes vertically in the scale area
+            int condY = scaleTop + (SCALE_HEIGHT - totalCondHeight) / 2;
             int condX = startX;
 
             // Draw each non-empty box
@@ -214,7 +214,7 @@ public class FlowDiagramPanel extends JPanel {
             if (!dslLines.isEmpty()) {
                 int boxHeight = dslLines.size() * lineHeight + condBoxPadding * 2;
                 drawConditionBox(g2, condX, condY, condBoxWidth, boxHeight, dslLines,
-                        boxBg, accentColor, textColor, smallFm, condBoxPadding);
+                        arrowColor, accentColor, textColor, smallFm, condBoxPadding);
                 boxBounds.add(new int[]{condY, boxHeight});
                 condY += boxHeight + condBoxGap;
             }
@@ -222,7 +222,7 @@ public class FlowDiagramPanel extends JPanel {
             if (!phaseLines.isEmpty()) {
                 int boxHeight = phaseLines.size() * lineHeight + condBoxPadding * 2;
                 drawConditionBox(g2, condX, condY, condBoxWidth, boxHeight, phaseLines,
-                        boxBg, accentColor, textColor, smallFm, condBoxPadding);
+                        arrowColor, accentColor, textColor, smallFm, condBoxPadding);
                 boxBounds.add(new int[]{condY, boxHeight});
                 condY += boxHeight + condBoxGap;
             }
@@ -230,7 +230,7 @@ public class FlowDiagramPanel extends JPanel {
             if (!hoopLines.isEmpty()) {
                 int boxHeight = hoopLines.size() * lineHeight + condBoxPadding * 2;
                 drawConditionBox(g2, condX, condY, condBoxWidth, boxHeight, hoopLines,
-                        boxBg, accentColor, textColor, smallFm, condBoxPadding);
+                        arrowColor, accentColor, textColor, smallFm, condBoxPadding);
                 boxBounds.add(new int[]{condY, boxHeight});
             }
 
@@ -347,29 +347,23 @@ public class FlowDiagramPanel extends JPanel {
             g2.setColor(barFill);
             g2.fillRect(zonesX, zoneTopY, barWidth, zoneHeight);
 
-            // Top boundary line (opaque) - only if bounded
+            // Top boundary line - solid if bounded, dotted if unbounded
+            g2.setColor(accentColor);
             if (!unboundedTop) {
-                g2.setColor(accentColor);
                 g2.setStroke(new BasicStroke(2f));
-                g2.drawLine(zonesX, zoneTopY, zonesX + barWidth, zoneTopY);
             } else {
-                // Dotted line for unbounded
-                g2.setColor(dimColor);
-                g2.setStroke(new BasicStroke(1.5f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND, 1f, new float[]{1, 3}, 0));
-                g2.drawLine(zonesX, zoneTopY, zonesX + barWidth, zoneTopY);
+                g2.setStroke(new BasicStroke(2f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND, 1f, new float[]{3, 4}, 0));
             }
+            g2.drawLine(zonesX, zoneTopY, zonesX + barWidth, zoneTopY);
 
-            // Bottom boundary line (opaque) - only if bounded
+            // Bottom boundary line - solid if bounded, dotted if unbounded
+            g2.setColor(accentColor);
             if (!unboundedBottom) {
-                g2.setColor(accentColor);
                 g2.setStroke(new BasicStroke(2f));
-                g2.drawLine(zonesX, zoneBotY, zonesX + barWidth, zoneBotY);
             } else {
-                // Dotted line for unbounded
-                g2.setColor(dimColor);
-                g2.setStroke(new BasicStroke(1.5f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND, 1f, new float[]{1, 3}, 0));
-                g2.drawLine(zonesX, zoneBotY, zonesX + barWidth, zoneBotY);
+                g2.setStroke(new BasicStroke(2f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND, 1f, new float[]{3, 4}, 0));
             }
+            g2.drawLine(zonesX, zoneBotY, zonesX + barWidth, zoneBotY);
 
             // Zone name inside the bar - vertically centered
             String zoneLabel = formatExitLabel(zone);
@@ -519,7 +513,12 @@ public class FlowDiagramPanel extends JPanel {
     private void drawConditionBox(Graphics2D g2, int x, int y, int width, int height,
                                    List<String> lines, Color bgColor, Color borderColor,
                                    Color textColor, FontMetrics fm, int padding) {
-        // Draw text lines only (no border)
+        // Draw background (same color as arrows)
+        int radius = 4;
+        g2.setColor(bgColor);
+        g2.fillRoundRect(x, y, width, height, radius * 2, radius * 2);
+
+        // Draw text lines
         g2.setColor(textColor);
         int lineHeight = fm.getHeight();
         int textY = y + padding + fm.getAscent();

@@ -540,7 +540,7 @@ public class ProjectWindow extends JFrame {
         JSplitPane mainSplit = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT);
         mainSplit.setBorder(null);
         mainSplit.setDividerSize(1);
-        mainSplit.setDividerLocation(500);
+        mainSplit.setDividerLocation(580);
         mainSplit.setContinuousLayout(true);
         mainSplit.setLeftComponent(leftPanel);
         mainSplit.setRightComponent(rightSplit);
@@ -854,11 +854,11 @@ public class ProjectWindow extends JFrame {
         // Update metrics panel
         metricsPanel.updateMetrics(result.metrics());
 
-        // Update trade table
-        tradeTablePanel.updateTrades(result.trades());
-
         // Update charts with candles from coordinator
         List<Candle> candles = backtestCoordinator.getCurrentCandles();
+
+        // Update trade table (with candles for mini charts)
+        tradeTablePanel.updateTrades(result.trades(), candles, strategy.getName());
         if (candles != null && !candles.isEmpty()) {
             // Pass indicator engine to charts for orderflow/funding data
             chartPanel.setIndicatorEngine(backtestCoordinator.getIndicatorEngine());

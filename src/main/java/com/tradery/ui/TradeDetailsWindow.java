@@ -1,5 +1,6 @@
 package com.tradery.ui;
 
+import com.tradery.model.Candle;
 import com.tradery.model.Trade;
 
 import javax.swing.*;
@@ -8,6 +9,7 @@ import javax.swing.table.DefaultTableCellRenderer;
 import java.awt.*;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
+import java.awt.geom.Path2D;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
@@ -21,11 +23,18 @@ public class TradeDetailsWindow extends JDialog {
     private JTable table;
     private TreeDetailedTableModel tableModel;
     private final List<Trade> trades;
+    private final List<Candle> candles;
     private final String strategyName;
 
-    public TradeDetailsWindow(Frame parent, List<Trade> trades, String strategyName) {
+    // Detail panel components
+    private JPanel detailPanel;
+    private JPanel detailContentPanel;
+    private JScrollPane detailScrollPane;
+
+    public TradeDetailsWindow(Frame parent, List<Trade> trades, List<Candle> candles, String strategyName) {
         super(parent, "Trade Details - " + strategyName, false);
         this.trades = trades != null ? trades : new ArrayList<>();
+        this.candles = candles != null ? candles : new ArrayList<>();
         this.strategyName = strategyName;
 
         // Integrated title bar look (macOS)
@@ -36,7 +45,7 @@ public class TradeDetailsWindow extends JDialog {
         initializeComponents();
         layoutComponents();
 
-        setSize(1150, 500);
+        setSize(1400, 550);
         setLocationRelativeTo(parent);
     }
 
@@ -92,6 +101,537 @@ public class TradeDetailsWindow extends JDialog {
                 }
             }
         });
+
+        // Selection listener to update detail panel
+        table.getSelectionModel().addListSelectionListener(e -> {
+            if (!e.getValueIsAdjusting()) {
+                int selectedRow = table.getSelectedRow();
+                if (selectedRow >= 0) {
+                    TableRow tableRow = tableModel.getRowAt(selectedRow);
+                    updateDetailPanel(tableRow);
+                } else {
+                    clearDetailPanel();
+                }
+            }
+        });
+
+        // Create detail panel
+        detailPanel = createDetailPanel();
+    }
+
+    private JPanel createDetailPanel() {
+        JPanel panel = new JPanel(new BorderLayout(0, 0));
+        panel.setBorder(BorderFactory.createEmptyBorder(0, 12, 0, 0));
+        panel.setPreferredSize(new Dimension(300, 0));
+
+        detailContentPanel = new JPanel();
+        detailContentPanel.setLayout(new BoxLayout(detailContentPanel, BoxLayout.Y_AXIS));
+        detailContentPanel.setBorder(BorderFactory.createEmptyBorder(8, 12, 12, 12));
+
+        // Empty state
+        JLabel emptyLabel = new JLabel("Select a trade to view details");
+        emptyLabel.setForeground(new Color(120, 120, 120));
+        emptyLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
+        detailContentPanel.add(emptyLabel);
+
+        detailScrollPane = new JScrollPane(detailContentPanel);
+        detailScrollPane.setBorder(BorderFactory.createLineBorder(new Color(60, 60, 65)));
+        detailScrollPane.getVerticalScrollBar().setUnitIncrement(16);
+        detailScrollPane.setHorizontalScrollBarPolicy(JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
+
+        panel.add(detailScrollPane, BorderLayout.CENTER);
+        return panel;
+    }
+
+    private void updateDetailPanel(TableRow row) {
+        if (row == null) {
+            clearDetailPanel();
+            return;
+        }
+
+        detailContentPanel.removeAll();
+        SimpleDateFormat df = new SimpleDateFormat("MMM dd, yyyy HH:mm");
+
+        if (row.isGroup) {
+            buildGroupDetail(row, df);
+        } else {
+            buildTradeDetail(row, df);
+        }
+
+        detailContentPanel.revalidate();
+        detailContentPanel.repaint();
+        SwingUtilities.invokeLater(() -> detailScrollPane.getVerticalScrollBar().setValue(0));
+    }
+
+    private void buildGroupDetail(TableRow row, SimpleDateFormat df) {
+        // Header
+        addHeader("DCA GROUP", new Color(100, 140, 200));
+        addSpacer(8);
+
+        // Summary metrics in a highlight box
+        JPanel metricsBox = createMetricsBox(row);
+        metricsBox.setAlignmentX(Component.LEFT_ALIGNMENT);
+        detailContentPanel.add(metricsBox);
+        addSpacer(12);
+
+        // Position details
+        addSection("Position");
+        addRow("Side", row.getSide().toUpperCase(), row.getSide().equals("long") ? new Color(76, 175, 80) : new Color(244, 67, 54));
+        addRow("Entries", String.valueOf(row.trades.size()), null);
+        addRow("Total Qty", String.format("%.6f", row.getTotalQuantity()), null);
+        addRow("Total Value", String.format("$%,.2f", row.getTotalValue()), null);
+        addRow("Avg Entry", "$" + formatPrice(row.getAvgEntryPrice()), null);
+        if (row.getExitPrice() != null) {
+            addRow("Exit Price", "$" + formatPrice(row.getExitPrice()), null);
+        }
+        addSpacer(12);
+
+        // Exit info
+        addSection("Exit");
+        addRow("Reason", formatExitReason(row.getExitReason()), null);
+        if (row.getExitZone() != null) {
+            addRow("Zone", row.getExitZone(), null);
+        }
+        addRow("Duration", row.getDuration() + " bars", null);
+        addRow("Commission", String.format("$%.2f", row.getTotalCommission()), null);
+    }
+
+    private void buildTradeDetail(TableRow row, SimpleDateFormat df) {
+        Trade t = row.singleTrade;
+        boolean isRejected = row.isRejected();
+
+        // Header
+        if (isRejected) {
+            addHeader("REJECTED", new Color(150, 150, 150));
+            addSpacer(4);
+            JLabel note = new JLabel("<html><i>Signal fired but no capital available</i></html>");
+            note.setFont(note.getFont().deriveFont(10f));
+            note.setForeground(new Color(120, 120, 120));
+            note.setAlignmentX(Component.LEFT_ALIGNMENT);
+            detailContentPanel.add(note);
+        } else {
+            Color headerColor = t.pnl() != null && t.pnl() >= 0 ? new Color(76, 175, 80) : new Color(244, 67, 54);
+            addHeader(t.pnl() != null && t.pnl() >= 0 ? "WINNER" : "LOSER", headerColor);
+
+            // Big P&L display
+            addSpacer(8);
+            JPanel metricsBox = createTradeMetricsBox(t);
+            metricsBox.setAlignmentX(Component.LEFT_ALIGNMENT);
+            detailContentPanel.add(metricsBox);
+
+            // Mini chart
+            if (!candles.isEmpty() && t.exitBar() != null) {
+                addSpacer(12);
+                JPanel chartPanel = createMiniChart(t);
+                if (chartPanel != null) {
+                    chartPanel.setAlignmentX(Component.LEFT_ALIGNMENT);
+                    detailContentPanel.add(chartPanel);
+                }
+            }
+        }
+        addSpacer(12);
+
+        // Entry section
+        addSection("Entry");
+        addRow("Time", df.format(new Date(t.entryTime())), null);
+        addRow("Bar", String.valueOf(t.entryBar()), null);
+        addRow("Price", "$" + formatPrice(t.entryPrice()), null);
+        addRow("Side", t.side().toUpperCase(), t.side().equals("long") ? new Color(76, 175, 80) : new Color(244, 67, 54));
+        if (!isRejected) {
+            addRow("Quantity", String.format("%.6f", t.quantity()), null);
+            addRow("Value", String.format("$%,.2f", t.value()), null);
+        }
+
+        if (!isRejected && t.exitTime() != null) {
+            addSpacer(12);
+
+            // Exit section
+            addSection("Exit");
+            addRow("Time", df.format(new Date(t.exitTime())), null);
+            addRow("Bar", String.valueOf(t.exitBar()), null);
+            addRow("Price", "$" + formatPrice(t.exitPrice()), null);
+            addRow("Reason", formatExitReason(t.exitReason()), null);
+            if (t.exitZone() != null) {
+                addRow("Zone", t.exitZone(), null);
+            }
+            addRow("Duration", t.duration() + " bars", null);
+            if (t.commission() != null) {
+                addRow("Commission", String.format("$%.2f", t.commission()), null);
+            }
+
+            // Analytics section
+            if (t.mfe() != null || t.mae() != null) {
+                addSpacer(12);
+                addSection("Analytics");
+                if (t.mfe() != null) {
+                    addRow("MFE", String.format("+%.2f%%", t.mfe()), new Color(76, 175, 80));
+                    addRow("  at bar", String.valueOf(t.mfeBar()), new Color(100, 100, 100));
+                }
+                if (t.mae() != null) {
+                    addRow("MAE", String.format("%.2f%%", t.mae()), new Color(244, 67, 54));
+                    addRow("  at bar", String.valueOf(t.maeBar()), new Color(100, 100, 100));
+                }
+                if (t.captureRatio() != null) {
+                    Color captureColor = t.captureRatio() >= 0.7 ? new Color(76, 175, 80) :
+                                         t.captureRatio() >= 0.4 ? new Color(255, 193, 7) : new Color(244, 67, 54);
+                    addRow("Capture", String.format("%.0f%%", t.captureRatio() * 100), captureColor);
+                }
+            }
+        }
+
+        // Phases
+        if (t.activePhasesAtEntry() != null && !t.activePhasesAtEntry().isEmpty()) {
+            addSpacer(12);
+            addSection("Phases at Entry");
+            for (String phase : t.activePhasesAtEntry()) {
+                addTag(phase, new Color(70, 130, 180));
+            }
+        }
+
+        // Indicators (collapsible-style, showing key ones)
+        if (t.entryIndicators() != null && !t.entryIndicators().isEmpty()) {
+            addSpacer(12);
+            addSection("Entry Indicators");
+            t.entryIndicators().forEach((k, v) -> {
+                addRow(k, formatIndicatorValue(k, v), new Color(140, 140, 140));
+            });
+        }
+    }
+
+    private JPanel createMetricsBox(TableRow row) {
+        JPanel box = new JPanel();
+        box.setLayout(new BoxLayout(box, BoxLayout.Y_AXIS));
+        box.setBorder(BorderFactory.createCompoundBorder(
+            BorderFactory.createLineBorder(new Color(80, 80, 85)),
+            BorderFactory.createEmptyBorder(10, 12, 10, 12)
+        ));
+        box.setMaximumSize(new Dimension(Integer.MAX_VALUE, 100));
+
+        double pnl = row.getTotalPnl();
+        Color pnlColor = pnl >= 0 ? new Color(76, 175, 80) : new Color(244, 67, 54);
+
+        JLabel pnlLabel = new JLabel(String.format("%+.2f", pnl));
+        pnlLabel.setFont(pnlLabel.getFont().deriveFont(Font.BOLD, 22f));
+        pnlLabel.setForeground(pnlColor);
+        pnlLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
+
+        JLabel returnLabel = new JLabel(String.format("%+.2f%% return", row.getAvgPnlPercent()));
+        returnLabel.setFont(returnLabel.getFont().deriveFont(12f));
+        returnLabel.setForeground(pnlColor);
+        returnLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
+
+        box.add(pnlLabel);
+        box.add(returnLabel);
+
+        // MFE/MAE row
+        if (row.getMfe() != null || row.getMae() != null) {
+            JPanel mfeRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 4));
+            mfeRow.setOpaque(false);
+            mfeRow.setAlignmentX(Component.LEFT_ALIGNMENT);
+            if (row.getMfe() != null) {
+                JLabel mfe = new JLabel(String.format("MFE +%.1f%%", row.getMfe()));
+                mfe.setFont(mfe.getFont().deriveFont(10f));
+                mfe.setForeground(new Color(100, 160, 100));
+                mfeRow.add(mfe);
+            }
+            if (row.getMae() != null) {
+                JLabel mae = new JLabel(String.format("MAE %.1f%%", row.getMae()));
+                mae.setFont(mae.getFont().deriveFont(10f));
+                mae.setForeground(new Color(180, 100, 100));
+                mfeRow.add(mae);
+            }
+            box.add(mfeRow);
+        }
+
+        return box;
+    }
+
+    private JPanel createTradeMetricsBox(Trade t) {
+        JPanel box = new JPanel();
+        box.setLayout(new BoxLayout(box, BoxLayout.Y_AXIS));
+        box.setBorder(BorderFactory.createCompoundBorder(
+            BorderFactory.createLineBorder(new Color(80, 80, 85)),
+            BorderFactory.createEmptyBorder(10, 12, 10, 12)
+        ));
+        box.setMaximumSize(new Dimension(Integer.MAX_VALUE, 100));
+
+        double pnl = t.pnl() != null ? t.pnl() : 0;
+        Color pnlColor = pnl >= 0 ? new Color(76, 175, 80) : new Color(244, 67, 54);
+
+        JLabel pnlLabel = new JLabel(String.format("%+.2f", pnl));
+        pnlLabel.setFont(pnlLabel.getFont().deriveFont(Font.BOLD, 22f));
+        pnlLabel.setForeground(pnlColor);
+        pnlLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
+
+        JLabel returnLabel = new JLabel(String.format("%+.2f%% return", t.pnlPercent() != null ? t.pnlPercent() : 0));
+        returnLabel.setFont(returnLabel.getFont().deriveFont(12f));
+        returnLabel.setForeground(pnlColor);
+        returnLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
+
+        box.add(pnlLabel);
+        box.add(returnLabel);
+
+        // MFE/MAE row
+        if (t.mfe() != null || t.mae() != null) {
+            JPanel mfeRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 4));
+            mfeRow.setOpaque(false);
+            mfeRow.setAlignmentX(Component.LEFT_ALIGNMENT);
+            if (t.mfe() != null) {
+                JLabel mfe = new JLabel(String.format("MFE +%.1f%%", t.mfe()));
+                mfe.setFont(mfe.getFont().deriveFont(10f));
+                mfe.setForeground(new Color(100, 160, 100));
+                mfeRow.add(mfe);
+            }
+            if (t.mae() != null) {
+                JLabel mae = new JLabel(String.format("MAE %.1f%%", t.mae()));
+                mae.setFont(mae.getFont().deriveFont(10f));
+                mae.setForeground(new Color(180, 100, 100));
+                mfeRow.add(mae);
+            }
+            if (t.captureRatio() != null) {
+                JLabel capture = new JLabel(String.format("Capture %.0f%%", t.captureRatio() * 100));
+                capture.setFont(capture.getFont().deriveFont(10f));
+                Color captureColor = t.captureRatio() >= 0.7 ? new Color(100, 160, 100) :
+                                     t.captureRatio() >= 0.4 ? new Color(180, 160, 80) : new Color(180, 100, 100);
+                capture.setForeground(captureColor);
+                mfeRow.add(capture);
+            }
+            box.add(mfeRow);
+        }
+
+        return box;
+    }
+
+    private JPanel createMiniChart(Trade t) {
+        if (candles.isEmpty() || t.exitBar() == null) return null;
+
+        int entryBar = t.entryBar();
+        int exitBar = t.exitBar();
+        int padding = Math.max(5, (exitBar - entryBar) / 4);
+        int startBar = Math.max(0, entryBar - padding);
+        int endBar = Math.min(candles.size() - 1, exitBar + padding);
+
+        if (startBar >= endBar) return null;
+
+        // Extract candles for the range
+        List<Candle> chartCandles = candles.subList(startBar, endBar + 1);
+        if (chartCandles.isEmpty()) return null;
+
+        // Find price range
+        double minPrice = Double.MAX_VALUE;
+        double maxPrice = Double.MIN_VALUE;
+        for (Candle c : chartCandles) {
+            minPrice = Math.min(minPrice, c.low());
+            maxPrice = Math.max(maxPrice, c.high());
+        }
+        double priceRange = maxPrice - minPrice;
+        if (priceRange <= 0) return null;
+
+        // Add some padding to price range
+        minPrice -= priceRange * 0.05;
+        maxPrice += priceRange * 0.05;
+        priceRange = maxPrice - minPrice;
+
+        final double fMinPrice = minPrice;
+        final double fPriceRange = priceRange;
+        final int fEntryBar = entryBar - startBar;
+        final int fExitBar = exitBar - startBar;
+        final Integer fMfeBar = t.mfeBar() != null ? t.mfeBar() - startBar : null;
+        final Integer fMaeBar = t.maeBar() != null ? t.maeBar() - startBar : null;
+        final boolean isWinner = t.pnl() != null && t.pnl() >= 0;
+
+        JPanel chartPanel = new JPanel() {
+            @Override
+            protected void paintComponent(Graphics g) {
+                super.paintComponent(g);
+                Graphics2D g2 = (Graphics2D) g.create();
+                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+
+                int w = getWidth();
+                int h = getHeight();
+                int barWidth = Math.max(2, (w - 20) / chartCandles.size());
+                int chartWidth = barWidth * chartCandles.size();
+                int offsetX = (w - chartWidth) / 2;
+
+                // Background
+                g2.setColor(new Color(35, 35, 40));
+                g2.fillRect(0, 0, w, h);
+
+                // Draw price line
+                Path2D.Double path = new Path2D.Double();
+                boolean first = true;
+                for (int i = 0; i < chartCandles.size(); i++) {
+                    Candle c = chartCandles.get(i);
+                    double price = c.close();
+                    int x = offsetX + i * barWidth + barWidth / 2;
+                    int y = h - 10 - (int) ((price - fMinPrice) / fPriceRange * (h - 20));
+                    if (first) {
+                        path.moveTo(x, y);
+                        first = false;
+                    } else {
+                        path.lineTo(x, y);
+                    }
+                }
+
+                // Draw area fill under line
+                Path2D.Double areaPath = new Path2D.Double(path);
+                areaPath.lineTo(offsetX + (chartCandles.size() - 1) * barWidth + barWidth / 2, h - 10);
+                areaPath.lineTo(offsetX + barWidth / 2, h - 10);
+                areaPath.closePath();
+                g2.setColor(new Color(isWinner ? 76 : 244, isWinner ? 175 : 67, isWinner ? 80 : 54, 30));
+                g2.fill(areaPath);
+
+                // Draw line
+                g2.setColor(new Color(isWinner ? 76 : 244, isWinner ? 175 : 67, isWinner ? 80 : 54, 180));
+                g2.setStroke(new BasicStroke(1.5f));
+                g2.draw(path);
+
+                // Entry marker
+                if (fEntryBar >= 0 && fEntryBar < chartCandles.size()) {
+                    int x = offsetX + fEntryBar * barWidth + barWidth / 2;
+                    Candle c = chartCandles.get(fEntryBar);
+                    int y = h - 10 - (int) ((c.close() - fMinPrice) / fPriceRange * (h - 20));
+                    g2.setColor(new Color(100, 180, 255));
+                    g2.fillOval(x - 4, y - 4, 8, 8);
+                    g2.setColor(new Color(100, 180, 255, 100));
+                    g2.drawLine(x, 5, x, h - 10);
+                }
+
+                // Exit marker
+                if (fExitBar >= 0 && fExitBar < chartCandles.size()) {
+                    int x = offsetX + fExitBar * barWidth + barWidth / 2;
+                    Candle c = chartCandles.get(fExitBar);
+                    int y = h - 10 - (int) ((c.close() - fMinPrice) / fPriceRange * (h - 20));
+                    g2.setColor(isWinner ? new Color(76, 175, 80) : new Color(244, 67, 54));
+                    g2.fillOval(x - 4, y - 4, 8, 8);
+                }
+
+                // MFE marker (small green triangle)
+                if (fMfeBar != null && fMfeBar >= 0 && fMfeBar < chartCandles.size()) {
+                    int x = offsetX + fMfeBar * barWidth + barWidth / 2;
+                    Candle c = chartCandles.get(fMfeBar);
+                    int y = h - 10 - (int) ((c.high() - fMinPrice) / fPriceRange * (h - 20));
+                    g2.setColor(new Color(76, 175, 80, 150));
+                    int[] xp = {x - 4, x + 4, x};
+                    int[] yp = {y + 4, y + 4, y - 4};
+                    g2.fillPolygon(xp, yp, 3);
+                }
+
+                // MAE marker (small red triangle)
+                if (fMaeBar != null && fMaeBar >= 0 && fMaeBar < chartCandles.size()) {
+                    int x = offsetX + fMaeBar * barWidth + barWidth / 2;
+                    Candle c = chartCandles.get(fMaeBar);
+                    int y = h - 10 - (int) ((c.low() - fMinPrice) / fPriceRange * (h - 20));
+                    g2.setColor(new Color(244, 67, 54, 150));
+                    int[] xp = {x - 4, x + 4, x};
+                    int[] yp = {y - 4, y - 4, y + 4};
+                    g2.fillPolygon(xp, yp, 3);
+                }
+
+                g2.dispose();
+            }
+        };
+
+        chartPanel.setPreferredSize(new Dimension(260, 80));
+        chartPanel.setMaximumSize(new Dimension(Integer.MAX_VALUE, 80));
+        chartPanel.setBorder(BorderFactory.createLineBorder(new Color(60, 60, 65)));
+        chartPanel.setToolTipText("Entry (blue) → Exit | MFE ▲ | MAE ▼");
+
+        return chartPanel;
+    }
+
+    private void addHeader(String text, Color color) {
+        JLabel header = new JLabel(text);
+        header.setFont(header.getFont().deriveFont(Font.BOLD, 14f));
+        header.setForeground(color);
+        header.setAlignmentX(Component.LEFT_ALIGNMENT);
+        detailContentPanel.add(header);
+    }
+
+    private void addSection(String title) {
+        JLabel section = new JLabel(title.toUpperCase());
+        section.setFont(section.getFont().deriveFont(Font.BOLD, 9f));
+        section.setForeground(new Color(100, 100, 100));
+        section.setBorder(BorderFactory.createEmptyBorder(0, 0, 4, 0));
+        section.setAlignmentX(Component.LEFT_ALIGNMENT);
+        detailContentPanel.add(section);
+    }
+
+    private void addRow(String label, String value, Color valueColor) {
+        JPanel row = new JPanel(new BorderLayout(8, 0));
+        row.setOpaque(false);
+        row.setMaximumSize(new Dimension(Integer.MAX_VALUE, 18));
+        row.setAlignmentX(Component.LEFT_ALIGNMENT);
+
+        JLabel labelComp = new JLabel(label);
+        labelComp.setFont(labelComp.getFont().deriveFont(11f));
+        labelComp.setForeground(new Color(140, 140, 140));
+
+        JLabel valueComp = new JLabel(value);
+        valueComp.setFont(valueComp.getFont().deriveFont(11f));
+        valueComp.setForeground(valueColor != null ? valueColor : new Color(200, 200, 200));
+
+        row.add(labelComp, BorderLayout.WEST);
+        row.add(valueComp, BorderLayout.EAST);
+        detailContentPanel.add(row);
+    }
+
+    private void addTag(String text, Color color) {
+        JLabel tag = new JLabel(text);
+        tag.setFont(tag.getFont().deriveFont(10f));
+        tag.setForeground(color);
+        tag.setBorder(BorderFactory.createCompoundBorder(
+            BorderFactory.createLineBorder(color.darker(), 1),
+            BorderFactory.createEmptyBorder(1, 6, 1, 6)
+        ));
+        tag.setAlignmentX(Component.LEFT_ALIGNMENT);
+        detailContentPanel.add(tag);
+        addSpacer(2);
+    }
+
+    private void addSpacer(int height) {
+        detailContentPanel.add(Box.createRigidArea(new Dimension(0, height)));
+    }
+
+    private void clearDetailPanel() {
+        detailContentPanel.removeAll();
+        JLabel emptyLabel = new JLabel("Select a trade to view details");
+        emptyLabel.setForeground(new Color(120, 120, 120));
+        emptyLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
+        detailContentPanel.add(emptyLabel);
+        detailContentPanel.revalidate();
+        detailContentPanel.repaint();
+    }
+
+    private String formatPrice(double price) {
+        if (price >= 100) return String.format("%,.2f", price);
+        else if (price >= 1) return String.format("%.4f", price);
+        else return String.format("%.8f", price);
+    }
+
+    private String formatIndicatorValue(String name, double value) {
+        if (name.contains("price") || name.equals("close") || name.equals("open") || name.equals("high") || name.equals("low")) {
+            return "$" + formatPrice(value);
+        } else if (name.contains("volume") || name.contains("VOLUME")) {
+            return String.format("%,.0f", value);
+        } else if (value >= 1000) {
+            return String.format("%,.2f", value);
+        } else {
+            return String.format("%.4f", value);
+        }
+    }
+
+    private String formatExitReason(String reason) {
+        if (reason == null) return "-";
+        return switch (reason) {
+            case "signal" -> "Signal";
+            case "stop_loss" -> "Stop Loss";
+            case "take_profit" -> "Take Profit";
+            case "trailing_stop" -> "Trail Stop";
+            case "zone_exit" -> "Zone Exit";
+            case "rejected" -> "Rejected";
+            default -> reason;
+        };
     }
 
     private void layoutComponents() {
@@ -141,8 +681,17 @@ public class TradeDetailsWindow extends JDialog {
             headerPanel.add(createSummaryLabel("Rejected", String.valueOf(rejected), Color.GRAY));
         }
 
-        JScrollPane scrollPane = new JScrollPane(table);
-        scrollPane.setHorizontalScrollBarPolicy(JScrollPane.HORIZONTAL_SCROLLBAR_AS_NEEDED);
+        JScrollPane tableScrollPane = new JScrollPane(table);
+        tableScrollPane.setHorizontalScrollBarPolicy(JScrollPane.HORIZONTAL_SCROLLBAR_AS_NEEDED);
+
+        // Split pane: table | detail panel
+        JSplitPane splitPane = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT);
+        splitPane.setLeftComponent(tableScrollPane);
+        splitPane.setRightComponent(detailPanel);
+        splitPane.setDividerLocation(1100);
+        splitPane.setResizeWeight(1.0); // Give extra space to table
+        splitPane.setDividerSize(4);
+        splitPane.setBorder(null);
 
         JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
         JButton closeButton = new JButton("Close");
@@ -151,7 +700,7 @@ public class TradeDetailsWindow extends JDialog {
 
         topPanel.add(headerPanel, BorderLayout.CENTER);
         contentPane.add(topPanel, BorderLayout.NORTH);
-        contentPane.add(scrollPane, BorderLayout.CENTER);
+        contentPane.add(splitPane, BorderLayout.CENTER);
         contentPane.add(buttonPanel, BorderLayout.SOUTH);
 
         setContentPane(contentPane);

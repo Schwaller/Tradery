@@ -129,10 +129,10 @@ public class AiTerminalPanel extends JPanel {
             // Build the actual AI command to send after shell starts
             String aiCommand;
             if ("claude".equals(aiType)) {
-                // Pre-approve edit/write permissions for strategy files
+                // Pre-approve permissions for strategy files AND MCP tools
                 String traderyPath = System.getProperty("user.home") + "/.tradery";
                 String allowedTools = String.format(
-                    "Edit:%s/**,Write:%s/**,Read:%s/**",
+                    "Edit:%s/**,Write:%s/**,Read:%s/**,mcp__tradery__*",
                     traderyPath, traderyPath, traderyPath
                 );
                 aiCommand = "claude --allowedTools '" + allowedTools + "'";
@@ -184,7 +184,8 @@ public class AiTerminalPanel extends JPanel {
                     if (initialPrompt != null && !initialPrompt.isEmpty()) {
                         connector.write(initialPrompt);
                         Thread.sleep(300);
-                        connector.write("\n");
+                        // Use carriage return to submit (Claude Code needs \r, not \n)
+                        connector.write("\r");
                     }
                 } catch (Exception e) {
                     e.printStackTrace();

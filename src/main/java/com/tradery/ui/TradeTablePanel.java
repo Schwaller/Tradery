@@ -1,5 +1,6 @@
 package com.tradery.ui;
 
+import com.tradery.model.Candle;
 import com.tradery.model.Trade;
 
 import javax.swing.*;
@@ -22,6 +23,7 @@ public class TradeTablePanel extends JPanel {
     private TreeTradeTableModel tableModel;
     private JButton detailsButton;
     private List<Trade> currentTrades = new ArrayList<>();
+    private List<Candle> currentCandles = new ArrayList<>();
     private String strategyName = "";
     private int hoveredRow = -1;
     private java.util.function.Consumer<List<Trade>> onTradeHover;
@@ -158,19 +160,24 @@ public class TradeTablePanel extends JPanel {
         Window parentWindow = SwingUtilities.getWindowAncestor(this);
         Frame parentFrame = parentWindow instanceof Frame ? (Frame) parentWindow : null;
 
-        TradeDetailsWindow detailsWindow = new TradeDetailsWindow(parentFrame, currentTrades, strategyName);
+        TradeDetailsWindow detailsWindow = new TradeDetailsWindow(parentFrame, currentTrades, currentCandles, strategyName);
         detailsWindow.setVisible(true);
     }
 
-    public void updateTrades(List<Trade> trades, String strategyName) {
+    public void updateTrades(List<Trade> trades, List<Candle> candles, String strategyName) {
         this.currentTrades = trades != null ? trades : new ArrayList<>();
+        this.currentCandles = candles != null ? candles : new ArrayList<>();
         this.strategyName = strategyName != null ? strategyName : "";
         tableModel.setTrades(currentTrades);
         detailsButton.setEnabled(!currentTrades.isEmpty());
     }
 
+    public void updateTrades(List<Trade> trades, String strategyName) {
+        updateTrades(trades, null, strategyName);
+    }
+
     public void updateTrades(List<Trade> trades) {
-        updateTrades(trades, "");
+        updateTrades(trades, null, "");
     }
 
     public void clear() {

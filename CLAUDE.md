@@ -14,7 +14,7 @@ A Java Swing desktop application for building and backtesting trading strategies
 
 ```
 ~/.tradery/                           # User data directory (created on first run)
-├── api.json                          # API connection info (port, token) - written on startup
+├── api.port                          # API port number - written on startup
 ├── strategies/                       # Strategy folders (one per strategy)
 │   └── {id}/                         # Each strategy has its own folder
 │       ├── strategy.json             # Strategy definition
@@ -784,6 +784,25 @@ When adding new DSL functions:
 
 ## Claude Code Integration
 
+### IMPORTANT: Use API for Strategy Changes
+
+**DO NOT edit strategy JSON files directly.** Always use the HTTP API or MCP tools to modify strategies:
+
+1. **Why API over file edits:**
+   - API validates DSL syntax before saving
+   - API ensures consistent JSON format
+   - API triggers immediate backtest refresh
+   - File edits can cause JSON errors that break the app
+
+2. **Preferred workflow:**
+   - Use `tradery_update_strategy` MCP tool, or
+   - Use `POST /strategy/{id}` API endpoint
+   - Always validate first with `tradery_validate_strategy` or `POST /strategy/{id}/validate`
+
+3. **For creating new strategies:**
+   - Use `tradery_create_strategy` MCP tool, or
+   - Use `POST /strategies` API endpoint
+
 ### HTTP API
 
 When Tradery is running, an HTTP API is available for querying indicators, evaluating DSL conditions, and managing strategies. This uses the exact same calculation logic as backtests.
@@ -839,6 +858,11 @@ curl "http://localhost:7842/eval?condition=RSI(14)<30%20AND%20price>SMA(200)&sym
 # List all strategies
 curl "http://localhost:$PORT/strategies"
 
+# Create a new strategy
+curl -X POST -H "Content-Type: application/json" \
+  "http://localhost:$PORT/strategies" \
+  -d '{"id": "my-strategy", "name": "My Strategy", "entrySettings": {"condition": "RSI(14) < 30"}}'
+
 # Get a strategy
 curl "http://localhost:$PORT/strategy/rsi-reversal"
 
@@ -853,6 +877,9 @@ curl -X POST -H "Content-Type: application/json" \
 curl -X POST -H "Content-Type: application/json" \
   "http://localhost:$PORT/strategy/rsi-reversal" \
   -d '{"entrySettings": {"condition": "RSI(14) < 25"}}'
+
+# Delete a strategy
+curl -X DELETE "http://localhost:$PORT/strategy/rsi-reversal"
 
 # Run backtest (blocking - waits for completion)
 curl -X POST "http://localhost:$PORT/strategy/rsi-reversal/backtest"

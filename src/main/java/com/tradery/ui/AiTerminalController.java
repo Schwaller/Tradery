@@ -290,9 +290,9 @@ public class AiTerminalController {
         String aiCommand;
 
         if ("claude".equals(aiType)) {
-            // Claude with file access restrictions
+            // Claude with file access and MCP tools pre-approved
             aiCommand = String.format(
-                "claude --allowedTools 'Edit:~/.tradery/**,Write:~/.tradery/**,Read:~/.tradery/**' '%s'",
+                "claude --allowedTools 'Edit:~/.tradery/**,Write:~/.tradery/**,Read:~/.tradery/**,mcp__tradery__*' '%s'",
                 initialPrompt.replace("'", "'\\''")
             );
         } else {
