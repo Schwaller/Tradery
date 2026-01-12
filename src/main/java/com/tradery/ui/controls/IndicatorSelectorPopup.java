@@ -848,11 +848,12 @@ public class IndicatorSelectorPopup extends JDialog {
 
         // Orderflow
         double threshold = ((Number) whaleThresholdSpinner.getValue()).doubleValue();
-        chartPanel.setDeltaChartEnabled(deltaCheckbox.isSelected(), threshold);
+        chartPanel.setWhaleThreshold(threshold);
+        chartPanel.setDeltaChartEnabled(deltaCheckbox.isSelected());
         chartPanel.setCvdChartEnabled(cvdCheckbox.isSelected());
         chartPanel.setVolumeRatioChartEnabled(volumeRatioCheckbox.isSelected());
         chartPanel.setWhaleChartEnabled(whaleCheckbox.isSelected(), threshold);
-        chartPanel.setRetailChartEnabled(retailCheckbox.isSelected(), threshold);
+        chartPanel.setRetailChartEnabled(retailCheckbox.isSelected());
 
         // Save orderflow settings to config
         config.setDeltaEnabled(deltaCheckbox.isSelected());

@@ -23,6 +23,7 @@ import java.util.Map;
  *   GET  /strategies                    - List all strategies
  *   GET  /strategy/{id}                 - Get strategy JSON
  *   POST /strategy/{id}                 - Update strategy (partial or full)
+ *   POST /strategy/{id}/validate        - Validate updates without saving
  *   POST /strategy/{id}/backtest        - Run backtest and return results
  *   GET  /strategy/{id}/results         - Get latest backtest results
  */
@@ -105,6 +106,13 @@ public class StrategyHandler extends ApiHandlerBase {
             } else {
                 sendError(exchange, 405, "Use GET for /results");
             }
+        } else if ("validate".equals(action)) {
+            // /strategy/{id}/validate
+            if ("POST".equalsIgnoreCase(method)) {
+                handleValidateStrategy(exchange, strategyId);
+            } else {
+                sendError(exchange, 405, "Use POST for /validate");
+            }
         } else {
             sendError(exchange, 404, "Unknown action: " + action);
         }
@@ -178,6 +186,127 @@ public class StrategyHandler extends ApiHandlerBase {
         } catch (Exception e) {
             sendError(exchange, 500, "Failed to update strategy: " + e.getMessage());
         }
+    }
+
+    /**
+     * Validate strategy updates without saving.
+     * Returns validation errors or the merged config that would be saved.
+     */
+    private void handleValidateStrategy(HttpExchange exchange, String strategyId) throws IOException {
+        try {
+            Strategy existing = strategyStore.load(strategyId);
+            if (existing == null) {
+                sendError(exchange, 404, "Strategy not found: " + strategyId);
+                return;
+            }
+
+            // Read request body
+            String body;
+            try (InputStream is = exchange.getRequestBody()) {
+                body = new String(is.readAllBytes(), StandardCharsets.UTF_8);
+            }
+
+            List<String> errors = new ArrayList<>();
+            ObjectNode response = mapper.createObjectNode();
+
+            try {
+                // Parse as JSON
+                JsonNode updates = mapper.readTree(body);
+
+                // Try to parse each section and collect errors
+                if (updates.has("entrySettings")) {
+                    try {
+                        mapper.treeToValue(updates.get("entrySettings"), EntrySettings.class);
+                    } catch (Exception e) {
+                        errors.add("entrySettings: " + extractValidationError(e));
+                    }
+                }
+                if (updates.has("exitSettings")) {
+                    try {
+                        mapper.treeToValue(updates.get("exitSettings"), ExitSettings.class);
+                    } catch (Exception e) {
+                        errors.add("exitSettings: " + extractValidationError(e));
+                    }
+                }
+                if (updates.has("backtestSettings")) {
+                    try {
+                        mapper.treeToValue(updates.get("backtestSettings"), BacktestSettings.class);
+                    } catch (Exception e) {
+                        errors.add("backtestSettings: " + extractValidationError(e));
+                    }
+                }
+                if (updates.has("phaseSettings")) {
+                    try {
+                        mapper.treeToValue(updates.get("phaseSettings"), PhaseSettings.class);
+                    } catch (Exception e) {
+                        errors.add("phaseSettings: " + extractValidationError(e));
+                    }
+                }
+                if (updates.has("orderflowSettings")) {
+                    try {
+                        mapper.treeToValue(updates.get("orderflowSettings"), OrderflowSettings.class);
+                    } catch (Exception e) {
+                        errors.add("orderflowSettings: " + extractValidationError(e));
+                    }
+                }
+                if (updates.has("hoopPatternSettings")) {
+                    try {
+                        mapper.treeToValue(updates.get("hoopPatternSettings"), HoopPatternSettings.class);
+                    } catch (Exception e) {
+                        errors.add("hoopPatternSettings: " + extractValidationError(e));
+                    }
+                }
+
+            } catch (Exception e) {
+                errors.add("JSON parse error: " + e.getMessage());
+            }
+
+            if (!errors.isEmpty()) {
+                response.put("valid", false);
+                ArrayNode errorsArray = response.putArray("errors");
+                for (String error : errors) {
+                    errorsArray.add(error);
+                }
+                sendJson(exchange, 400, response);
+            } else {
+                response.put("valid", true);
+                response.put("strategyId", strategyId);
+                response.put("message", "Validation passed. Use POST /strategy/" + strategyId + " to apply changes.");
+                sendJson(exchange, 200, response);
+            }
+        } catch (Exception e) {
+            sendError(exchange, 500, "Validation failed: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Extract a clean validation error message from an exception.
+     */
+    private String extractValidationError(Exception e) {
+        String msg = e.getMessage();
+        if (msg == null) return "Unknown error";
+
+        // Jackson deserialization errors often have useful info after "problem:"
+        if (msg.contains("Cannot deserialize value of type")) {
+            // Extract the key info: type, value, and expected values
+            int fromIdx = msg.indexOf("from String \"");
+            int notOneIdx = msg.indexOf("not one of the values accepted");
+            if (fromIdx >= 0 && notOneIdx >= 0) {
+                String value = msg.substring(fromIdx + 13, msg.indexOf("\"", fromIdx + 13));
+                int bracketStart = msg.indexOf("[", notOneIdx);
+                int bracketEnd = msg.indexOf("]", bracketStart);
+                if (bracketStart >= 0 && bracketEnd >= 0) {
+                    String expected = msg.substring(bracketStart, bracketEnd + 1);
+                    return "Invalid value \"" + value + "\". Expected one of: " + expected;
+                }
+            }
+        }
+
+        // Truncate long messages
+        if (msg.length() > 200) {
+            return msg.substring(0, 200) + "...";
+        }
+        return msg;
     }
 
     private void handleBacktest(HttpExchange exchange, String strategyId) throws IOException {

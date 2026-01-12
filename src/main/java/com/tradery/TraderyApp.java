@@ -1,6 +1,7 @@
 package com.tradery;
 
 import com.tradery.io.AppLock;
+import com.tradery.mcp.McpServerSetup;
 import com.tradery.ui.LauncherFrame;
 import com.tradery.ui.theme.ThemeManager;
 
@@ -43,6 +44,9 @@ public class TraderyApp {
 
         // Ensure Claude integration files exist
         ensureClaudeFiles();
+
+        // Ensure MCP server is installed for Claude Code integration
+        McpServerSetup.ensureInstalled();
 
         // Check for existing instance and acquire lock
         AppLock appLock = AppLock.getInstance();

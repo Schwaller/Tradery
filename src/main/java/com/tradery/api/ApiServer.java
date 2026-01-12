@@ -63,7 +63,6 @@ public class ApiServer {
     private final AggTradesStore aggTradesStore;
     private final FundingRateStore fundingRateStore;
     private final OpenInterestStore openInterestStore;
-    private final String sessionToken;
     private int actualPort;
 
     // Extracted handlers
@@ -77,22 +76,10 @@ public class ApiServer {
         this.aggTradesStore = aggTradesStore;
         this.fundingRateStore = fundingRateStore;
         this.openInterestStore = openInterestStore;
-        this.sessionToken = generateSessionToken();
 
         // Initialize extracted handlers
         this.strategyHandler = new StrategyHandler(strategyStore, phaseStore, candleStore);
         this.phaseHandler = new PhaseHandler(phaseStore, candleStore);
-    }
-
-    private String generateSessionToken() {
-        // Generate a random 32-char hex token
-        byte[] bytes = new byte[16];
-        new java.security.SecureRandom().nextBytes(bytes);
-        StringBuilder sb = new StringBuilder();
-        for (byte b : bytes) {
-            sb.append(String.format("%02x", b));
-        }
-        return sb.toString();
     }
 
     public void start() throws IOException {
@@ -106,14 +93,12 @@ public class ApiServer {
                 break;
             } catch (IOException e) {
                 lastException = e;
-                // Port in use, try next
             }
         }
 
         if (server == null) {
-            throw new IOException("Could not find free port after " + MAX_PORT_ATTEMPTS + " attempts", lastException);
+            throw new IOException("Could not find free port in range " + DEFAULT_PORT + "-" + (DEFAULT_PORT + MAX_PORT_ATTEMPTS - 1), lastException);
         }
-
         server.setExecutor(Executors.newFixedThreadPool(4));
 
         server.createContext("/status", this::handleStatus);
@@ -121,13 +106,17 @@ public class ApiServer {
         server.createContext("/indicator", this::handleIndicator);
         server.createContext("/indicators", this::handleIndicators);
         server.createContext("/eval", this::handleEval);
-        server.createContext("/strategies", ex -> { if (validateToken(ex)) strategyHandler.handleStrategies(ex); else sendError(ex, 401, "Invalid token"); });
-        server.createContext("/strategy/", ex -> { if (validateToken(ex)) strategyHandler.handleStrategy(ex); else sendError(ex, 401, "Invalid token"); });
-        server.createContext("/phases", ex -> { if (validateToken(ex)) phaseHandler.handlePhases(ex); else sendError(ex, 401, "Invalid token"); });
-        server.createContext("/phase/", ex -> { if (validateToken(ex)) phaseHandler.handlePhase(ex); else sendError(ex, 401, "Invalid token"); });
+        server.createContext("/strategies", strategyHandler::handleStrategies);
+        server.createContext("/strategy/", strategyHandler::handleStrategy);
+        server.createContext("/phases", phaseHandler::handlePhases);
+        server.createContext("/phase/", phaseHandler::handlePhase);
 
         server.start();
-        System.out.println("API server started on http://localhost:" + actualPort + " (token: " + sessionToken.substring(0, 8) + "...)");
+        System.out.println("API server started on http://localhost:" + actualPort);
+    }
+
+    public int getPort() {
+        return actualPort;
     }
 
     public void stop() {
@@ -137,68 +126,20 @@ public class ApiServer {
         }
     }
 
-    public int getPort() {
-        return actualPort;
-    }
-
-    public String getSessionToken() {
-        return sessionToken;
-    }
-
-    /**
-     * Validate session token from request.
-     * Token can be provided as:
-     *   - Header: X-Session-Token
-     *   - Query param: token=xxx
-     */
-    private boolean validateToken(HttpExchange exchange) {
-        // Check header first
-        String headerToken = exchange.getRequestHeaders().getFirst("X-Session-Token");
-        if (sessionToken.equals(headerToken)) {
-            return true;
-        }
-
-        // Check query param
-        String query = exchange.getRequestURI().getQuery();
-        if (query != null) {
-            Map<String, String> params = parseQuery(query);
-            if (sessionToken.equals(params.get("token"))) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    private void requireAuth(HttpExchange exchange) throws IOException {
-        if (!validateToken(exchange)) {
-            sendError(exchange, 401, "Invalid or missing session token. Check ~/.tradery/api.json for current token.");
-        }
-    }
-
     // ========== Handlers ==========
 
     private void handleStatus(HttpExchange exchange) throws IOException {
         if (!checkMethod(exchange, "GET")) return;
-        if (!validateToken(exchange)) {
-            sendError(exchange, 401, "Invalid or missing session token");
-            return;
-        }
 
         ObjectNode response = mapper.createObjectNode();
         response.put("status", "running");
         response.put("version", "1.0");
-        response.put("port", actualPort);
 
         sendJson(exchange, 200, response);
     }
 
     private void handleCandles(HttpExchange exchange) throws IOException {
         if (!checkMethod(exchange, "GET")) return;
-        if (!validateToken(exchange)) {
-            sendError(exchange, 401, "Invalid or missing session token");
-            return;
-        }
 
         Map<String, String> params = parseQuery(exchange.getRequestURI().getQuery());
 
@@ -235,10 +176,6 @@ public class ApiServer {
 
     private void handleIndicator(HttpExchange exchange) throws IOException {
         if (!checkMethod(exchange, "GET")) return;
-        if (!validateToken(exchange)) {
-            sendError(exchange, 401, "Invalid or missing session token");
-            return;
-        }
 
         Map<String, String> params = parseQuery(exchange.getRequestURI().getQuery());
 
@@ -323,10 +260,6 @@ public class ApiServer {
 
     private void handleIndicators(HttpExchange exchange) throws IOException {
         if (!checkMethod(exchange, "GET")) return;
-        if (!validateToken(exchange)) {
-            sendError(exchange, 401, "Invalid or missing session token");
-            return;
-        }
 
         Map<String, String> params = parseQuery(exchange.getRequestURI().getQuery());
 
@@ -424,10 +357,6 @@ public class ApiServer {
 
     private void handleEval(HttpExchange exchange) throws IOException {
         if (!checkMethod(exchange, "GET")) return;
-        if (!validateToken(exchange)) {
-            sendError(exchange, 401, "Invalid or missing session token");
-            return;
-        }
 
         Map<String, String> params = parseQuery(exchange.getRequestURI().getQuery());
 

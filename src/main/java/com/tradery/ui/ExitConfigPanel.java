@@ -178,7 +178,7 @@ public class ExitConfigPanel extends ConfigurationPanel {
         Color normal = UIManager.getColor("Label.disabledForeground");
         Color hover = UIManager.getColor("Component.accentColor");
         if (normal == null) normal = Color.GRAY;
-        if (hover == null) hover = new Color(70, 130, 180);
+        if (hover == null) hover = UIColors.ACCENT_HOVER;
         final Color normalColor = normal;
         final Color hoverColor = hover;
         btn.setForeground(normalColor);
@@ -324,7 +324,7 @@ public class ExitConfigPanel extends ConfigurationPanel {
             // Simplify badge - shown when scale out is 100% (redundant config)
             simplifyBadge = new JButton("Simplify");
             simplifyBadge.setFont(simplifyBadge.getFont().deriveFont(Font.PLAIN, 10f));
-            simplifyBadge.setForeground(new Color(0, 100, 200));
+            simplifyBadge.setForeground(UIColors.BADGE_INFO);
             simplifyBadge.setBorderPainted(false);
             simplifyBadge.setContentAreaFilled(false);
             simplifyBadge.setCursor(new java.awt.Cursor(java.awt.Cursor.HAND_CURSOR));

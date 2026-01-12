@@ -314,9 +314,8 @@ public class IndicatorChartsManager {
         this.indicatorEngine = engine;
     }
 
-    public void setDeltaChartEnabled(boolean enabled, double threshold) {
+    public void setDeltaChartEnabled(boolean enabled) {
         this.deltaChartEnabled = enabled;
-        this.whaleThreshold = threshold;
         if (onLayoutChange != null) {
             onLayoutChange.run();
         }
@@ -368,9 +367,8 @@ public class IndicatorChartsManager {
         return whaleThreshold;
     }
 
-    public void setRetailChartEnabled(boolean enabled, double threshold) {
+    public void setRetailChartEnabled(boolean enabled) {
         this.retailChartEnabled = enabled;
-        this.whaleThreshold = threshold;
         if (onLayoutChange != null) {
             onLayoutChange.run();
         }
@@ -808,6 +806,8 @@ public class IndicatorChartsManager {
         oiAxis.setLabelPaint(ChartStyles.TEXT_COLOR);
         oiAxis.setTickLabelPaint(ChartStyles.TEXT_COLOR);
         oiAxis.setFixedDimension(60); // Match width with other chart axes
+        oiAxis.setAxisLineVisible(false); // Hide the axis line
+        oiAxis.setTickMarksVisible(false); // Hide tick marks
         plot.setRangeAxis(1, oiAxis);
         plot.setRangeAxisLocation(1, org.jfree.chart.axis.AxisLocation.BOTTOM_OR_LEFT);
         plot.mapDatasetToRangeAxis(1, 1);
@@ -1047,6 +1047,32 @@ public class IndicatorChartsManager {
         oiComponent.getChartPanel().addMouseWheelListener(listener);
         stochasticComponent.getChartPanel().addMouseWheelListener(listener);
         rangePositionComponent.getChartPanel().addMouseWheelListener(listener);
+    }
+
+    /**
+     * Remove mouse wheel listener from all chart panels.
+     */
+    public void removeMouseWheelListener(java.awt.event.MouseWheelListener listener) {
+        rsiComponent.getChartPanel().removeMouseWheelListener(listener);
+        macdComponent.getChartPanel().removeMouseWheelListener(listener);
+        atrComponent.getChartPanel().removeMouseWheelListener(listener);
+        deltaComponent.getChartPanel().removeMouseWheelListener(listener);
+        cvdComponent.getChartPanel().removeMouseWheelListener(listener);
+        volumeRatioComponent.getChartPanel().removeMouseWheelListener(listener);
+        whaleComponent.getChartPanel().removeMouseWheelListener(listener);
+        retailComponent.getChartPanel().removeMouseWheelListener(listener);
+        fundingComponent.getChartPanel().removeMouseWheelListener(listener);
+        oiComponent.getChartPanel().removeMouseWheelListener(listener);
+        stochasticComponent.getChartPanel().removeMouseWheelListener(listener);
+        rangePositionComponent.getChartPanel().removeMouseWheelListener(listener);
+    }
+
+    /**
+     * Dispose of all resources and clear callbacks.
+     */
+    public void dispose() {
+        this.onLayoutChange = null;
+        this.indicatorEngine = null;
     }
 
     /**

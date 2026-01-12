@@ -102,6 +102,10 @@ public class ProjectWindow extends JFrame {
     private final BacktestCoordinator backtestCoordinator;
     private final AutoSaveScheduler autoSaveScheduler;
 
+    // Listener references for cleanup
+    private Runnable themeChangeListener;
+    private Runnable chartConfigChangeListener;
+
     public ProjectWindow(Strategy strategy, Consumer<String> onClose) {
         super(strategy.getName() + " - " + TraderyApp.APP_NAME);
         this.strategy = strategy;
@@ -186,7 +190,8 @@ public class ProjectWindow extends JFrame {
         chartPanel.setOnStatusUpdate(this::setStatus);
 
         // Wire up theme change listener
-        com.tradery.ui.theme.ThemeManager.getInstance().addThemeChangeListener(chartPanel::refreshTheme);
+        themeChangeListener = chartPanel::refreshTheme;
+        com.tradery.ui.theme.ThemeManager.getInstance().addThemeChangeListener(themeChangeListener);
 
         // Wire up trade table hover/select to chart highlight
         tradeTablePanel.setOnTradeHover(chartPanel::highlightTrades);
@@ -284,7 +289,8 @@ public class ProjectWindow extends JFrame {
         backtestCoordinator.setOnDataLoadingProgress(this::handleDataLoadingProgress);
 
         // Wire up chart config changes to update badges
-        ChartConfig.getInstance().addChangeListener(this::updateDataRequirementsBadges);
+        chartConfigChangeListener = this::updateDataRequirementsBadges;
+        ChartConfig.getInstance().addChangeListener(chartConfigChangeListener);
 
         // Wire up data fetch progress (shows in status bar)
         candleStore.setProgressCallback(progress -> {
@@ -559,7 +565,7 @@ public class ProjectWindow extends JFrame {
         // Data loading progress bar (shows when loading OI, Funding, etc.)
         dataLoadingLabel = new JLabel("");
         dataLoadingLabel.setFont(dataLoadingLabel.getFont().deriveFont(10f));
-        dataLoadingLabel.setForeground(new Color(100, 100, 180));
+        dataLoadingLabel.setForeground(UIColors.STATUS_LOADING_ACCENT);
         dataLoadingLabel.setVisible(false);
         leftStatusPanel.add(dataLoadingLabel);
 
@@ -970,18 +976,18 @@ public class ProjectWindow extends JFrame {
     private void updateStatusLabel(JLabel label, String dataType, boolean required) {
         if (!required) {
             label.setText(dataType + ": not used");
-            label.setForeground(new Color(150, 150, 150));
+            label.setForeground(UIColors.STATUS_UNKNOWN);
             label.setToolTipText(dataType + " not required for current strategy");
         } else {
             // Check if data is loaded (simplified - actual check would need backtest coordinator state)
             boolean isLoaded = isDataLoaded(dataType);
             if (isLoaded) {
                 label.setText(dataType + ": ready");
-                label.setForeground(new Color(60, 140, 60));
+                label.setForeground(UIColors.STATUS_READY);
                 label.setToolTipText(dataType + " data loaded");
             } else {
                 label.setText(dataType + ": required");
-                label.setForeground(new Color(180, 120, 40));
+                label.setForeground(UIColors.STATUS_LOADING);
                 label.setToolTipText(dataType + " will be fetched on next backtest");
             }
         }
@@ -1024,17 +1030,17 @@ public class ProjectWindow extends JFrame {
         switch (status) {
             case "loading" -> {
                 label.setText(dataType + ": loading...");
-                label.setForeground(new Color(100, 100, 180));
+                label.setForeground(UIColors.STATUS_LOADING_ACCENT);
                 label.setToolTipText("Loading " + dataType + " data...");
             }
             case "ready" -> {
                 label.setText(dataType + ": ready");
-                label.setForeground(new Color(60, 140, 60));
+                label.setForeground(UIColors.STATUS_READY);
                 label.setToolTipText(dataType + " data loaded");
             }
             case "error" -> {
                 label.setText(dataType + ": unavailable");
-                label.setForeground(new Color(180, 80, 80));
+                label.setForeground(UIColors.STATUS_ERROR);
                 label.setToolTipText(dataType + " data could not be loaded");
             }
         }
@@ -1103,19 +1109,64 @@ public class ProjectWindow extends JFrame {
         // Mark as closed in window state
         WindowStateStore.getInstance().setProjectOpen(strategy.getId(), false);
 
+        // Stop file watchers
         if (fileWatcher != null) {
             fileWatcher.stop();
         }
         if (phaseWatcher != null) {
             phaseWatcher.stop();
         }
+
         // Dispose terminal (docked or undocked)
         if (aiTerminalController != null) {
             aiTerminalController.dispose();
         }
+
+        // Stop auto-save scheduler
+        if (autoSaveScheduler != null) {
+            autoSaveScheduler.stop();
+        }
+
+        // Cancel any ongoing data fetches
+        if (candleStore != null) {
+            candleStore.cancelCurrentFetch();
+            candleStore.setProgressCallback(null);
+        }
+
+        // Unregister singleton listeners
+        if (themeChangeListener != null) {
+            com.tradery.ui.theme.ThemeManager.getInstance().removeThemeChangeListener(themeChangeListener);
+        }
+        if (chartConfigChangeListener != null) {
+            ChartConfig.getInstance().removeChangeListener(chartConfigChangeListener);
+        }
+
+        // Close auxiliary windows
+        if (phaseAnalysisWindow != null) {
+            phaseAnalysisWindow.dispose();
+            phaseAnalysisWindow = null;
+        }
+        if (dataLoadingStatusWindow != null) {
+            dataLoadingStatusWindow.dispose();
+            dataLoadingStatusWindow = null;
+        }
+
+        // Clear backtest coordinator callbacks to break reference cycles
+        if (backtestCoordinator != null) {
+            backtestCoordinator.setOnProgress(null);
+            backtestCoordinator.setOnComplete(null);
+            backtestCoordinator.setOnStatus(null);
+            backtestCoordinator.setOnError(null);
+            backtestCoordinator.setOnDataStatus(null);
+            backtestCoordinator.setOnViewDataReady(null);
+            backtestCoordinator.setOnDataLoadingProgress(null);
+        }
+
+        // Notify close callback
         if (onClose != null) {
             onClose.accept(strategy.getId());
         }
+
         dispose();
     }
 

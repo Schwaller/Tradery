@@ -109,11 +109,12 @@ public class ChartsPanel extends JPanel {
 
         // Apply orderflow chart settings
         double threshold = config.getWhaleThreshold();
-        setDeltaChartEnabled(config.isDeltaEnabled(), threshold);
+        setWhaleThreshold(threshold);
+        setDeltaChartEnabled(config.isDeltaEnabled());
         setCvdChartEnabled(config.isCvdEnabled());
         setVolumeRatioChartEnabled(config.isVolumeRatioEnabled());
         setWhaleChartEnabled(config.isWhaleEnabled(), threshold);
-        setRetailChartEnabled(config.isRetailEnabled(), threshold);
+        setRetailChartEnabled(config.isRetailEnabled());
 
         // Apply funding chart setting
         setFundingChartEnabled(config.isFundingEnabled());
@@ -587,8 +588,8 @@ public class ChartsPanel extends JPanel {
         return indicatorManager.isRangePositionChartEnabled();
     }
 
-    public void setDeltaChartEnabled(boolean enabled, double threshold) {
-        indicatorManager.setDeltaChartEnabled(enabled, threshold);
+    public void setDeltaChartEnabled(boolean enabled) {
+        indicatorManager.setDeltaChartEnabled(enabled);
     }
 
     public boolean isDeltaChartEnabled() {
@@ -627,8 +628,8 @@ public class ChartsPanel extends JPanel {
         return indicatorManager.getWhaleThreshold();
     }
 
-    public void setRetailChartEnabled(boolean enabled, double threshold) {
-        indicatorManager.setRetailChartEnabled(enabled, threshold);
+    public void setRetailChartEnabled(boolean enabled) {
+        indicatorManager.setRetailChartEnabled(enabled);
     }
 
     public boolean isRetailChartEnabled() {

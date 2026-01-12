@@ -47,18 +47,18 @@ public class StrategyEditorPanel extends JPanel {
         entryConfigPanel.setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
         exitConfigPanel.setBorder(null);
 
-        // Wire up change listeners
-        tradeSettingsPanel.setOnChange(this::fireChange);
-        phaseSelectionPanel.setOnChange(this::fireChange);
-        hoopPatternSelectionPanel.setOnChange(this::fireChange);
-        entryConfigPanel.setOnChange(this::onEntryExitChange);
-        exitConfigPanel.setOnChange(this::onEntryExitChange);
+        // Wire up change listeners - all update the flow diagram
+        tradeSettingsPanel.setOnChange(this::onStrategyChange);
+        phaseSelectionPanel.setOnChange(this::onStrategyChange);
+        hoopPatternSelectionPanel.setOnChange(this::onStrategyChange);
+        entryConfigPanel.setOnChange(this::onStrategyChange);
+        exitConfigPanel.setOnChange(this::onStrategyChange);
     }
 
-    private void onEntryExitChange() {
-        // Update flow diagram when entry/exit changes
+    private void onStrategyChange() {
+        // Update flow diagram when any strategy property changes
         if (strategy != null) {
-            exitConfigPanel.applyTo(strategy);
+            applyToStrategy(strategy);
             flowDiagramPanel.setStrategy(strategy);
         }
         fireChange();

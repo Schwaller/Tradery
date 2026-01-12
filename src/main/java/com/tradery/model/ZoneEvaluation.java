@@ -7,7 +7,8 @@ import com.fasterxml.jackson.annotation.JsonValue;
  */
 public enum ZoneEvaluation {
     CANDLE_CLOSE("candle_close"),
-    IMMEDIATE("immediate");
+    IMMEDIATE("immediate"),
+    INTRA_CANDLE("intra_candle");
 
     private final String value;
 

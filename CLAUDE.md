@@ -790,52 +790,34 @@ When Tradery is running, an HTTP API is available for querying indicators, evalu
 
 **Connection Info:**
 
-The API uses dynamic port allocation and session-based authentication. On startup, Tradery writes `~/.tradery/api.json`:
-
-```json
-{
-  "port": 7842,
-  "token": "a1b2c3d4e5f6...",
-  "baseUrl": "http://localhost:7842"
-}
-```
-
-**Authentication:**
-
-All endpoints require a session token. Provide via:
-- Header: `X-Session-Token: <token>`
-- Query param: `?token=<token>`
+The API uses dynamic port allocation (default 7842, tries up to 7851 if blocked). On startup, Tradery writes the port to `~/.tradery/api.port`:
 
 ```bash
-# Read connection info
-API_INFO=$(cat ~/.tradery/api.json)
-PORT=$(echo $API_INFO | jq -r '.port')
-TOKEN=$(echo $API_INFO | jq -r '.token')
+# Read port
+PORT=$(cat ~/.tradery/api.port)
 
-# Use header auth (recommended)
-curl -H "X-Session-Token: $TOKEN" "http://localhost:$PORT/candles?symbol=BTCUSDT&timeframe=1h&bars=100"
-
-# Or query param auth
-curl "http://localhost:$PORT/candles?symbol=BTCUSDT&timeframe=1h&bars=100&token=$TOKEN"
+# Example calls
+curl "http://localhost:$PORT/status"
+curl "http://localhost:$PORT/candles?symbol=BTCUSDT&timeframe=1h&bars=100"
 ```
 
 **Endpoints:**
 
 ```bash
 # Check if API is running
-curl -H "X-Session-Token: $TOKEN" "http://localhost:$PORT/status"
+curl "http://localhost:$PORT/status"
 
 # Get candle data
-curl -H "X-Session-Token: $TOKEN" "http://localhost:$PORT/candles?symbol=BTCUSDT&timeframe=1h&bars=100"
+curl "http://localhost:$PORT/candles?symbol=BTCUSDT&timeframe=1h&bars=100"
 
 # Get a single indicator
-curl -H "X-Session-Token: $TOKEN" "http://localhost:$PORT/indicator?name=RSI(14)&symbol=BTCUSDT&timeframe=1h&bars=100"
+curl "http://localhost:$PORT/indicator?name=RSI(14)&symbol=BTCUSDT&timeframe=1h&bars=100"
 
 # Get multiple indicators at once
-curl -H "X-Session-Token: $TOKEN" "http://localhost:$PORT/indicators?names=RSI(14),SMA(200),ATR(14)&symbol=BTCUSDT&timeframe=1h&bars=100"
+curl "http://localhost:$PORT/indicators?names=RSI(14),SMA(200),ATR(14)&symbol=BTCUSDT&timeframe=1h&bars=100"
 
 # Evaluate a DSL condition - find bars where condition is true
-curl -H "X-Session-Token: $TOKEN" "http://localhost:$PORT/eval?condition=RSI(14)<30&symbol=BTCUSDT&timeframe=1h&bars=500"
+curl "http://localhost:$PORT/eval?condition=RSI(14)<30&symbol=BTCUSDT&timeframe=1h&bars=500"
 ```
 
 **Supported indicators:**
@@ -855,77 +837,83 @@ curl "http://localhost:7842/eval?condition=RSI(14)<30%20AND%20price>SMA(200)&sym
 
 ```bash
 # List all strategies
-curl -H "X-Session-Token: $TOKEN" "http://localhost:$PORT/strategies"
-# Returns: { "strategies": [{ "id": "rsi-reversal", "name": "RSI Reversal", ... }] }
+curl "http://localhost:$PORT/strategies"
 
 # Get a strategy
-curl -H "X-Session-Token: $TOKEN" "http://localhost:$PORT/strategy/rsi-reversal"
+curl "http://localhost:$PORT/strategy/rsi-reversal"
 
-# Update a strategy (partial update)
-curl -X POST -H "X-Session-Token: $TOKEN" -H "Content-Type: application/json" \
+# Validate updates BEFORE applying (recommended for AI)
+curl -X POST -H "Content-Type: application/json" \
+  "http://localhost:$PORT/strategy/rsi-reversal/validate" \
+  -d '{"exitSettings": {"evaluation": "invalid_value"}}'
+# Returns on error: { "valid": false, "errors": [...] }
+# Returns on success: { "valid": true, "strategyId": "rsi-reversal" }
+
+# Update a strategy (partial update) - validate first!
+curl -X POST -H "Content-Type: application/json" \
   "http://localhost:$PORT/strategy/rsi-reversal" \
   -d '{"entrySettings": {"condition": "RSI(14) < 25"}}'
 
 # Run backtest (blocking - waits for completion)
-curl -X POST -H "X-Session-Token: $TOKEN" "http://localhost:$PORT/strategy/rsi-reversal/backtest"
-# Returns: { "success": true, "metrics": { "winRate": 62.5, ... }, "tradesCount": 48 }
+curl -X POST "http://localhost:$PORT/strategy/rsi-reversal/backtest"
 
 # Get latest results
-curl -H "X-Session-Token: $TOKEN" "http://localhost:$PORT/strategy/rsi-reversal/results"
+curl "http://localhost:$PORT/strategy/rsi-reversal/results"
+```
+
+**AI Workflow - Always Validate First:**
+```bash
+# 1. Validate changes before applying
+curl -X POST -H "Content-Type: application/json" \
+  "http://localhost:$PORT/strategy/my-strategy/validate" \
+  -d '{"entrySettings": {"condition": "RSI(14) < 25"}}'
+
+# 2. If valid, apply the changes
+curl -X POST -H "Content-Type: application/json" \
+  "http://localhost:$PORT/strategy/my-strategy" \
+  -d '{"entrySettings": {"condition": "RSI(14) < 25"}}'
+
+# 3. Run backtest to verify
+curl -X POST "http://localhost:$PORT/strategy/my-strategy/backtest"
 ```
 
 **Phase Endpoints:**
 
 ```bash
 # List all phases
-curl -H "X-Session-Token: $TOKEN" "http://localhost:$PORT/phases"
-# Returns: { "phases": [{ "id": "uptrend", "name": "Uptrend", "condition": "...", ... }] }
+curl "http://localhost:$PORT/phases"
 
 # Get a specific phase
-curl -H "X-Session-Token: $TOKEN" "http://localhost:$PORT/phase/uptrend"
+curl "http://localhost:$PORT/phase/uptrend"
 
 # Find where a phase is active (phase bounds)
-curl -H "X-Session-Token: $TOKEN" "http://localhost:$PORT/phase/uptrend/bounds?symbol=BTCUSDT&bars=500"
-# Returns time ranges when the phase condition was true:
-# {
-#   "phaseId": "uptrend",
-#   "phaseName": "Uptrend",
-#   "bounds": [
-#     { "startBar": 50, "endBar": 120, "startTime": 1704067200000, "endTime": 1704319200000, "bars": 70 },
-#     { "startBar": 200, "endBar": 350, "startTime": ..., "ongoing": true }
-#   ],
-#   "activeBars": 221,
-#   "activePercent": 49.22,
-#   "boundCount": 2
-# }
+curl "http://localhost:$PORT/phase/uptrend/bounds?symbol=BTCUSDT&bars=500"
 
 # Evaluate phase on different timeframe/symbol
-curl -H "X-Session-Token: $TOKEN" "http://localhost:$PORT/phase/uptrend/bounds?symbol=ETHUSDT&timeframe=4h&bars=200"
+curl "http://localhost:$PORT/phase/uptrend/bounds?symbol=ETHUSDT&timeframe=4h&bars=200"
 ```
 
 **AI Workflow Example:**
 ```bash
-# Read connection info once
-API_INFO=$(cat ~/.tradery/api.json)
-PORT=$(echo $API_INFO | jq -r '.port')
-TOKEN=$(echo $API_INFO | jq -r '.token')
+# Read port
+PORT=$(cat ~/.tradery/api.port)
 
 # 1. Check current strategy
-curl -H "X-Session-Token: $TOKEN" "http://localhost:$PORT/strategy/my-strategy"
+curl "http://localhost:$PORT/strategy/my-strategy"
 
 # 2. Check when uptrend phase is active
-curl -H "X-Session-Token: $TOKEN" "http://localhost:$PORT/phase/uptrend/bounds?bars=500"
+curl "http://localhost:$PORT/phase/uptrend/bounds?bars=500"
 
 # 3. Analyze market conditions
-curl -H "X-Session-Token: $TOKEN" "http://localhost:$PORT/eval?condition=RSI(14)<30&symbol=BTCUSDT&timeframe=1d&bars=200"
+curl "http://localhost:$PORT/eval?condition=RSI(14)<30&symbol=BTCUSDT&timeframe=1d&bars=200"
 
 # 4. Update entry condition based on analysis
-curl -X POST -H "X-Session-Token: $TOKEN" -H "Content-Type: application/json" \
+curl -X POST -H "Content-Type: application/json" \
   "http://localhost:$PORT/strategy/my-strategy" \
   -d '{"entrySettings": {"condition": "RSI(14) < 25 AND ADX(14) > 25"}}'
 
 # 5. Run backtest to validate
-curl -X POST -H "X-Session-Token: $TOKEN" "http://localhost:$PORT/strategy/my-strategy/backtest"
+curl -X POST "http://localhost:$PORT/strategy/my-strategy/backtest"
 
 # 6. If improved, keep changes. If not, try different parameters.
 ```

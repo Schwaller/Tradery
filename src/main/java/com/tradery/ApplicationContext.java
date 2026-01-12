@@ -67,7 +67,7 @@ public class ApplicationContext {
         this.apiServer = new ApiServer(candleStore, aggTradesStore, fundingRateStore, openInterestStore, strategyStore, phaseStore);
         try {
             apiServer.start();
-            writeApiMarkerFile();
+            writePortFile();
         } catch (IOException e) {
             System.err.println("Failed to start API server: " + e.getMessage());
         }
@@ -135,20 +135,15 @@ public class ApplicationContext {
     }
 
     /**
-     * Write api.json marker file with port and session token.
-     * Claude Code reads this to connect to the running instance.
+     * Write port file for MCP server discovery.
+     * Simple format - just the port number, no auth token needed.
      */
-    private void writeApiMarkerFile() {
-        File apiFile = new File(TraderyApp.USER_DIR, "api.json");
-        try (FileWriter writer = new FileWriter(apiFile)) {
-            writer.write("{\n");
-            writer.write("  \"port\": " + apiServer.getPort() + ",\n");
-            writer.write("  \"token\": \"" + apiServer.getSessionToken() + "\",\n");
-            writer.write("  \"baseUrl\": \"http://localhost:" + apiServer.getPort() + "\"\n");
-            writer.write("}\n");
-            System.out.println("API marker file written: " + apiFile.getAbsolutePath());
+    private void writePortFile() {
+        File portFile = new File(TraderyApp.USER_DIR, "api.port");
+        try (FileWriter writer = new FileWriter(portFile)) {
+            writer.write(String.valueOf(apiServer.getPort()));
         } catch (IOException e) {
-            System.err.println("Failed to write API marker file: " + e.getMessage());
+            System.err.println("Failed to write port file: " + e.getMessage());
         }
     }
 }

@@ -2,6 +2,8 @@ package com.tradery.ui;
 
 import com.tradery.model.EntryOrderType;
 import com.tradery.model.ExitZone;
+import com.tradery.model.HoopPatternSettings;
+import com.tradery.model.PhaseSettings;
 import com.tradery.model.StopLossType;
 import com.tradery.model.Strategy;
 import com.tradery.model.TakeProfitType;
@@ -11,6 +13,8 @@ import java.awt.*;
 import java.awt.geom.Path2D;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * A visual diagram showing Entry box with arrows projecting to exit zones on a P&L scale.
@@ -62,6 +66,9 @@ public class FlowDiagramPanel extends JPanel {
         Color axisColor = new Color(180, 180, 180);
 
         Font mainFont = getFont().deriveFont(Font.PLAIN, 12f);
+        Font smallFont = mainFont.deriveFont(Font.PLAIN, 10f);
+        g2.setFont(smallFont);
+        FontMetrics smallFm = g2.getFontMetrics();
         g2.setFont(mainFont);
         FontMetrics fm = g2.getFontMetrics();
 
@@ -86,23 +93,18 @@ public class FlowDiagramPanel extends JPanel {
         // Build scale around defined boundaries, include 0 as reference
         double minPnl, maxPnl;
         if (minDefined == null && maxDefined == null) {
-            // No boundaries defined - just show 0 with small range
             minPnl = -5;
             maxPnl = 5;
         } else if (minDefined == null) {
-            // Only upper bounds defined
             maxPnl = Math.max(maxDefined + 2, 2);
             minPnl = Math.min(0, maxDefined) - 5;
         } else if (maxDefined == null) {
-            // Only lower bounds defined
             minPnl = Math.min(minDefined - 2, -2);
             maxPnl = Math.max(0, minDefined) + 5;
         } else {
-            // Both defined
             minPnl = minDefined - 2;
             maxPnl = maxDefined + 2;
         }
-        // Always include 0 in range
         if (minPnl > 0) minPnl = -2;
         if (maxPnl < 0) maxPnl = 2;
 
@@ -113,13 +115,13 @@ public class FlowDiagramPanel extends JPanel {
             case MARKET -> "Market Entry";
             case LIMIT -> {
                 if (offsetPct != null && offsetPct != 0) {
-                    yield "Limit Entry " + formatPctSigned(-offsetPct);  // negative = below signal
+                    yield "Limit Entry " + formatPctSigned(-offsetPct);
                 }
                 yield "Limit Entry";
             }
             case STOP -> {
                 if (offsetPct != null && offsetPct != 0) {
-                    yield "Stop Entry " + formatPctSigned(offsetPct);  // positive = above signal
+                    yield "Stop Entry " + formatPctSigned(offsetPct);
                 }
                 yield "Stop Entry";
             }
@@ -132,43 +134,135 @@ public class FlowDiagramPanel extends JPanel {
             }
         };
 
+        // Collect condition box content
+        List<String> dslLines = parseDslConditions(strategy.getEntry());
+        List<String> phaseLines = getPhaseLines();
+        List<String> hoopLines = getHoopLines();
+
+        // Calculate condition box dimensions
+        int condBoxPadding = 6;
+        int condBoxGap = 8;
+        int condArrowGap = 30;
+
+        // Calculate max width needed for condition boxes
+        int condBoxWidth = 0;
+        for (String line : dslLines) condBoxWidth = Math.max(condBoxWidth, smallFm.stringWidth(line));
+        for (String line : phaseLines) condBoxWidth = Math.max(condBoxWidth, smallFm.stringWidth(line));
+        for (String line : hoopLines) condBoxWidth = Math.max(condBoxWidth, smallFm.stringWidth(line));
+        condBoxWidth += condBoxPadding * 2;
+        condBoxWidth = Math.max(condBoxWidth, 60);
+
+        // Count non-empty boxes
+        int boxCount = 0;
+        if (!dslLines.isEmpty()) boxCount++;
+        if (!phaseLines.isEmpty()) boxCount++;
+        if (!hoopLines.isEmpty()) boxCount++;
+
         // Layout
         int entryBoxWidth = fm.stringWidth(entryText) + 12;
-        int entryBoxHeight = fm.getHeight() + 8;  // Just enough for text
+        int entryBoxHeight = fm.getHeight() + 8;
         int arrowGap = 60;
         int labelGapBar = 6;
 
         // Calculate bar width to fit all zone labels
         int barPadding = 8;
-        int barWidth = 60;  // minimum width
+        int barWidth = 60;
         for (ExitZone zone : zones) {
             String label = formatExitLabel(zone);
             barWidth = Math.max(barWidth, fm.stringWidth(label) + barPadding * 2);
         }
 
         // Calculate total diagram width and center it
-        int pctLabelWidth = fm.stringWidth("+100%");  // estimate for percentage labels
-        int totalWidth = entryBoxWidth + arrowGap + barWidth + labelGapBar + pctLabelWidth;
-        int entryX = (getWidth() - totalWidth) / 2;
+        int pctLabelWidth = fm.stringWidth("+100%");
+        int condSectionWidth = boxCount > 0 ? condBoxWidth + condArrowGap : 0;
+        int totalWidth = condSectionWidth + entryBoxWidth + arrowGap + barWidth + labelGapBar + pctLabelWidth;
+        int startX = (getWidth() - totalWidth) / 2;
 
         int scaleTop = (getHeight() - SCALE_HEIGHT) / 2;
         int scaleBottom = scaleTop + SCALE_HEIGHT;
 
-        // Entry box centered at 0% P&L position
+        // Entry box position
+        int entryX = startX + condSectionWidth;
         int zeroY = pnlToY(0, minPnl, maxPnl, scaleTop, scaleBottom);
         int entryY = zeroY - entryBoxHeight / 2;
         int entryRight = entryX + entryBoxWidth;
+
+        // Draw condition boxes on the left (if any)
+        if (boxCount > 0) {
+            int lineHeight = smallFm.getHeight();
+            List<int[]> boxBounds = new ArrayList<>();  // [y, height] for each box
+
+            // Calculate total height of all condition boxes
+            int totalCondHeight = 0;
+            if (!dslLines.isEmpty()) totalCondHeight += dslLines.size() * lineHeight + condBoxPadding * 2;
+            if (!phaseLines.isEmpty()) {
+                if (totalCondHeight > 0) totalCondHeight += condBoxGap;
+                totalCondHeight += phaseLines.size() * lineHeight + condBoxPadding * 2;
+            }
+            if (!hoopLines.isEmpty()) {
+                if (totalCondHeight > 0) totalCondHeight += condBoxGap;
+                totalCondHeight += hoopLines.size() * lineHeight + condBoxPadding * 2;
+            }
+
+            // Center condition boxes vertically around entry box
+            int condY = entryY + entryBoxHeight / 2 - totalCondHeight / 2;
+            int condX = startX;
+
+            // Draw each non-empty box
+            g2.setFont(smallFont);
+
+            if (!dslLines.isEmpty()) {
+                int boxHeight = dslLines.size() * lineHeight + condBoxPadding * 2;
+                drawConditionBox(g2, condX, condY, condBoxWidth, boxHeight, dslLines,
+                        boxBg, accentColor, textColor, smallFm, condBoxPadding);
+                boxBounds.add(new int[]{condY, boxHeight});
+                condY += boxHeight + condBoxGap;
+            }
+
+            if (!phaseLines.isEmpty()) {
+                int boxHeight = phaseLines.size() * lineHeight + condBoxPadding * 2;
+                drawConditionBox(g2, condX, condY, condBoxWidth, boxHeight, phaseLines,
+                        boxBg, accentColor, textColor, smallFm, condBoxPadding);
+                boxBounds.add(new int[]{condY, boxHeight});
+                condY += boxHeight + condBoxGap;
+            }
+
+            if (!hoopLines.isEmpty()) {
+                int boxHeight = hoopLines.size() * lineHeight + condBoxPadding * 2;
+                drawConditionBox(g2, condX, condY, condBoxWidth, boxHeight, hoopLines,
+                        boxBg, accentColor, textColor, smallFm, condBoxPadding);
+                boxBounds.add(new int[]{condY, boxHeight});
+            }
+
+            // Draw arrows from each box to entry
+            g2.setColor(arrowColor);
+            g2.setStroke(new BasicStroke(1.5f));
+            int boxRight = condX + condBoxWidth;
+            int entryCenterY = entryY + entryBoxHeight / 2;
+
+            for (int[] bounds : boxBounds) {
+                int boxCenterY = bounds[0] + bounds[1] / 2;
+                // Draw line from box to entry
+                Path2D arrow = new Path2D.Float();
+                arrow.moveTo(boxRight, boxCenterY);
+                float cpX = boxRight + condArrowGap / 2f;
+                arrow.curveTo(cpX, boxCenterY, cpX, entryCenterY, entryX, entryCenterY);
+                g2.draw(arrow);
+            }
+
+            g2.setFont(mainFont);
+        }
 
         // Draw entry box (rounded on left, square on right)
         int radius = 6;
         Path2D entryBox = new Path2D.Float();
         entryBox.moveTo(entryX + radius, entryY);
-        entryBox.lineTo(entryX + entryBoxWidth, entryY);  // top edge
-        entryBox.lineTo(entryX + entryBoxWidth, entryY + entryBoxHeight);  // right edge (square)
-        entryBox.lineTo(entryX + radius, entryY + entryBoxHeight);  // bottom edge
-        entryBox.quadTo(entryX, entryY + entryBoxHeight, entryX, entryY + entryBoxHeight - radius);  // bottom-left corner
-        entryBox.lineTo(entryX, entryY + radius);  // left edge
-        entryBox.quadTo(entryX, entryY, entryX + radius, entryY);  // top-left corner
+        entryBox.lineTo(entryX + entryBoxWidth, entryY);
+        entryBox.lineTo(entryX + entryBoxWidth, entryY + entryBoxHeight);
+        entryBox.lineTo(entryX + radius, entryY + entryBoxHeight);
+        entryBox.quadTo(entryX, entryY + entryBoxHeight, entryX, entryY + entryBoxHeight - radius);
+        entryBox.lineTo(entryX, entryY + radius);
+        entryBox.quadTo(entryX, entryY, entryX + radius, entryY);
         entryBox.closePath();
 
         g2.setColor(boxBg);
@@ -187,13 +281,11 @@ public class FlowDiagramPanel extends JPanel {
         if (expirationBars != null && expirationBars > 0) {
             String expLabel = "Expires: " + expirationBars + " bar" + (expirationBars > 1 ? "s" : "");
             g2.setColor(dimColor);
-            Font smallFont = mainFont.deriveFont(Font.PLAIN, 10f);
             g2.setFont(smallFont);
-            FontMetrics smallFm = g2.getFontMetrics();
             int expX = entryX + (entryBoxWidth - smallFm.stringWidth(expLabel)) / 2;
             int expY = entryY + entryBoxHeight + smallFm.getAscent() + 2;
             g2.drawString(expLabel, expX, expY);
-            g2.setFont(mainFont);  // restore
+            g2.setFont(mainFont);
         }
 
         // Zone area starts here
@@ -365,5 +457,75 @@ public class FlowDiagramPanel extends JPanel {
         }
 
         return type + ": " + name;
+    }
+
+    private List<String> parseDslConditions(String condition) {
+        List<String> lines = new ArrayList<>();
+        if (condition == null || condition.isBlank()) return lines;
+
+        // Split by AND (case insensitive, with word boundaries)
+        String[] parts = condition.split("(?i)\\s+AND\\s+");
+        for (String part : parts) {
+            String trimmed = part.trim();
+            if (!trimmed.isEmpty()) {
+                lines.add(trimmed);
+            }
+        }
+        return lines;
+    }
+
+    private List<String> getPhaseLines() {
+        List<String> lines = new ArrayList<>();
+        PhaseSettings phaseSettings = strategy.getPhaseSettings();
+        if (phaseSettings == null) return lines;
+
+        List<String> required = phaseSettings.getRequiredPhaseIds();
+        List<String> excluded = phaseSettings.getExcludedPhaseIds();
+
+        if (required != null) {
+            for (String id : required) {
+                lines.add("✓ " + id);
+            }
+        }
+        if (excluded != null) {
+            for (String id : excluded) {
+                lines.add("✗ " + id);
+            }
+        }
+        return lines;
+    }
+
+    private List<String> getHoopLines() {
+        List<String> lines = new ArrayList<>();
+        HoopPatternSettings hoopSettings = strategy.getHoopPatternSettings();
+        if (hoopSettings == null) return lines;
+
+        List<String> required = hoopSettings.getRequiredEntryPatternIds();
+        List<String> excluded = hoopSettings.getExcludedEntryPatternIds();
+
+        if (required != null) {
+            for (String id : required) {
+                lines.add("✓ " + id);
+            }
+        }
+        if (excluded != null) {
+            for (String id : excluded) {
+                lines.add("✗ " + id);
+            }
+        }
+        return lines;
+    }
+
+    private void drawConditionBox(Graphics2D g2, int x, int y, int width, int height,
+                                   List<String> lines, Color bgColor, Color borderColor,
+                                   Color textColor, FontMetrics fm, int padding) {
+        // Draw text lines only (no border)
+        g2.setColor(textColor);
+        int lineHeight = fm.getHeight();
+        int textY = y + padding + fm.getAscent();
+        for (String line : lines) {
+            g2.drawString(line, x + padding, textY);
+            textY += lineHeight;
+        }
     }
 }
