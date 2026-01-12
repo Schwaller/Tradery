@@ -2,6 +2,9 @@ package com.tradery.ui;
 
 import com.tradery.ApplicationContext;
 import com.tradery.data.CandleStore;
+import com.tradery.data.DataConsumer;
+import com.tradery.data.DataRequirement;
+import com.tradery.data.DataRequirementsTracker;
 import com.tradery.dsl.Parser;
 import com.tradery.engine.ConditionEvaluator;
 import com.tradery.indicators.IndicatorEngine;
@@ -36,6 +39,7 @@ import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Chart panel showing where a phase condition would be active over historical data.
@@ -58,6 +62,10 @@ public class PhasePreviewChart extends JPanel {
 
     // Data range - 4 years for a full crypto cycle
     private static final int YEARS_OF_DATA = 4;
+
+    // Counter for unique requirement IDs
+    private static final AtomicInteger requestCounter = new AtomicInteger(0);
+    private String currentRequestId;
 
     // Pan state
     private Point panStart = null;
@@ -358,18 +366,24 @@ public class PhasePreviewChart extends JPanel {
             return;
         }
 
+        // Generate unique request ID for tracking
+        currentRequestId = "phase-preview-" + requestCounter.incrementAndGet();
+
         // Load data in background
         SwingWorker<Void, Void> worker = new SwingWorker<>() {
             private String errorMessage = null;
             private int activeCount = 0;
             private int totalBars = 0;
+            private final String requestId = currentRequestId;
 
             @Override
             protected Void doInBackground() {
                 try {
                     loadAndEvaluate();
                 } catch (Exception e) {
-                    errorMessage = e.getMessage();
+                    errorMessage = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
+                    System.err.println("PhasePreviewChart error: " + e.getMessage());
+                    e.printStackTrace();
                 }
                 return null;
             }
@@ -384,14 +398,44 @@ public class PhasePreviewChart extends JPanel {
                 long startTime = startDate.atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli();
                 long endTime = endDate.plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli();
 
+                // Register data requirement with tracker
+                DataRequirementsTracker tracker = ApplicationContext.getInstance().getPreviewTracker();
+                String dataType = "OHLC:" + timeframe;
+                DataRequirement requirement = new DataRequirement(
+                    dataType,
+                    symbol,
+                    startTime,
+                    endTime,
+                    DataRequirement.Tier.TRADING,
+                    "phase:" + phase.getId(),
+                    DataConsumer.PHASE_PREVIEW
+                );
+                tracker.addRequirement(requirement);
+                tracker.updateStatus(dataType, DataRequirementsTracker.Status.FETCHING);
+
+                // Update status on EDT
+                SwingUtilities.invokeLater(() -> statusLabel.setText("Fetching " + symbol + " " + timeframe + "..."));
+
                 // Load candles
                 CandleStore candleStore = ApplicationContext.getInstance().getCandleStore();
-                candles = candleStore.getCandles(symbol, timeframe, startTime, endTime);
+                try {
+                    candles = candleStore.getCandles(symbol, timeframe, startTime, endTime);
+                } catch (Exception e) {
+                    tracker.updateStatus(dataType, DataRequirementsTracker.Status.ERROR, 0, 0, e.getMessage());
+                    throw e;
+                }
 
                 if (candles.isEmpty()) {
-                    errorMessage = "No data available";
+                    tracker.updateStatus(dataType, DataRequirementsTracker.Status.ERROR, 0, 0, "No data available");
+                    errorMessage = "No data available for " + symbol + " " + timeframe;
                     return;
                 }
+
+                // Mark data as ready
+                tracker.updateStatus(dataType, DataRequirementsTracker.Status.READY, candles.size(), candles.size());
+
+                // Update status on EDT
+                SwingUtilities.invokeLater(() -> statusLabel.setText("Evaluating condition..."));
 
                 // Parse condition
                 Parser parser = new Parser();
@@ -427,18 +471,28 @@ public class PhasePreviewChart extends JPanel {
                         phaseActive[i] = evaluator.evaluate(result.ast(), i);
                         if (phaseActive[i]) activeCount++;
                     } catch (Exception e) {
-                        // Evaluation error at this bar - skip
+                        // Evaluation error at this bar - log but continue
+                        if (i == warmup) {
+                            System.err.println("PhasePreviewChart evaluation error at bar " + i + ": " + e.getMessage());
+                        }
                     }
                 }
             }
 
             @Override
             protected void done() {
+                // Only update if this is still the current request
+                if (!requestId.equals(currentRequestId)) {
+                    return;
+                }
+
                 if (errorMessage != null) {
                     clearChart();
                     statusLabel.setText(errorMessage);
                 } else {
                     updateChart();
+                    // Fit the chart to show all data
+                    fitAll();
                     double pct = totalBars > 0 ? (activeCount * 100.0 / totalBars) : 0;
                     statusLabel.setText(String.format("Active: %.1f%% of %d bars (%d years)",
                         pct, totalBars, YEARS_OF_DATA));

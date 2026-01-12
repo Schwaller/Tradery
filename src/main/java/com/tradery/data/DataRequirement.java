@@ -13,6 +13,7 @@ package com.tradery.data;
  * @param endTime   End time in milliseconds
  * @param tier      TRADING (blocks backtest) or VIEW (background for charts)
  * @param source    Origin of requirement (e.g., "strategy", "phase:uptrend", "chart:funding")
+ * @param consumer  The consumer requesting this data (for grouping in status UI)
  */
 public record DataRequirement(
     String dataType,
@@ -20,8 +21,16 @@ public record DataRequirement(
     long startTime,
     long endTime,
     Tier tier,
-    String source
+    String source,
+    DataConsumer consumer
 ) {
+    /**
+     * Constructor for backward compatibility - defaults to BACKTEST consumer.
+     */
+    public DataRequirement(String dataType, String symbol, long startTime, long endTime, Tier tier, String source) {
+        this(dataType, symbol, startTime, endTime, tier, source,
+             tier == Tier.TRADING ? DataConsumer.BACKTEST : DataConsumer.CHART_VIEW);
+    }
     /**
      * Data requirement tier determines loading behavior.
      */

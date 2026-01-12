@@ -103,16 +103,7 @@ public class BacktestEngine {
         List<String> errors = new ArrayList<>();
 
         // Initialize indicator engine FIRST so charts can display data even if parsing fails
-        indicatorEngine.setCandles(candles, config.resolution());
-        if (aggTrades != null && !aggTrades.isEmpty()) {
-            indicatorEngine.setAggTrades(aggTrades);
-        }
-        if (fundingRates != null && !fundingRates.isEmpty()) {
-            indicatorEngine.setFundingRates(fundingRates);
-        }
-        if (openInterestData != null && !openInterestData.isEmpty()) {
-            indicatorEngine.setOpenInterest(openInterestData);
-        }
+        initializeIndicatorEngine(candles, config.resolution());
 
         // Evaluate phases upfront if any are required or excluded
         Map<String, boolean[]> phaseStates = new HashMap<>();
@@ -212,34 +203,7 @@ public class BacktestEngine {
             parsedZones.add(new ParsedExitZone(zone, zoneExitAst));
         }
 
-        // Initialize indicator engine
-        System.out.println(">>> ABOUT to initialize indicator engine");
-        if (onProgress != null) {
-            onProgress.accept(new Progress(0, candles.size(), 0, "Calculating indicators..."));
-        }
-
-        indicatorEngine.setCandles(candles, config.resolution());
-        System.out.println(">>> setCandles called with " + candles.size() + " candles, hasCandles=" + indicatorEngine.hasCandles());
-
-        // Set aggTrades for orderflow indicators if available
-        if (aggTrades != null && !aggTrades.isEmpty()) {
-            indicatorEngine.setAggTrades(aggTrades);
-            System.out.println("BacktestEngine.run: setAggTrades called with " + aggTrades.size() + " trades");
-        } else {
-            System.out.println("BacktestEngine.run: aggTrades is null or empty");
-        }
-
-        // Set funding rates if available
-        if (fundingRates != null && !fundingRates.isEmpty()) {
-            indicatorEngine.setFundingRates(fundingRates);
-        }
-
-        // Set open interest data if available
-        if (openInterestData != null && !openInterestData.isEmpty()) {
-            indicatorEngine.setOpenInterest(openInterestData);
-        }
-
-        // Create evaluator
+        // Create evaluator (indicator engine was already initialized above)
         ConditionEvaluator evaluator = new ConditionEvaluator(indicatorEngine);
 
         // Calculate warmup period
@@ -1210,7 +1174,7 @@ public class BacktestEngine {
     private List<Integer> extractPeriods(String expression) {
         List<Integer> periods = new ArrayList<>();
 
-        Pattern pattern = Pattern.compile("(SMA|EMA|RSI|MACD|BBANDS|HIGH_OF|LOW_OF|AVG_VOLUME|ATR)\\((\\d+(?:,\\s*\\d+)*)\\)");
+        Pattern pattern = Pattern.compile("(SMA|EMA|RSI|MACD|BBANDS|HIGH_OF|LOW_OF|AVG_VOLUME|ATR|RANGE_POSITION)\\((\\d+(?:,\\s*\\d+)*)\\)");
         Matcher matcher = pattern.matcher(expression);
 
         while (matcher.find()) {
@@ -1223,6 +1187,22 @@ public class BacktestEngine {
         }
 
         return periods;
+    }
+
+    /**
+     * Initialize the indicator engine with candle data and optional orderflow/funding/OI data.
+     */
+    private void initializeIndicatorEngine(List<Candle> candles, String resolution) {
+        indicatorEngine.setCandles(candles, resolution);
+        if (aggTrades != null && !aggTrades.isEmpty()) {
+            indicatorEngine.setAggTrades(aggTrades);
+        }
+        if (fundingRates != null && !fundingRates.isEmpty()) {
+            indicatorEngine.setFundingRates(fundingRates);
+        }
+        if (openInterestData != null && !openInterestData.isEmpty()) {
+            indicatorEngine.setOpenInterest(openInterestData);
+        }
     }
 
     /**
@@ -1334,6 +1314,9 @@ public class BacktestEngine {
         extractMACDIndicators(expr, barIndex, values);
         extractBBandsIndicators(expr, barIndex, values);
 
+        // Always add context indicators for AI analysis (regardless of DSL)
+        addContextIndicators(barIndex, values);
+
         // Always include price for context
         Candle candle = indicatorEngine.getCandleAt(barIndex);
         if (candle != null) {
@@ -1342,6 +1325,34 @@ public class BacktestEngine {
         }
 
         return values;
+    }
+
+    /**
+     * Add standard context indicators for AI analysis.
+     * These are always captured regardless of what's in the DSL conditions.
+     */
+    private void addContextIndicators(int barIndex, Map<String, Double> values) {
+        // Volatility context
+        double atr14 = indicatorEngine.getATRAt(14, barIndex);
+        if (!Double.isNaN(atr14)) values.putIfAbsent("ATR(14)", atr14);
+
+        // Trend context - short and long term
+        double sma50 = indicatorEngine.getSMAAt(50, barIndex);
+        double sma200 = indicatorEngine.getSMAAt(200, barIndex);
+        if (!Double.isNaN(sma50)) values.putIfAbsent("SMA(50)", sma50);
+        if (!Double.isNaN(sma200)) values.putIfAbsent("SMA(200)", sma200);
+
+        // Momentum context
+        double rsi14 = indicatorEngine.getRSIAt(14, barIndex);
+        if (!Double.isNaN(rsi14)) values.putIfAbsent("RSI(14)", rsi14);
+
+        // Trend strength
+        double adx14 = indicatorEngine.getADXAt(14, barIndex);
+        if (!Double.isNaN(adx14)) values.putIfAbsent("ADX(14)", adx14);
+
+        // Volume context
+        double avgVol20 = indicatorEngine.getAvgVolumeAt(20, barIndex);
+        if (!Double.isNaN(avgVol20)) values.putIfAbsent("AVG_VOLUME(20)", avgVol20);
     }
 
     /**

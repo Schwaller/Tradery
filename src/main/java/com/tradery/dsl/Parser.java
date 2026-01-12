@@ -363,6 +363,17 @@ public class Parser {
         List<Double> params = parseNumberList();
         expect(TokenType.RPAREN, "Expected ')' after " + func + " parameters");
 
+        // RANGE_POSITION takes 2 params: period, skip
+        if ("RANGE_POSITION".equals(func)) {
+            if (params.size() < 1 || params.size() > 2) {
+                throw new ParserException("RANGE_POSITION requires 1-2 parameters (period, skip), got " + params.size());
+            }
+            int period = params.get(0).intValue();
+            int skip = params.size() > 1 ? params.get(1).intValue() : 0;
+            return new AstNode.RangeFunctionCall(func, period, skip);
+        }
+
+        // HIGH_OF and LOW_OF take 1 param
         if (params.size() != 1) {
             throw new ParserException(func + " requires 1 parameter (period), got " + params.size());
         }

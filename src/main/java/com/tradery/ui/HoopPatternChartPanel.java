@@ -540,7 +540,7 @@ public class HoopPatternChartPanel extends JPanel {
         menu.show(chartPanel, e.getX(), e.getY());
     }
 
-    private void fitAll() {
+    public void fitAll() {
         fitXAxis();
         fitYAxis();
     }

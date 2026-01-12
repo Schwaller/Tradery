@@ -351,36 +351,25 @@ public class ResultStore {
         List<String> suggestions = new ArrayList<>();
         double overallWinRate = overall.winRate();
 
-        // Analyze phases
-        Map<String, List<Trade>> byPhase = new HashMap<>();
-        for (Trade t : trades) {
-            if (t.activePhasesAtEntry() != null) {
-                for (String phase : t.activePhasesAtEntry()) {
-                    byPhase.computeIfAbsent(phase, k -> new ArrayList<>()).add(t);
-                }
-            }
-        }
+        // Phase suggestions
+        generatePhaseSuggestions(trades, overallWinRate, suggestions);
 
-        for (Map.Entry<String, List<Trade>> entry : byPhase.entrySet()) {
-            List<Trade> phaseTrades = entry.getValue();
-            if (phaseTrades.size() >= 5) {  // Need enough data
-                int wins = (int) phaseTrades.stream().filter(t -> t.pnl() != null && t.pnl() > 0).count();
-                double winRate = (double) wins / phaseTrades.size() * 100;
-                double diff = winRate - overallWinRate;
+        // Time-based suggestions (hour and day of week)
+        generateTimeSuggestions(trades, overallWinRate, suggestions);
 
-                if (diff > 10) {
-                    suggestions.add(String.format(
-                        "Consider requiring '%s' phase (+%.0f%% win rate, %d trades)",
-                        entry.getKey(), diff, phaseTrades.size()));
-                } else if (diff < -10) {
-                    suggestions.add(String.format(
-                        "Consider excluding '%s' phase (%.0f%% worse win rate, %d trades)",
-                        entry.getKey(), -diff, phaseTrades.size()));
-                }
-            }
-        }
+        // Exit zone/reason suggestions
+        generateExitSuggestions(trades, suggestions);
 
-        // Analyze MFE/MAE
+        // MAE analysis suggestions
+        generateMaeSuggestions(trades, overall, suggestions);
+
+        // Holding period suggestions
+        generateHoldingPeriodSuggestions(trades, suggestions);
+
+        // Indicator correlation suggestions
+        generateIndicatorSuggestions(trades, suggestions);
+
+        // MFE capture ratio
         if (overall.averageMfe() > 0 && overall.totalTrades() > 0) {
             double avgActualPnl = trades.stream()
                 .filter(t -> t.pnlPercent() != null)
@@ -396,7 +385,7 @@ public class ResultStore {
             }
         }
 
-        // Analyze consecutive losses
+        // Consecutive losses
         if (overall.maxConsecutiveLosses() >= 5) {
             suggestions.add(String.format(
                 "Max %d consecutive losses detected - consider position sizing adjustments",
@@ -404,6 +393,347 @@ public class ResultStore {
         }
 
         return suggestions;
+    }
+
+    private void generatePhaseSuggestions(List<Trade> trades, double overallWinRate, List<String> suggestions) {
+        Map<String, List<Trade>> byPhase = new HashMap<>();
+        for (Trade t : trades) {
+            if (t.activePhasesAtEntry() != null) {
+                for (String phase : t.activePhasesAtEntry()) {
+                    byPhase.computeIfAbsent(phase, k -> new ArrayList<>()).add(t);
+                }
+            }
+        }
+
+        for (Map.Entry<String, List<Trade>> entry : byPhase.entrySet()) {
+            List<Trade> phaseTrades = entry.getValue();
+            if (phaseTrades.size() >= 5) {
+                int wins = (int) phaseTrades.stream().filter(t -> t.pnl() != null && t.pnl() > 0).count();
+                double winRate = (double) wins / phaseTrades.size() * 100;
+                double diff = winRate - overallWinRate;
+
+                if (diff > 10) {
+                    suggestions.add(String.format(
+                        "Consider requiring '%s' phase (+%.0f%% win rate, %d trades)",
+                        entry.getKey(), diff, phaseTrades.size()));
+                } else if (diff < -10) {
+                    suggestions.add(String.format(
+                        "Consider excluding '%s' phase (%.0f%% worse win rate, %d trades)",
+                        entry.getKey(), -diff, phaseTrades.size()));
+                }
+            }
+        }
+    }
+
+    private void generateTimeSuggestions(List<Trade> trades, double overallWinRate, List<String> suggestions) {
+        // Group by hour
+        Map<Integer, List<Trade>> byHour = new HashMap<>();
+        for (Trade t : trades) {
+            int hour = Instant.ofEpochMilli(t.entryTime()).atZone(ZoneOffset.UTC).getHour();
+            byHour.computeIfAbsent(hour, k -> new ArrayList<>()).add(t);
+        }
+
+        // Find best/worst hours
+        int bestHour = -1, worstHour = -1;
+        double bestDiff = 0, worstDiff = 0;
+        int bestCount = 0, worstCount = 0;
+
+        for (Map.Entry<Integer, List<Trade>> entry : byHour.entrySet()) {
+            List<Trade> hourTrades = entry.getValue();
+            if (hourTrades.size() >= 5) {
+                int wins = (int) hourTrades.stream().filter(t -> t.pnl() != null && t.pnl() > 0).count();
+                double winRate = (double) wins / hourTrades.size() * 100;
+                double diff = winRate - overallWinRate;
+
+                if (diff > bestDiff && diff > 12) {
+                    bestDiff = diff;
+                    bestHour = entry.getKey();
+                    bestCount = hourTrades.size();
+                }
+                if (diff < worstDiff && diff < -12) {
+                    worstDiff = diff;
+                    worstHour = entry.getKey();
+                    worstCount = hourTrades.size();
+                }
+            }
+        }
+
+        if (bestHour >= 0) {
+            suggestions.add(String.format(
+                "Hour %02d UTC shows +%.0f%% win rate (%d trades) - consider time filter",
+                bestHour, bestDiff, bestCount));
+        }
+        if (worstHour >= 0) {
+            suggestions.add(String.format(
+                "Hour %02d UTC underperforms by %.0f%% (%d trades) - consider excluding",
+                worstHour, -worstDiff, worstCount));
+        }
+
+        // Group by day of week
+        String[] dayNames = {"Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"};
+        Map<Integer, List<Trade>> byDay = new HashMap<>();
+        for (Trade t : trades) {
+            int day = Instant.ofEpochMilli(t.entryTime()).atZone(ZoneOffset.UTC).getDayOfWeek().getValue();
+            byDay.computeIfAbsent(day, k -> new ArrayList<>()).add(t);
+        }
+
+        int bestDay = -1, worstDay = -1;
+        double bestDayDiff = 0, worstDayDiff = 0;
+        int bestDayCount = 0, worstDayCount = 0;
+
+        for (Map.Entry<Integer, List<Trade>> entry : byDay.entrySet()) {
+            List<Trade> dayTrades = entry.getValue();
+            if (dayTrades.size() >= 5) {
+                int wins = (int) dayTrades.stream().filter(t -> t.pnl() != null && t.pnl() > 0).count();
+                double winRate = (double) wins / dayTrades.size() * 100;
+                double diff = winRate - overallWinRate;
+
+                if (diff > bestDayDiff && diff > 10) {
+                    bestDayDiff = diff;
+                    bestDay = entry.getKey();
+                    bestDayCount = dayTrades.size();
+                }
+                if (diff < worstDayDiff && diff < -10) {
+                    worstDayDiff = diff;
+                    worstDay = entry.getKey();
+                    worstDayCount = dayTrades.size();
+                }
+            }
+        }
+
+        if (bestDay >= 1) {
+            suggestions.add(String.format(
+                "%s shows +%.0f%% win rate (%d trades) - consider day filter",
+                dayNames[bestDay - 1], bestDayDiff, bestDayCount));
+        }
+        if (worstDay >= 1) {
+            suggestions.add(String.format(
+                "%s underperforms by %.0f%% (%d trades) - consider excluding",
+                dayNames[worstDay - 1], -worstDayDiff, worstDayCount));
+        }
+    }
+
+    private void generateExitSuggestions(List<Trade> trades, List<String> suggestions) {
+        Map<String, List<Trade>> byReason = new HashMap<>();
+        for (Trade t : trades) {
+            String reason = t.exitReason() != null ? t.exitReason() : "unknown";
+            byReason.computeIfAbsent(reason, k -> new ArrayList<>()).add(t);
+        }
+
+        // Compare stop_loss vs take_profit performance
+        List<Trade> stopLossTrades = byReason.getOrDefault("stop_loss", Collections.emptyList());
+        List<Trade> takeProfitTrades = byReason.getOrDefault("take_profit", Collections.emptyList());
+
+        if (stopLossTrades.size() >= 5 && takeProfitTrades.size() >= 5) {
+            double slAvg = stopLossTrades.stream()
+                .filter(t -> t.pnlPercent() != null)
+                .mapToDouble(Trade::pnlPercent)
+                .average().orElse(0);
+            double tpAvg = takeProfitTrades.stream()
+                .filter(t -> t.pnlPercent() != null)
+                .mapToDouble(Trade::pnlPercent)
+                .average().orElse(0);
+
+            // If stop losses are too severe relative to take profits
+            if (slAvg < -3 && tpAvg > 0 && Math.abs(slAvg) > tpAvg * 1.5) {
+                suggestions.add(String.format(
+                    "Stop losses avg %.1f%% vs take profits +%.1f%% - consider tighter SL or wider TP",
+                    slAvg, tpAvg));
+            }
+        }
+
+        // Check signal exits (DSL condition based)
+        List<Trade> signalTrades = byReason.getOrDefault("signal", Collections.emptyList());
+        if (signalTrades.size() >= 5) {
+            double signalAvg = signalTrades.stream()
+                .filter(t -> t.pnlPercent() != null)
+                .mapToDouble(Trade::pnlPercent)
+                .average().orElse(0);
+
+            // Compare to zone exits
+            double zoneAvg = trades.stream()
+                .filter(t -> t.exitReason() != null && !t.exitReason().equals("signal"))
+                .filter(t -> t.pnlPercent() != null)
+                .mapToDouble(Trade::pnlPercent)
+                .average().orElse(0);
+
+            if (signalAvg < zoneAvg - 1 && signalTrades.size() >= 10) {
+                suggestions.add(String.format(
+                    "DSL condition exits avg %.1f%% vs zone exits %.1f%% - review exit conditions",
+                    signalAvg, zoneAvg));
+            }
+        }
+    }
+
+    private void generateMaeSuggestions(List<Trade> trades, PerformanceMetrics overall, List<String> suggestions) {
+        List<Trade> winners = trades.stream()
+            .filter(t -> t.pnl() != null && t.pnl() > 0)
+            .filter(t -> t.mae() != null)
+            .toList();
+        List<Trade> losers = trades.stream()
+            .filter(t -> t.pnl() != null && t.pnl() < 0)
+            .filter(t -> t.mae() != null)
+            .toList();
+
+        if (winners.size() >= 5 && losers.size() >= 5) {
+            double winnerMae = winners.stream().mapToDouble(Trade::mae).average().orElse(0);
+            double loserMae = losers.stream().mapToDouble(Trade::mae).average().orElse(0);
+
+            // If losers have much worse MAE early, a tighter stop could help
+            if (loserMae < winnerMae - 2) {
+                suggestions.add(String.format(
+                    "Losers hit %.1f%% MAE vs winners %.1f%% - tighter stop-loss may cut losses earlier",
+                    loserMae, winnerMae));
+            }
+
+            // Check if winners typically recover from drawdown (MAE bar < MFE bar)
+            long winnersRecovering = winners.stream()
+                .filter(t -> t.maeBar() != null && t.mfeBar() != null && t.maeBar() < t.mfeBar())
+                .count();
+            double recoveryRate = (double) winnersRecovering / winners.size() * 100;
+
+            if (recoveryRate > 70) {
+                suggestions.add(String.format(
+                    "%.0f%% of winners hit drawdown before peak - holding through MAE works for this strategy",
+                    recoveryRate));
+            }
+        }
+    }
+
+    private void generateHoldingPeriodSuggestions(List<Trade> trades, List<String> suggestions) {
+        List<Trade> validTrades = trades.stream()
+            .filter(t -> t.exitBar() != null)  // entryBar is primitive int, always set
+            .filter(t -> t.pnl() != null)
+            .toList();
+
+        if (validTrades.size() < 20) return;
+
+        // Calculate median holding period
+        List<Integer> holdingPeriods = validTrades.stream()
+            .map(t -> t.exitBar() - t.entryBar())
+            .sorted()
+            .toList();
+        int medianHolding = holdingPeriods.get(holdingPeriods.size() / 2);
+
+        // Split into short and long trades
+        List<Trade> shortTrades = validTrades.stream()
+            .filter(t -> (t.exitBar() - t.entryBar()) <= medianHolding)
+            .toList();
+        List<Trade> longTrades = validTrades.stream()
+            .filter(t -> (t.exitBar() - t.entryBar()) > medianHolding)
+            .toList();
+
+        if (shortTrades.size() >= 5 && longTrades.size() >= 5) {
+            int shortWins = (int) shortTrades.stream().filter(t -> t.pnl() > 0).count();
+            int longWins = (int) longTrades.stream().filter(t -> t.pnl() > 0).count();
+            double shortWinRate = (double) shortWins / shortTrades.size() * 100;
+            double longWinRate = (double) longWins / longTrades.size() * 100;
+
+            double shortAvgPnl = shortTrades.stream().mapToDouble(Trade::pnlPercent).average().orElse(0);
+            double longAvgPnl = longTrades.stream().mapToDouble(Trade::pnlPercent).average().orElse(0);
+
+            if (shortWinRate > longWinRate + 12) {
+                suggestions.add(String.format(
+                    "Quick trades (<=%d bars) have %.0f%% win rate vs %.0f%% for longer - consider time-based exit",
+                    medianHolding, shortWinRate, longWinRate));
+            } else if (longAvgPnl > shortAvgPnl + 1) {
+                suggestions.add(String.format(
+                    "Longer trades (>%d bars) avg +%.1f%% vs +%.1f%% - patience may improve returns",
+                    medianHolding, longAvgPnl, shortAvgPnl));
+            }
+        }
+    }
+
+    private void generateIndicatorSuggestions(List<Trade> trades, List<String> suggestions) {
+        List<Trade> winners = trades.stream()
+            .filter(t -> t.pnl() != null && t.pnl() > 0)
+            .filter(t -> t.entryIndicators() != null && !t.entryIndicators().isEmpty())
+            .toList();
+        List<Trade> losers = trades.stream()
+            .filter(t -> t.pnl() != null && t.pnl() < 0)
+            .filter(t -> t.entryIndicators() != null && !t.entryIndicators().isEmpty())
+            .toList();
+
+        if (winners.size() < 5 || losers.size() < 5) return;
+
+        // Analyze RSI(14) at entry
+        analyzeIndicatorDifference(winners, losers, "RSI(14)", suggestions,
+            "Tighten RSI entry threshold - winners avg %.0f vs losers %.0f",
+            true);  // lower is better for oversold entries
+
+        // Analyze ADX(14) - trend strength
+        analyzeIndicatorDifference(winners, losers, "ADX(14)", suggestions,
+            "Add ADX filter - winners avg %.0f vs losers %.0f (stronger trends)",
+            false);  // higher is better
+
+        // Analyze ATR(14) - volatility
+        analyzeIndicatorDifference(winners, losers, "ATR(14)", suggestions,
+            "Consider volatility filter - winning entries have %.0f%% different ATR",
+            true);  // interpret as percentage difference
+
+        // Analyze price position relative to SMA(200)
+        analyzePriceVsSma(winners, losers, "SMA(200)", suggestions);
+    }
+
+    private void analyzeIndicatorDifference(List<Trade> winners, List<Trade> losers,
+                                            String indicator, List<String> suggestions,
+                                            String format, boolean lowerIsBetter) {
+        double winnerAvg = winners.stream()
+            .filter(t -> t.entryIndicators().containsKey(indicator))
+            .mapToDouble(t -> t.entryIndicators().get(indicator))
+            .average().orElse(Double.NaN);
+
+        double loserAvg = losers.stream()
+            .filter(t -> t.entryIndicators().containsKey(indicator))
+            .mapToDouble(t -> t.entryIndicators().get(indicator))
+            .average().orElse(Double.NaN);
+
+        if (Double.isNaN(winnerAvg) || Double.isNaN(loserAvg)) return;
+
+        double diff = Math.abs(winnerAvg - loserAvg);
+        double threshold = indicator.contains("RSI") ? 5 : (indicator.contains("ADX") ? 3 : winnerAvg * 0.15);
+
+        if (diff > threshold) {
+            if (indicator.contains("ATR")) {
+                // ATR: show percentage difference
+                double pctDiff = (winnerAvg - loserAvg) / loserAvg * 100;
+                if (Math.abs(pctDiff) > 15) {
+                    String direction = pctDiff < 0 ? "lower" : "higher";
+                    suggestions.add(String.format(
+                        "Winning entries have %.0f%% %s ATR - consider volatility filter",
+                        Math.abs(pctDiff), direction));
+                }
+            } else {
+                suggestions.add(String.format(format, winnerAvg, loserAvg));
+            }
+        }
+    }
+
+    private void analyzePriceVsSma(List<Trade> winners, List<Trade> losers, String smaKey, List<String> suggestions) {
+        long winnersBelowSma = winners.stream()
+            .filter(t -> t.entryIndicators().containsKey(smaKey) && t.entryIndicators().containsKey("price"))
+            .filter(t -> t.entryIndicators().get("price") < t.entryIndicators().get(smaKey))
+            .count();
+        long losersBelowSma = losers.stream()
+            .filter(t -> t.entryIndicators().containsKey(smaKey) && t.entryIndicators().containsKey("price"))
+            .filter(t -> t.entryIndicators().get("price") < t.entryIndicators().get(smaKey))
+            .count();
+
+        if (winners.isEmpty() || losers.isEmpty()) return;
+
+        double winnerPctBelow = (double) winnersBelowSma / winners.size() * 100;
+        double loserPctBelow = (double) losersBelowSma / losers.size() * 100;
+
+        // If winners are much more often above SMA than losers
+        if (winnerPctBelow < loserPctBelow - 15) {
+            suggestions.add(String.format(
+                "Add 'price > %s' filter - %.0f%% of winners vs %.0f%% of losers entered above",
+                smaKey, 100 - winnerPctBelow, 100 - loserPctBelow));
+        } else if (winnerPctBelow > loserPctBelow + 15) {
+            suggestions.add(String.format(
+                "Add 'price < %s' filter - %.0f%% of winners vs %.0f%% of losers entered below",
+                smaKey, winnerPctBelow, loserPctBelow));
+        }
     }
 
     /**

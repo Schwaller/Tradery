@@ -3,8 +3,12 @@ package com.tradery;
 import com.tradery.api.ApiServer;
 import com.tradery.data.AggTradesStore;
 import com.tradery.data.CandleStore;
+import com.tradery.data.DataConfig;
+import com.tradery.data.DataInventory;
+import com.tradery.data.DataRequirementsTracker;
 import com.tradery.data.FundingRateStore;
 import com.tradery.data.OpenInterestStore;
+import com.tradery.data.PreloadScheduler;
 import com.tradery.io.HoopPatternStore;
 import com.tradery.io.PhaseStore;
 import com.tradery.io.StrategyStore;
@@ -30,6 +34,13 @@ public class ApplicationContext {
     private final HoopPatternStore hoopPatternStore;
     private final ApiServer apiServer;
 
+    // Global tracker for preview data loading (phases, hoops, etc.)
+    private final DataRequirementsTracker previewTracker;
+
+    // Data preloading infrastructure
+    private final DataInventory dataInventory;
+    private final PreloadScheduler preloadScheduler;
+
     private ApplicationContext() {
         this.candleStore = new CandleStore();
         this.aggTradesStore = new AggTradesStore();
@@ -38,6 +49,15 @@ public class ApplicationContext {
         this.strategyStore = new StrategyStore(new File(TraderyApp.USER_DIR, "strategies"));
         this.phaseStore = new PhaseStore(new File(TraderyApp.USER_DIR, "phases"));
         this.hoopPatternStore = new HoopPatternStore(new File(TraderyApp.USER_DIR, "hoops"));
+        this.previewTracker = new DataRequirementsTracker();
+
+        // Initialize data preloading infrastructure
+        this.dataInventory = new DataInventory(DataConfig.getInstance().getDataDir());
+        this.dataInventory.load();  // Load saved inventory from disk
+
+        this.preloadScheduler = new PreloadScheduler(dataInventory);
+        this.preloadScheduler.setStores(candleStore, aggTradesStore, fundingRateStore, openInterestStore);
+        this.preloadScheduler.start();
 
         // Install/update presets on startup
         this.strategyStore.installMissingPresets();
@@ -90,6 +110,28 @@ public class ApplicationContext {
 
     public ApiServer getApiServer() {
         return apiServer;
+    }
+
+    /**
+     * Get the global preview tracker for phase/hoop preview data loading.
+     * This allows preview windows to share a common tracker visible in status UI.
+     */
+    public DataRequirementsTracker getPreviewTracker() {
+        return previewTracker;
+    }
+
+    /**
+     * Get the data inventory for tracking cached data coverage.
+     */
+    public DataInventory getDataInventory() {
+        return dataInventory;
+    }
+
+    /**
+     * Get the preload scheduler for background data loading.
+     */
+    public PreloadScheduler getPreloadScheduler() {
+        return preloadScheduler;
     }
 
     /**

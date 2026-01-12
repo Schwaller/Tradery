@@ -228,6 +228,20 @@ public class IndicatorEngine {
         return Indicators.lowOfAt(candles, period, barIndex);
     }
 
+    // ========== Range Position ==========
+
+    public double[] getRangePosition(int period, int skip) {
+        String key = "range_position:" + period + ":" + skip;
+        if (!cache.containsKey(key)) {
+            cache.put(key, Indicators.rangePosition(candles, period, skip));
+        }
+        return (double[]) cache.get(key);
+    }
+
+    public double getRangePositionAt(int period, int skip, int barIndex) {
+        return Indicators.rangePositionAt(candles, period, skip, barIndex);
+    }
+
     // ========== Volume ==========
 
     public double[] getAvgVolume(int period) {

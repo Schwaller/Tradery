@@ -171,6 +171,22 @@ public class TradeDetailPanel extends JPanel {
             html.append("</div>");
         }
 
+        // Indicator Values at Entry
+        if (trade.entryIndicators() != null && !trade.entryIndicators().isEmpty()) {
+            html.append("<div style='margin-bottom:8px;'>");
+            html.append("<b style='color:#666;'>Indicators at Entry</b><br/>");
+            html.append(formatIndicators(trade.entryIndicators(), trade.entryPrice()));
+            html.append("</div>");
+        }
+
+        // Indicator Values at Exit (if different from entry)
+        if (trade.exitIndicators() != null && !trade.exitIndicators().isEmpty()) {
+            html.append("<div style='margin-bottom:8px;'>");
+            html.append("<b style='color:#666;'>Indicators at Exit</b><br/>");
+            html.append(formatIndicators(trade.exitIndicators(), trade.exitPrice()));
+            html.append("</div>");
+        }
+
         html.append("</body></html>");
         detailsPane.setText(html.toString());
         detailsPane.setCaretPosition(0);
@@ -326,5 +342,93 @@ public class TradeDetailPanel extends JPanel {
     private String formatPhaseName(String phaseId) {
         // Convert kebab-case to Title Case
         return phaseId.replace("-", " ");
+    }
+
+    private String formatIndicators(java.util.Map<String, Double> indicators, Double currentPrice) {
+        if (indicators == null || indicators.isEmpty()) return "<i>none</i>";
+
+        StringBuilder sb = new StringBuilder();
+        sb.append("<table style='font-size:10px;border-collapse:collapse;'>");
+
+        // Sort indicators by type for better readability
+        java.util.List<String> sortedKeys = new java.util.ArrayList<>(indicators.keySet());
+        sortedKeys.sort((a, b) -> {
+            // Order: price/volume first, then trend (SMA), then momentum (RSI, ADX), then volatility (ATR)
+            int orderA = getIndicatorOrder(a);
+            int orderB = getIndicatorOrder(b);
+            if (orderA != orderB) return orderA - orderB;
+            return a.compareTo(b);
+        });
+
+        for (String key : sortedKeys) {
+            Double value = indicators.get(key);
+            if (value == null || Double.isNaN(value)) continue;
+
+            // Skip price/volume as they're shown elsewhere
+            if (key.equals("price") || key.equals("volume")) continue;
+
+            sb.append("<tr>");
+            sb.append("<td style='padding:1px 8px 1px 0;color:#666;'>").append(key).append(":</td>");
+            sb.append("<td style='padding:1px 0;'><b>").append(formatIndicatorValue(key, value, currentPrice)).append("</b></td>");
+            sb.append("</tr>");
+        }
+
+        sb.append("</table>");
+        return sb.toString();
+    }
+
+    private int getIndicatorOrder(String indicator) {
+        if (indicator.equals("price") || indicator.equals("volume")) return 0;
+        if (indicator.startsWith("SMA") || indicator.startsWith("EMA")) return 1;
+        if (indicator.startsWith("RSI")) return 2;
+        if (indicator.startsWith("ADX") || indicator.startsWith("PLUS_DI") || indicator.startsWith("MINUS_DI")) return 3;
+        if (indicator.startsWith("ATR") || indicator.startsWith("AVG_VOLUME")) return 4;
+        if (indicator.startsWith("MACD") || indicator.startsWith("BBANDS")) return 5;
+        return 9;
+    }
+
+    private String formatIndicatorValue(String indicator, double value, Double price) {
+        // Format based on indicator type
+        if (indicator.startsWith("SMA") || indicator.startsWith("EMA") || indicator.startsWith("BBANDS")) {
+            // Price-based indicators: show value and distance from current price
+            if (price != null && price > 0) {
+                double pctFromPrice = (value - price) / price * 100;
+                String color = pctFromPrice >= 0 ? "#4CAF50" : "#F44336";
+                return String.format("$%.2f <span style='color:%s;'>(%+.1f%%)</span>", value, color, pctFromPrice);
+            }
+            return String.format("$%.2f", value);
+        } else if (indicator.startsWith("RSI")) {
+            // RSI: color-code overbought/oversold
+            String color = value > 70 ? "#F44336" : value < 30 ? "#4CAF50" : "#666";
+            return String.format("<span style='color:%s;'>%.1f</span>", color, value);
+        } else if (indicator.startsWith("ADX")) {
+            // ADX: color-code trend strength
+            String color = value > 25 ? "#4CAF50" : "#888";
+            return String.format("<span style='color:%s;'>%.1f</span>", color, value);
+        } else if (indicator.startsWith("ATR")) {
+            // ATR: show as percentage of price if possible
+            if (price != null && price > 0) {
+                double pctOfPrice = value / price * 100;
+                return String.format("$%.2f <span style='color:#888;'>(%.2f%%)</span>", value, pctOfPrice);
+            }
+            return String.format("$%.2f", value);
+        } else if (indicator.startsWith("AVG_VOLUME")) {
+            return formatVolume(value);
+        } else if (indicator.contains("MACD")) {
+            return String.format("%.4f", value);
+        } else {
+            return String.format("%.2f", value);
+        }
+    }
+
+    private String formatVolume(double volume) {
+        if (volume >= 1_000_000_000) {
+            return String.format("%.2fB", volume / 1_000_000_000);
+        } else if (volume >= 1_000_000) {
+            return String.format("%.2fM", volume / 1_000_000);
+        } else if (volume >= 1_000) {
+            return String.format("%.1fK", volume / 1_000);
+        }
+        return String.format("%.0f", volume);
     }
 }

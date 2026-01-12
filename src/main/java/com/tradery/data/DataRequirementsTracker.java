@@ -3,6 +3,7 @@ package com.tradery.data;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
+import java.util.stream.Collectors;
 
 /**
  * Central state holder for all data requirements during a backtest session.
@@ -169,6 +170,31 @@ public class DataRequirementsTracker {
      */
     public Collection<RequirementState> getAllStates() {
         return Collections.unmodifiableCollection(requirements.values());
+    }
+
+    /**
+     * Get all requirement states grouped by consumer.
+     */
+    public Map<DataConsumer, List<RequirementState>> getStatesByConsumer() {
+        Map<DataConsumer, List<RequirementState>> result = new java.util.EnumMap<>(DataConsumer.class);
+        for (RequirementState state : requirements.values()) {
+            DataConsumer consumer = state.requirement().consumer();
+            result.computeIfAbsent(consumer, k -> new ArrayList<>()).add(state);
+        }
+        return result;
+    }
+
+    /**
+     * Get requirement states for a specific consumer.
+     */
+    public List<RequirementState> getStatesForConsumer(DataConsumer consumer) {
+        List<RequirementState> result = new ArrayList<>();
+        for (RequirementState state : requirements.values()) {
+            if (state.requirement().consumer() == consumer) {
+                result.add(state);
+            }
+        }
+        return result;
     }
 
     /**

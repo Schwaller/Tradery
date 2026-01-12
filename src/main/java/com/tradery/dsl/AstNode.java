@@ -34,9 +34,15 @@ public sealed interface AstNode {
     record IndicatorCall(String indicator, List<Double> params) implements AstNode {}
 
     /**
-     * Range function call: HIGH_OF(20), LOW_OF(20)
+     * Range function call: HIGH_OF(20), LOW_OF(20), RANGE_POSITION(20, 0)
+     * @param skip Optional second parameter for RANGE_POSITION (default 0)
      */
-    record RangeFunctionCall(String func, int period) implements AstNode {}
+    record RangeFunctionCall(String func, int period, Integer skip) implements AstNode {
+        // Convenience constructor for functions without skip parameter
+        public RangeFunctionCall(String func, int period) {
+            this(func, period, null);
+        }
+    }
 
     /**
      * Volume function call: AVG_VOLUME(20)

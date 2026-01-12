@@ -169,7 +169,7 @@ public class PhaseEvaluator {
         int maxPeriod = 50; // Default minimum warmup
 
         // Extract periods from indicator calls
-        Pattern periodPattern = Pattern.compile("(?:SMA|EMA|RSI|ATR|MACD|BBANDS|HIGH_OF|LOW_OF|AVG_VOLUME)\\s*\\(\\s*(\\d+)");
+        Pattern periodPattern = Pattern.compile("(?:SMA|EMA|RSI|ATR|MACD|BBANDS|HIGH_OF|LOW_OF|AVG_VOLUME|RANGE_POSITION)\\s*\\(\\s*(\\d+)");
         Matcher matcher = periodPattern.matcher(condition);
 
         while (matcher.find()) {

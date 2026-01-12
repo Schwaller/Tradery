@@ -20,10 +20,12 @@ public class Lexer {
         Map.entry("ADX", TokenType.INDICATOR),
         Map.entry("PLUS_DI", TokenType.INDICATOR),
         Map.entry("MINUS_DI", TokenType.INDICATOR),
+        Map.entry("STOCHASTIC", TokenType.INDICATOR),
 
         // Range functions
         Map.entry("HIGH_OF", TokenType.RANGE_FUNC),
         Map.entry("LOW_OF", TokenType.RANGE_FUNC),
+        Map.entry("RANGE_POSITION", TokenType.RANGE_FUNC),
 
         // Volume functions
         Map.entry("AVG_VOLUME", TokenType.VOLUME_FUNC),

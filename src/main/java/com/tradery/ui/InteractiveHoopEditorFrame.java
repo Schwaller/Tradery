@@ -3,6 +3,9 @@ package com.tradery.ui;
 import com.tradery.ApplicationContext;
 import com.tradery.TraderyApp;
 import com.tradery.data.CandleStore;
+import com.tradery.data.DataConsumer;
+import com.tradery.data.DataRequirement;
+import com.tradery.data.DataRequirementsTracker;
 import com.tradery.engine.HoopPatternEvaluator;
 import com.tradery.io.HoopPatternStore;
 import com.tradery.model.Candle;
@@ -276,6 +279,21 @@ public class InteractiveHoopEditorFrame extends JFrame {
         loadDataBtn.setEnabled(false);
         statusLabel.setText("Loading " + symbol + " " + timeframe + "...");
 
+        // Register with preview tracker
+        DataRequirementsTracker tracker = ApplicationContext.getInstance().getPreviewTracker();
+        String dataType = "OHLC:" + timeframe;
+        DataRequirement requirement = new DataRequirement(
+            dataType,
+            symbol,
+            startTime,
+            endTime,
+            DataRequirement.Tier.TRADING,
+            "hoop:" + (pattern != null ? pattern.getId() : "editor"),
+            DataConsumer.HOOP_PREVIEW
+        );
+        tracker.addRequirement(requirement);
+        tracker.updateStatus(dataType, DataRequirementsTracker.Status.FETCHING);
+
         SwingWorker<List<Candle>, Void> worker = new SwingWorker<>() {
             @Override
             protected List<Candle> doInBackground() throws Exception {
@@ -286,18 +304,22 @@ public class InteractiveHoopEditorFrame extends JFrame {
             protected void done() {
                 try {
                     candles = get();
+                    tracker.updateStatus(dataType, DataRequirementsTracker.Status.READY, candles.size(), candles.size());
                     chartPanel.setCandles(candles);
 
                     // Auto-set anchor to 20% into the data so hoops are visible
                     if (!candles.isEmpty()) {
                         int anchorBar = Math.max(0, candles.size() / 5);
                         chartPanel.setAnchorBar(anchorBar);
+                        // Fit chart to show all data
+                        chartPanel.fitAll();
                         statusLabel.setText("Loaded " + candles.size() + " candles. Right-click to set anchor.");
                     } else {
                         statusLabel.setText("No candles loaded.");
                     }
                     findMatchesBtn.setEnabled(true);
                 } catch (Exception ex) {
+                    tracker.updateStatus(dataType, DataRequirementsTracker.Status.ERROR, 0, 0, ex.getMessage());
                     statusLabel.setText("Error: " + ex.getMessage());
                 } finally {
                     loadDataBtn.setEnabled(true);

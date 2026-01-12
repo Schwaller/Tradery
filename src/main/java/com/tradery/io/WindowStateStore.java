@@ -132,6 +132,23 @@ public class WindowStateStore {
     }
 
     /**
+     * Get AI terminal mode preference.
+     * @return "integrated" or "external"
+     */
+    public String getAiTerminalMode() {
+        return state.aiTerminalMode != null ? state.aiTerminalMode : "integrated";
+    }
+
+    /**
+     * Set AI terminal mode preference.
+     * @param mode "integrated" or "external"
+     */
+    public void setAiTerminalMode(String mode) {
+        state.aiTerminalMode = mode;
+        save();
+    }
+
+    /**
      * Root state object
      */
     public static class WindowState {
@@ -139,6 +156,7 @@ public class WindowStateStore {
         public int launcherY;
         public int launcherWidth;
         public int launcherHeight;
+        public String aiTerminalMode;  // "integrated" or "external"
         public Map<String, ProjectWindowState> projectWindows = new HashMap<>();
     }
 

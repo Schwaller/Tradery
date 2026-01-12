@@ -1,6 +1,7 @@
 package com.tradery.ui.charts;
 
 import com.tradery.indicators.IndicatorEngine;
+import com.tradery.indicators.Indicators;
 import com.tradery.model.Candle;
 import org.jfree.chart.ChartFactory;
 import org.jfree.chart.JFreeChart;
@@ -129,37 +130,13 @@ public class IndicatorChartsManager {
         TimeSeriesCollection dataset = new TimeSeriesCollection();
         TimeSeries rsiSeries = new TimeSeries("RSI(" + rsiPeriod + ")");
 
-        // Calculate RSI
-        double[] gains = new double[candles.size()];
-        double[] losses = new double[candles.size()];
-
-        for (int i = 1; i < candles.size(); i++) {
-            double change = candles.get(i).close() - candles.get(i - 1).close();
-            gains[i] = change > 0 ? change : 0;
-            losses[i] = change < 0 ? -change : 0;
-        }
-
-        // Calculate initial averages
-        double avgGain = 0, avgLoss = 0;
-        for (int i = 1; i <= rsiPeriod; i++) {
-            avgGain += gains[i];
-            avgLoss += losses[i];
-        }
-        avgGain /= rsiPeriod;
-        avgLoss /= rsiPeriod;
-
-        // Calculate RSI values
+        // Use Indicators.rsi() instead of inline calculation
+        double[] rsiValues = Indicators.rsi(candles, rsiPeriod);
         for (int i = rsiPeriod; i < candles.size(); i++) {
-            if (i > rsiPeriod) {
-                avgGain = (avgGain * (rsiPeriod - 1) + gains[i]) / rsiPeriod;
-                avgLoss = (avgLoss * (rsiPeriod - 1) + losses[i]) / rsiPeriod;
+            if (!Double.isNaN(rsiValues[i])) {
+                Candle c = candles.get(i);
+                rsiSeries.addOrUpdate(new Millisecond(new Date(c.timestamp())), rsiValues[i]);
             }
-
-            double rs = avgLoss == 0 ? 100 : avgGain / avgLoss;
-            double rsi = 100 - (100 / (1 + rs));
-
-            Candle c = candles.get(i);
-            rsiSeries.addOrUpdate(new Millisecond(new Date(c.timestamp())), rsi);
         }
 
         dataset.addSeries(rsiSeries);
@@ -214,33 +191,24 @@ public class IndicatorChartsManager {
         TimeSeries macdLine = new TimeSeries("MACD");
         TimeSeries signalLine = new TimeSeries("Signal");
 
-        // Calculate EMAs
-        double[] fastEma = calculateEMA(candles, macdFast);
-        double[] slowEma = calculateEMA(candles, macdSlow);
-        double[] macdValues = new double[candles.size()];
+        // Use Indicators.macd() instead of inline calculation
+        Indicators.MACDResult macdResult = Indicators.macd(candles, macdFast, macdSlow, macdSignal);
+        double[] macdValues = macdResult.line();
+        double[] signalValues = macdResult.signal();
+        double[] histogramValues = macdResult.histogram();
 
-        for (int i = 0; i < candles.size(); i++) {
-            macdValues[i] = fastEma[i] - slowEma[i];
-        }
-
-        // Calculate signal line (EMA of MACD)
-        double[] signalValues = new double[candles.size()];
-        double multiplier = 2.0 / (macdSignal + 1);
-        signalValues[macdSlow - 1] = macdValues[macdSlow - 1];
-        for (int i = macdSlow; i < candles.size(); i++) {
-            signalValues[i] = (macdValues[i] - signalValues[i - 1]) * multiplier + signalValues[i - 1];
-        }
-
-        // Build series and histogram data
+        // Build series
         XYSeriesCollection histogramDataset = new XYSeriesCollection();
         XYSeries histogramSeries = new XYSeries("Histogram");
 
         for (int i = macdSlow + macdSignal - 1; i < candles.size(); i++) {
-            Candle c = candles.get(i);
-            Millisecond ms = new Millisecond(new Date(c.timestamp()));
-            macdLine.addOrUpdate(ms, macdValues[i]);
-            signalLine.addOrUpdate(ms, signalValues[i]);
-            histogramSeries.add(c.timestamp(), macdValues[i] - signalValues[i]);
+            if (!Double.isNaN(macdValues[i]) && !Double.isNaN(signalValues[i])) {
+                Candle c = candles.get(i);
+                Millisecond ms = new Millisecond(new Date(c.timestamp()));
+                macdLine.addOrUpdate(ms, macdValues[i]);
+                signalLine.addOrUpdate(ms, signalValues[i]);
+                histogramSeries.add(c.timestamp(), histogramValues[i]);
+            }
         }
 
         lineDataset.addSeries(macdLine);
@@ -282,25 +250,6 @@ public class IndicatorChartsManager {
         }
     }
 
-    private double[] calculateEMA(List<Candle> candles, int period) {
-        double[] ema = new double[candles.size()];
-        double multiplier = 2.0 / (period + 1);
-
-        // Start with SMA for first value
-        double sum = 0;
-        for (int i = 0; i < period && i < candles.size(); i++) {
-            sum += candles.get(i).close();
-        }
-        ema[period - 1] = sum / period;
-
-        // Calculate EMA
-        for (int i = period; i < candles.size(); i++) {
-            ema[i] = (candles.get(i).close() - ema[i - 1]) * multiplier + ema[i - 1];
-        }
-
-        return ema;
-    }
-
     // ===== ATR Methods =====
 
     public void setAtrChartEnabled(boolean enabled, int period) {
@@ -324,32 +273,13 @@ public class IndicatorChartsManager {
         TimeSeriesCollection dataset = new TimeSeriesCollection();
         TimeSeries atrSeries = new TimeSeries("ATR(" + atrPeriod + ")");
 
-        // Calculate True Range and ATR
-        double[] tr = new double[candles.size()];
-        tr[0] = candles.get(0).high() - candles.get(0).low();
-
-        for (int i = 1; i < candles.size(); i++) {
-            Candle curr = candles.get(i);
-            Candle prev = candles.get(i - 1);
-            double highLow = curr.high() - curr.low();
-            double highClose = Math.abs(curr.high() - prev.close());
-            double lowClose = Math.abs(curr.low() - prev.close());
-            tr[i] = Math.max(highLow, Math.max(highClose, lowClose));
-        }
-
-        // Calculate ATR using Wilder's smoothing
-        double atr = 0;
-        for (int i = 0; i < atrPeriod; i++) {
-            atr += tr[i];
-        }
-        atr /= atrPeriod;
-
+        // Use Indicators.atr() instead of inline calculation
+        double[] atrValues = Indicators.atr(candles, atrPeriod);
         for (int i = atrPeriod; i < candles.size(); i++) {
-            if (i > atrPeriod) {
-                atr = (atr * (atrPeriod - 1) + tr[i]) / atrPeriod;
+            if (!Double.isNaN(atrValues[i])) {
+                Candle c = candles.get(i);
+                atrSeries.addOrUpdate(new Millisecond(new Date(c.timestamp())), atrValues[i]);
             }
-            Candle c = candles.get(i);
-            atrSeries.addOrUpdate(new Millisecond(new Date(c.timestamp())), atr);
         }
 
         dataset.addSeries(atrSeries);

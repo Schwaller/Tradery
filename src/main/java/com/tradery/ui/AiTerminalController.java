@@ -1,5 +1,7 @@
 package com.tradery.ui;
 
+import com.tradery.io.WindowStateStore;
+
 import javax.swing.*;
 import java.awt.*;
 import java.io.File;
@@ -188,6 +190,13 @@ public class AiTerminalController {
         String traderyDir = System.getProperty("user.home") + "/.tradery";
         String displayName = aiType.substring(0, 1).toUpperCase() + aiType.substring(1);
 
+        // Check if external terminal mode is configured
+        String terminalMode = WindowStateStore.getInstance().getAiTerminalMode();
+        if ("external".equals(terminalMode)) {
+            openOsAiTerminal(aiType, traderyDir, initialPrompt, strategyName);
+            return;
+        }
+
         // Check if a different AI is currently running
         if (currentAiType != null && !currentAiType.equals(aiType) && dockedTerminalPanel.isRunning()) {
             String currentName = currentAiType.substring(0, 1).toUpperCase() + currentAiType.substring(1);
@@ -274,6 +283,50 @@ public class AiTerminalController {
         dockedTerminalWrapper.repaint();
 
         onStatus.accept("Redocked Claude terminal");
+    }
+
+    private void openOsAiTerminal(String aiType, String traderyDir, String initialPrompt, String strategyName) {
+        String displayName = aiType.substring(0, 1).toUpperCase() + aiType.substring(1);
+        String aiCommand;
+
+        if ("claude".equals(aiType)) {
+            // Claude with file access restrictions
+            aiCommand = String.format(
+                "claude --allowedTools 'Edit:~/.tradery/**,Write:~/.tradery/**,Read:~/.tradery/**' '%s'",
+                initialPrompt.replace("'", "'\\''")
+            );
+        } else {
+            // Codex or other AI
+            aiCommand = String.format("%s '%s'", aiType, initialPrompt.replace("'", "'\\''"));
+        }
+
+        String command = String.format(
+            "cd '%s' && %s",
+            traderyDir.replace("'", "'\\''"),
+            aiCommand
+        );
+
+        try {
+            String[] osascript = {
+                "osascript", "-e",
+                String.format(
+                    "tell application \"Terminal\"\n" +
+                    "    activate\n" +
+                    "    do script \"%s\"\n" +
+                    "end tell",
+                    command.replace("\\", "\\\\").replace("\"", "\\\"")
+                )
+            };
+
+            Runtime.getRuntime().exec(osascript);
+            onStatus.accept("Opened " + displayName + " CLI for " + strategyName);
+        } catch (IOException e) {
+            onStatus.accept("Error opening terminal: " + e.getMessage());
+            JOptionPane.showMessageDialog(parentFrame,
+                "Could not open Terminal: " + e.getMessage(),
+                "Error",
+                JOptionPane.ERROR_MESSAGE);
+        }
     }
 
     private void openOsCodexTerminal(String traderyDir, String initialPrompt, String strategyName) {

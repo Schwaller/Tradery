@@ -3,6 +3,7 @@ package com.tradery.ui.coordination;
 import com.tradery.ApplicationContext;
 import com.tradery.data.*;
 import com.tradery.engine.BacktestEngine;
+import com.tradery.data.PreloadScheduler;
 import com.tradery.io.PhaseStore;
 import com.tradery.io.ResultStore;
 import com.tradery.model.*;
@@ -219,6 +220,12 @@ public class BacktestCoordinator {
 
         reportProgress(0, "Starting...");
 
+        // Pause background preloading while we're doing a trading-tier load
+        PreloadScheduler preloader = ApplicationContext.getInstance().getPreloadScheduler();
+        if (preloader != null) {
+            preloader.pauseForTradingLoad();
+        }
+
         SwingWorker<BacktestResult, BacktestEngine.Progress> worker = new SwingWorker<>() {
             @Override
             protected BacktestResult doInBackground() throws Exception {
@@ -392,11 +399,34 @@ public class BacktestCoordinator {
 
             @Override
             protected void done() {
+                // Resume background preloading
+                PreloadScheduler scheduler = ApplicationContext.getInstance().getPreloadScheduler();
+                if (scheduler != null) {
+                    scheduler.resumeAfterTradingLoad();
+                }
+
                 try {
                     BacktestResult result = get();
 
                     // Save result to per-project storage
                     resultStore.save(result);
+
+                    // Record coverage to inventory after successful load
+                    DataInventory inventory = ApplicationContext.getInstance().getDataInventory();
+                    if (inventory != null) {
+                        inventory.recordCandleData(symbol, resolution, startTime, endTime);
+                        if (currentAggTrades != null && !currentAggTrades.isEmpty()) {
+                            inventory.recordAggTradesData(symbol, startTime, endTime);
+                        }
+                        if (currentFundingRates != null && !currentFundingRates.isEmpty()) {
+                            inventory.recordFundingData(symbol, startTime, endTime);
+                        }
+                        if (currentOpenInterest != null && !currentOpenInterest.isEmpty()) {
+                            inventory.recordOIData(symbol, startTime, endTime);
+                        }
+                        // Save inventory periodically
+                        inventory.save();
+                    }
 
                     // Report completion
                     if (onComplete != null) {

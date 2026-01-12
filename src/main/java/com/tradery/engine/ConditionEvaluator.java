@@ -192,6 +192,10 @@ public class ConditionEvaluator {
         return switch (node.func()) {
             case "HIGH_OF" -> engine.getHighOfAt(period, barIndex);
             case "LOW_OF" -> engine.getLowOfAt(period, barIndex);
+            case "RANGE_POSITION" -> {
+                int skip = node.skip() != null ? node.skip() : 0;
+                yield engine.getRangePositionAt(period, skip, barIndex);
+            }
             default -> throw new EvaluationException("Unknown range function: " + node.func());
         };
     }

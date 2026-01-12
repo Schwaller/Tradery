@@ -2,6 +2,7 @@ package com.tradery.ui;
 
 import com.tradery.TraderyApp;
 import com.tradery.data.DataConfig;
+import com.tradery.io.WindowStateStore;
 import com.tradery.ui.charts.ChartConfig;
 import com.tradery.ui.theme.ThemeManager;
 
@@ -17,6 +18,7 @@ import java.io.File;
 public class SettingsDialog extends JDialog {
 
     private JComboBox<String> themeCombo;
+    private JComboBox<String> aiTerminalModeCombo;
     private JLabel dataLocationLabel;
     private JLabel dataSizeLabel;
     private JButton changeLocationBtn;
@@ -39,6 +41,9 @@ public class SettingsDialog extends JDialog {
         // Theme section
         JPanel themeSection = createThemeSection();
 
+        // AI Terminal section
+        JPanel aiTerminalSection = createAiTerminalSection();
+
         // Charts section
         JPanel chartsSection = createChartsSection();
 
@@ -49,6 +54,8 @@ public class SettingsDialog extends JDialog {
         JPanel sectionsPanel = new JPanel();
         sectionsPanel.setLayout(new BoxLayout(sectionsPanel, BoxLayout.Y_AXIS));
         sectionsPanel.add(themeSection);
+        sectionsPanel.add(Box.createVerticalStrut(12));
+        sectionsPanel.add(aiTerminalSection);
         sectionsPanel.add(Box.createVerticalStrut(12));
         sectionsPanel.add(chartsSection);
         sectionsPanel.add(Box.createVerticalStrut(12));
@@ -94,6 +101,42 @@ public class SettingsDialog extends JDialog {
 
         gbc.gridx = 1; gbc.fill = GridBagConstraints.HORIZONTAL; gbc.weightx = 1.0;
         panel.add(themeCombo, gbc);
+
+        return panel;
+    }
+
+    private JPanel createAiTerminalSection() {
+        JPanel panel = new JPanel(new GridBagLayout());
+        panel.setBorder(BorderFactory.createTitledBorder(
+            BorderFactory.createEtchedBorder(), "AI Terminal",
+            TitledBorder.LEFT, TitledBorder.TOP));
+
+        GridBagConstraints gbc = new GridBagConstraints();
+        gbc.insets = new Insets(4, 8, 4, 8);
+        gbc.anchor = GridBagConstraints.WEST;
+
+        // Terminal mode row
+        gbc.gridx = 0; gbc.gridy = 0;
+        panel.add(new JLabel("Terminal Mode:"), gbc);
+
+        aiTerminalModeCombo = new JComboBox<>(new String[]{"Integrated", "External (OS Terminal)"});
+        String currentMode = WindowStateStore.getInstance().getAiTerminalMode();
+        aiTerminalModeCombo.setSelectedIndex("external".equals(currentMode) ? 1 : 0);
+        aiTerminalModeCombo.addActionListener(e -> {
+            int selected = aiTerminalModeCombo.getSelectedIndex();
+            String mode = selected == 1 ? "external" : "integrated";
+            WindowStateStore.getInstance().setAiTerminalMode(mode);
+        });
+
+        gbc.gridx = 1; gbc.fill = GridBagConstraints.HORIZONTAL; gbc.weightx = 1.0;
+        panel.add(aiTerminalModeCombo, gbc);
+
+        // Info label
+        gbc.gridx = 0; gbc.gridy = 1; gbc.gridwidth = 2;
+        gbc.fill = GridBagConstraints.HORIZONTAL;
+        JLabel infoLabel = new JLabel("<html><small>Integrated: Terminal embedded in project window.<br>External: Opens Claude/Codex in macOS Terminal.app.</small></html>");
+        infoLabel.setForeground(UIManager.getColor("Label.disabledForeground"));
+        panel.add(infoLabel, gbc);
 
         return panel;
     }

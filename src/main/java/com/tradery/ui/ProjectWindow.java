@@ -72,6 +72,9 @@ public class ProjectWindow extends JFrame {
     private PhaseAnalysisWindow phaseAnalysisWindow;
     private BacktestResult currentResult;
 
+    // Data loading status window
+    private DataLoadingStatusWindow dataLoadingStatusWindow;
+
     // Indicator controls panel (extracted)
     private IndicatorControlsPanel indicatorControls;
 
@@ -579,6 +582,16 @@ public class ProjectWindow extends JFrame {
         statusProgressBar.setVisible(false);
         statusPanel.add(statusProgressBar, BorderLayout.EAST);
 
+        // Click anywhere on status bar to open data loading status window
+        statusPanel.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+        statusPanel.setToolTipText("Click for detailed data loading status");
+        statusPanel.addMouseListener(new java.awt.event.MouseAdapter() {
+            @Override
+            public void mouseClicked(java.awt.event.MouseEvent e) {
+                openDataLoadingStatusWindow(statusPanel);
+            }
+        });
+
         bottomPanel.add(statusPanel, BorderLayout.CENTER);
 
         contentPane.add(bottomPanel, BorderLayout.SOUTH);
@@ -891,6 +904,21 @@ public class ProjectWindow extends JFrame {
         panel.add(oiStatusLabel);
 
         return panel;
+    }
+
+    /**
+     * Open the data loading status window.
+     */
+    private void openDataLoadingStatusWindow(Component anchor) {
+        if (dataLoadingStatusWindow == null) {
+            // Include both backtest tracker and global preview tracker
+            dataLoadingStatusWindow = new DataLoadingStatusWindow(
+                this,
+                backtestCoordinator.getTracker(),
+                ApplicationContext.getInstance().getPreviewTracker()
+            );
+        }
+        dataLoadingStatusWindow.showNear(anchor);
     }
 
     private JLabel createStatusLabel(String dataType) {
