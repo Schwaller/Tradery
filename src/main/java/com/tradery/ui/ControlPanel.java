@@ -1,5 +1,7 @@
 package com.tradery.ui;
 
+import com.tradery.ui.charts.ChartConfig;
+
 import javax.swing.*;
 import java.awt.*;
 
@@ -15,6 +17,7 @@ public class ControlPanel extends JToolBar {
     private JButton saveButton;
     private JButton deleteButton;
     private JButton runButton;
+    private JToggleButton candlestickToggle;
 
     private Runnable onNew;
     private Runnable onSave;
@@ -56,6 +59,14 @@ public class ControlPanel extends JToolBar {
         // Run button
         runButton = new JButton("Run Backtest");
         runButton.addActionListener(e -> { if (onRun != null) onRun.run(); });
+
+        // Candlestick toggle
+        candlestickToggle = new JToggleButton("Candles");
+        candlestickToggle.setToolTipText("Toggle between line and candlestick chart");
+        candlestickToggle.setSelected(ChartConfig.getInstance().isCandlestickMode());
+        candlestickToggle.addActionListener(e -> {
+            ChartConfig.getInstance().setCandlestickMode(candlestickToggle.isSelected());
+        });
     }
 
     private void layoutComponents() {
@@ -85,6 +96,11 @@ public class ControlPanel extends JToolBar {
         add(new JLabel("Timeframe:"));
         add(Box.createHorizontalStrut(4));
         add(resolutionCombo);
+
+        add(Box.createHorizontalStrut(16));
+
+        // Candlestick toggle
+        add(candlestickToggle);
 
         add(Box.createHorizontalGlue());
 

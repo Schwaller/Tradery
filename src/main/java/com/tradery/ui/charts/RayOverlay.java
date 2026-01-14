@@ -41,40 +41,40 @@ public class RayOverlay {
     private boolean showResistance = true;
     private boolean showSupport = true;
 
-    // Colors - resistance rays (red gradient, brighter = broken)
+    // Colors - resistance rays (blue gradient, brighter = broken)
     private static final Color[] RESISTANCE_COLORS = {
-        new Color(180, 60, 60),      // Ray 1 - darkest red (most significant)
-        new Color(200, 80, 80),      // Ray 2
-        new Color(220, 100, 100),    // Ray 3
-        new Color(240, 120, 120),    // Ray 4
-        new Color(255, 140, 140)     // Ray 5+ - lightest
+        new Color(30, 90, 180),      // Ray 1 - dark blue (most significant)
+        new Color(50, 110, 200),     // Ray 2
+        new Color(70, 130, 220),     // Ray 3
+        new Color(90, 150, 235),     // Ray 4
+        new Color(110, 170, 250)     // Ray 5+ - lightest blue
     };
 
     // Broken resistance rays are brighter
     private static final Color[] RESISTANCE_BROKEN_COLORS = {
-        new Color(255, 100, 100),    // Ray 1 broken - bright red
-        new Color(255, 120, 120),
-        new Color(255, 140, 140),
-        new Color(255, 160, 160),
-        new Color(255, 180, 180)
+        new Color(100, 160, 255),    // Ray 1 broken - bright blue
+        new Color(120, 175, 255),
+        new Color(140, 190, 255),
+        new Color(160, 205, 255),
+        new Color(180, 220, 255)
     };
 
-    // Colors - support rays (green gradient, brighter = broken)
+    // Colors - support rays (violet gradient, brighter = broken)
     private static final Color[] SUPPORT_COLORS = {
-        new Color(60, 140, 60),      // Ray 1 - darkest green (most significant)
-        new Color(80, 160, 80),
-        new Color(100, 180, 100),
-        new Color(120, 200, 120),
-        new Color(140, 220, 140)
+        new Color(120, 50, 160),     // Ray 1 - dark violet (most significant)
+        new Color(140, 70, 180),     // Ray 2
+        new Color(160, 90, 200),     // Ray 3
+        new Color(180, 110, 220),    // Ray 4
+        new Color(200, 130, 240)     // Ray 5+ - lightest violet
     };
 
     // Broken support rays are brighter
     private static final Color[] SUPPORT_BROKEN_COLORS = {
-        new Color(100, 255, 100),    // Ray 1 broken - bright green
-        new Color(120, 255, 120),
-        new Color(140, 255, 140),
-        new Color(160, 255, 160),
-        new Color(180, 255, 180)
+        new Color(180, 120, 255),    // Ray 1 broken - bright violet
+        new Color(190, 140, 255),
+        new Color(200, 160, 255),
+        new Color(210, 180, 255),
+        new Color(220, 200, 255)
     };
 
     // Strokes
@@ -213,7 +213,9 @@ public class RayOverlay {
 
         long timestamp = candles.get(anchorBar).timestamp();
         double price = raySet.anchorPrice();
-        Color color = raySet.isResistance() ? RESISTANCE_COLORS[0] : SUPPORT_COLORS[0];
+        Color baseColor = raySet.isResistance() ? RESISTANCE_COLORS[0] : SUPPORT_COLORS[0];
+        // Make slightly transparent
+        Color color = new Color(baseColor.getRed(), baseColor.getGreen(), baseColor.getBlue(), 180);
 
         AbstractXYAnnotation marker = new AbstractXYAnnotation() {
             @Override
@@ -223,16 +225,11 @@ public class RayOverlay {
                 double x = domainAxis.valueToJava2D(timestamp, dataArea, plot.getDomainAxisEdge());
                 double y = rangeAxis.valueToJava2D(price, dataArea, plot.getRangeAxisEdge());
 
-                // Draw star marker for ATH/ATL
+                // Draw unfilled circle for ATH/ATL anchor
                 g2.setColor(color);
                 g2.setStroke(new BasicStroke(2.0f));
-                double size = 8.0;
-
-                // Draw diamond shape
-                int[] xPoints = {(int)x, (int)(x + size), (int)x, (int)(x - size)};
-                int[] yPoints = {(int)(y - size), (int)y, (int)(y + size), (int)y};
-                g2.drawPolygon(xPoints, yPoints, 4);
-                g2.fillPolygon(xPoints, yPoints, 4);
+                double size = 10.0;
+                g2.draw(new Ellipse2D.Double(x - size/2, y - size/2, size, size));
             }
         };
         plot.addAnnotation(marker);

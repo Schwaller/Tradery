@@ -1,6 +1,7 @@
 package com.tradery.engine;
 
 import com.tradery.model.EntryOrderType;
+import com.tradery.model.OffsetUnit;
 
 /**
  * Tracks a pending entry order (LIMIT, STOP, or TRAILING).
@@ -16,15 +17,24 @@ public class PendingOrder {
     final double trailingReversePercent;  // For TRAILING: reversal % to trigger
 
     public PendingOrder(int signalBar, double signalPrice, EntryOrderType orderType,
-                 Double offsetPercent, Double trailingReversePercent, Integer expirationBars) {
+                        OffsetUnit offsetUnit, Double offsetValue, Double atr,
+                        Double trailingReversePercent, Integer expirationBars) {
         this.signalBar = signalBar;
         this.signalPrice = signalPrice;
         this.orderType = orderType;
         this.trailingReversePercent = trailingReversePercent != null ? trailingReversePercent : 1.0;
 
-        // Calculate order price for LIMIT/STOP
-        if (offsetPercent != null && (orderType == EntryOrderType.LIMIT || orderType == EntryOrderType.STOP)) {
-            this.orderPrice = signalPrice * (1 + offsetPercent / 100.0);
+        // Calculate order price for LIMIT/STOP based on unit type
+        if (offsetValue != null && (orderType == EntryOrderType.LIMIT || orderType == EntryOrderType.STOP)) {
+            if (offsetUnit == OffsetUnit.ATR && atr != null) {
+                // ATR-based offset: value is multiplier of ATR(14)
+                this.orderPrice = signalPrice + (offsetValue * atr);
+            } else if (offsetUnit == OffsetUnit.PERCENT) {
+                // Percentage offset
+                this.orderPrice = signalPrice * (1 + offsetValue / 100.0);
+            } else {
+                this.orderPrice = signalPrice;
+            }
         } else {
             this.orderPrice = signalPrice;
         }

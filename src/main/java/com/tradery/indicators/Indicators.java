@@ -33,6 +33,15 @@ public final class Indicators {
         double[] priceLevels, double[] volumes
     ) {}
 
+    /** Ichimoku Cloud result containing all 5 components */
+    public record IchimokuResult(
+        double[] tenkanSen,    // Conversion Line
+        double[] kijunSen,     // Base Line
+        double[] senkouSpanA,  // Leading Span A
+        double[] senkouSpanB,  // Leading Span B
+        double[] chikouSpan    // Lagging Span
+    ) {}
+
     // ========== SMA ==========
 
     public static double[] sma(List<Candle> candles, int period) {
@@ -206,5 +215,42 @@ public final class Indicators {
 
     public static double rangeLowAt(List<Candle> candles, int period, int skip, int barIndex) {
         return RangePosition.getRangeLowAt(candles, period, skip, barIndex);
+    }
+
+    // ========== Ichimoku Cloud ==========
+
+    public static IchimokuResult ichimoku(List<Candle> candles) {
+        Ichimoku.Result result = Ichimoku.calculate(candles);
+        return new IchimokuResult(result.tenkanSen(), result.kijunSen(),
+                                  result.senkouSpanA(), result.senkouSpanB(), result.chikouSpan());
+    }
+
+    public static IchimokuResult ichimoku(List<Candle> candles, int conversionPeriod, int basePeriod,
+                                          int spanBPeriod, int displacement) {
+        Ichimoku.Result result = Ichimoku.calculate(candles, conversionPeriod, basePeriod,
+                                                    spanBPeriod, displacement);
+        return new IchimokuResult(result.tenkanSen(), result.kijunSen(),
+                                  result.senkouSpanA(), result.senkouSpanB(), result.chikouSpan());
+    }
+
+    public static double ichimokuTenkanAt(List<Candle> candles, int conversionPeriod, int barIndex) {
+        return Ichimoku.tenkanSenAt(candles, conversionPeriod, barIndex);
+    }
+
+    public static double ichimokuKijunAt(List<Candle> candles, int basePeriod, int barIndex) {
+        return Ichimoku.kijunSenAt(candles, basePeriod, barIndex);
+    }
+
+    public static double ichimokuSenkouAAt(List<Candle> candles, int conversionPeriod, int basePeriod,
+                                            int displacement, int barIndex) {
+        return Ichimoku.senkouSpanAAt(candles, conversionPeriod, basePeriod, displacement, barIndex);
+    }
+
+    public static double ichimokuSenkouBAt(List<Candle> candles, int spanBPeriod, int displacement, int barIndex) {
+        return Ichimoku.senkouSpanBAt(candles, spanBPeriod, displacement, barIndex);
+    }
+
+    public static double ichimokuChikouAt(List<Candle> candles, int displacement, int barIndex) {
+        return Ichimoku.chikouSpanAt(candles, displacement, barIndex);
     }
 }

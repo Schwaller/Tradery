@@ -43,6 +43,8 @@ public final class ChartStyles {
 
     // ===== Price Chart Colors =====
     public static final Color PRICE_LINE_COLOR = new Color(255, 255, 255, 180);
+    public static final Color CANDLE_UP_COLOR = new Color(76, 175, 80);     // Green for bullish
+    public static final Color CANDLE_DOWN_COLOR = new Color(244, 67, 54);   // Red for bearish
     public static final Color WIN_COLOR = new Color(76, 175, 80, 180);
     public static final Color LOSS_COLOR = new Color(244, 67, 54, 180);
 
@@ -60,6 +62,18 @@ public final class ChartStyles {
     // ===== POC Overlay Colors =====
     public static final Color DAILY_POC_COLOR = new Color(0, 200, 200, 200);      // Cyan for previous day POC
     public static final Color FLOATING_POC_COLOR = new Color(255, 100, 200, 200); // Magenta for floating POC
+
+    // ===== VWAP Overlay Color =====
+    public static final Color VWAP_COLOR = new Color(255, 215, 0, 220);           // Gold for VWAP
+
+    // ===== Ichimoku Cloud Colors =====
+    public static final Color ICHIMOKU_TENKAN_COLOR = new Color(255, 87, 51, 200);   // Coral/Red for Tenkan-sen (Conversion)
+    public static final Color ICHIMOKU_KIJUN_COLOR = new Color(0, 150, 255, 200);    // Blue for Kijun-sen (Base)
+    public static final Color ICHIMOKU_CHIKOU_COLOR = new Color(255, 193, 7, 180);   // Gold for Chikou Span (Lagging)
+    public static final Color ICHIMOKU_SPAN_A_COLOR = new Color(76, 175, 80, 180);   // Green for Senkou Span A
+    public static final Color ICHIMOKU_SPAN_B_COLOR = new Color(244, 67, 54, 180);   // Red for Senkou Span B
+    public static final Color ICHIMOKU_CLOUD_BULLISH = new Color(76, 175, 80, 50);   // Light green fill (Span A > Span B)
+    public static final Color ICHIMOKU_CLOUD_BEARISH = new Color(244, 67, 54, 50);   // Light red fill (Span B > Span A)
 
     // ===== Multiple Overlay Color Palette (for multiple SMA/EMA overlays) =====
     public static final Color[] OVERLAY_PALETTE = {
@@ -93,6 +107,9 @@ public final class ChartStyles {
 
     // ===== ATR Chart Color =====
     public static final Color ATR_COLOR = new Color(180, 100, 255);
+
+    // ===== ADX Chart Color =====
+    public static final Color ADX_COLOR = new Color(255, 165, 0);  // Orange for ADX main line
 
     // ===== Orderflow/Delta Colors =====
     public static final Color DELTA_POSITIVE = new Color(38, 166, 91);      // Green

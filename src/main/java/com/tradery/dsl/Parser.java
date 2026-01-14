@@ -418,6 +418,11 @@ public class Parser {
                     throw new ParserException("SUPERTREND requires 2 parameters (period, multiplier), got " + params.size());
                 }
             }
+            case "ICHIMOKU" -> {
+                if (params.size() > 4) {
+                    throw new ParserException("ICHIMOKU accepts 0-4 parameters (conversionPeriod, basePeriod, spanBPeriod, displacement), got " + params.size());
+                }
+            }
             case "SMA", "EMA", "RSI", "ATR", "ADX", "PLUS_DI", "MINUS_DI" -> {
                 if (params.size() != 1) {
                     throw new ParserException(indicator + " requires 1 parameter (period), got " + params.size());
@@ -431,6 +436,7 @@ public class Parser {
         Set<String> bbandsProps = Set.of("upper", "lower", "middle", "width");
         Set<String> stochProps = Set.of("k", "d");
         Set<String> supertrendProps = Set.of("trend", "upper", "lower");
+        Set<String> ichimokuProps = Set.of("tenkan", "kijun", "senkou_a", "senkou_b", "chikou");
 
         switch (indicator) {
             case "MACD" -> {
@@ -451,6 +457,11 @@ public class Parser {
             case "SUPERTREND" -> {
                 if (!supertrendProps.contains(property)) {
                     throw new ParserException("SUPERTREND only has properties: trend, upper, lower");
+                }
+            }
+            case "ICHIMOKU" -> {
+                if (!ichimokuProps.contains(property)) {
+                    throw new ParserException("ICHIMOKU only has properties: tenkan, kijun, senkou_a, senkou_b, chikou");
                 }
             }
             case "SMA", "EMA", "RSI", "ATR" -> {

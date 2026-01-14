@@ -165,6 +165,11 @@ public class ConditionEvaluator {
                 double multiplier = params.get(1);
                 yield engine.getSupertrendTrendAt(period, multiplier, barIndex);
             }
+            case "ICHIMOKU" -> {
+                // Without property access, return the tenkan-sen (conversion line) by default
+                int conversionPeriod = params.size() > 0 ? params.get(0).intValue() : 9;
+                yield engine.getIchimokuTenkanAt(conversionPeriod, barIndex);
+            }
             default -> throw new EvaluationException("Unknown indicator: " + node.indicator());
         };
     }
@@ -215,6 +220,22 @@ public class ConditionEvaluator {
                     case "upper" -> engine.getSupertrendUpperAt(period, multiplier, barIndex);
                     case "lower" -> engine.getSupertrendLowerAt(period, multiplier, barIndex);
                     default -> throw new EvaluationException("Unknown SUPERTREND property: " + property);
+                };
+            }
+            case "ICHIMOKU" -> {
+                // Default Ichimoku parameters: 9, 26, 52, 26
+                int conversionPeriod = params.size() > 0 ? params.get(0).intValue() : 9;
+                int basePeriod = params.size() > 1 ? params.get(1).intValue() : 26;
+                int spanBPeriod = params.size() > 2 ? params.get(2).intValue() : 52;
+                int displacement = params.size() > 3 ? params.get(3).intValue() : 26;
+
+                yield switch (property) {
+                    case "tenkan" -> engine.getIchimokuTenkanAt(conversionPeriod, barIndex);
+                    case "kijun" -> engine.getIchimokuKijunAt(basePeriod, barIndex);
+                    case "senkou_a" -> engine.getIchimokuSenkouAAt(conversionPeriod, basePeriod, displacement, barIndex);
+                    case "senkou_b" -> engine.getIchimokuSenkouBAt(spanBPeriod, displacement, barIndex);
+                    case "chikou" -> engine.getIchimokuChikouAt(displacement, barIndex);
+                    default -> throw new EvaluationException("Unknown ICHIMOKU property: " + property);
                 };
             }
             default -> throw new EvaluationException("Unknown indicator for property access: " + indicator.indicator());

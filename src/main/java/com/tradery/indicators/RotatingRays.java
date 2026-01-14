@@ -83,7 +83,8 @@ public final class RotatingRays {
 
         int size = candles.size();
         int effectiveEnd = Math.max(0, size - skip);
-        int effectiveStart = Math.max(0, effectiveEnd - lookback);
+        // lookback=0 means no limit (use all data)
+        int effectiveStart = (lookback <= 0) ? 0 : Math.max(0, effectiveEnd - lookback);
 
         if (effectiveEnd <= effectiveStart) {
             return new RaySet(List.of(), -1, Double.NaN, true);
@@ -164,7 +165,8 @@ public final class RotatingRays {
 
         int size = candles.size();
         int effectiveEnd = Math.max(0, size - skip);
-        int effectiveStart = Math.max(0, effectiveEnd - lookback);
+        // lookback=0 means no limit (use all data)
+        int effectiveStart = (lookback <= 0) ? 0 : Math.max(0, effectiveEnd - lookback);
 
         if (effectiveEnd <= effectiveStart) {
             return new RaySet(List.of(), -1, Double.NaN, false);

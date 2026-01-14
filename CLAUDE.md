@@ -152,6 +152,14 @@ SUPERTREND(period, multiplier)         # Supertrend trend direction (1=up, -1=do
 SUPERTREND(period, multiplier).trend   # Trend direction (1=up, -1=down)
 SUPERTREND(period, multiplier).upper   # Upper band
 SUPERTREND(period, multiplier).lower   # Lower band
+
+ICHIMOKU()                             # Default params: 9, 26, 52, 26 - returns Tenkan-sen
+ICHIMOKU(conv, base, spanB, disp)      # Custom parameters
+ICHIMOKU().tenkan                      # Tenkan-sen (Conversion Line, 9-period default)
+ICHIMOKU().kijun                       # Kijun-sen (Base Line, 26-period default)
+ICHIMOKU().senkou_a                    # Senkou Span A (Leading Span A, shifted 26 periods)
+ICHIMOKU().senkou_b                    # Senkou Span B (Leading Span B, shifted 26 periods)
+ICHIMOKU().chikou                      # Chikou Span (Lagging Span, 26 periods back)
 ```
 
 ### Range & Volume Functions
@@ -414,6 +422,13 @@ close > PREV_DAY_VAH AND TODAY_POC > PREV_DAY_POC  # Acceptance above value
 SUPERTREND(10,3).trend == 1               # Uptrend active
 SUPERTREND(10,3).trend == -1              # Downtrend active
 close > SUPERTREND(10,3).lower            # Price above lower band (bullish)
+
+# Ichimoku Cloud
+price > ICHIMOKU().kijun                  # Price above Kijun-sen (base line)
+ICHIMOKU().tenkan crosses_above ICHIMOKU().kijun   # TK cross (bullish signal)
+price > ICHIMOKU().senkou_a AND price > ICHIMOKU().senkou_b  # Price above cloud
+ICHIMOKU().senkou_a > ICHIMOKU().senkou_b # Kumo is bullish (Span A > Span B)
+ICHIMOKU().chikou > price                 # Chikou Span above price (bullish)
 
 # Bollinger Squeeze (volatility compression)
 BBANDS(20,2).width < LOWEST(BBANDS(20,2).width, 20) * 1.15  # Near 20-bar low width

@@ -55,6 +55,8 @@ public class ProjectWindow extends JFrame {
     private JComboBox<String> durationCombo;
     private JToggleButton fitWidthBtn;
     private JToggleButton fixedWidthBtn;
+    private JToggleButton candlestickToggle;
+    private JSlider priceOpacitySlider;
     private JToggleButton fitYBtn;
     private JToggleButton fullYBtn;
     private JButton clearCacheBtn;
@@ -101,6 +103,7 @@ public class ProjectWindow extends JFrame {
     // Extracted coordinators
     private final BacktestCoordinator backtestCoordinator;
     private final AutoSaveScheduler autoSaveScheduler;
+    private final StatusManager statusManager;
 
     // Listener references for cleanup
     private Runnable themeChangeListener;
@@ -123,6 +126,7 @@ public class ProjectWindow extends JFrame {
         com.tradery.data.OpenInterestStore openInterestStore = new com.tradery.data.OpenInterestStore();
         this.backtestCoordinator = new BacktestCoordinator(backtestEngine, candleStore, aggTradesStore, fundingRateStore, openInterestStore, resultStore);
         this.autoSaveScheduler = new AutoSaveScheduler();
+        this.statusManager = new StatusManager();
 
         initializeFrame();
         initializeComponents();
@@ -186,8 +190,8 @@ public class ProjectWindow extends JFrame {
         metricsPanel = new MetricsPanel();
         tradeTablePanel = new TradeTablePanel();
 
-        // Wire up chart status callback
-        chartPanel.setOnStatusUpdate(this::setStatus);
+        // Wire up chart status callback (hover info uses low priority)
+        chartPanel.setOnStatusUpdate(statusManager::setHoverStatus);
 
         // Wire up theme change listener
         themeChangeListener = chartPanel::refreshTheme;
@@ -215,6 +219,28 @@ public class ProjectWindow extends JFrame {
         fitWidthBtn.setSelected(true);
         fitWidthBtn.addActionListener(e -> chartPanel.setFixedWidthMode(false));
         fixedWidthBtn.addActionListener(e -> chartPanel.setFixedWidthMode(true));
+
+        // Candlestick toggle
+        candlestickToggle = new JToggleButton("Candles");
+        candlestickToggle.setToolTipText("Toggle between line and candlestick chart");
+        candlestickToggle.setSelected(ChartConfig.getInstance().isCandlestickMode());
+        candlestickToggle.addActionListener(e -> {
+            ChartConfig.getInstance().setCandlestickMode(candlestickToggle.isSelected());
+            chartPanel.refreshPriceChart();
+        });
+
+        // Price opacity slider
+        priceOpacitySlider = new JSlider(0, 100, ChartConfig.getInstance().getPriceOpacity());
+        priceOpacitySlider.setPreferredSize(new Dimension(60, 20));
+        priceOpacitySlider.setToolTipText("Price opacity: " + priceOpacitySlider.getValue() + "%");
+        priceOpacitySlider.addChangeListener(e -> {
+            int value = priceOpacitySlider.getValue();
+            priceOpacitySlider.setToolTipText("Price opacity: " + value + "%");
+            if (!priceOpacitySlider.getValueIsAdjusting()) {
+                ChartConfig.getInstance().setPriceOpacity(value);
+                chartPanel.refreshPriceChart();
+            }
+        });
 
         // Y-axis toggle group (Fit / Full)
         fitYBtn = new JToggleButton("Fit Y");
@@ -279,10 +305,24 @@ public class ProjectWindow extends JFrame {
         autoSaveScheduler.setOnSave(this::saveStrategyQuietly);
         autoSaveScheduler.setOnBacktest(this::runBacktest);
 
+        // Wire up StatusManager callbacks
+        statusManager.setCallbacks(
+            (message, progress) -> {
+                statusBar.setText(" " + message);
+                if (progress >= 0 && progress < 100) {
+                    statusProgressBar.setValue(progress);
+                    statusProgressBar.setVisible(true);
+                } else {
+                    statusProgressBar.setVisible(false);
+                }
+            },
+            () -> statusProgressBar.setVisible(false)
+        );
+
         // Wire up backtest coordinator callbacks
         backtestCoordinator.setOnProgress(this::setProgress);
         backtestCoordinator.setOnComplete(this::displayResult);
-        backtestCoordinator.setOnStatus(this::setStatus);
+        backtestCoordinator.setOnStatus(this::handleBacktestStatus);
         backtestCoordinator.setOnError(this::showBacktestError);
         backtestCoordinator.setOnDataStatus(this::handleDataStatus);
         backtestCoordinator.setOnViewDataReady(this::handleViewDataReady);
@@ -292,15 +332,18 @@ public class ProjectWindow extends JFrame {
         chartConfigChangeListener = this::updateDataRequirementsBadges;
         ChartConfig.getInstance().addChangeListener(chartConfigChangeListener);
 
-        // Wire up data fetch progress (shows in status bar)
+        // Wire up data fetch progress (shows in status bar via StatusManager)
         candleStore.setProgressCallback(progress -> {
             SwingUtilities.invokeLater(() -> {
                 if (progress.message().equals("Complete") || progress.message().equals("Cancelled")) {
-                    statusProgressBar.setVisible(false);
+                    statusManager.clearStatus(StatusManager.SOURCE_CANDLE_FETCH);
                 } else {
-                    setStatus(progress.message());
-                    statusProgressBar.setVisible(true);
-                    statusProgressBar.setValue(progress.percentComplete());
+                    statusManager.setStatus(
+                        StatusManager.SOURCE_CANDLE_FETCH,
+                        progress.message(),
+                        StatusManager.Priority.LOADING,
+                        progress.percentComplete()
+                    );
                 }
             });
         });
@@ -425,7 +468,7 @@ public class ProjectWindow extends JFrame {
         strategyStore.save(strategy);
         setTitle(strategy.getName() + " - " + TraderyApp.APP_NAME);
         titleLabel.setText(strategy.getName());
-        setStatus("Auto-saved");
+        statusManager.setInfoStatus(StatusManager.SOURCE_AUTOSAVE, "Auto-saved");
     }
 
     private void layoutComponents() {
@@ -442,6 +485,13 @@ public class ProjectWindow extends JFrame {
         // Toolbar with symbol, timeframe, Run button
         JPanel toolbarLeft = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 4));
 
+        // Help button - opens strategy guide
+        JButton helpBtn = new JButton("Help");
+        helpBtn.setToolTipText("Strategy Guide & DSL Reference");
+        helpBtn.addActionListener(e -> StrategyHelpDialog.show(this));
+        toolbarLeft.add(helpBtn);
+        toolbarLeft.add(Box.createHorizontalStrut(8));
+
         toolbarLeft.add(new JLabel("Symbol:"));
         toolbarLeft.add(symbolCombo);
         toolbarLeft.add(Box.createHorizontalStrut(8));
@@ -451,6 +501,9 @@ public class ProjectWindow extends JFrame {
         toolbarLeft.add(Box.createHorizontalStrut(16));
 
         // Toggle buttons
+        toolbarLeft.add(candlestickToggle);
+        toolbarLeft.add(priceOpacitySlider);
+        toolbarLeft.add(Box.createHorizontalStrut(8));
         toolbarLeft.add(fitWidthBtn);
         toolbarLeft.add(fixedWidthBtn);
         toolbarLeft.add(Box.createHorizontalStrut(8));
@@ -554,15 +607,17 @@ public class ProjectWindow extends JFrame {
         JPanel statusPanel = new JPanel(new BorderLayout(8, 0));
         statusPanel.setBorder(BorderFactory.createEmptyBorder(4, 8, 4, 8));
 
-        // Left side: status text + data loading progress
+        // Left side: progress bars first, then status text
         JPanel leftStatusPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
         leftStatusPanel.setOpaque(false);
 
-        statusBar = new JLabel("Ready");
-        statusBar.setFont(statusBar.getFont().deriveFont(11f));
-        leftStatusPanel.add(statusBar);
+        // Main progress bar (backtest, data fetch, etc.) - first
+        statusProgressBar = new JProgressBar(0, 100);
+        statusProgressBar.setPreferredSize(new Dimension(120, 12));
+        statusProgressBar.setVisible(false);
+        leftStatusPanel.add(statusProgressBar);
 
-        // Data loading progress bar (shows when loading OI, Funding, etc.)
+        // Data loading label + progress bar (OI, Funding, etc.) - second
         dataLoadingLabel = new JLabel("");
         dataLoadingLabel.setFont(dataLoadingLabel.getFont().deriveFont(10f));
         dataLoadingLabel.setForeground(UIColors.STATUS_LOADING_ACCENT);
@@ -576,17 +631,16 @@ public class ProjectWindow extends JFrame {
         dataLoadingProgressBar.setVisible(false);
         leftStatusPanel.add(dataLoadingProgressBar);
 
+        // Status text - after progress bars
+        statusBar = new JLabel("Ready");
+        statusBar.setFont(statusBar.getFont().deriveFont(11f));
+        leftStatusPanel.add(statusBar);
+
         statusPanel.add(leftStatusPanel, BorderLayout.WEST);
 
-        // Data status panel (center) - shows status for each data type
+        // Data status panel (right) - shows status for each data type
         dataStatusPanel = createDataStatusPanel();
-        statusPanel.add(dataStatusPanel, BorderLayout.CENTER);
-
-        // Progress bar (right) - for backtest progress
-        statusProgressBar = new JProgressBar(0, 100);
-        statusProgressBar.setPreferredSize(new Dimension(120, 14));
-        statusProgressBar.setVisible(false);
-        statusPanel.add(statusProgressBar, BorderLayout.EAST);
+        statusPanel.add(dataStatusPanel, BorderLayout.EAST);
 
         // Click anywhere on status bar to open data loading status window
         statusPanel.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
@@ -677,7 +731,7 @@ public class ProjectWindow extends JFrame {
         // Check if this phase is used by current strategy (entry or exit zones)
         if (isPhaseUsedByStrategy(phaseId)) {
             SwingUtilities.invokeLater(() -> {
-                setStatus("Phase '" + phaseId + "' changed - re-running backtest...");
+                statusManager.startBacktest("Phase '" + phaseId + "' changed - re-running backtest...");
                 runBacktest();
             });
         }
@@ -700,7 +754,7 @@ public class ProjectWindow extends JFrame {
         if (autoSaveScheduler.isIgnoringFileChanges()) return;
 
         SwingUtilities.invokeLater(() -> {
-            setStatus("File changed externally - reloading...");
+            statusManager.startBacktest("File changed externally - reloading...");
 
             // Reload strategy from disk
             Strategy reloaded = strategyStore.load(strategy.getId());
@@ -732,7 +786,7 @@ public class ProjectWindow extends JFrame {
         String symbol = (String) symbolCombo.getSelectedItem();
 
         clearCacheBtn.setEnabled(false);
-        setStatus("Clearing cache for " + symbol + "...");
+        statusManager.startBacktest("Clearing cache for " + symbol + "...");
 
         SwingWorker<Void, Void> worker = new SwingWorker<>() {
             @Override
@@ -746,10 +800,10 @@ public class ProjectWindow extends JFrame {
                 clearCacheBtn.setEnabled(true);
                 try {
                     get();
-                    setStatus("Cache cleared - reloading data...");
+                    statusManager.startBacktest("Cache cleared - reloading data...");
                     runBacktest();
                 } catch (Exception e) {
-                    setStatus("Error clearing cache: " + e.getMessage());
+                    statusManager.setErrorStatus("Error clearing cache: " + e.getMessage());
                 }
             }
         };
@@ -769,20 +823,20 @@ public class ProjectWindow extends JFrame {
 
             // Save and re-run backtest
             strategyStore.save(strategy);
-            setStatus("Restored strategy from history");
+            statusManager.setInfoStatus(StatusManager.SOURCE_FILE_CHANGE, "Restored strategy from history");
             runBacktest();
         });
     }
 
     private void openPhaseAnalysis() {
         if (currentResult == null) {
-            setStatus("Run a backtest first");
+            statusManager.setInfoStatus(StatusManager.SOURCE_FILE_CHANGE, "Run a backtest first");
             return;
         }
 
         List<Candle> candles = backtestCoordinator.getCurrentCandles();
         if (candles == null || candles.isEmpty()) {
-            setStatus("No candle data available");
+            statusManager.setInfoStatus(StatusManager.SOURCE_FILE_CHANGE, "No candle data available");
             return;
         }
 
@@ -878,7 +932,23 @@ public class ProjectWindow extends JFrame {
     }
 
     private void setStatus(String message) {
-        statusBar.setText(" " + message);
+        statusManager.setInfoStatus(StatusManager.SOURCE_FILE_CHANGE, message);
+    }
+
+    /**
+     * Handle status updates from BacktestCoordinator.
+     * Uses OPERATION priority so it takes precedence over loading/hover.
+     */
+    private void handleBacktestStatus(String message) {
+        if (message.startsWith("Error:")) {
+            statusManager.setErrorStatus(message.substring(7).trim());
+        } else if (message.contains("trades") || message.contains("Win rate") || message.contains("Return")) {
+            // This is a summary message - set as idle message
+            statusManager.completeBacktest(message);
+        } else {
+            // Active operation message
+            statusManager.startBacktest(message);
+        }
     }
 
     private void showBacktestError(String error) {
@@ -1096,11 +1166,9 @@ public class ProjectWindow extends JFrame {
     private void setProgress(int percentage, String message) {
         SwingUtilities.invokeLater(() -> {
             if (percentage >= 100 || message.equals("Error") || message.equals("Complete")) {
-                statusProgressBar.setVisible(false);
+                statusManager.clearStatus(StatusManager.SOURCE_BACKTEST);
             } else {
-                setStatus(message);
-                statusProgressBar.setVisible(true);
-                statusProgressBar.setValue(percentage);
+                statusManager.updateBacktest(message, percentage);
             }
         });
     }

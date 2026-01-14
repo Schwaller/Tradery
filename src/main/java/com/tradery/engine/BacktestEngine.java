@@ -109,7 +109,10 @@ public class BacktestEngine {
         List<String> errors = new ArrayList<>();
 
         // Initialize indicator engine FIRST so charts can display data even if parsing fails
-        initializeIndicatorEngine(candles, config.resolution());
+        if (onProgress != null) {
+            onProgress.accept(new Progress(0, candles.size(), 0, "Initializing indicators..."));
+        }
+        initializeIndicatorEngine(candles, config.resolution(), onProgress);
 
         // Evaluate phases upfront if any are required or excluded
         Map<String, boolean[]> phaseStates = new HashMap<>();
@@ -123,7 +126,12 @@ public class BacktestEngine {
             try {
                 PhaseEvaluator phaseEvaluator = new PhaseEvaluator(candleStore);
                 phaseStates = phaseEvaluator.evaluatePhases(
-                    requiredPhases, candles, config.resolution()
+                    requiredPhases, candles, config.resolution(),
+                    phaseName -> {
+                        if (onProgress != null) {
+                            onProgress.accept(new Progress(0, candles.size(), 0, "Evaluating phase: " + phaseName + "..."));
+                        }
+                    }
                 );
             } catch (IOException e) {
                 return createErrorResult(strategy, config, startTime,
@@ -281,36 +289,7 @@ public class BacktestEngine {
                 String dcaExitReason = null;
                 double dcaExitPrice = candle.close();
 
-                // First, check for emergency exits (exitImmediately zones) - always checked even during DCA
-                for (OpenTradeState ots : openTrades) {
-                    double currentPnlPercent = calculatePnlPercent(ots.trade, candle.close());
-                    for (ParsedExitZone pz : parsedZones) {
-                        if (pz.zone.matches(currentPnlPercent) && pz.zone.exitImmediately()) {
-                            // Check zone phase filters
-                            if (pz.zone.hasPhaseFilters()) {
-                                boolean zonePhasesActive = PhaseEvaluator.allPhasesActive(
-                                    phaseStates, pz.zone.requiredPhaseIds(), pz.zone.excludedPhaseIds(), i
-                                );
-                                if (!zonePhasesActive) {
-                                    continue;  // Zone phases not satisfied, try next zone
-                                }
-                            }
-                            ots.exitReason = "zone_exit";
-                            ots.exitPrice = candle.close();
-                            ots.exitZone = pz.zone.name();
-                            ots.matchedZone = pz.zone;
-                            if (strategy.isDcaEnabled()) {
-                                dcaExitReason = "zone_exit";
-                                dcaExitPrice = candle.close();
-                            } else {
-                                toClose.add(ots);
-                            }
-                            break;
-                        }
-                    }
-                }
-
-                // If emergency exit triggered in DCA mode, close all trades in the position
+                // If DCA exit triggered, close all trades in the position
                 ExitZone dcaMatchedZone = null;
                 if (dcaExitReason != null) {
                     // Find the zone that triggered the exit
@@ -405,31 +384,15 @@ public class BacktestEngine {
                             continue;  // Not enough bars passed yet
                         }
 
-                        // Check if zone requires immediate exit (only for directly matched zones, not fallback)
-                        if (!isZoneFallback && zone.exitImmediately()) {
-                            exitReason = "zone_exit";
-                            exitPrice = candle.close();
-                            ots.exitReason = exitReason;
-                            ots.exitPrice = exitPrice;
-                            ots.exitZone = exitZoneName;
-                            ots.matchedZone = zone;
-                            if (isDcaPosition) {
-                                dcaExitReason = exitReason;
-                                dcaExitPrice = exitPrice;
-                                dcaMatchedZone = zone;
-                                break;
-                            } else {
-                                toClose.add(ots);
-                                continue;
-                            }
-                        }
-
                         // Use zone's exit configuration
-                        StopLossType slType = zone.stopLossType();
-                        Double slValue = zone.stopLossValue();
-                        TakeProfitType tpType = zone.takeProfitType();
-                        Double tpValue = zone.takeProfitValue();
                         AstNode exitConditionAst = matchingZone.exitConditionAst;
+                        boolean isMarketExit = !isZoneFallback && zone.exitImmediately();
+
+                        // For Market Exit zones, skip SL/TP - only use DSL condition
+                        StopLossType slType = isMarketExit ? StopLossType.NONE : zone.stopLossType();
+                        Double slValue = isMarketExit ? null : zone.stopLossValue();
+                        TakeProfitType tpType = isMarketExit ? TakeProfitType.NONE : zone.takeProfitType();
+                        Double tpValue = isMarketExit ? null : zone.takeProfitValue();
 
                         // Handle CLEAR - reset trailing stop state
                         if (slType == StopLossType.CLEAR) {
@@ -498,7 +461,7 @@ public class BacktestEngine {
                             boolean shouldExit = dslExitSignal && hoopExitSignal;
 
                             if (shouldExit) {
-                                exitReason = "signal";
+                                exitReason = isMarketExit ? "market_exit" : "signal";
                                 exitPrice = candle.close();
                             }
                         }
@@ -969,11 +932,15 @@ public class BacktestEngine {
                         } else {
                             // LIMIT, STOP, or TRAILING order: create pending order
                             // New signal replaces any existing pending order
+                            OffsetUnit offsetUnit = strategy.getEntrySettings().getOrderOffsetUnit();
+                            Double atr = offsetUnit == OffsetUnit.ATR ? indicatorEngine.getATRAt(14, i) : null;
                             pendingOrder = new PendingOrder(
                                 i,
                                 candle.close(),
                                 orderType,
-                                strategy.getEntrySettings().getOrderOffsetPercent(),
+                                offsetUnit,
+                                strategy.getEntrySettings().getOrderOffsetValue(),
+                                atr,
                                 strategy.getEntrySettings().getTrailingReversePercent(),
                                 strategy.getEntrySettings().getExpirationBars()
                             );
@@ -1103,15 +1070,28 @@ public class BacktestEngine {
     /**
      * Initialize the indicator engine with candle data and optional orderflow/funding/OI data.
      */
-    private void initializeIndicatorEngine(List<Candle> candles, String resolution) {
+    private void initializeIndicatorEngine(List<Candle> candles, String resolution, Consumer<Progress> onProgress) {
+        if (onProgress != null) {
+            onProgress.accept(new Progress(0, 4, 0, "Loading candle data..."));
+        }
         indicatorEngine.setCandles(candles, resolution);
+
         if (aggTrades != null && !aggTrades.isEmpty()) {
+            if (onProgress != null) {
+                onProgress.accept(new Progress(1, 4, 25, "Processing orderflow data..."));
+            }
             indicatorEngine.setAggTrades(aggTrades);
         }
         if (fundingRates != null && !fundingRates.isEmpty()) {
+            if (onProgress != null) {
+                onProgress.accept(new Progress(2, 4, 50, "Processing funding rates..."));
+            }
             indicatorEngine.setFundingRates(fundingRates);
         }
         if (openInterestData != null && !openInterestData.isEmpty()) {
+            if (onProgress != null) {
+                onProgress.accept(new Progress(3, 4, 75, "Processing open interest..."));
+            }
             indicatorEngine.setOpenInterest(openInterestData);
         }
     }

@@ -78,6 +78,7 @@ public class HoopPatternChartPanel extends JPanel {
     // Smoothing settings
     private PriceSmoothingType smoothingType = PriceSmoothingType.NONE;
     private int smoothingPeriod = 5;
+    private int priceLineOpacity = 255; // 0-255
 
     // Callbacks
     private Runnable onPatternChanged;
@@ -218,6 +219,15 @@ public class HoopPatternChartPanel extends JPanel {
         updateChart();
     }
 
+    public void setPriceLineOpacity(int opacity) {
+        this.priceLineOpacity = Math.max(0, Math.min(255, opacity));
+        updateChart();
+    }
+
+    public int getPriceLineOpacity() {
+        return priceLineOpacity;
+    }
+
     public void setOnPatternChanged(Runnable callback) {
         this.onPatternChanged = callback;
     }
@@ -245,6 +255,11 @@ public class HoopPatternChartPanel extends JPanel {
 
         TimeSeriesCollection priceDataset = new TimeSeriesCollection(priceSeries);
 
+        // Configure renderer for price line with opacity
+        XYLineAndShapeRenderer renderer = (XYLineAndShapeRenderer) pricePlot.getRenderer();
+        renderer.setSeriesPaint(0, new Color(255, 255, 255, priceLineOpacity));
+        renderer.setSeriesStroke(0, new BasicStroke(1.0f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+
         // Add smoothed price line if smoothing is enabled
         if (smoothingType != PriceSmoothingType.NONE) {
             double[] smoothedPrices = calculateSmoothedPrices();
@@ -259,7 +274,6 @@ public class HoopPatternChartPanel extends JPanel {
             priceDataset.addSeries(smoothedSeries);
 
             // Configure renderer for smoothed line (orange, thicker)
-            XYLineAndShapeRenderer renderer = (XYLineAndShapeRenderer) pricePlot.getRenderer();
             renderer.setSeriesPaint(1, new Color(255, 165, 0)); // Orange
             renderer.setSeriesStroke(1, new BasicStroke(2.0f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
         }

@@ -11,16 +11,21 @@ import org.jfree.chart.annotations.XYTitleAnnotation;
 import org.jfree.chart.axis.DateAxis;
 import org.jfree.chart.axis.ValueAxis;
 import org.jfree.chart.plot.XYPlot;
+import org.jfree.chart.renderer.xy.CandlestickRenderer;
 import org.jfree.chart.renderer.xy.XYBarRenderer;
+import org.jfree.chart.renderer.xy.XYDifferenceRenderer;
 import org.jfree.chart.renderer.xy.XYLineAndShapeRenderer;
 import org.jfree.data.time.Millisecond;
 import org.jfree.data.time.TimeSeries;
 import org.jfree.data.time.TimeSeriesCollection;
+import org.jfree.data.time.ohlc.OHLCSeries;
+import org.jfree.data.time.ohlc.OHLCSeriesCollection;
 import org.jfree.data.xy.XYSeries;
 import org.jfree.data.xy.XYSeriesCollection;
 
 import javax.swing.*;
 import java.awt.*;
+import java.awt.Paint;
 import java.awt.geom.Ellipse2D;
 import java.text.SimpleDateFormat;
 import java.time.Year;
@@ -106,6 +111,7 @@ public class ChartsPanel extends JPanel {
         setAtrChartEnabled(config.isAtrEnabled(), config.getAtrPeriod());
         setStochasticChartEnabled(config.isStochasticEnabled(), config.getStochasticKPeriod(), config.getStochasticDPeriod());
         setRangePositionChartEnabled(config.isRangePositionEnabled(), config.getRangePositionPeriod());
+        setAdxChartEnabled(config.isAdxEnabled(), config.getAdxPeriod());
 
         // Apply orderflow chart settings
         double threshold = config.getWhaleThreshold();
@@ -165,8 +171,20 @@ public class ChartsPanel extends JPanel {
         if (config.isFloatingPocEnabled()) {
             overlayManager.setFloatingPocOverlay(candles);
         }
+        if (config.isVwapEnabled()) {
+            overlayManager.setVwapOverlay(candles);
+        }
         if (config.isRayOverlayEnabled()) {
             overlayManager.setRayOverlay(true, config.getRayLookback(), config.getRaySkip(), candles);
+        }
+        if (config.isIchimokuEnabled()) {
+            overlayManager.setIchimokuOverlay(
+                config.getIchimokuConversionPeriod(),
+                config.getIchimokuBasePeriod(),
+                config.getIchimokuSpanBPeriod(),
+                config.getIchimokuDisplacement(),
+                candles
+            );
         }
     }
 
@@ -318,7 +336,7 @@ public class ChartsPanel extends JPanel {
             indicatorManager.getDeltaChart(), indicatorManager.getCvdChart(), indicatorManager.getVolumeRatioChart(),
             indicatorManager.getWhaleChart(), indicatorManager.getRetailChart(),
             indicatorManager.getFundingChart(), indicatorManager.getOiChart(),
-            indicatorManager.getStochasticChart(), indicatorManager.getRangePositionChart(),
+            indicatorManager.getStochasticChart(), indicatorManager.getRangePositionChart(), indicatorManager.getAdxChart(),
             equityChart, comparisonChart, capitalUsageChart, tradePLChart
         };
         JPanel[] allWrappers = {
@@ -327,7 +345,7 @@ public class ChartsPanel extends JPanel {
             indicatorManager.getDeltaChartWrapper(), indicatorManager.getCvdChartWrapper(), indicatorManager.getVolumeRatioChartWrapper(),
             indicatorManager.getWhaleChartWrapper(), indicatorManager.getRetailChartWrapper(),
             indicatorManager.getFundingChartWrapper(), indicatorManager.getOiChartWrapper(),
-            indicatorManager.getStochasticChartWrapper(), indicatorManager.getRangePositionChartWrapper(),
+            indicatorManager.getStochasticChartWrapper(), indicatorManager.getRangePositionChartWrapper(), indicatorManager.getAdxChartWrapper(),
             zoomManager.getChartWrappers()[2], zoomManager.getChartWrappers()[3],
             zoomManager.getChartWrappers()[4], zoomManager.getChartWrappers()[5]
         };
@@ -573,6 +591,20 @@ public class ChartsPanel extends JPanel {
         return overlayManager.isFloatingPocEnabled();
     }
 
+    // ===== VWAP Overlay Delegation =====
+
+    public void setVwapOverlay(List<Candle> candles) {
+        overlayManager.setVwapOverlay(candles);
+    }
+
+    public void clearVwapOverlay() {
+        overlayManager.clearVwapOverlay();
+    }
+
+    public boolean isVwapEnabled() {
+        return overlayManager.isVwapEnabled();
+    }
+
     // ===== Ray Overlay Delegation =====
 
     public void setRayOverlay(boolean enabled, int lookback, int skip) {
@@ -609,6 +641,20 @@ public class ChartsPanel extends JPanel {
 
     public boolean isRayShowSupport() {
         return overlayManager.isRayShowSupport();
+    }
+
+    // ===== Ichimoku Cloud Overlay =====
+
+    public void setIchimokuOverlay(int conversionPeriod, int basePeriod, int spanBPeriod, int displacement) {
+        overlayManager.setIchimokuOverlay(conversionPeriod, basePeriod, spanBPeriod, displacement, currentCandles);
+    }
+
+    public void clearIchimokuOverlay() {
+        overlayManager.clearIchimokuOverlay();
+    }
+
+    public boolean isIchimokuEnabled() {
+        return overlayManager.isIchimokuEnabled();
     }
 
     // ===== Indicator Chart Delegation =====
@@ -651,6 +697,14 @@ public class ChartsPanel extends JPanel {
 
     public boolean isRangePositionChartEnabled() {
         return indicatorManager.isRangePositionChartEnabled();
+    }
+
+    public void setAdxChartEnabled(boolean enabled, int period) {
+        indicatorManager.setAdxChartEnabled(enabled, period);
+    }
+
+    public boolean isAdxChartEnabled() {
+        return indicatorManager.isAdxChartEnabled();
     }
 
     public void setDeltaChartEnabled(boolean enabled) {
@@ -869,19 +923,100 @@ public class ChartsPanel extends JPanel {
             .toList()
             .forEach(plot::removeAnnotation);
 
-        // Price line
-        TimeSeries priceSeries = new TimeSeries("Price");
-        for (Candle c : candles) {
-            priceSeries.addOrUpdate(new Millisecond(new Date(c.timestamp())), c.close());
+        boolean candlestickMode = ChartConfig.getInstance().isCandlestickMode();
+        int priceOpacity = ChartConfig.getInstance().getPriceOpacity();
+        int alpha = (int) (priceOpacity * 2.55);  // Convert 0-100 to 0-255
+
+        if (candlestickMode) {
+            // Candlestick chart
+            OHLCSeries ohlcSeries = new OHLCSeries("Price");
+            for (Candle c : candles) {
+                ohlcSeries.add(new Millisecond(new Date(c.timestamp())),
+                    c.open(), c.high(), c.low(), c.close());
+            }
+            OHLCSeriesCollection dataset = new OHLCSeriesCollection();
+            dataset.addSeries(ohlcSeries);
+            plot.setDataset(dataset);
+
+            // Apply opacity to candle colors
+            Color upColor = new Color(
+                ChartStyles.CANDLE_UP_COLOR.getRed(),
+                ChartStyles.CANDLE_UP_COLOR.getGreen(),
+                ChartStyles.CANDLE_UP_COLOR.getBlue(),
+                alpha);
+            Color downColor = new Color(
+                ChartStyles.CANDLE_DOWN_COLOR.getRed(),
+                ChartStyles.CANDLE_DOWN_COLOR.getGreen(),
+                ChartStyles.CANDLE_DOWN_COLOR.getBlue(),
+                alpha);
+
+            CandlestickRenderer renderer = new CandlestickRenderer() {
+                @Override
+                public Paint getItemPaint(int row, int column) {
+                    // Color wicks based on candle direction
+                    OHLCSeriesCollection ds = (OHLCSeriesCollection) plot.getDataset();
+                    if (ds != null && column < ds.getItemCount(row)) {
+                        double open = ds.getOpenValue(row, column);
+                        double close = ds.getCloseValue(row, column);
+                        return close >= open ? upColor : downColor;
+                    }
+                    return downColor;
+                }
+            };
+            renderer.setUpPaint(upColor);
+            renderer.setDownPaint(downColor);
+            renderer.setUseOutlinePaint(false);  // No body outline
+            renderer.setCandleWidth(3.0);  // Fixed width in pixels
+            renderer.setDrawVolume(false);
+            plot.setRenderer(renderer);
+        } else {
+            // Line chart with high/low cloud
+
+            // First, add high/low cloud as background (dataset index 0)
+            TimeSeries highSeries = new TimeSeries("High");
+            TimeSeries lowSeries = new TimeSeries("Low");
+            for (Candle c : candles) {
+                Millisecond time = new Millisecond(new Date(c.timestamp()));
+                highSeries.addOrUpdate(time, c.high());
+                lowSeries.addOrUpdate(time, c.low());
+            }
+            TimeSeriesCollection cloudDataset = new TimeSeriesCollection();
+            cloudDataset.addSeries(highSeries);
+            cloudDataset.addSeries(lowSeries);
+            plot.setDataset(0, cloudDataset);
+
+            // Use XYDifferenceRenderer for transparent cloud fill
+            Color cloudColor = new Color(
+                ChartStyles.PRICE_LINE_COLOR.getRed(),
+                ChartStyles.PRICE_LINE_COLOR.getGreen(),
+                ChartStyles.PRICE_LINE_COLOR.getBlue(),
+                45  // Low opacity (increased from 30)
+            );
+            XYDifferenceRenderer cloudRenderer = new XYDifferenceRenderer(cloudColor, cloudColor, false);
+            cloudRenderer.setSeriesPaint(0, new Color(0, 0, 0, 0));  // Invisible lines
+            cloudRenderer.setSeriesPaint(1, new Color(0, 0, 0, 0));
+            plot.setRenderer(0, cloudRenderer);
+
+            // Then, add close price line on top (dataset index 1)
+            TimeSeries priceSeries = new TimeSeries("Price");
+            for (Candle c : candles) {
+                priceSeries.addOrUpdate(new Millisecond(new Date(c.timestamp())), c.close());
+            }
+            TimeSeriesCollection priceDataset = new TimeSeriesCollection(priceSeries);
+            plot.setDataset(1, priceDataset);
+
+            // Apply opacity to price line (not the cloud)
+            Color priceLineColor = new Color(
+                ChartStyles.PRICE_LINE_COLOR.getRed(),
+                ChartStyles.PRICE_LINE_COLOR.getGreen(),
+                ChartStyles.PRICE_LINE_COLOR.getBlue(),
+                alpha);
+
+            XYLineAndShapeRenderer renderer = new XYLineAndShapeRenderer(true, false);
+            renderer.setSeriesPaint(0, priceLineColor);
+            renderer.setSeriesStroke(0, ChartStyles.LINE_STROKE);
+            plot.setRenderer(1, renderer);
         }
-
-        TimeSeriesCollection dataset = new TimeSeriesCollection(priceSeries);
-        plot.setDataset(dataset);
-
-        XYLineAndShapeRenderer renderer = new XYLineAndShapeRenderer(true, false);
-        renderer.setSeriesPaint(0, ChartStyles.PRICE_LINE_COLOR);
-        renderer.setSeriesStroke(0, ChartStyles.LINE_STROKE);
-        plot.setRenderer(renderer);
 
         // Add Mayer Multiple annotations if enabled
         overlayManager.addMayerMultipleAnnotations(plot, candles);
@@ -1320,6 +1455,17 @@ public class ChartsPanel extends JPanel {
             indicatorManager.updateVolumeRatioChart(currentCandles);
             indicatorManager.updateWhaleChart(currentCandles);
             indicatorManager.updateRetailChart(currentCandles);
+        }
+    }
+
+    /**
+     * Refresh the price chart (e.g., when switching between line and candlestick mode).
+     */
+    public void refreshPriceChart() {
+        if (currentCandles != null && !currentCandles.isEmpty()) {
+            updatePriceChart(currentCandles, currentTrades);
+            // Re-apply ray overlay after chart update (annotations are cleared by updatePriceChart)
+            overlayManager.updateRayOverlay(currentCandles);
         }
     }
 

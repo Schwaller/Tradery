@@ -181,7 +181,7 @@ public class StrategyHelpDialog extends JDialog {
             <table>
                 <tr><th>Setting</th><th>Description</th></tr>
                 <tr><td><b>P&L Range</b></td><td>Min/Max P&L %% where this zone applies</td></tr>
-                <tr><td><b>Exit Immediately</b></td><td>Close position as soon as P&L enters zone</td></tr>
+                <tr><td><b>Market Exit</b></td><td>Exit at market price (ignores SL/TP levels)</td></tr>
                 <tr><td><b>Exit Condition</b></td><td>DSL condition that must be true to exit</td></tr>
                 <tr><td><b>Min Bars Before Exit</b></td><td>Wait X bars after entry before allowing exit</td></tr>
             </table>

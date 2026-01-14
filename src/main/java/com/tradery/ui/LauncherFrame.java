@@ -486,10 +486,15 @@ public class LauncherFrame extends JFrame {
     }
 
     private void openHoopsWindow() {
-        HoopPatternStore hoopPatternStore = ApplicationContext.getInstance().getHoopPatternStore();
-        HoopPatternChooserFrame frame = new HoopPatternChooserFrame(hoopPatternStore);
-        frame.setLocationRelativeTo(this);
-        frame.setVisible(true);
+        try {
+            HoopPatternStore hoopPatternStore = ApplicationContext.getInstance().getHoopPatternStore();
+            InteractiveHoopEditorFrame frame = new InteractiveHoopEditorFrame(hoopPatternStore);
+            frame.setLocationRelativeTo(this);
+            frame.setVisible(true);
+        } catch (Exception e) {
+            e.printStackTrace();
+            JOptionPane.showMessageDialog(this, "Error opening Hoops window: " + e.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
+        }
     }
 
     @Override

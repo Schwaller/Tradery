@@ -15,7 +15,10 @@ public class EntrySettings {
 
     // Pending order settings
     private EntryOrderType orderType = EntryOrderType.MARKET;
-    private Double orderOffsetPercent;      // For LIMIT (negative) / STOP (positive)
+    private OffsetUnit orderOffsetUnit = OffsetUnit.MARKET;  // MARKET, PERCENT, or ATR
+    private Double orderOffsetValue;        // For LIMIT (negative) / STOP (positive)
+    @Deprecated
+    private Double orderOffsetPercent;      // Legacy field - use orderOffsetValue instead
     private Double trailingReversePercent;  // For TRAILING: reversal % to trigger entry
     private Integer expirationBars;         // Optional: cancel pending order after X bars
 
@@ -71,12 +74,40 @@ public class EntrySettings {
         this.orderType = orderType != null ? orderType : EntryOrderType.MARKET;
     }
 
-    public Double getOrderOffsetPercent() {
+    public OffsetUnit getOrderOffsetUnit() {
+        return orderOffsetUnit != null ? orderOffsetUnit : OffsetUnit.MARKET;
+    }
+
+    public void setOrderOffsetUnit(OffsetUnit orderOffsetUnit) {
+        this.orderOffsetUnit = orderOffsetUnit != null ? orderOffsetUnit : OffsetUnit.MARKET;
+    }
+
+    public Double getOrderOffsetValue() {
+        // Backward compat: use legacy field if new field not set
+        if (orderOffsetValue != null) {
+            return orderOffsetValue;
+        }
         return orderOffsetPercent;
     }
 
+    public void setOrderOffsetValue(Double orderOffsetValue) {
+        this.orderOffsetValue = orderOffsetValue;
+        this.orderOffsetPercent = null; // Clear legacy field
+    }
+
+    @Deprecated
+    public Double getOrderOffsetPercent() {
+        return getOrderOffsetValue();
+    }
+
+    @Deprecated
     public void setOrderOffsetPercent(Double orderOffsetPercent) {
-        this.orderOffsetPercent = orderOffsetPercent;
+        // Migrate to new field
+        this.orderOffsetValue = orderOffsetPercent;
+        this.orderOffsetPercent = null;
+        if (orderOffsetPercent != null && orderOffsetUnit == OffsetUnit.MARKET) {
+            this.orderOffsetUnit = OffsetUnit.PERCENT;
+        }
     }
 
     public Double getTrailingReversePercent() {

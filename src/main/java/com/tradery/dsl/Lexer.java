@@ -119,6 +119,12 @@ public class Lexer {
         Map.entry("k", TokenType.PROPERTY),
         Map.entry("d", TokenType.PROPERTY),
         Map.entry("trend", TokenType.PROPERTY),
+        // Ichimoku properties
+        Map.entry("tenkan", TokenType.PROPERTY),
+        Map.entry("kijun", TokenType.PROPERTY),
+        Map.entry("senkou_a", TokenType.PROPERTY),
+        Map.entry("senkou_b", TokenType.PROPERTY),
+        Map.entry("chikou", TokenType.PROPERTY),
 
         // Aggregate functions (operate on expressions over lookback)
         Map.entry("LOWEST", TokenType.AGGREGATE_FUNC),
@@ -126,7 +132,10 @@ public class Lexer {
         Map.entry("PERCENTILE", TokenType.AGGREGATE_FUNC),
 
         // Supertrend indicator
-        Map.entry("SUPERTREND", TokenType.INDICATOR)
+        Map.entry("SUPERTREND", TokenType.INDICATOR),
+
+        // Ichimoku Cloud indicator
+        Map.entry("ICHIMOKU", TokenType.INDICATOR)
     );
 
     private final String source;

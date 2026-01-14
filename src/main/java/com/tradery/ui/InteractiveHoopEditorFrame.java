@@ -56,6 +56,8 @@ public class InteractiveHoopEditorFrame extends JFrame {
     private JComboBox<PriceSmoothingType> smoothingTypeCombo;
     private JSpinner smoothingPeriodSpinner;
     private JLabel smoothingPeriodLabel;
+    private JSlider priceOpacitySlider;
+    private JLabel priceOpacityLabel;
     private JLabel statusLabel;
     private JList<String> hoopList;
     private DefaultListModel<String> hoopListModel;
@@ -86,8 +88,8 @@ public class InteractiveHoopEditorFrame extends JFrame {
         initializeFrame();
         initializeComponents();
         layoutComponents();
-        loadPatterns();
         setupAutoSave();
+        loadPatterns();
     }
 
     private void initializeFrame() {
@@ -157,6 +159,15 @@ public class InteractiveHoopEditorFrame extends JFrame {
 
         smoothingPeriodLabel = new JLabel("Period:");
 
+        // Price line opacity slider
+        priceOpacitySlider = new JSlider(0, 100, 100);
+        priceOpacitySlider.setPreferredSize(new Dimension(80, priceOpacitySlider.getPreferredSize().height));
+        priceOpacitySlider.addChangeListener(e -> {
+            int percent = priceOpacitySlider.getValue();
+            chartPanel.setPriceLineOpacity(percent * 255 / 100);
+        });
+        priceOpacityLabel = new JLabel("Price:");
+
         statusLabel = new JLabel("Select a pattern to begin");
 
         // Chart panel
@@ -219,6 +230,9 @@ public class InteractiveHoopEditorFrame extends JFrame {
         toolbar.add(smoothingTypeCombo);
         toolbar.add(smoothingPeriodLabel);
         toolbar.add(smoothingPeriodSpinner);
+        toolbar.add(Box.createHorizontalStrut(8));
+        toolbar.add(priceOpacityLabel);
+        toolbar.add(priceOpacitySlider);
         toolbar.add(Box.createHorizontalGlue());
         toolbar.add(statusLabel);
 
@@ -241,17 +255,20 @@ public class InteractiveHoopEditorFrame extends JFrame {
         patternButtons.add(deletePatternBtn);
         leftPanel.add(patternButtons, BorderLayout.SOUTH);
 
-        // Right panel: Hoop list
+        // Right panel: Hoop list + properties
         JPanel rightPanel = new JPanel(new BorderLayout(0, 4));
-        rightPanel.setPreferredSize(new Dimension(150, 0));
+        rightPanel.setPreferredSize(new Dimension(180, 0));
         rightPanel.setBorder(BorderFactory.createEmptyBorder(8, 0, 8, 8));
+
+        // Top: Hoops label + list + buttons
+        JPanel hoopListPanel = new JPanel(new BorderLayout(0, 4));
 
         JLabel hoopsLabel = new JLabel("Hoops");
         hoopsLabel.setFont(hoopsLabel.getFont().deriveFont(Font.BOLD));
-        rightPanel.add(hoopsLabel, BorderLayout.NORTH);
+        hoopListPanel.add(hoopsLabel, BorderLayout.NORTH);
 
         JScrollPane listScroll = new JScrollPane(hoopList);
-        rightPanel.add(listScroll, BorderLayout.CENTER);
+        hoopListPanel.add(listScroll, BorderLayout.CENTER);
 
         // Add/remove buttons
         JPanel listButtons = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
@@ -263,32 +280,57 @@ public class InteractiveHoopEditorFrame extends JFrame {
         removeHoopBtn.addActionListener(e -> removeHoop());
         listButtons.add(addHoopBtn);
         listButtons.add(removeHoopBtn);
-        rightPanel.add(listButtons, BorderLayout.SOUTH);
+        hoopListPanel.add(listButtons, BorderLayout.SOUTH);
 
-        // Bottom panel: Properties
-        JPanel bottomPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 12, 4));
-        bottomPanel.setBorder(BorderFactory.createCompoundBorder(
+        // Properties panel (vertical layout)
+        JPanel propsPanel = new JPanel(new GridBagLayout());
+        propsPanel.setBorder(BorderFactory.createCompoundBorder(
             BorderFactory.createMatteBorder(1, 0, 0, 0, Color.GRAY),
-            BorderFactory.createEmptyBorder(8, 8, 8, 8)
+            BorderFactory.createEmptyBorder(8, 0, 0, 0)
         ));
 
-        bottomPanel.add(new JLabel("Name:"));
-        bottomPanel.add(nameField);
-        bottomPanel.add(Box.createHorizontalStrut(8));
-        bottomPanel.add(new JLabel("Min %:"));
-        bottomPanel.add(minPercentSpinner);
-        bottomPanel.add(new JLabel("Max %:"));
-        bottomPanel.add(maxPercentSpinner);
-        bottomPanel.add(Box.createHorizontalStrut(8));
-        bottomPanel.add(new JLabel("Distance:"));
-        bottomPanel.add(distanceSpinner);
-        bottomPanel.add(new JLabel("Tolerance:"));
-        bottomPanel.add(toleranceSpinner);
-        bottomPanel.add(Box.createHorizontalStrut(8));
-        bottomPanel.add(new JLabel("Anchor:"));
-        bottomPanel.add(anchorModeCombo);
+        GridBagConstraints gbc = new GridBagConstraints();
+        gbc.insets = new Insets(2, 2, 2, 2);
+        gbc.anchor = GridBagConstraints.WEST;
 
-        contentPane.add(bottomPanel, BorderLayout.SOUTH);
+        // Name
+        gbc.gridx = 0; gbc.gridy = 0;
+        propsPanel.add(new JLabel("Name:"), gbc);
+        gbc.gridx = 1; gbc.fill = GridBagConstraints.HORIZONTAL; gbc.weightx = 1;
+        propsPanel.add(nameField, gbc);
+
+        // Min %
+        gbc.gridx = 0; gbc.gridy = 1; gbc.fill = GridBagConstraints.NONE; gbc.weightx = 0;
+        propsPanel.add(new JLabel("Min %:"), gbc);
+        gbc.gridx = 1; gbc.fill = GridBagConstraints.HORIZONTAL; gbc.weightx = 1;
+        propsPanel.add(minPercentSpinner, gbc);
+
+        // Max %
+        gbc.gridx = 0; gbc.gridy = 2; gbc.fill = GridBagConstraints.NONE; gbc.weightx = 0;
+        propsPanel.add(new JLabel("Max %:"), gbc);
+        gbc.gridx = 1; gbc.fill = GridBagConstraints.HORIZONTAL; gbc.weightx = 1;
+        propsPanel.add(maxPercentSpinner, gbc);
+
+        // Distance
+        gbc.gridx = 0; gbc.gridy = 3; gbc.fill = GridBagConstraints.NONE; gbc.weightx = 0;
+        propsPanel.add(new JLabel("Distance:"), gbc);
+        gbc.gridx = 1; gbc.fill = GridBagConstraints.HORIZONTAL; gbc.weightx = 1;
+        propsPanel.add(distanceSpinner, gbc);
+
+        // Tolerance
+        gbc.gridx = 0; gbc.gridy = 4; gbc.fill = GridBagConstraints.NONE; gbc.weightx = 0;
+        propsPanel.add(new JLabel("Tolerance:"), gbc);
+        gbc.gridx = 1; gbc.fill = GridBagConstraints.HORIZONTAL; gbc.weightx = 1;
+        propsPanel.add(toleranceSpinner, gbc);
+
+        // Anchor
+        gbc.gridx = 0; gbc.gridy = 5; gbc.fill = GridBagConstraints.NONE; gbc.weightx = 0;
+        propsPanel.add(new JLabel("Anchor:"), gbc);
+        gbc.gridx = 1; gbc.fill = GridBagConstraints.HORIZONTAL; gbc.weightx = 1;
+        propsPanel.add(anchorModeCombo, gbc);
+
+        rightPanel.add(hoopListPanel, BorderLayout.CENTER);
+        rightPanel.add(propsPanel, BorderLayout.SOUTH);
 
         // Center: Chart with right panel
         JPanel chartAndRight = new JPanel(new BorderLayout());
@@ -560,8 +602,123 @@ public class InteractiveHoopEditorFrame extends JFrame {
         pattern.setPriceSmoothingType(type);
         pattern.setPriceSmoothingPeriod(period);
 
+        // Auto-set price line opacity: 50% when smoothing active, 100% otherwise
+        if (type != PriceSmoothingType.NONE) {
+            priceOpacitySlider.setValue(50);
+        } else {
+            priceOpacitySlider.setValue(100);
+        }
+
         // Update chart to show smoothed line
         chartPanel.setSmoothing(type, period);
         scheduleAutoSave();
+    }
+
+    private void loadPatterns() {
+        patternListModel.clear();
+        List<HoopPattern> patterns = patternStore.loadAll();
+        for (HoopPattern p : patterns) {
+            patternListModel.addElement(p);
+        }
+        // Select first pattern if available
+        if (!patternListModel.isEmpty()) {
+            patternList.setSelectedIndex(0);
+        }
+    }
+
+    private void onPatternSelected() {
+        HoopPattern selected = patternList.getSelectedValue();
+        if (selected != null) {
+            pattern = selected;
+            chartPanel.setPattern(pattern);
+            loadPatternData();
+            updateHoopList();
+            updatePropertiesPanel();
+
+            // Sync smoothing controls
+            smoothingTypeCombo.setSelectedItem(pattern.getPriceSmoothingType());
+            smoothingPeriodSpinner.setValue(pattern.getPriceSmoothingPeriod());
+            updateSmoothingPeriodVisibility();
+
+            // Set opacity slider based on smoothing
+            if (pattern.getPriceSmoothingType() != PriceSmoothingType.NONE) {
+                priceOpacitySlider.setValue(50);
+            } else {
+                priceOpacitySlider.setValue(100);
+            }
+
+            // Update chart smoothing display
+            chartPanel.setSmoothing(pattern.getPriceSmoothingType(), pattern.getPriceSmoothingPeriod());
+            chartPanel.setPriceLineOpacity(priceOpacitySlider.getValue() * 255 / 100);
+
+            deletePatternBtn.setEnabled(true);
+            findMatchesBtn.setEnabled(!candles.isEmpty());
+            statusLabel.setText("Pattern: " + pattern.getName());
+        } else {
+            pattern = null;
+            chartPanel.setPattern(null);
+            hoopListModel.clear();
+            setPropertiesEnabled(false);
+            deletePatternBtn.setEnabled(false);
+            findMatchesBtn.setEnabled(false);
+            statusLabel.setText("Select a pattern to begin");
+        }
+    }
+
+    private void createPattern() {
+        String name = JOptionPane.showInputDialog(this, "Enter pattern name:", "New Pattern", JOptionPane.PLAIN_MESSAGE);
+        if (name == null || name.trim().isEmpty()) return;
+
+        String id = name.trim().toLowerCase().replaceAll("[^a-z0-9]+", "-");
+        HoopPattern newPattern = new HoopPattern();
+        newPattern.setId(id);
+        newPattern.setName(name.trim());
+        newPattern.setSymbol((String) symbolCombo.getSelectedItem());
+        newPattern.setTimeframe((String) timeframeCombo.getSelectedItem());
+        newPattern.setHoops(new ArrayList<>());
+
+        patternStore.save(newPattern);
+        patternListModel.addElement(newPattern);
+        patternList.setSelectedValue(newPattern, true);
+    }
+
+    private void deletePattern() {
+        HoopPattern selected = patternList.getSelectedValue();
+        if (selected == null) return;
+
+        int confirm = JOptionPane.showConfirmDialog(this,
+            "Delete pattern '" + selected.getName() + "'?",
+            "Confirm Delete",
+            JOptionPane.YES_NO_OPTION,
+            JOptionPane.WARNING_MESSAGE);
+
+        if (confirm == JOptionPane.YES_OPTION) {
+            patternStore.delete(selected.getId());
+            patternListModel.removeElement(selected);
+            if (!patternListModel.isEmpty()) {
+                patternList.setSelectedIndex(0);
+            } else {
+                onPatternSelected();
+            }
+        }
+    }
+
+    /**
+     * Custom cell renderer for pattern list.
+     */
+    private static class PatternCellRenderer extends DefaultListCellRenderer {
+        @Override
+        public Component getListCellRendererComponent(JList<?> list, Object value, int index,
+                                                      boolean isSelected, boolean cellHasFocus) {
+            super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus);
+            if (value instanceof HoopPattern pattern) {
+                String text = pattern.getName();
+                if (pattern.getHoops() != null && !pattern.getHoops().isEmpty()) {
+                    text += " (" + pattern.getHoops().size() + " hoops)";
+                }
+                setText(text);
+            }
+            return this;
+        }
     }
 }

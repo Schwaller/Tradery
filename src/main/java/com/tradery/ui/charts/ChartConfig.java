@@ -51,6 +51,8 @@ public class ChartConfig {
     private int stochasticDPeriod = 3;
     private boolean rangePositionEnabled = false;
     private int rangePositionPeriod = 200;
+    private boolean adxEnabled = false;
+    private int adxPeriod = 14;
 
     // Orderflow charts
     private boolean deltaEnabled = false;
@@ -70,10 +72,24 @@ public class ChartConfig {
     private boolean dailyPocEnabled = false;
     private boolean floatingPocEnabled = false;
 
+    // VWAP overlay
+    private boolean vwapEnabled = false;
+
     // Ray overlay
     private boolean rayOverlayEnabled = false;
-    private int rayLookback = 200;
+    private int rayLookback = 0;  // 0 = no limit (use all data)
     private int raySkip = 5;
+
+    // Ichimoku Cloud overlay
+    private boolean ichimokuEnabled = false;
+    private int ichimokuConversionPeriod = 9;   // Tenkan-sen
+    private int ichimokuBasePeriod = 26;        // Kijun-sen
+    private int ichimokuSpanBPeriod = 52;       // Senkou Span B
+    private int ichimokuDisplacement = 26;      // Cloud shift
+
+    // Price chart mode
+    private boolean candlestickMode = false;  // false = line, true = candlestick
+    private int priceOpacity = 100;  // 0-100, applied to price line and candles (not cloud)
 
     // Core charts
     private boolean volumeChartEnabled = true;
@@ -240,6 +256,11 @@ public class ChartConfig {
     public int getRangePositionPeriod() { return rangePositionPeriod; }
     public void setRangePositionPeriod(int period) { this.rangePositionPeriod = period; save(); }
 
+    public boolean isAdxEnabled() { return adxEnabled; }
+    public void setAdxEnabled(boolean enabled) { this.adxEnabled = enabled; save(); }
+    public int getAdxPeriod() { return adxPeriod; }
+    public void setAdxPeriod(int period) { this.adxPeriod = period; save(); }
+
     // ===== Orderflow Chart Getters/Setters =====
 
     public boolean isDeltaEnabled() { return deltaEnabled; }
@@ -278,6 +299,9 @@ public class ChartConfig {
     public boolean isFloatingPocEnabled() { return floatingPocEnabled; }
     public void setFloatingPocEnabled(boolean enabled) { this.floatingPocEnabled = enabled; save(); }
 
+    public boolean isVwapEnabled() { return vwapEnabled; }
+    public void setVwapEnabled(boolean enabled) { this.vwapEnabled = enabled; save(); }
+
     // ===== Ray Overlay Getters/Setters =====
 
     public boolean isRayOverlayEnabled() { return rayOverlayEnabled; }
@@ -286,6 +310,26 @@ public class ChartConfig {
     public void setRayLookback(int lookback) { this.rayLookback = lookback; save(); }
     public int getRaySkip() { return raySkip; }
     public void setRaySkip(int skip) { this.raySkip = skip; save(); }
+
+    // ===== Ichimoku Cloud Overlay Getters/Setters =====
+
+    public boolean isIchimokuEnabled() { return ichimokuEnabled; }
+    public void setIchimokuEnabled(boolean enabled) { this.ichimokuEnabled = enabled; save(); }
+    public int getIchimokuConversionPeriod() { return ichimokuConversionPeriod; }
+    public void setIchimokuConversionPeriod(int period) { this.ichimokuConversionPeriod = period; save(); }
+    public int getIchimokuBasePeriod() { return ichimokuBasePeriod; }
+    public void setIchimokuBasePeriod(int period) { this.ichimokuBasePeriod = period; save(); }
+    public int getIchimokuSpanBPeriod() { return ichimokuSpanBPeriod; }
+    public void setIchimokuSpanBPeriod(int period) { this.ichimokuSpanBPeriod = period; save(); }
+    public int getIchimokuDisplacement() { return ichimokuDisplacement; }
+    public void setIchimokuDisplacement(int displacement) { this.ichimokuDisplacement = displacement; save(); }
+
+    // ===== Price Chart Mode =====
+    public boolean isCandlestickMode() { return candlestickMode; }
+    public void setCandlestickMode(boolean mode) { this.candlestickMode = mode; save(); notifyListeners(); }
+
+    public int getPriceOpacity() { return priceOpacity; }
+    public void setPriceOpacity(int opacity) { this.priceOpacity = Math.max(0, Math.min(100, opacity)); save(); notifyListeners(); }
 
     // ===== Core Chart Getters/Setters =====
 
@@ -342,6 +386,8 @@ public class ChartConfig {
         this.stochasticDPeriod = other.stochasticDPeriod;
         this.rangePositionEnabled = other.rangePositionEnabled;
         this.rangePositionPeriod = other.rangePositionPeriod;
+        this.adxEnabled = other.adxEnabled;
+        this.adxPeriod = other.adxPeriod;
 
         // Orderflow
         this.deltaEnabled = other.deltaEnabled;
@@ -360,11 +406,23 @@ public class ChartConfig {
         // POC overlays
         this.dailyPocEnabled = other.dailyPocEnabled;
         this.floatingPocEnabled = other.floatingPocEnabled;
+        this.vwapEnabled = other.vwapEnabled;
 
         // Ray overlay
         this.rayOverlayEnabled = other.rayOverlayEnabled;
         this.rayLookback = other.rayLookback;
         this.raySkip = other.raySkip;
+
+        // Ichimoku Cloud
+        this.ichimokuEnabled = other.ichimokuEnabled;
+        this.ichimokuConversionPeriod = other.ichimokuConversionPeriod;
+        this.ichimokuBasePeriod = other.ichimokuBasePeriod;
+        this.ichimokuSpanBPeriod = other.ichimokuSpanBPeriod;
+        this.ichimokuDisplacement = other.ichimokuDisplacement;
+
+        // Price chart mode
+        this.candlestickMode = other.candlestickMode;
+        this.priceOpacity = other.priceOpacity;
 
         // Core charts
         this.volumeChartEnabled = other.volumeChartEnabled;
@@ -412,6 +470,8 @@ public class ChartConfig {
         stochasticDPeriod = 3;
         rangePositionEnabled = false;
         rangePositionPeriod = 200;
+        adxEnabled = false;
+        adxPeriod = 14;
 
         // Orderflow - all off by default
         deltaEnabled = false;
@@ -430,11 +490,23 @@ public class ChartConfig {
         // POC overlays - off by default
         dailyPocEnabled = false;
         floatingPocEnabled = false;
+        vwapEnabled = false;
 
         // Ray overlay - off by default
         rayOverlayEnabled = false;
-        rayLookback = 200;
+        rayLookback = 0;  // 0 = no limit
         raySkip = 5;
+
+        // Ichimoku Cloud - off by default
+        ichimokuEnabled = false;
+        ichimokuConversionPeriod = 9;
+        ichimokuBasePeriod = 26;
+        ichimokuSpanBPeriod = 52;
+        ichimokuDisplacement = 26;
+
+        // Price chart mode - line by default
+        candlestickMode = false;
+        priceOpacity = 100;
 
         // Core charts - all on by default
         volumeChartEnabled = true;
@@ -553,6 +625,8 @@ public class ChartConfig {
         this.stochasticDPeriod = other.stochasticDPeriod;
         this.rangePositionEnabled = other.rangePositionEnabled;
         this.rangePositionPeriod = other.rangePositionPeriod;
+        this.adxEnabled = other.adxEnabled;
+        this.adxPeriod = other.adxPeriod;
 
         // Orderflow
         this.deltaEnabled = other.deltaEnabled;
@@ -571,11 +645,23 @@ public class ChartConfig {
         // POC overlays
         this.dailyPocEnabled = other.dailyPocEnabled;
         this.floatingPocEnabled = other.floatingPocEnabled;
+        this.vwapEnabled = other.vwapEnabled;
 
         // Ray overlay
         this.rayOverlayEnabled = other.rayOverlayEnabled;
         this.rayLookback = other.rayLookback;
         this.raySkip = other.raySkip;
+
+        // Ichimoku Cloud
+        this.ichimokuEnabled = other.ichimokuEnabled;
+        this.ichimokuConversionPeriod = other.ichimokuConversionPeriod;
+        this.ichimokuBasePeriod = other.ichimokuBasePeriod;
+        this.ichimokuSpanBPeriod = other.ichimokuSpanBPeriod;
+        this.ichimokuDisplacement = other.ichimokuDisplacement;
+
+        // Price chart mode
+        this.candlestickMode = other.candlestickMode;
+        this.priceOpacity = other.priceOpacity;
 
         // Core charts
         this.volumeChartEnabled = other.volumeChartEnabled;

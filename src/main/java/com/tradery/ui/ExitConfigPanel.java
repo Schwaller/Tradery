@@ -25,9 +25,6 @@ public class ExitConfigPanel extends ConfigurationPanel {
     private JPanel zoneListPanel;
     private List<ZoneEditor> zoneEditors = new ArrayList<>();
 
-    private static final String[] SL_TYPES = {"No SL", "Clear SL", "SL %", "Trail %", "SL ATR", "Trail ATR"};
-    private static final String[] TP_TYPES = {"No TP", "TP %", "TP ATR"};
-
     public ExitConfigPanel() {
         setLayout(new BorderLayout(0, 0));
         setOpaque(false);
@@ -208,10 +205,8 @@ public class ExitConfigPanel extends ConfigurationPanel {
         private JTextArea exitConditionArea;
         private JPanel exitConditionScroll;
         private JCheckBox exitImmediatelyCheckbox;
-        private JComboBox<String> slTypeCombo;
-        private JSpinner slValueSpinner;
-        private JComboBox<String> tpTypeCombo;
-        private JSpinner tpValueSpinner;
+        private StopLossControl slControl;
+        private TakeProfitControl tpControl;
         private JSpinner minBarsSpinner;
         // Scale Out (DCA-out) fields
         private JCheckBox scaleOutCheckbox;
@@ -273,44 +268,35 @@ public class ExitConfigPanel extends ConfigurationPanel {
             });
             maxPnlSpinner.addChangeListener(e -> onChange.run());
 
-            exitImmediatelyCheckbox = new JCheckBox("Exit Immediately");
+            exitImmediatelyCheckbox = new JCheckBox("Market Exit");
             exitImmediatelyCheckbox.setSelected(zone != null && zone.exitImmediately());
+            exitImmediatelyCheckbox.setToolTipText("Exit at market price (ignores SL/TP)");
 
             exitConditionArea = new JTextArea(zone != null ? zone.exitCondition() : "", 4, 15);
             exitConditionArea.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 11));
-            exitConditionArea.setEnabled(!exitImmediatelyCheckbox.isSelected());
             exitConditionArea.getDocument().addDocumentListener(docListener(onChange));
 
-            slTypeCombo = new JComboBox<>(SL_TYPES);
+            // Stop Loss control - [type][value][unit]
+            slControl = new StopLossControl();
             double slVal = zone != null && zone.stopLossValue() != null ? zone.stopLossValue() : 2.0;
-            slValueSpinner = new JSpinner(new SpinnerNumberModel(
-                Math.max(0.1, slVal), 0.1, 100.0, 0.5));
-            slTypeCombo.setSelectedIndex(slTypeToIndex(zone != null ? zone.stopLossType() : StopLossType.NONE));
-            slValueSpinner.setVisible(slTypeCombo.getSelectedIndex() > 1); // Hide for No SL and Clear SL
-            slTypeCombo.addActionListener(e -> {
-                slValueSpinner.setVisible(slTypeCombo.getSelectedIndex() > 1); // Hide for No SL and Clear SL
+            slControl.setValues(zone != null ? zone.stopLossType() : StopLossType.NONE, slVal);
+            slControl.addChangeListener(() -> {
                 revalidate();
                 updateMaxSize();
                 repaint();
                 onChange.run();
             });
-            slValueSpinner.addChangeListener(e -> onChange.run());
 
-            tpTypeCombo = new JComboBox<>(TP_TYPES);
-            tpTypeCombo.setPreferredSize(slTypeCombo.getPreferredSize());
+            // Take Profit control - [type][value][unit]
+            tpControl = new TakeProfitControl();
             double tpVal = zone != null && zone.takeProfitValue() != null ? zone.takeProfitValue() : 5.0;
-            tpValueSpinner = new JSpinner(new SpinnerNumberModel(
-                Math.max(0.1, tpVal), 0.1, 100.0, 0.5));
-            tpTypeCombo.setSelectedIndex(tpTypeToIndex(zone != null ? zone.takeProfitType() : TakeProfitType.NONE));
-            tpValueSpinner.setVisible(tpTypeCombo.getSelectedIndex() > 0);
-            tpTypeCombo.addActionListener(e -> {
-                tpValueSpinner.setVisible(tpTypeCombo.getSelectedIndex() > 0);
+            tpControl.setValues(zone != null ? zone.takeProfitType() : TakeProfitType.NONE, tpVal);
+            tpControl.addChangeListener(() -> {
                 revalidate();
                 updateMaxSize();
                 repaint();
                 onChange.run();
             });
-            tpValueSpinner.addChangeListener(e -> onChange.run());
 
             minBarsSpinner = new JSpinner(new SpinnerNumberModel(
                 zone != null ? zone.minBarsBeforeExit() : 0, 0, 1000, 1));
@@ -445,27 +431,21 @@ public class ExitConfigPanel extends ConfigurationPanel {
             exitConditionScroll.add(exitLayered, BorderLayout.CENTER);
             exitConditionScroll.setPreferredSize(new Dimension(180, 64));
 
-            // Exit immediately toggle - hides exit condition and SL/TP
+            // Market Exit toggle - hides SL/TP (but keeps DSL visible)
             exitImmediatelyCheckbox.addActionListener(e -> {
-                boolean immediate = exitImmediatelyCheckbox.isSelected();
-                exitConditionScroll.setVisible(!immediate);
-                slTypeCombo.setVisible(!immediate);
-                slValueSpinner.setVisible(!immediate && slTypeCombo.getSelectedIndex() > 1);
-                tpTypeCombo.setVisible(!immediate);
-                tpValueSpinner.setVisible(!immediate && tpTypeCombo.getSelectedIndex() > 0);
+                boolean marketExit = exitImmediatelyCheckbox.isSelected();
+                slControl.setVisible(!marketExit);
+                tpControl.setVisible(!marketExit);
                 revalidate();
                 updateMaxSize();
                 repaint();
                 onChange.run();
             });
 
-            // Set initial visibility based on exitImmediately and type selection
-            boolean exitImmediate = zone != null && zone.exitImmediately();
-            exitConditionScroll.setVisible(!exitImmediate);
-            slTypeCombo.setVisible(!exitImmediate);
-            slValueSpinner.setVisible(!exitImmediate && slTypeCombo.getSelectedIndex() > 1);
-            tpTypeCombo.setVisible(!exitImmediate);
-            tpValueSpinner.setVisible(!exitImmediate && tpTypeCombo.getSelectedIndex() > 0);
+            // Set initial visibility based on Market Exit
+            boolean marketExit = zone != null && zone.exitImmediately();
+            slControl.setVisible(!marketExit);
+            tpControl.setVisible(!marketExit);
 
             // Build rows - each attribute on its own line
             JPanel centerPanel = new JPanel(new GridBagLayout());
@@ -498,13 +478,17 @@ public class ExitConfigPanel extends ConfigurationPanel {
             // Exit condition row - expands vertically
             centerPanel.add(exitConditionScroll, new GridBagConstraints(0, row++, 2, 1, 1, 1, WEST, BOTH, new Insets(0, 0, 4, 0), 0, 0));
 
-            // Stop Loss row
-            centerPanel.add(slTypeCombo, new GridBagConstraints(0, row, 1, 1, 0, 0, WEST, NONE, new Insets(0, 0, 4, 4), 0, 0));
-            centerPanel.add(slValueSpinner, new GridBagConstraints(1, row++, 1, 1, 1, 0, WEST, HORIZONTAL, new Insets(0, 0, 4, 0), 0, 0));
+            // Stop Loss row - [type][value][unit] control
+            JLabel slLabel = new JLabel("SL:");
+            slLabel.setForeground(Color.GRAY);
+            centerPanel.add(slLabel, new GridBagConstraints(0, row, 1, 1, 0, 0, WEST, NONE, new Insets(0, 0, 4, 4), 0, 0));
+            centerPanel.add(slControl, new GridBagConstraints(1, row++, 1, 1, 1, 0, WEST, HORIZONTAL, new Insets(0, 0, 4, 0), 0, 0));
 
-            // Take Profit row
-            centerPanel.add(tpTypeCombo, new GridBagConstraints(0, row, 1, 1, 0, 0, WEST, NONE, new Insets(0, 0, 4, 4), 0, 0));
-            centerPanel.add(tpValueSpinner, new GridBagConstraints(1, row++, 1, 1, 1, 0, WEST, HORIZONTAL, new Insets(0, 0, 4, 0), 0, 0));
+            // Take Profit row - [type][value][unit] control
+            JLabel tpLabel = new JLabel("TP:");
+            tpLabel.setForeground(Color.GRAY);
+            centerPanel.add(tpLabel, new GridBagConstraints(0, row, 1, 1, 0, 0, WEST, NONE, new Insets(0, 0, 4, 4), 0, 0));
+            centerPanel.add(tpControl, new GridBagConstraints(1, row++, 1, 1, 1, 0, WEST, HORIZONTAL, new Insets(0, 0, 4, 0), 0, 0));
 
             // Scale Out section (like DCA section in EntryConfigPanel)
             JPanel scaleOutHeader = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
@@ -553,46 +537,6 @@ public class ExitConfigPanel extends ConfigurationPanel {
             };
         }
 
-        private int slTypeToIndex(StopLossType type) {
-            if (type == null) return 0;
-            return switch (type) {
-                case CLEAR -> 1;
-                case FIXED_PERCENT -> 2;
-                case TRAILING_PERCENT -> 3;
-                case FIXED_ATR -> 4;
-                case TRAILING_ATR -> 5;
-                default -> 0;
-            };
-        }
-
-        private StopLossType indexToSlType(int index) {
-            return switch (index) {
-                case 1 -> StopLossType.CLEAR;
-                case 2 -> StopLossType.FIXED_PERCENT;
-                case 3 -> StopLossType.TRAILING_PERCENT;
-                case 4 -> StopLossType.FIXED_ATR;
-                case 5 -> StopLossType.TRAILING_ATR;
-                default -> StopLossType.NONE;
-            };
-        }
-
-        private int tpTypeToIndex(TakeProfitType type) {
-            if (type == null) return 0;
-            return switch (type) {
-                case FIXED_PERCENT -> 1;
-                case FIXED_ATR -> 2;
-                default -> 0;
-            };
-        }
-
-        private TakeProfitType indexToTpType(int index) {
-            return switch (index) {
-                case 1 -> TakeProfitType.FIXED_PERCENT;
-                case 2 -> TakeProfitType.FIXED_ATR;
-                default -> TakeProfitType.NONE;
-            };
-        }
-
         private int exitBasisToIndex(ExitBasis basis) {
             if (basis == null) return 0;
             return switch (basis) {
@@ -624,8 +568,8 @@ public class ExitConfigPanel extends ConfigurationPanel {
         }
 
         ExitZone toExitZone() {
-            StopLossType slType = indexToSlType(slTypeCombo.getSelectedIndex());
-            TakeProfitType tpType = indexToTpType(tpTypeCombo.getSelectedIndex());
+            StopLossType slType = slControl.getStopLossType();
+            TakeProfitType tpType = tpControl.getTakeProfitType();
             // No value for NONE or CLEAR
             boolean slNeedsValue = slType != StopLossType.NONE && slType != StopLossType.CLEAR;
             boolean hasScaleOut = scaleOutCheckbox.isSelected();
@@ -636,9 +580,9 @@ public class ExitConfigPanel extends ConfigurationPanel {
                 hasMaxPnl.isSelected() ? ((Number) maxPnlSpinner.getValue()).doubleValue() : null,
                 exitConditionArea.getText().trim(),
                 slType,
-                slNeedsValue ? ((Number) slValueSpinner.getValue()).doubleValue() : null,
+                slNeedsValue ? slControl.getValue() : null,
                 tpType,
-                tpType == TakeProfitType.NONE ? null : ((Number) tpValueSpinner.getValue()).doubleValue(),
+                tpType == TakeProfitType.NONE ? null : tpControl.getValue(),
                 exitImmediatelyCheckbox.isSelected(),
                 ((Number) minBarsSpinner.getValue()).intValue(),
                 hasScaleOut ? ((Number) exitPercentSpinner.getValue()).doubleValue() : null,
@@ -685,29 +629,16 @@ public class ExitConfigPanel extends ConfigurationPanel {
 
             if (exitImmediatelyCheckbox.isSelected() != zone.exitImmediately()) {
                 exitImmediatelyCheckbox.setSelected(zone.exitImmediately());
-                boolean immediate = zone.exitImmediately();
-                exitConditionScroll.setVisible(!immediate);
-                slTypeCombo.setVisible(!immediate);
-                tpTypeCombo.setVisible(!immediate);
+                boolean marketExit = zone.exitImmediately();
+                slControl.setVisible(!marketExit);
+                tpControl.setVisible(!marketExit);
             }
 
-            int slIdx = slTypeToIndex(zone.stopLossType());
-            if (slTypeCombo.getSelectedIndex() != slIdx) {
-                slTypeCombo.setSelectedIndex(slIdx);
-                slValueSpinner.setVisible(slIdx > 1); // Hide for No SL and Clear SL
-            }
-            if (zone.stopLossValue() != null && !slValueSpinner.getValue().equals(zone.stopLossValue())) {
-                slValueSpinner.setValue(zone.stopLossValue());
-            }
+            // Update SL control
+            slControl.setValues(zone.stopLossType(), zone.stopLossValue());
 
-            int tpIdx = tpTypeToIndex(zone.takeProfitType());
-            if (tpTypeCombo.getSelectedIndex() != tpIdx) {
-                tpTypeCombo.setSelectedIndex(tpIdx);
-                tpValueSpinner.setVisible(tpIdx > 0);
-            }
-            if (zone.takeProfitValue() != null && !tpValueSpinner.getValue().equals(zone.takeProfitValue())) {
-                tpValueSpinner.setValue(zone.takeProfitValue());
-            }
+            // Update TP control
+            tpControl.setValues(zone.takeProfitType(), zone.takeProfitValue());
 
             if (!minBarsSpinner.getValue().equals(zone.minBarsBeforeExit())) {
                 minBarsSpinner.setValue(zone.minBarsBeforeExit());

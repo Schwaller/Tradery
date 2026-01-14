@@ -1289,4 +1289,64 @@ public class IndicatorEngine {
     public RaySet getSupportRaySet(int lookback, int skip) {
         return getSupportRays(lookback, skip);
     }
+
+    // ========== Ichimoku Cloud ==========
+
+    /**
+     * Get Ichimoku Cloud result with default parameters (9, 26, 52, 26).
+     */
+    public Indicators.IchimokuResult getIchimoku() {
+        String key = "ichimoku:9:26:52:26";
+        if (!cache.containsKey(key)) {
+            cache.put(key, Indicators.ichimoku(candles));
+        }
+        return (Indicators.IchimokuResult) cache.get(key);
+    }
+
+    /**
+     * Get Ichimoku Cloud result with custom parameters.
+     */
+    public Indicators.IchimokuResult getIchimoku(int conversionPeriod, int basePeriod,
+                                                  int spanBPeriod, int displacement) {
+        String key = "ichimoku:" + conversionPeriod + ":" + basePeriod + ":" + spanBPeriod + ":" + displacement;
+        if (!cache.containsKey(key)) {
+            cache.put(key, Indicators.ichimoku(candles, conversionPeriod, basePeriod, spanBPeriod, displacement));
+        }
+        return (Indicators.IchimokuResult) cache.get(key);
+    }
+
+    /**
+     * Get Ichimoku Tenkan-sen (Conversion Line) at bar index.
+     */
+    public double getIchimokuTenkanAt(int conversionPeriod, int barIndex) {
+        return Indicators.ichimokuTenkanAt(candles, conversionPeriod, barIndex);
+    }
+
+    /**
+     * Get Ichimoku Kijun-sen (Base Line) at bar index.
+     */
+    public double getIchimokuKijunAt(int basePeriod, int barIndex) {
+        return Indicators.ichimokuKijunAt(candles, basePeriod, barIndex);
+    }
+
+    /**
+     * Get Ichimoku Senkou Span A at bar index (with displacement applied).
+     */
+    public double getIchimokuSenkouAAt(int conversionPeriod, int basePeriod, int displacement, int barIndex) {
+        return Indicators.ichimokuSenkouAAt(candles, conversionPeriod, basePeriod, displacement, barIndex);
+    }
+
+    /**
+     * Get Ichimoku Senkou Span B at bar index (with displacement applied).
+     */
+    public double getIchimokuSenkouBAt(int spanBPeriod, int displacement, int barIndex) {
+        return Indicators.ichimokuSenkouBAt(candles, spanBPeriod, displacement, barIndex);
+    }
+
+    /**
+     * Get Ichimoku Chikou Span at bar index.
+     */
+    public double getIchimokuChikouAt(int displacement, int barIndex) {
+        return Indicators.ichimokuChikouAt(candles, displacement, barIndex);
+    }
 }

@@ -9,6 +9,7 @@ import com.tradery.model.Phase;
 
 import java.io.IOException;
 import java.util.*;
+import java.util.function.Consumer;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -38,6 +39,24 @@ public class PhaseEvaluator {
             List<Candle> strategyCandles,
             String strategyTimeframe
     ) throws IOException {
+        return evaluatePhases(requiredPhases, strategyCandles, strategyTimeframe, null);
+    }
+
+    /**
+     * Pre-compute phase state for all required phases over the backtest period.
+     *
+     * @param requiredPhases   List of Phase objects to evaluate
+     * @param strategyCandles  Candles from the strategy timeframe
+     * @param strategyTimeframe Strategy's timeframe (e.g., "1h")
+     * @param onProgress       Progress callback (receives phase name being evaluated)
+     * @return Map: phaseId -> boolean[] (true = active at strategy bar index)
+     */
+    public Map<String, boolean[]> evaluatePhases(
+            List<Phase> requiredPhases,
+            List<Candle> strategyCandles,
+            String strategyTimeframe,
+            Consumer<String> onProgress
+    ) throws IOException {
 
         Map<String, boolean[]> result = new HashMap<>();
 
@@ -48,7 +67,12 @@ public class PhaseEvaluator {
         long startTime = strategyCandles.get(0).timestamp();
         long endTime = strategyCandles.get(strategyCandles.size() - 1).timestamp();
 
+        int phaseIndex = 0;
         for (Phase phase : requiredPhases) {
+            if (onProgress != null) {
+                onProgress.accept(phase.getName() != null ? phase.getName() : phase.getId());
+            }
+            phaseIndex++;
             // Calculate warmup needed for phase indicators
             long warmupMs = getWarmupMs(phase.getTimeframe(), phase.getCondition());
 

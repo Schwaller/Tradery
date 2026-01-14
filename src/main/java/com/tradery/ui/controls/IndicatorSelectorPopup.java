@@ -40,14 +40,19 @@ public class IndicatorSelectorPopup extends JDialog {
 
     private JCheckBox dailyPocCheckbox;
     private JCheckBox floatingPocCheckbox;
+    private JCheckBox vwapCheckbox;
 
     private JCheckBox rayCheckbox;
+    private JCheckBox rayNoLimitCheckbox;
     private JLabel rayLookbackLabel;
     private JSlider rayLookbackSlider;
     private JSpinner rayLookbackSpinner;
     private JLabel raySkipLabel;
     private JSlider raySkipSlider;
     private JSpinner raySkipSpinner;
+
+    // Ichimoku Cloud controls
+    private JCheckBox ichimokuCheckbox;
 
     // Oscillator controls
     private JCheckBox rsiCheckbox;
@@ -80,6 +85,11 @@ public class IndicatorSelectorPopup extends JDialog {
     private JLabel rangePositionLabel;
     private JSlider rangePositionSlider;
     private JSpinner rangePositionSpinner;
+
+    private JCheckBox adxCheckbox;
+    private JLabel adxLabel;
+    private JSlider adxSlider;
+    private JSpinner adxSpinner;
 
     // Orderflow controls
     private JCheckBox deltaCheckbox;
@@ -173,41 +183,44 @@ public class IndicatorSelectorPopup extends JDialog {
         contentPane.add(createMayerRow());
         contentPane.add(createDailyPocRow());
         contentPane.add(createFloatingPocRow());
+        contentPane.add(createVwapRow());
         contentPane.add(createRayOverlayRow());
+        contentPane.add(createIchimokuRow());
 
-        contentPane.add(Box.createVerticalStrut(8));
+        contentPane.add(createSectionSeparator());
 
         // === CHARTS ===
-        contentPane.add(createSectionHeader("CHARTS"));
+        contentPane.add(createSectionHeader("INDICATOR CHARTS"));
         contentPane.add(createRsiRow());
         contentPane.add(createMacdRow());
         contentPane.add(createAtrRow());
         contentPane.add(createStochasticRow());
         contentPane.add(createRangePositionRow());
+        contentPane.add(createAdxRow());
 
-        contentPane.add(Box.createVerticalStrut(8));
+        contentPane.add(createSectionSeparator());
 
         // === ORDERFLOW ===
-        contentPane.add(createSectionHeader("ORDERFLOW"));
+        contentPane.add(createSectionHeader("ORDERFLOW CHARTS"));
         contentPane.add(createDeltaRow());
         contentPane.add(createCvdRow());
         contentPane.add(createVolumeRatioRow());
         contentPane.add(createWhaleRow());
         contentPane.add(createRetailRow());
 
-        contentPane.add(Box.createVerticalStrut(8));
+        contentPane.add(Box.createVerticalStrut(4));
 
         // === FUNDING ===
         contentPane.add(createSectionHeader("FUNDING"));
         contentPane.add(createFundingRow());
 
-        contentPane.add(Box.createVerticalStrut(8));
+        contentPane.add(Box.createVerticalStrut(4));
 
         // === OPEN INTEREST ===
         contentPane.add(createSectionHeader("OPEN INTEREST"));
         contentPane.add(createOiRow());
 
-        contentPane.add(Box.createVerticalStrut(8));
+        contentPane.add(createSectionSeparator());
 
         // === CORE CHARTS ===
         contentPane.add(createSectionHeader("CORE CHARTS"));
@@ -228,6 +241,18 @@ public class IndicatorSelectorPopup extends JDialog {
         label.setAlignmentX(Component.LEFT_ALIGNMENT);
         label.setBorder(new EmptyBorder(4, 0, 4, 0));
         return label;
+    }
+
+    private JPanel createSectionSeparator() {
+        JPanel separator = new JPanel();
+        separator.setLayout(new BorderLayout());
+        separator.setAlignmentX(Component.LEFT_ALIGNMENT);
+        separator.setBorder(new EmptyBorder(8, 0, 4, 0));
+
+        JSeparator line = new JSeparator(SwingConstants.HORIZONTAL);
+        separator.add(line, BorderLayout.CENTER);
+
+        return separator;
     }
 
     private JPanel createSmaRow() {
@@ -510,9 +535,21 @@ public class IndicatorSelectorPopup extends JDialog {
         return row;
     }
 
+    private JPanel createVwapRow() {
+        vwapCheckbox = new JCheckBox("VWAP");
+        vwapCheckbox.setToolTipText("Volume Weighted Average Price (session)");
+        JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
+        row.setAlignmentX(Component.LEFT_ALIGNMENT);
+        row.add(vwapCheckbox);
+        vwapCheckbox.addActionListener(e -> scheduleUpdate());
+        return row;
+    }
+
     private JPanel createRayOverlayRow() {
         rayCheckbox = new JCheckBox("Rotating Rays");
         rayCheckbox.setToolTipText("Show resistance/support rays from ATH/ATL");
+        rayNoLimitCheckbox = new JCheckBox("All");
+        rayNoLimitCheckbox.setToolTipText("Use all data (no lookback limit)");
         rayLookbackLabel = new JLabel("Lookback:");
         Object[] lookbackControls = createSliderSpinner(200, 20, 500);
         rayLookbackSlider = (JSlider) lookbackControls[0];
@@ -526,6 +563,7 @@ public class IndicatorSelectorPopup extends JDialog {
         row.setAlignmentX(Component.LEFT_ALIGNMENT);
         row.add(rayCheckbox);
         row.add(Box.createHorizontalGlue());
+        row.add(rayNoLimitCheckbox);
         row.add(rayLookbackLabel);
         row.add(rayLookbackSlider);
         row.add(rayLookbackSpinner);
@@ -537,6 +575,20 @@ public class IndicatorSelectorPopup extends JDialog {
             updateControlVisibility();
             scheduleUpdate();
         });
+        rayNoLimitCheckbox.addActionListener(e -> {
+            updateControlVisibility();
+            scheduleUpdate();
+        });
+        return row;
+    }
+
+    private JPanel createIchimokuRow() {
+        ichimokuCheckbox = new JCheckBox("Ichimoku Cloud");
+        ichimokuCheckbox.setToolTipText("Show Ichimoku Cloud (Tenkan-sen, Kijun-sen, Senkou Span A/B, Chikou Span)");
+        JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
+        row.setAlignmentX(Component.LEFT_ALIGNMENT);
+        row.add(ichimokuCheckbox);
+        ichimokuCheckbox.addActionListener(e -> scheduleUpdate());
         return row;
     }
 
@@ -627,6 +679,16 @@ public class IndicatorSelectorPopup extends JDialog {
         rangePositionSlider = (JSlider) controls[0];
         rangePositionSpinner = (JSpinner) controls[1];
         return createIndicatorRowWithSlider(rangePositionCheckbox, rangePositionLabel, rangePositionSlider, rangePositionSpinner);
+    }
+
+    private JPanel createAdxRow() {
+        adxCheckbox = new JCheckBox("ADX");
+        adxCheckbox.setToolTipText("Average Directional Index with +DI/-DI (trend strength)");
+        adxLabel = new JLabel("Period:");
+        Object[] controls = createSliderSpinner(14, 2, 50);
+        adxSlider = (JSlider) controls[0];
+        adxSpinner = (JSpinner) controls[1];
+        return createIndicatorRowWithSlider(adxCheckbox, adxLabel, adxSlider, adxSpinner);
     }
 
     private JPanel createDeltaRow() {
@@ -871,9 +933,11 @@ public class IndicatorSelectorPopup extends JDialog {
         mayerSpinner.setVisible(mayerEnabled);
 
         boolean rayEnabled = rayCheckbox.isSelected();
-        rayLookbackLabel.setVisible(rayEnabled);
-        rayLookbackSlider.setVisible(rayEnabled);
-        rayLookbackSpinner.setVisible(rayEnabled);
+        boolean rayNoLimit = rayNoLimitCheckbox.isSelected();
+        rayNoLimitCheckbox.setVisible(rayEnabled);
+        rayLookbackLabel.setVisible(rayEnabled && !rayNoLimit);
+        rayLookbackSlider.setVisible(rayEnabled && !rayNoLimit);
+        rayLookbackSpinner.setVisible(rayEnabled && !rayNoLimit);
         raySkipLabel.setVisible(rayEnabled);
         raySkipSlider.setVisible(rayEnabled);
         raySkipSpinner.setVisible(rayEnabled);
@@ -935,9 +999,13 @@ public class IndicatorSelectorPopup extends JDialog {
         mayerSpinner.setValue(config.getMayerPeriod());
         dailyPocCheckbox.setSelected(config.isDailyPocEnabled());
         floatingPocCheckbox.setSelected(config.isFloatingPocEnabled());
+        vwapCheckbox.setSelected(config.isVwapEnabled());
         rayCheckbox.setSelected(config.isRayOverlayEnabled());
-        rayLookbackSpinner.setValue(config.getRayLookback());
+        int rayLookback = config.getRayLookback();
+        rayNoLimitCheckbox.setSelected(rayLookback == 0);
+        rayLookbackSpinner.setValue(rayLookback == 0 ? 200 : rayLookback);  // Show 200 as default when switching from no-limit
         raySkipSpinner.setValue(config.getRaySkip());
+        ichimokuCheckbox.setSelected(config.isIchimokuEnabled());
 
         // Oscillators
         rsiCheckbox.setSelected(config.isRsiEnabled());
@@ -953,6 +1021,8 @@ public class IndicatorSelectorPopup extends JDialog {
         stochasticDSpinner.setValue(config.getStochasticDPeriod());
         rangePositionCheckbox.setSelected(config.isRangePositionEnabled());
         rangePositionSpinner.setValue(config.getRangePositionPeriod());
+        adxCheckbox.setSelected(config.isAdxEnabled());
+        adxSpinner.setValue(config.getAdxPeriod());
 
         // Orderflow
         deltaCheckbox.setSelected(config.isDeltaEnabled());
@@ -1015,6 +1085,12 @@ public class IndicatorSelectorPopup extends JDialog {
             chartPanel.clearFloatingPocOverlay();
         }
 
+        if (vwapCheckbox.isSelected()) {
+            chartPanel.setVwapOverlay(null);
+        } else {
+            chartPanel.clearVwapOverlay();
+        }
+
         // Save overlay settings to config (SMA/EMA managed via chips)
         config.setBollingerEnabled(bbCheckbox.isSelected());
         config.setBollingerPeriod(bbPeriod);
@@ -1025,9 +1101,10 @@ public class IndicatorSelectorPopup extends JDialog {
         config.setMayerPeriod(mayerPeriod);
         config.setDailyPocEnabled(dailyPocCheckbox.isSelected());
         config.setFloatingPocEnabled(floatingPocCheckbox.isSelected());
+        config.setVwapEnabled(vwapCheckbox.isSelected());
 
         // Ray overlay
-        int rayLookback = (int) rayLookbackSpinner.getValue();
+        int rayLookback = rayNoLimitCheckbox.isSelected() ? 0 : (int) rayLookbackSpinner.getValue();
         int raySkip = (int) raySkipSpinner.getValue();
         if (rayCheckbox.isSelected()) {
             chartPanel.setRayOverlay(true, rayLookback, raySkip);
@@ -1037,6 +1114,19 @@ public class IndicatorSelectorPopup extends JDialog {
         config.setRayOverlayEnabled(rayCheckbox.isSelected());
         config.setRayLookback(rayLookback);
         config.setRaySkip(raySkip);
+
+        // Ichimoku Cloud
+        if (ichimokuCheckbox.isSelected()) {
+            chartPanel.setIchimokuOverlay(
+                config.getIchimokuConversionPeriod(),
+                config.getIchimokuBasePeriod(),
+                config.getIchimokuSpanBPeriod(),
+                config.getIchimokuDisplacement()
+            );
+        } else {
+            chartPanel.clearIchimokuOverlay();
+        }
+        config.setIchimokuEnabled(ichimokuCheckbox.isSelected());
 
         // Oscillators
         int rsiPeriod = (int) rsiSpinner.getValue();
@@ -1048,12 +1138,14 @@ public class IndicatorSelectorPopup extends JDialog {
         int stochasticK = (int) stochasticKSpinner.getValue();
         int stochasticD = (int) stochasticDSpinner.getValue();
         int rangePositionPeriod = (int) rangePositionSpinner.getValue();
+        int adxPeriod = (int) adxSpinner.getValue();
 
         chartPanel.setRsiChartEnabled(rsiCheckbox.isSelected(), rsiPeriod);
         chartPanel.setMacdChartEnabled(macdCheckbox.isSelected(), macdFast, macdSlow, macdSignal);
         chartPanel.setAtrChartEnabled(atrCheckbox.isSelected(), atrPeriod);
         chartPanel.setStochasticChartEnabled(stochasticCheckbox.isSelected(), stochasticK, stochasticD);
         chartPanel.setRangePositionChartEnabled(rangePositionCheckbox.isSelected(), rangePositionPeriod);
+        chartPanel.setAdxChartEnabled(adxCheckbox.isSelected(), adxPeriod);
 
         // Save indicator settings to config
         config.setRsiEnabled(rsiCheckbox.isSelected());
@@ -1069,6 +1161,8 @@ public class IndicatorSelectorPopup extends JDialog {
         config.setStochasticDPeriod(stochasticD);
         config.setRangePositionEnabled(rangePositionCheckbox.isSelected());
         config.setRangePositionPeriod(rangePositionPeriod);
+        config.setAdxEnabled(adxCheckbox.isSelected());
+        config.setAdxPeriod(adxPeriod);
 
         // Orderflow
         double threshold = ((Number) whaleThresholdSpinner.getValue()).doubleValue();

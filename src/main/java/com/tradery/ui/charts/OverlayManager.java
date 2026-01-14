@@ -7,6 +7,7 @@ import org.jfree.chart.annotations.XYLineAnnotation;
 import org.jfree.chart.plot.XYPlot;
 import org.jfree.chart.renderer.xy.XYLineAndShapeRenderer;
 import org.jfree.data.time.Millisecond;
+import org.jfree.chart.renderer.xy.XYDifferenceRenderer;
 import org.jfree.data.time.TimeSeries;
 import org.jfree.data.time.TimeSeriesCollection;
 
@@ -34,6 +35,13 @@ public class OverlayManager {
     private int hlDatasetIndex = -1;
     private int dailyPocDatasetIndex = -1;
     private int floatingPocDatasetIndex = -1;
+
+    // Ichimoku Cloud overlay indices
+    private int ichimokuLinesDatasetIndex = -1;  // Tenkan, Kijun, Chikou
+    private int ichimokuCloudDatasetIndex = -1;   // Senkou Span A & B (for cloud fill)
+
+    // VWAP overlay
+    private int vwapDatasetIndex = -1;
 
     // Mayer Multiple state
     private boolean mayerMultipleEnabled = false;
@@ -655,6 +663,218 @@ public class OverlayManager {
         return rayOverlay.isShowSupport();
     }
 
+    // ===== Ichimoku Cloud Overlay =====
+
+    /**
+     * Sets the Ichimoku Cloud overlay with all 5 components.
+     * Default parameters: conversionPeriod=9, basePeriod=26, spanBPeriod=52, displacement=26
+     */
+    public void setIchimokuOverlay(List<Candle> candles) {
+        setIchimokuOverlay(9, 26, 52, 26, candles);
+    }
+
+    /**
+     * Sets the Ichimoku Cloud overlay with custom parameters.
+     */
+    public void setIchimokuOverlay(int conversionPeriod, int basePeriod, int spanBPeriod,
+                                    int displacement, List<Candle> candles) {
+        if (candles == null || candles.size() < Math.max(spanBPeriod, basePeriod) + displacement) {
+            clearIchimokuOverlay();
+            return;
+        }
+
+        XYPlot plot = priceChart.getXYPlot();
+
+        // Calculate Ichimoku values
+        TimeSeries tenkanSeries = new TimeSeries("Tenkan-sen");
+        TimeSeries kijunSeries = new TimeSeries("Kijun-sen");
+        TimeSeries chikouSeries = new TimeSeries("Chikou Span");
+        TimeSeries senkouASeries = new TimeSeries("Senkou Span A");
+        TimeSeries senkouBSeries = new TimeSeries("Senkou Span B");
+
+        for (int i = 0; i < candles.size(); i++) {
+            Millisecond time = new Millisecond(new Date(candles.get(i).timestamp()));
+
+            // Tenkan-sen (Conversion Line)
+            if (i >= conversionPeriod - 1) {
+                double high = Double.MIN_VALUE;
+                double low = Double.MAX_VALUE;
+                for (int j = i - conversionPeriod + 1; j <= i; j++) {
+                    high = Math.max(high, candles.get(j).high());
+                    low = Math.min(low, candles.get(j).low());
+                }
+                tenkanSeries.addOrUpdate(time, (high + low) / 2.0);
+            }
+
+            // Kijun-sen (Base Line)
+            if (i >= basePeriod - 1) {
+                double high = Double.MIN_VALUE;
+                double low = Double.MAX_VALUE;
+                for (int j = i - basePeriod + 1; j <= i; j++) {
+                    high = Math.max(high, candles.get(j).high());
+                    low = Math.min(low, candles.get(j).low());
+                }
+                kijunSeries.addOrUpdate(time, (high + low) / 2.0);
+            }
+
+            // Chikou Span (Lagging Span) - close price plotted displacement periods back
+            // At index i, we store the close from i + displacement
+            if (i + displacement < candles.size()) {
+                double chikouValue = candles.get(i + displacement).close();
+                chikouSeries.addOrUpdate(time, chikouValue);
+            }
+        }
+
+        // Calculate Senkou Spans (shifted forward by displacement)
+        for (int i = 0; i < candles.size(); i++) {
+            Millisecond time = new Millisecond(new Date(candles.get(i).timestamp()));
+            int sourceIndex = i - displacement;
+
+            if (sourceIndex >= 0) {
+                // Senkou Span A = (Tenkan + Kijun) / 2 from sourceIndex
+                if (sourceIndex >= Math.max(conversionPeriod, basePeriod) - 1) {
+                    double tenkan = calculateMidpoint(candles, conversionPeriod, sourceIndex);
+                    double kijun = calculateMidpoint(candles, basePeriod, sourceIndex);
+                    senkouASeries.addOrUpdate(time, (tenkan + kijun) / 2.0);
+                }
+
+                // Senkou Span B = midpoint of spanBPeriod from sourceIndex
+                if (sourceIndex >= spanBPeriod - 1) {
+                    double spanB = calculateMidpoint(candles, spanBPeriod, sourceIndex);
+                    senkouBSeries.addOrUpdate(time, spanB);
+                }
+            }
+        }
+
+        // Create datasets and renderers
+        // Dataset 1: Lines (Tenkan, Kijun, Chikou)
+        TimeSeriesCollection linesDataset = new TimeSeriesCollection();
+        linesDataset.addSeries(tenkanSeries);
+        linesDataset.addSeries(kijunSeries);
+        linesDataset.addSeries(chikouSeries);
+
+        if (ichimokuLinesDatasetIndex < 0) {
+            ichimokuLinesDatasetIndex = findNextAvailableDatasetIndex(plot, 1);
+        }
+        plot.setDataset(ichimokuLinesDatasetIndex, linesDataset);
+
+        XYLineAndShapeRenderer linesRenderer = new XYLineAndShapeRenderer(true, false);
+        linesRenderer.setSeriesPaint(0, ChartStyles.ICHIMOKU_TENKAN_COLOR);
+        linesRenderer.setSeriesPaint(1, ChartStyles.ICHIMOKU_KIJUN_COLOR);
+        linesRenderer.setSeriesPaint(2, ChartStyles.ICHIMOKU_CHIKOU_COLOR);
+        linesRenderer.setSeriesStroke(0, ChartStyles.MEDIUM_STROKE);
+        linesRenderer.setSeriesStroke(1, ChartStyles.MEDIUM_STROKE);
+        linesRenderer.setSeriesStroke(2, ChartStyles.THIN_STROKE);
+        plot.setRenderer(ichimokuLinesDatasetIndex, linesRenderer);
+
+        // Dataset 2: Cloud (Senkou Span A & B with fill)
+        TimeSeriesCollection cloudDataset = new TimeSeriesCollection();
+        cloudDataset.addSeries(senkouASeries);
+        cloudDataset.addSeries(senkouBSeries);
+
+        if (ichimokuCloudDatasetIndex < 0) {
+            ichimokuCloudDatasetIndex = findNextAvailableDatasetIndex(plot, ichimokuLinesDatasetIndex + 1);
+        }
+        plot.setDataset(ichimokuCloudDatasetIndex, cloudDataset);
+
+        // Use XYDifferenceRenderer for cloud fill between Span A and Span B
+        XYDifferenceRenderer cloudRenderer = new XYDifferenceRenderer(
+            ChartStyles.ICHIMOKU_CLOUD_BULLISH,  // Fill when series 0 > series 1 (Span A > Span B = bullish)
+            ChartStyles.ICHIMOKU_CLOUD_BEARISH,  // Fill when series 1 > series 0 (Span B > Span A = bearish)
+            false  // Don't show shapes
+        );
+        cloudRenderer.setSeriesPaint(0, ChartStyles.ICHIMOKU_SPAN_A_COLOR);
+        cloudRenderer.setSeriesPaint(1, ChartStyles.ICHIMOKU_SPAN_B_COLOR);
+        cloudRenderer.setSeriesStroke(0, ChartStyles.THIN_STROKE);
+        cloudRenderer.setSeriesStroke(1, ChartStyles.THIN_STROKE);
+        plot.setRenderer(ichimokuCloudDatasetIndex, cloudRenderer);
+    }
+
+    /**
+     * Helper method to calculate midpoint (high + low) / 2 for a given period ending at barIndex.
+     */
+    private double calculateMidpoint(List<Candle> candles, int period, int barIndex) {
+        if (barIndex < period - 1) return Double.NaN;
+        double high = Double.MIN_VALUE;
+        double low = Double.MAX_VALUE;
+        for (int j = barIndex - period + 1; j <= barIndex; j++) {
+            high = Math.max(high, candles.get(j).high());
+            low = Math.min(low, candles.get(j).low());
+        }
+        return (high + low) / 2.0;
+    }
+
+    public void clearIchimokuOverlay() {
+        XYPlot plot = priceChart.getXYPlot();
+        if (ichimokuLinesDatasetIndex >= 0) {
+            plot.setDataset(ichimokuLinesDatasetIndex, null);
+            ichimokuLinesDatasetIndex = -1;
+        }
+        if (ichimokuCloudDatasetIndex >= 0) {
+            plot.setDataset(ichimokuCloudDatasetIndex, null);
+            ichimokuCloudDatasetIndex = -1;
+        }
+    }
+
+    public boolean isIchimokuEnabled() {
+        return ichimokuLinesDatasetIndex >= 0 && priceChart.getXYPlot().getDataset(ichimokuLinesDatasetIndex) != null;
+    }
+
+    // ===== VWAP Overlay =====
+
+    /**
+     * Sets the VWAP (Volume Weighted Average Price) overlay on the price chart.
+     * VWAP is calculated using IndicatorEngine and resets at UTC day boundaries.
+     */
+    public void setVwapOverlay(List<Candle> candles) {
+        if (candles == null || candles.isEmpty() || indicatorEngine == null) {
+            clearVwapOverlay();
+            return;
+        }
+
+        XYPlot plot = priceChart.getXYPlot();
+
+        TimeSeries vwapSeries = new TimeSeries("VWAP");
+
+        for (int i = 0; i < candles.size(); i++) {
+            double vwap = indicatorEngine.getVWAPAt(i);
+            if (!Double.isNaN(vwap) && vwap > 0) {
+                vwapSeries.addOrUpdate(new Millisecond(new Date(candles.get(i).timestamp())), vwap);
+            }
+        }
+
+        if (vwapSeries.isEmpty()) {
+            clearVwapOverlay();
+            return;
+        }
+
+        TimeSeriesCollection dataset = new TimeSeriesCollection(vwapSeries);
+
+        if (vwapDatasetIndex < 0) {
+            vwapDatasetIndex = findNextAvailableDatasetIndex(plot, 12);
+        }
+
+        plot.setDataset(vwapDatasetIndex, dataset);
+
+        // Style: yellow solid line for VWAP
+        XYLineAndShapeRenderer renderer = new XYLineAndShapeRenderer(true, false);
+        renderer.setSeriesPaint(0, ChartStyles.VWAP_COLOR);
+        renderer.setSeriesStroke(0, ChartStyles.MEDIUM_STROKE);
+        plot.setRenderer(vwapDatasetIndex, renderer);
+    }
+
+    public void clearVwapOverlay() {
+        if (vwapDatasetIndex >= 0 && priceChart != null) {
+            XYPlot plot = priceChart.getXYPlot();
+            plot.setDataset(vwapDatasetIndex, null);
+            vwapDatasetIndex = -1;
+        }
+    }
+
+    public boolean isVwapEnabled() {
+        return vwapDatasetIndex >= 0 && priceChart.getXYPlot().getDataset(vwapDatasetIndex) != null;
+    }
+
     // ===== Clear All =====
 
     public void clearAll() {
@@ -665,6 +885,8 @@ public class OverlayManager {
         clearDailyPocOverlay();
         clearFloatingPocOverlay();
         clearRayOverlay();
+        clearIchimokuOverlay();
+        clearVwapOverlay();
         resetColorIndex();
     }
 
