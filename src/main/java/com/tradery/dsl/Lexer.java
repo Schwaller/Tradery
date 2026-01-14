@@ -74,6 +74,20 @@ public class Lexer {
         Map.entry("OI_CHANGE", TokenType.OI_FUNC),
         Map.entry("OI_DELTA", TokenType.OI_FUNC),
 
+        // Rotating Ray functions (resistance)
+        Map.entry("RESISTANCE_RAY_BROKEN", TokenType.RAY_FUNC),
+        Map.entry("RESISTANCE_RAY_CROSSED", TokenType.RAY_FUNC),
+        Map.entry("RESISTANCE_RAY_DISTANCE", TokenType.RAY_FUNC),
+        Map.entry("RESISTANCE_RAYS_BROKEN", TokenType.RAY_FUNC),
+        Map.entry("RESISTANCE_RAY_COUNT", TokenType.RAY_FUNC),
+
+        // Rotating Ray functions (support)
+        Map.entry("SUPPORT_RAY_BROKEN", TokenType.RAY_FUNC),
+        Map.entry("SUPPORT_RAY_CROSSED", TokenType.RAY_FUNC),
+        Map.entry("SUPPORT_RAY_DISTANCE", TokenType.RAY_FUNC),
+        Map.entry("SUPPORT_RAYS_BROKEN", TokenType.RAY_FUNC),
+        Map.entry("SUPPORT_RAY_COUNT", TokenType.RAY_FUNC),
+
         // Price references
         Map.entry("price", TokenType.PRICE),
         Map.entry("open", TokenType.PRICE),
@@ -100,9 +114,19 @@ public class Lexer {
         Map.entry("upper", TokenType.PROPERTY),
         Map.entry("lower", TokenType.PROPERTY),
         Map.entry("middle", TokenType.PROPERTY),
+        Map.entry("width", TokenType.PROPERTY),
         Map.entry("line", TokenType.PROPERTY),
         Map.entry("k", TokenType.PROPERTY),
-        Map.entry("d", TokenType.PROPERTY)
+        Map.entry("d", TokenType.PROPERTY),
+        Map.entry("trend", TokenType.PROPERTY),
+
+        // Aggregate functions (operate on expressions over lookback)
+        Map.entry("LOWEST", TokenType.AGGREGATE_FUNC),
+        Map.entry("HIGHEST", TokenType.AGGREGATE_FUNC),
+        Map.entry("PERCENTILE", TokenType.AGGREGATE_FUNC),
+
+        // Supertrend indicator
+        Map.entry("SUPERTREND", TokenType.INDICATOR)
     );
 
     private final String source;
@@ -135,6 +159,8 @@ public class Lexer {
             switch (c) {
                 case '(' -> { addToken(TokenType.LPAREN, "("); position++; continue; }
                 case ')' -> { addToken(TokenType.RPAREN, ")"); position++; continue; }
+                case '[' -> { addToken(TokenType.LBRACKET, "["); position++; continue; }
+                case ']' -> { addToken(TokenType.RBRACKET, "]"); position++; continue; }
                 case ',' -> { addToken(TokenType.COMMA, ","); position++; continue; }
                 case '.' -> { addToken(TokenType.DOT, "."); position++; continue; }
                 case '*' -> { addToken(TokenType.MULTIPLY, "*"); position++; continue; }

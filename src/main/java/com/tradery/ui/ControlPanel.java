@@ -70,6 +70,10 @@ public class ControlPanel extends JToolBar {
         addSeparator();
         add(Box.createHorizontalStrut(24));
 
+        // Help button (before symbol selector)
+        add(createHelpButton());
+        add(Box.createHorizontalStrut(16));
+
         // Symbol
         add(new JLabel("Symbol:"));
         add(Box.createHorizontalStrut(4));
@@ -114,5 +118,16 @@ public class ControlPanel extends JToolBar {
 
     public String getResolution() {
         return (String) resolutionCombo.getSelectedItem();
+    }
+
+    private JButton createHelpButton() {
+        JButton btn = new JButton("?");
+        btn.setFont(new java.awt.Font(java.awt.Font.SANS_SERIF, java.awt.Font.BOLD, 11));
+        btn.setMargin(new java.awt.Insets(2, 6, 2, 6));
+        btn.setFocusPainted(false);
+        btn.setCursor(java.awt.Cursor.getPredefinedCursor(java.awt.Cursor.HAND_CURSOR));
+        btn.setToolTipText("Strategy Guide");
+        btn.addActionListener(e -> StrategyHelpDialog.show(this));
+        return btn;
     }
 }

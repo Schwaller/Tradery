@@ -10,12 +10,14 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Reads and writes Strategy JSON files.
- * Each strategy has its own folder: ~/.tradery/strategies/{id}/strategy.json
+ * Reads and writes Strategy YAML files.
+ * Each strategy has its own folder: ~/.tradery/strategies/{id}/strategy.yaml
+ *
+ * Backward compatible: auto-migrates legacy strategy.json to strategy.yaml
  *
  * Claude Code can directly read/write these files.
  */
-public class StrategyStore extends JsonStore<Strategy> {
+public class StrategyStore extends YamlStore<Strategy> {
 
     public StrategyStore(File directory) {
         super(directory);
@@ -23,7 +25,7 @@ public class StrategyStore extends JsonStore<Strategy> {
 
     @Override
     protected String getFileName() {
-        return "strategy.json";
+        return "strategy.yaml";
     }
 
     @Override
@@ -55,7 +57,7 @@ public class StrategyStore extends JsonStore<Strategy> {
                 log.warn("Preset manifest not found in resources");
                 return presets;
             }
-            JsonNode root = mapper.readTree(is);
+            JsonNode root = jsonMapper.readTree(is);
             JsonNode strategies = root.get("strategies");
             if (strategies != null && strategies.isArray()) {
                 for (JsonNode node : strategies) {
@@ -96,7 +98,7 @@ public class StrategyStore extends JsonStore<Strategy> {
                 log.warn("Preset not found: {}", presetId);
                 return null;
             }
-            Strategy strategy = mapper.readValue(is, Strategy.class);
+            Strategy strategy = jsonMapper.readValue(is, Strategy.class);
             save(strategy);
             log.info("Installed preset: {}", strategy.getName());
             return strategy;

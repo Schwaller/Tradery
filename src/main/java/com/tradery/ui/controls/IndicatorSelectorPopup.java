@@ -17,16 +17,9 @@ public class IndicatorSelectorPopup extends JDialog {
     private final ChartsPanel chartPanel;
     private final Runnable onBacktestNeeded;
 
-    // Overlay controls
-    private JCheckBox smaCheckbox;
-    private JLabel smaLabel;
-    private JSlider smaSlider;
-    private JSpinner smaSpinner;
-
-    private JCheckBox emaCheckbox;
-    private JLabel emaLabel;
-    private JSlider emaSlider;
-    private JSpinner emaSpinner;
+    // Overlay controls - Multiple SMA/EMA support
+    private JPanel smaOverlaysPanel;
+    private JPanel emaOverlaysPanel;
 
     private JCheckBox bbCheckbox;
     private JLabel bbPeriodLabel;
@@ -47,6 +40,14 @@ public class IndicatorSelectorPopup extends JDialog {
 
     private JCheckBox dailyPocCheckbox;
     private JCheckBox floatingPocCheckbox;
+
+    private JCheckBox rayCheckbox;
+    private JLabel rayLookbackLabel;
+    private JSlider rayLookbackSlider;
+    private JSpinner rayLookbackSpinner;
+    private JLabel raySkipLabel;
+    private JSlider raySkipSlider;
+    private JSpinner raySkipSpinner;
 
     // Oscillator controls
     private JCheckBox rsiCheckbox;
@@ -172,6 +173,7 @@ public class IndicatorSelectorPopup extends JDialog {
         contentPane.add(createMayerRow());
         contentPane.add(createDailyPocRow());
         contentPane.add(createFloatingPocRow());
+        contentPane.add(createRayOverlayRow());
 
         contentPane.add(Box.createVerticalStrut(8));
 
@@ -229,21 +231,218 @@ public class IndicatorSelectorPopup extends JDialog {
     }
 
     private JPanel createSmaRow() {
-        smaCheckbox = new JCheckBox("SMA");
-        smaLabel = new JLabel("Period:");
-        Object[] controls = createSliderSpinner(20, 5, 200);
-        smaSlider = (JSlider) controls[0];
-        smaSpinner = (JSpinner) controls[1];
-        return createIndicatorRowWithSlider(smaCheckbox, smaLabel, smaSlider, smaSpinner);
+        smaOverlaysPanel = new JPanel();
+        smaOverlaysPanel.setLayout(new BoxLayout(smaOverlaysPanel, BoxLayout.Y_AXIS));
+        smaOverlaysPanel.setAlignmentX(Component.LEFT_ALIGNMENT);
+        return smaOverlaysPanel;
+    }
+
+    private void rebuildSmaOverlays() {
+        smaOverlaysPanel.removeAll();
+        java.util.List<Integer> periods = ChartConfig.getInstance().getSmaPeriods();
+
+        // Always show at least one row
+        if (periods.isEmpty()) {
+            periods = new java.util.ArrayList<>();
+            periods.add(20);  // Default period
+        }
+
+        for (int i = 0; i < periods.size(); i++) {
+            final int index = i;
+            final int period = periods.get(index);
+            boolean isFirst = (i == 0);
+            boolean isLast = (i == periods.size() - 1);
+
+            // Get color from palette (same order as OverlayManager assigns)
+            Color color = com.tradery.ui.charts.ChartStyles.OVERLAY_PALETTE[index % com.tradery.ui.charts.ChartStyles.OVERLAY_PALETTE.length];
+
+            smaOverlaysPanel.add(createOverlayRow("SMA", period, isFirst, isLast, color,
+                // On checkbox change
+                (enabled, newPeriod) -> {
+                    if (enabled) {
+                        ChartConfig.getInstance().addSmaPeriod(newPeriod);
+                    } else {
+                        ChartConfig.getInstance().removeSmaPeriod(newPeriod);
+                    }
+                    scheduleUpdate();
+                },
+                // On period change
+                (oldPeriod, newPeriod) -> {
+                    ChartConfig.getInstance().removeSmaPeriod(oldPeriod);
+                    ChartConfig.getInstance().addSmaPeriod(newPeriod);
+                    scheduleUpdate();
+                },
+                // On add
+                () -> {
+                    // Find next available period that doesn't exist
+                    int newPeriod = findNextAvailablePeriod(ChartConfig.getInstance().getSmaPeriods());
+                    ChartConfig.getInstance().addSmaPeriod(newPeriod);
+                    rebuildSmaOverlays();
+                    scheduleUpdate();
+                },
+                // On remove
+                () -> {
+                    ChartConfig.getInstance().removeSmaPeriod(period);
+                    rebuildSmaOverlays();
+                    scheduleUpdate();
+                }
+            ));
+        }
+        smaOverlaysPanel.revalidate();
+        smaOverlaysPanel.repaint();
+        pack();
     }
 
     private JPanel createEmaRow() {
-        emaCheckbox = new JCheckBox("EMA");
-        emaLabel = new JLabel("Period:");
-        Object[] controls = createSliderSpinner(20, 5, 200);
-        emaSlider = (JSlider) controls[0];
-        emaSpinner = (JSpinner) controls[1];
-        return createIndicatorRowWithSlider(emaCheckbox, emaLabel, emaSlider, emaSpinner);
+        emaOverlaysPanel = new JPanel();
+        emaOverlaysPanel.setLayout(new BoxLayout(emaOverlaysPanel, BoxLayout.Y_AXIS));
+        emaOverlaysPanel.setAlignmentX(Component.LEFT_ALIGNMENT);
+        return emaOverlaysPanel;
+    }
+
+    private void rebuildEmaOverlays() {
+        emaOverlaysPanel.removeAll();
+        java.util.List<Integer> periods = ChartConfig.getInstance().getEmaPeriods();
+
+        // Always show at least one row
+        if (periods.isEmpty()) {
+            periods = new java.util.ArrayList<>();
+            periods.add(20);  // Default period
+        }
+
+        for (int i = 0; i < periods.size(); i++) {
+            final int index = i;
+            final int period = periods.get(index);
+            boolean isFirst = (i == 0);
+            boolean isLast = (i == periods.size() - 1);
+
+            // Get color from palette (offset by SMA count so colors continue)
+            int smaCount = ChartConfig.getInstance().getSmaPeriods().size();
+            Color color = com.tradery.ui.charts.ChartStyles.OVERLAY_PALETTE[(smaCount + index) % com.tradery.ui.charts.ChartStyles.OVERLAY_PALETTE.length];
+
+            emaOverlaysPanel.add(createOverlayRow("EMA", period, isFirst, isLast, color,
+                // On checkbox change
+                (enabled, newPeriod) -> {
+                    if (enabled) {
+                        ChartConfig.getInstance().addEmaPeriod(newPeriod);
+                    } else {
+                        ChartConfig.getInstance().removeEmaPeriod(newPeriod);
+                    }
+                    scheduleUpdate();
+                },
+                // On period change
+                (oldPeriod, newPeriod) -> {
+                    ChartConfig.getInstance().removeEmaPeriod(oldPeriod);
+                    ChartConfig.getInstance().addEmaPeriod(newPeriod);
+                    scheduleUpdate();
+                },
+                // On add
+                () -> {
+                    // Find next available period that doesn't exist
+                    int newPeriod = findNextAvailablePeriod(ChartConfig.getInstance().getEmaPeriods());
+                    ChartConfig.getInstance().addEmaPeriod(newPeriod);
+                    rebuildEmaOverlays();
+                    scheduleUpdate();
+                },
+                // On remove
+                () -> {
+                    ChartConfig.getInstance().removeEmaPeriod(period);
+                    rebuildEmaOverlays();
+                    scheduleUpdate();
+                }
+            ));
+        }
+        emaOverlaysPanel.revalidate();
+        emaOverlaysPanel.repaint();
+        pack();
+    }
+
+    private JPanel createOverlayRow(String type, int period, boolean isFirst, boolean isLast,
+                                    Color color,
+                                    java.util.function.BiConsumer<Boolean, Integer> onCheckboxChange,
+                                    java.util.function.BiConsumer<Integer, Integer> onPeriodChange,
+                                    Runnable onAdd, Runnable onRemove) {
+        JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
+        row.setAlignmentX(Component.LEFT_ALIGNMENT);
+
+        // Color swatch
+        JPanel colorBox = new JPanel();
+        colorBox.setPreferredSize(new Dimension(12, 12));
+        colorBox.setBackground(color);
+        colorBox.setBorder(BorderFactory.createLineBorder(Color.GRAY, 1));
+        row.add(colorBox);
+
+        // Checkbox with type label on every row
+        JCheckBox checkbox = new JCheckBox(type);
+        checkbox.setSelected(ChartConfig.getInstance().getSmaPeriods().contains(period) ||
+                            ChartConfig.getInstance().getEmaPeriods().contains(period));
+        row.add(checkbox);
+
+        // Period label and slider/spinner
+        JLabel label = new JLabel("Period:");
+        row.add(label);
+
+        Object[] controls = createSliderSpinner(period, 5, 200);
+        JSlider slider = (JSlider) controls[0];
+        JSpinner spinner = (JSpinner) controls[1];
+        row.add(slider);
+        row.add(spinner);
+
+        // Track the current period for change detection
+        final int[] currentPeriod = {period};
+
+        // Wire up checkbox
+        checkbox.addActionListener(e -> {
+            int p = (int) spinner.getValue();
+            onCheckboxChange.accept(checkbox.isSelected(), p);
+        });
+
+        // Wire up period change (on spinner change, debounced)
+        spinner.addChangeListener(e -> {
+            int newPeriod = (int) spinner.getValue();
+            if (newPeriod != currentPeriod[0] && checkbox.isSelected()) {
+                onPeriodChange.accept(currentPeriod[0], newPeriod);
+                currentPeriod[0] = newPeriod;
+            }
+        });
+
+        // Add button (always show)
+        JButton addBtn = new JButton("+");
+        addBtn.setMargin(new Insets(0, 4, 0, 4));
+        addBtn.setToolTipText("Add another " + type);
+        addBtn.addActionListener(e -> onAdd.run());
+        row.add(addBtn);
+
+        // Remove button (only show if not the only row)
+        JButton removeBtn = new JButton("-");
+        removeBtn.setMargin(new Insets(0, 4, 0, 4));
+        removeBtn.setToolTipText("Remove this " + type);
+        removeBtn.addActionListener(e -> onRemove.run());
+        // Hide remove button if this is the only row
+        int totalRows = type.equals("SMA") ?
+            Math.max(1, ChartConfig.getInstance().getSmaPeriods().size()) :
+            Math.max(1, ChartConfig.getInstance().getEmaPeriods().size());
+        removeBtn.setVisible(totalRows > 1);
+        row.add(removeBtn);
+
+        return row;
+    }
+
+    private int findNextAvailablePeriod(java.util.List<Integer> existingPeriods) {
+        // Common periods to try: 20, 50, 100, 200, then increment from 10
+        int[] commonPeriods = {20, 50, 100, 200, 10, 15, 25, 30, 40, 60, 80, 150};
+        for (int p : commonPeriods) {
+            if (!existingPeriods.contains(p)) {
+                return p;
+            }
+        }
+        // Fallback: find any period not in use
+        for (int p = 5; p <= 500; p++) {
+            if (!existingPeriods.contains(p)) {
+                return p;
+            }
+        }
+        return 20; // shouldn't happen
     }
 
     private JPanel createBollingerRow() {
@@ -308,6 +507,36 @@ public class IndicatorSelectorPopup extends JDialog {
         row.setAlignmentX(Component.LEFT_ALIGNMENT);
         row.add(floatingPocCheckbox);
         floatingPocCheckbox.addActionListener(e -> scheduleUpdate());
+        return row;
+    }
+
+    private JPanel createRayOverlayRow() {
+        rayCheckbox = new JCheckBox("Rotating Rays");
+        rayCheckbox.setToolTipText("Show resistance/support rays from ATH/ATL");
+        rayLookbackLabel = new JLabel("Lookback:");
+        Object[] lookbackControls = createSliderSpinner(200, 20, 500);
+        rayLookbackSlider = (JSlider) lookbackControls[0];
+        rayLookbackSpinner = (JSpinner) lookbackControls[1];
+        raySkipLabel = new JLabel("Skip:");
+        Object[] skipControls = createSliderSpinner(5, 0, 50);
+        raySkipSlider = (JSlider) skipControls[0];
+        raySkipSpinner = (JSpinner) skipControls[1];
+
+        JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
+        row.setAlignmentX(Component.LEFT_ALIGNMENT);
+        row.add(rayCheckbox);
+        row.add(Box.createHorizontalGlue());
+        row.add(rayLookbackLabel);
+        row.add(rayLookbackSlider);
+        row.add(rayLookbackSpinner);
+        row.add(raySkipLabel);
+        row.add(raySkipSlider);
+        row.add(raySkipSpinner);
+
+        rayCheckbox.addActionListener(e -> {
+            updateControlVisibility();
+            scheduleUpdate();
+        });
         return row;
     }
 
@@ -622,16 +851,7 @@ public class IndicatorSelectorPopup extends JDialog {
     }
 
     private void updateControlVisibility() {
-        // Overlays
-        boolean smaEnabled = smaCheckbox.isSelected();
-        smaLabel.setVisible(smaEnabled);
-        smaSlider.setVisible(smaEnabled);
-        smaSpinner.setVisible(smaEnabled);
-
-        boolean emaEnabled = emaCheckbox.isSelected();
-        emaLabel.setVisible(emaEnabled);
-        emaSlider.setVisible(emaEnabled);
-        emaSpinner.setVisible(emaEnabled);
+        // Overlays - SMA/EMA now use chip panels, no visibility toggle needed
 
         boolean bbEnabled = bbCheckbox.isSelected();
         bbPeriodLabel.setVisible(bbEnabled);
@@ -649,6 +869,14 @@ public class IndicatorSelectorPopup extends JDialog {
         mayerLabel.setVisible(mayerEnabled);
         mayerSlider.setVisible(mayerEnabled);
         mayerSpinner.setVisible(mayerEnabled);
+
+        boolean rayEnabled = rayCheckbox.isSelected();
+        rayLookbackLabel.setVisible(rayEnabled);
+        rayLookbackSlider.setVisible(rayEnabled);
+        rayLookbackSpinner.setVisible(rayEnabled);
+        raySkipLabel.setVisible(rayEnabled);
+        raySkipSlider.setVisible(rayEnabled);
+        raySkipSpinner.setVisible(rayEnabled);
 
         // Oscillators
         boolean rsiEnabled = rsiCheckbox.isSelected();
@@ -694,11 +922,10 @@ public class IndicatorSelectorPopup extends JDialog {
     private void syncFromChartPanel() {
         ChartConfig config = ChartConfig.getInstance();
 
-        // Overlays - use ChartConfig for state and parameters
-        smaCheckbox.setSelected(config.isSmaEnabled());
-        smaSpinner.setValue(config.getSmaPeriod());
-        emaCheckbox.setSelected(config.isEmaEnabled());
-        emaSpinner.setValue(config.getEmaPeriod());
+        // Overlays - rebuild chips from config
+        rebuildSmaOverlays();
+        rebuildEmaOverlays();
+
         bbCheckbox.setSelected(config.isBollingerEnabled());
         bbPeriodSpinner.setValue(config.getBollingerPeriod());
         bbStdSpinner.setValue(config.getBollingerStdDev());
@@ -708,6 +935,9 @@ public class IndicatorSelectorPopup extends JDialog {
         mayerSpinner.setValue(config.getMayerPeriod());
         dailyPocCheckbox.setSelected(config.isDailyPocEnabled());
         floatingPocCheckbox.setSelected(config.isFloatingPocEnabled());
+        rayCheckbox.setSelected(config.isRayOverlayEnabled());
+        rayLookbackSpinner.setValue(config.getRayLookback());
+        raySkipSpinner.setValue(config.getRaySkip());
 
         // Oscillators
         rsiCheckbox.setSelected(config.isRsiEnabled());
@@ -749,25 +979,11 @@ public class IndicatorSelectorPopup extends JDialog {
     private void applyChanges() {
         ChartConfig config = ChartConfig.getInstance();
 
-        // Overlays
-        int smaPeriod = (int) smaSpinner.getValue();
-        int emaPeriod = (int) emaSpinner.getValue();
+        // Overlays - SMA/EMA are managed via ChartConfig in rebuildSmaOverlays/rebuildEmaOverlays
         int bbPeriod = (int) bbPeriodSpinner.getValue();
         double bbStd = (double) bbStdSpinner.getValue();
         int hlPeriod = (int) hlSpinner.getValue();
         int mayerPeriod = (int) mayerSpinner.getValue();
-
-        if (smaCheckbox.isSelected()) {
-            chartPanel.setSmaOverlay(smaPeriod, null);
-        } else {
-            chartPanel.clearSmaOverlay();
-        }
-
-        if (emaCheckbox.isSelected()) {
-            chartPanel.setEmaOverlay(emaPeriod, null);
-        } else {
-            chartPanel.clearEmaOverlay();
-        }
 
         if (bbCheckbox.isSelected()) {
             chartPanel.setBollingerOverlay(bbPeriod, bbStd, null);
@@ -799,11 +1015,7 @@ public class IndicatorSelectorPopup extends JDialog {
             chartPanel.clearFloatingPocOverlay();
         }
 
-        // Save overlay settings to config
-        config.setSmaEnabled(smaCheckbox.isSelected());
-        config.setSmaPeriod(smaPeriod);
-        config.setEmaEnabled(emaCheckbox.isSelected());
-        config.setEmaPeriod(emaPeriod);
+        // Save overlay settings to config (SMA/EMA managed via chips)
         config.setBollingerEnabled(bbCheckbox.isSelected());
         config.setBollingerPeriod(bbPeriod);
         config.setBollingerStdDev(bbStd);
@@ -813,6 +1025,18 @@ public class IndicatorSelectorPopup extends JDialog {
         config.setMayerPeriod(mayerPeriod);
         config.setDailyPocEnabled(dailyPocCheckbox.isSelected());
         config.setFloatingPocEnabled(floatingPocCheckbox.isSelected());
+
+        // Ray overlay
+        int rayLookback = (int) rayLookbackSpinner.getValue();
+        int raySkip = (int) raySkipSpinner.getValue();
+        if (rayCheckbox.isSelected()) {
+            chartPanel.setRayOverlay(true, rayLookback, raySkip);
+        } else {
+            chartPanel.clearRayOverlay();
+        }
+        config.setRayOverlayEnabled(rayCheckbox.isSelected());
+        config.setRayLookback(rayLookback);
+        config.setRaySkip(raySkip);
 
         // Oscillators
         int rsiPeriod = (int) rsiSpinner.getValue();

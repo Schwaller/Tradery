@@ -12,6 +12,7 @@ import com.tradery.model.Candle;
 import com.tradery.model.Hoop;
 import com.tradery.model.HoopMatchResult;
 import com.tradery.model.HoopPattern;
+import com.tradery.model.PriceSmoothingType;
 
 import javax.swing.*;
 import javax.swing.event.ChangeListener;
@@ -52,9 +53,18 @@ public class InteractiveHoopEditorFrame extends JFrame {
     private JButton loadDataBtn;
     private JButton findMatchesBtn;
     private JToggleButton showMatchesToggle;
+    private JComboBox<PriceSmoothingType> smoothingTypeCombo;
+    private JSpinner smoothingPeriodSpinner;
+    private JLabel smoothingPeriodLabel;
     private JLabel statusLabel;
     private JList<String> hoopList;
     private DefaultListModel<String> hoopListModel;
+
+    // Pattern list (left panel)
+    private JList<HoopPattern> patternList;
+    private DefaultListModel<HoopPattern> patternListModel;
+    private JButton newPatternBtn;
+    private JButton deletePatternBtn;
 
     // Properties panel
     private JTextField nameField;
@@ -66,17 +76,17 @@ public class InteractiveHoopEditorFrame extends JFrame {
 
     private boolean suppressPropertyChanges = false;
     private Timer autoSaveTimer;
+    private boolean ignoringFileChanges = false;
 
-    public InteractiveHoopEditorFrame(HoopPattern pattern, HoopPatternStore patternStore) {
-        super("Interactive Hoop Editor - " + TraderyApp.APP_NAME);
-        this.pattern = pattern;
+    public InteractiveHoopEditorFrame(HoopPatternStore patternStore) {
+        super("Hoop Patterns - " + TraderyApp.APP_NAME);
         this.patternStore = patternStore;
         this.candleStore = ApplicationContext.getInstance().getCandleStore();
 
         initializeFrame();
         initializeComponents();
         layoutComponents();
-        loadPatternData();
+        loadPatterns();
         setupAutoSave();
     }
 
@@ -96,17 +106,30 @@ public class InteractiveHoopEditorFrame extends JFrame {
     }
 
     private void initializeComponents() {
+        // Pattern list (left panel)
+        patternListModel = new DefaultListModel<>();
+        patternList = new JList<>(patternListModel);
+        patternList.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+        patternList.setCellRenderer(new PatternCellRenderer());
+        patternList.addListSelectionListener(e -> {
+            if (!e.getValueIsAdjusting()) {
+                onPatternSelected();
+            }
+        });
+
+        newPatternBtn = new JButton("New");
+        newPatternBtn.addActionListener(e -> createPattern());
+
+        deletePatternBtn = new JButton("Delete");
+        deletePatternBtn.addActionListener(e -> deletePattern());
+        deletePatternBtn.setEnabled(false);
+
         // Toolbar components
         symbolCombo = new JComboBox<>(SYMBOLS);
         symbolCombo.setEditable(true);
-        if (pattern.getSymbol() != null) {
-            symbolCombo.setSelectedItem(pattern.getSymbol());
-        }
 
         timeframeCombo = new JComboBox<>(TIMEFRAMES);
-        if (pattern.getTimeframe() != null) {
-            timeframeCombo.setSelectedItem(pattern.getTimeframe());
-        }
+        timeframeCombo.setSelectedItem("1h");
 
         durationCombo = new JComboBox<>(DURATIONS);
         durationCombo.setSelectedItem("30 days");
@@ -121,11 +144,23 @@ public class InteractiveHoopEditorFrame extends JFrame {
         showMatchesToggle = new JToggleButton("Show Matches", true);
         showMatchesToggle.addActionListener(e -> chartPanel.setShowMatches(showMatchesToggle.isSelected()));
 
-        statusLabel = new JLabel("Click 'Load Data' to fetch candles");
+        // Smoothing controls
+        smoothingTypeCombo = new JComboBox<>(PriceSmoothingType.values());
+        smoothingTypeCombo.addActionListener(e -> {
+            updateSmoothingPeriodVisibility();
+            onSmoothingChanged();
+        });
+
+        smoothingPeriodSpinner = new JSpinner(new SpinnerNumberModel(5, 1, 100, 1));
+        smoothingPeriodSpinner.setPreferredSize(new Dimension(50, smoothingPeriodSpinner.getPreferredSize().height));
+        smoothingPeriodSpinner.addChangeListener(e -> onSmoothingChanged());
+
+        smoothingPeriodLabel = new JLabel("Period:");
+
+        statusLabel = new JLabel("Select a pattern to begin");
 
         // Chart panel
         chartPanel = new HoopPatternChartPanel();
-        chartPanel.setPattern(pattern);
         chartPanel.setOnPatternChanged(this::onPatternChanged);
         chartPanel.setOnSelectionChanged(this::onSelectionChanged);
 
@@ -159,6 +194,7 @@ public class InteractiveHoopEditorFrame extends JFrame {
         anchorModeCombo.addActionListener(e -> updateSelectedHoop());
 
         updateHoopList();
+        updateSmoothingPeriodVisibility();
     }
 
     private void layoutComponents() {
@@ -178,15 +214,37 @@ public class InteractiveHoopEditorFrame extends JFrame {
         toolbar.add(Box.createHorizontalStrut(16));
         toolbar.add(findMatchesBtn);
         toolbar.add(showMatchesToggle);
+        toolbar.add(Box.createHorizontalStrut(16));
+        toolbar.add(new JLabel("Smoothing:"));
+        toolbar.add(smoothingTypeCombo);
+        toolbar.add(smoothingPeriodLabel);
+        toolbar.add(smoothingPeriodSpinner);
         toolbar.add(Box.createHorizontalGlue());
         toolbar.add(statusLabel);
 
         contentPane.add(toolbar, BorderLayout.NORTH);
 
+        // Left panel: Pattern list
+        JPanel leftPanel = new JPanel(new BorderLayout(0, 4));
+        leftPanel.setPreferredSize(new Dimension(180, 0));
+        leftPanel.setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 0));
+
+        JLabel patternsLabel = new JLabel("Patterns");
+        patternsLabel.setFont(patternsLabel.getFont().deriveFont(Font.BOLD));
+        leftPanel.add(patternsLabel, BorderLayout.NORTH);
+
+        JScrollPane patternScroll = new JScrollPane(patternList);
+        leftPanel.add(patternScroll, BorderLayout.CENTER);
+
+        JPanel patternButtons = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
+        patternButtons.add(newPatternBtn);
+        patternButtons.add(deletePatternBtn);
+        leftPanel.add(patternButtons, BorderLayout.SOUTH);
+
         // Right panel: Hoop list
         JPanel rightPanel = new JPanel(new BorderLayout(0, 4));
         rightPanel.setPreferredSize(new Dimension(150, 0));
-        rightPanel.setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
+        rightPanel.setBorder(BorderFactory.createEmptyBorder(8, 0, 8, 8));
 
         JLabel hoopsLabel = new JLabel("Hoops");
         hoopsLabel.setFont(hoopsLabel.getFont().deriveFont(Font.BOLD));
@@ -232,12 +290,19 @@ public class InteractiveHoopEditorFrame extends JFrame {
 
         contentPane.add(bottomPanel, BorderLayout.SOUTH);
 
-        // Center: Chart
-        JPanel centerPanel = new JPanel(new BorderLayout());
-        centerPanel.add(chartPanel, BorderLayout.CENTER);
-        centerPanel.add(rightPanel, BorderLayout.EAST);
+        // Center: Chart with right panel
+        JPanel chartAndRight = new JPanel(new BorderLayout());
+        chartAndRight.add(chartPanel, BorderLayout.CENTER);
+        chartAndRight.add(rightPanel, BorderLayout.EAST);
 
-        contentPane.add(centerPanel, BorderLayout.CENTER);
+        // Main split: left | center+right
+        JSplitPane mainSplit = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT);
+        mainSplit.setLeftComponent(leftPanel);
+        mainSplit.setRightComponent(chartAndRight);
+        mainSplit.setDividerLocation(180);
+        mainSplit.setOneTouchExpandable(true);
+
+        contentPane.add(mainSplit, BorderLayout.CENTER);
     }
 
     private void loadPatternData() {
@@ -306,6 +371,11 @@ public class InteractiveHoopEditorFrame extends JFrame {
                     candles = get();
                     tracker.updateStatus(dataType, DataRequirementsTracker.Status.READY, candles.size(), candles.size());
                     chartPanel.setCandles(candles);
+
+                    // Apply current smoothing settings to chart
+                    PriceSmoothingType type = (PriceSmoothingType) smoothingTypeCombo.getSelectedItem();
+                    int period = ((Number) smoothingPeriodSpinner.getValue()).intValue();
+                    chartPanel.setSmoothing(type, period);
 
                     // Auto-set anchor to 20% into the data so hoops are visible
                     if (!candles.isEmpty()) {
@@ -472,5 +542,26 @@ public class InteractiveHoopEditorFrame extends JFrame {
             hoopList.setSelectedIndex(idx);
         }
         updatePropertiesPanel();
+    }
+
+    private void updateSmoothingPeriodVisibility() {
+        PriceSmoothingType type = (PriceSmoothingType) smoothingTypeCombo.getSelectedItem();
+        boolean needsPeriod = type == PriceSmoothingType.SMA || type == PriceSmoothingType.EMA;
+        smoothingPeriodLabel.setVisible(needsPeriod);
+        smoothingPeriodSpinner.setVisible(needsPeriod);
+    }
+
+    private void onSmoothingChanged() {
+        if (pattern == null) return;
+
+        PriceSmoothingType type = (PriceSmoothingType) smoothingTypeCombo.getSelectedItem();
+        int period = ((Number) smoothingPeriodSpinner.getValue()).intValue();
+
+        pattern.setPriceSmoothingType(type);
+        pattern.setPriceSmoothingPeriod(period);
+
+        // Update chart to show smoothed line
+        chartPanel.setSmoothing(type, period);
+        scheduleAutoSave();
     }
 }

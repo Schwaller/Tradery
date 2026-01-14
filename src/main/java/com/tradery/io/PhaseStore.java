@@ -10,12 +10,14 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Reads and writes Phase JSON files.
- * Each phase has its own folder: ~/.tradery/phases/{id}/phase.json
+ * Reads and writes Phase YAML files.
+ * Each phase has its own folder: ~/.tradery/phases/{id}/phase.yaml
+ *
+ * Backward compatible: auto-migrates legacy phase.json to phase.yaml
  *
  * Claude Code can directly read/write these files.
  */
-public class PhaseStore extends JsonStore<Phase> {
+public class PhaseStore extends YamlStore<Phase> {
 
     public PhaseStore(File directory) {
         super(directory);
@@ -23,7 +25,7 @@ public class PhaseStore extends JsonStore<Phase> {
 
     @Override
     protected String getFileName() {
-        return "phase.json";
+        return "phase.yaml";
     }
 
     @Override
@@ -52,7 +54,7 @@ public class PhaseStore extends JsonStore<Phase> {
                 log.warn("Phase preset manifest not found in resources");
                 return presets;
             }
-            JsonNode root = mapper.readTree(is);
+            JsonNode root = jsonMapper.readTree(is);
             JsonNode phases = root.get("phases");
             if (phases != null && phases.isArray()) {
                 for (JsonNode node : phases) {
@@ -117,7 +119,7 @@ public class PhaseStore extends JsonStore<Phase> {
                 log.warn("Phase preset not found: {}", presetId);
                 return null;
             }
-            Phase phase = mapper.readValue(is, Phase.class);
+            Phase phase = jsonMapper.readValue(is, Phase.class);
             phase.setBuiltIn(true);  // Mark as built-in
             phase.setVersion(version);  // Set version from manifest
             save(phase);

@@ -138,12 +138,18 @@ public class ChartsPanel extends JPanel {
     public void applySavedOverlays(List<Candle> candles) {
         ChartConfig config = ChartConfig.getInstance();
 
-        if (config.isSmaEnabled()) {
-            overlayManager.setSmaOverlay(config.getSmaPeriod(), candles);
+        // Apply multiple SMA overlays
+        overlayManager.clearAllSmaOverlays();
+        for (int period : config.getSmaPeriods()) {
+            overlayManager.addSmaOverlay(period, candles);
         }
-        if (config.isEmaEnabled()) {
-            overlayManager.setEmaOverlay(config.getEmaPeriod(), candles);
+
+        // Apply multiple EMA overlays
+        overlayManager.clearAllEmaOverlays();
+        for (int period : config.getEmaPeriods()) {
+            overlayManager.addEmaOverlay(period, candles);
         }
+
         if (config.isBollingerEnabled()) {
             overlayManager.setBollingerOverlay(config.getBollingerPeriod(), config.getBollingerStdDev(), candles);
         }
@@ -158,6 +164,9 @@ public class ChartsPanel extends JPanel {
         }
         if (config.isFloatingPocEnabled()) {
             overlayManager.setFloatingPocOverlay(candles);
+        }
+        if (config.isRayOverlayEnabled()) {
+            overlayManager.setRayOverlay(true, config.getRayLookback(), config.getRaySkip(), candles);
         }
     }
 
@@ -478,6 +487,15 @@ public class ChartsPanel extends JPanel {
         return overlayManager.isSmaEnabled();
     }
 
+    // Multiple SMA overlay support
+    public void addSmaOverlay(int period, List<Candle> candles) {
+        overlayManager.addSmaOverlay(period, candles);
+    }
+
+    public void removeSmaOverlay(int period) {
+        overlayManager.removeSmaOverlay(period);
+    }
+
     public void setEmaOverlay(int period, List<Candle> candles) {
         overlayManager.setEmaOverlay(period, candles);
     }
@@ -488,6 +506,15 @@ public class ChartsPanel extends JPanel {
 
     public boolean isEmaEnabled() {
         return overlayManager.isEmaEnabled();
+    }
+
+    // Multiple EMA overlay support
+    public void addEmaOverlay(int period, List<Candle> candles) {
+        overlayManager.addEmaOverlay(period, candles);
+    }
+
+    public void removeEmaOverlay(int period) {
+        overlayManager.removeEmaOverlay(period);
     }
 
     public void setBollingerOverlay(int period, double stdDevMultiplier, List<Candle> candles) {
@@ -544,6 +571,44 @@ public class ChartsPanel extends JPanel {
 
     public boolean isFloatingPocEnabled() {
         return overlayManager.isFloatingPocEnabled();
+    }
+
+    // ===== Ray Overlay Delegation =====
+
+    public void setRayOverlay(boolean enabled, int lookback, int skip) {
+        overlayManager.setRayOverlay(enabled, lookback, skip, currentCandles);
+    }
+
+    public void clearRayOverlay() {
+        overlayManager.clearRayOverlay();
+    }
+
+    public boolean isRayOverlayEnabled() {
+        return overlayManager.isRayOverlayEnabled();
+    }
+
+    public int getRayLookback() {
+        return overlayManager.getRayLookback();
+    }
+
+    public int getRaySkip() {
+        return overlayManager.getRaySkip();
+    }
+
+    public void setRayShowResistance(boolean show) {
+        overlayManager.setRayShowResistance(show);
+    }
+
+    public boolean isRayShowResistance() {
+        return overlayManager.isRayShowResistance();
+    }
+
+    public void setRayShowSupport(boolean show) {
+        overlayManager.setRayShowSupport(show);
+    }
+
+    public boolean isRayShowSupport() {
+        return overlayManager.isRayShowSupport();
     }
 
     // ===== Indicator Chart Delegation =====

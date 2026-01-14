@@ -4,6 +4,7 @@ import com.tradery.model.AggTrade;
 import com.tradery.model.Candle;
 import com.tradery.model.FundingRate;
 import com.tradery.model.OpenInterest;
+import com.tradery.indicators.RotatingRays.RaySet;
 
 import java.time.Instant;
 import java.time.LocalDate;
@@ -926,6 +927,41 @@ public class IndicatorEngine {
         return (double[]) cache.get(key);
     }
 
+    // ========== Supertrend ==========
+
+    public Supertrend.Result getSupertrend(int period, double multiplier) {
+        String key = "supertrend:" + period + ":" + multiplier;
+        if (!cache.containsKey(key)) {
+            cache.put(key, Supertrend.calculate(candles, period, multiplier));
+        }
+        return (Supertrend.Result) cache.get(key);
+    }
+
+    /**
+     * Get Supertrend trend direction at bar index.
+     * Returns 1 for uptrend, -1 for downtrend.
+     */
+    public double getSupertrendTrendAt(int period, double multiplier, int barIndex) {
+        Supertrend.Result result = getSupertrend(period, multiplier);
+        return barIndex < result.trend().length ? result.trend()[barIndex] : Double.NaN;
+    }
+
+    /**
+     * Get Supertrend upper band at bar index.
+     */
+    public double getSupertrendUpperAt(int period, double multiplier, int barIndex) {
+        Supertrend.Result result = getSupertrend(period, multiplier);
+        return barIndex < result.upperBand().length ? result.upperBand()[barIndex] : Double.NaN;
+    }
+
+    /**
+     * Get Supertrend lower band at bar index.
+     */
+    public double getSupertrendLowerAt(int period, double multiplier, int barIndex) {
+        Supertrend.Result result = getSupertrend(period, multiplier);
+        return barIndex < result.lowerBand().length ? result.lowerBand()[barIndex] : Double.NaN;
+    }
+
     // ========== Daily Session Volume Profile (PREV_DAY / TODAY POC/VAH/VAL) ==========
 
     // Cache for daily volume profiles: key = "date:YYYY-MM-DD", value = VolumeProfileResult
@@ -1078,5 +1114,179 @@ public class IndicatorEngine {
     public double getTodayVALAt(int barIndex) {
         Indicators.VolumeProfileResult profile = calculateTodayProfile(barIndex);
         return profile.val();
+    }
+
+    // ========== Rotating Ray Trendlines ==========
+
+    /**
+     * Get resistance rays for given lookback and skip parameters.
+     * Cached for performance since ray calculation is expensive.
+     */
+    private RaySet getResistanceRays(int lookback, int skip) {
+        String key = "resistanceRays:" + lookback + ":" + skip;
+        if (!cache.containsKey(key)) {
+            cache.put(key, RotatingRays.calculateResistanceRays(candles, lookback, skip));
+        }
+        return (RaySet) cache.get(key);
+    }
+
+    /**
+     * Get support rays for given lookback and skip parameters.
+     * Cached for performance since ray calculation is expensive.
+     */
+    private RaySet getSupportRays(int lookback, int skip) {
+        String key = "supportRays:" + lookback + ":" + skip;
+        if (!cache.containsKey(key)) {
+            cache.put(key, RotatingRays.calculateSupportRays(candles, lookback, skip));
+        }
+        return (RaySet) cache.get(key);
+    }
+
+    // ===== Resistance Ray Functions =====
+
+    /**
+     * Check if price is above a specific resistance ray (ray is broken).
+     * @param rayNum Ray number (1-indexed, ray 1 = ATH ray)
+     * @param lookback Number of bars to look back for ATH
+     * @param skip Number of recent bars to skip
+     * @param barIndex Current bar index
+     * @return true if price is above the ray
+     */
+    public boolean isResistanceRayBroken(int rayNum, int lookback, int skip, int barIndex) {
+        RaySet raySet = getResistanceRays(lookback, skip);
+        return RotatingRays.isRayBroken(raySet, rayNum, candles, barIndex);
+    }
+
+    /**
+     * Check if price crossed above a resistance ray this bar.
+     * @param rayNum Ray number (1-indexed, ray 1 = ATH ray)
+     * @param lookback Number of bars to look back for ATH
+     * @param skip Number of recent bars to skip
+     * @param barIndex Current bar index
+     * @return true if price crossed above the ray this bar
+     */
+    public boolean didResistanceRayCross(int rayNum, int lookback, int skip, int barIndex) {
+        RaySet raySet = getResistanceRays(lookback, skip);
+        return RotatingRays.didRayCross(raySet, rayNum, candles, barIndex);
+    }
+
+    /**
+     * Get percentage distance from price to a resistance ray.
+     * Positive = above ray, Negative = below ray.
+     * @param rayNum Ray number (1-indexed, ray 1 = ATH ray)
+     * @param lookback Number of bars to look back for ATH
+     * @param skip Number of recent bars to skip
+     * @param barIndex Current bar index
+     * @return Distance as percentage
+     */
+    public double getResistanceRayDistance(int rayNum, int lookback, int skip, int barIndex) {
+        RaySet raySet = getResistanceRays(lookback, skip);
+        return RotatingRays.getRayDistance(raySet, rayNum, candles, barIndex);
+    }
+
+    /**
+     * Count how many resistance rays are currently broken (price above).
+     * @param lookback Number of bars to look back for ATH
+     * @param skip Number of recent bars to skip
+     * @param barIndex Current bar index
+     * @return Count of broken rays
+     */
+    public int getResistanceRaysBroken(int lookback, int skip, int barIndex) {
+        RaySet raySet = getResistanceRays(lookback, skip);
+        return RotatingRays.countBrokenRays(raySet, candles, barIndex);
+    }
+
+    /**
+     * Get total number of resistance rays.
+     * @param lookback Number of bars to look back for ATH
+     * @param skip Number of recent bars to skip
+     * @param barIndex Current bar index
+     * @return Total ray count
+     */
+    public int getResistanceRayCount(int lookback, int skip, int barIndex) {
+        RaySet raySet = getResistanceRays(lookback, skip);
+        return raySet.count();
+    }
+
+    // ===== Support Ray Functions =====
+
+    /**
+     * Check if price is below a specific support ray (ray is broken).
+     * @param rayNum Ray number (1-indexed, ray 1 = ATL ray)
+     * @param lookback Number of bars to look back for ATL
+     * @param skip Number of recent bars to skip
+     * @param barIndex Current bar index
+     * @return true if price is below the ray
+     */
+    public boolean isSupportRayBroken(int rayNum, int lookback, int skip, int barIndex) {
+        RaySet raySet = getSupportRays(lookback, skip);
+        return RotatingRays.isRayBroken(raySet, rayNum, candles, barIndex);
+    }
+
+    /**
+     * Check if price crossed below a support ray this bar.
+     * @param rayNum Ray number (1-indexed, ray 1 = ATL ray)
+     * @param lookback Number of bars to look back for ATL
+     * @param skip Number of recent bars to skip
+     * @param barIndex Current bar index
+     * @return true if price crossed below the ray this bar
+     */
+    public boolean didSupportRayCross(int rayNum, int lookback, int skip, int barIndex) {
+        RaySet raySet = getSupportRays(lookback, skip);
+        return RotatingRays.didRayCross(raySet, rayNum, candles, barIndex);
+    }
+
+    /**
+     * Get percentage distance from price to a support ray.
+     * Positive = above ray, Negative = below ray.
+     * @param rayNum Ray number (1-indexed, ray 1 = ATL ray)
+     * @param lookback Number of bars to look back for ATL
+     * @param skip Number of recent bars to skip
+     * @param barIndex Current bar index
+     * @return Distance as percentage
+     */
+    public double getSupportRayDistance(int rayNum, int lookback, int skip, int barIndex) {
+        RaySet raySet = getSupportRays(lookback, skip);
+        return RotatingRays.getRayDistance(raySet, rayNum, candles, barIndex);
+    }
+
+    /**
+     * Count how many support rays are currently broken (price below).
+     * @param lookback Number of bars to look back for ATL
+     * @param skip Number of recent bars to skip
+     * @param barIndex Current bar index
+     * @return Count of broken rays
+     */
+    public int getSupportRaysBroken(int lookback, int skip, int barIndex) {
+        RaySet raySet = getSupportRays(lookback, skip);
+        return RotatingRays.countBrokenRays(raySet, candles, barIndex);
+    }
+
+    /**
+     * Count total number of support rays.
+     * @param lookback Number of bars to look back for ATL
+     * @param skip Number of recent bars to skip
+     * @param barIndex Current bar index
+     * @return Total ray count
+     */
+    public int getSupportRayCount(int lookback, int skip, int barIndex) {
+        RaySet raySet = getSupportRays(lookback, skip);
+        return raySet.count();
+    }
+
+    // ===== Ray Data Access for Charts =====
+
+    /**
+     * Get the resistance ray set for chart visualization.
+     */
+    public RaySet getResistanceRaySet(int lookback, int skip) {
+        return getResistanceRays(lookback, skip);
+    }
+
+    /**
+     * Get the support ray set for chart visualization.
+     */
+    public RaySet getSupportRaySet(int lookback, int skip) {
+        return getSupportRays(lookback, skip);
     }
 }

@@ -1,6 +1,8 @@
 package com.tradery.engine;
 
 import com.tradery.data.CandleStore;
+import com.tradery.indicators.EMA;
+import com.tradery.indicators.SMA;
 import com.tradery.model.*;
 
 import java.io.IOException;
@@ -89,10 +91,18 @@ public class HoopPatternEvaluator {
             return matches;
         }
 
+        // Pre-compute smoothed prices for the entire candle series
+        double[] smoothedPrices = calculateSmoothedPrices(pattern, candles);
+
         int lastCompletionBar = -pattern.getCooldownBars() - 1; // Allow first match
 
         // Scan through candles looking for pattern starts
         for (int startBar = 0; startBar < candles.size(); startBar++) {
+            // Skip bars with NaN smoothed price (warmup period for SMA/EMA)
+            if (Double.isNaN(smoothedPrices[startBar])) {
+                continue;
+            }
+
             // Cooldown check - skip if too close to last completion
             if (!pattern.isAllowOverlap() &&
                 (startBar - lastCompletionBar) <= pattern.getCooldownBars()) {
@@ -100,7 +110,7 @@ public class HoopPatternEvaluator {
             }
 
             // Try to match pattern starting at this bar
-            HoopMatchResult match = tryMatchPattern(pattern, candles, startBar);
+            HoopMatchResult match = tryMatchPattern(pattern, candles, smoothedPrices, startBar);
 
             if (match != null) {
                 matches.add(match);
@@ -118,12 +128,15 @@ public class HoopPatternEvaluator {
 
     /**
      * Attempt to match a pattern starting at the given bar.
+     * Uses pre-computed smoothed prices for matching.
      * Returns HoopMatchResult if successful, null if pattern fails.
      */
-    private HoopMatchResult tryMatchPattern(HoopPattern pattern, List<Candle> candles, int startBar) {
+    private HoopMatchResult tryMatchPattern(HoopPattern pattern, List<Candle> candles,
+                                            double[] smoothedPrices, int startBar) {
         List<Hoop> hoops = pattern.getHoops();
 
-        double anchor = candles.get(startBar).close();
+        // Use smoothed price for anchor
+        double anchor = smoothedPrices[startBar];
         int currentBar = startBar;
         double[] hitPrices = new double[hoops.size()];
         int[] hitBars = new int[hoops.size()];
@@ -144,19 +157,24 @@ public class HoopPatternEvaluator {
                 return null;
             }
 
-            // Scan window for hoop hit
+            // Scan window for hoop hit using smoothed prices
             boolean hit = false;
             for (int bar = windowStart; bar <= windowEnd; bar++) {
-                double close = candles.get(bar).close();
+                double price = smoothedPrices[bar];
 
-                if (hoop.priceInRange(close, anchor)) {
+                // Skip NaN values (warmup period for SMA/EMA)
+                if (Double.isNaN(price)) {
+                    continue;
+                }
+
+                if (hoop.priceInRange(price, anchor)) {
                     // Hoop hit!
-                    hitPrices[h] = close;
+                    hitPrices[h] = price;
                     hitBars[h] = bar;
                     currentBar = bar;
 
-                    // Update anchor for next hoop
-                    anchor = hoop.calculateNextAnchor(close, anchor);
+                    // Update anchor for next hoop using smoothed price
+                    anchor = hoop.calculateNextAnchor(price, anchor);
                     hit = true;
                     break;
                 }
@@ -173,7 +191,7 @@ public class HoopPatternEvaluator {
             pattern.getId(),
             startBar,
             currentBar,
-            candles.get(startBar).close(),
+            smoothedPrices[startBar],
             hitPrices,
             hitBars
         );
@@ -222,10 +240,32 @@ public class HoopPatternEvaluator {
     }
 
     /**
+     * Calculate smoothed prices based on pattern's smoothing settings.
+     * Returns an array where each index corresponds to the smoothed price at that bar.
+     * For SMA/EMA, warmup bars will be Double.NaN.
+     */
+    private double[] calculateSmoothedPrices(HoopPattern pattern, List<Candle> candles) {
+        PriceSmoothingType type = pattern.getPriceSmoothingType();
+        int period = pattern.getPriceSmoothingPeriod();
+
+        return switch (type) {
+            case NONE -> candles.stream().mapToDouble(Candle::close).toArray();
+            case SMA -> SMA.calculate(candles, period);
+            case EMA -> EMA.calculate(candles, period);
+            case HLC3 -> candles.stream()
+                .mapToDouble(c -> (c.high() + c.low() + c.close()) / 3.0)
+                .toArray();
+        };
+    }
+
+    /**
      * Get warmup time in milliseconds based on pattern length.
      */
     private long getWarmupMs(HoopPattern pattern) {
-        int maxBars = pattern.getMaxPatternBars() + 20; // Buffer for pattern to start matching
+        int smoothingPeriod = pattern.getPriceSmoothingType() == PriceSmoothingType.NONE ||
+                              pattern.getPriceSmoothingType() == PriceSmoothingType.HLC3
+                              ? 0 : pattern.getPriceSmoothingPeriod();
+        int maxBars = pattern.getMaxPatternBars() + 20 + smoothingPeriod;
         long tfMs = getTimeframeMs(pattern.getTimeframe());
         return tfMs * maxBars;
     }

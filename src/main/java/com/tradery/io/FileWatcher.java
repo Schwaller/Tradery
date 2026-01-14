@@ -111,8 +111,9 @@ public class FileWatcher {
             .listener(event -> {
                 Path path = event.path();
 
-                // Only watch JSON files
-                if (!path.toString().endsWith(".json")) {
+                // Only watch config files (YAML preferred, JSON for backward compat)
+                String pathStr = path.toString();
+                if (!pathStr.endsWith(".yaml") && !pathStr.endsWith(".json")) {
                     return;
                 }
 

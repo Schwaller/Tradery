@@ -6,7 +6,7 @@ A Java Swing desktop application for building and backtesting trading strategies
 **Tech Stack:**
 - Java 21 with Swing UI (native macOS look-and-feel)
 - JFreeChart for charting
-- Jackson for JSON serialization
+- Jackson for YAML/JSON serialization
 - OkHttp for Binance API calls
 - Gradle build system
 
@@ -17,7 +17,7 @@ A Java Swing desktop application for building and backtesting trading strategies
 ├── api.port                          # API port number - written on startup
 ├── strategies/                       # Strategy folders (one per strategy)
 │   └── {id}/                         # Each strategy has its own folder
-│       ├── strategy.json             # Strategy definition
+│       ├── strategy.yaml             # Strategy definition (YAML format)
 │       ├── summary.json              # Metrics + pre-computed analysis (AI-friendly)
 │       ├── latest.json               # Full backtest result (backward compat)
 │       ├── trades/                   # Individual trade files with descriptive names
@@ -27,9 +27,9 @@ A Java Swing desktop application for building and backtesting trading strategies
 │       └── history/                  # Historical backtest runs
 │           └── YYYY-MM-DD_HH-mm.json # Timestamped full results
 ├── phases/                           # Phase definitions (market regimes)
-│   └── {id}/phase.json
+│   └── {id}/phase.yaml
 ├── hoops/                            # Hoop pattern definitions
-│   └── {id}/hoop.json
+│   └── {id}/hoop.yaml
 ├── data/
 │   └── BTCUSDT/
 │       └── 1h/
@@ -83,10 +83,11 @@ A Java Swing desktop application for building and backtesting trading strategies
 │   │   ├── Hoop.java                 # Single price checkpoint
 │   │   └── HoopPattern.java          # Full pattern with hoops list
 │   └── io/
-│       ├── StrategyStore.java        # Read/write strategy JSON
-│       ├── ResultStore.java          # Read/write backtest results per strategy
-│       ├── PhaseStore.java           # Read/write phase JSON
-│       └── HoopPatternStore.java     # Read/write hoop pattern JSON
+│       ├── YamlStore.java            # Base class for YAML config stores
+│       ├── StrategyStore.java        # Read/write strategy YAML
+│       ├── ResultStore.java          # Read/write backtest results (JSON)
+│       ├── PhaseStore.java           # Read/write phase YAML
+│       └── HoopPatternStore.java     # Read/write hoop pattern YAML
 ```
 
 ## Development Commands
@@ -140,11 +141,17 @@ BBANDS(period, stdDev)             # Bollinger middle band
 BBANDS(period, stdDev).upper       # Bollinger upper band
 BBANDS(period, stdDev).middle      # Bollinger middle band
 BBANDS(period, stdDev).lower       # Bollinger lower band
+BBANDS(period, stdDev).width       # Bollinger bandwidth (upper - lower)
 
 STOCHASTIC(kPeriod)                # Stochastic %K (0-100, default dPeriod=3)
 STOCHASTIC(kPeriod, dPeriod)       # Stochastic with custom smoothing
 STOCHASTIC(kPeriod, dPeriod).k     # Stochastic %K line
 STOCHASTIC(kPeriod, dPeriod).d     # Stochastic %D line (smoothed %K)
+
+SUPERTREND(period, multiplier)         # Supertrend trend direction (1=up, -1=down)
+SUPERTREND(period, multiplier).trend   # Trend direction (1=up, -1=down)
+SUPERTREND(period, multiplier).upper   # Upper band
+SUPERTREND(period, multiplier).lower   # Lower band
 ```
 
 ### Range & Volume Functions
@@ -227,6 +234,90 @@ Running the app regularly builds unlimited historical OI data.
 OI                       # Current open interest value (in billions USD)
 OI_CHANGE                # OI change from previous bar
 OI_DELTA(period)         # OI change over N bars
+```
+
+### Rotating Ray Functions
+Automatic trendline detection from ATH/ATL using rotating ray algorithm.
+Rays connect successive peaks (resistance) or troughs (support).
+
+**Parameters:**
+- `rayNum`: Ray number (1 = ATH/ATL ray, most significant)
+- `lookback`: Bars to look back for ATH/ATL detection
+- `skip`: Recent bars to skip (allows price above ATH rays)
+
+**Resistance Rays (from ATH):**
+```
+RESISTANCE_RAY_BROKEN(rayNum, lookback, skip)   # 1 if price above ray, 0 otherwise
+RESISTANCE_RAY_CROSSED(rayNum, lookback, skip)  # 1 if price crossed above ray THIS bar
+RESISTANCE_RAY_DISTANCE(rayNum, lookback, skip) # % distance from price to ray
+RESISTANCE_RAYS_BROKEN(lookback, skip)          # Count of rays price is above
+RESISTANCE_RAY_COUNT(lookback, skip)            # Total number of resistance rays
+```
+
+**Support Rays (from ATL):**
+```
+SUPPORT_RAY_BROKEN(rayNum, lookback, skip)      # 1 if price below ray, 0 otherwise
+SUPPORT_RAY_CROSSED(rayNum, lookback, skip)     # 1 if price crossed below ray THIS bar
+SUPPORT_RAY_DISTANCE(rayNum, lookback, skip)    # % distance from price to ray
+SUPPORT_RAYS_BROKEN(lookback, skip)             # Count of rays price is below
+SUPPORT_RAY_COUNT(lookback, skip)               # Total number of support rays
+```
+
+**Examples:**
+```
+# Entry on resistance breakout
+RESISTANCE_RAY_CROSSED(1, 200, 5) == 1          # ATH ray just crossed
+RESISTANCE_RAYS_BROKEN(200, 5) >= 2             # Multiple rays broken
+
+# Entry on support hold
+SUPPORT_RAY_DISTANCE(1, 200, 5) < 1             # Within 1% of support ray
+SUPPORT_RAY_BROKEN(1, 200, 5) == 0              # Support not broken
+
+# Cascade detection
+RESISTANCE_RAYS_BROKEN(200, 5) > RESISTANCE_RAYS_BROKEN(200, 5)[1]  # New ray broken
+```
+
+### Aggregate Functions
+These functions evaluate an expression over a lookback period:
+
+```
+LOWEST(expr, period)     # Lowest value of expression over last N bars
+HIGHEST(expr, period)    # Highest value of expression over last N bars
+PERCENTILE(expr, period) # Current value's percentile rank (0-100) within last N bars
+```
+
+**Examples:**
+```
+# Bollinger squeeze detection - width near lowest in 20 bars
+BBANDS(20,2).width < LOWEST(BBANDS(20,2).width, 20) * 1.15
+
+# Price at 80th percentile of recent range
+PERCENTILE(close, 50) > 80
+
+# ATR expanding (higher than any of last 10 bars)
+ATR(14) > HIGHEST(ATR(14), 10)
+```
+
+### Lookback Syntax
+Access previous bar values using bracket notation:
+
+```
+expr[n]                  # Value of expression n bars ago
+ATR(14)[1]               # ATR from previous bar
+close[5]                 # Close price 5 bars ago
+BBANDS(20,2).width[1]    # Bollinger width from previous bar
+```
+
+**Examples:**
+```
+# ATR increasing (current > previous)
+ATR(14) > ATR(14)[1]
+
+# Price broke above yesterday's high
+close > high[1]
+
+# MACD histogram turning positive
+MACD(12,26,9).histogram > 0 AND MACD(12,26,9).histogram[1] <= 0
 ```
 
 ### Operators
@@ -318,6 +409,23 @@ OI_DELTA(12) < 0 AND close > SMA(20)      # OI decrease over 12 bars + price abo
 # Daily Session Volume Profile
 close crosses_above PREV_DAY_POC          # Price reclaims yesterday's POC
 close > PREV_DAY_VAH AND TODAY_POC > PREV_DAY_POC  # Acceptance above value
+
+# Supertrend
+SUPERTREND(10,3).trend == 1               # Uptrend active
+SUPERTREND(10,3).trend == -1              # Downtrend active
+close > SUPERTREND(10,3).lower            # Price above lower band (bullish)
+
+# Bollinger Squeeze (volatility compression)
+BBANDS(20,2).width < LOWEST(BBANDS(20,2).width, 20) * 1.15  # Near 20-bar low width
+
+# Aggregate functions
+ATR(14) > HIGHEST(ATR(14), 10)            # ATR at 10-bar high (expanding volatility)
+PERCENTILE(RSI(14), 50) < 20              # RSI in bottom 20% of recent range
+
+# Lookback syntax
+ATR(14) > ATR(14)[1]                       # ATR increasing (current > previous)
+close > high[1]                            # Price broke above previous bar's high
+MACD(12,26,9).histogram > 0 AND MACD(12,26,9).histogram[1] <= 0  # MACD turning positive
 close < TODAY_VAL AND close > PREV_DAY_VAL         # Mean reversion setup
 ```
 
@@ -338,17 +446,18 @@ Phases are market regime conditions that filter when strategies can trade. They 
 4. Strategy entry only allowed when all required phases are active AND no excluded phases are active
 
 ### Phase Definition
-```json
-{
-  "id": "uptrend",
-  "name": "Uptrend",
-  "description": "Strong uptrend using ADX",
-  "category": "Technical",
-  "condition": "ADX(14) > 25 AND PLUS_DI(14) > MINUS_DI(14)",
-  "timeframe": "1d",
-  "symbol": "BTCUSDT",
-  "builtIn": true
-}
+
+Phases are stored as YAML (`phase.yaml`):
+
+```yaml
+id: uptrend
+name: Uptrend
+description: Strong uptrend using ADX
+category: Technical
+condition: ADX(14) > 25 AND PLUS_DI(14) > MINUS_DI(14)
+timeframe: 1d
+symbol: BTCUSDT
+builtIn: true
 ```
 
 ### Built-In Phases (32 total)
@@ -408,13 +517,14 @@ Phases are market regime conditions that filter when strategies can trade. They 
 | `neutral-funding` | `FUNDING >= -0.01 AND FUNDING <= 0.02` | Balanced market |
 
 ### Strategy Phase Integration
-```json
-{
-  "phaseSettings": {
-    "requiredPhaseIds": ["uptrend", "weekdays"],
-    "excludedPhaseIds": ["fomc-meeting-day", "us-bank-holiday"]
-  }
-}
+```yaml
+phaseSettings:
+  requiredPhaseIds:
+    - uptrend
+    - weekdays
+  excludedPhaseIds:
+    - fomc-meeting-day
+    - us-bank-holiday
 ```
 - **requiredPhaseIds**: ALL must be active for entry
 - **excludedPhaseIds**: NONE must be active for entry
@@ -426,14 +536,11 @@ Phases are market regime conditions that filter when strategies can trade. They 
 Orderflow indicators provide insight into buying/selling pressure beyond standard OHLCV data.
 
 ### Modes
-```json
-{
-  "orderflowSettings": {
-    "mode": "tier1",           // "disabled", "tier1", or "full"
-    "volumeProfilePeriod": 20,
-    "valueAreaPercent": 70.0
-  }
-}
+```yaml
+orderflowSettings:
+  mode: tier1           # "disabled", "tier1", or "full"
+  volumeProfilePeriod: 20
+  valueAreaPercent: 70.0
 ```
 
 | Mode | Indicators | Data Source |
@@ -453,60 +560,53 @@ Orderflow indicators provide insight into buying/selling pressure beyond standar
 
 ## Strategy Settings Structure
 
-Strategies use grouped settings for organization:
+Strategies use grouped settings for organization. Files are stored as YAML (`strategy.yaml`):
 
-```json
-{
-  "id": "my-strategy",
-  "name": "My Strategy",
-  "enabled": true,
+```yaml
+id: my-strategy
+name: My Strategy
+enabled: true
 
-  "entrySettings": {
-    "condition": "RSI(14) < 30 AND close > SMA(200)",
-    "maxOpenTrades": 3,
-    "minCandlesBetween": 5,
-    "dca": {
-      "enabled": false,
-      "maxEntries": 3,
-      "barsBetween": 10,
-      "mode": "FIXED_PERCENT"
-    }
-  },
+entrySettings:
+  condition: RSI(14) < 30 AND close > SMA(200)
+  maxOpenTrades: 3
+  minCandlesBetween: 5
+  dca:
+    enabled: false
+    maxEntries: 3
+    barsBetween: 10
+    mode: FIXED_PERCENT
 
-  "exitSettings": {
-    "zones": [...],
-    "evaluation": "FIRST_MATCH"
-  },
+exitSettings:
+  zones: [...]
+  evaluation: FIRST_MATCH
 
-  "backtestSettings": {
-    "symbol": "BTCUSDT",
-    "timeframe": "1h",
-    "duration": "1y",
-    "initialCapital": 10000,
-    "positionSizingType": "PERCENT_EQUITY",
-    "positionSizingValue": 10,
-    "feePercent": 0.1,
-    "slippagePercent": 0.05
-  },
+backtestSettings:
+  symbol: BTCUSDT
+  timeframe: 1h
+  duration: 1y
+  initialCapital: 10000
+  positionSizingType: PERCENT_EQUITY
+  positionSizingValue: 10
+  feePercent: 0.1
+  slippagePercent: 0.05
 
-  "phaseSettings": {
-    "requiredPhaseIds": ["uptrend"],
-    "excludedPhaseIds": ["weekend"]
-  },
+phaseSettings:
+  requiredPhaseIds:
+    - uptrend
+  excludedPhaseIds:
+    - weekend
 
-  "hoopPatternSettings": {
-    "entryMode": "DSL_ONLY",
-    "exitMode": "DSL_ONLY",
-    "requiredEntryPatternIds": [],
-    "excludedEntryPatternIds": []
-  },
+hoopPatternSettings:
+  entryMode: DSL_ONLY
+  exitMode: DSL_ONLY
+  requiredEntryPatternIds: []
+  excludedEntryPatternIds: []
 
-  "orderflowSettings": {
-    "mode": "tier1",
-    "volumeProfilePeriod": 20,
-    "valueAreaPercent": 70.0
-  }
-}
+orderflowSettings:
+  mode: tier1
+  volumeProfilePeriod: 20
+  valueAreaPercent: 70.0
 ```
 
 ---
@@ -515,30 +615,24 @@ Strategies use grouped settings for organization:
 
 Exit zones define behavior at different P&L levels:
 
-```json
-{
-  "zones": [
-    {
-      "name": "Stop Loss",
-      "minPnlPercent": null,
-      "maxPnlPercent": -5.0,
-      "exitImmediately": true
-    },
-    {
-      "name": "Take Profit",
-      "minPnlPercent": 10.0,
-      "maxPnlPercent": null,
-      "exitImmediately": true
-    },
-    {
-      "name": "Breakeven Exit",
-      "minPnlPercent": 0.0,
-      "maxPnlPercent": 5.0,
-      "condition": "RSI(14) > 70",
-      "exitImmediately": false
-    }
-  ]
-}
+```yaml
+exitSettings:
+  zones:
+    - name: Stop Loss
+      minPnlPercent: null
+      maxPnlPercent: -5.0
+      exitImmediately: true
+
+    - name: Take Profit
+      minPnlPercent: 10.0
+      maxPnlPercent: null
+      exitImmediately: true
+
+    - name: Breakeven Exit
+      minPnlPercent: 0.0
+      maxPnlPercent: 5.0
+      condition: RSI(14) > 70
+      exitImmediately: false
 ```
 
 **AI Guidance for Exit Zones:**
@@ -550,26 +644,69 @@ Exit zones define behavior at different P&L levels:
 
 ## Hoop Patterns
 
-Sequential price-checkpoint matching for detecting chart patterns.
+Sequential price-checkpoint matching for detecting chart patterns. Files are stored as YAML (`hoop.yaml`):
 
-```json
-{
-  "id": "double-bottom",
-  "name": "Double Bottom",
-  "hoops": [
-    { "name": "first-low", "minPricePercent": -3.0, "maxPricePercent": -1.0,
-      "distance": 5, "tolerance": 2, "anchorMode": "ACTUAL_HIT" },
-    { "name": "middle-peak", "minPricePercent": 1.0, "maxPricePercent": 4.0,
-      "distance": 7, "tolerance": 3, "anchorMode": "ACTUAL_HIT" },
-    { "name": "second-low", "minPricePercent": -3.0, "maxPricePercent": 0.5,
-      "distance": 7, "tolerance": 3, "anchorMode": "ACTUAL_HIT" },
-    { "name": "breakout", "minPricePercent": 2.0, "maxPricePercent": null,
-      "distance": 5, "tolerance": 3, "anchorMode": "ACTUAL_HIT" }
-  ],
-  "cooldownBars": 20,
-  "allowOverlap": false
-}
+```yaml
+id: double-bottom
+name: Double Bottom
+cooldownBars: 20
+allowOverlap: false
+priceSmoothingType: NONE
+priceSmoothingPeriod: 5
+
+hoops:
+  - name: first-low
+    minPricePercent: -3.0
+    maxPricePercent: -1.0
+    distance: 5
+    tolerance: 2
+    anchorMode: ACTUAL_HIT
+
+  - name: middle-peak
+    minPricePercent: 1.0
+    maxPricePercent: 4.0
+    distance: 7
+    tolerance: 3
+    anchorMode: ACTUAL_HIT
+
+  - name: second-low
+    minPricePercent: -3.0
+    maxPricePercent: 0.5
+    distance: 7
+    tolerance: 3
+    anchorMode: ACTUAL_HIT
+
+  - name: breakout
+    minPricePercent: 2.0
+    maxPricePercent: null
+    distance: 5
+    tolerance: 3
+    anchorMode: ACTUAL_HIT
 ```
+
+### Price Smoothing
+
+Reduces noise from wicks and spikes when matching hoops. Instead of raw close prices, hoops can match against smoothed values:
+
+| Type | Description |
+|------|-------------|
+| `NONE` | Raw close price (default) |
+| `SMA` | Simple Moving Average over N bars |
+| `EMA` | Exponential Moving Average over N bars |
+| `HLC3` | (High + Low + Close) / 3 - typical price, no period needed |
+
+Example with SMA(5) smoothing:
+```yaml
+id: smooth-double-bottom
+priceSmoothingType: SMA
+priceSmoothingPeriod: 5
+hoops: [...]
+```
+
+**When to use smoothing:**
+- Use `SMA` or `EMA` to filter out wicks and reduce false matches
+- Use `HLC3` for a simple typical price that considers the full bar range
+- Use `NONE` when you want exact close price matching
 
 **Combine Modes:**
 - `DSL_ONLY`: Ignore hoops, use only DSL
@@ -756,10 +893,15 @@ Analyze maeIndicators to understand drawdown causes:
 9. **Large trade detection** - WHALE_DELTA, WHALE_BUY_VOL, WHALE_SELL_VOL, LARGE_TRADE_COUNT
 10. **Funding rate** - FUNDING, FUNDING_8H + built-in funding phases (high/negative/extreme/neutral)
 11. **Open Interest** - OI, OI_CHANGE, OI_DELTA (auto-fetched 5m resolution, cache persists)
+12. **Supertrend** - SUPERTREND(period, multiplier) with .trend, .upper, .lower properties
+13. **Bollinger Width** - BBANDS(period, stdDev).width for squeeze detection
+14. **Aggregate functions** - LOWEST(expr, n), HIGHEST(expr, n), PERCENTILE(expr, n)
+15. **Lookback syntax** - expr[n] for previous bar values (e.g., ATR(14)[1])
 
 **What's NOT yet implemented (potential future features):**
 - Liquidation data (requires external API like Coinglass)
 - Cross-symbol correlation (BTC dominance, ETH/BTC ratio)
+- Separate long/short entry conditions in strategy definition
 
 ---
 
@@ -948,13 +1090,13 @@ curl -X POST "http://localhost:$PORT/strategy/my-strategy/backtest"
 ### File-Based Access
 
 With files on disk, Claude Code can:
-- View/edit strategies: `~/.tradery/strategies/{id}/strategy.json`
+- View/edit strategies: `~/.tradery/strategies/{id}/strategy.yaml`
 - View summary + analysis: `~/.tradery/strategies/{id}/summary.json`
 - Browse trades by filename: `~/.tradery/strategies/{id}/trades/`
 - View full results: `~/.tradery/strategies/{id}/latest.json`
 - View result history: `~/.tradery/strategies/{id}/history/*.json`
-- View/edit phases: `~/.tradery/phases/{id}/phase.json`
-- View/edit hoop patterns: `~/.tradery/hoops/{id}/hoop.json`
+- View/edit phases: `~/.tradery/phases/{id}/phase.yaml`
+- View/edit hoop patterns: `~/.tradery/hoops/{id}/hoop.yaml`
 - Query OHLC data: `~/.tradery/data/{symbol}/{timeframe}/*.csv`
 
 ### AI-Friendly Result Structure
@@ -1055,7 +1197,7 @@ AI can glob filenames to quickly understand:
 1. **Read summary.json** for overview and pre-computed suggestions
 2. **Glob trade filenames** to understand distribution
 3. **Sample specific trades** (e.g., read 5 biggest losses) for deeper analysis
-4. **Modify strategy.json** based on findings
+4. **Modify strategy.yaml** based on findings
 5. App auto-reloads and re-runs backtest
 
 ### Auto-Reload

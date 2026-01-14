@@ -28,6 +28,10 @@ public class HoopPattern implements Identifiable {
     private int cooldownBars = 0;        // Bars to wait after pattern completes before it can match again
     private boolean allowOverlap = false; // Can next pattern start before cooldown?
 
+    // Price smoothing - reduces noise from wicks/spikes
+    private PriceSmoothingType priceSmoothingType = PriceSmoothingType.NONE;
+    private int priceSmoothingPeriod = 5;
+
     // Metadata
     private Instant created;
     private Instant updated;
@@ -123,6 +127,26 @@ public class HoopPattern implements Identifiable {
 
     public void setAllowOverlap(boolean allowOverlap) {
         this.allowOverlap = allowOverlap;
+        this.updated = Instant.now();
+    }
+
+    // Price smoothing getters/setters
+
+    public PriceSmoothingType getPriceSmoothingType() {
+        return priceSmoothingType != null ? priceSmoothingType : PriceSmoothingType.NONE;
+    }
+
+    public void setPriceSmoothingType(PriceSmoothingType priceSmoothingType) {
+        this.priceSmoothingType = priceSmoothingType;
+        this.updated = Instant.now();
+    }
+
+    public int getPriceSmoothingPeriod() {
+        return priceSmoothingPeriod > 0 ? priceSmoothingPeriod : 5;
+    }
+
+    public void setPriceSmoothingPeriod(int priceSmoothingPeriod) {
+        this.priceSmoothingPeriod = Math.max(1, priceSmoothingPeriod);
         this.updated = Instant.now();
     }
 

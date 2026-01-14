@@ -18,6 +18,8 @@ public enum TokenType {
     SESSION_ORDERFLOW_FUNC, // PREV_DAY_POC, PREV_DAY_VAH, PREV_DAY_VAL, TODAY_POC, TODAY_VAH, TODAY_VAL
     FUNDING_FUNC,   // FUNDING, FUNDING_8H
     OI_FUNC,        // OI, OI_CHANGE, OI_DELTA
+    RAY_FUNC,       // RESISTANCE_RAY_BROKEN, RESISTANCE_RAY_CROSSED, SUPPORT_RAY_BROKEN, etc.
+    AGGREGATE_FUNC, // LOWEST, HIGHEST, PERCENTILE (operate on expressions over lookback)
 
     // Properties
     PROPERTY,       // .signal, .histogram, .upper, .lower, .middle
@@ -34,6 +36,8 @@ public enum TokenType {
     // Punctuation
     LPAREN,         // (
     RPAREN,         // )
+    LBRACKET,       // [
+    RBRACKET,       // ]
     COMMA,          // ,
     DOT,            // .
 

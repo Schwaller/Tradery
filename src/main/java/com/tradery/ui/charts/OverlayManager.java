@@ -11,27 +11,29 @@ import org.jfree.data.time.TimeSeries;
 import org.jfree.data.time.TimeSeriesCollection;
 
 import java.awt.BasicStroke;
+import java.awt.Color;
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 
 /**
  * Manages overlay indicators on the price chart (SMA, EMA, Bollinger Bands, High/Low, Mayer Multiple).
+ * Supports multiple overlays of the same type (e.g., multiple SMAs with different periods).
  */
 public class OverlayManager {
 
     private final JFreeChart priceChart;
 
-    // Overlay dataset indices
-    private int smaDatasetIndex = -1;
-    private int emaDatasetIndex = -1;
+    // Multiple SMA/EMA overlays
+    private final List<OverlayInstance> smaOverlays = new ArrayList<>();
+    private final List<OverlayInstance> emaOverlays = new ArrayList<>();
+    private int colorIndex = 0;  // cycles through OVERLAY_PALETTE
+
+    // Other overlay dataset indices
     private int bbDatasetIndex = -1;
     private int hlDatasetIndex = -1;
     private int dailyPocDatasetIndex = -1;
     private int floatingPocDatasetIndex = -1;
-
-    // Overlay series references
-    private TimeSeries smaSeries;
-    private TimeSeries emaSeries;
 
     // Mayer Multiple state
     private boolean mayerMultipleEnabled = false;
@@ -40,22 +42,50 @@ public class OverlayManager {
     // IndicatorEngine for POC calculations
     private IndicatorEngine indicatorEngine;
 
+    // Ray overlay
+    private RayOverlay rayOverlay;
+
     public OverlayManager(JFreeChart priceChart) {
         this.priceChart = priceChart;
+        this.rayOverlay = new RayOverlay(priceChart);
     }
 
-    // ===== SMA Overlay =====
+    // ===== Color Palette =====
 
-    public void setSmaOverlay(int period, List<Candle> candles) {
+    private Color getNextColor() {
+        Color color = ChartStyles.OVERLAY_PALETTE[colorIndex % ChartStyles.OVERLAY_PALETTE.length];
+        colorIndex++;
+        return color;
+    }
+
+    /**
+     * Reset the color index (call when clearing all overlays).
+     */
+    public void resetColorIndex() {
+        colorIndex = 0;
+    }
+
+    // ===== SMA Overlays (Multiple) =====
+
+    /**
+     * Add an SMA overlay with the given period. Returns the created overlay instance.
+     */
+    public OverlayInstance addSmaOverlay(int period, List<Candle> candles) {
         if (candles == null || candles.size() < period) {
-            clearSmaOverlay();
-            return;
+            return null;
+        }
+
+        // Check if this period already exists
+        for (OverlayInstance existing : smaOverlays) {
+            if (existing.period() == period) {
+                return existing;  // Already exists
+            }
         }
 
         XYPlot plot = priceChart.getXYPlot();
 
         // Calculate SMA values
-        smaSeries = new TimeSeries("SMA(" + period + ")");
+        TimeSeries smaSeries = new TimeSeries("SMA(" + period + ")");
 
         for (int i = period - 1; i < candles.size(); i++) {
             double sum = 0;
@@ -68,44 +98,100 @@ public class OverlayManager {
 
         // Add as secondary dataset
         TimeSeriesCollection smaDataset = new TimeSeriesCollection(smaSeries);
+        int datasetIndex = findNextAvailableDatasetIndex(plot, 1);
+        plot.setDataset(datasetIndex, smaDataset);
 
-        if (smaDatasetIndex < 0) {
-            smaDatasetIndex = findNextAvailableDatasetIndex(plot, 1);
-        }
-
-        plot.setDataset(smaDatasetIndex, smaDataset);
-
-        // Style the SMA line
+        // Style the SMA line with cycling color
+        Color color = getNextColor();
         XYLineAndShapeRenderer smaRenderer = new XYLineAndShapeRenderer(true, false);
-        smaRenderer.setSeriesPaint(0, ChartStyles.SMA_COLOR);
+        smaRenderer.setSeriesPaint(0, color);
         smaRenderer.setSeriesStroke(0, ChartStyles.MEDIUM_STROKE);
-        plot.setRenderer(smaDatasetIndex, smaRenderer);
+        plot.setRenderer(datasetIndex, smaRenderer);
+
+        // Track this overlay
+        OverlayInstance instance = new OverlayInstance("SMA", period, datasetIndex, color);
+        smaOverlays.add(instance);
+        return instance;
     }
 
-    public void clearSmaOverlay() {
-        if (smaDatasetIndex >= 0 && priceChart != null) {
-            XYPlot plot = priceChart.getXYPlot();
-            plot.setDataset(smaDatasetIndex, null);
+    /**
+     * Remove an SMA overlay by period.
+     */
+    public void removeSmaOverlay(int period) {
+        OverlayInstance toRemove = null;
+        for (OverlayInstance overlay : smaOverlays) {
+            if (overlay.period() == period) {
+                toRemove = overlay;
+                break;
+            }
         }
-        smaSeries = null;
+        if (toRemove != null) {
+            XYPlot plot = priceChart.getXYPlot();
+            plot.setDataset(toRemove.datasetIndex(), null);
+            smaOverlays.remove(toRemove);
+        }
+    }
+
+    /**
+     * Clear all SMA overlays.
+     */
+    public void clearAllSmaOverlays() {
+        XYPlot plot = priceChart.getXYPlot();
+        for (OverlayInstance overlay : smaOverlays) {
+            plot.setDataset(overlay.datasetIndex(), null);
+        }
+        smaOverlays.clear();
+    }
+
+    /**
+     * Get list of all active SMA overlays.
+     */
+    public List<OverlayInstance> getSmaOverlays() {
+        return new ArrayList<>(smaOverlays);
+    }
+
+    /**
+     * Legacy method for backward compatibility - clears existing and sets single SMA.
+     */
+    public void setSmaOverlay(int period, List<Candle> candles) {
+        clearAllSmaOverlays();
+        if (candles != null && candles.size() >= period) {
+            addSmaOverlay(period, candles);
+        }
+    }
+
+    /**
+     * Legacy clear method - clears all SMA overlays.
+     */
+    public void clearSmaOverlay() {
+        clearAllSmaOverlays();
     }
 
     public boolean isSmaEnabled() {
-        return smaSeries != null;
+        return !smaOverlays.isEmpty();
     }
 
-    // ===== EMA Overlay =====
+    // ===== EMA Overlays (Multiple) =====
 
-    public void setEmaOverlay(int period, List<Candle> candles) {
+    /**
+     * Add an EMA overlay with the given period. Returns the created overlay instance.
+     */
+    public OverlayInstance addEmaOverlay(int period, List<Candle> candles) {
         if (candles == null || candles.size() < period) {
-            clearEmaOverlay();
-            return;
+            return null;
+        }
+
+        // Check if this period already exists
+        for (OverlayInstance existing : emaOverlays) {
+            if (existing.period() == period) {
+                return existing;  // Already exists
+            }
         }
 
         XYPlot plot = priceChart.getXYPlot();
 
         // Calculate EMA values
-        emaSeries = new TimeSeries("EMA(" + period + ")");
+        TimeSeries emaSeries = new TimeSeries("EMA(" + period + ")");
         double multiplier = 2.0 / (period + 1);
         double ema = 0;
 
@@ -127,30 +213,77 @@ public class OverlayManager {
 
         // Add as secondary dataset
         TimeSeriesCollection emaDataset = new TimeSeriesCollection(emaSeries);
+        int datasetIndex = findNextAvailableDatasetIndex(plot, 1);
+        plot.setDataset(datasetIndex, emaDataset);
 
-        if (emaDatasetIndex < 0) {
-            emaDatasetIndex = findNextAvailableDatasetIndex(plot, Math.max(2, smaDatasetIndex + 1));
-        }
-
-        plot.setDataset(emaDatasetIndex, emaDataset);
-
-        // Style the EMA line
+        // Style the EMA line with cycling color
+        Color color = getNextColor();
         XYLineAndShapeRenderer emaRenderer = new XYLineAndShapeRenderer(true, false);
-        emaRenderer.setSeriesPaint(0, ChartStyles.EMA_COLOR);
+        emaRenderer.setSeriesPaint(0, color);
         emaRenderer.setSeriesStroke(0, ChartStyles.MEDIUM_STROKE);
-        plot.setRenderer(emaDatasetIndex, emaRenderer);
+        plot.setRenderer(datasetIndex, emaRenderer);
+
+        // Track this overlay
+        OverlayInstance instance = new OverlayInstance("EMA", period, datasetIndex, color);
+        emaOverlays.add(instance);
+        return instance;
     }
 
-    public void clearEmaOverlay() {
-        if (emaDatasetIndex >= 0 && priceChart != null) {
-            XYPlot plot = priceChart.getXYPlot();
-            plot.setDataset(emaDatasetIndex, null);
+    /**
+     * Remove an EMA overlay by period.
+     */
+    public void removeEmaOverlay(int period) {
+        OverlayInstance toRemove = null;
+        for (OverlayInstance overlay : emaOverlays) {
+            if (overlay.period() == period) {
+                toRemove = overlay;
+                break;
+            }
         }
-        emaSeries = null;
+        if (toRemove != null) {
+            XYPlot plot = priceChart.getXYPlot();
+            plot.setDataset(toRemove.datasetIndex(), null);
+            emaOverlays.remove(toRemove);
+        }
+    }
+
+    /**
+     * Clear all EMA overlays.
+     */
+    public void clearAllEmaOverlays() {
+        XYPlot plot = priceChart.getXYPlot();
+        for (OverlayInstance overlay : emaOverlays) {
+            plot.setDataset(overlay.datasetIndex(), null);
+        }
+        emaOverlays.clear();
+    }
+
+    /**
+     * Get list of all active EMA overlays.
+     */
+    public List<OverlayInstance> getEmaOverlays() {
+        return new ArrayList<>(emaOverlays);
+    }
+
+    /**
+     * Legacy method for backward compatibility - clears existing and sets single EMA.
+     */
+    public void setEmaOverlay(int period, List<Candle> candles) {
+        clearAllEmaOverlays();
+        if (candles != null && candles.size() >= period) {
+            addEmaOverlay(period, candles);
+        }
+    }
+
+    /**
+     * Legacy clear method - clears all EMA overlays.
+     */
+    public void clearEmaOverlay() {
+        clearAllEmaOverlays();
     }
 
     public boolean isEmaEnabled() {
-        return emaSeries != null;
+        return !emaOverlays.isEmpty();
     }
 
     // ===== Bollinger Bands Overlay =====
@@ -199,8 +332,7 @@ public class OverlayManager {
         bbDataset.addSeries(lowerSeries);
 
         if (bbDatasetIndex < 0) {
-            bbDatasetIndex = findNextAvailableDatasetIndex(plot,
-                Math.max(3, Math.max(smaDatasetIndex, emaDatasetIndex) + 1));
+            bbDatasetIndex = findNextAvailableDatasetIndex(plot, 1);
         }
 
         plot.setDataset(bbDatasetIndex, bbDataset);
@@ -262,8 +394,7 @@ public class OverlayManager {
         hlDataset.addSeries(lowSeries);
 
         if (hlDatasetIndex < 0) {
-            hlDatasetIndex = findNextAvailableDatasetIndex(plot,
-                Math.max(4, Math.max(Math.max(smaDatasetIndex, emaDatasetIndex), bbDatasetIndex) + 1));
+            hlDatasetIndex = findNextAvailableDatasetIndex(plot, 1);
         }
 
         plot.setDataset(hlDatasetIndex, hlDataset);
@@ -466,15 +597,75 @@ public class OverlayManager {
         return floatingPocDatasetIndex >= 0 && priceChart.getXYPlot().getDataset(floatingPocDatasetIndex) != null;
     }
 
+    // ===== Ray Overlay =====
+
+    /**
+     * Set ray overlay enabled state and update with current candles.
+     */
+    public void setRayOverlay(boolean enabled, int lookback, int skip, List<Candle> candles) {
+        rayOverlay.setEnabled(enabled);
+        rayOverlay.setLookback(lookback);
+        rayOverlay.setSkip(skip);
+        if (enabled && candles != null && indicatorEngine != null) {
+            rayOverlay.update(candles, indicatorEngine);
+        } else {
+            rayOverlay.clear();
+        }
+    }
+
+    /**
+     * Update ray overlay with new candle data (call when candles change).
+     */
+    public void updateRayOverlay(List<Candle> candles) {
+        if (rayOverlay.isEnabled() && candles != null && indicatorEngine != null) {
+            rayOverlay.update(candles, indicatorEngine);
+        }
+    }
+
+    public void clearRayOverlay() {
+        rayOverlay.setEnabled(false);
+        rayOverlay.clear();
+    }
+
+    public boolean isRayOverlayEnabled() {
+        return rayOverlay.isEnabled();
+    }
+
+    public int getRayLookback() {
+        return rayOverlay.getLookback();
+    }
+
+    public int getRaySkip() {
+        return rayOverlay.getSkip();
+    }
+
+    public void setRayShowResistance(boolean show) {
+        rayOverlay.setShowResistance(show);
+    }
+
+    public boolean isRayShowResistance() {
+        return rayOverlay.isShowResistance();
+    }
+
+    public void setRayShowSupport(boolean show) {
+        rayOverlay.setShowSupport(show);
+    }
+
+    public boolean isRayShowSupport() {
+        return rayOverlay.isShowSupport();
+    }
+
     // ===== Clear All =====
 
     public void clearAll() {
-        clearSmaOverlay();
-        clearEmaOverlay();
+        clearAllSmaOverlays();
+        clearAllEmaOverlays();
         clearBollingerOverlay();
         clearHighLowOverlay();
         clearDailyPocOverlay();
         clearFloatingPocOverlay();
+        clearRayOverlay();
+        resetColorIndex();
     }
 
     // ===== Helper Methods =====

@@ -100,6 +100,26 @@ public sealed interface AstNode {
     record OIFunctionCall(String func, Integer period) implements AstNode {}
 
     /**
+     * Rotating Ray function call:
+     * - RESISTANCE_RAY_BROKEN(ray, lookback, skip): Is price above resistance ray N?
+     * - RESISTANCE_RAY_CROSSED(ray, lookback, skip): Did price cross above resistance ray N this bar?
+     * - RESISTANCE_RAY_DISTANCE(ray, lookback, skip): % distance from price to resistance ray N
+     * - RESISTANCE_RAYS_BROKEN(lookback, skip): Count of resistance rays price is above
+     * - RESISTANCE_RAY_COUNT(lookback, skip): Total resistance rays that exist
+     * - SUPPORT_RAY_BROKEN(ray, lookback, skip): Is price below support ray N?
+     * - SUPPORT_RAY_CROSSED(ray, lookback, skip): Did price cross below support ray N this bar?
+     * - SUPPORT_RAY_DISTANCE(ray, lookback, skip): % distance from price to support ray N
+     * - SUPPORT_RAYS_BROKEN(lookback, skip): Count of support rays price is below
+     * - SUPPORT_RAY_COUNT(lookback, skip): Total support rays that exist
+     *
+     * @param func Function name (RESISTANCE_RAY_BROKEN, etc.)
+     * @param rayNum Ray number (1-indexed, null for count functions)
+     * @param lookback Number of bars to look back for ATH/ATL
+     * @param skip Number of recent bars to skip
+     */
+    record RayFunctionCall(String func, Integer rayNum, int lookback, int skip) implements AstNode {}
+
+    /**
      * Property access: MACD(12,26,9).signal, BBANDS(20,2).upper
      */
     record PropertyAccess(IndicatorCall object, String property) implements AstNode {}
@@ -118,4 +138,16 @@ public sealed interface AstNode {
      * Boolean literal: true, false
      */
     record BooleanLiteral(boolean value) implements AstNode {}
+
+    /**
+     * Aggregate function call: LOWEST(expr, period), HIGHEST(expr, period), PERCENTILE(expr, period)
+     * These evaluate an expression over a lookback period and return an aggregate value.
+     */
+    record AggregateFunctionCall(String func, AstNode expression, int period) implements AstNode {}
+
+    /**
+     * Lookback access: expr[n] - returns value of expression n bars ago
+     * Example: ATR(14)[1] returns ATR(14) from previous bar
+     */
+    record LookbackAccess(AstNode expression, int barsAgo) implements AstNode {}
 }

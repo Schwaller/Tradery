@@ -1,9 +1,12 @@
 package com.tradery.ui;
 
+import com.tradery.indicators.EMA;
+import com.tradery.indicators.SMA;
 import com.tradery.model.Candle;
 import com.tradery.model.Hoop;
 import com.tradery.model.HoopMatchResult;
 import com.tradery.model.HoopPattern;
+import com.tradery.model.PriceSmoothingType;
 import com.tradery.ui.charts.ChartStyles;
 import org.jfree.chart.ChartPanel;
 import org.jfree.chart.JFreeChart;
@@ -71,6 +74,10 @@ public class HoopPatternChartPanel extends JPanel {
     // Match highlights
     private final List<HoopMatchResult> matches = new ArrayList<>();
     private boolean showMatches = true;
+
+    // Smoothing settings
+    private PriceSmoothingType smoothingType = PriceSmoothingType.NONE;
+    private int smoothingPeriod = 5;
 
     // Callbacks
     private Runnable onPatternChanged;
@@ -205,6 +212,12 @@ public class HoopPatternChartPanel extends JPanel {
         renderHoopOverlays();
     }
 
+    public void setSmoothing(PriceSmoothingType type, int period) {
+        this.smoothingType = type != null ? type : PriceSmoothingType.NONE;
+        this.smoothingPeriod = Math.max(1, period);
+        updateChart();
+    }
+
     public void setOnPatternChanged(Runnable callback) {
         this.onPatternChanged = callback;
     }
@@ -230,10 +243,42 @@ public class HoopPatternChartPanel extends JPanel {
             volumeSeries.addOrUpdate(time, c.volume());
         }
 
-        pricePlot.setDataset(new TimeSeriesCollection(priceSeries));
+        TimeSeriesCollection priceDataset = new TimeSeriesCollection(priceSeries);
+
+        // Add smoothed price line if smoothing is enabled
+        if (smoothingType != PriceSmoothingType.NONE) {
+            double[] smoothedPrices = calculateSmoothedPrices();
+            TimeSeries smoothedSeries = new TimeSeries("Smoothed");
+
+            for (int i = 0; i < candles.size(); i++) {
+                if (!Double.isNaN(smoothedPrices[i])) {
+                    FixedMillisecond time = new FixedMillisecond(candles.get(i).timestamp());
+                    smoothedSeries.addOrUpdate(time, smoothedPrices[i]);
+                }
+            }
+            priceDataset.addSeries(smoothedSeries);
+
+            // Configure renderer for smoothed line (orange, thicker)
+            XYLineAndShapeRenderer renderer = (XYLineAndShapeRenderer) pricePlot.getRenderer();
+            renderer.setSeriesPaint(1, new Color(255, 165, 0)); // Orange
+            renderer.setSeriesStroke(1, new BasicStroke(2.0f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        }
+
+        pricePlot.setDataset(priceDataset);
         volumePlot.setDataset(new TimeSeriesCollection(volumeSeries));
 
         renderHoopOverlays();
+    }
+
+    private double[] calculateSmoothedPrices() {
+        return switch (smoothingType) {
+            case NONE -> candles.stream().mapToDouble(Candle::close).toArray();
+            case SMA -> SMA.calculate(candles, smoothingPeriod);
+            case EMA -> EMA.calculate(candles, smoothingPeriod);
+            case HLC3 -> candles.stream()
+                .mapToDouble(c -> (c.high() + c.low() + c.close()) / 3.0)
+                .toArray();
+        };
     }
 
     private void renderHoopOverlays() {

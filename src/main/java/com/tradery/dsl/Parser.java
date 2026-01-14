@@ -204,8 +204,41 @@ public class Parser {
             return oiFunctionCall();
         }
 
+        // Ray function (RESISTANCE_RAY_*, SUPPORT_RAY_*)
+        if (check(TokenType.RAY_FUNC)) {
+            return rayFunctionCall();
+        }
+
+        // Aggregate functions (LOWEST, HIGHEST, PERCENTILE)
+        if (check(TokenType.AGGREGATE_FUNC)) {
+            return aggregateFunctionCall();
+        }
+
         throw new ParserException("Unexpected token '" + current().value() +
             "' at position " + current().position());
+    }
+
+    private AstNode.AggregateFunctionCall aggregateFunctionCall() {
+        String func = current().value();
+        advance();
+
+        expect(TokenType.LPAREN, "Expected '(' after " + func);
+
+        // Parse the expression argument
+        AstNode expression = expression();
+
+        expect(TokenType.COMMA, "Expected ',' after expression in " + func);
+
+        // Parse the period argument
+        if (!check(TokenType.NUMBER)) {
+            throw new ParserException("Expected number for period in " + func + ", got '" + current().value() + "'");
+        }
+        int period = (int) Double.parseDouble(current().value());
+        advance();
+
+        expect(TokenType.RPAREN, "Expected ')' after " + func + " parameters");
+
+        return new AstNode.AggregateFunctionCall(func, expression, period);
     }
 
     private AstNode.OrderflowFunctionCall orderflowFunctionCall() {
@@ -283,6 +316,42 @@ public class Parser {
         return new AstNode.OIFunctionCall(func, period);
     }
 
+    private AstNode.RayFunctionCall rayFunctionCall() {
+        String func = current().value();
+        advance();
+
+        expect(TokenType.LPAREN, "Expected '(' after " + func);
+        List<Double> params = parseNumberList();
+        expect(TokenType.RPAREN, "Expected ')' after " + func + " parameters");
+
+        // Determine if this is a count function (no rayNum) or ray-specific function (has rayNum)
+        boolean isCountFunction = func.endsWith("_COUNT") || func.equals("RESISTANCE_RAYS_BROKEN") || func.equals("SUPPORT_RAYS_BROKEN");
+
+        if (isCountFunction) {
+            // Count functions: (lookback, skip)
+            if (params.size() != 2) {
+                throw new ParserException(func + " requires 2 parameters (lookback, skip), got " + params.size());
+            }
+            int lookback = params.get(0).intValue();
+            int skip = params.get(1).intValue();
+            return new AstNode.RayFunctionCall(func, null, lookback, skip);
+        } else {
+            // Ray-specific functions: (rayNum, lookback, skip)
+            if (params.size() != 3) {
+                throw new ParserException(func + " requires 3 parameters (rayNum, lookback, skip), got " + params.size());
+            }
+            int rayNum = params.get(0).intValue();
+            int lookback = params.get(1).intValue();
+            int skip = params.get(2).intValue();
+
+            if (rayNum < 1) {
+                throw new ParserException(func + " rayNum must be >= 1, got " + rayNum);
+            }
+
+            return new AstNode.RayFunctionCall(func, rayNum, lookback, skip);
+        }
+    }
+
     private AstNode indicatorCall() {
         String indicator = current().value();
         advance();
@@ -297,6 +366,7 @@ public class Parser {
         AstNode.IndicatorCall indicatorNode = new AstNode.IndicatorCall(indicator, params);
 
         // Check for property access
+        AstNode result = indicatorNode;
         if (check(TokenType.DOT)) {
             advance();
             if (!check(TokenType.PROPERTY)) {
@@ -308,10 +378,22 @@ public class Parser {
             // Validate property for indicator
             validateProperty(indicator, property);
 
-            return new AstNode.PropertyAccess(indicatorNode, property);
+            result = new AstNode.PropertyAccess(indicatorNode, property);
         }
 
-        return indicatorNode;
+        // Check for lookback access [n]
+        if (check(TokenType.LBRACKET)) {
+            advance();
+            if (!check(TokenType.NUMBER)) {
+                throw new ParserException("Expected number in lookback [], got '" + current().value() + "'");
+            }
+            int barsAgo = (int) Double.parseDouble(current().value());
+            advance();
+            expect(TokenType.RBRACKET, "Expected ']' after lookback number");
+            result = new AstNode.LookbackAccess(result, barsAgo);
+        }
+
+        return result;
     }
 
     private void validateIndicatorParams(String indicator, List<Double> params) {
@@ -331,7 +413,12 @@ public class Parser {
                     throw new ParserException("STOCHASTIC requires 1-2 parameters (kPeriod, dPeriod), got " + params.size());
                 }
             }
-            case "SMA", "EMA", "RSI", "ATR" -> {
+            case "SUPERTREND" -> {
+                if (params.size() != 2) {
+                    throw new ParserException("SUPERTREND requires 2 parameters (period, multiplier), got " + params.size());
+                }
+            }
+            case "SMA", "EMA", "RSI", "ATR", "ADX", "PLUS_DI", "MINUS_DI" -> {
                 if (params.size() != 1) {
                     throw new ParserException(indicator + " requires 1 parameter (period), got " + params.size());
                 }
@@ -341,8 +428,9 @@ public class Parser {
 
     private void validateProperty(String indicator, String property) {
         Set<String> macdProps = Set.of("signal", "histogram", "line");
-        Set<String> bbandsProps = Set.of("upper", "lower", "middle");
+        Set<String> bbandsProps = Set.of("upper", "lower", "middle", "width");
         Set<String> stochProps = Set.of("k", "d");
+        Set<String> supertrendProps = Set.of("trend", "upper", "lower");
 
         switch (indicator) {
             case "MACD" -> {
@@ -352,12 +440,17 @@ public class Parser {
             }
             case "BBANDS" -> {
                 if (!bbandsProps.contains(property)) {
-                    throw new ParserException("BBANDS only has properties: upper, lower, middle");
+                    throw new ParserException("BBANDS only has properties: upper, lower, middle, width");
                 }
             }
             case "STOCHASTIC" -> {
                 if (!stochProps.contains(property)) {
                     throw new ParserException("STOCHASTIC only has properties: k, d");
+                }
+            }
+            case "SUPERTREND" -> {
+                if (!supertrendProps.contains(property)) {
+                    throw new ParserException("SUPERTREND only has properties: trend, upper, lower");
                 }
             }
             case "SMA", "EMA", "RSI", "ATR" -> {

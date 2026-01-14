@@ -19,11 +19,16 @@ public class ChartConfig {
     private static final ObjectMapper MAPPER = new ObjectMapper().enable(SerializationFeature.INDENT_OUTPUT);
     private static final ChartConfig INSTANCE = new ChartConfig();
 
-    // Overlays
+    // Overlays (legacy single values for backward compatibility)
     private boolean smaEnabled = false;
     private int smaPeriod = 20;
     private boolean emaEnabled = false;
     private int emaPeriod = 20;
+
+    // Multiple overlay periods (new format)
+    private List<Integer> smaPeriods = new ArrayList<>();
+    private List<Integer> emaPeriods = new ArrayList<>();
+
     private boolean bollingerEnabled = false;
     private int bollingerPeriod = 20;
     private double bollingerStdDev = 2.0;
@@ -65,6 +70,11 @@ public class ChartConfig {
     private boolean dailyPocEnabled = false;
     private boolean floatingPocEnabled = false;
 
+    // Ray overlay
+    private boolean rayOverlayEnabled = false;
+    private int rayLookback = 200;
+    private int raySkip = 5;
+
     // Core charts
     private boolean volumeChartEnabled = true;
     private boolean equityChartEnabled = true;
@@ -99,6 +109,86 @@ public class ChartConfig {
     public void setEmaEnabled(boolean enabled) { this.emaEnabled = enabled; save(); }
     public int getEmaPeriod() { return emaPeriod; }
     public void setEmaPeriod(int period) { this.emaPeriod = period; save(); }
+
+    // ===== Multiple SMA Periods =====
+
+    public List<Integer> getSmaPeriods() {
+        return new ArrayList<>(smaPeriods);
+    }
+
+    public void setSmaPeriods(List<Integer> periods) {
+        this.smaPeriods = new ArrayList<>(periods);
+        // Update legacy fields for backward compat
+        this.smaEnabled = !periods.isEmpty();
+        if (!periods.isEmpty()) {
+            this.smaPeriod = periods.get(0);
+        }
+        save();
+    }
+
+    public void addSmaPeriod(int period) {
+        if (!smaPeriods.contains(period)) {
+            smaPeriods.add(period);
+            smaEnabled = true;
+            smaPeriod = period;
+            save();
+        }
+    }
+
+    public void removeSmaPeriod(int period) {
+        smaPeriods.remove(Integer.valueOf(period));
+        smaEnabled = !smaPeriods.isEmpty();
+        if (!smaPeriods.isEmpty()) {
+            smaPeriod = smaPeriods.get(0);
+        }
+        save();
+    }
+
+    public void clearSmaPeriods() {
+        smaPeriods.clear();
+        smaEnabled = false;
+        save();
+    }
+
+    // ===== Multiple EMA Periods =====
+
+    public List<Integer> getEmaPeriods() {
+        return new ArrayList<>(emaPeriods);
+    }
+
+    public void setEmaPeriods(List<Integer> periods) {
+        this.emaPeriods = new ArrayList<>(periods);
+        // Update legacy fields for backward compat
+        this.emaEnabled = !periods.isEmpty();
+        if (!periods.isEmpty()) {
+            this.emaPeriod = periods.get(0);
+        }
+        save();
+    }
+
+    public void addEmaPeriod(int period) {
+        if (!emaPeriods.contains(period)) {
+            emaPeriods.add(period);
+            emaEnabled = true;
+            emaPeriod = period;
+            save();
+        }
+    }
+
+    public void removeEmaPeriod(int period) {
+        emaPeriods.remove(Integer.valueOf(period));
+        emaEnabled = !emaPeriods.isEmpty();
+        if (!emaPeriods.isEmpty()) {
+            emaPeriod = emaPeriods.get(0);
+        }
+        save();
+    }
+
+    public void clearEmaPeriods() {
+        emaPeriods.clear();
+        emaEnabled = false;
+        save();
+    }
 
     public boolean isBollingerEnabled() { return bollingerEnabled; }
     public void setBollingerEnabled(boolean enabled) { this.bollingerEnabled = enabled; save(); }
@@ -188,6 +278,15 @@ public class ChartConfig {
     public boolean isFloatingPocEnabled() { return floatingPocEnabled; }
     public void setFloatingPocEnabled(boolean enabled) { this.floatingPocEnabled = enabled; save(); }
 
+    // ===== Ray Overlay Getters/Setters =====
+
+    public boolean isRayOverlayEnabled() { return rayOverlayEnabled; }
+    public void setRayOverlayEnabled(boolean enabled) { this.rayOverlayEnabled = enabled; save(); }
+    public int getRayLookback() { return rayLookback; }
+    public void setRayLookback(int lookback) { this.rayLookback = lookback; save(); }
+    public int getRaySkip() { return raySkip; }
+    public void setRaySkip(int skip) { this.raySkip = skip; save(); }
+
     // ===== Core Chart Getters/Setters =====
 
     public boolean isVolumeChartEnabled() { return volumeChartEnabled; }
@@ -211,11 +310,16 @@ public class ChartConfig {
      * Update all settings at once without triggering multiple saves.
      */
     public void updateAll(ChartConfig other) {
-        // Overlays
+        // Overlays (legacy fields)
         this.smaEnabled = other.smaEnabled;
         this.smaPeriod = other.smaPeriod;
         this.emaEnabled = other.emaEnabled;
         this.emaPeriod = other.emaPeriod;
+
+        // Multiple overlay periods
+        this.smaPeriods = other.smaPeriods != null ? new ArrayList<>(other.smaPeriods) : new ArrayList<>();
+        this.emaPeriods = other.emaPeriods != null ? new ArrayList<>(other.emaPeriods) : new ArrayList<>();
+
         this.bollingerEnabled = other.bollingerEnabled;
         this.bollingerPeriod = other.bollingerPeriod;
         this.bollingerStdDev = other.bollingerStdDev;
@@ -257,6 +361,11 @@ public class ChartConfig {
         this.dailyPocEnabled = other.dailyPocEnabled;
         this.floatingPocEnabled = other.floatingPocEnabled;
 
+        // Ray overlay
+        this.rayOverlayEnabled = other.rayOverlayEnabled;
+        this.rayLookback = other.rayLookback;
+        this.raySkip = other.raySkip;
+
         // Core charts
         this.volumeChartEnabled = other.volumeChartEnabled;
         this.equityChartEnabled = other.equityChartEnabled;
@@ -279,6 +388,8 @@ public class ChartConfig {
         smaPeriod = 20;
         emaEnabled = false;
         emaPeriod = 20;
+        smaPeriods = new ArrayList<>();
+        emaPeriods = new ArrayList<>();
         bollingerEnabled = false;
         bollingerPeriod = 20;
         bollingerStdDev = 2.0;
@@ -319,6 +430,11 @@ public class ChartConfig {
         // POC overlays - off by default
         dailyPocEnabled = false;
         floatingPocEnabled = false;
+
+        // Ray overlay - off by default
+        rayOverlayEnabled = false;
+        rayLookback = 200;
+        raySkip = 5;
 
         // Core charts - all on by default
         volumeChartEnabled = true;
@@ -388,11 +504,33 @@ public class ChartConfig {
     }
 
     private void copyFrom(ChartConfig other) {
-        // Overlays
+        // Overlays - migrate legacy single values to lists if needed
         this.smaEnabled = other.smaEnabled;
         this.smaPeriod = other.smaPeriod;
         this.emaEnabled = other.emaEnabled;
         this.emaPeriod = other.emaPeriod;
+
+        // Copy lists if present, otherwise migrate from legacy single values
+        if (other.smaPeriods != null && !other.smaPeriods.isEmpty()) {
+            this.smaPeriods = new ArrayList<>(other.smaPeriods);
+        } else if (other.smaEnabled) {
+            // Migrate from legacy single value
+            this.smaPeriods = new ArrayList<>();
+            this.smaPeriods.add(other.smaPeriod);
+        } else {
+            this.smaPeriods = new ArrayList<>();
+        }
+
+        if (other.emaPeriods != null && !other.emaPeriods.isEmpty()) {
+            this.emaPeriods = new ArrayList<>(other.emaPeriods);
+        } else if (other.emaEnabled) {
+            // Migrate from legacy single value
+            this.emaPeriods = new ArrayList<>();
+            this.emaPeriods.add(other.emaPeriod);
+        } else {
+            this.emaPeriods = new ArrayList<>();
+        }
+
         this.bollingerEnabled = other.bollingerEnabled;
         this.bollingerPeriod = other.bollingerPeriod;
         this.bollingerStdDev = other.bollingerStdDev;
@@ -433,6 +571,11 @@ public class ChartConfig {
         // POC overlays
         this.dailyPocEnabled = other.dailyPocEnabled;
         this.floatingPocEnabled = other.floatingPocEnabled;
+
+        // Ray overlay
+        this.rayOverlayEnabled = other.rayOverlayEnabled;
+        this.rayLookback = other.rayLookback;
+        this.raySkip = other.raySkip;
 
         // Core charts
         this.volumeChartEnabled = other.volumeChartEnabled;

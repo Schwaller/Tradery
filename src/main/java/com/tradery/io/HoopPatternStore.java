@@ -5,12 +5,14 @@ import com.tradery.model.HoopPattern;
 import java.io.File;
 
 /**
- * Reads and writes HoopPattern JSON files.
- * Each pattern has its own folder: ~/.tradery/hoops/{id}/hoop.json
+ * Reads and writes HoopPattern YAML files.
+ * Each pattern has its own folder: ~/.tradery/hoops/{id}/hoop.yaml
+ *
+ * Backward compatible: auto-migrates legacy hoop.json to hoop.yaml
  *
  * Claude Code can directly read/write these files.
  */
-public class HoopPatternStore extends JsonStore<HoopPattern> {
+public class HoopPatternStore extends YamlStore<HoopPattern> {
 
     public HoopPatternStore(File directory) {
         super(directory);
@@ -18,7 +20,7 @@ public class HoopPatternStore extends JsonStore<HoopPattern> {
 
     @Override
     protected String getFileName() {
-        return "hoop.json";
+        return "hoop.yaml";
     }
 
     @Override

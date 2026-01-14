@@ -50,6 +50,9 @@ public class ConditionEvaluator {
             case AstNode.FundingFunctionCall f -> evaluateFundingFunction(f, barIndex);
             case AstNode.SessionOrderflowFunctionCall s -> evaluateSessionOrderflowFunction(s, barIndex);
             case AstNode.OIFunctionCall o -> evaluateOIFunction(o, barIndex);
+            case AstNode.RayFunctionCall r -> evaluateRayFunction(r, barIndex);
+            case AstNode.AggregateFunctionCall a -> evaluateAggregateFunction(a, barIndex);
+            case AstNode.LookbackAccess l -> evaluateLookback(l, barIndex);
             case AstNode.PriceReference p -> evaluatePrice(p, barIndex);
             case AstNode.NumberLiteral n -> n.value();
             case AstNode.BooleanLiteral b -> b.value();
@@ -156,6 +159,12 @@ public class ConditionEvaluator {
                 int dPeriod = params.size() > 1 ? params.get(1).intValue() : 3;
                 yield engine.getStochasticKAt(kPeriod, barIndex);
             }
+            case "SUPERTREND" -> {
+                // Without property access, return the trend direction (1 = up, -1 = down)
+                int period = params.get(0).intValue();
+                double multiplier = params.get(1);
+                yield engine.getSupertrendTrendAt(period, multiplier, barIndex);
+            }
             default -> throw new EvaluationException("Unknown indicator: " + node.indicator());
         };
     }
@@ -184,6 +193,8 @@ public class ConditionEvaluator {
                     case "upper" -> engine.getBollingerUpperAt(period, stdDev, barIndex);
                     case "middle" -> engine.getBollingerMiddleAt(period, stdDev, barIndex);
                     case "lower" -> engine.getBollingerLowerAt(period, stdDev, barIndex);
+                    case "width" -> engine.getBollingerUpperAt(period, stdDev, barIndex) -
+                                    engine.getBollingerLowerAt(period, stdDev, barIndex);
                     default -> throw new EvaluationException("Unknown BBANDS property: " + property);
                 };
             }
@@ -194,6 +205,16 @@ public class ConditionEvaluator {
                     case "k" -> engine.getStochasticKAt(kPeriod, barIndex);
                     case "d" -> engine.getStochasticDAt(kPeriod, dPeriod, barIndex);
                     default -> throw new EvaluationException("Unknown STOCHASTIC property: " + property);
+                };
+            }
+            case "SUPERTREND" -> {
+                int period = params.get(0).intValue();
+                double multiplier = params.get(1);
+                yield switch (property) {
+                    case "trend" -> engine.getSupertrendTrendAt(period, multiplier, barIndex);
+                    case "upper" -> engine.getSupertrendUpperAt(period, multiplier, barIndex);
+                    case "lower" -> engine.getSupertrendLowerAt(period, multiplier, barIndex);
+                    default -> throw new EvaluationException("Unknown SUPERTREND property: " + property);
                 };
             }
             default -> throw new EvaluationException("Unknown indicator for property access: " + indicator.indicator());
@@ -298,6 +319,119 @@ public class ConditionEvaluator {
             case "OI_DELTA" -> engine.getOIDeltaAt(node.period(), barIndex);
             default -> throw new EvaluationException("Unknown OI function: " + node.func());
         };
+    }
+
+    /**
+     * Evaluate rotating ray functions for resistance/support trendline detection.
+     * Returns boolean (1.0/0.0) for _BROKEN/_CROSSED, double for _DISTANCE, int for _COUNT.
+     */
+    private double evaluateRayFunction(AstNode.RayFunctionCall node, int barIndex) {
+        String func = node.func();
+        int lookback = node.lookback();
+        int skip = node.skip();
+        Integer rayNum = node.rayNum();
+
+        return switch (func) {
+            // Resistance ray functions
+            case "RESISTANCE_RAY_BROKEN" ->
+                engine.isResistanceRayBroken(rayNum, lookback, skip, barIndex) ? 1.0 : 0.0;
+            case "RESISTANCE_RAY_CROSSED" ->
+                engine.didResistanceRayCross(rayNum, lookback, skip, barIndex) ? 1.0 : 0.0;
+            case "RESISTANCE_RAY_DISTANCE" ->
+                engine.getResistanceRayDistance(rayNum, lookback, skip, barIndex);
+            case "RESISTANCE_RAYS_BROKEN" ->
+                engine.getResistanceRaysBroken(lookback, skip, barIndex);
+            case "RESISTANCE_RAY_COUNT" ->
+                engine.getResistanceRayCount(lookback, skip, barIndex);
+
+            // Support ray functions
+            case "SUPPORT_RAY_BROKEN" ->
+                engine.isSupportRayBroken(rayNum, lookback, skip, barIndex) ? 1.0 : 0.0;
+            case "SUPPORT_RAY_CROSSED" ->
+                engine.didSupportRayCross(rayNum, lookback, skip, barIndex) ? 1.0 : 0.0;
+            case "SUPPORT_RAY_DISTANCE" ->
+                engine.getSupportRayDistance(rayNum, lookback, skip, barIndex);
+            case "SUPPORT_RAYS_BROKEN" ->
+                engine.getSupportRaysBroken(lookback, skip, barIndex);
+            case "SUPPORT_RAY_COUNT" ->
+                engine.getSupportRayCount(lookback, skip, barIndex);
+
+            default -> throw new EvaluationException("Unknown ray function: " + func);
+        };
+    }
+
+    /**
+     * Evaluate aggregate functions: LOWEST, HIGHEST, PERCENTILE
+     * These evaluate an expression over a lookback period and return an aggregate value.
+     */
+    private double evaluateAggregateFunction(AstNode.AggregateFunctionCall node, int barIndex) {
+        int period = node.period();
+
+        // Need enough bars for the lookback
+        if (barIndex < period - 1) {
+            return Double.NaN;
+        }
+
+        return switch (node.func()) {
+            case "LOWEST" -> {
+                double lowest = Double.MAX_VALUE;
+                for (int i = 0; i < period; i++) {
+                    double value = toDouble(evaluateNode(node.expression(), barIndex - i));
+                    if (!Double.isNaN(value) && value < lowest) {
+                        lowest = value;
+                    }
+                }
+                yield lowest == Double.MAX_VALUE ? Double.NaN : lowest;
+            }
+            case "HIGHEST" -> {
+                double highest = -Double.MAX_VALUE;
+                for (int i = 0; i < period; i++) {
+                    double value = toDouble(evaluateNode(node.expression(), barIndex - i));
+                    if (!Double.isNaN(value) && value > highest) {
+                        highest = value;
+                    }
+                }
+                yield highest == -Double.MAX_VALUE ? Double.NaN : highest;
+            }
+            case "PERCENTILE" -> {
+                // Calculate what percentile the current value is at within the lookback period
+                double currentValue = toDouble(evaluateNode(node.expression(), barIndex));
+                if (Double.isNaN(currentValue)) {
+                    yield Double.NaN;
+                }
+
+                int belowCount = 0;
+                int validCount = 0;
+                for (int i = 0; i < period; i++) {
+                    double value = toDouble(evaluateNode(node.expression(), barIndex - i));
+                    if (!Double.isNaN(value)) {
+                        validCount++;
+                        if (value < currentValue) {
+                            belowCount++;
+                        }
+                    }
+                }
+
+                if (validCount == 0) {
+                    yield Double.NaN;
+                }
+
+                // Return percentile (0-100)
+                yield (belowCount * 100.0) / validCount;
+            }
+            default -> throw new EvaluationException("Unknown aggregate function: " + node.func());
+        };
+    }
+
+    /**
+     * Evaluate lookback access: expr[n] returns value n bars ago
+     */
+    private double evaluateLookback(AstNode.LookbackAccess node, int barIndex) {
+        int targetBar = barIndex - node.barsAgo();
+        if (targetBar < 0) {
+            return Double.NaN;
+        }
+        return toDouble(evaluateNode(node.expression(), targetBar));
     }
 
     private double evaluatePrice(AstNode.PriceReference node, int barIndex) {

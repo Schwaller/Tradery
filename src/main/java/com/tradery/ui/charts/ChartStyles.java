@@ -61,6 +61,18 @@ public final class ChartStyles {
     public static final Color DAILY_POC_COLOR = new Color(0, 200, 200, 200);      // Cyan for previous day POC
     public static final Color FLOATING_POC_COLOR = new Color(255, 100, 200, 200); // Magenta for floating POC
 
+    // ===== Multiple Overlay Color Palette (for multiple SMA/EMA overlays) =====
+    public static final Color[] OVERLAY_PALETTE = {
+        new Color(255, 193, 7, 200),   // Gold
+        new Color(0, 200, 255, 200),   // Cyan
+        new Color(255, 87, 34, 200),   // Deep Orange
+        new Color(156, 39, 176, 200),  // Purple
+        new Color(76, 175, 80, 200),   // Green
+        new Color(233, 30, 99, 200),   // Pink
+        new Color(63, 81, 181, 200),   // Indigo
+        new Color(255, 235, 59, 200),  // Yellow
+    };
+
     // ===== Mayer Multiple Zone Colors (rainbow spectrum) =====
     public static final Color MAYER_DEEP_UNDERVALUED = new Color(0, 200, 255);    // Cyan
     public static final Color MAYER_UNDERVALUED = new Color(0, 255, 100);         // Green

@@ -2,6 +2,7 @@ package com.tradery.ui;
 
 import com.tradery.model.Hoop;
 import com.tradery.model.HoopPattern;
+import com.tradery.model.PriceSmoothingType;
 import com.tradery.ui.base.ConfigurationPanel;
 
 import javax.swing.*;
@@ -21,6 +22,9 @@ public class HoopPatternEditorPanel extends ConfigurationPanel {
     private JComboBox<String> timeframeCombo;
     private JSpinner cooldownSpinner;
     private JCheckBox allowOverlapCheck;
+    private JComboBox<PriceSmoothingType> smoothingTypeCombo;
+    private JSpinner smoothingPeriodSpinner;
+    private JLabel smoothingPeriodLabel;
     private HoopListPanel hoopListPanel;
 
     private HoopPattern pattern;
@@ -61,6 +65,15 @@ public class HoopPatternEditorPanel extends ConfigurationPanel {
 
         allowOverlapCheck = new JCheckBox("Allow overlapping patterns");
 
+        smoothingTypeCombo = new JComboBox<>(PriceSmoothingType.values());
+        smoothingTypeCombo.setSelectedItem(PriceSmoothingType.NONE);
+
+        smoothingPeriodSpinner = new JSpinner(new SpinnerNumberModel(5, 1, 100, 1));
+        smoothingPeriodSpinner.setPreferredSize(new Dimension(60, smoothingPeriodSpinner.getPreferredSize().height));
+
+        smoothingPeriodLabel = new JLabel("Period:");
+        smoothingPeriodLabel.setForeground(Color.GRAY);
+
         hoopListPanel = new HoopListPanel();
         hoopListPanel.setOnChange(this::fireChange);
 
@@ -77,6 +90,18 @@ public class HoopPatternEditorPanel extends ConfigurationPanel {
         timeframeCombo.addActionListener(e -> fireChange());
         cooldownSpinner.addChangeListener(e -> fireChange());
         allowOverlapCheck.addActionListener(e -> fireChange());
+        smoothingTypeCombo.addActionListener(e -> {
+            updateSmoothingPeriodVisibility();
+            fireChange();
+        });
+        smoothingPeriodSpinner.addChangeListener(e -> fireChange());
+    }
+
+    private void updateSmoothingPeriodVisibility() {
+        PriceSmoothingType type = (PriceSmoothingType) smoothingTypeCombo.getSelectedItem();
+        boolean needsPeriod = type == PriceSmoothingType.SMA || type == PriceSmoothingType.EMA;
+        smoothingPeriodLabel.setVisible(needsPeriod);
+        smoothingPeriodSpinner.setVisible(needsPeriod);
     }
 
     private void layoutComponents() {
@@ -144,8 +169,32 @@ public class HoopPatternEditorPanel extends ConfigurationPanel {
         gbc.gridwidth = 2;
         formPanel.add(allowOverlapCheck, gbc);
 
-        // Description
+        // Price Smoothing (new row)
         gbc.gridx = 0; gbc.gridy = 3;
+        gbc.fill = GridBagConstraints.NONE;
+        gbc.weightx = 0;
+        gbc.gridwidth = 1;
+        JLabel smoothingLabel = new JLabel("Price Smoothing:");
+        smoothingLabel.setForeground(Color.GRAY);
+        formPanel.add(smoothingLabel, gbc);
+
+        gbc.gridx = 1;
+        gbc.fill = GridBagConstraints.HORIZONTAL;
+        gbc.weightx = 0;
+        formPanel.add(smoothingTypeCombo, gbc);
+
+        gbc.gridx = 2;
+        gbc.fill = GridBagConstraints.NONE;
+        gbc.weightx = 0;
+        formPanel.add(smoothingPeriodLabel, gbc);
+
+        gbc.gridx = 3;
+        gbc.fill = GridBagConstraints.NONE;
+        gbc.weightx = 0;
+        formPanel.add(smoothingPeriodSpinner, gbc);
+
+        // Description
+        gbc.gridx = 0; gbc.gridy = 4;
         gbc.fill = GridBagConstraints.NONE;
         gbc.weightx = 0;
         gbc.gridwidth = 1;
@@ -163,7 +212,7 @@ public class HoopPatternEditorPanel extends ConfigurationPanel {
         formPanel.add(descScroll, gbc);
 
         // Hoops label
-        gbc.gridx = 0; gbc.gridy = 4;
+        gbc.gridx = 0; gbc.gridy = 5;
         gbc.fill = GridBagConstraints.NONE;
         gbc.weightx = 0;
         gbc.gridwidth = 4;
@@ -175,7 +224,7 @@ public class HoopPatternEditorPanel extends ConfigurationPanel {
         formPanel.add(hoopsLabel, gbc);
 
         // Hoops list
-        gbc.gridx = 0; gbc.gridy = 5;
+        gbc.gridx = 0; gbc.gridy = 6;
         gbc.fill = GridBagConstraints.BOTH;
         gbc.weightx = 1;
         gbc.weighty = 1;
@@ -197,7 +246,10 @@ public class HoopPatternEditorPanel extends ConfigurationPanel {
                 timeframeCombo.setSelectedItem(pattern.getTimeframe() != null ? pattern.getTimeframe() : "1h");
                 cooldownSpinner.setValue(pattern.getCooldownBars());
                 allowOverlapCheck.setSelected(pattern.isAllowOverlap());
+                smoothingTypeCombo.setSelectedItem(pattern.getPriceSmoothingType());
+                smoothingPeriodSpinner.setValue(pattern.getPriceSmoothingPeriod());
                 hoopListPanel.setHoops(new ArrayList<>(pattern.getHoops()));
+                updateSmoothingPeriodVisibility();
             } else {
                 nameField.setText("");
                 descriptionArea.setText("");
@@ -205,7 +257,10 @@ public class HoopPatternEditorPanel extends ConfigurationPanel {
                 timeframeCombo.setSelectedItem("1h");
                 cooldownSpinner.setValue(0);
                 allowOverlapCheck.setSelected(false);
+                smoothingTypeCombo.setSelectedItem(PriceSmoothingType.NONE);
+                smoothingPeriodSpinner.setValue(5);
                 hoopListPanel.setHoops(new ArrayList<>());
+                updateSmoothingPeriodVisibility();
             }
         } finally {
             setSuppressChangeEvents(false);
@@ -220,6 +275,8 @@ public class HoopPatternEditorPanel extends ConfigurationPanel {
         pattern.setTimeframe((String) timeframeCombo.getSelectedItem());
         pattern.setCooldownBars((Integer) cooldownSpinner.getValue());
         pattern.setAllowOverlap(allowOverlapCheck.isSelected());
+        pattern.setPriceSmoothingType((PriceSmoothingType) smoothingTypeCombo.getSelectedItem());
+        pattern.setPriceSmoothingPeriod((Integer) smoothingPeriodSpinner.getValue());
         pattern.setHoops(hoopListPanel.getHoops());
     }
 
@@ -238,6 +295,8 @@ public class HoopPatternEditorPanel extends ConfigurationPanel {
         timeframeCombo.setEnabled(enabled);
         cooldownSpinner.setEnabled(enabled);
         allowOverlapCheck.setEnabled(enabled);
+        smoothingTypeCombo.setEnabled(enabled);
+        smoothingPeriodSpinner.setEnabled(enabled);
         hoopListPanel.setEnabled(enabled);
     }
 }
