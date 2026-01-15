@@ -76,14 +76,17 @@ public class HoopPatternSettings {
 
     // Convenience checks
 
+    @JsonIgnore
     public boolean hasEntryPatterns() {
         return !getRequiredEntryPatternIds().isEmpty() || !getExcludedEntryPatternIds().isEmpty();
     }
 
+    @JsonIgnore
     public boolean hasExitPatterns() {
         return !getRequiredExitPatternIds().isEmpty() || !getExcludedExitPatternIds().isEmpty();
     }
 
+    @JsonIgnore
     public boolean hasAnyPatterns() {
         return hasEntryPatterns() || hasExitPatterns();
     }

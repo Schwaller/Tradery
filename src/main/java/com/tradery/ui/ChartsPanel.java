@@ -1122,7 +1122,11 @@ public class ChartsPanel extends JPanel {
     public void highlightTrades(List<Trade> trades) {
         clearTradeHighlight();
 
-        if (trades == null || trades.isEmpty()) return;
+        if (trades == null || trades.isEmpty()) {
+            // Ensure ray overlay is refreshed when clearing highlights
+            overlayManager.updateRayOverlay(currentCandles);
+            return;
+        }
 
         XYPlot plot = priceChart.getXYPlot();
 
@@ -1181,6 +1185,9 @@ public class ChartsPanel extends JPanel {
                 highlightAnnotations.add(exitMarker);
             }
         }
+
+        // Ensure ray overlay is refreshed after adding highlights
+        overlayManager.updateRayOverlay(currentCandles);
     }
 
     /**

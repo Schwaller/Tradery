@@ -1,5 +1,6 @@
 package com.tradery.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import java.util.ArrayList;
 import java.util.List;
@@ -45,15 +46,18 @@ public class PhaseSettings {
         this.excludedPhaseIds = excludedPhaseIds != null ? excludedPhaseIds : new ArrayList<>();
     }
 
+    @JsonIgnore
     public boolean hasPhaseFilters() {
         return (requiredPhaseIds != null && !requiredPhaseIds.isEmpty())
             || (excludedPhaseIds != null && !excludedPhaseIds.isEmpty());
     }
 
+    @JsonIgnore
     public boolean hasRequiredPhases() {
         return requiredPhaseIds != null && !requiredPhaseIds.isEmpty();
     }
 
+    @JsonIgnore
     public boolean hasExcludedPhases() {
         return excludedPhaseIds != null && !excludedPhaseIds.isEmpty();
     }

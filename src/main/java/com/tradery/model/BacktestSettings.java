@@ -1,5 +1,6 @@
 package com.tradery.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 
 /**
@@ -111,6 +112,7 @@ public class BacktestSettings {
     /**
      * Get total commission (fee + slippage) as decimal
      */
+    @JsonIgnore
     public double getTotalCommission() {
         return (getFeePercent() + getSlippagePercent()) / 100.0;
     }

@@ -111,6 +111,10 @@ public final class ChartStyles {
     // ===== ADX Chart Color =====
     public static final Color ADX_COLOR = new Color(255, 165, 0);  // Orange for ADX main line
 
+    // ===== Stochastic Chart Colors =====
+    public static final Color STOCHASTIC_K_COLOR = new Color(0, 200, 255);    // Cyan for %K (fast)
+    public static final Color STOCHASTIC_D_COLOR = new Color(255, 100, 150);  // Pink for %D (slow/signal)
+
     // ===== Orderflow/Delta Colors =====
     public static final Color DELTA_POSITIVE = new Color(38, 166, 91);      // Green
     public static final Color DELTA_NEGATIVE = new Color(231, 76, 60);      // Red

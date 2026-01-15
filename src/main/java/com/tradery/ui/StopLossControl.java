@@ -39,7 +39,7 @@ public class StopLossControl extends JPanel {
         valueSpinner.setPreferredSize(new Dimension(60, valueSpinner.getPreferredSize().height));
 
         unitCombo = new JComboBox<>(UNITS);
-        unitCombo.setPreferredSize(new Dimension(55, unitCombo.getPreferredSize().height));
+        unitCombo.setPreferredSize(new Dimension(65, unitCombo.getPreferredSize().height));
 
         add(typeCombo);
         add(valueSpinner);

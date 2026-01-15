@@ -1,5 +1,6 @@
 package com.tradery.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import java.util.ArrayList;
 import java.util.List;
@@ -45,6 +46,7 @@ public class ExitSettings {
     /**
      * Find the exit zone that matches the given P&L percentage.
      */
+    @JsonIgnore
     public ExitZone findMatchingZone(double pnlPercent) {
         for (ExitZone zone : getZones()) {
             if (zone.matches(pnlPercent)) {
@@ -55,6 +57,7 @@ public class ExitSettings {
         return z.isEmpty() ? null : z.get(0);
     }
 
+    @JsonIgnore
     public boolean hasMultipleZones() {
         return getZones().size() > 1;
     }
@@ -65,6 +68,7 @@ public class ExitSettings {
      *
      * @return List of warning messages for overlapping zones (empty if none)
      */
+    @JsonIgnore
     public List<String> findOverlappingZones() {
         List<String> warnings = new ArrayList<>();
         List<ExitZone> zoneList = getZones();

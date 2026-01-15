@@ -1,5 +1,6 @@
 package com.tradery.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -168,11 +169,12 @@ public class HoopPattern implements Identifiable {
         this.updated = updated;
     }
 
-    // Utility methods
+    // Utility methods (JsonIgnore to prevent serialization)
 
     /**
      * Calculate total expected bars for the full pattern.
      */
+    @JsonIgnore
     public int getTotalExpectedBars() {
         return hoops.stream().mapToInt(Hoop::distance).sum();
     }
@@ -180,6 +182,7 @@ public class HoopPattern implements Identifiable {
     /**
      * Calculate maximum possible bars (with all tolerances at max).
      */
+    @JsonIgnore
     public int getMaxPatternBars() {
         return hoops.stream().mapToInt(h -> h.distance() + h.tolerance()).sum();
     }
@@ -187,6 +190,7 @@ public class HoopPattern implements Identifiable {
     /**
      * Calculate minimum possible bars (with all tolerances at min).
      */
+    @JsonIgnore
     public int getMinPatternBars() {
         return hoops.stream().mapToInt(h -> Math.max(1, h.distance() - h.tolerance())).sum();
     }
@@ -194,6 +198,7 @@ public class HoopPattern implements Identifiable {
     /**
      * Check if this pattern has any hoops defined.
      */
+    @JsonIgnore
     public boolean hasHoops() {
         return hoops != null && !hoops.isEmpty();
     }

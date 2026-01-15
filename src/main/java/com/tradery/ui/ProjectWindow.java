@@ -490,7 +490,7 @@ public class ProjectWindow extends JFrame {
         helpBtn.setToolTipText("Strategy Guide & DSL Reference");
         helpBtn.addActionListener(e -> StrategyHelpDialog.show(this));
         toolbarLeft.add(helpBtn);
-        toolbarLeft.add(Box.createHorizontalStrut(8));
+//        toolbarLeft.add(Box.createHorizontalStrut(8));
 
         toolbarLeft.add(new JLabel("Symbol:"));
         toolbarLeft.add(symbolCombo);

@@ -1,5 +1,6 @@
 package com.tradery.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import java.time.Instant;
 
@@ -92,6 +93,7 @@ public class Strategy implements Identifiable {
         this.presetVersion = presetVersion;
     }
 
+    @JsonIgnore
     public boolean isPreset() {
         return presetId != null && !presetId.isEmpty();
     }
@@ -207,8 +209,9 @@ public class Strategy implements Identifiable {
         this.updated = updated;
     }
 
-    // Convenience methods - Entry settings delegates
+    // Convenience methods - Entry settings delegates (JsonIgnore to prevent duplicate serialization)
 
+    @JsonIgnore
     public String getEntry() {
         return getEntrySettings().getCondition();
     }
@@ -218,6 +221,7 @@ public class Strategy implements Identifiable {
         this.updated = Instant.now();
     }
 
+    @JsonIgnore
     public int getMaxOpenTrades() {
         return getEntrySettings().getMaxOpenTrades();
     }
@@ -227,6 +231,7 @@ public class Strategy implements Identifiable {
         this.updated = Instant.now();
     }
 
+    @JsonIgnore
     public int getMinCandlesBetweenTrades() {
         return getEntrySettings().getMinCandlesBetween();
     }
@@ -238,6 +243,7 @@ public class Strategy implements Identifiable {
 
     // DCA delegates
 
+    @JsonIgnore
     public boolean isDcaEnabled() {
         return getEntrySettings().getDca().isEnabled();
     }
@@ -247,6 +253,7 @@ public class Strategy implements Identifiable {
         this.updated = Instant.now();
     }
 
+    @JsonIgnore
     public int getDcaMaxEntries() {
         return getEntrySettings().getDca().getMaxEntries();
     }
@@ -256,6 +263,7 @@ public class Strategy implements Identifiable {
         this.updated = Instant.now();
     }
 
+    @JsonIgnore
     public int getDcaBarsBetween() {
         return getEntrySettings().getDca().getBarsBetween();
     }
@@ -265,6 +273,7 @@ public class Strategy implements Identifiable {
         this.updated = Instant.now();
     }
 
+    @JsonIgnore
     public DcaMode getDcaMode() {
         return getEntrySettings().getDca().getMode();
     }
@@ -276,6 +285,7 @@ public class Strategy implements Identifiable {
 
     // Convenience methods - Exit settings delegates
 
+    @JsonIgnore
     public java.util.List<ExitZone> getExitZones() {
         return getExitSettings().getZones();
     }
@@ -285,6 +295,7 @@ public class Strategy implements Identifiable {
         this.updated = Instant.now();
     }
 
+    @JsonIgnore
     public ZoneEvaluation getZoneEvaluation() {
         return getExitSettings().getEvaluation();
     }
@@ -294,12 +305,14 @@ public class Strategy implements Identifiable {
         this.updated = Instant.now();
     }
 
+    @JsonIgnore
     public ExitZone findMatchingZone(double pnlPercent) {
         return getExitSettings().findMatchingZone(pnlPercent);
     }
 
     // Convenience methods - Backtest settings delegates
 
+    @JsonIgnore
     public String getSymbol() {
         return getBacktestSettings().getSymbol();
     }
@@ -309,6 +322,7 @@ public class Strategy implements Identifiable {
         this.updated = Instant.now();
     }
 
+    @JsonIgnore
     public String getTimeframe() {
         return getBacktestSettings().getTimeframe();
     }
@@ -318,6 +332,7 @@ public class Strategy implements Identifiable {
         this.updated = Instant.now();
     }
 
+    @JsonIgnore
     public String getDuration() {
         return getBacktestSettings().getDuration();
     }
@@ -327,6 +342,7 @@ public class Strategy implements Identifiable {
         this.updated = Instant.now();
     }
 
+    @JsonIgnore
     public double getInitialCapital() {
         return getBacktestSettings().getInitialCapital();
     }
@@ -336,6 +352,7 @@ public class Strategy implements Identifiable {
         this.updated = Instant.now();
     }
 
+    @JsonIgnore
     public PositionSizingType getPositionSizingType() {
         return getBacktestSettings().getPositionSizingType();
     }
@@ -345,6 +362,7 @@ public class Strategy implements Identifiable {
         this.updated = Instant.now();
     }
 
+    @JsonIgnore
     public double getPositionSizingValue() {
         return getBacktestSettings().getPositionSizingValue();
     }
@@ -354,6 +372,7 @@ public class Strategy implements Identifiable {
         this.updated = Instant.now();
     }
 
+    @JsonIgnore
     public double getFeePercent() {
         return getBacktestSettings().getFeePercent();
     }
@@ -363,6 +382,7 @@ public class Strategy implements Identifiable {
         this.updated = Instant.now();
     }
 
+    @JsonIgnore
     public double getSlippagePercent() {
         return getBacktestSettings().getSlippagePercent();
     }
@@ -372,12 +392,14 @@ public class Strategy implements Identifiable {
         this.updated = Instant.now();
     }
 
+    @JsonIgnore
     public double getTotalCommission() {
         return getBacktestSettings().getTotalCommission();
     }
 
     // Convenience methods - Phase settings delegates
 
+    @JsonIgnore
     public java.util.List<String> getRequiredPhaseIds() {
         return getPhaseSettings().getRequiredPhaseIds();
     }
@@ -387,10 +409,12 @@ public class Strategy implements Identifiable {
         this.updated = Instant.now();
     }
 
+    @JsonIgnore
     public boolean hasRequiredPhases() {
         return getPhaseSettings().hasRequiredPhases();
     }
 
+    @JsonIgnore
     public java.util.List<String> getExcludedPhaseIds() {
         return getPhaseSettings().getExcludedPhaseIds();
     }
@@ -400,12 +424,14 @@ public class Strategy implements Identifiable {
         this.updated = Instant.now();
     }
 
+    @JsonIgnore
     public boolean hasExcludedPhases() {
         return getPhaseSettings().hasExcludedPhases();
     }
 
     // Convenience methods - Hoop pattern settings delegates
 
+    @JsonIgnore
     public java.util.List<String> getRequiredEntryPatternIds() {
         return getHoopPatternSettings().getRequiredEntryPatternIds();
     }
@@ -415,6 +441,7 @@ public class Strategy implements Identifiable {
         this.updated = Instant.now();
     }
 
+    @JsonIgnore
     public java.util.List<String> getExcludedEntryPatternIds() {
         return getHoopPatternSettings().getExcludedEntryPatternIds();
     }
@@ -424,6 +451,7 @@ public class Strategy implements Identifiable {
         this.updated = Instant.now();
     }
 
+    @JsonIgnore
     public java.util.List<String> getRequiredExitPatternIds() {
         return getHoopPatternSettings().getRequiredExitPatternIds();
     }
@@ -433,6 +461,7 @@ public class Strategy implements Identifiable {
         this.updated = Instant.now();
     }
 
+    @JsonIgnore
     public java.util.List<String> getExcludedExitPatternIds() {
         return getHoopPatternSettings().getExcludedExitPatternIds();
     }
@@ -442,16 +471,19 @@ public class Strategy implements Identifiable {
         this.updated = Instant.now();
     }
 
+    @JsonIgnore
     public boolean hasEntryHoopPatterns() {
         return getHoopPatternSettings().hasEntryPatterns();
     }
 
+    @JsonIgnore
     public boolean hasExitHoopPatterns() {
         return getHoopPatternSettings().hasExitPatterns();
     }
 
     // Convenience methods - Orderflow settings delegates
 
+    @JsonIgnore
     public OrderflowSettings.Mode getOrderflowMode() {
         return getOrderflowSettings().getMode();
     }
@@ -461,6 +493,7 @@ public class Strategy implements Identifiable {
         this.updated = Instant.now();
     }
 
+    @JsonIgnore
     public boolean isOrderflowEnabled() {
         return getOrderflowSettings().isEnabled();
     }
@@ -476,6 +509,7 @@ public class Strategy implements Identifiable {
      * NOT required for Tier 1 (calculated from candles):
      * - VWAP, POC, VAH, VAL, PREV_DAY_*, TODAY_*
      */
+    @JsonIgnore
     public boolean requiresAggTrades() {
         // Check entry condition
         String entry = getEntrySettings().getCondition();
@@ -512,6 +546,7 @@ public class Strategy implements Identifiable {
      * Check if strategy uses any orderflow functions (Tier 1 or Tier 2).
      * Used for informational display, not data requirements.
      */
+    @JsonIgnore
     public boolean usesOrderflow() {
         String entry = getEntrySettings().getCondition();
         if (entry != null && containsOrderflowFunction(entry)) {
@@ -544,6 +579,7 @@ public class Strategy implements Identifiable {
     /**
      * Check if strategy uses Open Interest functions (OI, OI_CHANGE, OI_DELTA).
      */
+    @JsonIgnore
     public boolean usesOpenInterest() {
         // Check entry condition
         String entry = getEntrySettings().getCondition();
@@ -572,6 +608,7 @@ public class Strategy implements Identifiable {
      * Check if strategy DSL requires Open Interest data.
      * Alias for usesOpenInterest() for clearer API in data requirements.
      */
+    @JsonIgnore
     public boolean requiresOpenInterest() {
         return usesOpenInterest();
     }
@@ -579,6 +616,7 @@ public class Strategy implements Identifiable {
     /**
      * Check if strategy DSL uses Funding Rate functions (FUNDING, FUNDING_8H).
      */
+    @JsonIgnore
     public boolean requiresFunding() {
         // Check entry condition
         String entry = getEntrySettings().getCondition();

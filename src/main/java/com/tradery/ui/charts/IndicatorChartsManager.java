@@ -871,10 +871,10 @@ public class IndicatorChartsManager {
         dataset.addSeries(dSeries);
         plot.setDataset(dataset);
 
-        // Style the lines
+        // Style the lines with distinct colors
         XYLineAndShapeRenderer renderer = new XYLineAndShapeRenderer(true, false);
-        renderer.setSeriesPaint(0, ChartStyles.RSI_COLOR);           // %K - same color as RSI
-        renderer.setSeriesPaint(1, ChartStyles.MACD_SIGNAL_COLOR);   // %D - signal line color
+        renderer.setSeriesPaint(0, ChartStyles.STOCHASTIC_K_COLOR);  // %K - cyan (fast line)
+        renderer.setSeriesPaint(1, ChartStyles.STOCHASTIC_D_COLOR);  // %D - pink (slow/signal line)
         renderer.setSeriesStroke(0, ChartStyles.MEDIUM_STROKE);
         renderer.setSeriesStroke(1, ChartStyles.MEDIUM_STROKE);
         plot.setRenderer(renderer);

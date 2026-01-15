@@ -1,6 +1,7 @@
 package com.tradery.model;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonValue;
 
@@ -92,6 +93,7 @@ public class OrderflowSettings {
 
     // Convenience methods
 
+    @JsonIgnore
     public boolean isEnabled() {
         return mode != null && mode != Mode.DISABLED;
     }
