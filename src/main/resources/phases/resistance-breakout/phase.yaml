@@ -1,0 +1,9 @@
+id: resistance-breakout
+name: Resistance Breakout
+description: Price just crossed above first resistance ray - fresh breakout signal
+category: Ray
+condition: RESISTANCE_RAY_CROSSED(1, 0, 5) == 1
+timeframe: 1h
+symbol: BTCUSDT
+builtIn: true
+version: "1.1"

@@ -1,7 +1,7 @@
 {
   "id": "overbought",
   "name": "Overbought",
-  "category": "Technical",
+  "category": "RSI",
   "description": "RSI indicates overbought conditions",
   "condition": "RSI(14) > 70",
   "timeframe": "1d",

@@ -2,7 +2,7 @@
   "id" : "downtrend",
   "name" : "Downtrend",
   "description" : "Strong downtrend detected using ADX and directional movement",
-  "category" : "Trend",
+  "category": "Trend",
   "condition" : "ADX(14) > 25 AND MINUS_DI(14) > PLUS_DI(14)",
   "timeframe" : "1d",
   "symbol" : "BTCUSDT",

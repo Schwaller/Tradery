@@ -113,17 +113,34 @@ public class PhaseStore extends YamlStore<Phase> {
      * Marks the phase as builtIn so it can't be edited.
      */
     public Phase installPreset(String presetId, String version) {
-        String resourcePath = "/phases/" + presetId + "/phase.json";
-        try (InputStream is = getClass().getResourceAsStream(resourcePath)) {
+        // Try YAML first (new format), then fall back to JSON (legacy)
+        String yamlPath = "/phases/" + presetId + "/phase.yaml";
+        String jsonPath = "/phases/" + presetId + "/phase.json";
+
+        try (InputStream is = getClass().getResourceAsStream(yamlPath)) {
+            if (is != null) {
+                Phase phase = yamlMapper.readValue(is, Phase.class);
+                phase.setBuiltIn(true);
+                phase.setVersion(version);
+                save(phase);
+                log.info("Installed built-in phase: {} v{}", phase.getName(), version);
+                return phase;
+            }
+        } catch (IOException e) {
+            log.error("Failed to install phase preset {} from YAML: {}", presetId, e.getMessage());
+        }
+
+        // Fall back to JSON (legacy bundled resources)
+        try (InputStream is = getClass().getResourceAsStream(jsonPath)) {
             if (is == null) {
                 log.warn("Phase preset not found: {}", presetId);
                 return null;
             }
             Phase phase = jsonMapper.readValue(is, Phase.class);
-            phase.setBuiltIn(true);  // Mark as built-in
-            phase.setVersion(version);  // Set version from manifest
+            phase.setBuiltIn(true);
+            phase.setVersion(version);
             save(phase);
-            log.info("Installed built-in phase: {} v{}", phase.getName(), version);
+            log.info("Installed built-in phase: {} v{} (from legacy JSON)", phase.getName(), version);
             return phase;
         } catch (IOException e) {
             log.error("Failed to install phase preset {}: {}", presetId, e.getMessage());

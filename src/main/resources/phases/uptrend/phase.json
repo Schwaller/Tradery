@@ -2,7 +2,7 @@
   "id" : "uptrend",
   "name" : "Uptrend",
   "description" : "Strong uptrend detected using ADX and directional movement",
-  "category" : "Trend",
+  "category": "Trend",
   "condition" : "ADX(14) > 25 AND PLUS_DI(14) > MINUS_DI(14)",
   "timeframe" : "1d",
   "symbol" : "BTCUSDT",

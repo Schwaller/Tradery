@@ -59,9 +59,13 @@ public final class ChartStyles {
     public static final Color BB_COLOR = new Color(180, 100, 255, 180);
     public static final Color BB_MIDDLE_COLOR = new Color(180, 100, 255, 120);
 
-    // ===== POC Overlay Colors =====
+    // ===== POC/VAH/VAL Overlay Colors =====
     public static final Color DAILY_POC_COLOR = new Color(0, 200, 200, 200);      // Cyan for previous day POC
+    public static final Color DAILY_VAH_COLOR = new Color(0, 200, 200, 120);      // Lighter cyan for previous day VAH
+    public static final Color DAILY_VAL_COLOR = new Color(0, 200, 200, 120);      // Lighter cyan for previous day VAL
     public static final Color FLOATING_POC_COLOR = new Color(255, 100, 200, 200); // Magenta for floating POC
+    public static final Color FLOATING_VAH_COLOR = new Color(255, 100, 200, 120); // Lighter magenta for floating VAH
+    public static final Color FLOATING_VAL_COLOR = new Color(255, 100, 200, 120); // Lighter magenta for floating VAL
 
     // ===== VWAP Overlay Color =====
     public static final Color VWAP_COLOR = new Color(255, 215, 0, 220);           // Gold for VWAP
@@ -134,6 +138,9 @@ public final class ChartStyles {
     public static final Color OI_LINE_COLOR = new Color(155, 89, 182);      // Purple for OI line
     public static final Color OI_POSITIVE = new Color(38, 166, 91);         // Green (OI increasing)
     public static final Color OI_NEGATIVE = new Color(231, 76, 60);         // Red (OI decreasing)
+
+    // ===== Trade Count Colors =====
+    public static final Color TRADE_COUNT_LINE_COLOR = new Color(100, 181, 246);  // Light blue for trade count
 
     // ===== Hoop Pattern Colors =====
     public static final Color[] HOOP_COLORS = {

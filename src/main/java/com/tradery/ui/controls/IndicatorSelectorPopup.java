@@ -40,6 +40,8 @@ public class IndicatorSelectorPopup extends JDialog {
 
     private JCheckBox dailyPocCheckbox;
     private JCheckBox floatingPocCheckbox;
+    private JLabel floatingPocPeriodLabel;
+    private JSpinner floatingPocPeriodSpinner;
     private JCheckBox vwapCheckbox;
 
     private JCheckBox rayCheckbox;
@@ -97,8 +99,11 @@ public class IndicatorSelectorPopup extends JDialog {
     private JCheckBox volumeRatioCheckbox;
     private JCheckBox whaleCheckbox;
     private JCheckBox retailCheckbox;
+    private JCheckBox tradeCountCheckbox;
     private JLabel whaleLabel;
     private JSpinner whaleThresholdSpinner;
+    private JLabel retailLabel;
+    private JSpinner retailThresholdSpinner;
 
     // Funding checkbox
     private JCheckBox fundingCheckbox;
@@ -207,6 +212,7 @@ public class IndicatorSelectorPopup extends JDialog {
         contentPane.add(createVolumeRatioRow());
         contentPane.add(createWhaleRow());
         contentPane.add(createRetailRow());
+        contentPane.add(createTradeCountRow());
 
         contentPane.add(Box.createVerticalStrut(4));
 
@@ -516,8 +522,8 @@ public class IndicatorSelectorPopup extends JDialog {
     }
 
     private JPanel createDailyPocRow() {
-        dailyPocCheckbox = new JCheckBox("Daily POC");
-        dailyPocCheckbox.setToolTipText("Show previous day's Point of Control");
+        dailyPocCheckbox = new JCheckBox("Daily POC/VAH/VAL");
+        dailyPocCheckbox.setToolTipText("Show previous day's POC, VAH, VAL (Value Area)");
         JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
         row.setAlignmentX(Component.LEFT_ALIGNMENT);
         row.add(dailyPocCheckbox);
@@ -526,12 +532,27 @@ public class IndicatorSelectorPopup extends JDialog {
     }
 
     private JPanel createFloatingPocRow() {
-        floatingPocCheckbox = new JCheckBox("Floating POC");
-        floatingPocCheckbox.setToolTipText("Show developing Point of Control for current day");
+        floatingPocCheckbox = new JCheckBox("Floating POC/VAH/VAL");
+        floatingPocCheckbox.setToolTipText("Show developing POC, VAH, VAL (0=today, N=rolling bars)");
+        floatingPocPeriodLabel = new JLabel("Bars:");
+        floatingPocPeriodSpinner = new JSpinner(new SpinnerNumberModel(0, 0, 500, 10));
+        floatingPocPeriodSpinner.setPreferredSize(new java.awt.Dimension(60, 25));
+        floatingPocPeriodSpinner.setToolTipText("0 = today's session, >0 = rolling N-bar lookback");
+
         JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
         row.setAlignmentX(Component.LEFT_ALIGNMENT);
         row.add(floatingPocCheckbox);
-        floatingPocCheckbox.addActionListener(e -> scheduleUpdate());
+        row.add(floatingPocPeriodLabel);
+        row.add(floatingPocPeriodSpinner);
+
+        floatingPocCheckbox.addActionListener(e -> {
+            boolean enabled = floatingPocCheckbox.isSelected();
+            floatingPocPeriodLabel.setEnabled(enabled);
+            floatingPocPeriodSpinner.setEnabled(enabled);
+            scheduleUpdate();
+        });
+        floatingPocPeriodSpinner.addChangeListener(e -> scheduleUpdate());
+
         return row;
     }
 
@@ -744,11 +765,32 @@ public class IndicatorSelectorPopup extends JDialog {
 
     private JPanel createRetailRow() {
         retailCheckbox = new JCheckBox("Retail Delta");
-        retailCheckbox.setToolTipText("Show delta from trades below whale threshold");
+        retailCheckbox.setToolTipText("Show delta from trades below threshold");
+        retailLabel = new JLabel("Max $:");
+        retailThresholdSpinner = new JSpinner(new SpinnerNumberModel(50000, 1000, 1000000, 10000));
+        retailThresholdSpinner.setPreferredSize(new Dimension(80, 24));
+        retailThresholdSpinner.setToolTipText("Max trade size ($) to count as retail");
+
         JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
         row.setAlignmentX(Component.LEFT_ALIGNMENT);
         row.add(retailCheckbox);
-        retailCheckbox.addActionListener(e -> scheduleUpdate());
+        row.add(retailLabel);
+        row.add(retailThresholdSpinner);
+        retailCheckbox.addActionListener(e -> {
+            updateControlVisibility();
+            scheduleUpdate();
+        });
+        retailThresholdSpinner.addChangeListener(e -> scheduleUpdate());
+        return row;
+    }
+
+    private JPanel createTradeCountRow() {
+        tradeCountCheckbox = new JCheckBox("Trade Count");
+        tradeCountCheckbox.setToolTipText("Show number of trades per candle");
+        JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
+        row.setAlignmentX(Component.LEFT_ALIGNMENT);
+        row.add(tradeCountCheckbox);
+        tradeCountCheckbox.addActionListener(e -> scheduleUpdate());
         return row;
     }
 
@@ -979,6 +1021,11 @@ public class IndicatorSelectorPopup extends JDialog {
         whaleLabel.setVisible(whaleEnabled);
         whaleThresholdSpinner.setVisible(whaleEnabled);
 
+        // Orderflow - retail threshold visible only when retail checkbox is enabled
+        boolean retailEnabled = retailCheckbox.isSelected();
+        retailLabel.setVisible(retailEnabled);
+        retailThresholdSpinner.setVisible(retailEnabled);
+
         // Repack to adjust size
         pack();
     }
@@ -999,6 +1046,10 @@ public class IndicatorSelectorPopup extends JDialog {
         mayerSpinner.setValue(config.getMayerPeriod());
         dailyPocCheckbox.setSelected(config.isDailyPocEnabled());
         floatingPocCheckbox.setSelected(config.isFloatingPocEnabled());
+        floatingPocPeriodSpinner.setValue(config.getFloatingPocPeriod());
+        boolean floatingPocEnabled = config.isFloatingPocEnabled();
+        floatingPocPeriodLabel.setEnabled(floatingPocEnabled);
+        floatingPocPeriodSpinner.setEnabled(floatingPocEnabled);
         vwapCheckbox.setSelected(config.isVwapEnabled());
         rayCheckbox.setSelected(config.isRayOverlayEnabled());
         int rayLookback = config.getRayLookback();
@@ -1030,7 +1081,9 @@ public class IndicatorSelectorPopup extends JDialog {
         volumeRatioCheckbox.setSelected(config.isVolumeRatioEnabled());
         whaleCheckbox.setSelected(config.isWhaleEnabled());
         retailCheckbox.setSelected(config.isRetailEnabled());
+        tradeCountCheckbox.setSelected(config.isTradeCountEnabled());
         whaleThresholdSpinner.setValue((int) config.getWhaleThreshold());
+        retailThresholdSpinner.setValue((int) config.getRetailThreshold());
 
         // Funding
         fundingCheckbox.setSelected(config.isFundingEnabled());
@@ -1080,7 +1133,7 @@ public class IndicatorSelectorPopup extends JDialog {
         }
 
         if (floatingPocCheckbox.isSelected()) {
-            chartPanel.setFloatingPocOverlay(null);
+            chartPanel.setFloatingPocOverlay(null, (int) floatingPocPeriodSpinner.getValue());
         } else {
             chartPanel.clearFloatingPocOverlay();
         }
@@ -1101,6 +1154,7 @@ public class IndicatorSelectorPopup extends JDialog {
         config.setMayerPeriod(mayerPeriod);
         config.setDailyPocEnabled(dailyPocCheckbox.isSelected());
         config.setFloatingPocEnabled(floatingPocCheckbox.isSelected());
+        config.setFloatingPocPeriod((int) floatingPocPeriodSpinner.getValue());
         config.setVwapEnabled(vwapCheckbox.isSelected());
 
         // Ray overlay
@@ -1171,7 +1225,10 @@ public class IndicatorSelectorPopup extends JDialog {
         chartPanel.setCvdChartEnabled(cvdCheckbox.isSelected());
         chartPanel.setVolumeRatioChartEnabled(volumeRatioCheckbox.isSelected());
         chartPanel.setWhaleChartEnabled(whaleCheckbox.isSelected(), threshold);
-        chartPanel.setRetailChartEnabled(retailCheckbox.isSelected());
+        double retailThreshold = ((Number) retailThresholdSpinner.getValue()).doubleValue();
+        chartPanel.setRetailThreshold(retailThreshold);
+        chartPanel.setRetailChartEnabled(retailCheckbox.isSelected(), retailThreshold);
+        chartPanel.setTradeCountChartEnabled(tradeCountCheckbox.isSelected());
 
         // Save orderflow settings to config
         config.setDeltaEnabled(deltaCheckbox.isSelected());
@@ -1179,7 +1236,9 @@ public class IndicatorSelectorPopup extends JDialog {
         config.setVolumeRatioEnabled(volumeRatioCheckbox.isSelected());
         config.setWhaleEnabled(whaleCheckbox.isSelected());
         config.setRetailEnabled(retailCheckbox.isSelected());
+        config.setTradeCountEnabled(tradeCountCheckbox.isSelected());
         config.setWhaleThreshold(threshold);
+        config.setRetailThreshold(retailThreshold);
 
         // Funding
         chartPanel.setFundingChartEnabled(fundingCheckbox.isSelected());

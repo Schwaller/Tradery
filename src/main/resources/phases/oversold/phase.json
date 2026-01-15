@@ -1,7 +1,7 @@
 {
   "id": "oversold",
   "name": "Oversold",
-  "category": "Technical",
+  "category": "RSI",
   "description": "RSI indicates oversold conditions",
   "condition": "RSI(14) < 30",
   "timeframe": "1d",

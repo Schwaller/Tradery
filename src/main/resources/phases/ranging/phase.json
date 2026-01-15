@@ -2,7 +2,7 @@
   "id" : "ranging",
   "name" : "Ranging",
   "description" : "Sideways/ranging market with weak trend detected using ADX",
-  "category" : "Trend",
+  "category": "Trend",
   "condition" : "ADX(14) < 20",
   "timeframe" : "1d",
   "symbol" : "BTCUSDT",

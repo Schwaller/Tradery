@@ -35,6 +35,7 @@ public class PhaseAnalysisWindow extends JFrame {
     private JButton closeButton;
     private JPanel detailsPanel;
     private JLabel detailsLabel;
+    private PhasePreviewChart previewChart;
 
     // Column tooltips
     private static final String[] COLUMN_TOOLTIPS = {
@@ -79,7 +80,7 @@ public class PhaseAnalysisWindow extends JFrame {
         initializeComponents();
         layoutComponents();
 
-        setSize(900, 500);
+        setSize(1000, 700);
         setLocationRelativeTo(parent);
     }
 
@@ -153,12 +154,16 @@ public class PhaseAnalysisWindow extends JFrame {
             }
         });
 
-        // Row selection listener for details panel
+        // Row selection listener for details panel and preview chart
         table.getSelectionModel().addListSelectionListener(e -> {
             if (!e.getValueIsAdjusting()) {
                 updateDetailsPanel();
+                updatePreviewChart();
             }
         });
+
+        // Preview chart for selected phase
+        previewChart = new PhasePreviewChart();
 
         // Details panel
         detailsPanel = new JPanel(new BorderLayout(8, 4));
@@ -207,18 +212,24 @@ public class PhaseAnalysisWindow extends JFrame {
 
         contentPane.add(topPanel, BorderLayout.NORTH);
 
-        // Center panel with table and details
-        JPanel centerPanel = new JPanel(new BorderLayout(0, 8));
+        // Table panel with details
+        JPanel tablePanel = new JPanel(new BorderLayout(0, 8));
 
         // Table scroll pane
         JScrollPane scrollPane = new JScrollPane(table);
         scrollPane.setHorizontalScrollBarPolicy(JScrollPane.HORIZONTAL_SCROLLBAR_AS_NEEDED);
-        centerPanel.add(scrollPane, BorderLayout.CENTER);
+        tablePanel.add(scrollPane, BorderLayout.CENTER);
 
         // Details panel below table
-        centerPanel.add(detailsPanel, BorderLayout.SOUTH);
+        tablePanel.add(detailsPanel, BorderLayout.SOUTH);
 
-        contentPane.add(centerPanel, BorderLayout.CENTER);
+        // Split pane: table on top, chart preview on bottom
+        JSplitPane splitPane = new JSplitPane(JSplitPane.VERTICAL_SPLIT, tablePanel, previewChart);
+        splitPane.setResizeWeight(0.5);  // 50% each initially
+        splitPane.setDividerLocation(250);
+        splitPane.setOneTouchExpandable(true);
+
+        contentPane.add(splitPane, BorderLayout.CENTER);
 
         // Bottom panel with progress and buttons
         JPanel bottomPanel = new JPanel(new BorderLayout(8, 8));
@@ -434,6 +445,32 @@ public class PhaseAnalysisWindow extends JFrame {
 
         detailsLabel.setText(sb.toString());
         detailsLabel.setForeground(Color.BLACK);
+    }
+
+    /**
+     * Update the preview chart with the selected phase.
+     */
+    private void updatePreviewChart() {
+        int row = table.getSelectedRow();
+        if (row < 0) {
+            previewChart.setPhase(null);
+            return;
+        }
+
+        PhaseAnalysisResult r = tableModel.getResultAt(row);
+        if (r == null) {
+            previewChart.setPhase(null);
+            return;
+        }
+
+        // Load the phase from store and show in chart
+        try {
+            Phase phase = phaseStore.load(r.phaseId());
+            previewChart.setPhase(phase);
+        } catch (Exception e) {
+            System.err.println("Failed to load phase for preview: " + e.getMessage());
+            previewChart.setPhase(null);
+        }
     }
 
     /**

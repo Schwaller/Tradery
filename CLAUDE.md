@@ -475,7 +475,7 @@ symbol: BTCUSDT
 builtIn: true
 ```
 
-### Built-In Phases (32 total)
+### Built-In Phases (38 total)
 
 **Session (5):**
 | ID | Condition | Description |
@@ -493,16 +493,34 @@ builtIn: true
 | `weekdays` | `DAYOFWEEK >= 1 AND DAYOFWEEK <= 5` |
 | `weekend` | `DAYOFWEEK >= 6` |
 
-**Technical (7):**
+**Trend (3):**
 | ID | Condition | Timeframe |
 |----|-----------|-----------|
 | `uptrend` | `ADX(14) > 25 AND PLUS_DI(14) > MINUS_DI(14)` | 1d |
 | `downtrend` | `ADX(14) > 25 AND MINUS_DI(14) > PLUS_DI(14)` | 1d |
 | `ranging` | `ADX(14) < 20` | 1d |
+
+**Crossover (2):**
+| ID | Condition | Timeframe |
+|----|-----------|-----------|
 | `golden-cross` | `SMA(50) > SMA(200)` | 1d |
 | `death-cross` | `SMA(50) < SMA(200)` | 1d |
+
+**RSI (2):**
+| ID | Condition | Timeframe |
+|----|-----------|-----------|
 | `overbought` | `RSI(14) > 70` | 1d |
 | `oversold` | `RSI(14) < 30` | 1d |
+
+**Ray (6):**
+| ID | Condition | Timeframe | Description |
+|----|-----------|-----------|-------------|
+| `resistance-breakout` | `RESISTANCE_RAY_CROSSED(1, 0, 5) == 1` | 1h | Fresh breakout above ray 1 |
+| `support-breakdown` | `SUPPORT_RAY_CROSSED(1, 0, 5) == 1` | 1h | Fresh breakdown below ray 1 |
+| `multi-ray-breakout` | `RESISTANCE_RAYS_BROKEN(0, 5) >= 2` | 4h | Broke 2+ resistance rays |
+| `near-daily-resistance` | `RESISTANCE_RAY_DISTANCE(1, 0, 5) > -1 AND ... < 1` | 1d | Within 1% of ray |
+| `ray-uptrend` | `RESISTANCE_RAY_BROKEN(1) AND NOT SUPPORT_RAY_BROKEN(1)` | 1d | Bullish structure |
+| `ray-downtrend` | `SUPPORT_RAY_BROKEN(1) AND NOT RESISTANCE_RAY_BROKEN(1)` | 1d | Bearish structure |
 
 **Calendar (7):**
 | ID | Condition | Description |
@@ -933,7 +951,7 @@ When adding new DSL functions:
 7. **This file (CLAUDE.md)** - Document the new function
 
 ### Adding Built-in Phases
-1. Create JSON in `~/.tradery/phases/{id}/phase.json`
+1. Create YAML in `~/.tradery/phases/{id}/phase.yaml`
 2. Set `builtIn: true` and `version: "1.0"`
 3. Update this file to document it
 
@@ -943,13 +961,13 @@ When adding new DSL functions:
 
 ### IMPORTANT: Use API for Strategy Changes
 
-**DO NOT edit strategy JSON files directly.** Always use the HTTP API or MCP tools to modify strategies:
+**DO NOT edit strategy YAML files directly.** Always use the HTTP API or MCP tools to modify strategies:
 
 1. **Why API over file edits:**
    - API validates DSL syntax before saving
-   - API ensures consistent JSON format
+   - API ensures consistent YAML format
    - API triggers immediate backtest refresh
-   - File edits can cause JSON errors that break the app
+   - File edits can cause YAML errors that break the app
 
 2. **Preferred workflow:**
    - Use `tradery_update_strategy` MCP tool, or
@@ -1212,7 +1230,7 @@ AI can glob filenames to quickly understand:
 1. **Read summary.json** for overview and pre-computed suggestions
 2. **Glob trade filenames** to understand distribution
 3. **Sample specific trades** (e.g., read 5 biggest losses) for deeper analysis
-4. **Modify strategy.yaml** based on findings
+4. **Use API/MCP tools** to modify strategy based on findings (avoid editing YAML directly)
 5. App auto-reloads and re-runs backtest
 
 ### Auto-Reload

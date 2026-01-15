@@ -1,7 +1,7 @@
 {
   "id": "death-cross",
   "name": "Death Cross",
-  "category": "Technical",
+  "category": "Crossover",
   "description": "50 SMA below 200 SMA - bearish long-term trend",
   "condition": "SMA(50) < SMA(200)",
   "timeframe": "1d",

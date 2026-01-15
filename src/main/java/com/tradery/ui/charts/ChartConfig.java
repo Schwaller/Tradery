@@ -60,7 +60,9 @@ public class ChartConfig {
     private boolean volumeRatioEnabled = false;
     private boolean whaleEnabled = false;
     private boolean retailEnabled = false;
+    private boolean tradeCountEnabled = false;
     private double whaleThreshold = 50000;
+    private double retailThreshold = 50000;
 
     // Funding chart
     private boolean fundingEnabled = false;
@@ -71,6 +73,7 @@ public class ChartConfig {
     // POC overlays
     private boolean dailyPocEnabled = false;
     private boolean floatingPocEnabled = false;
+    private int floatingPocPeriod = 0;  // 0 = today's session, >0 = rolling N bars
 
     // VWAP overlay
     private boolean vwapEnabled = false;
@@ -277,9 +280,14 @@ public class ChartConfig {
 
     public boolean isRetailEnabled() { return retailEnabled; }
     public void setRetailEnabled(boolean enabled) { this.retailEnabled = enabled; save(); }
+    public boolean isTradeCountEnabled() { return tradeCountEnabled; }
+    public void setTradeCountEnabled(boolean enabled) { this.tradeCountEnabled = enabled; save(); }
 
     public double getWhaleThreshold() { return whaleThreshold; }
     public void setWhaleThreshold(double threshold) { this.whaleThreshold = threshold; save(); }
+
+    public double getRetailThreshold() { return retailThreshold; }
+    public void setRetailThreshold(double threshold) { this.retailThreshold = threshold; save(); }
 
     // ===== Funding Chart Getters/Setters =====
 
@@ -298,6 +306,8 @@ public class ChartConfig {
 
     public boolean isFloatingPocEnabled() { return floatingPocEnabled; }
     public void setFloatingPocEnabled(boolean enabled) { this.floatingPocEnabled = enabled; save(); }
+    public int getFloatingPocPeriod() { return floatingPocPeriod; }
+    public void setFloatingPocPeriod(int period) { this.floatingPocPeriod = period; save(); }
 
     public boolean isVwapEnabled() { return vwapEnabled; }
     public void setVwapEnabled(boolean enabled) { this.vwapEnabled = enabled; save(); }
@@ -395,7 +405,9 @@ public class ChartConfig {
         this.volumeRatioEnabled = other.volumeRatioEnabled;
         this.whaleEnabled = other.whaleEnabled;
         this.retailEnabled = other.retailEnabled;
+        this.tradeCountEnabled = other.tradeCountEnabled;
         this.whaleThreshold = other.whaleThreshold;
+        this.retailThreshold = other.retailThreshold;
 
         // Funding
         this.fundingEnabled = other.fundingEnabled;
@@ -406,6 +418,7 @@ public class ChartConfig {
         // POC overlays
         this.dailyPocEnabled = other.dailyPocEnabled;
         this.floatingPocEnabled = other.floatingPocEnabled;
+        this.floatingPocPeriod = other.floatingPocPeriod;
         this.vwapEnabled = other.vwapEnabled;
 
         // Ray overlay
@@ -479,7 +492,9 @@ public class ChartConfig {
         volumeRatioEnabled = false;
         whaleEnabled = false;
         retailEnabled = false;
+        tradeCountEnabled = false;
         whaleThreshold = 50000;
+        retailThreshold = 50000;
 
         // Funding - off by default
         fundingEnabled = false;
@@ -490,6 +505,7 @@ public class ChartConfig {
         // POC overlays - off by default
         dailyPocEnabled = false;
         floatingPocEnabled = false;
+        floatingPocPeriod = 0;
         vwapEnabled = false;
 
         // Ray overlay - off by default
@@ -634,7 +650,9 @@ public class ChartConfig {
         this.volumeRatioEnabled = other.volumeRatioEnabled;
         this.whaleEnabled = other.whaleEnabled;
         this.retailEnabled = other.retailEnabled;
+        this.tradeCountEnabled = other.tradeCountEnabled;
         this.whaleThreshold = other.whaleThreshold;
+        this.retailThreshold = other.retailThreshold;
 
         // Funding
         this.fundingEnabled = other.fundingEnabled;
@@ -645,6 +663,7 @@ public class ChartConfig {
         // POC overlays
         this.dailyPocEnabled = other.dailyPocEnabled;
         this.floatingPocEnabled = other.floatingPocEnabled;
+        this.floatingPocPeriod = other.floatingPocPeriod;
         this.vwapEnabled = other.vwapEnabled;
 
         // Ray overlay

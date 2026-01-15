@@ -499,10 +499,10 @@ public class OverlayManager {
         this.indicatorEngine = engine;
     }
 
-    // ===== Daily POC Overlay =====
+    // ===== Daily POC/VAH/VAL Overlay =====
 
     /**
-     * Shows previous day's POC as a horizontal line extending across the current day.
+     * Shows previous day's POC, VAH, and VAL as horizontal lines extending across the current day.
      */
     public void setDailyPocOverlay(List<Candle> candles) {
         if (candles == null || candles.isEmpty() || indicatorEngine == null) {
@@ -513,20 +513,37 @@ public class OverlayManager {
         XYPlot plot = priceChart.getXYPlot();
 
         TimeSeries pocSeries = new TimeSeries("Daily POC");
+        TimeSeries vahSeries = new TimeSeries("Daily VAH");
+        TimeSeries valSeries = new TimeSeries("Daily VAL");
 
         for (int i = 0; i < candles.size(); i++) {
+            Millisecond time = new Millisecond(new Date(candles.get(i).timestamp()));
+
             double poc = indicatorEngine.getPrevDayPOCAt(i);
             if (!Double.isNaN(poc)) {
-                pocSeries.addOrUpdate(new Millisecond(new Date(candles.get(i).timestamp())), poc);
+                pocSeries.addOrUpdate(time, poc);
+            }
+
+            double vah = indicatorEngine.getPrevDayVAHAt(i);
+            if (!Double.isNaN(vah)) {
+                vahSeries.addOrUpdate(time, vah);
+            }
+
+            double val = indicatorEngine.getPrevDayVALAt(i);
+            if (!Double.isNaN(val)) {
+                valSeries.addOrUpdate(time, val);
             }
         }
 
-        if (pocSeries.isEmpty()) {
+        if (pocSeries.isEmpty() && vahSeries.isEmpty() && valSeries.isEmpty()) {
             clearDailyPocOverlay();
             return;
         }
 
-        TimeSeriesCollection dataset = new TimeSeriesCollection(pocSeries);
+        TimeSeriesCollection dataset = new TimeSeriesCollection();
+        dataset.addSeries(pocSeries);
+        dataset.addSeries(vahSeries);
+        dataset.addSeries(valSeries);
 
         if (dailyPocDatasetIndex < 0) {
             dailyPocDatasetIndex = findNextAvailableDatasetIndex(plot, 10);
@@ -534,10 +551,14 @@ public class OverlayManager {
 
         plot.setDataset(dailyPocDatasetIndex, dataset);
 
-        // Style: cyan dashed line for previous day's POC
+        // Style: cyan dashed lines - POC solid, VAH/VAL lighter
         XYLineAndShapeRenderer renderer = new XYLineAndShapeRenderer(true, false);
         renderer.setSeriesPaint(0, ChartStyles.DAILY_POC_COLOR);
         renderer.setSeriesStroke(0, ChartStyles.DASHED_STROKE);
+        renderer.setSeriesPaint(1, ChartStyles.DAILY_VAH_COLOR);
+        renderer.setSeriesStroke(1, ChartStyles.DASHED_STROKE);
+        renderer.setSeriesPaint(2, ChartStyles.DAILY_VAL_COLOR);
+        renderer.setSeriesStroke(2, ChartStyles.DASHED_STROKE);
         plot.setRenderer(dailyPocDatasetIndex, renderer);
     }
 
@@ -552,12 +573,14 @@ public class OverlayManager {
         return dailyPocDatasetIndex >= 0 && priceChart.getXYPlot().getDataset(dailyPocDatasetIndex) != null;
     }
 
-    // ===== Floating POC Overlay =====
+    // ===== Floating POC/VAH/VAL Overlay =====
 
     /**
-     * Shows the developing (floating) POC that updates throughout the current day.
+     * Shows the developing (floating) POC, VAH, and VAL.
+     * @param period 0 = today's session (updates throughout the day),
+     *               >0 = rolling N-bar lookback
      */
-    public void setFloatingPocOverlay(List<Candle> candles) {
+    public void setFloatingPocOverlay(List<Candle> candles, int period) {
         if (candles == null || candles.isEmpty() || indicatorEngine == null) {
             clearFloatingPocOverlay();
             return;
@@ -565,21 +588,47 @@ public class OverlayManager {
 
         XYPlot plot = priceChart.getXYPlot();
 
-        TimeSeries pocSeries = new TimeSeries("Floating POC");
+        String label = period > 0 ? "Rolling(" + period + ")" : "Floating";
+        TimeSeries pocSeries = new TimeSeries(label + " POC");
+        TimeSeries vahSeries = new TimeSeries(label + " VAH");
+        TimeSeries valSeries = new TimeSeries(label + " VAL");
 
         for (int i = 0; i < candles.size(); i++) {
-            double poc = indicatorEngine.getTodayPOCAt(i);
+            Millisecond time = new Millisecond(new Date(candles.get(i).timestamp()));
+
+            double poc, vah, val;
+            if (period > 0) {
+                // Rolling N-bar lookback
+                poc = indicatorEngine.getPOCAt(period, i);
+                vah = indicatorEngine.getVAHAt(period, i);
+                val = indicatorEngine.getVALAt(period, i);
+            } else {
+                // Today's session (default)
+                poc = indicatorEngine.getTodayPOCAt(i);
+                vah = indicatorEngine.getTodayVAHAt(i);
+                val = indicatorEngine.getTodayVALAt(i);
+            }
+
             if (!Double.isNaN(poc)) {
-                pocSeries.addOrUpdate(new Millisecond(new Date(candles.get(i).timestamp())), poc);
+                pocSeries.addOrUpdate(time, poc);
+            }
+            if (!Double.isNaN(vah)) {
+                vahSeries.addOrUpdate(time, vah);
+            }
+            if (!Double.isNaN(val)) {
+                valSeries.addOrUpdate(time, val);
             }
         }
 
-        if (pocSeries.isEmpty()) {
+        if (pocSeries.isEmpty() && vahSeries.isEmpty() && valSeries.isEmpty()) {
             clearFloatingPocOverlay();
             return;
         }
 
-        TimeSeriesCollection dataset = new TimeSeriesCollection(pocSeries);
+        TimeSeriesCollection dataset = new TimeSeriesCollection();
+        dataset.addSeries(pocSeries);
+        dataset.addSeries(vahSeries);
+        dataset.addSeries(valSeries);
 
         if (floatingPocDatasetIndex < 0) {
             floatingPocDatasetIndex = findNextAvailableDatasetIndex(plot, 11);
@@ -587,10 +636,14 @@ public class OverlayManager {
 
         plot.setDataset(floatingPocDatasetIndex, dataset);
 
-        // Style: magenta solid line for floating/developing POC
+        // Style: magenta lines - POC solid, VAH/VAL lighter
         XYLineAndShapeRenderer renderer = new XYLineAndShapeRenderer(true, false);
         renderer.setSeriesPaint(0, ChartStyles.FLOATING_POC_COLOR);
         renderer.setSeriesStroke(0, ChartStyles.MEDIUM_STROKE);
+        renderer.setSeriesPaint(1, ChartStyles.FLOATING_VAH_COLOR);
+        renderer.setSeriesStroke(1, ChartStyles.MEDIUM_STROKE);
+        renderer.setSeriesPaint(2, ChartStyles.FLOATING_VAL_COLOR);
+        renderer.setSeriesStroke(2, ChartStyles.MEDIUM_STROKE);
         plot.setRenderer(floatingPocDatasetIndex, renderer);
     }
 

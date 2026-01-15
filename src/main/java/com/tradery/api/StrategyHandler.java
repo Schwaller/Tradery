@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.sun.net.httpserver.HttpExchange;
 import com.tradery.data.CandleStore;
 import com.tradery.engine.BacktestEngine;
+import com.tradery.engine.PhaseAnalyzer;
 import com.tradery.io.PhaseStore;
 import com.tradery.io.ResultStore;
 import com.tradery.io.StrategyStore;
@@ -28,6 +29,7 @@ import java.util.Map;
  *   POST   /strategy/{id}/validate      - Validate updates without saving
  *   POST   /strategy/{id}/backtest      - Run backtest and return results
  *   GET    /strategy/{id}/results       - Get latest backtest results
+ *   GET    /strategy/{id}/analyze-phases - Analyze trades vs all phases
  */
 public class StrategyHandler extends ApiHandlerBase {
 
@@ -191,6 +193,13 @@ public class StrategyHandler extends ApiHandlerBase {
                 handleValidateStrategy(exchange, strategyId);
             } else {
                 sendError(exchange, 405, "Use POST for /validate");
+            }
+        } else if ("analyze-phases".equals(action)) {
+            // /strategy/{id}/analyze-phases
+            if ("GET".equalsIgnoreCase(method)) {
+                handleAnalyzePhases(exchange, strategyId);
+            } else {
+                sendError(exchange, 405, "Use GET for /analyze-phases");
             }
         } else {
             sendError(exchange, 404, "Unknown action: " + action);
@@ -507,5 +516,113 @@ public class StrategyHandler extends ApiHandlerBase {
         } catch (Exception e) {
             sendError(exchange, 500, "Failed to get results: " + e.getMessage());
         }
+    }
+
+    /**
+     * Analyze strategy trades against all available phases.
+     * Returns recommendations for which phases to REQUIRE or EXCLUDE.
+     */
+    private void handleAnalyzePhases(HttpExchange exchange, String strategyId) throws IOException {
+        try {
+            Strategy strategy = strategyStore.load(strategyId);
+            if (strategy == null) {
+                sendError(exchange, 404, "Strategy not found: " + strategyId);
+                return;
+            }
+
+            // Load latest backtest results
+            ResultStore resultStore = new ResultStore(strategyId);
+            BacktestResult result = resultStore.loadLatest();
+            if (result == null) {
+                sendError(exchange, 400, "No backtest results. Run POST /strategy/" + strategyId + "/backtest first.");
+                return;
+            }
+
+            List<Trade> trades = result.trades();
+            if (trades == null || trades.isEmpty()) {
+                sendError(exchange, 400, "No trades in backtest result. Cannot analyze phases.");
+                return;
+            }
+
+            // Load candles for phase evaluation
+            String timeframe = strategy.getTimeframe();
+            long endDate = System.currentTimeMillis();
+            long startDate = endDate - parseDurationMillis(strategy.getDuration());
+            List<Candle> candles = candleStore.getCandles(
+                strategy.getSymbol(), timeframe, startDate, endDate
+            );
+
+            if (candles.isEmpty()) {
+                sendError(exchange, 500, "Failed to load candle data for phase analysis.");
+                return;
+            }
+
+            // Run phase analysis
+            PhaseAnalyzer analyzer = new PhaseAnalyzer(candleStore, phaseStore);
+            List<PhaseAnalysisResult> results = analyzer.analyzePhases(trades, candles, timeframe, null);
+
+            // Build response
+            ObjectNode response = mapper.createObjectNode();
+            response.put("strategyId", strategyId);
+            response.put("tradesAnalyzed", trades.stream()
+                .filter(t -> t.exitTime() != null && !"rejected".equals(t.exitReason()))
+                .count());
+
+            ArrayNode phasesArray = response.putArray("phases");
+            for (PhaseAnalysisResult r : results) {
+                ObjectNode phaseNode = phasesArray.addObject();
+                phaseNode.put("phaseId", r.phaseId());
+                phaseNode.put("phaseName", r.phaseName());
+                phaseNode.put("category", r.phaseCategory());
+
+                ObjectNode inPhase = phaseNode.putObject("inPhase");
+                inPhase.put("trades", r.tradesInPhase());
+                inPhase.put("wins", r.winsInPhase());
+                inPhase.put("winRate", round(r.winRateInPhase()));
+                inPhase.put("totalReturn", round(r.totalReturnInPhase()));
+                inPhase.put("profitFactor", round(r.profitFactorInPhase()));
+
+                ObjectNode outOfPhase = phaseNode.putObject("outOfPhase");
+                outOfPhase.put("trades", r.tradesOutOfPhase());
+                outOfPhase.put("wins", r.winsOutOfPhase());
+                outOfPhase.put("winRate", round(r.winRateOutOfPhase()));
+                outOfPhase.put("totalReturn", round(r.totalReturnOutOfPhase()));
+                outOfPhase.put("profitFactor", round(r.profitFactorOutOfPhase()));
+
+                phaseNode.put("winRateDiff", round(r.winRateDifference()));
+                phaseNode.put("recommendation", r.recommendation().name());
+                phaseNode.put("confidence", round(r.confidenceScore()));
+            }
+
+            // Add summary of recommendations
+            ObjectNode summary = response.putObject("summary");
+            ArrayNode requirePhases = summary.putArray("recommendRequire");
+            ArrayNode excludePhases = summary.putArray("recommendExclude");
+
+            for (PhaseAnalysisResult r : results) {
+                if (r.recommendation() == PhaseAnalysisResult.Recommendation.REQUIRE && r.confidenceScore() > 0.3) {
+                    ObjectNode rec = requirePhases.addObject();
+                    rec.put("phaseId", r.phaseId());
+                    rec.put("phaseName", r.phaseName());
+                    rec.put("winRateDiff", round(r.winRateDifference()));
+                    rec.put("confidence", round(r.confidenceScore()));
+                } else if (r.recommendation() == PhaseAnalysisResult.Recommendation.EXCLUDE && r.confidenceScore() > 0.3) {
+                    ObjectNode rec = excludePhases.addObject();
+                    rec.put("phaseId", r.phaseId());
+                    rec.put("phaseName", r.phaseName());
+                    rec.put("winRateDiff", round(r.winRateDifference()));
+                    rec.put("confidence", round(r.confidenceScore()));
+                }
+            }
+
+            sendJson(exchange, 200, response);
+        } catch (Exception e) {
+            e.printStackTrace();
+            sendError(exchange, 500, "Phase analysis failed: " + e.getMessage());
+        }
+    }
+
+    private double round(double value) {
+        return Math.round(value * 100) / 100.0;
     }
 }

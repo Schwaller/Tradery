@@ -120,7 +120,8 @@ public class ChartsPanel extends JPanel {
         setCvdChartEnabled(config.isCvdEnabled());
         setVolumeRatioChartEnabled(config.isVolumeRatioEnabled());
         setWhaleChartEnabled(config.isWhaleEnabled(), threshold);
-        setRetailChartEnabled(config.isRetailEnabled());
+        double retailThreshold = config.getRetailThreshold();
+        setRetailChartEnabled(config.isRetailEnabled(), retailThreshold);
 
         // Apply funding chart setting
         setFundingChartEnabled(config.isFundingEnabled());
@@ -169,7 +170,7 @@ public class ChartsPanel extends JPanel {
             overlayManager.setDailyPocOverlay(candles);
         }
         if (config.isFloatingPocEnabled()) {
-            overlayManager.setFloatingPocOverlay(candles);
+            overlayManager.setFloatingPocOverlay(candles, config.getFloatingPocPeriod());
         }
         if (config.isVwapEnabled()) {
             overlayManager.setVwapOverlay(candles);
@@ -270,7 +271,9 @@ public class ChartsPanel extends JPanel {
             indicatorManager.getFundingChartPanel(),
             indicatorManager.getOiChartPanel(),
             indicatorManager.getStochasticChartPanel(),
-            indicatorManager.getRangePositionChartPanel());
+            indicatorManager.getRangePositionChartPanel(),
+            indicatorManager.getAdxChartPanel(),
+            indicatorManager.getTradeCountChartPanel());
 
         // Sync domain axes
         JFreeChart[] otherCharts = {
@@ -278,7 +281,8 @@ public class ChartsPanel extends JPanel {
             indicatorManager.getRsiChart(), indicatorManager.getMacdChart(), indicatorManager.getAtrChart(),
             indicatorManager.getDeltaChart(), indicatorManager.getCvdChart(), indicatorManager.getVolumeRatioChart(),
             indicatorManager.getWhaleChart(), indicatorManager.getRetailChart(), indicatorManager.getFundingChart(),
-            indicatorManager.getOiChart(), indicatorManager.getStochasticChart(), indicatorManager.getRangePositionChart()
+            indicatorManager.getOiChart(), indicatorManager.getStochasticChart(), indicatorManager.getRangePositionChart(),
+            indicatorManager.getAdxChart(), indicatorManager.getTradeCountChart()
         };
         crosshairManager.syncDomainAxes(priceChart, otherCharts);
     }
@@ -337,6 +341,7 @@ public class ChartsPanel extends JPanel {
             indicatorManager.getWhaleChart(), indicatorManager.getRetailChart(),
             indicatorManager.getFundingChart(), indicatorManager.getOiChart(),
             indicatorManager.getStochasticChart(), indicatorManager.getRangePositionChart(), indicatorManager.getAdxChart(),
+            indicatorManager.getTradeCountChart(),
             equityChart, comparisonChart, capitalUsageChart, tradePLChart
         };
         JPanel[] allWrappers = {
@@ -346,6 +351,7 @@ public class ChartsPanel extends JPanel {
             indicatorManager.getWhaleChartWrapper(), indicatorManager.getRetailChartWrapper(),
             indicatorManager.getFundingChartWrapper(), indicatorManager.getOiChartWrapper(),
             indicatorManager.getStochasticChartWrapper(), indicatorManager.getRangePositionChartWrapper(), indicatorManager.getAdxChartWrapper(),
+            indicatorManager.getTradeCountChartWrapper(),
             zoomManager.getChartWrappers()[2], zoomManager.getChartWrappers()[3],
             zoomManager.getChartWrappers()[4], zoomManager.getChartWrappers()[5]
         };
@@ -579,8 +585,8 @@ public class ChartsPanel extends JPanel {
         return overlayManager.isDailyPocEnabled();
     }
 
-    public void setFloatingPocOverlay(List<Candle> candles) {
-        overlayManager.setFloatingPocOverlay(candles);
+    public void setFloatingPocOverlay(List<Candle> candles, int period) {
+        overlayManager.setFloatingPocOverlay(candles, period);
     }
 
     public void clearFloatingPocOverlay() {
@@ -751,6 +757,18 @@ public class ChartsPanel extends JPanel {
         indicatorManager.setRetailChartEnabled(enabled);
     }
 
+    public void setRetailChartEnabled(boolean enabled, double threshold) {
+        indicatorManager.setRetailChartEnabled(enabled, threshold);
+    }
+
+    public void setRetailThreshold(double threshold) {
+        indicatorManager.setRetailThreshold(threshold);
+    }
+
+    public double getRetailThreshold() {
+        return indicatorManager.getRetailThreshold();
+    }
+
     public boolean isRetailChartEnabled() {
         return indicatorManager.isRetailChartEnabled();
     }
@@ -769,6 +787,14 @@ public class ChartsPanel extends JPanel {
 
     public boolean isOiChartEnabled() {
         return indicatorManager.isOiChartEnabled();
+    }
+
+    public void setTradeCountChartEnabled(boolean enabled) {
+        indicatorManager.setTradeCountChartEnabled(enabled);
+    }
+
+    public boolean isTradeCountChartEnabled() {
+        return indicatorManager.isTradeCountChartEnabled();
     }
 
     public void setIndicatorEngine(com.tradery.indicators.IndicatorEngine engine) {
@@ -879,7 +905,8 @@ public class ChartsPanel extends JPanel {
             indicatorManager.getDeltaChart(), indicatorManager.getCvdChart(), indicatorManager.getVolumeRatioChart(),
             indicatorManager.getWhaleChart(), indicatorManager.getRetailChart(),
             indicatorManager.getFundingChart(), indicatorManager.getOiChart(),
-            indicatorManager.getStochasticChart(), indicatorManager.getRangePositionChart()
+            indicatorManager.getStochasticChart(), indicatorManager.getRangePositionChart(),
+            indicatorManager.getAdxChart(), indicatorManager.getTradeCountChart()
         };
         for (JFreeChart chart : allCharts) {
             if (chart != null) {

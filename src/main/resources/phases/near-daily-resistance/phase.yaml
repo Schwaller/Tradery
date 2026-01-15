@@ -1,0 +1,9 @@
+id: near-daily-resistance
+name: Near Daily Resistance
+description: Price within 1% of daily resistance ray - potential reversal or breakout zone
+category: Ray
+condition: RESISTANCE_RAY_DISTANCE(1, 0, 5) > -1 AND RESISTANCE_RAY_DISTANCE(1, 0, 5) < 1
+timeframe: 1d
+symbol: BTCUSDT
+builtIn: true
+version: "1.1"

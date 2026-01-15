@@ -42,6 +42,7 @@ public class IndicatorChartsManager {
     private ChartComponent stochasticComponent;
     private ChartComponent rangePositionComponent;
     private ChartComponent adxComponent;
+    private ChartComponent tradeCountComponent;
 
     // Enable state
     private boolean rsiChartEnabled = false;
@@ -57,6 +58,7 @@ public class IndicatorChartsManager {
     private boolean stochasticChartEnabled = false;
     private boolean rangePositionChartEnabled = false;
     private boolean adxChartEnabled = false;
+    private boolean tradeCountChartEnabled = false;
 
     // Indicator parameters
     private int rsiPeriod = 14;
@@ -65,6 +67,7 @@ public class IndicatorChartsManager {
     private int macdSignal = 9;
     private int atrPeriod = 14;
     private double whaleThreshold = 50000;
+    private double retailThreshold = 50000;
     private int stochasticKPeriod = 14;
     private int stochasticDPeriod = 3;
     private int rangePositionPeriod = 200;
@@ -102,11 +105,12 @@ public class IndicatorChartsManager {
         stochasticComponent = new ChartComponent("Stochastic", new double[]{0, 100});
         rangePositionComponent = new ChartComponent("Range Position", new double[]{-2, 2});
         adxComponent = new ChartComponent("ADX", new double[]{0, 100});
+        tradeCountComponent = new ChartComponent("Trade Count");
     }
 
     /**
      * Create wrapper panels with zoom buttons.
-     * @param zoomCallback Callback to handle zoom toggle (index: 0=RSI, 1=MACD, 2=ATR, 3=Delta, 4=CVD, 5=VolumeRatio, 6=Whale, 7=Retail, 8=Funding, 9=OI, 10=Stochastic, 11=RangePosition, 12=ADX)
+     * @param zoomCallback Callback to handle zoom toggle (index: 0=RSI, 1=MACD, 2=ATR, 3=Delta, 4=CVD, 5=VolumeRatio, 6=Whale, 7=Retail, 8=Funding, 9=OI, 10=Stochastic, 11=RangePosition, 12=ADX, 13=TradeCount)
      */
     public void createWrappers(java.util.function.IntConsumer zoomCallback) {
         rsiComponent.createWrapper(() -> zoomCallback.accept(0));
@@ -122,6 +126,7 @@ public class IndicatorChartsManager {
         stochasticComponent.createWrapper(() -> zoomCallback.accept(10));
         rangePositionComponent.createWrapper(() -> zoomCallback.accept(11));
         adxComponent.createWrapper(() -> zoomCallback.accept(12));
+        tradeCountComponent.createWrapper(() -> zoomCallback.accept(13));
     }
 
     // ===== RSI Methods =====
@@ -379,6 +384,22 @@ public class IndicatorChartsManager {
         }
     }
 
+    public void setRetailChartEnabled(boolean enabled, double threshold) {
+        this.retailChartEnabled = enabled;
+        this.retailThreshold = threshold;
+        if (onLayoutChange != null) {
+            onLayoutChange.run();
+        }
+    }
+
+    public void setRetailThreshold(double threshold) {
+        this.retailThreshold = threshold;
+    }
+
+    public double getRetailThreshold() {
+        return retailThreshold;
+    }
+
     public boolean isRetailChartEnabled() {
         return retailChartEnabled;
     }
@@ -387,7 +408,7 @@ public class IndicatorChartsManager {
      * Check if any orderflow chart is enabled.
      */
     public boolean isAnyOrderflowEnabled() {
-        return deltaChartEnabled || cvdChartEnabled || volumeRatioChartEnabled || whaleChartEnabled || retailChartEnabled;
+        return deltaChartEnabled || cvdChartEnabled || volumeRatioChartEnabled || whaleChartEnabled || retailChartEnabled || tradeCountChartEnabled;
     }
 
     public void updateDeltaChart(List<Candle> candles) {
@@ -591,7 +612,7 @@ public class IndicatorChartsManager {
         }
 
         XYPlot plot = retailComponent.getChart().getXYPlot();
-        double[] retailDelta = indicatorEngine.getRetailDelta(whaleThreshold);
+        double[] retailDelta = indicatorEngine.getRetailDelta(retailThreshold);
         if (retailDelta == null) return;
 
         XYSeriesCollection dataset = new XYSeriesCollection();
@@ -1048,6 +1069,51 @@ public class IndicatorChartsManager {
         }
     }
 
+    // ===== Trade Count Methods =====
+
+    public void setTradeCountChartEnabled(boolean enabled) {
+        this.tradeCountChartEnabled = enabled;
+        if (onLayoutChange != null) {
+            onLayoutChange.run();
+        }
+    }
+
+    public boolean isTradeCountChartEnabled() {
+        return tradeCountChartEnabled;
+    }
+
+    public void updateTradeCountChart(List<Candle> candles) {
+        if (!tradeCountChartEnabled || candles == null || candles.isEmpty() || indicatorEngine == null) {
+            return;
+        }
+
+        XYPlot plot = tradeCountComponent.getChart().getXYPlot();
+        double[] tradeCount = indicatorEngine.getTradeCount();
+        if (tradeCount == null) return;
+
+        TimeSeriesCollection dataset = new TimeSeriesCollection();
+        TimeSeries series = new TimeSeries("Trade Count");
+
+        for (int i = 0; i < candles.size() && i < tradeCount.length; i++) {
+            Candle c = candles.get(i);
+            if (!Double.isNaN(tradeCount[i])) {
+                series.addOrUpdate(new Millisecond(new Date(c.timestamp())), tradeCount[i]);
+            }
+        }
+
+        dataset.addSeries(series);
+        plot.setDataset(0, dataset);
+
+        // Line renderer for trade count
+        XYLineAndShapeRenderer renderer = new XYLineAndShapeRenderer(true, false);
+        renderer.setSeriesPaint(0, ChartStyles.TRADE_COUNT_LINE_COLOR);
+        renderer.setSeriesStroke(0, ChartStyles.MEDIUM_STROKE);
+        plot.setRenderer(0, renderer);
+
+        plot.clearAnnotations();
+        ChartStyles.addChartTitleAnnotation(plot, "Trade Count");
+    }
+
     // ===== Accessors =====
 
     public JFreeChart getRsiChart() { return rsiComponent.getChart(); }
@@ -1063,6 +1129,7 @@ public class IndicatorChartsManager {
     public JFreeChart getStochasticChart() { return stochasticComponent.getChart(); }
     public JFreeChart getRangePositionChart() { return rangePositionComponent.getChart(); }
     public JFreeChart getAdxChart() { return adxComponent.getChart(); }
+    public JFreeChart getTradeCountChart() { return tradeCountComponent.getChart(); }
 
     public org.jfree.chart.ChartPanel getRsiChartPanel() { return rsiComponent.getChartPanel(); }
     public org.jfree.chart.ChartPanel getMacdChartPanel() { return macdComponent.getChartPanel(); }
@@ -1077,6 +1144,7 @@ public class IndicatorChartsManager {
     public org.jfree.chart.ChartPanel getStochasticChartPanel() { return stochasticComponent.getChartPanel(); }
     public org.jfree.chart.ChartPanel getRangePositionChartPanel() { return rangePositionComponent.getChartPanel(); }
     public org.jfree.chart.ChartPanel getAdxChartPanel() { return adxComponent.getChartPanel(); }
+    public org.jfree.chart.ChartPanel getTradeCountChartPanel() { return tradeCountComponent.getChartPanel(); }
 
     public JPanel getRsiChartWrapper() { return rsiComponent.getWrapper(); }
     public JPanel getMacdChartWrapper() { return macdComponent.getWrapper(); }
@@ -1091,6 +1159,7 @@ public class IndicatorChartsManager {
     public JPanel getStochasticChartWrapper() { return stochasticComponent.getWrapper(); }
     public JPanel getRangePositionChartWrapper() { return rangePositionComponent.getWrapper(); }
     public JPanel getAdxChartWrapper() { return adxComponent.getWrapper(); }
+    public JPanel getTradeCountChartWrapper() { return tradeCountComponent.getWrapper(); }
 
     public JButton getRsiZoomBtn() { return rsiComponent.getZoomButton(); }
     public JButton getMacdZoomBtn() { return macdComponent.getZoomButton(); }
@@ -1105,13 +1174,14 @@ public class IndicatorChartsManager {
     public JButton getStochasticZoomBtn() { return stochasticComponent.getZoomButton(); }
     public JButton getRangePositionZoomBtn() { return rangePositionComponent.getZoomButton(); }
     public JButton getAdxZoomBtn() { return adxComponent.getZoomButton(); }
+    public JButton getTradeCountZoomBtn() { return tradeCountComponent.getZoomButton(); }
 
     /**
      * Update zoom button states.
-     * @param zoomedIndex Index of zoomed indicator (-1 for none, 0=RSI, 1=MACD, 2=ATR, 3=Delta, 4=CVD, 5=VolumeRatio, 6=Whale, 7=Retail, 8=Funding, 9=OI, 10=Stochastic, 11=RangePosition, 12=ADX)
+     * @param zoomedIndex Index of zoomed indicator (-1 for none, 0=RSI, 1=MACD, 2=ATR, 3=Delta, 4=CVD, 5=VolumeRatio, 6=Whale, 7=Retail, 8=Funding, 9=OI, 10=Stochastic, 11=RangePosition, 12=ADX, 13=TradeCount)
      */
     public void updateZoomButtonStates(int zoomedIndex) {
-        ChartComponent[] components = {rsiComponent, macdComponent, atrComponent, deltaComponent, cvdComponent, volumeRatioComponent, whaleComponent, retailComponent, fundingComponent, oiComponent, stochasticComponent, rangePositionComponent, adxComponent};
+        ChartComponent[] components = {rsiComponent, macdComponent, atrComponent, deltaComponent, cvdComponent, volumeRatioComponent, whaleComponent, retailComponent, fundingComponent, oiComponent, stochasticComponent, rangePositionComponent, adxComponent, tradeCountComponent};
         for (int i = 0; i < components.length; i++) {
             components[i].setZoomed(zoomedIndex == i);
         }
@@ -1134,6 +1204,7 @@ public class IndicatorChartsManager {
         stochasticComponent.getChartPanel().addMouseWheelListener(listener);
         rangePositionComponent.getChartPanel().addMouseWheelListener(listener);
         adxComponent.getChartPanel().addMouseWheelListener(listener);
+        tradeCountComponent.getChartPanel().addMouseWheelListener(listener);
     }
 
     /**
@@ -1153,6 +1224,7 @@ public class IndicatorChartsManager {
         stochasticComponent.getChartPanel().removeMouseWheelListener(listener);
         rangePositionComponent.getChartPanel().removeMouseWheelListener(listener);
         adxComponent.getChartPanel().removeMouseWheelListener(listener);
+        tradeCountComponent.getChartPanel().removeMouseWheelListener(listener);
     }
 
     /**
@@ -1180,6 +1252,7 @@ public class IndicatorChartsManager {
         updateStochasticChart(candles);
         updateRangePositionChart(candles);
         updateAdxChart(candles);
+        updateTradeCountChart(candles);
     }
 
     /**

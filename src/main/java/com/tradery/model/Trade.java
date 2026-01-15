@@ -1,5 +1,6 @@
 package com.tradery.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import java.util.List;
 import java.util.Map;
@@ -232,6 +233,7 @@ public record Trade(
     /**
      * Check if this trade is still open
      */
+    @JsonIgnore
     public boolean isOpen() {
         return exitTime == null;
     }
@@ -239,6 +241,7 @@ public record Trade(
     /**
      * Check if this was a winning trade
      */
+    @JsonIgnore
     public boolean isWinner() {
         return pnl != null && pnl > 0;
     }
@@ -246,6 +249,7 @@ public record Trade(
     /**
      * Get the trade value (entry price * quantity)
      */
+    @JsonIgnore
     public double value() {
         return entryPrice * quantity;
     }
@@ -253,6 +257,7 @@ public record Trade(
     /**
      * Get duration in bars (null if trade is open)
      */
+    @JsonIgnore
     public Integer duration() {
         return exitBar != null ? exitBar - entryBar : null;
     }
@@ -262,6 +267,7 @@ public record Trade(
      * Returns null if MFE not available, 0 if MFE is 0
      * Value > 1 means exited better than peak (rare), < 1 means left money on table
      */
+    @JsonIgnore
     public Double captureRatio() {
         if (pnlPercent == null || mfe == null) return null;
         if (mfe <= 0) return pnlPercent > 0 ? 1.0 : 0.0;  // No favorable excursion
@@ -272,6 +278,7 @@ public record Trade(
      * Get pain ratio: MAE / MFE (how much pain endured vs reward)
      * Lower is better. null if either metric unavailable
      */
+    @JsonIgnore
     public Double painRatio() {
         if (mae == null || mfe == null || mfe <= 0) return null;
         return Math.abs(mae) / mfe;
@@ -280,6 +287,7 @@ public record Trade(
     /**
      * Get bars from entry to MFE (null if not available)
      */
+    @JsonIgnore
     public Integer barsToMfe() {
         return mfeBar != null ? mfeBar - entryBar : null;
     }
@@ -287,6 +295,7 @@ public record Trade(
     /**
      * Get bars from entry to MAE (null if not available)
      */
+    @JsonIgnore
     public Integer barsToMae() {
         return maeBar != null ? maeBar - entryBar : null;
     }
