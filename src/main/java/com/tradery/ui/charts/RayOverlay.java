@@ -40,6 +40,8 @@ public class RayOverlay {
     private boolean enabled = false;
     private boolean showResistance = true;
     private boolean showSupport = true;
+    private boolean showHistoricRays = false;
+    private int historicRayInterval = 1; // Draw historic rays every N bars (1 = every bar)
 
     // Colors - resistance rays (blue gradient, brighter = broken)
     private static final Color[] RESISTANCE_COLORS = {
@@ -77,12 +79,17 @@ public class RayOverlay {
         new Color(220, 200, 255)
     };
 
+    // Historic ray colors (greyish, semi-transparent)
+    private static final Color HISTORIC_RESISTANCE_COLOR = new Color(100, 120, 140, 80);
+    private static final Color HISTORIC_SUPPORT_COLOR = new Color(140, 100, 160, 80);
+
     // Strokes
     private static final BasicStroke SOLID_STROKE = new BasicStroke(1.5f);
     private static final BasicStroke DASHED_STROKE = new BasicStroke(
         2.0f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER,
         10.0f, new float[]{8.0f, 4.0f}, 0.0f
     );
+    private static final BasicStroke HISTORIC_STROKE = new BasicStroke(1.0f);
 
     public RayOverlay(JFreeChart priceChart) {
         this.priceChart = priceChart;
@@ -130,6 +137,22 @@ public class RayOverlay {
         return showSupport;
     }
 
+    public void setShowHistoricRays(boolean show) {
+        this.showHistoricRays = show;
+    }
+
+    public boolean isShowHistoricRays() {
+        return showHistoricRays;
+    }
+
+    public void setHistoricRayInterval(int interval) {
+        this.historicRayInterval = Math.max(1, interval); // Minimum 1 bar
+    }
+
+    public int getHistoricRayInterval() {
+        return historicRayInterval;
+    }
+
     // ===== Drawing =====
 
     /**
@@ -146,7 +169,12 @@ public class RayOverlay {
         XYPlot plot = priceChart.getXYPlot();
         int lastBarIndex = candles.size() - 1;
 
-        // Draw resistance rays
+        // Draw historic rays first (so current rays are on top)
+        if (showHistoricRays) {
+            drawHistoricRays(plot, candles, engine);
+        }
+
+        // Draw resistance rays (current, using full dataset)
         if (showResistance) {
             RaySet resistanceRays = engine.getResistanceRaySet(lookback, skip);
             if (resistanceRays != null && resistanceRays.count() > 0) {
@@ -154,13 +182,101 @@ public class RayOverlay {
             }
         }
 
-        // Draw support rays
+        // Draw support rays (current, using full dataset)
         if (showSupport) {
             RaySet supportRays = engine.getSupportRaySet(lookback, skip);
             if (supportRays != null && supportRays.count() > 0) {
                 drawRaySet(plot, candles, supportRays, lastBarIndex, false);
             }
         }
+    }
+
+    /**
+     * Draw historic rays showing how rays looked at past points in time.
+     * Computes rays at every bar for full fidelity replay.
+     *
+     * Uses lookback=0 (unlimited) so rays search ALL available data at each historic bar.
+     * This ensures meaningful slopes based on full price movements, not constrained windows.
+     */
+    private void drawHistoricRays(XYPlot plot, List<Candle> candles, IndicatorEngine engine) {
+        int startBar = Math.max(20, historicRayInterval); // Need minimum data for ATH/ATL
+        int lastBar = candles.size() - 1;
+
+        // Compute and draw rays at each bar
+        for (int barIndex = startBar; barIndex < lastBar; barIndex += Math.max(1, historicRayInterval)) {
+            if (showResistance) {
+                // Use lookback=0 (unlimited) for historic rays to get meaningful slopes
+                RaySet historicResistance = engine.getResistanceRaySetAt(0, skip, barIndex);
+                if (historicResistance != null && historicResistance.count() > 0) {
+                    drawHistoricRaySet(plot, candles, historicResistance, barIndex, true);
+                }
+            }
+
+            if (showSupport) {
+                // Use lookback=0 (unlimited) for historic rays to get meaningful slopes
+                RaySet historicSupport = engine.getSupportRaySetAt(0, skip, barIndex);
+                if (historicSupport != null && historicSupport.count() > 0) {
+                    drawHistoricRaySet(plot, candles, historicSupport, barIndex, false);
+                }
+            }
+        }
+    }
+
+    /**
+     * Draw a historic ray set (from a past bar) in greyish color.
+     * Only draws Ray 1 (most significant) to avoid visual clutter.
+     * Skips nearly horizontal rays (slope too small to be meaningful).
+     */
+    private void drawHistoricRaySet(XYPlot plot, List<Candle> candles, RaySet raySet, int atBar, boolean isResistance) {
+        if (raySet.count() < 1) return;
+
+        // Only draw Ray 1 for historic visualization (less clutter)
+        Ray ray = raySet.getRay(1);
+        if (ray == null) return;
+
+        // TODO: Re-enable horizontal filter after debugging
+        // Skip nearly horizontal rays - they're not meaningful trendlines
+        // double slopePercent = Math.abs(ray.slope() / ray.startPrice()) * 100;
+        // if (slopePercent < 0.001) {
+        //     return; // Too flat, skip
+        // }
+
+        Color color = isResistance ? HISTORIC_RESISTANCE_COLOR : HISTORIC_SUPPORT_COLOR;
+
+        // Draw the ray line from its start to the atBar point (where it was computed)
+        addHistoricRayLine(plot, candles, ray, atBar, color);
+    }
+
+    /**
+     * Draw a historic ray line segment (from ray start to the bar where it was computed).
+     */
+    private void addHistoricRayLine(XYPlot plot, List<Candle> candles, Ray ray, int toBar, Color color) {
+        int startBar = ray.startBar();
+        if (startBar < 0 || startBar >= candles.size() || toBar >= candles.size()) return;
+
+        long startTime = candles.get(startBar).timestamp();
+        double startPrice = ray.startPrice();
+
+        long endTime = candles.get(toBar).timestamp();
+        double endPrice = ray.priceAt(toBar);
+
+        AbstractXYAnnotation lineAnnotation = new AbstractXYAnnotation() {
+            @Override
+            public void draw(Graphics2D g2, XYPlot plot, Rectangle2D dataArea,
+                           ValueAxis domainAxis, ValueAxis rangeAxis, int rendererIndex,
+                           PlotRenderingInfo info) {
+                double x1 = domainAxis.valueToJava2D(startTime, dataArea, plot.getDomainAxisEdge());
+                double y1 = rangeAxis.valueToJava2D(startPrice, dataArea, plot.getRangeAxisEdge());
+                double x2 = domainAxis.valueToJava2D(endTime, dataArea, plot.getDomainAxisEdge());
+                double y2 = rangeAxis.valueToJava2D(endPrice, dataArea, plot.getRangeAxisEdge());
+
+                g2.setColor(color);
+                g2.setStroke(HISTORIC_STROKE);
+                g2.drawLine((int)x1, (int)y1, (int)x2, (int)y2);
+            }
+        };
+        plot.addAnnotation(lineAnnotation);
+        annotations.add(lineAnnotation);
     }
 
     private void drawRaySet(XYPlot plot, List<Candle> candles, RaySet raySet, int currentBar, boolean isResistance) {

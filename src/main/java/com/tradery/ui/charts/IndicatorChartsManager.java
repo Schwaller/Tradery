@@ -113,20 +113,44 @@ public class IndicatorChartsManager {
      * @param zoomCallback Callback to handle zoom toggle (index: 0=RSI, 1=MACD, 2=ATR, 3=Delta, 4=CVD, 5=VolumeRatio, 6=Whale, 7=Retail, 8=Funding, 9=OI, 10=Stochastic, 11=RangePosition, 12=ADX, 13=TradeCount)
      */
     public void createWrappers(java.util.function.IntConsumer zoomCallback) {
-        rsiComponent.createWrapper(() -> zoomCallback.accept(0));
-        macdComponent.createWrapper(() -> zoomCallback.accept(1));
-        atrComponent.createWrapper(() -> zoomCallback.accept(2));
-        deltaComponent.createWrapper(() -> zoomCallback.accept(3));
-        cvdComponent.createWrapper(() -> zoomCallback.accept(4));
-        volumeRatioComponent.createWrapper(() -> zoomCallback.accept(5));
-        whaleComponent.createWrapper(() -> zoomCallback.accept(6));
-        retailComponent.createWrapper(() -> zoomCallback.accept(7));
-        fundingComponent.createWrapper(() -> zoomCallback.accept(8));
-        oiComponent.createWrapper(() -> zoomCallback.accept(9));
-        stochasticComponent.createWrapper(() -> zoomCallback.accept(10));
-        rangePositionComponent.createWrapper(() -> zoomCallback.accept(11));
-        adxComponent.createWrapper(() -> zoomCallback.accept(12));
-        tradeCountComponent.createWrapper(() -> zoomCallback.accept(13));
+        createWrappers(zoomCallback, null);
+    }
+
+    /**
+     * Create wrapper panels with zoom and full screen buttons.
+     * @param zoomCallback Callback to handle zoom toggle
+     * @param fullScreenCallback Callback to handle full screen toggle
+     */
+    public void createWrappers(java.util.function.IntConsumer zoomCallback, java.util.function.IntConsumer fullScreenCallback) {
+        Runnable fs0 = fullScreenCallback != null ? () -> fullScreenCallback.accept(0) : null;
+        Runnable fs1 = fullScreenCallback != null ? () -> fullScreenCallback.accept(1) : null;
+        Runnable fs2 = fullScreenCallback != null ? () -> fullScreenCallback.accept(2) : null;
+        Runnable fs3 = fullScreenCallback != null ? () -> fullScreenCallback.accept(3) : null;
+        Runnable fs4 = fullScreenCallback != null ? () -> fullScreenCallback.accept(4) : null;
+        Runnable fs5 = fullScreenCallback != null ? () -> fullScreenCallback.accept(5) : null;
+        Runnable fs6 = fullScreenCallback != null ? () -> fullScreenCallback.accept(6) : null;
+        Runnable fs7 = fullScreenCallback != null ? () -> fullScreenCallback.accept(7) : null;
+        Runnable fs8 = fullScreenCallback != null ? () -> fullScreenCallback.accept(8) : null;
+        Runnable fs9 = fullScreenCallback != null ? () -> fullScreenCallback.accept(9) : null;
+        Runnable fs10 = fullScreenCallback != null ? () -> fullScreenCallback.accept(10) : null;
+        Runnable fs11 = fullScreenCallback != null ? () -> fullScreenCallback.accept(11) : null;
+        Runnable fs12 = fullScreenCallback != null ? () -> fullScreenCallback.accept(12) : null;
+        Runnable fs13 = fullScreenCallback != null ? () -> fullScreenCallback.accept(13) : null;
+
+        rsiComponent.createWrapper(() -> zoomCallback.accept(0), fs0);
+        macdComponent.createWrapper(() -> zoomCallback.accept(1), fs1);
+        atrComponent.createWrapper(() -> zoomCallback.accept(2), fs2);
+        deltaComponent.createWrapper(() -> zoomCallback.accept(3), fs3);
+        cvdComponent.createWrapper(() -> zoomCallback.accept(4), fs4);
+        volumeRatioComponent.createWrapper(() -> zoomCallback.accept(5), fs5);
+        whaleComponent.createWrapper(() -> zoomCallback.accept(6), fs6);
+        retailComponent.createWrapper(() -> zoomCallback.accept(7), fs7);
+        fundingComponent.createWrapper(() -> zoomCallback.accept(8), fs8);
+        oiComponent.createWrapper(() -> zoomCallback.accept(9), fs9);
+        stochasticComponent.createWrapper(() -> zoomCallback.accept(10), fs10);
+        rangePositionComponent.createWrapper(() -> zoomCallback.accept(11), fs11);
+        adxComponent.createWrapper(() -> zoomCallback.accept(12), fs12);
+        tradeCountComponent.createWrapper(() -> zoomCallback.accept(13), fs13);
     }
 
     // ===== RSI Methods =====
@@ -1184,6 +1208,17 @@ public class IndicatorChartsManager {
         ChartComponent[] components = {rsiComponent, macdComponent, atrComponent, deltaComponent, cvdComponent, volumeRatioComponent, whaleComponent, retailComponent, fundingComponent, oiComponent, stochasticComponent, rangePositionComponent, adxComponent, tradeCountComponent};
         for (int i = 0; i < components.length; i++) {
             components[i].setZoomed(zoomedIndex == i);
+        }
+    }
+
+    /**
+     * Update full screen button states.
+     * @param fullScreenIndex Index of full screen indicator (-1 for none)
+     */
+    public void updateFullScreenButtonStates(int fullScreenIndex) {
+        ChartComponent[] components = {rsiComponent, macdComponent, atrComponent, deltaComponent, cvdComponent, volumeRatioComponent, whaleComponent, retailComponent, fundingComponent, oiComponent, stochasticComponent, rangePositionComponent, adxComponent, tradeCountComponent};
+        for (int i = 0; i < components.length; i++) {
+            components[i].setFullScreen(fullScreenIndex == i);
         }
     }
 

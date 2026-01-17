@@ -330,4 +330,128 @@ public final class RotatingRays {
         }
         return count;
     }
+
+    // ========== Optimized Historic Ray Computation ==========
+
+    /**
+     * A snapshot of rays at a specific bar, used for historic visualization.
+     */
+    public record HistoricRaySnapshot(
+        int barIndex,      // The bar where this snapshot was taken
+        RaySet raySet      // The rays at that point
+    ) {}
+
+    /**
+     * Compute historic resistance rays efficiently, only returning snapshots when the anchor (ATH) changes.
+     * This is much more efficient than computing rays for every bar.
+     *
+     * @param candles Full candle list
+     * @param lookback Number of bars to look back for ATH (0 = unlimited)
+     * @param skip Number of recent bars to skip
+     * @param startBar First bar to consider
+     * @return List of snapshots, one for each time the ATH changed
+     */
+    public static List<HistoricRaySnapshot> computeHistoricResistanceRays(
+            List<Candle> candles, int lookback, int skip, int startBar) {
+
+        List<HistoricRaySnapshot> snapshots = new ArrayList<>();
+        if (candles == null || candles.isEmpty()) {
+            return snapshots;
+        }
+
+        int prevAnchorBar = -1;
+        double prevAnchorPrice = Double.NaN;
+
+        // Start from at least startBar, but need minimum 10 bars for meaningful computation
+        int minStart = Math.max(startBar, 10);
+
+        for (int barIndex = minStart; barIndex < candles.size(); barIndex++) {
+            // Find ATH for this bar's view
+            int effectiveEnd = Math.max(0, barIndex + 1 - skip);
+            int effectiveStart = (lookback <= 0) ? 0 : Math.max(0, effectiveEnd - lookback);
+
+            if (effectiveEnd <= effectiveStart) continue;
+
+            // Find ATH in window
+            int athBar = effectiveStart;
+            double athPrice = candles.get(effectiveStart).high();
+            for (int i = effectiveStart + 1; i < effectiveEnd; i++) {
+                double high = candles.get(i).high();
+                if (high > athPrice) {
+                    athPrice = high;
+                    athBar = i;
+                }
+            }
+
+            // Only compute rays if anchor changed
+            if (athBar != prevAnchorBar || athPrice != prevAnchorPrice) {
+                List<Candle> availableCandles = candles.subList(0, barIndex + 1);
+                RaySet raySet = calculateResistanceRays(availableCandles, lookback, skip);
+                if (raySet != null && raySet.count() > 0) {
+                    snapshots.add(new HistoricRaySnapshot(barIndex, raySet));
+                }
+                prevAnchorBar = athBar;
+                prevAnchorPrice = athPrice;
+            }
+        }
+
+        return snapshots;
+    }
+
+    /**
+     * Compute historic support rays efficiently, only returning snapshots when the anchor (ATL) changes.
+     * This is much more efficient than computing rays for every bar.
+     *
+     * @param candles Full candle list
+     * @param lookback Number of bars to look back for ATL (0 = unlimited)
+     * @param skip Number of recent bars to skip
+     * @param startBar First bar to consider
+     * @return List of snapshots, one for each time the ATL changed
+     */
+    public static List<HistoricRaySnapshot> computeHistoricSupportRays(
+            List<Candle> candles, int lookback, int skip, int startBar) {
+
+        List<HistoricRaySnapshot> snapshots = new ArrayList<>();
+        if (candles == null || candles.isEmpty()) {
+            return snapshots;
+        }
+
+        int prevAnchorBar = -1;
+        double prevAnchorPrice = Double.NaN;
+
+        // Start from at least startBar, but need minimum 10 bars for meaningful computation
+        int minStart = Math.max(startBar, 10);
+
+        for (int barIndex = minStart; barIndex < candles.size(); barIndex++) {
+            // Find ATL for this bar's view
+            int effectiveEnd = Math.max(0, barIndex + 1 - skip);
+            int effectiveStart = (lookback <= 0) ? 0 : Math.max(0, effectiveEnd - lookback);
+
+            if (effectiveEnd <= effectiveStart) continue;
+
+            // Find ATL in window
+            int atlBar = effectiveStart;
+            double atlPrice = candles.get(effectiveStart).low();
+            for (int i = effectiveStart + 1; i < effectiveEnd; i++) {
+                double low = candles.get(i).low();
+                if (low < atlPrice) {
+                    atlPrice = low;
+                    atlBar = i;
+                }
+            }
+
+            // Only compute rays if anchor changed
+            if (atlBar != prevAnchorBar || atlPrice != prevAnchorPrice) {
+                List<Candle> availableCandles = candles.subList(0, barIndex + 1);
+                RaySet raySet = calculateSupportRays(availableCandles, lookback, skip);
+                if (raySet != null && raySet.count() > 0) {
+                    snapshots.add(new HistoricRaySnapshot(barIndex, raySet));
+                }
+                prevAnchorBar = atlBar;
+                prevAnchorPrice = atlPrice;
+            }
+        }
+
+        return snapshots;
+    }
 }

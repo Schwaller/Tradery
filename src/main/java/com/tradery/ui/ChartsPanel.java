@@ -129,6 +129,9 @@ public class ChartsPanel extends JPanel {
         // Apply OI chart setting
         setOiChartEnabled(config.isOiEnabled());
 
+        // Apply trade count chart setting
+        setTradeCountChartEnabled(config.isTradeCountEnabled());
+
         // Apply core chart settings
         setVolumeChartEnabled(config.isVolumeChartEnabled());
         setEquityChartEnabled(config.isEquityChartEnabled());
@@ -177,6 +180,7 @@ public class ChartsPanel extends JPanel {
         }
         if (config.isRayOverlayEnabled()) {
             overlayManager.setRayOverlay(true, config.getRayLookback(), config.getRaySkip(), candles);
+            overlayManager.setRayShowHistoric(config.isRayHistoricEnabled());
         }
         if (config.isIchimokuEnabled()) {
             overlayManager.setIchimokuOverlay(
@@ -253,7 +257,7 @@ public class ChartsPanel extends JPanel {
 
         // Setup indicator manager
         indicatorManager.setOnLayoutChange(this::updateChartLayout);
-        indicatorManager.createWrappers(this::toggleIndicatorZoom);
+        indicatorManager.createWrappers(this::toggleIndicatorZoom, this::toggleIndicatorFullScreen);
 
         // Setup crosshairs
         crosshairManager.setupCoreChartCrosshairs(
@@ -289,6 +293,10 @@ public class ChartsPanel extends JPanel {
 
     private void toggleIndicatorZoom(int index) {
         zoomManager.toggleIndicatorZoom(index);
+    }
+
+    private void toggleIndicatorFullScreen(int index) {
+        zoomManager.toggleIndicatorFullScreen(index);
     }
 
     private void setupScrollableContainer() {
@@ -649,6 +657,14 @@ public class ChartsPanel extends JPanel {
         return overlayManager.isRayShowSupport();
     }
 
+    public void setRayShowHistoric(boolean show) {
+        overlayManager.setRayShowHistoric(show);
+    }
+
+    public boolean isRayShowHistoric() {
+        return overlayManager.isRayShowHistoric();
+    }
+
     // ===== Ichimoku Cloud Overlay =====
 
     public void setIchimokuOverlay(int conversionPeriod, int basePeriod, int spanBPeriod, int displacement) {
@@ -997,7 +1013,7 @@ public class ChartsPanel extends JPanel {
             renderer.setDrawVolume(false);
             plot.setRenderer(renderer);
         } else {
-            // Line chart with high/low cloud
+            // Line chart with high/low cloud from OHLC data
 
             // First, add high/low cloud as background (dataset index 0)
             TimeSeries highSeries = new TimeSeries("High");
@@ -1012,14 +1028,9 @@ public class ChartsPanel extends JPanel {
             cloudDataset.addSeries(lowSeries);
             plot.setDataset(0, cloudDataset);
 
-            // Use XYDifferenceRenderer for transparent cloud fill
-            Color cloudColor = new Color(
-                ChartStyles.PRICE_LINE_COLOR.getRed(),
-                ChartStyles.PRICE_LINE_COLOR.getGreen(),
-                ChartStyles.PRICE_LINE_COLOR.getBlue(),
-                45  // Low opacity (increased from 30)
-            );
-            XYDifferenceRenderer cloudRenderer = new XYDifferenceRenderer(cloudColor, cloudColor, false);
+            // Use XYDifferenceRenderer for blueish cloud fill
+            XYDifferenceRenderer cloudRenderer = new XYDifferenceRenderer(
+                ChartStyles.HL_CLOUD_COLOR, ChartStyles.HL_CLOUD_COLOR, false);
             cloudRenderer.setSeriesPaint(0, new Color(0, 0, 0, 0));  // Invisible lines
             cloudRenderer.setSeriesPaint(1, new Color(0, 0, 0, 0));
             plot.setRenderer(0, cloudRenderer);

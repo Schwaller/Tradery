@@ -59,6 +59,9 @@ public final class ChartStyles {
     public static final Color BB_COLOR = new Color(180, 100, 255, 180);
     public static final Color BB_MIDDLE_COLOR = new Color(180, 100, 255, 120);
 
+    // ===== High/Low Range Cloud Colors =====
+    public static final Color HL_CLOUD_COLOR = new Color(60, 130, 220, 70);           // Blueish fill for range cloud
+
     // ===== POC/VAH/VAL Overlay Colors =====
     public static final Color DAILY_POC_COLOR = new Color(0, 200, 200, 200);      // Cyan for previous day POC
     public static final Color DAILY_VAH_COLOR = new Color(0, 200, 200, 120);      // Lighter cyan for previous day VAH

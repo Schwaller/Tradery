@@ -13,6 +13,7 @@ public class BacktestSettings {
     private String symbol = "BTCUSDT";
     private String timeframe = "1h";
     private String duration = "1 year";
+    private Long anchorDate = null; // End date timestamp in millis, null = use current time
     private double initialCapital = 10000.0;
     private PositionSizingType positionSizingType = PositionSizingType.FIXED_PERCENT;
     private double positionSizingValue = 10.0;
@@ -67,6 +68,31 @@ public class BacktestSettings {
 
     public void setDuration(String duration) {
         this.duration = duration;
+    }
+
+    /**
+     * Get the anchor date (end date) for backtesting.
+     * @return Timestamp in milliseconds, or null to use current time
+     */
+    public Long getAnchorDate() {
+        return anchorDate;
+    }
+
+    /**
+     * Set the anchor date (end date) for backtesting.
+     * @param anchorDate Timestamp in milliseconds, or null to use current time
+     */
+    public void setAnchorDate(Long anchorDate) {
+        this.anchorDate = anchorDate;
+    }
+
+    /**
+     * Get the effective end date for backtesting.
+     * Returns anchorDate if set, otherwise current time.
+     */
+    @JsonIgnore
+    public long getEffectiveEndDate() {
+        return anchorDate != null ? anchorDate : System.currentTimeMillis();
     }
 
     public double getInitialCapital() {

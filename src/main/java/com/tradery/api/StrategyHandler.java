@@ -433,8 +433,9 @@ public class StrategyHandler extends ApiHandlerBase {
                 return;
             }
 
-            // Calculate date range from duration
-            long endDate = System.currentTimeMillis();
+            // Calculate date range from duration and anchor date
+            Long anchorDate = strategy.getBacktestSettings().getAnchorDate();
+            long endDate = (anchorDate != null) ? anchorDate : System.currentTimeMillis();
             long startDate = endDate - parseDurationMillis(strategy.getDuration());
 
             // Build config from strategy settings
@@ -530,14 +531,15 @@ public class StrategyHandler extends ApiHandlerBase {
                 return;
             }
 
-            // Load latest backtest results
+            // Load latest backtest results from history (which includes trades)
             ResultStore resultStore = new ResultStore(strategyId);
-            BacktestResult result = resultStore.loadLatest();
-            if (result == null) {
+            List<BacktestResult> history = resultStore.loadHistory();
+            if (history.isEmpty()) {
                 sendError(exchange, 400, "No backtest results. Run POST /strategy/" + strategyId + "/backtest first.");
                 return;
             }
 
+            BacktestResult result = history.get(0); // Most recent
             List<Trade> trades = result.trades();
             if (trades == null || trades.isEmpty()) {
                 sendError(exchange, 400, "No trades in backtest result. Cannot analyze phases.");

@@ -305,7 +305,7 @@ public class FlowDiagramPanel extends JPanel {
 
             int zoneTopY = pnlToY(zMax, minPnl, maxPnl, scaleTop, scaleBottom);
             int zoneBotY = pnlToY(zMin, minPnl, maxPnl, scaleTop, scaleBottom);
-            int zoneHeight = Math.max(zoneBotY - zoneTopY, MIN_ZONE_HEIGHT);
+            int zoneHeight = zoneBotY - zoneTopY;
 
             // Draw curved flow band from entry to zone bar (Sankey-style)
             g2.setColor(arrowColor);

@@ -19,6 +19,7 @@ public class ChartComponent {
     private final JFreeChart chart;
     private final ChartPanel chartPanel;
     private final JButton zoomButton;
+    private final JButton fullScreenButton;
     private JPanel wrapper;
 
     /**
@@ -55,6 +56,13 @@ public class ChartComponent {
         zoomButton.setMargin(new Insets(2, 4, 1, 4));
         zoomButton.setFocusPainted(false);
         zoomButton.setToolTipText("Zoom chart");
+
+        // Create full screen button
+        fullScreenButton = new JButton("\u25a1"); // □ (empty square)
+        fullScreenButton.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 11));
+        fullScreenButton.setMargin(new Insets(2, 4, 1, 4));
+        fullScreenButton.setFocusPainted(false);
+        fullScreenButton.setToolTipText("Full screen (hide other charts)");
     }
 
     private void configureChartPanel() {
@@ -72,15 +80,31 @@ public class ChartComponent {
      * Must be called after construction to set up the zoom callback.
      */
     public JPanel createWrapper(Runnable onZoom) {
+        return createWrapper(onZoom, null);
+    }
+
+    /**
+     * Create the wrapper panel with zoom and full screen button overlays.
+     * Must be called after construction to set up the callbacks.
+     */
+    public JPanel createWrapper(Runnable onZoom, Runnable onFullScreen) {
         zoomButton.addActionListener(e -> onZoom.run());
+        if (onFullScreen != null) {
+            fullScreenButton.addActionListener(e -> onFullScreen.run());
+        }
 
         JLayeredPane layeredPane = new JLayeredPane();
         chartPanel.setBounds(0, 0, 100, 100);
         layeredPane.add(chartPanel, JLayeredPane.DEFAULT_LAYER);
 
-        Dimension btnSize = zoomButton.getPreferredSize();
-        zoomButton.setBounds(0, 5, btnSize.width, btnSize.height);
+        Dimension zoomBtnSize = zoomButton.getPreferredSize();
+        Dimension fsBtnSize = fullScreenButton.getPreferredSize();
+        zoomButton.setBounds(0, 5, zoomBtnSize.width, zoomBtnSize.height);
+        fullScreenButton.setBounds(0, 5, fsBtnSize.width, fsBtnSize.height);
         layeredPane.add(zoomButton, JLayeredPane.PALETTE_LAYER);
+        if (onFullScreen != null) {
+            layeredPane.add(fullScreenButton, JLayeredPane.PALETTE_LAYER);
+        }
 
         layeredPane.addComponentListener(new java.awt.event.ComponentAdapter() {
             @Override
@@ -88,8 +112,12 @@ public class ChartComponent {
                 int w = layeredPane.getWidth();
                 int h = layeredPane.getHeight();
                 chartPanel.setBounds(0, 0, w, h);
-                Dimension bs = zoomButton.getPreferredSize();
-                zoomButton.setBounds(w - bs.width - 12, 8, bs.width, bs.height);
+                Dimension zbs = zoomButton.getPreferredSize();
+                Dimension fsbs = fullScreenButton.getPreferredSize();
+                // Position zoom button at right edge
+                zoomButton.setBounds(w - zbs.width - 12, 8, zbs.width, zbs.height);
+                // Position full screen button to the left of zoom button
+                fullScreenButton.setBounds(w - zbs.width - 12 - fsbs.width - 4, 8, fsbs.width, fsbs.height);
             }
         });
 
@@ -114,6 +142,19 @@ public class ChartComponent {
         }
     }
 
+    /**
+     * Update full screen button state.
+     */
+    public void setFullScreen(boolean fullScreen) {
+        if (fullScreen) {
+            fullScreenButton.setText("\u25a0"); // ■ (filled square)
+            fullScreenButton.setToolTipText("Exit full screen");
+        } else {
+            fullScreenButton.setText("\u25a1"); // □ (empty square)
+            fullScreenButton.setToolTipText("Full screen (hide other charts)");
+        }
+    }
+
     // Accessors
 
     public JFreeChart getChart() {
@@ -126,6 +167,10 @@ public class ChartComponent {
 
     public JButton getZoomButton() {
         return zoomButton;
+    }
+
+    public JButton getFullScreenButton() {
+        return fullScreenButton;
     }
 
     public JPanel getWrapper() {

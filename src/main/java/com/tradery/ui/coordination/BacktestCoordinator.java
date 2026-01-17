@@ -149,7 +149,19 @@ public class BacktestCoordinator {
      * Returns null if all data is available, otherwise returns an error message.
      */
     public String checkDataRequirements(Strategy strategy, String symbol, String resolution, long durationMillis) {
-        long endTime = System.currentTimeMillis();
+        return checkDataRequirements(strategy, symbol, resolution, durationMillis, null);
+    }
+
+    /**
+     * Check if required data is available for a backtest.
+     * Auto-detects requirements from DSL conditions - no manual checkbox needed.
+     * Returns null if all data is available, otherwise returns an error message.
+     *
+     * @param anchorDate End date timestamp in millis, or null to use current time
+     */
+    public String checkDataRequirements(Strategy strategy, String symbol, String resolution,
+                                         long durationMillis, Long anchorDate) {
+        long endTime = (anchorDate != null) ? anchorDate : System.currentTimeMillis();
         long startTime = endTime - durationMillis;
 
         int subMinuteInterval = SubMinuteCandleGenerator.parseSubMinuteInterval(resolution);
@@ -189,12 +201,31 @@ public class BacktestCoordinator {
      */
     public void runBacktest(Strategy strategy, String symbol, String resolution,
                             long durationMillis, double capital) {
+        runBacktest(strategy, symbol, resolution, durationMillis, capital, null);
+    }
+
+    /**
+     * Run a backtest with the given strategy and configuration.
+     * Uses two-tier data loading:
+     * - TRADING tier: Blocks until ready (OHLC, AggTrades for sub-minute/delta)
+     * - VIEW tier: Loads in background for charts (Funding, OI)
+     *
+     * @param strategy The strategy to backtest
+     * @param symbol Trading symbol (e.g., "BTCUSDT")
+     * @param resolution Timeframe (e.g., "1h")
+     * @param durationMillis Duration to backtest in milliseconds
+     * @param capital Initial capital
+     * @param anchorDate End date timestamp in millis, or null to use current time
+     */
+    public void runBacktest(Strategy strategy, String symbol, String resolution,
+                            long durationMillis, double capital, Long anchorDate) {
 
         PositionSizingType sizingType = strategy.getPositionSizingType();
         double sizingValue = strategy.getPositionSizingValue();
         double commission = strategy.getTotalCommission();
 
-        long endTime = System.currentTimeMillis();
+        // Use anchorDate if provided, otherwise use current time
+        long endTime = (anchorDate != null) ? anchorDate : System.currentTimeMillis();
         long startTime = endTime - durationMillis;
 
         // Check if sub-minute timeframe (requires aggTrades)

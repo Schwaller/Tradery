@@ -25,6 +25,9 @@ import java.awt.event.WindowEvent;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Path;
+import java.text.SimpleDateFormat;
+import java.util.Calendar;
+import java.util.Date;
 import java.util.List;
 import java.util.function.Consumer;
 
@@ -53,6 +56,7 @@ public class ProjectWindow extends JFrame {
     private JComboBox<String> symbolCombo;
     private JComboBox<String> timeframeCombo;
     private JComboBox<String> durationCombo;
+    private JSpinner anchorDateSpinner;
     private JToggleButton fitWidthBtn;
     private JToggleButton fixedWidthBtn;
     private JToggleButton candlestickToggle;
@@ -209,6 +213,15 @@ public class ProjectWindow extends JFrame {
 
         durationCombo = new JComboBox<>();
         updateDurationOptions();
+
+        // Anchor date/time spinner - always explicit end date for reproducibility
+        SpinnerDateModel dateModel = new SpinnerDateModel(new Date(), null, null, Calendar.MINUTE);
+        anchorDateSpinner = new JSpinner(dateModel);
+        JSpinner.DateEditor dateEditor = new JSpinner.DateEditor(anchorDateSpinner, "yyyy-MM-dd HH:mm");
+        anchorDateSpinner.setEditor(dateEditor);
+        anchorDateSpinner.setPreferredSize(new Dimension(140, anchorDateSpinner.getPreferredSize().height));
+        anchorDateSpinner.setToolTipText("End date/time for backtest data range");
+        anchorDateSpinner.addChangeListener(e -> autoSaveScheduler.scheduleUpdate());
 
         // Width toggle group (Fit / Fixed)
         fitWidthBtn = new JToggleButton("Fit");
@@ -498,6 +511,8 @@ public class ProjectWindow extends JFrame {
         toolbarLeft.add(new JLabel("Timeframe:"));
         toolbarLeft.add(timeframeCombo);
         toolbarLeft.add(durationCombo);
+        toolbarLeft.add(new JLabel("End:"));
+        toolbarLeft.add(anchorDateSpinner);
         toolbarLeft.add(Box.createHorizontalStrut(16));
 
         // Toggle buttons
@@ -670,6 +685,18 @@ public class ProjectWindow extends JFrame {
             updateDurationOptions();
             durationCombo.setSelectedItem(strategy.getDuration());
 
+            // Restore anchor date if set
+            Long anchorDate = strategy.getBacktestSettings().getAnchorDate();
+            if (anchorDate != null) {
+                anchorDateCheckbox.setSelected(true);
+                anchorDateSpinner.setValue(new Date(anchorDate));
+                anchorDateSpinner.setEnabled(true);
+            } else {
+                anchorDateCheckbox.setSelected(false);
+                anchorDateSpinner.setValue(new Date());
+                anchorDateSpinner.setEnabled(false);
+            }
+
             // Update data requirements badges (auto-detected from DSL)
             updateDataRequirementsBadges();
         });
@@ -679,6 +706,21 @@ public class ProjectWindow extends JFrame {
         strategy.setSymbol((String) symbolCombo.getSelectedItem());
         strategy.setTimeframe((String) timeframeCombo.getSelectedItem());
         strategy.setDuration((String) durationCombo.getSelectedItem());
+
+        // Save anchor date if enabled, otherwise null (use current time)
+        if (anchorDateCheckbox.isSelected()) {
+            Date anchorDate = (Date) anchorDateSpinner.getValue();
+            // Set to end of day (23:59:59.999) to include the full day
+            Calendar cal = Calendar.getInstance();
+            cal.setTime(anchorDate);
+            cal.set(Calendar.HOUR_OF_DAY, 23);
+            cal.set(Calendar.MINUTE, 59);
+            cal.set(Calendar.SECOND, 59);
+            cal.set(Calendar.MILLISECOND, 999);
+            strategy.getBacktestSettings().setAnchorDate(cal.getTimeInMillis());
+        } else {
+            strategy.getBacktestSettings().setAnchorDate(null);
+        }
     }
 
     private void startFileWatcher() {
@@ -890,6 +932,7 @@ public class ProjectWindow extends JFrame {
         String resolution = (String) timeframeCombo.getSelectedItem();
         String duration = (String) durationCombo.getSelectedItem();
         double capital = settingsPanel.getCapital();
+        Long anchorDate = strategy.getBacktestSettings().getAnchorDate();
 
         // Run backtest via coordinator
         backtestCoordinator.runBacktest(
@@ -897,7 +940,8 @@ public class ProjectWindow extends JFrame {
             symbol,
             resolution,
             BacktestCoordinator.parseDurationMillis(duration),
-            capital
+            capital,
+            anchorDate
         );
     }
 

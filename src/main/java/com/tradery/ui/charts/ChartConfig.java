@@ -82,6 +82,7 @@ public class ChartConfig {
     private boolean rayOverlayEnabled = false;
     private int rayLookback = 0;  // 0 = no limit (use all data)
     private int raySkip = 5;
+    private boolean rayHistoricEnabled = false;
 
     // Ichimoku Cloud overlay
     private boolean ichimokuEnabled = false;
@@ -320,6 +321,8 @@ public class ChartConfig {
     public void setRayLookback(int lookback) { this.rayLookback = lookback; save(); }
     public int getRaySkip() { return raySkip; }
     public void setRaySkip(int skip) { this.raySkip = skip; save(); }
+    public boolean isRayHistoricEnabled() { return rayHistoricEnabled; }
+    public void setRayHistoricEnabled(boolean enabled) { this.rayHistoricEnabled = enabled; save(); }
 
     // ===== Ichimoku Cloud Overlay Getters/Setters =====
 
@@ -425,6 +428,7 @@ public class ChartConfig {
         this.rayOverlayEnabled = other.rayOverlayEnabled;
         this.rayLookback = other.rayLookback;
         this.raySkip = other.raySkip;
+        this.rayHistoricEnabled = other.rayHistoricEnabled;
 
         // Ichimoku Cloud
         this.ichimokuEnabled = other.ichimokuEnabled;
@@ -512,6 +516,7 @@ public class ChartConfig {
         rayOverlayEnabled = false;
         rayLookback = 0;  // 0 = no limit
         raySkip = 5;
+        rayHistoricEnabled = false;
 
         // Ichimoku Cloud - off by default
         ichimokuEnabled = false;
@@ -670,6 +675,7 @@ public class ChartConfig {
         this.rayOverlayEnabled = other.rayOverlayEnabled;
         this.rayLookback = other.rayLookback;
         this.raySkip = other.raySkip;
+        this.rayHistoricEnabled = other.rayHistoricEnabled;
 
         // Ichimoku Cloud
         this.ichimokuEnabled = other.ichimokuEnabled;

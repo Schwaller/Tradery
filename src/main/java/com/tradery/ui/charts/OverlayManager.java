@@ -407,12 +407,14 @@ public class OverlayManager {
 
         plot.setDataset(hlDatasetIndex, hlDataset);
 
-        // Style: green for high (resistance), red for low (support)
-        XYLineAndShapeRenderer hlRenderer = new XYLineAndShapeRenderer(true, false);
-        hlRenderer.setSeriesPaint(0, ChartStyles.WIN_COLOR);
-        hlRenderer.setSeriesPaint(1, ChartStyles.LOSS_COLOR);
-        hlRenderer.setSeriesStroke(0, new BasicStroke(1.2f));
-        hlRenderer.setSeriesStroke(1, new BasicStroke(1.2f));
+        // Style: blueish cloud fill between high and low lines
+        XYDifferenceRenderer hlRenderer = new XYDifferenceRenderer(
+            ChartStyles.HL_CLOUD_COLOR,  // Fill when high > low (always)
+            ChartStyles.HL_CLOUD_COLOR,  // Fill when low > high (shouldn't happen)
+            false                         // No shapes on data points
+        );
+        hlRenderer.setSeriesPaint(0, new Color(0, 0, 0, 0));  // Invisible lines
+        hlRenderer.setSeriesPaint(1, new Color(0, 0, 0, 0));
         plot.setRenderer(hlDatasetIndex, hlRenderer);
     }
 
@@ -714,6 +716,22 @@ public class OverlayManager {
 
     public boolean isRayShowSupport() {
         return rayOverlay.isShowSupport();
+    }
+
+    public void setRayShowHistoric(boolean show) {
+        rayOverlay.setShowHistoricRays(show);
+    }
+
+    public boolean isRayShowHistoric() {
+        return rayOverlay.isShowHistoricRays();
+    }
+
+    public void setRayHistoricInterval(int interval) {
+        rayOverlay.setHistoricRayInterval(interval);
+    }
+
+    public int getRayHistoricInterval() {
+        return rayOverlay.getHistoricRayInterval();
     }
 
     // ===== Ichimoku Cloud Overlay =====

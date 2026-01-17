@@ -24,6 +24,10 @@ public class ChartZoomManager {
     // Indicator chart zoom state (-1 = none, 0=RSI, 1=MACD, 2=ATR)
     private int indicatorZoomedIndex = -1;
 
+    // Full screen state (-1 = none, index = chart in full screen)
+    private int fullScreenChartIndex = -1;
+    private int fullScreenIndicatorIndex = -1;
+
     // Fixed width mode support
     private boolean fixedWidthMode = false;
     private boolean fitYAxisToVisible = true;
@@ -38,6 +42,7 @@ public class ChartZoomManager {
     // Chart wrappers and zoom buttons
     private JPanel[] chartWrappers;
     private JButton[] zoomButtons;
+    private JButton[] fullScreenButtons;
 
     // Scrollbar for fixed-width mode
     private JScrollBar timeScrollBar;
@@ -51,6 +56,7 @@ public class ChartZoomManager {
     public ChartZoomManager() {
         chartWrappers = new JPanel[6];
         zoomButtons = new JButton[6];
+        fullScreenButtons = new JButton[6];
     }
 
     public void setIndicatorManager(IndicatorChartsManager manager) {
@@ -126,13 +132,24 @@ public class ChartZoomManager {
         zoomBtn.addActionListener(e -> toggleZoom(chartIndex));
         zoomButtons[chartIndex] = zoomBtn;
 
+        JButton fsBtn = new JButton("\u25a1"); // □ (empty square)
+        fsBtn.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 11));
+        fsBtn.setMargin(new Insets(2, 4, 1, 4));
+        fsBtn.setFocusPainted(false);
+        fsBtn.setToolTipText("Full screen (hide other charts)");
+        fsBtn.addActionListener(e -> toggleFullScreen(chartIndex));
+        fullScreenButtons[chartIndex] = fsBtn;
+
         JLayeredPane layeredPane = new JLayeredPane();
         chartPanel.setBounds(0, 0, 100, 100);
         layeredPane.add(chartPanel, JLayeredPane.DEFAULT_LAYER);
 
-        Dimension btnSize = zoomBtn.getPreferredSize();
-        zoomBtn.setBounds(0, 5, btnSize.width, btnSize.height);
+        Dimension zoomBtnSize = zoomBtn.getPreferredSize();
+        Dimension fsBtnSize = fsBtn.getPreferredSize();
+        zoomBtn.setBounds(0, 5, zoomBtnSize.width, zoomBtnSize.height);
+        fsBtn.setBounds(0, 5, fsBtnSize.width, fsBtnSize.height);
         layeredPane.add(zoomBtn, JLayeredPane.PALETTE_LAYER);
+        layeredPane.add(fsBtn, JLayeredPane.PALETTE_LAYER);
 
         layeredPane.addComponentListener(new java.awt.event.ComponentAdapter() {
             @Override
@@ -140,8 +157,12 @@ public class ChartZoomManager {
                 int w = layeredPane.getWidth();
                 int h = layeredPane.getHeight();
                 chartPanel.setBounds(0, 0, w, h);
-                Dimension btnSize = zoomBtn.getPreferredSize();
-                zoomBtn.setBounds(w - btnSize.width - 12, 8, btnSize.width, btnSize.height);
+                Dimension zbs = zoomBtn.getPreferredSize();
+                Dimension fsbs = fsBtn.getPreferredSize();
+                // Position zoom button at right edge
+                zoomBtn.setBounds(w - zbs.width - 12, 8, zbs.width, zbs.height);
+                // Position full screen button to the left of zoom button
+                fsBtn.setBounds(w - zbs.width - 12 - fsbs.width - 4, 8, fsbs.width, fsbs.height);
             }
         });
 
@@ -200,6 +221,54 @@ public class ChartZoomManager {
         }
     }
 
+    /**
+     * Toggle full screen state for a core chart.
+     */
+    public void toggleFullScreen(int chartIndex) {
+        if (fullScreenChartIndex == chartIndex) {
+            fullScreenChartIndex = -1;
+        } else {
+            fullScreenChartIndex = chartIndex;
+            fullScreenIndicatorIndex = -1;
+            // Reset zoom states when entering full screen
+            zoomedChartIndex = -1;
+            indicatorZoomedIndex = -1;
+        }
+        updateFullScreenButtonStates();
+        updateZoomButtonStates();
+        if (indicatorManager != null) {
+            indicatorManager.updateFullScreenButtonStates(fullScreenIndicatorIndex);
+            indicatorManager.updateZoomButtonStates(indicatorZoomedIndex);
+        }
+        if (onLayoutChange != null) {
+            onLayoutChange.run();
+        }
+    }
+
+    /**
+     * Toggle full screen state for an indicator chart.
+     */
+    public void toggleIndicatorFullScreen(int index) {
+        if (fullScreenIndicatorIndex == index) {
+            fullScreenIndicatorIndex = -1;
+        } else {
+            fullScreenIndicatorIndex = index;
+            fullScreenChartIndex = -1;
+            // Reset zoom states when entering full screen
+            zoomedChartIndex = -1;
+            indicatorZoomedIndex = -1;
+        }
+        updateFullScreenButtonStates();
+        updateZoomButtonStates();
+        if (indicatorManager != null) {
+            indicatorManager.updateFullScreenButtonStates(fullScreenIndicatorIndex);
+            indicatorManager.updateZoomButtonStates(indicatorZoomedIndex);
+        }
+        if (onLayoutChange != null) {
+            onLayoutChange.run();
+        }
+    }
+
     private void updateZoomButtonStates() {
         for (int i = 0; i < zoomButtons.length; i++) {
             if (zoomButtons[i] != null) {
@@ -214,6 +283,20 @@ public class ChartZoomManager {
         }
     }
 
+    private void updateFullScreenButtonStates() {
+        for (int i = 0; i < fullScreenButtons.length; i++) {
+            if (fullScreenButtons[i] != null) {
+                if (fullScreenChartIndex == i) {
+                    fullScreenButtons[i].setText("\u25a0"); // ■ (filled square)
+                    fullScreenButtons[i].setToolTipText("Exit full screen");
+                } else {
+                    fullScreenButtons[i].setText("\u25a1"); // □ (empty square)
+                    fullScreenButtons[i].setToolTipText("Full screen (hide other charts)");
+                }
+            }
+        }
+    }
+
     /**
      * Update chart container layout based on zoom state.
      */
@@ -223,6 +306,74 @@ public class ChartZoomManager {
         gbc.gridx = 0;
         gbc.fill = GridBagConstraints.BOTH;
         gbc.weightx = 1.0;
+
+        // Map indicator wrappers for full screen / zoom detection
+        JPanel[] indicatorWrappers = indicatorManager != null ?
+            new JPanel[]{indicatorManager.getRsiChartWrapper(),
+                         indicatorManager.getMacdChartWrapper(),
+                         indicatorManager.getAtrChartWrapper(),
+                         indicatorManager.getDeltaChartWrapper(),
+                         indicatorManager.getCvdChartWrapper(),
+                         indicatorManager.getVolumeRatioChartWrapper(),
+                         indicatorManager.getWhaleChartWrapper(),
+                         indicatorManager.getRetailChartWrapper(),
+                         indicatorManager.getFundingChartWrapper(),
+                         indicatorManager.getOiChartWrapper(),
+                         indicatorManager.getStochasticChartWrapper(),
+                         indicatorManager.getRangePositionChartWrapper(),
+                         indicatorManager.getAdxChartWrapper(),
+                         indicatorManager.getTradeCountChartWrapper()} :
+            new JPanel[0];
+
+        // If in full screen mode, only show the full screen chart
+        if (fullScreenChartIndex >= 0 && fullScreenChartIndex < 6 && chartWrappers[fullScreenChartIndex] != null) {
+            gbc.gridy = 0;
+            gbc.weighty = 1.0;
+            chartsContainer.add(chartWrappers[fullScreenChartIndex], gbc);
+            chartsContainer.setBackground(ChartStyles.BACKGROUND_COLOR);
+
+            // Show time labels on the full screen chart
+            for (int i = 0; i < allCharts.length; i++) {
+                if (allCharts[i] != null && allWrappers[i] != null) {
+                    XYPlot plot = allCharts[i].getXYPlot();
+                    if (plot.getDomainAxis() instanceof DateAxis axis) {
+                        boolean showLabels = (allWrappers[i] == chartWrappers[fullScreenChartIndex]);
+                        axis.setTickLabelsVisible(showLabels);
+                        axis.setTickMarksVisible(showLabels);
+                        plot.setDomainAxisLocation(org.jfree.chart.axis.AxisLocation.BOTTOM_OR_LEFT);
+                    }
+                }
+            }
+
+            chartsContainer.revalidate();
+            chartsContainer.repaint();
+            return;
+        }
+
+        // If in full screen mode for indicator chart
+        if (fullScreenIndicatorIndex >= 0 && indicatorWrappers.length > fullScreenIndicatorIndex && indicatorWrappers[fullScreenIndicatorIndex] != null) {
+            gbc.gridy = 0;
+            gbc.weighty = 1.0;
+            chartsContainer.add(indicatorWrappers[fullScreenIndicatorIndex], gbc);
+            chartsContainer.setBackground(ChartStyles.BACKGROUND_COLOR);
+
+            // Show time labels on the full screen chart
+            for (int i = 0; i < allCharts.length; i++) {
+                if (allCharts[i] != null && allWrappers[i] != null) {
+                    XYPlot plot = allCharts[i].getXYPlot();
+                    if (plot.getDomainAxis() instanceof DateAxis axis) {
+                        boolean showLabels = (allWrappers[i] == indicatorWrappers[fullScreenIndicatorIndex]);
+                        axis.setTickLabelsVisible(showLabels);
+                        axis.setTickMarksVisible(showLabels);
+                        plot.setDomainAxisLocation(org.jfree.chart.axis.AxisLocation.BOTTOM_OR_LEFT);
+                    }
+                }
+            }
+
+            chartsContainer.revalidate();
+            chartsContainer.repaint();
+            return;
+        }
 
         // Build list of visible charts in order:
         // Price (always shown), [Volume], [RSI], [MACD], [ATR], [Delta], [CVD], [VolumeRatio], [Funding], [Equity], [Comparison], [CapitalUsage], [TradeP&L]
@@ -274,6 +425,9 @@ public class ChartZoomManager {
             if (indicatorManager.isAdxChartEnabled()) {
                 visibleCharts.add(indicatorManager.getAdxChartWrapper());
             }
+            if (indicatorManager.isTradeCountChartEnabled()) {
+                visibleCharts.add(indicatorManager.getTradeCountChartWrapper());
+            }
         }
 
         if (equityChartEnabled) {
@@ -288,23 +442,6 @@ public class ChartZoomManager {
         if (tradePLChartEnabled) {
             visibleCharts.add(chartWrappers[5]); // Trade P&L
         }
-
-        // Map indicator wrappers for zoom detection
-        JPanel[] indicatorWrappers = indicatorManager != null ?
-            new JPanel[]{indicatorManager.getRsiChartWrapper(),
-                         indicatorManager.getMacdChartWrapper(),
-                         indicatorManager.getAtrChartWrapper(),
-                         indicatorManager.getDeltaChartWrapper(),
-                         indicatorManager.getCvdChartWrapper(),
-                         indicatorManager.getVolumeRatioChartWrapper(),
-                         indicatorManager.getWhaleChartWrapper(),
-                         indicatorManager.getRetailChartWrapper(),
-                         indicatorManager.getFundingChartWrapper(),
-                         indicatorManager.getOiChartWrapper(),
-                         indicatorManager.getStochasticChartWrapper(),
-                         indicatorManager.getRangePositionChartWrapper(),
-                         indicatorManager.getAdxChartWrapper()} :
-            new JPanel[0];
 
         int totalCharts = visibleCharts.size();
         for (int i = 0; i < totalCharts; i++) {
@@ -438,5 +575,13 @@ public class ChartZoomManager {
 
     public int getIndicatorZoomedIndex() {
         return indicatorZoomedIndex;
+    }
+
+    public int getFullScreenChartIndex() {
+        return fullScreenChartIndex;
+    }
+
+    public int getFullScreenIndicatorIndex() {
+        return fullScreenIndicatorIndex;
     }
 }

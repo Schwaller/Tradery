@@ -10,9 +10,9 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Indicator Engine - unified access to all indicators with caching.
@@ -23,7 +23,7 @@ public class IndicatorEngine {
     private List<Candle> candles;
     private List<AggTrade> aggTrades;
     private String resolution = "1h";
-    private final Map<String, Object> cache = new HashMap<>();
+    private final Map<String, Object> cache = new ConcurrentHashMap<>();
 
     /**
      * Initialize with candle data
@@ -965,7 +965,7 @@ public class IndicatorEngine {
     // ========== Daily Session Volume Profile (PREV_DAY / TODAY POC/VAH/VAL) ==========
 
     // Cache for daily volume profiles: key = "date:YYYY-MM-DD", value = VolumeProfileResult
-    private final Map<String, Indicators.VolumeProfileResult> dailyProfileCache = new HashMap<>();
+    private final Map<String, Indicators.VolumeProfileResult> dailyProfileCache = new ConcurrentHashMap<>();
 
     /**
      * Get the UTC date for a bar index.
@@ -1119,10 +1119,11 @@ public class IndicatorEngine {
     // ========== Rotating Ray Trendlines ==========
 
     /**
-     * Get resistance rays for given lookback and skip parameters.
+     * Get resistance rays using full dataset - for chart visualization only.
      * Cached for performance since ray calculation is expensive.
+     * WARNING: Do NOT use for backtest/phase evaluation (causes look-ahead bias).
      */
-    private RaySet getResistanceRays(int lookback, int skip) {
+    private RaySet getResistanceRaysFull(int lookback, int skip) {
         String key = "resistanceRays:" + lookback + ":" + skip;
         if (!cache.containsKey(key)) {
             cache.put(key, RotatingRays.calculateResistanceRays(candles, lookback, skip));
@@ -1131,10 +1132,11 @@ public class IndicatorEngine {
     }
 
     /**
-     * Get support rays for given lookback and skip parameters.
+     * Get support rays using full dataset - for chart visualization only.
      * Cached for performance since ray calculation is expensive.
+     * WARNING: Do NOT use for backtest/phase evaluation (causes look-ahead bias).
      */
-    private RaySet getSupportRays(int lookback, int skip) {
+    private RaySet getSupportRaysFull(int lookback, int skip) {
         String key = "supportRays:" + lookback + ":" + skip;
         if (!cache.containsKey(key)) {
             cache.put(key, RotatingRays.calculateSupportRays(candles, lookback, skip));
@@ -1142,10 +1144,41 @@ public class IndicatorEngine {
         return (RaySet) cache.get(key);
     }
 
+    /**
+     * Get resistance rays at a specific bar index, using only data available up to that bar.
+     * This avoids look-ahead bias for backtest/phase evaluation.
+     * @param lookback Number of bars to look back for ATH
+     * @param skip Number of recent bars to skip
+     * @param barIndex Current bar index (rays computed using candles 0..barIndex)
+     * @return RaySet computed with historical data only
+     */
+    private RaySet getResistanceRaysAt(int lookback, int skip, int barIndex) {
+        // Slice candles to only include data available at barIndex
+        int endIndex = Math.min(barIndex + 1, candles.size());
+        List<Candle> availableCandles = candles.subList(0, endIndex);
+        return RotatingRays.calculateResistanceRays(availableCandles, lookback, skip);
+    }
+
+    /**
+     * Get support rays at a specific bar index, using only data available up to that bar.
+     * This avoids look-ahead bias for backtest/phase evaluation.
+     * @param lookback Number of bars to look back for ATL
+     * @param skip Number of recent bars to skip
+     * @param barIndex Current bar index (rays computed using candles 0..barIndex)
+     * @return RaySet computed with historical data only
+     */
+    private RaySet getSupportRaysAt(int lookback, int skip, int barIndex) {
+        // Slice candles to only include data available at barIndex
+        int endIndex = Math.min(barIndex + 1, candles.size());
+        List<Candle> availableCandles = candles.subList(0, endIndex);
+        return RotatingRays.calculateSupportRays(availableCandles, lookback, skip);
+    }
+
     // ===== Resistance Ray Functions =====
 
     /**
      * Check if price is above a specific resistance ray (ray is broken).
+     * Uses only data available up to barIndex to avoid look-ahead bias.
      * @param rayNum Ray number (1-indexed, ray 1 = ATH ray)
      * @param lookback Number of bars to look back for ATH
      * @param skip Number of recent bars to skip
@@ -1153,12 +1186,15 @@ public class IndicatorEngine {
      * @return true if price is above the ray
      */
     public boolean isResistanceRayBroken(int rayNum, int lookback, int skip, int barIndex) {
-        RaySet raySet = getResistanceRays(lookback, skip);
-        return RotatingRays.isRayBroken(raySet, rayNum, candles, barIndex);
+        RaySet raySet = getResistanceRaysAt(lookback, skip, barIndex);
+        // Use sliced candles for evaluation
+        List<Candle> availableCandles = candles.subList(0, Math.min(barIndex + 1, candles.size()));
+        return RotatingRays.isRayBroken(raySet, rayNum, availableCandles, barIndex);
     }
 
     /**
      * Check if price crossed above a resistance ray this bar.
+     * Uses only data available up to barIndex to avoid look-ahead bias.
      * @param rayNum Ray number (1-indexed, ray 1 = ATH ray)
      * @param lookback Number of bars to look back for ATH
      * @param skip Number of recent bars to skip
@@ -1166,12 +1202,14 @@ public class IndicatorEngine {
      * @return true if price crossed above the ray this bar
      */
     public boolean didResistanceRayCross(int rayNum, int lookback, int skip, int barIndex) {
-        RaySet raySet = getResistanceRays(lookback, skip);
-        return RotatingRays.didRayCross(raySet, rayNum, candles, barIndex);
+        RaySet raySet = getResistanceRaysAt(lookback, skip, barIndex);
+        List<Candle> availableCandles = candles.subList(0, Math.min(barIndex + 1, candles.size()));
+        return RotatingRays.didRayCross(raySet, rayNum, availableCandles, barIndex);
     }
 
     /**
      * Get percentage distance from price to a resistance ray.
+     * Uses only data available up to barIndex to avoid look-ahead bias.
      * Positive = above ray, Negative = below ray.
      * @param rayNum Ray number (1-indexed, ray 1 = ATH ray)
      * @param lookback Number of bars to look back for ATH
@@ -1180,31 +1218,35 @@ public class IndicatorEngine {
      * @return Distance as percentage
      */
     public double getResistanceRayDistance(int rayNum, int lookback, int skip, int barIndex) {
-        RaySet raySet = getResistanceRays(lookback, skip);
-        return RotatingRays.getRayDistance(raySet, rayNum, candles, barIndex);
+        RaySet raySet = getResistanceRaysAt(lookback, skip, barIndex);
+        List<Candle> availableCandles = candles.subList(0, Math.min(barIndex + 1, candles.size()));
+        return RotatingRays.getRayDistance(raySet, rayNum, availableCandles, barIndex);
     }
 
     /**
      * Count how many resistance rays are currently broken (price above).
+     * Uses only data available up to barIndex to avoid look-ahead bias.
      * @param lookback Number of bars to look back for ATH
      * @param skip Number of recent bars to skip
      * @param barIndex Current bar index
      * @return Count of broken rays
      */
     public int getResistanceRaysBroken(int lookback, int skip, int barIndex) {
-        RaySet raySet = getResistanceRays(lookback, skip);
-        return RotatingRays.countBrokenRays(raySet, candles, barIndex);
+        RaySet raySet = getResistanceRaysAt(lookback, skip, barIndex);
+        List<Candle> availableCandles = candles.subList(0, Math.min(barIndex + 1, candles.size()));
+        return RotatingRays.countBrokenRays(raySet, availableCandles, barIndex);
     }
 
     /**
      * Get total number of resistance rays.
+     * Uses only data available up to barIndex to avoid look-ahead bias.
      * @param lookback Number of bars to look back for ATH
      * @param skip Number of recent bars to skip
      * @param barIndex Current bar index
      * @return Total ray count
      */
     public int getResistanceRayCount(int lookback, int skip, int barIndex) {
-        RaySet raySet = getResistanceRays(lookback, skip);
+        RaySet raySet = getResistanceRaysAt(lookback, skip, barIndex);
         return raySet.count();
     }
 
@@ -1212,6 +1254,7 @@ public class IndicatorEngine {
 
     /**
      * Check if price is below a specific support ray (ray is broken).
+     * Uses only data available up to barIndex to avoid look-ahead bias.
      * @param rayNum Ray number (1-indexed, ray 1 = ATL ray)
      * @param lookback Number of bars to look back for ATL
      * @param skip Number of recent bars to skip
@@ -1219,12 +1262,14 @@ public class IndicatorEngine {
      * @return true if price is below the ray
      */
     public boolean isSupportRayBroken(int rayNum, int lookback, int skip, int barIndex) {
-        RaySet raySet = getSupportRays(lookback, skip);
-        return RotatingRays.isRayBroken(raySet, rayNum, candles, barIndex);
+        RaySet raySet = getSupportRaysAt(lookback, skip, barIndex);
+        List<Candle> availableCandles = candles.subList(0, Math.min(barIndex + 1, candles.size()));
+        return RotatingRays.isRayBroken(raySet, rayNum, availableCandles, barIndex);
     }
 
     /**
      * Check if price crossed below a support ray this bar.
+     * Uses only data available up to barIndex to avoid look-ahead bias.
      * @param rayNum Ray number (1-indexed, ray 1 = ATL ray)
      * @param lookback Number of bars to look back for ATL
      * @param skip Number of recent bars to skip
@@ -1232,12 +1277,14 @@ public class IndicatorEngine {
      * @return true if price crossed below the ray this bar
      */
     public boolean didSupportRayCross(int rayNum, int lookback, int skip, int barIndex) {
-        RaySet raySet = getSupportRays(lookback, skip);
-        return RotatingRays.didRayCross(raySet, rayNum, candles, barIndex);
+        RaySet raySet = getSupportRaysAt(lookback, skip, barIndex);
+        List<Candle> availableCandles = candles.subList(0, Math.min(barIndex + 1, candles.size()));
+        return RotatingRays.didRayCross(raySet, rayNum, availableCandles, barIndex);
     }
 
     /**
      * Get percentage distance from price to a support ray.
+     * Uses only data available up to barIndex to avoid look-ahead bias.
      * Positive = above ray, Negative = below ray.
      * @param rayNum Ray number (1-indexed, ray 1 = ATL ray)
      * @param lookback Number of bars to look back for ATL
@@ -1246,31 +1293,35 @@ public class IndicatorEngine {
      * @return Distance as percentage
      */
     public double getSupportRayDistance(int rayNum, int lookback, int skip, int barIndex) {
-        RaySet raySet = getSupportRays(lookback, skip);
-        return RotatingRays.getRayDistance(raySet, rayNum, candles, barIndex);
+        RaySet raySet = getSupportRaysAt(lookback, skip, barIndex);
+        List<Candle> availableCandles = candles.subList(0, Math.min(barIndex + 1, candles.size()));
+        return RotatingRays.getRayDistance(raySet, rayNum, availableCandles, barIndex);
     }
 
     /**
      * Count how many support rays are currently broken (price below).
+     * Uses only data available up to barIndex to avoid look-ahead bias.
      * @param lookback Number of bars to look back for ATL
      * @param skip Number of recent bars to skip
      * @param barIndex Current bar index
      * @return Count of broken rays
      */
     public int getSupportRaysBroken(int lookback, int skip, int barIndex) {
-        RaySet raySet = getSupportRays(lookback, skip);
-        return RotatingRays.countBrokenRays(raySet, candles, barIndex);
+        RaySet raySet = getSupportRaysAt(lookback, skip, barIndex);
+        List<Candle> availableCandles = candles.subList(0, Math.min(barIndex + 1, candles.size()));
+        return RotatingRays.countBrokenRays(raySet, availableCandles, barIndex);
     }
 
     /**
      * Count total number of support rays.
+     * Uses only data available up to barIndex to avoid look-ahead bias.
      * @param lookback Number of bars to look back for ATL
      * @param skip Number of recent bars to skip
      * @param barIndex Current bar index
      * @return Total ray count
      */
     public int getSupportRayCount(int lookback, int skip, int barIndex) {
-        RaySet raySet = getSupportRays(lookback, skip);
+        RaySet raySet = getSupportRaysAt(lookback, skip, barIndex);
         return raySet.count();
     }
 
@@ -1278,16 +1329,34 @@ public class IndicatorEngine {
 
     /**
      * Get the resistance ray set for chart visualization.
+     * Uses full dataset (appropriate for showing current state of rays on chart).
      */
     public RaySet getResistanceRaySet(int lookback, int skip) {
-        return getResistanceRays(lookback, skip);
+        return getResistanceRaysFull(lookback, skip);
     }
 
     /**
      * Get the support ray set for chart visualization.
+     * Uses full dataset (appropriate for showing current state of rays on chart).
      */
     public RaySet getSupportRaySet(int lookback, int skip) {
-        return getSupportRays(lookback, skip);
+        return getSupportRaysFull(lookback, skip);
+    }
+
+    /**
+     * Get resistance rays at a specific bar for historic ray visualization.
+     * Useful for showing how rays evolved over time.
+     */
+    public RaySet getResistanceRaySetAt(int lookback, int skip, int barIndex) {
+        return getResistanceRaysAt(lookback, skip, barIndex);
+    }
+
+    /**
+     * Get support rays at a specific bar for historic ray visualization.
+     * Useful for showing how rays evolved over time.
+     */
+    public RaySet getSupportRaySetAt(int lookback, int skip, int barIndex) {
+        return getSupportRaysAt(lookback, skip, barIndex);
     }
 
     // ========== Ichimoku Cloud ==========

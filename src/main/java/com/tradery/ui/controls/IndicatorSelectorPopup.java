@@ -46,6 +46,7 @@ public class IndicatorSelectorPopup extends JDialog {
 
     private JCheckBox rayCheckbox;
     private JCheckBox rayNoLimitCheckbox;
+    private JCheckBox rayHistoricCheckbox;
     private JLabel rayLookbackLabel;
     private JSlider rayLookbackSlider;
     private JSpinner rayLookbackSpinner;
@@ -569,8 +570,10 @@ public class IndicatorSelectorPopup extends JDialog {
     private JPanel createRayOverlayRow() {
         rayCheckbox = new JCheckBox("Rotating Rays");
         rayCheckbox.setToolTipText("Show resistance/support rays from ATH/ATL");
-        rayNoLimitCheckbox = new JCheckBox("All");
-        rayNoLimitCheckbox.setToolTipText("Use all data (no lookback limit)");
+        rayNoLimitCheckbox = new JCheckBox("Unlimited");
+        rayNoLimitCheckbox.setToolTipText("Search all available history for ATH/ATL (no lookback limit)");
+        rayHistoricCheckbox = new JCheckBox("Historic");
+        rayHistoricCheckbox.setToolTipText("Show historic rays (how rays looked at past points)");
         rayLookbackLabel = new JLabel("Lookback:");
         Object[] lookbackControls = createSliderSpinner(200, 20, 500);
         rayLookbackSlider = (JSlider) lookbackControls[0];
@@ -585,6 +588,7 @@ public class IndicatorSelectorPopup extends JDialog {
         row.add(rayCheckbox);
         row.add(Box.createHorizontalGlue());
         row.add(rayNoLimitCheckbox);
+        row.add(rayHistoricCheckbox);
         row.add(rayLookbackLabel);
         row.add(rayLookbackSlider);
         row.add(rayLookbackSpinner);
@@ -600,6 +604,7 @@ public class IndicatorSelectorPopup extends JDialog {
             updateControlVisibility();
             scheduleUpdate();
         });
+        rayHistoricCheckbox.addActionListener(e -> scheduleUpdate());
         return row;
     }
 
@@ -977,6 +982,7 @@ public class IndicatorSelectorPopup extends JDialog {
         boolean rayEnabled = rayCheckbox.isSelected();
         boolean rayNoLimit = rayNoLimitCheckbox.isSelected();
         rayNoLimitCheckbox.setVisible(rayEnabled);
+        rayHistoricCheckbox.setVisible(rayEnabled);
         rayLookbackLabel.setVisible(rayEnabled && !rayNoLimit);
         rayLookbackSlider.setVisible(rayEnabled && !rayNoLimit);
         rayLookbackSpinner.setVisible(rayEnabled && !rayNoLimit);
@@ -1054,6 +1060,7 @@ public class IndicatorSelectorPopup extends JDialog {
         rayCheckbox.setSelected(config.isRayOverlayEnabled());
         int rayLookback = config.getRayLookback();
         rayNoLimitCheckbox.setSelected(rayLookback == 0);
+        rayHistoricCheckbox.setSelected(config.isRayHistoricEnabled());
         rayLookbackSpinner.setValue(rayLookback == 0 ? 200 : rayLookback);  // Show 200 as default when switching from no-limit
         raySkipSpinner.setValue(config.getRaySkip());
         ichimokuCheckbox.setSelected(config.isIchimokuEnabled());
@@ -1160,14 +1167,17 @@ public class IndicatorSelectorPopup extends JDialog {
         // Ray overlay
         int rayLookback = rayNoLimitCheckbox.isSelected() ? 0 : (int) rayLookbackSpinner.getValue();
         int raySkip = (int) raySkipSpinner.getValue();
+        boolean rayHistoric = rayHistoricCheckbox.isSelected();
         if (rayCheckbox.isSelected()) {
             chartPanel.setRayOverlay(true, rayLookback, raySkip);
+            chartPanel.setRayShowHistoric(rayHistoric);
         } else {
             chartPanel.clearRayOverlay();
         }
         config.setRayOverlayEnabled(rayCheckbox.isSelected());
         config.setRayLookback(rayLookback);
         config.setRaySkip(raySkip);
+        config.setRayHistoricEnabled(rayHistoric);
 
         // Ichimoku Cloud
         if (ichimokuCheckbox.isSelected()) {

@@ -43,7 +43,7 @@ public class OrderTypeControl extends JPanel {
         valueSpinner.setPreferredSize(new Dimension(65, valueSpinner.getPreferredSize().height));
 
         unitCombo = new JComboBox<>(UNITS);
-        unitCombo.setPreferredSize(new Dimension(60, unitCombo.getPreferredSize().height));
+        unitCombo.setPreferredSize(new Dimension(70, unitCombo.getPreferredSize().height));
 
         add(typeCombo);
         add(valueSpinner);
