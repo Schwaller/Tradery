@@ -24,8 +24,7 @@ public class TimelineBar extends JPanel {
     private static final Color WINDOW_OVERLAY = new Color(100, 149, 237, 60);
     private static final Color WINDOW_BORDER = new Color(100, 149, 237, 180);
     private static final Color WINDOW_HOVER = new Color(100, 149, 237, 100);
-    private static final Color BACKGROUND = new Color(28, 28, 30);
-    private static final Color GRID_LINE = new Color(60, 60, 60);
+    private static final Color GRID_LINE = new Color(128, 128, 128, 80);
 
     private final CandleStore candleStore;
 
@@ -58,7 +57,7 @@ public class TimelineBar extends JPanel {
         setPreferredSize(new Dimension(0, BAR_HEIGHT));
         setMinimumSize(new Dimension(0, BAR_HEIGHT));
         setMaximumSize(new Dimension(Integer.MAX_VALUE, BAR_HEIGHT));
-        setBackground(BACKGROUND);
+        setOpaque(false);
 
         createContextMenu();
         setupMouseHandlers();
@@ -241,10 +240,6 @@ public class TimelineBar extends JPanel {
         int width = getWidth();
         int height = getHeight();
         int chartHeight = height - padding * 2;
-
-        // Draw background
-        g2.setColor(BACKGROUND);
-        g2.fillRect(0, 0, width, height);
 
         if (weeklyCandles == null || weeklyCandles.isEmpty()) {
             g2.setColor(Color.GRAY);

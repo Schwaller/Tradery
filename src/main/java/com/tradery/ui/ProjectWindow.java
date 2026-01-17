@@ -431,7 +431,6 @@ public class ProjectWindow extends JFrame {
         JPanel topStack = new JPanel();
         topStack.setLayout(new BoxLayout(topStack, BoxLayout.Y_AXIS));
         topStack.add(titleBar);
-        topStack.add(new JSeparator());
         topStack.add(timelineBar);
         topStack.add(new JSeparator());
         topStack.add(toolbarPanel);
