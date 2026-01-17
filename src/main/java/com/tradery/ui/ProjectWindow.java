@@ -25,9 +25,6 @@ import java.awt.event.WindowEvent;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Path;
-import java.text.SimpleDateFormat;
-import java.util.Calendar;
-import java.util.Date;
 import java.util.List;
 import java.util.function.Consumer;
 
@@ -42,6 +39,7 @@ public class ProjectWindow extends JFrame {
 
     // Panels
     private StrategyEditorPanel editorPanel;
+    private DataRangePanel dataRangePanel;
     private BacktestSettingsPanel settingsPanel;
     private ChartsPanel chartPanel;
     private MetricsPanel metricsPanel;
@@ -51,12 +49,9 @@ public class ProjectWindow extends JFrame {
     private JProgressBar dataLoadingProgressBar;
     private JLabel dataLoadingLabel;
     private JLabel titleLabel;
+    private TimelineBar timelineBar;
 
     // Toolbar controls
-    private JComboBox<String> symbolCombo;
-    private JComboBox<String> timeframeCombo;
-    private JComboBox<String> durationCombo;
-    private JSpinner anchorDateSpinner;
     private JToggleButton fitWidthBtn;
     private JToggleButton fixedWidthBtn;
     private JToggleButton candlestickToggle;
@@ -87,15 +82,6 @@ public class ProjectWindow extends JFrame {
     // Embedded AI terminal (for Claude/Codex)
     private JSplitPane editorTerminalSplit;  // Vertical split: editor | terminal (left side)
     private AiTerminalController aiTerminalController;
-
-    private static final String[] SYMBOLS = {
-        "BTCUSDT", "ETHUSDT", "BNBUSDT", "XRPUSDT", "ADAUSDT",
-        "SOLUSDT", "DOGEUSDT", "DOTUSDT", "MATICUSDT", "LTCUSDT"
-    };
-
-    private static final String[] TIMEFRAMES = {
-        "10s", "15s", "1m", "5m", "15m", "30m", "1h", "4h", "1d", "1w"
-    };
 
     // Data stores
     private final StrategyStore strategyStore;
@@ -189,10 +175,13 @@ public class ProjectWindow extends JFrame {
 
     private void initializeComponents() {
         editorPanel = new StrategyEditorPanel();
+        dataRangePanel = new DataRangePanel();
         settingsPanel = new BacktestSettingsPanel();
         chartPanel = new ChartsPanel();
         metricsPanel = new MetricsPanel();
         tradeTablePanel = new TradeTablePanel();
+        timelineBar = new TimelineBar(candleStore);
+        timelineBar.setOnAnchorDateChanged(this::onTimelineAnchorChanged);
 
         // Wire up chart status callback (hover info uses low priority)
         chartPanel.setOnStatusUpdate(statusManager::setHoverStatus);
@@ -204,24 +193,6 @@ public class ProjectWindow extends JFrame {
         // Wire up trade table hover/select to chart highlight
         tradeTablePanel.setOnTradeHover(chartPanel::highlightTrades);
         tradeTablePanel.setOnTradeSelect(chartPanel::highlightTrades);
-
-        // Toolbar controls
-        symbolCombo = new JComboBox<>(SYMBOLS);
-        timeframeCombo = new JComboBox<>(TIMEFRAMES);
-        timeframeCombo.setSelectedItem("1h");
-        timeframeCombo.addActionListener(e -> updateDurationOptions());
-
-        durationCombo = new JComboBox<>();
-        updateDurationOptions();
-
-        // Anchor date/time spinner - always explicit end date for reproducibility
-        SpinnerDateModel dateModel = new SpinnerDateModel(new Date(), null, null, Calendar.MINUTE);
-        anchorDateSpinner = new JSpinner(dateModel);
-        JSpinner.DateEditor dateEditor = new JSpinner.DateEditor(anchorDateSpinner, "yyyy-MM-dd HH:mm");
-        anchorDateSpinner.setEditor(dateEditor);
-        anchorDateSpinner.setPreferredSize(new Dimension(140, anchorDateSpinner.getPreferredSize().height));
-        anchorDateSpinner.setToolTipText("End date/time for backtest data range");
-        anchorDateSpinner.addChangeListener(e -> autoSaveScheduler.scheduleUpdate());
 
         // Width toggle group (Fit / Fixed)
         fitWidthBtn = new JToggleButton("Fit");
@@ -278,9 +249,9 @@ public class ProjectWindow extends JFrame {
         claudeBtn.setToolTipText("Open Claude CLI to help optimize this strategy");
         claudeBtn.addActionListener(e -> aiTerminalController.openClaudeTerminal(
             strategy.getId(), strategy.getName(),
-            (String) symbolCombo.getSelectedItem(),
-            (String) timeframeCombo.getSelectedItem(),
-            (String) durationCombo.getSelectedItem()
+            dataRangePanel.getSymbol(),
+            dataRangePanel.getTimeframe(),
+            dataRangePanel.getDuration()
         ));
 
         // Codex button - opens terminal with Codex CLI
@@ -288,9 +259,9 @@ public class ProjectWindow extends JFrame {
         codexBtn.setToolTipText("Open Codex CLI to help optimize this strategy");
         codexBtn.addActionListener(e -> aiTerminalController.openCodexTerminal(
             strategy.getId(), strategy.getName(),
-            (String) symbolCombo.getSelectedItem(),
-            (String) timeframeCombo.getSelectedItem(),
-            (String) durationCombo.getSelectedItem()
+            dataRangePanel.getSymbol(),
+            dataRangePanel.getTimeframe(),
+            dataRangePanel.getDuration()
         ));
 
         // History button - browse and restore previous versions
@@ -361,113 +332,38 @@ public class ProjectWindow extends JFrame {
             });
         });
 
-        // Wire up change listeners for auto-save and auto-backtest
-        // Cancel any ongoing data fetch when switching symbol/resolution
-        symbolCombo.addActionListener(e -> {
-            candleStore.cancelCurrentFetch();
-            autoSaveScheduler.scheduleUpdate();
-        });
-        timeframeCombo.addActionListener(e -> {
-            candleStore.cancelCurrentFetch();
-            autoSaveScheduler.scheduleUpdate();
-            updateDataRequirementsBadges();
-        });
-        durationCombo.addActionListener(e -> autoSaveScheduler.scheduleUpdate());
-
         // Wire up panel change listeners
         editorPanel.setOnChange(() -> {
             autoSaveScheduler.scheduleUpdate();
             updateDataRequirementsBadges();
         });
         settingsPanel.setOnChange(autoSaveScheduler::scheduleUpdate);
+        dataRangePanel.setOnChange(() -> {
+            candleStore.cancelCurrentFetch();
+            autoSaveScheduler.scheduleUpdate();
+            updateDataRequirementsBadges();
+            updateTimeline();
+        });
     }
 
-    private void updateDurationOptions() {
-        String timeframe = (String) timeframeCombo.getSelectedItem();
-        durationCombo.removeAllItems();
+    private void updateTimeline() {
+        String symbol = dataRangePanel.getSymbol();
+        String duration = dataRangePanel.getDuration();
+        Long anchorDate = dataRangePanel.getAnchorDate();
 
-        // Provide sensible duration options based on timeframe
-        switch (timeframe) {
-            case "10s", "15s" -> {
-                // Sub-minute: requires aggTrades
-                durationCombo.addItem("1 hour");
-                durationCombo.addItem("3 hours");
-                durationCombo.addItem("6 hours");
-                durationCombo.addItem("12 hours");
-                durationCombo.addItem("1 day");
-                durationCombo.addItem("3 days");
-                durationCombo.addItem("1 week");
-                durationCombo.addItem("2 weeks");
-                durationCombo.addItem("4 weeks");
-            }
-            case "1m" -> {
-                durationCombo.addItem("1 day");
-                durationCombo.addItem("3 days");
-                durationCombo.addItem("1 week");
-                durationCombo.addItem("2 weeks");
-                durationCombo.addItem("4 weeks");
-                durationCombo.addItem("2 months");
-                durationCombo.addItem("3 months");
-            }
-            case "5m" -> {
-                durationCombo.addItem("1 week");
-                durationCombo.addItem("2 weeks");
-                durationCombo.addItem("1 month");
-                durationCombo.addItem("2 months");
-                durationCombo.addItem("3 months");
-                durationCombo.addItem("6 months");
-            }
-            case "15m" -> {
-                durationCombo.addItem("2 weeks");
-                durationCombo.addItem("1 month");
-                durationCombo.addItem("2 months");
-                durationCombo.addItem("3 months");
-                durationCombo.addItem("6 months");
-                durationCombo.addItem("1 year");
-            }
-            case "30m" -> {
-                durationCombo.addItem("1 month");
-                durationCombo.addItem("2 months");
-                durationCombo.addItem("3 months");
-                durationCombo.addItem("6 months");
-                durationCombo.addItem("1 year");
-                durationCombo.addItem("2 years");
-            }
-            case "1h" -> {
-                durationCombo.addItem("1 month");
-                durationCombo.addItem("3 months");
-                durationCombo.addItem("6 months");
-                durationCombo.addItem("1 year");
-                durationCombo.addItem("2 years");
-                durationCombo.addItem("3 years");
-            }
-            case "4h" -> {
-                durationCombo.addItem("3 months");
-                durationCombo.addItem("6 months");
-                durationCombo.addItem("1 year");
-                durationCombo.addItem("2 years");
-                durationCombo.addItem("3 years");
-                durationCombo.addItem("5 years");
-            }
-            case "1d" -> {
-                durationCombo.addItem("6 months");
-                durationCombo.addItem("1 year");
-                durationCombo.addItem("2 years");
-                durationCombo.addItem("3 years");
-                durationCombo.addItem("5 years");
-                durationCombo.addItem("10 years");
-            }
-            case "1w" -> {
-                durationCombo.addItem("1 year");
-                durationCombo.addItem("2 years");
-                durationCombo.addItem("3 years");
-                durationCombo.addItem("5 years");
-                durationCombo.addItem("10 years");
-            }
-            default -> {
-                durationCombo.addItem("1 year");
-            }
-        }
+        long durationMs = BacktestCoordinator.parseDurationMillis(duration);
+        long endTime = anchorDate != null ? anchorDate : System.currentTimeMillis();
+        long startTime = endTime - durationMs;
+
+        timelineBar.update(symbol, startTime, endTime);
+    }
+
+    private void onTimelineAnchorChanged(Long newAnchorDate) {
+        dataRangePanel.setAnchorDate(newAnchorDate);
+        // Update timeline window without refetching
+        String duration = dataRangePanel.getDuration();
+        long durationMs = BacktestCoordinator.parseDurationMillis(duration);
+        timelineBar.updateWindow(newAnchorDate - durationMs, newAnchorDate);
     }
 
     private void saveStrategyQuietly() {
@@ -495,41 +391,27 @@ public class ProjectWindow extends JFrame {
         titleLabel.setFont(titleLabel.getFont().deriveFont(Font.BOLD, 13f));
         titleBar.add(titleLabel, BorderLayout.CENTER);
 
-        // Toolbar with symbol, timeframe, Run button
+        // Left side: Help button
         JPanel toolbarLeft = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 4));
-
-        // Help button - opens strategy guide
         JButton helpBtn = new JButton("Help");
         helpBtn.setToolTipText("Strategy Guide & DSL Reference");
         helpBtn.addActionListener(e -> StrategyHelpDialog.show(this));
         toolbarLeft.add(helpBtn);
-//        toolbarLeft.add(Box.createHorizontalStrut(8));
 
-        toolbarLeft.add(new JLabel("Symbol:"));
-        toolbarLeft.add(symbolCombo);
-        toolbarLeft.add(Box.createHorizontalStrut(8));
-        toolbarLeft.add(new JLabel("Timeframe:"));
-        toolbarLeft.add(timeframeCombo);
-        toolbarLeft.add(durationCombo);
-        toolbarLeft.add(new JLabel("End:"));
-        toolbarLeft.add(anchorDateSpinner);
-        toolbarLeft.add(Box.createHorizontalStrut(16));
+        // Center: Chart controls and Indicators
+        JPanel toolbarCenter = new JPanel(new FlowLayout(FlowLayout.CENTER, 8, 4));
+        toolbarCenter.add(candlestickToggle);
+        toolbarCenter.add(priceOpacitySlider);
+        toolbarCenter.add(Box.createHorizontalStrut(8));
+        toolbarCenter.add(fitWidthBtn);
+        toolbarCenter.add(fixedWidthBtn);
+        toolbarCenter.add(Box.createHorizontalStrut(8));
+        toolbarCenter.add(fitYBtn);
+        toolbarCenter.add(fullYBtn);
+        toolbarCenter.add(Box.createHorizontalStrut(16));
+        toolbarCenter.add(indicatorControls);
 
-        // Toggle buttons
-        toolbarLeft.add(candlestickToggle);
-        toolbarLeft.add(priceOpacitySlider);
-        toolbarLeft.add(Box.createHorizontalStrut(8));
-        toolbarLeft.add(fitWidthBtn);
-        toolbarLeft.add(fixedWidthBtn);
-        toolbarLeft.add(Box.createHorizontalStrut(8));
-        toolbarLeft.add(fitYBtn);
-        toolbarLeft.add(fullYBtn);
-        toolbarLeft.add(Box.createHorizontalStrut(16));
-
-        // Indicator controls (extracted to IndicatorControlsPanel)
-        toolbarLeft.add(indicatorControls);
-
-        // Right side of toolbar
+        // Right side: Actions
         JPanel toolbarRight = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 4));
         toolbarRight.add(phaseAnalysisBtn);
         toolbarRight.add(historyBtn);
@@ -540,14 +422,21 @@ public class ProjectWindow extends JFrame {
         toolbarRight.add(clearCacheBtn);
 
         JPanel toolbarPanel = new JPanel(new BorderLayout(0, 0));
-        toolbarPanel.add(toolbarLeft, BorderLayout.CENTER);
+        toolbarPanel.add(toolbarLeft, BorderLayout.WEST);
+        toolbarPanel.add(toolbarCenter, BorderLayout.CENTER);
         toolbarPanel.add(toolbarRight, BorderLayout.EAST);
         toolbarPanel.add(new JSeparator(), BorderLayout.SOUTH);
 
-        JPanel topPanel = new JPanel(new BorderLayout(0, 0));
-        topPanel.add(titleBar, BorderLayout.NORTH);
-        topPanel.add(toolbarPanel, BorderLayout.CENTER);
-        contentPane.add(topPanel, BorderLayout.NORTH);
+        // Stack: title, timeline, toolbar
+        JPanel topStack = new JPanel();
+        topStack.setLayout(new BoxLayout(topStack, BoxLayout.Y_AXIS));
+        topStack.add(titleBar);
+        topStack.add(new JSeparator());
+        topStack.add(timelineBar);
+        topStack.add(new JSeparator());
+        topStack.add(toolbarPanel);
+
+        contentPane.add(topStack, BorderLayout.NORTH);
 
         // Left side: Editor on top, terminal on bottom (in vertical split)
         editorTerminalSplit = new JSplitPane(JSplitPane.VERTICAL_SPLIT);
@@ -579,8 +468,15 @@ public class ProjectWindow extends JFrame {
         metricsWrapper.add(new JSeparator(), BorderLayout.NORTH);
         metricsWrapper.add(metricsPanel, BorderLayout.CENTER);
 
+        // Settings panels stacked: Data Range above Backtest Settings
+        JPanel settingsStack = new JPanel();
+        settingsStack.setLayout(new BoxLayout(settingsStack, BoxLayout.Y_AXIS));
+        settingsStack.add(dataRangePanel);
+        settingsStack.add(new JSeparator());
+        settingsStack.add(settingsPanel);
+
         JPanel rightTopPanel = new JPanel(new BorderLayout(0, 0));
-        rightTopPanel.add(settingsPanel, BorderLayout.NORTH);
+        rightTopPanel.add(settingsStack, BorderLayout.NORTH);
         rightTopPanel.add(metricsWrapper, BorderLayout.CENTER);
 
         JPanel rightContent = new JPanel(new BorderLayout(0, 0));
@@ -676,51 +572,19 @@ public class ProjectWindow extends JFrame {
         // Suppress auto-save while loading
         autoSaveScheduler.withIgnoredFileChanges(() -> {
             editorPanel.setStrategy(strategy);
+            dataRangePanel.setStrategy(strategy);
             settingsPanel.setStrategy(strategy);
-
-            // Toolbar controls
-            symbolCombo.setSelectedItem(strategy.getSymbol());
-            timeframeCombo.setSelectedItem(strategy.getTimeframe());
-            // Duration options depend on timeframe, so update them first
-            updateDurationOptions();
-            durationCombo.setSelectedItem(strategy.getDuration());
-
-            // Restore anchor date if set
-            Long anchorDate = strategy.getBacktestSettings().getAnchorDate();
-            if (anchorDate != null) {
-                anchorDateCheckbox.setSelected(true);
-                anchorDateSpinner.setValue(new Date(anchorDate));
-                anchorDateSpinner.setEnabled(true);
-            } else {
-                anchorDateCheckbox.setSelected(false);
-                anchorDateSpinner.setValue(new Date());
-                anchorDateSpinner.setEnabled(false);
-            }
 
             // Update data requirements badges (auto-detected from DSL)
             updateDataRequirementsBadges();
+
+            // Update timeline with current data range
+            updateTimeline();
         });
     }
 
     private void applyToolbarToStrategy() {
-        strategy.setSymbol((String) symbolCombo.getSelectedItem());
-        strategy.setTimeframe((String) timeframeCombo.getSelectedItem());
-        strategy.setDuration((String) durationCombo.getSelectedItem());
-
-        // Save anchor date if enabled, otherwise null (use current time)
-        if (anchorDateCheckbox.isSelected()) {
-            Date anchorDate = (Date) anchorDateSpinner.getValue();
-            // Set to end of day (23:59:59.999) to include the full day
-            Calendar cal = Calendar.getInstance();
-            cal.setTime(anchorDate);
-            cal.set(Calendar.HOUR_OF_DAY, 23);
-            cal.set(Calendar.MINUTE, 59);
-            cal.set(Calendar.SECOND, 59);
-            cal.set(Calendar.MILLISECOND, 999);
-            strategy.getBacktestSettings().setAnchorDate(cal.getTimeInMillis());
-        } else {
-            strategy.getBacktestSettings().setAnchorDate(null);
-        }
+        dataRangePanel.applyToStrategy(strategy);
     }
 
     private void startFileWatcher() {
@@ -825,7 +689,7 @@ public class ProjectWindow extends JFrame {
     }
 
     private void clearCacheAndReload() {
-        String symbol = (String) symbolCombo.getSelectedItem();
+        String symbol = dataRangePanel.getSymbol();
 
         clearCacheBtn.setEnabled(false);
         statusManager.startBacktest("Clearing cache for " + symbol + "...");
@@ -915,7 +779,7 @@ public class ProjectWindow extends JFrame {
             });
         }
 
-        String timeframe = (String) timeframeCombo.getSelectedItem();
+        String timeframe = dataRangePanel.getTimeframe();
         phaseAnalysisWindow.analyze(currentResult.trades(), candles, timeframe, strategy);
         phaseAnalysisWindow.setVisible(true);
         phaseAnalysisWindow.toFront();
@@ -928,11 +792,11 @@ public class ProjectWindow extends JFrame {
         applyToolbarToStrategy();
 
         // Get config from UI
-        String symbol = (String) symbolCombo.getSelectedItem();
-        String resolution = (String) timeframeCombo.getSelectedItem();
-        String duration = (String) durationCombo.getSelectedItem();
+        String symbol = dataRangePanel.getSymbol();
+        String resolution = dataRangePanel.getTimeframe();
+        String duration = dataRangePanel.getDuration();
         double capital = settingsPanel.getCapital();
-        Long anchorDate = strategy.getBacktestSettings().getAnchorDate();
+        Long anchorDate = dataRangePanel.getAnchorDate();
 
         // Run backtest via coordinator
         backtestCoordinator.runBacktest(
@@ -1071,7 +935,7 @@ public class ProjectWindow extends JFrame {
         boolean needsOIFromCharts = chartConfig.isOiEnabled();
 
         // Check if sub-minute timeframe (always needs aggTrades, no separate OHLC)
-        String timeframe = (String) timeframeCombo.getSelectedItem();
+        String timeframe = dataRangePanel.getTimeframe();
         boolean isSubMinute = timeframe != null && timeframe.endsWith("s");
 
         // Combine requirements
