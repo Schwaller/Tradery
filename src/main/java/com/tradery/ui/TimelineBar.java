@@ -107,9 +107,16 @@ public class TimelineBar extends JPanel {
             }
 
             @Override
+            public void mouseEntered(MouseEvent e) {
+                isHovering = true;
+                repaint();
+            }
+
+            @Override
             public void mouseExited(MouseEvent e) {
                 if (!isDragging) {
                     isHovering = false;
+                    setCursor(Cursor.getDefaultCursor());
                     repaint();
                 }
             }
@@ -136,12 +143,8 @@ public class TimelineBar extends JPanel {
 
             @Override
             public void mouseMoved(MouseEvent e) {
-                boolean wasHovering = isHovering;
-                isHovering = isOverWindow(e.getX());
-                if (isHovering != wasHovering) {
-                    setCursor(isHovering ? Cursor.getPredefinedCursor(Cursor.MOVE_CURSOR) : Cursor.getDefaultCursor());
-                    repaint();
-                }
+                boolean overWindow = isOverWindow(e.getX());
+                setCursor(overWindow ? Cursor.getPredefinedCursor(Cursor.MOVE_CURSOR) : Cursor.getDefaultCursor());
             }
         });
     }
@@ -280,7 +283,12 @@ public class TimelineBar extends JPanel {
             double yHigh = padding + ((logMax - high) / priceRange) * chartHeight;
             double yLow = padding + ((logMax - low) / priceRange) * chartHeight;
 
-            g2.setColor(c.close() >= c.open() ? CANDLE_UP : CANDLE_DOWN);
+            // Use accent color normally, green/red only when hovering
+            if (isHovering || isDragging) {
+                g2.setColor(c.close() >= c.open() ? CANDLE_UP : CANDLE_DOWN);
+            } else {
+                g2.setColor(UIColors.ACCENT_PRIMARY);
+            }
             g2.draw(new Rectangle2D.Double(x, yHigh, 1, Math.max(1, yLow - yHigh)));
         }
 
@@ -294,8 +302,8 @@ public class TimelineBar extends JPanel {
                 double x1 = padding + ((visibleStart - minTime) / (double) timeRange) * (width - padding * 2);
                 double x2 = padding + ((visibleEnd - minTime) / (double) timeRange) * (width - padding * 2);
 
-                // Fill (brighter when hovering)
-                g2.setColor(isHovering || isDragging ? WINDOW_HOVER : WINDOW_OVERLAY);
+                // Fill
+                g2.setColor(WINDOW_OVERLAY);
                 g2.fill(new Rectangle2D.Double(x1, padding, x2 - x1, chartHeight));
 
                 // Border
@@ -306,7 +314,9 @@ public class TimelineBar extends JPanel {
         }
 
         // Draw year markers
-        g2.setFont(g2.getFont().deriveFont(9f));
+        Font yearFont = g2.getFont().deriveFont(9f);
+        g2.setFont(yearFont);
+        FontMetrics fm = g2.getFontMetrics();
         java.util.Calendar cal = java.util.Calendar.getInstance();
         cal.setTimeInMillis(minTime);
         cal.set(java.util.Calendar.DAY_OF_YEAR, 1);
@@ -321,8 +331,10 @@ public class TimelineBar extends JPanel {
             g2.setColor(GRID_LINE);
             g2.drawLine((int) x, padding, (int) x, height - padding);
 
+            String yearStr = String.valueOf(cal.get(java.util.Calendar.YEAR));
+            int textWidth = fm.stringWidth(yearStr);
             g2.setColor(Color.GRAY);
-            g2.drawString(String.valueOf(cal.get(java.util.Calendar.YEAR)), (int) x + 2, height - 2);
+            g2.drawString(yearStr, (int) x - textWidth - 2, height - 2);
 
             cal.add(java.util.Calendar.YEAR, 1);
         }
