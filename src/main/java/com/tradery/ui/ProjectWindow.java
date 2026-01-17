@@ -1067,8 +1067,10 @@ public class ProjectWindow extends JFrame {
         SwingUtilities.invokeLater(() -> {
             if (percentage >= 100 || message.equals("Error") || message.equals("Complete")) {
                 statusManager.clearStatus(StatusManager.SOURCE_BACKTEST);
+                timelineBar.setLoading(false);
             } else {
                 statusManager.updateBacktest(message, percentage);
+                timelineBar.setLoading(true);
             }
         });
     }

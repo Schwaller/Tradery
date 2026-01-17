@@ -241,6 +241,10 @@ public class ChartsPanel extends JPanel {
         panel.setMinimumDrawHeight(0);
         panel.setMaximumDrawWidth(Integer.MAX_VALUE);
         panel.setMaximumDrawHeight(Integer.MAX_VALUE);
+        panel.setBorder(null);
+        // Remove chart padding
+        chart.setPadding(new org.jfree.chart.ui.RectangleInsets(0, 0, 0, 0));
+        chart.getXYPlot().setInsets(new org.jfree.chart.ui.RectangleInsets(0, 0, 0, 0));
         return panel;
     }
 

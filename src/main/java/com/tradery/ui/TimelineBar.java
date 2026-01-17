@@ -52,6 +52,11 @@ public class TimelineBar extends JPanel {
     private JPopupMenu contextMenu;
     private JCheckBoxMenuItem logScaleItem;
 
+    // Loading animation
+    private boolean isLoading = false;
+    private Timer pulseTimer;
+    private float pulsePhase = 0f;
+
     public TimelineBar(CandleStore candleStore) {
         this.candleStore = candleStore;
         setPreferredSize(new Dimension(0, BAR_HEIGHT));
@@ -70,6 +75,25 @@ public class TimelineBar extends JPanel {
     public void setTitle(String title) {
         this.title = title;
         repaint();
+    }
+
+    public void setLoading(boolean loading) {
+        this.isLoading = loading;
+        if (loading) {
+            if (pulseTimer == null) {
+                pulseTimer = new Timer(50, e -> {
+                    pulsePhase += 0.05f;  // ~1 second cycle (20 steps * 50ms)
+                    if (pulsePhase >= 1f) pulsePhase = 0f;
+                    repaint();
+                });
+            }
+            pulseTimer.start();
+        } else {
+            if (pulseTimer != null) {
+                pulseTimer.stop();
+            }
+            repaint();
+        }
     }
 
     private void createContextMenu() {
@@ -304,16 +328,36 @@ public class TimelineBar extends JPanel {
                 double x1 = padding + ((visibleStart - minTime) / (double) timeRange) * (width - padding * 2);
                 double x2 = padding + ((visibleEnd - minTime) / (double) timeRange) * (width - padding * 2);
 
-                // Get selection color from theme
-                Color selectionColor = UIManager.getColor("List.selectionBackground");
-                if (selectionColor == null) selectionColor = new Color(100, 149, 237);
+                // Check theme brightness
+                Color bg = UIManager.getColor("Panel.background");
+                boolean isDarkTheme = bg == null || (bg.getRed() + bg.getGreen() + bg.getBlue()) / 3 < 128;
 
-                // Fill with semi-transparent selection color
-                g2.setColor(new Color(selectionColor.getRed(), selectionColor.getGreen(), selectionColor.getBlue(), 50));
+                // Fill with 25% white/black depending on theme
+                Color fillColor = isDarkTheme
+                    ? new Color(255, 255, 255, 64)
+                    : new Color(0, 0, 0, 64);
+                g2.setColor(fillColor);
                 g2.fill(new Rectangle2D.Double(x1, topPadding, x2 - x1, chartHeight));
 
-                // Bottom bar (3px) - 50% white
-                g2.setColor(new Color(255, 255, 255, 128));
+                // Border around selection (0.5px, 50% opacity)
+                Color borderColor = isDarkTheme
+                    ? new Color(255, 255, 255, 128)
+                    : new Color(0, 0, 0, 128);
+                g2.setColor(borderColor);
+                g2.setStroke(new BasicStroke(0.5f));
+                g2.draw(new Rectangle2D.Double(x1, topPadding, x2 - x1, chartHeight));
+
+                // Bottom bar (3px)
+                int alpha = 128;
+                if (isLoading) {
+                    // Pulse between 64 and 192 alpha
+                    alpha = 64 + (int) (128 * (0.5 + 0.5 * Math.sin(pulsePhase * 2 * Math.PI)));
+                }
+
+                Color barColor = isDarkTheme
+                    ? new Color(255, 255, 255, alpha)
+                    : new Color(0, 0, 0, alpha);
+                g2.setColor(barColor);
                 g2.fill(new Rectangle2D.Double(x1, height - padding - 3, x2 - x1, 3));
             }
         }

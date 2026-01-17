@@ -73,6 +73,10 @@ public class ChartComponent {
         chartPanel.setMinimumDrawHeight(0);
         chartPanel.setMaximumDrawWidth(Integer.MAX_VALUE);
         chartPanel.setMaximumDrawHeight(Integer.MAX_VALUE);
+        chartPanel.setBorder(null);
+        // Remove chart padding
+        chart.setPadding(new org.jfree.chart.ui.RectangleInsets(0, 0, 0, 0));
+        chart.getXYPlot().setInsets(new org.jfree.chart.ui.RectangleInsets(0, 0, 0, 0));
     }
 
     /**
