@@ -48,7 +48,6 @@ public class ProjectWindow extends JFrame {
     private JProgressBar statusProgressBar;
     private JProgressBar dataLoadingProgressBar;
     private JLabel dataLoadingLabel;
-    private JLabel titleLabel;
     private TimelineBar timelineBar;
 
     // Toolbar controls
@@ -376,7 +375,7 @@ public class ProjectWindow extends JFrame {
         autoSaveScheduler.markSaveOccurred();
         strategyStore.save(strategy);
         setTitle(strategy.getName() + " - " + TraderyApp.APP_NAME);
-        titleLabel.setText(strategy.getName());
+        timelineBar.setTitle(strategy.getName());
         statusManager.setInfoStatus(StatusManager.SOURCE_AUTOSAVE, "Auto-saved");
     }
 
@@ -384,15 +383,13 @@ public class ProjectWindow extends JFrame {
         JPanel contentPane = new JPanel(new BorderLayout());
         setContentPane(contentPane);
 
-        // Title bar (centered, like LauncherFrame)
-        JPanel titleBar = new JPanel(new BorderLayout());
-        titleBar.setPreferredSize(new Dimension(0, 28));
-        titleLabel = new JLabel(strategy.getName(), SwingConstants.CENTER);
-        titleLabel.setFont(titleLabel.getFont().deriveFont(Font.BOLD, 13f));
-        titleBar.add(titleLabel, BorderLayout.CENTER);
+        // Set title on timeline bar
+        timelineBar.setTitle(strategy.getName());
 
-        // Left side: Help button
+        // Left side: Claude, Codex, Help
         JPanel toolbarLeft = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 4));
+        toolbarLeft.add(claudeBtn);
+        toolbarLeft.add(codexBtn);
         JButton helpBtn = new JButton("Help");
         helpBtn.setToolTipText("Strategy Guide & DSL Reference");
         helpBtn.addActionListener(e -> StrategyHelpDialog.show(this));
@@ -416,9 +413,6 @@ public class ProjectWindow extends JFrame {
         toolbarRight.add(phaseAnalysisBtn);
         toolbarRight.add(historyBtn);
         toolbarRight.add(Box.createHorizontalStrut(8));
-        toolbarRight.add(claudeBtn);
-        toolbarRight.add(codexBtn);
-        toolbarRight.add(Box.createHorizontalStrut(8));
         toolbarRight.add(clearCacheBtn);
 
         JPanel toolbarPanel = new JPanel(new BorderLayout(0, 0));
@@ -427,10 +421,9 @@ public class ProjectWindow extends JFrame {
         toolbarPanel.add(toolbarRight, BorderLayout.EAST);
         toolbarPanel.add(new JSeparator(), BorderLayout.SOUTH);
 
-        // Stack: title, timeline, toolbar
+        // Stack: timeline, toolbar
         JPanel topStack = new JPanel();
         topStack.setLayout(new BoxLayout(topStack, BoxLayout.Y_AXIS));
-        topStack.add(titleBar);
         topStack.add(timelineBar);
         topStack.add(new JSeparator());
         topStack.add(toolbarPanel);
@@ -667,7 +660,7 @@ public class ProjectWindow extends JFrame {
                 this.strategy = reloaded;
                 loadStrategyData();
                 setTitle(strategy.getName() + " - " + TraderyApp.APP_NAME);
-                titleLabel.setText(strategy.getName());
+                timelineBar.setTitle(strategy.getName());
                 runBacktest();
             }
         });

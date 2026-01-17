@@ -4,6 +4,7 @@ import com.tradery.data.CandleStore;
 import com.tradery.model.Candle;
 
 import javax.swing.*;
+import javax.swing.UIManager;
 import java.awt.*;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
@@ -18,17 +19,15 @@ import java.util.function.Consumer;
  */
 public class TimelineBar extends JPanel {
 
-    private static final int BAR_HEIGHT = 32;
+    private static final int BAR_HEIGHT = 48;
     private static final Color CANDLE_UP = new Color(38, 166, 91);
     private static final Color CANDLE_DOWN = new Color(214, 69, 65);
-    private static final Color WINDOW_OVERLAY = new Color(100, 149, 237, 60);
-    private static final Color WINDOW_BORDER = new Color(100, 149, 237, 180);
-    private static final Color WINDOW_HOVER = new Color(100, 149, 237, 100);
     private static final Color GRID_LINE = new Color(128, 128, 128, 80);
 
     private final CandleStore candleStore;
 
     private String symbol = "BTCUSDT";
+    private String title = "";
     private List<Candle> weeklyCandles;
     private long windowStart;
     private long windowEnd;
@@ -44,6 +43,7 @@ public class TimelineBar extends JPanel {
     private long minTime;
     private long maxTime;
     private int padding = 4;
+    private int topPadding = 14;  // Extra space for title
 
     // Callback when anchor date changes
     private Consumer<Long> onAnchorDateChanged;
@@ -65,6 +65,11 @@ public class TimelineBar extends JPanel {
 
     public void setOnAnchorDateChanged(Consumer<Long> callback) {
         this.onAnchorDateChanged = callback;
+    }
+
+    public void setTitle(String title) {
+        this.title = title;
+        repaint();
     }
 
     private void createContextMenu() {
@@ -242,7 +247,7 @@ public class TimelineBar extends JPanel {
 
         int width = getWidth();
         int height = getHeight();
-        int chartHeight = height - padding * 2;
+        int chartHeight = height - topPadding - padding;
 
         if (weeklyCandles == null || weeklyCandles.isEmpty()) {
             g2.setColor(Color.GRAY);
@@ -280,15 +285,12 @@ public class TimelineBar extends JPanel {
             double high = useLogScale ? Math.log(c.high()) : c.high();
             double low = useLogScale ? Math.log(c.low()) : c.low();
 
-            double yHigh = padding + ((logMax - high) / priceRange) * chartHeight;
-            double yLow = padding + ((logMax - low) / priceRange) * chartHeight;
+            double yHigh = topPadding + ((logMax - high) / priceRange) * chartHeight;
+            double yLow = topPadding + ((logMax - low) / priceRange) * chartHeight;
 
-            // Use accent color normally, green/red only when hovering
-            if (isHovering || isDragging) {
-                g2.setColor(c.close() >= c.open() ? CANDLE_UP : CANDLE_DOWN);
-            } else {
-                g2.setColor(UIColors.ACCENT_PRIMARY);
-            }
+            // Use theme accent color
+            Color accent = UIManager.getColor("Component.accentColor");
+            g2.setColor(accent != null ? accent : new Color(100, 140, 180));
             g2.draw(new Rectangle2D.Double(x, yHigh, 1, Math.max(1, yLow - yHigh)));
         }
 
@@ -302,14 +304,17 @@ public class TimelineBar extends JPanel {
                 double x1 = padding + ((visibleStart - minTime) / (double) timeRange) * (width - padding * 2);
                 double x2 = padding + ((visibleEnd - minTime) / (double) timeRange) * (width - padding * 2);
 
-                // Fill
-                g2.setColor(WINDOW_OVERLAY);
-                g2.fill(new Rectangle2D.Double(x1, padding, x2 - x1, chartHeight));
+                // Get selection color from theme
+                Color selectionColor = UIManager.getColor("List.selectionBackground");
+                if (selectionColor == null) selectionColor = new Color(100, 149, 237);
 
-                // Border
-                g2.setColor(WINDOW_BORDER);
-                g2.setStroke(new BasicStroke(1.5f));
-                g2.draw(new Rectangle2D.Double(x1, padding, x2 - x1, chartHeight));
+                // Fill with semi-transparent selection color
+                g2.setColor(new Color(selectionColor.getRed(), selectionColor.getGreen(), selectionColor.getBlue(), 50));
+                g2.fill(new Rectangle2D.Double(x1, topPadding, x2 - x1, chartHeight));
+
+                // Bottom bar (3px) - 50% white
+                g2.setColor(new Color(255, 255, 255, 128));
+                g2.fill(new Rectangle2D.Double(x1, height - padding - 3, x2 - x1, 3));
             }
         }
 
@@ -329,7 +334,7 @@ public class TimelineBar extends JPanel {
             double x = padding + ((yearStart - minTime) / (double) timeRange) * (width - padding * 2);
 
             g2.setColor(GRID_LINE);
-            g2.drawLine((int) x, padding, (int) x, height - padding);
+            g2.drawLine((int) x, topPadding, (int) x, height);
 
             String yearStr = String.valueOf(cal.get(java.util.Calendar.YEAR));
             int textWidth = fm.stringWidth(yearStr);
@@ -337,6 +342,19 @@ public class TimelineBar extends JPanel {
             g2.drawString(yearStr, (int) x - textWidth - 2, height - 2);
 
             cal.add(java.util.Calendar.YEAR, 1);
+        }
+
+        // Draw title at top (same size as year labels)
+        if (title != null && !title.isEmpty()) {
+            Font titleFont = g2.getFont().deriveFont(Font.BOLD, 9f);
+            g2.setFont(titleFont);
+            FontMetrics tfm = g2.getFontMetrics();
+            int titleWidth = tfm.stringWidth(title);
+            int titleX = (width - titleWidth) / 2;
+            int titleY = padding + tfm.getAscent();
+
+            g2.setColor(new Color(180, 180, 180, 140));
+            g2.drawString(title, titleX, titleY);
         }
 
         g2.dispose();
