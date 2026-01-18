@@ -384,16 +384,26 @@ public class TimelineBar extends JPanel implements DataPageListener<Candle> {
             cal.add(java.util.Calendar.YEAR, 1);
         }
 
-        // Draw title at top (same size as year labels)
+        // Draw title at top (normal font size, centered)
         if (title != null && !title.isEmpty()) {
-            Font titleFont = g2.getFont().deriveFont(Font.BOLD, 9f);
+            Font titleFont = g2.getFont().deriveFont(Font.BOLD).deriveFont(11f);
+
             g2.setFont(titleFont);
             FontMetrics tfm = g2.getFontMetrics();
             int titleWidth = tfm.stringWidth(title);
             int titleX = (width - titleWidth) / 2;
-            int titleY = padding + tfm.getAscent();
+            // Center vertically in the top padding area
+            int titleY = (topPadding + tfm.getAscent() - tfm.getDescent()) / 2;
 
-            g2.setColor(new Color(180, 180, 180, 140));
+            // Use theme's window title color
+            Color titleColor = UIManager.getColor("TitlePane.foreground");
+            if (titleColor == null) {
+                titleColor = UIManager.getColor("Label.foreground");
+            }
+            if (titleColor == null) {
+                titleColor = Color.GRAY;
+            }
+            g2.setColor(titleColor);
             g2.drawString(title, titleX, titleY);
         }
 

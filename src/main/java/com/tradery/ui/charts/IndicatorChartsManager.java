@@ -79,6 +79,9 @@ public class IndicatorChartsManager {
     // IndicatorEngine for orderflow/funding data
     private IndicatorEngine indicatorEngine;
 
+    // IndicatorDataService for background indicator computation
+    private final IndicatorDataService indicatorDataService = new IndicatorDataService();
+
     // Callback for layout updates
     private Runnable onLayoutChange;
 
@@ -87,10 +90,56 @@ public class IndicatorChartsManager {
 
     public IndicatorChartsManager() {
         initializeCharts();
+        // Listen for indicator data changes to trigger chart repaints
+        indicatorDataService.addDataListener(this::onIndicatorDataReady);
     }
 
     public void setOnLayoutChange(Runnable callback) {
         this.onLayoutChange = callback;
+    }
+
+    /**
+     * Set the data context and subscribe to all enabled indicators.
+     * Call this when candles change.
+     */
+    public void setDataContext(List<Candle> candles, String symbol, String timeframe,
+                               long startTime, long endTime) {
+        // Update context in the service
+        indicatorDataService.setDataContext(candles, symbol, timeframe, startTime, endTime);
+
+        // Subscribe to enabled indicators
+        if (rsiChartEnabled) {
+            indicatorDataService.subscribeRSI(rsiPeriod);
+        }
+        if (macdChartEnabled) {
+            indicatorDataService.subscribeMACD(macdFast, macdSlow, macdSignal);
+        }
+        if (atrChartEnabled) {
+            indicatorDataService.subscribeATR(atrPeriod);
+        }
+        if (stochasticChartEnabled) {
+            indicatorDataService.subscribeStochastic(stochasticKPeriod, stochasticDPeriod);
+        }
+        if (adxChartEnabled) {
+            indicatorDataService.subscribeADX(adxPeriod);
+            indicatorDataService.subscribePlusDI(adxPeriod);
+            indicatorDataService.subscribeMinusDI(adxPeriod);
+        }
+    }
+
+    /**
+     * Called when indicator data becomes ready.
+     */
+    private void onIndicatorDataReady() {
+        // Redraw all charts with the now-available data
+        List<Candle> candles = indicatorDataService.getCandles();
+        if (candles != null && !candles.isEmpty()) {
+            redrawRsiChart(candles);
+            redrawMacdChart(candles);
+            redrawAtrChart(candles);
+            redrawStochasticChart(candles);
+            redrawAdxChart(candles);
+        }
     }
 
     private void initializeCharts() {
@@ -176,14 +225,28 @@ public class IndicatorChartsManager {
         if (!rsiChartEnabled || candles == null || candles.size() < rsiPeriod + 1) {
             return;
         }
+        // Subscribe to RSI data (will arrive via callback if not ready)
+        indicatorDataService.subscribeRSI(rsiPeriod);
+        // Try to render with available data
+        redrawRsiChart(candles);
+    }
+
+    private void redrawRsiChart(List<Candle> candles) {
+        if (!rsiChartEnabled || candles == null || candles.size() < rsiPeriod + 1) {
+            return;
+        }
+
+        // Get pre-computed RSI data from service
+        double[] rsiValues = indicatorDataService.getRSI(rsiPeriod);
+        if (rsiValues == null) {
+            return; // Data not ready yet, will be called again via callback
+        }
 
         XYPlot plot = rsiComponent.getChart().getXYPlot();
         TimeSeriesCollection dataset = new TimeSeriesCollection();
         TimeSeries rsiSeries = new TimeSeries("RSI(" + rsiPeriod + ")");
 
-        // Use Indicators.rsi() instead of inline calculation
-        double[] rsiValues = Indicators.rsi(candles, rsiPeriod);
-        for (int i = rsiPeriod; i < candles.size(); i++) {
+        for (int i = rsiPeriod; i < candles.size() && i < rsiValues.length; i++) {
             if (!Double.isNaN(rsiValues[i])) {
                 Candle c = candles.get(i);
                 rsiSeries.addOrUpdate(new Millisecond(new Date(c.timestamp())), rsiValues[i]);
@@ -236,14 +299,28 @@ public class IndicatorChartsManager {
         if (!macdChartEnabled || candles == null || candles.size() < macdSlow + macdSignal) {
             return;
         }
+        // Subscribe to MACD data (will arrive via callback if not ready)
+        indicatorDataService.subscribeMACD(macdFast, macdSlow, macdSignal);
+        // Try to render with available data
+        redrawMacdChart(candles);
+    }
+
+    private void redrawMacdChart(List<Candle> candles) {
+        if (!macdChartEnabled || candles == null || candles.size() < macdSlow + macdSignal) {
+            return;
+        }
+
+        // Get pre-computed MACD data from service
+        Indicators.MACDResult macdResult = indicatorDataService.getMACD(macdFast, macdSlow, macdSignal);
+        if (macdResult == null) {
+            return; // Data not ready yet, will be called again via callback
+        }
 
         XYPlot plot = macdComponent.getChart().getXYPlot();
         TimeSeriesCollection lineDataset = new TimeSeriesCollection();
         TimeSeries macdLine = new TimeSeries("MACD");
         TimeSeries signalLine = new TimeSeries("Signal");
 
-        // Use Indicators.macd() instead of inline calculation
-        Indicators.MACDResult macdResult = Indicators.macd(candles, macdFast, macdSlow, macdSignal);
         double[] macdValues = macdResult.line();
         double[] signalValues = macdResult.signal();
         double[] histogramValues = macdResult.histogram();
@@ -252,7 +329,7 @@ public class IndicatorChartsManager {
         XYSeriesCollection histogramDataset = new XYSeriesCollection();
         XYSeries histogramSeries = new XYSeries("Histogram");
 
-        for (int i = macdSlow + macdSignal - 1; i < candles.size(); i++) {
+        for (int i = macdSlow + macdSignal - 1; i < candles.size() && i < macdValues.length; i++) {
             if (!Double.isNaN(macdValues[i]) && !Double.isNaN(signalValues[i])) {
                 Candle c = candles.get(i);
                 Millisecond ms = new Millisecond(new Date(c.timestamp()));
@@ -319,14 +396,28 @@ public class IndicatorChartsManager {
         if (!atrChartEnabled || candles == null || candles.size() < atrPeriod + 1) {
             return;
         }
+        // Subscribe to ATR data (will arrive via callback if not ready)
+        indicatorDataService.subscribeATR(atrPeriod);
+        // Try to render with available data
+        redrawAtrChart(candles);
+    }
+
+    private void redrawAtrChart(List<Candle> candles) {
+        if (!atrChartEnabled || candles == null || candles.size() < atrPeriod + 1) {
+            return;
+        }
+
+        // Get pre-computed ATR data from service
+        double[] atrValues = indicatorDataService.getATR(atrPeriod);
+        if (atrValues == null) {
+            return; // Data not ready yet, will be called again via callback
+        }
 
         XYPlot plot = atrComponent.getChart().getXYPlot();
         TimeSeriesCollection dataset = new TimeSeriesCollection();
         TimeSeries atrSeries = new TimeSeries("ATR(" + atrPeriod + ")");
 
-        // Use Indicators.atr() instead of inline calculation
-        double[] atrValues = Indicators.atr(candles, atrPeriod);
-        for (int i = atrPeriod; i < candles.size(); i++) {
+        for (int i = atrPeriod; i < candles.size() && i < atrValues.length; i++) {
             if (!Double.isNaN(atrValues[i])) {
                 Candle c = candles.get(i);
                 atrSeries.addOrUpdate(new Millisecond(new Date(c.timestamp())), atrValues[i]);
@@ -980,17 +1071,32 @@ public class IndicatorChartsManager {
         if (!stochasticChartEnabled || candles == null || candles.size() < stochasticKPeriod + stochasticDPeriod) {
             return;
         }
+        // Subscribe to Stochastic data (will arrive via callback if not ready)
+        indicatorDataService.subscribeStochastic(stochasticKPeriod, stochasticDPeriod);
+        // Try to render with available data
+        redrawStochasticChart(candles);
+    }
+
+    private void redrawStochasticChart(List<Candle> candles) {
+        if (!stochasticChartEnabled || candles == null || candles.size() < stochasticKPeriod + stochasticDPeriod) {
+            return;
+        }
+
+        // Get pre-computed Stochastic data from service
+        Indicators.StochasticResult result = indicatorDataService.getStochastic(stochasticKPeriod, stochasticDPeriod);
+        if (result == null) {
+            return; // Data not ready yet, will be called again via callback
+        }
 
         XYPlot plot = stochasticComponent.getChart().getXYPlot();
         TimeSeriesCollection dataset = new TimeSeriesCollection();
         TimeSeries kSeries = new TimeSeries("%K(" + stochasticKPeriod + ")");
         TimeSeries dSeries = new TimeSeries("%D(" + stochasticDPeriod + ")");
 
-        Indicators.StochasticResult result = Indicators.stochastic(candles, stochasticKPeriod, stochasticDPeriod);
         double[] kValues = result.k();
         double[] dValues = result.d();
 
-        for (int i = stochasticKPeriod - 1; i < candles.size(); i++) {
+        for (int i = stochasticKPeriod - 1; i < candles.size() && i < kValues.length; i++) {
             Candle c = candles.get(i);
             if (!Double.isNaN(kValues[i])) {
                 kSeries.addOrUpdate(new Millisecond(new Date(c.timestamp())), kValues[i]);
@@ -1122,6 +1228,26 @@ public class IndicatorChartsManager {
         if (!adxChartEnabled || candles == null || candles.size() < adxPeriod * 2) {
             return;
         }
+        // Subscribe to ADX, +DI, -DI data (will arrive via callback if not ready)
+        indicatorDataService.subscribeADX(adxPeriod);
+        indicatorDataService.subscribePlusDI(adxPeriod);
+        indicatorDataService.subscribeMinusDI(adxPeriod);
+        // Try to render with available data
+        redrawAdxChart(candles);
+    }
+
+    private void redrawAdxChart(List<Candle> candles) {
+        if (!adxChartEnabled || candles == null || candles.size() < adxPeriod * 2) {
+            return;
+        }
+
+        // Get pre-computed data from service
+        double[] adxValues = indicatorDataService.getADX(adxPeriod);
+        double[] plusDIValues = indicatorDataService.getPlusDI(adxPeriod);
+        double[] minusDIValues = indicatorDataService.getMinusDI(adxPeriod);
+        if (adxValues == null || plusDIValues == null || minusDIValues == null) {
+            return; // Data not ready yet, will be called again via callback
+        }
 
         XYPlot plot = adxComponent.getChart().getXYPlot();
         TimeSeriesCollection dataset = new TimeSeriesCollection();
@@ -1129,13 +1255,7 @@ public class IndicatorChartsManager {
         TimeSeries plusDISeries = new TimeSeries("+DI(" + adxPeriod + ")");
         TimeSeries minusDISeries = new TimeSeries("-DI(" + adxPeriod + ")");
 
-        // Use Indicators.adx() which returns ADXResult with adx, plusDI, minusDI arrays
-        Indicators.ADXResult result = Indicators.adx(candles, adxPeriod);
-        double[] adxValues = result.adx();
-        double[] plusDIValues = result.plusDI();
-        double[] minusDIValues = result.minusDI();
-
-        for (int i = adxPeriod * 2 - 1; i < candles.size(); i++) {
+        for (int i = adxPeriod * 2 - 1; i < candles.size() && i < adxValues.length; i++) {
             Candle c = candles.get(i);
             Millisecond ms = new Millisecond(new Date(c.timestamp()));
             if (!Double.isNaN(adxValues[i])) {

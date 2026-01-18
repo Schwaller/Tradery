@@ -21,6 +21,7 @@ import java.nio.file.Path;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -46,8 +47,12 @@ public class LauncherFrame extends JFrame {
 
     private static final DateTimeFormatter DATE_FORMAT = DateTimeFormatter.ofPattern("MMM d, yyyy");
 
+    // Static instance for API access
+    private static LauncherFrame instance;
+
     public LauncherFrame() {
         super("Tradery - Projects");
+        instance = this;
 
         strategyStore = ApplicationContext.getInstance().getStrategyStore();
 
@@ -517,6 +522,24 @@ public class LauncherFrame extends JFrame {
                 window.setVisible(true);
             }
         }
+    }
+
+    /**
+     * Get the singleton instance (for API access).
+     */
+    public static LauncherFrame getInstance() {
+        return instance;
+    }
+
+    /**
+     * Get info about all open project windows (for debugging API).
+     */
+    public List<ProjectWindow.WindowInfo> getOpenWindowsInfo() {
+        List<ProjectWindow.WindowInfo> result = new ArrayList<>();
+        for (ProjectWindow window : openWindows.values()) {
+            result.add(window.getWindowInfo());
+        }
+        return result;
     }
 
     @Override

@@ -2,7 +2,16 @@ package com.tradery.ui;
 
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
+import javax.swing.event.ChangeEvent;
+import javax.swing.event.ChangeListener;
+import javax.swing.event.DocumentEvent;
+import javax.swing.event.DocumentListener;
+import javax.swing.text.*;
+import javax.swing.text.html.HTMLDocument;
 import java.awt.*;
+import java.awt.event.KeyEvent;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Dialog showing DSL syntax reference.
@@ -12,6 +21,39 @@ import java.awt.*;
  * See also: Lexer.java (keywords), Parser.java (grammar), ConditionEvaluator.java (evaluation)
  */
 public class DslHelpDialog extends JDialog {
+
+    private JList<TocEntry> tocList;
+    private DefaultListModel<TocEntry> tocModel;
+    private JEditorPane helpPane;
+    private JScrollPane contentScrollPane;
+    private boolean isScrollingFromToc = false;
+    private boolean isUpdatingFromScroll = false;
+    private List<TocEntry> tocEntries;
+
+    // Search
+    private JTextField searchField;
+    private JLabel searchResultLabel;
+    private List<int[]> searchMatches = new ArrayList<>();
+    private int currentMatchIndex = -1;
+    private Highlighter.HighlightPainter searchHighlightPainter;
+    private Highlighter.HighlightPainter currentMatchPainter;
+
+    /**
+     * Represents a table of contents entry.
+     */
+    private static class TocEntry {
+        final String id;      // HTML anchor id (e.g., "toc-0")
+        final String title;   // Display text
+        final int level;      // 2 for h2, 3 for h3
+        int yPosition;        // Calculated after render
+
+        TocEntry(String id, String title, int level) {
+            this.id = id;
+            this.title = title;
+            this.level = level;
+            this.yPosition = 0;
+        }
+    }
 
     public DslHelpDialog(Window owner) {
         super(owner, "DSL Reference", ModalityType.MODELESS);
@@ -28,23 +70,119 @@ public class DslHelpDialog extends JDialog {
         JPanel contentPane = new JPanel(new BorderLayout());
         setContentPane(contentPane);
 
+        // Initialize search highlight painters
+        Color highlightColor = new Color(255, 255, 0, 100); // Yellow with transparency
+        Color currentMatchColor = new Color(255, 150, 0, 150); // Orange for current match
+        searchHighlightPainter = new DefaultHighlighter.DefaultHighlightPainter(highlightColor);
+        currentMatchPainter = new DefaultHighlighter.DefaultHighlightPainter(currentMatchColor);
+
         // Title bar area (28px height for macOS traffic lights)
         JPanel titleBar = new JPanel(new BorderLayout());
         titleBar.setPreferredSize(new Dimension(0, 28));
+
+        // Left spacer for traffic lights
+        JPanel leftSpacer = new JPanel();
+        leftSpacer.setPreferredSize(new Dimension(70, 0));
+        leftSpacer.setOpaque(false);
+
+        // Title in center
         JLabel titleLabel = new JLabel("DSL Reference", SwingConstants.CENTER);
         titleLabel.setFont(titleLabel.getFont().deriveFont(Font.BOLD, 13f));
-        titleBar.add(titleLabel, BorderLayout.CENTER);
 
-        String content = buildHelpContent();
-        JEditorPane helpPane = new JEditorPane("text/html", content);
+        // Search panel on right
+        JPanel searchPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 4, 2));
+        searchPanel.setOpaque(false);
+
+        searchField = new JTextField(12);
+        searchField.putClientProperty("JTextField.placeholderText", "Search...");
+        searchField.setFont(searchField.getFont().deriveFont(11f));
+        searchField.getDocument().addDocumentListener(new DocumentListener() {
+            @Override public void insertUpdate(DocumentEvent e) { performSearch(); }
+            @Override public void removeUpdate(DocumentEvent e) { performSearch(); }
+            @Override public void changedUpdate(DocumentEvent e) { performSearch(); }
+        });
+        // Enter goes to next match, Shift+Enter goes to previous
+        searchField.addKeyListener(new java.awt.event.KeyAdapter() {
+            @Override
+            public void keyPressed(KeyEvent e) {
+                if (e.getKeyCode() == KeyEvent.VK_ENTER) {
+                    if (e.isShiftDown()) {
+                        goToPreviousMatch();
+                    } else {
+                        goToNextMatch();
+                    }
+                } else if (e.getKeyCode() == KeyEvent.VK_ESCAPE) {
+                    searchField.setText("");
+                    clearSearchHighlights();
+                }
+            }
+        });
+
+        searchResultLabel = new JLabel("");
+        searchResultLabel.setFont(searchResultLabel.getFont().deriveFont(10f));
+        searchResultLabel.setForeground(UIManager.getColor("Label.disabledForeground"));
+
+        searchPanel.add(searchResultLabel);
+        searchPanel.add(searchField);
+
+        titleBar.add(leftSpacer, BorderLayout.WEST);
+        titleBar.add(titleLabel, BorderLayout.CENTER);
+        titleBar.add(searchPanel, BorderLayout.EAST);
+
+        // Build content and TOC
+        tocEntries = new ArrayList<>();
+        String content = buildHelpContent(tocEntries);
+
+        // Create TOC list
+        tocModel = new DefaultListModel<>();
+        for (TocEntry entry : tocEntries) {
+            tocModel.addElement(entry);
+        }
+        tocList = new JList<>(tocModel);
+        tocList.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+        tocList.setCellRenderer(new TocCellRenderer());
+        tocList.addListSelectionListener(e -> {
+            if (!e.getValueIsAdjusting() && !isUpdatingFromScroll) {
+                scrollToSelectedSection();
+            }
+        });
+
+        JScrollPane tocScrollPane = new JScrollPane(tocList);
+        tocScrollPane.setBorder(null);
+        tocScrollPane.setPreferredSize(new Dimension(180, 0));
+
+        // Create content pane
+        helpPane = new JEditorPane("text/html", content);
         helpPane.setEditable(false);
         helpPane.setCaretPosition(0);
         helpPane.setBorder(new EmptyBorder(4, 4, 4, 4));
         helpPane.setBackground(UIManager.getColor("Panel.background"));
 
-        JScrollPane scrollPane = new JScrollPane(helpPane);
-        scrollPane.setPreferredSize(new Dimension(960, 600));
-        scrollPane.setBorder(null);
+        contentScrollPane = new JScrollPane(helpPane);
+        contentScrollPane.setBorder(null);
+
+        // Track scroll position to update TOC selection
+        contentScrollPane.getViewport().addChangeListener(new ChangeListener() {
+            @Override
+            public void stateChanged(ChangeEvent e) {
+                if (!isScrollingFromToc) {
+                    updateTocSelectionFromScroll();
+                }
+            }
+        });
+
+        // Calculate positions after HTML is rendered
+        SwingUtilities.invokeLater(() -> {
+            SwingUtilities.invokeLater(this::calculateTocPositions);
+        });
+
+        // Create split pane
+        JSplitPane splitPane = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT);
+        splitPane.setLeftComponent(tocScrollPane);
+        splitPane.setRightComponent(contentScrollPane);
+        splitPane.setDividerLocation(180);
+        splitPane.setDividerSize(1);
+        splitPane.setResizeWeight(0);
 
         JButton closeButton = new JButton("Close");
         closeButton.addActionListener(e -> dispose());
@@ -55,7 +193,8 @@ public class DslHelpDialog extends JDialog {
         // Wrap content with separators
         JPanel mainContent = new JPanel(new BorderLayout());
         mainContent.add(new JSeparator(), BorderLayout.NORTH);
-        mainContent.add(scrollPane, BorderLayout.CENTER);
+        mainContent.add(splitPane, BorderLayout.CENTER);
+        mainContent.setPreferredSize(new Dimension(1100, 600));
 
         // Button panel with separator above
         JPanel bottomPanel = new JPanel(new BorderLayout());
@@ -70,7 +209,121 @@ public class DslHelpDialog extends JDialog {
         setLocationRelativeTo(getOwner());
     }
 
-    private String buildHelpContent() {
+    private void calculateTocPositions() {
+        if (helpPane.getDocument() instanceof HTMLDocument doc) {
+            for (TocEntry entry : tocEntries) {
+                Element element = doc.getElement(entry.id);
+                if (element != null) {
+                    try {
+                        Rectangle rect = helpPane.modelToView(element.getStartOffset());
+                        if (rect != null) {
+                            entry.yPosition = rect.y;
+                        }
+                    } catch (BadLocationException e) {
+                        // Ignore
+                    }
+                }
+            }
+        }
+    }
+
+    private void scrollToSelectedSection() {
+        TocEntry selected = tocList.getSelectedValue();
+        if (selected == null) return;
+
+        isScrollingFromToc = true;
+        try {
+            if (helpPane.getDocument() instanceof HTMLDocument doc) {
+                Element element = doc.getElement(selected.id);
+                if (element != null) {
+                    try {
+                        Rectangle rect = helpPane.modelToView(element.getStartOffset());
+                        if (rect != null) {
+                            // Scroll to position with a small offset from top
+                            rect.y = Math.max(0, rect.y - 10);
+                            rect.height = contentScrollPane.getViewport().getHeight();
+                            helpPane.scrollRectToVisible(rect);
+                        }
+                    } catch (BadLocationException e) {
+                        // Ignore
+                    }
+                }
+            }
+        } finally {
+            // Reset flag after a short delay to allow scroll to complete
+            Timer timer = new Timer(100, e -> isScrollingFromToc = false);
+            timer.setRepeats(false);
+            timer.start();
+        }
+    }
+
+    private void updateTocSelectionFromScroll() {
+        if (tocEntries.isEmpty()) return;
+
+        Rectangle viewRect = contentScrollPane.getViewport().getViewRect();
+        int targetY = viewRect.y + viewRect.height / 3; // Upper third of view
+
+        TocEntry bestMatch = tocEntries.get(0);
+        for (TocEntry entry : tocEntries) {
+            if (entry.yPosition <= targetY) {
+                bestMatch = entry;
+            } else {
+                break;
+            }
+        }
+
+        isUpdatingFromScroll = true;
+        try {
+            tocList.setSelectedValue(bestMatch, true);
+        } finally {
+            isUpdatingFromScroll = false;
+        }
+    }
+
+    /**
+     * Custom renderer for TOC entries with indentation based on heading level.
+     */
+    private class TocCellRenderer extends JPanel implements ListCellRenderer<TocEntry> {
+        private final JLabel label;
+
+        public TocCellRenderer() {
+            setLayout(new BorderLayout());
+            label = new JLabel();
+            add(label, BorderLayout.CENTER);
+        }
+
+        @Override
+        public Component getListCellRendererComponent(
+                JList<? extends TocEntry> list,
+                TocEntry value,
+                int index,
+                boolean isSelected,
+                boolean cellHasFocus
+        ) {
+            // Indentation: 8px for h2, 20px for h3
+            int leftPadding = value.level == 2 ? 8 : 20;
+            setBorder(BorderFactory.createEmptyBorder(3, leftPadding, 3, 8));
+
+            label.setText(value.title);
+            label.setFont(label.getFont().deriveFont(value.level == 2 ? Font.BOLD : Font.PLAIN, 11f));
+
+            if (isSelected) {
+                setBackground(UIManager.getColor("List.selectionBackground"));
+                label.setForeground(UIManager.getColor("List.selectionForeground"));
+                setOpaque(true);
+            } else {
+                setBackground(list.getBackground());
+                label.setForeground(value.level == 2
+                    ? UIManager.getColor("Label.foreground")
+                    : UIManager.getColor("Label.disabledForeground"));
+                setOpaque(false);
+            }
+
+            return this;
+        }
+    }
+
+    private String buildHelpContent(List<TocEntry> toc) {
         // Get theme colors
         Color bg = UIManager.getColor("Panel.background");
         Color fg = UIManager.getColor("Label.foreground");
@@ -93,6 +346,25 @@ public class DslHelpDialog extends JDialog {
         String codeBgHex = toHex(codeBg);
         String borderHex = toHex(tableBorder);
 
+        // Build TOC entries
+        int tocIndex = 0;
+        toc.add(new TocEntry("toc-" + tocIndex++, "Strategy DSL Reference", 2));
+        toc.add(new TocEntry("toc-" + tocIndex++, "Indicators", 3));
+        toc.add(new TocEntry("toc-" + tocIndex++, "Price References", 3));
+        toc.add(new TocEntry("toc-" + tocIndex++, "Range & Volume Functions", 3));
+        toc.add(new TocEntry("toc-" + tocIndex++, "Orderflow Functions", 3));
+        toc.add(new TocEntry("toc-" + tocIndex++, "Daily Session Volume Profile", 3));
+        toc.add(new TocEntry("toc-" + tocIndex++, "Funding Rate Functions", 3));
+        toc.add(new TocEntry("toc-" + tocIndex++, "Open Interest Functions", 3));
+        toc.add(new TocEntry("toc-" + tocIndex++, "Time Functions", 3));
+        toc.add(new TocEntry("toc-" + tocIndex++, "Moon Functions", 3));
+        toc.add(new TocEntry("toc-" + tocIndex++, "Calendar Functions", 3));
+        toc.add(new TocEntry("toc-" + tocIndex++, "Comparison Operators", 3));
+        toc.add(new TocEntry("toc-" + tocIndex++, "Cross Operators", 3));
+        toc.add(new TocEntry("toc-" + tocIndex++, "Logical Operators", 3));
+        toc.add(new TocEntry("toc-" + tocIndex++, "Arithmetic Operators", 3));
+        toc.add(new TocEntry("toc-" + tocIndex++, "Example Strategies", 3));
+
         return """
             <html>
             <head>
@@ -110,10 +382,10 @@ public class DslHelpDialog extends JDialog {
             </head>
             <body>
 
-            <h2>Strategy DSL Reference</h2>
+            <h2 id="toc-0">Strategy DSL Reference</h2>
 
             <div class="section">
-            <h3>Indicators</h3>
+            <h3 id="toc-1">Indicators</h3>
             <table>
                 <tr><th>Indicator</th><th>Syntax</th><th>Description</th><th>Properties</th></tr>
                 <tr><td>SMA</td><td><code>SMA(period)</code></td><td>Simple Moving Average</td><td></td></tr>
@@ -131,7 +403,7 @@ public class DslHelpDialog extends JDialog {
             </div>
 
             <div class="section">
-            <h3>Price References</h3>
+            <h3 id="toc-2">Price References</h3>
             <table>
                 <tr><td><code>price</code> or <code>close</code></td><td>Closing price</td></tr>
                 <tr><td><code>open</code></td><td>Opening price</td></tr>
@@ -142,7 +414,7 @@ public class DslHelpDialog extends JDialog {
             </div>
 
             <div class="section">
-            <h3>Range & Volume Functions</h3>
+            <h3 id="toc-3">Range & Volume Functions</h3>
             <table>
                 <tr><td><code>HIGH_OF(period)</code></td><td>Highest high over period</td></tr>
                 <tr><td><code>LOW_OF(period)</code></td><td>Lowest low over period</td></tr>
@@ -155,7 +427,7 @@ public class DslHelpDialog extends JDialog {
             </div>
 
             <div class="section">
-            <h3>Orderflow Functions</h3>
+            <h3 id="toc-4">Orderflow Functions</h3>
             <span style="color: %s; font-size: 10px;">Enable Orderflow Mode in strategy settings. Tier 1 = instant, Tier 2 = requires sync.</span>
             <table>
                 <tr><th>Function</th><th>Tier</th><th>Description</th></tr>
@@ -174,7 +446,7 @@ public class DslHelpDialog extends JDialog {
             </div>
 
             <div class="section">
-            <h3>Daily Session Volume Profile</h3>
+            <h3 id="toc-5">Daily Session Volume Profile</h3>
             <span style="color: %s; font-size: 10px;">Key support/resistance levels from daily sessions (UTC day boundary).</span>
             <table>
                 <tr><th>Function</th><th>Description</th></tr>
@@ -189,7 +461,7 @@ public class DslHelpDialog extends JDialog {
             </div>
 
             <div class="section">
-            <h3>Funding Rate Functions</h3>
+            <h3 id="toc-6">Funding Rate Functions</h3>
             <span style="color: %s; font-size: 10px;">Requires funding data (auto-fetched from Binance Futures).</span>
             <table>
                 <tr><td><code>FUNDING</code></td><td>Current funding rate (%%, e.g., 0.01 = 0.01%%)</td></tr>
@@ -200,7 +472,7 @@ public class DslHelpDialog extends JDialog {
             </div>
 
             <div class="section">
-            <h3>Open Interest Functions</h3>
+            <h3 id="toc-7">Open Interest Functions</h3>
             <span style="color: %s; font-size: 10px;">Requires OI data (auto-fetched from Binance Futures, 5m resolution).</span>
             <table>
                 <tr><td><code>OI</code></td><td>Current open interest value (in billions USD)</td></tr>
@@ -212,7 +484,7 @@ public class DslHelpDialog extends JDialog {
             </div>
 
             <div class="section">
-            <h3>Time Functions</h3>
+            <h3 id="toc-8">Time Functions</h3>
             <table>
                 <tr><td><code>DAYOFWEEK</code></td><td>Day of week (1=Mon, 2=Tue, ..., 7=Sun)</td></tr>
                 <tr><td><code>HOUR</code></td><td>Hour of day (0-23, UTC)</td></tr>
@@ -223,7 +495,7 @@ public class DslHelpDialog extends JDialog {
             </div>
 
             <div class="section">
-            <h3>Moon Functions</h3>
+            <h3 id="toc-9">Moon Functions</h3>
             <table>
                 <tr><td><code>MOON_PHASE</code></td><td>Moon phase (0.0=new, 0.5=full, 1.0=new)</td></tr>
             </table>
@@ -231,7 +503,7 @@ public class DslHelpDialog extends JDialog {
             </div>
 
             <div class="section">
-            <h3>Calendar Functions</h3>
+            <h3 id="toc-10">Calendar Functions</h3>
             <table>
                 <tr><td><code>IS_US_HOLIDAY</code></td><td>US Federal Reserve bank holiday (1=yes, 0=no)</td></tr>
                 <tr><td><code>IS_FOMC_MEETING</code></td><td>FOMC meeting day (1=yes, 0=no)</td></tr>
@@ -241,7 +513,7 @@ public class DslHelpDialog extends JDialog {
             </div>
 
             <div class="section">
-            <h3>Comparison Operators</h3>
+            <h3 id="toc-11">Comparison Operators</h3>
             <table>
                 <tr><td><code>&gt;</code></td><td>Greater than</td></tr>
                 <tr><td><code>&lt;</code></td><td>Less than</td></tr>
@@ -252,7 +524,7 @@ public class DslHelpDialog extends JDialog {
             </div>
 
             <div class="section">
-            <h3>Cross Operators</h3>
+            <h3 id="toc-12">Cross Operators</h3>
             <table>
                 <tr><td><code>crosses_above</code></td><td>Value crosses above another</td></tr>
                 <tr><td><code>crosses_below</code></td><td>Value crosses below another</td></tr>
@@ -261,7 +533,7 @@ public class DslHelpDialog extends JDialog {
             </div>
 
             <div class="section">
-            <h3>Logical Operators</h3>
+            <h3 id="toc-13">Logical Operators</h3>
             <table>
                 <tr><td><code>AND</code></td><td>Both conditions must be true</td></tr>
                 <tr><td><code>OR</code></td><td>Either condition must be true</td></tr>
@@ -270,7 +542,7 @@ public class DslHelpDialog extends JDialog {
             </div>
 
             <div class="section">
-            <h3>Arithmetic Operators</h3>
+            <h3 id="toc-14">Arithmetic Operators</h3>
             <table>
                 <tr><td><code>+</code> <code>-</code> <code>*</code> <code>/</code></td><td>Add, subtract, multiply, divide</td></tr>
             </table>
@@ -278,7 +550,7 @@ public class DslHelpDialog extends JDialog {
             </div>
 
             <div class="section">
-            <h3>Example Strategies</h3>
+            <h3 id="toc-15">Example Strategies</h3>
             <div class="example">
             <b>RSI Oversold:</b> RSI(14) &lt; 30<br><br>
             <b>Trend Following:</b> EMA(9) crosses_above EMA(21) AND price > SMA(50)<br><br>
@@ -290,6 +562,98 @@ public class DslHelpDialog extends JDialog {
             </body>
             </html>
             """.formatted(bgHex, fgHex, fgHex, fgSecHex, codeBgHex, fgHex, borderHex, codeBgHex, codeBgHex, accentHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex);
+    }
+
+    private void performSearch() {
+        clearSearchHighlights();
+        searchMatches.clear();
+        currentMatchIndex = -1;
+
+        String searchText = searchField.getText().toLowerCase().trim();
+        if (searchText.isEmpty()) {
+            searchResultLabel.setText("");
+            return;
+        }
+
+        try {
+            Document doc = helpPane.getDocument();
+            String text = doc.getText(0, doc.getLength()).toLowerCase();
+
+            int index = 0;
+            while ((index = text.indexOf(searchText, index)) != -1) {
+                searchMatches.add(new int[]{index, index + searchText.length()});
+                index += searchText.length();
+            }
+
+            if (searchMatches.isEmpty()) {
+                searchResultLabel.setText("0 results");
+            } else {
+                // Highlight all matches
+                Highlighter highlighter = helpPane.getHighlighter();
+                for (int[] match : searchMatches) {
+                    highlighter.addHighlight(match[0], match[1], searchHighlightPainter);
+                }
+                // Go to first match
+                currentMatchIndex = 0;
+                highlightCurrentMatch();
+                updateSearchResultLabel();
+            }
+        } catch (BadLocationException e) {
+            // Ignore
+        }
+    }
+
+    private void highlightCurrentMatch() {
+        if (searchMatches.isEmpty() || currentMatchIndex < 0) return;
+
+        try {
+            int[] match = searchMatches.get(currentMatchIndex);
+
+            // Remove previous current highlight and re-add all with normal color
+            Highlighter highlighter = helpPane.getHighlighter();
+            highlighter.removeAllHighlights();
+            for (int i = 0; i < searchMatches.size(); i++) {
+                int[] m = searchMatches.get(i);
+                Highlighter.HighlightPainter painter = (i == currentMatchIndex) ? currentMatchPainter : searchHighlightPainter;
+                highlighter.addHighlight(m[0], m[1], painter);
+            }
+
+            // Scroll to current match
+            Rectangle rect = helpPane.modelToView(match[0]);
+            if (rect != null) {
+                rect.y = Math.max(0, rect.y - 50);
+                rect.height = 100;
+                helpPane.scrollRectToVisible(rect);
+            }
+        } catch (BadLocationException e) {
+            // Ignore
+        }
+    }
+
+    private void goToNextMatch() {
+        if (searchMatches.isEmpty()) return;
+        currentMatchIndex = (currentMatchIndex + 1) % searchMatches.size();
+        highlightCurrentMatch();
+        updateSearchResultLabel();
+    }
+
+    private void goToPreviousMatch() {
+        if (searchMatches.isEmpty()) return;
+        currentMatchIndex = (currentMatchIndex - 1 + searchMatches.size()) % searchMatches.size();
+        highlightCurrentMatch();
+        updateSearchResultLabel();
+    }
+
+    private void updateSearchResultLabel() {
+        if (searchMatches.isEmpty()) {
+            searchResultLabel.setText("0 results");
+        } else {
+            searchResultLabel.setText((currentMatchIndex + 1) + "/" + searchMatches.size());
+        }
+    }
+
+    private void clearSearchHighlights() {
+        helpPane.getHighlighter().removeAllHighlights();
     }
 
     private String toHex(Color c) {

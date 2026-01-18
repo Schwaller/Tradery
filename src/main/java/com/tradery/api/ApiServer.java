@@ -21,6 +21,8 @@ import com.tradery.model.AggTrade;
 import com.tradery.model.Candle;
 import com.tradery.model.FundingRate;
 import com.tradery.model.OpenInterest;
+import com.tradery.ui.LauncherFrame;
+import com.tradery.ui.ProjectWindow;
 
 import java.io.IOException;
 import java.io.OutputStream;
@@ -54,6 +56,8 @@ import java.util.regex.Pattern;
  *   GET  /strategy/{id}/results         - Get latest backtest results
  *   GET  /data-status                   - Data coverage and gaps info
  *   GET  /pages                         - Active data pages and listeners (debugging)
+ *   GET  /ui                            - Open windows and chart/indicator config (debugging)
+ *   GET  /thread-dump                   - Thread dump with EDT analysis (debugging)
  */
 public class ApiServer {
 
@@ -116,6 +120,8 @@ public class ApiServer {
         server.createContext("/phase/", phaseHandler::handlePhase);
         server.createContext("/data-status", this::handleDataStatus);
         server.createContext("/pages", this::handlePages);
+        server.createContext("/ui", this::handleUI);
+        server.createContext("/thread-dump", this::handleThreadDump);
 
         server.start();
         System.out.println("API server started on http://localhost:" + actualPort);
@@ -683,12 +689,247 @@ public class ApiServer {
             }
         }
 
+        // Indicator pages (computed layer on top of data pages)
+        var indicatorPageMgr = ctx.getIndicatorPageManager();
+        if (indicatorPageMgr != null) {
+            ArrayNode indicatorPages = response.putArray("indicators");
+            for (var info : indicatorPageMgr.getActivePages()) {
+                ObjectNode pageNode = indicatorPages.addObject();
+                pageNode.put("key", info.key());
+                pageNode.put("type", info.type());
+                pageNode.put("params", info.params());
+                pageNode.put("symbol", info.symbol());
+                if (info.timeframe() != null) {
+                    pageNode.put("timeframe", info.timeframe());
+                }
+                pageNode.put("state", info.state().name());
+                pageNode.put("listeners", info.listenerCount());
+                pageNode.put("hasData", info.hasData());
+                totalPages++;
+                totalListeners += info.listenerCount();
+            }
+        }
+
         // Summary
         ObjectNode summary = response.putObject("summary");
         summary.put("totalPages", totalPages);
         summary.put("totalListeners", totalListeners);
 
         sendJson(exchange, 200, response);
+    }
+
+    /**
+     * Handle UI endpoint - shows open windows and their chart/indicator config.
+     *
+     * GET /ui
+     *
+     * Returns information about all open project windows including symbol,
+     * timeframe, enabled overlays, and enabled indicator charts.
+     */
+    private void handleUI(HttpExchange exchange) throws IOException {
+        if (!checkMethod(exchange, "GET")) return;
+
+        ObjectNode response = mapper.createObjectNode();
+
+        LauncherFrame launcher = LauncherFrame.getInstance();
+        if (launcher == null) {
+            response.put("launcherOpen", false);
+            response.putArray("windows");
+            sendJson(exchange, 200, response);
+            return;
+        }
+
+        response.put("launcherOpen", true);
+
+        // Get all open project windows
+        ArrayNode windows = response.putArray("windows");
+        for (ProjectWindow.WindowInfo info : launcher.getOpenWindowsInfo()) {
+            ObjectNode windowNode = windows.addObject();
+            windowNode.put("strategyId", info.strategyId());
+            windowNode.put("strategyName", info.strategyName());
+            windowNode.put("symbol", info.symbol());
+            windowNode.put("timeframe", info.timeframe());
+            windowNode.put("duration", info.duration());
+            windowNode.put("isVisible", info.isVisible());
+
+            ArrayNode overlays = windowNode.putArray("enabledOverlays");
+            for (String overlay : info.enabledOverlays()) {
+                overlays.add(overlay);
+            }
+
+            ArrayNode indicators = windowNode.putArray("enabledIndicators");
+            for (String indicator : info.enabledIndicators()) {
+                indicators.add(indicator);
+            }
+        }
+
+        response.put("windowCount", launcher.getOpenWindowsInfo().size());
+
+        sendJson(exchange, 200, response);
+    }
+
+    /**
+     * Handle thread dump endpoint - captures all thread states for debugging.
+     *
+     * GET /thread-dump
+     *
+     * Returns stack traces for all threads, with EDT (Event Dispatch Thread)
+     * highlighted at the top. Use this when UI is frozen to identify blocking calls.
+     */
+    private void handleThreadDump(HttpExchange exchange) throws IOException {
+        if (!checkMethod(exchange, "GET")) return;
+
+        ObjectNode response = mapper.createObjectNode();
+        response.put("timestamp", System.currentTimeMillis());
+        response.put("timestampHuman", java.time.Instant.now().toString());
+
+        // Get all thread stack traces
+        Map<Thread, StackTraceElement[]> allThreads = Thread.getAllStackTraces();
+
+        // Find EDT first
+        Thread edtThread = null;
+        StackTraceElement[] edtStack = null;
+        for (Map.Entry<Thread, StackTraceElement[]> entry : allThreads.entrySet()) {
+            Thread t = entry.getKey();
+            if (t.getName().contains("AWT-EventQueue") || t.getName().contains("EDT")) {
+                edtThread = t;
+                edtStack = entry.getValue();
+                break;
+            }
+        }
+
+        // EDT info (most important for UI blocking)
+        ObjectNode edtInfo = response.putObject("edt");
+        if (edtThread != null) {
+            edtInfo.put("name", edtThread.getName());
+            edtInfo.put("state", edtThread.getState().name());
+            edtInfo.put("isBlocked", edtThread.getState() == Thread.State.BLOCKED ||
+                                      edtThread.getState() == Thread.State.WAITING ||
+                                      edtThread.getState() == Thread.State.TIMED_WAITING);
+
+            ArrayNode edtStackArray = edtInfo.putArray("stackTrace");
+            if (edtStack != null) {
+                for (StackTraceElement elem : edtStack) {
+                    edtStackArray.add(elem.toString());
+                }
+            }
+
+            // Quick analysis - what's EDT doing?
+            if (edtStack != null && edtStack.length > 0) {
+                String topFrame = edtStack[0].toString();
+                String analysis = analyzeEdtState(edtStack);
+                edtInfo.put("topFrame", topFrame);
+                edtInfo.put("analysis", analysis);
+            }
+        } else {
+            edtInfo.put("error", "EDT not found");
+        }
+
+        // All threads summary
+        ArrayNode threadsArray = response.putArray("threads");
+        for (Map.Entry<Thread, StackTraceElement[]> entry : allThreads.entrySet()) {
+            Thread t = entry.getKey();
+            StackTraceElement[] stack = entry.getValue();
+
+            ObjectNode threadNode = threadsArray.addObject();
+            threadNode.put("name", t.getName());
+            threadNode.put("state", t.getState().name());
+            threadNode.put("daemon", t.isDaemon());
+            threadNode.put("priority", t.getPriority());
+
+            // Only include stack for interesting threads (not idle daemon threads)
+            boolean isInteresting = t.getState() == Thread.State.BLOCKED ||
+                                    t.getState() == Thread.State.RUNNABLE ||
+                                    t.getName().contains("AWT") ||
+                                    t.getName().contains("Tradery") ||
+                                    t.getName().contains("DataPage") ||
+                                    t.getName().contains("Indicator") ||
+                                    t.getName().contains("pool");
+
+            if (isInteresting && stack.length > 0) {
+                ArrayNode stackArray = threadNode.putArray("stackTrace");
+                // Limit to top 20 frames
+                int limit = Math.min(stack.length, 20);
+                for (int i = 0; i < limit; i++) {
+                    stackArray.add(stack[i].toString());
+                }
+                if (stack.length > limit) {
+                    stackArray.add("... " + (stack.length - limit) + " more frames");
+                }
+            }
+        }
+
+        response.put("threadCount", allThreads.size());
+
+        sendJson(exchange, 200, response);
+    }
+
+    /**
+     * Analyze EDT stack trace to provide quick diagnosis.
+     */
+    private String analyzeEdtState(StackTraceElement[] stack) {
+        if (stack == null || stack.length == 0) {
+            return "No stack trace";
+        }
+
+        // First check for normal idle state (waiting for next event)
+        for (StackTraceElement elem : stack) {
+            if (elem.toString().contains("EventQueue.getNextEvent")) {
+                return "IDLE - Waiting for next event (normal)";
+            }
+        }
+
+        // Look for common blocking patterns
+        for (StackTraceElement elem : stack) {
+            String frame = elem.toString();
+
+            // Database/SQLite blocking
+            if (frame.contains("sqlite") || frame.contains("SqliteDataStore") ||
+                frame.contains("jdbc") || frame.contains("getConnection")) {
+                return "BLOCKED ON DATABASE - SQLite operation on EDT!";
+            }
+
+            // Network/HTTP blocking
+            if (frame.contains("HttpURLConnection") || frame.contains("OkHttp") ||
+                frame.contains("BinanceClient") || frame.contains("Socket") ||
+                frame.contains("SocketInputStream") || frame.contains("HttpClient")) {
+                return "BLOCKED ON NETWORK - HTTP/API call on EDT!";
+            }
+
+            // File I/O blocking
+            if (frame.contains("FileInputStream") || frame.contains("FileOutputStream") ||
+                frame.contains("BufferedReader") || frame.contains("CsvReader") ||
+                frame.contains("Files.read") || frame.contains("Files.write")) {
+                return "BLOCKED ON FILE I/O - File operation on EDT!";
+            }
+
+            // Sleep (intentional or bug)
+            if (frame.contains("Thread.sleep")) {
+                return "BLOCKED ON SLEEP - Thread.sleep on EDT!";
+            }
+
+            // Swing repaint (normal)
+            if (frame.contains("RepaintManager") || frame.contains("paintComponent") ||
+                frame.contains("JComponent.paint")) {
+                return "PAINTING - Rendering UI components (normal)";
+            }
+
+            // Layout (can be slow but normal)
+            if (frame.contains("LayoutManager") || frame.contains("doLayout") ||
+                frame.contains("validateTree")) {
+                return "LAYOUT - Computing component layout";
+            }
+        }
+
+        // Check for lock contention last (less specific)
+        for (StackTraceElement elem : stack) {
+            String frame = elem.toString();
+            if (frame.contains("ReentrantLock.lock") || frame.contains("synchronized")) {
+                return "BLOCKED ON LOCK - Waiting for lock/monitor";
+            }
+        }
+
+        return "BUSY - Check stack trace for details";
     }
 
     // ========== Helpers ==========

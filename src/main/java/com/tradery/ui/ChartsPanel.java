@@ -909,6 +909,17 @@ public class ChartsPanel extends JPanel {
 
     // ===== Chart Update Methods =====
 
+    /**
+     * Set data context for indicator background computation.
+     * Call this before updateCharts() when candles change.
+     */
+    public void setIndicatorDataContext(List<Candle> candles, String symbol, String timeframe,
+                                         long startTime, long endTime) {
+        if (candles != null && !candles.isEmpty()) {
+            indicatorManager.setDataContext(candles, symbol, timeframe, startTime, endTime);
+        }
+    }
+
     public void updateCharts(List<Candle> candles, List<Trade> trades, double initialCapital) {
         if (candles == null || candles.isEmpty()) return;
 

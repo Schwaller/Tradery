@@ -39,7 +39,12 @@ public enum IndicatorType {
     VWAP("VWAP", DataDependency.CANDLES),
     POC("POC", DataDependency.CANDLES),
     VAH("VAH", DataDependency.CANDLES),
-    VAL("VAL", DataDependency.CANDLES);
+    VAL("VAL", DataDependency.CANDLES),
+
+    // Rotating rays (expensive computation)
+    RESISTANCE_RAYS("RESISTANCE_RAYS", DataDependency.CANDLES),
+    SUPPORT_RAYS("SUPPORT_RAYS", DataDependency.CANDLES),
+    HISTORIC_RAYS("HISTORIC_RAYS", DataDependency.CANDLES);
 
     private final String name;
     private final DataDependency dependency;

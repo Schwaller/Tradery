@@ -57,17 +57,11 @@ public class ProjectWindow extends JFrame {
     private JSlider priceOpacitySlider;
     private JToggleButton fitYBtn;
     private JToggleButton fullYBtn;
-    private JButton clearCacheBtn;
     private JButton claudeBtn;
     private JButton codexBtn;
     private JButton historyBtn;
     private JButton phaseAnalysisBtn;
-    private JPanel dataStatusPanel;
-    private JLabel ohlcStatusLabel;
-    private JLabel aggTradesStatusLabel;
-    private JLabel fundingStatusLabel;
-    private JLabel oiStatusLabel;
-    private JLabel premiumStatusLabel;
+    private PageManagerBadgesPanel pageManagerBadges;
 
     // Phase analysis window
     private PhaseAnalysisWindow phaseAnalysisWindow;
@@ -96,7 +90,6 @@ public class ProjectWindow extends JFrame {
 
     // Listener references for cleanup
     private Runnable themeChangeListener;
-    private Runnable chartConfigChangeListener;
 
     public ProjectWindow(Strategy strategy, Consumer<String> onClose) {
         super(strategy.getName() + " - " + TraderyApp.APP_NAME);
@@ -242,11 +235,6 @@ public class ProjectWindow extends JFrame {
         fitYBtn.addActionListener(e -> chartPanel.setFitYAxisToVisibleData(true));
         fullYBtn.addActionListener(e -> chartPanel.setFitYAxisToVisibleData(false));
 
-        // Sync data button
-        clearCacheBtn = new JButton("Sync Data");
-        clearCacheBtn.setToolTipText("Fetch latest OHLC data from Binance");
-        clearCacheBtn.addActionListener(e -> clearCacheAndReload());
-
         // Initialize AI terminal controller
         aiTerminalController = new AiTerminalController(this, this::runBacktest, this::setStatus);
 
@@ -314,23 +302,14 @@ public class ProjectWindow extends JFrame {
         backtestCoordinator.setOnComplete(this::displayResult);
         backtestCoordinator.setOnStatus(this::handleBacktestStatus);
         backtestCoordinator.setOnError(this::showBacktestError);
-        backtestCoordinator.setOnDataStatus(this::handleDataStatus);
         backtestCoordinator.setOnViewDataReady(this::handleViewDataReady);
         backtestCoordinator.setOnDataLoadingProgress(this::handleDataLoadingProgress);
 
-        // Wire up chart config changes to update badges
-        chartConfigChangeListener = this::updateDataRequirementsBadges;
-        ChartConfig.getInstance().addChangeListener(chartConfigChangeListener);
-
         // Wire up panel change listeners
-        editorPanel.setOnChange(() -> {
-            autoSaveScheduler.scheduleUpdate();
-            updateDataRequirementsBadges();
-        });
+        editorPanel.setOnChange(autoSaveScheduler::scheduleUpdate);
         settingsPanel.setOnChange(autoSaveScheduler::scheduleUpdate);
         dataRangePanel.setOnChange(() -> {
             autoSaveScheduler.scheduleUpdate();
-            updateDataRequirementsBadges();
             updateTimeline();
         });
     }
@@ -402,8 +381,6 @@ public class ProjectWindow extends JFrame {
         JPanel toolbarRight = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 4));
         toolbarRight.add(phaseAnalysisBtn);
         toolbarRight.add(historyBtn);
-        toolbarRight.add(Box.createHorizontalStrut(8));
-        toolbarRight.add(clearCacheBtn);
 
         JPanel toolbarPanel = new JPanel(new BorderLayout(0, 0));
         toolbarPanel.add(toolbarLeft, BorderLayout.WEST);
@@ -531,9 +508,9 @@ public class ProjectWindow extends JFrame {
 
         statusPanel.add(leftStatusPanel, BorderLayout.WEST);
 
-        // Data status panel (right) - shows status for each data type
-        dataStatusPanel = createDataStatusPanel();
-        statusPanel.add(dataStatusPanel, BorderLayout.EAST);
+        // Page manager badges (shows checked out pages per manager)
+        pageManagerBadges = new PageManagerBadgesPanel();
+        statusPanel.add(pageManagerBadges, BorderLayout.EAST);
 
         // Click anywhere on status bar to open data loading status window
         statusPanel.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
@@ -556,9 +533,6 @@ public class ProjectWindow extends JFrame {
             editorPanel.setStrategy(strategy);
             dataRangePanel.setStrategy(strategy);
             settingsPanel.setStrategy(strategy);
-
-            // Update data requirements badges (auto-detected from DSL)
-            updateDataRequirementsBadges();
 
             // Update timeline with current data range
             updateTimeline();
@@ -668,36 +642,6 @@ public class ProjectWindow extends JFrame {
                 closeWindow();
             }
         });
-    }
-
-    private void clearCacheAndReload() {
-        String symbol = dataRangePanel.getSymbol();
-
-        clearCacheBtn.setEnabled(false);
-        statusManager.startBacktest("Clearing cache for " + symbol + "...");
-
-        SwingWorker<Void, Void> worker = new SwingWorker<>() {
-            @Override
-            protected Void doInBackground() throws Exception {
-                // TODO: Implement SQLite cache clearing
-                // For now, just re-run backtest to refresh from DB
-                return null;
-            }
-
-            @Override
-            protected void done() {
-                clearCacheBtn.setEnabled(true);
-                try {
-                    get();
-                    statusManager.startBacktest("Cache refreshed - reloading data...");
-                    runBacktest();
-                } catch (Exception e) {
-                    statusManager.setErrorStatus("Error clearing cache: " + e.getMessage());
-                }
-            }
-        };
-
-        worker.execute();
     }
 
     private void showHistory() {
@@ -812,6 +756,12 @@ public class ProjectWindow extends JFrame {
             // Pass indicator engine to charts for orderflow/funding data
             chartPanel.setIndicatorEngine(backtestCoordinator.getIndicatorEngine());
 
+            // Set data context for background indicator computation
+            long startTime = candles.get(0).timestamp();
+            long endTime = candles.get(candles.size() - 1).timestamp();
+            chartPanel.setIndicatorDataContext(candles, dataRangePanel.getSymbol(),
+                dataRangePanel.getTimeframe(), startTime, endTime);
+
             chartPanel.updateCharts(candles, result.trades(), result.config().initialCapital());
 
             // Apply saved overlays
@@ -856,30 +806,6 @@ public class ProjectWindow extends JFrame {
     }
 
     /**
-     * Create the data status panel for the status bar.
-     * Shows status for each data type: OHLC, AggTrades, Funding, OI
-     */
-    private JPanel createDataStatusPanel() {
-        JPanel panel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 12, 0));
-        panel.setOpaque(false);
-
-        // Create status labels for each data type
-        ohlcStatusLabel = createStatusLabel("OHLC");
-        aggTradesStatusLabel = createStatusLabel("AggTrades");
-        fundingStatusLabel = createStatusLabel("Funding");
-        oiStatusLabel = createStatusLabel("OI");
-        premiumStatusLabel = createStatusLabel("Premium");
-
-        panel.add(ohlcStatusLabel);
-        panel.add(aggTradesStatusLabel);
-        panel.add(fundingStatusLabel);
-        panel.add(oiStatusLabel);
-        panel.add(premiumStatusLabel);
-
-        return panel;
-    }
-
-    /**
      * Open the data loading status window.
      */
     private void openDataLoadingStatusWindow(Component anchor) {
@@ -887,163 +813,6 @@ public class ProjectWindow extends JFrame {
             dataLoadingStatusWindow = new DataLoadingStatusWindow(this);
         }
         dataLoadingStatusWindow.showNear(anchor);
-    }
-
-    private JLabel createStatusLabel(String dataType) {
-        JLabel label = new JLabel();
-        label.setFont(label.getFont().deriveFont(Font.PLAIN, 10f));
-        label.setName(dataType); // Store data type for updates
-
-        // Add mouse listener to update tooltip dynamically with consumer info
-        label.addMouseListener(new java.awt.event.MouseAdapter() {
-            @Override
-            public void mouseEntered(java.awt.event.MouseEvent e) {
-                String tooltip = buildConsumerTooltip(dataType);
-                label.setToolTipText(tooltip);
-            }
-        });
-
-        return label;
-    }
-
-    /**
-     * Build tooltip showing data type status.
-     */
-    private String buildConsumerTooltip(String dataTypeName) {
-        boolean isLoaded = isDataLoaded(dataTypeName);
-        String status = isLoaded ? "ready" : "not loaded";
-        return "<html><b>" + dataTypeName + "</b><br>Status: " + status + "</html>";
-    }
-
-    /**
-     * Update data status labels based on requirements and availability.
-     * Shows: "--" (not required) / "required" / "ready"
-     */
-    private void updateDataRequirementsBadges() {
-        if (ohlcStatusLabel == null) return;
-
-        // Get chart config for active indicators
-        ChartConfig chartConfig = ChartConfig.getInstance();
-
-        // Check what data is required from DSL
-        boolean needsAggTradesFromDSL = strategy != null && strategy.requiresAggTrades();
-        boolean needsOIFromDSL = strategy != null && strategy.usesOpenInterest();
-        boolean needsPremiumFromDSL = strategy != null && strategy.requiresPremium();
-
-        // Check what data is required from active charts
-        boolean needsAggTradesFromCharts = chartConfig.isDeltaEnabled() ||
-                                           chartConfig.isCvdEnabled() ||
-                                           chartConfig.isWhaleEnabled() ||
-                                           chartConfig.isRetailEnabled();
-        boolean needsFundingFromCharts = chartConfig.isFundingEnabled();
-        boolean needsOIFromCharts = chartConfig.isOiEnabled();
-        boolean needsPremiumFromCharts = chartConfig.isPremiumEnabled();
-
-        // Check if sub-minute timeframe (always needs aggTrades, no separate OHLC)
-        String timeframe = dataRangePanel.getTimeframe();
-        boolean isSubMinute = timeframe != null && timeframe.endsWith("s");
-
-        // Combine requirements
-        boolean needsOHLC = !isSubMinute; // Sub-minute generates candles from aggTrades
-        boolean needsAggTrades = isSubMinute || needsAggTradesFromDSL || needsAggTradesFromCharts;
-        boolean needsFunding = needsFundingFromCharts;
-        boolean needsOI = needsOIFromDSL || needsOIFromCharts;
-        boolean needsPremium = needsPremiumFromDSL || needsPremiumFromCharts;
-
-        // Update status labels
-        updateStatusLabel(ohlcStatusLabel, "OHLC", needsOHLC);
-        updateStatusLabel(aggTradesStatusLabel, "AggTrades", needsAggTrades);
-        updateStatusLabel(fundingStatusLabel, "Funding", needsFunding);
-        updateStatusLabel(oiStatusLabel, "OI", needsOI);
-        updateStatusLabel(premiumStatusLabel, "Premium", needsPremium);
-    }
-
-    private void updateStatusLabel(JLabel label, String dataType, boolean required) {
-        if (!required) {
-            label.setText(dataType + ": -");
-            label.setForeground(UIColors.STATUS_UNKNOWN);
-            label.setToolTipText(dataType + " not required for current strategy");
-        } else {
-            // Check if data is loaded (simplified - actual check would need backtest coordinator state)
-            boolean isLoaded = isDataLoaded(dataType);
-            if (isLoaded) {
-                label.setText(dataType + ": ready");
-                label.setForeground(UIColors.STATUS_READY);
-                label.setToolTipText(dataType + " data loaded");
-            } else {
-                // Show pending status - will load on backtest
-                label.setText(dataType + ": pending");
-                label.setForeground(UIColors.STATUS_LOADING);
-
-                // OI has special limitations
-                if ("OI".equals(dataType)) {
-                    label.setToolTipText("Open Interest will load on backtest (Note: Binance limits OI history to 30 days)");
-                } else {
-                    label.setToolTipText(dataType + " will be fetched on next backtest");
-                }
-            }
-        }
-    }
-
-    /**
-     * Check if data type is currently loaded.
-     * Returns true if last backtest loaded this data type.
-     */
-    private boolean isDataLoaded(String dataType) {
-        // Check if we have data from last backtest
-        return switch (dataType) {
-            case "OHLC" -> backtestCoordinator.getCurrentCandles() != null &&
-                          !backtestCoordinator.getCurrentCandles().isEmpty();
-            case "AggTrades" -> backtestCoordinator.getCurrentAggTrades() != null &&
-                               !backtestCoordinator.getCurrentAggTrades().isEmpty();
-            case "Funding" -> backtestCoordinator.getCurrentFundingRates() != null &&
-                             !backtestCoordinator.getCurrentFundingRates().isEmpty();
-            case "OI" -> backtestCoordinator.getCurrentOpenInterest() != null &&
-                        !backtestCoordinator.getCurrentOpenInterest().isEmpty();
-            case "Premium" -> backtestCoordinator.getCurrentPremiumIndex() != null &&
-                             !backtestCoordinator.getCurrentPremiumIndex().isEmpty();
-            default -> false;
-        };
-    }
-
-    /**
-     * Handle data status updates from backtest coordinator.
-     * @param dataType One of: "OHLC", "AggTrades", "Funding", "OI"
-     * @param status One of: "loading", "ready", "error"
-     */
-    private void handleDataStatus(String dataType, String status) {
-        JLabel label = switch (dataType) {
-            case "OHLC" -> ohlcStatusLabel;
-            case "AggTrades" -> aggTradesStatusLabel;
-            case "Funding" -> fundingStatusLabel;
-            case "OI" -> oiStatusLabel;
-            case "Premium" -> premiumStatusLabel;
-            default -> null;
-        };
-        if (label == null) return;
-
-        switch (status) {
-            case "loading" -> {
-                label.setText(dataType + ": loading...");
-                label.setForeground(UIColors.STATUS_LOADING_ACCENT);
-                label.setToolTipText("Loading " + dataType + " data...");
-            }
-            case "ready" -> {
-                label.setText(dataType + ": ready");
-                label.setForeground(UIColors.STATUS_READY);
-                label.setToolTipText(dataType + " data loaded");
-            }
-            case "error" -> {
-                label.setText(dataType + ": unavailable");
-                label.setForeground(UIColors.STATUS_ERROR);
-                // OI has special error message about 30-day limit
-                if ("OI".equals(dataType)) {
-                    label.setToolTipText("Open Interest unavailable - Binance limits OI history to 30 days from today");
-                } else {
-                    label.setToolTipText(dataType + " data could not be loaded");
-                }
-            }
-        }
     }
 
     /**
@@ -1136,10 +905,6 @@ public class ProjectWindow extends JFrame {
         if (themeChangeListener != null) {
             com.tradery.ui.theme.ThemeManager.getInstance().removeThemeChangeListener(themeChangeListener);
         }
-        if (chartConfigChangeListener != null) {
-            ChartConfig.getInstance().removeChangeListener(chartConfigChangeListener);
-        }
-
         // Close auxiliary windows
         if (phaseAnalysisWindow != null) {
             phaseAnalysisWindow.dispose();
@@ -1156,7 +921,6 @@ public class ProjectWindow extends JFrame {
             backtestCoordinator.setOnComplete(null);
             backtestCoordinator.setOnStatus(null);
             backtestCoordinator.setOnError(null);
-            backtestCoordinator.setOnDataStatus(null);
             backtestCoordinator.setOnViewDataReady(null);
             backtestCoordinator.setOnDataLoadingProgress(null);
         }
@@ -1198,5 +962,112 @@ public class ProjectWindow extends JFrame {
     public void bringToFront() {
         toFront();
         requestFocus();
+    }
+
+    /**
+     * Info about this window for debugging API.
+     */
+    public record WindowInfo(
+        String strategyId,
+        String strategyName,
+        String symbol,
+        String timeframe,
+        String duration,
+        boolean isVisible,
+        List<String> enabledOverlays,
+        List<String> enabledIndicators
+    ) {}
+
+    /**
+     * Get info about this window for the debugging API.
+     */
+    public WindowInfo getWindowInfo() {
+        String symbol = dataRangePanel != null ? dataRangePanel.getSymbol() : "";
+        String timeframe = dataRangePanel != null ? dataRangePanel.getTimeframe() : "";
+        String duration = dataRangePanel != null ? dataRangePanel.getDuration() : "";
+
+        // Collect enabled overlays and indicators from ChartConfig
+        List<String> overlays = new java.util.ArrayList<>();
+        List<String> indicators = new java.util.ArrayList<>();
+
+        ChartConfig config = ChartConfig.getInstance();
+
+        // Overlays
+        if (config.isSmaEnabled() || !config.getSmaPeriods().isEmpty()) {
+            overlays.add("SMA");
+        }
+        if (config.isEmaEnabled() || !config.getEmaPeriods().isEmpty()) {
+            overlays.add("EMA");
+        }
+        if (config.isBollingerEnabled()) {
+            overlays.add("BBANDS");
+        }
+        if (config.isHighLowEnabled()) {
+            overlays.add("HighLow");
+        }
+        if (config.isMayerEnabled()) {
+            overlays.add("Mayer");
+        }
+        if (config.isVwapEnabled()) {
+            overlays.add("VWAP");
+        }
+        if (config.isDailyPocEnabled()) {
+            overlays.add("DailyPOC");
+        }
+        if (config.isFloatingPocEnabled()) {
+            overlays.add("FloatingPOC");
+        }
+        if (config.isRayOverlayEnabled()) {
+            overlays.add("Rays");
+        }
+        if (config.isIchimokuEnabled()) {
+            overlays.add("Ichimoku");
+        }
+
+        // Indicator charts
+        if (config.isRsiEnabled()) {
+            indicators.add("RSI(" + config.getRsiPeriod() + ")");
+        }
+        if (config.isMacdEnabled()) {
+            indicators.add("MACD");
+        }
+        if (config.isAtrEnabled()) {
+            indicators.add("ATR(" + config.getAtrPeriod() + ")");
+        }
+        if (config.isStochasticEnabled()) {
+            indicators.add("STOCHASTIC");
+        }
+        if (config.isRangePositionEnabled()) {
+            indicators.add("RANGE_POSITION");
+        }
+        if (config.isAdxEnabled()) {
+            indicators.add("ADX(" + config.getAdxPeriod() + ")");
+        }
+        if (config.isDeltaEnabled()) {
+            indicators.add("DELTA");
+        }
+        if (config.isCvdEnabled()) {
+            indicators.add("CVD");
+        }
+        if (config.isFundingEnabled()) {
+            indicators.add("FUNDING");
+        }
+        if (config.isOiEnabled()) {
+            indicators.add("OI");
+        }
+        if (config.isPremiumEnabled()) {
+            indicators.add("PREMIUM");
+        }
+
+        return new WindowInfo(
+            strategy.getId(),
+            strategy.getName(),
+            symbol,
+            timeframe,
+            duration,
+            isVisible(),
+            overlays,
+            indicators
+        );
     }
 }

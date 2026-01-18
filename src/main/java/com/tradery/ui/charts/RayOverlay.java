@@ -1,6 +1,12 @@
 package com.tradery.ui.charts;
 
-import com.tradery.indicators.IndicatorEngine;
+import com.tradery.ApplicationContext;
+import com.tradery.data.PageState;
+import com.tradery.data.page.IndicatorPage;
+import com.tradery.data.page.IndicatorPageListener;
+import com.tradery.data.page.IndicatorPageManager;
+import com.tradery.data.page.IndicatorPageManager.HistoricRays;
+import com.tradery.data.page.IndicatorType;
 import com.tradery.indicators.RotatingRays.Ray;
 import com.tradery.indicators.RotatingRays.RaySet;
 import com.tradery.model.Candle;
@@ -23,11 +29,7 @@ import java.util.List;
  * Resistance rays: drawn from ATH through successive peaks, descending
  * Support rays: drawn from ATL through successive troughs, ascending
  *
- * Visual styling:
- * - Unbroken rays: solid lines (darker)
- * - Broken rays: dashed lines (brighter, more visible)
- * - Ray colors gradient by number (ray 1 = most significant)
- * - Peak/trough markers at ray connection points
+ * Uses IndicatorPageManager for background computation - never blocks EDT.
  */
 public class RayOverlay {
 
@@ -41,38 +43,56 @@ public class RayOverlay {
     private boolean showResistance = true;
     private boolean showSupport = true;
     private boolean showHistoricRays = false;
-    private int historicRayInterval = 1; // Draw historic rays every N bars (1 = every bar)
+    private int historicRayInterval = 1;
+
+    // Current data context
+    private List<Candle> currentCandles;
+    private String currentSymbol;
+    private String currentTimeframe;
+    private long currentStartTime;
+    private long currentEndTime;
+
+    // Indicator pages (background computed)
+    private IndicatorPage<RaySet> resistancePage;
+    private IndicatorPage<RaySet> supportPage;
+    private IndicatorPage<HistoricRays> historicPage;
+
+    // Listeners (stored to release later)
+    private final RayPageListener resistanceListener = new RayPageListener();
+    private final RayPageListener supportListener = new RayPageListener();
+    private final HistoricRayPageListener historicListener = new HistoricRayPageListener();
+
+    // Callback for repaint
+    private Runnable onDataReady;
 
     // Colors - resistance rays (blue gradient, brighter = broken)
     private static final Color[] RESISTANCE_COLORS = {
-        new Color(30, 90, 180),      // Ray 1 - dark blue (most significant)
-        new Color(50, 110, 200),     // Ray 2
-        new Color(70, 130, 220),     // Ray 3
-        new Color(90, 150, 235),     // Ray 4
-        new Color(110, 170, 250)     // Ray 5+ - lightest blue
+        new Color(30, 90, 180),
+        new Color(50, 110, 200),
+        new Color(70, 130, 220),
+        new Color(90, 150, 235),
+        new Color(110, 170, 250)
     };
 
-    // Broken resistance rays are brighter
     private static final Color[] RESISTANCE_BROKEN_COLORS = {
-        new Color(100, 160, 255),    // Ray 1 broken - bright blue
+        new Color(100, 160, 255),
         new Color(120, 175, 255),
         new Color(140, 190, 255),
         new Color(160, 205, 255),
         new Color(180, 220, 255)
     };
 
-    // Colors - support rays (violet gradient, brighter = broken)
+    // Colors - support rays (violet gradient)
     private static final Color[] SUPPORT_COLORS = {
-        new Color(120, 50, 160),     // Ray 1 - dark violet (most significant)
-        new Color(140, 70, 180),     // Ray 2
-        new Color(160, 90, 200),     // Ray 3
-        new Color(180, 110, 220),    // Ray 4
-        new Color(200, 130, 240)     // Ray 5+ - lightest violet
+        new Color(120, 50, 160),
+        new Color(140, 70, 180),
+        new Color(160, 90, 200),
+        new Color(180, 110, 220),
+        new Color(200, 130, 240)
     };
 
-    // Broken support rays are brighter
     private static final Color[] SUPPORT_BROKEN_COLORS = {
-        new Color(180, 120, 255),    // Ray 1 broken - bright violet
+        new Color(180, 120, 255),
         new Color(190, 140, 255),
         new Color(200, 160, 255),
         new Color(210, 180, 255),
@@ -93,6 +113,10 @@ public class RayOverlay {
 
     public RayOverlay(JFreeChart priceChart) {
         this.priceChart = priceChart;
+    }
+
+    public void setOnDataReady(Runnable callback) {
+        this.onDataReady = callback;
     }
 
     // ===== Settings =====
@@ -146,78 +170,132 @@ public class RayOverlay {
     }
 
     public void setHistoricRayInterval(int interval) {
-        this.historicRayInterval = Math.max(1, interval); // Minimum 1 bar
+        this.historicRayInterval = Math.max(1, interval);
     }
 
     public int getHistoricRayInterval() {
         return historicRayInterval;
     }
 
-    // ===== Drawing =====
+    // ===== Data Request =====
 
     /**
-     * Update the ray overlay with current data.
-     * Call this when candles change or when toggling the overlay.
+     * Request ray computation for given candles.
+     * This is non-blocking - rays will be computed in background.
+     * Call redraw() to draw whatever data is currently available.
      */
-    public void update(List<Candle> candles, IndicatorEngine engine) {
-        clear();
-
-        if (!enabled || candles == null || candles.isEmpty() || engine == null) {
+    public void requestData(List<Candle> candles, String symbol, String timeframe,
+                            long startTime, long endTime) {
+        if (candles == null || candles.isEmpty()) {
+            releasePages();
             return;
         }
 
-        XYPlot plot = priceChart.getXYPlot();
-        int lastBarIndex = candles.size() - 1;
+        this.currentCandles = candles;
+        this.currentSymbol = symbol;
+        this.currentTimeframe = timeframe;
+        this.currentStartTime = startTime;
+        this.currentEndTime = endTime;
 
-        // Draw historic rays first (so current rays are on top)
-        if (showHistoricRays) {
-            drawHistoricRays(plot, candles, engine);
+        if (!enabled) {
+            releasePages();
+            return;
         }
 
-        // Draw resistance rays (current, using full dataset)
+        IndicatorPageManager pageMgr = ApplicationContext.getInstance().getIndicatorPageManager();
+        if (pageMgr == null) return;
+
+        // Request resistance rays
         if (showResistance) {
-            RaySet resistanceRays = engine.getResistanceRaySet(lookback, skip);
-            if (resistanceRays != null && resistanceRays.count() > 0) {
-                drawRaySet(plot, candles, resistanceRays, lastBarIndex, true);
-            }
+            String params = lookback + ":" + skip;
+            resistancePage = pageMgr.request(
+                IndicatorType.RESISTANCE_RAYS, params,
+                symbol, timeframe, startTime, endTime,
+                resistanceListener);
         }
 
-        // Draw support rays (current, using full dataset)
+        // Request support rays
         if (showSupport) {
-            RaySet supportRays = engine.getSupportRaySet(lookback, skip);
-            if (supportRays != null && supportRays.count() > 0) {
-                drawRaySet(plot, candles, supportRays, lastBarIndex, false);
-            }
+            String params = lookback + ":" + skip;
+            supportPage = pageMgr.request(
+                IndicatorType.SUPPORT_RAYS, params,
+                symbol, timeframe, startTime, endTime,
+                supportListener);
+        }
+
+        // Request historic rays
+        if (showHistoricRays) {
+            String params = skip + ":" + historicRayInterval;
+            historicPage = pageMgr.request(
+                IndicatorType.HISTORIC_RAYS, params,
+                symbol, timeframe, startTime, endTime,
+                historicListener);
         }
     }
 
     /**
-     * Draw historic rays showing how rays looked at past points in time.
-     * Computes rays at every bar for full fidelity replay.
-     *
-     * Uses lookback=0 (unlimited) so rays search ALL available data at each historic bar.
-     * This ensures meaningful slopes based on full price movements, not constrained windows.
+     * Release indicator pages when no longer needed.
      */
-    private void drawHistoricRays(XYPlot plot, List<Candle> candles, IndicatorEngine engine) {
-        int startBar = Math.max(20, historicRayInterval); // Need minimum data for ATH/ATL
-        int lastBar = candles.size() - 1;
+    public void releasePages() {
+        IndicatorPageManager pageMgr = ApplicationContext.getInstance().getIndicatorPageManager();
+        if (pageMgr == null) return;
 
-        // Compute and draw rays at each bar
-        for (int barIndex = startBar; barIndex < lastBar; barIndex += Math.max(1, historicRayInterval)) {
-            if (showResistance) {
-                // Use lookback=0 (unlimited) for historic rays to get meaningful slopes
-                RaySet historicResistance = engine.getResistanceRaySetAt(0, skip, barIndex);
-                if (historicResistance != null && historicResistance.count() > 0) {
-                    drawHistoricRaySet(plot, candles, historicResistance, barIndex, true);
-                }
+        if (resistancePage != null) {
+            pageMgr.release(resistancePage, resistanceListener);
+            resistancePage = null;
+        }
+        if (supportPage != null) {
+            pageMgr.release(supportPage, supportListener);
+            supportPage = null;
+        }
+        if (historicPage != null) {
+            pageMgr.release(historicPage, historicListener);
+            historicPage = null;
+        }
+    }
+
+    // ===== Drawing =====
+
+    /**
+     * Redraw rays using currently available data.
+     * This is fast - no computation, just draws pre-computed rays.
+     */
+    public void redraw() {
+        clear();
+
+        if (!enabled || currentCandles == null || currentCandles.isEmpty()) {
+            return;
+        }
+
+        XYPlot plot = priceChart.getXYPlot();
+        int lastBarIndex = currentCandles.size() - 1;
+
+        // Draw historic rays first (so current rays are on top)
+        if (showHistoricRays && historicPage != null && historicPage.hasData()) {
+            drawHistoricRays(plot, historicPage.getData());
+        }
+
+        // Draw current resistance rays
+        if (showResistance && resistancePage != null && resistancePage.hasData()) {
+            drawRaySet(plot, currentCandles, resistancePage.getData(), lastBarIndex, true);
+        }
+
+        // Draw current support rays
+        if (showSupport && supportPage != null && supportPage.hasData()) {
+            drawRaySet(plot, currentCandles, supportPage.getData(), lastBarIndex, false);
+        }
+    }
+
+    /**
+     * Draw historic rays from pre-computed data.
+     */
+    private void drawHistoricRays(XYPlot plot, HistoricRays historicRays) {
+        for (HistoricRays.HistoricRayEntry entry : historicRays.entries()) {
+            if (showResistance && entry.resistance() != null && entry.resistance().count() > 0) {
+                drawHistoricRaySet(plot, currentCandles, entry.resistance(), entry.barIndex(), true);
             }
-
-            if (showSupport) {
-                // Use lookback=0 (unlimited) for historic rays to get meaningful slopes
-                RaySet historicSupport = engine.getSupportRaySetAt(0, skip, barIndex);
-                if (historicSupport != null && historicSupport.count() > 0) {
-                    drawHistoricRaySet(plot, candles, historicSupport, barIndex, false);
-                }
+            if (showSupport && entry.support() != null && entry.support().count() > 0) {
+                drawHistoricRaySet(plot, currentCandles, entry.support(), entry.barIndex(), false);
             }
         }
     }
@@ -225,31 +303,17 @@ public class RayOverlay {
     /**
      * Draw a historic ray set (from a past bar) in greyish color.
      * Only draws Ray 1 (most significant) to avoid visual clutter.
-     * Skips nearly horizontal rays (slope too small to be meaningful).
      */
     private void drawHistoricRaySet(XYPlot plot, List<Candle> candles, RaySet raySet, int atBar, boolean isResistance) {
         if (raySet.count() < 1) return;
 
-        // Only draw Ray 1 for historic visualization (less clutter)
         Ray ray = raySet.getRay(1);
         if (ray == null) return;
 
-        // TODO: Re-enable horizontal filter after debugging
-        // Skip nearly horizontal rays - they're not meaningful trendlines
-        // double slopePercent = Math.abs(ray.slope() / ray.startPrice()) * 100;
-        // if (slopePercent < 0.001) {
-        //     return; // Too flat, skip
-        // }
-
         Color color = isResistance ? HISTORIC_RESISTANCE_COLOR : HISTORIC_SUPPORT_COLOR;
-
-        // Draw the ray line from its start to the atBar point (where it was computed)
         addHistoricRayLine(plot, candles, ray, atBar, color);
     }
 
-    /**
-     * Draw a historic ray line segment (from ray start to the bar where it was computed).
-     */
     private void addHistoricRayLine(XYPlot plot, List<Candle> candles, Ray ray, int toBar, Color color) {
         int startBar = ray.startBar();
         if (startBar < 0 || startBar >= candles.size() || toBar >= candles.size()) return;
@@ -283,26 +347,19 @@ public class RayOverlay {
         Color[] normalColors = isResistance ? RESISTANCE_COLORS : SUPPORT_COLORS;
         Color[] brokenColors = isResistance ? RESISTANCE_BROKEN_COLORS : SUPPORT_BROKEN_COLORS;
 
-        // Draw anchor point marker (ATH/ATL)
         addAnchorMarker(plot, candles, raySet);
 
-        // Draw each ray
         for (int rayNum = 1; rayNum <= raySet.count(); rayNum++) {
             Ray ray = raySet.getRay(rayNum);
             if (ray == null) continue;
 
-            // Determine if ray is broken at current bar
             boolean isBroken = isRayBrokenAtBar(raySet, rayNum, candles, currentBar);
 
-            // Select colors and stroke based on broken status
             int colorIdx = Math.min(rayNum - 1, normalColors.length - 1);
             Color color = isBroken ? brokenColors[colorIdx] : normalColors[colorIdx];
             BasicStroke stroke = isBroken ? DASHED_STROKE : SOLID_STROKE;
 
-            // Draw the ray line (extends from start to end of visible data)
             addRayLine(plot, candles, ray, color, stroke);
-
-            // Add peak/trough marker at ray endpoints
             addEndpointMarker(plot, candles, ray, color);
         }
     }
@@ -330,7 +387,6 @@ public class RayOverlay {
         long timestamp = candles.get(anchorBar).timestamp();
         double price = raySet.anchorPrice();
         Color baseColor = raySet.isResistance() ? RESISTANCE_COLORS[0] : SUPPORT_COLORS[0];
-        // Make slightly transparent
         Color color = new Color(baseColor.getRed(), baseColor.getGreen(), baseColor.getBlue(), 180);
 
         AbstractXYAnnotation marker = new AbstractXYAnnotation() {
@@ -341,7 +397,6 @@ public class RayOverlay {
                 double x = domainAxis.valueToJava2D(timestamp, dataArea, plot.getDomainAxisEdge());
                 double y = rangeAxis.valueToJava2D(price, dataArea, plot.getRangeAxisEdge());
 
-                // Draw unfilled circle for ATH/ATL anchor
                 g2.setColor(color);
                 g2.setStroke(new BasicStroke(2.0f));
                 double size = 10.0;
@@ -353,7 +408,6 @@ public class RayOverlay {
     }
 
     private void addRayLine(XYPlot plot, List<Candle> candles, Ray ray, Color color, BasicStroke stroke) {
-        // Ray extends from its start point to the end of the chart
         int startBar = ray.startBar();
         int endBar = candles.size() - 1;
 
@@ -385,7 +439,6 @@ public class RayOverlay {
     }
 
     private void addEndpointMarker(XYPlot plot, List<Candle> candles, Ray ray, Color color) {
-        // Mark the end point (next peak/trough) of the ray
         int endBar = ray.endBar();
         if (endBar < 0 || endBar >= candles.size()) return;
 
@@ -400,7 +453,6 @@ public class RayOverlay {
                 double x = domainAxis.valueToJava2D(timestamp, dataArea, plot.getDomainAxisEdge());
                 double y = rangeAxis.valueToJava2D(price, dataArea, plot.getRangeAxisEdge());
 
-                // Draw small circle marker
                 g2.setColor(color);
                 double size = 5.0;
                 g2.fill(new Ellipse2D.Double(x - size/2, y - size/2, size, size));
@@ -410,9 +462,6 @@ public class RayOverlay {
         annotations.add(marker);
     }
 
-    /**
-     * Clear all ray annotations from the chart.
-     */
     public void clear() {
         if (priceChart == null) return;
 
@@ -421,5 +470,65 @@ public class RayOverlay {
             plot.removeAnnotation(annotation);
         }
         annotations.clear();
+    }
+
+    // ===== Listeners =====
+
+    private class RayPageListener implements IndicatorPageListener<RaySet> {
+        @Override
+        public void onStateChanged(IndicatorPage<RaySet> page, PageState oldState, PageState newState) {
+            if (newState == PageState.READY) {
+                redraw();
+                if (onDataReady != null) {
+                    onDataReady.run();
+                }
+            }
+        }
+
+        @Override
+        public void onDataChanged(IndicatorPage<RaySet> page) {
+            redraw();
+            if (onDataReady != null) {
+                onDataReady.run();
+            }
+        }
+    }
+
+    private class HistoricRayPageListener implements IndicatorPageListener<HistoricRays> {
+        @Override
+        public void onStateChanged(IndicatorPage<HistoricRays> page, PageState oldState, PageState newState) {
+            if (newState == PageState.READY) {
+                redraw();
+                if (onDataReady != null) {
+                    onDataReady.run();
+                }
+            }
+        }
+
+        @Override
+        public void onDataChanged(IndicatorPage<HistoricRays> page) {
+            redraw();
+            if (onDataReady != null) {
+                onDataReady.run();
+            }
+        }
+    }
+
+    // ===== Legacy API (for compatibility during transition) =====
+
+    /**
+     * @deprecated Use requestData() + redraw() instead
+     */
+    @Deprecated
+    public void update(List<Candle> candles, com.tradery.indicators.IndicatorEngine engine) {
+        if (candles == null || candles.isEmpty()) {
+            clear();
+            return;
+        }
+        // For now, just request data - the background computation will trigger redraw
+        requestData(candles, "BTCUSDT", "1h",
+            candles.get(0).timestamp(),
+            candles.get(candles.size() - 1).timestamp());
+        redraw();
     }
 }

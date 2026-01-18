@@ -2,11 +2,14 @@ package com.tradery.data.page;
 
 import com.tradery.data.PageState;
 import com.tradery.indicators.Indicators;
+import com.tradery.indicators.RotatingRays;
+import com.tradery.indicators.RotatingRays.RaySet;
 import com.tradery.model.Candle;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.swing.SwingUtilities;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -240,8 +243,65 @@ public class IndicatorPageManager {
                     Integer.parseInt(p[0]),
                     Double.parseDouble(p[1]));
             }
+            case RESISTANCE_RAYS -> {
+                String[] p = params.split(":");
+                int lookback = Integer.parseInt(p[0]);
+                int skip = Integer.parseInt(p[1]);
+                yield RotatingRays.calculateResistanceRays(candles, lookback, skip);
+            }
+            case SUPPORT_RAYS -> {
+                String[] p = params.split(":");
+                int lookback = Integer.parseInt(p[0]);
+                int skip = Integer.parseInt(p[1]);
+                yield RotatingRays.calculateSupportRays(candles, lookback, skip);
+            }
+            case HISTORIC_RAYS -> {
+                // Compute rays at multiple bar positions for historic visualization
+                String[] p = params.split(":");
+                int skip = Integer.parseInt(p[0]);
+                int interval = Integer.parseInt(p[1]);
+                yield computeHistoricRays(candles, skip, interval);
+            }
+            case STOCHASTIC -> {
+                String[] p = params.split(":");
+                int kPeriod = Integer.parseInt(p[0]);
+                int dPeriod = Integer.parseInt(p[1]);
+                yield Indicators.stochastic(candles, kPeriod, dPeriod);
+            }
             default -> throw new UnsupportedOperationException("Indicator not implemented: " + type);
         };
+    }
+
+    /**
+     * Result of historic ray computation - rays at multiple bar positions.
+     */
+    public record HistoricRays(
+        List<HistoricRayEntry> entries,
+        int skip,
+        int interval
+    ) {
+        public record HistoricRayEntry(int barIndex, RaySet resistance, RaySet support) {}
+    }
+
+    /**
+     * Compute rays at multiple bar positions for historic visualization.
+     * Uses lookback=0 (unlimited) to get meaningful slopes.
+     */
+    private HistoricRays computeHistoricRays(List<Candle> candles, int skip, int interval) {
+        List<HistoricRays.HistoricRayEntry> entries = new ArrayList<>();
+        int startBar = Math.max(20, interval);
+        int lastBar = candles.size() - 1;
+
+        for (int barIndex = startBar; barIndex < lastBar; barIndex += Math.max(1, interval)) {
+            // Compute rays at this bar position (lookback=0 for unlimited)
+            List<Candle> candlesUpToBar = candles.subList(0, barIndex + 1);
+            RaySet resistance = RotatingRays.calculateResistanceRays(candlesUpToBar, 0, skip);
+            RaySet support = RotatingRays.calculateSupportRays(candlesUpToBar, 0, skip);
+            entries.add(new HistoricRays.HistoricRayEntry(barIndex, resistance, support));
+        }
+
+        log.debug("Computed historic rays: {} entries", entries.size());
+        return new HistoricRays(entries, skip, interval);
     }
 
     /**
@@ -318,6 +378,43 @@ public class IndicatorPageManager {
      */
     public int getActivePageCount() {
         return pages.size();
+    }
+
+    /**
+     * Info about an indicator page for debugging.
+     */
+    public record IndicatorPageInfo(
+        String key,
+        String type,
+        String params,
+        String symbol,
+        String timeframe,
+        PageState state,
+        int listenerCount,
+        boolean hasData
+    ) {}
+
+    /**
+     * Get info about all active indicator pages.
+     */
+    public List<IndicatorPageInfo> getActivePages() {
+        List<IndicatorPageInfo> result = new java.util.ArrayList<>();
+        for (Map.Entry<String, IndicatorPage<?>> entry : pages.entrySet()) {
+            IndicatorPage<?> page = entry.getValue();
+            Set<?> pageListeners = listeners.get(entry.getKey());
+            int listenerCount = pageListeners != null ? pageListeners.size() : 0;
+            result.add(new IndicatorPageInfo(
+                entry.getKey(),
+                page.getType().getName(),
+                page.getParams(),
+                page.getSymbol(),
+                page.getTimeframe(),
+                page.getState(),
+                listenerCount,
+                page.hasData()
+            ));
+        }
+        return result;
     }
 
     /**
