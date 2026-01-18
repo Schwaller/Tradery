@@ -260,6 +260,38 @@ public class FundingRateStore {
     }
 
     /**
+     * Get funding rates from cache only (no API calls).
+     * Returns immediately with whatever is available in local cache.
+     *
+     * @param symbol    Trading pair (e.g., "BTCUSDT")
+     * @param startTime Start time in milliseconds
+     * @param endTime   End time in milliseconds
+     * @return List of funding rates sorted by time ascending (may be incomplete)
+     */
+    public List<FundingRate> getFundingRatesCacheOnly(String symbol, long startTime, long endTime) {
+        Map<Long, FundingRate> ratesMap = new TreeMap<>();
+        loadCachedRates(symbol, startTime, endTime, ratesMap);
+
+        // Filter to requested range, but include one rate before startTime for lookback
+        List<FundingRate> result = new ArrayList<>();
+        FundingRate latestBeforeStart = null;
+
+        for (FundingRate fr : ratesMap.values()) {
+            if (fr.fundingTime() < startTime) {
+                latestBeforeStart = fr;
+            } else if (fr.fundingTime() <= endTime) {
+                result.add(fr);
+            }
+        }
+
+        if (latestBeforeStart != null) {
+            result.add(0, latestBeforeStart);
+        }
+
+        return result;
+    }
+
+    /**
      * Clear cache for a symbol.
      */
     public void clearCache(String symbol) {

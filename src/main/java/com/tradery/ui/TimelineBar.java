@@ -1,9 +1,10 @@
 package com.tradery.ui;
 
 import com.tradery.ApplicationContext;
-import com.tradery.data.DataPage;
-import com.tradery.data.DataPageListener;
-import com.tradery.data.DataPageManager;
+import com.tradery.data.PageState;
+import com.tradery.data.page.CandlePageManager;
+import com.tradery.data.page.DataPage;
+import com.tradery.data.page.DataPageListener;
 import com.tradery.model.Candle;
 
 import javax.swing.*;
@@ -20,9 +21,9 @@ import java.util.function.Consumer;
  * Horizontal bar showing weekly resolution of entire dataset with selected window highlighted.
  * Acts as a minimap/overview of the data range. Supports dragging to move the window.
  *
- * Uses DataPageManager for efficient checkout-based data access with automatic updates.
+ * Uses CandlePageManager for efficient event-driven data access.
  */
-public class TimelineBar extends JPanel implements DataPageListener {
+public class TimelineBar extends JPanel implements DataPageListener<Candle> {
 
     private static final int BAR_HEIGHT = 48;
     private static final Color CANDLE_UP = new Color(38, 166, 91);
@@ -31,11 +32,11 @@ public class TimelineBar extends JPanel implements DataPageListener {
 
     private static final long TEN_YEARS_MS = 10L * 365 * 24 * 60 * 60 * 1000;
 
-    private final DataPageManager pageManager;
+    private final CandlePageManager candlePageMgr;
 
     private String symbol = "BTCUSDT";
     private String title = "";
-    private DataPage dataPage;
+    private DataPage<Candle> dataPage;
     private List<Candle> weeklyCandles;
     private long windowStart;
     private long windowEnd;
@@ -66,7 +67,7 @@ public class TimelineBar extends JPanel implements DataPageListener {
     private float pulsePhase = 0f;
 
     public TimelineBar() {
-        this.pageManager = ApplicationContext.getInstance().getDataPageManager();
+        this.candlePageMgr = ApplicationContext.getInstance().getCandlePageManager();
         setPreferredSize(new Dimension(0, BAR_HEIGHT));
         setMinimumSize(new Dimension(0, BAR_HEIGHT));
         setMaximumSize(new Dimension(Integer.MAX_VALUE, BAR_HEIGHT));
@@ -221,16 +222,16 @@ public class TimelineBar extends JPanel implements DataPageListener {
         if (symbolChanged || dataPage == null) {
             // Release old page if switching symbols
             if (dataPage != null) {
-                pageManager.release(dataPage, this);
+                candlePageMgr.release(dataPage, this);
             }
 
-            // Checkout new page - returns immediately with cached data, syncs in background
+            // Request new page - returns immediately with cached data, loads in background
             long end = System.currentTimeMillis();
             long start = end - TEN_YEARS_MS;
-            dataPage = pageManager.checkout(symbol, "1w", start, end, this);
+            dataPage = candlePageMgr.request(symbol, "1w", start, end, this);
 
             // Use whatever data is available immediately
-            weeklyCandles = dataPage.getCandles();
+            weeklyCandles = dataPage.getData();
             updateTimeRange();
             repaint();
         } else {
@@ -402,25 +403,25 @@ public class TimelineBar extends JPanel implements DataPageListener {
     // ========== DataPageListener Implementation ==========
 
     @Override
-    public void onPageDataUpdated(DataPage page) {
+    public void onStateChanged(DataPage<Candle> page, PageState oldState, PageState newState) {
+        // Show loading indicator when loading
+        setLoading(newState == PageState.LOADING || newState == PageState.UPDATING);
+    }
+
+    @Override
+    public void onDataChanged(DataPage<Candle> page) {
         // Update candles when page data changes (called on EDT)
-        weeklyCandles = page.getCandles();
+        weeklyCandles = page.getData();
         updateTimeRange();
         repaint();
     }
 
-    @Override
-    public void onPageStateChanged(DataPage page, DataPage.State oldState, DataPage.State newState) {
-        // Show loading indicator when syncing
-        setLoading(newState == DataPage.State.LOADING || newState == DataPage.State.UPDATING);
-    }
-
     /**
-     * Release the checked-out page when this component is disposed.
+     * Release the page when this component is disposed.
      */
     public void dispose() {
         if (dataPage != null) {
-            pageManager.release(dataPage, this);
+            candlePageMgr.release(dataPage, this);
             dataPage = null;
         }
     }

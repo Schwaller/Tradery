@@ -884,10 +884,9 @@ public class ProjectWindow extends JFrame {
      */
     private void openDataLoadingStatusWindow(Component anchor) {
         if (dataLoadingStatusWindow == null) {
-            // Include both backtest tracker and global preview tracker
+            // Include global preview tracker for phase/hoop preview data loading
             dataLoadingStatusWindow = new DataLoadingStatusWindow(
                 this,
-                backtestCoordinator.getTracker(),
                 ApplicationContext.getInstance().getPreviewTracker()
             );
         }
@@ -898,7 +897,26 @@ public class ProjectWindow extends JFrame {
         JLabel label = new JLabel();
         label.setFont(label.getFont().deriveFont(Font.PLAIN, 10f));
         label.setName(dataType); // Store data type for updates
+
+        // Add mouse listener to update tooltip dynamically with consumer info
+        label.addMouseListener(new java.awt.event.MouseAdapter() {
+            @Override
+            public void mouseEntered(java.awt.event.MouseEvent e) {
+                String tooltip = buildConsumerTooltip(dataType);
+                label.setToolTipText(tooltip);
+            }
+        });
+
         return label;
+    }
+
+    /**
+     * Build tooltip showing data type status.
+     */
+    private String buildConsumerTooltip(String dataTypeName) {
+        boolean isLoaded = isDataLoaded(dataTypeName);
+        String status = isLoaded ? "ready" : "not loaded";
+        return "<html><b>" + dataTypeName + "</b><br>Status: " + status + "</html>";
     }
 
     /**
@@ -1106,6 +1124,11 @@ public class ProjectWindow extends JFrame {
         // Dispose terminal (docked or undocked)
         if (aiTerminalController != null) {
             aiTerminalController.dispose();
+        }
+
+        // Dispose timeline bar (releases data page)
+        if (timelineBar != null) {
+            timelineBar.dispose();
         }
 
         // Stop auto-save scheduler

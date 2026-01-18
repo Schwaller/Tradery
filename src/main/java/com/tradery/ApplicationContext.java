@@ -5,13 +5,13 @@ import com.tradery.data.AggTradesStore;
 import com.tradery.data.BinanceVisionClient;
 import com.tradery.data.DataConfig;
 import com.tradery.data.DataInventory;
-import com.tradery.data.DataPageManager;
 import com.tradery.data.DataRequirementsTracker;
 import com.tradery.data.FundingRateStore;
 import com.tradery.data.OpenInterestStore;
 import com.tradery.data.PreloadScheduler;
 import com.tradery.data.PremiumIndexStore;
 import com.tradery.data.sqlite.SqliteDataStore;
+import com.tradery.data.page.*;
 import com.tradery.io.HoopPatternStore;
 import com.tradery.io.PhaseStore;
 import com.tradery.io.StrategyStore;
@@ -35,7 +35,7 @@ public class ApplicationContext {
     // SQLite-based data store (primary storage)
     private final SqliteDataStore sqliteDataStore;
 
-    // Legacy CSV stores (AggTrades, Funding, OI, Premium still use CSV for now)
+    // CSV stores (AggTrades, Funding, OI, Premium)
     private final AggTradesStore aggTradesStore;
     private final FundingRateStore fundingRateStore;
     private final OpenInterestStore openInterestStore;
@@ -56,14 +56,19 @@ public class ApplicationContext {
     private final DataInventory dataInventory;
     private final PreloadScheduler preloadScheduler;
 
-    // Data page manager for checkout-based data access
-    private final DataPageManager dataPageManager;
+    // Event-driven page managers (clean architecture)
+    private final CandlePageManager candlePageManager;
+    private final FundingPageManager fundingPageManager;
+    private final OIPageManager oiPageManager;
+    private final AggTradesPageManager aggTradesPageManager;
+    private final PremiumPageManager premiumPageManager;
+    private final IndicatorPageManager indicatorPageManager;
 
     private ApplicationContext() {
         // Initialize SQLite data store
         this.sqliteDataStore = new SqliteDataStore();
 
-        // Legacy stores (AggTrades, Funding, OI, Premium still use CSV)
+        // CSV stores
         this.aggTradesStore = new AggTradesStore();
         this.fundingRateStore = new FundingRateStore();
         this.openInterestStore = new OpenInterestStore();
@@ -72,8 +77,14 @@ public class ApplicationContext {
         // Initialize Binance Vision client (uses SQLite store)
         this.binanceVisionClient = new BinanceVisionClient(sqliteDataStore);
 
-        // Initialize data page manager for checkout-based access (uses SQLite)
-        this.dataPageManager = new DataPageManager(sqliteDataStore);
+        // Initialize event-driven page managers
+        this.candlePageManager = new CandlePageManager(sqliteDataStore);
+        this.fundingPageManager = new FundingPageManager(fundingRateStore);
+        this.oiPageManager = new OIPageManager(openInterestStore);
+        this.aggTradesPageManager = new AggTradesPageManager(aggTradesStore);
+        this.premiumPageManager = new PremiumPageManager(premiumIndexStore);
+        this.indicatorPageManager = new IndicatorPageManager(
+            candlePageManager, fundingPageManager, oiPageManager, aggTradesPageManager, premiumPageManager);
 
         this.strategyStore = new StrategyStore(new File(TraderyApp.USER_DIR, "strategies"));
         this.phaseStore = new PhaseStore(new File(TraderyApp.USER_DIR, "phases"));
@@ -82,7 +93,7 @@ public class ApplicationContext {
 
         // Initialize data preloading infrastructure
         this.dataInventory = new DataInventory(DataConfig.getInstance().getDataDir());
-        this.dataInventory.load();  // Load saved inventory from disk
+        this.dataInventory.load();
 
         this.preloadScheduler = new PreloadScheduler(dataInventory);
         this.preloadScheduler.setStores(sqliteDataStore, aggTradesStore, fundingRateStore, openInterestStore);
@@ -90,7 +101,7 @@ public class ApplicationContext {
 
         // Install/update presets on startup
         this.strategyStore.installMissingPresets();
-        this.phaseStore.installBuiltInPresets();  // Always update built-in phases
+        this.phaseStore.installBuiltInPresets();
 
         // Start API server for Claude Code integration
         this.apiServer = new ApiServer(sqliteDataStore, aggTradesStore, fundingRateStore, openInterestStore, strategyStore, phaseStore);
@@ -157,7 +168,6 @@ public class ApplicationContext {
 
     /**
      * Get the global preview tracker for phase/hoop preview data loading.
-     * This allows preview windows to share a common tracker visible in status UI.
      */
     public DataRequirementsTracker getPreviewTracker() {
         return previewTracker;
@@ -177,16 +187,34 @@ public class ApplicationContext {
         return preloadScheduler;
     }
 
-    /**
-     * Get the data page manager for checkout-based data access.
-     */
-    public DataPageManager getDataPageManager() {
-        return dataPageManager;
+    // ========== Page Managers ==========
+
+    public CandlePageManager getCandlePageManager() {
+        return candlePageManager;
+    }
+
+    public FundingPageManager getFundingPageManager() {
+        return fundingPageManager;
+    }
+
+    public OIPageManager getOIPageManager() {
+        return oiPageManager;
+    }
+
+    public AggTradesPageManager getAggTradesPageManager() {
+        return aggTradesPageManager;
+    }
+
+    public PremiumPageManager getPremiumPageManager() {
+        return premiumPageManager;
+    }
+
+    public IndicatorPageManager getIndicatorPageManager() {
+        return indicatorPageManager;
     }
 
     /**
      * Write port file for MCP server discovery.
-     * Simple format - just the port number, no auth token needed.
      */
     private void writePortFile() {
         File portFile = new File(TraderyApp.USER_DIR, "api.port");
@@ -199,7 +227,6 @@ public class ApplicationContext {
 
     /**
      * Shutdown the application context.
-     * Closes SQLite connections and stops background services.
      */
     public void shutdown() {
         log.info("Shutting down ApplicationContext...");
@@ -209,9 +236,24 @@ public class ApplicationContext {
             preloadScheduler.shutdown();
         }
 
-        // Stop data page manager
-        if (dataPageManager != null) {
-            dataPageManager.shutdown();
+        // Stop page managers
+        if (indicatorPageManager != null) {
+            indicatorPageManager.shutdown();
+        }
+        if (candlePageManager != null) {
+            candlePageManager.shutdown();
+        }
+        if (fundingPageManager != null) {
+            fundingPageManager.shutdown();
+        }
+        if (oiPageManager != null) {
+            oiPageManager.shutdown();
+        }
+        if (aggTradesPageManager != null) {
+            aggTradesPageManager.shutdown();
+        }
+        if (premiumPageManager != null) {
+            premiumPageManager.shutdown();
         }
 
         // Close SQLite connections

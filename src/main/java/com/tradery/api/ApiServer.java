@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
+import com.tradery.ApplicationContext;
 import com.tradery.data.AggTradesStore;
 import com.tradery.data.FundingRateStore;
 import com.tradery.data.OpenInterestStore;
@@ -110,6 +111,7 @@ public class ApiServer {
         server.createContext("/strategy/", strategyHandler::handleStrategy);
         server.createContext("/phases", phaseHandler::handlePhases);
         server.createContext("/phase/", phaseHandler::handlePhase);
+        server.createContext("/data-status", this::handleDataStatus);
 
         server.start();
         System.out.println("API server started on http://localhost:" + actualPort);
@@ -450,6 +452,130 @@ public class ApiServer {
             case "10 years" -> 3650 * day;
             default -> 365 * day;
         };
+    }
+
+    /**
+     * Handle data status endpoint - shows loading states, gaps, and coverage.
+     *
+     * GET /data-status?symbol=BTCUSDT&timeframe=1h&duration=1month
+     */
+    private void handleDataStatus(HttpExchange exchange) throws IOException {
+        if (!checkMethod(exchange, "GET")) return;
+
+        Map<String, String> params = parseQuery(exchange.getRequestURI().getQuery());
+
+        String symbol = params.getOrDefault("symbol", "BTCUSDT");
+        String timeframe = params.getOrDefault("timeframe", "1h");
+        String duration = params.getOrDefault("duration", "1 month");
+
+        long durationMs = parseDurationMillis(duration);
+        long endTime = System.currentTimeMillis();
+        long startTime = endTime - durationMs;
+
+        ObjectNode response = mapper.createObjectNode();
+        response.put("symbol", symbol);
+        response.put("timeframe", timeframe);
+        response.put("startTime", startTime);
+        response.put("endTime", endTime);
+
+        try {
+            // Page managers info
+            ObjectNode loadingState = response.putObject("loadingState");
+            var candlePageMgr = ApplicationContext.getInstance().getCandlePageManager();
+            var aggTradesPageMgr = ApplicationContext.getInstance().getAggTradesPageManager();
+            loadingState.put("candlePageCount", candlePageMgr != null ? candlePageMgr.getActivePageCount() : 0);
+            loadingState.put("aggTradesPageCount", aggTradesPageMgr != null ? aggTradesPageMgr.getActivePageCount() : 0);
+
+            // Data coverage and gaps
+            ObjectNode coverage = response.putObject("coverage");
+
+            // Candles
+            try {
+                List<long[]> candleGaps = dataStore.findGaps(symbol, "candles", timeframe, startTime, endTime);
+                ObjectNode candlesInfo = coverage.putObject("candles");
+                candlesInfo.put("hasGaps", !candleGaps.isEmpty());
+                candlesInfo.put("gapCount", candleGaps.size());
+                if (!candleGaps.isEmpty()) {
+                    ArrayNode gaps = candlesInfo.putArray("gaps");
+                    long totalGapMs = 0;
+                    for (long[] gap : candleGaps) {
+                        ObjectNode gapNode = gaps.addObject();
+                        gapNode.put("start", gap[0]);
+                        gapNode.put("end", gap[1]);
+                        gapNode.put("hours", (gap[1] - gap[0]) / 3600000.0);
+                        totalGapMs += gap[1] - gap[0];
+                    }
+                    candlesInfo.put("totalGapHours", totalGapMs / 3600000.0);
+                }
+
+                // Also get actual count
+                List<Candle> candles = dataStore.getCandles(symbol, timeframe, startTime, endTime);
+                candlesInfo.put("recordCount", candles.size());
+                if (!candles.isEmpty()) {
+                    candlesInfo.put("firstRecord", candles.get(0).timestamp());
+                    candlesInfo.put("lastRecord", candles.get(candles.size() - 1).timestamp());
+                }
+            } catch (Exception e) {
+                coverage.putObject("candles").put("error", e.getMessage());
+            }
+
+            // Funding rates
+            if (fundingRateStore != null) {
+                try {
+                    List<FundingRate> funding = fundingRateStore.getFundingRatesCacheOnly(symbol, startTime, endTime);
+                    ObjectNode fundingInfo = coverage.putObject("funding");
+                    fundingInfo.put("recordCount", funding.size());
+                    if (!funding.isEmpty()) {
+                        fundingInfo.put("firstRecord", funding.get(0).fundingTime());
+                        fundingInfo.put("lastRecord", funding.get(funding.size() - 1).fundingTime());
+                    }
+                } catch (Exception e) {
+                    coverage.putObject("funding").put("error", e.getMessage());
+                }
+            }
+
+            // Open Interest
+            if (openInterestStore != null) {
+                try {
+                    // OI limited to 30 days
+                    long now = System.currentTimeMillis();
+                    long maxOiHistory = 30L * 24 * 60 * 60 * 1000;
+                    long oiStartTime = Math.max(startTime, now - maxOiHistory);
+
+                    List<OpenInterest> oi = openInterestStore.getOpenInterestCacheOnly(symbol, oiStartTime, endTime);
+                    ObjectNode oiInfo = coverage.putObject("openInterest");
+                    oiInfo.put("recordCount", oi.size());
+                    oiInfo.put("limitedTo30Days", startTime < oiStartTime);
+                    if (!oi.isEmpty()) {
+                        oiInfo.put("firstRecord", oi.get(0).timestamp());
+                        oiInfo.put("lastRecord", oi.get(oi.size() - 1).timestamp());
+                    }
+                } catch (Exception e) {
+                    coverage.putObject("openInterest").put("error", e.getMessage());
+                }
+            }
+
+            // AggTrades
+            if (aggTradesStore != null) {
+                try {
+                    var syncStatus = aggTradesStore.getSyncStatus(symbol, startTime, endTime);
+                    ObjectNode aggInfo = coverage.putObject("aggTrades");
+                    aggInfo.put("hasData", syncStatus.hasData());
+                    aggInfo.put("status", syncStatus.getStatusMessage());
+                    aggInfo.put("hoursComplete", syncStatus.hoursComplete());
+                    aggInfo.put("hoursTotal", syncStatus.hoursTotal());
+                    if (syncStatus.hoursTotal() > 0) {
+                        aggInfo.put("syncPercent", (syncStatus.hoursComplete() * 100.0) / syncStatus.hoursTotal());
+                    }
+                } catch (Exception e) {
+                    coverage.putObject("aggTrades").put("error", e.getMessage());
+                }
+            }
+
+            sendJson(exchange, 200, response);
+        } catch (Exception e) {
+            sendError(exchange, 500, "Failed to get data status: " + e.getMessage());
+        }
     }
 
     // ========== Helpers ==========

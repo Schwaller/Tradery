@@ -49,7 +49,7 @@ public class TradeDetailsWindow extends JDialog {
         initializeComponents();
         layoutComponents();
 
-        setSize(1400, 550);
+        setSize(1400, 700);
         setLocationRelativeTo(parent);
     }
 

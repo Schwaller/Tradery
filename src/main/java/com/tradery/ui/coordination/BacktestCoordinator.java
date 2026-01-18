@@ -1,42 +1,71 @@
 package com.tradery.ui.coordination;
 
 import com.tradery.ApplicationContext;
-import com.tradery.data.*;
+import com.tradery.data.AggTradesStore;
+import com.tradery.data.PageState;
+import com.tradery.data.SubMinuteCandleGenerator;
+import com.tradery.data.page.AggTradesPageManager;
+import com.tradery.data.page.CandlePageManager;
+import com.tradery.data.page.DataPage;
+import com.tradery.data.page.DataPageListener;
+import com.tradery.data.page.DataRequirements;
+import com.tradery.data.page.FundingPageManager;
+import com.tradery.data.page.OIPageManager;
+import com.tradery.data.page.PremiumPageManager;
 import com.tradery.data.sqlite.SqliteDataStore;
+import com.tradery.model.*;
 import com.tradery.engine.BacktestEngine;
-import com.tradery.data.PreloadScheduler;
+import com.tradery.indicators.IndicatorEngine;
 import com.tradery.io.PhaseStore;
 import com.tradery.io.ResultStore;
-import com.tradery.model.*;
-import com.tradery.ui.charts.ChartConfig;
 
 import javax.swing.*;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
 /**
- * Coordinates backtest execution, running in background with progress updates.
- * Extracted from ProjectWindow to reduce complexity.
+ * Event-driven backtest coordinator.
+ *
+ * Key design principles:
+ * - NEVER blocks waiting for data
+ * - Uses DataPageListener to react to data availability
+ * - Triggers backtest automatically when all required data is READY
+ * - Clean separation via DataRequirements
  */
 public class BacktestCoordinator {
 
+    // Page managers (from ApplicationContext)
+    private final CandlePageManager candlePageMgr;
+    private final FundingPageManager fundingPageMgr;
+    private final OIPageManager oiPageMgr;
+    private final AggTradesPageManager aggTradesPageMgr;
+    private final PremiumPageManager premiumPageMgr;
+
+    // Engine and stores
     private final BacktestEngine backtestEngine;
     private final SqliteDataStore dataStore;
     private final AggTradesStore aggTradesStore;
-    private final FundingRateStore fundingRateStore;
-    private final OpenInterestStore openInterestStore;
-    private final PremiumIndexStore premiumIndexStore;
     private final ResultStore resultStore;
 
-    // Data requirements tracker
-    private final DataRequirementsTracker tracker = new DataRequirementsTracker();
+    // Background executor for backtest computation
+    private final ExecutorService backtestExecutor;
 
-    // Current data
+    // Current state
+    private DataRequirements requirements;
+    private Strategy currentStrategy;
+    private BacktestConfig currentConfig;
+    private List<Phase> currentPhases;
+    private volatile boolean backtestRunning = false;
+
+    // Current data (cached after backtest runs)
     private List<Candle> currentCandles;
     private List<AggTrade> currentAggTrades;
     private List<FundingRate> currentFundingRates;
@@ -48,34 +77,49 @@ public class BacktestCoordinator {
     private Consumer<BacktestResult> onComplete;
     private Consumer<String> onError;
     private Consumer<String> onStatus;
-    private BiConsumer<String, String> onDataStatus; // (dataType, status: "loading"/"ready"/"error")
-    private Consumer<String> onViewDataReady; // Callback when VIEW data (Funding/OI) becomes ready for chart refresh
-    private DataLoadingProgressCallback onDataLoadingProgress; // (dataType, loaded, expected)
+    private BiConsumer<String, String> onDataStatus;
+    private Consumer<PageState> onOverallStateChanged;
+    private Consumer<String> onViewDataReady;
 
-    /**
-     * Callback for data loading progress updates.
-     */
-    @FunctionalInterface
-    public interface DataLoadingProgressCallback {
-        void onProgress(String dataType, int loaded, int expected);
-    }
-
-    public BacktestCoordinator(BacktestEngine backtestEngine, SqliteDataStore dataStore,
-                               AggTradesStore aggTradesStore, FundingRateStore fundingRateStore,
-                               OpenInterestStore openInterestStore, PremiumIndexStore premiumIndexStore,
+    public BacktestCoordinator(BacktestEngine backtestEngine,
+                               SqliteDataStore dataStore,
+                               AggTradesStore aggTradesStore,
                                ResultStore resultStore) {
         this.backtestEngine = backtestEngine;
         this.dataStore = dataStore;
         this.aggTradesStore = aggTradesStore;
-        this.fundingRateStore = fundingRateStore;
-        this.openInterestStore = openInterestStore;
-        this.premiumIndexStore = premiumIndexStore;
         this.resultStore = resultStore;
+
+        // Get page managers from application context
+        ApplicationContext ctx = ApplicationContext.getInstance();
+        this.candlePageMgr = ctx.getCandlePageManager();
+        this.fundingPageMgr = ctx.getFundingPageManager();
+        this.oiPageMgr = ctx.getOIPageManager();
+        this.aggTradesPageMgr = ctx.getAggTradesPageManager();
+        this.premiumPageMgr = ctx.getPremiumPageManager();
+
+        this.backtestExecutor = Executors.newSingleThreadExecutor(r -> {
+            Thread t = new Thread(r, "BacktestCoordinator");
+            t.setDaemon(true);
+            return t;
+        });
     }
 
-    public AggTradesStore getAggTradesStore() {
-        return aggTradesStore;
+    /**
+     * Compatibility constructor that matches old API.
+     */
+    public BacktestCoordinator(BacktestEngine backtestEngine,
+                               SqliteDataStore dataStore,
+                               AggTradesStore aggTradesStore,
+                               com.tradery.data.FundingRateStore fundingRateStore,
+                               com.tradery.data.OpenInterestStore openInterestStore,
+                               com.tradery.data.PremiumIndexStore premiumIndexStore,
+                               ResultStore resultStore) {
+        this(backtestEngine, dataStore, aggTradesStore, resultStore);
+        // Note: Individual stores are now managed by page managers
     }
+
+    // ========== Callbacks ==========
 
     public void setOnProgress(BiConsumer<Integer, String> callback) {
         this.onProgress = callback;
@@ -97,28 +141,27 @@ public class BacktestCoordinator {
         this.onDataStatus = callback;
     }
 
-    /**
-     * Set callback for when VIEW tier data (Funding/OI) becomes ready.
-     * Used to trigger chart refresh without re-running backtest.
-     */
+    public void setOnOverallStateChanged(Consumer<PageState> callback) {
+        this.onOverallStateChanged = callback;
+    }
+
     public void setOnViewDataReady(Consumer<String> callback) {
         this.onViewDataReady = callback;
     }
 
-    /**
-     * Set callback for data loading progress updates.
-     * Called periodically during data fetch with (dataType, loaded, expected).
-     */
     public void setOnDataLoadingProgress(DataLoadingProgressCallback callback) {
-        this.onDataLoadingProgress = callback;
+        // Not used in event-driven architecture - progress comes via state changes
     }
 
     /**
-     * Get the data requirements tracker for status monitoring.
+     * Callback for data loading progress updates (compatibility).
      */
-    public DataRequirementsTracker getTracker() {
-        return tracker;
+    @FunctionalInterface
+    public interface DataLoadingProgressCallback {
+        void onProgress(String dataType, int loaded, int expected);
     }
+
+    // ========== Data Accessors ==========
 
     public List<Candle> getCurrentCandles() {
         return currentCandles;
@@ -140,73 +183,19 @@ public class BacktestCoordinator {
         return currentPremiumIndex;
     }
 
-    public com.tradery.indicators.IndicatorEngine getIndicatorEngine() {
+    public IndicatorEngine getIndicatorEngine() {
         return backtestEngine.getIndicatorEngine();
     }
 
-    /**
-     * Get sync status for the given symbol and time range.
-     */
-    public AggTradesStore.SyncStatus getSyncStatus(String symbol, long startTime, long endTime) {
-        if (aggTradesStore == null) return null;
-        return aggTradesStore.getSyncStatus(symbol, startTime, endTime);
+    public AggTradesStore getAggTradesStore() {
+        return aggTradesStore;
     }
 
-    /**
-     * Check if required data is available for a backtest.
-     * Auto-detects requirements from DSL conditions - no manual checkbox needed.
-     * Returns null if all data is available, otherwise returns an error message.
-     */
-    public String checkDataRequirements(Strategy strategy, String symbol, String resolution, long durationMillis) {
-        return checkDataRequirements(strategy, symbol, resolution, durationMillis, null);
-    }
+    // ========== Main API ==========
 
     /**
-     * Check if required data is available for a backtest.
-     * Auto-detects requirements from DSL conditions - no manual checkbox needed.
-     * Returns null if all data is available, otherwise returns an error message.
-     *
-     * @param anchorDate End date timestamp in millis, or null to use current time
-     */
-    public String checkDataRequirements(Strategy strategy, String symbol, String resolution,
-                                         long durationMillis, Long anchorDate) {
-        long endTime = (anchorDate != null) ? anchorDate : System.currentTimeMillis();
-        long startTime = endTime - durationMillis;
-
-        int subMinuteInterval = SubMinuteCandleGenerator.parseSubMinuteInterval(resolution);
-        boolean isSubMinute = subMinuteInterval > 0;
-        // Auto-detect from DSL: DELTA, CUM_DELTA, WHALE_*, LARGE_TRADE_COUNT
-        boolean needsAggTrades = isSubMinute || strategy.requiresAggTrades();
-
-        if (needsAggTrades && aggTradesStore != null) {
-            AggTradesStore.SyncStatus status = aggTradesStore.getSyncStatus(symbol, startTime, endTime);
-            if (!status.hasData()) {
-                String reason;
-                if (isSubMinute) {
-                    reason = "Sub-minute timeframe (" + resolution + ")";
-                } else {
-                    reason = "Strategy uses delta/whale indicators";
-                }
-                return reason + " requires aggTrades data.\n\n" +
-                       "Status: " + status.getStatusMessage() + "\n\n" +
-                       "Use 'Manage Data' > 'Fetch New' to sync aggTrades first.";
-            }
-        }
-
-        return null; // All requirements met
-    }
-
-    /**
-     * Run a backtest with the given strategy and configuration.
-     * Uses two-tier data loading:
-     * - TRADING tier: Blocks until ready (OHLC, AggTrades for sub-minute/delta)
-     * - VIEW tier: Loads in background for charts (Funding, OI)
-     *
-     * @param strategy The strategy to backtest
-     * @param symbol Trading symbol (e.g., "BTCUSDT")
-     * @param resolution Timeframe (e.g., "1h")
-     * @param durationMillis Duration to backtest in milliseconds
-     * @param capital Initial capital
+     * Run a backtest (compatibility method).
+     * Converts duration to start/end times and delegates to requestBacktest.
      */
     public void runBacktest(Strategy strategy, String symbol, String resolution,
                             long durationMillis, double capital) {
@@ -214,635 +203,379 @@ public class BacktestCoordinator {
     }
 
     /**
-     * Run a backtest with the given strategy and configuration.
-     * Uses two-tier data loading:
-     * - TRADING tier: Blocks until ready (OHLC, AggTrades for sub-minute/delta)
-     * - VIEW tier: Loads in background for charts (Funding, OI)
-     *
-     * @param strategy The strategy to backtest
-     * @param symbol Trading symbol (e.g., "BTCUSDT")
-     * @param resolution Timeframe (e.g., "1h")
-     * @param durationMillis Duration to backtest in milliseconds
-     * @param capital Initial capital
-     * @param anchorDate End date timestamp in millis, or null to use current time
+     * Run a backtest (compatibility method with anchor date).
+     * Converts duration to start/end times and delegates to requestBacktest.
      */
     public void runBacktest(Strategy strategy, String symbol, String resolution,
                             long durationMillis, double capital, Long anchorDate) {
-
-        PositionSizingType sizingType = strategy.getPositionSizingType();
-        double sizingValue = strategy.getPositionSizingValue();
-        double commission = strategy.getTotalCommission();
-
-        // Use anchorDate if provided, otherwise use current time
         long endTime = (anchorDate != null) ? anchorDate : System.currentTimeMillis();
         long startTime = endTime - durationMillis;
+        requestBacktest(strategy, symbol, resolution, startTime, endTime, capital);
+    }
 
-        // Check if sub-minute timeframe (requires aggTrades)
-        int subMinuteInterval = SubMinuteCandleGenerator.parseSubMinuteInterval(resolution);
-        boolean isSubMinute = subMinuteInterval > 0;
+    /**
+     * Request a backtest. Does NOT block.
+     *
+     * The backtest will run automatically when all required data is ready.
+     *
+     * @param strategy The strategy to backtest
+     * @param symbol   Trading symbol
+     * @param timeframe Timeframe
+     * @param startTime Start time in milliseconds
+     * @param endTime   End time in milliseconds
+     * @param capital   Initial capital
+     */
+    public void requestBacktest(Strategy strategy, String symbol, String timeframe,
+                                 long startTime, long endTime, double capital) {
 
-        // Auto-detect if aggTrades needed (from DSL conditions or sub-minute timeframe)
-        boolean needsAggTrades = isSubMinute || strategy.requiresAggTrades();
+        // Release any previous pages
+        releaseCurrentPages();
 
-        // Collect data requirements
-        collectDataRequirements(strategy, symbol, resolution, startTime, endTime, isSubMinute, needsAggTrades);
+        this.currentStrategy = strategy;
+        this.requirements = new DataRequirements(symbol, timeframe, startTime, endTime);
 
-        BacktestConfig config = new BacktestConfig(
+        // Build config
+        this.currentConfig = new BacktestConfig(
             symbol,
-            resolution,
+            timeframe,
             startTime,
             endTime,
             capital,
-            sizingType,
-            sizingValue,
-            commission
+            strategy.getPositionSizingType(),
+            strategy.getPositionSizingValue(),
+            strategy.getTotalCommission()
         );
 
-        reportProgress(0, "Starting...");
+        // Load phases (synchronous, they're small)
+        this.currentPhases = loadPhases(strategy);
 
-        // Pause background preloading while we're doing a trading-tier load
-        PreloadScheduler preloader = ApplicationContext.getInstance().getPreloadScheduler();
-        if (preloader != null) {
-            preloader.pauseForTradingLoad();
+        reportProgress(0, "Loading data...");
+
+        // Analyze strategy to determine required data
+        boolean needsAggTrades = strategy.requiresAggTrades() ||
+                                 SubMinuteCandleGenerator.parseSubMinuteInterval(timeframe) > 0;
+        boolean needsFunding = strategy.requiresFunding();
+        boolean needsOI = strategy.requiresOpenInterest();
+        boolean needsPremium = strategy.requiresPremium();
+
+        // Request candles (always required)
+        reportDataStatus("Candles", "loading");
+        DataPage<Candle> candlePage = candlePageMgr.request(
+            symbol, timeframe, startTime, endTime, createCandleListener());
+        requirements.setCandlePage(candlePage);
+
+        // Request optional data based on strategy requirements
+        if (needsAggTrades) {
+            reportDataStatus("AggTrades", "loading");
+            DataPage<AggTrade> aggTradesPage = aggTradesPageMgr.request(
+                symbol, null, startTime, endTime, createAggTradesListener());
+            requirements.setAggTradesPage(aggTradesPage);
         }
 
-        SwingWorker<BacktestResult, BacktestEngine.Progress> worker = new SwingWorker<>() {
-            @Override
-            protected BacktestResult doInBackground() throws Exception {
-                // ===== TRADING TIER: Load data required for backtest (blocking) =====
+        if (needsFunding) {
+            reportDataStatus("Funding", "loading");
+            DataPage<FundingRate> fundingPage = fundingPageMgr.request(
+                symbol, null, startTime, endTime, createFundingListener());
+            requirements.setFundingPage(fundingPage);
+        }
 
-                // For sub-minute timeframes, load aggTrades first and generate candles
-                if (isSubMinute) {
-                    publish(new BacktestEngine.Progress(0, 0, 0, "Loading aggTrades for " + resolution + " candles..."));
-                    updateTrackerStatus("AggTrades", DataRequirementsTracker.Status.FETCHING);
+        if (needsOI) {
+            // OI limited to 30 days from Binance API
+            long now = System.currentTimeMillis();
+            long maxOiHistory = 30L * 24 * 60 * 60 * 1000;
+            long oiStartTime = Math.max(startTime, now - maxOiHistory);
 
-                    if (aggTradesStore == null) {
-                        updateTrackerStatus("AggTrades", DataRequirementsTracker.Status.ERROR);
-                        throw new Exception("AggTrades store not available for sub-minute timeframes");
-                    }
-
-                    // Set progress callback
-                    aggTradesStore.setProgressCallback(progress -> {
-                        publish(new BacktestEngine.Progress(
-                            progress.percentComplete(),
-                            0, 0,
-                            progress.message()
-                        ));
-                    });
-
-                    try {
-                        currentAggTrades = aggTradesStore.getAggTrades(symbol, startTime, endTime);
-                    } finally {
-                        aggTradesStore.setProgressCallback(null);
-                    }
-
-                    if (currentAggTrades == null || currentAggTrades.isEmpty()) {
-                        updateTrackerStatus("AggTrades", DataRequirementsTracker.Status.ERROR);
-                        throw new Exception("No aggTrades data available for " + config.symbol() +
-                            ". Check your internet connection or try a shorter duration.");
-                    }
-                    updateTrackerStatus("AggTrades", DataRequirementsTracker.Status.READY);
-
-                    // Generate candles from aggTrades
-                    publish(new BacktestEngine.Progress(0, 0, 0, "Generating " + resolution + " candles..."));
-                    updateTrackerStatus("OHLC:" + resolution, DataRequirementsTracker.Status.FETCHING);
-                    SubMinuteCandleGenerator generator = new SubMinuteCandleGenerator();
-                    currentCandles = generator.generate(currentAggTrades, subMinuteInterval, startTime, endTime);
-
-                    if (currentCandles.isEmpty()) {
-                        updateTrackerStatus("OHLC:" + resolution, DataRequirementsTracker.Status.ERROR);
-                        throw new Exception("No candles generated from aggTrades data");
-                    }
-                    updateTrackerStatus("OHLC:" + resolution, DataRequirementsTracker.Status.READY);
-
-                    System.out.println("Generated " + currentCandles.size() + " " + resolution + " candles from " +
-                        currentAggTrades.size() + " aggTrades");
-
-                } else {
-                    // Standard timeframe - load candles from SQLite
-                    publish(new BacktestEngine.Progress(0, 0, 0, "Loading candle data..."));
-                    updateTrackerStatus("OHLC:" + resolution, DataRequirementsTracker.Status.FETCHING);
-
-                    long loadStart = System.currentTimeMillis();
-                    currentCandles = dataStore.getCandles(
-                        config.symbol(),
-                        config.resolution(),
-                        config.startDate(),
-                        config.endDate()
-                    );
-                    long loadEnd = System.currentTimeMillis();
-                    System.out.println("Loaded " + currentCandles.size() + " candles from SQLite in " + (loadEnd - loadStart) + "ms");
-
-                    if (currentCandles.isEmpty()) {
-                        updateTrackerStatus("OHLC:" + resolution, DataRequirementsTracker.Status.ERROR);
-                        throw new Exception("No candle data available for " + config.symbol());
-                    }
-                    updateTrackerStatus("OHLC:" + resolution, DataRequirementsTracker.Status.READY);
-
-                    // Load aggTrades if orderflow mode is enabled (TRADING tier for delta indicators)
-                    currentAggTrades = null;
-                    if (needsAggTrades && aggTradesStore != null) {
-                        publish(new BacktestEngine.Progress(0, 0, 0, "Loading aggTrades data..."));
-                        updateTrackerStatus("AggTrades", DataRequirementsTracker.Status.FETCHING);
-                        try {
-                            aggTradesStore.setProgressCallback(progress -> {
-                                publish(new BacktestEngine.Progress(
-                                    progress.percentComplete(),
-                                    0, 0,
-                                    progress.message()
-                                ));
-                            });
-                            currentAggTrades = aggTradesStore.getAggTrades(symbol, startTime, endTime);
-                            aggTradesStore.setProgressCallback(null);
-                            updateTrackerStatus("AggTrades",
-                                currentAggTrades != null && !currentAggTrades.isEmpty()
-                                    ? DataRequirementsTracker.Status.READY
-                                    : DataRequirementsTracker.Status.ERROR);
-                        } catch (Exception e) {
-                            System.err.println("Failed to load aggTrades: " + e.getMessage());
-                            aggTradesStore.setProgressCallback(null);
-                            updateTrackerStatus("AggTrades", DataRequirementsTracker.Status.ERROR);
-                        }
-                    }
-                }
-
-                // Load phases (always TRADING - needed for filtering)
-                List<Phase> allPhases = loadPhases(strategy);
-
-                // Load funding rates - TRADING if DSL uses FUNDING, otherwise VIEW
-                boolean dslUsesFunding = strategy.requiresFunding();
-                currentFundingRates = null;
-                if (fundingRateStore != null) {
-                    if (dslUsesFunding) {
-                        // TRADING tier - load synchronously
-                        publish(new BacktestEngine.Progress(0, 0, 0, "Loading funding rate data..."));
-                        updateTrackerStatus("Funding", DataRequirementsTracker.Status.FETCHING);
-                        try {
-                            currentFundingRates = fundingRateStore.getFundingRates(symbol, startTime, endTime);
-                            updateTrackerStatus("Funding",
-                                currentFundingRates != null && !currentFundingRates.isEmpty()
-                                    ? DataRequirementsTracker.Status.READY
-                                    : DataRequirementsTracker.Status.ERROR);
-                        } catch (Exception e) {
-                            System.err.println("Failed to load funding rates: " + e.getMessage());
-                            updateTrackerStatus("Funding", DataRequirementsTracker.Status.ERROR);
-                        }
-                    }
-                    // VIEW tier loading happens after backtest starts
-                }
-
-                // Load OI - TRADING if DSL uses OI, otherwise VIEW
-                boolean dslUsesOI = strategy.requiresOpenInterest();
-                currentOpenInterest = null;
-                if (openInterestStore != null && dslUsesOI) {
-                    // TRADING tier - load synchronously
-                    try {
-                        long now = System.currentTimeMillis();
-                        long maxOiHistory = 30L * 24 * 60 * 60 * 1000;
-                        long oiStartTime = Math.max(startTime, now - maxOiHistory);
-
-                        if (oiStartTime < endTime) {
-                            publish(new BacktestEngine.Progress(0, 0, 0, "Loading OI data..."));
-                            updateTrackerStatus("OI", DataRequirementsTracker.Status.FETCHING);
-                            currentOpenInterest = openInterestStore.getOpenInterest(symbol, oiStartTime, endTime,
-                                msg -> publish(new BacktestEngine.Progress(0, 0, 0, msg)));
-                            System.out.println("Loaded " + (currentOpenInterest != null ? currentOpenInterest.size() : 0) + " OI records");
-                            updateTrackerStatus("OI",
-                                currentOpenInterest != null && !currentOpenInterest.isEmpty()
-                                    ? DataRequirementsTracker.Status.READY
-                                    : DataRequirementsTracker.Status.ERROR);
-                        }
-                    } catch (Exception e) {
-                        System.err.println("Failed to load open interest: " + e.getMessage());
-                        e.printStackTrace();
-                        updateTrackerStatus("OI", DataRequirementsTracker.Status.ERROR);
-                    }
-                }
-
-                // Load Premium Index - TRADING if DSL uses PREMIUM
-                boolean dslUsesPremium = strategy.requiresPremium();
-                currentPremiumIndex = null;
-                if (premiumIndexStore != null && dslUsesPremium) {
-                    try {
-                        publish(new BacktestEngine.Progress(0, 0, 0, "Loading premium index data..."));
-                        updateTrackerStatus("Premium", DataRequirementsTracker.Status.FETCHING);
-                        currentPremiumIndex = premiumIndexStore.getPremiumIndex(symbol, resolution, startTime, endTime);
-                        System.out.println("Loaded " + (currentPremiumIndex != null ? currentPremiumIndex.size() : 0) + " premium index records");
-                        updateTrackerStatus("Premium",
-                            currentPremiumIndex != null && !currentPremiumIndex.isEmpty()
-                                ? DataRequirementsTracker.Status.READY
-                                : DataRequirementsTracker.Status.ERROR);
-                    } catch (Exception e) {
-                        System.err.println("Failed to load premium index: " + e.getMessage());
-                        e.printStackTrace();
-                        updateTrackerStatus("Premium", DataRequirementsTracker.Status.ERROR);
-                    }
-                }
-
-                // Pass orderflow data to engine
-                backtestEngine.setAggTrades(currentAggTrades);
-                backtestEngine.setFundingRates(currentFundingRates);
-                backtestEngine.setOpenInterest(currentOpenInterest);
-                backtestEngine.setPremiumIndex(currentPremiumIndex);
-
-                // Run backtest with phase filtering
-                BacktestResult result = backtestEngine.run(strategy, config, currentCandles, allPhases, this::publish);
-
-                // ===== VIEW TIER: Start async loading for chart-only data =====
-                loadViewDataAsync(symbol, resolution, startTime, endTime, dslUsesFunding, dslUsesOI, dslUsesPremium);
-
-                return result;
+            if (oiStartTime < endTime) {
+                reportDataStatus("OI", "loading");
+                DataPage<OpenInterest> oiPage = oiPageMgr.request(
+                    symbol, null, oiStartTime, endTime, createOIListener());
+                requirements.setOiPage(oiPage);
             }
+        }
 
-            @Override
-            protected void process(List<BacktestEngine.Progress> chunks) {
-                BacktestEngine.Progress latest = chunks.get(chunks.size() - 1);
-                reportProgress(latest.percentage(), latest.message());
-                reportStatus(latest.message());
-            }
+        if (needsPremium) {
+            reportDataStatus("Premium", "loading");
+            DataPage<PremiumIndex> premiumPage = premiumPageMgr.request(
+                symbol, timeframe, startTime, endTime, createPremiumListener());
+            requirements.setPremiumPage(premiumPage);
+        }
 
-            @Override
-            protected void done() {
-                // Resume background preloading
-                PreloadScheduler scheduler = ApplicationContext.getInstance().getPreloadScheduler();
-                if (scheduler != null) {
-                    scheduler.resumeAfterTradingLoad();
-                }
+        // Check if already ready (from cache)
+        checkAndTriggerBacktest();
+    }
 
-                try {
-                    BacktestResult result = get();
+    /**
+     * Cancel the current backtest request.
+     */
+    public void cancel() {
+        releaseCurrentPages();
+        requirements = null;
+        currentStrategy = null;
+        currentConfig = null;
+        backtestRunning = false;
+    }
 
-                    // Report completion FIRST so charts update immediately
+    /**
+     * Check if a backtest is currently running.
+     */
+    public boolean isRunning() {
+        return backtestRunning;
+    }
+
+    /**
+     * Get the current data requirements.
+     */
+    public DataRequirements getRequirements() {
+        return requirements;
+    }
+
+    // ========== Internal State Change Handling ==========
+
+    /**
+     * Handle state change from any data page.
+     */
+    private void handleStateChanged(String dataTypeName, PageState newState) {
+        // Report to UI
+        String status = switch (newState) {
+            case EMPTY, LOADING -> "loading";
+            case READY, UPDATING -> "ready";
+            case ERROR -> "error";
+        };
+        reportDataStatus(dataTypeName, status);
+
+        // Check if we can trigger backtest
+        checkAndTriggerBacktest();
+    }
+
+    /**
+     * Handle data change from any data page.
+     */
+    private void handleDataChanged() {
+        // Data updated - check if we should trigger
+        checkAndTriggerBacktest();
+    }
+
+    // ========== Internal Methods ==========
+
+    /**
+     * Check if all data is ready and trigger backtest if so.
+     */
+    private void checkAndTriggerBacktest() {
+        if (requirements == null) return;
+        if (backtestRunning) return;
+
+        PageState overall = requirements.getOverallState();
+
+        // Notify overall state
+        if (onOverallStateChanged != null) {
+            SwingUtilities.invokeLater(() -> onOverallStateChanged.accept(overall));
+        }
+
+        if (requirements.hasError()) {
+            String errorMsg = requirements.getErrorMessage();
+            reportError(errorMsg != null ? errorMsg : "Data loading failed");
+            return;
+        }
+
+        if (requirements.isReady()) {
+            triggerBacktestInBackground();
+        }
+    }
+
+    /**
+     * Run the backtest in a background thread.
+     */
+    private void triggerBacktestInBackground() {
+        backtestRunning = true;
+        reportProgress(10, "Running backtest...");
+
+        backtestExecutor.submit(() -> {
+            try {
+                // Gather data from pages (already loaded, instant)
+                List<Candle> candles = new ArrayList<>(requirements.getCandlePage().getData());
+                List<AggTrade> aggTrades = requirements.getAggTradesPage() != null
+                    ? new ArrayList<>(requirements.getAggTradesPage().getData()) : null;
+                List<FundingRate> funding = requirements.getFundingPage() != null
+                    ? new ArrayList<>(requirements.getFundingPage().getData()) : null;
+                List<OpenInterest> oi = requirements.getOiPage() != null
+                    ? new ArrayList<>(requirements.getOiPage().getData()) : null;
+                List<PremiumIndex> premium = requirements.getPremiumPage() != null
+                    ? new ArrayList<>(requirements.getPremiumPage().getData()) : null;
+
+                // Store current data for later access
+                currentCandles = candles;
+                currentAggTrades = aggTrades;
+                currentFundingRates = funding;
+                currentOpenInterest = oi;
+                currentPremiumIndex = premium;
+
+                // Set data in engine
+                backtestEngine.setAggTrades(aggTrades);
+                backtestEngine.setFundingRates(funding);
+                backtestEngine.setOpenInterest(oi);
+                backtestEngine.setPremiumIndex(premium);
+
+                // Run backtest
+                BacktestResult result = backtestEngine.run(
+                    currentStrategy, currentConfig, candles, currentPhases,
+                    progress -> SwingUtilities.invokeLater(() ->
+                        reportProgress(progress.percentage(), progress.message())));
+
+                // Notify completion on EDT
+                SwingUtilities.invokeLater(() -> {
+                    backtestRunning = false;
+
                     if (onComplete != null) {
                         onComplete.accept(result);
                     }
 
-                    // Save result to per-project storage in background (can be slow with many trades)
-                    CompletableFuture.runAsync(() -> {
-                        try {
-                            resultStore.save(result);
-                        } catch (Exception e) {
-                            System.err.println("Failed to save result: " + e.getMessage());
-                        }
-
-                        // Record coverage to inventory after successful load
-                        DataInventory inventory = ApplicationContext.getInstance().getDataInventory();
-                        if (inventory != null) {
-                            inventory.recordCandleData(symbol, resolution, startTime, endTime);
-                            if (currentAggTrades != null && !currentAggTrades.isEmpty()) {
-                                inventory.recordAggTradesData(symbol, startTime, endTime);
-                            }
-                            if (currentFundingRates != null && !currentFundingRates.isEmpty()) {
-                                inventory.recordFundingData(symbol, startTime, endTime);
-                            }
-                            if (currentOpenInterest != null && !currentOpenInterest.isEmpty()) {
-                                inventory.recordOIData(symbol, startTime, endTime);
-                            }
-                            // Save inventory periodically
-                            inventory.save();
-                        }
-                    });
-
                     reportProgress(100, "Complete");
                     reportStatus(result.getSummary());
 
-                    // Report warnings if any
+                    // Report warnings
                     if (result.hasWarnings()) {
                         for (String warning : result.warnings()) {
                             reportStatus("Warning: " + warning);
                         }
                     }
+                });
 
-                } catch (Exception e) {
-                    reportProgress(0, "Error");
-                    String errorMsg = e.getCause() != null ? e.getCause().getMessage() : e.getMessage();
-                    reportStatus("Error: " + errorMsg);
-                    if (onError != null) {
-                        onError.accept(errorMsg);
+                // Save result in background
+                CompletableFuture.runAsync(() -> {
+                    try {
+                        resultStore.save(result);
+                    } catch (Exception e) {
+                        System.err.println("Failed to save result: " + e.getMessage());
                     }
-                    e.printStackTrace();
-                }
-            }
-        };
+                });
 
-        worker.execute();
+            } catch (Exception e) {
+                SwingUtilities.invokeLater(() -> {
+                    backtestRunning = false;
+                    reportError(e.getMessage());
+                });
+            }
+        });
     }
 
     /**
-     * Collect data requirements for a backtest session.
+     * Release all currently held pages.
      */
-    private void collectDataRequirements(Strategy strategy, String symbol, String resolution,
-                                          long startTime, long endTime,
-                                          boolean isSubMinute, boolean needsAggTrades) {
-        tracker.clear();
-        ChartConfig chartConfig = ChartConfig.getInstance();
+    @SuppressWarnings("unchecked")
+    private void releaseCurrentPages() {
+        if (requirements == null) return;
 
-        // OHLC is always TRADING
-        String ohlcDataType = "OHLC:" + resolution;
-        tracker.addRequirement(new DataRequirement(
-            ohlcDataType, symbol, startTime, endTime,
-            DataRequirement.Tier.TRADING, "strategy"
-        ));
-
-        // AggTrades: TRADING if sub-minute or DSL uses delta
-        if (needsAggTrades) {
-            tracker.addRequirement(new DataRequirement(
-                "AggTrades", symbol, startTime, endTime,
-                DataRequirement.Tier.TRADING,
-                isSubMinute ? "strategy:subminute" : "strategy:delta"
-            ));
+        if (requirements.getCandlePage() != null) {
+            candlePageMgr.release(requirements.getCandlePage(), null);
         }
-
-        // Funding: TRADING if DSL uses it, VIEW if chart enabled
-        boolean dslUsesFunding = strategy.requiresFunding();
-        if (dslUsesFunding) {
-            tracker.addRequirement(new DataRequirement(
-                "Funding", symbol, startTime, endTime,
-                DataRequirement.Tier.TRADING, "strategy:dsl"
-            ));
-        } else if (chartConfig.isFundingEnabled()) {
-            tracker.addRequirement(new DataRequirement(
-                "Funding", symbol, startTime, endTime,
-                DataRequirement.Tier.VIEW, "chart:funding"
-            ));
+        if (requirements.getAggTradesPage() != null) {
+            aggTradesPageMgr.release(requirements.getAggTradesPage(), null);
         }
-
-        // OI: TRADING if DSL uses it, VIEW if chart enabled
-        boolean dslUsesOI = strategy.requiresOpenInterest();
-        long now = System.currentTimeMillis();
-        long maxOiHistory = 30L * 24 * 60 * 60 * 1000;
-        long oiStartTime = Math.max(startTime, now - maxOiHistory);
-
-        if (dslUsesOI) {
-            tracker.addRequirement(new DataRequirement(
-                "OI", symbol, oiStartTime, endTime,
-                DataRequirement.Tier.TRADING, "strategy:dsl"
-            ));
-        } else if (chartConfig.isOiEnabled()) {
-            tracker.addRequirement(new DataRequirement(
-                "OI", symbol, oiStartTime, endTime,
-                DataRequirement.Tier.VIEW, "chart:oi"
-            ));
+        if (requirements.getFundingPage() != null) {
+            fundingPageMgr.release(requirements.getFundingPage(), null);
         }
-
-        // Collect phase timeframes (TRADING)
-        Set<String> phaseTimeframes = collectPhaseTimeframes(strategy);
-        for (String tf : phaseTimeframes) {
-            if (!tf.equals(resolution)) {
-                tracker.addRequirement(new DataRequirement(
-                    "OHLC:" + tf, symbol, startTime, endTime,
-                    DataRequirement.Tier.TRADING, "phase"
-                ));
-            }
+        if (requirements.getOiPage() != null) {
+            oiPageMgr.release(requirements.getOiPage(), null);
+        }
+        if (requirements.getPremiumPage() != null) {
+            premiumPageMgr.release(requirements.getPremiumPage(), null);
         }
     }
 
     /**
-     * Load VIEW tier data asynchronously (for charts only).
-     */
-    private void loadViewDataAsync(String symbol, String resolution, long startTime, long endTime,
-                                    boolean dslUsesFunding, boolean dslUsesOI, boolean dslUsesPremium) {
-        ChartConfig chartConfig = ChartConfig.getInstance();
-
-        // Check if any orderflow charts need aggTrades
-        boolean orderflowChartsEnabled = chartConfig.isDeltaEnabled() ||
-                                         chartConfig.isCvdEnabled() ||
-                                         chartConfig.isVolumeRatioEnabled() ||
-                                         chartConfig.isWhaleEnabled() ||
-                                         chartConfig.isRetailEnabled();
-
-        // AggTrades: load async if orderflow charts are enabled but DSL doesn't use delta functions
-        // (if DSL uses delta, aggTrades would already be loaded in TRADING tier)
-        if (orderflowChartsEnabled && currentAggTrades == null && aggTradesStore != null) {
-            CompletableFuture.runAsync(() -> {
-                try {
-                    System.out.println("AggTrades (async): Loading for orderflow charts...");
-                    updateTrackerStatus("AggTrades", DataRequirementsTracker.Status.FETCHING);
-                    aggTradesStore.setProgressCallback(progress -> {
-                        System.out.println("AggTrades (async): " + progress.message());
-                    });
-                    List<AggTrade> trades = aggTradesStore.getAggTrades(symbol, startTime, endTime);
-                    aggTradesStore.setProgressCallback(null);
-
-                    if (trades != null && !trades.isEmpty()) {
-                        currentAggTrades = trades;
-                        // Update the indicator engine with aggTrades
-                        backtestEngine.setAggTrades(trades);
-                        backtestEngine.getIndicatorEngine().setAggTrades(trades);
-                        System.out.println("AggTrades (async): Loaded " + trades.size() + " trades for orderflow charts");
-                        updateTrackerStatus("AggTrades", DataRequirementsTracker.Status.READY);
-                        notifyViewDataReady("AggTrades");
-                    } else {
-                        System.out.println("AggTrades (async): No data available");
-                        updateTrackerStatus("AggTrades", DataRequirementsTracker.Status.ERROR);
-                    }
-                } catch (Exception e) {
-                    System.err.println("AggTrades (async): Failed to load - " + e.getMessage());
-                    updateTrackerStatus("AggTrades", DataRequirementsTracker.Status.ERROR);
-                }
-            });
-        }
-
-        // Funding: load async if chart enabled but DSL doesn't use it
-        if (chartConfig.isFundingEnabled() && !dslUsesFunding && fundingRateStore != null) {
-            CompletableFuture.runAsync(() -> {
-                try {
-                    System.out.println("Funding (async): Loading funding rates...");
-                    updateTrackerStatus("Funding", DataRequirementsTracker.Status.FETCHING);
-                    List<FundingRate> rates = fundingRateStore.getFundingRates(symbol, startTime, endTime);
-                    if (rates != null && !rates.isEmpty()) {
-                        currentFundingRates = rates;
-                        // Update the indicator engine with funding rates
-                        backtestEngine.setFundingRates(rates);
-                        backtestEngine.getIndicatorEngine().setFundingRates(rates);
-                        System.out.println("Funding (async): Loaded " + rates.size() + " funding rates");
-                        updateTrackerStatus("Funding", DataRequirementsTracker.Status.READY);
-                        notifyViewDataReady("Funding");
-                    } else {
-                        System.out.println("Funding (async): No data available");
-                        updateTrackerStatus("Funding", DataRequirementsTracker.Status.ERROR);
-                    }
-                } catch (Exception e) {
-                    System.err.println("Funding (async): Failed to load - " + e.getMessage());
-                    updateTrackerStatus("Funding", DataRequirementsTracker.Status.ERROR);
-                }
-            });
-        }
-
-        // OI: load async if chart enabled but DSL doesn't use it
-        if (chartConfig.isOiEnabled() && !dslUsesOI && openInterestStore != null) {
-            CompletableFuture.runAsync(() -> {
-                try {
-                    long now = System.currentTimeMillis();
-                    long maxOiHistory = 30L * 24 * 60 * 60 * 1000;
-                    long oiStartTime = Math.max(startTime, now - maxOiHistory);
-
-                    if (oiStartTime < endTime) {
-                        updateTrackerStatus("OI", DataRequirementsTracker.Status.FETCHING);
-                        List<OpenInterest> oi = openInterestStore.getOpenInterest(symbol, oiStartTime, endTime,
-                            msg -> {
-                                System.out.println("OI (async): " + msg);
-                                // Parse progress from message like "Fetching OI: 145/144 (100%)"
-                                if (msg.contains("/")) {
-                                    try {
-                                        String[] parts = msg.split("\\s+");
-                                        for (String part : parts) {
-                                            if (part.contains("/")) {
-                                                String[] counts = part.split("/");
-                                                int loaded = Integer.parseInt(counts[0]);
-                                                int expected = Integer.parseInt(counts[1]);
-                                                reportDataLoadingProgress("OI", loaded, expected);
-                                                break;
-                                            }
-                                        }
-                                    } catch (Exception ignored) {}
-                                }
-                            });
-                        if (oi != null && !oi.isEmpty()) {
-                            currentOpenInterest = oi;
-                            // Update the indicator engine with OI data
-                            backtestEngine.setOpenInterest(oi);
-                            backtestEngine.getIndicatorEngine().setOpenInterest(oi);
-                            System.out.println("OI (async): Loaded " + oi.size() + " OI records");
-                            updateTrackerStatus("OI", DataRequirementsTracker.Status.READY);
-                            reportDataLoadingProgress("OI", -1, -1); // Hide progress bar
-                            notifyViewDataReady("OI");
-                        } else {
-                            System.out.println("OI (async): No data available");
-                            updateTrackerStatus("OI", DataRequirementsTracker.Status.ERROR);
-                            reportDataLoadingProgress("OI", -1, -1); // Hide progress bar
-                        }
-                    }
-                } catch (Exception e) {
-                    System.err.println("Failed to load OI (async): " + e.getMessage());
-                    updateTrackerStatus("OI", DataRequirementsTracker.Status.ERROR);
-                    reportDataLoadingProgress("OI", -1, -1); // Hide progress bar
-                }
-            });
-        }
-
-        // Premium: load async if chart enabled but DSL doesn't use it
-        if (chartConfig.isPremiumEnabled() && !dslUsesPremium && premiumIndexStore != null) {
-            CompletableFuture.runAsync(() -> {
-                try {
-                    updateTrackerStatus("Premium", DataRequirementsTracker.Status.FETCHING);
-                    List<PremiumIndex> premium = premiumIndexStore.getPremiumIndex(symbol, resolution, startTime, endTime);
-                    if (premium != null && !premium.isEmpty()) {
-                        currentPremiumIndex = premium;
-                        backtestEngine.setPremiumIndex(premium);
-                        backtestEngine.getIndicatorEngine().setPremiumIndex(premium);
-                        System.out.println("Premium (async): Loaded " + premium.size() + " premium records");
-                        updateTrackerStatus("Premium", DataRequirementsTracker.Status.READY);
-                        notifyViewDataReady("Premium");
-                    } else {
-                        System.out.println("Premium (async): No data available");
-                        updateTrackerStatus("Premium", DataRequirementsTracker.Status.ERROR);
-                    }
-                } catch (Exception e) {
-                    System.err.println("Failed to load Premium (async): " + e.getMessage());
-                    updateTrackerStatus("Premium", DataRequirementsTracker.Status.ERROR);
-                }
-            });
-        }
-    }
-
-    /**
-     * Collect all unique timeframes from required phases.
-     */
-    private Set<String> collectPhaseTimeframes(Strategy strategy) {
-        Set<String> timeframes = new HashSet<>();
-        PhaseStore phaseStore = ApplicationContext.getInstance().getPhaseStore();
-
-        for (String phaseId : strategy.getRequiredPhaseIds()) {
-            Phase phase = phaseStore.load(phaseId);
-            if (phase != null && phase.getTimeframe() != null) {
-                timeframes.add(phase.getTimeframe());
-            }
-        }
-        for (String phaseId : strategy.getExcludedPhaseIds()) {
-            Phase phase = phaseStore.load(phaseId);
-            if (phase != null && phase.getTimeframe() != null) {
-                timeframes.add(phase.getTimeframe());
-            }
-        }
-        // Also from exit zones
-        for (ExitZone zone : strategy.getExitZones()) {
-            for (String phaseId : zone.requiredPhaseIds()) {
-                Phase phase = phaseStore.load(phaseId);
-                if (phase != null && phase.getTimeframe() != null) {
-                    timeframes.add(phase.getTimeframe());
-                }
-            }
-            for (String phaseId : zone.excludedPhaseIds()) {
-                Phase phase = phaseStore.load(phaseId);
-                if (phase != null && phase.getTimeframe() != null) {
-                    timeframes.add(phase.getTimeframe());
-                }
-            }
-        }
-        return timeframes;
-    }
-
-    /**
-     * Load all phases for strategy filtering.
+     * Load phases for the strategy.
      */
     private List<Phase> loadPhases(Strategy strategy) {
         List<Phase> allPhases = new ArrayList<>();
         PhaseStore phaseStore = ApplicationContext.getInstance().getPhaseStore();
 
-        for (String phaseId : strategy.getRequiredPhaseIds()) {
+        Set<String> phaseIds = new HashSet<>();
+        phaseIds.addAll(strategy.getRequiredPhaseIds());
+        phaseIds.addAll(strategy.getExcludedPhaseIds());
+
+        for (ExitZone zone : strategy.getExitZones()) {
+            phaseIds.addAll(zone.requiredPhaseIds());
+            phaseIds.addAll(zone.excludedPhaseIds());
+        }
+
+        for (String phaseId : phaseIds) {
             Phase phase = phaseStore.load(phaseId);
             if (phase != null) {
                 allPhases.add(phase);
             }
         }
-        for (String phaseId : strategy.getExcludedPhaseIds()) {
-            Phase phase = phaseStore.load(phaseId);
-            if (phase != null && !allPhases.contains(phase)) {
-                allPhases.add(phase);
-            }
-        }
-        for (ExitZone zone : strategy.getExitZones()) {
-            for (String phaseId : zone.requiredPhaseIds()) {
-                Phase phase = phaseStore.load(phaseId);
-                if (phase != null && !allPhases.contains(phase)) {
-                    allPhases.add(phase);
-                }
-            }
-            for (String phaseId : zone.excludedPhaseIds()) {
-                Phase phase = phaseStore.load(phaseId);
-                if (phase != null && !allPhases.contains(phase)) {
-                    allPhases.add(phase);
-                }
-            }
-        }
+
         return allPhases;
     }
 
-    /**
-     * Update tracker status and notify UI.
-     */
-    private void updateTrackerStatus(String dataType, DataRequirementsTracker.Status status) {
-        tracker.updateStatus(dataType, status);
+    // ========== Typed Listener Factories ==========
 
-        // Also report to legacy callback for UI compatibility
-        String legacyStatus = switch (status) {
-            case PENDING, CHECKING -> "loading";
-            case FETCHING -> "loading";
-            case READY -> "ready";
-            case ERROR -> "error";
+    private DataPageListener<Candle> createCandleListener() {
+        return new DataPageListener<Candle>() {
+            @Override
+            public void onStateChanged(DataPage<Candle> page, PageState oldState, PageState newState) {
+                handleStateChanged("Candles", newState);
+            }
+            @Override
+            public void onDataChanged(DataPage<Candle> page) {
+                handleDataChanged();
+            }
         };
-        reportDataStatus(dataType.split(":")[0], legacyStatus); // Strip timeframe for UI
     }
 
-    /**
-     * Notify that VIEW data is ready for chart refresh.
-     */
-    private void notifyViewDataReady(String dataType) {
-        if (onViewDataReady != null) {
-            SwingUtilities.invokeLater(() -> onViewDataReady.accept(dataType));
-        }
+    private DataPageListener<AggTrade> createAggTradesListener() {
+        return new DataPageListener<AggTrade>() {
+            @Override
+            public void onStateChanged(DataPage<AggTrade> page, PageState oldState, PageState newState) {
+                handleStateChanged("AggTrades", newState);
+            }
+            @Override
+            public void onDataChanged(DataPage<AggTrade> page) {
+                handleDataChanged();
+            }
+        };
     }
+
+    private DataPageListener<FundingRate> createFundingListener() {
+        return new DataPageListener<FundingRate>() {
+            @Override
+            public void onStateChanged(DataPage<FundingRate> page, PageState oldState, PageState newState) {
+                handleStateChanged("Funding", newState);
+            }
+            @Override
+            public void onDataChanged(DataPage<FundingRate> page) {
+                handleDataChanged();
+            }
+        };
+    }
+
+    private DataPageListener<OpenInterest> createOIListener() {
+        return new DataPageListener<OpenInterest>() {
+            @Override
+            public void onStateChanged(DataPage<OpenInterest> page, PageState oldState, PageState newState) {
+                handleStateChanged("OI", newState);
+            }
+            @Override
+            public void onDataChanged(DataPage<OpenInterest> page) {
+                handleDataChanged();
+            }
+        };
+    }
+
+    private DataPageListener<PremiumIndex> createPremiumListener() {
+        return new DataPageListener<PremiumIndex>() {
+            @Override
+            public void onStateChanged(DataPage<PremiumIndex> page, PageState oldState, PageState newState) {
+                handleStateChanged("Premium", newState);
+            }
+            @Override
+            public void onDataChanged(DataPage<PremiumIndex> page) {
+                handleDataChanged();
+            }
+        };
+    }
+
+    // ========== Reporting ==========
 
     private void reportProgress(int percentage, String message) {
         if (onProgress != null) {
@@ -862,14 +595,23 @@ public class BacktestCoordinator {
         }
     }
 
-    /**
-     * Report data loading progress for UI progress bar.
-     */
-    private void reportDataLoadingProgress(String dataType, int loaded, int expected) {
-        if (onDataLoadingProgress != null) {
-            SwingUtilities.invokeLater(() -> onDataLoadingProgress.onProgress(dataType, loaded, expected));
+    private void reportError(String message) {
+        reportProgress(0, "Error");
+        reportStatus("Error: " + message);
+        if (onError != null) {
+            onError.accept(message);
         }
     }
+
+    /**
+     * Shutdown the coordinator.
+     */
+    public void shutdown() {
+        releaseCurrentPages();
+        backtestExecutor.shutdown();
+    }
+
+    // ========== Static Utilities ==========
 
     /**
      * Parse duration string to milliseconds.

@@ -821,6 +821,50 @@ public class AggTradesStore {
     }
 
     /**
+     * Get aggregated trades from cache only (no API calls).
+     * Returns immediately with whatever is available in local cache.
+     *
+     * @param symbol    Trading symbol
+     * @param startTime Start time in milliseconds
+     * @param endTime   End time in milliseconds
+     * @return List of AggTrades sorted by time ascending (may be incomplete)
+     */
+    public List<AggTrade> getAggTradesCacheOnly(String symbol, long startTime, long endTime) {
+        List<AggTrade> allTrades = new ArrayList<>();
+
+        LocalDateTime start = LocalDateTime.ofInstant(Instant.ofEpochMilli(startTime), ZoneOffset.UTC)
+            .withMinute(0).withSecond(0).withNano(0);
+        LocalDateTime end = LocalDateTime.ofInstant(Instant.ofEpochMilli(endTime), ZoneOffset.UTC);
+
+        LocalDateTime current = start;
+        while (!current.isAfter(end)) {
+            File completeFile = getHourFile(symbol, current, true);
+            File partialFile = getHourFile(symbol, current, false);
+
+            // Prefer complete file, fall back to partial
+            File fileToLoad = completeFile.exists() ? completeFile :
+                              partialFile.exists() ? partialFile : null;
+
+            if (fileToLoad != null) {
+                try {
+                    allTrades.addAll(loadCsvFile(fileToLoad));
+                } catch (IOException e) {
+                    log.warn("Failed to load cache file {}: {}", fileToLoad, e.getMessage());
+                }
+            }
+
+            current = current.plusHours(1);
+        }
+
+        // Filter to requested range and sort
+        return allTrades.stream()
+            .filter(t -> t.timestamp() >= startTime && t.timestamp() <= endTime)
+            .distinct()
+            .sorted((a, b) -> Long.compare(a.timestamp(), b.timestamp()))
+            .toList();
+    }
+
+    /**
      * Get the data directory path for a symbol's aggTrades.
      */
     public Path getDataPath(String symbol) {

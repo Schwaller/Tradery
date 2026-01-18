@@ -277,6 +277,30 @@ public class PremiumIndexStore {
     }
 
     /**
+     * Get premium index klines from cache only (no API calls).
+     * Returns immediately with whatever is available in local cache.
+     *
+     * @param symbol    Trading pair (e.g., "BTCUSDT")
+     * @param interval  Kline interval (e.g., "1h", "5m")
+     * @param startTime Start time in milliseconds
+     * @param endTime   End time in milliseconds
+     * @return List of premium index klines sorted by time ascending (may be incomplete)
+     */
+    public List<PremiumIndex> getPremiumIndexCacheOnly(String symbol, String interval,
+                                                        long startTime, long endTime) {
+        Map<Long, PremiumIndex> premiumMap = new TreeMap<>();
+        loadCachedPremium(symbol, interval, startTime, endTime, premiumMap);
+
+        List<PremiumIndex> result = new ArrayList<>();
+        for (PremiumIndex pi : premiumMap.values()) {
+            if (pi.openTime() >= startTime && pi.openTime() <= endTime) {
+                result.add(pi);
+            }
+        }
+        return result;
+    }
+
+    /**
      * Clear cache for a symbol and interval.
      */
     public void clearCache(String symbol, String interval) {

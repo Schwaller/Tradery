@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.sun.net.httpserver.HttpExchange;
+import com.tradery.data.BinanceClient;
 import com.tradery.data.sqlite.SqliteDataStore;
 import com.tradery.engine.BacktestEngine;
 import com.tradery.engine.PhaseAnalyzer;
@@ -15,6 +16,7 @@ import com.tradery.model.*;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -441,6 +443,9 @@ public class StrategyHandler extends ApiHandlerBase {
             // Build config from strategy settings
             BacktestConfig config = strategy.getBacktestSettings().toBacktestConfig(startDate, endDate);
 
+            // Fill gap if needed (auto-fetch from Binance API)
+            fillGapIfNeeded(config.symbol(), config.resolution(), config.startDate(), config.endDate());
+
             // Load candles
             List<Candle> candles = dataStore.getCandles(
                 config.symbol(), config.resolution(), config.startDate(), config.endDate()
@@ -626,5 +631,81 @@ public class StrategyHandler extends ApiHandlerBase {
 
     private double round(double value) {
         return Math.round(value * 100) / 100.0;
+    }
+
+    /**
+     * Fill gaps in candle data if needed.
+     * Called before backtest to ensure data is available.
+     * Handles both recent gaps and complete lack of data.
+     */
+    private void fillGapIfNeeded(String symbol, String timeframe, long startTime, long endTime) {
+        try {
+            long intervalMs = getIntervalMs(timeframe);
+            Candle latestCandle = dataStore.getLatestCandle(symbol, timeframe);
+
+            if (latestCandle == null) {
+                // No candle data at all - fetch the entire range
+                System.out.println("No candle data in SQLite for " + symbol + "/" + timeframe +
+                    ". Fetching from Binance API...");
+
+                BinanceClient binanceClient = new BinanceClient();
+                List<Candle> newCandles = binanceClient.fetchAllKlines(symbol, timeframe, startTime, endTime);
+
+                if (!newCandles.isEmpty()) {
+                    dataStore.saveCandles(symbol, timeframe, newCandles);
+                    System.out.println("Fetched " + newCandles.size() + " candles for " + symbol + "/" + timeframe);
+                }
+                return;
+            }
+
+            // Check for gap at the end
+            long latestTime = latestCandle.timestamp();
+            long gapMs = endTime - latestTime;
+            long threshold = intervalMs * 2;
+
+            if (gapMs > threshold) {
+                int gapCandles = (int) (gapMs / intervalMs);
+                System.out.println("Recent gap detected for " + symbol + "/" + timeframe +
+                    ": " + gapCandles + " candles behind. Fetching from Binance API...");
+
+                BinanceClient binanceClient = new BinanceClient();
+                long fetchStart = latestTime + intervalMs;
+                long fetchEnd = System.currentTimeMillis();
+
+                List<Candle> newCandles = binanceClient.fetchAllKlines(symbol, timeframe, fetchStart, fetchEnd);
+
+                if (!newCandles.isEmpty()) {
+                    dataStore.saveCandles(symbol, timeframe, newCandles);
+                    System.out.println("Filled gap with " + newCandles.size() + " candles for " + symbol + "/" + timeframe);
+                }
+            }
+
+        } catch (Exception e) {
+            System.err.println("Failed to fill gap: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Get interval in milliseconds for a timeframe.
+     */
+    private long getIntervalMs(String interval) {
+        return switch (interval) {
+            case "1m" -> Duration.ofMinutes(1).toMillis();
+            case "3m" -> Duration.ofMinutes(3).toMillis();
+            case "5m" -> Duration.ofMinutes(5).toMillis();
+            case "15m" -> Duration.ofMinutes(15).toMillis();
+            case "30m" -> Duration.ofMinutes(30).toMillis();
+            case "1h" -> Duration.ofHours(1).toMillis();
+            case "2h" -> Duration.ofHours(2).toMillis();
+            case "4h" -> Duration.ofHours(4).toMillis();
+            case "6h" -> Duration.ofHours(6).toMillis();
+            case "8h" -> Duration.ofHours(8).toMillis();
+            case "12h" -> Duration.ofHours(12).toMillis();
+            case "1d" -> Duration.ofDays(1).toMillis();
+            case "3d" -> Duration.ofDays(3).toMillis();
+            case "1w" -> Duration.ofDays(7).toMillis();
+            case "1M" -> Duration.ofDays(30).toMillis();
+            default -> Duration.ofHours(1).toMillis();
+        };
     }
 }

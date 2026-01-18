@@ -355,6 +355,28 @@ public class OpenInterestStore {
     }
 
     /**
+     * Get open interest data from cache only (no API calls).
+     * Returns immediately with whatever is available in local cache.
+     *
+     * @param symbol    Trading pair (e.g., "BTCUSDT")
+     * @param startTime Start time in milliseconds
+     * @param endTime   End time in milliseconds
+     * @return List of open interest data sorted by time ascending (may be incomplete)
+     */
+    public List<OpenInterest> getOpenInterestCacheOnly(String symbol, long startTime, long endTime) {
+        Map<Long, OpenInterest> oiMap = new TreeMap<>();
+        loadCachedData(symbol, startTime, endTime, oiMap);
+
+        List<OpenInterest> result = new ArrayList<>();
+        for (OpenInterest oi : oiMap.values()) {
+            if (oi.timestamp() >= startTime && oi.timestamp() <= endTime) {
+                result.add(oi);
+            }
+        }
+        return result;
+    }
+
+    /**
      * Clear cache for a symbol.
      */
     public void clearCache(String symbol) {
