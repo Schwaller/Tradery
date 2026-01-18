@@ -24,6 +24,8 @@ public class PremiumPageManager extends DataPageManager<PremiumIndex> {
 
     @Override
     protected void loadData(DataPage<PremiumIndex> page) throws Exception {
+        assertNotEDT("PremiumPageManager.loadData");
+
         if (premiumIndexStore == null) {
             updatePageData(page, Collections.emptyList());
             return;

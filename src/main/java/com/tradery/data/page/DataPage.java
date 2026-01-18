@@ -10,12 +10,15 @@ import java.util.List;
 /**
  * Generic data page for the event-driven data architecture.
  *
+ * This class implements DataPageView for consumer access and adds
+ * internal mutation methods for use by DataPageManager.
+ *
  * Key difference from the old system: The page key does NOT include consumer name.
  * This enables proper deduplication - multiple consumers can share the same page.
  *
  * @param <T> The type of data records stored in this page
  */
-public class DataPage<T> {
+public class DataPage<T> implements DataPageView<T> {
 
     // Identity (determines deduplication - NOT including consumer)
     private final DataType dataType;
@@ -50,36 +53,34 @@ public class DataPage<T> {
         this.endTime = endTime;
     }
 
-    // ========== Identity ==========
+    // ========== Identity (DataPageView interface) ==========
 
+    @Override
     public DataType getDataType() {
         return dataType;
     }
 
+    @Override
     public String getSymbol() {
         return symbol;
     }
 
-    /**
-     * Get the timeframe (for CANDLES and PREMIUM_INDEX).
-     * Returns null for data types that don't use timeframe.
-     */
+    @Override
     public String getTimeframe() {
         return timeframe;
     }
 
+    @Override
     public long getStartTime() {
         return startTime;
     }
 
+    @Override
     public long getEndTime() {
         return endTime;
     }
 
-    /**
-     * Generate a unique key for this page based on data identity only.
-     * This key is used for deduplication - NO consumer name included.
-     */
+    @Override
     public String getKey() {
         StringBuilder sb = new StringBuilder();
         sb.append(dataType).append(":");
@@ -91,16 +92,20 @@ public class DataPage<T> {
         return sb.toString();
     }
 
-    // ========== State ==========
+    // ========== State (DataPageView interface) ==========
 
+    @Override
     public PageState getState() {
         return state;
     }
+
+    // ========== State (internal mutation) ==========
 
     public void setState(PageState state) {
         this.state = state;
     }
 
+    @Override
     public String getErrorMessage() {
         return errorMessage;
     }
@@ -117,15 +122,29 @@ public class DataPage<T> {
         this.lastSyncTime = lastSyncTime;
     }
 
-    // ========== Data ==========
+    // ========== Data (DataPageView interface) ==========
 
-    /**
-     * Get the current data (may be empty during initial load).
-     * Returns an unmodifiable view of the data.
-     */
+    @Override
     public List<T> getData() {
         return Collections.unmodifiableList(data);
     }
+
+    @Override
+    public boolean hasData() {
+        return !data.isEmpty();
+    }
+
+    @Override
+    public boolean isEmpty() {
+        return data.isEmpty();
+    }
+
+    @Override
+    public int getRecordCount() {
+        return data.size();
+    }
+
+    // ========== Data (internal mutation) ==========
 
     /**
      * Set the data, creating a defensive copy.
@@ -142,37 +161,19 @@ public class DataPage<T> {
         this.data = data;
     }
 
-    public boolean hasData() {
-        return !data.isEmpty();
-    }
+    // ========== State Checks (DataPageView interface) ==========
 
-    public boolean isEmpty() {
-        return data.isEmpty();
-    }
-
-    public int getRecordCount() {
-        return data.size();
-    }
-
-    // ========== Convenience State Checks ==========
-
-    /**
-     * Check if the page is ready for use (has data available).
-     */
+    @Override
     public boolean isReady() {
         return state == PageState.READY || state == PageState.UPDATING;
     }
 
-    /**
-     * Check if the page is currently loading or updating.
-     */
+    @Override
     public boolean isLoading() {
         return state == PageState.LOADING || state == PageState.UPDATING;
     }
 
-    /**
-     * Check if the page is in an error state.
-     */
+    @Override
     public boolean hasError() {
         return state == PageState.ERROR;
     }

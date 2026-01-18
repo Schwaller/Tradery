@@ -1,10 +1,10 @@
 package com.tradery.ui;
 
 import com.tradery.ApplicationContext;
-import com.tradery.data.sqlite.SqliteDataStore;
-import com.tradery.data.DataConsumer;
-import com.tradery.data.DataRequirement;
-import com.tradery.data.DataRequirementsTracker;
+import com.tradery.data.PageState;
+import com.tradery.data.page.CandlePageManager;
+import com.tradery.data.page.DataPageListener;
+import com.tradery.data.page.DataPageView;
 import com.tradery.dsl.Parser;
 import com.tradery.engine.ConditionEvaluator;
 import com.tradery.indicators.IndicatorEngine;
@@ -32,9 +32,7 @@ import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.awt.event.MouseMotionAdapter;
 import java.awt.event.MouseWheelListener;
-import java.awt.geom.Point2D;
 import java.awt.geom.Rectangle2D;
-import java.io.IOException;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
@@ -45,7 +43,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  * Chart panel showing where a phase condition would be active over historical data.
  * Displays price with highlighted bands for periods when the phase is true.
  */
-public class PhasePreviewChart extends JPanel {
+public class PhasePreviewChart extends JPanel implements DataPageListener<Candle> {
 
     private JFreeChart chart;
     private ChartPanel chartPanel;
@@ -63,9 +61,12 @@ public class PhasePreviewChart extends JPanel {
     // Data range - 4 years for a full crypto cycle
     private static final int YEARS_OF_DATA = 4;
 
-    // Counter for unique requirement IDs
+    // Counter for unique request IDs
     private static final AtomicInteger requestCounter = new AtomicInteger(0);
     private String currentRequestId;
+
+    // Current data page (for cleanup)
+    private DataPageView<Candle> currentPage;
 
     // Pan state
     private Point panStart = null;
@@ -369,73 +370,88 @@ public class PhasePreviewChart extends JPanel {
         // Generate unique request ID for tracking
         currentRequestId = "phase-preview-" + requestCounter.incrementAndGet();
 
-        // Load data in background
+        // Release previous page if any
+        if (currentPage != null) {
+            ApplicationContext.getInstance().getCandlePageManager().release(currentPage, this);
+            currentPage = null;
+        }
+
+        String symbol = phase.getSymbol() != null ? phase.getSymbol() : "BTCUSDT";
+        String timeframe = phase.getTimeframe() != null ? phase.getTimeframe() : "1d";
+
+        // Calculate date range (timestamps in millis)
+        LocalDate endDate = LocalDate.now();
+        LocalDate startDate = endDate.minusYears(YEARS_OF_DATA);
+        long startTime = startDate.atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli();
+        long endTime = endDate.plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli();
+
+        statusLabel.setText("Loading " + symbol + " " + timeframe + "...");
+
+        // Request data from CandlePageManager
+        CandlePageManager pageManager = ApplicationContext.getInstance().getCandlePageManager();
+        currentPage = pageManager.request(symbol, timeframe, startTime, endTime, this);
+
+        // If already ready, onStateChanged will be called immediately
+    }
+
+    // ========== DataPageListener Implementation ==========
+
+    @Override
+    public void onStateChanged(DataPageView<Candle> page, PageState oldState, PageState newState) {
+        if (page != currentPage) return; // Ignore stale pages
+
+        switch (newState) {
+            case LOADING -> statusLabel.setText("Loading candles...");
+            case READY -> onDataReady(page);
+            case ERROR -> {
+                clearChart();
+                String error = page.getErrorMessage() != null ? page.getErrorMessage() : "Unknown error";
+                statusLabel.setText("Error: " + error);
+            }
+            case UPDATING -> statusLabel.setText("Updating...");
+            case EMPTY -> {} // Initial state, ignore
+        }
+    }
+
+    @Override
+    public void onDataChanged(DataPageView<Candle> page) {
+        if (page != currentPage) return;
+        if (page.isReady()) {
+            onDataReady(page);
+        }
+    }
+
+    private void onDataReady(DataPageView<Candle> page) {
+        candles = new ArrayList<>(page.getData());
+
+        if (candles.isEmpty()) {
+            clearChart();
+            String symbol = phase.getSymbol() != null ? phase.getSymbol() : "BTCUSDT";
+            String timeframe = phase.getTimeframe() != null ? phase.getTimeframe() : "1d";
+            statusLabel.setText("No data available for " + symbol + " " + timeframe);
+            return;
+        }
+
+        statusLabel.setText("Evaluating condition...");
+
+        // Evaluate condition in background
         SwingWorker<Void, Void> worker = new SwingWorker<>() {
             private String errorMessage = null;
             private int activeCount = 0;
             private int totalBars = 0;
-            private final String requestId = currentRequestId;
 
             @Override
             protected Void doInBackground() {
                 try {
-                    loadAndEvaluate();
+                    evaluateCondition();
                 } catch (Exception e) {
                     errorMessage = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
-                    System.err.println("PhasePreviewChart error: " + e.getMessage());
-                    e.printStackTrace();
                 }
                 return null;
             }
 
-            private void loadAndEvaluate() throws IOException {
-                String symbol = phase.getSymbol() != null ? phase.getSymbol() : "BTCUSDT";
+            private void evaluateCondition() {
                 String timeframe = phase.getTimeframe() != null ? phase.getTimeframe() : "1d";
-
-                // Calculate date range (timestamps in millis)
-                LocalDate endDate = LocalDate.now();
-                LocalDate startDate = endDate.minusYears(YEARS_OF_DATA);
-                long startTime = startDate.atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli();
-                long endTime = endDate.plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli();
-
-                // Register data requirement with tracker
-                DataRequirementsTracker tracker = ApplicationContext.getInstance().getPreviewTracker();
-                String dataType = "OHLC:" + timeframe;
-                DataRequirement requirement = new DataRequirement(
-                    dataType,
-                    symbol,
-                    startTime,
-                    endTime,
-                    DataRequirement.Tier.TRADING,
-                    "phase:" + phase.getId(),
-                    DataConsumer.PHASE_PREVIEW
-                );
-                tracker.addRequirement(requirement);
-                tracker.updateStatus(dataType, DataRequirementsTracker.Status.FETCHING);
-
-                // Update status on EDT
-                SwingUtilities.invokeLater(() -> statusLabel.setText("Fetching " + symbol + " " + timeframe + "..."));
-
-                // Load candles from SQLite
-                SqliteDataStore dataStore = ApplicationContext.getInstance().getSqliteDataStore();
-                try {
-                    candles = dataStore.getCandles(symbol, timeframe, startTime, endTime);
-                } catch (Exception e) {
-                    tracker.updateStatus(dataType, DataRequirementsTracker.Status.ERROR, 0, 0, e.getMessage());
-                    throw e;
-                }
-
-                if (candles.isEmpty()) {
-                    tracker.updateStatus(dataType, DataRequirementsTracker.Status.ERROR, 0, 0, "No data available");
-                    errorMessage = "No data available for " + symbol + " " + timeframe;
-                    return;
-                }
-
-                // Mark data as ready
-                tracker.updateStatus(dataType, DataRequirementsTracker.Status.READY, candles.size(), candles.size());
-
-                // Update status on EDT
-                SwingUtilities.invokeLater(() -> statusLabel.setText("Evaluating condition..."));
 
                 // Parse condition
                 Parser parser = new Parser();
@@ -455,9 +471,8 @@ public class PhasePreviewChart extends JPanel {
                 totalBars = candles.size();
 
                 // Calculate warmup based on condition complexity
-                // Simple conditions (DAYOFWEEK, HOUR, etc.) don't need warmup
                 String condition = phase.getCondition().toUpperCase();
-                int warmup = 1; // Default minimal warmup
+                int warmup = 1;
                 if (condition.contains("SMA") || condition.contains("EMA") ||
                     condition.contains("RSI") || condition.contains("MACD") ||
                     condition.contains("ATR") || condition.contains("ADX") ||
@@ -471,7 +486,6 @@ public class PhasePreviewChart extends JPanel {
                         phaseActive[i] = evaluator.evaluate(result.ast(), i);
                         if (phaseActive[i]) activeCount++;
                     } catch (Exception e) {
-                        // Evaluation error at this bar - log but continue
                         if (i == warmup) {
                             System.err.println("PhasePreviewChart evaluation error at bar " + i + ": " + e.getMessage());
                         }
@@ -481,17 +495,11 @@ public class PhasePreviewChart extends JPanel {
 
             @Override
             protected void done() {
-                // Only update if this is still the current request
-                if (!requestId.equals(currentRequestId)) {
-                    return;
-                }
-
                 if (errorMessage != null) {
                     clearChart();
                     statusLabel.setText(errorMessage);
                 } else {
                     updateChart();
-                    // Fit the chart to show all data
                     fitAll();
                     double pct = totalBars > 0 ? (activeCount * 100.0 / totalBars) : 0;
                     statusLabel.setText(String.format("Active: %.1f%% of %d bars (%d years)",
@@ -499,8 +507,6 @@ public class PhasePreviewChart extends JPanel {
                 }
             }
         };
-
-        statusLabel.setText("Loading data...");
         worker.execute();
     }
 
@@ -579,6 +585,16 @@ public class PhasePreviewChart extends JPanel {
             } else {
                 i++;
             }
+        }
+    }
+
+    /**
+     * Cleanup when component is removed from hierarchy.
+     */
+    public void dispose() {
+        if (currentPage != null) {
+            ApplicationContext.getInstance().getCandlePageManager().release(currentPage, this);
+            currentPage = null;
         }
     }
 

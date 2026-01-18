@@ -6,8 +6,8 @@ import com.tradery.data.PageState;
 import com.tradery.data.SubMinuteCandleGenerator;
 import com.tradery.data.page.AggTradesPageManager;
 import com.tradery.data.page.CandlePageManager;
-import com.tradery.data.page.DataPage;
 import com.tradery.data.page.DataPageListener;
+import com.tradery.data.page.DataPageView;
 import com.tradery.data.page.DataRequirements;
 import com.tradery.data.page.FundingPageManager;
 import com.tradery.data.page.OIPageManager;
@@ -64,6 +64,13 @@ public class BacktestCoordinator {
     private BacktestConfig currentConfig;
     private List<Phase> currentPhases;
     private volatile boolean backtestRunning = false;
+
+    // Current listeners (stored for proper release)
+    private DataPageListener<Candle> candleListener;
+    private DataPageListener<AggTrade> aggTradesListener;
+    private DataPageListener<FundingRate> fundingListener;
+    private DataPageListener<OpenInterest> oiListener;
+    private DataPageListener<PremiumIndex> premiumListener;
 
     // Current data (cached after backtest runs)
     private List<Candle> currentCandles;
@@ -260,22 +267,25 @@ public class BacktestCoordinator {
 
         // Request candles (always required)
         reportDataStatus("Candles", "loading");
-        DataPage<Candle> candlePage = candlePageMgr.request(
-            symbol, timeframe, startTime, endTime, createCandleListener());
+        candleListener = createCandleListener();
+        DataPageView<Candle> candlePage = candlePageMgr.request(
+            symbol, timeframe, startTime, endTime, candleListener);
         requirements.setCandlePage(candlePage);
 
         // Request optional data based on strategy requirements
         if (needsAggTrades) {
             reportDataStatus("AggTrades", "loading");
-            DataPage<AggTrade> aggTradesPage = aggTradesPageMgr.request(
-                symbol, null, startTime, endTime, createAggTradesListener());
+            aggTradesListener = createAggTradesListener();
+            DataPageView<AggTrade> aggTradesPage = aggTradesPageMgr.request(
+                symbol, null, startTime, endTime, aggTradesListener);
             requirements.setAggTradesPage(aggTradesPage);
         }
 
         if (needsFunding) {
             reportDataStatus("Funding", "loading");
-            DataPage<FundingRate> fundingPage = fundingPageMgr.request(
-                symbol, null, startTime, endTime, createFundingListener());
+            fundingListener = createFundingListener();
+            DataPageView<FundingRate> fundingPage = fundingPageMgr.request(
+                symbol, null, startTime, endTime, fundingListener);
             requirements.setFundingPage(fundingPage);
         }
 
@@ -287,16 +297,18 @@ public class BacktestCoordinator {
 
             if (oiStartTime < endTime) {
                 reportDataStatus("OI", "loading");
-                DataPage<OpenInterest> oiPage = oiPageMgr.request(
-                    symbol, null, oiStartTime, endTime, createOIListener());
+                oiListener = createOIListener();
+                DataPageView<OpenInterest> oiPage = oiPageMgr.request(
+                    symbol, null, oiStartTime, endTime, oiListener);
                 requirements.setOiPage(oiPage);
             }
         }
 
         if (needsPremium) {
             reportDataStatus("Premium", "loading");
-            DataPage<PremiumIndex> premiumPage = premiumPageMgr.request(
-                symbol, timeframe, startTime, endTime, createPremiumListener());
+            premiumListener = createPremiumListener();
+            DataPageView<PremiumIndex> premiumPage = premiumPageMgr.request(
+                symbol, timeframe, startTime, endTime, premiumListener);
             requirements.setPremiumPage(premiumPage);
         }
 
@@ -461,25 +473,31 @@ public class BacktestCoordinator {
     /**
      * Release all currently held pages.
      */
-    @SuppressWarnings("unchecked")
     private void releaseCurrentPages() {
         if (requirements == null) return;
 
         if (requirements.getCandlePage() != null) {
-            candlePageMgr.release(requirements.getCandlePage(), null);
+            candlePageMgr.release(requirements.getCandlePage(), candleListener);
         }
         if (requirements.getAggTradesPage() != null) {
-            aggTradesPageMgr.release(requirements.getAggTradesPage(), null);
+            aggTradesPageMgr.release(requirements.getAggTradesPage(), aggTradesListener);
         }
         if (requirements.getFundingPage() != null) {
-            fundingPageMgr.release(requirements.getFundingPage(), null);
+            fundingPageMgr.release(requirements.getFundingPage(), fundingListener);
         }
         if (requirements.getOiPage() != null) {
-            oiPageMgr.release(requirements.getOiPage(), null);
+            oiPageMgr.release(requirements.getOiPage(), oiListener);
         }
         if (requirements.getPremiumPage() != null) {
-            premiumPageMgr.release(requirements.getPremiumPage(), null);
+            premiumPageMgr.release(requirements.getPremiumPage(), premiumListener);
         }
+
+        // Clear stored listeners
+        candleListener = null;
+        aggTradesListener = null;
+        fundingListener = null;
+        oiListener = null;
+        premiumListener = null;
     }
 
     /**
@@ -513,11 +531,11 @@ public class BacktestCoordinator {
     private DataPageListener<Candle> createCandleListener() {
         return new DataPageListener<Candle>() {
             @Override
-            public void onStateChanged(DataPage<Candle> page, PageState oldState, PageState newState) {
+            public void onStateChanged(DataPageView<Candle> page, PageState oldState, PageState newState) {
                 handleStateChanged("Candles", newState);
             }
             @Override
-            public void onDataChanged(DataPage<Candle> page) {
+            public void onDataChanged(DataPageView<Candle> page) {
                 handleDataChanged();
             }
         };
@@ -526,11 +544,11 @@ public class BacktestCoordinator {
     private DataPageListener<AggTrade> createAggTradesListener() {
         return new DataPageListener<AggTrade>() {
             @Override
-            public void onStateChanged(DataPage<AggTrade> page, PageState oldState, PageState newState) {
+            public void onStateChanged(DataPageView<AggTrade> page, PageState oldState, PageState newState) {
                 handleStateChanged("AggTrades", newState);
             }
             @Override
-            public void onDataChanged(DataPage<AggTrade> page) {
+            public void onDataChanged(DataPageView<AggTrade> page) {
                 handleDataChanged();
             }
         };
@@ -539,11 +557,11 @@ public class BacktestCoordinator {
     private DataPageListener<FundingRate> createFundingListener() {
         return new DataPageListener<FundingRate>() {
             @Override
-            public void onStateChanged(DataPage<FundingRate> page, PageState oldState, PageState newState) {
+            public void onStateChanged(DataPageView<FundingRate> page, PageState oldState, PageState newState) {
                 handleStateChanged("Funding", newState);
             }
             @Override
-            public void onDataChanged(DataPage<FundingRate> page) {
+            public void onDataChanged(DataPageView<FundingRate> page) {
                 handleDataChanged();
             }
         };
@@ -552,11 +570,11 @@ public class BacktestCoordinator {
     private DataPageListener<OpenInterest> createOIListener() {
         return new DataPageListener<OpenInterest>() {
             @Override
-            public void onStateChanged(DataPage<OpenInterest> page, PageState oldState, PageState newState) {
+            public void onStateChanged(DataPageView<OpenInterest> page, PageState oldState, PageState newState) {
                 handleStateChanged("OI", newState);
             }
             @Override
-            public void onDataChanged(DataPage<OpenInterest> page) {
+            public void onDataChanged(DataPageView<OpenInterest> page) {
                 handleDataChanged();
             }
         };
@@ -565,11 +583,11 @@ public class BacktestCoordinator {
     private DataPageListener<PremiumIndex> createPremiumListener() {
         return new DataPageListener<PremiumIndex>() {
             @Override
-            public void onStateChanged(DataPage<PremiumIndex> page, PageState oldState, PageState newState) {
+            public void onStateChanged(DataPageView<PremiumIndex> page, PageState oldState, PageState newState) {
                 handleStateChanged("Premium", newState);
             }
             @Override
-            public void onDataChanged(DataPage<PremiumIndex> page) {
+            public void onDataChanged(DataPageView<PremiumIndex> page) {
                 handleDataChanged();
             }
         };

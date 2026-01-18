@@ -5,7 +5,6 @@ import com.tradery.data.AggTradesStore;
 import com.tradery.data.BinanceVisionClient;
 import com.tradery.data.DataConfig;
 import com.tradery.data.DataInventory;
-import com.tradery.data.DataRequirementsTracker;
 import com.tradery.data.FundingRateStore;
 import com.tradery.data.OpenInterestStore;
 import com.tradery.data.PreloadScheduler;
@@ -49,8 +48,6 @@ public class ApplicationContext {
     private final HoopPatternStore hoopPatternStore;
     private final ApiServer apiServer;
 
-    // Global tracker for preview data loading (phases, hoops, etc.)
-    private final DataRequirementsTracker previewTracker;
 
     // Data preloading infrastructure
     private final DataInventory dataInventory;
@@ -89,7 +86,6 @@ public class ApplicationContext {
         this.strategyStore = new StrategyStore(new File(TraderyApp.USER_DIR, "strategies"));
         this.phaseStore = new PhaseStore(new File(TraderyApp.USER_DIR, "phases"));
         this.hoopPatternStore = new HoopPatternStore(new File(TraderyApp.USER_DIR, "hoops"));
-        this.previewTracker = new DataRequirementsTracker();
 
         // Initialize data preloading infrastructure
         this.dataInventory = new DataInventory(DataConfig.getInstance().getDataDir());
@@ -166,12 +162,6 @@ public class ApplicationContext {
         return apiServer;
     }
 
-    /**
-     * Get the global preview tracker for phase/hoop preview data loading.
-     */
-    public DataRequirementsTracker getPreviewTracker() {
-        return previewTracker;
-    }
 
     /**
      * Get the data inventory for tracking cached data coverage.

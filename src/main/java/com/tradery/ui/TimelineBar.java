@@ -3,8 +3,8 @@ package com.tradery.ui;
 import com.tradery.ApplicationContext;
 import com.tradery.data.PageState;
 import com.tradery.data.page.CandlePageManager;
-import com.tradery.data.page.DataPage;
 import com.tradery.data.page.DataPageListener;
+import com.tradery.data.page.DataPageView;
 import com.tradery.model.Candle;
 
 import javax.swing.*;
@@ -36,7 +36,7 @@ public class TimelineBar extends JPanel implements DataPageListener<Candle> {
 
     private String symbol = "BTCUSDT";
     private String title = "";
-    private DataPage<Candle> dataPage;
+    private DataPageView<Candle> dataPage;
     private List<Candle> weeklyCandles;
     private long windowStart;
     private long windowEnd;
@@ -403,13 +403,13 @@ public class TimelineBar extends JPanel implements DataPageListener<Candle> {
     // ========== DataPageListener Implementation ==========
 
     @Override
-    public void onStateChanged(DataPage<Candle> page, PageState oldState, PageState newState) {
+    public void onStateChanged(DataPageView<Candle> page, PageState oldState, PageState newState) {
         // Show loading indicator when loading
         setLoading(newState == PageState.LOADING || newState == PageState.UPDATING);
     }
 
     @Override
-    public void onDataChanged(DataPage<Candle> page) {
+    public void onDataChanged(DataPageView<Candle> page) {
         // Update candles when page data changes (called on EDT)
         weeklyCandles = page.getData();
         updateTimeRange();

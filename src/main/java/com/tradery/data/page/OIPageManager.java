@@ -24,6 +24,8 @@ public class OIPageManager extends DataPageManager<OpenInterest> {
 
     @Override
     protected void loadData(DataPage<OpenInterest> page) throws Exception {
+        assertNotEDT("OIPageManager.loadData");
+
         if (openInterestStore == null) {
             updatePageData(page, Collections.emptyList());
             return;

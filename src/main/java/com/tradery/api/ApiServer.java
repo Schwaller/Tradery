@@ -10,6 +10,7 @@ import com.tradery.ApplicationContext;
 import com.tradery.data.AggTradesStore;
 import com.tradery.data.FundingRateStore;
 import com.tradery.data.OpenInterestStore;
+import com.tradery.data.page.DataPageManager;
 import com.tradery.data.sqlite.SqliteDataStore;
 import com.tradery.dsl.Parser;
 import com.tradery.engine.ConditionEvaluator;
@@ -51,6 +52,8 @@ import java.util.regex.Pattern;
  *   POST /strategy/{id}                 - Update strategy (partial or full)
  *   POST /strategy/{id}/backtest        - Run backtest and return results (blocking)
  *   GET  /strategy/{id}/results         - Get latest backtest results
+ *   GET  /data-status                   - Data coverage and gaps info
+ *   GET  /pages                         - Active data pages and listeners (debugging)
  */
 public class ApiServer {
 
@@ -112,6 +115,7 @@ public class ApiServer {
         server.createContext("/phases", phaseHandler::handlePhases);
         server.createContext("/phase/", phaseHandler::handlePhase);
         server.createContext("/data-status", this::handleDataStatus);
+        server.createContext("/pages", this::handlePages);
 
         server.start();
         System.out.println("API server started on http://localhost:" + actualPort);
@@ -576,6 +580,115 @@ public class ApiServer {
         } catch (Exception e) {
             sendError(exchange, 500, "Failed to get data status: " + e.getMessage());
         }
+    }
+
+    /**
+     * Handle pages endpoint - shows all active data pages for debugging.
+     *
+     * GET /pages
+     *
+     * Returns information about all active pages across all PageManagers,
+     * including their state, listener count (consumers), and record count.
+     */
+    private void handlePages(HttpExchange exchange) throws IOException {
+        if (!checkMethod(exchange, "GET")) return;
+
+        ObjectNode response = mapper.createObjectNode();
+        ApplicationContext ctx = ApplicationContext.getInstance();
+
+        int totalPages = 0;
+        int totalListeners = 0;
+
+        // Candle pages
+        var candlePageMgr = ctx.getCandlePageManager();
+        if (candlePageMgr != null) {
+            ArrayNode candlePages = response.putArray("candles");
+            for (DataPageManager.PageInfo info : candlePageMgr.getActivePages()) {
+                ObjectNode pageNode = candlePages.addObject();
+                pageNode.put("key", info.key());
+                pageNode.put("symbol", info.symbol());
+                pageNode.put("timeframe", info.timeframe());
+                pageNode.put("state", info.state().name());
+                pageNode.put("listeners", info.listenerCount());
+                pageNode.put("records", info.recordCount());
+                totalPages++;
+                totalListeners += info.listenerCount();
+            }
+        }
+
+        // Funding pages
+        var fundingPageMgr = ctx.getFundingPageManager();
+        if (fundingPageMgr != null) {
+            ArrayNode fundingPages = response.putArray("funding");
+            for (DataPageManager.PageInfo info : fundingPageMgr.getActivePages()) {
+                ObjectNode pageNode = fundingPages.addObject();
+                pageNode.put("key", info.key());
+                pageNode.put("symbol", info.symbol());
+                pageNode.put("state", info.state().name());
+                pageNode.put("listeners", info.listenerCount());
+                pageNode.put("records", info.recordCount());
+                totalPages++;
+                totalListeners += info.listenerCount();
+            }
+        }
+
+        // OI pages
+        var oiPageMgr = ctx.getOIPageManager();
+        if (oiPageMgr != null) {
+            ArrayNode oiPages = response.putArray("openInterest");
+            for (DataPageManager.PageInfo info : oiPageMgr.getActivePages()) {
+                ObjectNode pageNode = oiPages.addObject();
+                pageNode.put("key", info.key());
+                pageNode.put("symbol", info.symbol());
+                pageNode.put("state", info.state().name());
+                pageNode.put("listeners", info.listenerCount());
+                pageNode.put("records", info.recordCount());
+                totalPages++;
+                totalListeners += info.listenerCount();
+            }
+        }
+
+        // AggTrades pages
+        var aggTradesPageMgr = ctx.getAggTradesPageManager();
+        if (aggTradesPageMgr != null) {
+            ArrayNode aggPages = response.putArray("aggTrades");
+            for (DataPageManager.PageInfo info : aggTradesPageMgr.getActivePages()) {
+                ObjectNode pageNode = aggPages.addObject();
+                pageNode.put("key", info.key());
+                pageNode.put("symbol", info.symbol());
+                pageNode.put("state", info.state().name());
+                pageNode.put("listeners", info.listenerCount());
+                pageNode.put("records", info.recordCount());
+                totalPages++;
+                totalListeners += info.listenerCount();
+            }
+            // Include memory usage for aggTrades
+            response.put("aggTradesRecordCount", aggTradesPageMgr.getCurrentRecordCount());
+        }
+
+        // Premium pages
+        var premiumPageMgr = ctx.getPremiumPageManager();
+        if (premiumPageMgr != null) {
+            ArrayNode premiumPages = response.putArray("premium");
+            for (DataPageManager.PageInfo info : premiumPageMgr.getActivePages()) {
+                ObjectNode pageNode = premiumPages.addObject();
+                pageNode.put("key", info.key());
+                pageNode.put("symbol", info.symbol());
+                pageNode.put("timeframe", info.timeframe());
+                pageNode.put("state", info.state().name());
+                pageNode.put("listeners", info.listenerCount());
+                pageNode.put("records", info.recordCount());
+                totalPages++;
+                totalListeners += info.listenerCount();
+            }
+        }
+
+        // Summary
+        ObjectNode summary = response.putObject("summary");
+        summary.put("totalPages", totalPages);
+        summary.put("totalListeners", totalListeners);
+
+        sendJson(exchange, 200, response);
     }
 
     // ========== Helpers ==========

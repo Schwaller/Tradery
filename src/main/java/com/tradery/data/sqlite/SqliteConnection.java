@@ -50,9 +50,21 @@ public class SqliteConnection {
 
     /**
      * Get or create the SQLite connection with WAL mode.
+     *
+     * NOTE: This method is NOT synchronized to avoid blocking readers.
+     * SQLite with WAL mode supports concurrent reads natively.
+     * Only writes are serialized via executeInTransaction().
      */
     public Connection getConnection() throws SQLException {
+        // Quick check without lock for common case
+        Connection conn = connection;
+        if (conn != null && !conn.isClosed()) {
+            return conn;
+        }
+
+        // Slow path: create connection with synchronization
         synchronized (lock) {
+            // Double-check after acquiring lock
             if (connection == null || connection.isClosed()) {
                 connection = createConnection();
             }

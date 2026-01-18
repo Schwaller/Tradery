@@ -31,6 +31,8 @@ public class CandlePageManager extends DataPageManager<Candle> {
 
     @Override
     protected void loadData(DataPage<Candle> page) throws Exception {
+        assertNotEDT("CandlePageManager.loadData");
+
         String symbol = page.getSymbol();
         String timeframe = page.getTimeframe();
         long startTime = page.getStartTime();

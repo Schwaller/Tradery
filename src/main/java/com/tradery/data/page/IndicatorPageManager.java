@@ -146,7 +146,7 @@ public class IndicatorPageManager {
         switch (type.getDependency()) {
             case CANDLES -> {
                 // Request candle data
-                DataPage<Candle> candlePage = candlePageMgr.request(
+                DataPageView<Candle> candlePage = candlePageMgr.request(
                     page.getSymbol(), page.getTimeframe(),
                     page.getStartTime(), page.getEndTime(),
                     new CandleDataListener<>(page));
@@ -171,7 +171,7 @@ public class IndicatorPageManager {
         }
 
         @Override
-        public void onStateChanged(DataPage<Candle> candlePage, PageState oldState, PageState newState) {
+        public void onStateChanged(DataPageView<Candle> candlePage, PageState oldState, PageState newState) {
             if (newState == PageState.READY) {
                 computeAsync(indicatorPage, candlePage.getData());
             } else if (newState == PageState.ERROR) {
@@ -180,7 +180,7 @@ public class IndicatorPageManager {
         }
 
         @Override
-        public void onDataChanged(DataPage<Candle> candlePage) {
+        public void onDataChanged(DataPageView<Candle> candlePage) {
             // Source data changed - recompute
             if (candlePage.isReady()) {
                 computeAsync(indicatorPage, candlePage.getData());

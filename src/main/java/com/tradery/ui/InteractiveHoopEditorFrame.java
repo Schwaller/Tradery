@@ -2,10 +2,10 @@ package com.tradery.ui;
 
 import com.tradery.ApplicationContext;
 import com.tradery.TraderyApp;
-import com.tradery.data.DataConsumer;
-import com.tradery.data.DataRequirement;
-import com.tradery.data.DataRequirementsTracker;
-import com.tradery.data.sqlite.SqliteDataStore;
+import com.tradery.data.PageState;
+import com.tradery.data.page.CandlePageManager;
+import com.tradery.data.page.DataPageListener;
+import com.tradery.data.page.DataPageView;
 import com.tradery.engine.HoopPatternEvaluator;
 import com.tradery.io.HoopPatternStore;
 import com.tradery.model.Candle;
@@ -25,7 +25,7 @@ import java.util.Map;
  * Interactive editor frame for visually editing hoop patterns with real candle data.
  * Allows drag-to-resize hoop zones and shows pattern matches.
  */
-public class InteractiveHoopEditorFrame extends JFrame {
+public class InteractiveHoopEditorFrame extends JFrame implements DataPageListener<Candle> {
 
     private static final String[] SYMBOLS = {
         "BTCUSDT", "ETHUSDT", "BNBUSDT", "XRPUSDT", "ADAUSDT",
@@ -42,7 +42,7 @@ public class InteractiveHoopEditorFrame extends JFrame {
 
     private HoopPattern pattern;
     private final HoopPatternStore patternStore;
-    private final SqliteDataStore dataStore;
+    private DataPageView<Candle> currentPage; // For cleanup
     private List<Candle> candles = new ArrayList<>();
 
     // UI Components
@@ -83,7 +83,6 @@ public class InteractiveHoopEditorFrame extends JFrame {
     public InteractiveHoopEditorFrame(HoopPatternStore patternStore) {
         super("Hoop Patterns - " + TraderyApp.APP_NAME);
         this.patternStore = patternStore;
-        this.dataStore = ApplicationContext.getInstance().getSqliteDataStore();
 
         initializeFrame();
         initializeComponents();
@@ -386,59 +385,67 @@ public class InteractiveHoopEditorFrame extends JFrame {
         loadDataBtn.setEnabled(false);
         statusLabel.setText("Loading " + symbol + " " + timeframe + "...");
 
-        // Register with preview tracker
-        DataRequirementsTracker tracker = ApplicationContext.getInstance().getPreviewTracker();
-        String dataType = "OHLC:" + timeframe;
-        DataRequirement requirement = new DataRequirement(
-            dataType,
-            symbol,
-            startTime,
-            endTime,
-            DataRequirement.Tier.TRADING,
-            "hoop:" + (pattern != null ? pattern.getId() : "editor"),
-            DataConsumer.HOOP_PREVIEW
-        );
-        tracker.addRequirement(requirement);
-        tracker.updateStatus(dataType, DataRequirementsTracker.Status.FETCHING);
+        // Release previous page if any
+        if (currentPage != null) {
+            ApplicationContext.getInstance().getCandlePageManager().release(currentPage, this);
+            currentPage = null;
+        }
 
-        SwingWorker<List<Candle>, Void> worker = new SwingWorker<>() {
-            @Override
-            protected List<Candle> doInBackground() throws Exception {
-                return dataStore.getCandles(symbol, timeframe, startTime, endTime);
+        // Request data from CandlePageManager
+        CandlePageManager pageManager = ApplicationContext.getInstance().getCandlePageManager();
+        currentPage = pageManager.request(symbol, timeframe, startTime, endTime, this);
+
+        // If already ready, onStateChanged will be called immediately
+    }
+
+    // ========== DataPageListener Implementation ==========
+
+    @Override
+    public void onStateChanged(DataPageView<Candle> page, PageState oldState, PageState newState) {
+        if (page != currentPage) return; // Ignore stale pages
+
+        switch (newState) {
+            case LOADING -> statusLabel.setText("Loading candles...");
+            case READY -> onDataReady(page);
+            case ERROR -> {
+                String error = page.getErrorMessage() != null ? page.getErrorMessage() : "Unknown error";
+                statusLabel.setText("Error: " + error);
+                loadDataBtn.setEnabled(true);
             }
+            case UPDATING -> statusLabel.setText("Updating...");
+            case EMPTY -> {} // Initial state, ignore
+        }
+    }
 
-            @Override
-            protected void done() {
-                try {
-                    candles = get();
-                    tracker.updateStatus(dataType, DataRequirementsTracker.Status.READY, candles.size(), candles.size());
-                    chartPanel.setCandles(candles);
+    @Override
+    public void onDataChanged(DataPageView<Candle> page) {
+        if (page != currentPage) return;
+        if (page.isReady()) {
+            onDataReady(page);
+        }
+    }
 
-                    // Apply current smoothing settings to chart
-                    PriceSmoothingType type = (PriceSmoothingType) smoothingTypeCombo.getSelectedItem();
-                    int period = ((Number) smoothingPeriodSpinner.getValue()).intValue();
-                    chartPanel.setSmoothing(type, period);
+    private void onDataReady(DataPageView<Candle> page) {
+        candles = new ArrayList<>(page.getData());
+        chartPanel.setCandles(candles);
 
-                    // Auto-set anchor to 20% into the data so hoops are visible
-                    if (!candles.isEmpty()) {
-                        int anchorBar = Math.max(0, candles.size() / 5);
-                        chartPanel.setAnchorBar(anchorBar);
-                        // Fit chart to show all data
-                        chartPanel.fitAll();
-                        statusLabel.setText("Loaded " + candles.size() + " candles. Right-click to set anchor.");
-                    } else {
-                        statusLabel.setText("No candles loaded.");
-                    }
-                    findMatchesBtn.setEnabled(true);
-                } catch (Exception ex) {
-                    tracker.updateStatus(dataType, DataRequirementsTracker.Status.ERROR, 0, 0, ex.getMessage());
-                    statusLabel.setText("Error: " + ex.getMessage());
-                } finally {
-                    loadDataBtn.setEnabled(true);
-                }
-            }
-        };
-        worker.execute();
+        // Apply current smoothing settings to chart
+        PriceSmoothingType type = (PriceSmoothingType) smoothingTypeCombo.getSelectedItem();
+        int period = ((Number) smoothingPeriodSpinner.getValue()).intValue();
+        chartPanel.setSmoothing(type, period);
+
+        // Auto-set anchor to 20% into the data so hoops are visible
+        if (!candles.isEmpty()) {
+            int anchorBar = Math.max(0, candles.size() / 5);
+            chartPanel.setAnchorBar(anchorBar);
+            // Fit chart to show all data
+            chartPanel.fitAll();
+            statusLabel.setText("Loaded " + candles.size() + " candles. Right-click to set anchor.");
+        } else {
+            statusLabel.setText("No candles loaded.");
+        }
+        findMatchesBtn.setEnabled(true);
+        loadDataBtn.setEnabled(true);
     }
 
     private long parseDuration(String duration) {
@@ -460,7 +467,10 @@ public class InteractiveHoopEditorFrame extends JFrame {
         SwingWorker<List<HoopMatchResult>, Void> worker = new SwingWorker<>() {
             @Override
             protected List<HoopMatchResult> doInBackground() throws Exception {
-                HoopPatternEvaluator evaluator = new HoopPatternEvaluator(dataStore);
+                // HoopPatternEvaluator.findPatternCompletions doesn't need the dataStore
+                // but the constructor requires it - use ApplicationContext temporarily
+                HoopPatternEvaluator evaluator = new HoopPatternEvaluator(
+                    ApplicationContext.getInstance().getSqliteDataStore());
                 return evaluator.findPatternCompletions(pattern, candles);
             }
 
@@ -701,6 +711,20 @@ public class InteractiveHoopEditorFrame extends JFrame {
                 onPatternSelected();
             }
         }
+    }
+
+    @Override
+    public void dispose() {
+        // Release data page
+        if (currentPage != null) {
+            ApplicationContext.getInstance().getCandlePageManager().release(currentPage, this);
+            currentPage = null;
+        }
+        // Stop auto-save timer
+        if (autoSaveTimer != null) {
+            autoSaveTimer.stop();
+        }
+        super.dispose();
     }
 
     /**

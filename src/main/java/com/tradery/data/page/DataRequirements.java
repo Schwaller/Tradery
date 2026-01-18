@@ -19,11 +19,11 @@ public class DataRequirements {
     private final long endTime;
 
     // Required pages (null = not required)
-    private DataPage<Candle> candlePage;           // Always required
-    private DataPage<AggTrade> aggTradesPage;      // If sub-minute or delta DSL
-    private DataPage<FundingRate> fundingPage;     // If FUNDING in DSL
-    private DataPage<OpenInterest> oiPage;         // If OI in DSL
-    private DataPage<PremiumIndex> premiumPage;    // If PREMIUM in DSL
+    private DataPageView<Candle> candlePage;           // Always required
+    private DataPageView<AggTrade> aggTradesPage;      // If sub-minute or delta DSL
+    private DataPageView<FundingRate> fundingPage;     // If FUNDING in DSL
+    private DataPageView<OpenInterest> oiPage;         // If OI in DSL
+    private DataPageView<PremiumIndex> premiumPage;    // If PREMIUM in DSL
 
     public DataRequirements(String symbol, String timeframe, long startTime, long endTime) {
         this.symbol = symbol;
@@ -34,23 +34,23 @@ public class DataRequirements {
 
     // ========== Setters ==========
 
-    public void setCandlePage(DataPage<Candle> candlePage) {
+    public void setCandlePage(DataPageView<Candle> candlePage) {
         this.candlePage = candlePage;
     }
 
-    public void setAggTradesPage(DataPage<AggTrade> aggTradesPage) {
+    public void setAggTradesPage(DataPageView<AggTrade> aggTradesPage) {
         this.aggTradesPage = aggTradesPage;
     }
 
-    public void setFundingPage(DataPage<FundingRate> fundingPage) {
+    public void setFundingPage(DataPageView<FundingRate> fundingPage) {
         this.fundingPage = fundingPage;
     }
 
-    public void setOiPage(DataPage<OpenInterest> oiPage) {
+    public void setOiPage(DataPageView<OpenInterest> oiPage) {
         this.oiPage = oiPage;
     }
 
-    public void setPremiumPage(DataPage<PremiumIndex> premiumPage) {
+    public void setPremiumPage(DataPageView<PremiumIndex> premiumPage) {
         this.premiumPage = premiumPage;
     }
 
@@ -72,23 +72,23 @@ public class DataRequirements {
         return endTime;
     }
 
-    public DataPage<Candle> getCandlePage() {
+    public DataPageView<Candle> getCandlePage() {
         return candlePage;
     }
 
-    public DataPage<AggTrade> getAggTradesPage() {
+    public DataPageView<AggTrade> getAggTradesPage() {
         return aggTradesPage;
     }
 
-    public DataPage<FundingRate> getFundingPage() {
+    public DataPageView<FundingRate> getFundingPage() {
         return fundingPage;
     }
 
-    public DataPage<OpenInterest> getOiPage() {
+    public DataPageView<OpenInterest> getOiPage() {
         return oiPage;
     }
 
-    public DataPage<PremiumIndex> getPremiumPage() {
+    public DataPageView<PremiumIndex> getPremiumPage() {
         return premiumPage;
     }
 
@@ -168,7 +168,7 @@ public class DataRequirements {
         return sb.isEmpty() ? null : sb.toString();
     }
 
-    private void appendError(StringBuilder sb, String name, DataPage<?> page) {
+    private void appendError(StringBuilder sb, String name, DataPageView<?> page) {
         if (page != null && page.hasError() && page.getErrorMessage() != null) {
             if (!sb.isEmpty()) sb.append("; ");
             sb.append(name).append(": ").append(page.getErrorMessage());
@@ -189,7 +189,7 @@ public class DataRequirements {
         return sb.toString();
     }
 
-    private void appendStatus(StringBuilder sb, String name, DataPage<?> page) {
+    private void appendStatus(StringBuilder sb, String name, DataPageView<?> page) {
         if (!sb.isEmpty()) sb.append(", ");
         sb.append(name).append(": ");
         if (page == null) {

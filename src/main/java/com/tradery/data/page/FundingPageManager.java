@@ -24,6 +24,8 @@ public class FundingPageManager extends DataPageManager<FundingRate> {
 
     @Override
     protected void loadData(DataPage<FundingRate> page) throws Exception {
+        assertNotEDT("FundingPageManager.loadData");
+
         if (fundingRateStore == null) {
             updatePageData(page, Collections.emptyList());
             return;

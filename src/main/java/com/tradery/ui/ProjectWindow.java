@@ -884,11 +884,7 @@ public class ProjectWindow extends JFrame {
      */
     private void openDataLoadingStatusWindow(Component anchor) {
         if (dataLoadingStatusWindow == null) {
-            // Include global preview tracker for phase/hoop preview data loading
-            dataLoadingStatusWindow = new DataLoadingStatusWindow(
-                this,
-                ApplicationContext.getInstance().getPreviewTracker()
-            );
+            dataLoadingStatusWindow = new DataLoadingStatusWindow(this);
         }
         dataLoadingStatusWindow.showNear(anchor);
     }

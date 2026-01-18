@@ -73,11 +73,11 @@ public abstract class DataPageManager<T> {
      * @param startTime Start time in milliseconds
      * @param endTime   End time in milliseconds
      * @param listener  Listener for state/data changes (can be null)
-     * @return The data page (may be EMPTY/LOADING initially)
+     * @return Read-only view of the data page (may be EMPTY/LOADING initially)
      */
-    public DataPage<T> request(String symbol, String timeframe,
-                                long startTime, long endTime,
-                                DataPageListener<T> listener) {
+    public DataPageView<T> request(String symbol, String timeframe,
+                                    long startTime, long endTime,
+                                    DataPageListener<T> listener) {
 
         String key = makeKey(symbol, timeframe, startTime, endTime);
 
@@ -104,19 +104,19 @@ public abstract class DataPageManager<T> {
             });
         }
 
-        return page;
+        return page;  // Returns as DataPageView (interface)
     }
 
     /**
      * Release a page. Decrements reference count and cleans up if zero.
      *
-     * @param page     The page to release
+     * @param pageView The page to release (DataPageView obtained from request())
      * @param listener The listener to unregister (can be null)
      */
-    public void release(DataPage<T> page, DataPageListener<T> listener) {
-        if (page == null) return;
+    public void release(DataPageView<T> pageView, DataPageListener<T> listener) {
+        if (pageView == null) return;
 
-        String key = page.getKey();
+        String key = pageView.getKey();
 
         // Remove listener
         if (listener != null) {
@@ -134,9 +134,11 @@ public abstract class DataPageManager<T> {
 
         // Cleanup if no more references
         if (newCount == null) {
-            pages.remove(key);
+            DataPage<T> page = pages.remove(key);
             listeners.remove(key);
-            onPageReleased(page);
+            if (page != null) {
+                onPageReleased(page);
+            }
             log.debug("Released and cleaned up page: {}", key);
         } else {
             log.debug("Released page: {} (refs remaining: {})", key, newCount);
@@ -147,7 +149,7 @@ public abstract class DataPageManager<T> {
      * Get an existing page without incrementing reference count.
      * Used for checking if data is already available.
      */
-    public DataPage<T> peek(String symbol, String timeframe, long startTime, long endTime) {
+    public DataPageView<T> peek(String symbol, String timeframe, long startTime, long endTime) {
         String key = makeKey(symbol, timeframe, startTime, endTime);
         return pages.get(key);
     }
@@ -155,7 +157,10 @@ public abstract class DataPageManager<T> {
     /**
      * Trigger a refresh/resync of a page's data.
      */
-    public void refresh(DataPage<T> page) {
+    public void refresh(DataPageView<T> pageView) {
+        if (pageView == null) return;
+        // Internal lookup by key since we can't cast from interface
+        DataPage<T> page = pages.get(pageView.getKey());
         if (page == null) return;
         startLoad(page);
     }
@@ -168,8 +173,20 @@ public abstract class DataPageManager<T> {
      * 1. Try cache first
      * 2. Fetch from API if needed
      * 3. Call updatePageData() with results
+     *
+     * MUST NOT be called from EDT - this method performs blocking I/O.
      */
     protected abstract void loadData(DataPage<T> page) throws Exception;
+
+    /**
+     * Assert that we're NOT on the EDT. Call at the start of blocking operations.
+     */
+    protected void assertNotEDT(String operation) {
+        if (SwingUtilities.isEventDispatchThread()) {
+            throw new IllegalStateException(
+                operation + " must not be called from EDT - would block UI");
+        }
+    }
 
     // ========== Template Methods (Override if needed) ==========
 
@@ -217,6 +234,7 @@ public abstract class DataPageManager<T> {
 
         loadExecutor.submit(() -> {
             try {
+                assertNotEDT("loadData");
                 loadData(page);
             } catch (Exception e) {
                 log.warn("Failed to load {}: {}", page.getKey(), e.getMessage());
@@ -303,6 +321,42 @@ public abstract class DataPageManager<T> {
     }
 
     // ========== Status & Lifecycle ==========
+
+    /**
+     * Information about an active page for status display.
+     */
+    public record PageInfo(
+        String key,
+        PageState state,
+        DataType dataType,
+        String symbol,
+        String timeframe,
+        int listenerCount,
+        int recordCount
+    ) {}
+
+    /**
+     * Get information about all active pages.
+     * Used by status UI to display what data is being tracked.
+     */
+    public java.util.List<PageInfo> getActivePages() {
+        java.util.List<PageInfo> result = new java.util.ArrayList<>();
+        for (Map.Entry<String, DataPage<T>> entry : pages.entrySet()) {
+            DataPage<T> page = entry.getValue();
+            Set<DataPageListener<T>> pageListeners = listeners.get(entry.getKey());
+            int listenerCount = pageListeners != null ? pageListeners.size() : 0;
+            result.add(new PageInfo(
+                page.getKey(),
+                page.getState(),
+                page.getDataType(),
+                page.getSymbol(),
+                page.getTimeframe(),
+                listenerCount,
+                page.getRecordCount()
+            ));
+        }
+        return result;
+    }
 
     /**
      * Get count of active pages.
