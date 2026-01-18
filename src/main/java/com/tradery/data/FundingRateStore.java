@@ -1,6 +1,9 @@
 package com.tradery.data;
 
 import com.tradery.model.FundingRate;
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.Response;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -10,6 +13,8 @@ import java.time.YearMonth;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
 
 /**
  * Stores and retrieves funding rate data as monthly CSV files.
@@ -27,8 +32,13 @@ public class FundingRateStore {
     private static final String FUNDING_DIR = "funding";
     private static final String CSV_HEADER = "symbol,fundingRate,fundingTime,markPrice";
 
+    // Vision bulk download settings
+    private static final String VISION_BASE_URL = "https://data.binance.vision/data/futures/um/monthly/fundingRate";
+    private static final int VISION_THRESHOLD_DAYS = 60; // Use Vision for >= 2 months of data
+
     private final File dataDir;
     private final FundingRateClient client;
+    private final OkHttpClient httpClient;
 
     public FundingRateStore() {
         this(new FundingRateClient());
@@ -37,6 +47,10 @@ public class FundingRateStore {
     public FundingRateStore(FundingRateClient client) {
         this.dataDir = DataConfig.getInstance().getDataDir();
         this.client = client;
+        this.httpClient = new OkHttpClient.Builder()
+            .connectTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+            .readTimeout(60, java.util.concurrent.TimeUnit.SECONDS)
+            .build();
 
         if (!dataDir.exists()) {
             dataDir.mkdirs();
@@ -60,11 +74,18 @@ public class FundingRateStore {
      * @return List of funding rates sorted by time ascending
      */
     public List<FundingRate> getFundingRates(String symbol, long startTime, long endTime) throws IOException {
+        // Check if Vision bulk download should be used for large uncached ranges
+        long uncachedMs = estimateUncachedDuration(symbol, startTime, endTime);
+        if (shouldUseVision(startTime, startTime + uncachedMs) && uncachedMs > 30L * 24 * 60 * 60 * 1000) {
+            // Use Vision for historical data (more than 1 month uncached)
+            fetchViaVision(symbol, startTime, endTime);
+        }
+
         // Load cached data
         Map<Long, FundingRate> ratesMap = new TreeMap<>();
         loadCachedRates(symbol, startTime, endTime, ratesMap);
 
-        // Find gaps in data and fetch from API
+        // Find gaps in data and fetch from API (for recent data or small gaps)
         long gapStart = findFirstGap(ratesMap, startTime, endTime);
         if (gapStart > 0) {
             // Fetch missing data from API
@@ -252,5 +273,162 @@ public class FundingRateStore {
             }
             symbolDir.delete();
         }
+    }
+
+    // ========== Vision Bulk Download Methods ==========
+
+    /**
+     * Determine if Vision bulk download should be used based on data volume.
+     * Funding data is small (~90 records/month), so we use Vision for >= 2 months.
+     */
+    private boolean shouldUseVision(long startTime, long endTime) {
+        long durationDays = (endTime - startTime) / (24 * 60 * 60 * 1000);
+        return durationDays >= VISION_THRESHOLD_DAYS;
+    }
+
+    /**
+     * Estimate the duration of uncached data within the requested range.
+     */
+    private long estimateUncachedDuration(String symbol, long startTime, long endTime) {
+        File symbolDir = getFundingDir(symbol);
+        if (!symbolDir.exists()) {
+            return endTime - startTime;
+        }
+
+        YearMonth startMonth = YearMonth.from(Instant.ofEpochMilli(startTime).atZone(ZoneOffset.UTC));
+        YearMonth endMonth = YearMonth.from(Instant.ofEpochMilli(endTime).atZone(ZoneOffset.UTC));
+
+        long uncachedMonths = 0;
+        YearMonth current = startMonth;
+        while (!current.isAfter(endMonth)) {
+            if (!isMonthFullyCached(symbol, current)) {
+                uncachedMonths++;
+            }
+            current = current.plusMonths(1);
+        }
+
+        // Each month is approximately 30 days
+        return uncachedMonths * 30L * 24 * 60 * 60 * 1000;
+    }
+
+    /**
+     * Check if a month is fully cached.
+     */
+    private boolean isMonthFullyCached(String symbol, YearMonth month) {
+        File cacheFile = new File(getFundingDir(symbol), month.format(MONTH_FORMAT) + ".csv");
+        if (!cacheFile.exists()) {
+            return false;
+        }
+
+        // Check if file has reasonable data (at least 80 records = ~27 days of funding)
+        try (BufferedReader reader = new BufferedReader(new FileReader(cacheFile))) {
+            int lineCount = 0;
+            while (reader.readLine() != null) {
+                lineCount++;
+            }
+            return lineCount >= 80; // ~90 funding events per month
+        } catch (IOException e) {
+            return false;
+        }
+    }
+
+    /**
+     * Fetch funding rate data via Vision bulk download.
+     */
+    private void fetchViaVision(String symbol, long startTime, long endTime) {
+        YearMonth startMonth = YearMonth.from(Instant.ofEpochMilli(startTime).atZone(ZoneOffset.UTC));
+        YearMonth endMonth = YearMonth.from(Instant.ofEpochMilli(endTime).atZone(ZoneOffset.UTC));
+
+        // Don't try to download future months or current month (incomplete)
+        YearMonth lastCompleteMonth = YearMonth.now().minusMonths(1);
+        if (endMonth.isAfter(lastCompleteMonth)) {
+            endMonth = lastCompleteMonth;
+        }
+
+        log.info("Using Vision bulk download for {} funding rates ({} to {})",
+            symbol, startMonth, endMonth);
+
+        YearMonth current = startMonth;
+        while (!current.isAfter(endMonth)) {
+            if (!isMonthFullyCached(symbol, current)) {
+                try {
+                    downloadVisionMonth(symbol, current);
+                } catch (Exception e) {
+                    log.warn("Vision download failed for {} {}: {}", symbol, current, e.getMessage());
+                }
+            }
+            current = current.plusMonths(1);
+        }
+    }
+
+    /**
+     * Download a single month of funding rate data from Vision.
+     */
+    private void downloadVisionMonth(String symbol, YearMonth month) throws IOException {
+        // URL: https://data.binance.vision/data/futures/um/monthly/fundingRate/BTCUSDT/BTCUSDT-fundingRate-2024-01.zip
+        String url = String.format("%s/%s/%s-fundingRate-%s.zip",
+            VISION_BASE_URL, symbol, symbol, month.format(MONTH_FORMAT));
+
+        log.info("Vision: Downloading funding rates {}", month);
+
+        Request request = new Request.Builder().url(url).build();
+        try (Response response = httpClient.newCall(request).execute()) {
+            if (!response.isSuccessful()) {
+                if (response.code() == 404) {
+                    log.debug("Vision: No data available for {} {}", symbol, month);
+                    return;
+                }
+                throw new IOException("HTTP " + response.code() + " for " + url);
+            }
+
+            List<FundingRate> rates = parseVisionZip(response.body().byteStream(), symbol);
+            if (!rates.isEmpty()) {
+                saveToCache(symbol, rates);
+                log.info("Vision: Saved {} funding rates for {}", rates.size(), month);
+            }
+        }
+    }
+
+    /**
+     * Parse Vision ZIP file containing funding rate CSV data.
+     * Vision format: symbol,fundingTime,fundingRate
+     */
+    private List<FundingRate> parseVisionZip(InputStream inputStream, String symbol) throws IOException {
+        List<FundingRate> rates = new ArrayList<>();
+
+        try (ZipInputStream zis = new ZipInputStream(inputStream)) {
+            ZipEntry entry = zis.getNextEntry();
+            if (entry != null) {
+                BufferedReader reader = new BufferedReader(new InputStreamReader(zis));
+                String line;
+                boolean firstLine = true;
+
+                while ((line = reader.readLine()) != null) {
+                    if (firstLine) {
+                        firstLine = false;
+                        // Skip header if present
+                        if (line.startsWith("symbol") || line.startsWith("calc_time")) {
+                            continue;
+                        }
+                    }
+
+                    try {
+                        // Vision CSV format: symbol,calc_time,funding_interval_hours,last_funding_rate
+                        // or: symbol,fundingTime,fundingRate
+                        String[] parts = line.split(",");
+                        if (parts.length >= 3) {
+                            long fundingTime = Long.parseLong(parts[1].trim());
+                            double fundingRate = Double.parseDouble(parts[parts.length - 1].trim());
+                            // Mark price not available in Vision data, use 0
+                            rates.add(new FundingRate(symbol, fundingRate, fundingTime, 0.0));
+                        }
+                    } catch (Exception e) {
+                        // Skip malformed lines
+                    }
+                }
+            }
+        }
+
+        return rates;
     }
 }

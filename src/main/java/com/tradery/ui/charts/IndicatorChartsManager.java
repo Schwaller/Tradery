@@ -43,6 +43,7 @@ public class IndicatorChartsManager {
     private ChartComponent rangePositionComponent;
     private ChartComponent adxComponent;
     private ChartComponent tradeCountComponent;
+    private ChartComponent premiumComponent;
 
     // Enable state
     private boolean rsiChartEnabled = false;
@@ -59,6 +60,7 @@ public class IndicatorChartsManager {
     private boolean rangePositionChartEnabled = false;
     private boolean adxChartEnabled = false;
     private boolean tradeCountChartEnabled = false;
+    private boolean premiumChartEnabled = false;
 
     // Indicator parameters
     private int rsiPeriod = 14;
@@ -106,6 +108,7 @@ public class IndicatorChartsManager {
         rangePositionComponent = new ChartComponent("Range Position", new double[]{-2, 2});
         adxComponent = new ChartComponent("ADX", new double[]{0, 100});
         tradeCountComponent = new ChartComponent("Trade Count");
+        premiumComponent = new ChartComponent("Premium Index");
     }
 
     /**
@@ -136,6 +139,7 @@ public class IndicatorChartsManager {
         Runnable fs11 = fullScreenCallback != null ? () -> fullScreenCallback.accept(11) : null;
         Runnable fs12 = fullScreenCallback != null ? () -> fullScreenCallback.accept(12) : null;
         Runnable fs13 = fullScreenCallback != null ? () -> fullScreenCallback.accept(13) : null;
+        Runnable fs14 = fullScreenCallback != null ? () -> fullScreenCallback.accept(14) : null;
 
         rsiComponent.createWrapper(() -> zoomCallback.accept(0), fs0);
         macdComponent.createWrapper(() -> zoomCallback.accept(1), fs1);
@@ -151,6 +155,7 @@ public class IndicatorChartsManager {
         rangePositionComponent.createWrapper(() -> zoomCallback.accept(11), fs11);
         adxComponent.createWrapper(() -> zoomCallback.accept(12), fs12);
         tradeCountComponent.createWrapper(() -> zoomCallback.accept(13), fs13);
+        premiumComponent.createWrapper(() -> zoomCallback.accept(14), fs14);
     }
 
     // ===== RSI Methods =====
@@ -873,6 +878,89 @@ public class IndicatorChartsManager {
         }
     }
 
+    // ===== Premium Index Methods =====
+
+    public void setPremiumChartEnabled(boolean enabled) {
+        this.premiumChartEnabled = enabled;
+        if (onLayoutChange != null) {
+            onLayoutChange.run();
+        }
+    }
+
+    public boolean isPremiumChartEnabled() {
+        return premiumChartEnabled;
+    }
+
+    public void updatePremiumChart(List<Candle> candles) {
+        if (!premiumChartEnabled || candles == null || candles.isEmpty() || indicatorEngine == null) {
+            return;
+        }
+
+        XYPlot plot = premiumComponent.getChart().getXYPlot();
+
+        double[] premium = indicatorEngine.getPremium();
+        double[] premiumAvg = indicatorEngine.getPremiumAvg(24); // 24-period average
+
+        // Check if premium data is available
+        if (premium == null || premium.length == 0) {
+            return;
+        }
+
+        // Build datasets
+        XYSeriesCollection premiumDataset = new XYSeriesCollection();
+        XYSeries premiumSeries = new XYSeries("Premium");
+
+        TimeSeriesCollection avgDataset = new TimeSeriesCollection();
+        TimeSeries avgSeries = new TimeSeries("Premium 24 Avg");
+
+        for (int i = 0; i < candles.size(); i++) {
+            Candle c = candles.get(i);
+            if (i < premium.length && !Double.isNaN(premium[i])) {
+                premiumSeries.add(c.timestamp(), premium[i]);
+            }
+            if (i < premiumAvg.length && !Double.isNaN(premiumAvg[i])) {
+                avgSeries.addOrUpdate(new Millisecond(new Date(c.timestamp())), premiumAvg[i]);
+            }
+        }
+
+        premiumDataset.addSeries(premiumSeries);
+        avgDataset.addSeries(avgSeries);
+
+        // Premium bars (green for positive, red for negative)
+        plot.setDataset(0, premiumDataset);
+        // Average line on secondary dataset
+        plot.setDataset(1, avgDataset);
+
+        // Bar renderer with colors based on premium sign
+        final XYSeriesCollection finalPremiumDataset = premiumDataset;
+        XYBarRenderer barRenderer = new XYBarRenderer() {
+            @Override
+            public Paint getItemPaint(int series, int item) {
+                double value = finalPremiumDataset.getYValue(series, item);
+                return value >= 0 ? ChartStyles.PREMIUM_POSITIVE : ChartStyles.PREMIUM_NEGATIVE;
+            }
+        };
+        barRenderer.setShadowVisible(false);
+        barRenderer.setBarPainter(new StandardXYBarPainter());
+        plot.setRenderer(0, barRenderer);
+
+        // Average line renderer
+        XYLineAndShapeRenderer avgRenderer = new XYLineAndShapeRenderer(true, false);
+        avgRenderer.setSeriesPaint(0, ChartStyles.PREMIUM_AVG_COLOR);
+        avgRenderer.setSeriesStroke(0, ChartStyles.MEDIUM_STROKE);
+        plot.setRenderer(1, avgRenderer);
+
+        // Add zero line and title
+        plot.clearAnnotations();
+        ChartStyles.addChartTitleAnnotation(plot, "Premium Index (%)");
+        if (!candles.isEmpty()) {
+            long startTime = candles.get(0).timestamp();
+            long endTime = candles.get(candles.size() - 1).timestamp();
+            plot.addAnnotation(new XYLineAnnotation(startTime, 0, endTime, 0,
+                ChartStyles.DASHED_STROKE, ChartStyles.TEXT_COLOR));
+        }
+    }
+
     // ===== Stochastic Methods =====
 
     public void setStochasticChartEnabled(boolean enabled, int kPeriod, int dPeriod) {
@@ -1154,6 +1242,7 @@ public class IndicatorChartsManager {
     public JFreeChart getRangePositionChart() { return rangePositionComponent.getChart(); }
     public JFreeChart getAdxChart() { return adxComponent.getChart(); }
     public JFreeChart getTradeCountChart() { return tradeCountComponent.getChart(); }
+    public JFreeChart getPremiumChart() { return premiumComponent.getChart(); }
 
     public org.jfree.chart.ChartPanel getRsiChartPanel() { return rsiComponent.getChartPanel(); }
     public org.jfree.chart.ChartPanel getMacdChartPanel() { return macdComponent.getChartPanel(); }
@@ -1169,6 +1258,7 @@ public class IndicatorChartsManager {
     public org.jfree.chart.ChartPanel getRangePositionChartPanel() { return rangePositionComponent.getChartPanel(); }
     public org.jfree.chart.ChartPanel getAdxChartPanel() { return adxComponent.getChartPanel(); }
     public org.jfree.chart.ChartPanel getTradeCountChartPanel() { return tradeCountComponent.getChartPanel(); }
+    public org.jfree.chart.ChartPanel getPremiumChartPanel() { return premiumComponent.getChartPanel(); }
 
     public JPanel getRsiChartWrapper() { return rsiComponent.getWrapper(); }
     public JPanel getMacdChartWrapper() { return macdComponent.getWrapper(); }
@@ -1184,6 +1274,7 @@ public class IndicatorChartsManager {
     public JPanel getRangePositionChartWrapper() { return rangePositionComponent.getWrapper(); }
     public JPanel getAdxChartWrapper() { return adxComponent.getWrapper(); }
     public JPanel getTradeCountChartWrapper() { return tradeCountComponent.getWrapper(); }
+    public JPanel getPremiumChartWrapper() { return premiumComponent.getWrapper(); }
 
     public JButton getRsiZoomBtn() { return rsiComponent.getZoomButton(); }
     public JButton getMacdZoomBtn() { return macdComponent.getZoomButton(); }
@@ -1284,6 +1375,7 @@ public class IndicatorChartsManager {
         updateRetailChart(candles);
         updateFundingChart(candles);
         updateOiChart(candles);
+        updatePremiumChart(candles);
         updateStochasticChart(candles);
         updateRangePositionChart(candles);
         updateAdxChart(candles);

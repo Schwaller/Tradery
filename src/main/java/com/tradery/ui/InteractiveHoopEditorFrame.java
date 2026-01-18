@@ -2,10 +2,10 @@ package com.tradery.ui;
 
 import com.tradery.ApplicationContext;
 import com.tradery.TraderyApp;
-import com.tradery.data.CandleStore;
 import com.tradery.data.DataConsumer;
 import com.tradery.data.DataRequirement;
 import com.tradery.data.DataRequirementsTracker;
+import com.tradery.data.sqlite.SqliteDataStore;
 import com.tradery.engine.HoopPatternEvaluator;
 import com.tradery.io.HoopPatternStore;
 import com.tradery.model.Candle;
@@ -42,7 +42,7 @@ public class InteractiveHoopEditorFrame extends JFrame {
 
     private HoopPattern pattern;
     private final HoopPatternStore patternStore;
-    private final CandleStore candleStore;
+    private final SqliteDataStore dataStore;
     private List<Candle> candles = new ArrayList<>();
 
     // UI Components
@@ -83,7 +83,7 @@ public class InteractiveHoopEditorFrame extends JFrame {
     public InteractiveHoopEditorFrame(HoopPatternStore patternStore) {
         super("Hoop Patterns - " + TraderyApp.APP_NAME);
         this.patternStore = patternStore;
-        this.candleStore = ApplicationContext.getInstance().getCandleStore();
+        this.dataStore = ApplicationContext.getInstance().getSqliteDataStore();
 
         initializeFrame();
         initializeComponents();
@@ -404,7 +404,7 @@ public class InteractiveHoopEditorFrame extends JFrame {
         SwingWorker<List<Candle>, Void> worker = new SwingWorker<>() {
             @Override
             protected List<Candle> doInBackground() throws Exception {
-                return candleStore.getCandles(symbol, timeframe, startTime, endTime);
+                return dataStore.getCandles(symbol, timeframe, startTime, endTime);
             }
 
             @Override
@@ -460,7 +460,7 @@ public class InteractiveHoopEditorFrame extends JFrame {
         SwingWorker<List<HoopMatchResult>, Void> worker = new SwingWorker<>() {
             @Override
             protected List<HoopMatchResult> doInBackground() throws Exception {
-                HoopPatternEvaluator evaluator = new HoopPatternEvaluator(candleStore);
+                HoopPatternEvaluator evaluator = new HoopPatternEvaluator(dataStore);
                 return evaluator.findPatternCompletions(pattern, candles);
             }
 

@@ -44,6 +44,7 @@ public class CrosshairManager {
     private Crosshair rangePositionCrosshair;
     private Crosshair adxCrosshair;
     private Crosshair tradeCountCrosshair;
+    private Crosshair premiumCrosshair;
 
     // Status update callback
     private Consumer<String> onStatusUpdate;
@@ -118,7 +119,8 @@ public class CrosshairManager {
             org.jfree.chart.ChartPanel stochasticPanel,
             org.jfree.chart.ChartPanel rangePositionPanel,
             org.jfree.chart.ChartPanel adxPanel,
-            org.jfree.chart.ChartPanel tradeCountPanel) {
+            org.jfree.chart.ChartPanel tradeCountPanel,
+            org.jfree.chart.ChartPanel premiumPanel) {
 
         rsiCrosshair = createCrosshair();
         macdCrosshair = createCrosshair();
@@ -134,6 +136,7 @@ public class CrosshairManager {
         rangePositionCrosshair = createCrosshair();
         adxCrosshair = createCrosshair();
         tradeCountCrosshair = createCrosshair();
+        premiumCrosshair = createCrosshair();
 
         addCrosshairOverlay(rsiPanel, rsiCrosshair);
         addCrosshairOverlay(macdPanel, macdCrosshair);
@@ -149,6 +152,7 @@ public class CrosshairManager {
         if (rangePositionPanel != null) addCrosshairOverlay(rangePositionPanel, rangePositionCrosshair);
         if (adxPanel != null) addCrosshairOverlay(adxPanel, adxCrosshair);
         if (tradeCountPanel != null) addCrosshairOverlay(tradeCountPanel, tradeCountCrosshair);
+        if (premiumPanel != null) addCrosshairOverlay(premiumPanel, premiumCrosshair);
 
         ChartMouseListener listener = createMouseListener();
         rsiPanel.addChartMouseListener(listener);
@@ -165,6 +169,7 @@ public class CrosshairManager {
         if (rangePositionPanel != null) rangePositionPanel.addChartMouseListener(listener);
         if (adxPanel != null) adxPanel.addChartMouseListener(listener);
         if (tradeCountPanel != null) tradeCountPanel.addChartMouseListener(listener);
+        if (premiumPanel != null) premiumPanel.addChartMouseListener(listener);
     }
 
     private Crosshair createCrosshair() {
@@ -236,6 +241,7 @@ public class CrosshairManager {
         if (rangePositionCrosshair != null) rangePositionCrosshair.setValue(domainValue);
         if (adxCrosshair != null) adxCrosshair.setValue(domainValue);
         if (tradeCountCrosshair != null) tradeCountCrosshair.setValue(domainValue);
+        if (premiumCrosshair != null) premiumCrosshair.setValue(domainValue);
     }
 
     private void updateStatus(double timestamp) {

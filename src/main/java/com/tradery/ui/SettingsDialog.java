@@ -11,6 +11,8 @@ import javax.swing.border.EmptyBorder;
 import javax.swing.border.TitledBorder;
 import java.awt.*;
 import java.io.File;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Unified settings dialog for theme and data configuration.
@@ -30,7 +32,7 @@ public class SettingsDialog extends JDialog {
 
         initComponents();
         pack();
-        setMinimumSize(new Dimension(450, 400));
+        setMinimumSize(new Dimension(500, 600));
         setLocationRelativeTo(owner);
     }
 
@@ -50,6 +52,9 @@ public class SettingsDialog extends JDialog {
         // Data section
         JPanel dataSection = createDataSection();
 
+        // Factory Reset section
+        JPanel resetSection = createFactoryResetSection();
+
         // Stack sections vertically
         JPanel sectionsPanel = new JPanel();
         sectionsPanel.setLayout(new BoxLayout(sectionsPanel, BoxLayout.Y_AXIS));
@@ -60,6 +65,8 @@ public class SettingsDialog extends JDialog {
         sectionsPanel.add(chartsSection);
         sectionsPanel.add(Box.createVerticalStrut(12));
         sectionsPanel.add(dataSection);
+        sectionsPanel.add(Box.createVerticalStrut(12));
+        sectionsPanel.add(resetSection);
 
         // Close button
         JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
@@ -417,5 +424,313 @@ public class SettingsDialog extends JDialog {
     private String truncatePath(String path, int maxLen) {
         if (path.length() <= maxLen) return path;
         return "..." + path.substring(path.length() - maxLen + 3);
+    }
+
+    private JPanel createFactoryResetSection() {
+        JPanel panel = new JPanel(new GridBagLayout());
+        panel.setBorder(BorderFactory.createTitledBorder(
+            BorderFactory.createEtchedBorder(), "Factory Reset",
+            TitledBorder.LEFT, TitledBorder.TOP));
+
+        GridBagConstraints gbc = new GridBagConstraints();
+        gbc.insets = new Insets(4, 8, 4, 8);
+        gbc.anchor = GridBagConstraints.WEST;
+        gbc.fill = GridBagConstraints.HORIZONTAL;
+
+        // Info label
+        gbc.gridx = 0; gbc.gridy = 0; gbc.gridwidth = 2;
+        JLabel infoLabel = new JLabel("<html><small>Select data categories to clear. This cannot be undone.</small></html>");
+        infoLabel.setForeground(UIManager.getColor("Label.disabledForeground"));
+        panel.add(infoLabel, gbc);
+
+        // Checkboxes for each data category
+        File userDir = TraderyApp.USER_DIR;
+        DataConfig dataConfig = DataConfig.getInstance();
+
+        // Strategies
+        JCheckBox strategiesCheck = new JCheckBox("Strategies & Backtest Results");
+        File strategiesDir = new File(userDir, "strategies");
+        strategiesCheck.setToolTipText("Delete all strategies and backtest history. Sample strategies will be restored on restart.");
+        gbc.gridy = 1; gbc.gridwidth = 1; gbc.weightx = 1.0;
+        panel.add(strategiesCheck, gbc);
+
+        JLabel strategiesSize = new JLabel("...");
+        gbc.gridx = 1; gbc.weightx = 0;
+        panel.add(strategiesSize, gbc);
+
+        // Custom Phases
+        JCheckBox phasesCheck = new JCheckBox("Phases (Custom & Built-in)");
+        File phasesDir = new File(userDir, "phases");
+        phasesCheck.setToolTipText("Delete all phases. Built-in phases will be restored on restart.");
+        gbc.gridx = 0; gbc.gridy = 2; gbc.weightx = 1.0;
+        panel.add(phasesCheck, gbc);
+
+        JLabel phasesSize = new JLabel("...");
+        gbc.gridx = 1; gbc.weightx = 0;
+        panel.add(phasesSize, gbc);
+
+        // Custom Hoops
+        JCheckBox hoopsCheck = new JCheckBox("Custom Hoop Patterns");
+        File hoopsDir = new File(userDir, "hoops");
+        hoopsCheck.setToolTipText("Delete custom hoop pattern definitions");
+        gbc.gridx = 0; gbc.gridy = 3; gbc.weightx = 1.0;
+        panel.add(hoopsCheck, gbc);
+
+        JLabel hoopsSize = new JLabel("...");
+        gbc.gridx = 1; gbc.weightx = 0;
+        panel.add(hoopsSize, gbc);
+
+        // Market Data (all data directories combined)
+        JCheckBox marketDataCheck = new JCheckBox("Market Data (Candles, Funding, OI, AggTrades)");
+        marketDataCheck.setToolTipText("Delete all cached market data - will be re-downloaded as needed");
+        gbc.gridx = 0; gbc.gridy = 4; gbc.weightx = 1.0;
+        panel.add(marketDataCheck, gbc);
+
+        JLabel marketDataSize = new JLabel("...");
+        gbc.gridx = 1; gbc.weightx = 0;
+        panel.add(marketDataSize, gbc);
+
+        // App Settings
+        JCheckBox settingsCheck = new JCheckBox("App Settings (Theme, Window Positions, Chart Config)");
+        settingsCheck.setToolTipText("Reset all app preferences to defaults");
+        gbc.gridx = 0; gbc.gridy = 5; gbc.weightx = 1.0;
+        panel.add(settingsCheck, gbc);
+
+        // Calculate sizes in background
+        SwingWorker<Void, Void> sizeWorker = new SwingWorker<>() {
+            private String strategiesSizeText;
+            private String phasesSizeText;
+            private String hoopsSizeText;
+            private String marketDataSizeText;
+
+            @Override
+            protected Void doInBackground() {
+                strategiesSizeText = formatDirectorySize(strategiesDir);
+                phasesSizeText = formatDirectorySize(phasesDir);
+                hoopsSizeText = formatDirectorySize(hoopsDir);
+
+                // Market data includes multiple directories
+                long marketDataBytes = calculateDirectorySize(dataConfig.getDataDir());
+                marketDataBytes += calculateDirectorySize(new File(userDir, "aggtrades"));
+                marketDataBytes += calculateDirectorySize(new File(userDir, "funding"));
+                marketDataBytes += calculateDirectorySize(new File(userDir, "openinterest"));
+                marketDataSizeText = formatSize(marketDataBytes);
+
+                return null;
+            }
+
+            @Override
+            protected void done() {
+                strategiesSize.setText(strategiesSizeText);
+                phasesSize.setText(phasesSizeText);
+                hoopsSize.setText(hoopsSizeText);
+                marketDataSize.setText(marketDataSizeText);
+            }
+        };
+        sizeWorker.execute();
+
+        // Reset button
+        gbc.gridx = 0; gbc.gridy = 6; gbc.gridwidth = 2;
+        gbc.fill = GridBagConstraints.NONE;
+        gbc.anchor = GridBagConstraints.EAST;
+        gbc.insets = new Insets(12, 8, 4, 8);
+
+        JButton resetButton = new JButton("Clear Selected Data...");
+        resetButton.addActionListener(e -> {
+            // Collect selected categories
+            List<String> selected = new ArrayList<>();
+            if (strategiesCheck.isSelected()) selected.add("Strategies & Backtest Results");
+            if (phasesCheck.isSelected()) selected.add("Phases");
+            if (hoopsCheck.isSelected()) selected.add("Custom Hoop Patterns");
+            if (marketDataCheck.isSelected()) selected.add("Market Data");
+            if (settingsCheck.isSelected()) selected.add("App Settings");
+
+            if (selected.isEmpty()) {
+                JOptionPane.showMessageDialog(this,
+                    "Please select at least one category to clear.",
+                    "No Selection",
+                    JOptionPane.WARNING_MESSAGE);
+                return;
+            }
+
+            // Confirm
+            StringBuilder message = new StringBuilder();
+            message.append("<html>Are you sure you want to delete the following data?<br><br>");
+            for (String item : selected) {
+                message.append("• ").append(item).append("<br>");
+            }
+            message.append("<br><b>This cannot be undone!</b>");
+
+            // Add restore notes
+            boolean willRestore = strategiesCheck.isSelected() || phasesCheck.isSelected();
+            if (willRestore) {
+                message.append("<br><br><i>Note: ");
+                if (strategiesCheck.isSelected() && phasesCheck.isSelected()) {
+                    message.append("Sample strategies and built-in phases");
+                } else if (strategiesCheck.isSelected()) {
+                    message.append("Sample strategies");
+                } else {
+                    message.append("Built-in phases");
+                }
+                message.append(" will be restored on restart.</i>");
+            }
+
+            if (settingsCheck.isSelected() || strategiesCheck.isSelected() || phasesCheck.isSelected()) {
+                message.append("<br><br>The application will restart after clearing.</html>");
+            } else {
+                message.append("</html>");
+            }
+
+            int option = JOptionPane.showConfirmDialog(this,
+                message.toString(),
+                "Confirm Factory Reset",
+                JOptionPane.YES_NO_OPTION,
+                JOptionPane.WARNING_MESSAGE);
+
+            if (option == JOptionPane.YES_OPTION) {
+                performReset(
+                    strategiesCheck.isSelected(),
+                    phasesCheck.isSelected(),
+                    hoopsCheck.isSelected(),
+                    marketDataCheck.isSelected(),
+                    settingsCheck.isSelected()
+                );
+            }
+        });
+        panel.add(resetButton, gbc);
+
+        return panel;
+    }
+
+    private void performReset(boolean strategies, boolean phases, boolean hoops,
+                              boolean marketData, boolean settings) {
+        File userDir = TraderyApp.USER_DIR;
+        DataConfig dataConfig = DataConfig.getInstance();
+
+        // Show progress
+        JDialog progressDialog = new JDialog(this, "Clearing Data...", true);
+        JProgressBar progressBar = new JProgressBar();
+        progressBar.setIndeterminate(true);
+        progressBar.setString("Deleting files...");
+        progressBar.setStringPainted(true);
+
+        JPanel progressPanel = new JPanel(new BorderLayout(10, 10));
+        progressPanel.setBorder(new EmptyBorder(20, 20, 20, 20));
+        progressPanel.add(new JLabel("Please wait..."), BorderLayout.NORTH);
+        progressPanel.add(progressBar, BorderLayout.CENTER);
+
+        progressDialog.setContentPane(progressPanel);
+        progressDialog.pack();
+        progressDialog.setLocationRelativeTo(this);
+
+        boolean needsRestart = strategies || phases || settings;
+
+        SwingWorker<Boolean, Void> worker = new SwingWorker<>() {
+            @Override
+            protected Boolean doInBackground() {
+                try {
+                    if (strategies) {
+                        deleteDirectoryContents(new File(userDir, "strategies"));
+                    }
+                    if (phases) {
+                        deleteDirectoryContents(new File(userDir, "phases"));
+                    }
+                    if (hoops) {
+                        deleteDirectoryContents(new File(userDir, "hoops"));
+                    }
+                    if (marketData) {
+                        deleteDirectoryContents(dataConfig.getDataDir());
+                        deleteDirectoryContents(new File(userDir, "aggtrades"));
+                        deleteDirectoryContents(new File(userDir, "funding"));
+                        deleteDirectoryContents(new File(userDir, "openinterest"));
+                    }
+                    if (settings) {
+                        // Delete settings files
+                        new File(userDir, "window-state.json").delete();
+                        new File(userDir, "chart-config.json").delete();
+                        new File(userDir, "theme.txt").delete();
+                        new File(userDir, "data-location.txt").delete();
+                    }
+                    return true;
+                } catch (Exception e) {
+                    e.printStackTrace();
+                    return false;
+                }
+            }
+
+            @Override
+            protected void done() {
+                progressDialog.dispose();
+                try {
+                    if (get()) {
+                        if (needsRestart) {
+                            JOptionPane.showMessageDialog(SettingsDialog.this,
+                                "Data cleared successfully. The application will now restart.",
+                                "Reset Complete",
+                                JOptionPane.INFORMATION_MESSAGE);
+                            System.exit(0);
+                        } else {
+                            JOptionPane.showMessageDialog(SettingsDialog.this,
+                                "Data cleared successfully.",
+                                "Reset Complete",
+                                JOptionPane.INFORMATION_MESSAGE);
+                        }
+                    } else {
+                        JOptionPane.showMessageDialog(SettingsDialog.this,
+                            "Some files could not be deleted. They may be in use.",
+                            "Partial Reset",
+                            JOptionPane.WARNING_MESSAGE);
+                    }
+                } catch (Exception e) {
+                    JOptionPane.showMessageDialog(SettingsDialog.this,
+                        "Error during reset: " + e.getMessage(),
+                        "Error",
+                        JOptionPane.ERROR_MESSAGE);
+                }
+            }
+        };
+
+        worker.execute();
+        progressDialog.setVisible(true);
+    }
+
+    private void deleteDirectoryContents(File dir) {
+        if (dir == null || !dir.exists()) return;
+        File[] files = dir.listFiles();
+        if (files != null) {
+            for (File file : files) {
+                if (file.isDirectory()) {
+                    deleteDirectoryContents(file);
+                }
+                file.delete();
+            }
+        }
+    }
+
+    private long calculateDirectorySize(File dir) {
+        if (dir == null || !dir.exists()) return 0;
+        long size = 0;
+        File[] files = dir.listFiles();
+        if (files != null) {
+            for (File file : files) {
+                if (file.isFile()) {
+                    size += file.length();
+                } else if (file.isDirectory()) {
+                    size += calculateDirectorySize(file);
+                }
+            }
+        }
+        return size;
+    }
+
+    private String formatDirectorySize(File dir) {
+        return formatSize(calculateDirectorySize(dir));
+    }
+
+    private String formatSize(long bytes) {
+        if (bytes < 1024) return bytes + " B";
+        if (bytes < 1024 * 1024) return String.format("%.1f KB", bytes / 1024.0);
+        if (bytes < 1024 * 1024 * 1024) return String.format("%.1f MB", bytes / (1024.0 * 1024));
+        return String.format("%.2f GB", bytes / (1024.0 * 1024 * 1024));
     }
 }

@@ -7,9 +7,9 @@ import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import com.tradery.data.AggTradesStore;
-import com.tradery.data.CandleStore;
 import com.tradery.data.FundingRateStore;
 import com.tradery.data.OpenInterestStore;
+import com.tradery.data.sqlite.SqliteDataStore;
 import com.tradery.dsl.Parser;
 import com.tradery.engine.ConditionEvaluator;
 import com.tradery.indicators.IndicatorEngine;
@@ -59,7 +59,7 @@ public class ApiServer {
         .registerModule(new JavaTimeModule());
 
     private HttpServer server;
-    private final CandleStore candleStore;
+    private final SqliteDataStore dataStore;
     private final AggTradesStore aggTradesStore;
     private final FundingRateStore fundingRateStore;
     private final OpenInterestStore openInterestStore;
@@ -69,17 +69,17 @@ public class ApiServer {
     private final StrategyHandler strategyHandler;
     private final PhaseHandler phaseHandler;
 
-    public ApiServer(CandleStore candleStore, AggTradesStore aggTradesStore,
+    public ApiServer(SqliteDataStore dataStore, AggTradesStore aggTradesStore,
                      FundingRateStore fundingRateStore, OpenInterestStore openInterestStore,
                      StrategyStore strategyStore, PhaseStore phaseStore) {
-        this.candleStore = candleStore;
+        this.dataStore = dataStore;
         this.aggTradesStore = aggTradesStore;
         this.fundingRateStore = fundingRateStore;
         this.openInterestStore = openInterestStore;
 
         // Initialize extracted handlers
-        this.strategyHandler = new StrategyHandler(strategyStore, phaseStore, candleStore);
-        this.phaseHandler = new PhaseHandler(phaseStore, candleStore);
+        this.strategyHandler = new StrategyHandler(strategyStore, phaseStore, dataStore);
+        this.phaseHandler = new PhaseHandler(phaseStore, dataStore);
     }
 
     public void start() throws IOException {
@@ -503,8 +503,8 @@ public class ApiServer {
             var generator = new com.tradery.data.SubMinuteCandleGenerator();
             candles = generator.generate(aggTrades, subMinuteSeconds, startMs, endMs);
         } else {
-            // Standard timeframe: load from Binance
-            candles = candleStore.getCandles(symbol, timeframe, startMs, endMs);
+            // Standard timeframe: load from SQLite
+            candles = dataStore.getCandles(symbol, timeframe, startMs, endMs);
 
             // Load aggTrades for orderflow if requested
             if (needsOrderflow && aggTradesStore != null) {

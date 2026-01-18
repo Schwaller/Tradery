@@ -3,7 +3,7 @@ package com.tradery.api;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.sun.net.httpserver.HttpExchange;
-import com.tradery.data.CandleStore;
+import com.tradery.data.sqlite.SqliteDataStore;
 import com.tradery.dsl.Parser;
 import com.tradery.engine.ConditionEvaluator;
 import com.tradery.indicators.IndicatorEngine;
@@ -26,11 +26,11 @@ import java.util.Map;
 public class PhaseHandler extends ApiHandlerBase {
 
     private final PhaseStore phaseStore;
-    private final CandleStore candleStore;
+    private final SqliteDataStore dataStore;
 
-    public PhaseHandler(PhaseStore phaseStore, CandleStore candleStore) {
+    public PhaseHandler(PhaseStore phaseStore, SqliteDataStore dataStore) {
         this.phaseStore = phaseStore;
-        this.candleStore = candleStore;
+        this.dataStore = dataStore;
     }
 
     /**
@@ -222,7 +222,7 @@ public class PhaseHandler extends ApiHandlerBase {
         long endMs = end.toEpochMilli();
         long startMs = end.minus((long) bars * getTimeframeMinutes(timeframe), ChronoUnit.MINUTES).toEpochMilli();
 
-        List<Candle> candles = candleStore.getCandles(symbol, timeframe, startMs, endMs);
+        List<Candle> candles = dataStore.getCandles(symbol, timeframe, startMs, endMs);
 
         // Limit to requested bars (from end)
         if (candles.size() > bars) {

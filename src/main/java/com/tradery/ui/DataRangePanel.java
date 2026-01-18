@@ -21,6 +21,8 @@ public class DataRangePanel extends ConfigurationPanel {
     private JComboBox<String> timeframeCombo;
     private JComboBox<String> durationCombo;
     private JSpinner anchorDateSpinner;
+    private JButton manageButton;
+    private Runnable onManageClicked;
 
     public DataRangePanel() {
         setLayout(new BorderLayout(0, 8));
@@ -57,10 +59,24 @@ public class DataRangePanel extends ConfigurationPanel {
     }
 
     private void layoutComponents() {
-        // Title
+        // Header with title and manage button
+        JPanel headerPanel = new JPanel(new BorderLayout());
+        headerPanel.setOpaque(false);
+
         JLabel title = new JLabel("Data Range");
         title.setFont(title.getFont().deriveFont(Font.BOLD, 12f));
         title.setForeground(Color.GRAY);
+
+        manageButton = new JButton("Manage...");
+        manageButton.setFont(manageButton.getFont().deriveFont(11f));
+        manageButton.addActionListener(e -> {
+            if (onManageClicked != null) {
+                onManageClicked.run();
+            }
+        });
+
+        headerPanel.add(title, BorderLayout.WEST);
+        headerPanel.add(manageButton, BorderLayout.EAST);
 
         // Settings grid
         JPanel settingsGrid = new JPanel(new GridBagLayout());
@@ -100,7 +116,7 @@ public class DataRangePanel extends ConfigurationPanel {
         fieldC.gridx = 1; fieldC.gridy = 3;
         settingsGrid.add(anchorDateSpinner, fieldC);
 
-        add(title, BorderLayout.NORTH);
+        add(headerPanel, BorderLayout.NORTH);
         add(settingsGrid, BorderLayout.CENTER);
     }
 
@@ -257,5 +273,9 @@ public class DataRangePanel extends ConfigurationPanel {
         if (timestamp != null) {
             anchorDateSpinner.setValue(new Date(timestamp));
         }
+    }
+
+    public void setOnManageClicked(Runnable callback) {
+        this.onManageClicked = callback;
     }
 }

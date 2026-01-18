@@ -214,6 +214,11 @@ public class Parser {
             return aggregateFunctionCall();
         }
 
+        // Premium index function (PREMIUM, PREMIUM_AVG)
+        if (check(TokenType.PREMIUM_FUNC)) {
+            return premiumFunctionCall();
+        }
+
         throw new ParserException("Unexpected token '" + current().value() +
             "' at position " + current().position());
     }
@@ -314,6 +319,38 @@ public class Parser {
         }
 
         return new AstNode.OIFunctionCall(func, period);
+    }
+
+    private AstNode.PremiumFunctionCall premiumFunctionCall() {
+        String func = current().value();
+        advance();
+
+        Integer period = null;
+
+        // PREMIUM_AVG requires a period parameter, PREMIUM does not
+        if (check(TokenType.LPAREN)) {
+            advance();
+            List<Double> params = parseNumberList();
+            expect(TokenType.RPAREN, "Expected ')' after " + func + " parameters");
+
+            if (!params.isEmpty()) {
+                period = params.get(0).intValue();
+            }
+        }
+
+        // Validate based on function type
+        switch (func) {
+            case "PREMIUM" -> {
+                // No parameters needed
+            }
+            case "PREMIUM_AVG" -> {
+                if (period == null) {
+                    throw new ParserException("PREMIUM_AVG requires a period parameter, e.g., PREMIUM_AVG(24)");
+                }
+            }
+        }
+
+        return new AstNode.PremiumFunctionCall(func, period);
     }
 
     private AstNode.RayFunctionCall rayFunctionCall() {

@@ -1,6 +1,6 @@
 package com.tradery.engine;
 
-import com.tradery.data.CandleStore;
+import com.tradery.data.sqlite.SqliteDataStore;
 import com.tradery.dsl.AstNode;
 import com.tradery.dsl.Parser;
 import com.tradery.indicators.IndicatorEngine;
@@ -20,10 +20,10 @@ import java.util.regex.Pattern;
  */
 public class PhaseEvaluator {
 
-    private final CandleStore candleStore;
+    private final SqliteDataStore dataStore;
 
-    public PhaseEvaluator(CandleStore candleStore) {
-        this.candleStore = candleStore;
+    public PhaseEvaluator(SqliteDataStore dataStore) {
+        this.dataStore = dataStore;
     }
 
     /**
@@ -77,7 +77,7 @@ public class PhaseEvaluator {
             long warmupMs = getWarmupMs(phase.getTimeframe(), phase.getCondition());
 
             // Load candles for phase's timeframe (with warmup buffer)
-            List<Candle> phaseCandles = candleStore.getCandles(
+            List<Candle> phaseCandles = dataStore.getCandles(
                 phase.getSymbol(),
                 phase.getTimeframe(),
                 startTime - warmupMs,

@@ -18,10 +18,15 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
 
 /**
  * Stores and retrieves candle data as CSV files.
  * Files organized by symbol/resolution/year-month.csv
+ *
+ * Automatically uses Binance Vision (bulk ZIP downloads) for large date ranges
+ * and REST API for small ranges. Vision is 10-100x faster for historical data.
  *
  * Claude Code can directly read these files.
  */
@@ -31,8 +36,16 @@ public class CandleStore {
     private static final DateTimeFormatter YEAR_MONTH = DateTimeFormatter.ofPattern("yyyy-MM");
     private static final String CSV_HEADER = "timestamp,open,high,low,close,volume";
 
+    // Use Vision when estimated API calls exceed this threshold
+    private static final int VISION_THRESHOLD_API_CALLS = 10;
+    private static final String VISION_BASE_URL = "https://data.binance.vision/data/futures/um/monthly/klines";
+
+    // Binance Futures started in September 2019 - no data exists before this
+    private static final YearMonth BINANCE_FUTURES_START = YearMonth.of(2019, 9);
+
     private final File dataDir;
     private final BinanceClient binanceClient;
+    private final okhttp3.OkHttpClient httpClient;
 
     // Cancellation support for long-running fetches
     private final AtomicBoolean fetchCancelled = new AtomicBoolean(false);
@@ -45,6 +58,7 @@ public class CandleStore {
     public CandleStore(BinanceClient binanceClient) {
         this.dataDir = DataConfig.getInstance().getDataDir();
         this.binanceClient = binanceClient;
+        this.httpClient = HttpClientFactory.getClient();
 
         if (!dataDir.exists()) {
             dataDir.mkdirs();
@@ -74,9 +88,253 @@ public class CandleStore {
     }
 
     /**
+     * Estimate how much of the requested range is not in cache.
+     * Returns duration in milliseconds.
+     */
+    private long estimateUncachedDuration(String symbol, String resolution, long startTime, long endTime) {
+        File symbolDir = new File(dataDir, symbol + "/" + resolution);
+        if (!symbolDir.exists()) {
+            return endTime - startTime; // Nothing cached
+        }
+
+        long uncachedMs = 0;
+        LocalDate start = Instant.ofEpochMilli(startTime).atZone(ZoneOffset.UTC).toLocalDate().withDayOfMonth(1);
+        LocalDate end = Instant.ofEpochMilli(endTime).atZone(ZoneOffset.UTC).toLocalDate();
+        LocalDate current = start;
+
+        while (!current.isAfter(end)) {
+            String monthKey = current.format(YEAR_MONTH);
+            File completeFile = new File(symbolDir, monthKey + ".csv");
+            File partialFile = new File(symbolDir, monthKey + ".partial.csv");
+
+            if (!completeFile.exists() && !partialFile.exists()) {
+                // This month is completely uncached
+                long monthStart = current.atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli();
+                LocalDate nextMonth = current.plusMonths(1);
+                long monthEnd = nextMonth.atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli();
+                uncachedMs += Math.min(monthEnd, endTime) - Math.max(monthStart, startTime);
+            }
+
+            current = current.plusMonths(1);
+        }
+
+        return uncachedMs;
+    }
+
+    /**
+     * Check if Vision bulk download should be used based on estimated data volume.
+     */
+    private boolean shouldUseVision(String resolution, long startTime, long endTime) {
+        long durationMs = endTime - startTime;
+        long durationHours = durationMs / (1000 * 60 * 60);
+        long durationDays = durationHours / 24;
+
+        // Estimate candles based on timeframe
+        long estimatedCandles = switch (resolution) {
+            case "1m" -> durationHours * 60;
+            case "3m" -> durationHours * 20;
+            case "5m" -> durationHours * 12;
+            case "15m" -> durationHours * 4;
+            case "30m" -> durationHours * 2;
+            case "1h" -> durationHours;
+            case "2h" -> durationHours / 2;
+            case "4h" -> durationHours / 4;
+            case "6h" -> durationHours / 6;
+            case "8h" -> durationHours / 8;
+            case "12h" -> durationHours / 12;
+            case "1d" -> durationHours / 24;
+            case "3d" -> durationHours / 72;
+            case "1w" -> durationHours / 168;
+            default -> durationHours;
+        };
+
+        // API returns max 1000 records per request
+        long estimatedApiCalls = (estimatedCandles + 999) / 1000;
+
+        // Use Vision if we'd need more than threshold API calls
+        // Also require at least 1 complete month for Vision to be worthwhile
+        return estimatedApiCalls > VISION_THRESHOLD_API_CALLS && durationDays >= 28;
+    }
+
+    /**
+     * Fetch candles via Binance Vision bulk download.
+     * Downloads monthly ZIP files directly to CSV cache.
+     */
+    private List<Candle> fetchViaVision(String symbol, String resolution, long startTime, long endTime)
+            throws IOException {
+
+        List<Candle> allCandles = new ArrayList<>();
+        File symbolDir = new File(dataDir, symbol + "/" + resolution);
+        symbolDir.mkdirs();
+
+        // Get month range
+        YearMonth startMonth = YearMonth.from(Instant.ofEpochMilli(startTime).atZone(ZoneOffset.UTC));
+        YearMonth endMonth = YearMonth.from(Instant.ofEpochMilli(endTime).atZone(ZoneOffset.UTC));
+        YearMonth lastCompleteMonth = YearMonth.now(ZoneOffset.UTC).minusMonths(1);
+
+        // Cap at last complete month (current month via API)
+        if (endMonth.isAfter(lastCompleteMonth)) {
+            endMonth = lastCompleteMonth;
+        }
+
+        // Cap at Binance Futures start (no data before Sept 2019)
+        if (startMonth.isBefore(BINANCE_FUTURES_START)) {
+            startMonth = BINANCE_FUTURES_START;
+        }
+
+        // Count months for progress
+        int totalMonths = 0;
+        YearMonth temp = startMonth;
+        while (!temp.isAfter(endMonth)) {
+            totalMonths++;
+            temp = temp.plusMonths(1);
+        }
+
+        int completedMonths = 0;
+        YearMonth current = startMonth;
+
+        while (!current.isAfter(endMonth)) {
+            if (fetchCancelled.get()) {
+                log.debug("Vision fetch cancelled");
+                break;
+            }
+
+            String monthKey = current.format(YEAR_MONTH);
+            File completeFile = new File(symbolDir, monthKey + ".csv");
+
+            // Skip if we already have complete data for this month
+            if (completeFile.exists()) {
+                log.debug("Vision: Skipping {} (already cached)", monthKey);
+                allCandles.addAll(loadCsvFile(completeFile));
+                completedMonths++;
+                current = current.plusMonths(1);
+                continue;
+            }
+
+            // Build Vision URL
+            String url = String.format("%s/%s/%s/%s-%s-%s.zip",
+                VISION_BASE_URL, symbol, resolution, symbol, resolution, monthKey);
+
+            log.info("Vision: Downloading {}", monthKey);
+
+            // Report progress
+            if (progressCallback != null) {
+                int pct = totalMonths > 0 ? (completedMonths * 100) / totalMonths : 0;
+                progressCallback.accept(new FetchProgress(completedMonths, totalMonths,
+                    "Vision: Downloading " + monthKey + "..."));
+            }
+
+            try {
+                List<Candle> monthCandles = downloadVisionMonth(url);
+
+                if (!monthCandles.isEmpty()) {
+                    // Save to CSV cache
+                    writeCsvFile(completeFile, monthCandles);
+                    allCandles.addAll(monthCandles);
+                    log.info("Vision: Saved {} candles for {}", monthCandles.size(), monthKey);
+                }
+            } catch (IOException e) {
+                if (e.getMessage() != null && e.getMessage().contains("404")) {
+                    log.debug("Vision: Month {} not available", monthKey);
+                } else {
+                    log.warn("Vision: Failed to download {}: {}", monthKey, e.getMessage());
+                }
+            }
+
+            completedMonths++;
+            current = current.plusMonths(1);
+        }
+
+        return allCandles;
+    }
+
+    /**
+     * Download and parse a single month's ZIP from Vision.
+     */
+    private List<Candle> downloadVisionMonth(String url) throws IOException {
+        okhttp3.Request request = new okhttp3.Request.Builder()
+            .url(url)
+            .get()
+            .build();
+
+        try (okhttp3.Response response = httpClient.newCall(request).execute()) {
+            if (response.code() == 404) {
+                throw new IOException("404 Not Found");
+            }
+            if (!response.isSuccessful()) {
+                throw new IOException("Download failed: " + response.code());
+            }
+
+            return parseVisionZip(response.body().byteStream());
+        }
+    }
+
+    /**
+     * Parse Vision ZIP file and extract candles.
+     */
+    private List<Candle> parseVisionZip(InputStream inputStream) throws IOException {
+        List<Candle> candles = new ArrayList<>();
+
+        try (ZipInputStream zis = new ZipInputStream(inputStream)) {
+            ZipEntry entry;
+            while ((entry = zis.getNextEntry()) != null) {
+                if (entry.getName().endsWith(".csv")) {
+                    BufferedReader reader = new BufferedReader(new InputStreamReader(zis));
+                    String line;
+                    boolean isHeader = true;
+
+                    while ((line = reader.readLine()) != null) {
+                        if (isHeader) {
+                            isHeader = false;
+                            // Skip header if it looks like one
+                            if (line.startsWith("open") || !Character.isDigit(line.charAt(0))) {
+                                continue;
+                            }
+                        }
+                        if (!line.isBlank()) {
+                            try {
+                                candles.add(parseVisionKline(line));
+                            } catch (Exception e) {
+                                log.warn("Failed to parse Vision kline: {}", line);
+                            }
+                        }
+                    }
+                }
+                zis.closeEntry();
+            }
+        }
+
+        // Sort by timestamp
+        candles.sort((a, b) -> Long.compare(a.timestamp(), b.timestamp()));
+        return candles;
+    }
+
+    /**
+     * Parse Vision kline CSV line.
+     * Format: open_time,open,high,low,close,volume,close_time,...
+     */
+    private Candle parseVisionKline(String line) {
+        String[] parts = line.split(",");
+        if (parts.length < 6) {
+            throw new IllegalArgumentException("Invalid kline: " + line);
+        }
+        return new Candle(
+            Long.parseLong(parts[0].trim()),
+            Double.parseDouble(parts[1].trim()),
+            Double.parseDouble(parts[2].trim()),
+            Double.parseDouble(parts[3].trim()),
+            Double.parseDouble(parts[4].trim()),
+            Double.parseDouble(parts[5].trim())
+        );
+    }
+
+    /**
      * Get candles for a symbol and resolution between two dates.
      * Fetches from Binance if not cached locally.
      * Smart caching: only fetches missing data, skips complete historical months.
+     *
+     * Automatically uses Binance Vision (bulk ZIP downloads) for large date ranges
+     * when the estimated API calls exceed the threshold.
      */
     public List<Candle> getCandles(String symbol, String resolution, long startTime, long endTime)
             throws IOException {
@@ -84,9 +342,28 @@ public class CandleStore {
         // Reset cancellation flag at start of new fetch
         fetchCancelled.set(false);
 
+        log.info("getCandles {} {} from {} to {}", symbol, resolution,
+            Instant.ofEpochMilli(startTime).atZone(ZoneOffset.UTC).toLocalDate(),
+            Instant.ofEpochMilli(endTime).atZone(ZoneOffset.UTC).toLocalDate());
+
         List<Candle> allCandles = new ArrayList<>();
         File symbolDir = new File(dataDir, symbol + "/" + resolution);
         symbolDir.mkdirs();
+
+        // Check if we should use Vision for bulk download
+        // Only use Vision if we have significant uncached data (>= 1 month)
+        long uncachedMs = estimateUncachedDuration(symbol, resolution, startTime, endTime);
+        if (shouldUseVision(resolution, startTime, startTime + uncachedMs) && uncachedMs > 28L * 24 * 60 * 60 * 1000) {
+            log.info("Using Vision bulk download for {} {} (large uncached range)", symbol, resolution);
+            try {
+                // Vision downloads and caches data - we don't add to allCandles here
+                // The regular iteration below will read from cache
+                fetchViaVision(symbol, resolution, startTime, endTime);
+            } catch (Exception e) {
+                log.warn("Vision download failed, falling back to API: {}", e.getMessage());
+                // Continue with API-based fetch below
+            }
+        }
 
         // Current month - may have incomplete data
         LocalDate now = LocalDate.now(ZoneOffset.UTC);
@@ -105,6 +382,21 @@ public class CandleStore {
             }
 
             String monthKey = current.format(YEAR_MONTH);
+            YearMonth currentYearMonth = YearMonth.from(current);
+
+            // Skip months before Binance Futures existed (Sept 2019)
+            if (currentYearMonth.isBefore(BINANCE_FUTURES_START)) {
+                log.trace("Skipping {} - before Binance Futures start", monthKey);
+                current = current.plusMonths(1).withDayOfMonth(1);
+                continue;
+            }
+
+            // Check for empty marker (month has no data available)
+            if (hasEmptyMarker(symbolDir, monthKey)) {
+                log.trace("Skipping {} - empty marker (no data available)", monthKey);
+                current = current.plusMonths(1).withDayOfMonth(1);
+                continue;
+            }
 
             // Check for both complete and partial files
             File completeFile = new File(symbolDir, monthKey + ".csv");
@@ -126,7 +418,7 @@ public class CandleStore {
 
             if (fileExists && !isCurrentMonth && completeFile.exists()) {
                 // Historical month with complete data - use cache, don't refetch
-                log.debug("Using cached data for {}", monthKey);
+                log.trace("Cache hit: {}", monthKey);
                 allCandles.addAll(loadCsvFile(monthFile));
             } else if (fileExists && isCurrentMonth) {
                 // Current month - check if we need to update
@@ -147,39 +439,52 @@ public class CandleStore {
                     allCandles.addAll(cached);
                 }
             } else if (fileExists && partialFile.exists()) {
-                // Historical partial file - complete it by fetching ALL missing data
+                // Historical partial file - check if it covers the requested range
                 List<Candle> cached = loadCsvFile(partialFile);
                 long firstCachedTime = cached.isEmpty() ? Long.MAX_VALUE : cached.get(0).timestamp();
                 long lastCachedTime = cached.isEmpty() ? 0 : cached.get(cached.size() - 1).timestamp();
-                boolean needsFetch = false;
+                long resolutionMs = getResolutionMs(resolution);
 
-                // Fetch missing data BEFORE first cached candle (gap at start)
-                if (fetchStart < firstCachedTime) {
-                    log.info("Completing partial {} - fetching data before {}", monthKey, firstCachedTime);
-                    List<Candle> beforeData = binanceClient.fetchAllKlines(symbol, resolution, fetchStart, firstCachedTime,
-                            fetchCancelled, progressCallback);
-                    if (!beforeData.isEmpty()) {
-                        saveToCache(symbol, resolution, beforeData, fetchCancelled.get());
-                        needsFetch = true;
-                    }
-                }
+                // If cached data covers the requested range (within tolerance), just use it
+                boolean coversStart = firstCachedTime <= fetchStart + resolutionMs;
+                boolean coversEnd = lastCachedTime >= fetchEnd - resolutionMs;
 
-                // Fetch missing data AFTER last cached candle (gap at end)
-                if (lastCachedTime < fetchEnd && !fetchCancelled.get()) {
-                    log.info("Completing partial {} - fetching data after {}", monthKey, lastCachedTime);
-                    List<Candle> afterData = binanceClient.fetchAllKlines(symbol, resolution, lastCachedTime, fetchEnd,
-                            fetchCancelled, progressCallback);
-                    if (!afterData.isEmpty()) {
-                        saveToCache(symbol, resolution, afterData, fetchCancelled.get());
-                        needsFetch = true;
-                    }
-                }
-
-                // Reload merged data or use cached
-                if (needsFetch) {
-                    allCandles.addAll(loadCsvFile(partialFile.exists() ? partialFile : completeFile));
-                } else {
+                if (coversStart && coversEnd) {
+                    // Cached data covers requested range - no need to fetch
+                    log.trace("Partial {} covers requested range, using cache", monthKey);
                     allCandles.addAll(cached);
+                } else {
+                    // Need to fill gaps
+                    boolean needsFetch = false;
+
+                    // Fetch missing data BEFORE first cached candle (gap at start)
+                    if (!coversStart) {
+                        log.info("Completing partial {} - fetching data before {}", monthKey, firstCachedTime);
+                        List<Candle> beforeData = binanceClient.fetchAllKlines(symbol, resolution, fetchStart, firstCachedTime,
+                                fetchCancelled, progressCallback);
+                        if (!beforeData.isEmpty()) {
+                            saveToCache(symbol, resolution, beforeData, fetchCancelled.get());
+                            needsFetch = true;
+                        }
+                    }
+
+                    // Fetch missing data AFTER last cached candle (gap at end)
+                    if (!coversEnd && !fetchCancelled.get()) {
+                        log.info("Completing partial {} - fetching data after {}", monthKey, lastCachedTime);
+                        List<Candle> afterData = binanceClient.fetchAllKlines(symbol, resolution, lastCachedTime, fetchEnd,
+                                fetchCancelled, progressCallback);
+                        if (!afterData.isEmpty()) {
+                            saveToCache(symbol, resolution, afterData, fetchCancelled.get());
+                            needsFetch = true;
+                        }
+                    }
+
+                    // Reload merged data or use cached
+                    if (needsFetch) {
+                        allCandles.addAll(loadCsvFile(partialFile.exists() ? partialFile : completeFile));
+                    } else {
+                        allCandles.addAll(cached);
+                    }
                 }
             } else {
                 // No cache - fetch from Binance
@@ -187,8 +492,16 @@ public class CandleStore {
                 List<Candle> fresh = binanceClient.fetchAllKlines(symbol, resolution, fetchStart, fetchEnd,
                         fetchCancelled, progressCallback);
                 boolean wasCancelled = fetchCancelled.get();
-                saveToCache(symbol, resolution, fresh, wasCancelled);
-                allCandles.addAll(fresh);
+
+                if (fresh.isEmpty() && !wasCancelled && !isCurrentMonth) {
+                    // API returned no data for a historical month - save empty marker
+                    // to prevent repeated fetches (e.g., months before data existed)
+                    log.debug("No data from API for {} - saving empty marker", monthKey);
+                    saveEmptyMarker(symbolDir, monthKey);
+                } else {
+                    saveToCache(symbol, resolution, fresh, wasCancelled);
+                    allCandles.addAll(fresh);
+                }
 
                 if (wasCancelled) {
                     break;
@@ -199,11 +512,14 @@ public class CandleStore {
         }
 
         // Filter to requested range and sort
-        return allCandles.stream()
+        List<Candle> result = allCandles.stream()
             .filter(c -> c.timestamp() >= startTime && c.timestamp() <= endTime)
             .distinct()
             .sorted((a, b) -> Long.compare(a.timestamp(), b.timestamp()))
             .toList();
+
+        log.info("getCandles complete: {} candles loaded", result.size());
+        return result;
     }
 
     /**
@@ -221,6 +537,18 @@ public class CandleStore {
             case "1w" -> 7 * 24 * 60 * 60_000L;
             default -> 60 * 60_000L; // Default to 1h
         };
+    }
+
+    /**
+     * Get candles from cache only, without fetching from API.
+     * Use this for overview displays where speed matters more than completeness.
+     * Returns whatever is available in cache, may be empty or incomplete.
+     */
+    public List<Candle> getCandlesCacheOnly(String symbol, String resolution, long startTime, long endTime) {
+        return loadFromCache(symbol, resolution, startTime, endTime).stream()
+            .filter(c -> c.timestamp() >= startTime && c.timestamp() <= endTime)
+            .sorted((a, b) -> Long.compare(a.timestamp(), b.timestamp()))
+            .toList();
     }
 
     /**
@@ -415,6 +743,26 @@ public class CandleStore {
             }
         }
         log.debug("Saved {} candles to {}", candles.size(), file.getAbsolutePath());
+    }
+
+    /**
+     * Save an empty marker file to indicate a month has no data.
+     * This prevents repeated API calls for months that don't have data.
+     */
+    private void saveEmptyMarker(File symbolDir, String monthKey) {
+        File emptyFile = new File(symbolDir, monthKey + ".empty");
+        try {
+            emptyFile.createNewFile();
+        } catch (IOException e) {
+            log.warn("Failed to create empty marker for {}: {}", monthKey, e.getMessage());
+        }
+    }
+
+    /**
+     * Check if a month has an empty marker (no data available from API).
+     */
+    private boolean hasEmptyMarker(File symbolDir, String monthKey) {
+        return new File(symbolDir, monthKey + ".empty").exists();
     }
 
     /**

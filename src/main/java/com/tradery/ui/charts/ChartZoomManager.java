@@ -322,7 +322,8 @@ public class ChartZoomManager {
                          indicatorManager.getStochasticChartWrapper(),
                          indicatorManager.getRangePositionChartWrapper(),
                          indicatorManager.getAdxChartWrapper(),
-                         indicatorManager.getTradeCountChartWrapper()} :
+                         indicatorManager.getTradeCountChartWrapper(),
+                         indicatorManager.getPremiumChartWrapper()} :
             new JPanel[0];
 
         // If in full screen mode, only show the full screen chart
@@ -428,6 +429,9 @@ public class ChartZoomManager {
             if (indicatorManager.isTradeCountChartEnabled()) {
                 visibleCharts.add(indicatorManager.getTradeCountChartWrapper());
             }
+            if (indicatorManager.isPremiumChartEnabled()) {
+                visibleCharts.add(indicatorManager.getPremiumChartWrapper());
+            }
         }
 
         if (equityChartEnabled) {
@@ -470,13 +474,18 @@ public class ChartZoomManager {
                 }
             }
 
-            // Set weight based on zoom state - equal height for all charts
+            // Set weight based on zoom state
+            // Price chart (first) gets extra weight to compensate for time axis labels
+            boolean isPriceChart = (panel == chartWrappers[0]);
+            double priceChartBonus = 0.35; // Extra weight for price chart
+
             if (isZoomed) {
                 gbc.weighty = 0.65;
             } else if (zoomedChartIndex >= 0 || indicatorZoomedIndex >= 0) {
                 gbc.weighty = 0.35 / (totalCharts - 1);
             } else {
-                gbc.weighty = 1.0 / totalCharts;
+                double baseWeight = 1.0 / (totalCharts + priceChartBonus);
+                gbc.weighty = isPriceChart ? baseWeight * (1 + priceChartBonus) : baseWeight;
             }
             chartsContainer.add(panel, gbc);
         }

@@ -1,6 +1,9 @@
 package com.tradery.ui;
 
-import com.tradery.data.CandleStore;
+import com.tradery.ApplicationContext;
+import com.tradery.data.DataPage;
+import com.tradery.data.DataPageListener;
+import com.tradery.data.DataPageManager;
 import com.tradery.model.Candle;
 
 import javax.swing.*;
@@ -16,18 +19,23 @@ import java.util.function.Consumer;
 /**
  * Horizontal bar showing weekly resolution of entire dataset with selected window highlighted.
  * Acts as a minimap/overview of the data range. Supports dragging to move the window.
+ *
+ * Uses DataPageManager for efficient checkout-based data access with automatic updates.
  */
-public class TimelineBar extends JPanel {
+public class TimelineBar extends JPanel implements DataPageListener {
 
     private static final int BAR_HEIGHT = 48;
     private static final Color CANDLE_UP = new Color(38, 166, 91);
     private static final Color CANDLE_DOWN = new Color(214, 69, 65);
     private static final Color GRID_LINE = new Color(128, 128, 128, 80);
 
-    private final CandleStore candleStore;
+    private static final long TEN_YEARS_MS = 10L * 365 * 24 * 60 * 60 * 1000;
+
+    private final DataPageManager pageManager;
 
     private String symbol = "BTCUSDT";
     private String title = "";
+    private DataPage dataPage;
     private List<Candle> weeklyCandles;
     private long windowStart;
     private long windowEnd;
@@ -57,8 +65,8 @@ public class TimelineBar extends JPanel {
     private Timer pulseTimer;
     private float pulsePhase = 0f;
 
-    public TimelineBar(CandleStore candleStore) {
-        this.candleStore = candleStore;
+    public TimelineBar() {
+        this.pageManager = ApplicationContext.getInstance().getDataPageManager();
         setPreferredSize(new Dimension(0, BAR_HEIGHT));
         setMinimumSize(new Dimension(0, BAR_HEIGHT));
         setMaximumSize(new Dimension(Integer.MAX_VALUE, BAR_HEIGHT));
@@ -210,34 +218,21 @@ public class TimelineBar extends JPanel {
         this.windowStart = windowStart;
         this.windowEnd = windowEnd;
 
-        if (symbolChanged || weeklyCandles == null) {
-            // Fetch weekly candles in background
-            SwingWorker<List<Candle>, Void> worker = new SwingWorker<>() {
-                @Override
-                protected List<Candle> doInBackground() {
-                    try {
-                        // Get max available weekly data for overview
-                        long tenYearsMs = 10L * 365 * 24 * 60 * 60 * 1000;
-                        long end = System.currentTimeMillis();
-                        long start = end - tenYearsMs;
-                        return candleStore.getCandles(symbol, "1w", start, end);
-                    } catch (Exception e) {
-                        return null;
-                    }
-                }
+        if (symbolChanged || dataPage == null) {
+            // Release old page if switching symbols
+            if (dataPage != null) {
+                pageManager.release(dataPage, this);
+            }
 
-                @Override
-                protected void done() {
-                    try {
-                        weeklyCandles = get();
-                        updateTimeRange();
-                        repaint();
-                    } catch (Exception e) {
-                        // Ignore errors
-                    }
-                }
-            };
-            worker.execute();
+            // Checkout new page - returns immediately with cached data, syncs in background
+            long end = System.currentTimeMillis();
+            long start = end - TEN_YEARS_MS;
+            dataPage = pageManager.checkout(symbol, "1w", start, end, this);
+
+            // Use whatever data is available immediately
+            weeklyCandles = dataPage.getCandles();
+            updateTimeRange();
+            repaint();
         } else {
             repaint();
         }
@@ -402,5 +397,31 @@ public class TimelineBar extends JPanel {
         }
 
         g2.dispose();
+    }
+
+    // ========== DataPageListener Implementation ==========
+
+    @Override
+    public void onPageDataUpdated(DataPage page) {
+        // Update candles when page data changes (called on EDT)
+        weeklyCandles = page.getCandles();
+        updateTimeRange();
+        repaint();
+    }
+
+    @Override
+    public void onPageStateChanged(DataPage page, DataPage.State oldState, DataPage.State newState) {
+        // Show loading indicator when syncing
+        setLoading(newState == DataPage.State.LOADING || newState == DataPage.State.UPDATING);
+    }
+
+    /**
+     * Release the checked-out page when this component is disposed.
+     */
+    public void dispose() {
+        if (dataPage != null) {
+            pageManager.release(dataPage, this);
+            dataPage = null;
+        }
     }
 }

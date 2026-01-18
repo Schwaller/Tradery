@@ -1,6 +1,6 @@
 package com.tradery.engine;
 
-import com.tradery.data.CandleStore;
+import com.tradery.data.sqlite.SqliteDataStore;
 import com.tradery.indicators.EMA;
 import com.tradery.indicators.SMA;
 import com.tradery.model.*;
@@ -17,10 +17,10 @@ import java.util.*;
  */
 public class HoopPatternEvaluator {
 
-    private final CandleStore candleStore;
+    private final SqliteDataStore dataStore;
 
-    public HoopPatternEvaluator(CandleStore candleStore) {
-        this.candleStore = candleStore;
+    public HoopPatternEvaluator(SqliteDataStore dataStore) {
+        this.dataStore = dataStore;
     }
 
     /**
@@ -51,7 +51,7 @@ public class HoopPatternEvaluator {
             long warmupMs = getWarmupMs(pattern);
 
             // Load candles for pattern's timeframe (with warmup buffer)
-            List<Candle> patternCandles = candleStore.getCandles(
+            List<Candle> patternCandles = dataStore.getCandles(
                 pattern.getSymbol(),
                 pattern.getTimeframe(),
                 startTime - warmupMs,

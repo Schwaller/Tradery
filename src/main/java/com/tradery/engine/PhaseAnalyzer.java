@@ -1,6 +1,6 @@
 package com.tradery.engine;
 
-import com.tradery.data.CandleStore;
+import com.tradery.data.sqlite.SqliteDataStore;
 import com.tradery.io.PhaseStore;
 import com.tradery.model.*;
 
@@ -14,11 +14,11 @@ import java.util.function.Consumer;
  */
 public class PhaseAnalyzer {
 
-    private final CandleStore candleStore;
+    private final SqliteDataStore dataStore;
     private final PhaseStore phaseStore;
 
-    public PhaseAnalyzer(CandleStore candleStore, PhaseStore phaseStore) {
-        this.candleStore = candleStore;
+    public PhaseAnalyzer(SqliteDataStore dataStore, PhaseStore phaseStore) {
+        this.dataStore = dataStore;
         this.phaseStore = phaseStore;
     }
 
@@ -57,7 +57,7 @@ public class PhaseAnalyzer {
         }
 
         List<PhaseAnalysisResult> results = new ArrayList<>();
-        PhaseEvaluator evaluator = new PhaseEvaluator(candleStore);
+        PhaseEvaluator evaluator = new PhaseEvaluator(dataStore);
 
         int total = allPhases.size();
         int current = 0;

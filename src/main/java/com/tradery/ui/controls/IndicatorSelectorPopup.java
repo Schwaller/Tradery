@@ -112,6 +112,9 @@ public class IndicatorSelectorPopup extends JDialog {
     // Open Interest checkbox
     private JCheckBox oiCheckbox;
 
+    // Premium Index checkbox
+    private JCheckBox premiumCheckbox;
+
     // Core chart checkboxes
     private JCheckBox volumeChartCheckbox;
     private JCheckBox equityChartCheckbox;
@@ -226,6 +229,12 @@ public class IndicatorSelectorPopup extends JDialog {
         // === OPEN INTEREST ===
         contentPane.add(createSectionHeader("OPEN INTEREST"));
         contentPane.add(createOiRow());
+
+        contentPane.add(Box.createVerticalStrut(4));
+
+        // === PREMIUM INDEX ===
+        contentPane.add(createSectionHeader("PREMIUM INDEX"));
+        contentPane.add(createPremiumRow());
 
         contentPane.add(createSectionSeparator());
 
@@ -818,6 +827,16 @@ public class IndicatorSelectorPopup extends JDialog {
         return row;
     }
 
+    private JPanel createPremiumRow() {
+        premiumCheckbox = new JCheckBox("Premium Index");
+        premiumCheckbox.setToolTipText("Show futures premium vs spot index (leading indicator)");
+        JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
+        row.setAlignmentX(Component.LEFT_ALIGNMENT);
+        row.add(premiumCheckbox);
+        premiumCheckbox.addActionListener(e -> scheduleUpdate());
+        return row;
+    }
+
     private JPanel createVolumeChartRow() {
         volumeChartCheckbox = new JCheckBox("Volume");
         volumeChartCheckbox.setToolTipText("Show volume chart");
@@ -1098,6 +1117,9 @@ public class IndicatorSelectorPopup extends JDialog {
         // Open Interest
         oiCheckbox.setSelected(config.isOiEnabled());
 
+        // Premium Index
+        premiumCheckbox.setSelected(config.isPremiumEnabled());
+
         // Core charts
         volumeChartCheckbox.setSelected(config.isVolumeChartEnabled());
         equityChartCheckbox.setSelected(config.isEquityChartEnabled());
@@ -1257,6 +1279,10 @@ public class IndicatorSelectorPopup extends JDialog {
         // Open Interest
         chartPanel.setOiChartEnabled(oiCheckbox.isSelected());
         config.setOiEnabled(oiCheckbox.isSelected());
+
+        // Premium Index
+        chartPanel.setPremiumChartEnabled(premiumCheckbox.isSelected());
+        config.setPremiumEnabled(premiumCheckbox.isSelected());
 
         // Core charts
         chartPanel.setVolumeChartEnabled(volumeChartCheckbox.isSelected());

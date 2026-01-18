@@ -640,6 +640,33 @@ public class Strategy implements Identifiable {
         return upper.contains("FUNDING");
     }
 
+    /**
+     * Check if strategy DSL uses Premium Index functions (PREMIUM, PREMIUM_AVG).
+     */
+    @JsonIgnore
+    public boolean requiresPremium() {
+        // Check entry condition
+        String entry = getEntrySettings().getCondition();
+        if (entry != null && containsPremiumFunction(entry)) {
+            return true;
+        }
+
+        // Check exit zone conditions
+        for (ExitZone zone : getExitZones()) {
+            String condition = zone.exitCondition();
+            if (condition != null && containsPremiumFunction(condition)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private boolean containsPremiumFunction(String condition) {
+        String upper = condition.toUpperCase();
+        return upper.contains("PREMIUM");
+    }
+
     @Override
     public String toString() {
         return name;

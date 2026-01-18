@@ -1,7 +1,7 @@
 package com.tradery.engine;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.tradery.data.CandleStore;
+import com.tradery.data.sqlite.SqliteDataStore;
 import com.tradery.dsl.AstNode;
 import com.tradery.dsl.Parser;
 import com.tradery.indicators.IndicatorEngine;
@@ -10,6 +10,7 @@ import com.tradery.model.*;
 import com.tradery.model.AggTrade;
 import com.tradery.model.FundingRate;
 import com.tradery.model.OpenInterest;
+import com.tradery.model.PremiumIndex;
 
 import java.io.File;
 import java.io.IOException;
@@ -29,23 +30,24 @@ import java.util.regex.Pattern;
 public class BacktestEngine {
 
     private final IndicatorEngine indicatorEngine;
-    private final CandleStore candleStore;
+    private final SqliteDataStore dataStore;
     private final PositionSizer positionSizer;
     private final TradeAnalytics tradeAnalytics;
     private List<AggTrade> aggTrades;
     private List<FundingRate> fundingRates;
     private List<OpenInterest> openInterestData;
+    private List<PremiumIndex> premiumIndexData;
 
     public BacktestEngine() {
         this.indicatorEngine = new IndicatorEngine();
-        this.candleStore = null;
+        this.dataStore = null;
         this.positionSizer = new PositionSizer();
         this.tradeAnalytics = new TradeAnalytics(indicatorEngine);
     }
 
-    public BacktestEngine(CandleStore candleStore) {
+    public BacktestEngine(SqliteDataStore dataStore) {
         this.indicatorEngine = new IndicatorEngine();
-        this.candleStore = candleStore;
+        this.dataStore = dataStore;
         this.positionSizer = new PositionSizer();
         this.tradeAnalytics = new TradeAnalytics(indicatorEngine);
     }
@@ -79,6 +81,14 @@ public class BacktestEngine {
      */
     public void setOpenInterest(List<OpenInterest> openInterestData) {
         this.openInterestData = openInterestData;
+    }
+
+    /**
+     * Set premium index data for premium indicators (PREMIUM, PREMIUM_AVG).
+     * Must be called before run() for premium indicators to work.
+     */
+    public void setPremiumIndex(List<PremiumIndex> premiumIndexData) {
+        this.premiumIndexData = premiumIndexData;
     }
 
     /**
@@ -119,12 +129,12 @@ public class BacktestEngine {
         List<String> requiredPhaseIds = strategy.getRequiredPhaseIds();
         List<String> excludedPhaseIds = strategy.getExcludedPhaseIds();
 
-        if (!requiredPhases.isEmpty() && candleStore != null) {
+        if (!requiredPhases.isEmpty() && dataStore != null) {
             if (onProgress != null) {
                 onProgress.accept(new Progress(0, candles.size(), 0, "Evaluating phases..."));
             }
             try {
-                PhaseEvaluator phaseEvaluator = new PhaseEvaluator(candleStore);
+                PhaseEvaluator phaseEvaluator = new PhaseEvaluator(dataStore);
                 phaseStates = phaseEvaluator.evaluatePhases(
                     requiredPhases, candles, config.resolution(),
                     phaseName -> {
@@ -147,12 +157,12 @@ public class BacktestEngine {
         List<String> requiredExitPatternIds = hoopSettings.getRequiredExitPatternIds();
         List<String> excludedExitPatternIds = hoopSettings.getExcludedExitPatternIds();
 
-        if (hoopSettings.hasAnyPatterns() && candleStore != null) {
+        if (hoopSettings.hasAnyPatterns() && dataStore != null) {
             if (onProgress != null) {
                 onProgress.accept(new Progress(0, candles.size(), 0, "Evaluating hoop patterns..."));
             }
             try {
-                HoopPatternEvaluator hoopEvaluator = new HoopPatternEvaluator(candleStore);
+                HoopPatternEvaluator hoopEvaluator = new HoopPatternEvaluator(dataStore);
 
                 // Collect all needed pattern IDs
                 Set<String> neededPatternIds = new HashSet<>();
@@ -1093,6 +1103,12 @@ public class BacktestEngine {
                 onProgress.accept(new Progress(3, 4, 75, "Processing open interest..."));
             }
             indicatorEngine.setOpenInterest(openInterestData);
+        }
+        if (premiumIndexData != null && !premiumIndexData.isEmpty()) {
+            if (onProgress != null) {
+                onProgress.accept(new Progress(4, 5, 80, "Processing premium index..."));
+            }
+            indicatorEngine.setPremiumIndex(premiumIndexData);
         }
     }
 

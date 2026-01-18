@@ -1,6 +1,6 @@
 package com.tradery.ui;
 
-import com.tradery.data.CandleStore;
+import com.tradery.data.sqlite.SqliteDataStore;
 import com.tradery.engine.PhaseAnalyzer;
 import com.tradery.io.PhaseStore;
 import com.tradery.model.*;
@@ -52,7 +52,7 @@ public class PhaseAnalysisWindow extends JFrame {
         "Recommendation: REQUIRE (better in phase), EXCLUDE (worse in phase), or neutral"
     };
 
-    private final CandleStore candleStore;
+    private final SqliteDataStore dataStore;
     private final PhaseStore phaseStore;
 
     // Analysis inputs
@@ -67,9 +67,9 @@ public class PhaseAnalysisWindow extends JFrame {
 
     private SwingWorker<List<PhaseAnalysisResult>, PhaseAnalyzer.Progress> currentWorker;
 
-    public PhaseAnalysisWindow(Frame parent, CandleStore candleStore, PhaseStore phaseStore) {
+    public PhaseAnalysisWindow(Frame parent, SqliteDataStore dataStore, PhaseStore phaseStore) {
         super("Phase Analysis");
-        this.candleStore = candleStore;
+        this.dataStore = dataStore;
         this.phaseStore = phaseStore;
 
         // macOS integrated title bar
@@ -277,7 +277,7 @@ public class PhaseAnalysisWindow extends JFrame {
         currentWorker = new SwingWorker<>() {
             @Override
             protected List<PhaseAnalysisResult> doInBackground() throws Exception {
-                PhaseAnalyzer analyzer = new PhaseAnalyzer(candleStore, phaseStore);
+                PhaseAnalyzer analyzer = new PhaseAnalyzer(dataStore, phaseStore);
                 return analyzer.analyzePhases(tradesToAnalyze, candles, timeframe, progress -> {
                     if (!isCancelled()) {
                         publish(progress);

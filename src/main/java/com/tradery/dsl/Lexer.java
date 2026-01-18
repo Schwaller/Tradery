@@ -69,6 +69,10 @@ public class Lexer {
         Map.entry("FUNDING", TokenType.FUNDING_FUNC),
         Map.entry("FUNDING_8H", TokenType.FUNDING_FUNC),
 
+        // Premium index functions
+        Map.entry("PREMIUM", TokenType.PREMIUM_FUNC),
+        Map.entry("PREMIUM_AVG", TokenType.PREMIUM_FUNC),
+
         // Open Interest functions
         Map.entry("OI", TokenType.OI_FUNC),
         Map.entry("OI_CHANGE", TokenType.OI_FUNC),

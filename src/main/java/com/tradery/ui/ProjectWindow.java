@@ -3,7 +3,7 @@ package com.tradery.ui;
 import com.tradery.ApplicationContext;
 import com.tradery.TraderyApp;
 import com.tradery.data.AggTradesStore;
-import com.tradery.data.CandleStore;
+import com.tradery.data.sqlite.SqliteDataStore;
 import com.tradery.engine.BacktestEngine;
 import com.tradery.io.FileWatcher;
 import com.tradery.io.PhaseStore;
@@ -67,6 +67,7 @@ public class ProjectWindow extends JFrame {
     private JLabel aggTradesStatusLabel;
     private JLabel fundingStatusLabel;
     private JLabel oiStatusLabel;
+    private JLabel premiumStatusLabel;
 
     // Phase analysis window
     private PhaseAnalysisWindow phaseAnalysisWindow;
@@ -84,7 +85,6 @@ public class ProjectWindow extends JFrame {
 
     // Data stores
     private final StrategyStore strategyStore;
-    private final CandleStore candleStore;
     private final AggTradesStore aggTradesStore;
     private FileWatcher fileWatcher;
     private FileWatcher phaseWatcher;
@@ -105,15 +105,16 @@ public class ProjectWindow extends JFrame {
 
         // Use shared stores from ApplicationContext
         this.strategyStore = ApplicationContext.getInstance().getStrategyStore();
-        this.candleStore = ApplicationContext.getInstance().getCandleStore();
         this.aggTradesStore = ApplicationContext.getInstance().getAggTradesStore();
 
         // Initialize coordinators
         ResultStore resultStore = new ResultStore(strategy.getId());
-        BacktestEngine backtestEngine = new BacktestEngine(candleStore);
+        SqliteDataStore sqliteDataStore = ApplicationContext.getInstance().getSqliteDataStore();
+        BacktestEngine backtestEngine = new BacktestEngine(sqliteDataStore);
         com.tradery.data.FundingRateStore fundingRateStore = new com.tradery.data.FundingRateStore();
         com.tradery.data.OpenInterestStore openInterestStore = new com.tradery.data.OpenInterestStore();
-        this.backtestCoordinator = new BacktestCoordinator(backtestEngine, candleStore, aggTradesStore, fundingRateStore, openInterestStore, resultStore);
+        com.tradery.data.PremiumIndexStore premiumIndexStore = new com.tradery.data.PremiumIndexStore();
+        this.backtestCoordinator = new BacktestCoordinator(backtestEngine, sqliteDataStore, aggTradesStore, fundingRateStore, openInterestStore, premiumIndexStore, resultStore);
         this.autoSaveScheduler = new AutoSaveScheduler();
         this.statusManager = new StatusManager();
 
@@ -179,8 +180,14 @@ public class ProjectWindow extends JFrame {
         chartPanel = new ChartsPanel();
         metricsPanel = new MetricsPanel();
         tradeTablePanel = new TradeTablePanel();
-        timelineBar = new TimelineBar(candleStore);
+        timelineBar = new TimelineBar();
         timelineBar.setOnAnchorDateChanged(this::onTimelineAnchorChanged);
+
+        // Wire up data range manage button
+        dataRangePanel.setOnManageClicked(() -> {
+            SqliteDataStore dataStore = ApplicationContext.getInstance().getSqliteDataStore();
+            DataManagementDialog.show(this, dataStore);
+        });
 
         // Wire up chart status callback (hover info uses low priority)
         chartPanel.setOnStatusUpdate(statusManager::setHoverStatus);
@@ -315,22 +322,6 @@ public class ProjectWindow extends JFrame {
         chartConfigChangeListener = this::updateDataRequirementsBadges;
         ChartConfig.getInstance().addChangeListener(chartConfigChangeListener);
 
-        // Wire up data fetch progress (shows in status bar via StatusManager)
-        candleStore.setProgressCallback(progress -> {
-            SwingUtilities.invokeLater(() -> {
-                if (progress.message().equals("Complete") || progress.message().equals("Cancelled")) {
-                    statusManager.clearStatus(StatusManager.SOURCE_CANDLE_FETCH);
-                } else {
-                    statusManager.setStatus(
-                        StatusManager.SOURCE_CANDLE_FETCH,
-                        progress.message(),
-                        StatusManager.Priority.LOADING,
-                        progress.percentComplete()
-                    );
-                }
-            });
-        });
-
         // Wire up panel change listeners
         editorPanel.setOnChange(() -> {
             autoSaveScheduler.scheduleUpdate();
@@ -338,7 +329,6 @@ public class ProjectWindow extends JFrame {
         });
         settingsPanel.setOnChange(autoSaveScheduler::scheduleUpdate);
         dataRangePanel.setOnChange(() -> {
-            candleStore.cancelCurrentFetch();
             autoSaveScheduler.scheduleUpdate();
             updateDataRequirementsBadges();
             updateTimeline();
@@ -496,7 +486,7 @@ public class ProjectWindow extends JFrame {
         JSplitPane mainSplit = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT);
         mainSplit.setBorder(null);
         mainSplit.setDividerSize(1);
-        mainSplit.setDividerLocation(580);
+        mainSplit.setDividerLocation(640);
         mainSplit.setContinuousLayout(true);
         mainSplit.setLeftComponent(leftPanel);
         mainSplit.setRightComponent(rightSplit);
@@ -689,7 +679,8 @@ public class ProjectWindow extends JFrame {
         SwingWorker<Void, Void> worker = new SwingWorker<>() {
             @Override
             protected Void doInBackground() throws Exception {
-                candleStore.clearCache(symbol);
+                // TODO: Implement SQLite cache clearing
+                // For now, just re-run backtest to refresh from DB
                 return null;
             }
 
@@ -698,7 +689,7 @@ public class ProjectWindow extends JFrame {
                 clearCacheBtn.setEnabled(true);
                 try {
                     get();
-                    statusManager.startBacktest("Cache cleared - reloading data...");
+                    statusManager.startBacktest("Cache refreshed - reloading data...");
                     runBacktest();
                 } catch (Exception e) {
                     statusManager.setErrorStatus("Error clearing cache: " + e.getMessage());
@@ -741,7 +732,8 @@ public class ProjectWindow extends JFrame {
         // Create window if needed
         if (phaseAnalysisWindow == null) {
             PhaseStore phaseStore = ApplicationContext.getInstance().getPhaseStore();
-            phaseAnalysisWindow = new PhaseAnalysisWindow(this, candleStore, phaseStore);
+            SqliteDataStore sqliteStore = ApplicationContext.getInstance().getSqliteDataStore();
+            phaseAnalysisWindow = new PhaseAnalysisWindow(this, sqliteStore, phaseStore);
 
             // Wire up callbacks to apply phases to strategy
             phaseAnalysisWindow.setOnRequirePhases(phaseIds -> {
@@ -789,6 +781,9 @@ public class ProjectWindow extends JFrame {
         String duration = dataRangePanel.getDuration();
         double capital = settingsPanel.getCapital();
         Long anchorDate = dataRangePanel.getAnchorDate();
+
+        // Clear chart immediately so stale data isn't shown while loading
+        chartPanel.clear();
 
         // Run backtest via coordinator
         backtestCoordinator.runBacktest(
@@ -873,11 +868,13 @@ public class ProjectWindow extends JFrame {
         aggTradesStatusLabel = createStatusLabel("AggTrades");
         fundingStatusLabel = createStatusLabel("Funding");
         oiStatusLabel = createStatusLabel("OI");
+        premiumStatusLabel = createStatusLabel("Premium");
 
         panel.add(ohlcStatusLabel);
         panel.add(aggTradesStatusLabel);
         panel.add(fundingStatusLabel);
         panel.add(oiStatusLabel);
+        panel.add(premiumStatusLabel);
 
         return panel;
     }
@@ -917,6 +914,7 @@ public class ProjectWindow extends JFrame {
         // Check what data is required from DSL
         boolean needsAggTradesFromDSL = strategy != null && strategy.requiresAggTrades();
         boolean needsOIFromDSL = strategy != null && strategy.usesOpenInterest();
+        boolean needsPremiumFromDSL = strategy != null && strategy.requiresPremium();
 
         // Check what data is required from active charts
         boolean needsAggTradesFromCharts = chartConfig.isDeltaEnabled() ||
@@ -925,6 +923,7 @@ public class ProjectWindow extends JFrame {
                                            chartConfig.isRetailEnabled();
         boolean needsFundingFromCharts = chartConfig.isFundingEnabled();
         boolean needsOIFromCharts = chartConfig.isOiEnabled();
+        boolean needsPremiumFromCharts = chartConfig.isPremiumEnabled();
 
         // Check if sub-minute timeframe (always needs aggTrades, no separate OHLC)
         String timeframe = dataRangePanel.getTimeframe();
@@ -935,17 +934,19 @@ public class ProjectWindow extends JFrame {
         boolean needsAggTrades = isSubMinute || needsAggTradesFromDSL || needsAggTradesFromCharts;
         boolean needsFunding = needsFundingFromCharts;
         boolean needsOI = needsOIFromDSL || needsOIFromCharts;
+        boolean needsPremium = needsPremiumFromDSL || needsPremiumFromCharts;
 
         // Update status labels
         updateStatusLabel(ohlcStatusLabel, "OHLC", needsOHLC);
         updateStatusLabel(aggTradesStatusLabel, "AggTrades", needsAggTrades);
         updateStatusLabel(fundingStatusLabel, "Funding", needsFunding);
         updateStatusLabel(oiStatusLabel, "OI", needsOI);
+        updateStatusLabel(premiumStatusLabel, "Premium", needsPremium);
     }
 
     private void updateStatusLabel(JLabel label, String dataType, boolean required) {
         if (!required) {
-            label.setText(dataType + ": not used");
+            label.setText(dataType + ": -");
             label.setForeground(UIColors.STATUS_UNKNOWN);
             label.setToolTipText(dataType + " not required for current strategy");
         } else {
@@ -956,9 +957,16 @@ public class ProjectWindow extends JFrame {
                 label.setForeground(UIColors.STATUS_READY);
                 label.setToolTipText(dataType + " data loaded");
             } else {
-                label.setText(dataType + ": required");
+                // Show pending status - will load on backtest
+                label.setText(dataType + ": pending");
                 label.setForeground(UIColors.STATUS_LOADING);
-                label.setToolTipText(dataType + " will be fetched on next backtest");
+
+                // OI has special limitations
+                if ("OI".equals(dataType)) {
+                    label.setToolTipText("Open Interest will load on backtest (Note: Binance limits OI history to 30 days)");
+                } else {
+                    label.setToolTipText(dataType + " will be fetched on next backtest");
+                }
             }
         }
     }
@@ -978,6 +986,8 @@ public class ProjectWindow extends JFrame {
                              !backtestCoordinator.getCurrentFundingRates().isEmpty();
             case "OI" -> backtestCoordinator.getCurrentOpenInterest() != null &&
                         !backtestCoordinator.getCurrentOpenInterest().isEmpty();
+            case "Premium" -> backtestCoordinator.getCurrentPremiumIndex() != null &&
+                             !backtestCoordinator.getCurrentPremiumIndex().isEmpty();
             default -> false;
         };
     }
@@ -993,6 +1003,7 @@ public class ProjectWindow extends JFrame {
             case "AggTrades" -> aggTradesStatusLabel;
             case "Funding" -> fundingStatusLabel;
             case "OI" -> oiStatusLabel;
+            case "Premium" -> premiumStatusLabel;
             default -> null;
         };
         if (label == null) return;
@@ -1011,7 +1022,12 @@ public class ProjectWindow extends JFrame {
             case "error" -> {
                 label.setText(dataType + ": unavailable");
                 label.setForeground(UIColors.STATUS_ERROR);
-                label.setToolTipText(dataType + " data could not be loaded");
+                // OI has special error message about 30-day limit
+                if ("OI".equals(dataType)) {
+                    label.setToolTipText("Open Interest unavailable - Binance limits OI history to 30 days from today");
+                } else {
+                    label.setToolTipText(dataType + " data could not be loaded");
+                }
             }
         }
     }
@@ -1095,12 +1111,6 @@ public class ProjectWindow extends JFrame {
         // Stop auto-save scheduler
         if (autoSaveScheduler != null) {
             autoSaveScheduler.stop();
-        }
-
-        // Cancel any ongoing data fetches
-        if (candleStore != null) {
-            candleStore.cancelCurrentFetch();
-            candleStore.setProgressCallback(null);
         }
 
         // Unregister singleton listeners

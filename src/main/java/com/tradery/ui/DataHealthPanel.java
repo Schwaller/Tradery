@@ -197,6 +197,8 @@ public class DataHealthPanel extends JPanel {
             loadOpenInterestHealth(symbol);
         } else if ("fundingRate".equals(resolution) && symbol != null) {
             loadFundingRateHealth(symbol);
+        } else if ("premiumIndex".equals(resolution) && symbol != null) {
+            loadPremiumIndexHealth(symbol);
         } else if ("aggTrades".equals(resolution) && symbol != null) {
             loadAggTradesHealth(symbol);
         } else if (symbol != null && resolution != null) {
@@ -395,6 +397,104 @@ public class DataHealthPanel extends JPanel {
 
         // Sort by month
         healthData.sort((a, b) -> a.month().compareTo(b.month()));
+    }
+
+    /**
+     * Load premium index data and show month-based summary.
+     */
+    public void setPremiumIndexData(String symbol) {
+        this.symbol = symbol;
+        this.resolution = "premiumIndex";
+        this.customMessage = null;
+        this.selectedMonth = null;
+        this.dailyDetails.clear();
+        loadPremiumIndexHealth(symbol);
+        repaint();
+    }
+
+    private void loadPremiumIndexHealth(String symbol) {
+        healthData.clear();
+        blockBounds.clear();
+
+        // Premium index stored at: data/{symbol}/premium/{interval}/yyyy-MM.csv
+        // Check all intervals (1h is most common)
+        File symbolDir = new File(DataConfig.getInstance().getDataDir(), symbol);
+        File premiumDir = new File(symbolDir, "premium");
+        if (!premiumDir.exists()) return;
+
+        // Aggregate across all intervals
+        Map<YearMonth, int[]> monthCounts = new TreeMap<>(); // [actual, expected]
+
+        File[] intervalDirs = premiumDir.listFiles(File::isDirectory);
+        if (intervalDirs == null) return;
+
+        for (File intervalDir : intervalDirs) {
+            File[] files = intervalDir.listFiles((dir, name) -> name.endsWith(".csv"));
+            if (files == null) continue;
+
+            for (File f : files) {
+                String name = f.getName().replace(".csv", "");
+                try {
+                    YearMonth month = YearMonth.parse(name);
+
+                    // Count records in file (lines minus header)
+                    int recordCount = 0;
+                    try (java.io.BufferedReader reader = new java.io.BufferedReader(new java.io.FileReader(f))) {
+                        while (reader.readLine() != null) recordCount++;
+                        recordCount = Math.max(0, recordCount - 1);
+                    } catch (java.io.IOException e) {
+                        // Ignore
+                    }
+
+                    // Expected depends on interval
+                    int expected = getExpectedPremiumRecords(intervalDir.getName(), month);
+
+                    int[] counts = monthCounts.computeIfAbsent(month, k -> new int[]{0, 0});
+                    counts[0] += recordCount;
+                    counts[1] += expected;
+                } catch (Exception e) {
+                    // Skip invalid filenames
+                }
+            }
+        }
+
+        // Convert to DataHealth
+        for (Map.Entry<YearMonth, int[]> entry : monthCounts.entrySet()) {
+            int actual = entry.getValue()[0];
+            int expected = entry.getValue()[1];
+
+            DataStatus status;
+            if (expected == 0) {
+                status = DataStatus.UNKNOWN;
+            } else if (actual >= expected * 0.9) {
+                status = DataStatus.COMPLETE;
+            } else if (actual > 0) {
+                status = DataStatus.PARTIAL;
+            } else {
+                status = DataStatus.MISSING;
+            }
+
+            healthData.add(new DataHealth(symbol, "premiumIndex", entry.getKey(), expected, actual, List.of(), status));
+        }
+
+        // Sort by month
+        healthData.sort((a, b) -> a.month().compareTo(b.month()));
+    }
+
+    private int getExpectedPremiumRecords(String interval, YearMonth month) {
+        YearMonth now = YearMonth.now();
+        int days = month.equals(now) ? LocalDate.now().getDayOfMonth() : month.lengthOfMonth();
+
+        return switch (interval) {
+            case "1m" -> days * 24 * 60;
+            case "5m" -> days * 24 * 12;
+            case "15m" -> days * 24 * 4;
+            case "30m" -> days * 24 * 2;
+            case "1h" -> days * 24;
+            case "4h" -> days * 6;
+            case "1d" -> days;
+            default -> days * 24; // Default to 1h
+        };
     }
 
     /**

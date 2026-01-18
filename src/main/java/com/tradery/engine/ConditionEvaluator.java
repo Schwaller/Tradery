@@ -48,6 +48,7 @@ public class ConditionEvaluator {
             case AstNode.FomcFunctionCall f -> evaluateFomcFunction(f, barIndex);
             case AstNode.OrderflowFunctionCall o -> evaluateOrderflowFunction(o, barIndex);
             case AstNode.FundingFunctionCall f -> evaluateFundingFunction(f, barIndex);
+            case AstNode.PremiumFunctionCall p -> evaluatePremiumFunction(p, barIndex);
             case AstNode.SessionOrderflowFunctionCall s -> evaluateSessionOrderflowFunction(s, barIndex);
             case AstNode.OIFunctionCall o -> evaluateOIFunction(o, barIndex);
             case AstNode.RayFunctionCall r -> evaluateRayFunction(r, barIndex);
@@ -318,6 +319,14 @@ public class ConditionEvaluator {
             case "FUNDING" -> engine.getFundingAt(barIndex);
             case "FUNDING_8H" -> engine.getFunding8HAvgAt(barIndex);
             default -> throw new EvaluationException("Unknown funding function: " + node.func());
+        };
+    }
+
+    private double evaluatePremiumFunction(AstNode.PremiumFunctionCall node, int barIndex) {
+        return switch (node.func()) {
+            case "PREMIUM" -> engine.getPremiumAt(barIndex);
+            case "PREMIUM_AVG" -> engine.getPremiumAvgAt(node.period(), barIndex);
+            default -> throw new EvaluationException("Unknown premium function: " + node.func());
         };
     }
 

@@ -70,6 +70,9 @@ public class ChartConfig {
     // Open Interest chart
     private boolean oiEnabled = false;
 
+    // Premium Index chart
+    private boolean premiumEnabled = false;
+
     // POC overlays
     private boolean dailyPocEnabled = false;
     private boolean floatingPocEnabled = false;
@@ -300,6 +303,11 @@ public class ChartConfig {
     public boolean isOiEnabled() { return oiEnabled; }
     public void setOiEnabled(boolean enabled) { this.oiEnabled = enabled; save(); }
 
+    // ===== Premium Index Chart Getters/Setters =====
+
+    public boolean isPremiumEnabled() { return premiumEnabled; }
+    public void setPremiumEnabled(boolean enabled) { this.premiumEnabled = enabled; save(); }
+
     // ===== POC Overlay Getters/Setters =====
 
     public boolean isDailyPocEnabled() { return dailyPocEnabled; }
@@ -418,6 +426,9 @@ public class ChartConfig {
         // Open Interest
         this.oiEnabled = other.oiEnabled;
 
+        // Premium Index
+        this.premiumEnabled = other.premiumEnabled;
+
         // POC overlays
         this.dailyPocEnabled = other.dailyPocEnabled;
         this.floatingPocEnabled = other.floatingPocEnabled;
@@ -505,6 +516,9 @@ public class ChartConfig {
 
         // Open Interest - off by default
         oiEnabled = false;
+
+        // Premium Index - off by default
+        premiumEnabled = false;
 
         // POC overlays - off by default
         dailyPocEnabled = false;
@@ -664,6 +678,9 @@ public class ChartConfig {
 
         // Open Interest
         this.oiEnabled = other.oiEnabled;
+
+        // Premium Index
+        this.premiumEnabled = other.premiumEnabled;
 
         // POC overlays
         this.dailyPocEnabled = other.dailyPocEnabled;

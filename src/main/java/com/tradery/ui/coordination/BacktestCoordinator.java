@@ -2,6 +2,7 @@ package com.tradery.ui.coordination;
 
 import com.tradery.ApplicationContext;
 import com.tradery.data.*;
+import com.tradery.data.sqlite.SqliteDataStore;
 import com.tradery.engine.BacktestEngine;
 import com.tradery.data.PreloadScheduler;
 import com.tradery.io.PhaseStore;
@@ -25,10 +26,11 @@ import java.util.function.Consumer;
 public class BacktestCoordinator {
 
     private final BacktestEngine backtestEngine;
-    private final CandleStore candleStore;
+    private final SqliteDataStore dataStore;
     private final AggTradesStore aggTradesStore;
     private final FundingRateStore fundingRateStore;
     private final OpenInterestStore openInterestStore;
+    private final PremiumIndexStore premiumIndexStore;
     private final ResultStore resultStore;
 
     // Data requirements tracker
@@ -39,6 +41,7 @@ public class BacktestCoordinator {
     private List<AggTrade> currentAggTrades;
     private List<FundingRate> currentFundingRates;
     private List<OpenInterest> currentOpenInterest;
+    private List<PremiumIndex> currentPremiumIndex;
 
     // Callbacks
     private BiConsumer<Integer, String> onProgress;
@@ -57,14 +60,16 @@ public class BacktestCoordinator {
         void onProgress(String dataType, int loaded, int expected);
     }
 
-    public BacktestCoordinator(BacktestEngine backtestEngine, CandleStore candleStore,
+    public BacktestCoordinator(BacktestEngine backtestEngine, SqliteDataStore dataStore,
                                AggTradesStore aggTradesStore, FundingRateStore fundingRateStore,
-                               OpenInterestStore openInterestStore, ResultStore resultStore) {
+                               OpenInterestStore openInterestStore, PremiumIndexStore premiumIndexStore,
+                               ResultStore resultStore) {
         this.backtestEngine = backtestEngine;
-        this.candleStore = candleStore;
+        this.dataStore = dataStore;
         this.aggTradesStore = aggTradesStore;
         this.fundingRateStore = fundingRateStore;
         this.openInterestStore = openInterestStore;
+        this.premiumIndexStore = premiumIndexStore;
         this.resultStore = resultStore;
     }
 
@@ -129,6 +134,10 @@ public class BacktestCoordinator {
 
     public List<OpenInterest> getCurrentOpenInterest() {
         return currentOpenInterest;
+    }
+
+    public List<PremiumIndex> getCurrentPremiumIndex() {
+        return currentPremiumIndex;
     }
 
     public com.tradery.indicators.IndicatorEngine getIndicatorEngine() {
@@ -310,16 +319,19 @@ public class BacktestCoordinator {
                         currentAggTrades.size() + " aggTrades");
 
                 } else {
-                    // Standard timeframe - fetch candles from Binance
-                    publish(new BacktestEngine.Progress(0, 0, 0, "Fetching data from Binance..."));
+                    // Standard timeframe - load candles from SQLite
+                    publish(new BacktestEngine.Progress(0, 0, 0, "Loading candle data..."));
                     updateTrackerStatus("OHLC:" + resolution, DataRequirementsTracker.Status.FETCHING);
 
-                    currentCandles = candleStore.getCandles(
+                    long loadStart = System.currentTimeMillis();
+                    currentCandles = dataStore.getCandles(
                         config.symbol(),
                         config.resolution(),
                         config.startDate(),
                         config.endDate()
                     );
+                    long loadEnd = System.currentTimeMillis();
+                    System.out.println("Loaded " + currentCandles.size() + " candles from SQLite in " + (loadEnd - loadStart) + "ms");
 
                     if (currentCandles.isEmpty()) {
                         updateTrackerStatus("OHLC:" + resolution, DataRequirementsTracker.Status.ERROR);
@@ -407,16 +419,37 @@ public class BacktestCoordinator {
                     }
                 }
 
+                // Load Premium Index - TRADING if DSL uses PREMIUM
+                boolean dslUsesPremium = strategy.requiresPremium();
+                currentPremiumIndex = null;
+                if (premiumIndexStore != null && dslUsesPremium) {
+                    try {
+                        publish(new BacktestEngine.Progress(0, 0, 0, "Loading premium index data..."));
+                        updateTrackerStatus("Premium", DataRequirementsTracker.Status.FETCHING);
+                        currentPremiumIndex = premiumIndexStore.getPremiumIndex(symbol, resolution, startTime, endTime);
+                        System.out.println("Loaded " + (currentPremiumIndex != null ? currentPremiumIndex.size() : 0) + " premium index records");
+                        updateTrackerStatus("Premium",
+                            currentPremiumIndex != null && !currentPremiumIndex.isEmpty()
+                                ? DataRequirementsTracker.Status.READY
+                                : DataRequirementsTracker.Status.ERROR);
+                    } catch (Exception e) {
+                        System.err.println("Failed to load premium index: " + e.getMessage());
+                        e.printStackTrace();
+                        updateTrackerStatus("Premium", DataRequirementsTracker.Status.ERROR);
+                    }
+                }
+
                 // Pass orderflow data to engine
                 backtestEngine.setAggTrades(currentAggTrades);
                 backtestEngine.setFundingRates(currentFundingRates);
                 backtestEngine.setOpenInterest(currentOpenInterest);
+                backtestEngine.setPremiumIndex(currentPremiumIndex);
 
                 // Run backtest with phase filtering
                 BacktestResult result = backtestEngine.run(strategy, config, currentCandles, allPhases, this::publish);
 
                 // ===== VIEW TIER: Start async loading for chart-only data =====
-                loadViewDataAsync(symbol, startTime, endTime, dslUsesFunding, dslUsesOI);
+                loadViewDataAsync(symbol, resolution, startTime, endTime, dslUsesFunding, dslUsesOI, dslUsesPremium);
 
                 return result;
             }
@@ -439,30 +472,36 @@ public class BacktestCoordinator {
                 try {
                     BacktestResult result = get();
 
-                    // Save result to per-project storage
-                    resultStore.save(result);
-
-                    // Record coverage to inventory after successful load
-                    DataInventory inventory = ApplicationContext.getInstance().getDataInventory();
-                    if (inventory != null) {
-                        inventory.recordCandleData(symbol, resolution, startTime, endTime);
-                        if (currentAggTrades != null && !currentAggTrades.isEmpty()) {
-                            inventory.recordAggTradesData(symbol, startTime, endTime);
-                        }
-                        if (currentFundingRates != null && !currentFundingRates.isEmpty()) {
-                            inventory.recordFundingData(symbol, startTime, endTime);
-                        }
-                        if (currentOpenInterest != null && !currentOpenInterest.isEmpty()) {
-                            inventory.recordOIData(symbol, startTime, endTime);
-                        }
-                        // Save inventory periodically
-                        inventory.save();
-                    }
-
-                    // Report completion
+                    // Report completion FIRST so charts update immediately
                     if (onComplete != null) {
                         onComplete.accept(result);
                     }
+
+                    // Save result to per-project storage in background (can be slow with many trades)
+                    CompletableFuture.runAsync(() -> {
+                        try {
+                            resultStore.save(result);
+                        } catch (Exception e) {
+                            System.err.println("Failed to save result: " + e.getMessage());
+                        }
+
+                        // Record coverage to inventory after successful load
+                        DataInventory inventory = ApplicationContext.getInstance().getDataInventory();
+                        if (inventory != null) {
+                            inventory.recordCandleData(symbol, resolution, startTime, endTime);
+                            if (currentAggTrades != null && !currentAggTrades.isEmpty()) {
+                                inventory.recordAggTradesData(symbol, startTime, endTime);
+                            }
+                            if (currentFundingRates != null && !currentFundingRates.isEmpty()) {
+                                inventory.recordFundingData(symbol, startTime, endTime);
+                            }
+                            if (currentOpenInterest != null && !currentOpenInterest.isEmpty()) {
+                                inventory.recordOIData(symbol, startTime, endTime);
+                            }
+                            // Save inventory periodically
+                            inventory.save();
+                        }
+                    });
 
                     reportProgress(100, "Complete");
                     reportStatus(result.getSummary());
@@ -561,8 +600,8 @@ public class BacktestCoordinator {
     /**
      * Load VIEW tier data asynchronously (for charts only).
      */
-    private void loadViewDataAsync(String symbol, long startTime, long endTime,
-                                    boolean dslUsesFunding, boolean dslUsesOI) {
+    private void loadViewDataAsync(String symbol, String resolution, long startTime, long endTime,
+                                    boolean dslUsesFunding, boolean dslUsesOI, boolean dslUsesPremium) {
         ChartConfig chartConfig = ChartConfig.getInstance();
 
         // Check if any orderflow charts need aggTrades
@@ -678,6 +717,30 @@ public class BacktestCoordinator {
                     System.err.println("Failed to load OI (async): " + e.getMessage());
                     updateTrackerStatus("OI", DataRequirementsTracker.Status.ERROR);
                     reportDataLoadingProgress("OI", -1, -1); // Hide progress bar
+                }
+            });
+        }
+
+        // Premium: load async if chart enabled but DSL doesn't use it
+        if (chartConfig.isPremiumEnabled() && !dslUsesPremium && premiumIndexStore != null) {
+            CompletableFuture.runAsync(() -> {
+                try {
+                    updateTrackerStatus("Premium", DataRequirementsTracker.Status.FETCHING);
+                    List<PremiumIndex> premium = premiumIndexStore.getPremiumIndex(symbol, resolution, startTime, endTime);
+                    if (premium != null && !premium.isEmpty()) {
+                        currentPremiumIndex = premium;
+                        backtestEngine.setPremiumIndex(premium);
+                        backtestEngine.getIndicatorEngine().setPremiumIndex(premium);
+                        System.out.println("Premium (async): Loaded " + premium.size() + " premium records");
+                        updateTrackerStatus("Premium", DataRequirementsTracker.Status.READY);
+                        notifyViewDataReady("Premium");
+                    } else {
+                        System.out.println("Premium (async): No data available");
+                        updateTrackerStatus("Premium", DataRequirementsTracker.Status.ERROR);
+                    }
+                } catch (Exception e) {
+                    System.err.println("Failed to load Premium (async): " + e.getMessage());
+                    updateTrackerStatus("Premium", DataRequirementsTracker.Status.ERROR);
                 }
             });
         }

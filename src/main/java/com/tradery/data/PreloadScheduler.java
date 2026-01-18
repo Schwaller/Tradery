@@ -1,5 +1,6 @@
 package com.tradery.data;
 
+import com.tradery.data.sqlite.SqliteDataStore;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -28,7 +29,7 @@ public final class PreloadScheduler {
     private final AtomicBoolean shuttingDown;
 
     // Store references (set via setStores after construction)
-    private CandleStore candleStore;
+    private SqliteDataStore dataStore;
     private AggTradesStore aggTradesStore;
     private FundingRateStore fundingRateStore;
     private OpenInterestStore openInterestStore;
@@ -48,9 +49,9 @@ public final class PreloadScheduler {
      * Set store references for actual data loading.
      * Must be called before start().
      */
-    public void setStores(CandleStore candleStore, AggTradesStore aggTradesStore,
+    public void setStores(SqliteDataStore dataStore, AggTradesStore aggTradesStore,
                           FundingRateStore fundingRateStore, OpenInterestStore openInterestStore) {
-        this.candleStore = candleStore;
+        this.dataStore = dataStore;
         this.aggTradesStore = aggTradesStore;
         this.fundingRateStore = fundingRateStore;
         this.openInterestStore = openInterestStore;
@@ -248,12 +249,13 @@ public final class PreloadScheduler {
             return;
         }
 
-        if (candleStore == null) {
-            log.warn("CandleStore not set, skipping preload");
+        if (dataStore == null) {
+            log.warn("SqliteDataStore not set, skipping preload");
             return;
         }
 
-        // Fetch data for each gap
+        // With SQLite, data is already in DB or needs to be downloaded via Vision
+        // Just read from SQLite to verify/warm cache
         for (DateRangeSet.Range gap : gaps) {
             if (tradingLoadActive.get()) {
                 // Pause triggered, requeue remaining work
@@ -267,7 +269,8 @@ public final class PreloadScheduler {
             log.info("Preloading candles: {}/{} gap {}", request.symbol(),
                 request.timeframe(), formatDuration(gap.duration()));
 
-            candleStore.getCandles(request.symbol(), request.timeframe(),
+            // Read from SQLite (no API fetch, just DB read)
+            dataStore.getCandles(request.symbol(), request.timeframe(),
                 gap.start(), gap.end());
 
             // Record coverage

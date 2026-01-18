@@ -2,6 +2,9 @@ package com.tradery.data;
 
 import com.tradery.model.AggTrade;
 import com.tradery.model.FetchProgress;
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.Response;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -11,15 +14,21 @@ import java.nio.file.Path;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.YearMonth;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
 
 /**
  * Stores and retrieves aggregated trade data as hourly CSV files in daily folders.
+ *
+ * Automatically uses Binance Vision (bulk ZIP downloads) for large date ranges
+ * (>= 3 days). AggTrades are massive - a single day can have 500K+ trades.
  *
  * Storage structure:
  * ~/.tradery/data/BTCUSDT/aggTrades/
@@ -36,12 +45,19 @@ public class AggTradesStore {
     private static final Logger log = LoggerFactory.getLogger(AggTradesStore.class);
     private static final DateTimeFormatter DATE_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd");
     private static final DateTimeFormatter HOUR_FORMAT = DateTimeFormatter.ofPattern("HH");
+    private static final DateTimeFormatter YEAR_MONTH_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM");
     private static final String AGG_TRADES_DIR = "aggTrades";
     private static final String CSV_HEADER = "aggTradeId,price,quantity,firstTradeId,lastTradeId,timestamp,isBuyerMaker";
     private static final long ONE_HOUR_MS = 60 * 60 * 1000;
 
+    // Use Vision for >= 3 days (aggTrades are massive - 500K+ trades/day)
+    private static final int VISION_THRESHOLD_DAYS = 3;
+    // Use DAILY Vision files - monthly files are too large (10-50GB each)
+    private static final String VISION_BASE_URL = "https://data.binance.vision/data/futures/um/daily/aggTrades";
+
     private final File dataDir;
     private final AggTradesClient client;
+    private final OkHttpClient httpClient;
 
     // Cancellation support
     private final AtomicBoolean fetchCancelled = new AtomicBoolean(false);
@@ -54,6 +70,7 @@ public class AggTradesStore {
     public AggTradesStore(AggTradesClient client) {
         this.dataDir = DataConfig.getInstance().getDataDir();
         this.client = client;
+        this.httpClient = HttpClientFactory.getClient();
 
         if (!dataDir.exists()) {
             dataDir.mkdirs();
@@ -106,6 +123,369 @@ public class AggTradesStore {
      */
     public boolean isFetchCancelled() {
         return fetchCancelled.get();
+    }
+
+    /**
+     * Check if Vision bulk download should be used.
+     * AggTrades are massive - use Vision for >= 3 days.
+     */
+    private boolean shouldUseVision(long startTime, long endTime) {
+        long durationMs = endTime - startTime;
+        long durationDays = durationMs / (24 * 60 * 60 * 1000);
+        return durationDays >= VISION_THRESHOLD_DAYS;
+    }
+
+    /**
+     * Estimate uncached duration for aggTrades.
+     */
+    private long estimateUncachedDuration(String symbol, long startTime, long endTime) {
+        LocalDateTime start = LocalDateTime.ofInstant(Instant.ofEpochMilli(startTime), ZoneOffset.UTC)
+            .withMinute(0).withSecond(0).withNano(0);
+        LocalDateTime end = LocalDateTime.ofInstant(Instant.ofEpochMilli(endTime), ZoneOffset.UTC);
+
+        long uncachedMs = 0;
+        LocalDateTime current = start;
+
+        while (!current.isAfter(end)) {
+            File completeFile = getHourFile(symbol, current, true);
+            if (!completeFile.exists()) {
+                uncachedMs += ONE_HOUR_MS;
+            }
+            current = current.plusHours(1);
+        }
+
+        return uncachedMs;
+    }
+
+    /**
+     * Fetch aggTrades via Binance Vision bulk download.
+     * Uses DAILY ZIP files (not monthly - those are 10-50GB each).
+     * Streams directly to hourly cache files to avoid memory issues.
+     */
+    private void fetchViaVision(String symbol, long startTime, long endTime) throws IOException {
+        LocalDate startDate = Instant.ofEpochMilli(startTime).atZone(ZoneOffset.UTC).toLocalDate();
+        LocalDate endDate = Instant.ofEpochMilli(endTime).atZone(ZoneOffset.UTC).toLocalDate();
+        LocalDate yesterday = LocalDate.now(ZoneOffset.UTC).minusDays(1);
+
+        // Cap at yesterday (today's data is incomplete)
+        if (endDate.isAfter(yesterday)) {
+            endDate = yesterday;
+        }
+
+        // Count days for progress
+        int totalDays = 0;
+        LocalDate temp = startDate;
+        while (!temp.isAfter(endDate)) {
+            totalDays++;
+            temp = temp.plusDays(1);
+        }
+
+        int completedDays = 0;
+        LocalDate current = startDate;
+
+        while (!current.isAfter(endDate)) {
+            if (fetchCancelled.get()) {
+                log.debug("Vision fetch cancelled");
+                break;
+            }
+
+            String dateKey = current.format(DATE_FORMAT);
+
+            // Check if day is already fully cached (all 24 hours)
+            if (isDayFullyCached(symbol, current)) {
+                log.trace("Vision: Skipping {} (already cached)", dateKey);
+                completedDays++;
+                current = current.plusDays(1);
+                continue;
+            }
+
+            // Build Vision URL for daily file
+            String url = String.format("%s/%s/%s-aggTrades-%s.zip",
+                VISION_BASE_URL, symbol, symbol, dateKey);
+
+            log.info("Vision: Downloading aggTrades {}", dateKey);
+
+            // Report progress
+            if (progressCallback != null) {
+                int pct = totalDays > 0 ? (completedDays * 100) / totalDays : 0;
+                progressCallback.accept(new FetchProgress(pct, 100,
+                    "Vision: Downloading aggTrades " + dateKey + "..."));
+            }
+
+            try {
+                // Stream directly to hourly files without loading all into memory
+                int tradesWritten = downloadAndStreamToHourlyFiles(symbol, url, current);
+                if (tradesWritten > 0) {
+                    log.info("Vision: Saved {} aggTrades for {}", formatCount(tradesWritten), dateKey);
+                }
+            } catch (IOException e) {
+                if (e.getMessage() != null && e.getMessage().contains("404")) {
+                    log.debug("Vision: Day {} not available", dateKey);
+                } else {
+                    log.warn("Vision: Failed to download {}: {}", dateKey, e.getMessage());
+                }
+            }
+
+            completedDays++;
+            current = current.plusDays(1);
+        }
+    }
+
+    /**
+     * Check if a day is fully cached (all 24 hours have complete files).
+     */
+    private boolean isDayFullyCached(String symbol, LocalDate date) {
+        for (int hour = 0; hour < 24; hour++) {
+            LocalDateTime hourTime = date.atTime(hour, 0);
+            File completeFile = getHourFile(symbol, hourTime, true);
+            if (!completeFile.exists()) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * Download Vision ZIP and stream directly to hourly files.
+     * This avoids loading millions of trades into memory.
+     */
+    private int downloadAndStreamToHourlyFiles(String symbol, String url, LocalDate date) throws IOException {
+        Request request = new Request.Builder()
+            .url(url)
+            .get()
+            .build();
+
+        try (Response response = httpClient.newCall(request).execute()) {
+            if (response.code() == 404) {
+                throw new IOException("404 Not Found");
+            }
+            if (!response.isSuccessful()) {
+                throw new IOException("Download failed: " + response.code());
+            }
+
+            return streamZipToHourlyFiles(symbol, response.body().byteStream(), date);
+        }
+    }
+
+    /**
+     * Stream ZIP contents directly to hourly files.
+     * Groups trades by hour and writes incrementally.
+     */
+    private int streamZipToHourlyFiles(String symbol, InputStream inputStream, LocalDate date) throws IOException {
+        // Prepare day directory
+        File dayDir = getDayDir(symbol, date);
+        dayDir.mkdirs();
+
+        // Writers for each hour (lazy init)
+        @SuppressWarnings("unchecked")
+        PrintWriter[] hourWriters = new PrintWriter[24];
+        int[] hourCounts = new int[24];
+        int totalCount = 0;
+
+        try (ZipInputStream zis = new ZipInputStream(inputStream)) {
+            ZipEntry entry;
+            while ((entry = zis.getNextEntry()) != null) {
+                if (entry.getName().endsWith(".csv")) {
+                    BufferedReader reader = new BufferedReader(new InputStreamReader(zis));
+                    String line;
+                    boolean isHeader = true;
+
+                    while ((line = reader.readLine()) != null) {
+                        if (fetchCancelled.get()) {
+                            break;
+                        }
+
+                        if (isHeader) {
+                            isHeader = false;
+                            if (line.startsWith("agg") || !Character.isDigit(line.charAt(0))) {
+                                continue;
+                            }
+                        }
+                        if (!line.isBlank()) {
+                            try {
+                                // Parse just enough to get timestamp and hour
+                                String[] parts = line.split(",", 7);
+                                if (parts.length >= 6) {
+                                    long timestamp = Long.parseLong(parts[5].trim());
+                                    int hour = LocalDateTime.ofInstant(
+                                        Instant.ofEpochMilli(timestamp), ZoneOffset.UTC).getHour();
+
+                                    // Get or create writer for this hour
+                                    if (hourWriters[hour] == null) {
+                                        File hourFile = new File(dayDir, String.format("%02d.csv", hour));
+                                        hourWriters[hour] = new PrintWriter(new FileWriter(hourFile));
+                                        hourWriters[hour].println(CSV_HEADER);
+                                    }
+
+                                    // Write the original line (already in CSV format)
+                                    hourWriters[hour].println(formatAggTradeLine(parts));
+                                    hourCounts[hour]++;
+                                    totalCount++;
+                                }
+                            } catch (Exception e) {
+                                // Skip malformed lines
+                            }
+                        }
+                    }
+                }
+                zis.closeEntry();
+            }
+        } finally {
+            // Close all writers
+            for (int i = 0; i < 24; i++) {
+                if (hourWriters[i] != null) {
+                    hourWriters[i].close();
+                    log.debug("Saved {} aggTrades to {}/{}.csv", formatCount(hourCounts[i]), date.format(DATE_FORMAT), String.format("%02d", i));
+                }
+            }
+        }
+
+        return totalCount;
+    }
+
+    /**
+     * Format aggTrade parts to our CSV format.
+     * Vision format: agg_trade_id,price,quantity,first_trade_id,last_trade_id,transact_time,is_buyer_maker
+     * Our format: aggTradeId,price,quantity,firstTradeId,lastTradeId,timestamp,isBuyerMaker
+     */
+    private String formatAggTradeLine(String[] parts) {
+        // Parts are already in the right order, just need to trim and rejoin
+        return String.join(",",
+            parts[0].trim(),  // aggTradeId
+            parts[1].trim(),  // price
+            parts[2].trim(),  // quantity
+            parts[3].trim(),  // firstTradeId
+            parts[4].trim(),  // lastTradeId
+            parts[5].trim(),  // timestamp
+            parts[6].trim()   // isBuyerMaker
+        );
+    }
+
+    /**
+     * Check if a month is fully cached (all hours have complete files).
+     */
+    private boolean isMonthFullyCached(String symbol, YearMonth month) {
+        LocalDateTime start = month.atDay(1).atStartOfDay();
+        LocalDateTime end = month.plusMonths(1).atDay(1).atStartOfDay();
+
+        LocalDateTime current = start;
+        while (current.isBefore(end)) {
+            File completeFile = getHourFile(symbol, current, true);
+            if (!completeFile.exists()) {
+                return false;
+            }
+            current = current.plusHours(1);
+        }
+        return true;
+    }
+
+    /**
+     * Download and parse a single month's aggTrades ZIP from Vision.
+     */
+    private List<AggTrade> downloadVisionMonth(String url) throws IOException {
+        Request request = new Request.Builder()
+            .url(url)
+            .get()
+            .build();
+
+        try (Response response = httpClient.newCall(request).execute()) {
+            if (response.code() == 404) {
+                throw new IOException("404 Not Found");
+            }
+            if (!response.isSuccessful()) {
+                throw new IOException("Download failed: " + response.code());
+            }
+
+            return parseVisionZip(response.body().byteStream());
+        }
+    }
+
+    /**
+     * Parse Vision ZIP file and extract aggTrades.
+     */
+    private List<AggTrade> parseVisionZip(InputStream inputStream) throws IOException {
+        List<AggTrade> trades = new ArrayList<>();
+
+        try (ZipInputStream zis = new ZipInputStream(inputStream)) {
+            ZipEntry entry;
+            while ((entry = zis.getNextEntry()) != null) {
+                if (entry.getName().endsWith(".csv")) {
+                    BufferedReader reader = new BufferedReader(new InputStreamReader(zis));
+                    String line;
+                    boolean isHeader = true;
+
+                    while ((line = reader.readLine()) != null) {
+                        if (isHeader) {
+                            isHeader = false;
+                            if (line.startsWith("agg") || !Character.isDigit(line.charAt(0))) {
+                                continue;
+                            }
+                        }
+                        if (!line.isBlank()) {
+                            try {
+                                trades.add(parseVisionAggTrade(line));
+                            } catch (Exception e) {
+                                // Skip malformed lines
+                            }
+                        }
+                    }
+                }
+                zis.closeEntry();
+            }
+        }
+
+        return trades;
+    }
+
+    /**
+     * Parse Vision aggTrade CSV line.
+     * Format: agg_trade_id,price,quantity,first_trade_id,last_trade_id,transact_time,is_buyer_maker
+     */
+    private AggTrade parseVisionAggTrade(String line) {
+        String[] parts = line.split(",");
+        if (parts.length < 7) {
+            throw new IllegalArgumentException("Invalid aggTrade: " + line);
+        }
+        return new AggTrade(
+            Long.parseLong(parts[0].trim()),
+            Double.parseDouble(parts[1].trim()),
+            Double.parseDouble(parts[2].trim()),
+            Long.parseLong(parts[3].trim()),
+            Long.parseLong(parts[4].trim()),
+            Long.parseLong(parts[5].trim()),
+            parseBoolean(parts[6].trim())
+        );
+    }
+
+    private boolean parseBoolean(String s) {
+        return "true".equalsIgnoreCase(s) || "True".equals(s) || "1".equals(s);
+    }
+
+    /**
+     * Distribute trades from a monthly download to hourly cache files.
+     */
+    private void distributeToHourlyFiles(String symbol, List<AggTrade> trades) throws IOException {
+        // Group by hour
+        java.util.Map<LocalDateTime, List<AggTrade>> byHour = new java.util.LinkedHashMap<>();
+
+        for (AggTrade trade : trades) {
+            LocalDateTime hour = LocalDateTime.ofInstant(
+                Instant.ofEpochMilli(trade.timestamp()), ZoneOffset.UTC)
+                .withMinute(0).withSecond(0).withNano(0);
+            byHour.computeIfAbsent(hour, k -> new ArrayList<>()).add(trade);
+        }
+
+        // Write each hour
+        for (var entry : byHour.entrySet()) {
+            LocalDateTime hour = entry.getKey();
+            List<AggTrade> hourTrades = entry.getValue();
+
+            // Sort by timestamp
+            hourTrades.sort((a, b) -> Long.compare(a.timestamp(), b.timestamp()));
+
+            // Save as complete (Vision data is complete for historical months)
+            saveHourFile(symbol, hour, hourTrades, false);
+        }
     }
 
     /**
@@ -182,12 +562,28 @@ public class AggTradesStore {
     /**
      * Get aggregated trades for a symbol within time range.
      * Fetches from Binance if not cached locally.
+     *
+     * Automatically uses Binance Vision (bulk ZIP downloads) for large date ranges
+     * (>= 3 days). AggTrades are massive - a single day can have 500K+ trades.
      */
     public List<AggTrade> getAggTrades(String symbol, long startTime, long endTime)
             throws IOException {
 
         // Reset cancellation flag at start of new fetch
         fetchCancelled.set(false);
+
+        // Check if we should use Vision for bulk download
+        long uncachedMs = estimateUncachedDuration(symbol, startTime, endTime);
+        long uncachedDays = uncachedMs / (24 * 60 * 60 * 1000);
+
+        if (shouldUseVision(startTime, endTime) && uncachedDays >= VISION_THRESHOLD_DAYS) {
+            log.info("Using Vision bulk download for {} aggTrades (large uncached range: {} days)", symbol, uncachedDays);
+            try {
+                fetchViaVision(symbol, startTime, endTime);
+            } catch (Exception e) {
+                log.warn("Vision download failed, falling back to API: {}", e.getMessage());
+            }
+        }
 
         List<AggTrade> allTrades = new ArrayList<>();
         LocalDateTime now = LocalDateTime.now(ZoneOffset.UTC);

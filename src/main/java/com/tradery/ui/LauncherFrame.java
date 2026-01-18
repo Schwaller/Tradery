@@ -2,7 +2,7 @@ package com.tradery.ui;
 
 import com.tradery.ApplicationContext;
 import com.tradery.TraderyApp;
-import com.tradery.data.CandleStore;
+import com.tradery.data.sqlite.SqliteDataStore;
 import com.tradery.io.FileWatcher;
 import com.tradery.io.HoopPatternStore;
 import com.tradery.io.PhaseStore;
@@ -120,8 +120,8 @@ public class LauncherFrame extends JFrame {
 
         manageDataButton = new JButton("Manage Data");
         manageDataButton.addActionListener(e -> {
-            CandleStore candleStore = ApplicationContext.getInstance().getCandleStore();
-            DataManagementDialog.show(this, candleStore);
+            SqliteDataStore dataStore = ApplicationContext.getInstance().getSqliteDataStore();
+            DataManagementDialog.show(this, dataStore);
         });
 
         settingsButton = new JButton("Settings");

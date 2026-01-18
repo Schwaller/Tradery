@@ -31,6 +31,10 @@ public class TradeDetailsWindow extends JDialog {
     private JPanel detailContentPanel;
     private JScrollPane detailScrollPane;
 
+    // P&L progression chart
+    private JPanel progressionChartPanel;
+    private Trade selectedTradeForChart;
+
     public TradeDetailsWindow(Frame parent, List<Trade> trades, List<Candle> candles, String strategyName) {
         super(parent, "Trade Details - " + strategyName, false);
         this.trades = trades != null ? trades : new ArrayList<>();
@@ -102,21 +106,34 @@ public class TradeDetailsWindow extends JDialog {
             }
         });
 
-        // Selection listener to update detail panel
+        // Selection listener to update detail panel and chart
         table.getSelectionModel().addListSelectionListener(e -> {
             if (!e.getValueIsAdjusting()) {
                 int selectedRow = table.getSelectedRow();
                 if (selectedRow >= 0) {
                     TableRow tableRow = tableModel.getRowAt(selectedRow);
                     updateDetailPanel(tableRow);
+                    // Update progression chart with selected trade
+                    if (tableRow.singleTrade != null) {
+                        selectedTradeForChart = tableRow.singleTrade;
+                    } else if (tableRow.trades != null && !tableRow.trades.isEmpty()) {
+                        // For groups, use the first trade or aggregate
+                        selectedTradeForChart = tableRow.trades.get(0);
+                    }
+                    progressionChartPanel.repaint();
                 } else {
                     clearDetailPanel();
+                    selectedTradeForChart = null;
+                    progressionChartPanel.repaint();
                 }
             }
         });
 
         // Create detail panel
         detailPanel = createDetailPanel();
+
+        // Create P&L progression chart panel
+        progressionChartPanel = createProgressionChartPanel();
     }
 
     private JPanel createDetailPanel() {
@@ -540,6 +557,211 @@ public class TradeDetailsWindow extends JDialog {
         return chartPanel;
     }
 
+    /**
+     * Creates the P&L progression chart panel showing how the selected trade evolved over time.
+     * Entry is normalized to 0%, and each bar shows the unrealized P&L %.
+     */
+    private JPanel createProgressionChartPanel() {
+        JPanel panel = new JPanel(new BorderLayout()) {
+            @Override
+            protected void paintComponent(Graphics g) {
+                super.paintComponent(g);
+                Graphics2D g2 = (Graphics2D) g.create();
+                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+
+                int w = getWidth();
+                int h = getHeight();
+                int margin = 50;
+                int chartW = w - margin * 2;
+                int chartH = h - 40;
+                int chartY = 20;
+
+                // Background
+                g2.setColor(new Color(30, 30, 35));
+                g2.fillRect(0, 0, w, h);
+
+                if (selectedTradeForChart == null || candles.isEmpty() ||
+                    selectedTradeForChart.exitBar() == null) {
+                    // Empty state
+                    g2.setColor(new Color(100, 100, 100));
+                    g2.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 12));
+                    String msg = "Select a trade to view P&L progression";
+                    int msgW = g2.getFontMetrics().stringWidth(msg);
+                    g2.drawString(msg, (w - msgW) / 2, h / 2);
+                    g2.dispose();
+                    return;
+                }
+
+                Trade t = selectedTradeForChart;
+                int entryBar = t.entryBar();
+                int exitBar = t.exitBar();
+                double entryPrice = t.entryPrice();
+                boolean isLong = "long".equals(t.side());
+
+                if (entryBar >= exitBar || entryBar >= candles.size()) {
+                    g2.dispose();
+                    return;
+                }
+
+                // Calculate P&L % for each bar from entry to exit
+                int numBars = exitBar - entryBar + 1;
+                double[] pnlPercents = new double[numBars];
+                double minPnl = 0;
+                double maxPnl = 0;
+
+                for (int i = 0; i < numBars; i++) {
+                    int barIdx = entryBar + i;
+                    if (barIdx < candles.size()) {
+                        Candle c = candles.get(barIdx);
+                        double currentPrice = c.close();
+                        double pnlPct;
+                        if (isLong) {
+                            pnlPct = ((currentPrice - entryPrice) / entryPrice) * 100;
+                        } else {
+                            pnlPct = ((entryPrice - currentPrice) / entryPrice) * 100;
+                        }
+                        pnlPercents[i] = pnlPct;
+                        minPnl = Math.min(minPnl, pnlPct);
+                        maxPnl = Math.max(maxPnl, pnlPct);
+                    }
+                }
+
+                // Add padding to range
+                double pnlRange = maxPnl - minPnl;
+                if (pnlRange < 1) pnlRange = 1; // Minimum range
+                minPnl -= pnlRange * 0.1;
+                maxPnl += pnlRange * 0.1;
+                pnlRange = maxPnl - minPnl;
+
+                // Draw grid and zero line
+                g2.setColor(new Color(50, 50, 55));
+                g2.setStroke(new BasicStroke(1f));
+
+                // Zero line
+                int zeroY = chartY + (int) ((maxPnl - 0) / pnlRange * chartH);
+                if (zeroY >= chartY && zeroY <= chartY + chartH) {
+                    g2.setColor(new Color(80, 80, 85));
+                    g2.drawLine(margin, zeroY, margin + chartW, zeroY);
+                }
+
+                // Draw horizontal grid lines
+                g2.setColor(new Color(45, 45, 50));
+                int numGridLines = 5;
+                for (int i = 0; i <= numGridLines; i++) {
+                    int y = chartY + (i * chartH / numGridLines);
+                    g2.drawLine(margin, y, margin + chartW, y);
+
+                    // Labels
+                    double pnlAtLine = maxPnl - (i * pnlRange / numGridLines);
+                    g2.setColor(new Color(100, 100, 100));
+                    g2.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 9));
+                    String label = String.format("%+.1f%%", pnlAtLine);
+                    g2.drawString(label, 5, y + 4);
+                    g2.setColor(new Color(45, 45, 50));
+                }
+
+                // Draw P&L line
+                Path2D.Double path = new Path2D.Double();
+                int barWidth = Math.max(2, chartW / numBars);
+                boolean first = true;
+
+                for (int i = 0; i < numBars; i++) {
+                    int x = margin + (i * chartW / numBars) + barWidth / 2;
+                    int y = chartY + (int) ((maxPnl - pnlPercents[i]) / pnlRange * chartH);
+
+                    if (first) {
+                        path.moveTo(x, y);
+                        first = false;
+                    } else {
+                        path.lineTo(x, y);
+                    }
+                }
+
+                // Fill area under/over the line
+                Path2D.Double areaPath = new Path2D.Double(path);
+                int lastX = margin + ((numBars - 1) * chartW / numBars) + barWidth / 2;
+                int firstX = margin + barWidth / 2;
+                areaPath.lineTo(lastX, zeroY);
+                areaPath.lineTo(firstX, zeroY);
+                areaPath.closePath();
+
+                boolean isWinner = t.pnl() != null && t.pnl() >= 0;
+                Color areaColor = isWinner ? new Color(76, 175, 80, 40) : new Color(244, 67, 54, 40);
+                g2.setColor(areaColor);
+                g2.fill(areaPath);
+
+                // Draw the line
+                Color lineColor = isWinner ? new Color(76, 175, 80) : new Color(244, 67, 54);
+                g2.setColor(lineColor);
+                g2.setStroke(new BasicStroke(2f));
+                g2.draw(path);
+
+                // Entry marker (0%)
+                int entryX = margin + barWidth / 2;
+                int entryY = chartY + (int) ((maxPnl - 0) / pnlRange * chartH);
+                g2.setColor(new Color(100, 180, 255));
+                g2.fillOval(entryX - 5, entryY - 5, 10, 10);
+
+                // Exit marker
+                int exitX = margin + ((numBars - 1) * chartW / numBars) + barWidth / 2;
+                int exitY = chartY + (int) ((maxPnl - pnlPercents[numBars - 1]) / pnlRange * chartH);
+                g2.setColor(lineColor);
+                g2.fillOval(exitX - 5, exitY - 5, 10, 10);
+
+                // MFE marker
+                if (t.mfeBar() != null && t.mfe() != null) {
+                    int mfeIdx = t.mfeBar() - entryBar;
+                    if (mfeIdx >= 0 && mfeIdx < numBars) {
+                        int mfeX = margin + (mfeIdx * chartW / numBars) + barWidth / 2;
+                        int mfeY = chartY + (int) ((maxPnl - pnlPercents[mfeIdx]) / pnlRange * chartH);
+                        g2.setColor(new Color(76, 175, 80, 180));
+                        int[] xp = {mfeX - 5, mfeX + 5, mfeX};
+                        int[] yp = {mfeY + 5, mfeY + 5, mfeY - 5};
+                        g2.fillPolygon(xp, yp, 3);
+                    }
+                }
+
+                // MAE marker
+                if (t.maeBar() != null && t.mae() != null) {
+                    int maeIdx = t.maeBar() - entryBar;
+                    if (maeIdx >= 0 && maeIdx < numBars) {
+                        int maeX = margin + (maeIdx * chartW / numBars) + barWidth / 2;
+                        int maeY = chartY + (int) ((maxPnl - pnlPercents[maeIdx]) / pnlRange * chartH);
+                        g2.setColor(new Color(244, 67, 54, 180));
+                        int[] xp = {maeX - 5, maeX + 5, maeX};
+                        int[] yp = {maeY - 5, maeY - 5, maeY + 5};
+                        g2.fillPolygon(xp, yp, 3);
+                    }
+                }
+
+                // Title
+                g2.setColor(new Color(180, 180, 180));
+                g2.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 11));
+                String title = String.format("P&L Progression: %s | %d bars | %+.2f%%",
+                    isLong ? "LONG" : "SHORT", numBars - 1, t.pnlPercent() != null ? t.pnlPercent() : 0);
+                g2.drawString(title, margin, 14);
+
+                // Legend
+                g2.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 9));
+                g2.setColor(new Color(100, 180, 255));
+                g2.drawString("● Entry", margin + chartW - 150, 14);
+                g2.setColor(lineColor);
+                g2.drawString("● Exit", margin + chartW - 100, 14);
+                g2.setColor(new Color(76, 175, 80));
+                g2.drawString("▲ MFE", margin + chartW - 55, 14);
+
+                g2.dispose();
+            }
+        };
+
+        panel.setPreferredSize(new Dimension(0, 150));
+        panel.setMinimumSize(new Dimension(0, 100));
+        panel.setBorder(BorderFactory.createMatteBorder(1, 0, 0, 0, new Color(60, 60, 65)));
+        panel.setToolTipText("P&L % progression from entry (0%) to exit");
+
+        return panel;
+    }
+
     private void addHeader(String text, Color color) {
         JLabel header = new JLabel(text);
         header.setFont(header.getFont().deriveFont(Font.BOLD, 14f));
@@ -684,9 +906,18 @@ public class TradeDetailsWindow extends JDialog {
         JScrollPane tableScrollPane = new JScrollPane(table);
         tableScrollPane.setHorizontalScrollBarPolicy(JScrollPane.HORIZONTAL_SCROLLBAR_AS_NEEDED);
 
-        // Split pane: table | detail panel
+        // Vertical split: table on top, chart on bottom
+        JSplitPane tableChartSplit = new JSplitPane(JSplitPane.VERTICAL_SPLIT);
+        tableChartSplit.setTopComponent(tableScrollPane);
+        tableChartSplit.setBottomComponent(progressionChartPanel);
+        tableChartSplit.setDividerLocation(300);
+        tableChartSplit.setResizeWeight(0.7);
+        tableChartSplit.setDividerSize(4);
+        tableChartSplit.setBorder(null);
+
+        // Horizontal split: table+chart | detail panel
         JSplitPane splitPane = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT);
-        splitPane.setLeftComponent(tableScrollPane);
+        splitPane.setLeftComponent(tableChartSplit);
         splitPane.setRightComponent(detailPanel);
         splitPane.setDividerLocation(1100);
         splitPane.setResizeWeight(1.0); // Give extra space to table

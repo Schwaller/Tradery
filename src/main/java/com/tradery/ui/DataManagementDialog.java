@@ -2,9 +2,10 @@ package com.tradery.ui;
 
 import com.tradery.ApplicationContext;
 import com.tradery.data.AggTradesStore;
-import com.tradery.data.CandleStore;
 import com.tradery.data.DataConfig;
+import com.tradery.data.PremiumIndexStore;
 import com.tradery.data.DataIntegrityChecker;
+import com.tradery.data.sqlite.SqliteDataStore;
 import com.tradery.model.DataHealth;
 import com.tradery.model.DataStatus;
 
@@ -27,7 +28,7 @@ public class DataManagementDialog extends JDialog {
     private static final DecimalFormat SIZE_FORMAT = new DecimalFormat("#,##0.0");
 
     private final DataIntegrityChecker checker;
-    private final CandleStore candleStore;
+    private final SqliteDataStore dataStore;
     private final File dataDir;
     private final File aggTradesDir;
 
@@ -46,9 +47,9 @@ public class DataManagementDialog extends JDialog {
     private DataHealth selectedHealth;
     private Timer refreshTimer;
 
-    public DataManagementDialog(Frame owner, CandleStore candleStore) {
+    public DataManagementDialog(Frame owner, SqliteDataStore dataStore) {
         super(owner, "Manage Data", true);
-        this.candleStore = candleStore;
+        this.dataStore = dataStore;
         this.checker = new DataIntegrityChecker();
         this.dataDir = DataConfig.getInstance().getDataDir();
         this.aggTradesDir = DataConfig.getInstance().getDataDir();
@@ -73,7 +74,7 @@ public class DataManagementDialog extends JDialog {
             @Override
             public void windowClosing(WindowEvent e) {
                 refreshTimer.stop();
-                candleStore.cancelCurrentFetch();
+                // SQLite transactions are atomic, no need to cancel
             }
         });
     }
@@ -179,7 +180,6 @@ public class DataManagementDialog extends JDialog {
 
         JButton closeButton = new JButton("Close");
         closeButton.addActionListener(e -> {
-            candleStore.cancelCurrentFetch();
             dispose();
         });
         buttonPanel.add(closeButton);
@@ -199,7 +199,8 @@ public class DataManagementDialog extends JDialog {
 
     private void showFetchDialog() {
         AggTradesStore aggTradesStore = ApplicationContext.getInstance().getAggTradesStore();
-        FetchDataDialog.show((Frame) getOwner(), candleStore, aggTradesStore, () -> {
+        PremiumIndexStore premiumIndexStore = ApplicationContext.getInstance().getPremiumIndexStore();
+        FetchDataDialog.show((Frame) getOwner(), dataStore, aggTradesStore, premiumIndexStore, () -> {
             // Refresh after fetch completes
             browserPanel.refreshData();
             if (currentSymbol != null && currentResolution != null) {
@@ -245,6 +246,15 @@ public class DataManagementDialog extends JDialog {
             return;
         }
 
+        // Handle premiumIndex selection
+        if ("premiumIndex".equals(resolution)) {
+            healthPanel.setPremiumIndexData(symbol);
+            detailLabel.setText(getPremiumIndexInfo(symbol));
+            selectedHealth = null;
+            updateButtons();
+            return;
+        }
+
         healthPanel.setData(symbol, resolution);
         selectedHealth = null;
         updateDetailLabel();
@@ -258,9 +268,9 @@ public class DataManagementDialog extends JDialog {
     }
 
     private void updateDetailLabel() {
-        // Don't overwrite aggTrades, funding rate, or OI info
+        // Don't overwrite aggTrades, funding rate, OI, or premium index info
         if ("aggTrades".equals(currentResolution) || "fundingRate".equals(currentResolution) ||
-            "openInterest".equals(currentResolution)) {
+            "openInterest".equals(currentResolution) || "premiumIndex".equals(currentResolution)) {
             return;
         }
 
@@ -319,17 +329,19 @@ public class DataManagementDialog extends JDialog {
         progressBar.setIndeterminate(true);
         progressBar.setString("Repairing " + selectedHealth.month().format(MONTH_FORMAT) + "...");
 
-        // Set up progress callback
-        candleStore.setProgressCallback(progress -> {
-            SwingUtilities.invokeLater(() -> {
-                if (progress.estimatedTotal() > 0) {
-                    progressBar.setIndeterminate(false);
-                    progressBar.setValue(progress.percentComplete());
-                }
-                progressBar.setString(progress.message());
-            });
-        });
+        // TODO: Repair functionality needs to be reimplemented for SQLite
+        // For now, show not implemented message
+        JOptionPane.showMessageDialog(this,
+            "Repair functionality is being migrated to SQLite.\n" +
+            "Use 'Fetch Data' to re-download missing data.",
+            "Not Implemented", JOptionPane.INFORMATION_MESSAGE);
+        progressBar.setVisible(false);
+        repairButton.setEnabled(true);
+        deleteButton.setEnabled(true);
+        return;
 
+        /*
+        // Legacy repair code - disabled during SQLite migration
         // Run repair in background
         String symbol = currentSymbol;
         String resolution = currentResolution;
@@ -338,14 +350,13 @@ public class DataManagementDialog extends JDialog {
         SwingWorker<Void, Void> worker = new SwingWorker<>() {
             @Override
             protected Void doInBackground() throws Exception {
-                candleStore.repairMonth(symbol, resolution, health.month());
+                // candleStore.repairMonth(symbol, resolution, health.month());
                 return null;
             }
 
             @Override
             protected void done() {
                 progressBar.setVisible(false);
-                candleStore.setProgressCallback(null);
 
                 try {
                     get();
@@ -365,19 +376,17 @@ public class DataManagementDialog extends JDialog {
             }
         };
         worker.execute();
+        */
     }
 
     private void deleteSelectedMonth() {
         if (selectedHealth == null || currentSymbol == null || currentResolution == null) return;
 
-        int result = JOptionPane.showConfirmDialog(this,
-                "Delete all data for " + selectedHealth.month().format(MONTH_FORMAT) + "?",
-                "Confirm Delete", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE);
-
-        if (result == JOptionPane.YES_OPTION) {
-            candleStore.deleteMonth(currentSymbol, currentResolution, selectedHealth.month());
-            refreshAll();
-        }
+        // TODO: Delete functionality needs to be reimplemented for SQLite
+        JOptionPane.showMessageDialog(this,
+            "Delete functionality is being migrated to SQLite.\n" +
+            "Data deletion will be available in a future update.",
+            "Not Implemented", JOptionPane.INFORMATION_MESSAGE);
     }
 
     private void deleteSelectedSeries() {
@@ -636,11 +645,65 @@ public class DataManagementDialog extends JDialog {
         return sb.toString();
     }
 
+    private String getPremiumIndexInfo(String symbol) {
+        File premiumDir = new File(dataDir, symbol + "/premium");
+        if (!premiumDir.exists()) {
+            return symbol + " / Premium Index - No data. Premium index is auto-fetched when needed.";
+        }
+
+        File[] intervalDirs = premiumDir.listFiles(File::isDirectory);
+        if (intervalDirs == null || intervalDirs.length == 0) {
+            return symbol + " / Premium Index - No data. Premium index is auto-fetched when needed.";
+        }
+
+        // Aggregate stats across all intervals
+        String minMonth = null;
+        String maxMonth = null;
+        int totalRecords = 0;
+        long totalSize = 0;
+        java.util.Set<String> intervals = new java.util.TreeSet<>();
+
+        for (File intervalDir : intervalDirs) {
+            intervals.add(intervalDir.getName());
+            File[] csvFiles = intervalDir.listFiles((dir, name) -> name.endsWith(".csv"));
+            if (csvFiles == null) continue;
+
+            for (File f : csvFiles) {
+                String name = f.getName().replace(".csv", "");
+                totalSize += f.length();
+
+                if (minMonth == null || name.compareTo(minMonth) < 0) minMonth = name;
+                if (maxMonth == null || name.compareTo(maxMonth) > 0) maxMonth = name;
+
+                // Count lines (minus header)
+                try (java.io.BufferedReader reader = new java.io.BufferedReader(new java.io.FileReader(f))) {
+                    int lines = 0;
+                    while (reader.readLine() != null) lines++;
+                    totalRecords += Math.max(0, lines - 1);
+                } catch (java.io.IOException e) {
+                    // Ignore
+                }
+            }
+        }
+
+        if (minMonth == null) {
+            return symbol + " / Premium Index - No data. Premium index is auto-fetched when needed.";
+        }
+
+        StringBuilder sb = new StringBuilder();
+        sb.append(symbol).append(" / Premium Index - ");
+        sb.append(minMonth).append(" to ").append(maxMonth).append(", ");
+        sb.append(totalRecords).append(" records, ");
+        sb.append(formatSize(totalSize));
+        sb.append(" [").append(String.join(", ", intervals)).append("]");
+        return sb.toString();
+    }
+
     /**
      * Show the dialog.
      */
-    public static void show(Frame owner, CandleStore candleStore) {
-        DataManagementDialog dialog = new DataManagementDialog(owner, candleStore);
+    public static void show(Frame owner, SqliteDataStore dataStore) {
+        DataManagementDialog dialog = new DataManagementDialog(owner, dataStore);
         dialog.setVisible(true);
     }
 }

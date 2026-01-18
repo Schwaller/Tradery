@@ -50,6 +50,7 @@ public class DataBrowserPanel extends JPanel {
     private final Map<String, AggTradesSummary> aggTradesSummaries = new HashMap<>();
     private final Map<String, FundingRateSummary> fundingRateSummaries = new HashMap<>();
     private final Map<String, OpenInterestSummary> openInterestSummaries = new HashMap<>();
+    private final Map<String, PremiumIndexSummary> premiumIndexSummaries = new HashMap<>();
 
     private String selectedSymbol;
     private String selectedTimeframe;
@@ -69,7 +70,10 @@ public class DataBrowserPanel extends JPanel {
                 int row = e.getY() / ROW_HEIGHT;
                 if (row >= 0 && row < rows.size()) {
                     RowData data = rows.get(row);
-                    if (data.isOpenInterest && data.symbol != null) {
+                    if (data.isPremiumIndex && data.symbol != null) {
+                        // Premium Index row - use "premiumIndex" as timeframe marker
+                        setSelection(data.symbol, "premiumIndex");
+                    } else if (data.isOpenInterest && data.symbol != null) {
                         // Open Interest row - use "openInterest" as timeframe marker
                         setSelection(data.symbol, "openInterest");
                     } else if (data.isFundingRate && data.symbol != null) {
@@ -78,7 +82,7 @@ public class DataBrowserPanel extends JPanel {
                     } else if (data.isAggTrades && data.symbol != null) {
                         // AggTrades row - use "aggTrades" as timeframe marker
                         setSelection(data.symbol, "aggTrades");
-                    } else if (data.timeframe != null && !data.isAggTrades && !data.isFundingRate && !data.isOpenInterest) {
+                    } else if (data.timeframe != null && !data.isAggTrades && !data.isFundingRate && !data.isOpenInterest && !data.isPremiumIndex) {
                         // Candle timeframe row
                         setSelection(data.symbol, data.timeframe);
                     }
@@ -148,6 +152,7 @@ public class DataBrowserPanel extends JPanel {
         aggTradesSummaries.clear();
         fundingRateSummaries.clear();
         openInterestSummaries.clear();
+        premiumIndexSummaries.clear();
 
         // Load candle data summaries
         for (String symbol : ALL_SYMBOLS) {
@@ -189,6 +194,9 @@ public class DataBrowserPanel extends JPanel {
 
         // Load open interest summaries
         loadOpenInterestSummaries();
+
+        // Load premium index summaries
+        loadPremiumIndexSummaries();
 
         rebuildRows();
         revalidate();
@@ -334,13 +342,69 @@ public class DataBrowserPanel extends JPanel {
         }
     }
 
+    private void loadPremiumIndexSummaries() {
+        if (!aggTradesDir.exists()) return;
+
+        File[] symbolDirs = aggTradesDir.listFiles(File::isDirectory);
+        if (symbolDirs == null) return;
+
+        for (File symbolDir : symbolDirs) {
+            // Look for premium subdirectory under each symbol
+            File premiumDir = new File(symbolDir, "premium");
+            if (!premiumDir.exists() || !premiumDir.isDirectory()) continue;
+
+            String symbol = symbolDir.getName();
+            File[] intervalDirs = premiumDir.listFiles(File::isDirectory);
+            if (intervalDirs == null || intervalDirs.length == 0) continue;
+
+            // Aggregate across all intervals
+            String minMonth = null;
+            String maxMonth = null;
+            int recordCount = 0;
+            long totalSize = 0;
+            Set<String> intervals = new java.util.TreeSet<>();
+            int monthCount = 0;
+            Set<String> months = new java.util.HashSet<>();
+
+            for (File intervalDir : intervalDirs) {
+                intervals.add(intervalDir.getName());
+                File[] csvFiles = intervalDir.listFiles((dir, name) -> name.endsWith(".csv"));
+                if (csvFiles == null) continue;
+
+                for (File f : csvFiles) {
+                    String name = f.getName().replace(".csv", "");
+                    totalSize += f.length();
+                    months.add(name);
+
+                    if (minMonth == null || name.compareTo(minMonth) < 0) minMonth = name;
+                    if (maxMonth == null || name.compareTo(maxMonth) > 0) maxMonth = name;
+
+                    // Count lines (minus header)
+                    try (BufferedReader reader = new BufferedReader(new FileReader(f))) {
+                        int lines = 0;
+                        while (reader.readLine() != null) lines++;
+                        recordCount += Math.max(0, lines - 1);
+                    } catch (IOException e) {
+                        // Ignore
+                    }
+                }
+            }
+
+            if (minMonth != null) {
+                premiumIndexSummaries.put(symbol, new PremiumIndexSummary(
+                    minMonth, maxMonth, months.size(), recordCount, totalSize, intervals
+                ));
+            }
+        }
+    }
+
     private void rebuildRows() {
         rows.clear();
 
         // Candles section header
         boolean hasCandleData = !dataSummaries.isEmpty();
         if (hasCandleData) {
-            rows.add(new RowData(null, null, false, true, false, false, false)); // Section header for Candles
+            rows.add(new RowData(null, null, false, true, false, false, false, false)); // Section header for Candles
         }
 
         // Candle data - only show symbols that have data
@@ -351,45 +415,56 @@ public class DataBrowserPanel extends JPanel {
             }
 
             // Add symbol row
-            rows.add(new RowData(symbol, null, true, false, false, false, false));
+            rows.add(new RowData(symbol, null, true, false, false, false, false, false));
 
             // Add timeframe rows (only those with data)
             for (String tf : ALL_TIMEFRAMES) {
                 if (tfData.containsKey(tf)) {
-                    rows.add(new RowData(symbol, tf, true, false, false, false, false));
+                    rows.add(new RowData(symbol, tf, true, false, false, false, false, false));
                 }
             }
         }
 
         // AggTrades section
         if (!aggTradesSummaries.isEmpty()) {
-            rows.add(new RowData(null, null, false, true, true, false, false)); // Section header for AggTrades
+            rows.add(new RowData(null, null, false, true, true, false, false, false)); // Section header for AggTrades
 
             for (String symbol : ALL_SYMBOLS) {
                 if (aggTradesSummaries.containsKey(symbol)) {
-                    rows.add(new RowData(symbol, null, true, false, true, false, false));
+                    rows.add(new RowData(symbol, null, true, false, true, false, false, false));
                 }
             }
         }
 
         // Funding Rate section
         if (!fundingRateSummaries.isEmpty()) {
-            rows.add(new RowData(null, null, false, true, false, true, false)); // Section header for Funding Rate
+            rows.add(new RowData(null, null, false, true, false, true, false, false)); // Section header for Funding Rate
 
             for (String symbol : ALL_SYMBOLS) {
                 if (fundingRateSummaries.containsKey(symbol)) {
-                    rows.add(new RowData(symbol, null, true, false, false, true, false));
+                    rows.add(new RowData(symbol, null, true, false, false, true, false, false));
                 }
             }
         }
 
         // Open Interest section
         if (!openInterestSummaries.isEmpty()) {
-            rows.add(new RowData(null, null, false, true, false, false, true)); // Section header for OI
+            rows.add(new RowData(null, null, false, true, false, false, true, false)); // Section header for OI
 
             for (String symbol : ALL_SYMBOLS) {
                 if (openInterestSummaries.containsKey(symbol)) {
-                    rows.add(new RowData(symbol, null, true, false, false, false, true));
+                    rows.add(new RowData(symbol, null, true, false, false, false, true, false));
+                }
+            }
+        }
+
+        // Premium Index section
+        if (!premiumIndexSummaries.isEmpty()) {
+            rows.add(new RowData(null, null, false, true, false, false, false, true)); // Section header for Premium Index
+
+            for (String symbol : ALL_SYMBOLS) {
+                if (premiumIndexSummaries.containsKey(symbol)) {
+                    rows.add(new RowData(symbol, null, true, false, false, false, false, true));
                 }
             }
         }
@@ -419,7 +494,11 @@ public class DataBrowserPanel extends JPanel {
             boolean isSelected;
             boolean isHovered;
 
-            if (row.isOpenInterest && row.symbol != null) {
+            if (row.isPremiumIndex && row.symbol != null) {
+                // Premium Index row
+                isSelected = row.symbol.equals(selectedSymbol) && "premiumIndex".equals(selectedTimeframe);
+                isHovered = i == hoveredRow;
+            } else if (row.isOpenInterest && row.symbol != null) {
                 // Open Interest row
                 isSelected = row.symbol.equals(selectedSymbol) && "openInterest".equals(selectedTimeframe);
                 isHovered = i == hoveredRow;
@@ -450,7 +529,9 @@ public class DataBrowserPanel extends JPanel {
                 g2.fillRect(0, y, getWidth(), ROW_HEIGHT);
             }
 
-            if (row.isOpenInterest) {
+            if (row.isPremiumIndex) {
+                drawPremiumIndexRow(g2, row, y);
+            } else if (row.isOpenInterest) {
                 drawOpenInterestRow(g2, row, y);
             } else if (row.isFundingRate) {
                 drawFundingRateRow(g2, row, y);
@@ -590,6 +671,32 @@ public class DataBrowserPanel extends JPanel {
         }
     }
 
+    private void drawPremiumIndexRow(Graphics2D g2, RowData row, int y) {
+        if (row.isSectionHeader) {
+            drawSectionHeader(g2, "Premium Index", y);
+            return;
+        }
+
+        PremiumIndexSummary summary = premiumIndexSummaries.get(row.symbol);
+
+        // Symbol label (indented)
+        g2.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 11));
+        g2.setColor(UIManager.getColor("Label.foreground"));
+        g2.drawString(row.symbol, INDENT, y + 15);
+
+        if (summary != null) {
+            // Status dot (always green for premium since it's auto-fetched)
+            g2.setColor(COMPLETE_COLOR);
+            g2.fillOval(INDENT + 75, y + 8, 8, 8);
+
+            // Month range and record count
+            g2.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 10));
+            g2.setColor(UIManager.getColor("Label.disabledForeground"));
+            String info = summary.startMonth + "→" + summary.endMonth + " (" + summary.recordCount + ")";
+            g2.drawString(info, INDENT + 90, y + 15);
+        }
+    }
+
     private String formatRange(YearMonth start, YearMonth end) {
         DateTimeFormatter fmt = DateTimeFormatter.ofPattern("yy-MM");
         if (end.equals(YearMonth.now())) {
@@ -605,9 +712,10 @@ public class DataBrowserPanel extends JPanel {
     }
 
     // Internal data classes
-    private record RowData(String symbol, String timeframe, boolean hasData, boolean isSectionHeader, boolean isAggTrades, boolean isFundingRate, boolean isOpenInterest) {}
+    private record RowData(String symbol, String timeframe, boolean hasData, boolean isSectionHeader, boolean isAggTrades, boolean isFundingRate, boolean isOpenInterest, boolean isPremiumIndex) {}
     private record DataSummary(YearMonth start, YearMonth end, DataStatus status) {}
     private record AggTradesSummary(String startDate, String endDate, int fileCount, long totalSize, boolean hasPartial) {}
     private record FundingRateSummary(String startMonth, String endMonth, int monthCount, int rateCount, long totalSize) {}
     private record OpenInterestSummary(String startMonth, String endMonth, int monthCount, int recordCount, long totalSize) {}
+    private record PremiumIndexSummary(String startMonth, String endMonth, int monthCount, int recordCount, long totalSize, Set<String> intervals) {}
 }

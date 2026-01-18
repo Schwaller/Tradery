@@ -1,7 +1,7 @@
 package com.tradery.ui;
 
 import com.tradery.ApplicationContext;
-import com.tradery.data.CandleStore;
+import com.tradery.data.sqlite.SqliteDataStore;
 import com.tradery.data.DataConsumer;
 import com.tradery.data.DataRequirement;
 import com.tradery.data.DataRequirementsTracker;
@@ -416,10 +416,10 @@ public class PhasePreviewChart extends JPanel {
                 // Update status on EDT
                 SwingUtilities.invokeLater(() -> statusLabel.setText("Fetching " + symbol + " " + timeframe + "..."));
 
-                // Load candles
-                CandleStore candleStore = ApplicationContext.getInstance().getCandleStore();
+                // Load candles from SQLite
+                SqliteDataStore dataStore = ApplicationContext.getInstance().getSqliteDataStore();
                 try {
-                    candles = candleStore.getCandles(symbol, timeframe, startTime, endTime);
+                    candles = dataStore.getCandles(symbol, timeframe, startTime, endTime);
                 } catch (Exception e) {
                     tracker.updateStatus(dataType, DataRequirementsTracker.Status.ERROR, 0, 0, e.getMessage());
                     throw e;

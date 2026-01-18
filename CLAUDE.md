@@ -39,8 +39,10 @@ A Java Swing desktop application for building and backtesting trading strategies
 │       └── 2024-01.csv
 ├── funding/                          # Funding rate cache
 │   └── BTCUSDT.csv
-└── openinterest/                     # Open interest data (5m resolution)
-    └── BTCUSDT.csv
+├── openinterest/                     # Open interest data (5m resolution)
+│   └── BTCUSDT.csv
+└── data/{symbol}/premium/{interval}/ # Premium index klines (auto-fetched)
+    └── 2024-01.csv
 
 /Users/martinschwaller/Code/Tradery/  # Project source
 ├── build.gradle
@@ -233,6 +235,33 @@ FUNDING                  # Current funding rate (as %, e.g., 0.01 = 0.01%)
 FUNDING_8H               # 8-hour rolling average funding rate
 ```
 
+### Premium Index Functions
+Premium index measures the spread between futures and spot prices.
+Auto-fetched from Binance Futures API at strategy timeframe resolution.
+
+```
+PREMIUM                  # Current premium (as %, e.g., 0.05 = 0.05% futures above spot)
+PREMIUM_AVG(period)      # Average premium over last N bars
+```
+
+**Premium vs Funding:**
+- Premium is a leading indicator (real-time market sentiment)
+- Funding is a lagging indicator (settled every 8 hours)
+- Positive premium = futures trading above spot (bullish sentiment)
+- Negative premium = futures trading below spot (bearish sentiment)
+
+**Examples:**
+```
+# High premium - overleveraged longs (potential short setup)
+PREMIUM > 0.1
+
+# Negative premium with price above MA - potential long
+PREMIUM < 0 AND price > SMA(200)
+
+# Premium expansion - increasing speculative interest
+PREMIUM > PREMIUM_AVG(24)
+```
+
 ### Open Interest Functions
 Requires OI data (auto-fetched from Binance Futures API at 5-minute resolution).
 Note: Binance limits historical OI to 30 days, but local cache persists indefinitely.
@@ -408,6 +437,11 @@ LARGE_TRADE_COUNT(50000) > 10             # Many large trades
 # Funding rate
 FUNDING > 0.05                            # High funding = overleveraged longs
 FUNDING < 0 AND WHALE_DELTA(50000) > 0    # Shorts paying + whale buying
+
+# Premium index (futures vs spot spread)
+PREMIUM > 0.1                             # High premium = speculative bullishness
+PREMIUM < 0 AND price > SMA(200)          # Negative premium + uptrend = potential long
+PREMIUM > PREMIUM_AVG(24)                 # Premium expanding vs 24-bar average
 
 # Open Interest
 OI_CHANGE > 0 AND close > close[1]        # Rising OI + rising price = new longs
@@ -925,11 +959,12 @@ Analyze maeIndicators to understand drawdown causes:
 8. **Daily session levels** - PREV_DAY_POC/VAH/VAL, TODAY_POC/VAH/VAL (UTC day boundary)
 9. **Large trade detection** - WHALE_DELTA, WHALE_BUY_VOL, WHALE_SELL_VOL, LARGE_TRADE_COUNT
 10. **Funding rate** - FUNDING, FUNDING_8H + built-in funding phases (high/negative/extreme/neutral)
-11. **Open Interest** - OI, OI_CHANGE, OI_DELTA (auto-fetched 5m resolution, cache persists)
-12. **Supertrend** - SUPERTREND(period, multiplier) with .trend, .upper, .lower properties
-13. **Bollinger Width** - BBANDS(period, stdDev).width for squeeze detection
-14. **Aggregate functions** - LOWEST(expr, n), HIGHEST(expr, n), PERCENTILE(expr, n)
-15. **Lookback syntax** - expr[n] for previous bar values (e.g., ATR(14)[1])
+11. **Premium index** - PREMIUM, PREMIUM_AVG(period) - futures vs spot spread (leading indicator)
+12. **Open Interest** - OI, OI_CHANGE, OI_DELTA (auto-fetched 5m resolution, cache persists)
+13. **Supertrend** - SUPERTREND(period, multiplier) with .trend, .upper, .lower properties
+14. **Bollinger Width** - BBANDS(period, stdDev).width for squeeze detection
+15. **Aggregate functions** - LOWEST(expr, n), HIGHEST(expr, n), PERCENTILE(expr, n)
+16. **Lookback syntax** - expr[n] for previous bar values (e.g., ATR(14)[1])
 
 **What's NOT yet implemented (potential future features):**
 - Liquidation data (requires external API like Coinglass)

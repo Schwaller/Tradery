@@ -3,136 +3,47 @@ package com.tradery.ui;
 import com.tradery.ApplicationContext;
 import com.tradery.io.PhaseStore;
 import com.tradery.model.Phase;
+import com.tradery.ui.controls.BadgeListPanel;
 
 import javax.swing.*;
 import java.awt.*;
 import java.util.ArrayList;
-import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Set;
 
 /**
- * Reusable JList-based panel for selecting required/excluded phases.
- * Used by both entry (strategy-level) and exit zone phase filtering.
+ * Reusable panel for selecting required/excluded phases.
+ * Uses BadgeListPanel for modern badge-style display.
  */
 public class PhaseListPanel extends JPanel {
 
-    private final JList<PhaseListItem> phaseList;
-    private final DefaultListModel<PhaseListItem> listModel;
-    private final JButton addButton;
-    private final JButton removeButton;
-    private final Set<String> requiredPhaseIds = new LinkedHashSet<>();
-    private final Set<String> excludedPhaseIds = new LinkedHashSet<>();
+    private final BadgeListPanel badgePanel;
     private Runnable onChange;
 
     public PhaseListPanel() {
-        setLayout(new BorderLayout(4, 0));
+        setLayout(new BorderLayout());
         setOpaque(false);
 
-        // Titled border with "Phase Filter"
-        setBorder(BorderFactory.createCompoundBorder(
-            BorderFactory.createTitledBorder(
-                BorderFactory.createLineBorder(UIManager.getColor("Component.borderColor"), 1),
-                "Phase Filter",
-                javax.swing.border.TitledBorder.LEFT,
-                javax.swing.border.TitledBorder.TOP,
-                getFont().deriveFont(10f),
-                Color.GRAY
-            ),
-            BorderFactory.createEmptyBorder(2, 6, 6, 6)
-        ));
-
-        // List model and JList - no scroll, size to content
-        listModel = new DefaultListModel<>();
-        phaseList = new JList<>(listModel);
-        phaseList.setVisibleRowCount(-1);  // Size to content
-        phaseList.setFont(phaseList.getFont().deriveFont(10f));
-        phaseList.setCellRenderer(new PhaseListCellRenderer());
-        phaseList.setOpaque(false);
-        phaseList.setBackground(new Color(0, 0, 0, 0));
-
-        // Buttons panel - vertical at top
-        addButton = new JButton("+");
-        addButton.setFont(addButton.getFont().deriveFont(Font.BOLD, 9f));
-        addButton.setMargin(new Insets(0, 4, 0, 4));
-        addButton.setToolTipText("Add phase filter");
-        addButton.addActionListener(e -> showAddPopup());
-
-        removeButton = new JButton("−");
-        removeButton.setFont(removeButton.getFont().deriveFont(Font.BOLD, 9f));
-        removeButton.setMargin(new Insets(0, 4, 0, 4));
-        removeButton.setToolTipText("Remove selected");
-        removeButton.setEnabled(false);
-        removeButton.addActionListener(e -> removeSelected());
-
-        // Add listener after removeButton is initialized
-        phaseList.addListSelectionListener(e -> {
-            if (!e.getValueIsAdjusting()) {
-                removeButton.setEnabled(phaseList.getSelectedIndex() >= 0);
-            }
+        badgePanel = new BadgeListPanel("Phases");
+        badgePanel.setOnChange(() -> {
+            if (onChange != null) onChange.run();
         });
 
-        // Button panel with buttons stacked at top
-        JPanel buttonStack = new JPanel();
-        buttonStack.setLayout(new BoxLayout(buttonStack, BoxLayout.Y_AXIS));
-        buttonStack.setOpaque(false);
-        buttonStack.add(addButton);
-        buttonStack.add(Box.createVerticalStrut(2));
-        buttonStack.add(removeButton);
+        // Set up name resolver
+        badgePanel.setNameResolver(this::resolvePhaseName);
 
-        JPanel buttonWrapper = new JPanel(new BorderLayout());
-        buttonWrapper.setOpaque(false);
-        buttonWrapper.add(buttonStack, BorderLayout.NORTH);
+        // Set up popup builder
+        badgePanel.setPopupBuilder(this::buildPopupMenu);
 
-        add(phaseList, BorderLayout.CENTER);
-        add(buttonWrapper, BorderLayout.EAST);
-
-        updateListModel();
+        add(badgePanel, BorderLayout.CENTER);
     }
 
-    public void setOnChange(Runnable onChange) {
-        this.onChange = onChange;
-    }
-
-    public void setPhases(List<String> required, List<String> excluded) {
-        requiredPhaseIds.clear();
-        excludedPhaseIds.clear();
-        if (required != null) requiredPhaseIds.addAll(required);
-        if (excluded != null) excludedPhaseIds.addAll(excluded);
-        updateListModel();
-    }
-
-    public List<String> getRequiredPhaseIds() {
-        return new ArrayList<>(requiredPhaseIds);
-    }
-
-    public List<String> getExcludedPhaseIds() {
-        return new ArrayList<>(excludedPhaseIds);
-    }
-
-    private void updateListModel() {
-        listModel.clear();
+    private String resolvePhaseName(String phaseId) {
         PhaseStore phaseStore = ApplicationContext.getInstance().getPhaseStore();
-
-        for (String phaseId : requiredPhaseIds) {
-            Phase phase = phaseStore.load(phaseId);
-            String name = phase != null ? phase.getName() : phaseId;
-            listModel.addElement(new PhaseListItem(phaseId, name, true));
-        }
-        for (String phaseId : excludedPhaseIds) {
-            Phase phase = phaseStore.load(phaseId);
-            String name = phase != null ? phase.getName() : phaseId;
-            listModel.addElement(new PhaseListItem(phaseId, name, false));
-        }
-
-        // Show placeholder if empty
-        if (listModel.isEmpty()) {
-            listModel.addElement(new PhaseListItem(null, "Any phase", true));
-        }
+        Phase phase = phaseStore.load(phaseId);
+        return phase != null ? phase.getName() : phaseId;
     }
 
-    private void showAddPopup() {
-        JPopupMenu popup = new JPopupMenu();
+    private void buildPopupMenu(JPopupMenu popup) {
         PhaseStore phaseStore = ApplicationContext.getInstance().getPhaseStore();
         List<Phase> phases = phaseStore.loadAll();
 
@@ -151,28 +62,23 @@ public class PhaseListPanel extends JPanel {
             JMenuItem empty = new JMenuItem("No phases defined");
             empty.setEnabled(false);
             popup.add(empty);
-        } else {
-            JMenu requireMenu = new JMenu("Require");
-            buildCategorySubmenus(requireMenu, phases, true);
-            popup.add(requireMenu);
-
-            JMenu excludeMenu = new JMenu("Exclude (NOT)");
-            buildCategorySubmenus(excludeMenu, phases, false);
-            popup.add(excludeMenu);
-
-            if (!requiredPhaseIds.isEmpty() || !excludedPhaseIds.isEmpty()) {
-                popup.addSeparator();
-                JMenuItem clearAll = new JMenuItem("Clear all");
-                clearAll.addActionListener(e -> {
-                    requiredPhaseIds.clear();
-                    excludedPhaseIds.clear();
-                    updateListModel();
-                    fireChange();
-                });
-                popup.add(clearAll);
-            }
+            return;
         }
-        popup.show(addButton, 0, addButton.getHeight());
+
+        JMenu requireMenu = new JMenu("Require");
+        buildCategorySubmenus(requireMenu, phases, true);
+        popup.add(requireMenu);
+
+        JMenu excludeMenu = new JMenu("Exclude (NOT)");
+        buildCategorySubmenus(excludeMenu, phases, false);
+        popup.add(excludeMenu);
+
+        if (badgePanel.hasSelections()) {
+            popup.addSeparator();
+            JMenuItem clearAll = new JMenuItem("Clear all");
+            clearAll.addActionListener(e -> badgePanel.clearAll());
+            popup.add(clearAll);
+        }
     }
 
     private void buildCategorySubmenus(JMenu parentMenu, List<Phase> phases, boolean isRequired) {
@@ -193,16 +99,14 @@ public class PhaseListPanel extends JPanel {
 
             for (Phase phase : categoryPhases) {
                 String id = phase.getId();
-                if (!requiredPhaseIds.contains(id) && !excludedPhaseIds.contains(id)) {
+                if (!badgePanel.contains(id)) {
                     JMenuItem item = new JMenuItem(phase.getName());
                     item.addActionListener(e -> {
                         if (isRequired) {
-                            requiredPhaseIds.add(id);
+                            badgePanel.addRequired(id);
                         } else {
-                            excludedPhaseIds.add(id);
+                            badgePanel.addExcluded(id);
                         }
-                        updateListModel();
-                        fireChange();
                     });
                     categoryMenu.add(item);
                     itemsInCategory++;
@@ -222,50 +126,19 @@ public class PhaseListPanel extends JPanel {
         }
     }
 
-    private void removeSelected() {
-        PhaseListItem selected = phaseList.getSelectedValue();
-        if (selected != null && selected.phaseId != null) {
-            if (selected.required) {
-                requiredPhaseIds.remove(selected.phaseId);
-            } else {
-                excludedPhaseIds.remove(selected.phaseId);
-            }
-            updateListModel();
-            fireChange();
-        }
+    public void setOnChange(Runnable onChange) {
+        this.onChange = onChange;
     }
 
-    private void fireChange() {
-        if (onChange != null) {
-            onChange.run();
-        }
+    public void setPhases(List<String> required, List<String> excluded) {
+        badgePanel.setItems(required, excluded);
     }
 
-    // Data class for list items
-    record PhaseListItem(String phaseId, String name, boolean required) {}
+    public List<String> getRequiredPhaseIds() {
+        return badgePanel.getRequiredIds();
+    }
 
-    // Cell renderer for the phase list
-    private static class PhaseListCellRenderer extends DefaultListCellRenderer {
-        @Override
-        public Component getListCellRendererComponent(JList<?> list, Object value,
-                int index, boolean isSelected, boolean cellHasFocus) {
-
-            super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus);
-
-            if (value instanceof PhaseListItem item) {
-                if (item.phaseId == null) {
-                    // Placeholder "Any phase"
-                    setText(item.name);
-                    setForeground(Color.GRAY);
-                } else {
-                    String prefix = item.required ? "+" : "−";
-                    setText(prefix + " " + item.name);
-                    if (!isSelected) {
-                        setForeground(item.required ? new Color(50, 120, 50) : new Color(160, 60, 60));
-                    }
-                }
-            }
-            return this;
-        }
+    public List<String> getExcludedPhaseIds() {
+        return badgePanel.getExcludedIds();
     }
 }

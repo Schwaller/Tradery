@@ -142,6 +142,11 @@ public final class ChartStyles {
     public static final Color OI_POSITIVE = new Color(38, 166, 91);         // Green (OI increasing)
     public static final Color OI_NEGATIVE = new Color(231, 76, 60);         // Red (OI decreasing)
 
+    // ===== Premium Index Colors =====
+    public static final Color PREMIUM_POSITIVE = new Color(46, 204, 113);   // Green (positive premium)
+    public static final Color PREMIUM_NEGATIVE = new Color(231, 76, 60);    // Red (negative premium)
+    public static final Color PREMIUM_AVG_COLOR = new Color(241, 196, 15);  // Yellow for average line
+
     // ===== Trade Count Colors =====
     public static final Color TRADE_COUNT_LINE_COLOR = new Color(100, 181, 246);  // Light blue for trade count
 
@@ -179,17 +184,17 @@ public final class ChartStyles {
     };
 
     // ===== Line Strokes =====
-    public static final float LINE_WIDTH = 1.1f;
+    public static final float LINE_WIDTH = 0.6f;
     public static final BasicStroke LINE_STROKE = new BasicStroke(
         LINE_WIDTH, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND);
     public static final BasicStroke TRADE_LINE_STROKE = new BasicStroke(
         LINE_WIDTH, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND);
-    public static final BasicStroke THIN_STROKE = new BasicStroke(1.0f);
-    public static final BasicStroke MEDIUM_STROKE = new BasicStroke(1.5f);
+    public static final BasicStroke THIN_STROKE = new BasicStroke(LINE_WIDTH);
+    public static final BasicStroke MEDIUM_STROKE = new BasicStroke(LINE_WIDTH);
     public static final BasicStroke DASHED_STROKE = new BasicStroke(
-        1.0f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER, 10.0f, new float[]{4.0f, 4.0f}, 0.0f);
+            LINE_WIDTH, BasicStroke.CAP_BUTT, BasicStroke.JOIN_ROUND, 10.0f, new float[]{4.0f, 4.0f}, 0.0f);
     public static final BasicStroke DASHED_MAYER_STROKE = new BasicStroke(
-        1.5f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER, 10.0f, new float[]{6.0f, 4.0f}, 0.0f);
+            LINE_WIDTH, BasicStroke.CAP_BUTT, BasicStroke.JOIN_ROUND, 10.0f, new float[]{6.0f, 4.0f}, 0.0f);
 
     // ===== Styling Methods =====
 

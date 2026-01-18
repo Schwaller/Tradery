@@ -4,7 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.sun.net.httpserver.HttpExchange;
-import com.tradery.data.CandleStore;
+import com.tradery.data.sqlite.SqliteDataStore;
 import com.tradery.engine.BacktestEngine;
 import com.tradery.engine.PhaseAnalyzer;
 import com.tradery.io.PhaseStore;
@@ -35,12 +35,12 @@ public class StrategyHandler extends ApiHandlerBase {
 
     private final StrategyStore strategyStore;
     private final PhaseStore phaseStore;
-    private final CandleStore candleStore;
+    private final SqliteDataStore dataStore;
 
-    public StrategyHandler(StrategyStore strategyStore, PhaseStore phaseStore, CandleStore candleStore) {
+    public StrategyHandler(StrategyStore strategyStore, PhaseStore phaseStore, SqliteDataStore dataStore) {
         this.strategyStore = strategyStore;
         this.phaseStore = phaseStore;
-        this.candleStore = candleStore;
+        this.dataStore = dataStore;
     }
 
     /**
@@ -442,7 +442,7 @@ public class StrategyHandler extends ApiHandlerBase {
             BacktestConfig config = strategy.getBacktestSettings().toBacktestConfig(startDate, endDate);
 
             // Load candles
-            List<Candle> candles = candleStore.getCandles(
+            List<Candle> candles = dataStore.getCandles(
                 config.symbol(), config.resolution(), config.startDate(), config.endDate()
             );
 
@@ -467,7 +467,7 @@ public class StrategyHandler extends ApiHandlerBase {
             }
 
             // Run backtest (blocking)
-            BacktestEngine engine = new BacktestEngine(candleStore);
+            BacktestEngine engine = new BacktestEngine(dataStore);
             BacktestResult result = engine.run(strategy, config, candles, requiredPhases, null);
 
             // Save results
@@ -550,7 +550,7 @@ public class StrategyHandler extends ApiHandlerBase {
             String timeframe = strategy.getTimeframe();
             long endDate = System.currentTimeMillis();
             long startDate = endDate - parseDurationMillis(strategy.getDuration());
-            List<Candle> candles = candleStore.getCandles(
+            List<Candle> candles = dataStore.getCandles(
                 strategy.getSymbol(), timeframe, startDate, endDate
             );
 
@@ -560,7 +560,7 @@ public class StrategyHandler extends ApiHandlerBase {
             }
 
             // Run phase analysis
-            PhaseAnalyzer analyzer = new PhaseAnalyzer(candleStore, phaseStore);
+            PhaseAnalyzer analyzer = new PhaseAnalyzer(dataStore, phaseStore);
             List<PhaseAnalysisResult> results = analyzer.analyzePhases(trades, candles, timeframe, null);
 
             // Build response

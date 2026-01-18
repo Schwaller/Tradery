@@ -129,6 +129,9 @@ public class ChartsPanel extends JPanel {
         // Apply OI chart setting
         setOiChartEnabled(config.isOiEnabled());
 
+        // Apply premium chart setting
+        setPremiumChartEnabled(config.isPremiumEnabled());
+
         // Apply trade count chart setting
         setTradeCountChartEnabled(config.isTradeCountEnabled());
 
@@ -281,7 +284,8 @@ public class ChartsPanel extends JPanel {
             indicatorManager.getStochasticChartPanel(),
             indicatorManager.getRangePositionChartPanel(),
             indicatorManager.getAdxChartPanel(),
-            indicatorManager.getTradeCountChartPanel());
+            indicatorManager.getTradeCountChartPanel(),
+            indicatorManager.getPremiumChartPanel());
 
         // Sync domain axes
         JFreeChart[] otherCharts = {
@@ -290,7 +294,7 @@ public class ChartsPanel extends JPanel {
             indicatorManager.getDeltaChart(), indicatorManager.getCvdChart(), indicatorManager.getVolumeRatioChart(),
             indicatorManager.getWhaleChart(), indicatorManager.getRetailChart(), indicatorManager.getFundingChart(),
             indicatorManager.getOiChart(), indicatorManager.getStochasticChart(), indicatorManager.getRangePositionChart(),
-            indicatorManager.getAdxChart(), indicatorManager.getTradeCountChart()
+            indicatorManager.getAdxChart(), indicatorManager.getTradeCountChart(), indicatorManager.getPremiumChart()
         };
         crosshairManager.syncDomainAxes(priceChart, otherCharts);
     }
@@ -351,7 +355,7 @@ public class ChartsPanel extends JPanel {
             indicatorManager.getRsiChart(), indicatorManager.getMacdChart(), indicatorManager.getAtrChart(),
             indicatorManager.getDeltaChart(), indicatorManager.getCvdChart(), indicatorManager.getVolumeRatioChart(),
             indicatorManager.getWhaleChart(), indicatorManager.getRetailChart(),
-            indicatorManager.getFundingChart(), indicatorManager.getOiChart(),
+            indicatorManager.getFundingChart(), indicatorManager.getOiChart(), indicatorManager.getPremiumChart(),
             indicatorManager.getStochasticChart(), indicatorManager.getRangePositionChart(), indicatorManager.getAdxChart(),
             indicatorManager.getTradeCountChart(),
             equityChart, comparisonChart, capitalUsageChart, tradePLChart
@@ -361,7 +365,7 @@ public class ChartsPanel extends JPanel {
             indicatorManager.getRsiChartWrapper(), indicatorManager.getMacdChartWrapper(), indicatorManager.getAtrChartWrapper(),
             indicatorManager.getDeltaChartWrapper(), indicatorManager.getCvdChartWrapper(), indicatorManager.getVolumeRatioChartWrapper(),
             indicatorManager.getWhaleChartWrapper(), indicatorManager.getRetailChartWrapper(),
-            indicatorManager.getFundingChartWrapper(), indicatorManager.getOiChartWrapper(),
+            indicatorManager.getFundingChartWrapper(), indicatorManager.getOiChartWrapper(), indicatorManager.getPremiumChartWrapper(),
             indicatorManager.getStochasticChartWrapper(), indicatorManager.getRangePositionChartWrapper(), indicatorManager.getAdxChartWrapper(),
             indicatorManager.getTradeCountChartWrapper(),
             zoomManager.getChartWrappers()[2], zoomManager.getChartWrappers()[3],
@@ -817,6 +821,14 @@ public class ChartsPanel extends JPanel {
         return indicatorManager.isTradeCountChartEnabled();
     }
 
+    public void setPremiumChartEnabled(boolean enabled) {
+        indicatorManager.setPremiumChartEnabled(enabled);
+    }
+
+    public boolean isPremiumChartEnabled() {
+        return indicatorManager.isPremiumChartEnabled();
+    }
+
     public void setIndicatorEngine(com.tradery.indicators.IndicatorEngine engine) {
         indicatorManager.setIndicatorEngine(engine);
         overlayManager.setIndicatorEngine(engine);
@@ -924,7 +936,7 @@ public class ChartsPanel extends JPanel {
             indicatorManager.getRsiChart(), indicatorManager.getMacdChart(), indicatorManager.getAtrChart(),
             indicatorManager.getDeltaChart(), indicatorManager.getCvdChart(), indicatorManager.getVolumeRatioChart(),
             indicatorManager.getWhaleChart(), indicatorManager.getRetailChart(),
-            indicatorManager.getFundingChart(), indicatorManager.getOiChart(),
+            indicatorManager.getFundingChart(), indicatorManager.getOiChart(), indicatorManager.getPremiumChart(),
             indicatorManager.getStochasticChart(), indicatorManager.getRangePositionChart(),
             indicatorManager.getAdxChart(), indicatorManager.getTradeCountChart()
         };

@@ -4,6 +4,7 @@ import com.tradery.model.AggTrade;
 import com.tradery.model.Candle;
 import com.tradery.model.FundingRate;
 import com.tradery.model.OpenInterest;
+import com.tradery.model.PremiumIndex;
 import com.tradery.indicators.RotatingRays.RaySet;
 
 import java.time.Instant;
@@ -95,7 +96,8 @@ public class IndicatorEngine {
     }
 
     public double getSMAAt(int period, int barIndex) {
-        return Indicators.smaAt(candles, period, barIndex);
+        double[] sma = getSMA(period);  // Uses cache
+        return barIndex < sma.length ? sma[barIndex] : Double.NaN;
     }
 
     // ========== EMA ==========
@@ -109,7 +111,8 @@ public class IndicatorEngine {
     }
 
     public double getEMAAt(int period, int barIndex) {
-        return Indicators.emaAt(candles, period, barIndex);
+        double[] ema = getEMA(period);  // Uses cache
+        return barIndex < ema.length ? ema[barIndex] : Double.NaN;
     }
 
     // ========== RSI ==========
@@ -123,7 +126,8 @@ public class IndicatorEngine {
     }
 
     public double getRSIAt(int period, int barIndex) {
-        return Indicators.rsiAt(candles, period, barIndex);
+        double[] rsi = getRSI(period);  // Uses cache
+        return barIndex < rsi.length ? rsi[barIndex] : Double.NaN;
     }
 
     // ========== MACD ==========
@@ -200,7 +204,8 @@ public class IndicatorEngine {
     }
 
     public double getATRAt(int period, int barIndex) {
-        return Indicators.atrAt(candles, period, barIndex);
+        double[] atr = getATR(period);  // Uses cache
+        return barIndex < atr.length ? atr[barIndex] : Double.NaN;
     }
 
     // ========== Range Functions ==========
@@ -214,7 +219,8 @@ public class IndicatorEngine {
     }
 
     public double getHighOfAt(int period, int barIndex) {
-        return Indicators.highOfAt(candles, period, barIndex);
+        double[] highOf = getHighOf(period);  // Uses cache
+        return barIndex < highOf.length ? highOf[barIndex] : Double.NaN;
     }
 
     public double[] getLowOf(int period) {
@@ -226,7 +232,8 @@ public class IndicatorEngine {
     }
 
     public double getLowOfAt(int period, int barIndex) {
-        return Indicators.lowOfAt(candles, period, barIndex);
+        double[] lowOf = getLowOf(period);  // Uses cache
+        return barIndex < lowOf.length ? lowOf[barIndex] : Double.NaN;
     }
 
     // ========== Range Position ==========
@@ -240,7 +247,8 @@ public class IndicatorEngine {
     }
 
     public double getRangePositionAt(int period, int skip, int barIndex) {
-        return Indicators.rangePositionAt(candles, period, skip, barIndex);
+        double[] rangePos = getRangePosition(period, skip);  // Uses cache
+        return barIndex < rangePos.length ? rangePos[barIndex] : Double.NaN;
     }
 
     // ========== Volume ==========
@@ -254,7 +262,8 @@ public class IndicatorEngine {
     }
 
     public double getAvgVolumeAt(int period, int barIndex) {
-        return Indicators.avgVolumeAt(candles, period, barIndex);
+        double[] avgVol = getAvgVolume(period);  // Uses cache
+        return barIndex < avgVol.length ? avgVol[barIndex] : Double.NaN;
     }
 
     // ========== Price Access ==========
@@ -370,11 +379,13 @@ public class IndicatorEngine {
     }
 
     public double getStochasticKAt(int kPeriod, int barIndex) {
-        return Indicators.stochasticKAt(candles, kPeriod, barIndex);
+        Indicators.StochasticResult result = getStochastic(kPeriod, 3);  // Uses cache with default dPeriod=3
+        return barIndex < result.k().length ? result.k()[barIndex] : Double.NaN;
     }
 
     public double getStochasticDAt(int kPeriod, int dPeriod, int barIndex) {
-        return Indicators.stochasticDAt(candles, kPeriod, dPeriod, barIndex);
+        Indicators.StochasticResult result = getStochastic(kPeriod, dPeriod);  // Uses cache
+        return barIndex < result.d().length ? result.d()[barIndex] : Double.NaN;
     }
 
     // ========== Moon Functions ==========
@@ -425,7 +436,8 @@ public class IndicatorEngine {
     }
 
     public double getVWAPAt(int barIndex) {
-        return Indicators.vwapAt(candles, barIndex);
+        double[] vwap = getVWAP();  // Uses cache
+        return barIndex < vwap.length ? vwap[barIndex] : Double.NaN;
     }
 
     // ========== Volume Profile / POC / VAH / VAL (Tier 1 - Orderflow) ==========
@@ -795,6 +807,176 @@ public class IndicatorEngine {
      */
     public List<Candle> getCandles() {
         return candles;
+    }
+
+    // ========== Premium Index (requires premium data to be loaded) ==========
+
+    private List<PremiumIndex> premiumIndexData;
+
+    /**
+     * Set premium index data for premium indicators.
+     */
+    public void setPremiumIndex(List<PremiumIndex> premiumIndexData) {
+        this.premiumIndexData = premiumIndexData;
+        // Clear premium-related cache entries
+        cache.remove("premiumArray");
+        cache.remove("premiumAvgArray");
+    }
+
+    /**
+     * Check if premium index data is available.
+     */
+    public boolean hasPremiumIndex() {
+        return premiumIndexData != null && !premiumIndexData.isEmpty();
+    }
+
+    /**
+     * Get the premium index value at bar index.
+     * Returns the premium value for the kline that matches or precedes the candle timestamp.
+     * Premium is returned as percentage (e.g., 0.0001 decimal -> 0.01%)
+     */
+    public double getPremiumAt(int barIndex) {
+        if (!hasPremiumIndex()) {
+            return Double.NaN;
+        }
+
+        long candleTime = getTimestampAt(barIndex);
+        if (candleTime == 0) return Double.NaN;
+
+        // Find the premium kline that matches or precedes this candle
+        PremiumIndex match = null;
+        for (PremiumIndex pi : premiumIndexData) {
+            if (pi.openTime() <= candleTime && pi.closeTime() >= candleTime) {
+                // Exact match - candle falls within this premium kline
+                match = pi;
+                break;
+            } else if (pi.openTime() <= candleTime) {
+                // Track the most recent premium before this candle
+                match = pi;
+            } else {
+                break; // Premium data is sorted by time
+            }
+        }
+
+        if (match == null) return Double.NaN;
+
+        // Return as percentage
+        return match.closePercent();
+    }
+
+    /**
+     * Get the average premium index over N bars.
+     * @param period Number of bars to average
+     * @param barIndex Current bar index
+     */
+    public double getPremiumAvgAt(int period, int barIndex) {
+        if (!hasPremiumIndex() || barIndex < period - 1) {
+            return Double.NaN;
+        }
+
+        double sum = 0;
+        int count = 0;
+
+        for (int i = barIndex - period + 1; i <= barIndex; i++) {
+            double premium = getPremiumAt(i);
+            if (!Double.isNaN(premium)) {
+                sum += premium;
+                count++;
+            }
+        }
+
+        if (count == 0) return Double.NaN;
+        return sum / count;
+    }
+
+    /**
+     * Get the premium high at bar index.
+     * Returns the high premium value for the matching kline.
+     */
+    public double getPremiumHighAt(int barIndex) {
+        if (!hasPremiumIndex()) {
+            return Double.NaN;
+        }
+
+        long candleTime = getTimestampAt(barIndex);
+        if (candleTime == 0) return Double.NaN;
+
+        for (PremiumIndex pi : premiumIndexData) {
+            if (pi.openTime() <= candleTime && pi.closeTime() >= candleTime) {
+                return pi.highPercent();
+            } else if (pi.openTime() > candleTime) {
+                break;
+            }
+        }
+
+        return Double.NaN;
+    }
+
+    /**
+     * Get the premium low at bar index.
+     * Returns the low premium value for the matching kline.
+     */
+    public double getPremiumLowAt(int barIndex) {
+        if (!hasPremiumIndex()) {
+            return Double.NaN;
+        }
+
+        long candleTime = getTimestampAt(barIndex);
+        if (candleTime == 0) return Double.NaN;
+
+        for (PremiumIndex pi : premiumIndexData) {
+            if (pi.openTime() <= candleTime && pi.closeTime() >= candleTime) {
+                return pi.lowPercent();
+            } else if (pi.openTime() > candleTime) {
+                break;
+            }
+        }
+
+        return Double.NaN;
+    }
+
+    // ========== Premium Index Arrays for Charts ==========
+
+    /**
+     * Get premium index array for all bars.
+     */
+    public double[] getPremium() {
+        int size = candles != null ? candles.size() : 0;
+        if (!hasPremiumIndex() || size == 0) {
+            double[] result = new double[size];
+            java.util.Arrays.fill(result, Double.NaN);
+            return result;
+        }
+        String key = "premiumArray";
+        if (!cache.containsKey(key)) {
+            double[] result = new double[size];
+            for (int i = 0; i < size; i++) {
+                result[i] = getPremiumAt(i);
+            }
+            cache.put(key, result);
+        }
+        return (double[]) cache.get(key);
+    }
+
+    /**
+     * Get premium average array for all bars.
+     */
+    public double[] getPremiumAvg(int period) {
+        int size = candles != null ? candles.size() : 0;
+        if (!hasPremiumIndex() || size == 0) {
+            double[] result = new double[size];
+            java.util.Arrays.fill(result, Double.NaN);
+            return result;
+        }
+        String key = "premiumAvg:" + period;
+        if (!cache.containsKey(key)) {
+            double[] result = new double[size];
+            for (int i = 0; i < size; i++) {
+                result[i] = getPremiumAvgAt(period, i);
+            }
+            cache.put(key, result);
+        }
+        return (double[]) cache.get(key);
     }
 
     // ========== Open Interest (requires OI data to be loaded) ==========
