@@ -146,6 +146,9 @@ phaseSettings:
 ```yaml
 id: my-strategy
 name: My Strategy
+notes: |
+  Free-form text describing the strategy concept, rationale,
+  or any notes for future reference. Shown in UI above the flow diagram.
 enabled: true
 
 entrySettings:

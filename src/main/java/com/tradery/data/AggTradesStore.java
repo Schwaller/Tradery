@@ -206,6 +206,13 @@ public class AggTradesStore {
                 continue;
             }
 
+            // Delete incomplete day folder before re-downloading
+            File dayDir = getDayDir(symbol, current);
+            if (dayDir.exists()) {
+                log.debug("Vision: Cleaning incomplete day folder {}", dateKey);
+                deleteDirectory(dayDir);
+            }
+
             // Build Vision URL for daily file
             String url = String.format("%s/%s/%s-aggTrades-%s.zip",
                 VISION_BASE_URL, symbol, symbol, dateKey);
@@ -956,5 +963,20 @@ public class AggTradesStore {
             return String.format("%.1fK", count / 1_000.0);
         }
         return String.valueOf(count);
+    }
+
+    /**
+     * Recursively delete a directory and all its contents.
+     */
+    private void deleteDirectory(File dir) {
+        if (dir.isDirectory()) {
+            File[] files = dir.listFiles();
+            if (files != null) {
+                for (File file : files) {
+                    deleteDirectory(file);
+                }
+            }
+        }
+        dir.delete();
     }
 }
