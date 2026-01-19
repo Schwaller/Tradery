@@ -493,14 +493,22 @@ public class BinanceVisionClient {
         if (parts.length < 6) {
             throw new IllegalArgumentException("Invalid kline CSV: " + line);
         }
-        return new Candle(
-            Long.parseLong(parts[0].trim()),     // open_time
-            Double.parseDouble(parts[1].trim()), // open
-            Double.parseDouble(parts[2].trim()), // high
-            Double.parseDouble(parts[3].trim()), // low
-            Double.parseDouble(parts[4].trim()), // close
-            Double.parseDouble(parts[5].trim())  // volume
-        );
+
+        long timestamp = Long.parseLong(parts[0].trim());
+        double open = Double.parseDouble(parts[1].trim());
+        double high = Double.parseDouble(parts[2].trim());
+        double low = Double.parseDouble(parts[3].trim());
+        double close = Double.parseDouble(parts[4].trim());
+        double volume = Double.parseDouble(parts[5].trim());
+
+        // Extended fields (indices 7-10 in Vision CSV)
+        double quoteVolume = parts.length > 7 ? Double.parseDouble(parts[7].trim()) : -1;
+        int tradeCount = parts.length > 8 ? Integer.parseInt(parts[8].trim()) : -1;
+        double takerBuyVolume = parts.length > 9 ? Double.parseDouble(parts[9].trim()) : -1;
+        double takerBuyQuoteVolume = parts.length > 10 ? Double.parseDouble(parts[10].trim()) : -1;
+
+        return new Candle(timestamp, open, high, low, close, volume,
+            tradeCount, quoteVolume, takerBuyVolume, takerBuyQuoteVolume);
     }
 
     /**

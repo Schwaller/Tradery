@@ -883,6 +883,9 @@ public class ProjectWindow extends JFrame {
             dataLoadingProgressBar.setValue(percent);
             dataLoadingProgressBar.setString(loaded + "/" + expected);
             dataLoadingProgressBar.setVisible(true);
+
+            // Pulse timeline while data is loading
+            timelineBar.setLoading(true);
         }
     }
 

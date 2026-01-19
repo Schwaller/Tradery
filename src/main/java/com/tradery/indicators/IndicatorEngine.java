@@ -462,46 +462,51 @@ public class IndicatorEngine {
         return Indicators.valAt(candles, period, barIndex);
     }
 
-    // ========== Delta / Cumulative Delta (Tier 2 - Orderflow, requires aggTrades) ==========
+    // ========== Delta / Cumulative Delta ==========
+    // Uses aggTrades if available (more granular), falls back to OHLCV extended data
 
     public double[] getDelta() {
-        if (!hasAggTrades() || !hasCandles()) {
-            double[] result = new double[candles != null ? candles.size() : 0];
-            java.util.Arrays.fill(result, Double.NaN);
-            return result;
+        if (!hasCandles()) {
+            return new double[0];
         }
         String key = "delta";
         if (!cache.containsKey(key)) {
-            cache.put(key, OrderflowIndicators.delta(aggTrades, candles, resolution));
+            if (hasAggTrades()) {
+                // Use aggTrades for more granular delta
+                cache.put(key, OrderflowIndicators.delta(aggTrades, candles, resolution));
+            } else {
+                // Fall back to OHLCV-based delta (instant, no download needed)
+                cache.put(key, getOhlcvDelta());
+            }
         }
         return (double[]) cache.get(key);
     }
 
     public double getDeltaAt(int barIndex) {
-        if (!hasAggTrades() || !hasCandles()) {
-            return Double.NaN;
-        }
-        return OrderflowIndicators.deltaAt(aggTrades, candles, resolution, barIndex);
+        double[] arr = getDelta();
+        return (barIndex >= 0 && barIndex < arr.length) ? arr[barIndex] : Double.NaN;
     }
 
     public double[] getCumulativeDelta() {
-        if (!hasAggTrades() || !hasCandles()) {
-            double[] result = new double[candles != null ? candles.size() : 0];
-            java.util.Arrays.fill(result, Double.NaN);
-            return result;
+        if (!hasCandles()) {
+            return new double[0];
         }
         String key = "cumDelta";
         if (!cache.containsKey(key)) {
-            cache.put(key, OrderflowIndicators.cumulativeDelta(aggTrades, candles, resolution));
+            if (hasAggTrades()) {
+                // Use aggTrades for more granular CVD
+                cache.put(key, OrderflowIndicators.cumulativeDelta(aggTrades, candles, resolution));
+            } else {
+                // Fall back to OHLCV-based CVD (instant, no download needed)
+                cache.put(key, getOhlcvCvd());
+            }
         }
         return (double[]) cache.get(key);
     }
 
     public double getCumulativeDeltaAt(int barIndex) {
-        if (!hasAggTrades() || !hasCandles()) {
-            return Double.NaN;
-        }
-        return OrderflowIndicators.cumulativeDeltaAt(aggTrades, candles, resolution, barIndex);
+        double[] arr = getCumulativeDelta();
+        return (barIndex >= 0 && barIndex < arr.length) ? arr[barIndex] : Double.NaN;
     }
 
     // ========== Whale / Large Trade Detection (Tier 2 - requires aggTrades) ==========

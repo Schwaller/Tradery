@@ -92,6 +92,7 @@ public class SqliteSchema {
                 """);
 
             // CANDLES (multi-timeframe in one table)
+            // Extended fields from Binance klines: tradeCount, quoteVolume, takerBuyVolume, takerBuyQuoteVolume
             stmt.execute("""
                 CREATE TABLE IF NOT EXISTS candles (
                     timeframe TEXT NOT NULL,
@@ -101,6 +102,10 @@ public class SqliteSchema {
                     low REAL NOT NULL,
                     close REAL NOT NULL,
                     volume REAL NOT NULL,
+                    trade_count INTEGER DEFAULT -1,
+                    quote_volume REAL DEFAULT -1,
+                    taker_buy_volume REAL DEFAULT -1,
+                    taker_buy_quote_volume REAL DEFAULT -1,
                     PRIMARY KEY (timeframe, timestamp)
                 ) WITHOUT ROWID
                 """);
@@ -189,11 +194,7 @@ public class SqliteSchema {
     private static void migrateSchema(Connection conn, int fromVersion, int toVersion) throws SQLException {
         // Add migration logic as schema evolves
         for (int v = fromVersion + 1; v <= toVersion; v++) {
-            switch (v) {
-                // Add cases for future migrations
-                // case 2 -> migrateToV2(conn);
-                default -> log.debug("No migration needed for version {}", v);
-            }
+            log.debug("No migration needed for version {}", v);
         }
     }
 

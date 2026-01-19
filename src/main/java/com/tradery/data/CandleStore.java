@@ -701,10 +701,13 @@ public class CandleStore {
     }
 
     /**
-     * Load candles from a CSV file
+     * Load candles from a CSV file.
+     * Returns null if file contains old-format candles (missing extended volume fields)
+     * to trigger a refetch with the new format.
      */
     private List<Candle> loadCsvFile(File file) throws IOException {
         List<Candle> candles = new ArrayList<>();
+        boolean hasExtendedFields = false;
 
         try (BufferedReader reader = new BufferedReader(new FileReader(file))) {
             String line;
@@ -714,19 +717,36 @@ public class CandleStore {
                 line = line.trim();
                 if (line.isEmpty()) continue;
 
-                // Skip header line
+                // Skip header line - but check if it has extended fields
                 if (firstLine && line.startsWith("timestamp")) {
+                    // New format has 10 columns, old format has 6
+                    hasExtendedFields = line.split(",").length >= 10;
                     firstLine = false;
                     continue;
                 }
                 firstLine = false;
 
                 try {
-                    candles.add(Candle.fromCsv(line));
+                    Candle c = Candle.fromCsv(line);
+                    candles.add(c);
+                    // Also check first data row for extended fields
+                    if (candles.size() == 1 && c.hasExtendedVolume()) {
+                        hasExtendedFields = true;
+                    }
                 } catch (Exception e) {
                     log.warn("Failed to parse CSV line: {}", line);
                 }
             }
+        }
+
+        // If file has old format without extended volume fields, return null to trigger refetch
+        if (!candles.isEmpty() && !hasExtendedFields) {
+            log.info("CSV file {} has old format (missing extended volume fields), will refetch", file.getName());
+            // Delete the old file so it gets refetched
+            if (file.delete()) {
+                log.debug("Deleted old-format file: {}", file.getName());
+            }
+            return null;
         }
 
         return candles;
@@ -737,7 +757,13 @@ public class CandleStore {
      */
     private void writeCsvFile(File file, List<Candle> candles) throws IOException {
         try (PrintWriter writer = new PrintWriter(new FileWriter(file))) {
-            writer.println("timestamp,open,high,low,close,volume");
+            // Use extended header if candles have extended fields
+            boolean hasExtended = !candles.isEmpty() && candles.get(0).hasExtendedVolume();
+            if (hasExtended) {
+                writer.println("timestamp,open,high,low,close,volume,tradeCount,quoteVolume,takerBuyVolume,takerBuyQuoteVolume");
+            } else {
+                writer.println("timestamp,open,high,low,close,volume");
+            }
             for (Candle c : candles) {
                 writer.println(c.toCsv());
             }

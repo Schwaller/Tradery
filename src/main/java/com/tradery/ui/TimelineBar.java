@@ -348,9 +348,9 @@ public class TimelineBar extends JPanel implements DataPageListener<Candle> {
                     borderAlpha = 64 + (int) (128 * (0.5 + 0.5 * Math.sin(pulsePhase * 2 * Math.PI)));
                 }
 
-                // Rounded selection rectangle
+                // Rounded selection rectangle (extend 3px closer to bottom)
                 java.awt.geom.RoundRectangle2D selectionRect =
-                    new java.awt.geom.RoundRectangle2D.Double(x1, topPadding, x2 - x1, chartHeight, 5, 5);
+                    new java.awt.geom.RoundRectangle2D.Double(x1, topPadding, x2 - x1, chartHeight + 3, 5, 5);
 
                 // Fill with pulsing alpha
                 Color fillColor = isDarkTheme

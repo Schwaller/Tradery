@@ -36,8 +36,9 @@ public class CandleDao {
 
         String sql = """
             INSERT OR REPLACE INTO candles
-            (timeframe, timestamp, open, high, low, close, volume)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            (timeframe, timestamp, open, high, low, close, volume,
+             trade_count, quote_volume, taker_buy_volume, taker_buy_quote_volume)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """;
 
         try (PreparedStatement stmt = c.prepareStatement(sql)) {
@@ -48,6 +49,10 @@ public class CandleDao {
             stmt.setDouble(5, candle.low());
             stmt.setDouble(6, candle.close());
             stmt.setDouble(7, candle.volume());
+            stmt.setInt(8, candle.tradeCount());
+            stmt.setDouble(9, candle.quoteVolume());
+            stmt.setDouble(10, candle.takerBuyVolume());
+            stmt.setDouble(11, candle.takerBuyQuoteVolume());
             stmt.executeUpdate();
         }
     }
@@ -63,8 +68,9 @@ public class CandleDao {
         return conn.executeInTransaction(c -> {
             String sql = """
                 INSERT OR REPLACE INTO candles
-                (timeframe, timestamp, open, high, low, close, volume)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                (timeframe, timestamp, open, high, low, close, volume,
+                 trade_count, quote_volume, taker_buy_volume, taker_buy_quote_volume)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """;
 
             int count = 0;
@@ -77,6 +83,10 @@ public class CandleDao {
                     stmt.setDouble(5, candle.low());
                     stmt.setDouble(6, candle.close());
                     stmt.setDouble(7, candle.volume());
+                    stmt.setInt(8, candle.tradeCount());
+                    stmt.setDouble(9, candle.quoteVolume());
+                    stmt.setDouble(10, candle.takerBuyVolume());
+                    stmt.setDouble(11, candle.takerBuyQuoteVolume());
                     stmt.addBatch();
 
                     // Execute in batches of 1000
@@ -100,7 +110,8 @@ public class CandleDao {
         List<Candle> candles = new ArrayList<>();
 
         String sql = """
-            SELECT timestamp, open, high, low, close, volume
+            SELECT timestamp, open, high, low, close, volume,
+                   trade_count, quote_volume, taker_buy_volume, taker_buy_quote_volume
             FROM candles
             WHERE timeframe = ? AND timestamp >= ? AND timestamp <= ?
             ORDER BY timestamp
@@ -113,19 +124,30 @@ public class CandleDao {
 
             try (ResultSet rs = stmt.executeQuery()) {
                 while (rs.next()) {
-                    candles.add(new Candle(
-                        rs.getLong("timestamp"),
-                        rs.getDouble("open"),
-                        rs.getDouble("high"),
-                        rs.getDouble("low"),
-                        rs.getDouble("close"),
-                        rs.getDouble("volume")
-                    ));
+                    candles.add(readCandle(rs));
                 }
             }
         }
 
         return candles;
+    }
+
+    /**
+     * Read a Candle from a ResultSet (helper method).
+     */
+    private Candle readCandle(ResultSet rs) throws SQLException {
+        return new Candle(
+            rs.getLong("timestamp"),
+            rs.getDouble("open"),
+            rs.getDouble("high"),
+            rs.getDouble("low"),
+            rs.getDouble("close"),
+            rs.getDouble("volume"),
+            rs.getInt("trade_count"),
+            rs.getDouble("quote_volume"),
+            rs.getDouble("taker_buy_volume"),
+            rs.getDouble("taker_buy_quote_volume")
+        );
     }
 
     /**
@@ -137,7 +159,8 @@ public class CandleDao {
         List<Candle> candles = new ArrayList<>();
 
         String sql = """
-            SELECT timestamp, open, high, low, close, volume
+            SELECT timestamp, open, high, low, close, volume,
+                   trade_count, quote_volume, taker_buy_volume, taker_buy_quote_volume
             FROM candles
             WHERE timeframe = ? AND timestamp >= ? AND timestamp <= ?
             ORDER BY timestamp
@@ -152,14 +175,7 @@ public class CandleDao {
 
             try (ResultSet rs = stmt.executeQuery()) {
                 while (rs.next()) {
-                    candles.add(new Candle(
-                        rs.getLong("timestamp"),
-                        rs.getDouble("open"),
-                        rs.getDouble("high"),
-                        rs.getDouble("low"),
-                        rs.getDouble("close"),
-                        rs.getDouble("volume")
-                    ));
+                    candles.add(readCandle(rs));
                 }
             }
         }
@@ -175,7 +191,8 @@ public class CandleDao {
         List<Candle> candles = new ArrayList<>();
 
         String sql = """
-            SELECT timestamp, open, high, low, close, volume
+            SELECT timestamp, open, high, low, close, volume,
+                   trade_count, quote_volume, taker_buy_volume, taker_buy_quote_volume
             FROM candles
             WHERE timeframe = ?
             ORDER BY timestamp DESC
@@ -188,14 +205,7 @@ public class CandleDao {
 
             try (ResultSet rs = stmt.executeQuery()) {
                 while (rs.next()) {
-                    candles.add(new Candle(
-                        rs.getLong("timestamp"),
-                        rs.getDouble("open"),
-                        rs.getDouble("high"),
-                        rs.getDouble("low"),
-                        rs.getDouble("close"),
-                        rs.getDouble("volume")
-                    ));
+                    candles.add(readCandle(rs));
                 }
             }
         }
@@ -220,7 +230,8 @@ public class CandleDao {
         Connection c = conn.getConnection();
 
         String sql = """
-            SELECT timestamp, open, high, low, close, volume
+            SELECT timestamp, open, high, low, close, volume,
+                   trade_count, quote_volume, taker_buy_volume, taker_buy_quote_volume
             FROM candles
             WHERE timeframe = ?
             ORDER BY timestamp ASC
@@ -232,14 +243,7 @@ public class CandleDao {
 
             try (ResultSet rs = stmt.executeQuery()) {
                 if (rs.next()) {
-                    return new Candle(
-                        rs.getLong("timestamp"),
-                        rs.getDouble("open"),
-                        rs.getDouble("high"),
-                        rs.getDouble("low"),
-                        rs.getDouble("close"),
-                        rs.getDouble("volume")
-                    );
+                    return readCandle(rs);
                 }
             }
         }

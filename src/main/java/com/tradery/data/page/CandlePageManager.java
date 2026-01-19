@@ -92,14 +92,26 @@ public class CandlePageManager extends DataPageManager<Candle> {
      */
     private void fetchAndSync(String symbol, String timeframe,
                                long startTime, long endTime) throws Exception {
+        BinanceClient apiClient = new BinanceClient();
+        AtomicBoolean cancelled = new AtomicBoolean(false);
+
+        // For weekly timeframe, use REST API directly (Vision has gaps at month boundaries)
+        if ("1w".equals(timeframe) || "1M".equals(timeframe)) {
+            log.info("Using REST API for {} {} (Vision has gaps for large timeframes)", symbol, timeframe);
+            List<Candle> candles = apiClient.fetchAllKlines(symbol, timeframe, startTime, endTime, cancelled, null);
+            if (!candles.isEmpty()) {
+                dataStore.saveCandles(symbol, timeframe, candles);
+                log.info("Fetched {} {} candles via REST API", candles.size(), timeframe);
+            }
+            return;
+        }
+
         // Convert timestamps to YearMonth for Vision client
         YearMonth startMonth = YearMonth.from(
             Instant.ofEpochMilli(startTime).atZone(ZoneOffset.UTC));
 
         // Use BinanceVisionClient for bulk download + API backfill
         BinanceVisionClient visionClient = new BinanceVisionClient(dataStore);
-        BinanceClient apiClient = new BinanceClient();
-        AtomicBoolean cancelled = new AtomicBoolean(false);
 
         visionClient.syncWithApiBackfill(symbol, timeframe, startMonth, apiClient, cancelled,
             progress -> log.debug("Vision sync: {} - {}", progress.currentMonth(), progress.status()));
