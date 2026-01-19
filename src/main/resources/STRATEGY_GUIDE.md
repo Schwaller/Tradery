@@ -4,6 +4,18 @@ A comprehensive guide to building trading strategies in Tradery.
 
 ---
 
+## Strategy Fields
+
+| Field | Description |
+|-------|-------------|
+| **id** | Unique identifier (used for file paths) |
+| **name** | Display name shown in UI |
+| **description** | Brief description of the strategy |
+| **notes** | Free-form notes for strategy concept, rationale, or ideas. Shown in UI above the flow diagram. Use this to document the "why" behind your strategy. |
+| **enabled** | Whether the strategy is active |
+
+---
+
 ## Entry Settings
 
 ### Entry Condition (DSL)

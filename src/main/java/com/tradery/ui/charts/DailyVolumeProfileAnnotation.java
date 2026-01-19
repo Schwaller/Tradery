@@ -150,13 +150,21 @@ public class DailyVolumeProfileAnnotation extends AbstractXYAnnotation {
     private void drawDayProfile(Graphics2D g2, XYPlot plot, Rectangle2D dataArea,
                                  ValueAxis domainAxis, ValueAxis rangeAxis, DayProfile day) {
 
-        // Convert day start time to screen X coordinate
-        double screenX = domainAxis.valueToJava2D(day.dayStartTime, dataArea, RectangleEdge.BOTTOM);
+        // Convert day start and end times to screen X coordinates
+        double dayStartX = domainAxis.valueToJava2D(day.dayStartTime, dataArea, RectangleEdge.BOTTOM);
+        double dayEndX = domainAxis.valueToJava2D(day.dayEndTime, dataArea, RectangleEdge.BOTTOM);
+
+        // Calculate day width in pixels, use 2/3 for histogram
+        double dayWidthPx = dayEndX - dayStartX;
+        double maxBarWidth = dayWidthPx * 0.67;  // 2/3 of day width
 
         // Skip if outside visible area
-        if (screenX < dataArea.getMinX() - histogramWidth || screenX > dataArea.getMaxX()) {
+        if (dayEndX < dataArea.getMinX() || dayStartX > dataArea.getMaxX()) {
             return;
         }
+
+        // Skip if day is too narrow to draw meaningfully
+        if (maxBarWidth < 5) return;
 
         double[] priceLevels = day.priceLevels;
         double[] volumes = day.volumes;
@@ -178,9 +186,9 @@ public class DailyVolumeProfileAnnotation extends AbstractXYAnnotation {
             double screenY = rangeAxis.valueToJava2D(priceLevel + binHeight / 2, dataArea, RectangleEdge.LEFT);
             double screenY2 = rangeAxis.valueToJava2D(priceLevel - binHeight / 2, dataArea, RectangleEdge.LEFT);
 
-            // Calculate bar width based on relative volume
+            // Calculate bar width based on relative volume (scaled to 2/3 of day width)
             double normalizedVolume = day.maxVolume > 0 ? volume / day.maxVolume : 0;
-            int barWidth = (int) (normalizedVolume * histogramWidth);
+            int barWidth = (int) (normalizedVolume * maxBarWidth);
 
             // Calculate bar height in pixels
             int barHeight = Math.max(1, Math.abs((int)(screenY2 - screenY)));
@@ -191,8 +199,8 @@ public class DailyVolumeProfileAnnotation extends AbstractXYAnnotation {
             // Choose color based on volume intensity and POC
             Color barColor = getVolumeColor(normalizedVolume, isPOC);
 
-            // Draw bar to the LEFT of day boundary
-            int x = (int) screenX - barWidth;
+            // Draw bar starting at day start, extending RIGHT into the day
+            int x = (int) dayStartX;
             int y = (int) Math.min(screenY, screenY2);
 
             // Ensure bar is visible
@@ -208,22 +216,22 @@ public class DailyVolumeProfileAnnotation extends AbstractXYAnnotation {
             }
         }
 
-        // Optionally draw VAH/VAL markers
-        drawValueAreaMarker(g2, dataArea, domainAxis, rangeAxis, day.dayStartTime, day.vah, "VAH");
-        drawValueAreaMarker(g2, dataArea, domainAxis, rangeAxis, day.dayStartTime, day.val, "VAL");
+        // Draw VAH/VAL markers at the right edge of histogram area
+        drawValueAreaMarker(g2, dataArea, domainAxis, rangeAxis, day.dayStartTime, maxBarWidth, day.vah);
+        drawValueAreaMarker(g2, dataArea, domainAxis, rangeAxis, day.dayStartTime, maxBarWidth, day.val);
     }
 
     private void drawValueAreaMarker(Graphics2D g2, Rectangle2D dataArea,
                                       ValueAxis domainAxis, ValueAxis rangeAxis,
-                                      long timestamp, double price, String label) {
-        double screenX = domainAxis.valueToJava2D(timestamp, dataArea, RectangleEdge.BOTTOM);
+                                      long dayStartTime, double maxBarWidth, double price) {
+        double dayStartX = domainAxis.valueToJava2D(dayStartTime, dataArea, RectangleEdge.BOTTOM);
         double screenY = rangeAxis.valueToJava2D(price, dataArea, RectangleEdge.LEFT);
 
-        // Draw small tick mark
+        // Draw small tick mark at the right edge of the histogram area
         g2.setColor(new Color(150, 150, 150, 150));
         g2.setStroke(new BasicStroke(1.0f));
-        g2.drawLine((int) screenX - histogramWidth - 3, (int) screenY,
-                    (int) screenX - histogramWidth, (int) screenY);
+        int tickX = (int) (dayStartX + maxBarWidth);
+        g2.drawLine(tickX, (int) screenY, tickX + 3, (int) screenY);
     }
 
     /**

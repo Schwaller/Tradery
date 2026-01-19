@@ -43,6 +43,7 @@ To verify results are current after an edit, compare the strategy fields in the 
   "id": "my-strategy",
   "name": "My Strategy",
   "description": "Strategy description",
+  "notes": "Free-form notes about the strategy concept, rationale, or ideas for improvement. Shown in UI above the flow diagram.",
   "entrySettings": {
     "condition": "RSI(14) < 30 AND price > SMA(200)",
     "maxOpenTrades": 1,
@@ -114,6 +115,11 @@ Exit zones define how trades are managed based on their current P&L. Each zone c
 - `takeProfitType` / `takeProfitValue` - Take-profit for this zone
 - `exitImmediately` - If true, exit as soon as trade enters this zone
 - `minBarsBeforeExit` - Minimum bars before exit conditions are evaluated
+- `exitPercent` - Partial exit: percentage to exit per trigger (null = 100%, full exit)
+- `maxExits` - Maximum number of partial exits in this zone (null = unlimited)
+- `exitBasis` - How to calculate exit %: "remaining" (% of what's left) or "original" (% of original position)
+- `exitReentry` - Behavior on zone re-entry: "continue" (resume count) or "reset" (start fresh)
+- `minBarsBetweenExits` - Minimum bars between partial exits (default: 0)
 
 #### Example: Multi-Zone Strategy
 
@@ -149,6 +155,57 @@ This example:
 1. **Default** (P&L < 2%): 1.5% trailing stop
 2. **Lock Gains** (2% <= P&L < 5%): Tighten to 0.5% trailing stop
 3. **Take Profit** (P&L >= 5%): Exit immediately
+
+#### Example: Scaling Out (DCA-Out)
+
+```json
+"exitSettings": {
+  "zones": [
+    {
+      "name": "Hold",
+      "minPnlPercent": null,
+      "maxPnlPercent": 3.0,
+      "stopLossType": "trailing_percent",
+      "stopLossValue": 2.0
+    },
+    {
+      "name": "Take First",
+      "minPnlPercent": 3.0,
+      "maxPnlPercent": 6.0,
+      "exitImmediately": true,
+      "exitPercent": 33,
+      "maxExits": 1,
+      "exitBasis": "original",
+      "exitReentry": "continue",
+      "minBarsBetweenExits": 2
+    },
+    {
+      "name": "Take Second",
+      "minPnlPercent": 6.0,
+      "maxPnlPercent": 10.0,
+      "exitImmediately": true,
+      "exitPercent": 50,
+      "maxExits": 1,
+      "exitBasis": "remaining",
+      "exitReentry": "continue",
+      "minBarsBetweenExits": 2
+    },
+    {
+      "name": "Let It Ride",
+      "minPnlPercent": 10.0,
+      "maxPnlPercent": null,
+      "stopLossType": "trailing_percent",
+      "stopLossValue": 1.0
+    }
+  ]
+}
+```
+
+This scales out of positions:
+1. **Hold** (P&L < 3%): 2% trailing stop, no exit
+2. **Take First** (3% <= P&L < 6%): Exit 33% of original position
+3. **Take Second** (6% <= P&L < 10%): Exit 50% of remaining (so ~33% of original)
+4. **Let It Ride** (P&L >= 10%): Final ~33% rides with tight 1% trailing stop
 
 ## DSL Syntax for Entry/Exit Conditions
 

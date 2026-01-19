@@ -43,6 +43,7 @@ To verify results are current after an edit, compare the strategy fields in the 
   "id": "my-strategy",
   "name": "My Strategy",
   "description": "Strategy description",
+  "notes": "Free-form notes about the strategy concept, rationale, or ideas for improvement. Shown in UI above the flow diagram.",
   "entrySettings": {
     "condition": "RSI(14) < 30 AND price > SMA(200)",
     "maxOpenTrades": 1,
