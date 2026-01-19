@@ -347,7 +347,7 @@ public class IndicatorDataService {
         listeners.put(key, listener);
 
         IndicatorPage<?> page = pageMgr.request(
-            type, params, symbol, timeframe, startTime, endTime, listener);
+            type, params, symbol, timeframe, startTime, endTime, listener, "IndicatorChart");
         pages.put(key, page);
 
         log.debug("Subscribed to {} with params {}", type, params);
@@ -375,7 +375,7 @@ public class IndicatorDataService {
                 IndicatorPage<?> newPage = pageMgr.request(
                     oldPage.getType(), oldPage.getParams(),
                     symbol, timeframe, startTime, endTime,
-                    (IndicatorPageListener) listener);
+                    (IndicatorPageListener) listener, "IndicatorChart");
                 pages.put(entry.getKey(), newPage);
             }
         }

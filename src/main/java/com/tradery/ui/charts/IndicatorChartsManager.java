@@ -1,8 +1,14 @@
 package com.tradery.ui.charts;
 
+import com.tradery.ApplicationContext;
+import com.tradery.data.PageState;
+import com.tradery.data.page.DataPageListener;
+import com.tradery.data.page.DataPageView;
+import com.tradery.data.page.PremiumPageManager;
 import com.tradery.indicators.IndicatorEngine;
 import com.tradery.indicators.Indicators;
 import com.tradery.model.Candle;
+import com.tradery.model.PremiumIndex;
 import org.jfree.chart.ChartFactory;
 import org.jfree.chart.JFreeChart;
 import org.jfree.chart.annotations.XYLineAnnotation;
@@ -82,6 +88,13 @@ public class IndicatorChartsManager {
     // IndicatorDataService for background indicator computation
     private final IndicatorDataService indicatorDataService = new IndicatorDataService();
 
+    // Premium data tracking (market data, not computed indicator)
+    private DataPageView<PremiumIndex> premiumPage;
+    private DataPageListener<PremiumIndex> premiumListener;
+    private List<PremiumIndex> currentPremiumData;
+    private String currentSymbol;
+    private String currentTimeframe;
+
     // Callback for layout updates
     private Runnable onLayoutChange;
 
@@ -104,6 +117,10 @@ public class IndicatorChartsManager {
      */
     public void setDataContext(List<Candle> candles, String symbol, String timeframe,
                                long startTime, long endTime) {
+        // Store current context for premium data loading
+        this.currentSymbol = symbol;
+        this.currentTimeframe = timeframe;
+
         // Update context in the service
         indicatorDataService.setDataContext(candles, symbol, timeframe, startTime, endTime);
 
@@ -125,6 +142,58 @@ public class IndicatorChartsManager {
             indicatorDataService.subscribePlusDI(adxPeriod);
             indicatorDataService.subscribeMinusDI(adxPeriod);
         }
+
+        // Request premium data if chart is enabled
+        if (premiumChartEnabled) {
+            requestPremiumData(symbol, timeframe, startTime, endTime);
+        }
+    }
+
+    /**
+     * Request premium data from PremiumPageManager.
+     */
+    private void requestPremiumData(String symbol, String timeframe, long startTime, long endTime) {
+        PremiumPageManager premiumPageMgr = ApplicationContext.getInstance().getPremiumPageManager();
+        if (premiumPageMgr == null) {
+            return;
+        }
+
+        // Release previous page if any
+        if (premiumPage != null && premiumListener != null) {
+            premiumPageMgr.release(premiumPage, premiumListener);
+        }
+
+        // Create listener for premium data
+        premiumListener = new DataPageListener<>() {
+            @Override
+            public void onStateChanged(DataPageView<PremiumIndex> page, PageState oldState, PageState newState) {
+                if (newState == PageState.READY) {
+                    currentPremiumData = page.getData();
+                    // Refresh chart on EDT
+                    SwingUtilities.invokeLater(() -> {
+                        List<Candle> candles = indicatorDataService.getCandles();
+                        if (candles != null && !candles.isEmpty()) {
+                            updatePremiumChartFromData(candles);
+                        }
+                    });
+                }
+            }
+
+            @Override
+            public void onDataChanged(DataPageView<PremiumIndex> page) {
+                if (page.isReady()) {
+                    currentPremiumData = page.getData();
+                    SwingUtilities.invokeLater(() -> {
+                        List<Candle> candles = indicatorDataService.getCandles();
+                        if (candles != null && !candles.isEmpty()) {
+                            updatePremiumChartFromData(candles);
+                        }
+                    });
+                }
+            }
+        };
+
+        premiumPage = premiumPageMgr.request(symbol, timeframe, startTime, endTime, premiumListener, "PremiumChart");
     }
 
     /**
@@ -1011,6 +1080,104 @@ public class IndicatorChartsManager {
             }
             if (i < premiumAvg.length && !Double.isNaN(premiumAvg[i])) {
                 avgSeries.addOrUpdate(new Millisecond(new Date(c.timestamp())), premiumAvg[i]);
+            }
+        }
+
+        premiumDataset.addSeries(premiumSeries);
+        avgDataset.addSeries(avgSeries);
+
+        // Premium bars (green for positive, red for negative)
+        plot.setDataset(0, premiumDataset);
+        // Average line on secondary dataset
+        plot.setDataset(1, avgDataset);
+
+        // Bar renderer with colors based on premium sign
+        final XYSeriesCollection finalPremiumDataset = premiumDataset;
+        XYBarRenderer barRenderer = new XYBarRenderer() {
+            @Override
+            public Paint getItemPaint(int series, int item) {
+                double value = finalPremiumDataset.getYValue(series, item);
+                return value >= 0 ? ChartStyles.PREMIUM_POSITIVE : ChartStyles.PREMIUM_NEGATIVE;
+            }
+        };
+        barRenderer.setShadowVisible(false);
+        barRenderer.setBarPainter(new StandardXYBarPainter());
+        plot.setRenderer(0, barRenderer);
+
+        // Average line renderer
+        XYLineAndShapeRenderer avgRenderer = new XYLineAndShapeRenderer(true, false);
+        avgRenderer.setSeriesPaint(0, ChartStyles.PREMIUM_AVG_COLOR);
+        avgRenderer.setSeriesStroke(0, ChartStyles.MEDIUM_STROKE);
+        plot.setRenderer(1, avgRenderer);
+
+        // Add zero line and title
+        plot.clearAnnotations();
+        ChartStyles.addChartTitleAnnotation(plot, "Premium Index (%)");
+        if (!candles.isEmpty()) {
+            long startTime = candles.get(0).timestamp();
+            long endTime = candles.get(candles.size() - 1).timestamp();
+            plot.addAnnotation(new XYLineAnnotation(startTime, 0, endTime, 0,
+                ChartStyles.DASHED_STROKE, ChartStyles.TEXT_COLOR));
+        }
+    }
+
+    /**
+     * Update premium chart using directly loaded premium data.
+     * This is called when premium data is loaded from PremiumPageManager.
+     */
+    private void updatePremiumChartFromData(List<Candle> candles) {
+        if (!premiumChartEnabled || candles == null || candles.isEmpty() || currentPremiumData == null) {
+            return;
+        }
+
+        XYPlot plot = premiumComponent.getChart().getXYPlot();
+
+        // Build timestamp -> premium map for efficient lookup
+        java.util.Map<Long, PremiumIndex> premiumMap = new java.util.HashMap<>();
+        for (PremiumIndex p : currentPremiumData) {
+            premiumMap.put(p.openTime(), p);
+        }
+
+        // Build datasets
+        XYSeriesCollection premiumDataset = new XYSeriesCollection();
+        XYSeries premiumSeries = new XYSeries("Premium");
+
+        TimeSeriesCollection avgDataset = new TimeSeriesCollection();
+        TimeSeries avgSeries = new TimeSeries("Premium 24 Avg");
+
+        // Calculate premium values and 24-period average
+        double[] premiumValues = new double[candles.size()];
+        for (int i = 0; i < candles.size(); i++) {
+            Candle c = candles.get(i);
+            PremiumIndex p = premiumMap.get(c.timestamp());
+            if (p != null) {
+                // Convert to percentage (close is the premium value at bar close)
+                premiumValues[i] = p.close() * 100.0;
+            } else {
+                premiumValues[i] = Double.NaN;
+            }
+        }
+
+        // Build series
+        for (int i = 0; i < candles.size(); i++) {
+            Candle c = candles.get(i);
+            if (!Double.isNaN(premiumValues[i])) {
+                premiumSeries.add(c.timestamp(), premiumValues[i]);
+            }
+
+            // Calculate 24-period average
+            if (i >= 23) {
+                double sum = 0;
+                int count = 0;
+                for (int j = i - 23; j <= i; j++) {
+                    if (!Double.isNaN(premiumValues[j])) {
+                        sum += premiumValues[j];
+                        count++;
+                    }
+                }
+                if (count > 0) {
+                    avgSeries.addOrUpdate(new Millisecond(new Date(c.timestamp())), sum / count);
+                }
             }
         }
 

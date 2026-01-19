@@ -22,6 +22,8 @@ import java.util.List;
  */
 public class DslHelpDialog extends JDialog {
 
+    private static DslHelpDialog instance;
+
     private JList<TocEntry> tocList;
     private DefaultListModel<TocEntry> tocModel;
     private JEditorPane helpPane;
@@ -76,9 +78,9 @@ public class DslHelpDialog extends JDialog {
         searchHighlightPainter = new DefaultHighlighter.DefaultHighlightPainter(highlightColor);
         currentMatchPainter = new DefaultHighlighter.DefaultHighlightPainter(currentMatchColor);
 
-        // Title bar area (28px height for macOS traffic lights)
+        // Title bar area (44px height for macOS traffic lights + search box clearance)
         JPanel titleBar = new JPanel(new BorderLayout());
-        titleBar.setPreferredSize(new Dimension(0, 28));
+        titleBar.setPreferredSize(new Dimension(0, 44));
 
         // Left spacer for traffic lights
         JPanel leftSpacer = new JPanel();
@@ -89,9 +91,10 @@ public class DslHelpDialog extends JDialog {
         JLabel titleLabel = new JLabel("DSL Reference", SwingConstants.CENTER);
         titleLabel.setFont(titleLabel.getFont().deriveFont(Font.BOLD, 13f));
 
-        // Search panel on right
-        JPanel searchPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 4, 2));
+        // Search panel on right (8px right margin, vertically centered)
+        JPanel searchPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 4, 0));
         searchPanel.setOpaque(false);
+        searchPanel.setBorder(new EmptyBorder(0, 0, 0, 8));
 
         searchField = new JTextField(12);
         searchField.putClientProperty("JTextField.placeholderText", "Search...");
@@ -125,9 +128,14 @@ public class DslHelpDialog extends JDialog {
         searchPanel.add(searchResultLabel);
         searchPanel.add(searchField);
 
+        // Wrapper to vertically center the search panel
+        JPanel searchWrapper = new JPanel(new GridBagLayout());
+        searchWrapper.setOpaque(false);
+        searchWrapper.add(searchPanel);
+
         titleBar.add(leftSpacer, BorderLayout.WEST);
         titleBar.add(titleLabel, BorderLayout.CENTER);
-        titleBar.add(searchPanel, BorderLayout.EAST);
+        titleBar.add(searchWrapper, BorderLayout.EAST);
 
         // Build content and TOC
         tocEntries = new ArrayList<>();
@@ -561,7 +569,7 @@ public class DslHelpDialog extends JDialog {
 
             </body>
             </html>
-            """.formatted(bgHex, fgHex, fgHex, fgSecHex, codeBgHex, fgHex, borderHex, codeBgHex, codeBgHex, accentHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex);
+            """.formatted(bgHex, fgHex, fgHex, accentHex, codeBgHex, fgHex, borderHex, codeBgHex, codeBgHex, accentHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex);
     }
 
     private void performSearch() {
@@ -661,11 +669,23 @@ public class DslHelpDialog extends JDialog {
     }
 
     /**
-     * Shows the DSL help dialog.
+     * Shows the DSL help dialog (singleton - reuses existing instance).
      */
     public static void show(Component parent) {
+        if (instance != null && instance.isDisplayable()) {
+            instance.toFront();
+            instance.requestFocus();
+            return;
+        }
+
         Window window = SwingUtilities.getWindowAncestor(parent);
-        DslHelpDialog dialog = new DslHelpDialog(window);
-        dialog.setVisible(true);
+        instance = new DslHelpDialog(window);
+        instance.addWindowListener(new java.awt.event.WindowAdapter() {
+            @Override
+            public void windowClosed(java.awt.event.WindowEvent e) {
+                instance = null;
+            }
+        });
+        instance.setVisible(true);
     }
 }

@@ -11,6 +11,7 @@ import com.tradery.model.AggTrade;
 import com.tradery.model.FundingRate;
 import com.tradery.model.OpenInterest;
 import com.tradery.model.PremiumIndex;
+import com.tradery.model.TradeDirection;
 
 import java.io.File;
 import java.io.IOException;
@@ -115,6 +116,23 @@ public class BacktestEngine {
             List<Phase> requiredPhases,
             Consumer<Progress> onProgress
     ) {
+        return run(strategy, config, candles, requiredPhases, null, onProgress);
+    }
+
+    /**
+     * Run a backtest for a strategy on historical data with phase filtering and pre-fetched phase candles
+     *
+     * @param requiredPhases List of Phase objects that must all be active for entry
+     * @param phaseCandles   Pre-fetched candles for phases keyed by "symbol:timeframe" (can be null)
+     */
+    public BacktestResult run(
+            Strategy strategy,
+            BacktestConfig config,
+            List<Candle> candles,
+            List<Phase> requiredPhases,
+            Map<String, List<Candle>> phaseCandles,
+            Consumer<Progress> onProgress
+    ) {
         long startTime = System.currentTimeMillis();
         List<String> errors = new ArrayList<>();
 
@@ -141,7 +159,8 @@ public class BacktestEngine {
                         if (onProgress != null) {
                             onProgress.accept(new Progress(0, candles.size(), 0, "Evaluating phase: " + phaseName + "..."));
                         }
-                    }
+                    },
+                    phaseCandles
                 );
             } catch (IOException e) {
                 return createErrorResult(strategy, config, startTime,
@@ -404,10 +423,17 @@ public class BacktestEngine {
                         TakeProfitType tpType = isMarketExit ? TakeProfitType.NONE : zone.takeProfitType();
                         Double tpValue = isMarketExit ? null : zone.takeProfitValue();
 
+                        // Determine if this is a long or short trade
+                        boolean isLong = "long".equalsIgnoreCase(openTrade.side());
+
                         // Handle CLEAR - reset trailing stop state
                         if (slType == StopLossType.CLEAR) {
                             ots.trailingStopPrice = 0;
-                            ots.highestPriceSinceEntry = candle.close();
+                            if (isLong) {
+                                ots.highestPriceSinceEntry = candle.close();
+                            } else {
+                                ots.lowestPriceSinceEntry = candle.close();
+                            }
                         }
 
                         // Calculate stop distance based on type
@@ -422,21 +448,44 @@ public class BacktestEngine {
 
                         // Handle trailing stop
                         if (slType != null && slType.isTrailing() && stopDistance > 0) {
-                            if (candle.high() > ots.highestPriceSinceEntry) {
-                                ots.highestPriceSinceEntry = candle.high();
-                                ots.trailingStopPrice = ots.highestPriceSinceEntry - stopDistance;
-                            }
-                            if (candle.low() <= ots.trailingStopPrice) {
-                                exitReason = "trailing_stop";
-                                exitPrice = ots.trailingStopPrice;
+                            if (isLong) {
+                                // Long: track highest price, stop below
+                                if (candle.high() > ots.highestPriceSinceEntry) {
+                                    ots.highestPriceSinceEntry = candle.high();
+                                    ots.trailingStopPrice = ots.highestPriceSinceEntry - stopDistance;
+                                }
+                                if (candle.low() <= ots.trailingStopPrice) {
+                                    exitReason = "trailing_stop";
+                                    exitPrice = ots.trailingStopPrice;
+                                }
+                            } else {
+                                // Short: track lowest price, stop above
+                                if (candle.low() < ots.lowestPriceSinceEntry) {
+                                    ots.lowestPriceSinceEntry = candle.low();
+                                    ots.trailingStopPrice = ots.lowestPriceSinceEntry + stopDistance;
+                                }
+                                if (candle.high() >= ots.trailingStopPrice) {
+                                    exitReason = "trailing_stop";
+                                    exitPrice = ots.trailingStopPrice;
+                                }
                             }
                         }
                         // Handle fixed stop-loss
                         else if (slType != null && !slType.isTrailing() && slType != StopLossType.NONE && stopDistance > 0) {
-                            double stopPrice = entryPrice - stopDistance;
-                            if (candle.low() <= stopPrice) {
-                                exitReason = "stop_loss";
-                                exitPrice = stopPrice;
+                            if (isLong) {
+                                // Long: stop below entry
+                                double stopPrice = entryPrice - stopDistance;
+                                if (candle.low() <= stopPrice) {
+                                    exitReason = "stop_loss";
+                                    exitPrice = stopPrice;
+                                }
+                            } else {
+                                // Short: stop above entry
+                                double stopPrice = entryPrice + stopDistance;
+                                if (candle.high() >= stopPrice) {
+                                    exitReason = "stop_loss";
+                                    exitPrice = stopPrice;
+                                }
                             }
                         }
 
@@ -449,10 +498,20 @@ public class BacktestEngine {
                                 tpDistance = positionSizer.calculateATR(candles, i, 14) * tpValue;
                             }
 
-                            double tpPrice = entryPrice + tpDistance;
-                            if (candle.high() >= tpPrice) {
-                                exitReason = "take_profit";
-                                exitPrice = tpPrice;
+                            if (isLong) {
+                                // Long: TP above entry
+                                double tpPrice = entryPrice + tpDistance;
+                                if (candle.high() >= tpPrice) {
+                                    exitReason = "take_profit";
+                                    exitPrice = tpPrice;
+                                }
+                            } else {
+                                // Short: TP below entry
+                                double tpPrice = entryPrice - tpDistance;
+                                if (candle.low() <= tpPrice) {
+                                    exitReason = "take_profit";
+                                    exitPrice = tpPrice;
+                                }
                             }
                         }
 
@@ -678,9 +737,10 @@ public class BacktestEngine {
                     // Check expiration first
                     if (pendingOrder.isExpired(i)) {
                         // Record expired order
+                        String side = strategy.getDirection().getValue();
                         Trade expiredTrade = Trade.expired(
                             strategy.getId(),
-                            "long",
+                            side,
                             pendingOrder.signalBar,
                             candles.get(pendingOrder.signalBar).timestamp(),
                             pendingOrder.signalPrice,
@@ -693,9 +753,9 @@ public class BacktestEngine {
                         // Check fill conditions based on order type
                         Double fillPrice = null;
 
-                        if (pendingOrder.shouldFillLimit(candle.low())) {
+                        if (pendingOrder.shouldFillLimit(candle.high(), candle.low())) {
                             fillPrice = pendingOrder.getFillPrice();
-                        } else if (pendingOrder.shouldFillStop(candle.high())) {
+                        } else if (pendingOrder.shouldFillStop(candle.high(), candle.low())) {
                             fillPrice = pendingOrder.getFillPrice();
                         } else if (pendingOrder.orderType == EntryOrderType.TRAILING) {
                             fillPrice = pendingOrder.updateTrailingAndCheckFill(
@@ -729,9 +789,10 @@ public class BacktestEngine {
                                 List<String> entryPhases = tradeAnalytics.getActivePhasesAtBar(phaseStates, i);
                                 Map<String, Double> entryIndicators = tradeAnalytics.getIndicatorValuesAtBar(strategy, i);
 
+                                String side = strategy.getDirection().getValue();
                                 Trade newTrade = Trade.open(
                                     strategy.getId(),
-                                    "long",
+                                    side,
                                     i,
                                     candle.timestamp(),
                                     fillPrice,
@@ -756,7 +817,9 @@ public class BacktestEngine {
                                         } else if (slType.isAtr()) {
                                             stopDistance = positionSizer.calculateATR(candles, i, 14) * slValue;
                                         }
-                                        ots.trailingStopPrice = fillPrice - stopDistance;
+                                        // Long: stop below entry; Short: stop above entry
+                                        boolean isLong = strategy.isLong();
+                                        ots.trailingStopPrice = isLong ? (fillPrice - stopDistance) : (fillPrice + stopDistance);
                                     }
                                 }
 
@@ -767,9 +830,10 @@ public class BacktestEngine {
                                 // Rejected due to no capital
                                 List<String> rejectedPhases = tradeAnalytics.getActivePhasesAtBar(phaseStates, i);
                                 Map<String, Double> rejectedIndicators = tradeAnalytics.getIndicatorValuesAtBar(strategy, i);
+                                String side = strategy.getDirection().getValue();
                                 Trade rejectedTrade = Trade.rejected(
                                     strategy.getId(),
-                                    "long",
+                                    side,
                                     i,
                                     candle.timestamp(),
                                     fillPrice,
@@ -892,9 +956,10 @@ public class BacktestEngine {
                                 List<String> entryPhases = tradeAnalytics.getActivePhasesAtBar(phaseStates, i);
                                 Map<String, Double> entryIndicators = tradeAnalytics.getIndicatorValuesAtBar(strategy, i);
 
+                                String side = strategy.getDirection().getValue();
                                 Trade newTrade = Trade.open(
                                     strategy.getId(),
-                                    "long",
+                                    side,
                                     i,
                                     candle.timestamp(),
                                     candle.close(),
@@ -918,7 +983,9 @@ public class BacktestEngine {
                                         } else if (slType.isAtr()) {
                                             stopDistance = positionSizer.calculateATR(candles, i, 14) * slValue;
                                         }
-                                        ots.trailingStopPrice = candle.close() - stopDistance;
+                                        // Long: stop below entry; Short: stop above entry
+                                        boolean isLong = strategy.isLong();
+                                        ots.trailingStopPrice = isLong ? (candle.close() - stopDistance) : (candle.close() + stopDistance);
                                     }
                                 }
 
@@ -928,9 +995,10 @@ public class BacktestEngine {
                                 // Capture active phases and indicators for rejected trade too
                                 List<String> rejectedPhases = tradeAnalytics.getActivePhasesAtBar(phaseStates, i);
                                 Map<String, Double> rejectedIndicators = tradeAnalytics.getIndicatorValuesAtBar(strategy, i);
+                                String side = strategy.getDirection().getValue();
                                 Trade rejectedTrade = Trade.rejected(
                                     strategy.getId(),
-                                    "long",
+                                    side,
                                     i,
                                     candle.timestamp(),
                                     candle.close(),
@@ -952,7 +1020,8 @@ public class BacktestEngine {
                                 strategy.getEntrySettings().getOrderOffsetValue(),
                                 atr,
                                 strategy.getEntrySettings().getTrailingReversePercent(),
-                                strategy.getEntrySettings().getExpirationBars()
+                                strategy.getEntrySettings().getExpirationBars(),
+                                strategy.isLong()
                             );
                         }
                     }

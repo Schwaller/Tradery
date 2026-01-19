@@ -57,6 +57,27 @@ public class PhaseEvaluator {
             String strategyTimeframe,
             Consumer<String> onProgress
     ) throws IOException {
+        return evaluatePhases(requiredPhases, strategyCandles, strategyTimeframe, onProgress, null);
+    }
+
+    /**
+     * Pre-compute phase state for all required phases over the backtest period.
+     * This version accepts pre-fetched candles to avoid direct store access.
+     *
+     * @param requiredPhases   List of Phase objects to evaluate
+     * @param strategyCandles  Candles from the strategy timeframe
+     * @param strategyTimeframe Strategy's timeframe (e.g., "1h")
+     * @param onProgress       Progress callback (receives phase name being evaluated)
+     * @param phaseCandles     Pre-fetched candles keyed by "symbol:timeframe" (can be null)
+     * @return Map: phaseId -> boolean[] (true = active at strategy bar index)
+     */
+    public Map<String, boolean[]> evaluatePhases(
+            List<Phase> requiredPhases,
+            List<Candle> strategyCandles,
+            String strategyTimeframe,
+            Consumer<String> onProgress,
+            Map<String, List<Candle>> phaseCandles
+    ) throws IOException {
 
         Map<String, boolean[]> result = new HashMap<>();
 
@@ -73,18 +94,24 @@ public class PhaseEvaluator {
                 onProgress.accept(phase.getName() != null ? phase.getName() : phase.getId());
             }
             phaseIndex++;
-            // Calculate warmup needed for phase indicators
-            long warmupMs = getWarmupMs(phase.getTimeframe(), phase.getCondition());
 
-            // Load candles for phase's timeframe (with warmup buffer)
-            List<Candle> phaseCandles = dataStore.getCandles(
-                phase.getSymbol(),
-                phase.getTimeframe(),
-                startTime - warmupMs,
-                endTime
-            );
+            // Try to get candles from pre-fetched map first
+            String candleKey = phase.getSymbol() + ":" + phase.getTimeframe();
+            List<Candle> candles = phaseCandles != null ? phaseCandles.get(candleKey) : null;
 
-            if (phaseCandles.isEmpty()) {
+            // Fall back to dataStore if not pre-fetched
+            if (candles == null || candles.isEmpty()) {
+                // Calculate warmup needed for phase indicators
+                long warmupMs = getWarmupMs(phase.getTimeframe(), phase.getCondition());
+                candles = dataStore.getCandles(
+                    phase.getSymbol(),
+                    phase.getTimeframe(),
+                    startTime - warmupMs,
+                    endTime
+                );
+            }
+
+            if (candles == null || candles.isEmpty()) {
                 System.err.println("No candles for phase " + phase.getId() + " (" +
                     phase.getSymbol() + "/" + phase.getTimeframe() + ")");
                 // Return all-false array for this phase
@@ -93,11 +120,11 @@ public class PhaseEvaluator {
             }
 
             // Evaluate phase condition on phase timeframe
-            boolean[] phaseState = evaluatePhaseOnTimeframe(phase, phaseCandles);
+            boolean[] phaseState = evaluatePhaseOnTimeframe(phase, candles);
 
             // Map phase state to strategy candles
             boolean[] mappedState = mapToStrategyTimeframe(
-                phaseCandles, phaseState,
+                candles, phaseState,
                 strategyCandles
             );
 

@@ -228,7 +228,7 @@ public class TimelineBar extends JPanel implements DataPageListener<Candle> {
             // Request new page - returns immediately with cached data, loads in background
             long end = System.currentTimeMillis();
             long start = end - TEN_YEARS_MS;
-            dataPage = candlePageMgr.request(symbol, "1w", start, end, this);
+            dataPage = candlePageMgr.request(symbol, "1w", start, end, this, "TimelineBar");
 
             // Use whatever data is available immediately
             weeklyCandles = dataPage.getData();

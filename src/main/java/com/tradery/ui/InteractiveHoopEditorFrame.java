@@ -393,7 +393,7 @@ public class InteractiveHoopEditorFrame extends JFrame implements DataPageListen
 
         // Request data from CandlePageManager
         CandlePageManager pageManager = ApplicationContext.getInstance().getCandlePageManager();
-        currentPage = pageManager.request(symbol, timeframe, startTime, endTime, this);
+        currentPage = pageManager.request(symbol, timeframe, startTime, endTime, this, "HoopEditor");
 
         // If already ready, onStateChanged will be called immediately
     }

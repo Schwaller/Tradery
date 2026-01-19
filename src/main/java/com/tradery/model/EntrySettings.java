@@ -12,6 +12,7 @@ public class EntrySettings {
     private int maxOpenTrades = 1;
     private int minCandlesBetween = 0;
     private DcaSettings dca = new DcaSettings();
+    private TradeDirection direction = TradeDirection.LONG;
 
     // Pending order settings
     private EntryOrderType orderType = EntryOrderType.MARKET;
@@ -64,6 +65,14 @@ public class EntrySettings {
 
     public void setDca(DcaSettings dca) {
         this.dca = dca != null ? dca : new DcaSettings();
+    }
+
+    public TradeDirection getDirection() {
+        return direction != null ? direction : TradeDirection.LONG;
+    }
+
+    public void setDirection(TradeDirection direction) {
+        this.direction = direction != null ? direction : TradeDirection.LONG;
     }
 
     public EntryOrderType getOrderType() {

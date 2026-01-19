@@ -729,6 +729,14 @@ public class ProjectWindow extends JFrame {
         // Clear chart immediately so stale data isn't shown while loading
         chartPanel.clear();
 
+        // Set VIEW tier requirements based on enabled charts
+        backtestCoordinator.setViewRequirements(
+            chartPanel.isAnyOrderflowChartEnabled(),
+            chartPanel.isFundingChartEnabled(),
+            chartPanel.isOiChartEnabled(),
+            chartPanel.isPremiumChartEnabled()
+        );
+
         // Run backtest via coordinator
         backtestCoordinator.runBacktest(
             strategy,

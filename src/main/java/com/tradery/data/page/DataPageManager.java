@@ -33,6 +33,9 @@ public abstract class DataPageManager<T> {
     // Listeners per page (multiple consumers can listen to same page)
     protected final Map<String, Set<DataPageListener<T>>> listeners = new ConcurrentHashMap<>();
 
+    // Consumer names for each listener (for debugging/status display)
+    protected final Map<DataPageListener<T>, String> consumerNames = new ConcurrentHashMap<>();
+
     // Reference counting for cleanup
     protected final Map<String, Integer> refCounts = new ConcurrentHashMap<>();
 
@@ -78,6 +81,24 @@ public abstract class DataPageManager<T> {
     public DataPageView<T> request(String symbol, String timeframe,
                                     long startTime, long endTime,
                                     DataPageListener<T> listener) {
+        return request(symbol, timeframe, startTime, endTime, listener, "Anonymous");
+    }
+
+    /**
+     * Request a data page with a named consumer. Returns immediately (NEVER blocks).
+     *
+     * @param symbol       Trading symbol (e.g., "BTCUSDT")
+     * @param timeframe    Timeframe (required for some types, null for others)
+     * @param startTime    Start time in milliseconds
+     * @param endTime      End time in milliseconds
+     * @param listener     Listener for state/data changes (can be null)
+     * @param consumerName Name of the consumer (for debugging/status display)
+     * @return Read-only view of the data page (may be EMPTY/LOADING initially)
+     */
+    public DataPageView<T> request(String symbol, String timeframe,
+                                    long startTime, long endTime,
+                                    DataPageListener<T> listener,
+                                    String consumerName) {
 
         String key = makeKey(symbol, timeframe, startTime, endTime);
 
@@ -85,9 +106,10 @@ public abstract class DataPageManager<T> {
         DataPage<T> page = pages.computeIfAbsent(key, k ->
             createPage(symbol, timeframe, startTime, endTime));
 
-        // Register listener
+        // Register listener with name
         if (listener != null) {
             listeners.computeIfAbsent(key, k -> ConcurrentHashMap.newKeySet()).add(listener);
+            consumerNames.put(listener, consumerName);
         }
 
         // Increment reference count
@@ -118,12 +140,13 @@ public abstract class DataPageManager<T> {
 
         String key = pageView.getKey();
 
-        // Remove listener
+        // Remove listener and its name
         if (listener != null) {
             Set<DataPageListener<T>> pageListeners = listeners.get(key);
             if (pageListeners != null) {
                 pageListeners.remove(listener);
             }
+            consumerNames.remove(listener);
         }
 
         // Decrement ref count
@@ -332,7 +355,8 @@ public abstract class DataPageManager<T> {
         String symbol,
         String timeframe,
         int listenerCount,
-        int recordCount
+        int recordCount,
+        java.util.List<String> consumers
     ) {}
 
     /**
@@ -345,6 +369,18 @@ public abstract class DataPageManager<T> {
             DataPage<T> page = entry.getValue();
             Set<DataPageListener<T>> pageListeners = listeners.get(entry.getKey());
             int listenerCount = pageListeners != null ? pageListeners.size() : 0;
+
+            // Collect consumer names for this page
+            java.util.List<String> pageConsumers = new java.util.ArrayList<>();
+            if (pageListeners != null) {
+                for (DataPageListener<T> listener : pageListeners) {
+                    String name = consumerNames.get(listener);
+                    if (name != null) {
+                        pageConsumers.add(name);
+                    }
+                }
+            }
+
             result.add(new PageInfo(
                 page.getKey(),
                 page.getState(),
@@ -352,7 +388,8 @@ public abstract class DataPageManager<T> {
                 page.getSymbol(),
                 page.getTimeframe(),
                 listenerCount,
-                page.getRecordCount()
+                page.getRecordCount(),
+                pageConsumers
             ));
         }
         return result;

@@ -829,6 +829,10 @@ public class ChartsPanel extends JPanel {
         return indicatorManager.isPremiumChartEnabled();
     }
 
+    public boolean isAnyOrderflowChartEnabled() {
+        return indicatorManager.isAnyOrderflowEnabled();
+    }
+
     public void setIndicatorEngine(com.tradery.indicators.IndicatorEngine engine) {
         indicatorManager.setIndicatorEngine(engine);
         overlayManager.setIndicatorEngine(engine);

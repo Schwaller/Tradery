@@ -4,7 +4,11 @@ import com.tradery.ApplicationContext;
 import com.tradery.model.Strategy;
 
 import javax.swing.*;
+import javax.swing.event.DocumentEvent;
+import javax.swing.event.DocumentListener;
 import java.awt.*;
+import java.awt.event.FocusAdapter;
+import java.awt.event.FocusEvent;
 
 /**
  * Panel for editing a single strategy's DSL conditions and trade management settings.
@@ -16,8 +20,10 @@ public class StrategyEditorPanel extends JPanel {
     private PhaseSelectionPanel phaseSelectionPanel;
     private HoopPatternSelectionPanel hoopPatternSelectionPanel;
     private FlowDiagramPanel flowDiagramPanel;
+    private JTextArea notesArea;
     private EntryConfigPanel entryConfigPanel;
     private ExitConfigPanel exitConfigPanel;
+    private boolean suppressNoteEvents = false;
 
     private Strategy strategy;
     private Runnable onChange;
@@ -36,6 +42,33 @@ public class StrategyEditorPanel extends JPanel {
         );
         hoopPatternSelectionPanel = new HoopPatternSelectionPanel();
         flowDiagramPanel = new FlowDiagramPanel();
+
+        // Notes text area for strategy concept with placeholder
+        notesArea = new JTextArea(1, 40) {
+            @Override
+            public Dimension getPreferredScrollableViewportSize() {
+                // Dynamic height: min 1 line, max 7 lines
+                FontMetrics fm = getFontMetrics(getFont());
+                int lineHeight = fm.getHeight();
+                int lineCount = getLineCount();
+                int visibleLines = Math.max(1, Math.min(7, lineCount));
+                return new Dimension(super.getPreferredScrollableViewportSize().width,
+                                     visibleLines * lineHeight + getInsets().top + getInsets().bottom);
+            }
+        };
+        notesArea.setLineWrap(true);
+        notesArea.setWrapStyleWord(true);
+        notesArea.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
+        setupNotesPlaceholder();
+        notesArea.getDocument().addDocumentListener(new DocumentListener() {
+            @Override
+            public void insertUpdate(DocumentEvent e) { onNotesChange(); updateNotesSize(); }
+            @Override
+            public void removeUpdate(DocumentEvent e) { onNotesChange(); updateNotesSize(); }
+            @Override
+            public void changedUpdate(DocumentEvent e) { onNotesChange(); updateNotesSize(); }
+        });
+
         entryConfigPanel = new EntryConfigPanel();
         exitConfigPanel = new ExitConfigPanel();
 
@@ -55,6 +88,55 @@ public class StrategyEditorPanel extends JPanel {
         exitConfigPanel.setOnChange(this::onStrategyChange);
     }
 
+    private static final String NOTES_PLACEHOLDER = "Notes...";
+    private boolean showingPlaceholder = false;
+
+    private void setupNotesPlaceholder() {
+        showPlaceholder();
+        notesArea.addFocusListener(new FocusAdapter() {
+            @Override
+            public void focusGained(FocusEvent e) {
+                if (showingPlaceholder) {
+                    suppressNoteEvents = true;
+                    notesArea.setText("");
+                    notesArea.setForeground(UIManager.getColor("TextArea.foreground"));
+                    showingPlaceholder = false;
+                    suppressNoteEvents = false;
+                }
+            }
+
+            @Override
+            public void focusLost(FocusEvent e) {
+                if (notesArea.getText().isEmpty()) {
+                    showPlaceholder();
+                }
+            }
+        });
+    }
+
+    private void showPlaceholder() {
+        suppressNoteEvents = true;
+        notesArea.setText(NOTES_PLACEHOLDER);
+        notesArea.setForeground(Color.GRAY);
+        showingPlaceholder = true;
+        suppressNoteEvents = false;
+    }
+
+    private void onNotesChange() {
+        // Notes changes only update the strategy but don't trigger recomputation
+        if (!suppressNoteEvents && strategy != null) {
+            String notes = showingPlaceholder ? null : notesArea.getText();
+            strategy.setNotes(notes != null && !notes.isBlank() ? notes : null);
+        }
+    }
+
+    private void updateNotesSize() {
+        SwingUtilities.invokeLater(() -> {
+            revalidate();
+            repaint();
+        });
+    }
+
     private void onStrategyChange() {
         // Update flow diagram when any strategy property changes
         if (strategy != null) {
@@ -65,13 +147,25 @@ public class StrategyEditorPanel extends JPanel {
     }
 
     private void layoutComponents() {
-        // Top section: trade settings + flow diagram
+        // Top section: trade settings + notes + flow diagram
         JPanel topPanel = new JPanel(new BorderLayout());
         topPanel.setOpaque(false);
 
-        topPanel.add(tradeSettingsPanel, BorderLayout.NORTH);
+        // Trade settings at top
+        JPanel headerPanel = new JPanel(new BorderLayout());
+        headerPanel.setOpaque(false);
+        headerPanel.add(tradeSettingsPanel, BorderLayout.NORTH);
 
-        // Flow diagram between settings and entry/exit
+        // Notes below trade settings
+        JScrollPane notesScroll = new JScrollPane(notesArea);
+        notesScroll.setVerticalScrollBarPolicy(JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED);
+        notesScroll.setHorizontalScrollBarPolicy(JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
+        notesScroll.setBorder(BorderFactory.createEmptyBorder(0, 1, 0, 0));
+        headerPanel.add(notesScroll, BorderLayout.SOUTH);
+
+        topPanel.add(headerPanel, BorderLayout.NORTH);
+
+        // Flow diagram below notes
         JPanel flowWrapper = new JPanel(new BorderLayout());
         flowWrapper.setOpaque(false);
         flowWrapper.add(new JSeparator(), BorderLayout.NORTH);
@@ -119,6 +213,22 @@ public class StrategyEditorPanel extends JPanel {
         phaseSelectionPanel.loadFrom(strategy);
         hoopPatternSelectionPanel.loadFrom(strategy);
         flowDiagramPanel.setStrategy(strategy);
+
+        // Load notes
+        suppressNoteEvents = true;
+        try {
+            String notes = strategy != null ? strategy.getNotes() : null;
+            if (notes != null && !notes.isEmpty()) {
+                notesArea.setText(notes);
+                notesArea.setForeground(UIManager.getColor("TextArea.foreground"));
+                showingPlaceholder = false;
+            } else {
+                showPlaceholder();
+            }
+        } finally {
+            suppressNoteEvents = false;
+        }
+
         entryConfigPanel.loadFrom(strategy);
         exitConfigPanel.loadFrom(strategy);
     }
@@ -131,6 +241,8 @@ public class StrategyEditorPanel extends JPanel {
         tradeSettingsPanel.applyTo(strategy);
         phaseSelectionPanel.applyTo(strategy);
         hoopPatternSelectionPanel.applyTo(strategy);
+        String notes = showingPlaceholder ? null : notesArea.getText();
+        strategy.setNotes(notes != null && !notes.isBlank() ? notes : null);
         entryConfigPanel.applyTo(strategy);
         exitConfigPanel.applyTo(strategy);
     }

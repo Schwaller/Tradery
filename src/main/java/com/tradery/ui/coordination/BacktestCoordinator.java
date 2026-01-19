@@ -22,8 +22,10 @@ import com.tradery.io.ResultStore;
 import javax.swing.*;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
@@ -71,6 +73,7 @@ public class BacktestCoordinator {
     private DataPageListener<FundingRate> fundingListener;
     private DataPageListener<OpenInterest> oiListener;
     private DataPageListener<PremiumIndex> premiumListener;
+    private final Map<String, DataPageListener<Candle>> phaseCandleListeners = new HashMap<>();
 
     // Current data (cached after backtest runs)
     private List<Candle> currentCandles;
@@ -87,6 +90,12 @@ public class BacktestCoordinator {
     private BiConsumer<String, String> onDataStatus;
     private Consumer<PageState> onOverallStateChanged;
     private Consumer<String> onViewDataReady;
+
+    // VIEW tier requirements (for charts that need data beyond strategy requirements)
+    private boolean viewNeedsAggTrades = false;
+    private boolean viewNeedsFunding = false;
+    private boolean viewNeedsOI = false;
+    private boolean viewNeedsPremium = false;
 
     public BacktestCoordinator(BacktestEngine backtestEngine,
                                SqliteDataStore dataStore,
@@ -158,6 +167,23 @@ public class BacktestCoordinator {
 
     public void setOnDataLoadingProgress(DataLoadingProgressCallback callback) {
         // Not used in event-driven architecture - progress comes via state changes
+    }
+
+    /**
+     * Set VIEW tier data requirements based on enabled charts.
+     * These are loaded in addition to strategy requirements.
+     *
+     * @param needsAggTrades True if orderflow charts are enabled (Delta, CVD, etc.)
+     * @param needsFunding True if Funding chart is enabled
+     * @param needsOI True if OI chart is enabled
+     * @param needsPremium True if Premium chart is enabled
+     */
+    public void setViewRequirements(boolean needsAggTrades, boolean needsFunding,
+                                     boolean needsOI, boolean needsPremium) {
+        this.viewNeedsAggTrades = needsAggTrades;
+        this.viewNeedsFunding = needsFunding;
+        this.viewNeedsOI = needsOI;
+        this.viewNeedsPremium = needsPremium;
     }
 
     /**
@@ -258,18 +284,19 @@ public class BacktestCoordinator {
 
         reportProgress(0, "Loading data...");
 
-        // Analyze strategy to determine required data
+        // Analyze strategy to determine required data (strategy requirements + VIEW tier for charts)
         boolean needsAggTrades = strategy.requiresAggTrades() ||
-                                 SubMinuteCandleGenerator.parseSubMinuteInterval(timeframe) > 0;
-        boolean needsFunding = strategy.requiresFunding();
-        boolean needsOI = strategy.requiresOpenInterest();
-        boolean needsPremium = strategy.requiresPremium();
+                                 SubMinuteCandleGenerator.parseSubMinuteInterval(timeframe) > 0 ||
+                                 viewNeedsAggTrades;
+        boolean needsFunding = strategy.requiresFunding() || viewNeedsFunding;
+        boolean needsOI = strategy.requiresOpenInterest() || viewNeedsOI;
+        boolean needsPremium = strategy.requiresPremium() || viewNeedsPremium;
 
         // Request candles (always required)
         reportDataStatus("Candles", "loading");
         candleListener = createCandleListener();
         DataPageView<Candle> candlePage = candlePageMgr.request(
-            symbol, timeframe, startTime, endTime, candleListener);
+            symbol, timeframe, startTime, endTime, candleListener, "BacktestCoordinator");
         requirements.setCandlePage(candlePage);
 
         // Request optional data based on strategy requirements
@@ -277,7 +304,7 @@ public class BacktestCoordinator {
             reportDataStatus("AggTrades", "loading");
             aggTradesListener = createAggTradesListener();
             DataPageView<AggTrade> aggTradesPage = aggTradesPageMgr.request(
-                symbol, null, startTime, endTime, aggTradesListener);
+                symbol, null, startTime, endTime, aggTradesListener, "BacktestCoordinator");
             requirements.setAggTradesPage(aggTradesPage);
         }
 
@@ -285,7 +312,7 @@ public class BacktestCoordinator {
             reportDataStatus("Funding", "loading");
             fundingListener = createFundingListener();
             DataPageView<FundingRate> fundingPage = fundingPageMgr.request(
-                symbol, null, startTime, endTime, fundingListener);
+                symbol, null, startTime, endTime, fundingListener, "BacktestCoordinator");
             requirements.setFundingPage(fundingPage);
         }
 
@@ -299,7 +326,7 @@ public class BacktestCoordinator {
                 reportDataStatus("OI", "loading");
                 oiListener = createOIListener();
                 DataPageView<OpenInterest> oiPage = oiPageMgr.request(
-                    symbol, null, oiStartTime, endTime, oiListener);
+                    symbol, null, oiStartTime, endTime, oiListener, "BacktestCoordinator");
                 requirements.setOiPage(oiPage);
             }
         }
@@ -308,12 +335,73 @@ public class BacktestCoordinator {
             reportDataStatus("Premium", "loading");
             premiumListener = createPremiumListener();
             DataPageView<PremiumIndex> premiumPage = premiumPageMgr.request(
-                symbol, timeframe, startTime, endTime, premiumListener);
+                symbol, timeframe, startTime, endTime, premiumListener, "BacktestCoordinator");
             requirements.setPremiumPage(premiumPage);
         }
 
+        // Request candles for phase timeframes (may differ from strategy timeframe)
+        requestPhaseCandlePages(startTime, endTime);
+
         // Check if already ready (from cache)
         checkAndTriggerBacktest();
+    }
+
+    /**
+     * Request candle pages for all phase timeframes.
+     * Phases may use different timeframes than the main strategy.
+     */
+    private void requestPhaseCandlePages(long startTime, long endTime) {
+        if (currentPhases == null || currentPhases.isEmpty()) {
+            return;
+        }
+
+        // Collect unique symbol:timeframe combinations from phases
+        Set<String> phaseKeys = new HashSet<>();
+        for (Phase phase : currentPhases) {
+            String key = phase.getSymbol() + ":" + phase.getTimeframe();
+            phaseKeys.add(key);
+        }
+
+        // Request candles for each unique combination
+        for (String key : phaseKeys) {
+            String[] parts = key.split(":");
+            String phaseSymbol = parts[0];
+            String phaseTimeframe = parts[1];
+
+            // Calculate warmup for this phase (using max indicator period of 200 as buffer)
+            long warmupMs = getTimeframeMs(phaseTimeframe) * 200;
+            long phaseStartTime = startTime - warmupMs;
+
+            reportDataStatus("Phase:" + phaseTimeframe, "loading");
+            DataPageListener<Candle> listener = createPhaseCandleListener(key);
+            phaseCandleListeners.put(key, listener);
+
+            DataPageView<Candle> phasePage = candlePageMgr.request(
+                phaseSymbol, phaseTimeframe, phaseStartTime, endTime, listener, "Phase:" + phaseTimeframe);
+            requirements.addPhaseCandlePage(key, phasePage);
+        }
+    }
+
+    /**
+     * Create a listener for phase candle data.
+     */
+    private DataPageListener<Candle> createPhaseCandleListener(String phaseKey) {
+        return new DataPageListener<>() {
+            @Override
+            public void onStateChanged(DataPageView<Candle> page, PageState oldState, PageState newState) {
+                if (newState == PageState.READY) {
+                    reportDataStatus("Phase:" + phaseKey.split(":")[1], "ready");
+                    checkAndTriggerBacktest();
+                } else if (newState == PageState.ERROR) {
+                    reportDataStatus("Phase:" + phaseKey.split(":")[1], "error");
+                }
+            }
+
+            @Override
+            public void onDataChanged(DataPageView<Candle> page) {
+                // Phase candles updated
+            }
+        };
     }
 
     /**
@@ -427,9 +515,10 @@ public class BacktestCoordinator {
                 backtestEngine.setOpenInterest(oi);
                 backtestEngine.setPremiumIndex(premium);
 
-                // Run backtest
+                // Run backtest with pre-fetched phase candles
                 BacktestResult result = backtestEngine.run(
                     currentStrategy, currentConfig, candles, currentPhases,
+                    requirements.getPhaseCandles(),
                     progress -> SwingUtilities.invokeLater(() ->
                         reportProgress(progress.percentage(), progress.message())));
 
@@ -492,12 +581,19 @@ public class BacktestCoordinator {
             premiumPageMgr.release(requirements.getPremiumPage(), premiumListener);
         }
 
+        // Release phase candle pages
+        for (Map.Entry<String, DataPageView<Candle>> entry : requirements.getPhaseCandlePages().entrySet()) {
+            DataPageListener<Candle> listener = phaseCandleListeners.get(entry.getKey());
+            candlePageMgr.release(entry.getValue(), listener);
+        }
+
         // Clear stored listeners
         candleListener = null;
         aggTradesListener = null;
         fundingListener = null;
         oiListener = null;
         premiumListener = null;
+        phaseCandleListeners.clear();
     }
 
     /**
@@ -659,6 +755,32 @@ public class BacktestCoordinator {
             case "5 years" -> 1825 * day;
             case "10 years" -> 3650 * day;
             default -> 365 * day;
+        };
+    }
+
+    /**
+     * Convert timeframe string to milliseconds.
+     */
+    private static long getTimeframeMs(String timeframe) {
+        if (timeframe == null) return 60 * 60 * 1000L; // Default 1h
+
+        return switch (timeframe) {
+            case "1m" -> 60 * 1000L;
+            case "3m" -> 3 * 60 * 1000L;
+            case "5m" -> 5 * 60 * 1000L;
+            case "15m" -> 15 * 60 * 1000L;
+            case "30m" -> 30 * 60 * 1000L;
+            case "1h" -> 60 * 60 * 1000L;
+            case "2h" -> 2 * 60 * 60 * 1000L;
+            case "4h" -> 4 * 60 * 60 * 1000L;
+            case "6h" -> 6 * 60 * 60 * 1000L;
+            case "8h" -> 8 * 60 * 60 * 1000L;
+            case "12h" -> 12 * 60 * 60 * 1000L;
+            case "1d" -> 24 * 60 * 60 * 1000L;
+            case "3d" -> 3 * 24 * 60 * 60 * 1000L;
+            case "1w" -> 7 * 24 * 60 * 60 * 1000L;
+            case "1M" -> 30 * 24 * 60 * 60 * 1000L;
+            default -> 60 * 60 * 1000L;
         };
     }
 }

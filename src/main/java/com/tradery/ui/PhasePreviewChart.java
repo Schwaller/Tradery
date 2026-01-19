@@ -389,7 +389,7 @@ public class PhasePreviewChart extends JPanel implements DataPageListener<Candle
 
         // Request data from CandlePageManager
         CandlePageManager pageManager = ApplicationContext.getInstance().getCandlePageManager();
-        currentPage = pageManager.request(symbol, timeframe, startTime, endTime, this);
+        currentPage = pageManager.request(symbol, timeframe, startTime, endTime, this, "PhasePreviewChart");
 
         // If already ready, onStateChanged will be called immediately
     }

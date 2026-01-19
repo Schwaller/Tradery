@@ -15,6 +15,7 @@ public class Strategy implements Identifiable {
     private String id;
     private String name;
     private String description;
+    private String notes;
 
     // Preset tracking
     private String presetId;
@@ -72,6 +73,15 @@ public class Strategy implements Identifiable {
 
     public void setDescription(String description) {
         this.description = description;
+        this.updated = Instant.now();
+    }
+
+    public String getNotes() {
+        return notes;
+    }
+
+    public void setNotes(String notes) {
+        this.notes = notes;
         this.updated = Instant.now();
     }
 
@@ -239,6 +249,26 @@ public class Strategy implements Identifiable {
     public void setMinCandlesBetweenTrades(int minCandlesBetween) {
         getEntrySettings().setMinCandlesBetween(minCandlesBetween);
         this.updated = Instant.now();
+    }
+
+    @JsonIgnore
+    public TradeDirection getDirection() {
+        return getEntrySettings().getDirection();
+    }
+
+    public void setDirection(TradeDirection direction) {
+        getEntrySettings().setDirection(direction);
+        this.updated = Instant.now();
+    }
+
+    @JsonIgnore
+    public boolean isLong() {
+        return getDirection().isLong();
+    }
+
+    @JsonIgnore
+    public boolean isShort() {
+        return getDirection().isShort();
     }
 
     // DCA delegates

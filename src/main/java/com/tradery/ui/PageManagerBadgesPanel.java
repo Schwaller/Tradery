@@ -76,7 +76,7 @@ public class PageManagerBadgesPanel extends JPanel {
 
     private void updateDataPageBadge(BadgeLabel badge, String name, DataPageManager<?> mgr) {
         if (mgr == null) {
-            updateBadge(badge, name, 0, 0, 0);
+            updateBadge(badge, name, 0, 0, 0, java.util.Map.of());
             return;
         }
 
@@ -85,12 +85,21 @@ public class PageManagerBadgesPanel extends JPanel {
         int loading = (int) pages.stream().filter(p -> p.state() == PageState.LOADING).count();
         int ready = (int) pages.stream().filter(p -> p.state() == PageState.READY).count();
 
-        updateBadge(badge, name, total, loading, ready);
+        // Collect consumer -> timeframes mapping
+        java.util.Map<String, java.util.Set<String>> consumerTimeframes = new java.util.TreeMap<>();
+        for (DataPageManager.PageInfo page : pages) {
+            String timeframe = page.timeframe() != null ? page.timeframe() : "default";
+            for (String consumer : page.consumers()) {
+                consumerTimeframes.computeIfAbsent(consumer, k -> new java.util.TreeSet<>()).add(timeframe);
+            }
+        }
+
+        updateBadge(badge, name, total, loading, ready, consumerTimeframes);
     }
 
     private void updateIndicatorsBadge(IndicatorPageManager mgr) {
         if (mgr == null) {
-            updateBadge(indicatorsBadge, "Indicators", 0, 0, 0);
+            updateBadge(indicatorsBadge, "Indicators", 0, 0, 0, java.util.Map.of());
             return;
         }
 
@@ -99,10 +108,20 @@ public class PageManagerBadgesPanel extends JPanel {
         int loading = (int) pages.stream().filter(p -> p.state() == PageState.LOADING).count();
         int ready = (int) pages.stream().filter(p -> p.state() == PageState.READY).count();
 
-        updateBadge(indicatorsBadge, "Indicators", total, loading, ready);
+        // Collect consumer -> indicator types mapping
+        java.util.Map<String, java.util.Set<String>> consumerIndicators = new java.util.TreeMap<>();
+        for (IndicatorPageManager.IndicatorPageInfo page : pages) {
+            String indicator = page.type() + "(" + page.params() + ")";
+            for (String consumer : page.consumers()) {
+                consumerIndicators.computeIfAbsent(consumer, k -> new java.util.TreeSet<>()).add(indicator);
+            }
+        }
+
+        updateBadge(indicatorsBadge, "Indicators", total, loading, ready, consumerIndicators);
     }
 
-    private void updateBadge(BadgeLabel badge, String name, int total, int loading, int ready) {
+    private void updateBadge(BadgeLabel badge, String name, int total, int loading, int ready,
+                              java.util.Map<String, java.util.Set<String>> consumerDetails) {
         // Determine state and colors
         Color bgColor, fgColor;
         String stateText;
@@ -126,9 +145,27 @@ public class PageManagerBadgesPanel extends JPanel {
         }
 
         badge.update(name, total, bgColor, fgColor);
-        badge.setToolTipText("<html><b>" + name + "</b><br>" +
-            "Pages: " + total + "<br>" +
-            "Status: " + stateText + "</html>");
+
+        // Build tooltip with consumer names and their timeframes/details
+        StringBuilder tooltip = new StringBuilder();
+        tooltip.append("<html><b>").append(name).append("</b><br>");
+        tooltip.append("Pages: ").append(total).append("<br>");
+        tooltip.append("Status: ").append(stateText);
+        if (!consumerDetails.isEmpty()) {
+            tooltip.append("<br><br><b>Consumers:</b><br>");
+            for (java.util.Map.Entry<String, java.util.Set<String>> entry : consumerDetails.entrySet()) {
+                tooltip.append("• ").append(entry.getKey());
+                java.util.Set<String> details = entry.getValue();
+                if (!details.isEmpty()) {
+                    tooltip.append(" <font color='gray'>(");
+                    tooltip.append(String.join(", ", details));
+                    tooltip.append(")</font>");
+                }
+                tooltip.append("<br>");
+            }
+        }
+        tooltip.append("</html>");
+        badge.setToolTipText(tooltip.toString());
     }
 
     /**

@@ -542,6 +542,85 @@ public class LauncherFrame extends JFrame {
         return result;
     }
 
+    // ========== Public API for opening windows ==========
+
+    /**
+     * Open the Phases window (for API access).
+     */
+    public void openPhases() {
+        SwingUtilities.invokeLater(this::openPhasesWindow);
+    }
+
+    /**
+     * Open the Hoops window (for API access).
+     */
+    public void openHoops() {
+        SwingUtilities.invokeLater(this::openHoopsWindow);
+    }
+
+    /**
+     * Open the Settings dialog (for API access).
+     */
+    public void openSettings() {
+        SwingUtilities.invokeLater(() -> {
+            SettingsDialog dialog = new SettingsDialog(this);
+            dialog.setVisible(true);
+        });
+    }
+
+    /**
+     * Open the Data Management dialog (for API access).
+     */
+    public void openDataManagement() {
+        SwingUtilities.invokeLater(() -> {
+            SqliteDataStore dataStore = ApplicationContext.getInstance().getSqliteDataStore();
+            DataManagementDialog.show(this, dataStore);
+        });
+    }
+
+    /**
+     * Open the DSL Help dialog (for API access).
+     */
+    public void openDslHelp() {
+        SwingUtilities.invokeLater(() -> {
+            DslHelpDialog dialog = new DslHelpDialog(this);
+            dialog.setVisible(true);
+        });
+    }
+
+    /**
+     * Open a project window by strategy ID (for API access).
+     * Returns true if successful, false if strategy not found.
+     */
+    public boolean openProjectById(String strategyId) {
+        Strategy strategy = strategyStore.load(strategyId);
+        if (strategy == null) {
+            return false;
+        }
+        SwingUtilities.invokeLater(() -> {
+            ProjectWindow existing = openWindows.get(strategyId);
+            if (existing != null) {
+                existing.bringToFront();
+            } else {
+                ProjectWindow window = new ProjectWindow(strategy, this::onWindowClosed);
+                openWindows.put(strategyId, window);
+                window.setVisible(true);
+            }
+        });
+        return true;
+    }
+
+    /**
+     * Bring the launcher window to front (for API access).
+     */
+    public void bringToFront() {
+        SwingUtilities.invokeLater(() -> {
+            setVisible(true);
+            toFront();
+            requestFocus();
+        });
+    }
+
     @Override
     public void dispose() {
         // Close all open project windows

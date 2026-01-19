@@ -30,8 +30,7 @@ public class PhaseChooserFrame extends JFrame {
     private PhaseEditorPanel editorPanel;
     private JButton newButton;
     private JButton deleteButton;
-    private JButton previewButton;
-    private PhasePreviewWindow previewWindow;
+    private PhasePreviewChart previewChart;
 
     private final PhaseStore phaseStore;
     private FileWatcher fileWatcher;
@@ -55,8 +54,8 @@ public class PhaseChooserFrame extends JFrame {
 
     private void initializeFrame() {
         setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
-        setSize(700, 500);
-        setMinimumSize(new Dimension(500, 400));
+        setSize(900, 700);
+        setMinimumSize(new Dimension(600, 500));
         setLocationRelativeTo(null);
 
         // macOS styling
@@ -95,9 +94,7 @@ public class PhaseChooserFrame extends JFrame {
         deleteButton.addActionListener(e -> deletePhase());
         deleteButton.setEnabled(false);
 
-        previewButton = new JButton("Preview Chart");
-        previewButton.addActionListener(e -> openPreviewWindow());
-        previewButton.setEnabled(false);
+        previewChart = new PhasePreviewChart();
 
         // Auto-save timer
         autoSaveTimer = new Timer(AUTO_SAVE_DELAY_MS, e -> saveCurrentPhase());
@@ -140,15 +137,25 @@ public class PhaseChooserFrame extends JFrame {
         listScroll.setBorder(BorderFactory.createEmptyBorder());
         listPanel.add(listScroll, BorderLayout.CENTER);
 
-        // Right panel: editor
+        // Right panel: editor on top, chart below
         JPanel editorWrapper = new JPanel(new BorderLayout());
-        editorWrapper.setBorder(BorderFactory.createEmptyBorder(0, 8, 8, 8));
+        editorWrapper.setBorder(BorderFactory.createEmptyBorder(0, 8, 0, 8));
         editorWrapper.add(editorPanel, BorderLayout.CENTER);
+
+        JPanel chartWrapper = new JPanel(new BorderLayout());
+        chartWrapper.setBorder(BorderFactory.createEmptyBorder(0, 8, 8, 8));
+        chartWrapper.add(previewChart, BorderLayout.CENTER);
+
+        JSplitPane rightSplit = new JSplitPane(JSplitPane.VERTICAL_SPLIT);
+        rightSplit.setTopComponent(editorWrapper);
+        rightSplit.setBottomComponent(chartWrapper);
+        rightSplit.setDividerLocation(220);
+        rightSplit.setResizeWeight(0.5);
 
         // Main split
         JSplitPane splitPane = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT);
         splitPane.setLeftComponent(listPanel);
-        splitPane.setRightComponent(editorWrapper);
+        splitPane.setRightComponent(rightSplit);
         splitPane.setDividerLocation(200);
         splitPane.setResizeWeight(0);
 
@@ -163,11 +170,7 @@ public class PhaseChooserFrame extends JFrame {
         leftButtons.add(newButton);
         leftButtons.add(deleteButton);
 
-        JPanel rightButtons = new JPanel(new FlowLayout(FlowLayout.RIGHT, 4, 0));
-        rightButtons.add(previewButton);
-
         bottomBar.add(leftButtons, BorderLayout.WEST);
-        bottomBar.add(rightButtons, BorderLayout.EAST);
         bottomContainer.add(bottomBar, BorderLayout.CENTER);
 
         // Top container with title and separator below
@@ -210,14 +213,13 @@ public class PhaseChooserFrame extends JFrame {
             editorPanel.loadFrom(selected);
             // Disable editing for built-in phases
             editorPanel.setEnabled(!selected.isBuiltIn());
-            // Update preview window if open
-            if (previewWindow != null && previewWindow.isVisible()) {
-                previewWindow.setPhase(selected);
-            }
+            // Update embedded preview chart
+            previewChart.setPhase(selected);
         } else {
             currentPhase = null;
             editorPanel.loadFrom(null);
             editorPanel.setEnabled(false);
+            previewChart.setPhase(null);
         }
         updateButtonStates();
     }
@@ -227,7 +229,6 @@ public class PhaseChooserFrame extends JFrame {
         boolean hasSelection = selected != null;
         boolean isBuiltIn = hasSelection && selected.isBuiltIn();
         deleteButton.setEnabled(hasSelection && !isBuiltIn);  // Can't delete built-in
-        previewButton.setEnabled(hasSelection);
     }
 
     private void createPhase() {
@@ -278,19 +279,6 @@ public class PhaseChooserFrame extends JFrame {
         }
     }
 
-    private void openPreviewWindow() {
-        if (currentPhase == null) return;
-
-        if (previewWindow == null) {
-            previewWindow = new PhasePreviewWindow();
-        }
-
-        previewWindow.setPhase(currentPhase);
-        previewWindow.setLocationRelativeTo(this);
-        previewWindow.setVisible(true);
-        previewWindow.toFront();
-    }
-
     private void scheduleAutoSave() {
         if (ignoringFileChanges || currentPhase == null) return;
         autoSaveTimer.restart();
@@ -313,10 +301,8 @@ public class PhaseChooserFrame extends JFrame {
                 listModel.set(selectedIndex, currentPhase);
             }
 
-            // Refresh the preview window if open
-            if (previewWindow != null && previewWindow.isVisible()) {
-                previewWindow.setPhase(currentPhase);
-            }
+            // Refresh the embedded preview chart
+            previewChart.setPhase(currentPhase);
         } finally {
             // Reset flag after a delay to allow file system to settle
             Timer resetTimer = new Timer(200, e -> ignoringFileChanges = false);
@@ -364,6 +350,9 @@ public class PhaseChooserFrame extends JFrame {
         }
         if (fileWatcher != null) {
             fileWatcher.stop();
+        }
+        if (previewChart != null) {
+            previewChart.dispose();
         }
     }
 

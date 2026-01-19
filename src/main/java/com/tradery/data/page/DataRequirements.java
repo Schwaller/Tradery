@@ -25,6 +25,9 @@ public class DataRequirements {
     private DataPageView<OpenInterest> oiPage;         // If OI in DSL
     private DataPageView<PremiumIndex> premiumPage;    // If PREMIUM in DSL
 
+    // Phase candle pages keyed by "symbol:timeframe"
+    private final java.util.Map<String, DataPageView<Candle>> phaseCandlePages = new java.util.HashMap<>();
+
     public DataRequirements(String symbol, String timeframe, long startTime, long endTime) {
         this.symbol = symbol;
         this.timeframe = timeframe;
@@ -52,6 +55,14 @@ public class DataRequirements {
 
     public void setPremiumPage(DataPageView<PremiumIndex> premiumPage) {
         this.premiumPage = premiumPage;
+    }
+
+    /**
+     * Add a phase candle page.
+     * @param key Format: "symbol:timeframe"
+     */
+    public void addPhaseCandlePage(String key, DataPageView<Candle> page) {
+        phaseCandlePages.put(key, page);
     }
 
     // ========== Getters ==========
@@ -92,6 +103,27 @@ public class DataRequirements {
         return premiumPage;
     }
 
+    /**
+     * Get phase candle pages map.
+     */
+    public java.util.Map<String, DataPageView<Candle>> getPhaseCandlePages() {
+        return phaseCandlePages;
+    }
+
+    /**
+     * Get phase candles as a map of symbol:timeframe -> List<Candle>.
+     * Only includes pages that are ready.
+     */
+    public java.util.Map<String, java.util.List<Candle>> getPhaseCandles() {
+        java.util.Map<String, java.util.List<Candle>> result = new java.util.HashMap<>();
+        for (var entry : phaseCandlePages.entrySet()) {
+            if (entry.getValue().isReady()) {
+                result.put(entry.getKey(), entry.getValue().getData());
+            }
+        }
+        return result;
+    }
+
     // ========== State Checks ==========
 
     /**
@@ -118,6 +150,13 @@ public class DataRequirements {
             return false;
         }
 
+        // Check phase candle pages
+        for (DataPageView<Candle> phasePage : phaseCandlePages.values()) {
+            if (!phasePage.isReady()) {
+                return false;
+            }
+        }
+
         return true;
     }
 
@@ -130,6 +169,9 @@ public class DataRequirements {
         if (fundingPage != null && fundingPage.isLoading()) return true;
         if (oiPage != null && oiPage.isLoading()) return true;
         if (premiumPage != null && premiumPage.isLoading()) return true;
+        for (DataPageView<Candle> phasePage : phaseCandlePages.values()) {
+            if (phasePage.isLoading()) return true;
+        }
         return false;
     }
 
@@ -142,6 +184,9 @@ public class DataRequirements {
         if (fundingPage != null && fundingPage.hasError()) return true;
         if (oiPage != null && oiPage.hasError()) return true;
         if (premiumPage != null && premiumPage.hasError()) return true;
+        for (DataPageView<Candle> phasePage : phaseCandlePages.values()) {
+            if (phasePage.hasError()) return true;
+        }
         return false;
     }
 

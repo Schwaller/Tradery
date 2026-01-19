@@ -38,6 +38,7 @@ public class IndicatorPageManager {
     private final Map<String, IndicatorPage<?>> pages = new ConcurrentHashMap<>();
     private final Map<String, Set<IndicatorPageListener<?>>> listeners = new ConcurrentHashMap<>();
     private final Map<String, Integer> refCounts = new ConcurrentHashMap<>();
+    private final Map<IndicatorPageListener<?>, String> consumerNames = new ConcurrentHashMap<>();
 
     // Background computation
     private final ExecutorService computeExecutor;
@@ -72,11 +73,32 @@ public class IndicatorPageManager {
      * @param listener  Listener for updates (can be null)
      * @return The indicator page
      */
-    @SuppressWarnings("unchecked")
     public <T> IndicatorPage<T> request(IndicatorType type, String params,
                                          String symbol, String timeframe,
                                          long startTime, long endTime,
                                          IndicatorPageListener<T> listener) {
+        return request(type, params, symbol, timeframe, startTime, endTime, listener, "Anonymous");
+    }
+
+    /**
+     * Request an indicator page with a named consumer. Returns immediately (never blocks).
+     *
+     * @param type         Indicator type (RSI, SMA, etc.)
+     * @param params       Indicator parameters (e.g., "14" for RSI(14))
+     * @param symbol       Trading symbol
+     * @param timeframe    Timeframe
+     * @param startTime    Start time
+     * @param endTime      End time
+     * @param listener     Listener for updates (can be null)
+     * @param consumerName Name of the consumer (for debugging/status display)
+     * @return The indicator page
+     */
+    @SuppressWarnings("unchecked")
+    public <T> IndicatorPage<T> request(IndicatorType type, String params,
+                                         String symbol, String timeframe,
+                                         long startTime, long endTime,
+                                         IndicatorPageListener<T> listener,
+                                         String consumerName) {
 
         String key = makeKey(type, params, symbol, timeframe, startTime, endTime);
 
@@ -84,9 +106,10 @@ public class IndicatorPageManager {
         IndicatorPage<T> page = (IndicatorPage<T>) pages.computeIfAbsent(key, k ->
             new IndicatorPage<>(type, params, symbol, timeframe, startTime, endTime));
 
-        // Register listener
+        // Register listener with name
         if (listener != null) {
             listeners.computeIfAbsent(key, k -> ConcurrentHashMap.newKeySet()).add(listener);
+            consumerNames.put(listener, consumerName);
         }
 
         // Increment ref count
@@ -115,12 +138,13 @@ public class IndicatorPageManager {
 
         String key = page.getKey();
 
-        // Remove listener
+        // Remove listener and its name
         if (listener != null) {
             Set<IndicatorPageListener<?>> pageListeners = listeners.get(key);
             if (pageListeners != null) {
                 pageListeners.remove(listener);
             }
+            consumerNames.remove(listener);
         }
 
         // Decrement ref count
@@ -148,11 +172,12 @@ public class IndicatorPageManager {
 
         switch (type.getDependency()) {
             case CANDLES -> {
-                // Request candle data
+                // Request candle data (internal dependency)
                 DataPageView<Candle> candlePage = candlePageMgr.request(
                     page.getSymbol(), page.getTimeframe(),
                     page.getStartTime(), page.getEndTime(),
-                    new CandleDataListener<>(page));
+                    new CandleDataListener<>(page),
+                    "IndicatorPageManager");
             }
             // Other dependencies can be added similarly
             default -> {
@@ -391,7 +416,8 @@ public class IndicatorPageManager {
         String timeframe,
         PageState state,
         int listenerCount,
-        boolean hasData
+        boolean hasData,
+        List<String> consumers
     ) {}
 
     /**
@@ -401,8 +427,20 @@ public class IndicatorPageManager {
         List<IndicatorPageInfo> result = new java.util.ArrayList<>();
         for (Map.Entry<String, IndicatorPage<?>> entry : pages.entrySet()) {
             IndicatorPage<?> page = entry.getValue();
-            Set<?> pageListeners = listeners.get(entry.getKey());
+            Set<IndicatorPageListener<?>> pageListeners = (Set<IndicatorPageListener<?>>) listeners.get(entry.getKey());
             int listenerCount = pageListeners != null ? pageListeners.size() : 0;
+
+            // Collect consumer names for this page
+            List<String> pageConsumers = new java.util.ArrayList<>();
+            if (pageListeners != null) {
+                for (IndicatorPageListener<?> listener : pageListeners) {
+                    String name = consumerNames.get(listener);
+                    if (name != null) {
+                        pageConsumers.add(name);
+                    }
+                }
+            }
+
             result.add(new IndicatorPageInfo(
                 entry.getKey(),
                 page.getType().getName(),
@@ -411,7 +449,8 @@ public class IndicatorPageManager {
                 page.getTimeframe(),
                 page.getState(),
                 listenerCount,
-                page.hasData()
+                page.hasData(),
+                pageConsumers
             ));
         }
         return result;

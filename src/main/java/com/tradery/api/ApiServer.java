@@ -57,6 +57,7 @@ import java.util.regex.Pattern;
  *   GET  /data-status                   - Data coverage and gaps info
  *   GET  /pages                         - Active data pages and listeners (debugging)
  *   GET  /ui                            - Open windows and chart/indicator config (debugging)
+ *   POST /ui/open?window={type}         - Open a window (phases, hoops, settings, data, dsl-help, launcher, project)
  *   GET  /thread-dump                   - Thread dump with EDT analysis (debugging)
  */
 public class ApiServer {
@@ -120,6 +121,7 @@ public class ApiServer {
         server.createContext("/phase/", phaseHandler::handlePhase);
         server.createContext("/data-status", this::handleDataStatus);
         server.createContext("/pages", this::handlePages);
+        server.createContext("/ui/open", this::handleUIOpen);
         server.createContext("/ui", this::handleUI);
         server.createContext("/thread-dump", this::handleThreadDump);
 
@@ -764,6 +766,96 @@ public class ApiServer {
         }
 
         response.put("windowCount", launcher.getOpenWindowsInfo().size());
+
+        sendJson(exchange, 200, response);
+    }
+
+    /**
+     * Handle UI open endpoint - opens windows programmatically for AI agents.
+     *
+     * POST /ui/open?window=phases     - Open Phases editor
+     * POST /ui/open?window=hoops      - Open Hoops editor
+     * POST /ui/open?window=settings   - Open Settings dialog
+     * POST /ui/open?window=data       - Open Data Management dialog
+     * POST /ui/open?window=dsl-help   - Open DSL Help dialog
+     * POST /ui/open?window=launcher   - Bring launcher to front
+     * POST /ui/open?window=project&id={strategyId} - Open a strategy project
+     *
+     * Returns JSON with success status and opened window info.
+     */
+    private void handleUIOpen(HttpExchange exchange) throws IOException {
+        if (!checkMethod(exchange, "POST")) return;
+
+        Map<String, String> params = parseQuery(exchange.getRequestURI().getQuery());
+
+        String window = params.get("window");
+        if (window == null || window.isEmpty()) {
+            sendError(exchange, 400, "Missing required parameter: window. " +
+                "Valid options: phases, hoops, settings, data, dsl-help, launcher, project");
+            return;
+        }
+
+        LauncherFrame launcher = LauncherFrame.getInstance();
+        if (launcher == null) {
+            sendError(exchange, 503, "Application not fully initialized - launcher not available");
+            return;
+        }
+
+        ObjectNode response = mapper.createObjectNode();
+        response.put("window", window);
+
+        switch (window.toLowerCase()) {
+            case "phases" -> {
+                launcher.openPhases();
+                response.put("success", true);
+                response.put("message", "Phases window opened");
+            }
+            case "hoops" -> {
+                launcher.openHoops();
+                response.put("success", true);
+                response.put("message", "Hoops window opened");
+            }
+            case "settings" -> {
+                launcher.openSettings();
+                response.put("success", true);
+                response.put("message", "Settings dialog opened");
+            }
+            case "data", "data-management" -> {
+                launcher.openDataManagement();
+                response.put("success", true);
+                response.put("message", "Data Management dialog opened");
+            }
+            case "dsl-help", "dsl", "help" -> {
+                launcher.openDslHelp();
+                response.put("success", true);
+                response.put("message", "DSL Help dialog opened");
+            }
+            case "launcher" -> {
+                launcher.bringToFront();
+                response.put("success", true);
+                response.put("message", "Launcher brought to front");
+            }
+            case "project", "strategy" -> {
+                String strategyId = params.get("id");
+                if (strategyId == null || strategyId.isEmpty()) {
+                    sendError(exchange, 400, "Missing required parameter: id (strategy ID)");
+                    return;
+                }
+                boolean success = launcher.openProjectById(strategyId);
+                response.put("success", success);
+                response.put("strategyId", strategyId);
+                if (success) {
+                    response.put("message", "Project window opened for strategy: " + strategyId);
+                } else {
+                    response.put("message", "Strategy not found: " + strategyId);
+                }
+            }
+            default -> {
+                sendError(exchange, 400, "Unknown window type: " + window + ". " +
+                    "Valid options: phases, hoops, settings, data, dsl-help, launcher, project");
+                return;
+            }
+        }
 
         sendJson(exchange, 200, response);
     }

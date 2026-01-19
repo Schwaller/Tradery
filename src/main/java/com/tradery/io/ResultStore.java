@@ -150,6 +150,7 @@ public class ResultStore {
 
     /**
      * Build a descriptive filename for a trade
+     * Format: {seq}_{WIN|LOSS|REJECTED}_{LONG|SHORT}_{pnl%}_{phases}.json
      */
     private String buildTradeFilename(int seq, Trade trade) {
         StringBuilder sb = new StringBuilder();
@@ -165,6 +166,15 @@ public class ResultStore {
             sb.append("WIN");
         } else {
             sb.append("LOSS");
+        }
+        sb.append("_");
+
+        // Side (LONG or SHORT)
+        String side = trade.side();
+        if (side != null && "short".equalsIgnoreCase(side)) {
+            sb.append("SHORT");
+        } else {
+            sb.append("LONG");
         }
         sb.append("_");
 
