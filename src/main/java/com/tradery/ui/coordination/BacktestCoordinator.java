@@ -81,6 +81,7 @@ public class BacktestCoordinator {
     private List<FundingRate> currentFundingRates;
     private List<OpenInterest> currentOpenInterest;
     private List<PremiumIndex> currentPremiumIndex;
+    private BacktestResult currentResult;  // Tracks if backtest has completed
 
     // Callbacks
     private BiConsumer<Integer, String> onProgress;
@@ -90,6 +91,7 @@ public class BacktestCoordinator {
     private BiConsumer<String, String> onDataStatus;
     private Consumer<PageState> onOverallStateChanged;
     private Consumer<String> onViewDataReady;
+    private Runnable onBacktestStart;  // Called when new backtest initiated (to clear stale UI)
 
     // VIEW tier requirements (for charts that need data beyond strategy requirements)
     private boolean viewNeedsAggTrades = false;
@@ -163,6 +165,10 @@ public class BacktestCoordinator {
 
     public void setOnViewDataReady(Consumer<String> callback) {
         this.onViewDataReady = callback;
+    }
+
+    public void setOnBacktestStart(Runnable callback) {
+        this.onBacktestStart = callback;
     }
 
     public void setOnDataLoadingProgress(DataLoadingProgressCallback callback) {
@@ -264,6 +270,14 @@ public class BacktestCoordinator {
         // Release any previous pages
         releaseCurrentPages();
 
+        // Clear previous result - new backtest starting
+        this.currentResult = null;
+
+        // Notify UI to clear stale data (trades, charts) before new backtest
+        if (onBacktestStart != null) {
+            SwingUtilities.invokeLater(onBacktestStart);
+        }
+
         this.currentStrategy = strategy;
         this.requirements = new DataRequirements(symbol, timeframe, startTime, endTime);
 
@@ -276,7 +290,9 @@ public class BacktestCoordinator {
             capital,
             strategy.getPositionSizingType(),
             strategy.getPositionSizingValue(),
-            strategy.getTotalCommission()
+            strategy.getTotalCommission(),
+            strategy.getMarketType(),
+            strategy.getMarginInterestApr()
         );
 
         // Load phases (synchronous, they're small)
@@ -284,13 +300,19 @@ public class BacktestCoordinator {
 
         reportProgress(0, "Loading data...");
 
-        // Analyze strategy to determine required data (strategy requirements + VIEW tier for charts)
-        boolean needsAggTrades = strategy.requiresAggTrades() ||
-                                 SubMinuteCandleGenerator.parseSubMinuteInterval(timeframe) > 0 ||
-                                 viewNeedsAggTrades;
-        boolean needsFunding = strategy.requiresFunding() || viewNeedsFunding;
-        boolean needsOI = strategy.requiresOpenInterest() || viewNeedsOI;
-        boolean needsPremium = strategy.requiresPremium() || viewNeedsPremium;
+        // Analyze strategy requirements vs view-only requirements
+        // Strategy requirements block backtest; view-only requirements don't
+        boolean strategyNeedsAggTrades = strategy.requiresAggTrades() ||
+                                         SubMinuteCandleGenerator.parseSubMinuteInterval(timeframe) > 0;
+        boolean strategyNeedsFunding = strategy.requiresFunding();
+        boolean strategyNeedsOI = strategy.requiresOpenInterest();
+        boolean strategyNeedsPremium = strategy.requiresPremium();
+
+        // Combined needs (strategy + view)
+        boolean needsAggTrades = strategyNeedsAggTrades || viewNeedsAggTrades;
+        boolean needsFunding = strategyNeedsFunding || viewNeedsFunding;
+        boolean needsOI = strategyNeedsOI || viewNeedsOI;
+        boolean needsPremium = strategyNeedsPremium || viewNeedsPremium;
 
         // Request candles (always required)
         reportDataStatus("Candles", "loading");
@@ -299,21 +321,23 @@ public class BacktestCoordinator {
             symbol, timeframe, startTime, endTime, candleListener, "BacktestCoordinator");
         requirements.setCandlePage(candlePage);
 
-        // Request optional data based on strategy requirements
+        // Request optional data - viewOnly flag means it won't block backtest
         if (needsAggTrades) {
-            reportDataStatus("AggTrades", "loading");
+            boolean viewOnly = !strategyNeedsAggTrades;  // Only view needs it
+            reportDataStatus("AggTrades", viewOnly ? "loading (view)" : "loading");
             aggTradesListener = createAggTradesListener();
             DataPageView<AggTrade> aggTradesPage = aggTradesPageMgr.request(
                 symbol, null, startTime, endTime, aggTradesListener, "BacktestCoordinator");
-            requirements.setAggTradesPage(aggTradesPage);
+            requirements.setAggTradesPage(aggTradesPage, viewOnly);
         }
 
         if (needsFunding) {
-            reportDataStatus("Funding", "loading");
+            boolean viewOnly = !strategyNeedsFunding;
+            reportDataStatus("Funding", viewOnly ? "loading (view)" : "loading");
             fundingListener = createFundingListener();
             DataPageView<FundingRate> fundingPage = fundingPageMgr.request(
                 symbol, null, startTime, endTime, fundingListener, "BacktestCoordinator");
-            requirements.setFundingPage(fundingPage);
+            requirements.setFundingPage(fundingPage, viewOnly);
         }
 
         if (needsOI) {
@@ -323,20 +347,22 @@ public class BacktestCoordinator {
             long oiStartTime = Math.max(startTime, now - maxOiHistory);
 
             if (oiStartTime < endTime) {
-                reportDataStatus("OI", "loading");
+                boolean viewOnly = !strategyNeedsOI;
+                reportDataStatus("OI", viewOnly ? "loading (view)" : "loading");
                 oiListener = createOIListener();
                 DataPageView<OpenInterest> oiPage = oiPageMgr.request(
                     symbol, null, oiStartTime, endTime, oiListener, "BacktestCoordinator");
-                requirements.setOiPage(oiPage);
+                requirements.setOiPage(oiPage, viewOnly);
             }
         }
 
         if (needsPremium) {
-            reportDataStatus("Premium", "loading");
+            boolean viewOnly = !strategyNeedsPremium;
+            reportDataStatus("Premium", viewOnly ? "loading (view)" : "loading");
             premiumListener = createPremiumListener();
             DataPageView<PremiumIndex> premiumPage = premiumPageMgr.request(
                 symbol, timeframe, startTime, endTime, premiumListener, "BacktestCoordinator");
-            requirements.setPremiumPage(premiumPage);
+            requirements.setPremiumPage(premiumPage, viewOnly);
         }
 
         // Request candles for phase timeframes (may differ from strategy timeframe)
@@ -412,6 +438,7 @@ public class BacktestCoordinator {
         requirements = null;
         currentStrategy = null;
         currentConfig = null;
+        currentResult = null;
         backtestRunning = false;
     }
 
@@ -443,8 +470,34 @@ public class BacktestCoordinator {
         };
         reportDataStatus(dataTypeName, status);
 
+        // If view-only data becomes ready AFTER backtest has run, notify for chart refresh
+        if (newState == PageState.READY && !backtestRunning && currentResult != null) {
+            boolean isViewOnly = isViewOnlyData(dataTypeName);
+            if (isViewOnly && onViewDataReady != null) {
+                SwingUtilities.invokeLater(() -> onViewDataReady.accept(dataTypeName));
+            }
+        }
+
         // Check if we can trigger backtest
         checkAndTriggerBacktest();
+    }
+
+    /**
+     * Check if a data type is view-only (not required for backtest).
+     */
+    private boolean isViewOnlyData(String dataTypeName) {
+        if (requirements == null) return false;
+        return switch (dataTypeName) {
+            case "AggTrades" -> requirements.getAggTradesPage() != null &&
+                               !requirements.isAggTradesRequired();
+            case "Funding" -> requirements.getFundingPage() != null &&
+                             !requirements.isFundingRequired();
+            case "OI" -> requirements.getOiPage() != null &&
+                        !requirements.isOiRequired();
+            case "Premium" -> requirements.getPremiumPage() != null &&
+                             !requirements.isPremiumRequired();
+            default -> false;
+        };
     }
 
     /**
@@ -522,6 +575,9 @@ public class BacktestCoordinator {
                     progress -> SwingUtilities.invokeLater(() ->
                         reportProgress(progress.percentage(), progress.message())));
 
+                // Store result so we can track completion for view-only data notifications
+                currentResult = result;
+
                 // Notify completion on EDT
                 SwingUtilities.invokeLater(() -> {
                     backtestRunning = false;
@@ -551,6 +607,7 @@ public class BacktestCoordinator {
                 });
 
             } catch (Exception e) {
+                currentResult = null;  // Failed - no result
                 SwingUtilities.invokeLater(() -> {
                     backtestRunning = false;
                     reportError(e.getMessage());

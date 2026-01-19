@@ -31,7 +31,9 @@ public record PerformanceMetrics(
     int maxConsecutiveWins,     // Longest winning streak
     int maxConsecutiveLosses,   // Longest losing streak
     double averageMfe,          // Average Maximum Favorable Excursion (%)
-    double averageMae           // Average Maximum Adverse Excursion (%)
+    double averageMae,          // Average Maximum Adverse Excursion (%)
+    // Holding costs (funding fees for futures, interest for margin)
+    double totalHoldingCosts    // Total holding costs (positive = costs paid, negative = earned)
 ) {
     /**
      * Create empty metrics (no trades)
@@ -39,7 +41,7 @@ public record PerformanceMetrics(
     public static PerformanceMetrics empty(double initialCapital) {
         return new PerformanceMetrics(
             0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, initialCapital, 0, 0, 0,
-            0, 0, 0, 0, 0  // New risk metrics
+            0, 0, 0, 0, 0, 0  // Risk metrics + holding costs
         );
     }
 
@@ -59,6 +61,7 @@ public record PerformanceMetrics(
         double largestLoss = 0;
         double totalHoldingPeriod = 0;
         double totalFees = 0;
+        double totalHoldingCosts = 0;
 
         double equity = initialCapital;
         double peak = initialCapital;
@@ -137,6 +140,11 @@ public record PerformanceMetrics(
                 totalMae += t.mae();
                 maeCount++;
             }
+
+            // Holding costs aggregation
+            if (t.holdingCosts() != null) {
+                totalHoldingCosts += t.holdingCosts();
+            }
         }
 
         int total = winners + losers;
@@ -182,7 +190,7 @@ public record PerformanceMetrics(
             total, winners, losers, winRate, profitFactor,
             totalReturn, totalReturnPct, maxDD, maxDDPct, sharpe,
             avgWin, avgLoss, largestWin, largestLoss, avgHolding, equity, totalFees, maxCap[0], maxCap[1],
-            sortino, maxWinStreak, maxLossStreak, avgMfe, avgMae
+            sortino, maxWinStreak, maxLossStreak, avgMfe, avgMae, totalHoldingCosts
         );
     }
 

@@ -427,6 +427,26 @@ public class Strategy implements Identifiable {
         return getBacktestSettings().getTotalCommission();
     }
 
+    @JsonIgnore
+    public MarketType getMarketType() {
+        return getBacktestSettings().getMarketType();
+    }
+
+    public void setMarketType(MarketType marketType) {
+        getBacktestSettings().setMarketType(marketType);
+        this.updated = Instant.now();
+    }
+
+    @JsonIgnore
+    public double getMarginInterestApr() {
+        return getBacktestSettings().getMarginInterestApr();
+    }
+
+    public void setMarginInterestApr(double apr) {
+        getBacktestSettings().setMarginInterestApr(apr);
+        this.updated = Instant.now();
+    }
+
     // Convenience methods - Phase settings delegates
 
     @JsonIgnore

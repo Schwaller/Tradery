@@ -265,6 +265,7 @@ Each trade captures: `entryPrice`, `exitPrice`, `pnlPercent`, `mfe` (max favorab
 | `tradery_eval_condition` | Test DSL condition on market data |
 | `tradery_get_indicator` | Get indicator values |
 | `tradery_get_candles` | Get OHLCV data |
+| `tradery_open_window` | Open UI windows (phases, hoops, settings, project, etc.) |
 
 ### HTTP API
 Port in `~/.tradery/api.port`. Key endpoints:
@@ -280,6 +281,7 @@ Port in `~/.tradery/api.port`. Key endpoints:
 | `/eval` | GET | Evaluate DSL condition |
 | `/indicator` | GET | Get indicator values |
 | `/candles` | GET | Get OHLCV data |
+| `/ui/open` | POST | Open UI windows (phases, hoops, settings, data, project) |
 
 ### AI Workflow
 1. Read `summary.json` for overview + suggestions

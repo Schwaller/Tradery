@@ -9,6 +9,7 @@ import com.tradery.io.HoopPatternStore;
 import com.tradery.model.*;
 import com.tradery.model.AggTrade;
 import com.tradery.model.FundingRate;
+import com.tradery.model.MarketType;
 import com.tradery.model.OpenInterest;
 import com.tradery.model.PremiumIndex;
 import com.tradery.model.TradeDirection;
@@ -285,6 +286,34 @@ public class BacktestEngine {
             for (OpenTradeState ots : openTrades) {
                 boolean isLong = "long".equalsIgnoreCase(ots.trade.side());
                 ots.updateExcursions(candle.high(), candle.low(), i, isLong);
+            }
+
+            // Process holding costs for all open trades
+            if (config.marketType().hasHoldingCosts() && !openTrades.isEmpty()) {
+                MarketType marketType = config.marketType();
+
+                if (marketType == MarketType.FUTURES && fundingRates != null && !fundingRates.isEmpty()) {
+                    // Check for funding settlement in this bar's time window
+                    long prevBarTime = i > 0 ? candles.get(i - 1).timestamp() : candle.timestamp();
+                    FundingRate settlement = findFundingSettlement(prevBarTime, candle.timestamp());
+                    if (settlement != null) {
+                        for (OpenTradeState ots : openTrades) {
+                            boolean isLong = "long".equalsIgnoreCase(ots.trade.side());
+                            double fee = calculateFundingFee(settlement, ots.remainingQuantity, candle.close(), isLong);
+                            ots.processFundingSettlement(fee, settlement.fundingTime());
+                        }
+                    }
+                } else if (marketType == MarketType.MARGIN) {
+                    // Calculate hourly interest for margin positions
+                    for (OpenTradeState ots : openTrades) {
+                        long lastTime = ots.getLastInterestTime();
+                        double notional = ots.remainingQuantity * candle.close();
+                        double interest = calculateMarginInterest(notional, lastTime, candle.timestamp(), config.marginInterestApr());
+                        if (interest > 0) {
+                            ots.processMarginInterest(interest, candle.timestamp());
+                        }
+                    }
+                }
             }
 
             // Report progress
@@ -618,11 +647,14 @@ public class BacktestEngine {
                                         // Capture indicators at MFE/MAE points
                                         Map<String, Double> mfeIndicators = tradeAnalytics.getIndicatorValuesAtBar(strategy, ots.mfeBar);
                                         Map<String, Double> maeIndicators = tradeAnalytics.getIndicatorValuesAtBar(strategy, ots.maeBar);
+                                        // Calculate proportional holding costs for partial exit
+                                        Double holdingCosts = calculateProportionalHoldingCosts(ots, exitQty);
                                         Trade partialTrade = ots.trade.partialCloseWithAnalytics(
                                             i, candle.timestamp(), ots.exitPrice, exitQty,
                                             config.commission(), ots.exitReason, ots.exitZone,
                                             ots.mfePercent, ots.maePercent, ots.mfeBar, ots.maeBar,
-                                            exitPhases, exitIndicators, mfeIndicators, maeIndicators
+                                            exitPhases, exitIndicators, mfeIndicators, maeIndicators,
+                                            holdingCosts
                                         );
                                         trades.add(partialTrade);
                                         currentEquity += partialTrade.pnl() != null ? partialTrade.pnl() : 0;
@@ -644,11 +676,14 @@ public class BacktestEngine {
                             // Capture indicators at MFE/MAE points
                             Map<String, Double> mfeIndicators = tradeAnalytics.getIndicatorValuesAtBar(strategy, ots.mfeBar);
                             Map<String, Double> maeIndicators = tradeAnalytics.getIndicatorValuesAtBar(strategy, ots.maeBar);
+                            // Full close - take all accumulated holding costs
+                            Double holdingCosts = ots.getAccumulatedHoldingCosts() != 0 ? ots.getAccumulatedHoldingCosts() : null;
                             Trade closedTrade = ots.trade.partialCloseWithAnalytics(
                                 i, candle.timestamp(), ots.exitPrice, ots.remainingQuantity,
                                 config.commission(), ots.exitReason, ots.exitZone,
                                 ots.mfePercent, ots.maePercent, ots.mfeBar, ots.maeBar,
-                                exitPhases, exitIndicators, mfeIndicators, maeIndicators
+                                exitPhases, exitIndicators, mfeIndicators, maeIndicators,
+                                holdingCosts
                             );
                             trades.add(closedTrade);
                             currentEquity += closedTrade.pnl() != null ? closedTrade.pnl() : 0;
@@ -682,11 +717,14 @@ public class BacktestEngine {
                             // Capture indicators at MFE/MAE points
                             Map<String, Double> mfeIndicators = tradeAnalytics.getIndicatorValuesAtBar(strategy, ots.mfeBar);
                             Map<String, Double> maeIndicators = tradeAnalytics.getIndicatorValuesAtBar(strategy, ots.maeBar);
+                            // Calculate proportional holding costs for this exit
+                            Double holdingCosts = calculateProportionalHoldingCosts(ots, exitQty);
                             Trade partialTrade = ots.trade.partialCloseWithAnalytics(
                                 i, candle.timestamp(), ots.exitPrice, exitQty,
                                 config.commission(), ots.exitReason, ots.exitZone,
                                 ots.mfePercent, ots.maePercent, ots.mfeBar, ots.maeBar,
-                                exitPhases, exitIndicators, mfeIndicators, maeIndicators
+                                exitPhases, exitIndicators, mfeIndicators, maeIndicators,
+                                holdingCosts
                             );
                             trades.add(partialTrade);
                             currentEquity += partialTrade.pnl() != null ? partialTrade.pnl() : 0;
@@ -888,11 +926,14 @@ public class BacktestEngine {
                             // Capture indicators at MFE/MAE points
                             Map<String, Double> mfeIndicators = tradeAnalytics.getIndicatorValuesAtBar(strategy, ots.mfeBar);
                             Map<String, Double> maeIndicators = tradeAnalytics.getIndicatorValuesAtBar(strategy, ots.maeBar);
+                            // Full close - take all accumulated holding costs
+                            Double holdingCosts = ots.getAccumulatedHoldingCosts() != 0 ? ots.getAccumulatedHoldingCosts() : null;
                             Trade closedTrade = ots.trade.partialCloseWithAnalytics(
                                 i, candle.timestamp(), ots.exitPrice, ots.remainingQuantity,
                                 config.commission(), ots.exitReason, ots.exitZone,
                                 ots.mfePercent, ots.maePercent, ots.mfeBar, ots.maeBar,
-                                abortExitPhases, abortExitIndicators, mfeIndicators, maeIndicators
+                                abortExitPhases, abortExitIndicators, mfeIndicators, maeIndicators,
+                                holdingCosts
                             );
                             trades.add(closedTrade);
                             currentEquity += closedTrade.pnl() != null ? closedTrade.pnl() : 0;
@@ -1045,6 +1086,8 @@ public class BacktestEngine {
                 // Capture indicators at MFE/MAE points
                 Map<String, Double> mfeIndicators = tradeAnalytics.getIndicatorValuesAtBar(strategy, ots.mfeBar);
                 Map<String, Double> maeIndicators = tradeAnalytics.getIndicatorValuesAtBar(strategy, ots.maeBar);
+                // Full close - take all accumulated holding costs
+                Double holdingCosts = ots.getAccumulatedHoldingCosts() != 0 ? ots.getAccumulatedHoldingCosts() : null;
                 Trade closedTrade = ots.trade.partialCloseWithAnalytics(
                     lastBar,
                     lastCandle.timestamp(),
@@ -1054,7 +1097,8 @@ public class BacktestEngine {
                     "end_of_data",
                     null,
                     ots.mfePercent, ots.maePercent, ots.mfeBar, ots.maeBar,
-                    endPhases, endIndicators, mfeIndicators, maeIndicators
+                    endPhases, endIndicators, mfeIndicators, maeIndicators,
+                    holdingCosts
                 );
                 trades.add(closedTrade);
                 currentEquity += closedTrade.pnl() != null ? closedTrade.pnl() : 0;
@@ -1243,5 +1287,104 @@ public class BacktestEngine {
             pnl = -pnl;
         }
         return (pnl / (trade.entryPrice() * trade.quantity())) * 100;
+    }
+
+    /**
+     * Find funding settlement that occurred within a time window.
+     * Funding settlements happen every 8 hours at 00:00, 08:00, 16:00 UTC.
+     *
+     * @param windowStart Start of time window (exclusive)
+     * @param windowEnd   End of time window (inclusive)
+     * @return The funding rate if a settlement occurred in window, null otherwise
+     */
+    private FundingRate findFundingSettlement(long windowStart, long windowEnd) {
+        if (fundingRates == null || fundingRates.isEmpty()) {
+            return null;
+        }
+
+        // Find funding rate where fundingTime is in (windowStart, windowEnd]
+        for (FundingRate fr : fundingRates) {
+            if (fr.fundingTime() > windowStart && fr.fundingTime() <= windowEnd) {
+                return fr;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Calculate funding fee for a position at a funding settlement.
+     *
+     * Formula: fundingFee = quantity × price × fundingRate
+     *
+     * @param rate       The funding rate record
+     * @param quantity   Position size in base asset
+     * @param price      Current market price (used if mark price not available)
+     * @param isLong     True if long position, false if short
+     * @return The funding fee (positive = pay, negative = receive)
+     */
+    private double calculateFundingFee(FundingRate rate, double quantity, double price, boolean isLong) {
+        if (rate == null) {
+            return 0;
+        }
+
+        // Use mark price from funding rate if available, otherwise use current price
+        double markPrice = rate.markPrice() > 0 ? rate.markPrice() : price;
+        double notional = quantity * markPrice;
+        double fee = notional * rate.fundingRate();
+
+        // Long pays positive funding, receives negative funding
+        // Short receives positive funding, pays negative funding
+        return isLong ? fee : -fee;
+    }
+
+    /**
+     * Calculate margin interest for a time period.
+     * Interest accrues hourly on notional value.
+     *
+     * Formula: interest = notionalValue × (APR / 8760) × hoursHeld
+     *
+     * @param notionalValue  Position value in quote currency
+     * @param startTime      Start time in milliseconds
+     * @param endTime        End time in milliseconds
+     * @param marginInterestApr Annual interest rate (e.g., 0.12 = 12%)
+     * @return The interest cost (always positive)
+     */
+    private double calculateMarginInterest(double notionalValue, long startTime, long endTime, double marginInterestApr) {
+        if (marginInterestApr <= 0) {
+            return 0;
+        }
+
+        double hoursHeld = (endTime - startTime) / (1000.0 * 60 * 60);
+        if (hoursHeld <= 0) {
+            return 0;
+        }
+
+        double hourlyRate = marginInterestApr / 8760.0;  // APR to hourly
+        return notionalValue * hourlyRate * hoursHeld;
+    }
+
+    /**
+     * Calculate proportional holding costs for a partial exit.
+     * For partial exits, we allocate costs proportionally based on quantity exited.
+     *
+     * @param ots       The open trade state
+     * @param exitQty   The quantity being exited
+     * @return The holding costs for this exit, or null if no costs
+     */
+    private Double calculateProportionalHoldingCosts(OpenTradeState ots, double exitQty) {
+        double totalCosts = ots.getAccumulatedHoldingCosts();
+        if (totalCosts == 0) {
+            return null;
+        }
+
+        // Calculate proportion of costs for this exit
+        double proportion = exitQty / ots.remainingQuantity;
+        double exitCosts = totalCosts * proportion;
+
+        // Reduce accumulated costs by the portion we're taking
+        ots.accumulatedHoldingCosts -= exitCosts;
+
+        return exitCosts;
     }
 }

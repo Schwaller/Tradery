@@ -521,6 +521,76 @@ Hoop fields:
       required: ["hoopId"],
     },
   },
+
+  // ========== Phase Analysis Tools ==========
+  {
+    name: "tradery_analyze_phases",
+    description: "Analyze strategy trades against ALL available phases. For each phase, shows performance when phase is active vs inactive at trade entry. Returns REQUIRE/EXCLUDE recommendations with confidence scores. Requires a backtest run first.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        strategyId: {
+          type: "string",
+          description: "The strategy ID to analyze",
+        },
+      },
+      required: ["strategyId"],
+    },
+  },
+  {
+    name: "tradery_phase_bounds",
+    description: "Analyze when a phase is active over time. Returns time ranges when the phase condition was true, plus statistics. Great for understanding market regimes and validating phase filters.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        phaseId: {
+          type: "string",
+          description: "Phase ID (e.g., 'uptrend', 'us-market-hours', 'high-funding')",
+        },
+        symbol: {
+          type: "string",
+          description: "Trading symbol (default: uses phase's symbol or BTCUSDT)",
+        },
+        timeframe: {
+          type: "string",
+          description: "Timeframe (default: uses phase's timeframe or 1h)",
+        },
+        bars: {
+          type: "number",
+          description: "Number of bars to analyze (default: 500)",
+          default: 500,
+        },
+      },
+      required: ["phaseId"],
+    },
+  },
+
+  // ========== UI Tools ==========
+  {
+    name: "tradery_open_window",
+    description: `Open a window in the Tradery UI. Available windows:
+- phases: Open the Phases editor
+- hoops: Open the Hoops pattern editor
+- settings: Open Settings dialog
+- data: Open Data Management dialog
+- dsl-help: Open DSL syntax help
+- launcher: Bring the launcher window to front
+- project: Open a specific strategy project (requires strategyId)`,
+    inputSchema: {
+      type: "object",
+      properties: {
+        window: {
+          type: "string",
+          description: "Window to open: phases, hoops, settings, data, dsl-help, launcher, project",
+        },
+        strategyId: {
+          type: "string",
+          description: "Strategy ID (required only for window='project')",
+        },
+      },
+      required: ["window"],
+    },
+  },
 ];
 
 // Tool handlers
@@ -1073,6 +1143,43 @@ async function handleTool(name, args) {
       }
     }
 
+    // ========== Phase Analysis Handlers ==========
+
+    case "tradery_analyze_phases": {
+      if (!args.strategyId) {
+        return { error: "Missing required parameter: strategyId" };
+      }
+      return apiCall("GET", `/strategy/${encodeURIComponent(args.strategyId)}/analyze-phases`);
+    }
+
+    case "tradery_phase_bounds": {
+      if (!args.phaseId) {
+        return { error: "Missing required parameter: phaseId" };
+      }
+      let url = `/phase/${encodeURIComponent(args.phaseId)}/bounds`;
+      const queryParams = [];
+      if (args.symbol) queryParams.push(`symbol=${encodeURIComponent(args.symbol)}`);
+      if (args.timeframe) queryParams.push(`timeframe=${encodeURIComponent(args.timeframe)}`);
+      if (args.bars) queryParams.push(`bars=${args.bars}`);
+      if (queryParams.length > 0) {
+        url += '?' + queryParams.join('&');
+      }
+      return apiCall("GET", url);
+    }
+
+    // ========== UI Handlers ==========
+
+    case "tradery_open_window": {
+      if (!args.window) {
+        return { error: "Missing required parameter: window. Options: phases, hoops, settings, data, dsl-help, launcher, project" };
+      }
+      let url = `/ui/open?window=${encodeURIComponent(args.window)}`;
+      if (args.strategyId) {
+        url += `&id=${encodeURIComponent(args.strategyId)}`;
+      }
+      return apiCall("POST", url);
+    }
+
     default:
       return { error: `Unknown tool: ${name}. Available tools: ${TOOLS.map(t => t.name).join(', ')}` };
   }
@@ -1082,7 +1189,7 @@ async function handleTool(name, args) {
 const server = new Server(
   {
     name: "tradery-mcp-server",
-    version: "1.2.0",
+    version: "1.3.0",
   },
   {
     capabilities: {
@@ -1130,7 +1237,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  console.error("Tradery MCP server v1.2.0 running");
+  console.error("Tradery MCP server v1.3.0 running");
 }
 
 main().catch(console.error);

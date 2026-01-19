@@ -38,6 +38,7 @@ public class BinanceVisionClient {
     private static final int BATCH_SIZE = 10000; // Save to DB in batches
 
     private final OkHttpClient client;
+    private final OkHttpClient bulkClient;
     private final SqliteDataStore dataStore;
     private final int threadCount;
 
@@ -104,6 +105,7 @@ public class BinanceVisionClient {
 
     public BinanceVisionClient(SqliteDataStore dataStore, int threadCount) {
         this.client = HttpClientFactory.getClient();
+        this.bulkClient = HttpClientFactory.getBulkDownloadClient();
         this.dataStore = dataStore;
         this.threadCount = threadCount;
     }
@@ -321,12 +323,19 @@ public class BinanceVisionClient {
             .get()
             .build();
 
-        try (Response response = client.newCall(request).execute()) {
+        // Use bulk client with 10-minute timeout for large ZIP files
+        try (Response response = bulkClient.newCall(request).execute()) {
             if (response.code() == 404) {
                 throw new IOException("404 Not Found: " + url);
             }
             if (!response.isSuccessful()) {
                 throw new IOException("Download failed: " + response.code() + " " + response.message());
+            }
+
+            // Get content length for progress logging
+            long contentLength = response.body().contentLength();
+            if (contentLength > 0) {
+                log.info("Downloading {} ({} MB)...", month, String.format("%.1f", contentLength / 1_000_000.0));
             }
 
             // Parse ZIP in memory and extract CSV records

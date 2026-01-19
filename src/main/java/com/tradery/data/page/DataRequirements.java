@@ -25,6 +25,12 @@ public class DataRequirements {
     private DataPageView<OpenInterest> oiPage;         // If OI in DSL
     private DataPageView<PremiumIndex> premiumPage;    // If PREMIUM in DSL
 
+    // Track which pages are view-only (don't block backtest)
+    private boolean aggTradesViewOnly = false;
+    private boolean fundingViewOnly = false;
+    private boolean oiViewOnly = false;
+    private boolean premiumViewOnly = false;
+
     // Phase candle pages keyed by "symbol:timeframe"
     private final java.util.Map<String, DataPageView<Candle>> phaseCandlePages = new java.util.HashMap<>();
 
@@ -41,20 +47,24 @@ public class DataRequirements {
         this.candlePage = candlePage;
     }
 
-    public void setAggTradesPage(DataPageView<AggTrade> aggTradesPage) {
+    public void setAggTradesPage(DataPageView<AggTrade> aggTradesPage, boolean viewOnly) {
         this.aggTradesPage = aggTradesPage;
+        this.aggTradesViewOnly = viewOnly;
     }
 
-    public void setFundingPage(DataPageView<FundingRate> fundingPage) {
+    public void setFundingPage(DataPageView<FundingRate> fundingPage, boolean viewOnly) {
         this.fundingPage = fundingPage;
+        this.fundingViewOnly = viewOnly;
     }
 
-    public void setOiPage(DataPageView<OpenInterest> oiPage) {
+    public void setOiPage(DataPageView<OpenInterest> oiPage, boolean viewOnly) {
         this.oiPage = oiPage;
+        this.oiViewOnly = viewOnly;
     }
 
-    public void setPremiumPage(DataPageView<PremiumIndex> premiumPage) {
+    public void setPremiumPage(DataPageView<PremiumIndex> premiumPage, boolean viewOnly) {
         this.premiumPage = premiumPage;
+        this.premiumViewOnly = viewOnly;
     }
 
     /**
@@ -124,11 +134,29 @@ public class DataRequirements {
         return result;
     }
 
+    // ========== Required for Backtest Checks ==========
+
+    public boolean isAggTradesRequired() {
+        return aggTradesPage != null && !aggTradesViewOnly;
+    }
+
+    public boolean isFundingRequired() {
+        return fundingPage != null && !fundingViewOnly;
+    }
+
+    public boolean isOiRequired() {
+        return oiPage != null && !oiViewOnly;
+    }
+
+    public boolean isPremiumRequired() {
+        return premiumPage != null && !premiumViewOnly;
+    }
+
     // ========== State Checks ==========
 
     /**
-     * Check if ALL required data is ready.
-     * This is the trigger condition for starting a backtest.
+     * Check if ALL required data is ready for BACKTEST.
+     * View-only pages (for charts) don't block the backtest.
      */
     public boolean isReady() {
         // Candles are always required
@@ -136,21 +164,21 @@ public class DataRequirements {
             return false;
         }
 
-        // Check optional pages only if they're set (= required)
-        if (aggTradesPage != null && !aggTradesPage.isReady()) {
+        // Check optional pages only if they're set AND required for backtest (not view-only)
+        if (aggTradesPage != null && !aggTradesViewOnly && !aggTradesPage.isReady()) {
             return false;
         }
-        if (fundingPage != null && !fundingPage.isReady()) {
+        if (fundingPage != null && !fundingViewOnly && !fundingPage.isReady()) {
             return false;
         }
-        if (oiPage != null && !oiPage.isReady()) {
+        if (oiPage != null && !oiViewOnly && !oiPage.isReady()) {
             return false;
         }
-        if (premiumPage != null && !premiumPage.isReady()) {
+        if (premiumPage != null && !premiumViewOnly && !premiumPage.isReady()) {
             return false;
         }
 
-        // Check phase candle pages
+        // Check phase candle pages (always required for backtest)
         for (DataPageView<Candle> phasePage : phaseCandlePages.values()) {
             if (!phasePage.isReady()) {
                 return false;

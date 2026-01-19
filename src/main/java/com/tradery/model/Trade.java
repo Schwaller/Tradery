@@ -38,7 +38,9 @@ public record Trade(
     Map<String, Double> entryIndicators,  // Indicator values at entry (e.g., "RSI(14)" -> 28.5)
     Map<String, Double> exitIndicators,   // Indicator values at exit
     Map<String, Double> mfeIndicators,    // Indicator values at MFE point (best price reached)
-    Map<String, Double> maeIndicators     // Indicator values at MAE point (worst drawdown)
+    Map<String, Double> maeIndicators,    // Indicator values at MAE point (worst drawdown)
+    // Holding costs (funding fees for futures, interest for margin)
+    Double holdingCosts                   // Accumulated holding costs (positive = cost, negative = earnings)
 ) {
     /**
      * Create a new open trade
@@ -70,7 +72,8 @@ public record Trade(
             null, null, null, null,  // MFE/MAE analytics - populated on close
             activePhasesAtEntry, null,  // Phases at entry, exit populated on close
             entryIndicators, null,  // Indicators at entry, exit populated on close
-            null, null  // MFE/MAE indicators - populated on close
+            null, null,  // MFE/MAE indicators - populated on close
+            null  // Holding costs - populated on close
         );
     }
 
@@ -101,7 +104,8 @@ public record Trade(
             null, null, null, null,  // No analytics for rejected trades
             activePhases, activePhases,  // Same phases for entry/exit (instant rejection)
             indicators, indicators,  // Same indicators for entry/exit
-            null, null  // No MFE/MAE indicators for rejected trades
+            null, null,  // No MFE/MAE indicators for rejected trades
+            null  // No holding costs for rejected trades
         );
     }
 
@@ -117,7 +121,8 @@ public record Trade(
             null, null, null, null,  // No analytics for expired orders
             null, null,  // No phase context for expired orders
             null, null,  // No indicator context for expired orders
-            null, null   // No MFE/MAE indicators for expired orders
+            null, null,  // No MFE/MAE indicators for expired orders
+            null  // No holding costs for expired orders
         );
     }
 
@@ -202,6 +207,20 @@ public record Trade(
                                            Double mfe, Double mae, Integer mfeBar, Integer maeBar,
                                            List<String> activePhasesAtExit, Map<String, Double> exitIndicators,
                                            Map<String, Double> mfeIndicators, Map<String, Double> maeIndicators) {
+        return partialCloseWithAnalytics(exitBar, exitTime, exitPrice, exitQuantity, commissionRate,
+            exitReason, exitZone, mfe, mae, mfeBar, maeBar, activePhasesAtExit, exitIndicators,
+            mfeIndicators, maeIndicators, null);
+    }
+
+    /**
+     * Partially close with full analytics, phase context, exit/MFE/MAE indicator values, and holding costs.
+     */
+    public Trade partialCloseWithAnalytics(int exitBar, long exitTime, double exitPrice, double exitQuantity,
+                                           double commissionRate, String exitReason, String exitZone,
+                                           Double mfe, Double mae, Integer mfeBar, Integer maeBar,
+                                           List<String> activePhasesAtExit, Map<String, Double> exitIndicators,
+                                           Map<String, Double> mfeIndicators, Map<String, Double> maeIndicators,
+                                           Double holdingCosts) {
         double grossPnl = (exitPrice - entryPrice) * exitQuantity;
         if ("short".equals(side)) {
             grossPnl = -grossPnl;
@@ -214,7 +233,9 @@ public record Trade(
         double exitCommission = exitPrice * exitQuantity * commissionRate;
         double totalCommission = entryCommission + exitCommission;
 
-        double netPnl = grossPnl - totalCommission;
+        // Subtract holding costs from net PnL
+        double holdingCostsAmount = holdingCosts != null ? holdingCosts : 0;
+        double netPnl = grossPnl - totalCommission - holdingCostsAmount;
         double pnlPct = (netPnl / (entryPrice * exitQuantity)) * 100;
 
         // Generate unique ID for partial exit
@@ -226,7 +247,8 @@ public record Trade(
             mfe, mae, mfeBar, maeBar,
             this.activePhasesAtEntry, activePhasesAtExit,  // Preserve entry phases, add exit phases
             this.entryIndicators, exitIndicators,  // Preserve entry indicators, add exit indicators
-            mfeIndicators, maeIndicators  // Indicator values at MFE/MAE points
+            mfeIndicators, maeIndicators,  // Indicator values at MFE/MAE points
+            holdingCosts  // Holding costs (funding fees or margin interest)
         );
     }
 

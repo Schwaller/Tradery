@@ -14,7 +14,9 @@ public record BacktestConfig(
     double initialCapital,
     PositionSizingType positionSizingType,
     double positionSizingValue,
-    double commission
+    double commission,
+    MarketType marketType,
+    double marginInterestApr
 ) {
     /**
      * Create default config
@@ -31,7 +33,9 @@ public record BacktestConfig(
             10000.0,
             PositionSizingType.FIXED_PERCENT,
             10.0,
-            0.001
+            0.001,
+            MarketType.SPOT,
+            0.12
         );
     }
 }

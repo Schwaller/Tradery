@@ -1,5 +1,6 @@
 package com.tradery.ui;
 
+import com.tradery.model.MarketType;
 import com.tradery.model.PositionSizingType;
 import com.tradery.model.Strategy;
 import com.tradery.ui.base.ConfigurationPanel;
@@ -19,6 +20,9 @@ public class BacktestSettingsPanel extends ConfigurationPanel {
     private JSpinner feeSpinner;
     private JSpinner slippageSpinner;
     private JLabel capitalLabel;
+    private JComboBox<MarketType> marketTypeCombo;
+    private JSpinner marginAprSpinner;
+    private JLabel marginAprLabel;
 
     private static final String[] POSITION_SIZING_TYPES = {
         "Fixed 1%", "Fixed 5%", "Fixed 10%", "Fixed 20%",
@@ -56,11 +60,32 @@ public class BacktestSettingsPanel extends ConfigurationPanel {
         JSpinner.NumberEditor slipEditor = new JSpinner.NumberEditor(slippageSpinner, "0.00'%'");
         slippageSpinner.setEditor(slipEditor);
 
+        // Market type: Spot (default), Futures, Margin
+        marketTypeCombo = new JComboBox<>(MarketType.values());
+        marketTypeCombo.setSelectedItem(MarketType.SPOT);
+
+        // Margin interest APR: 12% default, range 0-100%
+        marginAprSpinner = new JSpinner(new SpinnerNumberModel(12.0, 0.0, 100.0, 0.5));
+        JSpinner.NumberEditor aprEditor = new JSpinner.NumberEditor(marginAprSpinner, "0.0'%'");
+        marginAprSpinner.setEditor(aprEditor);
+        marginAprLabel = new JLabel("Margin APR:");
+        marginAprLabel.setVisible(false);
+        marginAprSpinner.setVisible(false);
+
+        // Show/hide margin APR based on market type
+        marketTypeCombo.addActionListener(e -> {
+            boolean isMargin = marketTypeCombo.getSelectedItem() == MarketType.MARGIN;
+            marginAprLabel.setVisible(isMargin);
+            marginAprSpinner.setVisible(isMargin);
+            fireChange();
+        });
+
         // Wire up change listeners
         capitalSpinner.addChangeListener(e -> fireChange());
         positionSizingCombo.addActionListener(e -> fireChange());
         feeSpinner.addChangeListener(e -> fireChange());
         slippageSpinner.addChangeListener(e -> fireChange());
+        marginAprSpinner.addChangeListener(e -> fireChange());
     }
 
     private void layoutComponents() {
@@ -73,21 +98,31 @@ public class BacktestSettingsPanel extends ConfigurationPanel {
         JPanel settingsGrid = new JPanel(new GridBagLayout());
         settingsGrid.setOpaque(false);
 
+        int row = 0;
+
         // Capital row
-        settingsGrid.add(new JLabel("Capital:"), new GridBagConstraints(0, 0, 1, 1, 0, 0, GridBagConstraints.WEST, GridBagConstraints.NONE, new Insets(2, 0, 2, 8), 0, 0));
-        settingsGrid.add(capitalSpinner, new GridBagConstraints(1, 0, 1, 1, 1, 0, GridBagConstraints.WEST, GridBagConstraints.HORIZONTAL, new Insets(2, 0, 2, 0), 0, 0));
+        settingsGrid.add(new JLabel("Capital:"), new GridBagConstraints(0, row, 1, 1, 0, 0, GridBagConstraints.WEST, GridBagConstraints.NONE, new Insets(2, 0, 2, 8), 0, 0));
+        settingsGrid.add(capitalSpinner, new GridBagConstraints(1, row++, 1, 1, 1, 0, GridBagConstraints.WEST, GridBagConstraints.HORIZONTAL, new Insets(2, 0, 2, 0), 0, 0));
 
         // Position sizing row
-        settingsGrid.add(new JLabel("Position Size:"), new GridBagConstraints(0, 1, 1, 1, 0, 0, GridBagConstraints.WEST, GridBagConstraints.NONE, new Insets(2, 0, 2, 8), 0, 0));
-        settingsGrid.add(positionSizingCombo, new GridBagConstraints(1, 1, 1, 1, 1, 0, GridBagConstraints.WEST, GridBagConstraints.HORIZONTAL, new Insets(2, 0, 2, 0), 0, 0));
+        settingsGrid.add(new JLabel("Position Size:"), new GridBagConstraints(0, row, 1, 1, 0, 0, GridBagConstraints.WEST, GridBagConstraints.NONE, new Insets(2, 0, 2, 8), 0, 0));
+        settingsGrid.add(positionSizingCombo, new GridBagConstraints(1, row++, 1, 1, 1, 0, GridBagConstraints.WEST, GridBagConstraints.HORIZONTAL, new Insets(2, 0, 2, 0), 0, 0));
+
+        // Market type row
+        settingsGrid.add(new JLabel("Market Type:"), new GridBagConstraints(0, row, 1, 1, 0, 0, GridBagConstraints.WEST, GridBagConstraints.NONE, new Insets(2, 0, 2, 8), 0, 0));
+        settingsGrid.add(marketTypeCombo, new GridBagConstraints(1, row++, 1, 1, 1, 0, GridBagConstraints.WEST, GridBagConstraints.HORIZONTAL, new Insets(2, 0, 2, 0), 0, 0));
+
+        // Margin APR row (visible only for MARGIN market type)
+        settingsGrid.add(marginAprLabel, new GridBagConstraints(0, row, 1, 1, 0, 0, GridBagConstraints.WEST, GridBagConstraints.NONE, new Insets(2, 0, 2, 8), 0, 0));
+        settingsGrid.add(marginAprSpinner, new GridBagConstraints(1, row++, 1, 1, 1, 0, GridBagConstraints.WEST, GridBagConstraints.HORIZONTAL, new Insets(2, 0, 2, 0), 0, 0));
 
         // Fee row
-        settingsGrid.add(new JLabel("Fee:"), new GridBagConstraints(0, 2, 1, 1, 0, 0, GridBagConstraints.WEST, GridBagConstraints.NONE, new Insets(2, 0, 2, 8), 0, 0));
-        settingsGrid.add(feeSpinner, new GridBagConstraints(1, 2, 1, 1, 1, 0, GridBagConstraints.WEST, GridBagConstraints.HORIZONTAL, new Insets(2, 0, 2, 0), 0, 0));
+        settingsGrid.add(new JLabel("Fee:"), new GridBagConstraints(0, row, 1, 1, 0, 0, GridBagConstraints.WEST, GridBagConstraints.NONE, new Insets(2, 0, 2, 8), 0, 0));
+        settingsGrid.add(feeSpinner, new GridBagConstraints(1, row++, 1, 1, 1, 0, GridBagConstraints.WEST, GridBagConstraints.HORIZONTAL, new Insets(2, 0, 2, 0), 0, 0));
 
         // Slippage row
-        settingsGrid.add(new JLabel("Slippage:"), new GridBagConstraints(0, 3, 1, 1, 0, 0, GridBagConstraints.WEST, GridBagConstraints.NONE, new Insets(2, 0, 2, 8), 0, 0));
-        settingsGrid.add(slippageSpinner, new GridBagConstraints(1, 3, 1, 1, 1, 0, GridBagConstraints.WEST, GridBagConstraints.HORIZONTAL, new Insets(2, 0, 2, 0), 0, 0));
+        settingsGrid.add(new JLabel("Slippage:"), new GridBagConstraints(0, row, 1, 1, 0, 0, GridBagConstraints.WEST, GridBagConstraints.NONE, new Insets(2, 0, 2, 8), 0, 0));
+        settingsGrid.add(slippageSpinner, new GridBagConstraints(1, row++, 1, 1, 1, 0, GridBagConstraints.WEST, GridBagConstraints.HORIZONTAL, new Insets(2, 0, 2, 0), 0, 0));
 
         add(title, BorderLayout.NORTH);
         add(settingsGrid, BorderLayout.CENTER);
@@ -106,6 +141,12 @@ public class BacktestSettingsPanel extends ConfigurationPanel {
                 positionSizingCombo.setSelectedItem(positionSizingTypeToDisplay(strategy.getPositionSizingType(), strategy.getPositionSizingValue()));
                 feeSpinner.setValue(strategy.getFeePercent());
                 slippageSpinner.setValue(strategy.getSlippagePercent());
+                marketTypeCombo.setSelectedItem(strategy.getMarketType());
+                marginAprSpinner.setValue(strategy.getMarginInterestApr() * 100);  // Convert to percent display
+                // Update visibility of margin APR based on market type
+                boolean isMargin = strategy.getMarketType() == MarketType.MARGIN;
+                marginAprLabel.setVisible(isMargin);
+                marginAprSpinner.setVisible(isMargin);
             }
         } finally {
             setSuppressChangeEvents(false);
@@ -126,6 +167,8 @@ public class BacktestSettingsPanel extends ConfigurationPanel {
 
         strategy.setFeePercent(((Number) feeSpinner.getValue()).doubleValue());
         strategy.setSlippagePercent(((Number) slippageSpinner.getValue()).doubleValue());
+        strategy.setMarketType((MarketType) marketTypeCombo.getSelectedItem());
+        strategy.setMarginInterestApr(((Number) marginAprSpinner.getValue()).doubleValue() / 100.0);  // Convert from percent display
     }
 
     // Getters for direct access

@@ -304,6 +304,7 @@ public class ProjectWindow extends JFrame {
         backtestCoordinator.setOnError(this::showBacktestError);
         backtestCoordinator.setOnViewDataReady(this::handleViewDataReady);
         backtestCoordinator.setOnDataLoadingProgress(this::handleDataLoadingProgress);
+        backtestCoordinator.setOnBacktestStart(this::clearStaleData);
 
         // Wire up panel change listeners
         editorPanel.setOnChange(autoSaveScheduler::scheduleUpdate);
@@ -746,6 +747,21 @@ public class ProjectWindow extends JFrame {
             capital,
             anchorDate
         );
+    }
+
+    /**
+     * Clear stale data when a new backtest starts.
+     * This prevents showing old trades/metrics while new data loads.
+     */
+    private void clearStaleData() {
+        // Clear trade table to prevent showing old trades
+        tradeTablePanel.updateTrades(java.util.Collections.emptyList(), null, strategy.getName());
+
+        // Clear current result
+        this.currentResult = null;
+
+        // Disable phase analysis (no valid result)
+        phaseAnalysisBtn.setEnabled(false);
     }
 
     private void displayResult(BacktestResult result) {

@@ -59,6 +59,7 @@ public class StrategyEditorPanel extends JPanel {
         notesArea.setLineWrap(true);
         notesArea.setWrapStyleWord(true);
         notesArea.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
+        notesArea.setBorder(BorderFactory.createEmptyBorder(2, 4, 2, 4));
         setupNotesPlaceholder();
         notesArea.getDocument().addDocumentListener(new DocumentListener() {
             @Override
@@ -160,7 +161,8 @@ public class StrategyEditorPanel extends JPanel {
         JScrollPane notesScroll = new JScrollPane(notesArea);
         notesScroll.setVerticalScrollBarPolicy(JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED);
         notesScroll.setHorizontalScrollBarPolicy(JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
-        notesScroll.setBorder(BorderFactory.createEmptyBorder(0, 1, 0, 0));
+        notesScroll.setBorder(null);
+        notesScroll.setViewportBorder(null);
         headerPanel.add(notesScroll, BorderLayout.SOUTH);
 
         topPanel.add(headerPanel, BorderLayout.NORTH);
@@ -168,7 +170,6 @@ public class StrategyEditorPanel extends JPanel {
         // Flow diagram below notes
         JPanel flowWrapper = new JPanel(new BorderLayout());
         flowWrapper.setOpaque(false);
-        flowWrapper.add(new JSeparator(), BorderLayout.NORTH);
         flowWrapper.add(flowDiagramPanel, BorderLayout.CENTER);
         flowWrapper.add(new JSeparator(), BorderLayout.SOUTH);
         topPanel.add(flowWrapper, BorderLayout.SOUTH);

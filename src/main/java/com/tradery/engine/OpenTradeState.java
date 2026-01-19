@@ -35,6 +35,10 @@ public class OpenTradeState {
     int maeBar;           // Bar when MAE was reached
     // Phase context
     List<String> activePhasesAtEntry;  // Phases active when trade was opened
+    // Holding costs (funding fees for futures, interest for margin)
+    double accumulatedHoldingCosts;    // Total holding costs accumulated
+    long lastFundingTime;              // For futures: track last settlement processed
+    long lastInterestTime;             // For margin: track last hour interest was calculated
 
     public OpenTradeState(Trade trade, double entryPrice) {
         this(trade, entryPrice, null);
@@ -57,6 +61,10 @@ public class OpenTradeState {
         this.maeBar = trade.entryBar();
         // Phase context
         this.activePhasesAtEntry = activePhasesAtEntry;
+        // Holding costs
+        this.accumulatedHoldingCosts = 0;
+        this.lastFundingTime = 0;
+        this.lastInterestTime = trade.entryTime();
     }
 
     /**
@@ -162,5 +170,54 @@ public class OpenTradeState {
      */
     public boolean isFullyClosed() {
         return remainingQuantity <= 0.0001; // Small epsilon for floating point
+    }
+
+    /**
+     * Process a funding settlement (for FUTURES market type).
+     * Only processes if this settlement hasn't been seen before.
+     *
+     * @param fee         The funding fee (positive = pay, negative = receive)
+     * @param fundingTime The time of the funding settlement
+     */
+    public void processFundingSettlement(double fee, long fundingTime) {
+        if (fundingTime <= lastFundingTime) {
+            return;  // Already processed this settlement
+        }
+        accumulatedHoldingCosts += fee;
+        lastFundingTime = fundingTime;
+    }
+
+    /**
+     * Process margin interest for a time period (for MARGIN market type).
+     * Updates the last interest time to prevent double-counting.
+     *
+     * @param interest    The interest amount (always positive)
+     * @param currentTime The current time for tracking
+     */
+    public void processMarginInterest(double interest, long currentTime) {
+        accumulatedHoldingCosts += interest;
+        lastInterestTime = currentTime;
+    }
+
+    /**
+     * Get the accumulated holding costs for this trade.
+     * Positive values represent costs, negative values represent earnings.
+     */
+    public double getAccumulatedHoldingCosts() {
+        return accumulatedHoldingCosts;
+    }
+
+    /**
+     * Get the last funding time that was processed.
+     */
+    public long getLastFundingTime() {
+        return lastFundingTime;
+    }
+
+    /**
+     * Get the last time interest was calculated.
+     */
+    public long getLastInterestTime() {
+        return lastInterestTime;
     }
 }

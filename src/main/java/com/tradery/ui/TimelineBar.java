@@ -25,7 +25,7 @@ import java.util.function.Consumer;
  */
 public class TimelineBar extends JPanel implements DataPageListener<Candle> {
 
-    private static final int BAR_HEIGHT = 48;
+    private static final int BAR_HEIGHT = 56;
     private static final Color CANDLE_UP = new Color(38, 166, 91);
     private static final Color CANDLE_DOWN = new Color(214, 69, 65);
     private static final Color GRID_LINE = new Color(128, 128, 128, 80);
@@ -52,7 +52,7 @@ public class TimelineBar extends JPanel implements DataPageListener<Candle> {
     private long minTime;
     private long maxTime;
     private int padding = 4;
-    private int topPadding = 14;  // Extra space for title
+    private int topPadding = 22;  // Extra space for title
 
     // Callback when anchor date changes
     private Consumer<Long> onAnchorDateChanged;
@@ -373,8 +373,13 @@ public class TimelineBar extends JPanel implements DataPageListener<Candle> {
             long yearStart = cal.getTimeInMillis();
             double x = padding + ((yearStart - minTime) / (double) timeRange) * (width - padding * 2);
 
-            g2.setColor(GRID_LINE);
-            g2.drawLine((int) x, topPadding, (int) x, height);
+            // Gradient from transparent at top to grid color at bottom
+            GradientPaint gradient = new GradientPaint(
+                0, 0, new Color(GRID_LINE.getRed(), GRID_LINE.getGreen(), GRID_LINE.getBlue(), 0),
+                0, height, GRID_LINE
+            );
+            g2.setPaint(gradient);
+            g2.drawLine((int) x, 0, (int) x, height);
 
             String yearStr = String.valueOf(cal.get(java.util.Calendar.YEAR));
             int textWidth = fm.stringWidth(yearStr);
@@ -386,7 +391,7 @@ public class TimelineBar extends JPanel implements DataPageListener<Candle> {
 
         // Draw title at top (normal font size, centered)
         if (title != null && !title.isEmpty()) {
-            Font titleFont = g2.getFont().deriveFont(Font.BOLD).deriveFont(11f);
+            Font titleFont = g2.getFont().deriveFont(Font.BOLD).deriveFont(14f);
 
             g2.setFont(titleFont);
             FontMetrics tfm = g2.getFontMetrics();

@@ -19,6 +19,8 @@ public class BacktestSettings {
     private double positionSizingValue = 10.0;
     private double feePercent = 0.10;
     private double slippagePercent = 0.05;
+    private MarketType marketType = MarketType.SPOT;  // Default: no holding costs
+    private double marginInterestApr = 0.12;  // 12% APR default for margin trading
 
     public BacktestSettings() {
         // For Jackson
@@ -135,6 +137,31 @@ public class BacktestSettings {
         this.slippagePercent = slippagePercent >= 0 ? slippagePercent : 0.05;
     }
 
+    public MarketType getMarketType() {
+        return marketType != null ? marketType : MarketType.SPOT;
+    }
+
+    public void setMarketType(MarketType marketType) {
+        this.marketType = marketType != null ? marketType : MarketType.SPOT;
+    }
+
+    public double getMarginInterestApr() {
+        return marginInterestApr >= 0 ? marginInterestApr : 0.12;
+    }
+
+    public void setMarginInterestApr(double marginInterestApr) {
+        this.marginInterestApr = marginInterestApr >= 0 ? marginInterestApr : 0.12;
+    }
+
+    /**
+     * Check if holding costs should be calculated.
+     * Returns true for FUTURES (funding fees) and MARGIN (interest).
+     */
+    @JsonIgnore
+    public boolean hasHoldingCosts() {
+        return getMarketType().hasHoldingCosts();
+    }
+
     /**
      * Get total commission (fee + slippage) as decimal
      */
@@ -155,7 +182,9 @@ public class BacktestSettings {
             getInitialCapital(),
             getPositionSizingType(),
             getPositionSizingValue(),
-            getTotalCommission()
+            getTotalCommission(),
+            getMarketType(),
+            getMarginInterestApr()
         );
     }
 }

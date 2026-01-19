@@ -21,6 +21,7 @@ public class MetricsPanel extends JPanel {
     private JLabel avgLossLabel;
     private JLabel finalEquityLabel;
     private JLabel totalFeesLabel;
+    private JLabel holdingCostsLabel;
     private JLabel maxCapitalUsageLabel;
 
     public MetricsPanel() {
@@ -42,6 +43,7 @@ public class MetricsPanel extends JPanel {
         avgLossLabel = createValueLabel("-");
         finalEquityLabel = createValueLabel("-");
         totalFeesLabel = createValueLabel("-");
+        holdingCostsLabel = createValueLabel("-");
         maxCapitalUsageLabel = createValueLabel("-");
     }
 
@@ -69,6 +71,7 @@ public class MetricsPanel extends JPanel {
         addMetricRow(gridPanel, "Avg Win", avgWinLabel);
         addMetricRow(gridPanel, "Avg Loss", avgLossLabel);
         addMetricRow(gridPanel, "Total Fees", totalFeesLabel);
+        addMetricRow(gridPanel, "Holding Costs", holdingCostsLabel);
         addMetricRow(gridPanel, "Max Capital", maxCapitalUsageLabel);
         addMetricRow(gridPanel, "Final Equity", finalEquityLabel);
 
@@ -114,6 +117,19 @@ public class MetricsPanel extends JPanel {
         totalFeesLabel.setText(String.format("$%.2f", metrics.totalFees()));
         totalFeesLabel.setForeground(new Color(244, 67, 54));
 
+        // Display holding costs (can be positive = cost, negative = earnings from funding)
+        double holdingCosts = metrics.totalHoldingCosts();
+        if (holdingCosts == 0) {
+            holdingCostsLabel.setText("-");
+            holdingCostsLabel.setForeground(Color.GRAY);
+        } else if (holdingCosts > 0) {
+            holdingCostsLabel.setText(String.format("$%.2f", holdingCosts));
+            holdingCostsLabel.setForeground(new Color(244, 67, 54));  // Red for costs
+        } else {
+            holdingCostsLabel.setText(String.format("+$%.2f", Math.abs(holdingCosts)));
+            holdingCostsLabel.setForeground(new Color(76, 175, 80));  // Green for earnings
+        }
+
         maxCapitalUsageLabel.setText(String.format("$%,.0f (%.1f%%)", metrics.maxCapitalDollars(), metrics.maxCapitalUsage()));
 
         finalEquityLabel.setText(String.format("$%,.2f", metrics.finalEquity()));
@@ -137,6 +153,8 @@ public class MetricsPanel extends JPanel {
         avgLossLabel.setForeground(Color.GRAY);
         totalFeesLabel.setText("-");
         totalFeesLabel.setForeground(Color.GRAY);
+        holdingCostsLabel.setText("-");
+        holdingCostsLabel.setForeground(Color.GRAY);
         maxCapitalUsageLabel.setText("-");
         finalEquityLabel.setText("-");
     }

@@ -58,6 +58,7 @@ public class AggTradesStore {
     private final File dataDir;
     private final AggTradesClient client;
     private final OkHttpClient httpClient;
+    private final OkHttpClient bulkDownloadClient;
 
     // Cancellation support
     private final AtomicBoolean fetchCancelled = new AtomicBoolean(false);
@@ -71,6 +72,7 @@ public class AggTradesStore {
         this.dataDir = DataConfig.getInstance().getDataDir();
         this.client = client;
         this.httpClient = HttpClientFactory.getClient();
+        this.bulkDownloadClient = HttpClientFactory.getBulkDownloadClient();
 
         if (!dataDir.exists()) {
             dataDir.mkdirs();
@@ -183,6 +185,10 @@ public class AggTradesStore {
         int completedDays = 0;
         LocalDate current = startDate;
 
+        // Track progress state for combining day + file progress
+        final int finalTotalDays = totalDays;
+        final int[] currentDayIndex = {0};
+
         while (!current.isAfter(endDate)) {
             if (fetchCancelled.get()) {
                 log.debug("Vision fetch cancelled");
@@ -195,6 +201,7 @@ public class AggTradesStore {
             if (isDayFullyCached(symbol, current)) {
                 log.trace("Vision: Skipping {} (already cached)", dateKey);
                 completedDays++;
+                currentDayIndex[0] = completedDays;
                 current = current.plusDays(1);
                 continue;
             }
@@ -204,17 +211,20 @@ public class AggTradesStore {
                 VISION_BASE_URL, symbol, symbol, dateKey);
 
             log.info("Vision: Downloading aggTrades {}", dateKey);
+            currentDayIndex[0] = completedDays;
 
-            // Report progress
+            // Report progress - starting this day
             if (progressCallback != null) {
-                int pct = totalDays > 0 ? (completedDays * 100) / totalDays : 0;
+                int pct = finalTotalDays > 0 ? (completedDays * 100) / finalTotalDays : 0;
                 progressCallback.accept(new FetchProgress(pct, 100,
-                    "Vision: Downloading aggTrades " + dateKey + "..."));
+                    String.format("Day %d/%d: %s connecting...", completedDays + 1, finalTotalDays, dateKey)));
             }
 
             try {
                 // Stream directly to hourly files without loading all into memory
-                int tradesWritten = downloadAndStreamToHourlyFiles(symbol, url, current);
+                // Pass progress info so file download can report combined progress
+                int tradesWritten = downloadAndStreamToHourlyFiles(symbol, url, current,
+                    currentDayIndex[0], finalTotalDays);
                 if (tradesWritten > 0) {
                     log.info("Vision: Saved {} aggTrades for {}", formatCount(tradesWritten), dateKey);
                 }
@@ -248,14 +258,22 @@ public class AggTradesStore {
     /**
      * Download Vision ZIP and stream directly to hourly files.
      * This avoids loading millions of trades into memory.
+     *
+     * @param symbol Trading symbol
+     * @param url Vision download URL
+     * @param date Date being downloaded
+     * @param currentDayIndex 0-based index of current day in the batch
+     * @param totalDays Total days in the batch
      */
-    private int downloadAndStreamToHourlyFiles(String symbol, String url, LocalDate date) throws IOException {
+    private int downloadAndStreamToHourlyFiles(String symbol, String url, LocalDate date,
+                                                int currentDayIndex, int totalDays) throws IOException {
         Request request = new Request.Builder()
             .url(url)
             .get()
             .build();
 
-        try (Response response = httpClient.newCall(request).execute()) {
+        // Use bulk download client with 10-minute timeout for large Vision files
+        try (Response response = bulkDownloadClient.newCall(request).execute()) {
             if (response.code() == 404) {
                 throw new IOException("404 Not Found");
             }
@@ -263,8 +281,47 @@ public class AggTradesStore {
                 throw new IOException("Download failed: " + response.code());
             }
 
-            return streamZipToHourlyFiles(symbol, response.body().byteStream(), date);
+            // Get content length for progress tracking
+            long contentLength = response.body().contentLength();
+            String dateKey = date.format(DATE_FORMAT);
+
+            // Wrap input stream with progress tracking
+            // Calculate combined progress: days completed + current file progress
+            InputStream rawStream = response.body().byteStream();
+            ProgressInputStream progressStream = new ProgressInputStream(rawStream, contentLength, bytesRead -> {
+                if (progressCallback != null && contentLength > 0) {
+                    // File progress within current day (0-100)
+                    int filePercent = (int) ((bytesRead * 100) / contentLength);
+                    // Overall progress: completed days + fraction of current day
+                    int overallPercent = totalDays > 0
+                        ? (currentDayIndex * 100 + filePercent) / totalDays
+                        : filePercent;
+                    overallPercent = Math.min(99, Math.max(0, overallPercent));
+
+                    String size = formatBytes(contentLength);
+                    String downloaded = formatBytes(bytesRead);
+                    progressCallback.accept(new FetchProgress(overallPercent, 100,
+                        String.format("Day %d/%d: %s %s / %s",
+                            currentDayIndex + 1, totalDays, dateKey, downloaded, size)));
+                }
+            });
+
+            return streamZipToHourlyFiles(symbol, progressStream, date);
         }
+    }
+
+    /**
+     * Format bytes as human-readable string.
+     */
+    private String formatBytes(long bytes) {
+        if (bytes >= 1_000_000_000) {
+            return String.format("%.1f GB", bytes / 1_000_000_000.0);
+        } else if (bytes >= 1_000_000) {
+            return String.format("%.1f MB", bytes / 1_000_000.0);
+        } else if (bytes >= 1_000) {
+            return String.format("%.1f KB", bytes / 1_000.0);
+        }
+        return bytes + " B";
     }
 
     /**
@@ -388,7 +445,8 @@ public class AggTradesStore {
             .get()
             .build();
 
-        try (Response response = httpClient.newCall(request).execute()) {
+        // Use bulk download client with 10-minute timeout for large Vision files
+        try (Response response = bulkDownloadClient.newCall(request).execute()) {
             if (response.code() == 404) {
                 throw new IOException("404 Not Found");
             }

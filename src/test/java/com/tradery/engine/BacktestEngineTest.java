@@ -42,9 +42,11 @@ class BacktestEngineTest {
             0L,
             System.currentTimeMillis(),
             10000.0,
-            "fixed_dollar",
+            PositionSizingType.FIXED_DOLLAR,
             1000.0,
-            0.001  // 0.1% commission
+            0.001,  // 0.1% commission
+            MarketType.SPOT,  // Default to spot for tests
+            0.0  // No margin interest
         );
     }
 
