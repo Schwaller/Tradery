@@ -198,6 +198,14 @@ public class ChartsPanel extends JPanel {
                 candles
             );
         }
+        if (config.isDailyVolumeProfileEnabled()) {
+            overlayManager.setDailyVolumeProfileOverlay(
+                candles,
+                config.getDailyVolumeProfileBins(),
+                70.0,
+                config.getDailyVolumeProfileWidth()
+            );
+        }
     }
 
     private void initializeCharts() {
@@ -631,6 +639,24 @@ public class ChartsPanel extends JPanel {
 
     public boolean isVwapEnabled() {
         return overlayManager.isVwapEnabled();
+    }
+
+    // ===== Daily Volume Profile Overlay Delegation =====
+
+    public void setDailyVolumeProfileOverlay(List<Candle> candles, int numBins, double valueAreaPct, int histogramWidth) {
+        overlayManager.setDailyVolumeProfileOverlay(candles, numBins, valueAreaPct, histogramWidth);
+    }
+
+    public void setDailyVolumeProfileOverlay(List<Candle> candles) {
+        overlayManager.setDailyVolumeProfileOverlay(candles);
+    }
+
+    public void clearDailyVolumeProfileOverlay() {
+        overlayManager.clearDailyVolumeProfileOverlay();
+    }
+
+    public boolean isDailyVolumeProfileEnabled() {
+        return overlayManager.isDailyVolumeProfileEnabled();
     }
 
     // ===== Ray Overlay Delegation =====

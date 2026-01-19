@@ -53,6 +53,9 @@ public class OverlayManager {
     // Ray overlay
     private RayOverlay rayOverlay;
 
+    // Daily Volume Profile overlay
+    private DailyVolumeProfileAnnotation dailyVolumeProfileAnnotation;
+
     public OverlayManager(JFreeChart priceChart) {
         this.priceChart = priceChart;
         this.rayOverlay = new RayOverlay(priceChart);
@@ -946,6 +949,59 @@ public class OverlayManager {
         return vwapDatasetIndex >= 0 && priceChart.getXYPlot().getDataset(vwapDatasetIndex) != null;
     }
 
+    // ===== Daily Volume Profile Overlay =====
+
+    /**
+     * Sets the daily volume profile overlay showing volume distribution histograms
+     * on the left side of each day's bounds.
+     *
+     * @param candles        List of candles to analyze
+     * @param numBins        Number of price bins per day (default 24)
+     * @param valueAreaPct   Value area percentage (typically 70%)
+     * @param histogramWidth Max width in pixels for histogram bars
+     */
+    public void setDailyVolumeProfileOverlay(List<Candle> candles, int numBins, double valueAreaPct, int histogramWidth) {
+        clearDailyVolumeProfileOverlay();
+
+        if (candles == null || candles.isEmpty()) return;
+
+        XYPlot plot = priceChart.getXYPlot();
+
+        List<DailyVolumeProfileAnnotation.DayProfile> profiles =
+            DailyVolumeProfileAnnotation.calculateDayProfiles(candles, numBins, valueAreaPct);
+
+        if (profiles.isEmpty()) return;
+
+        dailyVolumeProfileAnnotation = new DailyVolumeProfileAnnotation(profiles, histogramWidth);
+        plot.addAnnotation(dailyVolumeProfileAnnotation);
+    }
+
+    /**
+     * Sets the daily volume profile overlay with default parameters.
+     * Default: 24 bins, 70% value area, 60px histogram width.
+     */
+    public void setDailyVolumeProfileOverlay(List<Candle> candles) {
+        setDailyVolumeProfileOverlay(candles, 24, 70.0, 60);
+    }
+
+    /**
+     * Clears the daily volume profile overlay from the chart.
+     */
+    public void clearDailyVolumeProfileOverlay() {
+        if (dailyVolumeProfileAnnotation != null && priceChart != null) {
+            XYPlot plot = priceChart.getXYPlot();
+            plot.removeAnnotation(dailyVolumeProfileAnnotation);
+            dailyVolumeProfileAnnotation = null;
+        }
+    }
+
+    /**
+     * Checks if the daily volume profile overlay is currently enabled.
+     */
+    public boolean isDailyVolumeProfileEnabled() {
+        return dailyVolumeProfileAnnotation != null;
+    }
+
     // ===== Clear All =====
 
     public void clearAll() {
@@ -958,6 +1014,7 @@ public class OverlayManager {
         clearRayOverlay();
         clearIchimokuOverlay();
         clearVwapOverlay();
+        clearDailyVolumeProfileOverlay();
         resetColorIndex();
     }
 

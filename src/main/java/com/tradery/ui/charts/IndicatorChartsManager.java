@@ -1816,7 +1816,7 @@ public class IndicatorChartsManager {
         updateRetailChart(candles);
         updateFundingChart(candles);
         updateOiChart(candles);
-        updatePremiumChart(candles);
+        // Premium chart updated via PremiumPageManager callback - not here (EDT would block)
         updateStochasticChart(candles);
         updateRangePositionChart(candles);
         updateAdxChart(candles);

@@ -57,6 +57,9 @@ public class IndicatorSelectorPopup extends JDialog {
     // Ichimoku Cloud controls
     private JCheckBox ichimokuCheckbox;
 
+    // Daily Volume Profile controls
+    private JCheckBox dailyVolumeProfileCheckbox;
+
     // Oscillator controls
     private JCheckBox rsiCheckbox;
     private JLabel rsiLabel;
@@ -199,6 +202,7 @@ public class IndicatorSelectorPopup extends JDialog {
         contentPane.add(createVwapRow());
         contentPane.add(createRayOverlayRow());
         contentPane.add(createIchimokuRow());
+        contentPane.add(createDailyVolumeProfileRow());
 
         contentPane.add(createSectionSeparator());
 
@@ -635,6 +639,16 @@ public class IndicatorSelectorPopup extends JDialog {
         row.setAlignmentX(Component.LEFT_ALIGNMENT);
         row.add(ichimokuCheckbox);
         ichimokuCheckbox.addActionListener(e -> scheduleUpdate());
+        return row;
+    }
+
+    private JPanel createDailyVolumeProfileRow() {
+        dailyVolumeProfileCheckbox = new JCheckBox("Daily Volume Profile");
+        dailyVolumeProfileCheckbox.setToolTipText("Show volume distribution histogram on left side of each day (last 14 days)");
+        JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
+        row.setAlignmentX(Component.LEFT_ALIGNMENT);
+        row.add(dailyVolumeProfileCheckbox);
+        dailyVolumeProfileCheckbox.addActionListener(e -> scheduleUpdate());
         return row;
     }
 
@@ -1114,6 +1128,7 @@ public class IndicatorSelectorPopup extends JDialog {
         rayLookbackSpinner.setValue(rayLookback == 0 ? 200 : rayLookback);  // Show 200 as default when switching from no-limit
         raySkipSpinner.setValue(config.getRaySkip());
         ichimokuCheckbox.setSelected(config.isIchimokuEnabled());
+        dailyVolumeProfileCheckbox.setSelected(config.isDailyVolumeProfileEnabled());
 
         // Oscillators
         rsiCheckbox.setSelected(config.isRsiEnabled());
@@ -1248,6 +1263,19 @@ public class IndicatorSelectorPopup extends JDialog {
             chartPanel.clearIchimokuOverlay();
         }
         config.setIchimokuEnabled(ichimokuCheckbox.isSelected());
+
+        // Daily Volume Profile
+        if (dailyVolumeProfileCheckbox.isSelected()) {
+            chartPanel.setDailyVolumeProfileOverlay(
+                null,  // Will use current candles
+                config.getDailyVolumeProfileBins(),
+                70.0,  // Value area percentage
+                config.getDailyVolumeProfileWidth()
+            );
+        } else {
+            chartPanel.clearDailyVolumeProfileOverlay();
+        }
+        config.setDailyVolumeProfileEnabled(dailyVolumeProfileCheckbox.isSelected());
 
         // Oscillators
         int rsiPeriod = (int) rsiSpinner.getValue();

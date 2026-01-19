@@ -98,6 +98,11 @@ public class ChartConfig {
     private int ichimokuSpanBPeriod = 52;       // Senkou Span B
     private int ichimokuDisplacement = 26;      // Cloud shift
 
+    // Daily Volume Profile overlay
+    private boolean dailyVolumeProfileEnabled = false;
+    private int dailyVolumeProfileBins = 24;
+    private int dailyVolumeProfileWidth = 60;
+
     // Price chart mode
     private boolean candlestickMode = false;  // false = line, true = candlestick
     private int priceOpacity = 100;  // 0-100, applied to price line and candles (not cloud)
@@ -355,6 +360,15 @@ public class ChartConfig {
     public int getIchimokuDisplacement() { return ichimokuDisplacement; }
     public void setIchimokuDisplacement(int displacement) { this.ichimokuDisplacement = displacement; save(); }
 
+    // ===== Daily Volume Profile Overlay Getters/Setters =====
+
+    public boolean isDailyVolumeProfileEnabled() { return dailyVolumeProfileEnabled; }
+    public void setDailyVolumeProfileEnabled(boolean enabled) { this.dailyVolumeProfileEnabled = enabled; save(); }
+    public int getDailyVolumeProfileBins() { return dailyVolumeProfileBins; }
+    public void setDailyVolumeProfileBins(int bins) { this.dailyVolumeProfileBins = bins; save(); }
+    public int getDailyVolumeProfileWidth() { return dailyVolumeProfileWidth; }
+    public void setDailyVolumeProfileWidth(int width) { this.dailyVolumeProfileWidth = width; save(); }
+
     // ===== Price Chart Mode =====
     public boolean isCandlestickMode() { return candlestickMode; }
     public void setCandlestickMode(boolean mode) { this.candlestickMode = mode; save(); notifyListeners(); }
@@ -458,6 +472,11 @@ public class ChartConfig {
         this.ichimokuSpanBPeriod = other.ichimokuSpanBPeriod;
         this.ichimokuDisplacement = other.ichimokuDisplacement;
 
+        // Daily Volume Profile
+        this.dailyVolumeProfileEnabled = other.dailyVolumeProfileEnabled;
+        this.dailyVolumeProfileBins = other.dailyVolumeProfileBins;
+        this.dailyVolumeProfileWidth = other.dailyVolumeProfileWidth;
+
         // Price chart mode
         this.candlestickMode = other.candlestickMode;
         this.priceOpacity = other.priceOpacity;
@@ -548,6 +567,11 @@ public class ChartConfig {
         ichimokuBasePeriod = 26;
         ichimokuSpanBPeriod = 52;
         ichimokuDisplacement = 26;
+
+        // Daily Volume Profile - off by default
+        dailyVolumeProfileEnabled = false;
+        dailyVolumeProfileBins = 24;
+        dailyVolumeProfileWidth = 60;
 
         // Price chart mode - line by default
         candlestickMode = false;
@@ -710,6 +734,11 @@ public class ChartConfig {
         this.ichimokuBasePeriod = other.ichimokuBasePeriod;
         this.ichimokuSpanBPeriod = other.ichimokuSpanBPeriod;
         this.ichimokuDisplacement = other.ichimokuDisplacement;
+
+        // Daily Volume Profile
+        this.dailyVolumeProfileEnabled = other.dailyVolumeProfileEnabled;
+        this.dailyVolumeProfileBins = other.dailyVolumeProfileBins;
+        this.dailyVolumeProfileWidth = other.dailyVolumeProfileWidth;
 
         // Price chart mode
         this.candlestickMode = other.candlestickMode;
