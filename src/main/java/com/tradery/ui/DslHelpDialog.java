@@ -454,6 +454,23 @@ public class DslHelpDialog extends JDialog {
             </div>
 
             <div class="section">
+            <h3 id="toc-ohlcv-volume">OHLCV Volume Functions</h3>
+            <span style="color: %s; font-size: 10px;">Extended volume data from Binance klines. Available instantly - no aggTrades download needed!</span>
+            <table>
+                <tr><th>Function</th><th>Description</th></tr>
+                <tr><td><code>QUOTE_VOLUME</code></td><td>Volume in quote currency (USD for BTCUSDT)</td></tr>
+                <tr><td><code>BUY_VOLUME</code></td><td>Taker buy volume - aggressive buyers</td></tr>
+                <tr><td><code>SELL_VOLUME</code></td><td>Taker sell volume - aggressive sellers</td></tr>
+                <tr><td><code>OHLCV_DELTA</code></td><td>Buy volume - sell volume (basic delta from OHLCV)</td></tr>
+                <tr><td><code>OHLCV_CVD</code></td><td>Cumulative delta from OHLCV data</td></tr>
+                <tr><td><code>BUY_RATIO</code></td><td>Buy volume / total volume (0-1, where 0.5 = balanced)</td></tr>
+                <tr><td><code>TRADE_COUNT</code></td><td>Number of trades in the bar</td></tr>
+            </table>
+            <div class="example">BUY_RATIO > 0.6<br>OHLCV_DELTA > 0 AND close > SMA(20)<br>OHLCV_CVD > OHLCV_CVD[1]</div>
+            <span style="color: %s; font-size: 10px;">These are less granular than aggTrades-based DELTA/CUM_DELTA but available instantly!</span>
+            </div>
+
+            <div class="section">
             <h3 id="toc-5">Daily Session Volume Profile</h3>
             <span style="color: %s; font-size: 10px;">Key support/resistance levels from daily sessions (UTC day boundary).</span>
             <table>
@@ -569,7 +586,7 @@ public class DslHelpDialog extends JDialog {
 
             </body>
             </html>
-            """.formatted(bgHex, fgHex, fgHex, accentHex, codeBgHex, fgHex, borderHex, codeBgHex, codeBgHex, accentHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex);
+            """.formatted(bgHex, fgHex, fgHex, accentHex, codeBgHex, fgHex, borderHex, codeBgHex, codeBgHex, accentHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex);
     }
 
     private void performSearch() {

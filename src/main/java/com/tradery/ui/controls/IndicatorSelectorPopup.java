@@ -115,6 +115,10 @@ public class IndicatorSelectorPopup extends JDialog {
     // Premium Index checkbox
     private JCheckBox premiumCheckbox;
 
+    // Holding Cost checkboxes
+    private JCheckBox holdingCostCumulativeCheckbox;
+    private JCheckBox holdingCostEventsCheckbox;
+
     // Core chart checkboxes
     private JCheckBox volumeChartCheckbox;
     private JCheckBox equityChartCheckbox;
@@ -235,6 +239,13 @@ public class IndicatorSelectorPopup extends JDialog {
         // === PREMIUM INDEX ===
         contentPane.add(createSectionHeader("PREMIUM INDEX"));
         contentPane.add(createPremiumRow());
+
+        contentPane.add(createSectionSeparator());
+
+        // === HOLDING COSTS ===
+        contentPane.add(createSectionHeader("HOLDING COSTS"));
+        contentPane.add(createHoldingCostCumulativeRow());
+        contentPane.add(createHoldingCostEventsRow());
 
         contentPane.add(createSectionSeparator());
 
@@ -837,6 +848,26 @@ public class IndicatorSelectorPopup extends JDialog {
         return row;
     }
 
+    private JPanel createHoldingCostCumulativeRow() {
+        holdingCostCumulativeCheckbox = new JCheckBox("Cumulative Holding Costs");
+        holdingCostCumulativeCheckbox.setToolTipText("Show running total of funding fees/margin interest");
+        JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
+        row.setAlignmentX(Component.LEFT_ALIGNMENT);
+        row.add(holdingCostCumulativeCheckbox);
+        holdingCostCumulativeCheckbox.addActionListener(e -> scheduleUpdate());
+        return row;
+    }
+
+    private JPanel createHoldingCostEventsRow() {
+        holdingCostEventsCheckbox = new JCheckBox("Holding Cost Events");
+        holdingCostEventsCheckbox.setToolTipText("Show individual funding fee/interest charges per trade");
+        JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
+        row.setAlignmentX(Component.LEFT_ALIGNMENT);
+        row.add(holdingCostEventsCheckbox);
+        holdingCostEventsCheckbox.addActionListener(e -> scheduleUpdate());
+        return row;
+    }
+
     private JPanel createVolumeChartRow() {
         volumeChartCheckbox = new JCheckBox("Volume");
         volumeChartCheckbox.setToolTipText("Show volume chart");
@@ -1120,6 +1151,10 @@ public class IndicatorSelectorPopup extends JDialog {
         // Premium Index
         premiumCheckbox.setSelected(config.isPremiumEnabled());
 
+        // Holding Costs
+        holdingCostCumulativeCheckbox.setSelected(config.isHoldingCostCumulativeEnabled());
+        holdingCostEventsCheckbox.setSelected(config.isHoldingCostEventsEnabled());
+
         // Core charts
         volumeChartCheckbox.setSelected(config.isVolumeChartEnabled());
         equityChartCheckbox.setSelected(config.isEquityChartEnabled());
@@ -1283,6 +1318,12 @@ public class IndicatorSelectorPopup extends JDialog {
         // Premium Index
         chartPanel.setPremiumChartEnabled(premiumCheckbox.isSelected());
         config.setPremiumEnabled(premiumCheckbox.isSelected());
+
+        // Holding Costs
+        chartPanel.setHoldingCostCumulativeChartEnabled(holdingCostCumulativeCheckbox.isSelected());
+        config.setHoldingCostCumulativeEnabled(holdingCostCumulativeCheckbox.isSelected());
+        chartPanel.setHoldingCostEventsChartEnabled(holdingCostEventsCheckbox.isSelected());
+        config.setHoldingCostEventsEnabled(holdingCostEventsCheckbox.isSelected());
 
         // Core charts
         chartPanel.setVolumeChartEnabled(volumeChartCheckbox.isSelected());

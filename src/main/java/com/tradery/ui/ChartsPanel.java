@@ -132,6 +132,10 @@ public class ChartsPanel extends JPanel {
         // Apply premium chart setting
         setPremiumChartEnabled(config.isPremiumEnabled());
 
+        // Apply holding cost chart settings
+        setHoldingCostCumulativeChartEnabled(config.isHoldingCostCumulativeEnabled());
+        setHoldingCostEventsChartEnabled(config.isHoldingCostEventsEnabled());
+
         // Apply trade count chart setting
         setTradeCountChartEnabled(config.isTradeCountEnabled());
 
@@ -358,6 +362,7 @@ public class ChartsPanel extends JPanel {
             indicatorManager.getFundingChart(), indicatorManager.getOiChart(), indicatorManager.getPremiumChart(),
             indicatorManager.getStochasticChart(), indicatorManager.getRangePositionChart(), indicatorManager.getAdxChart(),
             indicatorManager.getTradeCountChart(),
+            indicatorManager.getHoldingCostCumulativeChart(), indicatorManager.getHoldingCostEventsChart(),
             equityChart, comparisonChart, capitalUsageChart, tradePLChart
         };
         JPanel[] allWrappers = {
@@ -368,6 +373,7 @@ public class ChartsPanel extends JPanel {
             indicatorManager.getFundingChartWrapper(), indicatorManager.getOiChartWrapper(), indicatorManager.getPremiumChartWrapper(),
             indicatorManager.getStochasticChartWrapper(), indicatorManager.getRangePositionChartWrapper(), indicatorManager.getAdxChartWrapper(),
             indicatorManager.getTradeCountChartWrapper(),
+            indicatorManager.getHoldingCostCumulativeChartWrapper(), indicatorManager.getHoldingCostEventsChartWrapper(),
             zoomManager.getChartWrappers()[2], zoomManager.getChartWrappers()[3],
             zoomManager.getChartWrappers()[4], zoomManager.getChartWrappers()[5]
         };
@@ -829,6 +835,22 @@ public class ChartsPanel extends JPanel {
         return indicatorManager.isPremiumChartEnabled();
     }
 
+    public void setHoldingCostCumulativeChartEnabled(boolean enabled) {
+        indicatorManager.setHoldingCostCumulativeChartEnabled(enabled);
+    }
+
+    public boolean isHoldingCostCumulativeChartEnabled() {
+        return indicatorManager.isHoldingCostCumulativeChartEnabled();
+    }
+
+    public void setHoldingCostEventsChartEnabled(boolean enabled) {
+        indicatorManager.setHoldingCostEventsChartEnabled(enabled);
+    }
+
+    public boolean isHoldingCostEventsChartEnabled() {
+        return indicatorManager.isHoldingCostEventsChartEnabled();
+    }
+
     public boolean isAnyOrderflowChartEnabled() {
         return indicatorManager.isAnyOrderflowEnabled();
     }
@@ -941,6 +963,8 @@ public class ChartsPanel extends JPanel {
         updateTradePLChart(candles, trades);
         updateVolumeChart(candles);
 
+        // Pass trades for holding cost charts
+        indicatorManager.setTrades(trades);
         indicatorManager.updateCharts(candles);
 
         // Set consistent domain axis range

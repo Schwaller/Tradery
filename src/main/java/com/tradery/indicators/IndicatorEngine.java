@@ -615,18 +615,224 @@ public class IndicatorEngine {
 
     /**
      * Get trade count array for all bars.
+     * Uses candle trade count data (from OHLCV) if available,
+     * otherwise falls back to aggTrades-based calculation.
      */
     public double[] getTradeCount() {
-        if (!hasAggTrades() || !hasCandles()) {
-            double[] result = new double[candles != null ? candles.size() : 0];
-            java.util.Arrays.fill(result, Double.NaN);
-            return result;
+        if (!hasCandles()) {
+            return new double[0];
         }
+
         String key = "tradeCount";
         if (!cache.containsKey(key)) {
-            cache.put(key, OrderflowIndicators.tradeCount(aggTrades, candles, resolution));
+            // Check if candles have trade count data from OHLCV
+            boolean hasCandleTradeCount = candles.stream().anyMatch(c -> c.hasTradeCount());
+
+            if (hasCandleTradeCount) {
+                // Use trade count from OHLCV data
+                double[] result = new double[candles.size()];
+                for (int i = 0; i < candles.size(); i++) {
+                    int count = candles.get(i).tradeCount();
+                    result[i] = count >= 0 ? count : Double.NaN;
+                }
+                cache.put(key, result);
+            } else if (hasAggTrades()) {
+                // Fall back to aggTrades-based calculation
+                cache.put(key, OrderflowIndicators.tradeCount(aggTrades, candles, resolution));
+            } else {
+                // No data available
+                double[] result = new double[candles.size()];
+                java.util.Arrays.fill(result, Double.NaN);
+                cache.put(key, result);
+            }
         }
         return (double[]) cache.get(key);
+    }
+
+    // ========== OHLCV Extended Volume Methods ==========
+    // These use extended Binance kline data (quote volume, taker buy/sell)
+    // and don't require aggTrades downloads.
+
+    /**
+     * Get quote volume (USD volume for BTCUSDT) for all bars.
+     * Uses extended OHLCV data from Binance.
+     */
+    public double[] getQuoteVolume() {
+        if (!hasCandles()) {
+            return new double[0];
+        }
+        String key = "quoteVolume";
+        if (!cache.containsKey(key)) {
+            double[] result = new double[candles.size()];
+            for (int i = 0; i < candles.size(); i++) {
+                double qv = candles.get(i).quoteVolume();
+                result[i] = qv >= 0 ? qv : Double.NaN;
+            }
+            cache.put(key, result);
+        }
+        return (double[]) cache.get(key);
+    }
+
+    /**
+     * Get taker buy volume (aggressive buy volume) for all bars.
+     * Uses extended OHLCV data from Binance.
+     */
+    public double[] getTakerBuyVolume() {
+        if (!hasCandles()) {
+            return new double[0];
+        }
+        String key = "takerBuyVolume";
+        if (!cache.containsKey(key)) {
+            double[] result = new double[candles.size()];
+            for (int i = 0; i < candles.size(); i++) {
+                double tbv = candles.get(i).takerBuyVolume();
+                result[i] = tbv >= 0 ? tbv : Double.NaN;
+            }
+            cache.put(key, result);
+        }
+        return (double[]) cache.get(key);
+    }
+
+    /**
+     * Get taker sell volume (aggressive sell volume) for all bars.
+     * Calculated as volume - takerBuyVolume.
+     */
+    public double[] getTakerSellVolume() {
+        if (!hasCandles()) {
+            return new double[0];
+        }
+        String key = "takerSellVolume";
+        if (!cache.containsKey(key)) {
+            double[] result = new double[candles.size()];
+            for (int i = 0; i < candles.size(); i++) {
+                double tsv = candles.get(i).takerSellVolume();
+                result[i] = tsv >= 0 ? tsv : Double.NaN;
+            }
+            cache.put(key, result);
+        }
+        return (double[]) cache.get(key);
+    }
+
+    /**
+     * Get delta from OHLCV data (buy volume - sell volume).
+     * Uses extended Binance kline data, no aggTrades needed.
+     */
+    public double[] getOhlcvDelta() {
+        if (!hasCandles()) {
+            return new double[0];
+        }
+        String key = "ohlcvDelta";
+        if (!cache.containsKey(key)) {
+            double[] result = new double[candles.size()];
+            for (int i = 0; i < candles.size(); i++) {
+                result[i] = candles.get(i).delta();
+            }
+            cache.put(key, result);
+        }
+        return (double[]) cache.get(key);
+    }
+
+    /**
+     * Get cumulative delta from OHLCV data.
+     * Uses extended Binance kline data, no aggTrades needed.
+     */
+    public double[] getOhlcvCvd() {
+        if (!hasCandles()) {
+            return new double[0];
+        }
+        String key = "ohlcvCvd";
+        if (!cache.containsKey(key)) {
+            double[] result = new double[candles.size()];
+            double cumulative = 0;
+            for (int i = 0; i < candles.size(); i++) {
+                double delta = candles.get(i).delta();
+                if (!Double.isNaN(delta)) {
+                    cumulative += delta;
+                    result[i] = cumulative;
+                } else {
+                    result[i] = Double.NaN;
+                }
+            }
+            cache.put(key, result);
+        }
+        return (double[]) cache.get(key);
+    }
+
+    /**
+     * Get buy ratio (takerBuyVolume / volume) for all bars.
+     * Returns 0-1 where 0.5 = balanced, >0.5 = more buying.
+     */
+    public double[] getBuyRatio() {
+        if (!hasCandles()) {
+            return new double[0];
+        }
+        String key = "buyRatio";
+        if (!cache.containsKey(key)) {
+            double[] result = new double[candles.size()];
+            for (int i = 0; i < candles.size(); i++) {
+                result[i] = candles.get(i).buyRatio();
+            }
+            cache.put(key, result);
+        }
+        return (double[]) cache.get(key);
+    }
+
+    // ========== OHLCV Extended Volume "At" Methods (for DSL evaluation) ==========
+
+    /**
+     * Get quote volume at a specific bar.
+     */
+    public double getQuoteVolumeAt(int barIndex) {
+        double[] arr = getQuoteVolume();
+        return (barIndex >= 0 && barIndex < arr.length) ? arr[barIndex] : Double.NaN;
+    }
+
+    /**
+     * Get taker buy volume at a specific bar.
+     */
+    public double getTakerBuyVolumeAt(int barIndex) {
+        double[] arr = getTakerBuyVolume();
+        return (barIndex >= 0 && barIndex < arr.length) ? arr[barIndex] : Double.NaN;
+    }
+
+    /**
+     * Get taker sell volume at a specific bar.
+     */
+    public double getTakerSellVolumeAt(int barIndex) {
+        double[] arr = getTakerSellVolume();
+        return (barIndex >= 0 && barIndex < arr.length) ? arr[barIndex] : Double.NaN;
+    }
+
+    /**
+     * Get OHLCV delta at a specific bar.
+     */
+    public double getOhlcvDeltaAt(int barIndex) {
+        double[] arr = getOhlcvDelta();
+        return (barIndex >= 0 && barIndex < arr.length) ? arr[barIndex] : Double.NaN;
+    }
+
+    /**
+     * Get OHLCV CVD at a specific bar.
+     */
+    public double getOhlcvCvdAt(int barIndex) {
+        double[] arr = getOhlcvCvd();
+        return (barIndex >= 0 && barIndex < arr.length) ? arr[barIndex] : Double.NaN;
+    }
+
+    /**
+     * Get buy ratio at a specific bar.
+     */
+    public double getBuyRatioAt(int barIndex) {
+        double[] arr = getBuyRatio();
+        return (barIndex >= 0 && barIndex < arr.length) ? arr[barIndex] : Double.NaN;
+    }
+
+    /**
+     * Get trade count at a specific bar.
+     */
+    public double getTradeCountAt(int barIndex) {
+        double[] arr = getTradeCount();
+        return (barIndex >= 0 && barIndex < arr.length) ? arr[barIndex] : Double.NaN;
     }
 
     /**

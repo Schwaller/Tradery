@@ -76,15 +76,22 @@ public class BinanceClient {
             List<Candle> candles = new ArrayList<>();
 
             for (JsonNode kline : root) {
-                // Kline format: [openTime, open, high, low, close, volume, closeTime, ...]
+                // Kline format: [openTime, open, high, low, close, volume, closeTime,
+                //                quoteVolume, numTrades, takerBuyBase, takerBuyQuote, ignore]
                 long timestamp = kline.get(0).asLong();
                 double open = Double.parseDouble(kline.get(1).asText());
                 double high = Double.parseDouble(kline.get(2).asText());
                 double low = Double.parseDouble(kline.get(3).asText());
                 double close = Double.parseDouble(kline.get(4).asText());
                 double volume = Double.parseDouble(kline.get(5).asText());
+                // Extended fields
+                double quoteVolume = kline.has(7) ? Double.parseDouble(kline.get(7).asText()) : -1;
+                int tradeCount = kline.has(8) ? kline.get(8).asInt() : -1;
+                double takerBuyVolume = kline.has(9) ? Double.parseDouble(kline.get(9).asText()) : -1;
+                double takerBuyQuoteVolume = kline.has(10) ? Double.parseDouble(kline.get(10).asText()) : -1;
 
-                candles.add(new Candle(timestamp, open, high, low, close, volume));
+                candles.add(new Candle(timestamp, open, high, low, close, volume,
+                    tradeCount, quoteVolume, takerBuyVolume, takerBuyQuoteVolume));
             }
 
             return candles;

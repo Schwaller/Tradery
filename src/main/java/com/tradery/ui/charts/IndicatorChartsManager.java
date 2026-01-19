@@ -9,6 +9,7 @@ import com.tradery.indicators.IndicatorEngine;
 import com.tradery.indicators.Indicators;
 import com.tradery.model.Candle;
 import com.tradery.model.PremiumIndex;
+import com.tradery.model.Trade;
 import org.jfree.chart.ChartFactory;
 import org.jfree.chart.JFreeChart;
 import org.jfree.chart.annotations.XYLineAnnotation;
@@ -50,6 +51,8 @@ public class IndicatorChartsManager {
     private ChartComponent adxComponent;
     private ChartComponent tradeCountComponent;
     private ChartComponent premiumComponent;
+    private ChartComponent holdingCostCumulativeComponent;
+    private ChartComponent holdingCostEventsComponent;
 
     // Enable state
     private boolean rsiChartEnabled = false;
@@ -67,6 +70,11 @@ public class IndicatorChartsManager {
     private boolean adxChartEnabled = false;
     private boolean tradeCountChartEnabled = false;
     private boolean premiumChartEnabled = false;
+    private boolean holdingCostCumulativeChartEnabled = false;
+    private boolean holdingCostEventsChartEnabled = false;
+
+    // Current trades for holding cost charts
+    private List<Trade> currentTrades;
 
     // Indicator parameters
     private int rsiPeriod = 14;
@@ -227,6 +235,8 @@ public class IndicatorChartsManager {
         adxComponent = new ChartComponent("ADX", new double[]{0, 100});
         tradeCountComponent = new ChartComponent("Trade Count");
         premiumComponent = new ChartComponent("Premium Index");
+        holdingCostCumulativeComponent = new ChartComponent("Cumulative Holding Costs");
+        holdingCostEventsComponent = new ChartComponent("Holding Cost Events");
     }
 
     /**
@@ -258,6 +268,8 @@ public class IndicatorChartsManager {
         Runnable fs12 = fullScreenCallback != null ? () -> fullScreenCallback.accept(12) : null;
         Runnable fs13 = fullScreenCallback != null ? () -> fullScreenCallback.accept(13) : null;
         Runnable fs14 = fullScreenCallback != null ? () -> fullScreenCallback.accept(14) : null;
+        Runnable fs15 = fullScreenCallback != null ? () -> fullScreenCallback.accept(15) : null;
+        Runnable fs16 = fullScreenCallback != null ? () -> fullScreenCallback.accept(16) : null;
 
         rsiComponent.createWrapper(() -> zoomCallback.accept(0), fs0);
         macdComponent.createWrapper(() -> zoomCallback.accept(1), fs1);
@@ -274,6 +286,8 @@ public class IndicatorChartsManager {
         adxComponent.createWrapper(() -> zoomCallback.accept(12), fs12);
         tradeCountComponent.createWrapper(() -> zoomCallback.accept(13), fs13);
         premiumComponent.createWrapper(() -> zoomCallback.accept(14), fs14);
+        holdingCostCumulativeComponent.createWrapper(() -> zoomCallback.accept(15), fs15);
+        holdingCostEventsComponent.createWrapper(() -> zoomCallback.accept(16), fs16);
     }
 
     // ===== RSI Methods =====
@@ -1219,6 +1233,140 @@ public class IndicatorChartsManager {
         }
     }
 
+    // ===== Holding Cost Chart Methods =====
+
+    /**
+     * Set trades for holding cost charts.
+     * Call this when trades are available (after backtest).
+     */
+    public void setTrades(List<Trade> trades) {
+        this.currentTrades = trades;
+    }
+
+    public boolean isHoldingCostCumulativeChartEnabled() {
+        return holdingCostCumulativeChartEnabled;
+    }
+
+    public boolean isHoldingCostEventsChartEnabled() {
+        return holdingCostEventsChartEnabled;
+    }
+
+    public void setHoldingCostCumulativeChartEnabled(boolean enabled) {
+        this.holdingCostCumulativeChartEnabled = enabled;
+        if (onLayoutChange != null) {
+            onLayoutChange.run();
+        }
+    }
+
+    public void setHoldingCostEventsChartEnabled(boolean enabled) {
+        this.holdingCostEventsChartEnabled = enabled;
+        if (onLayoutChange != null) {
+            onLayoutChange.run();
+        }
+    }
+
+    /**
+     * Update cumulative holding costs chart.
+     * Shows running total of holding costs over time.
+     */
+    public void updateHoldingCostCumulativeChart(List<Candle> candles) {
+        if (!holdingCostCumulativeChartEnabled || candles == null || candles.isEmpty() || currentTrades == null) {
+            return;
+        }
+
+        XYPlot plot = holdingCostCumulativeComponent.getChart().getXYPlot();
+
+        // Build timestamp -> holding cost map from trades
+        java.util.Map<Long, Double> holdingCostByTime = new java.util.TreeMap<>();
+        for (Trade t : currentTrades) {
+            if (t.exitTime() != null && t.holdingCosts() != null) {
+                holdingCostByTime.merge(t.exitTime(), t.holdingCosts(), Double::sum);
+            }
+        }
+
+        // Build cumulative series
+        TimeSeries cumulativeSeries = new TimeSeries("Cumulative Holding Costs");
+        double cumulative = 0;
+
+        for (Candle c : candles) {
+            if (holdingCostByTime.containsKey(c.timestamp())) {
+                cumulative += holdingCostByTime.get(c.timestamp());
+            }
+            cumulativeSeries.addOrUpdate(new Millisecond(new Date(c.timestamp())), cumulative);
+        }
+
+        TimeSeriesCollection dataset = new TimeSeriesCollection();
+        dataset.addSeries(cumulativeSeries);
+
+        plot.setDataset(dataset);
+
+        // Line renderer - red for costs, green for earnings
+        XYLineAndShapeRenderer renderer = new XYLineAndShapeRenderer(true, false);
+        renderer.setSeriesPaint(0, cumulative >= 0 ? ChartStyles.LOSS_COLOR : ChartStyles.WIN_COLOR);
+        renderer.setSeriesStroke(0, ChartStyles.MEDIUM_STROKE);
+        plot.setRenderer(renderer);
+
+        // Add zero line
+        plot.clearAnnotations();
+        ChartStyles.addChartTitleAnnotation(plot, "Cumulative Holding Costs ($)");
+        if (!candles.isEmpty()) {
+            long startTime = candles.get(0).timestamp();
+            long endTime = candles.get(candles.size() - 1).timestamp();
+            plot.addAnnotation(new XYLineAnnotation(startTime, 0, endTime, 0,
+                ChartStyles.DASHED_STROKE, ChartStyles.TEXT_COLOR));
+        }
+    }
+
+    /**
+     * Update holding cost events chart.
+     * Shows individual holding cost spikes at trade exit times.
+     */
+    public void updateHoldingCostEventsChart(List<Candle> candles) {
+        if (!holdingCostEventsChartEnabled || candles == null || candles.isEmpty() || currentTrades == null) {
+            return;
+        }
+
+        XYPlot plot = holdingCostEventsComponent.getChart().getXYPlot();
+
+        // Build separate series for costs (positive) and earnings (negative)
+        XYSeries costsSeries = new XYSeries("Costs");
+        XYSeries earningsSeries = new XYSeries("Earnings");
+
+        for (Trade t : currentTrades) {
+            if (t.exitTime() != null && t.holdingCosts() != null && t.holdingCosts() != 0) {
+                if (t.holdingCosts() > 0) {
+                    costsSeries.add(t.exitTime(), t.holdingCosts());
+                } else {
+                    earningsSeries.add(t.exitTime(), t.holdingCosts());
+                }
+            }
+        }
+
+        XYSeriesCollection dataset = new XYSeriesCollection();
+        dataset.addSeries(costsSeries);
+        dataset.addSeries(earningsSeries);
+
+        plot.setDataset(dataset);
+
+        // Bar renderer
+        XYBarRenderer renderer = new XYBarRenderer();
+        renderer.setShadowVisible(false);
+        renderer.setBarPainter(new StandardXYBarPainter());
+        renderer.setSeriesPaint(0, ChartStyles.LOSS_COLOR);    // Costs in red
+        renderer.setSeriesPaint(1, ChartStyles.WIN_COLOR);  // Earnings in green
+        plot.setRenderer(renderer);
+
+        // Add zero line
+        plot.clearAnnotations();
+        ChartStyles.addChartTitleAnnotation(plot, "Holding Cost Events ($)");
+        if (!candles.isEmpty()) {
+            long startTime = candles.get(0).timestamp();
+            long endTime = candles.get(candles.size() - 1).timestamp();
+            plot.addAnnotation(new XYLineAnnotation(startTime, 0, endTime, 0,
+                ChartStyles.DASHED_STROKE, ChartStyles.TEXT_COLOR));
+        }
+    }
+
     // ===== Stochastic Methods =====
 
     public void setStochasticChartEnabled(boolean enabled, int kPeriod, int dPeriod) {
@@ -1530,6 +1678,8 @@ public class IndicatorChartsManager {
     public JFreeChart getAdxChart() { return adxComponent.getChart(); }
     public JFreeChart getTradeCountChart() { return tradeCountComponent.getChart(); }
     public JFreeChart getPremiumChart() { return premiumComponent.getChart(); }
+    public JFreeChart getHoldingCostCumulativeChart() { return holdingCostCumulativeComponent.getChart(); }
+    public JFreeChart getHoldingCostEventsChart() { return holdingCostEventsComponent.getChart(); }
 
     public org.jfree.chart.ChartPanel getRsiChartPanel() { return rsiComponent.getChartPanel(); }
     public org.jfree.chart.ChartPanel getMacdChartPanel() { return macdComponent.getChartPanel(); }
@@ -1546,6 +1696,8 @@ public class IndicatorChartsManager {
     public org.jfree.chart.ChartPanel getAdxChartPanel() { return adxComponent.getChartPanel(); }
     public org.jfree.chart.ChartPanel getTradeCountChartPanel() { return tradeCountComponent.getChartPanel(); }
     public org.jfree.chart.ChartPanel getPremiumChartPanel() { return premiumComponent.getChartPanel(); }
+    public org.jfree.chart.ChartPanel getHoldingCostCumulativeChartPanel() { return holdingCostCumulativeComponent.getChartPanel(); }
+    public org.jfree.chart.ChartPanel getHoldingCostEventsChartPanel() { return holdingCostEventsComponent.getChartPanel(); }
 
     public JPanel getRsiChartWrapper() { return rsiComponent.getWrapper(); }
     public JPanel getMacdChartWrapper() { return macdComponent.getWrapper(); }
@@ -1562,6 +1714,8 @@ public class IndicatorChartsManager {
     public JPanel getAdxChartWrapper() { return adxComponent.getWrapper(); }
     public JPanel getTradeCountChartWrapper() { return tradeCountComponent.getWrapper(); }
     public JPanel getPremiumChartWrapper() { return premiumComponent.getWrapper(); }
+    public JPanel getHoldingCostCumulativeChartWrapper() { return holdingCostCumulativeComponent.getWrapper(); }
+    public JPanel getHoldingCostEventsChartWrapper() { return holdingCostEventsComponent.getWrapper(); }
 
     public JButton getRsiZoomBtn() { return rsiComponent.getZoomButton(); }
     public JButton getMacdZoomBtn() { return macdComponent.getZoomButton(); }
@@ -1667,6 +1821,8 @@ public class IndicatorChartsManager {
         updateRangePositionChart(candles);
         updateAdxChart(candles);
         updateTradeCountChart(candles);
+        updateHoldingCostCumulativeChart(candles);
+        updateHoldingCostEventsChart(candles);
     }
 
     /**

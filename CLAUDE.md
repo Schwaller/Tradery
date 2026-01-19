@@ -62,6 +62,16 @@ DSL is used for entry/exit conditions and phase definitions.
 | **Funding** | `FUNDING`, `FUNDING_8H` |
 | **Premium** | `PREMIUM`, `PREMIUM_AVG(n)` - futures vs spot spread |
 | **Open Interest** | `OI`, `OI_CHANGE`, `OI_DELTA(n)` |
+| **OHLCV Volume** | `QUOTE_VOLUME`, `BUY_VOLUME`, `SELL_VOLUME`, `OHLCV_DELTA`, `OHLCV_CVD`, `BUY_RATIO`, `TRADE_COUNT` |
+
+### OHLCV Volume Functions (instant - no aggTrades needed)
+Extended volume data from Binance klines, available immediately:
+- `QUOTE_VOLUME` - Volume in quote currency (USD for BTCUSDT)
+- `BUY_VOLUME` / `SELL_VOLUME` - Taker buy/sell volume (aggressive traders)
+- `OHLCV_DELTA` - Buy volume - sell volume (basic delta)
+- `OHLCV_CVD` - Cumulative delta from OHLCV
+- `BUY_RATIO` - Buy volume / total volume (0-1, where 0.5 = balanced)
+- `TRADE_COUNT` - Number of trades in the bar
 
 ### Orderflow Functions (require `orderflowSettings.mode`)
 | Tier 1 (OHLCV) | Full (aggTrades) |

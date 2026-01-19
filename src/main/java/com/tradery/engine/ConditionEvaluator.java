@@ -50,6 +50,7 @@ public class ConditionEvaluator {
             case AstNode.FundingFunctionCall f -> evaluateFundingFunction(f, barIndex);
             case AstNode.PremiumFunctionCall p -> evaluatePremiumFunction(p, barIndex);
             case AstNode.SessionOrderflowFunctionCall s -> evaluateSessionOrderflowFunction(s, barIndex);
+            case AstNode.OhlcvVolumeFunctionCall o -> evaluateOhlcvVolumeFunction(o, barIndex);
             case AstNode.OIFunctionCall o -> evaluateOIFunction(o, barIndex);
             case AstNode.RayFunctionCall r -> evaluateRayFunction(r, barIndex);
             case AstNode.AggregateFunctionCall a -> evaluateAggregateFunction(a, barIndex);
@@ -339,6 +340,19 @@ public class ConditionEvaluator {
             case "TODAY_VAH" -> engine.getTodayVAHAt(barIndex);
             case "TODAY_VAL" -> engine.getTodayVALAt(barIndex);
             default -> throw new EvaluationException("Unknown session orderflow function: " + node.func());
+        };
+    }
+
+    private double evaluateOhlcvVolumeFunction(AstNode.OhlcvVolumeFunctionCall node, int barIndex) {
+        return switch (node.func()) {
+            case "QUOTE_VOLUME" -> engine.getQuoteVolumeAt(barIndex);
+            case "BUY_VOLUME" -> engine.getTakerBuyVolumeAt(barIndex);
+            case "SELL_VOLUME" -> engine.getTakerSellVolumeAt(barIndex);
+            case "OHLCV_DELTA" -> engine.getOhlcvDeltaAt(barIndex);
+            case "OHLCV_CVD" -> engine.getOhlcvCvdAt(barIndex);
+            case "BUY_RATIO" -> engine.getBuyRatioAt(barIndex);
+            case "TRADE_COUNT" -> engine.getTradeCountAt(barIndex);
+            default -> throw new EvaluationException("Unknown OHLCV volume function: " + node.func());
         };
     }
 

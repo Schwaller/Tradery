@@ -199,6 +199,13 @@ public class Parser {
             return new AstNode.SessionOrderflowFunctionCall(func);
         }
 
+        // OHLCV extended volume functions (QUOTE_VOLUME, BUY_VOLUME, etc. - no parameters)
+        if (check(TokenType.OHLCV_VOLUME_FUNC)) {
+            String func = current().value();
+            advance();
+            return new AstNode.OhlcvVolumeFunctionCall(func);
+        }
+
         // Open Interest function (OI, OI_CHANGE, OI_DELTA)
         if (check(TokenType.OI_FUNC)) {
             return oiFunctionCall();

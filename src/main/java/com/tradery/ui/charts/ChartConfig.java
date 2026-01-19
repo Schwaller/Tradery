@@ -73,6 +73,10 @@ public class ChartConfig {
     // Premium Index chart
     private boolean premiumEnabled = false;
 
+    // Holding Cost charts
+    private boolean holdingCostCumulativeEnabled = false;
+    private boolean holdingCostEventsEnabled = false;
+
     // POC overlays
     private boolean dailyPocEnabled = false;
     private boolean floatingPocEnabled = false;
@@ -307,6 +311,12 @@ public class ChartConfig {
 
     public boolean isPremiumEnabled() { return premiumEnabled; }
     public void setPremiumEnabled(boolean enabled) { this.premiumEnabled = enabled; save(); }
+
+    public boolean isHoldingCostCumulativeEnabled() { return holdingCostCumulativeEnabled; }
+    public void setHoldingCostCumulativeEnabled(boolean enabled) { this.holdingCostCumulativeEnabled = enabled; save(); }
+
+    public boolean isHoldingCostEventsEnabled() { return holdingCostEventsEnabled; }
+    public void setHoldingCostEventsEnabled(boolean enabled) { this.holdingCostEventsEnabled = enabled; save(); }
 
     // ===== POC Overlay Getters/Setters =====
 

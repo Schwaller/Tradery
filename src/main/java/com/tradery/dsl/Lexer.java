@@ -65,6 +65,15 @@ public class Lexer {
         Map.entry("TODAY_VAH", TokenType.SESSION_ORDERFLOW_FUNC),
         Map.entry("TODAY_VAL", TokenType.SESSION_ORDERFLOW_FUNC),
 
+        // OHLCV extended volume functions (from Binance klines, no aggTrades needed)
+        Map.entry("QUOTE_VOLUME", TokenType.OHLCV_VOLUME_FUNC),
+        Map.entry("BUY_VOLUME", TokenType.OHLCV_VOLUME_FUNC),
+        Map.entry("SELL_VOLUME", TokenType.OHLCV_VOLUME_FUNC),
+        Map.entry("OHLCV_DELTA", TokenType.OHLCV_VOLUME_FUNC),
+        Map.entry("OHLCV_CVD", TokenType.OHLCV_VOLUME_FUNC),
+        Map.entry("BUY_RATIO", TokenType.OHLCV_VOLUME_FUNC),
+        Map.entry("TRADE_COUNT", TokenType.OHLCV_VOLUME_FUNC),
+
         // Funding rate functions
         Map.entry("FUNDING", TokenType.FUNDING_FUNC),
         Map.entry("FUNDING_8H", TokenType.FUNDING_FUNC),

@@ -100,6 +100,18 @@ public sealed interface AstNode {
     record SessionOrderflowFunctionCall(String func) implements AstNode {}
 
     /**
+     * OHLCV extended volume function call (no parameters):
+     * - QUOTE_VOLUME: Volume in quote currency (USD for BTCUSDT)
+     * - BUY_VOLUME: Taker buy volume (aggressive buyers)
+     * - SELL_VOLUME: Taker sell volume (aggressive sellers)
+     * - OHLCV_DELTA: Buy volume - sell volume (basic delta from OHLCV)
+     * - OHLCV_CVD: Cumulative delta from OHLCV
+     * - BUY_RATIO: Buy volume / total volume (0-1)
+     * - TRADE_COUNT: Number of trades in the bar
+     */
+    record OhlcvVolumeFunctionCall(String func) implements AstNode {}
+
+    /**
      * Open Interest function call:
      * - OI: Current open interest value
      * - OI_CHANGE: OI change from previous bar

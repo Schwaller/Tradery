@@ -269,10 +269,22 @@ public class TimelineBar extends JPanel implements DataPageListener<Candle> {
         int height = getHeight();
         int chartHeight = height - topPadding - padding;
 
+        // Always draw title, even while loading
+        if (title != null && !title.isEmpty()) {
+            Font titleFont = g2.getFont().deriveFont(Font.BOLD).deriveFont(14f);
+            g2.setFont(titleFont);
+            FontMetrics tfm = g2.getFontMetrics();
+            int titleWidth = tfm.stringWidth(title);
+            int titleX = (width - titleWidth) / 2;
+            int titleY = (topPadding + tfm.getAscent() - tfm.getDescent()) / 2;
+            Color titleColor = UIManager.getColor("TitlePane.foreground");
+            if (titleColor == null) titleColor = UIManager.getColor("Label.foreground");
+            if (titleColor == null) titleColor = Color.GRAY;
+            g2.setColor(titleColor);
+            g2.drawString(title, titleX, titleY);
+        }
+
         if (weeklyCandles == null || weeklyCandles.isEmpty()) {
-            g2.setColor(Color.GRAY);
-            g2.setFont(g2.getFont().deriveFont(10f));
-            g2.drawString("Loading timeline...", 10, height / 2 + 4);
             g2.dispose();
             return;
         }
@@ -328,33 +340,32 @@ public class TimelineBar extends JPanel implements DataPageListener<Candle> {
                 Color bg = UIManager.getColor("Panel.background");
                 boolean isDarkTheme = bg == null || (bg.getRed() + bg.getGreen() + bg.getBlue()) / 3 < 128;
 
-                // Fill with 25% white/black depending on theme
-                Color fillColor = isDarkTheme
-                    ? new Color(255, 255, 255, 64)
-                    : new Color(0, 0, 0, 64);
-                g2.setColor(fillColor);
-                g2.fill(new Rectangle2D.Double(x1, topPadding, x2 - x1, chartHeight));
-
-                // Border around selection (0.5px, 50% opacity)
-                Color borderColor = isDarkTheme
-                    ? new Color(255, 255, 255, 128)
-                    : new Color(0, 0, 0, 128);
-                g2.setColor(borderColor);
-                g2.setStroke(new BasicStroke(0.5f));
-                g2.draw(new Rectangle2D.Double(x1, topPadding, x2 - x1, chartHeight));
-
-                // Bottom bar (3px)
-                int alpha = 128;
+                // Pulse alpha when loading
+                int fillAlpha = 64;
+                int borderAlpha = 128;
                 if (isLoading) {
-                    // Pulse between 64 and 192 alpha
-                    alpha = 64 + (int) (128 * (0.5 + 0.5 * Math.sin(pulsePhase * 2 * Math.PI)));
+                    fillAlpha = 32 + (int) (64 * (0.5 + 0.5 * Math.sin(pulsePhase * 2 * Math.PI)));
+                    borderAlpha = 64 + (int) (128 * (0.5 + 0.5 * Math.sin(pulsePhase * 2 * Math.PI)));
                 }
 
-                Color barColor = isDarkTheme
-                    ? new Color(255, 255, 255, alpha)
-                    : new Color(0, 0, 0, alpha);
-                g2.setColor(barColor);
-                g2.fill(new Rectangle2D.Double(x1, height - padding - 3, x2 - x1, 3));
+                // Rounded selection rectangle
+                java.awt.geom.RoundRectangle2D selectionRect =
+                    new java.awt.geom.RoundRectangle2D.Double(x1, topPadding, x2 - x1, chartHeight, 5, 5);
+
+                // Fill with pulsing alpha
+                Color fillColor = isDarkTheme
+                    ? new Color(255, 255, 255, fillAlpha)
+                    : new Color(0, 0, 0, fillAlpha);
+                g2.setColor(fillColor);
+                g2.fill(selectionRect);
+
+                // Border around selection (0.5px)
+                Color borderColor = isDarkTheme
+                    ? new Color(255, 255, 255, borderAlpha)
+                    : new Color(0, 0, 0, borderAlpha);
+                g2.setColor(borderColor);
+                g2.setStroke(new BasicStroke(0.5f));
+                g2.draw(selectionRect);
             }
         }
 
@@ -387,29 +398,6 @@ public class TimelineBar extends JPanel implements DataPageListener<Candle> {
             g2.drawString(yearStr, (int) x - textWidth - 2, height - 2);
 
             cal.add(java.util.Calendar.YEAR, 1);
-        }
-
-        // Draw title at top (normal font size, centered)
-        if (title != null && !title.isEmpty()) {
-            Font titleFont = g2.getFont().deriveFont(Font.BOLD).deriveFont(14f);
-
-            g2.setFont(titleFont);
-            FontMetrics tfm = g2.getFontMetrics();
-            int titleWidth = tfm.stringWidth(title);
-            int titleX = (width - titleWidth) / 2;
-            // Center vertically in the top padding area
-            int titleY = (topPadding + tfm.getAscent() - tfm.getDescent()) / 2;
-
-            // Use theme's window title color
-            Color titleColor = UIManager.getColor("TitlePane.foreground");
-            if (titleColor == null) {
-                titleColor = UIManager.getColor("Label.foreground");
-            }
-            if (titleColor == null) {
-                titleColor = Color.GRAY;
-            }
-            g2.setColor(titleColor);
-            g2.drawString(title, titleX, titleY);
         }
 
         g2.dispose();
