@@ -54,6 +54,13 @@ public class IndicatorEngine {
     }
 
     /**
+     * Get the aggregated trades data.
+     */
+    public List<AggTrade> getAggTrades() {
+        return aggTrades;
+    }
+
+    /**
      * Check if candle data is available.
      */
     public boolean hasCandles() {

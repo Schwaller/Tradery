@@ -1,6 +1,7 @@
 package com.tradery.ui.charts;
 
 import com.tradery.indicators.VolumeProfile;
+import com.tradery.model.AggTrade;
 import com.tradery.model.Candle;
 import org.jfree.chart.annotations.AbstractXYAnnotation;
 import org.jfree.chart.axis.ValueAxis;
@@ -65,7 +66,124 @@ public class DailyVolumeProfileAnnotation extends AbstractXYAnnotation {
      * @return List of DayProfile for each day
      */
     public static List<DayProfile> calculateDayProfiles(List<Candle> candles, int numBins, double valueAreaPct) {
-        return calculateDayProfiles(candles, numBins, valueAreaPct, 14);  // Default to 14 days
+        return calculateDayProfiles(candles, numBins, valueAreaPct, 30);  // Default to 30 days
+    }
+
+    /**
+     * Calculate day profiles from aggregated trades for accurate volume distribution.
+     *
+     * @param aggTrades     List of aggregated trades
+     * @param numBins       Number of price bins per day
+     * @param valueAreaPct  Value area percentage (typically 70%)
+     * @param maxDays       Maximum number of recent days to include (0 = unlimited)
+     * @return List of DayProfile for each day
+     */
+    public static List<DayProfile> calculateDayProfilesFromAggTrades(List<AggTrade> aggTrades, int numBins, double valueAreaPct, int maxDays) {
+        List<DayProfile> profiles = new ArrayList<>();
+
+        if (aggTrades == null || aggTrades.isEmpty()) {
+            return profiles;
+        }
+
+        // Group trades by UTC day
+        Map<LocalDate, List<AggTrade>> byDay = new LinkedHashMap<>();
+        for (AggTrade t : aggTrades) {
+            LocalDate day = Instant.ofEpochMilli(t.timestamp())
+                .atZone(ZoneOffset.UTC).toLocalDate();
+            byDay.computeIfAbsent(day, k -> new ArrayList<>()).add(t);
+        }
+
+        // Limit to most recent maxDays if specified
+        List<LocalDate> days = new ArrayList<>(byDay.keySet());
+        if (maxDays > 0 && days.size() > maxDays) {
+            int startIndex = days.size() - maxDays;
+            days = days.subList(startIndex, days.size());
+        }
+
+        // Calculate volume profile for each day
+        for (LocalDate day : days) {
+            List<AggTrade> dayTrades = byDay.get(day);
+            if (dayTrades == null || dayTrades.isEmpty()) continue;
+
+            // Find price range for the day
+            double minPrice = Double.MAX_VALUE;
+            double maxPrice = Double.MIN_VALUE;
+            for (AggTrade t : dayTrades) {
+                minPrice = Math.min(minPrice, t.price());
+                maxPrice = Math.max(maxPrice, t.price());
+            }
+
+            if (minPrice >= maxPrice) continue;
+
+            // Create bins
+            double binSize = (maxPrice - minPrice) / numBins;
+            double[] priceLevels = new double[numBins];
+            double[] volumes = new double[numBins];
+
+            for (int i = 0; i < numBins; i++) {
+                priceLevels[i] = minPrice + (i + 0.5) * binSize;  // bin center
+            }
+
+            // Aggregate volume into bins
+            for (AggTrade t : dayTrades) {
+                int binIndex = (int) ((t.price() - minPrice) / binSize);
+                binIndex = Math.max(0, Math.min(numBins - 1, binIndex));
+                volumes[binIndex] += t.quantity();
+            }
+
+            // Find POC (max volume bin)
+            double maxVol = 0;
+            int pocIndex = 0;
+            for (int i = 0; i < volumes.length; i++) {
+                if (volumes[i] > maxVol) {
+                    maxVol = volumes[i];
+                    pocIndex = i;
+                }
+            }
+            double poc = priceLevels[pocIndex];
+
+            // Calculate value area (70% of volume around POC)
+            double totalVolume = Arrays.stream(volumes).sum();
+            double targetVolume = totalVolume * valueAreaPct;
+
+            // Expand from POC until we capture targetVolume
+            int lowIdx = pocIndex;
+            int highIdx = pocIndex;
+            double areaVolume = volumes[pocIndex];
+
+            while (areaVolume < targetVolume && (lowIdx > 0 || highIdx < numBins - 1)) {
+                double lowAdd = lowIdx > 0 ? volumes[lowIdx - 1] : 0;
+                double highAdd = highIdx < numBins - 1 ? volumes[highIdx + 1] : 0;
+
+                if (lowAdd >= highAdd && lowIdx > 0) {
+                    lowIdx--;
+                    areaVolume += volumes[lowIdx];
+                } else if (highIdx < numBins - 1) {
+                    highIdx++;
+                    areaVolume += volumes[highIdx];
+                } else if (lowIdx > 0) {
+                    lowIdx--;
+                    areaVolume += volumes[lowIdx];
+                } else {
+                    break;
+                }
+            }
+
+            double val = priceLevels[lowIdx];
+            double vah = priceLevels[highIdx];
+
+            long dayStart = day.atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli();
+            long dayEnd = day.plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli() - 1;
+
+            profiles.add(new DayProfile(
+                dayStart, dayEnd,
+                priceLevels, volumes,
+                poc, vah, val,
+                maxVol, minPrice, maxPrice
+            ));
+        }
+
+        return profiles;
     }
 
     /**
@@ -193,11 +311,8 @@ public class DailyVolumeProfileAnnotation extends AbstractXYAnnotation {
             // Calculate bar height in pixels
             int barHeight = Math.max(1, Math.abs((int)(screenY2 - screenY)));
 
-            // Determine if this is the POC level
-            boolean isPOC = Math.abs(priceLevel - day.poc) < binHeight / 2;
-
-            // Choose color based on volume intensity and POC
-            Color barColor = getVolumeColor(normalizedVolume, isPOC);
+            // Choose color based on volume intensity
+            Color barColor = getVolumeColor(normalizedVolume);
 
             // Draw bar starting at day start, extending RIGHT into the day
             int x = (int) dayStartX;
@@ -207,53 +322,56 @@ public class DailyVolumeProfileAnnotation extends AbstractXYAnnotation {
             if (barWidth > 0 && barHeight > 0) {
                 g2.setColor(barColor);
                 g2.fillRect(x, y, barWidth, barHeight);
-
-                // Draw thin border for POC
-                if (isPOC) {
-                    g2.setColor(new Color(255, 255, 255, 100));
-                    g2.drawRect(x, y, barWidth, barHeight);
-                }
             }
         }
 
-        // Draw VAH/VAL markers at the right edge of histogram area
-        drawValueAreaMarker(g2, dataArea, domainAxis, rangeAxis, day.dayStartTime, maxBarWidth, day.vah);
-        drawValueAreaMarker(g2, dataArea, domainAxis, rangeAxis, day.dayStartTime, maxBarWidth, day.val);
+        // Draw 20% white background rect for the day range
+        drawDayBackground(g2, dataArea, rangeAxis, dayStartX, dayEndX, day.minPrice, day.maxPrice);
+
+        // Draw POC as horizontal white line spanning the day
+        drawPocLine(g2, dataArea, rangeAxis, dayStartX, dayEndX, day.poc);
     }
 
-    private void drawValueAreaMarker(Graphics2D g2, Rectangle2D dataArea,
-                                      ValueAxis domainAxis, ValueAxis rangeAxis,
-                                      long dayStartTime, double maxBarWidth, double price) {
-        double dayStartX = domainAxis.valueToJava2D(dayStartTime, dataArea, RectangleEdge.BOTTOM);
-        double screenY = rangeAxis.valueToJava2D(price, dataArea, RectangleEdge.LEFT);
+    private void drawDayBackground(Graphics2D g2, Rectangle2D dataArea, ValueAxis rangeAxis,
+                                    double dayStartX, double dayEndX, double minPrice, double maxPrice) {
+        double highY = rangeAxis.valueToJava2D(maxPrice, dataArea, RectangleEdge.LEFT);
+        double lowY = rangeAxis.valueToJava2D(minPrice, dataArea, RectangleEdge.LEFT);
 
-        // Draw small tick mark at the right edge of the histogram area
-        g2.setColor(new Color(150, 150, 150, 150));
+        int x = (int) dayStartX;
+        int y = (int) Math.min(highY, lowY);
+        int width = (int) (dayEndX - dayStartX);
+        int height = (int) Math.abs(lowY - highY);
+
+        // ~10% white background
+        g2.setColor(new Color(255, 255, 255, 25));
+        g2.fillRect(x, y, width, height);
+    }
+
+    private void drawPocLine(Graphics2D g2, Rectangle2D dataArea, ValueAxis rangeAxis,
+                              double dayStartX, double dayEndX, double poc) {
+        double pocY = rangeAxis.valueToJava2D(poc, dataArea, RectangleEdge.LEFT);
+
+        g2.setColor(new Color(255, 255, 255, 200));
         g2.setStroke(new BasicStroke(1.0f));
-        int tickX = (int) (dayStartX + maxBarWidth);
-        g2.drawLine(tickX, (int) screenY, tickX + 3, (int) screenY);
+        g2.drawLine((int) dayStartX, (int) pocY, (int) dayEndX, (int) pocY);
     }
 
     /**
      * Get color for a volume bar based on intensity.
+     * Blue for lower volume, Orange for higher volume.
+     * POC is drawn as a separate white line.
+     * Lower opacity (100) so price/candles are visible on top.
      *
      * @param normalizedVolume Volume normalized to 0-1 range
-     * @param isPOC            True if this is the Point of Control
      * @return Color for the bar
      */
-    private Color getVolumeColor(double normalizedVolume, boolean isPOC) {
-        if (isPOC) {
-            // POC gets highlighted with the floating POC color (magenta)
-            return ChartStyles.FLOATING_POC_COLOR;
+    private Color getVolumeColor(double normalizedVolume) {
+        // Blue for lower volume, Orange for higher volume
+        // Alpha 100 (~40%) so candles/price line show through
+        if (normalizedVolume > 0.6) {
+            return new Color(255, 140, 50, 100);  // Orange
+        } else {
+            return new Color(70, 130, 220, 100);  // Blue
         }
-
-        // Use volume color palette for gradual intensity
-        Color[] palette = ChartStyles.VOLUME_COLORS;
-        int colorIndex = (int) (normalizedVolume * (palette.length - 1));
-        colorIndex = Math.min(colorIndex, palette.length - 1);
-
-        // Add some transparency for non-POC bars
-        Color baseColor = palette[colorIndex];
-        return new Color(baseColor.getRed(), baseColor.getGreen(), baseColor.getBlue(), 150);
     }
 }

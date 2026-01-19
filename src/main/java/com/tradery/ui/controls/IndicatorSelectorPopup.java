@@ -59,6 +59,8 @@ public class IndicatorSelectorPopup extends JDialog {
 
     // Daily Volume Profile controls
     private JCheckBox dailyVolumeProfileCheckbox;
+    private JLabel dailyVolumeProfileBinsLabel;
+    private JSpinner dailyVolumeProfileBinsSpinner;
 
     // Oscillator controls
     private JCheckBox rsiCheckbox;
@@ -644,10 +646,17 @@ public class IndicatorSelectorPopup extends JDialog {
 
     private JPanel createDailyVolumeProfileRow() {
         dailyVolumeProfileCheckbox = new JCheckBox("Daily Volume Profile");
-        dailyVolumeProfileCheckbox.setToolTipText("Show volume distribution histogram on left side of each day (last 14 days)");
+        dailyVolumeProfileCheckbox.setToolTipText("Show volume distribution histogram for each day");
+        dailyVolumeProfileBinsLabel = new JLabel("Bins:");
+        dailyVolumeProfileBinsSpinner = new JSpinner(new SpinnerNumberModel(96, 12, 200, 12));
+        dailyVolumeProfileBinsSpinner.setPreferredSize(new Dimension(60, 24));
+        dailyVolumeProfileBinsSpinner.addChangeListener(e -> scheduleUpdate());
+
         JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
         row.setAlignmentX(Component.LEFT_ALIGNMENT);
         row.add(dailyVolumeProfileCheckbox);
+        row.add(dailyVolumeProfileBinsLabel);
+        row.add(dailyVolumeProfileBinsSpinner);
         dailyVolumeProfileCheckbox.addActionListener(e -> scheduleUpdate());
         return row;
     }
@@ -1129,6 +1138,7 @@ public class IndicatorSelectorPopup extends JDialog {
         raySkipSpinner.setValue(config.getRaySkip());
         ichimokuCheckbox.setSelected(config.isIchimokuEnabled());
         dailyVolumeProfileCheckbox.setSelected(config.isDailyVolumeProfileEnabled());
+        dailyVolumeProfileBinsSpinner.setValue(config.getDailyVolumeProfileBins());
 
         // Oscillators
         rsiCheckbox.setSelected(config.isRsiEnabled());
@@ -1265,10 +1275,11 @@ public class IndicatorSelectorPopup extends JDialog {
         config.setIchimokuEnabled(ichimokuCheckbox.isSelected());
 
         // Daily Volume Profile
+        int volumeProfileBins = (int) dailyVolumeProfileBinsSpinner.getValue();
         if (dailyVolumeProfileCheckbox.isSelected()) {
             chartPanel.setDailyVolumeProfileOverlay(
                 null,  // Will use current candles
-                config.getDailyVolumeProfileBins(),
+                volumeProfileBins,
                 70.0,  // Value area percentage
                 config.getDailyVolumeProfileWidth()
             );
@@ -1276,6 +1287,7 @@ public class IndicatorSelectorPopup extends JDialog {
             chartPanel.clearDailyVolumeProfileOverlay();
         }
         config.setDailyVolumeProfileEnabled(dailyVolumeProfileCheckbox.isSelected());
+        config.setDailyVolumeProfileBins(volumeProfileBins);
 
         // Oscillators
         int rsiPeriod = (int) rsiSpinner.getValue();

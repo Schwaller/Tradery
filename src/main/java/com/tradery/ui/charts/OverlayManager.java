@@ -1,6 +1,7 @@
 package com.tradery.ui.charts;
 
 import com.tradery.indicators.IndicatorEngine;
+import com.tradery.model.AggTrade;
 import com.tradery.model.Candle;
 import org.jfree.chart.JFreeChart;
 import org.jfree.chart.annotations.XYLineAnnotation;
@@ -953,9 +954,10 @@ public class OverlayManager {
 
     /**
      * Sets the daily volume profile overlay showing volume distribution histograms
-     * on the left side of each day's bounds.
+     * on the left side of each day's bounds. Uses aggTrades from IndicatorEngine
+     * for accurate volume distribution, falling back to candles if unavailable.
      *
-     * @param candles        List of candles to analyze
+     * @param candles        List of candles to analyze (fallback)
      * @param numBins        Number of price bins per day (default 24)
      * @param valueAreaPct   Value area percentage (typically 70%)
      * @param histogramWidth Max width in pixels for histogram bars
@@ -967,8 +969,16 @@ public class OverlayManager {
 
         XYPlot plot = priceChart.getXYPlot();
 
-        List<DailyVolumeProfileAnnotation.DayProfile> profiles =
-            DailyVolumeProfileAnnotation.calculateDayProfiles(candles, numBins, valueAreaPct);
+        List<DailyVolumeProfileAnnotation.DayProfile> profiles;
+
+        // Try to use aggTrades from IndicatorEngine for accurate volume distribution
+        List<AggTrade> aggTrades = indicatorEngine != null ? indicatorEngine.getAggTrades() : null;
+        if (aggTrades != null && !aggTrades.isEmpty()) {
+            profiles = DailyVolumeProfileAnnotation.calculateDayProfilesFromAggTrades(aggTrades, numBins, valueAreaPct, 30);
+        } else {
+            // Fall back to candle-based calculation
+            profiles = DailyVolumeProfileAnnotation.calculateDayProfiles(candles, numBins, valueAreaPct);
+        }
 
         if (profiles.isEmpty()) return;
 

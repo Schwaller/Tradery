@@ -100,7 +100,7 @@ public class ChartConfig {
 
     // Daily Volume Profile overlay
     private boolean dailyVolumeProfileEnabled = false;
-    private int dailyVolumeProfileBins = 24;
+    private int dailyVolumeProfileBins = 96;
     private int dailyVolumeProfileWidth = 60;
 
     // Price chart mode
@@ -570,7 +570,7 @@ public class ChartConfig {
 
         // Daily Volume Profile - off by default
         dailyVolumeProfileEnabled = false;
-        dailyVolumeProfileBins = 24;
+        dailyVolumeProfileBins = 96;
         dailyVolumeProfileWidth = 60;
 
         // Price chart mode - line by default

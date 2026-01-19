@@ -1581,6 +1581,17 @@ public class ChartsPanel extends JPanel {
             indicatorManager.updateVolumeRatioChart(currentCandles);
             indicatorManager.updateWhaleChart(currentCandles);
             indicatorManager.updateRetailChart(currentCandles);
+
+            // Refresh daily volume profile overlay with new aggTrades data
+            ChartConfig config = ChartConfig.getInstance();
+            if (config.isDailyVolumeProfileEnabled()) {
+                overlayManager.setDailyVolumeProfileOverlay(
+                    currentCandles,
+                    config.getDailyVolumeProfileBins(),
+                    70.0,
+                    config.getDailyVolumeProfileWidth()
+                );
+            }
         }
     }
 
