@@ -92,7 +92,10 @@ public class IndicatorCache {
      */
     @SuppressWarnings("unchecked")
     public <T> T getSync(String id, Object... params) {
-        IndicatorSpec<T> spec = IndicatorRegistry.getInstance().getOrThrow(id);
+        IndicatorSpec<T> spec = IndicatorRegistry.getInstance().getSpec(id);
+        if (spec == null) {
+            throw new IllegalArgumentException("Unknown indicator: " + id);
+        }
         String cacheKey = spec.cacheKey(params);
 
         // Check cache first
@@ -119,7 +122,10 @@ public class IndicatorCache {
      */
     @SuppressWarnings("unchecked")
     public double getValueAt(String id, int barIndex, Object... params) {
-        IndicatorSpec<Object> spec = (IndicatorSpec<Object>) IndicatorRegistry.getInstance().getOrThrow(id);
+        IndicatorSpec<Object> spec = IndicatorRegistry.getInstance().getSpec(id);
+        if (spec == null) {
+            throw new IllegalArgumentException("Unknown indicator: " + id);
+        }
         Object result = getSync(id, params);
         if (result == null) {
             return Double.NaN;
@@ -140,7 +146,10 @@ public class IndicatorCache {
      */
     @SuppressWarnings("unchecked")
     public <T> boolean requestAsync(String id, Object[] params, Consumer<T> listener) {
-        IndicatorSpec<T> spec = IndicatorRegistry.getInstance().getOrThrow(id);
+        IndicatorSpec<T> spec = IndicatorRegistry.getInstance().getSpec(id);
+        if (spec == null) {
+            throw new IllegalArgumentException("Unknown indicator: " + id);
+        }
         String cacheKey = spec.cacheKey(params);
 
         // Check cache first
@@ -196,7 +205,7 @@ public class IndicatorCache {
      * Check if an indicator result is cached.
      */
     public boolean isCached(String id, Object... params) {
-        IndicatorSpec<?> spec = IndicatorRegistry.getInstance().get(id);
+        IndicatorSpec<?> spec = IndicatorRegistry.getInstance().getSpec(id);
         if (spec == null) return false;
         return cache.containsKey(spec.cacheKey(params));
     }
@@ -205,7 +214,7 @@ public class IndicatorCache {
      * Check if an indicator is currently being computed.
      */
     public boolean isComputing(String id, Object... params) {
-        IndicatorSpec<?> spec = IndicatorRegistry.getInstance().get(id);
+        IndicatorSpec<?> spec = IndicatorRegistry.getInstance().getSpec(id);
         if (spec == null) return false;
         return pending.containsKey(spec.cacheKey(params));
     }
@@ -215,7 +224,7 @@ public class IndicatorCache {
      */
     @SuppressWarnings("unchecked")
     public <T> T getCached(String id, Object... params) {
-        IndicatorSpec<T> spec = IndicatorRegistry.getInstance().get(id);
+        IndicatorSpec<T> spec = IndicatorRegistry.getInstance().getSpec(id);
         if (spec == null) return null;
         return (T) cache.get(spec.cacheKey(params));
     }
@@ -243,7 +252,7 @@ public class IndicatorCache {
      * Remove a specific listener.
      */
     public void removeListener(String id, Object[] params, Consumer<?> listener) {
-        IndicatorSpec<?> spec = IndicatorRegistry.getInstance().get(id);
+        IndicatorSpec<?> spec = IndicatorRegistry.getInstance().getSpec(id);
         if (spec == null) return;
         String cacheKey = spec.cacheKey(params);
         Set<Consumer<Object>> keyListeners = listeners.get(cacheKey);

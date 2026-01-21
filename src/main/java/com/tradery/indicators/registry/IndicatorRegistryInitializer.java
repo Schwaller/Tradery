@@ -1,5 +1,6 @@
 package com.tradery.indicators.registry;
 
+import com.tradery.indicators.*;
 import com.tradery.indicators.registry.specs.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -28,13 +29,38 @@ public final class IndicatorRegistryInitializer {
 
         log.info("Initializing indicator registry...");
 
-        // Simple indicators (RSI, SMA, EMA, ATR, etc.)
+        // ===== NEW: Register indicator classes directly =====
+        registry.registerAll(
+            // Simple indicators
+            SMA.INSTANCE,
+            EMA.INSTANCE,
+            RSI.INSTANCE,
+            ATR.INSTANCE,
+
+            // ADX family
+            ADX.INSTANCE,
+            ADX.PLUS_DI,
+            ADX.MINUS_DI,
+
+            // Composite indicators
+            MACD.INSTANCE,
+            BollingerBands.INSTANCE,
+            Stochastic.INSTANCE,
+
+            // Complex indicators
+            Ichimoku.INSTANCE,
+            Supertrend.INSTANCE
+        );
+
+        // ===== LEGACY: Specs (for indicators not yet migrated) =====
+
+        // Simple indicators (some may duplicate - specs map takes precedence for now)
         SimpleIndicatorSpecs.registerAll(registry);
 
-        // Composite indicators (MACD, BBands, ADX, Stochastic)
+        // Composite indicators
         CompositeIndicatorSpecs.registerAll(registry);
 
-        // Complex indicators (Ichimoku, Supertrend, Rays)
+        // Complex indicators (Rays, etc.)
         ComplexIndicatorSpecs.registerAll(registry);
 
         // Orderflow indicators (Delta, CVD, Whale, etc.)

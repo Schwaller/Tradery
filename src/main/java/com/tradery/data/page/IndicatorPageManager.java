@@ -382,7 +382,7 @@ public class IndicatorPageManager {
 
         // Try registry first
         if (registryId != null) {
-            IndicatorSpec<?> spec = IndicatorRegistry.getInstance().get(registryId);
+            IndicatorSpec<?> spec = IndicatorRegistry.getInstance().getSpec(registryId);
             if (spec != null) {
                 // Create context with both candles and aggTrades if available
                 IndicatorContext ctx = (aggTrades != null && !aggTrades.isEmpty())

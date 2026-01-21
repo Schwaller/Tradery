@@ -1,29 +1,62 @@
 package com.tradery.indicators;
 
+import com.tradery.indicators.registry.IndicatorContext;
 import com.tradery.model.Candle;
+
+import java.util.Arrays;
 import java.util.List;
 
 /**
  * Average True Range indicator.
  */
-public final class ATR {
+public final class ATR implements Indicator<double[]> {
 
-    private ATR() {} // Utility class
+    public static final ATR INSTANCE = new ATR();
 
-    /**
-     * Calculate ATR for all bars.
-     * @return Array where index corresponds to bar index. Invalid values (warmup period) are Double.NaN.
-     */
+    private ATR() {}
+
+    @Override
+    public String id() { return "ATR"; }
+
+    @Override
+    public String name() { return "Average True Range"; }
+
+    @Override
+    public String description() { return "Volatility indicator based on true range"; }
+
+    @Override
+    public int warmupBars(Object... params) { return (int) params[0]; }
+
+    @Override
+    public String cacheKey(Object... params) { return "atr:" + params[0]; }
+
+    @Override
+    public double[] compute(IndicatorContext ctx, Object... params) {
+        return calculate(ctx.candles(), (int) params[0]);
+    }
+
+    @Override
+    public double valueAt(double[] result, int barIndex) {
+        if (result == null || barIndex < 0 || barIndex >= result.length) {
+            return Double.NaN;
+        }
+        return result[barIndex];
+    }
+
+    @Override
+    public Class<double[]> resultType() { return double[].class; }
+
+    // ===== Static calculation methods =====
+
     public static double[] calculate(List<Candle> candles, int period) {
         int n = candles.size();
         double[] result = new double[n];
-        java.util.Arrays.fill(result, Double.NaN);
+        Arrays.fill(result, Double.NaN);
 
         if (n < period + 1) {
             return result;
         }
 
-        // Calculate True Range for each bar
         double[] tr = new double[n];
         tr[0] = candles.get(0).high() - candles.get(0).low();
 
@@ -38,14 +71,12 @@ public final class ATR {
             tr[i] = Math.max(highLow, Math.max(highPrevClose, lowPrevClose));
         }
 
-        // First ATR is SMA of TR
         double sum = 0;
         for (int i = 0; i < period; i++) {
             sum += tr[i];
         }
         result[period - 1] = sum / period;
 
-        // Smoothed ATR (Wilder's smoothing)
         for (int i = period; i < n; i++) {
             result[i] = (result[i - 1] * (period - 1) + tr[i]) / period;
         }
@@ -53,9 +84,6 @@ public final class ATR {
         return result;
     }
 
-    /**
-     * Calculate ATR at a specific bar index.
-     */
     public static double calculateAt(List<Candle> candles, int period, int barIndex) {
         if (barIndex < period - 1) {
             return Double.NaN;

@@ -1,29 +1,62 @@
 package com.tradery.indicators;
 
+import com.tradery.indicators.registry.IndicatorContext;
 import com.tradery.model.Candle;
+
+import java.util.Arrays;
 import java.util.List;
 
 /**
  * Relative Strength Index indicator.
  */
-public final class RSI {
+public final class RSI implements Indicator<double[]> {
 
-    private RSI() {} // Utility class
+    public static final RSI INSTANCE = new RSI();
 
-    /**
-     * Calculate RSI for all bars.
-     * @return Array where index corresponds to bar index. Invalid values (warmup period) are Double.NaN.
-     */
+    private RSI() {}
+
+    @Override
+    public String id() { return "RSI"; }
+
+    @Override
+    public String name() { return "Relative Strength Index"; }
+
+    @Override
+    public String description() { return "Momentum oscillator measuring speed of price changes (0-100)"; }
+
+    @Override
+    public int warmupBars(Object... params) { return (int) params[0] + 1; }
+
+    @Override
+    public String cacheKey(Object... params) { return "rsi:" + params[0]; }
+
+    @Override
+    public double[] compute(IndicatorContext ctx, Object... params) {
+        return calculate(ctx.candles(), (int) params[0]);
+    }
+
+    @Override
+    public double valueAt(double[] result, int barIndex) {
+        if (result == null || barIndex < 0 || barIndex >= result.length) {
+            return Double.NaN;
+        }
+        return result[barIndex];
+    }
+
+    @Override
+    public Class<double[]> resultType() { return double[].class; }
+
+    // ===== Static calculation methods =====
+
     public static double[] calculate(List<Candle> candles, int period) {
         int n = candles.size();
         double[] result = new double[n];
-        java.util.Arrays.fill(result, Double.NaN);
+        Arrays.fill(result, Double.NaN);
 
         if (n < period + 1 || period <= 0) {
             return result;
         }
 
-        // Calculate initial average gain and average loss
         double avgGain = 0;
         double avgLoss = 0;
 
@@ -39,7 +72,6 @@ public final class RSI {
         avgGain /= period;
         avgLoss /= period;
 
-        // First RSI value
         if (avgLoss == 0) {
             result[period] = 100;
         } else {
@@ -47,7 +79,6 @@ public final class RSI {
             result[period] = 100 - (100 / (1 + rs));
         }
 
-        // Calculate remaining RSI values using Wilder's smoothing
         for (int i = period + 1; i < n; i++) {
             double change = candles.get(i).close() - candles.get(i - 1).close();
             double gain = change > 0 ? change : 0;
@@ -67,9 +98,6 @@ public final class RSI {
         return result;
     }
 
-    /**
-     * Calculate RSI at a specific bar index.
-     */
     public static double calculateAt(List<Candle> candles, int period, int barIndex) {
         if (barIndex < period) {
             return Double.NaN;

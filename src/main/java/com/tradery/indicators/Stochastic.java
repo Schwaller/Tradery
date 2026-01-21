@@ -1,59 +1,81 @@
 package com.tradery.indicators;
 
+import com.tradery.indicators.registry.IndicatorContext;
 import com.tradery.model.Candle;
+
+import java.util.Arrays;
 import java.util.List;
 
 /**
  * Stochastic Oscillator - measures momentum by comparing close to high-low range.
- *
- * %K = (Close - Lowest Low) / (Highest High - Lowest Low) * 100
- * %D = SMA(%K, smoothing period)
- *
- * Values:
- *   0 = at lowest low of period
- *   50 = midpoint of range
- *   100 = at highest high of period
- *
- * Traditional interpretation:
- *   < 20 = oversold
- *   > 80 = overbought
- *
- * Note: Unlike RANGE_POSITION, Stochastic is clamped to 0-100.
  */
-public final class Stochastic {
+public final class Stochastic implements Indicator<Stochastic.Result> {
 
-    private Stochastic() {} // Utility class
+    public static final Stochastic INSTANCE = new Stochastic();
+
+    private Stochastic() {}
 
     /**
      * Full Stochastic result with %K and %D lines.
      */
     public record Result(double[] k, double[] d) {}
 
-    /**
-     * Calculate Stochastic %K and %D for all bars.
-     *
-     * @param candles List of candles
-     * @param kPeriod Lookback period for %K (typically 14)
-     * @param dPeriod Smoothing period for %D (typically 3)
-     * @return Result with %K and %D arrays
-     */
+    @Override
+    public String id() { return "STOCHASTIC"; }
+
+    @Override
+    public String name() { return "Stochastic Oscillator"; }
+
+    @Override
+    public String description() { return "Momentum indicator comparing close to high-low range (0-100)"; }
+
+    @Override
+    public int warmupBars(Object... params) {
+        int kPeriod = (int) params[0];
+        int dPeriod = (int) params[1];
+        return kPeriod + dPeriod;
+    }
+
+    @Override
+    public String cacheKey(Object... params) {
+        return "stochastic:" + params[0] + ":" + params[1];
+    }
+
+    @Override
+    public Result compute(IndicatorContext ctx, Object... params) {
+        return calculate(ctx.candles(), (int) params[0], (int) params[1]);
+    }
+
+    @Override
+    public double valueAt(Result result, int barIndex) {
+        // Default to %K
+        if (result == null || result.k() == null || barIndex < 0 || barIndex >= result.k().length) {
+            return Double.NaN;
+        }
+        return result.k()[barIndex];
+    }
+
+    @Override
+    @SuppressWarnings("unchecked")
+    public Class<Result> resultType() { return Result.class; }
+
+    // ===== Static calculation methods =====
+
     public static Result calculate(List<Candle> candles, int kPeriod, int dPeriod) {
         int n = candles.size();
         double[] k = new double[n];
         double[] d = new double[n];
-        java.util.Arrays.fill(k, Double.NaN);
-        java.util.Arrays.fill(d, Double.NaN);
+        Arrays.fill(k, Double.NaN);
+        Arrays.fill(d, Double.NaN);
 
         if (n < kPeriod) {
             return new Result(k, d);
         }
 
-        // Calculate %K
         for (int i = kPeriod - 1; i < n; i++) {
             k[i] = calculateKAt(candles, kPeriod, i);
         }
 
-        // Calculate %D (SMA of %K)
         if (n >= kPeriod + dPeriod - 1) {
             for (int i = kPeriod + dPeriod - 2; i < n; i++) {
                 double sum = 0;
@@ -73,14 +95,6 @@ public final class Stochastic {
         return new Result(k, d);
     }
 
-    /**
-     * Calculate Stochastic %K at a specific bar.
-     *
-     * @param candles List of candles
-     * @param period Lookback period
-     * @param barIndex Current bar index
-     * @return %K value (0-100), or NaN if insufficient data
-     */
     public static double calculateKAt(List<Candle> candles, int period, int barIndex) {
         if (barIndex < period - 1) {
             return Double.NaN;
@@ -97,22 +111,13 @@ public final class Stochastic {
 
         double range = highestHigh - lowestLow;
         if (range <= 0) {
-            return 50.0; // Flat range, return midpoint
+            return 50.0;
         }
 
         double close = candles.get(barIndex).close();
         return ((close - lowestLow) / range) * 100.0;
     }
 
-    /**
-     * Calculate Stochastic %D at a specific bar.
-     *
-     * @param candles List of candles
-     * @param kPeriod Lookback period for %K
-     * @param dPeriod Smoothing period for %D
-     * @param barIndex Current bar index
-     * @return %D value (0-100), or NaN if insufficient data
-     */
     public static double calculateDAt(List<Candle> candles, int kPeriod, int dPeriod, int barIndex) {
         if (barIndex < kPeriod + dPeriod - 2) {
             return Double.NaN;
