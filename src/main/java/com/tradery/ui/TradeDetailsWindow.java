@@ -66,7 +66,7 @@ public class TradeDetailsWindow extends JDialog {
         table.setAutoResizeMode(JTable.AUTO_RESIZE_OFF);
 
         // Column widths
-        int[] widths = {50, 45, 50, 130, 130, 100, 100, 75, 75, 70, 65, 55, 55, 50, 35, 80, 80, 70};
+        int[] widths = {40, 50, 45, 130, 130, 85, 85, 70, 70, 75, 55, 60, 65, 55, 55, 75, 80, 60, 80, 75};
         for (int i = 0; i < widths.length && i < table.getColumnCount(); i++) {
             table.getColumnModel().getColumn(i).setPreferredWidth(widths[i]);
         }
@@ -90,6 +90,8 @@ public class TradeDetailsWindow extends JDialog {
         table.getColumnModel().getColumn(15).setCellRenderer(new TradeRowRenderer(tableModel, SwingConstants.RIGHT));  // Commission
         table.getColumnModel().getColumn(16).setCellRenderer(new TradeRowRenderer(tableModel, SwingConstants.CENTER)); // Exit Reason
         table.getColumnModel().getColumn(17).setCellRenderer(new TradeRowRenderer(tableModel, SwingConstants.CENTER)); // Zone
+        table.getColumnModel().getColumn(18).setCellRenderer(new BetterContextCellRenderer(tableModel));  // Better Entry
+        table.getColumnModel().getColumn(19).setCellRenderer(new BetterContextCellRenderer(tableModel));  // Better Exit
 
         // Click handling for expand/collapse
         table.addMouseListener(new MouseAdapter() {
@@ -1203,6 +1205,34 @@ public class TradeDetailsWindow extends JDialog {
                 .max().orElse(firstEntry);
             return lastExit - firstEntry;
         }
+
+        Double getBetterEntryImprovement() {
+            if (singleTrade != null) {
+                return singleTrade.betterEntryImprovement();
+            }
+            // For groups, return the best (highest) improvement across all trades
+            Double best = null;
+            for (Trade t : trades) {
+                if (t.betterEntryImprovement() != null && (best == null || t.betterEntryImprovement() > best)) {
+                    best = t.betterEntryImprovement();
+                }
+            }
+            return best;
+        }
+
+        Double getBetterExitImprovement() {
+            if (singleTrade != null) {
+                return singleTrade.betterExitImprovement();
+            }
+            // For groups, return the best (highest) improvement across all trades
+            Double best = null;
+            for (Trade t : trades) {
+                if (t.betterExitImprovement() != null && (best == null || t.betterExitImprovement() > best)) {
+                    best = t.betterExitImprovement();
+                }
+            }
+            return best;
+        }
     }
 
     /**
@@ -1210,9 +1240,9 @@ public class TradeDetailsWindow extends JDialog {
      */
     private static class TreeDetailedTableModel extends AbstractTableModel {
         private static final String[] COLUMNS = {
-            "#", "Entries", "Side", "Entry Time", "Exit Time", "Entry $", "Exit $",
-            "Quantity", "Value", "P&L", "Return", "MFE", "MAE", "Capture", "Dur",
-            "Commission", "Exit Reason", "Zone"
+            "#", "Entries", "Side", "Entry Time", "Exit Time", "Entry Price", "Exit Price",
+            "Quantity", "Value", "Profit/Loss", "Return", "Best P&L", "Worst P&L", "Capture", "Duration",
+            "Commission", "Exit Reason", "Zone", "Better Entry", "Better Exit"
         };
         private static final SimpleDateFormat DATE_FORMAT = new SimpleDateFormat("yyyy-MM-dd HH:mm");
 
@@ -1323,6 +1353,8 @@ public class TradeDetailsWindow extends JDialog {
                     case 15 -> String.format("%.2f", row.getTotalCommission());
                     case 16 -> formatExitReason(row.getExitReason());
                     case 17 -> row.getExitZone() != null ? row.getExitZone() : "-";
+                    case 18 -> formatBetterContext(row.getBetterEntryImprovement());  // Better Entry
+                    case 19 -> formatBetterContext(row.getBetterExitImprovement());   // Better Exit
                     default -> "";
                 };
             } else {
@@ -1349,6 +1381,8 @@ public class TradeDetailsWindow extends JDialog {
                     case 15 -> isRejected ? "-" : (trade.commission() != null ? String.format("%.2f", trade.commission()) : "-");
                     case 16 -> formatExitReason(trade.exitReason());
                     case 17 -> trade.exitZone() != null ? trade.exitZone() : "-";
+                    case 18 -> isRejected ? "-" : formatBetterContext(trade.betterEntryImprovement());  // Better Entry
+                    case 19 -> isRejected ? "-" : formatBetterContext(trade.betterExitImprovement());   // Better Exit
                     default -> "";
                 };
             }
@@ -1364,6 +1398,11 @@ public class TradeDetailsWindow extends JDialog {
 
         private String formatCapture(Double capture) {
             return capture != null ? String.format("%.0f%%", capture * 100) : "-";
+        }
+
+        private String formatBetterContext(Double improvement) {
+            if (improvement == null) return "-";
+            return String.format("+%.1f%%", improvement);
         }
 
         private String formatPrice(double price) {
@@ -1571,6 +1610,49 @@ public class TradeDetailsWindow extends JDialog {
                     } else {
                         if (pct >= 70) setForeground(new Color(76, 175, 80));
                         else if (pct >= 40) setForeground(new Color(255, 193, 7));
+                        else setForeground(new Color(244, 67, 54));
+                    }
+                } catch (NumberFormatException e) {
+                    setForeground(Color.GRAY);
+                }
+            }
+
+            return this;
+        }
+    }
+
+    /**
+     * Renderer for better entry/exit context columns.
+     * Shows improvement percentage with color coding (higher = more room for improvement = worse).
+     */
+    private static class BetterContextCellRenderer extends DefaultTableCellRenderer {
+        private final TreeDetailedTableModel model;
+
+        BetterContextCellRenderer(TreeDetailedTableModel model) {
+            this.model = model;
+        }
+
+        @Override
+        public Component getTableCellRendererComponent(JTable table, Object value,
+                boolean isSelected, boolean hasFocus, int row, int column) {
+            super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column);
+            setHorizontalAlignment(SwingConstants.RIGHT);
+
+            TableRow tableRow = model.getRowAt(row);
+            if (tableRow.isRejected() || "-".equals(value)) {
+                setForeground(new Color(180, 180, 180));
+            } else if (value instanceof String s && s.startsWith("+")) {
+                // Color based on improvement: lower is better (entry/exit was closer to optimal)
+                // <1% = green (good), 1-3% = yellow (ok), >3% = red (significant room for improvement)
+                try {
+                    double pct = Double.parseDouble(s.replace("+", "").replace("%", ""));
+                    if (tableRow.isChild) {
+                        if (pct < 1.0) setForeground(new Color(120, 180, 120));
+                        else if (pct < 3.0) setForeground(new Color(180, 180, 100));
+                        else setForeground(new Color(200, 120, 120));
+                    } else {
+                        if (pct < 1.0) setForeground(new Color(76, 175, 80));
+                        else if (pct < 3.0) setForeground(new Color(255, 193, 7));
                         else setForeground(new Color(244, 67, 54));
                     }
                 } catch (NumberFormatException e) {
