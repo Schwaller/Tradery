@@ -14,16 +14,19 @@ import java.util.Set;
 
 /**
  * Complex indicators: Ichimoku, Supertrend, Rotating Rays.
+ *
+ * NOTE: Most indicators migrated to Indicator interface - see:
+ * - Ichimoku.INSTANCE
+ * - Supertrend.INSTANCE
+ * - RotatingRays.RESISTANCE_RAYS, RotatingRays.SUPPORT_RAYS
  */
 public final class ComplexIndicatorSpecs {
 
     private ComplexIndicatorSpecs() {}
 
     public static void registerAll(IndicatorRegistry registry) {
-        registry.registerAll(
-            ICHIMOKU, SUPERTREND,
-            RESISTANCE_RAYS, SUPPORT_RAYS
-        );
+        // All indicators migrated to new Indicator interface
+        // Kept for reference - can be deleted when migration is complete
     }
 
     // ========== ICHIMOKU ==========

@@ -371,6 +371,8 @@ public class DslHelpDialog extends JDialog {
         toc.add(new TocEntry("toc-" + tocIndex++, "Cross Operators", 3));
         toc.add(new TocEntry("toc-" + tocIndex++, "Logical Operators", 3));
         toc.add(new TocEntry("toc-" + tocIndex++, "Arithmetic Operators", 3));
+        toc.add(new TocEntry("toc-" + tocIndex++, "Math Functions", 3));
+        toc.add(new TocEntry("toc-" + tocIndex++, "Candlestick Patterns", 3));
         toc.add(new TocEntry("toc-" + tocIndex++, "Example Strategies", 3));
 
         return """
@@ -575,7 +577,35 @@ public class DslHelpDialog extends JDialog {
             </div>
 
             <div class="section">
-            <h3 id="toc-15">Example Strategies</h3>
+            <h3 id="toc-15">Math Functions</h3>
+            <table>
+                <tr><td><code>abs(expr)</code></td><td>Absolute value</td></tr>
+                <tr><td><code>min(expr1, expr2)</code></td><td>Minimum of two values</td></tr>
+                <tr><td><code>max(expr1, expr2)</code></td><td>Maximum of two values</td></tr>
+            </table>
+            <div class="example">abs(close - open) > ATR(14) * 0.5<br>min(open, close) - low > 2 * abs(close - open)<br>max(RSI(14), RSI(14)[1]) &lt; 30</div>
+            <span style="color: %s; font-size: 10px;">Useful for candlestick patterns: body = abs(close - open), lower_wick = min(open, close) - low</span>
+            </div>
+
+            <div class="section">
+            <h3 id="toc-16">Candlestick Patterns</h3>
+            <span style="color: %s; font-size: 10px;">Pattern functions return 1 if detected, 0 otherwise. Property functions support lookback [n].</span>
+            <table>
+                <tr><th>Function</th><th>Description</th></tr>
+                <tr><td><code>HAMMER(ratio)</code></td><td>Hammer pattern - long lower wick (default ratio: 2.0)</td></tr>
+                <tr><td><code>SHOOTING_STAR(ratio)</code></td><td>Shooting star - long upper wick (default ratio: 2.0)</td></tr>
+                <tr><td><code>DOJI(ratio)</code></td><td>Doji - tiny body relative to range (default ratio: 0.1)</td></tr>
+                <tr><td><code>BODY_SIZE</code></td><td>Absolute body size (close - open)</td></tr>
+                <tr><td><code>BODY_RATIO</code></td><td>Body / total range (0-1)</td></tr>
+                <tr><td><code>IS_BULLISH</code></td><td>1 if green candle (close > open)</td></tr>
+                <tr><td><code>IS_BEARISH</code></td><td>1 if red candle (close &lt; open)</td></tr>
+            </table>
+            <div class="example">SHOOTING_STAR(2.0) AND BODY_SIZE[1] > ATR(14) * 1.5 AND IS_BULLISH[1] == 1<br>HAMMER AND RSI(14) &lt; 30<br>DOJI AND BODY_SIZE[1] > ATR(14)</div>
+            <span style="color: %s; font-size: 10px;">Combine patterns with context: shooting star after strong bullish candle = reversal signal</span>
+            </div>
+
+            <div class="section">
+            <h3 id="toc-17">Example Strategies</h3>
             <div class="example">
             <b>RSI Oversold:</b> RSI(14) &lt; 30<br><br>
             <b>Trend Following:</b> EMA(9) crosses_above EMA(21) AND price > SMA(50)<br><br>
@@ -586,7 +616,7 @@ public class DslHelpDialog extends JDialog {
 
             </body>
             </html>
-            """.formatted(bgHex, fgHex, fgHex, accentHex, codeBgHex, fgHex, borderHex, codeBgHex, codeBgHex, accentHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex);
+            """.formatted(bgHex, fgHex, fgHex, accentHex, codeBgHex, fgHex, borderHex, codeBgHex, codeBgHex, accentHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex);
     }
 
     private void performSearch() {

@@ -22,6 +22,9 @@ public enum TokenType {
     OI_FUNC,        // OI, OI_CHANGE, OI_DELTA
     RAY_FUNC,       // RESISTANCE_RAY_BROKEN, RESISTANCE_RAY_CROSSED, SUPPORT_RAY_BROKEN, etc.
     AGGREGATE_FUNC, // LOWEST, HIGHEST, PERCENTILE (operate on expressions over lookback)
+    MATH_FUNC,      // abs, min, max (math utility functions)
+    CANDLE_PATTERN_FUNC, // HAMMER, SHOOTING_STAR, DOJI (candlestick patterns with params)
+    CANDLE_PROP_FUNC,    // BODY_SIZE, BODY_RATIO, IS_BULLISH, IS_BEARISH (candle properties)
 
     // Properties
     PROPERTY,       // .signal, .histogram, .upper, .lower, .middle

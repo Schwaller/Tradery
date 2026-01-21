@@ -1,33 +1,32 @@
-package com.tradery.indicators.registry.specs;
+package com.tradery.indicators;
 
-import com.tradery.indicators.registry.DataDependency;
 import com.tradery.indicators.registry.IndicatorContext;
-import com.tradery.indicators.registry.IndicatorRegistry;
-import com.tradery.indicators.registry.SimpleIndicatorSpec;
 import com.tradery.model.Candle;
 
 import java.util.List;
 
 /**
  * OHLCV volume indicators - use extended kline data (instant, no aggTrades needed).
- *
- * NOTE: All indicators migrated to Indicator interface - see OhlcvVolumeIndicators class.
  */
-public final class OhlcvVolumeIndicatorSpecs {
+public final class OhlcvVolumeIndicators {
 
-    private OhlcvVolumeIndicatorSpecs() {}
+    private OhlcvVolumeIndicators() {} // Utility class
 
-    public static void registerAll(IndicatorRegistry registry) {
-        // All indicators migrated to new Indicator interface
-        // Kept for reference - can be deleted when migration is complete
-    }
+    // ===== Indicator instances for registry =====
+    public static final Indicator<double[]> QUOTE_VOLUME = new QuoteVolumeIndicator();
+    public static final Indicator<double[]> TAKER_BUY_VOLUME = new TakerBuyVolumeIndicator();
+    public static final Indicator<double[]> TAKER_SELL_VOLUME = new TakerSellVolumeIndicator();
+    public static final Indicator<double[]> OHLCV_DELTA = new OhlcvDeltaIndicator();
+    public static final Indicator<double[]> OHLCV_CVD = new OhlcvCvdIndicator();
+    public static final Indicator<double[]> BUY_RATIO = new BuyRatioIndicator();
 
-    // ========== QUOTE_VOLUME ==========
-    public static final SimpleIndicatorSpec QUOTE_VOLUME = new SimpleIndicatorSpec("QUOTE_VOLUME") {
-        @Override
-        public String cacheKey(Object... params) {
-            return "quote_volume";
-        }
+    // ===== Indicator Implementations =====
+
+    private static class QuoteVolumeIndicator extends SimpleIndicator {
+        @Override public String id() { return "QUOTE_VOLUME"; }
+        @Override public String name() { return "Quote Volume"; }
+        @Override public String description() { return "Volume in quote currency (USD for BTCUSDT)"; }
+        @Override public String cacheKey(Object... params) { return "quote_volume"; }
 
         @Override
         public double[] compute(IndicatorContext ctx, Object... params) {
@@ -39,14 +38,13 @@ public final class OhlcvVolumeIndicatorSpecs {
             }
             return result;
         }
-    };
+    }
 
-    // ========== TAKER_BUY_VOLUME ==========
-    public static final SimpleIndicatorSpec TAKER_BUY_VOLUME = new SimpleIndicatorSpec("TAKER_BUY_VOLUME") {
-        @Override
-        public String cacheKey(Object... params) {
-            return "taker_buy_volume";
-        }
+    private static class TakerBuyVolumeIndicator extends SimpleIndicator {
+        @Override public String id() { return "TAKER_BUY_VOLUME"; }
+        @Override public String name() { return "Taker Buy Volume"; }
+        @Override public String description() { return "Aggressive buy volume from klines"; }
+        @Override public String cacheKey(Object... params) { return "taker_buy_volume"; }
 
         @Override
         public double[] compute(IndicatorContext ctx, Object... params) {
@@ -58,14 +56,13 @@ public final class OhlcvVolumeIndicatorSpecs {
             }
             return result;
         }
-    };
+    }
 
-    // ========== TAKER_SELL_VOLUME ==========
-    public static final SimpleIndicatorSpec TAKER_SELL_VOLUME = new SimpleIndicatorSpec("TAKER_SELL_VOLUME") {
-        @Override
-        public String cacheKey(Object... params) {
-            return "taker_sell_volume";
-        }
+    private static class TakerSellVolumeIndicator extends SimpleIndicator {
+        @Override public String id() { return "TAKER_SELL_VOLUME"; }
+        @Override public String name() { return "Taker Sell Volume"; }
+        @Override public String description() { return "Aggressive sell volume from klines"; }
+        @Override public String cacheKey(Object... params) { return "taker_sell_volume"; }
 
         @Override
         public double[] compute(IndicatorContext ctx, Object... params) {
@@ -78,14 +75,13 @@ public final class OhlcvVolumeIndicatorSpecs {
             }
             return result;
         }
-    };
+    }
 
-    // ========== OHLCV_DELTA ==========
-    public static final SimpleIndicatorSpec OHLCV_DELTA = new SimpleIndicatorSpec("OHLCV_DELTA") {
-        @Override
-        public String cacheKey(Object... params) {
-            return "ohlcv_delta";
-        }
+    private static class OhlcvDeltaIndicator extends SimpleIndicator {
+        @Override public String id() { return "OHLCV_DELTA"; }
+        @Override public String name() { return "OHLCV Delta"; }
+        @Override public String description() { return "Buy - Sell volume from klines"; }
+        @Override public String cacheKey(Object... params) { return "ohlcv_delta"; }
 
         @Override
         public double[] compute(IndicatorContext ctx, Object... params) {
@@ -99,14 +95,13 @@ public final class OhlcvVolumeIndicatorSpecs {
             }
             return result;
         }
-    };
+    }
 
-    // ========== OHLCV_CVD ==========
-    public static final SimpleIndicatorSpec OHLCV_CVD = new SimpleIndicatorSpec("OHLCV_CVD") {
-        @Override
-        public String cacheKey(Object... params) {
-            return "ohlcv_cvd";
-        }
+    private static class OhlcvCvdIndicator extends SimpleIndicator {
+        @Override public String id() { return "OHLCV_CVD"; }
+        @Override public String name() { return "OHLCV CVD"; }
+        @Override public String description() { return "Cumulative delta from klines"; }
+        @Override public String cacheKey(Object... params) { return "ohlcv_cvd"; }
 
         @Override
         public double[] compute(IndicatorContext ctx, Object... params) {
@@ -122,14 +117,13 @@ public final class OhlcvVolumeIndicatorSpecs {
             }
             return result;
         }
-    };
+    }
 
-    // ========== BUY_RATIO ==========
-    public static final SimpleIndicatorSpec BUY_RATIO = new SimpleIndicatorSpec("BUY_RATIO") {
-        @Override
-        public String cacheKey(Object... params) {
-            return "buy_ratio";
-        }
+    private static class BuyRatioIndicator extends SimpleIndicator {
+        @Override public String id() { return "BUY_RATIO"; }
+        @Override public String name() { return "Buy Ratio"; }
+        @Override public String description() { return "Buy volume / total volume (0-1)"; }
+        @Override public String cacheKey(Object... params) { return "buy_ratio"; }
 
         @Override
         public double[] compute(IndicatorContext ctx, Object... params) {
@@ -146,5 +140,5 @@ public final class OhlcvVolumeIndicatorSpecs {
             }
             return result;
         }
-    };
+    }
 }

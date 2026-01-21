@@ -1,5 +1,6 @@
 package com.tradery.indicators;
 
+import com.tradery.indicators.registry.IndicatorContext;
 import com.tradery.model.Candle;
 import java.util.ArrayList;
 import java.util.List;
@@ -15,6 +16,58 @@ import java.util.List;
 public final class RotatingRays {
 
     private RotatingRays() {} // Utility class
+
+    // ===== Indicator instances for registry =====
+    public static final Indicator<RaySet> RESISTANCE_RAYS = new ResistanceRaysIndicator();
+    public static final Indicator<RaySet> SUPPORT_RAYS = new SupportRaysIndicator();
+
+    // ===== ResistanceRays Indicator =====
+    private static class ResistanceRaysIndicator implements Indicator<RaySet> {
+        @Override public String id() { return "RESISTANCE_RAYS"; }
+        @Override public String name() { return "Resistance Rays"; }
+        @Override public String description() { return "Descending trendlines from ATH"; }
+        @Override public int warmupBars(Object... params) { return (int) params[0]; }
+        @Override public String cacheKey(Object... params) { return "resistance_rays:" + params[0] + ":" + params[1]; }
+
+        @Override
+        public RaySet compute(IndicatorContext ctx, Object... params) {
+            int lookback = (int) params[0];
+            int skip = (int) params[1];
+            return calculateResistanceRays(ctx.candles(), lookback, skip);
+        }
+
+        @Override
+        public double valueAt(RaySet result, int barIndex) {
+            return Double.NaN; // Use through RayFunctions
+        }
+
+        @Override
+        public Class<RaySet> resultType() { return RaySet.class; }
+    }
+
+    // ===== SupportRays Indicator =====
+    private static class SupportRaysIndicator implements Indicator<RaySet> {
+        @Override public String id() { return "SUPPORT_RAYS"; }
+        @Override public String name() { return "Support Rays"; }
+        @Override public String description() { return "Ascending trendlines from ATL"; }
+        @Override public int warmupBars(Object... params) { return (int) params[0]; }
+        @Override public String cacheKey(Object... params) { return "support_rays:" + params[0] + ":" + params[1]; }
+
+        @Override
+        public RaySet compute(IndicatorContext ctx, Object... params) {
+            int lookback = (int) params[0];
+            int skip = (int) params[1];
+            return calculateSupportRays(ctx.candles(), lookback, skip);
+        }
+
+        @Override
+        public double valueAt(RaySet result, int barIndex) {
+            return Double.NaN; // Use through RayFunctions
+        }
+
+        @Override
+        public Class<RaySet> resultType() { return RaySet.class; }
+    }
 
     /**
      * A single ray connecting two price points.

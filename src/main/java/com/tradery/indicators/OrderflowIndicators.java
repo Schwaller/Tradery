@@ -1,10 +1,12 @@
 package com.tradery.indicators;
 
+import com.tradery.indicators.registry.DataDependency;
+import com.tradery.indicators.registry.IndicatorContext;
 import com.tradery.model.AggTrade;
 import com.tradery.model.Candle;
 
-import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 
 /**
  * Orderflow indicators that require aggregated trade data.
@@ -13,6 +15,194 @@ import java.util.List;
 public final class OrderflowIndicators {
 
     private OrderflowIndicators() {} // Utility class
+
+    // ===== Indicator instances for registry =====
+    public static final Indicator<double[]> DELTA = new DeltaIndicator();
+    public static final Indicator<double[]> CUM_DELTA = new CumDeltaIndicator();
+    public static final Indicator<double[]> WHALE_DELTA = new WhaleDeltaIndicator();
+    public static final Indicator<double[]> RETAIL_DELTA = new RetailDeltaIndicator();
+    public static final Indicator<double[]> AGG_BUY_VOLUME = new AggBuyVolumeIndicator();
+    public static final Indicator<double[]> AGG_SELL_VOLUME = new AggSellVolumeIndicator();
+    public static final Indicator<double[]> AGG_TRADE_COUNT = new AggTradeCountIndicator();
+    public static final Indicator<double[]> LARGE_TRADE_COUNT = new LargeTradeCountIndicator();
+    public static final Indicator<double[]> WHALE_BUY_VOLUME = new WhaleBuyVolumeIndicator();
+    public static final Indicator<double[]> WHALE_SELL_VOLUME = new WhaleSellVolumeIndicator();
+
+    // ===== Indicator Implementations =====
+
+    private static class DeltaIndicator extends SimpleIndicator {
+        @Override public String id() { return "DELTA"; }
+        @Override public String name() { return "Delta"; }
+        @Override public String description() { return "Buy - Sell volume (aggTrades or OHLCV fallback)"; }
+        @Override public String cacheKey(Object... params) { return "delta"; }
+
+        @Override
+        public double[] compute(IndicatorContext ctx, Object... params) {
+            if (ctx.hasAggTrades()) {
+                return delta(ctx.aggTrades(), ctx.candles(), ctx.resolution());
+            }
+            return computeOhlcvDelta(ctx.candles());
+        }
+    }
+
+    private static class CumDeltaIndicator extends SimpleIndicator {
+        @Override public String id() { return "CUM_DELTA"; }
+        @Override public String name() { return "Cumulative Delta"; }
+        @Override public String description() { return "Running sum of delta"; }
+        @Override public String cacheKey(Object... params) { return "cum_delta"; }
+
+        @Override
+        public double[] compute(IndicatorContext ctx, Object... params) {
+            if (ctx.hasAggTrades()) {
+                return cumulativeDelta(ctx.aggTrades(), ctx.candles(), ctx.resolution());
+            }
+            return computeOhlcvCvd(ctx.candles());
+        }
+    }
+
+    private static class WhaleDeltaIndicator extends SimpleIndicator {
+        @Override public String id() { return "WHALE_DELTA"; }
+        @Override public String name() { return "Whale Delta"; }
+        @Override public String description() { return "Delta from large trades only"; }
+        @Override public String cacheKey(Object... params) { return "whale_delta:" + params[0]; }
+        @Override public Set<DataDependency> dependencies() { return Set.of(DataDependency.CANDLES, DataDependency.AGG_TRADES); }
+
+        @Override
+        public double[] compute(IndicatorContext ctx, Object... params) {
+            double threshold = (double) params[0];
+            return whaleDelta(ctx.aggTrades(), ctx.candles(), ctx.resolution(), threshold);
+        }
+    }
+
+    private static class RetailDeltaIndicator extends SimpleIndicator {
+        @Override public String id() { return "RETAIL_DELTA"; }
+        @Override public String name() { return "Retail Delta"; }
+        @Override public String description() { return "Delta from small trades only"; }
+        @Override public String cacheKey(Object... params) { return "retail_delta:" + params[0]; }
+        @Override public Set<DataDependency> dependencies() { return Set.of(DataDependency.CANDLES, DataDependency.AGG_TRADES); }
+
+        @Override
+        public double[] compute(IndicatorContext ctx, Object... params) {
+            double threshold = (double) params[0];
+            return retailDelta(ctx.aggTrades(), ctx.candles(), ctx.resolution(), threshold);
+        }
+    }
+
+    private static class AggBuyVolumeIndicator extends SimpleIndicator {
+        @Override public String id() { return "BUY_VOLUME"; }
+        @Override public String name() { return "Buy Volume (AggTrades)"; }
+        @Override public String description() { return "Aggressive buy volume from aggTrades"; }
+        @Override public String cacheKey(Object... params) { return "buy_volume"; }
+        @Override public Set<DataDependency> dependencies() { return Set.of(DataDependency.CANDLES, DataDependency.AGG_TRADES); }
+
+        @Override
+        public double[] compute(IndicatorContext ctx, Object... params) {
+            return buyVolume(ctx.aggTrades(), ctx.candles(), ctx.resolution());
+        }
+    }
+
+    private static class AggSellVolumeIndicator extends SimpleIndicator {
+        @Override public String id() { return "SELL_VOLUME"; }
+        @Override public String name() { return "Sell Volume (AggTrades)"; }
+        @Override public String description() { return "Aggressive sell volume from aggTrades"; }
+        @Override public String cacheKey(Object... params) { return "sell_volume"; }
+        @Override public Set<DataDependency> dependencies() { return Set.of(DataDependency.CANDLES, DataDependency.AGG_TRADES); }
+
+        @Override
+        public double[] compute(IndicatorContext ctx, Object... params) {
+            return sellVolume(ctx.aggTrades(), ctx.candles(), ctx.resolution());
+        }
+    }
+
+    private static class AggTradeCountIndicator extends SimpleIndicator {
+        @Override public String id() { return "TRADE_COUNT"; }
+        @Override public String name() { return "Trade Count"; }
+        @Override public String description() { return "Number of trades per bar"; }
+        @Override public String cacheKey(Object... params) { return "trade_count"; }
+
+        @Override
+        public double[] compute(IndicatorContext ctx, Object... params) {
+            if (ctx.hasAggTrades()) {
+                return tradeCount(ctx.aggTrades(), ctx.candles(), ctx.resolution());
+            }
+            return computeOhlcvTradeCount(ctx.candles());
+        }
+    }
+
+    private static class LargeTradeCountIndicator extends SimpleIndicator {
+        @Override public String id() { return "LARGE_TRADE_COUNT"; }
+        @Override public String name() { return "Large Trade Count"; }
+        @Override public String description() { return "Number of trades above threshold"; }
+        @Override public String cacheKey(Object... params) { return "large_trade_count:" + params[0]; }
+        @Override public Set<DataDependency> dependencies() { return Set.of(DataDependency.CANDLES, DataDependency.AGG_TRADES); }
+
+        @Override
+        public double[] compute(IndicatorContext ctx, Object... params) {
+            double threshold = (double) params[0];
+            return largeTradeCount(ctx.aggTrades(), ctx.candles(), ctx.resolution(), threshold);
+        }
+    }
+
+    private static class WhaleBuyVolumeIndicator extends SimpleIndicator {
+        @Override public String id() { return "WHALE_BUY_VOLUME"; }
+        @Override public String name() { return "Whale Buy Volume"; }
+        @Override public String description() { return "Buy volume from large trades"; }
+        @Override public String cacheKey(Object... params) { return "whale_buy_volume:" + params[0]; }
+        @Override public Set<DataDependency> dependencies() { return Set.of(DataDependency.CANDLES, DataDependency.AGG_TRADES); }
+
+        @Override
+        public double[] compute(IndicatorContext ctx, Object... params) {
+            double threshold = (double) params[0];
+            return whaleBuyVolume(ctx.aggTrades(), ctx.candles(), ctx.resolution(), threshold);
+        }
+    }
+
+    private static class WhaleSellVolumeIndicator extends SimpleIndicator {
+        @Override public String id() { return "WHALE_SELL_VOLUME"; }
+        @Override public String name() { return "Whale Sell Volume"; }
+        @Override public String description() { return "Sell volume from large trades"; }
+        @Override public String cacheKey(Object... params) { return "whale_sell_volume:" + params[0]; }
+        @Override public Set<DataDependency> dependencies() { return Set.of(DataDependency.CANDLES, DataDependency.AGG_TRADES); }
+
+        @Override
+        public double[] compute(IndicatorContext ctx, Object... params) {
+            double threshold = (double) params[0];
+            return whaleSellVolume(ctx.aggTrades(), ctx.candles(), ctx.resolution(), threshold);
+        }
+    }
+
+    // ===== OHLCV Fallback Helpers =====
+
+    private static double[] computeOhlcvDelta(List<Candle> candles) {
+        double[] result = new double[candles.size()];
+        for (int i = 0; i < candles.size(); i++) {
+            Candle c = candles.get(i);
+            double buyVol = c.hasExtendedVolume() ? c.takerBuyVolume() : c.volume() / 2;
+            double sellVol = c.volume() - buyVol;
+            result[i] = buyVol - sellVol;
+        }
+        return result;
+    }
+
+    private static double[] computeOhlcvCvd(List<Candle> candles) {
+        double[] delta = computeOhlcvDelta(candles);
+        double[] result = new double[candles.size()];
+        double cumulative = 0;
+        for (int i = 0; i < delta.length; i++) {
+            cumulative += delta[i];
+            result[i] = cumulative;
+        }
+        return result;
+    }
+
+    private static double[] computeOhlcvTradeCount(List<Candle> candles) {
+        double[] result = new double[candles.size()];
+        for (int i = 0; i < candles.size(); i++) {
+            Candle c = candles.get(i);
+            result[i] = c.hasTradeCount() ? c.tradeCount() : 0;
+        }
+        return result;
+    }
 
     /**
      * Calculate delta (buy volume - sell volume) for each candle.

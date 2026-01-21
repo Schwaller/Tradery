@@ -54,6 +54,9 @@ public class ConditionEvaluator {
             case AstNode.OIFunctionCall o -> evaluateOIFunction(o, barIndex);
             case AstNode.RayFunctionCall r -> evaluateRayFunction(r, barIndex);
             case AstNode.AggregateFunctionCall a -> evaluateAggregateFunction(a, barIndex);
+            case AstNode.MathFunctionCall m -> evaluateMathFunction(m, barIndex);
+            case AstNode.CandlePatternCall c -> evaluateCandlePattern(c, barIndex);
+            case AstNode.CandlePropCall c -> evaluateCandleProp(c, barIndex);
             case AstNode.LookbackAccess l -> evaluateLookback(l, barIndex);
             case AstNode.PriceReference p -> evaluatePrice(p, barIndex);
             case AstNode.NumberLiteral n -> n.value();
@@ -464,6 +467,99 @@ public class ConditionEvaluator {
                 yield (belowCount * 100.0) / validCount;
             }
             default -> throw new EvaluationException("Unknown aggregate function: " + node.func());
+        };
+    }
+
+    /**
+     * Evaluate math utility functions: abs, min, max
+     */
+    private double evaluateMathFunction(AstNode.MathFunctionCall node, int barIndex) {
+        return switch (node.func()) {
+            case "abs" -> {
+                double value = toDouble(evaluateNode(node.args().get(0), barIndex));
+                yield Math.abs(value);
+            }
+            case "min" -> {
+                double val1 = toDouble(evaluateNode(node.args().get(0), barIndex));
+                double val2 = toDouble(evaluateNode(node.args().get(1), barIndex));
+                yield Math.min(val1, val2);
+            }
+            case "max" -> {
+                double val1 = toDouble(evaluateNode(node.args().get(0), barIndex));
+                double val2 = toDouble(evaluateNode(node.args().get(1), barIndex));
+                yield Math.max(val1, val2);
+            }
+            default -> throw new EvaluationException("Unknown math function: " + node.func());
+        };
+    }
+
+    /**
+     * Evaluate candlestick pattern functions: HAMMER, SHOOTING_STAR, DOJI
+     * Returns 1.0 if pattern detected, 0.0 otherwise.
+     */
+    private double evaluateCandlePattern(AstNode.CandlePatternCall node, int barIndex) {
+        double open = engine.getOpenAt(barIndex);
+        double high = engine.getHighAt(barIndex);
+        double low = engine.getLowAt(barIndex);
+        double close = engine.getCloseAt(barIndex);
+
+        double body = Math.abs(close - open);
+        double range = high - low;
+        double upperWick = high - Math.max(open, close);
+        double lowerWick = Math.min(open, close) - low;
+
+        // Avoid division by zero
+        if (range < 0.0000001 || body < 0.0000001) {
+            // For DOJI, a tiny body relative to range is actually the pattern
+            if ("DOJI".equals(node.func())) {
+                double maxBodyRatio = node.ratio() != null ? node.ratio() : 0.1;
+                return (body / range) <= maxBodyRatio ? 1.0 : 0.0;
+            }
+            return 0.0;
+        }
+
+        return switch (node.func()) {
+            case "HAMMER" -> {
+                // Hammer: long lower wick, small upper wick
+                double minWickRatio = node.ratio() != null ? node.ratio() : 2.0;
+                boolean longLowerWick = lowerWick >= body * minWickRatio;
+                boolean smallUpperWick = upperWick <= body * 0.5;
+                yield (longLowerWick && smallUpperWick) ? 1.0 : 0.0;
+            }
+            case "SHOOTING_STAR" -> {
+                // Shooting star: long upper wick, small lower wick
+                double minWickRatio = node.ratio() != null ? node.ratio() : 2.0;
+                boolean longUpperWick = upperWick >= body * minWickRatio;
+                boolean smallLowerWick = lowerWick <= body * 0.5;
+                yield (longUpperWick && smallLowerWick) ? 1.0 : 0.0;
+            }
+            case "DOJI" -> {
+                // Doji: tiny body relative to range
+                double maxBodyRatio = node.ratio() != null ? node.ratio() : 0.1;
+                yield (body / range) <= maxBodyRatio ? 1.0 : 0.0;
+            }
+            default -> throw new EvaluationException("Unknown candle pattern: " + node.func());
+        };
+    }
+
+    /**
+     * Evaluate candlestick property functions: BODY_SIZE, BODY_RATIO, IS_BULLISH, IS_BEARISH
+     */
+    private double evaluateCandleProp(AstNode.CandlePropCall node, int barIndex) {
+        double open = engine.getOpenAt(barIndex);
+        double high = engine.getHighAt(barIndex);
+        double low = engine.getLowAt(barIndex);
+        double close = engine.getCloseAt(barIndex);
+
+        return switch (node.func()) {
+            case "BODY_SIZE" -> Math.abs(close - open);
+            case "BODY_RATIO" -> {
+                double range = high - low;
+                yield range > 0.0000001 ? Math.abs(close - open) / range : 0.0;
+            }
+            case "IS_BULLISH" -> close > open ? 1.0 : 0.0;
+            case "IS_BEARISH" -> close < open ? 1.0 : 0.0;
+            default -> throw new EvaluationException("Unknown candle property: " + node.func());
         };
     }
 

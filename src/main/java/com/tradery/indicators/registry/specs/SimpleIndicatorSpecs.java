@@ -8,16 +8,18 @@ import com.tradery.indicators.registry.SimpleIndicatorSpec;
 
 /**
  * Simple indicators that return double[] with a single period parameter.
+ *
+ * NOTE: RSI, SMA, EMA, ATR migrated to Indicator interface.
+ * Only HIGH_OF, LOW_OF, AVG_VOLUME, VWAP remain here.
  */
 public final class SimpleIndicatorSpecs {
 
     private SimpleIndicatorSpecs() {}
 
     public static void registerAll(IndicatorRegistry registry) {
+        // Only non-migrated indicators
         registry.registerAll(
-            RSI, SMA, EMA, ATR,
-            HIGH_OF, LOW_OF, AVG_VOLUME,
-            VWAP
+            HIGH_OF, LOW_OF, AVG_VOLUME, VWAP
         );
     }
 

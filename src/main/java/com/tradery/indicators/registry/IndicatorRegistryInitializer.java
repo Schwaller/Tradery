@@ -29,44 +29,76 @@ public final class IndicatorRegistryInitializer {
 
         log.info("Initializing indicator registry...");
 
-        // ===== NEW: Register indicator classes directly =====
+        // ===== Simple Indicators =====
         registry.registerAll(
-            // Simple indicators
             SMA.INSTANCE,
             EMA.INSTANCE,
             RSI.INSTANCE,
-            ATR.INSTANCE,
-
-            // ADX family
-            ADX.INSTANCE,
-            ADX.PLUS_DI,
-            ADX.MINUS_DI,
-
-            // Composite indicators
-            MACD.INSTANCE,
-            BollingerBands.INSTANCE,
-            Stochastic.INSTANCE,
-
-            // Complex indicators
-            Ichimoku.INSTANCE,
-            Supertrend.INSTANCE
+            ATR.INSTANCE
         );
 
-        // ===== LEGACY: Specs (for indicators not yet migrated) =====
+        // ===== ADX Family =====
+        registry.registerAll(
+            ADX.INSTANCE,
+            ADX.PLUS_DI,
+            ADX.MINUS_DI
+        );
 
-        // Simple indicators (some may duplicate - specs map takes precedence for now)
+        // ===== Composite Indicators =====
+        registry.registerAll(
+            MACD.INSTANCE,
+            BollingerBands.INSTANCE,
+            Stochastic.INSTANCE
+        );
+
+        // ===== Complex Indicators =====
+        registry.registerAll(
+            Ichimoku.INSTANCE,
+            Supertrend.INSTANCE,
+            RotatingRays.RESISTANCE_RAYS,
+            RotatingRays.SUPPORT_RAYS
+        );
+
+        // ===== Orderflow Indicators =====
+        registry.registerAll(
+            OrderflowIndicators.DELTA,
+            OrderflowIndicators.CUM_DELTA,
+            OrderflowIndicators.WHALE_DELTA,
+            OrderflowIndicators.RETAIL_DELTA,
+            OrderflowIndicators.AGG_BUY_VOLUME,
+            OrderflowIndicators.AGG_SELL_VOLUME,
+            OrderflowIndicators.AGG_TRADE_COUNT,
+            OrderflowIndicators.LARGE_TRADE_COUNT,
+            OrderflowIndicators.WHALE_BUY_VOLUME,
+            OrderflowIndicators.WHALE_SELL_VOLUME
+        );
+
+        // ===== OHLCV Volume Indicators =====
+        registry.registerAll(
+            OhlcvVolumeIndicators.QUOTE_VOLUME,
+            OhlcvVolumeIndicators.TAKER_BUY_VOLUME,
+            OhlcvVolumeIndicators.TAKER_SELL_VOLUME,
+            OhlcvVolumeIndicators.OHLCV_DELTA,
+            OhlcvVolumeIndicators.OHLCV_CVD,
+            OhlcvVolumeIndicators.BUY_RATIO
+        );
+
+        // ===== LEGACY: Specs (for non-migrated indicators) =====
+        // These will be replaced as more indicators are migrated
+
+        // Simple indicators (some may duplicate - new indicators take precedence)
         SimpleIndicatorSpecs.registerAll(registry);
 
         // Composite indicators
         CompositeIndicatorSpecs.registerAll(registry);
 
-        // Complex indicators (Rays, etc.)
+        // Complex indicators (Daily Volume Profile not yet migrated)
         ComplexIndicatorSpecs.registerAll(registry);
 
-        // Orderflow indicators (Delta, CVD, Whale, etc.)
+        // Orderflow specs (Daily Volume Profile)
         OrderflowIndicatorSpecs.registerAll(registry);
 
-        // OHLCV volume indicators
+        // OHLCV volume specs
         OhlcvVolumeIndicatorSpecs.registerAll(registry);
 
         initialized = true;

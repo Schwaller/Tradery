@@ -14,20 +14,17 @@ import java.util.Set;
 /**
  * Orderflow indicators that require aggTrades data.
  * Falls back to OHLCV approximation when aggTrades unavailable.
+ *
+ * NOTE: Most indicators migrated to Indicator interface - see OrderflowIndicators class.
+ * Only DAILY_VOLUME_PROFILE remains here (complex return type).
  */
 public final class OrderflowIndicatorSpecs {
 
     private OrderflowIndicatorSpecs() {}
 
     public static void registerAll(IndicatorRegistry registry) {
-        registry.registerAll(
-            DELTA, CUM_DELTA,
-            WHALE_DELTA, RETAIL_DELTA,
-            BUY_VOLUME, SELL_VOLUME,
-            TRADE_COUNT, LARGE_TRADE_COUNT,
-            WHALE_BUY_VOLUME, WHALE_SELL_VOLUME,
-            DAILY_VOLUME_PROFILE
-        );
+        // Only DAILY_VOLUME_PROFILE not yet migrated (complex return type)
+        registry.register(DAILY_VOLUME_PROFILE);
     }
 
     // ========== DELTA ==========

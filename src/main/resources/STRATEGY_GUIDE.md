@@ -319,32 +319,58 @@ Orderflow indicators provide insight into buying and selling pressure.
 
 ### Indicators
 - Moving Averages: `SMA(period)`, `EMA(period)`
-- Oscillators: `RSI(period)`, `MACD(fast, slow, signal)`
-- Volatility: `ATR(period)`, `BBANDS(period, stdDev)`
-- Trend: `ADX(period)`, `PLUS_DI(period)`, `MINUS_DI(period)`
-- Range: `HIGH_OF(period)`, `LOW_OF(period)`, `AVG_VOLUME(period)`
+- Oscillators: `RSI(period)`, `STOCHASTIC(k,d).k/.d`
+- MACD: `MACD(fast, slow, signal).line/.signal/.histogram`
+- Volatility: `ATR(period)`, `BBANDS(period, stdDev).upper/.middle/.lower/.width`
+- Trend: `ADX(period)`, `PLUS_DI(period)`, `MINUS_DI(period)`, `SUPERTREND(period,mult).trend/.upper/.lower`
+- Ichimoku: `ICHIMOKU().tenkan/.kijun/.senkou_a/.senkou_b/.chikou`
+- Range: `HIGH_OF(period)`, `LOW_OF(period)`, `AVG_VOLUME(period)`, `RANGE_POSITION(period,skip)`
+- Aggregate: `LOWEST(expr,n)`, `HIGHEST(expr,n)`, `PERCENTILE(expr,n)`
 
-### Time Functions
-`HOUR`, `DAYOFWEEK`, `DAY`, `MONTH`
+### Math Functions
+- `abs(expr)` - Absolute value
+- `min(expr1, expr2)` - Minimum of two values
+- `max(expr1, expr2)` - Maximum of two values
 
-### Calendar Functions
-`IS_US_HOLIDAY`, `IS_FOMC_MEETING`
+### Candlestick Patterns
+Return 1 if pattern detected, 0 otherwise:
+- `HAMMER(ratio)` - Long lower wick (default ratio: 2.0)
+- `SHOOTING_STAR(ratio)` - Long upper wick (default ratio: 2.0)
+- `DOJI(ratio)` - Tiny body relative to range (default ratio: 0.1)
+
+### Candlestick Properties
+Support `[n]` lookback syntax:
+- `BODY_SIZE` - Absolute body size
+- `BODY_RATIO` - Body / total range (0-1)
+- `IS_BULLISH` - 1 if green candle
+- `IS_BEARISH` - 1 if red candle
+
+Example: `SHOOTING_STAR AND BODY_SIZE[1] > ATR(14) * 1.5 AND IS_BULLISH[1] == 1`
+
+### Time & Calendar Functions
+- Time: `HOUR` (0-23), `DAYOFWEEK` (1=Mon), `DAY`, `MONTH`
+- Calendar: `IS_US_HOLIDAY`, `IS_FOMC_MEETING`, `MOON_PHASE`
+
+### Market Data Functions
+- Funding: `FUNDING`, `FUNDING_8H`
+- Premium: `PREMIUM`, `PREMIUM_AVG(n)`
+- Open Interest: `OI`, `OI_CHANGE`, `OI_DELTA(n)`
+
+### OHLCV Volume (instant)
+`QUOTE_VOLUME`, `BUY_VOLUME`, `SELL_VOLUME`, `OHLCV_DELTA`, `BUY_RATIO`, `TRADE_COUNT`
+
+### Orderflow (requires orderflowSettings.mode)
+- Volume Profile: `VWAP`, `POC(n)`, `VAH(n)`, `VAL(n)`
+- Session Levels: `PREV_DAY_POC/VAH/VAL`, `TODAY_POC/VAH/VAL`
+- Delta: `DELTA`, `CUM_DELTA`
+- Whales: `WHALE_DELTA(threshold)`, `WHALE_BUY_VOL(t)`, `WHALE_SELL_VOL(t)`
 
 ### Operators
 - Comparison: `>`, `<`, `>=`, `<=`, `==`
 - Cross: `crosses_above`, `crosses_below`
 - Logical: `AND`, `OR`
 - Arithmetic: `+`, `-`, `*`, `/`
-
-### MACD Access
-- `MACD(12,26,9).line` - MACD line
-- `MACD(12,26,9).signal` - Signal line
-- `MACD(12,26,9).histogram` - Histogram
-
-### Bollinger Bands Access
-- `BBANDS(20, 2).upper` - Upper band
-- `BBANDS(20, 2).middle` - Middle band
-- `BBANDS(20, 2).lower` - Lower band
+- Lookback: `expr[n]` - value n bars ago
 
 ---
 

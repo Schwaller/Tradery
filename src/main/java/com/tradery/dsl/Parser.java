@@ -226,6 +226,21 @@ public class Parser {
             return premiumFunctionCall();
         }
 
+        // Math utility functions (abs, min, max)
+        if (check(TokenType.MATH_FUNC)) {
+            return mathFunctionCall();
+        }
+
+        // Candlestick pattern functions (HAMMER, SHOOTING_STAR, DOJI)
+        if (check(TokenType.CANDLE_PATTERN_FUNC)) {
+            return candlePatternCall();
+        }
+
+        // Candlestick property functions (BODY_SIZE, BODY_RATIO, IS_BULLISH, IS_BEARISH)
+        if (check(TokenType.CANDLE_PROP_FUNC)) {
+            return candlePropCall();
+        }
+
         throw new ParserException("Unexpected token '" + current().value() +
             "' at position " + current().position());
     }
@@ -251,6 +266,67 @@ public class Parser {
         expect(TokenType.RPAREN, "Expected ')' after " + func + " parameters");
 
         return new AstNode.AggregateFunctionCall(func, expression, period);
+    }
+
+    private AstNode.MathFunctionCall mathFunctionCall() {
+        String func = current().value();
+        advance();
+
+        expect(TokenType.LPAREN, "Expected '(' after " + func);
+
+        List<AstNode> args = new ArrayList<>();
+        args.add(expression());
+
+        // min() and max() take 2 arguments
+        if ("min".equals(func) || "max".equals(func)) {
+            expect(TokenType.COMMA, "Expected ',' after first argument in " + func);
+            args.add(expression());
+        }
+        // abs() takes only 1 argument
+
+        expect(TokenType.RPAREN, "Expected ')' after " + func + " arguments");
+
+        return new AstNode.MathFunctionCall(func, args);
+    }
+
+    private AstNode candlePatternCall() {
+        String func = current().value();
+        advance();
+
+        Double ratio = null;
+
+        // Optional parameter
+        if (check(TokenType.LPAREN)) {
+            advance();
+            if (check(TokenType.NUMBER)) {
+                ratio = Double.parseDouble(current().value());
+                advance();
+            }
+            expect(TokenType.RPAREN, "Expected ')' after " + func + " parameter");
+        }
+
+        return new AstNode.CandlePatternCall(func, ratio);
+    }
+
+    private AstNode candlePropCall() {
+        String func = current().value();
+        advance();
+
+        AstNode result = new AstNode.CandlePropCall(func);
+
+        // Check for lookback access [n]
+        if (check(TokenType.LBRACKET)) {
+            advance();
+            if (!check(TokenType.NUMBER)) {
+                throw new ParserException("Expected number in lookback [], got '" + current().value() + "'");
+            }
+            int barsAgo = (int) Double.parseDouble(current().value());
+            advance();
+            expect(TokenType.RBRACKET, "Expected ']' after lookback number");
+            result = new AstNode.LookbackAccess(result, barsAgo);
+        }
+
+        return result;
     }
 
     private AstNode.OrderflowFunctionCall orderflowFunctionCall() {

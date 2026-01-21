@@ -57,6 +57,9 @@ DSL is used for entry/exit conditions and phase definitions.
 | **Ichimoku** | `ICHIMOKU().tenkan/.kijun/.senkou_a/.senkou_b/.chikou` |
 | **Range** | `HIGH_OF(n)`, `LOW_OF(n)`, `AVG_VOLUME(n)`, `RANGE_POSITION(n,skip)` |
 | **Aggregate** | `LOWEST(expr,n)`, `HIGHEST(expr,n)`, `PERCENTILE(expr,n)` |
+| **Math** | `abs(expr)`, `min(expr,expr)`, `max(expr,expr)` |
+| **Candle Patterns** | `HAMMER(ratio)`, `SHOOTING_STAR(ratio)`, `DOJI(ratio)` - return 1 if detected |
+| **Candle Props** | `BODY_SIZE`, `BODY_RATIO`, `IS_BULLISH`, `IS_BEARISH` - support `[n]` lookback |
 | **Time** | `HOUR` (0-23), `DAYOFWEEK` (1=Mon), `DAY`, `MONTH` |
 | **Calendar** | `IS_US_HOLIDAY`, `IS_FOMC_MEETING`, `MOON_PHASE` (0=new, 0.5=full) |
 | **Funding** | `FUNDING`, `FUNDING_8H` |
@@ -104,6 +107,11 @@ SUPERTREND(10,3).trend == 1                          # Uptrend
 FUNDING > 0.05 AND DELTA < 0                         # Overleveraged + selling
 close crosses_above PREV_DAY_POC                     # Reclaim POC
 RESISTANCE_RAY_CROSSED(1, 200, 5) == 1               # Breakout
+
+# Candlestick patterns (built-in functions)
+SHOOTING_STAR AND BODY_SIZE[1] > ATR(14) * 1.5 AND IS_BULLISH[1] == 1  # Reversal setup
+HAMMER AND RSI(14) < 30                              # Hammer at oversold
+DOJI AND BODY_SIZE[1] > ATR(14)                     # Indecision after strong move
 ```
 
 ---

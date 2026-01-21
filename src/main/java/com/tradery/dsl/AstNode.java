@@ -170,4 +170,27 @@ public sealed interface AstNode {
      * Example: ATR(14)[1] returns ATR(14) from previous bar
      */
     record LookbackAccess(AstNode expression, int barsAgo) implements AstNode {}
+
+    /**
+     * Math function call: abs(expr), min(expr1, expr2), max(expr1, expr2)
+     * Utility functions for mathematical operations on expressions.
+     * @param func Function name (abs, min, max)
+     * @param args Arguments (1 for abs, 2 for min/max)
+     */
+    record MathFunctionCall(String func, List<AstNode> args) implements AstNode {}
+
+    /**
+     * Candlestick pattern function call: HAMMER(ratio), SHOOTING_STAR(ratio), DOJI(ratio)
+     * Returns 1 if pattern detected, 0 otherwise.
+     * @param func Function name (HAMMER, SHOOTING_STAR, DOJI)
+     * @param ratio Pattern-specific ratio parameter (optional, has defaults)
+     */
+    record CandlePatternCall(String func, Double ratio) implements AstNode {}
+
+    /**
+     * Candlestick property function call: BODY_SIZE, BODY_RATIO, IS_BULLISH, IS_BEARISH
+     * Returns candle properties. Supports lookback with [n] syntax.
+     * @param func Function name
+     */
+    record CandlePropCall(String func) implements AstNode {}
 }

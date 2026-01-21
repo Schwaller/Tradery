@@ -144,6 +144,22 @@ public class Lexer {
         Map.entry("HIGHEST", TokenType.AGGREGATE_FUNC),
         Map.entry("PERCENTILE", TokenType.AGGREGATE_FUNC),
 
+        // Math utility functions
+        Map.entry("abs", TokenType.MATH_FUNC),
+        Map.entry("min", TokenType.MATH_FUNC),
+        Map.entry("max", TokenType.MATH_FUNC),
+
+        // Candlestick pattern functions (with parameters)
+        Map.entry("HAMMER", TokenType.CANDLE_PATTERN_FUNC),
+        Map.entry("SHOOTING_STAR", TokenType.CANDLE_PATTERN_FUNC),
+        Map.entry("DOJI", TokenType.CANDLE_PATTERN_FUNC),
+
+        // Candlestick property functions (no parameters, support lookback)
+        Map.entry("BODY_SIZE", TokenType.CANDLE_PROP_FUNC),
+        Map.entry("BODY_RATIO", TokenType.CANDLE_PROP_FUNC),
+        Map.entry("IS_BULLISH", TokenType.CANDLE_PROP_FUNC),
+        Map.entry("IS_BEARISH", TokenType.CANDLE_PROP_FUNC),
+
         // Supertrend indicator
         Map.entry("SUPERTREND", TokenType.INDICATOR),
 

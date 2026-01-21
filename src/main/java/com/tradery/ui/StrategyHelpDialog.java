@@ -444,6 +444,7 @@ public class StrategyHelpDialog extends JDialog {
                 <tr><td><b>Exit Zone</b></td><td>Rules based on current P&L</td><td>If P&L &gt; 5%%, use trailing stop</td></tr>
                 <tr><td><b>Phase</b></td><td>Market filter (multi-timeframe)</td><td>Only trade during "Uptrend" on daily</td></tr>
                 <tr><td><b>Hoop Pattern</b></td><td>Chart pattern detection</td><td>Detect double bottoms, flags</td></tr>
+                <tr><td><b>Candle Pattern</b></td><td>Built-in candlestick detection</td><td>SHOOTING_STAR AND IS_BULLISH[1]</td></tr>
             </table>
 
             <div class="tip">
@@ -474,6 +475,13 @@ public class StrategyHelpDialog extends JDialog {
             <div class="box">
                 <b>Example:</b> RSI(14) &lt; 30 AND close &gt; SMA(200)<br>
                 <span class="small">Looks for oversold conditions in an uptrend.</span>
+            </div>
+            <div class="tip">
+                <b>Candlestick Patterns:</b> Use built-in functions for candle detection:<br>
+                <span style="font-family: monospace;">HAMMER, SHOOTING_STAR, DOJI</span> - return 1 if pattern detected<br>
+                <span style="font-family: monospace;">BODY_SIZE, BODY_RATIO, IS_BULLISH, IS_BEARISH</span> - candle properties (support [n] lookback)<br><br>
+                <b>Example:</b> SHOOTING_STAR AND BODY_SIZE[1] &gt; ATR(14) * 1.5 AND IS_BULLISH[1] == 1<br>
+                <span class="small">Shooting star after a strong bullish candle = reversal signal</span>
             </div>
 
             <h3 id="toc-5">Trade Limits</h3>
@@ -666,7 +674,11 @@ public class StrategyHelpDialog extends JDialog {
                 <b>Volume Spike:</b> volume &gt; AVG_VOLUME(20) * 2<br>
                 <span class="small">Use: Require confirmation of significant participation</span><br><br>
                 <b>Near Support Ray:</b> SUPPORT_RAY_DISTANCE(1, 200, 5) &lt; 1.0<br>
-                <span class="small">Use: Price approaching dynamic support trendline</span>
+                <span class="small">Use: Price approaching dynamic support trendline</span><br><br>
+                <b>Hammer at Support (4h):</b> HAMMER AND RSI(14) &lt; 40<br>
+                <span class="small">Use: Bullish reversal candle at oversold levels</span><br><br>
+                <b>Large Candle (4h):</b> BODY_SIZE &gt; ATR(14) * 1.5<br>
+                <span class="small">Use: Significant directional move, momentum confirmation</span>
             </div>
             <div class="tip">
                 <b>Phase timeframes:</b> Use higher timeframes (4h, 1d) for context, lower timeframes (15m, 1h) for precision timing.

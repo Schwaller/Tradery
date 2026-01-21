@@ -215,21 +215,72 @@ This scales out of positions:
 - `volume` - Current volume
 
 ### Indicators
-- `SMA(period)` - Simple Moving Average
-- `EMA(period)` - Exponential Moving Average
+- `SMA(period)`, `EMA(period)` - Moving Averages
 - `RSI(period)` - Relative Strength Index (0-100)
-- `MACD(fast, slow, signal)` - Returns object with `.line`, `.signal`, `.histogram`
+- `MACD(fast, slow, signal).line/.signal/.histogram` - MACD components
 - `ATR(period)` - Average True Range
-- `BB(period)` - Bollinger Bands, returns `.upper`, `.middle`, `.lower`
+- `BBANDS(period, stddev).upper/.middle/.lower/.width` - Bollinger Bands
+- `ADX(period)`, `PLUS_DI(period)`, `MINUS_DI(period)` - Trend strength
+- `STOCHASTIC(k, d).k/.d` - Stochastic oscillator (0-100)
+- `SUPERTREND(period, mult).trend/.upper/.lower` - Supertrend indicator
+- `ICHIMOKU().tenkan/.kijun/.senkou_a/.senkou_b/.chikou` - Ichimoku Cloud
+
+### Range Functions
 - `HIGH_OF(period)` - Highest high of last N candles
 - `LOW_OF(period)` - Lowest low of last N candles
 - `AVG_VOLUME(period)` - Average volume over N candles
+- `RANGE_POSITION(period, skip)` - Position within range (-1 to +1)
+
+### Aggregate Functions
+- `LOWEST(expr, period)` - Lowest value of expression over N bars
+- `HIGHEST(expr, period)` - Highest value of expression over N bars
+- `PERCENTILE(expr, period)` - Percentile rank of current value
+
+### Math Functions
+- `abs(expr)` - Absolute value
+- `min(expr1, expr2)` - Minimum of two values
+- `max(expr1, expr2)` - Maximum of two values
+
+### Candlestick Patterns (return 1 if detected, 0 otherwise)
+- `HAMMER(ratio)` - Hammer pattern, long lower wick (default ratio: 2.0)
+- `SHOOTING_STAR(ratio)` - Shooting star, long upper wick (default ratio: 2.0)
+- `DOJI(ratio)` - Doji, tiny body relative to range (default ratio: 0.1)
+
+### Candlestick Properties (support [n] lookback)
+- `BODY_SIZE` - Absolute body size (close - open)
+- `BODY_RATIO` - Body / total range (0-1)
+- `IS_BULLISH` - 1 if green candle (close > open)
+- `IS_BEARISH` - 1 if red candle (close < open)
+
+### Time Functions
+- `HOUR` (0-23), `DAYOFWEEK` (1=Mon), `DAY`, `MONTH`
+
+### Calendar & Market Functions
+- `IS_US_HOLIDAY`, `IS_FOMC_MEETING` - Calendar events
+- `MOON_PHASE` - 0=new moon, 0.5=full moon
+- `FUNDING`, `FUNDING_8H` - Futures funding rates
+- `PREMIUM`, `PREMIUM_AVG(n)` - Futures vs spot spread
+- `OI`, `OI_CHANGE`, `OI_DELTA(n)` - Open interest
+
+### OHLCV Volume (instant - no aggTrades needed)
+- `QUOTE_VOLUME` - Volume in quote currency
+- `BUY_VOLUME`, `SELL_VOLUME` - Taker buy/sell volume
+- `OHLCV_DELTA` - Buy - sell volume
+- `BUY_RATIO` - Buy volume / total (0-1)
+- `TRADE_COUNT` - Number of trades
+
+### Orderflow (requires orderflowSettings.mode)
+- `VWAP`, `POC(n)`, `VAH(n)`, `VAL(n)` - Volume profile
+- `PREV_DAY_POC/VAH/VAL`, `TODAY_POC/VAH/VAL` - Session levels
+- `DELTA`, `CUM_DELTA` - Order flow delta (full mode)
+- `WHALE_DELTA(threshold)`, `WHALE_BUY_VOL(t)`, `WHALE_SELL_VOL(t)` - Large trades
 
 ### Operators
-- Comparison: `>`, `<`, `>=`, `<=`, `==`, `!=`
-- Logical: `AND`, `OR`, `NOT`
+- Comparison: `>`, `<`, `>=`, `<=`, `==`
+- Cross: `crosses_above`, `crosses_below`
+- Logical: `AND`, `OR`
 - Arithmetic: `+`, `-`, `*`, `/`
-- Special: `crosses_above`, `crosses_below`
+- Lookback: `expr[n]` - value n bars ago
 
 ### Examples
 ```
@@ -247,6 +298,15 @@ MACD(12,26,9).histogram > 0 AND MACD(12,26,9).line crosses_above MACD(12,26,9).s
 
 # Bollinger Band bounce
 price < BB(20).lower AND RSI(14) < 30
+
+# Shooting star after strong bullish candle (reversal setup)
+SHOOTING_STAR(2.0) AND BODY_SIZE[1] > ATR(14) * 1.5 AND IS_BULLISH[1] == 1
+
+# Hammer at oversold levels
+HAMMER AND RSI(14) < 30
+
+# Doji after strong move (indecision)
+DOJI AND BODY_SIZE[1] > ATR(14)
 ```
 
 ## Stop-Loss Types

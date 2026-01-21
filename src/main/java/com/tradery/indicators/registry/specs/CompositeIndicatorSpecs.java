@@ -15,14 +15,19 @@ import java.util.Set;
 /**
  * Composite indicators that return multi-array result types.
  * These need special handling for component access.
+ *
+ * NOTE: Most indicators migrated to Indicator interface:
+ * - MACD.INSTANCE, BollingerBands.INSTANCE, Stochastic.INSTANCE
+ * - ADX.INSTANCE, ADX.PLUS_DI, ADX.MINUS_DI
+ * Only RANGE_POSITION and VOLUME_PROFILE remain here.
  */
 public final class CompositeIndicatorSpecs {
 
     private CompositeIndicatorSpecs() {}
 
     public static void registerAll(IndicatorRegistry registry) {
+        // Only non-migrated indicators
         registry.registerAll(
-            MACD, BBANDS, ADX, PLUS_DI, MINUS_DI, STOCHASTIC,
             RANGE_POSITION, VOLUME_PROFILE
         );
     }
