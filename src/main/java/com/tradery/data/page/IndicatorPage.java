@@ -39,6 +39,7 @@ public class IndicatorPage<T> {
     private volatile DataPageView<AggTrade> sourceAggTradesPage;
     private volatile DataPageListener<AggTrade> sourceAggTradesListener;
 
+
     public IndicatorPage(IndicatorType type, String params, String symbol,
                           String timeframe, long startTime, long endTime) {
         this.type = type;
@@ -181,6 +182,7 @@ public class IndicatorPage<T> {
             sourceAggTradesListener = null;
         }
     }
+
 
     // ========== Convenience State Checks ==========
 

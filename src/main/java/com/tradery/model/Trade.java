@@ -40,8 +40,17 @@ public record Trade(
     Map<String, Double> mfeIndicators,    // Indicator values at MFE point (best price reached)
     Map<String, Double> maeIndicators,    // Indicator values at MAE point (worst drawdown)
     // Holding costs (funding fees for futures, interest for margin)
-    Double holdingCosts                   // Accumulated holding costs (positive = cost, negative = earnings)
+    Double holdingCosts,                  // Accumulated holding costs (positive = cost, negative = earnings)
+    // Context analysis for AI (looking at bars before entry and after exit)
+    Integer betterEntryBar,               // Bar within context window that had better entry price (null if entry was optimal)
+    Double betterEntryPrice,              // Price at that bar
+    Double betterEntryImprovement,        // % improvement in potential PnL if entered at better price
+    Integer betterExitBar,                // Bar within context window after exit that had better exit price (null if exit was optimal)
+    Double betterExitPrice,               // Price at that bar
+    Double betterExitImprovement          // % improvement in PnL if exited at better price
 ) {
+    /** Number of context bars to analyze before/after trades */
+    public static final int CONTEXT_BARS = 15;
     /**
      * Create a new open trade
      */
@@ -73,7 +82,9 @@ public record Trade(
             activePhasesAtEntry, null,  // Phases at entry, exit populated on close
             entryIndicators, null,  // Indicators at entry, exit populated on close
             null, null,  // MFE/MAE indicators - populated on close
-            null  // Holding costs - populated on close
+            null,  // Holding costs - populated on close
+            null, null, null,  // Better entry context - populated on close
+            null, null, null   // Better exit context - populated on close
         );
     }
 
@@ -105,7 +116,9 @@ public record Trade(
             activePhases, activePhases,  // Same phases for entry/exit (instant rejection)
             indicators, indicators,  // Same indicators for entry/exit
             null, null,  // No MFE/MAE indicators for rejected trades
-            null  // No holding costs for rejected trades
+            null,  // No holding costs for rejected trades
+            null, null, null,  // No better entry context for rejected trades
+            null, null, null   // No better exit context for rejected trades
         );
     }
 
@@ -122,7 +135,9 @@ public record Trade(
             null, null,  // No phase context for expired orders
             null, null,  // No indicator context for expired orders
             null, null,  // No MFE/MAE indicators for expired orders
-            null  // No holding costs for expired orders
+            null,  // No holding costs for expired orders
+            null, null, null,  // No better entry context for expired orders
+            null, null, null   // No better exit context for expired orders
         );
     }
 
@@ -200,7 +215,7 @@ public record Trade(
     }
 
     /**
-     * Partially close with full analytics, phase context, exit and MFE/MAE indicator values - the core close method.
+     * Partially close with full analytics, phase context, exit and MFE/MAE indicator values.
      */
     public Trade partialCloseWithAnalytics(int exitBar, long exitTime, double exitPrice, double exitQuantity,
                                            double commissionRate, String exitReason, String exitZone,
@@ -209,7 +224,7 @@ public record Trade(
                                            Map<String, Double> mfeIndicators, Map<String, Double> maeIndicators) {
         return partialCloseWithAnalytics(exitBar, exitTime, exitPrice, exitQuantity, commissionRate,
             exitReason, exitZone, mfe, mae, mfeBar, maeBar, activePhasesAtExit, exitIndicators,
-            mfeIndicators, maeIndicators, null);
+            mfeIndicators, maeIndicators, null, null, null, null, null, null, null);
     }
 
     /**
@@ -221,6 +236,46 @@ public record Trade(
                                            List<String> activePhasesAtExit, Map<String, Double> exitIndicators,
                                            Map<String, Double> mfeIndicators, Map<String, Double> maeIndicators,
                                            Double holdingCosts) {
+        return partialCloseWithAnalytics(exitBar, exitTime, exitPrice, exitQuantity, commissionRate,
+            exitReason, exitZone, mfe, mae, mfeBar, maeBar, activePhasesAtExit, exitIndicators,
+            mfeIndicators, maeIndicators, holdingCosts, null, null, null, null, null, null);
+    }
+
+    /**
+     * Partially close with full analytics including better entry context analysis for AI insights.
+     */
+    public Trade partialCloseWithAnalytics(int exitBar, long exitTime, double exitPrice, double exitQuantity,
+                                           double commissionRate, String exitReason, String exitZone,
+                                           Double mfe, Double mae, Integer mfeBar, Integer maeBar,
+                                           List<String> activePhasesAtExit, Map<String, Double> exitIndicators,
+                                           Map<String, Double> mfeIndicators, Map<String, Double> maeIndicators,
+                                           Double holdingCosts,
+                                           Integer betterEntryBar, Double betterEntryPrice, Double betterEntryImprovement) {
+        return partialCloseWithAnalytics(exitBar, exitTime, exitPrice, exitQuantity, commissionRate,
+            exitReason, exitZone, mfe, mae, mfeBar, maeBar, activePhasesAtExit, exitIndicators,
+            mfeIndicators, maeIndicators, holdingCosts,
+            betterEntryBar, betterEntryPrice, betterEntryImprovement, null, null, null);
+    }
+
+    /**
+     * Partially close with full analytics including context analysis for AI insights.
+     * This is the core close method that all others delegate to.
+     *
+     * @param betterEntryBar Bar within CONTEXT_BARS before entry that had better price (null if entry was optimal)
+     * @param betterEntryPrice The price at the better entry bar
+     * @param betterEntryImprovement % improvement in potential PnL if entered at better price
+     * @param betterExitBar Bar within CONTEXT_BARS after exit that had better price (null if exit was optimal)
+     * @param betterExitPrice The price at the better exit bar
+     * @param betterExitImprovement % improvement in PnL if exited at better price
+     */
+    public Trade partialCloseWithAnalytics(int exitBar, long exitTime, double exitPrice, double exitQuantity,
+                                           double commissionRate, String exitReason, String exitZone,
+                                           Double mfe, Double mae, Integer mfeBar, Integer maeBar,
+                                           List<String> activePhasesAtExit, Map<String, Double> exitIndicators,
+                                           Map<String, Double> mfeIndicators, Map<String, Double> maeIndicators,
+                                           Double holdingCosts,
+                                           Integer betterEntryBar, Double betterEntryPrice, Double betterEntryImprovement,
+                                           Integer betterExitBar, Double betterExitPrice, Double betterExitImprovement) {
         double grossPnl = (exitPrice - entryPrice) * exitQuantity;
         if ("short".equals(side)) {
             grossPnl = -grossPnl;
@@ -248,7 +303,9 @@ public record Trade(
             this.activePhasesAtEntry, activePhasesAtExit,  // Preserve entry phases, add exit phases
             this.entryIndicators, exitIndicators,  // Preserve entry indicators, add exit indicators
             mfeIndicators, maeIndicators,  // Indicator values at MFE/MAE points
-            holdingCosts  // Holding costs (funding fees or margin interest)
+            holdingCosts,  // Holding costs (funding fees or margin interest)
+            betterEntryBar, betterEntryPrice, betterEntryImprovement,  // Better entry context
+            betterExitBar, betterExitPrice, betterExitImprovement  // Better exit context
         );
     }
 

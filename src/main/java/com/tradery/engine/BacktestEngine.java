@@ -308,7 +308,7 @@ public class BacktestEngine {
                     for (OpenTradeState ots : openTrades) {
                         long lastTime = ots.getLastInterestTime();
                         double notional = ots.remainingQuantity * candle.close();
-                        double interest = calculateMarginInterest(notional, lastTime, candle.timestamp(), config.marginInterestApr());
+                        double interest = calculateMarginInterest(notional, lastTime, candle.timestamp(), config.marginInterestHourly());
                         if (interest > 0) {
                             ots.processMarginInterest(interest, candle.timestamp());
                         }
@@ -649,12 +649,17 @@ public class BacktestEngine {
                                         Map<String, Double> maeIndicators = tradeAnalytics.getIndicatorValuesAtBar(strategy, ots.maeBar);
                                         // Calculate proportional holding costs for partial exit
                                         Double holdingCosts = calculateProportionalHoldingCosts(ots, exitQty);
+                                        // Analyze better exit context
+                                        boolean isLong = "long".equalsIgnoreCase(ots.trade.side());
+                                        BetterExitContext betterExit = analyzeBetterExit(candles, i, ots.exitPrice, isLong);
                                         Trade partialTrade = ots.trade.partialCloseWithAnalytics(
                                             i, candle.timestamp(), ots.exitPrice, exitQty,
                                             config.commission(), ots.exitReason, ots.exitZone,
                                             ots.mfePercent, ots.maePercent, ots.mfeBar, ots.maeBar,
                                             exitPhases, exitIndicators, mfeIndicators, maeIndicators,
-                                            holdingCosts
+                                            holdingCosts,
+                                            ots.getBetterEntryBar(), ots.getBetterEntryPrice(), ots.getBetterEntryImprovement(),
+                                            betterExit.bar(), betterExit.price(), betterExit.improvement()
                                         );
                                         trades.add(partialTrade);
                                         currentEquity += partialTrade.pnl() != null ? partialTrade.pnl() : 0;
@@ -678,12 +683,17 @@ public class BacktestEngine {
                             Map<String, Double> maeIndicators = tradeAnalytics.getIndicatorValuesAtBar(strategy, ots.maeBar);
                             // Full close - take all accumulated holding costs
                             Double holdingCosts = ots.getAccumulatedHoldingCosts() != 0 ? ots.getAccumulatedHoldingCosts() : null;
+                            // Analyze better exit context
+                            boolean isLong = "long".equalsIgnoreCase(ots.trade.side());
+                            BetterExitContext betterExit = analyzeBetterExit(candles, i, ots.exitPrice, isLong);
                             Trade closedTrade = ots.trade.partialCloseWithAnalytics(
                                 i, candle.timestamp(), ots.exitPrice, ots.remainingQuantity,
                                 config.commission(), ots.exitReason, ots.exitZone,
                                 ots.mfePercent, ots.maePercent, ots.mfeBar, ots.maeBar,
                                 exitPhases, exitIndicators, mfeIndicators, maeIndicators,
-                                holdingCosts
+                                holdingCosts,
+                                ots.getBetterEntryBar(), ots.getBetterEntryPrice(), ots.getBetterEntryImprovement(),
+                                betterExit.bar(), betterExit.price(), betterExit.improvement()
                             );
                             trades.add(closedTrade);
                             currentEquity += closedTrade.pnl() != null ? closedTrade.pnl() : 0;
@@ -719,12 +729,17 @@ public class BacktestEngine {
                             Map<String, Double> maeIndicators = tradeAnalytics.getIndicatorValuesAtBar(strategy, ots.maeBar);
                             // Calculate proportional holding costs for this exit
                             Double holdingCosts = calculateProportionalHoldingCosts(ots, exitQty);
+                            // Analyze better exit context
+                            boolean isLong = "long".equalsIgnoreCase(ots.trade.side());
+                            BetterExitContext betterExit = analyzeBetterExit(candles, i, ots.exitPrice, isLong);
                             Trade partialTrade = ots.trade.partialCloseWithAnalytics(
                                 i, candle.timestamp(), ots.exitPrice, exitQty,
                                 config.commission(), ots.exitReason, ots.exitZone,
                                 ots.mfePercent, ots.maePercent, ots.mfeBar, ots.maeBar,
                                 exitPhases, exitIndicators, mfeIndicators, maeIndicators,
-                                holdingCosts
+                                holdingCosts,
+                                ots.getBetterEntryBar(), ots.getBetterEntryPrice(), ots.getBetterEntryImprovement(),
+                                betterExit.bar(), betterExit.price(), betterExit.improvement()
                             );
                             trades.add(partialTrade);
                             currentEquity += partialTrade.pnl() != null ? partialTrade.pnl() : 0;
@@ -842,6 +857,7 @@ public class BacktestEngine {
                                 );
 
                                 OpenTradeState ots = new OpenTradeState(newTrade, fillPrice, entryPhases);
+                                ots.analyzeContextBars(candles, strategy.isLong());
 
                                 // Initialize trailing stop from default zone
                                 ExitZone defaultZone = strategy.findMatchingZone(0.0);
@@ -928,12 +944,17 @@ public class BacktestEngine {
                             Map<String, Double> maeIndicators = tradeAnalytics.getIndicatorValuesAtBar(strategy, ots.maeBar);
                             // Full close - take all accumulated holding costs
                             Double holdingCosts = ots.getAccumulatedHoldingCosts() != 0 ? ots.getAccumulatedHoldingCosts() : null;
+                            // Analyze better exit context
+                            boolean isLong = "long".equalsIgnoreCase(ots.trade.side());
+                            BetterExitContext betterExit = analyzeBetterExit(candles, i, ots.exitPrice, isLong);
                             Trade closedTrade = ots.trade.partialCloseWithAnalytics(
                                 i, candle.timestamp(), ots.exitPrice, ots.remainingQuantity,
                                 config.commission(), ots.exitReason, ots.exitZone,
                                 ots.mfePercent, ots.maePercent, ots.mfeBar, ots.maeBar,
                                 abortExitPhases, abortExitIndicators, mfeIndicators, maeIndicators,
-                                holdingCosts
+                                holdingCosts,
+                                ots.getBetterEntryBar(), ots.getBetterEntryPrice(), ots.getBetterEntryImprovement(),
+                                betterExit.bar(), betterExit.price(), betterExit.improvement()
                             );
                             trades.add(closedTrade);
                             currentEquity += closedTrade.pnl() != null ? closedTrade.pnl() : 0;
@@ -1012,6 +1033,7 @@ public class BacktestEngine {
                                 );
 
                                 OpenTradeState ots = new OpenTradeState(newTrade, candle.close(), entryPhases);
+                                ots.analyzeContextBars(candles, strategy.isLong());
 
                                 ExitZone defaultZone = strategy.findMatchingZone(0.0);
                                 if (defaultZone != null) {
@@ -1088,6 +1110,7 @@ public class BacktestEngine {
                 Map<String, Double> maeIndicators = tradeAnalytics.getIndicatorValuesAtBar(strategy, ots.maeBar);
                 // Full close - take all accumulated holding costs
                 Double holdingCosts = ots.getAccumulatedHoldingCosts() != 0 ? ots.getAccumulatedHoldingCosts() : null;
+                // No better exit analysis for end_of_data (no future bars available)
                 Trade closedTrade = ots.trade.partialCloseWithAnalytics(
                     lastBar,
                     lastCandle.timestamp(),
@@ -1098,7 +1121,9 @@ public class BacktestEngine {
                     null,
                     ots.mfePercent, ots.maePercent, ots.mfeBar, ots.maeBar,
                     endPhases, endIndicators, mfeIndicators, maeIndicators,
-                    holdingCosts
+                    holdingCosts,
+                    ots.getBetterEntryBar(), ots.getBetterEntryPrice(), ots.getBetterEntryImprovement(),
+                    null, null, null  // No future bars for better exit analysis
                 );
                 trades.add(closedTrade);
                 currentEquity += closedTrade.pnl() != null ? closedTrade.pnl() : 0;
@@ -1342,16 +1367,16 @@ public class BacktestEngine {
      * Calculate margin interest for a time period.
      * Interest accrues hourly on notional value.
      *
-     * Formula: interest = notionalValue × (APR / 8760) × hoursHeld
+     * Formula: interest = notionalValue × (hourlyRatePercent / 100) × hoursHeld
      *
      * @param notionalValue  Position value in quote currency
      * @param startTime      Start time in milliseconds
      * @param endTime        End time in milliseconds
-     * @param marginInterestApr Annual interest rate (e.g., 0.12 = 12%)
+     * @param marginInterestHourly Hourly interest rate in percent (e.g., 0.00042 = 0.00042%/hr)
      * @return The interest cost (always positive)
      */
-    private double calculateMarginInterest(double notionalValue, long startTime, long endTime, double marginInterestApr) {
-        if (marginInterestApr <= 0) {
+    private double calculateMarginInterest(double notionalValue, long startTime, long endTime, double marginInterestHourly) {
+        if (marginInterestHourly <= 0) {
             return 0;
         }
 
@@ -1360,8 +1385,9 @@ public class BacktestEngine {
             return 0;
         }
 
-        double hourlyRate = marginInterestApr / 8760.0;  // APR to hourly
-        return notionalValue * hourlyRate * hoursHeld;
+        // marginInterestHourly is in percent (e.g., 0.00042 means 0.00042%)
+        double hourlyRateDecimal = marginInterestHourly / 100.0;
+        return notionalValue * hourlyRateDecimal * hoursHeld;
     }
 
     /**
@@ -1386,5 +1412,65 @@ public class BacktestEngine {
         ots.accumulatedHoldingCosts -= exitCosts;
 
         return exitCosts;
+    }
+
+    /**
+     * Result of better exit context analysis.
+     */
+    private record BetterExitContext(Integer bar, Double price, Double improvement) {}
+
+    /**
+     * Analyze context bars after exit to find if there was a better exit point.
+     * For longs: find highest high within CONTEXT_BARS after exit
+     * For shorts: find lowest low within CONTEXT_BARS after exit
+     *
+     * @param candles The candle data
+     * @param exitBar The bar where trade was exited
+     * @param exitPrice The price at which trade was exited
+     * @param isLong Whether this is a long trade
+     * @return BetterExitContext with bar/price/improvement, or null values if exit was optimal
+     */
+    private BetterExitContext analyzeBetterExit(List<Candle> candles, int exitBar, double exitPrice, boolean isLong) {
+        int contextBars = Trade.CONTEXT_BARS;
+        int endBar = Math.min(candles.size() - 1, exitBar + contextBars);
+
+        if (exitBar >= endBar) {
+            return new BetterExitContext(null, null, null);  // No context bars available after exit
+        }
+
+        double bestPrice = exitPrice;
+        int bestBar = exitBar;
+
+        for (int i = exitBar + 1; i <= endBar; i++) {
+            Candle c = candles.get(i);
+            if (isLong) {
+                // For longs, higher price is better exit
+                if (c.high() > bestPrice) {
+                    bestPrice = c.high();
+                    bestBar = i;
+                }
+            } else {
+                // For shorts, lower price is better exit
+                if (c.low() < bestPrice) {
+                    bestPrice = c.low();
+                    bestBar = i;
+                }
+            }
+        }
+
+        // Only return if we found a better exit
+        if (bestBar != exitBar) {
+            // Calculate improvement: for longs, (better - exit) / exit * 100
+            // For shorts, (exit - better) / exit * 100
+            double improvement;
+            if (isLong) {
+                improvement = ((bestPrice - exitPrice) / exitPrice) * 100;
+            } else {
+                improvement = ((exitPrice - bestPrice) / exitPrice) * 100;
+            }
+            return new BetterExitContext(bestBar, bestPrice, improvement);
+        }
+
+        return new BetterExitContext(null, null, null);
     }
 }

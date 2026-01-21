@@ -573,7 +573,14 @@ public class StrategyHelpDialog extends JDialog {
 
             <h2 id="toc-15">Phases (Market Filters)</h2>
 
-            <p>Phases filter <b>when</b> your strategy can trade. They evaluate on their own timeframe and act as gates for entry.</p>
+            <p>Phases are <b>optional</b> filters that control <b>when</b> your strategy can trade. Without phases, your strategy trades purely based on the DSL entry condition.</p>
+
+            <div class="box">
+                <b>Simple strategy (no phases):</b> Entry fires whenever <code>RSI(14) &lt; 30</code> is true.<br>
+                <b>Filtered strategy:</b> Entry fires when <code>RSI(14) &lt; 30</code> is true <i>AND</i> required phases are active.
+            </div>
+
+            <p>When phases are configured:</p>
             <ul>
                 <li><b>Required phases:</b> ALL must be active to allow entry</li>
                 <li><b>Excluded phases:</b> NONE must be active to allow entry</li>

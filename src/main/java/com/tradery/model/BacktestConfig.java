@@ -16,7 +16,7 @@ public record BacktestConfig(
     double positionSizingValue,
     double commission,
     MarketType marketType,
-    double marginInterestApr
+    double marginInterestHourly  // Hourly rate in percent (e.g., 0.00042 = 0.00042%/hr)
 ) {
     /**
      * Create default config
@@ -35,7 +35,7 @@ public record BacktestConfig(
             10.0,
             0.001,
             MarketType.SPOT,
-            0.12
+            0.00042  // ~0.00042%/hr default
         );
     }
 }

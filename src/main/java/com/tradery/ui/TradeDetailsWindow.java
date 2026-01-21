@@ -35,6 +35,7 @@ public class TradeDetailsWindow extends JDialog {
     private JPanel progressionChartPanel;
     private Trade selectedTradeForChart;
 
+
     public TradeDetailsWindow(Frame parent, List<Trade> trades, List<Candle> candles, String strategyName) {
         super(parent, "Trade Details - " + strategyName, false);
         this.trades = trades != null ? trades : new ArrayList<>();
@@ -236,7 +237,7 @@ public class TradeDetailsWindow extends JDialog {
             metricsBox.setAlignmentX(Component.LEFT_ALIGNMENT);
             detailContentPanel.add(metricsBox);
 
-            // Mini chart
+            // Mini candlestick chart with context bars
             if (!candles.isEmpty() && t.exitBar() != null) {
                 addSpacer(12);
                 JPanel chartPanel = createMiniChart(t);
@@ -424,9 +425,9 @@ public class TradeDetailsWindow extends JDialog {
 
         int entryBar = t.entryBar();
         int exitBar = t.exitBar();
-        int padding = Math.max(5, (exitBar - entryBar) / 4);
-        int startBar = Math.max(0, entryBar - padding);
-        int endBar = Math.min(candles.size() - 1, exitBar + padding);
+        int contextBars = Trade.CONTEXT_BARS;
+        int startBar = Math.max(0, entryBar - contextBars);
+        int endBar = Math.min(candles.size() - 1, exitBar + contextBars);
 
         if (startBar >= endBar) return null;
 
@@ -434,7 +435,7 @@ public class TradeDetailsWindow extends JDialog {
         List<Candle> chartCandles = candles.subList(startBar, endBar + 1);
         if (chartCandles.isEmpty()) return null;
 
-        // Find price range
+        // Find price range from candle highs/lows
         double minPrice = Double.MAX_VALUE;
         double maxPrice = Double.MIN_VALUE;
         for (Candle c : chartCandles) {
@@ -444,9 +445,9 @@ public class TradeDetailsWindow extends JDialog {
         double priceRange = maxPrice - minPrice;
         if (priceRange <= 0) return null;
 
-        // Add some padding to price range
-        minPrice -= priceRange * 0.05;
-        maxPrice += priceRange * 0.05;
+        // Add padding to price range
+        minPrice -= priceRange * 0.08;
+        maxPrice += priceRange * 0.08;
         priceRange = maxPrice - minPrice;
 
         final double fMinPrice = minPrice;
@@ -456,6 +457,16 @@ public class TradeDetailsWindow extends JDialog {
         final Integer fMfeBar = t.mfeBar() != null ? t.mfeBar() - startBar : null;
         final Integer fMaeBar = t.maeBar() != null ? t.maeBar() - startBar : null;
         final boolean isWinner = t.pnl() != null && t.pnl() >= 0;
+        final boolean isLong = "long".equalsIgnoreCase(t.side());
+
+        // Calculate ideal trade exit price (MFE price)
+        final Double idealExitPrice;
+        if (t.mfeBar() != null && t.mfeBar() >= 0 && t.mfeBar() < candles.size()) {
+            Candle mfeCandle = candles.get(t.mfeBar());
+            idealExitPrice = isLong ? mfeCandle.high() : mfeCandle.low();
+        } else {
+            idealExitPrice = null;
+        }
 
         JPanel chartPanel = new JPanel() {
             @Override
@@ -466,93 +477,169 @@ public class TradeDetailsWindow extends JDialog {
 
                 int w = getWidth();
                 int h = getHeight();
-                int barWidth = Math.max(2, (w - 20) / chartCandles.size());
-                int chartWidth = barWidth * chartCandles.size();
+                int margin = 10;
+                int chartHeight = h - 2 * margin;
+
+                // Calculate bar width - ensure minimum width for candlesticks
+                int totalBars = chartCandles.size();
+                int barWidth = Math.max(4, (w - 2 * margin) / totalBars);
+                int candleBodyWidth = Math.max(2, barWidth - 2);
+                int chartWidth = barWidth * totalBars;
                 int offsetX = (w - chartWidth) / 2;
 
                 // Background
-                g2.setColor(new Color(35, 35, 40));
+                g2.setColor(new Color(30, 30, 35));
                 g2.fillRect(0, 0, w, h);
 
-                // Draw price line
-                Path2D.Double path = new Path2D.Double();
-                boolean first = true;
+                // Helper to convert price to Y coordinate
+                java.util.function.ToIntFunction<Double> priceToY = price ->
+                    h - margin - (int) ((price - fMinPrice) / fPriceRange * chartHeight);
+
+                // Draw entry price horizontal line (dotted, subtle)
+                if (fEntryBar >= 0 && fEntryBar < chartCandles.size()) {
+                    int entryY = priceToY.applyAsInt(t.entryPrice());
+                    g2.setColor(new Color(100, 180, 255, 60));
+                    g2.setStroke(new BasicStroke(1f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER, 10f, new float[]{4f, 4f}, 0f));
+                    g2.drawLine(offsetX, entryY, offsetX + chartWidth, entryY);
+                }
+
+                // Draw ideal trade path (dotted green line from entry to MFE)
+                if (idealExitPrice != null && fMfeBar != null && fEntryBar >= 0 && fEntryBar < chartCandles.size() && fMfeBar >= 0 && fMfeBar < chartCandles.size()) {
+                    int entryX = offsetX + fEntryBar * barWidth + barWidth / 2;
+                    int entryY = priceToY.applyAsInt(t.entryPrice());
+                    int mfeX = offsetX + fMfeBar * barWidth + barWidth / 2;
+                    int mfeY = priceToY.applyAsInt(idealExitPrice);
+
+                    g2.setColor(new Color(76, 175, 80, 120));
+                    g2.setStroke(new BasicStroke(2f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER, 10f, new float[]{6f, 4f}, 0f));
+                    g2.drawLine(entryX, entryY, mfeX, mfeY);
+
+                    // Small diamond at ideal exit
+                    int[] xp = {mfeX - 5, mfeX, mfeX + 5, mfeX};
+                    int[] yp = {mfeY, mfeY - 5, mfeY, mfeY + 5};
+                    g2.setColor(new Color(76, 175, 80, 180));
+                    g2.fillPolygon(xp, yp, 4);
+                }
+
+                // Draw candlesticks
+                g2.setStroke(new BasicStroke(1f));
                 for (int i = 0; i < chartCandles.size(); i++) {
                     Candle c = chartCandles.get(i);
-                    double price = c.close();
                     int x = offsetX + i * barWidth + barWidth / 2;
-                    int y = h - 10 - (int) ((price - fMinPrice) / fPriceRange * (h - 20));
-                    if (first) {
-                        path.moveTo(x, y);
-                        first = false;
+
+                    int highY = priceToY.applyAsInt(c.high());
+                    int lowY = priceToY.applyAsInt(c.low());
+                    int openY = priceToY.applyAsInt(c.open());
+                    int closeY = priceToY.applyAsInt(c.close());
+
+                    boolean bullish = c.close() >= c.open();
+                    Color candleColor = bullish ? new Color(76, 175, 80) : new Color(244, 67, 54);
+
+                    // Dim candles outside trade
+                    if (i < fEntryBar || i > fExitBar) {
+                        candleColor = new Color(candleColor.getRed(), candleColor.getGreen(), candleColor.getBlue(), 100);
+                    }
+
+                    // Draw wick
+                    g2.setColor(candleColor);
+                    g2.drawLine(x, highY, x, lowY);
+
+                    // Draw body
+                    int bodyTop = Math.min(openY, closeY);
+                    int bodyHeight = Math.max(1, Math.abs(closeY - openY));
+                    int bodyX = x - candleBodyWidth / 2;
+
+                    if (bullish) {
+                        g2.fillRect(bodyX, bodyTop, candleBodyWidth, bodyHeight);
                     } else {
-                        path.lineTo(x, y);
+                        g2.fillRect(bodyX, bodyTop, candleBodyWidth, bodyHeight);
                     }
                 }
 
-                // Draw area fill under line
-                Path2D.Double areaPath = new Path2D.Double(path);
-                areaPath.lineTo(offsetX + (chartCandles.size() - 1) * barWidth + barWidth / 2, h - 10);
-                areaPath.lineTo(offsetX + barWidth / 2, h - 10);
-                areaPath.closePath();
-                g2.setColor(new Color(isWinner ? 76 : 244, isWinner ? 175 : 67, isWinner ? 80 : 54, 30));
-                g2.fill(areaPath);
-
-                // Draw line
-                g2.setColor(new Color(isWinner ? 76 : 244, isWinner ? 175 : 67, isWinner ? 80 : 54, 180));
-                g2.setStroke(new BasicStroke(1.5f));
-                g2.draw(path);
-
-                // Entry marker
+                // Entry vertical line
                 if (fEntryBar >= 0 && fEntryBar < chartCandles.size()) {
                     int x = offsetX + fEntryBar * barWidth + barWidth / 2;
-                    Candle c = chartCandles.get(fEntryBar);
-                    int y = h - 10 - (int) ((c.close() - fMinPrice) / fPriceRange * (h - 20));
+                    g2.setColor(new Color(100, 180, 255, 80));
+                    g2.setStroke(new BasicStroke(1f));
+                    g2.drawLine(x, margin, x, h - margin);
+                }
+
+                // Exit vertical line
+                if (fExitBar >= 0 && fExitBar < chartCandles.size()) {
+                    int x = offsetX + fExitBar * barWidth + barWidth / 2;
+                    Color exitColor = isWinner ? new Color(76, 175, 80, 80) : new Color(244, 67, 54, 80);
+                    g2.setColor(exitColor);
+                    g2.setStroke(new BasicStroke(1f));
+                    g2.drawLine(x, margin, x, h - margin);
+                }
+
+                // Entry marker (blue circle)
+                if (fEntryBar >= 0 && fEntryBar < chartCandles.size()) {
+                    int x = offsetX + fEntryBar * barWidth + barWidth / 2;
+                    int y = priceToY.applyAsInt(t.entryPrice());
                     g2.setColor(new Color(100, 180, 255));
-                    g2.fillOval(x - 4, y - 4, 8, 8);
-                    g2.setColor(new Color(100, 180, 255, 100));
-                    g2.drawLine(x, 5, x, h - 10);
+                    g2.fillOval(x - 5, y - 5, 10, 10);
+                    g2.setColor(new Color(255, 255, 255, 200));
+                    g2.setStroke(new BasicStroke(1.5f));
+                    g2.drawOval(x - 5, y - 5, 10, 10);
                 }
 
                 // Exit marker
                 if (fExitBar >= 0 && fExitBar < chartCandles.size()) {
                     int x = offsetX + fExitBar * barWidth + barWidth / 2;
-                    Candle c = chartCandles.get(fExitBar);
-                    int y = h - 10 - (int) ((c.close() - fMinPrice) / fPriceRange * (h - 20));
-                    g2.setColor(isWinner ? new Color(76, 175, 80) : new Color(244, 67, 54));
-                    g2.fillOval(x - 4, y - 4, 8, 8);
+                    int y = priceToY.applyAsInt(t.exitPrice());
+                    Color exitColor = isWinner ? new Color(76, 175, 80) : new Color(244, 67, 54);
+                    g2.setColor(exitColor);
+                    g2.fillOval(x - 5, y - 5, 10, 10);
+                    g2.setColor(new Color(255, 255, 255, 200));
+                    g2.setStroke(new BasicStroke(1.5f));
+                    g2.drawOval(x - 5, y - 5, 10, 10);
                 }
 
-                // MFE marker (small green triangle)
+                // MFE marker (green triangle pointing up for long, down for short)
                 if (fMfeBar != null && fMfeBar >= 0 && fMfeBar < chartCandles.size()) {
                     int x = offsetX + fMfeBar * barWidth + barWidth / 2;
                     Candle c = chartCandles.get(fMfeBar);
-                    int y = h - 10 - (int) ((c.high() - fMinPrice) / fPriceRange * (h - 20));
-                    g2.setColor(new Color(76, 175, 80, 150));
-                    int[] xp = {x - 4, x + 4, x};
-                    int[] yp = {y + 4, y + 4, y - 4};
-                    g2.fillPolygon(xp, yp, 3);
+                    double mfePrice = isLong ? c.high() : c.low();
+                    int y = priceToY.applyAsInt(mfePrice);
+                    g2.setColor(new Color(76, 175, 80, 200));
+                    if (isLong) {
+                        int[] xp = {x - 5, x + 5, x};
+                        int[] yp = {y + 6, y + 6, y - 4};
+                        g2.fillPolygon(xp, yp, 3);
+                    } else {
+                        int[] xp = {x - 5, x + 5, x};
+                        int[] yp = {y - 6, y - 6, y + 4};
+                        g2.fillPolygon(xp, yp, 3);
+                    }
                 }
 
-                // MAE marker (small red triangle)
+                // MAE marker (red triangle pointing opposite of MFE)
                 if (fMaeBar != null && fMaeBar >= 0 && fMaeBar < chartCandles.size()) {
                     int x = offsetX + fMaeBar * barWidth + barWidth / 2;
                     Candle c = chartCandles.get(fMaeBar);
-                    int y = h - 10 - (int) ((c.low() - fMinPrice) / fPriceRange * (h - 20));
-                    g2.setColor(new Color(244, 67, 54, 150));
-                    int[] xp = {x - 4, x + 4, x};
-                    int[] yp = {y - 4, y - 4, y + 4};
-                    g2.fillPolygon(xp, yp, 3);
+                    double maePrice = isLong ? c.low() : c.high();
+                    int y = priceToY.applyAsInt(maePrice);
+                    g2.setColor(new Color(244, 67, 54, 200));
+                    if (isLong) {
+                        int[] xp = {x - 5, x + 5, x};
+                        int[] yp = {y - 6, y - 6, y + 4};
+                        g2.fillPolygon(xp, yp, 3);
+                    } else {
+                        int[] xp = {x - 5, x + 5, x};
+                        int[] yp = {y + 6, y + 6, y - 4};
+                        g2.fillPolygon(xp, yp, 3);
+                    }
                 }
 
                 g2.dispose();
             }
         };
 
-        chartPanel.setPreferredSize(new Dimension(260, 80));
-        chartPanel.setMaximumSize(new Dimension(Integer.MAX_VALUE, 80));
+        chartPanel.setPreferredSize(new Dimension(280, 120));
+        chartPanel.setMaximumSize(new Dimension(Integer.MAX_VALUE, 120));
         chartPanel.setBorder(BorderFactory.createLineBorder(new Color(60, 60, 65)));
-        chartPanel.setToolTipText("Entry (blue) → Exit | MFE ▲ | MAE ▼");
+        chartPanel.setToolTipText("<html>Entry (blue) → Exit | MFE ▲ | MAE ▼<br/>Dotted green = ideal trade path to MFE</html>");
 
         return chartPanel;
     }

@@ -21,8 +21,8 @@ public class BacktestSettingsPanel extends ConfigurationPanel {
     private JSpinner slippageSpinner;
     private JLabel capitalLabel;
     private JComboBox<MarketType> marketTypeCombo;
-    private JSpinner marginAprSpinner;
-    private JLabel marginAprLabel;
+    private JSpinner marginHourlySpinner;
+    private JLabel marginHourlyLabel;
 
     private static final String[] POSITION_SIZING_TYPES = {
         "Fixed 1%", "Fixed 5%", "Fixed 10%", "Fixed 20%",
@@ -64,19 +64,19 @@ public class BacktestSettingsPanel extends ConfigurationPanel {
         marketTypeCombo = new JComboBox<>(MarketType.values());
         marketTypeCombo.setSelectedItem(MarketType.SPOT);
 
-        // Margin interest APR: 12% default, range 0-100%
-        marginAprSpinner = new JSpinner(new SpinnerNumberModel(12.0, 0.0, 100.0, 0.5));
-        JSpinner.NumberEditor aprEditor = new JSpinner.NumberEditor(marginAprSpinner, "0.0'%'");
-        marginAprSpinner.setEditor(aprEditor);
-        marginAprLabel = new JLabel("Margin APR:");
-        marginAprLabel.setVisible(false);
-        marginAprSpinner.setVisible(false);
+        // Margin hourly interest: 0.00042%/hr default (as exchanges display), range 0-1%
+        marginHourlySpinner = new JSpinner(new SpinnerNumberModel(0.00042, 0.0, 1.0, 0.00001));
+        JSpinner.NumberEditor hourlyEditor = new JSpinner.NumberEditor(marginHourlySpinner, "0.00000'%/hr'");
+        marginHourlySpinner.setEditor(hourlyEditor);
+        marginHourlyLabel = new JLabel("Interest:");
+        marginHourlyLabel.setVisible(false);
+        marginHourlySpinner.setVisible(false);
 
-        // Show/hide margin APR based on market type
+        // Show/hide margin rate based on market type
         marketTypeCombo.addActionListener(e -> {
             boolean isMargin = marketTypeCombo.getSelectedItem() == MarketType.MARGIN;
-            marginAprLabel.setVisible(isMargin);
-            marginAprSpinner.setVisible(isMargin);
+            marginHourlyLabel.setVisible(isMargin);
+            marginHourlySpinner.setVisible(isMargin);
             fireChange();
         });
 
@@ -85,7 +85,7 @@ public class BacktestSettingsPanel extends ConfigurationPanel {
         positionSizingCombo.addActionListener(e -> fireChange());
         feeSpinner.addChangeListener(e -> fireChange());
         slippageSpinner.addChangeListener(e -> fireChange());
-        marginAprSpinner.addChangeListener(e -> fireChange());
+        marginHourlySpinner.addChangeListener(e -> fireChange());
     }
 
     private void layoutComponents() {
@@ -112,9 +112,9 @@ public class BacktestSettingsPanel extends ConfigurationPanel {
         settingsGrid.add(new JLabel("Market Type:"), new GridBagConstraints(0, row, 1, 1, 0, 0, GridBagConstraints.WEST, GridBagConstraints.NONE, new Insets(2, 0, 2, 8), 0, 0));
         settingsGrid.add(marketTypeCombo, new GridBagConstraints(1, row++, 1, 1, 1, 0, GridBagConstraints.WEST, GridBagConstraints.HORIZONTAL, new Insets(2, 0, 2, 0), 0, 0));
 
-        // Margin APR row (visible only for MARGIN market type)
-        settingsGrid.add(marginAprLabel, new GridBagConstraints(0, row, 1, 1, 0, 0, GridBagConstraints.WEST, GridBagConstraints.NONE, new Insets(2, 0, 2, 8), 0, 0));
-        settingsGrid.add(marginAprSpinner, new GridBagConstraints(1, row++, 1, 1, 1, 0, GridBagConstraints.WEST, GridBagConstraints.HORIZONTAL, new Insets(2, 0, 2, 0), 0, 0));
+        // Margin hourly interest row (visible only for MARGIN market type)
+        settingsGrid.add(marginHourlyLabel, new GridBagConstraints(0, row, 1, 1, 0, 0, GridBagConstraints.WEST, GridBagConstraints.NONE, new Insets(2, 0, 2, 8), 0, 0));
+        settingsGrid.add(marginHourlySpinner, new GridBagConstraints(1, row++, 1, 1, 1, 0, GridBagConstraints.WEST, GridBagConstraints.HORIZONTAL, new Insets(2, 0, 2, 0), 0, 0));
 
         // Fee row
         settingsGrid.add(new JLabel("Fee:"), new GridBagConstraints(0, row, 1, 1, 0, 0, GridBagConstraints.WEST, GridBagConstraints.NONE, new Insets(2, 0, 2, 8), 0, 0));
@@ -142,11 +142,11 @@ public class BacktestSettingsPanel extends ConfigurationPanel {
                 feeSpinner.setValue(strategy.getFeePercent());
                 slippageSpinner.setValue(strategy.getSlippagePercent());
                 marketTypeCombo.setSelectedItem(strategy.getMarketType());
-                marginAprSpinner.setValue(strategy.getMarginInterestApr() * 100);  // Convert to percent display
-                // Update visibility of margin APR based on market type
+                marginHourlySpinner.setValue(strategy.getMarginInterestHourly());  // Already in percent
+                // Update visibility based on market type
                 boolean isMargin = strategy.getMarketType() == MarketType.MARGIN;
-                marginAprLabel.setVisible(isMargin);
-                marginAprSpinner.setVisible(isMargin);
+                marginHourlyLabel.setVisible(isMargin);
+                marginHourlySpinner.setVisible(isMargin);
             }
         } finally {
             setSuppressChangeEvents(false);
@@ -168,7 +168,7 @@ public class BacktestSettingsPanel extends ConfigurationPanel {
         strategy.setFeePercent(((Number) feeSpinner.getValue()).doubleValue());
         strategy.setSlippagePercent(((Number) slippageSpinner.getValue()).doubleValue());
         strategy.setMarketType((MarketType) marketTypeCombo.getSelectedItem());
-        strategy.setMarginInterestApr(((Number) marginAprSpinner.getValue()).doubleValue() / 100.0);  // Convert from percent display
+        strategy.setMarginInterestHourly(((Number) marginHourlySpinner.getValue()).doubleValue());  // Already in percent
     }
 
     // Getters for direct access

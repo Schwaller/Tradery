@@ -438,11 +438,22 @@ public class Strategy implements Identifiable {
     }
 
     @JsonIgnore
-    public double getMarginInterestApr() {
+    public double getMarginInterestHourly() {
+        return getBacktestSettings().getMarginInterestHourly();
+    }
+
+    public void setMarginInterestHourly(double hourlyRate) {
+        getBacktestSettings().setMarginInterestHourly(hourlyRate);
+        this.updated = Instant.now();
+    }
+
+    // Legacy getter for backward compatibility
+    @JsonIgnore
+    public Double getMarginInterestApr() {
         return getBacktestSettings().getMarginInterestApr();
     }
 
-    public void setMarginInterestApr(double apr) {
+    public void setMarginInterestApr(Double apr) {
         getBacktestSettings().setMarginInterestApr(apr);
         this.updated = Instant.now();
     }

@@ -332,7 +332,7 @@ public class BacktestCoordinator {
             strategy.getPositionSizingValue(),
             strategy.getTotalCommission(),
             strategy.getMarketType(),
-            strategy.getMarginInterestApr()
+            strategy.getMarginInterestHourly()
         );
 
         // Load phases (synchronous, they're small)

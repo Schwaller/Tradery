@@ -193,7 +193,7 @@ public class IndicatorPageManager {
 
         switch (type.getDependency()) {
             case CANDLES -> {
-                // Request candle data - indicator page owns the source for cascading release
+                // Request candle data and track for cascading release
                 CandleDataListener<T> candleListener = new CandleDataListener<>(page);
                 DataPageView<Candle> candlePage = candlePageMgr.request(
                     page.getSymbol(), page.getTimeframe(),
@@ -250,7 +250,7 @@ public class IndicatorPageManager {
 
     /**
      * Coordinator that requests both candles and aggTrades, then computes when both ready.
-     * Source pages are owned by the indicator page for cascading release.
+     * Stores listeners as fields so they can be tracked for cascading release.
      */
     private class AggTradesDataCoordinator<T> {
         private final IndicatorPage<T> indicatorPage;
@@ -259,7 +259,7 @@ public class IndicatorPageManager {
         private volatile boolean candlesReady = false;
         private volatile boolean aggTradesReady = false;
 
-        // Listeners stored as fields so they can be passed to indicator page
+        // Listeners stored as fields for source page tracking
         private final DataPageListener<Candle> candleListener;
         private final DataPageListener<AggTrade> aggTradesListener;
 
@@ -312,7 +312,7 @@ public class IndicatorPageManager {
         }
 
         void start() {
-            // Request candles - indicator page owns the source
+            // Request candles and track for cascading release
             DataPageView<Candle> candlePage = candlePageMgr.request(
                 indicatorPage.getSymbol(), indicatorPage.getTimeframe(),
                 indicatorPage.getStartTime(), indicatorPage.getEndTime(),
@@ -320,7 +320,7 @@ public class IndicatorPageManager {
                 "IndicatorPageManager-AggTrades");
             indicatorPage.setSourceCandlePage(candlePage, candleListener);
 
-            // Request aggTrades - indicator page owns the source
+            // Request aggTrades and track for cascading release
             DataPageView<AggTrade> aggPage = aggTradesPageMgr.request(
                 indicatorPage.getSymbol(), indicatorPage.getTimeframe(),
                 indicatorPage.getStartTime(), indicatorPage.getEndTime(),

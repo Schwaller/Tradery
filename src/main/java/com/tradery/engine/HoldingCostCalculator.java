@@ -21,19 +21,19 @@ public class HoldingCostCalculator {
 
     private final List<FundingRate> fundingRates;
     private final MarketType marketType;
-    private final double marginInterestApr;
+    private final double marginInterestHourly;  // Hourly rate in percent (e.g., 0.00042 = 0.00042%/hr)
 
     /**
      * Create a holding cost calculator.
      *
-     * @param fundingRates    List of historical funding rates (for FUTURES mode)
-     * @param marketType      The market type (SPOT, FUTURES, MARGIN)
-     * @param marginInterestApr Annual interest rate for margin trading (e.g., 0.12 = 12%)
+     * @param fundingRates         List of historical funding rates (for FUTURES mode)
+     * @param marketType           The market type (SPOT, FUTURES, MARGIN)
+     * @param marginInterestHourly Hourly interest rate in percent (e.g., 0.00042 = 0.00042%/hr)
      */
-    public HoldingCostCalculator(List<FundingRate> fundingRates, MarketType marketType, double marginInterestApr) {
+    public HoldingCostCalculator(List<FundingRate> fundingRates, MarketType marketType, double marginInterestHourly) {
         this.fundingRates = fundingRates != null ? fundingRates : List.of();
         this.marketType = marketType != null ? marketType : MarketType.SPOT;
-        this.marginInterestApr = marginInterestApr;
+        this.marginInterestHourly = marginInterestHourly;
     }
 
     /**
@@ -97,7 +97,7 @@ public class HoldingCostCalculator {
      * Calculate margin interest for a time period.
      * Interest accrues hourly on notional value.
      *
-     * Formula: interest = notionalValue × (APR / 8760) × hoursHeld
+     * Formula: interest = notionalValue × (hourlyRatePercent / 100) × hoursHeld
      *
      * @param notionalValue  Position value in quote currency
      * @param startTime      Start time in milliseconds
@@ -105,7 +105,7 @@ public class HoldingCostCalculator {
      * @return The interest cost (always positive - both longs and shorts pay)
      */
     public double calculateMarginInterest(double notionalValue, long startTime, long endTime) {
-        if (marketType != MarketType.MARGIN || marginInterestApr <= 0) {
+        if (marketType != MarketType.MARGIN || marginInterestHourly <= 0) {
             return 0;
         }
 
@@ -114,8 +114,9 @@ public class HoldingCostCalculator {
             return 0;
         }
 
-        double hourlyRate = marginInterestApr / 8760.0;  // APR to hourly
-        return notionalValue * hourlyRate * hoursHeld;
+        // marginInterestHourly is in percent (e.g., 0.00042 means 0.00042%)
+        double hourlyRateDecimal = marginInterestHourly / 100.0;
+        return notionalValue * hourlyRateDecimal * hoursHeld;
     }
 
     /**
@@ -173,9 +174,9 @@ public class HoldingCostCalculator {
     }
 
     /**
-     * Get the margin interest APR.
+     * Get the hourly margin interest rate in percent.
      */
-    public double getMarginInterestApr() {
-        return marginInterestApr;
+    public double getMarginInterestHourly() {
+        return marginInterestHourly;
     }
 }

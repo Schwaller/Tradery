@@ -20,8 +20,8 @@ public class BacktestSettings {
     private double feePercent = 0.10;
     private double slippagePercent = 0.05;
     private MarketType marketType = MarketType.SPOT;  // Default: no holding costs
-    private double marginInterestHourly = 0.00041667;  // Hourly interest rate (e.g., 0.00041667% = 0.0000041667)
-    private double marginInterestApr = 0.12;  // Annual interest rate for margin (12% default)
+    private Double marginInterestHourly = null;  // Hourly interest rate in percent (e.g., 0.00042 = 0.00042%/hr)
+    private Double marginInterestApr = null;    // Legacy: annual rate (kept for backward compatibility)
 
     public BacktestSettings() {
         // For Jackson
@@ -146,12 +146,34 @@ public class BacktestSettings {
         this.marketType = marketType != null ? marketType : MarketType.SPOT;
     }
 
-    public double getMarginInterestApr() {
-        return marginInterestApr >= 0 ? marginInterestApr : 0.12;
+    /**
+     * Get hourly interest rate in percent (e.g., 0.00042 means 0.00042%/hour).
+     * If old APR was set, converts it to hourly.
+     * Default: ~0.00042%/hr (roughly equivalent to 3.65% APR)
+     */
+    public double getMarginInterestHourly() {
+        if (marginInterestHourly != null && marginInterestHourly >= 0) {
+            return marginInterestHourly;
+        }
+        // Migrate from old APR if present
+        if (marginInterestApr != null && marginInterestApr > 0) {
+            return (marginInterestApr * 100) / 8760.0;  // Convert APR decimal to hourly percent
+        }
+        return 0.00042;  // Default ~3.65% APR
     }
 
-    public void setMarginInterestApr(double marginInterestApr) {
-        this.marginInterestApr = marginInterestApr >= 0 ? marginInterestApr : 0.12;
+    public void setMarginInterestHourly(double hourlyRate) {
+        this.marginInterestHourly = hourlyRate >= 0 ? hourlyRate : 0.00042;
+        this.marginInterestApr = null;  // Clear legacy field
+    }
+
+    // Legacy getter for backward compatibility with old YAML files
+    public Double getMarginInterestApr() {
+        return marginInterestApr;
+    }
+
+    public void setMarginInterestApr(Double apr) {
+        this.marginInterestApr = apr;
     }
 
     /**
@@ -185,7 +207,7 @@ public class BacktestSettings {
             getPositionSizingValue(),
             getTotalCommission(),
             getMarketType(),
-            getMarginInterestApr()
+            getMarginInterestHourly()
         );
     }
 }

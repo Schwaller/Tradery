@@ -1,5 +1,6 @@
 package com.tradery.engine;
 
+import com.tradery.model.Candle;
 import com.tradery.model.ExitBasis;
 import com.tradery.model.ExitReentry;
 import com.tradery.model.ExitZone;
@@ -39,6 +40,10 @@ public class OpenTradeState {
     double accumulatedHoldingCosts;    // Total holding costs accumulated
     long lastFundingTime;              // For futures: track last settlement processed
     long lastInterestTime;             // For margin: track last hour interest was calculated
+    // Context analysis (better entry within CONTEXT_BARS before actual entry)
+    Integer betterEntryBar;            // Bar with better entry price (null if actual entry was optimal)
+    Double betterEntryPrice;           // Price at the better entry bar
+    Double betterEntryImprovement;     // % improvement in potential PnL
 
     public OpenTradeState(Trade trade, double entryPrice) {
         this(trade, entryPrice, null);
@@ -219,5 +224,80 @@ public class OpenTradeState {
      */
     public long getLastInterestTime() {
         return lastInterestTime;
+    }
+
+    /**
+     * Analyze context bars before entry to find better entry points.
+     * For longs: find the lowest low within CONTEXT_BARS before entry
+     * For shorts: find the highest high within CONTEXT_BARS before entry
+     *
+     * @param candles List of all candles in the backtest
+     * @param isLong Whether this is a long trade
+     */
+    public void analyzeContextBars(List<Candle> candles, boolean isLong) {
+        int entryBar = trade.entryBar();
+        double entryPrice = trade.entryPrice();
+        int contextBars = Trade.CONTEXT_BARS;
+
+        int startBar = Math.max(0, entryBar - contextBars);
+        if (startBar >= entryBar) {
+            return;  // No context bars available
+        }
+
+        // Find best entry price in context window
+        double bestPrice = entryPrice;
+        int bestBar = entryBar;
+
+        for (int i = startBar; i < entryBar; i++) {
+            Candle c = candles.get(i);
+            if (isLong) {
+                // For longs, lower price is better
+                if (c.low() < bestPrice) {
+                    bestPrice = c.low();
+                    bestBar = i;
+                }
+            } else {
+                // For shorts, higher price is better
+                if (c.high() > bestPrice) {
+                    bestPrice = c.high();
+                    bestBar = i;
+                }
+            }
+        }
+
+        // Only record if we found a better entry
+        if (bestBar != entryBar) {
+            this.betterEntryBar = bestBar;
+            this.betterEntryPrice = bestPrice;
+
+            // Calculate improvement: for longs, (entry - better) / entry * 100
+            // For shorts, (better - entry) / entry * 100
+            if (isLong) {
+                this.betterEntryImprovement = ((entryPrice - bestPrice) / entryPrice) * 100;
+            } else {
+                this.betterEntryImprovement = ((bestPrice - entryPrice) / entryPrice) * 100;
+            }
+        }
+    }
+
+    /**
+     * Get the bar with better entry price (or null if actual entry was optimal).
+     */
+    public Integer getBetterEntryBar() {
+        return betterEntryBar;
+    }
+
+    /**
+     * Get the better entry price (or null if actual entry was optimal).
+     */
+    public Double getBetterEntryPrice() {
+        return betterEntryPrice;
+    }
+
+    /**
+     * Get the % improvement if entered at better price (or null if actual entry was optimal).
+     */
+    public Double getBetterEntryImprovement() {
+        return betterEntryImprovement;
     }
 }
