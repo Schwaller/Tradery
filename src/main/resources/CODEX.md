@@ -353,6 +353,48 @@ Key metrics to analyze:
 4. Read `latest.json` again - verify strategy matches your edit
 5. Compare metrics and iterate
 
+## HTTP API (Preferred for Strategy Changes)
+
+**DO NOT edit YAML directly.** Use the HTTP API for all strategy operations - it validates DSL, ensures format, and triggers backtest.
+
+Port is in `~/.tradery/api.port`.
+
+### Strategy Endpoints
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| `/strategies` | GET | List all strategies |
+| `/strategies` | POST | Create new strategy |
+| `/strategy/{id}` | GET | Get full strategy config |
+| `/strategy/{id}` | POST | Update strategy (partial updates supported) |
+| `/strategy/{id}` | DELETE | Delete strategy |
+| `/strategy/{id}/validate` | POST | Validate changes before applying |
+| `/strategy/{id}/backtest` | POST | Run backtest |
+| `/strategy/{id}/results` | GET | Get backtest results |
+| `/strategy/{id}/summary` | GET | Get AI-friendly summary with suggestions |
+
+### Market Data Endpoints
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| `/phases` | GET | List all available phases |
+| `/phase/{id}/bounds` | GET | Get when a phase is active |
+| `/eval?condition=...&symbol=...&timeframe=...` | GET | Evaluate DSL condition |
+| `/indicator?name=...&symbol=...&timeframe=...` | GET | Get indicator values |
+| `/candles?symbol=...&timeframe=...&bars=...` | GET | Get OHLCV data |
+
+### UI Endpoints
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| `/ui/open` | POST | Open UI windows (phases, hoops, settings, data, project) |
+
+### API Workflow
+1. GET `/strategy/{id}/summary` for overview + AI suggestions
+2. POST `/strategy/{id}/validate` to check changes before applying
+3. POST `/strategy/{id}` to update strategy
+4. POST `/strategy/{id}/backtest` to run backtest
+5. GET `/strategy/{id}/results` to check results
+
+**Note:** Always validate before updating to catch DSL syntax errors.
+
 ## Tips
 
 - Start with small, incremental changes

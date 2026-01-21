@@ -20,7 +20,8 @@ public class BacktestSettings {
     private double feePercent = 0.10;
     private double slippagePercent = 0.05;
     private MarketType marketType = MarketType.SPOT;  // Default: no holding costs
-    private double marginInterestApr = 0.12;  // 12% APR default for margin trading
+    private double marginInterestHourly = 0.00041667;  // Hourly interest rate (e.g., 0.00041667% = 0.0000041667)
+    private double marginInterestApr = 0.12;  // Annual interest rate for margin (12% default)
 
     public BacktestSettings() {
         // For Jackson

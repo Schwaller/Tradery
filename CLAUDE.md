@@ -271,22 +271,46 @@ Each trade captures: `entryPrice`, `exitPrice`, `pnlPercent`, `mfe` (max favorab
 **DO NOT edit YAML directly.** API validates DSL, ensures format, triggers backtest.
 
 ### MCP Tools (Preferred)
+
+**Strategy Tools:**
 | Tool | Purpose |
 |------|---------|
 | `tradery_list_strategies` | List all strategies |
 | `tradery_get_strategy` | Get full strategy config |
+| `tradery_create_strategy` | Create new strategy |
 | `tradery_validate_strategy` | Validate changes (ALWAYS before update) |
 | `tradery_update_strategy` | Apply partial updates |
-| `tradery_create_strategy` | Create new strategy |
+| `tradery_delete_strategy` | Delete strategy |
 | `tradery_run_backtest` | Run backtest |
 | `tradery_get_summary` | Get AI-friendly summary + suggestions |
 | `tradery_analyze_phases` | Phase performance analysis |
 | `tradery_get_trade` | Get individual trade details |
-| `tradery_list_phases` | List available phases |
+
+**Phase Tools:**
+| Tool | Purpose |
+|------|---------|
+| `tradery_list_phases` | List all available phases |
+| `tradery_get_phase` | Get phase details (condition, timeframe) |
+| `tradery_create_phase` | Create custom phase |
+| `tradery_update_phase` | Update custom phase |
+| `tradery_delete_phase` | Delete custom phase |
+| `tradery_phase_bounds` | Analyze when phase is active over time |
+
+**Hoop Pattern Tools:**
+| Tool | Purpose |
+|------|---------|
+| `tradery_list_hoops` | List all hoop patterns |
+| `tradery_get_hoop` | Get hoop pattern details |
+| `tradery_create_hoop` | Create hoop pattern |
+| `tradery_update_hoop` | Update hoop pattern |
+| `tradery_delete_hoop` | Delete hoop pattern |
+
+**Market Data Tools:**
+| Tool | Purpose |
+|------|---------|
 | `tradery_eval_condition` | Test DSL condition on market data |
 | `tradery_get_indicator` | Get indicator values |
 | `tradery_get_candles` | Get OHLCV data |
-| `tradery_open_window` | Open UI windows (phases, hoops, settings, project, etc.) |
 
 ### HTTP API
 Port in `~/.tradery/api.port`. Key endpoints:

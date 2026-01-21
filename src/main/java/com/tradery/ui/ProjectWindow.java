@@ -821,12 +821,8 @@ public class ProjectWindow extends JFrame {
     }
 
     private void showBacktestError(String error) {
-        SwingUtilities.invokeLater(() -> {
-            JOptionPane.showMessageDialog(this,
-                error,
-                "Missing Required Data",
-                JOptionPane.WARNING_MESSAGE);
-        });
+        // Error is already shown in status bar via handleBacktestStatus
+        // No popup dialog needed - less intrusive UX
     }
 
     /**

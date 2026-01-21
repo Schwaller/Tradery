@@ -353,6 +353,76 @@ Key metrics to analyze:
 4. Read `latest.json` again - verify strategy matches your edit
 5. Compare metrics and iterate
 
+## MCP Tools (Preferred for Claude Code)
+
+Use MCP tools for all strategy operations. **DO NOT edit YAML directly** - MCP validates DSL, ensures format, triggers backtest.
+
+### Strategy Tools
+| Tool | Purpose |
+|------|---------|
+| `tradery_list_strategies` | List all strategies |
+| `tradery_get_strategy` | Get full strategy config |
+| `tradery_create_strategy` | Create new strategy |
+| `tradery_validate_strategy` | Validate changes (ALWAYS before update) |
+| `tradery_update_strategy` | Apply partial updates |
+| `tradery_delete_strategy` | Delete strategy |
+| `tradery_run_backtest` | Run backtest |
+| `tradery_get_summary` | Get AI-friendly summary + suggestions |
+| `tradery_analyze_phases` | Phase performance analysis |
+| `tradery_get_trade` | Get individual trade details |
+
+### Phase Tools
+| Tool | Purpose |
+|------|---------|
+| `tradery_list_phases` | List all available phases |
+| `tradery_get_phase` | Get phase details (condition, timeframe) |
+| `tradery_create_phase` | Create custom phase |
+| `tradery_update_phase` | Update custom phase |
+| `tradery_delete_phase` | Delete custom phase |
+| `tradery_phase_bounds` | Analyze when phase is active over time |
+
+### Hoop Pattern Tools
+| Tool | Purpose |
+|------|---------|
+| `tradery_list_hoops` | List all hoop patterns |
+| `tradery_get_hoop` | Get hoop pattern details |
+| `tradery_create_hoop` | Create hoop pattern |
+| `tradery_update_hoop` | Update hoop pattern |
+| `tradery_delete_hoop` | Delete hoop pattern |
+
+### Market Data Tools
+| Tool | Purpose |
+|------|---------|
+| `tradery_eval_condition` | Test DSL condition on market data |
+| `tradery_get_indicator` | Get indicator values |
+| `tradery_get_candles` | Get OHLCV data |
+
+### MCP Workflow
+1. `tradery_get_summary` for overview + AI suggestions
+2. `tradery_analyze_phases` for phase recommendations
+3. `tradery_validate_strategy` before any update
+4. `tradery_update_strategy` + `tradery_run_backtest`
+5. Check results, iterate
+
+**Note:** Always validate before updating to catch DSL syntax errors.
+
+## HTTP API (Alternative)
+
+For tools without MCP support, use HTTP API. Port is in `~/.tradery/api.port`.
+
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| `/strategies` | GET/POST | List/create strategies |
+| `/strategy/{id}` | GET/POST/DELETE | Get/update/delete |
+| `/strategy/{id}/validate` | POST | Validate changes |
+| `/strategy/{id}/backtest` | POST | Run backtest |
+| `/strategy/{id}/summary` | GET | Get summary |
+| `/phases` | GET | List phases |
+| `/eval` | GET | Evaluate DSL condition |
+| `/indicator` | GET | Get indicator values |
+| `/candles` | GET | Get OHLCV data |
+| `/ui/open` | POST | Open UI windows |
+
 ## Tips
 
 - Start with small, incremental changes
