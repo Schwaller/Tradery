@@ -191,16 +191,30 @@ public class RayOverlay {
             return;
         }
 
+        if (!enabled) {
+            this.currentCandles = candles;
+            releasePages();
+            return;
+        }
+
+        // Check if we already have pages with the same params - reuse them
+        if (resistancePage != null &&
+            symbol.equals(currentSymbol) &&
+            timeframe.equals(currentTimeframe) &&
+            startTime == currentStartTime &&
+            endTime == currentEndTime) {
+            this.currentCandles = candles;
+            return;
+        }
+
+        // Release previous pages since params changed
+        releasePages();
+
         this.currentCandles = candles;
         this.currentSymbol = symbol;
         this.currentTimeframe = timeframe;
         this.currentStartTime = startTime;
         this.currentEndTime = endTime;
-
-        if (!enabled) {
-            releasePages();
-            return;
-        }
 
         IndicatorPageManager pageMgr = ApplicationContext.getInstance().getIndicatorPageManager();
         if (pageMgr == null) return;
@@ -211,7 +225,8 @@ public class RayOverlay {
             resistancePage = pageMgr.request(
                 IndicatorType.RESISTANCE_RAYS, params,
                 symbol, timeframe, startTime, endTime,
-                resistanceListener);
+                resistanceListener,
+                "RayOverlay-Resistance");
         }
 
         // Request support rays
@@ -220,7 +235,8 @@ public class RayOverlay {
             supportPage = pageMgr.request(
                 IndicatorType.SUPPORT_RAYS, params,
                 symbol, timeframe, startTime, endTime,
-                supportListener);
+                supportListener,
+                "RayOverlay-Support");
         }
 
         // Request historic rays
@@ -229,7 +245,8 @@ public class RayOverlay {
             historicPage = pageMgr.request(
                 IndicatorType.HISTORIC_RAYS, params,
                 symbol, timeframe, startTime, endTime,
-                historicListener);
+                historicListener,
+                "RayOverlay-Historic");
         }
     }
 
@@ -521,12 +538,20 @@ public class RayOverlay {
      */
     @Deprecated
     public void update(List<Candle> candles, com.tradery.indicators.IndicatorEngine engine) {
+        update(candles, engine, "BTCUSDT", "1h");
+    }
+
+    /**
+     * Update ray overlay with symbol and timeframe context.
+     */
+    public void update(List<Candle> candles, com.tradery.indicators.IndicatorEngine engine,
+                       String symbol, String timeframe) {
         if (candles == null || candles.isEmpty()) {
             clear();
             return;
         }
-        // For now, just request data - the background computation will trigger redraw
-        requestData(candles, "BTCUSDT", "1h",
+        // Request data with correct symbol/timeframe
+        requestData(candles, symbol, timeframe,
             candles.get(0).timestamp(),
             candles.get(candles.size() - 1).timestamp());
         redraw();

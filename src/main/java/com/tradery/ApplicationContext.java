@@ -11,6 +11,7 @@ import com.tradery.data.PreloadScheduler;
 import com.tradery.data.PremiumIndexStore;
 import com.tradery.data.sqlite.SqliteDataStore;
 import com.tradery.data.page.*;
+import com.tradery.indicators.registry.IndicatorRegistryInitializer;
 import com.tradery.io.HoopPatternStore;
 import com.tradery.io.PhaseStore;
 import com.tradery.io.StrategyStore;
@@ -62,6 +63,9 @@ public class ApplicationContext {
     private final IndicatorPageManager indicatorPageManager;
 
     private ApplicationContext() {
+        // Initialize indicator registry (must be done before IndicatorPageManager)
+        IndicatorRegistryInitializer.initialize();
+
         // Initialize SQLite data store
         this.sqliteDataStore = new SqliteDataStore();
 

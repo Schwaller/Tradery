@@ -969,6 +969,7 @@ public class ChartsPanel extends JPanel {
                                          long startTime, long endTime) {
         if (candles != null && !candles.isEmpty()) {
             indicatorManager.setDataContext(candles, symbol, timeframe, startTime, endTime);
+            overlayManager.setDataContext(symbol, timeframe);
         }
     }
 
@@ -1041,7 +1042,7 @@ public class ChartsPanel extends JPanel {
     private void updatePriceChart(List<Candle> candles, List<Trade> trades) {
         XYPlot plot = priceChart.getXYPlot();
 
-        // Clear non-title annotations
+        // Clear annotations except title (daily volume profile is now managed by overlay)
         plot.getAnnotations().stream()
             .filter(a -> !(a instanceof XYTitleAnnotation))
             .toList()
@@ -1573,6 +1574,8 @@ public class ChartsPanel extends JPanel {
     /**
      * Refresh orderflow charts (delta, CVD, volume ratio, etc.) with new data.
      * Called when VIEW tier aggTrades data arrives asynchronously.
+     * Note: Daily volume profile is NOT refreshed here to avoid flickering.
+     * It's calculated once when enabled via applySavedOverlays() or user toggle.
      */
     public void refreshOrderflowCharts() {
         if (currentCandles != null && !currentCandles.isEmpty()) {
@@ -1581,27 +1584,27 @@ public class ChartsPanel extends JPanel {
             indicatorManager.updateVolumeRatioChart(currentCandles);
             indicatorManager.updateWhaleChart(currentCandles);
             indicatorManager.updateRetailChart(currentCandles);
+        }
+    }
 
-            // Refresh daily volume profile overlay with new aggTrades data
-            ChartConfig config = ChartConfig.getInstance();
-            if (config.isDailyVolumeProfileEnabled()) {
-                overlayManager.setDailyVolumeProfileOverlay(
-                    currentCandles,
-                    config.getDailyVolumeProfileBins(),
-                    70.0,
-                    config.getDailyVolumeProfileWidth()
-                );
-            }
+    /**
+     * Refresh premium chart with new data.
+     * Called when VIEW tier premium data arrives asynchronously.
+     */
+    public void refreshPremiumChart() {
+        if (currentCandles != null && !currentCandles.isEmpty()) {
+            indicatorManager.updatePremiumChart(currentCandles);
         }
     }
 
     /**
      * Refresh the price chart (e.g., when switching between line and candlestick mode).
+     * Note: Daily volume profile annotation is preserved by updatePriceChart, no need to re-apply.
      */
     public void refreshPriceChart() {
         if (currentCandles != null && !currentCandles.isEmpty()) {
             updatePriceChart(currentCandles, currentTrades);
-            // Re-apply ray overlay after chart update (annotations are cleared by updatePriceChart)
+            // Re-apply ray overlay after chart update (ray annotations are cleared)
             overlayManager.updateRayOverlay(currentCandles);
         }
     }

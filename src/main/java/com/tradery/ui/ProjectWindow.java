@@ -844,6 +844,9 @@ public class ProjectWindow extends JFrame {
      * Refreshes the corresponding chart without re-running the backtest.
      */
     private void handleViewDataReady(String dataType) {
+        // First, refresh the data in the IndicatorEngine from the page
+        backtestCoordinator.refreshViewData(dataType);
+
         switch (dataType) {
             case "Funding" -> {
                 System.out.println("VIEW data ready: Funding - refreshing chart");
@@ -859,6 +862,11 @@ public class ProjectWindow extends JFrame {
                 System.out.println("VIEW data ready: AggTrades - refreshing orderflow charts");
                 chartPanel.setIndicatorEngine(backtestCoordinator.getIndicatorEngine());
                 chartPanel.refreshOrderflowCharts();
+            }
+            case "Premium" -> {
+                System.out.println("VIEW data ready: Premium - refreshing chart");
+                chartPanel.setIndicatorEngine(backtestCoordinator.getIndicatorEngine());
+                chartPanel.refreshPremiumChart();
             }
         }
     }

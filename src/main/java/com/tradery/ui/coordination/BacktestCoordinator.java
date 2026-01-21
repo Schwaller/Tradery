@@ -230,6 +230,46 @@ public class BacktestCoordinator {
         return aggTradesStore;
     }
 
+    /**
+     * Refresh view-only data from page and push to IndicatorEngine.
+     * Call this when view-only data becomes ready AFTER backtest completion.
+     *
+     * @param dataType The data type ("OI", "Funding", "AggTrades", "Premium")
+     */
+    public void refreshViewData(String dataType) {
+        if (requirements == null) return;
+
+        IndicatorEngine engine = backtestEngine.getIndicatorEngine();
+        if (engine == null) return;
+
+        switch (dataType) {
+            case "OI" -> {
+                if (requirements.getOiPage() != null) {
+                    currentOpenInterest = new ArrayList<>(requirements.getOiPage().getData());
+                    backtestEngine.setOpenInterest(currentOpenInterest);
+                }
+            }
+            case "Funding" -> {
+                if (requirements.getFundingPage() != null) {
+                    currentFundingRates = new ArrayList<>(requirements.getFundingPage().getData());
+                    backtestEngine.setFundingRates(currentFundingRates);
+                }
+            }
+            case "AggTrades" -> {
+                if (requirements.getAggTradesPage() != null) {
+                    currentAggTrades = new ArrayList<>(requirements.getAggTradesPage().getData());
+                    backtestEngine.setAggTrades(currentAggTrades);
+                }
+            }
+            case "Premium" -> {
+                if (requirements.getPremiumPage() != null) {
+                    currentPremiumIndex = new ArrayList<>(requirements.getPremiumPage().getData());
+                    backtestEngine.setPremiumIndex(currentPremiumIndex);
+                }
+            }
+        }
+    }
+
     // ========== Main API ==========
 
     /**

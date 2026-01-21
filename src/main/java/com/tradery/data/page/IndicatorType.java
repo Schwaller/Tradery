@@ -44,7 +44,10 @@ public enum IndicatorType {
     // Rotating rays (expensive computation)
     RESISTANCE_RAYS("RESISTANCE_RAYS", DataDependency.CANDLES),
     SUPPORT_RAYS("SUPPORT_RAYS", DataDependency.CANDLES),
-    HISTORIC_RAYS("HISTORIC_RAYS", DataDependency.CANDLES);
+    HISTORIC_RAYS("HISTORIC_RAYS", DataDependency.CANDLES),
+
+    // Daily volume profile (uses aggTrades for accuracy)
+    DAILY_VOLUME_PROFILE("DAILY_VOLUME_PROFILE", DataDependency.AGG_TRADES);
 
     private final String name;
     private final DataDependency dependency;

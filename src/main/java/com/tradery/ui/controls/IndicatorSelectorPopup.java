@@ -1278,7 +1278,7 @@ public class IndicatorSelectorPopup extends JDialog {
         int volumeProfileBins = (int) dailyVolumeProfileBinsSpinner.getValue();
         if (dailyVolumeProfileCheckbox.isSelected()) {
             chartPanel.setDailyVolumeProfileOverlay(
-                null,  // Will use current candles
+                chartPanel.getCurrentCandles(),
                 volumeProfileBins,
                 70.0,  // Value area percentage
                 config.getDailyVolumeProfileWidth()

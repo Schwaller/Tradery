@@ -341,7 +341,10 @@ public class ChartZoomManager {
                         boolean showLabels = (allWrappers[i] == chartWrappers[fullScreenChartIndex]);
                         axis.setTickLabelsVisible(showLabels);
                         axis.setTickMarksVisible(showLabels);
-                        plot.setDomainAxisLocation(org.jfree.chart.axis.AxisLocation.BOTTOM_OR_LEFT);
+                        // Price chart (index 0) has time labels at top
+                        plot.setDomainAxisLocation(fullScreenChartIndex == 0
+                            ? org.jfree.chart.axis.AxisLocation.TOP_OR_RIGHT
+                            : org.jfree.chart.axis.AxisLocation.BOTTOM_OR_LEFT);
                     }
                 }
             }
@@ -358,7 +361,7 @@ public class ChartZoomManager {
             chartsContainer.add(indicatorWrappers[fullScreenIndicatorIndex], gbc);
             chartsContainer.setBackground(ChartStyles.BACKGROUND_COLOR);
 
-            // Show time labels on the full screen chart
+            // Show time labels on the full screen chart (indicators stay at bottom)
             for (int i = 0; i < allCharts.length; i++) {
                 if (allCharts[i] != null && allWrappers[i] != null) {
                     XYPlot plot = allCharts[i].getXYPlot();
@@ -501,7 +504,10 @@ public class ChartZoomManager {
                     boolean showLabels = isFirst || isLast;
                     axis.setTickLabelsVisible(showLabels);
                     axis.setTickMarksVisible(showLabels);
-                    plot.setDomainAxisLocation(org.jfree.chart.axis.AxisLocation.BOTTOM_OR_LEFT);
+                    // Price chart (first) has time labels at top, others at bottom
+                    plot.setDomainAxisLocation(isFirst
+                        ? org.jfree.chart.axis.AxisLocation.TOP_OR_RIGHT
+                        : org.jfree.chart.axis.AxisLocation.BOTTOM_OR_LEFT);
                 }
             }
         }

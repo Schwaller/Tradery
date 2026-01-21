@@ -4,7 +4,14 @@ import com.tradery.data.PageState;
 import com.tradery.indicators.Indicators;
 import com.tradery.indicators.RotatingRays;
 import com.tradery.indicators.RotatingRays.RaySet;
+import com.tradery.indicators.registry.IndicatorContext;
+import com.tradery.indicators.registry.IndicatorRegistry;
+import com.tradery.indicators.registry.IndicatorSpec;
+import com.tradery.model.AggTrade;
 import com.tradery.model.Candle;
+import com.tradery.model.FundingRate;
+import com.tradery.model.OpenInterest;
+import com.tradery.model.PremiumIndex;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -42,6 +49,7 @@ public class IndicatorPageManager {
 
     // Background computation
     private final ExecutorService computeExecutor;
+    private final ExecutorService aggTradesExecutor;  // Dedicated for aggTrades-based indicators
 
     public IndicatorPageManager(CandlePageManager candlePageMgr,
                                  FundingPageManager fundingPageMgr,
@@ -54,8 +62,16 @@ public class IndicatorPageManager {
         this.aggTradesPageMgr = aggTradesPageMgr;
         this.premiumPageMgr = premiumPageMgr;
 
-        this.computeExecutor = Executors.newFixedThreadPool(2, r -> {
+        // Use 4 threads for candle-based indicators (HISTORIC_RAYS can take minutes)
+        this.computeExecutor = Executors.newFixedThreadPool(4, r -> {
             Thread t = new Thread(r, "IndicatorPageManager");
+            t.setDaemon(true);
+            return t;
+        });
+
+        // Dedicated executor for aggTrades-based indicators (not blocked by HISTORIC_RAYS)
+        this.aggTradesExecutor = Executors.newSingleThreadExecutor(r -> {
+            Thread t = new Thread(r, "AggTradesIndicator");
             t.setDaemon(true);
             return t;
         });
@@ -172,14 +188,23 @@ public class IndicatorPageManager {
 
         switch (type.getDependency()) {
             case CANDLES -> {
-                // Request candle data (internal dependency)
-                DataPageView<Candle> candlePage = candlePageMgr.request(
+                // Request candle data
+                candlePageMgr.request(
                     page.getSymbol(), page.getTimeframe(),
                     page.getStartTime(), page.getEndTime(),
                     new CandleDataListener<>(page),
                     "IndicatorPageManager");
             }
-            // Other dependencies can be added similarly
+            case AGG_TRADES -> {
+                // Request both candles and aggTrades for orderflow indicators
+                new AggTradesDataCoordinator<>(page).start();
+            }
+            case OPEN_INTEREST, FUNDING, PREMIUM -> {
+                // These indicators use direct data access via IndicatorEngine
+                log.debug("Indicator {} uses direct data access, not page manager computation",
+                    type);
+                updateError(page, "Use direct data access for " + type.getDependency());
+            }
             default -> {
                 log.warn("Indicator {} dependency {} not yet implemented",
                     type, type.getDependency());
@@ -217,13 +242,88 @@ public class IndicatorPageManager {
     }
 
     /**
-     * Compute indicator in background thread.
+     * Coordinator that requests both candles and aggTrades, then computes when both ready.
+     */
+    private class AggTradesDataCoordinator<T> {
+        private final IndicatorPage<T> indicatorPage;
+        private volatile List<Candle> candles;
+        private volatile List<AggTrade> aggTrades;
+        private volatile boolean candlesReady = false;
+        private volatile boolean aggTradesReady = false;
+
+        AggTradesDataCoordinator(IndicatorPage<T> indicatorPage) {
+            this.indicatorPage = indicatorPage;
+        }
+
+        void start() {
+            // Request candles
+            candlePageMgr.request(
+                indicatorPage.getSymbol(), indicatorPage.getTimeframe(),
+                indicatorPage.getStartTime(), indicatorPage.getEndTime(),
+                new DataPageListener<Candle>() {
+                    @Override
+                    public void onStateChanged(DataPageView<Candle> page, PageState oldState, PageState newState) {
+                        if (newState == PageState.READY) {
+                            candles = page.getData();
+                            candlesReady = true;
+                            checkAndCompute();
+                        } else if (newState == PageState.ERROR) {
+                            updateError(indicatorPage, page.getErrorMessage());
+                        }
+                    }
+                    @Override
+                    public void onDataChanged(DataPageView<Candle> page) {
+                        if (page.isReady()) {
+                            candles = page.getData();
+                            checkAndCompute();
+                        }
+                    }
+                },
+                "IndicatorPageManager-AggTrades");
+
+            // Request aggTrades
+            aggTradesPageMgr.request(
+                indicatorPage.getSymbol(), indicatorPage.getTimeframe(),
+                indicatorPage.getStartTime(), indicatorPage.getEndTime(),
+                new DataPageListener<AggTrade>() {
+                    @Override
+                    public void onStateChanged(DataPageView<AggTrade> page, PageState oldState, PageState newState) {
+                        if (newState == PageState.READY) {
+                            aggTrades = page.getData();
+                            aggTradesReady = true;
+                            checkAndCompute();
+                        } else if (newState == PageState.ERROR) {
+                            // AggTrades error is not fatal - can fall back to candles
+                            log.debug("AggTrades not available, will use candle fallback");
+                            aggTradesReady = true;
+                            checkAndCompute();
+                        }
+                    }
+                    @Override
+                    public void onDataChanged(DataPageView<AggTrade> page) {
+                        if (page.isReady()) {
+                            aggTrades = page.getData();
+                            checkAndCompute();
+                        }
+                    }
+                });
+        }
+
+        private synchronized void checkAndCompute() {
+            if (candlesReady && aggTradesReady && candles != null) {
+                computeAsyncWithAggTrades(indicatorPage, candles, aggTrades);
+            }
+        }
+    }
+
+    /**
+     * Compute indicator in background thread (candles only).
      */
     @SuppressWarnings("unchecked")
     private <T> void computeAsync(IndicatorPage<T> page, List<Candle> candles) {
         computeExecutor.submit(() -> {
             try {
-                Object result = computeIndicator(page.getType(), page.getParams(), candles);
+                Object result = computeIndicator(page.getType(), page.getParams(), candles, null);
 
                 SwingUtilities.invokeLater(() -> {
                     PageState prevState = page.getState();
@@ -244,42 +344,57 @@ public class IndicatorPageManager {
     }
 
     /**
-     * Compute the indicator value.
+     * Compute indicator in background thread (candles + aggTrades).
+     * Uses dedicated aggTradesExecutor to not be blocked by HISTORIC_RAYS.
      */
-    private Object computeIndicator(IndicatorType type, String params, List<Candle> candles) {
+    @SuppressWarnings("unchecked")
+    private <T> void computeAsyncWithAggTrades(IndicatorPage<T> page, List<Candle> candles, List<AggTrade> aggTrades) {
+        // Use dedicated executor for aggTrades indicators (not blocked by candle-only indicators)
+        aggTradesExecutor.submit(() -> {
+            try {
+                Object result = computeIndicator(page.getType(), page.getParams(), candles, aggTrades);
+
+                SwingUtilities.invokeLater(() -> {
+                    PageState prevState = page.getState();
+                    page.setData((T) result);
+                    page.setSourceCandleHash(computeHash(candles));
+                    page.setComputeTime(System.currentTimeMillis());
+                    page.setState(PageState.READY);
+
+                    notifyStateChanged(page, prevState, PageState.READY);
+                    notifyDataChanged(page);
+                });
+
+            } catch (Exception e) {
+                log.warn("Indicator computation failed for {}: {}", page.getType(), e.getMessage(), e);
+                updateError(page, e.getMessage());
+            }
+        });
+    }
+
+    /**
+     * Compute the indicator value using the registry.
+     * Falls back to legacy switch for special cases not in registry.
+     */
+    private Object computeIndicator(IndicatorType type, String params, List<Candle> candles, List<AggTrade> aggTrades) {
+        // Map IndicatorType to registry ID
+        String registryId = mapTypeToRegistryId(type);
+
+        // Try registry first
+        if (registryId != null) {
+            IndicatorSpec<?> spec = IndicatorRegistry.getInstance().get(registryId);
+            if (spec != null) {
+                // Create context with both candles and aggTrades if available
+                IndicatorContext ctx = (aggTrades != null && !aggTrades.isEmpty())
+                    ? IndicatorContext.ofCandlesAndAggTrades(candles, aggTrades, "1h")
+                    : IndicatorContext.ofCandles(candles, "1h");
+                Object[] parsedParams = spec.parseParams(params);
+                return spec.compute(ctx, parsedParams);
+            }
+        }
+
+        // Fall back to legacy for special cases
         return switch (type) {
-            case RSI -> Indicators.rsi(candles, Integer.parseInt(params));
-            case SMA -> Indicators.sma(candles, Integer.parseInt(params));
-            case EMA -> Indicators.ema(candles, Integer.parseInt(params));
-            case ATR -> Indicators.atr(candles, Integer.parseInt(params));
-            case ADX -> Indicators.adx(candles, Integer.parseInt(params)).adx();
-            case PLUS_DI -> Indicators.adx(candles, Integer.parseInt(params)).plusDI();
-            case MINUS_DI -> Indicators.adx(candles, Integer.parseInt(params)).minusDI();
-            case MACD -> {
-                String[] p = params.split(":");
-                yield Indicators.macd(candles,
-                    Integer.parseInt(p[0]),
-                    Integer.parseInt(p[1]),
-                    Integer.parseInt(p[2]));
-            }
-            case BBANDS -> {
-                String[] p = params.split(":");
-                yield Indicators.bollingerBands(candles,
-                    Integer.parseInt(p[0]),
-                    Double.parseDouble(p[1]));
-            }
-            case RESISTANCE_RAYS -> {
-                String[] p = params.split(":");
-                int lookback = Integer.parseInt(p[0]);
-                int skip = Integer.parseInt(p[1]);
-                yield RotatingRays.calculateResistanceRays(candles, lookback, skip);
-            }
-            case SUPPORT_RAYS -> {
-                String[] p = params.split(":");
-                int lookback = Integer.parseInt(p[0]);
-                int skip = Integer.parseInt(p[1]);
-                yield RotatingRays.calculateSupportRays(candles, lookback, skip);
-            }
             case HISTORIC_RAYS -> {
                 // Compute rays at multiple bar positions for historic visualization
                 String[] p = params.split(":");
@@ -287,13 +402,45 @@ public class IndicatorPageManager {
                 int interval = Integer.parseInt(p[1]);
                 yield computeHistoricRays(candles, skip, interval);
             }
-            case STOCHASTIC -> {
-                String[] p = params.split(":");
-                int kPeriod = Integer.parseInt(p[0]);
-                int dPeriod = Integer.parseInt(p[1]);
-                yield Indicators.stochastic(candles, kPeriod, dPeriod);
-            }
             default -> throw new UnsupportedOperationException("Indicator not implemented: " + type);
+        };
+    }
+
+    /**
+     * Map IndicatorType enum to registry ID.
+     * Returns null for types not in registry or needing special handling.
+     */
+    private String mapTypeToRegistryId(IndicatorType type) {
+        return switch (type) {
+            // Simple indicators
+            case RSI -> "RSI";
+            case SMA -> "SMA";
+            case EMA -> "EMA";
+            case ATR -> "ATR";
+            case ADX -> "ADX";
+            case PLUS_DI -> "PLUS_DI";
+            case MINUS_DI -> "MINUS_DI";
+            case VWAP -> "VWAP";
+            // Composite indicators
+            case MACD -> "MACD";
+            case BBANDS -> "BBANDS";
+            case STOCHASTIC -> "STOCHASTIC";
+            case ICHIMOKU -> "ICHIMOKU";
+            case SUPERTREND -> "SUPERTREND";
+            // Rays
+            case RESISTANCE_RAYS -> "RESISTANCE_RAYS";
+            case SUPPORT_RAYS -> "SUPPORT_RAYS";
+            // Orderflow
+            case DELTA -> "DELTA";
+            case CUM_DELTA -> "CUM_DELTA";
+            // Volume profile - returns full result, caller extracts POC/VAH/VAL
+            case POC, VAH, VAL -> "VOLUME_PROFILE";
+            // Special cases handled by legacy switch (not in registry)
+            case HISTORIC_RAYS -> null;
+            // External data indicators - not yet in registry
+            case FUNDING, FUNDING_8H, OI, OI_CHANGE, PREMIUM -> null;
+            // Daily volume profile
+            case DAILY_VOLUME_PROFILE -> "DAILY_VOLUME_PROFILE";
         };
     }
 
@@ -462,12 +609,17 @@ public class IndicatorPageManager {
     public void shutdown() {
         log.info("Shutting down IndicatorPageManager...");
         computeExecutor.shutdown();
+        aggTradesExecutor.shutdown();
         try {
             if (!computeExecutor.awaitTermination(2, TimeUnit.SECONDS)) {
                 computeExecutor.shutdownNow();
             }
+            if (!aggTradesExecutor.awaitTermination(2, TimeUnit.SECONDS)) {
+                aggTradesExecutor.shutdownNow();
+            }
         } catch (InterruptedException e) {
             computeExecutor.shutdownNow();
+            aggTradesExecutor.shutdownNow();
             Thread.currentThread().interrupt();
         }
         pages.clear();

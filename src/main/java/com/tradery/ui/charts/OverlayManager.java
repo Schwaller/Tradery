@@ -1,7 +1,6 @@
 package com.tradery.ui.charts;
 
 import com.tradery.indicators.IndicatorEngine;
-import com.tradery.model.AggTrade;
 import com.tradery.model.Candle;
 import org.jfree.chart.JFreeChart;
 import org.jfree.chart.annotations.XYLineAnnotation;
@@ -54,12 +53,35 @@ public class OverlayManager {
     // Ray overlay
     private RayOverlay rayOverlay;
 
-    // Daily Volume Profile overlay
-    private DailyVolumeProfileAnnotation dailyVolumeProfileAnnotation;
+    // Daily Volume Profile overlay (background computed)
+    private DailyVolumeProfileOverlay dailyVolumeProfileOverlay;
+
+    // Current data context
+    private String currentSymbol = "BTCUSDT";
+    private String currentTimeframe = "1h";
+    private List<Candle> currentCandles;
 
     public OverlayManager(JFreeChart priceChart) {
         this.priceChart = priceChart;
         this.rayOverlay = new RayOverlay(priceChart);
+        this.dailyVolumeProfileOverlay = new DailyVolumeProfileOverlay(priceChart);
+    }
+
+    /**
+     * Set the data context for overlay computation.
+     * Call this when symbol/timeframe changes.
+     */
+    public void setDataContext(String symbol, String timeframe) {
+        this.currentSymbol = symbol;
+        this.currentTimeframe = timeframe;
+    }
+
+    /**
+     * Set candles for overlay computation.
+     * Call this when candles are loaded/updated.
+     */
+    public void setCandles(List<Candle> candles) {
+        this.currentCandles = candles;
     }
 
     // ===== Color Palette =====
@@ -674,7 +696,7 @@ public class OverlayManager {
         rayOverlay.setLookback(lookback);
         rayOverlay.setSkip(skip);
         if (enabled && candles != null && indicatorEngine != null) {
-            rayOverlay.update(candles, indicatorEngine);
+            rayOverlay.update(candles, indicatorEngine, currentSymbol, currentTimeframe);
         } else {
             rayOverlay.clear();
         }
@@ -685,7 +707,7 @@ public class OverlayManager {
      */
     public void updateRayOverlay(List<Candle> candles) {
         if (rayOverlay.isEnabled() && candles != null && indicatorEngine != null) {
-            rayOverlay.update(candles, indicatorEngine);
+            rayOverlay.update(candles, indicatorEngine, currentSymbol, currentTimeframe);
         }
     }
 
@@ -950,40 +972,34 @@ public class OverlayManager {
         return vwapDatasetIndex >= 0 && priceChart.getXYPlot().getDataset(vwapDatasetIndex) != null;
     }
 
-    // ===== Daily Volume Profile Overlay =====
+    // ===== Daily Volume Profile Overlay (Background Computed) =====
 
     /**
      * Sets the daily volume profile overlay showing volume distribution histograms
-     * on the left side of each day's bounds. Uses aggTrades from IndicatorEngine
-     * for accurate volume distribution, falling back to candles if unavailable.
+     * on the left side of each day's bounds. Computation happens in background thread.
      *
-     * @param candles        List of candles to analyze (fallback)
+     * @param candles        List of candles (for time range)
      * @param numBins        Number of price bins per day (default 24)
      * @param valueAreaPct   Value area percentage (typically 70%)
      * @param histogramWidth Max width in pixels for histogram bars
      */
     public void setDailyVolumeProfileOverlay(List<Candle> candles, int numBins, double valueAreaPct, int histogramWidth) {
-        clearDailyVolumeProfileOverlay();
-
-        if (candles == null || candles.isEmpty()) return;
-
-        XYPlot plot = priceChart.getXYPlot();
-
-        List<DailyVolumeProfileAnnotation.DayProfile> profiles;
-
-        // Try to use aggTrades from IndicatorEngine for accurate volume distribution
-        List<AggTrade> aggTrades = indicatorEngine != null ? indicatorEngine.getAggTrades() : null;
-        if (aggTrades != null && !aggTrades.isEmpty()) {
-            profiles = DailyVolumeProfileAnnotation.calculateDayProfilesFromAggTrades(aggTrades, numBins, valueAreaPct, 30);
-        } else {
-            // Fall back to candle-based calculation
-            profiles = DailyVolumeProfileAnnotation.calculateDayProfiles(candles, numBins, valueAreaPct);
+        if (candles == null || candles.isEmpty()) {
+            clearDailyVolumeProfileOverlay();
+            return;
         }
 
-        if (profiles.isEmpty()) return;
+        // Configure and enable the overlay
+        dailyVolumeProfileOverlay.setNumBins(numBins);
+        dailyVolumeProfileOverlay.setValueAreaPct(valueAreaPct);
+        dailyVolumeProfileOverlay.setHistogramWidth(histogramWidth);
+        dailyVolumeProfileOverlay.setEnabled(true);
 
-        dailyVolumeProfileAnnotation = new DailyVolumeProfileAnnotation(profiles, histogramWidth);
-        plot.addAnnotation(dailyVolumeProfileAnnotation);
+        // Request background computation
+        dailyVolumeProfileOverlay.requestData(
+            candles, currentSymbol, currentTimeframe,
+            candles.get(0).timestamp(),
+            candles.get(candles.size() - 1).timestamp());
     }
 
     /**
@@ -998,18 +1014,21 @@ public class OverlayManager {
      * Clears the daily volume profile overlay from the chart.
      */
     public void clearDailyVolumeProfileOverlay() {
-        if (dailyVolumeProfileAnnotation != null && priceChart != null) {
-            XYPlot plot = priceChart.getXYPlot();
-            plot.removeAnnotation(dailyVolumeProfileAnnotation);
-            dailyVolumeProfileAnnotation = null;
-        }
+        dailyVolumeProfileOverlay.setEnabled(false);
+    }
+
+    /**
+     * Get the daily volume profile overlay for direct access.
+     */
+    public DailyVolumeProfileOverlay getDailyVolumeProfileOverlay() {
+        return dailyVolumeProfileOverlay;
     }
 
     /**
      * Checks if the daily volume profile overlay is currently enabled.
      */
     public boolean isDailyVolumeProfileEnabled() {
-        return dailyVolumeProfileAnnotation != null;
+        return dailyVolumeProfileOverlay.isEnabled();
     }
 
     // ===== Clear All =====
