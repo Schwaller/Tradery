@@ -1,6 +1,8 @@
 package com.tradery.data.page;
 
 import com.tradery.data.PageState;
+import com.tradery.model.AggTrade;
+import com.tradery.model.Candle;
 
 /**
  * Represents a computed indicator for the indicator page system.
@@ -30,6 +32,12 @@ public class IndicatorPage<T> {
     // Source dependency tracking
     private volatile String sourceCandleHash;   // Hash of candles used for computation
     private volatile long computeTime;          // When computation finished
+
+    // Source data pages (owned by this indicator page for cascading release)
+    private volatile DataPageView<Candle> sourceCandlePage;
+    private volatile DataPageListener<Candle> sourceCandleListener;
+    private volatile DataPageView<AggTrade> sourceAggTradesPage;
+    private volatile DataPageListener<AggTrade> sourceAggTradesListener;
 
     public IndicatorPage(IndicatorType type, String params, String symbol,
                           String timeframe, long startTime, long endTime) {
@@ -137,6 +145,41 @@ public class IndicatorPage<T> {
      */
     public boolean isValid(String currentSourceHash) {
         return sourceCandleHash != null && sourceCandleHash.equals(currentSourceHash);
+    }
+
+    // ========== Source Page Ownership ==========
+
+    /**
+     * Set the source candle page that this indicator depends on.
+     */
+    public void setSourceCandlePage(DataPageView<Candle> page, DataPageListener<Candle> listener) {
+        this.sourceCandlePage = page;
+        this.sourceCandleListener = listener;
+    }
+
+    /**
+     * Set the source aggTrades page that this indicator depends on.
+     */
+    public void setSourceAggTradesPage(DataPageView<AggTrade> page, DataPageListener<AggTrade> listener) {
+        this.sourceAggTradesPage = page;
+        this.sourceAggTradesListener = listener;
+    }
+
+    /**
+     * Release owned source data pages.
+     * Called when this indicator page is fully released.
+     */
+    public void releaseSourcePages(CandlePageManager candlePageMgr, AggTradesPageManager aggTradesPageMgr) {
+        if (sourceCandlePage != null && candlePageMgr != null) {
+            candlePageMgr.release(sourceCandlePage, sourceCandleListener);
+            sourceCandlePage = null;
+            sourceCandleListener = null;
+        }
+        if (sourceAggTradesPage != null && aggTradesPageMgr != null) {
+            aggTradesPageMgr.release(sourceAggTradesPage, sourceAggTradesListener);
+            sourceAggTradesPage = null;
+            sourceAggTradesListener = null;
+        }
     }
 
     // ========== Convenience State Checks ==========

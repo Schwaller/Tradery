@@ -147,6 +147,7 @@ public class IndicatorPageManager {
 
     /**
      * Release an indicator page.
+     * When the last reference is released, also releases underlying source data pages.
      */
     @SuppressWarnings("unchecked")
     public <T> void release(IndicatorPage<T> page, IndicatorPageListener<T> listener) {
@@ -173,7 +174,11 @@ public class IndicatorPageManager {
         if (newCount == null) {
             pages.remove(key);
             listeners.remove(key);
-            log.debug("Released indicator page: {}", key);
+
+            // Indicator page releases its own source data pages
+            page.releaseSourcePages(candlePageMgr, aggTradesPageMgr);
+
+            log.debug("Released indicator page with source data: {}", key);
         }
     }
 
@@ -188,12 +193,14 @@ public class IndicatorPageManager {
 
         switch (type.getDependency()) {
             case CANDLES -> {
-                // Request candle data
-                candlePageMgr.request(
+                // Request candle data - indicator page owns the source for cascading release
+                CandleDataListener<T> candleListener = new CandleDataListener<>(page);
+                DataPageView<Candle> candlePage = candlePageMgr.request(
                     page.getSymbol(), page.getTimeframe(),
                     page.getStartTime(), page.getEndTime(),
-                    new CandleDataListener<>(page),
+                    candleListener,
                     "IndicatorPageManager");
+                page.setSourceCandlePage(candlePage, candleListener);
             }
             case AGG_TRADES -> {
                 // Request both candles and aggTrades for orderflow indicators
@@ -243,6 +250,7 @@ public class IndicatorPageManager {
 
     /**
      * Coordinator that requests both candles and aggTrades, then computes when both ready.
+     * Source pages are owned by the indicator page for cascading release.
      */
     private class AggTradesDataCoordinator<T> {
         private final IndicatorPage<T> indicatorPage;
@@ -251,62 +259,73 @@ public class IndicatorPageManager {
         private volatile boolean candlesReady = false;
         private volatile boolean aggTradesReady = false;
 
+        // Listeners stored as fields so they can be passed to indicator page
+        private final DataPageListener<Candle> candleListener;
+        private final DataPageListener<AggTrade> aggTradesListener;
+
         AggTradesDataCoordinator(IndicatorPage<T> indicatorPage) {
             this.indicatorPage = indicatorPage;
+
+            // Create listeners as fields so they can be tracked
+            this.candleListener = new DataPageListener<>() {
+                @Override
+                public void onStateChanged(DataPageView<Candle> page, PageState oldState, PageState newState) {
+                    if (newState == PageState.READY) {
+                        candles = page.getData();
+                        candlesReady = true;
+                        checkAndCompute();
+                    } else if (newState == PageState.ERROR) {
+                        updateError(indicatorPage, page.getErrorMessage());
+                    }
+                }
+                @Override
+                public void onDataChanged(DataPageView<Candle> page) {
+                    if (page.isReady()) {
+                        candles = page.getData();
+                        checkAndCompute();
+                    }
+                }
+            };
+
+            this.aggTradesListener = new DataPageListener<>() {
+                @Override
+                public void onStateChanged(DataPageView<AggTrade> page, PageState oldState, PageState newState) {
+                    if (newState == PageState.READY) {
+                        aggTrades = page.getData();
+                        aggTradesReady = true;
+                        checkAndCompute();
+                    } else if (newState == PageState.ERROR) {
+                        // AggTrades error is not fatal - can fall back to candles
+                        log.debug("AggTrades not available, will use candle fallback");
+                        aggTradesReady = true;
+                        checkAndCompute();
+                    }
+                }
+                @Override
+                public void onDataChanged(DataPageView<AggTrade> page) {
+                    if (page.isReady()) {
+                        aggTrades = page.getData();
+                        checkAndCompute();
+                    }
+                }
+            };
         }
 
         void start() {
-            // Request candles
-            candlePageMgr.request(
+            // Request candles - indicator page owns the source
+            DataPageView<Candle> candlePage = candlePageMgr.request(
                 indicatorPage.getSymbol(), indicatorPage.getTimeframe(),
                 indicatorPage.getStartTime(), indicatorPage.getEndTime(),
-                new DataPageListener<Candle>() {
-                    @Override
-                    public void onStateChanged(DataPageView<Candle> page, PageState oldState, PageState newState) {
-                        if (newState == PageState.READY) {
-                            candles = page.getData();
-                            candlesReady = true;
-                            checkAndCompute();
-                        } else if (newState == PageState.ERROR) {
-                            updateError(indicatorPage, page.getErrorMessage());
-                        }
-                    }
-                    @Override
-                    public void onDataChanged(DataPageView<Candle> page) {
-                        if (page.isReady()) {
-                            candles = page.getData();
-                            checkAndCompute();
-                        }
-                    }
-                },
+                candleListener,
                 "IndicatorPageManager-AggTrades");
+            indicatorPage.setSourceCandlePage(candlePage, candleListener);
 
-            // Request aggTrades
-            aggTradesPageMgr.request(
+            // Request aggTrades - indicator page owns the source
+            DataPageView<AggTrade> aggPage = aggTradesPageMgr.request(
                 indicatorPage.getSymbol(), indicatorPage.getTimeframe(),
                 indicatorPage.getStartTime(), indicatorPage.getEndTime(),
-                new DataPageListener<AggTrade>() {
-                    @Override
-                    public void onStateChanged(DataPageView<AggTrade> page, PageState oldState, PageState newState) {
-                        if (newState == PageState.READY) {
-                            aggTrades = page.getData();
-                            aggTradesReady = true;
-                            checkAndCompute();
-                        } else if (newState == PageState.ERROR) {
-                            // AggTrades error is not fatal - can fall back to candles
-                            log.debug("AggTrades not available, will use candle fallback");
-                            aggTradesReady = true;
-                            checkAndCompute();
-                        }
-                    }
-                    @Override
-                    public void onDataChanged(DataPageView<AggTrade> page) {
-                        if (page.isReady()) {
-                            aggTrades = page.getData();
-                            checkAndCompute();
-                        }
-                    }
-                });
+                aggTradesListener);
+            indicatorPage.setSourceAggTradesPage(aggPage, aggTradesListener);
         }
 
         private synchronized void checkAndCompute() {
