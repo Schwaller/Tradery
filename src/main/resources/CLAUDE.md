@@ -266,6 +266,7 @@ This scales out of positions:
 - `QUOTE_VOLUME` - Volume in quote currency
 - `BUY_VOLUME`, `SELL_VOLUME` - Taker buy/sell volume
 - `OHLCV_DELTA` - Buy - sell volume
+- `OHLCV_CVD` - Cumulative delta from OHLCV
 - `BUY_RATIO` - Buy volume / total (0-1)
 - `TRADE_COUNT` - Number of trades
 
@@ -273,7 +274,12 @@ This scales out of positions:
 - `VWAP`, `POC(n)`, `VAH(n)`, `VAL(n)` - Volume profile
 - `PREV_DAY_POC/VAH/VAL`, `TODAY_POC/VAH/VAL` - Session levels
 - `DELTA`, `CUM_DELTA` - Order flow delta (full mode)
-- `WHALE_DELTA(threshold)`, `WHALE_BUY_VOL(t)`, `WHALE_SELL_VOL(t)` - Large trades
+- `WHALE_DELTA(threshold)`, `WHALE_BUY_VOL(t)`, `WHALE_SELL_VOL(t)`, `LARGE_TRADE_COUNT(t)` - Large trades
+
+### Rotating Ray Functions (auto-detect trendlines)
+Params: `rayNum`, `lookback`, `skip`
+- **Resistance:** `RESISTANCE_RAY_BROKEN/CROSSED/DISTANCE(ray,look,skip)`, `RESISTANCE_RAYS_BROKEN(look,skip)`, `RESISTANCE_RAY_COUNT(look,skip)`
+- **Support:** Same pattern with `SUPPORT_` prefix
 
 ### Operators
 - Comparison: `>`, `<`, `>=`, `<=`, `==`

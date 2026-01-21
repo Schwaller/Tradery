@@ -357,13 +357,17 @@ Example: `SHOOTING_STAR AND BODY_SIZE[1] > ATR(14) * 1.5 AND IS_BULLISH[1] == 1`
 - Open Interest: `OI`, `OI_CHANGE`, `OI_DELTA(n)`
 
 ### OHLCV Volume (instant)
-`QUOTE_VOLUME`, `BUY_VOLUME`, `SELL_VOLUME`, `OHLCV_DELTA`, `BUY_RATIO`, `TRADE_COUNT`
+`QUOTE_VOLUME`, `BUY_VOLUME`, `SELL_VOLUME`, `OHLCV_DELTA`, `OHLCV_CVD`, `BUY_RATIO`, `TRADE_COUNT`
 
 ### Orderflow (requires orderflowSettings.mode)
 - Volume Profile: `VWAP`, `POC(n)`, `VAH(n)`, `VAL(n)`
 - Session Levels: `PREV_DAY_POC/VAH/VAL`, `TODAY_POC/VAH/VAL`
 - Delta: `DELTA`, `CUM_DELTA`
-- Whales: `WHALE_DELTA(threshold)`, `WHALE_BUY_VOL(t)`, `WHALE_SELL_VOL(t)`
+- Whales: `WHALE_DELTA(threshold)`, `WHALE_BUY_VOL(t)`, `WHALE_SELL_VOL(t)`, `LARGE_TRADE_COUNT(t)`
+
+### Rotating Ray Functions (auto-detect trendlines)
+- Resistance: `RESISTANCE_RAY_BROKEN/CROSSED/DISTANCE(ray,look,skip)`, `RESISTANCE_RAYS_BROKEN(look,skip)`
+- Support: Same pattern with `SUPPORT_` prefix
 
 ### Operators
 - Comparison: `>`, `<`, `>=`, `<=`, `==`
