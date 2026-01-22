@@ -66,18 +66,20 @@ public class IndicatorPage<T> implements DataPageListener<Candle> {
     }
 
     // AggTrades listener (separate because it's a different type)
+    // Uses virtual threads to avoid blocking the notification thread
     private final DataPageListener<AggTrade> aggTradesListener = new DataPageListener<>() {
         @Override
         public void onStateChanged(DataPageView<AggTrade> page, PageState oldState, PageState newState) {
             if (newState == PageState.READY) {
                 sourceAggTrades = page.getData();
                 aggTradesReady = true;
-                checkAndCompute();
+                // Virtual thread - lightweight, doesn't block notification loop
+                Thread.startVirtualThread(() -> checkAndCompute());
             } else if (newState == PageState.ERROR) {
                 // AggTrades error is not fatal - can fall back to candles
                 log.debug("AggTrades not available for {}, will use candle fallback", getKey());
                 aggTradesReady = true;
-                checkAndCompute();
+                Thread.startVirtualThread(() -> checkAndCompute());
             }
         }
 
@@ -85,7 +87,8 @@ public class IndicatorPage<T> implements DataPageListener<Candle> {
         public void onDataChanged(DataPageView<AggTrade> page) {
             if (page.isReady()) {
                 sourceAggTrades = page.getData();
-                checkAndCompute();
+                // Virtual thread - lightweight, doesn't block notification loop
+                Thread.startVirtualThread(() -> checkAndCompute());
             }
         }
     };
@@ -168,13 +171,15 @@ public class IndicatorPage<T> implements DataPageListener<Candle> {
     }
 
     // ========== DataPageListener<Candle> Implementation ==========
+    // Uses virtual threads to avoid blocking the notification thread
 
     @Override
     public void onStateChanged(DataPageView<Candle> page, PageState oldState, PageState newState) {
         if (newState == PageState.READY) {
             sourceCandles = page.getData();
             candlesReady = true;
-            checkAndCompute();
+            // Virtual thread - lightweight, doesn't block notification loop
+            Thread.startVirtualThread(() -> checkAndCompute());
         } else if (newState == PageState.ERROR) {
             if (computeCallback != null) {
                 computeCallback.onError(this, page.getErrorMessage());
@@ -186,7 +191,8 @@ public class IndicatorPage<T> implements DataPageListener<Candle> {
     public void onDataChanged(DataPageView<Candle> page) {
         if (page.isReady()) {
             sourceCandles = page.getData();
-            checkAndCompute();
+            // Virtual thread - lightweight, doesn't block notification loop
+            Thread.startVirtualThread(() -> checkAndCompute());
         }
     }
 

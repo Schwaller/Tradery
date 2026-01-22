@@ -221,6 +221,44 @@ public class AiTerminalPanel extends JPanel {
         }
     }
 
+    /**
+     * Stop the current process and reset the terminal to a fresh state.
+     * This clears all scrollback history and creates a new terminal widget.
+     */
+    public void resetTerminal() {
+        stopProcess();
+
+        // Remove and dispose old widget
+        if (terminalWidget != null) {
+            remove(terminalWidget);
+            terminalWidget.close();
+        }
+
+        // Create fresh terminal widget
+        terminalWidget = new JediTermWidget(new AiTerminalSettingsProvider());
+        customizeScrollbar(terminalWidget);
+
+        // Re-add click-to-focus behavior
+        terminalWidget.addMouseListener(new java.awt.event.MouseAdapter() {
+            @Override
+            public void mousePressed(java.awt.event.MouseEvent e) {
+                grabFocus();
+            }
+        });
+
+        add(terminalWidget, BorderLayout.CENTER);
+        revalidate();
+        repaint();
+    }
+
+    /**
+     * Restart the AI with a fresh terminal - clears all history and starts anew.
+     */
+    public void restartAi(String aiType, String workingDir, String initialPrompt) {
+        resetTerminal();
+        startAi(aiType, workingDir, initialPrompt);
+    }
+
     public boolean isRunning() {
         return isRunning;
     }

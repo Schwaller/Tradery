@@ -228,11 +228,11 @@ public class AiTerminalController {
             aiTerminalFrame.setTitle(displayName + " - " + strategyName);
         }
 
-        // Show and start
+        // Show and start (always use fresh terminal to clear history)
         if (terminalDocked) {
             dockedTerminalWrapper.setVisible(true);
             editorTerminalSplit.setDividerLocation(0.5);
-            dockedTerminalPanel.startAi(aiType, traderyDir, initialPrompt);
+            dockedTerminalPanel.restartAi(aiType, traderyDir, initialPrompt);
             dockedTerminalPanel.grabFocus();
             onStatus.accept("Opened " + displayName + " for " + strategyName);
         } else {

@@ -63,16 +63,21 @@ public class IndicatorPageManager {
         this.aggTradesPageMgr = aggTradesPageMgr;
         this.premiumPageMgr = premiumPageMgr;
 
-        // Use 4 threads for candle-based indicators (HISTORIC_RAYS can take minutes)
-        this.computeExecutor = Executors.newFixedThreadPool(4, r -> {
-            Thread t = new Thread(r, "IndicatorPageManager");
+        // Thread pool size: min 3, max 1/3 of CPUs
+        int cpus = Runtime.getRuntime().availableProcessors();
+        int poolSize = Math.max(3, cpus / 3);
+        log.info("Indicator compute pool size: {} (CPUs: {})", poolSize, cpus);
+
+        // Candle-based indicators (HISTORIC_RAYS can take minutes)
+        this.computeExecutor = Executors.newFixedThreadPool(poolSize, r -> {
+            Thread t = new Thread(r, "IndicatorCompute");
             t.setDaemon(true);
             return t;
         });
 
-        // Dedicated executor for aggTrades-based indicators (not blocked by HISTORIC_RAYS)
-        this.aggTradesExecutor = Executors.newSingleThreadExecutor(r -> {
-            Thread t = new Thread(r, "AggTradesIndicator");
+        // AggTrades-based indicators (separate so HISTORIC_RAYS doesn't block Delta/CVD)
+        this.aggTradesExecutor = Executors.newFixedThreadPool(poolSize, r -> {
+            Thread t = new Thread(r, "AggTradesCompute");
             t.setDaemon(true);
             return t;
         });

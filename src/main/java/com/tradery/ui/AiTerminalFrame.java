@@ -103,6 +103,7 @@ public class AiTerminalFrame extends JFrame {
 
     /**
      * Start an AI CLI with the given context (creates own terminal panel if needed).
+     * Always uses fresh terminal to clear any previous history.
      */
     public void startAi(String aiType, String workingDir, String initialPrompt) {
         if (terminalPanel == null) {
@@ -110,7 +111,7 @@ public class AiTerminalFrame extends JFrame {
             terminalPanel.setOnFileChange(onFileChange);
             contentPanel.add(terminalPanel, BorderLayout.CENTER);
         }
-        terminalPanel.startAi(aiType, workingDir, initialPrompt);
+        terminalPanel.restartAi(aiType, workingDir, initialPrompt);
         setVisible(true);
         toFront();
     }

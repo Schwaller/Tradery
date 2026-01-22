@@ -524,13 +524,14 @@ public class ProjectWindow extends JFrame {
 
         statusPanel.add(rightStatusPanel, BorderLayout.EAST);
 
-        // Click anywhere on status bar to open data loading status window
-        statusPanel.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
-        statusPanel.setToolTipText("Click for detailed data loading status");
+        // Right-click anywhere on status bar to open data loading status window
+        statusPanel.setToolTipText("Right-click for detailed data loading status");
         statusPanel.addMouseListener(new java.awt.event.MouseAdapter() {
             @Override
             public void mouseClicked(java.awt.event.MouseEvent e) {
-                openDataLoadingStatusWindow(statusPanel);
+                if (SwingUtilities.isRightMouseButton(e)) {
+                    openDataLoadingStatusWindow(statusPanel);
+                }
             }
         });
 
