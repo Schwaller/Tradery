@@ -62,6 +62,7 @@ public class ProjectWindow extends JFrame {
     private JButton historyBtn;
     private JButton phaseAnalysisBtn;
     private PageManagerBadgesPanel pageManagerBadges;
+    private MemoryStatusPanel memoryStatusPanel;
 
     // Phase analysis window
     private PhaseAnalysisWindow phaseAnalysisWindow;
@@ -509,9 +510,19 @@ public class ProjectWindow extends JFrame {
 
         statusPanel.add(leftStatusPanel, BorderLayout.WEST);
 
+        // Right side: memory status + page manager badges
+        JPanel rightStatusPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
+        rightStatusPanel.setOpaque(false);
+
+        // Memory status (heap + data memory)
+        memoryStatusPanel = new MemoryStatusPanel();
+        rightStatusPanel.add(memoryStatusPanel);
+
         // Page manager badges (shows checked out pages per manager)
         pageManagerBadges = new PageManagerBadgesPanel();
-        statusPanel.add(pageManagerBadges, BorderLayout.EAST);
+        rightStatusPanel.add(pageManagerBadges);
+
+        statusPanel.add(rightStatusPanel, BorderLayout.EAST);
 
         // Click anywhere on status bar to open data loading status window
         statusPanel.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
@@ -925,6 +936,14 @@ public class ProjectWindow extends JFrame {
         // Dispose timeline bar (releases data page)
         if (timelineBar != null) {
             timelineBar.dispose();
+        }
+
+        // Dispose status bar panels
+        if (pageManagerBadges != null) {
+            pageManagerBadges.dispose();
+        }
+        if (memoryStatusPanel != null) {
+            memoryStatusPanel.dispose();
         }
 
         // Stop auto-save scheduler

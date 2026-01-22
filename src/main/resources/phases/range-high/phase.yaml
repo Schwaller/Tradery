@@ -1,0 +1,7 @@
+id: range-high
+name: At Range High
+description: Price in top 10% of 20-bar range - potential resistance or breakout zone
+category: Technical
+condition: RANGE_POSITION(20) > 0.8
+timeframe: 1h
+symbol: BTCUSDT

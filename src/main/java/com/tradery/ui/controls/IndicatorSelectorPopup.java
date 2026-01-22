@@ -135,6 +135,9 @@ public class IndicatorSelectorPopup extends JDialog {
     private Timer updateTimer;
     private static final int DEBOUNCE_MS = 150;
 
+    // Flag to suppress updates during initialization
+    private boolean initializing = true;
+
     public IndicatorSelectorPopup(Window owner, ChartsPanel chartPanel, Runnable onBacktestNeeded) {
         super(owner, "Indicators", ModalityType.MODELESS);
         this.chartPanel = chartPanel;
@@ -147,6 +150,9 @@ public class IndicatorSelectorPopup extends JDialog {
         initDebounceTimer();
         syncFromChartPanel();
         updateControlVisibility();
+
+        // Done initializing - now allow updates
+        initializing = false;
 
         // Close on focus lost (with delay to handle focus transfer to spinners)
         addWindowFocusListener(new WindowFocusListener() {
@@ -1025,6 +1031,8 @@ public class IndicatorSelectorPopup extends JDialog {
     }
 
     private void scheduleUpdate() {
+        if (initializing) return; // Suppress updates during initialization
+
         if (updateTimer.isRunning()) {
             updateTimer.restart();
         } else {

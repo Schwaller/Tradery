@@ -1,5 +1,6 @@
 package com.tradery.data;
 
+import com.tradery.data.sqlite.SqliteDataStore;
 import com.tradery.model.AggTrade;
 import com.tradery.model.FetchProgress;
 import okhttp3.OkHttpClient;
@@ -11,6 +12,7 @@ import org.slf4j.LoggerFactory;
 import java.io.*;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.sql.SQLException;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -59,20 +61,22 @@ public class AggTradesStore {
     private final AggTradesClient client;
     private final OkHttpClient httpClient;
     private final OkHttpClient bulkDownloadClient;
+    private final SqliteDataStore sqliteStore;
 
     // Cancellation support
     private final AtomicBoolean fetchCancelled = new AtomicBoolean(false);
     private Consumer<FetchProgress> progressCallback;
 
     public AggTradesStore() {
-        this(new AggTradesClient());
+        this(new AggTradesClient(), new SqliteDataStore());
     }
 
-    public AggTradesStore(AggTradesClient client) {
+    public AggTradesStore(AggTradesClient client, SqliteDataStore sqliteStore) {
         this.dataDir = DataConfig.getInstance().getDataDir();
         this.client = client;
         this.httpClient = HttpClientFactory.getClient();
         this.bulkDownloadClient = HttpClientFactory.getBulkDownloadClient();
+        this.sqliteStore = sqliteStore;
 
         if (!dataDir.exists()) {
             dataDir.mkdirs();
@@ -138,25 +142,11 @@ public class AggTradesStore {
     }
 
     /**
-     * Estimate uncached duration for aggTrades.
+     * Estimate uncached duration for aggTrades using SQLite coverage.
      */
     private long estimateUncachedDuration(String symbol, long startTime, long endTime) {
-        LocalDateTime start = LocalDateTime.ofInstant(Instant.ofEpochMilli(startTime), ZoneOffset.UTC)
-            .withMinute(0).withSecond(0).withNano(0);
-        LocalDateTime end = LocalDateTime.ofInstant(Instant.ofEpochMilli(endTime), ZoneOffset.UTC);
-
-        long uncachedMs = 0;
-        LocalDateTime current = start;
-
-        while (!current.isAfter(end)) {
-            File completeFile = getHourFile(symbol, current, true);
-            if (!completeFile.exists()) {
-                uncachedMs += ONE_HOUR_MS;
-            }
-            current = current.plusHours(1);
-        }
-
-        return uncachedMs;
+        List<long[]> gaps = findGapsInSqlite(symbol, startTime, endTime);
+        return gaps.stream().mapToLong(g -> g[1] - g[0]).sum();
     }
 
     /**
@@ -249,17 +239,18 @@ public class AggTradesStore {
     }
 
     /**
-     * Check if a day is fully cached (all 24 hours have complete files).
+     * Check if a day is fully cached in SQLite.
      */
     private boolean isDayFullyCached(String symbol, LocalDate date) {
-        for (int hour = 0; hour < 24; hour++) {
-            LocalDateTime hourTime = date.atTime(hour, 0);
-            File completeFile = getHourFile(symbol, hourTime, true);
-            if (!completeFile.exists()) {
-                return false;
-            }
+        long dayStart = date.atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli();
+        long dayEnd = date.plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli() - 1;
+
+        try {
+            return sqliteStore.isFullyCovered(symbol, "agg_trades", "default", dayStart, dayEnd);
+        } catch (IOException e) {
+            log.debug("Failed to check day coverage: {}", e.getMessage());
+            return false;
         }
-        return true;
     }
 
     /**
@@ -313,7 +304,7 @@ public class AggTradesStore {
                 }
             });
 
-            return streamZipToHourlyFiles(symbol, progressStream, date);
+            return streamZipToSqlite(symbol, progressStream, date);
         }
     }
 
@@ -332,18 +323,11 @@ public class AggTradesStore {
     }
 
     /**
-     * Stream ZIP contents directly to hourly files.
-     * Groups trades by hour and writes incrementally.
+     * Stream ZIP contents directly to SQLite.
+     * Batches trades for efficient insertion.
      */
-    private int streamZipToHourlyFiles(String symbol, InputStream inputStream, LocalDate date) throws IOException {
-        // Prepare day directory
-        File dayDir = getDayDir(symbol, date);
-        dayDir.mkdirs();
-
-        // Writers for each hour (lazy init)
-        @SuppressWarnings("unchecked")
-        PrintWriter[] hourWriters = new PrintWriter[24];
-        int[] hourCounts = new int[24];
+    private int streamZipToSqlite(String symbol, InputStream inputStream, LocalDate date) throws IOException {
+        List<AggTrade> batch = new ArrayList<>(10000);
         int totalCount = 0;
 
         try (ZipInputStream zis = new ZipInputStream(inputStream)) {
@@ -367,24 +351,14 @@ public class AggTradesStore {
                         }
                         if (!line.isBlank()) {
                             try {
-                                // Parse just enough to get timestamp and hour
-                                String[] parts = line.split(",", 7);
-                                if (parts.length >= 6) {
-                                    long timestamp = Long.parseLong(parts[5].trim());
-                                    int hour = LocalDateTime.ofInstant(
-                                        Instant.ofEpochMilli(timestamp), ZoneOffset.UTC).getHour();
+                                AggTrade trade = parseVisionAggTrade(line);
+                                batch.add(trade);
+                                totalCount++;
 
-                                    // Get or create writer for this hour
-                                    if (hourWriters[hour] == null) {
-                                        File hourFile = new File(dayDir, String.format("%02d.csv", hour));
-                                        hourWriters[hour] = new PrintWriter(new FileWriter(hourFile));
-                                        hourWriters[hour].println(CSV_HEADER);
-                                    }
-
-                                    // Write the original line (already in CSV format)
-                                    hourWriters[hour].println(formatAggTradeLine(parts));
-                                    hourCounts[hour]++;
-                                    totalCount++;
+                                // Flush batch periodically
+                                if (batch.size() >= 10000) {
+                                    saveToSqlite(symbol, batch);
+                                    batch.clear();
                                 }
                             } catch (Exception e) {
                                 // Skip malformed lines
@@ -394,112 +368,22 @@ public class AggTradesStore {
                 }
                 zis.closeEntry();
             }
-        } finally {
-            // Close all writers
-            for (int i = 0; i < 24; i++) {
-                if (hourWriters[i] != null) {
-                    hourWriters[i].close();
-                    log.debug("Saved {} aggTrades to {}/{}.csv", formatCount(hourCounts[i]), date.format(DATE_FORMAT), String.format("%02d", i));
-                }
-            }
+        }
+
+        // Flush remaining
+        if (!batch.isEmpty()) {
+            saveToSqlite(symbol, batch);
+        }
+
+        // Mark day as covered
+        if (totalCount > 0 && !fetchCancelled.get()) {
+            long dayStart = date.atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli();
+            long dayEnd = date.plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli() - 1;
+            markCoverage(symbol, dayStart, dayEnd, true);
+            log.debug("Saved {} aggTrades to SQLite for {}", formatCount(totalCount), date.format(DATE_FORMAT));
         }
 
         return totalCount;
-    }
-
-    /**
-     * Format aggTrade parts to our CSV format.
-     * Vision format: agg_trade_id,price,quantity,first_trade_id,last_trade_id,transact_time,is_buyer_maker
-     * Our format: aggTradeId,price,quantity,firstTradeId,lastTradeId,timestamp,isBuyerMaker
-     */
-    private String formatAggTradeLine(String[] parts) {
-        // Parts are already in the right order, just need to trim and rejoin
-        return String.join(",",
-            parts[0].trim(),  // aggTradeId
-            parts[1].trim(),  // price
-            parts[2].trim(),  // quantity
-            parts[3].trim(),  // firstTradeId
-            parts[4].trim(),  // lastTradeId
-            parts[5].trim(),  // timestamp
-            parts[6].trim()   // isBuyerMaker
-        );
-    }
-
-    /**
-     * Check if a month is fully cached (all hours have complete files).
-     */
-    private boolean isMonthFullyCached(String symbol, YearMonth month) {
-        LocalDateTime start = month.atDay(1).atStartOfDay();
-        LocalDateTime end = month.plusMonths(1).atDay(1).atStartOfDay();
-
-        LocalDateTime current = start;
-        while (current.isBefore(end)) {
-            File completeFile = getHourFile(symbol, current, true);
-            if (!completeFile.exists()) {
-                return false;
-            }
-            current = current.plusHours(1);
-        }
-        return true;
-    }
-
-    /**
-     * Download and parse a single month's aggTrades ZIP from Vision.
-     */
-    private List<AggTrade> downloadVisionMonth(String url) throws IOException {
-        Request request = new Request.Builder()
-            .url(url)
-            .get()
-            .build();
-
-        // Use bulk download client with 10-minute timeout for large Vision files
-        try (Response response = bulkDownloadClient.newCall(request).execute()) {
-            if (response.code() == 404) {
-                throw new IOException("404 Not Found");
-            }
-            if (!response.isSuccessful()) {
-                throw new IOException("Download failed: " + response.code());
-            }
-
-            return parseVisionZip(response.body().byteStream());
-        }
-    }
-
-    /**
-     * Parse Vision ZIP file and extract aggTrades.
-     */
-    private List<AggTrade> parseVisionZip(InputStream inputStream) throws IOException {
-        List<AggTrade> trades = new ArrayList<>();
-
-        try (ZipInputStream zis = new ZipInputStream(inputStream)) {
-            ZipEntry entry;
-            while ((entry = zis.getNextEntry()) != null) {
-                if (entry.getName().endsWith(".csv")) {
-                    BufferedReader reader = new BufferedReader(new InputStreamReader(zis));
-                    String line;
-                    boolean isHeader = true;
-
-                    while ((line = reader.readLine()) != null) {
-                        if (isHeader) {
-                            isHeader = false;
-                            if (line.startsWith("agg") || !Character.isDigit(line.charAt(0))) {
-                                continue;
-                            }
-                        }
-                        if (!line.isBlank()) {
-                            try {
-                                trades.add(parseVisionAggTrade(line));
-                            } catch (Exception e) {
-                                // Skip malformed lines
-                            }
-                        }
-                    }
-                }
-                zis.closeEntry();
-            }
-        }
-
-        return trades;
     }
 
     /**
@@ -557,50 +441,33 @@ public class AggTradesStore {
      * Check if aggTrades data exists for a time range.
      */
     public boolean hasDataFor(String symbol, long startTime, long endTime) {
-        SyncStatus status = getSyncStatus(symbol, startTime, endTime);
-        return status.hasData();
+        try {
+            return sqliteStore.isFullyCovered(symbol, "agg_trades", "default", startTime, endTime);
+        } catch (IOException e) {
+            log.debug("Failed to check coverage: {}", e.getMessage());
+            return false;
+        }
     }
 
     /**
-     * Get sync status for a time range (hourly granularity).
+     * Get sync status for a time range.
      */
     public SyncStatus getSyncStatus(String symbol, long startTime, long endTime) {
-        LocalDateTime start = LocalDateTime.ofInstant(Instant.ofEpochMilli(startTime), ZoneOffset.UTC)
-            .withMinute(0).withSecond(0).withNano(0);
-        LocalDateTime end = LocalDateTime.ofInstant(Instant.ofEpochMilli(endTime), ZoneOffset.UTC);
-        LocalDateTime now = LocalDateTime.now(ZoneOffset.UTC);
+        List<long[]> gaps = findGapsInSqlite(symbol, startTime, endTime);
 
-        int hoursComplete = 0;
-        int hoursTotal = 0;
-        long gapStart = -1;
-        long gapEnd = -1;
+        long totalDuration = endTime - startTime;
+        long gapDuration = gaps.stream().mapToLong(g -> g[1] - g[0]).sum();
+        long coveredDuration = totalDuration - gapDuration;
 
-        LocalDateTime current = start;
-        while (!current.isAfter(end)) {
-            hoursTotal++;
+        // Convert to approximate hours
+        int hoursTotal = (int) (totalDuration / ONE_HOUR_MS) + 1;
+        int hoursComplete = (int) (coveredDuration / ONE_HOUR_MS);
 
-            File completeFile = getHourFile(symbol, current, true);
-            File partialFile = getHourFile(symbol, current, false);
-            boolean isCurrentHour = current.getHour() == now.getHour() &&
-                                    current.toLocalDate().equals(now.toLocalDate());
+        boolean hasData = gaps.isEmpty();
+        long gapStart = gaps.isEmpty() ? startTime : gaps.get(0)[0];
+        long gapEnd = gaps.isEmpty() ? endTime : gaps.get(gaps.size() - 1)[1];
 
-            if (completeFile.exists() || (isCurrentHour && partialFile.exists())) {
-                hoursComplete++;
-            } else if (!partialFile.exists()) {
-                // This hour is missing
-                if (gapStart < 0) {
-                    gapStart = current.toInstant(ZoneOffset.UTC).toEpochMilli();
-                }
-                gapEnd = current.plusHours(1).toInstant(ZoneOffset.UTC).toEpochMilli() - 1;
-            }
-
-            current = current.plusHours(1);
-        }
-
-        boolean hasData = hoursComplete == hoursTotal;
-        return new SyncStatus(hasData, hoursComplete, hoursTotal,
-            gapStart > 0 ? gapStart : startTime,
-            gapEnd > 0 ? gapEnd : endTime);
+        return new SyncStatus(hasData, hoursComplete, hoursTotal, gapStart, gapEnd);
     }
 
     /**
@@ -626,7 +493,7 @@ public class AggTradesStore {
 
     /**
      * Get aggregated trades for a symbol within time range.
-     * Fetches from Binance if not cached locally.
+     * Uses SQLite for fast cached reads. Fetches from Binance if not cached locally.
      *
      * Automatically uses Binance Vision (bulk ZIP downloads) for large date ranges
      * (>= 3 days). AggTrades are massive - a single day can have 500K+ trades.
@@ -637,155 +504,81 @@ public class AggTradesStore {
         // Reset cancellation flag at start of new fetch
         fetchCancelled.set(false);
 
-        // Check if we should use Vision for bulk download
-        long uncachedMs = estimateUncachedDuration(symbol, startTime, endTime);
+        // First, check SQLite for cached data and find gaps
+        List<long[]> gaps = findGapsInSqlite(symbol, startTime, endTime);
+
+        if (gaps.isEmpty()) {
+            // All data is cached in SQLite - fast path!
+            log.debug("SQLite cache hit for {} aggTrades [{} - {}]", symbol, startTime, endTime);
+            return sqliteStore.getAggTrades(symbol, startTime, endTime);
+        }
+
+        // Calculate total uncached duration
+        long uncachedMs = gaps.stream().mapToLong(g -> g[1] - g[0]).sum();
         long uncachedDays = uncachedMs / (24 * 60 * 60 * 1000);
 
+        log.debug("SQLite cache miss for {} aggTrades: {} gaps, {} uncached days", symbol, gaps.size(), uncachedDays);
+
+        // Use Vision for bulk download if large uncached range
         if (shouldUseVision(startTime, endTime) && uncachedDays >= VISION_THRESHOLD_DAYS) {
             log.info("Using Vision bulk download for {} aggTrades (large uncached range: {} days)", symbol, uncachedDays);
             try {
                 fetchViaVision(symbol, startTime, endTime);
+                // After Vision download, data should be in SQLite
+                return sqliteStore.getAggTrades(symbol, startTime, endTime);
             } catch (Exception e) {
                 log.warn("Vision download failed, falling back to API: {}", e.getMessage());
             }
         }
 
-        List<AggTrade> allTrades = new ArrayList<>();
+        // Fetch missing data via API for each gap
         LocalDateTime now = LocalDateTime.now(ZoneOffset.UTC);
+        final int totalGaps = gaps.size();
+        final int[] completedGaps = {0};
 
-        // Round start down to hour boundary
-        LocalDateTime start = LocalDateTime.ofInstant(Instant.ofEpochMilli(startTime), ZoneOffset.UTC)
-            .withMinute(0).withSecond(0).withNano(0);
-        LocalDateTime end = LocalDateTime.ofInstant(Instant.ofEpochMilli(endTime), ZoneOffset.UTC);
-
-        // Count hours to fetch for progress tracking
-        int hoursToFetch = 0;
-        LocalDateTime checkTime = start;
-        while (!checkTime.isAfter(end)) {
-            File completeFile = getHourFile(symbol, checkTime, true);
-            boolean isCurrentHour = checkTime.getHour() == now.getHour() &&
-                                    checkTime.toLocalDate().equals(now.toLocalDate());
-
-            if (!completeFile.exists() || isCurrentHour) {
-                hoursToFetch++;
-            }
-            checkTime = checkTime.plusHours(1);
-        }
-
-        final int[] currentHourIndex = {0};
-        final int finalHoursToFetch = hoursToFetch;
-
-        // Progress callback wrapper
-        Consumer<FetchProgress> hourProgressCallback = progress -> {
-            if (progressCallback != null && finalHoursToFetch > 0) {
-                int hourPercent = progress.percentComplete();
-                int overallPercent = ((currentHourIndex[0] * 100) + hourPercent) / finalHoursToFetch;
-                overallPercent = Math.min(99, Math.max(0, overallPercent));
-
-                String msg = String.format("Hour %d/%d: %s",
-                    currentHourIndex[0] + 1, finalHoursToFetch, progress.message());
-                progressCallback.accept(new FetchProgress(overallPercent, 100, msg));
-            }
-        };
-
-        // Report starting
-        if (progressCallback != null && hoursToFetch > 0) {
-            progressCallback.accept(new FetchProgress(0, 100,
-                String.format("Fetching %d hour(s) of %s aggTrades...", hoursToFetch, symbol)));
-        }
-
-        LocalDateTime current = start;
-        while (!current.isAfter(end)) {
+        for (long[] gap : gaps) {
             if (fetchCancelled.get()) {
                 log.debug("Fetch cancelled by user");
                 break;
             }
 
-            // Hour boundaries
-            long hourStart = current.toInstant(ZoneOffset.UTC).toEpochMilli();
-            long hourEnd = current.plusHours(1).toInstant(ZoneOffset.UTC).toEpochMilli() - 1;
+            long gapStart = gap[0];
+            long gapEnd = gap[1];
 
-            // Clamp to requested range
-            long fetchStart = Math.max(hourStart, startTime);
-            long fetchEnd = Math.min(hourEnd, endTime);
+            // Progress reporting
+            if (progressCallback != null) {
+                int pct = totalGaps > 0 ? (completedGaps[0] * 100) / totalGaps : 0;
+                progressCallback.accept(new FetchProgress(pct, 100,
+                    String.format("Fetching gap %d/%d...", completedGaps[0] + 1, totalGaps)));
+            }
 
-            File completeFile = getHourFile(symbol, current, true);
-            File partialFile = getHourFile(symbol, current, false);
+            // Check if this gap includes the current hour (needs special handling)
+            LocalDateTime gapEndTime = LocalDateTime.ofInstant(Instant.ofEpochMilli(gapEnd), ZoneOffset.UTC);
+            boolean includesCurrentHour = gapEndTime.getHour() == now.getHour() &&
+                                          gapEndTime.toLocalDate().equals(now.toLocalDate());
 
-            boolean isCurrentHour = current.getHour() == now.getHour() &&
-                                    current.toLocalDate().equals(now.toLocalDate());
+            log.info("Fetching aggTrades gap: {} - {}", gapStart, gapEnd);
 
-            if (completeFile.exists() && !isCurrentHour) {
-                // Historical hour with complete data - use cache
-                allTrades.addAll(loadCsvFile(completeFile));
-            } else if (isCurrentHour) {
-                // Current hour - check if we need to update
-                File existingFile = completeFile.exists() ? completeFile :
-                                    partialFile.exists() ? partialFile : null;
-                List<AggTrade> cached = existingFile != null ? loadCsvFile(existingFile) : new ArrayList<>();
-                long lastCachedTime = cached.isEmpty() ? hourStart : cached.get(cached.size() - 1).timestamp();
-
-                // Only fetch if last cached trade is old (more than 1 minute for current hour)
-                if (System.currentTimeMillis() - lastCachedTime > 60 * 1000) {
-                    log.debug("Updating current hour {} {}:xx...", current.format(DATE_FORMAT), current.format(HOUR_FORMAT));
-                    List<AggTrade> fresh = client.fetchAllAggTrades(symbol, lastCachedTime + 1, fetchEnd,
-                            fetchCancelled, hourProgressCallback);
-                    currentHourIndex[0]++;
-                    boolean wasCancelled = fetchCancelled.get();
-
-                    // Merge and save
-                    List<AggTrade> merged = mergeTrades(cached, fresh);
-                    saveHourFile(symbol, current, merged, true); // Current hour is always partial
-                    allTrades.addAll(merged);
-                } else {
-                    allTrades.addAll(cached);
-                }
-            } else if (partialFile.exists()) {
-                // Historical partial file - need to complete it
-                List<AggTrade> cached = loadCsvFile(partialFile);
-                long lastCachedTime = cached.isEmpty() ? hourStart : cached.get(cached.size() - 1).timestamp();
-
-                // Check if actually complete (within 1 min of hour end)
-                if (hourEnd - lastCachedTime < 60 * 1000) {
-                    // Actually complete - promote to complete file
-                    saveHourFile(symbol, current, cached, false);
-                    partialFile.delete();
-                    allTrades.addAll(cached);
-                } else {
-                    // Need to fetch remaining data
-                    log.debug("Completing hour {} {}:xx...", current.format(DATE_FORMAT), current.format(HOUR_FORMAT));
-                    List<AggTrade> fresh = client.fetchAllAggTrades(symbol, lastCachedTime + 1, hourEnd,
-                            fetchCancelled, hourProgressCallback);
-                    currentHourIndex[0]++;
-                    boolean wasCancelled = fetchCancelled.get();
-
-                    List<AggTrade> merged = mergeTrades(cached, fresh);
-                    saveHourFile(symbol, current, merged, wasCancelled);
-                    allTrades.addAll(merged);
-
-                    if (wasCancelled) {
-                        break;
+            List<AggTrade> fresh = client.fetchAllAggTrades(symbol, gapStart, gapEnd,
+                fetchCancelled, progress -> {
+                    if (progressCallback != null) {
+                        int basePct = totalGaps > 0 ? (completedGaps[0] * 100) / totalGaps : 0;
+                        int gapPct = progress.percentComplete() / totalGaps;
+                        progressCallback.accept(new FetchProgress(basePct + gapPct, 100, progress.message()));
                     }
-                }
-            } else {
-                // No cache - fetch from Binance
-                log.info("Fetching hour {} {}:xx...", current.format(DATE_FORMAT), current.format(HOUR_FORMAT));
-                List<AggTrade> fresh = client.fetchAllAggTrades(symbol, fetchStart, fetchEnd,
-                        fetchCancelled, hourProgressCallback);
-                currentHourIndex[0]++;
-                boolean wasCancelled = fetchCancelled.get();
+                });
 
-                // For historical hours, mark as complete if we got all the way to hour end
-                boolean isPartial = wasCancelled || isCurrentHour;
-                saveHourFile(symbol, current, fresh, isPartial);
-                allTrades.addAll(fresh);
+            if (!fresh.isEmpty()) {
+                // Save to SQLite
+                saveToSqlite(symbol, fresh);
 
-                if (wasCancelled) {
-                    break;
+                // Mark coverage (not complete if includes current hour)
+                if (!includesCurrentHour && !fetchCancelled.get()) {
+                    markCoverage(symbol, gapStart, gapEnd, true);
                 }
             }
 
-            current = current.plusHours(1);
+            completedGaps[0]++;
         }
 
         // Report completion
@@ -793,12 +586,47 @@ public class AggTradesStore {
             progressCallback.accept(new FetchProgress(100, 100, "AggTrades fetch complete"));
         }
 
-        // Filter to requested range and sort
-        return allTrades.stream()
-            .filter(t -> t.timestamp() >= startTime && t.timestamp() <= endTime)
-            .distinct()
-            .sorted((a, b) -> Long.compare(a.timestamp(), b.timestamp()))
-            .toList();
+        // Return all data from SQLite
+        return sqliteStore.getAggTrades(symbol, startTime, endTime);
+    }
+
+    /**
+     * Find gaps in SQLite coverage for a time range.
+     */
+    private List<long[]> findGapsInSqlite(String symbol, long startTime, long endTime) {
+        try {
+            return sqliteStore.findGaps(symbol, "agg_trades", "default", startTime, endTime);
+        } catch (IOException e) {
+            log.warn("Failed to check SQLite coverage: {}", e.getMessage());
+            // Return entire range as a gap
+            List<long[]> gaps = new ArrayList<>();
+            gaps.add(new long[]{startTime, endTime});
+            return gaps;
+        }
+    }
+
+    /**
+     * Save trades to SQLite.
+     */
+    private void saveToSqlite(String symbol, List<AggTrade> trades) {
+        if (trades.isEmpty()) return;
+        try {
+            sqliteStore.saveAggTrades(symbol, trades);
+            log.debug("Saved {} aggTrades to SQLite for {}", formatCount(trades.size()), symbol);
+        } catch (IOException e) {
+            log.warn("Failed to save aggTrades to SQLite: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * Mark coverage in SQLite.
+     */
+    private void markCoverage(String symbol, long start, long end, boolean isComplete) {
+        try {
+            sqliteStore.addCoverage(symbol, "agg_trades", "default", start, end, isComplete);
+        } catch (IOException e) {
+            log.warn("Failed to mark coverage: {}", e.getMessage());
+        }
     }
 
     /**
@@ -887,7 +715,7 @@ public class AggTradesStore {
 
     /**
      * Get aggregated trades from cache only (no API calls).
-     * Returns immediately with whatever is available in local cache.
+     * Returns immediately with whatever is available in SQLite cache.
      *
      * @param symbol    Trading symbol
      * @param startTime Start time in milliseconds
@@ -895,38 +723,12 @@ public class AggTradesStore {
      * @return List of AggTrades sorted by time ascending (may be incomplete)
      */
     public List<AggTrade> getAggTradesCacheOnly(String symbol, long startTime, long endTime) {
-        List<AggTrade> allTrades = new ArrayList<>();
-
-        LocalDateTime start = LocalDateTime.ofInstant(Instant.ofEpochMilli(startTime), ZoneOffset.UTC)
-            .withMinute(0).withSecond(0).withNano(0);
-        LocalDateTime end = LocalDateTime.ofInstant(Instant.ofEpochMilli(endTime), ZoneOffset.UTC);
-
-        LocalDateTime current = start;
-        while (!current.isAfter(end)) {
-            File completeFile = getHourFile(symbol, current, true);
-            File partialFile = getHourFile(symbol, current, false);
-
-            // Prefer complete file, fall back to partial
-            File fileToLoad = completeFile.exists() ? completeFile :
-                              partialFile.exists() ? partialFile : null;
-
-            if (fileToLoad != null) {
-                try {
-                    allTrades.addAll(loadCsvFile(fileToLoad));
-                } catch (IOException e) {
-                    log.warn("Failed to load cache file {}: {}", fileToLoad, e.getMessage());
-                }
-            }
-
-            current = current.plusHours(1);
+        try {
+            return sqliteStore.getAggTrades(symbol, startTime, endTime);
+        } catch (IOException e) {
+            log.warn("Failed to load aggTrades from SQLite: {}", e.getMessage());
+            return new ArrayList<>();
         }
-
-        // Filter to requested range and sort
-        return allTrades.stream()
-            .filter(t -> t.timestamp() >= startTime && t.timestamp() <= endTime)
-            .distinct()
-            .sorted((a, b) -> Long.compare(a.timestamp(), b.timestamp()))
-            .toList();
     }
 
     /**

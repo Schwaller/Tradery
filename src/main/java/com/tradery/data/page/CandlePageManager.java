@@ -40,6 +40,8 @@ public class CandlePageManager extends DataPageManager<Candle> {
 
         // First try cache
         List<Candle> cached = loadFromCache(symbol, timeframe, startTime, endTime);
+        log.info("CandlePageManager.loadData: symbol={}, timeframe={}, cached={}",
+            symbol, timeframe, cached.size());
 
         // Check if we have sufficient coverage
         if (hasSufficientCoverage(cached, timeframe, startTime, endTime)) {
@@ -115,6 +117,12 @@ public class CandlePageManager extends DataPageManager<Candle> {
 
         visionClient.syncWithApiBackfill(symbol, timeframe, startMonth, apiClient, cancelled,
             progress -> log.debug("Vision sync: {} - {}", progress.currentMonth(), progress.status()));
+    }
+
+    @Override
+    protected int getRecordSizeBytes() {
+        // Candle: 1 long (8) + 7 doubles (56) + 1 int (4) + object overhead (~20) = ~88 bytes
+        return 88;
     }
 
     /**

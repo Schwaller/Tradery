@@ -76,6 +76,29 @@ public class CalendarIndicators {
     }
 
     /**
+     * Check if any FOMC meeting falls within a date range (inclusive).
+     * Useful for weekly/monthly candles where we need to check if any day in the period has a meeting.
+     */
+    public static boolean hasFomcMeetingInRange(long startTimestamp, long endTimestamp) {
+        if (startTimestamp == 0 || endTimestamp == 0) return false;
+
+        LocalDate startDate = Instant.ofEpochMilli(startTimestamp).atZone(ZoneOffset.UTC).toLocalDate();
+        LocalDate endDate = Instant.ofEpochMilli(endTimestamp).atZone(ZoneOffset.UTC).toLocalDate();
+
+        // Check each day in the range
+        LocalDate current = startDate;
+        while (!current.isAfter(endDate)) {
+            int year = current.getYear();
+            Set<LocalDate> meetings = fomcMeetingCache.computeIfAbsent(year, CalendarIndicators::getFomcMeetingDates);
+            if (meetings.contains(current)) {
+                return true;
+            }
+            current = current.plusDays(1);
+        }
+        return false;
+    }
+
+    /**
      * Compute all US federal holidays for a given year.
      * These are days when the Federal Reserve is closed.
      */
@@ -141,56 +164,9 @@ public class CalendarIndicators {
 
     /**
      * Get FOMC meeting dates for a given year.
-     * These are the actual meeting days (typically 2 consecutive days).
+     * Delegates to FomcCalendarSync which fetches from Fed website and caches.
      */
     private static Set<LocalDate> getFomcMeetingDates(int year) {
-        Set<LocalDate> dates = new HashSet<>();
-
-        // FOMC Schedule - 8 meetings per year, typically Tue-Wed
-        switch (year) {
-            case 2024 -> {
-                addMeetingDays(dates, 2024, 1, 30, 31);   // Jan 30-31
-                addMeetingDays(dates, 2024, 3, 19, 20);   // Mar 19-20
-                addMeetingDays(dates, 2024, 4, 30, 0);    // Apr 30 - May 1
-                dates.add(LocalDate.of(2024, 5, 1));
-                addMeetingDays(dates, 2024, 6, 11, 12);   // Jun 11-12
-                addMeetingDays(dates, 2024, 7, 30, 31);   // Jul 30-31
-                addMeetingDays(dates, 2024, 9, 17, 18);   // Sep 17-18
-                addMeetingDays(dates, 2024, 11, 6, 7);    // Nov 6-7
-                addMeetingDays(dates, 2024, 12, 17, 18);  // Dec 17-18
-            }
-            case 2025 -> {
-                addMeetingDays(dates, 2025, 1, 28, 29);   // Jan 28-29
-                addMeetingDays(dates, 2025, 3, 18, 19);   // Mar 18-19
-                addMeetingDays(dates, 2025, 5, 6, 7);     // May 6-7
-                addMeetingDays(dates, 2025, 6, 17, 18);   // Jun 17-18
-                addMeetingDays(dates, 2025, 7, 29, 30);   // Jul 29-30
-                addMeetingDays(dates, 2025, 9, 16, 17);   // Sep 16-17
-                addMeetingDays(dates, 2025, 11, 4, 5);    // Nov 4-5
-                addMeetingDays(dates, 2025, 12, 16, 17);  // Dec 16-17
-            }
-            case 2026 -> {
-                addMeetingDays(dates, 2026, 1, 27, 28);   // Jan 27-28
-                addMeetingDays(dates, 2026, 3, 17, 18);   // Mar 17-18
-                addMeetingDays(dates, 2026, 5, 5, 6);     // May 5-6
-                addMeetingDays(dates, 2026, 6, 16, 17);   // Jun 16-17
-                addMeetingDays(dates, 2026, 7, 28, 29);   // Jul 28-29
-                addMeetingDays(dates, 2026, 9, 15, 16);   // Sep 15-16
-                addMeetingDays(dates, 2026, 11, 3, 4);    // Nov 3-4
-                addMeetingDays(dates, 2026, 12, 15, 16);  // Dec 15-16
-            }
-            default -> {
-                // For years outside known schedule, no dates returned
-            }
-        }
-
-        return dates;
-    }
-
-    private static void addMeetingDays(Set<LocalDate> dates, int year, int month, int day1, int day2) {
-        dates.add(LocalDate.of(year, month, day1));
-        if (day2 > 0) {
-            dates.add(LocalDate.of(year, month, day2));
-        }
+        return FomcCalendarSync.getDatesForYear(year);
     }
 }

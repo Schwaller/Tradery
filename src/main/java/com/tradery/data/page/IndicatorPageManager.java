@@ -435,6 +435,45 @@ public class IndicatorPageManager {
     }
 
     /**
+     * Estimate memory used by all active indicator pages in bytes.
+     */
+    public long estimateMemoryBytes() {
+        long total = 0;
+        for (IndicatorPage<?> page : pages.values()) {
+            total += estimatePageMemory(page);
+        }
+        return total;
+    }
+
+    /**
+     * Estimate memory for a single indicator page.
+     */
+    private long estimatePageMemory(IndicatorPage<?> page) {
+        Object data = page.getData();
+        if (data == null) return 0;
+
+        // double[] arrays: 8 bytes per element
+        if (data instanceof double[] arr) {
+            return arr.length * 8L;
+        }
+
+        // Composite results (MACD, BBANDS, etc.) - estimate 3x array size
+        if (data.getClass().isRecord()) {
+            // Most records have 2-5 double[] fields, estimate 1000 bars * 3 arrays * 8 bytes
+            return 24000L; // Conservative estimate
+        }
+
+        // HistoricRays - can be large
+        if (data instanceof HistoricRays hr) {
+            // Each entry has 2 RaySets with multiple rays
+            return hr.entries().size() * 500L; // Rough estimate
+        }
+
+        // Default for unknown types
+        return 1000L;
+    }
+
+    /**
      * Info about an indicator page for debugging.
      */
     public record IndicatorPageInfo(

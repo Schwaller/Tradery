@@ -1,0 +1,7 @@
+id: neutral-funding
+name: Neutral Funding Rate
+description: Funding rate between -0.01% and 0.02% - balanced market
+category: Funding
+condition: FUNDING >= -0.01 AND FUNDING <= 0.02
+timeframe: 1h
+symbol: BTCUSDT

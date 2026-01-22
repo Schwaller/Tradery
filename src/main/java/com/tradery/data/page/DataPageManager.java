@@ -106,6 +106,9 @@ public abstract class DataPageManager<T> {
         DataPage<T> page = pages.computeIfAbsent(key, k ->
             createPage(symbol, timeframe, startTime, endTime));
 
+        log.info("DataPageManager.request: dataType={}, key={}, pageState={}",
+            dataType, key, page.getState());
+
         // Register listener with name
         if (listener != null) {
             listeners.computeIfAbsent(key, k -> ConcurrentHashMap.newKeySet()).add(listener);
@@ -400,6 +403,38 @@ public abstract class DataPageManager<T> {
      */
     public int getActivePageCount() {
         return pages.size();
+    }
+
+    /**
+     * Estimate memory used by all active pages in bytes.
+     * Subclasses should override getRecordSizeBytes() for accurate estimates.
+     */
+    public long estimateMemoryBytes() {
+        long total = 0;
+        for (DataPage<T> page : pages.values()) {
+            total += page.getRecordCount() * getRecordSizeBytes();
+        }
+        return total;
+    }
+
+    /**
+     * Estimated size in bytes of a single record.
+     * Subclasses should override for accurate estimates.
+     * Default assumes 64 bytes per record.
+     */
+    protected int getRecordSizeBytes() {
+        return 64;
+    }
+
+    /**
+     * Get total record count across all pages.
+     */
+    public int getTotalRecordCount() {
+        int total = 0;
+        for (DataPage<T> page : pages.values()) {
+            total += page.getRecordCount();
+        }
+        return total;
     }
 
     /**

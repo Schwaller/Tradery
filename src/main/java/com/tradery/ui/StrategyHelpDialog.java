@@ -357,6 +357,18 @@ public class StrategyHelpDialog extends JDialog {
         toc.add(new TocEntry("toc-" + tocIndex++, "Overview", 2));
         toc.add(new TocEntry("toc-" + tocIndex++, "How It Works", 3));
         toc.add(new TocEntry("toc-" + tocIndex++, "Key Concepts", 3));
+        toc.add(new TocEntry("toc-" + tocIndex++, "Charts & Visualizations", 2));
+        toc.add(new TocEntry("toc-" + tocIndex++, "Price Chart", 3));
+        toc.add(new TocEntry("toc-" + tocIndex++, "Equity Curve", 3));
+        toc.add(new TocEntry("toc-" + tocIndex++, "Indicator Charts", 3));
+        toc.add(new TocEntry("toc-" + tocIndex++, "Chart Overlays", 3));
+        toc.add(new TocEntry("toc-" + tocIndex++, "Performance Metrics", 2));
+        toc.add(new TocEntry("toc-" + tocIndex++, "Core Metrics", 3));
+        toc.add(new TocEntry("toc-" + tocIndex++, "Trade Quality Metrics", 3));
+        toc.add(new TocEntry("toc-" + tocIndex++, "Indicators Overview", 2));
+        toc.add(new TocEntry("toc-" + tocIndex++, "Price & Trend", 3));
+        toc.add(new TocEntry("toc-" + tocIndex++, "Momentum & Volatility", 3));
+        toc.add(new TocEntry("toc-" + tocIndex++, "Orderflow & Volume", 3));
         toc.add(new TocEntry("toc-" + tocIndex++, "Entry Settings", 2));
         toc.add(new TocEntry("toc-" + tocIndex++, "Entry Condition", 3));
         toc.add(new TocEntry("toc-" + tocIndex++, "Trade Limits", 3));
@@ -466,11 +478,177 @@ public class StrategyHelpDialog extends JDialog {
                 <b>Workflow:</b> Create strategy &rarr; Run backtest &rarr; Analyze results &rarr; Refine conditions &rarr; Repeat
             </div>
 
+            <!-- ==================== CHARTS SECTION ==================== -->
+
+            <h2 id="toc-3">Charts &amp; Visualizations</h2>
+
+            <p>Tradery provides multiple charts to help you understand strategy performance and market conditions.</p>
+
+            <h3 id="toc-4">Price Chart</h3>
+            <p>The main chart displays <b>candlesticks</b> showing Open, High, Low, Close prices for each bar:</p>
+            <ul>
+                <li><b>Green candles:</b> Close &gt; Open (bullish/up move)</li>
+                <li><b>Red candles:</b> Close &lt; Open (bearish/down move)</li>
+                <li><b>Wicks:</b> High and low prices reached during the bar</li>
+            </ul>
+            <p><b>Trade markers</b> show entry/exit points:</p>
+            <ul>
+                <li><span style="color:#4CAF50;">Green triangle up:</span> Entry point</li>
+                <li><span style="color:#F44336;">Red triangle down:</span> Exit point</li>
+                <li>Connecting line shows trade duration and direction</li>
+            </ul>
+            <p><b>Volume bars</b> (below price) show trading activity per bar. Higher volume = stronger conviction.</p>
+
+            <h3 id="toc-5">Equity Curve</h3>
+            <p>Shows your strategy's account value over time:</p>
+            <ul>
+                <li><b>Line rising:</b> Account growing (winning trades)</li>
+                <li><b>Line falling:</b> Drawdown period (losing trades)</li>
+                <li><b>Steepness:</b> Rate of gains/losses</li>
+            </ul>
+            <div class="box">
+                <b>What to look for:</b><br/>
+                - <b>Smooth upward slope:</b> Consistent returns, good strategy<br/>
+                - <b>Jagged/volatile:</b> Inconsistent, may need refinement<br/>
+                - <b>Long flat periods:</b> Strategy not finding trades<br/>
+                - <b>Sharp drops:</b> Drawdowns - check if acceptable
+            </div>
+
+            <h3 id="toc-6">Indicator Charts</h3>
+            <p>Sub-charts below the price chart showing technical indicators:</p>
+            <table>
+                <tr><th>Chart</th><th>What It Shows</th><th>How to Read</th></tr>
+                <tr><td><b>RSI</b></td><td>Momentum (0-100)</td><td>&lt;30 oversold, &gt;70 overbought</td></tr>
+                <tr><td><b>MACD</b></td><td>Trend momentum</td><td>Line crosses signal = trend change</td></tr>
+                <tr><td><b>ATR</b></td><td>Volatility</td><td>Higher = more volatile, wider stops needed</td></tr>
+                <tr><td><b>Stochastic</b></td><td>Momentum (0-100)</td><td>&lt;20 oversold, &gt;80 overbought</td></tr>
+                <tr><td><b>ADX</b></td><td>Trend strength</td><td>&gt;25 trending, &lt;20 ranging</td></tr>
+                <tr><td><b>Range Position</b></td><td>Position in price range</td><td>-1 at low, +1 at high</td></tr>
+                <tr><td><b>Delta</b></td><td>Buy vs sell pressure</td><td>Positive = buyers dominate</td></tr>
+                <tr><td><b>CVD</b></td><td>Cumulative delta</td><td>Rising = sustained buying</td></tr>
+                <tr><td><b>Funding</b></td><td>Futures funding rate</td><td>High = overleveraged longs</td></tr>
+            </table>
+            <div class="tip">
+                Right-click on the chart area to enable/disable indicator charts and configure their parameters.
+            </div>
+
+            <h3 id="toc-7">Chart Overlays</h3>
+            <p>Overlays are drawn directly on the price chart:</p>
+            <table>
+                <tr><th>Overlay</th><th>What It Shows</th><th>Usage</th></tr>
+                <tr><td><b>SMA/EMA</b></td><td>Moving averages</td><td>Trend direction, support/resistance</td></tr>
+                <tr><td><b>Bollinger Bands</b></td><td>Volatility envelope</td><td>Upper/lower bands show overbought/oversold</td></tr>
+                <tr><td><b>High/Low</b></td><td>N-period high/low</td><td>Range breakout levels</td></tr>
+                <tr><td><b>VWAP</b></td><td>Volume-weighted average price</td><td>Fair value, institutional reference</td></tr>
+                <tr><td><b>Daily POC</b></td><td>Point of control</td><td>Price level with most volume</td></tr>
+                <tr><td><b>Ichimoku</b></td><td>Cloud system</td><td>Trend, support/resistance, momentum</td></tr>
+                <tr><td><b>Rays</b></td><td>Auto-detected trendlines</td><td>Dynamic support/resistance from highs/lows</td></tr>
+            </table>
+
+            <!-- ==================== METRICS SECTION ==================== -->
+
+            <h2 id="toc-8">Performance Metrics</h2>
+
+            <p>After running a backtest, you'll see these metrics. Understanding them is key to improving your strategy.</p>
+
+            <h3 id="toc-9">Core Metrics</h3>
+            <table>
+                <tr><th>Metric</th><th>What It Measures</th><th>Good Values</th></tr>
+                <tr><td><b>Total Trades</b></td><td>Number of completed trades</td><td>Enough for statistical significance (30+)</td></tr>
+                <tr><td><b>Win Rate</b></td><td>Percentage of profitable trades</td><td>&gt;50%%, but depends on risk:reward</td></tr>
+                <tr><td><b>Profit Factor</b></td><td>Gross profits / Gross losses</td><td>&gt;1.5 good, &gt;2.0 excellent</td></tr>
+                <tr><td><b>Total Return</b></td><td>Overall P&L as %% of initial capital</td><td>Context-dependent (vs buy &amp; hold)</td></tr>
+                <tr><td><b>Max Drawdown</b></td><td>Largest peak-to-trough decline</td><td>&lt;20%% conservative, &lt;30%% aggressive</td></tr>
+                <tr><td><b>Sharpe Ratio</b></td><td>Risk-adjusted returns</td><td>&gt;1.0 good, &gt;2.0 excellent</td></tr>
+                <tr><td><b>Avg Win</b></td><td>Average profit on winning trades</td><td>Should be &gt; Avg Loss for low win rates</td></tr>
+                <tr><td><b>Avg Loss</b></td><td>Average loss on losing trades</td><td>Controls risk per trade</td></tr>
+            </table>
+
+            <div class="box">
+                <b>Key relationships:</b><br/>
+                - <b>Win Rate + Avg Win/Loss:</b> A 30%% win rate is fine if wins are 3x larger than losses<br/>
+                - <b>Profit Factor:</b> Directly shows if strategy makes money (must be &gt;1.0)<br/>
+                - <b>Sharpe Ratio:</b> Accounts for volatility - high returns with low volatility = better
+            </div>
+
+            <h3 id="toc-10">Trade Quality Metrics</h3>
+            <p>These metrics help you optimize exit timing:</p>
+            <table>
+                <tr><th>Metric</th><th>What It Measures</th><th>What It Tells You</th></tr>
+                <tr><td><b>MFE</b></td><td>Max Favorable Excursion</td><td>Best unrealized profit during trade</td></tr>
+                <tr><td><b>MAE</b></td><td>Max Adverse Excursion</td><td>Worst unrealized drawdown during trade</td></tr>
+                <tr><td><b>Capture Ratio</b></td><td>Actual P&L / MFE</td><td>How much of the move you captured</td></tr>
+                <tr><td><b>Pain Ratio</b></td><td>|MAE| / MFE</td><td>How much pain you endured vs potential gain</td></tr>
+            </table>
+
+            <div class="tip">
+                <b>MFE/MAE Analysis:</b><br/>
+                - <b>Low capture ratio (&lt;50%%):</b> Exits are too early, consider trailing stops<br/>
+                - <b>High MAE on winners:</b> Tight stops might be cutting winners short<br/>
+                - <b>MFE &gt; 0 on losers:</b> Trades went profitable but reversed - tighten take profits
+            </div>
+
+            <p><b>Additional metrics:</b></p>
+            <table>
+                <tr><td><b>Total Fees</b></td><td>Trading fees (maker/taker) deducted from P&L</td></tr>
+                <tr><td><b>Holding Costs</b></td><td>Funding rate payments (futures) - can be positive (cost) or negative (earnings)</td></tr>
+                <tr><td><b>Max Capital</b></td><td>Peak capital used - shows how much of your account is at risk</td></tr>
+                <tr><td><b>Final Equity</b></td><td>Ending account value after all trades</td></tr>
+            </table>
+
+            <!-- ==================== INDICATORS SECTION ==================== -->
+
+            <h2 id="toc-11">Indicators Overview</h2>
+
+            <p>Indicators are the building blocks of your DSL conditions. Here's a quick reference of the most commonly used ones. For full syntax, use the <b>DSL Reference</b> (click ? in the condition editor).</p>
+
+            <h3 id="toc-12">Price &amp; Trend</h3>
+            <table>
+                <tr><th>Indicator</th><th>Syntax</th><th>What It Does</th></tr>
+                <tr><td><b>Price</b></td><td>price, close, open, high, low</td><td>Current bar's OHLC values</td></tr>
+                <tr><td><b>SMA</b></td><td>SMA(period)</td><td>Simple moving average - smooths price</td></tr>
+                <tr><td><b>EMA</b></td><td>EMA(period)</td><td>Exponential MA - faster response to changes</td></tr>
+                <tr><td><b>ADX</b></td><td>ADX(period)</td><td>Trend strength (0-100). &gt;25 = trending</td></tr>
+                <tr><td><b>PLUS_DI/MINUS_DI</b></td><td>PLUS_DI(14), MINUS_DI(14)</td><td>Directional indicators. +DI &gt; -DI = uptrend</td></tr>
+                <tr><td><b>Supertrend</b></td><td>SUPERTREND(n,mult).trend</td><td>Trend direction. 1 = up, -1 = down</td></tr>
+            </table>
+
+            <h3 id="toc-13">Momentum &amp; Volatility</h3>
+            <table>
+                <tr><th>Indicator</th><th>Syntax</th><th>What It Does</th></tr>
+                <tr><td><b>RSI</b></td><td>RSI(period)</td><td>Momentum (0-100). &lt;30 oversold, &gt;70 overbought</td></tr>
+                <tr><td><b>Stochastic</b></td><td>STOCHASTIC(k,d).k</td><td>Momentum oscillator (0-100)</td></tr>
+                <tr><td><b>MACD</b></td><td>MACD(12,26,9).line</td><td>Trend momentum. Line crossing signal = change</td></tr>
+                <tr><td><b>ATR</b></td><td>ATR(period)</td><td>Average True Range - measures volatility</td></tr>
+                <tr><td><b>Bollinger</b></td><td>BBANDS(20,2).upper/lower</td><td>Volatility bands around price</td></tr>
+                <tr><td><b>Range Position</b></td><td>RANGE_POSITION(20)</td><td>Where price is in recent range (-1 to +1)</td></tr>
+            </table>
+
+            <h3 id="toc-14">Orderflow &amp; Volume</h3>
+            <table>
+                <tr><th>Indicator</th><th>Syntax</th><th>What It Does</th></tr>
+                <tr><td><b>Volume</b></td><td>volume</td><td>Current bar's trading volume</td></tr>
+                <tr><td><b>Avg Volume</b></td><td>AVG_VOLUME(20)</td><td>Average volume over N bars</td></tr>
+                <tr><td><b>VWAP</b></td><td>VWAP</td><td>Volume-weighted average price</td></tr>
+                <tr><td><b>Delta</b></td><td>DELTA</td><td>Buy volume - sell volume</td></tr>
+                <tr><td><b>CVD</b></td><td>CUM_DELTA</td><td>Cumulative delta (running total)</td></tr>
+                <tr><td><b>Funding</b></td><td>FUNDING</td><td>Current funding rate (futures)</td></tr>
+                <tr><td><b>OI</b></td><td>OI, OI_CHANGE</td><td>Open interest and change</td></tr>
+            </table>
+
+            <div class="box">
+                <b>DSL Syntax Tips:</b><br/>
+                - Use <code>[n]</code> for lookback: <code>RSI(14)[1]</code> = RSI one bar ago<br/>
+                - Use <code>crosses_above</code> / <code>crosses_below</code> for crossover signals<br/>
+                - Combine with <code>AND</code> / <code>OR</code> for complex conditions<br/>
+                - Click the <b>?</b> button in condition editors for full DSL reference
+            </div>
+
             <!-- ==================== ENTRY SECTION ==================== -->
 
-            <h2 id="toc-3">Entry Settings</h2>
+            <h2 id="toc-15">Entry Settings</h2>
 
-            <h3 id="toc-4">Entry Condition</h3>
+            <h3 id="toc-16">Entry Condition</h3>
             <p>A DSL formula that evaluates to true/false each bar. When true, a trade signal fires.</p>
             <div class="box">
                 <b>Example:</b> RSI(14) &lt; 30 AND close &gt; SMA(200)<br>
@@ -484,13 +662,13 @@ public class StrategyHelpDialog extends JDialog {
                 <span class="small">Shooting star after a strong bullish candle = reversal signal</span>
             </div>
 
-            <h3 id="toc-5">Trade Limits</h3>
+            <h3 id="toc-17">Trade Limits</h3>
             <table>
                 <tr><td><b>Max Open Trades</b></td><td>Maximum concurrent positions (DCA groups count as one)</td></tr>
                 <tr><td><b>Min Candles Between</b></td><td>Minimum bars between new position entries</td></tr>
             </table>
 
-            <h3 id="toc-6">Order Types</h3>
+            <h3 id="toc-18">Order Types</h3>
             <p>Controls <b>how</b> you enter after a signal fires:</p>
             <table>
                 <tr><th>Type</th><th>Behavior</th><th>Settings</th></tr>
@@ -501,7 +679,7 @@ public class StrategyHelpDialog extends JDialog {
             </table>
             <p class="small"><b>Expiration:</b> For non-market orders, cancel if not filled within X bars.</p>
 
-            <h3 id="toc-7">DCA (Dollar Cost Averaging)</h3>
+            <h3 id="toc-19">DCA (Dollar Cost Averaging)</h3>
             <p>Add to a position over multiple entries instead of going all-in at once.</p>
             <table>
                 <tr><td><b>Enabled</b></td><td>Turn DCA on/off</td></tr>
@@ -517,9 +695,9 @@ public class StrategyHelpDialog extends JDialog {
 
             <!-- ==================== EXIT SECTION ==================== -->
 
-            <h2 id="toc-8">Exit Settings</h2>
+            <h2 id="toc-20">Exit Settings</h2>
 
-            <h3 id="toc-9">Exit Zones</h3>
+            <h3 id="toc-21">Exit Zones</h3>
             <p>Zones define behavior at different P&L levels. Each zone has a range and exit rules.</p>
             <div class="box">
                 <b>Example Setup:</b><br>
@@ -528,7 +706,7 @@ public class StrategyHelpDialog extends JDialog {
                 Zone 3: P&L &gt; 10%% &rarr; Exit immediately (take profit)
             </div>
 
-            <h3 id="toc-10">Zone Settings</h3>
+            <h3 id="toc-22">Zone Settings</h3>
             <table>
                 <tr><th>Setting</th><th>Description</th></tr>
                 <tr><td><b>P&L Range</b></td><td>Min/Max P&L %% where this zone applies</td></tr>
@@ -537,7 +715,7 @@ public class StrategyHelpDialog extends JDialog {
                 <tr><td><b>Min Bars Before Exit</b></td><td>Wait X bars after entry before allowing exit</td></tr>
             </table>
 
-            <h3 id="toc-11">Stop Loss Types</h3>
+            <h3 id="toc-23">Stop Loss Types</h3>
             <table>
                 <tr><th>Type</th><th>Description</th></tr>
                 <tr><td><b>None</b></td><td>No stop loss in this zone</td></tr>
@@ -548,7 +726,7 @@ public class StrategyHelpDialog extends JDialog {
                 <tr><td><b>Clear</b></td><td>Reset trailing stop when entering this zone</td></tr>
             </table>
 
-            <h3 id="toc-12">Take Profit Types</h3>
+            <h3 id="toc-24">Take Profit Types</h3>
             <table>
                 <tr><th>Type</th><th>Description</th></tr>
                 <tr><td><b>None</b></td><td>No take profit target in this zone</td></tr>
@@ -556,7 +734,7 @@ public class StrategyHelpDialog extends JDialog {
                 <tr><td><b>Fixed ATR</b></td><td>Exit at X * ATR(14) above entry price</td></tr>
             </table>
 
-            <h3 id="toc-13">Partial Exits</h3>
+            <h3 id="toc-25">Partial Exits</h3>
             <p>Close only a portion of the position in a zone:</p>
             <table>
                 <tr><td><b>Exit %%</b></td><td>Percentage of position to close (e.g., 50%%)</td></tr>
@@ -566,12 +744,12 @@ public class StrategyHelpDialog extends JDialog {
                 <tr><td><b>Re-entry</b></td><td><b>Block:</b> No re-exit in same zone / <b>Reset:</b> Allow if price leaves and returns</td></tr>
             </table>
 
-            <h3 id="toc-14">Zone Phase Filters</h3>
+            <h3 id="toc-26">Zone Phase Filters</h3>
             <p>Each zone can have its own phase requirements (e.g., only trigger stop loss during high volatility).</p>
 
             <!-- ==================== PHASES SECTION ==================== -->
 
-            <h2 id="toc-15">Phases (Market Filters)</h2>
+            <h2 id="toc-27">Phases (Market Filters)</h2>
 
             <p>Phases are <b>optional</b> filters that control <b>when</b> your strategy can trade. Without phases, your strategy trades purely based on the DSL entry condition.</p>
 
@@ -589,7 +767,7 @@ public class StrategyHelpDialog extends JDialog {
                 <b>Multi-timeframe analysis:</b> Phases can run on different timeframes than your strategy. Use a daily uptrend phase to filter 1h entries.
             </div>
 
-            <h3 id="toc-16">Session Phases</h3>
+            <h3 id="toc-28">Session Phases</h3>
             <table>
                 <tr><th>Phase</th><th>Hours (UTC)</th><th>Usage Ideas</th></tr>
                 <tr><td><b>Asian Session</b></td><td>00:00 - 09:00</td><td>Range-bound strategies; lower volatility scalping; accumulation plays</td></tr>
@@ -603,7 +781,7 @@ public class StrategyHelpDialog extends JDialog {
                 <b>Example:</b> Require "Session Overlap" for breakout plays needing high volume confirmation.
             </div>
 
-            <h3 id="toc-17">Day/Time Phases</h3>
+            <h3 id="toc-29">Day/Time Phases</h3>
             <table>
                 <tr><th>Phase</th><th>Usage Ideas</th></tr>
                 <tr><td><b>Monday</b></td><td>Gap fills from weekend; cautious positioning; wait for direction</td></tr>
@@ -617,7 +795,7 @@ public class StrategyHelpDialog extends JDialog {
                 <b>Example:</b> Require "Weekdays" to avoid weekend low-liquidity wicks.
             </div>
 
-            <h3 id="toc-18">Technical Phases</h3>
+            <h3 id="toc-30">Technical Phases</h3>
             <p>Evaluated on the <b>daily timeframe</b> for macro context:</p>
             <table>
                 <tr><th>Phase</th><th>Condition</th><th>Usage Ideas</th></tr>
@@ -635,7 +813,7 @@ public class StrategyHelpDialog extends JDialog {
                 <b>Example:</b> Require "Ranging" for mean-reversion strategies.
             </div>
 
-            <h3 id="toc-19">Calendar Phases</h3>
+            <h3 id="toc-31">Calendar Phases</h3>
             <table>
                 <tr><th>Phase</th><th>Description</th><th>Usage Ideas</th></tr>
                 <tr><td><b>Month Start</b></td><td>Days 1-5</td><td>Fresh capital inflows; bullish bias; institutional buying</td></tr>
@@ -652,7 +830,7 @@ public class StrategyHelpDialog extends JDialog {
                 <b>Example:</b> Exclude "US Bank Holiday" to avoid low-liquidity traps.
             </div>
 
-            <h3 id="toc-20">Funding Phases</h3>
+            <h3 id="toc-32">Funding Phases</h3>
             <p>Futures-specific phases based on funding rates:</p>
             <table>
                 <tr><th>Phase</th><th>Condition</th><th>Usage Ideas</th></tr>
@@ -667,7 +845,7 @@ public class StrategyHelpDialog extends JDialog {
                 <b>Example:</b> Exclude "Extreme Funding" entirely (squeeze risk both ways).
             </div>
 
-            <h3 id="toc-21">Custom Phases</h3>
+            <h3 id="toc-33">Custom Phases</h3>
             <p>Create your own phases with <b>any DSL condition</b> on <b>any timeframe</b>. Open the Phases window to add custom phases.</p>
 
             <div class="box">
@@ -693,11 +871,11 @@ public class StrategyHelpDialog extends JDialog {
 
             <!-- ==================== HOOPS SECTION ==================== -->
 
-            <h2 id="toc-22">Hoop Patterns</h2>
+            <h2 id="toc-34">Hoop Patterns</h2>
 
             <p>Hoops detect <b>chart patterns</b> by checking if price passes through a sequence of "hoops" (price checkpoints). Each hoop defines a price range and timing window.</p>
 
-            <h3 id="toc-23">How Hoops Work</h3>
+            <h3 id="toc-35">How Hoops Work</h3>
             <p>A hoop pattern is a series of checkpoints that price must hit in sequence:</p>
             <ul>
                 <li><b>Anchor:</b> Starting reference point (first price that enters hoop 1)</li>
@@ -718,7 +896,7 @@ public class StrategyHelpDialog extends JDialog {
                 </pre>
             </div>
 
-            <h3 id="toc-24">Hoop Settings</h3>
+            <h3 id="toc-36">Hoop Settings</h3>
             <table>
                 <tr><th>Setting</th><th>Description</th><th>Tips</th></tr>
                 <tr><td><b>Min Price %%</b></td><td>Minimum %% from anchor</td><td>Use negative for drops, positive for rises</td></tr>
@@ -734,7 +912,7 @@ public class StrategyHelpDialog extends JDialog {
                 <tr><td><b>Price Smoothing</b></td><td>Apply SMA/EMA/HLC3 to price for smoother detection</td></tr>
             </table>
 
-            <h3 id="toc-25">Pattern Examples</h3>
+            <h3 id="toc-37">Pattern Examples</h3>
 
             <div class="box">
                 <b>Double Bottom</b> - Classic reversal pattern<br>
@@ -773,7 +951,7 @@ public class StrategyHelpDialog extends JDialog {
                 <span class="small">Use: Short entry on neckline breakdown.</span>
             </div>
 
-            <h3 id="toc-26">Combine Modes</h3>
+            <h3 id="toc-38">Combine Modes</h3>
             <p>How to combine hoop patterns with DSL conditions:</p>
             <table>
                 <tr><th>Mode</th><th>Behavior</th><th>Use Case</th></tr>
@@ -788,7 +966,7 @@ public class StrategyHelpDialog extends JDialog {
 
             <!-- ==================== TIPS SECTION ==================== -->
 
-            <h2 id="toc-27">Tips</h2>
+            <h2 id="toc-39">Tips</h2>
 
             <div class="tip">
                 <b>Start simple.</b> A clear entry with basic zones beats a complex system you don't understand.

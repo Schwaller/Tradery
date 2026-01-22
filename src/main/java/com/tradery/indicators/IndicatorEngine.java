@@ -426,9 +426,21 @@ public class IndicatorEngine {
     /**
      * Check if bar is on an FOMC meeting day.
      * FOMC meetings are typically 2-day events (Tuesday-Wednesday).
+     * For weekly/monthly timeframes, checks if any day in the period contains a meeting.
      */
     public boolean isFomcMeetingAt(int barIndex) {
         long timestamp = getTimestampAt(barIndex);
+
+        // For weekly/monthly candles, check if any day in the period has an FOMC meeting
+        if ("1w".equals(resolution)) {
+            long endTimestamp = timestamp + (7 * 24 * 60 * 60 * 1000L) - 1; // End of week
+            return CalendarIndicators.hasFomcMeetingInRange(timestamp, endTimestamp);
+        } else if ("1M".equals(resolution)) {
+            // Monthly candles: check the entire month
+            long endTimestamp = timestamp + (31 * 24 * 60 * 60 * 1000L); // Approximate month end
+            return CalendarIndicators.hasFomcMeetingInRange(timestamp, endTimestamp);
+        }
+
         return CalendarIndicators.isFomcMeeting(timestamp);
     }
 

@@ -33,6 +33,9 @@ import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.awt.event.MouseMotionAdapter;
 import java.awt.event.MouseWheelListener;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.awt.geom.Rectangle2D;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
@@ -45,6 +48,8 @@ import java.util.concurrent.atomic.AtomicInteger;
  * Displays price with highlighted bands for periods when the phase is true.
  */
 public class PhasePreviewChart extends JPanel implements DataPageListener<Candle> {
+
+    private static final Logger log = LoggerFactory.getLogger(PhasePreviewChart.class);
 
     private JFreeChart chart;
     private ChartPanel chartPanel;
@@ -407,6 +412,8 @@ public class PhasePreviewChart extends JPanel implements DataPageListener<Candle
         statusLabel.setText("Loading " + symbol + " " + timeframe + "...");
 
         // Request data from CandlePageManager
+        log.info("PhasePreviewChart requesting: symbol={}, timeframe={}, start={}, end={}",
+            symbol, timeframe, startTime, endTime);
         CandlePageManager pageManager = ApplicationContext.getInstance().getCandlePageManager();
         currentPage = pageManager.request(symbol, timeframe, startTime, endTime, this, "PhasePreviewChart");
 
@@ -418,6 +425,8 @@ public class PhasePreviewChart extends JPanel implements DataPageListener<Candle
     @Override
     public void onStateChanged(DataPageView<Candle> page, PageState oldState, PageState newState) {
         if (page != currentPage) return; // Ignore stale pages
+
+        log.info("PhasePreviewChart.onStateChanged: newState={}, page={}", newState, page.getKey());
 
         switch (newState) {
             case LOADING -> statusLabel.setText("Loading candles...");
@@ -442,6 +451,7 @@ public class PhasePreviewChart extends JPanel implements DataPageListener<Candle
 
     private void onDataReady(DataPageView<Candle> page) {
         candles = new ArrayList<>(page.getData());
+        log.info("PhasePreviewChart.onDataReady: candleCount={}", candles.size());
 
         if (candles.isEmpty()) {
             clearChart();
