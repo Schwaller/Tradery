@@ -1,5 +1,6 @@
 package com.tradery.data;
 
+import com.tradery.data.sqlite.SqliteDataStore;
 import com.tradery.model.FundingRate;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
@@ -39,14 +40,16 @@ public class FundingRateStore {
     private final File dataDir;
     private final FundingRateClient client;
     private final OkHttpClient httpClient;
+    private final SqliteDataStore sqliteStore;
 
     public FundingRateStore() {
-        this(new FundingRateClient());
+        this(new FundingRateClient(), new SqliteDataStore());
     }
 
-    public FundingRateStore(FundingRateClient client) {
+    public FundingRateStore(FundingRateClient client, SqliteDataStore sqliteStore) {
         this.dataDir = DataConfig.getInstance().getDataDir();
         this.client = client;
+        this.sqliteStore = sqliteStore;
         this.httpClient = new OkHttpClient.Builder()
             .connectTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
             .readTimeout(60, java.util.concurrent.TimeUnit.SECONDS)
@@ -67,6 +70,7 @@ public class FundingRateStore {
 
     /**
      * Get funding rates for a time range, fetching from API if needed.
+     * Uses SQLite for fast cached reads.
      *
      * @param symbol    Trading pair (e.g., "BTCUSDT")
      * @param startTime Start time in milliseconds
@@ -74,194 +78,79 @@ public class FundingRateStore {
      * @return List of funding rates sorted by time ascending
      */
     public List<FundingRate> getFundingRates(String symbol, long startTime, long endTime) throws IOException {
-        // Check if Vision bulk download should be used for large uncached ranges
-        long uncachedMs = estimateUncachedDuration(symbol, startTime, endTime);
-        if (shouldUseVision(startTime, startTime + uncachedMs) && uncachedMs > 30L * 24 * 60 * 60 * 1000) {
-            // Use Vision for historical data (more than 1 month uncached)
+        // Check SQLite for cached data and find gaps
+        List<long[]> gaps = findGapsInSqlite(symbol, startTime, endTime);
+
+        if (gaps.isEmpty()) {
+            // All data is cached - fast path!
+            log.debug("SQLite cache hit for {} funding rates", symbol);
+            return sqliteStore.getFundingRates(symbol, startTime, endTime);
+        }
+
+        // Calculate uncached duration
+        long uncachedMs = gaps.stream().mapToLong(g -> g[1] - g[0]).sum();
+
+        // Use Vision for large uncached ranges (>1 month)
+        if (shouldUseVision(startTime, endTime) && uncachedMs > 30L * 24 * 60 * 60 * 1000) {
             fetchViaVision(symbol, startTime, endTime);
+            // After Vision download, check again
+            gaps = findGapsInSqlite(symbol, startTime, endTime);
         }
 
-        // Load cached data
-        Map<Long, FundingRate> ratesMap = new TreeMap<>();
-        loadCachedRates(symbol, startTime, endTime, ratesMap);
-
-        // Find gaps in data and fetch from API (for recent data or small gaps)
-        long gapStart = findFirstGap(ratesMap, startTime, endTime);
-        if (gapStart > 0) {
-            // Fetch missing data from API
-            List<FundingRate> fetched = client.fetchFundingRates(symbol, gapStart, endTime);
-            for (FundingRate fr : fetched) {
-                ratesMap.put(fr.fundingTime(), fr);
-            }
-
-            // Save to cache
-            saveToCache(symbol, new ArrayList<>(ratesMap.values()));
-        }
-
-        // Filter to requested range, but include one rate before startTime for lookback
-        // (funding rates come every 8 hours, so a 1-hour window might have no rates)
-        List<FundingRate> result = new ArrayList<>();
-        FundingRate latestBeforeStart = null;
-
-        for (FundingRate fr : ratesMap.values()) {
-            if (fr.fundingTime() < startTime) {
-                // Track the most recent rate before our window
-                latestBeforeStart = fr;
-            } else if (fr.fundingTime() <= endTime) {
-                // Include rates within the window
-                result.add(fr);
+        // Fetch remaining gaps from API
+        for (long[] gap : gaps) {
+            List<FundingRate> fetched = client.fetchFundingRates(symbol, gap[0], gap[1]);
+            if (!fetched.isEmpty()) {
+                saveToSqlite(symbol, fetched);
+                markCoverage(symbol, gap[0], gap[1], true);
             }
         }
 
-        // Add the lookback rate at the beginning if we have one
-        if (latestBeforeStart != null) {
-            result.add(0, latestBeforeStart);
-        }
-
-        return result;
+        // Return all data from SQLite (includes lookback automatically via DAO)
+        return sqliteStore.getFundingRates(symbol, startTime, endTime);
     }
 
     /**
-     * Load cached funding rates from monthly CSV files.
+     * Find gaps in SQLite coverage.
      */
-    private void loadCachedRates(String symbol, long startTime, long endTime,
-                                  Map<Long, FundingRate> ratesMap) {
-        File symbolDir = getFundingDir(symbol);
-        if (!symbolDir.exists()) {
-            return;
-        }
-
-        YearMonth startMonth = YearMonth.from(Instant.ofEpochMilli(startTime).atZone(ZoneOffset.UTC));
-        YearMonth endMonth = YearMonth.from(Instant.ofEpochMilli(endTime).atZone(ZoneOffset.UTC));
-
-        // Load one month before startMonth for lookback (funding rates come every 8h)
-        YearMonth current = startMonth.minusMonths(1);
-        while (!current.isAfter(endMonth)) {
-            String monthKey = current.format(MONTH_FORMAT);
-            File cacheFile = new File(symbolDir, monthKey + ".csv");
-
-            if (cacheFile.exists()) {
-                try {
-                    loadCsvFile(cacheFile, ratesMap);
-                } catch (IOException e) {
-                    // Ignore corrupt cache files
-                    log.warn("Error loading funding cache: {} - {}", cacheFile, e.getMessage());
-                }
-            }
-
-            current = current.plusMonths(1);
+    private List<long[]> findGapsInSqlite(String symbol, long startTime, long endTime) {
+        try {
+            return sqliteStore.findGaps(symbol, "funding_rates", "default", startTime, endTime);
+        } catch (IOException e) {
+            log.warn("Failed to check SQLite coverage: {}", e.getMessage());
+            List<long[]> gaps = new ArrayList<>();
+            gaps.add(new long[]{startTime, endTime});
+            return gaps;
         }
     }
 
     /**
-     * Load funding rates from a CSV file.
+     * Save funding rates to SQLite.
      */
-    private void loadCsvFile(File file, Map<Long, FundingRate> ratesMap) throws IOException {
-        try (BufferedReader reader = new BufferedReader(new FileReader(file))) {
-            String line;
-            boolean firstLine = true;
-            while ((line = reader.readLine()) != null) {
-                if (firstLine) {
-                    firstLine = false;
-                    if (line.startsWith("symbol")) continue; // Skip header
-                }
-                if (line.isBlank()) continue;
-
-                try {
-                    FundingRate fr = FundingRate.fromCsv(line);
-                    ratesMap.put(fr.fundingTime(), fr);
-                } catch (Exception e) {
-                    // Skip malformed lines
-                }
-            }
-        }
-    }
-
-    /**
-     * Find the first gap in funding data (8 hours between rates expected).
-     * Returns 0 if no gap found.
-     */
-    private long findFirstGap(Map<Long, FundingRate> ratesMap, long startTime, long endTime) {
-        if (ratesMap.isEmpty()) {
-            return startTime;
-        }
-
-        // Funding happens every 8 hours
-        long fundingInterval = 8 * 60 * 60 * 1000;
-        long maxGap = fundingInterval + 60 * 60 * 1000; // Allow 1 hour tolerance
-
-        List<Long> times = new ArrayList<>(ratesMap.keySet());
-
-        // Check if we have data from the start
-        if (times.get(0) > startTime + maxGap) {
-            return startTime;
-        }
-
-        // Check for gaps between rates
-        for (int i = 1; i < times.size(); i++) {
-            long gap = times.get(i) - times.get(i - 1);
-            if (gap > maxGap) {
-                return times.get(i - 1) + 1;
-            }
-        }
-
-        // Check if we have data up to the end
-        long lastTime = times.get(times.size() - 1);
-        long now = System.currentTimeMillis();
-        if (lastTime < endTime - maxGap && lastTime < now - maxGap) {
-            return lastTime + 1;
-        }
-
-        return 0; // No gap
-    }
-
-    /**
-     * Save funding rates to monthly CSV files.
-     */
-    private void saveToCache(String symbol, List<FundingRate> rates) throws IOException {
+    private void saveToSqlite(String symbol, List<FundingRate> rates) {
         if (rates.isEmpty()) return;
-
-        File symbolDir = getFundingDir(symbol);
-        if (!symbolDir.exists()) {
-            symbolDir.mkdirs();
+        try {
+            sqliteStore.saveFundingRates(symbol, rates);
+            log.debug("Saved {} funding rates to SQLite for {}", rates.size(), symbol);
+        } catch (IOException e) {
+            log.warn("Failed to save funding rates to SQLite: {}", e.getMessage());
         }
+    }
 
-        // Group rates by month
-        Map<YearMonth, List<FundingRate>> byMonth = new TreeMap<>();
-        for (FundingRate fr : rates) {
-            YearMonth month = YearMonth.from(
-                Instant.ofEpochMilli(fr.fundingTime()).atZone(ZoneOffset.UTC)
-            );
-            byMonth.computeIfAbsent(month, k -> new ArrayList<>()).add(fr);
-        }
-
-        // Write each month's file
-        for (Map.Entry<YearMonth, List<FundingRate>> entry : byMonth.entrySet()) {
-            String monthKey = entry.getKey().format(MONTH_FORMAT);
-            File cacheFile = new File(symbolDir, monthKey + ".csv");
-
-            // Load existing data and merge
-            Map<Long, FundingRate> merged = new TreeMap<>();
-            if (cacheFile.exists()) {
-                loadCsvFile(cacheFile, merged);
-            }
-            for (FundingRate fr : entry.getValue()) {
-                merged.put(fr.fundingTime(), fr);
-            }
-
-            // Write merged data
-            try (PrintWriter writer = new PrintWriter(new FileWriter(cacheFile))) {
-                writer.println(CSV_HEADER);
-                for (FundingRate fr : merged.values()) {
-                    writer.println(fr.toCsv());
-                }
-            }
+    /**
+     * Mark coverage in SQLite.
+     */
+    private void markCoverage(String symbol, long start, long end, boolean isComplete) {
+        try {
+            sqliteStore.addCoverage(symbol, "funding_rates", "default", start, end, isComplete);
+        } catch (IOException e) {
+            log.warn("Failed to mark coverage: {}", e.getMessage());
         }
     }
 
     /**
      * Get funding rates from cache only (no API calls).
-     * Returns immediately with whatever is available in local cache.
+     * Returns immediately with whatever is available in SQLite cache.
      *
      * @param symbol    Trading pair (e.g., "BTCUSDT")
      * @param startTime Start time in milliseconds
@@ -269,26 +158,12 @@ public class FundingRateStore {
      * @return List of funding rates sorted by time ascending (may be incomplete)
      */
     public List<FundingRate> getFundingRatesCacheOnly(String symbol, long startTime, long endTime) {
-        Map<Long, FundingRate> ratesMap = new TreeMap<>();
-        loadCachedRates(symbol, startTime, endTime, ratesMap);
-
-        // Filter to requested range, but include one rate before startTime for lookback
-        List<FundingRate> result = new ArrayList<>();
-        FundingRate latestBeforeStart = null;
-
-        for (FundingRate fr : ratesMap.values()) {
-            if (fr.fundingTime() < startTime) {
-                latestBeforeStart = fr;
-            } else if (fr.fundingTime() <= endTime) {
-                result.add(fr);
-            }
+        try {
+            return sqliteStore.getFundingRates(symbol, startTime, endTime);
+        } catch (IOException e) {
+            log.warn("Failed to load funding rates from SQLite: {}", e.getMessage());
+            return new ArrayList<>();
         }
-
-        if (latestBeforeStart != null) {
-            result.add(0, latestBeforeStart);
-        }
-
-        return result;
     }
 
     /**
@@ -319,46 +194,14 @@ public class FundingRateStore {
     }
 
     /**
-     * Estimate the duration of uncached data within the requested range.
-     */
-    private long estimateUncachedDuration(String symbol, long startTime, long endTime) {
-        File symbolDir = getFundingDir(symbol);
-        if (!symbolDir.exists()) {
-            return endTime - startTime;
-        }
-
-        YearMonth startMonth = YearMonth.from(Instant.ofEpochMilli(startTime).atZone(ZoneOffset.UTC));
-        YearMonth endMonth = YearMonth.from(Instant.ofEpochMilli(endTime).atZone(ZoneOffset.UTC));
-
-        long uncachedMonths = 0;
-        YearMonth current = startMonth;
-        while (!current.isAfter(endMonth)) {
-            if (!isMonthFullyCached(symbol, current)) {
-                uncachedMonths++;
-            }
-            current = current.plusMonths(1);
-        }
-
-        // Each month is approximately 30 days
-        return uncachedMonths * 30L * 24 * 60 * 60 * 1000;
-    }
-
-    /**
-     * Check if a month is fully cached.
+     * Check if a month is fully cached in SQLite.
      */
     private boolean isMonthFullyCached(String symbol, YearMonth month) {
-        File cacheFile = new File(getFundingDir(symbol), month.format(MONTH_FORMAT) + ".csv");
-        if (!cacheFile.exists()) {
-            return false;
-        }
+        long monthStart = month.atDay(1).atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli();
+        long monthEnd = month.plusMonths(1).atDay(1).atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli() - 1;
 
-        // Check if file has reasonable data (at least 80 records = ~27 days of funding)
-        try (BufferedReader reader = new BufferedReader(new FileReader(cacheFile))) {
-            int lineCount = 0;
-            while (reader.readLine() != null) {
-                lineCount++;
-            }
-            return lineCount >= 80; // ~90 funding events per month
+        try {
+            return sqliteStore.isFullyCovered(symbol, "funding_rates", "default", monthStart, monthEnd);
         } catch (IOException e) {
             return false;
         }
@@ -415,7 +258,11 @@ public class FundingRateStore {
 
             List<FundingRate> rates = parseVisionZip(response.body().byteStream(), symbol);
             if (!rates.isEmpty()) {
-                saveToCache(symbol, rates);
+                saveToSqlite(symbol, rates);
+                // Mark month as covered
+                long monthStart = month.atDay(1).atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli();
+                long monthEnd = month.plusMonths(1).atDay(1).atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli() - 1;
+                markCoverage(symbol, monthStart, monthEnd, true);
                 log.info("Vision: Saved {} funding rates for {}", rates.size(), month);
             }
         }

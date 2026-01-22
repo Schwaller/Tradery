@@ -1,5 +1,6 @@
 package com.tradery.data;
 
+import com.tradery.data.sqlite.SqliteDataStore;
 import com.tradery.model.PremiumIndex;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
@@ -18,10 +19,8 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
 /**
- * Stores and retrieves premium index kline data as monthly CSV files.
- * Files organized by symbol/premium/{interval}/yyyy-MM.csv
- *
- * Storage path: ~/.tradery/data/{symbol}/premium/{interval}/
+ * Stores and retrieves premium index kline data.
+ * Uses SQLite for fast cached reads with coverage tracking.
  *
  * Premium index klines are stored at the same resolution as strategy timeframes
  * (e.g., 1h, 5m, 1d) allowing per-bar premium evaluation.
@@ -30,8 +29,6 @@ public class PremiumIndexStore {
 
     private static final Logger log = LoggerFactory.getLogger(PremiumIndexStore.class);
     private static final DateTimeFormatter MONTH_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM");
-    private static final String PREMIUM_DIR = "premium";
-    private static final String CSV_HEADER = "openTime,open,high,low,close,closeTime";
 
     // Vision bulk download settings
     private static final String VISION_BASE_URL = "https://data.binance.vision/data/futures/um/monthly/premiumIndexKlines";
@@ -40,14 +37,16 @@ public class PremiumIndexStore {
     private final File dataDir;
     private final PremiumIndexClient client;
     private final OkHttpClient httpClient;
+    private final SqliteDataStore sqliteStore;
 
     public PremiumIndexStore() {
-        this(new PremiumIndexClient());
+        this(new PremiumIndexClient(), new SqliteDataStore());
     }
 
-    public PremiumIndexStore(PremiumIndexClient client) {
+    public PremiumIndexStore(PremiumIndexClient client, SqliteDataStore sqliteStore) {
         this.dataDir = DataConfig.getInstance().getDataDir();
         this.client = client;
+        this.sqliteStore = sqliteStore;
         this.httpClient = new OkHttpClient.Builder()
             .connectTimeout(30, TimeUnit.SECONDS)
             .readTimeout(60, TimeUnit.SECONDS)
@@ -59,15 +58,8 @@ public class PremiumIndexStore {
     }
 
     /**
-     * Get the premium directory for a symbol and interval.
-     * Path: ~/.tradery/data/{symbol}/premium/{interval}/
-     */
-    private File getPremiumDir(String symbol, String interval) {
-        return new File(new File(new File(dataDir, symbol), PREMIUM_DIR), interval);
-    }
-
-    /**
      * Get premium index klines for a time range, fetching from API if needed.
+     * Uses SQLite for fast cached reads.
      *
      * @param symbol    Trading pair (e.g., "BTCUSDT")
      * @param interval  Kline interval (e.g., "1h", "5m")
@@ -77,208 +69,94 @@ public class PremiumIndexStore {
      */
     public List<PremiumIndex> getPremiumIndex(String symbol, String interval,
                                                long startTime, long endTime) throws IOException {
-        // Check if Vision bulk download should be used for large uncached ranges
-        long uncachedMs = estimateUncachedDuration(symbol, interval, startTime, endTime);
-        if (shouldUseVision(interval, startTime, startTime + uncachedMs) && uncachedMs > 28L * 24 * 60 * 60 * 1000) {
-            // Use Vision for historical data (more than 1 month uncached)
+        // Check SQLite for cached data and find gaps
+        List<long[]> gaps = findGapsInSqlite(symbol, interval, startTime, endTime);
+
+        if (gaps.isEmpty()) {
+            log.debug("SQLite cache hit for {} {} premium index", symbol, interval);
+            return sqliteStore.getPremiumIndex(symbol, interval, startTime, endTime);
+        }
+
+        // Calculate uncached duration
+        long uncachedMs = gaps.stream().mapToLong(g -> g[1] - g[0]).sum();
+
+        // Use Vision for large uncached ranges (>1 month)
+        if (shouldUseVision(interval, startTime, endTime) && uncachedMs > 28L * 24 * 60 * 60 * 1000) {
             fetchViaVision(symbol, interval, startTime, endTime);
+            // After Vision download, check again
+            gaps = findGapsInSqlite(symbol, interval, startTime, endTime);
         }
 
-        // Load cached data
-        Map<Long, PremiumIndex> premiumMap = new TreeMap<>();
-        loadCachedPremium(symbol, interval, startTime, endTime, premiumMap);
-
-        // Find gaps in data and fetch from API (for recent data or small gaps)
-        long intervalMs = getIntervalMs(interval);
-        long gapStart = findFirstGap(premiumMap, startTime, endTime, intervalMs);
-
-        if (gapStart > 0) {
+        // Fetch remaining gaps from API
+        for (long[] gap : gaps) {
             log.info("Fetching {} {} premium index from {} ...",
-                symbol, interval, Instant.ofEpochMilli(gapStart).atZone(ZoneOffset.UTC));
+                symbol, interval, Instant.ofEpochMilli(gap[0]).atZone(ZoneOffset.UTC));
 
-            List<PremiumIndex> fetched = client.fetchPremiumIndexKlines(symbol, interval, gapStart, endTime);
-
-            for (PremiumIndex pi : fetched) {
-                premiumMap.put(pi.openTime(), pi);
-            }
-
-            // Save to cache
-            saveToCache(symbol, interval, new ArrayList<>(premiumMap.values()));
-        }
-
-        // Filter to requested range
-        List<PremiumIndex> result = new ArrayList<>();
-        for (PremiumIndex pi : premiumMap.values()) {
-            if (pi.openTime() >= startTime && pi.openTime() <= endTime) {
-                result.add(pi);
+            List<PremiumIndex> fetched = client.fetchPremiumIndexKlines(symbol, interval, gap[0], gap[1]);
+            if (!fetched.isEmpty()) {
+                saveToSqlite(symbol, interval, fetched);
+                markCoverage(symbol, interval, gap[0], gap[1], true);
             }
         }
 
-        return result;
+        return sqliteStore.getPremiumIndex(symbol, interval, startTime, endTime);
     }
 
     /**
-     * Convert interval string to milliseconds.
+     * Find gaps in SQLite coverage.
      */
-    private long getIntervalMs(String interval) {
-        return switch (interval) {
-            case "1m" -> 60 * 1000L;
-            case "3m" -> 3 * 60 * 1000L;
-            case "5m" -> 5 * 60 * 1000L;
-            case "15m" -> 15 * 60 * 1000L;
-            case "30m" -> 30 * 60 * 1000L;
-            case "1h" -> 60 * 60 * 1000L;
-            case "2h" -> 2 * 60 * 60 * 1000L;
-            case "4h" -> 4 * 60 * 60 * 1000L;
-            case "6h" -> 6 * 60 * 60 * 1000L;
-            case "8h" -> 8 * 60 * 60 * 1000L;
-            case "12h" -> 12 * 60 * 60 * 1000L;
-            case "1d" -> 24 * 60 * 60 * 1000L;
-            case "3d" -> 3 * 24 * 60 * 60 * 1000L;
-            case "1w" -> 7 * 24 * 60 * 60 * 1000L;
-            default -> 60 * 60 * 1000L; // Default to 1h
-        };
-    }
-
-    /**
-     * Load cached premium index data from monthly CSV files.
-     */
-    private void loadCachedPremium(String symbol, String interval, long startTime, long endTime,
-                                    Map<Long, PremiumIndex> premiumMap) {
-        File premiumDir = getPremiumDir(symbol, interval);
-        if (!premiumDir.exists()) {
-            return;
-        }
-
-        YearMonth startMonth = YearMonth.from(Instant.ofEpochMilli(startTime).atZone(ZoneOffset.UTC));
-        YearMonth endMonth = YearMonth.from(Instant.ofEpochMilli(endTime).atZone(ZoneOffset.UTC));
-
-        YearMonth current = startMonth;
-        while (!current.isAfter(endMonth)) {
-            String monthKey = current.format(MONTH_FORMAT);
-            File cacheFile = new File(premiumDir, monthKey + ".csv");
-
-            if (cacheFile.exists()) {
-                try {
-                    loadCsvFile(cacheFile, premiumMap);
-                } catch (IOException e) {
-                    log.warn("Error loading premium cache: {} - {}", cacheFile, e.getMessage());
-                }
-            }
-
-            current = current.plusMonths(1);
+    private List<long[]> findGapsInSqlite(String symbol, String interval, long startTime, long endTime) {
+        try {
+            return sqliteStore.findGaps(symbol, "premium_index", interval, startTime, endTime);
+        } catch (IOException e) {
+            log.warn("Failed to check SQLite coverage: {}", e.getMessage());
+            List<long[]> gaps = new ArrayList<>();
+            gaps.add(new long[]{startTime, endTime});
+            return gaps;
         }
     }
 
     /**
-     * Load premium index data from a CSV file.
+     * Save premium index to SQLite.
      */
-    private void loadCsvFile(File file, Map<Long, PremiumIndex> premiumMap) throws IOException {
-        try (BufferedReader reader = new BufferedReader(new FileReader(file))) {
-            String line;
-            boolean firstLine = true;
-            while ((line = reader.readLine()) != null) {
-                if (firstLine) {
-                    firstLine = false;
-                    if (line.startsWith("openTime")) continue; // Skip header
-                }
-                if (line.isBlank()) continue;
-
-                try {
-                    PremiumIndex pi = PremiumIndex.fromCsv(line);
-                    premiumMap.put(pi.openTime(), pi);
-                } catch (Exception e) {
-                    // Skip malformed lines
-                }
-            }
+    private void saveToSqlite(String symbol, String interval, List<PremiumIndex> data) {
+        if (data.isEmpty()) return;
+        try {
+            sqliteStore.savePremiumIndex(symbol, interval, data);
+            log.debug("Saved {} premium records to SQLite for {} {}", data.size(), symbol, interval);
+        } catch (IOException e) {
+            log.warn("Failed to save premium to SQLite: {}", e.getMessage());
         }
     }
 
     /**
-     * Find the first gap in premium data.
-     * Returns 0 if no gap found.
+     * Mark coverage in SQLite.
      */
-    private long findFirstGap(Map<Long, PremiumIndex> premiumMap, long startTime,
-                               long endTime, long intervalMs) {
-        if (premiumMap.isEmpty()) {
-            return startTime;
+    private void markCoverage(String symbol, String interval, long start, long end, boolean isComplete) {
+        try {
+            sqliteStore.addCoverage(symbol, "premium_index", interval, start, end, isComplete);
+        } catch (IOException e) {
+            log.warn("Failed to mark coverage: {}", e.getMessage());
         }
-
-        // Allow 10% tolerance for interval gaps
-        long maxGap = intervalMs + (intervalMs / 10);
-
-        List<Long> times = new ArrayList<>(premiumMap.keySet());
-
-        // Check if we have data from the start
-        if (times.get(0) > startTime + maxGap) {
-            return startTime;
-        }
-
-        // Check for gaps between klines
-        for (int i = 1; i < times.size(); i++) {
-            long gap = times.get(i) - times.get(i - 1);
-            if (gap > maxGap) {
-                return times.get(i - 1) + intervalMs;
-            }
-        }
-
-        // Check if we have data up to the end
-        long lastTime = times.get(times.size() - 1);
-        long now = System.currentTimeMillis();
-        if (lastTime < endTime - maxGap && lastTime < now - maxGap) {
-            return lastTime + intervalMs;
-        }
-
-        return 0; // No gap
     }
 
     /**
-     * Save premium index data to monthly CSV files.
+     * Check if a month is fully cached in SQLite.
      */
-    private void saveToCache(String symbol, String interval, List<PremiumIndex> premiums) throws IOException {
-        if (premiums.isEmpty()) return;
+    private boolean isMonthFullyCached(String symbol, String interval, YearMonth month) {
+        long monthStart = month.atDay(1).atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli();
+        long monthEnd = month.plusMonths(1).atDay(1).atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli() - 1;
 
-        File premiumDir = getPremiumDir(symbol, interval);
-        if (!premiumDir.exists()) {
-            premiumDir.mkdirs();
-        }
-
-        // Group by month
-        Map<YearMonth, List<PremiumIndex>> byMonth = new TreeMap<>();
-        for (PremiumIndex pi : premiums) {
-            YearMonth month = YearMonth.from(
-                Instant.ofEpochMilli(pi.openTime()).atZone(ZoneOffset.UTC)
-            );
-            byMonth.computeIfAbsent(month, k -> new ArrayList<>()).add(pi);
-        }
-
-        // Write each month's file
-        for (Map.Entry<YearMonth, List<PremiumIndex>> entry : byMonth.entrySet()) {
-            String monthKey = entry.getKey().format(MONTH_FORMAT);
-            File cacheFile = new File(premiumDir, monthKey + ".csv");
-
-            // Load existing data and merge
-            Map<Long, PremiumIndex> merged = new TreeMap<>();
-            if (cacheFile.exists()) {
-                loadCsvFile(cacheFile, merged);
-            }
-            for (PremiumIndex pi : entry.getValue()) {
-                merged.put(pi.openTime(), pi);
-            }
-
-            // Write merged data
-            try (PrintWriter writer = new PrintWriter(new FileWriter(cacheFile))) {
-                writer.println(CSV_HEADER);
-                for (PremiumIndex pi : merged.values()) {
-                    writer.println(pi.toCsv());
-                }
-            }
+        try {
+            return sqliteStore.isFullyCovered(symbol, "premium_index", interval, monthStart, monthEnd);
+        } catch (IOException e) {
+            return false;
         }
     }
 
     /**
      * Get premium index klines from cache only (no API calls).
-     * Returns immediately with whatever is available in local cache.
+     * Returns immediately with whatever is available in SQLite cache.
      *
      * @param symbol    Trading pair (e.g., "BTCUSDT")
      * @param interval  Kline interval (e.g., "1h", "5m")
@@ -288,32 +166,20 @@ public class PremiumIndexStore {
      */
     public List<PremiumIndex> getPremiumIndexCacheOnly(String symbol, String interval,
                                                         long startTime, long endTime) {
-        Map<Long, PremiumIndex> premiumMap = new TreeMap<>();
-        loadCachedPremium(symbol, interval, startTime, endTime, premiumMap);
-
-        List<PremiumIndex> result = new ArrayList<>();
-        for (PremiumIndex pi : premiumMap.values()) {
-            if (pi.openTime() >= startTime && pi.openTime() <= endTime) {
-                result.add(pi);
-            }
+        try {
+            return sqliteStore.getPremiumIndex(symbol, interval, startTime, endTime);
+        } catch (IOException e) {
+            log.warn("Failed to load premium from SQLite: {}", e.getMessage());
+            return new ArrayList<>();
         }
-        return result;
     }
 
     /**
-     * Clear cache for a symbol and interval.
+     * Clear cache for a symbol (no-op for SQLite, kept for API compatibility).
      */
     public void clearCache(String symbol, String interval) {
-        File premiumDir = getPremiumDir(symbol, interval);
-        if (premiumDir.exists()) {
-            File[] files = premiumDir.listFiles();
-            if (files != null) {
-                for (File file : files) {
-                    file.delete();
-                }
-            }
-            premiumDir.delete();
-        }
+        // SQLite data is managed by SqliteDataStore
+        log.debug("clearCache called for {} {} - SQLite data persists", symbol, interval);
     }
 
     // ========== Vision Bulk Download Methods ==========
@@ -352,55 +218,6 @@ public class PremiumIndexStore {
         boolean hasCompleteMonth = durationMs >= 28L * 24 * 60 * 60 * 1000;
 
         return exceedsThreshold && hasCompleteMonth;
-    }
-
-    /**
-     * Estimate the duration of uncached data within the requested range.
-     */
-    private long estimateUncachedDuration(String symbol, String interval, long startTime, long endTime) {
-        File premiumDir = getPremiumDir(symbol, interval);
-        if (!premiumDir.exists()) {
-            return endTime - startTime;
-        }
-
-        YearMonth startMonth = YearMonth.from(Instant.ofEpochMilli(startTime).atZone(ZoneOffset.UTC));
-        YearMonth endMonth = YearMonth.from(Instant.ofEpochMilli(endTime).atZone(ZoneOffset.UTC));
-
-        long uncachedMonths = 0;
-        YearMonth current = startMonth;
-        while (!current.isAfter(endMonth)) {
-            if (!isMonthFullyCached(symbol, interval, current)) {
-                uncachedMonths++;
-            }
-            current = current.plusMonths(1);
-        }
-
-        // Each month is approximately 30 days
-        return uncachedMonths * 30L * 24 * 60 * 60 * 1000;
-    }
-
-    /**
-     * Check if a month is fully cached.
-     */
-    private boolean isMonthFullyCached(String symbol, String interval, YearMonth month) {
-        File cacheFile = new File(getPremiumDir(symbol, interval), month.format(MONTH_FORMAT) + ".csv");
-        if (!cacheFile.exists()) {
-            return false;
-        }
-
-        // Check if file has reasonable amount of data based on interval
-        long intervalMs = getIntervalMs(interval);
-        long expectedRecords = (30L * 24 * 60 * 60 * 1000) / intervalMs * 80 / 100; // 80% threshold
-
-        try (BufferedReader reader = new BufferedReader(new FileReader(cacheFile))) {
-            int lineCount = 0;
-            while (reader.readLine() != null) {
-                lineCount++;
-            }
-            return lineCount >= Math.min(expectedRecords, 100); // At least 100 records or 80% expected
-        } catch (IOException e) {
-            return false;
-        }
     }
 
     /**
@@ -454,7 +271,11 @@ public class PremiumIndexStore {
 
             List<PremiumIndex> premiums = parseVisionZip(response.body().byteStream());
             if (!premiums.isEmpty()) {
-                saveToCache(symbol, interval, premiums);
+                saveToSqlite(symbol, interval, premiums);
+                // Mark month as covered
+                long monthStart = month.atDay(1).atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli();
+                long monthEnd = month.plusMonths(1).atDay(1).atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli() - 1;
+                markCoverage(symbol, interval, monthStart, monthEnd, true);
                 log.info("Vision: Saved {} premium index records for {}", premiums.size(), month);
             }
         }

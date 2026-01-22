@@ -1,0 +1,13 @@
+{
+  "id": "low-volatility",
+  "name": "Low Volatility",
+  "description": "Volatility is contracting - ATR is significantly lower than previous bar",
+  "category": "Volatility",
+  "condition": "ATR(14) < ATR(14)[1] * 0.7",
+  "timeframe": "1h",
+  "symbol": "BTCUSDT",
+  "created": null,
+  "updated": null,
+  "builtIn": true,
+  "version": "1.0"
+}

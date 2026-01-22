@@ -71,11 +71,11 @@ public class MemoryStatusPanel extends JPanel {
     public void refresh() {
         // JVM heap usage
         Runtime rt = Runtime.getRuntime();
-        long usedMB = (rt.totalMemory() - rt.freeMemory()) / (1024 * 1024);
-        long maxMB = rt.maxMemory() / (1024 * 1024);
-        double usedPct = (double) usedMB / maxMB * 100;
+        long usedBytes = rt.totalMemory() - rt.freeMemory();
+        long maxBytes = rt.maxMemory();
+        double usedPct = (double) usedBytes / maxBytes * 100;
 
-        heapLabel.setText(String.format("Heap %dM/%dM", usedMB, maxMB));
+        heapLabel.setText(String.format("Heap %s/%s", formatBytes(usedBytes), formatBytes(maxBytes)));
 
         // Color based on usage
         Color heapBg = BG_NORMAL;
@@ -85,9 +85,9 @@ public class MemoryStatusPanel extends JPanel {
 
         heapLabel.setToolTipText(String.format(
             "<html><b>JVM Heap Memory</b><br>" +
-            "Used: %d MB (%.1f%%)<br>" +
-            "Max: %d MB</html>",
-            usedMB, usedPct, maxMB));
+            "Used: %s (%.1f%%)<br>" +
+            "Max: %s</html>",
+            formatBytes(usedBytes), usedPct, formatBytes(maxBytes)));
 
         // Data pages memory
         ApplicationContext ctx = ApplicationContext.getInstance();
@@ -105,8 +105,8 @@ public class MemoryStatusPanel extends JPanel {
         long indicatorsMem = ctx.getIndicatorPageManager() != null
             ? ctx.getIndicatorPageManager().estimateMemoryBytes() : 0;
 
-        long totalDataMB = (candlesMem + fundingMem + oiMem + aggTradesMem + premiumMem + indicatorsMem) / (1024 * 1024);
-        dataLabel.setText(String.format("Data %dM", totalDataMB));
+        long totalDataBytes = candlesMem + fundingMem + oiMem + aggTradesMem + premiumMem + indicatorsMem;
+        dataLabel.setText("Data " + formatBytes(totalDataBytes));
 
         // Build tooltip with breakdown
         StringBuilder tooltip = new StringBuilder();
@@ -117,8 +117,7 @@ public class MemoryStatusPanel extends JPanel {
         tooltip.append(String.format("Open Interest: %s<br>", formatBytes(oiMem)));
         tooltip.append(String.format("AggTrades: %s<br>", formatBytes(aggTradesMem)));
         tooltip.append(String.format("Premium: %s<br>", formatBytes(premiumMem)));
-        tooltip.append(String.format("<br><b>Total: %s</b></html>", formatBytes(
-            candlesMem + fundingMem + oiMem + aggTradesMem + premiumMem + indicatorsMem)));
+        tooltip.append(String.format("<br><b>Total: %s</b></html>", formatBytes(totalDataBytes)));
         dataLabel.setToolTipText(tooltip.toString());
     }
 
@@ -128,9 +127,22 @@ public class MemoryStatusPanel extends JPanel {
 
     private String formatBytes(long bytes) {
         if (bytes < 1024) return bytes + " B";
-        if (bytes < 1024 * 1024) return String.format("%.1f KB", bytes / 1024.0);
-        if (bytes < 1024 * 1024 * 1024) return String.format("%.1f MB", bytes / (1024.0 * 1024));
+        if (bytes < 1024 * 1024) return formatWithSeparator(bytes / 1024) + " KB";
+        if (bytes < 1024 * 1024 * 1024) return formatWithSeparator(bytes / (1024 * 1024)) + " MB";
         return String.format("%.2f GB", bytes / (1024.0 * 1024 * 1024));
+    }
+
+    /** Format number with ' as thousand separator (e.g., 1'234) */
+    private String formatWithSeparator(long value) {
+        if (value < 1000) return String.valueOf(value);
+        StringBuilder sb = new StringBuilder();
+        String str = String.valueOf(value);
+        int len = str.length();
+        for (int i = 0; i < len; i++) {
+            if (i > 0 && (len - i) % 3 == 0) sb.append("'");
+            sb.append(str.charAt(i));
+        }
+        return sb.toString();
     }
 
     public void dispose() {

@@ -100,17 +100,6 @@ public class AggTradesStore {
     }
 
     /**
-     * Get the hourly file path.
-     * @param complete true for complete file (.csv), false for partial (.partial.csv)
-     */
-    private File getHourFile(String symbol, LocalDateTime dateTime, boolean complete) {
-        File dayDir = getDayDir(symbol, dateTime.toLocalDate());
-        String hourStr = dateTime.format(HOUR_FORMAT);
-        String filename = complete ? hourStr + ".csv" : hourStr + ".partial.csv";
-        return new File(dayDir, filename);
-    }
-
-    /**
      * Cancel any ongoing fetch operation.
      */
     public void cancelCurrentFetch() {
@@ -411,33 +400,6 @@ public class AggTradesStore {
     }
 
     /**
-     * Distribute trades from a monthly download to hourly cache files.
-     */
-    private void distributeToHourlyFiles(String symbol, List<AggTrade> trades) throws IOException {
-        // Group by hour
-        java.util.Map<LocalDateTime, List<AggTrade>> byHour = new java.util.LinkedHashMap<>();
-
-        for (AggTrade trade : trades) {
-            LocalDateTime hour = LocalDateTime.ofInstant(
-                Instant.ofEpochMilli(trade.timestamp()), ZoneOffset.UTC)
-                .withMinute(0).withSecond(0).withNano(0);
-            byHour.computeIfAbsent(hour, k -> new ArrayList<>()).add(trade);
-        }
-
-        // Write each hour
-        for (var entry : byHour.entrySet()) {
-            LocalDateTime hour = entry.getKey();
-            List<AggTrade> hourTrades = entry.getValue();
-
-            // Sort by timestamp
-            hourTrades.sort((a, b) -> Long.compare(a.timestamp(), b.timestamp()));
-
-            // Save as complete (Vision data is complete for historical months)
-            saveHourFile(symbol, hour, hourTrades, false);
-        }
-    }
-
-    /**
      * Check if aggTrades data exists for a time range.
      */
     public boolean hasDataFor(String symbol, long startTime, long endTime) {
@@ -627,90 +589,6 @@ public class AggTradesStore {
         } catch (IOException e) {
             log.warn("Failed to mark coverage: {}", e.getMessage());
         }
-    }
-
-    /**
-     * Save trades to an hourly file.
-     */
-    private void saveHourFile(String symbol, LocalDateTime hour, List<AggTrade> trades, boolean isPartial)
-            throws IOException {
-        if (trades.isEmpty()) return;
-
-        File dayDir = getDayDir(symbol, hour.toLocalDate());
-        dayDir.mkdirs();
-
-        File targetFile = getHourFile(symbol, hour, !isPartial);
-        File otherFile = getHourFile(symbol, hour, isPartial);
-
-        writeCsvFile(targetFile, trades);
-
-        // Clean up the other file type if it exists
-        if (otherFile.exists()) {
-            otherFile.delete();
-        }
-    }
-
-    /**
-     * Merge two trade lists, removing duplicates by aggTradeId.
-     */
-    private List<AggTrade> mergeTrades(List<AggTrade> a, List<AggTrade> b) {
-        java.util.Map<Long, AggTrade> map = new java.util.LinkedHashMap<>();
-
-        for (AggTrade t : a) {
-            map.put(t.aggTradeId(), t);
-        }
-        for (AggTrade t : b) {
-            map.put(t.aggTradeId(), t);
-        }
-
-        return map.values().stream()
-            .sorted((x, y) -> Long.compare(x.timestamp(), y.timestamp()))
-            .toList();
-    }
-
-    /**
-     * Load trades from a CSV file.
-     */
-    private List<AggTrade> loadCsvFile(File file) throws IOException {
-        List<AggTrade> trades = new ArrayList<>();
-
-        try (BufferedReader reader = new BufferedReader(new FileReader(file))) {
-            String line;
-            boolean firstLine = true;
-
-            while ((line = reader.readLine()) != null) {
-                line = line.trim();
-                if (line.isEmpty()) continue;
-
-                // Skip header line
-                if (firstLine && line.startsWith("aggTradeId")) {
-                    firstLine = false;
-                    continue;
-                }
-                firstLine = false;
-
-                try {
-                    trades.add(AggTrade.fromCsv(line));
-                } catch (Exception e) {
-                    log.warn("Failed to parse CSV line: {}", line);
-                }
-            }
-        }
-
-        return trades;
-    }
-
-    /**
-     * Write trades to a CSV file.
-     */
-    private void writeCsvFile(File file, List<AggTrade> trades) throws IOException {
-        try (PrintWriter writer = new PrintWriter(new FileWriter(file))) {
-            writer.println("aggTradeId,price,quantity,firstTradeId,lastTradeId,timestamp,isBuyerMaker");
-            for (AggTrade t : trades) {
-                writer.println(t.toCsv());
-            }
-        }
-        log.debug("Saved {} aggTrades to {}", formatCount(trades.size()), file.getPath());
     }
 
     /**
