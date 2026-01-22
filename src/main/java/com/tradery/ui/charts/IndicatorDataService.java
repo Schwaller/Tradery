@@ -196,6 +196,87 @@ public class IndicatorDataService {
         subscribe(IndicatorType.HISTORIC_RAYS, skip + ":" + interval);
     }
 
+    // ===== Orderflow Subscriptions (aggTrades-based) =====
+
+    /**
+     * Subscribe to Delta indicator (buy - sell volume).
+     */
+    public void subscribeDelta() {
+        subscribe(IndicatorType.DELTA, "");
+    }
+
+    /**
+     * Subscribe to Cumulative Delta indicator.
+     */
+    public void subscribeCumDelta() {
+        subscribe(IndicatorType.CUM_DELTA, "");
+    }
+
+    /**
+     * Subscribe to Buy Volume indicator (aggTrades).
+     */
+    public void subscribeBuyVolume() {
+        subscribe(IndicatorType.BUY_VOLUME, "");
+    }
+
+    /**
+     * Subscribe to Sell Volume indicator (aggTrades).
+     */
+    public void subscribeSellVolume() {
+        subscribe(IndicatorType.SELL_VOLUME, "");
+    }
+
+    /**
+     * Subscribe to Whale Delta indicator (large trades only).
+     */
+    public void subscribeWhaleDelta(double threshold) {
+        subscribe(IndicatorType.WHALE_DELTA, String.valueOf(threshold));
+    }
+
+    /**
+     * Subscribe to Retail Delta indicator (small trades only).
+     */
+    public void subscribeRetailDelta(double threshold) {
+        subscribe(IndicatorType.RETAIL_DELTA, String.valueOf(threshold));
+    }
+
+    // ===== OHLCV-based Subscriptions =====
+
+    /**
+     * Subscribe to Trade Count indicator.
+     */
+    public void subscribeTradeCount() {
+        subscribe(IndicatorType.TRADE_COUNT, "");
+    }
+
+    /**
+     * Subscribe to Buy Ratio indicator.
+     */
+    public void subscribeBuyRatio() {
+        subscribe(IndicatorType.BUY_RATIO, "");
+    }
+
+    /**
+     * Subscribe to OHLCV Delta indicator.
+     */
+    public void subscribeOhlcvDelta() {
+        subscribe(IndicatorType.OHLCV_DELTA, "");
+    }
+
+    /**
+     * Subscribe to OHLCV CVD indicator.
+     */
+    public void subscribeOhlcvCvd() {
+        subscribe(IndicatorType.OHLCV_CVD, "");
+    }
+
+    /**
+     * Subscribe to Range Position indicator.
+     */
+    public void subscribeRangePosition(int period, int skip) {
+        subscribe(IndicatorType.RANGE_POSITION, period + ":" + skip);
+    }
+
     /**
      * Unsubscribe from an indicator.
      */
@@ -303,6 +384,87 @@ public class IndicatorDataService {
      */
     public HistoricRays getHistoricRays(int skip, int interval) {
         return getData(IndicatorType.HISTORIC_RAYS, skip + ":" + interval);
+    }
+
+    // ===== Orderflow Data Access (aggTrades-based) =====
+
+    /**
+     * Get Delta values (or null if not ready).
+     */
+    public double[] getDelta() {
+        return getData(IndicatorType.DELTA, "");
+    }
+
+    /**
+     * Get Cumulative Delta values (or null if not ready).
+     */
+    public double[] getCumDelta() {
+        return getData(IndicatorType.CUM_DELTA, "");
+    }
+
+    /**
+     * Get Buy Volume values (or null if not ready).
+     */
+    public double[] getBuyVolume() {
+        return getData(IndicatorType.BUY_VOLUME, "");
+    }
+
+    /**
+     * Get Sell Volume values (or null if not ready).
+     */
+    public double[] getSellVolume() {
+        return getData(IndicatorType.SELL_VOLUME, "");
+    }
+
+    /**
+     * Get Whale Delta values (or null if not ready).
+     */
+    public double[] getWhaleDelta(double threshold) {
+        return getData(IndicatorType.WHALE_DELTA, String.valueOf(threshold));
+    }
+
+    /**
+     * Get Retail Delta values (or null if not ready).
+     */
+    public double[] getRetailDelta(double threshold) {
+        return getData(IndicatorType.RETAIL_DELTA, String.valueOf(threshold));
+    }
+
+    // ===== OHLCV-based Data Access =====
+
+    /**
+     * Get Trade Count values (or null if not ready).
+     */
+    public double[] getTradeCount() {
+        return getData(IndicatorType.TRADE_COUNT, "");
+    }
+
+    /**
+     * Get Buy Ratio values (or null if not ready).
+     */
+    public double[] getBuyRatio() {
+        return getData(IndicatorType.BUY_RATIO, "");
+    }
+
+    /**
+     * Get OHLCV Delta values (or null if not ready).
+     */
+    public double[] getOhlcvDelta() {
+        return getData(IndicatorType.OHLCV_DELTA, "");
+    }
+
+    /**
+     * Get OHLCV CVD values (or null if not ready).
+     */
+    public double[] getOhlcvCvd() {
+        return getData(IndicatorType.OHLCV_CVD, "");
+    }
+
+    /**
+     * Get Range Position values (or null if not ready).
+     */
+    public double[] getRangePosition(int period, int skip) {
+        return getData(IndicatorType.RANGE_POSITION, period + ":" + skip);
     }
 
     /**

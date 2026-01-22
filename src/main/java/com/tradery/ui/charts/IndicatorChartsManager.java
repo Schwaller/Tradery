@@ -90,7 +90,8 @@ public class IndicatorChartsManager {
     private int rangePositionSkip = 0;
     private int adxPeriod = 14;
 
-    // IndicatorEngine for orderflow/funding data
+    // IndicatorEngine for funding/OI data (only these charts still use it)
+    // Delta, CVD, VolumeRatio, Whale, Retail, TradeCount, RangePosition now use IndicatorDataService
     private IndicatorEngine indicatorEngine;
 
     // IndicatorDataService for background indicator computation
@@ -149,6 +150,30 @@ public class IndicatorChartsManager {
             indicatorDataService.subscribeADX(adxPeriod);
             indicatorDataService.subscribePlusDI(adxPeriod);
             indicatorDataService.subscribeMinusDI(adxPeriod);
+        }
+        if (rangePositionChartEnabled) {
+            indicatorDataService.subscribeRangePosition(rangePositionPeriod, rangePositionSkip);
+        }
+
+        // Orderflow indicators (aggTrades-based)
+        if (deltaChartEnabled) {
+            indicatorDataService.subscribeDelta();
+        }
+        if (cvdChartEnabled) {
+            indicatorDataService.subscribeCumDelta();
+        }
+        if (volumeRatioChartEnabled) {
+            indicatorDataService.subscribeBuyVolume();
+            indicatorDataService.subscribeSellVolume();
+        }
+        if (whaleChartEnabled) {
+            indicatorDataService.subscribeWhaleDelta(whaleThreshold);
+        }
+        if (retailChartEnabled) {
+            indicatorDataService.subscribeRetailDelta(retailThreshold);
+        }
+        if (tradeCountChartEnabled) {
+            indicatorDataService.subscribeTradeCount();
         }
 
         // Request premium data if chart is enabled
@@ -216,6 +241,14 @@ public class IndicatorChartsManager {
             redrawAtrChart(candles);
             redrawStochasticChart(candles);
             redrawAdxChart(candles);
+            redrawRangePositionChart(candles);
+            // Orderflow charts
+            redrawDeltaChart(candles);
+            redrawCvdChart(candles);
+            redrawVolumeRatioChart(candles);
+            redrawWhaleChart(candles);
+            redrawRetailChart(candles);
+            redrawTradeCountChart(candles);
         }
     }
 
@@ -523,6 +556,10 @@ public class IndicatorChartsManager {
 
     // ===== Delta Methods =====
 
+    /**
+     * Set the indicator engine. Still needed for Funding and OI charts.
+     * Most indicator charts now use IndicatorDataService for background computation.
+     */
     public void setIndicatorEngine(IndicatorEngine engine) {
         this.indicatorEngine = engine;
     }
@@ -615,14 +652,27 @@ public class IndicatorChartsManager {
     }
 
     public void updateDeltaChart(List<Candle> candles) {
-        if (!deltaChartEnabled || candles == null || candles.isEmpty() || indicatorEngine == null) {
+        if (!deltaChartEnabled || candles == null || candles.isEmpty()) {
+            return;
+        }
+        // Subscribe to Delta data (will arrive via callback if not ready)
+        indicatorDataService.subscribeDelta();
+        // Try to render with available data
+        redrawDeltaChart(candles);
+    }
+
+    private void redrawDeltaChart(List<Candle> candles) {
+        if (!deltaChartEnabled || candles == null || candles.isEmpty()) {
             return;
         }
 
-        XYPlot plot = deltaComponent.getChart().getXYPlot();
-        double[] delta = indicatorEngine.getDelta();
-        if (delta == null) return;
+        // Get pre-computed Delta data from service
+        double[] delta = indicatorDataService.getDelta();
+        if (delta == null) {
+            return; // Data not ready yet, will be called again via callback
+        }
 
+        XYPlot plot = deltaComponent.getChart().getXYPlot();
         XYSeriesCollection deltaDataset = new XYSeriesCollection();
         XYSeries deltaSeries = new XYSeries("Delta");
 
@@ -660,14 +710,27 @@ public class IndicatorChartsManager {
     }
 
     public void updateCvdChart(List<Candle> candles) {
-        if (!cvdChartEnabled || candles == null || candles.isEmpty() || indicatorEngine == null) {
+        if (!cvdChartEnabled || candles == null || candles.isEmpty()) {
+            return;
+        }
+        // Subscribe to CVD data (will arrive via callback if not ready)
+        indicatorDataService.subscribeCumDelta();
+        // Try to render with available data
+        redrawCvdChart(candles);
+    }
+
+    private void redrawCvdChart(List<Candle> candles) {
+        if (!cvdChartEnabled || candles == null || candles.isEmpty()) {
             return;
         }
 
-        XYPlot plot = cvdComponent.getChart().getXYPlot();
-        double[] cumDelta = indicatorEngine.getCumulativeDelta();
-        if (cumDelta == null) return;
+        // Get pre-computed CVD data from service
+        double[] cumDelta = indicatorDataService.getCumDelta();
+        if (cumDelta == null) {
+            return; // Data not ready yet, will be called again via callback
+        }
 
+        XYPlot plot = cvdComponent.getChart().getXYPlot();
         TimeSeriesCollection cvdDataset = new TimeSeriesCollection();
         TimeSeries cvdSeries = new TimeSeries("CVD");
 
@@ -690,14 +753,29 @@ public class IndicatorChartsManager {
     }
 
     public void updateVolumeRatioChart(List<Candle> candles) {
-        if (!volumeRatioChartEnabled || candles == null || candles.isEmpty() || indicatorEngine == null) {
+        if (!volumeRatioChartEnabled || candles == null || candles.isEmpty()) {
+            return;
+        }
+        // Subscribe to volume data (will arrive via callback if not ready)
+        indicatorDataService.subscribeBuyVolume();
+        indicatorDataService.subscribeSellVolume();
+        // Try to render with available data
+        redrawVolumeRatioChart(candles);
+    }
+
+    private void redrawVolumeRatioChart(List<Candle> candles) {
+        if (!volumeRatioChartEnabled || candles == null || candles.isEmpty()) {
             return;
         }
 
+        // Get pre-computed volume data from service
+        double[] buyVolume = indicatorDataService.getBuyVolume();
+        double[] sellVolume = indicatorDataService.getSellVolume();
+        if (buyVolume == null || sellVolume == null) {
+            return; // Data not ready yet, will be called again via callback
+        }
+
         XYPlot plot = volumeRatioComponent.getChart().getXYPlot();
-        double[] buyVolume = indicatorEngine.getBuyVolume();
-        double[] sellVolume = indicatorEngine.getSellVolume();
-        if (buyVolume == null || sellVolume == null) return;
 
         // Create single series with net volume (buy - sell)
         // Positive = more buying, Negative = more selling
@@ -710,11 +788,12 @@ public class IndicatorChartsManager {
             Candle c = candles.get(i);
             double buy = buyVolume[i];
             double sell = sellVolume[i];
-            maxVolume = Math.max(maxVolume, Math.max(buy, sell));
-
-            // Buy volume as positive, sell volume as negative
-            buySeries.addOrUpdate(new Millisecond(new Date(c.timestamp())), buy);
-            sellSeries.addOrUpdate(new Millisecond(new Date(c.timestamp())), -sell);
+            if (!Double.isNaN(buy) && !Double.isNaN(sell)) {
+                maxVolume = Math.max(maxVolume, Math.max(buy, sell));
+                // Buy volume as positive, sell volume as negative
+                buySeries.addOrUpdate(new Millisecond(new Date(c.timestamp())), buy);
+                sellSeries.addOrUpdate(new Millisecond(new Date(c.timestamp())), -sell);
+            }
         }
 
         dataset.addSeries(buySeries);
@@ -751,14 +830,27 @@ public class IndicatorChartsManager {
     }
 
     public void updateWhaleChart(List<Candle> candles) {
-        if (!whaleChartEnabled || candles == null || candles.isEmpty() || indicatorEngine == null) {
+        if (!whaleChartEnabled || candles == null || candles.isEmpty()) {
+            return;
+        }
+        // Subscribe to Whale Delta data (will arrive via callback if not ready)
+        indicatorDataService.subscribeWhaleDelta(whaleThreshold);
+        // Try to render with available data
+        redrawWhaleChart(candles);
+    }
+
+    private void redrawWhaleChart(List<Candle> candles) {
+        if (!whaleChartEnabled || candles == null || candles.isEmpty()) {
             return;
         }
 
-        XYPlot plot = whaleComponent.getChart().getXYPlot();
-        double[] whaleDelta = indicatorEngine.getWhaleDelta(whaleThreshold);
-        if (whaleDelta == null) return;
+        // Get pre-computed Whale Delta data from service
+        double[] whaleDelta = indicatorDataService.getWhaleDelta(whaleThreshold);
+        if (whaleDelta == null) {
+            return; // Data not ready yet, will be called again via callback
+        }
 
+        XYPlot plot = whaleComponent.getChart().getXYPlot();
         XYSeriesCollection dataset = new XYSeriesCollection();
         XYSeries series = new XYSeries("Whale Delta");
 
@@ -810,14 +902,27 @@ public class IndicatorChartsManager {
     }
 
     public void updateRetailChart(List<Candle> candles) {
-        if (!retailChartEnabled || candles == null || candles.isEmpty() || indicatorEngine == null) {
+        if (!retailChartEnabled || candles == null || candles.isEmpty()) {
+            return;
+        }
+        // Subscribe to Retail Delta data (will arrive via callback if not ready)
+        indicatorDataService.subscribeRetailDelta(retailThreshold);
+        // Try to render with available data
+        redrawRetailChart(candles);
+    }
+
+    private void redrawRetailChart(List<Candle> candles) {
+        if (!retailChartEnabled || candles == null || candles.isEmpty()) {
             return;
         }
 
-        XYPlot plot = retailComponent.getChart().getXYPlot();
-        double[] retailDelta = indicatorEngine.getRetailDelta(retailThreshold);
-        if (retailDelta == null) return;
+        // Get pre-computed Retail Delta data from service
+        double[] retailDelta = indicatorDataService.getRetailDelta(retailThreshold);
+        if (retailDelta == null) {
+            return; // Data not ready yet, will be called again via callback
+        }
 
+        XYPlot plot = retailComponent.getChart().getXYPlot();
         XYSeriesCollection dataset = new XYSeriesCollection();
         XYSeries series = new XYSeries("Retail Delta");
 
@@ -858,7 +963,7 @@ public class IndicatorChartsManager {
 
         // Add zero reference line and title
         plot.clearAnnotations();
-        String title = String.format("Retail Delta (<$%.0fK)", whaleThreshold / 1000);
+        String title = String.format("Retail Delta (<$%.0fK)", retailThreshold / 1000);
         ChartStyles.addChartTitleAnnotation(plot, title);
         if (!candles.isEmpty()) {
             long startTime = candles.get(0).timestamp();
@@ -1469,6 +1574,22 @@ public class IndicatorChartsManager {
         if (!rangePositionChartEnabled || candles == null || candles.size() < rangePositionPeriod + rangePositionSkip + 1) {
             return;
         }
+        // Subscribe to Range Position data (will arrive via callback if not ready)
+        indicatorDataService.subscribeRangePosition(rangePositionPeriod, rangePositionSkip);
+        // Try to render with available data
+        redrawRangePositionChart(candles);
+    }
+
+    private void redrawRangePositionChart(List<Candle> candles) {
+        if (!rangePositionChartEnabled || candles == null || candles.size() < rangePositionPeriod + rangePositionSkip + 1) {
+            return;
+        }
+
+        // Get pre-computed Range Position data from service
+        double[] values = indicatorDataService.getRangePosition(rangePositionPeriod, rangePositionSkip);
+        if (values == null) {
+            return; // Data not ready yet, will be called again via callback
+        }
 
         XYPlot plot = rangePositionComponent.getChart().getXYPlot();
         TimeSeriesCollection dataset = new TimeSeriesCollection();
@@ -1477,9 +1598,7 @@ public class IndicatorChartsManager {
             : "RANGE_POSITION(" + rangePositionPeriod + ")";
         TimeSeries series = new TimeSeries(label);
 
-        double[] values = Indicators.rangePosition(candles, rangePositionPeriod, rangePositionSkip);
-
-        for (int i = rangePositionPeriod + rangePositionSkip; i < candles.size(); i++) {
+        for (int i = rangePositionPeriod + rangePositionSkip; i < candles.size() && i < values.length; i++) {
             Candle c = candles.get(i);
             if (!Double.isNaN(values[i])) {
                 series.addOrUpdate(new Millisecond(new Date(c.timestamp())), values[i]);
@@ -1630,14 +1749,27 @@ public class IndicatorChartsManager {
     }
 
     public void updateTradeCountChart(List<Candle> candles) {
-        if (!tradeCountChartEnabled || candles == null || candles.isEmpty() || indicatorEngine == null) {
+        if (!tradeCountChartEnabled || candles == null || candles.isEmpty()) {
+            return;
+        }
+        // Subscribe to Trade Count data (will arrive via callback if not ready)
+        indicatorDataService.subscribeTradeCount();
+        // Try to render with available data
+        redrawTradeCountChart(candles);
+    }
+
+    private void redrawTradeCountChart(List<Candle> candles) {
+        if (!tradeCountChartEnabled || candles == null || candles.isEmpty()) {
             return;
         }
 
-        XYPlot plot = tradeCountComponent.getChart().getXYPlot();
-        double[] tradeCount = indicatorEngine.getTradeCount();
-        if (tradeCount == null) return;
+        // Get pre-computed Trade Count data from service
+        double[] tradeCount = indicatorDataService.getTradeCount();
+        if (tradeCount == null) {
+            return; // Data not ready yet, will be called again via callback
+        }
 
+        XYPlot plot = tradeCountComponent.getChart().getXYPlot();
         TimeSeriesCollection dataset = new TimeSeriesCollection();
         TimeSeries series = new TimeSeries("Trade Count");
 

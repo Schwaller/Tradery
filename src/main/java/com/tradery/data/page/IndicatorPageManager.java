@@ -312,9 +312,20 @@ public class IndicatorPageManager {
             // Rays
             case RESISTANCE_RAYS -> "RESISTANCE_RAYS";
             case SUPPORT_RAYS -> "SUPPORT_RAYS";
-            // Orderflow
+            // Orderflow (aggTrades-based)
             case DELTA -> "DELTA";
             case CUM_DELTA -> "CUM_DELTA";
+            case BUY_VOLUME -> "BUY_VOLUME";
+            case SELL_VOLUME -> "SELL_VOLUME";
+            case WHALE_DELTA -> "WHALE_DELTA";
+            case RETAIL_DELTA -> "RETAIL_DELTA";
+            // OHLCV-based volume indicators
+            case TRADE_COUNT -> "TRADE_COUNT";
+            case BUY_RATIO -> "BUY_RATIO";
+            case OHLCV_DELTA -> "OHLCV_DELTA";
+            case OHLCV_CVD -> "OHLCV_CVD";
+            // Range analysis
+            case RANGE_POSITION -> "RANGE_POSITION";
             // Volume profile - returns full result, caller extracts POC/VAH/VAL
             case POC, VAH, VAL -> "VOLUME_PROFILE";
             // Special cases handled by legacy switch (not in registry)

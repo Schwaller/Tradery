@@ -1268,21 +1268,16 @@ public class TradeDetailsWindow extends JDialog {
      * Initially collapsed to save space, click to expand.
      */
     private void addCollapsibleIndicatorSection(String title, Map<String, Double> indicators, Color accentColor, String tooltip) {
-        JPanel sectionPanel = new JPanel();
-        sectionPanel.setLayout(new BoxLayout(sectionPanel, BoxLayout.Y_AXIS));
-        sectionPanel.setAlignmentX(Component.LEFT_ALIGNMENT);
-        sectionPanel.setOpaque(false);
-
-        // Header with toggle
-        JPanel headerPanel = new JPanel(new BorderLayout());
+        // Header with toggle - add directly to detail panel
+        JPanel headerPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
         headerPanel.setOpaque(false);
-        headerPanel.setMaximumSize(new Dimension(Integer.MAX_VALUE, 20));
+        headerPanel.setMaximumSize(new Dimension(Integer.MAX_VALUE, 22));
         headerPanel.setAlignmentX(Component.LEFT_ALIGNMENT);
         headerPanel.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
 
         JLabel toggleLabel = new JLabel("▶ " + title.toUpperCase() + " (" + indicators.size() + ")");
-        toggleLabel.setFont(toggleLabel.getFont().deriveFont(Font.BOLD, 9f));
-        toggleLabel.setForeground(accentColor.darker());
+        toggleLabel.setFont(toggleLabel.getFont().deriveFont(Font.BOLD, 10f));
+        toggleLabel.setForeground(accentColor);  // Use accent color directly, not darker
 
         if (tooltip != null) {
             String htmlTooltip = "<html><div style='width:250px;padding:4px'>" + tooltip.replace("\n", "<br/>") + "</div></html>";
@@ -1290,7 +1285,7 @@ public class TradeDetailsWindow extends JDialog {
             toggleLabel.setToolTipText(htmlTooltip);
         }
 
-        headerPanel.add(toggleLabel, BorderLayout.WEST);
+        headerPanel.add(toggleLabel);
 
         // Content panel (initially hidden)
         JPanel contentPanel = new JPanel();
@@ -1298,44 +1293,52 @@ public class TradeDetailsWindow extends JDialog {
         contentPanel.setAlignmentX(Component.LEFT_ALIGNMENT);
         contentPanel.setOpaque(false);
         contentPanel.setVisible(false);
+        contentPanel.setBorder(BorderFactory.createEmptyBorder(2, 8, 4, 0));
 
-        // Add indicator rows
+        // Add indicator rows with better colors
         indicators.forEach((k, v) -> {
-            JPanel row = new JPanel(new BorderLayout(8, 0));
+            JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
             row.setOpaque(false);
-            row.setMaximumSize(new Dimension(Integer.MAX_VALUE, 16));
+            row.setMaximumSize(new Dimension(Integer.MAX_VALUE, 18));
             row.setAlignmentX(Component.LEFT_ALIGNMENT);
 
-            JLabel labelComp = new JLabel("  " + k);
+            JLabel labelComp = new JLabel(k + ": ");
             labelComp.setFont(labelComp.getFont().deriveFont(10f));
-            labelComp.setForeground(new Color(120, 120, 120));
+            labelComp.setForeground(new Color(150, 150, 150));
+            labelComp.setPreferredSize(new Dimension(80, 16));
 
             JLabel valueComp = new JLabel(formatIndicatorValue(k, v));
-            valueComp.setFont(valueComp.getFont().deriveFont(10f));
-            valueComp.setForeground(new Color(160, 160, 160));
+            valueComp.setFont(valueComp.getFont().deriveFont(Font.BOLD, 10f));
+            valueComp.setForeground(new Color(200, 200, 200));
 
-            row.add(labelComp, BorderLayout.WEST);
-            row.add(valueComp, BorderLayout.EAST);
+            row.add(labelComp);
+            row.add(valueComp);
             contentPanel.add(row);
         });
 
-        // Toggle on click
-        headerPanel.addMouseListener(new MouseAdapter() {
-            private boolean expanded = false;
+        // Toggle state tracked via array to work in lambda
+        final boolean[] expanded = {false};
 
+        // Toggle on click - use mousePressed for better responsiveness
+        MouseAdapter toggleListener = new MouseAdapter() {
             @Override
-            public void mouseClicked(MouseEvent e) {
-                expanded = !expanded;
-                contentPanel.setVisible(expanded);
-                toggleLabel.setText((expanded ? "▼ " : "▶ ") + title.toUpperCase() + " (" + indicators.size() + ")");
+            public void mousePressed(MouseEvent e) {
+                expanded[0] = !expanded[0];
+                contentPanel.setVisible(expanded[0]);
+                toggleLabel.setText((expanded[0] ? "▼ " : "▶ ") + title.toUpperCase() + " (" + indicators.size() + ")");
+                // Revalidate the scroll pane ancestor
                 detailContentPanel.revalidate();
                 detailContentPanel.repaint();
+                if (detailScrollPane != null) {
+                    detailScrollPane.revalidate();
+                }
             }
-        });
+        };
+        headerPanel.addMouseListener(toggleListener);
+        toggleLabel.addMouseListener(toggleListener);
 
-        sectionPanel.add(headerPanel);
-        sectionPanel.add(contentPanel);
-        detailContentPanel.add(sectionPanel);
+        detailContentPanel.add(headerPanel);
+        detailContentPanel.add(contentPanel);
     }
 
     private void clearDetailPanel() {

@@ -35,6 +35,21 @@ public enum IndicatorType {
     DELTA("DELTA", DataDependency.AGG_TRADES),
     CUM_DELTA("CUM_DELTA", DataDependency.AGG_TRADES),
 
+    // Orderflow from aggTrades
+    BUY_VOLUME("BUY_VOLUME", DataDependency.AGG_TRADES),
+    SELL_VOLUME("SELL_VOLUME", DataDependency.AGG_TRADES),
+    WHALE_DELTA("WHALE_DELTA", DataDependency.AGG_TRADES),
+    RETAIL_DELTA("RETAIL_DELTA", DataDependency.AGG_TRADES),
+
+    // OHLCV-based volume indicators (instant, no aggTrades needed)
+    TRADE_COUNT("TRADE_COUNT", DataDependency.CANDLES),
+    BUY_RATIO("BUY_RATIO", DataDependency.CANDLES),
+    OHLCV_DELTA("OHLCV_DELTA", DataDependency.CANDLES),
+    OHLCV_CVD("OHLCV_CVD", DataDependency.CANDLES),
+
+    // Range analysis
+    RANGE_POSITION("RANGE_POSITION", DataDependency.CANDLES),
+
     // Volume profile (candles-only, instant)
     VWAP("VWAP", DataDependency.CANDLES),
     POC("POC", DataDependency.CANDLES),
