@@ -1,7 +1,6 @@
 package com.tradery.data.page;
 
 import com.tradery.data.PageState;
-import com.tradery.indicators.Indicators;
 import com.tradery.indicators.RotatingRays;
 import com.tradery.indicators.RotatingRays.RaySet;
 import com.tradery.indicators.registry.IndicatorContext;
@@ -9,9 +8,6 @@ import com.tradery.indicators.registry.IndicatorRegistry;
 import com.tradery.indicators.registry.IndicatorSpec;
 import com.tradery.model.AggTrade;
 import com.tradery.model.Candle;
-import com.tradery.model.FundingRate;
-import com.tradery.model.OpenInterest;
-import com.tradery.model.PremiumIndex;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -25,10 +21,15 @@ import java.util.concurrent.*;
 /**
  * Manager for computed indicator pages.
  *
- * Indicators depend on data pages (candles, funding, etc.) and are
+ * Indicators depend on data pages (candles, aggTrades) and are
  * recomputed when source data changes.
  *
- * This is a second layer on top of the data page system.
+ * Star architecture: IndicatorPage owns its source data acquisition.
+ * This manager provides:
+ * - Page registry and deduplication
+ * - Reference counting
+ * - Computation executors
+ * - Listener management
  */
 public class IndicatorPageManager {
 
@@ -79,15 +80,6 @@ public class IndicatorPageManager {
 
     /**
      * Request an indicator page. Returns immediately (never blocks).
-     *
-     * @param type      Indicator type (RSI, SMA, etc.)
-     * @param params    Indicator parameters (e.g., "14" for RSI(14))
-     * @param symbol    Trading symbol
-     * @param timeframe Timeframe
-     * @param startTime Start time
-     * @param endTime   End time
-     * @param listener  Listener for updates (can be null)
-     * @return The indicator page
      */
     public <T> IndicatorPage<T> request(IndicatorType type, String params,
                                          String symbol, String timeframe,
@@ -131,9 +123,12 @@ public class IndicatorPageManager {
         // Increment ref count
         refCounts.merge(key, 1, Integer::sum);
 
-        // Request source data and set up computation
+        // Request source data if this is a new page
         if (page.getState() == PageState.EMPTY) {
-            requestSourceAndCompute(page);
+            // Create compute callback for this page
+            IndicatorPage.ComputeCallback<T> callback = createComputeCallback(page);
+            notifyStateChanged(page, PageState.EMPTY, PageState.LOADING);
+            page.requestSourceData(candlePageMgr, aggTradesPageMgr, callback);
         } else if (listener != null && page.isReady()) {
             // Already ready - notify immediately
             SwingUtilities.invokeLater(() -> {
@@ -143,6 +138,28 @@ public class IndicatorPageManager {
         }
 
         return page;
+    }
+
+    /**
+     * Create a compute callback for an indicator page.
+     * The callback routes computation to the appropriate executor.
+     */
+    private <T> IndicatorPage.ComputeCallback<T> createComputeCallback(IndicatorPage<T> page) {
+        return new IndicatorPage.ComputeCallback<>() {
+            @Override
+            public void compute(IndicatorPage<T> p, List<Candle> candles, List<AggTrade> aggTrades) {
+                if (aggTrades != null && !aggTrades.isEmpty()) {
+                    computeAsyncWithAggTrades(p, candles, aggTrades);
+                } else {
+                    computeAsync(p, candles);
+                }
+            }
+
+            @Override
+            public void onError(IndicatorPage<T> p, String errorMessage) {
+                updateError(p, errorMessage);
+            }
+        };
     }
 
     /**
@@ -175,163 +192,10 @@ public class IndicatorPageManager {
             pages.remove(key);
             listeners.remove(key);
 
-            // Indicator page releases its own source data pages
+            // IndicatorPage releases its own source data pages (star architecture)
             page.releaseSourcePages(candlePageMgr, aggTradesPageMgr);
 
-            log.debug("Released indicator page with source data: {}", key);
-        }
-    }
-
-    /**
-     * Request source data and trigger computation when ready.
-     */
-    private <T> void requestSourceAndCompute(IndicatorPage<T> page) {
-        page.setState(PageState.LOADING);
-        notifyStateChanged(page, PageState.EMPTY, PageState.LOADING);
-
-        IndicatorType type = page.getType();
-
-        switch (type.getDependency()) {
-            case CANDLES -> {
-                // Request candle data and track for cascading release
-                CandleDataListener<T> candleListener = new CandleDataListener<>(page);
-                DataPageView<Candle> candlePage = candlePageMgr.request(
-                    page.getSymbol(), page.getTimeframe(),
-                    page.getStartTime(), page.getEndTime(),
-                    candleListener,
-                    "IndicatorPageManager");
-                page.setSourceCandlePage(candlePage, candleListener);
-            }
-            case AGG_TRADES -> {
-                // Request both candles and aggTrades for orderflow indicators
-                new AggTradesDataCoordinator<>(page).start();
-            }
-            case OPEN_INTEREST, FUNDING, PREMIUM -> {
-                // These indicators use direct data access via IndicatorEngine
-                log.debug("Indicator {} uses direct data access, not page manager computation",
-                    type);
-                updateError(page, "Use direct data access for " + type.getDependency());
-            }
-            default -> {
-                log.warn("Indicator {} dependency {} not yet implemented",
-                    type, type.getDependency());
-                updateError(page, "Dependency not implemented: " + type.getDependency());
-            }
-        }
-    }
-
-    /**
-     * Listener that triggers indicator computation when source candles are ready.
-     */
-    private class CandleDataListener<T> implements DataPageListener<Candle> {
-        private final IndicatorPage<T> indicatorPage;
-
-        CandleDataListener(IndicatorPage<T> indicatorPage) {
-            this.indicatorPage = indicatorPage;
-        }
-
-        @Override
-        public void onStateChanged(DataPageView<Candle> candlePage, PageState oldState, PageState newState) {
-            if (newState == PageState.READY) {
-                computeAsync(indicatorPage, candlePage.getData());
-            } else if (newState == PageState.ERROR) {
-                updateError(indicatorPage, candlePage.getErrorMessage());
-            }
-        }
-
-        @Override
-        public void onDataChanged(DataPageView<Candle> candlePage) {
-            // Source data changed - recompute
-            if (candlePage.isReady()) {
-                computeAsync(indicatorPage, candlePage.getData());
-            }
-        }
-    }
-
-    /**
-     * Coordinator that requests both candles and aggTrades, then computes when both ready.
-     * Stores listeners as fields so they can be tracked for cascading release.
-     */
-    private class AggTradesDataCoordinator<T> {
-        private final IndicatorPage<T> indicatorPage;
-        private volatile List<Candle> candles;
-        private volatile List<AggTrade> aggTrades;
-        private volatile boolean candlesReady = false;
-        private volatile boolean aggTradesReady = false;
-
-        // Listeners stored as fields for source page tracking
-        private final DataPageListener<Candle> candleListener;
-        private final DataPageListener<AggTrade> aggTradesListener;
-
-        AggTradesDataCoordinator(IndicatorPage<T> indicatorPage) {
-            this.indicatorPage = indicatorPage;
-
-            // Create listeners as fields so they can be tracked
-            this.candleListener = new DataPageListener<>() {
-                @Override
-                public void onStateChanged(DataPageView<Candle> page, PageState oldState, PageState newState) {
-                    if (newState == PageState.READY) {
-                        candles = page.getData();
-                        candlesReady = true;
-                        checkAndCompute();
-                    } else if (newState == PageState.ERROR) {
-                        updateError(indicatorPage, page.getErrorMessage());
-                    }
-                }
-                @Override
-                public void onDataChanged(DataPageView<Candle> page) {
-                    if (page.isReady()) {
-                        candles = page.getData();
-                        checkAndCompute();
-                    }
-                }
-            };
-
-            this.aggTradesListener = new DataPageListener<>() {
-                @Override
-                public void onStateChanged(DataPageView<AggTrade> page, PageState oldState, PageState newState) {
-                    if (newState == PageState.READY) {
-                        aggTrades = page.getData();
-                        aggTradesReady = true;
-                        checkAndCompute();
-                    } else if (newState == PageState.ERROR) {
-                        // AggTrades error is not fatal - can fall back to candles
-                        log.debug("AggTrades not available, will use candle fallback");
-                        aggTradesReady = true;
-                        checkAndCompute();
-                    }
-                }
-                @Override
-                public void onDataChanged(DataPageView<AggTrade> page) {
-                    if (page.isReady()) {
-                        aggTrades = page.getData();
-                        checkAndCompute();
-                    }
-                }
-            };
-        }
-
-        void start() {
-            // Request candles and track for cascading release
-            DataPageView<Candle> candlePage = candlePageMgr.request(
-                indicatorPage.getSymbol(), indicatorPage.getTimeframe(),
-                indicatorPage.getStartTime(), indicatorPage.getEndTime(),
-                candleListener,
-                "IndicatorPageManager-AggTrades");
-            indicatorPage.setSourceCandlePage(candlePage, candleListener);
-
-            // Request aggTrades and track for cascading release
-            DataPageView<AggTrade> aggPage = aggTradesPageMgr.request(
-                indicatorPage.getSymbol(), indicatorPage.getTimeframe(),
-                indicatorPage.getStartTime(), indicatorPage.getEndTime(),
-                aggTradesListener);
-            indicatorPage.setSourceAggTradesPage(aggPage, aggTradesListener);
-        }
-
-        private synchronized void checkAndCompute() {
-            if (candlesReady && aggTradesReady && candles != null) {
-                computeAsyncWithAggTrades(indicatorPage, candles, aggTrades);
-            }
+            log.debug("Released indicator page: {}", key);
         }
     }
 
@@ -368,7 +232,6 @@ public class IndicatorPageManager {
      */
     @SuppressWarnings("unchecked")
     private <T> void computeAsyncWithAggTrades(IndicatorPage<T> page, List<Candle> candles, List<AggTrade> aggTrades) {
-        // Use dedicated executor for aggTrades indicators (not blocked by candle-only indicators)
         aggTradesExecutor.submit(() -> {
             try {
                 Object result = computeIndicator(page.getType(), page.getParams(), candles, aggTrades);

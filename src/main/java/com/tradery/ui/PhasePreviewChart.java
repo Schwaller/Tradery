@@ -27,6 +27,7 @@ import org.jfree.data.time.TimeSeries;
 import org.jfree.data.time.TimeSeriesCollection;
 
 import javax.swing.*;
+import javax.swing.UIManager;
 import java.awt.*;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
@@ -55,8 +56,26 @@ public class PhasePreviewChart extends JPanel implements DataPageListener<Candle
     private List<Candle> candles = new ArrayList<>();
     private boolean[] phaseActive;
 
-    // Phase active highlight color - orange for visibility
-    private static final Color PHASE_ACTIVE_COLOR = new Color(255, 152, 0, 100);  // Orange with good visibility
+    // Phase marker stroke (minimum 1px for visibility)
+    private static final BasicStroke PHASE_OUTLINE_STROKE = new BasicStroke(1.0f);
+
+    /** Get accent color from FlatLaf theme with fallback */
+    private static Color getAccentColor() {
+        Color accent = UIManager.getColor("Component.accentColor");
+        return accent != null ? accent : new Color(100, 140, 180); // Fallback blue
+    }
+
+    /** Get phase fill color (accent with transparency) */
+    private static Color getPhaseActiveColor() {
+        Color accent = getAccentColor();
+        return new Color(accent.getRed(), accent.getGreen(), accent.getBlue(), 100);
+    }
+
+    /** Get phase outline color (stronger accent for thin markers) */
+    private static Color getPhaseOutlineColor() {
+        Color accent = getAccentColor();
+        return new Color(accent.getRed(), accent.getGreen(), accent.getBlue(), 180);
+    }
 
     // Data range - 4 years for a full crypto cycle
     private static final int YEARS_OF_DATA = 4;
@@ -579,8 +598,10 @@ public class PhasePreviewChart extends JPanel implements DataPageListener<Candle
                 long endTime = candles.get(end).timestamp() + barWidth; // Extend to cover the full bar
 
                 IntervalMarker marker = new IntervalMarker(startTime, endTime);
-                marker.setPaint(PHASE_ACTIVE_COLOR);
-                marker.setOutlinePaint(null);
+                marker.setPaint(getPhaseActiveColor());
+                // Always show outline so thin markers (like friday-afternoon) remain visible
+                marker.setOutlinePaint(getPhaseOutlineColor());
+                marker.setOutlineStroke(PHASE_OUTLINE_STROKE);
                 pricePlot.addDomainMarker(marker, Layer.BACKGROUND);
             } else {
                 i++;

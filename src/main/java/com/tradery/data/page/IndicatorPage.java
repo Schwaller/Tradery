@@ -3,16 +3,26 @@ package com.tradery.data.page;
 import com.tradery.data.PageState;
 import com.tradery.model.AggTrade;
 import com.tradery.model.Candle;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.util.List;
 
 /**
  * Represents a computed indicator for the indicator page system.
  *
- * Indicators are a second layer that builds on top of data pages.
- * When the source data changes, the indicator is recomputed.
+ * Star architecture: IndicatorPage is the center, owning:
+ * - Source data page requests (candles, aggTrades)
+ * - Listener callbacks for source data changes
+ * - Coordination of when to trigger computation
+ *
+ * When source data is ready or changes, notifies the manager via callback.
  *
  * @param <T> The type of computed data (double[], MACDResult, etc.)
  */
-public class IndicatorPage<T> {
+public class IndicatorPage<T> implements DataPageListener<Candle> {
+
+    private static final Logger log = LoggerFactory.getLogger(IndicatorPage.class);
 
     // Identity
     private final IndicatorType type;
@@ -33,11 +43,52 @@ public class IndicatorPage<T> {
     private volatile String sourceCandleHash;   // Hash of candles used for computation
     private volatile long computeTime;          // When computation finished
 
-    // Source data pages (owned by this indicator page for cascading release)
+    // Source data pages (owned by this indicator page)
     private volatile DataPageView<Candle> sourceCandlePage;
-    private volatile DataPageListener<Candle> sourceCandleListener;
     private volatile DataPageView<AggTrade> sourceAggTradesPage;
-    private volatile DataPageListener<AggTrade> sourceAggTradesListener;
+
+    // Source data (cached for coordination)
+    private volatile List<Candle> sourceCandles;
+    private volatile List<AggTrade> sourceAggTrades;
+    private volatile boolean candlesReady = false;
+    private volatile boolean aggTradesReady = false;
+
+    // Callback for computation
+    private volatile ComputeCallback<T> computeCallback;
+
+    /**
+     * Callback interface for triggering computation.
+     * Implemented by IndicatorPageManager.
+     */
+    public interface ComputeCallback<T> {
+        void compute(IndicatorPage<T> page, List<Candle> candles, List<AggTrade> aggTrades);
+        void onError(IndicatorPage<T> page, String errorMessage);
+    }
+
+    // AggTrades listener (separate because it's a different type)
+    private final DataPageListener<AggTrade> aggTradesListener = new DataPageListener<>() {
+        @Override
+        public void onStateChanged(DataPageView<AggTrade> page, PageState oldState, PageState newState) {
+            if (newState == PageState.READY) {
+                sourceAggTrades = page.getData();
+                aggTradesReady = true;
+                checkAndCompute();
+            } else if (newState == PageState.ERROR) {
+                // AggTrades error is not fatal - can fall back to candles
+                log.debug("AggTrades not available for {}, will use candle fallback", getKey());
+                aggTradesReady = true;
+                checkAndCompute();
+            }
+        }
+
+        @Override
+        public void onDataChanged(DataPageView<AggTrade> page) {
+            if (page.isReady()) {
+                sourceAggTrades = page.getData();
+                checkAndCompute();
+            }
+        }
+    };
 
 
     public IndicatorPage(IndicatorType type, String params, String symbol,
@@ -48,6 +99,106 @@ public class IndicatorPage<T> {
         this.timeframe = timeframe;
         this.startTime = startTime;
         this.endTime = endTime;
+    }
+
+    // ========== Source Data Acquisition (Star Center) ==========
+
+    /**
+     * Request source data pages based on indicator dependency.
+     * This is the "allocation" side of the star.
+     *
+     * @param candlePageMgr    Candle page manager
+     * @param aggTradesPageMgr AggTrades page manager (can be null if not needed)
+     * @param callback         Callback for triggering computation
+     */
+    public void requestSourceData(CandlePageManager candlePageMgr,
+                                   AggTradesPageManager aggTradesPageMgr,
+                                   ComputeCallback<T> callback) {
+        this.computeCallback = callback;
+        this.state = PageState.LOADING;
+
+        switch (type.getDependency()) {
+            case CANDLES -> {
+                // Only need candles
+                aggTradesReady = true;  // Mark as "ready" since we don't need it
+                sourceCandlePage = candlePageMgr.request(
+                    symbol, timeframe, startTime, endTime,
+                    this,  // IndicatorPage implements DataPageListener<Candle>
+                    "IndicatorPage:" + type.getName());
+            }
+            case AGG_TRADES -> {
+                // Need both candles and aggTrades
+                sourceCandlePage = candlePageMgr.request(
+                    symbol, timeframe, startTime, endTime,
+                    this,
+                    "IndicatorPage:" + type.getName());
+
+                sourceAggTradesPage = aggTradesPageMgr.request(
+                    symbol, timeframe, startTime, endTime,
+                    aggTradesListener);
+            }
+            default -> {
+                log.warn("Indicator {} dependency {} not supported in page system",
+                    type, type.getDependency());
+                if (callback != null) {
+                    callback.onError(this, "Dependency not supported: " + type.getDependency());
+                }
+            }
+        }
+    }
+
+    /**
+     * Release source data pages.
+     * This is the "disposal" side of the star.
+     */
+    public void releaseSourcePages(CandlePageManager candlePageMgr, AggTradesPageManager aggTradesPageMgr) {
+        if (sourceCandlePage != null && candlePageMgr != null) {
+            candlePageMgr.release(sourceCandlePage, this);
+            sourceCandlePage = null;
+            sourceCandles = null;
+            candlesReady = false;
+        }
+        if (sourceAggTradesPage != null && aggTradesPageMgr != null) {
+            aggTradesPageMgr.release(sourceAggTradesPage, aggTradesListener);
+            sourceAggTradesPage = null;
+            sourceAggTrades = null;
+            aggTradesReady = false;
+        }
+        computeCallback = null;
+    }
+
+    // ========== DataPageListener<Candle> Implementation ==========
+
+    @Override
+    public void onStateChanged(DataPageView<Candle> page, PageState oldState, PageState newState) {
+        if (newState == PageState.READY) {
+            sourceCandles = page.getData();
+            candlesReady = true;
+            checkAndCompute();
+        } else if (newState == PageState.ERROR) {
+            if (computeCallback != null) {
+                computeCallback.onError(this, page.getErrorMessage());
+            }
+        }
+    }
+
+    @Override
+    public void onDataChanged(DataPageView<Candle> page) {
+        if (page.isReady()) {
+            sourceCandles = page.getData();
+            checkAndCompute();
+        }
+    }
+
+    // ========== Coordination ==========
+
+    /**
+     * Check if all required data is ready and trigger computation.
+     */
+    private synchronized void checkAndCompute() {
+        if (candlesReady && aggTradesReady && sourceCandles != null && computeCallback != null) {
+            computeCallback.compute(this, sourceCandles, sourceAggTrades);
+        }
     }
 
     // ========== Identity ==========
@@ -147,42 +298,6 @@ public class IndicatorPage<T> {
     public boolean isValid(String currentSourceHash) {
         return sourceCandleHash != null && sourceCandleHash.equals(currentSourceHash);
     }
-
-    // ========== Source Page Ownership ==========
-
-    /**
-     * Set the source candle page that this indicator depends on.
-     */
-    public void setSourceCandlePage(DataPageView<Candle> page, DataPageListener<Candle> listener) {
-        this.sourceCandlePage = page;
-        this.sourceCandleListener = listener;
-    }
-
-    /**
-     * Set the source aggTrades page that this indicator depends on.
-     */
-    public void setSourceAggTradesPage(DataPageView<AggTrade> page, DataPageListener<AggTrade> listener) {
-        this.sourceAggTradesPage = page;
-        this.sourceAggTradesListener = listener;
-    }
-
-    /**
-     * Release owned source data pages.
-     * Called when this indicator page is fully released.
-     */
-    public void releaseSourcePages(CandlePageManager candlePageMgr, AggTradesPageManager aggTradesPageMgr) {
-        if (sourceCandlePage != null && candlePageMgr != null) {
-            candlePageMgr.release(sourceCandlePage, sourceCandleListener);
-            sourceCandlePage = null;
-            sourceCandleListener = null;
-        }
-        if (sourceAggTradesPage != null && aggTradesPageMgr != null) {
-            aggTradesPageMgr.release(sourceAggTradesPage, sourceAggTradesListener);
-            sourceAggTradesPage = null;
-            sourceAggTradesListener = null;
-        }
-    }
-
 
     // ========== Convenience State Checks ==========
 
