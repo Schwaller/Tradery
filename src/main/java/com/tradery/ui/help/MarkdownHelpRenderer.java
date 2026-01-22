@@ -8,8 +8,6 @@ import com.vladsch.flexmark.util.ast.Node;
 import com.vladsch.flexmark.util.data.MutableDataSet;
 import com.vladsch.flexmark.ext.tables.TablesExtension;
 
-import javax.swing.*;
-import java.awt.*;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
@@ -96,26 +94,7 @@ public class MarkdownHelpRenderer {
         }
 
         // Get theme colors
-        Color bg = UIManager.getColor("Panel.background");
-        Color fg = UIManager.getColor("Label.foreground");
-        Color fgSecondary = UIManager.getColor("Label.disabledForeground");
-        Color accent = UIManager.getColor("Component.accentColor");
-        Color codeBg = UIManager.getColor("TextField.background");
-        Color tableBorder = UIManager.getColor("Separator.foreground");
-
-        if (bg == null) bg = Color.WHITE;
-        if (fg == null) fg = Color.BLACK;
-        if (fgSecondary == null) fgSecondary = Color.GRAY;
-        if (accent == null) accent = new Color(70, 130, 180);
-        if (codeBg == null) codeBg = new Color(240, 240, 240);
-        if (tableBorder == null) tableBorder = new Color(200, 200, 200);
-
-        String bgHex = toHex(bg);
-        String fgHex = toHex(fg);
-        String fgSecHex = toHex(fgSecondary);
-        String accentHex = toHex(accent);
-        String codeBgHex = toHex(codeBg);
-        String borderHex = toHex(tableBorder);
+        HelpStyles.ThemeColors colors = HelpStyles.getThemeColors();
 
         // Parse markdown
         MutableDataSet options = new MutableDataSet();
@@ -135,13 +114,13 @@ public class MarkdownHelpRenderer {
         bodyContent = addAnchorIds(bodyContent, tocEntries);
 
         // Post-process: convert blockquotes with markers to styled boxes
-        bodyContent = processBlockquotes(bodyContent, codeBgHex, accentHex);
+        bodyContent = processBlockquotes(bodyContent, colors.codeBgHex, colors.accentHex);
 
         // Post-process: style the flow diagrams (monospace centered)
-        bodyContent = processFlowDiagrams(bodyContent, codeBgHex);
+        bodyContent = processFlowDiagrams(bodyContent, colors.codeBgHex);
 
         // Build complete HTML
-        String css = buildCss(bgHex, fgHex, fgSecHex, accentHex, codeBgHex, borderHex);
+        String css = HelpStyles.buildCss(colors);
         String html = String.format("""
             <html>
             <head>
@@ -263,150 +242,5 @@ public class MarkdownHelpRenderer {
         matcher.appendTail(result);
 
         return result.toString();
-    }
-
-    /**
-     * Build CSS styles using theme colors.
-     */
-    private static String buildCss(String bgHex, String fgHex, String fgSecHex,
-                                    String accentHex, String codeBgHex, String borderHex) {
-        return String.format("""
-            body {
-                font-family: -apple-system, BlinkMacSystemFont, sans-serif;
-                font-size: 11px;
-                margin: 12px;
-                background: %s;
-                color: %s;
-                line-height: 1.4;
-            }
-            h1 {
-                color: %s;
-                font-size: 15px;
-                margin: 0 0 10px 0;
-            }
-            h2 {
-                color: %s;
-                font-size: 13px;
-                margin: 18px 0 6px 0;
-                border-bottom: 1px solid %s;
-                padding-bottom: 3px;
-            }
-            h3 {
-                color: %s;
-                font-size: 11px;
-                margin: 10px 0 4px 0;
-                font-weight: 600;
-            }
-            h4 {
-                color: %s;
-                font-size: 11px;
-                margin: 8px 0 3px 0;
-                font-weight: normal;
-                font-style: italic;
-            }
-            p {
-                margin: 4px 0;
-            }
-            .box {
-                background: %s;
-                padding: 6px 10px;
-                border-radius: 5px;
-                margin: 6px 0;
-            }
-            .tip {
-                background: %s;
-                border-left: 3px solid %s;
-                padding: 6px 10px;
-                margin: 6px 0;
-            }
-            .example {
-                background: %s;
-                border-left: 3px solid %s;
-                padding: 6px 10px;
-                margin: 6px 0;
-                font-family: monospace;
-            }
-            ul, ol {
-                margin: 4px 0;
-                padding-left: 18px;
-            }
-            li {
-                margin: 2px 0;
-            }
-            table {
-                border-collapse: collapse;
-                width: 100%%;
-                margin: 4px 0;
-                font-size: 10px;
-            }
-            td, th {
-                text-align: left;
-                padding: 3px 6px;
-                border-bottom: 1px solid %s;
-            }
-            th {
-                background: %s;
-                font-weight: 600;
-            }
-            code {
-                background: %s;
-                padding: 1px 4px;
-                border-radius: 3px;
-                font-family: monospace;
-            }
-            pre {
-                background: %s;
-                padding: 8px;
-                border-radius: 5px;
-                margin: 6px 0;
-                overflow-x: auto;
-                font-family: monospace;
-                font-size: 10px;
-            }
-            pre code {
-                background: transparent;
-                padding: 0;
-            }
-            .flow {
-                font-family: monospace;
-                background: %s;
-                padding: 8px;
-                border-radius: 5px;
-                margin: 6px 0;
-                text-align: center;
-                font-size: 10px;
-            }
-            .small {
-                font-size: 10px;
-                color: %s;
-            }
-            hr {
-                border: none;
-                border-top: 1px solid %s;
-                margin: 12px 0;
-            }
-            """,
-                bgHex, fgHex,           // body
-                accentHex,              // h1
-                accentHex, fgSecHex,    // h2
-                fgSecHex,               // h3
-                fgSecHex,               // h4
-                codeBgHex,              // .box
-                codeBgHex, accentHex,   // .tip
-                codeBgHex, accentHex,   // .example
-                borderHex, codeBgHex,   // table
-                codeBgHex,              // code
-                codeBgHex,              // pre
-                codeBgHex,              // .flow
-                fgSecHex,               // .small
-                borderHex               // hr
-        );
-    }
-
-    /**
-     * Convert a Color to hex string.
-     */
-    private static String toHex(Color c) {
-        return String.format("#%02x%02x%02x", c.getRed(), c.getGreen(), c.getBlue());
     }
 }

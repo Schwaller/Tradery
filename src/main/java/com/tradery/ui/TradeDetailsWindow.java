@@ -36,6 +36,12 @@ public class TradeDetailsWindow extends JDialog {
     private JPanel progressionChartPanel;
     private Trade selectedTradeForChart;
 
+    // Chart zoom/pan state
+    private double chartZoomFactor = 1.0;  // 1.0 = fit all, >1 = zoomed in
+    private double chartPanOffset = 0.0;   // X-axis pan offset (0 = start, 1 = end)
+    private Point chartPanStart = null;
+    private double chartPanStartOffset = 0.0;
+
 
     public TradeDetailsWindow(Frame parent, List<Trade> trades, List<Candle> candles, String strategyName) {
         super(parent, "Trade Details - " + strategyName, false);
@@ -1228,17 +1234,30 @@ public class TradeDetailsWindow extends JDialog {
     }
 
     private void layoutComponents() {
-        JPanel contentPane = new JPanel(new BorderLayout(0, 8));
-        // Extra top padding for macOS transparent title bar
-        contentPane.setBorder(BorderFactory.createEmptyBorder(28, 12, 12, 12));
+        JPanel contentPane = new JPanel(new BorderLayout(0, 0));
 
-        // Top panel with title and summary
-        JPanel topPanel = new JPanel(new BorderLayout(0, 8));
+        // Title bar area (44px height for macOS traffic lights)
+        JPanel titleBar = new JPanel(new BorderLayout());
+        titleBar.setPreferredSize(new Dimension(0, 44));
 
-        // Title label (since macOS title bar is hidden)
-        JLabel titleLabel = new JLabel("Trade Details - " + strategyName);
+        // Left spacer for traffic lights
+        JPanel leftSpacer = new JPanel();
+        leftSpacer.setPreferredSize(new Dimension(70, 0));
+        leftSpacer.setOpaque(false);
+
+        // Title in center
+        JLabel titleLabel = new JLabel("Trade Details - " + strategyName, SwingConstants.CENTER);
         titleLabel.setFont(titleLabel.getFont().deriveFont(Font.BOLD, 13f));
-        topPanel.add(titleLabel, BorderLayout.NORTH);
+
+        titleBar.add(leftSpacer, BorderLayout.WEST);
+        titleBar.add(titleLabel, BorderLayout.CENTER);
+
+        // Main content panel with padding
+        JPanel mainContent = new JPanel(new BorderLayout(0, 8));
+        mainContent.setBorder(BorderFactory.createEmptyBorder(0, 12, 12, 12));
+
+        // Summary header panel
+        JPanel topPanel = new JPanel(new BorderLayout(0, 8));
 
         // Summary header
         JPanel headerPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 16, 0));
@@ -1302,9 +1321,12 @@ public class TradeDetailsWindow extends JDialog {
         buttonPanel.add(closeButton);
 
         topPanel.add(headerPanel, BorderLayout.CENTER);
-        contentPane.add(topPanel, BorderLayout.NORTH);
-        contentPane.add(splitPane, BorderLayout.CENTER);
-        contentPane.add(buttonPanel, BorderLayout.SOUTH);
+        mainContent.add(topPanel, BorderLayout.NORTH);
+        mainContent.add(splitPane, BorderLayout.CENTER);
+        mainContent.add(buttonPanel, BorderLayout.SOUTH);
+
+        contentPane.add(titleBar, BorderLayout.NORTH);
+        contentPane.add(mainContent, BorderLayout.CENTER);
 
         setContentPane(contentPane);
     }

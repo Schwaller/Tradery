@@ -1,5 +1,7 @@
 package com.tradery.ui;
 
+import com.tradery.ui.help.HelpStyles;
+
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 import javax.swing.event.ChangeEvent;
@@ -333,26 +335,14 @@ public class DslHelpDialog extends JDialog {
 
     private String buildHelpContent(List<TocEntry> toc) {
         // Get theme colors
-        Color bg = UIManager.getColor("Panel.background");
-        Color fg = UIManager.getColor("Label.foreground");
-        Color fgSecondary = UIManager.getColor("Label.disabledForeground");
-        Color accent = UIManager.getColor("Component.accentColor");
-        Color codeBg = UIManager.getColor("TextField.background");
-        Color tableBorder = UIManager.getColor("Separator.foreground");
+        HelpStyles.ThemeColors colors = HelpStyles.getThemeColors();
 
-        if (bg == null) bg = Color.WHITE;
-        if (fg == null) fg = Color.BLACK;
-        if (fgSecondary == null) fgSecondary = Color.GRAY;
-        if (accent == null) accent = new Color(70, 130, 180);
-        if (codeBg == null) codeBg = new Color(240, 240, 240);
-        if (tableBorder == null) tableBorder = new Color(200, 200, 200);
-
-        String bgHex = toHex(bg);
-        String fgHex = toHex(fg);
-        String fgSecHex = toHex(fgSecondary);
-        String accentHex = toHex(accent);
-        String codeBgHex = toHex(codeBg);
-        String borderHex = toHex(tableBorder);
+        String bgHex = colors.bgHex;
+        String fgHex = colors.fgHex;
+        String fgSecHex = colors.fgSecHex;
+        String accentHex = colors.accentHex;
+        String codeBgHex = colors.codeBgHex;
+        String borderHex = colors.borderHex;
 
         // Build TOC entries
         int tocIndex = 0;
@@ -616,7 +606,7 @@ public class DslHelpDialog extends JDialog {
 
             </body>
             </html>
-            """.formatted(bgHex, fgHex, fgHex, accentHex, codeBgHex, fgHex, borderHex, codeBgHex, codeBgHex, accentHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex);
+            """.formatted(bgHex, fgHex, accentHex, accentHex, codeBgHex, fgHex, borderHex, codeBgHex, codeBgHex, accentHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex);
     }
 
     private void performSearch() {

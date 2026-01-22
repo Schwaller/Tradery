@@ -1,5 +1,7 @@
 package com.tradery.ui;
 
+import com.tradery.ui.help.HelpStyles;
+
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 import javax.swing.event.ChangeEvent;
@@ -331,26 +333,7 @@ public class StrategyHelpDialog extends JDialog {
 
     private String buildHelpContent(List<TocEntry> toc) {
         // Get theme colors
-        Color bg = UIManager.getColor("Panel.background");
-        Color fg = UIManager.getColor("Label.foreground");
-        Color fgSecondary = UIManager.getColor("Label.disabledForeground");
-        Color accent = UIManager.getColor("Component.accentColor");
-        Color codeBg = UIManager.getColor("TextField.background");
-        Color tableBorder = UIManager.getColor("Separator.foreground");
-
-        if (bg == null) bg = Color.WHITE;
-        if (fg == null) fg = Color.BLACK;
-        if (fgSecondary == null) fgSecondary = Color.GRAY;
-        if (accent == null) accent = new Color(70, 130, 180);
-        if (codeBg == null) codeBg = new Color(240, 240, 240);
-        if (tableBorder == null) tableBorder = new Color(200, 200, 200);
-
-        String bgHex = toHex(bg);
-        String fgHex = toHex(fg);
-        String fgSecHex = toHex(fgSecondary);
-        String accentHex = toHex(accent);
-        String codeBgHex = toHex(codeBg);
-        String borderHex = toHex(tableBorder);
+        HelpStyles.ThemeColors colors = HelpStyles.getThemeColors();
 
         // Build TOC entries
         int tocIndex = 0;
@@ -395,28 +378,16 @@ public class StrategyHelpDialog extends JDialog {
         toc.add(new TocEntry("toc-" + tocIndex++, "Combine Modes", 3));
         toc.add(new TocEntry("toc-" + tocIndex++, "Tips", 2));
 
+        String css = HelpStyles.buildCss(colors);
+
         return """
             <html>
             <head>
             <style>
-                body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; font-size: 11px; margin: 12px; background: %s; color: %s; line-height: 1.4; }
-                h1 { color: %s; font-size: 15px; margin: 0 0 10px 0; }
-                h2 { color: %s; font-size: 13px; margin: 18px 0 6px 0; border-bottom: 1px solid %s; padding-bottom: 3px; }
-                h3 { color: %s; font-size: 11px; margin: 10px 0 4px 0; font-weight: 600; }
-                h4 { color: %s; font-size: 11px; margin: 8px 0 3px 0; font-weight: normal; font-style: italic; }
-                p { margin: 4px 0; }
-                .box { background: %s; padding: 6px 10px; border-radius: 5px; margin: 6px 0; }
-                .tip { background: %s; border-left: 3px solid %s; padding: 6px 10px; margin: 6px 0; }
-                ul { margin: 4px 0; padding-left: 18px; }
-                li { margin: 2px 0; }
-                table { border-collapse: collapse; width: 100%%; margin: 4px 0; font-size: 10px; }
-                td, th { text-align: left; padding: 3px 6px; border-bottom: 1px solid %s; }
-                th { background: %s; font-weight: 600; }
-                .flow { font-family: monospace; background: %s; padding: 8px; border-radius: 5px; margin: 6px 0; text-align: center; font-size: 10px; }
-                .small { font-size: 10px; color: %s; }
+            %s
             </style>
             </head>
-            <body>
+            <body>""".formatted(css) + """
 
             <h1>Strategy Guide</h1>
 
@@ -986,10 +957,7 @@ public class StrategyHelpDialog extends JDialog {
 
             </body>
             </html>
-            """.formatted(
-                bgHex, fgHex, accentHex, fgHex, fgSecHex, fgSecHex, fgSecHex,
-                codeBgHex, codeBgHex, accentHex, borderHex, codeBgHex, codeBgHex, fgSecHex
-            );
+            """;
     }
 
     private void performSearch() {
@@ -1082,10 +1050,6 @@ public class StrategyHelpDialog extends JDialog {
 
     private void clearSearchHighlights() {
         helpPane.getHighlighter().removeAllHighlights();
-    }
-
-    private String toHex(Color c) {
-        return String.format("#%02x%02x%02x", c.getRed(), c.getGreen(), c.getBlue());
     }
 
     /**
