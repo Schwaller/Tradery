@@ -14,6 +14,7 @@ import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Window showing comprehensive trade details with tree-like DCA grouping.
@@ -253,68 +254,164 @@ public class TradeDetailsWindow extends JDialog {
 
         // Entry section
         addSection("Entry");
-        addRow("Time", df.format(new Date(t.entryTime())), null);
-        addRow("Bar", String.valueOf(t.entryBar()), null);
-        addRow("Price", "$" + formatPrice(t.entryPrice()), null);
-        addRow("Side", t.side().toUpperCase(), t.side().equals("long") ? new Color(76, 175, 80) : new Color(244, 67, 54));
+        addRow("Time", df.format(new Date(t.entryTime())), null,
+            "When the entry signal triggered and position was opened.\nUse to correlate with market events or session times.");
+        addRow("Bar", String.valueOf(t.entryBar()), null,
+            "Candle index when entry occurred.\nUseful for finding this trade on the chart.");
+        addRow("Price", "$" + formatPrice(t.entryPrice()), null,
+            "The price at which the position was entered.\nCompare with Better Entry to see if timing could improve.");
+        addRow("Side", t.side().toUpperCase(), t.side().equals("long") ? new Color(76, 175, 80) : new Color(244, 67, 54),
+            "Trade direction: LONG (buy) or SHORT (sell).\nLong profits when price goes up, short profits when price goes down.");
         if (!isRejected) {
-            addRow("Quantity", String.format("%.6f", t.quantity()), null);
-            addRow("Value", String.format("$%,.2f", t.value()), null);
+            addRow("Quantity", String.format("%.6f", t.quantity()), null,
+                "Position size in base currency.\nDetermined by your position sizing settings.");
+            addRow("Value", String.format("$%,.2f", t.value()), null,
+                "Total position value (Price × Quantity).\nThis is your capital at risk for this trade.");
         }
 
         if (!isRejected && t.exitTime() != null) {
-            addSpacer(12);
+            addSeparator();
 
             // Exit section
             addSection("Exit");
-            addRow("Time", df.format(new Date(t.exitTime())), null);
-            addRow("Bar", String.valueOf(t.exitBar()), null);
-            addRow("Price", "$" + formatPrice(t.exitPrice()), null);
-            addRow("Reason", formatExitReason(t.exitReason()), null);
+            addRow("Time", df.format(new Date(t.exitTime())), null,
+                "When the position was closed.\nDuration = Exit Time - Entry Time.");
+            addRow("Bar", String.valueOf(t.exitBar()), null,
+                "Candle index when exit occurred.\nUseful for finding exit point on chart.");
+            addRow("Price", "$" + formatPrice(t.exitPrice()), null,
+                "The price at which position was closed.\nCompare with MFE to see how much was left on the table.");
+            addRow("Reason", formatExitReason(t.exitReason()), null,
+                "What triggered the exit:\n• Signal: Exit condition was met\n• Stop Loss: Price hit stop level\n• Take Profit: Target reached\n• Trail Stop: Trailing stop triggered\n• Zone Exit: Exit zone condition met");
             if (t.exitZone() != null) {
-                addRow("Zone", t.exitZone(), null);
+                addRow("Zone", t.exitZone(), null,
+                    "Which exit zone triggered this exit.\nCheck zone settings to adjust exit behavior.");
             }
-            addRow("Duration", t.duration() + " bars", null);
+            addRow("Duration", t.duration() + " bars", null,
+                "How long the position was held.\nCompare with bars-to-MFE to see if exits are too early/late.");
             if (t.commission() != null) {
-                addRow("Commission", String.format("$%.2f", t.commission()), null);
+                addRow("Commission", String.format("$%.2f", t.commission()), null,
+                    "Total trading fees (entry + exit).\nHigh commission can kill edge on small moves.");
+            }
+            // Holding costs (funding fees for futures)
+            if (t.holdingCosts() != null && t.holdingCosts() != 0) {
+                Color holdingColor = t.holdingCosts() > 0 ? new Color(244, 67, 54) : new Color(76, 175, 80);
+                addRow("Holding Costs", String.format("%+.2f", t.holdingCosts()), holdingColor,
+                    "Funding fees accumulated while holding (futures only).\nPositive = you paid, Negative = you received.\nHigh funding can erode profits on longer holds.");
             }
 
             // Analytics section
             if (t.mfe() != null || t.mae() != null) {
-                addSpacer(12);
+                addSeparator();
                 addSection("Analytics");
                 if (t.mfe() != null) {
-                    addRow("MFE", String.format("+%.2f%%", t.mfe()), new Color(76, 175, 80));
-                    addRow("  at bar", String.valueOf(t.mfeBar()), new Color(100, 100, 100));
+                    String mfeText = String.format("+%.1f%%", t.mfe());
+                    if (t.barsToMfe() != null) {
+                        mfeText += String.format(" (%d bars)", t.barsToMfe());
+                    }
+                    addRow("MFE", mfeText, new Color(76, 175, 80),
+                        "Maximum Favorable Excursion - the BEST unrealized P&L during the trade.\nThis is the peak profit you could have captured.\nIf MFE >> actual P&L, your exits are leaving money on the table.");
                 }
                 if (t.mae() != null) {
-                    addRow("MAE", String.format("%.2f%%", t.mae()), new Color(244, 67, 54));
-                    addRow("  at bar", String.valueOf(t.maeBar()), new Color(100, 100, 100));
+                    String maeText = String.format("%.1f%%", t.mae());
+                    if (t.barsToMae() != null) {
+                        maeText += String.format(" (%d bars)", t.barsToMae());
+                    }
+                    addRow("MAE", maeText, new Color(244, 67, 54),
+                        "Maximum Adverse Excursion - the WORST drawdown during the trade.\nThis is the deepest the trade went against you.\nLarge MAE on winners suggests stop loss could be tighter.");
                 }
                 if (t.captureRatio() != null) {
                     Color captureColor = t.captureRatio() >= 0.7 ? new Color(76, 175, 80) :
                                          t.captureRatio() >= 0.4 ? new Color(255, 193, 7) : new Color(244, 67, 54);
-                    addRow("Capture", String.format("%.0f%%", t.captureRatio() * 100), captureColor);
+                    addRow("Capture", String.format("%.0f%%", t.captureRatio() * 100), captureColor,
+                        "What percentage of MFE was actually captured at exit.\nCapture = P&L ÷ MFE\n\n• >70% (green): Excellent exit timing\n• 40-70% (yellow): Room for improvement\n• <40% (red): Exiting way too early\n\nLow capture across many trades = exit strategy needs work.");
+                }
+                if (t.painRatio() != null) {
+                    Color painColor = t.painRatio() <= 0.3 ? new Color(76, 175, 80) :
+                                      t.painRatio() <= 0.6 ? new Color(255, 193, 7) : new Color(244, 67, 54);
+                    addRow("Pain Ratio", String.format("%.2f", t.painRatio()), painColor,
+                        "How much pain (drawdown) vs reward (profit potential).\nPain Ratio = |MAE| ÷ MFE\n\n• <0.3 (green): Smooth ride, minimal heat\n• 0.3-0.6 (yellow): Moderate drawdown\n• >0.6 (red): Suffered significant pain\n\nHigh pain ratio = consider tighter entries or wider stops.");
+                }
+            }
+
+            // Timing Analysis section (better entry/exit opportunities)
+            if (t.betterEntryImprovement() != null || t.betterExitImprovement() != null) {
+                addSeparator();
+                addSection("Could Have Been");
+                if (t.betterEntryImprovement() != null) {
+                    Color entryColor = t.betterEntryImprovement() < 1.0 ? new Color(76, 175, 80) :
+                                       t.betterEntryImprovement() < 3.0 ? new Color(255, 193, 7) : new Color(244, 67, 54);
+                    addRow("Better Entry", String.format("+%.1f%%", t.betterEntryImprovement()), entryColor,
+                        "How much better P&L if entered at the best price within " + Trade.CONTEXT_BARS + " bars before entry.\n\n• <1% (green): Entry timing was good\n• 1-3% (yellow): Moderate room for improvement\n• >3% (red): Significant improvement possible\n\nConsistently high = consider limit orders or better entry conditions.");
+                }
+                if (t.betterExitImprovement() != null) {
+                    Color exitColor = t.betterExitImprovement() < 1.0 ? new Color(76, 175, 80) :
+                                      t.betterExitImprovement() < 3.0 ? new Color(255, 193, 7) : new Color(244, 67, 54);
+                    addRow("Better Exit", String.format("+%.1f%%", t.betterExitImprovement()), exitColor,
+                        "How much better P&L if held until the best price within " + Trade.CONTEXT_BARS + " bars after exit.\n\n• <1% (green): Exit timing was good\n• 1-3% (yellow): Exited a bit early\n• >3% (red): Left significant profit on table\n\nConsistently high = consider trailing stops or delayed exits.");
                 }
             }
         }
 
-        // Phases
+        // Phases sections
+        boolean hasPhases = (t.activePhasesAtEntry() != null && !t.activePhasesAtEntry().isEmpty()) ||
+                           (t.activePhasesAtExit() != null && !t.activePhasesAtExit().isEmpty());
+        if (hasPhases) {
+            addSeparator();
+        }
+
+        // Phases at Entry
         if (t.activePhasesAtEntry() != null && !t.activePhasesAtEntry().isEmpty()) {
-            addSpacer(12);
-            addSection("Phases at Entry");
+            addSectionWithTooltip("Phases at Entry",
+                "Market phases that were active when this trade opened.\nPhases are multi-timeframe filters (trend, session, calendar, etc.).\nCompare entry vs exit phases to understand regime changes.");
             for (String phase : t.activePhasesAtEntry()) {
                 addTag(phase, new Color(70, 130, 180));
             }
         }
 
-        // Indicators (collapsible-style, showing key ones)
+        // Phases at Exit
+        if (t.activePhasesAtExit() != null && !t.activePhasesAtExit().isEmpty()) {
+            addSpacer(8);
+            addSectionWithTooltip("Phases at Exit",
+                "Market phases active when this trade closed.\nIf different from entry phases, the market regime changed during the trade.\nThis can explain unexpected outcomes.");
+            for (String phase : t.activePhasesAtExit()) {
+                addTag(phase, new Color(130, 100, 180));
+            }
+        }
+
+        // Indicators sections
+        boolean hasIndicators = (t.entryIndicators() != null && !t.entryIndicators().isEmpty()) ||
+                               (t.exitIndicators() != null && !t.exitIndicators().isEmpty()) ||
+                               (t.mfeIndicators() != null && !t.mfeIndicators().isEmpty()) ||
+                               (t.maeIndicators() != null && !t.maeIndicators().isEmpty());
+        if (hasIndicators) {
+            addSeparator();
+        }
+
+        // Entry Indicators (collapsible)
         if (t.entryIndicators() != null && !t.entryIndicators().isEmpty()) {
-            addSpacer(12);
-            addSection("Entry Indicators");
-            t.entryIndicators().forEach((k, v) -> {
-                addRow(k, formatIndicatorValue(k, v), new Color(140, 140, 140));
-            });
+            addCollapsibleIndicatorSection("Entry Indicators", t.entryIndicators(), new Color(100, 180, 255),
+                "Indicator values at the moment of entry.\nThese are the conditions that triggered the trade.\nUse to verify entry logic is working as expected.");
+        }
+
+        // Exit Indicators (collapsible)
+        if (t.exitIndicators() != null && !t.exitIndicators().isEmpty()) {
+            addSpacer(4);
+            addCollapsibleIndicatorSection("Exit Indicators", t.exitIndicators(), new Color(180, 130, 100),
+                "Indicator values at the moment of exit.\nCompare with entry to see how conditions changed.\nUseful for tuning exit conditions.");
+        }
+
+        // MFE Indicators (collapsible)
+        if (t.mfeIndicators() != null && !t.mfeIndicators().isEmpty()) {
+            addSpacer(4);
+            addCollapsibleIndicatorSection("MFE Indicators", t.mfeIndicators(), new Color(100, 180, 100),
+                "Indicator values when trade reached Maximum Favorable Excursion (best price).\nStudy these to understand what conditions look like at the ideal exit point.\nPattern here = potential exit signal.");
+        }
+
+        // MAE Indicators (collapsible)
+        if (t.maeIndicators() != null && !t.maeIndicators().isEmpty()) {
+            addSpacer(4);
+            addCollapsibleIndicatorSection("MAE Indicators", t.maeIndicators(), new Color(180, 100, 100),
+                "Indicator values when trade hit Maximum Adverse Excursion (worst drawdown).\nStudy these to understand what conditions preceded the worst point.\nPattern here = potential warning signal or stop trigger.");
         }
     }
 
@@ -458,6 +555,10 @@ public class TradeDetailsWindow extends JDialog {
         final int fExitBar = exitBar - startBar;
         final Integer fMfeBar = t.mfeBar() != null ? t.mfeBar() - startBar : null;
         final Integer fMaeBar = t.maeBar() != null ? t.maeBar() - startBar : null;
+        final Integer fBetterEntryBar = t.betterEntryBar() != null ? t.betterEntryBar() - startBar : null;
+        final Integer fBetterExitBar = t.betterExitBar() != null ? t.betterExitBar() - startBar : null;
+        final Double betterEntryPrice = t.betterEntryPrice();
+        final Double betterExitPrice = t.betterExitPrice();
         final boolean isWinner = t.pnl() != null && t.pnl() >= 0;
         final boolean isLong = "long".equalsIgnoreCase(t.side());
 
@@ -503,6 +604,23 @@ public class TradeDetailsWindow extends JDialog {
                     g2.setColor(new Color(100, 180, 255, 60));
                     g2.setStroke(new BasicStroke(1f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER, 10f, new float[]{4f, 4f}, 0f));
                     g2.drawLine(offsetX, entryY, offsetX + chartWidth, entryY);
+                }
+
+                // Draw perfect trade path (blue dotted line from better entry to better exit)
+                if (fBetterEntryBar != null && betterEntryPrice != null &&
+                    fBetterExitBar != null && betterExitPrice != null &&
+                    fBetterEntryBar >= 0 && fBetterEntryBar < chartCandles.size() &&
+                    fBetterExitBar >= 0 && fBetterExitBar < chartCandles.size()) {
+                    int betterEntryX = offsetX + fBetterEntryBar * barWidth + barWidth / 2;
+                    int betterEntryY = priceToY.applyAsInt(betterEntryPrice);
+                    int betterExitX = offsetX + fBetterExitBar * barWidth + barWidth / 2;
+                    int betterExitY = priceToY.applyAsInt(betterExitPrice);
+
+                    // Bright blue dotted line for "perfect trade"
+                    g2.setColor(new Color(33, 150, 243, 180));  // Material Blue
+                    g2.setStroke(new BasicStroke(2.5f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND,
+                        10f, new float[]{6f, 4f}, 0f));
+                    g2.drawLine(betterEntryX, betterEntryY, betterExitX, betterExitY);
                 }
 
                 // Draw ideal trade path (dotted green line from entry to MFE)
@@ -634,6 +752,30 @@ public class TradeDetailsWindow extends JDialog {
                     }
                 }
 
+                // Better entry marker (bright blue circle, larger)
+                if (fBetterEntryBar != null && betterEntryPrice != null &&
+                    fBetterEntryBar >= 0 && fBetterEntryBar < chartCandles.size()) {
+                    int x = offsetX + fBetterEntryBar * barWidth + barWidth / 2;
+                    int y = priceToY.applyAsInt(betterEntryPrice);
+                    g2.setColor(new Color(33, 150, 243));  // Material Blue
+                    g2.fillOval(x - 6, y - 6, 12, 12);
+                    g2.setColor(new Color(255, 255, 255, 220));
+                    g2.setStroke(new BasicStroke(2f));
+                    g2.drawOval(x - 6, y - 6, 12, 12);
+                }
+
+                // Better exit marker (bright blue circle, larger)
+                if (fBetterExitBar != null && betterExitPrice != null &&
+                    fBetterExitBar >= 0 && fBetterExitBar < chartCandles.size()) {
+                    int x = offsetX + fBetterExitBar * barWidth + barWidth / 2;
+                    int y = priceToY.applyAsInt(betterExitPrice);
+                    g2.setColor(new Color(33, 150, 243));  // Material Blue
+                    g2.fillOval(x - 6, y - 6, 12, 12);
+                    g2.setColor(new Color(255, 255, 255, 220));
+                    g2.setStroke(new BasicStroke(2f));
+                    g2.drawOval(x - 6, y - 6, 12, 12);
+                }
+
                 g2.dispose();
             }
         };
@@ -641,14 +783,17 @@ public class TradeDetailsWindow extends JDialog {
         chartPanel.setPreferredSize(new Dimension(280, 120));
         chartPanel.setMaximumSize(new Dimension(Integer.MAX_VALUE, 120));
         chartPanel.setBorder(BorderFactory.createLineBorder(new Color(60, 60, 65)));
-        chartPanel.setToolTipText("<html>Entry (blue) → Exit | MFE ▲ | MAE ▼<br/>Dotted green = ideal trade path to MFE</html>");
+        chartPanel.setToolTipText("<html>● Entry (light blue) → Exit<br/>" +
+            "▲ MFE | ▼ MAE<br/>" +
+            "● Blue = better entry/exit (perfect trade path)</html>");
 
         return chartPanel;
     }
 
     /**
-     * Creates the P&L progression chart panel showing how the selected trade evolved over time.
-     * Entry is normalized to 0%, and each bar shows the unrealized P&L %.
+     * Creates the all-trades overlay chart panel showing normalized P&L paths for all trades.
+     * Each trade path starts at x=0 (entry) with P&L=0%, normalized relative to entry bar.
+     * Winners are green, losers are red, selected trade is highlighted with full opacity.
      */
     private JPanel createProgressionChartPanel() {
         JPanel panel = new JPanel(new BorderLayout()) {
@@ -661,55 +806,54 @@ public class TradeDetailsWindow extends JDialog {
                 int w = getWidth();
                 int h = getHeight();
                 int margin = 50;
-                int chartW = w - margin * 2;
-                int chartH = h - 40;
-                int chartY = 20;
+                int rightMargin = 15;
+                int chartW = w - margin - rightMargin;
+                int chartH = h - 35;
+                int chartY = 18;
 
                 // Background
                 g2.setColor(new Color(30, 30, 35));
                 g2.fillRect(0, 0, w, h);
 
-                if (selectedTradeForChart == null || candles.isEmpty() ||
-                    selectedTradeForChart.exitBar() == null) {
-                    // Empty state
+                // Get valid trades (completed with exit data)
+                List<Trade> validTrades = trades.stream()
+                    .filter(t -> t.exitBar() != null && t.exitPrice() != null && !"rejected".equals(t.exitReason()))
+                    .toList();
+
+                if (validTrades.isEmpty() || candles.isEmpty()) {
                     g2.setColor(new Color(100, 100, 100));
-                    g2.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 12));
-                    String msg = "Select a trade to view P&L progression";
+                    g2.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 11));
+                    String msg = "No completed trades to display";
                     int msgW = g2.getFontMetrics().stringWidth(msg);
                     g2.drawString(msg, (w - msgW) / 2, h / 2);
                     g2.dispose();
                     return;
                 }
 
-                Trade t = selectedTradeForChart;
-                int entryBar = t.entryBar();
-                int exitBar = t.exitBar();
-                double entryPrice = t.entryPrice();
-                boolean isLong = "long".equals(t.side());
+                // Find the max duration across all trades to determine X-axis scale
+                int maxDuration = validTrades.stream()
+                    .mapToInt(t -> t.duration() != null ? t.duration() : 0)
+                    .max().orElse(10);
+                maxDuration = Math.max(maxDuration, 5); // Minimum 5 bars
 
-                if (entryBar >= exitBar || entryBar >= candles.size()) {
-                    g2.dispose();
-                    return;
-                }
+                // Calculate P&L paths for all trades and find Y-axis range
+                double minPnl = -1;
+                double maxPnl = 1;
 
-                // Calculate P&L % for each bar from entry to exit
-                int numBars = exitBar - entryBar + 1;
-                double[] pnlPercents = new double[numBars];
-                double minPnl = 0;
-                double maxPnl = 0;
+                for (Trade t : validTrades) {
+                    int entryBar = t.entryBar();
+                    int exitBar = t.exitBar();
+                    double entryPrice = t.entryPrice();
+                    boolean isLong = "long".equals(t.side());
 
-                for (int i = 0; i < numBars; i++) {
-                    int barIdx = entryBar + i;
-                    if (barIdx < candles.size()) {
-                        Candle c = candles.get(barIdx);
-                        double currentPrice = c.close();
+                    for (int i = 0; i <= exitBar - entryBar && entryBar + i < candles.size(); i++) {
+                        Candle c = candles.get(entryBar + i);
                         double pnlPct;
                         if (isLong) {
-                            pnlPct = ((currentPrice - entryPrice) / entryPrice) * 100;
+                            pnlPct = ((c.close() - entryPrice) / entryPrice) * 100;
                         } else {
-                            pnlPct = ((entryPrice - currentPrice) / entryPrice) * 100;
+                            pnlPct = ((entryPrice - c.close()) / entryPrice) * 100;
                         }
-                        pnlPercents[i] = pnlPct;
                         minPnl = Math.min(minPnl, pnlPct);
                         maxPnl = Math.max(maxPnl, pnlPct);
                     }
@@ -717,138 +861,169 @@ public class TradeDetailsWindow extends JDialog {
 
                 // Add padding to range
                 double pnlRange = maxPnl - minPnl;
-                if (pnlRange < 1) pnlRange = 1; // Minimum range
+                if (pnlRange < 2) pnlRange = 2;
                 minPnl -= pnlRange * 0.1;
                 maxPnl += pnlRange * 0.1;
                 pnlRange = maxPnl - minPnl;
 
-                // Draw grid and zero line
-                g2.setColor(new Color(50, 50, 55));
-                g2.setStroke(new BasicStroke(1f));
-
-                // Zero line
+                // Draw zero line (entry level)
                 int zeroY = chartY + (int) ((maxPnl - 0) / pnlRange * chartH);
-                if (zeroY >= chartY && zeroY <= chartY + chartH) {
-                    g2.setColor(new Color(80, 80, 85));
-                    g2.drawLine(margin, zeroY, margin + chartW, zeroY);
-                }
+                g2.setColor(new Color(80, 80, 85));
+                g2.setStroke(new BasicStroke(1f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER, 10f, new float[]{4f, 4f}, 0f));
+                g2.drawLine(margin, zeroY, margin + chartW, zeroY);
 
-                // Draw horizontal grid lines
-                g2.setColor(new Color(45, 45, 50));
-                int numGridLines = 5;
+                // Draw horizontal grid lines and labels
+                g2.setStroke(new BasicStroke(1f));
+                int numGridLines = 4;
                 for (int i = 0; i <= numGridLines; i++) {
                     int y = chartY + (i * chartH / numGridLines);
+                    g2.setColor(new Color(40, 40, 45));
                     g2.drawLine(margin, y, margin + chartW, y);
 
-                    // Labels
                     double pnlAtLine = maxPnl - (i * pnlRange / numGridLines);
-                    g2.setColor(new Color(100, 100, 100));
+                    g2.setColor(new Color(90, 90, 90));
                     g2.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 9));
-                    String label = String.format("%+.1f%%", pnlAtLine);
-                    g2.drawString(label, 5, y + 4);
-                    g2.setColor(new Color(45, 45, 50));
+                    g2.drawString(String.format("%+.0f%%", pnlAtLine), 5, y + 4);
                 }
 
-                // Draw P&L line
-                Path2D.Double path = new Path2D.Double();
-                int barWidth = Math.max(2, chartW / numBars);
-                boolean first = true;
+                // Draw vertical line at entry (bar 0)
+                int entryLineX = margin;
+                g2.setColor(new Color(100, 180, 255, 60));
+                g2.setStroke(new BasicStroke(1f));
+                g2.drawLine(entryLineX, chartY, entryLineX, chartY + chartH);
 
-                for (int i = 0; i < numBars; i++) {
-                    int x = margin + (i * chartW / numBars) + barWidth / 2;
-                    int y = chartY + (int) ((maxPnl - pnlPercents[i]) / pnlRange * chartH);
+                // Count winners and losers
+                long winners = validTrades.stream().filter(t -> t.pnl() != null && t.pnl() >= 0).count();
+                long losers = validTrades.size() - winners;
 
-                    if (first) {
-                        path.moveTo(x, y);
-                        first = false;
-                    } else {
-                        path.lineTo(x, y);
-                    }
+                // Draw all trade paths (semi-transparent)
+                for (Trade t : validTrades) {
+                    if (t == selectedTradeForChart) continue; // Draw selected trade last
+
+                    drawTradePath(g2, t, margin, chartY, chartW, chartH, maxDuration, maxPnl, pnlRange, false);
                 }
 
-                // Fill area under/over the line
-                Path2D.Double areaPath = new Path2D.Double(path);
-                int lastX = margin + ((numBars - 1) * chartW / numBars) + barWidth / 2;
-                int firstX = margin + barWidth / 2;
-                areaPath.lineTo(lastX, zeroY);
-                areaPath.lineTo(firstX, zeroY);
-                areaPath.closePath();
-
-                boolean isWinner = t.pnl() != null && t.pnl() >= 0;
-                Color areaColor = isWinner ? new Color(76, 175, 80, 40) : new Color(244, 67, 54, 40);
-                g2.setColor(areaColor);
-                g2.fill(areaPath);
-
-                // Draw the line
-                Color lineColor = isWinner ? new Color(76, 175, 80) : new Color(244, 67, 54);
-                g2.setColor(lineColor);
-                g2.setStroke(new BasicStroke(2f));
-                g2.draw(path);
-
-                // Entry marker (0%)
-                int entryX = margin + barWidth / 2;
-                int entryY = chartY + (int) ((maxPnl - 0) / pnlRange * chartH);
-                g2.setColor(new Color(100, 180, 255));
-                g2.fillOval(entryX - 5, entryY - 5, 10, 10);
-
-                // Exit marker
-                int exitX = margin + ((numBars - 1) * chartW / numBars) + barWidth / 2;
-                int exitY = chartY + (int) ((maxPnl - pnlPercents[numBars - 1]) / pnlRange * chartH);
-                g2.setColor(lineColor);
-                g2.fillOval(exitX - 5, exitY - 5, 10, 10);
-
-                // MFE marker
-                if (t.mfeBar() != null && t.mfe() != null) {
-                    int mfeIdx = t.mfeBar() - entryBar;
-                    if (mfeIdx >= 0 && mfeIdx < numBars) {
-                        int mfeX = margin + (mfeIdx * chartW / numBars) + barWidth / 2;
-                        int mfeY = chartY + (int) ((maxPnl - pnlPercents[mfeIdx]) / pnlRange * chartH);
-                        g2.setColor(new Color(76, 175, 80, 180));
-                        int[] xp = {mfeX - 5, mfeX + 5, mfeX};
-                        int[] yp = {mfeY + 5, mfeY + 5, mfeY - 5};
-                        g2.fillPolygon(xp, yp, 3);
-                    }
+                // Draw selected trade path with full opacity on top
+                if (selectedTradeForChart != null && validTrades.contains(selectedTradeForChart)) {
+                    drawTradePath(g2, selectedTradeForChart, margin, chartY, chartW, chartH, maxDuration, maxPnl, pnlRange, true);
                 }
 
-                // MAE marker
-                if (t.maeBar() != null && t.mae() != null) {
-                    int maeIdx = t.maeBar() - entryBar;
-                    if (maeIdx >= 0 && maeIdx < numBars) {
-                        int maeX = margin + (maeIdx * chartW / numBars) + barWidth / 2;
-                        int maeY = chartY + (int) ((maxPnl - pnlPercents[maeIdx]) / pnlRange * chartH);
-                        g2.setColor(new Color(244, 67, 54, 180));
-                        int[] xp = {maeX - 5, maeX + 5, maeX};
-                        int[] yp = {maeY - 5, maeY - 5, maeY + 5};
-                        g2.fillPolygon(xp, yp, 3);
-                    }
-                }
-
-                // Title
+                // Title and stats
+                g2.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 10));
                 g2.setColor(new Color(180, 180, 180));
-                g2.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 11));
-                String title = String.format("P&L Progression: %s | %d bars | %+.2f%%",
-                    isLong ? "LONG" : "SHORT", numBars - 1, t.pnlPercent() != null ? t.pnlPercent() : 0);
-                g2.drawString(title, margin, 14);
+                g2.drawString("Trade Overlay", margin, 12);
 
-                // Legend
                 g2.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 9));
-                g2.setColor(new Color(100, 180, 255));
-                g2.drawString("● Entry", margin + chartW - 150, 14);
-                g2.setColor(lineColor);
-                g2.drawString("● Exit", margin + chartW - 100, 14);
+                String stats = String.format("%d trades | ", validTrades.size());
+                int statsX = margin + 80;
+                g2.setColor(new Color(130, 130, 130));
+                g2.drawString(stats, statsX, 12);
+                statsX += g2.getFontMetrics().stringWidth(stats);
+
                 g2.setColor(new Color(76, 175, 80));
-                g2.drawString("▲ MFE", margin + chartW - 55, 14);
+                String winText = String.format("%d wins ", winners);
+                g2.drawString(winText, statsX, 12);
+                statsX += g2.getFontMetrics().stringWidth(winText);
+
+                g2.setColor(new Color(244, 67, 54));
+                g2.drawString(String.format("%d losses", losers), statsX, 12);
+
+                // Legend on right side
+                int legendX = margin + chartW - 100;
+                g2.setColor(new Color(76, 175, 80, 100));
+                g2.fillRect(legendX, 4, 12, 8);
+                g2.setColor(new Color(100, 100, 100));
+                g2.drawString("Win", legendX + 16, 12);
+
+                g2.setColor(new Color(244, 67, 54, 100));
+                g2.fillRect(legendX + 45, 4, 12, 8);
+                g2.setColor(new Color(100, 100, 100));
+                g2.drawString("Loss", legendX + 61, 12);
 
                 g2.dispose();
             }
         };
 
-        panel.setPreferredSize(new Dimension(0, 150));
-        panel.setMinimumSize(new Dimension(0, 100));
+        panel.setPreferredSize(new Dimension(0, 120));
+        panel.setMinimumSize(new Dimension(0, 80));
         panel.setBorder(BorderFactory.createMatteBorder(1, 0, 0, 0, new Color(60, 60, 65)));
-        panel.setToolTipText("P&L % progression from entry (0%) to exit");
+        panel.setToolTipText("<html>All trades overlaid with entry at x=0<br/>Green = winners, Red = losers<br/>Selected trade highlighted</html>");
 
         return panel;
+    }
+
+    /**
+     * Draw a single trade's P&L path on the overlay chart.
+     */
+    private void drawTradePath(Graphics2D g2, Trade t, int margin, int chartY, int chartW, int chartH,
+                               int maxDuration, double maxPnl, double pnlRange, boolean isSelected) {
+        if (t.exitBar() == null || candles.isEmpty()) return;
+
+        int entryBar = t.entryBar();
+        int exitBar = t.exitBar();
+        double entryPrice = t.entryPrice();
+        boolean isLong = "long".equals(t.side());
+        boolean isWinner = t.pnl() != null && t.pnl() >= 0;
+
+        int duration = exitBar - entryBar;
+        if (duration <= 0 || entryBar >= candles.size()) return;
+
+        Path2D.Double path = new Path2D.Double();
+        boolean first = true;
+
+        for (int i = 0; i <= duration && entryBar + i < candles.size(); i++) {
+            Candle c = candles.get(entryBar + i);
+            double pnlPct;
+            if (isLong) {
+                pnlPct = ((c.close() - entryPrice) / entryPrice) * 100;
+            } else {
+                pnlPct = ((entryPrice - c.close()) / entryPrice) * 100;
+            }
+
+            // X position: normalized to maxDuration
+            int x = margin + (int) ((double) i / maxDuration * chartW);
+            // Y position: P&L percentage
+            int y = chartY + (int) ((maxPnl - pnlPct) / pnlRange * chartH);
+
+            if (first) {
+                path.moveTo(x, y);
+                first = false;
+            } else {
+                path.lineTo(x, y);
+            }
+        }
+
+        // Set color and stroke based on selection and outcome
+        // Non-selected trades use higher alpha (140) to be clearly visible
+        Color baseColor = isWinner ? new Color(76, 175, 80) : new Color(244, 67, 54);
+        int alpha = isSelected ? 255 : 140;
+        float strokeWidth = isSelected ? 3f : 1.5f;
+
+        g2.setColor(new Color(baseColor.getRed(), baseColor.getGreen(), baseColor.getBlue(), alpha));
+        g2.setStroke(new BasicStroke(strokeWidth, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        g2.draw(path);
+
+        // Draw markers for selected trade
+        if (isSelected && duration > 0 && entryBar + duration < candles.size()) {
+            // Entry dot
+            int entryX = margin;
+            int entryY = chartY + (int) ((maxPnl - 0) / pnlRange * chartH);
+            g2.setColor(new Color(100, 180, 255));
+            g2.fillOval(entryX - 4, entryY - 4, 8, 8);
+
+            // Exit dot
+            Candle exitCandle = candles.get(entryBar + duration);
+            double exitPnlPct;
+            if (isLong) {
+                exitPnlPct = ((exitCandle.close() - entryPrice) / entryPrice) * 100;
+            } else {
+                exitPnlPct = ((entryPrice - exitCandle.close()) / entryPrice) * 100;
+            }
+            int exitX = margin + (int) ((double) duration / maxDuration * chartW);
+            int exitY = chartY + (int) ((maxPnl - exitPnlPct) / pnlRange * chartH);
+            g2.setColor(baseColor);
+            g2.fillOval(exitX - 4, exitY - 4, 8, 8);
+        }
     }
 
     private void addHeader(String text, Color color) {
@@ -860,16 +1035,28 @@ public class TradeDetailsWindow extends JDialog {
     }
 
     private void addSection(String title) {
+        addSectionWithTooltip(title, null);
+    }
+
+    private void addSectionWithTooltip(String title, String tooltip) {
         JLabel section = new JLabel(title.toUpperCase());
         section.setFont(section.getFont().deriveFont(Font.BOLD, 9f));
         section.setForeground(new Color(100, 100, 100));
         section.setBorder(BorderFactory.createEmptyBorder(0, 0, 4, 0));
         section.setAlignmentX(Component.LEFT_ALIGNMENT);
+        if (tooltip != null) {
+            section.setToolTipText("<html><div style='width:250px;padding:4px'>" + tooltip.replace("\n", "<br/>") + "</div></html>");
+        }
         detailContentPanel.add(section);
     }
 
     private void addRow(String label, String value, Color valueColor) {
-        JPanel row = new JPanel(new BorderLayout(8, 0));
+        addRow(label, value, valueColor, null);
+    }
+
+    private void addRow(String label, String value, Color valueColor, String tooltip) {
+        // Grid-style row: fixed-width label column, left-aligned value
+        JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
         row.setOpaque(false);
         row.setMaximumSize(new Dimension(Integer.MAX_VALUE, 18));
         row.setAlignmentX(Component.LEFT_ALIGNMENT);
@@ -877,14 +1064,31 @@ public class TradeDetailsWindow extends JDialog {
         JLabel labelComp = new JLabel(label);
         labelComp.setFont(labelComp.getFont().deriveFont(11f));
         labelComp.setForeground(new Color(140, 140, 140));
+        labelComp.setPreferredSize(new Dimension(95, 16));  // Fixed width for alignment
 
         JLabel valueComp = new JLabel(value);
         valueComp.setFont(valueComp.getFont().deriveFont(11f));
         valueComp.setForeground(valueColor != null ? valueColor : new Color(200, 200, 200));
 
-        row.add(labelComp, BorderLayout.WEST);
-        row.add(valueComp, BorderLayout.EAST);
+        if (tooltip != null) {
+            String htmlTooltip = "<html><div style='width:250px;padding:4px'>" + tooltip.replace("\n", "<br/>") + "</div></html>";
+            row.setToolTipText(htmlTooltip);
+            labelComp.setToolTipText(htmlTooltip);
+            valueComp.setToolTipText(htmlTooltip);
+        }
+
+        row.add(labelComp);
+        row.add(valueComp);
         detailContentPanel.add(row);
+    }
+
+    private void addSeparator() {
+        addSpacer(8);
+        JSeparator sep = new JSeparator(SwingConstants.HORIZONTAL);
+        sep.setMaximumSize(new Dimension(Integer.MAX_VALUE, 1));
+        sep.setForeground(new Color(60, 60, 65));
+        detailContentPanel.add(sep);
+        addSpacer(8);
     }
 
     private void addTag(String text, Color color) {
@@ -902,6 +1106,85 @@ public class TradeDetailsWindow extends JDialog {
 
     private void addSpacer(int height) {
         detailContentPanel.add(Box.createRigidArea(new Dimension(0, height)));
+    }
+
+    private void addCollapsibleIndicatorSection(String title, Map<String, Double> indicators, Color accentColor) {
+        addCollapsibleIndicatorSection(title, indicators, accentColor, null);
+    }
+
+    /**
+     * Add a collapsible section for indicator maps.
+     * Initially collapsed to save space, click to expand.
+     */
+    private void addCollapsibleIndicatorSection(String title, Map<String, Double> indicators, Color accentColor, String tooltip) {
+        JPanel sectionPanel = new JPanel();
+        sectionPanel.setLayout(new BoxLayout(sectionPanel, BoxLayout.Y_AXIS));
+        sectionPanel.setAlignmentX(Component.LEFT_ALIGNMENT);
+        sectionPanel.setOpaque(false);
+
+        // Header with toggle
+        JPanel headerPanel = new JPanel(new BorderLayout());
+        headerPanel.setOpaque(false);
+        headerPanel.setMaximumSize(new Dimension(Integer.MAX_VALUE, 20));
+        headerPanel.setAlignmentX(Component.LEFT_ALIGNMENT);
+        headerPanel.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+
+        JLabel toggleLabel = new JLabel("▶ " + title.toUpperCase() + " (" + indicators.size() + ")");
+        toggleLabel.setFont(toggleLabel.getFont().deriveFont(Font.BOLD, 9f));
+        toggleLabel.setForeground(accentColor.darker());
+
+        if (tooltip != null) {
+            String htmlTooltip = "<html><div style='width:250px;padding:4px'>" + tooltip.replace("\n", "<br/>") + "</div></html>";
+            headerPanel.setToolTipText(htmlTooltip);
+            toggleLabel.setToolTipText(htmlTooltip);
+        }
+
+        headerPanel.add(toggleLabel, BorderLayout.WEST);
+
+        // Content panel (initially hidden)
+        JPanel contentPanel = new JPanel();
+        contentPanel.setLayout(new BoxLayout(contentPanel, BoxLayout.Y_AXIS));
+        contentPanel.setAlignmentX(Component.LEFT_ALIGNMENT);
+        contentPanel.setOpaque(false);
+        contentPanel.setVisible(false);
+
+        // Add indicator rows
+        indicators.forEach((k, v) -> {
+            JPanel row = new JPanel(new BorderLayout(8, 0));
+            row.setOpaque(false);
+            row.setMaximumSize(new Dimension(Integer.MAX_VALUE, 16));
+            row.setAlignmentX(Component.LEFT_ALIGNMENT);
+
+            JLabel labelComp = new JLabel("  " + k);
+            labelComp.setFont(labelComp.getFont().deriveFont(10f));
+            labelComp.setForeground(new Color(120, 120, 120));
+
+            JLabel valueComp = new JLabel(formatIndicatorValue(k, v));
+            valueComp.setFont(valueComp.getFont().deriveFont(10f));
+            valueComp.setForeground(new Color(160, 160, 160));
+
+            row.add(labelComp, BorderLayout.WEST);
+            row.add(valueComp, BorderLayout.EAST);
+            contentPanel.add(row);
+        });
+
+        // Toggle on click
+        headerPanel.addMouseListener(new MouseAdapter() {
+            private boolean expanded = false;
+
+            @Override
+            public void mouseClicked(MouseEvent e) {
+                expanded = !expanded;
+                contentPanel.setVisible(expanded);
+                toggleLabel.setText((expanded ? "▼ " : "▶ ") + title.toUpperCase() + " (" + indicators.size() + ")");
+                detailContentPanel.revalidate();
+                detailContentPanel.repaint();
+            }
+        });
+
+        sectionPanel.add(headerPanel);
+        sectionPanel.add(contentPanel);
+        detailContentPanel.add(sectionPanel);
     }
 
     private void clearDetailPanel() {
@@ -996,11 +1279,12 @@ public class TradeDetailsWindow extends JDialog {
         tableScrollPane.setHorizontalScrollBarPolicy(JScrollPane.HORIZONTAL_SCROLLBAR_AS_NEEDED);
 
         // Vertical split: table on top, chart on bottom
+        // Bottom chart is now a compact overview (120px), giving more space to the table
         JSplitPane tableChartSplit = new JSplitPane(JSplitPane.VERTICAL_SPLIT);
         tableChartSplit.setTopComponent(tableScrollPane);
         tableChartSplit.setBottomComponent(progressionChartPanel);
-        tableChartSplit.setDividerLocation(300);
-        tableChartSplit.setResizeWeight(0.7);
+        tableChartSplit.setDividerLocation(380);  // More space for table
+        tableChartSplit.setResizeWeight(1.0);     // Extra space goes to table
         tableChartSplit.setDividerSize(4);
         tableChartSplit.setBorder(null);
 

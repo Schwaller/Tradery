@@ -36,6 +36,7 @@ public class DailyVolumeProfileOverlay {
     private String currentTimeframe;
     private long currentStartTime;
     private long currentEndTime;
+    private String currentParams;  // numBins:valueAreaPct:maxDays
 
     // Indicator page (background computed)
     private IndicatorPage<List<DailyVolumeProfileAnnotation.DayProfile>> profilePage;
@@ -131,33 +132,31 @@ public class DailyVolumeProfileOverlay {
             return;
         }
 
-        // Check if we already have a page with the same params - don't release it
-        if (profilePage != null &&
-            symbol.equals(currentSymbol) &&
-            timeframe.equals(currentTimeframe) &&
-            startTime == currentStartTime &&
-            endTime == currentEndTime) {
-            log.info("DailyVolumeProfileOverlay: reusing existing page request");
-            return;
-        }
-
-        // Store new context
-        this.currentSymbol = symbol;
-        this.currentTimeframe = timeframe;
-        this.currentStartTime = startTime;
-        this.currentEndTime = endTime;
-
-        // Release previous page since params changed
-        releasePage();
-
-        // Request computation with params: numBins:valueAreaPct:maxDays
+        // Build params string
         String params = numBins + ":" + valueAreaPct + ":" + maxDays;
-        log.info("DailyVolumeProfileOverlay: requesting NEW page with params={}", params);
-        profilePage = pageMgr.request(
+
+        // Request page - PageManager handles caching, returns same page if key matches
+        IndicatorPage<List<DailyVolumeProfileAnnotation.DayProfile>> newPage = pageMgr.request(
             IndicatorType.DAILY_VOLUME_PROFILE, params,
             symbol, timeframe, startTime, endTime,
             pageListener,
             "DailyVolumeProfileOverlay");
+
+        // Only release old page if we got a different one (different cache key)
+        if (profilePage != null && profilePage != newPage) {
+            log.info("DailyVolumeProfileOverlay: switching to new page (params or time changed)");
+            // Remove our listener from old page
+            pageMgr.release(profilePage, pageListener);
+        } else if (profilePage == newPage) {
+            log.info("DailyVolumeProfileOverlay: reusing cached page");
+        }
+
+        profilePage = newPage;
+        this.currentSymbol = symbol;
+        this.currentTimeframe = timeframe;
+        this.currentStartTime = startTime;
+        this.currentEndTime = endTime;
+        this.currentParams = params;
 
         log.debug("Requested daily volume profile: {} {} {}-{}", symbol, timeframe, startTime, endTime);
     }

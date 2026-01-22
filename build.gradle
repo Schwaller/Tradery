@@ -60,6 +60,9 @@ dependencies {
     // SQLite JDBC driver for data storage
     implementation 'org.xerial:sqlite-jdbc:3.45.1.0'
 
+    // Markdown parsing for help dialogs
+    implementation 'com.vladsch.flexmark:flexmark-all:0.64.8'
+
     // Testing
     testImplementation 'org.junit.jupiter:junit-jupiter:5.10.1'
 }

@@ -65,6 +65,13 @@ public class OverlayManager {
         this.priceChart = priceChart;
         this.rayOverlay = new RayOverlay(priceChart);
         this.dailyVolumeProfileOverlay = new DailyVolumeProfileOverlay(priceChart);
+
+        // When daily volume profile is drawn, redraw rays to fix annotation list corruption
+        this.dailyVolumeProfileOverlay.setOnDataReady(() -> {
+            if (rayOverlay.isEnabled()) {
+                rayOverlay.redraw();
+            }
+        });
     }
 
     /**
