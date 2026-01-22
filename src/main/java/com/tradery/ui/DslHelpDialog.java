@@ -701,10 +701,6 @@ public class DslHelpDialog extends JDialog {
         helpPane.getHighlighter().removeAllHighlights();
     }
 
-    private String toHex(Color c) {
-        return String.format("#%02x%02x%02x", c.getRed(), c.getGreen(), c.getBlue());
-    }
-
     /**
      * Shows the DSL help dialog (singleton - reuses existing instance).
      */

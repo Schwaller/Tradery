@@ -800,6 +800,7 @@ public class TradeDetailsWindow extends JDialog {
      * Creates the all-trades overlay chart panel showing normalized P&L paths for all trades.
      * Each trade path starts at x=0 (entry) with P&L=0%, normalized relative to entry bar.
      * Winners are green, losers are red, selected trade is highlighted with full opacity.
+     * Supports mouse wheel zoom and drag to pan.
      */
     private JPanel createProgressionChartPanel() {
         JPanel panel = new JPanel(new BorderLayout()) {
@@ -872,6 +873,21 @@ public class TradeDetailsWindow extends JDialog {
                 maxPnl += pnlRange * 0.1;
                 pnlRange = maxPnl - minPnl;
 
+                // Apply zoom and pan to determine visible X range
+                double visibleWidth = 1.0 / chartZoomFactor;
+                double visibleStart = chartPanOffset;
+                double visibleEnd = visibleStart + visibleWidth;
+
+                // Clamp visible range
+                if (visibleEnd > 1.0) {
+                    visibleEnd = 1.0;
+                    visibleStart = Math.max(0, visibleEnd - visibleWidth);
+                }
+                if (visibleStart < 0) {
+                    visibleStart = 0;
+                    visibleEnd = Math.min(1.0, visibleStart + visibleWidth);
+                }
+
                 // Draw zero line (entry level)
                 int zeroY = chartY + (int) ((maxPnl - 0) / pnlRange * chartH);
                 g2.setColor(new Color(80, 80, 85));
@@ -892,11 +908,14 @@ public class TradeDetailsWindow extends JDialog {
                     g2.drawString(String.format("%+.0f%%", pnlAtLine), 5, y + 4);
                 }
 
-                // Draw vertical line at entry (bar 0)
-                int entryLineX = margin;
-                g2.setColor(new Color(100, 180, 255, 60));
-                g2.setStroke(new BasicStroke(1f));
-                g2.drawLine(entryLineX, chartY, entryLineX, chartY + chartH);
+                // Draw vertical line at entry (bar 0) if visible
+                double entryNorm = 0.0;
+                if (entryNorm >= visibleStart && entryNorm <= visibleEnd) {
+                    int entryLineX = margin + (int) ((entryNorm - visibleStart) / (visibleEnd - visibleStart) * chartW);
+                    g2.setColor(new Color(100, 180, 255, 60));
+                    g2.setStroke(new BasicStroke(1f));
+                    g2.drawLine(entryLineX, chartY, entryLineX, chartY + chartH);
+                }
 
                 // Count winners and losers
                 long winners = validTrades.stream().filter(t -> t.pnl() != null && t.pnl() >= 0).count();
@@ -906,12 +925,14 @@ public class TradeDetailsWindow extends JDialog {
                 for (Trade t : validTrades) {
                     if (t == selectedTradeForChart) continue; // Draw selected trade last
 
-                    drawTradePath(g2, t, margin, chartY, chartW, chartH, maxDuration, maxPnl, pnlRange, false);
+                    drawTradePathZoomed(g2, t, margin, chartY, chartW, chartH, maxDuration, maxPnl, pnlRange,
+                        visibleStart, visibleEnd, false);
                 }
 
                 // Draw selected trade path with full opacity on top
                 if (selectedTradeForChart != null && validTrades.contains(selectedTradeForChart)) {
-                    drawTradePath(g2, selectedTradeForChart, margin, chartY, chartW, chartH, maxDuration, maxPnl, pnlRange, true);
+                    drawTradePathZoomed(g2, selectedTradeForChart, margin, chartY, chartW, chartH, maxDuration, maxPnl, pnlRange,
+                        visibleStart, visibleEnd, true);
                 }
 
                 // Title and stats
@@ -946,23 +967,128 @@ public class TradeDetailsWindow extends JDialog {
                 g2.setColor(new Color(100, 100, 100));
                 g2.drawString("Loss", legendX + 61, 12);
 
+                // Show zoom indicator if zoomed
+                if (chartZoomFactor > 1.01) {
+                    g2.setColor(new Color(100, 100, 100));
+                    g2.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 9));
+                    g2.drawString(String.format("%.0fx", chartZoomFactor), margin + chartW - 20, chartY + chartH - 5);
+                }
+
                 g2.dispose();
             }
         };
 
+        // Mouse wheel zoom
+        panel.addMouseWheelListener(e -> {
+            int margin = 50;
+            int chartW = panel.getWidth() - margin - 15;
+
+            double zoomFactor = e.getWheelRotation() < 0 ? 1.2 : 0.8;
+            double newZoom = chartZoomFactor * zoomFactor;
+            newZoom = Math.max(1.0, Math.min(20.0, newZoom)); // Clamp zoom 1x-20x
+
+            if (Math.abs(newZoom - chartZoomFactor) > 0.01) {
+                // Zoom around mouse position
+                double mouseX = e.getPoint().x - margin;
+                double mouseRatio = Math.max(0, Math.min(1, mouseX / chartW));
+
+                double visibleWidth = 1.0 / chartZoomFactor;
+                double mouseNorm = chartPanOffset + mouseRatio * visibleWidth;
+
+                chartZoomFactor = newZoom;
+
+                double newVisibleWidth = 1.0 / chartZoomFactor;
+                chartPanOffset = mouseNorm - mouseRatio * newVisibleWidth;
+                chartPanOffset = Math.max(0, Math.min(1.0 - newVisibleWidth, chartPanOffset));
+
+                panel.repaint();
+            }
+        });
+
+        // Drag to pan
+        panel.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mousePressed(MouseEvent e) {
+                if (e.isPopupTrigger()) {
+                    showChartContextMenu(e, panel);
+                } else {
+                    chartPanStart = e.getPoint();
+                    chartPanStartOffset = chartPanOffset;
+                }
+            }
+
+            @Override
+            public void mouseReleased(MouseEvent e) {
+                if (e.isPopupTrigger()) {
+                    showChartContextMenu(e, panel);
+                }
+                chartPanStart = null;
+            }
+        });
+
+        panel.addMouseMotionListener(new java.awt.event.MouseMotionAdapter() {
+            @Override
+            public void mouseDragged(MouseEvent e) {
+                if (chartPanStart != null && chartZoomFactor > 1.0) {
+                    int margin = 50;
+                    int chartW = panel.getWidth() - margin - 15;
+                    int dx = e.getX() - chartPanStart.x;
+
+                    double visibleWidth = 1.0 / chartZoomFactor;
+                    double panDelta = -dx * visibleWidth / chartW;
+
+                    chartPanOffset = chartPanStartOffset + panDelta;
+                    chartPanOffset = Math.max(0, Math.min(1.0 - visibleWidth, chartPanOffset));
+
+                    panel.repaint();
+                }
+            }
+        });
+
         panel.setPreferredSize(new Dimension(0, 120));
         panel.setMinimumSize(new Dimension(0, 80));
         panel.setBorder(BorderFactory.createMatteBorder(1, 0, 0, 0, new Color(60, 60, 65)));
-        panel.setToolTipText("<html>All trades overlaid with entry at x=0<br/>Green = winners, Red = losers<br/>Selected trade highlighted</html>");
+        panel.setToolTipText("<html>All trades overlaid with entry at x=0<br/>Green = winners, Red = losers<br/>Mouse wheel to zoom, drag to pan<br/>Right-click for options</html>");
 
         return panel;
     }
 
+    private void showChartContextMenu(MouseEvent e, JPanel panel) {
+        JPopupMenu menu = new JPopupMenu();
+
+        JMenuItem fitItem = new JMenuItem("Fit All");
+        fitItem.addActionListener(evt -> {
+            chartZoomFactor = 1.0;
+            chartPanOffset = 0.0;
+            panel.repaint();
+        });
+        menu.add(fitItem);
+
+        JMenuItem zoom2xItem = new JMenuItem("Zoom 2x");
+        zoom2xItem.addActionListener(evt -> {
+            chartZoomFactor = 2.0;
+            chartPanOffset = 0.0;
+            panel.repaint();
+        });
+        menu.add(zoom2xItem);
+
+        JMenuItem zoom5xItem = new JMenuItem("Zoom 5x");
+        zoom5xItem.addActionListener(evt -> {
+            chartZoomFactor = 5.0;
+            chartPanOffset = 0.0;
+            panel.repaint();
+        });
+        menu.add(zoom5xItem);
+
+        menu.show(panel, e.getX(), e.getY());
+    }
+
     /**
-     * Draw a single trade's P&L path on the overlay chart.
+     * Draw a single trade's P&L path with zoom/pan applied.
      */
-    private void drawTradePath(Graphics2D g2, Trade t, int margin, int chartY, int chartW, int chartH,
-                               int maxDuration, double maxPnl, double pnlRange, boolean isSelected) {
+    private void drawTradePathZoomed(Graphics2D g2, Trade t, int margin, int chartY, int chartW, int chartH,
+                                     int maxDuration, double maxPnl, double pnlRange,
+                                     double visibleStart, double visibleEnd, boolean isSelected) {
         if (t.exitBar() == null || candles.isEmpty()) return;
 
         int entryBar = t.entryBar();
@@ -986,8 +1112,22 @@ public class TradeDetailsWindow extends JDialog {
                 pnlPct = ((entryPrice - c.close()) / entryPrice) * 100;
             }
 
-            // X position: normalized to maxDuration
-            int x = margin + (int) ((double) i / maxDuration * chartW);
+            // Normalized X position (0 to 1)
+            double normX = (double) i / maxDuration;
+
+            // Skip if outside visible range
+            if (normX < visibleStart || normX > visibleEnd) {
+                if (!first) {
+                    // Continue the path for continuity
+                    int x = margin + (int) ((normX - visibleStart) / (visibleEnd - visibleStart) * chartW);
+                    int y = chartY + (int) ((maxPnl - pnlPct) / pnlRange * chartH);
+                    path.lineTo(x, y);
+                }
+                continue;
+            }
+
+            // X position in chart coordinates
+            int x = margin + (int) ((normX - visibleStart) / (visibleEnd - visibleStart) * chartW);
             // Y position: P&L percentage
             int y = chartY + (int) ((maxPnl - pnlPct) / pnlRange * chartH);
 
@@ -1010,24 +1150,30 @@ public class TradeDetailsWindow extends JDialog {
 
         // Draw markers for selected trade
         if (isSelected && duration > 0 && entryBar + duration < candles.size()) {
-            // Entry dot
-            int entryX = margin;
-            int entryY = chartY + (int) ((maxPnl - 0) / pnlRange * chartH);
-            g2.setColor(new Color(100, 180, 255));
-            g2.fillOval(entryX - 4, entryY - 4, 8, 8);
+            // Entry dot (at normalized 0)
+            double entryNormX = 0.0;
+            if (entryNormX >= visibleStart && entryNormX <= visibleEnd) {
+                int entryX = margin + (int) ((entryNormX - visibleStart) / (visibleEnd - visibleStart) * chartW);
+                int entryY = chartY + (int) ((maxPnl - 0) / pnlRange * chartH);
+                g2.setColor(new Color(100, 180, 255));
+                g2.fillOval(entryX - 4, entryY - 4, 8, 8);
+            }
 
             // Exit dot
-            Candle exitCandle = candles.get(entryBar + duration);
-            double exitPnlPct;
-            if (isLong) {
-                exitPnlPct = ((exitCandle.close() - entryPrice) / entryPrice) * 100;
-            } else {
-                exitPnlPct = ((entryPrice - exitCandle.close()) / entryPrice) * 100;
+            double exitNormX = (double) duration / maxDuration;
+            if (exitNormX >= visibleStart && exitNormX <= visibleEnd) {
+                Candle exitCandle = candles.get(entryBar + duration);
+                double exitPnlPct;
+                if (isLong) {
+                    exitPnlPct = ((exitCandle.close() - entryPrice) / entryPrice) * 100;
+                } else {
+                    exitPnlPct = ((entryPrice - exitCandle.close()) / entryPrice) * 100;
+                }
+                int exitX = margin + (int) ((exitNormX - visibleStart) / (visibleEnd - visibleStart) * chartW);
+                int exitY = chartY + (int) ((maxPnl - exitPnlPct) / pnlRange * chartH);
+                g2.setColor(baseColor);
+                g2.fillOval(exitX - 4, exitY - 4, 8, 8);
             }
-            int exitX = margin + (int) ((double) duration / maxDuration * chartW);
-            int exitY = chartY + (int) ((maxPnl - exitPnlPct) / pnlRange * chartH);
-            g2.setColor(baseColor);
-            g2.fillOval(exitX - 4, exitY - 4, 8, 8);
         }
     }
 
