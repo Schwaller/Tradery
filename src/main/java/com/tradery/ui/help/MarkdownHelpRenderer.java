@@ -388,7 +388,7 @@ public class MarkdownHelpRenderer {
             """,
                 bgHex, fgHex,           // body
                 accentHex,              // h1
-                fgHex, fgSecHex,        // h2
+                accentHex, fgSecHex,    // h2
                 fgSecHex,               // h3
                 fgSecHex,               // h4
                 codeBgHex,              // .box

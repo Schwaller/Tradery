@@ -994,10 +994,9 @@ public class TradeDetailsWindow extends JDialog {
         }
 
         // Set color and stroke based on selection and outcome
-        // Non-selected trades use higher alpha (140) to be clearly visible
         Color baseColor = isWinner ? new Color(76, 175, 80) : new Color(244, 67, 54);
-        int alpha = isSelected ? 255 : 140;
-        float strokeWidth = isSelected ? 3f : 1.5f;
+        int alpha = isSelected ? 255 : 190;  // 75% opacity for non-selected
+        float strokeWidth = isSelected ? 2.5f : 1f;
 
         g2.setColor(new Color(baseColor.getRed(), baseColor.getGreen(), baseColor.getBlue(), alpha));
         g2.setStroke(new BasicStroke(strokeWidth, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
