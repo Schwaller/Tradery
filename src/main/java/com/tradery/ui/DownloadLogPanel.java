@@ -134,12 +134,13 @@ public class DownloadLogPanel extends JPanel {
             allEvents = logStore.getGlobalLog(MAX_DISPLAY_EVENTS * 2);  // Get extra for filtering
         }
 
-        // Apply view filter
+        // Apply view filters
         List<DownloadEvent> filteredEvents = new ArrayList<>();
         for (DownloadEvent event : allEvents) {
             if (filteredEvents.size() >= MAX_DISPLAY_EVENTS) break;
 
-            boolean include = switch (currentFilter) {
+            // Event type filter
+            boolean includeByEventType = switch (currentFilter) {
                 case "All" -> true;
                 case "Errors Only" -> event.isError();
                 case "Loading Events" -> event.isLoadingEvent();
@@ -148,7 +149,18 @@ public class DownloadLogPanel extends JPanel {
                 default -> true;
             };
 
-            if (include) {
+            // Data type filter
+            boolean includeByDataType = switch (currentDataTypeFilter) {
+                case "All" -> true;
+                case "Candles" -> event.dataType() == DataType.CANDLES;
+                case "Funding" -> event.dataType() == DataType.FUNDING;
+                case "OI" -> event.dataType() == DataType.OPEN_INTEREST;
+                case "AggTrades" -> event.dataType() == DataType.AGG_TRADES;
+                case "Premium" -> event.dataType() == DataType.PREMIUM_INDEX;
+                default -> true;
+            };
+
+            if (includeByEventType && includeByDataType) {
                 filteredEvents.add(event);
             }
         }
