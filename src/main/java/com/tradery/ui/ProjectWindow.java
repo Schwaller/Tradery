@@ -524,16 +524,16 @@ public class ProjectWindow extends JFrame {
 
         statusPanel.add(rightStatusPanel, BorderLayout.EAST);
 
-        // Right-click anywhere on status bar to open data loading status window
-        statusPanel.setToolTipText("Right-click for detailed data loading status");
-        statusPanel.addMouseListener(new java.awt.event.MouseAdapter() {
-            @Override
-            public void mouseClicked(java.awt.event.MouseEvent e) {
-                if (SwingUtilities.isRightMouseButton(e)) {
-                    openDataLoadingStatusWindow(statusPanel);
-                }
-            }
-        });
+        // Right-click context menu for status bar
+        statusPanel.setToolTipText("Right-click to open Download Dashboard");
+        JPopupMenu statusContextMenu = new JPopupMenu();
+        JMenuItem openDashboardItem = new JMenuItem("Open Download Dashboard...");
+        openDashboardItem.addActionListener(e -> openDownloadDashboard());
+        statusContextMenu.add(openDashboardItem);
+        JMenuItem openQuickStatusItem = new JMenuItem("Quick Status Window...");
+        openQuickStatusItem.addActionListener(e -> openDataLoadingStatusWindow(statusPanel));
+        statusContextMenu.add(openQuickStatusItem);
+        statusPanel.setComponentPopupMenu(statusContextMenu);
 
         bottomPanel.add(statusPanel, BorderLayout.CENTER);
 
@@ -845,6 +845,15 @@ public class ProjectWindow extends JFrame {
             dataLoadingStatusWindow = new DataLoadingStatusWindow(this);
         }
         dataLoadingStatusWindow.showNear(anchor);
+    }
+
+    /**
+     * Open the Download Dashboard window.
+     */
+    private void openDownloadDashboard() {
+        DownloadDashboardWindow dashboard = new DownloadDashboardWindow();
+        dashboard.setLocationRelativeTo(this);
+        dashboard.setVisible(true);
     }
 
     /**

@@ -2,6 +2,7 @@ package com.tradery.data.page;
 
 import com.tradery.data.DataType;
 import com.tradery.data.PageState;
+import com.tradery.data.log.DownloadLogStore;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -113,6 +114,7 @@ public abstract class DataPageManager<T> {
         if (listener != null) {
             listeners.computeIfAbsent(key, k -> ConcurrentHashMap.newKeySet()).add(listener);
             consumerNames.put(listener, consumerName);
+            DownloadLogStore.getInstance().logListenerAdded(key, dataType, consumerName);
         }
 
         // Increment reference count
@@ -149,7 +151,10 @@ public abstract class DataPageManager<T> {
             if (pageListeners != null) {
                 pageListeners.remove(listener);
             }
-            consumerNames.remove(listener);
+            String consumerName = consumerNames.remove(listener);
+            if (consumerName != null) {
+                DownloadLogStore.getInstance().logListenerRemoved(key, dataType, consumerName);
+            }
         }
 
         // Decrement ref count
@@ -164,6 +169,7 @@ public abstract class DataPageManager<T> {
             listeners.remove(key);
             if (page != null) {
                 onPageReleased(page);
+                DownloadLogStore.getInstance().logPageReleased(key, dataType);
             }
             log.debug("Released and cleaned up page: {}", key);
         } else {
@@ -231,7 +237,9 @@ public abstract class DataPageManager<T> {
      */
     protected DataPage<T> createPage(String symbol, String timeframe,
                                       long startTime, long endTime) {
-        return new DataPage<>(dataType, symbol, timeframe, startTime, endTime);
+        DataPage<T> page = new DataPage<>(dataType, symbol, timeframe, startTime, endTime);
+        DownloadLogStore.getInstance().logPageCreated(page.getKey(), dataType, symbol, timeframe);
+        return page;
     }
 
     /**
@@ -256,7 +264,16 @@ public abstract class DataPageManager<T> {
         PageState newState = page.isEmpty() ? PageState.LOADING : PageState.UPDATING;
 
         page.setState(newState);
+        page.setLoadStartTime(System.currentTimeMillis());
         notifyStateChanged(page, oldState, newState);
+
+        // Log the start event
+        DownloadLogStore logStore = DownloadLogStore.getInstance();
+        if (newState == PageState.LOADING) {
+            logStore.logLoadStarted(page.getKey(), dataType, page.getSymbol(), page.getTimeframe());
+        } else {
+            logStore.logUpdateStarted(page.getKey(), dataType);
+        }
 
         loadExecutor.submit(() -> {
             try {
@@ -277,8 +294,12 @@ public abstract class DataPageManager<T> {
         // Create copy in background thread
         java.util.List<T> dataCopy = new java.util.ArrayList<>(data);
 
+        // Calculate duration before EDT switch
+        long durationMs = System.currentTimeMillis() - page.getLoadStartTime();
+        PageState prevState = page.getState();
+        boolean wasUpdating = prevState == PageState.UPDATING;
+
         SwingUtilities.invokeLater(() -> {
-            PageState prevState = page.getState();
             page.setDataDirect(dataCopy);
             page.setState(PageState.READY);
             page.setLastSyncTime(System.currentTimeMillis());
@@ -286,6 +307,14 @@ public abstract class DataPageManager<T> {
 
             notifyStateChanged(page, prevState, PageState.READY);
             notifyDataChanged(page);
+
+            // Log completion
+            DownloadLogStore logStore = DownloadLogStore.getInstance();
+            if (wasUpdating) {
+                logStore.logUpdateCompleted(page.getKey(), dataType, dataCopy.size(), durationMs);
+            } else {
+                logStore.logLoadCompleted(page.getKey(), dataType, dataCopy.size(), durationMs);
+            }
 
             log.debug("Loaded {} {} records", dataCopy.size(), dataType.getDisplayName());
         });
@@ -301,6 +330,9 @@ public abstract class DataPageManager<T> {
             page.setErrorMessage(errorMessage);
 
             notifyStateChanged(page, prevState, PageState.ERROR);
+
+            // Log the error
+            DownloadLogStore.getInstance().logError(page.getKey(), dataType, errorMessage);
         });
     }
 

@@ -8,8 +8,12 @@ import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import com.tradery.ApplicationContext;
 import com.tradery.data.AggTradesStore;
+import com.tradery.data.DataType;
 import com.tradery.data.FundingRateStore;
 import com.tradery.data.OpenInterestStore;
+import com.tradery.data.log.DownloadEvent;
+import com.tradery.data.log.DownloadLogStore;
+import com.tradery.data.log.DownloadStatistics;
 import com.tradery.data.page.DataPageManager;
 import com.tradery.data.sqlite.SqliteDataStore;
 import com.tradery.dsl.Parser;
@@ -124,6 +128,8 @@ public class ApiServer {
         server.createContext("/ui/open", this::handleUIOpen);
         server.createContext("/ui", this::handleUI);
         server.createContext("/thread-dump", this::handleThreadDump);
+        server.createContext("/download-log", this::handleDownloadLog);
+        server.createContext("/download-stats", this::handleDownloadStats);
 
         server.start();
         System.out.println("API server started on http://localhost:" + actualPort);
@@ -778,6 +784,7 @@ public class ApiServer {
      * POST /ui/open?window=settings   - Open Settings dialog
      * POST /ui/open?window=data       - Open Data Management dialog
      * POST /ui/open?window=dsl-help   - Open DSL Help dialog
+     * POST /ui/open?window=downloads  - Open Download Dashboard
      * POST /ui/open?window=launcher   - Bring launcher to front
      * POST /ui/open?window=project&id={strategyId} - Open a strategy project
      *
@@ -791,7 +798,7 @@ public class ApiServer {
         String window = params.get("window");
         if (window == null || window.isEmpty()) {
             sendError(exchange, 400, "Missing required parameter: window. " +
-                "Valid options: phases, hoops, settings, data, dsl-help, launcher, project");
+                "Valid options: phases, hoops, settings, data, dsl-help, downloads, launcher, project");
             return;
         }
 
@@ -830,6 +837,11 @@ public class ApiServer {
                 response.put("success", true);
                 response.put("message", "DSL Help dialog opened");
             }
+            case "downloads", "download-dashboard" -> {
+                launcher.openDownloadDashboard();
+                response.put("success", true);
+                response.put("message", "Download Dashboard opened");
+            }
             case "launcher" -> {
                 launcher.bringToFront();
                 response.put("success", true);
@@ -852,7 +864,7 @@ public class ApiServer {
             }
             default -> {
                 sendError(exchange, 400, "Unknown window type: " + window + ". " +
-                    "Valid options: phases, hoops, settings, data, dsl-help, launcher, project");
+                    "Valid options: phases, hoops, settings, data, dsl-help, downloads, launcher, project");
                 return;
             }
         }
@@ -1022,6 +1034,179 @@ public class ApiServer {
         }
 
         return "BUSY - Check stack trace for details";
+    }
+
+    /**
+     * Handle download log endpoint - query download events with filters.
+     *
+     * GET /download-log?since=&dataType=&eventType=&pageKey=&limit=
+     *
+     * Parameters:
+     *   - since: Timestamp in ms (default: last 5 minutes)
+     *   - dataType: Filter by data type (CANDLES, FUNDING, OPEN_INTEREST, AGG_TRADES, PREMIUM_INDEX)
+     *   - eventType: Filter by event type (PAGE_CREATED, LOAD_STARTED, LOAD_COMPLETED, ERROR, etc.)
+     *   - pageKey: Filter by page key (substring match)
+     *   - limit: Max events to return (default: 100, max: 1000)
+     */
+    private void handleDownloadLog(HttpExchange exchange) throws IOException {
+        if (!checkMethod(exchange, "GET")) return;
+
+        Map<String, String> params = parseQuery(exchange.getRequestURI().getQuery());
+
+        // Parse filters
+        Long sinceTimestamp = null;
+        String sinceStr = params.get("since");
+        if (sinceStr != null && !sinceStr.isEmpty()) {
+            try {
+                sinceTimestamp = Long.parseLong(sinceStr);
+            } catch (NumberFormatException e) {
+                sendError(exchange, 400, "Invalid 'since' parameter: " + sinceStr);
+                return;
+            }
+        } else {
+            // Default: last 5 minutes
+            sinceTimestamp = System.currentTimeMillis() - 5 * 60 * 1000;
+        }
+
+        DataType dataType = null;
+        String dataTypeStr = params.get("dataType");
+        if (dataTypeStr != null && !dataTypeStr.isEmpty()) {
+            try {
+                dataType = DataType.valueOf(dataTypeStr.toUpperCase());
+            } catch (IllegalArgumentException e) {
+                sendError(exchange, 400, "Invalid dataType: " + dataTypeStr +
+                    ". Valid options: CANDLES, FUNDING, OPEN_INTEREST, AGG_TRADES, PREMIUM_INDEX");
+                return;
+            }
+        }
+
+        DownloadEvent.EventType eventType = null;
+        String eventTypeStr = params.get("eventType");
+        if (eventTypeStr != null && !eventTypeStr.isEmpty()) {
+            try {
+                eventType = DownloadEvent.EventType.valueOf(eventTypeStr.toUpperCase());
+            } catch (IllegalArgumentException e) {
+                sendError(exchange, 400, "Invalid eventType: " + eventTypeStr +
+                    ". Valid options: PAGE_CREATED, LOAD_STARTED, LOAD_COMPLETED, ERROR, UPDATE_STARTED, UPDATE_COMPLETED, PAGE_RELEASED, LISTENER_ADDED, LISTENER_REMOVED");
+                return;
+            }
+        }
+
+        String pageKey = params.get("pageKey");
+        int limit = Integer.parseInt(params.getOrDefault("limit", "100"));
+        limit = Math.min(Math.max(limit, 1), 1000);
+
+        // Query the log store
+        DownloadLogStore logStore = DownloadLogStore.getInstance();
+        List<DownloadEvent> events = logStore.query(sinceTimestamp, dataType, eventType, pageKey, limit);
+
+        // Build response
+        ObjectNode response = mapper.createObjectNode();
+        response.put("count", events.size());
+        response.put("since", sinceTimestamp);
+        if (dataType != null) response.put("dataTypeFilter", dataType.name());
+        if (eventType != null) response.put("eventTypeFilter", eventType.name());
+        if (pageKey != null) response.put("pageKeyFilter", pageKey);
+
+        ArrayNode eventsArray = response.putArray("events");
+        for (DownloadEvent event : events) {
+            ObjectNode eventNode = eventsArray.addObject();
+            eventNode.put("timestamp", event.timestamp());
+            eventNode.put("pageKey", event.pageKey());
+            eventNode.put("dataType", event.dataType().name());
+            eventNode.put("eventType", event.eventType().name());
+            eventNode.put("message", event.message());
+
+            // Add metadata fields if present
+            Long duration = event.getDurationMs();
+            if (duration != null) eventNode.put("durationMs", duration);
+
+            Integer recordCount = event.getRecordCount();
+            if (recordCount != null) eventNode.put("recordCount", recordCount);
+
+            String errorMsg = event.getErrorMessage();
+            if (errorMsg != null) eventNode.put("errorMessage", errorMsg);
+
+            String consumer = event.getConsumerName();
+            if (consumer != null) eventNode.put("consumerName", consumer);
+        }
+
+        sendJson(exchange, 200, response);
+    }
+
+    /**
+     * Handle download stats endpoint - get statistics about download activity.
+     *
+     * GET /download-stats
+     *
+     * Returns statistics including total events, recent activity, errors, and load times.
+     */
+    private void handleDownloadStats(HttpExchange exchange) throws IOException {
+        if (!checkMethod(exchange, "GET")) return;
+
+        ApplicationContext ctx = ApplicationContext.getInstance();
+
+        // Count active pages and total records
+        int activePages = 0;
+        int totalRecords = 0;
+
+        var candlePageMgr = ctx.getCandlePageManager();
+        if (candlePageMgr != null) {
+            activePages += candlePageMgr.getActivePageCount();
+            totalRecords += candlePageMgr.getTotalRecordCount();
+        }
+
+        var fundingPageMgr = ctx.getFundingPageManager();
+        if (fundingPageMgr != null) {
+            activePages += fundingPageMgr.getActivePageCount();
+            totalRecords += fundingPageMgr.getTotalRecordCount();
+        }
+
+        var oiPageMgr = ctx.getOIPageManager();
+        if (oiPageMgr != null) {
+            activePages += oiPageMgr.getActivePageCount();
+            totalRecords += oiPageMgr.getTotalRecordCount();
+        }
+
+        var aggTradesPageMgr = ctx.getAggTradesPageManager();
+        if (aggTradesPageMgr != null) {
+            activePages += aggTradesPageMgr.getActivePageCount();
+            totalRecords += aggTradesPageMgr.getTotalRecordCount();
+        }
+
+        var premiumPageMgr = ctx.getPremiumPageManager();
+        if (premiumPageMgr != null) {
+            activePages += premiumPageMgr.getActivePageCount();
+            totalRecords += premiumPageMgr.getTotalRecordCount();
+        }
+
+        // Get statistics
+        DownloadLogStore logStore = DownloadLogStore.getInstance();
+        DownloadStatistics stats = logStore.getStatistics(activePages, totalRecords);
+
+        // Build response
+        ObjectNode response = mapper.createObjectNode();
+        response.put("totalEvents", stats.totalEvents());
+        response.put("eventsLast5Minutes", stats.eventsLast5Minutes());
+        response.put("errorsLast5Minutes", stats.errorsLast5Minutes());
+        response.put("avgLoadTimeMs", Math.round(stats.avgLoadTimeMs() * 100) / 100.0);
+        response.put("activePages", stats.activePages());
+        response.put("totalRecordCount", stats.totalRecordCount());
+        response.put("healthStatus", stats.getHealthStatus());
+
+        // Events by data type
+        ObjectNode byDataType = response.putObject("eventsByDataType");
+        for (var entry : stats.eventsByType().entrySet()) {
+            byDataType.put(entry.getKey().name(), entry.getValue());
+        }
+
+        // Events by event type
+        ObjectNode byEventType = response.putObject("eventsByEventType");
+        for (var entry : stats.eventsByEventType().entrySet()) {
+            byEventType.put(entry.getKey().name(), entry.getValue());
+        }
+
+        sendJson(exchange, 200, response);
     }
 
     // ========== Helpers ==========

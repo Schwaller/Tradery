@@ -7,6 +7,8 @@ import com.tradery.data.page.IndicatorPageManager;
 
 import javax.swing.*;
 import java.awt.*;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
 import java.util.List;
 
 /**
@@ -53,12 +55,35 @@ public class PageManagerBadgesPanel extends JPanel {
         add(premiumBadge);
         add(indicatorsBadge);
 
+        // Context menu for right-click to open Download Dashboard
+        JPopupMenu contextMenu = new JPopupMenu();
+        JMenuItem openDashboardItem = new JMenuItem("Open Download Dashboard...");
+        openDashboardItem.addActionListener(e -> openDownloadDashboard());
+        contextMenu.add(openDashboardItem);
+        setComponentPopupMenu(contextMenu);
+
+        // Also add to each badge
+        for (Component comp : getComponents()) {
+            if (comp instanceof JComponent jcomp) {
+                jcomp.setComponentPopupMenu(contextMenu);
+            }
+        }
+
         // Refresh every 500ms
         refreshTimer = new Timer(500, e -> refresh());
         refreshTimer.start();
 
         // Initial refresh
         refresh();
+    }
+
+    /**
+     * Open the Download Dashboard window.
+     */
+    private void openDownloadDashboard() {
+        DownloadDashboardWindow dashboard = new DownloadDashboardWindow();
+        dashboard.setLocationRelativeTo(SwingUtilities.getWindowAncestor(this));
+        dashboard.setVisible(true);
     }
 
     public void refresh() {

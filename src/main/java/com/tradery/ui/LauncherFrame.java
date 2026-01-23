@@ -40,6 +40,7 @@ public class LauncherFrame extends JFrame {
     private JButton settingsButton;
     private JButton phasesButton;
     private JButton hoopsButton;
+    private JButton downloadDashboardButton;
 
     private final StrategyStore strategyStore;
     private final Map<String, ProjectWindow> openWindows = new HashMap<>();
@@ -144,6 +145,10 @@ public class LauncherFrame extends JFrame {
         hoopsButton.setToolTipText("Manage hoop pattern definitions");
         hoopsButton.addActionListener(e -> openHoopsWindow());
 
+        downloadDashboardButton = new JButton("Downloads");
+        downloadDashboardButton.setToolTipText("View download status and logs");
+        downloadDashboardButton.addActionListener(e -> openDownloadDashboardWindow());
+
         // Context menu for right-click
         JPopupMenu contextMenu = new JPopupMenu();
         JMenuItem openItem = new JMenuItem("Open");
@@ -208,6 +213,7 @@ public class LauncherFrame extends JFrame {
         JPanel leftButtons = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 8));
         leftButtons.add(phasesButton);
         leftButtons.add(hoopsButton);
+        leftButtons.add(downloadDashboardButton);
         leftButtons.add(manageDataButton);
         leftButtons.add(settingsButton);
         JPanel rightButtons = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 8));
@@ -502,6 +508,12 @@ public class LauncherFrame extends JFrame {
         }
     }
 
+    private void openDownloadDashboardWindow() {
+        DownloadDashboardWindow dashboard = new DownloadDashboardWindow();
+        dashboard.setLocationRelativeTo(this);
+        dashboard.setVisible(true);
+    }
+
     @Override
     public void setVisible(boolean visible) {
         super.setVisible(visible);
@@ -586,6 +598,13 @@ public class LauncherFrame extends JFrame {
             DslHelpDialog dialog = new DslHelpDialog(this);
             dialog.setVisible(true);
         });
+    }
+
+    /**
+     * Open the Download Dashboard window (for API access).
+     */
+    public void openDownloadDashboard() {
+        SwingUtilities.invokeLater(this::openDownloadDashboardWindow);
     }
 
     /**

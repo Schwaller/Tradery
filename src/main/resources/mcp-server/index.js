@@ -574,6 +574,7 @@ Hoop fields:
 - settings: Open Settings dialog
 - data: Open Data Management dialog
 - dsl-help: Open DSL syntax help
+- downloads: Open Download Dashboard (data loading status and logs)
 - launcher: Bring the launcher window to front
 - project: Open a specific strategy project (requires strategyId)`,
     inputSchema: {
@@ -581,7 +582,7 @@ Hoop fields:
       properties: {
         window: {
           type: "string",
-          description: "Window to open: phases, hoops, settings, data, dsl-help, launcher, project",
+          description: "Window to open: phases, hoops, settings, data, dsl-help, downloads, launcher, project",
         },
         strategyId: {
           type: "string",
@@ -589,6 +590,69 @@ Hoop fields:
         },
       },
       required: ["window"],
+    },
+  },
+
+  // ========== Download Log Tools ==========
+  {
+    name: "tradery_get_download_log",
+    description: `Query download/data loading events. Returns recent events with optional filters.
+
+Use this to monitor data loading activity, debug issues, or understand what data has been fetched.
+
+Event types:
+- PAGE_CREATED: New data page created
+- LOAD_STARTED/LOAD_COMPLETED: Initial data load
+- UPDATE_STARTED/UPDATE_COMPLETED: Background data refresh
+- ERROR: Load or update failed
+- PAGE_RELEASED: Page cleaned up (no more consumers)
+- LISTENER_ADDED/LISTENER_REMOVED: Consumer tracking`,
+    inputSchema: {
+      type: "object",
+      properties: {
+        since: {
+          type: "number",
+          description: "Timestamp in ms to filter events after (default: last 5 minutes)",
+        },
+        dataType: {
+          type: "string",
+          description: "Filter by data type: CANDLES, FUNDING, OPEN_INTEREST, AGG_TRADES, PREMIUM_INDEX",
+        },
+        eventType: {
+          type: "string",
+          description: "Filter by event type: PAGE_CREATED, LOAD_STARTED, LOAD_COMPLETED, ERROR, UPDATE_STARTED, UPDATE_COMPLETED, PAGE_RELEASED",
+        },
+        pageKey: {
+          type: "string",
+          description: "Filter by page key (substring match)",
+        },
+        limit: {
+          type: "number",
+          description: "Max events to return (default: 100, max: 1000)",
+          default: 100,
+        },
+      },
+      required: [],
+    },
+  },
+  {
+    name: "tradery_get_download_stats",
+    description: `Get statistics about download activity including total events, recent activity, error counts, and average load times.
+
+Returns:
+- totalEvents: Total events in log
+- eventsLast5Minutes: Recent activity count
+- errorsLast5Minutes: Recent error count
+- avgLoadTimeMs: Average data load duration
+- activePages: Currently tracked pages
+- totalRecordCount: Total records across all pages
+- healthStatus: "healthy", "degraded", or "unhealthy"
+- eventsByDataType: Breakdown by data type
+- eventsByEventType: Breakdown by event type`,
+    inputSchema: {
+      type: "object",
+      properties: {},
+      required: [],
     },
   },
 ];
@@ -1178,6 +1242,26 @@ async function handleTool(name, args) {
         url += `&id=${encodeURIComponent(args.strategyId)}`;
       }
       return apiCall("POST", url);
+    }
+
+    // ========== Download Log Handlers ==========
+
+    case "tradery_get_download_log": {
+      const queryParams = [];
+      if (args.since) queryParams.push(`since=${args.since}`);
+      if (args.dataType) queryParams.push(`dataType=${encodeURIComponent(args.dataType)}`);
+      if (args.eventType) queryParams.push(`eventType=${encodeURIComponent(args.eventType)}`);
+      if (args.pageKey) queryParams.push(`pageKey=${encodeURIComponent(args.pageKey)}`);
+      if (args.limit) queryParams.push(`limit=${args.limit}`);
+
+      const url = queryParams.length > 0
+        ? `/download-log?${queryParams.join('&')}`
+        : '/download-log';
+      return apiCall("GET", url);
+    }
+
+    case "tradery_get_download_stats": {
+      return apiCall("GET", "/download-stats");
     }
 
     default:

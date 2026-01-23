@@ -31,6 +31,7 @@ public class DataPage<T> implements DataPageView<T> {
     private volatile PageState state = PageState.EMPTY;
     private volatile String errorMessage;
     private volatile long lastSyncTime;
+    private volatile long loadStartTime;  // For duration tracking
 
     // Data (volatile for visibility across threads)
     private volatile List<T> data = new ArrayList<>();
@@ -120,6 +121,14 @@ public class DataPage<T> implements DataPageView<T> {
 
     public void setLastSyncTime(long lastSyncTime) {
         this.lastSyncTime = lastSyncTime;
+    }
+
+    public long getLoadStartTime() {
+        return loadStartTime;
+    }
+
+    public void setLoadStartTime(long loadStartTime) {
+        this.loadStartTime = loadStartTime;
     }
 
     // ========== Data (DataPageView interface) ==========
