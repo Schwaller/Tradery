@@ -219,6 +219,7 @@ public class IndicatorPageManager {
                     page.setSourceCandleHash(computeHash(candles));
                     page.setComputeTime(System.currentTimeMillis());
                     page.setState(PageState.READY);
+                    page.setLoadProgress(100);  // Mark complete
 
                     notifyStateChanged(page, prevState, PageState.READY);
                     notifyDataChanged(page);
@@ -247,6 +248,7 @@ public class IndicatorPageManager {
                     page.setSourceCandleHash(computeHash(candles));
                     page.setComputeTime(System.currentTimeMillis());
                     page.setState(PageState.READY);
+                    page.setLoadProgress(100);  // Mark complete
 
                     notifyStateChanged(page, prevState, PageState.READY);
                     notifyDataChanged(page);
@@ -500,6 +502,7 @@ public class IndicatorPageManager {
         String timeframe,
         PageState state,
         int listenerCount,
+        int loadProgress,  // 0-100 percentage
         boolean hasData,
         List<String> consumers
     ) {}
@@ -533,6 +536,7 @@ public class IndicatorPageManager {
                 page.getTimeframe(),
                 page.getState(),
                 listenerCount,
+                page.getLoadProgress(),
                 page.hasData(),
                 pageConsumers
             ));

@@ -35,6 +35,17 @@ public class FundingPageManager extends DataPageManager<FundingRate> {
         long startTime = page.getStartTime();
         long endTime = page.getEndTime();
 
+        // Check cache first for initial progress
+        List<FundingRate> cached = loadFromCacheOnly(symbol, startTime, endTime);
+        if (!cached.isEmpty()) {
+            // Estimate expected records (8-hour intervals)
+            long expectedRecords = (endTime - startTime) / (8 * 60 * 60 * 1000);
+            int initialProgress = expectedRecords > 0 ? (int) ((cached.size() * 100) / expectedRecords) : 50;
+            updatePageProgress(page, Math.min(initialProgress, 95));
+        } else {
+            updatePageProgress(page, 10);  // Show we're working
+        }
+
         // FundingRateStore handles caching + API fetch internally
         List<FundingRate> rates = fundingRateStore.getFundingRates(symbol, startTime, endTime);
 

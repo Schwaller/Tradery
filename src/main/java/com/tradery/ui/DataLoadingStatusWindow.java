@@ -214,10 +214,18 @@ public class DataLoadingStatusWindow extends JDialog {
 
             // Center: Progress bar (only when loading)
             if (page.state() == PageState.LOADING || page.state() == PageState.UPDATING) {
-                JProgressBar progress = new JProgressBar();
-                progress.setIndeterminate(true);
-                progress.setPreferredSize(new Dimension(60, 12));
-                progress.setStringPainted(false);
+                JProgressBar progress = new JProgressBar(0, 100);
+                int loadProgress = page.loadProgress();
+                if (loadProgress > 0 && loadProgress < 100) {
+                    progress.setIndeterminate(false);
+                    progress.setValue(loadProgress);
+                    progress.setString(loadProgress + "%");
+                    progress.setStringPainted(true);
+                } else {
+                    progress.setIndeterminate(true);
+                    progress.setStringPainted(false);
+                }
+                progress.setPreferredSize(new Dimension(80, 14));
                 row.add(progress, BorderLayout.CENTER);
             }
 

@@ -265,6 +265,7 @@ public abstract class DataPageManager<T> {
 
         page.setState(newState);
         page.setLoadStartTime(System.currentTimeMillis());
+        page.setLoadProgress(0);  // Reset progress at start
         notifyStateChanged(page, oldState, newState);
 
         // Log the start event
@@ -304,6 +305,7 @@ public abstract class DataPageManager<T> {
             page.setState(PageState.READY);
             page.setLastSyncTime(System.currentTimeMillis());
             page.setErrorMessage(null);
+            page.setLoadProgress(100);  // Mark complete
 
             notifyStateChanged(page, prevState, PageState.READY);
             notifyDataChanged(page);
@@ -328,12 +330,22 @@ public abstract class DataPageManager<T> {
             PageState prevState = page.getState();
             page.setState(PageState.ERROR);
             page.setErrorMessage(errorMessage);
+            page.setLoadProgress(100);  // Mark as complete (with error) to avoid stuck progress
 
             notifyStateChanged(page, prevState, PageState.ERROR);
 
             // Log the error
             DownloadLogStore.getInstance().logError(page.getKey(), dataType, errorMessage);
         });
+    }
+
+    /**
+     * Update page load progress. Call from loadData() during pagination.
+     * @param page The page being loaded
+     * @param progress Progress percentage (0-100)
+     */
+    protected void updatePageProgress(DataPage<T> page, int progress) {
+        page.setLoadProgress(progress);
     }
 
     /**
@@ -391,6 +403,7 @@ public abstract class DataPageManager<T> {
         String timeframe,
         int listenerCount,
         int recordCount,
+        int loadProgress,  // 0-100 percentage, -1 for indeterminate
         java.util.List<String> consumers
     ) {}
 
@@ -424,6 +437,7 @@ public abstract class DataPageManager<T> {
                 page.getTimeframe(),
                 listenerCount,
                 page.getRecordCount(),
+                page.getLoadProgress(),
                 pageConsumers
             ));
         }

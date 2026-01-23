@@ -128,7 +128,7 @@ public class PageManagerTreePanel extends JPanel {
                         : symbol;
                     DefaultMutableTreeNode pageNode = new DefaultMutableTreeNode(
                         new PageNodeData(label, page.key(), dataType, page.state(),
-                            page.recordCount(), page.listenerCount(), page.consumers()));
+                            page.recordCount(), page.listenerCount(), page.loadProgress(), page.consumers()));
                     typeNode.add(pageNode);
                 } else {
                     // Multiple pages, group by symbol
@@ -140,7 +140,7 @@ public class PageManagerTreePanel extends JPanel {
                         String label = page.timeframe() != null ? page.timeframe() : "default";
                         DefaultMutableTreeNode pageNode = new DefaultMutableTreeNode(
                             new PageNodeData(label, page.key(), dataType, page.state(),
-                                page.recordCount(), page.listenerCount(), page.consumers()));
+                                page.recordCount(), page.listenerCount(), page.loadProgress(), page.consumers()));
                         symbolNode.add(pageNode);
                     }
                 }
@@ -230,7 +230,7 @@ public class PageManagerTreePanel extends JPanel {
     record CategoryNodeData(String name, int count, PageState overallState) {}
 
     record PageNodeData(String label, String pageKey, DataType dataType, PageState state,
-                        int recordCount, int listenerCount, List<String> consumers) {}
+                        int recordCount, int listenerCount, int loadProgress, List<String> consumers) {}
 
     // ========== Cell Renderer ==========
 
@@ -254,7 +254,12 @@ public class PageManagerTreePanel extends JPanel {
                     text += " [" + formatNumber(page.recordCount) + "]";
                 }
                 if (page.state == PageState.LOADING || page.state == PageState.UPDATING) {
-                    text += " " + getStatusDot(page.state);
+                    // Show progress percentage if available
+                    if (page.loadProgress > 0 && page.loadProgress < 100) {
+                        text += " " + page.loadProgress + "%";
+                    } else {
+                        text += " " + getStatusDot(page.state);
+                    }
                 } else if (page.state == PageState.ERROR) {
                     text += " " + getStatusDot(page.state);
                 }

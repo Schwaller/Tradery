@@ -15,7 +15,7 @@ public class ProgressInputStream extends FilterInputStream {
     private final LongConsumer onProgress;
     private long bytesRead = 0;
     private long lastReportedBytes = 0;
-    private static final long REPORT_INTERVAL = 65536; // Report every 64KB
+    private static final long REPORT_INTERVAL = 32768; // Report every 32KB
 
     /**
      * Create a progress-tracking input stream.

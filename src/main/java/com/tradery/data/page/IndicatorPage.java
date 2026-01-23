@@ -35,6 +35,7 @@ public class IndicatorPage<T> implements DataPageListener<Candle> {
     // State
     private volatile PageState state = PageState.EMPTY;
     private volatile String errorMessage;
+    private volatile int loadProgress = 0;  // 0-100 percentage
 
     // Computed data
     private volatile T data;
@@ -73,8 +74,15 @@ public class IndicatorPage<T> implements DataPageListener<Candle> {
             if (newState == PageState.READY) {
                 sourceAggTrades = page.getData();
                 aggTradesReady = true;
+                setLoadProgress(90);  // Source data ready, computing...
                 // Virtual thread - lightweight, doesn't block notification loop
                 Thread.startVirtualThread(() -> checkAndCompute());
+            } else if (newState == PageState.LOADING || newState == PageState.UPDATING) {
+                // Propagate source page progress
+                if (page instanceof DataPage<?> dataPage) {
+                    int sourceProgress = dataPage.getLoadProgress();
+                    setLoadProgress((sourceProgress * 80) / 100);  // 0-80% for data loading
+                }
             } else if (newState == PageState.ERROR) {
                 // AggTrades error is not fatal - can fall back to candles
                 log.debug("AggTrades not available for {}, will use candle fallback", getKey());
@@ -178,8 +186,15 @@ public class IndicatorPage<T> implements DataPageListener<Candle> {
         if (newState == PageState.READY) {
             sourceCandles = page.getData();
             candlesReady = true;
+            setLoadProgress(90);  // Source data ready, computing...
             // Virtual thread - lightweight, doesn't block notification loop
             Thread.startVirtualThread(() -> checkAndCompute());
+        } else if (newState == PageState.LOADING || newState == PageState.UPDATING) {
+            // Propagate source page progress (scale 0-80 for data loading phase)
+            if (page instanceof DataPage<?> dataPage) {
+                int sourceProgress = dataPage.getLoadProgress();
+                setLoadProgress((sourceProgress * 80) / 100);  // 0-80% for data loading
+            }
         } else if (newState == PageState.ERROR) {
             if (computeCallback != null) {
                 computeCallback.onError(this, page.getErrorMessage());
@@ -264,6 +279,14 @@ public class IndicatorPage<T> implements DataPageListener<Candle> {
 
     public void setErrorMessage(String errorMessage) {
         this.errorMessage = errorMessage;
+    }
+
+    public int getLoadProgress() {
+        return loadProgress;
+    }
+
+    public void setLoadProgress(int loadProgress) {
+        this.loadProgress = Math.max(0, Math.min(100, loadProgress));
     }
 
     // ========== Data ==========

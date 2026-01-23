@@ -224,10 +224,22 @@ public class PageDetailPanel extends JPanel {
         recordCountLabel.setText(formatNumber(selectedPage.recordCount()));
         lastSyncLabel.setText("-");  // Not available in PageInfo
 
-        // Show/hide progress bar
+        // Show/hide progress bar with percentage
         boolean isLoading = selectedPage.state() == PageState.LOADING ||
                             selectedPage.state() == PageState.UPDATING;
         progressBar.setVisible(isLoading);
+        if (isLoading) {
+            int progress = selectedPage.loadProgress();
+            if (progress > 0 && progress < 100) {
+                progressBar.setIndeterminate(false);
+                progressBar.setValue(progress);
+                progressBar.setString(progress + "%");
+                progressBar.setStringPainted(true);
+            } else {
+                progressBar.setIndeterminate(true);
+                progressBar.setStringPainted(false);
+            }
+        }
 
         // Error message (would need to be in PageInfo)
         errorLabel.setVisible(selectedPage.state() == PageState.ERROR);

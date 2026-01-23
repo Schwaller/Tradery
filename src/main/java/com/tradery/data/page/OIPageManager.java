@@ -35,6 +35,17 @@ public class OIPageManager extends DataPageManager<OpenInterest> {
         long startTime = page.getStartTime();
         long endTime = page.getEndTime();
 
+        // Check cache first for initial progress
+        List<OpenInterest> cached = loadFromCacheOnly(symbol, startTime, endTime);
+        if (!cached.isEmpty()) {
+            // Estimate expected records (5-minute intervals)
+            long expectedRecords = (endTime - startTime) / (5 * 60 * 1000);
+            int initialProgress = expectedRecords > 0 ? (int) ((cached.size() * 100) / expectedRecords) : 50;
+            updatePageProgress(page, Math.min(initialProgress, 95));
+        } else {
+            updatePageProgress(page, 10);  // Show we're working
+        }
+
         // OpenInterestStore handles caching + API fetch internally
         List<OpenInterest> oi = openInterestStore.getOpenInterest(symbol, startTime, endTime);
 

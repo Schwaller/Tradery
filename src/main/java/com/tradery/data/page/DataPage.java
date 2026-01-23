@@ -32,6 +32,7 @@ public class DataPage<T> implements DataPageView<T> {
     private volatile String errorMessage;
     private volatile long lastSyncTime;
     private volatile long loadStartTime;  // For duration tracking
+    private volatile int loadProgress = 0;  // 0-100 percentage
 
     // Data (volatile for visibility across threads)
     private volatile List<T> data = new ArrayList<>();
@@ -129,6 +130,14 @@ public class DataPage<T> implements DataPageView<T> {
 
     public void setLoadStartTime(long loadStartTime) {
         this.loadStartTime = loadStartTime;
+    }
+
+    public int getLoadProgress() {
+        return loadProgress;
+    }
+
+    public void setLoadProgress(int loadProgress) {
+        this.loadProgress = Math.max(0, Math.min(100, loadProgress));
     }
 
     // ========== Data (DataPageView interface) ==========

@@ -38,10 +38,17 @@ public class CandlePageManager extends DataPageManager<Candle> {
         long startTime = page.getStartTime();
         long endTime = page.getEndTime();
 
-        // First try cache
+        // Calculate expected bars for progress tracking
+        long intervalMs = getIntervalMs(timeframe);
+        int expectedBars = (int) ((endTime - startTime) / intervalMs);
+
+        // First try cache and report initial progress
         List<Candle> cached = loadFromCache(symbol, timeframe, startTime, endTime);
-        log.info("CandlePageManager.loadData: symbol={}, timeframe={}, cached={}",
-            symbol, timeframe, cached.size());
+        int initialProgress = expectedBars > 0 ? (cached.size() * 100) / expectedBars : 0;
+        updatePageProgress(page, Math.min(initialProgress, 95));  // Cap at 95% until verified complete
+
+        log.info("CandlePageManager.loadData: symbol={}, timeframe={}, cached={}/{} ({}%)",
+            symbol, timeframe, cached.size(), expectedBars, initialProgress);
 
         // Check if we have sufficient coverage
         if (hasSufficientCoverage(cached, timeframe, startTime, endTime)) {
@@ -54,8 +61,8 @@ public class CandlePageManager extends DataPageManager<Candle> {
         log.info("Fetching candles for {} {} ({} to {})",
             symbol, timeframe, startTime, endTime);
 
-        // Sync via Vision + API
-        fetchAndSync(symbol, timeframe, startTime, endTime);
+        // Sync via Vision + API with progress reporting based on overall coverage
+        fetchAndSync(page, symbol, timeframe, startTime, endTime, expectedBars);
 
         // Read fresh data from SQLite
         List<Candle> fresh = loadFromCache(symbol, timeframe, startTime, endTime);
@@ -91,16 +98,23 @@ public class CandlePageManager extends DataPageManager<Candle> {
 
     /**
      * Fetch data from Binance Vision (for bulk historical) and API (for recent).
+     * Reports progress based on overall page coverage (cached + fetched vs expected).
      */
-    private void fetchAndSync(String symbol, String timeframe,
-                               long startTime, long endTime) throws Exception {
+    private void fetchAndSync(DataPage<Candle> page, String symbol, String timeframe,
+                               long startTime, long endTime, int expectedBars) throws Exception {
         BinanceClient apiClient = new BinanceClient();
         AtomicBoolean cancelled = new AtomicBoolean(false);
 
         // For weekly timeframe, use REST API directly (Vision has gaps at month boundaries)
         if ("1w".equals(timeframe) || "1M".equals(timeframe)) {
             log.info("Using REST API for {} {} (Vision has gaps for large timeframes)", symbol, timeframe);
-            List<Candle> candles = apiClient.fetchAllKlines(symbol, timeframe, startTime, endTime, cancelled, null);
+            List<Candle> candles = apiClient.fetchAllKlines(symbol, timeframe, startTime, endTime, cancelled,
+                progress -> {
+                    // Re-check cache to get current coverage
+                    List<Candle> current = loadFromCache(symbol, timeframe, startTime, endTime);
+                    int percent = expectedBars > 0 ? (current.size() * 100) / expectedBars : progress.percentComplete();
+                    updatePageProgress(page, Math.min(95, percent));  // Cap at 95% until complete
+                });
             if (!candles.isEmpty()) {
                 dataStore.saveCandles(symbol, timeframe, candles);
                 log.info("Fetched {} {} candles via REST API", candles.size(), timeframe);
@@ -116,7 +130,14 @@ public class CandlePageManager extends DataPageManager<Candle> {
         BinanceVisionClient visionClient = new BinanceVisionClient(dataStore);
 
         visionClient.syncWithApiBackfill(symbol, timeframe, startMonth, apiClient, cancelled,
-            progress -> log.debug("Vision sync: {} - {}", progress.currentMonth(), progress.status()));
+            progress -> {
+                // Re-check cache to get current coverage after each month is processed
+                List<Candle> current = loadFromCache(symbol, timeframe, startTime, endTime);
+                int percent = expectedBars > 0 ? (current.size() * 100) / expectedBars : 0;
+                updatePageProgress(page, Math.min(95, percent));  // Cap at 95% until complete
+                log.debug("Vision sync: {} - {} ({}/{} bars, {}%)",
+                    progress.currentMonth(), progress.status(), current.size(), expectedBars, percent);
+            });
     }
 
     @Override

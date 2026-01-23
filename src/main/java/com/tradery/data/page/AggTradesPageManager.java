@@ -53,16 +53,35 @@ public class AggTradesPageManager extends DataPageManager<AggTrade> {
         long startTime = page.getStartTime();
         long endTime = page.getEndTime();
 
-        // AggTradesStore handles caching + API fetch internally (blocking I/O)
-        int oldCount = page.getRecordCount();
-        List<AggTrade> trades = aggTradesStore.getAggTrades(symbol, startTime, endTime);
+        // Check cache first and report initial progress
+        AggTradesStore.SyncStatus status = aggTradesStore.getSyncStatus(symbol, startTime, endTime);
+        int initialProgress = status.hoursTotal() > 0
+            ? (status.hoursComplete() * 100) / status.hoursTotal()
+            : 0;
+        updatePageProgress(page, Math.min(initialProgress, 95));
+        log.info("AggTrades initial: {}/{} hours ({}%)", status.hoursComplete(), status.hoursTotal(), initialProgress);
 
-        // Track memory (atomic operation)
-        long newTotal = currentRecordCount.addAndGet(trades.size() - oldCount);
+        // Set up progress callback before fetching
+        aggTradesStore.setProgressCallback(progress -> {
+            int pct = progress.percentComplete();
+            updatePageProgress(page, Math.max(initialProgress, Math.min(95, pct)));  // Never go below initial
+        });
 
-        log.debug("Loaded {} aggTrades for {} (total in memory: {})",
-            trades.size(), symbol, newTotal);
-        updatePageData(page, trades);
+        try {
+            // AggTradesStore handles caching + API fetch internally (blocking I/O)
+            int oldCount = page.getRecordCount();
+            List<AggTrade> trades = aggTradesStore.getAggTrades(symbol, startTime, endTime);
+
+            // Track memory (atomic operation)
+            long newTotal = currentRecordCount.addAndGet(trades.size() - oldCount);
+
+            log.debug("Loaded {} aggTrades for {} (total in memory: {})",
+                trades.size(), symbol, newTotal);
+            updatePageData(page, trades);
+        } finally {
+            // Clear callback when done
+            aggTradesStore.setProgressCallback(null);
+        }
     }
 
     @Override

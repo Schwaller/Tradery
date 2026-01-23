@@ -36,6 +36,18 @@ public class PremiumPageManager extends DataPageManager<PremiumIndex> {
         long startTime = page.getStartTime();
         long endTime = page.getEndTime();
 
+        // Check cache first for initial progress
+        List<PremiumIndex> cached = loadFromCacheOnly(symbol, timeframe, startTime, endTime);
+        if (!cached.isEmpty()) {
+            // Estimate expected records based on timeframe
+            long intervalMs = getIntervalMs(timeframe);
+            long expectedRecords = intervalMs > 0 ? (endTime - startTime) / intervalMs : 1;
+            int initialProgress = expectedRecords > 0 ? (int) ((cached.size() * 100) / expectedRecords) : 50;
+            updatePageProgress(page, Math.min(initialProgress, 95));
+        } else {
+            updatePageProgress(page, 10);  // Show we're working
+        }
+
         // PremiumIndexStore handles caching + API fetch internally
         List<PremiumIndex> premium = premiumIndexStore.getPremiumIndex(
             symbol, timeframe, startTime, endTime);
@@ -43,6 +55,19 @@ public class PremiumPageManager extends DataPageManager<PremiumIndex> {
         log.debug("Loaded {} premium index records for {} {}",
             premium.size(), symbol, timeframe);
         updatePageData(page, premium);
+    }
+
+    private long getIntervalMs(String timeframe) {
+        if (timeframe == null) return 3600000;
+        return switch (timeframe) {
+            case "1m" -> 60000L;
+            case "5m" -> 300000L;
+            case "15m" -> 900000L;
+            case "1h" -> 3600000L;
+            case "4h" -> 14400000L;
+            case "1d" -> 86400000L;
+            default -> 3600000L;
+        };
     }
 
     /**

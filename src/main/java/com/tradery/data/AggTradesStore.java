@@ -153,12 +153,30 @@ public class AggTradesStore {
             endDate = yesterday;
         }
 
+        // Handle edge case: entire range is in the future
+        if (startDate.isAfter(yesterday)) {
+            log.info("Vision: Entire time range is in the future, no data available");
+            if (progressCallback != null) {
+                progressCallback.accept(new FetchProgress(100, 100, "No data available (future dates)"));
+            }
+            return;
+        }
+
         // Count days for progress
         int totalDays = 0;
         LocalDate temp = startDate;
         while (!temp.isAfter(endDate)) {
             totalDays++;
             temp = temp.plusDays(1);
+        }
+
+        // Handle edge case: no days to process after capping
+        if (totalDays == 0) {
+            log.info("Vision: No valid days in range after capping at yesterday");
+            if (progressCallback != null) {
+                progressCallback.accept(new FetchProgress(100, 100, "No data available"));
+            }
+            return;
         }
 
         int completedDays = 0;
@@ -225,6 +243,11 @@ public class AggTradesStore {
             completedDays++;
             current = current.plusDays(1);
         }
+
+        // Final progress update - ensure we reach 100% even if all days failed
+        if (progressCallback != null) {
+            progressCallback.accept(new FetchProgress(100, 100, "Download complete"));
+        }
     }
 
     /**
@@ -275,21 +298,38 @@ public class AggTradesStore {
             // Wrap input stream with progress tracking
             // Calculate combined progress: days completed + current file progress
             InputStream rawStream = response.body().byteStream();
-            ProgressInputStream progressStream = new ProgressInputStream(rawStream, contentLength, bytesRead -> {
-                if (progressCallback != null && contentLength > 0) {
-                    // File progress within current day (0-100)
-                    int filePercent = (int) ((bytesRead * 100) / contentLength);
-                    // Overall progress: completed days + fraction of current day
-                    int overallPercent = totalDays > 0
-                        ? (currentDayIndex * 100 + filePercent) / totalDays
-                        : filePercent;
-                    overallPercent = Math.min(99, Math.max(0, overallPercent));
 
-                    String size = formatBytes(contentLength);
-                    String downloaded = formatBytes(bytesRead);
-                    progressCallback.accept(new FetchProgress(overallPercent, 100,
-                        String.format("Day %d/%d: %s %s / %s",
-                            currentDayIndex + 1, totalDays, dateKey, downloaded, size)));
+            // Estimated file size when content length unknown (typical daily aggTrades: 50-200MB)
+            long estimatedSize = contentLength > 0 ? contentLength : 100_000_000L; // 100MB estimate
+
+            ProgressInputStream progressStream = new ProgressInputStream(rawStream, contentLength, bytesRead -> {
+                if (progressCallback != null) {
+                    int overallPercent;
+                    String progressMsg;
+
+                    if (contentLength > 0) {
+                        // File progress within current day (0-100)
+                        int filePercent = (int) ((bytesRead * 100) / contentLength);
+                        // Overall progress: completed days + fraction of current day
+                        overallPercent = totalDays > 0
+                            ? (currentDayIndex * 100 + filePercent) / totalDays
+                            : filePercent;
+                        String size = formatBytes(contentLength);
+                        String downloaded = formatBytes(bytesRead);
+                        progressMsg = String.format("Day %d/%d: %s %s / %s",
+                            currentDayIndex + 1, totalDays, dateKey, downloaded, size);
+                    } else {
+                        // Content length unknown - estimate progress based on typical file size
+                        // Cap file progress at 95% since we don't know actual size
+                        int filePercent = (int) Math.min(95, (bytesRead * 100) / estimatedSize);
+                        overallPercent = totalDays > 0
+                            ? (currentDayIndex * 100 + filePercent) / totalDays
+                            : filePercent;
+                        progressMsg = String.format("Day %d/%d: %s %s downloaded",
+                            currentDayIndex + 1, totalDays, dateKey, formatBytes(bytesRead));
+                    }
+                    overallPercent = Math.min(99, Math.max(0, overallPercent));
+                    progressCallback.accept(new FetchProgress(overallPercent, 100, progressMsg));
                 }
             });
 
