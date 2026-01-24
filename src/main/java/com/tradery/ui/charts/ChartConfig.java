@@ -103,9 +103,6 @@ public class ChartConfig {
     private int dailyVolumeProfileBins = 96;
     private int dailyVolumeProfileWidth = 60;
 
-    // Volume Heatmap overlay
-    private com.tradery.ui.charts.heatmap.VolumeHeatmapConfig volumeHeatmapConfig = new com.tradery.ui.charts.heatmap.VolumeHeatmapConfig();
-
     // Footprint Heatmap overlay
     private com.tradery.ui.charts.footprint.FootprintHeatmapConfig footprintHeatmapConfig = new com.tradery.ui.charts.footprint.FootprintHeatmapConfig();
 
@@ -380,31 +377,6 @@ public class ChartConfig {
     public void setDailyVolumeProfileBins(int bins) { this.dailyVolumeProfileBins = bins; save(); }
     public int getDailyVolumeProfileWidth() { return dailyVolumeProfileWidth; }
     public void setDailyVolumeProfileWidth(int width) { this.dailyVolumeProfileWidth = width; save(); }
-
-    // ===== Volume Heatmap Overlay Getters/Setters =====
-
-    public com.tradery.ui.charts.heatmap.VolumeHeatmapConfig getVolumeHeatmapConfig() {
-        if (volumeHeatmapConfig == null) {
-            volumeHeatmapConfig = new com.tradery.ui.charts.heatmap.VolumeHeatmapConfig();
-        }
-        return volumeHeatmapConfig;
-    }
-
-    public void setVolumeHeatmapConfig(com.tradery.ui.charts.heatmap.VolumeHeatmapConfig config) {
-        this.volumeHeatmapConfig = config;
-        save();
-        notifyListeners();
-    }
-
-    public boolean isVolumeHeatmapEnabled() {
-        return getVolumeHeatmapConfig().isEnabled();
-    }
-
-    public void setVolumeHeatmapEnabled(boolean enabled) {
-        getVolumeHeatmapConfig().setEnabled(enabled);
-        save();
-        notifyListeners();
-    }
 
     // ===== Footprint Heatmap Overlay Getters/Setters =====
 
@@ -840,11 +812,6 @@ public class ChartConfig {
         this.dailyVolumeProfileEnabled = other.dailyVolumeProfileEnabled;
         this.dailyVolumeProfileBins = other.dailyVolumeProfileBins;
         this.dailyVolumeProfileWidth = other.dailyVolumeProfileWidth;
-
-        // Volume Heatmap
-        if (other.volumeHeatmapConfig != null) {
-            this.volumeHeatmapConfig = new com.tradery.ui.charts.heatmap.VolumeHeatmapConfig(other.volumeHeatmapConfig);
-        }
 
         // Footprint Heatmap
         if (other.footprintHeatmapConfig != null) {

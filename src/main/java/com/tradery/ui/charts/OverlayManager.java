@@ -56,9 +56,6 @@ public class OverlayManager {
     // Daily Volume Profile overlay (background computed)
     private DailyVolumeProfileOverlay dailyVolumeProfileOverlay;
 
-    // Volume Heatmap overlay
-    private com.tradery.ui.charts.heatmap.VolumeHeatmapOverlay volumeHeatmapOverlay;
-
     // Footprint Heatmap overlay
     private com.tradery.ui.charts.footprint.FootprintHeatmapOverlay footprintHeatmapOverlay;
 
@@ -71,18 +68,10 @@ public class OverlayManager {
         this.priceChart = priceChart;
         this.rayOverlay = new RayOverlay(priceChart);
         this.dailyVolumeProfileOverlay = new DailyVolumeProfileOverlay(priceChart);
-        this.volumeHeatmapOverlay = new com.tradery.ui.charts.heatmap.VolumeHeatmapOverlay(priceChart);
         this.footprintHeatmapOverlay = new com.tradery.ui.charts.footprint.FootprintHeatmapOverlay(priceChart);
 
         // When daily volume profile is drawn, redraw rays to fix annotation list corruption
         this.dailyVolumeProfileOverlay.setOnDataReady(() -> {
-            if (rayOverlay.isEnabled()) {
-                rayOverlay.redraw();
-            }
-        });
-
-        // When volume heatmap is drawn, redraw rays
-        this.volumeHeatmapOverlay.setOnDataReady(() -> {
             if (rayOverlay.isEnabled()) {
                 rayOverlay.redraw();
             }
@@ -1064,56 +1053,6 @@ public class OverlayManager {
         return dailyVolumeProfileOverlay.isEnabled();
     }
 
-    // ===== Volume Heatmap Overlay =====
-
-    /**
-     * Set the volume heatmap overlay with candles and optional aggTrades.
-     *
-     * @param candles   Candle data
-     * @param aggTrades AggTrade data (may be null for OHLCV-only mode)
-     * @param config    Heatmap configuration
-     */
-    public void setVolumeHeatmapOverlay(java.util.List<com.tradery.model.Candle> candles,
-                                         java.util.List<com.tradery.model.AggTrade> aggTrades,
-                                         com.tradery.ui.charts.heatmap.VolumeHeatmapConfig config) {
-        if (candles == null || candles.isEmpty()) {
-            clearVolumeHeatmapOverlay();
-            return;
-        }
-
-        volumeHeatmapOverlay.setConfig(config);
-        volumeHeatmapOverlay.update(candles, aggTrades);
-    }
-
-    /**
-     * Set the volume heatmap overlay with just candles (OHLCV-only mode).
-     */
-    public void setVolumeHeatmapOverlay(java.util.List<com.tradery.model.Candle> candles,
-                                         com.tradery.ui.charts.heatmap.VolumeHeatmapConfig config) {
-        setVolumeHeatmapOverlay(candles, null, config);
-    }
-
-    /**
-     * Clear the volume heatmap overlay.
-     */
-    public void clearVolumeHeatmapOverlay() {
-        volumeHeatmapOverlay.setEnabled(false);
-    }
-
-    /**
-     * Get the volume heatmap overlay for direct access.
-     */
-    public com.tradery.ui.charts.heatmap.VolumeHeatmapOverlay getVolumeHeatmapOverlay() {
-        return volumeHeatmapOverlay;
-    }
-
-    /**
-     * Check if volume heatmap overlay is enabled.
-     */
-    public boolean isVolumeHeatmapEnabled() {
-        return volumeHeatmapOverlay.isEnabled();
-    }
-
     // ===== Footprint Heatmap Overlay =====
 
     /**
@@ -1195,7 +1134,6 @@ public class OverlayManager {
         clearIchimokuOverlay();
         clearVwapOverlay();
         clearDailyVolumeProfileOverlay();
-        clearVolumeHeatmapOverlay();
         clearFootprintHeatmapOverlay();
         resetColorIndex();
     }

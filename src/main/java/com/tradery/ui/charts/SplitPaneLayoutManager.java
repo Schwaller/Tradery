@@ -23,9 +23,12 @@ public class SplitPaneLayoutManager {
     // Chart identifier for each panel (for persistence key generation)
     private final Map<JPanel, String> panelIds = new IdentityHashMap<>();
 
+    // Flag to suppress saves during layout rebuilding
+    private boolean isRebuilding = false;
+
     // Listener for divider changes to save positions
     private final PropertyChangeListener dividerListener = evt -> {
-        if ("dividerLocation".equals(evt.getPropertyName())) {
+        if ("dividerLocation".equals(evt.getPropertyName()) && !isRebuilding) {
             saveDividerPositions();
         }
     };
@@ -45,15 +48,20 @@ public class SplitPaneLayoutManager {
      * @return Root component (single panel or nested split pane structure)
      */
     public Component buildLayout(List<JPanel> visibleCharts) {
+        // Suppress saves during rebuild to avoid saving intermediate positions
+        isRebuilding = true;
+
         // Clean up old split panes
         cleanup();
 
         if (visibleCharts == null || visibleCharts.isEmpty()) {
+            isRebuilding = false;
             return new JPanel();
         }
 
         if (visibleCharts.size() == 1) {
             // Single chart - no split pane needed
+            isRebuilding = false;
             return visibleCharts.get(0);
         }
 
@@ -90,8 +98,11 @@ public class SplitPaneLayoutManager {
 
         rootSplitPane = (JSplitPane) bottomComponent;
 
-        // Restore saved positions after layout is ready
-        SwingUtilities.invokeLater(this::restoreDividerPositions);
+        // Restore saved positions after layout is ready, then re-enable saves
+        SwingUtilities.invokeLater(() -> {
+            restoreDividerPositions();
+            isRebuilding = false;
+        });
 
         return rootSplitPane;
     }
@@ -139,10 +150,7 @@ public class SplitPaneLayoutManager {
         if (splitPanes.isEmpty()) return;
 
         Map<String, Double> positions = ChartConfig.getInstance().getChartDividerPositions();
-        if (positions.isEmpty()) {
-            // No saved positions - leave at default proportions (set by resize weight)
-            return;
-        }
+        if (positions.isEmpty()) return;
 
         for (SplitPaneEntry entry : splitPanes) {
             Double proportion = positions.get(entry.key);
@@ -164,7 +172,6 @@ public class SplitPaneLayoutManager {
                     entry.splitPane.setDividerLocation(location);
                 }
             }
-            // If still no match, leave at default proportion (don't reset)
         }
     }
 

@@ -207,7 +207,6 @@ public class IndicatorSelectorPopup extends JDialog {
      * If there are pending changes from the debounce timer, apply them immediately.
      */
     private void flushPendingChanges() {
-        System.out.println("[DEBUG] flushPendingChanges called, timer running=" + updateTimer.isRunning());
         if (updateTimer.isRunning()) {
             updateTimer.stop();
             applyChanges();
@@ -1114,12 +1113,8 @@ public class IndicatorSelectorPopup extends JDialog {
     }
 
     private void scheduleUpdate() {
-        if (initializing) {
-            System.out.println("[DEBUG] scheduleUpdate skipped - initializing");
-            return; // Suppress updates during initialization
-        }
+        if (initializing) return; // Suppress updates during initialization
 
-        System.out.println("[DEBUG] scheduleUpdate called");
         if (updateTimer.isRunning()) {
             updateTimer.restart();
         } else {
@@ -1237,9 +1232,7 @@ public class IndicatorSelectorPopup extends JDialog {
         ichimokuCheckbox.setSelected(config.isIchimokuEnabled());
         dailyVolumeProfileCheckbox.setSelected(config.isDailyVolumeProfileEnabled());
         dailyVolumeProfileBinsSpinner.setValue(config.getDailyVolumeProfileBins());
-        boolean fpConfigEnabled = config.isFootprintHeatmapEnabled();
-        System.out.println("[DEBUG] syncFromChartPanel: config.isFootprintHeatmapEnabled()=" + fpConfigEnabled);
-        footprintHeatmapCheckbox.setSelected(fpConfigEnabled);
+        footprintHeatmapCheckbox.setSelected(config.isFootprintHeatmapEnabled());
         footprintHeatmapBucketsSpinner.setValue(config.getFootprintHeatmapConfig().getTargetBuckets());
         boolean isSplitMode = config.getFootprintHeatmapConfig().getDisplayMode() ==
             com.tradery.ui.charts.footprint.FootprintDisplayMode.SPLIT;
@@ -1402,13 +1395,10 @@ public class IndicatorSelectorPopup extends JDialog {
             ? com.tradery.ui.charts.footprint.FootprintDisplayMode.SPLIT
             : com.tradery.ui.charts.footprint.FootprintDisplayMode.COMBINED;
 
-        boolean fpEnabled = footprintHeatmapCheckbox.isSelected();
-        System.out.println("[DEBUG] applyChanges: footprint checkbox=" + fpEnabled + ", buckets=" + footprintBuckets + ", mode=" + fpMode);
         config.getFootprintHeatmapConfig().setTargetBuckets(footprintBuckets);
         config.getFootprintHeatmapConfig().setDisplayMode(fpMode);
-        config.setFootprintHeatmapEnabled(fpEnabled); // This saves all changes
-        System.out.println("[DEBUG] after setFootprintHeatmapEnabled, config.isFootprintHeatmapEnabled()=" + config.isFootprintHeatmapEnabled());
-        chartPanel.setFootprintHeatmapEnabled(fpEnabled);
+        config.setFootprintHeatmapEnabled(footprintHeatmapCheckbox.isSelected()); // This saves all changes
+        chartPanel.setFootprintHeatmapEnabled(footprintHeatmapCheckbox.isSelected());
         chartPanel.refreshFootprintHeatmap(); // Force refresh when mode changes
 
         // Oscillators
