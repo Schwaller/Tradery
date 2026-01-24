@@ -344,7 +344,9 @@ public class ChartsPanel extends JPanel {
         for (int i = 0; i < corePanels.length; i++) {
             interactionManager.attachListeners(corePanels[i]);
             final int chartIndex = coreIndices[i];
-            interactionManager.setDoubleClickCallback(corePanels[i], () -> zoomManager.toggleFullScreen(chartIndex));
+            Runnable fullScreenCallback = () -> zoomManager.toggleFullScreen(chartIndex);
+            interactionManager.setDoubleClickCallback(corePanels[i], fullScreenCallback);
+            ChartPanelFactory.setFullScreenCallback(corePanels[i], fullScreenCallback);
         }
 
         // Add zoom/pan listeners to indicator chart panels with double-click callbacks
@@ -362,7 +364,9 @@ public class ChartsPanel extends JPanel {
         for (int i = 0; i < indicatorPanels.length; i++) {
             interactionManager.attachListeners(indicatorPanels[i]);
             final int indicatorIndex = i;
-            interactionManager.setDoubleClickCallback(indicatorPanels[i], () -> zoomManager.toggleIndicatorFullScreen(indicatorIndex));
+            Runnable fullScreenCallback = () -> zoomManager.toggleIndicatorFullScreen(indicatorIndex);
+            interactionManager.setDoubleClickCallback(indicatorPanels[i], fullScreenCallback);
+            ChartPanelFactory.setFullScreenCallback(indicatorPanels[i], fullScreenCallback);
         }
 
         mainPanel = new JPanel(new BorderLayout(0, 0));
@@ -879,6 +883,15 @@ public class ChartsPanel extends JPanel {
 
     public void clearFootprintHeatmapOverlay() {
         overlayManager.clearFootprintHeatmapOverlay();
+    }
+
+    /**
+     * Refresh footprint heatmap with current config (call when display mode changes).
+     */
+    public void refreshFootprintHeatmap() {
+        if (ChartConfig.getInstance().isFootprintHeatmapEnabled()) {
+            overlayManager.updateFootprintHeatmapOverlay();
+        }
     }
 
     // ===== Ray Overlay Delegation =====

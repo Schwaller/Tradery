@@ -55,8 +55,33 @@ public final class ChartPanelFactory {
         configurePopupMenu(panel);
     }
 
+    /**
+     * Client property key for storing the full-screen toggle callback on a ChartPanel.
+     */
+    public static final String FULL_SCREEN_CALLBACK_KEY = "fullScreenCallback";
+
+    /**
+     * Set the full-screen toggle callback for a chart panel.
+     * This enables the "Show Only This Chart" context menu item.
+     */
+    public static void setFullScreenCallback(ChartPanel panel, Runnable callback) {
+        panel.putClientProperty(FULL_SCREEN_CALLBACK_KEY, callback);
+    }
+
     private static void configurePopupMenu(ChartPanel panel) {
         JPopupMenu popup = new JPopupMenu();
+
+        // Show Only This Chart - at the top for visibility
+        JMenuItem showOnlyThis = new JMenuItem("Show Only This Chart (double-click)");
+        showOnlyThis.addActionListener(e -> {
+            Runnable callback = (Runnable) panel.getClientProperty(FULL_SCREEN_CALLBACK_KEY);
+            if (callback != null) {
+                callback.run();
+            }
+        });
+        popup.add(showOnlyThis);
+
+        popup.addSeparator();
 
         JMenuItem fitHorizontal = new JMenuItem("Fit Horizontal");
         fitHorizontal.addActionListener(e -> panel.restoreAutoDomainBounds());

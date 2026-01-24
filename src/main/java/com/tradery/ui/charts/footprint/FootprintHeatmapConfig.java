@@ -31,6 +31,8 @@ public class FootprintHeatmapConfig {
     private boolean showImbalanceMarkers = true;   // Show arrows for imbalances
     private boolean showPocLine = true;            // Highlight POC level
     private boolean showValueArea = true;          // Shade VAH-VAL region
+    private boolean showBuySellBar = true;         // Show buy/sell ratio bar below candle
+    private int buySellBarHeight = 4;              // Height of buy/sell bar in pixels
     private double imbalanceThreshold = 3.0;       // Ratio for imbalance detection
 
     // Opacity
@@ -51,22 +53,29 @@ public class FootprintHeatmapConfig {
         FIXED   // Use fixedTickSize value
     }
 
-    // ===== Delta Color Scheme =====
+    // ===== Color Scheme (CryptoPage style) =====
 
-    /** Strong buy (>40% delta) */
-    public static final Color STRONG_BUY_COLOR = new Color(0x26, 0xA6, 0x5B);    // Green
+    /** Buy color for split mode - lime green */
+    public static final Color BUY_COLOR = new Color(0xAA, 0xFF, 0x33);           // Lime green
 
-    /** Moderate buy (10-40% delta) */
-    public static final Color MODERATE_BUY_COLOR = new Color(0x7D, 0xCE, 0xA0);  // Light Green
+    /** Sell color for split mode - red */
+    public static final Color SELL_COLOR = new Color(0xFF, 0x00, 0x00);          // Red
 
-    /** Neutral (-10% to 10% delta) */
-    public static final Color NEUTRAL_COLOR = new Color(0x64, 0x64, 0x64);       // Gray
+    // Volume intensity ramp (high → low): red → orange → yellow → cyan → blue
+    public static final Color[] VOLUME_RAMP = {
+        new Color(0xdc, 0x26, 0x26),  // Bright red (highest)
+        new Color(0xf9, 0x73, 0x16),  // Orange
+        new Color(0xfb, 0xbf, 0x24),  // Golden yellow
+        new Color(0x22, 0xd3, 0xee),  // Cyan
+        new Color(0x3b, 0x82, 0xf6),  // Bright blue
+        new Color(0x1e, 0x3a, 0x8a),  // Deep blue (lowest)
+    };
 
-    /** Moderate sell (-40% to -10% delta) */
-    public static final Color MODERATE_SELL_COLOR = new Color(0xF1, 0x94, 0x8A); // Light Red
+    /** Strong buy (>40% delta) - for backward compatibility */
+    public static final Color STRONG_BUY_COLOR = BUY_COLOR;
 
-    /** Strong sell (<-40% delta) */
-    public static final Color STRONG_SELL_COLOR = new Color(0xE7, 0x4C, 0x3C);   // Red
+    /** Strong sell (<-40% delta) - for backward compatibility */
+    public static final Color STRONG_SELL_COLOR = SELL_COLOR;
 
     /** Divergence highlight color */
     public static final Color DIVERGENCE_COLOR = new Color(0xFF, 0xA5, 0x00);    // Orange
@@ -92,6 +101,8 @@ public class FootprintHeatmapConfig {
         this.showImbalanceMarkers = other.showImbalanceMarkers;
         this.showPocLine = other.showPocLine;
         this.showValueArea = other.showValueArea;
+        this.showBuySellBar = other.showBuySellBar;
+        this.buySellBarHeight = other.buySellBarHeight;
         this.imbalanceThreshold = other.imbalanceThreshold;
         this.opacity = other.opacity;
         this.strongBuyThreshold = other.strongBuyThreshold;
@@ -102,6 +113,7 @@ public class FootprintHeatmapConfig {
 
     /**
      * Get color for a delta percentage (-1.0 to 1.0).
+     * Uses buy/sell colors blended based on delta direction and intensity.
      *
      * @param deltaPct Delta as percentage of total volume (-1 = all sell, +1 = all buy)
      * @param volumeIntensity Volume intensity for alpha (0.0 to 1.0)
@@ -109,25 +121,57 @@ public class FootprintHeatmapConfig {
      */
     @JsonIgnore
     public Color getDeltaColor(double deltaPct, double volumeIntensity) {
+        // Determine color based on delta direction
         Color baseColor;
-
-        if (deltaPct >= strongBuyThreshold) {
-            baseColor = STRONG_BUY_COLOR;
-        } else if (deltaPct >= moderateBuyThreshold) {
-            baseColor = MODERATE_BUY_COLOR;
-        } else if (deltaPct <= -strongBuyThreshold) {
-            baseColor = STRONG_SELL_COLOR;
-        } else if (deltaPct <= -moderateBuyThreshold) {
-            baseColor = MODERATE_SELL_COLOR;
+        if (deltaPct > 0.05) {
+            // Buy dominant - green
+            baseColor = BUY_COLOR;
+        } else if (deltaPct < -0.05) {
+            // Sell dominant - red
+            baseColor = SELL_COLOR;
         } else {
-            baseColor = NEUTRAL_COLOR;
+            // Neutral - blend between buy and sell (grayish)
+            baseColor = new Color(0x80, 0x80, 0x80);
         }
 
-        // Apply volume intensity to alpha (50-200 range)
-        int alpha = (int) (50 + volumeIntensity * 150 * opacity);
-        alpha = Math.max(50, Math.min(200, alpha));
+        // Apply volume intensity to alpha (50-220 range for better visibility)
+        int alpha = (int) (50 + volumeIntensity * 170 * opacity);
+        alpha = Math.max(50, Math.min(220, alpha));
 
         return new Color(baseColor.getRed(), baseColor.getGreen(), baseColor.getBlue(), alpha);
+    }
+
+    /**
+     * Get color from the thermal volume ramp based on volume intensity.
+     * High volume = hot (red), low volume = cold (blue).
+     *
+     * @param volumeIntensity Volume intensity (0.0 = lowest, 1.0 = highest)
+     * @return Color from the thermal ramp
+     */
+    @JsonIgnore
+    public Color getVolumeRampColor(double volumeIntensity) {
+        // Clamp to [0, 1]
+        volumeIntensity = Math.max(0, Math.min(1, volumeIntensity));
+
+        // Map intensity to ramp index (0 = highest volume = red, 5 = lowest = blue)
+        // Invert so high volume = index 0 (red)
+        double index = (1.0 - volumeIntensity) * (VOLUME_RAMP.length - 1);
+        int lowIdx = (int) Math.floor(index);
+        int highIdx = Math.min(lowIdx + 1, VOLUME_RAMP.length - 1);
+        double t = index - lowIdx;
+
+        // Interpolate between colors
+        Color low = VOLUME_RAMP[lowIdx];
+        Color high = VOLUME_RAMP[highIdx];
+
+        int r = (int) (low.getRed() + t * (high.getRed() - low.getRed()));
+        int g = (int) (low.getGreen() + t * (high.getGreen() - low.getGreen()));
+        int b = (int) (low.getBlue() + t * (high.getBlue() - low.getBlue()));
+
+        int alpha = (int) (100 + volumeIntensity * 155 * opacity);
+        alpha = Math.max(100, Math.min(255, alpha));
+
+        return new Color(r, g, b, alpha);
     }
 
     /**
@@ -218,6 +262,22 @@ public class FootprintHeatmapConfig {
 
     public void setShowValueArea(boolean showValueArea) {
         this.showValueArea = showValueArea;
+    }
+
+    public boolean isShowBuySellBar() {
+        return showBuySellBar;
+    }
+
+    public void setShowBuySellBar(boolean showBuySellBar) {
+        this.showBuySellBar = showBuySellBar;
+    }
+
+    public int getBuySellBarHeight() {
+        return buySellBarHeight;
+    }
+
+    public void setBuySellBarHeight(int buySellBarHeight) {
+        this.buySellBarHeight = Math.max(2, Math.min(10, buySellBarHeight));
     }
 
     public double getImbalanceThreshold() {

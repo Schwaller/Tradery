@@ -1379,6 +1379,7 @@ public class IndicatorSelectorPopup extends JDialog {
         config.getFootprintHeatmapConfig().setTargetBuckets(footprintBuckets);
         config.getFootprintHeatmapConfig().setDisplayMode(fpMode);
         chartPanel.setFootprintHeatmapEnabled(footprintHeatmapCheckbox.isSelected());
+        chartPanel.refreshFootprintHeatmap(); // Force refresh when mode changes
 
         // Oscillators
         int rsiPeriod = (int) rsiSpinner.getValue();

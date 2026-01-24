@@ -201,15 +201,15 @@ public class FootprintHeatmapAnnotation extends AbstractXYAnnotation {
 
         int halfWidth = width / 2;
 
-        // Buy side (left) - green
+        // Buy side (left) - lime green
         if (buyVol > 0) {
             double buyIntensity = buyVol / maxVolume;
-            int alpha = (int) (50 + buyIntensity * 150 * config.getOpacity());
-            alpha = Math.max(50, Math.min(200, alpha));
+            int alpha = (int) (60 + buyIntensity * 160 * config.getOpacity());
+            alpha = Math.max(60, Math.min(220, alpha));
             g2.setColor(new Color(
-                FootprintHeatmapConfig.STRONG_BUY_COLOR.getRed(),
-                FootprintHeatmapConfig.STRONG_BUY_COLOR.getGreen(),
-                FootprintHeatmapConfig.STRONG_BUY_COLOR.getBlue(),
+                FootprintHeatmapConfig.BUY_COLOR.getRed(),
+                FootprintHeatmapConfig.BUY_COLOR.getGreen(),
+                FootprintHeatmapConfig.BUY_COLOR.getBlue(),
                 alpha));
             g2.fillRect(x, y, halfWidth, height);
         }
@@ -217,12 +217,12 @@ public class FootprintHeatmapAnnotation extends AbstractXYAnnotation {
         // Sell side (right) - red
         if (sellVol > 0) {
             double sellIntensity = sellVol / maxVolume;
-            int alpha = (int) (50 + sellIntensity * 150 * config.getOpacity());
-            alpha = Math.max(50, Math.min(200, alpha));
+            int alpha = (int) (60 + sellIntensity * 160 * config.getOpacity());
+            alpha = Math.max(60, Math.min(220, alpha));
             g2.setColor(new Color(
-                FootprintHeatmapConfig.STRONG_SELL_COLOR.getRed(),
-                FootprintHeatmapConfig.STRONG_SELL_COLOR.getGreen(),
-                FootprintHeatmapConfig.STRONG_SELL_COLOR.getBlue(),
+                FootprintHeatmapConfig.SELL_COLOR.getRed(),
+                FootprintHeatmapConfig.SELL_COLOR.getGreen(),
+                FootprintHeatmapConfig.SELL_COLOR.getBlue(),
                 alpha));
             g2.fillRect(x + halfWidth, y, width - halfWidth, height);
         }
