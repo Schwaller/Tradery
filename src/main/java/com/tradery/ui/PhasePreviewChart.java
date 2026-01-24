@@ -10,6 +10,7 @@ import com.tradery.engine.ConditionEvaluator;
 import com.tradery.indicators.IndicatorEngine;
 import com.tradery.model.Candle;
 import com.tradery.model.Phase;
+import com.tradery.ui.charts.ChartInteractionManager;
 import com.tradery.ui.charts.ChartStyles;
 import org.jfree.chart.ChartPanel;
 import org.jfree.chart.JFreeChart;
@@ -17,7 +18,6 @@ import org.jfree.chart.axis.DateAxis;
 import org.jfree.chart.axis.NumberAxis;
 import org.jfree.chart.plot.CombinedDomainXYPlot;
 import org.jfree.chart.plot.IntervalMarker;
-import org.jfree.chart.plot.PlotRenderingInfo;
 import org.jfree.chart.plot.XYPlot;
 import org.jfree.chart.renderer.xy.XYAreaRenderer;
 import org.jfree.chart.renderer.xy.XYLineAndShapeRenderer;
@@ -31,12 +31,9 @@ import javax.swing.UIManager;
 import java.awt.*;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
-import java.awt.event.MouseMotionAdapter;
-import java.awt.event.MouseWheelListener;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.awt.geom.Rectangle2D;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
@@ -92,17 +89,11 @@ public class PhasePreviewChart extends JPanel implements DataPageListener<Candle
     // Current data page (for cleanup)
     private DataPageView<Candle> currentPage;
 
-    // Pan state
-    private Point panStart = null;
-    private double panStartDomainMin, panStartDomainMax;
-    private double panStartRangeMin, panStartRangeMax;
-
-    // Y-axis drag state
-    private boolean draggingYAxis = false;
-    private int yAxisDragStartY;
-    private double yAxisDragStartRangeMin, yAxisDragStartRangeMax;
+    // Interaction manager for zoom/pan
+    private final ChartInteractionManager interactionManager;
 
     public PhasePreviewChart() {
+        interactionManager = new ChartInteractionManager();
         setLayout(new BorderLayout());
         initializeChart();
         initializeStatusLabel();
@@ -159,12 +150,32 @@ public class PhasePreviewChart extends JPanel implements DataPageListener<Candle
         chartPanel.setRangeZoomable(false);
         chartPanel.setPreferredSize(new Dimension(400, 200));
 
-        // Add mouse listeners for pan, zoom, and Y-axis scaling
-        chartPanel.addMouseListener(createMouseListener());
-        chartPanel.addMouseMotionListener(createMouseMotionListener());
-        chartPanel.addMouseWheelListener(createMouseWheelListener());
+        // Register chart for synchronized zooming and add interaction listeners
+        interactionManager.addChart(chart);
+        interactionManager.attachListeners(chartPanel, true); // Y-axis on right
+
+        // Add context menu
+        chartPanel.addMouseListener(createContextMenuListener());
 
         add(chartPanel, BorderLayout.CENTER);
+    }
+
+    private MouseAdapter createContextMenuListener() {
+        return new MouseAdapter() {
+            @Override
+            public void mousePressed(MouseEvent e) {
+                if (e.isPopupTrigger()) {
+                    showContextMenu(e);
+                }
+            }
+
+            @Override
+            public void mouseReleased(MouseEvent e) {
+                if (e.isPopupTrigger()) {
+                    showContextMenu(e);
+                }
+            }
+        };
     }
 
     private XYLineAndShapeRenderer createPriceRenderer() {
@@ -179,153 +190,6 @@ public class PhasePreviewChart extends JPanel implements DataPageListener<Candle
         renderer.setSeriesPaint(0, new Color(100, 100, 100, 150));
         renderer.setOutline(false);
         return renderer;
-    }
-
-    private MouseAdapter createMouseListener() {
-        return new MouseAdapter() {
-            @Override
-            public void mousePressed(MouseEvent e) {
-                if (e.isPopupTrigger()) {
-                    showContextMenu(e);
-                    return;
-                }
-
-                Point screenPoint = e.getPoint();
-
-                // Check if on Y axis for scaling
-                if (isOnYAxis(screenPoint)) {
-                    startYAxisDrag(screenPoint.y);
-                    return;
-                }
-
-                // Start panning
-                startPan(screenPoint);
-            }
-
-            @Override
-            public void mouseReleased(MouseEvent e) {
-                if (e.isPopupTrigger()) {
-                    showContextMenu(e);
-                    return;
-                }
-                panStart = null;
-                draggingYAxis = false;
-            }
-        };
-    }
-
-    private MouseMotionAdapter createMouseMotionListener() {
-        return new MouseMotionAdapter() {
-            @Override
-            public void mouseDragged(MouseEvent e) {
-                Point screenPoint = e.getPoint();
-
-                if (draggingYAxis) {
-                    handleYAxisDrag(screenPoint.y);
-                    return;
-                }
-
-                if (panStart != null) {
-                    handlePan(screenPoint);
-                }
-            }
-
-            @Override
-            public void mouseMoved(MouseEvent e) {
-                // Show resize cursor on Y axis
-                if (isOnYAxis(e.getPoint())) {
-                    chartPanel.setCursor(Cursor.getPredefinedCursor(Cursor.N_RESIZE_CURSOR));
-                } else {
-                    chartPanel.setCursor(Cursor.getDefaultCursor());
-                }
-            }
-        };
-    }
-
-    private MouseWheelListener createMouseWheelListener() {
-        return e -> {
-            Rectangle2D dataArea = getPriceSubplotDataArea();
-            if (dataArea == null) return;
-
-            double zoomFactor = e.getWheelRotation() < 0 ? 0.9 : 1.1;
-
-            double mouseX = combinedPlot.getDomainAxis().java2DToValue(
-                e.getPoint().getX(), dataArea, combinedPlot.getDomainAxisEdge()
-            );
-
-            double domainMin = combinedPlot.getDomainAxis().getLowerBound();
-            double domainMax = combinedPlot.getDomainAxis().getUpperBound();
-            double domainRange = domainMax - domainMin;
-            double newRange = domainRange * zoomFactor;
-
-            double mouseRatio = (mouseX - domainMin) / domainRange;
-            double newMin = mouseX - mouseRatio * newRange;
-            double newMax = newMin + newRange;
-
-            combinedPlot.getDomainAxis().setRange(newMin, newMax);
-        };
-    }
-
-    private boolean isOnYAxis(Point point) {
-        Rectangle2D dataArea = getPriceSubplotDataArea();
-        if (dataArea == null) return false;
-        return point.x > dataArea.getMaxX() && point.x < dataArea.getMaxX() + 60;
-    }
-
-    private void startYAxisDrag(int y) {
-        draggingYAxis = true;
-        yAxisDragStartY = y;
-        yAxisDragStartRangeMin = pricePlot.getRangeAxis().getLowerBound();
-        yAxisDragStartRangeMax = pricePlot.getRangeAxis().getUpperBound();
-    }
-
-    private void startPan(Point point) {
-        panStart = point;
-        panStartDomainMin = combinedPlot.getDomainAxis().getLowerBound();
-        panStartDomainMax = combinedPlot.getDomainAxis().getUpperBound();
-        panStartRangeMin = pricePlot.getRangeAxis().getLowerBound();
-        panStartRangeMax = pricePlot.getRangeAxis().getUpperBound();
-    }
-
-    /**
-     * Gets the data area for the price subplot (first subplot in combined plot).
-     */
-    private Rectangle2D getPriceSubplotDataArea() {
-        if (chartPanel.getChartRenderingInfo() == null) return null;
-        PlotRenderingInfo plotInfo = chartPanel.getChartRenderingInfo().getPlotInfo();
-        if (plotInfo == null || plotInfo.getSubplotCount() == 0) return null;
-        return plotInfo.getSubplotInfo(0).getDataArea();
-    }
-
-    private void handleYAxisDrag(int currentY) {
-        int dy = currentY - yAxisDragStartY;
-        double scaleFactor = Math.pow(1.01, dy);
-
-        double originalRange = yAxisDragStartRangeMax - yAxisDragStartRangeMin;
-        double originalCenter = (yAxisDragStartRangeMax + yAxisDragStartRangeMin) / 2.0;
-
-        double newRange = originalRange * scaleFactor;
-        double newMin = originalCenter - newRange / 2.0;
-        double newMax = originalCenter + newRange / 2.0;
-
-        pricePlot.getRangeAxis().setRange(newMin, newMax);
-    }
-
-    private void handlePan(Point currentPoint) {
-        Rectangle2D dataArea = getPriceSubplotDataArea();
-        if (dataArea == null) return;
-
-        int dx = currentPoint.x - panStart.x;
-        int dy = currentPoint.y - panStart.y;
-
-        double domainRange = panStartDomainMax - panStartDomainMin;
-        double rangeRange = panStartRangeMax - panStartRangeMin;
-
-        double domainDelta = -dx * domainRange / dataArea.getWidth();
-        double rangeDelta = dy * rangeRange / dataArea.getHeight();
-
-        combinedPlot.getDomainAxis().setRange(panStartDomainMin + domainDelta, panStartDomainMax + domainDelta);
-        pricePlot.getRangeAxis().setRange(panStartRangeMin + rangeDelta, panStartRangeMax + rangeDelta);
     }
 
     private void showContextMenu(MouseEvent e) {

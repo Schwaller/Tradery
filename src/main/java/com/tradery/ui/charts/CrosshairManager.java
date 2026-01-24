@@ -3,6 +3,7 @@ package com.tradery.ui.charts;
 import com.tradery.model.Candle;
 import org.jfree.chart.ChartMouseEvent;
 import org.jfree.chart.ChartMouseListener;
+import org.jfree.chart.ChartPanel;
 import org.jfree.chart.JFreeChart;
 import org.jfree.chart.axis.DateAxis;
 import org.jfree.chart.axis.ValueAxis;
@@ -12,6 +13,7 @@ import org.jfree.chart.plot.XYPlot;
 
 import java.awt.geom.Rectangle2D;
 import java.text.SimpleDateFormat;
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.function.Consumer;
@@ -21,30 +23,8 @@ import java.util.function.Consumer;
  */
 public class CrosshairManager {
 
-    // Core chart crosshairs
-    private Crosshair priceCrosshair;
-    private Crosshair equityCrosshair;
-    private Crosshair comparisonCrosshair;
-    private Crosshair capitalUsageCrosshair;
-    private Crosshair tradePLCrosshair;
-    private Crosshair volumeCrosshair;
-
-    // Indicator chart crosshairs
-    private Crosshair rsiCrosshair;
-    private Crosshair macdCrosshair;
-    private Crosshair atrCrosshair;
-    private Crosshair deltaCrosshair;
-    private Crosshair cvdCrosshair;
-    private Crosshair volumeRatioCrosshair;
-    private Crosshair whaleCrosshair;
-    private Crosshair retailCrosshair;
-    private Crosshair fundingCrosshair;
-    private Crosshair oiCrosshair;
-    private Crosshair stochasticCrosshair;
-    private Crosshair rangePositionCrosshair;
-    private Crosshair adxCrosshair;
-    private Crosshair tradeCountCrosshair;
-    private Crosshair premiumCrosshair;
+    // All crosshairs in a single list for easy iteration
+    private final List<Crosshair> crosshairs = new ArrayList<>();
 
     // Status update callback
     private Consumer<String> onStatusUpdate;
@@ -56,7 +36,19 @@ public class CrosshairManager {
     private final SimpleDateFormat dateFormat = new SimpleDateFormat("MMM d, yyyy HH:mm");
 
     // Reference to price chart panel for coordinate conversion
-    private org.jfree.chart.ChartPanel priceChartPanel;
+    private ChartPanel priceChartPanel;
+
+    // Shared mouse listener
+    private final ChartMouseListener mouseListener = new ChartMouseListener() {
+        @Override
+        public void chartMouseMoved(ChartMouseEvent event) {
+            updateCrosshairs(event);
+        }
+
+        @Override
+        public void chartMouseClicked(ChartMouseEvent event) {
+        }
+    };
 
     public void setOnStatusUpdate(Consumer<String> callback) {
         this.onStatusUpdate = callback;
@@ -70,131 +62,74 @@ public class CrosshairManager {
      * Setup crosshairs for all core charts.
      */
     public void setupCoreChartCrosshairs(
-            org.jfree.chart.ChartPanel pricePanel,
-            org.jfree.chart.ChartPanel equityPanel,
-            org.jfree.chart.ChartPanel comparisonPanel,
-            org.jfree.chart.ChartPanel capitalUsagePanel,
-            org.jfree.chart.ChartPanel tradePLPanel,
-            org.jfree.chart.ChartPanel volumePanel) {
+            ChartPanel pricePanel,
+            ChartPanel equityPanel,
+            ChartPanel comparisonPanel,
+            ChartPanel capitalUsagePanel,
+            ChartPanel tradePLPanel,
+            ChartPanel volumePanel) {
 
         this.priceChartPanel = pricePanel;
 
-        priceCrosshair = createCrosshair();
-        equityCrosshair = createCrosshair();
-        comparisonCrosshair = createCrosshair();
-        capitalUsageCrosshair = createCrosshair();
-        tradePLCrosshair = createCrosshair();
-        volumeCrosshair = createCrosshair();
-
-        addCrosshairOverlay(pricePanel, priceCrosshair);
-        addCrosshairOverlay(equityPanel, equityCrosshair);
-        addCrosshairOverlay(comparisonPanel, comparisonCrosshair);
-        addCrosshairOverlay(capitalUsagePanel, capitalUsageCrosshair);
-        addCrosshairOverlay(tradePLPanel, tradePLCrosshair);
-        addCrosshairOverlay(volumePanel, volumeCrosshair);
-
-        ChartMouseListener listener = createMouseListener();
-        pricePanel.addChartMouseListener(listener);
-        equityPanel.addChartMouseListener(listener);
-        comparisonPanel.addChartMouseListener(listener);
-        capitalUsagePanel.addChartMouseListener(listener);
-        tradePLPanel.addChartMouseListener(listener);
-        volumePanel.addChartMouseListener(listener);
+        setupCrosshair(pricePanel);
+        setupCrosshair(equityPanel);
+        setupCrosshair(comparisonPanel);
+        setupCrosshair(capitalUsagePanel);
+        setupCrosshair(tradePLPanel);
+        setupCrosshair(volumePanel);
     }
 
     /**
      * Setup crosshairs for indicator charts.
      */
     public void setupIndicatorChartCrosshairs(
-            org.jfree.chart.ChartPanel rsiPanel,
-            org.jfree.chart.ChartPanel macdPanel,
-            org.jfree.chart.ChartPanel atrPanel,
-            org.jfree.chart.ChartPanel deltaPanel,
-            org.jfree.chart.ChartPanel cvdPanel,
-            org.jfree.chart.ChartPanel volumeRatioPanel,
-            org.jfree.chart.ChartPanel whalePanel,
-            org.jfree.chart.ChartPanel retailPanel,
-            org.jfree.chart.ChartPanel fundingPanel,
-            org.jfree.chart.ChartPanel oiPanel,
-            org.jfree.chart.ChartPanel stochasticPanel,
-            org.jfree.chart.ChartPanel rangePositionPanel,
-            org.jfree.chart.ChartPanel adxPanel,
-            org.jfree.chart.ChartPanel tradeCountPanel,
-            org.jfree.chart.ChartPanel premiumPanel) {
+            ChartPanel rsiPanel,
+            ChartPanel macdPanel,
+            ChartPanel atrPanel,
+            ChartPanel deltaPanel,
+            ChartPanel cvdPanel,
+            ChartPanel volumeRatioPanel,
+            ChartPanel whalePanel,
+            ChartPanel retailPanel,
+            ChartPanel fundingPanel,
+            ChartPanel oiPanel,
+            ChartPanel stochasticPanel,
+            ChartPanel rangePositionPanel,
+            ChartPanel adxPanel,
+            ChartPanel tradeCountPanel,
+            ChartPanel premiumPanel) {
 
-        rsiCrosshair = createCrosshair();
-        macdCrosshair = createCrosshair();
-        atrCrosshair = createCrosshair();
-        deltaCrosshair = createCrosshair();
-        cvdCrosshair = createCrosshair();
-        volumeRatioCrosshair = createCrosshair();
-        whaleCrosshair = createCrosshair();
-        retailCrosshair = createCrosshair();
-        fundingCrosshair = createCrosshair();
-        oiCrosshair = createCrosshair();
-        stochasticCrosshair = createCrosshair();
-        rangePositionCrosshair = createCrosshair();
-        adxCrosshair = createCrosshair();
-        tradeCountCrosshair = createCrosshair();
-        premiumCrosshair = createCrosshair();
-
-        addCrosshairOverlay(rsiPanel, rsiCrosshair);
-        addCrosshairOverlay(macdPanel, macdCrosshair);
-        addCrosshairOverlay(atrPanel, atrCrosshair);
-        if (deltaPanel != null) addCrosshairOverlay(deltaPanel, deltaCrosshair);
-        if (cvdPanel != null) addCrosshairOverlay(cvdPanel, cvdCrosshair);
-        if (volumeRatioPanel != null) addCrosshairOverlay(volumeRatioPanel, volumeRatioCrosshair);
-        if (whalePanel != null) addCrosshairOverlay(whalePanel, whaleCrosshair);
-        if (retailPanel != null) addCrosshairOverlay(retailPanel, retailCrosshair);
-        if (fundingPanel != null) addCrosshairOverlay(fundingPanel, fundingCrosshair);
-        if (oiPanel != null) addCrosshairOverlay(oiPanel, oiCrosshair);
-        if (stochasticPanel != null) addCrosshairOverlay(stochasticPanel, stochasticCrosshair);
-        if (rangePositionPanel != null) addCrosshairOverlay(rangePositionPanel, rangePositionCrosshair);
-        if (adxPanel != null) addCrosshairOverlay(adxPanel, adxCrosshair);
-        if (tradeCountPanel != null) addCrosshairOverlay(tradeCountPanel, tradeCountCrosshair);
-        if (premiumPanel != null) addCrosshairOverlay(premiumPanel, premiumCrosshair);
-
-        ChartMouseListener listener = createMouseListener();
-        rsiPanel.addChartMouseListener(listener);
-        macdPanel.addChartMouseListener(listener);
-        atrPanel.addChartMouseListener(listener);
-        if (deltaPanel != null) deltaPanel.addChartMouseListener(listener);
-        if (cvdPanel != null) cvdPanel.addChartMouseListener(listener);
-        if (volumeRatioPanel != null) volumeRatioPanel.addChartMouseListener(listener);
-        if (whalePanel != null) whalePanel.addChartMouseListener(listener);
-        if (retailPanel != null) retailPanel.addChartMouseListener(listener);
-        if (fundingPanel != null) fundingPanel.addChartMouseListener(listener);
-        if (oiPanel != null) oiPanel.addChartMouseListener(listener);
-        if (stochasticPanel != null) stochasticPanel.addChartMouseListener(listener);
-        if (rangePositionPanel != null) rangePositionPanel.addChartMouseListener(listener);
-        if (adxPanel != null) adxPanel.addChartMouseListener(listener);
-        if (tradeCountPanel != null) tradeCountPanel.addChartMouseListener(listener);
-        if (premiumPanel != null) premiumPanel.addChartMouseListener(listener);
+        setupCrosshair(rsiPanel);
+        setupCrosshair(macdPanel);
+        setupCrosshair(atrPanel);
+        setupCrosshair(deltaPanel);
+        setupCrosshair(cvdPanel);
+        setupCrosshair(volumeRatioPanel);
+        setupCrosshair(whalePanel);
+        setupCrosshair(retailPanel);
+        setupCrosshair(fundingPanel);
+        setupCrosshair(oiPanel);
+        setupCrosshair(stochasticPanel);
+        setupCrosshair(rangePositionPanel);
+        setupCrosshair(adxPanel);
+        setupCrosshair(tradeCountPanel);
+        setupCrosshair(premiumPanel);
     }
 
-    private Crosshair createCrosshair() {
+    /**
+     * Setup a crosshair for a single chart panel.
+     */
+    private void setupCrosshair(ChartPanel panel) {
+        if (panel == null) return;
+
         Crosshair crosshair = new Crosshair(Double.NaN);
         crosshair.setPaint(ChartStyles.CROSSHAIR_COLOR);
-        return crosshair;
-    }
+        crosshairs.add(crosshair);
 
-    private void addCrosshairOverlay(org.jfree.chart.ChartPanel panel, Crosshair crosshair) {
         CrosshairOverlay overlay = new CrosshairOverlay();
         overlay.addDomainCrosshair(crosshair);
         panel.addOverlay(overlay);
-    }
-
-    private ChartMouseListener createMouseListener() {
-        return new ChartMouseListener() {
-            @Override
-            public void chartMouseMoved(ChartMouseEvent event) {
-                updateCrosshairs(event);
-            }
-
-            @Override
-            public void chartMouseClicked(ChartMouseEvent event) {
-            }
-        };
+        panel.addChartMouseListener(mouseListener);
     }
 
     private void updateCrosshairs(ChartMouseEvent event) {
@@ -211,37 +146,12 @@ public class CrosshairManager {
         double domainValue = domainAxis.java2DToValue(x, dataArea, plot.getDomainAxisEdge());
 
         // Update all crosshairs
-        updateAllCrosshairs(domainValue);
+        for (Crosshair crosshair : crosshairs) {
+            crosshair.setValue(domainValue);
+        }
 
         // Update status bar
         updateStatus(domainValue);
-    }
-
-    private void updateAllCrosshairs(double domainValue) {
-        // Core crosshairs
-        if (priceCrosshair != null) priceCrosshair.setValue(domainValue);
-        if (equityCrosshair != null) equityCrosshair.setValue(domainValue);
-        if (comparisonCrosshair != null) comparisonCrosshair.setValue(domainValue);
-        if (capitalUsageCrosshair != null) capitalUsageCrosshair.setValue(domainValue);
-        if (tradePLCrosshair != null) tradePLCrosshair.setValue(domainValue);
-        if (volumeCrosshair != null) volumeCrosshair.setValue(domainValue);
-
-        // Indicator crosshairs
-        if (rsiCrosshair != null) rsiCrosshair.setValue(domainValue);
-        if (macdCrosshair != null) macdCrosshair.setValue(domainValue);
-        if (atrCrosshair != null) atrCrosshair.setValue(domainValue);
-        if (deltaCrosshair != null) deltaCrosshair.setValue(domainValue);
-        if (cvdCrosshair != null) cvdCrosshair.setValue(domainValue);
-        if (volumeRatioCrosshair != null) volumeRatioCrosshair.setValue(domainValue);
-        if (whaleCrosshair != null) whaleCrosshair.setValue(domainValue);
-        if (retailCrosshair != null) retailCrosshair.setValue(domainValue);
-        if (fundingCrosshair != null) fundingCrosshair.setValue(domainValue);
-        if (oiCrosshair != null) oiCrosshair.setValue(domainValue);
-        if (stochasticCrosshair != null) stochasticCrosshair.setValue(domainValue);
-        if (rangePositionCrosshair != null) rangePositionCrosshair.setValue(domainValue);
-        if (adxCrosshair != null) adxCrosshair.setValue(domainValue);
-        if (tradeCountCrosshair != null) tradeCountCrosshair.setValue(domainValue);
-        if (premiumCrosshair != null) premiumCrosshair.setValue(domainValue);
     }
 
     private void updateStatus(double timestamp) {

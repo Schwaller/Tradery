@@ -401,6 +401,8 @@ public abstract class DataPageManager<T> {
         DataType dataType,
         String symbol,
         String timeframe,
+        long startTime,
+        long endTime,
         int listenerCount,
         int recordCount,
         int loadProgress,  // 0-100 percentage, -1 for indeterminate
@@ -435,6 +437,8 @@ public abstract class DataPageManager<T> {
                 page.getDataType(),
                 page.getSymbol(),
                 page.getTimeframe(),
+                page.getStartTime(),
+                page.getEndTime(),
                 listenerCount,
                 page.getRecordCount(),
                 page.getLoadProgress(),

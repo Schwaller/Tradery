@@ -26,11 +26,7 @@ import org.jfree.data.xy.XYSeriesCollection;
 import javax.swing.*;
 import java.awt.*;
 import java.awt.Paint;
-import java.awt.event.MouseAdapter;
-import java.awt.event.MouseEvent;
-import java.awt.event.MouseMotionAdapter;
 import java.awt.geom.Ellipse2D;
-import java.awt.geom.Rectangle2D;
 import java.text.SimpleDateFormat;
 import java.time.Year;
 import java.util.Date;
@@ -64,6 +60,7 @@ public class ChartsPanel extends JPanel {
     private final IndicatorChartsManager indicatorManager;
     private final ChartZoomManager zoomManager;
     private final CrosshairManager crosshairManager;
+    private final ChartInteractionManager interactionManager;
 
     // Status callback
     private Consumer<String> onStatusUpdate;
@@ -79,17 +76,6 @@ public class ChartsPanel extends JPanel {
     private JPanel chartsContainer;
     private JPanel mainPanel;
 
-    // Chart interaction state
-    private Point panStart = null;
-    private double panStartDomainMin, panStartDomainMax;
-    private org.jfree.chart.ChartPanel activeChartPanel = null;
-    private XYPlot activePlot = null;
-    private double panStartRangeMin, panStartRangeMax;
-    // Y-axis drag state
-    private boolean draggingYAxis = false;
-    private int yAxisDragStartY;
-    private double yAxisDragStartRangeMin, yAxisDragStartRangeMax;
-
     public ChartsPanel() {
         setLayout(new BorderLayout());
         setBorder(null);
@@ -98,6 +84,7 @@ public class ChartsPanel extends JPanel {
         indicatorManager = new IndicatorChartsManager();
         zoomManager = new ChartZoomManager();
         crosshairManager = new CrosshairManager();
+        interactionManager = new ChartInteractionManager();
 
         initializeCharts();
 
@@ -263,19 +250,7 @@ public class ChartsPanel extends JPanel {
     }
 
     private org.jfree.chart.ChartPanel createChartPanel(JFreeChart chart) {
-        org.jfree.chart.ChartPanel panel = new org.jfree.chart.ChartPanel(chart);
-        panel.setMouseWheelEnabled(false);
-        panel.setDomainZoomable(false);
-        panel.setRangeZoomable(false);
-        panel.setMinimumDrawWidth(0);
-        panel.setMinimumDrawHeight(0);
-        panel.setMaximumDrawWidth(Integer.MAX_VALUE);
-        panel.setMaximumDrawHeight(Integer.MAX_VALUE);
-        panel.setBorder(null);
-        // Remove chart padding
-        chart.setPadding(new org.jfree.chart.ui.RectangleInsets(0, 0, 0, 0));
-        chart.getXYPlot().setInsets(new org.jfree.chart.ui.RectangleInsets(0, 0, 0, 0));
-        return panel;
+        return ChartPanelFactory.create(chart);
     }
 
     private void setupManagers() {
@@ -347,13 +322,16 @@ public class ChartsPanel extends JPanel {
             }
         });
 
+        // Register all charts with interaction manager for synchronized zooming
+        registerChartsWithInteractionManager();
+
         // Add zoom/pan/Y-axis drag listeners to all core chart panels
         org.jfree.chart.ChartPanel[] corePanels = {
             priceChartPanel, equityChartPanel, comparisonChartPanel,
             capitalUsageChartPanel, tradePLChartPanel, volumeChartPanel
         };
         for (org.jfree.chart.ChartPanel panel : corePanels) {
-            addChartInteractionListeners(panel);
+            interactionManager.attachListeners(panel);
         }
 
         // Add zoom/pan listeners to indicator chart panels too
@@ -369,7 +347,7 @@ public class ChartsPanel extends JPanel {
             indicatorManager.getHoldingCostCumulativeChartPanel(), indicatorManager.getHoldingCostEventsChartPanel()
         };
         for (org.jfree.chart.ChartPanel panel : indicatorPanels) {
-            addChartInteractionListeners(panel);
+            interactionManager.attachListeners(panel);
         }
 
         mainPanel = new JPanel(new BorderLayout(0, 0));
@@ -380,164 +358,31 @@ public class ChartsPanel extends JPanel {
         add(mainPanel, BorderLayout.CENTER);
     }
 
-    /**
-     * Add zoom, pan, and Y-axis drag listeners to a chart panel.
-     */
-    private void addChartInteractionListeners(org.jfree.chart.ChartPanel panel) {
-        // Mouse wheel: zoom X-axis centered on cursor (or scroll in fixed-width mode)
-        panel.addMouseWheelListener(e -> {
-            JScrollBar scrollBar = zoomManager.getTimeScrollBar();
-            if (zoomManager.isFixedWidthMode() && scrollBar.isVisible()) {
-                int scrollAmount = e.getWheelRotation() * scrollBar.getUnitIncrement();
-                int newValue = scrollBar.getValue() + scrollAmount;
-                newValue = Math.max(scrollBar.getMinimum(),
-                    Math.min(newValue, scrollBar.getMaximum() - scrollBar.getVisibleAmount()));
-                scrollBar.setValue(newValue);
-                return;
-            }
-
-            // Zoom-to-cursor on X-axis
-            if (panel.getChartRenderingInfo() == null) return;
-            Rectangle2D dataArea = panel.getChartRenderingInfo().getPlotInfo().getDataArea();
-            if (dataArea == null) return;
-
-            XYPlot plot = panel.getChart().getXYPlot();
-            DateAxis domainAxis = (DateAxis) plot.getDomainAxis();
-
-            double zoomFactor = e.getWheelRotation() < 0 ? 0.9 : 1.1;
-            double mouseX = domainAxis.java2DToValue(e.getPoint().getX(), dataArea, plot.getDomainAxisEdge());
-
-            double domainMin = domainAxis.getLowerBound();
-            double domainMax = domainAxis.getUpperBound();
-            double domainRange = domainMax - domainMin;
-            double newRange = domainRange * zoomFactor;
-
-            double mouseRatio = (mouseX - domainMin) / domainRange;
-            double newMin = mouseX - mouseRatio * newRange;
-            double newMax = newMin + newRange;
-
-            setAllChartsDomainRange(newMin, newMax);
-        });
-
-        // Mouse press: start pan or Y-axis drag
-        panel.addMouseListener(new MouseAdapter() {
-            @Override
-            public void mousePressed(MouseEvent e) {
-                if (SwingUtilities.isLeftMouseButton(e)) {
-                    if (zoomManager.isFixedWidthMode()) return;
-
-                    if (isOnYAxis(e.getPoint(), panel)) {
-                        startYAxisDrag(e.getY(), panel);
-                    } else {
-                        startPan(e.getPoint(), panel);
-                    }
-                }
-            }
-
-            @Override
-            public void mouseReleased(MouseEvent e) {
-                panStart = null;
-                activeChartPanel = null;
-                activePlot = null;
-                draggingYAxis = false;
-            }
-        });
-
-        // Mouse drag: pan or Y-axis zoom
-        panel.addMouseMotionListener(new MouseMotionAdapter() {
-            @Override
-            public void mouseDragged(MouseEvent e) {
-                if (draggingYAxis && activePlot != null) {
-                    handleYAxisDrag(e.getY());
-                } else if (panStart != null && activeChartPanel == panel) {
-                    handlePan(e.getPoint(), panel);
-                }
-            }
-        });
-    }
-
-    private boolean isOnYAxis(Point point, org.jfree.chart.ChartPanel panel) {
-        if (panel.getChartRenderingInfo() == null) return false;
-        Rectangle2D dataArea = panel.getChartRenderingInfo().getPlotInfo().getDataArea();
-        if (dataArea == null) return false;
-        // Y-axis is to the left of the data area
-        return point.x < dataArea.getMinX();
-    }
-
-    private void startYAxisDrag(int y, org.jfree.chart.ChartPanel panel) {
-        draggingYAxis = true;
-        yAxisDragStartY = y;
-        activePlot = panel.getChart().getXYPlot();
-        yAxisDragStartRangeMin = activePlot.getRangeAxis().getLowerBound();
-        yAxisDragStartRangeMax = activePlot.getRangeAxis().getUpperBound();
-    }
-
-    private void handleYAxisDrag(int currentY) {
-        if (activePlot == null) return;
-        int dy = currentY - yAxisDragStartY;
-        double scaleFactor = Math.pow(1.01, dy);
-
-        double originalRange = yAxisDragStartRangeMax - yAxisDragStartRangeMin;
-        double originalCenter = (yAxisDragStartRangeMax + yAxisDragStartRangeMin) / 2.0;
-
-        double newRange = originalRange * scaleFactor;
-        double newMin = originalCenter - newRange / 2.0;
-        double newMax = originalCenter + newRange / 2.0;
-
-        activePlot.getRangeAxis().setRange(newMin, newMax);
-    }
-
-    private void startPan(Point point, org.jfree.chart.ChartPanel panel) {
-        panStart = point;
-        activeChartPanel = panel;
-        activePlot = panel.getChart().getXYPlot();
-
-        DateAxis domainAxis = (DateAxis) activePlot.getDomainAxis();
-        panStartDomainMin = domainAxis.getLowerBound();
-        panStartDomainMax = domainAxis.getUpperBound();
-        panStartRangeMin = activePlot.getRangeAxis().getLowerBound();
-        panStartRangeMax = activePlot.getRangeAxis().getUpperBound();
-    }
-
-    private void handlePan(Point currentPoint, org.jfree.chart.ChartPanel panel) {
-        if (panel.getChartRenderingInfo() == null) return;
-        Rectangle2D dataArea = panel.getChartRenderingInfo().getPlotInfo().getDataArea();
-        if (dataArea == null) return;
-
-        int dx = currentPoint.x - panStart.x;
-        int dy = currentPoint.y - panStart.y;
-
-        double domainRange = panStartDomainMax - panStartDomainMin;
-        double domainDelta = -dx * domainRange / dataArea.getWidth();
-
-        // Pan X-axis on all charts
-        setAllChartsDomainRange(panStartDomainMin + domainDelta, panStartDomainMax + domainDelta);
-
-        // Pan Y-axis only on the active chart
-        if (activePlot != null) {
-            double rangeRange = panStartRangeMax - panStartRangeMin;
-            double rangeDelta = dy * rangeRange / dataArea.getHeight();
-            activePlot.getRangeAxis().setRange(panStartRangeMin + rangeDelta, panStartRangeMax + rangeDelta);
-        }
-    }
-
-    private void setAllChartsDomainRange(double min, double max) {
-        JFreeChart[] charts = {
-            priceChart, volumeChart, equityChart, comparisonChart, capitalUsageChart, tradePLChart,
-            indicatorManager.getRsiChart(), indicatorManager.getMacdChart(), indicatorManager.getAtrChart(),
-            indicatorManager.getDeltaChart(), indicatorManager.getCvdChart(), indicatorManager.getVolumeRatioChart(),
-            indicatorManager.getWhaleChart(), indicatorManager.getRetailChart(),
-            indicatorManager.getFundingChart(), indicatorManager.getOiChart(), indicatorManager.getPremiumChart(),
-            indicatorManager.getStochasticChart(), indicatorManager.getRangePositionChart(),
-            indicatorManager.getAdxChart(), indicatorManager.getTradeCountChart(),
-            indicatorManager.getHoldingCostCumulativeChart(), indicatorManager.getHoldingCostEventsChart()
-        };
-        for (JFreeChart chart : charts) {
-            if (chart != null) {
-                DateAxis axis = (DateAxis) chart.getXYPlot().getDomainAxis();
-                axis.setRange(min, max);
-            }
-        }
+    private void registerChartsWithInteractionManager() {
+        // Register all charts for synchronized domain axis updates
+        interactionManager.addChart(priceChart);
+        interactionManager.addChart(volumeChart);
+        interactionManager.addChart(equityChart);
+        interactionManager.addChart(comparisonChart);
+        interactionManager.addChart(capitalUsageChart);
+        interactionManager.addChart(tradePLChart);
+        interactionManager.addChart(indicatorManager.getRsiChart());
+        interactionManager.addChart(indicatorManager.getMacdChart());
+        interactionManager.addChart(indicatorManager.getAtrChart());
+        interactionManager.addChart(indicatorManager.getDeltaChart());
+        interactionManager.addChart(indicatorManager.getCvdChart());
+        interactionManager.addChart(indicatorManager.getVolumeRatioChart());
+        interactionManager.addChart(indicatorManager.getWhaleChart());
+        interactionManager.addChart(indicatorManager.getRetailChart());
+        interactionManager.addChart(indicatorManager.getFundingChart());
+        interactionManager.addChart(indicatorManager.getOiChart());
+        interactionManager.addChart(indicatorManager.getPremiumChart());
+        interactionManager.addChart(indicatorManager.getStochasticChart());
+        interactionManager.addChart(indicatorManager.getRangePositionChart());
+        interactionManager.addChart(indicatorManager.getAdxChart());
+        interactionManager.addChart(indicatorManager.getTradeCountChart());
+        interactionManager.addChart(indicatorManager.getHoldingCostCumulativeChart());
+        interactionManager.addChart(indicatorManager.getHoldingCostEventsChart());
     }
 
     private void updateChartLayout() {
@@ -573,6 +418,7 @@ public class ChartsPanel extends JPanel {
 
     public void setFixedWidthMode(boolean enabled) {
         zoomManager.setFixedWidthMode(enabled);
+        interactionManager.setFixedWidthMode(enabled, () -> zoomManager.getTimeScrollBar());
         updateFixedWidthMode();
         if (zoomManager.isFitYAxisToVisible()) {
             updateYAxisAutoRange();

@@ -500,6 +500,8 @@ public class IndicatorPageManager {
         String params,
         String symbol,
         String timeframe,
+        long startTime,
+        long endTime,
         PageState state,
         int listenerCount,
         int loadProgress,  // 0-100 percentage
@@ -534,6 +536,8 @@ public class IndicatorPageManager {
                 page.getParams(),
                 page.getSymbol(),
                 page.getTimeframe(),
+                page.getStartTime(),
+                page.getEndTime(),
                 page.getState(),
                 listenerCount,
                 page.getLoadProgress(),

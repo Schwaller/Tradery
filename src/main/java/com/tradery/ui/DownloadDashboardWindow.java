@@ -7,6 +7,7 @@ import com.tradery.data.PageState;
 import com.tradery.data.log.DownloadEvent;
 import com.tradery.data.log.DownloadLogStore;
 import com.tradery.data.page.DataPageManager;
+import com.tradery.data.page.IndicatorPageManager;
 
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
@@ -24,6 +25,7 @@ public class DownloadDashboardWindow extends JFrame {
 
     private static final int REFRESH_INTERVAL_MS = 250;
 
+    private DataTimelinePanel timelinePanel;
     private PageStatusPanel statusPanel;
     private DownloadLogPanel logPanel;
     private PageDetailPanel detailPanel;
@@ -64,6 +66,9 @@ public class DownloadDashboardWindow extends JFrame {
     }
 
     private void initializeComponents() {
+        // Timeline panel showing dependency diagram and data availability
+        timelinePanel = new DataTimelinePanel();
+
         // Status panel for page managers (compact view with selection)
         statusPanel = new PageStatusPanel(this::onPageSelected);
 
@@ -88,10 +93,14 @@ public class DownloadDashboardWindow extends JFrame {
         titleLabel.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 13));
         titleBar.add(titleLabel, BorderLayout.CENTER);
 
-        // Left panel: page status view
+        // Left panel: timeline + page status view
         JPanel leftPanel = new JPanel(new BorderLayout(0, 0));
         leftPanel.setBorder(BorderFactory.createEmptyBorder(0, 0, 0, 0));
         leftPanel.setPreferredSize(new Dimension(430, 0));
+
+        // Timeline at top
+        leftPanel.add(timelinePanel, BorderLayout.NORTH);
+        // Status panel in center
         leftPanel.add(statusPanel, BorderLayout.CENTER);
 
         // Right panel: detail + log tabs
@@ -171,6 +180,10 @@ public class DownloadDashboardWindow extends JFrame {
     private void refresh() {
         // Collect page info from all managers
         List<DataPageManager.PageInfo> allPages = collectAllPages();
+        List<IndicatorPageManager.IndicatorPageInfo> indicatorPages = collectIndicatorPages();
+
+        // Update timeline panel
+        timelinePanel.update(allPages, indicatorPages);
 
         // Update status panel
         statusPanel.update(allPages);
@@ -224,6 +237,14 @@ public class DownloadDashboardWindow extends JFrame {
         }
 
         return allPages;
+    }
+
+    private List<IndicatorPageManager.IndicatorPageInfo> collectIndicatorPages() {
+        ApplicationContext ctx = ApplicationContext.getInstance();
+        if (ctx.getIndicatorPageManager() != null) {
+            return ctx.getIndicatorPageManager().getActivePages();
+        }
+        return new ArrayList<>();
     }
 
     private void cleanup() {

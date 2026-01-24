@@ -8,6 +8,8 @@ import org.jfree.data.time.TimeSeriesCollection;
 import javax.swing.*;
 import java.awt.*;
 
+import static com.tradery.ui.charts.ChartPanelFactory.configure;
+
 /**
  * Reusable chart component that encapsulates a JFreeChart with its panel,
  * wrapper, and zoom button for consistent chart creation across the application.
@@ -66,17 +68,7 @@ public class ChartComponent {
     }
 
     private void configureChartPanel() {
-        chartPanel.setMouseWheelEnabled(false);
-        chartPanel.setDomainZoomable(false);
-        chartPanel.setRangeZoomable(false);
-        chartPanel.setMinimumDrawWidth(0);
-        chartPanel.setMinimumDrawHeight(0);
-        chartPanel.setMaximumDrawWidth(Integer.MAX_VALUE);
-        chartPanel.setMaximumDrawHeight(Integer.MAX_VALUE);
-        chartPanel.setBorder(null);
-        // Remove chart padding
-        chart.setPadding(new org.jfree.chart.ui.RectangleInsets(0, 0, 0, 0));
-        chart.getXYPlot().setInsets(new org.jfree.chart.ui.RectangleInsets(0, 0, 0, 0));
+        configure(chartPanel, chart);
     }
 
     /**

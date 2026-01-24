@@ -12,7 +12,6 @@ import com.tradery.model.PremiumIndex;
 import com.tradery.model.Trade;
 import org.jfree.chart.ChartFactory;
 import org.jfree.chart.JFreeChart;
-import org.jfree.chart.annotations.XYLineAnnotation;
 import org.jfree.chart.axis.NumberAxis;
 import org.jfree.chart.plot.XYPlot;
 import org.jfree.chart.renderer.xy.XYAreaRenderer;
@@ -27,51 +26,22 @@ import org.jfree.data.xy.XYSeriesCollection;
 
 import javax.swing.*;
 import java.awt.*;
-import java.util.Date;
+import java.util.*;
 import java.util.List;
+
+import static com.tradery.ui.charts.ChartAnnotationHelper.*;
+import static com.tradery.ui.charts.RendererBuilder.*;
 
 /**
  * Manages optional indicator charts (RSI, MACD, ATR, Orderflow, Funding).
  */
 public class IndicatorChartsManager {
 
-    // Chart components (each contains chart, panel, wrapper, zoom button)
-    private ChartComponent rsiComponent;
-    private ChartComponent macdComponent;
-    private ChartComponent atrComponent;
-    private ChartComponent deltaComponent;
-    private ChartComponent cvdComponent;
-    private ChartComponent volumeRatioComponent;
-    private ChartComponent whaleComponent;
-    private ChartComponent retailComponent;
-    private ChartComponent fundingComponent;
-    private ChartComponent oiComponent;
-    private ChartComponent stochasticComponent;
-    private ChartComponent rangePositionComponent;
-    private ChartComponent adxComponent;
-    private ChartComponent tradeCountComponent;
-    private ChartComponent premiumComponent;
-    private ChartComponent holdingCostCumulativeComponent;
-    private ChartComponent holdingCostEventsComponent;
+    // Chart components indexed by type
+    private final EnumMap<IndicatorType, ChartComponent> components = new EnumMap<>(IndicatorType.class);
 
     // Enable state
-    private boolean rsiChartEnabled = false;
-    private boolean macdChartEnabled = false;
-    private boolean atrChartEnabled = false;
-    private boolean deltaChartEnabled = false;
-    private boolean cvdChartEnabled = false;
-    private boolean volumeRatioChartEnabled = false;
-    private boolean whaleChartEnabled = false;
-    private boolean retailChartEnabled = false;
-    private boolean fundingChartEnabled = false;
-    private boolean oiChartEnabled = false;
-    private boolean stochasticChartEnabled = false;
-    private boolean rangePositionChartEnabled = false;
-    private boolean adxChartEnabled = false;
-    private boolean tradeCountChartEnabled = false;
-    private boolean premiumChartEnabled = false;
-    private boolean holdingCostCumulativeChartEnabled = false;
-    private boolean holdingCostEventsChartEnabled = false;
+    private final EnumSet<IndicatorType> enabledIndicators = EnumSet.noneOf(IndicatorType.class);
 
     // Current trades for holding cost charts
     private List<Trade> currentTrades;
@@ -134,50 +104,50 @@ public class IndicatorChartsManager {
         indicatorDataService.setDataContext(candles, symbol, timeframe, startTime, endTime);
 
         // Subscribe to enabled indicators
-        if (rsiChartEnabled) {
+        if (isEnabled(IndicatorType.RSI)) {
             indicatorDataService.subscribeRSI(rsiPeriod);
         }
-        if (macdChartEnabled) {
+        if (isEnabled(IndicatorType.MACD)) {
             indicatorDataService.subscribeMACD(macdFast, macdSlow, macdSignal);
         }
-        if (atrChartEnabled) {
+        if (isEnabled(IndicatorType.ATR)) {
             indicatorDataService.subscribeATR(atrPeriod);
         }
-        if (stochasticChartEnabled) {
+        if (isEnabled(IndicatorType.STOCHASTIC)) {
             indicatorDataService.subscribeStochastic(stochasticKPeriod, stochasticDPeriod);
         }
-        if (adxChartEnabled) {
+        if (isEnabled(IndicatorType.ADX)) {
             indicatorDataService.subscribeADX(adxPeriod);
             indicatorDataService.subscribePlusDI(adxPeriod);
             indicatorDataService.subscribeMinusDI(adxPeriod);
         }
-        if (rangePositionChartEnabled) {
+        if (isEnabled(IndicatorType.RANGE_POSITION)) {
             indicatorDataService.subscribeRangePosition(rangePositionPeriod, rangePositionSkip);
         }
 
         // Orderflow indicators (aggTrades-based)
-        if (deltaChartEnabled) {
+        if (isEnabled(IndicatorType.DELTA)) {
             indicatorDataService.subscribeDelta();
         }
-        if (cvdChartEnabled) {
+        if (isEnabled(IndicatorType.CVD)) {
             indicatorDataService.subscribeCumDelta();
         }
-        if (volumeRatioChartEnabled) {
+        if (isEnabled(IndicatorType.VOLUME_RATIO)) {
             indicatorDataService.subscribeBuyVolume();
             indicatorDataService.subscribeSellVolume();
         }
-        if (whaleChartEnabled) {
+        if (isEnabled(IndicatorType.WHALE)) {
             indicatorDataService.subscribeWhaleDelta(whaleThreshold);
         }
-        if (retailChartEnabled) {
+        if (isEnabled(IndicatorType.RETAIL)) {
             indicatorDataService.subscribeRetailDelta(retailThreshold);
         }
-        if (tradeCountChartEnabled) {
+        if (isEnabled(IndicatorType.TRADE_COUNT)) {
             indicatorDataService.subscribeTradeCount();
         }
 
         // Request premium data if chart is enabled
-        if (premiumChartEnabled) {
+        if (isEnabled(IndicatorType.PREMIUM)) {
             requestPremiumData(symbol, timeframe, startTime, endTime);
         }
     }
@@ -253,28 +223,39 @@ public class IndicatorChartsManager {
     }
 
     private void initializeCharts() {
-        rsiComponent = new ChartComponent("RSI", new double[]{0, 100});
-        macdComponent = new ChartComponent("MACD");
-        atrComponent = new ChartComponent("ATR");
-        deltaComponent = new ChartComponent("Delta");
-        cvdComponent = new ChartComponent("CVD");
-        volumeRatioComponent = new ChartComponent("Buy/Sell Volume");
-        whaleComponent = new ChartComponent("Whale Delta");
-        retailComponent = new ChartComponent("Retail Delta");
-        fundingComponent = new ChartComponent("Funding");
-        oiComponent = new ChartComponent("Open Interest");
-        stochasticComponent = new ChartComponent("Stochastic", new double[]{0, 100});
-        rangePositionComponent = new ChartComponent("Range Position", new double[]{-2, 2});
-        adxComponent = new ChartComponent("ADX", new double[]{0, 100});
-        tradeCountComponent = new ChartComponent("Trade Count");
-        premiumComponent = new ChartComponent("Premium Index");
-        holdingCostCumulativeComponent = new ChartComponent("Cumulative Holding Costs");
-        holdingCostEventsComponent = new ChartComponent("Holding Cost Events");
+        for (IndicatorType type : IndicatorType.values()) {
+            components.put(type, new ChartComponent(type.getTitle(), type.getYAxisRange()));
+        }
+    }
+
+    /**
+     * Get a chart component by type.
+     */
+    public ChartComponent getComponent(IndicatorType type) {
+        return components.get(type);
+    }
+
+    /**
+     * Check if an indicator chart is enabled.
+     */
+    public boolean isEnabled(IndicatorType type) {
+        return enabledIndicators.contains(type);
+    }
+
+    /**
+     * Set an indicator chart's enabled state.
+     */
+    private void setEnabled(IndicatorType type, boolean enabled) {
+        if (enabled) {
+            enabledIndicators.add(type);
+        } else {
+            enabledIndicators.remove(type);
+        }
     }
 
     /**
      * Create wrapper panels with zoom buttons.
-     * @param zoomCallback Callback to handle zoom toggle (index: 0=RSI, 1=MACD, 2=ATR, 3=Delta, 4=CVD, 5=VolumeRatio, 6=Whale, 7=Retail, 8=Funding, 9=OI, 10=Stochastic, 11=RangePosition, 12=ADX, 13=TradeCount)
+     * @param zoomCallback Callback to handle zoom toggle by indicator ordinal
      */
     public void createWrappers(java.util.function.IntConsumer zoomCallback) {
         createWrappers(zoomCallback, null);
@@ -282,51 +263,21 @@ public class IndicatorChartsManager {
 
     /**
      * Create wrapper panels with zoom and full screen buttons.
-     * @param zoomCallback Callback to handle zoom toggle
-     * @param fullScreenCallback Callback to handle full screen toggle
+     * @param zoomCallback Callback to handle zoom toggle by indicator ordinal
+     * @param fullScreenCallback Callback to handle full screen toggle by indicator ordinal
      */
     public void createWrappers(java.util.function.IntConsumer zoomCallback, java.util.function.IntConsumer fullScreenCallback) {
-        Runnable fs0 = fullScreenCallback != null ? () -> fullScreenCallback.accept(0) : null;
-        Runnable fs1 = fullScreenCallback != null ? () -> fullScreenCallback.accept(1) : null;
-        Runnable fs2 = fullScreenCallback != null ? () -> fullScreenCallback.accept(2) : null;
-        Runnable fs3 = fullScreenCallback != null ? () -> fullScreenCallback.accept(3) : null;
-        Runnable fs4 = fullScreenCallback != null ? () -> fullScreenCallback.accept(4) : null;
-        Runnable fs5 = fullScreenCallback != null ? () -> fullScreenCallback.accept(5) : null;
-        Runnable fs6 = fullScreenCallback != null ? () -> fullScreenCallback.accept(6) : null;
-        Runnable fs7 = fullScreenCallback != null ? () -> fullScreenCallback.accept(7) : null;
-        Runnable fs8 = fullScreenCallback != null ? () -> fullScreenCallback.accept(8) : null;
-        Runnable fs9 = fullScreenCallback != null ? () -> fullScreenCallback.accept(9) : null;
-        Runnable fs10 = fullScreenCallback != null ? () -> fullScreenCallback.accept(10) : null;
-        Runnable fs11 = fullScreenCallback != null ? () -> fullScreenCallback.accept(11) : null;
-        Runnable fs12 = fullScreenCallback != null ? () -> fullScreenCallback.accept(12) : null;
-        Runnable fs13 = fullScreenCallback != null ? () -> fullScreenCallback.accept(13) : null;
-        Runnable fs14 = fullScreenCallback != null ? () -> fullScreenCallback.accept(14) : null;
-        Runnable fs15 = fullScreenCallback != null ? () -> fullScreenCallback.accept(15) : null;
-        Runnable fs16 = fullScreenCallback != null ? () -> fullScreenCallback.accept(16) : null;
-
-        rsiComponent.createWrapper(() -> zoomCallback.accept(0), fs0);
-        macdComponent.createWrapper(() -> zoomCallback.accept(1), fs1);
-        atrComponent.createWrapper(() -> zoomCallback.accept(2), fs2);
-        deltaComponent.createWrapper(() -> zoomCallback.accept(3), fs3);
-        cvdComponent.createWrapper(() -> zoomCallback.accept(4), fs4);
-        volumeRatioComponent.createWrapper(() -> zoomCallback.accept(5), fs5);
-        whaleComponent.createWrapper(() -> zoomCallback.accept(6), fs6);
-        retailComponent.createWrapper(() -> zoomCallback.accept(7), fs7);
-        fundingComponent.createWrapper(() -> zoomCallback.accept(8), fs8);
-        oiComponent.createWrapper(() -> zoomCallback.accept(9), fs9);
-        stochasticComponent.createWrapper(() -> zoomCallback.accept(10), fs10);
-        rangePositionComponent.createWrapper(() -> zoomCallback.accept(11), fs11);
-        adxComponent.createWrapper(() -> zoomCallback.accept(12), fs12);
-        tradeCountComponent.createWrapper(() -> zoomCallback.accept(13), fs13);
-        premiumComponent.createWrapper(() -> zoomCallback.accept(14), fs14);
-        holdingCostCumulativeComponent.createWrapper(() -> zoomCallback.accept(15), fs15);
-        holdingCostEventsComponent.createWrapper(() -> zoomCallback.accept(16), fs16);
+        for (IndicatorType type : IndicatorType.values()) {
+            int ordinal = type.ordinal();
+            Runnable fsCallback = fullScreenCallback != null ? () -> fullScreenCallback.accept(ordinal) : null;
+            components.get(type).createWrapper(() -> zoomCallback.accept(ordinal), fsCallback);
+        }
     }
 
     // ===== RSI Methods =====
 
     public void setRsiChartEnabled(boolean enabled, int period) {
-        this.rsiChartEnabled = enabled;
+        setEnabled(IndicatorType.RSI, enabled);
         this.rsiPeriod = period;
         if (onLayoutChange != null) {
             onLayoutChange.run();
@@ -334,11 +285,11 @@ public class IndicatorChartsManager {
     }
 
     public boolean isRsiChartEnabled() {
-        return rsiChartEnabled;
+        return isEnabled(IndicatorType.RSI);
     }
 
     public void updateRsiChart(List<Candle> candles) {
-        if (!rsiChartEnabled || candles == null || candles.size() < rsiPeriod + 1) {
+        if (!isEnabled(IndicatorType.RSI) || candles == null || candles.size() < rsiPeriod + 1) {
             return;
         }
         // Subscribe to RSI data (will arrive via callback if not ready)
@@ -348,7 +299,7 @@ public class IndicatorChartsManager {
     }
 
     private void redrawRsiChart(List<Candle> candles) {
-        if (!rsiChartEnabled || candles == null || candles.size() < rsiPeriod + 1) {
+        if (!isEnabled(IndicatorType.RSI) || candles == null || candles.size() < rsiPeriod + 1) {
             return;
         }
 
@@ -358,7 +309,7 @@ public class IndicatorChartsManager {
             return; // Data not ready yet, will be called again via callback
         }
 
-        XYPlot plot = rsiComponent.getChart().getXYPlot();
+        XYPlot plot = components.get(IndicatorType.RSI).getChart().getXYPlot();
         TimeSeriesCollection dataset = new TimeSeriesCollection();
         TimeSeries rsiSeries = new TimeSeries("RSI(" + rsiPeriod + ")");
 
@@ -373,10 +324,7 @@ public class IndicatorChartsManager {
         plot.setDataset(dataset);
 
         // Style the RSI line
-        XYLineAndShapeRenderer renderer = new XYLineAndShapeRenderer(true, false);
-        renderer.setSeriesPaint(0, ChartStyles.RSI_COLOR);
-        renderer.setSeriesStroke(0, ChartStyles.MEDIUM_STROKE);
-        plot.setRenderer(renderer);
+        plot.setRenderer(lineRenderer(ChartStyles.RSI_COLOR));
 
         // Add reference lines at 30, 50, 70
         plot.clearAnnotations();
@@ -385,20 +333,14 @@ public class IndicatorChartsManager {
         if (!candles.isEmpty()) {
             long startTime = candles.get(0).timestamp();
             long endTime = candles.get(candles.size() - 1).timestamp();
-
-            plot.addAnnotation(new XYLineAnnotation(startTime, 30, endTime, 30,
-                ChartStyles.DASHED_STROKE, ChartStyles.RSI_OVERSOLD));
-            plot.addAnnotation(new XYLineAnnotation(startTime, 50, endTime, 50,
-                ChartStyles.DASHED_STROKE, ChartStyles.TEXT_COLOR));
-            plot.addAnnotation(new XYLineAnnotation(startTime, 70, endTime, 70,
-                ChartStyles.DASHED_STROKE, ChartStyles.RSI_OVERBOUGHT));
+            addRsiLines(plot, startTime, endTime);
         }
     }
 
     // ===== MACD Methods =====
 
     public void setMacdChartEnabled(boolean enabled, int fast, int slow, int signal) {
-        this.macdChartEnabled = enabled;
+        setEnabled(IndicatorType.MACD, enabled);
         this.macdFast = fast;
         this.macdSlow = slow;
         this.macdSignal = signal;
@@ -408,11 +350,11 @@ public class IndicatorChartsManager {
     }
 
     public boolean isMacdChartEnabled() {
-        return macdChartEnabled;
+        return isEnabled(IndicatorType.MACD);
     }
 
     public void updateMacdChart(List<Candle> candles) {
-        if (!macdChartEnabled || candles == null || candles.size() < macdSlow + macdSignal) {
+        if (!isEnabled(IndicatorType.MACD) || candles == null || candles.size() < macdSlow + macdSignal) {
             return;
         }
         // Subscribe to MACD data (will arrive via callback if not ready)
@@ -422,7 +364,7 @@ public class IndicatorChartsManager {
     }
 
     private void redrawMacdChart(List<Candle> candles) {
-        if (!macdChartEnabled || candles == null || candles.size() < macdSlow + macdSignal) {
+        if (!isEnabled(IndicatorType.MACD) || candles == null || candles.size() < macdSlow + macdSignal) {
             return;
         }
 
@@ -432,7 +374,7 @@ public class IndicatorChartsManager {
             return; // Data not ready yet, will be called again via callback
         }
 
-        XYPlot plot = macdComponent.getChart().getXYPlot();
+        XYPlot plot = components.get(IndicatorType.MACD).getChart().getXYPlot();
         TimeSeriesCollection lineDataset = new TimeSeriesCollection();
         TimeSeries macdLine = new TimeSeries("MACD");
         TimeSeries signalLine = new TimeSeries("Signal");
@@ -464,24 +406,12 @@ public class IndicatorChartsManager {
         plot.setDataset(1, lineDataset);
 
         // Histogram renderer with color based on value
-        XYBarRenderer histRenderer = new XYBarRenderer() {
-            @Override
-            public Paint getItemPaint(int series, int item) {
-                double value = histogramDataset.getYValue(series, item);
-                return value >= 0 ? ChartStyles.MACD_HIST_POS : ChartStyles.MACD_HIST_NEG;
-            }
-        };
-        histRenderer.setShadowVisible(false);
-        histRenderer.setBarPainter(new StandardXYBarPainter());
-        plot.setRenderer(0, histRenderer);
+        plot.setRenderer(0, colorCodedBarRenderer(histogramDataset, ChartStyles.MACD_HIST_POS, ChartStyles.MACD_HIST_NEG));
 
         // Line renderer for MACD and signal
-        XYLineAndShapeRenderer lineRenderer = new XYLineAndShapeRenderer(true, false);
-        lineRenderer.setSeriesPaint(0, ChartStyles.MACD_LINE_COLOR);
-        lineRenderer.setSeriesPaint(1, ChartStyles.MACD_SIGNAL_COLOR);
-        lineRenderer.setSeriesStroke(0, ChartStyles.MEDIUM_STROKE);
-        lineRenderer.setSeriesStroke(1, ChartStyles.MEDIUM_STROKE);
-        plot.setRenderer(1, lineRenderer);
+        plot.setRenderer(1, lineRenderer(
+            ChartStyles.MACD_LINE_COLOR, ChartStyles.MEDIUM_STROKE,
+            ChartStyles.MACD_SIGNAL_COLOR, ChartStyles.MEDIUM_STROKE));
 
         // Add zero line
         plot.clearAnnotations();
@@ -489,15 +419,14 @@ public class IndicatorChartsManager {
         if (!candles.isEmpty()) {
             long startTime = candles.get(0).timestamp();
             long endTime = candles.get(candles.size() - 1).timestamp();
-            plot.addAnnotation(new XYLineAnnotation(startTime, 0, endTime, 0,
-                ChartStyles.DASHED_STROKE, ChartStyles.TEXT_COLOR));
+            addZeroLine(plot, startTime, endTime);
         }
     }
 
     // ===== ATR Methods =====
 
     public void setAtrChartEnabled(boolean enabled, int period) {
-        this.atrChartEnabled = enabled;
+        setEnabled(IndicatorType.ATR, enabled);
         this.atrPeriod = period;
         if (onLayoutChange != null) {
             onLayoutChange.run();
@@ -505,11 +434,11 @@ public class IndicatorChartsManager {
     }
 
     public boolean isAtrChartEnabled() {
-        return atrChartEnabled;
+        return isEnabled(IndicatorType.ATR);
     }
 
     public void updateAtrChart(List<Candle> candles) {
-        if (!atrChartEnabled || candles == null || candles.size() < atrPeriod + 1) {
+        if (!isEnabled(IndicatorType.ATR) || candles == null || candles.size() < atrPeriod + 1) {
             return;
         }
         // Subscribe to ATR data (will arrive via callback if not ready)
@@ -519,7 +448,7 @@ public class IndicatorChartsManager {
     }
 
     private void redrawAtrChart(List<Candle> candles) {
-        if (!atrChartEnabled || candles == null || candles.size() < atrPeriod + 1) {
+        if (!isEnabled(IndicatorType.ATR) || candles == null || candles.size() < atrPeriod + 1) {
             return;
         }
 
@@ -529,7 +458,7 @@ public class IndicatorChartsManager {
             return; // Data not ready yet, will be called again via callback
         }
 
-        XYPlot plot = atrComponent.getChart().getXYPlot();
+        XYPlot plot = components.get(IndicatorType.ATR).getChart().getXYPlot();
         TimeSeriesCollection dataset = new TimeSeriesCollection();
         TimeSeries atrSeries = new TimeSeries("ATR(" + atrPeriod + ")");
 
@@ -544,10 +473,7 @@ public class IndicatorChartsManager {
         plot.setDataset(dataset);
 
         // Style the ATR line
-        XYLineAndShapeRenderer renderer = new XYLineAndShapeRenderer(true, false);
-        renderer.setSeriesPaint(0, ChartStyles.ATR_COLOR);
-        renderer.setSeriesStroke(0, ChartStyles.MEDIUM_STROKE);
-        plot.setRenderer(renderer);
+        plot.setRenderer(lineRenderer(ChartStyles.ATR_COLOR));
 
         // Clear annotations and re-add title
         plot.clearAnnotations();
@@ -565,40 +491,40 @@ public class IndicatorChartsManager {
     }
 
     public void setDeltaChartEnabled(boolean enabled) {
-        this.deltaChartEnabled = enabled;
+        setEnabled(IndicatorType.DELTA, enabled);
         if (onLayoutChange != null) {
             onLayoutChange.run();
         }
     }
 
     public boolean isDeltaChartEnabled() {
-        return deltaChartEnabled;
+        return isEnabled(IndicatorType.DELTA);
     }
 
     public void setCvdChartEnabled(boolean enabled) {
-        this.cvdChartEnabled = enabled;
+        setEnabled(IndicatorType.CVD, enabled);
         if (onLayoutChange != null) {
             onLayoutChange.run();
         }
     }
 
     public boolean isCvdChartEnabled() {
-        return cvdChartEnabled;
+        return isEnabled(IndicatorType.CVD);
     }
 
     public void setVolumeRatioChartEnabled(boolean enabled) {
-        this.volumeRatioChartEnabled = enabled;
+        setEnabled(IndicatorType.VOLUME_RATIO, enabled);
         if (onLayoutChange != null) {
             onLayoutChange.run();
         }
     }
 
     public boolean isVolumeRatioChartEnabled() {
-        return volumeRatioChartEnabled;
+        return isEnabled(IndicatorType.VOLUME_RATIO);
     }
 
     public void setWhaleChartEnabled(boolean enabled, double threshold) {
-        this.whaleChartEnabled = enabled;
+        setEnabled(IndicatorType.WHALE, enabled);
         this.whaleThreshold = threshold;
         if (onLayoutChange != null) {
             onLayoutChange.run();
@@ -606,7 +532,7 @@ public class IndicatorChartsManager {
     }
 
     public boolean isWhaleChartEnabled() {
-        return whaleChartEnabled;
+        return isEnabled(IndicatorType.WHALE);
     }
 
     public void setWhaleThreshold(double threshold) {
@@ -618,14 +544,14 @@ public class IndicatorChartsManager {
     }
 
     public void setRetailChartEnabled(boolean enabled) {
-        this.retailChartEnabled = enabled;
+        setEnabled(IndicatorType.RETAIL, enabled);
         if (onLayoutChange != null) {
             onLayoutChange.run();
         }
     }
 
     public void setRetailChartEnabled(boolean enabled, double threshold) {
-        this.retailChartEnabled = enabled;
+        setEnabled(IndicatorType.RETAIL, enabled);
         this.retailThreshold = threshold;
         if (onLayoutChange != null) {
             onLayoutChange.run();
@@ -641,18 +567,19 @@ public class IndicatorChartsManager {
     }
 
     public boolean isRetailChartEnabled() {
-        return retailChartEnabled;
+        return isEnabled(IndicatorType.RETAIL);
     }
 
     /**
      * Check if any orderflow chart is enabled.
      */
     public boolean isAnyOrderflowEnabled() {
-        return deltaChartEnabled || cvdChartEnabled || volumeRatioChartEnabled || whaleChartEnabled || retailChartEnabled || tradeCountChartEnabled;
+        return isEnabled(IndicatorType.DELTA) || isEnabled(IndicatorType.CVD) || isEnabled(IndicatorType.VOLUME_RATIO)
+            || isEnabled(IndicatorType.WHALE) || isEnabled(IndicatorType.RETAIL) || isEnabled(IndicatorType.TRADE_COUNT);
     }
 
     public void updateDeltaChart(List<Candle> candles) {
-        if (!deltaChartEnabled || candles == null || candles.isEmpty()) {
+        if (!isEnabled(IndicatorType.DELTA) || candles == null || candles.isEmpty()) {
             return;
         }
         // Subscribe to Delta data (will arrive via callback if not ready)
@@ -662,7 +589,7 @@ public class IndicatorChartsManager {
     }
 
     private void redrawDeltaChart(List<Candle> candles) {
-        if (!deltaChartEnabled || candles == null || candles.isEmpty()) {
+        if (!isEnabled(IndicatorType.DELTA) || candles == null || candles.isEmpty()) {
             return;
         }
 
@@ -672,7 +599,7 @@ public class IndicatorChartsManager {
             return; // Data not ready yet, will be called again via callback
         }
 
-        XYPlot plot = deltaComponent.getChart().getXYPlot();
+        XYPlot plot = components.get(IndicatorType.DELTA).getChart().getXYPlot();
         XYSeriesCollection deltaDataset = new XYSeriesCollection();
         XYSeries deltaSeries = new XYSeries("Delta");
 
@@ -686,17 +613,7 @@ public class IndicatorChartsManager {
         plot.setDataset(0, deltaDataset);
 
         // Color-coded bar renderer
-        final XYSeriesCollection finalDeltaDataset = deltaDataset;
-        XYBarRenderer deltaRenderer = new XYBarRenderer() {
-            @Override
-            public Paint getItemPaint(int series, int item) {
-                double value = finalDeltaDataset.getYValue(series, item);
-                return value >= 0 ? ChartStyles.DELTA_POSITIVE : ChartStyles.DELTA_NEGATIVE;
-            }
-        };
-        deltaRenderer.setShadowVisible(false);
-        deltaRenderer.setBarPainter(new StandardXYBarPainter());
-        plot.setRenderer(0, deltaRenderer);
+        plot.setRenderer(0, colorCodedBarRenderer(deltaDataset, ChartStyles.DELTA_POSITIVE, ChartStyles.DELTA_NEGATIVE));
 
         // Add zero line
         plot.clearAnnotations();
@@ -704,13 +621,12 @@ public class IndicatorChartsManager {
         if (!candles.isEmpty()) {
             long startTime = candles.get(0).timestamp();
             long endTime = candles.get(candles.size() - 1).timestamp();
-            plot.addAnnotation(new XYLineAnnotation(startTime, 0, endTime, 0,
-                ChartStyles.DASHED_STROKE, ChartStyles.TEXT_COLOR));
+            addZeroLine(plot, startTime, endTime);
         }
     }
 
     public void updateCvdChart(List<Candle> candles) {
-        if (!cvdChartEnabled || candles == null || candles.isEmpty()) {
+        if (!isEnabled(IndicatorType.CVD) || candles == null || candles.isEmpty()) {
             return;
         }
         // Subscribe to CVD data (will arrive via callback if not ready)
@@ -720,7 +636,7 @@ public class IndicatorChartsManager {
     }
 
     private void redrawCvdChart(List<Candle> candles) {
-        if (!cvdChartEnabled || candles == null || candles.isEmpty()) {
+        if (!isEnabled(IndicatorType.CVD) || candles == null || candles.isEmpty()) {
             return;
         }
 
@@ -730,7 +646,7 @@ public class IndicatorChartsManager {
             return; // Data not ready yet, will be called again via callback
         }
 
-        XYPlot plot = cvdComponent.getChart().getXYPlot();
+        XYPlot plot = components.get(IndicatorType.CVD).getChart().getXYPlot();
         TimeSeriesCollection cvdDataset = new TimeSeriesCollection();
         TimeSeries cvdSeries = new TimeSeries("CVD");
 
@@ -743,17 +659,14 @@ public class IndicatorChartsManager {
         cvdDataset.addSeries(cvdSeries);
         plot.setDataset(0, cvdDataset);
 
-        XYLineAndShapeRenderer cvdRenderer = new XYLineAndShapeRenderer(true, false);
-        cvdRenderer.setSeriesPaint(0, ChartStyles.CVD_COLOR);
-        cvdRenderer.setSeriesStroke(0, ChartStyles.MEDIUM_STROKE);
-        plot.setRenderer(0, cvdRenderer);
+        plot.setRenderer(0, lineRenderer(ChartStyles.CVD_COLOR));
 
         plot.clearAnnotations();
         ChartStyles.addChartTitleAnnotation(plot, "CVD (Cumulative Delta)");
     }
 
     public void updateVolumeRatioChart(List<Candle> candles) {
-        if (!volumeRatioChartEnabled || candles == null || candles.isEmpty()) {
+        if (!isEnabled(IndicatorType.VOLUME_RATIO) || candles == null || candles.isEmpty()) {
             return;
         }
         // Subscribe to volume data (will arrive via callback if not ready)
@@ -764,7 +677,7 @@ public class IndicatorChartsManager {
     }
 
     private void redrawVolumeRatioChart(List<Candle> candles) {
-        if (!volumeRatioChartEnabled || candles == null || candles.isEmpty()) {
+        if (!isEnabled(IndicatorType.VOLUME_RATIO) || candles == null || candles.isEmpty()) {
             return;
         }
 
@@ -775,7 +688,7 @@ public class IndicatorChartsManager {
             return; // Data not ready yet, will be called again via callback
         }
 
-        XYPlot plot = volumeRatioComponent.getChart().getXYPlot();
+        XYPlot plot = components.get(IndicatorType.VOLUME_RATIO).getChart().getXYPlot();
 
         // Create single series with net volume (buy - sell)
         // Positive = more buying, Negative = more selling
@@ -800,14 +713,8 @@ public class IndicatorChartsManager {
         dataset.addSeries(sellSeries);
         plot.setDataset(0, dataset);
 
-        // Single renderer with two series (green for buy, red for sell)
-        XYBarRenderer renderer = new XYBarRenderer(0.0);
-        renderer.setShadowVisible(false);
-        renderer.setBarPainter(new StandardXYBarPainter());
-        renderer.setSeriesPaint(0, new Color(38, 166, 91, 200));  // Buy - green
-        renderer.setSeriesPaint(1, new Color(231, 76, 60, 200));  // Sell - red
-        renderer.setDrawBarOutline(false);
-        plot.setRenderer(0, renderer);
+        // Two series renderer (green for buy, red for sell)
+        plot.setRenderer(0, barRenderer(new Color(38, 166, 91, 200), new Color(231, 76, 60, 200)));
 
         // Map dataset to range axis
         plot.mapDatasetToRangeAxis(0, 0);
@@ -824,13 +731,12 @@ public class IndicatorChartsManager {
         if (!candles.isEmpty()) {
             long startTime = candles.get(0).timestamp();
             long endTime = candles.get(candles.size() - 1).timestamp();
-            plot.addAnnotation(new XYLineAnnotation(startTime, 0, endTime, 0,
-                new BasicStroke(1.0f), new Color(149, 165, 166, 200)));
+            addSimpleZeroLine(plot, startTime, endTime);
         }
     }
 
     public void updateWhaleChart(List<Candle> candles) {
-        if (!whaleChartEnabled || candles == null || candles.isEmpty()) {
+        if (!isEnabled(IndicatorType.WHALE) || candles == null || candles.isEmpty()) {
             return;
         }
         // Subscribe to Whale Delta data (will arrive via callback if not ready)
@@ -840,7 +746,7 @@ public class IndicatorChartsManager {
     }
 
     private void redrawWhaleChart(List<Candle> candles) {
-        if (!whaleChartEnabled || candles == null || candles.isEmpty()) {
+        if (!isEnabled(IndicatorType.WHALE) || candles == null || candles.isEmpty()) {
             return;
         }
 
@@ -850,7 +756,7 @@ public class IndicatorChartsManager {
             return; // Data not ready yet, will be called again via callback
         }
 
-        XYPlot plot = whaleComponent.getChart().getXYPlot();
+        XYPlot plot = components.get(IndicatorType.WHALE).getChart().getXYPlot();
         XYSeriesCollection dataset = new XYSeriesCollection();
         XYSeries series = new XYSeries("Whale Delta");
 
@@ -866,22 +772,7 @@ public class IndicatorChartsManager {
         plot.setDataset(0, dataset);
 
         // Color-coded bar renderer (purple for whale trades)
-        final XYSeriesCollection finalDataset = dataset;
-        XYBarRenderer renderer = new XYBarRenderer(0.0) {
-            @Override
-            public java.awt.Paint getItemPaint(int seriesIdx, int item) {
-                double val = finalDataset.getYValue(seriesIdx, item);
-                if (val >= 0) {
-                    return ChartStyles.WHALE_DELTA_POS;  // Purple for buy
-                } else {
-                    return ChartStyles.WHALE_DELTA_NEG;  // Orange for sell
-                }
-            }
-        };
-        renderer.setShadowVisible(false);
-        renderer.setBarPainter(new StandardXYBarPainter());
-        renderer.setDrawBarOutline(false);
-        plot.setRenderer(0, renderer);
+        plot.setRenderer(0, colorCodedBarRendererNoMargin(dataset, ChartStyles.WHALE_DELTA_POS, ChartStyles.WHALE_DELTA_NEG));
 
         // Set symmetric Y axis range around zero
         double padding = maxDelta * 1.1;
@@ -896,13 +787,12 @@ public class IndicatorChartsManager {
         if (!candles.isEmpty()) {
             long startTime = candles.get(0).timestamp();
             long endTime = candles.get(candles.size() - 1).timestamp();
-            plot.addAnnotation(new XYLineAnnotation(startTime, 0, endTime, 0,
-                new BasicStroke(1.0f), new Color(149, 165, 166, 200)));
+            addSimpleZeroLine(plot, startTime, endTime);
         }
     }
 
     public void updateRetailChart(List<Candle> candles) {
-        if (!retailChartEnabled || candles == null || candles.isEmpty()) {
+        if (!isEnabled(IndicatorType.RETAIL) || candles == null || candles.isEmpty()) {
             return;
         }
         // Subscribe to Retail Delta data (will arrive via callback if not ready)
@@ -912,7 +802,7 @@ public class IndicatorChartsManager {
     }
 
     private void redrawRetailChart(List<Candle> candles) {
-        if (!retailChartEnabled || candles == null || candles.isEmpty()) {
+        if (!isEnabled(IndicatorType.RETAIL) || candles == null || candles.isEmpty()) {
             return;
         }
 
@@ -922,7 +812,7 @@ public class IndicatorChartsManager {
             return; // Data not ready yet, will be called again via callback
         }
 
-        XYPlot plot = retailComponent.getChart().getXYPlot();
+        XYPlot plot = components.get(IndicatorType.RETAIL).getChart().getXYPlot();
         XYSeriesCollection dataset = new XYSeriesCollection();
         XYSeries series = new XYSeries("Retail Delta");
 
@@ -937,23 +827,8 @@ public class IndicatorChartsManager {
         dataset.addSeries(series);
         plot.setDataset(0, dataset);
 
-        // Color-coded bar renderer (blue/cyan for retail trades)
-        final XYSeriesCollection finalDataset = dataset;
-        XYBarRenderer renderer = new XYBarRenderer(0.0) {
-            @Override
-            public java.awt.Paint getItemPaint(int seriesIdx, int item) {
-                double val = finalDataset.getYValue(seriesIdx, item);
-                if (val >= 0) {
-                    return new Color(52, 152, 219);   // Blue for buy
-                } else {
-                    return new Color(231, 76, 60);    // Red for sell
-                }
-            }
-        };
-        renderer.setShadowVisible(false);
-        renderer.setBarPainter(new StandardXYBarPainter());
-        renderer.setDrawBarOutline(false);
-        plot.setRenderer(0, renderer);
+        // Color-coded bar renderer (blue/red for retail trades)
+        plot.setRenderer(0, colorCodedBarRendererNoMargin(dataset, new Color(52, 152, 219), new Color(231, 76, 60)));
 
         // Set symmetric Y axis range around zero
         double padding = maxDelta * 1.1;
@@ -968,30 +843,29 @@ public class IndicatorChartsManager {
         if (!candles.isEmpty()) {
             long startTime = candles.get(0).timestamp();
             long endTime = candles.get(candles.size() - 1).timestamp();
-            plot.addAnnotation(new XYLineAnnotation(startTime, 0, endTime, 0,
-                new BasicStroke(1.0f), new Color(149, 165, 166, 200)));
+            addSimpleZeroLine(plot, startTime, endTime);
         }
     }
 
     // ===== Funding Methods =====
 
     public void setFundingChartEnabled(boolean enabled) {
-        this.fundingChartEnabled = enabled;
+        setEnabled(IndicatorType.FUNDING, enabled);
         if (onLayoutChange != null) {
             onLayoutChange.run();
         }
     }
 
     public boolean isFundingChartEnabled() {
-        return fundingChartEnabled;
+        return isEnabled(IndicatorType.FUNDING);
     }
 
     public void updateFundingChart(List<Candle> candles) {
-        if (!fundingChartEnabled || candles == null || candles.isEmpty() || indicatorEngine == null) {
+        if (!isEnabled(IndicatorType.FUNDING) || candles == null || candles.isEmpty() || indicatorEngine == null) {
             return;
         }
 
-        XYPlot plot = fundingComponent.getChart().getXYPlot();
+        XYPlot plot = components.get(IndicatorType.FUNDING).getChart().getXYPlot();
 
         double[] funding = indicatorEngine.getFunding();
         double[] funding8H = indicatorEngine.getFunding8H();
@@ -1025,21 +899,10 @@ public class IndicatorChartsManager {
         plot.setDataset(1, avgDataset);
 
         // Funding line renderer (colored segments based on sign)
-        XYLineAndShapeRenderer fundingRenderer = new XYLineAndShapeRenderer(true, false) {
-            @Override
-            public Paint getItemPaint(int series, int item) {
-                double value = fundingDataset.getYValue(series, item);
-                return value >= 0 ? ChartStyles.FUNDING_POSITIVE : ChartStyles.FUNDING_NEGATIVE;
-            }
-        };
-        fundingRenderer.setSeriesStroke(0, ChartStyles.THIN_STROKE);
-        plot.setRenderer(0, fundingRenderer);
+        plot.setRenderer(0, signColoredLineRenderer(fundingDataset, ChartStyles.FUNDING_POSITIVE, ChartStyles.FUNDING_NEGATIVE));
 
         // 8H average line renderer
-        XYLineAndShapeRenderer avgRenderer = new XYLineAndShapeRenderer(true, false);
-        avgRenderer.setSeriesPaint(0, ChartStyles.FUNDING_8H_COLOR);
-        avgRenderer.setSeriesStroke(0, ChartStyles.MEDIUM_STROKE);
-        plot.setRenderer(1, avgRenderer);
+        plot.setRenderer(1, lineRenderer(ChartStyles.FUNDING_8H_COLOR));
 
         // Format Y-axis to avoid scientific notation for small values
         NumberAxis rangeAxis = (NumberAxis) plot.getRangeAxis();
@@ -1051,34 +914,29 @@ public class IndicatorChartsManager {
         if (!candles.isEmpty()) {
             long startTime = candles.get(0).timestamp();
             long endTime = candles.get(candles.size() - 1).timestamp();
-            plot.addAnnotation(new XYLineAnnotation(startTime, 0, endTime, 0,
-                ChartStyles.DASHED_STROKE, ChartStyles.TEXT_COLOR));
-            plot.addAnnotation(new XYLineAnnotation(startTime, 0.01, endTime, 0.01,
-                ChartStyles.DASHED_STROKE, new Color(230, 126, 34, 100)));
-            plot.addAnnotation(new XYLineAnnotation(startTime, -0.01, endTime, -0.01,
-                ChartStyles.DASHED_STROKE, new Color(52, 152, 219, 100)));
+            addFundingLines(plot, startTime, endTime);
         }
     }
 
     // ===== Open Interest Methods =====
 
     public void setOiChartEnabled(boolean enabled) {
-        this.oiChartEnabled = enabled;
+        setEnabled(IndicatorType.OI, enabled);
         if (onLayoutChange != null) {
             onLayoutChange.run();
         }
     }
 
     public boolean isOiChartEnabled() {
-        return oiChartEnabled;
+        return isEnabled(IndicatorType.OI);
     }
 
     public void updateOiChart(List<Candle> candles) {
-        if (!oiChartEnabled || candles == null || candles.isEmpty() || indicatorEngine == null) {
+        if (!isEnabled(IndicatorType.OI) || candles == null || candles.isEmpty() || indicatorEngine == null) {
             return;
         }
 
-        XYPlot plot = oiComponent.getChart().getXYPlot();
+        XYPlot plot = components.get(IndicatorType.OI).getChart().getXYPlot();
 
         double[] oi = indicatorEngine.getOI();
         double[] oiChange = indicatorEngine.getOIChange();
@@ -1152,30 +1010,29 @@ public class IndicatorChartsManager {
         if (!candles.isEmpty()) {
             long startTime = candles.get(0).timestamp();
             long endTime = candles.get(candles.size() - 1).timestamp();
-            plot.addAnnotation(new XYLineAnnotation(startTime, 0, endTime, 0,
-                ChartStyles.DASHED_STROKE, ChartStyles.TEXT_COLOR));
+            addZeroLine(plot, startTime, endTime);
         }
     }
 
     // ===== Premium Index Methods =====
 
     public void setPremiumChartEnabled(boolean enabled) {
-        this.premiumChartEnabled = enabled;
+        setEnabled(IndicatorType.PREMIUM, enabled);
         if (onLayoutChange != null) {
             onLayoutChange.run();
         }
     }
 
     public boolean isPremiumChartEnabled() {
-        return premiumChartEnabled;
+        return isEnabled(IndicatorType.PREMIUM);
     }
 
     public void updatePremiumChart(List<Candle> candles) {
-        if (!premiumChartEnabled || candles == null || candles.isEmpty() || indicatorEngine == null) {
+        if (!isEnabled(IndicatorType.PREMIUM) || candles == null || candles.isEmpty() || indicatorEngine == null) {
             return;
         }
 
-        XYPlot plot = premiumComponent.getChart().getXYPlot();
+        XYPlot plot = components.get(IndicatorType.PREMIUM).getChart().getXYPlot();
 
         double[] premium = indicatorEngine.getPremium();
         double[] premiumAvg = indicatorEngine.getPremiumAvg(24); // 24-period average
@@ -1207,27 +1064,10 @@ public class IndicatorChartsManager {
 
         // Premium bars (green for positive, red for negative)
         plot.setDataset(0, premiumDataset);
-        // Average line on secondary dataset
         plot.setDataset(1, avgDataset);
 
-        // Bar renderer with colors based on premium sign
-        final XYSeriesCollection finalPremiumDataset = premiumDataset;
-        XYBarRenderer barRenderer = new XYBarRenderer() {
-            @Override
-            public Paint getItemPaint(int series, int item) {
-                double value = finalPremiumDataset.getYValue(series, item);
-                return value >= 0 ? ChartStyles.PREMIUM_POSITIVE : ChartStyles.PREMIUM_NEGATIVE;
-            }
-        };
-        barRenderer.setShadowVisible(false);
-        barRenderer.setBarPainter(new StandardXYBarPainter());
-        plot.setRenderer(0, barRenderer);
-
-        // Average line renderer
-        XYLineAndShapeRenderer avgRenderer = new XYLineAndShapeRenderer(true, false);
-        avgRenderer.setSeriesPaint(0, ChartStyles.PREMIUM_AVG_COLOR);
-        avgRenderer.setSeriesStroke(0, ChartStyles.MEDIUM_STROKE);
-        plot.setRenderer(1, avgRenderer);
+        plot.setRenderer(0, colorCodedBarRenderer(premiumDataset, ChartStyles.PREMIUM_POSITIVE, ChartStyles.PREMIUM_NEGATIVE));
+        plot.setRenderer(1, lineRenderer(ChartStyles.PREMIUM_AVG_COLOR));
 
         // Add zero line and title
         plot.clearAnnotations();
@@ -1235,8 +1075,7 @@ public class IndicatorChartsManager {
         if (!candles.isEmpty()) {
             long startTime = candles.get(0).timestamp();
             long endTime = candles.get(candles.size() - 1).timestamp();
-            plot.addAnnotation(new XYLineAnnotation(startTime, 0, endTime, 0,
-                ChartStyles.DASHED_STROKE, ChartStyles.TEXT_COLOR));
+            addZeroLine(plot, startTime, endTime);
         }
     }
 
@@ -1245,11 +1084,11 @@ public class IndicatorChartsManager {
      * This is called when premium data is loaded from PremiumPageManager.
      */
     private void updatePremiumChartFromData(List<Candle> candles) {
-        if (!premiumChartEnabled || candles == null || candles.isEmpty() || currentPremiumData == null) {
+        if (!isEnabled(IndicatorType.PREMIUM) || candles == null || candles.isEmpty() || currentPremiumData == null) {
             return;
         }
 
-        XYPlot plot = premiumComponent.getChart().getXYPlot();
+        XYPlot plot = components.get(IndicatorType.PREMIUM).getChart().getXYPlot();
 
         // Build timestamp -> premium map for efficient lookup
         java.util.Map<Long, PremiumIndex> premiumMap = new java.util.HashMap<>();
@@ -1303,29 +1142,11 @@ public class IndicatorChartsManager {
         premiumDataset.addSeries(premiumSeries);
         avgDataset.addSeries(avgSeries);
 
-        // Premium bars (green for positive, red for negative)
         plot.setDataset(0, premiumDataset);
-        // Average line on secondary dataset
         plot.setDataset(1, avgDataset);
 
-        // Bar renderer with colors based on premium sign
-        final XYSeriesCollection finalPremiumDataset = premiumDataset;
-        XYBarRenderer barRenderer = new XYBarRenderer() {
-            @Override
-            public Paint getItemPaint(int series, int item) {
-                double value = finalPremiumDataset.getYValue(series, item);
-                return value >= 0 ? ChartStyles.PREMIUM_POSITIVE : ChartStyles.PREMIUM_NEGATIVE;
-            }
-        };
-        barRenderer.setShadowVisible(false);
-        barRenderer.setBarPainter(new StandardXYBarPainter());
-        plot.setRenderer(0, barRenderer);
-
-        // Average line renderer
-        XYLineAndShapeRenderer avgRenderer = new XYLineAndShapeRenderer(true, false);
-        avgRenderer.setSeriesPaint(0, ChartStyles.PREMIUM_AVG_COLOR);
-        avgRenderer.setSeriesStroke(0, ChartStyles.MEDIUM_STROKE);
-        plot.setRenderer(1, avgRenderer);
+        plot.setRenderer(0, colorCodedBarRenderer(premiumDataset, ChartStyles.PREMIUM_POSITIVE, ChartStyles.PREMIUM_NEGATIVE));
+        plot.setRenderer(1, lineRenderer(ChartStyles.PREMIUM_AVG_COLOR));
 
         // Add zero line and title
         plot.clearAnnotations();
@@ -1333,8 +1154,7 @@ public class IndicatorChartsManager {
         if (!candles.isEmpty()) {
             long startTime = candles.get(0).timestamp();
             long endTime = candles.get(candles.size() - 1).timestamp();
-            plot.addAnnotation(new XYLineAnnotation(startTime, 0, endTime, 0,
-                ChartStyles.DASHED_STROKE, ChartStyles.TEXT_COLOR));
+            addZeroLine(plot, startTime, endTime);
         }
     }
 
@@ -1349,22 +1169,22 @@ public class IndicatorChartsManager {
     }
 
     public boolean isHoldingCostCumulativeChartEnabled() {
-        return holdingCostCumulativeChartEnabled;
+        return isEnabled(IndicatorType.HOLDING_COST_CUMULATIVE);
     }
 
     public boolean isHoldingCostEventsChartEnabled() {
-        return holdingCostEventsChartEnabled;
+        return isEnabled(IndicatorType.HOLDING_COST_EVENTS);
     }
 
     public void setHoldingCostCumulativeChartEnabled(boolean enabled) {
-        this.holdingCostCumulativeChartEnabled = enabled;
+        setEnabled(IndicatorType.HOLDING_COST_CUMULATIVE, enabled);
         if (onLayoutChange != null) {
             onLayoutChange.run();
         }
     }
 
     public void setHoldingCostEventsChartEnabled(boolean enabled) {
-        this.holdingCostEventsChartEnabled = enabled;
+        setEnabled(IndicatorType.HOLDING_COST_EVENTS, enabled);
         if (onLayoutChange != null) {
             onLayoutChange.run();
         }
@@ -1375,11 +1195,11 @@ public class IndicatorChartsManager {
      * Shows running total of holding costs over time.
      */
     public void updateHoldingCostCumulativeChart(List<Candle> candles) {
-        if (!holdingCostCumulativeChartEnabled || candles == null || candles.isEmpty() || currentTrades == null) {
+        if (!isEnabled(IndicatorType.HOLDING_COST_CUMULATIVE) || candles == null || candles.isEmpty() || currentTrades == null) {
             return;
         }
 
-        XYPlot plot = holdingCostCumulativeComponent.getChart().getXYPlot();
+        XYPlot plot = components.get(IndicatorType.HOLDING_COST_CUMULATIVE).getChart().getXYPlot();
 
         // Build timestamp -> holding cost map from trades
         java.util.Map<Long, Double> holdingCostByTime = new java.util.TreeMap<>();
@@ -1406,10 +1226,7 @@ public class IndicatorChartsManager {
         plot.setDataset(dataset);
 
         // Line renderer - red for costs, green for earnings
-        XYLineAndShapeRenderer renderer = new XYLineAndShapeRenderer(true, false);
-        renderer.setSeriesPaint(0, cumulative >= 0 ? ChartStyles.LOSS_COLOR : ChartStyles.WIN_COLOR);
-        renderer.setSeriesStroke(0, ChartStyles.MEDIUM_STROKE);
-        plot.setRenderer(renderer);
+        plot.setRenderer(lineRenderer(cumulative >= 0 ? ChartStyles.LOSS_COLOR : ChartStyles.WIN_COLOR));
 
         // Add zero line
         plot.clearAnnotations();
@@ -1417,8 +1234,7 @@ public class IndicatorChartsManager {
         if (!candles.isEmpty()) {
             long startTime = candles.get(0).timestamp();
             long endTime = candles.get(candles.size() - 1).timestamp();
-            plot.addAnnotation(new XYLineAnnotation(startTime, 0, endTime, 0,
-                ChartStyles.DASHED_STROKE, ChartStyles.TEXT_COLOR));
+            addZeroLine(plot, startTime, endTime);
         }
     }
 
@@ -1427,11 +1243,11 @@ public class IndicatorChartsManager {
      * Shows individual holding cost spikes at trade exit times.
      */
     public void updateHoldingCostEventsChart(List<Candle> candles) {
-        if (!holdingCostEventsChartEnabled || candles == null || candles.isEmpty() || currentTrades == null) {
+        if (!isEnabled(IndicatorType.HOLDING_COST_EVENTS) || candles == null || candles.isEmpty() || currentTrades == null) {
             return;
         }
 
-        XYPlot plot = holdingCostEventsComponent.getChart().getXYPlot();
+        XYPlot plot = components.get(IndicatorType.HOLDING_COST_EVENTS).getChart().getXYPlot();
 
         // Build separate series for costs (positive) and earnings (negative)
         XYSeries costsSeries = new XYSeries("Costs");
@@ -1453,13 +1269,8 @@ public class IndicatorChartsManager {
 
         plot.setDataset(dataset);
 
-        // Bar renderer
-        XYBarRenderer renderer = new XYBarRenderer();
-        renderer.setShadowVisible(false);
-        renderer.setBarPainter(new StandardXYBarPainter());
-        renderer.setSeriesPaint(0, ChartStyles.LOSS_COLOR);    // Costs in red
-        renderer.setSeriesPaint(1, ChartStyles.WIN_COLOR);  // Earnings in green
-        plot.setRenderer(renderer);
+        // Bar renderer - costs red, earnings green
+        plot.setRenderer(barRenderer(ChartStyles.LOSS_COLOR, ChartStyles.WIN_COLOR));
 
         // Add zero line
         plot.clearAnnotations();
@@ -1467,15 +1278,14 @@ public class IndicatorChartsManager {
         if (!candles.isEmpty()) {
             long startTime = candles.get(0).timestamp();
             long endTime = candles.get(candles.size() - 1).timestamp();
-            plot.addAnnotation(new XYLineAnnotation(startTime, 0, endTime, 0,
-                ChartStyles.DASHED_STROKE, ChartStyles.TEXT_COLOR));
+            addZeroLine(plot, startTime, endTime);
         }
     }
 
     // ===== Stochastic Methods =====
 
     public void setStochasticChartEnabled(boolean enabled, int kPeriod, int dPeriod) {
-        this.stochasticChartEnabled = enabled;
+        setEnabled(IndicatorType.STOCHASTIC, enabled);
         this.stochasticKPeriod = kPeriod;
         this.stochasticDPeriod = dPeriod;
         if (onLayoutChange != null) {
@@ -1484,11 +1294,11 @@ public class IndicatorChartsManager {
     }
 
     public boolean isStochasticChartEnabled() {
-        return stochasticChartEnabled;
+        return isEnabled(IndicatorType.STOCHASTIC);
     }
 
     public void updateStochasticChart(List<Candle> candles) {
-        if (!stochasticChartEnabled || candles == null || candles.size() < stochasticKPeriod + stochasticDPeriod) {
+        if (!isEnabled(IndicatorType.STOCHASTIC) || candles == null || candles.size() < stochasticKPeriod + stochasticDPeriod) {
             return;
         }
         // Subscribe to Stochastic data (will arrive via callback if not ready)
@@ -1498,7 +1308,7 @@ public class IndicatorChartsManager {
     }
 
     private void redrawStochasticChart(List<Candle> candles) {
-        if (!stochasticChartEnabled || candles == null || candles.size() < stochasticKPeriod + stochasticDPeriod) {
+        if (!isEnabled(IndicatorType.STOCHASTIC) || candles == null || candles.size() < stochasticKPeriod + stochasticDPeriod) {
             return;
         }
 
@@ -1508,7 +1318,7 @@ public class IndicatorChartsManager {
             return; // Data not ready yet, will be called again via callback
         }
 
-        XYPlot plot = stochasticComponent.getChart().getXYPlot();
+        XYPlot plot = components.get(IndicatorType.STOCHASTIC).getChart().getXYPlot();
         TimeSeriesCollection dataset = new TimeSeriesCollection();
         TimeSeries kSeries = new TimeSeries("%K(" + stochasticKPeriod + ")");
         TimeSeries dSeries = new TimeSeries("%D(" + stochasticDPeriod + ")");
@@ -1531,12 +1341,9 @@ public class IndicatorChartsManager {
         plot.setDataset(dataset);
 
         // Style the lines with distinct colors
-        XYLineAndShapeRenderer renderer = new XYLineAndShapeRenderer(true, false);
-        renderer.setSeriesPaint(0, ChartStyles.STOCHASTIC_K_COLOR);  // %K - cyan (fast line)
-        renderer.setSeriesPaint(1, ChartStyles.STOCHASTIC_D_COLOR);  // %D - pink (slow/signal line)
-        renderer.setSeriesStroke(0, ChartStyles.MEDIUM_STROKE);
-        renderer.setSeriesStroke(1, ChartStyles.MEDIUM_STROKE);
-        plot.setRenderer(renderer);
+        plot.setRenderer(lineRenderer(
+            ChartStyles.STOCHASTIC_K_COLOR, ChartStyles.MEDIUM_STROKE,
+            ChartStyles.STOCHASTIC_D_COLOR, ChartStyles.MEDIUM_STROKE));
 
         // Add reference lines at 20, 50, 80
         plot.clearAnnotations();
@@ -1545,20 +1352,14 @@ public class IndicatorChartsManager {
         if (!candles.isEmpty()) {
             long startTime = candles.get(0).timestamp();
             long endTime = candles.get(candles.size() - 1).timestamp();
-
-            plot.addAnnotation(new XYLineAnnotation(startTime, 20, endTime, 20,
-                ChartStyles.DASHED_STROKE, ChartStyles.RSI_OVERSOLD));
-            plot.addAnnotation(new XYLineAnnotation(startTime, 50, endTime, 50,
-                ChartStyles.DASHED_STROKE, ChartStyles.TEXT_COLOR));
-            plot.addAnnotation(new XYLineAnnotation(startTime, 80, endTime, 80,
-                ChartStyles.DASHED_STROKE, ChartStyles.RSI_OVERBOUGHT));
+            addStochasticLines(plot, startTime, endTime);
         }
     }
 
     // ===== Range Position Methods =====
 
     public void setRangePositionChartEnabled(boolean enabled, int period, int skip) {
-        this.rangePositionChartEnabled = enabled;
+        setEnabled(IndicatorType.RANGE_POSITION, enabled);
         this.rangePositionPeriod = period;
         this.rangePositionSkip = skip;
         if (onLayoutChange != null) {
@@ -1567,11 +1368,11 @@ public class IndicatorChartsManager {
     }
 
     public boolean isRangePositionChartEnabled() {
-        return rangePositionChartEnabled;
+        return isEnabled(IndicatorType.RANGE_POSITION);
     }
 
     public void updateRangePositionChart(List<Candle> candles) {
-        if (!rangePositionChartEnabled || candles == null || candles.size() < rangePositionPeriod + rangePositionSkip + 1) {
+        if (!isEnabled(IndicatorType.RANGE_POSITION) || candles == null || candles.size() < rangePositionPeriod + rangePositionSkip + 1) {
             return;
         }
         // Subscribe to Range Position data (will arrive via callback if not ready)
@@ -1581,7 +1382,7 @@ public class IndicatorChartsManager {
     }
 
     private void redrawRangePositionChart(List<Candle> candles) {
-        if (!rangePositionChartEnabled || candles == null || candles.size() < rangePositionPeriod + rangePositionSkip + 1) {
+        if (!isEnabled(IndicatorType.RANGE_POSITION) || candles == null || candles.size() < rangePositionPeriod + rangePositionSkip + 1) {
             return;
         }
 
@@ -1591,7 +1392,7 @@ public class IndicatorChartsManager {
             return; // Data not ready yet, will be called again via callback
         }
 
-        XYPlot plot = rangePositionComponent.getChart().getXYPlot();
+        XYPlot plot = components.get(IndicatorType.RANGE_POSITION).getChart().getXYPlot();
         TimeSeriesCollection dataset = new TimeSeriesCollection();
         String label = rangePositionSkip > 0
             ? "RANGE_POSITION(" + rangePositionPeriod + "," + rangePositionSkip + ")"
@@ -1609,21 +1410,11 @@ public class IndicatorChartsManager {
         plot.setDataset(dataset);
 
         // Style the line - color changes based on position (breakout = highlighted)
-        XYLineAndShapeRenderer renderer = new XYLineAndShapeRenderer(true, false) {
-            @Override
-            public Paint getItemPaint(int seriesIdx, int item) {
-                double val = dataset.getYValue(seriesIdx, item);
-                if (val > 1.0) {
-                    return ChartStyles.DELTA_POSITIVE;  // Green - above range (breakout)
-                } else if (val < -1.0) {
-                    return ChartStyles.DELTA_NEGATIVE;  // Red - below range (breakdown)
-                } else {
-                    return ChartStyles.ATR_COLOR;       // Normal - within range
-                }
-            }
-        };
-        renderer.setSeriesStroke(0, ChartStyles.MEDIUM_STROKE);
-        plot.setRenderer(renderer);
+        plot.setRenderer(colorCodedLineRenderer(dataset,
+            ChartStyles.DELTA_POSITIVE,  // Green - above range (breakout)
+            ChartStyles.DELTA_NEGATIVE,  // Red - below range (breakdown)
+            ChartStyles.ATR_COLOR,       // Normal - within range
+            1.0));
 
         // Add reference lines at -1, 0, +1
         plot.clearAnnotations();
@@ -1632,22 +1423,14 @@ public class IndicatorChartsManager {
         if (!candles.isEmpty()) {
             long startTime = candles.get(0).timestamp();
             long endTime = candles.get(candles.size() - 1).timestamp();
-
-            // Breakout levels
-            plot.addAnnotation(new XYLineAnnotation(startTime, 1, endTime, 1,
-                ChartStyles.DASHED_STROKE, ChartStyles.DELTA_POSITIVE));
-            plot.addAnnotation(new XYLineAnnotation(startTime, -1, endTime, -1,
-                ChartStyles.DASHED_STROKE, ChartStyles.DELTA_NEGATIVE));
-            // Center line
-            plot.addAnnotation(new XYLineAnnotation(startTime, 0, endTime, 0,
-                ChartStyles.DASHED_STROKE, ChartStyles.TEXT_COLOR));
+            addRangePositionLines(plot, startTime, endTime);
         }
     }
 
     // ===== ADX Methods =====
 
     public void setAdxChartEnabled(boolean enabled, int period) {
-        this.adxChartEnabled = enabled;
+        setEnabled(IndicatorType.ADX, enabled);
         this.adxPeriod = period;
         if (onLayoutChange != null) {
             onLayoutChange.run();
@@ -1655,11 +1438,11 @@ public class IndicatorChartsManager {
     }
 
     public boolean isAdxChartEnabled() {
-        return adxChartEnabled;
+        return isEnabled(IndicatorType.ADX);
     }
 
     public void updateAdxChart(List<Candle> candles) {
-        if (!adxChartEnabled || candles == null || candles.size() < adxPeriod * 2) {
+        if (!isEnabled(IndicatorType.ADX) || candles == null || candles.size() < adxPeriod * 2) {
             return;
         }
         // Subscribe to ADX, +DI, -DI data (will arrive via callback if not ready)
@@ -1671,7 +1454,7 @@ public class IndicatorChartsManager {
     }
 
     private void redrawAdxChart(List<Candle> candles) {
-        if (!adxChartEnabled || candles == null || candles.size() < adxPeriod * 2) {
+        if (!isEnabled(IndicatorType.ADX) || candles == null || candles.size() < adxPeriod * 2) {
             return;
         }
 
@@ -1683,7 +1466,7 @@ public class IndicatorChartsManager {
             return; // Data not ready yet, will be called again via callback
         }
 
-        XYPlot plot = adxComponent.getChart().getXYPlot();
+        XYPlot plot = components.get(IndicatorType.ADX).getChart().getXYPlot();
         TimeSeriesCollection dataset = new TimeSeriesCollection();
         TimeSeries adxSeries = new TimeSeries("ADX(" + adxPeriod + ")");
         TimeSeries plusDISeries = new TimeSeries("+DI(" + adxPeriod + ")");
@@ -1709,14 +1492,10 @@ public class IndicatorChartsManager {
         plot.setDataset(dataset);
 
         // Style the lines
-        XYLineAndShapeRenderer renderer = new XYLineAndShapeRenderer(true, false);
-        renderer.setSeriesPaint(0, ChartStyles.ADX_COLOR);         // ADX - main trend line
-        renderer.setSeriesPaint(1, ChartStyles.DELTA_POSITIVE);    // +DI - green
-        renderer.setSeriesPaint(2, ChartStyles.DELTA_NEGATIVE);    // -DI - red
-        renderer.setSeriesStroke(0, ChartStyles.MEDIUM_STROKE);
-        renderer.setSeriesStroke(1, ChartStyles.THIN_STROKE);
-        renderer.setSeriesStroke(2, ChartStyles.THIN_STROKE);
-        plot.setRenderer(renderer);
+        plot.setRenderer(lineRenderer(
+            ChartStyles.ADX_COLOR, ChartStyles.MEDIUM_STROKE,
+            ChartStyles.DELTA_POSITIVE, ChartStyles.THIN_STROKE,
+            ChartStyles.DELTA_NEGATIVE, ChartStyles.THIN_STROKE));
 
         // Add reference lines at 20, 25 (common ADX thresholds)
         plot.clearAnnotations();
@@ -1725,31 +1504,25 @@ public class IndicatorChartsManager {
         if (!candles.isEmpty()) {
             long startTime = candles.get(0).timestamp();
             long endTime = candles.get(candles.size() - 1).timestamp();
-
-            // 20 - weak trend threshold
-            plot.addAnnotation(new XYLineAnnotation(startTime, 20, endTime, 20,
-                ChartStyles.DASHED_STROKE, ChartStyles.TEXT_COLOR));
-            // 25 - strong trend threshold
-            plot.addAnnotation(new XYLineAnnotation(startTime, 25, endTime, 25,
-                ChartStyles.DASHED_STROKE, new Color(230, 126, 34, 150)));
+            addAdxLines(plot, startTime, endTime);
         }
     }
 
     // ===== Trade Count Methods =====
 
     public void setTradeCountChartEnabled(boolean enabled) {
-        this.tradeCountChartEnabled = enabled;
+        setEnabled(IndicatorType.TRADE_COUNT, enabled);
         if (onLayoutChange != null) {
             onLayoutChange.run();
         }
     }
 
     public boolean isTradeCountChartEnabled() {
-        return tradeCountChartEnabled;
+        return isEnabled(IndicatorType.TRADE_COUNT);
     }
 
     public void updateTradeCountChart(List<Candle> candles) {
-        if (!tradeCountChartEnabled || candles == null || candles.isEmpty()) {
+        if (!isEnabled(IndicatorType.TRADE_COUNT) || candles == null || candles.isEmpty()) {
             return;
         }
         // Subscribe to Trade Count data (will arrive via callback if not ready)
@@ -1759,7 +1532,7 @@ public class IndicatorChartsManager {
     }
 
     private void redrawTradeCountChart(List<Candle> candles) {
-        if (!tradeCountChartEnabled || candles == null || candles.isEmpty()) {
+        if (!isEnabled(IndicatorType.TRADE_COUNT) || candles == null || candles.isEmpty()) {
             return;
         }
 
@@ -1769,7 +1542,7 @@ public class IndicatorChartsManager {
             return; // Data not ready yet, will be called again via callback
         }
 
-        XYPlot plot = tradeCountComponent.getChart().getXYPlot();
+        XYPlot plot = components.get(IndicatorType.TRADE_COUNT).getChart().getXYPlot();
         TimeSeriesCollection dataset = new TimeSeriesCollection();
         TimeSeries series = new TimeSeries("Trade Count");
 
@@ -1783,11 +1556,7 @@ public class IndicatorChartsManager {
         dataset.addSeries(series);
         plot.setDataset(0, dataset);
 
-        // Line renderer for trade count
-        XYLineAndShapeRenderer renderer = new XYLineAndShapeRenderer(true, false);
-        renderer.setSeriesPaint(0, ChartStyles.TRADE_COUNT_LINE_COLOR);
-        renderer.setSeriesStroke(0, ChartStyles.MEDIUM_STROKE);
-        plot.setRenderer(0, renderer);
+        plot.setRenderer(0, lineRenderer(ChartStyles.TRADE_COUNT_LINE_COLOR));
 
         plot.clearAnnotations();
         ChartStyles.addChartTitleAnnotation(plot, "Trade Count");
@@ -1795,94 +1564,101 @@ public class IndicatorChartsManager {
 
     // ===== Accessors =====
 
-    public JFreeChart getRsiChart() { return rsiComponent.getChart(); }
-    public JFreeChart getMacdChart() { return macdComponent.getChart(); }
-    public JFreeChart getAtrChart() { return atrComponent.getChart(); }
-    public JFreeChart getDeltaChart() { return deltaComponent.getChart(); }
-    public JFreeChart getCvdChart() { return cvdComponent.getChart(); }
-    public JFreeChart getVolumeRatioChart() { return volumeRatioComponent.getChart(); }
-    public JFreeChart getFundingChart() { return fundingComponent.getChart(); }
-    public JFreeChart getWhaleChart() { return whaleComponent.getChart(); }
-    public JFreeChart getRetailChart() { return retailComponent.getChart(); }
-    public JFreeChart getOiChart() { return oiComponent.getChart(); }
-    public JFreeChart getStochasticChart() { return stochasticComponent.getChart(); }
-    public JFreeChart getRangePositionChart() { return rangePositionComponent.getChart(); }
-    public JFreeChart getAdxChart() { return adxComponent.getChart(); }
-    public JFreeChart getTradeCountChart() { return tradeCountComponent.getChart(); }
-    public JFreeChart getPremiumChart() { return premiumComponent.getChart(); }
-    public JFreeChart getHoldingCostCumulativeChart() { return holdingCostCumulativeComponent.getChart(); }
-    public JFreeChart getHoldingCostEventsChart() { return holdingCostEventsComponent.getChart(); }
+    // Generic accessors (preferred for new code)
+    public JFreeChart getChart(IndicatorType type) { return components.get(type).getChart(); }
+    public org.jfree.chart.ChartPanel getChartPanel(IndicatorType type) { return components.get(type).getChartPanel(); }
+    public JPanel getChartWrapper(IndicatorType type) { return components.get(type).getWrapper(); }
 
-    public org.jfree.chart.ChartPanel getRsiChartPanel() { return rsiComponent.getChartPanel(); }
-    public org.jfree.chart.ChartPanel getMacdChartPanel() { return macdComponent.getChartPanel(); }
-    public org.jfree.chart.ChartPanel getAtrChartPanel() { return atrComponent.getChartPanel(); }
-    public org.jfree.chart.ChartPanel getDeltaChartPanel() { return deltaComponent.getChartPanel(); }
-    public org.jfree.chart.ChartPanel getCvdChartPanel() { return cvdComponent.getChartPanel(); }
-    public org.jfree.chart.ChartPanel getVolumeRatioChartPanel() { return volumeRatioComponent.getChartPanel(); }
-    public org.jfree.chart.ChartPanel getFundingChartPanel() { return fundingComponent.getChartPanel(); }
-    public org.jfree.chart.ChartPanel getWhaleChartPanel() { return whaleComponent.getChartPanel(); }
-    public org.jfree.chart.ChartPanel getRetailChartPanel() { return retailComponent.getChartPanel(); }
-    public org.jfree.chart.ChartPanel getOiChartPanel() { return oiComponent.getChartPanel(); }
-    public org.jfree.chart.ChartPanel getStochasticChartPanel() { return stochasticComponent.getChartPanel(); }
-    public org.jfree.chart.ChartPanel getRangePositionChartPanel() { return rangePositionComponent.getChartPanel(); }
-    public org.jfree.chart.ChartPanel getAdxChartPanel() { return adxComponent.getChartPanel(); }
-    public org.jfree.chart.ChartPanel getTradeCountChartPanel() { return tradeCountComponent.getChartPanel(); }
-    public org.jfree.chart.ChartPanel getPremiumChartPanel() { return premiumComponent.getChartPanel(); }
-    public org.jfree.chart.ChartPanel getHoldingCostCumulativeChartPanel() { return holdingCostCumulativeComponent.getChartPanel(); }
-    public org.jfree.chart.ChartPanel getHoldingCostEventsChartPanel() { return holdingCostEventsComponent.getChartPanel(); }
+    // Legacy accessors for backward compatibility
+    public JFreeChart getRsiChart() { return getChart(IndicatorType.RSI); }
+    public JFreeChart getMacdChart() { return getChart(IndicatorType.MACD); }
+    public JFreeChart getAtrChart() { return getChart(IndicatorType.ATR); }
+    public JFreeChart getDeltaChart() { return getChart(IndicatorType.DELTA); }
+    public JFreeChart getCvdChart() { return getChart(IndicatorType.CVD); }
+    public JFreeChart getVolumeRatioChart() { return getChart(IndicatorType.VOLUME_RATIO); }
+    public JFreeChart getFundingChart() { return getChart(IndicatorType.FUNDING); }
+    public JFreeChart getWhaleChart() { return getChart(IndicatorType.WHALE); }
+    public JFreeChart getRetailChart() { return getChart(IndicatorType.RETAIL); }
+    public JFreeChart getOiChart() { return getChart(IndicatorType.OI); }
+    public JFreeChart getStochasticChart() { return getChart(IndicatorType.STOCHASTIC); }
+    public JFreeChart getRangePositionChart() { return getChart(IndicatorType.RANGE_POSITION); }
+    public JFreeChart getAdxChart() { return getChart(IndicatorType.ADX); }
+    public JFreeChart getTradeCountChart() { return getChart(IndicatorType.TRADE_COUNT); }
+    public JFreeChart getPremiumChart() { return getChart(IndicatorType.PREMIUM); }
+    public JFreeChart getHoldingCostCumulativeChart() { return getChart(IndicatorType.HOLDING_COST_CUMULATIVE); }
+    public JFreeChart getHoldingCostEventsChart() { return getChart(IndicatorType.HOLDING_COST_EVENTS); }
 
-    public JPanel getRsiChartWrapper() { return rsiComponent.getWrapper(); }
-    public JPanel getMacdChartWrapper() { return macdComponent.getWrapper(); }
-    public JPanel getAtrChartWrapper() { return atrComponent.getWrapper(); }
-    public JPanel getDeltaChartWrapper() { return deltaComponent.getWrapper(); }
-    public JPanel getCvdChartWrapper() { return cvdComponent.getWrapper(); }
-    public JPanel getVolumeRatioChartWrapper() { return volumeRatioComponent.getWrapper(); }
-    public JPanel getWhaleChartWrapper() { return whaleComponent.getWrapper(); }
-    public JPanel getRetailChartWrapper() { return retailComponent.getWrapper(); }
-    public JPanel getFundingChartWrapper() { return fundingComponent.getWrapper(); }
-    public JPanel getOiChartWrapper() { return oiComponent.getWrapper(); }
-    public JPanel getStochasticChartWrapper() { return stochasticComponent.getWrapper(); }
-    public JPanel getRangePositionChartWrapper() { return rangePositionComponent.getWrapper(); }
-    public JPanel getAdxChartWrapper() { return adxComponent.getWrapper(); }
-    public JPanel getTradeCountChartWrapper() { return tradeCountComponent.getWrapper(); }
-    public JPanel getPremiumChartWrapper() { return premiumComponent.getWrapper(); }
-    public JPanel getHoldingCostCumulativeChartWrapper() { return holdingCostCumulativeComponent.getWrapper(); }
-    public JPanel getHoldingCostEventsChartWrapper() { return holdingCostEventsComponent.getWrapper(); }
+    public org.jfree.chart.ChartPanel getRsiChartPanel() { return getChartPanel(IndicatorType.RSI); }
+    public org.jfree.chart.ChartPanel getMacdChartPanel() { return getChartPanel(IndicatorType.MACD); }
+    public org.jfree.chart.ChartPanel getAtrChartPanel() { return getChartPanel(IndicatorType.ATR); }
+    public org.jfree.chart.ChartPanel getDeltaChartPanel() { return getChartPanel(IndicatorType.DELTA); }
+    public org.jfree.chart.ChartPanel getCvdChartPanel() { return getChartPanel(IndicatorType.CVD); }
+    public org.jfree.chart.ChartPanel getVolumeRatioChartPanel() { return getChartPanel(IndicatorType.VOLUME_RATIO); }
+    public org.jfree.chart.ChartPanel getFundingChartPanel() { return getChartPanel(IndicatorType.FUNDING); }
+    public org.jfree.chart.ChartPanel getWhaleChartPanel() { return getChartPanel(IndicatorType.WHALE); }
+    public org.jfree.chart.ChartPanel getRetailChartPanel() { return getChartPanel(IndicatorType.RETAIL); }
+    public org.jfree.chart.ChartPanel getOiChartPanel() { return getChartPanel(IndicatorType.OI); }
+    public org.jfree.chart.ChartPanel getStochasticChartPanel() { return getChartPanel(IndicatorType.STOCHASTIC); }
+    public org.jfree.chart.ChartPanel getRangePositionChartPanel() { return getChartPanel(IndicatorType.RANGE_POSITION); }
+    public org.jfree.chart.ChartPanel getAdxChartPanel() { return getChartPanel(IndicatorType.ADX); }
+    public org.jfree.chart.ChartPanel getTradeCountChartPanel() { return getChartPanel(IndicatorType.TRADE_COUNT); }
+    public org.jfree.chart.ChartPanel getPremiumChartPanel() { return getChartPanel(IndicatorType.PREMIUM); }
+    public org.jfree.chart.ChartPanel getHoldingCostCumulativeChartPanel() { return getChartPanel(IndicatorType.HOLDING_COST_CUMULATIVE); }
+    public org.jfree.chart.ChartPanel getHoldingCostEventsChartPanel() { return getChartPanel(IndicatorType.HOLDING_COST_EVENTS); }
 
-    public JButton getRsiZoomBtn() { return rsiComponent.getZoomButton(); }
-    public JButton getMacdZoomBtn() { return macdComponent.getZoomButton(); }
-    public JButton getAtrZoomBtn() { return atrComponent.getZoomButton(); }
-    public JButton getDeltaZoomBtn() { return deltaComponent.getZoomButton(); }
-    public JButton getCvdZoomBtn() { return cvdComponent.getZoomButton(); }
-    public JButton getVolumeRatioZoomBtn() { return volumeRatioComponent.getZoomButton(); }
-    public JButton getWhaleZoomBtn() { return whaleComponent.getZoomButton(); }
-    public JButton getRetailZoomBtn() { return retailComponent.getZoomButton(); }
-    public JButton getFundingZoomBtn() { return fundingComponent.getZoomButton(); }
-    public JButton getOiZoomBtn() { return oiComponent.getZoomButton(); }
-    public JButton getStochasticZoomBtn() { return stochasticComponent.getZoomButton(); }
-    public JButton getRangePositionZoomBtn() { return rangePositionComponent.getZoomButton(); }
-    public JButton getAdxZoomBtn() { return adxComponent.getZoomButton(); }
-    public JButton getTradeCountZoomBtn() { return tradeCountComponent.getZoomButton(); }
+    public JPanel getRsiChartWrapper() { return getChartWrapper(IndicatorType.RSI); }
+    public JPanel getMacdChartWrapper() { return getChartWrapper(IndicatorType.MACD); }
+    public JPanel getAtrChartWrapper() { return getChartWrapper(IndicatorType.ATR); }
+    public JPanel getDeltaChartWrapper() { return getChartWrapper(IndicatorType.DELTA); }
+    public JPanel getCvdChartWrapper() { return getChartWrapper(IndicatorType.CVD); }
+    public JPanel getVolumeRatioChartWrapper() { return getChartWrapper(IndicatorType.VOLUME_RATIO); }
+    public JPanel getWhaleChartWrapper() { return getChartWrapper(IndicatorType.WHALE); }
+    public JPanel getRetailChartWrapper() { return getChartWrapper(IndicatorType.RETAIL); }
+    public JPanel getFundingChartWrapper() { return getChartWrapper(IndicatorType.FUNDING); }
+    public JPanel getOiChartWrapper() { return getChartWrapper(IndicatorType.OI); }
+    public JPanel getStochasticChartWrapper() { return getChartWrapper(IndicatorType.STOCHASTIC); }
+    public JPanel getRangePositionChartWrapper() { return getChartWrapper(IndicatorType.RANGE_POSITION); }
+    public JPanel getAdxChartWrapper() { return getChartWrapper(IndicatorType.ADX); }
+    public JPanel getTradeCountChartWrapper() { return getChartWrapper(IndicatorType.TRADE_COUNT); }
+    public JPanel getPremiumChartWrapper() { return getChartWrapper(IndicatorType.PREMIUM); }
+    public JPanel getHoldingCostCumulativeChartWrapper() { return getChartWrapper(IndicatorType.HOLDING_COST_CUMULATIVE); }
+    public JPanel getHoldingCostEventsChartWrapper() { return getChartWrapper(IndicatorType.HOLDING_COST_EVENTS); }
+
+    public JButton getZoomButton(IndicatorType type) { return components.get(type).getZoomButton(); }
+
+    // Legacy zoom button accessors
+    public JButton getRsiZoomBtn() { return getZoomButton(IndicatorType.RSI); }
+    public JButton getMacdZoomBtn() { return getZoomButton(IndicatorType.MACD); }
+    public JButton getAtrZoomBtn() { return getZoomButton(IndicatorType.ATR); }
+    public JButton getDeltaZoomBtn() { return getZoomButton(IndicatorType.DELTA); }
+    public JButton getCvdZoomBtn() { return getZoomButton(IndicatorType.CVD); }
+    public JButton getVolumeRatioZoomBtn() { return getZoomButton(IndicatorType.VOLUME_RATIO); }
+    public JButton getWhaleZoomBtn() { return getZoomButton(IndicatorType.WHALE); }
+    public JButton getRetailZoomBtn() { return getZoomButton(IndicatorType.RETAIL); }
+    public JButton getFundingZoomBtn() { return getZoomButton(IndicatorType.FUNDING); }
+    public JButton getOiZoomBtn() { return getZoomButton(IndicatorType.OI); }
+    public JButton getStochasticZoomBtn() { return getZoomButton(IndicatorType.STOCHASTIC); }
+    public JButton getRangePositionZoomBtn() { return getZoomButton(IndicatorType.RANGE_POSITION); }
+    public JButton getAdxZoomBtn() { return getZoomButton(IndicatorType.ADX); }
+    public JButton getTradeCountZoomBtn() { return getZoomButton(IndicatorType.TRADE_COUNT); }
 
     /**
      * Update zoom button states.
-     * @param zoomedIndex Index of zoomed indicator (-1 for none, 0=RSI, 1=MACD, 2=ATR, 3=Delta, 4=CVD, 5=VolumeRatio, 6=Whale, 7=Retail, 8=Funding, 9=OI, 10=Stochastic, 11=RangePosition, 12=ADX, 13=TradeCount)
+     * @param zoomedIndex Index of zoomed indicator (-1 for none, uses IndicatorType ordinal)
      */
     public void updateZoomButtonStates(int zoomedIndex) {
-        ChartComponent[] components = {rsiComponent, macdComponent, atrComponent, deltaComponent, cvdComponent, volumeRatioComponent, whaleComponent, retailComponent, fundingComponent, oiComponent, stochasticComponent, rangePositionComponent, adxComponent, tradeCountComponent};
-        for (int i = 0; i < components.length; i++) {
-            components[i].setZoomed(zoomedIndex == i);
+        for (IndicatorType type : IndicatorType.values()) {
+            components.get(type).setZoomed(type.ordinal() == zoomedIndex);
         }
     }
 
     /**
      * Update full screen button states.
-     * @param fullScreenIndex Index of full screen indicator (-1 for none)
+     * @param fullScreenIndex Index of full screen indicator (-1 for none, uses IndicatorType ordinal)
      */
     public void updateFullScreenButtonStates(int fullScreenIndex) {
-        ChartComponent[] components = {rsiComponent, macdComponent, atrComponent, deltaComponent, cvdComponent, volumeRatioComponent, whaleComponent, retailComponent, fundingComponent, oiComponent, stochasticComponent, rangePositionComponent, adxComponent, tradeCountComponent};
-        for (int i = 0; i < components.length; i++) {
-            components[i].setFullScreen(fullScreenIndex == i);
+        for (IndicatorType type : IndicatorType.values()) {
+            components.get(type).setFullScreen(type.ordinal() == fullScreenIndex);
         }
     }
 
@@ -1890,40 +1666,18 @@ public class IndicatorChartsManager {
      * Add mouse wheel listener to all chart panels.
      */
     public void addMouseWheelListener(java.awt.event.MouseWheelListener listener) {
-        rsiComponent.getChartPanel().addMouseWheelListener(listener);
-        macdComponent.getChartPanel().addMouseWheelListener(listener);
-        atrComponent.getChartPanel().addMouseWheelListener(listener);
-        deltaComponent.getChartPanel().addMouseWheelListener(listener);
-        cvdComponent.getChartPanel().addMouseWheelListener(listener);
-        volumeRatioComponent.getChartPanel().addMouseWheelListener(listener);
-        whaleComponent.getChartPanel().addMouseWheelListener(listener);
-        retailComponent.getChartPanel().addMouseWheelListener(listener);
-        fundingComponent.getChartPanel().addMouseWheelListener(listener);
-        oiComponent.getChartPanel().addMouseWheelListener(listener);
-        stochasticComponent.getChartPanel().addMouseWheelListener(listener);
-        rangePositionComponent.getChartPanel().addMouseWheelListener(listener);
-        adxComponent.getChartPanel().addMouseWheelListener(listener);
-        tradeCountComponent.getChartPanel().addMouseWheelListener(listener);
+        for (ChartComponent comp : components.values()) {
+            comp.getChartPanel().addMouseWheelListener(listener);
+        }
     }
 
     /**
      * Remove mouse wheel listener from all chart panels.
      */
     public void removeMouseWheelListener(java.awt.event.MouseWheelListener listener) {
-        rsiComponent.getChartPanel().removeMouseWheelListener(listener);
-        macdComponent.getChartPanel().removeMouseWheelListener(listener);
-        atrComponent.getChartPanel().removeMouseWheelListener(listener);
-        deltaComponent.getChartPanel().removeMouseWheelListener(listener);
-        cvdComponent.getChartPanel().removeMouseWheelListener(listener);
-        volumeRatioComponent.getChartPanel().removeMouseWheelListener(listener);
-        whaleComponent.getChartPanel().removeMouseWheelListener(listener);
-        retailComponent.getChartPanel().removeMouseWheelListener(listener);
-        fundingComponent.getChartPanel().removeMouseWheelListener(listener);
-        oiComponent.getChartPanel().removeMouseWheelListener(listener);
-        stochasticComponent.getChartPanel().removeMouseWheelListener(listener);
-        rangePositionComponent.getChartPanel().removeMouseWheelListener(listener);
-        adxComponent.getChartPanel().removeMouseWheelListener(listener);
-        tradeCountComponent.getChartPanel().removeMouseWheelListener(listener);
+        for (ChartComponent comp : components.values()) {
+            comp.getChartPanel().removeMouseWheelListener(listener);
+        }
     }
 
     /**
@@ -1961,10 +1715,10 @@ public class IndicatorChartsManager {
      * Update Y-axis auto-range for indicator charts.
      */
     public void updateYAxisAutoRange(boolean fitYAxisToVisible) {
-        // MACD, ATR, Delta, Funding follow standard auto-range
-        ChartComponent[] standardCharts = {macdComponent, atrComponent, deltaComponent, fundingComponent};
-        for (ChartComponent comp : standardCharts) {
-            JFreeChart chart = comp.getChart();
+        // Standard auto-range indicators
+        IndicatorType[] standardTypes = {IndicatorType.MACD, IndicatorType.ATR, IndicatorType.DELTA, IndicatorType.FUNDING};
+        for (IndicatorType type : standardTypes) {
+            JFreeChart chart = components.get(type).getChart();
             XYPlot plot = chart.getXYPlot();
             plot.getRangeAxis().setAutoRange(true);
             if (fitYAxisToVisible) {
@@ -1973,12 +1727,13 @@ public class IndicatorChartsManager {
         }
 
         // RSI: fixed 0-100 range in Full Y mode, auto in Fit Y mode
+        ChartComponent rsiComp = components.get(IndicatorType.RSI);
         if (fitYAxisToVisible) {
-            rsiComponent.getChart().getXYPlot().getRangeAxis().setAutoRange(true);
-            rsiComponent.getChart().getXYPlot().configureRangeAxes();
+            rsiComp.getChart().getXYPlot().getRangeAxis().setAutoRange(true);
+            rsiComp.getChart().getXYPlot().configureRangeAxes();
         } else {
-            rsiComponent.getChart().getXYPlot().getRangeAxis().setAutoRange(false);
-            rsiComponent.getChart().getXYPlot().getRangeAxis().setRange(0, 100);
+            rsiComp.getChart().getXYPlot().getRangeAxis().setAutoRange(false);
+            rsiComp.getChart().getXYPlot().getRangeAxis().setRange(0, 100);
         }
     }
 }
