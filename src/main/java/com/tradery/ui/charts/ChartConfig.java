@@ -841,6 +841,11 @@ public class ChartConfig {
         this.dailyVolumeProfileBins = other.dailyVolumeProfileBins;
         this.dailyVolumeProfileWidth = other.dailyVolumeProfileWidth;
 
+        // Volume Heatmap
+        if (other.volumeHeatmapConfig != null) {
+            this.volumeHeatmapConfig = new com.tradery.ui.charts.heatmap.VolumeHeatmapConfig(other.volumeHeatmapConfig);
+        }
+
         // Footprint Heatmap
         if (other.footprintHeatmapConfig != null) {
             this.footprintHeatmapConfig = new com.tradery.ui.charts.footprint.FootprintHeatmapConfig(other.footprintHeatmapConfig);

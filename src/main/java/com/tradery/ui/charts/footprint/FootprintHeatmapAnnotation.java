@@ -45,9 +45,6 @@ public class FootprintHeatmapAnnotation extends AbstractXYAnnotation {
             return;
         }
 
-        // DEBUG
-        System.out.println("[Heatmap] draw: mode=" + config.getDisplayMode() + ", footprints=" + footprints.size() + ", maxVolume=" + maxVolume);
-
         // Enable anti-aliasing
         g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
         g2.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);

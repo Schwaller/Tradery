@@ -433,6 +433,9 @@ public class ChartsPanel extends JPanel {
     }
 
     private void updateChartLayout() {
+        // Save current divider positions before rebuilding layout
+        splitLayoutManager.saveDividerPositions();
+
         // Include ALL charts so axis visibility can be controlled for each
         JFreeChart[] allCharts = {
             priceChart, volumeChart,

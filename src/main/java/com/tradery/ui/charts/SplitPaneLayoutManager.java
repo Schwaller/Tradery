@@ -65,6 +65,7 @@ public class SplitPaneLayoutManager {
             JPanel topPanel = visibleCharts.get(i);
             String topId = panelIds.getOrDefault(topPanel, "chart_" + i);
             String bottomId = getBottomComponentId(bottomComponent, i + 1);
+            // Use both position-based key and chart-based key for flexibility
             String splitKey = topId + "_" + bottomId;
 
             JSplitPane splitPane = new JSplitPane(JSplitPane.VERTICAL_SPLIT, true);
@@ -77,8 +78,8 @@ public class SplitPaneLayoutManager {
             double weight = 1.0 / (visibleCharts.size() - i);
             splitPane.setResizeWeight(weight);
 
-            // Track for position persistence
-            SplitPaneEntry entry = new SplitPaneEntry(splitPane, splitKey, i);
+            // Track for position persistence - also store top chart ID for matching
+            SplitPaneEntry entry = new SplitPaneEntry(splitPane, splitKey, i, topId);
             splitPanes.add(entry);
 
             // Listen for divider changes
@@ -132,18 +133,30 @@ public class SplitPaneLayoutManager {
 
     /**
      * Restore saved divider positions from ChartConfig.
+     * Uses flexible matching: exact key first, then by top chart ID prefix.
      */
     public void restoreDividerPositions() {
         if (splitPanes.isEmpty()) return;
 
         Map<String, Double> positions = ChartConfig.getInstance().getChartDividerPositions();
         if (positions.isEmpty()) {
-            resetToDefaults();
+            // No saved positions - leave at default proportions (set by resize weight)
             return;
         }
 
         for (SplitPaneEntry entry : splitPanes) {
             Double proportion = positions.get(entry.key);
+
+            // If exact key not found, try to find a saved position with matching top chart ID
+            if (proportion == null && entry.topChartId != null) {
+                for (Map.Entry<String, Double> saved : positions.entrySet()) {
+                    if (saved.getKey().startsWith(entry.topChartId + "_")) {
+                        proportion = saved.getValue();
+                        break;
+                    }
+                }
+            }
+
             if (proportion != null) {
                 int height = entry.splitPane.getHeight();
                 if (height > 0) {
@@ -151,6 +164,7 @@ public class SplitPaneLayoutManager {
                     entry.splitPane.setDividerLocation(location);
                 }
             }
+            // If still no match, leave at default proportion (don't reset)
         }
     }
 
@@ -198,11 +212,13 @@ public class SplitPaneLayoutManager {
         final JSplitPane splitPane;
         final String key;
         final int index;
+        final String topChartId;
 
-        SplitPaneEntry(JSplitPane splitPane, String key, int index) {
+        SplitPaneEntry(JSplitPane splitPane, String key, int index, String topChartId) {
             this.splitPane = splitPane;
             this.key = key;
             this.index = index;
+            this.topChartId = topChartId;
         }
     }
 }

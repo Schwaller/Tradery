@@ -1,5 +1,7 @@
 package com.tradery.ui.controls;
 
+import com.tradery.ui.BadgePanel;
+
 import javax.swing.*;
 import java.awt.*;
 import java.util.ArrayList;
@@ -36,13 +38,10 @@ public class BadgeListPanel extends JPanel {
     private Supplier<String> nameResolver;
 
     private final JPanel contentPanel;
-    private final Color borderColor;
-    private final Color separatorColor;
+    private java.beans.PropertyChangeListener lafListener;
 
     public BadgeListPanel(String label) {
         this.label = label;
-        this.borderColor = UIManager.getColor("Component.borderColor");
-        this.separatorColor = borderColor != null ? borderColor : new Color(60, 60, 65);
 
         setLayout(new BorderLayout());
         setOpaque(false);
@@ -54,6 +53,55 @@ public class BadgeListPanel extends JPanel {
         add(contentPanel, BorderLayout.CENTER);
 
         rebuildUI();
+    }
+
+    /**
+     * Get the separator/border color based on current theme.
+     */
+    private Color getSeparatorColor() {
+        Color borderColor = UIManager.getColor("Component.borderColor");
+        return borderColor != null ? borderColor : new Color(60, 60, 65);
+    }
+
+    /**
+     * Get the color for required items (positive/include).
+     */
+    private Color getRequiredColor() {
+        return BadgePanel.isDarkTheme()
+            ? new Color(100, 180, 100)   // Brighter green for dark themes
+            : new Color(50, 120, 50);    // Darker green for light themes
+    }
+
+    /**
+     * Get the color for excluded items (negative/exclude).
+     */
+    private Color getExcludedColor() {
+        return BadgePanel.isDarkTheme()
+            ? new Color(220, 100, 100)   // Brighter red for dark themes
+            : new Color(160, 60, 60);    // Darker red for light themes
+    }
+
+    @Override
+    public void addNotify() {
+        super.addNotify();
+        // Listen for LAF changes to update colors
+        if (lafListener == null) {
+            lafListener = evt -> {
+                if ("lookAndFeel".equals(evt.getPropertyName())) {
+                    SwingUtilities.invokeLater(this::rebuildUI);
+                }
+            };
+            UIManager.addPropertyChangeListener(lafListener);
+        }
+    }
+
+    @Override
+    public void removeNotify() {
+        super.removeNotify();
+        if (lafListener != null) {
+            UIManager.removePropertyChangeListener(lafListener);
+            lafListener = null;
+        }
     }
 
     /**
@@ -181,9 +229,10 @@ public class BadgeListPanel extends JPanel {
             @Override
             protected void paintComponent(Graphics g) {
                 super.paintComponent(g);
+                Color sepColor = getSeparatorColor();
                 // Draw top border for first row, handled by separator for others
                 if (isHeader) {
-                    g.setColor(separatorColor);
+                    g.setColor(sepColor);
                     // Top border
                     g.drawLine(0, 0, getWidth(), 0);
                     // Left border
@@ -196,7 +245,7 @@ public class BadgeListPanel extends JPanel {
                     }
                 } else {
                     // Left and right borders for item rows
-                    g.setColor(separatorColor);
+                    g.setColor(sepColor);
                     g.drawLine(0, 0, 0, getHeight() - 1);
                     g.drawLine(getWidth() - 1, 0, getWidth() - 1, getHeight() - 1);
                 }
@@ -215,7 +264,7 @@ public class BadgeListPanel extends JPanel {
         } else {
             String prefix = isRequired ? "+" : "−";
             label.setText(prefix + "  " + text);
-            label.setForeground(isRequired ? new Color(70, 140, 70) : new Color(180, 80, 80));
+            label.setForeground(isRequired ? getRequiredColor() : getExcludedColor());
         }
 
         row.add(label, BorderLayout.CENTER);
@@ -243,7 +292,7 @@ public class BadgeListPanel extends JPanel {
             @Override
             protected void paintComponent(Graphics g) {
                 super.paintComponent(g);
-                g.setColor(separatorColor);
+                g.setColor(getSeparatorColor());
                 // Horizontal line
                 g.drawLine(0, 0, getWidth(), 0);
                 // Left border continuation
@@ -271,7 +320,7 @@ public class BadgeListPanel extends JPanel {
             @Override
             protected void paintComponent(Graphics g) {
                 super.paintComponent(g);
-                g.setColor(separatorColor);
+                g.setColor(getSeparatorColor());
                 g.drawLine(0, 0, getWidth(), 0);
                 // Close left border
                 g.drawLine(0, 0, 0, 0);
@@ -333,7 +382,7 @@ public class BadgeListPanel extends JPanel {
 
         // Draw bottom border after all children
         if (hasSelections()) {
-            g.setColor(separatorColor);
+            g.setColor(getSeparatorColor());
             int bottom = contentPanel.getHeight() - 1;
             g.drawLine(0, bottom, getWidth(), bottom);
         }

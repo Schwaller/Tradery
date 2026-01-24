@@ -173,6 +173,7 @@ public class IndicatorSelectorPopup extends JDialog {
                 SwingUtilities.invokeLater(() -> {
                     Window focusedWindow = KeyboardFocusManager.getCurrentKeyboardFocusManager().getFocusedWindow();
                     if (focusedWindow != IndicatorSelectorPopup.this) {
+                        flushPendingChanges();
                         dispose();
                     }
                 });
@@ -181,7 +182,10 @@ public class IndicatorSelectorPopup extends JDialog {
 
         // Close on Escape
         getRootPane().registerKeyboardAction(
-            e -> dispose(),
+            e -> {
+                flushPendingChanges();
+                dispose();
+            },
             KeyStroke.getKeyStroke(KeyEvent.VK_ESCAPE, 0),
             JComponent.WHEN_IN_FOCUSED_WINDOW
         );
@@ -192,10 +196,22 @@ public class IndicatorSelectorPopup extends JDialog {
                 Point clickPoint = me.getLocationOnScreen();
                 Rectangle popupBounds = getBounds();
                 if (isVisible() && !popupBounds.contains(clickPoint)) {
+                    flushPendingChanges();
                     dispose();
                 }
             }
         }, AWTEvent.MOUSE_EVENT_MASK);
+    }
+
+    /**
+     * If there are pending changes from the debounce timer, apply them immediately.
+     */
+    private void flushPendingChanges() {
+        System.out.println("[DEBUG] flushPendingChanges called, timer running=" + updateTimer.isRunning());
+        if (updateTimer.isRunning()) {
+            updateTimer.stop();
+            applyChanges();
+        }
     }
 
     private void initComponents() {
@@ -1098,8 +1114,12 @@ public class IndicatorSelectorPopup extends JDialog {
     }
 
     private void scheduleUpdate() {
-        if (initializing) return; // Suppress updates during initialization
+        if (initializing) {
+            System.out.println("[DEBUG] scheduleUpdate skipped - initializing");
+            return; // Suppress updates during initialization
+        }
 
+        System.out.println("[DEBUG] scheduleUpdate called");
         if (updateTimer.isRunning()) {
             updateTimer.restart();
         } else {
@@ -1217,7 +1237,9 @@ public class IndicatorSelectorPopup extends JDialog {
         ichimokuCheckbox.setSelected(config.isIchimokuEnabled());
         dailyVolumeProfileCheckbox.setSelected(config.isDailyVolumeProfileEnabled());
         dailyVolumeProfileBinsSpinner.setValue(config.getDailyVolumeProfileBins());
-        footprintHeatmapCheckbox.setSelected(config.isFootprintHeatmapEnabled());
+        boolean fpConfigEnabled = config.isFootprintHeatmapEnabled();
+        System.out.println("[DEBUG] syncFromChartPanel: config.isFootprintHeatmapEnabled()=" + fpConfigEnabled);
+        footprintHeatmapCheckbox.setSelected(fpConfigEnabled);
         footprintHeatmapBucketsSpinner.setValue(config.getFootprintHeatmapConfig().getTargetBuckets());
         boolean isSplitMode = config.getFootprintHeatmapConfig().getDisplayMode() ==
             com.tradery.ui.charts.footprint.FootprintDisplayMode.SPLIT;
@@ -1374,16 +1396,19 @@ public class IndicatorSelectorPopup extends JDialog {
         config.setDailyVolumeProfileEnabled(dailyVolumeProfileCheckbox.isSelected());
         config.setDailyVolumeProfileBins(volumeProfileBins);
 
-        // Footprint Heatmap
+        // Footprint Heatmap - set nested config values BEFORE calling setFootprintHeatmapEnabled (which saves)
         int footprintBuckets = (int) footprintHeatmapBucketsSpinner.getValue();
         com.tradery.ui.charts.footprint.FootprintDisplayMode fpMode = footprintBuySellButton.isSelected()
             ? com.tradery.ui.charts.footprint.FootprintDisplayMode.SPLIT
             : com.tradery.ui.charts.footprint.FootprintDisplayMode.COMBINED;
 
-        config.setFootprintHeatmapEnabled(footprintHeatmapCheckbox.isSelected());
+        boolean fpEnabled = footprintHeatmapCheckbox.isSelected();
+        System.out.println("[DEBUG] applyChanges: footprint checkbox=" + fpEnabled + ", buckets=" + footprintBuckets + ", mode=" + fpMode);
         config.getFootprintHeatmapConfig().setTargetBuckets(footprintBuckets);
         config.getFootprintHeatmapConfig().setDisplayMode(fpMode);
-        chartPanel.setFootprintHeatmapEnabled(footprintHeatmapCheckbox.isSelected());
+        config.setFootprintHeatmapEnabled(fpEnabled); // This saves all changes
+        System.out.println("[DEBUG] after setFootprintHeatmapEnabled, config.isFootprintHeatmapEnabled()=" + config.isFootprintHeatmapEnabled());
+        chartPanel.setFootprintHeatmapEnabled(fpEnabled);
         chartPanel.refreshFootprintHeatmap(); // Force refresh when mode changes
 
         // Oscillators
