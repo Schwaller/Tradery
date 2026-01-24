@@ -215,9 +215,9 @@ public final class ChartStyles {
         plot.setRangeGridlinePaint(t.getGridlineColor());
         plot.setOutlineVisible(false);
 
-        // Date axis formatting with consistent font
+        // Date axis formatting with adaptive format based on visible range
         if (plot.getDomainAxis() instanceof DateAxis dateAxis) {
-            dateAxis.setDateFormatOverride(new SimpleDateFormat("MMM d"));
+            dateAxis.setDateFormatOverride(new AdaptiveDateFormat(dateAxis));
             dateAxis.setTickLabelPaint(t.getAxisLabelColor());
             dateAxis.setTickLabelFont(AXIS_TICK_FONT);
             dateAxis.setAxisLineVisible(false);

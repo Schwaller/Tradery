@@ -31,8 +31,6 @@ public class FootprintHeatmapConfig {
     private boolean showImbalanceMarkers = true;   // Show arrows for imbalances
     private boolean showPocLine = true;            // Highlight POC level
     private boolean showValueArea = true;          // Shade VAH-VAL region
-    private boolean showBuySellBar = true;         // Show buy/sell ratio bar below candle
-    private int buySellBarHeight = 4;              // Height of buy/sell bar in pixels
     private double imbalanceThreshold = 3.0;       // Ratio for imbalance detection
 
     // Opacity
@@ -101,8 +99,6 @@ public class FootprintHeatmapConfig {
         this.showImbalanceMarkers = other.showImbalanceMarkers;
         this.showPocLine = other.showPocLine;
         this.showValueArea = other.showValueArea;
-        this.showBuySellBar = other.showBuySellBar;
-        this.buySellBarHeight = other.buySellBarHeight;
         this.imbalanceThreshold = other.imbalanceThreshold;
         this.opacity = other.opacity;
         this.strongBuyThreshold = other.strongBuyThreshold;
@@ -262,22 +258,6 @@ public class FootprintHeatmapConfig {
 
     public void setShowValueArea(boolean showValueArea) {
         this.showValueArea = showValueArea;
-    }
-
-    public boolean isShowBuySellBar() {
-        return showBuySellBar;
-    }
-
-    public void setShowBuySellBar(boolean showBuySellBar) {
-        this.showBuySellBar = showBuySellBar;
-    }
-
-    public int getBuySellBarHeight() {
-        return buySellBarHeight;
-    }
-
-    public void setBuySellBarHeight(int buySellBarHeight) {
-        this.buySellBarHeight = Math.max(2, Math.min(10, buySellBarHeight));
     }
 
     public double getImbalanceThreshold() {

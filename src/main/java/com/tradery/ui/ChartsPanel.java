@@ -27,8 +27,6 @@ import javax.swing.*;
 import java.awt.*;
 import java.awt.Paint;
 import java.awt.geom.Ellipse2D;
-import java.text.SimpleDateFormat;
-import java.time.Year;
 import java.util.Date;
 import java.util.List;
 import java.util.function.Consumer;
@@ -1226,7 +1224,7 @@ public class ChartsPanel extends JPanel {
         overlayManager.setCandles(candles);
         clearTradeHighlight();
 
-        updateDateAxisFormat(candles);
+        // Date axis format adapts automatically via AdaptiveDateFormat
 
         updatePriceChart(candles, trades);
         updateEquityChart(candles, trades, initialCapital);
@@ -1264,25 +1262,8 @@ public class ChartsPanel extends JPanel {
         }
     }
 
-    private void updateDateAxisFormat(List<Candle> candles) {
-        if (candles == null || candles.isEmpty()) return;
-
-        long firstTimestamp = candles.getFirst().timestamp();
-        int currentYear = Year.now().getValue();
-        int dataStartYear = Year.from(java.time.Instant.ofEpochMilli(firstTimestamp)
-            .atZone(java.time.ZoneId.systemDefault())).getValue();
-
-        SimpleDateFormat format = (dataStartYear < currentYear)
-            ? new SimpleDateFormat("MMM d ''yy")
-            : new SimpleDateFormat("MMM d");
-
-        JFreeChart[] charts = {priceChart, equityChart, comparisonChart, capitalUsageChart, tradePLChart};
-        for (JFreeChart chart : charts) {
-            if (chart != null && chart.getXYPlot().getDomainAxis() instanceof DateAxis dateAxis) {
-                dateAxis.setDateFormatOverride(format);
-            }
-        }
-    }
+    // Date axis format is now handled automatically by AdaptiveDateFormat
+    // which adapts based on the visible time range
 
     private void updatePriceChart(List<Candle> candles, List<Trade> trades) {
         XYPlot plot = priceChart.getXYPlot();

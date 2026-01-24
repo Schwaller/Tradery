@@ -45,6 +45,9 @@ public class FootprintHeatmapAnnotation extends AbstractXYAnnotation {
             return;
         }
 
+        // DEBUG
+        System.out.println("[Heatmap] draw: mode=" + config.getDisplayMode() + ", footprints=" + footprints.size() + ", maxVolume=" + maxVolume);
+
         // Enable anti-aliasing
         g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
         g2.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
@@ -71,6 +74,7 @@ public class FootprintHeatmapAnnotation extends AbstractXYAnnotation {
                 drawFootprint(g2, plot, dataArea, domainAxis, rangeAxis, footprint, halfIntervalMs);
             }
         }
+
     }
 
     private void drawZoomHint(Graphics2D g2, Rectangle2D dataArea) {
@@ -134,9 +138,9 @@ public class FootprintHeatmapAnnotation extends AbstractXYAnnotation {
             drawBucket(g2, dataArea, rangeAxis, leftX, candleWidth, footprint, bucket);
         }
 
-        // Draw POC line
+        // Draw POC buy/sell bar
         if (config.isShowPocLine()) {
-            drawPocLine(g2, dataArea, rangeAxis, leftX, rightX, footprint.poc());
+            drawPocBuySellBar(g2, dataArea, rangeAxis, leftX, rightX, footprint);
         }
     }
 
@@ -190,7 +194,8 @@ public class FootprintHeatmapAnnotation extends AbstractXYAnnotation {
     }
 
     /**
-     * Draw split bucket - buy volume on left (green), sell volume on right (red).
+     * Draw split bucket - buy volume on left, sell volume on right.
+     * Uses thermal color ramp based on volume intensity.
      */
     private void drawSplitBucket(Graphics2D g2, int x, int y, int width, int height, FootprintBucket bucket) {
         double buyVol = bucket.totalBuyVolume();
@@ -201,29 +206,19 @@ public class FootprintHeatmapAnnotation extends AbstractXYAnnotation {
 
         int halfWidth = width / 2;
 
-        // Buy side (left) - lime green
+        // Buy side (left) - thermal color ramp based on volume intensity
         if (buyVol > 0) {
             double buyIntensity = buyVol / maxVolume;
-            int alpha = (int) (60 + buyIntensity * 160 * config.getOpacity());
-            alpha = Math.max(60, Math.min(220, alpha));
-            g2.setColor(new Color(
-                FootprintHeatmapConfig.BUY_COLOR.getRed(),
-                FootprintHeatmapConfig.BUY_COLOR.getGreen(),
-                FootprintHeatmapConfig.BUY_COLOR.getBlue(),
-                alpha));
+            Color buyColor = config.getVolumeRampColor(buyIntensity);
+            g2.setColor(buyColor);
             g2.fillRect(x, y, halfWidth, height);
         }
 
-        // Sell side (right) - red
+        // Sell side (right) - thermal color ramp based on volume intensity
         if (sellVol > 0) {
             double sellIntensity = sellVol / maxVolume;
-            int alpha = (int) (60 + sellIntensity * 160 * config.getOpacity());
-            alpha = Math.max(60, Math.min(220, alpha));
-            g2.setColor(new Color(
-                FootprintHeatmapConfig.SELL_COLOR.getRed(),
-                FootprintHeatmapConfig.SELL_COLOR.getGreen(),
-                FootprintHeatmapConfig.SELL_COLOR.getBlue(),
-                alpha));
+            Color sellColor = config.getVolumeRampColor(sellIntensity);
+            g2.setColor(sellColor);
             g2.fillRect(x + halfWidth, y, width - halfWidth, height);
         }
     }
@@ -335,12 +330,62 @@ public class FootprintHeatmapAnnotation extends AbstractXYAnnotation {
         g2.drawString(text, textX, textY);
     }
 
-    private void drawPocLine(Graphics2D g2, Rectangle2D dataArea, ValueAxis rangeAxis,
-                              double leftX, double rightX, double poc) {
-        double pocY = rangeAxis.valueToJava2D(poc, dataArea, RectangleEdge.LEFT);
+    /**
+     * Draw a buy/sell bar at the POC level showing the volume ratio at the highest volume price.
+     */
+    private void drawPocBuySellBar(Graphics2D g2, Rectangle2D dataArea, ValueAxis rangeAxis,
+                                    double leftX, double rightX, Footprint footprint) {
+        double poc = footprint.poc();
+        double tickSize = footprint.tickSize();
 
-        g2.setColor(FootprintHeatmapConfig.POC_COLOR);
-        g2.setStroke(new BasicStroke(0.5f));
-        g2.drawLine((int) leftX, (int) pocY, (int) rightX, (int) pocY);
+        // Find the POC bucket
+        FootprintBucket pocBucket = null;
+        for (FootprintBucket bucket : footprint.buckets()) {
+            if (Math.abs(bucket.priceLevel() - poc) < tickSize / 2) {
+                pocBucket = bucket;
+                break;
+            }
+        }
+
+        if (pocBucket == null) return;
+
+        double buyVol = pocBucket.totalBuyVolume();
+        double sellVol = pocBucket.totalSellVolume();
+        double totalVol = buyVol + sellVol;
+
+        if (totalVol <= 0) return;
+
+        // Position at POC level
+        double pocY = rangeAxis.valueToJava2D(poc, dataArea, RectangleEdge.LEFT);
+        int barHeight = 1;
+        int y = (int) pocY - barHeight / 2;
+
+        int x = (int) leftX;
+        int width = (int) (rightX - leftX);
+
+        // Calculate proportions - left side buy, right side sell
+        double buyRatio = buyVol / totalVol;
+        int buyWidth = (int) (width * buyRatio);
+        int sellWidth = width - buyWidth;
+
+        // Draw buy portion (green) on left
+        if (buyWidth > 0) {
+            g2.setColor(new Color(
+                FootprintHeatmapConfig.BUY_COLOR.getRed(),
+                FootprintHeatmapConfig.BUY_COLOR.getGreen(),
+                FootprintHeatmapConfig.BUY_COLOR.getBlue(),
+                230));
+            g2.fillRect(x, y, buyWidth, barHeight);
+        }
+
+        // Draw sell portion (red) on right
+        if (sellWidth > 0) {
+            g2.setColor(new Color(
+                FootprintHeatmapConfig.SELL_COLOR.getRed(),
+                FootprintHeatmapConfig.SELL_COLOR.getGreen(),
+                FootprintHeatmapConfig.SELL_COLOR.getBlue(),
+                230));
+            g2.fillRect(x + buyWidth, y, sellWidth, barHeight);
+        }
     }
 }

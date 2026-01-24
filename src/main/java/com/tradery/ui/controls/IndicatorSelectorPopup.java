@@ -702,8 +702,13 @@ public class IndicatorSelectorPopup extends JDialog {
         footprintViewGroup.add(footprintDeltaButton);
         footprintViewGroup.add(footprintBuySellButton);
 
-        footprintDeltaButton.addActionListener(e -> scheduleUpdate());
-        footprintBuySellButton.addActionListener(e -> scheduleUpdate());
+        // Only trigger update when a button becomes selected (not when deselected by ButtonGroup)
+        footprintDeltaButton.addActionListener(e -> {
+            if (footprintDeltaButton.isSelected()) scheduleUpdate();
+        });
+        footprintBuySellButton.addActionListener(e -> {
+            if (footprintBuySellButton.isSelected()) scheduleUpdate();
+        });
 
         JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
         row.setAlignmentX(Component.LEFT_ALIGNMENT);
