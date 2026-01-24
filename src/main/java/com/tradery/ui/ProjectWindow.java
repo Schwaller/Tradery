@@ -51,12 +51,11 @@ public class ProjectWindow extends JFrame {
     private TimelineBar timelineBar;
 
     // Toolbar controls
-    private JToggleButton fitWidthBtn;
-    private JToggleButton fixedWidthBtn;
+    private JButton fitWidthBtn;
     private JToggleButton candlestickToggle;
     private JSlider priceOpacitySlider;
-    private JToggleButton fitYBtn;
-    private JToggleButton fullYBtn;
+    private JButton fitYBtn;
+    private JButton fullYBtn;
     private JButton claudeBtn;
     private JButton codexBtn;
     private JButton historyBtn;
@@ -191,15 +190,10 @@ public class ProjectWindow extends JFrame {
         tradeTablePanel.setOnTradeHover(chartPanel::highlightTrades);
         tradeTablePanel.setOnTradeSelect(chartPanel::highlightTrades);
 
-        // Width toggle group (Fit / Fixed)
-        fitWidthBtn = new JToggleButton("Fit");
-        fixedWidthBtn = new JToggleButton("Fixed");
-        ButtonGroup widthGroup = new ButtonGroup();
-        widthGroup.add(fitWidthBtn);
-        widthGroup.add(fixedWidthBtn);
-        fitWidthBtn.setSelected(true);
+        // Fit width button (always fits chart horizontally)
+        fitWidthBtn = new JButton("↔");
+        fitWidthBtn.setToolTipText("Fit chart horizontally");
         fitWidthBtn.addActionListener(e -> chartPanel.setFixedWidthMode(false));
-        fixedWidthBtn.addActionListener(e -> chartPanel.setFixedWidthMode(true));
 
         // Candlestick toggle
         candlestickToggle = new JToggleButton("Candles");
@@ -223,14 +217,13 @@ public class ProjectWindow extends JFrame {
             }
         });
 
-        // Y-axis toggle group (Fit / Full)
-        fitYBtn = new JToggleButton("Fit Y");
-        fullYBtn = new JToggleButton("Full Y");
-        ButtonGroup yGroup = new ButtonGroup();
-        yGroup.add(fitYBtn);
-        yGroup.add(fullYBtn);
-        fitYBtn.setSelected(true);
+        // Y-axis buttons
+        fitYBtn = new JButton("↕");
+        fitYBtn.setToolTipText("Fit Y-axis to visible data");
         fitYBtn.addActionListener(e -> chartPanel.setFitYAxisToVisibleData(true));
+
+        fullYBtn = new JButton("↕ Full");
+        fullYBtn.setToolTipText("Show full Y-axis range");
         fullYBtn.addActionListener(e -> chartPanel.setFitYAxisToVisibleData(false));
 
         // Initialize AI terminal controller
@@ -369,7 +362,6 @@ public class ProjectWindow extends JFrame {
         toolbarCenter.add(priceOpacitySlider);
         toolbarCenter.add(Box.createHorizontalStrut(8));
         toolbarCenter.add(fitWidthBtn);
-        toolbarCenter.add(fixedWidthBtn);
         toolbarCenter.add(Box.createHorizontalStrut(8));
         toolbarCenter.add(fitYBtn);
         toolbarCenter.add(fullYBtn);
