@@ -107,6 +107,9 @@ public class ChartConfig {
     private boolean candlestickMode = false;  // false = line, true = candlestick
     private int priceOpacity = 100;  // 0-100, applied to price line and candles (not cloud)
 
+    // Axis position: "left", "right", or "both"
+    private String priceAxisPosition = "left";
+
     // Core charts
     private boolean volumeChartEnabled = true;
     private boolean equityChartEnabled = true;
@@ -376,6 +379,9 @@ public class ChartConfig {
     public int getPriceOpacity() { return priceOpacity; }
     public void setPriceOpacity(int opacity) { this.priceOpacity = Math.max(0, Math.min(100, opacity)); save(); notifyListeners(); }
 
+    public String getPriceAxisPosition() { return priceAxisPosition != null ? priceAxisPosition : "left"; }
+    public void setPriceAxisPosition(String position) { this.priceAxisPosition = position; save(); notifyListeners(); }
+
     // ===== Core Chart Getters/Setters =====
 
     public boolean isVolumeChartEnabled() { return volumeChartEnabled; }
@@ -480,6 +486,7 @@ public class ChartConfig {
         // Price chart mode
         this.candlestickMode = other.candlestickMode;
         this.priceOpacity = other.priceOpacity;
+        this.priceAxisPosition = other.priceAxisPosition;
 
         // Core charts
         this.volumeChartEnabled = other.volumeChartEnabled;
@@ -576,6 +583,7 @@ public class ChartConfig {
         // Price chart mode - line by default
         candlestickMode = false;
         priceOpacity = 100;
+        priceAxisPosition = "left";
 
         // Core charts - all on by default
         volumeChartEnabled = true;
@@ -743,6 +751,7 @@ public class ChartConfig {
         // Price chart mode
         this.candlestickMode = other.candlestickMode;
         this.priceOpacity = other.priceOpacity;
+        this.priceAxisPosition = other.priceAxisPosition;
 
         // Core charts
         this.volumeChartEnabled = other.volumeChartEnabled;

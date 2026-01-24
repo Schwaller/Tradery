@@ -186,12 +186,18 @@ public class ChartInteractionManager {
         Rectangle2D dataArea = panel.getChartRenderingInfo().getPlotInfo().getDataArea();
         if (dataArea == null) return false;
 
-        if (yAxisOnRight) {
-            // Y-axis is to the right of the data area
-            return point.x > dataArea.getMaxX() && point.x < dataArea.getMaxX() + 60;
+        // Check current axis position from config
+        String axisPosition = ChartConfig.getInstance().getPriceAxisPosition();
+
+        boolean onLeft = point.x < dataArea.getMinX();
+        boolean onRight = point.x > dataArea.getMaxX() && point.x < dataArea.getMaxX() + 60;
+
+        if ("both".equals(axisPosition)) {
+            return onLeft || onRight;
+        } else if ("right".equals(axisPosition)) {
+            return onRight;
         } else {
-            // Y-axis is to the left of the data area
-            return point.x < dataArea.getMinX();
+            return onLeft;
         }
     }
 

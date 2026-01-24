@@ -4,6 +4,7 @@ import com.tradery.ui.theme.Theme;
 import com.tradery.ui.theme.ThemeManager;
 import org.jfree.chart.JFreeChart;
 import org.jfree.chart.annotations.XYTitleAnnotation;
+import org.jfree.chart.axis.AxisLocation;
 import org.jfree.chart.axis.DateAxis;
 import org.jfree.chart.axis.NumberAxis;
 import org.jfree.chart.plot.XYPlot;
@@ -221,6 +222,30 @@ public final class ChartStyles {
         plot.getRangeAxis().setTickLabelPaint(t.getAxisLabelColor());
         plot.getRangeAxis().setAxisLineVisible(false);
         plot.getRangeAxis().setFixedDimension(60);  // Fixed width for alignment
+
+        // Apply axis position from config
+        String axisPosition = ChartConfig.getInstance().getPriceAxisPosition();
+        if ("right".equals(axisPosition)) {
+            plot.setRangeAxisLocation(AxisLocation.TOP_OR_RIGHT);
+        } else if ("both".equals(axisPosition)) {
+            // Primary axis stays on left
+            plot.setRangeAxisLocation(AxisLocation.TOP_OR_LEFT);
+            // Create mirrored axis on right side
+            NumberAxis leftAxis = (NumberAxis) plot.getRangeAxis();
+            NumberAxis rightAxis = new NumberAxis();
+            rightAxis.setTickLabelPaint(t.getAxisLabelColor());
+            rightAxis.setAxisLineVisible(false);
+            rightAxis.setFixedDimension(60);
+            rightAxis.setNumberFormatOverride(new DecimalFormat("#,##0.####"));
+            rightAxis.setAutoRange(false);
+            // Sync ranges - initial sync and listener for updates
+            rightAxis.setRange(leftAxis.getRange());
+            leftAxis.addChangeListener(event -> rightAxis.setRange(leftAxis.getRange()));
+            plot.setRangeAxis(1, rightAxis);
+            plot.setRangeAxisLocation(1, AxisLocation.TOP_OR_RIGHT);
+        } else {
+            plot.setRangeAxisLocation(AxisLocation.TOP_OR_LEFT);
+        }
 
         // Avoid scientific notation on Y-axis (e.g., 1E4 instead of 10000)
         if (plot.getRangeAxis() instanceof NumberAxis numberAxis) {

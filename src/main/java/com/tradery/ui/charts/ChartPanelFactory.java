@@ -4,6 +4,9 @@ import org.jfree.chart.ChartPanel;
 import org.jfree.chart.JFreeChart;
 import org.jfree.chart.ui.RectangleInsets;
 
+import javax.swing.*;
+import javax.swing.ButtonGroup;
+
 /**
  * Factory for creating consistently configured chart panels.
  * Eliminates duplication of chart panel configuration across ChartsPanel,
@@ -47,5 +50,71 @@ public final class ChartPanelFactory {
                 chart.getXYPlot().setInsets(new RectangleInsets(0, 0, 0, 0));
             }
         }
+
+        // Custom simplified popup menu
+        configurePopupMenu(panel);
+    }
+
+    private static void configurePopupMenu(ChartPanel panel) {
+        JPopupMenu popup = new JPopupMenu();
+
+        JMenuItem fitHorizontal = new JMenuItem("Fit Horizontal");
+        fitHorizontal.addActionListener(e -> panel.restoreAutoDomainBounds());
+        popup.add(fitHorizontal);
+
+        JMenuItem fitVertical = new JMenuItem("Fit Vertical");
+        fitVertical.addActionListener(e -> panel.restoreAutoRangeBounds());
+        popup.add(fitVertical);
+
+        JMenuItem fitBoth = new JMenuItem("Fit Both");
+        fitBoth.addActionListener(e -> panel.restoreAutoBounds());
+        popup.add(fitBoth);
+
+        popup.addSeparator();
+
+        // Price axis position submenu
+        JMenu axisMenu = new JMenu("Price Axis");
+        ButtonGroup axisGroup = new ButtonGroup();
+
+        JRadioButtonMenuItem leftItem = new JRadioButtonMenuItem("Left");
+        JRadioButtonMenuItem rightItem = new JRadioButtonMenuItem("Right");
+        JRadioButtonMenuItem bothItem = new JRadioButtonMenuItem("Both");
+
+        // Set initial selection based on current config
+        String currentPos = ChartConfig.getInstance().getPriceAxisPosition();
+        leftItem.setSelected("left".equals(currentPos));
+        rightItem.setSelected("right".equals(currentPos));
+        bothItem.setSelected("both".equals(currentPos));
+
+        leftItem.addActionListener(e -> ChartConfig.getInstance().setPriceAxisPosition("left"));
+        rightItem.addActionListener(e -> ChartConfig.getInstance().setPriceAxisPosition("right"));
+        bothItem.addActionListener(e -> ChartConfig.getInstance().setPriceAxisPosition("both"));
+
+        axisGroup.add(leftItem);
+        axisGroup.add(rightItem);
+        axisGroup.add(bothItem);
+
+        axisMenu.add(leftItem);
+        axisMenu.add(rightItem);
+        axisMenu.add(bothItem);
+        popup.add(axisMenu);
+
+        popup.addSeparator();
+
+        JMenuItem copyImage = new JMenuItem("Copy");
+        copyImage.addActionListener(e -> panel.doCopy());
+        popup.add(copyImage);
+
+        JMenuItem saveAs = new JMenuItem("Save As...");
+        saveAs.addActionListener(e -> {
+            try {
+                panel.doSaveAs();
+            } catch (Exception ex) {
+                // Ignore save errors
+            }
+        });
+        popup.add(saveAs);
+
+        panel.setPopupMenu(popup);
     }
 }

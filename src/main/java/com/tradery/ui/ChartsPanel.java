@@ -93,6 +93,9 @@ public class ChartsPanel extends JPanel {
 
         setupManagers();
         setupScrollableContainer();
+
+        // Listen for chart config changes (axis position, etc.)
+        ChartConfig.getInstance().addChangeListener(this::refreshTheme);
     }
 
     public void setOnStatusUpdate(Consumer<String> callback) {
@@ -955,7 +958,7 @@ public class ChartsPanel extends JPanel {
     }
 
     /**
-     * Refresh all chart styles when theme changes.
+     * Refresh all chart styles when theme or axis position changes.
      */
     public void refreshTheme() {
         // Re-stylize all core charts
@@ -966,7 +969,7 @@ public class ChartsPanel extends JPanel {
         ChartStyles.stylizeChart(capitalUsageChart, "Capital Usage");
         ChartStyles.stylizeChart(tradePLChart, "Trade P&L");
 
-        // Re-stylize indicator charts
+        // Re-stylize all indicator charts
         ChartStyles.stylizeChart(indicatorManager.getRsiChart(), "RSI");
         ChartStyles.stylizeChart(indicatorManager.getMacdChart(), "MACD");
         ChartStyles.stylizeChart(indicatorManager.getAtrChart(), "ATR");
@@ -977,6 +980,13 @@ public class ChartsPanel extends JPanel {
         ChartStyles.stylizeChart(indicatorManager.getRetailChart(), "Retail Delta");
         ChartStyles.stylizeChart(indicatorManager.getFundingChart(), "Funding");
         ChartStyles.stylizeChart(indicatorManager.getOiChart(), "Open Interest");
+        ChartStyles.stylizeChart(indicatorManager.getPremiumChart(), "Premium");
+        ChartStyles.stylizeChart(indicatorManager.getStochasticChart(), "Stochastic");
+        ChartStyles.stylizeChart(indicatorManager.getRangePositionChart(), "Range Position");
+        ChartStyles.stylizeChart(indicatorManager.getAdxChart(), "ADX");
+        ChartStyles.stylizeChart(indicatorManager.getTradeCountChart(), "Trade Count");
+        ChartStyles.stylizeChart(indicatorManager.getHoldingCostCumulativeChart(), "Holding Cost");
+        ChartStyles.stylizeChart(indicatorManager.getHoldingCostEventsChart(), "Holding Cost Events");
 
         // Update container background
         chartsContainer.setBackground(ChartStyles.BACKGROUND_COLOR());

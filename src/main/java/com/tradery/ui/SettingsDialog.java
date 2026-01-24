@@ -160,19 +160,41 @@ public class SettingsDialog extends JDialog {
 
         ChartConfig config = ChartConfig.getInstance();
 
+        // Price axis position
+        gbc.gridx = 0; gbc.gridy = 0; gbc.gridwidth = 1;
+        panel.add(new JLabel("Price Axis:"), gbc);
+
+        JComboBox<String> axisPositionCombo = new JComboBox<>(new String[]{"Left", "Right", "Both"});
+        String currentPosition = config.getPriceAxisPosition();
+        axisPositionCombo.setSelectedIndex(
+            "right".equals(currentPosition) ? 1 :
+            "both".equals(currentPosition) ? 2 : 0
+        );
+        axisPositionCombo.addActionListener(e -> {
+            int selected = axisPositionCombo.getSelectedIndex();
+            String position = switch (selected) {
+                case 1 -> "right";
+                case 2 -> "both";
+                default -> "left";
+            };
+            ChartConfig.getInstance().setPriceAxisPosition(position);
+        });
+        gbc.gridx = 1; gbc.fill = GridBagConstraints.HORIZONTAL; gbc.weightx = 1.0;
+        panel.add(axisPositionCombo, gbc);
+
         // Status summary
-        gbc.gridx = 0; gbc.gridy = 0; gbc.gridwidth = 2;
+        gbc.gridx = 0; gbc.gridy = 1; gbc.gridwidth = 2; gbc.fill = GridBagConstraints.NONE; gbc.weightx = 0;
         JLabel summaryLabel = new JLabel(getChartConfigSummary(config));
         panel.add(summaryLabel, gbc);
 
         // Info label
-        gbc.gridy = 1;
+        gbc.gridy = 2;
         JLabel infoLabel = new JLabel("<html><small>Chart visibility is remembered between sessions.<br>Change which charts are shown using the Indicators button in chart view.</small></html>");
         infoLabel.setForeground(UIManager.getColor("Label.disabledForeground"));
         panel.add(infoLabel, gbc);
 
         // Reset button
-        gbc.gridy = 2; gbc.gridwidth = 2;
+        gbc.gridy = 3; gbc.gridwidth = 2;
         gbc.fill = GridBagConstraints.NONE;
         gbc.anchor = GridBagConstraints.EAST;
 

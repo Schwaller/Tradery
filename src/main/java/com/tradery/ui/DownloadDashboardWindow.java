@@ -32,6 +32,12 @@ public class DownloadDashboardWindow extends JFrame {
     private JLabel statusLabel;
     private Timer refreshTimer;
 
+    // Content area with card layout
+    private JPanel contentCards;
+    private CardLayout cardLayout;
+    private static final String CARD_OVERVIEW = "overview";
+    private static final String CARD_DETAILS = "details";
+
     // Currently selected page key (for detail view)
     private String selectedPageKey;
     private DataType selectedDataType;
@@ -93,26 +99,36 @@ public class DownloadDashboardWindow extends JFrame {
         titleLabel.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 13));
         titleBar.add(titleLabel, BorderLayout.CENTER);
 
-        // Left panel: timeline + page status view
+        // Left panel: navigation (status panel only)
         JPanel leftPanel = new JPanel(new BorderLayout(0, 0));
         leftPanel.setBorder(BorderFactory.createEmptyBorder(0, 0, 0, 0));
-        leftPanel.setPreferredSize(new Dimension(430, 0));
-
-        // Timeline at top
-        leftPanel.add(timelinePanel, BorderLayout.NORTH);
-        // Status panel in center
+        leftPanel.setPreferredSize(new Dimension(300, 0));
         leftPanel.add(statusPanel, BorderLayout.CENTER);
 
-        // Right panel: detail + log tabs
-        JTabbedPane rightTabs = new JTabbedPane();
-        rightTabs.addTab("Page Details", createDetailTab());
-        rightTabs.addTab("Event Log", createLogTab());
+        // Right panel: content area with cards
+        cardLayout = new CardLayout();
+        contentCards = new JPanel(cardLayout);
+
+        // Card 1: Overview (timeline panel)
+        JPanel overviewCard = new JPanel(new BorderLayout());
+        overviewCard.setBorder(new EmptyBorder(8, 8, 8, 8));
+        overviewCard.add(timelinePanel, BorderLayout.CENTER);
+        contentCards.add(overviewCard, CARD_OVERVIEW);
+
+        // Card 2: Details (tabs for page details and event log)
+        JTabbedPane detailTabs = new JTabbedPane();
+        detailTabs.addTab("Page Details", createDetailTab());
+        detailTabs.addTab("Event Log", createLogTab());
+        contentCards.add(detailTabs, CARD_DETAILS);
+
+        // Show overview by default
+        cardLayout.show(contentCards, CARD_OVERVIEW);
 
         // Main split
         JSplitPane splitPane = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT);
         splitPane.setLeftComponent(leftPanel);
-        splitPane.setRightComponent(rightTabs);
-        splitPane.setDividerLocation(400);
+        splitPane.setRightComponent(contentCards);
+        splitPane.setDividerLocation(300);
         splitPane.setResizeWeight(0);
 
         // Bottom bar with separator line above
@@ -167,9 +183,18 @@ public class DownloadDashboardWindow extends JFrame {
     }
 
     private void onPageSelected(String pageKey, DataType dataType) {
-        this.selectedPageKey = pageKey;
-        this.selectedDataType = dataType;
-        detailPanel.setSelectedPage(pageKey, dataType);
+        if (PageStatusPanel.OVERVIEW_KEY.equals(pageKey)) {
+            // Show overview/timeline
+            this.selectedPageKey = null;
+            this.selectedDataType = null;
+            cardLayout.show(contentCards, CARD_OVERVIEW);
+        } else {
+            // Show page details
+            this.selectedPageKey = pageKey;
+            this.selectedDataType = dataType;
+            detailPanel.setSelectedPage(pageKey, dataType);
+            cardLayout.show(contentCards, CARD_DETAILS);
+        }
     }
 
     private void startRefreshTimer() {

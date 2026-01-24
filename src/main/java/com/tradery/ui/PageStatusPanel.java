@@ -56,12 +56,28 @@ public class PageStatusPanel extends JPanel {
         add(scrollPane, BorderLayout.CENTER);
     }
 
+    // Special constant for "Overview" selection
+    public static final String OVERVIEW_KEY = "__OVERVIEW__";
+
+    // Track if overview is selected
+    private boolean overviewSelected = true;  // Default to overview
+
     /**
      * Update the panel with current page data.
      */
     public void update(List<DataPageManager.PageInfo> pages) {
         contentPanel.removeAll();
         pageRows.clear();
+
+        // Add Overview row at the top
+        addOverviewRow();
+        contentPanel.add(Box.createVerticalStrut(8));
+
+        // Separator
+        JSeparator sep = new JSeparator();
+        sep.setMaximumSize(new Dimension(Integer.MAX_VALUE, 1));
+        contentPanel.add(sep);
+        contentPanel.add(Box.createVerticalStrut(8));
 
         // Group pages by data type
         for (DataType dataType : DataType.values()) {
@@ -74,19 +90,74 @@ public class PageStatusPanel extends JPanel {
             }
         }
 
-        // Show "no active pages" if nothing is tracked
-        if (contentPanel.getComponentCount() == 0) {
+        // Show "no active pages" if nothing is tracked (after overview)
+        if (pages.isEmpty()) {
             JLabel emptyLabel = new JLabel("No active data pages");
             emptyLabel.setForeground(Color.GRAY);
             emptyLabel.setFont(emptyLabel.getFont().deriveFont(Font.ITALIC, 12f));
-            emptyLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
-            contentPanel.add(Box.createVerticalGlue());
+            emptyLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
+            emptyLabel.setBorder(new EmptyBorder(0, 8, 0, 0));
             contentPanel.add(emptyLabel);
-            contentPanel.add(Box.createVerticalGlue());
         }
 
         contentPanel.revalidate();
         contentPanel.repaint();
+    }
+
+    private void addOverviewRow() {
+        JPanel row = new JPanel(new BorderLayout(8, 0));
+        row.setBorder(BorderFactory.createEmptyBorder(4, 8, 4, 8));
+        row.setMaximumSize(new Dimension(Integer.MAX_VALUE, 28));
+        row.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+
+        JLabel iconLabel = new JLabel("\uD83D\uDCCA"); // chart icon
+        iconLabel.setFont(iconLabel.getFont().deriveFont(14f));
+        row.add(iconLabel, BorderLayout.WEST);
+
+        JLabel nameLabel = new JLabel("Overview");
+        nameLabel.setFont(nameLabel.getFont().deriveFont(Font.BOLD, 12f));
+        row.add(nameLabel, BorderLayout.CENTER);
+
+        // Update background based on selection
+        if (overviewSelected) {
+            row.setBackground(COLOR_SELECTED_BG);
+            row.setOpaque(true);
+        } else {
+            row.setOpaque(false);
+        }
+
+        row.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mousePressed(MouseEvent e) {
+                selectOverview();
+            }
+
+            @Override
+            public void mouseEntered(MouseEvent e) {
+                if (!overviewSelected) {
+                    row.setBackground(COLOR_HOVER_BG);
+                    row.setOpaque(true);
+                    row.repaint();
+                }
+            }
+
+            @Override
+            public void mouseExited(MouseEvent e) {
+                if (!overviewSelected) {
+                    row.setOpaque(false);
+                    row.repaint();
+                }
+            }
+        });
+
+        contentPanel.add(row);
+    }
+
+    private void selectOverview() {
+        overviewSelected = true;
+        selectedPageKey = null;
+        selectedDataType = null;
+        onPageSelected.accept(OVERVIEW_KEY, null);
     }
 
     private void addDataTypeSection(DataType dataType, List<DataPageManager.PageInfo> pages) {
@@ -192,6 +263,7 @@ public class PageStatusPanel extends JPanel {
     }
 
     private void selectPage(String pageKey, DataType dataType) {
+        this.overviewSelected = false;
         this.selectedPageKey = pageKey;
         this.selectedDataType = dataType;
         updateRowSelection();
