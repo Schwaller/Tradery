@@ -5,9 +5,14 @@ package com.tradery.ui.charts.footprint;
  */
 public enum FootprintDisplayMode {
     /**
-     * Show combined delta from all exchanges
+     * Show combined delta from all exchanges (single color per bucket)
      */
-    COMBINED("Combined", "Aggregated delta from all exchanges"),
+    COMBINED("Combined", "Single color based on delta direction"),
+
+    /**
+     * Split view - buy volume on left (green), sell volume on right (red)
+     */
+    SPLIT("Split", "Buy volume left (green), sell volume right (red)"),
 
     /**
      * Show data from a single selected exchange

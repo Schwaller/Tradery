@@ -101,6 +101,14 @@ public final class ChartPanelFactory {
 
         popup.addSeparator();
 
+        JMenuItem resetLayout = new JMenuItem("Reset Layout");
+        resetLayout.addActionListener(e -> {
+            ChartConfig.getInstance().clearChartDividerPositions();
+        });
+        popup.add(resetLayout);
+
+        popup.addSeparator();
+
         JMenuItem copyImage = new JMenuItem("Copy");
         copyImage.addActionListener(e -> panel.doCopy());
         popup.add(copyImage);

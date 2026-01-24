@@ -123,6 +123,9 @@ public class ChartConfig {
     private boolean capitalUsageChartEnabled = true;
     private boolean tradePLChartEnabled = true;
 
+    // Chart layout divider positions (proportional 0.0-1.0, keyed by chart identifier)
+    private java.util.Map<String, Double> chartDividerPositions = new java.util.LinkedHashMap<>();
+
     // Listeners
     private transient List<Runnable> listeners = new ArrayList<>();
     private transient File configFile;
@@ -455,6 +458,32 @@ public class ChartConfig {
     public boolean isTradePLChartEnabled() { return tradePLChartEnabled; }
     public void setTradePLChartEnabled(boolean enabled) { this.tradePLChartEnabled = enabled; save(); }
 
+    // ===== Chart Layout Divider Positions =====
+
+    public java.util.Map<String, Double> getChartDividerPositions() {
+        return new java.util.LinkedHashMap<>(chartDividerPositions);
+    }
+
+    public void setChartDividerPositions(java.util.Map<String, Double> positions) {
+        this.chartDividerPositions = positions != null ? new java.util.LinkedHashMap<>(positions) : new java.util.LinkedHashMap<>();
+        save();
+    }
+
+    public void setChartDividerPosition(String chartId, double position) {
+        chartDividerPositions.put(chartId, position);
+        save();
+    }
+
+    public Double getChartDividerPosition(String chartId) {
+        return chartDividerPositions.get(chartId);
+    }
+
+    public void clearChartDividerPositions() {
+        chartDividerPositions.clear();
+        save();
+        notifyListeners();
+    }
+
     // ===== Batch update (prevents multiple saves) =====
 
     /**
@@ -550,6 +579,11 @@ public class ChartConfig {
         this.comparisonChartEnabled = other.comparisonChartEnabled;
         this.capitalUsageChartEnabled = other.capitalUsageChartEnabled;
         this.tradePLChartEnabled = other.tradePLChartEnabled;
+
+        // Chart layout divider positions
+        this.chartDividerPositions = other.chartDividerPositions != null
+            ? new java.util.LinkedHashMap<>(other.chartDividerPositions)
+            : new java.util.LinkedHashMap<>();
 
         save();
         notifyListeners();
@@ -647,6 +681,9 @@ public class ChartConfig {
         comparisonChartEnabled = true;
         capitalUsageChartEnabled = true;
         tradePLChartEnabled = true;
+
+        // Chart layout divider positions - cleared on reset
+        chartDividerPositions = new java.util.LinkedHashMap<>();
 
         save();
         notifyListeners();
@@ -820,5 +857,10 @@ public class ChartConfig {
         this.comparisonChartEnabled = other.comparisonChartEnabled;
         this.capitalUsageChartEnabled = other.capitalUsageChartEnabled;
         this.tradePLChartEnabled = other.tradePLChartEnabled;
+
+        // Chart layout divider positions
+        this.chartDividerPositions = other.chartDividerPositions != null
+            ? new java.util.LinkedHashMap<>(other.chartDividerPositions)
+            : new java.util.LinkedHashMap<>();
     }
 }

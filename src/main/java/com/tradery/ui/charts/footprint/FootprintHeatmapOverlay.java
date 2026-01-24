@@ -105,43 +105,32 @@ public class FootprintHeatmapOverlay {
      * Redraw using currently available data.
      */
     public void redraw() {
-        System.out.println("[FootprintHeatmap] redraw: enabled=" + isEnabled() +
-            ", hasCandles=" + (currentCandles != null && !currentCandles.isEmpty()) +
-            ", hasTrades=" + (currentAggTrades != null && !currentAggTrades.isEmpty()));
-
         clear();
 
         if (!isEnabled() || currentCandles == null || currentCandles.isEmpty()) {
-            System.out.println("[FootprintHeatmap] redraw EARLY RETURN: not enabled or no candles");
             return;
         }
 
         // Calculate footprints if needed
         if (footprintResult == null) {
-            System.out.println("[FootprintHeatmap] calculating footprints...");
             footprintResult = calculateFootprints();
         }
 
         if (footprintResult == null || footprintResult.footprints().isEmpty()) {
-            System.out.println("[FootprintHeatmap] no footprints calculated");
             return;
         }
-
-        System.out.println("[FootprintHeatmap] got " + footprintResult.footprints().size() + " footprints");
 
         // Create and add annotation
         XYPlot plot = priceChart.getXYPlot();
         annotation = new FootprintHeatmapAnnotation(footprintResult.footprints(), config);
 
-        // Add as background annotation
+        // Add as background annotation (before other annotations)
         var existingAnnotations = new java.util.ArrayList<>(plot.getAnnotations());
         plot.clearAnnotations();
         plot.addAnnotation(annotation);
         for (var existing : existingAnnotations) {
             plot.addAnnotation(existing);
         }
-
-        System.out.println("[FootprintHeatmap] added annotation to plot");
 
         if (onDataReady != null) {
             onDataReady.run();

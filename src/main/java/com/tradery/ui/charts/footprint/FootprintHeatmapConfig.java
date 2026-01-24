@@ -16,7 +16,7 @@ public class FootprintHeatmapConfig {
     private boolean enabled = false;
 
     // Display mode
-    private FootprintDisplayMode displayMode = FootprintDisplayMode.COMBINED;
+    private FootprintDisplayMode displayMode = FootprintDisplayMode.SPLIT;
 
     // Single exchange selection (when mode = SINGLE_EXCHANGE)
     private Exchange selectedExchange = Exchange.BINANCE;

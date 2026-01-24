@@ -263,7 +263,7 @@ public class IndicatorChartsManager {
      * @param zoomCallback Callback to handle zoom toggle by indicator ordinal
      */
     public void createWrappers(java.util.function.IntConsumer zoomCallback) {
-        createWrappers(zoomCallback, null);
+        createWrappers(zoomCallback, null, null);
     }
 
     /**
@@ -272,10 +272,20 @@ public class IndicatorChartsManager {
      * @param fullScreenCallback Callback to handle full screen toggle by indicator ordinal
      */
     public void createWrappers(java.util.function.IntConsumer zoomCallback, java.util.function.IntConsumer fullScreenCallback) {
+        createWrappers(zoomCallback, fullScreenCallback, null);
+    }
+
+    /**
+     * Create wrapper panels with zoom, full screen, and exit full screen buttons.
+     * @param zoomCallback Callback to handle zoom toggle by indicator ordinal
+     * @param fullScreenCallback Callback to handle full screen toggle by indicator ordinal
+     * @param exitFullScreenCallback Callback to exit full screen mode (shared for all indicators)
+     */
+    public void createWrappers(java.util.function.IntConsumer zoomCallback, java.util.function.IntConsumer fullScreenCallback, Runnable exitFullScreenCallback) {
         for (IndicatorType type : IndicatorType.values()) {
             int ordinal = type.ordinal();
             Runnable fsCallback = fullScreenCallback != null ? () -> fullScreenCallback.accept(ordinal) : null;
-            components.get(type).createWrapper(() -> zoomCallback.accept(ordinal), fsCallback);
+            components.get(type).createWrapper(() -> zoomCallback.accept(ordinal), fsCallback, exitFullScreenCallback);
         }
     }
 
@@ -1672,6 +1682,16 @@ public class IndicatorChartsManager {
     public void updateFullScreenButtonStates(int fullScreenIndex) {
         for (IndicatorType type : IndicatorType.values()) {
             components.get(type).setFullScreen(type.ordinal() == fullScreenIndex);
+        }
+    }
+
+    /**
+     * Update close button visibility (only visible for the full-screen chart).
+     * @param fullScreenIndex Index of full screen indicator (-1 for none, uses IndicatorType ordinal)
+     */
+    public void updateCloseButtonVisibility(int fullScreenIndex) {
+        for (IndicatorType type : IndicatorType.values()) {
+            components.get(type).setCloseButtonVisible(type.ordinal() == fullScreenIndex);
         }
     }
 

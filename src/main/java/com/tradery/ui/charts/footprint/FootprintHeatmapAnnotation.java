@@ -41,18 +41,9 @@ public class FootprintHeatmapAnnotation extends AbstractXYAnnotation {
                      ValueAxis domainAxis, ValueAxis rangeAxis, int rendererIndex,
                      PlotRenderingInfo info) {
 
-        // DEBUG: Draw a visible indicator that this annotation is being rendered
-        g2.setColor(new Color(255, 0, 255, 100)); // Semi-transparent magenta
-        g2.fillRect((int) dataArea.getX(), (int) dataArea.getY(), 50, 20);
-        g2.setColor(Color.WHITE);
-        g2.drawString("FP:" + footprints.size(), (int) dataArea.getX() + 5, (int) dataArea.getY() + 14);
-
         if (!config.isEnabled() || footprints.isEmpty()) {
-            System.out.println("[FootprintHeatmap] draw() SKIP: enabled=" + config.isEnabled() + ", footprints=" + footprints.size());
             return;
         }
-
-        System.out.println("[FootprintHeatmap] draw() rendering " + footprints.size() + " footprints");
 
         // Enable anti-aliasing
         g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
@@ -62,9 +53,45 @@ public class FootprintHeatmapAnnotation extends AbstractXYAnnotation {
         long candleInterval = estimateCandleInterval();
         double halfIntervalMs = candleInterval * 0.4;
 
-        for (Footprint footprint : footprints) {
-            drawFootprint(g2, plot, dataArea, domainAxis, rangeAxis, footprint, halfIntervalMs);
+        // Check if we should show zoom hint (candles too narrow)
+        boolean tooNarrow = false;
+        if (footprints.size() >= 2) {
+            long interval = footprints.get(1).timestamp() - footprints.get(0).timestamp();
+            double testWidth = domainAxis.valueToJava2D(interval, dataArea, RectangleEdge.BOTTOM)
+                             - domainAxis.valueToJava2D(0, dataArea, RectangleEdge.BOTTOM);
+            tooNarrow = testWidth < 3; // Less than 3 pixels per candle
         }
+
+        if (tooNarrow) {
+            // Draw zoom hint at bottom center
+            drawZoomHint(g2, dataArea);
+        } else {
+            // Draw footprints
+            for (Footprint footprint : footprints) {
+                drawFootprint(g2, plot, dataArea, domainAxis, rangeAxis, footprint, halfIntervalMs);
+            }
+        }
+    }
+
+    private void drawZoomHint(Graphics2D g2, Rectangle2D dataArea) {
+        String hint = "Zoom in to see volume heatmap";
+        Font font = new Font(Font.SANS_SERIF, Font.PLAIN, 11);
+        g2.setFont(font);
+
+        FontMetrics fm = g2.getFontMetrics();
+        int textWidth = fm.stringWidth(hint);
+        int textHeight = fm.getHeight();
+
+        int x = (int) (dataArea.getCenterX() - textWidth / 2);
+        int y = (int) (dataArea.getMaxY() - 10);
+
+        // Draw background
+        g2.setColor(new Color(40, 40, 40, 180));
+        g2.fillRoundRect(x - 8, y - textHeight + 2, textWidth + 16, textHeight + 4, 6, 6);
+
+        // Draw text
+        g2.setColor(new Color(180, 180, 180));
+        g2.drawString(hint, x, y);
     }
 
     private long estimateCandleInterval() {
@@ -84,7 +111,6 @@ public class FootprintHeatmapAnnotation extends AbstractXYAnnotation {
                                 ValueAxis domainAxis, ValueAxis rangeAxis,
                                 Footprint footprint, double halfIntervalMs) {
 
-        double centerX = domainAxis.valueToJava2D(footprint.timestamp(), dataArea, RectangleEdge.BOTTOM);
         double leftX = domainAxis.valueToJava2D(footprint.timestamp() - halfIntervalMs, dataArea, RectangleEdge.BOTTOM);
         double rightX = domainAxis.valueToJava2D(footprint.timestamp() + halfIntervalMs, dataArea, RectangleEdge.BOTTOM);
 
@@ -94,7 +120,9 @@ public class FootprintHeatmapAnnotation extends AbstractXYAnnotation {
         }
 
         double candleWidth = rightX - leftX;
-        if (candleWidth < 3) return; // Too narrow
+        if (candleWidth < 0.5) {
+            return; // Only skip if truly invisible
+        }
 
         // Draw value area background first
         if (config.isShowValueArea()) {
@@ -140,10 +168,15 @@ public class FootprintHeatmapAnnotation extends AbstractXYAnnotation {
         int width = (int) candleWidth;
         int height = Math.max(1, Math.abs((int) (bottomY - topY)));
 
-        // Get delta color based on mode
-        Color bucketColor = getBucketColor(bucket, footprint);
-        g2.setColor(bucketColor);
-        g2.fillRect(x, y, width, height);
+        // Handle SPLIT mode separately
+        if (config.getDisplayMode() == FootprintDisplayMode.SPLIT) {
+            drawSplitBucket(g2, x, y, width, height, bucket);
+        } else {
+            // Get delta color based on mode
+            Color bucketColor = getBucketColor(bucket, footprint);
+            g2.setColor(bucketColor);
+            g2.fillRect(x, y, width, height);
+        }
 
         // Draw imbalance markers
         if (config.isShowImbalanceMarkers()) {
@@ -153,6 +186,45 @@ public class FootprintHeatmapAnnotation extends AbstractXYAnnotation {
         // Draw delta numbers if enabled and there's enough space
         if (config.isShowDeltaNumbers() && width >= 20 && height >= 10) {
             drawDeltaNumber(g2, x, y, width, height, bucket);
+        }
+    }
+
+    /**
+     * Draw split bucket - buy volume on left (green), sell volume on right (red).
+     */
+    private void drawSplitBucket(Graphics2D g2, int x, int y, int width, int height, FootprintBucket bucket) {
+        double buyVol = bucket.totalBuyVolume();
+        double sellVol = bucket.totalSellVolume();
+        double totalVol = buyVol + sellVol;
+
+        if (totalVol <= 0) return;
+
+        int halfWidth = width / 2;
+
+        // Buy side (left) - green
+        if (buyVol > 0) {
+            double buyIntensity = buyVol / maxVolume;
+            int alpha = (int) (50 + buyIntensity * 150 * config.getOpacity());
+            alpha = Math.max(50, Math.min(200, alpha));
+            g2.setColor(new Color(
+                FootprintHeatmapConfig.STRONG_BUY_COLOR.getRed(),
+                FootprintHeatmapConfig.STRONG_BUY_COLOR.getGreen(),
+                FootprintHeatmapConfig.STRONG_BUY_COLOR.getBlue(),
+                alpha));
+            g2.fillRect(x, y, halfWidth, height);
+        }
+
+        // Sell side (right) - red
+        if (sellVol > 0) {
+            double sellIntensity = sellVol / maxVolume;
+            int alpha = (int) (50 + sellIntensity * 150 * config.getOpacity());
+            alpha = Math.max(50, Math.min(200, alpha));
+            g2.setColor(new Color(
+                FootprintHeatmapConfig.STRONG_SELL_COLOR.getRed(),
+                FootprintHeatmapConfig.STRONG_SELL_COLOR.getGreen(),
+                FootprintHeatmapConfig.STRONG_SELL_COLOR.getBlue(),
+                alpha));
+            g2.fillRect(x + halfWidth, y, width - halfWidth, height);
         }
     }
 
@@ -268,7 +340,7 @@ public class FootprintHeatmapAnnotation extends AbstractXYAnnotation {
         double pocY = rangeAxis.valueToJava2D(poc, dataArea, RectangleEdge.LEFT);
 
         g2.setColor(FootprintHeatmapConfig.POC_COLOR);
-        g2.setStroke(new BasicStroke(1.5f));
+        g2.setStroke(new BasicStroke(0.5f));
         g2.drawLine((int) leftX, (int) pocY, (int) rightX, (int) pocY);
     }
 }

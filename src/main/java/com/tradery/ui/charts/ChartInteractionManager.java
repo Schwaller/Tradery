@@ -41,6 +41,9 @@ public class ChartInteractionManager {
     private boolean fixedWidthMode = false;
     private Supplier<JScrollBar> scrollBarSupplier;
 
+    // Double-click callbacks per chart panel for full-screen toggle
+    private java.util.Map<ChartPanel, Runnable> doubleClickCallbacks = new java.util.HashMap<>();
+
     /**
      * Add a chart to the synchronization registry.
      * When zooming/panning, all synced charts will have their domain axes updated together.
@@ -72,6 +75,23 @@ public class ChartInteractionManager {
     public void setFixedWidthMode(boolean enabled, Supplier<JScrollBar> scrollBarSupplier) {
         this.fixedWidthMode = enabled;
         this.scrollBarSupplier = scrollBarSupplier;
+    }
+
+    /**
+     * Set a callback to be invoked on double-click for a specific chart panel.
+     * Used for full-screen toggle per chart.
+     */
+    public void setDoubleClickCallback(ChartPanel panel, Runnable callback) {
+        if (panel != null && callback != null) {
+            doubleClickCallbacks.put(panel, callback);
+        }
+    }
+
+    /**
+     * Remove double-click callback for a chart panel.
+     */
+    public void removeDoubleClickCallback(ChartPanel panel) {
+        doubleClickCallbacks.remove(panel);
     }
 
     /**
@@ -145,6 +165,16 @@ public class ChartInteractionManager {
 
     private MouseAdapter createMouseListener(ChartPanel panel, boolean yAxisOnRight) {
         return new MouseAdapter() {
+            @Override
+            public void mouseClicked(MouseEvent e) {
+                if (e.getClickCount() == 2 && SwingUtilities.isLeftMouseButton(e)) {
+                    Runnable callback = doubleClickCallbacks.get(panel);
+                    if (callback != null) {
+                        callback.run();
+                    }
+                }
+            }
+
             @Override
             public void mousePressed(MouseEvent e) {
                 if (SwingUtilities.isLeftMouseButton(e)) {

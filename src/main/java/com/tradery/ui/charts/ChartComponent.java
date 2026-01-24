@@ -22,7 +22,9 @@ public class ChartComponent {
     private final ChartPanel chartPanel;
     private final JButton zoomButton;
     private final JButton fullScreenButton;
+    private final JButton closeButton; // Close button for exiting full-screen mode
     private JPanel wrapper;
+    private Runnable exitFullScreenCallback;
 
     /**
      * Create a new chart component with the given title.
@@ -59,12 +61,24 @@ public class ChartComponent {
         zoomButton.setFocusPainted(false);
         zoomButton.setToolTipText("Zoom chart");
 
-        // Create full screen button
+        // Create full screen button (hidden by default)
         fullScreenButton = new JButton("\u25a1"); // □ (empty square)
         fullScreenButton.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 11));
         fullScreenButton.setMargin(new Insets(2, 4, 1, 4));
         fullScreenButton.setFocusPainted(false);
         fullScreenButton.setToolTipText("Full screen (hide other charts)");
+        fullScreenButton.setVisible(false); // Hidden by default
+
+        // Create close button for exiting full-screen mode (top-left)
+        closeButton = new JButton("\u2715"); // ✕
+        closeButton.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 11));
+        closeButton.setMargin(new Insets(2, 4, 1, 4));
+        closeButton.setFocusPainted(false);
+        closeButton.setToolTipText("Show all charts");
+        closeButton.setVisible(false); // Only visible in full-screen mode
+
+        // Hide zoom button by default too
+        zoomButton.setVisible(false);
     }
 
     private void configureChartPanel() {
@@ -84,9 +98,21 @@ public class ChartComponent {
      * Must be called after construction to set up the callbacks.
      */
     public JPanel createWrapper(Runnable onZoom, Runnable onFullScreen) {
+        return createWrapper(onZoom, onFullScreen, null);
+    }
+
+    /**
+     * Create the wrapper panel with zoom, full screen, and exit full screen button overlays.
+     * Must be called after construction to set up the callbacks.
+     */
+    public JPanel createWrapper(Runnable onZoom, Runnable onFullScreen, Runnable exitFullScreen) {
         zoomButton.addActionListener(e -> onZoom.run());
         if (onFullScreen != null) {
             fullScreenButton.addActionListener(e -> onFullScreen.run());
+        }
+        this.exitFullScreenCallback = exitFullScreen;
+        if (exitFullScreen != null) {
+            closeButton.addActionListener(e -> exitFullScreen.run());
         }
 
         JLayeredPane layeredPane = new JLayeredPane();
@@ -95,12 +121,15 @@ public class ChartComponent {
 
         Dimension zoomBtnSize = zoomButton.getPreferredSize();
         Dimension fsBtnSize = fullScreenButton.getPreferredSize();
+        Dimension closeBtnSize = closeButton.getPreferredSize();
         zoomButton.setBounds(0, 5, zoomBtnSize.width, zoomBtnSize.height);
         fullScreenButton.setBounds(0, 5, fsBtnSize.width, fsBtnSize.height);
+        closeButton.setBounds(8, 8, closeBtnSize.width, closeBtnSize.height);
         layeredPane.add(zoomButton, JLayeredPane.PALETTE_LAYER);
         if (onFullScreen != null) {
             layeredPane.add(fullScreenButton, JLayeredPane.PALETTE_LAYER);
         }
+        layeredPane.add(closeButton, JLayeredPane.PALETTE_LAYER);
 
         layeredPane.addComponentListener(new java.awt.event.ComponentAdapter() {
             @Override
@@ -110,10 +139,13 @@ public class ChartComponent {
                 chartPanel.setBounds(0, 0, w, h);
                 Dimension zbs = zoomButton.getPreferredSize();
                 Dimension fsbs = fullScreenButton.getPreferredSize();
+                Dimension cbs = closeButton.getPreferredSize();
                 // Position zoom button at right edge
                 zoomButton.setBounds(w - zbs.width - 12, 8, zbs.width, zbs.height);
                 // Position full screen button to the left of zoom button
                 fullScreenButton.setBounds(w - zbs.width - 12 - fsbs.width - 4, 8, fsbs.width, fsbs.height);
+                // Position close button at top-left
+                closeButton.setBounds(8, 8, cbs.width, cbs.height);
             }
         });
 
@@ -149,6 +181,13 @@ public class ChartComponent {
             fullScreenButton.setText("\u25a1"); // □ (empty square)
             fullScreenButton.setToolTipText("Full screen (hide other charts)");
         }
+    }
+
+    /**
+     * Set close button visibility (only visible in full-screen mode).
+     */
+    public void setCloseButtonVisible(boolean visible) {
+        closeButton.setVisible(visible);
     }
 
     // Accessors

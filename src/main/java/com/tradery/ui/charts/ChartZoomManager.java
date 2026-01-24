@@ -43,6 +43,7 @@ public class ChartZoomManager {
     private JPanel[] chartWrappers;
     private JButton[] zoomButtons;
     private JButton[] fullScreenButtons;
+    private JButton[] closeButtons; // Close button for exiting full-screen mode
 
     // Scrollbar for fixed-width mode
     private JScrollBar timeScrollBar;
@@ -57,6 +58,7 @@ public class ChartZoomManager {
         chartWrappers = new JPanel[6];
         zoomButtons = new JButton[6];
         fullScreenButtons = new JButton[6];
+        closeButtons = new JButton[6];
     }
 
     public void setIndicatorManager(IndicatorChartsManager manager) {
@@ -130,6 +132,7 @@ public class ChartZoomManager {
         zoomBtn.setFocusPainted(false);
         zoomBtn.setToolTipText("Zoom chart");
         zoomBtn.addActionListener(e -> toggleZoom(chartIndex));
+        zoomBtn.setVisible(false); // Hidden by default
         zoomButtons[chartIndex] = zoomBtn;
 
         JButton fsBtn = new JButton("\u25a1"); // □ (empty square)
@@ -138,7 +141,18 @@ public class ChartZoomManager {
         fsBtn.setFocusPainted(false);
         fsBtn.setToolTipText("Full screen (hide other charts)");
         fsBtn.addActionListener(e -> toggleFullScreen(chartIndex));
+        fsBtn.setVisible(false); // Hidden by default
         fullScreenButtons[chartIndex] = fsBtn;
+
+        // Close button for exiting full-screen mode (top-left)
+        JButton closeBtn = new JButton("\u2715"); // ✕
+        closeBtn.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 11));
+        closeBtn.setMargin(new Insets(2, 4, 1, 4));
+        closeBtn.setFocusPainted(false);
+        closeBtn.setToolTipText("Show all charts");
+        closeBtn.addActionListener(e -> exitFullScreen());
+        closeBtn.setVisible(false); // Only visible in full-screen mode
+        closeButtons[chartIndex] = closeBtn;
 
         JLayeredPane layeredPane = new JLayeredPane();
         chartPanel.setBounds(0, 0, 100, 100);
@@ -146,10 +160,13 @@ public class ChartZoomManager {
 
         Dimension zoomBtnSize = zoomBtn.getPreferredSize();
         Dimension fsBtnSize = fsBtn.getPreferredSize();
+        Dimension closeBtnSize = closeBtn.getPreferredSize();
         zoomBtn.setBounds(0, 5, zoomBtnSize.width, zoomBtnSize.height);
         fsBtn.setBounds(0, 5, fsBtnSize.width, fsBtnSize.height);
+        closeBtn.setBounds(8, 8, closeBtnSize.width, closeBtnSize.height);
         layeredPane.add(zoomBtn, JLayeredPane.PALETTE_LAYER);
         layeredPane.add(fsBtn, JLayeredPane.PALETTE_LAYER);
+        layeredPane.add(closeBtn, JLayeredPane.PALETTE_LAYER);
 
         layeredPane.addComponentListener(new java.awt.event.ComponentAdapter() {
             @Override
@@ -159,10 +176,13 @@ public class ChartZoomManager {
                 chartPanel.setBounds(0, 0, w, h);
                 Dimension zbs = zoomBtn.getPreferredSize();
                 Dimension fsbs = fsBtn.getPreferredSize();
+                Dimension cbs = closeBtn.getPreferredSize();
                 // Position zoom button at right edge
                 zoomBtn.setBounds(w - zbs.width - 12, 8, zbs.width, zbs.height);
                 // Position full screen button to the left of zoom button
                 fsBtn.setBounds(w - zbs.width - 12 - fsbs.width - 4, 8, fsbs.width, fsbs.height);
+                // Position close button at top-left
+                closeBtn.setBounds(8, 8, cbs.width, cbs.height);
             }
         });
 
@@ -235,10 +255,31 @@ public class ChartZoomManager {
             indicatorZoomedIndex = -1;
         }
         updateFullScreenButtonStates();
+        updateCloseButtonVisibility();
         updateZoomButtonStates();
         if (indicatorManager != null) {
             indicatorManager.updateFullScreenButtonStates(fullScreenIndicatorIndex);
             indicatorManager.updateZoomButtonStates(indicatorZoomedIndex);
+            indicatorManager.updateCloseButtonVisibility(fullScreenIndicatorIndex);
+        }
+        if (onLayoutChange != null) {
+            onLayoutChange.run();
+        }
+    }
+
+    /**
+     * Exit full screen mode for any chart.
+     */
+    public void exitFullScreen() {
+        fullScreenChartIndex = -1;
+        fullScreenIndicatorIndex = -1;
+        updateFullScreenButtonStates();
+        updateCloseButtonVisibility();
+        updateZoomButtonStates();
+        if (indicatorManager != null) {
+            indicatorManager.updateFullScreenButtonStates(-1);
+            indicatorManager.updateZoomButtonStates(-1);
+            indicatorManager.updateCloseButtonVisibility(-1);
         }
         if (onLayoutChange != null) {
             onLayoutChange.run();
@@ -259,10 +300,12 @@ public class ChartZoomManager {
             indicatorZoomedIndex = -1;
         }
         updateFullScreenButtonStates();
+        updateCloseButtonVisibility();
         updateZoomButtonStates();
         if (indicatorManager != null) {
             indicatorManager.updateFullScreenButtonStates(fullScreenIndicatorIndex);
             indicatorManager.updateZoomButtonStates(indicatorZoomedIndex);
+            indicatorManager.updateCloseButtonVisibility(fullScreenIndicatorIndex);
         }
         if (onLayoutChange != null) {
             onLayoutChange.run();
@@ -293,6 +336,16 @@ public class ChartZoomManager {
                     fullScreenButtons[i].setText("\u25a1"); // □ (empty square)
                     fullScreenButtons[i].setToolTipText("Full screen (hide other charts)");
                 }
+            }
+        }
+    }
+
+    private void updateCloseButtonVisibility() {
+        boolean inFullScreen = fullScreenChartIndex >= 0 || fullScreenIndicatorIndex >= 0;
+        for (int i = 0; i < closeButtons.length; i++) {
+            if (closeButtons[i] != null) {
+                // Show close button only on the full-screen chart
+                closeButtons[i].setVisible(fullScreenChartIndex == i);
             }
         }
     }

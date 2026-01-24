@@ -25,6 +25,23 @@ public class DownloadDashboardWindow extends JFrame {
 
     private static final int REFRESH_INTERVAL_MS = 250;
 
+    // Singleton instance
+    private static DownloadDashboardWindow instance;
+
+    /**
+     * Show the Download Dashboard window. Creates a new instance if none exists,
+     * or brings the existing window to front.
+     */
+    public static void showWindow() {
+        if (instance == null || !instance.isDisplayable()) {
+            instance = new DownloadDashboardWindow();
+            instance.setVisible(true);
+        } else {
+            instance.toFront();
+            instance.requestFocus();
+        }
+    }
+
     private DataTimelinePanel timelinePanel;
     private PageStatusPanel statusPanel;
     private DownloadLogPanel logPanel;
@@ -67,6 +84,7 @@ public class DownloadDashboardWindow extends JFrame {
             @Override
             public void windowClosing(WindowEvent e) {
                 cleanup();
+                instance = null;
             }
         });
     }

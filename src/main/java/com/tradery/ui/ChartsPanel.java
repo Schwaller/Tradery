@@ -61,6 +61,7 @@ public class ChartsPanel extends JPanel {
     private final ChartZoomManager zoomManager;
     private final CrosshairManager crosshairManager;
     private final ChartInteractionManager interactionManager;
+    private final SplitPaneLayoutManager splitLayoutManager;
 
     // Status callback
     private Consumer<String> onStatusUpdate;
@@ -85,6 +86,7 @@ public class ChartsPanel extends JPanel {
         zoomManager = new ChartZoomManager();
         crosshairManager = new CrosshairManager();
         interactionManager = new ChartInteractionManager();
+        splitLayoutManager = new SplitPaneLayoutManager();
 
         initializeCharts();
 
@@ -270,7 +272,7 @@ public class ChartsPanel extends JPanel {
 
         // Setup indicator manager
         indicatorManager.setOnLayoutChange(this::updateChartLayout);
-        indicatorManager.createWrappers(this::toggleIndicatorZoom, this::toggleIndicatorFullScreen);
+        indicatorManager.createWrappers(this::toggleIndicatorZoom, this::toggleIndicatorFullScreen, zoomManager::exitFullScreen);
 
         // Setup crosshairs
         crosshairManager.setupCoreChartCrosshairs(
@@ -316,6 +318,10 @@ public class ChartsPanel extends JPanel {
     private void setupScrollableContainer() {
         chartsContainer = new JPanel(new GridBagLayout());
         chartsContainer.setBorder(null);
+
+        // Register chart wrappers with split layout manager for persistence
+        registerPanelsWithSplitLayoutManager();
+
         updateChartLayout();
 
         // Time scrollbar for fixed-width mode
@@ -329,16 +335,19 @@ public class ChartsPanel extends JPanel {
         // Register all charts with interaction manager for synchronized zooming
         registerChartsWithInteractionManager();
 
-        // Add zoom/pan/Y-axis drag listeners to all core chart panels
+        // Add zoom/pan/Y-axis drag listeners to all core chart panels with double-click callbacks
         org.jfree.chart.ChartPanel[] corePanels = {
             priceChartPanel, equityChartPanel, comparisonChartPanel,
             capitalUsageChartPanel, tradePLChartPanel, volumeChartPanel
         };
-        for (org.jfree.chart.ChartPanel panel : corePanels) {
-            interactionManager.attachListeners(panel);
+        int[] coreIndices = {0, 2, 3, 4, 5, 1}; // Map to zoomManager indices
+        for (int i = 0; i < corePanels.length; i++) {
+            interactionManager.attachListeners(corePanels[i]);
+            final int chartIndex = coreIndices[i];
+            interactionManager.setDoubleClickCallback(corePanels[i], () -> zoomManager.toggleFullScreen(chartIndex));
         }
 
-        // Add zoom/pan listeners to indicator chart panels too
+        // Add zoom/pan listeners to indicator chart panels with double-click callbacks
         org.jfree.chart.ChartPanel[] indicatorPanels = {
             indicatorManager.getRsiChartPanel(), indicatorManager.getMacdChartPanel(),
             indicatorManager.getAtrChartPanel(), indicatorManager.getDeltaChartPanel(),
@@ -350,8 +359,10 @@ public class ChartsPanel extends JPanel {
             indicatorManager.getTradeCountChartPanel(),
             indicatorManager.getHoldingCostCumulativeChartPanel(), indicatorManager.getHoldingCostEventsChartPanel()
         };
-        for (org.jfree.chart.ChartPanel panel : indicatorPanels) {
-            interactionManager.attachListeners(panel);
+        for (int i = 0; i < indicatorPanels.length; i++) {
+            interactionManager.attachListeners(indicatorPanels[i]);
+            final int indicatorIndex = i;
+            interactionManager.setDoubleClickCallback(indicatorPanels[i], () -> zoomManager.toggleIndicatorFullScreen(indicatorIndex));
         }
 
         mainPanel = new JPanel(new BorderLayout(0, 0));
@@ -360,6 +371,36 @@ public class ChartsPanel extends JPanel {
         mainPanel.add(timeScrollBar, BorderLayout.SOUTH);
 
         add(mainPanel, BorderLayout.CENTER);
+    }
+
+    private void registerPanelsWithSplitLayoutManager() {
+        // Register core chart wrappers with identifiers for divider position persistence
+        JPanel[] wrappers = zoomManager.getChartWrappers();
+        String[] coreIds = {"price", "volume", "equity", "comparison", "capital_usage", "trade_pl"};
+        for (int i = 0; i < wrappers.length && i < coreIds.length; i++) {
+            if (wrappers[i] != null) {
+                splitLayoutManager.registerPanel(wrappers[i], coreIds[i]);
+            }
+        }
+
+        // Register indicator chart wrappers
+        splitLayoutManager.registerPanel(indicatorManager.getRsiChartWrapper(), "rsi");
+        splitLayoutManager.registerPanel(indicatorManager.getMacdChartWrapper(), "macd");
+        splitLayoutManager.registerPanel(indicatorManager.getAtrChartWrapper(), "atr");
+        splitLayoutManager.registerPanel(indicatorManager.getDeltaChartWrapper(), "delta");
+        splitLayoutManager.registerPanel(indicatorManager.getCvdChartWrapper(), "cvd");
+        splitLayoutManager.registerPanel(indicatorManager.getVolumeRatioChartWrapper(), "volume_ratio");
+        splitLayoutManager.registerPanel(indicatorManager.getWhaleChartWrapper(), "whale");
+        splitLayoutManager.registerPanel(indicatorManager.getRetailChartWrapper(), "retail");
+        splitLayoutManager.registerPanel(indicatorManager.getFundingChartWrapper(), "funding");
+        splitLayoutManager.registerPanel(indicatorManager.getOiChartWrapper(), "oi");
+        splitLayoutManager.registerPanel(indicatorManager.getStochasticChartWrapper(), "stochastic");
+        splitLayoutManager.registerPanel(indicatorManager.getRangePositionChartWrapper(), "range_position");
+        splitLayoutManager.registerPanel(indicatorManager.getAdxChartWrapper(), "adx");
+        splitLayoutManager.registerPanel(indicatorManager.getTradeCountChartWrapper(), "trade_count");
+        splitLayoutManager.registerPanel(indicatorManager.getPremiumChartWrapper(), "premium");
+        splitLayoutManager.registerPanel(indicatorManager.getHoldingCostCumulativeChartWrapper(), "holding_cost_cumulative");
+        splitLayoutManager.registerPanel(indicatorManager.getHoldingCostEventsChartWrapper(), "holding_cost_events");
     }
 
     private void registerChartsWithInteractionManager() {
@@ -415,7 +456,134 @@ public class ChartsPanel extends JPanel {
             zoomManager.getChartWrappers()[4], zoomManager.getChartWrappers()[5]
         };
 
-        zoomManager.updateChartLayout(chartsContainer, allCharts, allWrappers);
+        // Check if in full-screen mode - use simple layout for single chart
+        if (zoomManager.getFullScreenChartIndex() >= 0 || zoomManager.getFullScreenIndicatorIndex() >= 0) {
+            // Full-screen mode: reset to GridBagLayout and use existing layout logic
+            splitLayoutManager.cleanup();
+            chartsContainer.setLayout(new GridBagLayout());
+            zoomManager.updateChartLayout(chartsContainer, allCharts, allWrappers);
+            return;
+        }
+
+        // Build list of visible charts for split pane layout
+        java.util.List<JPanel> visibleCharts = buildVisibleChartsList();
+
+        if (visibleCharts.size() <= 1) {
+            // Single chart: reset to GridBagLayout and use simple layout
+            splitLayoutManager.cleanup();
+            chartsContainer.setLayout(new GridBagLayout());
+            zoomManager.updateChartLayout(chartsContainer, allCharts, allWrappers);
+            return;
+        }
+
+        // Use split pane layout for multiple charts
+        chartsContainer.removeAll();
+        chartsContainer.setLayout(new BorderLayout());
+        chartsContainer.setBackground(ChartStyles.BACKGROUND_COLOR());
+
+        Component splitLayout = splitLayoutManager.buildLayout(visibleCharts);
+        chartsContainer.add(splitLayout, BorderLayout.CENTER);
+
+        // Update time axis visibility - show on first and last chart
+        updateTimeAxisVisibility(allCharts, allWrappers, visibleCharts);
+
+        chartsContainer.revalidate();
+        chartsContainer.repaint();
+    }
+
+    private java.util.List<JPanel> buildVisibleChartsList() {
+        java.util.List<JPanel> visibleCharts = new java.util.ArrayList<>();
+        JPanel[] chartWrappers = zoomManager.getChartWrappers();
+
+        // Price chart - always shown
+        visibleCharts.add(chartWrappers[0]);
+
+        // Volume chart
+        if (zoomManager.isVolumeChartEnabled()) {
+            visibleCharts.add(chartWrappers[1]);
+        }
+
+        // Indicator charts
+        if (indicatorManager.isRsiChartEnabled()) {
+            visibleCharts.add(indicatorManager.getRsiChartWrapper());
+        }
+        if (indicatorManager.isMacdChartEnabled()) {
+            visibleCharts.add(indicatorManager.getMacdChartWrapper());
+        }
+        if (indicatorManager.isAtrChartEnabled()) {
+            visibleCharts.add(indicatorManager.getAtrChartWrapper());
+        }
+        if (indicatorManager.isDeltaChartEnabled()) {
+            visibleCharts.add(indicatorManager.getDeltaChartWrapper());
+        }
+        if (indicatorManager.isCvdChartEnabled()) {
+            visibleCharts.add(indicatorManager.getCvdChartWrapper());
+        }
+        if (indicatorManager.isVolumeRatioChartEnabled()) {
+            visibleCharts.add(indicatorManager.getVolumeRatioChartWrapper());
+        }
+        if (indicatorManager.isWhaleChartEnabled()) {
+            visibleCharts.add(indicatorManager.getWhaleChartWrapper());
+        }
+        if (indicatorManager.isRetailChartEnabled()) {
+            visibleCharts.add(indicatorManager.getRetailChartWrapper());
+        }
+        if (indicatorManager.isFundingChartEnabled()) {
+            visibleCharts.add(indicatorManager.getFundingChartWrapper());
+        }
+        if (indicatorManager.isOiChartEnabled()) {
+            visibleCharts.add(indicatorManager.getOiChartWrapper());
+        }
+        if (indicatorManager.isStochasticChartEnabled()) {
+            visibleCharts.add(indicatorManager.getStochasticChartWrapper());
+        }
+        if (indicatorManager.isRangePositionChartEnabled()) {
+            visibleCharts.add(indicatorManager.getRangePositionChartWrapper());
+        }
+        if (indicatorManager.isAdxChartEnabled()) {
+            visibleCharts.add(indicatorManager.getAdxChartWrapper());
+        }
+        if (indicatorManager.isTradeCountChartEnabled()) {
+            visibleCharts.add(indicatorManager.getTradeCountChartWrapper());
+        }
+        if (indicatorManager.isPremiumChartEnabled()) {
+            visibleCharts.add(indicatorManager.getPremiumChartWrapper());
+        }
+
+        // Core charts at the end
+        if (zoomManager.isEquityChartEnabled()) {
+            visibleCharts.add(chartWrappers[2]);
+        }
+        if (zoomManager.isComparisonChartEnabled()) {
+            visibleCharts.add(chartWrappers[3]);
+        }
+        if (zoomManager.isCapitalUsageChartEnabled()) {
+            visibleCharts.add(chartWrappers[4]);
+        }
+        if (zoomManager.isTradePLChartEnabled()) {
+            visibleCharts.add(chartWrappers[5]);
+        }
+
+        return visibleCharts;
+    }
+
+    private void updateTimeAxisVisibility(JFreeChart[] allCharts, JPanel[] allWrappers, java.util.List<JPanel> visibleCharts) {
+        for (int i = 0; i < allCharts.length; i++) {
+            if (allCharts[i] != null && allWrappers[i] != null) {
+                XYPlot plot = allCharts[i].getXYPlot();
+                if (plot.getDomainAxis() instanceof DateAxis axis) {
+                    boolean isFirst = (allWrappers[i] == visibleCharts.get(0));
+                    boolean isLast = (allWrappers[i] == visibleCharts.get(visibleCharts.size() - 1));
+                    boolean showLabels = isFirst || isLast;
+                    axis.setTickLabelsVisible(showLabels);
+                    axis.setTickMarksVisible(showLabels);
+                    // Price chart (first) has time labels at top, others at bottom
+                    plot.setDomainAxisLocation(isFirst
+                        ? org.jfree.chart.axis.AxisLocation.TOP_OR_RIGHT
+                        : org.jfree.chart.axis.AxisLocation.BOTTOM_OR_LEFT);
+                }
+            }
+        }
     }
 
     // ===== Public API =====
@@ -1106,9 +1274,11 @@ public class ChartsPanel extends JPanel {
     private void updatePriceChart(List<Candle> candles, List<Trade> trades) {
         XYPlot plot = priceChart.getXYPlot();
 
-        // Clear annotations except title (daily volume profile is now managed by overlay)
+        // Clear annotations except title and overlays (footprint heatmap, daily volume profile)
         plot.getAnnotations().stream()
             .filter(a -> !(a instanceof XYTitleAnnotation))
+            .filter(a -> !(a instanceof com.tradery.ui.charts.footprint.FootprintHeatmapAnnotation))
+            .filter(a -> !(a instanceof com.tradery.ui.charts.DailyVolumeProfileAnnotation))
             .toList()
             .forEach(plot::removeAnnotation);
 

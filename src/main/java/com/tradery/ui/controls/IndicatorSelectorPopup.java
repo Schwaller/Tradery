@@ -66,10 +66,9 @@ public class IndicatorSelectorPopup extends JDialog {
     private JCheckBox footprintHeatmapCheckbox;
     private JLabel footprintHeatmapBucketsLabel;
     private JSpinner footprintHeatmapBucketsSpinner;
-    private JLabel footprintHeatmapModeLabel;
-    private JComboBox<com.tradery.ui.charts.footprint.FootprintDisplayMode> footprintHeatmapModeCombo;
-    private JLabel footprintHeatmapExchangeLabel;
-    private JComboBox<com.tradery.model.Exchange> footprintHeatmapExchangeCombo;
+    private JToggleButton footprintDeltaButton;
+    private JToggleButton footprintBuySellButton;
+    private ButtonGroup footprintViewGroup;
 
     // Oscillator controls
     private JCheckBox rsiCheckbox;
@@ -679,7 +678,7 @@ public class IndicatorSelectorPopup extends JDialog {
 
     private JPanel createFootprintHeatmapRow() {
         footprintHeatmapCheckbox = new JCheckBox("Footprint Heatmap");
-        footprintHeatmapCheckbox.setToolTipText("Show price-level delta heatmap (requires aggTrades data)");
+        footprintHeatmapCheckbox.setToolTipText("Show price-level volume heatmap (requires aggTrades data)");
 
         // Buckets spinner
         footprintHeatmapBucketsLabel = new JLabel("Buckets:");
@@ -688,53 +687,31 @@ public class IndicatorSelectorPopup extends JDialog {
         footprintHeatmapBucketsSpinner.setToolTipText("Target buckets per candle");
         footprintHeatmapBucketsSpinner.addChangeListener(e -> scheduleUpdate());
 
-        // Display mode combo
-        footprintHeatmapModeLabel = new JLabel("Mode:");
-        footprintHeatmapModeCombo = new JComboBox<>(com.tradery.ui.charts.footprint.FootprintDisplayMode.values());
-        footprintHeatmapModeCombo.setPreferredSize(new Dimension(100, 24));
-        footprintHeatmapModeCombo.setRenderer(new DefaultListCellRenderer() {
-            @Override
-            public Component getListCellRendererComponent(JList<?> list, Object value, int index,
-                                                          boolean isSelected, boolean cellHasFocus) {
-                super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus);
-                if (value instanceof com.tradery.ui.charts.footprint.FootprintDisplayMode mode) {
-                    setText(mode.getDisplayName());
-                    setToolTipText(mode.getDescription());
-                }
-                return this;
-            }
-        });
-        footprintHeatmapModeCombo.addActionListener(e -> {
-            updateFootprintExchangeVisibility();
-            scheduleUpdate();
-        });
+        // View toggle: Delta vs Buy/Sell
+        footprintDeltaButton = new JToggleButton("Delta");
+        footprintDeltaButton.setToolTipText("Show net delta (buy - sell) as single color");
+        footprintDeltaButton.setPreferredSize(new Dimension(55, 24));
+        footprintDeltaButton.setMargin(new Insets(2, 6, 2, 6));
 
-        // Exchange combo (only shown for SINGLE_EXCHANGE mode)
-        footprintHeatmapExchangeLabel = new JLabel("Exchange:");
-        footprintHeatmapExchangeCombo = new JComboBox<>(com.tradery.model.Exchange.values());
-        footprintHeatmapExchangeCombo.setPreferredSize(new Dimension(90, 24));
-        footprintHeatmapExchangeCombo.setRenderer(new DefaultListCellRenderer() {
-            @Override
-            public Component getListCellRendererComponent(JList<?> list, Object value, int index,
-                                                          boolean isSelected, boolean cellHasFocus) {
-                super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus);
-                if (value instanceof com.tradery.model.Exchange ex) {
-                    setText(ex.getDisplayName());
-                }
-                return this;
-            }
-        });
-        footprintHeatmapExchangeCombo.addActionListener(e -> scheduleUpdate());
+        footprintBuySellButton = new JToggleButton("Buy/Sell");
+        footprintBuySellButton.setToolTipText("Split view: buy volume left (green), sell volume right (red)");
+        footprintBuySellButton.setPreferredSize(new Dimension(65, 24));
+        footprintBuySellButton.setMargin(new Insets(2, 6, 2, 6));
+
+        footprintViewGroup = new ButtonGroup();
+        footprintViewGroup.add(footprintDeltaButton);
+        footprintViewGroup.add(footprintBuySellButton);
+
+        footprintDeltaButton.addActionListener(e -> scheduleUpdate());
+        footprintBuySellButton.addActionListener(e -> scheduleUpdate());
 
         JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
         row.setAlignmentX(Component.LEFT_ALIGNMENT);
         row.add(footprintHeatmapCheckbox);
+        row.add(footprintBuySellButton);
+        row.add(footprintDeltaButton);
         row.add(footprintHeatmapBucketsLabel);
         row.add(footprintHeatmapBucketsSpinner);
-        row.add(footprintHeatmapModeLabel);
-        row.add(footprintHeatmapModeCombo);
-        row.add(footprintHeatmapExchangeLabel);
-        row.add(footprintHeatmapExchangeCombo);
 
         footprintHeatmapCheckbox.addActionListener(e -> {
             updateFootprintControlVisibility();
@@ -748,18 +725,8 @@ public class IndicatorSelectorPopup extends JDialog {
         boolean enabled = footprintHeatmapCheckbox.isSelected();
         footprintHeatmapBucketsLabel.setVisible(enabled);
         footprintHeatmapBucketsSpinner.setVisible(enabled);
-        footprintHeatmapModeLabel.setVisible(enabled);
-        footprintHeatmapModeCombo.setVisible(enabled);
-        updateFootprintExchangeVisibility();
-    }
-
-    private void updateFootprintExchangeVisibility() {
-        boolean enabled = footprintHeatmapCheckbox.isSelected();
-        com.tradery.ui.charts.footprint.FootprintDisplayMode mode =
-            (com.tradery.ui.charts.footprint.FootprintDisplayMode) footprintHeatmapModeCombo.getSelectedItem();
-        boolean showExchange = enabled && mode == com.tradery.ui.charts.footprint.FootprintDisplayMode.SINGLE_EXCHANGE;
-        footprintHeatmapExchangeLabel.setVisible(showExchange);
-        footprintHeatmapExchangeCombo.setVisible(showExchange);
+        footprintDeltaButton.setVisible(enabled);
+        footprintBuySellButton.setVisible(enabled);
     }
 
     private JPanel createRsiRow() {
@@ -1247,8 +1214,10 @@ public class IndicatorSelectorPopup extends JDialog {
         dailyVolumeProfileBinsSpinner.setValue(config.getDailyVolumeProfileBins());
         footprintHeatmapCheckbox.setSelected(config.isFootprintHeatmapEnabled());
         footprintHeatmapBucketsSpinner.setValue(config.getFootprintHeatmapConfig().getTargetBuckets());
-        footprintHeatmapModeCombo.setSelectedItem(config.getFootprintHeatmapConfig().getDisplayMode());
-        footprintHeatmapExchangeCombo.setSelectedItem(config.getFootprintHeatmapConfig().getSelectedExchange());
+        boolean isSplitMode = config.getFootprintHeatmapConfig().getDisplayMode() ==
+            com.tradery.ui.charts.footprint.FootprintDisplayMode.SPLIT;
+        footprintBuySellButton.setSelected(isSplitMode);
+        footprintDeltaButton.setSelected(!isSplitMode);
         updateFootprintControlVisibility();
 
         // Oscillators
@@ -1402,15 +1371,13 @@ public class IndicatorSelectorPopup extends JDialog {
 
         // Footprint Heatmap
         int footprintBuckets = (int) footprintHeatmapBucketsSpinner.getValue();
-        com.tradery.ui.charts.footprint.FootprintDisplayMode fpMode =
-            (com.tradery.ui.charts.footprint.FootprintDisplayMode) footprintHeatmapModeCombo.getSelectedItem();
-        com.tradery.model.Exchange fpExchange =
-            (com.tradery.model.Exchange) footprintHeatmapExchangeCombo.getSelectedItem();
+        com.tradery.ui.charts.footprint.FootprintDisplayMode fpMode = footprintBuySellButton.isSelected()
+            ? com.tradery.ui.charts.footprint.FootprintDisplayMode.SPLIT
+            : com.tradery.ui.charts.footprint.FootprintDisplayMode.COMBINED;
 
         config.setFootprintHeatmapEnabled(footprintHeatmapCheckbox.isSelected());
         config.getFootprintHeatmapConfig().setTargetBuckets(footprintBuckets);
         config.getFootprintHeatmapConfig().setDisplayMode(fpMode);
-        config.getFootprintHeatmapConfig().setSelectedExchange(fpExchange);
         chartPanel.setFootprintHeatmapEnabled(footprintHeatmapCheckbox.isSelected());
 
         // Oscillators
