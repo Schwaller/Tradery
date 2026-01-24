@@ -82,6 +82,38 @@ Extended volume data from Binance klines, available immediately:
 | `VWAP`, `POC(n)`, `VAH(n)`, `VAL(n)` | `DELTA`, `CUM_DELTA` |
 | `PREV_DAY_POC/VAH/VAL`, `TODAY_POC/VAH/VAL` | `WHALE_DELTA(threshold)`, `WHALE_BUY_VOL(t)`, `WHALE_SELL_VOL(t)`, `LARGE_TRADE_COUNT(t)` |
 
+### Footprint Functions (require aggTrades)
+Analyze trade flow at price levels within candles:
+| Function | Returns | Description |
+|----------|---------|-------------|
+| `IMBALANCE_AT_POC` | ratio | Buy/sell ratio at POC (>1=buy dominant) |
+| `IMBALANCE_AT_VAH` | ratio | Buy/sell ratio at VAH |
+| `IMBALANCE_AT_VAL` | ratio | Buy/sell ratio at VAL |
+| `STACKED_BUY_IMBALANCES(n)` | 0/1 | 1 if >= n consecutive buy imbalances |
+| `STACKED_SELL_IMBALANCES(n)` | 0/1 | 1 if >= n consecutive sell imbalances |
+| `ABSORPTION(vol, move)` | 0/1 | 1 if high volume + small price movement |
+| `HIGH_VOLUME_NODE_COUNT(t)` | count | Price levels with volume > threshold |
+| `VOLUME_ABOVE_POC_RATIO` | 0-1 | Ratio of volume above POC |
+| `VOLUME_BELOW_POC_RATIO` | 0-1 | Ratio of volume below POC |
+| `FOOTPRINT_DELTA` | value | Total delta from bucket aggregation |
+| `FOOTPRINT_POC` | price | POC price from footprint |
+
+### Cross-Exchange Functions (require multi-exchange aggTrades)
+Analyze orderflow across different exchanges:
+| Function | Returns | Description |
+|----------|---------|-------------|
+| `BINANCE_DELTA` | value | Delta from Binance trades only |
+| `BYBIT_DELTA` | value | Delta from Bybit trades only |
+| `OKX_DELTA` | value | Delta from OKX trades only |
+| `COMBINED_DELTA` | value | Sum of delta across all exchanges |
+| `EXCHANGE_DELTA_SPREAD` | value | Max exchange delta - min exchange delta |
+| `EXCHANGE_DIVERGENCE` | 0/1 | 1 if exchanges disagree on direction |
+| `COMBINED_IMBALANCE_AT_POC` | ratio | Aggregated imbalance at combined POC |
+| `EXCHANGES_WITH_BUY_IMBALANCE` | count | How many exchanges show buy imbalance |
+| `EXCHANGES_WITH_SELL_IMBALANCE` | count | How many exchanges show sell imbalance |
+| `WHALE_DELTA_COMBINED(t)` | value | Whale delta across all exchanges |
+| `DOMINANT_EXCHANGE` | enum | Which exchange has largest volume |
+
 ### Rotating Ray Functions
 Auto-detect trendlines from ATH/ATL. Params: `rayNum`, `lookback`, `skip`
 - **Resistance:** `RESISTANCE_RAY_BROKEN/CROSSED/DISTANCE(ray,look,skip)`, `RESISTANCE_RAYS_BROKEN(look,skip)`, `RESISTANCE_RAY_COUNT(look,skip)`
@@ -112,6 +144,16 @@ RESISTANCE_RAY_CROSSED(1, 200, 5) == 1               # Breakout
 SHOOTING_STAR AND BODY_SIZE[1] > ATR(14) * 1.5 AND IS_BULLISH[1] == 1  # Reversal setup
 HAMMER AND RSI(14) < 30                              # Hammer at oversold
 DOJI AND BODY_SIZE[1] > ATR(14)                     # Indecision after strong move
+
+# Footprint patterns (require aggTrades)
+STACKED_BUY_IMBALANCES(4) == 1 AND price < FOOTPRINT_POC  # Strong buying below POC
+ABSORPTION(100000, 0.3) == 1 AND VOLUME_ABOVE_POC_RATIO < 0.3  # Absorption
+IMBALANCE_AT_POC > 3                                 # Strong buy imbalance at POC
+
+# Cross-exchange divergence (key signal)
+BINANCE_DELTA < -10000 AND BYBIT_DELTA > 10000      # Exchange divergence
+EXCHANGE_DIVERGENCE == 1 AND ADX(14) < 20           # Divergence in ranging market
+EXCHANGES_WITH_BUY_IMBALANCE >= 2 AND RSI(14) < 40  # Multi-exchange buy signal
 ```
 
 ---
@@ -127,7 +169,7 @@ condition: ADX(14) > 25 AND PLUS_DI(14) > MINUS_DI(14)
 timeframe: 1d
 ```
 
-### Built-In Phases (38)
+### Built-In Phases (44+)
 | Category | IDs |
 |----------|-----|
 | **Session** | `asian-session`, `european-session`, `us-market-hours`, `us-market-core`, `session-overlap` |
@@ -139,6 +181,7 @@ timeframe: 1d
 | **Calendar** | `month-start`, `month-end`, `quarter-end`, `us-bank-holiday`, `fomc-meeting-day/hour/week` |
 | **Moon** | `full-moon-day/hour`, `new-moon-day/hour` |
 | **Funding** | `high-funding`, `negative-funding`, `extreme-funding`, `neutral-funding` |
+| **Orderflow** | `exchange-divergence-bullish`, `exchange-divergence-bearish`, `cross-exchange-buy-pressure`, `cross-exchange-sell-pressure`, `whale-accumulation-multi`, `whale-distribution-multi` |
 
 ### Strategy Integration
 ```yaml
@@ -217,6 +260,16 @@ Each trade captures: `entryPrice`, `exitPrice`, `pnlPercent`, `mfe` (max favorab
 
 **Derived metrics:** `captureRatio` = pnl/mfe, `painRatio` = |mae|/mfe
 
+### Footprint Metrics (when aggTrades available)
+Trades also capture footprint metrics at entry/exit/mfe/mae points:
+- `imbalanceAtPoc` - Buy/sell ratio at Point of Control
+- `stackedBuyImbalances` - Count of consecutive buy imbalances
+- `stackedSellImbalances` - Count of consecutive sell imbalances
+- `absorptionScore` - Whether absorption pattern detected
+- `volumeAbovePocRatio` - Ratio of volume above POC
+- `footprintDelta` - Total delta from footprint
+- `exchangeDivergence` - Whether exchanges disagree on direction
+
 ### summary.json Structure
 ```json
 {
@@ -224,7 +277,16 @@ Each trade captures: `entryPrice`, `exitPrice`, `pnlPercent`, `mfe` (max favorab
   "analysis": {
     "byPhase": { "uptrend": { "winRate": 75, "vsOverall": +12.5 } },
     "byHour": { "14": { "winRate": 80 } },
-    "suggestions": ["Consider requiring 'uptrend' phase", "Exits may be too early"]
+    "byFootprint": {
+      "byImbalance": { "buyImbalance": { "count": 45, "winRate": 72, "vsOverall": +10 } },
+      "byStackedImbalances": { "stackedBuyImbalances": { "count": 20, "winRate": 80 } },
+      "byAbsorption": { "withAbsorption": { "count": 15, "winRate": 73 } },
+      "byExchangeDivergence": { "exchangesDiverging": { "count": 10, "winRate": 60 } }
+    },
+    "suggestions": [
+      "Consider requiring 'uptrend' phase",
+      "Winners show stronger buy imbalance at POC (3.2 vs 1.1) - consider IMBALANCE_AT_POC > 2 filter"
+    ]
   },
   "historyTrends": { "vsLastRun": {...}, "trajectory": {...} }
 }
@@ -243,6 +305,9 @@ Each trade captures: `entryPrice`, `exitPrice`, `pnlPercent`, `mfe` (max favorab
 - Trend detection (ADX, Supertrend, phases)
 - Moon phases, Funding, Premium, Open Interest
 - Orderflow (VWAP, POC, DELTA, whale detection)
+- Footprint functions (IMBALANCE_AT_POC, STACKED_IMBALANCES, ABSORPTION, etc.)
+- Cross-exchange analysis (BINANCE_DELTA, EXCHANGE_DIVERGENCE, etc.)
+- Footprint-aware trade analytics with AI suggestions
 - Aggregate functions, lookback syntax
 
 **Not implemented:**

@@ -1830,4 +1830,344 @@ public class IndicatorEngine {
     public double getIchimokuChikouAt(int displacement, int barIndex) {
         return Indicators.ichimokuChikouAt(candles, displacement, barIndex);
     }
+
+    // ========== Footprint Functions (require aggTrades) ==========
+
+    private com.tradery.model.FootprintResult footprintResult;
+
+    /**
+     * Get footprint result for all candles.
+     * Calculates footprints using aggTrades data.
+     */
+    private com.tradery.model.FootprintResult getFootprint() {
+        if (footprintResult != null) {
+            return footprintResult;
+        }
+        if (!hasAggTrades() || !hasCandles()) {
+            return null;
+        }
+        String key = "footprint";
+        if (!cache.containsKey(key)) {
+            cache.put(key, FootprintIndicator.calculate(candles, aggTrades, resolution));
+        }
+        footprintResult = (com.tradery.model.FootprintResult) cache.get(key);
+        return footprintResult;
+    }
+
+    /**
+     * Get footprint for a specific bar.
+     */
+    private com.tradery.model.Footprint getFootprintAt(int barIndex) {
+        com.tradery.model.FootprintResult result = getFootprint();
+        if (result == null || barIndex < 0 || barIndex >= result.footprints().size()) {
+            return null;
+        }
+        return result.footprints().get(barIndex);
+    }
+
+    /**
+     * Get buy/sell imbalance ratio at POC (Point of Control).
+     * Returns >1 for buy dominance, <1 for sell dominance.
+     */
+    public double getImbalanceAtPOC(int barIndex) {
+        com.tradery.model.Footprint footprint = getFootprintAt(barIndex);
+        if (footprint == null) return Double.NaN;
+
+        double poc = footprint.poc();
+        for (com.tradery.model.FootprintBucket bucket : footprint.buckets()) {
+            if (Math.abs(bucket.priceLevel() - poc) < footprint.tickSize() / 2) {
+                return bucket.imbalanceRatio();
+            }
+        }
+        return Double.NaN;
+    }
+
+    /**
+     * Get buy/sell imbalance ratio at VAH (Value Area High).
+     */
+    public double getImbalanceAtVAH(int barIndex) {
+        com.tradery.model.Footprint footprint = getFootprintAt(barIndex);
+        if (footprint == null) return Double.NaN;
+
+        double vah = footprint.vah();
+        for (com.tradery.model.FootprintBucket bucket : footprint.buckets()) {
+            if (Math.abs(bucket.priceLevel() - vah) < footprint.tickSize() / 2) {
+                return bucket.imbalanceRatio();
+            }
+        }
+        return Double.NaN;
+    }
+
+    /**
+     * Get buy/sell imbalance ratio at VAL (Value Area Low).
+     */
+    public double getImbalanceAtVAL(int barIndex) {
+        com.tradery.model.Footprint footprint = getFootprintAt(barIndex);
+        if (footprint == null) return Double.NaN;
+
+        double val = footprint.val();
+        for (com.tradery.model.FootprintBucket bucket : footprint.buckets()) {
+            if (Math.abs(bucket.priceLevel() - val) < footprint.tickSize() / 2) {
+                return bucket.imbalanceRatio();
+            }
+        }
+        return Double.NaN;
+    }
+
+    /**
+     * Check if there are N consecutive buy imbalances (stacked).
+     * Buy imbalance = buy volume > sell volume * 3 (3:1 ratio)
+     */
+    public boolean hasStackedBuyImbalances(int n, int barIndex) {
+        com.tradery.model.Footprint footprint = getFootprintAt(barIndex);
+        if (footprint == null) return false;
+        return footprint.stackedBuyImbalances() >= n;
+    }
+
+    /**
+     * Check if there are N consecutive sell imbalances (stacked).
+     * Sell imbalance = sell volume > buy volume * 3 (3:1 ratio)
+     */
+    public boolean hasStackedSellImbalances(int n, int barIndex) {
+        com.tradery.model.Footprint footprint = getFootprintAt(barIndex);
+        if (footprint == null) return false;
+        return footprint.stackedSellImbalances() >= n;
+    }
+
+    /**
+     * Detect absorption pattern: high volume with small price movement.
+     * @param volumeThreshold Minimum volume at a price level
+     * @param maxMovement Maximum price movement as percentage of ATR
+     */
+    public boolean hasAbsorption(double volumeThreshold, double maxMovement, int barIndex) {
+        com.tradery.model.Footprint footprint = getFootprintAt(barIndex);
+        if (footprint == null) return false;
+
+        // Calculate candle range
+        double range = footprint.high() - footprint.low();
+        double atr = getATRAt(14, barIndex);
+        if (Double.isNaN(atr) || atr == 0) return false;
+
+        // Check if price movement is small relative to ATR
+        if (range > atr * maxMovement) return false;
+
+        // Check if any bucket has high volume
+        for (com.tradery.model.FootprintBucket bucket : footprint.buckets()) {
+            double totalVol = bucket.totalBuyVolume() + bucket.totalSellVolume();
+            if (totalVol >= volumeThreshold) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Count price levels with volume above threshold (high volume nodes).
+     * @param threshold Multiplier for average volume (e.g., 1.5 = 50% above average)
+     */
+    public double getHighVolumeNodeCount(double threshold, int barIndex) {
+        com.tradery.model.Footprint footprint = getFootprintAt(barIndex);
+        if (footprint == null || footprint.buckets().isEmpty()) return 0;
+
+        // Calculate average volume per bucket
+        double totalVolume = 0;
+        for (com.tradery.model.FootprintBucket bucket : footprint.buckets()) {
+            totalVolume += bucket.totalBuyVolume() + bucket.totalSellVolume();
+        }
+        double avgVolume = totalVolume / footprint.buckets().size();
+
+        // Count high volume nodes
+        int count = 0;
+        for (com.tradery.model.FootprintBucket bucket : footprint.buckets()) {
+            double bucketVol = bucket.totalBuyVolume() + bucket.totalSellVolume();
+            if (bucketVol >= avgVolume * threshold) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    /**
+     * Get ratio of volume above POC (0-1).
+     */
+    public double getVolumeAbovePOCRatio(int barIndex) {
+        com.tradery.model.Footprint footprint = getFootprintAt(barIndex);
+        if (footprint == null || footprint.buckets().isEmpty()) return Double.NaN;
+
+        double poc = footprint.poc();
+        double volumeAbove = 0;
+        double volumeBelow = 0;
+
+        for (com.tradery.model.FootprintBucket bucket : footprint.buckets()) {
+            double bucketVol = bucket.totalBuyVolume() + bucket.totalSellVolume();
+            if (bucket.priceLevel() > poc) {
+                volumeAbove += bucketVol;
+            } else if (bucket.priceLevel() < poc) {
+                volumeBelow += bucketVol;
+            }
+        }
+
+        double total = volumeAbove + volumeBelow;
+        if (total == 0) return 0.5;
+        return volumeAbove / total;
+    }
+
+    /**
+     * Get ratio of volume below POC (0-1).
+     */
+    public double getVolumeBelowPOCRatio(int barIndex) {
+        double aboveRatio = getVolumeAbovePOCRatio(barIndex);
+        if (Double.isNaN(aboveRatio)) return Double.NaN;
+        return 1.0 - aboveRatio;
+    }
+
+    /**
+     * Get total delta from footprint aggregation.
+     */
+    public double getFootprintDelta(int barIndex) {
+        com.tradery.model.Footprint footprint = getFootprintAt(barIndex);
+        if (footprint == null) return Double.NaN;
+        return footprint.totalDelta();
+    }
+
+    /**
+     * Get POC price from footprint.
+     */
+    public double getFootprintPOC(int barIndex) {
+        com.tradery.model.Footprint footprint = getFootprintAt(barIndex);
+        if (footprint == null) return Double.NaN;
+        return footprint.poc();
+    }
+
+    // ========== Cross-Exchange Functions ==========
+
+    /**
+     * Get delta for a specific exchange.
+     */
+    public double getExchangeDelta(String exchangeName, int barIndex) {
+        com.tradery.model.Footprint footprint = getFootprintAt(barIndex);
+        if (footprint == null) return Double.NaN;
+
+        try {
+            com.tradery.model.Exchange exchange = com.tradery.model.Exchange.valueOf(exchangeName);
+            Double delta = footprint.deltaByExchange().get(exchange);
+            return delta != null ? delta : 0.0;
+        } catch (IllegalArgumentException e) {
+            return Double.NaN;
+        }
+    }
+
+    /**
+     * Get combined delta from all exchanges.
+     */
+    public double getCombinedDelta(int barIndex) {
+        com.tradery.model.Footprint footprint = getFootprintAt(barIndex);
+        if (footprint == null) return Double.NaN;
+        return footprint.totalDelta();
+    }
+
+    /**
+     * Get the spread between max and min exchange deltas.
+     * Large spread indicates exchange divergence.
+     */
+    public double getExchangeDeltaSpread(int barIndex) {
+        com.tradery.model.Footprint footprint = getFootprintAt(barIndex);
+        if (footprint == null || footprint.deltaByExchange().isEmpty()) return Double.NaN;
+
+        double maxDelta = Double.NEGATIVE_INFINITY;
+        double minDelta = Double.POSITIVE_INFINITY;
+
+        for (Double delta : footprint.deltaByExchange().values()) {
+            if (delta != null) {
+                maxDelta = Math.max(maxDelta, delta);
+                minDelta = Math.min(minDelta, delta);
+            }
+        }
+
+        if (maxDelta == Double.NEGATIVE_INFINITY || minDelta == Double.POSITIVE_INFINITY) {
+            return 0.0;
+        }
+        return maxDelta - minDelta;
+    }
+
+    /**
+     * Check if exchanges are diverging (some buying, some selling).
+     * Returns true if at least one exchange has positive delta and one has negative.
+     */
+    public boolean hasExchangeDivergence(int barIndex) {
+        com.tradery.model.Footprint footprint = getFootprintAt(barIndex);
+        if (footprint == null || footprint.deltaByExchange().isEmpty()) return false;
+
+        boolean hasPositive = false;
+        boolean hasNegative = false;
+
+        for (Double delta : footprint.deltaByExchange().values()) {
+            if (delta != null) {
+                if (delta > 0) hasPositive = true;
+                if (delta < 0) hasNegative = true;
+            }
+        }
+
+        return hasPositive && hasNegative;
+    }
+
+    /**
+     * Get combined imbalance at POC across all exchanges.
+     */
+    public double getCombinedImbalanceAtPOC(int barIndex) {
+        return getImbalanceAtPOC(barIndex);
+    }
+
+    /**
+     * Count exchanges showing buy imbalance at any level.
+     */
+    public double getExchangesWithBuyImbalance(int barIndex) {
+        com.tradery.model.Footprint footprint = getFootprintAt(barIndex);
+        if (footprint == null || footprint.buckets().isEmpty()) return 0;
+
+        java.util.Set<com.tradery.model.Exchange> exchangesWithBuy = new java.util.HashSet<>();
+        for (com.tradery.model.FootprintBucket bucket : footprint.buckets()) {
+            exchangesWithBuy.addAll(bucket.exchangesWithBuyImbalance());
+        }
+        return exchangesWithBuy.size();
+    }
+
+    /**
+     * Count exchanges showing sell imbalance at any level.
+     */
+    public double getExchangesWithSellImbalance(int barIndex) {
+        com.tradery.model.Footprint footprint = getFootprintAt(barIndex);
+        if (footprint == null || footprint.buckets().isEmpty()) return 0;
+
+        java.util.Set<com.tradery.model.Exchange> exchangesWithSell = new java.util.HashSet<>();
+        for (com.tradery.model.FootprintBucket bucket : footprint.buckets()) {
+            exchangesWithSell.addAll(bucket.exchangesWithSellImbalance());
+        }
+        return exchangesWithSell.size();
+    }
+
+    /**
+     * Get whale delta combined from all exchanges.
+     * @param threshold Minimum trade size in USD
+     */
+    public double getWhaleDeltaCombined(double threshold, int barIndex) {
+        // For now, use existing whale delta if aggTrades available
+        if (!hasAggTrades() || !hasCandles()) {
+            return Double.NaN;
+        }
+        return getWhaleDeltaAt(threshold, barIndex);
+    }
+
+    /**
+     * Get the dominant exchange (exchange with highest volume).
+     * Returns the ordinal of the Exchange enum.
+     */
+    public double getDominantExchange(int barIndex) {
+        com.tradery.model.Footprint footprint = getFootprintAt(barIndex);
+        if (footprint == null) return Double.NaN;
+
+        com.tradery.model.Exchange dominant = footprint.dominantExchange();
+        if (dominant == null) return Double.NaN;
+        return dominant.ordinal();
+    }
 }

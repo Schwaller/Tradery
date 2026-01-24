@@ -56,6 +56,12 @@ public class OverlayManager {
     // Daily Volume Profile overlay (background computed)
     private DailyVolumeProfileOverlay dailyVolumeProfileOverlay;
 
+    // Volume Heatmap overlay
+    private com.tradery.ui.charts.heatmap.VolumeHeatmapOverlay volumeHeatmapOverlay;
+
+    // Footprint Heatmap overlay
+    private com.tradery.ui.charts.footprint.FootprintHeatmapOverlay footprintHeatmapOverlay;
+
     // Current data context
     private String currentSymbol = "BTCUSDT";
     private String currentTimeframe = "1h";
@@ -65,9 +71,25 @@ public class OverlayManager {
         this.priceChart = priceChart;
         this.rayOverlay = new RayOverlay(priceChart);
         this.dailyVolumeProfileOverlay = new DailyVolumeProfileOverlay(priceChart);
+        this.volumeHeatmapOverlay = new com.tradery.ui.charts.heatmap.VolumeHeatmapOverlay(priceChart);
+        this.footprintHeatmapOverlay = new com.tradery.ui.charts.footprint.FootprintHeatmapOverlay(priceChart);
 
         // When daily volume profile is drawn, redraw rays to fix annotation list corruption
         this.dailyVolumeProfileOverlay.setOnDataReady(() -> {
+            if (rayOverlay.isEnabled()) {
+                rayOverlay.redraw();
+            }
+        });
+
+        // When volume heatmap is drawn, redraw rays
+        this.volumeHeatmapOverlay.setOnDataReady(() -> {
+            if (rayOverlay.isEnabled()) {
+                rayOverlay.redraw();
+            }
+        });
+
+        // When footprint heatmap is drawn, redraw rays
+        this.footprintHeatmapOverlay.setOnDataReady(() -> {
             if (rayOverlay.isEnabled()) {
                 rayOverlay.redraw();
             }
@@ -1038,6 +1060,122 @@ public class OverlayManager {
         return dailyVolumeProfileOverlay.isEnabled();
     }
 
+    // ===== Volume Heatmap Overlay =====
+
+    /**
+     * Set the volume heatmap overlay with candles and optional aggTrades.
+     *
+     * @param candles   Candle data
+     * @param aggTrades AggTrade data (may be null for OHLCV-only mode)
+     * @param config    Heatmap configuration
+     */
+    public void setVolumeHeatmapOverlay(java.util.List<com.tradery.model.Candle> candles,
+                                         java.util.List<com.tradery.model.AggTrade> aggTrades,
+                                         com.tradery.ui.charts.heatmap.VolumeHeatmapConfig config) {
+        if (candles == null || candles.isEmpty()) {
+            clearVolumeHeatmapOverlay();
+            return;
+        }
+
+        volumeHeatmapOverlay.setConfig(config);
+        volumeHeatmapOverlay.update(candles, aggTrades);
+    }
+
+    /**
+     * Set the volume heatmap overlay with just candles (OHLCV-only mode).
+     */
+    public void setVolumeHeatmapOverlay(java.util.List<com.tradery.model.Candle> candles,
+                                         com.tradery.ui.charts.heatmap.VolumeHeatmapConfig config) {
+        setVolumeHeatmapOverlay(candles, null, config);
+    }
+
+    /**
+     * Clear the volume heatmap overlay.
+     */
+    public void clearVolumeHeatmapOverlay() {
+        volumeHeatmapOverlay.setEnabled(false);
+    }
+
+    /**
+     * Get the volume heatmap overlay for direct access.
+     */
+    public com.tradery.ui.charts.heatmap.VolumeHeatmapOverlay getVolumeHeatmapOverlay() {
+        return volumeHeatmapOverlay;
+    }
+
+    /**
+     * Check if volume heatmap overlay is enabled.
+     */
+    public boolean isVolumeHeatmapEnabled() {
+        return volumeHeatmapOverlay.isEnabled();
+    }
+
+    // ===== Footprint Heatmap Overlay =====
+
+    /**
+     * Set the footprint heatmap overlay with candles and aggTrades.
+     *
+     * @param candles   Candle data
+     * @param aggTrades AggTrade data (required for footprint)
+     * @param config    Footprint heatmap configuration
+     */
+    public void setFootprintHeatmapOverlay(java.util.List<com.tradery.model.Candle> candles,
+                                            java.util.List<com.tradery.model.AggTrade> aggTrades,
+                                            com.tradery.ui.charts.footprint.FootprintHeatmapConfig config) {
+        if (candles == null || candles.isEmpty()) {
+            clearFootprintHeatmapOverlay();
+            return;
+        }
+
+        footprintHeatmapOverlay.setConfig(config);
+        footprintHeatmapOverlay.setTimeframe(currentTimeframe);
+        footprintHeatmapOverlay.update(candles, aggTrades);
+    }
+
+    /**
+     * Update footprint heatmap overlay using data from IndicatorEngine.
+     * Uses candles from context and fetches aggTrades from engine.
+     */
+    public void updateFootprintHeatmapOverlay() {
+        com.tradery.ui.charts.ChartConfig config = com.tradery.ui.charts.ChartConfig.getInstance();
+        if (!config.isFootprintHeatmapEnabled()) {
+            clearFootprintHeatmapOverlay();
+            return;
+        }
+
+        if (currentCandles == null || currentCandles.isEmpty() || indicatorEngine == null) {
+            return;
+        }
+
+        java.util.List<com.tradery.model.AggTrade> aggTrades = indicatorEngine.getAggTrades();
+        if (aggTrades == null || aggTrades.isEmpty()) {
+            return; // No data yet, will be called again when aggTrades arrive
+        }
+
+        setFootprintHeatmapOverlay(currentCandles, aggTrades, config.getFootprintHeatmapConfig());
+    }
+
+    /**
+     * Clear the footprint heatmap overlay.
+     */
+    public void clearFootprintHeatmapOverlay() {
+        footprintHeatmapOverlay.setEnabled(false);
+    }
+
+    /**
+     * Get the footprint heatmap overlay for direct access.
+     */
+    public com.tradery.ui.charts.footprint.FootprintHeatmapOverlay getFootprintHeatmapOverlay() {
+        return footprintHeatmapOverlay;
+    }
+
+    /**
+     * Check if footprint heatmap overlay is enabled.
+     */
+    public boolean isFootprintHeatmapEnabled() {
+        return footprintHeatmapOverlay.isEnabled();
+    }
+
     // ===== Clear All =====
 
     public void clearAll() {
@@ -1051,6 +1189,8 @@ public class OverlayManager {
         clearIchimokuOverlay();
         clearVwapOverlay();
         clearDailyVolumeProfileOverlay();
+        clearVolumeHeatmapOverlay();
+        clearFootprintHeatmapOverlay();
         resetColorIndex();
     }
 

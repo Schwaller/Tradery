@@ -103,6 +103,12 @@ public class ChartConfig {
     private int dailyVolumeProfileBins = 96;
     private int dailyVolumeProfileWidth = 60;
 
+    // Volume Heatmap overlay
+    private com.tradery.ui.charts.heatmap.VolumeHeatmapConfig volumeHeatmapConfig = new com.tradery.ui.charts.heatmap.VolumeHeatmapConfig();
+
+    // Footprint Heatmap overlay
+    private com.tradery.ui.charts.footprint.FootprintHeatmapConfig footprintHeatmapConfig = new com.tradery.ui.charts.footprint.FootprintHeatmapConfig();
+
     // Price chart mode
     private boolean candlestickMode = false;  // false = line, true = candlestick
     private int priceOpacity = 100;  // 0-100, applied to price line and candles (not cloud)
@@ -371,6 +377,56 @@ public class ChartConfig {
     public void setDailyVolumeProfileBins(int bins) { this.dailyVolumeProfileBins = bins; save(); }
     public int getDailyVolumeProfileWidth() { return dailyVolumeProfileWidth; }
     public void setDailyVolumeProfileWidth(int width) { this.dailyVolumeProfileWidth = width; save(); }
+
+    // ===== Volume Heatmap Overlay Getters/Setters =====
+
+    public com.tradery.ui.charts.heatmap.VolumeHeatmapConfig getVolumeHeatmapConfig() {
+        if (volumeHeatmapConfig == null) {
+            volumeHeatmapConfig = new com.tradery.ui.charts.heatmap.VolumeHeatmapConfig();
+        }
+        return volumeHeatmapConfig;
+    }
+
+    public void setVolumeHeatmapConfig(com.tradery.ui.charts.heatmap.VolumeHeatmapConfig config) {
+        this.volumeHeatmapConfig = config;
+        save();
+        notifyListeners();
+    }
+
+    public boolean isVolumeHeatmapEnabled() {
+        return getVolumeHeatmapConfig().isEnabled();
+    }
+
+    public void setVolumeHeatmapEnabled(boolean enabled) {
+        getVolumeHeatmapConfig().setEnabled(enabled);
+        save();
+        notifyListeners();
+    }
+
+    // ===== Footprint Heatmap Overlay Getters/Setters =====
+
+    public com.tradery.ui.charts.footprint.FootprintHeatmapConfig getFootprintHeatmapConfig() {
+        if (footprintHeatmapConfig == null) {
+            footprintHeatmapConfig = new com.tradery.ui.charts.footprint.FootprintHeatmapConfig();
+        }
+        return footprintHeatmapConfig;
+    }
+
+    public void setFootprintHeatmapConfig(com.tradery.ui.charts.footprint.FootprintHeatmapConfig config) {
+        this.footprintHeatmapConfig = config;
+        save();
+        notifyListeners();
+    }
+
+    public boolean isFootprintHeatmapEnabled() {
+        return getFootprintHeatmapConfig().isEnabled();
+    }
+
+    public void setFootprintHeatmapEnabled(boolean enabled) {
+        getFootprintHeatmapConfig().setEnabled(enabled);
+        save();
+        notifyListeners();
+    }
 
     // ===== Price Chart Mode =====
     public boolean isCandlestickMode() { return candlestickMode; }

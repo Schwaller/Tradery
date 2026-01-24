@@ -164,7 +164,33 @@ public class Lexer {
         Map.entry("SUPERTREND", TokenType.INDICATOR),
 
         // Ichimoku Cloud indicator
-        Map.entry("ICHIMOKU", TokenType.INDICATOR)
+        Map.entry("ICHIMOKU", TokenType.INDICATOR),
+
+        // Footprint functions (single-exchange)
+        Map.entry("IMBALANCE_AT_POC", TokenType.FOOTPRINT_FUNC),
+        Map.entry("IMBALANCE_AT_VAH", TokenType.FOOTPRINT_FUNC),
+        Map.entry("IMBALANCE_AT_VAL", TokenType.FOOTPRINT_FUNC),
+        Map.entry("STACKED_BUY_IMBALANCES", TokenType.FOOTPRINT_FUNC),
+        Map.entry("STACKED_SELL_IMBALANCES", TokenType.FOOTPRINT_FUNC),
+        Map.entry("ABSORPTION", TokenType.FOOTPRINT_FUNC),
+        Map.entry("HIGH_VOLUME_NODE_COUNT", TokenType.FOOTPRINT_FUNC),
+        Map.entry("VOLUME_ABOVE_POC_RATIO", TokenType.FOOTPRINT_FUNC),
+        Map.entry("VOLUME_BELOW_POC_RATIO", TokenType.FOOTPRINT_FUNC),
+        Map.entry("FOOTPRINT_DELTA", TokenType.FOOTPRINT_FUNC),
+        Map.entry("FOOTPRINT_POC", TokenType.FOOTPRINT_FUNC),
+
+        // Cross-exchange functions
+        Map.entry("BINANCE_DELTA", TokenType.EXCHANGE_FUNC),
+        Map.entry("BYBIT_DELTA", TokenType.EXCHANGE_FUNC),
+        Map.entry("OKX_DELTA", TokenType.EXCHANGE_FUNC),
+        Map.entry("COMBINED_DELTA", TokenType.EXCHANGE_FUNC),
+        Map.entry("EXCHANGE_DELTA_SPREAD", TokenType.EXCHANGE_FUNC),
+        Map.entry("EXCHANGE_DIVERGENCE", TokenType.EXCHANGE_FUNC),
+        Map.entry("COMBINED_IMBALANCE_AT_POC", TokenType.EXCHANGE_FUNC),
+        Map.entry("EXCHANGES_WITH_BUY_IMBALANCE", TokenType.EXCHANGE_FUNC),
+        Map.entry("EXCHANGES_WITH_SELL_IMBALANCE", TokenType.EXCHANGE_FUNC),
+        Map.entry("WHALE_DELTA_COMBINED", TokenType.EXCHANGE_FUNC),
+        Map.entry("DOMINANT_EXCHANGE", TokenType.EXCHANGE_FUNC)
     );
 
     private final String source;

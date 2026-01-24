@@ -4,9 +4,13 @@
     { "id": "asian-session", "name": "Asian Session", "version": "1.0" },
     { "id": "bb-expansion", "name": "Bollinger Expansion", "version": "1.0" },
     { "id": "bb-squeeze", "name": "Bollinger Squeeze", "version": "1.0" },
+    { "id": "cross-exchange-buy-pressure", "name": "Cross-Exchange Buy Pressure", "version": "1.0" },
+    { "id": "cross-exchange-sell-pressure", "name": "Cross-Exchange Sell Pressure", "version": "1.0" },
     { "id": "death-cross", "name": "Death Cross", "version": "1.1" },
     { "id": "downtrend", "name": "Downtrend", "version": "1.1" },
     { "id": "european-session", "name": "European Session", "version": "1.0" },
+    { "id": "exchange-divergence-bearish", "name": "Exchange Divergence Bearish", "version": "1.0" },
+    { "id": "exchange-divergence-bullish", "name": "Exchange Divergence Bullish", "version": "1.0" },
     { "id": "extreme-funding", "name": "Extreme Funding Rate", "version": "1.0" },
     { "id": "fomc-meeting-day", "name": "FOMC Meeting Day", "version": "1.0" },
     { "id": "fomc-meeting-hour", "name": "FOMC Meeting Hour", "version": "1.1" },
@@ -59,6 +63,8 @@
     { "id": "us-market-hours", "name": "US Market Hours", "version": "1.0" },
     { "id": "wednesday", "name": "Wednesday", "version": "1.0" },
     { "id": "weekdays", "name": "Weekdays", "version": "1.0" },
-    { "id": "weekend", "name": "Weekend", "version": "1.0" }
+    { "id": "weekend", "name": "Weekend", "version": "1.0" },
+    { "id": "whale-accumulation-multi", "name": "Whale Accumulation (Multi-Exchange)", "version": "1.0" },
+    { "id": "whale-distribution-multi", "name": "Whale Distribution (Multi-Exchange)", "version": "1.0" }
   ]
 }

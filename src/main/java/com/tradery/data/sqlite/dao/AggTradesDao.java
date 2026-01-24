@@ -2,6 +2,8 @@ package com.tradery.data.sqlite.dao;
 
 import com.tradery.data.sqlite.SqliteConnection;
 import com.tradery.model.AggTrade;
+import com.tradery.model.DataMarketType;
+import com.tradery.model.Exchange;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -11,6 +13,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 
 /**
  * DAO for aggregated trade data.
@@ -33,15 +36,16 @@ public class AggTradesDao {
     }
 
     /**
-     * Insert a single aggregated trade (upsert by agg_trade_id).
+     * Insert a single aggregated trade (upsert by exchange + agg_trade_id).
      */
     public void insert(AggTrade trade) throws SQLException {
         Connection c = conn.getConnection();
 
         String sql = """
             INSERT OR REPLACE INTO agg_trades
-            (agg_trade_id, price, quantity, first_trade_id, last_trade_id, timestamp, is_buyer_maker)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            (agg_trade_id, price, quantity, first_trade_id, last_trade_id, timestamp, is_buyer_maker,
+             exchange, market_type, raw_symbol, normalized_price)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """;
 
         try (PreparedStatement stmt = c.prepareStatement(sql)) {
@@ -52,6 +56,10 @@ public class AggTradesDao {
             stmt.setLong(5, trade.lastTradeId());
             stmt.setLong(6, trade.timestamp());
             stmt.setInt(7, trade.isBuyerMaker() ? 1 : 0);
+            stmt.setString(8, trade.exchange() != null ? trade.exchange().getConfigKey() : "binance");
+            stmt.setString(9, trade.marketType() != null ? trade.marketType().getConfigKey() : "perp");
+            stmt.setString(10, trade.rawSymbol());
+            stmt.setDouble(11, trade.normalizedPrice() > 0 ? trade.normalizedPrice() : trade.price());
             stmt.executeUpdate();
         }
     }
@@ -68,8 +76,9 @@ public class AggTradesDao {
         return conn.executeInTransaction(c -> {
             String sql = """
                 INSERT OR REPLACE INTO agg_trades
-                (agg_trade_id, price, quantity, first_trade_id, last_trade_id, timestamp, is_buyer_maker)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                (agg_trade_id, price, quantity, first_trade_id, last_trade_id, timestamp, is_buyer_maker,
+                 exchange, market_type, raw_symbol, normalized_price)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """;
 
             int count = 0;
@@ -82,6 +91,10 @@ public class AggTradesDao {
                     stmt.setLong(5, trade.lastTradeId());
                     stmt.setLong(6, trade.timestamp());
                     stmt.setInt(7, trade.isBuyerMaker() ? 1 : 0);
+                    stmt.setString(8, trade.exchange() != null ? trade.exchange().getConfigKey() : "binance");
+                    stmt.setString(9, trade.marketType() != null ? trade.marketType().getConfigKey() : "perp");
+                    stmt.setString(10, trade.rawSymbol());
+                    stmt.setDouble(11, trade.normalizedPrice() > 0 ? trade.normalizedPrice() : trade.price());
                     stmt.addBatch();
 
                     // Execute in batches
@@ -99,39 +112,84 @@ public class AggTradesDao {
     }
 
     /**
-     * Query aggregated trades in a time range.
+     * Query aggregated trades in a time range (all exchanges).
      */
     public List<AggTrade> query(long startTime, long endTime) throws SQLException {
+        return queryWithExchange(startTime, endTime, null);
+    }
+
+    /**
+     * Query aggregated trades in a time range, optionally filtered by exchanges.
+     *
+     * @param startTime Start timestamp
+     * @param endTime End timestamp
+     * @param exchanges Set of exchanges to include (null for all)
+     */
+    public List<AggTrade> queryWithExchange(long startTime, long endTime, Set<Exchange> exchanges) throws SQLException {
         Connection c = conn.getConnection();
         List<AggTrade> trades = new ArrayList<>();
 
-        String sql = """
-            SELECT agg_trade_id, price, quantity, first_trade_id, last_trade_id, timestamp, is_buyer_maker
+        StringBuilder sql = new StringBuilder("""
+            SELECT agg_trade_id, price, quantity, first_trade_id, last_trade_id, timestamp, is_buyer_maker,
+                   exchange, market_type, raw_symbol, normalized_price
             FROM agg_trades
             WHERE timestamp >= ? AND timestamp <= ?
-            ORDER BY timestamp, agg_trade_id
-            """;
+            """);
 
-        try (PreparedStatement stmt = c.prepareStatement(sql)) {
+        if (exchanges != null && !exchanges.isEmpty()) {
+            sql.append(" AND exchange IN (");
+            for (int i = 0; i < exchanges.size(); i++) {
+                sql.append(i > 0 ? ",?" : "?");
+            }
+            sql.append(")");
+        }
+        sql.append(" ORDER BY timestamp, agg_trade_id");
+
+        try (PreparedStatement stmt = c.prepareStatement(sql.toString())) {
             stmt.setLong(1, startTime);
             stmt.setLong(2, endTime);
 
+            int paramIndex = 3;
+            if (exchanges != null && !exchanges.isEmpty()) {
+                for (Exchange ex : exchanges) {
+                    stmt.setString(paramIndex++, ex.getConfigKey());
+                }
+            }
+
             try (ResultSet rs = stmt.executeQuery()) {
                 while (rs.next()) {
-                    trades.add(new AggTrade(
-                        rs.getLong("agg_trade_id"),
-                        rs.getDouble("price"),
-                        rs.getDouble("quantity"),
-                        rs.getLong("first_trade_id"),
-                        rs.getLong("last_trade_id"),
-                        rs.getLong("timestamp"),
-                        rs.getInt("is_buyer_maker") == 1
-                    ));
+                    trades.add(parseAggTrade(rs));
                 }
             }
         }
 
         return trades;
+    }
+
+    /**
+     * Parse an AggTrade from a ResultSet.
+     */
+    private AggTrade parseAggTrade(ResultSet rs) throws SQLException {
+        long aggTradeId = rs.getLong("agg_trade_id");
+        double price = rs.getDouble("price");
+        double quantity = rs.getDouble("quantity");
+        long firstTradeId = rs.getLong("first_trade_id");
+        long lastTradeId = rs.getLong("last_trade_id");
+        long timestamp = rs.getLong("timestamp");
+        boolean isBuyerMaker = rs.getInt("is_buyer_maker") == 1;
+
+        // Exchange fields (with fallback for legacy data)
+        String exchangeStr = rs.getString("exchange");
+        String marketTypeStr = rs.getString("market_type");
+        String rawSymbol = rs.getString("raw_symbol");
+        double normalizedPrice = rs.getDouble("normalized_price");
+
+        Exchange exchange = exchangeStr != null ? Exchange.fromConfigKey(exchangeStr) : Exchange.BINANCE;
+        DataMarketType marketType = marketTypeStr != null ? DataMarketType.fromConfigKey(marketTypeStr) : DataMarketType.FUTURES_PERP;
+        if (normalizedPrice <= 0) normalizedPrice = price;
+
+        return new AggTrade(aggTradeId, price, quantity, firstTradeId, lastTradeId, timestamp, isBuyerMaker,
+            exchange, marketType, rawSymbol, normalizedPrice);
     }
 
     /**
@@ -142,7 +200,8 @@ public class AggTradesDao {
         List<AggTrade> trades = new ArrayList<>();
 
         String sql = """
-            SELECT agg_trade_id, price, quantity, first_trade_id, last_trade_id, timestamp, is_buyer_maker
+            SELECT agg_trade_id, price, quantity, first_trade_id, last_trade_id, timestamp, is_buyer_maker,
+                   exchange, market_type, raw_symbol, normalized_price
             FROM agg_trades
             WHERE timestamp >= ? AND timestamp <= ?
             ORDER BY timestamp, agg_trade_id
@@ -156,15 +215,7 @@ public class AggTradesDao {
 
             try (ResultSet rs = stmt.executeQuery()) {
                 while (rs.next()) {
-                    trades.add(new AggTrade(
-                        rs.getLong("agg_trade_id"),
-                        rs.getDouble("price"),
-                        rs.getDouble("quantity"),
-                        rs.getLong("first_trade_id"),
-                        rs.getLong("last_trade_id"),
-                        rs.getLong("timestamp"),
-                        rs.getInt("is_buyer_maker") == 1
-                    ));
+                    trades.add(parseAggTrade(rs));
                 }
             }
         }
@@ -180,7 +231,8 @@ public class AggTradesDao {
         List<AggTrade> trades = new ArrayList<>();
 
         String sql = """
-            SELECT agg_trade_id, price, quantity, first_trade_id, last_trade_id, timestamp, is_buyer_maker
+            SELECT agg_trade_id, price, quantity, first_trade_id, last_trade_id, timestamp, is_buyer_maker,
+                   exchange, market_type, raw_symbol, normalized_price
             FROM agg_trades
             ORDER BY timestamp DESC, agg_trade_id DESC
             LIMIT ?
@@ -191,15 +243,7 @@ public class AggTradesDao {
 
             try (ResultSet rs = stmt.executeQuery()) {
                 while (rs.next()) {
-                    trades.add(new AggTrade(
-                        rs.getLong("agg_trade_id"),
-                        rs.getDouble("price"),
-                        rs.getDouble("quantity"),
-                        rs.getLong("first_trade_id"),
-                        rs.getLong("last_trade_id"),
-                        rs.getLong("timestamp"),
-                        rs.getInt("is_buyer_maker") == 1
-                    ));
+                    trades.add(parseAggTrade(rs));
                 }
             }
         }
@@ -224,7 +268,8 @@ public class AggTradesDao {
         Connection c = conn.getConnection();
 
         String sql = """
-            SELECT agg_trade_id, price, quantity, first_trade_id, last_trade_id, timestamp, is_buyer_maker
+            SELECT agg_trade_id, price, quantity, first_trade_id, last_trade_id, timestamp, is_buyer_maker,
+                   exchange, market_type, raw_symbol, normalized_price
             FROM agg_trades
             ORDER BY timestamp ASC, agg_trade_id ASC
             LIMIT 1
@@ -233,15 +278,7 @@ public class AggTradesDao {
         try (PreparedStatement stmt = c.prepareStatement(sql);
              ResultSet rs = stmt.executeQuery()) {
             if (rs.next()) {
-                return new AggTrade(
-                    rs.getLong("agg_trade_id"),
-                    rs.getDouble("price"),
-                    rs.getDouble("quantity"),
-                    rs.getLong("first_trade_id"),
-                    rs.getLong("last_trade_id"),
-                    rs.getLong("timestamp"),
-                    rs.getInt("is_buyer_maker") == 1
-                );
+                return parseAggTrade(rs);
             }
         }
 
@@ -445,5 +482,68 @@ public class AggTradesDao {
                 return rs.next();
             }
         }
+    }
+
+    /**
+     * Calculate volume stats per exchange for a time range.
+     */
+    public java.util.Map<Exchange, VolumeStats> getVolumeStatsByExchange(long startTime, long endTime) throws SQLException {
+        Connection c = conn.getConnection();
+        java.util.Map<Exchange, VolumeStats> result = new java.util.EnumMap<>(Exchange.class);
+
+        String sql = """
+            SELECT
+                exchange,
+                SUM(CASE WHEN is_buyer_maker = 0 THEN quantity ELSE 0 END) as buy_volume,
+                SUM(CASE WHEN is_buyer_maker = 1 THEN quantity ELSE 0 END) as sell_volume,
+                COUNT(*) as trade_count
+            FROM agg_trades
+            WHERE timestamp >= ? AND timestamp <= ?
+            GROUP BY exchange
+            """;
+
+        try (PreparedStatement stmt = c.prepareStatement(sql)) {
+            stmt.setLong(1, startTime);
+            stmt.setLong(2, endTime);
+
+            try (ResultSet rs = stmt.executeQuery()) {
+                while (rs.next()) {
+                    String exchangeStr = rs.getString("exchange");
+                    Exchange exchange = Exchange.fromConfigKey(exchangeStr);
+                    if (exchange != null) {
+                        result.put(exchange, new VolumeStats(
+                            rs.getDouble("buy_volume"),
+                            rs.getDouble("sell_volume"),
+                            rs.getLong("trade_count")
+                        ));
+                    }
+                }
+            }
+        }
+
+        return result;
+    }
+
+    /**
+     * Get list of exchanges that have data for this symbol.
+     */
+    public List<Exchange> getExchangesWithData() throws SQLException {
+        Connection c = conn.getConnection();
+        List<Exchange> exchanges = new ArrayList<>();
+
+        String sql = "SELECT DISTINCT exchange FROM agg_trades";
+
+        try (PreparedStatement stmt = c.prepareStatement(sql);
+             ResultSet rs = stmt.executeQuery()) {
+            while (rs.next()) {
+                String exchangeStr = rs.getString("exchange");
+                Exchange exchange = Exchange.fromConfigKey(exchangeStr);
+                if (exchange != null) {
+                    exchanges.add(exchange);
+                }
+            }
+        }
+
+        return exchanges;
     }
 }

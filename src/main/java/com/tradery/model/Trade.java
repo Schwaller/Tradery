@@ -47,7 +47,12 @@ public record Trade(
     Double betterEntryImprovement,        // % improvement in potential PnL if entered at better price
     Integer betterExitBar,                // Bar within context window after exit that had better exit price (null if exit was optimal)
     Double betterExitPrice,               // Price at that bar
-    Double betterExitImprovement          // % improvement in PnL if exited at better price
+    Double betterExitImprovement,         // % improvement in PnL if exited at better price
+    // Footprint metrics for orderflow analysis (requires aggTrades data)
+    Map<String, Double> entryFootprintMetrics,  // Footprint metrics at entry (imbalanceAtPoc, stackedBuyImbalances, etc.)
+    Map<String, Double> exitFootprintMetrics,   // Footprint metrics at exit
+    Map<String, Double> mfeFootprintMetrics,    // Footprint metrics at MFE point
+    Map<String, Double> maeFootprintMetrics     // Footprint metrics at MAE point
 ) {
     /** Number of context bars to analyze before/after trades */
     public static final int CONTEXT_BARS = 15;
@@ -74,6 +79,17 @@ public record Trade(
     public static Trade open(String strategyId, String side, int bar, long timestamp,
                              double price, double quantity, double commission, String groupId,
                              List<String> activePhasesAtEntry, Map<String, Double> entryIndicators) {
+        return open(strategyId, side, bar, timestamp, price, quantity, commission, groupId,
+                    activePhasesAtEntry, entryIndicators, null);
+    }
+
+    /**
+     * Create a new open trade with phase context, indicator values, and footprint metrics
+     */
+    public static Trade open(String strategyId, String side, int bar, long timestamp,
+                             double price, double quantity, double commission, String groupId,
+                             List<String> activePhasesAtEntry, Map<String, Double> entryIndicators,
+                             Map<String, Double> entryFootprintMetrics) {
         String id = "trade-" + timestamp + "-" + (int)(Math.random() * 10000);
         return new Trade(
             id, strategyId, side, bar, timestamp, price, quantity,
@@ -84,7 +100,8 @@ public record Trade(
             null, null,  // MFE/MAE indicators - populated on close
             null,  // Holding costs - populated on close
             null, null, null,  // Better entry context - populated on close
-            null, null, null   // Better exit context - populated on close
+            null, null, null,  // Better exit context - populated on close
+            entryFootprintMetrics, null, null, null  // Footprint metrics - exit/MFE/MAE populated on close
         );
     }
 
@@ -118,7 +135,8 @@ public record Trade(
             null, null,  // No MFE/MAE indicators for rejected trades
             null,  // No holding costs for rejected trades
             null, null, null,  // No better entry context for rejected trades
-            null, null, null   // No better exit context for rejected trades
+            null, null, null,  // No better exit context for rejected trades
+            null, null, null, null  // No footprint metrics for rejected trades
         );
     }
 
@@ -137,7 +155,8 @@ public record Trade(
             null, null,  // No MFE/MAE indicators for expired orders
             null,  // No holding costs for expired orders
             null, null, null,  // No better entry context for expired orders
-            null, null, null   // No better exit context for expired orders
+            null, null, null,  // No better exit context for expired orders
+            null, null, null, null  // No footprint metrics for expired orders
         );
     }
 
@@ -259,14 +278,7 @@ public record Trade(
 
     /**
      * Partially close with full analytics including context analysis for AI insights.
-     * This is the core close method that all others delegate to.
-     *
-     * @param betterEntryBar Bar within CONTEXT_BARS before entry that had better price (null if entry was optimal)
-     * @param betterEntryPrice The price at the better entry bar
-     * @param betterEntryImprovement % improvement in potential PnL if entered at better price
-     * @param betterExitBar Bar within CONTEXT_BARS after exit that had better price (null if exit was optimal)
-     * @param betterExitPrice The price at the better exit bar
-     * @param betterExitImprovement % improvement in PnL if exited at better price
+     * Delegates to the full version with null footprint metrics.
      */
     public Trade partialCloseWithAnalytics(int exitBar, long exitTime, double exitPrice, double exitQuantity,
                                            double commissionRate, String exitReason, String exitZone,
@@ -276,6 +288,37 @@ public record Trade(
                                            Double holdingCosts,
                                            Integer betterEntryBar, Double betterEntryPrice, Double betterEntryImprovement,
                                            Integer betterExitBar, Double betterExitPrice, Double betterExitImprovement) {
+        return partialCloseWithAnalytics(exitBar, exitTime, exitPrice, exitQuantity, commissionRate,
+            exitReason, exitZone, mfe, mae, mfeBar, maeBar, activePhasesAtExit, exitIndicators,
+            mfeIndicators, maeIndicators, holdingCosts, betterEntryBar, betterEntryPrice, betterEntryImprovement,
+            betterExitBar, betterExitPrice, betterExitImprovement, null, null, null);
+    }
+
+    /**
+     * Partially close with full analytics including context analysis and footprint metrics for AI insights.
+     * This is the core close method that all others delegate to.
+     *
+     * @param betterEntryBar Bar within CONTEXT_BARS before entry that had better price (null if entry was optimal)
+     * @param betterEntryPrice The price at the better entry bar
+     * @param betterEntryImprovement % improvement in potential PnL if entered at better price
+     * @param betterExitBar Bar within CONTEXT_BARS after exit that had better price (null if exit was optimal)
+     * @param betterExitPrice The price at the better exit bar
+     * @param betterExitImprovement % improvement in PnL if exited at better price
+     * @param exitFootprintMetrics Footprint metrics at exit (null if no aggTrades data)
+     * @param mfeFootprintMetrics Footprint metrics at MFE point (null if no aggTrades data)
+     * @param maeFootprintMetrics Footprint metrics at MAE point (null if no aggTrades data)
+     */
+    public Trade partialCloseWithAnalytics(int exitBar, long exitTime, double exitPrice, double exitQuantity,
+                                           double commissionRate, String exitReason, String exitZone,
+                                           Double mfe, Double mae, Integer mfeBar, Integer maeBar,
+                                           List<String> activePhasesAtExit, Map<String, Double> exitIndicators,
+                                           Map<String, Double> mfeIndicators, Map<String, Double> maeIndicators,
+                                           Double holdingCosts,
+                                           Integer betterEntryBar, Double betterEntryPrice, Double betterEntryImprovement,
+                                           Integer betterExitBar, Double betterExitPrice, Double betterExitImprovement,
+                                           Map<String, Double> exitFootprintMetrics,
+                                           Map<String, Double> mfeFootprintMetrics,
+                                           Map<String, Double> maeFootprintMetrics) {
         double grossPnl = (exitPrice - entryPrice) * exitQuantity;
         if ("short".equals(side)) {
             grossPnl = -grossPnl;
@@ -305,7 +348,9 @@ public record Trade(
             mfeIndicators, maeIndicators,  // Indicator values at MFE/MAE points
             holdingCosts,  // Holding costs (funding fees or margin interest)
             betterEntryBar, betterEntryPrice, betterEntryImprovement,  // Better entry context
-            betterExitBar, betterExitPrice, betterExitImprovement  // Better exit context
+            betterExitBar, betterExitPrice, betterExitImprovement,  // Better exit context
+            this.entryFootprintMetrics, exitFootprintMetrics,  // Footprint metrics
+            mfeFootprintMetrics, maeFootprintMetrics
         );
     }
 

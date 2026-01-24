@@ -57,6 +57,8 @@ public class ConditionEvaluator {
             case AstNode.MathFunctionCall m -> evaluateMathFunction(m, barIndex);
             case AstNode.CandlePatternCall c -> evaluateCandlePattern(c, barIndex);
             case AstNode.CandlePropCall c -> evaluateCandleProp(c, barIndex);
+            case AstNode.FootprintFunctionCall f -> evaluateFootprintFunction(f, barIndex);
+            case AstNode.ExchangeFunctionCall e -> evaluateExchangeFunction(e, barIndex);
             case AstNode.LookbackAccess l -> evaluateLookback(l, barIndex);
             case AstNode.PriceReference p -> evaluatePrice(p, barIndex);
             case AstNode.NumberLiteral n -> n.value();
@@ -560,6 +562,90 @@ public class ConditionEvaluator {
             case "IS_BULLISH" -> close > open ? 1.0 : 0.0;
             case "IS_BEARISH" -> close < open ? 1.0 : 0.0;
             default -> throw new EvaluationException("Unknown candle property: " + node.func());
+        };
+    }
+
+    /**
+     * Evaluate footprint functions for orderflow analysis.
+     * These analyze trade flow at price levels within candles.
+     */
+    private double evaluateFootprintFunction(AstNode.FootprintFunctionCall node, int barIndex) {
+        List<Double> params = node.params();
+
+        return switch (node.func()) {
+            // Imbalance functions - return ratio of buy/sell at price level
+            case "IMBALANCE_AT_POC" -> engine.getImbalanceAtPOC(barIndex);
+            case "IMBALANCE_AT_VAH" -> engine.getImbalanceAtVAH(barIndex);
+            case "IMBALANCE_AT_VAL" -> engine.getImbalanceAtVAL(barIndex);
+
+            // Stacked imbalance detection - returns 1 if n consecutive imbalances found
+            case "STACKED_BUY_IMBALANCES" -> {
+                int n = params.isEmpty() ? 3 : params.get(0).intValue();
+                yield engine.hasStackedBuyImbalances(n, barIndex) ? 1.0 : 0.0;
+            }
+            case "STACKED_SELL_IMBALANCES" -> {
+                int n = params.isEmpty() ? 3 : params.get(0).intValue();
+                yield engine.hasStackedSellImbalances(n, barIndex) ? 1.0 : 0.0;
+            }
+
+            // Absorption detection - high volume + small price movement
+            case "ABSORPTION" -> {
+                double volumeThreshold = params.size() > 0 ? params.get(0) : 100000;
+                double maxMovement = params.size() > 1 ? params.get(1) : 0.5;
+                yield engine.hasAbsorption(volumeThreshold, maxMovement, barIndex) ? 1.0 : 0.0;
+            }
+
+            // High volume node counting
+            case "HIGH_VOLUME_NODE_COUNT" -> {
+                double threshold = params.isEmpty() ? 1.5 : params.get(0);
+                yield engine.getHighVolumeNodeCount(threshold, barIndex);
+            }
+
+            // Volume distribution around POC
+            case "VOLUME_ABOVE_POC_RATIO" -> engine.getVolumeAbovePOCRatio(barIndex);
+            case "VOLUME_BELOW_POC_RATIO" -> engine.getVolumeBelowPOCRatio(barIndex);
+
+            // Footprint aggregates
+            case "FOOTPRINT_DELTA" -> engine.getFootprintDelta(barIndex);
+            case "FOOTPRINT_POC" -> engine.getFootprintPOC(barIndex);
+
+            default -> throw new EvaluationException("Unknown footprint function: " + node.func());
+        };
+    }
+
+    /**
+     * Evaluate cross-exchange functions for multi-exchange analysis.
+     * These compare orderflow across different exchanges.
+     */
+    private double evaluateExchangeFunction(AstNode.ExchangeFunctionCall node, int barIndex) {
+        List<Double> params = node.params();
+
+        return switch (node.func()) {
+            // Per-exchange delta
+            case "BINANCE_DELTA" -> engine.getExchangeDelta("BINANCE", barIndex);
+            case "BYBIT_DELTA" -> engine.getExchangeDelta("BYBIT", barIndex);
+            case "OKX_DELTA" -> engine.getExchangeDelta("OKX", barIndex);
+
+            // Combined cross-exchange metrics
+            case "COMBINED_DELTA" -> engine.getCombinedDelta(barIndex);
+            case "EXCHANGE_DELTA_SPREAD" -> engine.getExchangeDeltaSpread(barIndex);
+            case "EXCHANGE_DIVERGENCE" -> engine.hasExchangeDivergence(barIndex) ? 1.0 : 0.0;
+
+            // Combined imbalance analysis
+            case "COMBINED_IMBALANCE_AT_POC" -> engine.getCombinedImbalanceAtPOC(barIndex);
+            case "EXCHANGES_WITH_BUY_IMBALANCE" -> engine.getExchangesWithBuyImbalance(barIndex);
+            case "EXCHANGES_WITH_SELL_IMBALANCE" -> engine.getExchangesWithSellImbalance(barIndex);
+
+            // Cross-exchange whale detection
+            case "WHALE_DELTA_COMBINED" -> {
+                double threshold = params.isEmpty() ? 100000 : params.get(0);
+                yield engine.getWhaleDeltaCombined(threshold, barIndex);
+            }
+
+            // Dominant exchange (returns enum ordinal)
+            case "DOMINANT_EXCHANGE" -> engine.getDominantExchange(barIndex);
+
+            default -> throw new EvaluationException("Unknown exchange function: " + node.func());
         };
     }
 

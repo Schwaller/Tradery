@@ -275,8 +275,19 @@ public class ResultStore {
         // By exit reason
         analysis.put("byExitReason", analyzeByExitReason(validTrades));
 
+        // Footprint/orderflow analysis (only if footprint data available)
+        Map<String, Object> footprintAnalysis = analyzeByFootprint(validTrades, overall.winRate());
+        if (!footprintAnalysis.isEmpty()) {
+            analysis.put("byFootprint", footprintAnalysis);
+        }
+
         // AI suggestions
-        analysis.put("suggestions", generateSuggestions(validTrades, overall));
+        List<String> suggestions = generateSuggestions(validTrades, overall);
+
+        // Add footprint-specific suggestions
+        suggestions.addAll(generateFootprintSuggestions(validTrades));
+
+        analysis.put("suggestions", suggestions);
 
         return analysis;
     }
@@ -616,6 +627,354 @@ public class ResultStore {
         stats.put("vsOverall", Math.round((winRate - overallWinRate) * 10) / 10.0);  // Difference from overall
 
         return stats;
+    }
+
+    /**
+     * Analyze trades by footprint metrics (imbalance, absorption, etc.)
+     * Only includes analysis if footprint data is available for enough trades.
+     */
+    private Map<String, Object> analyzeByFootprint(List<Trade> trades, double overallWinRate) {
+        Map<String, Object> analysis = new LinkedHashMap<>();
+
+        // Filter trades with footprint data
+        List<Trade> tradesWithFootprint = trades.stream()
+            .filter(t -> t.entryFootprintMetrics() != null && !t.entryFootprintMetrics().isEmpty())
+            .toList();
+
+        if (tradesWithFootprint.size() < 5) {
+            return analysis;  // Not enough footprint data
+        }
+
+        // Analyze by imbalance direction at POC
+        analysis.put("byImbalance", analyzeByImbalance(tradesWithFootprint, overallWinRate));
+
+        // Analyze by stacked imbalances
+        analysis.put("byStackedImbalances", analyzeByStackedImbalances(tradesWithFootprint, overallWinRate));
+
+        // Analyze by absorption
+        analysis.put("byAbsorption", analyzeByAbsorption(tradesWithFootprint, overallWinRate));
+
+        // Analyze by volume distribution
+        analysis.put("byVolumeDistribution", analyzeByVolumeDistribution(tradesWithFootprint, overallWinRate));
+
+        // Analyze by exchange divergence (if multi-exchange data available)
+        Map<String, Object> exchangeAnalysis = analyzeByExchangeDivergence(tradesWithFootprint, overallWinRate);
+        if (!exchangeAnalysis.isEmpty()) {
+            analysis.put("byExchangeDivergence", exchangeAnalysis);
+        }
+
+        return analysis;
+    }
+
+    /**
+     * Analyze trades by imbalance at POC (buy dominant vs sell dominant)
+     */
+    private Map<String, Object> analyzeByImbalance(List<Trade> trades, double overallWinRate) {
+        Map<String, Object> result = new LinkedHashMap<>();
+
+        List<Trade> buyImbalance = new ArrayList<>();
+        List<Trade> sellImbalance = new ArrayList<>();
+        List<Trade> neutral = new ArrayList<>();
+
+        for (Trade t : trades) {
+            Double imbalance = t.entryFootprintMetrics().get("imbalanceAtPoc");
+            if (imbalance == null) continue;
+
+            if (imbalance > 1.5) {
+                buyImbalance.add(t);
+            } else if (imbalance < 0.67) {
+                sellImbalance.add(t);
+            } else {
+                neutral.add(t);
+            }
+        }
+
+        if (buyImbalance.size() >= 3) {
+            result.put("buyImbalance", computeStats(buyImbalance, overallWinRate));
+        }
+        if (sellImbalance.size() >= 3) {
+            result.put("sellImbalance", computeStats(sellImbalance, overallWinRate));
+        }
+        if (neutral.size() >= 3) {
+            result.put("neutral", computeStats(neutral, overallWinRate));
+        }
+
+        return result;
+    }
+
+    /**
+     * Analyze trades by presence of stacked buy/sell imbalances
+     */
+    private Map<String, Object> analyzeByStackedImbalances(List<Trade> trades, double overallWinRate) {
+        Map<String, Object> result = new LinkedHashMap<>();
+
+        List<Trade> withStackedBuy = new ArrayList<>();
+        List<Trade> withStackedSell = new ArrayList<>();
+        List<Trade> noStacked = new ArrayList<>();
+
+        for (Trade t : trades) {
+            Double stackedBuy = t.entryFootprintMetrics().get("stackedBuyImbalances");
+            Double stackedSell = t.entryFootprintMetrics().get("stackedSellImbalances");
+
+            boolean hasBuy = stackedBuy != null && stackedBuy >= 3;
+            boolean hasSell = stackedSell != null && stackedSell >= 3;
+
+            if (hasBuy && !hasSell) {
+                withStackedBuy.add(t);
+            } else if (hasSell && !hasBuy) {
+                withStackedSell.add(t);
+            } else if (!hasBuy && !hasSell) {
+                noStacked.add(t);
+            }
+        }
+
+        if (withStackedBuy.size() >= 3) {
+            result.put("stackedBuyImbalances", computeStats(withStackedBuy, overallWinRate));
+        }
+        if (withStackedSell.size() >= 3) {
+            result.put("stackedSellImbalances", computeStats(withStackedSell, overallWinRate));
+        }
+        if (noStacked.size() >= 3) {
+            result.put("noStackedImbalances", computeStats(noStacked, overallWinRate));
+        }
+
+        return result;
+    }
+
+    /**
+     * Analyze trades by absorption presence
+     */
+    private Map<String, Object> analyzeByAbsorption(List<Trade> trades, double overallWinRate) {
+        Map<String, Object> result = new LinkedHashMap<>();
+
+        List<Trade> withAbsorption = new ArrayList<>();
+        List<Trade> withoutAbsorption = new ArrayList<>();
+
+        for (Trade t : trades) {
+            Double absorption = t.entryFootprintMetrics().get("absorptionScore");
+            if (absorption != null && absorption > 0) {
+                withAbsorption.add(t);
+            } else {
+                withoutAbsorption.add(t);
+            }
+        }
+
+        if (withAbsorption.size() >= 3) {
+            result.put("withAbsorption", computeStats(withAbsorption, overallWinRate));
+        }
+        if (withoutAbsorption.size() >= 3) {
+            result.put("withoutAbsorption", computeStats(withoutAbsorption, overallWinRate));
+        }
+
+        return result;
+    }
+
+    /**
+     * Analyze trades by volume distribution (above vs below POC)
+     */
+    private Map<String, Object> analyzeByVolumeDistribution(List<Trade> trades, double overallWinRate) {
+        Map<String, Object> result = new LinkedHashMap<>();
+
+        List<Trade> volumeAbove = new ArrayList<>();  // More volume above POC (distribution)
+        List<Trade> volumeBelow = new ArrayList<>();  // More volume below POC (accumulation)
+        List<Trade> balanced = new ArrayList<>();
+
+        for (Trade t : trades) {
+            Double volAboveRatio = t.entryFootprintMetrics().get("volumeAbovePocRatio");
+            if (volAboveRatio == null) continue;
+
+            if (volAboveRatio > 0.6) {
+                volumeAbove.add(t);
+            } else if (volAboveRatio < 0.4) {
+                volumeBelow.add(t);
+            } else {
+                balanced.add(t);
+            }
+        }
+
+        if (volumeAbove.size() >= 3) {
+            result.put("volumeAbovePoc", computeStats(volumeAbove, overallWinRate));
+        }
+        if (volumeBelow.size() >= 3) {
+            result.put("volumeBelowPoc", computeStats(volumeBelow, overallWinRate));
+        }
+        if (balanced.size() >= 3) {
+            result.put("balancedVolume", computeStats(balanced, overallWinRate));
+        }
+
+        return result;
+    }
+
+    /**
+     * Analyze trades by exchange divergence (when different exchanges show different direction)
+     */
+    private Map<String, Object> analyzeByExchangeDivergence(List<Trade> trades, double overallWinRate) {
+        Map<String, Object> result = new LinkedHashMap<>();
+
+        List<Trade> withDivergence = new ArrayList<>();
+        List<Trade> withoutDivergence = new ArrayList<>();
+
+        for (Trade t : trades) {
+            Double divergence = t.entryFootprintMetrics().get("exchangeDivergence");
+            if (divergence == null) continue;
+
+            if (divergence > 0) {
+                withDivergence.add(t);
+            } else {
+                withoutDivergence.add(t);
+            }
+        }
+
+        // Only include if we have multi-exchange data
+        if (withDivergence.size() < 3 && withoutDivergence.size() < 3) {
+            return result;  // Not enough multi-exchange data
+        }
+
+        if (withDivergence.size() >= 3) {
+            result.put("exchangesDiverging", computeStats(withDivergence, overallWinRate));
+        }
+        if (withoutDivergence.size() >= 3) {
+            result.put("exchangesAgreeing", computeStats(withoutDivergence, overallWinRate));
+        }
+
+        return result;
+    }
+
+    /**
+     * Generate AI suggestions based on footprint patterns
+     */
+    private List<String> generateFootprintSuggestions(List<Trade> trades) {
+        List<String> suggestions = new ArrayList<>();
+
+        // Filter trades with footprint data
+        List<Trade> tradesWithFootprint = trades.stream()
+            .filter(t -> t.entryFootprintMetrics() != null && !t.entryFootprintMetrics().isEmpty())
+            .toList();
+
+        if (tradesWithFootprint.size() < 10) {
+            return suggestions;  // Not enough data for meaningful suggestions
+        }
+
+        List<Trade> winners = tradesWithFootprint.stream()
+            .filter(t -> t.pnl() != null && t.pnl() > 0)
+            .toList();
+        List<Trade> losers = tradesWithFootprint.stream()
+            .filter(t -> t.pnl() != null && t.pnl() < 0)
+            .toList();
+
+        if (winners.size() < 5 || losers.size() < 5) {
+            return suggestions;
+        }
+
+        // Compare imbalance at POC
+        double winnerImbalance = winners.stream()
+            .filter(t -> t.entryFootprintMetrics().containsKey("imbalanceAtPoc"))
+            .mapToDouble(t -> t.entryFootprintMetrics().get("imbalanceAtPoc"))
+            .average().orElse(Double.NaN);
+        double loserImbalance = losers.stream()
+            .filter(t -> t.entryFootprintMetrics().containsKey("imbalanceAtPoc"))
+            .mapToDouble(t -> t.entryFootprintMetrics().get("imbalanceAtPoc"))
+            .average().orElse(Double.NaN);
+
+        if (!Double.isNaN(winnerImbalance) && !Double.isNaN(loserImbalance)) {
+            double diff = winnerImbalance - loserImbalance;
+            if (diff > 0.5) {
+                suggestions.add(String.format(
+                    "Winners show stronger buy imbalance at POC (%.1f vs %.1f) - consider IMBALANCE_AT_POC > %.1f filter",
+                    winnerImbalance, loserImbalance, (winnerImbalance + loserImbalance) / 2));
+            } else if (diff < -0.5) {
+                suggestions.add(String.format(
+                    "Winners show stronger sell imbalance at POC (%.1f vs %.1f) - consider IMBALANCE_AT_POC < %.1f filter",
+                    winnerImbalance, loserImbalance, (winnerImbalance + loserImbalance) / 2));
+            }
+        }
+
+        // Compare stacked imbalances
+        double winnerStacked = winners.stream()
+            .filter(t -> t.entryFootprintMetrics().containsKey("stackedBuyImbalances"))
+            .mapToDouble(t -> t.entryFootprintMetrics().get("stackedBuyImbalances"))
+            .average().orElse(0);
+        double loserStacked = losers.stream()
+            .filter(t -> t.entryFootprintMetrics().containsKey("stackedBuyImbalances"))
+            .mapToDouble(t -> t.entryFootprintMetrics().get("stackedBuyImbalances"))
+            .average().orElse(0);
+
+        if (winnerStacked > loserStacked + 1) {
+            suggestions.add(String.format(
+                "Winners have %.1f avg stacked buy imbalances vs %.1f for losers - consider STACKED_BUY_IMBALANCES(%d) filter",
+                winnerStacked, loserStacked, Math.max(3, (int) (winnerStacked + loserStacked) / 2)));
+        }
+
+        // Compare volume distribution
+        double winnerVolAbove = winners.stream()
+            .filter(t -> t.entryFootprintMetrics().containsKey("volumeAbovePocRatio"))
+            .mapToDouble(t -> t.entryFootprintMetrics().get("volumeAbovePocRatio"))
+            .average().orElse(Double.NaN);
+        double loserVolAbove = losers.stream()
+            .filter(t -> t.entryFootprintMetrics().containsKey("volumeAbovePocRatio"))
+            .mapToDouble(t -> t.entryFootprintMetrics().get("volumeAbovePocRatio"))
+            .average().orElse(Double.NaN);
+
+        if (!Double.isNaN(winnerVolAbove) && !Double.isNaN(loserVolAbove)) {
+            double diff = winnerVolAbove - loserVolAbove;
+            if (diff > 0.1) {
+                suggestions.add(String.format(
+                    "Winners enter with more volume above POC (%.0f%% vs %.0f%%) - consider VOLUME_ABOVE_POC_RATIO > %.2f filter",
+                    winnerVolAbove * 100, loserVolAbove * 100, (winnerVolAbove + loserVolAbove) / 2));
+            } else if (diff < -0.1) {
+                suggestions.add(String.format(
+                    "Winners enter with more volume below POC (%.0f%% vs %.0f%% above) - consider VOLUME_BELOW_POC_RATIO > %.2f filter",
+                    winnerVolAbove * 100, loserVolAbove * 100, 1 - (winnerVolAbove + loserVolAbove) / 2));
+            }
+        }
+
+        // Check for absorption pattern correlation
+        long winnersWithAbsorption = winners.stream()
+            .filter(t -> t.entryFootprintMetrics().containsKey("absorptionScore"))
+            .filter(t -> t.entryFootprintMetrics().get("absorptionScore") > 0)
+            .count();
+        long losersWithAbsorption = losers.stream()
+            .filter(t -> t.entryFootprintMetrics().containsKey("absorptionScore"))
+            .filter(t -> t.entryFootprintMetrics().get("absorptionScore") > 0)
+            .count();
+
+        if (winners.size() > 0 && losers.size() > 0) {
+            double winnerAbsorptionRate = (double) winnersWithAbsorption / winners.size() * 100;
+            double loserAbsorptionRate = (double) losersWithAbsorption / losers.size() * 100;
+
+            if (winnerAbsorptionRate > loserAbsorptionRate + 15) {
+                suggestions.add(String.format(
+                    "%.0f%% of winners vs %.0f%% of losers show absorption - consider ABSORPTION filter",
+                    winnerAbsorptionRate, loserAbsorptionRate));
+            }
+        }
+
+        // Check for exchange divergence correlation
+        long winnersWithDivergence = winners.stream()
+            .filter(t -> t.entryFootprintMetrics().containsKey("exchangeDivergence"))
+            .filter(t -> t.entryFootprintMetrics().get("exchangeDivergence") > 0)
+            .count();
+        long losersWithDivergence = losers.stream()
+            .filter(t -> t.entryFootprintMetrics().containsKey("exchangeDivergence"))
+            .filter(t -> t.entryFootprintMetrics().get("exchangeDivergence") > 0)
+            .count();
+
+        if (winnersWithDivergence + losersWithDivergence >= 5) {
+            double winnerDivergenceRate = (double) winnersWithDivergence / winners.size() * 100;
+            double loserDivergenceRate = (double) losersWithDivergence / losers.size() * 100;
+
+            if (winnerDivergenceRate > loserDivergenceRate + 10) {
+                suggestions.add(String.format(
+                    "%.0f%% of winners entered during exchange divergence vs %.0f%% losers - consider EXCHANGE_DIVERGENCE filter",
+                    winnerDivergenceRate, loserDivergenceRate));
+            } else if (loserDivergenceRate > winnerDivergenceRate + 10) {
+                suggestions.add(String.format(
+                    "Exchange divergence correlates with losses (%.0f%% losers vs %.0f%% winners) - consider excluding EXCHANGE_DIVERGENCE",
+                    loserDivergenceRate, winnerDivergenceRate));
+            }
+        }
+
+        return suggestions;
     }
 
     private List<String> generateSuggestions(List<Trade> trades, PerformanceMetrics overall) {

@@ -357,6 +357,8 @@ public class DslHelpDialog extends JDialog {
         toc.add(new TocEntry("toc-" + tocIndex++, "Time Functions", 3));
         toc.add(new TocEntry("toc-" + tocIndex++, "Moon Functions", 3));
         toc.add(new TocEntry("toc-" + tocIndex++, "Calendar Functions", 3));
+        toc.add(new TocEntry("toc-" + tocIndex++, "Footprint Functions", 3));
+        toc.add(new TocEntry("toc-" + tocIndex++, "Cross-Exchange Functions", 3));
         toc.add(new TocEntry("toc-" + tocIndex++, "Comparison Operators", 3));
         toc.add(new TocEntry("toc-" + tocIndex++, "Cross Operators", 3));
         toc.add(new TocEntry("toc-" + tocIndex++, "Logical Operators", 3));
@@ -530,7 +532,49 @@ public class DslHelpDialog extends JDialog {
             </div>
 
             <div class="section">
-            <h3 id="toc-11">Comparison Operators</h3>
+            <h3 id="toc-11">Footprint Functions</h3>
+            <span style="color: %s; font-size: 10px;">Requires aggTrades sync. Footprint shows buy/sell volume distribution at price levels within each candle.</span>
+            <table>
+                <tr><th>Function</th><th>Description</th></tr>
+                <tr><td><code>IMBALANCE_AT_POC</code></td><td>Buy/sell ratio at POC (&gt;1=buy dominant)</td></tr>
+                <tr><td><code>IMBALANCE_AT_VAH</code></td><td>Buy/sell ratio at Value Area High</td></tr>
+                <tr><td><code>IMBALANCE_AT_VAL</code></td><td>Buy/sell ratio at Value Area Low</td></tr>
+                <tr><td><code>STACKED_BUY_IMBALANCES(n)</code></td><td>1 if &gt;= n consecutive buy imbalances</td></tr>
+                <tr><td><code>STACKED_SELL_IMBALANCES(n)</code></td><td>1 if &gt;= n consecutive sell imbalances</td></tr>
+                <tr><td><code>ABSORPTION(vol,move)</code></td><td>1 if high volume + small price movement</td></tr>
+                <tr><td><code>HIGH_VOLUME_NODE_COUNT(t)</code></td><td>Number of price levels with volume &gt; threshold</td></tr>
+                <tr><td><code>VOLUME_ABOVE_POC_RATIO</code></td><td>Ratio of volume above POC (0-1)</td></tr>
+                <tr><td><code>VOLUME_BELOW_POC_RATIO</code></td><td>Ratio of volume below POC (0-1)</td></tr>
+                <tr><td><code>FOOTPRINT_DELTA</code></td><td>Total delta from bucket aggregation</td></tr>
+                <tr><td><code>FOOTPRINT_POC</code></td><td>POC price from footprint</td></tr>
+            </table>
+            <div class="example">STACKED_BUY_IMBALANCES(4) == 1 AND price &lt; FOOTPRINT_POC<br>ABSORPTION(100000, 0.3) == 1 AND VOLUME_ABOVE_POC_RATIO &lt; 0.3<br>IMBALANCE_AT_POC > 3</div>
+            <span style="color: %s; font-size: 10px;">Stacked imbalances indicate aggressive buying/selling at multiple price levels. Absorption suggests large orders absorbing price movement.</span>
+            </div>
+
+            <div class="section">
+            <h3 id="toc-12">Cross-Exchange Functions</h3>
+            <span style="color: %s; font-size: 10px;">Analyze and compare orderflow across multiple exchanges. Requires multi-exchange data sync.</span>
+            <table>
+                <tr><th>Function</th><th>Description</th></tr>
+                <tr><td><code>BINANCE_DELTA</code></td><td>Delta from Binance trades only</td></tr>
+                <tr><td><code>BYBIT_DELTA</code></td><td>Delta from Bybit trades only</td></tr>
+                <tr><td><code>OKX_DELTA</code></td><td>Delta from OKX trades only</td></tr>
+                <tr><td><code>COMBINED_DELTA</code></td><td>Sum of delta across all enabled exchanges</td></tr>
+                <tr><td><code>EXCHANGE_DELTA_SPREAD</code></td><td>Max exchange delta - min exchange delta</td></tr>
+                <tr><td><code>EXCHANGE_DIVERGENCE</code></td><td>1 if exchanges disagree on direction</td></tr>
+                <tr><td><code>COMBINED_IMBALANCE_AT_POC</code></td><td>Aggregated imbalance at combined POC</td></tr>
+                <tr><td><code>EXCHANGES_WITH_BUY_IMBALANCE</code></td><td>Count of exchanges showing buy imbalance</td></tr>
+                <tr><td><code>EXCHANGES_WITH_SELL_IMBALANCE</code></td><td>Count of exchanges showing sell imbalance</td></tr>
+                <tr><td><code>WHALE_DELTA_COMBINED(t)</code></td><td>Whale delta across all exchanges</td></tr>
+                <tr><td><code>DOMINANT_EXCHANGE</code></td><td>Exchange with largest absolute delta</td></tr>
+            </table>
+            <div class="example">BINANCE_DELTA &lt; -10000 AND BYBIT_DELTA > 10000<br>EXCHANGE_DIVERGENCE == 1 AND ADX(14) &lt; 20<br>EXCHANGES_WITH_BUY_IMBALANCE >= 2 AND RSI(14) &lt; 40</div>
+            <span style="color: %s; font-size: 10px;">Exchange divergence (one exchange buying, another selling) can signal uncertainty or arbitrage opportunities. Convergence across exchanges strengthens signals.</span>
+            </div>
+
+            <div class="section">
+            <h3 id="toc-13">Comparison Operators</h3>
             <table>
                 <tr><td><code>&gt;</code></td><td>Greater than</td></tr>
                 <tr><td><code>&lt;</code></td><td>Less than</td></tr>
@@ -541,7 +585,7 @@ public class DslHelpDialog extends JDialog {
             </div>
 
             <div class="section">
-            <h3 id="toc-12">Cross Operators</h3>
+            <h3 id="toc-14">Cross Operators</h3>
             <table>
                 <tr><td><code>crosses_above</code></td><td>Value crosses above another</td></tr>
                 <tr><td><code>crosses_below</code></td><td>Value crosses below another</td></tr>
@@ -550,7 +594,7 @@ public class DslHelpDialog extends JDialog {
             </div>
 
             <div class="section">
-            <h3 id="toc-13">Logical Operators</h3>
+            <h3 id="toc-15">Logical Operators</h3>
             <table>
                 <tr><td><code>AND</code></td><td>Both conditions must be true</td></tr>
                 <tr><td><code>OR</code></td><td>Either condition must be true</td></tr>
@@ -559,7 +603,7 @@ public class DslHelpDialog extends JDialog {
             </div>
 
             <div class="section">
-            <h3 id="toc-14">Arithmetic Operators</h3>
+            <h3 id="toc-16">Arithmetic Operators</h3>
             <table>
                 <tr><td><code>+</code> <code>-</code> <code>*</code> <code>/</code></td><td>Add, subtract, multiply, divide</td></tr>
             </table>
@@ -567,7 +611,7 @@ public class DslHelpDialog extends JDialog {
             </div>
 
             <div class="section">
-            <h3 id="toc-15">Math Functions</h3>
+            <h3 id="toc-17">Math Functions</h3>
             <table>
                 <tr><td><code>abs(expr)</code></td><td>Absolute value</td></tr>
                 <tr><td><code>min(expr1, expr2)</code></td><td>Minimum of two values</td></tr>
@@ -578,7 +622,7 @@ public class DslHelpDialog extends JDialog {
             </div>
 
             <div class="section">
-            <h3 id="toc-16">Candlestick Patterns</h3>
+            <h3 id="toc-18">Candlestick Patterns</h3>
             <span style="color: %s; font-size: 10px;">Pattern functions return 1 if detected, 0 otherwise. Property functions support lookback [n].</span>
             <table>
                 <tr><th>Function</th><th>Description</th></tr>
@@ -595,7 +639,7 @@ public class DslHelpDialog extends JDialog {
             </div>
 
             <div class="section">
-            <h3 id="toc-17">Example Strategies</h3>
+            <h3 id="toc-19">Example Strategies</h3>
             <div class="example">
             <b>RSI Oversold:</b> RSI(14) &lt; 30<br><br>
             <b>Trend Following:</b> EMA(9) crosses_above EMA(21) AND price > SMA(50)<br><br>
@@ -606,7 +650,7 @@ public class DslHelpDialog extends JDialog {
 
             </body>
             </html>
-            """.formatted(bgHex, fgHex, accentHex, accentHex, codeBgHex, fgHex, borderHex, codeBgHex, codeBgHex, accentHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex);
+            """.formatted(bgHex, fgHex, accentHex, accentHex, codeBgHex, fgHex, borderHex, codeBgHex, codeBgHex, accentHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex);
     }
 
     private void performSearch() {

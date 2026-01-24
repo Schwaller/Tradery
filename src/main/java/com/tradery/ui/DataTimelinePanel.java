@@ -27,6 +27,7 @@ public class DataTimelinePanel extends JPanel {
     private static final int BLOCK_HEIGHT = 18;
     private static final int LABEL_WIDTH = 80;
     private static final int SECTION_GAP = 12;
+    private static final int LAYER_GAP = 64;  // Vertical spacing between consumers/indicators/pages
     private static final int BLOCK_GAP = 6;
     private static final int BLOCK_PADDING = 8;
     private static final int CONNECTOR_GAP = 4;
@@ -60,8 +61,8 @@ public class DataTimelinePanel extends JPanel {
     private final SimpleDateFormat dateFormat = new SimpleDateFormat("MMM d");
 
     public DataTimelinePanel() {
-        setPreferredSize(new Dimension(400, 180));
-        setMinimumSize(new Dimension(300, 150));
+        setPreferredSize(new Dimension(400, 320));
+        setMinimumSize(new Dimension(300, 250));
     }
 
     /**
@@ -175,9 +176,16 @@ public class DataTimelinePanel extends JPanel {
             }
         }
 
+        // Sort nodes to minimize line crossings using barycenter heuristic
+        List<String> sortedConsumers = new ArrayList<>(allConsumers);
+        List<String> sortedIndicators = sortByBarycenter(new ArrayList<>(allIndicators),
+                sortedConsumers, consumerToIndicators, true);
+        List<String> sortedPages = sortByBarycenter(new ArrayList<>(allPages),
+                sortedIndicators, indicatorToPages, false);
+
         // Draw dependency diagram if we have data
-        if (!allConsumers.isEmpty() || !allIndicators.isEmpty() || !allPages.isEmpty()) {
-            y = drawDependencyDiagram(g2, y, width, allConsumers, allIndicators, allPages,
+        if (!sortedConsumers.isEmpty() || !sortedIndicators.isEmpty() || !sortedPages.isEmpty()) {
+            y = drawDependencyDiagram(g2, y, width, sortedConsumers, sortedIndicators, sortedPages,
                     consumerToIndicators, indicatorToPages);
             y += SECTION_GAP;
         }
@@ -197,8 +205,63 @@ public class DataTimelinePanel extends JPanel {
         g2.dispose();
     }
 
+    /**
+     * Sort nodes to minimize line crossings using barycenter heuristic.
+     * Each node is positioned based on the average position of its connected nodes in the reference layer.
+     */
+    private List<String> sortByBarycenter(List<String> nodes, List<String> referenceLayer,
+                                           Map<String, Set<String>> connections, boolean reverseMap) {
+        if (nodes.isEmpty() || referenceLayer.isEmpty()) {
+            return nodes;
+        }
+
+        // Build position map for reference layer
+        Map<String, Integer> refPositions = new HashMap<>();
+        for (int i = 0; i < referenceLayer.size(); i++) {
+            refPositions.put(referenceLayer.get(i), i);
+        }
+
+        // Calculate barycenter (average position) for each node
+        Map<String, Double> barycenters = new HashMap<>();
+        for (String node : nodes) {
+            double sum = 0;
+            int count = 0;
+
+            if (reverseMap) {
+                // connections maps reference -> nodes, so we need to find which refs connect to this node
+                for (Map.Entry<String, Set<String>> entry : connections.entrySet()) {
+                    if (entry.getValue().contains(node) || entry.getValue().contains("→" + node)) {
+                        Integer pos = refPositions.get(entry.getKey());
+                        if (pos != null) {
+                            sum += pos;
+                            count++;
+                        }
+                    }
+                }
+            } else {
+                // connections maps nodes -> targets, use reference positions
+                Set<String> connected = connections.get(node);
+                if (connected != null) {
+                    for (String ref : connected) {
+                        Integer pos = refPositions.get(ref);
+                        if (pos != null) {
+                            sum += pos;
+                            count++;
+                        }
+                    }
+                }
+            }
+
+            barycenters.put(node, count > 0 ? sum / count : Double.MAX_VALUE);
+        }
+
+        // Sort by barycenter
+        nodes.sort(Comparator.comparingDouble(n -> barycenters.getOrDefault(n, Double.MAX_VALUE)));
+        return nodes;
+    }
+
     private int drawDependencyDiagram(Graphics2D g2, int startY, int width,
-                                       Set<String> consumers, Set<String> indicators, Set<String> pages,
+                                       List<String> consumers, List<String> indicators, List<String> pages,
                                        Map<String, Set<String>> consumerToIndicators,
                                        Map<String, Set<String>> indicatorToPages) {
         int y = startY;
@@ -230,7 +293,7 @@ public class DataTimelinePanel extends JPanel {
                 consumerBounds.put(consumer, new Rectangle(blockX, y, blockWidth, BLOCK_HEIGHT));
                 blockX += blockWidth + BLOCK_GAP;
             }
-            y += ROW_HEIGHT;
+            y += LAYER_GAP;
         }
 
         // Row 2: Indicators
@@ -252,7 +315,7 @@ public class DataTimelinePanel extends JPanel {
                 indicatorBounds.put(indicator, new Rectangle(blockX, y, blockWidth, BLOCK_HEIGHT));
                 blockX += blockWidth + BLOCK_GAP;
             }
-            y += ROW_HEIGHT;
+            y += LAYER_GAP;
         }
 
         // Row 3: Pages (data sources)

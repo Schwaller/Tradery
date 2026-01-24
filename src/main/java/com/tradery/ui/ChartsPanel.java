@@ -211,6 +211,7 @@ public class ChartsPanel extends JPanel {
                 config.getDailyVolumeProfileWidth()
             );
         }
+        // Note: Footprint heatmap is restored when aggTrades arrive (via refreshOrderflowCharts)
     }
 
     private void initializeCharts() {
@@ -686,6 +687,23 @@ public class ChartsPanel extends JPanel {
 
     public boolean isDailyVolumeProfileEnabled() {
         return overlayManager.isDailyVolumeProfileEnabled();
+    }
+
+    // ===== Footprint Heatmap Overlay Delegation =====
+
+    public void setFootprintHeatmapEnabled(boolean enabled) {
+        ChartConfig config = ChartConfig.getInstance();
+        config.setFootprintHeatmapEnabled(enabled);
+        // The heatmap overlay will be updated when aggTrades data arrives
+        // through onAggTradesLoaded callback
+    }
+
+    public boolean isFootprintHeatmapEnabled() {
+        return overlayManager.isFootprintHeatmapEnabled();
+    }
+
+    public void clearFootprintHeatmapOverlay() {
+        overlayManager.clearFootprintHeatmapOverlay();
     }
 
     // ===== Ray Overlay Delegation =====
@@ -1620,6 +1638,9 @@ public class ChartsPanel extends JPanel {
             indicatorManager.updateVolumeRatioChart(currentCandles);
             indicatorManager.updateWhaleChart(currentCandles);
             indicatorManager.updateRetailChart(currentCandles);
+
+            // Update footprint heatmap if enabled (uses aggTrades from IndicatorEngine)
+            overlayManager.updateFootprintHeatmapOverlay();
         }
     }
 

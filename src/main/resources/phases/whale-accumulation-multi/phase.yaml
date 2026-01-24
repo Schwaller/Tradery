@@ -1,0 +1,7 @@
+id: whale-accumulation-multi
+name: Whale Accumulation (Multi-Exchange)
+description: Large coordinated buying across exchanges. Whale delta combined from trades over $100K threshold exceeds $50K positive.
+category: Orderflow
+condition: WHALE_DELTA_COMBINED(100000) > 50000
+timeframe: 1h
+symbol: BTCUSDT

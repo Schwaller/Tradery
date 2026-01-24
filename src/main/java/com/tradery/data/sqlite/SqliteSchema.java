@@ -18,7 +18,8 @@ public class SqliteSchema {
     private static final Logger log = LoggerFactory.getLogger(SqliteSchema.class);
 
     // Current schema version - increment when schema changes
-    public static final int CURRENT_VERSION = 1;
+    // Version 2: Added multi-exchange support (exchange, market_type, raw_symbol, normalized_price columns)
+    public static final int CURRENT_VERSION = 2;
 
     /**
      * Initialize the schema for a symbol's database.
@@ -116,23 +117,48 @@ public class SqliteSchema {
                 ON candles(timeframe, timestamp)
                 """);
 
-            // AGGREGATED TRADES
+            // AGGREGATED TRADES (multi-exchange aware)
+            // exchange: source exchange (binance, bybit, okx, etc.)
+            // market_type: spot, perp, dated
+            // raw_symbol: original symbol from exchange
+            // normalized_price: USD-normalized price for cross-exchange aggregation
             stmt.execute("""
                 CREATE TABLE IF NOT EXISTS agg_trades (
-                    agg_trade_id INTEGER PRIMARY KEY,
+                    agg_trade_id INTEGER NOT NULL,
                     price REAL NOT NULL,
                     quantity REAL NOT NULL,
                     first_trade_id INTEGER NOT NULL,
                     last_trade_id INTEGER NOT NULL,
                     timestamp INTEGER NOT NULL,
-                    is_buyer_maker INTEGER NOT NULL
+                    is_buyer_maker INTEGER NOT NULL,
+                    exchange TEXT NOT NULL DEFAULT 'binance',
+                    market_type TEXT NOT NULL DEFAULT 'perp',
+                    raw_symbol TEXT,
+                    normalized_price REAL,
+                    PRIMARY KEY (exchange, agg_trade_id)
                 )
                 """);
 
-            // Index for time range queries
+            // Index for time range queries (most common)
             stmt.execute("""
                 CREATE INDEX IF NOT EXISTS idx_agg_trades_ts
                 ON agg_trades(timestamp)
+                """);
+
+            // Index for exchange-filtered queries
+            stmt.execute("""
+                CREATE INDEX IF NOT EXISTS idx_agg_trades_exchange_ts
+                ON agg_trades(exchange, timestamp)
+                """);
+
+            // STABLECOIN RATES (for price normalization)
+            stmt.execute("""
+                CREATE TABLE IF NOT EXISTS stablecoin_rates (
+                    symbol TEXT NOT NULL,
+                    timestamp INTEGER NOT NULL,
+                    rate REAL NOT NULL,
+                    PRIMARY KEY (symbol, timestamp)
+                ) WITHOUT ROWID
                 """);
 
             // FUNDING RATES
@@ -192,10 +218,69 @@ public class SqliteSchema {
      * Migrate schema from one version to another.
      */
     private static void migrateSchema(Connection conn, int fromVersion, int toVersion) throws SQLException {
-        // Add migration logic as schema evolves
         for (int v = fromVersion + 1; v <= toVersion; v++) {
-            log.debug("No migration needed for version {}", v);
+            switch (v) {
+                case 2 -> migrateToV2(conn);
+                default -> log.debug("No migration needed for version {}", v);
+            }
         }
+    }
+
+    /**
+     * Migrate to version 2: Add multi-exchange support to agg_trades.
+     */
+    private static void migrateToV2(Connection conn) throws SQLException {
+        log.info("Migrating to schema v2: Adding multi-exchange support...");
+
+        try (Statement stmt = conn.createStatement()) {
+            // Add new columns to agg_trades (with defaults for existing data)
+            // SQLite doesn't support adding columns with DEFAULT that references other columns,
+            // so we add nullable columns then update them
+
+            // Check if columns already exist
+            boolean hasExchangeColumn = false;
+            try (ResultSet rs = stmt.executeQuery("PRAGMA table_info(agg_trades)")) {
+                while (rs.next()) {
+                    String colName = rs.getString("name");
+                    if ("exchange".equals(colName)) {
+                        hasExchangeColumn = true;
+                        break;
+                    }
+                }
+            }
+
+            if (!hasExchangeColumn) {
+                stmt.execute("ALTER TABLE agg_trades ADD COLUMN exchange TEXT DEFAULT 'binance'");
+                stmt.execute("ALTER TABLE agg_trades ADD COLUMN market_type TEXT DEFAULT 'perp'");
+                stmt.execute("ALTER TABLE agg_trades ADD COLUMN raw_symbol TEXT");
+                stmt.execute("ALTER TABLE agg_trades ADD COLUMN normalized_price REAL");
+
+                // Set normalized_price = price for existing data
+                stmt.execute("UPDATE agg_trades SET normalized_price = price WHERE normalized_price IS NULL");
+
+                // Create new index for exchange-filtered queries
+                stmt.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_agg_trades_exchange_ts
+                    ON agg_trades(exchange, timestamp)
+                    """);
+
+                log.info("Added exchange columns to agg_trades");
+            }
+
+            // Create stablecoin_rates table
+            stmt.execute("""
+                CREATE TABLE IF NOT EXISTS stablecoin_rates (
+                    symbol TEXT NOT NULL,
+                    timestamp INTEGER NOT NULL,
+                    rate REAL NOT NULL,
+                    PRIMARY KEY (symbol, timestamp)
+                ) WITHOUT ROWID
+                """);
+
+            log.info("Created stablecoin_rates table");
+        }
+
+        log.info("Migration to v2 complete");
     }
 
     /**

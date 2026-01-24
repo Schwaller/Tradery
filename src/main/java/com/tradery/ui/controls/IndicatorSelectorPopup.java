@@ -62,6 +62,15 @@ public class IndicatorSelectorPopup extends JDialog {
     private JLabel dailyVolumeProfileBinsLabel;
     private JSpinner dailyVolumeProfileBinsSpinner;
 
+    // Footprint Heatmap controls
+    private JCheckBox footprintHeatmapCheckbox;
+    private JLabel footprintHeatmapBucketsLabel;
+    private JSpinner footprintHeatmapBucketsSpinner;
+    private JLabel footprintHeatmapModeLabel;
+    private JComboBox<com.tradery.ui.charts.footprint.FootprintDisplayMode> footprintHeatmapModeCombo;
+    private JLabel footprintHeatmapExchangeLabel;
+    private JComboBox<com.tradery.model.Exchange> footprintHeatmapExchangeCombo;
+
     // Oscillator controls
     private JCheckBox rsiCheckbox;
     private JLabel rsiLabel;
@@ -211,6 +220,7 @@ public class IndicatorSelectorPopup extends JDialog {
         contentPane.add(createRayOverlayRow());
         contentPane.add(createIchimokuRow());
         contentPane.add(createDailyVolumeProfileRow());
+        contentPane.add(createFootprintHeatmapRow());
 
         contentPane.add(createSectionSeparator());
 
@@ -667,6 +677,91 @@ public class IndicatorSelectorPopup extends JDialog {
         return row;
     }
 
+    private JPanel createFootprintHeatmapRow() {
+        footprintHeatmapCheckbox = new JCheckBox("Footprint Heatmap");
+        footprintHeatmapCheckbox.setToolTipText("Show price-level delta heatmap (requires aggTrades data)");
+
+        // Buckets spinner
+        footprintHeatmapBucketsLabel = new JLabel("Buckets:");
+        footprintHeatmapBucketsSpinner = new JSpinner(new SpinnerNumberModel(20, 5, 50, 5));
+        footprintHeatmapBucketsSpinner.setPreferredSize(new Dimension(50, 24));
+        footprintHeatmapBucketsSpinner.setToolTipText("Target buckets per candle");
+        footprintHeatmapBucketsSpinner.addChangeListener(e -> scheduleUpdate());
+
+        // Display mode combo
+        footprintHeatmapModeLabel = new JLabel("Mode:");
+        footprintHeatmapModeCombo = new JComboBox<>(com.tradery.ui.charts.footprint.FootprintDisplayMode.values());
+        footprintHeatmapModeCombo.setPreferredSize(new Dimension(100, 24));
+        footprintHeatmapModeCombo.setRenderer(new DefaultListCellRenderer() {
+            @Override
+            public Component getListCellRendererComponent(JList<?> list, Object value, int index,
+                                                          boolean isSelected, boolean cellHasFocus) {
+                super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus);
+                if (value instanceof com.tradery.ui.charts.footprint.FootprintDisplayMode mode) {
+                    setText(mode.getDisplayName());
+                    setToolTipText(mode.getDescription());
+                }
+                return this;
+            }
+        });
+        footprintHeatmapModeCombo.addActionListener(e -> {
+            updateFootprintExchangeVisibility();
+            scheduleUpdate();
+        });
+
+        // Exchange combo (only shown for SINGLE_EXCHANGE mode)
+        footprintHeatmapExchangeLabel = new JLabel("Exchange:");
+        footprintHeatmapExchangeCombo = new JComboBox<>(com.tradery.model.Exchange.values());
+        footprintHeatmapExchangeCombo.setPreferredSize(new Dimension(90, 24));
+        footprintHeatmapExchangeCombo.setRenderer(new DefaultListCellRenderer() {
+            @Override
+            public Component getListCellRendererComponent(JList<?> list, Object value, int index,
+                                                          boolean isSelected, boolean cellHasFocus) {
+                super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus);
+                if (value instanceof com.tradery.model.Exchange ex) {
+                    setText(ex.getDisplayName());
+                }
+                return this;
+            }
+        });
+        footprintHeatmapExchangeCombo.addActionListener(e -> scheduleUpdate());
+
+        JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
+        row.setAlignmentX(Component.LEFT_ALIGNMENT);
+        row.add(footprintHeatmapCheckbox);
+        row.add(footprintHeatmapBucketsLabel);
+        row.add(footprintHeatmapBucketsSpinner);
+        row.add(footprintHeatmapModeLabel);
+        row.add(footprintHeatmapModeCombo);
+        row.add(footprintHeatmapExchangeLabel);
+        row.add(footprintHeatmapExchangeCombo);
+
+        footprintHeatmapCheckbox.addActionListener(e -> {
+            updateFootprintControlVisibility();
+            scheduleUpdate();
+        });
+
+        return row;
+    }
+
+    private void updateFootprintControlVisibility() {
+        boolean enabled = footprintHeatmapCheckbox.isSelected();
+        footprintHeatmapBucketsLabel.setVisible(enabled);
+        footprintHeatmapBucketsSpinner.setVisible(enabled);
+        footprintHeatmapModeLabel.setVisible(enabled);
+        footprintHeatmapModeCombo.setVisible(enabled);
+        updateFootprintExchangeVisibility();
+    }
+
+    private void updateFootprintExchangeVisibility() {
+        boolean enabled = footprintHeatmapCheckbox.isSelected();
+        com.tradery.ui.charts.footprint.FootprintDisplayMode mode =
+            (com.tradery.ui.charts.footprint.FootprintDisplayMode) footprintHeatmapModeCombo.getSelectedItem();
+        boolean showExchange = enabled && mode == com.tradery.ui.charts.footprint.FootprintDisplayMode.SINGLE_EXCHANGE;
+        footprintHeatmapExchangeLabel.setVisible(showExchange);
+        footprintHeatmapExchangeCombo.setVisible(showExchange);
+    }
+
     private JPanel createRsiRow() {
         rsiCheckbox = new JCheckBox("RSI");
         rsiLabel = new JLabel("Period:");
@@ -1113,6 +1208,9 @@ public class IndicatorSelectorPopup extends JDialog {
         retailLabel.setVisible(retailEnabled);
         retailThresholdSpinner.setVisible(retailEnabled);
 
+        // Footprint heatmap visibility
+        updateFootprintControlVisibility();
+
         // Repack to adjust size
         pack();
     }
@@ -1147,6 +1245,11 @@ public class IndicatorSelectorPopup extends JDialog {
         ichimokuCheckbox.setSelected(config.isIchimokuEnabled());
         dailyVolumeProfileCheckbox.setSelected(config.isDailyVolumeProfileEnabled());
         dailyVolumeProfileBinsSpinner.setValue(config.getDailyVolumeProfileBins());
+        footprintHeatmapCheckbox.setSelected(config.isFootprintHeatmapEnabled());
+        footprintHeatmapBucketsSpinner.setValue(config.getFootprintHeatmapConfig().getTargetBuckets());
+        footprintHeatmapModeCombo.setSelectedItem(config.getFootprintHeatmapConfig().getDisplayMode());
+        footprintHeatmapExchangeCombo.setSelectedItem(config.getFootprintHeatmapConfig().getSelectedExchange());
+        updateFootprintControlVisibility();
 
         // Oscillators
         rsiCheckbox.setSelected(config.isRsiEnabled());
@@ -1296,6 +1399,19 @@ public class IndicatorSelectorPopup extends JDialog {
         }
         config.setDailyVolumeProfileEnabled(dailyVolumeProfileCheckbox.isSelected());
         config.setDailyVolumeProfileBins(volumeProfileBins);
+
+        // Footprint Heatmap
+        int footprintBuckets = (int) footprintHeatmapBucketsSpinner.getValue();
+        com.tradery.ui.charts.footprint.FootprintDisplayMode fpMode =
+            (com.tradery.ui.charts.footprint.FootprintDisplayMode) footprintHeatmapModeCombo.getSelectedItem();
+        com.tradery.model.Exchange fpExchange =
+            (com.tradery.model.Exchange) footprintHeatmapExchangeCombo.getSelectedItem();
+
+        config.setFootprintHeatmapEnabled(footprintHeatmapCheckbox.isSelected());
+        config.getFootprintHeatmapConfig().setTargetBuckets(footprintBuckets);
+        config.getFootprintHeatmapConfig().setDisplayMode(fpMode);
+        config.getFootprintHeatmapConfig().setSelectedExchange(fpExchange);
+        chartPanel.setFootprintHeatmapEnabled(footprintHeatmapCheckbox.isSelected());
 
         // Oscillators
         int rsiPeriod = (int) rsiSpinner.getValue();

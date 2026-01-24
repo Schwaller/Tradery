@@ -25,6 +25,8 @@ public enum TokenType {
     MATH_FUNC,      // abs, min, max (math utility functions)
     CANDLE_PATTERN_FUNC, // HAMMER, SHOOTING_STAR, DOJI (candlestick patterns with params)
     CANDLE_PROP_FUNC,    // BODY_SIZE, BODY_RATIO, IS_BULLISH, IS_BEARISH (candle properties)
+    FOOTPRINT_FUNC, // IMBALANCE_AT_POC, STACKED_BUY_IMBALANCES, FOOTPRINT_DELTA, etc.
+    EXCHANGE_FUNC,  // BINANCE_DELTA, BYBIT_DELTA, EXCHANGE_DIVERGENCE, etc.
 
     // Properties
     PROPERTY,       // .signal, .histogram, .upper, .lower, .middle

@@ -241,6 +241,16 @@ public class Parser {
             return candlePropCall();
         }
 
+        // Footprint functions (IMBALANCE_AT_POC, STACKED_BUY_IMBALANCES, etc.)
+        if (check(TokenType.FOOTPRINT_FUNC)) {
+            return footprintFunctionCall();
+        }
+
+        // Cross-exchange functions (BINANCE_DELTA, EXCHANGE_DIVERGENCE, etc.)
+        if (check(TokenType.EXCHANGE_FUNC)) {
+            return exchangeFunctionCall();
+        }
+
         throw new ParserException("Unexpected token '" + current().value() +
             "' at position " + current().position());
     }
@@ -649,6 +659,81 @@ public class Parser {
         }
 
         return numbers;
+    }
+
+    private AstNode.FootprintFunctionCall footprintFunctionCall() {
+        String func = current().value();
+        advance();
+
+        List<Double> params = new ArrayList<>();
+
+        // Check for optional/required parameters
+        if (check(TokenType.LPAREN)) {
+            advance();
+            params = parseNumberList();
+            expect(TokenType.RPAREN, "Expected ')' after " + func + " parameters");
+        }
+
+        // Validate parameters based on function type
+        switch (func) {
+            case "STACKED_BUY_IMBALANCES", "STACKED_SELL_IMBALANCES" -> {
+                // Required parameter: minimum consecutive imbalances
+                if (params.isEmpty()) {
+                    throw new ParserException(func + " requires a parameter (minConsecutive), e.g., " + func + "(4)");
+                }
+            }
+            case "ABSORPTION" -> {
+                // Required parameters: volumeThreshold, maxMovementPercent
+                if (params.size() != 2) {
+                    throw new ParserException(func + " requires 2 parameters (volumeThreshold, maxMovementPercent), got " + params.size());
+                }
+            }
+            case "HIGH_VOLUME_NODE_COUNT" -> {
+                // Required parameter: volume threshold
+                if (params.isEmpty()) {
+                    throw new ParserException(func + " requires a parameter (volumeThreshold), e.g., " + func + "(10000)");
+                }
+            }
+            case "IMBALANCE_AT_POC", "IMBALANCE_AT_VAH", "IMBALANCE_AT_VAL",
+                 "VOLUME_ABOVE_POC_RATIO", "VOLUME_BELOW_POC_RATIO",
+                 "FOOTPRINT_DELTA", "FOOTPRINT_POC" -> {
+                // No parameters required
+            }
+        }
+
+        return new AstNode.FootprintFunctionCall(func, params);
+    }
+
+    private AstNode.ExchangeFunctionCall exchangeFunctionCall() {
+        String func = current().value();
+        advance();
+
+        List<Double> params = new ArrayList<>();
+
+        // Check for optional/required parameters
+        if (check(TokenType.LPAREN)) {
+            advance();
+            params = parseNumberList();
+            expect(TokenType.RPAREN, "Expected ')' after " + func + " parameters");
+        }
+
+        // Validate parameters based on function type
+        switch (func) {
+            case "WHALE_DELTA_COMBINED" -> {
+                // Required parameter: threshold
+                if (params.isEmpty()) {
+                    throw new ParserException(func + " requires a parameter (threshold), e.g., " + func + "(100000)");
+                }
+            }
+            case "BINANCE_DELTA", "BYBIT_DELTA", "OKX_DELTA",
+                 "COMBINED_DELTA", "EXCHANGE_DELTA_SPREAD", "EXCHANGE_DIVERGENCE",
+                 "COMBINED_IMBALANCE_AT_POC", "EXCHANGES_WITH_BUY_IMBALANCE",
+                 "EXCHANGES_WITH_SELL_IMBALANCE", "DOMINANT_EXCHANGE" -> {
+                // No parameters required
+            }
+        }
+
+        return new AstNode.ExchangeFunctionCall(func, params);
     }
 
     // ========== Helper Methods ==========
