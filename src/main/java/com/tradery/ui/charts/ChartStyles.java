@@ -199,6 +199,9 @@ public final class ChartStyles {
 
     // ===== Styling Methods =====
 
+    // Consistent axis tick label font
+    private static final Font AXIS_TICK_FONT = new Font(Font.SANS_SERIF, Font.PLAIN, 10);
+
     /**
      * Apply theme styling to a chart.
      */
@@ -212,16 +215,18 @@ public final class ChartStyles {
         plot.setRangeGridlinePaint(t.getGridlineColor());
         plot.setOutlineVisible(false);
 
-        // Date axis formatting
+        // Date axis formatting with consistent font
         if (plot.getDomainAxis() instanceof DateAxis dateAxis) {
             dateAxis.setDateFormatOverride(new SimpleDateFormat("MMM d"));
             dateAxis.setTickLabelPaint(t.getAxisLabelColor());
+            dateAxis.setTickLabelFont(AXIS_TICK_FONT);
             dateAxis.setAxisLineVisible(false);
         }
 
-        plot.getRangeAxis().setTickLabelPaint(t.getAxisLabelColor());
-        plot.getRangeAxis().setAxisLineVisible(false);
-        plot.getRangeAxis().setFixedDimension(60);  // Fixed width for alignment
+        // Configure range axis with consistent styling
+        if (plot.getRangeAxis() instanceof NumberAxis rangeAxis) {
+            styleNumberAxis(rangeAxis, t);
+        }
 
         // Apply axis position from config
         String axisPosition = ChartConfig.getInstance().getPriceAxisPosition();
@@ -233,23 +238,21 @@ public final class ChartStyles {
             // Create mirrored axis on right side
             NumberAxis leftAxis = (NumberAxis) plot.getRangeAxis();
             NumberAxis rightAxis = new NumberAxis();
-            rightAxis.setTickLabelPaint(t.getAxisLabelColor());
-            rightAxis.setAxisLineVisible(false);
-            rightAxis.setFixedDimension(60);
-            rightAxis.setNumberFormatOverride(new DecimalFormat("#,##0.####"));
+            styleNumberAxis(rightAxis, t);
             rightAxis.setAutoRange(false);
-            // Sync ranges - initial sync and listener for updates
-            rightAxis.setRange(leftAxis.getRange());
-            leftAxis.addChangeListener(event -> rightAxis.setRange(leftAxis.getRange()));
+            rightAxis.setRange(leftAxis.getRange());  // Initial sync
             plot.setRangeAxis(1, rightAxis);
             plot.setRangeAxisLocation(1, AxisLocation.TOP_OR_RIGHT);
+            // Use plot change listener to sync axes (fires when data/range changes)
+            plot.addChangeListener(event -> {
+                org.jfree.data.Range leftRange = leftAxis.getRange();
+                org.jfree.data.Range rightRange = rightAxis.getRange();
+                if (!leftRange.equals(rightRange)) {
+                    rightAxis.setRange(leftRange);
+                }
+            });
         } else {
             plot.setRangeAxisLocation(AxisLocation.TOP_OR_LEFT);
-        }
-
-        // Avoid scientific notation on Y-axis (e.g., 1E4 instead of 10000)
-        if (plot.getRangeAxis() instanceof NumberAxis numberAxis) {
-            numberAxis.setNumberFormatOverride(new DecimalFormat("#,##0.####"));
         }
 
         // Set thin line stroke with rounded joins for all series
@@ -261,6 +264,18 @@ public final class ChartStyles {
         if (chart.getLegend() == null) {
             addChartTitleAnnotation(plot, title);
         }
+    }
+
+    /**
+     * Apply consistent styling to a NumberAxis.
+     */
+    private static void styleNumberAxis(NumberAxis axis, Theme t) {
+        axis.setTickLabelPaint(t.getAxisLabelColor());
+        axis.setTickLabelFont(AXIS_TICK_FONT);
+        axis.setAxisLineVisible(false);
+        axis.setFixedDimension(60);
+        axis.setNumberFormatOverride(new DecimalFormat("#,##0.####"));
+        axis.setTickMarksVisible(false);
     }
 
     /**
