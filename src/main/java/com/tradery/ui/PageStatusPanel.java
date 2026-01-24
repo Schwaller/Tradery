@@ -42,6 +42,8 @@ public class PageStatusPanel extends JPanel {
         this.onPageSelected = onPageSelected;
 
         setLayout(new BorderLayout());
+        // Vertical line separator on the right edge
+        setBorder(BorderFactory.createMatteBorder(0, 0, 0, 1, new Color(80, 80, 80)));
 
         // Content panel with vertical box layout
         contentPanel = new JPanel();
@@ -90,10 +92,7 @@ public class PageStatusPanel extends JPanel {
     private void addDataTypeSection(DataType dataType, List<DataPageManager.PageInfo> pages) {
         JPanel section = new JPanel();
         section.setLayout(new BoxLayout(section, BoxLayout.Y_AXIS));
-        section.setBorder(BorderFactory.createCompoundBorder(
-            BorderFactory.createMatteBorder(1, 1, 1, 1, new Color(60, 60, 60)),
-            new EmptyBorder(6, 8, 6, 8)
-        ));
+        section.setBorder(new EmptyBorder(4, 0, 4, 0));
         section.setMaximumSize(new Dimension(Integer.MAX_VALUE, Short.MAX_VALUE));
         section.setAlignmentX(Component.LEFT_ALIGNMENT);
 
@@ -268,9 +267,11 @@ public class PageStatusPanel extends JPanel {
             add(rightPanel, BorderLayout.EAST);
 
             // Mouse listeners for hover and selection
+            // Use mousePressed instead of mouseClicked because the panel refreshes every 250ms
+            // and mouseClicked requires press+release on same component
             addMouseListener(new MouseAdapter() {
                 @Override
-                public void mouseClicked(MouseEvent e) {
+                public void mousePressed(MouseEvent e) {
                     selectPage(page.key(), dataType);
                 }
 

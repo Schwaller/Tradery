@@ -91,7 +91,7 @@ public class DownloadDashboardWindow extends JFrame {
         // Left panel: page status view
         JPanel leftPanel = new JPanel(new BorderLayout(0, 0));
         leftPanel.setBorder(BorderFactory.createEmptyBorder(0, 0, 0, 0));
-        leftPanel.setPreferredSize(new Dimension(280, 0));
+        leftPanel.setPreferredSize(new Dimension(430, 0));
         leftPanel.add(statusPanel, BorderLayout.CENTER);
 
         // Right panel: detail + log tabs
@@ -103,7 +103,7 @@ public class DownloadDashboardWindow extends JFrame {
         JSplitPane splitPane = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT);
         splitPane.setLeftComponent(leftPanel);
         splitPane.setRightComponent(rightTabs);
-        splitPane.setDividerLocation(250);
+        splitPane.setDividerLocation(400);
         splitPane.setResizeWeight(0);
 
         // Bottom bar with separator line above
