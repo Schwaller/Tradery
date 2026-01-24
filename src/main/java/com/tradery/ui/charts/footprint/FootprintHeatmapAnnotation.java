@@ -41,9 +41,18 @@ public class FootprintHeatmapAnnotation extends AbstractXYAnnotation {
                      ValueAxis domainAxis, ValueAxis rangeAxis, int rendererIndex,
                      PlotRenderingInfo info) {
 
+        // DEBUG: Draw a visible indicator that this annotation is being rendered
+        g2.setColor(new Color(255, 0, 255, 100)); // Semi-transparent magenta
+        g2.fillRect((int) dataArea.getX(), (int) dataArea.getY(), 50, 20);
+        g2.setColor(Color.WHITE);
+        g2.drawString("FP:" + footprints.size(), (int) dataArea.getX() + 5, (int) dataArea.getY() + 14);
+
         if (!config.isEnabled() || footprints.isEmpty()) {
+            System.out.println("[FootprintHeatmap] draw() SKIP: enabled=" + config.isEnabled() + ", footprints=" + footprints.size());
             return;
         }
+
+        System.out.println("[FootprintHeatmap] draw() rendering " + footprints.size() + " footprints");
 
         // Enable anti-aliasing
         g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);

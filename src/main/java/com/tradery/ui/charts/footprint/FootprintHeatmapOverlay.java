@@ -105,26 +105,29 @@ public class FootprintHeatmapOverlay {
      * Redraw using currently available data.
      */
     public void redraw() {
-        log.debug("FootprintHeatmapOverlay.redraw: enabled={}, hasCandles={}, hasTrades={}",
-            isEnabled(),
-            currentCandles != null && !currentCandles.isEmpty(),
-            currentAggTrades != null && !currentAggTrades.isEmpty());
+        System.out.println("[FootprintHeatmap] redraw: enabled=" + isEnabled() +
+            ", hasCandles=" + (currentCandles != null && !currentCandles.isEmpty()) +
+            ", hasTrades=" + (currentAggTrades != null && !currentAggTrades.isEmpty()));
 
         clear();
 
         if (!isEnabled() || currentCandles == null || currentCandles.isEmpty()) {
+            System.out.println("[FootprintHeatmap] redraw EARLY RETURN: not enabled or no candles");
             return;
         }
 
         // Calculate footprints if needed
         if (footprintResult == null) {
+            System.out.println("[FootprintHeatmap] calculating footprints...");
             footprintResult = calculateFootprints();
         }
 
         if (footprintResult == null || footprintResult.footprints().isEmpty()) {
-            log.debug("FootprintHeatmapOverlay: no footprints calculated");
+            System.out.println("[FootprintHeatmap] no footprints calculated");
             return;
         }
+
+        System.out.println("[FootprintHeatmap] got " + footprintResult.footprints().size() + " footprints");
 
         // Create and add annotation
         XYPlot plot = priceChart.getXYPlot();
@@ -138,8 +141,7 @@ public class FootprintHeatmapOverlay {
             plot.addAnnotation(existing);
         }
 
-        log.debug("FootprintHeatmapOverlay: added annotation with {} footprints",
-            footprintResult.footprints().size());
+        System.out.println("[FootprintHeatmap] added annotation to plot");
 
         if (onDataReady != null) {
             onDataReady.run();

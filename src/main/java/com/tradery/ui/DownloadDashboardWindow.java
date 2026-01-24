@@ -211,7 +211,7 @@ public class DownloadDashboardWindow extends JFrame {
         timelinePanel.update(allPages, indicatorPages);
 
         // Update status panel
-        statusPanel.update(allPages);
+        statusPanel.update(allPages, indicatorPages);
 
         // Update detail panel if a page is selected
         if (selectedPageKey != null) {

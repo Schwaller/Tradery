@@ -259,6 +259,8 @@ public class BacktestCoordinator {
                 if (requirements.getAggTradesPage() != null) {
                     currentAggTrades = new ArrayList<>(requirements.getAggTradesPage().getData());
                     backtestEngine.setAggTrades(currentAggTrades);
+                    // Also set on indicator engine for VIEW tier charts
+                    engine.setAggTrades(currentAggTrades);
                 }
             }
             case "Premium" -> {

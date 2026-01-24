@@ -1143,21 +1143,31 @@ public class OverlayManager {
     public void updateFootprintHeatmapOverlay() {
         com.tradery.ui.charts.ChartConfig config = com.tradery.ui.charts.ChartConfig.getInstance();
 
+        System.out.println("[FootprintHeatmap] updateFootprintHeatmapOverlay called");
+        System.out.println("[FootprintHeatmap] enabled=" + config.isFootprintHeatmapEnabled());
+
         if (!config.isFootprintHeatmapEnabled()) {
             clearFootprintHeatmapOverlay();
             return;
         }
 
+        System.out.println("[FootprintHeatmap] currentCandles=" + (currentCandles != null ? currentCandles.size() : "null"));
+        System.out.println("[FootprintHeatmap] indicatorEngine=" + (indicatorEngine != null ? "present" : "null"));
+
         if (currentCandles == null || currentCandles.isEmpty() || indicatorEngine == null) {
+            System.out.println("[FootprintHeatmap] EARLY RETURN: missing candles or engine");
             return;
         }
 
         java.util.List<com.tradery.model.AggTrade> aggTrades = indicatorEngine.getAggTrades();
+        System.out.println("[FootprintHeatmap] aggTrades=" + (aggTrades != null ? aggTrades.size() : "null"));
 
         if (aggTrades == null || aggTrades.isEmpty()) {
+            System.out.println("[FootprintHeatmap] EARLY RETURN: no aggTrades");
             return; // No data yet, will be called again when aggTrades arrive
         }
 
+        System.out.println("[FootprintHeatmap] calling setFootprintHeatmapOverlay");
         setFootprintHeatmapOverlay(currentCandles, aggTrades, config.getFootprintHeatmapConfig());
     }
 

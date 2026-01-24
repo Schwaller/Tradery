@@ -3,6 +3,7 @@ package com.tradery.ui;
 import com.tradery.data.DataType;
 import com.tradery.data.PageState;
 import com.tradery.data.page.DataPageManager;
+import com.tradery.data.page.IndicatorPageManager;
 
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
@@ -66,6 +67,14 @@ public class PageStatusPanel extends JPanel {
      * Update the panel with current page data.
      */
     public void update(List<DataPageManager.PageInfo> pages) {
+        update(pages, new ArrayList<>());
+    }
+
+    /**
+     * Update the panel with current page and indicator data.
+     */
+    public void update(List<DataPageManager.PageInfo> pages,
+                       List<IndicatorPageManager.IndicatorPageInfo> indicatorPages) {
         contentPanel.removeAll();
         pageRows.clear();
 
@@ -76,10 +85,11 @@ public class PageStatusPanel extends JPanel {
         // Separator
         JSeparator sep = new JSeparator();
         sep.setMaximumSize(new Dimension(Integer.MAX_VALUE, 1));
+        sep.setAlignmentX(Component.LEFT_ALIGNMENT);
         contentPanel.add(sep);
         contentPanel.add(Box.createVerticalStrut(8));
 
-        // Group pages by data type
+        // Group data pages by data type
         for (DataType dataType : DataType.values()) {
             List<DataPageManager.PageInfo> typePages = pages.stream()
                 .filter(p -> p.dataType() == dataType)
@@ -90,13 +100,17 @@ public class PageStatusPanel extends JPanel {
             }
         }
 
-        // Show "no active pages" if nothing is tracked (after overview)
-        if (pages.isEmpty()) {
-            JLabel emptyLabel = new JLabel("No active data pages");
+        // Add indicators section if any
+        if (!indicatorPages.isEmpty()) {
+            addIndicatorsSection(indicatorPages);
+        }
+
+        // Show "no active pages" if nothing is tracked
+        if (pages.isEmpty() && indicatorPages.isEmpty()) {
+            JLabel emptyLabel = new JLabel("No active pages");
             emptyLabel.setForeground(Color.GRAY);
             emptyLabel.setFont(emptyLabel.getFont().deriveFont(Font.ITALIC, 12f));
             emptyLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
-            emptyLabel.setBorder(new EmptyBorder(0, 8, 0, 0));
             contentPanel.add(emptyLabel);
         }
 
@@ -111,6 +125,7 @@ public class PageStatusPanel extends JPanel {
         JPanel row = new JPanel(new BorderLayout(8, 0));
         row.setBorder(BorderFactory.createEmptyBorder(4, 0, 4, 0));
         row.setMaximumSize(new Dimension(Integer.MAX_VALUE, 28));
+        row.setAlignmentX(Component.LEFT_ALIGNMENT);
         row.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
 
         JLabel nameLabel = new JLabel("Overview");
@@ -160,29 +175,122 @@ public class PageStatusPanel extends JPanel {
     }
 
     private void addDataTypeSection(DataType dataType, List<DataPageManager.PageInfo> pages) {
-        JPanel section = new JPanel();
-        section.setLayout(new BoxLayout(section, BoxLayout.Y_AXIS));
-        section.setBorder(new EmptyBorder(4, 0, 4, 0));
-        section.setMaximumSize(new Dimension(Integer.MAX_VALUE, Short.MAX_VALUE));
-        section.setAlignmentX(Component.LEFT_ALIGNMENT);
-
-        // Header
+        // Header - add directly to content panel
         JPanel headerPanel = createHeaderPanel(dataType, pages);
-        section.add(headerPanel);
+        headerPanel.setAlignmentX(Component.LEFT_ALIGNMENT);
+        contentPanel.add(headerPanel);
 
         // Pages list
         if (!pages.isEmpty()) {
-            section.add(Box.createVerticalStrut(4));
+            contentPanel.add(Box.createVerticalStrut(4));
             for (DataPageManager.PageInfo page : pages) {
                 PageRowPanel row = createPageRow(page, dataType);
+                row.setAlignmentX(Component.LEFT_ALIGNMENT);
                 pageRows.add(row);
-                section.add(row);
-                section.add(Box.createVerticalStrut(2));
+                contentPanel.add(row);
+                contentPanel.add(Box.createVerticalStrut(2));
             }
         }
 
-        contentPanel.add(section);
-        contentPanel.add(Box.createVerticalStrut(8));
+        contentPanel.add(Box.createVerticalStrut(12));
+    }
+
+    private void addIndicatorsSection(List<IndicatorPageManager.IndicatorPageInfo> indicators) {
+        // Header
+        JPanel header = new JPanel(new BorderLayout(4, 0));
+        header.setOpaque(false);
+        header.setMaximumSize(new Dimension(Integer.MAX_VALUE, 24));
+        header.setAlignmentX(Component.LEFT_ALIGNMENT);
+
+        String text = "Indicators (" + indicators.size() + ")";
+        JLabel nameLabel = new JLabel(text);
+        nameLabel.setFont(nameLabel.getFont().deriveFont(Font.BOLD, 12f));
+        header.add(nameLabel, BorderLayout.WEST);
+
+        // Right: overall status
+        PageState overallState = getOverallIndicatorState(indicators);
+        int totalConsumers = indicators.stream().mapToInt(IndicatorPageManager.IndicatorPageInfo::listenerCount).sum();
+
+        JPanel rightPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 6, 0));
+        rightPanel.setOpaque(false);
+
+        if (totalConsumers > 0) {
+            JLabel consumerLabel = new JLabel(totalConsumers + " listener" + (totalConsumers != 1 ? "s" : ""));
+            consumerLabel.setFont(consumerLabel.getFont().deriveFont(Font.PLAIN, 10f));
+            consumerLabel.setForeground(new Color(100, 150, 200));
+            rightPanel.add(consumerLabel);
+        }
+
+        JLabel statusLabel = new JLabel(getStatusText(overallState));
+        statusLabel.setFont(statusLabel.getFont().deriveFont(Font.BOLD, 10f));
+        statusLabel.setForeground(getColorForState(overallState));
+        rightPanel.add(statusLabel);
+
+        header.add(rightPanel, BorderLayout.EAST);
+        contentPanel.add(header);
+
+        // Indicator rows
+        contentPanel.add(Box.createVerticalStrut(4));
+        for (IndicatorPageManager.IndicatorPageInfo ind : indicators) {
+            JPanel row = createIndicatorRow(ind);
+            row.setAlignmentX(Component.LEFT_ALIGNMENT);
+            contentPanel.add(row);
+            contentPanel.add(Box.createVerticalStrut(2));
+        }
+
+        contentPanel.add(Box.createVerticalStrut(12));
+    }
+
+    private JPanel createIndicatorRow(IndicatorPageManager.IndicatorPageInfo ind) {
+        JPanel row = new JPanel(new BorderLayout(4, 0));
+        row.setBorder(BorderFactory.createEmptyBorder(3, 8, 3, 8));
+        row.setMaximumSize(new Dimension(Integer.MAX_VALUE, 26));
+        row.setOpaque(false);
+
+        // Left: indicator name
+        String label = ind.type() + "(" + ind.params() + ")";
+        JLabel nameLabel = new JLabel(label);
+        nameLabel.setFont(nameLabel.getFont().deriveFont(Font.PLAIN, 11f));
+        row.add(nameLabel, BorderLayout.WEST);
+
+        // Right: status
+        JPanel rightPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 4, 0));
+        rightPanel.setOpaque(false);
+
+        if (ind.listenerCount() > 0) {
+            JLabel listenerLabel = new JLabel(String.valueOf(ind.listenerCount()));
+            listenerLabel.setFont(listenerLabel.getFont().deriveFont(Font.PLAIN, 9f));
+            listenerLabel.setForeground(new Color(100, 150, 200));
+            rightPanel.add(listenerLabel);
+        }
+
+        JLabel statusDot = new JLabel(getStatusDot(ind.state()));
+        statusDot.setForeground(getColorForState(ind.state()));
+        rightPanel.add(statusDot);
+
+        row.add(rightPanel, BorderLayout.EAST);
+        return row;
+    }
+
+    private PageState getOverallIndicatorState(List<IndicatorPageManager.IndicatorPageInfo> indicators) {
+        boolean anyLoading = false;
+        boolean anyError = false;
+        boolean allReady = true;
+
+        for (IndicatorPageManager.IndicatorPageInfo ind : indicators) {
+            switch (ind.state()) {
+                case LOADING -> { anyLoading = true; allReady = false; }
+                case UPDATING -> { }
+                case ERROR -> { anyError = true; allReady = false; }
+                case EMPTY -> allReady = false;
+                case READY -> {}
+            }
+        }
+
+        if (anyLoading) return PageState.LOADING;
+        if (anyError) return PageState.ERROR;
+        if (allReady) return PageState.READY;
+        return PageState.EMPTY;
     }
 
     private JPanel createHeaderPanel(DataType dataType, List<DataPageManager.PageInfo> pages) {
@@ -190,6 +298,7 @@ public class PageStatusPanel extends JPanel {
         header.setOpaque(false);
         header.setBorder(BorderFactory.createEmptyBorder(0, 0, 0, 0));
         header.setMaximumSize(new Dimension(Integer.MAX_VALUE, 24));
+        header.setAlignmentX(Component.LEFT_ALIGNMENT);
 
         // Left: name and count
         String text = dataType.getDisplayName() + " (" + pages.size() + ")";
