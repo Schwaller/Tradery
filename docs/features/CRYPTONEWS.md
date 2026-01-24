@@ -86,51 +86,164 @@ Gantt-style visualization of events over time:
 
 ## Architecture
 
-### Module Strategy
+### The Tradery Ecosystem
 
-**Phase 1: Fully Separate** (Now)
-- CryptoNews is its own standalone project
-- No dependencies on Tradery code
-- Can be developed and tested independently
-- Own entry point, own data directory
-
-**Phase 2: Shared Utilities** (When Needed)
-- Extract common code into `shared` module
-- Both apps depend on shared, not on each other
-- Examples: SQLite helpers, OkHttp config, theme system
-
-**Phase 3: Integration** (Optional)
-- CryptoNews can optionally embed in Tradery
-- Communication via MCP or shared data directory
+A **monorepo** containing multiple apps that share embedded libraries:
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                     Project Structure                            │
-│                                                                  │
-│  Phase 1 (Now):           Phase 2 (Later):                      │
-│                                                                  │
-│  Tradery/                 Tradery/                               │
-│  CryptoNews/              ├── shared/      ◄── Common utilities │
-│  (separate)               ├── tradery/     ◄── Depends on shared│
-│                           └── cryptonews/  ◄── Depends on shared│
-│                                                                  │
-└─────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────┐
+│                         TRADERY MONOREPO                                 │
+│                                                                          │
+│  ┌─────────────────────────────────────────────────────────────────────┐│
+│  │                        SHARED LIBRARIES                              ││
+│  │  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐            ││
+│  │  │  common  │  │   data   │  │    ai    │  │ ui-swing │            ││
+│  │  │ Models,  │  │ SQLite,  │  │ Claude/  │  │ Theme,   │            ││
+│  │  │ Utils    │  │ OkHttp   │  │ Codex    │  │ Panels   │            ││
+│  │  └────┬─────┘  └────┬─────┘  └────┬─────┘  └────┬─────┘            ││
+│  │       │             │             │             │                    ││
+│  │  ┌────┴─────┐  ┌────┴─────┐                                         ││
+│  │  │ exchange │  │ strategy │  (future libs as needed)                ││
+│  │  │ Binance  │  │ DSL,     │                                         ││
+│  │  │ APIs     │  │ Engine   │                                         ││
+│  │  └──────────┘  └──────────┘                                         ││
+│  └───────────────────────────────────────────────────────────────────────┘│
+│                              ▲                                           │
+│                              │ depends on                                │
+│  ┌───────────────────────────┴───────────────────────────────────────────┐│
+│  │                         APPLICATIONS                                   ││
+│  │                                                                        ││
+│  │  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ││
+│  │  │   tradery   │  │ cryptonews  │  │   assist    │  │     bot     │  ││
+│  │  │             │  │             │  │             │  │             │  ││
+│  │  │ Backtester  │  │ AI News     │  │ Semi-Auto   │  │ Full Auto   │  ││
+│  │  │ Desktop     │  │ Intelligence│  │ Trading UI  │  │ Docker +    │  ││
+│  │  │             │  │ Desktop     │  │ "Trade?"    │  │ Web/CLI/    │  ││
+│  │  │             │  │             │  │ Desktop     │  │ Mobile      │  ││
+│  │  └─────────────┘  └─────────────┘  └─────────────┘  └─────────────┘  ││
+│  └────────────────────────────────────────────────────────────────────────┘│
+└─────────────────────────────────────────────────────────────────────────────┘
 ```
 
-### Module Structure
+### Apps Overview
 
-**For now: Separate project, clean boundary**
+| App | Type | Purpose |
+|-----|------|---------|
+| **tradery** | Desktop (Swing) | Strategy backtesting (existing) |
+| **cryptonews** | Desktop (Swing) | AI news parsing, graph viz, screener |
+| **assist** | Desktop (Swing) | Semi-auto trading: "Do you want to trade this?" |
+| **bot** | Docker + Web/CLI/Mobile | Fully automated trading with remote control |
+
+### Shared Libraries
+
+| Library | Purpose | Used By |
+|---------|---------|---------|
+| **common** | Models, enums, utils, config | All apps |
+| **data** | SQLite, OkHttp, caching, market data | All apps |
+| **ai** | Claude CLI, Codex CLI, prompts | cryptonews, assist, bot |
+| **ui-swing** | Theme, common panels, components | tradery, cryptonews, assist |
+| **exchange** | Exchange APIs (Binance, etc.) | assist, bot |
+| **strategy** | Strategy engine, DSL, signals | tradery, assist, bot |
+
+### Monorepo Structure
 
 ```
-~/Code/
-├── Tradery/                        # Existing - DON'T TOUCH
-│   └── ...
+Tradery/                            # Monorepo root
+├── settings.gradle                 # Includes all modules
+├── build.gradle                    # Common config
 │
-└── CryptoNews/                     # NEW: Completely separate
-    ├── build.gradle
-    ├── settings.gradle
-    ├── CLAUDE.md                   # Project instructions for Claude
-    └── src/main/java/com/cryptonews/
+├── libs/                           # SHARED LIBRARIES
+│   ├── common/                     # Core models & utils
+│   │   └── src/main/java/com/tradery/common/
+│   ├── data/                       # Data layer (SQLite, HTTP)
+│   │   └── src/main/java/com/tradery/data/
+│   ├── ai/                         # AI CLI processing
+│   │   └── src/main/java/com/tradery/ai/
+│   ├── ui-swing/                   # Swing UI components
+│   │   └── src/main/java/com/tradery/ui/
+│   ├── exchange/                   # Exchange connectivity
+│   │   └── src/main/java/com/tradery/exchange/
+│   └── strategy/                   # Strategy engine
+│       └── src/main/java/com/tradery/strategy/
+│
+├── apps/                           # APPLICATIONS
+│   ├── tradery/                    # Backtester (existing code)
+│   ├── cryptonews/                 # AI News Intelligence
+│   ├── assist/                     # Semi-Automated Trading
+│   └── bot/                        # Fully Automated Bot
+│       └── Dockerfile
+│
+├── docker/                         # Docker configs
+│   └── bot/docker-compose.yml
+│
+└── docs/                           # Documentation
+    └── features/
+        ├── CRYPTONEWS.md
+        ├── ASSIST.md
+        └── BOT.md
+```
+
+### Gradle Configuration
+
+```groovy
+// settings.gradle
+rootProject.name = 'tradery-ecosystem'
+
+// Shared libraries
+include 'libs:common'
+include 'libs:data'
+include 'libs:ai'
+include 'libs:ui-swing'
+include 'libs:exchange'
+include 'libs:strategy'
+
+// Applications
+include 'apps:tradery'
+include 'apps:cryptonews'
+include 'apps:assist'
+include 'apps:bot'
+```
+
+```groovy
+// apps/cryptonews/build.gradle
+dependencies {
+    // Shared libs (embedded)
+    implementation project(':libs:common')
+    implementation project(':libs:data')
+    implementation project(':libs:ai')
+    implementation project(':libs:ui-swing')
+
+    // CryptoNews-specific
+    implementation 'com.rometools:rome:2.1.0'
+    implementation 'com.github.jgraph:jgraphx:4.2.2'
+}
+```
+
+### Migration Strategy
+
+**Phase 1: Restructure Tradery**
+1. Create `libs/` and `apps/` directories
+2. Move existing code to `apps/tradery/`
+3. Extract common code to `libs/` incrementally
+4. Keep tradery working throughout
+
+**Phase 2: Build CryptoNews**
+1. Create `apps/cryptonews/`
+2. Build using shared libs
+3. Add new utilities to `libs/ai/` as needed
+
+**Phase 3: Build Assist & Bot**
+1. Extract exchange connectivity to `libs/exchange/`
+2. Extract strategy engine to `libs/strategy/`
+3. Build assist (desktop) and bot (Docker) apps
+
+### CryptoNews App Structure
+
+```
+apps/cryptonews/
+├── build.gradle
+├── CLAUDE.md                       # Project instructions
+└── src/main/java/com/cryptonews/
         │
         ├── CryptoNewsApp.java      # Main entry point
         │
@@ -205,7 +318,7 @@ Gantt-style visualization of events over time:
 ### Data Storage
 
 ```
-~/.tradery/cryptonews/
+~/.cryptonews/
 ├── config.yaml                 # Settings (AI provider, sources, intervals)
 u├── cryptonews.db               # SQLite database (schema below)
 ├── articles/                   # Full article content cache (JSON)
@@ -1009,7 +1122,7 @@ Importance levels:
 ### Configurable Providers
 
 ```yaml
-# ~/.tradery/cryptonews/config.yaml
+# ~/.cryptonews/config.yaml
 ai:
   provider: claude        # claude | openai | ollama (future)
   model: default          # or specific model name
@@ -1299,7 +1412,7 @@ Breakout tokens appear in the network graph:
 **Configuration:**
 
 ```yaml
-# ~/.tradery/cryptonews/config.yaml
+# ~/.cryptonews/config.yaml
 tokenTracker:
   enabled: true
   platforms:
@@ -1362,7 +1475,7 @@ tokenTracker:
 ### Source Configuration
 
 ```yaml
-# ~/.tradery/cryptonews/config.yaml
+# ~/.cryptonews/config.yaml
 sources:
   rss:
     enabled: true

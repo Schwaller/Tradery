@@ -68,9 +68,6 @@ public class ProjectWindow extends JFrame {
     private PhaseAnalysisWindow phaseAnalysisWindow;
     private BacktestResult currentResult;
 
-    // Data loading status window
-    private DataLoadingStatusWindow dataLoadingStatusWindow;
-
     // Indicator controls panel (extracted)
     private IndicatorControlsPanel indicatorControls;
 
@@ -530,9 +527,6 @@ public class ProjectWindow extends JFrame {
         JMenuItem openDashboardItem = new JMenuItem("Open Download Dashboard...");
         openDashboardItem.addActionListener(e -> openDownloadDashboard());
         statusContextMenu.add(openDashboardItem);
-        JMenuItem openQuickStatusItem = new JMenuItem("Quick Status Window...");
-        openQuickStatusItem.addActionListener(e -> openDataLoadingStatusWindow(statusPanel));
-        statusContextMenu.add(openQuickStatusItem);
         statusPanel.setComponentPopupMenu(statusContextMenu);
 
         bottomPanel.add(statusPanel, BorderLayout.CENTER);
@@ -838,16 +832,6 @@ public class ProjectWindow extends JFrame {
     }
 
     /**
-     * Open the data loading status window.
-     */
-    private void openDataLoadingStatusWindow(Component anchor) {
-        if (dataLoadingStatusWindow == null) {
-            dataLoadingStatusWindow = new DataLoadingStatusWindow(this);
-        }
-        dataLoadingStatusWindow.showNear(anchor);
-    }
-
-    /**
      * Open the Download Dashboard window.
      */
     private void openDownloadDashboard() {
@@ -969,10 +953,6 @@ public class ProjectWindow extends JFrame {
         if (phaseAnalysisWindow != null) {
             phaseAnalysisWindow.dispose();
             phaseAnalysisWindow = null;
-        }
-        if (dataLoadingStatusWindow != null) {
-            dataLoadingStatusWindow.dispose();
-            dataLoadingStatusWindow = null;
         }
 
         // Clear backtest coordinator callbacks to break reference cycles

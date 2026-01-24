@@ -18,13 +18,13 @@ import java.util.List;
 
 /**
  * Comprehensive Download Dashboard showing data page status, event logs, and statistics.
- * Replaces the basic DataLoadingStatusWindow with a more feature-rich interface.
+ * Combines the compact status view with detailed page info and event logs.
  */
 public class DownloadDashboardWindow extends JFrame {
 
     private static final int REFRESH_INTERVAL_MS = 250;
 
-    private PageManagerTreePanel treePanel;
+    private PageStatusPanel statusPanel;
     private DownloadLogPanel logPanel;
     private PageDetailPanel detailPanel;
     private JLabel statusLabel;
@@ -64,8 +64,8 @@ public class DownloadDashboardWindow extends JFrame {
     }
 
     private void initializeComponents() {
-        // Tree panel for page managers
-        treePanel = new PageManagerTreePanel(this::onPageSelected);
+        // Status panel for page managers (compact view with selection)
+        statusPanel = new PageStatusPanel(this::onPageSelected);
 
         // Log panel for events
         logPanel = new DownloadLogPanel();
@@ -88,14 +88,11 @@ public class DownloadDashboardWindow extends JFrame {
         titleLabel.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 13));
         titleBar.add(titleLabel, BorderLayout.CENTER);
 
-        // Left panel: tree view
+        // Left panel: page status view
         JPanel leftPanel = new JPanel(new BorderLayout(0, 0));
         leftPanel.setBorder(BorderFactory.createEmptyBorder(0, 0, 0, 0));
-        leftPanel.setPreferredSize(new Dimension(250, 0));
-
-        JScrollPane treeScroll = new JScrollPane(treePanel);
-        treeScroll.setBorder(BorderFactory.createEmptyBorder());
-        leftPanel.add(treeScroll, BorderLayout.CENTER);
+        leftPanel.setPreferredSize(new Dimension(280, 0));
+        leftPanel.add(statusPanel, BorderLayout.CENTER);
 
         // Right panel: detail + log tabs
         JTabbedPane rightTabs = new JTabbedPane();
@@ -175,8 +172,8 @@ public class DownloadDashboardWindow extends JFrame {
         // Collect page info from all managers
         List<DataPageManager.PageInfo> allPages = collectAllPages();
 
-        // Update tree panel
-        treePanel.update(allPages);
+        // Update status panel
+        statusPanel.update(allPages);
 
         // Update detail panel if a page is selected
         if (selectedPageKey != null) {
