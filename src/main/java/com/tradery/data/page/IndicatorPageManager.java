@@ -292,9 +292,9 @@ public class IndicatorPageManager {
                 yield computeHistoricRays(candles, skip, interval);
             }
             case FOOTPRINT_HEATMAP -> {
-                // No computation needed - just return aggTrades count as confirmation
-                // The overlay computes footprints directly from IndicatorEngine.getAggTrades()
-                yield aggTrades != null ? aggTrades.size() : 0;
+                // Marker that triggers aggTrades loading - computation happens in overlay
+                // Returns true if aggTrades are available
+                yield aggTrades != null && !aggTrades.isEmpty();
             }
             default -> throw new UnsupportedOperationException("Indicator not implemented: " + type);
         };

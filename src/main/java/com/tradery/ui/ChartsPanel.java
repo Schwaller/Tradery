@@ -94,6 +94,13 @@ public class ChartsPanel extends JPanel {
         setupManagers();
         setupScrollableContainer();
 
+        // Listen for footprint heatmap data ready to refresh overlay
+        indicatorManager.setOnFootprintHeatmapDataReady(() -> {
+            if (ChartConfig.getInstance().isFootprintHeatmapEnabled()) {
+                overlayManager.updateFootprintHeatmapOverlay();
+            }
+        });
+
         // Listen for chart config changes (axis position, etc.)
         ChartConfig.getInstance().addChangeListener(this::refreshTheme);
     }
@@ -874,6 +881,8 @@ public class ChartsPanel extends JPanel {
             // Try to update immediately if aggTrades are already available
             overlayManager.updateFootprintHeatmapOverlay();
         } else {
+            // Unsubscribe to release aggTrades resources
+            indicatorManager.unsubscribeFootprintHeatmap();
             overlayManager.clearFootprintHeatmapOverlay();
         }
     }

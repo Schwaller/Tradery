@@ -241,10 +241,17 @@ public class IndicatorDataService {
     }
 
     /**
-     * Subscribe to Footprint Heatmap (requires aggTrades).
+     * Subscribe to Footprint Heatmap (triggers aggTrades loading).
      */
     public void subscribeFootprintHeatmap() {
         subscribe(IndicatorType.FOOTPRINT_HEATMAP, "");
+    }
+
+    /**
+     * Unsubscribe from Footprint Heatmap (releases aggTrades resources).
+     */
+    public void unsubscribeFootprintHeatmap() {
+        unsubscribe(IndicatorType.FOOTPRINT_HEATMAP, "");
     }
 
     // ===== OHLCV-based Subscriptions =====
@@ -435,6 +442,15 @@ public class IndicatorDataService {
      */
     public double[] getRetailDelta(double threshold) {
         return getData(IndicatorType.RETAIL_DELTA, String.valueOf(threshold));
+    }
+
+    /**
+     * Check if aggTrades are available for Footprint Heatmap.
+     * @return true if aggTrades are loaded, false otherwise
+     */
+    public boolean isFootprintHeatmapReady() {
+        Boolean result = getData(IndicatorType.FOOTPRINT_HEATMAP, "");
+        return result != null && result;
     }
 
     // ===== OHLCV-based Data Access =====

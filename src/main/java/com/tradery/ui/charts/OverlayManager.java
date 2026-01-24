@@ -50,6 +50,9 @@ public class OverlayManager {
     // IndicatorEngine for POC calculations
     private IndicatorEngine indicatorEngine;
 
+    // IndicatorDataService for footprint heatmap data
+    private IndicatorDataService indicatorDataService;
+
     // Ray overlay
     private RayOverlay rayOverlay;
 
@@ -547,6 +550,10 @@ public class OverlayManager {
 
     public IndicatorEngine getIndicatorEngine() {
         return this.indicatorEngine;
+    }
+
+    public void setIndicatorDataService(IndicatorDataService service) {
+        this.indicatorDataService = service;
     }
 
     // ===== Daily POC/VAH/VAL Overlay =====
