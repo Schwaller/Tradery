@@ -362,10 +362,9 @@ public class ProjectWindow extends JFrame {
         toolbarCenter.add(priceOpacitySlider);
         toolbarCenter.add(Box.createHorizontalStrut(8));
         toolbarCenter.add(fitWidthBtn);
-        toolbarCenter.add(Box.createHorizontalStrut(8));
         toolbarCenter.add(fitYBtn);
         toolbarCenter.add(fullYBtn);
-        toolbarCenter.add(Box.createHorizontalStrut(16));
+        toolbarCenter.add(Box.createHorizontalStrut(8));
         toolbarCenter.add(indicatorControls);
 
         // Right side: Actions
