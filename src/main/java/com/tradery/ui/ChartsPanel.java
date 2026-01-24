@@ -694,8 +694,15 @@ public class ChartsPanel extends JPanel {
     public void setFootprintHeatmapEnabled(boolean enabled) {
         ChartConfig config = ChartConfig.getInstance();
         config.setFootprintHeatmapEnabled(enabled);
-        // The heatmap overlay will be updated when aggTrades data arrives
-        // through onAggTradesLoaded callback
+
+        if (enabled) {
+            // Subscribe to footprint heatmap to trigger aggTrades loading
+            indicatorManager.subscribeFootprintHeatmap();
+            // Try to update immediately if aggTrades are already available
+            overlayManager.updateFootprintHeatmapOverlay();
+        } else {
+            overlayManager.clearFootprintHeatmapOverlay();
+        }
     }
 
     public boolean isFootprintHeatmapEnabled() {
@@ -925,7 +932,9 @@ public class ChartsPanel extends JPanel {
     }
 
     public boolean isAnyOrderflowChartEnabled() {
-        return indicatorManager.isAnyOrderflowEnabled();
+        // Include footprint heatmap overlay - it also needs aggTrades
+        return indicatorManager.isAnyOrderflowEnabled()
+            || ChartConfig.getInstance().isFootprintHeatmapEnabled();
     }
 
     public void setIndicatorEngine(com.tradery.indicators.IndicatorEngine engine) {
@@ -1033,6 +1042,7 @@ public class ChartsPanel extends JPanel {
         this.currentCandles = candles;
         this.currentTrades = trades;
         crosshairManager.setCurrentCandles(candles);
+        overlayManager.setCandles(candles);
         clearTradeHighlight();
 
         updateDateAxisFormat(candles);

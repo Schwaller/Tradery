@@ -240,6 +240,13 @@ public class IndicatorDataService {
         subscribe(IndicatorType.RETAIL_DELTA, String.valueOf(threshold));
     }
 
+    /**
+     * Subscribe to Footprint Heatmap (requires aggTrades).
+     */
+    public void subscribeFootprintHeatmap() {
+        subscribe(IndicatorType.FOOTPRINT_HEATMAP, "");
+    }
+
     // ===== OHLCV-based Subscriptions =====
 
     /**

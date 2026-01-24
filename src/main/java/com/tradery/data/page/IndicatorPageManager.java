@@ -291,6 +291,11 @@ public class IndicatorPageManager {
                 int interval = Integer.parseInt(p[1]);
                 yield computeHistoricRays(candles, skip, interval);
             }
+            case FOOTPRINT_HEATMAP -> {
+                // No computation needed - just return aggTrades count as confirmation
+                // The overlay computes footprints directly from IndicatorEngine.getAggTrades()
+                yield aggTrades != null ? aggTrades.size() : 0;
+            }
             default -> throw new UnsupportedOperationException("Indicator not implemented: " + type);
         };
     }
@@ -341,6 +346,8 @@ public class IndicatorPageManager {
             case FUNDING, FUNDING_8H, OI, OI_CHANGE, PREMIUM -> null;
             // Daily volume profile
             case DAILY_VOLUME_PROFILE -> "DAILY_VOLUME_PROFILE";
+            // Footprint heatmap - no registry entry, just triggers aggTrades loading
+            case FOOTPRINT_HEATMAP -> null;
         };
     }
 

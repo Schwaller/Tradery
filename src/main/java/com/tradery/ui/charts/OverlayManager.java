@@ -556,6 +556,10 @@ public class OverlayManager {
         this.indicatorEngine = engine;
     }
 
+    public IndicatorEngine getIndicatorEngine() {
+        return this.indicatorEngine;
+    }
+
     // ===== Daily POC/VAH/VAL Overlay =====
 
     /**
@@ -1138,6 +1142,7 @@ public class OverlayManager {
      */
     public void updateFootprintHeatmapOverlay() {
         com.tradery.ui.charts.ChartConfig config = com.tradery.ui.charts.ChartConfig.getInstance();
+
         if (!config.isFootprintHeatmapEnabled()) {
             clearFootprintHeatmapOverlay();
             return;
@@ -1148,6 +1153,7 @@ public class OverlayManager {
         }
 
         java.util.List<com.tradery.model.AggTrade> aggTrades = indicatorEngine.getAggTrades();
+
         if (aggTrades == null || aggTrades.isEmpty()) {
             return; // No data yet, will be called again when aggTrades arrive
         }

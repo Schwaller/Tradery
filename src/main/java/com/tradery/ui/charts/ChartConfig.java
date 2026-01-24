@@ -804,6 +804,11 @@ public class ChartConfig {
         this.dailyVolumeProfileBins = other.dailyVolumeProfileBins;
         this.dailyVolumeProfileWidth = other.dailyVolumeProfileWidth;
 
+        // Footprint Heatmap
+        if (other.footprintHeatmapConfig != null) {
+            this.footprintHeatmapConfig = new com.tradery.ui.charts.footprint.FootprintHeatmapConfig(other.footprintHeatmapConfig);
+        }
+
         // Price chart mode
         this.candlestickMode = other.candlestickMode;
         this.priceOpacity = other.priceOpacity;

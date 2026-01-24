@@ -100,23 +100,22 @@ public class PageStatusPanel extends JPanel {
             contentPanel.add(emptyLabel);
         }
 
+        // Add vertical glue to push content to top
+        contentPanel.add(Box.createVerticalGlue());
+
         contentPanel.revalidate();
         contentPanel.repaint();
     }
 
     private void addOverviewRow() {
         JPanel row = new JPanel(new BorderLayout(8, 0));
-        row.setBorder(BorderFactory.createEmptyBorder(4, 8, 4, 8));
+        row.setBorder(BorderFactory.createEmptyBorder(4, 0, 4, 0));
         row.setMaximumSize(new Dimension(Integer.MAX_VALUE, 28));
         row.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
 
-        JLabel iconLabel = new JLabel("\uD83D\uDCCA"); // chart icon
-        iconLabel.setFont(iconLabel.getFont().deriveFont(14f));
-        row.add(iconLabel, BorderLayout.WEST);
-
         JLabel nameLabel = new JLabel("Overview");
         nameLabel.setFont(nameLabel.getFont().deriveFont(Font.BOLD, 12f));
-        row.add(nameLabel, BorderLayout.CENTER);
+        row.add(nameLabel, BorderLayout.WEST);
 
         // Update background based on selection
         if (overviewSelected) {
@@ -187,29 +186,17 @@ public class PageStatusPanel extends JPanel {
     }
 
     private JPanel createHeaderPanel(DataType dataType, List<DataPageManager.PageInfo> pages) {
-        JPanel header = new JPanel(new BorderLayout(8, 0));
+        JPanel header = new JPanel(new BorderLayout(4, 0));
         header.setOpaque(false);
+        header.setBorder(BorderFactory.createEmptyBorder(0, 0, 0, 0));
         header.setMaximumSize(new Dimension(Integer.MAX_VALUE, 24));
 
-        // Left: Icon and name
-        JPanel leftPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
-        leftPanel.setOpaque(false);
-
-        JLabel iconLabel = new JLabel(getIconForDataType(dataType));
-        iconLabel.setFont(iconLabel.getFont().deriveFont(14f));
-        leftPanel.add(iconLabel);
-
-        JLabel nameLabel = new JLabel(dataType.getDisplayName());
+        // Left: name and count
+        String text = dataType.getDisplayName() + " (" + pages.size() + ")";
+        JLabel nameLabel = new JLabel(text);
         nameLabel.setFont(nameLabel.getFont().deriveFont(Font.BOLD, 12f));
-        leftPanel.add(nameLabel);
 
-        // Count badge
-        JLabel countLabel = new JLabel(" (" + pages.size() + ")");
-        countLabel.setFont(countLabel.getFont().deriveFont(Font.PLAIN, 10f));
-        countLabel.setForeground(Color.GRAY);
-        leftPanel.add(countLabel);
-
-        header.add(leftPanel, BorderLayout.WEST);
+        header.add(nameLabel, BorderLayout.WEST);
 
         // Right: Overall status
         PageState overallState = getOverallState(pages);
@@ -408,13 +395,7 @@ public class PageStatusPanel extends JPanel {
     }
 
     private static String getIconForDataType(DataType type) {
-        return switch (type) {
-            case CANDLES -> "\uD83D\uDCC8"; // chart
-            case FUNDING -> "\uD83D\uDCB0"; // money bag
-            case OPEN_INTEREST -> "\uD83D\uDCCA"; // bar chart
-            case AGG_TRADES -> "\uD83D\uDD04"; // arrows
-            case PREMIUM_INDEX -> "\u2696\uFE0F"; // scales
-        };
+        return "";  // No icons
     }
 
     private static Color getColorForState(PageState state) {

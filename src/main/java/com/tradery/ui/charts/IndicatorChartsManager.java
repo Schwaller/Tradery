@@ -146,6 +146,11 @@ public class IndicatorChartsManager {
             indicatorDataService.subscribeTradeCount();
         }
 
+        // Footprint heatmap overlay (needs aggTrades)
+        if (ChartConfig.getInstance().isFootprintHeatmapEnabled()) {
+            indicatorDataService.subscribeFootprintHeatmap();
+        }
+
         // Request premium data if chart is enabled
         if (isEnabled(IndicatorType.PREMIUM)) {
             requestPremiumData(symbol, timeframe, startTime, endTime);
@@ -576,6 +581,14 @@ public class IndicatorChartsManager {
     public boolean isAnyOrderflowEnabled() {
         return isEnabled(IndicatorType.DELTA) || isEnabled(IndicatorType.CVD) || isEnabled(IndicatorType.VOLUME_RATIO)
             || isEnabled(IndicatorType.WHALE) || isEnabled(IndicatorType.RETAIL) || isEnabled(IndicatorType.TRADE_COUNT);
+    }
+
+    /**
+     * Subscribe to footprint heatmap data (triggers aggTrades loading).
+     * Called when footprint heatmap is toggled on.
+     */
+    public void subscribeFootprintHeatmap() {
+        indicatorDataService.subscribeFootprintHeatmap();
     }
 
     public void updateDeltaChart(List<Candle> candles) {
