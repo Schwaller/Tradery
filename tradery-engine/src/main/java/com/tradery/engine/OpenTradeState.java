@@ -1,10 +1,10 @@
 package com.tradery.engine;
 
-import com.tradery.model.Candle;
-import com.tradery.model.ExitBasis;
-import com.tradery.model.ExitReentry;
-import com.tradery.model.ExitZone;
-import com.tradery.model.Trade;
+import com.tradery.core.model.Candle;
+import com.tradery.core.model.ExitBasis;
+import com.tradery.core.model.ExitReentry;
+import com.tradery.core.model.ExitZone;
+import com.tradery.core.model.Trade;
 
 import java.util.HashMap;
 import java.util.List;

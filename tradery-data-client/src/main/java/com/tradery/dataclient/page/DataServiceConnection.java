@@ -2,7 +2,7 @@ package com.tradery.dataclient.page;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.tradery.model.Candle;
+import com.tradery.core.model.Candle;
 import org.java_websocket.client.WebSocketClient;
 import org.java_websocket.handshake.ServerHandshake;
 import org.slf4j.Logger;

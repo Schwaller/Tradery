@@ -1,6 +1,6 @@
 package com.tradery.desk.feed;
 
-import com.tradery.model.Candle;
+import com.tradery.core.model.Candle;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

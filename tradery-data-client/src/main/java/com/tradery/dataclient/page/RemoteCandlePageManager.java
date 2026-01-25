@@ -1,7 +1,7 @@
 package com.tradery.dataclient.page;
 
 import com.tradery.dataclient.DataServiceClient;
-import com.tradery.model.Candle;
+import com.tradery.core.model.Candle;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

@@ -3,7 +3,7 @@ package com.tradery.desk.ui;
 import com.tradery.desk.feed.BinanceWebSocketClient.ConnectionState;
 import com.tradery.desk.signal.SignalEvent;
 import com.tradery.desk.strategy.PublishedStrategy;
-import com.tradery.model.Candle;
+import com.tradery.core.model.Candle;
 
 import javax.swing.*;
 import java.awt.*;

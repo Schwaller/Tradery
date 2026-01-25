@@ -1,7 +1,7 @@
 package com.tradery.engine;
 
-import com.tradery.model.EntryOrderType;
-import com.tradery.model.OffsetUnit;
+import com.tradery.core.model.EntryOrderType;
+import com.tradery.core.model.OffsetUnit;
 
 /**
  * Tracks a pending entry order (LIMIT, STOP, or TRAILING).

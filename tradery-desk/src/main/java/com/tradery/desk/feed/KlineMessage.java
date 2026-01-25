@@ -2,7 +2,7 @@ package com.tradery.desk.feed;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
-import com.tradery.model.Candle;
+import com.tradery.core.model.Candle;
 
 /**
  * Binance Futures WebSocket kline message.

@@ -1,10 +1,10 @@
 package com.tradery.engine;
 
-import com.tradery.dsl.Parser;
+import com.tradery.core.dsl.Parser;
 import com.tradery.engine.ConditionEvaluator;
-import com.tradery.indicators.IndicatorEngine;
-import com.tradery.model.Candle;
-import com.tradery.model.Phase;
+import com.tradery.core.indicators.IndicatorEngine;
+import com.tradery.core.model.Candle;
+import com.tradery.core.model.Phase;
 
 import java.util.*;
 import java.util.function.Consumer;

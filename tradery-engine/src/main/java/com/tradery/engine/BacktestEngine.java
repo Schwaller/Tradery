@@ -1,10 +1,10 @@
 package com.tradery.engine;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.tradery.dsl.AstNode;
-import com.tradery.dsl.Parser;
-import com.tradery.indicators.IndicatorEngine;
-import com.tradery.model.*;
+import com.tradery.core.dsl.AstNode;
+import com.tradery.core.dsl.Parser;
+import com.tradery.core.indicators.IndicatorEngine;
+import com.tradery.core.model.*;
 
 import java.util.ArrayList;
 import java.util.HashMap;

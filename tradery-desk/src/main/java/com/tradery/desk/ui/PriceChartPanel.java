@@ -1,6 +1,6 @@
 package com.tradery.desk.ui;
 
-import com.tradery.model.Candle;
+import com.tradery.core.model.Candle;
 import org.jfree.chart.ChartPanel;
 import org.jfree.chart.JFreeChart;
 import org.jfree.chart.axis.DateAxis;

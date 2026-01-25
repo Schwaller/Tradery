@@ -1,9 +1,9 @@
 package com.tradery.dataclient.page;
 
-import com.tradery.indicators.registry.IndicatorContext;
-import com.tradery.indicators.registry.IndicatorRegistry;
-import com.tradery.indicators.registry.IndicatorSpec;
-import com.tradery.model.Candle;
+import com.tradery.core.indicators.registry.IndicatorContext;
+import com.tradery.core.indicators.registry.IndicatorRegistry;
+import com.tradery.core.indicators.registry.IndicatorSpec;
+import com.tradery.core.model.Candle;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

@@ -1,8 +1,8 @@
 package com.tradery.engine;
 
-import com.tradery.indicators.EMA;
-import com.tradery.indicators.SMA;
-import com.tradery.model.*;
+import com.tradery.core.indicators.EMA;
+import com.tradery.core.indicators.SMA;
+import com.tradery.core.model.*;
 
 import java.util.*;
 

@@ -1,10 +1,10 @@
 package com.tradery.dataclient;
 
-import com.tradery.model.Candle;
-import com.tradery.model.AggTrade;
-import com.tradery.model.FundingRate;
-import com.tradery.model.OpenInterest;
-import com.tradery.model.PremiumIndex;
+import com.tradery.core.model.Candle;
+import com.tradery.core.model.AggTrade;
+import com.tradery.core.model.FundingRate;
+import com.tradery.core.model.OpenInterest;
+import com.tradery.core.model.PremiumIndex;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import okhttp3.*;
 import org.msgpack.jackson.dataformat.MessagePackFactory;

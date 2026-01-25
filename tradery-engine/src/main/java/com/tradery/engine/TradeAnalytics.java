@@ -1,9 +1,9 @@
 package com.tradery.engine;
 
-import com.tradery.indicators.IndicatorEngine;
-import com.tradery.model.Candle;
-import com.tradery.model.ExitZone;
-import com.tradery.model.Strategy;
+import com.tradery.core.indicators.IndicatorEngine;
+import com.tradery.core.model.Candle;
+import com.tradery.core.model.ExitZone;
+import com.tradery.core.model.Strategy;
 
 import java.util.*;
 import java.util.regex.Matcher;

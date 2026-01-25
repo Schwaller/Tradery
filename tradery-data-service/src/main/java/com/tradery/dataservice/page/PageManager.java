@@ -1,10 +1,10 @@
 package com.tradery.dataservice.page;
 
-import com.tradery.data.*;
-import com.tradery.data.sqlite.SqliteDataStore;
+import com.tradery.dataservice.data.*;
+import com.tradery.dataservice.data.sqlite.SqliteDataStore;
 import com.tradery.dataservice.api.CoverageHandler;
 import com.tradery.dataservice.config.DataServiceConfig;
-import com.tradery.model.*;
+import com.tradery.core.model.*;
 import org.msgpack.jackson.dataformat.MessagePackFactory;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;

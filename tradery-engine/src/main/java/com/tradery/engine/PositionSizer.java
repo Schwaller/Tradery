@@ -1,6 +1,6 @@
 package com.tradery.engine;
 
-import com.tradery.model.*;
+import com.tradery.core.model.*;
 
 import java.util.List;
 

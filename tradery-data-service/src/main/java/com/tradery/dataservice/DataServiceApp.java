@@ -1,6 +1,6 @@
 package com.tradery.dataservice;
 
-import com.tradery.data.sqlite.SqliteDataStore;
+import com.tradery.dataservice.data.sqlite.SqliteDataStore;
 import com.tradery.dataservice.api.DataServiceServer;
 import com.tradery.dataservice.config.DataServiceConfig;
 import org.slf4j.Logger;

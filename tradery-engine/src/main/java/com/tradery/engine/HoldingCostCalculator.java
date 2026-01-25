@@ -1,7 +1,7 @@
 package com.tradery.engine;
 
-import com.tradery.model.FundingRate;
-import com.tradery.model.MarketType;
+import com.tradery.core.model.FundingRate;
+import com.tradery.core.model.MarketType;
 
 import java.util.List;
 

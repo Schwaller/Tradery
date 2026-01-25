@@ -6,7 +6,7 @@ import com.tradery.dataservice.page.PageKey;
 import com.tradery.dataservice.page.PageState;
 import com.tradery.dataservice.page.PageStatus;
 import com.tradery.dataservice.page.PageUpdateListener;
-import com.tradery.model.Candle;
+import com.tradery.core.model.Candle;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.javalin.websocket.WsCloseContext;

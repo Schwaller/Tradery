@@ -19,7 +19,7 @@ import com.tradery.desk.strategy.PublishedStrategy;
 import com.tradery.desk.strategy.StrategyLibrary;
 import com.tradery.desk.strategy.StrategyWatcher;
 import com.tradery.desk.ui.DeskFrame;
-import com.tradery.model.Candle;
+import com.tradery.core.model.Candle;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

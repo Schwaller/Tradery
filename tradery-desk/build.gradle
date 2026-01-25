@@ -14,6 +14,9 @@ dependencies {
     // Core module for models, indicators, DSL
     implementation project(':tradery-core')
 
+    // Engine module for condition evaluation
+    implementation project(':tradery-engine')
+
     // Data client for fetching historical candles from data-service
     implementation project(':tradery-data-client')
 

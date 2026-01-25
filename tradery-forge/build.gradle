@@ -7,7 +7,7 @@ plugins {
 }
 
 application {
-    mainClass = 'com.tradery.TraderyApp'
+    mainClass = 'com.tradery.forge.TraderyApp'
 }
 
 dependencies {

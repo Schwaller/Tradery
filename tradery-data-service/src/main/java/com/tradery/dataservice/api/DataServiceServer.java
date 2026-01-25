@@ -1,6 +1,6 @@
 package com.tradery.dataservice.api;
 
-import com.tradery.data.sqlite.SqliteDataStore;
+import com.tradery.dataservice.data.sqlite.SqliteDataStore;
 import com.tradery.dataservice.ConsumerRegistry;
 import com.tradery.dataservice.config.DataServiceConfig;
 import com.tradery.dataservice.live.LiveCandleManager;
