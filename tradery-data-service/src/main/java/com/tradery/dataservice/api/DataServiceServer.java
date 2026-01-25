@@ -1,5 +1,6 @@
 package com.tradery.dataservice.api;
 
+import com.tradery.data.sqlite.SqliteDataStore;
 import com.tradery.dataservice.ConsumerRegistry;
 import com.tradery.dataservice.config.DataServiceConfig;
 import com.tradery.dataservice.page.PageManager;
@@ -28,10 +29,10 @@ public class DataServiceServer {
     private final WebSocketHandler webSocketHandler;
     private Javalin app;
 
-    public DataServiceServer(DataServiceConfig config, ConsumerRegistry consumerRegistry) {
+    public DataServiceServer(DataServiceConfig config, ConsumerRegistry consumerRegistry, SqliteDataStore dataStore) {
         this.config = config;
         this.consumerRegistry = consumerRegistry;
-        this.pageManager = new PageManager(config);
+        this.pageManager = new PageManager(config, dataStore);
         this.objectMapper = createObjectMapper();
         this.webSocketHandler = new WebSocketHandler(pageManager, objectMapper);
     }

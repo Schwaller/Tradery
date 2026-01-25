@@ -1,8 +1,9 @@
 package com.tradery.dataservice.page;
 
+import com.tradery.data.sqlite.SqliteDataStore;
 import com.tradery.dataservice.api.CoverageHandler;
 import com.tradery.dataservice.config.DataServiceConfig;
-import com.tradery.model.Candle;
+import com.tradery.model.*;
 import org.msgpack.jackson.dataformat.MessagePackFactory;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
@@ -10,7 +11,6 @@ import org.slf4j.LoggerFactory;
 
 import java.util.*;
 import java.util.concurrent.*;
-import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Manages data pages - loading, caching, and lifecycle.
@@ -20,14 +20,16 @@ public class PageManager {
     private static final Logger LOG = LoggerFactory.getLogger(PageManager.class);
 
     private final DataServiceConfig config;
+    private final SqliteDataStore dataStore;
     private final ObjectMapper msgpackMapper;
     private final Map<PageKey, Page> pages = new ConcurrentHashMap<>();
     private final List<PageUpdateListener> listeners = new CopyOnWriteArrayList<>();
     private final ExecutorService loadExecutor;
     private final ScheduledExecutorService cleanupExecutor;
 
-    public PageManager(DataServiceConfig config) {
+    public PageManager(DataServiceConfig config, SqliteDataStore dataStore) {
         this.config = config;
+        this.dataStore = dataStore;
         this.msgpackMapper = new ObjectMapper(new MessagePackFactory());
         this.loadExecutor = Executors.newFixedThreadPool(config.getMaxConcurrentDownloads());
         this.cleanupExecutor = Executors.newSingleThreadScheduledExecutor();
@@ -123,42 +125,70 @@ public class PageManager {
      * Get candle data directly (for simple requests).
      */
     public byte[] getCandlesData(String symbol, String timeframe, Long start, Long end) {
-        // For direct access, we query the SQLite database
-        // Implementation will use SqliteDataStore
-        // TODO: Implement direct data access
-        return null;
+        try {
+            List<Candle> candles = dataStore.getCandles(symbol, timeframe, start, end);
+            LOG.debug("getCandlesData: {} {} returned {} candles", symbol, timeframe, candles.size());
+            return msgpackMapper.writeValueAsBytes(candles);
+        } catch (Exception e) {
+            LOG.error("Failed to get candles for {} {}", symbol, timeframe, e);
+            return null;
+        }
     }
 
     /**
      * Get aggregated trades data directly.
      */
     public byte[] getAggTradesData(String symbol, Long start, Long end) {
-        // TODO: Implement direct data access
-        return null;
+        try {
+            List<AggTrade> trades = dataStore.getAggTrades(symbol, start, end);
+            LOG.debug("getAggTradesData: {} returned {} trades", symbol, trades.size());
+            return msgpackMapper.writeValueAsBytes(trades);
+        } catch (Exception e) {
+            LOG.error("Failed to get aggTrades for {}", symbol, e);
+            return null;
+        }
     }
 
     /**
      * Get funding rate data directly.
      */
     public byte[] getFundingData(String symbol, Long start, Long end) {
-        // TODO: Implement direct data access
-        return null;
+        try {
+            List<FundingRate> rates = dataStore.getFundingRates(symbol, start, end);
+            LOG.debug("getFundingData: {} returned {} rates", symbol, rates.size());
+            return msgpackMapper.writeValueAsBytes(rates);
+        } catch (Exception e) {
+            LOG.error("Failed to get funding for {}", symbol, e);
+            return null;
+        }
     }
 
     /**
      * Get open interest data directly.
      */
     public byte[] getOpenInterestData(String symbol, Long start, Long end) {
-        // TODO: Implement direct data access
-        return null;
+        try {
+            List<OpenInterest> oi = dataStore.getOpenInterest(symbol, start, end);
+            LOG.debug("getOpenInterestData: {} returned {} records", symbol, oi.size());
+            return msgpackMapper.writeValueAsBytes(oi);
+        } catch (Exception e) {
+            LOG.error("Failed to get OI for {}", symbol, e);
+            return null;
+        }
     }
 
     /**
      * Get premium index data directly.
      */
     public byte[] getPremiumData(String symbol, String timeframe, Long start, Long end) {
-        // TODO: Implement direct data access
-        return null;
+        try {
+            List<PremiumIndex> premium = dataStore.getPremiumIndex(symbol, timeframe, start, end);
+            LOG.debug("getPremiumData: {} {} returned {} records", symbol, timeframe, premium.size());
+            return msgpackMapper.writeValueAsBytes(premium);
+        } catch (Exception e) {
+            LOG.error("Failed to get premium for {} {}", symbol, timeframe, e);
+            return null;
+        }
     }
 
     /**
@@ -236,10 +266,10 @@ public class PageManager {
      * Load candle data for a page.
      */
     private byte[] loadCandles(PageKey key, Page page) throws Exception {
-        // TODO: Implement candle loading from SQLite/Binance
-        // For now, return empty data
-        List<Candle> candles = List.of();
+        List<Candle> candles = dataStore.getCandles(
+            key.symbol(), key.timeframe(), key.startTime(), key.endTime());
         page.setRecordCount(candles.size());
+        LOG.debug("loadCandles: {} {} loaded {} candles", key.symbol(), key.timeframe(), candles.size());
         return msgpackMapper.writeValueAsBytes(candles);
     }
 
@@ -247,32 +277,44 @@ public class PageManager {
      * Load aggregated trades data for a page.
      */
     private byte[] loadAggTrades(PageKey key, Page page) throws Exception {
-        // TODO: Implement aggTrades loading
-        return msgpackMapper.writeValueAsBytes(List.of());
+        List<AggTrade> trades = dataStore.getAggTrades(
+            key.symbol(), key.startTime(), key.endTime());
+        page.setRecordCount(trades.size());
+        LOG.debug("loadAggTrades: {} loaded {} trades", key.symbol(), trades.size());
+        return msgpackMapper.writeValueAsBytes(trades);
     }
 
     /**
      * Load funding rate data for a page.
      */
     private byte[] loadFunding(PageKey key, Page page) throws Exception {
-        // TODO: Implement funding loading
-        return msgpackMapper.writeValueAsBytes(List.of());
+        List<FundingRate> rates = dataStore.getFundingRates(
+            key.symbol(), key.startTime(), key.endTime());
+        page.setRecordCount(rates.size());
+        LOG.debug("loadFunding: {} loaded {} rates", key.symbol(), rates.size());
+        return msgpackMapper.writeValueAsBytes(rates);
     }
 
     /**
      * Load open interest data for a page.
      */
     private byte[] loadOpenInterest(PageKey key, Page page) throws Exception {
-        // TODO: Implement OI loading
-        return msgpackMapper.writeValueAsBytes(List.of());
+        List<OpenInterest> oi = dataStore.getOpenInterest(
+            key.symbol(), key.startTime(), key.endTime());
+        page.setRecordCount(oi.size());
+        LOG.debug("loadOpenInterest: {} loaded {} records", key.symbol(), oi.size());
+        return msgpackMapper.writeValueAsBytes(oi);
     }
 
     /**
      * Load premium index data for a page.
      */
     private byte[] loadPremium(PageKey key, Page page) throws Exception {
-        // TODO: Implement premium loading
-        return msgpackMapper.writeValueAsBytes(List.of());
+        List<PremiumIndex> premium = dataStore.getPremiumIndex(
+            key.symbol(), key.timeframe(), key.startTime(), key.endTime());
+        page.setRecordCount(premium.size());
+        LOG.debug("loadPremium: {} {} loaded {} records", key.symbol(), key.timeframe(), premium.size());
+        return msgpackMapper.writeValueAsBytes(premium);
     }
 
     /**

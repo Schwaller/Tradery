@@ -1,5 +1,6 @@
 package com.tradery.dataservice;
 
+import com.tradery.data.sqlite.SqliteDataStore;
 import com.tradery.dataservice.api.DataServiceServer;
 import com.tradery.dataservice.config.DataServiceConfig;
 import org.slf4j.Logger;
@@ -22,6 +23,7 @@ public class DataServiceApp {
     private static final CountDownLatch shutdownLatch = new CountDownLatch(1);
     private static DataServiceServer server;
     private static ConsumerRegistry consumerRegistry;
+    private static SqliteDataStore dataStore;
 
     public static void main(String[] args) {
         LOG.info("Starting Tradery Data Service...");
@@ -29,13 +31,17 @@ public class DataServiceApp {
         try {
             DataServiceConfig config = DataServiceConfig.load();
 
+            // Create data store for SQLite access
+            dataStore = new SqliteDataStore();
+            LOG.info("SqliteDataStore initialized");
+
             // Create consumer registry with shutdown callback
             consumerRegistry = new ConsumerRegistry(() -> {
                 LOG.info("Initiating idle shutdown...");
                 shutdownLatch.countDown();
             });
 
-            server = new DataServiceServer(config, consumerRegistry);
+            server = new DataServiceServer(config, consumerRegistry, dataStore);
 
             // Write port file for service discovery
             writePortFile(config.getPort());
