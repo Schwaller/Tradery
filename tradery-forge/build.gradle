@@ -1,5 +1,5 @@
-// tradery-app: Main Strategy Designer application (Swing UI)
-// Uses tradery-core for indicators and tradery-data-client for data access
+// tradery-forge: Strategy creation, research & backtesting application
+// Uses tradery-core for indicators, tradery-engine for backtesting, tradery-data-client for data access
 
 plugins {
     id 'java'
