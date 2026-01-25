@@ -1,15 +1,16 @@
 package com.tradery.data.page;
 
+import com.tradery.ApplicationContext;
 import com.tradery.data.BinanceClient;
 import com.tradery.data.BinanceVisionClient;
 import com.tradery.data.DataType;
 import com.tradery.data.sqlite.SqliteDataStore;
+import com.tradery.dataclient.DataServiceClient;
 import com.tradery.model.Candle;
 
 import java.time.Instant;
 import java.time.YearMonth;
 import java.time.ZoneOffset;
-import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -70,14 +71,23 @@ public class CandlePageManager extends DataPageManager<Candle> {
     }
 
     /**
-     * Load candles from SQLite cache.
+     * Load candles from cache via data service.
      */
     private List<Candle> loadFromCache(String symbol, String timeframe,
                                         long startTime, long endTime) {
         try {
-            return dataStore.getCandles(symbol, timeframe, startTime, endTime);
+            ApplicationContext ctx = ApplicationContext.getInstance();
+            if (ctx != null && ctx.isDataServiceAvailable()) {
+                DataServiceClient client = ctx.getDataServiceClient();
+                List<Candle> candles = client.getCandles(symbol, timeframe, startTime, endTime);
+                log.debug("Loaded {} candles from data service for {} {}",
+                    candles.size(), symbol, timeframe);
+                return candles;
+            }
+            log.warn("Data service not available");
+            return Collections.emptyList();
         } catch (Exception e) {
-            log.debug("Cache read failed: {}", e.getMessage());
+            log.error("Failed to load candles from data service: {}", e.getMessage());
             return Collections.emptyList();
         }
     }

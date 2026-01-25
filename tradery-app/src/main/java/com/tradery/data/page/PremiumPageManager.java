@@ -1,7 +1,9 @@
 package com.tradery.data.page;
 
+import com.tradery.ApplicationContext;
 import com.tradery.data.DataType;
 import com.tradery.data.PremiumIndexStore;
+import com.tradery.dataclient.DataServiceClient;
 import com.tradery.model.PremiumIndex;
 
 import java.util.Collections;
@@ -71,18 +73,23 @@ public class PremiumPageManager extends DataPageManager<PremiumIndex> {
     }
 
     /**
-     * Load only from cache (no API fetch).
+     * Load from cache via data service.
      */
     public List<PremiumIndex> loadFromCacheOnly(String symbol, String timeframe,
                                                  long startTime, long endTime) {
-        if (premiumIndexStore == null) {
-            return Collections.emptyList();
-        }
         try {
-            return premiumIndexStore.getPremiumIndexCacheOnly(
-                symbol, timeframe, startTime, endTime);
+            ApplicationContext ctx = ApplicationContext.getInstance();
+            if (ctx != null && ctx.isDataServiceAvailable()) {
+                DataServiceClient client = ctx.getDataServiceClient();
+                List<PremiumIndex> premium = client.getPremiumIndex(symbol, timeframe, startTime, endTime);
+                log.debug("Loaded {} premium index records from data service for {} {}",
+                    premium.size(), symbol, timeframe);
+                return premium;
+            }
+            log.warn("Data service not available");
+            return Collections.emptyList();
         } catch (Exception e) {
-            log.debug("Cache read failed: {}", e.getMessage());
+            log.error("Failed to load premium index from data service: {}", e.getMessage());
             return Collections.emptyList();
         }
     }

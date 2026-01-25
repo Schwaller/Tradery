@@ -11,6 +11,8 @@ import com.tradery.data.PreloadScheduler;
 import com.tradery.data.PremiumIndexStore;
 import com.tradery.data.sqlite.SqliteDataStore;
 import com.tradery.data.page.*;
+import com.tradery.dataclient.DataServiceClient;
+import com.tradery.dataclient.DataServiceLauncher;
 import com.tradery.indicators.registry.IndicatorRegistryInitializer;
 import com.tradery.io.HoopPatternStore;
 import com.tradery.io.PhaseStore;
@@ -62,6 +64,9 @@ public class ApplicationContext {
     private final PremiumPageManager premiumPageManager;
     private final IndicatorPageManager indicatorPageManager;
 
+    // Data service client (for remote data access)
+    private DataServiceClient dataServiceClient;
+
     private ApplicationContext() {
         // Initialize indicator registry (must be done before IndicatorPageManager)
         IndicatorRegistryInitializer.initialize();
@@ -110,6 +115,28 @@ public class ApplicationContext {
             writePortFile();
         } catch (IOException e) {
             System.err.println("Failed to start API server: " + e.getMessage());
+        }
+
+        // Initialize data service client if service is running
+        initDataServiceClient();
+    }
+
+    /**
+     * Initialize the data service client if the service is available.
+     */
+    private void initDataServiceClient() {
+        DataServiceLauncher launcher = TraderyApp.getDataServiceLauncher();
+        if (launcher != null && launcher.isRegistered()) {
+            int port = launcher.getPort();
+            this.dataServiceClient = new DataServiceClient("localhost", port);
+            if (dataServiceClient.isHealthy()) {
+                log.info("DataServiceClient connected to port {}", port);
+            } else {
+                log.warn("DataServiceClient created but service not healthy");
+                this.dataServiceClient = null;
+            }
+        } else {
+            log.info("Data service not available, using local data access only");
         }
     }
 
@@ -205,6 +232,21 @@ public class ApplicationContext {
 
     public IndicatorPageManager getIndicatorPageManager() {
         return indicatorPageManager;
+    }
+
+    /**
+     * Get the data service client for remote data access.
+     * @return the client, or null if service is not available
+     */
+    public DataServiceClient getDataServiceClient() {
+        return dataServiceClient;
+    }
+
+    /**
+     * Check if the data service is available.
+     */
+    public boolean isDataServiceAvailable() {
+        return dataServiceClient != null && dataServiceClient.isHealthy();
     }
 
     /**

@@ -1,7 +1,9 @@
 package com.tradery.data.page;
 
+import com.tradery.ApplicationContext;
 import com.tradery.data.AggTradesStore;
 import com.tradery.data.DataType;
+import com.tradery.dataclient.DataServiceClient;
 import com.tradery.model.AggTrade;
 
 import java.util.ArrayList;
@@ -92,16 +94,21 @@ public class AggTradesPageManager extends DataPageManager<AggTrade> {
     }
 
     /**
-     * Load only from cache (no API fetch).
+     * Load from cache via data service.
      */
     public List<AggTrade> loadFromCacheOnly(String symbol, long startTime, long endTime) {
-        if (aggTradesStore == null) {
-            return Collections.emptyList();
-        }
         try {
-            return aggTradesStore.getAggTradesCacheOnly(symbol, startTime, endTime);
+            ApplicationContext ctx = ApplicationContext.getInstance();
+            if (ctx != null && ctx.isDataServiceAvailable()) {
+                DataServiceClient client = ctx.getDataServiceClient();
+                List<AggTrade> trades = client.getAggTrades(symbol, startTime, endTime);
+                log.debug("Loaded {} aggTrades from data service for {}", trades.size(), symbol);
+                return trades;
+            }
+            log.warn("Data service not available");
+            return Collections.emptyList();
         } catch (Exception e) {
-            log.debug("Cache read failed: {}", e.getMessage());
+            log.error("Failed to load aggTrades from data service: {}", e.getMessage());
             return Collections.emptyList();
         }
     }

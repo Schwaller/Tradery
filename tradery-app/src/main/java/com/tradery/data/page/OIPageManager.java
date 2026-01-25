@@ -1,7 +1,9 @@
 package com.tradery.data.page;
 
+import com.tradery.ApplicationContext;
 import com.tradery.data.DataType;
 import com.tradery.data.OpenInterestStore;
+import com.tradery.dataclient.DataServiceClient;
 import com.tradery.model.OpenInterest;
 
 import java.util.Collections;
@@ -54,16 +56,21 @@ public class OIPageManager extends DataPageManager<OpenInterest> {
     }
 
     /**
-     * Load only from cache (no API fetch).
+     * Load from cache via data service.
      */
     public List<OpenInterest> loadFromCacheOnly(String symbol, long startTime, long endTime) {
-        if (openInterestStore == null) {
-            return Collections.emptyList();
-        }
         try {
-            return openInterestStore.getOpenInterestCacheOnly(symbol, startTime, endTime);
+            ApplicationContext ctx = ApplicationContext.getInstance();
+            if (ctx != null && ctx.isDataServiceAvailable()) {
+                DataServiceClient client = ctx.getDataServiceClient();
+                List<OpenInterest> oi = client.getOpenInterest(symbol, startTime, endTime);
+                log.debug("Loaded {} OI records from data service for {}", oi.size(), symbol);
+                return oi;
+            }
+            log.warn("Data service not available");
+            return Collections.emptyList();
         } catch (Exception e) {
-            log.debug("Cache read failed: {}", e.getMessage());
+            log.error("Failed to load OI from data service: {}", e.getMessage());
             return Collections.emptyList();
         }
     }

@@ -1,7 +1,9 @@
 package com.tradery.data.page;
 
+import com.tradery.ApplicationContext;
 import com.tradery.data.DataType;
 import com.tradery.data.FundingRateStore;
+import com.tradery.dataclient.DataServiceClient;
 import com.tradery.model.FundingRate;
 
 import java.util.Collections;
@@ -54,16 +56,21 @@ public class FundingPageManager extends DataPageManager<FundingRate> {
     }
 
     /**
-     * Load only from cache (no API fetch).
+     * Load from cache via data service.
      */
     public List<FundingRate> loadFromCacheOnly(String symbol, long startTime, long endTime) {
-        if (fundingRateStore == null) {
-            return Collections.emptyList();
-        }
         try {
-            return fundingRateStore.getFundingRatesCacheOnly(symbol, startTime, endTime);
+            ApplicationContext ctx = ApplicationContext.getInstance();
+            if (ctx != null && ctx.isDataServiceAvailable()) {
+                DataServiceClient client = ctx.getDataServiceClient();
+                List<FundingRate> rates = client.getFundingRates(symbol, startTime, endTime);
+                log.debug("Loaded {} funding rates from data service for {}", rates.size(), symbol);
+                return rates;
+            }
+            log.warn("Data service not available");
+            return Collections.emptyList();
         } catch (Exception e) {
-            log.debug("Cache read failed: {}", e.getMessage());
+            log.error("Failed to load funding rates from data service: {}", e.getMessage());
             return Collections.emptyList();
         }
     }
