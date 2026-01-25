@@ -6,20 +6,28 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.sun.net.httpserver.HttpExchange;
 import com.tradery.data.BinanceClient;
 import com.tradery.data.sqlite.SqliteDataStore;
+import com.tradery.engine.BacktestContext;
 import com.tradery.engine.BacktestEngine;
+import com.tradery.engine.HoopPatternEvaluator;
 import com.tradery.engine.PhaseAnalyzer;
+import com.tradery.engine.PhaseEvaluator;
+import com.tradery.io.HoopPatternStore;
 import com.tradery.io.PhaseStore;
 import com.tradery.io.ResultStore;
 import com.tradery.io.StrategyStore;
 import com.tradery.model.*;
 
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Handles strategy-related API endpoints:
@@ -456,24 +464,72 @@ public class StrategyHandler extends ApiHandlerBase {
                 return;
             }
 
-            // Load required phases
-            List<Phase> requiredPhases = new ArrayList<>();
-            for (String phaseId : strategy.getRequiredPhaseIds()) {
+            // Load all phases referenced by strategy
+            List<Phase> allPhases = new ArrayList<>();
+            Set<String> allPhaseIds = new HashSet<>();
+            allPhaseIds.addAll(strategy.getRequiredPhaseIds());
+            allPhaseIds.addAll(strategy.getExcludedPhaseIds());
+            for (String phaseId : allPhaseIds) {
                 Phase phase = phaseStore.load(phaseId);
                 if (phase != null) {
-                    requiredPhases.add(phase);
-                }
-            }
-            for (String phaseId : strategy.getExcludedPhaseIds()) {
-                Phase phase = phaseStore.load(phaseId);
-                if (phase != null) {
-                    requiredPhases.add(phase);
+                    allPhases.add(phase);
                 }
             }
 
-            // Run backtest (blocking)
-            BacktestEngine engine = new BacktestEngine(dataStore);
-            BacktestResult result = engine.run(strategy, config, candles, requiredPhases, null);
+            // Load phase candles for each unique symbol:timeframe
+            Map<String, List<Candle>> phaseCandles = new HashMap<>();
+            Set<String> phaseKeys = new HashSet<>();
+            for (Phase phase : allPhases) {
+                phaseKeys.add(phase.getSymbol() + ":" + phase.getTimeframe());
+            }
+            for (String key : phaseKeys) {
+                String[] parts = key.split(":");
+                String phaseSymbol = parts[0];
+                String phaseTf = parts[1];
+                // Add warmup period (200 bars)
+                long warmupMs = getIntervalMs(phaseTf) * 200;
+                long phaseStart = config.startDate() - warmupMs;
+                fillGapIfNeeded(phaseSymbol, phaseTf, phaseStart, config.endDate());
+                List<Candle> pCandles = dataStore.getCandles(phaseSymbol, phaseTf, phaseStart, config.endDate());
+                phaseCandles.put(key, pCandles);
+            }
+
+            // Pre-compute phase states using stateless evaluator
+            Map<String, boolean[]> phaseStates = new HashMap<>();
+            if (!allPhases.isEmpty()) {
+                PhaseEvaluator phaseEvaluator = new PhaseEvaluator();
+                phaseStates = phaseEvaluator.evaluatePhases(allPhases, candles, config.resolution(), phaseCandles);
+            }
+
+            // Pre-compute hoop pattern states if strategy uses any
+            Map<String, boolean[]> hoopPatternStates = new HashMap<>();
+            List<HoopPattern> hoopPatterns = new ArrayList<>();
+            HoopPatternSettings hoopSettings = strategy.getHoopPatternSettings();
+            if (hoopSettings.hasAnyPatterns()) {
+                Set<String> neededPatternIds = new HashSet<>();
+                neededPatternIds.addAll(hoopSettings.getRequiredEntryPatternIds());
+                neededPatternIds.addAll(hoopSettings.getExcludedEntryPatternIds());
+                neededPatternIds.addAll(hoopSettings.getRequiredExitPatternIds());
+                neededPatternIds.addAll(hoopSettings.getExcludedExitPatternIds());
+
+                File hoopsDir = new File(System.getProperty("user.home"), ".tradery/hoops");
+                HoopPatternStore hoopStore = new HoopPatternStore(hoopsDir);
+                hoopPatterns = hoopStore.loadByIds(neededPatternIds);
+
+                HoopPatternEvaluator hoopEvaluator = new HoopPatternEvaluator();
+                hoopPatternStates = hoopEvaluator.evaluatePatterns(hoopPatterns, candles, config.resolution(), phaseCandles);
+            }
+
+            // Build BacktestContext with all pre-computed data
+            BacktestContext context = BacktestContext.builder(candles)
+                .phaseStates(phaseStates)
+                .hoopPatternStates(hoopPatternStates)
+                .hoopPatterns(hoopPatterns)
+                .build();
+
+            // Run backtest using clean context-based API
+            BacktestEngine engine = new BacktestEngine();
+            BacktestResult result = engine.run(strategy, config, context, null);
 
             // Save results
             ResultStore resultStore = new ResultStore(strategyId);

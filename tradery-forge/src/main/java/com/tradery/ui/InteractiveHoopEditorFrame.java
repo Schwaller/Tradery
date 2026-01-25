@@ -467,10 +467,7 @@ public class InteractiveHoopEditorFrame extends JFrame implements DataPageListen
         SwingWorker<List<HoopMatchResult>, Void> worker = new SwingWorker<>() {
             @Override
             protected List<HoopMatchResult> doInBackground() throws Exception {
-                // HoopPatternEvaluator.findPatternCompletions doesn't need the dataStore
-                // but the constructor requires it - use ApplicationContext temporarily
-                HoopPatternEvaluator evaluator = new HoopPatternEvaluator(
-                    ApplicationContext.getInstance().getSqliteDataStore());
+                HoopPatternEvaluator evaluator = new HoopPatternEvaluator();
                 return evaluator.findPatternCompletions(pattern, candles);
             }
 

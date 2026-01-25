@@ -5,6 +5,7 @@ import com.tradery.io.PhaseStore;
 import com.tradery.model.*;
 
 import java.io.IOException;
+import java.time.Duration;
 import java.util.*;
 import java.util.function.Consumer;
 
@@ -56,9 +57,17 @@ public class PhaseAnalyzer {
             return Collections.emptyList();
         }
 
-        List<PhaseAnalysisResult> results = new ArrayList<>();
-        PhaseEvaluator evaluator = new PhaseEvaluator(dataStore);
+        // Determine time range from candles
+        long startTime = candles.isEmpty() ? 0 : candles.get(0).timestamp();
+        long endTime = candles.isEmpty() ? 0 : candles.get(candles.size() - 1).timestamp();
 
+        // Pre-fetch phase candles for all unique symbol:timeframe combinations
+        Map<String, List<Candle>> phaseCandles = fetchPhaseCandles(allPhases, startTime, endTime);
+
+        // Create stateless evaluator
+        PhaseEvaluator evaluator = new PhaseEvaluator();
+
+        List<PhaseAnalysisResult> results = new ArrayList<>();
         int total = allPhases.size();
         int current = 0;
 
@@ -70,7 +79,7 @@ public class PhaseAnalyzer {
             }
 
             try {
-                PhaseAnalysisResult result = analyzePhase(phase, completedTrades, candles, timeframe, evaluator);
+                PhaseAnalysisResult result = analyzePhase(phase, completedTrades, candles, timeframe, evaluator, phaseCandles);
                 results.add(result);
             } catch (Exception e) {
                 System.err.println("Failed to analyze phase " + phase.getId() + ": " + e.getMessage());
@@ -83,6 +92,63 @@ public class PhaseAnalyzer {
     }
 
     /**
+     * Fetch candles for all phases from the dataStore.
+     */
+    private Map<String, List<Candle>> fetchPhaseCandles(List<Phase> phases, long startTime, long endTime) {
+        Map<String, List<Candle>> phaseCandles = new HashMap<>();
+
+        // Collect unique symbol:timeframe combinations
+        Set<String> keys = new HashSet<>();
+        for (Phase phase : phases) {
+            keys.add(phase.getSymbol() + ":" + phase.getTimeframe());
+        }
+
+        for (String key : keys) {
+            String[] parts = key.split(":");
+            String symbol = parts[0];
+            String phaseTf = parts[1];
+
+            // Add warmup period (200 bars)
+            long warmupMs = getIntervalMs(phaseTf) * 200;
+            long phaseStart = startTime - warmupMs;
+
+            try {
+                List<Candle> candles = dataStore.getCandles(symbol, phaseTf, phaseStart, endTime);
+                phaseCandles.put(key, candles);
+            } catch (Exception e) {
+                System.err.println("Failed to fetch candles for " + key + ": " + e.getMessage());
+                phaseCandles.put(key, Collections.emptyList());
+            }
+        }
+
+        return phaseCandles;
+    }
+
+    /**
+     * Get interval in milliseconds for a timeframe.
+     */
+    private long getIntervalMs(String interval) {
+        return switch (interval) {
+            case "1m" -> Duration.ofMinutes(1).toMillis();
+            case "3m" -> Duration.ofMinutes(3).toMillis();
+            case "5m" -> Duration.ofMinutes(5).toMillis();
+            case "15m" -> Duration.ofMinutes(15).toMillis();
+            case "30m" -> Duration.ofMinutes(30).toMillis();
+            case "1h" -> Duration.ofHours(1).toMillis();
+            case "2h" -> Duration.ofHours(2).toMillis();
+            case "4h" -> Duration.ofHours(4).toMillis();
+            case "6h" -> Duration.ofHours(6).toMillis();
+            case "8h" -> Duration.ofHours(8).toMillis();
+            case "12h" -> Duration.ofHours(12).toMillis();
+            case "1d" -> Duration.ofDays(1).toMillis();
+            case "3d" -> Duration.ofDays(3).toMillis();
+            case "1w" -> Duration.ofDays(7).toMillis();
+            case "1M" -> Duration.ofDays(30).toMillis();
+            default -> Duration.ofHours(1).toMillis();
+        };
+    }
+
+    /**
      * Analyze a single phase against the trades.
      */
     private PhaseAnalysisResult analyzePhase(
@@ -90,14 +156,16 @@ public class PhaseAnalyzer {
             List<Trade> trades,
             List<Candle> candles,
             String timeframe,
-            PhaseEvaluator evaluator
+            PhaseEvaluator evaluator,
+            Map<String, List<Candle>> phaseCandles
     ) throws IOException {
 
         // Evaluate this phase to get state per bar
         Map<String, boolean[]> phaseStates = evaluator.evaluatePhases(
                 Collections.singletonList(phase),
                 candles,
-                timeframe
+                timeframe,
+                phaseCandles
         );
 
         boolean[] state = phaseStates.get(phase.getId());

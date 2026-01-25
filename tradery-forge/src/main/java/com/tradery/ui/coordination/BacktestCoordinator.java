@@ -14,8 +14,12 @@ import com.tradery.data.page.OIPageManager;
 import com.tradery.data.page.PremiumPageManager;
 import com.tradery.data.sqlite.SqliteDataStore;
 import com.tradery.model.*;
+import com.tradery.engine.BacktestContext;
 import com.tradery.engine.BacktestEngine;
+import com.tradery.engine.HoopPatternEvaluator;
+import com.tradery.engine.PhaseEvaluator;
 import com.tradery.indicators.IndicatorEngine;
+import com.tradery.io.HoopPatternStore;
 import com.tradery.io.PhaseStore;
 import com.tradery.io.ResultStore;
 
@@ -604,16 +608,55 @@ public class BacktestCoordinator {
                 currentOpenInterest = oi;
                 currentPremiumIndex = premium;
 
-                // Set data in engine
-                backtestEngine.setAggTrades(aggTrades);
-                backtestEngine.setFundingRates(funding);
-                backtestEngine.setOpenInterest(oi);
-                backtestEngine.setPremiumIndex(premium);
+                // Pre-compute phase states using engine's stateless evaluator
+                Map<String, boolean[]> phaseStates = new HashMap<>();
+                if (currentPhases != null && !currentPhases.isEmpty()) {
+                    PhaseEvaluator phaseEvaluator = new PhaseEvaluator();
+                    phaseStates = phaseEvaluator.evaluatePhases(
+                        currentPhases, candles, currentConfig.resolution(),
+                        requirements.getPhaseCandles()
+                    );
+                }
 
-                // Run backtest with pre-fetched phase candles
+                // Pre-compute hoop pattern states if strategy uses any
+                Map<String, boolean[]> hoopPatternStates = new HashMap<>();
+                List<HoopPattern> hoopPatterns = new ArrayList<>();
+                HoopPatternSettings hoopSettings = currentStrategy.getHoopPatternSettings();
+                if (hoopSettings.hasAnyPatterns()) {
+                    // Collect all needed pattern IDs
+                    Set<String> neededPatternIds = new HashSet<>();
+                    neededPatternIds.addAll(hoopSettings.getRequiredEntryPatternIds());
+                    neededPatternIds.addAll(hoopSettings.getExcludedEntryPatternIds());
+                    neededPatternIds.addAll(hoopSettings.getRequiredExitPatternIds());
+                    neededPatternIds.addAll(hoopSettings.getExcludedExitPatternIds());
+
+                    // Load patterns from store
+                    java.io.File hoopsDir = new java.io.File(System.getProperty("user.home"), ".tradery/hoops");
+                    HoopPatternStore hoopStore = new HoopPatternStore(hoopsDir);
+                    hoopPatterns = hoopStore.loadByIds(neededPatternIds);
+
+                    // Pre-compute pattern states
+                    HoopPatternEvaluator hoopEvaluator = new HoopPatternEvaluator();
+                    hoopPatternStates = hoopEvaluator.evaluatePatterns(
+                        hoopPatterns, candles, currentConfig.resolution(),
+                        requirements.getPhaseCandles()  // Reuse same candle map for patterns
+                    );
+                }
+
+                // Build BacktestContext with all pre-computed data
+                BacktestContext context = BacktestContext.builder(candles)
+                    .phaseStates(phaseStates)
+                    .hoopPatternStates(hoopPatternStates)
+                    .hoopPatterns(hoopPatterns)
+                    .aggTrades(aggTrades)
+                    .fundingRates(funding)
+                    .openInterest(oi)
+                    .premiumIndex(premium)
+                    .build();
+
+                // Run backtest using engine's clean context-based API
                 BacktestResult result = backtestEngine.run(
-                    currentStrategy, currentConfig, candles, currentPhases,
-                    requirements.getPhaseCandles(),
+                    currentStrategy, currentConfig, context,
                     progress -> SwingUtilities.invokeLater(() ->
                         reportProgress(progress.percentage(), progress.message())));
 

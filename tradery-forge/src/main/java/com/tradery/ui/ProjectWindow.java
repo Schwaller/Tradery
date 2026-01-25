@@ -103,7 +103,7 @@ public class ProjectWindow extends JFrame {
         // Initialize coordinators
         ResultStore resultStore = new ResultStore(strategy.getId());
         SqliteDataStore sqliteDataStore = ApplicationContext.getInstance().getSqliteDataStore();
-        BacktestEngine backtestEngine = new BacktestEngine(sqliteDataStore);
+        BacktestEngine backtestEngine = new BacktestEngine();
         com.tradery.data.FundingRateStore fundingRateStore = new com.tradery.data.FundingRateStore();
         com.tradery.data.OpenInterestStore openInterestStore = new com.tradery.data.OpenInterestStore();
         com.tradery.data.PremiumIndexStore premiumIndexStore = new com.tradery.data.PremiumIndexStore();
