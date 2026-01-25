@@ -486,6 +486,92 @@ Simple but useful for marking known significant levels.
 
 ---
 
+o## ICT / Smart Money Concept Levels
+
+Based on docs/ICT_CONCEPTS.md, these additional level types capture institutional trading patterns:
+
+### 10. Fair Value Gap (FVG) Levels
+Imbalance zones where price moved too fast (3-candle gap pattern).
+
+```yaml
+id: bullish-fvg-zones
+type: fvg
+timeframe: 1h                 # REQUIRED
+direction: bullish            # bullish | bearish | both
+minGapPercent: 0.3            # Minimum gap size as % of price
+requireImpulse: true          # Middle candle > 1.5x ATR
+lookback: 100                 # How far back to track FVGs
+showFilled: false             # Only show open (unfilled) FVGs
+proximity: 0.1%               # Level active when price enters FVG zone
+```
+
+**Use case:** Enter when price retraces into unfilled FVG.
+
+### 11. Order Block Levels
+Last opposing candle before significant move (institutional entry zones).
+
+```yaml
+id: bullish-order-blocks
+type: order_block
+timeframe: 4h                 # REQUIRED
+direction: bullish            # bullish | bearish | both
+minBOSPercent: 1.5            # Minimum move size to qualify as BOS
+lookback: 200
+showMitigated: false          # Only show unmitigated OBs
+proximity: 0%                 # Level active when price enters OB range
+```
+
+**Use case:** Enter when price retraces to unmitigated order block.
+
+### 12. Liquidity Pool Levels
+Clusters of stop-losses (swing highs/lows, equal highs/lows).
+
+```yaml
+id: equal-highs-liquidity
+type: liquidity
+timeframe: 1h                 # REQUIRED
+liquidityType: equal_highs    # swing_high | swing_low | equal_highs | equal_lows
+swingLookback: 10
+equalTolerance: 0.2%          # Highs within 0.2% are "equal"
+minCount: 2                   # Need 2+ touches to form EQH/EQL
+proximity: 0.3%
+```
+
+**Use case:** Expect sweeps before reversals; don't place stops at obvious pools.
+
+### 13. Structure Break Levels
+Prices where BOS (Break of Structure) occurred.
+
+```yaml
+id: recent-bos-levels
+type: structure_break
+timeframe: 1h                 # REQUIRED
+lookback: 50
+bosType: both                 # bullish | bearish | both
+minSwingDominance: 10         # Swing must have held 10+ bars
+proximity: 0.5%               # Level active when near BOS price
+```
+
+**Use case:** BOS levels often act as support/resistance on retest.
+
+---
+
+## Zones vs Events: Important Distinction
+
+**Levels = Persistent Zones** (price ranges that exist over time)
+- FVG zones, Order Blocks, Liquidity pools, Fib zones
+- Active when price is IN the zone
+- Stored as minPrice/maxPrice bounds
+
+**DSL Functions = Point-in-Time Events** (things that happen on a specific bar)
+- Liquidity sweep, BOS, CHoCH, FVG formation
+- Return 1/0 for "happened this bar"
+- Used in entry/exit CONDITIONS, not as levels
+
+This distinction is why some ICT concepts are level types and others are DSL functions.
+
+---
+
 ## DSL Extensions Required
 
 ### ATH/ATL Functions
