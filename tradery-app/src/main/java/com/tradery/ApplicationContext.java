@@ -83,12 +83,12 @@ public class ApplicationContext {
         // Initialize Binance Vision client (uses SQLite store)
         this.binanceVisionClient = new BinanceVisionClient(sqliteDataStore);
 
-        // Initialize event-driven page managers
+        // Initialize event-driven page managers (all delegate to data service)
         this.candlePageManager = new CandlePageManager();
-        this.fundingPageManager = new FundingPageManager(fundingRateStore);
-        this.oiPageManager = new OIPageManager(openInterestStore);
-        this.aggTradesPageManager = new AggTradesPageManager(aggTradesStore);
-        this.premiumPageManager = new PremiumPageManager(premiumIndexStore);
+        this.fundingPageManager = new FundingPageManager();
+        this.oiPageManager = new OIPageManager();
+        this.aggTradesPageManager = new AggTradesPageManager();
+        this.premiumPageManager = new PremiumPageManager();
         this.indicatorPageManager = new IndicatorPageManager(
             candlePageManager, fundingPageManager, oiPageManager, aggTradesPageManager, premiumPageManager);
 

@@ -1,7 +1,6 @@
 package com.tradery.data.page;
 
 import com.tradery.ApplicationContext;
-import com.tradery.data.AggTradesStore;
 import com.tradery.data.DataType;
 import com.tradery.dataclient.DataServiceClient;
 import com.tradery.model.AggTrade;
@@ -17,10 +16,10 @@ import java.util.concurrent.atomic.AtomicLong;
  *
  * AggTrades are tick-level trades used for orderflow analysis and sub-minute candles.
  * This data can be very large, so the manager implements LRU eviction.
+ * Delegates all data loading to the Data Service which handles
+ * caching and fetching from Binance.
  */
 public class AggTradesPageManager extends DataPageManager<AggTrade> {
-
-    private final AggTradesStore aggTradesStore;
 
     // Memory management: max records across all pages
     private static final long MAX_RECORDS = 100_000_000; // ~4GB
@@ -28,9 +27,8 @@ public class AggTradesPageManager extends DataPageManager<AggTrade> {
     // Current record count (AtomicLong for thread-safe compound operations)
     private final AtomicLong currentRecordCount = new AtomicLong(0);
 
-    public AggTradesPageManager(AggTradesStore aggTradesStore) {
+    public AggTradesPageManager() {
         super(DataType.AGG_TRADES, 2);
-        this.aggTradesStore = aggTradesStore;
     }
 
     @Override
@@ -46,43 +44,72 @@ public class AggTradesPageManager extends DataPageManager<AggTrade> {
     protected void loadData(DataPage<AggTrade> page) throws Exception {
         assertNotEDT("AggTradesPageManager.loadData");
 
-        if (aggTradesStore == null) {
-            updatePageData(page, Collections.emptyList());
-            return;
-        }
-
         String symbol = page.getSymbol();
         long startTime = page.getStartTime();
         long endTime = page.getEndTime();
 
-        // Check cache first and report initial progress
-        AggTradesStore.SyncStatus status = aggTradesStore.getSyncStatus(symbol, startTime, endTime);
-        int initialProgress = status.hoursTotal() > 0
-            ? (status.hoursComplete() * 100) / status.hoursTotal()
-            : 0;
-        updatePageProgress(page, Math.min(initialProgress, 95));
-        log.info("AggTrades initial: {}/{} hours ({}%)", status.hoursComplete(), status.hoursTotal(), initialProgress);
+        log.info("AggTradesPageManager.loadData: {} requesting from data service", symbol);
 
-        // Set up progress callback before fetching
-        aggTradesStore.setProgressCallback(progress -> {
-            int pct = progress.percentComplete();
-            updatePageProgress(page, Math.max(initialProgress, Math.min(95, pct)));  // Never go below initial
-        });
+        // Request page from data service (handles fetching if needed)
+        ApplicationContext ctx = ApplicationContext.getInstance();
+        if (ctx == null || !ctx.isDataServiceAvailable()) {
+            log.error("Data service not available");
+            updatePageData(page, Collections.emptyList());
+            return;
+        }
+
+        DataServiceClient client = ctx.getDataServiceClient();
 
         try {
-            // AggTradesStore handles caching + API fetch internally (blocking I/O)
+            // Request page - data service will fetch if cache is incomplete
+            var response = client.requestPage(
+                new DataServiceClient.PageRequest("AGG_TRADES", symbol, null, startTime, endTime),
+                "app-" + System.currentTimeMillis(),
+                "AggTradesPageManager"
+            );
+
+            // Poll for completion
+            String pageKey = response.pageKey();
+            int lastProgress = 0;
+
+            while (true) {
+                var status = client.getPageStatus(pageKey);
+                if (status == null) {
+                    log.error("Page status not found: {}", pageKey);
+                    break;
+                }
+
+                // Update progress
+                if (status.progress() > lastProgress) {
+                    lastProgress = status.progress();
+                    updatePageProgress(page, Math.min(lastProgress, 95));
+                }
+
+                // Check if ready
+                if ("READY".equals(status.state())) {
+                    break;
+                } else if ("ERROR".equals(status.state())) {
+                    log.error("Page load error: {}", pageKey);
+                    break;
+                }
+
+                Thread.sleep(100); // Poll interval
+            }
+
+            // Fetch final data
             int oldCount = page.getRecordCount();
-            List<AggTrade> trades = aggTradesStore.getAggTrades(symbol, startTime, endTime);
+            List<AggTrade> trades = client.getAggTrades(symbol, startTime, endTime);
 
             // Track memory (atomic operation)
             long newTotal = currentRecordCount.addAndGet(trades.size() - oldCount);
 
-            log.debug("Loaded {} aggTrades for {} (total in memory: {})",
-                trades.size(), symbol, newTotal);
+            log.info("AggTradesPageManager.loadData: {} got {} trades (total in memory: {})",
+                symbol, trades.size(), newTotal);
             updatePageData(page, trades);
-        } finally {
-            // Clear callback when done
-            aggTradesStore.setProgressCallback(null);
+
+        } catch (Exception e) {
+            log.error("Failed to load aggTrades from data service: {}", e.getMessage());
+            updatePageData(page, Collections.emptyList());
         }
     }
 

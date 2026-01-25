@@ -2,7 +2,6 @@ package com.tradery.data.page;
 
 import com.tradery.ApplicationContext;
 import com.tradery.data.DataType;
-import com.tradery.data.FundingRateStore;
 import com.tradery.dataclient.DataServiceClient;
 import com.tradery.model.FundingRate;
 
@@ -13,46 +12,80 @@ import java.util.List;
  * Page manager for funding rate data.
  *
  * Funding rates don't have a timeframe - they occur every 8 hours.
- * Uses FundingRateStore for both cache and API fetching.
+ * Delegates all data loading to the Data Service which handles
+ * caching and fetching from Binance.
  */
 public class FundingPageManager extends DataPageManager<FundingRate> {
 
-    private final FundingRateStore fundingRateStore;
-
-    public FundingPageManager(FundingRateStore fundingRateStore) {
+    public FundingPageManager() {
         super(DataType.FUNDING, 2);
-        this.fundingRateStore = fundingRateStore;
     }
 
     @Override
     protected void loadData(DataPage<FundingRate> page) throws Exception {
         assertNotEDT("FundingPageManager.loadData");
 
-        if (fundingRateStore == null) {
-            updatePageData(page, Collections.emptyList());
-            return;
-        }
-
         String symbol = page.getSymbol();
         long startTime = page.getStartTime();
         long endTime = page.getEndTime();
 
-        // Check cache first for initial progress
-        List<FundingRate> cached = loadFromCacheOnly(symbol, startTime, endTime);
-        if (!cached.isEmpty()) {
-            // Estimate expected records (8-hour intervals)
-            long expectedRecords = (endTime - startTime) / (8 * 60 * 60 * 1000);
-            int initialProgress = expectedRecords > 0 ? (int) ((cached.size() * 100) / expectedRecords) : 50;
-            updatePageProgress(page, Math.min(initialProgress, 95));
-        } else {
-            updatePageProgress(page, 10);  // Show we're working
+        log.info("FundingPageManager.loadData: {} requesting from data service", symbol);
+
+        // Request page from data service (handles fetching if needed)
+        ApplicationContext ctx = ApplicationContext.getInstance();
+        if (ctx == null || !ctx.isDataServiceAvailable()) {
+            log.error("Data service not available");
+            updatePageData(page, Collections.emptyList());
+            return;
         }
 
-        // FundingRateStore handles caching + API fetch internally
-        List<FundingRate> rates = fundingRateStore.getFundingRates(symbol, startTime, endTime);
+        DataServiceClient client = ctx.getDataServiceClient();
 
-        log.debug("Loaded {} funding rates for {}", rates.size(), symbol);
-        updatePageData(page, rates);
+        try {
+            // Request page - data service will fetch if cache is incomplete
+            var response = client.requestPage(
+                new DataServiceClient.PageRequest("FUNDING", symbol, null, startTime, endTime),
+                "app-" + System.currentTimeMillis(),
+                "FundingPageManager"
+            );
+
+            // Poll for completion
+            String pageKey = response.pageKey();
+            int lastProgress = 0;
+
+            while (true) {
+                var status = client.getPageStatus(pageKey);
+                if (status == null) {
+                    log.error("Page status not found: {}", pageKey);
+                    break;
+                }
+
+                // Update progress
+                if (status.progress() > lastProgress) {
+                    lastProgress = status.progress();
+                    updatePageProgress(page, Math.min(lastProgress, 95));
+                }
+
+                // Check if ready
+                if ("READY".equals(status.state())) {
+                    break;
+                } else if ("ERROR".equals(status.state())) {
+                    log.error("Page load error: {}", pageKey);
+                    break;
+                }
+
+                Thread.sleep(100); // Poll interval
+            }
+
+            // Fetch final data
+            List<FundingRate> rates = client.getFundingRates(symbol, startTime, endTime);
+            log.info("FundingPageManager.loadData: {} got {} rates", symbol, rates.size());
+            updatePageData(page, rates);
+
+        } catch (Exception e) {
+            log.error("Failed to load funding rates from data service: {}", e.getMessage());
+            updatePageData(page, Collections.emptyList());
+        }
     }
 
     /**

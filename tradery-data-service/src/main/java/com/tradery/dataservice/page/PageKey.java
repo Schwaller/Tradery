@@ -56,7 +56,7 @@ public record PageKey(
      * Check if this page key is for aggregated trades data.
      */
     public boolean isAggTrades() {
-        return "AGGTRADES".equals(dataType);
+        return "AGGTRADES".equals(dataType) || "AGG_TRADES".equals(dataType);
     }
 
     /**
@@ -70,13 +70,13 @@ public record PageKey(
      * Check if this page key is for open interest data.
      */
     public boolean isOpenInterest() {
-        return "OI".equals(dataType);
+        return "OI".equals(dataType) || "OPEN_INTEREST".equals(dataType);
     }
 
     /**
      * Check if this page key is for premium index data.
      */
     public boolean isPremium() {
-        return "PREMIUM".equals(dataType);
+        return "PREMIUM".equals(dataType) || "PREMIUM_INDEX".equals(dataType);
     }
 }

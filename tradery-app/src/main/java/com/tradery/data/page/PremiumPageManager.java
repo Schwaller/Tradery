@@ -2,7 +2,6 @@ package com.tradery.data.page;
 
 import com.tradery.ApplicationContext;
 import com.tradery.data.DataType;
-import com.tradery.data.PremiumIndexStore;
 import com.tradery.dataclient.DataServiceClient;
 import com.tradery.model.PremiumIndex;
 
@@ -13,63 +12,81 @@ import java.util.List;
  * Page manager for premium index data (futures vs spot spread).
  *
  * Premium index requires a timeframe to match strategy resolution.
- * Uses PremiumIndexStore for caching and API fetching.
+ * Delegates all data loading to the Data Service which handles
+ * caching and fetching from Binance.
  */
 public class PremiumPageManager extends DataPageManager<PremiumIndex> {
 
-    private final PremiumIndexStore premiumIndexStore;
-
-    public PremiumPageManager(PremiumIndexStore premiumIndexStore) {
+    public PremiumPageManager() {
         super(DataType.PREMIUM_INDEX, 2);
-        this.premiumIndexStore = premiumIndexStore;
     }
 
     @Override
     protected void loadData(DataPage<PremiumIndex> page) throws Exception {
         assertNotEDT("PremiumPageManager.loadData");
 
-        if (premiumIndexStore == null) {
-            updatePageData(page, Collections.emptyList());
-            return;
-        }
-
         String symbol = page.getSymbol();
         String timeframe = page.getTimeframe();
         long startTime = page.getStartTime();
         long endTime = page.getEndTime();
 
-        // Check cache first for initial progress
-        List<PremiumIndex> cached = loadFromCacheOnly(symbol, timeframe, startTime, endTime);
-        if (!cached.isEmpty()) {
-            // Estimate expected records based on timeframe
-            long intervalMs = getIntervalMs(timeframe);
-            long expectedRecords = intervalMs > 0 ? (endTime - startTime) / intervalMs : 1;
-            int initialProgress = expectedRecords > 0 ? (int) ((cached.size() * 100) / expectedRecords) : 50;
-            updatePageProgress(page, Math.min(initialProgress, 95));
-        } else {
-            updatePageProgress(page, 10);  // Show we're working
+        log.info("PremiumPageManager.loadData: {} {} requesting from data service", symbol, timeframe);
+
+        // Request page from data service (handles fetching if needed)
+        ApplicationContext ctx = ApplicationContext.getInstance();
+        if (ctx == null || !ctx.isDataServiceAvailable()) {
+            log.error("Data service not available");
+            updatePageData(page, Collections.emptyList());
+            return;
         }
 
-        // PremiumIndexStore handles caching + API fetch internally
-        List<PremiumIndex> premium = premiumIndexStore.getPremiumIndex(
-            symbol, timeframe, startTime, endTime);
+        DataServiceClient client = ctx.getDataServiceClient();
 
-        log.debug("Loaded {} premium index records for {} {}",
-            premium.size(), symbol, timeframe);
-        updatePageData(page, premium);
-    }
+        try {
+            // Request page - data service will fetch if cache is incomplete
+            var response = client.requestPage(
+                new DataServiceClient.PageRequest("PREMIUM_INDEX", symbol, timeframe, startTime, endTime),
+                "app-" + System.currentTimeMillis(),
+                "PremiumPageManager"
+            );
 
-    private long getIntervalMs(String timeframe) {
-        if (timeframe == null) return 3600000;
-        return switch (timeframe) {
-            case "1m" -> 60000L;
-            case "5m" -> 300000L;
-            case "15m" -> 900000L;
-            case "1h" -> 3600000L;
-            case "4h" -> 14400000L;
-            case "1d" -> 86400000L;
-            default -> 3600000L;
-        };
+            // Poll for completion
+            String pageKey = response.pageKey();
+            int lastProgress = 0;
+
+            while (true) {
+                var status = client.getPageStatus(pageKey);
+                if (status == null) {
+                    log.error("Page status not found: {}", pageKey);
+                    break;
+                }
+
+                // Update progress
+                if (status.progress() > lastProgress) {
+                    lastProgress = status.progress();
+                    updatePageProgress(page, Math.min(lastProgress, 95));
+                }
+
+                // Check if ready
+                if ("READY".equals(status.state())) {
+                    break;
+                } else if ("ERROR".equals(status.state())) {
+                    log.error("Page load error: {}", pageKey);
+                    break;
+                }
+
+                Thread.sleep(100); // Poll interval
+            }
+
+            // Fetch final data
+            List<PremiumIndex> premium = client.getPremiumIndex(symbol, timeframe, startTime, endTime);
+            log.info("PremiumPageManager.loadData: {} {} got {} records", symbol, timeframe, premium.size());
+            updatePageData(page, premium);
+
+        } catch (Exception e) {
+            log.error("Failed to load premium index from data service: {}", e.getMessage());
+            updatePageData(page, Collections.emptyList());
+        }
     }
 
     /**

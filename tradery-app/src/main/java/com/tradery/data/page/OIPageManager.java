@@ -2,7 +2,6 @@ package com.tradery.data.page;
 
 import com.tradery.ApplicationContext;
 import com.tradery.data.DataType;
-import com.tradery.data.OpenInterestStore;
 import com.tradery.dataclient.DataServiceClient;
 import com.tradery.model.OpenInterest;
 
@@ -14,45 +13,80 @@ import java.util.List;
  *
  * Open interest has fixed 5-minute resolution from Binance Futures API.
  * Note: Binance limits historical OI to 30 days, but local cache persists longer.
+ * Delegates all data loading to the Data Service which handles
+ * caching and fetching from Binance.
  */
 public class OIPageManager extends DataPageManager<OpenInterest> {
 
-    private final OpenInterestStore openInterestStore;
-
-    public OIPageManager(OpenInterestStore openInterestStore) {
+    public OIPageManager() {
         super(DataType.OPEN_INTEREST, 2);
-        this.openInterestStore = openInterestStore;
     }
 
     @Override
     protected void loadData(DataPage<OpenInterest> page) throws Exception {
         assertNotEDT("OIPageManager.loadData");
 
-        if (openInterestStore == null) {
-            updatePageData(page, Collections.emptyList());
-            return;
-        }
-
         String symbol = page.getSymbol();
         long startTime = page.getStartTime();
         long endTime = page.getEndTime();
 
-        // Check cache first for initial progress
-        List<OpenInterest> cached = loadFromCacheOnly(symbol, startTime, endTime);
-        if (!cached.isEmpty()) {
-            // Estimate expected records (5-minute intervals)
-            long expectedRecords = (endTime - startTime) / (5 * 60 * 1000);
-            int initialProgress = expectedRecords > 0 ? (int) ((cached.size() * 100) / expectedRecords) : 50;
-            updatePageProgress(page, Math.min(initialProgress, 95));
-        } else {
-            updatePageProgress(page, 10);  // Show we're working
+        log.info("OIPageManager.loadData: {} requesting from data service", symbol);
+
+        // Request page from data service (handles fetching if needed)
+        ApplicationContext ctx = ApplicationContext.getInstance();
+        if (ctx == null || !ctx.isDataServiceAvailable()) {
+            log.error("Data service not available");
+            updatePageData(page, Collections.emptyList());
+            return;
         }
 
-        // OpenInterestStore handles caching + API fetch internally
-        List<OpenInterest> oi = openInterestStore.getOpenInterest(symbol, startTime, endTime);
+        DataServiceClient client = ctx.getDataServiceClient();
 
-        log.debug("Loaded {} OI records for {}", oi.size(), symbol);
-        updatePageData(page, oi);
+        try {
+            // Request page - data service will fetch if cache is incomplete
+            var response = client.requestPage(
+                new DataServiceClient.PageRequest("OPEN_INTEREST", symbol, null, startTime, endTime),
+                "app-" + System.currentTimeMillis(),
+                "OIPageManager"
+            );
+
+            // Poll for completion
+            String pageKey = response.pageKey();
+            int lastProgress = 0;
+
+            while (true) {
+                var status = client.getPageStatus(pageKey);
+                if (status == null) {
+                    log.error("Page status not found: {}", pageKey);
+                    break;
+                }
+
+                // Update progress
+                if (status.progress() > lastProgress) {
+                    lastProgress = status.progress();
+                    updatePageProgress(page, Math.min(lastProgress, 95));
+                }
+
+                // Check if ready
+                if ("READY".equals(status.state())) {
+                    break;
+                } else if ("ERROR".equals(status.state())) {
+                    log.error("Page load error: {}", pageKey);
+                    break;
+                }
+
+                Thread.sleep(100); // Poll interval
+            }
+
+            // Fetch final data
+            List<OpenInterest> oi = client.getOpenInterest(symbol, startTime, endTime);
+            log.info("OIPageManager.loadData: {} got {} records", symbol, oi.size());
+            updatePageData(page, oi);
+
+        } catch (Exception e) {
+            log.error("Failed to load OI from data service: {}", e.getMessage());
+            updatePageData(page, Collections.emptyList());
+        }
     }
 
     /**

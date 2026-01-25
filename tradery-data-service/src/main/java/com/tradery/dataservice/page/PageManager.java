@@ -1,7 +1,6 @@
 package com.tradery.dataservice.page;
 
-import com.tradery.data.BinanceClient;
-import com.tradery.data.BinanceVisionClient;
+import com.tradery.data.*;
 import com.tradery.data.sqlite.SqliteDataStore;
 import com.tradery.dataservice.api.CoverageHandler;
 import com.tradery.dataservice.config.DataServiceConfig;
@@ -35,9 +34,21 @@ public class PageManager {
     private final ExecutorService loadExecutor;
     private final ScheduledExecutorService cleanupExecutor;
 
+    // Data stores for fetching
+    private final FundingRateStore fundingRateStore;
+    private final OpenInterestStore openInterestStore;
+    private final AggTradesStore aggTradesStore;
+    private final PremiumIndexStore premiumIndexStore;
+
     public PageManager(DataServiceConfig config, SqliteDataStore dataStore) {
         this.config = config;
         this.dataStore = dataStore;
+
+        // Initialize data stores
+        this.fundingRateStore = new FundingRateStore(new FundingRateClient(), dataStore);
+        this.openInterestStore = new OpenInterestStore(new OpenInterestClient(), dataStore);
+        this.aggTradesStore = new AggTradesStore(new AggTradesClient(), dataStore);
+        this.premiumIndexStore = new PremiumIndexStore(new PremiumIndexClient(), dataStore);
         // Configure MessagePack to only serialize record components, not computed methods
         this.msgpackMapper = JsonMapper.builder(new MessagePackFactory())
             .disable(MapperFeature.AUTO_DETECT_IS_GETTERS)  // Don't serialize isBullish() as "bullish"
@@ -371,46 +382,79 @@ public class PageManager {
     }
 
     /**
-     * Load aggregated trades data for a page.
+     * Load aggregated trades data for a page, fetching from Binance if cache is incomplete.
      */
     private byte[] loadAggTrades(PageKey key, Page page) throws Exception {
-        List<AggTrade> trades = dataStore.getAggTrades(
-            key.symbol(), key.startTime(), key.endTime());
-        page.setRecordCount(trades.size());
-        LOG.debug("loadAggTrades: {} loaded {} trades", key.symbol(), trades.size());
-        return msgpackMapper.writeValueAsBytes(trades);
+        String symbol = key.symbol();
+        long startTime = key.startTime();
+        long endTime = key.endTime();
+
+        // Set up progress callback
+        aggTradesStore.setProgressCallback(progress -> {
+            int pct = Math.min(95, progress.percentComplete());
+            page.setState(PageState.LOADING, pct);
+            notifyStateChanged(key, PageState.LOADING, pct);
+        });
+
+        try {
+            // AggTradesStore handles cache check + fetch if needed
+            List<AggTrade> trades = aggTradesStore.getAggTrades(symbol, startTime, endTime);
+            page.setRecordCount(trades.size());
+            LOG.info("loadAggTrades: {} loaded {} trades", symbol, trades.size());
+            return msgpackMapper.writeValueAsBytes(trades);
+        } finally {
+            aggTradesStore.setProgressCallback(null);
+        }
     }
 
     /**
-     * Load funding rate data for a page.
+     * Load funding rate data for a page, fetching from Binance if cache is incomplete.
      */
     private byte[] loadFunding(PageKey key, Page page) throws Exception {
-        List<FundingRate> rates = dataStore.getFundingRates(
-            key.symbol(), key.startTime(), key.endTime());
+        String symbol = key.symbol();
+        long startTime = key.startTime();
+        long endTime = key.endTime();
+
+        // FundingRateStore handles cache check + fetch if needed
+        List<FundingRate> rates = fundingRateStore.getFundingRates(symbol, startTime, endTime);
         page.setRecordCount(rates.size());
-        LOG.debug("loadFunding: {} loaded {} rates", key.symbol(), rates.size());
+        LOG.info("loadFunding: {} loaded {} rates", symbol, rates.size());
         return msgpackMapper.writeValueAsBytes(rates);
     }
 
     /**
-     * Load open interest data for a page.
+     * Load open interest data for a page, fetching from Binance if cache is incomplete.
      */
     private byte[] loadOpenInterest(PageKey key, Page page) throws Exception {
-        List<OpenInterest> oi = dataStore.getOpenInterest(
-            key.symbol(), key.startTime(), key.endTime());
+        String symbol = key.symbol();
+        long startTime = key.startTime();
+        long endTime = key.endTime();
+
+        // OpenInterestStore handles cache check + fetch if needed
+        List<OpenInterest> oi = openInterestStore.getOpenInterest(symbol, startTime, endTime,
+            progress -> {
+                // Progress callback for OI fetching
+                page.setState(PageState.LOADING, 50); // OI doesn't report detailed progress
+                notifyStateChanged(key, PageState.LOADING, 50);
+            });
         page.setRecordCount(oi.size());
-        LOG.debug("loadOpenInterest: {} loaded {} records", key.symbol(), oi.size());
+        LOG.info("loadOpenInterest: {} loaded {} records", symbol, oi.size());
         return msgpackMapper.writeValueAsBytes(oi);
     }
 
     /**
-     * Load premium index data for a page.
+     * Load premium index data for a page, fetching from Binance if cache is incomplete.
      */
     private byte[] loadPremium(PageKey key, Page page) throws Exception {
-        List<PremiumIndex> premium = dataStore.getPremiumIndex(
-            key.symbol(), key.timeframe(), key.startTime(), key.endTime());
+        String symbol = key.symbol();
+        String timeframe = key.timeframe();
+        long startTime = key.startTime();
+        long endTime = key.endTime();
+
+        // PremiumIndexStore handles cache check + fetch if needed
+        List<PremiumIndex> premium = premiumIndexStore.getPremiumIndex(symbol, timeframe, startTime, endTime);
         page.setRecordCount(premium.size());
-        LOG.debug("loadPremium: {} {} loaded {} records", key.symbol(), key.timeframe(), premium.size());
+        LOG.info("loadPremium: {} {} loaded {} records", symbol, timeframe, premium.size());
         return msgpackMapper.writeValueAsBytes(premium);
     }
 
