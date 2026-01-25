@@ -1,16 +1,24 @@
 package com.tradery.dataservice.page;
 
+import com.tradery.data.BinanceClient;
+import com.tradery.data.BinanceVisionClient;
 import com.tradery.data.sqlite.SqliteDataStore;
 import com.tradery.dataservice.api.CoverageHandler;
 import com.tradery.dataservice.config.DataServiceConfig;
 import com.tradery.model.*;
 import org.msgpack.jackson.dataformat.MessagePackFactory;
+import com.fasterxml.jackson.databind.MapperFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.json.JsonMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.time.Instant;
+import java.time.YearMonth;
+import java.time.ZoneOffset;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Manages data pages - loading, caching, and lifecycle.
@@ -30,7 +38,11 @@ public class PageManager {
     public PageManager(DataServiceConfig config, SqliteDataStore dataStore) {
         this.config = config;
         this.dataStore = dataStore;
-        this.msgpackMapper = new ObjectMapper(new MessagePackFactory());
+        // Configure MessagePack to only serialize record components, not computed methods
+        this.msgpackMapper = JsonMapper.builder(new MessagePackFactory())
+            .disable(MapperFeature.AUTO_DETECT_IS_GETTERS)  // Don't serialize isBullish() as "bullish"
+            .disable(MapperFeature.AUTO_DETECT_GETTERS)     // Don't serialize other getters
+            .build();
         this.loadExecutor = Executors.newFixedThreadPool(config.getMaxConcurrentDownloads());
         this.cleanupExecutor = Executors.newSingleThreadScheduledExecutor();
 
@@ -263,14 +275,99 @@ public class PageManager {
     }
 
     /**
-     * Load candle data for a page.
+     * Load candle data for a page, fetching from Binance if cache is incomplete.
      */
     private byte[] loadCandles(PageKey key, Page page) throws Exception {
-        List<Candle> candles = dataStore.getCandles(
-            key.symbol(), key.timeframe(), key.startTime(), key.endTime());
-        page.setRecordCount(candles.size());
-        LOG.debug("loadCandles: {} {} loaded {} candles", key.symbol(), key.timeframe(), candles.size());
-        return msgpackMapper.writeValueAsBytes(candles);
+        String symbol = key.symbol();
+        String timeframe = key.timeframe();
+        long startTime = key.startTime();
+        long endTime = key.endTime();
+
+        // Check cache first
+        List<Candle> cached = dataStore.getCandles(symbol, timeframe, startTime, endTime);
+        long intervalMs = getIntervalMs(timeframe);
+        long expectedBars = (endTime - startTime) / intervalMs;
+
+        // If sufficient coverage, return cached data
+        if (cached.size() >= expectedBars * 0.9) {
+            page.setRecordCount(cached.size());
+            LOG.debug("loadCandles: {} {} cache hit ({} candles)", symbol, timeframe, cached.size());
+            return msgpackMapper.writeValueAsBytes(cached);
+        }
+
+        // Need to fetch missing data
+        LOG.info("loadCandles: {} {} fetching (cached {}/{})", symbol, timeframe, cached.size(), expectedBars);
+        fetchCandles(key, page, expectedBars);
+
+        // Read fresh data
+        List<Candle> fresh = dataStore.getCandles(symbol, timeframe, startTime, endTime);
+        page.setRecordCount(fresh.size());
+        LOG.info("loadCandles: {} {} complete ({} candles)", symbol, timeframe, fresh.size());
+        return msgpackMapper.writeValueAsBytes(fresh);
+    }
+
+    /**
+     * Fetch candles from Binance Vision + API.
+     */
+    private void fetchCandles(PageKey key, Page page, long expectedBars) throws Exception {
+        String symbol = key.symbol();
+        String timeframe = key.timeframe();
+        long startTime = key.startTime();
+        long endTime = key.endTime();
+
+        BinanceClient apiClient = new BinanceClient();
+        AtomicBoolean cancelled = new AtomicBoolean(false);
+
+        // For weekly/monthly timeframes, use REST API directly
+        if ("1w".equals(timeframe) || "1M".equals(timeframe)) {
+            List<Candle> candles = apiClient.fetchAllKlines(symbol, timeframe, startTime, endTime, cancelled,
+                progress -> {
+                    page.setState(PageState.LOADING, progress.percentComplete());
+                    notifyStateChanged(key, PageState.LOADING, progress.percentComplete());
+                });
+            if (!candles.isEmpty()) {
+                dataStore.saveCandles(symbol, timeframe, candles);
+            }
+            return;
+        }
+
+        // Use Vision for bulk historical + API for recent
+        YearMonth startMonth = YearMonth.from(
+            Instant.ofEpochMilli(startTime).atZone(ZoneOffset.UTC));
+        BinanceVisionClient visionClient = new BinanceVisionClient(dataStore);
+
+        visionClient.syncWithApiBackfill(symbol, timeframe, startMonth, apiClient, cancelled,
+            progress -> {
+                // Calculate progress based on months processed
+                int pct = Math.min(95, progress.percentComplete());
+                page.setState(PageState.LOADING, pct);
+                notifyStateChanged(key, PageState.LOADING, pct);
+            });
+    }
+
+    /**
+     * Convert timeframe to interval in milliseconds.
+     */
+    private long getIntervalMs(String timeframe) {
+        if (timeframe == null) return 3600000;
+        return switch (timeframe) {
+            case "1m" -> 60000L;
+            case "3m" -> 180000L;
+            case "5m" -> 300000L;
+            case "15m" -> 900000L;
+            case "30m" -> 1800000L;
+            case "1h" -> 3600000L;
+            case "2h" -> 7200000L;
+            case "4h" -> 14400000L;
+            case "6h" -> 21600000L;
+            case "8h" -> 28800000L;
+            case "12h" -> 43200000L;
+            case "1d" -> 86400000L;
+            case "3d" -> 259200000L;
+            case "1w" -> 604800000L;
+            case "1M" -> 2592000000L;
+            default -> 3600000L;
+        };
     }
 
     /**
