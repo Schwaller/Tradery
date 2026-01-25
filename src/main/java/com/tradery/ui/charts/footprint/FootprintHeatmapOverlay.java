@@ -1,23 +1,24 @@
 package com.tradery.ui.charts.footprint;
 
-import com.tradery.indicators.FootprintIndicator;
-import com.tradery.model.AggTrade;
+import com.tradery.ApplicationContext;
+import com.tradery.data.PageState;
+import com.tradery.data.page.IndicatorPage;
+import com.tradery.data.page.IndicatorPageListener;
+import com.tradery.data.page.IndicatorPageManager;
+import com.tradery.data.page.IndicatorType;
 import com.tradery.model.Candle;
-import com.tradery.model.Exchange;
-import com.tradery.model.Footprint;
 import com.tradery.model.FootprintResult;
 import org.jfree.chart.JFreeChart;
 import org.jfree.chart.plot.XYPlot;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.EnumSet;
 import java.util.List;
-import java.util.Set;
 
 /**
  * Overlay for footprint heatmap on the price chart.
  * Draws colored buckets showing buy/sell volume distribution at price levels.
+ * Uses IndicatorPageManager for background computation - never blocks EDT.
  */
 public class FootprintHeatmapOverlay {
 
@@ -28,13 +29,15 @@ public class FootprintHeatmapOverlay {
     // Configuration
     private FootprintHeatmapConfig config;
 
-    // Current data
-    private List<Candle> currentCandles;
-    private List<AggTrade> currentAggTrades;
-    private String currentTimeframe = "1h";
+    // Current data context
+    private String currentSymbol;
+    private String currentTimeframe;
+    private long currentStartTime;
+    private long currentEndTime;
 
-    // Cached footprint result
-    private FootprintResult footprintResult;
+    // Indicator page (background computed)
+    private IndicatorPage<FootprintResult> footprintPage;
+    private final FootprintPageListener pageListener = new FootprintPageListener();
 
     // Current annotation
     private FootprintHeatmapAnnotation annotation;
@@ -72,6 +75,7 @@ public class FootprintHeatmapOverlay {
         config.setEnabled(enabled);
         if (!enabled) {
             clear();
+            releasePage();
         }
     }
 
@@ -79,50 +83,119 @@ public class FootprintHeatmapOverlay {
         this.currentTimeframe = timeframe;
     }
 
-    // ===== Data Updates =====
+    // ===== Data Request =====
 
     /**
-     * Update with new candle and aggTrade data.
-     * Recalculates footprints and redraws the heatmap.
-     *
-     * @param candles   List of candles
-     * @param aggTrades List of aggregated trades
+     * Request footprint computation for given candles.
+     * Non-blocking - footprints computed in background.
      */
-    public void update(List<Candle> candles, List<AggTrade> aggTrades) {
-        this.currentCandles = candles;
-        this.currentAggTrades = aggTrades;
-        this.footprintResult = null; // Invalidate cache
+    public void requestData(List<Candle> candles, String symbol, String timeframe,
+                            long startTime, long endTime) {
+        log.debug("FootprintHeatmapOverlay.requestData: candles={}, symbol={}, enabled={}",
+            candles != null ? candles.size() : 0, symbol, isEnabled());
 
-        if (!isEnabled()) {
+        if (candles == null || candles.isEmpty()) {
+            releasePage();
             clear();
             return;
         }
 
-        redraw();
+        if (!isEnabled()) {
+            log.debug("FootprintHeatmapOverlay: not enabled, skipping");
+            releasePage();
+            clear();
+            return;
+        }
+
+        IndicatorPageManager pageMgr = ApplicationContext.getInstance().getIndicatorPageManager();
+        if (pageMgr == null) {
+            log.warn("IndicatorPageManager not available");
+            return;
+        }
+
+        // Build params string: buckets:tickSize:displayMode:selectedExchange
+        String params = buildParams();
+
+        // Request page - PageManager handles caching, returns same page if key matches
+        IndicatorPage<FootprintResult> newPage = pageMgr.request(
+            IndicatorType.FOOTPRINT_HEATMAP, params,
+            symbol, timeframe, startTime, endTime,
+            pageListener,
+            "FootprintHeatmapOverlay");
+
+        // Only release old page if we got a different one (different cache key)
+        if (footprintPage != null && footprintPage != newPage) {
+            log.debug("FootprintHeatmapOverlay: switching to new page (params or time changed)");
+            pageMgr.release(footprintPage, pageListener);
+        } else if (footprintPage == newPage) {
+            log.debug("FootprintHeatmapOverlay: reusing cached page");
+        }
+
+        footprintPage = newPage;
+        this.currentSymbol = symbol;
+        this.currentTimeframe = timeframe;
+        this.currentStartTime = startTime;
+        this.currentEndTime = endTime;
+
+        log.debug("Requested footprint heatmap: {} {} {}-{}", symbol, timeframe, startTime, endTime);
     }
+
+    /**
+     * Build params string from current config.
+     */
+    private String buildParams() {
+        StringBuilder sb = new StringBuilder();
+        sb.append(config.getTargetBuckets());
+        sb.append(":");
+        if (config.getTickSizeMode() == FootprintHeatmapConfig.TickSizeMode.FIXED) {
+            sb.append(config.getFixedTickSize());
+        }
+        sb.append(":");
+        sb.append(config.getDisplayMode().name());
+        sb.append(":");
+        if (config.getDisplayMode() == FootprintDisplayMode.SINGLE_EXCHANGE) {
+            sb.append(config.getSelectedExchange().name());
+        }
+        return sb.toString();
+    }
+
+    /**
+     * Release indicator page when no longer needed.
+     */
+    public void releasePage() {
+        if (footprintPage == null) return;
+
+        IndicatorPageManager pageMgr = ApplicationContext.getInstance().getIndicatorPageManager();
+        if (pageMgr != null) {
+            pageMgr.release(footprintPage, pageListener);
+        }
+        footprintPage = null;
+    }
+
+    // ===== Drawing =====
 
     /**
      * Redraw using currently available data.
      */
     public void redraw() {
+        log.debug("FootprintHeatmapOverlay.redraw: enabled={}, hasPage={}, hasData={}",
+            isEnabled(), footprintPage != null, footprintPage != null && footprintPage.hasData());
+
         clear();
 
-        if (!isEnabled() || currentCandles == null || currentCandles.isEmpty()) {
+        if (!isEnabled() || footprintPage == null || !footprintPage.hasData()) {
             return;
         }
 
-        // Calculate footprints if needed
-        if (footprintResult == null) {
-            footprintResult = calculateFootprints();
-        }
-
-        if (footprintResult == null || footprintResult.footprints().isEmpty()) {
+        FootprintResult result = footprintPage.getData();
+        if (result == null || result.footprints().isEmpty()) {
+            log.debug("FootprintHeatmapOverlay.redraw: footprints empty");
             return;
         }
 
         // Create and add annotation
         XYPlot plot = priceChart.getXYPlot();
-        annotation = new FootprintHeatmapAnnotation(footprintResult.footprints(), config);
+        annotation = new FootprintHeatmapAnnotation(result.footprints(), config);
 
         // Add as background annotation (before other annotations)
         var existingAnnotations = new java.util.ArrayList<>(plot.getAnnotations());
@@ -132,39 +205,7 @@ public class FootprintHeatmapOverlay {
             plot.addAnnotation(existing);
         }
 
-        if (onDataReady != null) {
-            onDataReady.run();
-        }
-    }
-
-    /**
-     * Calculate footprints from current data.
-     */
-    private FootprintResult calculateFootprints() {
-        if (currentCandles == null || currentCandles.isEmpty()) {
-            return null;
-        }
-
-        // Determine tick size
-        Double tickSize = null;
-        if (config.getTickSizeMode() == FootprintHeatmapConfig.TickSizeMode.FIXED) {
-            tickSize = config.getFixedTickSize();
-        }
-
-        // Determine exchange filter for single exchange mode
-        Set<Exchange> exchangeFilter = null;
-        if (config.getDisplayMode() == FootprintDisplayMode.SINGLE_EXCHANGE) {
-            exchangeFilter = EnumSet.of(config.getSelectedExchange());
-        }
-
-        return FootprintIndicator.calculate(
-            currentCandles,
-            currentAggTrades,
-            currentTimeframe,
-            config.getTargetBuckets(),
-            tickSize,
-            exchangeFilter
-        );
+        log.debug("FootprintHeatmapOverlay.redraw: ADDED annotation with {} footprints", result.footprints().size());
     }
 
     /**
@@ -180,9 +221,10 @@ public class FootprintHeatmapOverlay {
 
     /**
      * Invalidate the cached footprint result (call when config changes).
+     * This releases the current page so a new one will be requested.
      */
     public void invalidateCache() {
-        footprintResult = null;
+        releasePage();
     }
 
     /**
@@ -203,6 +245,46 @@ public class FootprintHeatmapOverlay {
      * Get the cached footprint result.
      */
     public FootprintResult getFootprintResult() {
-        return footprintResult;
+        return footprintPage != null ? footprintPage.getData() : null;
+    }
+
+    // ===== Listener =====
+
+    private class FootprintPageListener implements IndicatorPageListener<FootprintResult> {
+        @Override
+        public void onStateChanged(IndicatorPage<FootprintResult> page,
+                                   PageState oldState, PageState newState) {
+            if (newState == PageState.READY) {
+                redraw();
+                if (onDataReady != null) {
+                    onDataReady.run();
+                }
+            }
+        }
+
+        @Override
+        public void onDataChanged(IndicatorPage<FootprintResult> page) {
+            redraw();
+            if (onDataReady != null) {
+                onDataReady.run();
+            }
+        }
+    }
+
+    // ===== Legacy API (for compatibility) =====
+
+    /**
+     * Update with candles and aggTrades.
+     * @deprecated Use requestData() + redraw() pattern instead
+     */
+    @Deprecated
+    public void update(List<Candle> candles, @SuppressWarnings("unused") Object aggTrades) {
+        if (candles == null || candles.isEmpty()) {
+            clear();
+            return;
+        }
+        requestData(candles, currentSymbol, currentTimeframe,
+            candles.get(0).timestamp(),
+            candles.get(candles.size() - 1).timestamp());
     }
 }

@@ -50,9 +50,6 @@ public class OverlayManager {
     // IndicatorEngine for POC calculations
     private IndicatorEngine indicatorEngine;
 
-    // IndicatorDataService for footprint heatmap data
-    private IndicatorDataService indicatorDataService;
-
     // Ray overlay
     private RayOverlay rayOverlay;
 
@@ -550,10 +547,6 @@ public class OverlayManager {
 
     public IndicatorEngine getIndicatorEngine() {
         return this.indicatorEngine;
-    }
-
-    public void setIndicatorDataService(IndicatorDataService service) {
-        this.indicatorDataService = service;
     }
 
     // ===== Daily POC/VAH/VAL Overlay =====
@@ -1063,28 +1056,8 @@ public class OverlayManager {
     // ===== Footprint Heatmap Overlay =====
 
     /**
-     * Set the footprint heatmap overlay with candles and aggTrades.
-     *
-     * @param candles   Candle data
-     * @param aggTrades AggTrade data (required for footprint)
-     * @param config    Footprint heatmap configuration
-     */
-    public void setFootprintHeatmapOverlay(java.util.List<com.tradery.model.Candle> candles,
-                                            java.util.List<com.tradery.model.AggTrade> aggTrades,
-                                            com.tradery.ui.charts.footprint.FootprintHeatmapConfig config) {
-        if (candles == null || candles.isEmpty()) {
-            clearFootprintHeatmapOverlay();
-            return;
-        }
-
-        footprintHeatmapOverlay.setConfig(config);
-        footprintHeatmapOverlay.setTimeframe(currentTimeframe);
-        footprintHeatmapOverlay.update(candles, aggTrades);
-    }
-
-    /**
-     * Update footprint heatmap overlay using data from IndicatorEngine.
-     * Uses candles from context and fetches aggTrades from engine.
+     * Request footprint heatmap data and render when ready.
+     * Uses IndicatorPageManager for background computation.
      */
     public void updateFootprintHeatmapOverlay() {
         com.tradery.ui.charts.ChartConfig config = com.tradery.ui.charts.ChartConfig.getInstance();
@@ -1094,17 +1067,19 @@ public class OverlayManager {
             return;
         }
 
-        if (currentCandles == null || currentCandles.isEmpty() || indicatorEngine == null) {
+        if (currentCandles == null || currentCandles.isEmpty()) {
             return;
         }
 
-        java.util.List<com.tradery.model.AggTrade> aggTrades = indicatorEngine.getAggTrades();
-
-        if (aggTrades == null || aggTrades.isEmpty()) {
-            return; // No data yet, will be called again when aggTrades arrive
-        }
-
-        setFootprintHeatmapOverlay(currentCandles, aggTrades, config.getFootprintHeatmapConfig());
+        // Apply config and request data - overlay manages its own IndicatorPage
+        footprintHeatmapOverlay.setConfig(config.getFootprintHeatmapConfig());
+        footprintHeatmapOverlay.requestData(
+            currentCandles,
+            currentSymbol,
+            currentTimeframe,
+            currentCandles.get(0).timestamp(),
+            currentCandles.get(currentCandles.size() - 1).timestamp()
+        );
     }
 
     /**

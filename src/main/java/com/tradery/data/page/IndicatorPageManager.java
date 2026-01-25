@@ -1,6 +1,7 @@
 package com.tradery.data.page;
 
 import com.tradery.data.PageState;
+import com.tradery.indicators.FootprintIndicator;
 import com.tradery.indicators.RotatingRays;
 import com.tradery.indicators.RotatingRays.RaySet;
 import com.tradery.indicators.registry.IndicatorContext;
@@ -8,6 +9,8 @@ import com.tradery.indicators.registry.IndicatorRegistry;
 import com.tradery.indicators.registry.IndicatorSpec;
 import com.tradery.model.AggTrade;
 import com.tradery.model.Candle;
+import com.tradery.model.Exchange;
+import com.tradery.model.FootprintResult;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -211,7 +214,7 @@ public class IndicatorPageManager {
     private <T> void computeAsync(IndicatorPage<T> page, List<Candle> candles) {
         computeExecutor.submit(() -> {
             try {
-                Object result = computeIndicator(page.getType(), page.getParams(), candles, null);
+                Object result = computeIndicator(page.getType(), page.getParams(), page.getTimeframe(), candles, null);
 
                 SwingUtilities.invokeLater(() -> {
                     PageState prevState = page.getState();
@@ -240,7 +243,7 @@ public class IndicatorPageManager {
     private <T> void computeAsyncWithAggTrades(IndicatorPage<T> page, List<Candle> candles, List<AggTrade> aggTrades) {
         aggTradesExecutor.submit(() -> {
             try {
-                Object result = computeIndicator(page.getType(), page.getParams(), candles, aggTrades);
+                Object result = computeIndicator(page.getType(), page.getParams(), page.getTimeframe(), candles, aggTrades);
 
                 SwingUtilities.invokeLater(() -> {
                     PageState prevState = page.getState();
@@ -265,7 +268,7 @@ public class IndicatorPageManager {
      * Compute the indicator value using the registry.
      * Falls back to legacy switch for special cases not in registry.
      */
-    private Object computeIndicator(IndicatorType type, String params, List<Candle> candles, List<AggTrade> aggTrades) {
+    private Object computeIndicator(IndicatorType type, String params, String timeframe, List<Candle> candles, List<AggTrade> aggTrades) {
         // Map IndicatorType to registry ID
         String registryId = mapTypeToRegistryId(type);
 
@@ -274,9 +277,10 @@ public class IndicatorPageManager {
             IndicatorSpec<?> spec = IndicatorRegistry.getInstance().getSpec(registryId);
             if (spec != null) {
                 // Create context with both candles and aggTrades if available
+                String tf = timeframe != null ? timeframe : "1h";
                 IndicatorContext ctx = (aggTrades != null && !aggTrades.isEmpty())
-                    ? IndicatorContext.ofCandlesAndAggTrades(candles, aggTrades, "1h")
-                    : IndicatorContext.ofCandles(candles, "1h");
+                    ? IndicatorContext.ofCandlesAndAggTrades(candles, aggTrades, tf)
+                    : IndicatorContext.ofCandles(candles, tf);
                 Object[] parsedParams = spec.parseParams(params);
                 return spec.compute(ctx, parsedParams);
             }
@@ -292,9 +296,30 @@ public class IndicatorPageManager {
                 yield computeHistoricRays(candles, skip, interval);
             }
             case FOOTPRINT_HEATMAP -> {
-                // Marker that triggers aggTrades loading - computation happens in overlay
-                // Returns true if aggTrades are available
-                yield aggTrades != null && !aggTrades.isEmpty();
+                // Compute FootprintResult from aggTrades
+                // Params format: buckets:tickSize:displayMode:selectedExchange
+                if (aggTrades == null || aggTrades.isEmpty()) {
+                    yield null;
+                }
+                int buckets = 20;
+                Double tickSize = null;
+                java.util.Set<Exchange> exchangeFilter = null;
+
+                if (params != null && !params.isEmpty()) {
+                    String[] parts = params.split(":");
+                    if (parts.length >= 1 && !parts[0].isEmpty()) {
+                        buckets = Integer.parseInt(parts[0]);
+                    }
+                    if (parts.length >= 2 && !parts[1].isEmpty()) {
+                        tickSize = Double.parseDouble(parts[1]);
+                    }
+                    // parts[2] is displayMode (COMBINED, SINGLE_EXCHANGE, etc.)
+                    if (parts.length >= 4 && !parts[3].isEmpty()) {
+                        // Single exchange mode - filter to specified exchange
+                        exchangeFilter = java.util.EnumSet.of(Exchange.valueOf(parts[3]));
+                    }
+                }
+                yield FootprintIndicator.calculate(candles, aggTrades, timeframe, buckets, tickSize, exchangeFilter);
             }
             default -> throw new UnsupportedOperationException("Indicator not implemented: " + type);
         };

@@ -77,9 +77,6 @@ public class IndicatorChartsManager {
     // Callback for layout updates
     private Runnable onLayoutChange;
 
-    // Callback for footprint heatmap data ready
-    private Runnable onFootprintHeatmapDataReady;
-
     // Min chart height
     private static final int MIN_CHART_HEIGHT = 60;
 
@@ -91,14 +88,6 @@ public class IndicatorChartsManager {
 
     public void setOnLayoutChange(Runnable callback) {
         this.onLayoutChange = callback;
-    }
-
-    /**
-     * Set callback for when footprint heatmap data becomes ready.
-     * Used by ChartsPanel to refresh the overlay.
-     */
-    public void setOnFootprintHeatmapDataReady(Runnable callback) {
-        this.onFootprintHeatmapDataReady = callback;
     }
 
     /**
@@ -157,10 +146,7 @@ public class IndicatorChartsManager {
             indicatorDataService.subscribeTradeCount();
         }
 
-        // Footprint heatmap overlay (needs aggTrades)
-        if (ChartConfig.getInstance().isFootprintHeatmapEnabled()) {
-            indicatorDataService.subscribeFootprintHeatmap();
-        }
+        // Note: Footprint heatmap overlay manages its own IndicatorPage directly
 
         // Request premium data if chart is enabled
         if (isEnabled(IndicatorType.PREMIUM)) {
@@ -235,11 +221,6 @@ public class IndicatorChartsManager {
             redrawWhaleChart(candles);
             redrawRetailChart(candles);
             redrawTradeCountChart(candles);
-        }
-
-        // Notify footprint heatmap overlay if data is ready
-        if (indicatorDataService.isFootprintHeatmapReady() && onFootprintHeatmapDataReady != null) {
-            onFootprintHeatmapDataReady.run();
         }
     }
 
@@ -607,22 +588,6 @@ public class IndicatorChartsManager {
     public boolean isAnyOrderflowEnabled() {
         return isEnabled(IndicatorType.DELTA) || isEnabled(IndicatorType.CVD) || isEnabled(IndicatorType.VOLUME_RATIO)
             || isEnabled(IndicatorType.WHALE) || isEnabled(IndicatorType.RETAIL) || isEnabled(IndicatorType.TRADE_COUNT);
-    }
-
-    /**
-     * Subscribe to footprint heatmap data (triggers aggTrades loading).
-     * Called when footprint heatmap is toggled on.
-     */
-    public void subscribeFootprintHeatmap() {
-        indicatorDataService.subscribeFootprintHeatmap();
-    }
-
-    /**
-     * Unsubscribe from footprint heatmap data (releases aggTrades).
-     * Called when footprint heatmap is toggled off.
-     */
-    public void unsubscribeFootprintHeatmap() {
-        indicatorDataService.unsubscribeFootprintHeatmap();
     }
 
     public void updateDeltaChart(List<Candle> candles) {
