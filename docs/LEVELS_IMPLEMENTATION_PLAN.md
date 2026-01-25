@@ -219,8 +219,28 @@
 | **Astronomical/Calendar** | 7 | Full moon price, eclipse prices, solstice |
 | **News/Analyst Targets** | 11 | Analyst targets, S2F, rainbow chart bands |
 | **Percentage Projections** | 8 | X% from ATH, measured moves, ATR-based |
+| **ICT/SMC Levels** | 4 | FVG zones, order blocks, liquidity pools, structure breaks |
 
 **Total: ~130+ distinct level concepts**
+
+### Level Types Summary (14 total)
+
+| Type | Description | Key Fields |
+|------|-------------|------------|
+| `ath` | All-time high with dominance | minDominance, mode, proximity |
+| `atl` | All-time low with dominance | minDominance, mode, proximity |
+| `fib` | Fibonacci retracements/extensions | anchorHigh, anchorLow, ratios |
+| `htf` | Higher timeframe structure | reference, lookback |
+| `sr` | Support/resistance from swing clustering | swingLookback, clusterTolerance, minStrength |
+| `condition_projection` | Where historical conditions occurred | condition, lookback, clusterTolerance |
+| `projection` | Calculated price zones | minPriceExpr, maxPriceExpr |
+| `ray` | Rotating ray proximity | raySystem, rayIndex, proximity |
+| `round` | Psychological round numbers | base, proximity |
+| `custom` | User-defined static zones | minPrice, maxPrice |
+| `fvg` | Fair Value Gap zones | direction, minGapPercent, showFilled |
+| `order_block` | Institutional order blocks | direction, minBOSPercent, showMitigated |
+| `liquidity` | Liquidity pools (swing/equal H/L) | liquidityType, equalTolerance, minCount |
+| `structure_break` | BOS price levels | bosType, minSwingDominance |
 
 ### Priority Tiers for Implementation
 
@@ -488,71 +508,138 @@ Simple but useful for marking known significant levels.
 
 o## ICT / Smart Money Concept Levels
 
-Based on docs/ICT_CONCEPTS.md, these additional level types capture institutional trading patterns:
+Based on docs/ICT_CONCEPTS.md, these additional level types capture institutional trading patterns.
+
+**Background:** ICT (Inner Circle Trader) is a popular trading methodology that claims institutional traders (banks, hedge funds) leave "footprints" in price action that retail traders can read. Whether you believe in the theory or not, these patterns have predictive value because so many traders watch for them.
 
 ### 10. Fair Value Gap (FVG) Levels
-Imbalance zones where price moved too fast (3-candle gap pattern).
+
+**What is it?** A 3-candle pattern where price moved so fast it left a "gap" - the wick of candle 1 doesn't overlap with the wick of candle 3. The gap represents an "imbalance" where buyers or sellers overwhelmed the market.
+
+```
+Bullish FVG:              Bearish FVG:
+     ┌──┐ candle 3             ┌──┐ candle 1
+     │  │                      │  │
+     │  │                      └──┘
+     │  │  ← GAP (no overlap)       ← GAP
+     └──┘                      ┌──┐
+     ┌──┐ candle 2             │  │
+     │  │ (big move)           │  │
+     └──┘                      └──┘
+     ┌──┐ candle 1             ┌──┐ candle 3
+     └──┘                      │  │
+                               └──┘
+```
+
+**Why it matters:** Price tends to return to "fill" these gaps (rebalancing). Unfilled FVGs act as support/resistance.
 
 ```yaml
 id: bullish-fvg-zones
 type: fvg
-timeframe: 1h                 # REQUIRED
+timeframe: 1h                 # REQUIRED - detect FVGs on 1h chart
 direction: bullish            # bullish | bearish | both
-minGapPercent: 0.3            # Minimum gap size as % of price
-requireImpulse: true          # Middle candle > 1.5x ATR
-lookback: 100                 # How far back to track FVGs
-showFilled: false             # Only show open (unfilled) FVGs
-proximity: 0.1%               # Level active when price enters FVG zone
+minGapPercent: 0.3            # Minimum gap size as % of price (filter noise)
+requireImpulse: true          # Middle candle must be > 1.5x ATR (real impulse)
+lookback: 100                 # How far back to track open FVGs
+showFilled: false             # Only show OPEN (unfilled) FVGs - the actionable ones
+proximity: 0.1%               # Level active when price enters the gap zone
 ```
 
-**Use case:** Enter when price retraces into unfilled FVG.
+**Use case:** Enter long when price retraces into an unfilled bullish FVG (buying the dip into support).
 
 ### 11. Order Block Levels
-Last opposing candle before significant move (institutional entry zones).
+
+**What is it?** The last opposing candle before a significant directional move. ICT theory: this is where institutions placed their orders before pushing price.
+
+```
+Bullish Order Block:              Bearish Order Block:
+                                         ┌──┐
+      ┌──┐ impulse up                    │  │ ← Order Block (last UP candle)
+      │  │                               └──┘
+      │  │                               ┌──┐
+OB →  └──┘ ← last DOWN candle            │  │ impulse down
+      ┌──┐    before move                │  │
+      │  │                               └──┘
+```
+
+**Why it matters:** When price returns to an unmitigated (untested) order block, it often bounces - supposedly because institutions defend their entry zone.
 
 ```yaml
 id: bullish-order-blocks
 type: order_block
-timeframe: 4h                 # REQUIRED
+timeframe: 4h                 # REQUIRED - find OBs on 4h chart
 direction: bullish            # bullish | bearish | both
-minBOSPercent: 1.5            # Minimum move size to qualify as BOS
-lookback: 200
-showMitigated: false          # Only show unmitigated OBs
-proximity: 0%                 # Level active when price enters OB range
+minBOSPercent: 1.5            # Minimum move after OB to qualify (needs real impulse)
+lookback: 200                 # How far back to track OBs
+showMitigated: false          # Only show UNMITIGATED OBs (price hasn't returned yet)
+proximity: 0%                 # Level active when price enters the OB candle range
 ```
 
-**Use case:** Enter when price retraces to unmitigated order block.
+**Use case:** Enter long when price retraces to an unmitigated bullish order block.
 
 ### 12. Liquidity Pool Levels
-Clusters of stop-losses (swing highs/lows, equal highs/lows).
+
+**What is it?** Clusters of stop-loss orders that institutional traders supposedly target. They know where retail traders place stops:
+- Above swing highs → shorts have stops here ("buy-side liquidity")
+- Below swing lows → longs have stops here ("sell-side liquidity")
+- Equal highs/lows → VERY obvious liquidity (multiple touches at same level)
+
+```
+Buy-side liquidity (above swing highs):
+  ═══════════════════════════  ← Equal highs = obvious stop cluster
+        /\      /\      /\
+       /  \    /  \    /  \    ← Stop losses from shorts sitting here
+      /    \  /    \  /    \
+
+Sell-side liquidity (below swing lows):
+      \    /  \    /  \    /
+       \  /    \  /    \  /    ← Stop losses from longs sitting here
+        \/      \/      \/
+  ═══════════════════════════  ← Equal lows = obvious stop cluster
+```
+
+**Why it matters:** Price often "sweeps" these levels (triggers stops) before reversing. Don't place stops at obvious levels.
 
 ```yaml
 id: equal-highs-liquidity
 type: liquidity
 timeframe: 1h                 # REQUIRED
 liquidityType: equal_highs    # swing_high | swing_low | equal_highs | equal_lows
-swingLookback: 10
-equalTolerance: 0.2%          # Highs within 0.2% are "equal"
-minCount: 2                   # Need 2+ touches to form EQH/EQL
-proximity: 0.3%
+swingLookback: 10             # How many bars each side to detect swings
+equalTolerance: 0.2%          # Highs within 0.2% count as "equal"
+minCount: 2                   # Need 2+ touches to form obvious liquidity pool
+proximity: 0.3%               # Level active when price approaches the pool
 ```
 
-**Use case:** Expect sweeps before reversals; don't place stops at obvious pools.
+**Use case:** Expect sweeps before reversals; avoid placing stops at obvious liquidity levels.
 
 ### 13. Structure Break Levels
-Prices where BOS (Break of Structure) occurred.
+
+**What is it?** The price where a Break of Structure (BOS) occurred - where price broke a previous swing high (bullish) or swing low (bearish).
+
+```
+Bullish BOS:                     Bearish BOS:
+                BOS price →           ┌──┐ previous high
+               ╔═══════╗             │  │
+               ║ broke ║             └──┘──────────
+       ┌──┐────╫───────╫──                  │
+       │  │    ╚═══════╝                    │ BOS
+       └──┘                                 v
+```
+
+**Why it matters:** BOS levels often become support/resistance when price retests them.
 
 ```yaml
 id: recent-bos-levels
 type: structure_break
 timeframe: 1h                 # REQUIRED
-lookback: 50
+lookback: 50                  # How far back to track BOS events
 bosType: both                 # bullish | bearish | both
-minSwingDominance: 10         # Swing must have held 10+ bars
+minSwingDominance: 10         # Swing must have held 10+ bars (real structure)
 proximity: 0.5%               # Level active when near BOS price
 ```
 
-**Use case:** BOS levels often act as support/resistance on retest.
+**Use case:** After a BOS, wait for price to retest the break level for entry.
 
 ---
 
@@ -638,6 +725,37 @@ IN_LEVEL(fib-618-zone)           # Is price in this level?
 NEAR_LEVEL(weekly-high, 1.5)     # Within 1.5% of level?
 ```
 
+### ICT / Smart Money Functions (Events)
+```
+# Fair Value Gap Events
+FVG_BULLISH                      # Bullish FVG formed this bar
+FVG_BEARISH                      # Bearish FVG formed this bar
+FVG_BULLISH_OPEN(n)              # Open bullish FVG exists within n bars
+FVG_BEARISH_OPEN(n)              # Open bearish FVG exists within n bars
+PRICE_IN_FVG                     # Price currently in any open FVG
+
+# Structure Events
+BOS_UP(n)                        # Broke swing high within n bars
+BOS_DOWN(n)                      # Broke swing low within n bars
+CHOCH_BULLISH(n)                 # Change of character bullish within n bars
+CHOCH_BEARISH(n)                 # Change of character bearish within n bars
+
+# Liquidity Events
+LIQUIDITY_SWEEP_BULLISH(n)       # Swept lows, closed above within n bars
+LIQUIDITY_SWEEP_BEARISH(n)       # Swept highs, closed below within n bars
+EQUAL_HIGHS(n, tolerance%)       # Equal highs detected
+EQUAL_LOWS(n, tolerance%)        # Equal lows detected
+
+# Order Block Events
+ORDER_BLOCK_BULLISH(n)           # Price in bullish OB zone
+ORDER_BLOCK_BEARISH(n)           # Price in bearish OB zone
+
+# Premium/Discount Zones
+OTE_ZONE(n)                      # In OTE (61.8%-78.6% retracement)
+OTE_DISCOUNT(n)                  # In discount OTE (buy zone)
+OTE_PREMIUM(n)                   # In premium OTE (sell zone)
+```
+
 ---
 
 ## Level Model
@@ -649,7 +767,7 @@ public class Level implements Identifiable {
     private String name;                  // Display name
     private String timeframe;             // REQUIRED - candle resolution (1m, 5m, 15m, 1h, 4h, 1d, 1w)
     private String category;              // Fib, ATH, HTF, SR, Custom, etc.
-    private LevelType type;               // Enum: ATH, ATL, FIB, HTF, SR, CONDITION_PROJECTION, PROJECTION, RAY, ROUND, CUSTOM
+    private LevelType type;               // Enum: ATH, ATL, FIB, HTF, SR, CONDITION_PROJECTION, PROJECTION, RAY, ROUND, CUSTOM, FVG, ORDER_BLOCK, LIQUIDITY, STRUCTURE_BREAK
     private RecalculateMode recalculate;  // STATIC or DYNAMIC
 
     // Type-specific config (union-style, only relevant fields used)
@@ -669,6 +787,18 @@ public class Level implements Identifiable {
     private String maxPriceExpr;      // DSL expression for projection
     private Double minPrice;          // Static for custom
     private Double maxPrice;          // Static for custom
+
+    // ICT-specific fields
+    private String direction;         // For FVG, OB: bullish | bearish | both
+    private Double minGapPercent;     // For FVG: minimum gap size
+    private Boolean requireImpulse;   // For FVG: middle candle > 1.5x ATR
+    private Boolean showFilled;       // For FVG: show filled gaps
+    private Boolean showMitigated;    // For OB: show mitigated blocks
+    private Double minBOSPercent;     // For OB: minimum BOS size
+    private String liquidityType;     // For LIQUIDITY: swing_high | swing_low | equal_highs | equal_lows
+    private Double equalTolerance;    // For LIQUIDITY: % tolerance for equal H/L
+    private Integer minCount;         // For LIQUIDITY: min touches for equal H/L
+    private String bosType;           // For STRUCTURE_BREAK: bullish | bearish | both
 
     private boolean builtIn;
     private String notes;

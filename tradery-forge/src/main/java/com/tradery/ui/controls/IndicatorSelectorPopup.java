@@ -816,8 +816,8 @@ public class IndicatorSelectorPopup extends JDialog {
             }
         }
 
-        // Select 2 values below and 2 above the ideal
-        int startIdx = Math.max(0, idealIdx - 2);
+        // Select 1 value below and 3 above the ideal (bias toward larger ticks)
+        int startIdx = Math.max(0, idealIdx - 1);
         if (startIdx + 4 > NICE_TICKS.length) {
             startIdx = NICE_TICKS.length - 4;
         }
