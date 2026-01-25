@@ -28,6 +28,7 @@ public class FootprintHeatmapOverlay {
 
     // Configuration
     private FootprintHeatmapConfig config;
+    private boolean enabled;  // Local enabled state - NOT shared with ChartConfig
 
     // Current data context
     private String currentSymbol;
@@ -65,14 +66,11 @@ public class FootprintHeatmapOverlay {
     }
 
     public boolean isEnabled() {
-        return config != null && config.isEnabled();
+        return enabled;
     }
 
     public void setEnabled(boolean enabled) {
-        if (config == null) {
-            config = new FootprintHeatmapConfig();
-        }
-        config.setEnabled(enabled);
+        this.enabled = enabled;
         if (!enabled) {
             clear();
             releasePage();

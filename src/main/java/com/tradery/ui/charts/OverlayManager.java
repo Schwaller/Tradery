@@ -1071,7 +1071,8 @@ public class OverlayManager {
             return;
         }
 
-        // Apply config and request data - overlay manages its own IndicatorPage
+        // Enable overlay and apply config - overlay manages its own IndicatorPage
+        footprintHeatmapOverlay.setEnabled(true);
         footprintHeatmapOverlay.setConfig(config.getFootprintHeatmapConfig());
         footprintHeatmapOverlay.requestData(
             currentCandles,
