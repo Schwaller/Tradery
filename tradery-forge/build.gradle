@@ -143,6 +143,30 @@ tasks.jlink {
     }
 }
 
+// Ensure data-service JAR is built before jpackage
+tasks.jpackage {
+    dependsOn ':tradery-data-service:fatJar'
+
+    doLast {
+        // Copy data-service JAR into the app bundle
+        def dataServiceJar = project(':tradery-data-service').layout.buildDirectory
+            .file("libs/tradery-data-service-${project.version}-all.jar").get().asFile
+        def appContents = layout.buildDirectory.dir("jpackage/Tradery.app/Contents").get().asFile
+        def destDir = new File(appContents, "app")
+
+        if (dataServiceJar.exists()) {
+            copy {
+                from dataServiceJar
+                into destDir
+                rename { "tradery-data-service.jar" }
+            }
+            println "Copied data-service JAR to: ${destDir}/tradery-data-service.jar"
+        } else {
+            println "WARNING: Data service JAR not found at: ${dataServiceJar}"
+        }
+    }
+}
+
 // macOS app bundle using jpackage (included in JDK 14+)
 tasks.register('jpackageApp', Exec) {
     dependsOn 'fatJar'

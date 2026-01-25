@@ -1,10 +1,13 @@
 package com.tradery.dataservice.api;
 
+import com.tradery.dataservice.coingecko.CoinGeckoClient;
 import com.tradery.dataservice.data.sqlite.SqliteDataStore;
+import com.tradery.dataservice.data.sqlite.SymbolsConnection;
 import com.tradery.dataservice.ConsumerRegistry;
 import com.tradery.dataservice.config.DataServiceConfig;
 import com.tradery.dataservice.live.LiveCandleManager;
 import com.tradery.dataservice.page.PageManager;
+import com.tradery.dataservice.symbols.SymbolSyncService;
 import io.javalin.Javalin;
 import io.javalin.http.Context;
 import io.javalin.json.JavalinJackson;
@@ -29,15 +32,19 @@ public class DataServiceServer {
     private final ObjectMapper objectMapper;
     private final LiveCandleManager liveCandleManager;
     private final WebSocketHandler webSocketHandler;
+    private final SymbolHandler symbolHandler;
     private Javalin app;
 
-    public DataServiceServer(DataServiceConfig config, ConsumerRegistry consumerRegistry, SqliteDataStore dataStore) {
+    public DataServiceServer(DataServiceConfig config, ConsumerRegistry consumerRegistry, SqliteDataStore dataStore,
+                             SymbolSyncService symbolSyncService, SymbolsConnection symbolsConnection,
+                             CoinGeckoClient coingeckoClient) {
         this.config = config;
         this.consumerRegistry = consumerRegistry;
         this.pageManager = new PageManager(config, dataStore);
         this.objectMapper = createObjectMapper();
         this.liveCandleManager = new LiveCandleManager();
         this.webSocketHandler = new WebSocketHandler(pageManager, liveCandleManager, objectMapper);
+        this.symbolHandler = new SymbolHandler(symbolSyncService, symbolsConnection, coingeckoClient);
     }
 
     private ObjectMapper createObjectMapper() {
@@ -57,6 +64,7 @@ public class DataServiceServer {
         configurePageRoutes();
         configureDataRoutes();
         configureCoverageRoutes();
+        configureSymbolRoutes();
         configureWebSocket();
         configureHealthRoutes();
 
@@ -132,6 +140,16 @@ public class DataServiceServer {
 
         app.get("/coverage", coverageHandler::getCoverage);
         app.get("/coverage/symbols", coverageHandler::getAvailableSymbols);
+    }
+
+    private void configureSymbolRoutes() {
+        // Symbol resolution endpoints
+        app.get("/symbols/resolve", symbolHandler::resolve);
+        app.get("/symbols/reverse", symbolHandler::reverse);
+        app.get("/symbols/search", symbolHandler::search);
+        app.post("/symbols/sync", symbolHandler::sync);
+        app.get("/symbols/stats", symbolHandler::stats);
+        app.get("/symbols/exchanges", symbolHandler::exchanges);
     }
 
     private void configureWebSocket() {

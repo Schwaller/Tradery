@@ -12,4 +12,8 @@ module com.tradery.dataclient {
     requires msgpack.core;
     requires org.java_websocket;
     requires org.slf4j;
+    requires com.fasterxml.jackson.databind;
+
+    // Jackson reflection access for internal DTOs
+    opens com.tradery.dataclient to com.fasterxml.jackson.databind;
 }

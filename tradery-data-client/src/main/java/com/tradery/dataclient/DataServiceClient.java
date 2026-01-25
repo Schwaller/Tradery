@@ -13,6 +13,7 @@ import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -300,6 +301,157 @@ public class DataServiceClient {
         }
     }
 
+    // ==================== Symbol Resolution ====================
+
+    /**
+     * Resolve a canonical symbol to exchange-specific symbol.
+     *
+     * @param canonical Canonical symbol or CoinGecko ID (e.g., "BTC", "bitcoin")
+     * @param exchange Target exchange (e.g., "binance", "okx")
+     * @param marketType Market type: "spot" or "perp" (default: perp)
+     * @param quote Quote currency (default: USDT)
+     * @return The exchange-specific symbol, or empty if not found
+     */
+    public Optional<String> resolveSymbol(String canonical, String exchange, String marketType, String quote)
+            throws IOException {
+        HttpUrl.Builder urlBuilder = HttpUrl.parse(baseUrl + "/symbols/resolve").newBuilder()
+            .addQueryParameter("canonical", canonical)
+            .addQueryParameter("exchange", exchange);
+
+        if (marketType != null) urlBuilder.addQueryParameter("market", marketType);
+        if (quote != null) urlBuilder.addQueryParameter("quote", quote);
+
+        Request request = new Request.Builder()
+            .url(urlBuilder.build())
+            .get()
+            .build();
+
+        try (Response response = httpClient.newCall(request).execute()) {
+            if (response.code() == 404) {
+                return Optional.empty();
+            }
+            if (!response.isSuccessful()) {
+                throw new IOException("Symbol resolution failed: " + response.code());
+            }
+            SymbolResolveResponse result = jsonMapper.readValue(response.body().string(), SymbolResolveResponse.class);
+            return Optional.of(result.symbol());
+        }
+    }
+
+    /**
+     * Resolve a canonical symbol to exchange-specific symbol (using defaults).
+     *
+     * @param canonical Canonical symbol or CoinGecko ID
+     * @param exchange Target exchange
+     * @return The exchange-specific symbol for perp/USDT, or empty if not found
+     */
+    public Optional<String> resolveSymbol(String canonical, String exchange) throws IOException {
+        return resolveSymbol(canonical, exchange, "perp", "USDT");
+    }
+
+    /**
+     * Reverse resolve an exchange symbol to canonical info.
+     *
+     * @param exchangeSymbol Exchange-specific symbol (e.g., "BTC-USDT-SWAP")
+     * @param exchange Exchange name
+     * @return Symbol info with CoinGecko IDs, or empty if not found
+     */
+    public Optional<SymbolReverseResponse> reverseResolveSymbol(String exchangeSymbol, String exchange)
+            throws IOException {
+        HttpUrl.Builder urlBuilder = HttpUrl.parse(baseUrl + "/symbols/reverse").newBuilder()
+            .addQueryParameter("symbol", exchangeSymbol)
+            .addQueryParameter("exchange", exchange);
+
+        Request request = new Request.Builder()
+            .url(urlBuilder.build())
+            .get()
+            .build();
+
+        try (Response response = httpClient.newCall(request).execute()) {
+            if (response.code() == 404) {
+                return Optional.empty();
+            }
+            if (!response.isSuccessful()) {
+                throw new IOException("Reverse resolution failed: " + response.code());
+            }
+            return Optional.of(jsonMapper.readValue(response.body().string(), SymbolReverseResponse.class));
+        }
+    }
+
+    /**
+     * Search for symbols.
+     *
+     * @param query Search query
+     * @param exchange Optional exchange filter
+     * @param limit Max results (default: 50)
+     * @return List of matching symbols
+     */
+    public List<SymbolSearchResult> searchSymbols(String query, String exchange, Integer limit) throws IOException {
+        HttpUrl.Builder urlBuilder = HttpUrl.parse(baseUrl + "/symbols/search").newBuilder()
+            .addQueryParameter("q", query);
+
+        if (exchange != null) urlBuilder.addQueryParameter("exchange", exchange);
+        if (limit != null) urlBuilder.addQueryParameter("limit", limit.toString());
+
+        Request request = new Request.Builder()
+            .url(urlBuilder.build())
+            .get()
+            .build();
+
+        try (Response response = httpClient.newCall(request).execute()) {
+            if (!response.isSuccessful()) {
+                throw new IOException("Symbol search failed: " + response.code());
+            }
+            SymbolSearchResponse result = jsonMapper.readValue(response.body().string(), SymbolSearchResponse.class);
+            return result.results();
+        }
+    }
+
+    /**
+     * Search for symbols (simple form).
+     */
+    public List<SymbolSearchResult> searchSymbols(String query) throws IOException {
+        return searchSymbols(query, null, null);
+    }
+
+    /**
+     * Get symbol resolution statistics.
+     */
+    public SymbolStats getSymbolStats() throws IOException {
+        Request request = new Request.Builder()
+            .url(baseUrl + "/symbols/stats")
+            .get()
+            .build();
+
+        try (Response response = httpClient.newCall(request).execute()) {
+            if (!response.isSuccessful()) {
+                throw new IOException("Symbol stats failed: " + response.code());
+            }
+            return jsonMapper.readValue(response.body().string(), SymbolStats.class);
+        }
+    }
+
+    /**
+     * Trigger a symbol sync.
+     */
+    public void triggerSymbolSync() throws IOException {
+        Request request = new Request.Builder()
+            .url(baseUrl + "/symbols/sync")
+            .post(RequestBody.create("", MediaType.parse("application/json")))
+            .build();
+
+        try (Response response = httpClient.newCall(request).execute()) {
+            if (response.code() == 409) {
+                LOG.info("Symbol sync already in progress");
+                return;
+            }
+            if (!response.isSuccessful()) {
+                throw new IOException("Symbol sync failed: " + response.code());
+            }
+            LOG.info("Symbol sync triggered");
+        }
+    }
+
     /**
      * Close the client.
      */
@@ -324,4 +476,17 @@ public class DataServiceClient {
     public record Coverage(long requestedStart, long requestedEnd, Long actualStart, Long actualEnd, List<Gap> gaps) {}
 
     public record Gap(long start, long end) {}
+
+    // Symbol resolution DTOs
+    public record SymbolResolveResponse(String canonical, String exchange, String marketType, String quote, String symbol) {}
+
+    public record SymbolReverseResponse(String symbol, String exchange, String marketType, String base, String quote,
+                                         String coingeckoBaseId, String coingeckoQuoteId) {}
+
+    public record SymbolSearchResult(String symbol, String exchange, String marketType, String base, String quote,
+                                      String coingeckoId) {}
+
+    public record SymbolSearchResponse(String query, int count, List<SymbolSearchResult> results) {}
+
+    public record SymbolStats(int totalPairs, int totalAssets, int totalCoins, boolean syncInProgress) {}
 }

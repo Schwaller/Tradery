@@ -169,6 +169,7 @@ public class DataServiceLauncher {
             "../tradery-data-service.jar",
             "tradery-data-service.jar",
             // Installed: in Applications
+            "/Applications/Tradery.app/Contents/app/tradery-data-service.jar",
             "/Applications/Tradery/tradery-data-service.jar",
         };
 
@@ -190,6 +191,20 @@ public class DataServiceLauncher {
             Path classesDir = Paths.get(getClass().getProtectionDomain()
                 .getCodeSource().getLocation().toURI());
             LOG.debug("Classes location: {}", classesDir);
+
+            // Check if we're inside a macOS app bundle (path contains .app/Contents/)
+            String classesPath = classesDir.toString();
+            int appContentsIdx = classesPath.indexOf(".app/Contents/");
+            if (appContentsIdx > 0) {
+                // We're in an app bundle - look in the app directory
+                Path appContents = Paths.get(classesPath.substring(0, appContentsIdx + ".app/Contents/".length()));
+                Path serviceJar = appContents.resolve("app/tradery-data-service.jar");
+                LOG.debug("Checking app bundle path: {}", serviceJar);
+                if (Files.exists(serviceJar)) {
+                    LOG.info("Found data service JAR in app bundle at: {}", serviceJar);
+                    return serviceJar;
+                }
+            }
 
             // Navigate up to find project root: build/classes/java/main -> project root
             Path projectRoot = classesDir;

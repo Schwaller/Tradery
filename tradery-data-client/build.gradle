@@ -12,6 +12,9 @@ dependencies {
     // HTTP client
     implementation "com.squareup.okhttp3:okhttp:${rootProject.ext.okhttpVersion}"
 
+    // JSON serialization for API requests
+    implementation "com.fasterxml.jackson.core:jackson-databind:${rootProject.ext.jacksonVersion}"
+
     // MessagePack for deserializing data
     implementation "org.msgpack:msgpack-core:${rootProject.ext.msgpackVersion}"
     implementation "org.msgpack:jackson-dataformat-msgpack:${rootProject.ext.msgpackVersion}"

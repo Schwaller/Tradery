@@ -1,15 +1,23 @@
 package com.tradery.dataservice;
 
+import com.tradery.dataservice.coingecko.CoinGeckoClient;
 import com.tradery.dataservice.data.sqlite.SqliteDataStore;
+import com.tradery.dataservice.data.sqlite.SymbolsConnection;
 import com.tradery.dataservice.api.DataServiceServer;
 import com.tradery.dataservice.config.DataServiceConfig;
+import com.tradery.dataservice.symbols.SymbolSyncService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
+import java.time.LocalTime;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Tradery Data Service - standalone daemon for data fetching and caching.
@@ -24,6 +32,10 @@ public class DataServiceApp {
     private static DataServiceServer server;
     private static ConsumerRegistry consumerRegistry;
     private static SqliteDataStore dataStore;
+    private static SymbolsConnection symbolsConnection;
+    private static SymbolSyncService symbolSyncService;
+    private static CoinGeckoClient coingeckoClient;
+    private static ScheduledExecutorService scheduler;
 
     public static void main(String[] args) {
         LOG.info("Starting Tradery Data Service...");
@@ -35,13 +47,26 @@ public class DataServiceApp {
             dataStore = new SqliteDataStore();
             LOG.info("SqliteDataStore initialized");
 
+            // Initialize symbol resolution components
+            symbolsConnection = SymbolsConnection.getInstance();
+            symbolsConnection.initializeSchema();
+            LOG.info("SymbolsConnection initialized");
+
+            coingeckoClient = new CoinGeckoClient();
+            symbolSyncService = new SymbolSyncService(coingeckoClient, symbolsConnection);
+            LOG.info("SymbolSyncService initialized");
+
             // Create consumer registry with shutdown callback
             consumerRegistry = new ConsumerRegistry(() -> {
                 LOG.info("Initiating idle shutdown...");
                 shutdownLatch.countDown();
             });
 
-            server = new DataServiceServer(config, consumerRegistry, dataStore);
+            server = new DataServiceServer(config, consumerRegistry, dataStore,
+                symbolSyncService, symbolsConnection, coingeckoClient);
+
+            // Schedule daily symbol sync at 3 AM
+            scheduleSymbolSync();
 
             // Write port file for service discovery
             writePortFile(config.getPort());
@@ -69,13 +94,65 @@ public class DataServiceApp {
     }
 
     private static void cleanup() {
+        if (scheduler != null) {
+            scheduler.shutdown();
+        }
         if (server != null) {
             server.stop();
         }
         if (consumerRegistry != null) {
             consumerRegistry.shutdown();
         }
+        if (symbolsConnection != null) {
+            symbolsConnection.close();
+        }
         deletePortFile();
+    }
+
+    /**
+     * Schedule daily symbol sync at 3 AM.
+     * Also triggers initial sync if data is stale (>24h old).
+     */
+    private static void scheduleSymbolSync() {
+        scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
+            Thread t = new Thread(r, "symbol-sync-scheduler");
+            t.setDaemon(true);
+            return t;
+        });
+
+        // Calculate delay until 3 AM
+        LocalTime now = LocalTime.now();
+        LocalTime targetTime = LocalTime.of(3, 0);
+        long delayMinutes = now.until(targetTime, java.time.temporal.ChronoUnit.MINUTES);
+        if (delayMinutes < 0) {
+            delayMinutes += 24 * 60; // Tomorrow
+        }
+
+        // Schedule daily sync
+        scheduler.scheduleAtFixedRate(() -> {
+            try {
+                LOG.info("Running scheduled symbol sync...");
+                symbolSyncService.syncAll();
+            } catch (Exception e) {
+                LOG.error("Scheduled symbol sync failed", e);
+            }
+        }, delayMinutes, 24 * 60, TimeUnit.MINUTES);
+
+        LOG.info("Symbol sync scheduled at 3 AM daily (first run in {} minutes)", delayMinutes);
+
+        // Trigger initial sync if data is stale
+        scheduler.schedule(() -> {
+            try {
+                if (symbolSyncService.isSyncNeeded(Duration.ofHours(24))) {
+                    LOG.info("Symbol data is stale, triggering initial sync...");
+                    symbolSyncService.syncAll();
+                } else {
+                    LOG.info("Symbol data is up to date, skipping initial sync");
+                }
+            } catch (Exception e) {
+                LOG.error("Initial symbol sync check failed", e);
+            }
+        }, 5, TimeUnit.SECONDS);
     }
 
     private static void writePortFile(int port) throws IOException {
