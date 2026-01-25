@@ -1,5 +1,6 @@
 package com.tradery.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 
 /**
@@ -65,6 +66,7 @@ public record PremiumIndex(
     /**
      * Get premium close value as percentage (e.g., 0.0001 -> 0.01%)
      */
+    @JsonIgnore
     public double closePercent() {
         return close * 100;
     }
@@ -72,6 +74,7 @@ public record PremiumIndex(
     /**
      * Get premium high as percentage
      */
+    @JsonIgnore
     public double highPercent() {
         return high * 100;
     }
@@ -79,6 +82,7 @@ public record PremiumIndex(
     /**
      * Get premium low as percentage
      */
+    @JsonIgnore
     public double lowPercent() {
         return low * 100;
     }
@@ -86,6 +90,7 @@ public record PremiumIndex(
     /**
      * Check if premium is positive (futures above spot)
      */
+    @JsonIgnore
     public boolean isPositive() {
         return close > 0;
     }
@@ -93,6 +98,7 @@ public record PremiumIndex(
     /**
      * Check if premium is negative (futures below spot)
      */
+    @JsonIgnore
     public boolean isNegative() {
         return close < 0;
     }

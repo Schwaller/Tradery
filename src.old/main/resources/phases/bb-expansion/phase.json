@@ -1,0 +1,13 @@
+{
+  "id": "bb-expansion",
+  "name": "Bollinger Expansion",
+  "description": "Bollinger Bands are expanding - high volatility breakout in progress",
+  "category": "Volatility",
+  "condition": "BBANDS(20,2).width > HIGHEST(BBANDS(20,2).width, 20) * 0.9",
+  "timeframe": "1h",
+  "symbol": "BTCUSDT",
+  "created": null,
+  "updated": null,
+  "builtIn": true,
+  "version": "1.0"
+}

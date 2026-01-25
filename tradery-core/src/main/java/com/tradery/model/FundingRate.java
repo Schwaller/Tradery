@@ -1,5 +1,6 @@
 package com.tradery.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 
 /**
@@ -45,6 +46,7 @@ public record FundingRate(
     /**
      * Get funding rate as percentage (e.g., 0.0001 -> 0.01)
      */
+    @JsonIgnore
     public double fundingRatePercent() {
         return fundingRate * 100;
     }
@@ -52,6 +54,7 @@ public record FundingRate(
     /**
      * Check if this is a positive (longs pay shorts) funding rate
      */
+    @JsonIgnore
     public boolean isPositive() {
         return fundingRate > 0;
     }
@@ -59,6 +62,7 @@ public record FundingRate(
     /**
      * Check if this is a negative (shorts pay longs) funding rate
      */
+    @JsonIgnore
     public boolean isNegative() {
         return fundingRate < 0;
     }

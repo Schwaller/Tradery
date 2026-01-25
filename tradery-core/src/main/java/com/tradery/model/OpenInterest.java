@@ -1,5 +1,6 @@
 package com.tradery.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 
 /**
@@ -45,6 +46,7 @@ public record OpenInterest(
     /**
      * Get open interest value in millions of USDT for display
      */
+    @JsonIgnore
     public double openInterestValueMillions() {
         return openInterestValue / 1_000_000.0;
     }
@@ -52,6 +54,7 @@ public record OpenInterest(
     /**
      * Get open interest value in billions of USDT for display
      */
+    @JsonIgnore
     public double openInterestValueBillions() {
         return openInterestValue / 1_000_000_000.0;
     }

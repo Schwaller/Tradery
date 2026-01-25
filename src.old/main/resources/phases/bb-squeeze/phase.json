@@ -1,0 +1,13 @@
+{
+  "id": "bb-squeeze",
+  "name": "Bollinger Squeeze",
+  "description": "Bollinger Bands are at their narrowest - potential breakout setup",
+  "category": "Volatility",
+  "condition": "BBANDS(20,2).width < LOWEST(BBANDS(20,2).width, 20) * 1.1",
+  "timeframe": "1h",
+  "symbol": "BTCUSDT",
+  "created": null,
+  "updated": null,
+  "builtIn": true,
+  "version": "1.0"
+}

@@ -1,0 +1,13 @@
+{
+  "id": "macd-bullish",
+  "name": "MACD Bullish",
+  "description": "MACD histogram is positive - bullish momentum",
+  "category": "MACD",
+  "condition": "MACD(12,26,9).histogram > 0",
+  "timeframe": "4h",
+  "symbol": "BTCUSDT",
+  "created": null,
+  "updated": null,
+  "builtIn": true,
+  "version": "1.0"
+}

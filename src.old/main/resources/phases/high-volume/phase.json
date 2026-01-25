@@ -1,0 +1,13 @@
+{
+  "id": "high-volume",
+  "name": "High Volume",
+  "description": "Volume is significantly above average - increased market participation",
+  "category": "Volume",
+  "condition": "volume > AVG_VOLUME(20) * 1.5",
+  "timeframe": "1h",
+  "symbol": "BTCUSDT",
+  "created": null,
+  "updated": null,
+  "builtIn": true,
+  "version": "1.0"
+}

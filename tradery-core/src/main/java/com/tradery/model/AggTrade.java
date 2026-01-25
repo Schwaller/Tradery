@@ -1,5 +1,7 @@
 package com.tradery.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+
 /**
  * Aggregated trade data from cryptocurrency exchanges.
  * Stored in SQLite with exchange-aware schema.
@@ -146,6 +148,7 @@ public record AggTrade(
     /**
      * Get the buy volume (0 if this is a sell)
      */
+    @JsonIgnore
     public double buyVolume() {
         return isBuyerMaker ? 0 : quantity;
     }
@@ -153,6 +156,7 @@ public record AggTrade(
     /**
      * Get the sell volume (0 if this is a buy)
      */
+    @JsonIgnore
     public double sellVolume() {
         return isBuyerMaker ? quantity : 0;
     }
@@ -160,6 +164,7 @@ public record AggTrade(
     /**
      * Get the delta contribution (positive for buy, negative for sell)
      */
+    @JsonIgnore
     public double delta() {
         return isBuyerMaker ? -quantity : quantity;
     }
@@ -167,6 +172,7 @@ public record AggTrade(
     /**
      * Get the notional value (price * quantity)
      */
+    @JsonIgnore
     public double notional() {
         return price * quantity;
     }
@@ -174,6 +180,7 @@ public record AggTrade(
     /**
      * Get the notional value using normalized price.
      */
+    @JsonIgnore
     public double normalizedNotional() {
         return normalizedPrice * quantity;
     }
@@ -181,6 +188,7 @@ public record AggTrade(
     /**
      * Get delta using normalized price for cross-exchange aggregation.
      */
+    @JsonIgnore
     public double normalizedDelta() {
         return isBuyerMaker ? -normalizedNotional() : normalizedNotional();
     }
@@ -188,6 +196,7 @@ public record AggTrade(
     /**
      * Check if this trade is from a specific exchange.
      */
+    @JsonIgnore
     public boolean isFromExchange(Exchange ex) {
         return this.exchange == ex;
     }
@@ -195,6 +204,7 @@ public record AggTrade(
     /**
      * Check if this trade is from futures market (perp or dated).
      */
+    @JsonIgnore
     public boolean isFutures() {
         return marketType == DataMarketType.FUTURES_PERP || marketType == DataMarketType.FUTURES_DATED;
     }
@@ -202,6 +212,7 @@ public record AggTrade(
     /**
      * Check if this trade is from spot market.
      */
+    @JsonIgnore
     public boolean isSpot() {
         return marketType == DataMarketType.SPOT;
     }

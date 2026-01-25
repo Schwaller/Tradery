@@ -1,0 +1,13 @@
+{
+  "id": "low-volume",
+  "name": "Low Volume",
+  "description": "Volume is significantly below average - reduced market participation",
+  "category": "Volume",
+  "condition": "volume < AVG_VOLUME(20) * 0.5",
+  "timeframe": "1h",
+  "symbol": "BTCUSDT",
+  "created": null,
+  "updated": null,
+  "builtIn": true,
+  "version": "1.0"
+}

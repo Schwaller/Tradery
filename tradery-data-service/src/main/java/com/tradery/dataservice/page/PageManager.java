@@ -6,9 +6,7 @@ import com.tradery.dataservice.api.CoverageHandler;
 import com.tradery.dataservice.config.DataServiceConfig;
 import com.tradery.model.*;
 import org.msgpack.jackson.dataformat.MessagePackFactory;
-import com.fasterxml.jackson.databind.MapperFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.json.JsonMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -49,11 +47,8 @@ public class PageManager {
         this.openInterestStore = new OpenInterestStore(new OpenInterestClient(), dataStore);
         this.aggTradesStore = new AggTradesStore(new AggTradesClient(), dataStore);
         this.premiumIndexStore = new PremiumIndexStore(new PremiumIndexClient(), dataStore);
-        // Configure MessagePack to only serialize record components, not computed methods
-        this.msgpackMapper = JsonMapper.builder(new MessagePackFactory())
-            .disable(MapperFeature.AUTO_DETECT_IS_GETTERS)  // Don't serialize isBullish() as "bullish"
-            .disable(MapperFeature.AUTO_DETECT_GETTERS)     // Don't serialize other getters
-            .build();
+        // Use default ObjectMapper for MessagePack - records are handled correctly
+        this.msgpackMapper = new ObjectMapper(new MessagePackFactory());
         this.loadExecutor = Executors.newFixedThreadPool(config.getMaxConcurrentDownloads());
         this.cleanupExecutor = Executors.newSingleThreadScheduledExecutor();
 

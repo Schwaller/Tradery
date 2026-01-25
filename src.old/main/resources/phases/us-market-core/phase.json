@@ -1,0 +1,11 @@
+{
+  "id": "us-market-core",
+  "name": "US Market Core",
+  "category": "Session",
+  "description": "NYSE/NASDAQ core hours - fully within market (15:00-21:00 UTC)",
+  "condition": "HOUR >= 15 AND HOUR < 21",
+  "timeframe": "1h",
+  "symbol": "BTCUSDT",
+  "created": "2026-01-08T00:00:00Z",
+  "updated": "2026-01-08T00:00:00Z"
+}

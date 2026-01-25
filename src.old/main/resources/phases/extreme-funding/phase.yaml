@@ -1,0 +1,7 @@
+id: extreme-funding
+name: Extreme Funding Rate
+description: Funding rate above 0.1% or below -0.05% - extreme positioning
+category: Funding
+condition: FUNDING > 0.1 OR FUNDING < -0.05
+timeframe: 1h
+symbol: BTCUSDT

@@ -1,0 +1,13 @@
+{
+  "id": "stoch-overbought",
+  "name": "Stochastic Overbought",
+  "description": "Stochastic K line above 80 - potentially overbought conditions",
+  "category": "Stochastic",
+  "condition": "STOCHASTIC(14,3).k > 80",
+  "timeframe": "1h",
+  "symbol": "BTCUSDT",
+  "created": null,
+  "updated": null,
+  "builtIn": true,
+  "version": "1.0"
+}

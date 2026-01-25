@@ -1,0 +1,11 @@
+{
+  "id": "friday",
+  "name": "Friday",
+  "category": "Time",
+  "description": "Active on Fridays (UTC)",
+  "condition": "DAYOFWEEK == 5",
+  "timeframe": "1d",
+  "symbol": "BTCUSDT",
+  "created": "2026-01-07T00:00:00Z",
+  "updated": "2026-01-07T00:00:00Z"
+}

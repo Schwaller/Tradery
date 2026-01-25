@@ -1,5 +1,7 @@
 package com.tradery.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+
 /**
  * OHLCV candle data with extended Binance kline fields.
  * Stored as CSV in ~/.tradery/data/SYMBOL/RESOLUTION/
@@ -41,6 +43,7 @@ public record Candle(
     /**
      * Check if trade count is available.
      */
+    @JsonIgnore
     public boolean hasTradeCount() {
         return tradeCount >= 0;
     }
@@ -48,6 +51,7 @@ public record Candle(
     /**
      * Check if extended volume data is available.
      */
+    @JsonIgnore
     public boolean hasExtendedVolume() {
         return takerBuyVolume >= 0;
     }
@@ -56,6 +60,7 @@ public record Candle(
      * Get taker sell volume (calculated from volume - takerBuyVolume).
      * Returns -1 if extended data not available.
      */
+    @JsonIgnore
     public double takerSellVolume() {
         return hasExtendedVolume() ? volume - takerBuyVolume : -1;
     }
@@ -64,6 +69,7 @@ public record Candle(
      * Get taker sell quote volume (calculated).
      * Returns -1 if extended data not available.
      */
+    @JsonIgnore
     public double takerSellQuoteVolume() {
         return quoteVolume >= 0 && takerBuyQuoteVolume >= 0
             ? quoteVolume - takerBuyQuoteVolume : -1;
@@ -73,6 +79,7 @@ public record Candle(
      * Get delta (buy volume - sell volume) from OHLCV data.
      * Returns NaN if extended data not available.
      */
+    @JsonIgnore
     public double delta() {
         if (!hasExtendedVolume()) return Double.NaN;
         return takerBuyVolume - takerSellVolume();
@@ -83,6 +90,7 @@ public record Candle(
      * Returns NaN if extended data not available.
      * Result is 0-1 where 0.5 = balanced, >0.5 = more buying, <0.5 = more selling.
      */
+    @JsonIgnore
     public double buyRatio() {
         if (!hasExtendedVolume() || volume <= 0) return Double.NaN;
         return takerBuyVolume / volume;
@@ -165,6 +173,7 @@ public record Candle(
     /**
      * Check if this is a bullish candle (close > open)
      */
+    @JsonIgnore
     public boolean isBullish() {
         return close > open;
     }
@@ -172,6 +181,7 @@ public record Candle(
     /**
      * Check if this is a bearish candle (close < open)
      */
+    @JsonIgnore
     public boolean isBearish() {
         return close < open;
     }
@@ -179,6 +189,7 @@ public record Candle(
     /**
      * Get the body size (absolute difference between open and close)
      */
+    @JsonIgnore
     public double bodySize() {
         return Math.abs(close - open);
     }
@@ -186,6 +197,7 @@ public record Candle(
     /**
      * Get the range (high - low)
      */
+    @JsonIgnore
     public double range() {
         return high - low;
     }

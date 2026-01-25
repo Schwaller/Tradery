@@ -35,6 +35,7 @@ public class DataServiceClient {
             .writeTimeout(30, TimeUnit.SECONDS)
             .build();
         this.jsonMapper = new ObjectMapper();
+        // Use default ObjectMapper for MessagePack - records are handled correctly
         this.msgpackMapper = new ObjectMapper(new MessagePackFactory());
     }
 

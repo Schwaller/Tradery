@@ -1,0 +1,7 @@
+id: cross-exchange-sell-pressure
+name: Cross-Exchange Sell Pressure
+description: Multiple exchanges showing coordinated sell pressure. At least 2 exchanges have sell imbalances with negative combined delta.
+category: Orderflow
+condition: EXCHANGES_WITH_SELL_IMBALANCE >= 2 AND COMBINED_DELTA < 0
+timeframe: 1h
+symbol: BTCUSDT

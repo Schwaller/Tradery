@@ -1,0 +1,7 @@
+id: range-breakout-down
+name: Range Breakout Down
+description: Price broke below 20-bar low - bearish breakdown
+category: Technical
+condition: close < LOW_OF(20)[1]
+timeframe: 1h
+symbol: BTCUSDT

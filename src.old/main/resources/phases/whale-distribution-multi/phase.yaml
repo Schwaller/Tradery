@@ -1,0 +1,7 @@
+id: whale-distribution-multi
+name: Whale Distribution (Multi-Exchange)
+description: Large coordinated selling across exchanges. Whale delta combined from trades over $100K threshold exceeds $50K negative.
+category: Orderflow
+condition: WHALE_DELTA_COMBINED(100000) < -50000
+timeframe: 1h
+symbol: BTCUSDT

@@ -1,0 +1,9 @@
+id: multi-ray-breakout
+name: Multi-Ray Breakout
+description: Price has broken through 2+ resistance rays - strong bullish momentum
+category: Ray
+condition: RESISTANCE_RAYS_BROKEN(0, 5) >= 2
+timeframe: 4h
+symbol: BTCUSDT
+builtIn: true
+version: "1.1"
