@@ -1,0 +1,15 @@
+// tradery-engine: Backtesting and trading engine
+// Contains: BacktestEngine, ConditionEvaluator, PositionSizer, etc.
+// No data fetching dependencies - receives all data through interfaces/parameters
+
+plugins {
+    id 'java-library'
+}
+
+dependencies {
+    // Core models, indicators, DSL
+    api project(':tradery-core')
+
+    // Logging
+    implementation "org.slf4j:slf4j-api:${rootProject.ext.slf4jVersion}"
+}

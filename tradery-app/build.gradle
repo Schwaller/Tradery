@@ -14,6 +14,9 @@ dependencies {
     // Core module for models, indicators, DSL
     implementation project(':tradery-core')
 
+    // Engine module for backtesting
+    implementation project(':tradery-engine')
+
     // Data client for accessing data service
     implementation project(':tradery-data-client')
 
