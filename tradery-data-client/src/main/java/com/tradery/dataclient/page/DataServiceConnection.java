@@ -1,0 +1,605 @@
+package com.tradery.dataclient.page;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.tradery.model.Candle;
+import org.java_websocket.client.WebSocketClient;
+import org.java_websocket.handshake.ServerHandshake;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.net.URI;
+import java.util.*;
+import java.util.concurrent.*;
+import java.util.function.Consumer;
+
+/**
+ * Unified WebSocket connection to data-service.
+ *
+ * Handles both page subscriptions (historical data with progress tracking)
+ * and live candle streams in a single connection.
+ *
+ * Features:
+ * - Single WebSocket connection for all data needs
+ * - subscribe_page: Request AND subscribe to page updates
+ * - subscribe_live: Real-time candle updates
+ * - Automatic reconnection with re-subscription
+ * - EDT-safe callback dispatch
+ */
+public class DataServiceConnection {
+    private static final Logger LOG = LoggerFactory.getLogger(DataServiceConnection.class);
+    private static final int RECONNECT_DELAY_MS = 5000;
+    private static final int CONNECT_TIMEOUT_MS = 10000;
+
+    private final String host;
+    private final int port;
+    private final String consumerId;
+    private final String consumerName;
+    private final ObjectMapper objectMapper = new ObjectMapper();
+    private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
+        Thread t = new Thread(r, "DataServiceConnection-Scheduler");
+        t.setDaemon(true);
+        return t;
+    });
+
+    // WebSocket connection
+    private volatile DataServiceWebSocket webSocket;
+    private volatile ConnectionState connectionState = ConnectionState.DISCONNECTED;
+    private volatile boolean shouldReconnect = true;
+    private volatile boolean shutdown = false;
+
+    // Connection state listeners
+    private final Set<Consumer<ConnectionState>> connectionListeners = ConcurrentHashMap.newKeySet();
+
+    // Page subscriptions: pageKey -> listeners
+    private final Map<String, Set<PageUpdateCallback>> pageCallbacks = new ConcurrentHashMap<>();
+    // Track pending page requests (not yet subscribed with server)
+    private final Set<PageRequest> pendingPageRequests = ConcurrentHashMap.newKeySet();
+    // Track active page subscriptions
+    private final Set<String> activePageSubscriptions = ConcurrentHashMap.newKeySet();
+
+    // Live candle subscriptions: "SYMBOL:timeframe" -> listeners
+    private final Map<String, Set<Consumer<Candle>>> liveUpdateListeners = new ConcurrentHashMap<>();
+    private final Map<String, Set<Consumer<Candle>>> liveCloseListeners = new ConcurrentHashMap<>();
+    private final Set<String> activeLiveSubscriptions = ConcurrentHashMap.newKeySet();
+
+    /**
+     * Create a new connection to data-service.
+     *
+     * @param host         Data service host
+     * @param port         Data service port
+     * @param consumerId   Unique consumer ID (UUID recommended)
+     * @param consumerName Human-readable consumer name for debugging
+     */
+    public DataServiceConnection(String host, int port, String consumerId, String consumerName) {
+        this.host = host;
+        this.port = port;
+        this.consumerId = consumerId;
+        this.consumerName = consumerName;
+    }
+
+    /**
+     * Connect to data-service.
+     * Returns immediately; connection happens asynchronously.
+     */
+    public void connect() {
+        if (shutdown) {
+            LOG.warn("Cannot connect - connection is shutdown");
+            return;
+        }
+
+        if (webSocket != null && webSocket.isOpen()) {
+            LOG.debug("Already connected");
+            return;
+        }
+
+        setConnectionState(ConnectionState.CONNECTING);
+
+        try {
+            String wsUrl = String.format("ws://%s:%d/subscribe?consumerId=%s", host, port, consumerId);
+            webSocket = new DataServiceWebSocket(new URI(wsUrl));
+            webSocket.setConnectionLostTimeout(60);
+            webSocket.connectBlocking(CONNECT_TIMEOUT_MS, TimeUnit.MILLISECONDS);
+        } catch (Exception e) {
+            LOG.error("Failed to connect to data-service at {}:{} - {}", host, port, e.getMessage());
+            setConnectionState(ConnectionState.DISCONNECTED);
+            scheduleReconnect();
+        }
+    }
+
+    /**
+     * Disconnect from data-service.
+     */
+    public void disconnect() {
+        shouldReconnect = false;
+        shutdown = true;
+        scheduler.shutdown();
+        if (webSocket != null) {
+            webSocket.close();
+        }
+        setConnectionState(ConnectionState.DISCONNECTED);
+    }
+
+    /**
+     * Check if connected to data-service.
+     */
+    public boolean isConnected() {
+        return connectionState == ConnectionState.CONNECTED && webSocket != null && webSocket.isOpen();
+    }
+
+    /**
+     * Get current connection state.
+     */
+    public ConnectionState getConnectionState() {
+        return connectionState;
+    }
+
+    /**
+     * Add a connection state listener.
+     */
+    public void addConnectionListener(Consumer<ConnectionState> listener) {
+        connectionListeners.add(listener);
+        listener.accept(connectionState);
+    }
+
+    /**
+     * Remove a connection state listener.
+     */
+    public void removeConnectionListener(Consumer<ConnectionState> listener) {
+        connectionListeners.remove(listener);
+    }
+
+    // ========== Page Subscription API ==========
+
+    /**
+     * Request and subscribe to a page.
+     *
+     * This sends a subscribe_page message to data-service which:
+     * 1. Creates/gets the page (starts loading if needed)
+     * 2. Subscribes for state/progress updates
+     *
+     * @param dataType   Type of data (CANDLES, FUNDING, etc.)
+     * @param symbol     Trading symbol
+     * @param timeframe  Timeframe (null for non-timeframe types)
+     * @param startTime  Start time in milliseconds
+     * @param endTime    End time in milliseconds
+     * @param callback   Callback for page updates
+     */
+    public void subscribePage(DataType dataType, String symbol, String timeframe,
+                              long startTime, long endTime, PageUpdateCallback callback) {
+        String pageKey = makePageKey(dataType, symbol, timeframe, startTime, endTime);
+        PageRequest request = new PageRequest(dataType, symbol, timeframe, startTime, endTime);
+
+        LOG.debug("Subscribing to page: {} (connected={})", pageKey, isConnected());
+
+        // Register callback
+        pageCallbacks.computeIfAbsent(pageKey, k -> ConcurrentHashMap.newKeySet()).add(callback);
+
+        if (isConnected()) {
+            sendSubscribePage(request);
+            activePageSubscriptions.add(pageKey);
+        } else {
+            LOG.info("Not connected, queuing page request: {}", pageKey);
+            pendingPageRequests.add(request);
+        }
+    }
+
+    /**
+     * Unsubscribe from page updates.
+     */
+    public void unsubscribePage(DataType dataType, String symbol, String timeframe,
+                                long startTime, long endTime, PageUpdateCallback callback) {
+        String pageKey = makePageKey(dataType, symbol, timeframe, startTime, endTime);
+
+        Set<PageUpdateCallback> callbacks = pageCallbacks.get(pageKey);
+        if (callbacks != null) {
+            callbacks.remove(callback);
+            if (callbacks.isEmpty()) {
+                pageCallbacks.remove(pageKey);
+                activePageSubscriptions.remove(pageKey);
+
+                if (isConnected()) {
+                    sendUnsubscribePage(pageKey);
+                }
+            }
+        }
+    }
+
+    // ========== Live Candle Subscription API ==========
+
+    /**
+     * Subscribe to live candle updates.
+     *
+     * @param symbol    Trading symbol
+     * @param timeframe Candle timeframe
+     * @param onUpdate  Called on each candle update (incomplete candle)
+     * @param onClose   Called when candle closes
+     */
+    public void subscribeLive(String symbol, String timeframe,
+                              Consumer<Candle> onUpdate, Consumer<Candle> onClose) {
+        String key = makeLiveKey(symbol, timeframe);
+
+        if (onUpdate != null) {
+            liveUpdateListeners.computeIfAbsent(key, k -> ConcurrentHashMap.newKeySet()).add(onUpdate);
+        }
+        if (onClose != null) {
+            liveCloseListeners.computeIfAbsent(key, k -> ConcurrentHashMap.newKeySet()).add(onClose);
+        }
+
+        if (!activeLiveSubscriptions.contains(key)) {
+            activeLiveSubscriptions.add(key);
+            if (isConnected()) {
+                sendSubscribeLive(symbol, timeframe);
+            }
+        }
+    }
+
+    /**
+     * Unsubscribe from live candle updates.
+     */
+    public void unsubscribeLive(String symbol, String timeframe,
+                                Consumer<Candle> onUpdate, Consumer<Candle> onClose) {
+        String key = makeLiveKey(symbol, timeframe);
+
+        if (onUpdate != null) {
+            Set<Consumer<Candle>> listeners = liveUpdateListeners.get(key);
+            if (listeners != null) {
+                listeners.remove(onUpdate);
+            }
+        }
+        if (onClose != null) {
+            Set<Consumer<Candle>> listeners = liveCloseListeners.get(key);
+            if (listeners != null) {
+                listeners.remove(onClose);
+            }
+        }
+
+        // Check if should unsubscribe from server
+        Set<Consumer<Candle>> updates = liveUpdateListeners.get(key);
+        Set<Consumer<Candle>> closes = liveCloseListeners.get(key);
+        boolean hasListeners = (updates != null && !updates.isEmpty()) ||
+                               (closes != null && !closes.isEmpty());
+
+        if (!hasListeners && activeLiveSubscriptions.remove(key)) {
+            if (isConnected()) {
+                sendUnsubscribeLive(symbol, timeframe);
+            }
+        }
+    }
+
+    // ========== WebSocket Message Handlers ==========
+
+    private void sendSubscribePage(PageRequest request) {
+        try {
+            Map<String, Object> message = new LinkedHashMap<>();
+            message.put("action", "subscribe_page");
+            message.put("dataType", request.dataType.toWireFormat());
+            message.put("symbol", request.symbol);
+            if (request.timeframe != null) {
+                message.put("timeframe", request.timeframe);
+            }
+            message.put("startTime", request.startTime);
+            message.put("endTime", request.endTime);
+            message.put("consumerName", consumerName);
+
+            String json = objectMapper.writeValueAsString(message);
+            webSocket.send(json);
+            LOG.debug("Sent subscribe_page: {} {} {}", request.dataType, request.symbol, request.timeframe);
+        } catch (Exception e) {
+            LOG.error("Failed to send subscribe_page", e);
+        }
+    }
+
+    private void sendUnsubscribePage(String pageKey) {
+        try {
+            String json = objectMapper.writeValueAsString(Map.of(
+                "action", "unsubscribe",
+                "pageKey", pageKey
+            ));
+            webSocket.send(json);
+            LOG.debug("Sent unsubscribe: {}", pageKey);
+        } catch (Exception e) {
+            LOG.error("Failed to send unsubscribe", e);
+        }
+    }
+
+    private void sendSubscribeLive(String symbol, String timeframe) {
+        try {
+            String json = objectMapper.writeValueAsString(Map.of(
+                "action", "subscribe_live",
+                "symbol", symbol.toUpperCase(),
+                "timeframe", timeframe
+            ));
+            webSocket.send(json);
+            LOG.debug("Sent subscribe_live: {} {}", symbol, timeframe);
+        } catch (Exception e) {
+            LOG.error("Failed to send subscribe_live", e);
+        }
+    }
+
+    private void sendUnsubscribeLive(String symbol, String timeframe) {
+        try {
+            String json = objectMapper.writeValueAsString(Map.of(
+                "action", "unsubscribe_live",
+                "symbol", symbol.toUpperCase(),
+                "timeframe", timeframe
+            ));
+            webSocket.send(json);
+            LOG.debug("Sent unsubscribe_live: {} {}", symbol, timeframe);
+        } catch (Exception e) {
+            LOG.error("Failed to send unsubscribe_live", e);
+        }
+    }
+
+    private void handleMessage(String message) {
+        try {
+            JsonNode node = objectMapper.readTree(message);
+            String type = node.has("type") ? node.get("type").asText() : null;
+
+            if (type == null) {
+                LOG.warn("Message missing type field: {}", message);
+                return;
+            }
+
+            switch (type) {
+                case "STATE_CHANGED" -> handlePageStateChanged(node);
+                case "DATA_READY" -> handlePageDataReady(node);
+                case "ERROR" -> handlePageError(node);
+                case "EVICTED" -> handlePageEvicted(node);
+                case "CANDLE_UPDATE" -> handleCandleUpdate(node);
+                case "CANDLE_CLOSED" -> handleCandleClosed(node);
+                default -> LOG.debug("Unknown message type: {}", type);
+            }
+        } catch (Exception e) {
+            LOG.warn("Failed to parse message: {} - {}", message, e.getMessage());
+        }
+    }
+
+    private void handlePageStateChanged(JsonNode node) {
+        String pageKey = node.get("pageKey").asText();
+        String state = node.get("state").asText();
+        int progress = node.has("progress") ? node.get("progress").asInt() : 0;
+
+        notifyPageCallbacks(pageKey, callback -> callback.onStateChanged(state, progress));
+    }
+
+    private void handlePageDataReady(JsonNode node) {
+        String pageKey = node.get("pageKey").asText();
+        long recordCount = node.get("recordCount").asLong();
+
+        notifyPageCallbacks(pageKey, callback -> callback.onDataReady(recordCount));
+    }
+
+    private void handlePageError(JsonNode node) {
+        String pageKey = node.get("pageKey").asText();
+        String errorMessage = node.has("message") ? node.get("message").asText() : "Unknown error";
+
+        notifyPageCallbacks(pageKey, callback -> callback.onError(errorMessage));
+    }
+
+    private void handlePageEvicted(JsonNode node) {
+        String pageKey = node.get("pageKey").asText();
+        notifyPageCallbacks(pageKey, PageUpdateCallback::onEvicted);
+    }
+
+    private void handleCandleUpdate(JsonNode node) {
+        String key = node.get("key").asText();
+        Candle candle = parseCandle(node);
+
+        Set<Consumer<Candle>> listeners = liveUpdateListeners.get(key);
+        if (listeners != null) {
+            for (Consumer<Candle> listener : listeners) {
+                try {
+                    listener.accept(candle);
+                } catch (Exception e) {
+                    LOG.warn("Error in candle update listener: {}", e.getMessage());
+                }
+            }
+        }
+    }
+
+    private void handleCandleClosed(JsonNode node) {
+        String key = node.get("key").asText();
+        Candle candle = parseCandle(node);
+
+        Set<Consumer<Candle>> listeners = liveCloseListeners.get(key);
+        if (listeners != null) {
+            for (Consumer<Candle> listener : listeners) {
+                try {
+                    listener.accept(candle);
+                } catch (Exception e) {
+                    LOG.warn("Error in candle close listener: {}", e.getMessage());
+                }
+            }
+        }
+    }
+
+    private Candle parseCandle(JsonNode node) {
+        return new Candle(
+            node.get("timestamp").asLong(),
+            node.get("open").asDouble(),
+            node.get("high").asDouble(),
+            node.get("low").asDouble(),
+            node.get("close").asDouble(),
+            node.get("volume").asDouble()
+        );
+    }
+
+    private void notifyPageCallbacks(String pageKey, Consumer<PageUpdateCallback> action) {
+        Set<PageUpdateCallback> callbacks = pageCallbacks.get(pageKey);
+        if (callbacks != null) {
+            for (PageUpdateCallback callback : callbacks) {
+                try {
+                    action.accept(callback);
+                } catch (Exception e) {
+                    LOG.warn("Error in page callback: {}", e.getMessage());
+                }
+            }
+        }
+    }
+
+    // ========== Connection Management ==========
+
+    private void onConnected() {
+        setConnectionState(ConnectionState.CONNECTED);
+        LOG.info("Connected to data-service at {}:{}", host, port);
+
+        // Re-subscribe to all pending page requests
+        for (PageRequest request : pendingPageRequests) {
+            sendSubscribePage(request);
+            String pageKey = makePageKey(request.dataType, request.symbol, request.timeframe,
+                                         request.startTime, request.endTime);
+            activePageSubscriptions.add(pageKey);
+        }
+        pendingPageRequests.clear();
+
+        // Re-subscribe to existing page subscriptions
+        for (String pageKey : activePageSubscriptions) {
+            // For active subscriptions, just re-subscribe (page should still exist on server)
+            try {
+                String json = objectMapper.writeValueAsString(Map.of(
+                    "action", "subscribe",
+                    "pageKey", pageKey
+                ));
+                webSocket.send(json);
+            } catch (Exception e) {
+                LOG.warn("Failed to re-subscribe to page: {}", pageKey);
+            }
+        }
+
+        // Re-subscribe to live candle streams
+        for (String key : activeLiveSubscriptions) {
+            String[] parts = key.split(":");
+            if (parts.length == 2) {
+                sendSubscribeLive(parts[0], parts[1]);
+            }
+        }
+    }
+
+    private void onDisconnected() {
+        setConnectionState(ConnectionState.DISCONNECTED);
+        LOG.warn("Disconnected from data-service");
+
+        if (shouldReconnect && !shutdown) {
+            scheduleReconnect();
+        }
+    }
+
+    private void scheduleReconnect() {
+        if (shutdown) return;
+
+        setConnectionState(ConnectionState.RECONNECTING);
+        scheduler.schedule(() -> {
+            if (!shutdown) {
+                LOG.info("Attempting to reconnect to data-service...");
+                connect();
+            }
+        }, RECONNECT_DELAY_MS, TimeUnit.MILLISECONDS);
+    }
+
+    private void setConnectionState(ConnectionState state) {
+        this.connectionState = state;
+        for (Consumer<ConnectionState> listener : connectionListeners) {
+            try {
+                listener.accept(state);
+            } catch (Exception e) {
+                LOG.warn("Error in connection listener: {}", e.getMessage());
+            }
+        }
+    }
+
+    // ========== Key Generation ==========
+
+    private String makePageKey(DataType dataType, String symbol, String timeframe, long startTime, long endTime) {
+        StringBuilder sb = new StringBuilder();
+        sb.append(dataType.toWireFormat()).append(":");
+        sb.append(symbol.toUpperCase()).append(":");
+        if (timeframe != null) {
+            sb.append(timeframe).append(":");
+        }
+        sb.append(startTime).append(":").append(endTime);
+        return sb.toString();
+    }
+
+    private String makeLiveKey(String symbol, String timeframe) {
+        return symbol.toUpperCase() + ":" + timeframe;
+    }
+
+    // ========== Inner Classes ==========
+
+    /**
+     * Connection state enum.
+     */
+    public enum ConnectionState {
+        DISCONNECTED,
+        CONNECTING,
+        CONNECTED,
+        RECONNECTING
+    }
+
+    /**
+     * Callback for page updates.
+     */
+    public interface PageUpdateCallback {
+        /**
+         * Called when page state changes.
+         * @param state    New state (PENDING, LOADING, READY, ERROR)
+         * @param progress Load progress (0-100)
+         */
+        void onStateChanged(String state, int progress);
+
+        /**
+         * Called when page data is ready.
+         * @param recordCount Number of records loaded
+         */
+        void onDataReady(long recordCount);
+
+        /**
+         * Called when page load fails.
+         * @param message Error message
+         */
+        void onError(String message);
+
+        /**
+         * Called when page is evicted from server.
+         */
+        void onEvicted();
+    }
+
+    /**
+     * Internal page request tracking.
+     */
+    private record PageRequest(DataType dataType, String symbol, String timeframe,
+                               long startTime, long endTime) {}
+
+    /**
+     * WebSocket client implementation.
+     */
+    private class DataServiceWebSocket extends WebSocketClient {
+
+        public DataServiceWebSocket(URI serverUri) {
+            super(serverUri);
+        }
+
+        @Override
+        public void onOpen(ServerHandshake handshake) {
+            onConnected();
+        }
+
+        @Override
+        public void onMessage(String message) {
+            handleMessage(message);
+        }
+
+        @Override
+        public void onClose(int code, String reason, boolean remote) {
+            LOG.debug("WebSocket closed: code={}, reason={}, remote={}", code, reason, remote);
+            onDisconnected();
+        }
+
+        @Override
+        public void onError(Exception ex) {
+            LOG.error("WebSocket error: {}", ex.getMessage());
+        }
+    }
+}

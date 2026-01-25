@@ -4,6 +4,11 @@ import com.formdev.flatlaf.FlatDarkLaf;
 import com.tradery.dataclient.DataServiceClient;
 import com.tradery.dataclient.DataServiceLocator;
 import com.tradery.dataclient.LiveCandleClient;
+import com.tradery.dataclient.page.DataPageListener;
+import com.tradery.dataclient.page.DataPageView;
+import com.tradery.dataclient.page.DataServiceConnection;
+import com.tradery.dataclient.page.PageState;
+import com.tradery.dataclient.page.RemoteCandlePageManager;
 import com.tradery.desk.alert.AlertDispatcher;
 import com.tradery.desk.feed.CandleAggregator;
 import com.tradery.desk.signal.SignalDeduplicator;
@@ -52,9 +57,18 @@ public class TraderyDeskApp {
     // Live candle client for real-time updates
     private LiveCandleClient liveClient;
 
+    // New unified page-based data system (alternative to above)
+    private DataServiceConnection pageConnection;
+    private RemoteCandlePageManager candlePageMgr;
+    private boolean usePageSystem = true; // Using new unified page system
+
     // Per-strategy components
     private final Map<String, CandleAggregator> aggregators = new HashMap<>();
     private final Map<String, SignalEvaluator> evaluators = new HashMap<>();
+
+    // Page system: per-strategy candle pages and listeners
+    private final Map<String, DataPageView<Candle>> strategyPages = new HashMap<>();
+    private final Map<String, DataPageListener<Candle>> strategyPageListeners = new HashMap<>();
 
     // Chart data for first strategy (to display after UI init)
     private List<Candle> initialChartCandles;
@@ -138,6 +152,62 @@ public class TraderyDeskApp {
      * Initialize connection to data service.
      */
     private void initDataService() {
+        if (usePageSystem) {
+            initPageSystem();
+        } else {
+            initLegacyDataService();
+        }
+    }
+
+    /**
+     * Initialize the new page-based data system with unified WebSocket connection.
+     * Features:
+     * - Single WebSocket for page subscriptions and live updates
+     * - Reference counting for page cleanup
+     * - Progress tracking for data loading
+     * - EDT-safe callbacks
+     */
+    private void initPageSystem() {
+        try {
+            var serviceInfo = DataServiceLocator.locate();
+            if (serviceInfo.isEmpty()) {
+                log.warn("Data service not found, page system unavailable");
+                return;
+            }
+
+            String consumerId = "tradery-desk-" + UUID.randomUUID().toString().substring(0, 8);
+
+            // Create unified WebSocket connection
+            pageConnection = new DataServiceConnection(
+                serviceInfo.get().host(),
+                serviceInfo.get().port(),
+                consumerId,
+                "TraderyDesk"
+            );
+            pageConnection.connect();
+
+            // Create HTTP client for fetching page data
+            dataClient = new DataServiceClient(serviceInfo.get().host(), serviceInfo.get().port());
+
+            // Create page manager
+            candlePageMgr = new RemoteCandlePageManager(pageConnection, dataClient, "TraderyDesk");
+
+            // Monitor connection state
+            pageConnection.addConnectionListener(state -> {
+                log.info("Data service connection: {}", state);
+                // TODO: Add connection state mapping for UI update
+            });
+
+            log.info("Initialized page-based data system");
+        } catch (Exception e) {
+            log.warn("Failed to initialize page system: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * Legacy initialization using separate HTTP and WebSocket clients.
+     */
+    private void initLegacyDataService() {
         try {
             var clientOpt = DataServiceLocator.createClient();
             if (clientOpt.isPresent()) {
@@ -239,6 +309,105 @@ public class TraderyDeskApp {
         aggregator.setOnCandleClose(candle -> onCandleClose(strategy, candle, aggregator));
         aggregator.setOnCandleUpdate(candle -> onCandleUpdate(candle));
         aggregators.put(id, aggregator);
+
+        if (usePageSystem && candlePageMgr != null) {
+            // Use unified page system (async, with live integration)
+            initializeStrategyWithPageSystem(strategy, aggregator);
+        } else {
+            // Legacy: blocking fetch + separate live client
+            initializeStrategyLegacy(strategy, aggregator);
+        }
+    }
+
+    /**
+     * Initialize strategy using the unified page system.
+     * Async loading with integrated live updates.
+     */
+    private void initializeStrategyWithPageSystem(PublishedStrategy strategy, CandleAggregator aggregator) {
+        String id = strategy.getId();
+        String symbol = strategy.getSymbol();
+        String timeframe = strategy.getTimeframe();
+
+        long now = System.currentTimeMillis();
+        long barDurationMs = parseTimeframeMs(timeframe);
+        long startTime = now - (config.getHistoryBars() * barDurationMs);
+
+        // Create page listener
+        DataPageListener<Candle> listener = new DataPageListener<>() {
+            @Override
+            public void onStateChanged(DataPageView<Candle> page, PageState oldState, PageState newState) {
+                log.debug("Strategy {} page state: {} -> {}", id, oldState, newState);
+
+                if (newState == PageState.READY) {
+                    List<Candle> candles = page.getData();
+                    if (candles != null && !candles.isEmpty()) {
+                        aggregator.setHistory(candles);
+                        log.info("Warmed up {} with {} candles via page system", strategy.getName(), candles.size());
+
+                        // Store for chart (first strategy only)
+                        if (initialChartCandles == null) {
+                            initialChartCandles = candles;
+                            initialChartSymbol = symbol;
+                            initialChartTimeframe = timeframe;
+                        }
+
+                        // Update chart
+                        if (frame != null) {
+                            frame.setChartCandles(candles, symbol, timeframe);
+                            frame.updateSymbol(symbol, timeframe);
+                        }
+                    }
+                } else if (newState == PageState.ERROR) {
+                    log.warn("Strategy {} page error: {}", id, page.getErrorMessage());
+                }
+            }
+
+            @Override
+            public void onDataChanged(DataPageView<Candle> page) {
+                // Live candle appended - get the last candle
+                List<Candle> candles = page.getData();
+                if (candles != null && !candles.isEmpty()) {
+                    Candle lastCandle = candles.get(candles.size() - 1);
+
+                    // Update aggregator and evaluate signals
+                    aggregator.addClosedCandle(lastCandle);
+                    onCandleClose(strategy, lastCandle, aggregator);
+
+                    // Update chart
+                    if (frame != null) {
+                        frame.addChartCandle(lastCandle);
+                        frame.updatePrice(lastCandle.close());
+                    }
+                }
+            }
+
+            @Override
+            public void onProgress(DataPageView<Candle> page, int progress) {
+                log.trace("Strategy {} loading: {}%", id, progress);
+            }
+        };
+
+        // Store listener for cleanup
+        strategyPageListeners.put(id, listener);
+
+        // Request page (async, never blocks)
+        DataPageView<Candle> page = candlePageMgr.request(
+            symbol, timeframe, startTime, now, listener, "Strategy:" + id);
+        strategyPages.put(id, page);
+
+        // Enable live updates on the page
+        candlePageMgr.enableLiveUpdates(page);
+
+        log.info("Strategy {} using page system with live updates", id);
+    }
+
+    /**
+     * Initialize strategy using legacy blocking fetch + separate WebSocket.
+     */
+    private void initializeStrategyLegacy(PublishedStrategy strategy, CandleAggregator aggregator) {
+        String id = strategy.getId();
+        String symbol = strategy.getSymbol();
+        String timeframe = strategy.getTimeframe();
 
         // Fetch historical candles from data-service for indicator warmup
         List<Candle> history = fetchHistoricalCandles(symbol, timeframe, config.getHistoryBars());
@@ -370,6 +539,14 @@ public class TraderyDeskApp {
         }
         evaluators.remove(strategyId);
         deduplicator.clearStrategy(strategyId);
+
+        // Release page system resources
+        DataPageView<Candle> page = strategyPages.remove(strategyId);
+        DataPageListener<Candle> listener = strategyPageListeners.remove(strategyId);
+        if (page != null && candlePageMgr != null) {
+            candlePageMgr.disableLiveUpdates(page);
+            candlePageMgr.release(page, listener);
+        }
     }
 
     /**
@@ -403,13 +580,23 @@ public class TraderyDeskApp {
 
         strategyWatcher.stop();
 
-        // Close live candle client
+        // Shutdown page system if used
+        if (candlePageMgr != null) {
+            candlePageMgr.shutdown();
+        }
+        if (pageConnection != null) {
+            pageConnection.disconnect();
+        }
+
+        // Close live candle client (legacy)
         if (liveClient != null) {
             liveClient.close();
         }
 
         aggregators.clear();
         evaluators.clear();
+        strategyPages.clear();
+        strategyPageListeners.clear();
 
         if (dataClient != null) {
             dataClient.close();

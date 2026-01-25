@@ -72,6 +72,7 @@ public class WebSocketHandler implements PageUpdateListener {
             switch (action) {
                 case "subscribe" -> handleSubscribe(consumerId, message);
                 case "unsubscribe" -> handleUnsubscribe(consumerId, message);
+                case "subscribe_page" -> handleSubscribePage(consumerId, message);
                 case "subscribe_live" -> handleSubscribeLive(consumerId, message);
                 case "unsubscribe_live" -> handleUnsubscribeLive(consumerId, message);
                 default -> LOG.warn("Unknown WebSocket action: {}", action);
@@ -159,6 +160,63 @@ public class WebSocketHandler implements PageUpdateListener {
         Set<String> subscribers = pageSubscribers.get(pageKey);
         if (subscribers != null) {
             subscribers.remove(consumerId);
+        }
+    }
+
+    /**
+     * Handle subscribe_page action: request AND subscribe to a page in one step.
+     * This creates the page if needed, starts loading, and subscribes for updates.
+     */
+    private void handleSubscribePage(String consumerId, JsonNode message) {
+        try {
+            // Extract page parameters
+            String dataType = message.get("dataType").asText();
+            String symbol = message.get("symbol").asText();
+            String timeframe = message.has("timeframe") && !message.get("timeframe").isNull()
+                ? message.get("timeframe").asText() : null;
+            long startTime = message.get("startTime").asLong();
+            long endTime = message.get("endTime").asLong();
+            String consumerName = message.has("consumerName")
+                ? message.get("consumerName").asText() : "WebSocket-" + consumerId;
+
+            // Create PageKey
+            PageKey key = new PageKey(dataType.toUpperCase(), symbol.toUpperCase(), timeframe, startTime, endTime);
+            String pageKeyStr = key.toKeyString();
+
+            LOG.info("Consumer {} requesting page {}", consumerId, pageKeyStr);
+
+            // Request page from manager (creates if needed, adds consumer)
+            PageStatus status = pageManager.requestPage(key, consumerId, consumerName);
+
+            // Add to subscription maps for future updates
+            subscriptions.computeIfAbsent(consumerId, k -> new CopyOnWriteArraySet<>()).add(pageKeyStr);
+            pageSubscribers.computeIfAbsent(pageKeyStr, k -> new CopyOnWriteArraySet<>()).add(consumerId);
+
+            // Send current status immediately
+            sendStatusUpdate(consumerId, pageKeyStr, status);
+
+            // If already ready, also send data ready message
+            if (status.state() == PageState.READY) {
+                DataReadyMessage dataReady = new DataReadyMessage("DATA_READY", pageKeyStr, status.recordCount());
+                WsConnectContext ctx = connections.get(consumerId);
+                if (ctx != null) {
+                    ctx.send(objectMapper.writeValueAsString(dataReady));
+                }
+            }
+        } catch (Exception e) {
+            LOG.error("Failed to handle subscribe_page", e);
+            WsConnectContext ctx = connections.get(consumerId);
+            if (ctx != null) {
+                sendError(ctx, "Failed to subscribe to page: " + e.getMessage());
+            }
+        }
+    }
+
+    private void sendError(WsConnectContext ctx, String error) {
+        try {
+            ctx.send(objectMapper.writeValueAsString(new ErrorMessage("ERROR", null, error)));
+        } catch (Exception e) {
+            LOG.warn("Failed to send error message", e);
         }
     }
 
