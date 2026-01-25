@@ -112,8 +112,10 @@ public class FootprintHeatmapAnnotation extends AbstractXYAnnotation {
                                 ValueAxis domainAxis, ValueAxis rangeAxis,
                                 Footprint footprint, double halfIntervalMs) {
 
-        double leftX = domainAxis.valueToJava2D(footprint.timestamp() - halfIntervalMs, dataArea, RectangleEdge.BOTTOM);
-        double rightX = domainAxis.valueToJava2D(footprint.timestamp() + halfIntervalMs, dataArea, RectangleEdge.BOTTOM);
+        // Candle timestamp is the START of the candle, so box should span from timestamp to timestamp + interval
+        // Using timestamp as left edge and timestamp + 2*halfIntervalMs as right edge
+        double leftX = domainAxis.valueToJava2D(footprint.timestamp(), dataArea, RectangleEdge.BOTTOM);
+        double rightX = domainAxis.valueToJava2D(footprint.timestamp() + halfIntervalMs * 2, dataArea, RectangleEdge.BOTTOM);
 
         // Skip if outside visible area
         if (rightX < dataArea.getMinX() || leftX > dataArea.getMaxX()) {
@@ -175,8 +177,14 @@ public class FootprintHeatmapAnnotation extends AbstractXYAnnotation {
         } else {
             // Get delta color based on mode
             Color bucketColor = getBucketColor(bucket, footprint);
-            g2.setColor(bucketColor);
-            g2.fillRect(x, y, width, height);
+             if (bucketColor.getAlpha() == 0) {
+                // Draw faint outline for empty buckets (debug visibility)
+                g2.setColor(new Color(80, 80, 80, 40));
+                g2.drawRect(x, y, width, height);
+            } else {
+                g2.setColor(bucketColor);
+                g2.fillRect(x, y, width, height);
+            }
         }
 
         // Draw imbalance markers
@@ -199,7 +207,12 @@ public class FootprintHeatmapAnnotation extends AbstractXYAnnotation {
         double sellVol = bucket.totalSellVolume();
         double totalVol = buyVol + sellVol;
 
-        if (totalVol <= 0) return;
+        if (totalVol <= 0) {
+            // Draw faint outline for empty buckets (debug visibility)
+            g2.setColor(new Color(80, 80, 80, 40));
+            g2.drawRect(x, y, width, height);
+            return;
+        }
 
         int halfWidth = width / 2;
 

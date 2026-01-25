@@ -137,6 +137,13 @@ public class FootprintIndicator {
 
         // Group trades by price bucket
         Map<Double, FootprintBucket.Builder> bucketBuilders = new TreeMap<>();
+        // First, create empty buckets covering the full candle range
+        // This ensures boxes align with the candle's high/low visually
+        double low = snapToTickSize(candle.low(), tickSize);
+        double high = snapToTickSize(candle.high(), tickSize);
+        for (double price = low; price <= high + tickSize / 2; price += tickSize) {
+            bucketBuilders.computeIfAbsent(price, FootprintBucket.Builder::new);
+        }
 
         for (AggTrade trade : trades) {
             double bucketPrice = snapToTickSize(trade.price(), tickSize);

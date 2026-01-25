@@ -19,12 +19,12 @@ import java.util.function.Consumer;
 
 /**
  * Binance API client for fetching OHLC kline data.
- * Uses the public API (no authentication required).
+ * Uses the futures API to match aggTrades data source.
  */
 public class BinanceClient {
 
     private static final Logger log = LoggerFactory.getLogger(BinanceClient.class);
-    private static final String BASE_URL = "https://api.binance.com/api/v3";
+    private static final String BASE_URL = "https://fapi.binance.com/fapi/v1";
     private static final int MAX_KLINES_PER_REQUEST = 1000;
 
     private final OkHttpClient client;
