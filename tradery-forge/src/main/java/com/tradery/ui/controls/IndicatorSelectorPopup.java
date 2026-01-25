@@ -64,11 +64,22 @@ public class IndicatorSelectorPopup extends JDialog {
 
     // Footprint Heatmap controls
     private JCheckBox footprintHeatmapCheckbox;
-    private JLabel footprintHeatmapBucketsLabel;
-    private JSpinner footprintHeatmapBucketsSpinner;
+    private JToggleButton footprintSplitButton;
     private JToggleButton footprintDeltaButton;
-    private JToggleButton footprintBuySellButton;
     private ButtonGroup footprintViewGroup;
+
+    // Bucket mode segmented buttons
+    private JToggleButton footprintAuto10Button;   // Auto(10) - fine
+    private JToggleButton footprintAuto20Button;   // Auto(20) - medium (default)
+    private JToggleButton footprintAuto40Button;   // Auto(40) - coarse
+    private JToggleButton[] footprintGridButtons = new JToggleButton[4];  // Fixed tick sizes
+    private ButtonGroup footprintBucketGroup;
+    private double[] currentGridOptions = new double[4];  // Store current grid tick values
+
+    // Nice tick sizes for footprint grid mode (same as FootprintIndicator)
+    private static final double[] NICE_TICKS = {
+        0.01, 0.05, 0.1, 0.25, 0.5, 1, 2, 5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000
+    };
 
     // Oscillator controls
     private JCheckBox rsiCheckbox;
@@ -692,46 +703,62 @@ public class IndicatorSelectorPopup extends JDialog {
     }
 
     private JPanel createFootprintHeatmapRow() {
-        footprintHeatmapCheckbox = new JCheckBox("Footprint Heatmap");
+        footprintHeatmapCheckbox = new JCheckBox("Footprint");
         footprintHeatmapCheckbox.setToolTipText("Show price-level volume heatmap (requires aggTrades data)");
 
-        // Buckets spinner
-        footprintHeatmapBucketsLabel = new JLabel("Buckets:");
-        footprintHeatmapBucketsSpinner = new JSpinner(new SpinnerNumberModel(20, 5, 50, 5));
-        footprintHeatmapBucketsSpinner.setPreferredSize(new Dimension(50, 24));
-        footprintHeatmapBucketsSpinner.setToolTipText("Target buckets per candle");
-        footprintHeatmapBucketsSpinner.addChangeListener(e -> scheduleUpdate());
+        // View mode toggle: Split vs Delta
+        footprintSplitButton = new JToggleButton("Split");
+        footprintSplitButton.setToolTipText("Split view: buy volume left (green), sell volume right (red)");
+        footprintSplitButton.setPreferredSize(new Dimension(50, 22));
+        footprintSplitButton.setMargin(new Insets(1, 4, 1, 4));
 
-        // View toggle: Delta vs Buy/Sell
         footprintDeltaButton = new JToggleButton("Delta");
         footprintDeltaButton.setToolTipText("Show net delta (buy - sell) as single color");
-        footprintDeltaButton.setPreferredSize(new Dimension(55, 24));
-        footprintDeltaButton.setMargin(new Insets(2, 6, 2, 6));
-
-        footprintBuySellButton = new JToggleButton("Buy/Sell");
-        footprintBuySellButton.setToolTipText("Split view: buy volume left (green), sell volume right (red)");
-        footprintBuySellButton.setPreferredSize(new Dimension(65, 24));
-        footprintBuySellButton.setMargin(new Insets(2, 6, 2, 6));
+        footprintDeltaButton.setPreferredSize(new Dimension(50, 22));
+        footprintDeltaButton.setMargin(new Insets(1, 4, 1, 4));
 
         footprintViewGroup = new ButtonGroup();
+        footprintViewGroup.add(footprintSplitButton);
         footprintViewGroup.add(footprintDeltaButton);
-        footprintViewGroup.add(footprintBuySellButton);
 
-        // Only trigger update when a button becomes selected (not when deselected by ButtonGroup)
+        // Bucket mode group
+        footprintBucketGroup = new ButtonGroup();
+
+        // Auto buttons (adaptive per-candle)
+        footprintAuto10Button = createFootprintBucketButton("Auto(10)", "Fine detail - ~10 buckets per candle");
+        footprintAuto20Button = createFootprintBucketButton("Auto(20)", "Medium detail - ~20 buckets per candle (default)");
+        footprintAuto40Button = createFootprintBucketButton("Auto(40)", "Coarse view - ~40 buckets per candle");
+
+        footprintBucketGroup.add(footprintAuto10Button);
+        footprintBucketGroup.add(footprintAuto20Button);
+        footprintBucketGroup.add(footprintAuto40Button);
+
+        // Grid buttons (fixed tick sizes) - values computed dynamically
+        for (int i = 0; i < 4; i++) {
+            footprintGridButtons[i] = createFootprintBucketButton("$--", "Fixed grid tick size");
+            footprintBucketGroup.add(footprintGridButtons[i]);
+        }
+
+        // Wire up view mode buttons
+        footprintSplitButton.addActionListener(e -> {
+            if (footprintSplitButton.isSelected()) scheduleUpdate();
+        });
         footprintDeltaButton.addActionListener(e -> {
             if (footprintDeltaButton.isSelected()) scheduleUpdate();
         });
-        footprintBuySellButton.addActionListener(e -> {
-            if (footprintBuySellButton.isSelected()) scheduleUpdate();
-        });
 
-        JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
+        JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 2, 0));
         row.setAlignmentX(Component.LEFT_ALIGNMENT);
         row.add(footprintHeatmapCheckbox);
-        row.add(footprintBuySellButton);
+        row.add(footprintSplitButton);
         row.add(footprintDeltaButton);
-        row.add(footprintHeatmapBucketsLabel);
-        row.add(footprintHeatmapBucketsSpinner);
+        row.add(Box.createHorizontalStrut(4));
+        row.add(footprintAuto10Button);
+        row.add(footprintAuto20Button);
+        row.add(footprintAuto40Button);
+        for (JToggleButton btn : footprintGridButtons) {
+            row.add(btn);
+        }
 
         footprintHeatmapCheckbox.addActionListener(e -> {
             updateFootprintControlVisibility();
@@ -741,12 +768,123 @@ public class IndicatorSelectorPopup extends JDialog {
         return row;
     }
 
+    private JToggleButton createFootprintBucketButton(String text, String tooltip) {
+        JToggleButton btn = new JToggleButton(text);
+        btn.setToolTipText(tooltip);
+        btn.setPreferredSize(new Dimension(text.length() > 6 ? 62 : 48, 22));
+        btn.setMargin(new Insets(1, 2, 1, 2));
+        btn.setFont(btn.getFont().deriveFont(11f));
+        btn.addActionListener(e -> {
+            if (btn.isSelected()) scheduleUpdate();
+        });
+        return btn;
+    }
+
+    /**
+     * Compute 4 tick size options from candles based on ATR.
+     * Returns array of tick sizes centered around the ideal tick.
+     */
+    private double[] computeTickSizeOptions(java.util.List<com.tradery.model.Candle> candles) {
+        double[] result = new double[4];
+
+        if (candles == null || candles.isEmpty()) {
+            // Default values for BTC-like prices
+            result[0] = 25; result[1] = 50; result[2] = 100; result[3] = 250;
+            return result;
+        }
+
+        // Calculate ATR proxy: average high-low range of recent candles
+        int lookback = Math.min(14, candles.size());
+        double sumRange = 0;
+        for (int i = candles.size() - lookback; i < candles.size(); i++) {
+            com.tradery.model.Candle c = candles.get(i);
+            sumRange += c.high() - c.low();
+        }
+        double avgRange = sumRange / lookback;
+
+        // Calculate ideal tick for ~20 buckets
+        double idealTick = avgRange / 20;
+
+        // Find ideal tick's position in NICE_TICKS
+        int idealIdx = 0;
+        double minDiff = Math.abs(NICE_TICKS[0] - idealTick);
+        for (int i = 1; i < NICE_TICKS.length; i++) {
+            double diff = Math.abs(NICE_TICKS[i] - idealTick);
+            if (diff < minDiff) {
+                minDiff = diff;
+                idealIdx = i;
+            }
+        }
+
+        // Select 2 values below and 2 above the ideal
+        int startIdx = Math.max(0, idealIdx - 2);
+        if (startIdx + 4 > NICE_TICKS.length) {
+            startIdx = NICE_TICKS.length - 4;
+        }
+        if (startIdx < 0) startIdx = 0;
+
+        for (int i = 0; i < 4; i++) {
+            int idx = startIdx + i;
+            if (idx < NICE_TICKS.length) {
+                result[i] = NICE_TICKS[idx];
+            } else {
+                result[i] = NICE_TICKS[NICE_TICKS.length - 1];
+            }
+        }
+
+        return result;
+    }
+
+    /**
+     * Format a tick size for display (e.g., "$100", "$0.25", "$2.5k").
+     */
+    private String formatTickSize(double tick) {
+        if (tick >= 1000) {
+            return String.format("$%.0fk", tick / 1000);
+        } else if (tick >= 1) {
+            if (tick == Math.floor(tick)) {
+                return String.format("$%.0f", tick);
+            } else {
+                return String.format("$%.1f", tick);
+            }
+        } else if (tick >= 0.01) {
+            if (tick * 100 == Math.floor(tick * 100)) {
+                return String.format("$%.2f", tick);
+            } else {
+                return String.format("$%.3f", tick);
+            }
+        } else {
+            return String.format("$%.4f", tick);
+        }
+    }
+
+    /**
+     * Update the footprint grid buttons with current tick size options.
+     */
+    private void updateFootprintTickButtons() {
+        java.util.List<com.tradery.model.Candle> candles = chartPanel.getCurrentCandles();
+        currentGridOptions = computeTickSizeOptions(candles);
+
+        for (int i = 0; i < 4; i++) {
+            String label = formatTickSize(currentGridOptions[i]);
+            footprintGridButtons[i].setText(label);
+            footprintGridButtons[i].setToolTipText("Fixed grid: " + label + " tick size");
+            // Adjust button width based on label length
+            int width = label.length() > 5 ? 52 : 44;
+            footprintGridButtons[i].setPreferredSize(new Dimension(width, 22));
+        }
+    }
+
     private void updateFootprintControlVisibility() {
         boolean enabled = footprintHeatmapCheckbox.isSelected();
-        footprintHeatmapBucketsLabel.setVisible(enabled);
-        footprintHeatmapBucketsSpinner.setVisible(enabled);
+        footprintSplitButton.setVisible(enabled);
         footprintDeltaButton.setVisible(enabled);
-        footprintBuySellButton.setVisible(enabled);
+        footprintAuto10Button.setVisible(enabled);
+        footprintAuto20Button.setVisible(enabled);
+        footprintAuto40Button.setVisible(enabled);
+        for (JToggleButton btn : footprintGridButtons) {
+            btn.setVisible(enabled);
+        }
     }
 
     private JPanel createRsiRow() {
@@ -1233,11 +1371,54 @@ public class IndicatorSelectorPopup extends JDialog {
         dailyVolumeProfileCheckbox.setSelected(config.isDailyVolumeProfileEnabled());
         dailyVolumeProfileBinsSpinner.setValue(config.getDailyVolumeProfileBins());
         footprintHeatmapCheckbox.setSelected(config.isFootprintHeatmapEnabled());
-        footprintHeatmapBucketsSpinner.setValue(config.getFootprintHeatmapConfig().getTargetBuckets());
+
+        // Update tick size options based on current candles
+        updateFootprintTickButtons();
+
+        // Sync view mode
         boolean isSplitMode = config.getFootprintHeatmapConfig().getDisplayMode() ==
             com.tradery.ui.charts.footprint.FootprintDisplayMode.SPLIT;
-        footprintBuySellButton.setSelected(isSplitMode);
+        footprintSplitButton.setSelected(isSplitMode);
         footprintDeltaButton.setSelected(!isSplitMode);
+
+        // Sync bucket mode
+        com.tradery.ui.charts.footprint.FootprintHeatmapConfig fpConfig = config.getFootprintHeatmapConfig();
+        if (fpConfig.getTickSizeMode() == com.tradery.ui.charts.footprint.FootprintHeatmapConfig.TickSizeMode.FIXED) {
+            // Find the matching grid button
+            double fixedTick = fpConfig.getFixedTickSize();
+            boolean found = false;
+            for (int i = 0; i < 4; i++) {
+                if (Math.abs(currentGridOptions[i] - fixedTick) < 0.001) {
+                    footprintGridButtons[i].setSelected(true);
+                    found = true;
+                    break;
+                }
+            }
+            // If exact match not found, find nearest
+            if (!found) {
+                int nearestIdx = 0;
+                double minDiff = Math.abs(currentGridOptions[0] - fixedTick);
+                for (int i = 1; i < 4; i++) {
+                    double diff = Math.abs(currentGridOptions[i] - fixedTick);
+                    if (diff < minDiff) {
+                        minDiff = diff;
+                        nearestIdx = i;
+                    }
+                }
+                footprintGridButtons[nearestIdx].setSelected(true);
+            }
+        } else {
+            // Auto mode - select based on target buckets
+            int buckets = fpConfig.getTargetBuckets();
+            if (buckets <= 15) {
+                footprintAuto10Button.setSelected(true);
+            } else if (buckets <= 30) {
+                footprintAuto20Button.setSelected(true);
+            } else {
+                footprintAuto40Button.setSelected(true);
+            }
+        }
+
         updateFootprintControlVisibility();
 
         // Oscillators
@@ -1390,13 +1571,33 @@ public class IndicatorSelectorPopup extends JDialog {
         config.setDailyVolumeProfileBins(volumeProfileBins);
 
         // Footprint Heatmap - set nested config values BEFORE calling setFootprintHeatmapEnabled (which saves)
-        int footprintBuckets = (int) footprintHeatmapBucketsSpinner.getValue();
-        com.tradery.ui.charts.footprint.FootprintDisplayMode fpMode = footprintBuySellButton.isSelected()
+        com.tradery.ui.charts.footprint.FootprintDisplayMode fpMode = footprintSplitButton.isSelected()
             ? com.tradery.ui.charts.footprint.FootprintDisplayMode.SPLIT
             : com.tradery.ui.charts.footprint.FootprintDisplayMode.COMBINED;
 
-        config.getFootprintHeatmapConfig().setTargetBuckets(footprintBuckets);
-        config.getFootprintHeatmapConfig().setDisplayMode(fpMode);
+        // Determine tick size mode and value based on which button is selected
+        com.tradery.ui.charts.footprint.FootprintHeatmapConfig fpConfig = config.getFootprintHeatmapConfig();
+        if (footprintAuto10Button.isSelected()) {
+            fpConfig.setTickSizeMode(com.tradery.ui.charts.footprint.FootprintHeatmapConfig.TickSizeMode.AUTO);
+            fpConfig.setTargetBuckets(10);
+        } else if (footprintAuto20Button.isSelected()) {
+            fpConfig.setTickSizeMode(com.tradery.ui.charts.footprint.FootprintHeatmapConfig.TickSizeMode.AUTO);
+            fpConfig.setTargetBuckets(20);
+        } else if (footprintAuto40Button.isSelected()) {
+            fpConfig.setTickSizeMode(com.tradery.ui.charts.footprint.FootprintHeatmapConfig.TickSizeMode.AUTO);
+            fpConfig.setTargetBuckets(40);
+        } else {
+            // Check which grid button is selected
+            for (int i = 0; i < 4; i++) {
+                if (footprintGridButtons[i].isSelected()) {
+                    fpConfig.setTickSizeMode(com.tradery.ui.charts.footprint.FootprintHeatmapConfig.TickSizeMode.FIXED);
+                    fpConfig.setFixedTickSize(currentGridOptions[i]);
+                    break;
+                }
+            }
+        }
+
+        fpConfig.setDisplayMode(fpMode);
         config.setFootprintHeatmapEnabled(footprintHeatmapCheckbox.isSelected()); // This saves all changes
         chartPanel.setFootprintHeatmapEnabled(footprintHeatmapCheckbox.isSelected());
         chartPanel.refreshFootprintHeatmap(); // Force refresh when mode changes

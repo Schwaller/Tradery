@@ -1,5 +1,6 @@
 package com.tradery.desk.strategy;
 
+import com.tradery.desk.DeskConfig;
 import io.methvin.watcher.DirectoryChangeEvent;
 import io.methvin.watcher.DirectoryWatcher;
 import org.slf4j.Logger;
@@ -11,21 +12,24 @@ import java.nio.file.Path;
 import java.util.function.Consumer;
 
 /**
- * Watches the strategies directory for changes and triggers reloads.
- * Monitors for new/modified active.yaml files.
+ * Watches the active strategies directory for changes and triggers reloads.
+ * Monitors for new/modified/deleted .yaml files in ~/.tradery/desk/active/
  */
 public class StrategyWatcher {
 
     private static final Logger log = LoggerFactory.getLogger(StrategyWatcher.class);
-    private static final String ACTIVE_FILE = "active.yaml";
 
-    private final Path strategiesDir;
+    private final Path activeDir;
     private final Consumer<String> onStrategyChanged;
     private DirectoryWatcher watcher;
     private volatile boolean running = false;
 
-    public StrategyWatcher(Path strategiesDir, Consumer<String> onStrategyChanged) {
-        this.strategiesDir = strategiesDir;
+    public StrategyWatcher(Consumer<String> onStrategyChanged) {
+        this(DeskConfig.ACTIVE_DIR, onStrategyChanged);
+    }
+
+    public StrategyWatcher(Path activeDir, Consumer<String> onStrategyChanged) {
+        this.activeDir = activeDir;
         this.onStrategyChanged = onStrategyChanged;
     }
 
@@ -38,10 +42,10 @@ public class StrategyWatcher {
         }
 
         try {
-            Files.createDirectories(strategiesDir);
+            Files.createDirectories(activeDir);
 
             watcher = DirectoryWatcher.builder()
-                .path(strategiesDir)
+                .path(activeDir)
                 .listener(this::onEvent)
                 .build();
 
@@ -58,7 +62,7 @@ public class StrategyWatcher {
             watchThread.start();
 
             running = true;
-            log.info("Started watching {}", strategiesDir);
+            log.info("Started watching {}", activeDir);
         } catch (IOException e) {
             log.error("Failed to start watcher: {}", e.getMessage());
         }
@@ -84,17 +88,14 @@ public class StrategyWatcher {
     private void onEvent(DirectoryChangeEvent event) {
         Path path = event.path();
 
-        // Only care about active.yaml files
-        if (!path.getFileName().toString().equals(ACTIVE_FILE)) {
+        // Only care about .yaml files
+        if (!path.toString().endsWith(".yaml")) {
             return;
         }
 
-        // Extract strategy ID from parent directory
-        Path parent = path.getParent();
-        if (parent == null) {
-            return;
-        }
-        String strategyId = parent.getFileName().toString();
+        // Extract strategy ID from filename (remove .yaml extension)
+        String filename = path.getFileName().toString();
+        String strategyId = filename.substring(0, filename.length() - 5);
 
         switch (event.eventType()) {
             case CREATE, MODIFY -> {

@@ -14,7 +14,10 @@ dependencies {
     // Core module for models, indicators, DSL
     implementation project(':tradery-core')
 
-    // WebSocket client for Binance streams
+    // Data client for fetching historical candles from data-service
+    implementation project(':tradery-data-client')
+
+    // WebSocket client for live Binance streams
     implementation "org.java-websocket:Java-WebSocket:${rootProject.ext.websocketVersion}"
 
     // JSON/YAML serialization
@@ -28,6 +31,9 @@ dependencies {
     // FlatLaf Look and Feel
     implementation 'com.formdev:flatlaf:3.4'
     implementation 'com.formdev:flatlaf-intellij-themes:3.4'
+
+    // JFreeChart for price chart
+    implementation "org.jfree:jfreechart:${rootProject.ext.jfreeChartVersion}"
 
     // File watching for strategy hot-reload
     implementation 'io.methvin:directory-watcher:0.18.0'

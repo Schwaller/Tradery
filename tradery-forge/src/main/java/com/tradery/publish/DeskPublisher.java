@@ -1,5 +1,6 @@
 package com.tradery.publish;
 
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
@@ -9,32 +10,42 @@ import com.tradery.model.Strategy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.fasterxml.jackson.core.type.TypeReference;
-
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 /**
- * Publishes strategies from Forge to Desk.
+ * Publishes strategies from Forge to the Strategy Library (iCloud Drive by default).
  *
- * Desk uses its own folder with versioned, published strategies:
- * ~/.tradery/desk/strategies/{id}/
- *   - v1.yaml, v2.yaml, ... (archived versions)
- *   - active.yaml (currently active version, copy of latest)
+ * Library structure:
+ * ~/Library/Mobile Documents/com~apple~CloudDocs/Tradery/
+ * └── strategies/
+ *     ├── rsi-reversal/
+ *     │   ├── v1.yaml
+ *     │   ├── v2.yaml
+ *     │   └── v3.yaml
+ *     └── ema-crossover/
+ *         └── v1.yaml
+ *
+ * Desk then imports/activates specific versions from this library.
  */
 public class DeskPublisher {
 
     private static final Logger log = LoggerFactory.getLogger(DeskPublisher.class);
-    private static final Path DESK_DIR = Path.of(
-        System.getProperty("user.home"), ".tradery", "desk", "strategies"
+
+    // Default library path on iCloud Drive
+    public static final Path DEFAULT_LIBRARY_PATH = Path.of(
+        System.getProperty("user.home"),
+        "Library", "Mobile Documents", "com~apple~CloudDocs", "Tradery"
     );
+
     private static final ObjectMapper YAML;
     private static final Pattern VERSION_PATTERN = Pattern.compile("v(\\d+)\\.yaml");
 
@@ -46,15 +57,33 @@ public class DeskPublisher {
         YAML.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
     }
 
+    private final Path libraryPath;
+
+    public DeskPublisher() {
+        this(DEFAULT_LIBRARY_PATH);
+    }
+
+    public DeskPublisher(Path libraryPath) {
+        this.libraryPath = libraryPath;
+    }
+
     /**
-     * Publish a strategy to Desk.
+     * Get the strategies directory in the library.
+     */
+    public Path getStrategiesDir() {
+        return libraryPath.resolve("strategies");
+    }
+
+    /**
+     * Publish a strategy to the library.
      *
      * @param strategy The strategy to publish
      * @return The version number that was published
      * @throws IOException If publishing fails
      */
     public int publish(Strategy strategy) throws IOException {
-        Path strategyDir = DESK_DIR.resolve(strategy.getId());
+        Path strategiesDir = getStrategiesDir();
+        Path strategyDir = strategiesDir.resolve(strategy.getId());
         Files.createDirectories(strategyDir);
 
         // Determine next version
@@ -64,11 +93,7 @@ public class DeskPublisher {
         Path versionFile = strategyDir.resolve("v" + nextVersion + ".yaml");
         writeWithMetadata(strategy, versionFile, nextVersion);
 
-        // Update active.yaml (what Desk runs)
-        Path activeFile = strategyDir.resolve("active.yaml");
-        Files.copy(versionFile, activeFile, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
-
-        log.info("Published {} v{} to {}", strategy.getName(), nextVersion, activeFile);
+        log.info("Published {} v{} to library: {}", strategy.getName(), nextVersion, versionFile);
         return nextVersion;
     }
 
@@ -95,6 +120,42 @@ public class DeskPublisher {
     }
 
     /**
+     * Get the current published version for a strategy.
+     * Returns 0 if not published.
+     */
+    public int getPublishedVersion(String strategyId) {
+        Path strategyDir = getStrategiesDir().resolve(strategyId);
+        if (!Files.exists(strategyDir)) {
+            return 0;
+        }
+        return getNextVersion(strategyDir) - 1;
+    }
+
+    /**
+     * List all versions for a strategy.
+     */
+    public List<Integer> listVersions(String strategyId) {
+        Path strategyDir = getStrategiesDir().resolve(strategyId);
+        if (!Files.exists(strategyDir)) {
+            return List.of();
+        }
+
+        try (Stream<Path> files = Files.list(strategyDir)) {
+            return files
+                .filter(Files::isRegularFile)
+                .map(p -> p.getFileName().toString())
+                .map(VERSION_PATTERN::matcher)
+                .filter(Matcher::matches)
+                .map(m -> Integer.parseInt(m.group(1)))
+                .sorted()
+                .toList();
+        } catch (IOException e) {
+            log.debug("Error listing versions: {}", e.getMessage());
+            return List.of();
+        }
+    }
+
+    /**
      * Write strategy with publishing metadata.
      */
     private void writeWithMetadata(Strategy strategy, Path file, int version) throws IOException {
@@ -118,27 +179,15 @@ public class DeskPublisher {
      * Check if a strategy has been published.
      */
     public boolean isPublished(String strategyId) {
-        Path activeFile = DESK_DIR.resolve(strategyId).resolve("active.yaml");
-        return Files.exists(activeFile);
+        Path strategyDir = getStrategiesDir().resolve(strategyId);
+        return Files.exists(strategyDir) && getPublishedVersion(strategyId) > 0;
     }
 
     /**
-     * Get the current published version for a strategy.
-     * Returns 0 if not published.
-     */
-    public int getPublishedVersion(String strategyId) {
-        Path strategyDir = DESK_DIR.resolve(strategyId);
-        if (!Files.exists(strategyDir)) {
-            return 0;
-        }
-        return getNextVersion(strategyDir) - 1;
-    }
-
-    /**
-     * Unpublish a strategy (remove from Desk).
+     * Delete all versions of a strategy from the library.
      */
     public void unpublish(String strategyId) throws IOException {
-        Path strategyDir = DESK_DIR.resolve(strategyId);
+        Path strategyDir = getStrategiesDir().resolve(strategyId);
         if (Files.exists(strategyDir)) {
             // Delete all files in the directory
             try (Stream<Path> files = Files.list(strategyDir)) {
@@ -152,9 +201,26 @@ public class DeskPublisher {
     }
 
     /**
-     * Get the Desk strategies directory.
+     * Delete a specific version of a strategy.
      */
-    public Path getDeskDir() {
-        return DESK_DIR;
+    public void deleteVersion(String strategyId, int version) throws IOException {
+        Path versionFile = getStrategiesDir().resolve(strategyId).resolve("v" + version + ".yaml");
+        if (Files.deleteIfExists(versionFile)) {
+            log.info("Deleted {} v{}", strategyId, version);
+        }
+    }
+
+    /**
+     * Get the library path.
+     */
+    public Path getLibraryPath() {
+        return libraryPath;
+    }
+
+    /**
+     * Ensure the library directory exists (creates iCloud Tradery folder if needed).
+     */
+    public void ensureLibraryExists() throws IOException {
+        Files.createDirectories(getStrategiesDir());
     }
 }

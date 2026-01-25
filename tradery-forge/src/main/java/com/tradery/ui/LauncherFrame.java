@@ -41,6 +41,7 @@ public class LauncherFrame extends JFrame {
     private JButton phasesButton;
     private JButton hoopsButton;
     private JButton downloadDashboardButton;
+    private JButton libraryButton;
 
     private final StrategyStore strategyStore;
     private final Map<String, ProjectWindow> openWindows = new HashMap<>();
@@ -149,6 +150,10 @@ public class LauncherFrame extends JFrame {
         downloadDashboardButton.setToolTipText("View download status and logs");
         downloadDashboardButton.addActionListener(e -> openDownloadDashboardWindow());
 
+        libraryButton = new JButton("Library");
+        libraryButton.setToolTipText("Browse published strategies in the library");
+        libraryButton.addActionListener(e -> openLibraryBrowser());
+
         // Context menu for right-click
         JPopupMenu contextMenu = new JPopupMenu();
         JMenuItem openItem = new JMenuItem("Open");
@@ -211,6 +216,7 @@ public class LauncherFrame extends JFrame {
         // Button panel with left and right sections
         JPanel buttonPanel = new JPanel(new BorderLayout());
         JPanel leftButtons = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 8));
+        leftButtons.add(libraryButton);
         leftButtons.add(phasesButton);
         leftButtons.add(hoopsButton);
         leftButtons.add(downloadDashboardButton);
@@ -512,6 +518,11 @@ public class LauncherFrame extends JFrame {
         DownloadDashboardWindow dashboard = new DownloadDashboardWindow();
         dashboard.setLocationRelativeTo(this);
         dashboard.setVisible(true);
+    }
+
+    private void openLibraryBrowser() {
+        LibraryBrowserDialog dialog = new LibraryBrowserDialog(this);
+        dialog.setVisible(true);
     }
 
     @Override

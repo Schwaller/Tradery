@@ -25,6 +25,8 @@ dependencies {
     implementation "org.msgpack:jackson-dataformat-msgpack:${rootProject.ext.msgpackVersion}"
 
     // WebSocket server (included in Javalin)
+    // WebSocket client for Binance live streams
+    implementation "org.java-websocket:Java-WebSocket:${rootProject.ext.websocketVersion}"
 
     // SQLite for data caching
     implementation "org.xerial:sqlite-jdbc:${rootProject.ext.sqliteVersion}"

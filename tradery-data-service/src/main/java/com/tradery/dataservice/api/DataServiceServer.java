@@ -3,6 +3,7 @@ package com.tradery.dataservice.api;
 import com.tradery.data.sqlite.SqliteDataStore;
 import com.tradery.dataservice.ConsumerRegistry;
 import com.tradery.dataservice.config.DataServiceConfig;
+import com.tradery.dataservice.live.LiveCandleManager;
 import com.tradery.dataservice.page.PageManager;
 import io.javalin.Javalin;
 import io.javalin.http.Context;
@@ -26,6 +27,7 @@ public class DataServiceServer {
     private final PageManager pageManager;
     private final ConsumerRegistry consumerRegistry;
     private final ObjectMapper objectMapper;
+    private final LiveCandleManager liveCandleManager;
     private final WebSocketHandler webSocketHandler;
     private Javalin app;
 
@@ -34,7 +36,8 @@ public class DataServiceServer {
         this.consumerRegistry = consumerRegistry;
         this.pageManager = new PageManager(config, dataStore);
         this.objectMapper = createObjectMapper();
-        this.webSocketHandler = new WebSocketHandler(pageManager, objectMapper);
+        this.liveCandleManager = new LiveCandleManager();
+        this.webSocketHandler = new WebSocketHandler(pageManager, liveCandleManager, objectMapper);
     }
 
     private ObjectMapper createObjectMapper() {
@@ -66,6 +69,7 @@ public class DataServiceServer {
             app.stop();
         }
         pageManager.shutdown();
+        liveCandleManager.shutdown();
     }
 
     /**

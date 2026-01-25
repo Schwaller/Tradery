@@ -1,10 +1,12 @@
 package com.tradery.dataservice.api;
 
+import com.tradery.dataservice.live.LiveCandleManager;
 import com.tradery.dataservice.page.PageManager;
 import com.tradery.dataservice.page.PageKey;
 import com.tradery.dataservice.page.PageState;
 import com.tradery.dataservice.page.PageStatus;
 import com.tradery.dataservice.page.PageUpdateListener;
+import com.tradery.model.Candle;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.javalin.websocket.WsCloseContext;
@@ -18,21 +20,30 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArraySet;
+import java.util.function.BiConsumer;
 
 /**
- * WebSocket handler for real-time page status updates.
+ * WebSocket handler for real-time page status updates and live candle streams.
  */
 public class WebSocketHandler implements PageUpdateListener {
     private static final Logger LOG = LoggerFactory.getLogger(WebSocketHandler.class);
 
     private final PageManager pageManager;
+    private final LiveCandleManager liveCandleManager;
     private final ObjectMapper objectMapper;
     private final Map<String, WsConnectContext> connections = new ConcurrentHashMap<>();
     private final Map<String, Set<String>> subscriptions = new ConcurrentHashMap<>(); // consumerId -> pageKeys
     private final Map<String, Set<String>> pageSubscribers = new ConcurrentHashMap<>(); // pageKey -> consumerIds
 
-    public WebSocketHandler(PageManager pageManager, ObjectMapper objectMapper) {
+    // Live candle subscriptions
+    private final Map<String, Set<String>> liveSubscriptions = new ConcurrentHashMap<>(); // consumerId -> liveKeys
+    private final Map<String, Set<String>> liveSubscribers = new ConcurrentHashMap<>(); // liveKey -> consumerIds
+    private final Map<String, BiConsumer<String, Candle>> updateCallbacks = new ConcurrentHashMap<>();
+    private final Map<String, BiConsumer<String, Candle>> closeCallbacks = new ConcurrentHashMap<>();
+
+    public WebSocketHandler(PageManager pageManager, LiveCandleManager liveCandleManager, ObjectMapper objectMapper) {
         this.pageManager = pageManager;
+        this.liveCandleManager = liveCandleManager;
         this.objectMapper = objectMapper;
         pageManager.addUpdateListener(this);
     }
@@ -61,6 +72,8 @@ public class WebSocketHandler implements PageUpdateListener {
             switch (action) {
                 case "subscribe" -> handleSubscribe(consumerId, message);
                 case "unsubscribe" -> handleUnsubscribe(consumerId, message);
+                case "subscribe_live" -> handleSubscribeLive(consumerId, message);
+                case "unsubscribe_live" -> handleUnsubscribeLive(consumerId, message);
                 default -> LOG.warn("Unknown WebSocket action: {}", action);
             }
         } catch (Exception e) {
@@ -78,13 +91,34 @@ public class WebSocketHandler implements PageUpdateListener {
         LOG.info("WebSocket disconnected: {}", consumerId);
         connections.remove(consumerId);
 
-        // Clean up subscriptions
+        // Clean up page subscriptions
         Set<String> subs = subscriptions.remove(consumerId);
         if (subs != null) {
             for (String pageKey : subs) {
                 Set<String> subscribers = pageSubscribers.get(pageKey);
                 if (subscribers != null) {
                     subscribers.remove(consumerId);
+                }
+            }
+        }
+
+        // Clean up live subscriptions
+        Set<String> liveSubs = liveSubscriptions.remove(consumerId);
+        if (liveSubs != null) {
+            for (String liveKey : liveSubs) {
+                Set<String> subscribers = liveSubscribers.get(liveKey);
+                if (subscribers != null) {
+                    subscribers.remove(consumerId);
+                }
+
+                // Unsubscribe from LiveCandleManager if no more subscribers
+                if (subscribers == null || subscribers.isEmpty()) {
+                    String[] parts = liveKey.split(":");
+                    if (parts.length == 2) {
+                        BiConsumer<String, Candle> updateCb = updateCallbacks.remove(liveKey);
+                        BiConsumer<String, Candle> closeCb = closeCallbacks.remove(liveKey);
+                        liveCandleManager.unsubscribe(parts[0], parts[1], updateCb, closeCb);
+                    }
                 }
             }
         }
@@ -125,6 +159,94 @@ public class WebSocketHandler implements PageUpdateListener {
         Set<String> subscribers = pageSubscribers.get(pageKey);
         if (subscribers != null) {
             subscribers.remove(consumerId);
+        }
+    }
+
+    private void handleSubscribeLive(String consumerId, JsonNode message) {
+        String symbol = message.get("symbol").asText();
+        String timeframe = message.get("timeframe").asText();
+        String liveKey = symbol.toUpperCase() + ":" + timeframe;
+
+        LOG.info("Consumer {} subscribing to live {}", consumerId, liveKey);
+
+        liveSubscriptions.computeIfAbsent(consumerId, k -> new CopyOnWriteArraySet<>()).add(liveKey);
+        liveSubscribers.computeIfAbsent(liveKey, k -> new CopyOnWriteArraySet<>()).add(consumerId);
+
+        // Create callbacks if this is first subscriber for this key
+        if (!updateCallbacks.containsKey(liveKey)) {
+            BiConsumer<String, Candle> updateCb = (key, candle) -> broadcastLiveUpdate(key, candle, false);
+            BiConsumer<String, Candle> closeCb = (key, candle) -> broadcastLiveUpdate(key, candle, true);
+            updateCallbacks.put(liveKey, updateCb);
+            closeCallbacks.put(liveKey, closeCb);
+
+            // Subscribe to LiveCandleManager
+            Candle current = liveCandleManager.subscribe(symbol, timeframe, updateCb, closeCb);
+
+            // Send current candle immediately if available
+            if (current != null) {
+                sendLiveCandle(consumerId, liveKey, current, false);
+            }
+        } else {
+            // Already subscribed, just send current candle
+            Candle current = liveCandleManager.getCurrentCandle(symbol, timeframe);
+            if (current != null) {
+                sendLiveCandle(consumerId, liveKey, current, false);
+            }
+        }
+    }
+
+    private void handleUnsubscribeLive(String consumerId, JsonNode message) {
+        String symbol = message.get("symbol").asText();
+        String timeframe = message.get("timeframe").asText();
+        String liveKey = symbol.toUpperCase() + ":" + timeframe;
+
+        LOG.debug("Consumer {} unsubscribing from live {}", consumerId, liveKey);
+
+        Set<String> subs = liveSubscriptions.get(consumerId);
+        if (subs != null) {
+            subs.remove(liveKey);
+        }
+
+        Set<String> subscribers = liveSubscribers.get(liveKey);
+        if (subscribers != null) {
+            subscribers.remove(consumerId);
+
+            // Unsubscribe from LiveCandleManager if no more subscribers
+            if (subscribers.isEmpty()) {
+                BiConsumer<String, Candle> updateCb = updateCallbacks.remove(liveKey);
+                BiConsumer<String, Candle> closeCb = closeCallbacks.remove(liveKey);
+                liveCandleManager.unsubscribe(symbol, timeframe, updateCb, closeCb);
+            }
+        }
+    }
+
+    private void broadcastLiveUpdate(String liveKey, Candle candle, boolean isClosed) {
+        Set<String> subscribers = liveSubscribers.get(liveKey);
+        if (subscribers == null || subscribers.isEmpty()) return;
+
+        for (String consumerId : subscribers) {
+            sendLiveCandle(consumerId, liveKey, candle, isClosed);
+        }
+    }
+
+    private void sendLiveCandle(String consumerId, String liveKey, Candle candle, boolean isClosed) {
+        WsConnectContext ctx = connections.get(consumerId);
+        if (ctx == null) return;
+
+        try {
+            LiveCandleMessage message = new LiveCandleMessage(
+                isClosed ? "CANDLE_CLOSED" : "CANDLE_UPDATE",
+                liveKey,
+                candle.timestamp(),
+                candle.open(),
+                candle.high(),
+                candle.low(),
+                candle.close(),
+                candle.volume()
+            );
+            ctx.send(objectMapper.writeValueAsString(message));
+        } catch (Exception e) {
+            LOG.warn("Failed to send live candle to {}: {}", consumerId, e.getMessage());
         }
     }
 
@@ -209,4 +331,6 @@ public class WebSocketHandler implements PageUpdateListener {
     public record DataReadyMessage(String type, String pageKey, long recordCount) {}
     public record ErrorMessage(String type, String pageKey, String message) {}
     public record EvictedMessage(String type, String pageKey) {}
+    public record LiveCandleMessage(String type, String key, long timestamp, double open, double high,
+                                    double low, double close, double volume) {}
 }

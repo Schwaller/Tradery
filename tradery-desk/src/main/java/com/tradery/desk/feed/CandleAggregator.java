@@ -22,6 +22,7 @@ public class CandleAggregator {
     private final List<Candle> history = new ArrayList<>();
     private Candle currentCandle;
     private Consumer<Candle> onCandleClose;
+    private Consumer<Candle> onCandleUpdate;
 
     public CandleAggregator(String symbol, String timeframe, int maxHistory) {
         this.symbol = symbol;
@@ -34,6 +35,13 @@ public class CandleAggregator {
      */
     public void setOnCandleClose(Consumer<Candle> callback) {
         this.onCandleClose = callback;
+    }
+
+    /**
+     * Set callback for live candle updates (incomplete candles).
+     */
+    public void setOnCandleUpdate(Consumer<Candle> callback) {
+        this.onCandleUpdate = callback;
     }
 
     /**
@@ -66,7 +74,7 @@ public class CandleAggregator {
 
         if (message.isClosed()) {
             // Candle closed - add to history and notify
-            addClosedCandle(candle);
+            addClosedCandleInternal(candle);
 
             if (onCandleClose != null) {
                 onCandleClose.accept(candle);
@@ -77,13 +85,25 @@ public class CandleAggregator {
         } else {
             // Update current (incomplete) candle
             currentCandle = candle;
+
+            if (onCandleUpdate != null) {
+                onCandleUpdate.accept(candle);
+            }
         }
     }
 
     /**
-     * Add a closed candle to history.
+     * Add a closed candle to history (public method for external use).
+     * Note: Does NOT call onCandleClose callback - caller is responsible for handling.
      */
-    private void addClosedCandle(Candle candle) {
+    public void addClosedCandle(Candle candle) {
+        addClosedCandleInternal(candle);
+    }
+
+    /**
+     * Add a closed candle to history (internal).
+     */
+    private void addClosedCandleInternal(Candle candle) {
         // Check if this candle timestamp already exists
         if (!history.isEmpty()) {
             Candle last = history.get(history.size() - 1);

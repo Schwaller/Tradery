@@ -14,61 +14,55 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Stream;
 
 /**
- * Store for published strategies in Desk.
- * Loads strategies from ~/.tradery/desk/strategies/{id}/active.yaml
+ * Store for active strategies in Desk.
+ * Loads strategies from ~/.tradery/desk/active/
  */
 public class DeskStrategyStore {
 
     private static final Logger log = LoggerFactory.getLogger(DeskStrategyStore.class);
-    private static final String ACTIVE_FILE = "active.yaml";
 
-    private final Path strategiesDir;
+    private final Path activeDir;
     private final Map<String, PublishedStrategy> strategies = new ConcurrentHashMap<>();
 
     public DeskStrategyStore() {
-        this(DeskConfig.STRATEGIES_DIR);
+        this(DeskConfig.ACTIVE_DIR);
     }
 
-    public DeskStrategyStore(Path strategiesDir) {
-        this.strategiesDir = strategiesDir;
+    public DeskStrategyStore(Path activeDir) {
+        this.activeDir = activeDir;
     }
 
     /**
-     * Load all published strategies from disk.
+     * Load all active strategies from disk.
      */
     public void loadAll() {
         strategies.clear();
 
-        if (!Files.exists(strategiesDir)) {
-            log.info("No strategies directory found at {}", strategiesDir);
+        if (!Files.exists(activeDir)) {
+            log.info("No active strategies directory found at {}", activeDir);
             return;
         }
 
-        try (Stream<Path> dirs = Files.list(strategiesDir)) {
-            dirs.filter(Files::isDirectory)
+        try (Stream<Path> files = Files.list(activeDir)) {
+            files.filter(p -> p.toString().endsWith(".yaml"))
                 .forEach(this::loadStrategy);
         } catch (IOException e) {
-            log.error("Failed to list strategies: {}", e.getMessage());
+            log.error("Failed to list active strategies: {}", e.getMessage());
         }
 
-        log.info("Loaded {} published strategies", strategies.size());
+        log.info("Loaded {} active strategies", strategies.size());
     }
 
     /**
-     * Load a single strategy from its directory.
+     * Load a single strategy from a file.
      */
-    private void loadStrategy(Path strategyDir) {
-        Path activeFile = strategyDir.resolve(ACTIVE_FILE);
-        if (!Files.exists(activeFile)) {
-            return;
-        }
-
+    private void loadStrategy(Path yamlFile) {
         try {
-            PublishedStrategy strategy = PublishedStrategy.fromYaml(activeFile);
+            PublishedStrategy strategy = PublishedStrategy.fromYaml(yamlFile);
             strategies.put(strategy.getId(), strategy);
             log.debug("Loaded strategy: {} v{}", strategy.getName(), strategy.getVersion());
         } catch (IOException e) {
-            log.error("Failed to load strategy from {}: {}", activeFile, e.getMessage());
+            log.error("Failed to load strategy from {}: {}", yamlFile, e.getMessage());
         }
     }
 
@@ -76,9 +70,9 @@ public class DeskStrategyStore {
      * Reload a specific strategy by ID.
      */
     public void reloadStrategy(String strategyId) {
-        Path strategyDir = strategiesDir.resolve(strategyId);
-        if (Files.exists(strategyDir)) {
-            loadStrategy(strategyDir);
+        Path yamlFile = activeDir.resolve(strategyId + ".yaml");
+        if (Files.exists(yamlFile)) {
+            loadStrategy(yamlFile);
         } else {
             strategies.remove(strategyId);
         }
@@ -113,9 +107,9 @@ public class DeskStrategyStore {
     }
 
     /**
-     * Get the strategies directory path.
+     * Get the active strategies directory path.
      */
-    public Path getStrategiesDir() {
-        return strategiesDir;
+    public Path getActiveDir() {
+        return activeDir;
     }
 }

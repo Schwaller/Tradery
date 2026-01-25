@@ -6,9 +6,7 @@ import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 import com.tradery.TraderyApp;
-import com.tradery.model.DataMarketType;
-import com.tradery.model.Exchange;
-import com.tradery.model.PriceNormalizationMode;
+import com.tradery.model.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -20,7 +18,7 @@ import java.util.*;
  * Configuration for multi-exchange data sources.
  * Loads from ~/.tradery/exchanges.yaml
  *
- * Example configuration:
+ * Example configuration (new format):
  * <pre>
  * exchanges:
  *   binance:
@@ -32,15 +30,36 @@ import java.util.*;
  *     markets: [perp]
  *     priority: 2
  *
- * symbols:
+ * symbolMappings:
  *   BTC:
- *     binance: BTCUSDT
- *     bybit: BTCUSDT
- *     okx: BTC-USDT-SWAP
+ *     displayName: Bitcoin
+ *     aliases: [XBT]
+ *     binance:
+ *       perp:
+ *         USDT: BTCUSDT
+ *         USDC: BTCUSDC
+ *       spot:
+ *         USDT: BTCUSDT
+ *     okx:
+ *       perp:
+ *         USDT: BTC-USDT-SWAP
+ *
+ * derivation:
+ *   enabled: false
+ *   templates:
+ *     binance: "{BASE}{QUOTE}"
+ *     okx-perp: "{BASE}-{QUOTE}-SWAP"
  *
  * priceSettings:
  *   normalizationMode: USDT_AS_USD
  *   referenceExchange: binance
+ * </pre>
+ *
+ * Also supports legacy format (auto-migrated):
+ * <pre>
+ * symbols:
+ *   BTC:
+ *     binance: BTCUSDT
  * </pre>
  */
 public class ExchangeConfig {
@@ -51,8 +70,12 @@ public class ExchangeConfig {
     private static ExchangeConfig instance;
 
     private final Map<Exchange, ExchangeSettings> exchanges = new EnumMap<>(Exchange.class);
-    private final Map<String, Map<Exchange, String>> symbolMappings = new HashMap<>();
+    private final SymbolResolver symbolResolver = new SymbolResolver();
     private PriceSettings priceSettings = new PriceSettings();
+
+    // Legacy mappings for backward compatibility (deprecated)
+    @Deprecated
+    private final Map<String, Map<Exchange, String>> legacySymbolMappings = new HashMap<>();
 
     private ExchangeConfig() {
         loadDefaultConfig();
@@ -71,7 +94,8 @@ public class ExchangeConfig {
      */
     public void reload() {
         exchanges.clear();
-        symbolMappings.clear();
+        symbolResolver.clear();
+        legacySymbolMappings.clear();
         priceSettings = new PriceSettings();
         loadDefaultConfig();
         loadConfigFile();
@@ -137,20 +161,25 @@ public class ExchangeConfig {
                 }
             }
 
-            // Apply symbol mappings
+            // Apply new symbol mappings format (preferred)
+            if (config.symbolMappings != null) {
+                loadSymbolMappings(config.symbolMappings);
+            }
+
+            // Apply legacy symbol mappings (auto-migrate to new format)
             if (config.symbols != null) {
-                for (Map.Entry<String, Map<String, String>> entry : config.symbols.entrySet()) {
-                    String baseSymbol = entry.getKey().toUpperCase();
-                    Map<Exchange, String> exchangeSymbols = new EnumMap<>(Exchange.class);
+                loadLegacySymbolMappings(config.symbols);
+            }
 
-                    for (Map.Entry<String, String> mapping : entry.getValue().entrySet()) {
-                        Exchange ex = Exchange.fromConfigKey(mapping.getKey());
-                        if (ex != null) {
-                            exchangeSymbols.put(ex, mapping.getValue());
-                        }
+            // Apply derivation settings
+            if (config.derivation != null) {
+                if (config.derivation.enabled != null) {
+                    symbolResolver.setDerivationEnabled(config.derivation.enabled);
+                }
+                if (config.derivation.templates != null) {
+                    for (Map.Entry<String, String> entry : config.derivation.templates.entrySet()) {
+                        symbolResolver.setDerivationTemplate(entry.getKey(), entry.getValue());
                     }
-
-                    symbolMappings.put(baseSymbol, exchangeSymbols);
                 }
             }
 
@@ -179,6 +208,100 @@ public class ExchangeConfig {
 
         } catch (IOException e) {
             log.error("Failed to load exchange configuration: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * Load new format symbol mappings.
+     */
+    private void loadSymbolMappings(Map<String, SymbolMappingYaml> yamlMappings) {
+        for (Map.Entry<String, SymbolMappingYaml> entry : yamlMappings.entrySet()) {
+            String canonicalId = entry.getKey().toUpperCase();
+            SymbolMappingYaml yaml = entry.getValue();
+
+            SymbolMapping mapping = new SymbolMapping(canonicalId);
+
+            if (yaml.displayName != null) {
+                mapping.setDisplayName(yaml.displayName);
+            }
+            if (yaml.aliases != null) {
+                mapping.setAliases(yaml.aliases);
+            }
+
+            // Parse exchange mappings
+            for (Exchange exchange : Exchange.values()) {
+                String exchangeKey = exchange.getConfigKey();
+                @SuppressWarnings("unchecked")
+                Map<String, Object> exchangeData = yaml.exchangeMappings != null ?
+                        (Map<String, Object>) yaml.exchangeMappings.get(exchangeKey) : null;
+
+                if (exchangeData != null) {
+                    parseExchangeMappings(mapping, exchange, exchangeData);
+                }
+            }
+
+            symbolResolver.addMapping(mapping);
+        }
+    }
+
+    /**
+     * Parse exchange-specific mappings from YAML.
+     */
+    @SuppressWarnings("unchecked")
+    private void parseExchangeMappings(SymbolMapping mapping, Exchange exchange, Map<String, Object> exchangeData) {
+        for (Map.Entry<String, Object> marketEntry : exchangeData.entrySet()) {
+            String marketKey = marketEntry.getKey();
+            DataMarketType marketType = DataMarketType.fromConfigKey(marketKey);
+
+            if (marketType != null && marketEntry.getValue() instanceof Map) {
+                Map<String, String> quoteData = (Map<String, String>) marketEntry.getValue();
+                for (Map.Entry<String, String> quoteEntry : quoteData.entrySet()) {
+                    String quoteKey = quoteEntry.getKey().toUpperCase();
+                    try {
+                        QuoteCurrency quote = QuoteCurrency.valueOf(quoteKey);
+                        mapping.setSymbol(exchange, marketType, quote, quoteEntry.getValue());
+                    } catch (IllegalArgumentException e) {
+                        log.warn("Unknown quote currency: {}", quoteKey);
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Load legacy format and auto-migrate.
+     * Old format: symbols.BTC.binance: BTCUSDT
+     * Migrated to: symbolMappings.BTC.binance.perp.USDT: BTCUSDT
+     */
+    private void loadLegacySymbolMappings(Map<String, Map<String, String>> legacyMappings) {
+        log.info("Migrating legacy symbol mappings to new format (assuming perp/USDT)");
+
+        for (Map.Entry<String, Map<String, String>> entry : legacyMappings.entrySet()) {
+            String canonicalId = entry.getKey().toUpperCase();
+            Map<Exchange, String> exchangeSymbols = new EnumMap<>(Exchange.class);
+
+            // Check if already exists in new format
+            SymbolMapping existing = symbolResolver.getMapping(canonicalId);
+            SymbolMapping mapping = existing != null ? existing : new SymbolMapping(canonicalId);
+
+            for (Map.Entry<String, String> exchangeEntry : entry.getValue().entrySet()) {
+                Exchange ex = Exchange.fromConfigKey(exchangeEntry.getKey());
+                if (ex != null) {
+                    String symbol = exchangeEntry.getValue();
+                    exchangeSymbols.put(ex, symbol);
+
+                    // Auto-migrate to new format: assume perp + USDT
+                    mapping.setSymbol(ex, DataMarketType.FUTURES_PERP, QuoteCurrency.USDT, symbol);
+                }
+            }
+
+            // Store for backward compatibility
+            legacySymbolMappings.put(canonicalId, exchangeSymbols);
+
+            // Add to resolver if not already present
+            if (existing == null) {
+                symbolResolver.addMapping(mapping);
+            }
         }
     }
 
@@ -218,18 +341,58 @@ public class ExchangeConfig {
     }
 
     /**
+     * Get the symbol resolver instance.
+     */
+    public SymbolResolver getSymbolResolver() {
+        return symbolResolver;
+    }
+
+    /**
+     * Resolve a canonical symbol to an exchange-specific symbol.
+     * Full resolution with market type and quote currency.
+     *
+     * @param canonical Canonical symbol (e.g., "BTC")
+     * @param exchange Target exchange
+     * @param marketType Market type (perp, spot, dated)
+     * @param quoteCurrency Quote currency (USDT, USDC, USD)
+     * @return Exchange-specific symbol
+     * @throws SymbolResolutionException if no mapping exists and derivation is disabled
+     */
+    public String resolveSymbol(String canonical, Exchange exchange, DataMarketType marketType, QuoteCurrency quoteCurrency) {
+        return symbolResolver.resolve(canonical, exchange, marketType, quoteCurrency);
+    }
+
+    /**
+     * Try to resolve a symbol, returning null instead of throwing if not found.
+     */
+    public String tryResolveSymbol(String canonical, Exchange exchange, DataMarketType marketType, QuoteCurrency quoteCurrency) {
+        return symbolResolver.tryResolve(canonical, exchange, marketType, quoteCurrency);
+    }
+
+    /**
      * Get the exchange-specific symbol for a base symbol.
+     * Uses default market type (FUTURES_PERP) and quote currency (USDT).
+     *
+     * For backward compatibility with existing code.
      *
      * @param baseSymbol Base symbol (e.g., "BTC")
      * @param exchange Target exchange
      * @return Exchange-specific symbol (e.g., "BTCUSDT" for Binance, "BTC-USDT-SWAP" for OKX)
      */
     public String getSymbol(String baseSymbol, Exchange exchange) {
-        Map<Exchange, String> mappings = symbolMappings.get(baseSymbol.toUpperCase());
+        // Try the resolver first
+        String resolved = symbolResolver.tryResolve(baseSymbol, exchange, DataMarketType.FUTURES_PERP, QuoteCurrency.USDT);
+        if (resolved != null) {
+            return resolved;
+        }
+
+        // Fall back to legacy behavior for backward compatibility
+        Map<Exchange, String> mappings = legacySymbolMappings.get(baseSymbol.toUpperCase());
         if (mappings != null && mappings.containsKey(exchange)) {
             return mappings.get(exchange);
         }
-        // Default mappings
+
+        // Default mappings (same as before)
         return switch (exchange) {
             case BINANCE, BYBIT -> baseSymbol.toUpperCase() + "USDT";
             case OKX -> baseSymbol.toUpperCase() + "-USDT-SWAP";
@@ -237,6 +400,13 @@ public class ExchangeConfig {
             case KRAKEN -> baseSymbol.toUpperCase() + "USD";
             case BITFINEX -> "t" + baseSymbol.toUpperCase() + "USD";
         };
+    }
+
+    /**
+     * Reverse resolve an exchange symbol to its canonical form.
+     */
+    public Optional<String> reverseResolveSymbol(String exchangeSymbol, Exchange exchange) {
+        return symbolResolver.reverseResolve(exchangeSymbol, exchange);
     }
 
     /**
@@ -290,7 +460,13 @@ public class ExchangeConfig {
         Map<String, ExchangeSettingsYaml> exchanges;
 
         @JsonProperty("symbols")
-        Map<String, Map<String, String>> symbols;
+        Map<String, Map<String, String>> symbols;  // Legacy format
+
+        @JsonProperty("symbolMappings")
+        Map<String, SymbolMappingYaml> symbolMappings;  // New format
+
+        @JsonProperty("derivation")
+        DerivationSettingsYaml derivation;
 
         @JsonProperty("priceSettings")
         PriceSettingsYaml priceSettings;
@@ -312,6 +488,48 @@ public class ExchangeConfig {
 
         @JsonProperty("apiSecret")
         String apiSecret;
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    private static class SymbolMappingYaml {
+        @JsonProperty("displayName")
+        String displayName;
+
+        @JsonProperty("aliases")
+        List<String> aliases;
+
+        // Dynamic exchange mappings stored here
+        // We use JsonAnySetter to capture exchange-specific keys
+        @JsonIgnoreProperties(ignoreUnknown = true)
+        Map<String, Object> exchangeMappings;
+
+        @JsonProperty
+        void setOther(String key, Object value) {
+            if (exchangeMappings == null) {
+                exchangeMappings = new HashMap<>();
+            }
+            // Store non-standard properties (exchange keys like "binance", "okx")
+            if (!key.equals("displayName") && !key.equals("aliases")) {
+                exchangeMappings.put(key, value);
+            }
+        }
+
+        @com.fasterxml.jackson.annotation.JsonAnySetter
+        void setAny(String key, Object value) {
+            if (exchangeMappings == null) {
+                exchangeMappings = new HashMap<>();
+            }
+            exchangeMappings.put(key, value);
+        }
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    private static class DerivationSettingsYaml {
+        @JsonProperty("enabled")
+        Boolean enabled;
+
+        @JsonProperty("templates")
+        Map<String, String> templates;
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)

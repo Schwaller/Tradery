@@ -100,12 +100,25 @@ public class DataServiceLocator {
     }
 
     /**
+     * Locate a running data service and return its connection info.
+     * @return Optional containing the service info if found
+     */
+    public static Optional<ServiceInfo> locate() {
+        return findRunningService().map(port -> new ServiceInfo("localhost", port));
+    }
+
+    /**
      * Create a client connected to a running data service.
      * @return Optional containing the client if service is found
      */
     public static Optional<DataServiceClient> createClient() {
         return findRunningService().map(port -> new DataServiceClient("localhost", port));
     }
+
+    /**
+     * Service connection info.
+     */
+    public record ServiceInfo(String host, int port) {}
 
     /**
      * Create a client, waiting for the service if needed.

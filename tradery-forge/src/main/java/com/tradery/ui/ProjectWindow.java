@@ -11,6 +11,7 @@ import com.tradery.io.ResultStore;
 import com.tradery.io.StrategyStore;
 import com.tradery.io.WindowStateStore;
 import com.tradery.model.*;
+import com.tradery.publish.DeskPublisher;
 import com.tradery.ui.charts.ChartConfig;
 import com.tradery.ui.controls.IndicatorControlsPanel;
 import com.tradery.ui.coordination.AutoSaveScheduler;
@@ -60,6 +61,7 @@ public class ProjectWindow extends JFrame {
     private JButton codexBtn;
     private JButton historyBtn;
     private JButton phaseAnalysisBtn;
+    private JButton publishBtn;
     private PageManagerBadgesPanel pageManagerBadges;
     private MemoryStatusPanel memoryStatusPanel;
     private DataServiceStatusPanel dataServiceStatusPanel;
@@ -261,6 +263,11 @@ public class ProjectWindow extends JFrame {
         phaseAnalysisBtn.setEnabled(false);  // Enabled after backtest completes
         phaseAnalysisBtn.addActionListener(e -> openPhaseAnalysis());
 
+        // Publish button - publish strategy to library for Desk
+        publishBtn = new JButton("Publish");
+        publishBtn.setToolTipText("Publish strategy to library for Tradery Desk");
+        publishBtn.addActionListener(e -> publishStrategy());
+
         // Data status panel created later in status bar
 
         // Indicator controls panel (extracted to separate class)
@@ -372,6 +379,7 @@ public class ProjectWindow extends JFrame {
         JPanel toolbarRight = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 4));
         toolbarRight.add(phaseAnalysisBtn);
         toolbarRight.add(historyBtn);
+        toolbarRight.add(publishBtn);
 
         JPanel toolbarPanel = new JPanel(new BorderLayout(0, 0));
         toolbarPanel.add(toolbarLeft, BorderLayout.WEST);
@@ -662,6 +670,19 @@ public class ProjectWindow extends JFrame {
             statusManager.setInfoStatus(StatusManager.SOURCE_FILE_CHANGE, "Restored strategy from history");
             runBacktest();
         });
+    }
+
+    private void publishStrategy() {
+        // Apply current UI values before publishing
+        editorPanel.applyToStrategy(strategy);
+        settingsPanel.applyToStrategy(strategy);
+        applyToolbarToStrategy();
+
+        // Save first to ensure disk is in sync
+        strategyStore.save(strategy);
+
+        // Open the publish dialog
+        PublishDialog.show(this, strategy, statusManager::setInfoStatus);
     }
 
     private void openPhaseAnalysis() {
