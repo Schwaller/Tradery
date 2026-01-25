@@ -1,4 +1,4 @@
-package com.tradery.forge.ui;
+package com.tradery.terminal;
 
 import javax.swing.*;
 import java.awt.*;

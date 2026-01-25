@@ -1,4 +1,4 @@
-package com.tradery.forge.ui;
+package com.tradery.terminal;
 
 import com.jediterm.pty.PtyProcessTtyConnector;
 import com.jediterm.terminal.TtyConnector;
@@ -288,8 +288,5 @@ public class AiTerminalPanel extends JPanel {
         public Font getTerminalFont() {
             return new Font(Font.MONOSPACED, Font.PLAIN, 13);
         }
-
-        // Note: getDefaultBackground/getDefaultForeground may not exist in older API versions
-        // Colors are handled via terminal color scheme instead
     }
 }

@@ -10,9 +10,8 @@ module com.tradery.forge {
     requires com.formdev.flatlaf;
     requires com.formdev.flatlaf.intellijthemes;
 
-    // Terminal - merged at runtime via jlink forceMerge, static for compile-time
-    requires static jediterm.merged;
-    requires static pty4j;
+    // Terminal module for embedded AI terminal
+    requires com.tradery.terminal;
 
     // HTTP server for API
     requires jdk.httpserver;

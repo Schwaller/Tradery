@@ -1,6 +1,8 @@
 package com.tradery.forge.ui;
 
 import com.tradery.forge.io.WindowStateStore;
+import com.tradery.terminal.AiTerminalFrame;
+import com.tradery.terminal.AiTerminalPanel;
 
 import javax.swing.*;
 import java.awt.*;

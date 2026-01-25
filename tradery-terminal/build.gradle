@@ -1,0 +1,54 @@
+// tradery-terminal: AI terminal integration with JediTerm + pty4j
+// Provides embedded Claude/Codex terminal support
+
+plugins {
+    id 'java'
+}
+
+dependencies {
+    // PTY support for terminal
+    implementation 'org.jetbrains.pty4j:pty4j:0.12.13'
+
+    // JediTerm - use merged JAR to avoid JPMS split package problem
+    implementation files("$buildDir/libs/jediterm-merged.jar")
+
+    // Logging
+    implementation "org.slf4j:slf4j-api:${rootProject.ext.slf4jVersion}"
+}
+
+// Configuration for JediTerm JARs to be merged
+configurations {
+    jediterm
+}
+
+dependencies {
+    jediterm 'org.jetbrains.jediterm:jediterm-core:3.59'
+    jediterm 'org.jetbrains.jediterm:jediterm-ui:3.59'
+    jediterm 'org.jetbrains.jediterm:jediterm-pty:2.69'
+}
+
+// Merge JediTerm JARs into a single JAR to eliminate split packages
+tasks.register('mergeJediTerm', Jar) {
+    archiveFileName = 'jediterm-merged.jar'
+    destinationDirectory = layout.buildDirectory.dir('libs')
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+
+    from {
+        configurations.jediterm.collect { zipTree(it) }
+    }
+
+    // Exclude bundled dependencies that would cause split packages
+    exclude 'org/slf4j/**'
+    exclude 'kotlin/**'
+    exclude 'org/jetbrains/annotations/**'
+    exclude 'org/intellij/**'
+    exclude 'META-INF/kotlin*'
+    exclude 'META-INF/*.kotlin_module'
+
+    manifest {
+        attributes 'Automatic-Module-Name': 'jediterm.merged'
+    }
+}
+
+tasks.compileJava.dependsOn mergeJediTerm
+tasks.processResources.dependsOn mergeJediTerm
