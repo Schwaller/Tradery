@@ -1,0 +1,50 @@
+// tradery-data-service: Standalone data fetching and caching daemon
+// Provides HTTP API for data access
+
+plugins {
+    id 'java'
+    id 'application'
+}
+
+application {
+    mainClass = 'com.tradery.dataservice.DataServiceApp'
+}
+
+dependencies {
+    // Core module for models
+    implementation project(':tradery-core')
+
+    // HTTP server
+    implementation "io.javalin:javalin:${rootProject.ext.javalinVersion}"
+
+    // HTTP client for Binance API
+    implementation "com.squareup.okhttp3:okhttp:${rootProject.ext.okhttpVersion}"
+
+    // MessagePack for efficient data serialization
+    implementation "org.msgpack:msgpack-core:${rootProject.ext.msgpackVersion}"
+    implementation "org.msgpack:jackson-dataformat-msgpack:${rootProject.ext.msgpackVersion}"
+
+    // WebSocket server (included in Javalin)
+
+    // SQLite for data caching
+    implementation "org.xerial:sqlite-jdbc:${rootProject.ext.sqliteVersion}"
+
+    // Logging
+    implementation "org.slf4j:slf4j-api:${rootProject.ext.slf4jVersion}"
+    implementation "org.apache.logging.log4j:log4j-api:${rootProject.ext.log4jVersion}"
+    implementation "org.apache.logging.log4j:log4j-core:${rootProject.ext.log4jVersion}"
+    implementation "org.apache.logging.log4j:log4j-slf4j2-impl:${rootProject.ext.log4jVersion}"
+}
+
+// Create fat JAR for distribution
+tasks.register('fatJar', Jar) {
+    archiveClassifier = 'all'
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    manifest {
+        attributes 'Main-Class': application.mainClass
+    }
+    from {
+        configurations.runtimeClasspath.collect { it.isDirectory() ? it : zipTree(it) }
+    }
+    with jar
+}

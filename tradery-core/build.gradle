@@ -1,0 +1,19 @@
+// tradery-core: Shared models, indicators, DSL parser
+// This module has no UI or data fetching dependencies
+
+plugins {
+    id 'java-library'
+}
+
+dependencies {
+    // JSON/YAML serialization for model classes
+    api "com.fasterxml.jackson.core:jackson-databind:${rootProject.ext.jacksonVersion}"
+    api "com.fasterxml.jackson.datatype:jackson-datatype-jsr310:${rootProject.ext.jacksonVersion}"
+    api "com.fasterxml.jackson.dataformat:jackson-dataformat-yaml:${rootProject.ext.jacksonVersion}"
+
+    // HTTP client (for calendar sync)
+    implementation "com.squareup.okhttp3:okhttp:${rootProject.ext.okhttpVersion}"
+
+    // Logging
+    implementation "org.slf4j:slf4j-api:${rootProject.ext.slf4jVersion}"
+}

@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.tradery.dataservice</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/bin/java</string>
+        <string>-Xmx2g</string>
+        <string>-jar</string>
+        <string>/Applications/Tradery/tradery-data-service.jar</string>
+    </array>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <dict>
+        <key>SuccessfulExit</key>
+        <false/>
+    </dict>
+
+    <key>StandardOutPath</key>
+    <string>/Users/${USER}/.tradery/logs/dataservice.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/Users/${USER}/.tradery/logs/dataservice-error.log</string>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/${USER}/.tradery</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>TRADERY_DATA_PORT</key>
+        <string>9810</string>
+        <key>TRADERY_MAX_MEMORY_MB</key>
+        <string>2048</string>
+    </dict>
+
+    <key>SoftResourceLimits</key>
+    <dict>
+        <key>NumberOfFiles</key>
+        <integer>4096</integer>
+    </dict>
+</dict>
+</plist>

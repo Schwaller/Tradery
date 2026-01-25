@@ -1,0 +1,126 @@
+// tradery-app: Main Strategy Designer application (Swing UI)
+// Uses tradery-core for indicators and tradery-data-client for data access
+
+plugins {
+    id 'java'
+    id 'application'
+}
+
+application {
+    mainClass = 'com.tradery.TraderyApp'
+}
+
+dependencies {
+    // Core module for models, indicators, DSL
+    implementation project(':tradery-core')
+
+    // Data client for accessing data service
+    implementation project(':tradery-data-client')
+
+    // JSON/YAML serialization
+    implementation "com.fasterxml.jackson.core:jackson-databind:${rootProject.ext.jacksonVersion}"
+    implementation "com.fasterxml.jackson.datatype:jackson-datatype-jsr310:${rootProject.ext.jacksonVersion}"
+    implementation "com.fasterxml.jackson.dataformat:jackson-dataformat-yaml:${rootProject.ext.jacksonVersion}"
+
+    // HTTP client for API server
+    implementation "com.squareup.okhttp3:okhttp:${rootProject.ext.okhttpVersion}"
+
+    // Charts (Swing-compatible)
+    implementation 'org.jfree:jfreechart:1.5.4'
+
+    // File watching
+    implementation 'io.methvin:directory-watcher:0.18.0'
+
+    // FlatLaf Look and Feel
+    implementation 'com.formdev:flatlaf:3.4'
+    implementation 'com.formdev:flatlaf-intellij-themes:3.4'
+
+    // PTY support for embedded terminal
+    implementation 'org.jetbrains.pty4j:pty4j:0.12.13'
+
+    // JediTerm - full terminal emulator
+    implementation 'org.jetbrains.jediterm:jediterm-core:3.59'
+    implementation 'org.jetbrains.jediterm:jediterm-ui:3.59'
+    implementation 'org.jetbrains.jediterm:jediterm-pty:2.69'
+
+    // Logging
+    implementation "org.slf4j:slf4j-api:${rootProject.ext.slf4jVersion}"
+    implementation "org.apache.logging.log4j:log4j-api:${rootProject.ext.log4jVersion}"
+    implementation "org.apache.logging.log4j:log4j-core:${rootProject.ext.log4jVersion}"
+    implementation "org.apache.logging.log4j:log4j-slf4j2-impl:${rootProject.ext.log4jVersion}"
+    implementation "org.apache.logging.log4j:log4j-1.2-api:${rootProject.ext.log4jVersion}"
+
+    // SQLite JDBC driver for data storage (during transition, may be removed later)
+    implementation "org.xerial:sqlite-jdbc:${rootProject.ext.sqliteVersion}"
+
+    // Markdown parsing for help dialogs
+    implementation 'com.vladsch.flexmark:flexmark-all:0.64.8'
+}
+
+// macOS app bundle using jpackage (included in JDK 14+)
+tasks.register('jpackageApp', Exec) {
+    dependsOn 'fatJar'
+
+    def outputDir = layout.buildDirectory.dir('jpackage').get().asFile
+    def fatJarFile = layout.buildDirectory.file("libs/${project.name}-${project.version}-all.jar").get().asFile
+
+    doFirst {
+        outputDir.mkdirs()
+    }
+
+    def args = [
+            'jpackage',
+            '--type', 'app-image',
+            '--name', 'Tradery',
+            '--app-version', project.version,
+            '--input', fatJarFile.parentFile.absolutePath,
+            '--main-jar', fatJarFile.name,
+            '--main-class', application.mainClass.get(),
+            '--dest', outputDir.absolutePath,
+            '--java-options', '-Xmx512m',
+            '--mac-package-name', 'Tradery'
+    ]
+
+    // Add icon if it exists
+    def iconFile = file('../src/main/resources/icon.icns')
+    if (iconFile.exists()) {
+        args.addAll(['--icon', iconFile.absolutePath])
+    }
+
+    commandLine args
+
+    doLast {
+        println "Created: ${outputDir}/Tradery.app"
+    }
+}
+
+// Create DMG installer
+tasks.register('jpackageDmg', Exec) {
+    dependsOn 'jpackageApp'
+
+    def outputDir = layout.buildDirectory.dir('jpackage').get().asFile
+    def appPath = new File(outputDir, 'Tradery.app')
+    def dmgPath = new File(outputDir, "Tradery-${project.version}.dmg")
+
+    commandLine 'hdiutil', 'create', '-volname', 'Tradery',
+            '-srcfolder', appPath.absolutePath,
+            '-ov', '-format', 'UDZO',
+            dmgPath.absolutePath
+
+    doLast {
+        println "Created: ${dmgPath}"
+    }
+}
+
+// Create fat JAR for easy distribution
+tasks.register('fatJar', Jar) {
+    archiveClassifier = 'all'
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    manifest {
+        attributes 'Main-Class': application.mainClass
+    }
+    from {
+        configurations.runtimeClasspath.collect { it.isDirectory() ? it : zipTree(it) }
+    }
+    with jar
+}
