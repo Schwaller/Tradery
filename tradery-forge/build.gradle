@@ -4,10 +4,12 @@
 plugins {
     id 'java'
     id 'application'
+    id 'org.beryx.jlink'
 }
 
 application {
     mainClass = 'com.tradery.forge.TraderyApp'
+    // Note: No mainModule since this is a non-modular app that uses modular libraries
 }
 
 dependencies {
@@ -41,10 +43,8 @@ dependencies {
     // PTY support for embedded terminal
     implementation 'org.jetbrains.pty4j:pty4j:0.12.13'
 
-    // JediTerm - full terminal emulator
-    implementation 'org.jetbrains.jediterm:jediterm-core:3.59'
-    implementation 'org.jetbrains.jediterm:jediterm-ui:3.59'
-    implementation 'org.jetbrains.jediterm:jediterm-pty:2.69'
+    // JediTerm - use merged JAR to avoid JPMS split package problem
+    implementation files("$buildDir/libs/jediterm-merged.jar")
 
     // Logging
     implementation "org.slf4j:slf4j-api:${rootProject.ext.slf4jVersion}"
@@ -58,6 +58,127 @@ dependencies {
 
     // Markdown parsing for help dialogs
     implementation 'com.vladsch.flexmark:flexmark-all:0.64.8'
+}
+
+// Configuration for JediTerm JARs to be merged (avoids JPMS split package problem)
+configurations {
+    jediterm
+}
+
+dependencies {
+    jediterm 'org.jetbrains.jediterm:jediterm-core:3.59'
+    jediterm 'org.jetbrains.jediterm:jediterm-ui:3.59'
+    jediterm 'org.jetbrains.jediterm:jediterm-pty:2.69'
+}
+
+// Merge JediTerm JARs into a single JAR to eliminate split packages
+tasks.register('mergeJediTerm', Jar) {
+    archiveFileName = 'jediterm-merged.jar'
+    destinationDirectory = layout.buildDirectory.dir('libs')
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+
+    from {
+        configurations.jediterm.collect { zipTree(it) }
+    }
+
+    // Exclude bundled dependencies that would cause split packages
+    exclude 'org/slf4j/**'           // SLF4J is provided separately
+    exclude 'kotlin/**'              // Kotlin stdlib is provided separately
+    exclude 'org/jetbrains/annotations/**'  // Annotations provided separately
+    exclude 'org/intellij/**'        // IntelliJ annotations
+    exclude 'META-INF/kotlin*'       // Kotlin metadata
+    exclude 'META-INF/*.kotlin_module'
+
+    // Add automatic module name for JPMS compatibility
+    manifest {
+        attributes 'Automatic-Module-Name': 'jediterm.merged'
+    }
+}
+
+// Ensure merged JAR is built before compilation
+tasks.compileJava.dependsOn mergeJediTerm
+tasks.processResources.dependsOn mergeJediTerm
+
+// jlink configuration for creating minimal custom JRE
+jlink {
+    // Module name matches the module-info.java
+    moduleName = 'com.tradery.forge'
+    mergedModuleName = 'com.tradery.forge.merged'
+
+    options = [
+        '--strip-debug',
+        '--compress', 'zip-9',
+        '--no-header-files',
+        '--no-man-pages'
+    ]
+
+    // Add transitive dependencies that might be missing
+    addExtraDependencies("jackson")
+    addExtraDependencies("yaml")
+    addExtraDependencies("kotlin")
+
+    launcher {
+        name = 'tradery'
+        jvmArgs = [
+            '-Xmx512m',
+            // Required for Jackson reflection on modular code
+            '--add-opens', 'com.tradery.core/com.tradery.core.model=com.fasterxml.jackson.databind',
+            // Required for reflection access to forge module
+            '--add-opens', 'com.tradery.forge/com.tradery.forge.io=com.fasterxml.jackson.databind',
+            '--add-opens', 'com.tradery.forge/com.tradery.forge=com.fasterxml.jackson.databind',
+            '--add-opens', 'com.tradery.forge/com.tradery.forge.data=com.fasterxml.jackson.databind',
+            '--add-opens', 'com.tradery.forge/com.tradery.forge.analysis=com.fasterxml.jackson.databind',
+            '--add-opens', 'com.tradery.forge/com.tradery.forge.api=com.fasterxml.jackson.databind'
+        ]
+    }
+
+    // Merge non-modular JARs into a single module
+    mergedModule {
+        additive = true
+        // Note: Exports are auto-detected from the merged JARs
+
+        // ServiceLoader declarations for Log4j and SLF4J
+        uses 'org.apache.logging.log4j.spi.Provider'
+        uses 'org.apache.logging.log4j.util.PropertySource'
+        uses 'org.apache.logging.log4j.core.util.ContextDataProvider'
+        uses 'org.apache.logging.log4j.message.ThreadDumpMessage.ThreadInfoFactory'
+        uses 'org.slf4j.spi.SLF4JServiceProvider'
+    }
+
+    // Force merge non-modular/automatic module dependencies into the merged module
+    // jlink cannot use automatic modules, so we merge them
+    forceMerge('jediterm-merged', 'pty4j', 'purejavacomm', 'jna', 'flexmark', 'directory-watcher', 'log4j', 'okhttp', 'okio', 'jfreechart', 'pdfbox', 'fontbox', 'openhtmltopdf', 'jsoup', 'icu4j', 'graphics2d', 'xmpbox', 'autolink', 'commons-logging')
+
+    jpackage {
+        imageName = 'Tradery'
+        installerName = 'Tradery'
+        appVersion = project.version
+
+        // macOS
+        if (org.gradle.internal.os.OperatingSystem.current().isMacOsX()) {
+            icon = 'src/main/resources/icon.icns'
+            installerType = 'dmg'
+        }
+        // Windows
+        if (org.gradle.internal.os.OperatingSystem.current().isWindows()) {
+            icon = 'src/main/resources/icon.ico'
+            installerType = 'msi'
+            winMenu = true
+            winShortcut = true
+        }
+        // Linux
+        if (org.gradle.internal.os.OperatingSystem.current().isLinux()) {
+            icon = 'src/main/resources/icon.png'
+            installerType = 'deb'
+        }
+    }
+}
+
+// jlink image created callback
+tasks.jlink {
+    doLast {
+        println "jlink image created at: ${jlink.imageDir.get()}"
+    }
 }
 
 // macOS app bundle using jpackage (included in JDK 14+)
