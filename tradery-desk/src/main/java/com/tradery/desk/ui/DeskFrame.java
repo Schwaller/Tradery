@@ -38,6 +38,7 @@ public class DeskFrame extends JFrame {
     private JCheckBox stochasticCheckBox;
     private JCheckBox adxCheckBox;
     private JCheckBox deltaCheckBox;
+    private JCheckBox rangePositionCheckBox;
 
     private Runnable onClose;
 
@@ -227,6 +228,14 @@ public class DeskFrame extends JFrame {
             priceChartPanel.setDeltaEnabled(deltaCheckBox.isSelected());
         });
         toolbar.add(deltaCheckBox);
+
+        // Range Position
+        rangePositionCheckBox = new JCheckBox("RP(200)");
+        rangePositionCheckBox.setFocusPainted(false);
+        rangePositionCheckBox.addActionListener(e -> {
+            priceChartPanel.setRangePositionEnabled(rangePositionCheckBox.isSelected());
+        });
+        toolbar.add(rangePositionCheckBox);
 
         return toolbar;
     }

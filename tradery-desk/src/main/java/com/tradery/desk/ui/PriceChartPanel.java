@@ -18,6 +18,7 @@ import com.tradery.charts.renderer.DeltaRenderer;
 import com.tradery.charts.renderer.MacdRenderer;
 import com.tradery.charts.renderer.RsiRenderer;
 import com.tradery.charts.renderer.StochasticRenderer;
+import com.tradery.charts.renderer.RangePositionRenderer;
 import com.tradery.core.model.Candle;
 import com.tradery.desk.ui.charts.DeskDataProvider;
 
@@ -45,6 +46,7 @@ public class PriceChartPanel extends JPanel {
     private IndicatorChart stochasticChart;
     private IndicatorChart adxChart;
     private IndicatorChart deltaChart;
+    private IndicatorChart rangePositionChart;
     private final List<IndicatorChart> indicatorCharts = new ArrayList<>();
     private boolean volumeEnabled = false;
     private boolean rsiEnabled = false;
@@ -53,6 +55,7 @@ public class PriceChartPanel extends JPanel {
     private boolean stochasticEnabled = false;
     private boolean adxEnabled = false;
     private boolean deltaEnabled = false;
+    private boolean rangePositionEnabled = false;
 
     public PriceChartPanel() {
         setLayout(new BorderLayout());
@@ -478,6 +481,42 @@ public class PriceChartPanel extends JPanel {
      */
     public boolean isDeltaEnabled() {
         return deltaEnabled;
+    }
+
+    /**
+     * Enable or disable Range Position chart.
+     */
+    public void setRangePositionEnabled(boolean enabled) {
+        setRangePositionEnabled(enabled, 200, 0);
+    }
+
+    /**
+     * Enable or disable Range Position chart with custom parameters.
+     */
+    public void setRangePositionEnabled(boolean enabled, int period, int skip) {
+        if (enabled == rangePositionEnabled) return;
+        rangePositionEnabled = enabled;
+
+        if (enabled) {
+            rangePositionChart = new IndicatorChart(coordinator, IndicatorType.RANGE_POSITION, new RangePositionRenderer(period, skip));
+            rangePositionChart.initialize();
+            indicatorCharts.add(rangePositionChart);
+        } else {
+            if (rangePositionChart != null) {
+                indicatorCharts.remove(rangePositionChart);
+                rangePositionChart.dispose();
+                rangePositionChart = null;
+            }
+        }
+
+        rebuildLayout();
+    }
+
+    /**
+     * Check if Range Position chart is enabled.
+     */
+    public boolean isRangePositionEnabled() {
+        return rangePositionEnabled;
     }
 
     /**
