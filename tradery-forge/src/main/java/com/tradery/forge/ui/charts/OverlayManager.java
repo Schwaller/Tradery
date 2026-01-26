@@ -121,6 +121,7 @@ public class OverlayManager {
 
     /**
      * Add an SMA overlay with the given period. Returns the created overlay instance.
+     * Uses IndicatorEngine for calculation (no inline math).
      */
     public OverlayInstance addSmaOverlay(int period, List<Candle> candles) {
         if (candles == null || candles.size() < period) {
@@ -136,16 +137,27 @@ public class OverlayManager {
 
         XYPlot plot = priceChart.getXYPlot();
 
-        // Calculate SMA values
-        TimeSeries smaSeries = new TimeSeries("SMA(" + period + ")");
-
-        for (int i = period - 1; i < candles.size(); i++) {
-            double sum = 0;
-            for (int j = 0; j < period; j++) {
-                sum += candles.get(i - j).close();
+        // Use IndicatorEngine for SMA calculation (eliminates inline math)
+        double[] smaValues;
+        if (indicatorEngine != null) {
+            smaValues = indicatorEngine.getSMA(period);
+        } else {
+            // Fallback: calculate inline if no engine (shouldn't happen in normal use)
+            smaValues = new double[candles.size()];
+            for (int i = period - 1; i < candles.size(); i++) {
+                double sum = 0;
+                for (int j = 0; j < period; j++) {
+                    sum += candles.get(i - j).close();
+                }
+                smaValues[i] = sum / period;
             }
-            double sma = sum / period;
-            smaSeries.addOrUpdate(new Millisecond(new Date(candles.get(i).timestamp())), sma);
+        }
+
+        TimeSeries smaSeries = new TimeSeries("SMA(" + period + ")");
+        for (int i = period - 1; i < candles.size() && i < smaValues.length; i++) {
+            if (!Double.isNaN(smaValues[i])) {
+                smaSeries.addOrUpdate(new Millisecond(new Date(candles.get(i).timestamp())), smaValues[i]);
+            }
         }
 
         // Add as secondary dataset
@@ -227,6 +239,7 @@ public class OverlayManager {
 
     /**
      * Add an EMA overlay with the given period. Returns the created overlay instance.
+     * Uses IndicatorEngine for calculation (no inline math).
      */
     public OverlayInstance addEmaOverlay(int period, List<Candle> candles) {
         if (candles == null || candles.size() < period) {
@@ -242,25 +255,37 @@ public class OverlayManager {
 
         XYPlot plot = priceChart.getXYPlot();
 
-        // Calculate EMA values
-        TimeSeries emaSeries = new TimeSeries("EMA(" + period + ")");
-        double multiplier = 2.0 / (period + 1);
-        double ema = 0;
-
-        for (int i = 0; i < candles.size(); i++) {
-            if (i < period - 1) {
-                continue;
-            } else if (i == period - 1) {
-                // First EMA is SMA of first 'period' values
-                double sum = 0;
-                for (int j = 0; j < period; j++) {
-                    sum += candles.get(j).close();
+        // Use IndicatorEngine for EMA calculation (eliminates inline math)
+        double[] emaValues;
+        if (indicatorEngine != null) {
+            emaValues = indicatorEngine.getEMA(period);
+        } else {
+            // Fallback: calculate inline if no engine (shouldn't happen in normal use)
+            emaValues = new double[candles.size()];
+            double multiplier = 2.0 / (period + 1);
+            double ema = 0;
+            for (int i = 0; i < candles.size(); i++) {
+                if (i < period - 1) {
+                    emaValues[i] = Double.NaN;
+                } else if (i == period - 1) {
+                    double sum = 0;
+                    for (int j = 0; j < period; j++) {
+                        sum += candles.get(j).close();
+                    }
+                    ema = sum / period;
+                    emaValues[i] = ema;
+                } else {
+                    ema = (candles.get(i).close() - ema) * multiplier + ema;
+                    emaValues[i] = ema;
                 }
-                ema = sum / period;
-            } else {
-                ema = (candles.get(i).close() - ema) * multiplier + ema;
             }
-            emaSeries.addOrUpdate(new Millisecond(new Date(candles.get(i).timestamp())), ema);
+        }
+
+        TimeSeries emaSeries = new TimeSeries("EMA(" + period + ")");
+        for (int i = period - 1; i < candles.size() && i < emaValues.length; i++) {
+            if (!Double.isNaN(emaValues[i])) {
+                emaSeries.addOrUpdate(new Millisecond(new Date(candles.get(i).timestamp())), emaValues[i]);
+            }
         }
 
         // Add as secondary dataset
@@ -340,6 +365,10 @@ public class OverlayManager {
 
     // ===== Bollinger Bands Overlay =====
 
+    /**
+     * Set Bollinger Bands overlay.
+     * Uses IndicatorEngine for calculation (no inline math).
+     */
     public void setBollingerOverlay(int period, double stdDevMultiplier, List<Candle> candles) {
         if (candles == null || candles.size() < period) {
             clearBollingerOverlay();
@@ -352,30 +381,47 @@ public class OverlayManager {
         TimeSeries middleSeries = new TimeSeries("BB Middle");
         TimeSeries lowerSeries = new TimeSeries("BB Lower");
 
-        for (int i = period - 1; i < candles.size(); i++) {
-            // Calculate SMA (middle band)
-            double sum = 0;
-            for (int j = 0; j < period; j++) {
-                sum += candles.get(i - j).close();
+        // Use IndicatorEngine for Bollinger calculation (eliminates inline math)
+        if (indicatorEngine != null) {
+            com.tradery.core.indicators.Indicators.BollingerResult bb =
+                indicatorEngine.getBollingerBands(period, stdDevMultiplier);
+
+            double[] upper = bb.upper();
+            double[] middle = bb.middle();
+            double[] lower = bb.lower();
+
+            for (int i = period - 1; i < candles.size(); i++) {
+                if (i < upper.length && !Double.isNaN(upper[i])) {
+                    Millisecond time = new Millisecond(new Date(candles.get(i).timestamp()));
+                    upperSeries.addOrUpdate(time, upper[i]);
+                    middleSeries.addOrUpdate(time, middle[i]);
+                    lowerSeries.addOrUpdate(time, lower[i]);
+                }
             }
-            double sma = sum / period;
+        } else {
+            // Fallback: calculate inline if no engine (shouldn't happen in normal use)
+            for (int i = period - 1; i < candles.size(); i++) {
+                double sum = 0;
+                for (int j = 0; j < period; j++) {
+                    sum += candles.get(i - j).close();
+                }
+                double sma = sum / period;
 
-            // Calculate standard deviation
-            double sumSquaredDiff = 0;
-            for (int j = 0; j < period; j++) {
-                double diff = candles.get(i - j).close() - sma;
-                sumSquaredDiff += diff * diff;
+                double sumSquaredDiff = 0;
+                for (int j = 0; j < period; j++) {
+                    double diff = candles.get(i - j).close() - sma;
+                    sumSquaredDiff += diff * diff;
+                }
+                double stdDev = Math.sqrt(sumSquaredDiff / period);
+
+                double upper = sma + (stdDevMultiplier * stdDev);
+                double lower = sma - (stdDevMultiplier * stdDev);
+
+                Millisecond time = new Millisecond(new Date(candles.get(i).timestamp()));
+                upperSeries.addOrUpdate(time, upper);
+                middleSeries.addOrUpdate(time, sma);
+                lowerSeries.addOrUpdate(time, lower);
             }
-            double stdDev = Math.sqrt(sumSquaredDiff / period);
-
-            // Calculate bands
-            double upper = sma + (stdDevMultiplier * stdDev);
-            double lower = sma - (stdDevMultiplier * stdDev);
-
-            Millisecond time = new Millisecond(new Date(candles.get(i).timestamp()));
-            upperSeries.addOrUpdate(time, upper);
-            middleSeries.addOrUpdate(time, sma);
-            lowerSeries.addOrUpdate(time, lower);
         }
 
         TimeSeriesCollection bbDataset = new TimeSeriesCollection();
