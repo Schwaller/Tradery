@@ -112,8 +112,8 @@ jlink {
     forceMerge('tradery-terminal', 'jediterm-merged', 'pty4j', 'purejavacomm', 'jna', 'flexmark', 'directory-watcher', 'log4j', 'okhttp', 'okio', 'jfreechart', 'pdfbox', 'fontbox', 'openhtmltopdf', 'jsoup', 'icu4j', 'graphics2d', 'xmpbox', 'autolink', 'commons-logging')
 
     jpackage {
-        imageName = 'Tradery'
-        installerName = 'Tradery'
+        imageName = 'Strategy Forge'
+        installerName = 'Strategy Forge'
         appVersion = project.version
 
         // macOS
@@ -151,7 +151,7 @@ tasks.jpackage {
         // Copy data-service JAR into the app bundle
         def dataServiceJar = project(':tradery-data-service').layout.buildDirectory
             .file("libs/tradery-data-service-${project.version}-all.jar").get().asFile
-        def appContents = layout.buildDirectory.dir("jpackage/Tradery.app/Contents").get().asFile
+        def appContents = layout.buildDirectory.dir("jpackage/Strategy Forge.app/Contents").get().asFile
         def destDir = new File(appContents, "app")
 
         if (dataServiceJar.exists()) {

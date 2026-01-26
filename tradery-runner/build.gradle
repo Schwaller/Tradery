@@ -1,0 +1,103 @@
+// tradery-runner: Strategy Runner - live strategy execution
+// Public name: Strategy Runner
+
+plugins {
+    id 'java'
+    id 'application'
+    id 'org.beryx.jlink'
+}
+
+application {
+    mainClass = 'com.tradery.runner.StrategyRunnerApp'
+}
+
+dependencies {
+    // Core module for models, indicators, DSL
+    implementation project(':tradery-core')
+
+    // Engine module for strategy execution
+    implementation project(':tradery-engine')
+
+    // Data client for accessing data service
+    implementation project(':tradery-data-client')
+
+    // JSON serialization
+    implementation "com.fasterxml.jackson.core:jackson-databind:${rootProject.ext.jacksonVersion}"
+    implementation "com.fasterxml.jackson.datatype:jackson-datatype-jsr310:${rootProject.ext.jacksonVersion}"
+    implementation "com.fasterxml.jackson.dataformat:jackson-dataformat-yaml:${rootProject.ext.jacksonVersion}"
+
+    // HTTP client
+    implementation "com.squareup.okhttp3:okhttp:${rootProject.ext.okhttpVersion}"
+
+    // Logging
+    implementation "org.slf4j:slf4j-api:${rootProject.ext.slf4jVersion}"
+    implementation "org.apache.logging.log4j:log4j-api:${rootProject.ext.log4jVersion}"
+    implementation "org.apache.logging.log4j:log4j-core:${rootProject.ext.log4jVersion}"
+    implementation "org.apache.logging.log4j:log4j-slf4j2-impl:${rootProject.ext.log4jVersion}"
+}
+
+// jlink configuration
+jlink {
+    moduleName = 'com.tradery.runner'
+    mergedModuleName = 'com.tradery.runner.merged'
+
+    options = [
+        '--strip-debug',
+        '--compress', 'zip-9',
+        '--no-header-files',
+        '--no-man-pages'
+    ]
+
+    launcher {
+        name = 'strategy-runner'
+        jvmArgs = [
+            '-Xmx512m',
+            '--add-opens', 'com.tradery.core/com.tradery.core.model=com.fasterxml.jackson.databind',
+            '--add-opens', 'com.tradery.runner/com.tradery.runner=com.fasterxml.jackson.databind'
+        ]
+    }
+
+    mergedModule {
+        additive = true
+        uses 'org.apache.logging.log4j.spi.Provider'
+        uses 'org.apache.logging.log4j.util.PropertySource'
+        uses 'org.apache.logging.log4j.core.util.ContextDataProvider'
+        uses 'org.slf4j.spi.SLF4JServiceProvider'
+    }
+
+    forceMerge('log4j', 'okhttp', 'okio')
+
+    jpackage {
+        imageName = 'Strategy Runner'
+        installerName = 'Strategy Runner'
+        appVersion = project.version
+
+        if (org.gradle.internal.os.OperatingSystem.current().isMacOsX()) {
+            icon = 'src/main/resources/icon.icns'
+            installerType = 'dmg'
+        }
+        if (org.gradle.internal.os.OperatingSystem.current().isWindows()) {
+            icon = 'src/main/resources/icon.ico'
+            installerType = 'msi'
+            winMenu = true
+            winShortcut = true
+        }
+        if (org.gradle.internal.os.OperatingSystem.current().isLinux()) {
+            icon = 'src/main/resources/icon.png'
+            installerType = 'deb'
+        }
+    }
+}
+
+// Fat JAR for distribution
+tasks.register('fatJar', Jar) {
+    archiveClassifier = 'all'
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    manifest {
+        attributes 'Main-Class': application.mainClass
+    }
+    from {
+        configurations.runtimeClasspath.collect { it.isDirectory() ? it : zipTree(it) }
+    }
+    with jar
+}

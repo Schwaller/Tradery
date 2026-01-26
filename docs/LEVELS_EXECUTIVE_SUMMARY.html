@@ -1,0 +1,679 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="" xml:lang="">
+<head>
+  <meta charset="utf-8" />
+  <meta name="generator" content="pandoc" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
+  <title>Levels Feature - Executive Summary</title>
+  <style>
+    /* Default styles provided by pandoc.
+    ** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
+    */
+    code{white-space: pre-wrap;}
+    span.smallcaps{font-variant: small-caps;}
+    div.columns{display: flex; gap: min(4vw, 1.5em);}
+    div.column{flex: auto; overflow-x: auto;}
+    div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+    /* The extra [class] is a hack that increases specificity enough to
+       override a similar rule in reveal.js */
+    ul.task-list[class]{list-style: none;}
+    ul.task-list li input[type="checkbox"] {
+      font-size: inherit;
+      width: 0.8em;
+      margin: 0 0.8em 0.2em -1.6em;
+      vertical-align: middle;
+    }
+    .display.math{display: block; text-align: center; margin: 0.5rem auto;}
+    /* CSS for syntax highlighting */
+    html { -webkit-text-size-adjust: 100%; }
+    pre > code.sourceCode { white-space: pre; position: relative; }
+    pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+    pre > code.sourceCode > span:empty { height: 1.2em; }
+    .sourceCode { overflow: visible; }
+    code.sourceCode > span { color: inherit; text-decoration: inherit; }
+    div.sourceCode { margin: 1em 0; }
+    pre.sourceCode { margin: 0; }
+    @media screen {
+    div.sourceCode { overflow: auto; }
+    }
+    @media print {
+    pre > code.sourceCode { white-space: pre-wrap; }
+    pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+    }
+    pre.numberSource code
+      { counter-reset: source-line 0; }
+    pre.numberSource code > span
+      { position: relative; left: -4em; counter-increment: source-line; }
+    pre.numberSource code > span > a:first-child::before
+      { content: counter(source-line);
+        position: relative; left: -1em; text-align: right; vertical-align: baseline;
+        border: none; display: inline-block;
+        -webkit-touch-callout: none; -webkit-user-select: none;
+        -khtml-user-select: none; -moz-user-select: none;
+        -ms-user-select: none; user-select: none;
+        padding: 0 4px; width: 4em;
+        color: #aaaaaa;
+      }
+    pre.numberSource { margin-left: 3em; border-left: 1px solid #aaaaaa;  padding-left: 4px; }
+    div.sourceCode
+      {   }
+    @media screen {
+    pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+    }
+    code span.al { color: #ff0000; font-weight: bold; } /* Alert */
+    code span.an { color: #60a0b0; font-weight: bold; font-style: italic; } /* Annotation */
+    code span.at { color: #7d9029; } /* Attribute */
+    code span.bn { color: #40a070; } /* BaseN */
+    code span.bu { color: #008000; } /* BuiltIn */
+    code span.cf { color: #007020; font-weight: bold; } /* ControlFlow */
+    code span.ch { color: #4070a0; } /* Char */
+    code span.cn { color: #880000; } /* Constant */
+    code span.co { color: #60a0b0; font-style: italic; } /* Comment */
+    code span.cv { color: #60a0b0; font-weight: bold; font-style: italic; } /* CommentVar */
+    code span.do { color: #ba2121; font-style: italic; } /* Documentation */
+    code span.dt { color: #902000; } /* DataType */
+    code span.dv { color: #40a070; } /* DecVal */
+    code span.er { color: #ff0000; font-weight: bold; } /* Error */
+    code span.ex { } /* Extension */
+    code span.fl { color: #40a070; } /* Float */
+    code span.fu { color: #06287e; } /* Function */
+    code span.im { color: #008000; font-weight: bold; } /* Import */
+    code span.in { color: #60a0b0; font-weight: bold; font-style: italic; } /* Information */
+    code span.kw { color: #007020; font-weight: bold; } /* Keyword */
+    code span.op { color: #666666; } /* Operator */
+    code span.ot { color: #007020; } /* Other */
+    code span.pp { color: #bc7a00; } /* Preprocessor */
+    code span.sc { color: #4070a0; } /* SpecialChar */
+    code span.ss { color: #bb6688; } /* SpecialString */
+    code span.st { color: #4070a0; } /* String */
+    code span.va { color: #19177c; } /* Variable */
+    code span.vs { color: #4070a0; } /* VerbatimString */
+    code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warning */
+  </style>
+  <link rel="stylesheet" href="-" />
+</head>
+<body>
+<header id="title-block-header">
+<h1 class="title">Levels Feature - Executive Summary</h1>
+</header>
+<h1 id="levels-feature">Levels Feature</h1>
+<h2 id="executive-summary">Executive Summary</h2>
+<hr />
+<h3 id="the-problem">The Problem</h3>
+<p>Trading strategies need to know <strong>when</strong> and
+<strong>where</strong> to trade:</p>
+<table>
+<thead>
+<tr>
+<th>Dimension</th>
+<th>Current Solution</th>
+<th>Gap</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>When</strong> (Time)</td>
+<td>Phases</td>
+<td>Fully implemented</td>
+</tr>
+<tr>
+<td><strong>Where</strong> (Price)</td>
+<td>Manual conditions</td>
+<td>No structured approach</td>
+</tr>
+</tbody>
+</table>
+<p>Traders manually code price-level logic into entry/exit conditions,
+leading to: - Repetitive, error-prone DSL expressions - No reusability
+across strategies - No visualization of key price zones - Difficult to
+test “what if price is near support?”</p>
+<hr />
+<h3 id="the-solution-levels">The Solution: Levels</h3>
+<p><strong>Levels</strong> are a first-class concept for price-based
+filtering, parallel to Phases.</p>
+<pre><code>Phases  = Time axis filtering  (WHEN to trade)
+Levels  = Price axis filtering (WHERE to trade)</code></pre>
+<h4 id="example-usage">Example Usage</h4>
+<div class="sourceCode" id="cb2"><pre
+class="sourceCode yaml"><code class="sourceCode yaml"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="fu">entrySettings</span><span class="kw">:</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">condition</span><span class="kw">:</span><span class="at"> RSI(14) &lt; 30</span></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">phaseSettings</span><span class="kw">:</span></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">requiredPhaseIds</span><span class="kw">:</span><span class="at"> </span><span class="kw">[</span><span class="at">uptrend</span><span class="kw">]</span><span class="co">      # Only during uptrends</span></span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">levelSettings</span><span class="kw">:</span></span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">requiredLevelIds</span><span class="kw">:</span><span class="at"> </span><span class="kw">[</span><span class="at">fib</span><span class="dv">-618</span><span class="kw">]</span><span class="co">      # Only at 61.8% retracement</span></span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">excludedLevelIds</span><span class="kw">:</span><span class="at"> </span><span class="kw">[</span><span class="at">near-ath</span><span class="kw">]</span><span class="co">     # Not near all-time high</span></span></code></pre></div>
+<hr />
+<h3 id="level-types-14-total">Level Types (14 Total)</h3>
+<table>
+<colgroup>
+<col style="width: 20%" />
+<col style="width: 44%" />
+<col style="width: 34%" />
+</colgroup>
+<thead>
+<tr>
+<th>Type</th>
+<th>Description</th>
+<th>Use Case</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>ATH/ATL</strong></td>
+<td>All-time high/low with dominance tracking</td>
+<td>“40% down from ATH”</td>
+</tr>
+<tr>
+<td><strong>Fibonacci</strong></td>
+<td>Retracements &amp; extensions</td>
+<td>Entry at golden ratio pullbacks</td>
+</tr>
+<tr>
+<td><strong>HTF Structure</strong></td>
+<td>Weekly/monthly/yearly highs/lows/opens</td>
+<td>Institutional reference points</td>
+</tr>
+<tr>
+<td><strong>S/R Zones</strong></td>
+<td>Auto-detected support/resistance</td>
+<td>Natural price structure</td>
+</tr>
+<tr>
+<td><strong>Round Numbers</strong></td>
+<td>Psychological levels ($50k, $100k)</td>
+<td>Market psychology barriers</td>
+</tr>
+<tr>
+<td><strong>Projections</strong></td>
+<td>Calculated price zones</td>
+<td>Custom target zones</td>
+</tr>
+<tr>
+<td><strong>Ray-Based</strong></td>
+<td>Trendline proximity</td>
+<td>Dynamic S/R from rays</td>
+</tr>
+<tr>
+<td><strong>Custom</strong></td>
+<td>User-defined static zones</td>
+<td>Manual important levels</td>
+</tr>
+<tr>
+<td><strong>FVG</strong></td>
+<td>Fair Value Gap zones (ICT)</td>
+<td>Imbalance retracement entries</td>
+</tr>
+<tr>
+<td><strong>Order Blocks</strong></td>
+<td>Institutional entry zones (ICT)</td>
+<td>Smart money footprints</td>
+</tr>
+<tr>
+<td><strong>Liquidity</strong></td>
+<td>Stop-loss clusters</td>
+<td>Sweep prediction</td>
+</tr>
+<tr>
+<td><strong>Structure Break</strong></td>
+<td>BOS price levels</td>
+<td>Trend change zones</td>
+</tr>
+<tr>
+<td><strong>Condition Projection</strong></td>
+<td>Historical condition locations</td>
+<td>“Where did X happen?”</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="key-capabilities">Key Capabilities</h3>
+<h4 id="swing-detection-with-dominance">1. Swing Detection with
+Dominance</h4>
+<p>Identifies significant price pivots by measuring how long they
+held:</p>
+<pre><code>Swing High (held 50 bars)  ──────●──────────────────────●── New High
+                                 └── This is &quot;significant&quot;
+                                     because it held for 50
+                                     bars before being broken</code></pre>
+<p><strong>Dominance</strong> = number of bars a swing held before being
+exceeded. Higher dominance = more significant level.</p>
+<h4 id="automatic-zone-clustering">2. Automatic Zone Clustering</h4>
+<p>Groups nearby swings into consolidated S/R zones:</p>
+<pre><code>Individual swings:    ─●─────●───●─────────────────
+                       └──┬──┘
+Clustered zone:       ═══════════  (combined strength)</code></pre>
+<h4 id="recency-weighted-strength">3. Recency-Weighted Strength</h4>
+<p>Recent swings matter more than old ones:</p>
+<pre><code>strength = Σ (dominanceBars × recencyWeight)
+
+where recencyWeight = 1.0 / (1.0 + barsAgo / halfLifeBars)</code></pre>
+<h4 id="multi-timeframe-support">4. Multi-Timeframe Support</h4>
+<p>Every level specifies its timeframe:</p>
+<div class="sourceCode" id="cb6"><pre
+class="sourceCode yaml"><code class="sourceCode yaml"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="fu">id</span><span class="kw">:</span><span class="at"> fib-618-daily</span></span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a><span class="fu">type</span><span class="kw">:</span><span class="at"> fib</span></span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a><span class="fu">timeframe</span><span class="kw">:</span><span class="at"> 1d</span><span class="co">    # Calculated from daily candles</span></span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a><span class="fu">id</span><span class="kw">:</span><span class="at"> sr-zones-4h</span></span>
+<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a><span class="fu">type</span><span class="kw">:</span><span class="at"> sr</span></span>
+<span id="cb6-7"><a href="#cb6-7" aria-hidden="true" tabindex="-1"></a><span class="fu">timeframe</span><span class="kw">:</span><span class="at"> 4h</span><span class="co">    # Swings detected on 4h chart</span></span></code></pre></div>
+<p>Same level type on different timeframes = different zones.</p>
+<hr />
+<h3 id="ict-smart-money-concepts">ICT / Smart Money Concepts</h3>
+<p>Advanced institutional trading patterns integrated as level
+types:</p>
+<h4 id="fair-value-gaps-fvg">Fair Value Gaps (FVG)</h4>
+<p>Price imbalances where gaps tend to get filled:</p>
+<pre><code>Bullish FVG:
+     ┌──┐ candle 3
+     │  │
+     │  │  ← GAP
+     └──┘
+     ┌──┐ candle 2
+     │██│ (impulse)
+     └──┘
+     ┌──┐ candle 1
+     └──┘</code></pre>
+<h4 id="order-blocks">Order Blocks</h4>
+<p>Last opposing candle before institutional move:</p>
+<pre><code>     ┌──┐ impulse up
+     │██│
+     │██│
+OB → └──┘ ← last DOWN candle
+     ┌──┐    before move
+     │  │</code></pre>
+<h4 id="liquidity-pools">Liquidity Pools</h4>
+<p>Stop-loss clusters that get swept:</p>
+<pre><code>═══════════════════════════  ← Equal highs = obvious stops
+      /\      /\      /\
+     /  \    /  \    /  \</code></pre>
+<hr />
+<h3 id="strategy-integration">Strategy Integration</h3>
+<p>Levels integrate seamlessly with existing strategy structure:</p>
+<div class="sourceCode" id="cb10"><pre
+class="sourceCode yaml"><code class="sourceCode yaml"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Entry: Only at Fib 61.8%, not near ATH</span></span>
+<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a><span class="fu">entrySettings</span><span class="kw">:</span></span>
+<span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">condition</span><span class="kw">:</span><span class="at"> RSI(14) &lt; 30</span></span>
+<span id="cb10-4"><a href="#cb10-4" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">levelSettings</span><span class="kw">:</span></span>
+<span id="cb10-5"><a href="#cb10-5" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">requiredLevelIds</span><span class="kw">:</span><span class="at"> </span><span class="kw">[</span><span class="at">fib</span><span class="dv">-618</span><span class="kw">]</span></span>
+<span id="cb10-6"><a href="#cb10-6" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">excludedLevelIds</span><span class="kw">:</span><span class="at"> </span><span class="kw">[</span><span class="at">near-ath</span><span class="kw">]</span></span>
+<span id="cb10-7"><a href="#cb10-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb10-8"><a href="#cb10-8" aria-hidden="true" tabindex="-1"></a><span class="co"># Exit: Take profit at weekly resistance</span></span>
+<span id="cb10-9"><a href="#cb10-9" aria-hidden="true" tabindex="-1"></a><span class="fu">exitSettings</span><span class="kw">:</span></span>
+<span id="cb10-10"><a href="#cb10-10" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">zones</span><span class="kw">:</span></span>
+<span id="cb10-11"><a href="#cb10-11" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="kw">-</span><span class="at"> </span><span class="fu">name</span><span class="kw">:</span><span class="at"> Take Profit</span></span>
+<span id="cb10-12"><a href="#cb10-12" aria-hidden="true" tabindex="-1"></a><span class="at">      </span><span class="fu">levelSettings</span><span class="kw">:</span></span>
+<span id="cb10-13"><a href="#cb10-13" aria-hidden="true" tabindex="-1"></a><span class="at">        </span><span class="fu">requiredLevelIds</span><span class="kw">:</span><span class="at"> </span><span class="kw">[</span><span class="at">weekly-high</span><span class="kw">]</span></span>
+<span id="cb10-14"><a href="#cb10-14" aria-hidden="true" tabindex="-1"></a><span class="at">      </span><span class="fu">exitImmediately</span><span class="kw">:</span><span class="at"> </span><span class="ch">true</span></span></code></pre></div>
+<hr />
+<h3 id="dsl-extensions">DSL Extensions</h3>
+<p>New functions for price structure analysis:</p>
+<table>
+<colgroup>
+<col style="width: 35%" />
+<col style="width: 32%" />
+<col style="width: 32%" />
+</colgroup>
+<thead>
+<tr>
+<th>Function</th>
+<th>Returns</th>
+<th>Example</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ATH(mode, dominance)</code></td>
+<td>ATH price</td>
+<td><code>ATH(latest, 50)</code></td>
+</tr>
+<tr>
+<td><code>ATL(mode, dominance)</code></td>
+<td>ATL price</td>
+<td><code>ATL(latest, 100)</code></td>
+</tr>
+<tr>
+<td><code>SWING_HIGH(lookback, dominance)</code></td>
+<td>Recent swing high</td>
+<td><code>SWING_HIGH(100, 20)</code></td>
+</tr>
+<tr>
+<td><code>SWING_LOW(lookback, dominance)</code></td>
+<td>Recent swing low</td>
+<td><code>SWING_LOW(200, 50)</code></td>
+</tr>
+<tr>
+<td><code>FIB(ratio, high, low)</code></td>
+<td>Fib level price</td>
+<td><code>FIB(0.618, ATH, ATL)</code></td>
+</tr>
+<tr>
+<td><code>WEEKLY_HIGH/LOW/OPEN</code></td>
+<td>HTF reference</td>
+<td><code>WEEKLY_HIGH(1)</code></td>
+</tr>
+<tr>
+<td><code>IN_LEVEL(id)</code></td>
+<td>Boolean</td>
+<td><code>IN_LEVEL(fib-618)</code></td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="implementation-phases">Implementation Phases</h3>
+<table>
+<colgroup>
+<col style="width: 25%" />
+<col style="width: 25%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr>
+<th>Phase</th>
+<th>Scope</th>
+<th>Deliverables</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>1</strong></td>
+<td>Core Infrastructure</td>
+<td>Level model, persistence, zone calculations</td>
+</tr>
+<tr>
+<td><strong>2</strong></td>
+<td>DSL Extensions</td>
+<td>ATH/ATL/FIB/SWING functions in parser</td>
+</tr>
+<tr>
+<td><strong>3</strong></td>
+<td>Calculation Engine</td>
+<td>SwingDetector, ZoneClusterer, LevelCalculator</td>
+</tr>
+<tr>
+<td><strong>4</strong></td>
+<td>Strategy Integration</td>
+<td>BacktestEngine integration, trade analytics</td>
+</tr>
+<tr>
+<td><strong>5</strong></td>
+<td>UI</td>
+<td>Level list, editor, chart overlay</td>
+</tr>
+<tr>
+<td><strong>6</strong></td>
+<td>MCP/API</td>
+<td>CRUD endpoints, evaluation endpoint</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="built-in-levels-presets">Built-in Levels (Presets)</h3>
+<table>
+<thead>
+<tr>
+<th>ID</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>fib-382</code></td>
+<td>Fibonacci</td>
+<td>38.2% retracement</td>
+</tr>
+<tr>
+<td><code>fib-500</code></td>
+<td>Fibonacci</td>
+<td>50% retracement</td>
+</tr>
+<tr>
+<td><code>fib-618</code></td>
+<td>Fibonacci</td>
+<td>61.8% retracement (golden ratio)</td>
+</tr>
+<tr>
+<td><code>near-ath</code></td>
+<td>ATH</td>
+<td>Within 5% of all-time high</td>
+</tr>
+<tr>
+<td><code>near-atl</code></td>
+<td>ATL</td>
+<td>Within 5% of all-time low</td>
+</tr>
+<tr>
+<td><code>previous-ath</code></td>
+<td>ATH</td>
+<td>Previous ATH (broken, now support)</td>
+</tr>
+<tr>
+<td><code>weekly-high</code></td>
+<td>HTF</td>
+<td>Current week high</td>
+</tr>
+<tr>
+<td><code>weekly-low</code></td>
+<td>HTF</td>
+<td>Current week low</td>
+</tr>
+<tr>
+<td><code>monthly-high</code></td>
+<td>HTF</td>
+<td>Current month high</td>
+</tr>
+<tr>
+<td><code>monthly-low</code></td>
+<td>HTF</td>
+<td>Current month low</td>
+</tr>
+<tr>
+<td><code>auto-resistance</code></td>
+<td>S/R</td>
+<td>Auto-detected resistance zones</td>
+</tr>
+<tr>
+<td><code>auto-support</code></td>
+<td>S/R</td>
+<td>Auto-detected support zones</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="file-structure">File Structure</h3>
+<pre><code>~/.tradery/
+├── levels/
+│   ├── {id}/
+│   │   └── level.yaml
+│   └── ...
+├── strategies/...
+├── phases/...</code></pre>
+<p>Built-in levels: <code>src/main/resources/levels/</code></p>
+<hr />
+<h3 id="mcp-tools">MCP Tools</h3>
+<table>
+<thead>
+<tr>
+<th>Tool</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>tradery_list_levels</code></td>
+<td>List all levels</td>
+</tr>
+<tr>
+<td><code>tradery_get_level</code></td>
+<td>Get level configuration</td>
+</tr>
+<tr>
+<td><code>tradery_create_level</code></td>
+<td>Create new level</td>
+</tr>
+<tr>
+<td><code>tradery_update_level</code></td>
+<td>Update existing level</td>
+</tr>
+<tr>
+<td><code>tradery_delete_level</code></td>
+<td>Delete level</td>
+</tr>
+<tr>
+<td><code>tradery_eval_level</code></td>
+<td>Check if level active at current price</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="value-proposition">Value Proposition</h3>
+<table>
+<thead>
+<tr>
+<th>Before</th>
+<th>After</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Manual price conditions in DSL</td>
+<td>Reusable level definitions</td>
+</tr>
+<tr>
+<td>No visualization</td>
+<td>Chart overlay showing zones</td>
+</tr>
+<tr>
+<td>Repetitive code</td>
+<td>Single definition, multiple strategies</td>
+</tr>
+<tr>
+<td>Hard to test</td>
+<td><code>tradery_eval_level</code> for instant feedback</td>
+</tr>
+<tr>
+<td>No institutional patterns</td>
+<td>ICT/SMC concepts built-in</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="catalog-130-level-concepts">Catalog: 130+ Level Concepts</h3>
+<p>The implementation supports a comprehensive catalog of price
+levels:</p>
+<table>
+<thead>
+<tr>
+<th>Category</th>
+<th>Count</th>
+<th>Examples</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Price Extremes</td>
+<td>10</td>
+<td>ATH, ATL, swing highs/lows</td>
+</tr>
+<tr>
+<td>Fibonacci</td>
+<td>6</td>
+<td>Retracements, extensions, clusters</td>
+</tr>
+<tr>
+<td>Higher Timeframe</td>
+<td>8</td>
+<td>Weekly/monthly opens, session opens</td>
+</tr>
+<tr>
+<td>Volume Profile</td>
+<td>12</td>
+<td>POC, VAH/VAL, VWAP</td>
+</tr>
+<tr>
+<td>Pivot Points</td>
+<td>5</td>
+<td>Traditional, Fibonacci, Camarilla</td>
+</tr>
+<tr>
+<td>Smart Money (ICT)</td>
+<td>8</td>
+<td>Order blocks, FVG, liquidity pools</td>
+</tr>
+<tr>
+<td>Gap Levels</td>
+<td>6</td>
+<td>Overnight, weekend, CME gaps</td>
+</tr>
+<tr>
+<td>Psychological</td>
+<td>5</td>
+<td>Round numbers, options strikes</td>
+</tr>
+<tr>
+<td>Event-Based</td>
+<td>7</td>
+<td>FOMC range, crash lows</td>
+</tr>
+<tr>
+<td>Advanced Orderflow</td>
+<td>12</td>
+<td>CVD extremes, absorption zones</td>
+</tr>
+<tr>
+<td>Astronomical</td>
+<td>7</td>
+<td>Full moon price, eclipse prices</td>
+</tr>
+<tr>
+<td>Projections</td>
+<td>8</td>
+<td>% from ATH, measured moves</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Priority for initial implementation:</strong> ATH/ATL,
+Fibonacci, HTF, S/R zones, Round numbers</p>
+<hr />
+<h3 id="architecture-parallel">Architecture Parallel</h3>
+<table>
+<thead>
+<tr>
+<th>Aspect</th>
+<th>Phases</th>
+<th>Levels</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Axis</td>
+<td>Time</td>
+<td>Price</td>
+</tr>
+<tr>
+<td>Active when</td>
+<td>Condition true</td>
+<td>Price in zone</td>
+</tr>
+<tr>
+<td>Timeframe</td>
+<td>Evaluation resolution</td>
+<td>Calculation resolution</td>
+</tr>
+<tr>
+<td>Categories</td>
+<td>Trend, Session, Calendar</td>
+<td>Fib, ATH, HTF, SR, SMC</td>
+</tr>
+<tr>
+<td>Integration</td>
+<td><code>phaseSettings</code></td>
+<td><code>levelSettings</code></td>
+</tr>
+</tbody>
+</table>
+<hr />
+<p><em>Document generated from LEVELS_IMPLEMENTATION_PLAN.md</em></p>
+</body>
+</html>

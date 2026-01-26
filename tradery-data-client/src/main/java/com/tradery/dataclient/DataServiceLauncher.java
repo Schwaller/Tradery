@@ -169,8 +169,8 @@ public class DataServiceLauncher {
             "../tradery-data-service.jar",
             "tradery-data-service.jar",
             // Installed: in Applications
+            "/Applications/Strategy Forge.app/Contents/app/tradery-data-service.jar",
             "/Applications/Tradery.app/Contents/app/tradery-data-service.jar",
-            "/Applications/Tradery/tradery-data-service.jar",
         };
 
         // First, try relative to current working directory
@@ -183,6 +183,23 @@ public class DataServiceLauncher {
             if (Files.exists(p)) {
                 LOG.info("Found data service JAR at: {}", p.toAbsolutePath());
                 return p.toAbsolutePath();
+            }
+        }
+
+        // Check if running from macOS app bundle via java.home (jlink runtime)
+        String javaHome = System.getProperty("java.home");
+        LOG.debug("java.home: {}", javaHome);
+        if (javaHome != null && javaHome.contains(".app/Contents/")) {
+            // Extract app bundle path from java.home (e.g., /path/to/App.app/Contents/runtime/Contents/Home)
+            int appIdx = javaHome.indexOf(".app/Contents/");
+            if (appIdx > 0) {
+                Path appContents = Paths.get(javaHome.substring(0, appIdx + ".app/Contents/".length()));
+                Path serviceJar = appContents.resolve("app/tradery-data-service.jar");
+                LOG.debug("Checking jlink app bundle path: {}", serviceJar);
+                if (Files.exists(serviceJar)) {
+                    LOG.info("Found data service JAR in app bundle at: {}", serviceJar);
+                    return serviceJar;
+                }
             }
         }
 
