@@ -20,6 +20,9 @@ dependencies {
     // Data client for fetching historical candles from data-service
     implementation project(':tradery-data-client')
 
+    // Charts module for reusable chart components
+    implementation project(':tradery-charts')
+
     // WebSocket client for live Binance streams
     implementation "org.java-websocket:Java-WebSocket:${rootProject.ext.websocketVersion}"
 
