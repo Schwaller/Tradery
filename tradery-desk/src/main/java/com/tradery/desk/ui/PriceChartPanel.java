@@ -7,6 +7,7 @@ import com.tradery.charts.core.ChartCoordinator;
 import com.tradery.charts.core.IndicatorType;
 import com.tradery.charts.overlay.BollingerOverlay;
 import com.tradery.charts.overlay.EmaOverlay;
+import com.tradery.charts.overlay.HighLowOverlay;
 import com.tradery.charts.overlay.IchimokuOverlay;
 import com.tradery.charts.overlay.SmaOverlay;
 import com.tradery.charts.overlay.SupertrendOverlay;
@@ -171,6 +172,20 @@ public class PriceChartPanel extends JPanel {
      */
     public void addSupertrendOverlay(int period, double multiplier) {
         candlestickChart.addOverlay(new SupertrendOverlay(period, multiplier));
+    }
+
+    /**
+     * Add a High/Low range overlay with default period.
+     */
+    public void addHighLowOverlay() {
+        candlestickChart.addOverlay(new HighLowOverlay());
+    }
+
+    /**
+     * Add a High/Low range overlay with custom period.
+     */
+    public void addHighLowOverlay(int period) {
+        candlestickChart.addOverlay(new HighLowOverlay(period));
     }
 
     /**

@@ -31,6 +31,7 @@ public class DeskFrame extends JFrame {
     private JCheckBox vwapCheckBox;
     private JCheckBox ichimokuCheckBox;
     private JCheckBox supertrendCheckBox;
+    private JCheckBox highLowCheckBox;
     private JCheckBox rsiCheckBox;
     private JCheckBox macdCheckBox;
     private JCheckBox atrCheckBox;
@@ -167,6 +168,12 @@ public class DeskFrame extends JFrame {
         supertrendCheckBox.addActionListener(e -> updateOverlays());
         toolbar.add(supertrendCheckBox);
 
+        // High/Low
+        highLowCheckBox = new JCheckBox("H/L(20)");
+        highLowCheckBox.setFocusPainted(false);
+        highLowCheckBox.addActionListener(e -> updateOverlays());
+        toolbar.add(highLowCheckBox);
+
         toolbar.addSeparator();
 
         // Indicators label
@@ -238,6 +245,9 @@ public class DeskFrame extends JFrame {
         }
         if (supertrendCheckBox.isSelected()) {
             priceChartPanel.addSupertrendOverlay();
+        }
+        if (highLowCheckBox.isSelected()) {
+            priceChartPanel.addHighLowOverlay();
         }
 
         // Refresh chart to show new overlays
