@@ -7,7 +7,9 @@ import com.tradery.charts.core.ChartCoordinator;
 import com.tradery.charts.core.IndicatorType;
 import com.tradery.charts.overlay.BollingerOverlay;
 import com.tradery.charts.overlay.EmaOverlay;
+import com.tradery.charts.overlay.IchimokuOverlay;
 import com.tradery.charts.overlay.SmaOverlay;
+import com.tradery.charts.overlay.SupertrendOverlay;
 import com.tradery.charts.overlay.VwapOverlay;
 import com.tradery.charts.renderer.AdxRenderer;
 import com.tradery.charts.renderer.AtrRenderer;
@@ -141,6 +143,34 @@ public class PriceChartPanel extends JPanel {
      */
     public void addVwapOverlay() {
         candlestickChart.addOverlay(new VwapOverlay());
+    }
+
+    /**
+     * Add an Ichimoku Cloud overlay with default parameters.
+     */
+    public void addIchimokuOverlay() {
+        candlestickChart.addOverlay(new IchimokuOverlay());
+    }
+
+    /**
+     * Add an Ichimoku Cloud overlay with custom parameters.
+     */
+    public void addIchimokuOverlay(int conversion, int base, int spanB, int displacement) {
+        candlestickChart.addOverlay(new IchimokuOverlay(conversion, base, spanB, displacement));
+    }
+
+    /**
+     * Add a Supertrend overlay with default parameters.
+     */
+    public void addSupertrendOverlay() {
+        candlestickChart.addOverlay(new SupertrendOverlay());
+    }
+
+    /**
+     * Add a Supertrend overlay with custom parameters.
+     */
+    public void addSupertrendOverlay(int period, double multiplier) {
+        candlestickChart.addOverlay(new SupertrendOverlay(period, multiplier));
     }
 
     /**
