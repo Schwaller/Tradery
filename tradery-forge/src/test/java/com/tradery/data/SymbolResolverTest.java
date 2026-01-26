@@ -1,6 +1,7 @@
 package com.tradery.data;
 
-import com.tradery.model.*;
+import com.tradery.core.model.*;
+import com.tradery.forge.data.SymbolResolver;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
