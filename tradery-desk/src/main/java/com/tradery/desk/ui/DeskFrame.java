@@ -28,6 +28,7 @@ public class DeskFrame extends JFrame {
     private JCheckBox sma50CheckBox;
     private JCheckBox ema20CheckBox;
     private JCheckBox bbCheckBox;
+    private JCheckBox vwapCheckBox;
     private JCheckBox rsiCheckBox;
     private JCheckBox macdCheckBox;
     private JCheckBox atrCheckBox;
@@ -146,6 +147,12 @@ public class DeskFrame extends JFrame {
         bbCheckBox.addActionListener(e -> updateOverlays());
         toolbar.add(bbCheckBox);
 
+        // VWAP
+        vwapCheckBox = new JCheckBox("VWAP");
+        vwapCheckBox.setFocusPainted(false);
+        vwapCheckBox.addActionListener(e -> updateOverlays());
+        toolbar.add(vwapCheckBox);
+
         toolbar.addSeparator();
 
         // Indicators label
@@ -208,6 +215,9 @@ public class DeskFrame extends JFrame {
         }
         if (bbCheckBox.isSelected()) {
             priceChartPanel.addBollingerOverlay(20, 2.0);
+        }
+        if (vwapCheckBox.isSelected()) {
+            priceChartPanel.addVwapOverlay();
         }
 
         // Refresh chart to show new overlays

@@ -8,6 +8,7 @@ import com.tradery.charts.core.IndicatorType;
 import com.tradery.charts.overlay.BollingerOverlay;
 import com.tradery.charts.overlay.EmaOverlay;
 import com.tradery.charts.overlay.SmaOverlay;
+import com.tradery.charts.overlay.VwapOverlay;
 import com.tradery.charts.renderer.AdxRenderer;
 import com.tradery.charts.renderer.AtrRenderer;
 import com.tradery.charts.renderer.MacdRenderer;
@@ -133,6 +134,13 @@ public class PriceChartPanel extends JPanel {
      */
     public void addBollingerOverlay(int period, double stdDev) {
         candlestickChart.addOverlay(new BollingerOverlay(period, stdDev));
+    }
+
+    /**
+     * Add a VWAP overlay.
+     */
+    public void addVwapOverlay() {
+        candlestickChart.addOverlay(new VwapOverlay());
     }
 
     /**
