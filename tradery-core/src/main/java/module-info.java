@@ -5,6 +5,7 @@ module com.tradery.core {
     exports com.tradery.core.indicators;
     exports com.tradery.core.indicators.registry;
     exports com.tradery.core.indicators.registry.specs;
+    exports com.tradery.core.phases;
 
     // Java modules
     requires java.desktop;  // For SwingUtilities in IndicatorCache
