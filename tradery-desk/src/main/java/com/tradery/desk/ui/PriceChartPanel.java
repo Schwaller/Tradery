@@ -16,6 +16,7 @@ import com.tradery.charts.overlay.MayerMultipleOverlay;
 import com.tradery.charts.overlay.PocOverlay;
 import com.tradery.charts.overlay.DailyLevelsOverlay;
 import com.tradery.charts.overlay.KeltnerChannelOverlay;
+import com.tradery.charts.overlay.DonchianChannelOverlay;
 import com.tradery.charts.renderer.AdxRenderer;
 import com.tradery.charts.renderer.AtrRenderer;
 import com.tradery.charts.renderer.DeltaRenderer;
@@ -252,6 +253,20 @@ public class PriceChartPanel extends JPanel {
      */
     public void addKeltnerOverlay(int emaPeriod, int atrPeriod, double multiplier) {
         candlestickChart.addOverlay(new KeltnerChannelOverlay(emaPeriod, atrPeriod, multiplier));
+    }
+
+    /**
+     * Add Donchian Channel overlay.
+     */
+    public void addDonchianOverlay() {
+        candlestickChart.addOverlay(new DonchianChannelOverlay());
+    }
+
+    /**
+     * Add Donchian Channel overlay with custom period.
+     */
+    public void addDonchianOverlay(int period) {
+        candlestickChart.addOverlay(new DonchianChannelOverlay(period));
     }
 
     /**
