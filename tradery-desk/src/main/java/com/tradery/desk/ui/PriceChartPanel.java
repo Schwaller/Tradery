@@ -1,16 +1,21 @@
 package com.tradery.desk.ui;
 
 import com.tradery.charts.chart.CandlestickChart;
+import com.tradery.charts.chart.IndicatorChart;
 import com.tradery.charts.chart.VolumeChart;
 import com.tradery.charts.core.ChartCoordinator;
+import com.tradery.charts.core.IndicatorType;
 import com.tradery.charts.overlay.BollingerOverlay;
 import com.tradery.charts.overlay.EmaOverlay;
 import com.tradery.charts.overlay.SmaOverlay;
+import com.tradery.charts.renderer.MacdRenderer;
+import com.tradery.charts.renderer.RsiRenderer;
 import com.tradery.core.model.Candle;
 import com.tradery.desk.ui.charts.DeskDataProvider;
 
 import javax.swing.*;
 import java.awt.*;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -26,8 +31,12 @@ public class PriceChartPanel extends JPanel {
     private final ChartCoordinator coordinator;
     private final CandlestickChart candlestickChart;
     private VolumeChart volumeChart;
-    private JSplitPane splitPane;
+    private IndicatorChart rsiChart;
+    private IndicatorChart macdChart;
+    private final List<IndicatorChart> indicatorCharts = new ArrayList<>();
     private boolean volumeEnabled = false;
+    private boolean rsiEnabled = false;
+    private boolean macdEnabled = false;
 
     public PriceChartPanel() {
         setLayout(new BorderLayout());
@@ -134,37 +143,16 @@ public class PriceChartPanel extends JPanel {
         volumeEnabled = enabled;
 
         if (enabled) {
-            // Create volume chart
             volumeChart = new VolumeChart(coordinator, "");
             volumeChart.initialize();
-
-            // Create split pane
-            removeAll();
-            splitPane = new JSplitPane(JSplitPane.VERTICAL_SPLIT);
-            splitPane.setResizeWeight(0.8);  // Price chart gets 80%
-            splitPane.setDividerSize(3);
-            splitPane.setBorder(null);
-            splitPane.setTopComponent(candlestickChart.getChartPanel());
-            splitPane.setBottomComponent(volumeChart.getChartPanel());
-            add(splitPane, BorderLayout.CENTER);
-
-            // Update volume chart with current data
-            if (!dataProvider.getCandles().isEmpty()) {
-                volumeChart.updateData(dataProvider);
-            }
         } else {
-            // Remove volume chart
             if (volumeChart != null) {
                 volumeChart.dispose();
                 volumeChart = null;
             }
-            removeAll();
-            add(candlestickChart.getChartPanel(), BorderLayout.CENTER);
-            splitPane = null;
         }
 
-        revalidate();
-        repaint();
+        rebuildLayout();
     }
 
     /**
@@ -189,5 +177,154 @@ public class PriceChartPanel extends JPanel {
         if (volumeChart != null) {
             volumeChart.updateData(dataProvider);
         }
+        if (rsiChart != null) {
+            rsiChart.updateData(dataProvider);
+        }
+        if (macdChart != null) {
+            macdChart.updateData(dataProvider);
+        }
+    }
+
+    // ===== Indicator Chart Support =====
+
+    /**
+     * Enable or disable RSI chart.
+     */
+    public void setRsiEnabled(boolean enabled) {
+        setRsiEnabled(enabled, 14);  // Default period
+    }
+
+    /**
+     * Enable or disable RSI chart with custom period.
+     */
+    public void setRsiEnabled(boolean enabled, int period) {
+        if (enabled == rsiEnabled) return;
+        rsiEnabled = enabled;
+
+        if (enabled) {
+            rsiChart = new IndicatorChart(coordinator, IndicatorType.RSI, new RsiRenderer(period));
+            rsiChart.initialize();
+            indicatorCharts.add(rsiChart);
+        } else {
+            if (rsiChart != null) {
+                indicatorCharts.remove(rsiChart);
+                rsiChart.dispose();
+                rsiChart = null;
+            }
+        }
+
+        rebuildLayout();
+    }
+
+    /**
+     * Enable or disable MACD chart.
+     */
+    public void setMacdEnabled(boolean enabled) {
+        setMacdEnabled(enabled, 12, 26, 9);  // Default periods
+    }
+
+    /**
+     * Enable or disable MACD chart with custom periods.
+     */
+    public void setMacdEnabled(boolean enabled, int fast, int slow, int signal) {
+        if (enabled == macdEnabled) return;
+        macdEnabled = enabled;
+
+        if (enabled) {
+            macdChart = new IndicatorChart(coordinator, IndicatorType.MACD, new MacdRenderer(fast, slow, signal));
+            macdChart.initialize();
+            indicatorCharts.add(macdChart);
+        } else {
+            if (macdChart != null) {
+                indicatorCharts.remove(macdChart);
+                macdChart.dispose();
+                macdChart = null;
+            }
+        }
+
+        rebuildLayout();
+    }
+
+    /**
+     * Check if RSI chart is enabled.
+     */
+    public boolean isRsiEnabled() {
+        return rsiEnabled;
+    }
+
+    /**
+     * Check if MACD chart is enabled.
+     */
+    public boolean isMacdEnabled() {
+        return macdEnabled;
+    }
+
+    /**
+     * Rebuild the layout with all enabled charts.
+     */
+    private void rebuildLayout() {
+        removeAll();
+
+        // Build list of panels to show
+        List<JComponent> panels = new ArrayList<>();
+        panels.add(candlestickChart.getChartPanel());
+
+        if (volumeChart != null) {
+            panels.add(volumeChart.getChartPanel());
+        }
+
+        for (IndicatorChart ic : indicatorCharts) {
+            panels.add(ic.getChartPanel());
+        }
+
+        if (panels.size() == 1) {
+            // Just price chart
+            add(panels.get(0), BorderLayout.CENTER);
+        } else {
+            // Multiple charts - use nested split panes
+            JComponent combined = createNestedSplitPanes(panels);
+            add(combined, BorderLayout.CENTER);
+        }
+
+        // Update all charts with current data
+        if (!dataProvider.getCandles().isEmpty()) {
+            refreshCharts();
+        }
+
+        revalidate();
+        repaint();
+    }
+
+    /**
+     * Create nested split panes for multiple charts.
+     * Price chart gets more space, indicator charts get less.
+     */
+    private JComponent createNestedSplitPanes(List<JComponent> panels) {
+        if (panels.size() == 1) {
+            return panels.get(0);
+        }
+
+        // Calculate resize weights: price chart gets more space
+        // Price: 0.6, others: split remaining 0.4
+        JComponent current = panels.get(panels.size() - 1);
+
+        for (int i = panels.size() - 2; i >= 0; i--) {
+            JSplitPane split = new JSplitPane(JSplitPane.VERTICAL_SPLIT);
+            split.setBorder(null);
+            split.setDividerSize(3);
+
+            // Price chart (index 0) gets more space
+            if (i == 0) {
+                split.setResizeWeight(0.6);
+            } else {
+                split.setResizeWeight(0.5);
+            }
+
+            split.setTopComponent(panels.get(i));
+            split.setBottomComponent(current);
+            current = split;
+        }
+
+        return current;
     }
 }

@@ -28,6 +28,8 @@ public class DeskFrame extends JFrame {
     private JCheckBox sma50CheckBox;
     private JCheckBox ema20CheckBox;
     private JCheckBox bbCheckBox;
+    private JCheckBox rsiCheckBox;
+    private JCheckBox macdCheckBox;
 
     private Runnable onClose;
 
@@ -140,6 +142,27 @@ public class DeskFrame extends JFrame {
         bbCheckBox.setFocusPainted(false);
         bbCheckBox.addActionListener(e -> updateOverlays());
         toolbar.add(bbCheckBox);
+
+        toolbar.addSeparator();
+
+        // Indicators label
+        toolbar.add(new JLabel("Indicators: "));
+
+        // RSI
+        rsiCheckBox = new JCheckBox("RSI(14)");
+        rsiCheckBox.setFocusPainted(false);
+        rsiCheckBox.addActionListener(e -> {
+            priceChartPanel.setRsiEnabled(rsiCheckBox.isSelected());
+        });
+        toolbar.add(rsiCheckBox);
+
+        // MACD
+        macdCheckBox = new JCheckBox("MACD");
+        macdCheckBox.setFocusPainted(false);
+        macdCheckBox.addActionListener(e -> {
+            priceChartPanel.setMacdEnabled(macdCheckBox.isSelected());
+        });
+        toolbar.add(macdCheckBox);
 
         return toolbar;
     }
