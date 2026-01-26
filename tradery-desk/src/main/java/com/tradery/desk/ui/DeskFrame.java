@@ -47,6 +47,8 @@ public class DeskFrame extends JFrame {
     private JCheckBox adxCheckBox;
     private JCheckBox deltaCheckBox;
     private JCheckBox rangePositionCheckBox;
+    private JCheckBox tradeCountCheckBox;
+    private JCheckBox volumeRatioCheckBox;
 
     private Runnable onClose;
 
@@ -292,6 +294,22 @@ public class DeskFrame extends JFrame {
             priceChartPanel.setRangePositionEnabled(rangePositionCheckBox.isSelected());
         });
         toolbar.add(rangePositionCheckBox);
+
+        // Trade Count
+        tradeCountCheckBox = new JCheckBox("Trades");
+        tradeCountCheckBox.setFocusPainted(false);
+        tradeCountCheckBox.addActionListener(e -> {
+            priceChartPanel.setTradeCountEnabled(tradeCountCheckBox.isSelected());
+        });
+        toolbar.add(tradeCountCheckBox);
+
+        // Volume Ratio
+        volumeRatioCheckBox = new JCheckBox("Buy/Sell");
+        volumeRatioCheckBox.setFocusPainted(false);
+        volumeRatioCheckBox.addActionListener(e -> {
+            priceChartPanel.setVolumeRatioEnabled(volumeRatioCheckBox.isSelected());
+        });
+        toolbar.add(volumeRatioCheckBox);
 
         return toolbar;
     }

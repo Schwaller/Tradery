@@ -27,6 +27,8 @@ import com.tradery.charts.renderer.MacdRenderer;
 import com.tradery.charts.renderer.RsiRenderer;
 import com.tradery.charts.renderer.StochasticRenderer;
 import com.tradery.charts.renderer.RangePositionRenderer;
+import com.tradery.charts.renderer.TradeCountRenderer;
+import com.tradery.charts.renderer.VolumeRatioRenderer;
 import com.tradery.core.model.Candle;
 import com.tradery.desk.ui.charts.DeskDataProvider;
 
@@ -55,6 +57,8 @@ public class PriceChartPanel extends JPanel {
     private IndicatorChart adxChart;
     private IndicatorChart deltaChart;
     private IndicatorChart rangePositionChart;
+    private IndicatorChart tradeCountChart;
+    private IndicatorChart volumeRatioChart;
     private final List<IndicatorChart> indicatorCharts = new ArrayList<>();
     private boolean volumeEnabled = false;
     private boolean rsiEnabled = false;
@@ -64,6 +68,8 @@ public class PriceChartPanel extends JPanel {
     private boolean adxEnabled = false;
     private boolean deltaEnabled = false;
     private boolean rangePositionEnabled = false;
+    private boolean tradeCountEnabled = false;
+    private boolean volumeRatioEnabled = false;
 
     public PriceChartPanel() {
         setLayout(new BorderLayout());
@@ -644,6 +650,64 @@ public class PriceChartPanel extends JPanel {
      */
     public boolean isRangePositionEnabled() {
         return rangePositionEnabled;
+    }
+
+    /**
+     * Enable or disable Trade Count chart.
+     */
+    public void setTradeCountEnabled(boolean enabled) {
+        if (enabled == tradeCountEnabled) return;
+        tradeCountEnabled = enabled;
+
+        if (enabled) {
+            tradeCountChart = new IndicatorChart(coordinator, IndicatorType.TRADE_COUNT, new TradeCountRenderer());
+            tradeCountChart.initialize();
+            indicatorCharts.add(tradeCountChart);
+        } else {
+            if (tradeCountChart != null) {
+                indicatorCharts.remove(tradeCountChart);
+                tradeCountChart.dispose();
+                tradeCountChart = null;
+            }
+        }
+
+        rebuildLayout();
+    }
+
+    /**
+     * Check if Trade Count chart is enabled.
+     */
+    public boolean isTradeCountEnabled() {
+        return tradeCountEnabled;
+    }
+
+    /**
+     * Enable or disable Volume Ratio chart.
+     */
+    public void setVolumeRatioEnabled(boolean enabled) {
+        if (enabled == volumeRatioEnabled) return;
+        volumeRatioEnabled = enabled;
+
+        if (enabled) {
+            volumeRatioChart = new IndicatorChart(coordinator, IndicatorType.VOLUME_RATIO, new VolumeRatioRenderer());
+            volumeRatioChart.initialize();
+            indicatorCharts.add(volumeRatioChart);
+        } else {
+            if (volumeRatioChart != null) {
+                indicatorCharts.remove(volumeRatioChart);
+                volumeRatioChart.dispose();
+                volumeRatioChart = null;
+            }
+        }
+
+        rebuildLayout();
+    }
+
+    /**
+     * Check if Volume Ratio chart is enabled.
+     */
+    public boolean isVolumeRatioEnabled() {
+        return volumeRatioEnabled;
     }
 
     /**
