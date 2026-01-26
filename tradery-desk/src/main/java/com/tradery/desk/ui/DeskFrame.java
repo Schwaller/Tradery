@@ -30,6 +30,8 @@ public class DeskFrame extends JFrame {
     private JCheckBox bbCheckBox;
     private JCheckBox rsiCheckBox;
     private JCheckBox macdCheckBox;
+    private JCheckBox atrCheckBox;
+    private JCheckBox stochasticCheckBox;
 
     private Runnable onClose;
 
@@ -163,6 +165,22 @@ public class DeskFrame extends JFrame {
             priceChartPanel.setMacdEnabled(macdCheckBox.isSelected());
         });
         toolbar.add(macdCheckBox);
+
+        // ATR
+        atrCheckBox = new JCheckBox("ATR(14)");
+        atrCheckBox.setFocusPainted(false);
+        atrCheckBox.addActionListener(e -> {
+            priceChartPanel.setAtrEnabled(atrCheckBox.isSelected());
+        });
+        toolbar.add(atrCheckBox);
+
+        // Stochastic
+        stochasticCheckBox = new JCheckBox("Stoch(14,3)");
+        stochasticCheckBox.setFocusPainted(false);
+        stochasticCheckBox.addActionListener(e -> {
+            priceChartPanel.setStochasticEnabled(stochasticCheckBox.isSelected());
+        });
+        toolbar.add(stochasticCheckBox);
 
         return toolbar;
     }

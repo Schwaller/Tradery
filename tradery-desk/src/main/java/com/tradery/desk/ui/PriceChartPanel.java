@@ -8,8 +8,10 @@ import com.tradery.charts.core.IndicatorType;
 import com.tradery.charts.overlay.BollingerOverlay;
 import com.tradery.charts.overlay.EmaOverlay;
 import com.tradery.charts.overlay.SmaOverlay;
+import com.tradery.charts.renderer.AtrRenderer;
 import com.tradery.charts.renderer.MacdRenderer;
 import com.tradery.charts.renderer.RsiRenderer;
+import com.tradery.charts.renderer.StochasticRenderer;
 import com.tradery.core.model.Candle;
 import com.tradery.desk.ui.charts.DeskDataProvider;
 
@@ -33,10 +35,14 @@ public class PriceChartPanel extends JPanel {
     private VolumeChart volumeChart;
     private IndicatorChart rsiChart;
     private IndicatorChart macdChart;
+    private IndicatorChart atrChart;
+    private IndicatorChart stochasticChart;
     private final List<IndicatorChart> indicatorCharts = new ArrayList<>();
     private boolean volumeEnabled = false;
     private boolean rsiEnabled = false;
     private boolean macdEnabled = false;
+    private boolean atrEnabled = false;
+    private boolean stochasticEnabled = false;
 
     public PriceChartPanel() {
         setLayout(new BorderLayout());
@@ -183,6 +189,12 @@ public class PriceChartPanel extends JPanel {
         if (macdChart != null) {
             macdChart.updateData(dataProvider);
         }
+        if (atrChart != null) {
+            atrChart.updateData(dataProvider);
+        }
+        if (stochasticChart != null) {
+            stochasticChart.updateData(dataProvider);
+        }
     }
 
     // ===== Indicator Chart Support =====
@@ -257,6 +269,78 @@ public class PriceChartPanel extends JPanel {
      */
     public boolean isMacdEnabled() {
         return macdEnabled;
+    }
+
+    /**
+     * Enable or disable ATR chart.
+     */
+    public void setAtrEnabled(boolean enabled) {
+        setAtrEnabled(enabled, 14);  // Default period
+    }
+
+    /**
+     * Enable or disable ATR chart with custom period.
+     */
+    public void setAtrEnabled(boolean enabled, int period) {
+        if (enabled == atrEnabled) return;
+        atrEnabled = enabled;
+
+        if (enabled) {
+            atrChart = new IndicatorChart(coordinator, IndicatorType.ATR, new AtrRenderer(period));
+            atrChart.initialize();
+            indicatorCharts.add(atrChart);
+        } else {
+            if (atrChart != null) {
+                indicatorCharts.remove(atrChart);
+                atrChart.dispose();
+                atrChart = null;
+            }
+        }
+
+        rebuildLayout();
+    }
+
+    /**
+     * Check if ATR chart is enabled.
+     */
+    public boolean isAtrEnabled() {
+        return atrEnabled;
+    }
+
+    /**
+     * Enable or disable Stochastic chart.
+     */
+    public void setStochasticEnabled(boolean enabled) {
+        setStochasticEnabled(enabled, 14, 3);  // Default periods
+    }
+
+    /**
+     * Enable or disable Stochastic chart with custom periods.
+     */
+    public void setStochasticEnabled(boolean enabled, int kPeriod, int dPeriod) {
+        if (enabled == stochasticEnabled) return;
+        stochasticEnabled = enabled;
+
+        if (enabled) {
+            stochasticChart = new IndicatorChart(coordinator, IndicatorType.STOCHASTIC, new StochasticRenderer(kPeriod, dPeriod));
+            stochasticChart.initialize();
+            indicatorCharts.add(stochasticChart);
+        } else {
+            if (stochasticChart != null) {
+                indicatorCharts.remove(stochasticChart);
+                stochasticChart.dispose();
+                stochasticChart = null;
+            }
+        }
+
+        rebuildLayout();
+    }
+
+    /**
+     * Check if Stochastic chart is enabled.
+     */
+    public boolean isStochasticEnabled() {
+        return stochasticEnabled;
     }
 
     /**
