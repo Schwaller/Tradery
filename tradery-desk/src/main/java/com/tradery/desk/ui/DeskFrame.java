@@ -22,6 +22,13 @@ public class DeskFrame extends JFrame {
     private final SignalLogPanel signalLogPanel;
     private final PriceChartPanel priceChartPanel;
 
+    // Chart control checkboxes
+    private JCheckBox volumeCheckBox;
+    private JCheckBox sma20CheckBox;
+    private JCheckBox sma50CheckBox;
+    private JCheckBox ema20CheckBox;
+    private JCheckBox bbCheckBox;
+
     private Runnable onClose;
 
     public DeskFrame() {
@@ -57,8 +64,16 @@ public class DeskFrame extends JFrame {
         leftPanel.add(leftSplit, BorderLayout.CENTER);
         leftPanel.add(new JSeparator(SwingConstants.VERTICAL), BorderLayout.EAST);
 
-        // Center: Price chart
+        // Center: Chart toolbar + Price chart
+        JPanel chartPanel = new JPanel(new BorderLayout(0, 0));
+
+        // Chart toolbar
+        JToolBar chartToolbar = createChartToolbar();
+        chartPanel.add(chartToolbar, BorderLayout.NORTH);
+
+        // Price chart
         priceChartPanel = new PriceChartPanel();
+        chartPanel.add(priceChartPanel, BorderLayout.CENTER);
 
         // Main horizontal split
         JSplitPane mainSplit = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT);
@@ -66,7 +81,7 @@ public class DeskFrame extends JFrame {
         mainSplit.setDividerSize(1);
         mainSplit.setDividerLocation(280);
         mainSplit.setLeftComponent(leftPanel);
-        mainSplit.setRightComponent(priceChartPanel);
+        mainSplit.setRightComponent(chartPanel);
 
         mainPanel.add(mainSplit, BorderLayout.CENTER);
 
@@ -82,6 +97,71 @@ public class DeskFrame extends JFrame {
                 dispose();
             }
         });
+    }
+
+    private JToolBar createChartToolbar() {
+        JToolBar toolbar = new JToolBar();
+        toolbar.setFloatable(false);
+        toolbar.setBorderPainted(false);
+
+        // Volume toggle
+        volumeCheckBox = new JCheckBox("Volume");
+        volumeCheckBox.setFocusPainted(false);
+        volumeCheckBox.addActionListener(e -> {
+            priceChartPanel.setVolumeEnabled(volumeCheckBox.isSelected());
+        });
+        toolbar.add(volumeCheckBox);
+
+        toolbar.addSeparator();
+
+        // Overlays label
+        toolbar.add(new JLabel("Overlays: "));
+
+        // SMA 20
+        sma20CheckBox = new JCheckBox("SMA(20)");
+        sma20CheckBox.setFocusPainted(false);
+        sma20CheckBox.addActionListener(e -> updateOverlays());
+        toolbar.add(sma20CheckBox);
+
+        // SMA 50
+        sma50CheckBox = new JCheckBox("SMA(50)");
+        sma50CheckBox.setFocusPainted(false);
+        sma50CheckBox.addActionListener(e -> updateOverlays());
+        toolbar.add(sma50CheckBox);
+
+        // EMA 20
+        ema20CheckBox = new JCheckBox("EMA(20)");
+        ema20CheckBox.setFocusPainted(false);
+        ema20CheckBox.addActionListener(e -> updateOverlays());
+        toolbar.add(ema20CheckBox);
+
+        // Bollinger Bands
+        bbCheckBox = new JCheckBox("BB(20,2)");
+        bbCheckBox.setFocusPainted(false);
+        bbCheckBox.addActionListener(e -> updateOverlays());
+        toolbar.add(bbCheckBox);
+
+        return toolbar;
+    }
+
+    private void updateOverlays() {
+        priceChartPanel.clearOverlays();
+
+        if (sma20CheckBox.isSelected()) {
+            priceChartPanel.addSmaOverlay(20);
+        }
+        if (sma50CheckBox.isSelected()) {
+            priceChartPanel.addSmaOverlay(50);
+        }
+        if (ema20CheckBox.isSelected()) {
+            priceChartPanel.addEmaOverlay(20);
+        }
+        if (bbCheckBox.isSelected()) {
+            priceChartPanel.addBollingerOverlay(20, 2.0);
+        }
+
+        // Refresh chart to show new overlays
+        priceChartPanel.getCandlestickChart().updateData(priceChartPanel.getDataProvider());
     }
 
     /**
