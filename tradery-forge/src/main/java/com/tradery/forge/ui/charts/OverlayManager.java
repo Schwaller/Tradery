@@ -1,5 +1,7 @@
 package com.tradery.forge.ui.charts;
 
+import com.tradery.charts.core.ChartDataProvider;
+import com.tradery.charts.overlay.ChartOverlay;
 import com.tradery.core.indicators.IndicatorEngine;
 import com.tradery.core.model.Candle;
 import org.jfree.chart.JFreeChart;
@@ -63,6 +65,11 @@ public class OverlayManager {
     private String currentSymbol = "BTCUSDT";
     private String currentTimeframe = "1h";
     private List<Candle> currentCandles;
+
+    // tradery-charts integration
+    private ChartDataProvider chartDataProvider;
+    private final List<ChartOverlay> appliedChartOverlays = new ArrayList<>();
+    private int chartOverlayBaseIndex = 100;  // Base dataset index for chart overlays
 
     public OverlayManager(JFreeChart priceChart) {
         this.priceChart = priceChart;
@@ -1199,6 +1206,120 @@ public class OverlayManager {
         return footprintHeatmapOverlay.isEnabled();
     }
 
+    // ===== tradery-charts Integration =====
+
+    /**
+     * Set the ChartDataProvider for tradery-charts overlays.
+     * Call this when the data context changes.
+     */
+    public void setChartDataProvider(ChartDataProvider provider) {
+        this.chartDataProvider = provider;
+    }
+
+    /**
+     * Apply a tradery-charts ChartOverlay to the price chart.
+     * The overlay is tracked and can be cleared with clearChartOverlays().
+     *
+     * @param overlay The ChartOverlay to apply
+     * @return true if applied successfully
+     */
+    public boolean applyChartOverlay(ChartOverlay overlay) {
+        if (chartDataProvider == null || !chartDataProvider.hasCandles()) {
+            return false;
+        }
+
+        XYPlot plot = priceChart.getXYPlot();
+
+        // Find next available dataset index
+        int datasetIndex = chartOverlayBaseIndex;
+        for (ChartOverlay existing : appliedChartOverlays) {
+            datasetIndex += existing.getDatasetCount();
+        }
+
+        // Apply the overlay
+        overlay.apply(plot, chartDataProvider, datasetIndex);
+        appliedChartOverlays.add(overlay);
+
+        return true;
+    }
+
+    /**
+     * Remove a specific ChartOverlay from the price chart.
+     *
+     * @param overlay The overlay to remove
+     * @return true if removed successfully
+     */
+    public boolean removeChartOverlay(ChartOverlay overlay) {
+        if (!appliedChartOverlays.contains(overlay)) {
+            return false;
+        }
+
+        // Remove all chart overlays and re-apply the remaining ones
+        clearChartOverlays();
+
+        appliedChartOverlays.remove(overlay);
+
+        // Re-apply remaining overlays
+        List<ChartOverlay> remaining = new ArrayList<>(appliedChartOverlays);
+        appliedChartOverlays.clear();
+
+        for (ChartOverlay remaining_overlay : remaining) {
+            applyChartOverlay(remaining_overlay);
+        }
+
+        return true;
+    }
+
+    /**
+     * Clear all applied tradery-charts overlays.
+     */
+    public void clearChartOverlays() {
+        if (appliedChartOverlays.isEmpty()) {
+            return;
+        }
+
+        XYPlot plot = priceChart.getXYPlot();
+
+        // Clear all datasets used by chart overlays
+        int datasetIndex = chartOverlayBaseIndex;
+        for (ChartOverlay overlay : appliedChartOverlays) {
+            int count = overlay.getDatasetCount();
+            for (int i = 0; i < count; i++) {
+                plot.setDataset(datasetIndex + i, null);
+                plot.setRenderer(datasetIndex + i, null);
+            }
+            datasetIndex += count;
+        }
+
+        appliedChartOverlays.clear();
+    }
+
+    /**
+     * Refresh all applied tradery-charts overlays.
+     * Call this when the data changes.
+     */
+    public void refreshChartOverlays() {
+        if (appliedChartOverlays.isEmpty() || chartDataProvider == null) {
+            return;
+        }
+
+        // Store current overlays
+        List<ChartOverlay> current = new ArrayList<>(appliedChartOverlays);
+
+        // Clear and re-apply
+        clearChartOverlays();
+        for (ChartOverlay overlay : current) {
+            applyChartOverlay(overlay);
+        }
+    }
+
+    /**
+     * Get the list of currently applied ChartOverlays.
+     */
+    public List<ChartOverlay> getAppliedChartOverlays() {
+        return new ArrayList<>(appliedChartOverlays);
+    }
+
     // ===== Clear All =====
 
     public void clearAll() {
@@ -1213,6 +1334,7 @@ public class OverlayManager {
         clearVwapOverlay();
         clearDailyVolumeProfileOverlay();
         clearFootprintHeatmapOverlay();
+        clearChartOverlays();  // Clear tradery-charts overlays
         resetColorIndex();
     }
 

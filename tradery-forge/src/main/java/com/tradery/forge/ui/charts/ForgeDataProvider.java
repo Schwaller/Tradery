@@ -19,15 +19,43 @@ public class ForgeDataProvider implements ChartDataProvider {
 
     private final IndicatorDataService indicatorDataService;
     private IndicatorEngine indicatorEngine;
+    private String symbol = "";
+    private String timeframe = "";
+    private long startTime;
+    private long endTime;
 
     public ForgeDataProvider(IndicatorDataService indicatorDataService) {
         this.indicatorDataService = indicatorDataService;
     }
 
     /**
-     * Set the indicator engine for sync calculations.
-     * Call this when the data context changes.
+     * Set the full data context.
+     * Call this when candles, symbol, or timeframe change.
      */
+    public void setDataContext(List<Candle> candles, String symbol, String timeframe,
+                                long startTime, long endTime) {
+        this.symbol = symbol != null ? symbol : "";
+        this.timeframe = timeframe != null ? timeframe : "";
+        this.startTime = startTime;
+        this.endTime = endTime;
+
+        // Recreate indicator engine with new candles
+        if (candles != null && !candles.isEmpty()) {
+            this.indicatorEngine = new IndicatorEngine();
+            this.indicatorEngine.setCandles(candles, timeframe != null ? timeframe : "1h");
+        } else {
+            this.indicatorEngine = null;
+        }
+
+        // Update the indicator data service context too
+        indicatorDataService.setDataContext(candles, symbol, timeframe, startTime, endTime);
+    }
+
+    /**
+     * Set the indicator engine for sync calculations.
+     * @deprecated Use setDataContext() instead
+     */
+    @Deprecated
     public void setIndicatorEngine(IndicatorEngine engine) {
         this.indicatorEngine = engine;
     }
@@ -44,23 +72,19 @@ public class ForgeDataProvider implements ChartDataProvider {
 
     @Override
     public String getSymbol() {
-        // Get from candles if available
-        List<Candle> candles = getCandles();
-        if (candles != null && !candles.isEmpty()) {
-            // Symbol is stored in context, not candles - return empty for now
-            return "";
-        }
-        return "";
+        return symbol;
     }
 
     @Override
     public String getTimeframe() {
-        // Timeframe is stored in context, not candles - return empty for now
-        return "";
+        return timeframe;
     }
 
     @Override
     public long getStartTime() {
+        if (startTime > 0) {
+            return startTime;
+        }
         List<Candle> candles = getCandles();
         if (candles != null && !candles.isEmpty()) {
             return candles.get(0).timestamp();
@@ -70,6 +94,9 @@ public class ForgeDataProvider implements ChartDataProvider {
 
     @Override
     public long getEndTime() {
+        if (endTime > 0) {
+            return endTime;
+        }
         List<Candle> candles = getCandles();
         if (candles != null && !candles.isEmpty()) {
             return candles.get(candles.size() - 1).timestamp();
