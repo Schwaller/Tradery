@@ -461,6 +461,10 @@ public class OverlayManager {
 
     // ===== High/Low Overlay =====
 
+    /**
+     * Set High/Low overlay showing the highest high and lowest low over a period.
+     * Uses IndicatorEngine for calculation (no inline math).
+     */
     public void setHighLowOverlay(int period, List<Candle> candles) {
         if (candles == null || candles.size() < period) {
             clearHighLowOverlay();
@@ -472,19 +476,34 @@ public class OverlayManager {
         TimeSeries highSeries = new TimeSeries("High(" + period + ")");
         TimeSeries lowSeries = new TimeSeries("Low(" + period + ")");
 
-        for (int i = period - 1; i < candles.size(); i++) {
-            double high = Double.MIN_VALUE;
-            double low = Double.MAX_VALUE;
+        // Use IndicatorEngine for High/Low calculation (eliminates inline math)
+        if (indicatorEngine != null) {
+            double[] highValues = indicatorEngine.getHighOf(period);
+            double[] lowValues = indicatorEngine.getLowOf(period);
 
-            for (int j = 0; j < period; j++) {
-                Candle c = candles.get(i - j);
-                high = Math.max(high, c.high());
-                low = Math.min(low, c.low());
+            for (int i = period - 1; i < candles.size(); i++) {
+                if (i < highValues.length && !Double.isNaN(highValues[i])) {
+                    Millisecond time = new Millisecond(new Date(candles.get(i).timestamp()));
+                    highSeries.addOrUpdate(time, highValues[i]);
+                    lowSeries.addOrUpdate(time, lowValues[i]);
+                }
             }
+        } else {
+            // Fallback: calculate inline if no engine (shouldn't happen in normal use)
+            for (int i = period - 1; i < candles.size(); i++) {
+                double high = Double.MIN_VALUE;
+                double low = Double.MAX_VALUE;
 
-            Millisecond time = new Millisecond(new Date(candles.get(i).timestamp()));
-            highSeries.addOrUpdate(time, high);
-            lowSeries.addOrUpdate(time, low);
+                for (int j = 0; j < period; j++) {
+                    Candle c = candles.get(i - j);
+                    high = Math.max(high, c.high());
+                    low = Math.min(low, c.low());
+                }
+
+                Millisecond time = new Millisecond(new Date(candles.get(i).timestamp()));
+                highSeries.addOrUpdate(time, high);
+                lowSeries.addOrUpdate(time, low);
+            }
         }
 
         TimeSeriesCollection hlDataset = new TimeSeriesCollection();
@@ -840,6 +859,7 @@ public class OverlayManager {
 
     /**
      * Sets the Ichimoku Cloud overlay with custom parameters.
+     * Uses IndicatorEngine for calculation (no inline math).
      */
     public void setIchimokuOverlay(int conversionPeriod, int basePeriod, int spanBPeriod,
                                     int displacement, List<Candle> candles) {
@@ -850,63 +870,91 @@ public class OverlayManager {
 
         XYPlot plot = priceChart.getXYPlot();
 
-        // Calculate Ichimoku values
         TimeSeries tenkanSeries = new TimeSeries("Tenkan-sen");
         TimeSeries kijunSeries = new TimeSeries("Kijun-sen");
         TimeSeries chikouSeries = new TimeSeries("Chikou Span");
         TimeSeries senkouASeries = new TimeSeries("Senkou Span A");
         TimeSeries senkouBSeries = new TimeSeries("Senkou Span B");
 
-        for (int i = 0; i < candles.size(); i++) {
-            Millisecond time = new Millisecond(new Date(candles.get(i).timestamp()));
+        // Use IndicatorEngine for Ichimoku calculation (eliminates inline math)
+        if (indicatorEngine != null) {
+            com.tradery.core.indicators.Indicators.IchimokuResult ichimoku =
+                indicatorEngine.getIchimoku(conversionPeriod, basePeriod, spanBPeriod, displacement);
 
-            // Tenkan-sen (Conversion Line)
-            if (i >= conversionPeriod - 1) {
-                double high = Double.MIN_VALUE;
-                double low = Double.MAX_VALUE;
-                for (int j = i - conversionPeriod + 1; j <= i; j++) {
-                    high = Math.max(high, candles.get(j).high());
-                    low = Math.min(low, candles.get(j).low());
+            double[] tenkan = ichimoku.tenkanSen();
+            double[] kijun = ichimoku.kijunSen();
+            double[] chikou = ichimoku.chikouSpan();
+            double[] senkouA = ichimoku.senkouSpanA();
+            double[] senkouB = ichimoku.senkouSpanB();
+
+            for (int i = 0; i < candles.size(); i++) {
+                Millisecond time = new Millisecond(new Date(candles.get(i).timestamp()));
+
+                if (i < tenkan.length && !Double.isNaN(tenkan[i])) {
+                    tenkanSeries.addOrUpdate(time, tenkan[i]);
                 }
-                tenkanSeries.addOrUpdate(time, (high + low) / 2.0);
+                if (i < kijun.length && !Double.isNaN(kijun[i])) {
+                    kijunSeries.addOrUpdate(time, kijun[i]);
+                }
+                if (i < chikou.length && !Double.isNaN(chikou[i])) {
+                    chikouSeries.addOrUpdate(time, chikou[i]);
+                }
+                if (i < senkouA.length && !Double.isNaN(senkouA[i])) {
+                    senkouASeries.addOrUpdate(time, senkouA[i]);
+                }
+                if (i < senkouB.length && !Double.isNaN(senkouB[i])) {
+                    senkouBSeries.addOrUpdate(time, senkouB[i]);
+                }
+            }
+        } else {
+            // Fallback: calculate inline if no engine (shouldn't happen in normal use)
+            for (int i = 0; i < candles.size(); i++) {
+                Millisecond time = new Millisecond(new Date(candles.get(i).timestamp()));
+
+                // Tenkan-sen (Conversion Line)
+                if (i >= conversionPeriod - 1) {
+                    double high = Double.MIN_VALUE;
+                    double low = Double.MAX_VALUE;
+                    for (int j = i - conversionPeriod + 1; j <= i; j++) {
+                        high = Math.max(high, candles.get(j).high());
+                        low = Math.min(low, candles.get(j).low());
+                    }
+                    tenkanSeries.addOrUpdate(time, (high + low) / 2.0);
+                }
+
+                // Kijun-sen (Base Line)
+                if (i >= basePeriod - 1) {
+                    double high = Double.MIN_VALUE;
+                    double low = Double.MAX_VALUE;
+                    for (int j = i - basePeriod + 1; j <= i; j++) {
+                        high = Math.max(high, candles.get(j).high());
+                        low = Math.min(low, candles.get(j).low());
+                    }
+                    kijunSeries.addOrUpdate(time, (high + low) / 2.0);
+                }
+
+                // Chikou Span (Lagging Span)
+                if (i + displacement < candles.size()) {
+                    double chikouValue = candles.get(i + displacement).close();
+                    chikouSeries.addOrUpdate(time, chikouValue);
+                }
             }
 
-            // Kijun-sen (Base Line)
-            if (i >= basePeriod - 1) {
-                double high = Double.MIN_VALUE;
-                double low = Double.MAX_VALUE;
-                for (int j = i - basePeriod + 1; j <= i; j++) {
-                    high = Math.max(high, candles.get(j).high());
-                    low = Math.min(low, candles.get(j).low());
-                }
-                kijunSeries.addOrUpdate(time, (high + low) / 2.0);
-            }
+            // Senkou Spans (shifted forward by displacement)
+            for (int i = 0; i < candles.size(); i++) {
+                Millisecond time = new Millisecond(new Date(candles.get(i).timestamp()));
+                int sourceIndex = i - displacement;
 
-            // Chikou Span (Lagging Span) - close price plotted displacement periods back
-            // At index i, we store the close from i + displacement
-            if (i + displacement < candles.size()) {
-                double chikouValue = candles.get(i + displacement).close();
-                chikouSeries.addOrUpdate(time, chikouValue);
-            }
-        }
-
-        // Calculate Senkou Spans (shifted forward by displacement)
-        for (int i = 0; i < candles.size(); i++) {
-            Millisecond time = new Millisecond(new Date(candles.get(i).timestamp()));
-            int sourceIndex = i - displacement;
-
-            if (sourceIndex >= 0) {
-                // Senkou Span A = (Tenkan + Kijun) / 2 from sourceIndex
-                if (sourceIndex >= Math.max(conversionPeriod, basePeriod) - 1) {
-                    double tenkan = calculateMidpoint(candles, conversionPeriod, sourceIndex);
-                    double kijun = calculateMidpoint(candles, basePeriod, sourceIndex);
-                    senkouASeries.addOrUpdate(time, (tenkan + kijun) / 2.0);
-                }
-
-                // Senkou Span B = midpoint of spanBPeriod from sourceIndex
-                if (sourceIndex >= spanBPeriod - 1) {
-                    double spanB = calculateMidpoint(candles, spanBPeriod, sourceIndex);
-                    senkouBSeries.addOrUpdate(time, spanB);
+                if (sourceIndex >= 0) {
+                    if (sourceIndex >= Math.max(conversionPeriod, basePeriod) - 1) {
+                        double tenkan = calculateMidpoint(candles, conversionPeriod, sourceIndex);
+                        double kijun = calculateMidpoint(candles, basePeriod, sourceIndex);
+                        senkouASeries.addOrUpdate(time, (tenkan + kijun) / 2.0);
+                    }
+                    if (sourceIndex >= spanBPeriod - 1) {
+                        double spanB = calculateMidpoint(candles, spanBPeriod, sourceIndex);
+                        senkouBSeries.addOrUpdate(time, spanB);
+                    }
                 }
             }
         }
@@ -957,6 +1005,7 @@ public class OverlayManager {
 
     /**
      * Helper method to calculate midpoint (high + low) / 2 for a given period ending at barIndex.
+     * Used as fallback when IndicatorEngine is not available.
      */
     private double calculateMidpoint(List<Candle> candles, int period, int barIndex) {
         if (barIndex < period - 1) return Double.NaN;
