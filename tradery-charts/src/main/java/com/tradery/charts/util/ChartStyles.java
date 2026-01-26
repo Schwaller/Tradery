@@ -81,8 +81,10 @@ public final class ChartStyles {
     // ===== ATR Chart Color =====
     public static final Color ATR_COLOR = new Color(180, 100, 255);
 
-    // ===== ADX Chart Color =====
-    public static final Color ADX_COLOR = new Color(255, 165, 0);
+    // ===== ADX Chart Colors =====
+    public static final Color ADX_COLOR = new Color(255, 165, 0);       // Orange
+    public static final Color PLUS_DI_COLOR = new Color(76, 175, 80);   // Green
+    public static final Color MINUS_DI_COLOR = new Color(244, 67, 54);  // Red
 
     // ===== Stochastic Chart Colors =====
     public static final Color STOCHASTIC_K_COLOR = new Color(0, 200, 255);

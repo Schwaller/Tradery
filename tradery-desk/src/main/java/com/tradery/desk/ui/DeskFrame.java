@@ -32,6 +32,7 @@ public class DeskFrame extends JFrame {
     private JCheckBox macdCheckBox;
     private JCheckBox atrCheckBox;
     private JCheckBox stochasticCheckBox;
+    private JCheckBox adxCheckBox;
 
     private Runnable onClose;
 
@@ -181,6 +182,14 @@ public class DeskFrame extends JFrame {
             priceChartPanel.setStochasticEnabled(stochasticCheckBox.isSelected());
         });
         toolbar.add(stochasticCheckBox);
+
+        // ADX
+        adxCheckBox = new JCheckBox("ADX(14)");
+        adxCheckBox.setFocusPainted(false);
+        adxCheckBox.addActionListener(e -> {
+            priceChartPanel.setAdxEnabled(adxCheckBox.isSelected());
+        });
+        toolbar.add(adxCheckBox);
 
         return toolbar;
     }

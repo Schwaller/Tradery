@@ -8,6 +8,7 @@ import com.tradery.charts.core.IndicatorType;
 import com.tradery.charts.overlay.BollingerOverlay;
 import com.tradery.charts.overlay.EmaOverlay;
 import com.tradery.charts.overlay.SmaOverlay;
+import com.tradery.charts.renderer.AdxRenderer;
 import com.tradery.charts.renderer.AtrRenderer;
 import com.tradery.charts.renderer.MacdRenderer;
 import com.tradery.charts.renderer.RsiRenderer;
@@ -37,12 +38,14 @@ public class PriceChartPanel extends JPanel {
     private IndicatorChart macdChart;
     private IndicatorChart atrChart;
     private IndicatorChart stochasticChart;
+    private IndicatorChart adxChart;
     private final List<IndicatorChart> indicatorCharts = new ArrayList<>();
     private boolean volumeEnabled = false;
     private boolean rsiEnabled = false;
     private boolean macdEnabled = false;
     private boolean atrEnabled = false;
     private boolean stochasticEnabled = false;
+    private boolean adxEnabled = false;
 
     public PriceChartPanel() {
         setLayout(new BorderLayout());
@@ -195,6 +198,9 @@ public class PriceChartPanel extends JPanel {
         if (stochasticChart != null) {
             stochasticChart.updateData(dataProvider);
         }
+        if (adxChart != null) {
+            adxChart.updateData(dataProvider);
+        }
     }
 
     // ===== Indicator Chart Support =====
@@ -341,6 +347,42 @@ public class PriceChartPanel extends JPanel {
      */
     public boolean isStochasticEnabled() {
         return stochasticEnabled;
+    }
+
+    /**
+     * Enable or disable ADX chart.
+     */
+    public void setAdxEnabled(boolean enabled) {
+        setAdxEnabled(enabled, 14);  // Default period
+    }
+
+    /**
+     * Enable or disable ADX chart with custom period.
+     */
+    public void setAdxEnabled(boolean enabled, int period) {
+        if (enabled == adxEnabled) return;
+        adxEnabled = enabled;
+
+        if (enabled) {
+            adxChart = new IndicatorChart(coordinator, IndicatorType.ADX, new AdxRenderer(period));
+            adxChart.initialize();
+            indicatorCharts.add(adxChart);
+        } else {
+            if (adxChart != null) {
+                indicatorCharts.remove(adxChart);
+                adxChart.dispose();
+                adxChart = null;
+            }
+        }
+
+        rebuildLayout();
+    }
+
+    /**
+     * Check if ADX chart is enabled.
+     */
+    public boolean isAdxEnabled() {
+        return adxEnabled;
     }
 
     /**
