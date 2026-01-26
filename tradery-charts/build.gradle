@@ -1,0 +1,17 @@
+// tradery-charts: Reusable chart components for trading applications
+// Provides candlestick charts, indicator charts, overlays, and coordinated chart panels
+
+plugins {
+    id 'java-library'
+}
+
+dependencies {
+    // Core module for models (Candle) and indicators (IndicatorEngine)
+    api project(':tradery-core')
+
+    // JFreeChart for chart rendering
+    api "org.jfree:jfreechart:${rootProject.ext.jfreeChartVersion}"
+
+    // Logging
+    implementation "org.slf4j:slf4j-api:${rootProject.ext.slf4jVersion}"
+}
