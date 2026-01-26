@@ -55,6 +55,7 @@ public class ChartsPanel extends JPanel {
 
     // Managers
     private OverlayManager overlayManager;
+    private ForgeDataProvider forgeDataProvider;
     private final IndicatorChartsManager indicatorManager;
     private final ChartZoomManager zoomManager;
     private final CrosshairManager crosshairManager;
@@ -90,6 +91,10 @@ public class ChartsPanel extends JPanel {
 
         // Initialize overlay manager with price chart
         overlayManager = new OverlayManager(priceChart);
+
+        // Initialize ForgeDataProvider for tradery-charts integration
+        forgeDataProvider = new ForgeDataProvider(new IndicatorDataService());
+        overlayManager.setChartDataProvider(forgeDataProvider);
 
         setupManagers();
         setupScrollableContainer();
@@ -1205,6 +1210,43 @@ public class ChartsPanel extends JPanel {
         repaint();
     }
 
+    // ===== tradery-charts Integration =====
+
+    /**
+     * Apply a tradery-charts ChartOverlay to the price chart.
+     * Use this for overlays from the tradery-charts module.
+     *
+     * @param overlay The ChartOverlay to apply
+     * @return true if applied successfully
+     */
+    public boolean applyChartOverlay(com.tradery.charts.overlay.ChartOverlay overlay) {
+        return overlayManager.applyChartOverlay(overlay);
+    }
+
+    /**
+     * Remove a tradery-charts ChartOverlay from the price chart.
+     *
+     * @param overlay The overlay to remove
+     * @return true if removed successfully
+     */
+    public boolean removeChartOverlay(com.tradery.charts.overlay.ChartOverlay overlay) {
+        return overlayManager.removeChartOverlay(overlay);
+    }
+
+    /**
+     * Clear all tradery-charts overlays from the price chart.
+     */
+    public void clearChartOverlays() {
+        overlayManager.clearChartOverlays();
+    }
+
+    /**
+     * Get the ForgeDataProvider for advanced tradery-charts usage.
+     */
+    public ForgeDataProvider getForgeDataProvider() {
+        return forgeDataProvider;
+    }
+
     // ===== Chart Update Methods =====
 
     /**
@@ -1216,6 +1258,9 @@ public class ChartsPanel extends JPanel {
         if (candles != null && !candles.isEmpty()) {
             indicatorManager.setDataContext(candles, symbol, timeframe, startTime, endTime);
             overlayManager.setDataContext(symbol, timeframe);
+
+            // Update ForgeDataProvider for tradery-charts overlays
+            forgeDataProvider.setDataContext(candles, symbol, timeframe, startTime, endTime);
         }
     }
 
@@ -1240,6 +1285,9 @@ public class ChartsPanel extends JPanel {
         // Pass trades for holding cost charts
         indicatorManager.setTrades(trades);
         indicatorManager.updateCharts(candles);
+
+        // Refresh tradery-charts overlays
+        overlayManager.refreshChartOverlays();
 
         // Set consistent domain axis range
         long startTime = candles.get(0).timestamp();
