@@ -12,6 +12,8 @@ import com.tradery.charts.overlay.IchimokuOverlay;
 import com.tradery.charts.overlay.SmaOverlay;
 import com.tradery.charts.overlay.SupertrendOverlay;
 import com.tradery.charts.overlay.VwapOverlay;
+import com.tradery.charts.overlay.MayerMultipleOverlay;
+import com.tradery.charts.overlay.PocOverlay;
 import com.tradery.charts.renderer.AdxRenderer;
 import com.tradery.charts.renderer.AtrRenderer;
 import com.tradery.charts.renderer.DeltaRenderer;
@@ -192,6 +194,34 @@ public class PriceChartPanel extends JPanel {
      */
     public void addHighLowOverlay(int period) {
         candlestickChart.addOverlay(new HighLowOverlay(period));
+    }
+
+    /**
+     * Add a Mayer Multiple overlay (200 SMA).
+     */
+    public void addMayerMultipleOverlay() {
+        candlestickChart.addOverlay(new MayerMultipleOverlay());
+    }
+
+    /**
+     * Add a Mayer Multiple overlay with custom period.
+     */
+    public void addMayerMultipleOverlay(int period) {
+        candlestickChart.addOverlay(new MayerMultipleOverlay(period));
+    }
+
+    /**
+     * Add a POC (Point of Control) overlay.
+     */
+    public void addPocOverlay() {
+        candlestickChart.addOverlay(new PocOverlay());
+    }
+
+    /**
+     * Add a POC overlay with custom period.
+     */
+    public void addPocOverlay(int period) {
+        candlestickChart.addOverlay(new PocOverlay(period));
     }
 
     /**

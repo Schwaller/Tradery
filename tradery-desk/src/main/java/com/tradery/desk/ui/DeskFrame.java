@@ -32,6 +32,8 @@ public class DeskFrame extends JFrame {
     private JCheckBox ichimokuCheckBox;
     private JCheckBox supertrendCheckBox;
     private JCheckBox highLowCheckBox;
+    private JCheckBox mayerCheckBox;
+    private JCheckBox pocCheckBox;
     private JCheckBox rsiCheckBox;
     private JCheckBox macdCheckBox;
     private JCheckBox atrCheckBox;
@@ -176,6 +178,18 @@ public class DeskFrame extends JFrame {
         highLowCheckBox.addActionListener(e -> updateOverlays());
         toolbar.add(highLowCheckBox);
 
+        // Mayer Multiple
+        mayerCheckBox = new JCheckBox("MM(200)");
+        mayerCheckBox.setFocusPainted(false);
+        mayerCheckBox.addActionListener(e -> updateOverlays());
+        toolbar.add(mayerCheckBox);
+
+        // POC
+        pocCheckBox = new JCheckBox("POC(20)");
+        pocCheckBox.setFocusPainted(false);
+        pocCheckBox.addActionListener(e -> updateOverlays());
+        toolbar.add(pocCheckBox);
+
         toolbar.addSeparator();
 
         // Indicators label
@@ -266,6 +280,12 @@ public class DeskFrame extends JFrame {
         }
         if (highLowCheckBox.isSelected()) {
             priceChartPanel.addHighLowOverlay();
+        }
+        if (mayerCheckBox.isSelected()) {
+            priceChartPanel.addMayerMultipleOverlay();
+        }
+        if (pocCheckBox.isSelected()) {
+            priceChartPanel.addPocOverlay();
         }
 
         // Refresh chart to show new overlays
