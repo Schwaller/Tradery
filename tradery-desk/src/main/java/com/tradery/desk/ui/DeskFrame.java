@@ -37,6 +37,7 @@ public class DeskFrame extends JFrame {
     private JCheckBox atrCheckBox;
     private JCheckBox stochasticCheckBox;
     private JCheckBox adxCheckBox;
+    private JCheckBox deltaCheckBox;
 
     private Runnable onClose;
 
@@ -218,6 +219,14 @@ public class DeskFrame extends JFrame {
             priceChartPanel.setAdxEnabled(adxCheckBox.isSelected());
         });
         toolbar.add(adxCheckBox);
+
+        // Delta/CVD
+        deltaCheckBox = new JCheckBox("Delta");
+        deltaCheckBox.setFocusPainted(false);
+        deltaCheckBox.addActionListener(e -> {
+            priceChartPanel.setDeltaEnabled(deltaCheckBox.isSelected());
+        });
+        toolbar.add(deltaCheckBox);
 
         return toolbar;
     }

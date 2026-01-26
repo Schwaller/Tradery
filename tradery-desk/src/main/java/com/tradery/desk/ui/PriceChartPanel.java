@@ -14,6 +14,7 @@ import com.tradery.charts.overlay.SupertrendOverlay;
 import com.tradery.charts.overlay.VwapOverlay;
 import com.tradery.charts.renderer.AdxRenderer;
 import com.tradery.charts.renderer.AtrRenderer;
+import com.tradery.charts.renderer.DeltaRenderer;
 import com.tradery.charts.renderer.MacdRenderer;
 import com.tradery.charts.renderer.RsiRenderer;
 import com.tradery.charts.renderer.StochasticRenderer;
@@ -43,6 +44,7 @@ public class PriceChartPanel extends JPanel {
     private IndicatorChart atrChart;
     private IndicatorChart stochasticChart;
     private IndicatorChart adxChart;
+    private IndicatorChart deltaChart;
     private final List<IndicatorChart> indicatorCharts = new ArrayList<>();
     private boolean volumeEnabled = false;
     private boolean rsiEnabled = false;
@@ -50,6 +52,7 @@ public class PriceChartPanel extends JPanel {
     private boolean atrEnabled = false;
     private boolean stochasticEnabled = false;
     private boolean adxEnabled = false;
+    private boolean deltaEnabled = false;
 
     public PriceChartPanel() {
         setLayout(new BorderLayout());
@@ -254,6 +257,9 @@ public class PriceChartPanel extends JPanel {
         if (adxChart != null) {
             adxChart.updateData(dataProvider);
         }
+        if (deltaChart != null) {
+            deltaChart.updateData(dataProvider);
+        }
     }
 
     // ===== Indicator Chart Support =====
@@ -436,6 +442,42 @@ public class PriceChartPanel extends JPanel {
      */
     public boolean isAdxEnabled() {
         return adxEnabled;
+    }
+
+    /**
+     * Enable or disable Delta chart.
+     */
+    public void setDeltaEnabled(boolean enabled) {
+        setDeltaEnabled(enabled, true);  // Default: show CVD
+    }
+
+    /**
+     * Enable or disable Delta chart with optional CVD line.
+     */
+    public void setDeltaEnabled(boolean enabled, boolean showCvd) {
+        if (enabled == deltaEnabled) return;
+        deltaEnabled = enabled;
+
+        if (enabled) {
+            deltaChart = new IndicatorChart(coordinator, IndicatorType.DELTA, new DeltaRenderer(showCvd));
+            deltaChart.initialize();
+            indicatorCharts.add(deltaChart);
+        } else {
+            if (deltaChart != null) {
+                indicatorCharts.remove(deltaChart);
+                deltaChart.dispose();
+                deltaChart = null;
+            }
+        }
+
+        rebuildLayout();
+    }
+
+    /**
+     * Check if Delta chart is enabled.
+     */
+    public boolean isDeltaEnabled() {
+        return deltaEnabled;
     }
 
     /**
