@@ -17,6 +17,7 @@ import com.tradery.charts.overlay.PocOverlay;
 import com.tradery.charts.overlay.DailyLevelsOverlay;
 import com.tradery.charts.overlay.KeltnerChannelOverlay;
 import com.tradery.charts.overlay.DonchianChannelOverlay;
+import com.tradery.charts.overlay.RayOverlay;
 import com.tradery.charts.renderer.AdxRenderer;
 import com.tradery.charts.renderer.AtrRenderer;
 import com.tradery.charts.renderer.DeltaRenderer;
@@ -267,6 +268,27 @@ public class PriceChartPanel extends JPanel {
      */
     public void addDonchianOverlay(int period) {
         candlestickChart.addOverlay(new DonchianChannelOverlay(period));
+    }
+
+    /**
+     * Add Rotating Ray trendlines overlay (resistance + support).
+     */
+    public void addRayOverlay() {
+        candlestickChart.addOverlay(new RayOverlay());
+    }
+
+    /**
+     * Add Rotating Ray overlay with custom lookback and skip.
+     */
+    public void addRayOverlay(int lookback, int skip) {
+        candlestickChart.addOverlay(new RayOverlay(lookback, skip));
+    }
+
+    /**
+     * Add Rotating Ray overlay with full customization.
+     */
+    public void addRayOverlay(int lookback, int skip, int maxRays, boolean showResistance, boolean showSupport) {
+        candlestickChart.addOverlay(new RayOverlay(lookback, skip, maxRays, showResistance, showSupport));
     }
 
     /**

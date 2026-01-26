@@ -37,6 +37,7 @@ public class DeskFrame extends JFrame {
     private JCheckBox dailyLevelsCheckBox;
     private JCheckBox keltnerCheckBox;
     private JCheckBox donchianCheckBox;
+    private JCheckBox rayCheckBox;
     private JCheckBox rsiCheckBox;
     private JCheckBox macdCheckBox;
     private JCheckBox atrCheckBox;
@@ -211,6 +212,12 @@ public class DeskFrame extends JFrame {
         donchianCheckBox.addActionListener(e -> updateOverlays());
         toolbar.add(donchianCheckBox);
 
+        // Rotating Rays
+        rayCheckBox = new JCheckBox("Rays");
+        rayCheckBox.setFocusPainted(false);
+        rayCheckBox.addActionListener(e -> updateOverlays());
+        toolbar.add(rayCheckBox);
+
         toolbar.addSeparator();
 
         // Indicators label
@@ -316,6 +323,9 @@ public class DeskFrame extends JFrame {
         }
         if (donchianCheckBox.isSelected()) {
             priceChartPanel.addDonchianOverlay();
+        }
+        if (rayCheckBox.isSelected()) {
+            priceChartPanel.addRayOverlay();
         }
 
         // Refresh chart to show new overlays
