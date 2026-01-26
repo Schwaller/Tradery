@@ -34,6 +34,8 @@ public class DeskFrame extends JFrame {
     private JCheckBox highLowCheckBox;
     private JCheckBox mayerCheckBox;
     private JCheckBox pocCheckBox;
+    private JCheckBox dailyLevelsCheckBox;
+    private JCheckBox keltnerCheckBox;
     private JCheckBox rsiCheckBox;
     private JCheckBox macdCheckBox;
     private JCheckBox atrCheckBox;
@@ -190,6 +192,18 @@ public class DeskFrame extends JFrame {
         pocCheckBox.addActionListener(e -> updateOverlays());
         toolbar.add(pocCheckBox);
 
+        // Daily Levels
+        dailyLevelsCheckBox = new JCheckBox("Daily");
+        dailyLevelsCheckBox.setFocusPainted(false);
+        dailyLevelsCheckBox.addActionListener(e -> updateOverlays());
+        toolbar.add(dailyLevelsCheckBox);
+
+        // Keltner Channel
+        keltnerCheckBox = new JCheckBox("Keltner");
+        keltnerCheckBox.setFocusPainted(false);
+        keltnerCheckBox.addActionListener(e -> updateOverlays());
+        toolbar.add(keltnerCheckBox);
+
         toolbar.addSeparator();
 
         // Indicators label
@@ -286,6 +300,12 @@ public class DeskFrame extends JFrame {
         }
         if (pocCheckBox.isSelected()) {
             priceChartPanel.addPocOverlay();
+        }
+        if (dailyLevelsCheckBox.isSelected()) {
+            priceChartPanel.addDailyLevelsOverlay();
+        }
+        if (keltnerCheckBox.isSelected()) {
+            priceChartPanel.addKeltnerOverlay();
         }
 
         // Refresh chart to show new overlays

@@ -14,6 +14,8 @@ import com.tradery.charts.overlay.SupertrendOverlay;
 import com.tradery.charts.overlay.VwapOverlay;
 import com.tradery.charts.overlay.MayerMultipleOverlay;
 import com.tradery.charts.overlay.PocOverlay;
+import com.tradery.charts.overlay.DailyLevelsOverlay;
+import com.tradery.charts.overlay.KeltnerChannelOverlay;
 import com.tradery.charts.renderer.AdxRenderer;
 import com.tradery.charts.renderer.AtrRenderer;
 import com.tradery.charts.renderer.DeltaRenderer;
@@ -222,6 +224,34 @@ public class PriceChartPanel extends JPanel {
      */
     public void addPocOverlay(int period) {
         candlestickChart.addOverlay(new PocOverlay(period));
+    }
+
+    /**
+     * Add Daily Levels overlay (Prev Day POC/VAH/VAL + Today's developing levels).
+     */
+    public void addDailyLevelsOverlay() {
+        candlestickChart.addOverlay(new DailyLevelsOverlay());
+    }
+
+    /**
+     * Add Daily Levels overlay with options.
+     */
+    public void addDailyLevelsOverlay(boolean showPrevDay, boolean showToday) {
+        candlestickChart.addOverlay(new DailyLevelsOverlay(showPrevDay, showToday));
+    }
+
+    /**
+     * Add Keltner Channel overlay.
+     */
+    public void addKeltnerOverlay() {
+        candlestickChart.addOverlay(new KeltnerChannelOverlay());
+    }
+
+    /**
+     * Add Keltner Channel overlay with custom parameters.
+     */
+    public void addKeltnerOverlay(int emaPeriod, int atrPeriod, double multiplier) {
+        candlestickChart.addOverlay(new KeltnerChannelOverlay(emaPeriod, atrPeriod, multiplier));
     }
 
     /**
