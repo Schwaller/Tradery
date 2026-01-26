@@ -38,6 +38,8 @@ public class DeskFrame extends JFrame {
     private JCheckBox keltnerCheckBox;
     private JCheckBox donchianCheckBox;
     private JCheckBox rayCheckBox;
+    private JCheckBox atrBandsCheckBox;
+    private JCheckBox pivotCheckBox;
     private JCheckBox rsiCheckBox;
     private JCheckBox macdCheckBox;
     private JCheckBox atrCheckBox;
@@ -218,6 +220,18 @@ public class DeskFrame extends JFrame {
         rayCheckBox.addActionListener(e -> updateOverlays());
         toolbar.add(rayCheckBox);
 
+        // ATR Bands
+        atrBandsCheckBox = new JCheckBox("ATR Bands");
+        atrBandsCheckBox.setFocusPainted(false);
+        atrBandsCheckBox.addActionListener(e -> updateOverlays());
+        toolbar.add(atrBandsCheckBox);
+
+        // Pivot Points
+        pivotCheckBox = new JCheckBox("Pivots");
+        pivotCheckBox.setFocusPainted(false);
+        pivotCheckBox.addActionListener(e -> updateOverlays());
+        toolbar.add(pivotCheckBox);
+
         toolbar.addSeparator();
 
         // Indicators label
@@ -326,6 +340,12 @@ public class DeskFrame extends JFrame {
         }
         if (rayCheckBox.isSelected()) {
             priceChartPanel.addRayOverlay();
+        }
+        if (atrBandsCheckBox.isSelected()) {
+            priceChartPanel.addAtrBandsOverlay();
+        }
+        if (pivotCheckBox.isSelected()) {
+            priceChartPanel.addPivotPointsOverlay();
         }
 
         // Refresh chart to show new overlays

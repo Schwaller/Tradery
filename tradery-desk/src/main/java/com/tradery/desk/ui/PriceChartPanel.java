@@ -18,6 +18,8 @@ import com.tradery.charts.overlay.DailyLevelsOverlay;
 import com.tradery.charts.overlay.KeltnerChannelOverlay;
 import com.tradery.charts.overlay.DonchianChannelOverlay;
 import com.tradery.charts.overlay.RayOverlay;
+import com.tradery.charts.overlay.AtrBandsOverlay;
+import com.tradery.charts.overlay.PivotPointsOverlay;
 import com.tradery.charts.renderer.AdxRenderer;
 import com.tradery.charts.renderer.AtrRenderer;
 import com.tradery.charts.renderer.DeltaRenderer;
@@ -289,6 +291,34 @@ public class PriceChartPanel extends JPanel {
      */
     public void addRayOverlay(int lookback, int skip, int maxRays, boolean showResistance, boolean showSupport) {
         candlestickChart.addOverlay(new RayOverlay(lookback, skip, maxRays, showResistance, showSupport));
+    }
+
+    /**
+     * Add ATR Bands overlay (volatility envelope around price).
+     */
+    public void addAtrBandsOverlay() {
+        candlestickChart.addOverlay(new AtrBandsOverlay());
+    }
+
+    /**
+     * Add ATR Bands overlay with custom parameters.
+     */
+    public void addAtrBandsOverlay(int period, double multiplier) {
+        candlestickChart.addOverlay(new AtrBandsOverlay(period, multiplier));
+    }
+
+    /**
+     * Add Pivot Points overlay (classic daily pivot levels).
+     */
+    public void addPivotPointsOverlay() {
+        candlestickChart.addOverlay(new PivotPointsOverlay());
+    }
+
+    /**
+     * Add Pivot Points overlay with R3/S3 levels.
+     */
+    public void addPivotPointsOverlay(boolean showR3S3) {
+        candlestickChart.addOverlay(new PivotPointsOverlay(showR3S3));
     }
 
     /**
