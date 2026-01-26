@@ -22,6 +22,9 @@ dependencies {
     // Data client for accessing data service
     implementation project(':tradery-data-client')
 
+    // Charts module for reusable chart components
+    implementation project(':tradery-charts')
+
     // Terminal module for embedded AI terminal (Claude/Codex)
     implementation project(':tradery-terminal')
 

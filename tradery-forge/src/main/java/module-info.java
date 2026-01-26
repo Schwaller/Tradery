@@ -3,6 +3,7 @@ module com.tradery.forge {
     requires transitive com.tradery.core;
     requires com.tradery.engine;
     requires com.tradery.dataclient;
+    requires com.tradery.charts;
 
     // UI
     requires java.desktop;
