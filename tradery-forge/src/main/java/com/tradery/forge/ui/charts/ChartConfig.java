@@ -85,6 +85,31 @@ public class ChartConfig {
     // VWAP overlay
     private boolean vwapEnabled = false;
 
+    // Pivot Points overlay (tradery-charts)
+    private boolean pivotPointsEnabled = false;
+    private boolean pivotPointsShowR3S3 = false;  // Show extended R3/S3 levels
+
+    // ATR Bands overlay (tradery-charts)
+    private boolean atrBandsEnabled = false;
+    private int atrBandsPeriod = 14;
+    private double atrBandsMultiplier = 2.0;
+
+    // Supertrend overlay (tradery-charts)
+    private boolean supertrendEnabled = false;
+    private int supertrendPeriod = 10;
+    private double supertrendMultiplier = 3.0;
+
+    // Keltner Channel overlay (tradery-charts)
+    private boolean keltnerEnabled = false;
+    private int keltnerEmaPeriod = 20;
+    private int keltnerAtrPeriod = 10;
+    private double keltnerMultiplier = 2.0;
+
+    // Donchian Channel overlay (tradery-charts)
+    private boolean donchianEnabled = false;
+    private int donchianPeriod = 20;
+    private boolean donchianShowMiddle = true;
+
     // Ray overlay
     private boolean rayOverlayEnabled = false;
     private int rayLookback = 0;  // 0 = no limit (use all data)
@@ -344,6 +369,51 @@ public class ChartConfig {
 
     public boolean isVwapEnabled() { return vwapEnabled; }
     public void setVwapEnabled(boolean enabled) { this.vwapEnabled = enabled; save(); }
+
+    // ===== Pivot Points Overlay Getters/Setters =====
+
+    public boolean isPivotPointsEnabled() { return pivotPointsEnabled; }
+    public void setPivotPointsEnabled(boolean enabled) { this.pivotPointsEnabled = enabled; save(); }
+    public boolean isPivotPointsShowR3S3() { return pivotPointsShowR3S3; }
+    public void setPivotPointsShowR3S3(boolean show) { this.pivotPointsShowR3S3 = show; save(); }
+
+    // ===== ATR Bands Overlay Getters/Setters =====
+
+    public boolean isAtrBandsEnabled() { return atrBandsEnabled; }
+    public void setAtrBandsEnabled(boolean enabled) { this.atrBandsEnabled = enabled; save(); }
+    public int getAtrBandsPeriod() { return atrBandsPeriod; }
+    public void setAtrBandsPeriod(int period) { this.atrBandsPeriod = period; save(); }
+    public double getAtrBandsMultiplier() { return atrBandsMultiplier; }
+    public void setAtrBandsMultiplier(double multiplier) { this.atrBandsMultiplier = multiplier; save(); }
+
+    // ===== Supertrend Overlay Getters/Setters =====
+
+    public boolean isSupertrendEnabled() { return supertrendEnabled; }
+    public void setSupertrendEnabled(boolean enabled) { this.supertrendEnabled = enabled; save(); }
+    public int getSupertrendPeriod() { return supertrendPeriod; }
+    public void setSupertrendPeriod(int period) { this.supertrendPeriod = period; save(); }
+    public double getSupertrendMultiplier() { return supertrendMultiplier; }
+    public void setSupertrendMultiplier(double multiplier) { this.supertrendMultiplier = multiplier; save(); }
+
+    // ===== Keltner Channel Overlay Getters/Setters =====
+
+    public boolean isKeltnerEnabled() { return keltnerEnabled; }
+    public void setKeltnerEnabled(boolean enabled) { this.keltnerEnabled = enabled; save(); }
+    public int getKeltnerEmaPeriod() { return keltnerEmaPeriod; }
+    public void setKeltnerEmaPeriod(int period) { this.keltnerEmaPeriod = period; save(); }
+    public int getKeltnerAtrPeriod() { return keltnerAtrPeriod; }
+    public void setKeltnerAtrPeriod(int period) { this.keltnerAtrPeriod = period; save(); }
+    public double getKeltnerMultiplier() { return keltnerMultiplier; }
+    public void setKeltnerMultiplier(double multiplier) { this.keltnerMultiplier = multiplier; save(); }
+
+    // ===== Donchian Channel Overlay Getters/Setters =====
+
+    public boolean isDonchianEnabled() { return donchianEnabled; }
+    public void setDonchianEnabled(boolean enabled) { this.donchianEnabled = enabled; save(); }
+    public int getDonchianPeriod() { return donchianPeriod; }
+    public void setDonchianPeriod(int period) { this.donchianPeriod = period; save(); }
+    public boolean isDonchianShowMiddle() { return donchianShowMiddle; }
+    public void setDonchianShowMiddle(boolean show) { this.donchianShowMiddle = show; save(); }
 
     // ===== Ray Overlay Getters/Setters =====
 

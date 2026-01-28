@@ -43,6 +43,29 @@ public class IndicatorSelectorPopup extends JDialog {
     private JLabel floatingPocPeriodLabel;
     private JSpinner floatingPocPeriodSpinner;
     private JCheckBox vwapCheckbox;
+    private JCheckBox pivotPointsCheckbox;
+    private JCheckBox pivotPointsR3S3Checkbox;
+    private JCheckBox atrBandsCheckbox;
+    private JLabel atrBandsPeriodLabel;
+    private JSpinner atrBandsPeriodSpinner;
+    private JLabel atrBandsMultiplierLabel;
+    private JSpinner atrBandsMultiplierSpinner;
+    private JCheckBox supertrendCheckbox;
+    private JLabel supertrendPeriodLabel;
+    private JSpinner supertrendPeriodSpinner;
+    private JLabel supertrendMultiplierLabel;
+    private JSpinner supertrendMultiplierSpinner;
+    private JCheckBox keltnerCheckbox;
+    private JLabel keltnerEmaPeriodLabel;
+    private JSpinner keltnerEmaPeriodSpinner;
+    private JLabel keltnerAtrPeriodLabel;
+    private JSpinner keltnerAtrPeriodSpinner;
+    private JLabel keltnerMultiplierLabel;
+    private JSpinner keltnerMultiplierSpinner;
+    private JCheckBox donchianCheckbox;
+    private JLabel donchianPeriodLabel;
+    private JSpinner donchianPeriodSpinner;
+    private JCheckBox donchianMiddleCheckbox;
 
     private JCheckBox rayCheckbox;
     private JCheckBox rayNoLimitCheckbox;
@@ -242,6 +265,11 @@ public class IndicatorSelectorPopup extends JDialog {
         contentPane.add(createDailyPocRow());
         contentPane.add(createFloatingPocRow());
         contentPane.add(createVwapRow());
+        contentPane.add(createPivotPointsRow());
+        contentPane.add(createAtrBandsRow());
+        contentPane.add(createSupertrendRow());
+        contentPane.add(createKeltnerRow());
+        contentPane.add(createDonchianRow());
         contentPane.add(createRayOverlayRow());
         contentPane.add(createIchimokuRow());
         contentPane.add(createDailyVolumeProfileRow());
@@ -631,6 +659,178 @@ public class IndicatorSelectorPopup extends JDialog {
         row.setAlignmentX(Component.LEFT_ALIGNMENT);
         row.add(vwapCheckbox);
         vwapCheckbox.addActionListener(e -> scheduleUpdate());
+        return row;
+    }
+
+    private JPanel createPivotPointsRow() {
+        pivotPointsCheckbox = new JCheckBox("Pivot Points");
+        pivotPointsCheckbox.setToolTipText("Classic daily pivot support/resistance levels (P, R1-R2, S1-S2)");
+        pivotPointsR3S3Checkbox = new JCheckBox("R3/S3");
+        pivotPointsR3S3Checkbox.setToolTipText("Show extended R3/S3 levels");
+        pivotPointsR3S3Checkbox.setEnabled(false);
+
+        JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
+        row.setAlignmentX(Component.LEFT_ALIGNMENT);
+        row.add(pivotPointsCheckbox);
+        row.add(pivotPointsR3S3Checkbox);
+
+        pivotPointsCheckbox.addActionListener(e -> {
+            pivotPointsR3S3Checkbox.setEnabled(pivotPointsCheckbox.isSelected());
+            scheduleUpdate();
+        });
+        pivotPointsR3S3Checkbox.addActionListener(e -> scheduleUpdate());
+
+        return row;
+    }
+
+    private JPanel createAtrBandsRow() {
+        atrBandsCheckbox = new JCheckBox("ATR Bands");
+        atrBandsCheckbox.setToolTipText("Volatility bands based on ATR (close ± ATR × multiplier)");
+        atrBandsPeriodLabel = new JLabel("Period:");
+        atrBandsPeriodSpinner = new JSpinner(new SpinnerNumberModel(14, 5, 50, 1));
+        atrBandsMultiplierLabel = new JLabel("×");
+        atrBandsMultiplierSpinner = new JSpinner(new SpinnerNumberModel(2.0, 0.5, 5.0, 0.5));
+
+        // Disable controls when unchecked
+        atrBandsPeriodLabel.setEnabled(false);
+        atrBandsPeriodSpinner.setEnabled(false);
+        atrBandsMultiplierLabel.setEnabled(false);
+        atrBandsMultiplierSpinner.setEnabled(false);
+
+        JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
+        row.setAlignmentX(Component.LEFT_ALIGNMENT);
+        row.add(atrBandsCheckbox);
+        row.add(atrBandsPeriodLabel);
+        row.add(atrBandsPeriodSpinner);
+        row.add(atrBandsMultiplierLabel);
+        row.add(atrBandsMultiplierSpinner);
+
+        atrBandsCheckbox.addActionListener(e -> {
+            boolean enabled = atrBandsCheckbox.isSelected();
+            atrBandsPeriodLabel.setEnabled(enabled);
+            atrBandsPeriodSpinner.setEnabled(enabled);
+            atrBandsMultiplierLabel.setEnabled(enabled);
+            atrBandsMultiplierSpinner.setEnabled(enabled);
+            scheduleUpdate();
+        });
+        atrBandsPeriodSpinner.addChangeListener(e -> scheduleUpdate());
+        atrBandsMultiplierSpinner.addChangeListener(e -> scheduleUpdate());
+
+        return row;
+    }
+
+    private JPanel createSupertrendRow() {
+        supertrendCheckbox = new JCheckBox("Supertrend");
+        supertrendCheckbox.setToolTipText("Trend-following overlay that changes color based on trend direction");
+        supertrendPeriodLabel = new JLabel("Period:");
+        supertrendPeriodSpinner = new JSpinner(new SpinnerNumberModel(10, 5, 50, 1));
+        supertrendMultiplierLabel = new JLabel("×");
+        supertrendMultiplierSpinner = new JSpinner(new SpinnerNumberModel(3.0, 1.0, 5.0, 0.5));
+
+        // Disable controls when unchecked
+        supertrendPeriodLabel.setEnabled(false);
+        supertrendPeriodSpinner.setEnabled(false);
+        supertrendMultiplierLabel.setEnabled(false);
+        supertrendMultiplierSpinner.setEnabled(false);
+
+        JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
+        row.setAlignmentX(Component.LEFT_ALIGNMENT);
+        row.add(supertrendCheckbox);
+        row.add(supertrendPeriodLabel);
+        row.add(supertrendPeriodSpinner);
+        row.add(supertrendMultiplierLabel);
+        row.add(supertrendMultiplierSpinner);
+
+        supertrendCheckbox.addActionListener(e -> {
+            boolean enabled = supertrendCheckbox.isSelected();
+            supertrendPeriodLabel.setEnabled(enabled);
+            supertrendPeriodSpinner.setEnabled(enabled);
+            supertrendMultiplierLabel.setEnabled(enabled);
+            supertrendMultiplierSpinner.setEnabled(enabled);
+            scheduleUpdate();
+        });
+        supertrendPeriodSpinner.addChangeListener(e -> scheduleUpdate());
+        supertrendMultiplierSpinner.addChangeListener(e -> scheduleUpdate());
+
+        return row;
+    }
+
+    private JPanel createKeltnerRow() {
+        keltnerCheckbox = new JCheckBox("Keltner Channel");
+        keltnerCheckbox.setToolTipText("EMA-based channel with ATR bands (smoother than Bollinger)");
+        keltnerEmaPeriodLabel = new JLabel("EMA:");
+        keltnerEmaPeriodSpinner = new JSpinner(new SpinnerNumberModel(20, 5, 50, 1));
+        keltnerAtrPeriodLabel = new JLabel("ATR:");
+        keltnerAtrPeriodSpinner = new JSpinner(new SpinnerNumberModel(10, 5, 30, 1));
+        keltnerMultiplierLabel = new JLabel("×");
+        keltnerMultiplierSpinner = new JSpinner(new SpinnerNumberModel(2.0, 0.5, 4.0, 0.5));
+
+        // Disable controls when unchecked
+        keltnerEmaPeriodLabel.setEnabled(false);
+        keltnerEmaPeriodSpinner.setEnabled(false);
+        keltnerAtrPeriodLabel.setEnabled(false);
+        keltnerAtrPeriodSpinner.setEnabled(false);
+        keltnerMultiplierLabel.setEnabled(false);
+        keltnerMultiplierSpinner.setEnabled(false);
+
+        JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
+        row.setAlignmentX(Component.LEFT_ALIGNMENT);
+        row.add(keltnerCheckbox);
+        row.add(keltnerEmaPeriodLabel);
+        row.add(keltnerEmaPeriodSpinner);
+        row.add(keltnerAtrPeriodLabel);
+        row.add(keltnerAtrPeriodSpinner);
+        row.add(keltnerMultiplierLabel);
+        row.add(keltnerMultiplierSpinner);
+
+        keltnerCheckbox.addActionListener(e -> {
+            boolean enabled = keltnerCheckbox.isSelected();
+            keltnerEmaPeriodLabel.setEnabled(enabled);
+            keltnerEmaPeriodSpinner.setEnabled(enabled);
+            keltnerAtrPeriodLabel.setEnabled(enabled);
+            keltnerAtrPeriodSpinner.setEnabled(enabled);
+            keltnerMultiplierLabel.setEnabled(enabled);
+            keltnerMultiplierSpinner.setEnabled(enabled);
+            scheduleUpdate();
+        });
+        keltnerEmaPeriodSpinner.addChangeListener(e -> scheduleUpdate());
+        keltnerAtrPeriodSpinner.addChangeListener(e -> scheduleUpdate());
+        keltnerMultiplierSpinner.addChangeListener(e -> scheduleUpdate());
+
+        return row;
+    }
+
+    private JPanel createDonchianRow() {
+        donchianCheckbox = new JCheckBox("Donchian Channel");
+        donchianCheckbox.setToolTipText("Highest high / lowest low channel for breakout trading");
+        donchianPeriodLabel = new JLabel("Period:");
+        donchianPeriodSpinner = new JSpinner(new SpinnerNumberModel(20, 5, 100, 1));
+        donchianMiddleCheckbox = new JCheckBox("Middle");
+        donchianMiddleCheckbox.setToolTipText("Show middle line (average of upper and lower)");
+        donchianMiddleCheckbox.setSelected(true);
+
+        // Disable controls when unchecked
+        donchianPeriodLabel.setEnabled(false);
+        donchianPeriodSpinner.setEnabled(false);
+        donchianMiddleCheckbox.setEnabled(false);
+
+        JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
+        row.setAlignmentX(Component.LEFT_ALIGNMENT);
+        row.add(donchianCheckbox);
+        row.add(donchianPeriodLabel);
+        row.add(donchianPeriodSpinner);
+        row.add(donchianMiddleCheckbox);
+
+        donchianCheckbox.addActionListener(e -> {
+            boolean enabled = donchianCheckbox.isSelected();
+            donchianPeriodLabel.setEnabled(enabled);
+            donchianPeriodSpinner.setEnabled(enabled);
+            donchianMiddleCheckbox.setEnabled(enabled);
+            scheduleUpdate();
+        });
+        donchianPeriodSpinner.addChangeListener(e -> scheduleUpdate());
+        donchianMiddleCheckbox.addActionListener(e -> scheduleUpdate());
+
         return row;
     }
 
@@ -1361,6 +1561,43 @@ public class IndicatorSelectorPopup extends JDialog {
         floatingPocPeriodLabel.setEnabled(floatingPocEnabled);
         floatingPocPeriodSpinner.setEnabled(floatingPocEnabled);
         vwapCheckbox.setSelected(config.isVwapEnabled());
+        pivotPointsCheckbox.setSelected(config.isPivotPointsEnabled());
+        pivotPointsR3S3Checkbox.setSelected(config.isPivotPointsShowR3S3());
+        pivotPointsR3S3Checkbox.setEnabled(config.isPivotPointsEnabled());
+        atrBandsCheckbox.setSelected(config.isAtrBandsEnabled());
+        atrBandsPeriodSpinner.setValue(config.getAtrBandsPeriod());
+        atrBandsMultiplierSpinner.setValue(config.getAtrBandsMultiplier());
+        boolean atrBandsEnabled = config.isAtrBandsEnabled();
+        atrBandsPeriodLabel.setEnabled(atrBandsEnabled);
+        atrBandsPeriodSpinner.setEnabled(atrBandsEnabled);
+        atrBandsMultiplierLabel.setEnabled(atrBandsEnabled);
+        atrBandsMultiplierSpinner.setEnabled(atrBandsEnabled);
+        supertrendCheckbox.setSelected(config.isSupertrendEnabled());
+        supertrendPeriodSpinner.setValue(config.getSupertrendPeriod());
+        supertrendMultiplierSpinner.setValue(config.getSupertrendMultiplier());
+        boolean supertrendEnabled = config.isSupertrendEnabled();
+        supertrendPeriodLabel.setEnabled(supertrendEnabled);
+        supertrendPeriodSpinner.setEnabled(supertrendEnabled);
+        supertrendMultiplierLabel.setEnabled(supertrendEnabled);
+        supertrendMultiplierSpinner.setEnabled(supertrendEnabled);
+        keltnerCheckbox.setSelected(config.isKeltnerEnabled());
+        keltnerEmaPeriodSpinner.setValue(config.getKeltnerEmaPeriod());
+        keltnerAtrPeriodSpinner.setValue(config.getKeltnerAtrPeriod());
+        keltnerMultiplierSpinner.setValue(config.getKeltnerMultiplier());
+        boolean keltnerEnabled = config.isKeltnerEnabled();
+        keltnerEmaPeriodLabel.setEnabled(keltnerEnabled);
+        keltnerEmaPeriodSpinner.setEnabled(keltnerEnabled);
+        keltnerAtrPeriodLabel.setEnabled(keltnerEnabled);
+        keltnerAtrPeriodSpinner.setEnabled(keltnerEnabled);
+        keltnerMultiplierLabel.setEnabled(keltnerEnabled);
+        keltnerMultiplierSpinner.setEnabled(keltnerEnabled);
+        donchianCheckbox.setSelected(config.isDonchianEnabled());
+        donchianPeriodSpinner.setValue(config.getDonchianPeriod());
+        donchianMiddleCheckbox.setSelected(config.isDonchianShowMiddle());
+        boolean donchianEnabled = config.isDonchianEnabled();
+        donchianPeriodLabel.setEnabled(donchianEnabled);
+        donchianPeriodSpinner.setEnabled(donchianEnabled);
+        donchianMiddleCheckbox.setEnabled(donchianEnabled);
         rayCheckbox.setSelected(config.isRayOverlayEnabled());
         int rayLookback = config.getRayLookback();
         rayNoLimitCheckbox.setSelected(rayLookback == 0);
@@ -1514,6 +1751,50 @@ public class IndicatorSelectorPopup extends JDialog {
             chartPanel.clearVwapOverlay();
         }
 
+        // Pivot Points overlay (tradery-charts)
+        if (pivotPointsCheckbox.isSelected()) {
+            chartPanel.setPivotPointsOverlay(pivotPointsR3S3Checkbox.isSelected());
+        } else {
+            chartPanel.clearPivotPointsOverlay();
+        }
+
+        // ATR Bands overlay (tradery-charts)
+        if (atrBandsCheckbox.isSelected()) {
+            int period = (int) atrBandsPeriodSpinner.getValue();
+            double multiplier = (double) atrBandsMultiplierSpinner.getValue();
+            chartPanel.setAtrBandsOverlay(period, multiplier);
+        } else {
+            chartPanel.clearAtrBandsOverlay();
+        }
+
+        // Supertrend overlay (tradery-charts)
+        if (supertrendCheckbox.isSelected()) {
+            int period = (int) supertrendPeriodSpinner.getValue();
+            double multiplier = (double) supertrendMultiplierSpinner.getValue();
+            chartPanel.setSupertrendOverlay(period, multiplier);
+        } else {
+            chartPanel.clearSupertrendOverlay();
+        }
+
+        // Keltner Channel overlay (tradery-charts)
+        if (keltnerCheckbox.isSelected()) {
+            int emaPeriod = (int) keltnerEmaPeriodSpinner.getValue();
+            int atrPeriod = (int) keltnerAtrPeriodSpinner.getValue();
+            double multiplier = (double) keltnerMultiplierSpinner.getValue();
+            chartPanel.setKeltnerOverlay(emaPeriod, atrPeriod, multiplier);
+        } else {
+            chartPanel.clearKeltnerOverlay();
+        }
+
+        // Donchian Channel overlay (tradery-charts)
+        if (donchianCheckbox.isSelected()) {
+            int period = (int) donchianPeriodSpinner.getValue();
+            boolean showMiddle = donchianMiddleCheckbox.isSelected();
+            chartPanel.setDonchianOverlay(period, showMiddle);
+        } else {
+            chartPanel.clearDonchianOverlay();
+        }
+
         // Save overlay settings to config (SMA/EMA managed via chips)
         config.setBollingerEnabled(bbCheckbox.isSelected());
         config.setBollingerPeriod(bbPeriod);
@@ -1526,6 +1807,21 @@ public class IndicatorSelectorPopup extends JDialog {
         config.setFloatingPocEnabled(floatingPocCheckbox.isSelected());
         config.setFloatingPocPeriod((int) floatingPocPeriodSpinner.getValue());
         config.setVwapEnabled(vwapCheckbox.isSelected());
+        config.setPivotPointsEnabled(pivotPointsCheckbox.isSelected());
+        config.setPivotPointsShowR3S3(pivotPointsR3S3Checkbox.isSelected());
+        config.setAtrBandsEnabled(atrBandsCheckbox.isSelected());
+        config.setAtrBandsPeriod((int) atrBandsPeriodSpinner.getValue());
+        config.setAtrBandsMultiplier((double) atrBandsMultiplierSpinner.getValue());
+        config.setSupertrendEnabled(supertrendCheckbox.isSelected());
+        config.setSupertrendPeriod((int) supertrendPeriodSpinner.getValue());
+        config.setSupertrendMultiplier((double) supertrendMultiplierSpinner.getValue());
+        config.setKeltnerEnabled(keltnerCheckbox.isSelected());
+        config.setKeltnerEmaPeriod((int) keltnerEmaPeriodSpinner.getValue());
+        config.setKeltnerAtrPeriod((int) keltnerAtrPeriodSpinner.getValue());
+        config.setKeltnerMultiplier((double) keltnerMultiplierSpinner.getValue());
+        config.setDonchianEnabled(donchianCheckbox.isSelected());
+        config.setDonchianPeriod((int) donchianPeriodSpinner.getValue());
+        config.setDonchianShowMiddle(donchianMiddleCheckbox.isSelected());
 
         // Ray overlay
         int rayLookback = rayNoLimitCheckbox.isSelected() ? 0 : (int) rayLookbackSpinner.getValue();

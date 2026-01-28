@@ -218,6 +218,26 @@ public class ChartsPanel extends JPanel {
                 config.getDailyVolumeProfileWidth()
             );
         }
+        // Pivot Points overlay (tradery-charts)
+        if (config.isPivotPointsEnabled()) {
+            setPivotPointsOverlay(config.isPivotPointsShowR3S3());
+        }
+        // ATR Bands overlay (tradery-charts)
+        if (config.isAtrBandsEnabled()) {
+            setAtrBandsOverlay(config.getAtrBandsPeriod(), config.getAtrBandsMultiplier());
+        }
+        // Supertrend overlay (tradery-charts)
+        if (config.isSupertrendEnabled()) {
+            setSupertrendOverlay(config.getSupertrendPeriod(), config.getSupertrendMultiplier());
+        }
+        // Keltner Channel overlay (tradery-charts)
+        if (config.isKeltnerEnabled()) {
+            setKeltnerOverlay(config.getKeltnerEmaPeriod(), config.getKeltnerAtrPeriod(), config.getKeltnerMultiplier());
+        }
+        // Donchian Channel overlay (tradery-charts)
+        if (config.isDonchianEnabled()) {
+            setDonchianOverlay(config.getDonchianPeriod(), config.isDonchianShowMiddle());
+        }
         // Note: Footprint heatmap is restored when aggTrades arrive (via refreshOrderflowCharts)
     }
 
@@ -1211,6 +1231,170 @@ public class ChartsPanel extends JPanel {
     }
 
     // ===== tradery-charts Integration =====
+
+    // Pivot points overlay instance (using tradery-charts)
+    private com.tradery.charts.overlay.PivotPointsOverlay pivotPointsOverlay;
+
+    /**
+     * Set pivot points overlay using tradery-charts PivotPointsOverlay.
+     *
+     * @param showR3S3 Whether to show extended R3/S3 levels
+     */
+    public void setPivotPointsOverlay(boolean showR3S3) {
+        clearPivotPointsOverlay();  // Remove existing if any
+        pivotPointsOverlay = new com.tradery.charts.overlay.PivotPointsOverlay(showR3S3);
+        overlayManager.applyChartOverlay(pivotPointsOverlay);
+    }
+
+    /**
+     * Clear pivot points overlay.
+     */
+    public void clearPivotPointsOverlay() {
+        if (pivotPointsOverlay != null) {
+            overlayManager.removeChartOverlay(pivotPointsOverlay);
+            pivotPointsOverlay = null;
+        }
+    }
+
+    /**
+     * Check if pivot points overlay is enabled.
+     */
+    public boolean isPivotPointsEnabled() {
+        return pivotPointsOverlay != null;
+    }
+
+    // ===== ATR Bands Overlay (tradery-charts) =====
+
+    private com.tradery.charts.overlay.AtrBandsOverlay atrBandsOverlay;
+
+    /**
+     * Set ATR Bands overlay using tradery-charts AtrBandsOverlay.
+     *
+     * @param period ATR calculation period
+     * @param multiplier Band width multiplier
+     */
+    public void setAtrBandsOverlay(int period, double multiplier) {
+        clearAtrBandsOverlay();  // Remove existing if any
+        atrBandsOverlay = new com.tradery.charts.overlay.AtrBandsOverlay(period, multiplier);
+        overlayManager.applyChartOverlay(atrBandsOverlay);
+    }
+
+    /**
+     * Clear ATR Bands overlay.
+     */
+    public void clearAtrBandsOverlay() {
+        if (atrBandsOverlay != null) {
+            overlayManager.removeChartOverlay(atrBandsOverlay);
+            atrBandsOverlay = null;
+        }
+    }
+
+    /**
+     * Check if ATR Bands overlay is enabled.
+     */
+    public boolean isAtrBandsEnabled() {
+        return atrBandsOverlay != null;
+    }
+
+    // ===== Supertrend Overlay (tradery-charts) =====
+
+    private com.tradery.charts.overlay.SupertrendOverlay supertrendOverlay;
+
+    /**
+     * Set Supertrend overlay using tradery-charts SupertrendOverlay.
+     *
+     * @param period ATR period for Supertrend calculation
+     * @param multiplier ATR multiplier for band width
+     */
+    public void setSupertrendOverlay(int period, double multiplier) {
+        clearSupertrendOverlay();
+        supertrendOverlay = new com.tradery.charts.overlay.SupertrendOverlay(period, multiplier);
+        overlayManager.applyChartOverlay(supertrendOverlay);
+    }
+
+    /**
+     * Clear Supertrend overlay.
+     */
+    public void clearSupertrendOverlay() {
+        if (supertrendOverlay != null) {
+            overlayManager.removeChartOverlay(supertrendOverlay);
+            supertrendOverlay = null;
+        }
+    }
+
+    /**
+     * Check if Supertrend overlay is enabled.
+     */
+    public boolean isSupertrendEnabled() {
+        return supertrendOverlay != null;
+    }
+
+    // ===== Keltner Channel Overlay (tradery-charts) =====
+
+    private com.tradery.charts.overlay.KeltnerChannelOverlay keltnerOverlay;
+
+    /**
+     * Set Keltner Channel overlay using tradery-charts KeltnerChannelOverlay.
+     *
+     * @param emaPeriod EMA period for the middle line
+     * @param atrPeriod ATR period for band calculation
+     * @param multiplier ATR multiplier for band width
+     */
+    public void setKeltnerOverlay(int emaPeriod, int atrPeriod, double multiplier) {
+        clearKeltnerOverlay();
+        keltnerOverlay = new com.tradery.charts.overlay.KeltnerChannelOverlay(emaPeriod, atrPeriod, multiplier);
+        overlayManager.applyChartOverlay(keltnerOverlay);
+    }
+
+    /**
+     * Clear Keltner Channel overlay.
+     */
+    public void clearKeltnerOverlay() {
+        if (keltnerOverlay != null) {
+            overlayManager.removeChartOverlay(keltnerOverlay);
+            keltnerOverlay = null;
+        }
+    }
+
+    /**
+     * Check if Keltner Channel overlay is enabled.
+     */
+    public boolean isKeltnerEnabled() {
+        return keltnerOverlay != null;
+    }
+
+    // ===== Donchian Channel Overlay (tradery-charts) =====
+
+    private com.tradery.charts.overlay.DonchianChannelOverlay donchianOverlay;
+
+    /**
+     * Set Donchian Channel overlay using tradery-charts DonchianChannelOverlay.
+     *
+     * @param period Lookback period for highest high/lowest low
+     * @param showMiddle Whether to show the middle line
+     */
+    public void setDonchianOverlay(int period, boolean showMiddle) {
+        clearDonchianOverlay();
+        donchianOverlay = new com.tradery.charts.overlay.DonchianChannelOverlay(period, showMiddle);
+        overlayManager.applyChartOverlay(donchianOverlay);
+    }
+
+    /**
+     * Clear Donchian Channel overlay.
+     */
+    public void clearDonchianOverlay() {
+        if (donchianOverlay != null) {
+            overlayManager.removeChartOverlay(donchianOverlay);
+            donchianOverlay = null;
+        }
+    }
+
+    /**
+     * Check if Donchian Channel overlay is enabled.
+     */
+    public boolean isDonchianEnabled() {
+        return donchianOverlay != null;
+    }
 
     /**
      * Apply a tradery-charts ChartOverlay to the price chart.
