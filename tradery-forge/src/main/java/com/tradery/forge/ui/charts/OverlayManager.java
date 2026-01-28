@@ -2,6 +2,7 @@ package com.tradery.forge.ui.charts;
 
 import com.tradery.charts.core.ChartDataProvider;
 import com.tradery.charts.overlay.ChartOverlay;
+import com.tradery.charts.overlay.RayOverlay;
 import com.tradery.core.indicators.IndicatorEngine;
 import com.tradery.core.model.Candle;
 import org.jfree.chart.JFreeChart;
@@ -52,8 +53,8 @@ public class OverlayManager {
     // IndicatorEngine for POC calculations
     private IndicatorEngine indicatorEngine;
 
-    // Ray overlay
-    private RayOverlay rayOverlay;
+    // Ray overlay (from tradery-charts)
+    private final RayOverlay rayOverlay = new RayOverlay();
 
     // Daily Volume Profile overlay (background computed)
     private DailyVolumeProfileOverlay dailyVolumeProfileOverlay;
@@ -73,9 +74,11 @@ public class OverlayManager {
 
     public OverlayManager(JFreeChart priceChart) {
         this.priceChart = priceChart;
-        this.rayOverlay = new RayOverlay(priceChart);
         this.dailyVolumeProfileOverlay = new DailyVolumeProfileOverlay(priceChart);
         this.footprintHeatmapOverlay = new com.tradery.forge.ui.charts.footprint.FootprintHeatmapOverlay(priceChart);
+
+        // RayOverlay starts disabled until explicitly enabled
+        this.rayOverlay.setEnabled(false);
 
         // When daily volume profile is drawn, redraw rays to fix annotation list corruption
         this.dailyVolumeProfileOverlay.setOnDataReady(() -> {
@@ -784,13 +787,14 @@ public class OverlayManager {
 
     /**
      * Set ray overlay enabled state and update with current candles.
+     * Requires chartDataProvider to be set (for IndicatorPool access).
      */
     public void setRayOverlay(boolean enabled, int lookback, int skip, List<Candle> candles) {
         rayOverlay.setEnabled(enabled);
         rayOverlay.setLookback(lookback);
         rayOverlay.setSkip(skip);
-        if (enabled && candles != null && indicatorEngine != null) {
-            rayOverlay.update(candles, indicatorEngine, currentSymbol, currentTimeframe);
+        if (enabled && chartDataProvider != null && chartDataProvider.hasCandles()) {
+            rayOverlay.apply(priceChart.getXYPlot(), chartDataProvider, 0);
         } else {
             rayOverlay.clear();
         }
@@ -800,8 +804,8 @@ public class OverlayManager {
      * Update ray overlay with new candle data (call when candles change).
      */
     public void updateRayOverlay(List<Candle> candles) {
-        if (rayOverlay.isEnabled() && candles != null && indicatorEngine != null) {
-            rayOverlay.update(candles, indicatorEngine, currentSymbol, currentTimeframe);
+        if (rayOverlay.isEnabled() && chartDataProvider != null && chartDataProvider.hasCandles()) {
+            rayOverlay.redraw();
         }
     }
 
