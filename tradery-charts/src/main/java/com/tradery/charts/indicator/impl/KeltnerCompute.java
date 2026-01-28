@@ -2,13 +2,9 @@ package com.tradery.charts.indicator.impl;
 
 import com.tradery.charts.indicator.IndicatorCompute;
 import com.tradery.core.indicators.IndicatorEngine;
-import com.tradery.core.model.Candle;
-
-import java.util.List;
 
 /**
  * Keltner Channel: EMA +/- ATR * multiplier.
- * Returns a KeltnerResult with upper, middle (EMA), and lower arrays.
  */
 public class KeltnerCompute extends IndicatorCompute<KeltnerCompute.Result> {
 
@@ -28,9 +24,7 @@ public class KeltnerCompute extends IndicatorCompute<KeltnerCompute.Result> {
     }
 
     @Override
-    public Result compute(List<Candle> candles, String timeframe) {
-        var engine = new IndicatorEngine();
-        engine.setCandles(candles, timeframe);
+    public Result compute(IndicatorEngine engine) {
         double[] ema = engine.getEMA(emaPeriod);
         double[] atr = engine.getATR(atrPeriod);
         if (ema == null || atr == null) return null;

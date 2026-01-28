@@ -44,22 +44,17 @@ public class BollingerOverlay implements ChartOverlay {
         if (!provider.hasCandles()) return;
 
         IndicatorPool pool = provider.getIndicatorPool();
-        if (pool != null) {
-            if (subscription != null) subscription.close();
-            subscription = pool.subscribe(new BollingerCompute(period, stdDev));
-            subscription.onReady(bb -> {
-                if (bb == null) return;
-                List<Candle> candles = provider.getCandles();
-                if (candles == null || candles.isEmpty()) return;
-                renderBands(plot, datasetIndex, candles, bb.upper(), bb.middle(), bb.lower());
-                plot.getChart().fireChartChanged();
-            });
-        } else {
-            List<Candle> candles = provider.getCandles();
-            Indicators.BollingerResult bb = provider.getIndicatorEngine().getBollingerBands(period, stdDev);
+        if (pool == null) return;
+
+        if (subscription != null) subscription.close();
+        subscription = pool.subscribe(new BollingerCompute(period, stdDev));
+        subscription.onReady(bb -> {
             if (bb == null) return;
+            List<Candle> candles = provider.getCandles();
+            if (candles == null || candles.isEmpty()) return;
             renderBands(plot, datasetIndex, candles, bb.upper(), bb.middle(), bb.lower());
-        }
+            plot.getChart().fireChartChanged();
+        });
     }
 
     private void renderBands(XYPlot plot, int datasetIndex, List<Candle> candles,

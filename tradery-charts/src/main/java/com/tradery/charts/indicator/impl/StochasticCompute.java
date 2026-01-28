@@ -3,9 +3,6 @@ package com.tradery.charts.indicator.impl;
 import com.tradery.charts.indicator.IndicatorCompute;
 import com.tradery.core.indicators.IndicatorEngine;
 import com.tradery.core.indicators.Indicators;
-import com.tradery.core.model.Candle;
-
-import java.util.List;
 
 public class StochasticCompute extends IndicatorCompute<Indicators.StochasticResult> {
 
@@ -23,9 +20,7 @@ public class StochasticCompute extends IndicatorCompute<Indicators.StochasticRes
     }
 
     @Override
-    public Indicators.StochasticResult compute(List<Candle> candles, String timeframe) {
-        var engine = new IndicatorEngine();
-        engine.setCandles(candles, timeframe);
+    public Indicators.StochasticResult compute(IndicatorEngine engine) {
         return engine.getStochastic(kPeriod, dPeriod);
     }
 }

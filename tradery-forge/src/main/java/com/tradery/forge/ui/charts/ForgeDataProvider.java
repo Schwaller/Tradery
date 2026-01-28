@@ -11,7 +11,7 @@ import java.util.List;
 /**
  * Forge implementation of ChartDataProvider.
  * Wraps IndicatorDataService for async indicator data and provides
- * access to IndicatorEngine for sync calculations.
+ * access to IndicatorPool for async computations.
  *
  * <p>This bridges the tradery-charts module with forge's page-based
  * indicator management system.</p>
@@ -20,7 +20,6 @@ public class ForgeDataProvider implements ChartDataProvider {
 
     private final IndicatorDataService indicatorDataService;
     private final IndicatorPool indicatorPool = new IndicatorPool();
-    private IndicatorEngine indicatorEngine;
     private String symbol = "";
     private String timeframe = "";
     private long startTime;
@@ -41,38 +40,22 @@ public class ForgeDataProvider implements ChartDataProvider {
         this.startTime = startTime;
         this.endTime = endTime;
 
-        // Recreate indicator engine with new candles
+        // Create indicator engine and pass to pool
         if (candles != null && !candles.isEmpty()) {
-            this.indicatorEngine = new IndicatorEngine();
-            this.indicatorEngine.setCandles(candles, timeframe != null ? timeframe : "1h");
+            IndicatorEngine engine = new IndicatorEngine();
+            engine.setCandles(candles, timeframe != null ? timeframe : "1h");
+            indicatorPool.setDataContext(engine);
         } else {
-            this.indicatorEngine = null;
+            indicatorPool.setDataContext(null);
         }
 
         // Update the indicator data service context too
         indicatorDataService.setDataContext(candles, symbol, timeframe, startTime, endTime);
-
-        // Update indicator pool context
-        indicatorPool.setDataContext(candles, symbol, timeframe, startTime, endTime);
-    }
-
-    /**
-     * Set the indicator engine for sync calculations.
-     * @deprecated Use setDataContext() instead
-     */
-    @Deprecated
-    public void setIndicatorEngine(IndicatorEngine engine) {
-        this.indicatorEngine = engine;
     }
 
     @Override
     public List<Candle> getCandles() {
         return indicatorDataService.getCandles();
-    }
-
-    @Override
-    public IndicatorEngine getIndicatorEngine() {
-        return indicatorEngine;
     }
 
     @Override
@@ -168,6 +151,16 @@ public class ForgeDataProvider implements ChartDataProvider {
     @Override
     public double[] getWhaleDelta(double threshold) {
         return indicatorDataService.getWhaleDelta(threshold);
+    }
+
+    /**
+     * Update the IndicatorPool with a fully-configured IndicatorEngine.
+     * Use this when the backtest engine's IndicatorEngine has additional data
+     * (funding, OI, premium, aggTrades) that the pool should use for
+     * sourceable chart computations.
+     */
+    public void setIndicatorEngine(IndicatorEngine engine) {
+        indicatorPool.setDataContext(engine);
     }
 
     /**

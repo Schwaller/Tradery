@@ -1,7 +1,6 @@
 package com.tradery.charts.core;
 
 import com.tradery.charts.indicator.IndicatorPool;
-import com.tradery.core.indicators.IndicatorEngine;
 import com.tradery.core.model.Candle;
 
 import java.util.List;
@@ -18,21 +17,6 @@ import java.util.List;
  *
  * <p><b>Forge:</b> ForgeDataProvider wraps IndicatorDataService + page managers</p>
  * <p><b>Desk:</b> DeskDataProvider wraps IndicatorEngine directly</p>
- *
- * <pre>{@code
- * // In tradery-forge
- * public class ForgeDataProvider implements ChartDataProvider {
- *     private final IndicatorDataService service;
- *     // Delegates to existing page manager infrastructure
- * }
- *
- * // In tradery-desk
- * public class DeskDataProvider implements ChartDataProvider {
- *     private final List<Candle> candles;
- *     private final IndicatorEngine engine;
- *     // Simple implementation for live data
- * }
- * }</pre>
  */
 public interface ChartDataProvider {
 
@@ -42,20 +26,10 @@ public interface ChartDataProvider {
     List<Candle> getCandles();
 
     /**
-     * Get the indicator engine for calculations.
-     * @deprecated Use {@link #getIndicatorPool()} for async computation instead.
-     */
-    @Deprecated
-    IndicatorEngine getIndicatorEngine();
-
-    /**
      * Get the indicator pool for async computation.
-     * Overlays subscribe to indicators via the pool for non-blocking computation.
-     * Returns null if not yet available (fallback to getIndicatorEngine).
+     * All indicator computation goes through the pool.
      */
-    default IndicatorPool getIndicatorPool() {
-        return null;
-    }
+    IndicatorPool getIndicatorPool();
 
     /**
      * Get the trading symbol (e.g., "BTCUSDT").

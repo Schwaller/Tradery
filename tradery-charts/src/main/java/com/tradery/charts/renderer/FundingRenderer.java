@@ -1,7 +1,8 @@
 package com.tradery.charts.renderer;
 
 import com.tradery.charts.core.ChartDataProvider;
-import com.tradery.charts.util.ChartStyles;
+import com.tradery.charts.indicator.IndicatorPool;
+import com.tradery.charts.indicator.impl.FundingCompute;
 import com.tradery.core.model.Candle;
 import org.jfree.chart.plot.XYPlot;
 import org.jfree.chart.renderer.xy.XYBarRenderer;
@@ -15,7 +16,7 @@ import java.util.List;
 
 /**
  * Renderer for Funding Rate indicator.
- * Uses IndicatorEngine.getFunding() for data.
+ * Uses IndicatorPool with FundingCompute for async calculation.
  * Displays funding rate as bars (green positive, red negative).
  */
 public class FundingRenderer implements IndicatorChartRenderer {
@@ -28,46 +29,51 @@ public class FundingRenderer implements IndicatorChartRenderer {
 
     @Override
     public void render(XYPlot plot, ChartDataProvider provider) {
-        List<Candle> candles = provider.getCandles();
+        IndicatorPool pool = provider.getIndicatorPool();
+        if (pool == null) return;
 
-        // Get Funding from IndicatorEngine
-        double[] funding = provider.getIndicatorEngine().getFunding();
-        if (funding == null || funding.length == 0) return;
+        pool.subscribe(new FundingCompute()).onReady(funding -> {
+            if (funding == null || funding.length == 0) return;
 
-        // Create separate series for positive and negative funding
-        TimeSeries positiveSeries = new TimeSeries("Funding+");
-        TimeSeries negativeSeries = new TimeSeries("Funding-");
+            List<Candle> candles = provider.getCandles();
 
-        for (int i = 0; i < candles.size() && i < funding.length; i++) {
-            if (Double.isNaN(funding[i])) continue;
-            Candle c = candles.get(i);
-            Millisecond time = new Millisecond(new Date(c.timestamp()));
+            // Create separate series for positive and negative funding
+            TimeSeries positiveSeries = new TimeSeries("Funding+");
+            TimeSeries negativeSeries = new TimeSeries("Funding-");
 
-            // Funding is typically in percentage, multiply by 100 for display
-            double value = funding[i] * 100;
+            for (int i = 0; i < candles.size() && i < funding.length; i++) {
+                if (Double.isNaN(funding[i])) continue;
+                Candle c = candles.get(i);
+                Millisecond time = new Millisecond(new Date(c.timestamp()));
 
-            if (value >= 0) {
-                positiveSeries.addOrUpdate(time, value);
-                negativeSeries.addOrUpdate(time, 0.0);
-            } else {
-                positiveSeries.addOrUpdate(time, 0.0);
-                negativeSeries.addOrUpdate(time, value);
+                // Funding is typically in percentage, multiply by 100 for display
+                double value = funding[i] * 100;
+
+                if (value >= 0) {
+                    positiveSeries.addOrUpdate(time, value);
+                    negativeSeries.addOrUpdate(time, 0.0);
+                } else {
+                    positiveSeries.addOrUpdate(time, 0.0);
+                    negativeSeries.addOrUpdate(time, value);
+                }
             }
-        }
 
-        TimeSeriesCollection dataset = new TimeSeriesCollection();
-        dataset.addSeries(positiveSeries);
-        dataset.addSeries(negativeSeries);
+            TimeSeriesCollection dataset = new TimeSeriesCollection();
+            dataset.addSeries(positiveSeries);
+            dataset.addSeries(negativeSeries);
 
-        // Create bar renderer with colors
-        XYBarRenderer renderer = new XYBarRenderer();
-        renderer.setSeriesPaint(0, POSITIVE_FUNDING);
-        renderer.setSeriesPaint(1, NEGATIVE_FUNDING);
-        renderer.setShadowVisible(false);
-        renderer.setDrawBarOutline(false);
+            // Create bar renderer with colors
+            XYBarRenderer renderer = new XYBarRenderer();
+            renderer.setSeriesPaint(0, POSITIVE_FUNDING);
+            renderer.setSeriesPaint(1, NEGATIVE_FUNDING);
+            renderer.setShadowVisible(false);
+            renderer.setDrawBarOutline(false);
 
-        plot.setDataset(0, dataset);
-        plot.setRenderer(0, renderer);
+            plot.setDataset(0, dataset);
+            plot.setRenderer(0, renderer);
+
+            plot.getChart().fireChartChanged();
+        });
     }
 
     @Override

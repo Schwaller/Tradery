@@ -2,6 +2,10 @@ package com.tradery.forge.ui.charts.sourceable;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.tradery.charts.indicator.IndicatorCompute;
+import com.tradery.charts.indicator.IndicatorPool;
+import com.tradery.charts.indicator.IndicatorSubscription;
+import com.tradery.core.indicators.IndicatorEngine;
 import com.tradery.core.model.Candle;
 import com.tradery.core.model.DataSourceSelection;
 import com.tradery.forge.ui.charts.ChartStyles;
@@ -38,6 +42,15 @@ public class SourceableChartInstance extends SourceableChart {
 
     @JsonIgnore
     private boolean needsUpdate = true;
+
+    @JsonIgnore
+    private IndicatorSubscription<double[]> fundingSubscription;
+
+    @JsonIgnore
+    private IndicatorSubscription<double[]> premiumSubscription;
+
+    @JsonIgnore
+    private IndicatorSubscription<double[]> oiSubscription;
 
     public SourceableChartInstance() {
         super();
@@ -203,56 +216,145 @@ public class SourceableChartInstance extends SourceableChart {
     }
 
     private void updateFundingChart(ChartDataContext context) {
-        // Funding data comes from IndicatorEngine
-        var engine = context.getIndicatorEngine();
-        if (engine == null) return;
+        IndicatorPool pool = context.getIndicatorPool();
+        if (pool == null) return;
 
         List<Candle> candles = context.getCandles();
-        TimeSeries series = new TimeSeries("Funding");
 
-        for (int i = 0; i < candles.size(); i++) {
-            double funding = engine.getFundingAt(i);
-            if (!Double.isNaN(funding)) {
-                series.addOrUpdate(new Millisecond(new Date(candles.get(i).timestamp())), funding);
-            }
+        // Close previous subscription
+        if (fundingSubscription != null) {
+            fundingSubscription.close();
         }
 
+        // Subscribe to funding data via IndicatorPool
+        fundingSubscription = pool.subscribe(new IndicatorCompute<double[]>() {
+            @Override
+            public String key() {
+                return "funding";
+            }
+
+            @Override
+            public double[] compute(IndicatorEngine engine) {
+                double[] values = new double[candles.size()];
+                for (int i = 0; i < candles.size(); i++) {
+                    values[i] = engine.getFundingAt(i);
+                }
+                return values;
+            }
+        });
+
+        // Use data immediately if cached, otherwise render when ready
+        double[] fundingData = fundingSubscription.getData();
+        if (fundingData != null) {
+            renderFundingChart(candles, fundingData);
+        } else {
+            fundingSubscription.onReady(data -> renderFundingChart(candles, data));
+        }
+    }
+
+    private void renderFundingChart(List<Candle> candles, double[] funding) {
+        TimeSeries series = new TimeSeries("Funding");
+        for (int i = 0; i < candles.size() && i < funding.length; i++) {
+            if (!Double.isNaN(funding[i])) {
+                series.addOrUpdate(new Millisecond(new Date(candles.get(i).timestamp())), funding[i]);
+            }
+        }
         TimeSeriesCollection dataset = new TimeSeriesCollection(series);
         chart = createLineChart("Funding Rate (%)", dataset);
     }
 
     private void updatePremiumChart(ChartDataContext context) {
-        var engine = context.getIndicatorEngine();
-        if (engine == null) return;
+        IndicatorPool pool = context.getIndicatorPool();
+        if (pool == null) return;
 
         List<Candle> candles = context.getCandles();
-        TimeSeries series = new TimeSeries("Premium");
 
-        for (int i = 0; i < candles.size(); i++) {
-            double premium = engine.getPremiumAt(i);
-            if (!Double.isNaN(premium)) {
-                series.addOrUpdate(new Millisecond(new Date(candles.get(i).timestamp())), premium);
-            }
+        // Close previous subscription
+        if (premiumSubscription != null) {
+            premiumSubscription.close();
         }
 
+        // Subscribe to premium data via IndicatorPool
+        premiumSubscription = pool.subscribe(new IndicatorCompute<double[]>() {
+            @Override
+            public String key() {
+                return "premium";
+            }
+
+            @Override
+            public double[] compute(IndicatorEngine engine) {
+                double[] values = new double[candles.size()];
+                for (int i = 0; i < candles.size(); i++) {
+                    values[i] = engine.getPremiumAt(i);
+                }
+                return values;
+            }
+        });
+
+        // Use data immediately if cached, otherwise render when ready
+        double[] premiumData = premiumSubscription.getData();
+        if (premiumData != null) {
+            renderPremiumChart(candles, premiumData);
+        } else {
+            premiumSubscription.onReady(data -> renderPremiumChart(candles, data));
+        }
+    }
+
+    private void renderPremiumChart(List<Candle> candles, double[] premium) {
+        TimeSeries series = new TimeSeries("Premium");
+        for (int i = 0; i < candles.size() && i < premium.length; i++) {
+            if (!Double.isNaN(premium[i])) {
+                series.addOrUpdate(new Millisecond(new Date(candles.get(i).timestamp())), premium[i]);
+            }
+        }
         TimeSeriesCollection dataset = new TimeSeriesCollection(series);
         chart = createLineChart("Premium (%)", dataset);
     }
 
     private void updateOiChart(ChartDataContext context) {
-        var engine = context.getIndicatorEngine();
-        if (engine == null) return;
+        IndicatorPool pool = context.getIndicatorPool();
+        if (pool == null) return;
 
         List<Candle> candles = context.getCandles();
-        TimeSeries series = new TimeSeries("OI");
 
-        for (int i = 0; i < candles.size(); i++) {
-            double oi = engine.getOIAt(i);
-            if (!Double.isNaN(oi)) {
-                series.addOrUpdate(new Millisecond(new Date(candles.get(i).timestamp())), oi);
-            }
+        // Close previous subscription
+        if (oiSubscription != null) {
+            oiSubscription.close();
         }
 
+        // Subscribe to OI data via IndicatorPool
+        oiSubscription = pool.subscribe(new IndicatorCompute<double[]>() {
+            @Override
+            public String key() {
+                return "open-interest";
+            }
+
+            @Override
+            public double[] compute(IndicatorEngine engine) {
+                double[] values = new double[candles.size()];
+                for (int i = 0; i < candles.size(); i++) {
+                    values[i] = engine.getOIAt(i);
+                }
+                return values;
+            }
+        });
+
+        // Use data immediately if cached, otherwise render when ready
+        double[] oiData = oiSubscription.getData();
+        if (oiData != null) {
+            renderOiChart(candles, oiData);
+        } else {
+            oiSubscription.onReady(data -> renderOiChart(candles, data));
+        }
+    }
+
+    private void renderOiChart(List<Candle> candles, double[] oi) {
+        TimeSeries series = new TimeSeries("OI");
+        for (int i = 0; i < candles.size() && i < oi.length; i++) {
+            if (!Double.isNaN(oi[i])) {
+                series.addOrUpdate(new Millisecond(new Date(candles.get(i).timestamp())), oi[i]);
+            }
+        }
         TimeSeriesCollection dataset = new TimeSeriesCollection(series);
         chart = createLineChart("Open Interest", dataset);
     }

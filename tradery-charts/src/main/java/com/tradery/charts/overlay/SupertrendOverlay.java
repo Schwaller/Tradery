@@ -44,22 +44,17 @@ public class SupertrendOverlay implements ChartOverlay {
         if (!provider.hasCandles()) return;
 
         IndicatorPool pool = provider.getIndicatorPool();
-        if (pool != null) {
-            if (subscription != null) subscription.close();
-            subscription = pool.subscribe(new SupertrendCompute(period, multiplier));
-            subscription.onReady(result -> {
-                if (result == null) return;
-                List<Candle> candles = provider.getCandles();
-                if (candles == null || candles.isEmpty()) return;
-                renderSupertrend(plot, datasetIndex, candles, result);
-                plot.getChart().fireChartChanged();
-            });
-        } else {
-            List<Candle> candles = provider.getCandles();
-            Supertrend.Result result = provider.getIndicatorEngine().getSupertrend(period, multiplier);
+        if (pool == null) return;
+
+        if (subscription != null) subscription.close();
+        subscription = pool.subscribe(new SupertrendCompute(period, multiplier));
+        subscription.onReady(result -> {
             if (result == null) return;
+            List<Candle> candles = provider.getCandles();
+            if (candles == null || candles.isEmpty()) return;
             renderSupertrend(plot, datasetIndex, candles, result);
-        }
+            plot.getChart().fireChartChanged();
+        });
     }
 
     private void renderSupertrend(XYPlot plot, int datasetIndex, List<Candle> candles,

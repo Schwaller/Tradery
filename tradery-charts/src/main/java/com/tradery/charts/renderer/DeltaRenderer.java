@@ -1,6 +1,8 @@
 package com.tradery.charts.renderer;
 
 import com.tradery.charts.core.ChartDataProvider;
+import com.tradery.charts.indicator.IndicatorPool;
+import com.tradery.charts.indicator.impl.OhlcvDeltaCompute;
 import com.tradery.charts.util.ChartStyles;
 import com.tradery.charts.util.TimeSeriesBuilder;
 import com.tradery.core.model.Candle;
@@ -11,13 +13,13 @@ import org.jfree.data.time.Millisecond;
 import org.jfree.data.time.TimeSeries;
 import org.jfree.data.time.TimeSeriesCollection;
 
-import java.awt.Color;
 import java.util.Date;
 import java.util.List;
 
 /**
  * Renderer for Delta (buy-sell volume difference) indicator.
- * Uses ChartDataProvider.getDelta() for data.
+ * Uses ChartDataProvider.getDelta() for orderflow data, with OHLCV delta fallback
+ * via IndicatorPool and OhlcvDeltaCompute.
  * Displays delta as bars (green positive, red negative) with optional CVD line.
  */
 public class DeltaRenderer implements IndicatorChartRenderer {
@@ -44,12 +46,22 @@ public class DeltaRenderer implements IndicatorChartRenderer {
 
         // Get Delta from provider (may be null if no orderflow data)
         double[] delta = provider.getDelta();
-        if (delta == null || delta.length == 0) {
-            // Try OHLCV delta as fallback
-            delta = provider.getIndicatorEngine().getOhlcvDelta();
-            if (delta == null || delta.length == 0) return;
-        }
+        if (delta != null && delta.length > 0) {
+            renderDelta(plot, provider, candles, delta);
+        } else {
+            // Fallback to OHLCV delta via pool
+            IndicatorPool pool = provider.getIndicatorPool();
+            if (pool == null) return;
 
+            pool.subscribe(new OhlcvDeltaCompute()).onReady(result -> {
+                if (result == null || result.delta() == null || result.delta().length == 0) return;
+                renderDelta(plot, provider, provider.getCandles(), result.delta());
+                plot.getChart().fireChartChanged();
+            });
+        }
+    }
+
+    private void renderDelta(XYPlot plot, ChartDataProvider provider, List<Candle> candles, double[] delta) {
         // Create separate series for positive and negative delta
         TimeSeries positiveSeries = new TimeSeries("Delta+");
         TimeSeries negativeSeries = new TimeSeries("Delta-");
@@ -85,23 +97,33 @@ public class DeltaRenderer implements IndicatorChartRenderer {
         // Optionally add CVD line
         if (showCvd) {
             double[] cvd = provider.getCumulativeDelta();
-            if (cvd == null || cvd.length == 0) {
-                // Try OHLCV CVD as fallback
-                cvd = provider.getIndicatorEngine().getOhlcvCvd();
-            }
-
             if (cvd != null && cvd.length > 0) {
-                TimeSeriesCollection cvdDataset = TimeSeriesBuilder.build(
-                    "CVD", candles, cvd, 0);
-
-                XYLineAndShapeRenderer lineRenderer = new XYLineAndShapeRenderer(true, false);
-                lineRenderer.setSeriesPaint(0, ChartStyles.CVD_COLOR);
-                lineRenderer.setSeriesStroke(0, ChartStyles.MEDIUM_STROKE);
-
-                plot.setDataset(1, cvdDataset);
-                plot.setRenderer(1, lineRenderer);
+                renderCvdLine(plot, candles, cvd);
+            } else {
+                // Fallback to OHLCV CVD via pool
+                IndicatorPool pool = provider.getIndicatorPool();
+                if (pool != null) {
+                    pool.subscribe(new OhlcvDeltaCompute()).onReady(result -> {
+                        if (result != null && result.cvd() != null && result.cvd().length > 0) {
+                            renderCvdLine(plot, provider.getCandles(), result.cvd());
+                            plot.getChart().fireChartChanged();
+                        }
+                    });
+                }
             }
         }
+    }
+
+    private void renderCvdLine(XYPlot plot, List<Candle> candles, double[] cvd) {
+        TimeSeriesCollection cvdDataset = TimeSeriesBuilder.build(
+            "CVD", candles, cvd, 0);
+
+        XYLineAndShapeRenderer lineRenderer = new XYLineAndShapeRenderer(true, false);
+        lineRenderer.setSeriesPaint(0, ChartStyles.CVD_COLOR);
+        lineRenderer.setSeriesStroke(0, ChartStyles.MEDIUM_STROKE);
+
+        plot.setDataset(1, cvdDataset);
+        plot.setRenderer(1, lineRenderer);
     }
 
     @Override

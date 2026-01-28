@@ -48,23 +48,17 @@ public class DonchianChannelOverlay implements ChartOverlay {
         if (!provider.hasCandles()) return;
 
         IndicatorPool pool = provider.getIndicatorPool();
-        if (pool != null) {
-            if (subscription != null) subscription.close();
-            subscription = pool.subscribe(new DonchianCompute(period));
-            subscription.onReady(result -> {
-                if (result == null) return;
-                List<Candle> candles = provider.getCandles();
-                if (candles == null || candles.isEmpty()) return;
-                renderChannel(plot, datasetIndex, candles, result.highOf(), result.lowOf());
-                plot.getChart().fireChartChanged();
-            });
-        } else {
+        if (pool == null) return;
+
+        if (subscription != null) subscription.close();
+        subscription = pool.subscribe(new DonchianCompute(period));
+        subscription.onReady(result -> {
+            if (result == null) return;
             List<Candle> candles = provider.getCandles();
-            double[] highOf = provider.getIndicatorEngine().getHighOf(period);
-            double[] lowOf = provider.getIndicatorEngine().getLowOf(period);
-            if (highOf == null || lowOf == null || highOf.length == 0 || lowOf.length == 0) return;
-            renderChannel(plot, datasetIndex, candles, highOf, lowOf);
-        }
+            if (candles == null || candles.isEmpty()) return;
+            renderChannel(plot, datasetIndex, candles, result.highOf(), result.lowOf());
+            plot.getChart().fireChartChanged();
+        });
     }
 
     private void renderChannel(XYPlot plot, int datasetIndex, List<Candle> candles,

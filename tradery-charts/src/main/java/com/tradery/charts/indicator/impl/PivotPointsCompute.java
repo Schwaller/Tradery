@@ -1,6 +1,7 @@
 package com.tradery.charts.indicator.impl;
 
 import com.tradery.charts.indicator.IndicatorCompute;
+import com.tradery.core.indicators.IndicatorEngine;
 import com.tradery.core.model.Candle;
 
 import java.util.List;
@@ -17,7 +18,8 @@ public class PivotPointsCompute extends IndicatorCompute<PivotPointsCompute.Resu
     }
 
     @Override
-    public Result compute(List<Candle> candles, String timeframe) {
+    public Result compute(IndicatorEngine engine) {
+        List<Candle> candles = engine.getCandles();
         if (candles == null || candles.size() < 2) return null;
 
         int midPoint = candles.size() / 2;

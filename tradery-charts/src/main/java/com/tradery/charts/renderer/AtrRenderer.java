@@ -1,6 +1,8 @@
 package com.tradery.charts.renderer;
 
 import com.tradery.charts.core.ChartDataProvider;
+import com.tradery.charts.indicator.IndicatorPool;
+import com.tradery.charts.indicator.impl.AtrCompute;
 import com.tradery.charts.util.ChartStyles;
 import com.tradery.charts.util.RendererBuilder;
 import com.tradery.charts.util.TimeSeriesBuilder;
@@ -12,7 +14,7 @@ import java.util.List;
 
 /**
  * Renderer for ATR (Average True Range) indicator.
- * Uses IndicatorEngine.getATR() for calculation.
+ * Uses IndicatorPool with AtrCompute for async calculation.
  */
 public class AtrRenderer implements IndicatorChartRenderer {
 
@@ -31,19 +33,24 @@ public class AtrRenderer implements IndicatorChartRenderer {
 
     @Override
     public void render(XYPlot plot, ChartDataProvider provider) {
-        List<Candle> candles = provider.getCandles();
+        IndicatorPool pool = provider.getIndicatorPool();
+        if (pool == null) return;
 
-        // Get ATR from IndicatorEngine - NOT inline calculation
-        double[] atr = provider.getIndicatorEngine().getATR(period);
-        if (atr == null || atr.length == 0) return;
+        pool.subscribe(new AtrCompute(period)).onReady(atr -> {
+            if (atr == null || atr.length == 0) return;
 
-        // Build time series
-        TimeSeriesCollection dataset = TimeSeriesBuilder.build(
-            "ATR(" + period + ")", candles, atr, period - 1);
+            List<Candle> candles = provider.getCandles();
 
-        // Add to plot
-        plot.setDataset(0, dataset);
-        plot.setRenderer(0, RendererBuilder.lineRenderer(ChartStyles.ATR_COLOR));
+            // Build time series
+            TimeSeriesCollection dataset = TimeSeriesBuilder.build(
+                "ATR(" + period + ")", candles, atr, period - 1);
+
+            // Add to plot
+            plot.setDataset(0, dataset);
+            plot.setRenderer(0, RendererBuilder.lineRenderer(ChartStyles.ATR_COLOR));
+
+            plot.getChart().fireChartChanged();
+        });
     }
 
     @Override

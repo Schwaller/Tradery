@@ -1,12 +1,12 @@
 package com.tradery.charts.renderer;
 
 import com.tradery.charts.core.ChartDataProvider;
+import com.tradery.charts.indicator.IndicatorPool;
+import com.tradery.charts.indicator.impl.VolumeRatioCompute;
 import com.tradery.charts.util.ChartStyles;
 import com.tradery.charts.util.RendererBuilder;
-import com.tradery.charts.util.TimeSeriesBuilder;
 import com.tradery.core.model.Candle;
 import org.jfree.chart.plot.XYPlot;
-import org.jfree.chart.renderer.xy.XYLineAndShapeRenderer;
 import org.jfree.data.time.Millisecond;
 import org.jfree.data.time.TimeSeries;
 import org.jfree.data.time.TimeSeriesCollection;
@@ -19,7 +19,7 @@ import java.util.List;
  * Renderer for Volume Ratio indicator (Buy Volume / Total Volume).
  * Shows the proportion of buying vs selling pressure.
  * Values above 0.5 indicate more buying, below 0.5 more selling.
- * Uses IndicatorEngine.getBuyVolume() and getSellVolume() for data.
+ * Uses IndicatorPool with VolumeRatioCompute for async calculation.
  */
 public class VolumeRatioRenderer implements IndicatorChartRenderer {
 
@@ -33,38 +33,46 @@ public class VolumeRatioRenderer implements IndicatorChartRenderer {
 
     @Override
     public void render(XYPlot plot, ChartDataProvider provider) {
-        List<Candle> candles = provider.getCandles();
+        IndicatorPool pool = provider.getIndicatorPool();
+        if (pool == null) return;
 
-        // Get buy and sell volumes from IndicatorEngine
-        double[] buyVol = provider.getIndicatorEngine().getBuyVolume();
-        double[] sellVol = provider.getIndicatorEngine().getSellVolume();
-        if (buyVol == null || sellVol == null || buyVol.length == 0) return;
+        pool.subscribe(new VolumeRatioCompute()).onReady(result -> {
+            if (result == null) return;
 
-        // Calculate ratio: buyVol / (buyVol + sellVol)
-        double[] ratio = new double[buyVol.length];
-        for (int i = 0; i < buyVol.length; i++) {
-            double total = buyVol[i] + sellVol[i];
-            ratio[i] = total > 0 ? buyVol[i] / total : 0.5;
-        }
+            double[] buyVol = result.buyVolume();
+            double[] sellVol = result.sellVolume();
+            if (buyVol == null || sellVol == null || buyVol.length == 0) return;
 
-        // Build time series
-        TimeSeries ratioSeries = new TimeSeries("Volume Ratio");
-        for (int i = 0; i < candles.size() && i < ratio.length; i++) {
-            Candle c = candles.get(i);
-            if (!Double.isNaN(ratio[i])) {
-                ratioSeries.addOrUpdate(new Millisecond(new Date(c.timestamp())), ratio[i]);
+            List<Candle> candles = provider.getCandles();
+
+            // Calculate ratio: buyVol / (buyVol + sellVol)
+            double[] ratio = new double[buyVol.length];
+            for (int i = 0; i < buyVol.length; i++) {
+                double total = buyVol[i] + sellVol[i];
+                ratio[i] = total > 0 ? buyVol[i] / total : 0.5;
             }
-        }
 
-        TimeSeriesCollection dataset = new TimeSeriesCollection();
-        dataset.addSeries(ratioSeries);
+            // Build time series
+            TimeSeries ratioSeries = new TimeSeries("Volume Ratio");
+            for (int i = 0; i < candles.size() && i < ratio.length; i++) {
+                Candle c = candles.get(i);
+                if (!Double.isNaN(ratio[i])) {
+                    ratioSeries.addOrUpdate(new Millisecond(new Date(c.timestamp())), ratio[i]);
+                }
+            }
 
-        // Add to plot with line renderer
-        plot.setDataset(0, dataset);
-        plot.setRenderer(0, RendererBuilder.lineRenderer(RATIO_LINE_COLOR, ChartStyles.MEDIUM_STROKE));
+            TimeSeriesCollection dataset = new TimeSeriesCollection();
+            dataset.addSeries(ratioSeries);
 
-        // Set Y axis range to 0-1
-        plot.getRangeAxis().setRange(0.0, 1.0);
+            // Add to plot with line renderer
+            plot.setDataset(0, dataset);
+            plot.setRenderer(0, RendererBuilder.lineRenderer(RATIO_LINE_COLOR, ChartStyles.MEDIUM_STROKE));
+
+            // Set Y axis range to 0-1
+            plot.getRangeAxis().setRange(0.0, 1.0);
+
+            plot.getChart().fireChartChanged();
+        });
     }
 
     @Override

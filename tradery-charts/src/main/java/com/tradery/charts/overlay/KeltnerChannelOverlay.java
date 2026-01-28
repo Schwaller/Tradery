@@ -46,40 +46,17 @@ public class KeltnerChannelOverlay implements ChartOverlay {
         if (!provider.hasCandles()) return;
 
         IndicatorPool pool = provider.getIndicatorPool();
-        if (pool != null) {
-            if (subscription != null) subscription.close();
-            subscription = pool.subscribe(new KeltnerCompute(emaPeriod, atrPeriod, multiplier));
-            subscription.onReady(result -> {
-                if (result == null) return;
-                List<Candle> candles = provider.getCandles();
-                if (candles == null || candles.isEmpty()) return;
-                renderChannel(plot, datasetIndex, candles, result);
-                plot.getChart().fireChartChanged();
-            });
-        } else {
+        if (pool == null) return;
+
+        if (subscription != null) subscription.close();
+        subscription = pool.subscribe(new KeltnerCompute(emaPeriod, atrPeriod, multiplier));
+        subscription.onReady(result -> {
+            if (result == null) return;
             List<Candle> candles = provider.getCandles();
-            double[] ema = provider.getIndicatorEngine().getEMA(emaPeriod);
-            double[] atr = provider.getIndicatorEngine().getATR(atrPeriod);
-            if (ema == null || atr == null || ema.length == 0 || atr.length == 0) return;
-            int warmup = Math.max(emaPeriod, atrPeriod);
-            int len = Math.min(ema.length, atr.length);
-            double[] upper = new double[len];
-            double[] middle = new double[len];
-            double[] lower = new double[len];
-            for (int i = 0; i < len; i++) {
-                middle[i] = ema[i];
-                if (!Double.isNaN(ema[i]) && !Double.isNaN(atr[i])) {
-                    double offset = atr[i] * multiplier;
-                    upper[i] = ema[i] + offset;
-                    lower[i] = ema[i] - offset;
-                } else {
-                    upper[i] = Double.NaN;
-                    lower[i] = Double.NaN;
-                }
-            }
-            renderChannel(plot, datasetIndex, candles,
-                    new KeltnerCompute.Result(upper, middle, lower, warmup));
-        }
+            if (candles == null || candles.isEmpty()) return;
+            renderChannel(plot, datasetIndex, candles, result);
+            plot.getChart().fireChartChanged();
+        });
     }
 
     private void renderChannel(XYPlot plot, int datasetIndex, List<Candle> candles,

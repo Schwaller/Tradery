@@ -11,17 +11,16 @@ import java.util.List;
 
 /**
  * Desk implementation of ChartDataProvider.
- * Provides a simple wrapper around candle data and IndicatorEngine
+ * Provides a simple wrapper around candle data and IndicatorPool
  * for use with tradery-charts components.
  *
  * <p>Unlike forge's page-based system, desk uses direct IndicatorEngine
- * calculations since it deals with smaller, live datasets.</p>
+ * calculations via the pool since it deals with smaller, live datasets.</p>
  */
 public class DeskDataProvider implements ChartDataProvider {
 
     private List<Candle> candles = new ArrayList<>();
     private final IndicatorPool indicatorPool = new IndicatorPool();
-    private IndicatorEngine indicatorEngine;
     private String symbol = "";
     private String timeframe = "";
 
@@ -32,14 +31,13 @@ public class DeskDataProvider implements ChartDataProvider {
         this.candles = new ArrayList<>(candles);
         this.symbol = symbol;
         this.timeframe = timeframe;
-        // Create fresh indicator engine with new candles
+        // Create fresh indicator engine and pass to pool
         if (!candles.isEmpty()) {
-            this.indicatorEngine = new IndicatorEngine();
-            this.indicatorEngine.setCandles(candles, timeframe);
-            indicatorPool.setDataContext(this.candles, symbol, timeframe,
-                    candles.get(0).timestamp(), candles.get(candles.size() - 1).timestamp());
+            IndicatorEngine engine = new IndicatorEngine();
+            engine.setCandles(candles, timeframe);
+            indicatorPool.setDataContext(engine);
         } else {
-            this.indicatorEngine = null;
+            indicatorPool.setDataContext(null);
         }
     }
 
@@ -61,25 +59,19 @@ public class DeskDataProvider implements ChartDataProvider {
                 }
             }
         }
-        // Refresh indicator engine
+        // Refresh indicator engine and pass to pool
         if (!candles.isEmpty()) {
-            this.indicatorEngine = new IndicatorEngine();
-            this.indicatorEngine.setCandles(candles, timeframe);
-            indicatorPool.setDataContext(candles, symbol, timeframe,
-                    candles.get(0).timestamp(), candles.get(candles.size() - 1).timestamp());
+            IndicatorEngine engine = new IndicatorEngine();
+            engine.setCandles(candles, timeframe);
+            indicatorPool.setDataContext(engine);
         } else {
-            this.indicatorEngine = null;
+            indicatorPool.setDataContext(null);
         }
     }
 
     @Override
     public List<Candle> getCandles() {
         return candles;
-    }
-
-    @Override
-    public IndicatorEngine getIndicatorEngine() {
-        return indicatorEngine;
     }
 
     @Override
@@ -129,10 +121,10 @@ public class DeskDataProvider implements ChartDataProvider {
         return null;
     }
 
-    // Subscription methods - desk computes on-demand, no background computation
+    // Subscription methods - desk computes via pool, no additional background computation
     @Override
     public void subscribeIndicator(IndicatorType type, int... params) {
-        // No-op: desk uses synchronous IndicatorEngine calculations
+        // No-op: desk uses pool-based async calculations
     }
 
     @Override

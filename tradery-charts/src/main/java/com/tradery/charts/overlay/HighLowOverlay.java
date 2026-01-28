@@ -40,23 +40,17 @@ public class HighLowOverlay implements ChartOverlay {
         if (!provider.hasCandles()) return;
 
         IndicatorPool pool = provider.getIndicatorPool();
-        if (pool != null) {
-            if (subscription != null) subscription.close();
-            subscription = pool.subscribe(new DonchianCompute(period));
-            subscription.onReady(result -> {
-                if (result == null) return;
-                List<Candle> candles = provider.getCandles();
-                if (candles == null || candles.isEmpty()) return;
-                renderHighLow(plot, datasetIndex, candles, result.highOf(), result.lowOf());
-                plot.getChart().fireChartChanged();
-            });
-        } else {
+        if (pool == null) return;
+
+        if (subscription != null) subscription.close();
+        subscription = pool.subscribe(new DonchianCompute(period));
+        subscription.onReady(result -> {
+            if (result == null) return;
             List<Candle> candles = provider.getCandles();
-            double[] high = provider.getIndicatorEngine().getHighOf(period);
-            double[] low = provider.getIndicatorEngine().getLowOf(period);
-            if (high == null || low == null) return;
-            renderHighLow(plot, datasetIndex, candles, high, low);
-        }
+            if (candles == null || candles.isEmpty()) return;
+            renderHighLow(plot, datasetIndex, candles, result.highOf(), result.lowOf());
+            plot.getChart().fireChartChanged();
+        });
     }
 
     private void renderHighLow(XYPlot plot, int datasetIndex, List<Candle> candles,

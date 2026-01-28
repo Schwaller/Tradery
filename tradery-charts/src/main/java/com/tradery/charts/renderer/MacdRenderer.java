@@ -1,12 +1,12 @@
 package com.tradery.charts.renderer;
 
 import com.tradery.charts.core.ChartDataProvider;
+import com.tradery.charts.indicator.IndicatorPool;
+import com.tradery.charts.indicator.impl.MacdCompute;
 import com.tradery.charts.util.ChartAnnotationHelper;
 import com.tradery.charts.util.ChartStyles;
 import com.tradery.charts.util.RendererBuilder;
 import com.tradery.charts.util.TimeSeriesBuilder;
-import com.tradery.core.indicators.IndicatorEngine;
-import com.tradery.core.indicators.Indicators;
 import com.tradery.core.model.Candle;
 import org.jfree.chart.plot.XYPlot;
 import org.jfree.data.time.TimeSeries;
@@ -17,7 +17,7 @@ import java.util.List;
 
 /**
  * Renderer for MACD (Moving Average Convergence Divergence) indicator.
- * Uses IndicatorEngine.getMACD() for calculation.
+ * Uses IndicatorPool with MacdCompute for async calculation.
  */
 public class MacdRenderer implements IndicatorChartRenderer {
 
@@ -40,41 +40,44 @@ public class MacdRenderer implements IndicatorChartRenderer {
 
     @Override
     public void render(XYPlot plot, ChartDataProvider provider) {
-        List<Candle> candles = provider.getCandles();
-        IndicatorEngine engine = provider.getIndicatorEngine();
+        IndicatorPool pool = provider.getIndicatorPool();
+        if (pool == null) return;
 
-        // Get MACD from IndicatorEngine - NOT inline calculation
-        Indicators.MACDResult macd = engine.getMACD(fastPeriod, slowPeriod, signalPeriod);
-        if (macd == null) return;
+        pool.subscribe(new MacdCompute(fastPeriod, slowPeriod, signalPeriod)).onReady(macd -> {
+            if (macd == null) return;
 
-        int startIdx = slowPeriod - 1;
+            List<Candle> candles = provider.getCandles();
+            int startIdx = slowPeriod - 1;
 
-        // Build line series (MACD line + signal)
-        TimeSeries macdSeries = TimeSeriesBuilder.createTimeSeries("MACD", candles, macd.line(), startIdx);
-        TimeSeries signalSeries = TimeSeriesBuilder.createTimeSeries("Signal", candles, macd.signal(), startIdx);
+            // Build line series (MACD line + signal)
+            TimeSeries macdSeries = TimeSeriesBuilder.createTimeSeries("MACD", candles, macd.line(), startIdx);
+            TimeSeries signalSeries = TimeSeriesBuilder.createTimeSeries("Signal", candles, macd.signal(), startIdx);
 
-        TimeSeriesCollection lineDataset = new TimeSeriesCollection();
-        lineDataset.addSeries(macdSeries);
-        lineDataset.addSeries(signalSeries);
+            TimeSeriesCollection lineDataset = new TimeSeriesCollection();
+            lineDataset.addSeries(macdSeries);
+            lineDataset.addSeries(signalSeries);
 
-        plot.setDataset(0, lineDataset);
-        plot.setRenderer(0, RendererBuilder.lineRenderer(
-            ChartStyles.MACD_LINE_COLOR, ChartStyles.MEDIUM_STROKE,
-            ChartStyles.MACD_SIGNAL_COLOR, ChartStyles.MEDIUM_STROKE));
+            plot.setDataset(0, lineDataset);
+            plot.setRenderer(0, RendererBuilder.lineRenderer(
+                ChartStyles.MACD_LINE_COLOR, ChartStyles.MEDIUM_STROKE,
+                ChartStyles.MACD_SIGNAL_COLOR, ChartStyles.MEDIUM_STROKE));
 
-        // Build histogram (bar chart)
-        XYSeriesCollection histDataset = TimeSeriesBuilder.buildXY("Histogram", candles, macd.histogram(), startIdx);
+            // Build histogram (bar chart)
+            XYSeriesCollection histDataset = TimeSeriesBuilder.buildXY("Histogram", candles, macd.histogram(), startIdx);
 
-        plot.setDataset(1, histDataset);
-        plot.setRenderer(1, RendererBuilder.colorCodedBarRenderer(
-            histDataset, ChartStyles.MACD_HIST_POS, ChartStyles.MACD_HIST_NEG));
+            plot.setDataset(1, histDataset);
+            plot.setRenderer(1, RendererBuilder.colorCodedBarRenderer(
+                histDataset, ChartStyles.MACD_HIST_POS, ChartStyles.MACD_HIST_NEG));
 
-        // Add zero reference line
-        if (!candles.isEmpty()) {
-            long startTime = candles.get(0).timestamp();
-            long endTime = candles.get(candles.size() - 1).timestamp();
-            ChartAnnotationHelper.addZeroLine(plot, startTime, endTime);
-        }
+            // Add zero reference line
+            if (!candles.isEmpty()) {
+                long startTime = candles.get(0).timestamp();
+                long endTime = candles.get(candles.size() - 1).timestamp();
+                ChartAnnotationHelper.addZeroLine(plot, startTime, endTime);
+            }
+
+            plot.getChart().fireChartChanged();
+        });
     }
 
     @Override

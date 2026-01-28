@@ -2,9 +2,6 @@ package com.tradery.charts.indicator.impl;
 
 import com.tradery.charts.indicator.IndicatorCompute;
 import com.tradery.core.indicators.IndicatorEngine;
-import com.tradery.core.model.Candle;
-
-import java.util.List;
 
 /**
  * Donchian Channel: highest high and lowest low over N bars.
@@ -23,9 +20,7 @@ public class DonchianCompute extends IndicatorCompute<DonchianCompute.Result> {
     }
 
     @Override
-    public Result compute(List<Candle> candles, String timeframe) {
-        var engine = new IndicatorEngine();
-        engine.setCandles(candles, timeframe);
+    public Result compute(IndicatorEngine engine) {
         double[] highOf = engine.getHighOf(period);
         double[] lowOf = engine.getLowOf(period);
         if (highOf == null || lowOf == null) return null;

@@ -1,8 +1,8 @@
 package com.tradery.charts.renderer;
 
 import com.tradery.charts.core.ChartDataProvider;
-import com.tradery.charts.util.ChartStyles;
-import com.tradery.charts.util.RendererBuilder;
+import com.tradery.charts.indicator.IndicatorPool;
+import com.tradery.charts.indicator.impl.TradeCountCompute;
 import com.tradery.core.model.Candle;
 import org.jfree.chart.plot.XYPlot;
 import org.jfree.chart.renderer.xy.XYBarRenderer;
@@ -19,7 +19,7 @@ import java.util.List;
  * Renderer for Trade Count indicator.
  * Shows the number of individual trades per candle.
  * Higher trade counts indicate more market activity.
- * Uses IndicatorEngine.getTradeCount() for data.
+ * Uses IndicatorPool with TradeCountCompute for async calculation.
  */
 public class TradeCountRenderer implements IndicatorChartRenderer {
 
@@ -30,33 +30,38 @@ public class TradeCountRenderer implements IndicatorChartRenderer {
 
     @Override
     public void render(XYPlot plot, ChartDataProvider provider) {
-        List<Candle> candles = provider.getCandles();
+        IndicatorPool pool = provider.getIndicatorPool();
+        if (pool == null) return;
 
-        // Get trade count from IndicatorEngine
-        double[] tradeCount = provider.getIndicatorEngine().getTradeCount();
-        if (tradeCount == null || tradeCount.length == 0) return;
+        pool.subscribe(new TradeCountCompute()).onReady(tradeCount -> {
+            if (tradeCount == null || tradeCount.length == 0) return;
 
-        // Build time series
-        TimeSeries series = new TimeSeries("Trade Count");
-        for (int i = 0; i < candles.size() && i < tradeCount.length; i++) {
-            Candle c = candles.get(i);
-            if (!Double.isNaN(tradeCount[i])) {
-                series.addOrUpdate(new Millisecond(new Date(c.timestamp())), tradeCount[i]);
+            List<Candle> candles = provider.getCandles();
+
+            // Build time series
+            TimeSeries series = new TimeSeries("Trade Count");
+            for (int i = 0; i < candles.size() && i < tradeCount.length; i++) {
+                Candle c = candles.get(i);
+                if (!Double.isNaN(tradeCount[i])) {
+                    series.addOrUpdate(new Millisecond(new Date(c.timestamp())), tradeCount[i]);
+                }
             }
-        }
 
-        TimeSeriesCollection dataset = new TimeSeriesCollection();
-        dataset.addSeries(series);
+            TimeSeriesCollection dataset = new TimeSeriesCollection();
+            dataset.addSeries(series);
 
-        // Use bar renderer for trade count
-        XYBarRenderer renderer = new XYBarRenderer(0.1);
-        renderer.setSeriesPaint(0, TRADE_COUNT_COLOR);
-        renderer.setBarPainter(new StandardXYBarPainter());
-        renderer.setShadowVisible(false);
-        renderer.setDrawBarOutline(false);
+            // Use bar renderer for trade count
+            XYBarRenderer renderer = new XYBarRenderer(0.1);
+            renderer.setSeriesPaint(0, TRADE_COUNT_COLOR);
+            renderer.setBarPainter(new StandardXYBarPainter());
+            renderer.setShadowVisible(false);
+            renderer.setDrawBarOutline(false);
 
-        plot.setDataset(0, dataset);
-        plot.setRenderer(0, renderer);
+            plot.setDataset(0, dataset);
+            plot.setRenderer(0, renderer);
+
+            plot.getChart().fireChartChanged();
+        });
     }
 
     @Override

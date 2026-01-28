@@ -1,16 +1,17 @@
 package com.tradery.charts.overlay;
 
 import com.tradery.charts.core.ChartDataProvider;
+import com.tradery.charts.indicator.IndicatorPool;
+import com.tradery.charts.indicator.IndicatorSubscription;
+import com.tradery.charts.indicator.impl.DailyLevelsCompute;
 import com.tradery.charts.util.ChartStyles;
 import com.tradery.charts.util.RendererBuilder;
-import com.tradery.core.indicators.IndicatorEngine;
 import com.tradery.core.model.Candle;
 import org.jfree.chart.plot.XYPlot;
 import org.jfree.data.time.Millisecond;
 import org.jfree.data.time.TimeSeries;
 import org.jfree.data.time.TimeSeriesCollection;
 
-import java.awt.BasicStroke;
 import java.awt.Color;
 import java.util.Date;
 import java.util.List;
@@ -20,7 +21,7 @@ import java.util.List;
  * Shows Previous Day POC/VAH/VAL and Today's developing POC/VAH/VAL.
  * These are key support/resistance levels for intraday trading.
  *
- * Uses IndicatorEngine.getPrevDayPOCAt(), getTodayPOCAt(), etc.
+ * Subscribes to DailyLevelsCompute for async background computation.
  */
 public class DailyLevelsOverlay implements ChartOverlay {
 
@@ -36,6 +37,7 @@ public class DailyLevelsOverlay implements ChartOverlay {
 
     private final boolean showPrevDay;
     private final boolean showToday;
+    private IndicatorSubscription<DailyLevelsCompute.Result> subscription;
 
     public DailyLevelsOverlay() {
         this(true, true);  // Show both by default
@@ -49,115 +51,60 @@ public class DailyLevelsOverlay implements ChartOverlay {
     @Override
     public void apply(XYPlot plot, ChartDataProvider provider, int datasetIndex) {
         List<Candle> candles = provider.getCandles();
-        if (candles.isEmpty()) return;
+        if (candles == null || candles.isEmpty()) return;
 
-        IndicatorEngine engine = provider.getIndicatorEngine();
+        IndicatorPool pool = provider.getIndicatorPool();
+        if (pool == null) return;
+
+        if (subscription != null) subscription.close();
+        subscription = pool.subscribe(new DailyLevelsCompute(showPrevDay, showToday));
+        subscription.onReady(result -> {
+            if (result == null) return;
+            List<Candle> c = provider.getCandles();
+            if (c == null || c.isEmpty()) return;
+            renderLevels(plot, datasetIndex, c, result);
+            plot.getChart().fireChartChanged();
+        });
+    }
+
+    private void renderLevels(XYPlot plot, int datasetIndex, List<Candle> candles,
+                               DailyLevelsCompute.Result result) {
         int currentIndex = datasetIndex;
 
         if (showPrevDay) {
-            // Previous Day POC
-            TimeSeries prevPocSeries = new TimeSeries("Prev POC");
-            for (int i = 0; i < candles.size(); i++) {
-                double poc = engine.getPrevDayPOCAt(i);
-                if (!Double.isNaN(poc) && poc > 0) {
-                    Candle c = candles.get(i);
-                    prevPocSeries.addOrUpdate(new Millisecond(new Date(c.timestamp())), poc);
-                }
-            }
-            if (prevPocSeries.getItemCount() > 0) {
-                TimeSeriesCollection dataset = new TimeSeriesCollection();
-                dataset.addSeries(prevPocSeries);
-                plot.setDataset(currentIndex, dataset);
-                plot.setRenderer(currentIndex, RendererBuilder.lineRenderer(PREV_POC_COLOR, ChartStyles.MEDIUM_STROKE));
-                currentIndex++;
-            }
-
-            // Previous Day VAH
-            TimeSeries prevVahSeries = new TimeSeries("Prev VAH");
-            for (int i = 0; i < candles.size(); i++) {
-                double vah = engine.getPrevDayVAHAt(i);
-                if (!Double.isNaN(vah) && vah > 0) {
-                    Candle c = candles.get(i);
-                    prevVahSeries.addOrUpdate(new Millisecond(new Date(c.timestamp())), vah);
-                }
-            }
-            if (prevVahSeries.getItemCount() > 0) {
-                TimeSeriesCollection dataset = new TimeSeriesCollection();
-                dataset.addSeries(prevVahSeries);
-                plot.setDataset(currentIndex, dataset);
-                plot.setRenderer(currentIndex, RendererBuilder.lineRenderer(PREV_VAH_COLOR, ChartStyles.THIN_STROKE));
-                currentIndex++;
-            }
-
-            // Previous Day VAL
-            TimeSeries prevValSeries = new TimeSeries("Prev VAL");
-            for (int i = 0; i < candles.size(); i++) {
-                double val = engine.getPrevDayVALAt(i);
-                if (!Double.isNaN(val) && val > 0) {
-                    Candle c = candles.get(i);
-                    prevValSeries.addOrUpdate(new Millisecond(new Date(c.timestamp())), val);
-                }
-            }
-            if (prevValSeries.getItemCount() > 0) {
-                TimeSeriesCollection dataset = new TimeSeriesCollection();
-                dataset.addSeries(prevValSeries);
-                plot.setDataset(currentIndex, dataset);
-                plot.setRenderer(currentIndex, RendererBuilder.lineRenderer(PREV_VAL_COLOR, ChartStyles.THIN_STROKE));
-                currentIndex++;
-            }
+            currentIndex = addLevelSeries(plot, currentIndex, candles, "Prev POC", result.prevPoc(), PREV_POC_COLOR, ChartStyles.MEDIUM_STROKE);
+            currentIndex = addLevelSeries(plot, currentIndex, candles, "Prev VAH", result.prevVah(), PREV_VAH_COLOR, ChartStyles.THIN_STROKE);
+            currentIndex = addLevelSeries(plot, currentIndex, candles, "Prev VAL", result.prevVal(), PREV_VAL_COLOR, ChartStyles.THIN_STROKE);
         }
 
         if (showToday) {
-            // Today's developing POC
-            TimeSeries todayPocSeries = new TimeSeries("Today POC");
-            for (int i = 0; i < candles.size(); i++) {
-                double poc = engine.getTodayPOCAt(i);
-                if (!Double.isNaN(poc) && poc > 0) {
-                    Candle c = candles.get(i);
-                    todayPocSeries.addOrUpdate(new Millisecond(new Date(c.timestamp())), poc);
-                }
-            }
-            if (todayPocSeries.getItemCount() > 0) {
-                TimeSeriesCollection dataset = new TimeSeriesCollection();
-                dataset.addSeries(todayPocSeries);
-                plot.setDataset(currentIndex, dataset);
-                plot.setRenderer(currentIndex, RendererBuilder.lineRenderer(TODAY_POC_COLOR, ChartStyles.DASHED_STROKE));
-                currentIndex++;
-            }
+            currentIndex = addLevelSeries(plot, currentIndex, candles, "Today POC", result.todayPoc(), TODAY_POC_COLOR, ChartStyles.DASHED_STROKE);
+            currentIndex = addLevelSeries(plot, currentIndex, candles, "Today VAH", result.todayVah(), TODAY_VAH_COLOR, ChartStyles.DASHED_STROKE);
+            addLevelSeries(plot, currentIndex, candles, "Today VAL", result.todayVal(), TODAY_VAL_COLOR, ChartStyles.DASHED_STROKE);
+        }
+    }
 
-            // Today's developing VAH
-            TimeSeries todayVahSeries = new TimeSeries("Today VAH");
-            for (int i = 0; i < candles.size(); i++) {
-                double vah = engine.getTodayVAHAt(i);
-                if (!Double.isNaN(vah) && vah > 0) {
-                    Candle c = candles.get(i);
-                    todayVahSeries.addOrUpdate(new Millisecond(new Date(c.timestamp())), vah);
-                }
-            }
-            if (todayVahSeries.getItemCount() > 0) {
-                TimeSeriesCollection dataset = new TimeSeriesCollection();
-                dataset.addSeries(todayVahSeries);
-                plot.setDataset(currentIndex, dataset);
-                plot.setRenderer(currentIndex, RendererBuilder.lineRenderer(TODAY_VAH_COLOR, ChartStyles.DASHED_STROKE));
-                currentIndex++;
-            }
+    private int addLevelSeries(XYPlot plot, int index, List<Candle> candles, String name,
+                                double[] values, Color color, java.awt.Stroke stroke) {
+        if (values == null) return index;
 
-            // Today's developing VAL
-            TimeSeries todayValSeries = new TimeSeries("Today VAL");
-            for (int i = 0; i < candles.size(); i++) {
-                double val = engine.getTodayVALAt(i);
-                if (!Double.isNaN(val) && val > 0) {
-                    Candle c = candles.get(i);
-                    todayValSeries.addOrUpdate(new Millisecond(new Date(c.timestamp())), val);
-                }
-            }
-            if (todayValSeries.getItemCount() > 0) {
-                TimeSeriesCollection dataset = new TimeSeriesCollection();
-                dataset.addSeries(todayValSeries);
-                plot.setDataset(currentIndex, dataset);
-                plot.setRenderer(currentIndex, RendererBuilder.lineRenderer(TODAY_VAL_COLOR, ChartStyles.DASHED_STROKE));
+        TimeSeries series = new TimeSeries(name);
+        for (int i = 0; i < candles.size() && i < values.length; i++) {
+            double v = values[i];
+            if (!Double.isNaN(v) && v > 0) {
+                Candle c = candles.get(i);
+                series.addOrUpdate(new Millisecond(new Date(c.timestamp())), v);
             }
         }
+
+        if (series.getItemCount() > 0) {
+            TimeSeriesCollection dataset = new TimeSeriesCollection();
+            dataset.addSeries(series);
+            plot.setDataset(index, dataset);
+            plot.setRenderer(index, RendererBuilder.lineRenderer(color, stroke));
+            return index + 1;
+        }
+        return index;
     }
 
     @Override

@@ -1,13 +1,10 @@
 package com.tradery.charts.indicator;
 
-import com.tradery.core.model.Candle;
-
-import java.util.List;
+import com.tradery.core.indicators.IndicatorEngine;
 
 /**
  * Self-contained indicator computation.
- * Each subclass knows how to compute one indicator type independently.
- * No centralized facade - each indicator is autonomous.
+ * Each subclass knows how to compute one indicator type using a shared IndicatorEngine.
  *
  * @param <T> The result type (e.g., double[] for SMA, MacdResult for MACD)
  */
@@ -21,11 +18,10 @@ public abstract class IndicatorCompute<T> {
 
     /**
      * Compute the indicator values. Called on a background thread.
-     * Each implementation creates its own IndicatorEngine instance.
+     * The engine is fully configured with candles and external data (funding, OI, etc.).
      *
-     * @param candles   The candle data
-     * @param timeframe The timeframe string (e.g., "1h")
+     * @param engine The shared IndicatorEngine
      * @return The computed result
      */
-    public abstract T compute(List<Candle> candles, String timeframe);
+    public abstract T compute(IndicatorEngine engine);
 }

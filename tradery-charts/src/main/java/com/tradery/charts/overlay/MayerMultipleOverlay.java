@@ -47,22 +47,17 @@ public class MayerMultipleOverlay implements ChartOverlay {
         if (!provider.hasCandles()) return;
 
         IndicatorPool pool = provider.getIndicatorPool();
-        if (pool != null) {
-            if (subscription != null) subscription.close();
-            subscription = pool.subscribe(new SmaCompute(period));
-            subscription.onReady(sma -> {
-                if (sma == null || sma.length == 0) return;
-                List<Candle> candles = provider.getCandles();
-                if (candles == null || candles.isEmpty()) return;
-                renderMayer(plot, datasetIndex, candles, sma);
-                plot.getChart().fireChartChanged();
-            });
-        } else {
-            List<Candle> candles = provider.getCandles();
-            double[] sma = provider.getIndicatorEngine().getSMA(period);
+        if (pool == null) return;
+
+        if (subscription != null) subscription.close();
+        subscription = pool.subscribe(new SmaCompute(period));
+        subscription.onReady(sma -> {
             if (sma == null || sma.length == 0) return;
+            List<Candle> candles = provider.getCandles();
+            if (candles == null || candles.isEmpty()) return;
             renderMayer(plot, datasetIndex, candles, sma);
-        }
+            plot.getChart().fireChartChanged();
+        });
     }
 
     private void renderMayer(XYPlot plot, int datasetIndex, List<Candle> candles, double[] sma) {

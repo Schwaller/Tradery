@@ -1,6 +1,9 @@
 package com.tradery.charts.overlay;
 
 import com.tradery.charts.core.ChartDataProvider;
+import com.tradery.charts.indicator.IndicatorPool;
+import com.tradery.charts.indicator.IndicatorSubscription;
+import com.tradery.charts.indicator.impl.VwapCompute;
 import com.tradery.charts.util.ChartStyles;
 import com.tradery.charts.util.RendererBuilder;
 import com.tradery.charts.util.TimeSeriesBuilder;
@@ -13,11 +16,12 @@ import java.util.List;
 
 /**
  * Volume Weighted Average Price (VWAP) overlay.
- * Uses IndicatorEngine.getVWAP() for calculation.
+ * Subscribes to VwapCompute for async background computation.
  */
 public class VwapOverlay implements ChartOverlay {
 
     private final Color color;
+    private IndicatorSubscription<double[]> subscription;
 
     /**
      * Create a VWAP overlay with default color.
@@ -37,19 +41,25 @@ public class VwapOverlay implements ChartOverlay {
     public void apply(XYPlot plot, ChartDataProvider provider, int datasetIndex) {
         if (!provider.hasCandles()) return;
 
-        List<Candle> candles = provider.getCandles();
+        IndicatorPool pool = provider.getIndicatorPool();
+        if (pool == null) return;
 
-        // Get VWAP from IndicatorEngine
-        double[] vwap = provider.getIndicatorEngine().getVWAP();
-        if (vwap == null || vwap.length == 0) return;
+        if (subscription != null) subscription.close();
+        subscription = pool.subscribe(new VwapCompute());
+        subscription.onReady(vwap -> {
+            if (vwap == null || vwap.length == 0) return;
+            List<Candle> candles = provider.getCandles();
+            if (candles == null || candles.isEmpty()) return;
 
-        // Build time series (VWAP is valid from bar 0)
-        TimeSeriesCollection dataset = TimeSeriesBuilder.build(
-            getDisplayName(), candles, vwap, 0);
+            // Build time series (VWAP is valid from bar 0)
+            TimeSeriesCollection dataset = TimeSeriesBuilder.build(
+                getDisplayName(), candles, vwap, 0);
 
-        // Add to plot with dashed stroke for distinction
-        plot.setDataset(datasetIndex, dataset);
-        plot.setRenderer(datasetIndex, RendererBuilder.lineRenderer(color, ChartStyles.DASHED_STROKE));
+            // Add to plot with dashed stroke for distinction
+            plot.setDataset(datasetIndex, dataset);
+            plot.setRenderer(datasetIndex, RendererBuilder.lineRenderer(color, ChartStyles.DASHED_STROKE));
+            plot.getChart().fireChartChanged();
+        });
     }
 
     @Override

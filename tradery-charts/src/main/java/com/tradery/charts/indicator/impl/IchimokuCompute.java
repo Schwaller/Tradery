@@ -3,9 +3,6 @@ package com.tradery.charts.indicator.impl;
 import com.tradery.charts.indicator.IndicatorCompute;
 import com.tradery.core.indicators.IndicatorEngine;
 import com.tradery.core.indicators.Indicators;
-import com.tradery.core.model.Candle;
-
-import java.util.List;
 
 public class IchimokuCompute extends IndicatorCompute<Indicators.IchimokuResult> {
 
@@ -27,9 +24,7 @@ public class IchimokuCompute extends IndicatorCompute<Indicators.IchimokuResult>
     }
 
     @Override
-    public Indicators.IchimokuResult compute(List<Candle> candles, String timeframe) {
-        var engine = new IndicatorEngine();
-        engine.setCandles(candles, timeframe);
+    public Indicators.IchimokuResult compute(IndicatorEngine engine) {
         return engine.getIchimoku(conversionPeriod, basePeriod, spanBPeriod, displacement);
     }
 

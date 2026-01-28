@@ -3,9 +3,6 @@ package com.tradery.charts.indicator.impl;
 import com.tradery.charts.indicator.IndicatorCompute;
 import com.tradery.core.indicators.IndicatorEngine;
 import com.tradery.core.indicators.Supertrend;
-import com.tradery.core.model.Candle;
-
-import java.util.List;
 
 public class SupertrendCompute extends IndicatorCompute<Supertrend.Result> {
 
@@ -23,9 +20,7 @@ public class SupertrendCompute extends IndicatorCompute<Supertrend.Result> {
     }
 
     @Override
-    public Supertrend.Result compute(List<Candle> candles, String timeframe) {
-        var engine = new IndicatorEngine();
-        engine.setCandles(candles, timeframe);
+    public Supertrend.Result compute(IndicatorEngine engine) {
         return engine.getSupertrend(period, multiplier);
     }
 

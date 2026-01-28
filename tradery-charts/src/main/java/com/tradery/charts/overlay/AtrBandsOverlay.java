@@ -43,37 +43,17 @@ public class AtrBandsOverlay implements ChartOverlay {
         if (!provider.hasCandles()) return;
 
         IndicatorPool pool = provider.getIndicatorPool();
-        if (pool != null) {
-            if (subscription != null) subscription.close();
-            subscription = pool.subscribe(new AtrBandsCompute(period, multiplier));
-            subscription.onReady(result -> {
-                if (result == null) return;
-                List<Candle> candles = provider.getCandles();
-                if (candles == null || candles.isEmpty()) return;
-                renderBands(plot, datasetIndex, candles, result);
-                plot.getChart().fireChartChanged();
-            });
-        } else {
+        if (pool == null) return;
+
+        if (subscription != null) subscription.close();
+        subscription = pool.subscribe(new AtrBandsCompute(period, multiplier));
+        subscription.onReady(result -> {
+            if (result == null) return;
             List<Candle> candles = provider.getCandles();
-            double[] atr = provider.getIndicatorEngine().getATR(period);
-            if (atr == null || atr.length == 0) return;
-            // Build inline result for sync fallback
-            int len = candles.size();
-            double[] upper = new double[len];
-            double[] lower = new double[len];
-            for (int i = 0; i < len && i < atr.length; i++) {
-                if (!Double.isNaN(atr[i])) {
-                    double close = candles.get(i).close();
-                    double offset = atr[i] * multiplier;
-                    upper[i] = close + offset;
-                    lower[i] = close - offset;
-                } else {
-                    upper[i] = Double.NaN;
-                    lower[i] = Double.NaN;
-                }
-            }
-            renderBands(plot, datasetIndex, candles, new AtrBandsCompute.Result(upper, lower, period));
-        }
+            if (candles == null || candles.isEmpty()) return;
+            renderBands(plot, datasetIndex, candles, result);
+            plot.getChart().fireChartChanged();
+        });
     }
 
     private void renderBands(XYPlot plot, int datasetIndex, List<Candle> candles,

@@ -1,36 +1,35 @@
 package com.tradery.forge.ui.charts.sourceable;
 
-import com.tradery.core.indicators.IndicatorEngine;
+import com.tradery.charts.indicator.IndicatorPool;
 import com.tradery.core.model.AggTrade;
 import com.tradery.core.model.Candle;
 import com.tradery.core.model.DataSourceSelection;
 import com.tradery.core.model.Exchange;
-import com.tradery.core.model.FootprintResult;
 
 import java.util.List;
 import java.util.Set;
 
 /**
  * Provides data context for sourceable charts.
- * Encapsulates candles, aggTrades, and indicator engine access.
+ * Encapsulates candles, aggTrades, and indicator pool access.
  */
 public class ChartDataContext {
 
     private final List<Candle> candles;
     private final List<AggTrade> aggTrades;
-    private final IndicatorEngine indicatorEngine;
+    private final IndicatorPool indicatorPool;
     private final String symbol;
     private final String timeframe;
     private final long startTime;
     private final long endTime;
 
     public ChartDataContext(List<Candle> candles, List<AggTrade> aggTrades,
-                           IndicatorEngine indicatorEngine,
+                           IndicatorPool indicatorPool,
                            String symbol, String timeframe,
                            long startTime, long endTime) {
         this.candles = candles;
         this.aggTrades = aggTrades;
-        this.indicatorEngine = indicatorEngine;
+        this.indicatorPool = indicatorPool;
         this.symbol = symbol;
         this.timeframe = timeframe;
         this.startTime = startTime;
@@ -63,8 +62,8 @@ public class ChartDataContext {
             .toList();
     }
 
-    public IndicatorEngine getIndicatorEngine() {
-        return indicatorEngine;
+    public IndicatorPool getIndicatorPool() {
+        return indicatorPool;
     }
 
     public String getSymbol() {

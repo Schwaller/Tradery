@@ -1,9 +1,11 @@
 package com.tradery.charts.overlay;
 
 import com.tradery.charts.core.ChartDataProvider;
+import com.tradery.charts.indicator.IndicatorPool;
+import com.tradery.charts.indicator.IndicatorSubscription;
+import com.tradery.charts.indicator.impl.PocCompute;
 import com.tradery.charts.util.ChartStyles;
 import com.tradery.charts.util.RendererBuilder;
-import com.tradery.core.indicators.IndicatorEngine;
 import com.tradery.core.model.Candle;
 import org.jfree.chart.plot.XYPlot;
 import org.jfree.data.time.Millisecond;
@@ -19,7 +21,7 @@ import java.util.List;
  * Shows the rolling POC price level where most volume traded over the lookback period.
  * Also optionally shows Value Area High (VAH) and Value Area Low (VAL).
  *
- * Uses IndicatorEngine.getPOCAt(), getVAHAt(), getVALAt() for data.
+ * Subscribes to PocCompute for async background computation.
  */
 public class PocOverlay implements ChartOverlay {
 
@@ -29,6 +31,7 @@ public class PocOverlay implements ChartOverlay {
 
     private final int period;
     private final boolean showValueArea;
+    private IndicatorSubscription<PocCompute.Result> subscription;
 
     public PocOverlay() {
         this(20, true);  // Default 20-bar POC with value area
@@ -46,14 +49,28 @@ public class PocOverlay implements ChartOverlay {
     @Override
     public void apply(XYPlot plot, ChartDataProvider provider, int datasetIndex) {
         List<Candle> candles = provider.getCandles();
-        if (candles.isEmpty()) return;
+        if (candles == null || candles.isEmpty()) return;
 
-        IndicatorEngine engine = provider.getIndicatorEngine();
+        IndicatorPool pool = provider.getIndicatorPool();
+        if (pool == null) return;
 
+        if (subscription != null) subscription.close();
+        subscription = pool.subscribe(new PocCompute(period, showValueArea));
+        subscription.onReady(result -> {
+            if (result == null) return;
+            List<Candle> c = provider.getCandles();
+            if (c == null || c.isEmpty()) return;
+            renderPoc(plot, datasetIndex, c, result);
+            plot.getChart().fireChartChanged();
+        });
+    }
+
+    private void renderPoc(XYPlot plot, int datasetIndex, List<Candle> candles,
+                            PocCompute.Result result) {
         // Build POC time series
         TimeSeries pocSeries = new TimeSeries("POC(" + period + ")");
-        for (int i = period - 1; i < candles.size(); i++) {
-            double poc = engine.getPOCAt(period, i);
+        for (int i = result.warmup() - 1; i < candles.size() && i < result.poc().length; i++) {
+            double poc = result.poc()[i];
             if (!Double.isNaN(poc)) {
                 Candle c = candles.get(i);
                 pocSeries.addOrUpdate(new Millisecond(new Date(c.timestamp())), poc);
@@ -68,11 +85,11 @@ public class PocOverlay implements ChartOverlay {
         plot.setRenderer(datasetIndex, RendererBuilder.lineRenderer(POC_COLOR, ChartStyles.MEDIUM_STROKE));
 
         // Add VAH/VAL if enabled
-        if (showValueArea) {
+        if (showValueArea && result.vah() != null && result.val() != null) {
             // VAH
             TimeSeries vahSeries = new TimeSeries("VAH");
-            for (int i = period - 1; i < candles.size(); i++) {
-                double vah = engine.getVAHAt(period, i);
+            for (int i = result.warmup() - 1; i < candles.size() && i < result.vah().length; i++) {
+                double vah = result.vah()[i];
                 if (!Double.isNaN(vah)) {
                     Candle c = candles.get(i);
                     vahSeries.addOrUpdate(new Millisecond(new Date(c.timestamp())), vah);
@@ -85,8 +102,8 @@ public class PocOverlay implements ChartOverlay {
 
             // VAL
             TimeSeries valSeries = new TimeSeries("VAL");
-            for (int i = period - 1; i < candles.size(); i++) {
-                double val = engine.getVALAt(period, i);
+            for (int i = result.warmup() - 1; i < candles.size() && i < result.val().length; i++) {
+                double val = result.val()[i];
                 if (!Double.isNaN(val)) {
                     Candle c = candles.get(i);
                     valSeries.addOrUpdate(new Millisecond(new Date(c.timestamp())), val);

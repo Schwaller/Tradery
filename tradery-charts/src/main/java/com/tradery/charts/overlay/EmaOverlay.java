@@ -38,28 +38,20 @@ public class EmaOverlay implements ChartOverlay {
         if (!provider.hasCandles()) return;
 
         IndicatorPool pool = provider.getIndicatorPool();
-        if (pool != null) {
-            if (subscription != null) subscription.close();
-            subscription = pool.subscribe(new EmaCompute(period));
-            subscription.onReady(ema -> {
-                if (ema == null || ema.length == 0) return;
-                List<Candle> candles = provider.getCandles();
-                if (candles == null || candles.isEmpty()) return;
-                TimeSeriesCollection dataset = TimeSeriesBuilder.build(
-                        getDisplayName(), candles, ema, period - 1);
-                plot.setDataset(datasetIndex, dataset);
-                plot.setRenderer(datasetIndex, RendererBuilder.lineRenderer(color));
-                plot.getChart().fireChartChanged();
-            });
-        } else {
-            List<Candle> candles = provider.getCandles();
-            double[] ema = provider.getIndicatorEngine().getEMA(period);
+        if (pool == null) return;
+
+        if (subscription != null) subscription.close();
+        subscription = pool.subscribe(new EmaCompute(period));
+        subscription.onReady(ema -> {
             if (ema == null || ema.length == 0) return;
+            List<Candle> candles = provider.getCandles();
+            if (candles == null || candles.isEmpty()) return;
             TimeSeriesCollection dataset = TimeSeriesBuilder.build(
                     getDisplayName(), candles, ema, period - 1);
             plot.setDataset(datasetIndex, dataset);
             plot.setRenderer(datasetIndex, RendererBuilder.lineRenderer(color));
-        }
+            plot.getChart().fireChartChanged();
+        });
     }
 
     @Override

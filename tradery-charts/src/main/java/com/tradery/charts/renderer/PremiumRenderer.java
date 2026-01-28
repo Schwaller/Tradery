@@ -1,6 +1,8 @@
 package com.tradery.charts.renderer;
 
 import com.tradery.charts.core.ChartDataProvider;
+import com.tradery.charts.indicator.IndicatorPool;
+import com.tradery.charts.indicator.impl.PremiumCompute;
 import com.tradery.charts.util.ChartStyles;
 import com.tradery.charts.util.RendererBuilder;
 import com.tradery.core.model.Candle;
@@ -18,7 +20,7 @@ import java.util.List;
  * Shows the difference between futures and spot price (as percentage).
  * Positive values indicate futures trading at a premium (contango).
  * Negative values indicate futures trading at a discount (backwardation).
- * Uses IndicatorEngine.getPremium() for data.
+ * Uses IndicatorPool with PremiumCompute for async calculation.
  */
 public class PremiumRenderer implements IndicatorChartRenderer {
 
@@ -31,27 +33,32 @@ public class PremiumRenderer implements IndicatorChartRenderer {
 
     @Override
     public void render(XYPlot plot, ChartDataProvider provider) {
-        List<Candle> candles = provider.getCandles();
+        IndicatorPool pool = provider.getIndicatorPool();
+        if (pool == null) return;
 
-        // Get premium from IndicatorEngine
-        double[] premium = provider.getIndicatorEngine().getPremium();
-        if (premium == null || premium.length == 0) return;
+        pool.subscribe(new PremiumCompute()).onReady(premium -> {
+            if (premium == null || premium.length == 0) return;
 
-        // Build time series
-        TimeSeries series = new TimeSeries("Premium");
-        for (int i = 0; i < candles.size() && i < premium.length; i++) {
-            Candle c = candles.get(i);
-            if (!Double.isNaN(premium[i])) {
-                series.addOrUpdate(new Millisecond(new Date(c.timestamp())), premium[i]);
+            List<Candle> candles = provider.getCandles();
+
+            // Build time series
+            TimeSeries series = new TimeSeries("Premium");
+            for (int i = 0; i < candles.size() && i < premium.length; i++) {
+                Candle c = candles.get(i);
+                if (!Double.isNaN(premium[i])) {
+                    series.addOrUpdate(new Millisecond(new Date(c.timestamp())), premium[i]);
+                }
             }
-        }
 
-        TimeSeriesCollection dataset = new TimeSeriesCollection();
-        dataset.addSeries(series);
+            TimeSeriesCollection dataset = new TimeSeriesCollection();
+            dataset.addSeries(series);
 
-        // Add to plot
-        plot.setDataset(0, dataset);
-        plot.setRenderer(0, RendererBuilder.lineRenderer(LINE_COLOR, ChartStyles.MEDIUM_STROKE));
+            // Add to plot
+            plot.setDataset(0, dataset);
+            plot.setRenderer(0, RendererBuilder.lineRenderer(LINE_COLOR, ChartStyles.MEDIUM_STROKE));
+
+            plot.getChart().fireChartChanged();
+        });
     }
 
     @Override

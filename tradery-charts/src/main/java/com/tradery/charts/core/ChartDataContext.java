@@ -1,6 +1,6 @@
 package com.tradery.charts.core;
 
-import com.tradery.core.indicators.IndicatorEngine;
+import com.tradery.charts.indicator.IndicatorPool;
 import com.tradery.core.model.Candle;
 
 import java.util.List;
@@ -14,7 +14,7 @@ import java.util.List;
  */
 public record ChartDataContext(
     List<Candle> candles,
-    IndicatorEngine indicatorEngine,
+    IndicatorPool indicatorPool,
     String symbol,
     String timeframe,
     long startTime,
@@ -26,7 +26,7 @@ public record ChartDataContext(
     public static ChartDataContext from(ChartDataProvider provider) {
         return new ChartDataContext(
             provider.getCandles(),
-            provider.getIndicatorEngine(),
+            provider.getIndicatorPool(),
             provider.getSymbol(),
             provider.getTimeframe(),
             provider.getStartTime(),

@@ -6,13 +6,12 @@ import org.jfree.chart.plot.XYPlot;
 /**
  * Interface for indicator chart renderers.
  *
- * <p>Renderers are responsible for creating datasets and configuring
- * renderers for specific indicator types. They use
- * {@link com.tradery.core.indicators.IndicatorEngine} for calculations.</p>
+ * <p>Renderers subscribe to {@link com.tradery.charts.indicator.IndicatorCompute}
+ * instances via {@code provider.getIndicatorPool()} for async, off-EDT computation.</p>
  *
  * <h2>Implementation Guidelines</h2>
  * <ul>
- *   <li>Always get indicator data from {@code provider.getIndicatorEngine()}</li>
+ *   <li>Subscribe to compute classes via {@code provider.getIndicatorPool().subscribe(...)}</li>
  *   <li>Use {@link com.tradery.charts.util.TimeSeriesBuilder} for creating datasets</li>
  *   <li>Use {@link com.tradery.charts.util.RendererBuilder} for creating renderers</li>
  *   <li>Add reference lines using {@link com.tradery.charts.util.ChartAnnotationHelper}</li>
@@ -24,7 +23,7 @@ public interface IndicatorChartRenderer {
      * Render the indicator on the plot.
      *
      * @param plot     The XYPlot to render on
-     * @param provider Data provider for candles and indicator engine
+     * @param provider Data provider for candles and indicator pool
      */
     void render(XYPlot plot, ChartDataProvider provider);
 

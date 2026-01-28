@@ -3,9 +3,6 @@ package com.tradery.charts.indicator.impl;
 import com.tradery.charts.indicator.IndicatorCompute;
 import com.tradery.core.indicators.IndicatorEngine;
 import com.tradery.core.indicators.Indicators;
-import com.tradery.core.model.Candle;
-
-import java.util.List;
 
 public class BollingerCompute extends IndicatorCompute<Indicators.BollingerResult> {
 
@@ -23,9 +20,7 @@ public class BollingerCompute extends IndicatorCompute<Indicators.BollingerResul
     }
 
     @Override
-    public Indicators.BollingerResult compute(List<Candle> candles, String timeframe) {
-        var engine = new IndicatorEngine();
-        engine.setCandles(candles, timeframe);
+    public Indicators.BollingerResult compute(IndicatorEngine engine) {
         return engine.getBollingerBands(period, stdDev);
     }
 

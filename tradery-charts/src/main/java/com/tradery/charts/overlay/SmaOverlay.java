@@ -38,30 +38,20 @@ public class SmaOverlay implements ChartOverlay {
         if (!provider.hasCandles()) return;
 
         IndicatorPool pool = provider.getIndicatorPool();
-        if (pool != null) {
-            // Async path
-            if (subscription != null) subscription.close();
-            subscription = pool.subscribe(new SmaCompute(period));
-            subscription.onReady(sma -> {
-                if (sma == null || sma.length == 0) return;
-                List<Candle> candles = provider.getCandles();
-                if (candles == null || candles.isEmpty()) return;
-                TimeSeriesCollection dataset = TimeSeriesBuilder.build(
-                        getDisplayName(), candles, sma, period - 1);
-                plot.setDataset(datasetIndex, dataset);
-                plot.setRenderer(datasetIndex, RendererBuilder.lineRenderer(color));
-                plot.getChart().fireChartChanged();
-            });
-        } else {
-            // Sync fallback
-            List<Candle> candles = provider.getCandles();
-            double[] sma = provider.getIndicatorEngine().getSMA(period);
+        if (pool == null) return;
+
+        if (subscription != null) subscription.close();
+        subscription = pool.subscribe(new SmaCompute(period));
+        subscription.onReady(sma -> {
             if (sma == null || sma.length == 0) return;
+            List<Candle> candles = provider.getCandles();
+            if (candles == null || candles.isEmpty()) return;
             TimeSeriesCollection dataset = TimeSeriesBuilder.build(
                     getDisplayName(), candles, sma, period - 1);
             plot.setDataset(datasetIndex, dataset);
             plot.setRenderer(datasetIndex, RendererBuilder.lineRenderer(color));
-        }
+            plot.getChart().fireChartChanged();
+        });
     }
 
     @Override

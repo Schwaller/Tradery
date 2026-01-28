@@ -54,23 +54,17 @@ public class IchimokuOverlay implements ChartOverlay {
         if (!provider.hasCandles()) return;
 
         IndicatorPool pool = provider.getIndicatorPool();
-        if (pool != null) {
-            if (subscription != null) subscription.close();
-            subscription = pool.subscribe(new IchimokuCompute(conversionPeriod, basePeriod, spanBPeriod, displacement));
-            subscription.onReady(ichi -> {
-                if (ichi == null) return;
-                List<Candle> candles = provider.getCandles();
-                if (candles == null || candles.isEmpty()) return;
-                renderIchimoku(plot, datasetIndex, candles, ichi);
-                plot.getChart().fireChartChanged();
-            });
-        } else {
-            List<Candle> candles = provider.getCandles();
-            Indicators.IchimokuResult ichi = provider.getIndicatorEngine()
-                    .getIchimoku(conversionPeriod, basePeriod, spanBPeriod, displacement);
+        if (pool == null) return;
+
+        if (subscription != null) subscription.close();
+        subscription = pool.subscribe(new IchimokuCompute(conversionPeriod, basePeriod, spanBPeriod, displacement));
+        subscription.onReady(ichi -> {
             if (ichi == null) return;
+            List<Candle> candles = provider.getCandles();
+            if (candles == null || candles.isEmpty()) return;
             renderIchimoku(plot, datasetIndex, candles, ichi);
-        }
+            plot.getChart().fireChartChanged();
+        });
     }
 
     private void renderIchimoku(XYPlot plot, int datasetIndex, List<Candle> candles,

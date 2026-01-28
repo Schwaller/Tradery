@@ -47,35 +47,17 @@ public class PivotPointsOverlay implements ChartOverlay {
         if (candles == null || candles.size() < 2) return;
 
         IndicatorPool pool = provider.getIndicatorPool();
-        if (pool != null) {
-            if (subscription != null) subscription.close();
-            subscription = pool.subscribe(new PivotPointsCompute());
-            subscription.onReady(result -> {
-                if (result == null) return;
-                List<Candle> c = provider.getCandles();
-                if (c == null || c.size() < 2) return;
-                renderPivots(plot, datasetIndex, c, result);
-                plot.getChart().fireChartChanged();
-            });
-        } else {
-            // Sync fallback - inline computation
-            int midPoint = candles.size() / 2;
-            double prevHigh = Double.MIN_VALUE;
-            double prevLow = Double.MAX_VALUE;
-            double prevClose = candles.get(midPoint - 1).close();
-            for (int i = 0; i < midPoint; i++) {
-                Candle c = candles.get(i);
-                prevHigh = Math.max(prevHigh, c.high());
-                prevLow = Math.min(prevLow, c.low());
-            }
-            double pivot = (prevHigh + prevLow + prevClose) / 3.0;
-            double range = prevHigh - prevLow;
-            renderPivots(plot, datasetIndex, candles, new PivotPointsCompute.Result(
-                    pivot, 2 * pivot - prevLow, 2 * pivot - prevHigh,
-                    pivot + range, pivot - range,
-                    prevHigh + 2 * (pivot - prevLow), prevLow - 2 * (prevHigh - pivot),
-                    midPoint));
-        }
+        if (pool == null) return;
+
+        if (subscription != null) subscription.close();
+        subscription = pool.subscribe(new PivotPointsCompute());
+        subscription.onReady(result -> {
+            if (result == null) return;
+            List<Candle> c = provider.getCandles();
+            if (c == null || c.size() < 2) return;
+            renderPivots(plot, datasetIndex, c, result);
+            plot.getChart().fireChartChanged();
+        });
     }
 
     private void renderPivots(XYPlot plot, int datasetIndex, List<Candle> candles,

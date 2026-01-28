@@ -25,12 +25,11 @@ public class AtrBandsCompute extends IndicatorCompute<AtrBandsCompute.Result> {
     }
 
     @Override
-    public Result compute(List<Candle> candles, String timeframe) {
-        var engine = new IndicatorEngine();
-        engine.setCandles(candles, timeframe);
+    public Result compute(IndicatorEngine engine) {
         double[] atr = engine.getATR(period);
         if (atr == null) return null;
 
+        List<Candle> candles = engine.getCandles();
         int len = candles.size();
         double[] upper = new double[len];
         double[] lower = new double[len];

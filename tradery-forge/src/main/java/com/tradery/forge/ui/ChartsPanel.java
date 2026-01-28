@@ -1148,6 +1148,7 @@ public class ChartsPanel extends JPanel {
     public void setIndicatorEngine(com.tradery.core.indicators.IndicatorEngine engine) {
         indicatorManager.setIndicatorEngine(engine);
         overlayManager.setIndicatorEngine(engine);
+        forgeDataProvider.setIndicatorEngine(engine);
     }
 
     // ===== Core Chart Toggles =====

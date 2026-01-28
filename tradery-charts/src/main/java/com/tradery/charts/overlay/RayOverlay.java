@@ -1,6 +1,9 @@
 package com.tradery.charts.overlay;
 
 import com.tradery.charts.core.ChartDataProvider;
+import com.tradery.charts.indicator.IndicatorPool;
+import com.tradery.charts.indicator.IndicatorSubscription;
+import com.tradery.charts.indicator.impl.RaysCompute;
 import com.tradery.core.indicators.RotatingRays;
 import com.tradery.core.indicators.RotatingRays.Ray;
 import com.tradery.core.indicators.RotatingRays.RaySet;
@@ -22,7 +25,7 @@ import java.util.List;
  * Each ray connects two peaks/troughs and can be used to detect breakouts.
  * Rays are drawn from their start point and extrapolated to the right edge of the chart.
  *
- * Uses IndicatorEngine/RotatingRays for calculations.
+ * Subscribes to RaysCompute for async background computation.
  */
 public class RayOverlay implements ChartOverlay {
 
@@ -56,6 +59,7 @@ public class RayOverlay implements ChartOverlay {
     private final boolean showSupport;
 
     private final List<XYLineAnnotation> annotations = new ArrayList<>();
+    private IndicatorSubscription<RaysCompute.Result> subscription;
 
     public RayOverlay() {
         this(200, 5, 5, true, true);
@@ -76,7 +80,10 @@ public class RayOverlay implements ChartOverlay {
     @Override
     public void apply(XYPlot plot, ChartDataProvider provider, int datasetIndex) {
         List<Candle> candles = provider.getCandles();
-        if (candles.size() < lookback) return;
+        if (candles == null || candles.size() < lookback) return;
+
+        IndicatorPool pool = provider.getIndicatorPool();
+        if (pool == null) return;
 
         // Clear previous annotations
         for (XYLineAnnotation ann : annotations) {
@@ -84,26 +91,31 @@ public class RayOverlay implements ChartOverlay {
         }
         annotations.clear();
 
-        // Get chart bounds for ray extrapolation
-        long startTime = candles.get(0).timestamp();
-        long endTime = candles.get(candles.size() - 1).timestamp();
-        double currentPrice = candles.get(candles.size() - 1).close();
+        if (subscription != null) subscription.close();
+        subscription = pool.subscribe(new RaysCompute(lookback, skip, showResistance, showSupport));
+        subscription.onReady(result -> {
+            if (result == null) return;
+            List<Candle> c = provider.getCandles();
+            if (c == null || c.size() < lookback) return;
 
-        // Draw resistance rays
-        if (showResistance) {
-            RaySet resistanceRays = RotatingRays.calculateResistanceRays(candles, lookback, skip);
-            if (resistanceRays != null) {
-                drawRays(plot, candles, resistanceRays, RESISTANCE_COLORS, currentPrice, endTime);
+            // Clear again in case of recomputation
+            for (XYLineAnnotation ann : annotations) {
+                plot.removeAnnotation(ann);
             }
-        }
+            annotations.clear();
 
-        // Draw support rays
-        if (showSupport) {
-            RaySet supportRays = RotatingRays.calculateSupportRays(candles, lookback, skip);
-            if (supportRays != null) {
-                drawRays(plot, candles, supportRays, SUPPORT_COLORS, currentPrice, endTime);
+            long endTime = c.get(c.size() - 1).timestamp();
+            double currentPrice = c.get(c.size() - 1).close();
+
+            if (showResistance && result.resistance() != null) {
+                drawRays(plot, c, result.resistance(), RESISTANCE_COLORS, currentPrice, endTime);
             }
-        }
+            if (showSupport && result.support() != null) {
+                drawRays(plot, c, result.support(), SUPPORT_COLORS, currentPrice, endTime);
+            }
+
+            plot.getChart().fireChartChanged();
+        });
     }
 
     private void drawRays(XYPlot plot, List<Candle> candles, RaySet raySet,

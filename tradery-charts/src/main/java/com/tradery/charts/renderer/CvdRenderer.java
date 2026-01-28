@@ -1,6 +1,8 @@
 package com.tradery.charts.renderer;
 
 import com.tradery.charts.core.ChartDataProvider;
+import com.tradery.charts.indicator.IndicatorPool;
+import com.tradery.charts.indicator.impl.CumulativeDeltaCompute;
 import com.tradery.charts.util.ChartStyles;
 import com.tradery.charts.util.RendererBuilder;
 import com.tradery.charts.util.TimeSeriesBuilder;
@@ -14,7 +16,7 @@ import java.util.List;
 /**
  * Renderer for Cumulative Volume Delta (CVD) indicator.
  * Shows the running sum of delta (buy volume - sell volume) over time.
- * Uses IndicatorEngine.getCumDelta() for data.
+ * Uses IndicatorPool with CumulativeDeltaCompute for async calculation.
  */
 public class CvdRenderer implements IndicatorChartRenderer {
 
@@ -34,24 +36,29 @@ public class CvdRenderer implements IndicatorChartRenderer {
 
     @Override
     public void render(XYPlot plot, ChartDataProvider provider) {
-        List<Candle> candles = provider.getCandles();
+        IndicatorPool pool = provider.getIndicatorPool();
+        if (pool == null) return;
 
-        // Get CVD from IndicatorEngine
-        double[] cvd = provider.getIndicatorEngine().getCumulativeDelta();
-        if (cvd == null || cvd.length == 0) return;
+        pool.subscribe(new CumulativeDeltaCompute()).onReady(cvd -> {
+            if (cvd == null || cvd.length == 0) return;
 
-        // Build time series
-        TimeSeriesCollection dataset = TimeSeriesBuilder.build("CVD", candles, cvd, 0);
+            List<Candle> candles = provider.getCandles();
 
-        // Add to plot
-        plot.setDataset(0, dataset);
+            // Build time series
+            TimeSeriesCollection dataset = TimeSeriesBuilder.build("CVD", candles, cvd, 0);
 
-        if (showAsLine) {
-            plot.setRenderer(0, RendererBuilder.lineRenderer(CVD_LINE_COLOR, ChartStyles.MEDIUM_STROKE));
-        } else {
-            // Could use area renderer for filled CVD
-            plot.setRenderer(0, RendererBuilder.lineRenderer(CVD_LINE_COLOR, ChartStyles.MEDIUM_STROKE));
-        }
+            // Add to plot
+            plot.setDataset(0, dataset);
+
+            if (showAsLine) {
+                plot.setRenderer(0, RendererBuilder.lineRenderer(CVD_LINE_COLOR, ChartStyles.MEDIUM_STROKE));
+            } else {
+                // Could use area renderer for filled CVD
+                plot.setRenderer(0, RendererBuilder.lineRenderer(CVD_LINE_COLOR, ChartStyles.MEDIUM_STROKE));
+            }
+
+            plot.getChart().fireChartChanged();
+        });
     }
 
     @Override
