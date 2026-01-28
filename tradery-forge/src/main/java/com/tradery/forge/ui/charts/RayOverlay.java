@@ -433,8 +433,11 @@ public class RayOverlay {
         long startTime = candles.get(startBar).timestamp();
         double startPrice = ray.startPrice();
 
-        long endTime = candles.get(endBar).timestamp();
-        double endPrice = ray.priceAt(endBar);
+        // Extend ray 20 bars into the future
+        int futureBars = 20;
+        long barInterval = endBar > 0 ? candles.get(endBar).timestamp() - candles.get(endBar - 1).timestamp() : 0;
+        long endTime = candles.get(endBar).timestamp() + barInterval * futureBars;
+        double endPrice = ray.priceAt(endBar + futureBars);
 
         AbstractXYAnnotation lineAnnotation = new AbstractXYAnnotation() {
             @Override

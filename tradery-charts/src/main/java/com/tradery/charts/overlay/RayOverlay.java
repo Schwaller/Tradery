@@ -104,14 +104,19 @@ public class RayOverlay implements ChartOverlay {
             }
             annotations.clear();
 
-            long endTime = c.get(c.size() - 1).timestamp();
-            double currentPrice = c.get(c.size() - 1).close();
+            int lastIdx = c.size() - 1;
+            long endTime = c.get(lastIdx).timestamp();
+            double currentPrice = c.get(lastIdx).close();
+
+            // Extend rays into the future by 20 bars
+            long barInterval = lastIdx > 0 ? c.get(lastIdx).timestamp() - c.get(lastIdx - 1).timestamp() : 0;
+            long futureEndTime = endTime + barInterval * 20;
 
             if (showResistance && result.resistance() != null) {
-                drawRays(plot, c, result.resistance(), RESISTANCE_COLORS, currentPrice, endTime);
+                drawRays(plot, c, result.resistance(), RESISTANCE_COLORS, currentPrice, futureEndTime);
             }
             if (showSupport && result.support() != null) {
-                drawRays(plot, c, result.support(), SUPPORT_COLORS, currentPrice, endTime);
+                drawRays(plot, c, result.support(), SUPPORT_COLORS, currentPrice, futureEndTime);
             }
 
             plot.getChart().fireChartChanged();
@@ -130,9 +135,10 @@ public class RayOverlay implements ChartOverlay {
             long rayStartTime = candles.get(ray.startBar()).timestamp();
             double rayStartPrice = ray.startPrice();
 
-            // Extrapolate ray to end of chart
+            // Extrapolate ray beyond end of chart
             int lastBar = candles.size() - 1;
-            double rayEndPrice = ray.priceAt(lastBar);
+            int futureBars = 20;
+            double rayEndPrice = ray.priceAt(lastBar + futureBars);
 
             // Check if ray is broken (price crossed through it)
             boolean isBroken = raySet.isResistance()
