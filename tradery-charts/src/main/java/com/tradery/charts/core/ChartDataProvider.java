@@ -1,5 +1,6 @@
 package com.tradery.charts.core;
 
+import com.tradery.charts.indicator.IndicatorPool;
 import com.tradery.core.indicators.IndicatorEngine;
 import com.tradery.core.model.Candle;
 
@@ -42,9 +43,19 @@ public interface ChartDataProvider {
 
     /**
      * Get the indicator engine for calculations.
-     * Charts use this to compute indicator values.
+     * @deprecated Use {@link #getIndicatorPool()} for async computation instead.
      */
+    @Deprecated
     IndicatorEngine getIndicatorEngine();
+
+    /**
+     * Get the indicator pool for async computation.
+     * Overlays subscribe to indicators via the pool for non-blocking computation.
+     * Returns null if not yet available (fallback to getIndicatorEngine).
+     */
+    default IndicatorPool getIndicatorPool() {
+        return null;
+    }
 
     /**
      * Get the trading symbol (e.g., "BTCUSDT").

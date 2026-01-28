@@ -5,6 +5,8 @@ module com.tradery.charts {
     exports com.tradery.charts.overlay;
     exports com.tradery.charts.chart;
     exports com.tradery.charts.renderer;
+    exports com.tradery.charts.indicator;
+    exports com.tradery.charts.indicator.impl;
 
     // Required modules
     requires transitive com.tradery.core;

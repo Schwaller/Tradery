@@ -1,6 +1,9 @@
 package com.tradery.charts.overlay;
 
 import com.tradery.charts.core.ChartDataProvider;
+import com.tradery.charts.indicator.IndicatorPool;
+import com.tradery.charts.indicator.IndicatorSubscription;
+import com.tradery.charts.indicator.impl.SmaCompute;
 import com.tradery.charts.util.ChartStyles;
 import com.tradery.charts.util.RendererBuilder;
 import com.tradery.charts.util.TimeSeriesBuilder;
@@ -13,23 +16,18 @@ import java.util.List;
 
 /**
  * Simple Moving Average overlay.
- * Uses IndicatorEngine.getSMA() for calculation.
+ * Subscribes to SmaCompute for async background computation.
  */
 public class SmaOverlay implements ChartOverlay {
 
     private final int period;
     private final Color color;
+    private IndicatorSubscription<double[]> subscription;
 
-    /**
-     * Create an SMA overlay with default color.
-     */
     public SmaOverlay(int period) {
         this(period, ChartStyles.SMA_COLOR);
     }
 
-    /**
-     * Create an SMA overlay with custom color.
-     */
     public SmaOverlay(int period, Color color) {
         this.period = period;
         this.color = color;
@@ -39,19 +37,31 @@ public class SmaOverlay implements ChartOverlay {
     public void apply(XYPlot plot, ChartDataProvider provider, int datasetIndex) {
         if (!provider.hasCandles()) return;
 
-        List<Candle> candles = provider.getCandles();
-
-        // Get SMA from IndicatorEngine - NOT inline calculation
-        double[] sma = provider.getIndicatorEngine().getSMA(period);
-        if (sma == null || sma.length == 0) return;
-
-        // Build time series
-        TimeSeriesCollection dataset = TimeSeriesBuilder.build(
-            getDisplayName(), candles, sma, period - 1);
-
-        // Add to plot
-        plot.setDataset(datasetIndex, dataset);
-        plot.setRenderer(datasetIndex, RendererBuilder.lineRenderer(color));
+        IndicatorPool pool = provider.getIndicatorPool();
+        if (pool != null) {
+            // Async path
+            if (subscription != null) subscription.close();
+            subscription = pool.subscribe(new SmaCompute(period));
+            subscription.onReady(sma -> {
+                if (sma == null || sma.length == 0) return;
+                List<Candle> candles = provider.getCandles();
+                if (candles == null || candles.isEmpty()) return;
+                TimeSeriesCollection dataset = TimeSeriesBuilder.build(
+                        getDisplayName(), candles, sma, period - 1);
+                plot.setDataset(datasetIndex, dataset);
+                plot.setRenderer(datasetIndex, RendererBuilder.lineRenderer(color));
+                plot.getChart().fireChartChanged();
+            });
+        } else {
+            // Sync fallback
+            List<Candle> candles = provider.getCandles();
+            double[] sma = provider.getIndicatorEngine().getSMA(period);
+            if (sma == null || sma.length == 0) return;
+            TimeSeriesCollection dataset = TimeSeriesBuilder.build(
+                    getDisplayName(), candles, sma, period - 1);
+            plot.setDataset(datasetIndex, dataset);
+            plot.setRenderer(datasetIndex, RendererBuilder.lineRenderer(color));
+        }
     }
 
     @Override

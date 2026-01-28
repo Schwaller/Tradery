@@ -1,6 +1,9 @@
 package com.tradery.charts.overlay;
 
 import com.tradery.charts.core.ChartDataProvider;
+import com.tradery.charts.indicator.IndicatorPool;
+import com.tradery.charts.indicator.IndicatorSubscription;
+import com.tradery.charts.indicator.impl.KeltnerCompute;
 import com.tradery.charts.util.ChartStyles;
 import com.tradery.charts.util.RendererBuilder;
 import com.tradery.core.model.Candle;
@@ -15,28 +18,21 @@ import java.util.List;
 
 /**
  * Keltner Channel overlay.
- * Shows channels around an EMA using ATR for the band width:
- *   Upper = EMA + (ATR * multiplier)
- *   Middle = EMA
- *   Lower = EMA - (ATR * multiplier)
- *
- * Keltner Channels are smoother than Bollinger Bands since ATR
- * is less volatile than standard deviation.
- *
- * Uses IndicatorEngine.getEMA() and getATR() for data.
+ * Subscribes to KeltnerCompute for async background computation.
  */
 public class KeltnerChannelOverlay implements ChartOverlay {
 
-    private static final Color UPPER_COLOR = new Color(156, 39, 176, 180);    // Purple semi-transparent
-    private static final Color MIDDLE_COLOR = new Color(156, 39, 176);        // Purple solid
-    private static final Color LOWER_COLOR = new Color(156, 39, 176, 180);    // Purple semi-transparent
+    private static final Color UPPER_COLOR = new Color(156, 39, 176, 180);
+    private static final Color MIDDLE_COLOR = new Color(156, 39, 176);
+    private static final Color LOWER_COLOR = new Color(156, 39, 176, 180);
 
     private final int emaPeriod;
     private final int atrPeriod;
     private final double multiplier;
+    private IndicatorSubscription<KeltnerCompute.Result> subscription;
 
     public KeltnerChannelOverlay() {
-        this(20, 10, 2.0);  // Default: 20-EMA, 10-ATR, 2x multiplier
+        this(20, 10, 2.0);
     }
 
     public KeltnerChannelOverlay(int emaPeriod, int atrPeriod, double multiplier) {
@@ -47,47 +43,71 @@ public class KeltnerChannelOverlay implements ChartOverlay {
 
     @Override
     public void apply(XYPlot plot, ChartDataProvider provider, int datasetIndex) {
-        List<Candle> candles = provider.getCandles();
-        if (candles.isEmpty()) return;
+        if (!provider.hasCandles()) return;
 
-        // Get EMA and ATR from IndicatorEngine
-        double[] ema = provider.getIndicatorEngine().getEMA(emaPeriod);
-        double[] atr = provider.getIndicatorEngine().getATR(atrPeriod);
-        if (ema == null || atr == null || ema.length == 0 || atr.length == 0) return;
+        IndicatorPool pool = provider.getIndicatorPool();
+        if (pool != null) {
+            if (subscription != null) subscription.close();
+            subscription = pool.subscribe(new KeltnerCompute(emaPeriod, atrPeriod, multiplier));
+            subscription.onReady(result -> {
+                if (result == null) return;
+                List<Candle> candles = provider.getCandles();
+                if (candles == null || candles.isEmpty()) return;
+                renderChannel(plot, datasetIndex, candles, result);
+                plot.getChart().fireChartChanged();
+            });
+        } else {
+            List<Candle> candles = provider.getCandles();
+            double[] ema = provider.getIndicatorEngine().getEMA(emaPeriod);
+            double[] atr = provider.getIndicatorEngine().getATR(atrPeriod);
+            if (ema == null || atr == null || ema.length == 0 || atr.length == 0) return;
+            int warmup = Math.max(emaPeriod, atrPeriod);
+            int len = Math.min(ema.length, atr.length);
+            double[] upper = new double[len];
+            double[] middle = new double[len];
+            double[] lower = new double[len];
+            for (int i = 0; i < len; i++) {
+                middle[i] = ema[i];
+                if (!Double.isNaN(ema[i]) && !Double.isNaN(atr[i])) {
+                    double offset = atr[i] * multiplier;
+                    upper[i] = ema[i] + offset;
+                    lower[i] = ema[i] - offset;
+                } else {
+                    upper[i] = Double.NaN;
+                    lower[i] = Double.NaN;
+                }
+            }
+            renderChannel(plot, datasetIndex, candles,
+                    new KeltnerCompute.Result(upper, middle, lower, warmup));
+        }
+    }
 
-        int warmup = Math.max(emaPeriod, atrPeriod);
-
-        // Build channel series
+    private void renderChannel(XYPlot plot, int datasetIndex, List<Candle> candles,
+                                KeltnerCompute.Result result) {
         TimeSeries upperSeries = new TimeSeries("KC Upper");
         TimeSeries middleSeries = new TimeSeries("KC Middle");
         TimeSeries lowerSeries = new TimeSeries("KC Lower");
 
-        for (int i = warmup; i < candles.size() && i < ema.length && i < atr.length; i++) {
+        for (int i = result.warmup(); i < candles.size() && i < result.upper().length; i++) {
             Candle c = candles.get(i);
-            double emaVal = ema[i];
-            double atrVal = atr[i];
-            if (!Double.isNaN(emaVal) && !Double.isNaN(atrVal)) {
-                double offset = atrVal * multiplier;
+            if (!Double.isNaN(result.upper()[i])) {
                 Millisecond time = new Millisecond(new Date(c.timestamp()));
-                upperSeries.addOrUpdate(time, emaVal + offset);
-                middleSeries.addOrUpdate(time, emaVal);
-                lowerSeries.addOrUpdate(time, emaVal - offset);
+                upperSeries.addOrUpdate(time, result.upper()[i]);
+                middleSeries.addOrUpdate(time, result.middle()[i]);
+                lowerSeries.addOrUpdate(time, result.lower()[i]);
             }
         }
 
-        // Add upper band
         TimeSeriesCollection upperDataset = new TimeSeriesCollection();
         upperDataset.addSeries(upperSeries);
         plot.setDataset(datasetIndex, upperDataset);
         plot.setRenderer(datasetIndex, RendererBuilder.lineRenderer(UPPER_COLOR, ChartStyles.THIN_STROKE));
 
-        // Add middle line (EMA)
         TimeSeriesCollection middleDataset = new TimeSeriesCollection();
         middleDataset.addSeries(middleSeries);
         plot.setDataset(datasetIndex + 1, middleDataset);
         plot.setRenderer(datasetIndex + 1, RendererBuilder.lineRenderer(MIDDLE_COLOR, ChartStyles.MEDIUM_STROKE));
 
-        // Add lower band
         TimeSeriesCollection lowerDataset = new TimeSeriesCollection();
         lowerDataset.addSeries(lowerSeries);
         plot.setDataset(datasetIndex + 2, lowerDataset);
@@ -101,6 +121,6 @@ public class KeltnerChannelOverlay implements ChartOverlay {
 
     @Override
     public int getDatasetCount() {
-        return 3;  // Upper, middle, lower
+        return 3;
     }
 }

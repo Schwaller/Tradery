@@ -1,6 +1,9 @@
 package com.tradery.charts.overlay;
 
 import com.tradery.charts.core.ChartDataProvider;
+import com.tradery.charts.indicator.IndicatorPool;
+import com.tradery.charts.indicator.IndicatorSubscription;
+import com.tradery.charts.indicator.impl.PivotPointsCompute;
 import com.tradery.charts.util.ChartStyles;
 import com.tradery.charts.util.RendererBuilder;
 import com.tradery.core.model.Candle;
@@ -15,31 +18,23 @@ import java.util.List;
 
 /**
  * Classic Pivot Points overlay.
- * Calculates daily pivot levels based on previous day's HLC:
- *   Pivot (P)  = (High + Low + Close) / 3
- *   R1 = 2*P - Low
- *   S1 = 2*P - High
- *   R2 = P + (High - Low)
- *   S2 = P - (High - Low)
- *   R3 = High + 2*(P - Low)
- *   S3 = Low - 2*(High - P)
- *
- * Pivot points are key intraday support/resistance levels.
+ * Uses PivotPointsCompute for async background computation.
  */
 public class PivotPointsOverlay implements ChartOverlay {
 
-    private static final Color PIVOT_COLOR = new Color(255, 193, 7);        // Amber
-    private static final Color R1_COLOR = new Color(76, 175, 80, 200);      // Green
+    private static final Color PIVOT_COLOR = new Color(255, 193, 7);
+    private static final Color R1_COLOR = new Color(76, 175, 80, 200);
     private static final Color R2_COLOR = new Color(76, 175, 80, 150);
     private static final Color R3_COLOR = new Color(76, 175, 80, 100);
-    private static final Color S1_COLOR = new Color(244, 67, 54, 200);      // Red
+    private static final Color S1_COLOR = new Color(244, 67, 54, 200);
     private static final Color S2_COLOR = new Color(244, 67, 54, 150);
     private static final Color S3_COLOR = new Color(244, 67, 54, 100);
 
     private final boolean showR3S3;
+    private IndicatorSubscription<PivotPointsCompute.Result> subscription;
 
     public PivotPointsOverlay() {
-        this(false);  // Default: don't show R3/S3
+        this(false);
     }
 
     public PivotPointsOverlay(boolean showR3S3) {
@@ -49,55 +44,54 @@ public class PivotPointsOverlay implements ChartOverlay {
     @Override
     public void apply(XYPlot plot, ChartDataProvider provider, int datasetIndex) {
         List<Candle> candles = provider.getCandles();
-        if (candles.size() < 2) return;
+        if (candles == null || candles.size() < 2) return;
 
-        // Calculate pivot levels from previous day's HLC
-        // For simplicity, use first candle as "previous day" reference
-        // In a real implementation, this would detect day boundaries
-
-        // Find the highest high and lowest low of first half of data as "previous day"
-        int midPoint = candles.size() / 2;
-        double prevHigh = Double.MIN_VALUE;
-        double prevLow = Double.MAX_VALUE;
-        double prevClose = candles.get(midPoint - 1).close();
-
-        for (int i = 0; i < midPoint; i++) {
-            Candle c = candles.get(i);
-            prevHigh = Math.max(prevHigh, c.high());
-            prevLow = Math.min(prevLow, c.low());
+        IndicatorPool pool = provider.getIndicatorPool();
+        if (pool != null) {
+            if (subscription != null) subscription.close();
+            subscription = pool.subscribe(new PivotPointsCompute());
+            subscription.onReady(result -> {
+                if (result == null) return;
+                List<Candle> c = provider.getCandles();
+                if (c == null || c.size() < 2) return;
+                renderPivots(plot, datasetIndex, c, result);
+                plot.getChart().fireChartChanged();
+            });
+        } else {
+            // Sync fallback - inline computation
+            int midPoint = candles.size() / 2;
+            double prevHigh = Double.MIN_VALUE;
+            double prevLow = Double.MAX_VALUE;
+            double prevClose = candles.get(midPoint - 1).close();
+            for (int i = 0; i < midPoint; i++) {
+                Candle c = candles.get(i);
+                prevHigh = Math.max(prevHigh, c.high());
+                prevLow = Math.min(prevLow, c.low());
+            }
+            double pivot = (prevHigh + prevLow + prevClose) / 3.0;
+            double range = prevHigh - prevLow;
+            renderPivots(plot, datasetIndex, candles, new PivotPointsCompute.Result(
+                    pivot, 2 * pivot - prevLow, 2 * pivot - prevHigh,
+                    pivot + range, pivot - range,
+                    prevHigh + 2 * (pivot - prevLow), prevLow - 2 * (prevHigh - pivot),
+                    midPoint));
         }
+    }
 
-        // Calculate pivot levels
-        double pivot = (prevHigh + prevLow + prevClose) / 3.0;
-        double range = prevHigh - prevLow;
-        double r1 = 2 * pivot - prevLow;
-        double s1 = 2 * pivot - prevHigh;
-        double r2 = pivot + range;
-        double s2 = pivot - range;
-        double r3 = prevHigh + 2 * (pivot - prevLow);
-        double s3 = prevLow - 2 * (prevHigh - pivot);
-
-        // Apply levels only to second half of candles
-        long startTime = candles.get(midPoint).timestamp();
+    private void renderPivots(XYPlot plot, int datasetIndex, List<Candle> candles,
+                               PivotPointsCompute.Result result) {
+        long startTime = candles.get(result.startIndex()).timestamp();
         long endTime = candles.get(candles.size() - 1).timestamp();
 
         int currentIndex = datasetIndex;
-
-        // Pivot line
-        currentIndex = addHorizontalLine(plot, currentIndex, "Pivot", pivot, startTime, endTime, PIVOT_COLOR, ChartStyles.MEDIUM_STROKE);
-
-        // R1/S1
-        currentIndex = addHorizontalLine(plot, currentIndex, "R1", r1, startTime, endTime, R1_COLOR, ChartStyles.THIN_STROKE);
-        currentIndex = addHorizontalLine(plot, currentIndex, "S1", s1, startTime, endTime, S1_COLOR, ChartStyles.THIN_STROKE);
-
-        // R2/S2
-        currentIndex = addHorizontalLine(plot, currentIndex, "R2", r2, startTime, endTime, R2_COLOR, ChartStyles.THIN_STROKE);
-        currentIndex = addHorizontalLine(plot, currentIndex, "S2", s2, startTime, endTime, S2_COLOR, ChartStyles.THIN_STROKE);
-
-        // R3/S3 (optional)
+        currentIndex = addHorizontalLine(plot, currentIndex, "Pivot", result.pivot(), startTime, endTime, PIVOT_COLOR, ChartStyles.MEDIUM_STROKE);
+        currentIndex = addHorizontalLine(plot, currentIndex, "R1", result.r1(), startTime, endTime, R1_COLOR, ChartStyles.THIN_STROKE);
+        currentIndex = addHorizontalLine(plot, currentIndex, "S1", result.s1(), startTime, endTime, S1_COLOR, ChartStyles.THIN_STROKE);
+        currentIndex = addHorizontalLine(plot, currentIndex, "R2", result.r2(), startTime, endTime, R2_COLOR, ChartStyles.THIN_STROKE);
+        currentIndex = addHorizontalLine(plot, currentIndex, "S2", result.s2(), startTime, endTime, S2_COLOR, ChartStyles.THIN_STROKE);
         if (showR3S3) {
-            currentIndex = addHorizontalLine(plot, currentIndex, "R3", r3, startTime, endTime, R3_COLOR, ChartStyles.DASHED_STROKE);
-            addHorizontalLine(plot, currentIndex, "S3", s3, startTime, endTime, S3_COLOR, ChartStyles.DASHED_STROKE);
+            currentIndex = addHorizontalLine(plot, currentIndex, "R3", result.r3(), startTime, endTime, R3_COLOR, ChartStyles.DASHED_STROKE);
+            addHorizontalLine(plot, currentIndex, "S3", result.s3(), startTime, endTime, S3_COLOR, ChartStyles.DASHED_STROKE);
         }
     }
 
@@ -122,6 +116,6 @@ public class PivotPointsOverlay implements ChartOverlay {
 
     @Override
     public int getDatasetCount() {
-        return showR3S3 ? 7 : 5;  // P, R1, S1, R2, S2, (R3, S3)
+        return showR3S3 ? 7 : 5;
     }
 }

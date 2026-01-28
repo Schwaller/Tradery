@@ -1,9 +1,11 @@
 package com.tradery.charts.overlay;
 
 import com.tradery.charts.core.ChartDataProvider;
+import com.tradery.charts.indicator.IndicatorPool;
+import com.tradery.charts.indicator.IndicatorSubscription;
+import com.tradery.charts.indicator.impl.DonchianCompute;
 import com.tradery.charts.util.ChartStyles;
 import com.tradery.charts.util.TimeSeriesBuilder;
-import com.tradery.core.indicators.IndicatorEngine;
 import com.tradery.core.model.Candle;
 import org.jfree.chart.plot.XYPlot;
 import org.jfree.chart.renderer.xy.XYLineAndShapeRenderer;
@@ -15,26 +17,20 @@ import java.util.List;
 
 /**
  * High/Low range overlay.
- * Uses IndicatorEngine.getHighOf() and getLowOf() for calculation.
- * Displays the highest high and lowest low over the given period.
+ * Uses DonchianCompute (same data: highest high / lowest low) for async computation.
  */
 public class HighLowOverlay implements ChartOverlay {
 
-    private static final Color HIGH_COLOR = new Color(255, 87, 34, 180);  // Orange
-    private static final Color LOW_COLOR = new Color(33, 150, 243, 180);  // Blue
+    private static final Color HIGH_COLOR = new Color(255, 87, 34, 180);
+    private static final Color LOW_COLOR = new Color(33, 150, 243, 180);
 
     private final int period;
+    private IndicatorSubscription<DonchianCompute.Result> subscription;
 
-    /**
-     * Create a High/Low overlay with default period (20).
-     */
     public HighLowOverlay() {
         this(20);
     }
 
-    /**
-     * Create a High/Low overlay with custom period.
-     */
     public HighLowOverlay(int period) {
         this.period = period;
     }
@@ -43,17 +39,29 @@ public class HighLowOverlay implements ChartOverlay {
     public void apply(XYPlot plot, ChartDataProvider provider, int datasetIndex) {
         if (!provider.hasCandles()) return;
 
-        List<Candle> candles = provider.getCandles();
-        IndicatorEngine engine = provider.getIndicatorEngine();
+        IndicatorPool pool = provider.getIndicatorPool();
+        if (pool != null) {
+            if (subscription != null) subscription.close();
+            subscription = pool.subscribe(new DonchianCompute(period));
+            subscription.onReady(result -> {
+                if (result == null) return;
+                List<Candle> candles = provider.getCandles();
+                if (candles == null || candles.isEmpty()) return;
+                renderHighLow(plot, datasetIndex, candles, result.highOf(), result.lowOf());
+                plot.getChart().fireChartChanged();
+            });
+        } else {
+            List<Candle> candles = provider.getCandles();
+            double[] high = provider.getIndicatorEngine().getHighOf(period);
+            double[] low = provider.getIndicatorEngine().getLowOf(period);
+            if (high == null || low == null) return;
+            renderHighLow(plot, datasetIndex, candles, high, low);
+        }
+    }
 
-        // Get High/Low from IndicatorEngine
-        double[] high = engine.getHighOf(period);
-        double[] low = engine.getLowOf(period);
-        if (high == null || low == null) return;
-
+    private void renderHighLow(XYPlot plot, int datasetIndex, List<Candle> candles,
+                                double[] high, double[] low) {
         int startIdx = period - 1;
-
-        // Build time series for high and low
         TimeSeries highSeries = TimeSeriesBuilder.createTimeSeries("High(" + period + ")", candles, high, startIdx);
         TimeSeries lowSeries = TimeSeriesBuilder.createTimeSeries("Low(" + period + ")", candles, low, startIdx);
 
@@ -61,7 +69,6 @@ public class HighLowOverlay implements ChartOverlay {
         dataset.addSeries(highSeries);
         dataset.addSeries(lowSeries);
 
-        // Create renderer with colors
         XYLineAndShapeRenderer renderer = new XYLineAndShapeRenderer(true, false);
         renderer.setSeriesPaint(0, HIGH_COLOR);
         renderer.setSeriesPaint(1, LOW_COLOR);

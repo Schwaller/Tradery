@@ -1,8 +1,10 @@
 package com.tradery.charts.overlay;
 
 import com.tradery.charts.core.ChartDataProvider;
+import com.tradery.charts.indicator.IndicatorPool;
+import com.tradery.charts.indicator.IndicatorSubscription;
+import com.tradery.charts.indicator.impl.SupertrendCompute;
 import com.tradery.charts.util.ChartStyles;
-import com.tradery.core.indicators.IndicatorEngine;
 import com.tradery.core.indicators.Supertrend;
 import com.tradery.core.model.Candle;
 import org.jfree.chart.plot.XYPlot;
@@ -17,27 +19,21 @@ import java.util.List;
 
 /**
  * Supertrend overlay.
- * Uses IndicatorEngine.getSupertrend() for calculation.
- * Displays the active Supertrend line (upper when downtrend, lower when uptrend).
+ * Subscribes to SupertrendCompute for async background computation.
  */
 public class SupertrendOverlay implements ChartOverlay {
 
-    private static final Color UPTREND_COLOR = new Color(76, 175, 80);    // Green
-    private static final Color DOWNTREND_COLOR = new Color(244, 67, 54);  // Red
+    private static final Color UPTREND_COLOR = new Color(76, 175, 80);
+    private static final Color DOWNTREND_COLOR = new Color(244, 67, 54);
 
     private final int period;
     private final double multiplier;
+    private IndicatorSubscription<Supertrend.Result> subscription;
 
-    /**
-     * Create a Supertrend overlay with default parameters (10, 3).
-     */
     public SupertrendOverlay() {
         this(10, 3.0);
     }
 
-    /**
-     * Create a Supertrend overlay with custom parameters.
-     */
     public SupertrendOverlay(int period, double multiplier) {
         this.period = period;
         this.multiplier = multiplier;
@@ -47,37 +43,42 @@ public class SupertrendOverlay implements ChartOverlay {
     public void apply(XYPlot plot, ChartDataProvider provider, int datasetIndex) {
         if (!provider.hasCandles()) return;
 
-        List<Candle> candles = provider.getCandles();
-        IndicatorEngine engine = provider.getIndicatorEngine();
+        IndicatorPool pool = provider.getIndicatorPool();
+        if (pool != null) {
+            if (subscription != null) subscription.close();
+            subscription = pool.subscribe(new SupertrendCompute(period, multiplier));
+            subscription.onReady(result -> {
+                if (result == null) return;
+                List<Candle> candles = provider.getCandles();
+                if (candles == null || candles.isEmpty()) return;
+                renderSupertrend(plot, datasetIndex, candles, result);
+                plot.getChart().fireChartChanged();
+            });
+        } else {
+            List<Candle> candles = provider.getCandles();
+            Supertrend.Result result = provider.getIndicatorEngine().getSupertrend(period, multiplier);
+            if (result == null) return;
+            renderSupertrend(plot, datasetIndex, candles, result);
+        }
+    }
 
-        // Get Supertrend from IndicatorEngine
-        Supertrend.Result result = engine.getSupertrend(period, multiplier);
-        if (result == null) return;
-
+    private void renderSupertrend(XYPlot plot, int datasetIndex, List<Candle> candles,
+                                    Supertrend.Result result) {
         double[] upper = result.upperBand();
         double[] lower = result.lowerBand();
         double[] trend = result.trend();
 
-        // Create separate series for uptrend and downtrend segments
         TimeSeries uptrendSeries = new TimeSeries("Supertrend Up");
         TimeSeries downtrendSeries = new TimeSeries("Supertrend Down");
 
         int warmup = period;
-
         for (int i = warmup; i < candles.size() && i < trend.length; i++) {
             Candle c = candles.get(i);
             Millisecond time = new Millisecond(new Date(c.timestamp()));
-
             if (trend[i] == 1) {
-                // Uptrend - show lower band
-                if (!Double.isNaN(lower[i])) {
-                    uptrendSeries.addOrUpdate(time, lower[i]);
-                }
+                if (!Double.isNaN(lower[i])) uptrendSeries.addOrUpdate(time, lower[i]);
             } else if (trend[i] == -1) {
-                // Downtrend - show upper band
-                if (!Double.isNaN(upper[i])) {
-                    downtrendSeries.addOrUpdate(time, upper[i]);
-                }
+                if (!Double.isNaN(upper[i])) downtrendSeries.addOrUpdate(time, upper[i]);
             }
         }
 
@@ -85,7 +86,6 @@ public class SupertrendOverlay implements ChartOverlay {
         dataset.addSeries(uptrendSeries);
         dataset.addSeries(downtrendSeries);
 
-        // Create renderer with colors
         XYLineAndShapeRenderer renderer = new XYLineAndShapeRenderer(true, false);
         renderer.setSeriesPaint(0, UPTREND_COLOR);
         renderer.setSeriesPaint(1, DOWNTREND_COLOR);

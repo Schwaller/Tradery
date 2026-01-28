@@ -2,6 +2,7 @@ package com.tradery.forge.ui.charts;
 
 import com.tradery.charts.core.ChartDataProvider;
 import com.tradery.charts.core.IndicatorType;
+import com.tradery.charts.indicator.IndicatorPool;
 import com.tradery.core.indicators.IndicatorEngine;
 import com.tradery.core.model.Candle;
 
@@ -18,6 +19,7 @@ import java.util.List;
 public class ForgeDataProvider implements ChartDataProvider {
 
     private final IndicatorDataService indicatorDataService;
+    private final IndicatorPool indicatorPool = new IndicatorPool();
     private IndicatorEngine indicatorEngine;
     private String symbol = "";
     private String timeframe = "";
@@ -49,6 +51,9 @@ public class ForgeDataProvider implements ChartDataProvider {
 
         // Update the indicator data service context too
         indicatorDataService.setDataContext(candles, symbol, timeframe, startTime, endTime);
+
+        // Update indicator pool context
+        indicatorPool.setDataContext(candles, symbol, timeframe, startTime, endTime);
     }
 
     /**
@@ -68,6 +73,11 @@ public class ForgeDataProvider implements ChartDataProvider {
     @Override
     public IndicatorEngine getIndicatorEngine() {
         return indicatorEngine;
+    }
+
+    @Override
+    public IndicatorPool getIndicatorPool() {
+        return indicatorPool;
     }
 
     @Override

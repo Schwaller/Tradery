@@ -2,6 +2,7 @@ package com.tradery.desk.ui.charts;
 
 import com.tradery.charts.core.ChartDataProvider;
 import com.tradery.charts.core.IndicatorType;
+import com.tradery.charts.indicator.IndicatorPool;
 import com.tradery.core.indicators.IndicatorEngine;
 import com.tradery.core.model.Candle;
 
@@ -19,6 +20,7 @@ import java.util.List;
 public class DeskDataProvider implements ChartDataProvider {
 
     private List<Candle> candles = new ArrayList<>();
+    private final IndicatorPool indicatorPool = new IndicatorPool();
     private IndicatorEngine indicatorEngine;
     private String symbol = "";
     private String timeframe = "";
@@ -34,6 +36,8 @@ public class DeskDataProvider implements ChartDataProvider {
         if (!candles.isEmpty()) {
             this.indicatorEngine = new IndicatorEngine();
             this.indicatorEngine.setCandles(candles, timeframe);
+            indicatorPool.setDataContext(this.candles, symbol, timeframe,
+                    candles.get(0).timestamp(), candles.get(candles.size() - 1).timestamp());
         } else {
             this.indicatorEngine = null;
         }
@@ -61,6 +65,8 @@ public class DeskDataProvider implements ChartDataProvider {
         if (!candles.isEmpty()) {
             this.indicatorEngine = new IndicatorEngine();
             this.indicatorEngine.setCandles(candles, timeframe);
+            indicatorPool.setDataContext(candles, symbol, timeframe,
+                    candles.get(0).timestamp(), candles.get(candles.size() - 1).timestamp());
         } else {
             this.indicatorEngine = null;
         }
@@ -74,6 +80,11 @@ public class DeskDataProvider implements ChartDataProvider {
     @Override
     public IndicatorEngine getIndicatorEngine() {
         return indicatorEngine;
+    }
+
+    @Override
+    public IndicatorPool getIndicatorPool() {
+        return indicatorPool;
     }
 
     @Override

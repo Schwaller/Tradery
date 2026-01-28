@@ -1,6 +1,9 @@
 package com.tradery.charts.overlay;
 
 import com.tradery.charts.core.ChartDataProvider;
+import com.tradery.charts.indicator.IndicatorPool;
+import com.tradery.charts.indicator.IndicatorSubscription;
+import com.tradery.charts.indicator.impl.DonchianCompute;
 import com.tradery.charts.util.ChartStyles;
 import com.tradery.charts.util.RendererBuilder;
 import com.tradery.core.model.Candle;
@@ -15,27 +18,20 @@ import java.util.List;
 
 /**
  * Donchian Channel overlay.
- * Shows the highest high and lowest low over a lookback period:
- *   Upper = Highest high of last N bars
- *   Middle = (Upper + Lower) / 2
- *   Lower = Lowest low of last N bars
- *
- * Donchian Channels are used for trend following and breakout trading.
- * A close above the upper channel is a buy signal; below lower is a sell.
- *
- * Uses IndicatorEngine.getHighOf() and getLowOf() for data.
+ * Subscribes to DonchianCompute for async background computation.
  */
 public class DonchianChannelOverlay implements ChartOverlay {
 
-    private static final Color UPPER_COLOR = new Color(0, 150, 136);          // Teal
-    private static final Color MIDDLE_COLOR = new Color(0, 150, 136, 128);    // Teal semi-transparent
-    private static final Color LOWER_COLOR = new Color(0, 150, 136);          // Teal
+    private static final Color UPPER_COLOR = new Color(0, 150, 136);
+    private static final Color MIDDLE_COLOR = new Color(0, 150, 136, 128);
+    private static final Color LOWER_COLOR = new Color(0, 150, 136);
 
     private final int period;
     private final boolean showMiddle;
+    private IndicatorSubscription<DonchianCompute.Result> subscription;
 
     public DonchianChannelOverlay() {
-        this(20, true);  // Default: 20-bar Donchian with middle line
+        this(20, true);
     }
 
     public DonchianChannelOverlay(int period) {
@@ -49,15 +45,30 @@ public class DonchianChannelOverlay implements ChartOverlay {
 
     @Override
     public void apply(XYPlot plot, ChartDataProvider provider, int datasetIndex) {
-        List<Candle> candles = provider.getCandles();
-        if (candles.isEmpty()) return;
+        if (!provider.hasCandles()) return;
 
-        // Get high and low from IndicatorEngine
-        double[] highOf = provider.getIndicatorEngine().getHighOf(period);
-        double[] lowOf = provider.getIndicatorEngine().getLowOf(period);
-        if (highOf == null || lowOf == null || highOf.length == 0 || lowOf.length == 0) return;
+        IndicatorPool pool = provider.getIndicatorPool();
+        if (pool != null) {
+            if (subscription != null) subscription.close();
+            subscription = pool.subscribe(new DonchianCompute(period));
+            subscription.onReady(result -> {
+                if (result == null) return;
+                List<Candle> candles = provider.getCandles();
+                if (candles == null || candles.isEmpty()) return;
+                renderChannel(plot, datasetIndex, candles, result.highOf(), result.lowOf());
+                plot.getChart().fireChartChanged();
+            });
+        } else {
+            List<Candle> candles = provider.getCandles();
+            double[] highOf = provider.getIndicatorEngine().getHighOf(period);
+            double[] lowOf = provider.getIndicatorEngine().getLowOf(period);
+            if (highOf == null || lowOf == null || highOf.length == 0 || lowOf.length == 0) return;
+            renderChannel(plot, datasetIndex, candles, highOf, lowOf);
+        }
+    }
 
-        // Build channel series
+    private void renderChannel(XYPlot plot, int datasetIndex, List<Candle> candles,
+                                double[] highOf, double[] lowOf) {
         TimeSeries upperSeries = new TimeSeries("DC Upper");
         TimeSeries middleSeries = new TimeSeries("DC Middle");
         TimeSeries lowerSeries = new TimeSeries("DC Lower");
@@ -76,27 +87,17 @@ public class DonchianChannelOverlay implements ChartOverlay {
             }
         }
 
-        // Add upper band
-        TimeSeriesCollection upperDataset = new TimeSeriesCollection();
-        upperDataset.addSeries(upperSeries);
-        plot.setDataset(datasetIndex, upperDataset);
+        plot.setDataset(datasetIndex, new TimeSeriesCollection(upperSeries));
         plot.setRenderer(datasetIndex, RendererBuilder.lineRenderer(UPPER_COLOR, ChartStyles.MEDIUM_STROKE));
 
         int currentIndex = datasetIndex + 1;
-
-        // Add middle line if enabled
         if (showMiddle) {
-            TimeSeriesCollection middleDataset = new TimeSeriesCollection();
-            middleDataset.addSeries(middleSeries);
-            plot.setDataset(currentIndex, middleDataset);
+            plot.setDataset(currentIndex, new TimeSeriesCollection(middleSeries));
             plot.setRenderer(currentIndex, RendererBuilder.lineRenderer(MIDDLE_COLOR, ChartStyles.DASHED_STROKE));
             currentIndex++;
         }
 
-        // Add lower band
-        TimeSeriesCollection lowerDataset = new TimeSeriesCollection();
-        lowerDataset.addSeries(lowerSeries);
-        plot.setDataset(currentIndex, lowerDataset);
+        plot.setDataset(currentIndex, new TimeSeriesCollection(lowerSeries));
         plot.setRenderer(currentIndex, RendererBuilder.lineRenderer(LOWER_COLOR, ChartStyles.MEDIUM_STROKE));
     }
 

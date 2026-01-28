@@ -1,6 +1,9 @@
 package com.tradery.charts.overlay;
 
 import com.tradery.charts.core.ChartDataProvider;
+import com.tradery.charts.indicator.IndicatorPool;
+import com.tradery.charts.indicator.IndicatorSubscription;
+import com.tradery.charts.indicator.impl.AtrBandsCompute;
 import com.tradery.charts.util.ChartStyles;
 import com.tradery.charts.util.RendererBuilder;
 import com.tradery.core.model.Candle;
@@ -15,23 +18,19 @@ import java.util.List;
 
 /**
  * ATR Bands overlay.
- * Shows upper and lower bands calculated as:
- *   Upper = Close + (ATR * multiplier)
- *   Lower = Close - (ATR * multiplier)
- *
- * Useful for volatility-based stop placement and target setting.
- * Uses IndicatorEngine.getATR() for data.
+ * Subscribes to AtrBandsCompute for async background computation.
  */
 public class AtrBandsOverlay implements ChartOverlay {
 
-    private static final Color UPPER_BAND_COLOR = new Color(76, 175, 80, 150);   // Green semi-transparent
-    private static final Color LOWER_BAND_COLOR = new Color(244, 67, 54, 150);   // Red semi-transparent
+    private static final Color UPPER_BAND_COLOR = new Color(76, 175, 80, 150);
+    private static final Color LOWER_BAND_COLOR = new Color(244, 67, 54, 150);
 
     private final int period;
     private final double multiplier;
+    private IndicatorSubscription<AtrBandsCompute.Result> subscription;
 
     public AtrBandsOverlay() {
-        this(14, 2.0);  // Default: 14-period ATR with 2x multiplier
+        this(14, 2.0);
     }
 
     public AtrBandsOverlay(int period, double multiplier) {
@@ -41,35 +40,61 @@ public class AtrBandsOverlay implements ChartOverlay {
 
     @Override
     public void apply(XYPlot plot, ChartDataProvider provider, int datasetIndex) {
-        List<Candle> candles = provider.getCandles();
-        if (candles.isEmpty()) return;
+        if (!provider.hasCandles()) return;
 
-        // Get ATR from IndicatorEngine
-        double[] atr = provider.getIndicatorEngine().getATR(period);
-        if (atr == null || atr.length == 0) return;
+        IndicatorPool pool = provider.getIndicatorPool();
+        if (pool != null) {
+            if (subscription != null) subscription.close();
+            subscription = pool.subscribe(new AtrBandsCompute(period, multiplier));
+            subscription.onReady(result -> {
+                if (result == null) return;
+                List<Candle> candles = provider.getCandles();
+                if (candles == null || candles.isEmpty()) return;
+                renderBands(plot, datasetIndex, candles, result);
+                plot.getChart().fireChartChanged();
+            });
+        } else {
+            List<Candle> candles = provider.getCandles();
+            double[] atr = provider.getIndicatorEngine().getATR(period);
+            if (atr == null || atr.length == 0) return;
+            // Build inline result for sync fallback
+            int len = candles.size();
+            double[] upper = new double[len];
+            double[] lower = new double[len];
+            for (int i = 0; i < len && i < atr.length; i++) {
+                if (!Double.isNaN(atr[i])) {
+                    double close = candles.get(i).close();
+                    double offset = atr[i] * multiplier;
+                    upper[i] = close + offset;
+                    lower[i] = close - offset;
+                } else {
+                    upper[i] = Double.NaN;
+                    lower[i] = Double.NaN;
+                }
+            }
+            renderBands(plot, datasetIndex, candles, new AtrBandsCompute.Result(upper, lower, period));
+        }
+    }
 
-        // Build upper band series
+    private void renderBands(XYPlot plot, int datasetIndex, List<Candle> candles,
+                              AtrBandsCompute.Result result) {
         TimeSeries upperSeries = new TimeSeries("ATR Upper");
         TimeSeries lowerSeries = new TimeSeries("ATR Lower");
 
-        for (int i = period; i < candles.size() && i < atr.length; i++) {
-            Candle c = candles.get(i);
-            double atrVal = atr[i];
-            if (!Double.isNaN(atrVal)) {
-                double close = c.close();
-                double offset = atrVal * multiplier;
-                upperSeries.addOrUpdate(new Millisecond(new Date(c.timestamp())), close + offset);
-                lowerSeries.addOrUpdate(new Millisecond(new Date(c.timestamp())), close - offset);
+        for (int i = result.warmup(); i < candles.size() && i < result.upper().length; i++) {
+            if (!Double.isNaN(result.upper()[i])) {
+                Candle c = candles.get(i);
+                Millisecond time = new Millisecond(new Date(c.timestamp()));
+                upperSeries.addOrUpdate(time, result.upper()[i]);
+                lowerSeries.addOrUpdate(time, result.lower()[i]);
             }
         }
 
-        // Add upper band
         TimeSeriesCollection upperDataset = new TimeSeriesCollection();
         upperDataset.addSeries(upperSeries);
         plot.setDataset(datasetIndex, upperDataset);
         plot.setRenderer(datasetIndex, RendererBuilder.lineRenderer(UPPER_BAND_COLOR, ChartStyles.DASHED_STROKE));
 
-        // Add lower band
         TimeSeriesCollection lowerDataset = new TimeSeriesCollection();
         lowerDataset.addSeries(lowerSeries);
         plot.setDataset(datasetIndex + 1, lowerDataset);
@@ -83,6 +108,6 @@ public class AtrBandsOverlay implements ChartOverlay {
 
     @Override
     public int getDatasetCount() {
-        return 2;  // Upper and lower bands
+        return 2;
     }
 }

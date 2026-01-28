@@ -1,9 +1,11 @@
 package com.tradery.charts.overlay;
 
 import com.tradery.charts.core.ChartDataProvider;
+import com.tradery.charts.indicator.IndicatorPool;
+import com.tradery.charts.indicator.IndicatorSubscription;
+import com.tradery.charts.indicator.impl.BollingerCompute;
 import com.tradery.charts.util.ChartStyles;
 import com.tradery.charts.util.TimeSeriesBuilder;
-import com.tradery.core.indicators.IndicatorEngine;
 import com.tradery.core.indicators.Indicators;
 import com.tradery.core.model.Candle;
 import org.jfree.chart.plot.XYPlot;
@@ -16,7 +18,7 @@ import java.util.List;
 
 /**
  * Bollinger Bands overlay.
- * Uses IndicatorEngine.getBollingerBands() for calculation.
+ * Subscribes to BollingerCompute for async background computation.
  */
 public class BollingerOverlay implements ChartOverlay {
 
@@ -24,17 +26,12 @@ public class BollingerOverlay implements ChartOverlay {
     private final double stdDev;
     private final Color bandColor;
     private final Color middleColor;
+    private IndicatorSubscription<Indicators.BollingerResult> subscription;
 
-    /**
-     * Create a Bollinger Bands overlay with default colors.
-     */
     public BollingerOverlay(int period, double stdDev) {
         this(period, stdDev, ChartStyles.BB_COLOR, ChartStyles.BB_MIDDLE_COLOR);
     }
 
-    /**
-     * Create a Bollinger Bands overlay with custom colors.
-     */
     public BollingerOverlay(int period, double stdDev, Color bandColor, Color middleColor) {
         this.period = period;
         this.stdDev = stdDev;
@@ -46,20 +43,28 @@ public class BollingerOverlay implements ChartOverlay {
     public void apply(XYPlot plot, ChartDataProvider provider, int datasetIndex) {
         if (!provider.hasCandles()) return;
 
-        List<Candle> candles = provider.getCandles();
-        IndicatorEngine engine = provider.getIndicatorEngine();
+        IndicatorPool pool = provider.getIndicatorPool();
+        if (pool != null) {
+            if (subscription != null) subscription.close();
+            subscription = pool.subscribe(new BollingerCompute(period, stdDev));
+            subscription.onReady(bb -> {
+                if (bb == null) return;
+                List<Candle> candles = provider.getCandles();
+                if (candles == null || candles.isEmpty()) return;
+                renderBands(plot, datasetIndex, candles, bb.upper(), bb.middle(), bb.lower());
+                plot.getChart().fireChartChanged();
+            });
+        } else {
+            List<Candle> candles = provider.getCandles();
+            Indicators.BollingerResult bb = provider.getIndicatorEngine().getBollingerBands(period, stdDev);
+            if (bb == null) return;
+            renderBands(plot, datasetIndex, candles, bb.upper(), bb.middle(), bb.lower());
+        }
+    }
 
-        // Get Bollinger Bands from IndicatorEngine - NOT inline calculation
-        Indicators.BollingerResult bb = engine.getBollingerBands(period, stdDev);
-        if (bb == null) return;
-
-        double[] upper = bb.upper();
-        double[] middle = bb.middle();
-        double[] lower = bb.lower();
-
-        // Build time series for each band
+    private void renderBands(XYPlot plot, int datasetIndex, List<Candle> candles,
+                              double[] upper, double[] middle, double[] lower) {
         int startIdx = period - 1;
-
         TimeSeries upperSeries = TimeSeriesBuilder.createTimeSeries("Upper", candles, upper, startIdx);
         TimeSeries middleSeries = TimeSeriesBuilder.createTimeSeries("Middle", candles, middle, startIdx);
         TimeSeries lowerSeries = TimeSeriesBuilder.createTimeSeries("Lower", candles, lower, startIdx);
@@ -69,11 +74,10 @@ public class BollingerOverlay implements ChartOverlay {
         dataset.addSeries(middleSeries);
         dataset.addSeries(lowerSeries);
 
-        // Create renderer with different colors for bands and middle
         XYLineAndShapeRenderer renderer = new XYLineAndShapeRenderer(true, false);
-        renderer.setSeriesPaint(0, bandColor);       // Upper
-        renderer.setSeriesPaint(1, middleColor);     // Middle
-        renderer.setSeriesPaint(2, bandColor);       // Lower
+        renderer.setSeriesPaint(0, bandColor);
+        renderer.setSeriesPaint(1, middleColor);
+        renderer.setSeriesPaint(2, bandColor);
         renderer.setSeriesStroke(0, ChartStyles.THIN_STROKE);
         renderer.setSeriesStroke(1, ChartStyles.DASHED_STROKE);
         renderer.setSeriesStroke(2, ChartStyles.THIN_STROKE);
@@ -89,7 +93,7 @@ public class BollingerOverlay implements ChartOverlay {
 
     @Override
     public int getDatasetCount() {
-        return 1;  // Single dataset with 3 series
+        return 1;
     }
 
     public int getPeriod() {

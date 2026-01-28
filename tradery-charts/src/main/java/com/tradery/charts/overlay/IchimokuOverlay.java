@@ -1,14 +1,15 @@
 package com.tradery.charts.overlay;
 
 import com.tradery.charts.core.ChartDataProvider;
+import com.tradery.charts.indicator.IndicatorPool;
+import com.tradery.charts.indicator.IndicatorSubscription;
+import com.tradery.charts.indicator.impl.IchimokuCompute;
 import com.tradery.charts.util.ChartStyles;
 import com.tradery.charts.util.TimeSeriesBuilder;
-import com.tradery.core.indicators.IndicatorEngine;
 import com.tradery.core.indicators.Indicators;
 import com.tradery.core.model.Candle;
 import org.jfree.chart.plot.XYPlot;
 import org.jfree.chart.renderer.xy.XYLineAndShapeRenderer;
-import org.jfree.data.time.TimeSeries;
 import org.jfree.data.time.TimeSeriesCollection;
 
 import java.awt.Color;
@@ -16,39 +17,31 @@ import java.util.List;
 
 /**
  * Ichimoku Cloud overlay.
- * Uses IndicatorEngine.getIchimoku() for calculation.
- * Displays: Tenkan-sen, Kijun-sen, Senkou Span A, Senkou Span B, Chikou Span.
+ * Subscribes to IchimokuCompute for async background computation.
  */
 public class IchimokuOverlay implements ChartOverlay {
 
-    // Default Ichimoku parameters
     private static final int DEFAULT_CONVERSION = 9;
     private static final int DEFAULT_BASE = 26;
     private static final int DEFAULT_SPAN_B = 52;
     private static final int DEFAULT_DISPLACEMENT = 26;
 
-    // Ichimoku colors
-    private static final Color TENKAN_COLOR = new Color(0, 150, 255);      // Blue - Conversion Line
-    private static final Color KIJUN_COLOR = new Color(255, 0, 100);       // Red - Base Line
-    private static final Color SENKOU_A_COLOR = new Color(0, 200, 100, 150);  // Green - Leading Span A
-    private static final Color SENKOU_B_COLOR = new Color(255, 100, 100, 150); // Red - Leading Span B
-    private static final Color CHIKOU_COLOR = new Color(150, 150, 150);    // Gray - Lagging Span
+    private static final Color TENKAN_COLOR = new Color(0, 150, 255);
+    private static final Color KIJUN_COLOR = new Color(255, 0, 100);
+    private static final Color SENKOU_A_COLOR = new Color(0, 200, 100, 150);
+    private static final Color SENKOU_B_COLOR = new Color(255, 100, 100, 150);
+    private static final Color CHIKOU_COLOR = new Color(150, 150, 150);
 
     private final int conversionPeriod;
     private final int basePeriod;
     private final int spanBPeriod;
     private final int displacement;
+    private IndicatorSubscription<Indicators.IchimokuResult> subscription;
 
-    /**
-     * Create an Ichimoku overlay with default parameters (9, 26, 52, 26).
-     */
     public IchimokuOverlay() {
         this(DEFAULT_CONVERSION, DEFAULT_BASE, DEFAULT_SPAN_B, DEFAULT_DISPLACEMENT);
     }
 
-    /**
-     * Create an Ichimoku overlay with custom parameters.
-     */
     public IchimokuOverlay(int conversionPeriod, int basePeriod, int spanBPeriod, int displacement) {
         this.conversionPeriod = conversionPeriod;
         this.basePeriod = basePeriod;
@@ -60,64 +53,46 @@ public class IchimokuOverlay implements ChartOverlay {
     public void apply(XYPlot plot, ChartDataProvider provider, int datasetIndex) {
         if (!provider.hasCandles()) return;
 
-        List<Candle> candles = provider.getCandles();
-        IndicatorEngine engine = provider.getIndicatorEngine();
+        IndicatorPool pool = provider.getIndicatorPool();
+        if (pool != null) {
+            if (subscription != null) subscription.close();
+            subscription = pool.subscribe(new IchimokuCompute(conversionPeriod, basePeriod, spanBPeriod, displacement));
+            subscription.onReady(ichi -> {
+                if (ichi == null) return;
+                List<Candle> candles = provider.getCandles();
+                if (candles == null || candles.isEmpty()) return;
+                renderIchimoku(plot, datasetIndex, candles, ichi);
+                plot.getChart().fireChartChanged();
+            });
+        } else {
+            List<Candle> candles = provider.getCandles();
+            Indicators.IchimokuResult ichi = provider.getIndicatorEngine()
+                    .getIchimoku(conversionPeriod, basePeriod, spanBPeriod, displacement);
+            if (ichi == null) return;
+            renderIchimoku(plot, datasetIndex, candles, ichi);
+        }
+    }
 
-        // Get Ichimoku from IndicatorEngine
-        Indicators.IchimokuResult ichi = engine.getIchimoku(conversionPeriod, basePeriod, spanBPeriod, displacement);
-        if (ichi == null) return;
-
-        double[] tenkan = ichi.tenkanSen();
-        double[] kijun = ichi.kijunSen();
-        double[] senkouA = ichi.senkouSpanA();
-        double[] senkouB = ichi.senkouSpanB();
-        double[] chikou = ichi.chikouSpan();
-
-        // Warmup period is max of all periods
+    private void renderIchimoku(XYPlot plot, int datasetIndex, List<Candle> candles,
+                                 Indicators.IchimokuResult ichi) {
         int warmup = Math.max(Math.max(conversionPeriod, basePeriod), spanBPeriod) - 1;
-
-        // Build time series for each line
         TimeSeriesCollection dataset = new TimeSeriesCollection();
 
-        if (tenkan != null) {
-            dataset.addSeries(TimeSeriesBuilder.createTimeSeries("Tenkan", candles, tenkan, warmup));
-        }
-        if (kijun != null) {
-            dataset.addSeries(TimeSeriesBuilder.createTimeSeries("Kijun", candles, kijun, warmup));
-        }
-        if (senkouA != null) {
-            dataset.addSeries(TimeSeriesBuilder.createTimeSeries("Senkou A", candles, senkouA, warmup));
-        }
-        if (senkouB != null) {
-            dataset.addSeries(TimeSeriesBuilder.createTimeSeries("Senkou B", candles, senkouB, warmup));
-        }
-        if (chikou != null) {
-            dataset.addSeries(TimeSeriesBuilder.createTimeSeries("Chikou", candles, chikou, 0));
-        }
+        double[][] arrays = { ichi.tenkanSen(), ichi.kijunSen(), ichi.senkouSpanA(), ichi.senkouSpanB(), ichi.chikouSpan() };
+        String[] names = { "Tenkan", "Kijun", "Senkou A", "Senkou B", "Chikou" };
+        Color[] colors = { TENKAN_COLOR, KIJUN_COLOR, SENKOU_A_COLOR, SENKOU_B_COLOR, CHIKOU_COLOR };
 
-        // Create renderer with colors for each line
-        XYLineAndShapeRenderer renderer = new XYLineAndShapeRenderer(true, false);
         int seriesIdx = 0;
+        XYLineAndShapeRenderer renderer = new XYLineAndShapeRenderer(true, false);
 
-        if (tenkan != null) {
-            renderer.setSeriesPaint(seriesIdx, TENKAN_COLOR);
-            renderer.setSeriesStroke(seriesIdx++, ChartStyles.THIN_STROKE);
-        }
-        if (kijun != null) {
-            renderer.setSeriesPaint(seriesIdx, KIJUN_COLOR);
-            renderer.setSeriesStroke(seriesIdx++, ChartStyles.THIN_STROKE);
-        }
-        if (senkouA != null) {
-            renderer.setSeriesPaint(seriesIdx, SENKOU_A_COLOR);
-            renderer.setSeriesStroke(seriesIdx++, ChartStyles.THIN_STROKE);
-        }
-        if (senkouB != null) {
-            renderer.setSeriesPaint(seriesIdx, SENKOU_B_COLOR);
-            renderer.setSeriesStroke(seriesIdx++, ChartStyles.THIN_STROKE);
-        }
-        if (chikou != null) {
-            renderer.setSeriesPaint(seriesIdx, CHIKOU_COLOR);
-            renderer.setSeriesStroke(seriesIdx, ChartStyles.DASHED_STROKE);
+        for (int s = 0; s < arrays.length; s++) {
+            if (arrays[s] != null) {
+                int startIdx = s == 4 ? 0 : warmup; // chikou starts at 0
+                dataset.addSeries(TimeSeriesBuilder.createTimeSeries(names[s], candles, arrays[s], startIdx));
+                renderer.setSeriesPaint(seriesIdx, colors[s]);
+                renderer.setSeriesStroke(seriesIdx, s == 4 ? ChartStyles.DASHED_STROKE : ChartStyles.THIN_STROKE);
+                seriesIdx++;
+            }
         }
 
         plot.setDataset(datasetIndex, dataset);
@@ -131,22 +106,11 @@ public class IchimokuOverlay implements ChartOverlay {
 
     @Override
     public int getDatasetCount() {
-        return 1;  // Single dataset with 5 series
+        return 1;
     }
 
-    public int getConversionPeriod() {
-        return conversionPeriod;
-    }
-
-    public int getBasePeriod() {
-        return basePeriod;
-    }
-
-    public int getSpanBPeriod() {
-        return spanBPeriod;
-    }
-
-    public int getDisplacement() {
-        return displacement;
-    }
+    public int getConversionPeriod() { return conversionPeriod; }
+    public int getBasePeriod() { return basePeriod; }
+    public int getSpanBPeriod() { return spanBPeriod; }
+    public int getDisplacement() { return displacement; }
 }
