@@ -515,12 +515,13 @@ public class DailyVolumeProfileAnnotation extends AbstractXYAnnotation {
      * @return Color for the bar
      */
     private Color getVolumeColor(double normalizedVolume) {
-        // Blue for lower volume, Orange for higher volume
-        // Alpha 100 (~40%) so candles/price line show through
-        if (normalizedVolume > 0.6) {
-            return new Color(255, 140, 50, 100);  // Orange
-        } else {
-            return new Color(70, 130, 220, 100);  // Blue
-        }
+        // Smooth gradient: blue (low volume) → orange (high volume)
+        // Alpha scales with volume so low-volume bars are more transparent
+        double t = Math.max(0, Math.min(1, normalizedVolume));
+        int r = (int) (70 + t * (255 - 70));   // 70 → 255
+        int g = (int) (130 + t * (140 - 130));  // 130 → 140
+        int b = (int) (220 + t * (50 - 220));   // 220 → 50
+        int alpha = (int) (60 + t * 60);         // 60 → 120
+        return new Color(r, g, b, alpha);
     }
 }

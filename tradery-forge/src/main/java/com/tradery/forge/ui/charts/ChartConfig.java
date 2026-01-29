@@ -127,6 +127,7 @@ public class ChartConfig {
     private boolean dailyVolumeProfileEnabled = false;
     private int dailyVolumeProfileBins = 96;
     private int dailyVolumeProfileWidth = 60;
+    private String dailyVolumeProfileColorMode = "VOLUME_INTENSITY";
 
     // Footprint Heatmap overlay
     private com.tradery.forge.ui.charts.footprint.FootprintHeatmapConfig footprintHeatmapConfig = new com.tradery.forge.ui.charts.footprint.FootprintHeatmapConfig();
@@ -447,6 +448,8 @@ public class ChartConfig {
     public void setDailyVolumeProfileBins(int bins) { this.dailyVolumeProfileBins = bins; save(); }
     public int getDailyVolumeProfileWidth() { return dailyVolumeProfileWidth; }
     public void setDailyVolumeProfileWidth(int width) { this.dailyVolumeProfileWidth = width; save(); }
+    public String getDailyVolumeProfileColorMode() { return dailyVolumeProfileColorMode; }
+    public void setDailyVolumeProfileColorMode(String mode) { this.dailyVolumeProfileColorMode = mode; save(); }
 
     // ===== Footprint Heatmap Overlay Getters/Setters =====
 

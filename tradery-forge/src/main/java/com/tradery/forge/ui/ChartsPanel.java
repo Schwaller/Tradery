@@ -2007,7 +2007,10 @@ public class ChartsPanel extends JPanel {
         capitalUsageChart.getXYPlot().setDataset(new TimeSeriesCollection());
         tradePLChart.getXYPlot().setDataset(new TimeSeriesCollection());
         volumeChart.getXYPlot().setDataset(new XYSeriesCollection());
-        overlayManager.clearAll();
+        // Don't call overlayManager.clearAll() here — applySavedOverlays()
+        // handles clearing and re-applying each overlay type.
+        // Calling clearAll() destroys data-backed pages (aggTrades) that
+        // will be immediately re-requested, causing expensive re-fetches.
     }
 
     // ===== Chart Refresh Methods (for async VIEW data loading) =====

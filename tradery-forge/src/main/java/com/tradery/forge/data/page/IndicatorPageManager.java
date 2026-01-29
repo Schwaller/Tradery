@@ -51,6 +51,11 @@ public class IndicatorPageManager {
     private final Map<String, Integer> anonymousRefs = new ConcurrentHashMap<>();
     private final Map<IndicatorPageListener<?>, String> consumerNames = new ConcurrentHashMap<>();
 
+    // Deferred cleanup
+    private static final long CLEANUP_DELAY_MS = 5000;
+    private final Map<String, ScheduledFuture<?>> pendingCleanups = new ConcurrentHashMap<>();
+    private final ScheduledExecutorService cleanupScheduler;
+
     // Background computation
     private final ExecutorService computeExecutor;
     private final ExecutorService aggTradesExecutor;  // Dedicated for aggTrades-based indicators
@@ -84,6 +89,12 @@ public class IndicatorPageManager {
             t.setDaemon(true);
             return t;
         });
+
+        this.cleanupScheduler = Executors.newSingleThreadScheduledExecutor(r -> {
+            Thread t = new Thread(r, "IndicatorPageCleanup");
+            t.setDaemon(true);
+            return t;
+        });
     }
 
     /**
@@ -107,6 +118,13 @@ public class IndicatorPageManager {
                                          String consumerName) {
 
         String key = makeKey(type, params, symbol, timeframe, startTime, endTime);
+
+        // Cancel any pending deferred cleanup for this key
+        ScheduledFuture<?> pendingCleanup = pendingCleanups.remove(key);
+        if (pendingCleanup != null) {
+            pendingCleanup.cancel(false);
+            log.debug("Cancelled deferred cleanup for indicator page: {}", key);
+        }
 
         // Get or create page
         IndicatorPage<T> page = (IndicatorPage<T>) pages.computeIfAbsent(key, k ->
@@ -183,19 +201,45 @@ public class IndicatorPageManager {
             });
         }
 
-        // Cleanup if no listeners AND no anonymous refs remain
+        // Check if page has no consumers remaining
         Set<IndicatorPageListener<?>> remaining = listeners.get(key);
         boolean hasListeners = remaining != null && !remaining.isEmpty();
         boolean hasAnonymous = anonymousRefs.containsKey(key);
 
         if (!hasListeners && !hasAnonymous) {
-            pages.remove(key);
-            listeners.remove(key);
+            // Defer cleanup to allow release-then-re-request patterns
+            if (!pendingCleanups.containsKey(key)) {
+                ScheduledFuture<?> future = cleanupScheduler.schedule(
+                    () -> cleanupIndicatorPage(key), CLEANUP_DELAY_MS, TimeUnit.MILLISECONDS);
+                pendingCleanups.put(key, future);
+                log.debug("Scheduled deferred cleanup for indicator page: {}", key);
+            }
+        }
+    }
 
+    /**
+     * Deferred cleanup: destroy indicator page if still unused after grace period.
+     */
+    private void cleanupIndicatorPage(String key) {
+        pendingCleanups.remove(key);
+
+        // Re-check: a new consumer may have arrived during the grace period
+        Set<IndicatorPageListener<?>> remaining = listeners.get(key);
+        boolean hasListeners = remaining != null && !remaining.isEmpty();
+        boolean hasAnonymous = anonymousRefs.containsKey(key);
+
+        if (hasListeners || hasAnonymous) {
+            log.debug("Deferred indicator cleanup cancelled (new consumer arrived): {}", key);
+            return;
+        }
+
+        IndicatorPage<?> page = pages.remove(key);
+        listeners.remove(key);
+
+        if (page != null) {
             // IndicatorPage releases its own source data pages (star architecture)
             page.releaseSourcePages(candlePageMgr, aggTradesPageMgr);
-
-            log.debug("Released indicator page: {}", key);
+            log.debug("Deferred indicator cleanup completed: {}", key);
         }
     }
 
@@ -598,6 +642,8 @@ public class IndicatorPageManager {
      */
     public void shutdown() {
         log.info("Shutting down IndicatorPageManager...");
+        cleanupScheduler.shutdownNow();
+        pendingCleanups.clear();
         computeExecutor.shutdown();
         aggTradesExecutor.shutdown();
         try {

@@ -40,6 +40,12 @@ public abstract class DataPageManager<T> {
     // Anonymous reference counting (for null-listener requests only)
     protected final Map<String, Integer> anonymousRefs = new ConcurrentHashMap<>();
 
+    // Deferred cleanup: schedule page destruction after a grace period
+    // so release-then-re-request patterns don't thrash expensive pages
+    private static final long CLEANUP_DELAY_MS = 5000;
+    private final Map<String, ScheduledFuture<?>> pendingCleanups = new ConcurrentHashMap<>();
+    private final ScheduledExecutorService cleanupScheduler;
+
     // Background executor for data loading
     protected final ExecutorService loadExecutor;
 
@@ -60,6 +66,11 @@ public abstract class DataPageManager<T> {
         this.dataType = dataType;
         this.loadExecutor = Executors.newFixedThreadPool(threadPoolSize, r -> {
             Thread t = new Thread(r, dataType.getDisplayName() + "PageManager");
+            t.setDaemon(true);
+            return t;
+        });
+        this.cleanupScheduler = Executors.newSingleThreadScheduledExecutor(r -> {
+            Thread t = new Thread(r, dataType.getDisplayName() + "PageCleanup");
             t.setDaemon(true);
             return t;
         });
@@ -86,6 +97,13 @@ public abstract class DataPageManager<T> {
                                     String consumerName) {
 
         String key = makeKey(symbol, timeframe, startTime, endTime);
+
+        // Cancel any pending deferred cleanup for this key
+        ScheduledFuture<?> pendingCleanup = pendingCleanups.remove(key);
+        if (pendingCleanup != null) {
+            pendingCleanup.cancel(false);
+            log.debug("Cancelled deferred cleanup for page: {}", key);
+        }
 
         // Get or create page (deduplication)
         DataPage<T> page = pages.computeIfAbsent(key, k ->
@@ -145,24 +163,51 @@ public abstract class DataPageManager<T> {
             });
         }
 
-        // Cleanup if no listeners AND no anonymous refs remain
+        // Check if page has no consumers remaining
         Set<DataPageListener<T>> remaining = listeners.get(key);
         boolean hasListeners = remaining != null && !remaining.isEmpty();
         boolean hasAnonymous = anonymousRefs.containsKey(key);
 
         if (!hasListeners && !hasAnonymous) {
-            DataPage<T> page = pages.remove(key);
-            listeners.remove(key);
-            if (page != null) {
-                onPageReleased(page);
-                DownloadLogStore.getInstance().logPageReleased(key, dataType);
+            // Defer cleanup to allow release-then-re-request patterns
+            // (e.g., overlay teardown/rebuild cycles) without thrashing
+            if (!pendingCleanups.containsKey(key)) {
+                ScheduledFuture<?> future = cleanupScheduler.schedule(
+                    () -> cleanupPage(key), CLEANUP_DELAY_MS, TimeUnit.MILLISECONDS);
+                pendingCleanups.put(key, future);
+                log.debug("Scheduled deferred cleanup for page: {} ({}ms)", key, CLEANUP_DELAY_MS);
             }
-            log.debug("Released and cleaned up page: {}", key);
         } else {
             int listenerCount = remaining != null ? remaining.size() : 0;
             int anonCount = anonymousRefs.getOrDefault(key, 0);
             log.debug("Released page: {} (listeners: {}, anonymous: {})", key, listenerCount, anonCount);
         }
+    }
+
+    /**
+     * Deferred cleanup: actually destroy the page if still unused.
+     * Re-checks consumers since a new request may have arrived during the grace period.
+     */
+    private void cleanupPage(String key) {
+        pendingCleanups.remove(key);
+
+        // Re-check: a new consumer may have arrived during the grace period
+        Set<DataPageListener<T>> remaining = listeners.get(key);
+        boolean hasListeners = remaining != null && !remaining.isEmpty();
+        boolean hasAnonymous = anonymousRefs.containsKey(key);
+
+        if (hasListeners || hasAnonymous) {
+            log.debug("Deferred cleanup cancelled (new consumer arrived): {}", key);
+            return;
+        }
+
+        DataPage<T> page = pages.remove(key);
+        listeners.remove(key);
+        if (page != null) {
+            onPageReleased(page);
+            DownloadLogStore.getInstance().logPageReleased(key, dataType);
+        }
+        log.debug("Deferred cleanup completed: {}", key);
     }
 
     /**
@@ -480,6 +525,8 @@ public abstract class DataPageManager<T> {
      */
     public void shutdown() {
         log.info("Shutting down {}...", getClass().getSimpleName());
+        cleanupScheduler.shutdownNow();
+        pendingCleanups.clear();
         loadExecutor.shutdown();
         try {
             if (!loadExecutor.awaitTermination(2, TimeUnit.SECONDS)) {
