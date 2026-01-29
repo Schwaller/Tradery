@@ -106,4 +106,12 @@ public class MayerMultipleOverlay implements ChartOverlay {
     public String getDisplayName() {
         return String.format("Mayer Multiple (%d)", period);
     }
+
+    @Override
+    public void close() {
+        if (subscription != null) {
+            subscription.close();
+            subscription = null;
+        }
+    }
 }

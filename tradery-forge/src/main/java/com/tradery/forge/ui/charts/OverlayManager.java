@@ -709,12 +709,15 @@ public class OverlayManager {
             return false;
         }
 
+        // Close the removed overlay's subscription
+        overlay.close();
+
         // Snapshot remaining overlays before clearing
         List<ChartOverlay> remaining = new ArrayList<>(appliedChartOverlays);
         remaining.remove(overlay);
 
-        // Clear all from plot
-        clearChartOverlays();
+        // Clear all from plot (without closing remaining overlays)
+        clearChartOverlayDatasets();
 
         // Re-apply remaining overlays
         for (ChartOverlay remainingOverlay : remaining) {
@@ -725,16 +728,32 @@ public class OverlayManager {
     }
 
     /**
-     * Clear all applied tradery-charts overlays.
+     * Clear all applied tradery-charts overlays and close their subscriptions.
      */
     public void clearChartOverlays() {
         if (appliedChartOverlays.isEmpty()) {
             return;
         }
 
+        // Close all subscriptions
+        for (ChartOverlay overlay : appliedChartOverlays) {
+            overlay.close();
+        }
+
+        clearChartOverlayDatasets();
+    }
+
+    /**
+     * Clear datasets/renderers from the plot without closing subscriptions.
+     * Used internally when re-applying remaining overlays after removal.
+     */
+    private void clearChartOverlayDatasets() {
+        if (appliedChartOverlays.isEmpty()) {
+            return;
+        }
+
         XYPlot plot = priceChart.getXYPlot();
 
-        // Clear all datasets used by chart overlays
         int datasetIndex = chartOverlayBaseIndex;
         for (ChartOverlay overlay : appliedChartOverlays) {
             int count = overlay.getDatasetCount();

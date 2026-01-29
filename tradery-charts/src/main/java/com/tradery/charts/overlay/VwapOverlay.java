@@ -66,4 +66,12 @@ public class VwapOverlay implements ChartOverlay {
     public String getDisplayName() {
         return "VWAP";
     }
+
+    @Override
+    public void close() {
+        if (subscription != null) {
+            subscription.close();
+            subscription = null;
+        }
+    }
 }

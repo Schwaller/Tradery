@@ -98,4 +98,12 @@ public class BollingerOverlay implements ChartOverlay {
     public double getStdDev() {
         return stdDev;
     }
+
+    @Override
+    public void close() {
+        if (subscription != null) {
+            subscription.close();
+            subscription = null;
+        }
+    }
 }

@@ -125,4 +125,12 @@ public class PocOverlay implements ChartOverlay {
     public int getDatasetCount() {
         return showValueArea ? 3 : 1;
     }
+
+    @Override
+    public void close() {
+        if (subscription != null) {
+            subscription.close();
+            subscription = null;
+        }
+    }
 }

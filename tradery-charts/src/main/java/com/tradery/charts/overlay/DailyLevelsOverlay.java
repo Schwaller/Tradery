@@ -125,4 +125,12 @@ public class DailyLevelsOverlay implements ChartOverlay {
         if (showToday) count += 3;
         return count;
     }
+
+    @Override
+    public void close() {
+        if (subscription != null) {
+            subscription.close();
+            subscription = null;
+        }
+    }
 }

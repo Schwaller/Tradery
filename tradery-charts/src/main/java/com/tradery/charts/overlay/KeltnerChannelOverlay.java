@@ -100,4 +100,12 @@ public class KeltnerChannelOverlay implements ChartOverlay {
     public int getDatasetCount() {
         return 3;
     }
+
+    @Override
+    public void close() {
+        if (subscription != null) {
+            subscription.close();
+            subscription = null;
+        }
+    }
 }

@@ -321,6 +321,27 @@ public class IndicatorPageManager {
                 }
                 yield FootprintIndicator.calculate(candles, aggTrades, timeframe, buckets, tickSize, exchangeFilter);
             }
+            case DAILY_VOLUME_PROFILE -> {
+                // Params format: numBins:valueAreaPct:maxDays
+                int numBins = 24;
+                double valueAreaPct = 70.0;
+                int maxDays = 30;
+                if (params != null && !params.isEmpty()) {
+                    String[] parts = params.split(":");
+                    if (parts.length >= 1) numBins = Integer.parseInt(parts[0]);
+                    if (parts.length >= 2) valueAreaPct = Double.parseDouble(parts[1]);
+                    if (parts.length >= 3) maxDays = Integer.parseInt(parts[2]);
+                }
+                if (aggTrades != null && !aggTrades.isEmpty()) {
+                    yield com.tradery.forge.ui.charts.DailyVolumeProfileAnnotation
+                        .calculateDayProfilesFromAggTrades(aggTrades, numBins, valueAreaPct, maxDays);
+                } else if (candles != null && !candles.isEmpty()) {
+                    yield com.tradery.forge.ui.charts.DailyVolumeProfileAnnotation
+                        .calculateDayProfiles(candles, numBins, valueAreaPct, maxDays);
+                } else {
+                    yield null;
+                }
+            }
             default -> throw new UnsupportedOperationException("Indicator not implemented: " + type);
         };
     }

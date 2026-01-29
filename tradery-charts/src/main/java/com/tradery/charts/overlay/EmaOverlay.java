@@ -62,4 +62,12 @@ public class EmaOverlay implements ChartOverlay {
     public int getPeriod() {
         return period;
     }
+
+    @Override
+    public void close() {
+        if (subscription != null) {
+            subscription.close();
+            subscription = null;
+        }
+    }
 }

@@ -90,4 +90,12 @@ public class AtrBandsOverlay implements ChartOverlay {
     public int getDatasetCount() {
         return 2;
     }
+
+    @Override
+    public void close() {
+        if (subscription != null) {
+            subscription.close();
+            subscription = null;
+        }
+    }
 }

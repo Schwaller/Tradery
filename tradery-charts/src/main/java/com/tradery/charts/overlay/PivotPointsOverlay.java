@@ -100,4 +100,12 @@ public class PivotPointsOverlay implements ChartOverlay {
     public int getDatasetCount() {
         return showR3S3 ? 7 : 5;
     }
+
+    @Override
+    public void close() {
+        if (subscription != null) {
+            subscription.close();
+            subscription = null;
+        }
+    }
 }

@@ -107,4 +107,12 @@ public class IchimokuOverlay implements ChartOverlay {
     public int getBasePeriod() { return basePeriod; }
     public int getSpanBPeriod() { return spanBPeriod; }
     public int getDisplacement() { return displacement; }
+
+    @Override
+    public void close() {
+        if (subscription != null) {
+            subscription.close();
+            subscription = null;
+        }
+    }
 }

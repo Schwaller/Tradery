@@ -103,4 +103,12 @@ public class SupertrendOverlay implements ChartOverlay {
     public double getMultiplier() {
         return multiplier;
     }
+
+    @Override
+    public void close() {
+        if (subscription != null) {
+            subscription.close();
+            subscription = null;
+        }
+    }
 }

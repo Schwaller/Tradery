@@ -104,4 +104,12 @@ public class DonchianChannelOverlay implements ChartOverlay {
     public int getDatasetCount() {
         return showMiddle ? 3 : 2;
     }
+
+    @Override
+    public void close() {
+        if (subscription != null) {
+            subscription.close();
+            subscription = null;
+        }
+    }
 }

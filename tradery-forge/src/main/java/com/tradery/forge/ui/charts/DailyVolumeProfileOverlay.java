@@ -159,6 +159,16 @@ public class DailyVolumeProfileOverlay {
         this.currentParams = params;
 
         log.debug("Requested daily volume profile: {} {} {}-{}", symbol, timeframe, startTime, endTime);
+
+        // If the page already has data (cached and READY), redraw immediately
+        // since onStateChanged won't fire for an already-READY page
+        if (profilePage.hasData()) {
+            log.info("DailyVolumeProfileOverlay: page already has data, drawing immediately");
+            redraw();
+            if (onDataReady != null) {
+                onDataReady.run();
+            }
+        }
     }
 
     /**

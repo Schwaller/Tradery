@@ -41,4 +41,11 @@ public interface ChartOverlay {
     default int getDatasetCount() {
         return 1;
     }
+
+    /**
+     * Close this overlay and release any resources (e.g. indicator subscriptions).
+     * Called when the overlay is removed from the chart.
+     * Default implementation does nothing.
+     */
+    default void close() {}
 }
