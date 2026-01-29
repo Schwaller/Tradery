@@ -1,5 +1,6 @@
 package com.tradery.forge.ui.charts;
 
+import com.tradery.charts.util.AdaptiveDateFormat;
 import com.tradery.forge.ui.theme.Theme;
 import com.tradery.forge.ui.theme.ThemeManager;
 import org.jfree.chart.JFreeChart;

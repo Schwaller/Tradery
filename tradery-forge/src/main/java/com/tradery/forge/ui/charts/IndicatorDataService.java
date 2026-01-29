@@ -347,21 +347,21 @@ public class IndicatorDataService {
     /**
      * Get MACD result (or null if not ready).
      */
-    public Indicators.MACDResult getMACD(int fast, int slow, int signal) {
+    public com.tradery.core.indicators.MACD.Result getMACD(int fast, int slow, int signal) {
         return getData(IndicatorType.MACD, fast + ":" + slow + ":" + signal);
     }
 
     /**
      * Get Bollinger Bands result (or null if not ready).
      */
-    public Indicators.BollingerResult getBBands(int period, double stdDev) {
+    public com.tradery.core.indicators.BollingerBands.Result getBBands(int period, double stdDev) {
         return getData(IndicatorType.BBANDS, period + ":" + stdDev);
     }
 
     /**
      * Get Stochastic result (or null if not ready).
      */
-    public Indicators.StochasticResult getStochastic(int kPeriod, int dPeriod) {
+    public com.tradery.core.indicators.Stochastic.Result getStochastic(int kPeriod, int dPeriod) {
         return getData(IndicatorType.STOCHASTIC, kPeriod + ":" + dPeriod);
     }
 

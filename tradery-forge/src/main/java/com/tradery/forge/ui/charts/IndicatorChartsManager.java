@@ -29,8 +29,8 @@ import java.awt.*;
 import java.util.*;
 import java.util.List;
 
-import static com.tradery.forge.ui.charts.ChartAnnotationHelper.*;
-import static com.tradery.forge.ui.charts.RendererBuilder.*;
+import static com.tradery.charts.util.ChartAnnotationHelper.*;
+import static com.tradery.charts.util.RendererBuilder.*;
 
 /**
  * Manages optional indicator charts (RSI, MACD, ATR, Orderflow, Funding).
@@ -381,7 +381,7 @@ public class IndicatorChartsManager {
         }
 
         // Get pre-computed MACD data from service
-        Indicators.MACDResult macdResult = indicatorDataService.getMACD(macdFast, macdSlow, macdSignal);
+        com.tradery.core.indicators.MACD.Result macdResult = indicatorDataService.getMACD(macdFast, macdSlow, macdSignal);
         if (macdResult == null) {
             return; // Data not ready yet, will be called again via callback
         }
@@ -1325,7 +1325,7 @@ public class IndicatorChartsManager {
         }
 
         // Get pre-computed Stochastic data from service
-        Indicators.StochasticResult result = indicatorDataService.getStochastic(stochasticKPeriod, stochasticDPeriod);
+        com.tradery.core.indicators.Stochastic.Result result = indicatorDataService.getStochastic(stochasticKPeriod, stochasticDPeriod);
         if (result == null) {
             return; // Data not ready yet, will be called again via callback
         }
