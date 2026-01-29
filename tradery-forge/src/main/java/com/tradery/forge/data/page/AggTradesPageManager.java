@@ -9,6 +9,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
@@ -34,10 +35,11 @@ public class AggTradesPageManager extends DataPageManager<AggTrade> {
     @Override
     public DataPageView<AggTrade> request(String symbol, String timeframe,
                                            long startTime, long endTime,
-                                           DataPageListener<AggTrade> listener) {
+                                           DataPageListener<AggTrade> listener,
+                                           String consumerName) {
         // Check memory before loading large data
         evictIfNeeded();
-        return super.request(symbol, timeframe, startTime, endTime, listener);
+        return super.request(symbol, timeframe, startTime, endTime, listener, consumerName);
     }
 
     @Override
@@ -156,9 +158,12 @@ public class AggTradesPageManager extends DataPageManager<AggTrade> {
         // Collect candidates first to avoid stream mutation during iteration
         List<String> evictionCandidates = new ArrayList<>();
         for (Map.Entry<String, DataPage<AggTrade>> entry : pages.entrySet()) {
-            Integer count = refCounts.get(entry.getKey());
-            if (count == null || count == 0) {
-                evictionCandidates.add(entry.getKey());
+            String k = entry.getKey();
+            Set<DataPageListener<AggTrade>> pageListeners = listeners.get(k);
+            boolean hasListeners = pageListeners != null && !pageListeners.isEmpty();
+            boolean hasAnonymous = anonymousRefs.containsKey(k);
+            if (!hasListeners && !hasAnonymous) {
+                evictionCandidates.add(k);
             }
         }
 
@@ -178,7 +183,7 @@ public class AggTradesPageManager extends DataPageManager<AggTrade> {
             if (page != null) {
                 currentRecordCount.addAndGet(-page.getRecordCount());
                 listeners.remove(key);
-                refCounts.remove(key);
+                anonymousRefs.remove(key);
                 log.debug("Evicted aggTrades page: {} ({} records)",
                     key, page.getRecordCount());
             }

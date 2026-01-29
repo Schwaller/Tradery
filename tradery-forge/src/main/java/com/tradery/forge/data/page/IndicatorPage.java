@@ -146,7 +146,8 @@ public class IndicatorPage<T> implements DataPageListener<Candle> {
 
                 sourceAggTradesPage = aggTradesPageMgr.request(
                     symbol, timeframe, startTime, endTime,
-                    aggTradesListener);
+                    aggTradesListener,
+                    "IndicatorPage:" + type.getName());
             }
             default -> {
                 log.warn("Indicator {} dependency {} not supported in page system",

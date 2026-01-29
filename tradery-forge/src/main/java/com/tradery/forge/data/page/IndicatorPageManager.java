@@ -48,7 +48,7 @@ public class IndicatorPageManager {
     // Active indicator pages
     private final Map<String, IndicatorPage<?>> pages = new ConcurrentHashMap<>();
     private final Map<String, Set<IndicatorPageListener<?>>> listeners = new ConcurrentHashMap<>();
-    private final Map<String, Integer> refCounts = new ConcurrentHashMap<>();
+    private final Map<String, Integer> anonymousRefs = new ConcurrentHashMap<>();
     private final Map<IndicatorPageListener<?>, String> consumerNames = new ConcurrentHashMap<>();
 
     // Background computation
@@ -88,16 +88,6 @@ public class IndicatorPageManager {
 
     /**
      * Request an indicator page. Returns immediately (never blocks).
-     */
-    public <T> IndicatorPage<T> request(IndicatorType type, String params,
-                                         String symbol, String timeframe,
-                                         long startTime, long endTime,
-                                         IndicatorPageListener<T> listener) {
-        return request(type, params, symbol, timeframe, startTime, endTime, listener, "Anonymous");
-    }
-
-    /**
-     * Request an indicator page with a named consumer. Returns immediately (never blocks).
      *
      * @param type         Indicator type (RSI, SMA, etc.)
      * @param params       Indicator parameters (e.g., "14" for RSI(14))
@@ -122,14 +112,13 @@ public class IndicatorPageManager {
         IndicatorPage<T> page = (IndicatorPage<T>) pages.computeIfAbsent(key, k ->
             new IndicatorPage<>(type, params, symbol, timeframe, startTime, endTime));
 
-        // Register listener with name
+        // Register listener with name, or track anonymous ref
         if (listener != null) {
             listeners.computeIfAbsent(key, k -> ConcurrentHashMap.newKeySet()).add(listener);
             consumerNames.put(listener, consumerName);
+        } else {
+            anonymousRefs.merge(key, 1, Integer::sum);
         }
-
-        // Increment ref count
-        refCounts.merge(key, 1, Integer::sum);
 
         // Request source data if this is a new page
         if (page.getState() == PageState.EMPTY) {
@@ -180,23 +169,26 @@ public class IndicatorPageManager {
 
         String key = page.getKey();
 
-        // Remove listener and its name
+        // Remove listener or decrement anonymous refs
         if (listener != null) {
             Set<IndicatorPageListener<?>> pageListeners = listeners.get(key);
             if (pageListeners != null) {
                 pageListeners.remove(listener);
             }
             consumerNames.remove(listener);
+        } else {
+            anonymousRefs.compute(key, (k, count) -> {
+                if (count == null || count <= 1) return null;
+                return count - 1;
+            });
         }
 
-        // Decrement ref count
-        Integer newCount = refCounts.compute(key, (k, count) -> {
-            if (count == null || count <= 1) return null;
-            return count - 1;
-        });
+        // Cleanup if no listeners AND no anonymous refs remain
+        Set<IndicatorPageListener<?>> remaining = listeners.get(key);
+        boolean hasListeners = remaining != null && !remaining.isEmpty();
+        boolean hasAnonymous = anonymousRefs.containsKey(key);
 
-        // Cleanup if no more references
-        if (newCount == null) {
+        if (!hasListeners && !hasAnonymous) {
             pages.remove(key);
             listeners.remove(key);
 
@@ -622,6 +614,6 @@ public class IndicatorPageManager {
         }
         pages.clear();
         listeners.clear();
-        refCounts.clear();
+        anonymousRefs.clear();
     }
 }

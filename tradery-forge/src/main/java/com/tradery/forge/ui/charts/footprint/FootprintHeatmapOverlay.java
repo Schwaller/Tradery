@@ -145,7 +145,7 @@ public class FootprintHeatmapOverlay {
             }
 
             // Request new aggTrades page
-            aggTradesPage = aggTradesMgr.request(symbol, timeframe, startTime, endTime, aggTradesListener);
+            aggTradesPage = aggTradesMgr.request(symbol, timeframe, startTime, endTime, aggTradesListener, "FootprintHeatmap");
             log.debug("Requested new aggTrades page for footprint: {} {} {}-{}", symbol, timeframe, startTime, endTime);
         } else if (aggTradesPage.isReady()) {
             // Same page, already ready - recompute with new candles

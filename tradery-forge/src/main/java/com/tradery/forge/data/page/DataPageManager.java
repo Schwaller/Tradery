@@ -37,8 +37,8 @@ public abstract class DataPageManager<T> {
     // Consumer names for each listener (for debugging/status display)
     protected final Map<DataPageListener<T>, String> consumerNames = new ConcurrentHashMap<>();
 
-    // Reference counting for cleanup
-    protected final Map<String, Integer> refCounts = new ConcurrentHashMap<>();
+    // Anonymous reference counting (for null-listener requests only)
+    protected final Map<String, Integer> anonymousRefs = new ConcurrentHashMap<>();
 
     // Background executor for data loading
     protected final ExecutorService loadExecutor;
@@ -72,22 +72,6 @@ public abstract class DataPageManager<T> {
      * the listener registered. Otherwise, a new page is created and loading
      * starts in the background.
      *
-     * @param symbol    Trading symbol (e.g., "BTCUSDT")
-     * @param timeframe Timeframe (required for some types, null for others)
-     * @param startTime Start time in milliseconds
-     * @param endTime   End time in milliseconds
-     * @param listener  Listener for state/data changes (can be null)
-     * @return Read-only view of the data page (may be EMPTY/LOADING initially)
-     */
-    public DataPageView<T> request(String symbol, String timeframe,
-                                    long startTime, long endTime,
-                                    DataPageListener<T> listener) {
-        return request(symbol, timeframe, startTime, endTime, listener, "Anonymous");
-    }
-
-    /**
-     * Request a data page with a named consumer. Returns immediately (NEVER blocks).
-     *
      * @param symbol       Trading symbol (e.g., "BTCUSDT")
      * @param timeframe    Timeframe (required for some types, null for others)
      * @param startTime    Start time in milliseconds
@@ -110,15 +94,14 @@ public abstract class DataPageManager<T> {
         log.info("DataPageManager.request: dataType={}, key={}, pageState={}",
             dataType, key, page.getState());
 
-        // Register listener with name
+        // Register listener with name, or track anonymous ref
         if (listener != null) {
             listeners.computeIfAbsent(key, k -> ConcurrentHashMap.newKeySet()).add(listener);
             consumerNames.put(listener, consumerName);
             DownloadLogStore.getInstance().logListenerAdded(key, dataType, consumerName);
+        } else {
+            anonymousRefs.merge(key, 1, Integer::sum);
         }
-
-        // Increment reference count
-        refCounts.merge(key, 1, Integer::sum);
 
         // If empty, start loading
         if (page.getState() == PageState.EMPTY) {
@@ -145,7 +128,7 @@ public abstract class DataPageManager<T> {
 
         String key = pageView.getKey();
 
-        // Remove listener and its name
+        // Remove listener or decrement anonymous refs
         if (listener != null) {
             Set<DataPageListener<T>> pageListeners = listeners.get(key);
             if (pageListeners != null) {
@@ -155,16 +138,19 @@ public abstract class DataPageManager<T> {
             if (consumerName != null) {
                 DownloadLogStore.getInstance().logListenerRemoved(key, dataType, consumerName);
             }
+        } else {
+            anonymousRefs.compute(key, (k, count) -> {
+                if (count == null || count <= 1) return null;
+                return count - 1;
+            });
         }
 
-        // Decrement ref count
-        Integer newCount = refCounts.compute(key, (k, count) -> {
-            if (count == null || count <= 1) return null;
-            return count - 1;
-        });
+        // Cleanup if no listeners AND no anonymous refs remain
+        Set<DataPageListener<T>> remaining = listeners.get(key);
+        boolean hasListeners = remaining != null && !remaining.isEmpty();
+        boolean hasAnonymous = anonymousRefs.containsKey(key);
 
-        // Cleanup if no more references
-        if (newCount == null) {
+        if (!hasListeners && !hasAnonymous) {
             DataPage<T> page = pages.remove(key);
             listeners.remove(key);
             if (page != null) {
@@ -173,7 +159,9 @@ public abstract class DataPageManager<T> {
             }
             log.debug("Released and cleaned up page: {}", key);
         } else {
-            log.debug("Released page: {} (refs remaining: {})", key, newCount);
+            int listenerCount = remaining != null ? remaining.size() : 0;
+            int anonCount = anonymousRefs.getOrDefault(key, 0);
+            log.debug("Released page: {} (listeners: {}, anonymous: {})", key, listenerCount, anonCount);
         }
     }
 
@@ -503,6 +491,6 @@ public abstract class DataPageManager<T> {
         }
         pages.clear();
         listeners.clear();
-        refCounts.clear();
+        anonymousRefs.clear();
     }
 }
