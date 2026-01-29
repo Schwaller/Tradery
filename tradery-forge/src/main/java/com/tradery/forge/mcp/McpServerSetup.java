@@ -9,7 +9,7 @@ import java.nio.file.*;
  */
 public class McpServerSetup {
 
-    private static final String MCP_VERSION = "1.2.0";
+    private static final String MCP_VERSION = "1.3.0";
     private static final Path MCP_DIR = Paths.get(System.getProperty("user.home"), ".tradery", "mcp-server");
     private static final Path VERSION_FILE = MCP_DIR.resolve(".version");
 

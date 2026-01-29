@@ -623,8 +623,13 @@ public class ApiServer {
                 pageNode.put("symbol", info.symbol());
                 pageNode.put("timeframe", info.timeframe());
                 pageNode.put("state", info.state().name());
+                pageNode.put("loadProgress", info.loadProgress());
                 pageNode.put("listeners", info.listenerCount());
                 pageNode.put("records", info.recordCount());
+                ArrayNode consumers = pageNode.putArray("consumers");
+                if (info.consumers() != null) {
+                    info.consumers().forEach(consumers::add);
+                }
                 totalPages++;
                 totalListeners += info.listenerCount();
             }
@@ -639,8 +644,13 @@ public class ApiServer {
                 pageNode.put("key", info.key());
                 pageNode.put("symbol", info.symbol());
                 pageNode.put("state", info.state().name());
+                pageNode.put("loadProgress", info.loadProgress());
                 pageNode.put("listeners", info.listenerCount());
                 pageNode.put("records", info.recordCount());
+                ArrayNode consumers = pageNode.putArray("consumers");
+                if (info.consumers() != null) {
+                    info.consumers().forEach(consumers::add);
+                }
                 totalPages++;
                 totalListeners += info.listenerCount();
             }
@@ -655,8 +665,13 @@ public class ApiServer {
                 pageNode.put("key", info.key());
                 pageNode.put("symbol", info.symbol());
                 pageNode.put("state", info.state().name());
+                pageNode.put("loadProgress", info.loadProgress());
                 pageNode.put("listeners", info.listenerCount());
                 pageNode.put("records", info.recordCount());
+                ArrayNode consumers = pageNode.putArray("consumers");
+                if (info.consumers() != null) {
+                    info.consumers().forEach(consumers::add);
+                }
                 totalPages++;
                 totalListeners += info.listenerCount();
             }
@@ -671,8 +686,13 @@ public class ApiServer {
                 pageNode.put("key", info.key());
                 pageNode.put("symbol", info.symbol());
                 pageNode.put("state", info.state().name());
+                pageNode.put("loadProgress", info.loadProgress());
                 pageNode.put("listeners", info.listenerCount());
                 pageNode.put("records", info.recordCount());
+                ArrayNode consumers = pageNode.putArray("consumers");
+                if (info.consumers() != null) {
+                    info.consumers().forEach(consumers::add);
+                }
                 totalPages++;
                 totalListeners += info.listenerCount();
             }
@@ -690,8 +710,13 @@ public class ApiServer {
                 pageNode.put("symbol", info.symbol());
                 pageNode.put("timeframe", info.timeframe());
                 pageNode.put("state", info.state().name());
+                pageNode.put("loadProgress", info.loadProgress());
                 pageNode.put("listeners", info.listenerCount());
                 pageNode.put("records", info.recordCount());
+                ArrayNode consumers = pageNode.putArray("consumers");
+                if (info.consumers() != null) {
+                    info.consumers().forEach(consumers::add);
+                }
                 totalPages++;
                 totalListeners += info.listenerCount();
             }
@@ -713,6 +738,10 @@ public class ApiServer {
                 pageNode.put("state", info.state().name());
                 pageNode.put("listeners", info.listenerCount());
                 pageNode.put("hasData", info.hasData());
+                if (info.consumers() != null && !info.consumers().isEmpty()) {
+                    ArrayNode consumers = pageNode.putArray("consumers");
+                    info.consumers().forEach(consumers::add);
+                }
                 totalPages++;
                 totalListeners += info.listenerCount();
             }

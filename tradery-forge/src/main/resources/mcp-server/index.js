@@ -636,6 +636,25 @@ Event types:
     },
   },
   {
+    name: "tradery_get_pages",
+    description: `Get all active data pages with their loading state, progress, listener count, and record counts.
+
+Returns pages grouped by type: candles, aggTrades, funding, openInterest, premium, indicators.
+Each page shows: key, symbol, timeframe, state (LOADING/READY/ERROR), loadProgress (0-100%), listeners, records, consumers.
+Also returns aggTradesRecordCount (total aggTrade records in memory) and a summary with totalPages/totalListeners.
+
+Use this to:
+- Monitor aggTrades loading progress
+- Check which data pages are active and their states
+- Debug data loading issues
+- See which consumers are using each page`,
+    inputSchema: {
+      type: "object",
+      properties: {},
+      required: [],
+    },
+  },
+  {
     name: "tradery_get_download_stats",
     description: `Get statistics about download activity including total events, recent activity, error counts, and average load times.
 
@@ -1258,6 +1277,10 @@ async function handleTool(name, args) {
         ? `/download-log?${queryParams.join('&')}`
         : '/download-log';
       return apiCall("GET", url);
+    }
+
+    case "tradery_get_pages": {
+      return apiCall("GET", "/pages");
     }
 
     case "tradery_get_download_stats": {

@@ -84,6 +84,7 @@ public class IndicatorSelectorPopup extends JDialog {
     private JCheckBox dailyVolumeProfileCheckbox;
     private JLabel dailyVolumeProfileBinsLabel;
     private JSpinner dailyVolumeProfileBinsSpinner;
+    private JComboBox<String> dailyVolumeProfileColorModeCombo;
 
     // Footprint Heatmap controls
     private JCheckBox footprintHeatmapCheckbox;
@@ -893,11 +894,19 @@ public class IndicatorSelectorPopup extends JDialog {
         dailyVolumeProfileBinsSpinner.setPreferredSize(new Dimension(60, 24));
         dailyVolumeProfileBinsSpinner.addChangeListener(e -> scheduleUpdate());
 
+        dailyVolumeProfileColorModeCombo = new JComboBox<>(new String[]{
+            "Volume", "Delta", "Delta+Volume"
+        });
+        dailyVolumeProfileColorModeCombo.setPreferredSize(new Dimension(100, 24));
+        dailyVolumeProfileColorModeCombo.setToolTipText("Blue/orange = volume intensity, Green/red = delta direction");
+        dailyVolumeProfileColorModeCombo.addActionListener(e -> scheduleUpdate());
+
         JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
         row.setAlignmentX(Component.LEFT_ALIGNMENT);
         row.add(dailyVolumeProfileCheckbox);
         row.add(dailyVolumeProfileBinsLabel);
         row.add(dailyVolumeProfileBinsSpinner);
+        row.add(dailyVolumeProfileColorModeCombo);
         dailyVolumeProfileCheckbox.addActionListener(e -> scheduleUpdate());
         return row;
     }
@@ -1607,6 +1616,12 @@ public class IndicatorSelectorPopup extends JDialog {
         ichimokuCheckbox.setSelected(config.isIchimokuEnabled());
         dailyVolumeProfileCheckbox.setSelected(config.isDailyVolumeProfileEnabled());
         dailyVolumeProfileBinsSpinner.setValue(config.getDailyVolumeProfileBins());
+        String colorMode = config.getDailyVolumeProfileColorMode();
+        switch (colorMode) {
+            case "DELTA" -> dailyVolumeProfileColorModeCombo.setSelectedItem("Delta");
+            case "DELTA_INTENSITY" -> dailyVolumeProfileColorModeCombo.setSelectedItem("Delta+Volume");
+            default -> dailyVolumeProfileColorModeCombo.setSelectedItem("Volume");
+        }
         footprintHeatmapCheckbox.setSelected(config.isFootprintHeatmapEnabled());
 
         // Update tick size options based on current candles
@@ -1865,6 +1880,13 @@ public class IndicatorSelectorPopup extends JDialog {
         }
         config.setDailyVolumeProfileEnabled(dailyVolumeProfileCheckbox.isSelected());
         config.setDailyVolumeProfileBins(volumeProfileBins);
+        String selectedColorMode = (String) dailyVolumeProfileColorModeCombo.getSelectedItem();
+        String colorModeEnum = switch (selectedColorMode) {
+            case "Delta" -> "DELTA";
+            case "Delta+Volume" -> "DELTA_INTENSITY";
+            default -> "VOLUME_INTENSITY";
+        };
+        config.setDailyVolumeProfileColorMode(colorModeEnum);
 
         // Footprint Heatmap - set nested config values BEFORE calling setFootprintHeatmapEnabled (which saves)
         com.tradery.forge.ui.charts.footprint.FootprintDisplayMode fpMode = footprintSplitButton.isSelected()

@@ -612,6 +612,7 @@ public class ChartConfig {
         this.dailyVolumeProfileEnabled = other.dailyVolumeProfileEnabled;
         this.dailyVolumeProfileBins = other.dailyVolumeProfileBins;
         this.dailyVolumeProfileWidth = other.dailyVolumeProfileWidth;
+        this.dailyVolumeProfileColorMode = other.dailyVolumeProfileColorMode;
 
         // Price chart mode
         this.candlestickMode = other.candlestickMode;
@@ -714,6 +715,7 @@ public class ChartConfig {
         dailyVolumeProfileEnabled = false;
         dailyVolumeProfileBins = 96;
         dailyVolumeProfileWidth = 60;
+        dailyVolumeProfileColorMode = "VOLUME_INTENSITY";
 
         // Price chart mode - line by default
         candlestickMode = false;
@@ -885,6 +887,7 @@ public class ChartConfig {
         this.dailyVolumeProfileEnabled = other.dailyVolumeProfileEnabled;
         this.dailyVolumeProfileBins = other.dailyVolumeProfileBins;
         this.dailyVolumeProfileWidth = other.dailyVolumeProfileWidth;
+        this.dailyVolumeProfileColorMode = other.dailyVolumeProfileColorMode;
 
         // Footprint Heatmap
         if (other.footprintHeatmapConfig != null) {

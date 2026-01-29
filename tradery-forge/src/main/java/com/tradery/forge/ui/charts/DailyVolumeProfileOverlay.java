@@ -209,6 +209,16 @@ public class DailyVolumeProfileOverlay {
 
         XYPlot plot = priceChart.getXYPlot();
         annotation = new DailyVolumeProfileAnnotation(profiles, histogramWidth);
+
+        // Apply color mode from config
+        ChartConfig config = ChartConfig.getInstance();
+        String mode = config.getDailyVolumeProfileColorMode();
+        try {
+            annotation.setColorMode(DailyVolumeProfileAnnotation.ColorMode.valueOf(mode));
+        } catch (IllegalArgumentException e) {
+            // Keep default
+        }
+
         plot.addAnnotation(annotation);
 
         log.info("DailyVolumeProfileOverlay.redraw: ADDED annotation with {} days", profiles.size());
