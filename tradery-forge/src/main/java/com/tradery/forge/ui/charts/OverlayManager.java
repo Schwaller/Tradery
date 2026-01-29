@@ -378,13 +378,6 @@ public class OverlayManager {
         return mayerPeriod;
     }
 
-    /**
-     * Legacy method - now a no-op since Mayer Multiple is applied as a ChartOverlay
-     * when setMayerMultipleEnabled is called.
-     */
-    public void addMayerMultipleAnnotations(XYPlot plot, List<Candle> candles) {
-        // No-op: Mayer Multiple is now rendered via MayerMultipleOverlay ChartOverlay
-    }
 
     // ===== Daily POC/VAH/VAL Overlay =====
 

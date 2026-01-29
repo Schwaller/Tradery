@@ -1602,9 +1602,6 @@ public class ChartsPanel extends JPanel {
             plot.setRenderer(1, renderer);
         }
 
-        // Add Mayer Multiple annotations if enabled
-        overlayManager.addMayerMultipleAnnotations(plot, candles);
-
         // Add trade lines
         addTradeAnnotations(plot, trades);
     }

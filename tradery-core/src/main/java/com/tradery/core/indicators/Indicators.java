@@ -19,7 +19,7 @@ public final class Indicators {
     public record MACDResult(double[] line, double[] signal, double[] histogram) {}
 
     /** Bollinger Bands result */
-    public record BollingerResult(double[] upper, double[] middle, double[] lower) {}
+    public record BollingerResult(double[] upper, double[] middle, double[] lower, double[] width) {}
 
     /** ADX result containing ADX, +DI, and -DI */
     public record ADXResult(double[] adx, double[] plusDI, double[] minusDI) {}
@@ -83,7 +83,7 @@ public final class Indicators {
 
     public static BollingerResult bollingerBands(List<Candle> candles, int period, double stdDevMultiplier) {
         BollingerBands.Result result = BollingerBands.calculate(candles, period, stdDevMultiplier);
-        return new BollingerResult(result.upper(), result.middle(), result.lower());
+        return new BollingerResult(result.upper(), result.middle(), result.lower(), result.width());
     }
 
     public static double bbandsUpperAt(List<Candle> candles, int period, double stdDevMultiplier, int barIndex) {

@@ -6,7 +6,6 @@ import com.tradery.forge.data.page.DataPageListener;
 import com.tradery.forge.data.page.DataPageView;
 import com.tradery.forge.data.page.PremiumPageManager;
 import com.tradery.core.indicators.IndicatorEngine;
-import com.tradery.core.indicators.Indicators;
 import com.tradery.core.model.Candle;
 import com.tradery.core.model.PremiumIndex;
 import com.tradery.core.model.Trade;

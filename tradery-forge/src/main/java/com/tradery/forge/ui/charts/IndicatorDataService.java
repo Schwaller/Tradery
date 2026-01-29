@@ -7,7 +7,6 @@ import com.tradery.forge.data.page.IndicatorPageListener;
 import com.tradery.forge.data.page.IndicatorPageManager;
 import com.tradery.forge.data.page.IndicatorPageManager.HistoricRays;
 import com.tradery.forge.data.page.IndicatorType;
-import com.tradery.core.indicators.Indicators;
 import com.tradery.core.indicators.RotatingRays.RaySet;
 import com.tradery.core.model.Candle;
 import org.slf4j.Logger;
