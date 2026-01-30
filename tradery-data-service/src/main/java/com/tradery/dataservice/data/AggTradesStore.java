@@ -511,7 +511,7 @@ public class AggTradesStore {
 
         if (gaps.isEmpty()) {
             // All data is cached in SQLite - fast path!
-            log.debug("SQLite cache hit for {} aggTrades [{} - {}]", symbol, startTime, endTime);
+            log.info("SQLite cache hit for {} aggTrades [{} - {}]", symbol, startTime, endTime);
             return sqliteStore.getAggTrades(symbol, startTime, endTime);
         }
 
@@ -519,7 +519,7 @@ public class AggTradesStore {
         long uncachedMs = gaps.stream().mapToLong(g -> g[1] - g[0]).sum();
         long uncachedDays = uncachedMs / (24 * 60 * 60 * 1000);
 
-        log.debug("SQLite cache miss for {} aggTrades: {} gaps, {} uncached days", symbol, gaps.size(), uncachedDays);
+        log.info("SQLite cache miss for {} aggTrades: {} gaps, {} uncached days", symbol, gaps.size(), uncachedDays);
 
         // Use Vision for bulk download if large uncached range
         if (shouldUseVision(startTime, endTime) && uncachedDays >= VISION_THRESHOLD_DAYS) {

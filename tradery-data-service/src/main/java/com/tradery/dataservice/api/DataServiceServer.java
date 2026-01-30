@@ -167,6 +167,18 @@ public class DataServiceServer {
         app.get("/health", ctx -> ctx.json(new HealthResponse("ok",
             pageManager.getActivePageCount(), consumerRegistry.getConsumerCount())));
         app.get("/", ctx -> ctx.json(new ServiceInfo("Tradery Data Service", "1.0.0", config.getPort())));
+        app.get("/logs", this::handleLogs);
+    }
+
+    /**
+     * GET /logs?lines=N
+     * Returns the last N lines (default 200, max 1000) from the in-memory log buffer.
+     */
+    private void handleLogs(Context ctx) {
+        int lines = Math.min(Math.max(ctx.queryParamAsClass("lines", Integer.class).getOrDefault(200), 1), 1000);
+        var buffer = com.tradery.dataservice.log.InMemoryLogBuffer.getInstance();
+        var tail = buffer.getLastLines(lines);
+        ctx.json(java.util.Map.of("lines", tail, "buffered", buffer.size(), "returned", tail.size()));
     }
 
     // Request/Response records

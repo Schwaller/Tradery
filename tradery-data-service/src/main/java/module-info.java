@@ -3,6 +3,10 @@ module com.tradery.dataservice {
     exports com.tradery.dataservice;
     exports com.tradery.dataservice.api;
     exports com.tradery.dataservice.data;
+    exports com.tradery.dataservice.log;
+
+    // Allow Log4j2 to discover the BufferAppender plugin
+    opens com.tradery.dataservice.log to org.apache.logging.log4j.core;
 
     // Dependencies
     requires transitive com.tradery.core;

@@ -1092,10 +1092,8 @@ public class ApiServer {
                 sendError(exchange, 400, "Invalid 'since' parameter: " + sinceStr);
                 return;
             }
-        } else {
-            // Default: last 5 minutes
-            sinceTimestamp = System.currentTimeMillis() - 5 * 60 * 1000;
         }
+        // No default since filter — return the last N entries (governed by limit param)
 
         DataType dataType = null;
         String dataTypeStr = params.get("dataType");

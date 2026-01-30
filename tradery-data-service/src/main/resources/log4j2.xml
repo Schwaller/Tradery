@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<Configuration status="WARN">
+<Configuration status="WARN" packages="com.tradery.dataservice.log">
     <Appenders>
         <Console name="Console" target="SYSTEM_OUT">
             <PatternLayout pattern="%d{HH:mm:ss.SSS} [%t] %-5level %logger{36} - %msg%n"/>
@@ -15,6 +15,10 @@
             </Policies>
             <DefaultRolloverStrategy max="7"/>
         </RollingFile>
+
+        <Buffer name="Buffer">
+            <PatternLayout pattern="%d{HH:mm:ss.SSS} [%t] %-5level %logger{36} - %msg%n"/>
+        </Buffer>
     </Appenders>
 
     <Loggers>
@@ -25,6 +29,7 @@
         <Root level="INFO">
             <AppenderRef ref="Console"/>
             <AppenderRef ref="File"/>
+            <AppenderRef ref="Buffer"/>
         </Root>
     </Loggers>
 </Configuration>
