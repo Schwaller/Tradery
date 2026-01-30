@@ -34,9 +34,12 @@ src/main/java/com/tradery/
 
 ## Development Commands
 ```bash
-./gradlew compileJava    # Compile
-./gradlew run            # Run app
-./gradlew build          # Build JAR
+./gradlew compileJava                # Compile all modules
+./gradlew :tradery-forge:run         # Run main UI app
+./gradlew :tradery-data-service:run  # Run data service
+./gradlew :tradery-desk:run          # Run trading desk
+./gradlew :tradery-runner:run        # Run strategy runner
+./gradlew build                      # Build JAR
 ```
 
 ---
