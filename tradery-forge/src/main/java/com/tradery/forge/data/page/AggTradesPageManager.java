@@ -80,14 +80,29 @@ public class AggTradesPageManager extends DataPageManager<AggTrade> {
                     "AggTradesPageManager"
                 );
 
-                // Poll for completion
+                // Poll for completion (max 10 minutes, detect stalls after 60s of no progress)
                 String pageKey = response.pageKey();
                 int lastProgress = 0;
                 int statusNotFoundCount = 0;
                 boolean pageReady = false;
                 boolean pageError = false;
+                long pollStartTime = System.currentTimeMillis();
+                long lastProgressTime = pollStartTime;
+                long maxPollMs = 10 * 60 * 1000;  // 10 minutes absolute max
+                long stallTimeoutMs = 60 * 1000;   // 60s with no progress change = stall
 
                 while (true) {
+                    long now = System.currentTimeMillis();
+                    if (now - pollStartTime > maxPollMs) {
+                        log.warn("Polling timeout after {}s for {}", (now - pollStartTime) / 1000, pageKey);
+                        break;
+                    }
+                    if (now - lastProgressTime > stallTimeoutMs) {
+                        log.warn("No progress for {}s (stuck at {}%), treating as stall for {}",
+                            (now - lastProgressTime) / 1000, lastProgress, pageKey);
+                        break;
+                    }
+
                     var status = client.getPageStatus(pageKey);
                     if (status == null) {
                         statusNotFoundCount++;
@@ -98,11 +113,12 @@ public class AggTradesPageManager extends DataPageManager<AggTrade> {
                         Thread.sleep(500);
                         continue;
                     }
-                    statusNotFoundCount = 0;  // Reset on success
+                    statusNotFoundCount = 0;
 
                     // Update progress
                     if (status.progress() > lastProgress) {
                         lastProgress = status.progress();
+                        lastProgressTime = now;
                         updatePageProgress(page, Math.min(lastProgress, 95));
                     }
 

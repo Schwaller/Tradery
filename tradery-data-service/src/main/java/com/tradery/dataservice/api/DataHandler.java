@@ -61,14 +61,12 @@ public class DataHandler {
                 return;
             }
 
-            byte[] data = pageManager.getAggTradesData(symbol, start, end);
-            if (data == null) {
-                ctx.status(404).json(new ErrorResponse("No data available"));
-                return;
-            }
-
             ctx.contentType("application/msgpack");
-            ctx.result(data);
+            int count = pageManager.writeAggTradesData(symbol, start, end, ctx.outputStream());
+            if (count < 0) {
+                // Stream may have already started — log the error
+                LOG.error("Failed to stream aggTrades for {}", symbol);
+            }
         } catch (Exception e) {
             LOG.error("Failed to get aggTrades", e);
             ctx.status(500).json(new ErrorResponse(e.getMessage()));

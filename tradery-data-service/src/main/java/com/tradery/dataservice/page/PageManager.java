@@ -155,7 +155,9 @@ public class PageManager {
 
     /**
      * Get aggregated trades data directly.
+     * @deprecated Use {@link #writeAggTradesData(String, Long, Long, java.io.OutputStream)} for streaming
      */
+    @Deprecated
     public byte[] getAggTradesData(String symbol, Long start, Long end) {
         try {
             List<AggTrade> trades = dataStore.getAggTrades(symbol, start, end);
@@ -164,6 +166,24 @@ public class PageManager {
         } catch (Exception e) {
             LOG.error("Failed to get aggTrades for {}", symbol, e);
             return null;
+        }
+    }
+
+    /**
+     * Stream aggregated trades data directly to an output stream.
+     * Avoids allocating a huge byte[] buffer for large datasets.
+     *
+     * @return number of trades written, or -1 on error
+     */
+    public int writeAggTradesData(String symbol, Long start, Long end, java.io.OutputStream out) {
+        try {
+            List<AggTrade> trades = dataStore.getAggTrades(symbol, start, end);
+            LOG.debug("writeAggTradesData: {} returned {} trades", symbol, trades.size());
+            msgpackMapper.writeValue(out, trades);
+            return trades.size();
+        } catch (Exception e) {
+            LOG.error("Failed to stream aggTrades for {}", symbol, e);
+            return -1;
         }
     }
 
