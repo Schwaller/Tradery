@@ -399,15 +399,10 @@ public class DailyVolumeProfileAnnotation extends AbstractXYAnnotation {
 
                 g2.setColor(barColor);
 
-                // LVN style: dashed outline instead of solid fill
+                // LVN style: reduced opacity fill (no outline to avoid visual noise)
                 if (showHvnLvn && normalizedVolume <= lvnThreshold) {
-                    // Draw with reduced opacity and outline
-                    g2.setColor(new Color(barColor.getRed(), barColor.getGreen(), barColor.getBlue(), 50));
+                    g2.setColor(new Color(barColor.getRed(), barColor.getGreen(), barColor.getBlue(), 35));
                     g2.fillRect(x, y, barWidth, barHeight);
-                    g2.setColor(new Color(barColor.getRed(), barColor.getGreen(), barColor.getBlue(), 80));
-                    g2.setStroke(new BasicStroke(1.0f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER,
-                        10.0f, new float[]{2.0f, 2.0f}, 0.0f));
-                    g2.drawRect(x, y, barWidth, barHeight);
                 } else {
                     g2.fillRect(x, y, barWidth, barHeight);
                 }
@@ -440,9 +435,11 @@ public class DailyVolumeProfileAnnotation extends AbstractXYAnnotation {
                               double dayStartX, double dayEndX, double poc) {
         double pocY = rangeAxis.valueToJava2D(poc, dataArea, RectangleEdge.LEFT);
 
-        g2.setColor(new Color(255, 255, 255, 200));
-        g2.setStroke(new BasicStroke(1.0f));
+        g2.setColor(new Color(255, 255, 255, 160));
+        g2.setStroke(new BasicStroke(0.5f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER,
+            10.0f, new float[]{4.0f, 4.0f}, 0.0f));
         g2.drawLine((int) dayStartX, (int) pocY, (int) dayEndX, (int) pocY);
+        g2.setStroke(new BasicStroke(1.0f));
     }
 
     /**

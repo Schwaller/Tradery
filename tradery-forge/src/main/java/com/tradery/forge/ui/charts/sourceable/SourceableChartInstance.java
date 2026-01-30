@@ -457,6 +457,9 @@ public class SourceableChartInstance extends SourceableChart {
         plot.setBackgroundPaint(ChartStyles.PLOT_BACKGROUND_COLOR);
         plot.setDomainGridlinePaint(ChartStyles.GRIDLINE_COLOR);
         plot.setRangeGridlinePaint(ChartStyles.GRIDLINE_COLOR);
+        java.awt.Stroke gridStroke = new java.awt.BasicStroke(0.5f);
+        plot.setDomainGridlineStroke(gridStroke);
+        plot.setRangeGridlineStroke(gridStroke);
         plot.setOutlinePaint(ChartStyles.TEXT_COLOR);
 
         // Style axes

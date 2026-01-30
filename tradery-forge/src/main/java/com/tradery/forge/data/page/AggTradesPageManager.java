@@ -42,6 +42,10 @@ public class AggTradesPageManager extends DataPageManager<AggTrade> {
         return super.request(symbol, timeframe, startTime, endTime, listener, consumerName);
     }
 
+    private static final int MAX_RETRIES = 5;
+    private static final long INITIAL_RETRY_DELAY_MS = 5_000;  // 5s, 10s, 20s, 40s, 80s
+    private static final int MAX_STATUS_NOT_FOUND = 10;  // Allow transient 404s during polling
+
     @Override
     protected void loadData(DataPage<AggTrade> page) throws Exception {
         assertNotEDT("AggTradesPageManager.loadData");
@@ -50,68 +54,116 @@ public class AggTradesPageManager extends DataPageManager<AggTrade> {
         long startTime = page.getStartTime();
         long endTime = page.getEndTime();
 
-        log.info("AggTradesPageManager.loadData: {} requesting from data service", symbol);
+        for (int attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+            log.info("AggTradesPageManager.loadData: {} attempt {}/{}", symbol, attempt, MAX_RETRIES);
 
-        // Request page from data service (handles fetching if needed)
-        ApplicationContext ctx = ApplicationContext.getInstance();
-        if (ctx == null || !ctx.isDataServiceAvailable()) {
-            log.error("Data service not available");
-            updatePageData(page, Collections.emptyList());
-            return;
-        }
-
-        DataServiceClient client = ctx.getDataServiceClient();
-
-        try {
-            // Request page - data service will fetch if cache is incomplete
-            var response = client.requestPage(
-                new DataServiceClient.PageRequest("AGG_TRADES", symbol, null, startTime, endTime),
-                "app-" + System.currentTimeMillis(),
-                "AggTradesPageManager"
-            );
-
-            // Poll for completion
-            String pageKey = response.pageKey();
-            int lastProgress = 0;
-
-            while (true) {
-                var status = client.getPageStatus(pageKey);
-                if (status == null) {
-                    log.error("Page status not found: {}", pageKey);
-                    break;
+            ApplicationContext ctx = ApplicationContext.getInstance();
+            if (ctx == null || !ctx.isDataServiceAvailable()) {
+                log.error("Data service not available");
+                if (attempt < MAX_RETRIES) {
+                    long delay = INITIAL_RETRY_DELAY_MS * (1L << (attempt - 1));
+                    log.info("Retrying in {}ms...", delay);
+                    Thread.sleep(delay);
+                    continue;
                 }
-
-                // Update progress
-                if (status.progress() > lastProgress) {
-                    lastProgress = status.progress();
-                    updatePageProgress(page, Math.min(lastProgress, 95));
-                }
-
-                // Check if ready
-                if ("READY".equals(status.state())) {
-                    break;
-                } else if ("ERROR".equals(status.state())) {
-                    log.error("Page load error: {}", pageKey);
-                    break;
-                }
-
-                Thread.sleep(100); // Poll interval
+                updatePageError(page, "Data service not available after " + MAX_RETRIES + " attempts");
+                return;
             }
 
-            // Fetch final data
-            int oldCount = page.getRecordCount();
-            List<AggTrade> trades = client.getAggTrades(symbol, startTime, endTime);
+            DataServiceClient client = ctx.getDataServiceClient();
 
-            // Track memory (atomic operation)
-            long newTotal = currentRecordCount.addAndGet(trades.size() - oldCount);
+            try {
+                // Request page - data service will fetch if cache is incomplete
+                var response = client.requestPage(
+                    new DataServiceClient.PageRequest("AGG_TRADES", symbol, null, startTime, endTime),
+                    "app-" + System.currentTimeMillis(),
+                    "AggTradesPageManager"
+                );
 
-            log.info("AggTradesPageManager.loadData: {} got {} trades (total in memory: {})",
-                symbol, trades.size(), newTotal);
-            updatePageData(page, trades);
+                // Poll for completion
+                String pageKey = response.pageKey();
+                int lastProgress = 0;
+                int statusNotFoundCount = 0;
+                boolean pageReady = false;
+                boolean pageError = false;
 
-        } catch (Exception e) {
-            log.error("Failed to load aggTrades from data service: {}", e.getMessage());
-            updatePageData(page, Collections.emptyList());
+                while (true) {
+                    var status = client.getPageStatus(pageKey);
+                    if (status == null) {
+                        statusNotFoundCount++;
+                        if (statusNotFoundCount >= MAX_STATUS_NOT_FOUND) {
+                            log.warn("Page status not found {} times for {}, will retry", statusNotFoundCount, pageKey);
+                            break;
+                        }
+                        Thread.sleep(500);
+                        continue;
+                    }
+                    statusNotFoundCount = 0;  // Reset on success
+
+                    // Update progress
+                    if (status.progress() > lastProgress) {
+                        lastProgress = status.progress();
+                        updatePageProgress(page, Math.min(lastProgress, 95));
+                    }
+
+                    // Check if ready
+                    if ("READY".equals(status.state())) {
+                        pageReady = true;
+                        break;
+                    } else if ("ERROR".equals(status.state())) {
+                        log.error("Data service reported error for page: {}", pageKey);
+                        pageError = true;
+                        break;
+                    }
+
+                    Thread.sleep(100);
+                }
+
+                if (!pageReady && !pageError) {
+                    // Status polling failed — retry the whole request
+                    if (attempt < MAX_RETRIES) {
+                        long delay = INITIAL_RETRY_DELAY_MS * (1L << (attempt - 1));
+                        log.info("Polling failed for {}, retrying in {}ms...", symbol, delay);
+                        Thread.sleep(delay);
+                        continue;
+                    }
+                    updatePageError(page, "Page status polling failed after " + MAX_RETRIES + " attempts");
+                    return;
+                }
+
+                if (pageError) {
+                    if (attempt < MAX_RETRIES) {
+                        long delay = INITIAL_RETRY_DELAY_MS * (1L << (attempt - 1));
+                        log.info("Data service error for {}, retrying in {}ms...", symbol, delay);
+                        Thread.sleep(delay);
+                        continue;
+                    }
+                    updatePageError(page, "Data service error after " + MAX_RETRIES + " attempts");
+                    return;
+                }
+
+                // Fetch final data
+                int oldCount = page.getRecordCount();
+                List<AggTrade> trades = client.getAggTrades(symbol, startTime, endTime);
+
+                // Track memory (atomic operation)
+                long newTotal = currentRecordCount.addAndGet(trades.size() - oldCount);
+
+                log.info("AggTradesPageManager.loadData: {} got {} trades (total in memory: {})",
+                    symbol, trades.size(), newTotal);
+                updatePageData(page, trades);
+                return;  // Success
+
+            } catch (Exception e) {
+                log.error("Failed to load aggTrades (attempt {}/{}): {}", attempt, MAX_RETRIES, e.getMessage());
+                if (attempt < MAX_RETRIES) {
+                    long delay = INITIAL_RETRY_DELAY_MS * (1L << (attempt - 1));
+                    log.info("Retrying in {}ms...", delay);
+                    Thread.sleep(delay);
+                } else {
+                    updatePageError(page, "Failed after " + MAX_RETRIES + " attempts: " + e.getMessage());
+                }
+            }
         }
     }
 

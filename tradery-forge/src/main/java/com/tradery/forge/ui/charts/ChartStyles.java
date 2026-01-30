@@ -13,6 +13,7 @@ import org.jfree.chart.title.TextTitle;
 import org.jfree.chart.ui.RectangleAnchor;
 
 import java.awt.BasicStroke;
+import java.awt.Stroke;
 import java.awt.Color;
 import java.awt.Font;
 import java.text.DecimalFormat;
@@ -214,6 +215,9 @@ public final class ChartStyles {
         plot.setBackgroundPaint(t.getPlotBackgroundColor());
         plot.setDomainGridlinePaint(t.getGridlineColor());
         plot.setRangeGridlinePaint(t.getGridlineColor());
+        Stroke gridStroke = new BasicStroke(0.5f);
+        plot.setDomainGridlineStroke(gridStroke);
+        plot.setRangeGridlineStroke(gridStroke);
         plot.setOutlineVisible(false);
 
         // Date axis formatting with adaptive format based on visible range
