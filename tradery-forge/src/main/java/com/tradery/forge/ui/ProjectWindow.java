@@ -274,9 +274,10 @@ public class ProjectWindow extends JFrame {
         phaseAnalysisBtn.addActionListener(e -> openPhaseAnalysis());
 
         // Phase Overlay button - select phases to display on chart
-        phaseOverlayBtn = new JButton("Phases");
+        phaseOverlayBtn = new JButton("Phases \u25BE");
         phaseOverlayBtn.setToolTipText("Show phase overlays on price chart");
-        phaseOverlayBtn.addActionListener(e -> openPhaseOverlayPicker());
+        phaseOverlayBtn.addActionListener(e ->
+            com.tradery.forge.ui.controls.PhaseSelectorPopup.showBelow(phaseOverlayBtn, this::applyPhaseOverlays));
 
         // Publish button - publish strategy to library for Desk
         publishBtn = new JButton("Publish");
@@ -703,21 +704,6 @@ public class ProjectWindow extends JFrame {
         PublishDialog.show(this, strategy, statusManager::setInfoStatus);
     }
 
-    private void openPhaseOverlayPicker() {
-        PhaseStore phaseStore = ApplicationContext.getInstance().getPhaseStore();
-        java.util.List<Phase> allPhases = phaseStore.loadAll();
-        ChartConfig config = ChartConfig.getInstance();
-
-        PhaseOverlayPickerDialog dialog = new PhaseOverlayPickerDialog(
-            this, allPhases, config.getPhaseOverlayIds());
-        dialog.setVisible(true);
-
-        if (dialog.isConfirmed()) {
-            config.setPhaseOverlayIds(dialog.getSelectedPhaseIds());
-            applyPhaseOverlays();
-        }
-    }
-
     /**
      * Evaluate and apply phase overlays on a background thread.
      * Uses PhaseEvaluator for cross-timeframe support.
@@ -800,7 +786,7 @@ public class ProjectWindow extends JFrame {
                     boolean[] state = phaseStates.get(phase.getId());
                     if (state == null) continue;
 
-                    java.awt.Color color = PhaseOverlayPickerDialog.getPhaseColor(phase.getCategory());
+                    java.awt.Color color = com.tradery.forge.ui.controls.PhaseSelectorPopup.getPhaseColor(phase.getCategory());
                     String name = phase.getName() != null ? phase.getName() : phase.getId();
                     overlayData.add(new com.tradery.forge.ui.charts.OverlayManager.PhaseOverlayData(
                         name, state, chartCandles, color));
