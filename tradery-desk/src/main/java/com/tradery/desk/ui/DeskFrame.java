@@ -18,9 +18,11 @@ import java.util.List;
 public class DeskFrame extends JFrame {
 
     private final StatusPanel statusPanel;
+    private final MarketInfoBar marketInfoBar;
     private final StrategyListPanel strategyListPanel;
     private final SignalLogPanel signalLogPanel;
     private final PriceChartPanel priceChartPanel;
+    private final IndicatorSidePanel indicatorSidePanel;
 
     private Runnable onClose;
 
@@ -32,6 +34,10 @@ public class DeskFrame extends JFrame {
 
         // Main layout
         JPanel mainPanel = new JPanel(new BorderLayout(0, 0));
+
+        // Market info top bar (full width)
+        marketInfoBar = new MarketInfoBar();
+        mainPanel.add(marketInfoBar, BorderLayout.NORTH);
 
         // Status bar at bottom
         statusPanel = new StatusPanel();
@@ -63,7 +69,7 @@ public class DeskFrame extends JFrame {
         priceChartPanel = new PriceChartPanel();
         chartPanel.add(priceChartPanel, BorderLayout.CENTER);
 
-        IndicatorSidePanel indicatorSidePanel = new IndicatorSidePanel(priceChartPanel);
+        indicatorSidePanel = new IndicatorSidePanel(priceChartPanel);
         chartPanel.add(indicatorSidePanel, BorderLayout.EAST);
 
         // Main horizontal split
@@ -109,6 +115,7 @@ public class DeskFrame extends JFrame {
      */
     public void updateSymbol(String symbol, String timeframe) {
         statusPanel.updateSymbol(symbol, timeframe);
+        marketInfoBar.updateSymbol(symbol, timeframe);
     }
 
     /**
@@ -116,6 +123,14 @@ public class DeskFrame extends JFrame {
      */
     public void updatePrice(double price) {
         statusPanel.updatePrice(price);
+    }
+
+    /**
+     * Update current price with exchange timestamp for "X ago" display.
+     */
+    public void updatePrice(double price, long exchangeTimestamp) {
+        statusPanel.updatePrice(price);
+        marketInfoBar.updatePrice(price, exchangeTimestamp);
     }
 
     /**

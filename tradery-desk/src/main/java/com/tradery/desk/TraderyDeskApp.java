@@ -412,7 +412,7 @@ public class TraderyDeskApp {
                     // Update chart
                     if (frame != null) {
                         frame.addChartCandle(lastCandle);
-                        frame.updatePrice(lastCandle.close());
+                        frame.updatePrice(lastCandle.close(), lastCandle.timestamp());
                     }
                 }
             }
@@ -470,7 +470,7 @@ public class TraderyDeskApp {
                 // On update (incomplete candle)
                 candle -> {
                     if (frame != null) {
-                        frame.updatePrice(candle.close());
+                        frame.updatePrice(candle.close(), candle.timestamp());
                         frame.updateChartCandle(candle);
                     }
                 },
@@ -499,7 +499,7 @@ public class TraderyDeskApp {
      */
     private void onCandleUpdate(Candle candle) {
         if (frame != null) {
-            frame.updatePrice(candle.close());
+            frame.updatePrice(candle.close(), candle.timestamp());
             frame.updateChartCandle(candle);
         }
     }
@@ -513,7 +513,7 @@ public class TraderyDeskApp {
 
         // Update price display and chart
         if (frame != null) {
-            frame.updatePrice(closedCandle.close());
+            frame.updatePrice(closedCandle.close(), closedCandle.timestamp());
             frame.addChartCandle(closedCandle);
         }
 
@@ -614,6 +614,18 @@ public class TraderyDeskApp {
             // Set initial chart data if available
             if (initialChartCandles != null && !initialChartCandles.isEmpty()) {
                 frame.setChartCandles(initialChartCandles, initialChartSymbol, initialChartTimeframe);
+            }
+
+            // Push current connection state to UI (listener may have fired before frame was created)
+            if (pageConnection != null) {
+                var state = pageConnection.getConnectionState();
+                var uiState = switch (state) {
+                    case CONNECTED -> ConnectionState.CONNECTED;
+                    case CONNECTING -> ConnectionState.CONNECTING;
+                    case RECONNECTING -> ConnectionState.RECONNECTING;
+                    case DISCONNECTED -> ConnectionState.DISCONNECTED;
+                };
+                frame.updateConnectionState(uiState);
             }
 
             frame.setVisible(true);

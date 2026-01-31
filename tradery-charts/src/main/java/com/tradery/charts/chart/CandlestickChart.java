@@ -169,13 +169,18 @@ public class CandlestickChart extends SyncedChart {
      * Remove an overlay from this chart.
      */
     public void removeOverlay(ChartOverlay overlay) {
-        overlays.remove(overlay);
+        if (overlays.remove(overlay)) {
+            overlay.close();
+        }
     }
 
     /**
      * Clear all overlays.
      */
     public void clearOverlays() {
+        for (ChartOverlay overlay : overlays) {
+            overlay.close();
+        }
         overlays.clear();
     }
 

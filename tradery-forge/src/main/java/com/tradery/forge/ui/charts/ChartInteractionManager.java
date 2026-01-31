@@ -168,6 +168,14 @@ public class ChartInteractionManager {
             @Override
             public void mouseClicked(MouseEvent e) {
                 if (e.getClickCount() == 2 && SwingUtilities.isLeftMouseButton(e)) {
+                    if (isOnYAxis(e.getPoint(), panel, yAxisOnRight)) {
+                        // Double-click on Y-axis: fit Y to visible data
+                        XYPlot plot = panel.getChart().getXYPlot();
+                        if (plot != null) {
+                            plot.getRangeAxis().setAutoRange(true);
+                        }
+                        return;
+                    }
                     Runnable callback = doubleClickCallbacks.get(panel);
                     if (callback != null) {
                         callback.run();

@@ -1,158 +1,163 @@
 package com.tradery.desk.ui;
 
+import com.tradery.ui.controls.indicators.*;
+
 import javax.swing.*;
 import java.awt.*;
 
+import static com.tradery.ui.controls.IndicatorSelectorPanel.*;
+
 /**
- * Vertical side panel with categorized chart indicator/overlay toggles.
+ * Vertical side panel with market info header and categorized chart indicator/overlay toggles.
+ * Uses shared indicator row components from tradery-ui-common.
  */
 public class IndicatorSidePanel extends JPanel {
 
     private final PriceChartPanel chartPanel;
 
-    // Overlays
-    private final JCheckBox sma20 = cb("SMA(20)");
-    private final JCheckBox sma50 = cb("SMA(50)");
-    private final JCheckBox ema20 = cb("EMA(20)");
-    private final JCheckBox bb = cb("BB(20,2)");
-    private final JCheckBox vwap = cb("VWAP");
-    private final JCheckBox ichimoku = cb("Ichimoku");
-    private final JCheckBox supertrend = cb("ST(10,3)");
-    private final JCheckBox highLow = cb("H/L(20)");
-    private final JCheckBox mayer = cb("MM(200)");
-    private final JCheckBox poc = cb("POC(20)");
-    private final JCheckBox daily = cb("Daily");
-    private final JCheckBox keltner = cb("Keltner");
-    private final JCheckBox donchian = cb("Donchian");
-    private final JCheckBox rays = cb("Rays");
-    private final JCheckBox atrBands = cb("ATR Bands");
-    private final JCheckBox pivots = cb("Pivots");
+
+    // Overlays - Dynamic multi-instance SMA/EMA
+    private static final Color[] DESK_PALETTE = {
+        new Color(0x4E79A7), new Color(0xF28E2B), new Color(0xE15759), new Color(0x76B7B2),
+        new Color(0x59A14F), new Color(0xEDC948), new Color(0xB07AA1), new Color(0xFF9DA7)
+    };
+    private final DynamicOverlayPanel smaPanel = new DynamicOverlayPanel("SMA", 20, 5, 200, DESK_PALETTE);
+    private final DynamicOverlayPanel emaPanel = new DynamicOverlayPanel("EMA", 20, 5, 200, DESK_PALETTE);
+    private final PeriodMultiplierRow bb = new PeriodMultiplierRow("Bollinger", null, 20, 5, 100, "\u03C3:", 2.0, 0.5, 4.0, 0.5);
+    private final IndicatorToggleRow vwap = new IndicatorToggleRow("VWAP", "Volume Weighted Average Price");
+    private final IndicatorToggleRow ichimoku = new IndicatorToggleRow("Ichimoku Cloud");
+    private final PeriodMultiplierRow supertrend = new PeriodMultiplierRow("Supertrend", null, 10, 5, 50, "\u00D7", 3.0, 1.0, 5.0, 0.5);
+    private final PeriodIndicatorRow highLow = new PeriodIndicatorRow("High/Low", 20, 5, 200);
+    private final PeriodIndicatorRow mayer = new PeriodIndicatorRow("Mayer Multiple", 200, 50, 365);
+    private final FloatingPocRow poc = new FloatingPocRow();
+    private final IndicatorToggleRow daily = new IndicatorToggleRow("Daily POC/VAH/VAL");
+    private final KeltnerRow keltner = new KeltnerRow();
+    private final DonchianRow donchian = new DonchianRow();
+    private final RayRow rays = new RayRow();
+    private final PeriodMultiplierRow atrBands = new PeriodMultiplierRow("ATR Bands", null, 14, 5, 50, "\u00D7", 2.0, 0.5, 5.0, 0.5);
+    private final PivotPointsRow pivots = new PivotPointsRow();
 
     // Indicators
-    private final JCheckBox rsi = cb("RSI(14)");
-    private final JCheckBox macd = cb("MACD");
-    private final JCheckBox atr = cb("ATR(14)");
-    private final JCheckBox stochastic = cb("Stoch");
-    private final JCheckBox adx = cb("ADX(14)");
-    private final JCheckBox rangePos = cb("RP(200)");
+    private final PeriodIndicatorRow rsi = new PeriodIndicatorRow("RSI", 14, 2, 50);
+    private final MacdRow macd = new MacdRow();
+    private final PeriodIndicatorRow atr = new PeriodIndicatorRow("ATR", 14, 2, 50);
+    private final StochasticRow stochastic = new StochasticRow();
+    private final PeriodIndicatorRow adx = new PeriodIndicatorRow("ADX", "Average Directional Index", 14, 2, 50);
+    private final PeriodIndicatorRow rangePos = new PeriodIndicatorRow("Range Position", 200, 5, 500);
 
     // Orderflow
-    private final JCheckBox delta = cb("Delta");
-    private final JCheckBox tradeCount = cb("Trades");
-    private final JCheckBox buySell = cb("Buy/Sell");
+    private final IndicatorToggleRow delta = new IndicatorToggleRow("Delta (per bar)");
+    private final IndicatorToggleRow tradeCount = new IndicatorToggleRow("Trade Count");
+    private final IndicatorToggleRow buySell = new IndicatorToggleRow("Buy/Sell Volume");
 
     // Core
-    private final JCheckBox volume = cb("Volume");
+    private final IndicatorToggleRow volume = new IndicatorToggleRow("Volume");
 
     public IndicatorSidePanel(PriceChartPanel chartPanel) {
         this.chartPanel = chartPanel;
         setLayout(new BorderLayout());
-        setPreferredSize(new Dimension(160, 0));
+        setMinimumSize(new Dimension(140, 0));
 
-        JPanel content = new JPanel();
-        content.setLayout(new BoxLayout(content, BoxLayout.Y_AXIS));
-        content.setBorder(BorderFactory.createEmptyBorder(4, 4, 4, 4));
+        // EMA colors continue after SMA colors
+        emaPanel.setColorOffset(2); // default 2 SMA periods
 
-        // Overlays section
+        JPanel content = createContentPanel();
+
+        // Overlays
         content.add(createSectionHeader("OVERLAYS"));
-        content.add(createGrid(sma20, sma50, ema20, bb, vwap, ichimoku, supertrend, highLow,
-                mayer, poc, daily, keltner, donchian, rays, atrBands, pivots));
-        content.add(createSeparator());
-
-        // Indicator Charts section
-        content.add(createSectionHeader("INDICATORS"));
-        content.add(createGrid(rsi, macd, atr, stochastic, adx, rangePos));
-        content.add(createSeparator());
-
-        // Orderflow section
-        content.add(createSectionHeader("ORDERFLOW"));
-        content.add(createGrid(delta, tradeCount, buySell));
-        content.add(createSeparator());
-
-        // Core section
-        content.add(createSectionHeader("CORE"));
-        content.add(createGrid(volume));
-
-        // Glue at bottom
-        content.add(Box.createVerticalGlue());
-
-        JScrollPane scrollPane = new JScrollPane(content);
-        scrollPane.setBorder(null);
-        scrollPane.setHorizontalScrollBarPolicy(ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
-        add(scrollPane, BorderLayout.CENTER);
-
-        // Wire overlay checkboxes
-        for (JCheckBox cb : new JCheckBox[]{sma20, sma50, ema20, bb, vwap, ichimoku, supertrend,
+        content.add(smaPanel);
+        content.add(emaPanel);
+        for (JPanel row : new JPanel[]{bb, vwap, ichimoku, supertrend,
                 highLow, mayer, poc, daily, keltner, donchian, rays, atrBands, pivots}) {
-            cb.addActionListener(e -> updateOverlays());
+            content.add(row);
+        }
+        content.add(createSectionSeparator());
+
+        // Indicator Charts
+        content.add(createSectionHeader("INDICATOR CHARTS"));
+        for (JPanel row : new JPanel[]{rsi, macd, atr, stochastic, adx, rangePos}) {
+            content.add(row);
+        }
+        content.add(createSectionSeparator());
+
+        // Orderflow
+        content.add(createSectionHeader("ORDERFLOW CHARTS"));
+        for (JPanel row : new JPanel[]{delta, tradeCount, buySell}) {
+            content.add(row);
+        }
+        content.add(createSectionSeparator());
+
+        // Core
+        content.add(createSectionHeader("CORE CHARTS"));
+        content.add(volume);
+
+        content.add(Box.createVerticalGlue());
+        add(createScrollableContent(content), BorderLayout.CENTER);
+
+        // Initialize default SMA/EMA periods
+        smaPanel.setPeriods(java.util.List.of(20, 50));
+        emaPanel.setPeriods(java.util.List.of(20));
+
+        // Wire overlay changes
+        Runnable overlayUpdate = this::updateOverlays;
+        smaPanel.addChangeListener(overlayUpdate);
+        emaPanel.addChangeListener(overlayUpdate);
+        for (var row : new Object[]{bb, vwap, ichimoku, supertrend,
+                highLow, mayer, poc, daily, keltner, donchian, rays, atrBands, pivots}) {
+            if (row instanceof PeriodIndicatorRow r) r.addChangeListener(overlayUpdate);
+            else if (row instanceof PeriodMultiplierRow r) r.addChangeListener(overlayUpdate);
+            else if (row instanceof IndicatorToggleRow r) r.addChangeListener(overlayUpdate);
+            else if (row instanceof KeltnerRow r) r.addChangeListener(overlayUpdate);
+            else if (row instanceof DonchianRow r) r.addChangeListener(overlayUpdate);
+            else if (row instanceof RayRow r) r.addChangeListener(overlayUpdate);
+            else if (row instanceof FloatingPocRow r) r.addChangeListener(overlayUpdate);
+            else if (row instanceof PivotPointsRow r) r.addChangeListener(overlayUpdate);
         }
 
-        // Wire indicator checkboxes directly
-        rsi.addActionListener(e -> chartPanel.setRsiEnabled(rsi.isSelected()));
-        macd.addActionListener(e -> chartPanel.setMacdEnabled(macd.isSelected()));
-        atr.addActionListener(e -> chartPanel.setAtrEnabled(atr.isSelected()));
-        stochastic.addActionListener(e -> chartPanel.setStochasticEnabled(stochastic.isSelected()));
-        adx.addActionListener(e -> chartPanel.setAdxEnabled(adx.isSelected()));
-        rangePos.addActionListener(e -> chartPanel.setRangePositionEnabled(rangePos.isSelected()));
-        delta.addActionListener(e -> chartPanel.setDeltaEnabled(delta.isSelected()));
-        tradeCount.addActionListener(e -> chartPanel.setTradeCountEnabled(tradeCount.isSelected()));
-        buySell.addActionListener(e -> chartPanel.setVolumeRatioEnabled(buySell.isSelected()));
-        volume.addActionListener(e -> chartPanel.setVolumeEnabled(volume.isSelected()));
+        // Wire indicator chart toggles
+        rsi.addChangeListener(() -> chartPanel.setRsiEnabled(rsi.isSelected(), rsi.getPeriod()));
+        macd.addChangeListener(() -> chartPanel.setMacdEnabled(macd.isSelected(), macd.getFast(), macd.getSlow(), macd.getSignal()));
+        atr.addChangeListener(() -> chartPanel.setAtrEnabled(atr.isSelected(), atr.getPeriod()));
+        stochastic.addChangeListener(() -> chartPanel.setStochasticEnabled(stochastic.isSelected(), stochastic.getKPeriod(), stochastic.getDPeriod()));
+        adx.addChangeListener(() -> chartPanel.setAdxEnabled(adx.isSelected(), adx.getPeriod()));
+        rangePos.addChangeListener(() -> chartPanel.setRangePositionEnabled(rangePos.isSelected(), rangePos.getPeriod(), 0));
+        delta.addChangeListener(() -> chartPanel.setDeltaEnabled(delta.isSelected()));
+        tradeCount.addChangeListener(() -> chartPanel.setTradeCountEnabled(tradeCount.isSelected()));
+        buySell.addChangeListener(() -> chartPanel.setVolumeRatioEnabled(buySell.isSelected()));
+        volume.addChangeListener(() -> chartPanel.setVolumeEnabled(volume.isSelected()));
+
+    }
+
+    public void dispose() {
     }
 
     private void updateOverlays() {
         chartPanel.clearOverlays();
 
-        if (sma20.isSelected()) chartPanel.addSmaOverlay(20);
-        if (sma50.isSelected()) chartPanel.addSmaOverlay(50);
-        if (ema20.isSelected()) chartPanel.addEmaOverlay(20);
-        if (bb.isSelected()) chartPanel.addBollingerOverlay(20, 2.0);
+        // Dynamic SMA/EMA overlays
+        for (int period : smaPanel.getSelectedPeriods()) {
+            chartPanel.addSmaOverlay(period);
+        }
+        for (int period : emaPanel.getSelectedPeriods()) {
+            chartPanel.addEmaOverlay(period);
+        }
+        // Update EMA color offset based on current SMA count
+        emaPanel.setColorOffset(smaPanel.getAllPeriods().size());
+
+        if (bb.isSelected()) chartPanel.addBollingerOverlay(bb.getPeriod(), bb.getMultiplier());
         if (vwap.isSelected()) chartPanel.addVwapOverlay();
         if (ichimoku.isSelected()) chartPanel.addIchimokuOverlay();
-        if (supertrend.isSelected()) chartPanel.addSupertrendOverlay();
-        if (highLow.isSelected()) chartPanel.addHighLowOverlay();
-        if (mayer.isSelected()) chartPanel.addMayerMultipleOverlay();
-        if (poc.isSelected()) chartPanel.addPocOverlay();
+        if (supertrend.isSelected()) chartPanel.addSupertrendOverlay((int) supertrend.getPeriod(), supertrend.getMultiplier());
+        if (highLow.isSelected()) chartPanel.addHighLowOverlay(highLow.getPeriod());
+        if (mayer.isSelected()) chartPanel.addMayerMultipleOverlay(mayer.getPeriod());
+        if (poc.isSelected()) chartPanel.addPocOverlay(poc.getBars());
         if (daily.isSelected()) chartPanel.addDailyLevelsOverlay();
-        if (keltner.isSelected()) chartPanel.addKeltnerOverlay();
-        if (donchian.isSelected()) chartPanel.addDonchianOverlay();
-        if (rays.isSelected()) chartPanel.addRayOverlay();
-        if (atrBands.isSelected()) chartPanel.addAtrBandsOverlay();
-        if (pivots.isSelected()) chartPanel.addPivotPointsOverlay();
+        if (keltner.isSelected()) chartPanel.addKeltnerOverlay(keltner.getEmaPeriod(), keltner.getAtrPeriod(), keltner.getMultiplier());
+        if (donchian.isSelected()) chartPanel.addDonchianOverlay(donchian.getPeriod());
+        if (rays.isSelected()) chartPanel.addRayOverlay(rays.getLookback(), rays.getSkip());
+        if (atrBands.isSelected()) chartPanel.addAtrBandsOverlay((int) atrBands.getPeriod(), atrBands.getMultiplier());
+        if (pivots.isSelected()) chartPanel.addPivotPointsOverlay(pivots.isShowR3S3());
 
         chartPanel.getCandlestickChart().updateData(chartPanel.getDataProvider());
-    }
-
-    private static JCheckBox cb(String label) {
-        JCheckBox checkBox = new JCheckBox(label);
-        checkBox.setFocusPainted(false);
-        checkBox.setFont(checkBox.getFont().deriveFont(11f));
-        return checkBox;
-    }
-
-    private static JPanel createSectionHeader(String title) {
-        JLabel label = new JLabel(title);
-        label.setFont(label.getFont().deriveFont(Font.BOLD, 10f));
-        label.setForeground(UIManager.getColor("Label.disabledForeground"));
-        label.setBorder(BorderFactory.createEmptyBorder(6, 2, 2, 0));
-        JPanel panel = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
-        panel.setMaximumSize(new Dimension(Integer.MAX_VALUE, 20));
-        panel.add(label);
-        return panel;
-    }
-
-    private static JSeparator createSeparator() {
-        JSeparator sep = new JSeparator();
-        sep.setMaximumSize(new Dimension(Integer.MAX_VALUE, 2));
-        return sep;
-    }
-
-    private static JPanel createGrid(JCheckBox... checkBoxes) {
-        JPanel grid = new JPanel(new GridLayout(0, 2, 0, 0));
-        grid.setMaximumSize(new Dimension(Integer.MAX_VALUE, checkBoxes.length / 2 * 22 + 22));
-        for (JCheckBox cb : checkBoxes) {
-            grid.add(cb);
-        }
-        return grid;
     }
 }

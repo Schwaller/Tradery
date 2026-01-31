@@ -440,7 +440,7 @@ public class DailyVolumeProfileAnnotation extends AbstractXYAnnotation {
                               double dayStartX, double dayEndX, double poc) {
         double pocY = rangeAxis.valueToJava2D(poc, dataArea, RectangleEdge.LEFT);
 
-        g2.setColor(new Color(255, 255, 255, 160));
+        g2.setColor(new Color(59, 130, 246, 160));
         g2.setStroke(new BasicStroke(0.5f));
         g2.drawLine((int) dayStartX, (int) pocY, (int) dayEndX, (int) pocY);
         g2.setStroke(new BasicStroke(1.0f));

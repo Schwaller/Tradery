@@ -2,183 +2,91 @@ package com.tradery.forge.ui.controls;
 
 import com.tradery.forge.ui.ChartsPanel;
 import com.tradery.forge.ui.charts.ChartConfig;
+import com.tradery.ui.controls.IndicatorSelectorPanel;
+import com.tradery.ui.controls.indicators.*;
 
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 import java.awt.*;
 import java.awt.event.*;
+import java.util.List;
 
 /**
  * Popup dialog for selecting indicators and their parameters.
- * Organized by category with checkboxes and parameter inputs.
+ * Uses shared indicator row components from tradery-ui-common.
  */
 public class IndicatorSelectorPopup extends JDialog {
 
     private final ChartsPanel chartPanel;
     private final Runnable onBacktestNeeded;
 
-    // Overlay controls - Multiple SMA/EMA support
-    private JPanel smaOverlaysPanel;
-    private JPanel emaOverlaysPanel;
+    // Overlays
+    private final DynamicOverlayPanel smaPanel;
+    private final DynamicOverlayPanel emaPanel;
+    private final PeriodMultiplierRow bb = new PeriodMultiplierRow("Bollinger", null, 20, 5, 100, "\u03C3:", 2.0, 0.5, 4.0, 0.5);
+    private final PeriodIndicatorRow hl = new PeriodIndicatorRow("High/Low", 20, 5, 200);
+    private final PeriodIndicatorRow mayer = new PeriodIndicatorRow("Mayer Multiple", 200, 50, 365);
+    private final IndicatorToggleRow dailyPoc = new IndicatorToggleRow("Daily POC/VAH/VAL", "Show previous day's POC, VAH, VAL (Value Area)");
+    private final FloatingPocRow floatingPoc = new FloatingPocRow();
+    private final IndicatorToggleRow vwap = new IndicatorToggleRow("VWAP", "Volume Weighted Average Price (session)");
+    private final PivotPointsRow pivotPoints = new PivotPointsRow();
+    private final PeriodMultiplierRow atrBands = new PeriodMultiplierRow("ATR Bands", "Volatility bands based on ATR (close \u00B1 ATR \u00D7 multiplier)", 14, 5, 50, "\u00D7", 2.0, 0.5, 5.0, 0.5);
+    private final PeriodMultiplierRow supertrend = new PeriodMultiplierRow("Supertrend", "Trend-following overlay that changes color based on trend direction", 10, 5, 50, "\u00D7", 3.0, 1.0, 5.0, 0.5);
+    private final KeltnerRow keltner = new KeltnerRow();
+    private final DonchianRow donchian = new DonchianRow();
+    private final RayRow rays = new RayRow();
+    private final IndicatorToggleRow ichimoku = new IndicatorToggleRow("Ichimoku Cloud", "Show Ichimoku Cloud (Tenkan-sen, Kijun-sen, Senkou Span A/B, Chikou Span)");
+    private final DailyVolumeProfileRow dailyVolumeProfile = new DailyVolumeProfileRow();
 
-    private JCheckBox bbCheckbox;
-    private JLabel bbPeriodLabel;
-    private JSlider bbPeriodSlider;
-    private JSpinner bbPeriodSpinner;
-    private JLabel bbStdLabel;
-    private JSpinner bbStdSpinner;
-
-    private JCheckBox hlCheckbox;
-    private JLabel hlLabel;
-    private JSlider hlSlider;
-    private JSpinner hlSpinner;
-
-    private JCheckBox mayerCheckbox;
-    private JLabel mayerLabel;
-    private JSlider mayerSlider;
-    private JSpinner mayerSpinner;
-
-    private JCheckBox dailyPocCheckbox;
-    private JCheckBox floatingPocCheckbox;
-    private JLabel floatingPocPeriodLabel;
-    private JSpinner floatingPocPeriodSpinner;
-    private JCheckBox vwapCheckbox;
-    private JCheckBox pivotPointsCheckbox;
-    private JCheckBox pivotPointsR3S3Checkbox;
-    private JCheckBox atrBandsCheckbox;
-    private JLabel atrBandsPeriodLabel;
-    private JSpinner atrBandsPeriodSpinner;
-    private JLabel atrBandsMultiplierLabel;
-    private JSpinner atrBandsMultiplierSpinner;
-    private JCheckBox supertrendCheckbox;
-    private JLabel supertrendPeriodLabel;
-    private JSpinner supertrendPeriodSpinner;
-    private JLabel supertrendMultiplierLabel;
-    private JSpinner supertrendMultiplierSpinner;
-    private JCheckBox keltnerCheckbox;
-    private JLabel keltnerEmaPeriodLabel;
-    private JSpinner keltnerEmaPeriodSpinner;
-    private JLabel keltnerAtrPeriodLabel;
-    private JSpinner keltnerAtrPeriodSpinner;
-    private JLabel keltnerMultiplierLabel;
-    private JSpinner keltnerMultiplierSpinner;
-    private JCheckBox donchianCheckbox;
-    private JLabel donchianPeriodLabel;
-    private JSpinner donchianPeriodSpinner;
-    private JCheckBox donchianMiddleCheckbox;
-
-    private JCheckBox rayCheckbox;
-    private JCheckBox rayNoLimitCheckbox;
-    private JCheckBox rayHistoricCheckbox;
-    private JLabel rayLookbackLabel;
-    private JSlider rayLookbackSlider;
-    private JSpinner rayLookbackSpinner;
-    private JLabel raySkipLabel;
-    private JSlider raySkipSlider;
-    private JSpinner raySkipSpinner;
-
-    // Ichimoku Cloud controls
-    private JCheckBox ichimokuCheckbox;
-
-    // Daily Volume Profile controls
-    private JCheckBox dailyVolumeProfileCheckbox;
-    private JLabel dailyVolumeProfileBinsLabel;
-    private JSpinner dailyVolumeProfileBinsSpinner;
-    private JComboBox<String> dailyVolumeProfileColorModeCombo;
-
-    // Footprint Heatmap controls
+    // Footprint Heatmap controls (complex, kept inline)
     private JCheckBox footprintHeatmapCheckbox;
     private JToggleButton footprintSplitButton;
     private JToggleButton footprintDeltaButton;
     private ButtonGroup footprintViewGroup;
-
-    // Bucket mode segmented buttons
-    private JToggleButton footprintAuto10Button;   // Auto(10) - fine
-    private JToggleButton footprintAuto20Button;   // Auto(20) - medium (default)
-    private JToggleButton footprintAuto40Button;   // Auto(40) - coarse
-    private JToggleButton[] footprintGridButtons = new JToggleButton[4];  // Fixed tick sizes
+    private JToggleButton footprintAuto10Button;
+    private JToggleButton footprintAuto20Button;
+    private JToggleButton footprintAuto40Button;
+    private JToggleButton[] footprintGridButtons = new JToggleButton[4];
     private ButtonGroup footprintBucketGroup;
-    private double[] currentGridOptions = new double[4];  // Store current grid tick values
+    private double[] currentGridOptions = new double[4];
 
-    // Nice tick sizes for footprint grid mode (same as FootprintIndicator)
     private static final double[] NICE_TICKS = {
         0.01, 0.05, 0.1, 0.25, 0.5, 1, 2, 5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000
     };
 
-    // Oscillator controls
-    private JCheckBox rsiCheckbox;
-    private JLabel rsiLabel;
-    private JSlider rsiSlider;
-    private JSpinner rsiSpinner;
+    // Oscillators
+    private final PeriodIndicatorRow rsi = new PeriodIndicatorRow("RSI", 14, 2, 50);
+    private final MacdRow macd = new MacdRow();
+    private final PeriodIndicatorRow atr = new PeriodIndicatorRow("ATR", 14, 2, 50);
+    private final StochasticRow stochastic = new StochasticRow();
+    private final PeriodIndicatorRow rangePosition = new PeriodIndicatorRow("Range Position", "Shows position within range (-1 to +1), extends beyond for breakouts", 200, 5, 500);
+    private final PeriodIndicatorRow adx = new PeriodIndicatorRow("ADX", "Average Directional Index with +DI/-DI (trend strength)", 14, 2, 50);
 
-    private JCheckBox macdCheckbox;
-    private JSlider macdFastSlider;
-    private JSpinner macdFastSpinner;
-    private JSlider macdSlowSlider;
-    private JSpinner macdSlowSpinner;
-    private JSlider macdSignalSlider;
-    private JSpinner macdSignalSpinner;
+    // Orderflow
+    private final IndicatorToggleRow delta = new IndicatorToggleRow("Delta (per bar)", "Show per-candle buy-sell volume difference");
+    private final IndicatorToggleRow cvd = new IndicatorToggleRow("CVD (cumulative)", "Show cumulative volume delta");
+    private final IndicatorToggleRow volumeRatio = new IndicatorToggleRow("Buy/Sell Volume", "Show buy/sell volume divergence around zero line");
+    private final ThresholdRow whale = new ThresholdRow("Whale Delta", "Show delta from large trades only", "Min $:", 50000);
+    private final ThresholdRow retail = new ThresholdRow("Retail Delta", "Show delta from trades below threshold", "Max $:", 50000);
+    private final IndicatorToggleRow tradeCount = new IndicatorToggleRow("Trade Count", "Show number of trades per candle");
 
-    private JCheckBox atrCheckbox;
-    private JLabel atrLabel;
-    private JSlider atrSlider;
-    private JSpinner atrSpinner;
+    // Funding / OI / Premium / Holding Costs
+    private final IndicatorToggleRow funding = new IndicatorToggleRow("Funding Rate");
+    private final IndicatorToggleRow oi = new IndicatorToggleRow("Open Interest", "Show OI value and change chart (Binance 5m data)");
+    private final IndicatorToggleRow premium = new IndicatorToggleRow("Premium Index", "Show futures premium vs spot index (leading indicator)");
+    private final IndicatorToggleRow holdingCostCumulative = new IndicatorToggleRow("Cumulative Holding Costs", "Show running total of funding fees/margin interest");
+    private final IndicatorToggleRow holdingCostEvents = new IndicatorToggleRow("Holding Cost Events", "Show individual funding fee/interest charges per trade");
 
-    private JCheckBox stochasticCheckbox;
-    private JLabel stochasticKLabel;
-    private JSlider stochasticKSlider;
-    private JSpinner stochasticKSpinner;
-    private JLabel stochasticDLabel;
-    private JSlider stochasticDSlider;
-    private JSpinner stochasticDSpinner;
-
-    private JCheckBox rangePositionCheckbox;
-    private JLabel rangePositionLabel;
-    private JSlider rangePositionSlider;
-    private JSpinner rangePositionSpinner;
-
-    private JCheckBox adxCheckbox;
-    private JLabel adxLabel;
-    private JSlider adxSlider;
-    private JSpinner adxSpinner;
-
-    // Orderflow controls
-    private JCheckBox deltaCheckbox;
-    private JCheckBox cvdCheckbox;
-    private JCheckBox volumeRatioCheckbox;
-    private JCheckBox whaleCheckbox;
-    private JCheckBox retailCheckbox;
-    private JCheckBox tradeCountCheckbox;
-    private JLabel whaleLabel;
-    private JSpinner whaleThresholdSpinner;
-    private JLabel retailLabel;
-    private JSpinner retailThresholdSpinner;
-
-    // Funding checkbox
-    private JCheckBox fundingCheckbox;
-
-    // Open Interest checkbox
-    private JCheckBox oiCheckbox;
-
-    // Premium Index checkbox
-    private JCheckBox premiumCheckbox;
-
-    // Holding Cost checkboxes
-    private JCheckBox holdingCostCumulativeCheckbox;
-    private JCheckBox holdingCostEventsCheckbox;
-
-    // Core chart checkboxes
-    private JCheckBox volumeChartCheckbox;
-    private JCheckBox equityChartCheckbox;
-    private JCheckBox comparisonChartCheckbox;
-    private JCheckBox capitalUsageChartCheckbox;
-    private JCheckBox tradePLChartCheckbox;
+    // Core charts
+    private final IndicatorToggleRow volumeChart = new IndicatorToggleRow("Volume", "Show volume chart");
+    private final IndicatorToggleRow equityChart = new IndicatorToggleRow("Equity", "Show portfolio equity chart");
+    private final IndicatorToggleRow comparisonChart = new IndicatorToggleRow("Strategy vs Buy & Hold", "Show strategy comparison chart");
+    private final IndicatorToggleRow capitalUsageChart = new IndicatorToggleRow("Capital Usage", "Show capital usage percentage chart");
+    private final IndicatorToggleRow tradePLChart = new IndicatorToggleRow("Trade P&L", "Show individual trade P&L chart");
 
     // Debounce timer
     private Timer updateTimer;
     private static final int DEBOUNCE_MS = 150;
-
-    // Flag to suppress updates during initialization
     private boolean initializing = true;
 
     public IndicatorSelectorPopup(Window owner, ChartsPanel chartPanel, Runnable onBacktestNeeded) {
@@ -186,25 +94,27 @@ public class IndicatorSelectorPopup extends JDialog {
         this.chartPanel = chartPanel;
         this.onBacktestNeeded = onBacktestNeeded;
 
+        // Create dynamic overlay panels with Forge's color palette
+        Color[] palette = com.tradery.forge.ui.charts.ChartStyles.OVERLAY_PALETTE;
+        smaPanel = new DynamicOverlayPanel("SMA", 20, 5, 200, palette);
+        emaPanel = new DynamicOverlayPanel("EMA", 20, 5, 200, palette);
+        smaPanel.setRepackListener(this::pack);
+        emaPanel.setRepackListener(this::pack);
+
         setUndecorated(true);
         setResizable(false);
 
         initComponents();
         initDebounceTimer();
+        wireChangeListeners();
         syncFromChartPanel();
-        updateControlVisibility();
 
-        // Done initializing - now allow updates
         initializing = false;
 
-        // Close on focus lost (with delay to handle focus transfer to spinners)
+        // Close on focus lost
         addWindowFocusListener(new WindowFocusListener() {
-            @Override
-            public void windowGainedFocus(WindowEvent e) {}
-
-            @Override
-            public void windowLostFocus(WindowEvent e) {
-                // Small delay to check if focus went to a child component
+            @Override public void windowGainedFocus(WindowEvent e) {}
+            @Override public void windowLostFocus(WindowEvent e) {
                 SwingUtilities.invokeLater(() -> {
                     Window focusedWindow = KeyboardFocusManager.getCurrentKeyboardFocusManager().getFocusedWindow();
                     if (focusedWindow != IndicatorSelectorPopup.this) {
@@ -217,15 +127,12 @@ public class IndicatorSelectorPopup extends JDialog {
 
         // Close on Escape
         getRootPane().registerKeyboardAction(
-            e -> {
-                flushPendingChanges();
-                dispose();
-            },
+            e -> { flushPendingChanges(); dispose(); },
             KeyStroke.getKeyStroke(KeyEvent.VK_ESCAPE, 0),
             JComponent.WHEN_IN_FOCUSED_WINDOW
         );
 
-        // Add global mouse listener to close on click outside
+        // Close on click outside
         Toolkit.getDefaultToolkit().addAWTEventListener(e -> {
             if (e instanceof MouseEvent me && me.getID() == MouseEvent.MOUSE_PRESSED) {
                 Point clickPoint = me.getLocationOnScreen();
@@ -238,9 +145,6 @@ public class IndicatorSelectorPopup extends JDialog {
         }, AWTEvent.MOUSE_EVENT_MASK);
     }
 
-    /**
-     * If there are pending changes from the debounce timer, apply them immediately.
-     */
     private void flushPendingChanges() {
         if (updateTimer.isRunning()) {
             updateTimer.stop();
@@ -258,664 +162,123 @@ public class IndicatorSelectorPopup extends JDialog {
 
         // === OVERLAYS ===
         contentPane.add(createSectionHeader("OVERLAYS"));
-        contentPane.add(createSmaRow());
-        contentPane.add(createEmaRow());
-        contentPane.add(createBollingerRow());
-        contentPane.add(createHighLowRow());
-        contentPane.add(createMayerRow());
-        contentPane.add(createDailyPocRow());
-        contentPane.add(createFloatingPocRow());
-        contentPane.add(createVwapRow());
-        contentPane.add(createPivotPointsRow());
-        contentPane.add(createAtrBandsRow());
-        contentPane.add(createSupertrendRow());
-        contentPane.add(createKeltnerRow());
-        contentPane.add(createDonchianRow());
-        contentPane.add(createRayOverlayRow());
-        contentPane.add(createIchimokuRow());
-        contentPane.add(createDailyVolumeProfileRow());
+        contentPane.add(smaPanel);
+        contentPane.add(emaPanel);
+        for (JPanel row : new JPanel[]{bb, hl, mayer, dailyPoc, floatingPoc, vwap, pivotPoints,
+                atrBands, supertrend, keltner, donchian, rays, ichimoku, dailyVolumeProfile}) {
+            contentPane.add(row);
+        }
         contentPane.add(createFootprintHeatmapRow());
 
         contentPane.add(createSectionSeparator());
 
-        // === CHARTS ===
+        // === INDICATOR CHARTS ===
         contentPane.add(createSectionHeader("INDICATOR CHARTS"));
-        contentPane.add(createRsiRow());
-        contentPane.add(createMacdRow());
-        contentPane.add(createAtrRow());
-        contentPane.add(createStochasticRow());
-        contentPane.add(createRangePositionRow());
-        contentPane.add(createAdxRow());
+        for (JPanel row : new JPanel[]{rsi, macd, atr, stochastic, rangePosition, adx}) {
+            contentPane.add(row);
+        }
 
         contentPane.add(createSectionSeparator());
 
         // === ORDERFLOW ===
         contentPane.add(createSectionHeader("ORDERFLOW CHARTS"));
-        contentPane.add(createDeltaRow());
-        contentPane.add(createCvdRow());
-        contentPane.add(createVolumeRatioRow());
-        contentPane.add(createWhaleRow());
-        contentPane.add(createRetailRow());
-        contentPane.add(createTradeCountRow());
+        for (JPanel row : new JPanel[]{delta, cvd, volumeRatio, whale, retail, tradeCount}) {
+            contentPane.add(row);
+        }
 
         contentPane.add(Box.createVerticalStrut(4));
-
-        // === FUNDING ===
         contentPane.add(createSectionHeader("FUNDING"));
-        contentPane.add(createFundingRow());
+        contentPane.add(funding);
 
         contentPane.add(Box.createVerticalStrut(4));
-
-        // === OPEN INTEREST ===
         contentPane.add(createSectionHeader("OPEN INTEREST"));
-        contentPane.add(createOiRow());
+        contentPane.add(oi);
 
         contentPane.add(Box.createVerticalStrut(4));
-
-        // === PREMIUM INDEX ===
         contentPane.add(createSectionHeader("PREMIUM INDEX"));
-        contentPane.add(createPremiumRow());
+        contentPane.add(premium);
 
         contentPane.add(createSectionSeparator());
-
-        // === HOLDING COSTS ===
         contentPane.add(createSectionHeader("HOLDING COSTS"));
-        contentPane.add(createHoldingCostCumulativeRow());
-        contentPane.add(createHoldingCostEventsRow());
+        contentPane.add(holdingCostCumulative);
+        contentPane.add(holdingCostEvents);
 
         contentPane.add(createSectionSeparator());
-
-        // === CORE CHARTS ===
         contentPane.add(createSectionHeader("CORE CHARTS"));
-        contentPane.add(createVolumeChartRow());
-        contentPane.add(createEquityChartRow());
-        contentPane.add(createComparisonChartRow());
-        contentPane.add(createCapitalUsageChartRow());
-        contentPane.add(createTradePLChartRow());
+        for (JPanel row : new JPanel[]{volumeChart, equityChart, comparisonChart, capitalUsageChart, tradePLChart}) {
+            contentPane.add(row);
+        }
 
-        setContentPane(contentPane);
+        JScrollPane scrollPane = new JScrollPane(contentPane);
+        scrollPane.setBorder(null);
+        scrollPane.setHorizontalScrollBarPolicy(ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
+        scrollPane.getVerticalScrollBar().setUnitIncrement(12);
+
+        setContentPane(scrollPane);
         pack();
-    }
 
-    private JLabel createSectionHeader(String text) {
-        JLabel label = new JLabel(text);
-        label.setFont(label.getFont().deriveFont(Font.BOLD, 10f));
-        label.setForeground(UIManager.getColor("Label.disabledForeground"));
-        label.setAlignmentX(Component.LEFT_ALIGNMENT);
-        label.setBorder(new EmptyBorder(4, 0, 4, 0));
-        return label;
-    }
-
-    private JPanel createSectionSeparator() {
-        JPanel separator = new JPanel();
-        separator.setLayout(new BorderLayout());
-        separator.setAlignmentX(Component.LEFT_ALIGNMENT);
-        separator.setBorder(new EmptyBorder(8, 0, 4, 0));
-
-        JSeparator line = new JSeparator(SwingConstants.HORIZONTAL);
-        separator.add(line, BorderLayout.CENTER);
-
-        return separator;
-    }
-
-    private JPanel createSmaRow() {
-        smaOverlaysPanel = new JPanel();
-        smaOverlaysPanel.setLayout(new BoxLayout(smaOverlaysPanel, BoxLayout.Y_AXIS));
-        smaOverlaysPanel.setAlignmentX(Component.LEFT_ALIGNMENT);
-        return smaOverlaysPanel;
-    }
-
-    private void rebuildSmaOverlays() {
-        smaOverlaysPanel.removeAll();
-        java.util.List<Integer> periods = ChartConfig.getInstance().getSmaPeriods();
-
-        // Always show at least one row
-        if (periods.isEmpty()) {
-            periods = new java.util.ArrayList<>();
-            periods.add(20);  // Default period
-        }
-
-        for (int i = 0; i < periods.size(); i++) {
-            final int index = i;
-            final int period = periods.get(index);
-            boolean isFirst = (i == 0);
-            boolean isLast = (i == periods.size() - 1);
-
-            // Get color from palette (same order as OverlayManager assigns)
-            Color color = com.tradery.forge.ui.charts.ChartStyles.OVERLAY_PALETTE[index % com.tradery.forge.ui.charts.ChartStyles.OVERLAY_PALETTE.length];
-
-            smaOverlaysPanel.add(createOverlayRow("SMA", period, isFirst, isLast, color,
-                // On checkbox change
-                (enabled, newPeriod) -> {
-                    if (enabled) {
-                        ChartConfig.getInstance().addSmaPeriod(newPeriod);
-                    } else {
-                        ChartConfig.getInstance().removeSmaPeriod(newPeriod);
-                    }
-                    scheduleUpdate();
-                },
-                // On period change
-                (oldPeriod, newPeriod) -> {
-                    ChartConfig.getInstance().removeSmaPeriod(oldPeriod);
-                    ChartConfig.getInstance().addSmaPeriod(newPeriod);
-                    scheduleUpdate();
-                },
-                // On add
-                () -> {
-                    // Find next available period that doesn't exist
-                    int newPeriod = findNextAvailablePeriod(ChartConfig.getInstance().getSmaPeriods());
-                    ChartConfig.getInstance().addSmaPeriod(newPeriod);
-                    rebuildSmaOverlays();
-                    scheduleUpdate();
-                },
-                // On remove
-                () -> {
-                    ChartConfig.getInstance().removeSmaPeriod(period);
-                    rebuildSmaOverlays();
-                    scheduleUpdate();
-                }
-            ));
-        }
-        smaOverlaysPanel.revalidate();
-        smaOverlaysPanel.repaint();
-        pack();
-    }
-
-    private JPanel createEmaRow() {
-        emaOverlaysPanel = new JPanel();
-        emaOverlaysPanel.setLayout(new BoxLayout(emaOverlaysPanel, BoxLayout.Y_AXIS));
-        emaOverlaysPanel.setAlignmentX(Component.LEFT_ALIGNMENT);
-        return emaOverlaysPanel;
-    }
-
-    private void rebuildEmaOverlays() {
-        emaOverlaysPanel.removeAll();
-        java.util.List<Integer> periods = ChartConfig.getInstance().getEmaPeriods();
-
-        // Always show at least one row
-        if (periods.isEmpty()) {
-            periods = new java.util.ArrayList<>();
-            periods.add(20);  // Default period
-        }
-
-        for (int i = 0; i < periods.size(); i++) {
-            final int index = i;
-            final int period = periods.get(index);
-            boolean isFirst = (i == 0);
-            boolean isLast = (i == periods.size() - 1);
-
-            // Get color from palette (offset by SMA count so colors continue)
-            int smaCount = ChartConfig.getInstance().getSmaPeriods().size();
-            Color color = com.tradery.forge.ui.charts.ChartStyles.OVERLAY_PALETTE[(smaCount + index) % com.tradery.forge.ui.charts.ChartStyles.OVERLAY_PALETTE.length];
-
-            emaOverlaysPanel.add(createOverlayRow("EMA", period, isFirst, isLast, color,
-                // On checkbox change
-                (enabled, newPeriod) -> {
-                    if (enabled) {
-                        ChartConfig.getInstance().addEmaPeriod(newPeriod);
-                    } else {
-                        ChartConfig.getInstance().removeEmaPeriod(newPeriod);
-                    }
-                    scheduleUpdate();
-                },
-                // On period change
-                (oldPeriod, newPeriod) -> {
-                    ChartConfig.getInstance().removeEmaPeriod(oldPeriod);
-                    ChartConfig.getInstance().addEmaPeriod(newPeriod);
-                    scheduleUpdate();
-                },
-                // On add
-                () -> {
-                    // Find next available period that doesn't exist
-                    int newPeriod = findNextAvailablePeriod(ChartConfig.getInstance().getEmaPeriods());
-                    ChartConfig.getInstance().addEmaPeriod(newPeriod);
-                    rebuildEmaOverlays();
-                    scheduleUpdate();
-                },
-                // On remove
-                () -> {
-                    ChartConfig.getInstance().removeEmaPeriod(period);
-                    rebuildEmaOverlays();
-                    scheduleUpdate();
-                }
-            ));
-        }
-        emaOverlaysPanel.revalidate();
-        emaOverlaysPanel.repaint();
-        pack();
-    }
-
-    private JPanel createOverlayRow(String type, int period, boolean isFirst, boolean isLast,
-                                    Color color,
-                                    java.util.function.BiConsumer<Boolean, Integer> onCheckboxChange,
-                                    java.util.function.BiConsumer<Integer, Integer> onPeriodChange,
-                                    Runnable onAdd, Runnable onRemove) {
-        JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
-        row.setAlignmentX(Component.LEFT_ALIGNMENT);
-
-        // Color swatch
-        JPanel colorBox = new JPanel();
-        colorBox.setPreferredSize(new Dimension(12, 12));
-        colorBox.setBackground(color);
-        colorBox.setBorder(BorderFactory.createLineBorder(Color.GRAY, 1));
-        row.add(colorBox);
-
-        // Checkbox with type label on every row
-        JCheckBox checkbox = new JCheckBox(type);
-        checkbox.setSelected(ChartConfig.getInstance().getSmaPeriods().contains(period) ||
-                            ChartConfig.getInstance().getEmaPeriods().contains(period));
-        row.add(checkbox);
-
-        // Period label and slider/spinner
-        JLabel label = new JLabel("Period:");
-        row.add(label);
-
-        Object[] controls = createSliderSpinner(period, 5, 200);
-        JSlider slider = (JSlider) controls[0];
-        JSpinner spinner = (JSpinner) controls[1];
-        row.add(slider);
-        row.add(spinner);
-
-        // Track the current period for change detection
-        final int[] currentPeriod = {period};
-
-        // Wire up checkbox
-        checkbox.addActionListener(e -> {
-            int p = (int) spinner.getValue();
-            onCheckboxChange.accept(checkbox.isSelected(), p);
-        });
-
-        // Wire up period change (on spinner change, debounced)
-        spinner.addChangeListener(e -> {
-            int newPeriod = (int) spinner.getValue();
-            if (newPeriod != currentPeriod[0] && checkbox.isSelected()) {
-                onPeriodChange.accept(currentPeriod[0], newPeriod);
-                currentPeriod[0] = newPeriod;
-            }
-        });
-
-        // Add button (always show)
-        JButton addBtn = new JButton("+");
-        addBtn.setMargin(new Insets(0, 4, 0, 4));
-        addBtn.setToolTipText("Add another " + type);
-        addBtn.addActionListener(e -> onAdd.run());
-        row.add(addBtn);
-
-        // Remove button (only show if not the only row)
-        JButton removeBtn = new JButton("-");
-        removeBtn.setMargin(new Insets(0, 4, 0, 4));
-        removeBtn.setToolTipText("Remove this " + type);
-        removeBtn.addActionListener(e -> onRemove.run());
-        // Hide remove button if this is the only row
-        int totalRows = type.equals("SMA") ?
-            Math.max(1, ChartConfig.getInstance().getSmaPeriods().size()) :
-            Math.max(1, ChartConfig.getInstance().getEmaPeriods().size());
-        removeBtn.setVisible(totalRows > 1);
-        row.add(removeBtn);
-
-        return row;
-    }
-
-    private int findNextAvailablePeriod(java.util.List<Integer> existingPeriods) {
-        // Common periods to try: 20, 50, 100, 200, then increment from 10
-        int[] commonPeriods = {20, 50, 100, 200, 10, 15, 25, 30, 40, 60, 80, 150};
-        for (int p : commonPeriods) {
-            if (!existingPeriods.contains(p)) {
-                return p;
+        // Cap height to available screen space
+        GraphicsConfiguration gc = getGraphicsConfiguration();
+        if (gc != null) {
+            Rectangle screenBounds = gc.getBounds();
+            Insets insets = Toolkit.getDefaultToolkit().getScreenInsets(gc);
+            int maxHeight = screenBounds.height - insets.top - insets.bottom - 40;
+            if (getHeight() > maxHeight) {
+                setSize(getWidth() + scrollPane.getVerticalScrollBar().getPreferredSize().width, maxHeight);
             }
         }
-        // Fallback: find any period not in use
-        for (int p = 5; p <= 500; p++) {
-            if (!existingPeriods.contains(p)) {
-                return p;
-            }
-        }
-        return 20; // shouldn't happen
     }
 
-    private JPanel createBollingerRow() {
-        bbCheckbox = new JCheckBox("Bollinger");
-        bbPeriodLabel = new JLabel("Period:");
-        Object[] controls = createSliderSpinner(20, 5, 100);
-        bbPeriodSlider = (JSlider) controls[0];
-        bbPeriodSpinner = (JSpinner) controls[1];
-        bbStdLabel = new JLabel("\u03C3:"); // sigma
-        bbStdSpinner = createDoubleSpinner(2.0, 0.5, 4.0, 0.5);
+    private void wireChangeListeners() {
+        // All shared components fire scheduleUpdate on change
+        Runnable update = this::scheduleUpdate;
 
-        JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
-        row.setAlignmentX(Component.LEFT_ALIGNMENT);
-        row.add(bbCheckbox);
-        row.add(Box.createHorizontalGlue());
-        row.add(bbPeriodLabel);
-        row.add(bbPeriodSlider);
-        row.add(bbPeriodSpinner);
-        row.add(bbStdLabel);
-        row.add(bbStdSpinner);
-
-        bbCheckbox.addActionListener(e -> {
-            updateControlVisibility();
-            scheduleUpdate();
-        });
-        bbStdSpinner.addChangeListener(e -> scheduleUpdate());
-        return row;
+        smaPanel.addChangeListener(update);
+        emaPanel.addChangeListener(update);
+        bb.addChangeListener(update);
+        hl.addChangeListener(update);
+        mayer.addChangeListener(update);
+        dailyPoc.addChangeListener(update);
+        floatingPoc.addChangeListener(update);
+        vwap.addChangeListener(update);
+        pivotPoints.addChangeListener(update);
+        atrBands.addChangeListener(update);
+        supertrend.addChangeListener(update);
+        keltner.addChangeListener(update);
+        donchian.addChangeListener(update);
+        rays.addChangeListener(update);
+        ichimoku.addChangeListener(update);
+        dailyVolumeProfile.addChangeListener(update);
+        rsi.addChangeListener(update);
+        macd.addChangeListener(update);
+        atr.addChangeListener(update);
+        stochastic.addChangeListener(update);
+        rangePosition.addChangeListener(update);
+        adx.addChangeListener(update);
+        delta.addChangeListener(update);
+        cvd.addChangeListener(update);
+        volumeRatio.addChangeListener(update);
+        whale.addChangeListener(update);
+        retail.addChangeListener(update);
+        tradeCount.addChangeListener(update);
+        funding.addChangeListener(update);
+        oi.addChangeListener(update);
+        premium.addChangeListener(update);
+        holdingCostCumulative.addChangeListener(update);
+        holdingCostEvents.addChangeListener(update);
+        volumeChart.addChangeListener(update);
+        equityChart.addChangeListener(update);
+        comparisonChart.addChangeListener(update);
+        capitalUsageChart.addChangeListener(update);
+        tradePLChart.addChangeListener(update);
     }
 
-    private JPanel createHighLowRow() {
-        hlCheckbox = new JCheckBox("High/Low");
-        hlLabel = new JLabel("Period:");
-        Object[] controls = createSliderSpinner(20, 5, 200);
-        hlSlider = (JSlider) controls[0];
-        hlSpinner = (JSpinner) controls[1];
-        return createIndicatorRowWithSlider(hlCheckbox, hlLabel, hlSlider, hlSpinner);
-    }
-
-    private JPanel createMayerRow() {
-        mayerCheckbox = new JCheckBox("Mayer Multiple");
-        mayerLabel = new JLabel("Period:");
-        Object[] controls = createSliderSpinner(200, 50, 365);
-        mayerSlider = (JSlider) controls[0];
-        mayerSpinner = (JSpinner) controls[1];
-        return createIndicatorRowWithSlider(mayerCheckbox, mayerLabel, mayerSlider, mayerSpinner);
-    }
-
-    private JPanel createDailyPocRow() {
-        dailyPocCheckbox = new JCheckBox("Daily POC/VAH/VAL");
-        dailyPocCheckbox.setToolTipText("Show previous day's POC, VAH, VAL (Value Area)");
-        JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
-        row.setAlignmentX(Component.LEFT_ALIGNMENT);
-        row.add(dailyPocCheckbox);
-        dailyPocCheckbox.addActionListener(e -> scheduleUpdate());
-        return row;
-    }
-
-    private JPanel createFloatingPocRow() {
-        floatingPocCheckbox = new JCheckBox("Floating POC/VAH/VAL");
-        floatingPocCheckbox.setToolTipText("Show developing POC, VAH, VAL (0=today, N=rolling bars)");
-        floatingPocPeriodLabel = new JLabel("Bars:");
-        floatingPocPeriodSpinner = new JSpinner(new SpinnerNumberModel(0, 0, 500, 10));
-        floatingPocPeriodSpinner.setPreferredSize(new java.awt.Dimension(60, 25));
-        floatingPocPeriodSpinner.setToolTipText("0 = today's session, >0 = rolling N-bar lookback");
-
-        JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
-        row.setAlignmentX(Component.LEFT_ALIGNMENT);
-        row.add(floatingPocCheckbox);
-        row.add(floatingPocPeriodLabel);
-        row.add(floatingPocPeriodSpinner);
-
-        floatingPocCheckbox.addActionListener(e -> {
-            boolean enabled = floatingPocCheckbox.isSelected();
-            floatingPocPeriodLabel.setEnabled(enabled);
-            floatingPocPeriodSpinner.setEnabled(enabled);
-            scheduleUpdate();
-        });
-        floatingPocPeriodSpinner.addChangeListener(e -> scheduleUpdate());
-
-        return row;
-    }
-
-    private JPanel createVwapRow() {
-        vwapCheckbox = new JCheckBox("VWAP");
-        vwapCheckbox.setToolTipText("Volume Weighted Average Price (session)");
-        JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
-        row.setAlignmentX(Component.LEFT_ALIGNMENT);
-        row.add(vwapCheckbox);
-        vwapCheckbox.addActionListener(e -> scheduleUpdate());
-        return row;
-    }
-
-    private JPanel createPivotPointsRow() {
-        pivotPointsCheckbox = new JCheckBox("Pivot Points");
-        pivotPointsCheckbox.setToolTipText("Classic daily pivot support/resistance levels (P, R1-R2, S1-S2)");
-        pivotPointsR3S3Checkbox = new JCheckBox("R3/S3");
-        pivotPointsR3S3Checkbox.setToolTipText("Show extended R3/S3 levels");
-        pivotPointsR3S3Checkbox.setEnabled(false);
-
-        JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
-        row.setAlignmentX(Component.LEFT_ALIGNMENT);
-        row.add(pivotPointsCheckbox);
-        row.add(pivotPointsR3S3Checkbox);
-
-        pivotPointsCheckbox.addActionListener(e -> {
-            pivotPointsR3S3Checkbox.setEnabled(pivotPointsCheckbox.isSelected());
-            scheduleUpdate();
-        });
-        pivotPointsR3S3Checkbox.addActionListener(e -> scheduleUpdate());
-
-        return row;
-    }
-
-    private JPanel createAtrBandsRow() {
-        atrBandsCheckbox = new JCheckBox("ATR Bands");
-        atrBandsCheckbox.setToolTipText("Volatility bands based on ATR (close ± ATR × multiplier)");
-        atrBandsPeriodLabel = new JLabel("Period:");
-        atrBandsPeriodSpinner = new JSpinner(new SpinnerNumberModel(14, 5, 50, 1));
-        atrBandsMultiplierLabel = new JLabel("×");
-        atrBandsMultiplierSpinner = new JSpinner(new SpinnerNumberModel(2.0, 0.5, 5.0, 0.5));
-
-        // Disable controls when unchecked
-        atrBandsPeriodLabel.setEnabled(false);
-        atrBandsPeriodSpinner.setEnabled(false);
-        atrBandsMultiplierLabel.setEnabled(false);
-        atrBandsMultiplierSpinner.setEnabled(false);
-
-        JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
-        row.setAlignmentX(Component.LEFT_ALIGNMENT);
-        row.add(atrBandsCheckbox);
-        row.add(atrBandsPeriodLabel);
-        row.add(atrBandsPeriodSpinner);
-        row.add(atrBandsMultiplierLabel);
-        row.add(atrBandsMultiplierSpinner);
-
-        atrBandsCheckbox.addActionListener(e -> {
-            boolean enabled = atrBandsCheckbox.isSelected();
-            atrBandsPeriodLabel.setEnabled(enabled);
-            atrBandsPeriodSpinner.setEnabled(enabled);
-            atrBandsMultiplierLabel.setEnabled(enabled);
-            atrBandsMultiplierSpinner.setEnabled(enabled);
-            scheduleUpdate();
-        });
-        atrBandsPeriodSpinner.addChangeListener(e -> scheduleUpdate());
-        atrBandsMultiplierSpinner.addChangeListener(e -> scheduleUpdate());
-
-        return row;
-    }
-
-    private JPanel createSupertrendRow() {
-        supertrendCheckbox = new JCheckBox("Supertrend");
-        supertrendCheckbox.setToolTipText("Trend-following overlay that changes color based on trend direction");
-        supertrendPeriodLabel = new JLabel("Period:");
-        supertrendPeriodSpinner = new JSpinner(new SpinnerNumberModel(10, 5, 50, 1));
-        supertrendMultiplierLabel = new JLabel("×");
-        supertrendMultiplierSpinner = new JSpinner(new SpinnerNumberModel(3.0, 1.0, 5.0, 0.5));
-
-        // Disable controls when unchecked
-        supertrendPeriodLabel.setEnabled(false);
-        supertrendPeriodSpinner.setEnabled(false);
-        supertrendMultiplierLabel.setEnabled(false);
-        supertrendMultiplierSpinner.setEnabled(false);
-
-        JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
-        row.setAlignmentX(Component.LEFT_ALIGNMENT);
-        row.add(supertrendCheckbox);
-        row.add(supertrendPeriodLabel);
-        row.add(supertrendPeriodSpinner);
-        row.add(supertrendMultiplierLabel);
-        row.add(supertrendMultiplierSpinner);
-
-        supertrendCheckbox.addActionListener(e -> {
-            boolean enabled = supertrendCheckbox.isSelected();
-            supertrendPeriodLabel.setEnabled(enabled);
-            supertrendPeriodSpinner.setEnabled(enabled);
-            supertrendMultiplierLabel.setEnabled(enabled);
-            supertrendMultiplierSpinner.setEnabled(enabled);
-            scheduleUpdate();
-        });
-        supertrendPeriodSpinner.addChangeListener(e -> scheduleUpdate());
-        supertrendMultiplierSpinner.addChangeListener(e -> scheduleUpdate());
-
-        return row;
-    }
-
-    private JPanel createKeltnerRow() {
-        keltnerCheckbox = new JCheckBox("Keltner Channel");
-        keltnerCheckbox.setToolTipText("EMA-based channel with ATR bands (smoother than Bollinger)");
-        keltnerEmaPeriodLabel = new JLabel("EMA:");
-        keltnerEmaPeriodSpinner = new JSpinner(new SpinnerNumberModel(20, 5, 50, 1));
-        keltnerAtrPeriodLabel = new JLabel("ATR:");
-        keltnerAtrPeriodSpinner = new JSpinner(new SpinnerNumberModel(10, 5, 30, 1));
-        keltnerMultiplierLabel = new JLabel("×");
-        keltnerMultiplierSpinner = new JSpinner(new SpinnerNumberModel(2.0, 0.5, 4.0, 0.5));
-
-        // Disable controls when unchecked
-        keltnerEmaPeriodLabel.setEnabled(false);
-        keltnerEmaPeriodSpinner.setEnabled(false);
-        keltnerAtrPeriodLabel.setEnabled(false);
-        keltnerAtrPeriodSpinner.setEnabled(false);
-        keltnerMultiplierLabel.setEnabled(false);
-        keltnerMultiplierSpinner.setEnabled(false);
-
-        JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
-        row.setAlignmentX(Component.LEFT_ALIGNMENT);
-        row.add(keltnerCheckbox);
-        row.add(keltnerEmaPeriodLabel);
-        row.add(keltnerEmaPeriodSpinner);
-        row.add(keltnerAtrPeriodLabel);
-        row.add(keltnerAtrPeriodSpinner);
-        row.add(keltnerMultiplierLabel);
-        row.add(keltnerMultiplierSpinner);
-
-        keltnerCheckbox.addActionListener(e -> {
-            boolean enabled = keltnerCheckbox.isSelected();
-            keltnerEmaPeriodLabel.setEnabled(enabled);
-            keltnerEmaPeriodSpinner.setEnabled(enabled);
-            keltnerAtrPeriodLabel.setEnabled(enabled);
-            keltnerAtrPeriodSpinner.setEnabled(enabled);
-            keltnerMultiplierLabel.setEnabled(enabled);
-            keltnerMultiplierSpinner.setEnabled(enabled);
-            scheduleUpdate();
-        });
-        keltnerEmaPeriodSpinner.addChangeListener(e -> scheduleUpdate());
-        keltnerAtrPeriodSpinner.addChangeListener(e -> scheduleUpdate());
-        keltnerMultiplierSpinner.addChangeListener(e -> scheduleUpdate());
-
-        return row;
-    }
-
-    private JPanel createDonchianRow() {
-        donchianCheckbox = new JCheckBox("Donchian Channel");
-        donchianCheckbox.setToolTipText("Highest high / lowest low channel for breakout trading");
-        donchianPeriodLabel = new JLabel("Period:");
-        donchianPeriodSpinner = new JSpinner(new SpinnerNumberModel(20, 5, 100, 1));
-        donchianMiddleCheckbox = new JCheckBox("Middle");
-        donchianMiddleCheckbox.setToolTipText("Show middle line (average of upper and lower)");
-        donchianMiddleCheckbox.setSelected(true);
-
-        // Disable controls when unchecked
-        donchianPeriodLabel.setEnabled(false);
-        donchianPeriodSpinner.setEnabled(false);
-        donchianMiddleCheckbox.setEnabled(false);
-
-        JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
-        row.setAlignmentX(Component.LEFT_ALIGNMENT);
-        row.add(donchianCheckbox);
-        row.add(donchianPeriodLabel);
-        row.add(donchianPeriodSpinner);
-        row.add(donchianMiddleCheckbox);
-
-        donchianCheckbox.addActionListener(e -> {
-            boolean enabled = donchianCheckbox.isSelected();
-            donchianPeriodLabel.setEnabled(enabled);
-            donchianPeriodSpinner.setEnabled(enabled);
-            donchianMiddleCheckbox.setEnabled(enabled);
-            scheduleUpdate();
-        });
-        donchianPeriodSpinner.addChangeListener(e -> scheduleUpdate());
-        donchianMiddleCheckbox.addActionListener(e -> scheduleUpdate());
-
-        return row;
-    }
-
-    private JPanel createRayOverlayRow() {
-        rayCheckbox = new JCheckBox("Rotating Rays");
-        rayCheckbox.setToolTipText("Show resistance/support rays from ATH/ATL");
-        rayNoLimitCheckbox = new JCheckBox("Unlimited");
-        rayNoLimitCheckbox.setToolTipText("Search all available history for ATH/ATL (no lookback limit)");
-        rayHistoricCheckbox = new JCheckBox("Historic");
-        rayHistoricCheckbox.setToolTipText("Show historic rays (how rays looked at past points)");
-        rayLookbackLabel = new JLabel("Lookback:");
-        Object[] lookbackControls = createSliderSpinner(200, 20, 500);
-        rayLookbackSlider = (JSlider) lookbackControls[0];
-        rayLookbackSpinner = (JSpinner) lookbackControls[1];
-        raySkipLabel = new JLabel("Skip:");
-        Object[] skipControls = createSliderSpinner(5, 0, 50);
-        raySkipSlider = (JSlider) skipControls[0];
-        raySkipSpinner = (JSpinner) skipControls[1];
-
-        JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
-        row.setAlignmentX(Component.LEFT_ALIGNMENT);
-        row.add(rayCheckbox);
-        row.add(Box.createHorizontalGlue());
-        row.add(rayNoLimitCheckbox);
-        row.add(rayHistoricCheckbox);
-        row.add(rayLookbackLabel);
-        row.add(rayLookbackSlider);
-        row.add(rayLookbackSpinner);
-        row.add(raySkipLabel);
-        row.add(raySkipSlider);
-        row.add(raySkipSpinner);
-
-        rayCheckbox.addActionListener(e -> {
-            updateControlVisibility();
-            scheduleUpdate();
-        });
-        rayNoLimitCheckbox.addActionListener(e -> {
-            updateControlVisibility();
-            scheduleUpdate();
-        });
-        rayHistoricCheckbox.addActionListener(e -> scheduleUpdate());
-        return row;
-    }
-
-    private JPanel createIchimokuRow() {
-        ichimokuCheckbox = new JCheckBox("Ichimoku Cloud");
-        ichimokuCheckbox.setToolTipText("Show Ichimoku Cloud (Tenkan-sen, Kijun-sen, Senkou Span A/B, Chikou Span)");
-        JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
-        row.setAlignmentX(Component.LEFT_ALIGNMENT);
-        row.add(ichimokuCheckbox);
-        ichimokuCheckbox.addActionListener(e -> scheduleUpdate());
-        return row;
-    }
-
-    private JPanel createDailyVolumeProfileRow() {
-        dailyVolumeProfileCheckbox = new JCheckBox("Daily Volume Profile");
-        dailyVolumeProfileCheckbox.setToolTipText("Show volume distribution histogram for each day");
-        dailyVolumeProfileBinsLabel = new JLabel("Bins:");
-        dailyVolumeProfileBinsSpinner = new JSpinner(new SpinnerNumberModel(96, 12, 200, 12));
-        dailyVolumeProfileBinsSpinner.setPreferredSize(new Dimension(60, 24));
-        dailyVolumeProfileBinsSpinner.addChangeListener(e -> scheduleUpdate());
-
-        dailyVolumeProfileColorModeCombo = new JComboBox<>(new String[]{
-            "Volume", "Delta", "Delta+Volume"
-        });
-        dailyVolumeProfileColorModeCombo.setPreferredSize(new Dimension(100, 24));
-        dailyVolumeProfileColorModeCombo.setToolTipText("Blue/orange = volume intensity, Green/red = delta direction");
-        dailyVolumeProfileColorModeCombo.addActionListener(e -> scheduleUpdate());
-
-        JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
-        row.setAlignmentX(Component.LEFT_ALIGNMENT);
-        row.add(dailyVolumeProfileCheckbox);
-        row.add(dailyVolumeProfileBinsLabel);
-        row.add(dailyVolumeProfileBinsSpinner);
-        row.add(dailyVolumeProfileColorModeCombo);
-        dailyVolumeProfileCheckbox.addActionListener(e -> scheduleUpdate());
-        return row;
-    }
+    // ===== Footprint Heatmap (complex, kept inline) =====
 
     private JPanel createFootprintHeatmapRow() {
         footprintHeatmapCheckbox = new JCheckBox("Footprint");
         footprintHeatmapCheckbox.setToolTipText("Show price-level volume heatmap (requires aggTrades data)");
 
-        // View mode toggle: Split vs Delta
         footprintSplitButton = new JToggleButton("Split");
         footprintSplitButton.setToolTipText("Split view: buy volume left (green), sell volume right (red)");
         footprintSplitButton.setPreferredSize(new Dimension(50, 22));
@@ -930,31 +293,21 @@ public class IndicatorSelectorPopup extends JDialog {
         footprintViewGroup.add(footprintSplitButton);
         footprintViewGroup.add(footprintDeltaButton);
 
-        // Bucket mode group
         footprintBucketGroup = new ButtonGroup();
-
-        // Auto buttons (adaptive per-candle)
         footprintAuto10Button = createFootprintBucketButton("Auto(10)", "Fine detail - ~10 buckets per candle");
         footprintAuto20Button = createFootprintBucketButton("Auto(20)", "Medium detail - ~20 buckets per candle (default)");
         footprintAuto40Button = createFootprintBucketButton("Auto(40)", "Coarse view - ~40 buckets per candle");
-
         footprintBucketGroup.add(footprintAuto10Button);
         footprintBucketGroup.add(footprintAuto20Button);
         footprintBucketGroup.add(footprintAuto40Button);
 
-        // Grid buttons (fixed tick sizes) - values computed dynamically
         for (int i = 0; i < 4; i++) {
             footprintGridButtons[i] = createFootprintBucketButton("$--", "Fixed grid tick size");
             footprintBucketGroup.add(footprintGridButtons[i]);
         }
 
-        // Wire up view mode buttons
-        footprintSplitButton.addActionListener(e -> {
-            if (footprintSplitButton.isSelected()) scheduleUpdate();
-        });
-        footprintDeltaButton.addActionListener(e -> {
-            if (footprintDeltaButton.isSelected()) scheduleUpdate();
-        });
+        footprintSplitButton.addActionListener(e -> { if (footprintSplitButton.isSelected()) scheduleUpdate(); });
+        footprintDeltaButton.addActionListener(e -> { if (footprintDeltaButton.isSelected()) scheduleUpdate(); });
 
         JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 2, 0));
         row.setAlignmentX(Component.LEFT_ALIGNMENT);
@@ -965,15 +318,9 @@ public class IndicatorSelectorPopup extends JDialog {
         row.add(footprintAuto10Button);
         row.add(footprintAuto20Button);
         row.add(footprintAuto40Button);
-        for (JToggleButton btn : footprintGridButtons) {
-            row.add(btn);
-        }
+        for (JToggleButton btn : footprintGridButtons) row.add(btn);
 
-        footprintHeatmapCheckbox.addActionListener(e -> {
-            updateFootprintControlVisibility();
-            scheduleUpdate();
-        });
-
+        footprintHeatmapCheckbox.addActionListener(e -> { updateFootprintControlVisibility(); scheduleUpdate(); });
         return row;
     }
 
@@ -983,104 +330,53 @@ public class IndicatorSelectorPopup extends JDialog {
         btn.setPreferredSize(new Dimension(text.length() > 6 ? 62 : 48, 22));
         btn.setMargin(new Insets(1, 2, 1, 2));
         btn.setFont(btn.getFont().deriveFont(11f));
-        btn.addActionListener(e -> {
-            if (btn.isSelected()) scheduleUpdate();
-        });
+        btn.addActionListener(e -> { if (btn.isSelected()) scheduleUpdate(); });
         return btn;
     }
 
-    /**
-     * Compute 4 tick size options from candles based on ATR.
-     * Returns array of tick sizes centered around the ideal tick.
-     */
-    private double[] computeTickSizeOptions(java.util.List<com.tradery.core.model.Candle> candles) {
+    private double[] computeTickSizeOptions(List<com.tradery.core.model.Candle> candles) {
         double[] result = new double[4];
-
         if (candles == null || candles.isEmpty()) {
-            // Default values for BTC-like prices
             result[0] = 25; result[1] = 50; result[2] = 100; result[3] = 250;
             return result;
         }
-
-        // Calculate ATR proxy: average high-low range of recent candles
         int lookback = Math.min(14, candles.size());
         double sumRange = 0;
         for (int i = candles.size() - lookback; i < candles.size(); i++) {
-            com.tradery.core.model.Candle c = candles.get(i);
+            var c = candles.get(i);
             sumRange += c.high() - c.low();
         }
         double avgRange = sumRange / lookback;
-
-        // Calculate ideal tick for ~20 buckets
         double idealTick = avgRange / 20;
-
-        // Find ideal tick's position in NICE_TICKS
         int idealIdx = 0;
         double minDiff = Math.abs(NICE_TICKS[0] - idealTick);
         for (int i = 1; i < NICE_TICKS.length; i++) {
             double diff = Math.abs(NICE_TICKS[i] - idealTick);
-            if (diff < minDiff) {
-                minDiff = diff;
-                idealIdx = i;
-            }
+            if (diff < minDiff) { minDiff = diff; idealIdx = i; }
         }
-
-        // Select 1 value below and 3 above the ideal (bias toward larger ticks)
-        int startIdx = Math.max(0, idealIdx - 1);
-        if (startIdx + 4 > NICE_TICKS.length) {
-            startIdx = NICE_TICKS.length - 4;
-        }
-        if (startIdx < 0) startIdx = 0;
-
+        int startIdx = Math.max(0, Math.min(idealIdx - 1, NICE_TICKS.length - 4));
         for (int i = 0; i < 4; i++) {
             int idx = startIdx + i;
-            if (idx < NICE_TICKS.length) {
-                result[i] = NICE_TICKS[idx];
-            } else {
-                result[i] = NICE_TICKS[NICE_TICKS.length - 1];
-            }
+            result[i] = idx < NICE_TICKS.length ? NICE_TICKS[idx] : NICE_TICKS[NICE_TICKS.length - 1];
         }
-
         return result;
     }
 
-    /**
-     * Format a tick size for display (e.g., "$100", "$0.25", "$2.5k").
-     */
     private String formatTickSize(double tick) {
-        if (tick >= 1000) {
-            return String.format("$%.0fk", tick / 1000);
-        } else if (tick >= 1) {
-            if (tick == Math.floor(tick)) {
-                return String.format("$%.0f", tick);
-            } else {
-                return String.format("$%.1f", tick);
-            }
-        } else if (tick >= 0.01) {
-            if (tick * 100 == Math.floor(tick * 100)) {
-                return String.format("$%.2f", tick);
-            } else {
-                return String.format("$%.3f", tick);
-            }
-        } else {
-            return String.format("$%.4f", tick);
-        }
+        if (tick >= 1000) return String.format("$%.0fk", tick / 1000);
+        else if (tick >= 1) return tick == Math.floor(tick) ? String.format("$%.0f", tick) : String.format("$%.1f", tick);
+        else if (tick >= 0.01) return tick * 100 == Math.floor(tick * 100) ? String.format("$%.2f", tick) : String.format("$%.3f", tick);
+        else return String.format("$%.4f", tick);
     }
 
-    /**
-     * Update the footprint grid buttons with current tick size options.
-     */
     private void updateFootprintTickButtons() {
-        java.util.List<com.tradery.core.model.Candle> candles = chartPanel.getCurrentCandles();
+        List<com.tradery.core.model.Candle> candles = chartPanel.getCurrentCandles();
         currentGridOptions = computeTickSizeOptions(candles);
-
         for (int i = 0; i < 4; i++) {
             String label = formatTickSize(currentGridOptions[i]);
             footprintGridButtons[i].setText(label);
             footprintGridButtons[i].setToolTipText("Fixed grid: " + label + " tick size");
-            // Adjust button width based on label length
-            int width = label.length() > 5 ? 52 : 44;
-            footprintGridButtons[i].setPreferredSize(new Dimension(width, 22));
+            footprintGridButtons[i].setPreferredSize(new Dimension(label.length() > 5 ? 52 : 44, 22));
         }
     }
 
@@ -1091,368 +387,20 @@ public class IndicatorSelectorPopup extends JDialog {
         footprintAuto10Button.setVisible(enabled);
         footprintAuto20Button.setVisible(enabled);
         footprintAuto40Button.setVisible(enabled);
-        for (JToggleButton btn : footprintGridButtons) {
-            btn.setVisible(enabled);
-        }
+        for (JToggleButton btn : footprintGridButtons) btn.setVisible(enabled);
     }
 
-    private JPanel createRsiRow() {
-        rsiCheckbox = new JCheckBox("RSI");
-        rsiLabel = new JLabel("Period:");
-        Object[] controls = createSliderSpinner(14, 2, 50);
-        rsiSlider = (JSlider) controls[0];
-        rsiSpinner = (JSpinner) controls[1];
-        return createIndicatorRowWithSlider(rsiCheckbox, rsiLabel, rsiSlider, rsiSpinner);
+    // ===== Section helpers =====
+
+    private JLabel createSectionHeader(String text) {
+        return IndicatorSelectorPanel.createSectionHeader(text);
     }
 
-    private JPanel createMacdRow() {
-        macdCheckbox = new JCheckBox("MACD");
-        Object[] fastControls = createSliderSpinner(12, 2, 50);
-        macdFastSlider = (JSlider) fastControls[0];
-        macdFastSpinner = (JSpinner) fastControls[1];
-        Object[] slowControls = createSliderSpinner(26, 5, 100);
-        macdSlowSlider = (JSlider) slowControls[0];
-        macdSlowSpinner = (JSpinner) slowControls[1];
-        Object[] signalControls = createSliderSpinner(9, 2, 50);
-        macdSignalSlider = (JSlider) signalControls[0];
-        macdSignalSpinner = (JSpinner) signalControls[1];
-
-        JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
-        row.setAlignmentX(Component.LEFT_ALIGNMENT);
-        row.add(macdCheckbox);
-        row.add(Box.createHorizontalGlue());
-        row.add(macdFastSlider);
-        row.add(macdFastSpinner);
-        row.add(macdSlowSlider);
-        row.add(macdSlowSpinner);
-        row.add(macdSignalSlider);
-        row.add(macdSignalSpinner);
-
-        macdCheckbox.addActionListener(e -> {
-            updateControlVisibility();
-            scheduleUpdate();
-        });
-        return row;
+    private JPanel createSectionSeparator() {
+        return IndicatorSelectorPanel.createSectionSeparator();
     }
 
-    private JPanel createAtrRow() {
-        atrCheckbox = new JCheckBox("ATR");
-        atrLabel = new JLabel("Period:");
-        Object[] controls = createSliderSpinner(14, 2, 50);
-        atrSlider = (JSlider) controls[0];
-        atrSpinner = (JSpinner) controls[1];
-        return createIndicatorRowWithSlider(atrCheckbox, atrLabel, atrSlider, atrSpinner);
-    }
-
-    private JPanel createStochasticRow() {
-        stochasticCheckbox = new JCheckBox("Stochastic");
-        stochasticKLabel = new JLabel("K:");
-        Object[] kControls = createSliderSpinner(14, 2, 50);
-        stochasticKSlider = (JSlider) kControls[0];
-        stochasticKSpinner = (JSpinner) kControls[1];
-        stochasticKSpinner.setToolTipText("%K period");
-        stochasticDLabel = new JLabel("D:");
-        Object[] dControls = createSliderSpinner(3, 1, 20);
-        stochasticDSlider = (JSlider) dControls[0];
-        stochasticDSpinner = (JSpinner) dControls[1];
-        stochasticDSpinner.setToolTipText("%D smoothing period");
-
-        JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
-        row.setAlignmentX(Component.LEFT_ALIGNMENT);
-        row.add(stochasticCheckbox);
-        row.add(Box.createHorizontalGlue());
-        row.add(stochasticKLabel);
-        row.add(stochasticKSlider);
-        row.add(stochasticKSpinner);
-        row.add(stochasticDLabel);
-        row.add(stochasticDSlider);
-        row.add(stochasticDSpinner);
-
-        stochasticCheckbox.addActionListener(e -> {
-            updateControlVisibility();
-            scheduleUpdate();
-        });
-        return row;
-    }
-
-    private JPanel createRangePositionRow() {
-        rangePositionCheckbox = new JCheckBox("Range Position");
-        rangePositionCheckbox.setToolTipText("Shows position within range (-1 to +1), extends beyond for breakouts");
-        rangePositionLabel = new JLabel("Period:");
-        Object[] controls = createSliderSpinner(200, 5, 500);
-        rangePositionSlider = (JSlider) controls[0];
-        rangePositionSpinner = (JSpinner) controls[1];
-        return createIndicatorRowWithSlider(rangePositionCheckbox, rangePositionLabel, rangePositionSlider, rangePositionSpinner);
-    }
-
-    private JPanel createAdxRow() {
-        adxCheckbox = new JCheckBox("ADX");
-        adxCheckbox.setToolTipText("Average Directional Index with +DI/-DI (trend strength)");
-        adxLabel = new JLabel("Period:");
-        Object[] controls = createSliderSpinner(14, 2, 50);
-        adxSlider = (JSlider) controls[0];
-        adxSpinner = (JSpinner) controls[1];
-        return createIndicatorRowWithSlider(adxCheckbox, adxLabel, adxSlider, adxSpinner);
-    }
-
-    private JPanel createDeltaRow() {
-        deltaCheckbox = new JCheckBox("Delta (per bar)");
-        deltaCheckbox.setToolTipText("Show per-candle buy-sell volume difference");
-        JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
-        row.setAlignmentX(Component.LEFT_ALIGNMENT);
-        row.add(deltaCheckbox);
-        deltaCheckbox.addActionListener(e -> scheduleUpdate());
-        return row;
-    }
-
-    private JPanel createCvdRow() {
-        cvdCheckbox = new JCheckBox("CVD (cumulative)");
-        cvdCheckbox.setToolTipText("Show cumulative volume delta");
-        JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
-        row.setAlignmentX(Component.LEFT_ALIGNMENT);
-        row.add(cvdCheckbox);
-        cvdCheckbox.addActionListener(e -> scheduleUpdate());
-        return row;
-    }
-
-    private JPanel createVolumeRatioRow() {
-        volumeRatioCheckbox = new JCheckBox("Buy/Sell Volume");
-        volumeRatioCheckbox.setToolTipText("Show buy/sell volume divergence around zero line");
-        JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
-        row.setAlignmentX(Component.LEFT_ALIGNMENT);
-        row.add(volumeRatioCheckbox);
-        volumeRatioCheckbox.addActionListener(e -> scheduleUpdate());
-        return row;
-    }
-
-    private JPanel createWhaleRow() {
-        whaleCheckbox = new JCheckBox("Whale Delta");
-        whaleCheckbox.setToolTipText("Show delta from large trades only");
-        whaleLabel = new JLabel("Min $:");
-        whaleThresholdSpinner = new JSpinner(new SpinnerNumberModel(50000, 1000, 1000000, 10000));
-        whaleThresholdSpinner.setPreferredSize(new Dimension(80, 24));
-        whaleThresholdSpinner.setToolTipText("Min trade size ($) to count as whale");
-
-        JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
-        row.setAlignmentX(Component.LEFT_ALIGNMENT);
-        row.add(whaleCheckbox);
-        row.add(whaleLabel);
-        row.add(whaleThresholdSpinner);
-        whaleCheckbox.addActionListener(e -> {
-            updateControlVisibility();
-            scheduleUpdate();
-        });
-        whaleThresholdSpinner.addChangeListener(e -> scheduleUpdate());
-        return row;
-    }
-
-    private JPanel createRetailRow() {
-        retailCheckbox = new JCheckBox("Retail Delta");
-        retailCheckbox.setToolTipText("Show delta from trades below threshold");
-        retailLabel = new JLabel("Max $:");
-        retailThresholdSpinner = new JSpinner(new SpinnerNumberModel(50000, 1000, 1000000, 10000));
-        retailThresholdSpinner.setPreferredSize(new Dimension(80, 24));
-        retailThresholdSpinner.setToolTipText("Max trade size ($) to count as retail");
-
-        JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
-        row.setAlignmentX(Component.LEFT_ALIGNMENT);
-        row.add(retailCheckbox);
-        row.add(retailLabel);
-        row.add(retailThresholdSpinner);
-        retailCheckbox.addActionListener(e -> {
-            updateControlVisibility();
-            scheduleUpdate();
-        });
-        retailThresholdSpinner.addChangeListener(e -> scheduleUpdate());
-        return row;
-    }
-
-    private JPanel createTradeCountRow() {
-        tradeCountCheckbox = new JCheckBox("Trade Count");
-        tradeCountCheckbox.setToolTipText("Show number of trades per candle");
-        JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
-        row.setAlignmentX(Component.LEFT_ALIGNMENT);
-        row.add(tradeCountCheckbox);
-        tradeCountCheckbox.addActionListener(e -> scheduleUpdate());
-        return row;
-    }
-
-    private JPanel createFundingRow() {
-        fundingCheckbox = new JCheckBox("Funding Rate");
-        JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
-        row.setAlignmentX(Component.LEFT_ALIGNMENT);
-        row.add(fundingCheckbox);
-        fundingCheckbox.addActionListener(e -> scheduleUpdate());
-        return row;
-    }
-
-    private JPanel createOiRow() {
-        oiCheckbox = new JCheckBox("Open Interest");
-        oiCheckbox.setToolTipText("Show OI value and change chart (Binance 5m data)");
-        JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
-        row.setAlignmentX(Component.LEFT_ALIGNMENT);
-        row.add(oiCheckbox);
-        oiCheckbox.addActionListener(e -> scheduleUpdate());
-        return row;
-    }
-
-    private JPanel createPremiumRow() {
-        premiumCheckbox = new JCheckBox("Premium Index");
-        premiumCheckbox.setToolTipText("Show futures premium vs spot index (leading indicator)");
-        JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
-        row.setAlignmentX(Component.LEFT_ALIGNMENT);
-        row.add(premiumCheckbox);
-        premiumCheckbox.addActionListener(e -> scheduleUpdate());
-        return row;
-    }
-
-    private JPanel createHoldingCostCumulativeRow() {
-        holdingCostCumulativeCheckbox = new JCheckBox("Cumulative Holding Costs");
-        holdingCostCumulativeCheckbox.setToolTipText("Show running total of funding fees/margin interest");
-        JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
-        row.setAlignmentX(Component.LEFT_ALIGNMENT);
-        row.add(holdingCostCumulativeCheckbox);
-        holdingCostCumulativeCheckbox.addActionListener(e -> scheduleUpdate());
-        return row;
-    }
-
-    private JPanel createHoldingCostEventsRow() {
-        holdingCostEventsCheckbox = new JCheckBox("Holding Cost Events");
-        holdingCostEventsCheckbox.setToolTipText("Show individual funding fee/interest charges per trade");
-        JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
-        row.setAlignmentX(Component.LEFT_ALIGNMENT);
-        row.add(holdingCostEventsCheckbox);
-        holdingCostEventsCheckbox.addActionListener(e -> scheduleUpdate());
-        return row;
-    }
-
-    private JPanel createVolumeChartRow() {
-        volumeChartCheckbox = new JCheckBox("Volume");
-        volumeChartCheckbox.setToolTipText("Show volume chart");
-        JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
-        row.setAlignmentX(Component.LEFT_ALIGNMENT);
-        row.add(volumeChartCheckbox);
-        volumeChartCheckbox.addActionListener(e -> scheduleUpdate());
-        return row;
-    }
-
-    private JPanel createEquityChartRow() {
-        equityChartCheckbox = new JCheckBox("Equity");
-        equityChartCheckbox.setToolTipText("Show portfolio equity chart");
-        JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
-        row.setAlignmentX(Component.LEFT_ALIGNMENT);
-        row.add(equityChartCheckbox);
-        equityChartCheckbox.addActionListener(e -> scheduleUpdate());
-        return row;
-    }
-
-    private JPanel createComparisonChartRow() {
-        comparisonChartCheckbox = new JCheckBox("Strategy vs Buy & Hold");
-        comparisonChartCheckbox.setToolTipText("Show strategy comparison chart");
-        JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
-        row.setAlignmentX(Component.LEFT_ALIGNMENT);
-        row.add(comparisonChartCheckbox);
-        comparisonChartCheckbox.addActionListener(e -> scheduleUpdate());
-        return row;
-    }
-
-    private JPanel createCapitalUsageChartRow() {
-        capitalUsageChartCheckbox = new JCheckBox("Capital Usage");
-        capitalUsageChartCheckbox.setToolTipText("Show capital usage percentage chart");
-        JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
-        row.setAlignmentX(Component.LEFT_ALIGNMENT);
-        row.add(capitalUsageChartCheckbox);
-        capitalUsageChartCheckbox.addActionListener(e -> scheduleUpdate());
-        return row;
-    }
-
-    private JPanel createTradePLChartRow() {
-        tradePLChartCheckbox = new JCheckBox("Trade P&L");
-        tradePLChartCheckbox.setToolTipText("Show individual trade P&L chart");
-        JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
-        row.setAlignmentX(Component.LEFT_ALIGNMENT);
-        row.add(tradePLChartCheckbox);
-        tradePLChartCheckbox.addActionListener(e -> scheduleUpdate());
-        return row;
-    }
-
-    private JPanel createIndicatorRow(JCheckBox checkbox, JLabel label, JSpinner spinner) {
-        JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
-        row.setAlignmentX(Component.LEFT_ALIGNMENT);
-        row.add(checkbox);
-        row.add(Box.createHorizontalGlue());
-        row.add(label);
-        row.add(spinner);
-
-        checkbox.addActionListener(e -> {
-            updateControlVisibility();
-            scheduleUpdate();
-        });
-        spinner.addChangeListener(e -> scheduleUpdate());
-        return row;
-    }
-
-    private JPanel createIndicatorRowWithSlider(JCheckBox checkbox, JLabel label, JSlider slider, JSpinner spinner) {
-        JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
-        row.setAlignmentX(Component.LEFT_ALIGNMENT);
-        row.add(checkbox);
-        row.add(Box.createHorizontalGlue());
-        row.add(label);
-        row.add(slider);
-        row.add(spinner);
-
-        checkbox.addActionListener(e -> {
-            updateControlVisibility();
-            scheduleUpdate();
-        });
-        return row;
-    }
-
-    private JSpinner createPeriodSpinner(int value, int min, int max) {
-        JSpinner spinner = new JSpinner(new SpinnerNumberModel(value, min, max, 1));
-        spinner.setPreferredSize(new Dimension(55, 24));
-        return spinner;
-    }
-
-    private JSpinner createDoubleSpinner(double value, double min, double max, double step) {
-        JSpinner spinner = new JSpinner(new SpinnerNumberModel(value, min, max, step));
-        spinner.setPreferredSize(new Dimension(50, 24));
-        return spinner;
-    }
-
-    /**
-     * Creates a synchronized slider+spinner pair.
-     * Returns array: [JSlider, JSpinner]
-     */
-    private Object[] createSliderSpinner(int value, int min, int max) {
-        JSlider slider = new JSlider(min, max, value);
-        slider.setPreferredSize(new Dimension(80, 20));
-        slider.setFocusable(false);
-
-        JSpinner spinner = new JSpinner(new SpinnerNumberModel(value, min, max, 1));
-        spinner.setPreferredSize(new Dimension(55, 24));
-
-        // Synchronize slider -> spinner and trigger updates while dragging
-        slider.addChangeListener(e -> {
-            int sliderValue = slider.getValue();
-            if ((int) spinner.getValue() != sliderValue) {
-                spinner.setValue(sliderValue);
-            }
-            // Always schedule update (debounce handles rate limiting)
-            scheduleUpdate();
-        });
-
-        // Synchronize spinner -> slider
-        spinner.addChangeListener(e -> {
-            int spinnerValue = (int) spinner.getValue();
-            if (slider.getValue() != spinnerValue) {
-                slider.setValue(spinnerValue);
-            }
-            scheduleUpdate();
-        });
-
-        return new Object[]{slider, spinner};
-    }
+    // ===== Debounce =====
 
     private void initDebounceTimer() {
         updateTimer = new Timer(DEBOUNCE_MS, e -> applyChanges());
@@ -1460,441 +408,249 @@ public class IndicatorSelectorPopup extends JDialog {
     }
 
     private void scheduleUpdate() {
-        if (initializing) return; // Suppress updates during initialization
-
-        if (updateTimer.isRunning()) {
-            updateTimer.restart();
-        } else {
-            updateTimer.start();
-        }
+        if (initializing) return;
+        if (updateTimer.isRunning()) updateTimer.restart();
+        else updateTimer.start();
     }
 
-    private void updateControlVisibility() {
-        // Overlays - SMA/EMA now use chip panels, no visibility toggle needed
-
-        boolean bbEnabled = bbCheckbox.isSelected();
-        bbPeriodLabel.setVisible(bbEnabled);
-        bbPeriodSlider.setVisible(bbEnabled);
-        bbPeriodSpinner.setVisible(bbEnabled);
-        bbStdLabel.setVisible(bbEnabled);
-        bbStdSpinner.setVisible(bbEnabled);
-
-        boolean hlEnabled = hlCheckbox.isSelected();
-        hlLabel.setVisible(hlEnabled);
-        hlSlider.setVisible(hlEnabled);
-        hlSpinner.setVisible(hlEnabled);
-
-        boolean mayerEnabled = mayerCheckbox.isSelected();
-        mayerLabel.setVisible(mayerEnabled);
-        mayerSlider.setVisible(mayerEnabled);
-        mayerSpinner.setVisible(mayerEnabled);
-
-        boolean rayEnabled = rayCheckbox.isSelected();
-        boolean rayNoLimit = rayNoLimitCheckbox.isSelected();
-        rayNoLimitCheckbox.setVisible(rayEnabled);
-        rayHistoricCheckbox.setVisible(rayEnabled);
-        rayLookbackLabel.setVisible(rayEnabled && !rayNoLimit);
-        rayLookbackSlider.setVisible(rayEnabled && !rayNoLimit);
-        rayLookbackSpinner.setVisible(rayEnabled && !rayNoLimit);
-        raySkipLabel.setVisible(rayEnabled);
-        raySkipSlider.setVisible(rayEnabled);
-        raySkipSpinner.setVisible(rayEnabled);
-
-        // Oscillators
-        boolean rsiEnabled = rsiCheckbox.isSelected();
-        rsiLabel.setVisible(rsiEnabled);
-        rsiSlider.setVisible(rsiEnabled);
-        rsiSpinner.setVisible(rsiEnabled);
-
-        boolean macdEnabled = macdCheckbox.isSelected();
-        macdFastSlider.setVisible(macdEnabled);
-        macdFastSpinner.setVisible(macdEnabled);
-        macdSlowSlider.setVisible(macdEnabled);
-        macdSlowSpinner.setVisible(macdEnabled);
-        macdSignalSlider.setVisible(macdEnabled);
-        macdSignalSpinner.setVisible(macdEnabled);
-
-        boolean atrEnabled = atrCheckbox.isSelected();
-        atrLabel.setVisible(atrEnabled);
-        atrSlider.setVisible(atrEnabled);
-        atrSpinner.setVisible(atrEnabled);
-
-        boolean stochasticEnabled = stochasticCheckbox.isSelected();
-        stochasticKLabel.setVisible(stochasticEnabled);
-        stochasticKSlider.setVisible(stochasticEnabled);
-        stochasticKSpinner.setVisible(stochasticEnabled);
-        stochasticDLabel.setVisible(stochasticEnabled);
-        stochasticDSlider.setVisible(stochasticEnabled);
-        stochasticDSpinner.setVisible(stochasticEnabled);
-
-        boolean rangePositionEnabled = rangePositionCheckbox.isSelected();
-        rangePositionLabel.setVisible(rangePositionEnabled);
-        rangePositionSlider.setVisible(rangePositionEnabled);
-        rangePositionSpinner.setVisible(rangePositionEnabled);
-
-        // Orderflow - whale threshold visible only when whale checkbox is enabled
-        boolean whaleEnabled = whaleCheckbox.isSelected();
-        whaleLabel.setVisible(whaleEnabled);
-        whaleThresholdSpinner.setVisible(whaleEnabled);
-
-        // Orderflow - retail threshold visible only when retail checkbox is enabled
-        boolean retailEnabled = retailCheckbox.isSelected();
-        retailLabel.setVisible(retailEnabled);
-        retailThresholdSpinner.setVisible(retailEnabled);
-
-        // Footprint heatmap visibility
-        updateFootprintControlVisibility();
-
-        // Repack to adjust size
-        pack();
-    }
+    // ===== Sync from config =====
 
     private void syncFromChartPanel() {
         ChartConfig config = ChartConfig.getInstance();
 
-        // Overlays - rebuild chips from config
-        rebuildSmaOverlays();
-        rebuildEmaOverlays();
+        // SMA/EMA
+        smaPanel.setPeriods(config.getSmaPeriods());
+        emaPanel.setColorOffset(config.getSmaPeriods().size());
+        emaPanel.setPeriods(config.getEmaPeriods());
 
-        bbCheckbox.setSelected(config.isBollingerEnabled());
-        bbPeriodSpinner.setValue(config.getBollingerPeriod());
-        bbStdSpinner.setValue(config.getBollingerStdDev());
-        hlCheckbox.setSelected(config.isHighLowEnabled());
-        hlSpinner.setValue(config.getHighLowPeriod());
-        mayerCheckbox.setSelected(config.isMayerEnabled());
-        mayerSpinner.setValue(config.getMayerPeriod());
-        dailyPocCheckbox.setSelected(config.isDailyPocEnabled());
-        floatingPocCheckbox.setSelected(config.isFloatingPocEnabled());
-        floatingPocPeriodSpinner.setValue(config.getFloatingPocPeriod());
-        boolean floatingPocEnabled = config.isFloatingPocEnabled();
-        floatingPocPeriodLabel.setEnabled(floatingPocEnabled);
-        floatingPocPeriodSpinner.setEnabled(floatingPocEnabled);
-        vwapCheckbox.setSelected(config.isVwapEnabled());
-        pivotPointsCheckbox.setSelected(config.isPivotPointsEnabled());
-        pivotPointsR3S3Checkbox.setSelected(config.isPivotPointsShowR3S3());
-        pivotPointsR3S3Checkbox.setEnabled(config.isPivotPointsEnabled());
-        atrBandsCheckbox.setSelected(config.isAtrBandsEnabled());
-        atrBandsPeriodSpinner.setValue(config.getAtrBandsPeriod());
-        atrBandsMultiplierSpinner.setValue(config.getAtrBandsMultiplier());
-        boolean atrBandsEnabled = config.isAtrBandsEnabled();
-        atrBandsPeriodLabel.setEnabled(atrBandsEnabled);
-        atrBandsPeriodSpinner.setEnabled(atrBandsEnabled);
-        atrBandsMultiplierLabel.setEnabled(atrBandsEnabled);
-        atrBandsMultiplierSpinner.setEnabled(atrBandsEnabled);
-        supertrendCheckbox.setSelected(config.isSupertrendEnabled());
-        supertrendPeriodSpinner.setValue(config.getSupertrendPeriod());
-        supertrendMultiplierSpinner.setValue(config.getSupertrendMultiplier());
-        boolean supertrendEnabled = config.isSupertrendEnabled();
-        supertrendPeriodLabel.setEnabled(supertrendEnabled);
-        supertrendPeriodSpinner.setEnabled(supertrendEnabled);
-        supertrendMultiplierLabel.setEnabled(supertrendEnabled);
-        supertrendMultiplierSpinner.setEnabled(supertrendEnabled);
-        keltnerCheckbox.setSelected(config.isKeltnerEnabled());
-        keltnerEmaPeriodSpinner.setValue(config.getKeltnerEmaPeriod());
-        keltnerAtrPeriodSpinner.setValue(config.getKeltnerAtrPeriod());
-        keltnerMultiplierSpinner.setValue(config.getKeltnerMultiplier());
-        boolean keltnerEnabled = config.isKeltnerEnabled();
-        keltnerEmaPeriodLabel.setEnabled(keltnerEnabled);
-        keltnerEmaPeriodSpinner.setEnabled(keltnerEnabled);
-        keltnerAtrPeriodLabel.setEnabled(keltnerEnabled);
-        keltnerAtrPeriodSpinner.setEnabled(keltnerEnabled);
-        keltnerMultiplierLabel.setEnabled(keltnerEnabled);
-        keltnerMultiplierSpinner.setEnabled(keltnerEnabled);
-        donchianCheckbox.setSelected(config.isDonchianEnabled());
-        donchianPeriodSpinner.setValue(config.getDonchianPeriod());
-        donchianMiddleCheckbox.setSelected(config.isDonchianShowMiddle());
-        boolean donchianEnabled = config.isDonchianEnabled();
-        donchianPeriodLabel.setEnabled(donchianEnabled);
-        donchianPeriodSpinner.setEnabled(donchianEnabled);
-        donchianMiddleCheckbox.setEnabled(donchianEnabled);
-        rayCheckbox.setSelected(config.isRayOverlayEnabled());
-        int rayLookback = config.getRayLookback();
-        rayNoLimitCheckbox.setSelected(rayLookback == 0);
-        rayHistoricCheckbox.setSelected(config.isRayHistoricEnabled());
-        rayLookbackSpinner.setValue(rayLookback == 0 ? 200 : rayLookback);  // Show 200 as default when switching from no-limit
-        raySkipSpinner.setValue(config.getRaySkip());
-        ichimokuCheckbox.setSelected(config.isIchimokuEnabled());
-        dailyVolumeProfileCheckbox.setSelected(config.isDailyVolumeProfileEnabled());
-        dailyVolumeProfileBinsSpinner.setValue(config.getDailyVolumeProfileBins());
+        // Overlays
+        bb.setSelected(config.isBollingerEnabled());
+        bb.setPeriod(config.getBollingerPeriod());
+        bb.setMultiplier(config.getBollingerStdDev());
+        hl.setSelected(config.isHighLowEnabled());
+        hl.setPeriod(config.getHighLowPeriod());
+        mayer.setSelected(config.isMayerEnabled());
+        mayer.setPeriod(config.getMayerPeriod());
+        dailyPoc.setSelected(config.isDailyPocEnabled());
+        floatingPoc.setSelected(config.isFloatingPocEnabled());
+        floatingPoc.setBars(config.getFloatingPocPeriod());
+        vwap.setSelected(config.isVwapEnabled());
+        pivotPoints.setSelected(config.isPivotPointsEnabled());
+        pivotPoints.setShowR3S3(config.isPivotPointsShowR3S3());
+        atrBands.setSelected(config.isAtrBandsEnabled());
+        atrBands.setPeriod(config.getAtrBandsPeriod());
+        atrBands.setMultiplier(config.getAtrBandsMultiplier());
+        supertrend.setSelected(config.isSupertrendEnabled());
+        supertrend.setPeriod(config.getSupertrendPeriod());
+        supertrend.setMultiplier(config.getSupertrendMultiplier());
+        keltner.setSelected(config.isKeltnerEnabled());
+        donchian.setSelected(config.isDonchianEnabled());
+        donchian.setPeriod(config.getDonchianPeriod());
+        donchian.setShowMiddle(config.isDonchianShowMiddle());
+        rays.setSelected(config.isRayOverlayEnabled());
+        rays.setLookback(config.getRayLookback());
+        rays.setSkip(config.getRaySkip());
+        rays.setHistoric(config.isRayHistoricEnabled());
+        ichimoku.setSelected(config.isIchimokuEnabled());
+        dailyVolumeProfile.setSelected(config.isDailyVolumeProfileEnabled());
+        dailyVolumeProfile.setBins(config.getDailyVolumeProfileBins());
         String colorMode = config.getDailyVolumeProfileColorMode();
         switch (colorMode) {
-            case "DELTA" -> dailyVolumeProfileColorModeCombo.setSelectedItem("Delta");
-            case "DELTA_INTENSITY" -> dailyVolumeProfileColorModeCombo.setSelectedItem("Delta+Volume");
-            default -> dailyVolumeProfileColorModeCombo.setSelectedItem("Volume");
+            case "DELTA" -> dailyVolumeProfile.setColorMode("Delta");
+            case "DELTA_INTENSITY" -> dailyVolumeProfile.setColorMode("Delta+Volume");
+            default -> dailyVolumeProfile.setColorMode("Volume");
         }
+
+        // Footprint
         footprintHeatmapCheckbox.setSelected(config.isFootprintHeatmapEnabled());
-
-        // Update tick size options based on current candles
         updateFootprintTickButtons();
-
-        // Sync view mode
         boolean isSplitMode = config.getFootprintHeatmapConfig().getDisplayMode() ==
             com.tradery.forge.ui.charts.footprint.FootprintDisplayMode.SPLIT;
         footprintSplitButton.setSelected(isSplitMode);
         footprintDeltaButton.setSelected(!isSplitMode);
-
-        // Sync bucket mode
-        com.tradery.forge.ui.charts.footprint.FootprintHeatmapConfig fpConfig = config.getFootprintHeatmapConfig();
+        var fpConfig = config.getFootprintHeatmapConfig();
         if (fpConfig.getTickSizeMode() == com.tradery.forge.ui.charts.footprint.FootprintHeatmapConfig.TickSizeMode.FIXED) {
-            // Find the matching grid button
             double fixedTick = fpConfig.getFixedTickSize();
-            boolean found = false;
-            for (int i = 0; i < 4; i++) {
-                if (Math.abs(currentGridOptions[i] - fixedTick) < 0.001) {
-                    footprintGridButtons[i].setSelected(true);
-                    found = true;
-                    break;
-                }
+            int nearestIdx = 0;
+            double minDiff = Math.abs(currentGridOptions[0] - fixedTick);
+            for (int i = 1; i < 4; i++) {
+                double diff = Math.abs(currentGridOptions[i] - fixedTick);
+                if (diff < minDiff) { minDiff = diff; nearestIdx = i; }
             }
-            // If exact match not found, find nearest
-            if (!found) {
-                int nearestIdx = 0;
-                double minDiff = Math.abs(currentGridOptions[0] - fixedTick);
-                for (int i = 1; i < 4; i++) {
-                    double diff = Math.abs(currentGridOptions[i] - fixedTick);
-                    if (diff < minDiff) {
-                        minDiff = diff;
-                        nearestIdx = i;
-                    }
-                }
-                footprintGridButtons[nearestIdx].setSelected(true);
-            }
+            footprintGridButtons[nearestIdx].setSelected(true);
         } else {
-            // Auto mode - select based on target buckets
             int buckets = fpConfig.getTargetBuckets();
-            if (buckets <= 15) {
-                footprintAuto10Button.setSelected(true);
-            } else if (buckets <= 30) {
-                footprintAuto20Button.setSelected(true);
-            } else {
-                footprintAuto40Button.setSelected(true);
-            }
+            if (buckets <= 15) footprintAuto10Button.setSelected(true);
+            else if (buckets <= 30) footprintAuto20Button.setSelected(true);
+            else footprintAuto40Button.setSelected(true);
         }
-
         updateFootprintControlVisibility();
 
         // Oscillators
-        rsiCheckbox.setSelected(config.isRsiEnabled());
-        rsiSpinner.setValue(config.getRsiPeriod());
-        macdCheckbox.setSelected(config.isMacdEnabled());
-        macdFastSpinner.setValue(config.getMacdFast());
-        macdSlowSpinner.setValue(config.getMacdSlow());
-        macdSignalSpinner.setValue(config.getMacdSignal());
-        atrCheckbox.setSelected(config.isAtrEnabled());
-        atrSpinner.setValue(config.getAtrPeriod());
-        stochasticCheckbox.setSelected(config.isStochasticEnabled());
-        stochasticKSpinner.setValue(config.getStochasticKPeriod());
-        stochasticDSpinner.setValue(config.getStochasticDPeriod());
-        rangePositionCheckbox.setSelected(config.isRangePositionEnabled());
-        rangePositionSpinner.setValue(config.getRangePositionPeriod());
-        adxCheckbox.setSelected(config.isAdxEnabled());
-        adxSpinner.setValue(config.getAdxPeriod());
+        rsi.setSelected(config.isRsiEnabled());
+        rsi.setPeriod(config.getRsiPeriod());
+        macd.setSelected(config.isMacdEnabled());
+        atr.setSelected(config.isAtrEnabled());
+        atr.setPeriod(config.getAtrPeriod());
+        stochastic.setSelected(config.isStochasticEnabled());
+        rangePosition.setSelected(config.isRangePositionEnabled());
+        rangePosition.setPeriod(config.getRangePositionPeriod());
+        adx.setSelected(config.isAdxEnabled());
+        adx.setPeriod(config.getAdxPeriod());
 
         // Orderflow
-        deltaCheckbox.setSelected(config.isDeltaEnabled());
-        cvdCheckbox.setSelected(config.isCvdEnabled());
-        volumeRatioCheckbox.setSelected(config.isVolumeRatioEnabled());
-        whaleCheckbox.setSelected(config.isWhaleEnabled());
-        retailCheckbox.setSelected(config.isRetailEnabled());
-        tradeCountCheckbox.setSelected(config.isTradeCountEnabled());
-        whaleThresholdSpinner.setValue((int) config.getWhaleThreshold());
-        retailThresholdSpinner.setValue((int) config.getRetailThreshold());
+        delta.setSelected(config.isDeltaEnabled());
+        cvd.setSelected(config.isCvdEnabled());
+        volumeRatio.setSelected(config.isVolumeRatioEnabled());
+        whale.setSelected(config.isWhaleEnabled());
+        whale.setThreshold((int) config.getWhaleThreshold());
+        retail.setSelected(config.isRetailEnabled());
+        retail.setThreshold((int) config.getRetailThreshold());
+        tradeCount.setSelected(config.isTradeCountEnabled());
 
-        // Funding
-        fundingCheckbox.setSelected(config.isFundingEnabled());
-
-        // Open Interest
-        oiCheckbox.setSelected(config.isOiEnabled());
-
-        // Premium Index
-        premiumCheckbox.setSelected(config.isPremiumEnabled());
-
-        // Holding Costs
-        holdingCostCumulativeCheckbox.setSelected(config.isHoldingCostCumulativeEnabled());
-        holdingCostEventsCheckbox.setSelected(config.isHoldingCostEventsEnabled());
+        // Funding / OI / Premium / Holding Costs
+        funding.setSelected(config.isFundingEnabled());
+        oi.setSelected(config.isOiEnabled());
+        premium.setSelected(config.isPremiumEnabled());
+        holdingCostCumulative.setSelected(config.isHoldingCostCumulativeEnabled());
+        holdingCostEvents.setSelected(config.isHoldingCostEventsEnabled());
 
         // Core charts
-        volumeChartCheckbox.setSelected(config.isVolumeChartEnabled());
-        equityChartCheckbox.setSelected(config.isEquityChartEnabled());
-        comparisonChartCheckbox.setSelected(config.isComparisonChartEnabled());
-        capitalUsageChartCheckbox.setSelected(config.isCapitalUsageChartEnabled());
-        tradePLChartCheckbox.setSelected(config.isTradePLChartEnabled());
+        volumeChart.setSelected(config.isVolumeChartEnabled());
+        equityChart.setSelected(config.isEquityChartEnabled());
+        comparisonChart.setSelected(config.isComparisonChartEnabled());
+        capitalUsageChart.setSelected(config.isCapitalUsageChartEnabled());
+        tradePLChart.setSelected(config.isTradePLChartEnabled());
     }
+
+    // ===== Apply changes to ChartPanel + Config =====
 
     private void applyChanges() {
         ChartConfig config = ChartConfig.getInstance();
 
-        // Overlays - SMA/EMA are managed via ChartConfig in rebuildSmaOverlays/rebuildEmaOverlays
-        int bbPeriod = (int) bbPeriodSpinner.getValue();
-        double bbStd = (double) bbStdSpinner.getValue();
-        int hlPeriod = (int) hlSpinner.getValue();
-        int mayerPeriod = (int) mayerSpinner.getValue();
+        // SMA/EMA - update config from panel state
+        List<Integer> smaPeriods = smaPanel.getSelectedPeriods();
+        List<Integer> emaPeriods = emaPanel.getSelectedPeriods();
+        config.setSmaPeriods(smaPeriods);
+        config.setEmaPeriods(emaPeriods);
+        emaPanel.setColorOffset(smaPanel.getAllPeriods().size());
 
-        if (bbCheckbox.isSelected()) {
-            chartPanel.setBollingerOverlay(bbPeriod, bbStd, null);
-        } else {
-            chartPanel.clearBollingerOverlay();
-        }
+        // Bollinger
+        if (bb.isSelected()) chartPanel.setBollingerOverlay(bb.getPeriod(), bb.getMultiplier(), null);
+        else chartPanel.clearBollingerOverlay();
+        config.setBollingerEnabled(bb.isSelected());
+        config.setBollingerPeriod(bb.getPeriod());
+        config.setBollingerStdDev(bb.getMultiplier());
 
-        if (hlCheckbox.isSelected()) {
-            chartPanel.setHighLowOverlay(hlPeriod, null);
-        } else {
-            chartPanel.clearHighLowOverlay();
-        }
+        // High/Low
+        if (hl.isSelected()) chartPanel.setHighLowOverlay(hl.getPeriod(), null);
+        else chartPanel.clearHighLowOverlay();
+        config.setHighLowEnabled(hl.isSelected());
+        config.setHighLowPeriod(hl.getPeriod());
 
-        if (mayerCheckbox.isSelected()) {
-            chartPanel.setMayerMultipleEnabled(true, mayerPeriod);
-        } else {
-            chartPanel.setMayerMultipleEnabled(false, 200);
-        }
+        // Mayer
+        chartPanel.setMayerMultipleEnabled(mayer.isSelected(), mayer.getPeriod());
+        config.setMayerEnabled(mayer.isSelected());
+        config.setMayerPeriod(mayer.getPeriod());
 
-        if (dailyPocCheckbox.isSelected()) {
-            chartPanel.setDailyPocOverlay(null);
-        } else {
-            chartPanel.clearDailyPocOverlay();
-        }
+        // Daily POC
+        if (dailyPoc.isSelected()) chartPanel.setDailyPocOverlay(null);
+        else chartPanel.clearDailyPocOverlay();
+        config.setDailyPocEnabled(dailyPoc.isSelected());
 
-        if (floatingPocCheckbox.isSelected()) {
-            chartPanel.setFloatingPocOverlay(null, (int) floatingPocPeriodSpinner.getValue());
-        } else {
-            chartPanel.clearFloatingPocOverlay();
-        }
+        // Floating POC
+        if (floatingPoc.isSelected()) chartPanel.setFloatingPocOverlay(null, floatingPoc.getBars());
+        else chartPanel.clearFloatingPocOverlay();
+        config.setFloatingPocEnabled(floatingPoc.isSelected());
+        config.setFloatingPocPeriod(floatingPoc.getBars());
 
-        if (vwapCheckbox.isSelected()) {
-            chartPanel.setVwapOverlay(null);
-        } else {
-            chartPanel.clearVwapOverlay();
-        }
+        // VWAP
+        if (vwap.isSelected()) chartPanel.setVwapOverlay(null);
+        else chartPanel.clearVwapOverlay();
+        config.setVwapEnabled(vwap.isSelected());
 
-        // Pivot Points overlay (tradery-charts)
-        if (pivotPointsCheckbox.isSelected()) {
-            chartPanel.setPivotPointsOverlay(pivotPointsR3S3Checkbox.isSelected());
-        } else {
-            chartPanel.clearPivotPointsOverlay();
-        }
+        // Pivot Points
+        if (pivotPoints.isSelected()) chartPanel.setPivotPointsOverlay(pivotPoints.isShowR3S3());
+        else chartPanel.clearPivotPointsOverlay();
+        config.setPivotPointsEnabled(pivotPoints.isSelected());
+        config.setPivotPointsShowR3S3(pivotPoints.isShowR3S3());
 
-        // ATR Bands overlay (tradery-charts)
-        if (atrBandsCheckbox.isSelected()) {
-            int period = (int) atrBandsPeriodSpinner.getValue();
-            double multiplier = (double) atrBandsMultiplierSpinner.getValue();
-            chartPanel.setAtrBandsOverlay(period, multiplier);
-        } else {
-            chartPanel.clearAtrBandsOverlay();
-        }
+        // ATR Bands
+        if (atrBands.isSelected()) chartPanel.setAtrBandsOverlay(atrBands.getPeriod(), atrBands.getMultiplier());
+        else chartPanel.clearAtrBandsOverlay();
+        config.setAtrBandsEnabled(atrBands.isSelected());
+        config.setAtrBandsPeriod(atrBands.getPeriod());
+        config.setAtrBandsMultiplier(atrBands.getMultiplier());
 
-        // Supertrend overlay (tradery-charts)
-        if (supertrendCheckbox.isSelected()) {
-            int period = (int) supertrendPeriodSpinner.getValue();
-            double multiplier = (double) supertrendMultiplierSpinner.getValue();
-            chartPanel.setSupertrendOverlay(period, multiplier);
-        } else {
-            chartPanel.clearSupertrendOverlay();
-        }
+        // Supertrend
+        if (supertrend.isSelected()) chartPanel.setSupertrendOverlay(supertrend.getPeriod(), supertrend.getMultiplier());
+        else chartPanel.clearSupertrendOverlay();
+        config.setSupertrendEnabled(supertrend.isSelected());
+        config.setSupertrendPeriod(supertrend.getPeriod());
+        config.setSupertrendMultiplier(supertrend.getMultiplier());
 
-        // Keltner Channel overlay (tradery-charts)
-        if (keltnerCheckbox.isSelected()) {
-            int emaPeriod = (int) keltnerEmaPeriodSpinner.getValue();
-            int atrPeriod = (int) keltnerAtrPeriodSpinner.getValue();
-            double multiplier = (double) keltnerMultiplierSpinner.getValue();
-            chartPanel.setKeltnerOverlay(emaPeriod, atrPeriod, multiplier);
-        } else {
-            chartPanel.clearKeltnerOverlay();
-        }
+        // Keltner
+        if (keltner.isSelected()) chartPanel.setKeltnerOverlay(keltner.getEmaPeriod(), keltner.getAtrPeriod(), keltner.getMultiplier());
+        else chartPanel.clearKeltnerOverlay();
+        config.setKeltnerEnabled(keltner.isSelected());
+        config.setKeltnerEmaPeriod(keltner.getEmaPeriod());
+        config.setKeltnerAtrPeriod(keltner.getAtrPeriod());
+        config.setKeltnerMultiplier(keltner.getMultiplier());
 
-        // Donchian Channel overlay (tradery-charts)
-        if (donchianCheckbox.isSelected()) {
-            int period = (int) donchianPeriodSpinner.getValue();
-            boolean showMiddle = donchianMiddleCheckbox.isSelected();
-            chartPanel.setDonchianOverlay(period, showMiddle);
-        } else {
-            chartPanel.clearDonchianOverlay();
-        }
+        // Donchian
+        if (donchian.isSelected()) chartPanel.setDonchianOverlay(donchian.getPeriod(), donchian.isShowMiddle());
+        else chartPanel.clearDonchianOverlay();
+        config.setDonchianEnabled(donchian.isSelected());
+        config.setDonchianPeriod(donchian.getPeriod());
+        config.setDonchianShowMiddle(donchian.isShowMiddle());
 
-        // Save overlay settings to config (SMA/EMA managed via chips)
-        config.setBollingerEnabled(bbCheckbox.isSelected());
-        config.setBollingerPeriod(bbPeriod);
-        config.setBollingerStdDev(bbStd);
-        config.setHighLowEnabled(hlCheckbox.isSelected());
-        config.setHighLowPeriod(hlPeriod);
-        config.setMayerEnabled(mayerCheckbox.isSelected());
-        config.setMayerPeriod(mayerPeriod);
-        config.setDailyPocEnabled(dailyPocCheckbox.isSelected());
-        config.setFloatingPocEnabled(floatingPocCheckbox.isSelected());
-        config.setFloatingPocPeriod((int) floatingPocPeriodSpinner.getValue());
-        config.setVwapEnabled(vwapCheckbox.isSelected());
-        config.setPivotPointsEnabled(pivotPointsCheckbox.isSelected());
-        config.setPivotPointsShowR3S3(pivotPointsR3S3Checkbox.isSelected());
-        config.setAtrBandsEnabled(atrBandsCheckbox.isSelected());
-        config.setAtrBandsPeriod((int) atrBandsPeriodSpinner.getValue());
-        config.setAtrBandsMultiplier((double) atrBandsMultiplierSpinner.getValue());
-        config.setSupertrendEnabled(supertrendCheckbox.isSelected());
-        config.setSupertrendPeriod((int) supertrendPeriodSpinner.getValue());
-        config.setSupertrendMultiplier((double) supertrendMultiplierSpinner.getValue());
-        config.setKeltnerEnabled(keltnerCheckbox.isSelected());
-        config.setKeltnerEmaPeriod((int) keltnerEmaPeriodSpinner.getValue());
-        config.setKeltnerAtrPeriod((int) keltnerAtrPeriodSpinner.getValue());
-        config.setKeltnerMultiplier((double) keltnerMultiplierSpinner.getValue());
-        config.setDonchianEnabled(donchianCheckbox.isSelected());
-        config.setDonchianPeriod((int) donchianPeriodSpinner.getValue());
-        config.setDonchianShowMiddle(donchianMiddleCheckbox.isSelected());
-
-        // Ray overlay
-        int rayLookback = rayNoLimitCheckbox.isSelected() ? 0 : (int) rayLookbackSpinner.getValue();
-        int raySkip = (int) raySkipSpinner.getValue();
-        boolean rayHistoric = rayHistoricCheckbox.isSelected();
-        if (rayCheckbox.isSelected()) {
+        // Rays
+        int rayLookback = rays.getLookback();
+        int raySkip = rays.getSkip();
+        boolean rayHistoric = rays.isHistoric();
+        if (rays.isSelected()) {
             chartPanel.setRayOverlay(true, rayLookback, raySkip);
             chartPanel.setRayShowHistoric(rayHistoric);
         } else {
             chartPanel.clearRayOverlay();
         }
-        config.setRayOverlayEnabled(rayCheckbox.isSelected());
+        config.setRayOverlayEnabled(rays.isSelected());
         config.setRayLookback(rayLookback);
         config.setRaySkip(raySkip);
         config.setRayHistoricEnabled(rayHistoric);
 
-        // Ichimoku Cloud
-        if (ichimokuCheckbox.isSelected()) {
+        // Ichimoku
+        if (ichimoku.isSelected()) {
             chartPanel.setIchimokuOverlay(
-                config.getIchimokuConversionPeriod(),
-                config.getIchimokuBasePeriod(),
-                config.getIchimokuSpanBPeriod(),
-                config.getIchimokuDisplacement()
-            );
+                config.getIchimokuConversionPeriod(), config.getIchimokuBasePeriod(),
+                config.getIchimokuSpanBPeriod(), config.getIchimokuDisplacement());
         } else {
             chartPanel.clearIchimokuOverlay();
         }
-        config.setIchimokuEnabled(ichimokuCheckbox.isSelected());
+        config.setIchimokuEnabled(ichimoku.isSelected());
 
         // Daily Volume Profile
-        int volumeProfileBins = (int) dailyVolumeProfileBinsSpinner.getValue();
-        if (dailyVolumeProfileCheckbox.isSelected()) {
+        int vpBins = dailyVolumeProfile.getBins();
+        if (dailyVolumeProfile.isSelected()) {
             chartPanel.setDailyVolumeProfileOverlay(
-                chartPanel.getCurrentCandles(),
-                volumeProfileBins,
-                70.0,  // Value area percentage
-                config.getDailyVolumeProfileWidth()
-            );
+                chartPanel.getCurrentCandles(), vpBins, 70.0, config.getDailyVolumeProfileWidth());
         } else {
             chartPanel.clearDailyVolumeProfileOverlay();
         }
-        config.setDailyVolumeProfileEnabled(dailyVolumeProfileCheckbox.isSelected());
-        config.setDailyVolumeProfileBins(volumeProfileBins);
-        String selectedColorMode = (String) dailyVolumeProfileColorModeCombo.getSelectedItem();
-        String colorModeEnum = switch (selectedColorMode) {
+        config.setDailyVolumeProfileEnabled(dailyVolumeProfile.isSelected());
+        config.setDailyVolumeProfileBins(vpBins);
+        String colorModeEnum = switch (dailyVolumeProfile.getColorMode()) {
             case "Delta" -> "DELTA";
             case "Delta+Volume" -> "DELTA_INTENSITY";
             default -> "VOLUME_INTENSITY";
         };
         config.setDailyVolumeProfileColorMode(colorModeEnum);
 
-        // Footprint Heatmap - set nested config values BEFORE calling setFootprintHeatmapEnabled (which saves)
-        com.tradery.forge.ui.charts.footprint.FootprintDisplayMode fpMode = footprintSplitButton.isSelected()
+        // Footprint Heatmap
+        var fpMode = footprintSplitButton.isSelected()
             ? com.tradery.forge.ui.charts.footprint.FootprintDisplayMode.SPLIT
             : com.tradery.forge.ui.charts.footprint.FootprintDisplayMode.COMBINED;
-
-        // Determine tick size mode and value based on which button is selected
-        com.tradery.forge.ui.charts.footprint.FootprintHeatmapConfig fpConfig = config.getFootprintHeatmapConfig();
+        var fpConfig = config.getFootprintHeatmapConfig();
         if (footprintAuto10Button.isSelected()) {
             fpConfig.setTickSizeMode(com.tradery.forge.ui.charts.footprint.FootprintHeatmapConfig.TickSizeMode.AUTO);
             fpConfig.setTargetBuckets(10);
@@ -1905,7 +661,6 @@ public class IndicatorSelectorPopup extends JDialog {
             fpConfig.setTickSizeMode(com.tradery.forge.ui.charts.footprint.FootprintHeatmapConfig.TickSizeMode.AUTO);
             fpConfig.setTargetBuckets(40);
         } else {
-            // Check which grid button is selected
             for (int i = 0; i < 4; i++) {
                 if (footprintGridButtons[i].isSelected()) {
                     fpConfig.setTickSizeMode(com.tradery.forge.ui.charts.footprint.FootprintHeatmapConfig.TickSizeMode.FIXED);
@@ -1914,118 +669,105 @@ public class IndicatorSelectorPopup extends JDialog {
                 }
             }
         }
-
         fpConfig.setDisplayMode(fpMode);
-        config.setFootprintHeatmapEnabled(footprintHeatmapCheckbox.isSelected()); // This saves all changes
+        config.setFootprintHeatmapEnabled(footprintHeatmapCheckbox.isSelected());
         chartPanel.setFootprintHeatmapEnabled(footprintHeatmapCheckbox.isSelected());
-        chartPanel.refreshFootprintHeatmap(); // Force refresh when mode changes
+        chartPanel.refreshFootprintHeatmap();
 
         // Oscillators
-        int rsiPeriod = (int) rsiSpinner.getValue();
-        int macdFast = (int) macdFastSpinner.getValue();
-        int macdSlow = (int) macdSlowSpinner.getValue();
-        int macdSignal = (int) macdSignalSpinner.getValue();
-        int atrPeriod = (int) atrSpinner.getValue();
+        chartPanel.setRsiChartEnabled(rsi.isSelected(), rsi.getPeriod());
+        chartPanel.setMacdChartEnabled(macd.isSelected(), macd.getFast(), macd.getSlow(), macd.getSignal());
+        chartPanel.setAtrChartEnabled(atr.isSelected(), atr.getPeriod());
+        chartPanel.setStochasticChartEnabled(stochastic.isSelected(), stochastic.getKPeriod(), stochastic.getDPeriod());
+        chartPanel.setRangePositionChartEnabled(rangePosition.isSelected(), rangePosition.getPeriod());
+        chartPanel.setAdxChartEnabled(adx.isSelected(), adx.getPeriod());
 
-        int stochasticK = (int) stochasticKSpinner.getValue();
-        int stochasticD = (int) stochasticDSpinner.getValue();
-        int rangePositionPeriod = (int) rangePositionSpinner.getValue();
-        int adxPeriod = (int) adxSpinner.getValue();
-
-        chartPanel.setRsiChartEnabled(rsiCheckbox.isSelected(), rsiPeriod);
-        chartPanel.setMacdChartEnabled(macdCheckbox.isSelected(), macdFast, macdSlow, macdSignal);
-        chartPanel.setAtrChartEnabled(atrCheckbox.isSelected(), atrPeriod);
-        chartPanel.setStochasticChartEnabled(stochasticCheckbox.isSelected(), stochasticK, stochasticD);
-        chartPanel.setRangePositionChartEnabled(rangePositionCheckbox.isSelected(), rangePositionPeriod);
-        chartPanel.setAdxChartEnabled(adxCheckbox.isSelected(), adxPeriod);
-
-        // Save indicator settings to config
-        config.setRsiEnabled(rsiCheckbox.isSelected());
-        config.setRsiPeriod(rsiPeriod);
-        config.setMacdEnabled(macdCheckbox.isSelected());
-        config.setMacdFast(macdFast);
-        config.setMacdSlow(macdSlow);
-        config.setMacdSignal(macdSignal);
-        config.setAtrEnabled(atrCheckbox.isSelected());
-        config.setAtrPeriod(atrPeriod);
-        config.setStochasticEnabled(stochasticCheckbox.isSelected());
-        config.setStochasticKPeriod(stochasticK);
-        config.setStochasticDPeriod(stochasticD);
-        config.setRangePositionEnabled(rangePositionCheckbox.isSelected());
-        config.setRangePositionPeriod(rangePositionPeriod);
-        config.setAdxEnabled(adxCheckbox.isSelected());
-        config.setAdxPeriod(adxPeriod);
+        config.setRsiEnabled(rsi.isSelected());
+        config.setRsiPeriod(rsi.getPeriod());
+        config.setMacdEnabled(macd.isSelected());
+        config.setMacdFast(macd.getFast());
+        config.setMacdSlow(macd.getSlow());
+        config.setMacdSignal(macd.getSignal());
+        config.setAtrEnabled(atr.isSelected());
+        config.setAtrPeriod(atr.getPeriod());
+        config.setStochasticEnabled(stochastic.isSelected());
+        config.setStochasticKPeriod(stochastic.getKPeriod());
+        config.setStochasticDPeriod(stochastic.getDPeriod());
+        config.setRangePositionEnabled(rangePosition.isSelected());
+        config.setRangePositionPeriod(rangePosition.getPeriod());
+        config.setAdxEnabled(adx.isSelected());
+        config.setAdxPeriod(adx.getPeriod());
 
         // Orderflow
-        double threshold = ((Number) whaleThresholdSpinner.getValue()).doubleValue();
-        chartPanel.setWhaleThreshold(threshold);
-        chartPanel.setDeltaChartEnabled(deltaCheckbox.isSelected());
-        chartPanel.setCvdChartEnabled(cvdCheckbox.isSelected());
-        chartPanel.setVolumeRatioChartEnabled(volumeRatioCheckbox.isSelected());
-        chartPanel.setWhaleChartEnabled(whaleCheckbox.isSelected(), threshold);
-        double retailThreshold = ((Number) retailThresholdSpinner.getValue()).doubleValue();
+        double whaleThreshold = whale.getThreshold();
+        chartPanel.setWhaleThreshold(whaleThreshold);
+        chartPanel.setDeltaChartEnabled(delta.isSelected());
+        chartPanel.setCvdChartEnabled(cvd.isSelected());
+        chartPanel.setVolumeRatioChartEnabled(volumeRatio.isSelected());
+        chartPanel.setWhaleChartEnabled(whale.isSelected(), whaleThreshold);
+        double retailThreshold = retail.getThreshold();
         chartPanel.setRetailThreshold(retailThreshold);
-        chartPanel.setRetailChartEnabled(retailCheckbox.isSelected(), retailThreshold);
-        chartPanel.setTradeCountChartEnabled(tradeCountCheckbox.isSelected());
+        chartPanel.setRetailChartEnabled(retail.isSelected(), retailThreshold);
+        chartPanel.setTradeCountChartEnabled(tradeCount.isSelected());
 
-        // Save orderflow settings to config
-        config.setDeltaEnabled(deltaCheckbox.isSelected());
-        config.setCvdEnabled(cvdCheckbox.isSelected());
-        config.setVolumeRatioEnabled(volumeRatioCheckbox.isSelected());
-        config.setWhaleEnabled(whaleCheckbox.isSelected());
-        config.setRetailEnabled(retailCheckbox.isSelected());
-        config.setTradeCountEnabled(tradeCountCheckbox.isSelected());
-        config.setWhaleThreshold(threshold);
+        config.setDeltaEnabled(delta.isSelected());
+        config.setCvdEnabled(cvd.isSelected());
+        config.setVolumeRatioEnabled(volumeRatio.isSelected());
+        config.setWhaleEnabled(whale.isSelected());
+        config.setRetailEnabled(retail.isSelected());
+        config.setTradeCountEnabled(tradeCount.isSelected());
+        config.setWhaleThreshold(whaleThreshold);
         config.setRetailThreshold(retailThreshold);
 
-        // Funding
-        chartPanel.setFundingChartEnabled(fundingCheckbox.isSelected());
-        config.setFundingEnabled(fundingCheckbox.isSelected());
-
-        // Open Interest
-        chartPanel.setOiChartEnabled(oiCheckbox.isSelected());
-        config.setOiEnabled(oiCheckbox.isSelected());
-
-        // Premium Index
-        chartPanel.setPremiumChartEnabled(premiumCheckbox.isSelected());
-        config.setPremiumEnabled(premiumCheckbox.isSelected());
+        // Funding / OI / Premium
+        chartPanel.setFundingChartEnabled(funding.isSelected());
+        config.setFundingEnabled(funding.isSelected());
+        chartPanel.setOiChartEnabled(oi.isSelected());
+        config.setOiEnabled(oi.isSelected());
+        chartPanel.setPremiumChartEnabled(premium.isSelected());
+        config.setPremiumEnabled(premium.isSelected());
 
         // Holding Costs
-        chartPanel.setHoldingCostCumulativeChartEnabled(holdingCostCumulativeCheckbox.isSelected());
-        config.setHoldingCostCumulativeEnabled(holdingCostCumulativeCheckbox.isSelected());
-        chartPanel.setHoldingCostEventsChartEnabled(holdingCostEventsCheckbox.isSelected());
-        config.setHoldingCostEventsEnabled(holdingCostEventsCheckbox.isSelected());
+        chartPanel.setHoldingCostCumulativeChartEnabled(holdingCostCumulative.isSelected());
+        config.setHoldingCostCumulativeEnabled(holdingCostCumulative.isSelected());
+        chartPanel.setHoldingCostEventsChartEnabled(holdingCostEvents.isSelected());
+        config.setHoldingCostEventsEnabled(holdingCostEvents.isSelected());
 
         // Core charts
-        chartPanel.setVolumeChartEnabled(volumeChartCheckbox.isSelected());
-        chartPanel.setEquityChartEnabled(equityChartCheckbox.isSelected());
-        chartPanel.setComparisonChartEnabled(comparisonChartCheckbox.isSelected());
-        chartPanel.setCapitalUsageChartEnabled(capitalUsageChartCheckbox.isSelected());
-        chartPanel.setTradePLChartEnabled(tradePLChartCheckbox.isSelected());
+        chartPanel.setVolumeChartEnabled(volumeChart.isSelected());
+        chartPanel.setEquityChartEnabled(equityChart.isSelected());
+        chartPanel.setComparisonChartEnabled(comparisonChart.isSelected());
+        chartPanel.setCapitalUsageChartEnabled(capitalUsageChart.isSelected());
+        chartPanel.setTradePLChartEnabled(tradePLChart.isSelected());
+        config.setVolumeChartEnabled(volumeChart.isSelected());
+        config.setEquityChartEnabled(equityChart.isSelected());
+        config.setComparisonChartEnabled(comparisonChart.isSelected());
+        config.setCapitalUsageChartEnabled(capitalUsageChart.isSelected());
+        config.setTradePLChartEnabled(tradePLChart.isSelected());
 
-        // Save core chart settings to config
-        config.setVolumeChartEnabled(volumeChartCheckbox.isSelected());
-        config.setEquityChartEnabled(equityChartCheckbox.isSelected());
-        config.setComparisonChartEnabled(comparisonChartCheckbox.isSelected());
-        config.setCapitalUsageChartEnabled(capitalUsageChartCheckbox.isSelected());
-        config.setTradePLChartEnabled(tradePLChartCheckbox.isSelected());
-
-        // Trigger backtest if needed (for orderflow/funding data)
-        if (onBacktestNeeded != null) {
-            onBacktestNeeded.run();
-        }
+        if (onBacktestNeeded != null) onBacktestNeeded.run();
     }
 
-    /**
-     * Show the popup below the given component.
-     */
+    /** Show the popup below the given component, clamped to screen bounds. */
     public static void showBelow(Component anchor, ChartsPanel chartPanel, Runnable onBacktestNeeded) {
         Window window = SwingUtilities.getWindowAncestor(anchor);
         IndicatorSelectorPopup popup = new IndicatorSelectorPopup(window, chartPanel, onBacktestNeeded);
-
-        // Position below anchor
         Point loc = anchor.getLocationOnScreen();
-        popup.setLocation(loc.x, loc.y + anchor.getHeight());
+        int x = loc.x;
+        int y = loc.y + anchor.getHeight();
+
+        // Clamp to screen
+        GraphicsConfiguration gc = anchor.getGraphicsConfiguration();
+        if (gc != null) {
+            Rectangle screen = gc.getBounds();
+            Insets insets = Toolkit.getDefaultToolkit().getScreenInsets(gc);
+            int maxY = screen.y + screen.height - insets.bottom;
+            if (y + popup.getHeight() > maxY) {
+                y = maxY - popup.getHeight();
+            }
+        }
+
+        popup.setLocation(x, y);
         popup.setVisible(true);
     }
 }
