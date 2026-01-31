@@ -100,9 +100,9 @@ public class AiTerminalPanel extends JPanel {
     }
 
     /**
-     * Start an AI CLI process (claude or codex) with the given initial prompt.
+     * Start an AI CLI process (claude or codex).
      */
-    public void startAi(String aiType, String workingDir, String initialPrompt) {
+    public void startAi(String aiType, String workingDir) {
         if (isRunning) {
             return;
         }
@@ -135,7 +135,7 @@ public class AiTerminalPanel extends JPanel {
                     "Edit:%s/**,Write:%s/**,Read:%s/**,mcp__tradery__*",
                     traderyPath, traderyPath, traderyPath
                 );
-                aiCommand = "claude --allowedTools '" + allowedTools + "'";
+                aiCommand = "claude --allowedTools '" + allowedTools + "' -p 'Call tradery_get_context to see what I am working on'";
             } else {
                 aiCommand = aiType;
             }
@@ -164,29 +164,17 @@ public class AiTerminalPanel extends JPanel {
                 terminalWidget.getTerminalPanel().requestFocusInWindow();
             });
 
-            // Send AI command after shell starts, then send initial prompt
+            // Send AI command after shell starts
             final String finalAiCommand = aiCommand;
             Thread commandSender = new Thread(() -> {
                 try {
                     // Wait for shell to fully initialize (prompt rendered)
                     Thread.sleep(1000);
 
-                    // Send the AI command (e.g., "codex" or "claude --allowedTools ...")
+                    // Send the AI command (e.g., "codex" or "claude --allowedTools ... -p '...'")
                     connector.write(finalAiCommand);
                     Thread.sleep(100);
-                    // Use newline to execute (some terminals need \n, others \r)
                     connector.write("\n");
-
-                    // Wait for AI to start up
-                    Thread.sleep(3000);
-
-                    // Send initial prompt if provided
-                    if (initialPrompt != null && !initialPrompt.isEmpty()) {
-                        connector.write(initialPrompt);
-                        Thread.sleep(300);
-                        // Use carriage return to submit (Claude Code needs \r, not \n)
-                        connector.write("\r");
-                    }
                 } catch (Exception e) {
                     e.printStackTrace();
                 }
@@ -254,9 +242,9 @@ public class AiTerminalPanel extends JPanel {
     /**
      * Restart the AI with a fresh terminal - clears all history and starts anew.
      */
-    public void restartAi(String aiType, String workingDir, String initialPrompt) {
+    public void restartAi(String aiType, String workingDir) {
         resetTerminal();
-        startAi(aiType, workingDir, initialPrompt);
+        startAi(aiType, workingDir);
     }
 
     public boolean isRunning() {

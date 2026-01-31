@@ -105,13 +105,13 @@ public class AiTerminalFrame extends JFrame {
      * Start an AI CLI with the given context (creates own terminal panel if needed).
      * Always uses fresh terminal to clear any previous history.
      */
-    public void startAi(String aiType, String workingDir, String initialPrompt) {
+    public void startAi(String aiType, String workingDir) {
         if (terminalPanel == null) {
             terminalPanel = new AiTerminalPanel();
             terminalPanel.setOnFileChange(onFileChange);
             contentPanel.add(terminalPanel, BorderLayout.CENTER);
         }
-        terminalPanel.restartAi(aiType, workingDir, initialPrompt);
+        terminalPanel.restartAi(aiType, workingDir);
         setVisible(true);
         toFront();
     }

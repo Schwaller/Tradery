@@ -140,18 +140,7 @@ public class AiTerminalController {
             return;
         }
 
-        String initialPrompt = String.format(
-            "[Launched from Tradery app] " +
-            "Currently open: Strategy '%s' (id: %s), " +
-            "backtesting %s on %s timeframe for %s. " +
-            "Read strategies/%s/strategy.json and strategies/%s/latest.json to understand the current setup. " +
-            "Then WAIT for instructions - do not make changes until I say 'go' or give specific directions. " +
-            "The app auto-reloads when you save changes to strategy.json.",
-            strategyName, strategyId, symbol, timeframe, duration,
-            strategyId, strategyId
-        );
-
-        openAiTerminal("claude", initialPrompt, strategyName);
+        openAiTerminal("claude", null, strategyName);
     }
 
     /**
@@ -173,29 +162,19 @@ public class AiTerminalController {
         }
 
         String traderyDir = System.getProperty("user.home") + "/.tradery";
-        String initialPrompt = String.format(
-            "[Launched from Tradery app] " +
-            "Currently open: Strategy '%s' (id: %s), " +
-            "backtesting %s on %s timeframe for %s. " +
-            "Read strategies/%s/strategy.json and strategies/%s/latest.json. " +
-            "Then WAIT for instructions - do not make changes until I say 'go' or give specific directions. " +
-            "The app auto-reloads when you save changes to strategy.json.",
-            strategyName, strategyId, symbol, timeframe, duration,
-            strategyId, strategyId
-        );
 
         // Open Codex in OS Terminal (embedded terminal has compatibility issues)
-        openOsCodexTerminal(traderyDir, initialPrompt, strategyName);
+        openOsCodexTerminal(traderyDir, strategyName);
     }
 
-    private void openAiTerminal(String aiType, String initialPrompt, String strategyName) {
+    private void openAiTerminal(String aiType, String strategyName) {
         String traderyDir = System.getProperty("user.home") + "/.tradery";
         String displayName = aiType.substring(0, 1).toUpperCase() + aiType.substring(1);
 
         // Check if external terminal mode is configured
         String terminalMode = WindowStateStore.getInstance().getAiTerminalMode();
         if ("external".equals(terminalMode)) {
-            openOsAiTerminal(aiType, traderyDir, initialPrompt, strategyName);
+            openOsAiTerminal(aiType, traderyDir, strategyName);
             return;
         }
 
@@ -234,7 +213,7 @@ public class AiTerminalController {
         if (terminalDocked) {
             dockedTerminalWrapper.setVisible(true);
             editorTerminalSplit.setDividerLocation(0.5);
-            dockedTerminalPanel.restartAi(aiType, traderyDir, initialPrompt);
+            dockedTerminalPanel.restartAi(aiType, traderyDir);
             dockedTerminalPanel.grabFocus();
             onStatus.accept("Opened " + displayName + " for " + strategyName);
         } else {
@@ -287,19 +266,16 @@ public class AiTerminalController {
         onStatus.accept("Redocked Claude terminal");
     }
 
-    private void openOsAiTerminal(String aiType, String traderyDir, String initialPrompt, String strategyName) {
+    private void openOsAiTerminal(String aiType, String traderyDir, String strategyName) {
         String displayName = aiType.substring(0, 1).toUpperCase() + aiType.substring(1);
         String aiCommand;
 
         if ("claude".equals(aiType)) {
-            // Claude with file access and MCP tools pre-approved
-            aiCommand = String.format(
-                "claude --allowedTools 'Edit:~/.tradery/**,Write:~/.tradery/**,Read:~/.tradery/**,mcp__tradery__*' '%s'",
-                initialPrompt.replace("'", "'\\''")
-            );
+            // Claude with file access and MCP tools pre-approved, plus initial prompt
+            aiCommand = "claude --allowedTools 'Edit:~/.tradery/**,Write:~/.tradery/**,Read:~/.tradery/**,mcp__tradery__*' -p 'Call tradery_get_context to see what I am working on'";
         } else {
             // Codex or other AI
-            aiCommand = String.format("%s '%s'", aiType, initialPrompt.replace("'", "'\\''"));
+            aiCommand = aiType;
         }
 
         String command = String.format(
@@ -331,11 +307,10 @@ public class AiTerminalController {
         }
     }
 
-    private void openOsCodexTerminal(String traderyDir, String initialPrompt, String strategyName) {
+    private void openOsCodexTerminal(String traderyDir, String strategyName) {
         String command = String.format(
-            "cd '%s' && codex '%s'",
-            traderyDir.replace("'", "'\\''"),
-            initialPrompt.replace("'", "'\\''")
+            "cd '%s' && codex",
+            traderyDir.replace("'", "'\\''")
         );
 
         try {

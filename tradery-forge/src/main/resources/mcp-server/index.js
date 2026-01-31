@@ -655,27 +655,16 @@ Use this to:
     },
   },
   {
-    name: "tradery_get_ui_state",
-    description: `Get the current UI state: open strategy windows, last focused strategy, and enabled chart overlays/indicators with parameters.
+    name: "tradery_get_context",
+    description: `Get full session context in one call. CALL THIS FIRST at the start of every session.
 
-Use this at the START of every session to understand what the user is looking at. The lastFocusedStrategyId tells you which strategy the user is currently working with.
+Returns everything you need to understand what the user is looking at:
+- ui: Open windows, lastFocusedStrategyId, window count
+- chartConfig: All overlays/indicators with enabled state and parameters
+- focusedStrategy: Full config of the last focused strategy (if any)
+- focusedSummary: Backtest metrics, analysis, suggestions, trade files for the focused strategy (if backtest exists)
 
-Returns:
-- launcherOpen: Whether the main launcher is open
-- windows: Array of open strategy windows with strategyId, symbol, timeframe, enabledOverlays, enabledIndicators
-- lastFocusedStrategyId: The strategy the user last interacted with
-- windowCount: Number of open windows`,
-    inputSchema: {
-      type: "object",
-      properties: {},
-      required: [],
-    },
-  },
-  {
-    name: "tradery_get_chart_config",
-    description: `Get the full chart configuration including all overlays and indicators with their enabled state and parameters.
-
-Returns overlays (SMA, EMA, BBANDS, HighLow, Mayer, VWAP, DailyPOC, FloatingPOC, Rays, Ichimoku) and indicators (RSI, MACD, ATR, STOCHASTIC, RANGE_POSITION, ADX, DELTA, CVD, FUNDING, OI, PREMIUM) with their current settings.`,
+This replaces the need to call tradery_get_strategy + tradery_get_summary separately for the active strategy.`,
     inputSchema: {
       type: "object",
       properties: {},
@@ -1337,12 +1326,49 @@ async function handleTool(name, args) {
       return apiCall("GET", "/download-stats");
     }
 
-    case "tradery_get_ui_state": {
-      return apiCall("GET", "/ui");
-    }
+    case "tradery_get_context": {
+      const result = {};
 
-    case "tradery_get_chart_config": {
-      return apiCall("GET", "/ui/chart-config");
+      // Get UI state
+      const ui = await apiCall("GET", "/ui");
+      result.ui = ui.error ? { error: ui.error } : ui;
+
+      // Get chart config
+      const chartConfig = await apiCall("GET", "/ui/chart-config");
+      result.chartConfig = chartConfig.error ? { error: chartConfig.error } : chartConfig;
+
+      // Get focused strategy details + summary
+      const focusedId = ui.lastFocusedStrategyId;
+      if (focusedId) {
+        // Strategy config
+        const strategyPath = join(TRADERY_DIR, "strategies", focusedId, "strategy.yaml");
+        const strategyJsonPath = join(TRADERY_DIR, "strategies", focusedId, "strategy.json");
+        const strategy = await apiCall("GET", `/strategy/${encodeURIComponent(focusedId)}`);
+        result.focusedStrategy = strategy.error ? { error: strategy.error } : strategy;
+
+        // Summary (backtest results)
+        const summaryPath = join(TRADERY_DIR, "strategies", focusedId, "summary.json");
+        if (existsSync(summaryPath)) {
+          try {
+            const summary = JSON.parse(readFileSync(summaryPath, "utf-8"));
+            delete summary.trades;
+            delete summary.strategy;
+            delete summary.config;
+
+            const tradesDir = join(TRADERY_DIR, "strategies", focusedId, "trades");
+            if (existsSync(tradesDir)) {
+              summary.tradeFiles = readdirSync(tradesDir).filter(f => f.endsWith(".json")).sort();
+            }
+            result.focusedSummary = summary;
+          } catch (e) {
+            result.focusedSummary = { error: `Failed to read summary: ${e.message}` };
+          }
+        } else {
+          result.focusedSummary = null;
+        }
+      }
+
+      return result;
     }
 
     case "tradery_update_chart_config": {

@@ -383,8 +383,7 @@ Trades also capture footprint metrics at entry/exit/mfe/mae points:
 **UI Tools:**
 | Tool | Purpose |
 |------|---------|
-| `tradery_get_ui_state` | Open windows, last focused strategy, chart config (call at session start!) |
-| `tradery_get_chart_config` | Full chart overlay/indicator config with parameters |
+| `tradery_get_context` | **Call first!** Returns UI state, chart config, focused strategy config + backtest summary in one call |
 | `tradery_update_chart_config` | Enable/disable/configure chart overlays and indicators |
 
 ### HTTP API
@@ -421,10 +420,10 @@ Available overlays: `SMA`, `EMA` (with `periods` array), `BBANDS`, `HighLow`, `M
 Available indicators: `RSI`, `ATR`, `ADX`, `RANGE_POSITION` (with `period`), `MACD` (with `fast`, `slow`, `signal`), `STOCHASTIC` (with `kPeriod`, `dPeriod`), `DELTA`, `CVD`, `FUNDING`, `OI`, `PREMIUM`.
 
 ### Session Startup (IMPORTANT)
-**On every new session**, before doing any work, call `tradery_get_ui_state` to understand what the user is looking at. This returns open strategy windows, `lastFocusedStrategyId` (the strategy the user is currently working with), and enabled chart overlays/indicators with parameters. Use this context — e.g. if the user asks about "this strategy", they mean the last focused one.
+**On every new session**, before doing any work, call `tradery_get_context`. This single call returns everything you need: open windows, last focused strategy ID, chart config, the focused strategy's full config, and its backtest summary with metrics and AI suggestions. Use this context — e.g. if the user asks about "this strategy", they mean the last focused one.
 
 ### AI Workflow
-1. **`tradery_get_ui_state`** to know which strategy the user is looking at
+1. **`tradery_get_context`** to know which strategy the user is looking at
 2. Read `summary.json` for overview + suggestions
 3. Use `tradery_analyze_phases` for phase recommendations
 4. Glob trade filenames to understand distribution

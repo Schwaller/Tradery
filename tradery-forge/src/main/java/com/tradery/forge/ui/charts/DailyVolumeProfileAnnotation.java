@@ -363,38 +363,43 @@ public class DailyVolumeProfileAnnotation extends AbstractXYAnnotation {
 
         double[] deltas = day.deltas;
 
+        // Pre-compute integer Y positions for each bin to ensure consistent 1px gaps.
+        // Using the bin center for positioning avoids floating-point rounding inconsistencies.
+        int[] binTopY = new int[priceLevels.length];
+        int[] binBotY = new int[priceLevels.length];
         for (int i = 0; i < priceLevels.length; i++) {
-            double priceLevel = priceLevels[i];
+            double top = rangeAxis.valueToJava2D(priceLevels[i] + binHeight / 2, dataArea, RectangleEdge.LEFT);
+            double bot = rangeAxis.valueToJava2D(priceLevels[i] - binHeight / 2, dataArea, RectangleEdge.LEFT);
+            binTopY[i] = (int) Math.round(Math.min(top, bot));
+            binBotY[i] = (int) Math.round(Math.max(top, bot));
+        }
+
+        for (int i = 0; i < priceLevels.length; i++) {
             double volume = volumes[i];
             double delta = deltas != null && i < deltas.length ? deltas[i] : 0;
 
             if (volume <= 0) continue;
 
-            // Convert price to screen Y
-            double screenY = rangeAxis.valueToJava2D(priceLevel + binHeight / 2, dataArea, RectangleEdge.LEFT);
-            double screenY2 = rangeAxis.valueToJava2D(priceLevel - binHeight / 2, dataArea, RectangleEdge.LEFT);
-
             // Calculate bar width based on relative volume (scaled to 2/3 of day width)
             double normalizedVolume = day.maxVolume > 0 ? volume / day.maxVolume : 0;
             int barWidth = (int) (normalizedVolume * maxBarWidth);
 
-            // Calculate bar height in pixels
-            int barHeight = Math.max(1, Math.abs((int)(screenY2 - screenY)));
+            // Use pre-computed positions with 1px gap between bars
+            int y = binTopY[i];
+            int barHeight = Math.max(1, binBotY[i] - binTopY[i] - 1);
 
             // Choose color based on mode and delta
             Color barColor = getBarColor(normalizedVolume, delta, volume);
 
             // Draw bar starting at day start, extending RIGHT into the day
             int x = (int) dayStartX;
-            int y = (int) Math.min(screenY, screenY2);
 
             // Ensure bar is visible
             if (barWidth > 0 && barHeight > 0) {
-                // Draw HVN glow effect (high volume node)
+                // Draw HVN marker (high volume node) — vertical line 2px left of histogram baseline
                 if (showHvnLvn && normalizedVolume >= hvnThreshold) {
-                    // Draw glow behind the bar
-                    g2.setColor(new Color(255, 255, 255, 40));
-                    g2.fillRect(x - 2, y - 1, barWidth + 4, barHeight + 2);
+                    g2.setColor(new Color(255, 255, 255, 80));
+                    g2.fillRect(x - 3, y, 1, barHeight);
                 }
 
                 g2.setColor(barColor);

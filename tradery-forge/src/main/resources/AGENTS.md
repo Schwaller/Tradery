@@ -4,7 +4,7 @@ You are helping optimize trading strategies for a backtesting application. The a
 
 ## Session Startup (REQUIRED)
 
-**On every new session**, before doing any work, call `tradery_get_ui_state` to understand what the user is looking at. This returns open strategy windows, `lastFocusedStrategyId` (the strategy the user is currently working with), and enabled chart overlays/indicators with parameters.
+**On every new session**, before doing any work, call `tradery_get_context`. This single call returns everything you need: open windows, last focused strategy ID, chart config, the focused strategy's full config, and its backtest summary with metrics and AI suggestions.
 
 Use this context — e.g. if the user says "this strategy", they mean the last focused one.
 
@@ -410,12 +410,11 @@ Use MCP tools for all strategy operations. **DO NOT edit YAML directly** - MCP v
 ### UI Tools
 | Tool | Purpose |
 |------|---------|
-| `tradery_get_ui_state` | Open windows, last focused strategy, chart config (call at session start!) |
-| `tradery_get_chart_config` | Full chart overlay/indicator config with parameters |
+| `tradery_get_context` | **Call first!** Returns UI state, chart config, focused strategy config + backtest summary in one call |
 | `tradery_update_chart_config` | Enable/disable/configure chart overlays and indicators |
 
 ### MCP Workflow
-1. **`tradery_get_ui_state`** to know which strategy the user is looking at
+1. **`tradery_get_context`** to know which strategy the user is looking at
 2. `tradery_get_summary` for overview + AI suggestions
 3. `tradery_analyze_phases` for phase recommendations
 4. `tradery_validate_strategy` before any update

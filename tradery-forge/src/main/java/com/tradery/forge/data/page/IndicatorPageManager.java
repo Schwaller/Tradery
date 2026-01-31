@@ -305,6 +305,24 @@ public class IndicatorPageManager {
      * Falls back to legacy switch for special cases not in registry.
      */
     private Object computeIndicator(IndicatorType type, String params, String timeframe, List<Candle> candles, List<AggTrade> aggTrades) {
+        long t0 = System.currentTimeMillis();
+        int candleCount = candles != null ? candles.size() : 0;
+        int aggTradeCount = aggTrades != null ? aggTrades.size() : 0;
+
+        Object result = doComputeIndicator(type, params, timeframe, candles, aggTrades);
+
+        long elapsed = System.currentTimeMillis() - t0;
+        if (elapsed >= 50) {
+            log.info("Indicator {} [{}] computed in {}ms (candles={}, aggTrades={})",
+                type, params, elapsed, candleCount, aggTradeCount);
+        } else {
+            log.debug("Indicator {} [{}] computed in {}ms (candles={}, aggTrades={})",
+                type, params, elapsed, candleCount, aggTradeCount);
+        }
+        return result;
+    }
+
+    private Object doComputeIndicator(IndicatorType type, String params, String timeframe, List<Candle> candles, List<AggTrade> aggTrades) {
         // Map IndicatorType to registry ID
         String registryId = mapTypeToRegistryId(type);
 

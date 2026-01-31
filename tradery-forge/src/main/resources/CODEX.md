@@ -8,11 +8,15 @@ On every new session, before doing any work, query the running app to understand
 PORT=$(cat ~/.tradery/api.port 2>/dev/null)
 if [ -n "$PORT" ]; then
   curl -s "http://localhost:$PORT/ui"
-  curl -s "http://localhost:$PORT/ui/chart-config"
 fi
 ```
 
-This tells you which strategy windows are open, which strategy was last focused (the one the user is looking at), and what chart overlays/indicators are enabled.
+This tells you which strategy windows are open, which strategy was last focused (`lastFocusedStrategyId` — the one the user is looking at), and what chart overlays/indicators are enabled. Then read the focused strategy's config and summary:
+
+```bash
+curl -s "http://localhost:$PORT/strategy/$STRATEGY_ID"
+curl -s "http://localhost:$PORT/strategy/$STRATEGY_ID/results"
+```
 
 ## IMPORTANT: Use the HTTP API, Not Direct File Edits
 
