@@ -140,7 +140,7 @@ public class AiTerminalController {
             return;
         }
 
-        openAiTerminal("claude", null, strategyName);
+        openAiTerminal("claude", strategyName);
     }
 
     /**
@@ -221,7 +221,7 @@ public class AiTerminalController {
                 aiTerminalFrame = new AiTerminalFrame(strategyName, onBacktest, this::redockTerminal);
             }
             aiTerminalFrame.setTitle(displayName + " - " + strategyName);
-            aiTerminalFrame.startAi(aiType, traderyDir, initialPrompt);
+            aiTerminalFrame.startAi(aiType, traderyDir);
             onStatus.accept("Opened " + displayName + " for " + strategyName);
         }
     }
