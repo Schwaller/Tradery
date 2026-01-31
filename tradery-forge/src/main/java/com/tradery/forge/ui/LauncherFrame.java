@@ -15,6 +15,8 @@ import javax.swing.*;
 import java.awt.*;
 import java.awt.event.ComponentAdapter;
 import java.awt.event.ComponentEvent;
+import java.awt.event.WindowAdapter;
+import java.awt.event.WindowEvent;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Path;
@@ -45,6 +47,7 @@ public class LauncherFrame extends JFrame {
 
     private final StrategyStore strategyStore;
     private final Map<String, ProjectWindow> openWindows = new HashMap<>();
+    private volatile String lastFocusedStrategyId;
     private FileWatcher fileWatcher;
 
     private static final DateTimeFormatter DATE_FORMAT = DateTimeFormatter.ofPattern("MMM d, yyyy");
@@ -349,12 +352,14 @@ public class LauncherFrame extends JFrame {
         ProjectWindow existing = openWindows.get(id);
         if (existing != null) {
             existing.bringToFront();
+            lastFocusedStrategyId = id;
             return;
         }
 
         // Create new window
         ProjectWindow window = new ProjectWindow(selected, this::onWindowClosed);
         openWindows.put(id, window);
+        trackFocus(window, id);
         window.setVisible(true);
     }
 
@@ -542,6 +547,7 @@ public class LauncherFrame extends JFrame {
             if (strategy != null && !openWindows.containsKey(strategyId)) {
                 ProjectWindow window = new ProjectWindow(strategy, this::onWindowClosed);
                 openWindows.put(strategyId, window);
+                trackFocus(window, strategyId);
                 window.setVisible(true);
             }
         }
@@ -563,6 +569,20 @@ public class LauncherFrame extends JFrame {
             result.add(window.getWindowInfo());
         }
         return result;
+    }
+
+    public String getLastFocusedStrategyId() {
+        return lastFocusedStrategyId;
+    }
+
+    private void trackFocus(ProjectWindow window, String strategyId) {
+        lastFocusedStrategyId = strategyId;
+        window.addWindowFocusListener(new WindowAdapter() {
+            @Override
+            public void windowGainedFocus(WindowEvent e) {
+                lastFocusedStrategyId = strategyId;
+            }
+        });
     }
 
     // ========== Public API for opening windows ==========
@@ -634,6 +654,7 @@ public class LauncherFrame extends JFrame {
             } else {
                 ProjectWindow window = new ProjectWindow(strategy, this::onWindowClosed);
                 openWindows.put(strategyId, window);
+                trackFocus(window, strategyId);
                 window.setVisible(true);
             }
         });

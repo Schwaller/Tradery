@@ -413,10 +413,15 @@ public class PageManager {
 
         try {
             // AggTradesStore handles cache check + fetch if needed
+            long t0 = System.currentTimeMillis();
             List<AggTrade> trades = aggTradesStore.getAggTrades(symbol, startTime, endTime);
+            long t1 = System.currentTimeMillis();
             page.setRecordCount(trades.size());
-            LOG.info("loadAggTrades: {} loaded {} trades", symbol, trades.size());
-            return msgpackMapper.writeValueAsBytes(trades);
+            byte[] data = msgpackMapper.writeValueAsBytes(trades);
+            long t2 = System.currentTimeMillis();
+            LOG.info("loadAggTrades: {} loaded {} trades (sqlite={}ms, msgpack={}ms, total={}ms)",
+                symbol, trades.size(), t1 - t0, t2 - t1, t2 - t0);
+            return data;
         } finally {
             aggTradesStore.setProgressCallback(null);
         }

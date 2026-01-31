@@ -160,13 +160,15 @@ public class AggTradesPageManager extends DataPageManager<AggTrade> {
 
                 // Fetch final data
                 int oldCount = page.getRecordCount();
+                long fetchStart = System.currentTimeMillis();
                 List<AggTrade> trades = client.getAggTrades(symbol, startTime, endTime);
+                long fetchMs = System.currentTimeMillis() - fetchStart;
 
                 // Track memory (atomic operation)
                 long newTotal = currentRecordCount.addAndGet(trades.size() - oldCount);
 
-                log.info("AggTradesPageManager.loadData: {} got {} trades (total in memory: {})",
-                    symbol, trades.size(), newTotal);
+                log.info("AggTradesPageManager.loadData: {} got {} trades in {}ms (total in memory: {})",
+                    symbol, trades.size(), fetchMs, newTotal);
                 updatePageData(page, trades);
                 return;  // Success
 

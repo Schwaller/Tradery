@@ -35,8 +35,8 @@ public class AudioAlert implements AlertOutput {
             if (isMacOS) {
                 // Use macOS afplay for better sound
                 String sound = signal.type() == SignalEvent.SignalType.ENTRY
-                    ? "/System/Library/Sounds/Glass.aiff"
-                    : "/System/Library/Sounds/Purr.aiff";
+                    ? "/System/Library/Sounds/Ping.aiff"
+                    : "/System/Library/Sounds/Pop.aiff";
 
                 ProcessBuilder pb = new ProcessBuilder("afplay", sound);
                 pb.start();

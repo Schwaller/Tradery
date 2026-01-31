@@ -747,6 +747,10 @@ public class ChartConfig {
         if (listeners != null) listeners.remove(listener);
     }
 
+    public void notifyChanged() {
+        notifyListeners();
+    }
+
     private void notifyListeners() {
         if (listeners != null) {
             for (Runnable listener : listeners) {

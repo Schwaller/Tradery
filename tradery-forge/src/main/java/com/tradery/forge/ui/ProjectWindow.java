@@ -1052,21 +1052,24 @@ public class ProjectWindow extends JFrame {
 
         ChartConfig config = ChartConfig.getInstance();
 
-        // Overlays
+        // Overlays (with parameters)
         if (config.isSmaEnabled() || !config.getSmaPeriods().isEmpty()) {
-            overlays.add("SMA");
+            for (int p : config.getSmaPeriods()) overlays.add("SMA(" + p + ")");
+            if (overlays.isEmpty() && config.isSmaEnabled()) overlays.add("SMA(" + config.getSmaPeriod() + ")");
         }
         if (config.isEmaEnabled() || !config.getEmaPeriods().isEmpty()) {
-            overlays.add("EMA");
+            for (int p : config.getEmaPeriods()) overlays.add("EMA(" + p + ")");
+            if (config.isEmaEnabled() && overlays.stream().noneMatch(s -> s.startsWith("EMA(")))
+                overlays.add("EMA(" + config.getEmaPeriod() + ")");
         }
         if (config.isBollingerEnabled()) {
-            overlays.add("BBANDS");
+            overlays.add("BBANDS(" + config.getBollingerPeriod() + "," + config.getBollingerStdDev() + ")");
         }
         if (config.isHighLowEnabled()) {
-            overlays.add("HighLow");
+            overlays.add("HighLow(" + config.getHighLowPeriod() + ")");
         }
         if (config.isMayerEnabled()) {
-            overlays.add("Mayer");
+            overlays.add("Mayer(" + config.getMayerPeriod() + ")");
         }
         if (config.isVwapEnabled()) {
             overlays.add("VWAP");
@@ -1084,21 +1087,21 @@ public class ProjectWindow extends JFrame {
             overlays.add("Ichimoku");
         }
 
-        // Indicator charts
+        // Indicator charts (with parameters)
         if (config.isRsiEnabled()) {
             indicators.add("RSI(" + config.getRsiPeriod() + ")");
         }
         if (config.isMacdEnabled()) {
-            indicators.add("MACD");
+            indicators.add("MACD(" + config.getMacdFast() + "," + config.getMacdSlow() + "," + config.getMacdSignal() + ")");
         }
         if (config.isAtrEnabled()) {
             indicators.add("ATR(" + config.getAtrPeriod() + ")");
         }
         if (config.isStochasticEnabled()) {
-            indicators.add("STOCHASTIC");
+            indicators.add("STOCHASTIC(" + config.getStochasticKPeriod() + "," + config.getStochasticDPeriod() + ")");
         }
         if (config.isRangePositionEnabled()) {
-            indicators.add("RANGE_POSITION");
+            indicators.add("RANGE_POSITION(" + config.getRangePositionPeriod() + ")");
         }
         if (config.isAdxEnabled()) {
             indicators.add("ADX(" + config.getAdxPeriod() + ")");

@@ -24,6 +24,7 @@ public class FlowDiagramPanel extends JPanel {
 
     private Strategy strategy;
     private static final int SCALE_HEIGHT = 160;
+    private static final int UNBOUNDED_ZONE_HEIGHT = 32;
 
     public FlowDiagramPanel() {
         setOpaque(false);
@@ -81,32 +82,43 @@ public class FlowDiagramPanel extends JPanel {
         // Calculate P&L range based only on actual defined boundaries
         Double minDefined = null;
         Double maxDefined = null;
+        boolean hasUnboundedBottom = false;
+        boolean hasUnboundedTop = false;
         for (ExitZone zone : zones) {
             if (zone.minPnlPercent() != null) {
                 minDefined = (minDefined == null) ? zone.minPnlPercent() : Math.min(minDefined, zone.minPnlPercent());
+            } else {
+                hasUnboundedBottom = true;
             }
             if (zone.maxPnlPercent() != null) {
                 maxDefined = (maxDefined == null) ? zone.maxPnlPercent() : Math.max(maxDefined, zone.maxPnlPercent());
+            } else {
+                hasUnboundedTop = true;
             }
         }
 
-        // Build scale around defined boundaries, include 0 as reference
+        // Count how many unbounded extensions we need (top/bottom)
+        int unboundedExtensions = (hasUnboundedBottom ? 1 : 0) + (hasUnboundedTop ? 1 : 0);
+        // The bounded portion of the scale gets the remaining pixels after unbounded zones
+        int boundedPixels = SCALE_HEIGHT - unboundedExtensions * UNBOUNDED_ZONE_HEIGHT;
+
+        // Build scale to cover only the defined boundaries
+        // The P&L scale maps to the bounded pixel region; unbounded zones extend beyond in pixels
         double minPnl, maxPnl;
         if (minDefined == null && maxDefined == null) {
             minPnl = -5;
             maxPnl = 5;
         } else if (minDefined == null) {
-            maxPnl = Math.max(maxDefined + 2, 2);
-            minPnl = Math.min(0, maxDefined) - 5;
+            minPnl = maxDefined - 5;
+            maxPnl = maxDefined;
         } else if (maxDefined == null) {
-            minPnl = Math.min(minDefined - 2, -2);
-            maxPnl = Math.max(0, minDefined) + 5;
+            minPnl = minDefined;
+            maxPnl = minDefined + 5;
         } else {
-            minPnl = minDefined - 2;
-            maxPnl = maxDefined + 2;
+            minPnl = minDefined;
+            maxPnl = maxDefined;
         }
-        if (minPnl > 0) minPnl = -2;
-        if (maxPnl < 0) maxPnl = 2;
+        if (minPnl >= maxPnl) { minPnl = maxPnl - 1; }
 
         // Determine entry label based on order type
         EntryOrderType orderType = strategy.getEntrySettings().getOrderType();
@@ -181,9 +193,13 @@ public class FlowDiagramPanel extends JPanel {
         int scaleTop = (getHeight() - SCALE_HEIGHT) / 2;
         int scaleBottom = scaleTop + SCALE_HEIGHT;
 
+        // The bounded P&L region sits inside the scale, with unbounded caps outside
+        int boundedTop = scaleTop + (hasUnboundedTop ? UNBOUNDED_ZONE_HEIGHT : 0);
+        int boundedBottom = scaleBottom - (hasUnboundedBottom ? UNBOUNDED_ZONE_HEIGHT : 0);
+
         // Entry box position
         int entryX = startX + condSectionWidth;
-        int zeroY = pnlToY(0, minPnl, maxPnl, scaleTop, scaleBottom);
+        int zeroY = pnlToY(Math.max(minPnl, Math.min(maxPnl, 0)), minPnl, maxPnl, boundedTop, boundedBottom);
         int entryY = zeroY - entryBoxHeight / 2;
         int entryRight = entryX + entryBoxWidth;
 
@@ -297,14 +313,14 @@ public class FlowDiagramPanel extends JPanel {
         for (int i = 0; i < zones.size(); i++) {
             ExitZone zone = zones.get(i);
 
-            // Calculate zone Y position based on P&L
+            // Calculate zone Y position: bounded edges use P&L scale, unbounded get fixed pixel cap
             boolean unboundedTop = zone.maxPnlPercent() == null;
             boolean unboundedBottom = zone.minPnlPercent() == null;
-            double zMin = zone.minPnlPercent() != null ? zone.minPnlPercent() : minPnl;
-            double zMax = zone.maxPnlPercent() != null ? zone.maxPnlPercent() : maxPnl;
 
-            int zoneTopY = pnlToY(zMax, minPnl, maxPnl, scaleTop, scaleBottom);
-            int zoneBotY = pnlToY(zMin, minPnl, maxPnl, scaleTop, scaleBottom);
+            int zoneTopY = unboundedTop ? scaleTop
+                    : pnlToY(zone.maxPnlPercent(), minPnl, maxPnl, boundedTop, boundedBottom);
+            int zoneBotY = unboundedBottom ? scaleBottom
+                    : pnlToY(zone.minPnlPercent(), minPnl, maxPnl, boundedTop, boundedBottom);
             int zoneHeight = zoneBotY - zoneTopY;
 
             // Draw curved flow band from entry to zone bar (Sankey-style)

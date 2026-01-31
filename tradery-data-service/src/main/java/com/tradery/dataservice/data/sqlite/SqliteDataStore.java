@@ -238,6 +238,29 @@ public class SqliteDataStore {
         }
     }
 
+    /**
+     * Consolidate fragmented coverage ranges for a symbol.
+     * Call once on startup to compact ranges accumulated before inline compaction was added.
+     */
+    public void consolidateCoverage(String symbol) throws IOException {
+        try {
+            CoverageDao dao = forSymbol(symbol).coverage();
+            for (String dataType : List.of("agg_trades", "candles", "funding_rates", "open_interest", "premium_index")) {
+                // Get all sub_keys for this data type
+                var ranges = dao.getCoverageRanges(dataType, "");
+                if (ranges.size() > 1) {
+                    dao.consolidateRanges(dataType, "");
+                }
+                var defaultRanges = dao.getCoverageRanges(dataType, "default");
+                if (defaultRanges.size() > 1) {
+                    dao.consolidateRanges(dataType, "default");
+                }
+            }
+        } catch (SQLException e) {
+            throw new IOException("SQLite error consolidating coverage: " + e.getMessage(), e);
+        }
+    }
+
     // ========== Utility Methods ==========
 
     /**

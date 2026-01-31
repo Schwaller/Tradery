@@ -2,6 +2,7 @@ package com.tradery.desk;
 
 import com.formdev.flatlaf.FlatDarkLaf;
 import com.tradery.dataclient.DataServiceClient;
+import com.tradery.dataclient.DataServiceLauncher;
 import com.tradery.dataclient.DataServiceLocator;
 import com.tradery.dataclient.LiveCandleClient;
 import com.tradery.dataclient.page.DataPageListener;
@@ -51,7 +52,8 @@ public class TraderyDeskApp {
     private final AlertDispatcher alertDispatcher;
     private final SignalDeduplicator deduplicator;
 
-    // Data service client for historical data
+    // Data service launcher and client
+    private DataServiceLauncher dataServiceLauncher;
     private DataServiceClient dataClient;
 
     // Live candle client for real-time updates
@@ -102,6 +104,9 @@ public class TraderyDeskApp {
             log.warn("Strategy library not found at {}", config.getLibraryDir());
         }
 
+        // Ensure data service is running (start if needed)
+        startDataService();
+
         // Connect to data service for historical candles
         initDataService();
 
@@ -145,6 +150,19 @@ public class TraderyDeskApp {
                 log.info("Importing {} v{} from library", activation.getId(), activation.getVersion());
                 library.importToActive(activation.getId(), activation.getVersion());
             }
+        }
+    }
+
+    /**
+     * Start data service if not already running.
+     */
+    private void startDataService() {
+        try {
+            dataServiceLauncher = new DataServiceLauncher("TraderyDesk");
+            int port = dataServiceLauncher.ensureRunning();
+            log.info("Data service available on port {}", port);
+        } catch (Exception e) {
+            log.warn("Could not start data service: {}", e.getMessage());
         }
     }
 
@@ -600,6 +618,10 @@ public class TraderyDeskApp {
 
         if (dataClient != null) {
             dataClient.close();
+        }
+
+        if (dataServiceLauncher != null) {
+            dataServiceLauncher.shutdown();
         }
 
         alertDispatcher.shutdown();

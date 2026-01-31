@@ -1,5 +1,6 @@
 package com.tradery.forge.api;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -27,8 +28,10 @@ import com.tradery.core.model.FundingRate;
 import com.tradery.core.model.OpenInterest;
 import com.tradery.forge.ui.LauncherFrame;
 import com.tradery.forge.ui.ProjectWindow;
+import com.tradery.forge.ui.charts.ChartConfig;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.net.URLDecoder;
@@ -125,6 +128,7 @@ public class ApiServer {
         server.createContext("/phase/", phaseHandler::handlePhase);
         server.createContext("/data-status", this::handleDataStatus);
         server.createContext("/pages", this::handlePages);
+        server.createContext("/ui/chart-config", this::handleChartConfig);
         server.createContext("/ui/open", this::handleUIOpen);
         server.createContext("/ui", this::handleUI);
         server.createContext("/thread-dump", this::handleThreadDump);
@@ -802,7 +806,198 @@ public class ApiServer {
 
         response.put("windowCount", launcher.getOpenWindowsInfo().size());
 
+        String lastFocused = launcher.getLastFocusedStrategyId();
+        if (lastFocused != null) {
+            response.put("lastFocusedStrategyId", lastFocused);
+        }
+
         sendJson(exchange, 200, response);
+    }
+
+    /**
+     * GET /ui/chart-config - returns current chart config (enabled overlays/indicators with params).
+     * POST /ui/chart-config - update chart config. Accepts partial JSON:
+     * {
+     *   "overlays": { "SMA": { "enabled": true, "periods": [50, 200] }, "BBANDS": { "enabled": false } },
+     *   "indicators": { "RSI": { "enabled": true, "period": 14 }, "MACD": { "enabled": true, "fast": 12, "slow": 26, "signal": 9 } }
+     * }
+     */
+    private void handleChartConfig(HttpExchange exchange) throws IOException {
+        String method = exchange.getRequestMethod();
+        ChartConfig config = ChartConfig.getInstance();
+
+        if ("GET".equalsIgnoreCase(method)) {
+            sendJson(exchange, 200, buildChartConfigJson(config));
+            return;
+        }
+
+        if (!"POST".equalsIgnoreCase(method)) {
+            sendError(exchange, 405, "Method not allowed");
+            return;
+        }
+
+        String body;
+        try (InputStream is = exchange.getRequestBody()) {
+            body = new String(is.readAllBytes(), StandardCharsets.UTF_8);
+        }
+        JsonNode root = mapper.readTree(body);
+
+        // Apply overlay updates
+        JsonNode overlays = root.get("overlays");
+        if (overlays != null) {
+            applyOverlay(overlays, "SMA", enabled -> config.setSmaEnabled(enabled),
+                node -> { if (node.has("periods")) {
+                    List<Integer> periods = new ArrayList<>();
+                    node.get("periods").forEach(p -> periods.add(p.asInt()));
+                    config.setSmaPeriods(periods);
+                } else if (node.has("period")) config.setSmaEnabled(true);
+            });
+            applyOverlay(overlays, "EMA", enabled -> config.setEmaEnabled(enabled),
+                node -> { if (node.has("periods")) {
+                    List<Integer> periods = new ArrayList<>();
+                    node.get("periods").forEach(p -> periods.add(p.asInt()));
+                    config.setEmaPeriods(periods);
+                }
+            });
+            applyOverlay(overlays, "BBANDS", enabled -> config.setBollingerEnabled(enabled),
+                node -> {
+                    if (node.has("period")) config.setBollingerPeriod(node.get("period").asInt());
+                    if (node.has("stdDev")) config.setBollingerStdDev(node.get("stdDev").asDouble());
+                });
+            applyOverlay(overlays, "HighLow", enabled -> config.setHighLowEnabled(enabled),
+                node -> { if (node.has("period")) config.setHighLowPeriod(node.get("period").asInt()); });
+            applyOverlay(overlays, "Mayer", enabled -> config.setMayerEnabled(enabled),
+                node -> { if (node.has("period")) config.setMayerPeriod(node.get("period").asInt()); });
+            applySimpleOverlay(overlays, "VWAP", config::setVwapEnabled);
+            applySimpleOverlay(overlays, "DailyPOC", config::setDailyPocEnabled);
+            applySimpleOverlay(overlays, "FloatingPOC", config::setFloatingPocEnabled);
+            applySimpleOverlay(overlays, "Rays", config::setRayOverlayEnabled);
+            applySimpleOverlay(overlays, "Ichimoku", config::setIchimokuEnabled);
+        }
+
+        // Apply indicator updates
+        JsonNode indicators = root.get("indicators");
+        if (indicators != null) {
+            applyOverlay(indicators, "RSI", config::setRsiEnabled,
+                node -> { if (node.has("period")) config.setRsiPeriod(node.get("period").asInt()); });
+            applyOverlay(indicators, "MACD", config::setMacdEnabled,
+                node -> {
+                    if (node.has("fast")) config.setMacdFast(node.get("fast").asInt());
+                    if (node.has("slow")) config.setMacdSlow(node.get("slow").asInt());
+                    if (node.has("signal")) config.setMacdSignal(node.get("signal").asInt());
+                });
+            applyOverlay(indicators, "ATR", config::setAtrEnabled,
+                node -> { if (node.has("period")) config.setAtrPeriod(node.get("period").asInt()); });
+            applyOverlay(indicators, "STOCHASTIC", config::setStochasticEnabled,
+                node -> {
+                    if (node.has("kPeriod")) config.setStochasticKPeriod(node.get("kPeriod").asInt());
+                    if (node.has("dPeriod")) config.setStochasticDPeriod(node.get("dPeriod").asInt());
+                });
+            applyOverlay(indicators, "RANGE_POSITION", config::setRangePositionEnabled,
+                node -> { if (node.has("period")) config.setRangePositionPeriod(node.get("period").asInt()); });
+            applyOverlay(indicators, "ADX", config::setAdxEnabled,
+                node -> { if (node.has("period")) config.setAdxPeriod(node.get("period").asInt()); });
+            applySimpleOverlay(indicators, "DELTA", config::setDeltaEnabled);
+            applySimpleOverlay(indicators, "CVD", config::setCvdEnabled);
+            applySimpleOverlay(indicators, "FUNDING", config::setFundingEnabled);
+            applySimpleOverlay(indicators, "OI", config::setOiEnabled);
+            applySimpleOverlay(indicators, "PREMIUM", config::setPremiumEnabled);
+        }
+
+        config.notifyChanged();
+
+        ObjectNode response = mapper.createObjectNode();
+        response.put("success", true);
+        response.set("chartConfig", buildChartConfigJson(config));
+        sendJson(exchange, 200, response);
+    }
+
+    private void applyOverlay(JsonNode parent, String key,
+                              java.util.function.Consumer<Boolean> enableSetter,
+                              java.util.function.Consumer<JsonNode> paramApplier) {
+        JsonNode node = parent.get(key);
+        if (node == null) return;
+        if (node.has("enabled")) enableSetter.accept(node.get("enabled").asBoolean());
+        paramApplier.accept(node);
+    }
+
+    private void applySimpleOverlay(JsonNode parent, String key,
+                                    java.util.function.Consumer<Boolean> enableSetter) {
+        JsonNode node = parent.get(key);
+        if (node == null) return;
+        if (node.has("enabled")) enableSetter.accept(node.get("enabled").asBoolean());
+    }
+
+    private ObjectNode buildChartConfigJson(ChartConfig config) {
+        ObjectNode root = mapper.createObjectNode();
+
+        ObjectNode overlays = root.putObject("overlays");
+        // SMA
+        ObjectNode sma = overlays.putObject("SMA");
+        sma.put("enabled", config.isSmaEnabled());
+        ArrayNode smaPeriods = sma.putArray("periods");
+        config.getSmaPeriods().forEach(smaPeriods::add);
+        // EMA
+        ObjectNode ema = overlays.putObject("EMA");
+        ema.put("enabled", config.isEmaEnabled());
+        ArrayNode emaPeriods = ema.putArray("periods");
+        config.getEmaPeriods().forEach(emaPeriods::add);
+        // BBANDS
+        ObjectNode bb = overlays.putObject("BBANDS");
+        bb.put("enabled", config.isBollingerEnabled());
+        bb.put("period", config.getBollingerPeriod());
+        bb.put("stdDev", config.getBollingerStdDev());
+        // HighLow
+        ObjectNode hl = overlays.putObject("HighLow");
+        hl.put("enabled", config.isHighLowEnabled());
+        hl.put("period", config.getHighLowPeriod());
+        // Mayer
+        ObjectNode mayer = overlays.putObject("Mayer");
+        mayer.put("enabled", config.isMayerEnabled());
+        mayer.put("period", config.getMayerPeriod());
+        // Simple overlays
+        overlays.putObject("VWAP").put("enabled", config.isVwapEnabled());
+        overlays.putObject("DailyPOC").put("enabled", config.isDailyPocEnabled());
+        overlays.putObject("FloatingPOC").put("enabled", config.isFloatingPocEnabled());
+        overlays.putObject("Rays").put("enabled", config.isRayOverlayEnabled());
+        overlays.putObject("Ichimoku").put("enabled", config.isIchimokuEnabled());
+
+        ObjectNode indicators = root.putObject("indicators");
+        // RSI
+        ObjectNode rsi = indicators.putObject("RSI");
+        rsi.put("enabled", config.isRsiEnabled());
+        rsi.put("period", config.getRsiPeriod());
+        // MACD
+        ObjectNode macd = indicators.putObject("MACD");
+        macd.put("enabled", config.isMacdEnabled());
+        macd.put("fast", config.getMacdFast());
+        macd.put("slow", config.getMacdSlow());
+        macd.put("signal", config.getMacdSignal());
+        // ATR
+        ObjectNode atr = indicators.putObject("ATR");
+        atr.put("enabled", config.isAtrEnabled());
+        atr.put("period", config.getAtrPeriod());
+        // STOCHASTIC
+        ObjectNode stoch = indicators.putObject("STOCHASTIC");
+        stoch.put("enabled", config.isStochasticEnabled());
+        stoch.put("kPeriod", config.getStochasticKPeriod());
+        stoch.put("dPeriod", config.getStochasticDPeriod());
+        // RANGE_POSITION
+        ObjectNode rp = indicators.putObject("RANGE_POSITION");
+        rp.put("enabled", config.isRangePositionEnabled());
+        rp.put("period", config.getRangePositionPeriod());
+        // ADX
+        ObjectNode adx = indicators.putObject("ADX");
+        adx.put("enabled", config.isAdxEnabled());
+        adx.put("period", config.getAdxPeriod());
+        // Simple indicators
+        indicators.putObject("DELTA").put("enabled", config.isDeltaEnabled());
+        indicators.putObject("CVD").put("enabled", config.isCvdEnabled());
+        indicators.putObject("FUNDING").put("enabled", config.isFundingEnabled());
+        indicators.putObject("OI").put("enabled", config.isOiEnabled());
+        indicators.putObject("PREMIUM").put("enabled", config.isPremiumEnabled());
+
+        return root;
     }
 
     /**
