@@ -1,4 +1,4 @@
-package com.tradery.forge.ui.controls;
+package com.tradery.ui.controls;
 
 import javax.swing.*;
 import java.awt.*;

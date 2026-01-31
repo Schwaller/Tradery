@@ -13,6 +13,9 @@ application {
 }
 
 dependencies {
+    // Shared UI components (StatusBadge, MemoryStatusPanel)
+    implementation project(':tradery-ui-common')
+
     // Core module for models, indicators, DSL
     implementation project(':tradery-core')
 

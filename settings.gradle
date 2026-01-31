@@ -1,5 +1,6 @@
 rootProject.name = 'tradery'
 
+include 'tradery-ui-common'
 include 'tradery-core'
 include 'tradery-engine'
 include 'tradery-data-service'

@@ -132,6 +132,9 @@ public class ChartConfig {
     // Footprint Heatmap overlay
     private com.tradery.forge.ui.charts.footprint.FootprintHeatmapConfig footprintHeatmapConfig = new com.tradery.forge.ui.charts.footprint.FootprintHeatmapConfig();
 
+    // Phase overlays
+    private List<String> phaseOverlayIds = new ArrayList<>();
+
     // Price chart mode
     private boolean candlestickMode = false;  // false = line, true = candlestick
     private int priceOpacity = 100;  // 0-100, applied to price line and candles (not cloud)
@@ -476,6 +479,15 @@ public class ChartConfig {
         notifyListeners();
     }
 
+    // ===== Phase Overlay Getters/Setters =====
+
+    public List<String> getPhaseOverlayIds() { return new ArrayList<>(phaseOverlayIds); }
+    public void setPhaseOverlayIds(List<String> ids) {
+        this.phaseOverlayIds = ids != null ? new ArrayList<>(ids) : new ArrayList<>();
+        save();
+        notifyListeners();
+    }
+
     // ===== Price Chart Mode =====
     public boolean isCandlestickMode() { return candlestickMode; }
     public void setCandlestickMode(boolean mode) { this.candlestickMode = mode; save(); notifyListeners(); }
@@ -626,6 +638,9 @@ public class ChartConfig {
         this.capitalUsageChartEnabled = other.capitalUsageChartEnabled;
         this.tradePLChartEnabled = other.tradePLChartEnabled;
 
+        // Phase overlays
+        this.phaseOverlayIds = other.phaseOverlayIds != null ? new ArrayList<>(other.phaseOverlayIds) : new ArrayList<>();
+
         // Chart layout divider positions
         this.chartDividerPositions = other.chartDividerPositions != null
             ? new java.util.LinkedHashMap<>(other.chartDividerPositions)
@@ -728,6 +743,9 @@ public class ChartConfig {
         comparisonChartEnabled = true;
         capitalUsageChartEnabled = true;
         tradePLChartEnabled = true;
+
+        // Phase overlays - cleared on reset
+        phaseOverlayIds = new ArrayList<>();
 
         // Chart layout divider positions - cleared on reset
         chartDividerPositions = new java.util.LinkedHashMap<>();
@@ -909,6 +927,9 @@ public class ChartConfig {
         this.comparisonChartEnabled = other.comparisonChartEnabled;
         this.capitalUsageChartEnabled = other.capitalUsageChartEnabled;
         this.tradePLChartEnabled = other.tradePLChartEnabled;
+
+        // Phase overlays
+        this.phaseOverlayIds = other.phaseOverlayIds != null ? new ArrayList<>(other.phaseOverlayIds) : new ArrayList<>();
 
         // Chart layout divider positions
         this.chartDividerPositions = other.chartDividerPositions != null

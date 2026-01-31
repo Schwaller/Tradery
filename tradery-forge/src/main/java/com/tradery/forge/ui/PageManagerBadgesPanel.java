@@ -5,7 +5,7 @@ import com.tradery.forge.data.DataType;
 import com.tradery.forge.data.PageState;
 import com.tradery.forge.data.page.DataPageManager;
 import com.tradery.forge.data.page.IndicatorPageManager;
-import com.tradery.forge.ui.controls.StatusBadge;
+import com.tradery.ui.controls.StatusBadge;
 
 import javax.swing.*;
 import java.awt.*;

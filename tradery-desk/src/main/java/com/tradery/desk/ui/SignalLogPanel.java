@@ -27,7 +27,12 @@ public class SignalLogPanel extends JPanel {
 
     public SignalLogPanel() {
         setLayout(new BorderLayout());
-        setBorder(BorderFactory.createTitledBorder("Signal Log"));
+        setBorder(BorderFactory.createEmptyBorder(0, 0, 0, 0));
+
+        JLabel header = new JLabel("Signal Log");
+        header.setFont(header.getFont().deriveFont(Font.BOLD, 11f));
+        header.setBorder(BorderFactory.createEmptyBorder(6, 8, 4, 0));
+        add(header, BorderLayout.NORTH);
 
         tableModel = new SignalTableModel();
         table = new JTable(tableModel);
@@ -67,6 +72,13 @@ public class SignalLogPanel extends JPanel {
                 table.scrollRectToVisible(table.getCellRect(lastRow, 0, true));
             }
         });
+    }
+
+    /**
+     * Get a snapshot of recent signals.
+     */
+    public List<SignalEvent> getSignals() {
+        return new ArrayList<>(tableModel.signals);
     }
 
     /**

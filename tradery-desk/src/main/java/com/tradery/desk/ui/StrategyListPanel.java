@@ -19,7 +19,12 @@ public class StrategyListPanel extends JPanel {
 
     public StrategyListPanel() {
         setLayout(new BorderLayout());
-        setBorder(BorderFactory.createTitledBorder("Active Strategies"));
+        setBorder(BorderFactory.createEmptyBorder(0, 0, 0, 0));
+
+        JLabel header = new JLabel("Active Strategies");
+        header.setFont(header.getFont().deriveFont(Font.BOLD, 11f));
+        header.setBorder(BorderFactory.createEmptyBorder(6, 8, 4, 0));
+        add(header, BorderLayout.NORTH);
 
         tableModel = new StrategyTableModel();
         table = new JTable(tableModel);

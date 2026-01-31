@@ -11,6 +11,7 @@ import com.tradery.dataclient.page.DataServiceConnection;
 import com.tradery.dataclient.page.PageState;
 import com.tradery.dataclient.page.RemoteCandlePageManager;
 import com.tradery.desk.alert.AlertDispatcher;
+import com.tradery.desk.api.DeskApiServer;
 import com.tradery.desk.feed.CandleAggregator;
 import com.tradery.desk.signal.SignalDeduplicator;
 import com.tradery.desk.signal.SignalEvaluator;
@@ -19,6 +20,7 @@ import com.tradery.desk.strategy.DeskStrategyStore;
 import com.tradery.desk.strategy.PublishedStrategy;
 import com.tradery.desk.strategy.StrategyLibrary;
 import com.tradery.desk.strategy.StrategyWatcher;
+import com.tradery.desk.feed.BinanceWebSocketClient.ConnectionState;
 import com.tradery.desk.ui.DeskFrame;
 import com.tradery.core.model.Candle;
 import org.slf4j.Logger;
@@ -77,6 +79,9 @@ public class TraderyDeskApp {
     private String initialChartSymbol;
     private String initialChartTimeframe;
 
+    // API server
+    private DeskApiServer apiServer;
+
     // UI
     private DeskFrame frame;
 
@@ -130,6 +135,9 @@ public class TraderyDeskApp {
 
         // Initialize UI
         initializeUI();
+
+        // Start API server
+        startApiServer();
 
         // Update UI with strategies
         if (frame != null) {
@@ -210,10 +218,18 @@ public class TraderyDeskApp {
             // Create page manager
             candlePageMgr = new RemoteCandlePageManager(pageConnection, dataClient, "TraderyDesk");
 
-            // Monitor connection state
+            // Monitor connection state and update UI
             pageConnection.addConnectionListener(state -> {
                 log.info("Data service connection: {}", state);
-                // TODO: Add connection state mapping for UI update
+                if (frame != null) {
+                    var uiState = switch (state) {
+                        case CONNECTED -> ConnectionState.CONNECTED;
+                        case CONNECTING -> ConnectionState.CONNECTING;
+                        case RECONNECTING -> ConnectionState.RECONNECTING;
+                        case DISCONNECTED -> ConnectionState.DISCONNECTED;
+                    };
+                    frame.updateConnectionState(uiState);
+                }
             });
 
             log.info("Initialized page-based data system");
@@ -570,6 +586,18 @@ public class TraderyDeskApp {
     }
 
     /**
+     * Start the debugging API server.
+     */
+    private void startApiServer() {
+        try {
+            apiServer = new DeskApiServer(strategyStore, () -> frame);
+            apiServer.start();
+        } catch (Exception e) {
+            log.warn("Failed to start API server: {}", e.getMessage());
+        }
+    }
+
+    /**
      * Initialize the Swing UI.
      */
     private void initializeUI() {
@@ -599,6 +627,11 @@ public class TraderyDeskApp {
         log.info("Shutting down Tradery Desk...");
 
         strategyWatcher.stop();
+
+        // Stop API server
+        if (apiServer != null) {
+            apiServer.stop();
+        }
 
         // Shutdown page system if used
         if (candlePageMgr != null) {

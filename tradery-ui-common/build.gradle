@@ -1,0 +1,10 @@
+// tradery-ui-common: Shared Swing UI components (StatusBadge, MemoryStatusPanel, etc.)
+
+plugins {
+    id 'java'
+}
+
+dependencies {
+    // FlatLaf Look and Feel (for theme consistency)
+    implementation 'com.formdev:flatlaf:3.4'
+}

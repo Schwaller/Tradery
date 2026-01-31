@@ -1,45 +1,53 @@
 package com.tradery.desk.ui;
 
 import com.tradery.desk.feed.BinanceWebSocketClient.ConnectionState;
+import com.tradery.ui.controls.StatusBadge;
+import com.tradery.ui.status.MemoryStatusPanel;
 
 import javax.swing.*;
 import java.awt.*;
 
 /**
- * Status panel showing WebSocket connection state and current price.
+ * Status bar showing WebSocket connection state, symbol/timeframe, memory, and current price.
  */
 public class StatusPanel extends JPanel {
 
-    private final JLabel statusLabel;
+    private final StatusBadge connectionBadge;
+    private final StatusBadge symbolBadge;
+    private final MemoryStatusPanel memoryStatusPanel;
     private final JLabel priceLabel;
-    private final JLabel symbolLabel;
-
-    private static final Color CONNECTED_COLOR = new Color(0, 180, 0);
-    private static final Color DISCONNECTED_COLOR = new Color(180, 0, 0);
-    private static final Color CONNECTING_COLOR = new Color(180, 180, 0);
 
     public StatusPanel() {
         setLayout(new BorderLayout(10, 0));
-        setBorder(BorderFactory.createEmptyBorder(10, 15, 10, 15));
+        setBorder(BorderFactory.createEmptyBorder(4, 8, 4, 8));
 
-        // Left side: connection status
-        JPanel leftPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 0));
+        // Left side: connection + symbol + memory badges
+        JPanel leftPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
+        leftPanel.setOpaque(false);
 
-        statusLabel = new JLabel("●");
-        statusLabel.setFont(statusLabel.getFont().deriveFont(16f));
-        leftPanel.add(statusLabel);
+        connectionBadge = new StatusBadge("Disconnected");
+        connectionBadge.setStatusColor(StatusBadge.BG_ERROR, StatusBadge.FG_ERROR);
+        leftPanel.add(connectionBadge);
 
-        symbolLabel = new JLabel("");
-        symbolLabel.setFont(symbolLabel.getFont().deriveFont(Font.BOLD, 14f));
-        leftPanel.add(symbolLabel);
+        symbolBadge = new StatusBadge("");
+        symbolBadge.setStatusColor(StatusBadge.BG_IDLE, StatusBadge.FG_IDLE);
+        symbolBadge.setVisible(false);
+        leftPanel.add(symbolBadge);
+
+        memoryStatusPanel = new MemoryStatusPanel();
+        leftPanel.add(memoryStatusPanel);
 
         add(leftPanel, BorderLayout.WEST);
 
         // Right side: current price
+        JPanel rightPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 4, 0));
+        rightPanel.setOpaque(false);
+
         priceLabel = new JLabel("");
         priceLabel.setFont(new Font(Font.MONOSPACED, Font.BOLD, 18));
-        priceLabel.setHorizontalAlignment(SwingConstants.RIGHT);
-        add(priceLabel, BorderLayout.EAST);
+        rightPanel.add(priceLabel);
+
+        add(rightPanel, BorderLayout.EAST);
 
         updateState(ConnectionState.DISCONNECTED);
     }
@@ -51,17 +59,20 @@ public class StatusPanel extends JPanel {
         SwingUtilities.invokeLater(() -> {
             switch (state) {
                 case CONNECTED -> {
-                    statusLabel.setForeground(CONNECTED_COLOR);
-                    statusLabel.setToolTipText("Connected");
+                    connectionBadge.setText("Connected");
+                    connectionBadge.setStatusColor(StatusBadge.BG_OK, StatusBadge.FG_OK);
+                    connectionBadge.setToolTipText("Connected");
                 }
                 case CONNECTING, RECONNECTING -> {
-                    statusLabel.setForeground(CONNECTING_COLOR);
-                    statusLabel.setToolTipText(state == ConnectionState.CONNECTING
+                    connectionBadge.setText(state == ConnectionState.CONNECTING ? "Connecting" : "Reconnecting");
+                    connectionBadge.setStatusColor(StatusBadge.BG_WARNING, StatusBadge.FG_WARNING);
+                    connectionBadge.setToolTipText(state == ConnectionState.CONNECTING
                         ? "Connecting..." : "Reconnecting...");
                 }
                 case DISCONNECTED -> {
-                    statusLabel.setForeground(DISCONNECTED_COLOR);
-                    statusLabel.setToolTipText("Disconnected");
+                    connectionBadge.setText("Disconnected");
+                    connectionBadge.setStatusColor(StatusBadge.BG_ERROR, StatusBadge.FG_ERROR);
+                    connectionBadge.setToolTipText("Disconnected");
                 }
             }
         });
@@ -71,9 +82,11 @@ public class StatusPanel extends JPanel {
      * Update the symbol display.
      */
     public void updateSymbol(String symbol, String timeframe) {
-        SwingUtilities.invokeLater(() ->
-            symbolLabel.setText(symbol.toUpperCase() + " " + timeframe)
-        );
+        SwingUtilities.invokeLater(() -> {
+            symbolBadge.setText(symbol.toUpperCase() + " " + timeframe);
+            symbolBadge.setStatusColor(StatusBadge.BG_IDLE, StatusBadge.FG_IDLE);
+            symbolBadge.setVisible(true);
+        });
     }
 
     /**
@@ -87,5 +100,9 @@ public class StatusPanel extends JPanel {
                 priceLabel.setText(String.format("%,.2f", price));
             }
         });
+    }
+
+    public void dispose() {
+        memoryStatusPanel.dispose();
     }
 }

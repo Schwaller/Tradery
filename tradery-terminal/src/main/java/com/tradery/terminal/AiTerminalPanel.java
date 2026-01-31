@@ -29,7 +29,7 @@ public class AiTerminalPanel extends JPanel {
 
     public AiTerminalPanel() {
         setLayout(new BorderLayout());
-        setBackground(new Color(30, 30, 30));
+        setBackground(new Color(50, 49, 48));
 
         // Create terminal widget with custom settings
         terminalWidget = new JediTermWidget(new AiTerminalSettingsProvider());
@@ -136,7 +136,7 @@ public class AiTerminalPanel extends JPanel {
                     "Edit:%s/**,Write:%s/**,Read:%s/**,mcp__tradery__*",
                     traderyPath, traderyPath, traderyPath
                 );
-                aiCommand = "claude --allowedTools '" + allowedTools + "' -p 'Call tradery_get_context and briefly summarize what strategy is focused and its key metrics. Do not list all strategies.'";
+                aiCommand = "claude --allowedTools '" + allowedTools + "' --append-system-prompt 'On session start, immediately call tradery_get_context and briefly summarize the focused strategy and its key metrics. Do not list all strategies.'";
             } else if ("codex".equals(aiType)) {
                 aiCommand = "codex 'Read CODEX.md for session startup instructions, then follow them'";
             } else {
@@ -167,8 +167,9 @@ public class AiTerminalPanel extends JPanel {
                 terminalWidget.getTerminalPanel().requestFocusInWindow();
             });
 
-            // Send AI command after shell starts
+            // Send AI command after shell starts, then send initial prompt once AI is ready
             final String finalAiCommand = aiCommand;
+            final boolean isClaude = "claude".equals(aiType);
             Thread commandSender = new Thread(() -> {
                 try {
                     // Wait for shell to fully initialize (prompt rendered)
@@ -178,6 +179,15 @@ public class AiTerminalPanel extends JPanel {
                     connector.write("clear && " + finalAiCommand);
                     Thread.sleep(100);
                     connector.write("\n");
+
+                    // For Claude: wait for it to start, then send initial prompt
+                    if (isClaude) {
+                        Thread.sleep(4000);
+                        String initialPrompt = "Call tradery_get_context and briefly summarize what strategy is focused and its key metrics. Do not list all strategies.";
+                        connector.write(initialPrompt);
+                        Thread.sleep(100);
+                        connector.write("\n");
+                    }
                 } catch (Exception e) {
                     e.printStackTrace();
                 }
@@ -287,7 +297,7 @@ public class AiTerminalPanel extends JPanel {
 
         @Override
         public TerminalColor getDefaultBackground() {
-            return TerminalColor.rgb(30, 30, 30);
+            return TerminalColor.rgb(50, 49, 48);
         }
     }
 }

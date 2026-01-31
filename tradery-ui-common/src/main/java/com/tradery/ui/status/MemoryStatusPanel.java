@@ -1,6 +1,6 @@
-package com.tradery.forge.ui;
+package com.tradery.ui.status;
 
-import com.tradery.forge.ui.controls.StatusBadge;
+import com.tradery.ui.controls.StatusBadge;
 
 import javax.swing.*;
 import java.awt.*;

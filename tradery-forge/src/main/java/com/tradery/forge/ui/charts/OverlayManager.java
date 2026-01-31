@@ -42,6 +42,9 @@ public class OverlayManager {
     // Daily Volume Profile overlay (background computed)
     private DailyVolumeProfileOverlay dailyVolumeProfileOverlay;
 
+    // Phase overlays (annotation-based background bands)
+    private final List<PhaseOverlay> phaseOverlays = new ArrayList<>();
+
     // Footprint Heatmap overlay
     private com.tradery.forge.ui.charts.footprint.FootprintHeatmapOverlay footprintHeatmapOverlay;
 
@@ -793,6 +796,42 @@ public class OverlayManager {
         return new ArrayList<>(appliedChartOverlays);
     }
 
+    // ===== Phase Overlays =====
+
+    /**
+     * Data record for a phase overlay to be rendered.
+     */
+    public record PhaseOverlayData(String name, boolean[] activeState, List<Candle> candles, Color color) {}
+
+    /**
+     * Set phase overlays from pre-computed data. Clears existing phase overlays first.
+     */
+    public void setPhaseOverlays(List<PhaseOverlayData> phases) {
+        clearPhaseOverlays();
+        if (phases == null || phases.isEmpty()) return;
+
+        for (PhaseOverlayData data : phases) {
+            PhaseOverlay overlay = new PhaseOverlay(data.name(), data.activeState(), data.candles(), data.color());
+            if (applyChartOverlay(overlay)) {
+                phaseOverlays.add(overlay);
+            }
+        }
+    }
+
+    /**
+     * Clear all phase overlays from the chart.
+     */
+    public void clearPhaseOverlays() {
+        for (PhaseOverlay overlay : phaseOverlays) {
+            removeChartOverlay(overlay);
+        }
+        phaseOverlays.clear();
+    }
+
+    public boolean hasPhaseOverlays() {
+        return !phaseOverlays.isEmpty();
+    }
+
     // ===== Clear All =====
 
     public void clearAll() {
@@ -815,6 +854,7 @@ public class OverlayManager {
         clearRayOverlay();
         clearDailyVolumeProfileOverlay();
         clearFootprintHeatmapOverlay();
+        phaseOverlays.clear(); // Already closed via clearChartOverlays above
 
         resetColorIndex();
     }

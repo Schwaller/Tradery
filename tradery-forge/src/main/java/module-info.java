@@ -1,5 +1,6 @@
 module com.tradery.forge {
     // Internal modules
+    requires com.tradery.ui.common;
     requires transitive com.tradery.core;
     requires com.tradery.engine;
     requires com.tradery.dataclient;

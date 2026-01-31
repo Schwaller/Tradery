@@ -22,34 +22,6 @@ public class DeskFrame extends JFrame {
     private final SignalLogPanel signalLogPanel;
     private final PriceChartPanel priceChartPanel;
 
-    // Chart control checkboxes
-    private JCheckBox volumeCheckBox;
-    private JCheckBox sma20CheckBox;
-    private JCheckBox sma50CheckBox;
-    private JCheckBox ema20CheckBox;
-    private JCheckBox bbCheckBox;
-    private JCheckBox vwapCheckBox;
-    private JCheckBox ichimokuCheckBox;
-    private JCheckBox supertrendCheckBox;
-    private JCheckBox highLowCheckBox;
-    private JCheckBox mayerCheckBox;
-    private JCheckBox pocCheckBox;
-    private JCheckBox dailyLevelsCheckBox;
-    private JCheckBox keltnerCheckBox;
-    private JCheckBox donchianCheckBox;
-    private JCheckBox rayCheckBox;
-    private JCheckBox atrBandsCheckBox;
-    private JCheckBox pivotCheckBox;
-    private JCheckBox rsiCheckBox;
-    private JCheckBox macdCheckBox;
-    private JCheckBox atrCheckBox;
-    private JCheckBox stochasticCheckBox;
-    private JCheckBox adxCheckBox;
-    private JCheckBox deltaCheckBox;
-    private JCheckBox rangePositionCheckBox;
-    private JCheckBox tradeCountCheckBox;
-    private JCheckBox volumeRatioCheckBox;
-
     private Runnable onClose;
 
     public DeskFrame() {
@@ -61,12 +33,12 @@ public class DeskFrame extends JFrame {
         // Main layout
         JPanel mainPanel = new JPanel(new BorderLayout(0, 0));
 
-        // Status panel at top
+        // Status bar at bottom
         statusPanel = new StatusPanel();
-        JPanel topPanel = new JPanel(new BorderLayout());
-        topPanel.add(statusPanel, BorderLayout.CENTER);
-        topPanel.add(new JSeparator(), BorderLayout.SOUTH);
-        mainPanel.add(topPanel, BorderLayout.NORTH);
+        JPanel bottomPanel = new JPanel(new BorderLayout());
+        bottomPanel.add(new JSeparator(), BorderLayout.NORTH);
+        bottomPanel.add(statusPanel, BorderLayout.CENTER);
+        mainPanel.add(bottomPanel, BorderLayout.SOUTH);
 
         // Left panel: Strategies and Signals
         JPanel leftPanel = new JPanel(new BorderLayout(0, 0));
@@ -85,16 +57,14 @@ public class DeskFrame extends JFrame {
         leftPanel.add(leftSplit, BorderLayout.CENTER);
         leftPanel.add(new JSeparator(SwingConstants.VERTICAL), BorderLayout.EAST);
 
-        // Center: Chart toolbar + Price chart
+        // Center: Price chart + indicator side panel
         JPanel chartPanel = new JPanel(new BorderLayout(0, 0));
 
-        // Chart toolbar
-        JToolBar chartToolbar = createChartToolbar();
-        chartPanel.add(chartToolbar, BorderLayout.NORTH);
-
-        // Price chart
         priceChartPanel = new PriceChartPanel();
         chartPanel.add(priceChartPanel, BorderLayout.CENTER);
+
+        IndicatorSidePanel indicatorSidePanel = new IndicatorSidePanel(priceChartPanel);
+        chartPanel.add(indicatorSidePanel, BorderLayout.EAST);
 
         // Main horizontal split
         JSplitPane mainSplit = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT);
@@ -118,256 +88,6 @@ public class DeskFrame extends JFrame {
                 dispose();
             }
         });
-    }
-
-    private JToolBar createChartToolbar() {
-        JToolBar toolbar = new JToolBar();
-        toolbar.setFloatable(false);
-        toolbar.setBorderPainted(false);
-
-        // Volume toggle
-        volumeCheckBox = new JCheckBox("Volume");
-        volumeCheckBox.setFocusPainted(false);
-        volumeCheckBox.addActionListener(e -> {
-            priceChartPanel.setVolumeEnabled(volumeCheckBox.isSelected());
-        });
-        toolbar.add(volumeCheckBox);
-
-        toolbar.addSeparator();
-
-        // Overlays label
-        toolbar.add(new JLabel("Overlays: "));
-
-        // SMA 20
-        sma20CheckBox = new JCheckBox("SMA(20)");
-        sma20CheckBox.setFocusPainted(false);
-        sma20CheckBox.addActionListener(e -> updateOverlays());
-        toolbar.add(sma20CheckBox);
-
-        // SMA 50
-        sma50CheckBox = new JCheckBox("SMA(50)");
-        sma50CheckBox.setFocusPainted(false);
-        sma50CheckBox.addActionListener(e -> updateOverlays());
-        toolbar.add(sma50CheckBox);
-
-        // EMA 20
-        ema20CheckBox = new JCheckBox("EMA(20)");
-        ema20CheckBox.setFocusPainted(false);
-        ema20CheckBox.addActionListener(e -> updateOverlays());
-        toolbar.add(ema20CheckBox);
-
-        // Bollinger Bands
-        bbCheckBox = new JCheckBox("BB(20,2)");
-        bbCheckBox.setFocusPainted(false);
-        bbCheckBox.addActionListener(e -> updateOverlays());
-        toolbar.add(bbCheckBox);
-
-        // VWAP
-        vwapCheckBox = new JCheckBox("VWAP");
-        vwapCheckBox.setFocusPainted(false);
-        vwapCheckBox.addActionListener(e -> updateOverlays());
-        toolbar.add(vwapCheckBox);
-
-        // Ichimoku
-        ichimokuCheckBox = new JCheckBox("Ichimoku");
-        ichimokuCheckBox.setFocusPainted(false);
-        ichimokuCheckBox.addActionListener(e -> updateOverlays());
-        toolbar.add(ichimokuCheckBox);
-
-        // Supertrend
-        supertrendCheckBox = new JCheckBox("ST(10,3)");
-        supertrendCheckBox.setFocusPainted(false);
-        supertrendCheckBox.addActionListener(e -> updateOverlays());
-        toolbar.add(supertrendCheckBox);
-
-        // High/Low
-        highLowCheckBox = new JCheckBox("H/L(20)");
-        highLowCheckBox.setFocusPainted(false);
-        highLowCheckBox.addActionListener(e -> updateOverlays());
-        toolbar.add(highLowCheckBox);
-
-        // Mayer Multiple
-        mayerCheckBox = new JCheckBox("MM(200)");
-        mayerCheckBox.setFocusPainted(false);
-        mayerCheckBox.addActionListener(e -> updateOverlays());
-        toolbar.add(mayerCheckBox);
-
-        // POC
-        pocCheckBox = new JCheckBox("POC(20)");
-        pocCheckBox.setFocusPainted(false);
-        pocCheckBox.addActionListener(e -> updateOverlays());
-        toolbar.add(pocCheckBox);
-
-        // Daily Levels
-        dailyLevelsCheckBox = new JCheckBox("Daily");
-        dailyLevelsCheckBox.setFocusPainted(false);
-        dailyLevelsCheckBox.addActionListener(e -> updateOverlays());
-        toolbar.add(dailyLevelsCheckBox);
-
-        // Keltner Channel
-        keltnerCheckBox = new JCheckBox("Keltner");
-        keltnerCheckBox.setFocusPainted(false);
-        keltnerCheckBox.addActionListener(e -> updateOverlays());
-        toolbar.add(keltnerCheckBox);
-
-        // Donchian Channel
-        donchianCheckBox = new JCheckBox("Donchian");
-        donchianCheckBox.setFocusPainted(false);
-        donchianCheckBox.addActionListener(e -> updateOverlays());
-        toolbar.add(donchianCheckBox);
-
-        // Rotating Rays
-        rayCheckBox = new JCheckBox("Rays");
-        rayCheckBox.setFocusPainted(false);
-        rayCheckBox.addActionListener(e -> updateOverlays());
-        toolbar.add(rayCheckBox);
-
-        // ATR Bands
-        atrBandsCheckBox = new JCheckBox("ATR Bands");
-        atrBandsCheckBox.setFocusPainted(false);
-        atrBandsCheckBox.addActionListener(e -> updateOverlays());
-        toolbar.add(atrBandsCheckBox);
-
-        // Pivot Points
-        pivotCheckBox = new JCheckBox("Pivots");
-        pivotCheckBox.setFocusPainted(false);
-        pivotCheckBox.addActionListener(e -> updateOverlays());
-        toolbar.add(pivotCheckBox);
-
-        toolbar.addSeparator();
-
-        // Indicators label
-        toolbar.add(new JLabel("Indicators: "));
-
-        // RSI
-        rsiCheckBox = new JCheckBox("RSI(14)");
-        rsiCheckBox.setFocusPainted(false);
-        rsiCheckBox.addActionListener(e -> {
-            priceChartPanel.setRsiEnabled(rsiCheckBox.isSelected());
-        });
-        toolbar.add(rsiCheckBox);
-
-        // MACD
-        macdCheckBox = new JCheckBox("MACD");
-        macdCheckBox.setFocusPainted(false);
-        macdCheckBox.addActionListener(e -> {
-            priceChartPanel.setMacdEnabled(macdCheckBox.isSelected());
-        });
-        toolbar.add(macdCheckBox);
-
-        // ATR
-        atrCheckBox = new JCheckBox("ATR(14)");
-        atrCheckBox.setFocusPainted(false);
-        atrCheckBox.addActionListener(e -> {
-            priceChartPanel.setAtrEnabled(atrCheckBox.isSelected());
-        });
-        toolbar.add(atrCheckBox);
-
-        // Stochastic
-        stochasticCheckBox = new JCheckBox("Stoch(14,3)");
-        stochasticCheckBox.setFocusPainted(false);
-        stochasticCheckBox.addActionListener(e -> {
-            priceChartPanel.setStochasticEnabled(stochasticCheckBox.isSelected());
-        });
-        toolbar.add(stochasticCheckBox);
-
-        // ADX
-        adxCheckBox = new JCheckBox("ADX(14)");
-        adxCheckBox.setFocusPainted(false);
-        adxCheckBox.addActionListener(e -> {
-            priceChartPanel.setAdxEnabled(adxCheckBox.isSelected());
-        });
-        toolbar.add(adxCheckBox);
-
-        // Delta/CVD
-        deltaCheckBox = new JCheckBox("Delta");
-        deltaCheckBox.setFocusPainted(false);
-        deltaCheckBox.addActionListener(e -> {
-            priceChartPanel.setDeltaEnabled(deltaCheckBox.isSelected());
-        });
-        toolbar.add(deltaCheckBox);
-
-        // Range Position
-        rangePositionCheckBox = new JCheckBox("RP(200)");
-        rangePositionCheckBox.setFocusPainted(false);
-        rangePositionCheckBox.addActionListener(e -> {
-            priceChartPanel.setRangePositionEnabled(rangePositionCheckBox.isSelected());
-        });
-        toolbar.add(rangePositionCheckBox);
-
-        // Trade Count
-        tradeCountCheckBox = new JCheckBox("Trades");
-        tradeCountCheckBox.setFocusPainted(false);
-        tradeCountCheckBox.addActionListener(e -> {
-            priceChartPanel.setTradeCountEnabled(tradeCountCheckBox.isSelected());
-        });
-        toolbar.add(tradeCountCheckBox);
-
-        // Volume Ratio
-        volumeRatioCheckBox = new JCheckBox("Buy/Sell");
-        volumeRatioCheckBox.setFocusPainted(false);
-        volumeRatioCheckBox.addActionListener(e -> {
-            priceChartPanel.setVolumeRatioEnabled(volumeRatioCheckBox.isSelected());
-        });
-        toolbar.add(volumeRatioCheckBox);
-
-        return toolbar;
-    }
-
-    private void updateOverlays() {
-        priceChartPanel.clearOverlays();
-
-        if (sma20CheckBox.isSelected()) {
-            priceChartPanel.addSmaOverlay(20);
-        }
-        if (sma50CheckBox.isSelected()) {
-            priceChartPanel.addSmaOverlay(50);
-        }
-        if (ema20CheckBox.isSelected()) {
-            priceChartPanel.addEmaOverlay(20);
-        }
-        if (bbCheckBox.isSelected()) {
-            priceChartPanel.addBollingerOverlay(20, 2.0);
-        }
-        if (vwapCheckBox.isSelected()) {
-            priceChartPanel.addVwapOverlay();
-        }
-        if (ichimokuCheckBox.isSelected()) {
-            priceChartPanel.addIchimokuOverlay();
-        }
-        if (supertrendCheckBox.isSelected()) {
-            priceChartPanel.addSupertrendOverlay();
-        }
-        if (highLowCheckBox.isSelected()) {
-            priceChartPanel.addHighLowOverlay();
-        }
-        if (mayerCheckBox.isSelected()) {
-            priceChartPanel.addMayerMultipleOverlay();
-        }
-        if (pocCheckBox.isSelected()) {
-            priceChartPanel.addPocOverlay();
-        }
-        if (dailyLevelsCheckBox.isSelected()) {
-            priceChartPanel.addDailyLevelsOverlay();
-        }
-        if (keltnerCheckBox.isSelected()) {
-            priceChartPanel.addKeltnerOverlay();
-        }
-        if (donchianCheckBox.isSelected()) {
-            priceChartPanel.addDonchianOverlay();
-        }
-        if (rayCheckBox.isSelected()) {
-            priceChartPanel.addRayOverlay();
-        }
-        if (atrBandsCheckBox.isSelected()) {
-            priceChartPanel.addAtrBandsOverlay();
-        }
-        if (pivotCheckBox.isSelected()) {
-            priceChartPanel.addPivotPointsOverlay();
-        }
-
-        // Refresh chart to show new overlays
-        priceChartPanel.getCandlestickChart().updateData(priceChartPanel.getDataProvider());
     }
 
     /**
@@ -410,6 +130,13 @@ public class DeskFrame extends JFrame {
      */
     public void addSignal(SignalEvent signal) {
         signalLogPanel.addSignal(signal);
+    }
+
+    /**
+     * Get recent signals from the log.
+     */
+    public List<SignalEvent> getSignals() {
+        return signalLogPanel.getSignals();
     }
 
     /**

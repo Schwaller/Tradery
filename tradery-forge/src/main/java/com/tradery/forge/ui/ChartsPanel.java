@@ -239,6 +239,8 @@ public class ChartsPanel extends JPanel {
             setDonchianOverlay(config.getDonchianPeriod(), config.isDonchianShowMiddle());
         }
         // Note: Footprint heatmap is restored when aggTrades arrive (via refreshOrderflowCharts)
+
+        // Phase overlays are applied asynchronously by ProjectWindow after candles load
     }
 
     private void initializeCharts() {
@@ -1422,6 +1424,20 @@ public class ChartsPanel extends JPanel {
      */
     public void clearChartOverlays() {
         overlayManager.clearChartOverlays();
+    }
+
+    /**
+     * Set phase overlays from pre-computed data.
+     */
+    public void setPhaseOverlays(java.util.List<OverlayManager.PhaseOverlayData> phases) {
+        overlayManager.setPhaseOverlays(phases);
+    }
+
+    /**
+     * Clear all phase overlays.
+     */
+    public void clearPhaseOverlays() {
+        overlayManager.clearPhaseOverlays();
     }
 
     /**

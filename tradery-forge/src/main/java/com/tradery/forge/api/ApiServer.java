@@ -875,6 +875,14 @@ public class ApiServer {
             applySimpleOverlay(overlays, "Ichimoku", config::setIchimokuEnabled);
         }
 
+        // Apply phase overlays
+        JsonNode phaseOverlays = root.get("phaseOverlays");
+        if (phaseOverlays != null && phaseOverlays.isArray()) {
+            List<String> ids = new ArrayList<>();
+            phaseOverlays.forEach(n -> ids.add(n.asText()));
+            config.setPhaseOverlayIds(ids);
+        }
+
         // Apply indicator updates
         JsonNode indicators = root.get("indicators");
         if (indicators != null) {
@@ -996,6 +1004,10 @@ public class ApiServer {
         indicators.putObject("FUNDING").put("enabled", config.isFundingEnabled());
         indicators.putObject("OI").put("enabled", config.isOiEnabled());
         indicators.putObject("PREMIUM").put("enabled", config.isPremiumEnabled());
+
+        // Phase overlays
+        ArrayNode phaseOverlays = root.putArray("phaseOverlays");
+        config.getPhaseOverlayIds().forEach(phaseOverlays::add);
 
         return root;
     }

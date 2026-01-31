@@ -1,5 +1,6 @@
 package com.tradery.forge.ui;
 
+import com.tradery.ui.status.MemoryStatusPanel;
 import com.tradery.forge.ApplicationContext;
 import com.tradery.forge.TraderyApp;
 import com.tradery.forge.data.AggTradesStore;
@@ -62,6 +63,7 @@ public class ProjectWindow extends JFrame {
     private JButton historyBtn;
     private JButton phaseAnalysisBtn;
     private JButton publishBtn;
+    private JButton phaseOverlayBtn;
     private PageManagerBadgesPanel pageManagerBadges;
     private MemoryStatusPanel memoryStatusPanel;
     private DataServiceStatusPanel dataServiceStatusPanel;
@@ -271,6 +273,11 @@ public class ProjectWindow extends JFrame {
         phaseAnalysisBtn.setEnabled(false);  // Enabled after backtest completes
         phaseAnalysisBtn.addActionListener(e -> openPhaseAnalysis());
 
+        // Phase Overlay button - select phases to display on chart
+        phaseOverlayBtn = new JButton("Phases");
+        phaseOverlayBtn.setToolTipText("Show phase overlays on price chart");
+        phaseOverlayBtn.addActionListener(e -> openPhaseOverlayPicker());
+
         // Publish button - publish strategy to library for Desk
         publishBtn = new JButton("Publish");
         publishBtn.setToolTipText("Publish strategy to library for Tradery Desk");
@@ -382,6 +389,8 @@ public class ProjectWindow extends JFrame {
         toolbarCenter.add(fullYBtn);
         toolbarCenter.add(Box.createHorizontalStrut(8));
         toolbarCenter.add(indicatorControls);
+        toolbarCenter.add(Box.createHorizontalStrut(8));
+        toolbarCenter.add(phaseOverlayBtn);
 
         // Right side: Actions
         JPanel toolbarRight = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 4));
@@ -410,6 +419,7 @@ public class ProjectWindow extends JFrame {
         editorTerminalSplit.setDividerSize(4);
         editorTerminalSplit.setResizeWeight(0.6);
         editorTerminalSplit.setContinuousLayout(true);
+        editorPanel.setBorder(BorderFactory.createMatteBorder(0, 0, 1, 0, UIManager.getColor("Separator.foreground")));
         editorTerminalSplit.setTopComponent(editorPanel);
 
         // Initialize docked terminal via controller
@@ -693,6 +703,119 @@ public class ProjectWindow extends JFrame {
         PublishDialog.show(this, strategy, statusManager::setInfoStatus);
     }
 
+    private void openPhaseOverlayPicker() {
+        PhaseStore phaseStore = ApplicationContext.getInstance().getPhaseStore();
+        java.util.List<Phase> allPhases = phaseStore.loadAll();
+        ChartConfig config = ChartConfig.getInstance();
+
+        PhaseOverlayPickerDialog dialog = new PhaseOverlayPickerDialog(
+            this, allPhases, config.getPhaseOverlayIds());
+        dialog.setVisible(true);
+
+        if (dialog.isConfirmed()) {
+            config.setPhaseOverlayIds(dialog.getSelectedPhaseIds());
+            applyPhaseOverlays();
+        }
+    }
+
+    /**
+     * Evaluate and apply phase overlays on a background thread.
+     * Uses PhaseEvaluator for cross-timeframe support.
+     */
+    private void applyPhaseOverlays() {
+        ChartConfig config = ChartConfig.getInstance();
+        java.util.List<String> phaseIds = config.getPhaseOverlayIds();
+
+        if (phaseIds.isEmpty()) {
+            chartPanel.clearPhaseOverlays();
+            return;
+        }
+
+        java.util.List<Candle> chartCandles = backtestCoordinator.getCurrentCandles();
+        if (chartCandles == null || chartCandles.isEmpty()) {
+            return;
+        }
+
+        String symbol = dataRangePanel.getSymbol();
+        String timeframe = dataRangePanel.getTimeframe();
+        long startTime = chartCandles.get(0).timestamp();
+        long endTime = chartCandles.get(chartCandles.size() - 1).timestamp();
+
+        PhaseStore phaseStore = ApplicationContext.getInstance().getPhaseStore();
+        SqliteDataStore sqliteStore = ApplicationContext.getInstance().getSqliteDataStore();
+
+        // Load phases
+        java.util.List<Phase> phases = new java.util.ArrayList<>();
+        for (String id : phaseIds) {
+            Phase p = phaseStore.load(id);
+            if (p != null) {
+                // Set symbol if not specified
+                if (p.getSymbol() == null || p.getSymbol().isEmpty()) {
+                    p.setSymbol(symbol);
+                }
+                if (p.getTimeframe() == null || p.getTimeframe().isEmpty()) {
+                    p.setTimeframe(timeframe);
+                }
+                phases.add(p);
+            }
+        }
+
+        if (phases.isEmpty()) {
+            chartPanel.clearPhaseOverlays();
+            return;
+        }
+
+        // Run evaluation on background thread
+        Thread.startVirtualThread(() -> {
+            try {
+                // Fetch candles for each unique phase timeframe
+                java.util.Map<String, java.util.List<Candle>> phaseCandles = new java.util.HashMap<>();
+                for (Phase phase : phases) {
+                    String key = phase.getSymbol() + ":" + phase.getTimeframe();
+                    if (phaseCandles.containsKey(key)) continue;
+
+                    long warmupMs = com.tradery.engine.PhaseEvaluator.getWarmupMs(
+                        phase.getTimeframe(), phase.getCondition());
+                    long fetchStart = startTime - warmupMs;
+
+                    try {
+                        java.util.List<Candle> candles = sqliteStore.getCandles(
+                            phase.getSymbol(), phase.getTimeframe(), fetchStart, endTime);
+                        if (candles != null && !candles.isEmpty()) {
+                            phaseCandles.put(key, candles);
+                        }
+                    } catch (Exception e) {
+                        System.err.println("Failed to load candles for phase " + phase.getId() + ": " + e.getMessage());
+                    }
+                }
+
+                // Evaluate phases
+                com.tradery.engine.PhaseEvaluator evaluator = new com.tradery.engine.PhaseEvaluator();
+                java.util.Map<String, boolean[]> phaseStates = evaluator.evaluatePhases(
+                    phases, chartCandles, timeframe, phaseCandles);
+
+                // Build overlay data
+                java.util.List<com.tradery.forge.ui.charts.OverlayManager.PhaseOverlayData> overlayData = new java.util.ArrayList<>();
+                for (Phase phase : phases) {
+                    boolean[] state = phaseStates.get(phase.getId());
+                    if (state == null) continue;
+
+                    java.awt.Color color = PhaseOverlayPickerDialog.getPhaseColor(phase.getCategory());
+                    String name = phase.getName() != null ? phase.getName() : phase.getId();
+                    overlayData.add(new com.tradery.forge.ui.charts.OverlayManager.PhaseOverlayData(
+                        name, state, chartCandles, color));
+                }
+
+                // Apply on EDT
+                SwingUtilities.invokeLater(() -> chartPanel.setPhaseOverlays(overlayData));
+
+            } catch (Exception e) {
+                System.err.println("Phase overlay evaluation failed: " + e.getMessage());
+                e.printStackTrace();
+            }
+        });
+    }
+
     private void openPhaseAnalysis() {
         if (currentResult == null) {
             statusManager.setInfoStatus(StatusManager.SOURCE_FILE_CHANGE, "Run a backtest first");
@@ -821,6 +944,9 @@ public class ProjectWindow extends JFrame {
 
             // Apply saved overlays
             chartPanel.applySavedOverlays(candles);
+
+            // Apply phase overlays (async)
+            applyPhaseOverlays();
 
             // Update indicator controls with current candle data
             indicatorControls.setCurrentCandles(candles);

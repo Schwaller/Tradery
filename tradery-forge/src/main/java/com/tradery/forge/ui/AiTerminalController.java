@@ -272,7 +272,7 @@ public class AiTerminalController {
 
         if ("claude".equals(aiType)) {
             // Claude with file access and MCP tools pre-approved, plus initial prompt
-            aiCommand = "claude --allowedTools 'Edit:~/.tradery/**,Write:~/.tradery/**,Read:~/.tradery/**,mcp__tradery__*' -p 'Call tradery_get_context and briefly summarize what strategy is focused and its key metrics. Do not list all strategies.'";
+            aiCommand = "claude --allowedTools 'Edit:~/.tradery/**,Write:~/.tradery/**,Read:~/.tradery/**,mcp__tradery__*' --append-system-prompt 'On session start, immediately call tradery_get_context and briefly summarize the focused strategy and its key metrics. Do not list all strategies.'";
         } else {
             // Codex or other AI
             aiCommand = aiType;

@@ -119,8 +119,14 @@ public class RemoteCandlePageManager {
             listeners.computeIfAbsent(key, k -> ConcurrentHashMap.newKeySet()).add(listener);
 
             // Immediately notify of current state if not EMPTY
+            // Only notify READY if data is actually present (avoids race with HTTP fetch)
             if (page.getState() != PageState.EMPTY) {
-                notifyStateChangedOnEDT(page, PageState.EMPTY, page.getState(), listener);
+                if (page.getState() == PageState.READY && page.getData().isEmpty()) {
+                    // READY but no data yet — HTTP fetch still in progress, skip notification
+                    // fetchPageData() will notify when data arrives
+                } else {
+                    notifyStateChangedOnEDT(page, PageState.EMPTY, page.getState(), listener);
+                }
             }
         }
 
@@ -290,8 +296,16 @@ public class RemoteCandlePageManager {
 
                 PageState oldState = page.getState();
                 PageState newState = parseState(state);
-                page.setState(newState);
                 page.setLoadProgress(progress);
+
+                // Don't propagate READY until data is actually fetched via HTTP.
+                // The fetchPageData() method handles the READY transition after data arrives.
+                if (newState == PageState.READY) {
+                    notifyProgressOnEDT(page, progress);
+                    return;
+                }
+
+                page.setState(newState);
 
                 // Notify listeners
                 if (oldState != newState) {
