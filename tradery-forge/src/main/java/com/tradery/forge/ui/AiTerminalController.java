@@ -309,7 +309,7 @@ public class AiTerminalController {
 
     private void openOsCodexTerminal(String traderyDir, String strategyName) {
         String command = String.format(
-            "cd '%s' && codex",
+            "cd '%s' && codex 'Read CODEX.md for session startup instructions, then follow them'",
             traderyDir.replace("'", "'\\''")
         );
 

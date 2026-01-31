@@ -136,6 +136,8 @@ public class AiTerminalPanel extends JPanel {
                     traderyPath, traderyPath, traderyPath
                 );
                 aiCommand = "claude --allowedTools '" + allowedTools + "' -p 'Call tradery_get_context to see what I am working on'";
+            } else if ("codex".equals(aiType)) {
+                aiCommand = "codex 'Read CODEX.md for session startup instructions, then follow them'";
             } else {
                 aiCommand = aiType;
             }
