@@ -1,6 +1,7 @@
 package com.tradery.forge.ui;
 
 import com.tradery.forge.ApplicationContext;
+import com.tradery.forge.data.DataType;
 import com.tradery.forge.data.PageState;
 import com.tradery.forge.data.page.DataPageManager;
 import com.tradery.forge.data.page.IndicatorPageManager;
@@ -8,6 +9,8 @@ import com.tradery.forge.ui.controls.StatusBadge;
 
 import javax.swing.*;
 import java.awt.*;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
 import java.util.List;
 
 /**
@@ -38,6 +41,18 @@ public class PageManagerBadgesPanel extends JPanel {
         premiumBadge = new StatusBadge("Premium 0");
         indicatorsBadge = new StatusBadge("Indicators 0");
 
+        addClickHandler(candlesBadge, DataType.CANDLES);
+        addClickHandler(fundingBadge, DataType.FUNDING);
+        addClickHandler(oiBadge, DataType.OPEN_INTEREST);
+        addClickHandler(aggTradesBadge, DataType.AGG_TRADES);
+        addClickHandler(premiumBadge, DataType.PREMIUM_INDEX);
+        indicatorsBadge.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseClicked(MouseEvent e) {
+                DownloadDashboardWindow.showWindowForIndicators();
+            }
+        });
+
         add(candlesBadge);
         add(fundingBadge);
         add(oiBadge);
@@ -65,6 +80,15 @@ public class PageManagerBadgesPanel extends JPanel {
 
         // Initial refresh
         refresh();
+    }
+
+    private void addClickHandler(StatusBadge badge, DataType dataType) {
+        badge.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseClicked(MouseEvent e) {
+                DownloadDashboardWindow.showWindow(dataType);
+            }
+        });
     }
 
     /**

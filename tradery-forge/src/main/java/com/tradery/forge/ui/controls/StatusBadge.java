@@ -2,6 +2,8 @@ package com.tradery.forge.ui.controls;
 
 import javax.swing.*;
 import java.awt.*;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
 
 /**
  * Reusable rounded-rect badge label for status indicators.
@@ -20,10 +22,11 @@ public class StatusBadge extends JLabel {
     public static final Color BG_ERROR = new Color(231, 76, 60);
     public static final Color FG_ERROR = Color.WHITE;
 
-    private static final int ARC = 12;
+    private static final int ARC = 13;
     private static final int HEIGHT = 18;
 
     private Color bgColor;
+    private boolean hovered;
 
     public StatusBadge(String text) {
         super(text);
@@ -32,6 +35,21 @@ public class StatusBadge extends JLabel {
         setForeground(FG_IDLE);
         setOpaque(false);
         setBorder(BorderFactory.createEmptyBorder(2, 6, 2, 6));
+        setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+
+        addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseEntered(MouseEvent e) {
+                hovered = true;
+                repaint();
+            }
+
+            @Override
+            public void mouseExited(MouseEvent e) {
+                hovered = false;
+                repaint();
+            }
+        });
     }
 
     @Override
@@ -62,9 +80,18 @@ public class StatusBadge extends JLabel {
     protected void paintComponent(Graphics g) {
         Graphics2D g2 = (Graphics2D) g.create();
         g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-        g2.setColor(bgColor);
+        Color paintColor = hovered ? darken(bgColor, 0.2f) : bgColor;
+        g2.setColor(paintColor);
         g2.fillRoundRect(0, 0, getWidth(), getHeight(), ARC, ARC);
         g2.dispose();
         super.paintComponent(g);
+    }
+
+    private static Color darken(Color c, float fraction) {
+        return new Color(
+            Math.max((int) (c.getRed() * (1 - fraction)), 0),
+            Math.max((int) (c.getGreen() * (1 - fraction)), 0),
+            Math.max((int) (c.getBlue() * (1 - fraction)), 0),
+            c.getAlpha());
     }
 }

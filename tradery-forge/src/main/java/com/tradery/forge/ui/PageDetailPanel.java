@@ -5,6 +5,7 @@ import com.tradery.forge.data.PageState;
 import com.tradery.forge.data.log.DownloadEvent;
 import com.tradery.forge.data.log.DownloadLogStore;
 import com.tradery.forge.data.page.DataPageManager;
+import com.tradery.forge.data.page.IndicatorPageManager;
 
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
@@ -197,7 +198,28 @@ public class PageDetailPanel extends JPanel {
      * Refresh the display with current page data.
      */
     public void refresh(List<DataPageManager.PageInfo> allPages) {
+        refresh(allPages, List.of());
+    }
+
+    /**
+     * Refresh the display with current page and indicator data.
+     */
+    public void refresh(List<DataPageManager.PageInfo> allPages,
+                        List<IndicatorPageManager.IndicatorPageInfo> indicatorPages) {
         if (selectedPageKey == null) {
+            showEmptyState();
+            return;
+        }
+
+        // Check indicator pages first (keys start with "indicator:")
+        if (selectedPageKey.startsWith("indicator:")) {
+            for (IndicatorPageManager.IndicatorPageInfo ind : indicatorPages) {
+                String indKey = "indicator:" + ind.type() + "(" + ind.params() + ")";
+                if (indKey.equals(selectedPageKey)) {
+                    refreshIndicator(ind);
+                    return;
+                }
+            }
             showEmptyState();
             return;
         }
@@ -299,6 +321,47 @@ public class PageDetailPanel extends JPanel {
             case LISTENER_ADDED -> "Consumer added";
             case LISTENER_REMOVED -> "Consumer removed";
         };
+    }
+
+    private void refreshIndicator(IndicatorPageManager.IndicatorPageInfo ind) {
+        pageKeyLabel.setText(ind.key());
+        dataTypeLabel.setText("Indicator: " + ind.type() + "(" + ind.params() + ")");
+        stateLabel.setText(ind.state().name());
+        stateLabel.setForeground(getColorForState(ind.state()));
+        recordCountLabel.setText(ind.hasData() ? "Yes" : "No");
+        lastSyncLabel.setText(ind.symbol() + "/" + ind.timeframe());
+
+        boolean isLoading = ind.state() == PageState.LOADING;
+        progressBar.setVisible(isLoading);
+        if (isLoading) {
+            int progress = ind.loadProgress();
+            if (progress > 0 && progress < 100) {
+                progressBar.setIndeterminate(false);
+                progressBar.setValue(progress);
+                progressBar.setString(progress + "%");
+                progressBar.setStringPainted(true);
+            } else {
+                progressBar.setIndeterminate(true);
+                progressBar.setStringPainted(false);
+            }
+        }
+
+        errorLabel.setVisible(ind.state() == PageState.ERROR);
+        if (ind.state() == PageState.ERROR) {
+            errorLabel.setText("Check log for details");
+        }
+
+        consumersModel.clear();
+        if (ind.consumers() != null) {
+            for (String consumer : ind.consumers()) {
+                consumersModel.addElement(consumer);
+            }
+        }
+        if (consumersModel.isEmpty()) {
+            consumersModel.addElement("(no consumers)");
+        }
+
+        updateLog();
     }
 
     private void showEmptyState() {

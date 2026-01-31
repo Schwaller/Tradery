@@ -33,6 +33,14 @@ public class DownloadDashboardWindow extends JFrame {
      * or brings the existing window to front.
      */
     public static void showWindow() {
+        showWindow(null);
+    }
+
+    /**
+     * Show the Download Dashboard window and select the first page of the given data type.
+     * Pass null to show the overview.
+     */
+    public static void showWindow(DataType dataType) {
         if (instance == null || !instance.isDisplayable()) {
             instance = new DownloadDashboardWindow();
             instance.setVisible(true);
@@ -40,6 +48,23 @@ public class DownloadDashboardWindow extends JFrame {
             instance.toFront();
             instance.requestFocus();
         }
+        if (dataType != null) {
+            instance.statusPanel.selectFirstByDataType(dataType);
+        }
+    }
+
+    /**
+     * Show the Download Dashboard and select the first indicator row.
+     */
+    public static void showWindowForIndicators() {
+        if (instance == null || !instance.isDisplayable()) {
+            instance = new DownloadDashboardWindow();
+            instance.setVisible(true);
+        } else {
+            instance.toFront();
+            instance.requestFocus();
+        }
+        instance.statusPanel.selectFirstIndicator();
     }
 
     private DataTimelinePanel timelinePanel;
@@ -127,17 +152,21 @@ public class DownloadDashboardWindow extends JFrame {
         cardLayout = new CardLayout();
         contentCards = new JPanel(cardLayout);
 
-        // Card 1: Overview (timeline panel)
-        JPanel overviewCard = new JPanel(new BorderLayout());
-        overviewCard.setBorder(new EmptyBorder(8, 8, 8, 8));
-        overviewCard.add(timelinePanel, BorderLayout.CENTER);
-        contentCards.add(overviewCard, CARD_OVERVIEW);
+        // Card 1: Overview (timeline panel + log below)
+        JSplitPane overviewSplit = new JSplitPane(JSplitPane.VERTICAL_SPLIT);
+        JPanel timelineWrapper = new JPanel(new BorderLayout());
+        timelineWrapper.setBorder(new EmptyBorder(8, 8, 0, 8));
+        timelineWrapper.add(timelinePanel, BorderLayout.CENTER);
+        overviewSplit.setTopComponent(timelineWrapper);
+        JPanel logWrapper = new JPanel(new BorderLayout());
+        logWrapper.setBorder(new EmptyBorder(0, 8, 8, 8));
+        logWrapper.add(logPanel, BorderLayout.CENTER);
+        overviewSplit.setBottomComponent(logWrapper);
+        overviewSplit.setResizeWeight(0.5);
+        contentCards.add(overviewSplit, CARD_OVERVIEW);
 
-        // Card 2: Details (tabs for page details and event log)
-        JTabbedPane detailTabs = new JTabbedPane();
-        detailTabs.addTab("Page Details", createDetailTab());
-        detailTabs.addTab("Event Log", createLogTab());
-        contentCards.add(detailTabs, CARD_DETAILS);
+        // Card 2: Details (page details only)
+        contentCards.add(createDetailTab(), CARD_DETAILS);
 
         // Show overview by default
         cardLayout.show(contentCards, CARD_OVERVIEW);
@@ -233,7 +262,7 @@ public class DownloadDashboardWindow extends JFrame {
 
         // Update detail panel if a page is selected
         if (selectedPageKey != null) {
-            detailPanel.refresh(allPages);
+            detailPanel.refresh(allPages, indicatorPages);
         }
 
         // Update log panel

@@ -38,6 +38,7 @@ public class PageStatusPanel extends JPanel {
 
     // For tracking row components for hover/selection
     private final List<PageRowPanel> pageRows = new ArrayList<>();
+    private final List<IndicatorRowPanel> indicatorRows = new ArrayList<>();
 
     public PageStatusPanel(BiConsumer<String, DataType> onPageSelected) {
         this.onPageSelected = onPageSelected;
@@ -77,6 +78,7 @@ public class PageStatusPanel extends JPanel {
                        List<IndicatorPageManager.IndicatorPageInfo> indicatorPages) {
         contentPanel.removeAll();
         pageRows.clear();
+        indicatorRows.clear();
 
         // Add Overview row at the top
         addOverviewRow();
@@ -232,8 +234,9 @@ public class PageStatusPanel extends JPanel {
         // Indicator rows
         contentPanel.add(Box.createVerticalStrut(4));
         for (IndicatorPageManager.IndicatorPageInfo ind : indicators) {
-            JPanel row = createIndicatorRow(ind);
+            IndicatorRowPanel row = new IndicatorRowPanel(ind);
             row.setAlignmentX(Component.LEFT_ALIGNMENT);
+            indicatorRows.add(row);
             contentPanel.add(row);
             contentPanel.add(Box.createVerticalStrut(2));
         }
@@ -241,35 +244,41 @@ public class PageStatusPanel extends JPanel {
         contentPanel.add(Box.createVerticalStrut(12));
     }
 
-    private JPanel createIndicatorRow(IndicatorPageManager.IndicatorPageInfo ind) {
-        JPanel row = new JPanel(new BorderLayout(4, 0));
-        row.setBorder(BorderFactory.createEmptyBorder(3, 8, 3, 8));
-        row.setMaximumSize(new Dimension(Integer.MAX_VALUE, 26));
-        row.setOpaque(false);
-
-        // Left: indicator name
-        String label = ind.type() + "(" + ind.params() + ")";
-        JLabel nameLabel = new JLabel(label);
-        nameLabel.setFont(nameLabel.getFont().deriveFont(Font.PLAIN, 11f));
-        row.add(nameLabel, BorderLayout.WEST);
-
-        // Right: status
-        JPanel rightPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 4, 0));
-        rightPanel.setOpaque(false);
-
-        if (ind.listenerCount() > 0) {
-            JLabel listenerLabel = new JLabel(String.valueOf(ind.listenerCount()));
-            listenerLabel.setFont(listenerLabel.getFont().deriveFont(Font.PLAIN, 9f));
-            listenerLabel.setForeground(new Color(100, 150, 200));
-            rightPanel.add(listenerLabel);
+    /**
+     * Select the first page row matching the given data type.
+     */
+    public void selectFirstByDataType(DataType dataType) {
+        for (PageRowPanel row : pageRows) {
+            if (row.dataType == dataType) {
+                selectPage(row.page.key(), row.dataType);
+                return;
+            }
         }
+    }
 
-        JLabel statusDot = new JLabel(getStatusDot(ind.state()));
-        statusDot.setForeground(getColorForState(ind.state()));
-        rightPanel.add(statusDot);
+    /**
+     * Select the first indicator row.
+     */
+    public void selectFirstIndicator() {
+        if (!indicatorRows.isEmpty()) {
+            IndicatorRowPanel row = indicatorRows.get(0);
+            selectIndicator(row.indicatorKey);
+        }
+    }
 
-        row.add(rightPanel, BorderLayout.EAST);
-        return row;
+    private void selectIndicator(String indicatorKey) {
+        this.overviewSelected = false;
+        this.selectedPageKey = indicatorKey;
+        this.selectedDataType = null;
+        updateRowSelection();
+        updateIndicatorRowSelection();
+        onPageSelected.accept(indicatorKey, null);
+    }
+
+    private void updateIndicatorRowSelection() {
+        for (IndicatorRowPanel row : indicatorRows) {
+            row.updateSelection();
+        }
     }
 
     private PageState getOverallIndicatorState(List<IndicatorPageManager.IndicatorPageInfo> indicators) {
@@ -363,6 +372,7 @@ public class PageStatusPanel extends JPanel {
         this.selectedPageKey = pageKey;
         this.selectedDataType = dataType;
         updateRowSelection();
+        updateIndicatorRowSelection();
         onPageSelected.accept(pageKey, dataType);
     }
 
@@ -465,6 +475,82 @@ public class PageStatusPanel extends JPanel {
 
         private void updateBackground() {
             boolean isSelected = page.key().equals(selectedPageKey);
+            if (isSelected) {
+                setBackground(COLOR_SELECTED_BG);
+                setOpaque(true);
+            } else if (isHovered) {
+                setBackground(COLOR_HOVER_BG);
+                setOpaque(true);
+            } else {
+                setOpaque(false);
+            }
+            repaint();
+        }
+    }
+
+    // ========== Inner class for indicator rows ==========
+
+    private class IndicatorRowPanel extends JPanel {
+        private final String indicatorKey;
+        private boolean isHovered = false;
+
+        IndicatorRowPanel(IndicatorPageManager.IndicatorPageInfo ind) {
+            this.indicatorKey = "indicator:" + ind.type() + "(" + ind.params() + ")";
+
+            setLayout(new BorderLayout(4, 0));
+            setBorder(BorderFactory.createEmptyBorder(3, 8, 3, 8));
+            setMaximumSize(new Dimension(Integer.MAX_VALUE, 26));
+            setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+
+            String label = ind.type() + "(" + ind.params() + ")";
+            JLabel nameLabel = new JLabel(label);
+            nameLabel.setFont(nameLabel.getFont().deriveFont(Font.PLAIN, 11f));
+            add(nameLabel, BorderLayout.WEST);
+
+            JPanel rightPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 4, 0));
+            rightPanel.setOpaque(false);
+
+            if (ind.listenerCount() > 0) {
+                JLabel listenerLabel = new JLabel(String.valueOf(ind.listenerCount()));
+                listenerLabel.setFont(listenerLabel.getFont().deriveFont(Font.PLAIN, 9f));
+                listenerLabel.setForeground(new Color(100, 150, 200));
+                rightPanel.add(listenerLabel);
+            }
+
+            JLabel statusDot = new JLabel(getStatusDot(ind.state()));
+            statusDot.setForeground(getColorForState(ind.state()));
+            rightPanel.add(statusDot);
+
+            add(rightPanel, BorderLayout.EAST);
+
+            addMouseListener(new MouseAdapter() {
+                @Override
+                public void mousePressed(MouseEvent e) {
+                    selectIndicator(indicatorKey);
+                }
+
+                @Override
+                public void mouseEntered(MouseEvent e) {
+                    isHovered = true;
+                    updateBackground();
+                }
+
+                @Override
+                public void mouseExited(MouseEvent e) {
+                    isHovered = false;
+                    updateBackground();
+                }
+            });
+
+            updateBackground();
+        }
+
+        void updateSelection() {
+            updateBackground();
+        }
+
+        private void updateBackground() {
+            boolean isSelected = indicatorKey.equals(selectedPageKey);
             if (isSelected) {
                 setBackground(COLOR_SELECTED_BG);
                 setOpaque(true);

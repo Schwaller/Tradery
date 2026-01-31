@@ -1,7 +1,5 @@
 package com.tradery.forge.ui;
 
-import com.tradery.forge.ApplicationContext;
-import com.tradery.forge.data.page.*;
 import com.tradery.forge.ui.controls.StatusBadge;
 
 import javax.swing.*;
@@ -14,7 +12,6 @@ import java.awt.*;
 public class MemoryStatusPanel extends JPanel {
 
     private final StatusBadge heapLabel;
-    private final StatusBadge dataLabel;
     private final Timer refreshTimer;
 
 
@@ -26,11 +23,6 @@ public class MemoryStatusPanel extends JPanel {
         heapLabel = new StatusBadge("Heap --");
         heapLabel.setStatusColor(StatusBadge.BG_IDLE, StatusBadge.FG_IDLE);
         add(heapLabel);
-
-        // Data pages memory label
-        dataLabel = new StatusBadge("Data --");
-        dataLabel.setStatusColor(StatusBadge.BG_IDLE, StatusBadge.FG_IDLE);
-        add(dataLabel);
 
         // Refresh every 2 seconds
         refreshTimer = new Timer(2000, e -> refresh());
@@ -60,41 +52,6 @@ public class MemoryStatusPanel extends JPanel {
             "Used: %s (%.1f%%)<br>" +
             "Max: %s</html>",
             formatBytes(usedBytes), usedPct, formatBytes(maxBytes)));
-
-        // Data pages memory
-        ApplicationContext ctx = ApplicationContext.getInstance();
-        if (ctx == null) {
-            dataLabel.setText("Data --");
-            return;
-        }
-
-        // Calculate per-manager memory
-        long candlesMem = safeEstimate(ctx.getCandlePageManager());
-        long fundingMem = safeEstimate(ctx.getFundingPageManager());
-        long oiMem = safeEstimate(ctx.getOIPageManager());
-        long aggTradesMem = safeEstimate(ctx.getAggTradesPageManager());
-        long premiumMem = safeEstimate(ctx.getPremiumPageManager());
-        long indicatorsMem = ctx.getIndicatorPageManager() != null
-            ? ctx.getIndicatorPageManager().estimateMemoryBytes() : 0;
-
-        long totalDataBytes = candlesMem + fundingMem + oiMem + aggTradesMem + premiumMem + indicatorsMem;
-        dataLabel.setText("Data " + formatBytes(totalDataBytes));
-
-        // Build tooltip with breakdown
-        StringBuilder tooltip = new StringBuilder();
-        tooltip.append("<html><b>Data Memory Usage</b><br><br>");
-        tooltip.append(String.format("Candles: %s<br>", formatBytes(candlesMem)));
-        tooltip.append(String.format("Indicators: %s<br>", formatBytes(indicatorsMem)));
-        tooltip.append(String.format("Funding: %s<br>", formatBytes(fundingMem)));
-        tooltip.append(String.format("Open Interest: %s<br>", formatBytes(oiMem)));
-        tooltip.append(String.format("AggTrades: %s<br>", formatBytes(aggTradesMem)));
-        tooltip.append(String.format("Premium: %s<br>", formatBytes(premiumMem)));
-        tooltip.append(String.format("<br><b>Total: %s</b></html>", formatBytes(totalDataBytes)));
-        dataLabel.setToolTipText(tooltip.toString());
-    }
-
-    private long safeEstimate(DataPageManager<?> mgr) {
-        return mgr != null ? mgr.estimateMemoryBytes() : 0;
     }
 
     private String formatBytes(long bytes) {

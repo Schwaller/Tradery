@@ -492,6 +492,10 @@ public class ProjectWindow extends JFrame {
         dataServiceStatusPanel = new DataServiceStatusPanel();
         leftStatusPanel.add(dataServiceStatusPanel);
 
+        // Heap memory badge - right after data service
+        memoryStatusPanel = new MemoryStatusPanel();
+        leftStatusPanel.add(memoryStatusPanel);
+
         // Main progress bar (backtest, data fetch, etc.)
         statusProgressBar = new JProgressBar(0, 100);
         statusProgressBar.setPreferredSize(new Dimension(120, 12));
@@ -519,13 +523,9 @@ public class ProjectWindow extends JFrame {
 
         statusPanel.add(leftStatusPanel, BorderLayout.WEST);
 
-        // Right side: memory status + page manager badges
+        // Right side: page manager badges
         JPanel rightStatusPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 0));
         rightStatusPanel.setOpaque(false);
-
-        // Memory status (heap + data memory)
-        memoryStatusPanel = new MemoryStatusPanel();
-        rightStatusPanel.add(memoryStatusPanel);
 
         // Page manager badges (shows checked out pages per manager)
         pageManagerBadges = new PageManagerBadgesPanel();
