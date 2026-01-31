@@ -156,10 +156,12 @@ public class DownloadDashboardWindow extends JFrame {
         JSplitPane overviewSplit = new JSplitPane(JSplitPane.VERTICAL_SPLIT);
         JPanel timelineWrapper = new JPanel(new BorderLayout());
         timelineWrapper.setBorder(new EmptyBorder(8, 8, 0, 8));
+        timelineWrapper.setPreferredSize(new Dimension(0, 300));
         timelineWrapper.add(timelinePanel, BorderLayout.CENTER);
         overviewSplit.setTopComponent(timelineWrapper);
         JPanel logWrapper = new JPanel(new BorderLayout());
         logWrapper.setBorder(new EmptyBorder(0, 8, 8, 8));
+        logWrapper.setPreferredSize(new Dimension(0, 300));
         logWrapper.add(logPanel, BorderLayout.CENTER);
         overviewSplit.setBottomComponent(logWrapper);
         overviewSplit.setResizeWeight(0.5);

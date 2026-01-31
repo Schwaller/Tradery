@@ -1,6 +1,7 @@
 package com.tradery.forge.data.page;
 
 import com.tradery.forge.data.PageState;
+import com.tradery.forge.data.log.DownloadLogStore;
 import com.tradery.core.indicators.FootprintIndicator;
 import com.tradery.core.indicators.RotatingRays;
 import com.tradery.core.indicators.RotatingRays.RaySet;
@@ -134,15 +135,18 @@ public class IndicatorPageManager {
         if (listener != null) {
             listeners.computeIfAbsent(key, k -> ConcurrentHashMap.newKeySet()).add(listener);
             consumerNames.put(listener, consumerName);
+            DownloadLogStore.getInstance().logListenerAdded(key, null, consumerName);
         } else {
             anonymousRefs.merge(key, 1, Integer::sum);
         }
 
         // Request source data if this is a new page
         if (page.getState() == PageState.EMPTY) {
+            DownloadLogStore.getInstance().logPageCreated(key, null, symbol, timeframe);
             // Create compute callback for this page
             IndicatorPage.ComputeCallback<T> callback = createComputeCallback(page);
             notifyStateChanged(page, PageState.EMPTY, PageState.LOADING);
+            DownloadLogStore.getInstance().logLoadStarted(key, null, symbol, timeframe);
             page.requestSourceData(candlePageMgr, aggTradesPageMgr, callback);
         } else if (listener != null && page.isReady()) {
             // Already ready - notify immediately
@@ -193,7 +197,10 @@ public class IndicatorPageManager {
             if (pageListeners != null) {
                 pageListeners.remove(listener);
             }
-            consumerNames.remove(listener);
+            String name = consumerNames.remove(listener);
+            if (name != null) {
+                DownloadLogStore.getInstance().logListenerRemoved(key, null, name);
+            }
         } else {
             anonymousRefs.compute(key, (k, count) -> {
                 if (count == null || count <= 1) return null;
@@ -248,9 +255,11 @@ public class IndicatorPageManager {
      */
     @SuppressWarnings("unchecked")
     private <T> void computeAsync(IndicatorPage<T> page, List<Candle> candles) {
+        long t0 = System.currentTimeMillis();
         computeExecutor.submit(() -> {
             try {
                 Object result = computeIndicator(page.getType(), page.getParams(), page.getTimeframe(), candles, null);
+                long elapsed = System.currentTimeMillis() - t0;
 
                 SwingUtilities.invokeLater(() -> {
                     PageState prevState = page.getState();
@@ -260,12 +269,14 @@ public class IndicatorPageManager {
                     page.setState(PageState.READY);
                     page.setLoadProgress(100);  // Mark complete
 
+                    DownloadLogStore.getInstance().logLoadCompleted(page.getKey(), null, candles.size(), elapsed);
                     notifyStateChanged(page, prevState, PageState.READY);
                     notifyDataChanged(page);
                 });
 
             } catch (Exception e) {
                 log.warn("Indicator computation failed: {}", e.getMessage());
+                DownloadLogStore.getInstance().logError(page.getKey(), null, e.getMessage());
                 updateError(page, e.getMessage());
             }
         });
@@ -277,9 +288,11 @@ public class IndicatorPageManager {
      */
     @SuppressWarnings("unchecked")
     private <T> void computeAsyncWithAggTrades(IndicatorPage<T> page, List<Candle> candles, List<AggTrade> aggTrades) {
+        long t0 = System.currentTimeMillis();
         aggTradesExecutor.submit(() -> {
             try {
                 Object result = computeIndicator(page.getType(), page.getParams(), page.getTimeframe(), candles, aggTrades);
+                long elapsed = System.currentTimeMillis() - t0;
 
                 SwingUtilities.invokeLater(() -> {
                     PageState prevState = page.getState();
@@ -289,12 +302,14 @@ public class IndicatorPageManager {
                     page.setState(PageState.READY);
                     page.setLoadProgress(100);  // Mark complete
 
+                    DownloadLogStore.getInstance().logLoadCompleted(page.getKey(), null, candles.size(), elapsed);
                     notifyStateChanged(page, prevState, PageState.READY);
                     notifyDataChanged(page);
                 });
 
             } catch (Exception e) {
                 log.warn("Indicator computation failed for {}: {}", page.getType(), e.getMessage(), e);
+                DownloadLogStore.getInstance().logError(page.getKey(), null, e.getMessage());
                 updateError(page, e.getMessage());
             }
         });

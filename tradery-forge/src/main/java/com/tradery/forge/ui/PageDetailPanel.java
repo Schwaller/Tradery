@@ -26,6 +26,7 @@ public class PageDetailPanel extends JPanel {
 
     private String selectedPageKey;
     private DataType selectedDataType;
+    private String logPageKey; // actual key used for log lookups (may differ for indicators)
 
     // Info labels
     private JLabel pageKeyLabel;
@@ -239,6 +240,7 @@ public class PageDetailPanel extends JPanel {
         }
 
         // Update info labels
+        logPageKey = selectedPage.key();
         pageKeyLabel.setText(selectedPage.key());
         dataTypeLabel.setText(selectedPage.dataType().getDisplayName());
         stateLabel.setText(selectedPage.state().name());
@@ -287,9 +289,10 @@ public class PageDetailPanel extends JPanel {
     private void updateLog() {
         logModel.clear();
 
-        if (selectedPageKey == null) return;
+        String key = logPageKey != null ? logPageKey : selectedPageKey;
+        if (key == null) return;
 
-        List<DownloadEvent> events = DownloadLogStore.getInstance().getPageLog(selectedPageKey);
+        List<DownloadEvent> events = DownloadLogStore.getInstance().getPageLog(key);
         DateTimeFormatter formatter = DateTimeFormatter.ofPattern("HH:mm:ss")
             .withZone(ZoneId.systemDefault());
 
@@ -324,6 +327,7 @@ public class PageDetailPanel extends JPanel {
     }
 
     private void refreshIndicator(IndicatorPageManager.IndicatorPageInfo ind) {
+        logPageKey = ind.key();
         pageKeyLabel.setText(ind.key());
         dataTypeLabel.setText("Indicator: " + ind.type() + "(" + ind.params() + ")");
         stateLabel.setText(ind.state().name());
@@ -365,6 +369,7 @@ public class PageDetailPanel extends JPanel {
     }
 
     private void showEmptyState() {
+        logPageKey = null;
         pageKeyLabel.setText("-");
         dataTypeLabel.setText("-");
         stateLabel.setText("-");
