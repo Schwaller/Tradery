@@ -39,7 +39,9 @@ public class AggTradesPageManager extends DataPageManager<AggTrade> {
                                            String consumerName) {
         // Check memory before loading large data
         evictIfNeeded();
-        return super.request(symbol, timeframe, startTime, endTime, listener, consumerName);
+        // AggTrades are tick-level data — timeframe is irrelevant for deduplication.
+        // Always use null to ensure all consumers share the same page.
+        return super.request(symbol, null, startTime, endTime, listener, consumerName);
     }
 
     private static final int MAX_RETRIES = 5;

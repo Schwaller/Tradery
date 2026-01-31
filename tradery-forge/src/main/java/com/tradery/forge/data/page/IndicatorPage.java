@@ -145,7 +145,7 @@ public class IndicatorPage<T> implements DataPageListener<Candle> {
                     "IndicatorPage:" + type.getName());
 
                 sourceAggTradesPage = aggTradesPageMgr.request(
-                    symbol, timeframe, startTime, endTime,
+                    symbol, null, startTime, endTime,
                     aggTradesListener,
                     "IndicatorPage:" + type.getName());
             }
