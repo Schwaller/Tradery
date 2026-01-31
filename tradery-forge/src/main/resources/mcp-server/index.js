@@ -655,6 +655,56 @@ Use this to:
     },
   },
   {
+    name: "tradery_get_ui_state",
+    description: `Get the current UI state: open strategy windows, last focused strategy, and enabled chart overlays/indicators with parameters.
+
+Use this at the START of every session to understand what the user is looking at. The lastFocusedStrategyId tells you which strategy the user is currently working with.
+
+Returns:
+- launcherOpen: Whether the main launcher is open
+- windows: Array of open strategy windows with strategyId, symbol, timeframe, enabledOverlays, enabledIndicators
+- lastFocusedStrategyId: The strategy the user last interacted with
+- windowCount: Number of open windows`,
+    inputSchema: {
+      type: "object",
+      properties: {},
+      required: [],
+    },
+  },
+  {
+    name: "tradery_get_chart_config",
+    description: `Get the full chart configuration including all overlays and indicators with their enabled state and parameters.
+
+Returns overlays (SMA, EMA, BBANDS, HighLow, Mayer, VWAP, DailyPOC, FloatingPOC, Rays, Ichimoku) and indicators (RSI, MACD, ATR, STOCHASTIC, RANGE_POSITION, ADX, DELTA, CVD, FUNDING, OI, PREMIUM) with their current settings.`,
+    inputSchema: {
+      type: "object",
+      properties: {},
+      required: [],
+    },
+  },
+  {
+    name: "tradery_update_chart_config",
+    description: `Update chart overlays and indicators. Accepts partial updates - only include what you want to change. Charts refresh automatically.
+
+Example: { "overlays": { "SMA": { "enabled": true, "periods": [50, 200] } }, "indicators": { "RSI": { "enabled": true, "period": 14 } } }
+
+Available overlays: SMA/EMA (periods array), BBANDS (period, stdDev), HighLow/Mayer (period), VWAP, DailyPOC, FloatingPOC, Rays, Ichimoku.
+Available indicators: RSI/ATR/ADX/RANGE_POSITION (period), MACD (fast, slow, signal), STOCHASTIC (kPeriod, dPeriod), DELTA, CVD, FUNDING, OI, PREMIUM.`,
+    inputSchema: {
+      type: "object",
+      properties: {
+        overlays: {
+          type: "object",
+          description: "Overlay updates, e.g. { \"SMA\": { \"enabled\": true, \"periods\": [50, 200] } }",
+        },
+        indicators: {
+          type: "object",
+          description: "Indicator updates, e.g. { \"RSI\": { \"enabled\": true, \"period\": 14 } }",
+        },
+      },
+    },
+  },
+  {
     name: "tradery_get_download_stats",
     description: `Get statistics about download activity including total events, recent activity, error counts, and average load times.
 
@@ -1285,6 +1335,21 @@ async function handleTool(name, args) {
 
     case "tradery_get_download_stats": {
       return apiCall("GET", "/download-stats");
+    }
+
+    case "tradery_get_ui_state": {
+      return apiCall("GET", "/ui");
+    }
+
+    case "tradery_get_chart_config": {
+      return apiCall("GET", "/ui/chart-config");
+    }
+
+    case "tradery_update_chart_config": {
+      const body = {};
+      if (args.overlays) body.overlays = args.overlays;
+      if (args.indicators) body.indicators = args.indicators;
+      return apiCall("POST", "/ui/chart-config", body);
     }
 
     default:

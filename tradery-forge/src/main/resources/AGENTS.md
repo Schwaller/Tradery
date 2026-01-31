@@ -2,6 +2,16 @@
 
 You are helping optimize trading strategies for a backtesting application. The app watches for file changes and automatically re-runs backtests when you modify strategy files.
 
+## Session Startup (REQUIRED)
+
+**On every new session**, before doing any work, call `tradery_get_ui_state` to understand what the user is looking at. This returns open strategy windows, `lastFocusedStrategyId` (the strategy the user is currently working with), and enabled chart overlays/indicators with parameters.
+
+Use this context — e.g. if the user says "this strategy", they mean the last focused one.
+
+## IMPORTANT: Always Prefer MCP Tools Over Direct File Edits
+
+**NEVER edit YAML/JSON files directly.** Always use MCP tools (`tradery_*`) for all strategy, phase, and hoop operations. MCP validates DSL syntax, ensures correct format, and triggers backtests automatically. Direct file edits bypass validation and can corrupt data.
+
 ## Your Goal
 
 Help the user improve their trading strategy's performance by:
@@ -215,21 +225,78 @@ This scales out of positions:
 - `volume` - Current volume
 
 ### Indicators
-- `SMA(period)` - Simple Moving Average
-- `EMA(period)` - Exponential Moving Average
+- `SMA(period)`, `EMA(period)` - Moving Averages
 - `RSI(period)` - Relative Strength Index (0-100)
-- `MACD(fast, slow, signal)` - Returns object with `.line`, `.signal`, `.histogram`
+- `MACD(fast, slow, signal).line/.signal/.histogram` - MACD components
 - `ATR(period)` - Average True Range
-- `BB(period)` - Bollinger Bands, returns `.upper`, `.middle`, `.lower`
+- `BBANDS(period, stddev).upper/.middle/.lower/.width` - Bollinger Bands
+- `ADX(period)`, `PLUS_DI(period)`, `MINUS_DI(period)` - Trend strength
+- `STOCHASTIC(k, d).k/.d` - Stochastic oscillator (0-100)
+- `SUPERTREND(period, mult).trend/.upper/.lower` - Supertrend indicator
+- `ICHIMOKU().tenkan/.kijun/.senkou_a/.senkou_b/.chikou` - Ichimoku Cloud
+
+### Range Functions
 - `HIGH_OF(period)` - Highest high of last N candles
 - `LOW_OF(period)` - Lowest low of last N candles
 - `AVG_VOLUME(period)` - Average volume over N candles
+- `RANGE_POSITION(period, skip)` - Position within range (-1 to +1)
+
+### Aggregate Functions
+- `LOWEST(expr, period)` - Lowest value of expression over N bars
+- `HIGHEST(expr, period)` - Highest value of expression over N bars
+- `PERCENTILE(expr, period)` - Percentile rank of current value
+
+### Math Functions
+- `abs(expr)` - Absolute value
+- `min(expr1, expr2)` - Minimum of two values
+- `max(expr1, expr2)` - Maximum of two values
+
+### Candlestick Patterns (return 1 if detected, 0 otherwise)
+- `HAMMER(ratio)` - Hammer pattern, long lower wick (default ratio: 2.0)
+- `SHOOTING_STAR(ratio)` - Shooting star, long upper wick (default ratio: 2.0)
+- `DOJI(ratio)` - Doji, tiny body relative to range (default ratio: 0.1)
+
+### Candlestick Properties (support [n] lookback)
+- `BODY_SIZE` - Absolute body size (close - open)
+- `BODY_RATIO` - Body / total range (0-1)
+- `IS_BULLISH` - 1 if green candle (close > open)
+- `IS_BEARISH` - 1 if red candle (close < open)
+
+### Time Functions
+- `HOUR` (0-23), `DAYOFWEEK` (1=Mon), `DAY`, `MONTH`
+
+### Calendar & Market Functions
+- `IS_US_HOLIDAY`, `IS_FOMC_MEETING` - Calendar events
+- `MOON_PHASE` - 0=new moon, 0.5=full moon
+- `FUNDING`, `FUNDING_8H` - Futures funding rates
+- `PREMIUM`, `PREMIUM_AVG(n)` - Futures vs spot spread
+- `OI`, `OI_CHANGE`, `OI_DELTA(n)` - Open interest
+
+### OHLCV Volume (instant - no aggTrades needed)
+- `QUOTE_VOLUME` - Volume in quote currency
+- `BUY_VOLUME`, `SELL_VOLUME` - Taker buy/sell volume
+- `OHLCV_DELTA` - Buy - sell volume
+- `OHLCV_CVD` - Cumulative delta from OHLCV
+- `BUY_RATIO` - Buy volume / total (0-1)
+- `TRADE_COUNT` - Number of trades
+
+### Orderflow (requires orderflowSettings.mode)
+- `VWAP`, `POC(n)`, `VAH(n)`, `VAL(n)` - Volume profile
+- `PREV_DAY_POC/VAH/VAL`, `TODAY_POC/VAH/VAL` - Session levels
+- `DELTA`, `CUM_DELTA` - Order flow delta (full mode)
+- `WHALE_DELTA(threshold)`, `WHALE_BUY_VOL(t)`, `WHALE_SELL_VOL(t)`, `LARGE_TRADE_COUNT(t)` - Large trades
+
+### Rotating Ray Functions (auto-detect trendlines)
+Params: `rayNum`, `lookback`, `skip`
+- **Resistance:** `RESISTANCE_RAY_BROKEN/CROSSED/DISTANCE(ray,look,skip)`, `RESISTANCE_RAYS_BROKEN(look,skip)`, `RESISTANCE_RAY_COUNT(look,skip)`
+- **Support:** Same pattern with `SUPPORT_` prefix
 
 ### Operators
-- Comparison: `>`, `<`, `>=`, `<=`, `==`, `!=`
-- Logical: `AND`, `OR`, `NOT`
+- Comparison: `>`, `<`, `>=`, `<=`, `==`
+- Cross: `crosses_above`, `crosses_below`
+- Logical: `AND`, `OR`
 - Arithmetic: `+`, `-`, `*`, `/`
-- Special: `crosses_above`, `crosses_below`
+- Lookback: `expr[n]` - value n bars ago
 
 ### Examples
 ```
@@ -247,6 +314,15 @@ MACD(12,26,9).histogram > 0 AND MACD(12,26,9).line crosses_above MACD(12,26,9).s
 
 # Bollinger Band bounce
 price < BB(20).lower AND RSI(14) < 30
+
+# Shooting star after strong bullish candle (reversal setup)
+SHOOTING_STAR(2.0) AND BODY_SIZE[1] > ATR(14) * 1.5 AND IS_BULLISH[1] == 1
+
+# Hammer at oversold levels
+HAMMER AND RSI(14) < 30
+
+# Doji after strong move (indecision)
+DOJI AND BODY_SIZE[1] > ATR(14)
 ```
 
 ## Stop-Loss Types
@@ -286,6 +362,87 @@ Key metrics to analyze:
 3. Wait ~1-2 seconds for backtest to complete
 4. Read `latest.json` again - verify strategy matches your edit
 5. Compare metrics and iterate
+
+## MCP Tools (Preferred for Claude Code)
+
+Use MCP tools for all strategy operations. **DO NOT edit YAML directly** - MCP validates DSL, ensures format, triggers backtest.
+
+### Strategy Tools
+| Tool | Purpose |
+|------|---------|
+| `tradery_list_strategies` | List all strategies |
+| `tradery_get_strategy` | Get full strategy config |
+| `tradery_create_strategy` | Create new strategy |
+| `tradery_validate_strategy` | Validate changes (ALWAYS before update) |
+| `tradery_update_strategy` | Apply partial updates |
+| `tradery_delete_strategy` | Delete strategy |
+| `tradery_run_backtest` | Run backtest |
+| `tradery_get_summary` | Get AI-friendly summary + suggestions |
+| `tradery_analyze_phases` | Phase performance analysis |
+| `tradery_get_trade` | Get individual trade details |
+
+### Phase Tools
+| Tool | Purpose |
+|------|---------|
+| `tradery_list_phases` | List all available phases |
+| `tradery_get_phase` | Get phase details (condition, timeframe) |
+| `tradery_create_phase` | Create custom phase |
+| `tradery_update_phase` | Update custom phase |
+| `tradery_delete_phase` | Delete custom phase |
+| `tradery_phase_bounds` | Analyze when phase is active over time |
+
+### Hoop Pattern Tools
+| Tool | Purpose |
+|------|---------|
+| `tradery_list_hoops` | List all hoop patterns |
+| `tradery_get_hoop` | Get hoop pattern details |
+| `tradery_create_hoop` | Create hoop pattern |
+| `tradery_update_hoop` | Update hoop pattern |
+| `tradery_delete_hoop` | Delete hoop pattern |
+
+### Market Data Tools
+| Tool | Purpose |
+|------|---------|
+| `tradery_eval_condition` | Test DSL condition on market data |
+| `tradery_get_indicator` | Get indicator values |
+| `tradery_get_candles` | Get OHLCV data |
+
+### UI Tools
+| Tool | Purpose |
+|------|---------|
+| `tradery_get_ui_state` | Open windows, last focused strategy, chart config (call at session start!) |
+| `tradery_get_chart_config` | Full chart overlay/indicator config with parameters |
+| `tradery_update_chart_config` | Enable/disable/configure chart overlays and indicators |
+
+### MCP Workflow
+1. **`tradery_get_ui_state`** to know which strategy the user is looking at
+2. `tradery_get_summary` for overview + AI suggestions
+3. `tradery_analyze_phases` for phase recommendations
+4. `tradery_validate_strategy` before any update
+5. `tradery_update_strategy` + `tradery_run_backtest`
+6. Check results, iterate
+
+**Note:** Always validate before updating to catch DSL syntax errors.
+
+## HTTP API (Alternative)
+
+For tools without MCP support, use HTTP API. Port is in `~/.tradery/api.port`.
+
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| `/strategies` | GET/POST | List/create strategies |
+| `/strategy/{id}` | GET/POST/DELETE | Get/update/delete |
+| `/strategy/{id}/validate` | POST | Validate changes |
+| `/strategy/{id}/backtest` | POST | Run backtest |
+| `/strategy/{id}/summary` | GET | Get summary |
+| `/phases` | GET | List phases |
+| `/eval` | GET | Evaluate DSL condition |
+| `/indicator` | GET | Get indicator values |
+| `/candles` | GET | Get OHLCV data |
+| `/ui` | GET | Open windows, last focused strategy, chart overlays/indicators |
+| `/ui/open` | POST | Open UI windows |
+| `/ui/chart-config` | GET | Full chart config (all overlays/indicators with params) |
+| `/ui/chart-config` | POST | Update chart overlays/indicators (partial JSON) |
 
 ## Tips
 

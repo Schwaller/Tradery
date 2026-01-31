@@ -335,8 +335,8 @@ Trades also capture footprint metrics at entry/exit/mfe/mae points:
 
 ## Claude Code Integration
 
-### IMPORTANT: Use MCP/API for Strategy Changes
-**DO NOT edit YAML directly.** API validates DSL, ensures format, triggers backtest.
+### IMPORTANT: Always Prefer MCP Tools Over Direct File Edits
+**NEVER edit YAML/JSON files directly.** Always use MCP tools (`tradery_*`) for all strategy, phase, and hoop operations. MCP validates DSL syntax, ensures correct format, and triggers backtests automatically. Direct file edits bypass validation and can corrupt data.
 
 ### MCP Tools (Preferred)
 
@@ -380,6 +380,13 @@ Trades also capture footprint metrics at entry/exit/mfe/mae points:
 | `tradery_get_indicator` | Get indicator values |
 | `tradery_get_candles` | Get OHLCV data |
 
+**UI Tools:**
+| Tool | Purpose |
+|------|---------|
+| `tradery_get_ui_state` | Open windows, last focused strategy, chart config (call at session start!) |
+| `tradery_get_chart_config` | Full chart overlay/indicator config with parameters |
+| `tradery_update_chart_config` | Enable/disable/configure chart overlays and indicators |
+
 ### HTTP API
 Port in `~/.tradery/api.port`. Key endpoints:
 | Endpoint | Method | Purpose |
@@ -394,15 +401,36 @@ Port in `~/.tradery/api.port`. Key endpoints:
 | `/eval` | GET | Evaluate DSL condition |
 | `/indicator` | GET | Get indicator values |
 | `/candles` | GET | Get OHLCV data |
+| `/ui` | GET | Open windows, last focused strategy, enabled overlays/indicators |
 | `/ui/open` | POST | Open UI windows (phases, hoops, settings, data, project) |
+| `/ui/chart-config` | GET | Full chart config (all overlays/indicators with params & enabled state) |
+| `/ui/chart-config` | POST | Update chart overlays/indicators (partial JSON, see below) |
+
+#### Chart Config API
+```bash
+# Get current config
+curl http://localhost:PORT/ui/chart-config
+
+# Enable RSI and SMA overlays
+curl -X POST http://localhost:PORT/ui/chart-config -d '{
+  "overlays": { "SMA": { "enabled": true, "periods": [50, 200] } },
+  "indicators": { "RSI": { "enabled": true, "period": 14 } }
+}'
+```
+Available overlays: `SMA`, `EMA` (with `periods` array), `BBANDS`, `HighLow`, `Mayer` (with `period`), `VWAP`, `DailyPOC`, `FloatingPOC`, `Rays`, `Ichimoku`.
+Available indicators: `RSI`, `ATR`, `ADX`, `RANGE_POSITION` (with `period`), `MACD` (with `fast`, `slow`, `signal`), `STOCHASTIC` (with `kPeriod`, `dPeriod`), `DELTA`, `CVD`, `FUNDING`, `OI`, `PREMIUM`.
+
+### Session Startup (IMPORTANT)
+**On every new session**, before doing any work, call `tradery_get_ui_state` to understand what the user is looking at. This returns open strategy windows, `lastFocusedStrategyId` (the strategy the user is currently working with), and enabled chart overlays/indicators with parameters. Use this context — e.g. if the user asks about "this strategy", they mean the last focused one.
 
 ### AI Workflow
-1. Read `summary.json` for overview + suggestions
-2. Use `tradery_analyze_phases` for phase recommendations
-3. Glob trade filenames to understand distribution
-4. `tradery_validate_strategy` before any update
-5. `tradery_update_strategy` + `tradery_run_backtest`
-6. Check results, iterate
+1. **`tradery_get_ui_state`** to know which strategy the user is looking at
+2. Read `summary.json` for overview + suggestions
+3. Use `tradery_analyze_phases` for phase recommendations
+4. Glob trade filenames to understand distribution
+5. `tradery_validate_strategy` before any update
+6. `tradery_update_strategy` + `tradery_run_backtest`
+7. Check results, iterate
 
 ### Auto-Reload
 FileWatcher monitors directories. External edits trigger automatic reload and backtest.

@@ -2,6 +2,16 @@
 
 You are helping optimize trading strategies for a backtesting application. The app watches for file changes and automatically re-runs backtests when you modify strategy files.
 
+## Session Startup (REQUIRED)
+
+**On every new session**, before doing any work, call `tradery_get_ui_state` to understand what the user is looking at. This returns open strategy windows, `lastFocusedStrategyId` (the strategy the user is currently working with), and enabled chart overlays/indicators with parameters.
+
+Use this context — e.g. if the user says "this strategy", they mean the last focused one.
+
+## IMPORTANT: Always Prefer MCP Tools Over Direct File Edits
+
+**NEVER edit YAML/JSON files directly.** Always use MCP tools (`tradery_*`) for all strategy, phase, and hoop operations. MCP validates DSL syntax, ensures correct format, and triggers backtests automatically. Direct file edits bypass validation and can corrupt data.
+
 ## Your Goal
 
 Help the user improve their trading strategy's performance by:
@@ -397,12 +407,20 @@ Use MCP tools for all strategy operations. **DO NOT edit YAML directly** - MCP v
 | `tradery_get_indicator` | Get indicator values |
 | `tradery_get_candles` | Get OHLCV data |
 
+### UI Tools
+| Tool | Purpose |
+|------|---------|
+| `tradery_get_ui_state` | Open windows, last focused strategy, chart config (call at session start!) |
+| `tradery_get_chart_config` | Full chart overlay/indicator config with parameters |
+| `tradery_update_chart_config` | Enable/disable/configure chart overlays and indicators |
+
 ### MCP Workflow
-1. `tradery_get_summary` for overview + AI suggestions
-2. `tradery_analyze_phases` for phase recommendations
-3. `tradery_validate_strategy` before any update
-4. `tradery_update_strategy` + `tradery_run_backtest`
-5. Check results, iterate
+1. **`tradery_get_ui_state`** to know which strategy the user is looking at
+2. `tradery_get_summary` for overview + AI suggestions
+3. `tradery_analyze_phases` for phase recommendations
+4. `tradery_validate_strategy` before any update
+5. `tradery_update_strategy` + `tradery_run_backtest`
+6. Check results, iterate
 
 **Note:** Always validate before updating to catch DSL syntax errors.
 
@@ -421,7 +439,10 @@ For tools without MCP support, use HTTP API. Port is in `~/.tradery/api.port`.
 | `/eval` | GET | Evaluate DSL condition |
 | `/indicator` | GET | Get indicator values |
 | `/candles` | GET | Get OHLCV data |
+| `/ui` | GET | Open windows, last focused strategy, chart overlays/indicators |
 | `/ui/open` | POST | Open UI windows |
+| `/ui/chart-config` | GET | Full chart config (all overlays/indicators with params) |
+| `/ui/chart-config` | POST | Update chart overlays/indicators (partial JSON) |
 
 ## Tips
 
