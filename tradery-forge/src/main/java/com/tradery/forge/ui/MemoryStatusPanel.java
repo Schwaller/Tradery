@@ -2,6 +2,7 @@ package com.tradery.forge.ui;
 
 import com.tradery.forge.ApplicationContext;
 import com.tradery.forge.data.page.*;
+import com.tradery.forge.ui.controls.StatusBadge;
 
 import javax.swing.*;
 import java.awt.*;
@@ -12,26 +13,23 @@ import java.awt.*;
  */
 public class MemoryStatusPanel extends JPanel {
 
-    private final JLabel heapLabel;
-    private final JLabel dataLabel;
+    private final StatusBadge heapLabel;
+    private final StatusBadge dataLabel;
     private final Timer refreshTimer;
 
-    // Colors
-    private static final Color BG_NORMAL = new Color(60, 60, 65);
-    private static final Color BG_WARNING = new Color(180, 120, 40);
-    private static final Color BG_CRITICAL = new Color(180, 60, 60);
-    private static final Color FG_COLOR = new Color(200, 200, 200);
 
     public MemoryStatusPanel() {
         setLayout(new FlowLayout(FlowLayout.RIGHT, 4, 0));
         setOpaque(false);
 
         // JVM heap label
-        heapLabel = createBadge("Heap");
+        heapLabel = new StatusBadge("Heap --");
+        heapLabel.setStatusColor(StatusBadge.BG_IDLE, StatusBadge.FG_IDLE);
         add(heapLabel);
 
         // Data pages memory label
-        dataLabel = createBadge("Data");
+        dataLabel = new StatusBadge("Data --");
+        dataLabel.setStatusColor(StatusBadge.BG_IDLE, StatusBadge.FG_IDLE);
         add(dataLabel);
 
         // Refresh every 2 seconds
@@ -40,32 +38,6 @@ public class MemoryStatusPanel extends JPanel {
 
         // Initial refresh
         refresh();
-    }
-
-    private JLabel createBadge(String name) {
-        JLabel label = new JLabel(name + " --") {
-            private Color bgColor = BG_NORMAL;
-
-            public void setBackground(Color bg) {
-                this.bgColor = bg;
-                repaint();
-            }
-
-            @Override
-            protected void paintComponent(Graphics g) {
-                Graphics2D g2 = (Graphics2D) g.create();
-                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-                g2.setColor(bgColor);
-                g2.fillRoundRect(0, 0, getWidth(), getHeight(), 6, 6);
-                g2.dispose();
-                super.paintComponent(g);
-            }
-        };
-        label.setFont(label.getFont().deriveFont(Font.PLAIN, 10f));
-        label.setForeground(FG_COLOR);
-        label.setOpaque(false);
-        label.setBorder(BorderFactory.createEmptyBorder(2, 6, 2, 6));
-        return label;
     }
 
     public void refresh() {
@@ -78,10 +50,10 @@ public class MemoryStatusPanel extends JPanel {
         heapLabel.setText(String.format("Heap %s/%s", formatBytes(usedBytes), formatBytes(maxBytes)));
 
         // Color based on usage
-        Color heapBg = BG_NORMAL;
-        if (usedPct > 80) heapBg = BG_CRITICAL;
-        else if (usedPct > 60) heapBg = BG_WARNING;
-        heapLabel.setBackground(heapBg);
+        Color heapBg = StatusBadge.BG_IDLE;
+        if (usedPct > 80) heapBg = StatusBadge.BG_ERROR;
+        else if (usedPct > 60) heapBg = StatusBadge.BG_WARNING;
+        heapLabel.setStatusColor(heapBg);
 
         heapLabel.setToolTipText(String.format(
             "<html><b>JVM Heap Memory</b><br>" +

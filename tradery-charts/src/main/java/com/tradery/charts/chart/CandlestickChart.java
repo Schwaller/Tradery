@@ -9,7 +9,7 @@ import org.jfree.chart.JFreeChart;
 import org.jfree.chart.axis.DateAxis;
 import org.jfree.chart.axis.NumberAxis;
 import org.jfree.chart.plot.XYPlot;
-import org.jfree.chart.renderer.xy.CandlestickRenderer;
+import com.tradery.charts.renderer.TraderyCandlestickRenderer;
 import org.jfree.chart.renderer.xy.XYLineAndShapeRenderer;
 import org.jfree.data.time.Millisecond;
 import org.jfree.data.time.TimeSeries;
@@ -121,13 +121,10 @@ public class CandlestickChart extends SyncedChart {
             "Price", dates, high, low, open, close, volume);
         plot.setDataset(0, dataset);
 
-        CandlestickRenderer renderer = new CandlestickRenderer();
         Color upColor = applyOpacity(ChartStyles.CANDLE_UP_COLOR);
         Color downColor = applyOpacity(ChartStyles.CANDLE_DOWN_COLOR);
-        renderer.setUpPaint(upColor);
-        renderer.setDownPaint(downColor);
-        renderer.setUseOutlinePaint(false);
-        renderer.setAutoWidthMethod(CandlestickRenderer.WIDTHMETHOD_SMALLEST);
+        TraderyCandlestickRenderer renderer = new TraderyCandlestickRenderer(upColor, downColor);
+        renderer.setAutoWidthMethod(TraderyCandlestickRenderer.WIDTHMETHOD_SMALLEST);
         plot.setRenderer(0, renderer);
     }
 

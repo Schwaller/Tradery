@@ -11,7 +11,7 @@ import org.jfree.chart.annotations.XYTitleAnnotation;
 import org.jfree.chart.axis.DateAxis;
 import org.jfree.chart.axis.ValueAxis;
 import org.jfree.chart.plot.XYPlot;
-import org.jfree.chart.renderer.xy.CandlestickRenderer;
+import com.tradery.charts.renderer.TraderyCandlestickRenderer;
 import org.jfree.chart.renderer.xy.XYBarRenderer;
 import org.jfree.chart.renderer.xy.XYDifferenceRenderer;
 import org.jfree.chart.renderer.xy.XYLineAndShapeRenderer;
@@ -1539,24 +1539,8 @@ public class ChartsPanel extends JPanel {
                 ChartStyles.CANDLE_DOWN_COLOR.getBlue(),
                 alpha);
 
-            CandlestickRenderer renderer = new CandlestickRenderer() {
-                @Override
-                public Paint getItemPaint(int row, int column) {
-                    // Color wicks based on candle direction
-                    OHLCSeriesCollection ds = (OHLCSeriesCollection) plot.getDataset();
-                    if (ds != null && column < ds.getItemCount(row)) {
-                        double open = ds.getOpenValue(row, column);
-                        double close = ds.getCloseValue(row, column);
-                        return close >= open ? upColor : downColor;
-                    }
-                    return downColor;
-                }
-            };
-            renderer.setUpPaint(upColor);
-            renderer.setDownPaint(downColor);
-            renderer.setUseOutlinePaint(false);  // No body outline
+            TraderyCandlestickRenderer renderer = new TraderyCandlestickRenderer(upColor, downColor);
             renderer.setCandleWidth(3.0);  // Fixed width in pixels
-            renderer.setDrawVolume(false);
             plot.setRenderer(renderer);
         } else {
             // Line chart with high/low cloud from OHLC data

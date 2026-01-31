@@ -374,6 +374,12 @@ public class DailyVolumeProfileAnnotation extends AbstractXYAnnotation {
             binBotY[i] = (int) Math.round(Math.max(top, bot));
         }
 
+        // Draw POC line first (underneath bars)
+        drawPocLine(g2, dataArea, rangeAxis, dayStartX, dayEndX, day.poc);
+
+        // Draw day background
+        drawDayBackground(g2, dataArea, rangeAxis, dayStartX, dayEndX, day.minPrice, day.maxPrice);
+
         for (int i = 0; i < priceLevels.length; i++) {
             double volume = volumes[i];
             double delta = deltas != null && i < deltas.length ? deltas[i] : 0;
@@ -413,12 +419,6 @@ public class DailyVolumeProfileAnnotation extends AbstractXYAnnotation {
                 }
             }
         }
-
-        // Draw 20% white background rect for the day range
-        drawDayBackground(g2, dataArea, rangeAxis, dayStartX, dayEndX, day.minPrice, day.maxPrice);
-
-        // Draw POC as horizontal white line spanning the day
-        drawPocLine(g2, dataArea, rangeAxis, dayStartX, dayEndX, day.poc);
     }
 
     private void drawDayBackground(Graphics2D g2, Rectangle2D dataArea, ValueAxis rangeAxis,
@@ -441,8 +441,7 @@ public class DailyVolumeProfileAnnotation extends AbstractXYAnnotation {
         double pocY = rangeAxis.valueToJava2D(poc, dataArea, RectangleEdge.LEFT);
 
         g2.setColor(new Color(255, 255, 255, 160));
-        g2.setStroke(new BasicStroke(0.5f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER,
-            10.0f, new float[]{4.0f, 4.0f}, 0.0f));
+        g2.setStroke(new BasicStroke(0.5f));
         g2.drawLine((int) dayStartX, (int) pocY, (int) dayEndX, (int) pocY);
         g2.setStroke(new BasicStroke(1.0f));
     }

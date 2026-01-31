@@ -352,14 +352,12 @@ public class LauncherFrame extends JFrame {
         ProjectWindow existing = openWindows.get(id);
         if (existing != null) {
             existing.bringToFront();
-            lastFocusedStrategyId = id;
             return;
         }
 
         // Create new window
         ProjectWindow window = new ProjectWindow(selected, this::onWindowClosed);
         openWindows.put(id, window);
-        trackFocus(window, id);
         window.setVisible(true);
     }
 
@@ -547,7 +545,6 @@ public class LauncherFrame extends JFrame {
             if (strategy != null && !openWindows.containsKey(strategyId)) {
                 ProjectWindow window = new ProjectWindow(strategy, this::onWindowClosed);
                 openWindows.put(strategyId, window);
-                trackFocus(window, strategyId);
                 window.setVisible(true);
             }
         }
@@ -575,14 +572,8 @@ public class LauncherFrame extends JFrame {
         return lastFocusedStrategyId;
     }
 
-    private void trackFocus(ProjectWindow window, String strategyId) {
-        lastFocusedStrategyId = strategyId;
-        window.addWindowFocusListener(new WindowAdapter() {
-            @Override
-            public void windowGainedFocus(WindowEvent e) {
-                lastFocusedStrategyId = strategyId;
-            }
-        });
+    public void setLastFocusedStrategyId(String id) {
+        lastFocusedStrategyId = id;
     }
 
     // ========== Public API for opening windows ==========
@@ -654,7 +645,6 @@ public class LauncherFrame extends JFrame {
             } else {
                 ProjectWindow window = new ProjectWindow(strategy, this::onWindowClosed);
                 openWindows.put(strategyId, window);
-                trackFocus(window, strategyId);
                 window.setVisible(true);
             }
         });

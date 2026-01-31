@@ -2,6 +2,7 @@ package com.tradery.terminal;
 
 import com.jediterm.pty.PtyProcessTtyConnector;
 import com.jediterm.terminal.TtyConnector;
+import com.jediterm.terminal.TerminalColor;
 import com.jediterm.terminal.ui.JediTermWidget;
 import com.jediterm.terminal.ui.settings.DefaultSettingsProvider;
 import com.pty4j.PtyProcess;
@@ -135,7 +136,7 @@ public class AiTerminalPanel extends JPanel {
                     "Edit:%s/**,Write:%s/**,Read:%s/**,mcp__tradery__*",
                     traderyPath, traderyPath, traderyPath
                 );
-                aiCommand = "claude --allowedTools '" + allowedTools + "' -p 'Call tradery_get_context to see what I am working on'";
+                aiCommand = "claude --allowedTools '" + allowedTools + "' -p 'Call tradery_get_context and briefly summarize what strategy is focused and its key metrics. Do not list all strategies.'";
             } else if ("codex".equals(aiType)) {
                 aiCommand = "codex 'Read CODEX.md for session startup instructions, then follow them'";
             } else {
@@ -173,8 +174,8 @@ public class AiTerminalPanel extends JPanel {
                     // Wait for shell to fully initialize (prompt rendered)
                     Thread.sleep(1000);
 
-                    // Send the AI command (e.g., "codex" or "claude --allowedTools ... -p '...'")
-                    connector.write(finalAiCommand);
+                    // Clear shell startup noise, then send the AI command
+                    connector.write("clear && " + finalAiCommand);
                     Thread.sleep(100);
                     connector.write("\n");
                 } catch (Exception e) {
@@ -277,6 +278,16 @@ public class AiTerminalPanel extends JPanel {
         @Override
         public Font getTerminalFont() {
             return new Font(Font.MONOSPACED, Font.PLAIN, 13);
+        }
+
+        @Override
+        public TerminalColor getDefaultForeground() {
+            return TerminalColor.rgb(204, 204, 204);
+        }
+
+        @Override
+        public TerminalColor getDefaultBackground() {
+            return TerminalColor.rgb(30, 30, 30);
         }
     }
 }

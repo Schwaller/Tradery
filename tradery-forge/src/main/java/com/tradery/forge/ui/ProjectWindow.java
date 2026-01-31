@@ -144,6 +144,14 @@ public class ProjectWindow extends JFrame {
             public void windowClosing(WindowEvent e) {
                 closeWindow();
             }
+
+            @Override
+            public void windowActivated(WindowEvent e) {
+                LauncherFrame launcher = LauncherFrame.getInstance();
+                if (launcher != null) {
+                    launcher.setLastFocusedStrategyId(strategy.getId());
+                }
+            }
         });
 
         // Save position on move/resize
@@ -474,10 +482,10 @@ public class ProjectWindow extends JFrame {
         bottomPanel.add(new JSeparator(), BorderLayout.NORTH);
 
         JPanel statusPanel = new JPanel(new BorderLayout(8, 0));
-        statusPanel.setBorder(BorderFactory.createEmptyBorder(4, 8, 4, 8));
+        statusPanel.setBorder(BorderFactory.createEmptyBorder(4, 1, 5, 2));
 
         // Left side: data service status, progress bars, then status text
-        JPanel leftStatusPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
+        JPanel leftStatusPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
         leftStatusPanel.setOpaque(false);
 
         // Data service connection status badge - leftmost
@@ -512,7 +520,7 @@ public class ProjectWindow extends JFrame {
         statusPanel.add(leftStatusPanel, BorderLayout.WEST);
 
         // Right side: memory status + page manager badges
-        JPanel rightStatusPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
+        JPanel rightStatusPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 0));
         rightStatusPanel.setOpaque(false);
 
         // Memory status (heap + data memory)

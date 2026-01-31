@@ -354,10 +354,12 @@ public class TraderyDeskApp {
         DataPageListener<Candle> listener = new DataPageListener<>() {
             @Override
             public void onStateChanged(DataPageView<Candle> page, PageState oldState, PageState newState) {
-                log.debug("Strategy {} page state: {} -> {}", id, oldState, newState);
+                log.info("Strategy {} page state: {} -> {}", id, oldState, newState);
 
                 if (newState == PageState.READY) {
                     List<Candle> candles = page.getData();
+                    log.info("Strategy {} READY: {} candles, frame={}", id,
+                        candles != null ? candles.size() : "null", frame != null);
                     if (candles != null && !candles.isEmpty()) {
                         aggregator.setHistory(candles);
                         log.info("Warmed up {} with {} candles via page system", strategy.getName(), candles.size());

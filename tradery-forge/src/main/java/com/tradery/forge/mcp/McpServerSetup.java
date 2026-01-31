@@ -5,42 +5,42 @@ import java.nio.file.*;
 
 /**
  * Handles automatic setup of the Tradery MCP server for Claude Code integration.
- * On startup, ensures the MCP server files are installed and up to date.
+ * On startup, always overwrites index.js (like CLAUDE.md) and only runs npm install when version changes.
  */
 public class McpServerSetup {
 
-    private static final String MCP_VERSION = "1.3.0";
+    private static final String MCP_VERSION = "1.4.0";
     private static final Path MCP_DIR = Paths.get(System.getProperty("user.home"), ".tradery", "mcp-server");
     private static final Path VERSION_FILE = MCP_DIR.resolve(".version");
 
     /**
      * Ensure MCP server is installed and up to date.
-     * Called on app startup.
+     * Called on app startup. Always overwrites index.js; only runs npm install on version change.
      */
     public static void ensureInstalled() {
         try {
-            if (needsInstall()) {
-                install();
-            } else {
-                // Even if MCP server is already installed, ensure config file exists
-                ensureMcpConfig();
+            Files.createDirectories(MCP_DIR);
+
+            // Always overwrite index.js from resources (same as CLAUDE.md behavior)
+            copyResource("mcp-server/index.js", MCP_DIR.resolve("index.js"));
+            copyResource("mcp-server/package.json", MCP_DIR.resolve("package.json"));
+
+            // Only run npm install when version changes (slow operation)
+            if (needsNpmInstall()) {
+                runNpmInstall();
+                Files.writeString(VERSION_FILE, MCP_VERSION);
             }
+
+            // Always ensure .mcp.json config exists
+            writeMcpConfig();
         } catch (Exception e) {
             System.err.println("Failed to setup MCP server: " + e.getMessage());
             // Non-fatal - app continues without MCP
         }
     }
 
-    private static void ensureMcpConfig() throws IOException {
-        Path traderyDir = Paths.get(System.getProperty("user.home"), ".tradery");
-        Path mcpConfigPath = traderyDir.resolve(".mcp.json");
-        if (!Files.exists(mcpConfigPath)) {
-            writeMcpConfig();
-        }
-    }
-
-    private static boolean needsInstall() {
-        if (!Files.exists(MCP_DIR)) {
+    private static boolean needsNpmInstall() {
+        if (!Files.exists(MCP_DIR.resolve("node_modules"))) {
             return true;
         }
         if (!Files.exists(VERSION_FILE)) {
@@ -54,29 +54,19 @@ public class McpServerSetup {
         }
     }
 
-    private static void install() throws IOException, InterruptedException {
-        System.out.println("Installing MCP server v" + MCP_VERSION + "...");
+    private static void runNpmInstall() throws IOException, InterruptedException {
+        System.out.println("Installing MCP server dependencies v" + MCP_VERSION + "...");
 
-        // Create directory
-        Files.createDirectories(MCP_DIR);
-
-        // Copy files from resources
-        copyResource("mcp-server/package.json", MCP_DIR.resolve("package.json"));
-        copyResource("mcp-server/index.js", MCP_DIR.resolve("index.js"));
-
-        // Run npm install
-        System.out.println("Running npm install...");
         ProcessBuilder pb = new ProcessBuilder("npm", "install")
                 .directory(MCP_DIR.toFile())
                 .redirectErrorStream(true);
 
         Process process = pb.start();
 
-        // Consume output to prevent blocking
         try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
             String line;
             while ((line = reader.readLine()) != null) {
-                // Optionally log: System.out.println("npm: " + line);
+                // consume output
             }
         }
 
@@ -85,13 +75,7 @@ public class McpServerSetup {
             throw new IOException("npm install failed with exit code " + exitCode);
         }
 
-        // Write version file
-        Files.writeString(VERSION_FILE, MCP_VERSION);
-
-        // Write .mcp.json config in ~/.tradery (where Claude is launched from)
-        writeMcpConfig();
-
-        System.out.println("MCP server installed successfully");
+        System.out.println("MCP server dependencies installed");
     }
 
     private static void writeMcpConfig() throws IOException {
@@ -110,7 +94,6 @@ public class McpServerSetup {
             """.formatted(getServerPath());
 
         Files.writeString(mcpConfigPath, mcpConfig);
-        System.out.println("Created MCP config: " + mcpConfigPath);
     }
 
     private static void copyResource(String resourceName, Path target) throws IOException {

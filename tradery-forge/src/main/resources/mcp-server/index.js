@@ -658,13 +658,13 @@ Use this to:
     name: "tradery_get_context",
     description: `Get full session context in one call. CALL THIS FIRST at the start of every session.
 
-Returns everything you need to understand what the user is looking at:
-- ui: Open windows, lastFocusedStrategyId, window count
-- chartConfig: All overlays/indicators with enabled state and parameters
-- focusedStrategy: Full config of the last focused strategy (if any)
-- focusedSummary: Backtest metrics, analysis, suggestions, trade files for the focused strategy (if backtest exists)
+Returns everything about the strategy the user is currently looking at:
+- ui.lastFocusedStrategyId: The active strategy — this is "the strategy" the user means
+- focusedStrategy: Full config (entry/exit conditions, backtest settings)
+- focusedSummary: Backtest metrics (win rate, profit factor, etc.), analysis by phase/hour, AI suggestions
+- chartConfig: Enabled overlays and indicators on the chart
 
-This replaces the need to call tradery_get_strategy + tradery_get_summary separately for the active strategy.`,
+After calling this, summarize the focused strategy and its key metrics. Do NOT call tradery_list_strategies — focus on the active strategy.`,
     inputSchema: {
       type: "object",
       properties: {},
@@ -1387,7 +1387,7 @@ async function handleTool(name, args) {
 const server = new Server(
   {
     name: "tradery-mcp-server",
-    version: "1.3.0",
+    version: "1.4.0",
   },
   {
     capabilities: {
@@ -1435,7 +1435,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  console.error("Tradery MCP server v1.3.0 running");
+  console.error("Tradery MCP server v1.4.0 running");
 }
 
 main().catch(console.error);

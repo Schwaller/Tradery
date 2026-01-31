@@ -1,6 +1,7 @@
 package com.tradery.forge.ui;
 
 import com.tradery.forge.TraderyApp;
+import com.tradery.forge.ui.controls.StatusBadge;
 import com.tradery.dataclient.DataServiceLauncher;
 
 import javax.swing.*;
@@ -12,13 +13,8 @@ import java.awt.*;
  */
 public class DataServiceStatusPanel extends JPanel {
 
-    // Colors
-    private static final Color BG_CONNECTED = new Color(50, 120, 80);
-    private static final Color BG_DISCONNECTED = new Color(120, 60, 60);
-    private static final Color BG_UNAVAILABLE = new Color(80, 80, 85);
-    private static final Color FG_COLOR = new Color(220, 220, 220);
 
-    private final JLabel statusLabel;
+    private final StatusBadge statusLabel;
     private final Timer refreshTimer;
 
     private boolean lastConnected = false;
@@ -28,7 +24,8 @@ public class DataServiceStatusPanel extends JPanel {
         setLayout(new FlowLayout(FlowLayout.LEFT, 0, 0));
         setOpaque(false);
 
-        statusLabel = createBadge();
+        statusLabel = new StatusBadge("Data Service");
+        statusLabel.setStatusColor(StatusBadge.BG_IDLE, StatusBadge.FG_IDLE);
         add(statusLabel);
 
         // Refresh every 5 seconds
@@ -39,39 +36,12 @@ public class DataServiceStatusPanel extends JPanel {
         refresh();
     }
 
-    private JLabel createBadge() {
-        JLabel label = new JLabel("Data Service") {
-            private Color bgColor = BG_UNAVAILABLE;
-
-            @Override
-            public void setBackground(Color bg) {
-                this.bgColor = bg;
-                repaint();
-            }
-
-            @Override
-            protected void paintComponent(Graphics g) {
-                Graphics2D g2 = (Graphics2D) g.create();
-                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-                g2.setColor(bgColor);
-                g2.fillRoundRect(0, 0, getWidth(), getHeight(), 6, 6);
-                g2.dispose();
-                super.paintComponent(g);
-            }
-        };
-        label.setFont(label.getFont().deriveFont(Font.PLAIN, 10f));
-        label.setForeground(FG_COLOR);
-        label.setOpaque(false);
-        label.setBorder(BorderFactory.createEmptyBorder(2, 6, 2, 6));
-        return label;
-    }
-
     public void refresh() {
         DataServiceLauncher launcher = TraderyApp.getDataServiceLauncher();
 
         if (launcher == null) {
             statusLabel.setText("Data Service: N/A");
-            statusLabel.setBackground(BG_UNAVAILABLE);
+            statusLabel.setStatusColor(StatusBadge.BG_IDLE, StatusBadge.FG_IDLE);
             statusLabel.setToolTipText("Data Service not initialized");
             return;
         }
@@ -81,7 +51,7 @@ public class DataServiceStatusPanel extends JPanel {
 
         if (connected) {
             statusLabel.setText("Data Service: :" + port);
-            statusLabel.setBackground(BG_CONNECTED);
+            statusLabel.setStatusColor(StatusBadge.BG_OK, StatusBadge.FG_OK);
             statusLabel.setToolTipText(String.format(
                 "<html><b>Data Service</b><br>" +
                 "Status: Connected<br>" +
@@ -90,7 +60,7 @@ public class DataServiceStatusPanel extends JPanel {
                 port));
         } else {
             statusLabel.setText("Data Service: Disconnected");
-            statusLabel.setBackground(BG_DISCONNECTED);
+            statusLabel.setStatusColor(StatusBadge.BG_ERROR, StatusBadge.FG_ERROR);
             statusLabel.setToolTipText(
                 "<html><b>Data Service</b><br>" +
                 "Status: Disconnected<br><br>" +
