@@ -1,7 +1,9 @@
 package com.tradery.forge.ui;
 
 import com.tradery.core.model.Strategy;
+import com.tradery.forge.ApplicationContext;
 import com.tradery.forge.ui.base.ConfigurationPanel;
+import com.tradery.symbols.ui.SymbolComboBox;
 
 import javax.swing.*;
 import java.awt.*;
@@ -14,10 +16,9 @@ import java.util.Date;
  */
 public class DataRangePanel extends ConfigurationPanel {
 
-    private static final String[] SYMBOLS = {"BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT", "ADAUSDT", "DOGEUSDT", "MATICUSDT", "DOTUSDT", "LTCUSDT"};
     private static final String[] TIMEFRAMES = {"10s", "15s", "1m", "5m", "15m", "1h", "4h", "1d", "1w"};
 
-    private JComboBox<String> symbolCombo;
+    private SymbolComboBox symbolCombo;
     private JComboBox<String> timeframeCombo;
     private JComboBox<String> durationCombo;
     private JSpinner anchorDateSpinner;
@@ -33,7 +34,7 @@ public class DataRangePanel extends ConfigurationPanel {
     }
 
     private void initializeComponents() {
-        symbolCombo = new JComboBox<>(SYMBOLS);
+        symbolCombo = new SymbolComboBox(ApplicationContext.getInstance().getSymbolService());
 
         timeframeCombo = new JComboBox<>(TIMEFRAMES);
         timeframeCombo.setSelectedItem("1h");
@@ -224,7 +225,7 @@ public class DataRangePanel extends ConfigurationPanel {
 
         setSuppressChangeEvents(true);
         try {
-            symbolCombo.setSelectedItem(strategy.getSymbol());
+            symbolCombo.setSelection(strategy.getExchange(), strategy.getSymbolMarket(), strategy.getSymbol());
             timeframeCombo.setSelectedItem(strategy.getTimeframe());
             updateDurationOptions();
             durationCombo.setSelectedItem(strategy.getDuration());
@@ -242,7 +243,9 @@ public class DataRangePanel extends ConfigurationPanel {
     public void applyToStrategy(Strategy strategy) {
         if (strategy == null) return;
 
-        strategy.setSymbol((String) symbolCombo.getSelectedItem());
+        strategy.setExchange(symbolCombo.getExchange());
+        strategy.setSymbolMarket(symbolCombo.getSymbolMarket());
+        strategy.setSymbol(symbolCombo.getSelectedSymbol());
         strategy.setTimeframe((String) timeframeCombo.getSelectedItem());
         strategy.setDuration((String) durationCombo.getSelectedItem());
 
@@ -253,7 +256,7 @@ public class DataRangePanel extends ConfigurationPanel {
     // Getters for direct access
 
     public String getSymbol() {
-        return (String) symbolCombo.getSelectedItem();
+        return symbolCombo.getSelectedSymbol();
     }
 
     public String getTimeframe() {

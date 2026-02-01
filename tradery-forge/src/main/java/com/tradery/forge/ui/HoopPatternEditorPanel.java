@@ -3,7 +3,9 @@ package com.tradery.forge.ui;
 import com.tradery.core.model.Hoop;
 import com.tradery.core.model.HoopPattern;
 import com.tradery.core.model.PriceSmoothingType;
+import com.tradery.forge.ApplicationContext;
 import com.tradery.forge.ui.base.ConfigurationPanel;
+import com.tradery.symbols.ui.SymbolComboBox;
 
 import javax.swing.*;
 import javax.swing.event.DocumentEvent;
@@ -18,7 +20,7 @@ public class HoopPatternEditorPanel extends ConfigurationPanel {
 
     private JTextField nameField;
     private JTextArea descriptionArea;
-    private JComboBox<String> symbolCombo;
+    private SymbolComboBox symbolCombo;
     private JComboBox<String> timeframeCombo;
     private JSpinner cooldownSpinner;
     private JCheckBox allowOverlapCheck;
@@ -28,11 +30,6 @@ public class HoopPatternEditorPanel extends ConfigurationPanel {
     private HoopListPanel hoopListPanel;
 
     private HoopPattern pattern;
-
-    private static final String[] SYMBOLS = {
-        "BTCUSDT", "ETHUSDT", "BNBUSDT", "XRPUSDT", "ADAUSDT",
-        "SOLUSDT", "DOGEUSDT", "DOTUSDT", "AVAXUSDT", "MATICUSDT"
-    };
 
     private static final String[] TIMEFRAMES = {
         "1m", "5m", "15m", "30m", "1h", "4h", "1d", "1w"
@@ -54,8 +51,7 @@ public class HoopPatternEditorPanel extends ConfigurationPanel {
         descriptionArea.setLineWrap(true);
         descriptionArea.setWrapStyleWord(true);
 
-        symbolCombo = new JComboBox<>(SYMBOLS);
-        symbolCombo.setEditable(true); // Allow custom symbols
+        symbolCombo = new SymbolComboBox(ApplicationContext.getInstance().getSymbolService());
 
         timeframeCombo = new JComboBox<>(TIMEFRAMES);
         timeframeCombo.setSelectedItem("1h"); // Default to hourly
@@ -242,7 +238,7 @@ public class HoopPatternEditorPanel extends ConfigurationPanel {
             if (pattern != null) {
                 nameField.setText(pattern.getName() != null ? pattern.getName() : "");
                 descriptionArea.setText(pattern.getDescription() != null ? pattern.getDescription() : "");
-                symbolCombo.setSelectedItem(pattern.getSymbol() != null ? pattern.getSymbol() : "BTCUSDT");
+                symbolCombo.setSelectedSymbol(pattern.getSymbol() != null ? pattern.getSymbol() : "BTCUSDT");
                 timeframeCombo.setSelectedItem(pattern.getTimeframe() != null ? pattern.getTimeframe() : "1h");
                 cooldownSpinner.setValue(pattern.getCooldownBars());
                 allowOverlapCheck.setSelected(pattern.isAllowOverlap());
@@ -253,7 +249,7 @@ public class HoopPatternEditorPanel extends ConfigurationPanel {
             } else {
                 nameField.setText("");
                 descriptionArea.setText("");
-                symbolCombo.setSelectedItem("BTCUSDT");
+                symbolCombo.setSelectedSymbol("BTCUSDT");
                 timeframeCombo.setSelectedItem("1h");
                 cooldownSpinner.setValue(0);
                 allowOverlapCheck.setSelected(false);
@@ -271,7 +267,7 @@ public class HoopPatternEditorPanel extends ConfigurationPanel {
         if (pattern == null) return;
         pattern.setName(nameField.getText().trim());
         pattern.setDescription(descriptionArea.getText().trim());
-        pattern.setSymbol((String) symbolCombo.getSelectedItem());
+        pattern.setSymbol(symbolCombo.getSelectedSymbol());
         pattern.setTimeframe((String) timeframeCombo.getSelectedItem());
         pattern.setCooldownBars((Integer) cooldownSpinner.getValue());
         pattern.setAllowOverlap(allowOverlapCheck.isSelected());

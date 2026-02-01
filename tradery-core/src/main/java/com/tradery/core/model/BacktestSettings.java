@@ -10,6 +10,8 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class BacktestSettings {
 
+    private String exchange = "binance";
+    private String symbolMarket = "spot";  // spot, perp — which exchange market the pair is on
     private String symbol = "BTCUSDT";
     private String timeframe = "1h";
     private String duration = "1 year";
@@ -48,6 +50,22 @@ public class BacktestSettings {
     }
 
     // Getters and setters
+
+    public String getExchange() {
+        return exchange != null ? exchange : "binance";
+    }
+
+    public void setExchange(String exchange) {
+        this.exchange = exchange;
+    }
+
+    public String getSymbolMarket() {
+        return symbolMarket != null ? symbolMarket : "spot";
+    }
+
+    public void setSymbolMarket(String symbolMarket) {
+        this.symbolMarket = symbolMarket;
+    }
 
     public String getSymbol() {
         return symbol != null ? symbol : "BTCUSDT";

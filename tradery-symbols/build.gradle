@@ -1,0 +1,14 @@
+// tradery-symbols: Symbol picker UI with SQLite-backed symbol database
+// Read-only access to ~/.tradery/symbols.db
+
+plugins {
+    id 'java-library'
+}
+
+dependencies {
+    // SQLite JDBC driver for read-only symbol database access
+    api "org.xerial:sqlite-jdbc:${rootProject.ext.sqliteVersion}"
+
+    // Logging
+    implementation "org.slf4j:slf4j-api:${rootProject.ext.slf4jVersion}"
+}

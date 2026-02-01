@@ -2,6 +2,7 @@ package com.tradery.forge.ui;
 
 import com.tradery.forge.ApplicationContext;
 import com.tradery.forge.data.AggTradesStore;
+import com.tradery.symbols.ui.SymbolComboBox;
 import com.tradery.forge.data.BinanceClient;
 import com.tradery.forge.data.BinanceVisionClient;
 import com.tradery.forge.data.BinanceVisionClient.VisionDataType;
@@ -31,11 +32,6 @@ public class FetchDataDialog extends JDialog {
     // API returns max 1000 candles per request, so 10 calls = 10,000 candles
     private static final int VISION_THRESHOLD_API_CALLS = 10;
 
-    private static final String[] SYMBOLS = {
-        "BTCUSDT", "ETHUSDT", "BNBUSDT", "XRPUSDT", "ADAUSDT",
-        "SOLUSDT", "DOGEUSDT", "DOTUSDT", "MATICUSDT", "LTCUSDT",
-        "AVAXUSDT", "LINKUSDT", "ATOMUSDT", "UNIUSDT", "XLMUSDT"
-    };
 
     private static final String[] TIMEFRAMES = {
         "1m", "5m", "15m", "30m", "1h", "4h", "1d", "1w"
@@ -52,7 +48,7 @@ public class FetchDataDialog extends JDialog {
     private final Runnable onComplete;
 
     private JComboBox<String> dataTypeCombo;
-    private JComboBox<String> symbolCombo;
+    private SymbolComboBox symbolCombo;
     private JComboBox<String> timeframeCombo;
     private JLabel timeframeLabel;
     private JSpinner startYearSpinner;
@@ -112,7 +108,7 @@ public class FetchDataDialog extends JDialog {
         formPanel.add(symbolLabel, gbc);
 
         gbc.gridx = 1; gbc.fill = GridBagConstraints.HORIZONTAL; gbc.weightx = 1;
-        symbolCombo = new JComboBox<>(SYMBOLS);
+        symbolCombo = new SymbolComboBox(ApplicationContext.getInstance().getSymbolService());
         formPanel.add(symbolCombo, gbc);
 
         // Timeframe (only for Candles)
@@ -308,7 +304,7 @@ public class FetchDataDialog extends JDialog {
     }
 
     private void startFetch() {
-        String symbol = (String) symbolCombo.getSelectedItem();
+        String symbol = symbolCombo.getSelectedSymbol();
         String timeframe = (String) timeframeCombo.getSelectedItem();
         int startMonth = startMonthCombo.getSelectedIndex() + 1;
         int startYear = (Integer) startYearSpinner.getValue();

@@ -1,7 +1,9 @@
 package com.tradery.forge.ui;
 
 import com.tradery.core.model.Phase;
+import com.tradery.forge.ApplicationContext;
 import com.tradery.forge.ui.base.ConfigurationPanel;
+import com.tradery.symbols.ui.SymbolComboBox;
 
 import javax.swing.*;
 import javax.swing.event.DocumentEvent;
@@ -17,17 +19,12 @@ public class PhaseEditorPanel extends ConfigurationPanel {
     private JTextField nameField;
     private JTextField categoryField;
     private JTextArea descriptionArea;
-    private JComboBox<String> symbolCombo;
+    private SymbolComboBox symbolCombo;
     private JComboBox<String> timeframeCombo;
     private JTextArea conditionArea;
     private JLabel builtInBadge;
 
     private Phase phase;
-
-    private static final String[] SYMBOLS = {
-        "BTCUSDT", "ETHUSDT", "BNBUSDT", "XRPUSDT", "ADAUSDT",
-        "SOLUSDT", "DOGEUSDT", "DOTUSDT", "AVAXUSDT", "MATICUSDT"
-    };
 
     private static final String[] TIMEFRAMES = {
         "1h", "4h", "1d", "1w"
@@ -52,8 +49,7 @@ public class PhaseEditorPanel extends ConfigurationPanel {
         descriptionArea.setLineWrap(true);
         descriptionArea.setWrapStyleWord(true);
 
-        symbolCombo = new JComboBox<>(SYMBOLS);
-        symbolCombo.setEditable(true); // Allow custom symbols
+        symbolCombo = new SymbolComboBox(ApplicationContext.getInstance().getSymbolService());
 
         timeframeCombo = new JComboBox<>(TIMEFRAMES);
         timeframeCombo.setSelectedItem("1d"); // Default to daily
@@ -242,7 +238,7 @@ public class PhaseEditorPanel extends ConfigurationPanel {
                 nameField.setText(phase.getName() != null ? phase.getName() : "");
                 categoryField.setText(phase.getCategory() != null ? phase.getCategory() : "");
                 descriptionArea.setText(phase.getDescription() != null ? phase.getDescription() : "");
-                symbolCombo.setSelectedItem(phase.getSymbol() != null ? phase.getSymbol() : "BTCUSDT");
+                symbolCombo.setSelectedSymbol(phase.getSymbol() != null ? phase.getSymbol() : "BTCUSDT");
                 timeframeCombo.setSelectedItem(phase.getTimeframe() != null ? phase.getTimeframe() : "1d");
                 conditionArea.setText(phase.getCondition() != null ? phase.getCondition() : "");
                 builtInBadge.setVisible(phase.isBuiltIn());
@@ -250,7 +246,7 @@ public class PhaseEditorPanel extends ConfigurationPanel {
                 nameField.setText("");
                 categoryField.setText("");
                 descriptionArea.setText("");
-                symbolCombo.setSelectedItem("BTCUSDT");
+                symbolCombo.setSelectedSymbol("BTCUSDT");
                 timeframeCombo.setSelectedItem("1d");
                 conditionArea.setText("");
                 builtInBadge.setVisible(false);
@@ -266,7 +262,7 @@ public class PhaseEditorPanel extends ConfigurationPanel {
         String cat = categoryField.getText().trim();
         phase.setCategory(cat.isEmpty() ? null : cat);
         phase.setDescription(descriptionArea.getText().trim());
-        phase.setSymbol((String) symbolCombo.getSelectedItem());
+        phase.setSymbol(symbolCombo.getSelectedSymbol());
         phase.setTimeframe((String) timeframeCombo.getSelectedItem());
         phase.setCondition(conditionArea.getText().trim());
     }

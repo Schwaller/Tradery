@@ -28,6 +28,9 @@ dependencies {
     // Charts module for reusable chart components
     implementation project(':tradery-charts')
 
+    // Symbol picker UI
+    implementation project(':tradery-symbols')
+
     // Terminal module for embedded AI terminal (Claude/Codex)
     implementation project(':tradery-terminal')
 

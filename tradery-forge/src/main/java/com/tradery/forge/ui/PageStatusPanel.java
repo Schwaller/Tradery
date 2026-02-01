@@ -1,9 +1,11 @@
 package com.tradery.forge.ui;
 
+import com.tradery.forge.ApplicationContext;
 import com.tradery.forge.data.DataType;
 import com.tradery.forge.data.PageState;
 import com.tradery.forge.data.page.DataPageManager;
 import com.tradery.forge.data.page.IndicatorPageManager;
+import com.tradery.symbols.service.SymbolService;
 
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
@@ -82,6 +84,10 @@ public class PageStatusPanel extends JPanel {
 
         // Add Overview row at the top
         addOverviewRow();
+        contentPanel.add(Box.createVerticalStrut(4));
+
+        // Symbol database status
+        addSymbolDatabaseRow();
         contentPanel.add(Box.createVerticalStrut(8));
 
         // Separator
@@ -167,6 +173,65 @@ public class PageStatusPanel extends JPanel {
         });
 
         contentPanel.add(row);
+    }
+
+    private void addSymbolDatabaseRow() {
+        SymbolService symbolService = ApplicationContext.getInstance().getSymbolService();
+
+        JPanel row = new JPanel(new BorderLayout(4, 0));
+        row.setBorder(BorderFactory.createEmptyBorder(2, 8, 2, 8));
+        row.setMaximumSize(new Dimension(Integer.MAX_VALUE, 22));
+        row.setAlignmentX(Component.LEFT_ALIGNMENT);
+        row.setOpaque(false);
+
+        JLabel nameLabel = new JLabel("Symbol Database");
+        nameLabel.setFont(nameLabel.getFont().deriveFont(Font.PLAIN, 11f));
+        nameLabel.setForeground(Color.GRAY);
+        row.add(nameLabel, BorderLayout.WEST);
+
+        JPanel rightPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 4, 0));
+        rightPanel.setOpaque(false);
+
+        if (symbolService.isDatabaseAvailable()) {
+            SymbolService.SyncStatus status = symbolService.getSyncStatus();
+
+            JLabel countLabel = new JLabel(formatNumber(status.pairCount()) + " pairs");
+            countLabel.setFont(countLabel.getFont().deriveFont(Font.PLAIN, 9f));
+            countLabel.setForeground(Color.GRAY);
+            rightPanel.add(countLabel);
+
+            JLabel statusDot = new JLabel("\u25CF"); // filled circle
+            statusDot.setForeground(status.pairCount() > 0 ? COLOR_READY : COLOR_EMPTY);
+            rightPanel.add(statusDot);
+
+            if (status.lastSync() != null) {
+                row.setToolTipText("Last sync: " + formatRelativeTime(status.lastSync()));
+            }
+        } else {
+            JLabel offlineLabel = new JLabel("unavailable");
+            offlineLabel.setFont(offlineLabel.getFont().deriveFont(Font.PLAIN, 9f));
+            offlineLabel.setForeground(COLOR_ERROR);
+            rightPanel.add(offlineLabel);
+
+            JLabel statusDot = new JLabel("\u2717"); // x mark
+            statusDot.setForeground(COLOR_ERROR);
+            rightPanel.add(statusDot);
+
+            row.setToolTipText("symbols.db not found — run data service to sync");
+        }
+
+        row.add(rightPanel, BorderLayout.EAST);
+        contentPanel.add(row);
+    }
+
+    private static String formatRelativeTime(java.time.Instant instant) {
+        long minutes = java.time.Duration.between(instant, java.time.Instant.now()).toMinutes();
+        if (minutes < 1) return "just now";
+        if (minutes < 60) return minutes + " min ago";
+        long hours = java.time.Duration.between(instant, java.time.Instant.now()).toHours();
+        if (hours < 24) return hours + " hour" + (hours == 1 ? "" : "s") + " ago";
+        long days = java.time.Duration.between(instant, java.time.Instant.now()).toDays();
+        return days + " day" + (days == 1 ? "" : "s") + " ago";
     }
 
     private void selectOverview() {

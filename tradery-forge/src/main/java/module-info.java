@@ -5,6 +5,7 @@ module com.tradery.forge {
     requires com.tradery.engine;
     requires com.tradery.dataclient;
     requires com.tradery.charts;
+    requires com.tradery.symbols;
 
     // UI
     requires java.desktop;

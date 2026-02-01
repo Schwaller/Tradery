@@ -26,6 +26,9 @@ dependencies {
     // Charts module for reusable chart components
     implementation project(':tradery-charts')
 
+    // Symbol picker UI
+    implementation project(':tradery-symbols')
+
     // WebSocket client for live Binance streams
     implementation "org.java-websocket:Java-WebSocket:${rootProject.ext.websocketVersion}"
 

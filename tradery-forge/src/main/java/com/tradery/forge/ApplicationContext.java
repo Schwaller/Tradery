@@ -17,6 +17,7 @@ import com.tradery.core.indicators.registry.IndicatorRegistryInitializer;
 import com.tradery.forge.io.HoopPatternStore;
 import com.tradery.forge.io.PhaseStore;
 import com.tradery.forge.io.StrategyStore;
+import com.tradery.symbols.service.SymbolService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -50,6 +51,7 @@ public class ApplicationContext {
     private final PhaseStore phaseStore;
     private final HoopPatternStore hoopPatternStore;
     private final ApiServer apiServer;
+    private final SymbolService symbolService;
 
 
     // Data preloading infrastructure
@@ -95,6 +97,7 @@ public class ApplicationContext {
         this.strategyStore = new StrategyStore(new File(TraderyApp.USER_DIR, "strategies"));
         this.phaseStore = new PhaseStore(new File(TraderyApp.USER_DIR, "phases"));
         this.hoopPatternStore = new HoopPatternStore(new File(TraderyApp.USER_DIR, "hoops"));
+        this.symbolService = new SymbolService();
 
         // Initialize data preloading infrastructure
         this.dataInventory = new DataInventory(DataConfig.getInstance().getDataDir());
@@ -191,6 +194,10 @@ public class ApplicationContext {
 
     public ApiServer getApiServer() {
         return apiServer;
+    }
+
+    public SymbolService getSymbolService() {
+        return symbolService;
     }
 
 
@@ -295,6 +302,11 @@ public class ApplicationContext {
         // Close SQLite connections
         if (sqliteDataStore != null) {
             sqliteDataStore.close();
+        }
+
+        // Close symbols database
+        if (symbolService != null) {
+            symbolService.close();
         }
 
         // Stop API server

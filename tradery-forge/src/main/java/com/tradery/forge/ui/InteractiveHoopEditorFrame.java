@@ -1,6 +1,7 @@
 package com.tradery.forge.ui;
 
 import com.tradery.forge.ApplicationContext;
+import com.tradery.symbols.ui.SymbolComboBox;
 import com.tradery.forge.TraderyApp;
 import com.tradery.forge.data.PageState;
 import com.tradery.forge.data.page.CandlePageManager;
@@ -27,11 +28,6 @@ import java.util.Map;
  */
 public class InteractiveHoopEditorFrame extends JFrame implements DataPageListener<Candle> {
 
-    private static final String[] SYMBOLS = {
-        "BTCUSDT", "ETHUSDT", "BNBUSDT", "XRPUSDT", "ADAUSDT",
-        "SOLUSDT", "DOGEUSDT", "DOTUSDT", "MATICUSDT", "LTCUSDT"
-    };
-
     private static final String[] TIMEFRAMES = {
         "1m", "5m", "15m", "30m", "1h", "4h", "1d", "1w"
     };
@@ -47,7 +43,7 @@ public class InteractiveHoopEditorFrame extends JFrame implements DataPageListen
 
     // UI Components
     private HoopPatternChartPanel chartPanel;
-    private JComboBox<String> symbolCombo;
+    private SymbolComboBox symbolCombo;
     private JComboBox<String> timeframeCombo;
     private JComboBox<String> durationCombo;
     private JButton loadDataBtn;
@@ -126,8 +122,7 @@ public class InteractiveHoopEditorFrame extends JFrame implements DataPageListen
         deletePatternBtn.setEnabled(false);
 
         // Toolbar components
-        symbolCombo = new JComboBox<>(SYMBOLS);
-        symbolCombo.setEditable(true);
+        symbolCombo = new SymbolComboBox(ApplicationContext.getInstance().getSymbolService());
 
         timeframeCombo = new JComboBox<>(TIMEFRAMES);
         timeframeCombo.setSelectedItem("1h");
@@ -348,7 +343,7 @@ public class InteractiveHoopEditorFrame extends JFrame implements DataPageListen
 
     private void loadPatternData() {
         if (pattern != null) {
-            symbolCombo.setSelectedItem(pattern.getSymbol());
+            symbolCombo.setSelectedSymbol(pattern.getSymbol());
             timeframeCombo.setSelectedItem(pattern.getTimeframe());
         }
     }
@@ -368,14 +363,14 @@ public class InteractiveHoopEditorFrame extends JFrame implements DataPageListen
 
     private void savePattern() {
         if (pattern != null) {
-            pattern.setSymbol((String) symbolCombo.getSelectedItem());
+            pattern.setSymbol(symbolCombo.getSelectedSymbol());
             pattern.setTimeframe((String) timeframeCombo.getSelectedItem());
             patternStore.save(pattern);
         }
     }
 
     private void loadCandles() {
-        String symbol = (String) symbolCombo.getSelectedItem();
+        String symbol = symbolCombo.getSelectedSymbol();
         String timeframe = (String) timeframeCombo.getSelectedItem();
         String duration = (String) durationCombo.getSelectedItem();
 
@@ -680,7 +675,7 @@ public class InteractiveHoopEditorFrame extends JFrame implements DataPageListen
         HoopPattern newPattern = new HoopPattern();
         newPattern.setId(id);
         newPattern.setName(name.trim());
-        newPattern.setSymbol((String) symbolCombo.getSelectedItem());
+        newPattern.setSymbol(symbolCombo.getSelectedSymbol());
         newPattern.setTimeframe((String) timeframeCombo.getSelectedItem());
         newPattern.setHoops(new ArrayList<>());
 

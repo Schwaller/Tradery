@@ -343,6 +343,26 @@ public class Strategy implements Identifiable {
     // Convenience methods - Backtest settings delegates
 
     @JsonIgnore
+    public String getExchange() {
+        return getBacktestSettings().getExchange();
+    }
+
+    public void setExchange(String exchange) {
+        getBacktestSettings().setExchange(exchange);
+        this.updated = Instant.now();
+    }
+
+    @JsonIgnore
+    public String getSymbolMarket() {
+        return getBacktestSettings().getSymbolMarket();
+    }
+
+    public void setSymbolMarket(String symbolMarket) {
+        getBacktestSettings().setSymbolMarket(symbolMarket);
+        this.updated = Instant.now();
+    }
+
+    @JsonIgnore
     public String getSymbol() {
         return getBacktestSettings().getSymbol();
     }

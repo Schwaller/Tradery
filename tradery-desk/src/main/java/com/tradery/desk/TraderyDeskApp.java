@@ -616,6 +616,12 @@ public class TraderyDeskApp {
                 frame.setChartCandles(initialChartCandles, initialChartSymbol, initialChartTimeframe);
             }
 
+            // Start symbol sync status polling
+            if (dataClient != null) {
+                frame.startSyncPolling(dataClient);
+                log.info("Started symbol sync status polling");
+            }
+
             // Push current connection state to UI (listener may have fired before frame was created)
             if (pageConnection != null) {
                 var state = pageConnection.getConnectionState();

@@ -1,6 +1,8 @@
 package com.tradery.forge.ui;
 
+import com.tradery.forge.ApplicationContext;
 import com.tradery.forge.ui.charts.ChartConfig;
+import com.tradery.symbols.ui.SymbolComboBox;
 
 import javax.swing.*;
 import java.awt.*;
@@ -10,7 +12,7 @@ import java.awt.*;
  */
 public class ControlPanel extends JToolBar {
 
-    private JComboBox<String> symbolCombo;
+    private SymbolComboBox symbolCombo;
     private JComboBox<String> resolutionCombo;
 
     private JButton newButton;
@@ -43,10 +45,7 @@ public class ControlPanel extends JToolBar {
         deleteButton.addActionListener(e -> { if (onDelete != null) onDelete.run(); });
 
         // Symbol selection
-        symbolCombo = new JComboBox<>(new String[]{
-            "BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT", "XRPUSDT",
-            "ADAUSDT", "AVAXUSDT", "DOGEUSDT", "DOTUSDT", "MATICUSDT"
-        });
+        symbolCombo = new SymbolComboBox(ApplicationContext.getInstance().getSymbolService());
         symbolCombo.setMaximumSize(symbolCombo.getPreferredSize());
 
         // Resolution/timeframe
@@ -129,7 +128,7 @@ public class ControlPanel extends JToolBar {
     }
 
     public String getSymbol() {
-        return (String) symbolCombo.getSelectedItem();
+        return symbolCombo.getSelectedSymbol();
     }
 
     public String getResolution() {

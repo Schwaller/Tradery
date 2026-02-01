@@ -1,5 +1,6 @@
 package com.tradery.desk.ui;
 
+import com.tradery.dataclient.DataServiceClient;
 import com.tradery.desk.feed.BinanceWebSocketClient.ConnectionState;
 import com.tradery.desk.signal.SignalEvent;
 import com.tradery.desk.strategy.PublishedStrategy;
@@ -180,5 +181,12 @@ public class DeskFrame extends JFrame {
      */
     public void addChartCandle(Candle candle) {
         priceChartPanel.addCandle(candle);
+    }
+
+    /**
+     * Start polling symbol sync status from data service.
+     */
+    public void startSyncPolling(DataServiceClient client) {
+        statusPanel.startSyncPolling(client);
     }
 }
