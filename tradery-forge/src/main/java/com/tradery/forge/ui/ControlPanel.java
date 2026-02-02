@@ -20,11 +20,13 @@ public class ControlPanel extends JToolBar {
     private JButton deleteButton;
     private JButton runButton;
     private JToggleButton candlestickToggle;
+    private JButton nowButton;
 
     private Runnable onNew;
     private Runnable onSave;
     private Runnable onDelete;
     private Runnable onRun;
+    private Runnable onNow;
 
     public ControlPanel() {
         setFloatable(false);
@@ -66,6 +68,11 @@ public class ControlPanel extends JToolBar {
         candlestickToggle.addActionListener(e -> {
             ChartConfig.getInstance().setCandlestickMode(candlestickToggle.isSelected());
         });
+
+        // Now button
+        nowButton = new JButton("Now");
+        nowButton.setToolTipText("Snap chart to current time");
+        nowButton.addActionListener(e -> { if (onNow != null) onNow.run(); });
     }
 
     private void layoutComponents() {
@@ -101,6 +108,11 @@ public class ControlPanel extends JToolBar {
         // Candlestick toggle
         add(candlestickToggle);
 
+        add(Box.createHorizontalStrut(8));
+
+        // Now button
+        add(nowButton);
+
         add(Box.createHorizontalGlue());
 
         // Run button on right
@@ -121,6 +133,10 @@ public class ControlPanel extends JToolBar {
 
     public void setOnRun(Runnable onRun) {
         this.onRun = onRun;
+    }
+
+    public void setOnNow(Runnable onNow) {
+        this.onNow = onNow;
     }
 
     public void setRunEnabled(boolean enabled) {

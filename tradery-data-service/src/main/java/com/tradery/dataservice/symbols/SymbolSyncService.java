@@ -1,10 +1,15 @@
 package com.tradery.dataservice.symbols;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tradery.dataservice.coingecko.CoinGeckoClient;
 import com.tradery.dataservice.coingecko.CoinInfo;
+import com.tradery.dataservice.data.HttpClientFactory;
 import com.tradery.dataservice.data.sqlite.SymbolsConnection;
 import com.tradery.dataservice.data.sqlite.dao.SymbolDao;
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.Response;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -136,6 +141,12 @@ public class SymbolSyncService {
 
         // Parse tickers into trading pairs
         List<TradingPair> pairs = parseTickers(exchange, marketType, tickers);
+
+        // Fallback: if CoinGecko returned nothing for perp, try exchange API directly
+        if (pairs.isEmpty() && marketType == MarketType.PERP) {
+            log.info("CoinGecko returned 0 perp tickers for {}, falling back to exchange API...", exchange);
+            pairs = fetchPerpSymbolsFromExchangeApi(exchange);
+        }
 
         // Upsert pairs
         int count = symbolDao.upsertPairsBatch(pairs);
@@ -324,6 +335,100 @@ public class SymbolSyncService {
      */
     public Set<String> getSupportedExchanges() {
         return EXCHANGE_MAPPINGS.keySet();
+    }
+
+    // ========== Direct Exchange API Fallback ==========
+
+    private static final Map<String, String> EXCHANGE_INFO_URLS = Map.of(
+        "binance", "https://fapi.binance.com/fapi/v1/exchangeInfo",
+        "bybit", "https://api.bybit.com/v5/market/instruments-info?category=linear&limit=1000"
+    );
+
+    /**
+     * Fetch perpetual symbols directly from exchange API when CoinGecko fails.
+     */
+    private List<TradingPair> fetchPerpSymbolsFromExchangeApi(String exchange) {
+        String url = EXCHANGE_INFO_URLS.get(exchange);
+        if (url == null) {
+            log.debug("No direct API fallback for exchange: {}", exchange);
+            return List.of();
+        }
+
+        try {
+            OkHttpClient client = HttpClientFactory.getClient();
+            ObjectMapper mapper = HttpClientFactory.getMapper();
+
+            Request request = new Request.Builder().url(url).build();
+            try (Response response = client.newCall(request).execute()) {
+                if (!response.isSuccessful() || response.body() == null) {
+                    log.warn("Exchange API returned {}: {}", response.code(), url);
+                    return List.of();
+                }
+
+                JsonNode root = mapper.readTree(response.body().string());
+                return switch (exchange) {
+                    case "binance" -> parseBinanceFuturesExchangeInfo(root);
+                    case "bybit" -> parseBybitLinearInstruments(root);
+                    default -> List.of();
+                };
+            }
+        } catch (Exception e) {
+            log.error("Failed to fetch perp symbols from {} API: {}", exchange, e.getMessage());
+            return List.of();
+        }
+    }
+
+    private List<TradingPair> parseBinanceFuturesExchangeInfo(JsonNode root) {
+        List<TradingPair> pairs = new ArrayList<>();
+        JsonNode symbols = root.get("symbols");
+        if (symbols == null) return pairs;
+
+        for (JsonNode sym : symbols) {
+            String status = sym.has("status") ? sym.get("status").asText() : "";
+            String contractType = sym.has("contractType") ? sym.get("contractType").asText() : "";
+            if (!"TRADING".equals(status) || !"PERPETUAL".equals(contractType)) continue;
+
+            String symbol = sym.get("symbol").asText();
+            String base = sym.get("baseAsset").asText();
+            String quote = sym.get("quoteAsset").asText();
+            if (!isCommonQuote(quote)) continue;
+
+            String coingeckoId = lookupCoingeckoId(base);
+            String quoteCoingeckoId = lookupCoingeckoId(quote);
+
+            pairs.add(TradingPair.create("binance", MarketType.PERP, symbol, base, quote,
+                coingeckoId, quoteCoingeckoId));
+        }
+
+        log.info("Parsed {} Binance perpetual pairs from exchangeInfo", pairs.size());
+        return pairs;
+    }
+
+    private List<TradingPair> parseBybitLinearInstruments(JsonNode root) {
+        List<TradingPair> pairs = new ArrayList<>();
+        JsonNode result = root.get("result");
+        if (result == null) return pairs;
+        JsonNode list = result.get("list");
+        if (list == null) return pairs;
+
+        for (JsonNode inst : list) {
+            String status = inst.has("status") ? inst.get("status").asText() : "";
+            if (!"Trading".equals(status)) continue;
+
+            String symbol = inst.get("symbol").asText();
+            String base = inst.get("baseCoin").asText();
+            String quote = inst.get("quoteCoin").asText();
+            if (!isCommonQuote(quote)) continue;
+
+            String coingeckoId = lookupCoingeckoId(base);
+            String quoteCoingeckoId = lookupCoingeckoId(quote);
+
+            pairs.add(TradingPair.create("bybit", MarketType.PERP, symbol, base, quote,
+                coingeckoId, quoteCoingeckoId));
+        }
+
+        log.info("Parsed {} Bybit linear perpetual pairs from API", pairs.size());
+        return pairs;
     }
 
     /**

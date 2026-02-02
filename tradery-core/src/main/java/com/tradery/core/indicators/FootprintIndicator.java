@@ -151,17 +151,20 @@ public class FootprintIndicator {
                 bucketPrice, FootprintBucket.Builder::new);
 
             Exchange exchange = trade.exchange() != null ? trade.exchange() : Exchange.BINANCE;
+            DataMarketType marketType = trade.marketType();
 
             if (trade.isBuyerMaker()) {
                 // Seller is taker (aggressive sell)
-                bucketBuilder.addSellVolume(exchange, trade.quantity());
+                bucketBuilder.addSellVolume(exchange, marketType, trade.quantity());
             } else {
                 // Buyer is taker (aggressive buy)
-                bucketBuilder.addBuyVolume(exchange, trade.quantity());
+                bucketBuilder.addBuyVolume(exchange, marketType, trade.quantity());
             }
 
-            // Track per-exchange delta
+            // Track per-exchange and per-market-type delta/volume
             builder.addDelta(exchange, trade.delta());
+            builder.addMarketTypeDelta(marketType, trade.delta());
+            builder.addMarketTypeVolume(marketType, trade.quantity());
         }
 
         // Build all buckets

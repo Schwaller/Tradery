@@ -111,11 +111,27 @@ public class DataRangePanel extends ConfigurationPanel {
         fieldC.gridx = 1; fieldC.gridy = 2;
         settingsGrid.add(durationCombo, fieldC);
 
-        // Row 3: End date
+        // Row 3: End date with [>] now button
         labelC.gridx = 0; labelC.gridy = 3;
         settingsGrid.add(new JLabel("End:"), labelC);
+
+        JButton nowBtn = new JButton("\u25B6");
+        nowBtn.setToolTipText("Set to current date/time");
+        nowBtn.setMargin(new Insets(0, 3, 0, 3));
+        nowBtn.setFont(nowBtn.getFont().deriveFont(9f));
+        nowBtn.setFocusPainted(false);
+        nowBtn.addActionListener(e -> {
+            anchorDateSpinner.setValue(new Date());
+            fireChange();
+        });
+
+        JPanel endRow = new JPanel(new BorderLayout(4, 0));
+        endRow.setOpaque(false);
+        endRow.add(anchorDateSpinner, BorderLayout.CENTER);
+        endRow.add(nowBtn, BorderLayout.EAST);
+
         fieldC.gridx = 1; fieldC.gridy = 3;
-        settingsGrid.add(anchorDateSpinner, fieldC);
+        settingsGrid.add(endRow, fieldC);
 
         add(headerPanel, BorderLayout.NORTH);
         add(settingsGrid, BorderLayout.CENTER);

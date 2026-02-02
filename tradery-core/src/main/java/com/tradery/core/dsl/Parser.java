@@ -728,7 +728,9 @@ public class Parser {
             case "BINANCE_DELTA", "BYBIT_DELTA", "OKX_DELTA",
                  "COMBINED_DELTA", "EXCHANGE_DELTA_SPREAD", "EXCHANGE_DIVERGENCE",
                  "COMBINED_IMBALANCE_AT_POC", "EXCHANGES_WITH_BUY_IMBALANCE",
-                 "EXCHANGES_WITH_SELL_IMBALANCE", "DOMINANT_EXCHANGE" -> {
+                 "EXCHANGES_WITH_SELL_IMBALANCE", "DOMINANT_EXCHANGE",
+                 "SPOT_DELTA", "FUTURES_DELTA", "SPOT_VOLUME", "FUTURES_VOLUME",
+                 "SPOT_FUTURES_DIVERGENCE", "SPOT_FUTURES_DELTA_SPREAD" -> {
                 // No parameters required
             }
         }

@@ -1,12 +1,18 @@
 package com.tradery.dataservice.api;
 
+import com.tradery.dataservice.live.LiveAggTradeManager;
 import com.tradery.dataservice.live.LiveCandleManager;
+import com.tradery.dataservice.live.LiveMarkPriceManager;
+import com.tradery.dataservice.live.LiveOpenInterestPoller;
 import com.tradery.dataservice.page.PageManager;
 import com.tradery.dataservice.page.PageKey;
 import com.tradery.dataservice.page.PageState;
 import com.tradery.dataservice.page.PageStatus;
 import com.tradery.dataservice.page.PageUpdateListener;
+import com.tradery.core.model.AggTrade;
 import com.tradery.core.model.Candle;
+import com.tradery.core.model.MarkPriceUpdate;
+import com.tradery.core.model.OpenInterestUpdate;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.javalin.websocket.WsCloseContext;
@@ -30,6 +36,9 @@ public class WebSocketHandler implements PageUpdateListener {
 
     private final PageManager pageManager;
     private final LiveCandleManager liveCandleManager;
+    private final LiveAggTradeManager liveAggTradeManager;
+    private final LiveMarkPriceManager liveMarkPriceManager;
+    private final LiveOpenInterestPoller liveOpenInterestPoller;
     private final ObjectMapper objectMapper;
     private final Map<String, WsConnectContext> connections = new ConcurrentHashMap<>();
     private final Map<String, Set<String>> subscriptions = new ConcurrentHashMap<>(); // consumerId -> pageKeys
@@ -41,9 +50,29 @@ public class WebSocketHandler implements PageUpdateListener {
     private final Map<String, BiConsumer<String, Candle>> updateCallbacks = new ConcurrentHashMap<>();
     private final Map<String, BiConsumer<String, Candle>> closeCallbacks = new ConcurrentHashMap<>();
 
-    public WebSocketHandler(PageManager pageManager, LiveCandleManager liveCandleManager, ObjectMapper objectMapper) {
+    // Live aggTrade subscriptions
+    private final Map<String, Set<String>> aggTradeSubscriptions = new ConcurrentHashMap<>(); // consumerId -> symbols
+    private final Map<String, Set<String>> aggTradeSubscribers = new ConcurrentHashMap<>(); // symbol -> consumerIds
+    private final Map<String, BiConsumer<String, AggTrade>> aggTradeCallbacks = new ConcurrentHashMap<>();
+
+    // Live markPrice subscriptions
+    private final Map<String, Set<String>> markPriceSubscriptions = new ConcurrentHashMap<>();
+    private final Map<String, Set<String>> markPriceSubscribers = new ConcurrentHashMap<>();
+    private final Map<String, BiConsumer<String, MarkPriceUpdate>> markPriceCallbacks = new ConcurrentHashMap<>();
+
+    // Live OI subscriptions
+    private final Map<String, Set<String>> oiSubscriptions = new ConcurrentHashMap<>();
+    private final Map<String, Set<String>> oiSubscribers = new ConcurrentHashMap<>();
+    private final Map<String, BiConsumer<String, OpenInterestUpdate>> oiCallbacks = new ConcurrentHashMap<>();
+
+    public WebSocketHandler(PageManager pageManager, LiveCandleManager liveCandleManager,
+                            LiveAggTradeManager liveAggTradeManager, LiveMarkPriceManager liveMarkPriceManager,
+                            LiveOpenInterestPoller liveOpenInterestPoller, ObjectMapper objectMapper) {
         this.pageManager = pageManager;
         this.liveCandleManager = liveCandleManager;
+        this.liveAggTradeManager = liveAggTradeManager;
+        this.liveMarkPriceManager = liveMarkPriceManager;
+        this.liveOpenInterestPoller = liveOpenInterestPoller;
         this.objectMapper = objectMapper;
         pageManager.addUpdateListener(this);
     }
@@ -75,6 +104,12 @@ public class WebSocketHandler implements PageUpdateListener {
                 case "subscribe_page" -> handleSubscribePage(consumerId, message);
                 case "subscribe_live" -> handleSubscribeLive(consumerId, message);
                 case "unsubscribe_live" -> handleUnsubscribeLive(consumerId, message);
+                case "subscribe_live_aggtrades" -> handleSubscribeLiveAggTrades(consumerId, message);
+                case "unsubscribe_live_aggtrades" -> handleUnsubscribeLiveAggTrades(consumerId, message);
+                case "subscribe_live_markprice" -> handleSubscribeLiveMarkPrice(consumerId, message);
+                case "unsubscribe_live_markprice" -> handleUnsubscribeLiveMarkPrice(consumerId, message);
+                case "subscribe_live_oi" -> handleSubscribeLiveOi(consumerId, message);
+                case "unsubscribe_live_oi" -> handleUnsubscribeLiveOi(consumerId, message);
                 default -> LOG.warn("Unknown WebSocket action: {}", action);
             }
         } catch (Exception e) {
@@ -123,6 +158,27 @@ public class WebSocketHandler implements PageUpdateListener {
                 }
             }
         }
+
+        // Clean up aggTrade subscriptions
+        cleanupStreamSubscriptions(consumerId, aggTradeSubscriptions, aggTradeSubscribers,
+            symbol -> {
+                BiConsumer<String, AggTrade> cb = aggTradeCallbacks.remove(symbol);
+                if (cb != null) liveAggTradeManager.unsubscribe(symbol, cb);
+            });
+
+        // Clean up markPrice subscriptions
+        cleanupStreamSubscriptions(consumerId, markPriceSubscriptions, markPriceSubscribers,
+            symbol -> {
+                BiConsumer<String, MarkPriceUpdate> cb = markPriceCallbacks.remove(symbol);
+                if (cb != null) liveMarkPriceManager.unsubscribe(symbol, cb);
+            });
+
+        // Clean up OI subscriptions
+        cleanupStreamSubscriptions(consumerId, oiSubscriptions, oiSubscribers,
+            symbol -> {
+                BiConsumer<String, OpenInterestUpdate> cb = oiCallbacks.remove(symbol);
+                if (cb != null) liveOpenInterestPoller.unsubscribe(symbol, cb);
+            });
     }
 
     public void onError(WsErrorContext ctx) {
@@ -376,6 +432,152 @@ public class WebSocketHandler implements PageUpdateListener {
         }
     }
 
+    // ========== AggTrade subscription handlers ==========
+
+    private void handleSubscribeLiveAggTrades(String consumerId, JsonNode message) {
+        String symbol = message.get("symbol").asText().toUpperCase();
+        LOG.info("Consumer {} subscribing to live aggTrades {}", consumerId, symbol);
+
+        aggTradeSubscriptions.computeIfAbsent(consumerId, k -> new CopyOnWriteArraySet<>()).add(symbol);
+        aggTradeSubscribers.computeIfAbsent(symbol, k -> new CopyOnWriteArraySet<>()).add(consumerId);
+
+        if (!aggTradeCallbacks.containsKey(symbol)) {
+            BiConsumer<String, AggTrade> cb = (sym, trade) -> broadcastAggTrade(sym, trade);
+            aggTradeCallbacks.put(symbol, cb);
+            liveAggTradeManager.subscribe(symbol, cb);
+        }
+    }
+
+    private void handleUnsubscribeLiveAggTrades(String consumerId, JsonNode message) {
+        String symbol = message.get("symbol").asText().toUpperCase();
+        LOG.debug("Consumer {} unsubscribing from live aggTrades {}", consumerId, symbol);
+
+        removeStreamSubscriber(consumerId, symbol, aggTradeSubscriptions, aggTradeSubscribers,
+            () -> {
+                BiConsumer<String, AggTrade> cb = aggTradeCallbacks.remove(symbol);
+                if (cb != null) liveAggTradeManager.unsubscribe(symbol, cb);
+            });
+    }
+
+    private void broadcastAggTrade(String symbol, AggTrade trade) {
+        Set<String> subscribers = aggTradeSubscribers.get(symbol);
+        if (subscribers == null || subscribers.isEmpty()) return;
+
+        AggTradeMessage msg = new AggTradeMessage("AGGTRADE", symbol,
+            trade.aggTradeId(), trade.price(), trade.quantity(),
+            trade.timestamp(), trade.isBuyerMaker());
+        broadcast(subscribers, msg);
+    }
+
+    // ========== MarkPrice subscription handlers ==========
+
+    private void handleSubscribeLiveMarkPrice(String consumerId, JsonNode message) {
+        String symbol = message.get("symbol").asText().toUpperCase();
+        LOG.info("Consumer {} subscribing to live markPrice {}", consumerId, symbol);
+
+        markPriceSubscriptions.computeIfAbsent(consumerId, k -> new CopyOnWriteArraySet<>()).add(symbol);
+        markPriceSubscribers.computeIfAbsent(symbol, k -> new CopyOnWriteArraySet<>()).add(consumerId);
+
+        if (!markPriceCallbacks.containsKey(symbol)) {
+            BiConsumer<String, MarkPriceUpdate> cb = (sym, update) -> broadcastMarkPriceUpdate(sym, update);
+            markPriceCallbacks.put(symbol, cb);
+            liveMarkPriceManager.subscribe(symbol, cb);
+        }
+    }
+
+    private void handleUnsubscribeLiveMarkPrice(String consumerId, JsonNode message) {
+        String symbol = message.get("symbol").asText().toUpperCase();
+        LOG.debug("Consumer {} unsubscribing from live markPrice {}", consumerId, symbol);
+
+        removeStreamSubscriber(consumerId, symbol, markPriceSubscriptions, markPriceSubscribers,
+            () -> {
+                BiConsumer<String, MarkPriceUpdate> cb = markPriceCallbacks.remove(symbol);
+                if (cb != null) liveMarkPriceManager.unsubscribe(symbol, cb);
+            });
+    }
+
+    private void broadcastMarkPriceUpdate(String symbol, MarkPriceUpdate update) {
+        Set<String> subscribers = markPriceSubscribers.get(symbol);
+        if (subscribers == null || subscribers.isEmpty()) return;
+
+        MarkPriceMessage msg = new MarkPriceMessage("MARK_PRICE_UPDATE", symbol,
+            update.timestamp(), update.markPrice(), update.indexPrice(),
+            update.premium(), update.fundingRate(), update.nextFundingTime());
+        broadcast(subscribers, msg);
+    }
+
+    // ========== OI subscription handlers ==========
+
+    private void handleSubscribeLiveOi(String consumerId, JsonNode message) {
+        String symbol = message.get("symbol").asText().toUpperCase();
+        LOG.info("Consumer {} subscribing to live OI {}", consumerId, symbol);
+
+        oiSubscriptions.computeIfAbsent(consumerId, k -> new CopyOnWriteArraySet<>()).add(symbol);
+        oiSubscribers.computeIfAbsent(symbol, k -> new CopyOnWriteArraySet<>()).add(consumerId);
+
+        if (!oiCallbacks.containsKey(symbol)) {
+            BiConsumer<String, OpenInterestUpdate> cb = (sym, update) -> broadcastOiUpdate(sym, update);
+            oiCallbacks.put(symbol, cb);
+            liveOpenInterestPoller.subscribe(symbol, cb);
+        }
+    }
+
+    private void handleUnsubscribeLiveOi(String consumerId, JsonNode message) {
+        String symbol = message.get("symbol").asText().toUpperCase();
+        LOG.debug("Consumer {} unsubscribing from live OI {}", consumerId, symbol);
+
+        removeStreamSubscriber(consumerId, symbol, oiSubscriptions, oiSubscribers,
+            () -> {
+                BiConsumer<String, OpenInterestUpdate> cb = oiCallbacks.remove(symbol);
+                if (cb != null) liveOpenInterestPoller.unsubscribe(symbol, cb);
+            });
+    }
+
+    private void broadcastOiUpdate(String symbol, OpenInterestUpdate update) {
+        Set<String> subscribers = oiSubscribers.get(symbol);
+        if (subscribers == null || subscribers.isEmpty()) return;
+
+        OiUpdateMessage msg = new OiUpdateMessage("OI_UPDATE", symbol,
+            update.timestamp(), update.openInterest(), update.oiChange());
+        broadcast(subscribers, msg);
+    }
+
+    // ========== Shared helpers for stream subscriptions ==========
+
+    private void removeStreamSubscriber(String consumerId, String key,
+                                        Map<String, Set<String>> perConsumer,
+                                        Map<String, Set<String>> perKey,
+                                        Runnable onLastUnsubscribe) {
+        Set<String> subs = perConsumer.get(consumerId);
+        if (subs != null) subs.remove(key);
+
+        Set<String> subscribers = perKey.get(key);
+        if (subscribers != null) {
+            subscribers.remove(consumerId);
+            if (subscribers.isEmpty()) {
+                onLastUnsubscribe.run();
+            }
+        }
+    }
+
+    private void cleanupStreamSubscriptions(String consumerId,
+                                            Map<String, Set<String>> perConsumer,
+                                            Map<String, Set<String>> perKey,
+                                            java.util.function.Consumer<String> unsubscribeAction) {
+        Set<String> subs = perConsumer.remove(consumerId);
+        if (subs != null) {
+            for (String key : subs) {
+                Set<String> subscribers = perKey.get(key);
+                if (subscribers != null) {
+                    subscribers.remove(consumerId);
+                    if (subscribers.isEmpty()) {
+                        unsubscribeAction.accept(key);
+                    }
+                }
+            }
+        }
+    }
+
     private void sendError(WsMessageContext ctx, String error) {
         try {
             ctx.send(objectMapper.writeValueAsString(new ErrorMessage("ERROR", null, error)));
@@ -391,4 +593,9 @@ public class WebSocketHandler implements PageUpdateListener {
     public record EvictedMessage(String type, String pageKey) {}
     public record LiveCandleMessage(String type, String key, long timestamp, double open, double high,
                                     double low, double close, double volume) {}
+    public record AggTradeMessage(String type, String key, long aggTradeId, double price, double quantity,
+                                   long timestamp, boolean isBuyerMaker) {}
+    public record MarkPriceMessage(String type, String key, long timestamp, double markPrice, double indexPrice,
+                                   double premium, double fundingRate, long nextFundingTime) {}
+    public record OiUpdateMessage(String type, String key, long timestamp, double openInterest, double oiChange) {}
 }

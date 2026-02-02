@@ -1,15 +1,17 @@
 package com.tradery.desk.ui;
 
+import com.tradery.symbols.service.SymbolService;
+import com.tradery.symbols.ui.SymbolComboBox;
+
 import javax.swing.*;
 import java.awt.*;
 
 /**
- * Full-width top bar showing exchange, pair, price, and "X ago" timestamp.
+ * Full-width top bar showing symbol picker, price, and "X ago" timestamp.
  */
 public class MarketInfoBar extends JPanel {
 
-    private final JLabel exchangeLabel;
-    private final JLabel pairLabel;
+    private final SymbolComboBox symbolCombo;
     private final JLabel priceLabel;
     private final JLabel updatedLabel;
     private volatile long lastUpdateReceived;
@@ -22,14 +24,8 @@ public class MarketInfoBar extends JPanel {
             BorderFactory.createEmptyBorder(2, 8, 2, 8)
         ));
 
-        exchangeLabel = new JLabel("Binance Futures");
-        exchangeLabel.setFont(exchangeLabel.getFont().deriveFont(Font.BOLD, 10f));
-        exchangeLabel.setForeground(UIManager.getColor("Label.disabledForeground"));
-        add(exchangeLabel);
-
-        pairLabel = new JLabel("\u2014");
-        pairLabel.setFont(pairLabel.getFont().deriveFont(Font.BOLD, 13f));
-        add(pairLabel);
+        symbolCombo = new SymbolComboBox(new SymbolService(), true);
+        add(symbolCombo);
 
         priceLabel = new JLabel("\u2014");
         priceLabel.setFont(new Font(Font.MONOSPACED, Font.BOLD, 16));
@@ -44,8 +40,15 @@ public class MarketInfoBar extends JPanel {
         agoTimer.start();
     }
 
+    /**
+     * Get the symbol combo box for external listeners.
+     */
+    public SymbolComboBox getSymbolCombo() {
+        return symbolCombo;
+    }
+
     public void updateSymbol(String symbol, String timeframe) {
-        SwingUtilities.invokeLater(() -> pairLabel.setText(symbol + "  " + timeframe));
+        SwingUtilities.invokeLater(() -> symbolCombo.setSelectedSymbol(symbol));
     }
 
     public void updatePrice(double price, long exchangeTimestamp) {

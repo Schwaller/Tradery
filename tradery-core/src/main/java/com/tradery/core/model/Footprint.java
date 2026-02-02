@@ -31,7 +31,11 @@ public record Footprint(
 
     // Exchange divergence metrics
     double exchangeDivergenceScore, // 0-1 score of how much exchanges disagree
-    Exchange dominantExchange       // Exchange with highest absolute delta
+    Exchange dominantExchange,      // Exchange with highest absolute delta
+
+    // Per-market-type breakdown
+    Map<DataMarketType, Double> deltaByMarketType,
+    Map<DataMarketType, Double> volumeByMarketType
 ) {
     /**
      * Get bucket at or nearest to a price level.
@@ -140,6 +144,20 @@ public record Footprint(
     }
 
     /**
+     * Get delta for a specific market type.
+     */
+    public double getDeltaForMarketType(DataMarketType marketType) {
+        return deltaByMarketType.getOrDefault(marketType, 0.0);
+    }
+
+    /**
+     * Get volume for a specific market type.
+     */
+    public double getVolumeForMarketType(DataMarketType marketType) {
+        return volumeByMarketType.getOrDefault(marketType, 0.0);
+    }
+
+    /**
      * Builder for constructing Footprint instances.
      */
     public static class Builder {
@@ -150,6 +168,8 @@ public record Footprint(
         private double tickSize;
         private final List<FootprintBucket> buckets = new ArrayList<>();
         private final Map<Exchange, Double> deltaByExchange = new EnumMap<>(Exchange.class);
+        private final Map<DataMarketType, Double> deltaByMarketType = new EnumMap<>(DataMarketType.class);
+        private final Map<DataMarketType, Double> volumeByMarketType = new EnumMap<>(DataMarketType.class);
 
         public Builder timestamp(long ts) { this.timestamp = ts; return this; }
         public Builder barIndex(int idx) { this.barIndex = idx; return this; }
@@ -164,6 +184,20 @@ public record Footprint(
 
         public Builder addDelta(Exchange exchange, double delta) {
             deltaByExchange.merge(exchange, delta, Double::sum);
+            return this;
+        }
+
+        public Builder addMarketTypeDelta(DataMarketType marketType, double delta) {
+            if (marketType != null) {
+                deltaByMarketType.merge(marketType, delta, Double::sum);
+            }
+            return this;
+        }
+
+        public Builder addMarketTypeVolume(DataMarketType marketType, double volume) {
+            if (marketType != null) {
+                volumeByMarketType.merge(marketType, volume, Double::sum);
+            }
             return this;
         }
 
@@ -234,7 +268,9 @@ public record Footprint(
                 Collections.unmodifiableMap(new EnumMap<>(deltaByExchange)),
                 poc, vah, val, totalDelta,
                 stackedBuy, stackedSell,
-                divergenceScore, dominant
+                divergenceScore, dominant,
+                Collections.unmodifiableMap(new EnumMap<>(deltaByMarketType)),
+                Collections.unmodifiableMap(new EnumMap<>(volumeByMarketType))
             );
         }
 

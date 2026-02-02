@@ -5,7 +5,10 @@ import com.tradery.dataservice.data.sqlite.SqliteDataStore;
 import com.tradery.dataservice.data.sqlite.SymbolsConnection;
 import com.tradery.dataservice.ConsumerRegistry;
 import com.tradery.dataservice.config.DataServiceConfig;
+import com.tradery.dataservice.live.LiveAggTradeManager;
 import com.tradery.dataservice.live.LiveCandleManager;
+import com.tradery.dataservice.live.LiveMarkPriceManager;
+import com.tradery.dataservice.live.LiveOpenInterestPoller;
 import com.tradery.dataservice.page.PageManager;
 import com.tradery.dataservice.symbols.SymbolSyncService;
 import io.javalin.Javalin;
@@ -31,6 +34,9 @@ public class DataServiceServer {
     private final ConsumerRegistry consumerRegistry;
     private final ObjectMapper objectMapper;
     private final LiveCandleManager liveCandleManager;
+    private final LiveAggTradeManager liveAggTradeManager;
+    private final LiveMarkPriceManager liveMarkPriceManager;
+    private final LiveOpenInterestPoller liveOpenInterestPoller;
     private final WebSocketHandler webSocketHandler;
     private final SymbolHandler symbolHandler;
     private Javalin app;
@@ -43,7 +49,11 @@ public class DataServiceServer {
         this.pageManager = new PageManager(config, dataStore);
         this.objectMapper = createObjectMapper();
         this.liveCandleManager = new LiveCandleManager();
-        this.webSocketHandler = new WebSocketHandler(pageManager, liveCandleManager, objectMapper);
+        this.liveAggTradeManager = new LiveAggTradeManager();
+        this.liveMarkPriceManager = new LiveMarkPriceManager();
+        this.liveOpenInterestPoller = new LiveOpenInterestPoller();
+        this.webSocketHandler = new WebSocketHandler(pageManager, liveCandleManager,
+            liveAggTradeManager, liveMarkPriceManager, liveOpenInterestPoller, objectMapper);
         this.symbolHandler = new SymbolHandler(symbolSyncService, symbolsConnection, coingeckoClient);
     }
 
@@ -72,12 +82,27 @@ public class DataServiceServer {
         app.start(config.getPort());
     }
 
+    public int getActivePageCount() {
+        return pageManager.getActivePageCount();
+    }
+
+    public int getLiveCandleCount() {
+        return liveCandleManager.getConnectionCount();
+    }
+
+    public int getLiveAggTradeCount() {
+        return liveAggTradeManager.getConnectionCount();
+    }
+
     public void stop() {
         if (app != null) {
             app.stop();
         }
         pageManager.shutdown();
         liveCandleManager.shutdown();
+        liveAggTradeManager.shutdown();
+        liveMarkPriceManager.shutdown();
+        liveOpenInterestPoller.shutdown();
     }
 
     /**

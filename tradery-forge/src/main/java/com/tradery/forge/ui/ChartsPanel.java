@@ -689,6 +689,28 @@ public class ChartsPanel extends JPanel {
         }
     }
 
+    /**
+     * Snap the chart view to the most recent candle (end of data).
+     */
+    public void snapToNow() {
+        if (currentCandles == null || currentCandles.isEmpty()) return;
+
+        if (zoomManager.isFixedWidthMode()) {
+            JScrollBar scrollBar = zoomManager.getTimeScrollBar();
+            scrollBar.setValue(scrollBar.getMaximum() - scrollBar.getVisibleAmount());
+        } else {
+            // Show last N candles based on a reasonable window
+            int totalCandles = currentCandles.size();
+            int visibleCandles = Math.min(200, totalCandles);
+            int startIndex = totalCandles - visibleCandles;
+
+            long startTime = currentCandles.get(startIndex).timestamp();
+            long endTime = currentCandles.get(totalCandles - 1).timestamp();
+            long padding = (endTime - startTime) / 50;
+            setDomainAxisRange(startTime - padding, endTime + padding);
+        }
+    }
+
     private void resetDomainAxisRange() {
         if (currentCandles == null || currentCandles.isEmpty()) return;
 

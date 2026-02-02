@@ -645,6 +645,14 @@ public class ConditionEvaluator {
             // Dominant exchange (returns enum ordinal)
             case "DOMINANT_EXCHANGE" -> engine.getDominantExchange(barIndex);
 
+            // Spot vs Futures market-type functions
+            case "SPOT_DELTA" -> engine.getSpotDelta(barIndex);
+            case "FUTURES_DELTA" -> engine.getFuturesDelta(barIndex);
+            case "SPOT_VOLUME" -> engine.getSpotVolume(barIndex);
+            case "FUTURES_VOLUME" -> engine.getFuturesVolume(barIndex);
+            case "SPOT_FUTURES_DIVERGENCE" -> engine.getSpotFuturesDivergence(barIndex);
+            case "SPOT_FUTURES_DELTA_SPREAD" -> engine.getSpotFuturesDeltaSpread(barIndex);
+
             default -> throw new EvaluationException("Unknown exchange function: " + node.func());
         };
     }

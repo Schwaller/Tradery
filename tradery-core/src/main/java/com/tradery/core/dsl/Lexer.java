@@ -190,7 +190,15 @@ public class Lexer {
         Map.entry("EXCHANGES_WITH_BUY_IMBALANCE", TokenType.EXCHANGE_FUNC),
         Map.entry("EXCHANGES_WITH_SELL_IMBALANCE", TokenType.EXCHANGE_FUNC),
         Map.entry("WHALE_DELTA_COMBINED", TokenType.EXCHANGE_FUNC),
-        Map.entry("DOMINANT_EXCHANGE", TokenType.EXCHANGE_FUNC)
+        Map.entry("DOMINANT_EXCHANGE", TokenType.EXCHANGE_FUNC),
+
+        // Spot vs Futures market-type functions
+        Map.entry("SPOT_DELTA", TokenType.EXCHANGE_FUNC),
+        Map.entry("FUTURES_DELTA", TokenType.EXCHANGE_FUNC),
+        Map.entry("SPOT_VOLUME", TokenType.EXCHANGE_FUNC),
+        Map.entry("FUTURES_VOLUME", TokenType.EXCHANGE_FUNC),
+        Map.entry("SPOT_FUTURES_DIVERGENCE", TokenType.EXCHANGE_FUNC),
+        Map.entry("SPOT_FUTURES_DELTA_SPREAD", TokenType.EXCHANGE_FUNC)
     );
 
     private final String source;

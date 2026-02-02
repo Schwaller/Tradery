@@ -36,9 +36,11 @@ public class DataServiceApp {
     private static SymbolSyncService symbolSyncService;
     private static CoinGeckoClient coingeckoClient;
     private static ScheduledExecutorService scheduler;
+    private static java.time.Instant startTime;
 
     public static void main(String[] args) {
         LOG.info("Starting Tradery Data Service...");
+        startTime = java.time.Instant.now();
 
         try {
             DataServiceConfig config = DataServiceConfig.load();
@@ -139,6 +141,23 @@ public class DataServiceApp {
         }, delayMinutes, 24 * 60, TimeUnit.MINUTES);
 
         LOG.info("Symbol sync scheduled at 3 AM daily (first run in {} minutes)", delayMinutes);
+
+        // 5-minute status heartbeat
+        scheduler.scheduleAtFixedRate(() -> {
+            try {
+                int consumers = consumerRegistry.getConsumerCount();
+                int activePages = server.getActivePageCount();
+                int liveCandles = server.getLiveCandleCount();
+                int liveAggTrades = server.getLiveAggTradeCount();
+                long uptimeMin = Duration.between(startTime, java.time.Instant.now()).toMinutes();
+                boolean syncing = symbolSyncService.isSyncing();
+
+                LOG.info("STATUS | uptime={}m | consumers={} | pages={} | liveCandles={} | liveAggTrades={} | syncing={}",
+                    uptimeMin, consumers, activePages, liveCandles, liveAggTrades, syncing);
+            } catch (Exception e) {
+                LOG.debug("Status heartbeat error: {}", e.getMessage());
+            }
+        }, 1, 5, TimeUnit.MINUTES);
 
         // Trigger initial sync if data is stale
         scheduler.schedule(() -> {

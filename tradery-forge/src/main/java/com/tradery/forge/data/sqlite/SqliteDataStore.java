@@ -179,6 +179,18 @@ public class SqliteDataStore {
     }
 
     /**
+     * Get aggregated trades for a symbol, filtered by market type.
+     */
+    public List<AggTrade> getAggTrades(String symbol, long startTime, long endTime,
+                                        java.util.Set<DataMarketType> marketTypes) throws IOException {
+        try {
+            return forSymbol(symbol).aggTrades().queryWithMarketType(startTime, endTime, marketTypes);
+        } catch (SQLException e) {
+            throw new IOException("SQLite error getting agg trades: " + e.getMessage(), e);
+        }
+    }
+
+    /**
      * Save aggregated trades.
      */
     public void saveAggTrades(String symbol, List<AggTrade> trades) throws IOException {

@@ -126,6 +126,25 @@ public class AggTradesDao {
      * @param exchanges Set of exchanges to include (null for all)
      */
     public List<AggTrade> queryWithExchange(long startTime, long endTime, Set<Exchange> exchanges) throws SQLException {
+        return queryFiltered(startTime, endTime, exchanges, null);
+    }
+
+    /**
+     * Query aggregated trades in a time range, filtered by market type.
+     *
+     * @param startTime Start timestamp
+     * @param endTime End timestamp
+     * @param marketTypes Set of market types to include (null for all)
+     */
+    public List<AggTrade> queryWithMarketType(long startTime, long endTime, Set<DataMarketType> marketTypes) throws SQLException {
+        return queryFiltered(startTime, endTime, null, marketTypes);
+    }
+
+    /**
+     * Query aggregated trades with optional exchange and market type filters.
+     */
+    public List<AggTrade> queryFiltered(long startTime, long endTime,
+                                         Set<Exchange> exchanges, Set<DataMarketType> marketTypes) throws SQLException {
         Connection c = conn.getConnection();
         List<AggTrade> trades = new ArrayList<>();
 
@@ -143,6 +162,15 @@ public class AggTradesDao {
             }
             sql.append(")");
         }
+
+        if (marketTypes != null && !marketTypes.isEmpty()) {
+            sql.append(" AND market_type IN (");
+            for (int i = 0; i < marketTypes.size(); i++) {
+                sql.append(i > 0 ? ",?" : "?");
+            }
+            sql.append(")");
+        }
+
         sql.append(" ORDER BY timestamp, agg_trade_id");
 
         try (PreparedStatement stmt = c.prepareStatement(sql.toString())) {
@@ -153,6 +181,11 @@ public class AggTradesDao {
             if (exchanges != null && !exchanges.isEmpty()) {
                 for (Exchange ex : exchanges) {
                     stmt.setString(paramIndex++, ex.getConfigKey());
+                }
+            }
+            if (marketTypes != null && !marketTypes.isEmpty()) {
+                for (DataMarketType mt : marketTypes) {
+                    stmt.setString(paramIndex++, mt.getConfigKey());
                 }
             }
 

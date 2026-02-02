@@ -29,13 +29,12 @@ public class SymbolComboBox extends JPanel {
     private String selectedSymbol = "BTCUSDT";
 
     public SymbolComboBox(SymbolService service) {
-        this.service = service;
-        setLayout(new GridBagLayout());
-        setOpaque(false);
+        this(service, false);
+    }
 
-        var gbc = new GridBagConstraints();
-        gbc.fill = GridBagConstraints.HORIZONTAL;
-        gbc.insets = new Insets(1, 0, 1, 0);
+    public SymbolComboBox(SymbolService service, boolean horizontal) {
+        this.service = service;
+        setOpaque(false);
 
         exchangeCombo = new JComboBox<>();
         exchangeCombo.addActionListener(e -> onExchangeChanged());
@@ -52,19 +51,35 @@ public class SymbolComboBox extends JPanel {
         browseButton.setToolTipText("Browse symbols");
         browseButton.addActionListener(e -> openChooser());
 
-        // Row 0: Exchange
-        gbc.gridx = 0; gbc.gridy = 0; gbc.gridwidth = 2; gbc.weightx = 1.0;
-        add(exchangeCombo, gbc);
+        if (horizontal) {
+            setLayout(new BoxLayout(this, BoxLayout.X_AXIS));
+            add(exchangeCombo);
+            add(Box.createHorizontalStrut(4));
+            add(marketCombo);
+            add(Box.createHorizontalStrut(4));
+            add(pairCombo);
+            add(Box.createHorizontalStrut(4));
+            add(browseButton);
+        } else {
+            setLayout(new GridBagLayout());
+            var gbc = new GridBagConstraints();
+            gbc.fill = GridBagConstraints.HORIZONTAL;
+            gbc.insets = new Insets(1, 0, 1, 0);
 
-        // Row 1: Market
-        gbc.gridy = 1;
-        add(marketCombo, gbc);
+            // Row 0: Exchange
+            gbc.gridx = 0; gbc.gridy = 0; gbc.gridwidth = 2; gbc.weightx = 1.0;
+            add(exchangeCombo, gbc);
 
-        // Row 2: Pair + browse
-        gbc.gridy = 2; gbc.gridwidth = 1;
-        add(pairCombo, gbc);
-        gbc.gridx = 1; gbc.weightx = 0; gbc.fill = GridBagConstraints.NONE;
-        add(browseButton, gbc);
+            // Row 1: Market
+            gbc.gridy = 1;
+            add(marketCombo, gbc);
+
+            // Row 2: Pair + browse
+            gbc.gridy = 2; gbc.gridwidth = 1;
+            add(pairCombo, gbc);
+            gbc.gridx = 1; gbc.weightx = 0; gbc.fill = GridBagConstraints.NONE;
+            add(browseButton, gbc);
+        }
 
         // Initial population
         SwingUtilities.invokeLater(this::populateExchanges);

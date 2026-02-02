@@ -238,6 +238,10 @@ public class LiveCandleManager {
         return symbol.toUpperCase() + ":" + timeframe;
     }
 
+    public int getConnectionCount() {
+        return connections.size();
+    }
+
     public void shutdown() {
         LOG.info("Shutting down LiveCandleManager");
         scheduler.shutdown();

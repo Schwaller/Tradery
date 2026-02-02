@@ -2170,4 +2170,84 @@ public class IndicatorEngine {
         if (dominant == null) return Double.NaN;
         return dominant.ordinal();
     }
+
+    // ========== Spot vs Futures Market-Type Functions ==========
+
+    /**
+     * Get delta from spot market trades only.
+     * Returns NaN if no spot data is present.
+     */
+    public double getSpotDelta(int barIndex) {
+        com.tradery.core.model.Footprint footprint = getFootprintAt(barIndex);
+        if (footprint == null) return Double.NaN;
+        if (footprint.deltaByMarketType().isEmpty()) return Double.NaN;
+        if (!footprint.deltaByMarketType().containsKey(com.tradery.core.model.DataMarketType.SPOT)) return Double.NaN;
+        return footprint.getDeltaForMarketType(com.tradery.core.model.DataMarketType.SPOT);
+    }
+
+    /**
+     * Get delta from futures market trades (perp + dated).
+     * Returns NaN if no futures data is present.
+     */
+    public double getFuturesDelta(int barIndex) {
+        com.tradery.core.model.Footprint footprint = getFootprintAt(barIndex);
+        if (footprint == null) return Double.NaN;
+        if (footprint.deltaByMarketType().isEmpty()) return Double.NaN;
+        boolean hasPerp = footprint.deltaByMarketType().containsKey(com.tradery.core.model.DataMarketType.FUTURES_PERP);
+        boolean hasDated = footprint.deltaByMarketType().containsKey(com.tradery.core.model.DataMarketType.FUTURES_DATED);
+        if (!hasPerp && !hasDated) return Double.NaN;
+        double perp = footprint.getDeltaForMarketType(com.tradery.core.model.DataMarketType.FUTURES_PERP);
+        double dated = footprint.getDeltaForMarketType(com.tradery.core.model.DataMarketType.FUTURES_DATED);
+        return perp + dated;
+    }
+
+    /**
+     * Get volume from spot market trades only.
+     * Returns NaN if no spot data is present.
+     */
+    public double getSpotVolume(int barIndex) {
+        com.tradery.core.model.Footprint footprint = getFootprintAt(barIndex);
+        if (footprint == null) return Double.NaN;
+        if (footprint.volumeByMarketType().isEmpty()) return Double.NaN;
+        if (!footprint.volumeByMarketType().containsKey(com.tradery.core.model.DataMarketType.SPOT)) return Double.NaN;
+        return footprint.getVolumeForMarketType(com.tradery.core.model.DataMarketType.SPOT);
+    }
+
+    /**
+     * Get volume from futures market trades (perp + dated).
+     * Returns NaN if no futures data is present.
+     */
+    public double getFuturesVolume(int barIndex) {
+        com.tradery.core.model.Footprint footprint = getFootprintAt(barIndex);
+        if (footprint == null) return Double.NaN;
+        if (footprint.volumeByMarketType().isEmpty()) return Double.NaN;
+        boolean hasPerp = footprint.volumeByMarketType().containsKey(com.tradery.core.model.DataMarketType.FUTURES_PERP);
+        boolean hasDated = footprint.volumeByMarketType().containsKey(com.tradery.core.model.DataMarketType.FUTURES_DATED);
+        if (!hasPerp && !hasDated) return Double.NaN;
+        double perp = footprint.getVolumeForMarketType(com.tradery.core.model.DataMarketType.FUTURES_PERP);
+        double dated = footprint.getVolumeForMarketType(com.tradery.core.model.DataMarketType.FUTURES_DATED);
+        return perp + dated;
+    }
+
+    /**
+     * Returns 1.0 if spot and futures delta have opposite signs (divergence).
+     * Returns NaN if either market type data is missing.
+     */
+    public double getSpotFuturesDivergence(int barIndex) {
+        double spot = getSpotDelta(barIndex);
+        double futures = getFuturesDelta(barIndex);
+        if (Double.isNaN(spot) || Double.isNaN(futures)) return Double.NaN;
+        return (spot > 0 && futures < 0) || (spot < 0 && futures > 0) ? 1.0 : 0.0;
+    }
+
+    /**
+     * Returns SPOT_DELTA - FUTURES_DELTA. Positive = spot leading.
+     * Returns NaN if either market type data is missing.
+     */
+    public double getSpotFuturesDeltaSpread(int barIndex) {
+        double spot = getSpotDelta(barIndex);
+        double futures = getFuturesDelta(barIndex);
+        if (Double.isNaN(spot) || Double.isNaN(futures)) return Double.NaN;
+        return spot - futures;
+    }
 }

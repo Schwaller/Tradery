@@ -574,6 +574,22 @@ public class DslHelpDialog extends JDialog {
             </div>
 
             <div class="section">
+            <h3 id="toc-12b">Spot vs Futures Functions</h3>
+            <span style="color: %s; font-size: 10px;">Compare orderflow between spot and futures markets. Requires aggTrades from both market types.</span>
+            <table>
+                <tr><th>Function</th><th>Description</th></tr>
+                <tr><td><code>SPOT_DELTA</code></td><td>Delta from spot market trades only</td></tr>
+                <tr><td><code>FUTURES_DELTA</code></td><td>Delta from futures market trades (perp + dated)</td></tr>
+                <tr><td><code>SPOT_VOLUME</code></td><td>Volume from spot market trades</td></tr>
+                <tr><td><code>FUTURES_VOLUME</code></td><td>Volume from futures market trades</td></tr>
+                <tr><td><code>SPOT_FUTURES_DIVERGENCE</code></td><td>1 if spot and futures delta have opposite signs</td></tr>
+                <tr><td><code>SPOT_FUTURES_DELTA_SPREAD</code></td><td>SPOT_DELTA - FUTURES_DELTA (positive = spot leading)</td></tr>
+            </table>
+            <div class="example">SPOT_FUTURES_DIVERGENCE == 1 AND RSI(14) &lt; 40<br>SPOT_FUTURES_DELTA_SPREAD > 10000<br>SPOT_DELTA > 0 AND FUTURES_DELTA &lt; 0</div>
+            <span style="color: %s; font-size: 10px;">Spot-futures divergence can signal smart money positioning. When spot buyers diverge from futures sellers, it may indicate accumulation. Returns NaN if market type data is unavailable.</span>
+            </div>
+
+            <div class="section">
             <h3 id="toc-13">Comparison Operators</h3>
             <table>
                 <tr><td><code>&gt;</code></td><td>Greater than</td></tr>
@@ -650,7 +666,7 @@ public class DslHelpDialog extends JDialog {
 
             </body>
             </html>
-            """.formatted(bgHex, fgHex, accentHex, accentHex, codeBgHex, fgHex, borderHex, codeBgHex, codeBgHex, accentHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex);
+            """.formatted(bgHex, fgHex, accentHex, accentHex, codeBgHex, fgHex, borderHex, codeBgHex, codeBgHex, accentHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex, fgSecHex);
     }
 
     private void performSearch() {

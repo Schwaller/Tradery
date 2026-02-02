@@ -2,6 +2,8 @@ package com.tradery.forge.data;
 
 import com.tradery.forge.data.sqlite.SqliteDataStore;
 import com.tradery.core.model.AggTrade;
+import com.tradery.core.model.DataMarketType;
+import com.tradery.core.model.Exchange;
 import com.tradery.core.model.FetchProgress;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
@@ -56,6 +58,7 @@ public class AggTradesStore {
     private static final int VISION_THRESHOLD_DAYS = 3;
     // Use DAILY Vision files - monthly files are too large (10-50GB each)
     private static final String VISION_BASE_URL = "https://data.binance.vision/data/futures/um/daily/aggTrades";
+    private static final String VISION_SPOT_BASE_URL = "https://data.binance.vision/data/spot/daily/aggTrades";
 
     private final File dataDir;
     private final AggTradesClient client;
@@ -121,6 +124,21 @@ public class AggTradesStore {
     }
 
     /**
+     * Get the Vision base URL for a market type.
+     */
+    private String getVisionBaseUrl(DataMarketType marketType) {
+        return marketType == DataMarketType.SPOT ? VISION_SPOT_BASE_URL : VISION_BASE_URL;
+    }
+
+    /**
+     * Get the coverage sub_key for a market type.
+     * Futures uses "default" for backward compatibility with existing data.
+     */
+    private String getCoverageSubKey(DataMarketType marketType) {
+        return marketType == DataMarketType.SPOT ? "spot" : "default";
+    }
+
+    /**
      * Check if Vision bulk download should be used.
      * AggTrades are massive - use Vision for >= 3 days.
      */
@@ -144,6 +162,13 @@ public class AggTradesStore {
      * Streams directly to hourly cache files to avoid memory issues.
      */
     private void fetchViaVision(String symbol, long startTime, long endTime) throws IOException {
+        fetchViaVision(symbol, startTime, endTime, DataMarketType.FUTURES_PERP);
+    }
+
+    /**
+     * Fetch aggTrades via Binance Vision bulk download for a specific market type.
+     */
+    private void fetchViaVision(String symbol, long startTime, long endTime, DataMarketType marketType) throws IOException {
         LocalDate startDate = Instant.ofEpochMilli(startTime).atZone(ZoneOffset.UTC).toLocalDate();
         LocalDate endDate = Instant.ofEpochMilli(endTime).atZone(ZoneOffset.UTC).toLocalDate();
         LocalDate yesterday = LocalDate.now(ZoneOffset.UTC).minusDays(1);
@@ -195,7 +220,7 @@ public class AggTradesStore {
             String dateKey = current.format(DATE_FORMAT);
 
             // Check if day is already fully cached (all 24 hours)
-            if (isDayFullyCached(symbol, current)) {
+            if (isDayFullyCached(symbol, current, marketType)) {
                 log.trace("Vision: Skipping {} (already cached)", dateKey);
                 completedDays++;
                 currentDayIndex[0] = completedDays;
@@ -211,8 +236,9 @@ public class AggTradesStore {
             }
 
             // Build Vision URL for daily file
+            String visionBase = getVisionBaseUrl(marketType);
             String url = String.format("%s/%s/%s-aggTrades-%s.zip",
-                VISION_BASE_URL, symbol, symbol, dateKey);
+                visionBase, symbol, symbol, dateKey);
 
             log.info("Vision: Downloading aggTrades {}", dateKey);
             currentDayIndex[0] = completedDays;
@@ -228,7 +254,7 @@ public class AggTradesStore {
                 // Stream directly to hourly files without loading all into memory
                 // Pass progress info so file download can report combined progress
                 int tradesWritten = downloadAndStreamToHourlyFiles(symbol, url, current,
-                    currentDayIndex[0], finalTotalDays);
+                    currentDayIndex[0], finalTotalDays, marketType);
                 if (tradesWritten > 0) {
                     log.info("Vision: Saved {} aggTrades for {}", formatCount(tradesWritten), dateKey);
                 }
@@ -254,11 +280,15 @@ public class AggTradesStore {
      * Check if a day is fully cached in SQLite.
      */
     private boolean isDayFullyCached(String symbol, LocalDate date) {
+        return isDayFullyCached(symbol, date, DataMarketType.FUTURES_PERP);
+    }
+
+    private boolean isDayFullyCached(String symbol, LocalDate date, DataMarketType marketType) {
         long dayStart = date.atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli();
         long dayEnd = date.plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli() - 1;
 
         try {
-            return sqliteStore.isFullyCovered(symbol, "agg_trades", "default", dayStart, dayEnd);
+            return sqliteStore.isFullyCovered(symbol, "agg_trades", getCoverageSubKey(marketType), dayStart, dayEnd);
         } catch (IOException e) {
             log.debug("Failed to check day coverage: {}", e.getMessage());
             return false;
@@ -276,7 +306,7 @@ public class AggTradesStore {
      * @param totalDays Total days in the batch
      */
     private int downloadAndStreamToHourlyFiles(String symbol, String url, LocalDate date,
-                                                int currentDayIndex, int totalDays) throws IOException {
+                                                int currentDayIndex, int totalDays, DataMarketType marketType) throws IOException {
         Request request = new Request.Builder()
             .url(url)
             .get()
@@ -333,7 +363,7 @@ public class AggTradesStore {
                 }
             });
 
-            return streamZipToSqlite(symbol, progressStream, date);
+            return streamZipToSqlite(symbol, progressStream, date, marketType);
         }
     }
 
@@ -356,6 +386,13 @@ public class AggTradesStore {
      * Batches trades for efficient insertion.
      */
     private int streamZipToSqlite(String symbol, InputStream inputStream, LocalDate date) throws IOException {
+        return streamZipToSqlite(symbol, inputStream, date, DataMarketType.FUTURES_PERP);
+    }
+
+    /**
+     * Stream ZIP contents directly to SQLite with market type tagging.
+     */
+    private int streamZipToSqlite(String symbol, InputStream inputStream, LocalDate date, DataMarketType marketType) throws IOException {
         List<AggTrade> batch = new ArrayList<>(10000);
         int totalCount = 0;
 
@@ -380,7 +417,7 @@ public class AggTradesStore {
                         }
                         if (!line.isBlank()) {
                             try {
-                                AggTrade trade = parseVisionAggTrade(line);
+                                AggTrade trade = parseVisionAggTrade(line, marketType);
                                 batch.add(trade);
                                 totalCount++;
 
@@ -408,8 +445,8 @@ public class AggTradesStore {
         if (totalCount > 0 && !fetchCancelled.get()) {
             long dayStart = date.atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli();
             long dayEnd = date.plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli() - 1;
-            markCoverage(symbol, dayStart, dayEnd, true);
-            log.debug("Saved {} aggTrades to SQLite for {}", formatCount(totalCount), date.format(DATE_FORMAT));
+            markCoverage(symbol, getCoverageSubKey(marketType), dayStart, dayEnd, true);
+            log.debug("Saved {} {} aggTrades to SQLite for {}", formatCount(totalCount), marketType.getShortName(), date.format(DATE_FORMAT));
         }
 
         return totalCount;
@@ -420,18 +457,29 @@ public class AggTradesStore {
      * Format: agg_trade_id,price,quantity,first_trade_id,last_trade_id,transact_time,is_buyer_maker
      */
     private AggTrade parseVisionAggTrade(String line) {
+        return parseVisionAggTrade(line, DataMarketType.FUTURES_PERP);
+    }
+
+    /**
+     * Parse Vision aggTrade CSV line with market type tagging.
+     */
+    private AggTrade parseVisionAggTrade(String line, DataMarketType marketType) {
         String[] parts = line.split(",");
         if (parts.length < 7) {
             throw new IllegalArgumentException("Invalid aggTrade: " + line);
         }
-        return new AggTrade(
+        double price = Double.parseDouble(parts[1].trim());
+        return AggTrade.withExchange(
             Long.parseLong(parts[0].trim()),
-            Double.parseDouble(parts[1].trim()),
+            price,
             Double.parseDouble(parts[2].trim()),
             Long.parseLong(parts[3].trim()),
             Long.parseLong(parts[4].trim()),
             Long.parseLong(parts[5].trim()),
-            parseBoolean(parts[6].trim())
+            parseBoolean(parts[6].trim()),
+            Exchange.BINANCE,
+            marketType,
+            null
         );
     }
 
@@ -491,6 +539,54 @@ public class AggTradesStore {
                 return "Not synced";
             }
         }
+    }
+
+    /**
+     * Get aggregated trades for a symbol and market type within time range.
+     * Fetches from Binance Vision (spot or futures) if not cached locally.
+     */
+    public List<AggTrade> getAggTrades(String symbol, DataMarketType marketType, long startTime, long endTime)
+            throws IOException {
+
+        // Reset cancellation flag at start of new fetch
+        fetchCancelled.set(false);
+
+        String subKey = getCoverageSubKey(marketType);
+
+        // Check SQLite for cached data and find gaps
+        List<long[]> gaps = findGapsInSqlite(symbol, subKey, startTime, endTime);
+
+        if (gaps.isEmpty()) {
+            log.debug("SQLite cache hit for {} {} aggTrades [{} - {}]", symbol, marketType.getShortName(), startTime, endTime);
+            return sqliteStore.getAggTrades(symbol, startTime, endTime,
+                java.util.Set.of(marketType));
+        }
+
+        long uncachedMs = gaps.stream().mapToLong(g -> g[1] - g[0]).sum();
+        long uncachedDays = uncachedMs / (24 * 60 * 60 * 1000);
+
+        log.debug("SQLite cache miss for {} {} aggTrades: {} gaps, {} uncached days",
+            symbol, marketType.getShortName(), gaps.size(), uncachedDays);
+
+        if (shouldUseVision(startTime, endTime) && uncachedDays >= VISION_THRESHOLD_DAYS) {
+            log.info("Using Vision bulk download for {} {} aggTrades ({} uncached days)",
+                symbol, marketType.getShortName(), uncachedDays);
+            try {
+                fetchViaVision(symbol, startTime, endTime, marketType);
+                return sqliteStore.getAggTrades(symbol, startTime, endTime,
+                    java.util.Set.of(marketType));
+            } catch (Exception e) {
+                log.warn("Vision download failed for {} {}: {}", symbol, marketType.getShortName(), e.getMessage());
+            }
+        }
+
+        // For spot API fetching, create a spot-specific client
+        if (marketType == DataMarketType.SPOT) {
+            log.info("Spot API fetch for small gaps not yet implemented; use Vision for larger ranges");
+        }
+
+        return sqliteStore.getAggTrades(symbol, startTime, endTime,
+            java.util.Set.of(marketType));
     }
 
     /**
@@ -596,11 +692,14 @@ public class AggTradesStore {
      * Find gaps in SQLite coverage for a time range.
      */
     private List<long[]> findGapsInSqlite(String symbol, long startTime, long endTime) {
+        return findGapsInSqlite(symbol, "default", startTime, endTime);
+    }
+
+    private List<long[]> findGapsInSqlite(String symbol, String subKey, long startTime, long endTime) {
         try {
-            return sqliteStore.findGaps(symbol, "agg_trades", "default", startTime, endTime);
+            return sqliteStore.findGaps(symbol, "agg_trades", subKey, startTime, endTime);
         } catch (IOException e) {
             log.warn("Failed to check SQLite coverage: {}", e.getMessage());
-            // Return entire range as a gap
             List<long[]> gaps = new ArrayList<>();
             gaps.add(new long[]{startTime, endTime});
             return gaps;
@@ -624,8 +723,12 @@ public class AggTradesStore {
      * Mark coverage in SQLite.
      */
     private void markCoverage(String symbol, long start, long end, boolean isComplete) {
+        markCoverage(symbol, "default", start, end, isComplete);
+    }
+
+    private void markCoverage(String symbol, String subKey, long start, long end, boolean isComplete) {
         try {
-            sqliteStore.addCoverage(symbol, "agg_trades", "default", start, end, isComplete);
+            sqliteStore.addCoverage(symbol, "agg_trades", subKey, start, end, isComplete);
         } catch (IOException e) {
             log.warn("Failed to mark coverage: {}", e.getMessage());
         }

@@ -24,7 +24,11 @@ public record FootprintBucket(
     // Exchange divergence metrics
     Set<Exchange> exchangesWithBuyImbalance,
     Set<Exchange> exchangesWithSellImbalance,
-    double deltaSpread              // max exchange delta - min exchange delta
+    double deltaSpread,             // max exchange delta - min exchange delta
+
+    // Per-market-type volume breakdown
+    Map<DataMarketType, Double> buyVolumeByMarketType,
+    Map<DataMarketType, Double> sellVolumeByMarketType
 ) {
     /**
      * Minimum imbalance ratio to be considered significant.
@@ -34,6 +38,24 @@ public record FootprintBucket(
     /**
      * Create an empty bucket at a price level.
      */
+    /**
+     * Get delta for a specific market type.
+     */
+    public double getDeltaForMarketType(DataMarketType marketType) {
+        double buy = buyVolumeByMarketType.getOrDefault(marketType, 0.0);
+        double sell = sellVolumeByMarketType.getOrDefault(marketType, 0.0);
+        return buy - sell;
+    }
+
+    /**
+     * Get total volume for a specific market type.
+     */
+    public double getVolumeForMarketType(DataMarketType marketType) {
+        double buy = buyVolumeByMarketType.getOrDefault(marketType, 0.0);
+        double sell = sellVolumeByMarketType.getOrDefault(marketType, 0.0);
+        return buy + sell;
+    }
+
     public static FootprintBucket empty(double priceLevel) {
         return new FootprintBucket(
             priceLevel,
@@ -42,7 +64,9 @@ public record FootprintBucket(
             0, 0, 0, 1.0,
             EnumSet.noneOf(Exchange.class),
             EnumSet.noneOf(Exchange.class),
-            0
+            0,
+            new EnumMap<>(DataMarketType.class),
+            new EnumMap<>(DataMarketType.class)
         );
     }
 
@@ -99,6 +123,8 @@ public record FootprintBucket(
         private double priceLevel;
         private final Map<Exchange, Double> buyVolume = new EnumMap<>(Exchange.class);
         private final Map<Exchange, Double> sellVolume = new EnumMap<>(Exchange.class);
+        private final Map<DataMarketType, Double> buyVolumeByMarket = new EnumMap<>(DataMarketType.class);
+        private final Map<DataMarketType, Double> sellVolumeByMarket = new EnumMap<>(DataMarketType.class);
 
         public Builder(double priceLevel) {
             this.priceLevel = priceLevel;
@@ -109,8 +135,20 @@ public record FootprintBucket(
             return this;
         }
 
+        public Builder addBuyVolume(Exchange exchange, DataMarketType marketType, double volume) {
+            buyVolume.merge(exchange, volume, Double::sum);
+            if (marketType != null) buyVolumeByMarket.merge(marketType, volume, Double::sum);
+            return this;
+        }
+
         public Builder addSellVolume(Exchange exchange, double volume) {
             sellVolume.merge(exchange, volume, Double::sum);
+            return this;
+        }
+
+        public Builder addSellVolume(Exchange exchange, DataMarketType marketType, double volume) {
+            sellVolume.merge(exchange, volume, Double::sum);
+            if (marketType != null) sellVolumeByMarket.merge(marketType, volume, Double::sum);
             return this;
         }
 
@@ -163,7 +201,9 @@ public record FootprintBucket(
                 totalBuy, totalSell, delta, ratio,
                 buyImbalances.isEmpty() ? Collections.emptySet() : EnumSet.copyOf(buyImbalances),
                 sellImbalances.isEmpty() ? Collections.emptySet() : EnumSet.copyOf(sellImbalances),
-                deltaSpread
+                deltaSpread,
+                Collections.unmodifiableMap(new EnumMap<>(buyVolumeByMarket)),
+                Collections.unmodifiableMap(new EnumMap<>(sellVolumeByMarket))
             );
         }
     }

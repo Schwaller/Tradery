@@ -2,7 +2,10 @@ package com.tradery.dataclient.page;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.tradery.core.model.AggTrade;
 import com.tradery.core.model.Candle;
+import com.tradery.core.model.MarkPriceUpdate;
+import com.tradery.core.model.OpenInterestUpdate;
 import org.java_websocket.client.WebSocketClient;
 import org.java_websocket.handshake.ServerHandshake;
 import org.slf4j.Logger;
@@ -62,6 +65,18 @@ public class DataServiceConnection {
     private final Map<String, Set<Consumer<Candle>>> liveUpdateListeners = new ConcurrentHashMap<>();
     private final Map<String, Set<Consumer<Candle>>> liveCloseListeners = new ConcurrentHashMap<>();
     private final Set<String> activeLiveSubscriptions = ConcurrentHashMap.newKeySet();
+
+    // Live aggTrade subscriptions: "SYMBOL" -> listeners
+    private final Map<String, Set<Consumer<AggTrade>>> aggTradeListeners = new ConcurrentHashMap<>();
+    private final Set<String> activeAggTradeSubscriptions = ConcurrentHashMap.newKeySet();
+
+    // Live markPrice subscriptions: "SYMBOL" -> listeners
+    private final Map<String, Set<Consumer<MarkPriceUpdate>>> markPriceListeners = new ConcurrentHashMap<>();
+    private final Set<String> activeMarkPriceSubscriptions = ConcurrentHashMap.newKeySet();
+
+    // Live OI subscriptions: "SYMBOL" -> listeners
+    private final Map<String, Set<Consumer<OpenInterestUpdate>>> oiListeners = new ConcurrentHashMap<>();
+    private final Set<String> activeOiSubscriptions = ConcurrentHashMap.newKeySet();
 
     /**
      * Create a new connection to data-service.
@@ -267,6 +282,101 @@ public class DataServiceConnection {
         }
     }
 
+    // ========== Live AggTrade Subscription API ==========
+
+    public void subscribeLiveAggTrades(String symbol, Consumer<AggTrade> listener) {
+        String key = symbol.toUpperCase();
+        aggTradeListeners.computeIfAbsent(key, k -> ConcurrentHashMap.newKeySet()).add(listener);
+
+        if (!activeAggTradeSubscriptions.contains(key)) {
+            activeAggTradeSubscriptions.add(key);
+            if (isConnected()) {
+                sendAction("subscribe_live_aggtrades", Map.of("symbol", key));
+            }
+        }
+    }
+
+    public void unsubscribeLiveAggTrades(String symbol, Consumer<AggTrade> listener) {
+        String key = symbol.toUpperCase();
+        Set<Consumer<AggTrade>> set = aggTradeListeners.get(key);
+        if (set != null) {
+            set.remove(listener);
+            if (set.isEmpty() && activeAggTradeSubscriptions.remove(key)) {
+                if (isConnected()) {
+                    sendAction("unsubscribe_live_aggtrades", Map.of("symbol", key));
+                }
+            }
+        }
+    }
+
+    // ========== Live MarkPrice Subscription API ==========
+
+    public void subscribeLiveMarkPrice(String symbol, Consumer<MarkPriceUpdate> listener) {
+        String key = symbol.toUpperCase();
+        markPriceListeners.computeIfAbsent(key, k -> ConcurrentHashMap.newKeySet()).add(listener);
+
+        if (!activeMarkPriceSubscriptions.contains(key)) {
+            activeMarkPriceSubscriptions.add(key);
+            if (isConnected()) {
+                sendAction("subscribe_live_markprice", Map.of("symbol", key));
+            }
+        }
+    }
+
+    public void unsubscribeLiveMarkPrice(String symbol, Consumer<MarkPriceUpdate> listener) {
+        String key = symbol.toUpperCase();
+        Set<Consumer<MarkPriceUpdate>> set = markPriceListeners.get(key);
+        if (set != null) {
+            set.remove(listener);
+            if (set.isEmpty() && activeMarkPriceSubscriptions.remove(key)) {
+                if (isConnected()) {
+                    sendAction("unsubscribe_live_markprice", Map.of("symbol", key));
+                }
+            }
+        }
+    }
+
+    // ========== Live OI Subscription API ==========
+
+    public void subscribeLiveOi(String symbol, Consumer<OpenInterestUpdate> listener) {
+        String key = symbol.toUpperCase();
+        oiListeners.computeIfAbsent(key, k -> ConcurrentHashMap.newKeySet()).add(listener);
+
+        if (!activeOiSubscriptions.contains(key)) {
+            activeOiSubscriptions.add(key);
+            if (isConnected()) {
+                sendAction("subscribe_live_oi", Map.of("symbol", key));
+            }
+        }
+    }
+
+    public void unsubscribeLiveOi(String symbol, Consumer<OpenInterestUpdate> listener) {
+        String key = symbol.toUpperCase();
+        Set<Consumer<OpenInterestUpdate>> set = oiListeners.get(key);
+        if (set != null) {
+            set.remove(listener);
+            if (set.isEmpty() && activeOiSubscriptions.remove(key)) {
+                if (isConnected()) {
+                    sendAction("unsubscribe_live_oi", Map.of("symbol", key));
+                }
+            }
+        }
+    }
+
+    // ========== Shared send helper ==========
+
+    private void sendAction(String action, Map<String, Object> fields) {
+        try {
+            Map<String, Object> message = new LinkedHashMap<>();
+            message.put("action", action);
+            message.putAll(fields);
+            webSocket.send(objectMapper.writeValueAsString(message));
+            LOG.debug("Sent {}", action);
+        } catch (Exception e) {
+            LOG.error("Failed to send {}", action, e);
+        }
+    }
+
     // ========== WebSocket Message Handlers ==========
 
     private void sendSubscribePage(PageRequest request) {
@@ -348,6 +458,9 @@ public class DataServiceConnection {
                 case "EVICTED" -> handlePageEvicted(node);
                 case "CANDLE_UPDATE" -> handleCandleUpdate(node);
                 case "CANDLE_CLOSED" -> handleCandleClosed(node);
+                case "AGGTRADE" -> handleAggTrade(node);
+                case "MARK_PRICE_UPDATE" -> handleMarkPriceUpdate(node);
+                case "OI_UPDATE" -> handleOiUpdate(node);
                 default -> LOG.debug("Unknown message type: {}", type);
             }
         } catch (Exception e) {
@@ -414,6 +527,50 @@ public class DataServiceConnection {
         }
     }
 
+    private void handleAggTrade(JsonNode node) {
+        String key = node.get("key").asText();
+        AggTrade trade = new AggTrade(
+            node.get("aggTradeId").asLong(),
+            node.get("price").asDouble(),
+            node.get("quantity").asDouble(),
+            0L, 0L,
+            node.get("timestamp").asLong(),
+            node.get("isBuyerMaker").asBoolean()
+        );
+        notifyListeners(aggTradeListeners.get(key), trade);
+    }
+
+    private void handleMarkPriceUpdate(JsonNode node) {
+        String key = node.get("key").asText();
+        MarkPriceUpdate update = new MarkPriceUpdate(
+            node.get("timestamp").asLong(), node.get("markPrice").asDouble(),
+            node.get("indexPrice").asDouble(), node.get("premium").asDouble(),
+            node.get("fundingRate").asDouble(), node.get("nextFundingTime").asLong()
+        );
+        notifyListeners(markPriceListeners.get(key), update);
+    }
+
+    private void handleOiUpdate(JsonNode node) {
+        String key = node.get("key").asText();
+        OpenInterestUpdate update = new OpenInterestUpdate(
+            node.get("timestamp").asLong(), node.get("openInterest").asDouble(),
+            node.get("oiChange").asDouble()
+        );
+        notifyListeners(oiListeners.get(key), update);
+    }
+
+    private <T> void notifyListeners(Set<Consumer<T>> listeners, T value) {
+        if (listeners != null) {
+            for (Consumer<T> listener : listeners) {
+                try {
+                    listener.accept(value);
+                } catch (Exception e) {
+                    LOG.warn("Error in listener: {}", e.getMessage());
+                }
+            }
+        }
+    }
+
     private Candle parseCandle(JsonNode node) {
         return new Candle(
             node.get("timestamp").asLong(),
@@ -473,6 +630,21 @@ public class DataServiceConnection {
             if (parts.length == 2) {
                 sendSubscribeLive(parts[0], parts[1]);
             }
+        }
+
+        // Re-subscribe to aggTrade streams
+        for (String symbol : activeAggTradeSubscriptions) {
+            sendAction("subscribe_live_aggtrades", Map.of("symbol", symbol));
+        }
+
+        // Re-subscribe to markPrice streams
+        for (String symbol : activeMarkPriceSubscriptions) {
+            sendAction("subscribe_live_markprice", Map.of("symbol", symbol));
+        }
+
+        // Re-subscribe to OI streams
+        for (String symbol : activeOiSubscriptions) {
+            sendAction("subscribe_live_oi", Map.of("symbol", symbol));
         }
     }
 

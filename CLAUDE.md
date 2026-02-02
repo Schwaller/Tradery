@@ -117,6 +117,17 @@ Analyze orderflow across different exchanges:
 | `WHALE_DELTA_COMBINED(t)` | value | Whale delta across all exchanges |
 | `DOMINANT_EXCHANGE` | enum | Which exchange has largest volume |
 
+### Spot vs Futures Functions (require aggTrades from both market types)
+Compare orderflow between spot and futures markets:
+| Function | Returns | Description |
+|----------|---------|-------------|
+| `SPOT_DELTA` | value | Delta from spot market trades only |
+| `FUTURES_DELTA` | value | Delta from futures market trades (perp + dated) |
+| `SPOT_VOLUME` | value | Volume from spot market trades |
+| `FUTURES_VOLUME` | value | Volume from futures market trades |
+| `SPOT_FUTURES_DIVERGENCE` | 0/1 | 1 if spot and futures delta have opposite signs |
+| `SPOT_FUTURES_DELTA_SPREAD` | value | SPOT_DELTA - FUTURES_DELTA (positive = spot leading) |
+
 ### Rotating Ray Functions
 Auto-detect trendlines from ATH/ATL. Params: `rayNum`, `lookback`, `skip`
 - **Resistance:** `RESISTANCE_RAY_BROKEN/CROSSED/DISTANCE(ray,look,skip)`, `RESISTANCE_RAYS_BROKEN(look,skip)`, `RESISTANCE_RAY_COUNT(look,skip)`
@@ -157,6 +168,11 @@ IMBALANCE_AT_POC > 3                                 # Strong buy imbalance at P
 BINANCE_DELTA < -10000 AND BYBIT_DELTA > 10000      # Exchange divergence
 EXCHANGE_DIVERGENCE == 1 AND ADX(14) < 20           # Divergence in ranging market
 EXCHANGES_WITH_BUY_IMBALANCE >= 2 AND RSI(14) < 40  # Multi-exchange buy signal
+
+# Spot vs Futures divergence (require spot + futures aggTrades)
+SPOT_FUTURES_DIVERGENCE == 1 AND RSI(14) < 40       # Spot/futures disagree + oversold
+SPOT_DELTA > 0 AND FUTURES_DELTA < 0                 # Spot buying, futures selling
+SPOT_FUTURES_DELTA_SPREAD > 10000                    # Spot significantly leading
 ```
 
 ---
