@@ -31,12 +31,13 @@ public class PageHandler {
         try {
             PageRequest request = ctx.bodyAsClass(PageRequest.class);
 
+            // Convert startTime/endTime to endTime/windowDurationMillis
             PageKey key = new PageKey(
                 request.dataType(),
                 request.symbol(),
                 request.timeframe(),
-                request.startTime(),
-                request.endTime()
+                request.endTime(),  // anchored pages use endTime
+                request.endTime() - request.startTime()  // windowDurationMillis
             );
 
             PageStatus status = pageManager.requestPage(key, request.consumerId(), request.consumerName());
@@ -62,7 +63,8 @@ public class PageHandler {
             BatchPageRequest request = ctx.bodyAsClass(BatchPageRequest.class);
             List<PageResponse> responses = request.requests().stream()
                 .map(r -> {
-                    PageKey key = new PageKey(r.dataType(), r.symbol(), r.timeframe(), r.startTime(), r.endTime());
+                    // Convert startTime/endTime to endTime/windowDurationMillis
+                    PageKey key = new PageKey(r.dataType(), r.symbol(), r.timeframe(), r.endTime(), r.endTime() - r.startTime());
                     PageStatus status = pageManager.requestPage(key, request.consumerId(), request.consumerName());
                     return new PageResponse(key.toKeyString(), status.state().name(), status.progress(), status.isNew());
                 })

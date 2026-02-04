@@ -26,7 +26,7 @@ public class DataPage<T> implements DataPageView<T> {
     private final String timeframe;    // null for non-timeframe types (Funding, OI, AggTrades)
     private final long startTime;
     private final long endTime;
-    private final long liveDuration;  // For live pages: fixed duration (0 = anchored page)
+    private final long windowDurationMillis;  // Window duration (> 0 for live pages, computed for anchored)
     private final boolean liveEnabled; // True for live pages that receive real-time updates
 
     // State
@@ -44,26 +44,31 @@ public class DataPage<T> implements DataPageView<T> {
      */
     public DataPage(DataType dataType, String symbol, String timeframe,
                     long startTime, long endTime) {
-        this(dataType, symbol, timeframe, startTime, endTime, 0);
+        this(dataType, symbol, timeframe, startTime, endTime, endTime - startTime);
     }
 
     /**
      * Create a new live (sliding window) data page.
      */
     public static <T> DataPage<T> live(DataType dataType, String symbol, String timeframe,
-                                        long startTime, long endTime, long duration) {
-        return new DataPage<>(dataType, symbol, timeframe, startTime, endTime, duration);
+                                        long startTime, long endTime, long windowDurationMillis) {
+        return new DataPage<>(dataType, symbol, timeframe, startTime, endTime, windowDurationMillis, true);
     }
 
     private DataPage(DataType dataType, String symbol, String timeframe,
-                     long startTime, long endTime, long liveDuration) {
+                     long startTime, long endTime, long windowDurationMillis) {
+        this(dataType, symbol, timeframe, startTime, endTime, windowDurationMillis, false);
+    }
+
+    private DataPage(DataType dataType, String symbol, String timeframe,
+                     long startTime, long endTime, long windowDurationMillis, boolean liveEnabled) {
         this.dataType = dataType;
         this.symbol = symbol;
         this.timeframe = timeframe;
         this.startTime = startTime;
         this.endTime = endTime;
-        this.liveDuration = liveDuration;
-        this.liveEnabled = liveDuration > 0;  // Live pages start with updates enabled
+        this.windowDurationMillis = windowDurationMillis;
+        this.liveEnabled = liveEnabled;
     }
 
     // ========== Identity (DataPageView interface) ==========
@@ -95,19 +100,19 @@ public class DataPage<T> implements DataPageView<T> {
 
     @Override
     public String getKey() {
-        // Must match server's PageKey.toKeyString() format: dataType:symbol[:timeframe]:anchor|LIVE:duration
+        // Must match server's PageKey.toKeyString() format: dataType:symbol[:timeframe]:endTime|LIVE:windowDurationMillis
         StringBuilder sb = new StringBuilder();
         sb.append(dataType).append(":");
         sb.append(symbol).append(":");
         if (timeframe != null) {
             sb.append(timeframe).append(":");
         }
-        if (liveDuration > 0) {
-            // Live page: use LIVE:duration format
-            sb.append("LIVE:").append(liveDuration);
+        if (liveEnabled) {
+            // Live page: use LIVE:windowDurationMillis format
+            sb.append("LIVE:").append(windowDurationMillis);
         } else {
-            // Anchored page: use endTime:duration format
-            sb.append(endTime).append(":").append(endTime - startTime);
+            // Anchored page: use endTime:windowDurationMillis format
+            sb.append(endTime).append(":").append(windowDurationMillis);
         }
         return sb.toString();
     }
@@ -255,15 +260,15 @@ public class DataPage<T> implements DataPageView<T> {
         return liveEnabled;
     }
 
-    public long getLiveDuration() {
-        return liveDuration;
+    public long getWindowDurationMillis() {
+        return windowDurationMillis;
     }
 
     /**
      * True if this is a live (sliding window) page rather than anchored.
      */
     public boolean isLivePage() {
-        return liveDuration > 0;
+        return liveEnabled;
     }
 
     // ========== State Checks (DataPageView interface) ==========

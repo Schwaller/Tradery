@@ -718,6 +718,78 @@ Article: "New Memecoin Launches on Pump.fun"
 └── Tags: [#memecoin, #launch, #pumpfun]
 ```
 
+### Topic Registry
+
+A manually curated taxonomy for classifying articles by domain. Starts with "crypto" as the root topic, expandable to other domains (stocks, macro, forex) in the future.
+
+```json
+{
+  "topics": {
+    "crypto": {
+      "name": "Cryptocurrency",
+      "keywords": ["bitcoin", "ethereum", "blockchain", "crypto"],
+      "subtopics": {
+        "defi": {
+          "name": "DeFi",
+          "keywords": ["defi", "yield", "liquidity", "amm", "lending", "borrowing", "dex"]
+        },
+        "nft": {
+          "name": "NFTs",
+          "keywords": ["nft", "opensea", "blur", "collectible", "pfp"]
+        },
+        "regulation": {
+          "name": "Regulation",
+          "keywords": ["sec", "cftc", "regulation", "lawsuit", "enforcement", "compliance"]
+        },
+        "exchange": {
+          "name": "Exchanges",
+          "keywords": ["binance", "coinbase", "kraken", "exchange", "listing", "delist"]
+        },
+        "layer1": {
+          "name": "Layer 1s",
+          "keywords": ["ethereum", "solana", "avalanche", "cardano", "layer1", "l1"]
+        },
+        "layer2": {
+          "name": "Layer 2s",
+          "keywords": ["arbitrum", "optimism", "zksync", "rollup", "l2"]
+        },
+        "stablecoins": {
+          "name": "Stablecoins",
+          "keywords": ["usdt", "usdc", "dai", "stablecoin", "depeg"]
+        },
+        "memecoins": {
+          "name": "Memecoins",
+          "keywords": ["doge", "shib", "pepe", "memecoin", "meme"]
+        },
+        "institutional": {
+          "name": "Institutional",
+          "keywords": ["etf", "blackrock", "fidelity", "grayscale", "institutional"]
+        },
+        "security": {
+          "name": "Security",
+          "keywords": ["hack", "exploit", "vulnerability", "rug", "scam", "drain"]
+        }
+      }
+    }
+  }
+}
+```
+
+**Storage:** `~/.cryptonews/topics.json` (user-editable)
+
+**Article Classification:**
+```json
+{
+  "topics": ["crypto", "crypto.regulation", "crypto.institutional"],
+  ...
+}
+```
+
+**Future Expansion:**
+- `stocks` - Equities, earnings, IPOs
+- `macro` - Fed, inflation, GDP, interest rates
+- `forex` - Currency pairs, central bank policy
+
 ### Article (Core Unit)
 
 Every piece of news becomes an Article that preserves the original while adding structure:

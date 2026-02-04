@@ -463,9 +463,9 @@ public class PageManager {
     private byte[] loadCandles(PageKey key, Page page) throws Exception {
         String symbol = key.symbol();
         String timeframe = key.timeframe();
-        // Use effective times for live pages
-        long startTime = key.isLive() ? key.getEffectiveStartTime() : key.startTime();
-        long endTime = key.isLive() ? key.getEffectiveEndTime() : key.endTime();
+        // Use effective times (handles both live and anchored pages correctly)
+        long startTime = key.getEffectiveStartTime();
+        long endTime = key.getEffectiveEndTime();
 
         // Check cache first
         List<Candle> cached = dataStore.getCandles(symbol, timeframe, startTime, endTime);
@@ -503,8 +503,8 @@ public class PageManager {
     private void fetchCandles(PageKey key, Page page, long expectedBars) throws Exception {
         String symbol = key.symbol();
         String timeframe = key.timeframe();
-        long startTime = key.startTime();
-        long endTime = key.endTime();
+        long startTime = key.getEffectiveStartTime();
+        long endTime = key.getEffectiveEndTime();
 
         BinanceClient apiClient = new BinanceClient();
         AtomicBoolean cancelled = new AtomicBoolean(false);
@@ -566,8 +566,8 @@ public class PageManager {
      */
     private byte[] loadAggTrades(PageKey key, Page page) throws Exception {
         String symbol = key.symbol();
-        long startTime = key.startTime();
-        long endTime = key.endTime();
+        long startTime = key.getEffectiveStartTime();
+        long endTime = key.getEffectiveEndTime();
 
         // Set up progress callback
         aggTradesStore.setProgressCallback(progress -> {
@@ -597,8 +597,8 @@ public class PageManager {
      */
     private byte[] loadFunding(PageKey key, Page page) throws Exception {
         String symbol = key.symbol();
-        long startTime = key.startTime();
-        long endTime = key.endTime();
+        long startTime = key.getEffectiveStartTime();
+        long endTime = key.getEffectiveEndTime();
 
         // FundingRateStore handles cache check + fetch if needed
         List<FundingRate> rates = fundingRateStore.getFundingRates(symbol, startTime, endTime);
@@ -612,8 +612,8 @@ public class PageManager {
      */
     private byte[] loadOpenInterest(PageKey key, Page page) throws Exception {
         String symbol = key.symbol();
-        long startTime = key.startTime();
-        long endTime = key.endTime();
+        long startTime = key.getEffectiveStartTime();
+        long endTime = key.getEffectiveEndTime();
 
         // OpenInterestStore handles cache check + fetch if needed
         List<OpenInterest> oi = openInterestStore.getOpenInterest(symbol, startTime, endTime,
@@ -633,8 +633,8 @@ public class PageManager {
     private byte[] loadPremium(PageKey key, Page page) throws Exception {
         String symbol = key.symbol();
         String timeframe = key.timeframe();
-        long startTime = key.startTime();
-        long endTime = key.endTime();
+        long startTime = key.getEffectiveStartTime();
+        long endTime = key.getEffectiveEndTime();
 
         // PremiumIndexStore handles cache check + fetch if needed
         List<PremiumIndex> premium = premiumIndexStore.getPremiumIndex(symbol, timeframe, startTime, endTime);

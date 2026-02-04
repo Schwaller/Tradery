@@ -4,51 +4,42 @@ package com.tradery.dataservice.page;
  * Unique identifier for a data page.
  *
  * Pages can be:
- * - Anchored: Fixed startTime/endTime, static historical view
- * - Live: anchor=null with duration, window slides forward with current time
+ * - Anchored: endTime != null, fixed historical view
+ * - Live: endTime == null, window slides forward with current time
  *
- * For live pages, startTime/endTime are computed from duration at request time.
+ * The window size is always windowDurationMillis. For live pages, start/end are computed dynamically.
  */
 public record PageKey(
-    String dataType,  // CANDLES, AGGTRADES, FUNDING, OI, PREMIUM
+    String dataType,           // CANDLES, AGGTRADES, FUNDING, OI, PREMIUM
     String symbol,
-    String timeframe, // null for AGGTRADES, FUNDING, OI
-    long startTime,
-    long endTime,
-    Long anchor,      // null = live (window moves with current time), else fixed end time
-    long duration     // window duration in milliseconds (0 for legacy anchored pages)
+    String timeframe,          // null for AGGTRADES, FUNDING, OI
+    Long endTime,              // null = live (window moves with current time), else fixed end time
+    long windowDurationMillis  // window duration in milliseconds
 ) {
-    /**
-     * Legacy constructor for anchored pages with fixed time range.
-     */
-    public PageKey(String dataType, String symbol, String timeframe, long startTime, long endTime) {
-        this(dataType, symbol, timeframe, startTime, endTime, endTime, endTime - startTime);
-    }
-
     /**
      * Check if this is a live (moving) page.
      */
     public boolean isLive() {
-        return anchor == null;
+        return endTime == null;
     }
 
     /**
      * Get the effective end time for this page.
-     * For live pages, this is "now". For anchored pages, this is the anchor/endTime.
+     * For live pages, this is "now". For anchored pages, this is the endTime.
      */
     public long getEffectiveEndTime() {
-        return anchor != null ? anchor : System.currentTimeMillis();
+        return endTime != null ? endTime : System.currentTimeMillis();
     }
 
     /**
      * Get the effective start time for this page.
      */
     public long getEffectiveStartTime() {
-        return getEffectiveEndTime() - duration;
+        return getEffectiveEndTime() - windowDurationMillis;
     }
     /**
      * Create a string representation of the key for use in URLs and maps.
-     * Format: dataType:symbol[:timeframe]:anchor|LIVE:duration
+     * Format: dataType:symbol[:timeframe]:endTime|LIVE:windowDurationMillis
      */
     public String toKeyString() {
         StringBuilder sb = new StringBuilder();
@@ -57,8 +48,8 @@ public record PageKey(
         if (timeframe != null) {
             sb.append(timeframe).append(":");
         }
-        sb.append(anchor != null ? anchor : "LIVE").append(":");
-        sb.append(duration);
+        sb.append(endTime != null ? endTime : "LIVE").append(":");
+        sb.append(windowDurationMillis);
         return sb.toString();
     }
 
@@ -82,16 +73,12 @@ public record PageKey(
             }
         }
 
-        String anchorStr = parts[idx++];
-        Long anchor = anchorStr.equals("LIVE") ? null : Long.parseLong(anchorStr);
+        String endTimeStr = parts[idx++];
+        Long endTime = endTimeStr.equals("LIVE") ? null : Long.parseLong(endTimeStr);
 
-        long duration = Long.parseLong(parts[idx]);
+        long windowDurationMillis = Long.parseLong(parts[idx]);
 
-        // Compute startTime/endTime from anchor and duration
-        long endTime = anchor != null ? anchor : System.currentTimeMillis();
-        long startTime = endTime - duration;
-
-        return new PageKey(dataType, symbol, timeframe, startTime, endTime, anchor, duration);
+        return new PageKey(dataType, symbol, timeframe, endTime, windowDurationMillis);
     }
 
     private static boolean isNumeric(String s) {
@@ -106,31 +93,29 @@ public record PageKey(
     /**
      * Create a live candle page key.
      */
-    public static PageKey liveCandles(String symbol, String timeframe, long duration) {
-        long now = System.currentTimeMillis();
-        return new PageKey("CANDLES", symbol.toUpperCase(), timeframe, now - duration, now, null, duration);
+    public static PageKey liveCandles(String symbol, String timeframe, long windowDurationMillis) {
+        return new PageKey("CANDLES", symbol.toUpperCase(), timeframe, null, windowDurationMillis);
     }
 
     /**
      * Create an anchored candle page key.
      */
-    public static PageKey anchoredCandles(String symbol, String timeframe, long anchorTime, long duration) {
-        return new PageKey("CANDLES", symbol.toUpperCase(), timeframe, anchorTime - duration, anchorTime, anchorTime, duration);
+    public static PageKey anchoredCandles(String symbol, String timeframe, long endTime, long windowDurationMillis) {
+        return new PageKey("CANDLES", symbol.toUpperCase(), timeframe, endTime, windowDurationMillis);
     }
 
     /**
      * Create a live aggTrades page key.
      */
-    public static PageKey liveAggTrades(String symbol, long duration) {
-        long now = System.currentTimeMillis();
-        return new PageKey("AGGTRADES", symbol.toUpperCase(), null, now - duration, now, null, duration);
+    public static PageKey liveAggTrades(String symbol, long windowDurationMillis) {
+        return new PageKey("AGGTRADES", symbol.toUpperCase(), null, null, windowDurationMillis);
     }
 
     /**
      * Create an anchored aggTrades page key.
      */
-    public static PageKey anchoredAggTrades(String symbol, long anchorTime, long duration) {
-        return new PageKey("AGGTRADES", symbol.toUpperCase(), null, anchorTime - duration, anchorTime, anchorTime, duration);
+    public static PageKey anchoredAggTrades(String symbol, long endTime, long windowDurationMillis) {
+        return new PageKey("AGGTRADES", symbol.toUpperCase(), null, endTime, windowDurationMillis);
     }
 
     /**

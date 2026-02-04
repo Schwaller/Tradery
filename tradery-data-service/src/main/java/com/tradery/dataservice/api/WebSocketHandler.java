@@ -305,8 +305,8 @@ public class WebSocketHandler implements PageUpdateListener {
             String consumerName = message.has("consumerName")
                 ? message.get("consumerName").asText() : "WebSocket-" + consumerId;
 
-            // Create PageKey
-            PageKey key = new PageKey(dataType.toUpperCase(), symbol.toUpperCase(), timeframe, startTime, endTime);
+            // Create PageKey (convert startTime/endTime to endTime/windowDurationMillis)
+            PageKey key = new PageKey(dataType.toUpperCase(), symbol.toUpperCase(), timeframe, endTime, endTime - startTime);
             String pageKeyStr = key.toKeyString();
 
             LOG.info("Consumer {} requesting page {}", consumerId, pageKeyStr);

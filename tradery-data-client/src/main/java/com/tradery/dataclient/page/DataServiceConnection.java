@@ -502,7 +502,7 @@ public class DataServiceConnection {
 
     private void sendSubscribePage(PageRequest request) {
         if (request.isLive) {
-            sendSubscribeLivePage(request.dataType, request.symbol, request.timeframe, request.duration);
+            sendSubscribeLivePage(request.dataType, request.symbol, request.timeframe, request.windowDurationMillis);
             return;
         }
         try {
@@ -1124,14 +1124,14 @@ public class DataServiceConnection {
      * Internal page request tracking.
      */
     private record PageRequest(DataType dataType, String symbol, String timeframe,
-                               long startTime, long endTime, long duration, boolean isLive) {
+                               long startTime, long endTime, long windowDurationMillis, boolean isLive) {
         // Anchored page constructor
         PageRequest(DataType dataType, String symbol, String timeframe, long startTime, long endTime) {
             this(dataType, symbol, timeframe, startTime, endTime, endTime - startTime, false);
         }
         // Live page constructor
-        PageRequest(DataType dataType, String symbol, String timeframe, long duration, boolean isLive) {
-            this(dataType, symbol, timeframe, 0, 0, duration, isLive);
+        PageRequest(DataType dataType, String symbol, String timeframe, long windowDurationMillis, boolean isLive) {
+            this(dataType, symbol, timeframe, 0, 0, windowDurationMillis, isLive);
         }
     }
 

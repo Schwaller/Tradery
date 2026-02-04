@@ -154,10 +154,10 @@ public class Page {
      */
     public PageStatus getStatus() {
         PageStatus.Coverage coverage = new PageStatus.Coverage(
-            key.startTime(),
-            key.endTime(),
-            key.startTime(), // actualStart - would need to track this
-            key.endTime(),   // actualEnd - would need to track this
+            key.getEffectiveStartTime(),
+            key.getEffectiveEndTime(),
+            key.getEffectiveStartTime(), // actualStart - would need to track this
+            key.getEffectiveEndTime(),   // actualEnd - would need to track this
             List.of()        // gaps - would need to track this
         );
 
@@ -239,7 +239,7 @@ public class Page {
             this.incompleteCandle = null;
 
             // Trim data outside the duration
-            long windowStart = System.currentTimeMillis() - key.duration();
+            long windowStart = System.currentTimeMillis() - key.windowDurationMillis();
             List<Candle> removed = new ArrayList<>();
 
             while (!liveCandles.isEmpty() && liveCandles.get(0).timestamp() < windowStart) {
