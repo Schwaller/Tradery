@@ -9,7 +9,6 @@ import com.tradery.forge.data.page.IndicatorPageManager;
 
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
-import javax.swing.border.TitledBorder;
 import java.awt.*;
 import java.time.Instant;
 import java.time.ZoneId;
@@ -51,14 +50,17 @@ public class PageDetailPanel extends JPanel {
         setLayout(new BorderLayout(0, 8));
         setBorder(new EmptyBorder(0, 0, 0, 0));
 
-        // Info panel
-        JPanel infoPanel = createInfoPanel();
-        add(infoPanel, BorderLayout.NORTH);
+        // Top: section header + info panel
+        JPanel topPanel = new JPanel(new BorderLayout(0, 6));
+        topPanel.setOpaque(false);
+        topPanel.add(createSectionHeader("Page Information"), BorderLayout.NORTH);
+        topPanel.add(createInfoPanel(), BorderLayout.CENTER);
+        add(topPanel, BorderLayout.NORTH);
 
         // Split pane for consumers and log
         JSplitPane splitPane = new JSplitPane(JSplitPane.VERTICAL_SPLIT);
-        splitPane.setTopComponent(createConsumersPanel());
-        splitPane.setBottomComponent(createLogPanel());
+        splitPane.setTopComponent(createConsumersSection());
+        splitPane.setBottomComponent(createLogSection());
         splitPane.setDividerLocation(120);
         splitPane.setResizeWeight(0.3);
 
@@ -68,9 +70,21 @@ public class PageDetailPanel extends JPanel {
         showEmptyState();
     }
 
+    private JPanel createSectionHeader(String title) {
+        JPanel header = new JPanel(new BorderLayout(8, 0));
+        header.setOpaque(false);
+        JLabel label = new JLabel(title);
+        label.setFont(label.getFont().deriveFont(Font.BOLD, 12f));
+        header.add(label, BorderLayout.WEST);
+        JSeparator sep = new JSeparator();
+        sep.setForeground(new Color(80, 80, 80));
+        header.add(sep, BorderLayout.CENTER);
+        return header;
+    }
+
     private JPanel createInfoPanel() {
         JPanel panel = new JPanel(new GridBagLayout());
-        panel.setBorder(BorderFactory.createTitledBorder("Page Information"));
+        panel.setBorder(BorderFactory.createEmptyBorder(0, 0, 8, 0));
 
         GridBagConstraints labelConstraints = new GridBagConstraints();
         labelConstraints.anchor = GridBagConstraints.WEST;
@@ -140,9 +154,10 @@ public class PageDetailPanel extends JPanel {
         return panel;
     }
 
-    private JPanel createConsumersPanel() {
-        JPanel panel = new JPanel(new BorderLayout());
-        panel.setBorder(BorderFactory.createTitledBorder("Consumers"));
+    private JPanel createConsumersSection() {
+        JPanel panel = new JPanel(new BorderLayout(0, 6));
+        panel.setBorder(BorderFactory.createEmptyBorder(4, 0, 0, 0));
+        panel.add(createSectionHeader("Consumers"), BorderLayout.NORTH);
 
         consumersModel = new DefaultListModel<>();
         consumersList = new JList<>(consumersModel);
@@ -155,9 +170,10 @@ public class PageDetailPanel extends JPanel {
         return panel;
     }
 
-    private JPanel createLogPanel() {
-        JPanel panel = new JPanel(new BorderLayout());
-        panel.setBorder(BorderFactory.createTitledBorder("Recent Events"));
+    private JPanel createLogSection() {
+        JPanel panel = new JPanel(new BorderLayout(0, 6));
+        panel.setBorder(BorderFactory.createEmptyBorder(4, 0, 0, 0));
+        panel.add(createSectionHeader("Recent Events"), BorderLayout.NORTH);
 
         logModel = new DefaultListModel<>();
         logList = new JList<>(logModel);

@@ -49,6 +49,12 @@ public class IndicatorCache {
      * Update the data context. Clears cache.
      */
     public void setContext(IndicatorContext context) {
+        log.info("Context updated - candles: {}, aggTrades: {}, funding: {}, OI: {}, premium: {}",
+            context != null && context.candles() != null ? context.candles().size() : 0,
+            context != null && context.aggTrades() != null ? context.aggTrades().size() : 0,
+            context != null && context.funding() != null ? context.funding().size() : 0,
+            context != null && context.openInterest() != null ? context.openInterest().size() : 0,
+            context != null && context.premium() != null ? context.premium().size() : 0);
         this.context = context;
         clearCache();
     }
@@ -64,9 +70,14 @@ public class IndicatorCache {
      * Clear all cached values and pending computations.
      */
     public void clearCache() {
+        int size = cache.size();
+        int pendingSize = pending.size();
         cache.clear();
         pending.values().forEach(f -> f.cancel(true));
         pending.clear();
+        if (size > 0 || pendingSize > 0) {
+            log.info("Cache cleared ({} cached, {} pending cancelled)", size, pendingSize);
+        }
     }
 
     /**
@@ -111,7 +122,11 @@ public class IndicatorCache {
         }
 
         // Compute synchronously (we're not on EDT for backtest)
+        log.debug("Computing sync: {} (key={})", id, cacheKey);
+        long start = System.nanoTime();
         T result = spec.compute(context, params);
+        long elapsed = (System.nanoTime() - start) / 1_000_000;
+        log.debug("Computed sync: {} in {}ms", id, elapsed);
         cache.put(cacheKey, result);
         return result;
     }
@@ -179,9 +194,15 @@ public class IndicatorCache {
         }
 
         // Start background computation
+        log.debug("Scheduling async computation: {} (key={})", id, cacheKey);
+        long startTime = System.nanoTime();
         CompletableFuture<T> future = CompletableFuture.supplyAsync(() -> {
             try {
-                return spec.compute(context, params);
+                log.debug("Starting async compute: {}", id);
+                T r = spec.compute(context, params);
+                long elapsed = (System.nanoTime() - startTime) / 1_000_000;
+                log.debug("Completed async compute: {} in {}ms", id, elapsed);
+                return r;
             } catch (Exception e) {
                 log.warn("Indicator computation failed for {}: {}", id, e.getMessage());
                 throw e;
@@ -195,6 +216,8 @@ public class IndicatorCache {
             if (result != null) {
                 cache.put(cacheKey, result);
                 notifyListeners(cacheKey, result);
+            } else if (error != null) {
+                log.warn("Async computation error for {}: {}", id, error.getMessage());
             }
         });
 
@@ -267,6 +290,7 @@ public class IndicatorCache {
      * Shutdown the executor.
      */
     public void shutdown() {
+        log.info("Shutting down IndicatorCache (cached={}, pending={})", cache.size(), pending.size());
         executor.shutdown();
         try {
             if (!executor.awaitTermination(5, TimeUnit.SECONDS)) {

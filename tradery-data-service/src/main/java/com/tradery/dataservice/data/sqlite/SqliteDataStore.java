@@ -1,14 +1,15 @@
 package com.tradery.dataservice.data.sqlite;
 
+import com.tradery.dataservice.data.DataConfig;
 import com.tradery.dataservice.data.sqlite.dao.*;
 import com.tradery.core.model.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.File;
 import java.io.IOException;
 import java.sql.SQLException;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -258,6 +259,52 @@ public class SqliteDataStore {
             }
         } catch (SQLException e) {
             throw new IOException("SQLite error consolidating coverage: " + e.getMessage(), e);
+        }
+    }
+
+    // ========== Discovery Methods ==========
+
+    /**
+     * Get all symbols that have a database file in the data directory.
+     */
+    public List<String> getAvailableSymbolNames() {
+        File dataDir = DataConfig.getInstance().getDataDir();
+        if (dataDir == null || !dataDir.exists()) return List.of();
+
+        File[] dbFiles = dataDir.listFiles((dir, name) ->
+            name.endsWith(".db") && !name.equals("symbols.db"));
+        if (dbFiles == null) return List.of();
+
+        List<String> symbols = new ArrayList<>();
+        for (File f : dbFiles) {
+            String name = f.getName();
+            symbols.add(name.substring(0, name.length() - 3)); // strip .db
+        }
+        symbols.sort(String::compareTo);
+        return symbols;
+    }
+
+    /**
+     * Get distinct data types with coverage for a symbol.
+     * Returns map of dataType -> list of subKeys (e.g. "klines" -> ["1h","4h"]).
+     */
+    public Map<String, List<String>> getCoverageDataTypes(String symbol) throws IOException {
+        try {
+            java.sql.Connection c = forSymbol(symbol).connection.getConnection();
+            Map<String, List<String>> result = new LinkedHashMap<>();
+
+            String sql = "SELECT DISTINCT data_type, sub_key FROM data_coverage ORDER BY data_type, sub_key";
+            try (java.sql.PreparedStatement stmt = c.prepareStatement(sql);
+                 java.sql.ResultSet rs = stmt.executeQuery()) {
+                while (rs.next()) {
+                    String dt = rs.getString("data_type");
+                    String sk = rs.getString("sub_key");
+                    result.computeIfAbsent(dt, k -> new ArrayList<>()).add(sk);
+                }
+            }
+            return result;
+        } catch (SQLException e) {
+            throw new IOException("SQLite error getting coverage types: " + e.getMessage(), e);
         }
     }
 

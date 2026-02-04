@@ -10,6 +10,7 @@ import com.tradery.core.model.ExitZone;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -30,6 +31,7 @@ public class SignalEvaluator {
     private final List<ParsedExitZone> exitZones;
 
     private boolean inPosition = false; // Track if we're in a simulated position
+    private volatile Instant lastEvalTime;
 
     /**
      * Create evaluator for a strategy.
@@ -78,6 +80,7 @@ public class SignalEvaluator {
      */
     public void setCandles(List<Candle> candles) {
         engine.setCandles(candles, strategy.getTimeframe());
+        lastEvalTime = Instant.now();
     }
 
     /**
@@ -172,6 +175,10 @@ public class SignalEvaluator {
 
     public IndicatorEngine getEngine() {
         return engine;
+    }
+
+    public Instant getLastEvalTime() {
+        return lastEvalTime;
     }
 
     /**

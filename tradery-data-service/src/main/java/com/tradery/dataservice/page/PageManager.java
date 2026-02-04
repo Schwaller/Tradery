@@ -231,18 +231,76 @@ public class PageManager {
 
     /**
      * Get coverage information for a symbol/data type.
+     * dataType can be "candles:1h", "agg_trades", "funding_rates", "open_interest", "premium_index:1h"
      */
     public CoverageHandler.CoverageInfo getCoverage(String symbol, String dataType) {
-        // TODO: Implement coverage query from SQLite
-        return null;
+        try {
+            // Parse dataType into coverage data_type and sub_key
+            String covType;
+            String subKey;
+            if (dataType.contains(":")) {
+                String[] parts = dataType.split(":", 2);
+                covType = parts[0];
+                subKey = parts[1];
+            } else {
+                covType = dataType;
+                subKey = covType.equals("klines") ? "1h" : "default";
+            }
+
+            var coverageDao = dataStore.forSymbol(symbol).coverage();
+            var summary = coverageDao.getCoverageSummary(covType, subKey);
+
+            // Find gaps across the full covered range
+            List<CoverageHandler.GapInfo> gaps = List.of();
+            if (summary.minStart() > 0 && summary.maxEnd() > summary.minStart()) {
+                var rawGaps = coverageDao.findGaps(covType, subKey, summary.minStart(), summary.maxEnd());
+                gaps = rawGaps.stream()
+                    .map(g -> new CoverageHandler.GapInfo(g[0], g[1]))
+                    .toList();
+            }
+
+            return new CoverageHandler.CoverageInfo(
+                symbol, dataType,
+                summary.minStart() > 0 ? summary.minStart() : null,
+                summary.maxEnd() > 0 ? summary.maxEnd() : null,
+                gaps,
+                summary.totalCoveredMs()
+            );
+        } catch (Exception e) {
+            LOG.error("Failed to get coverage for {} {}", symbol, dataType, e);
+            return null;
+        }
     }
 
     /**
-     * Get list of symbols with available data.
+     * Get list of symbols with available data by scanning database files.
      */
     public List<CoverageHandler.SymbolInfo> getAvailableSymbols() {
-        // TODO: Implement symbol discovery from SQLite
-        return List.of();
+        try {
+            List<String> symbols = dataStore.getAvailableSymbolNames();
+            List<CoverageHandler.SymbolInfo> result = new ArrayList<>();
+
+            for (String symbol : symbols) {
+                try {
+                    Map<String, List<String>> dataTypes = dataStore.getCoverageDataTypes(symbol);
+                    result.add(new CoverageHandler.SymbolInfo(
+                        symbol,
+                        dataTypes.containsKey("klines"),
+                        dataTypes.containsKey("agg_trades"),
+                        dataTypes.containsKey("funding_rates"),
+                        dataTypes.containsKey("open_interest"),
+                        dataTypes.containsKey("premium_index")
+                    ));
+                } catch (Exception e) {
+                    LOG.debug("Skipping symbol {} - {}", symbol, e.getMessage());
+                }
+            }
+
+            return result;
+        } catch (Exception e) {
+            LOG.error("Failed to get available symbols", e);
+            return List.of();
+        }
     }
 
     /**

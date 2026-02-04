@@ -1,7 +1,0 @@
-id: exchange-divergence-bearish
-name: Exchange Divergence Bearish
-description: Binance buying but Bybit selling - potential bearish reversal. Large delta spread indicates divergent exchange sentiment.
-category: Orderflow
-condition: BINANCE_DELTA > 0 AND BYBIT_DELTA < 0 AND EXCHANGE_DELTA_SPREAD > 20000
-timeframe: 1h
-symbol: BTCUSDT

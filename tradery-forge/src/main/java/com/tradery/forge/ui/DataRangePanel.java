@@ -6,9 +6,12 @@ import com.tradery.forge.ui.base.ConfigurationPanel;
 import com.tradery.symbols.ui.SymbolComboBox;
 
 import javax.swing.*;
+import javax.swing.text.DateFormatter;
 import java.awt.*;
+import java.text.SimpleDateFormat;
 import java.util.Calendar;
 import java.util.Date;
+import java.util.TimeZone;
 
 /**
  * Panel for selecting data range settings: Symbol, Timeframe, Duration, End date.
@@ -47,12 +50,15 @@ public class DataRangePanel extends ConfigurationPanel {
         updateDurationOptions();
         durationCombo.addActionListener(e -> fireChange());
 
-        // Anchor date/time spinner
+        // Anchor date/time spinner (UTC)
         SpinnerDateModel dateModel = new SpinnerDateModel(new Date(), null, null, Calendar.MINUTE);
         anchorDateSpinner = new JSpinner(dateModel);
+        SimpleDateFormat utcFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm");
+        utcFormat.setTimeZone(TimeZone.getTimeZone("UTC"));
         JSpinner.DateEditor dateEditor = new JSpinner.DateEditor(anchorDateSpinner, "yyyy-MM-dd HH:mm");
+        ((DateFormatter) dateEditor.getTextField().getFormatter()).setFormat(utcFormat);
         anchorDateSpinner.setEditor(dateEditor);
-        anchorDateSpinner.setToolTipText("End date/time for backtest data range");
+        anchorDateSpinner.setToolTipText("End date/time for backtest data range (UTC)");
 
         // Wire up change listeners
         symbolCombo.addActionListener(e -> fireChange());
@@ -111,9 +117,9 @@ public class DataRangePanel extends ConfigurationPanel {
         fieldC.gridx = 1; fieldC.gridy = 2;
         settingsGrid.add(durationCombo, fieldC);
 
-        // Row 3: End date with [>] now button
+        // Row 3: End date with [>] now button (UTC)
         labelC.gridx = 0; labelC.gridy = 3;
-        settingsGrid.add(new JLabel("End:"), labelC);
+        settingsGrid.add(new JLabel("End (UTC):"), labelC);
 
         JButton nowBtn = new JButton("\u25B6");
         nowBtn.setToolTipText("Set to current date/time");

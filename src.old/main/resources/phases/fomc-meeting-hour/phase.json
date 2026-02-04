@@ -1,9 +1,0 @@
-{
-  "id": "fomc-meeting-hour",
-  "name": "FOMC Meeting Hour",
-  "description": "Hourly precision for FOMC meeting days - use with 1h strategies",
-  "category": "Calendar",
-  "condition": "IS_FOMC_MEETING == 1",
-  "timeframe": "1h",
-  "symbol": "BTCUSDT"
-}

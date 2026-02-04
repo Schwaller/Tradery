@@ -9,6 +9,8 @@ import org.slf4j.LoggerFactory;
 
 import javax.swing.*;
 import java.awt.*;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
 
 /**
  * Status bar showing WebSocket connection state, symbol/timeframe, memory, and current price.
@@ -62,6 +64,22 @@ public class StatusPanel extends JPanel {
         add(rightPanel, BorderLayout.EAST);
 
         updateState(ConnectionState.DISCONNECTED);
+
+        // Click any badge to open the status window
+        MouseAdapter statusWindowOpener = new MouseAdapter() {
+            @Override
+            public void mousePressed(MouseEvent e) {
+                try {
+                    DeskStatusWindow.showWindow();
+                } catch (Exception ex) {
+                    log.error("Failed to open status window", ex);
+                    ex.printStackTrace();
+                }
+            }
+        };
+        connectionBadge.addMouseListener(statusWindowOpener);
+        syncBadge.addMouseListener(statusWindowOpener);
+        memoryStatusPanel.addMouseListener(statusWindowOpener);
 
         // Poll sync status every 30s
         syncPollTimer = new Timer(30_000, e -> {});

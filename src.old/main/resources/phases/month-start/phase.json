@@ -1,9 +1,0 @@
-{
-  "id": "month-start",
-  "name": "Month Start",
-  "description": "First week of the month (day 1-5) - fresh capital inflows",
-  "category": "Calendar",
-  "condition": "DAY <= 5",
-  "timeframe": "1d",
-  "symbol": "BTCUSDT"
-}

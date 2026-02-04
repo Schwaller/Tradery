@@ -1,9 +1,0 @@
-id: support-breakdown
-name: Support Breakdown
-description: Price just crossed below first support ray - fresh breakdown signal
-category: Ray
-condition: SUPPORT_RAY_CROSSED(1, 0, 5) == 1
-timeframe: 1h
-symbol: BTCUSDT
-builtIn: true
-version: "1.1"

@@ -1,7 +1,0 @@
-id: range-low
-name: At Range Low
-description: Price in bottom 10% of 20-bar range - potential support or breakdown zone
-category: Technical
-condition: RANGE_POSITION(20) < -0.8
-timeframe: 1h
-symbol: BTCUSDT

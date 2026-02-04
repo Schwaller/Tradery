@@ -84,6 +84,21 @@ public class DownloadLogStore {
     }
 
     /**
+     * Log an indicator computation completed event.
+     */
+    public void logIndicatorComputed(String pageKey, String indicatorType, String params, int candleCount, long computeMs) {
+        String msg = String.format("Computed %s(%s) in %dms (%d candles)", indicatorType, params, computeMs, candleCount);
+
+        Map<String, Object> meta = new HashMap<>();
+        meta.put("indicatorType", indicatorType);
+        meta.put("params", params);
+        meta.put("candleCount", candleCount);
+        meta.put("computeMs", computeMs);
+
+        log(DownloadEvent.of(pageKey, null, DownloadEvent.EventType.LOAD_COMPLETED, msg, meta));
+    }
+
+    /**
      * Log an update started event.
      */
     public void logUpdateStarted(String pageKey, DataType dataType) {

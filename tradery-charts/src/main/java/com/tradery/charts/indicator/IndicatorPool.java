@@ -1,6 +1,8 @@
 package com.tradery.charts.indicator;
 
 import com.tradery.core.indicators.IndicatorEngine;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -23,6 +25,8 @@ import java.util.concurrent.Executors;
  * </ul>
  */
 public class IndicatorPool {
+
+    private static final Logger log = LoggerFactory.getLogger(IndicatorPool.class);
 
     private final ExecutorService executor = Executors.newSingleThreadExecutor(r -> {
         Thread t = new Thread(r, "indicator-pool");
@@ -51,6 +55,7 @@ public class IndicatorPool {
 
         // Track active subscription for recomputation
         activeSubscriptions.add(new ActiveSubscription<>(key, compute, subscription));
+        log.debug("Subscribe: {}", key);
 
         // Check cache
         CachedComputation<?> cached = cache.get(key);
@@ -68,12 +73,15 @@ public class IndicatorPool {
         long version = dataVersion();
         executor.submit(() -> {
             try {
+                log.debug("Computing: {}", key);
+                long start = System.nanoTime();
                 T result = compute.compute(currentEngine);
+                long elapsed = (System.nanoTime() - start) / 1_000_000;
+                log.debug("Computed: {} in {}ms", key, elapsed);
                 cache.put(key, new CachedComputation<>(result, version));
                 subscription.setResult(result);
             } catch (Exception e) {
-                // Log but don't crash - subscription stays with null data
-                System.err.println("Indicator computation failed for " + key + ": " + e.getMessage());
+                log.warn("Indicator computation failed for {}: {}", key, e.getMessage());
             }
         });
 
@@ -90,8 +98,12 @@ public class IndicatorPool {
         // Invalidate cache
         cache.clear();
 
-        if (engine == null) return;
+        if (engine == null) {
+            log.info("Data context cleared");
+            return;
+        }
 
+        log.info("Data context updated, recomputing {} active subscriptions", activeSubscriptions.size());
         // Recompute all active subscriptions
         long version = dataVersion();
         for (ActiveSubscription<?> active : activeSubscriptions) {
@@ -103,11 +115,15 @@ public class IndicatorPool {
     private <T> void recompute(ActiveSubscription<T> active, IndicatorEngine engine, long version) {
         executor.submit(() -> {
             try {
+                log.debug("Recomputing: {}", active.key);
+                long start = System.nanoTime();
                 T result = active.compute.compute(engine);
+                long elapsed = (System.nanoTime() - start) / 1_000_000;
+                log.debug("Recomputed: {} in {}ms", active.key, elapsed);
                 cache.put(active.key, new CachedComputation<>(result, version));
                 active.subscription.setResult(result);
             } catch (Exception e) {
-                System.err.println("Indicator recomputation failed for " + active.key + ": " + e.getMessage());
+                log.warn("Indicator recomputation failed for {}: {}", active.key, e.getMessage());
             }
         });
     }
@@ -124,6 +140,7 @@ public class IndicatorPool {
      * Shutdown the thread pool.
      */
     public void shutdown() {
+        log.info("Shutting down IndicatorPool ({} subscriptions, {} cached)", activeSubscriptions.size(), cache.size());
         executor.shutdownNow();
         activeSubscriptions.clear();
         cache.clear();

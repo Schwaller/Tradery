@@ -1,7 +1,0 @@
-id: range-breakout-up
-name: Range Breakout Up
-description: Price broke above 20-bar high - bullish breakout
-category: Technical
-condition: close > HIGH_OF(20)[1]
-timeframe: 1h
-symbol: BTCUSDT

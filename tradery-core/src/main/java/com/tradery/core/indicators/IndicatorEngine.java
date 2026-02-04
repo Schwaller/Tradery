@@ -7,6 +7,9 @@ import com.tradery.core.model.OpenInterest;
 import com.tradery.core.model.PremiumIndex;
 import com.tradery.core.indicators.RotatingRays.RaySet;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
@@ -21,6 +24,8 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public class IndicatorEngine {
 
+    private static final Logger log = LoggerFactory.getLogger(IndicatorEngine.class);
+
     private List<Candle> candles;
     private List<AggTrade> aggTrades;
     private String resolution = "1h";
@@ -30,6 +35,7 @@ public class IndicatorEngine {
      * Initialize with candle data
      */
     public void setCandles(List<Candle> candles, String resolution) {
+        log.info("setCandles: {} bars, resolution={}", candles != null ? candles.size() : 0, resolution);
         this.candles = candles;
         this.resolution = resolution;
         clearCache();
@@ -40,6 +46,7 @@ public class IndicatorEngine {
      * Must be called before using delta indicators.
      */
     public void setAggTrades(List<AggTrade> aggTrades) {
+        log.info("setAggTrades: {} trades", aggTrades != null ? aggTrades.size() : 0);
         this.aggTrades = aggTrades;
         // Clear orderflow-related cache entries
         cache.remove("delta");
@@ -71,8 +78,12 @@ public class IndicatorEngine {
      * Clear the indicator cache
      */
     public void clearCache() {
+        int size = cache.size();
         cache.clear();
         dailyProfileCache.clear();
+        if (size > 0) {
+            log.info("Cache cleared ({} entries)", size);
+        }
     }
 
     /**
@@ -92,14 +103,23 @@ public class IndicatorEngine {
         return candles.get(barIndex);
     }
 
+    private <T> T computeIfAbsent(String key, java.util.function.Supplier<T> supplier) {
+        @SuppressWarnings("unchecked")
+        T cached = (T) cache.get(key);
+        if (cached != null) return cached;
+        log.debug("Computing indicator: {}", key);
+        long start = System.nanoTime();
+        T result = supplier.get();
+        long elapsed = (System.nanoTime() - start) / 1_000_000;
+        log.debug("Computed indicator: {} in {}ms", key, elapsed);
+        cache.put(key, result);
+        return result;
+    }
+
     // ========== SMA ==========
 
     public double[] getSMA(int period) {
-        String key = "sma:" + period;
-        if (!cache.containsKey(key)) {
-            cache.put(key, Indicators.sma(candles, period));
-        }
-        return (double[]) cache.get(key);
+        return computeIfAbsent("sma:" + period, () -> Indicators.sma(candles, period));
     }
 
     public double getSMAAt(int period, int barIndex) {
@@ -110,11 +130,7 @@ public class IndicatorEngine {
     // ========== EMA ==========
 
     public double[] getEMA(int period) {
-        String key = "ema:" + period;
-        if (!cache.containsKey(key)) {
-            cache.put(key, Indicators.ema(candles, period));
-        }
-        return (double[]) cache.get(key);
+        return computeIfAbsent("ema:" + period, () -> Indicators.ema(candles, period));
     }
 
     public double getEMAAt(int period, int barIndex) {
@@ -125,11 +141,7 @@ public class IndicatorEngine {
     // ========== RSI ==========
 
     public double[] getRSI(int period) {
-        String key = "rsi:" + period;
-        if (!cache.containsKey(key)) {
-            cache.put(key, Indicators.rsi(candles, period));
-        }
-        return (double[]) cache.get(key);
+        return computeIfAbsent("rsi:" + period, () -> Indicators.rsi(candles, period));
     }
 
     public double getRSIAt(int period, int barIndex) {
@@ -140,11 +152,7 @@ public class IndicatorEngine {
     // ========== MACD ==========
 
     public Indicators.MACDResult getMACD(int fast, int slow, int signal) {
-        String key = "macd:" + fast + ":" + slow + ":" + signal;
-        if (!cache.containsKey(key)) {
-            cache.put(key, Indicators.macd(candles, fast, slow, signal));
-        }
-        return (Indicators.MACDResult) cache.get(key);
+        return computeIfAbsent("macd:" + fast + ":" + slow + ":" + signal, () -> Indicators.macd(candles, fast, slow, signal));
     }
 
     public double getMACDLineAt(int fast, int slow, int signal, int barIndex) {
@@ -165,11 +173,7 @@ public class IndicatorEngine {
     // ========== Bollinger Bands ==========
 
     public Indicators.BollingerResult getBollingerBands(int period, double stdDev) {
-        String key = "bbands:" + period + ":" + stdDev;
-        if (!cache.containsKey(key)) {
-            cache.put(key, Indicators.bollingerBands(candles, period, stdDev));
-        }
-        return (Indicators.BollingerResult) cache.get(key);
+        return computeIfAbsent("bbands:" + period + ":" + stdDev, () -> Indicators.bollingerBands(candles, period, stdDev));
     }
 
     public double getBollingerUpperAt(int period, double stdDev, int barIndex) {
@@ -203,11 +207,7 @@ public class IndicatorEngine {
     // ========== ATR ==========
 
     public double[] getATR(int period) {
-        String key = "atr:" + period;
-        if (!cache.containsKey(key)) {
-            cache.put(key, Indicators.atr(candles, period));
-        }
-        return (double[]) cache.get(key);
+        return computeIfAbsent("atr:" + period, () -> Indicators.atr(candles, period));
     }
 
     public double getATRAt(int period, int barIndex) {
@@ -218,11 +218,7 @@ public class IndicatorEngine {
     // ========== Range Functions ==========
 
     public double[] getHighOf(int period) {
-        String key = "high_of:" + period;
-        if (!cache.containsKey(key)) {
-            cache.put(key, Indicators.highOf(candles, period));
-        }
-        return (double[]) cache.get(key);
+        return computeIfAbsent("high_of:" + period, () -> Indicators.highOf(candles, period));
     }
 
     public double getHighOfAt(int period, int barIndex) {
@@ -231,11 +227,7 @@ public class IndicatorEngine {
     }
 
     public double[] getLowOf(int period) {
-        String key = "low_of:" + period;
-        if (!cache.containsKey(key)) {
-            cache.put(key, Indicators.lowOf(candles, period));
-        }
-        return (double[]) cache.get(key);
+        return computeIfAbsent("low_of:" + period, () -> Indicators.lowOf(candles, period));
     }
 
     public double getLowOfAt(int period, int barIndex) {
@@ -246,11 +238,7 @@ public class IndicatorEngine {
     // ========== Range Position ==========
 
     public double[] getRangePosition(int period, int skip) {
-        String key = "range_position:" + period + ":" + skip;
-        if (!cache.containsKey(key)) {
-            cache.put(key, Indicators.rangePosition(candles, period, skip));
-        }
-        return (double[]) cache.get(key);
+        return computeIfAbsent("range_position:" + period + ":" + skip, () -> Indicators.rangePosition(candles, period, skip));
     }
 
     public double getRangePositionAt(int period, int skip, int barIndex) {
@@ -261,11 +249,7 @@ public class IndicatorEngine {
     // ========== Volume ==========
 
     public double[] getAvgVolume(int period) {
-        String key = "avg_volume:" + period;
-        if (!cache.containsKey(key)) {
-            cache.put(key, Indicators.avgVolume(candles, period));
-        }
-        return (double[]) cache.get(key);
+        return computeIfAbsent("avg_volume:" + period, () -> Indicators.avgVolume(candles, period));
     }
 
     public double getAvgVolumeAt(int period, int barIndex) {
@@ -353,11 +337,7 @@ public class IndicatorEngine {
     // ========== ADX / DMI ==========
 
     public Indicators.ADXResult getADX(int period) {
-        String key = "adx:" + period;
-        if (!cache.containsKey(key)) {
-            cache.put(key, Indicators.adx(candles, period));
-        }
-        return (Indicators.ADXResult) cache.get(key);
+        return computeIfAbsent("adx:" + period, () -> Indicators.adx(candles, period));
     }
 
     public double getADXAt(int period, int barIndex) {
@@ -378,11 +358,7 @@ public class IndicatorEngine {
     // ========== Stochastic ==========
 
     public Indicators.StochasticResult getStochastic(int kPeriod, int dPeriod) {
-        String key = "stochastic:" + kPeriod + ":" + dPeriod;
-        if (!cache.containsKey(key)) {
-            cache.put(key, Indicators.stochastic(candles, kPeriod, dPeriod));
-        }
-        return (Indicators.StochasticResult) cache.get(key);
+        return computeIfAbsent("stochastic:" + kPeriod + ":" + dPeriod, () -> Indicators.stochastic(candles, kPeriod, dPeriod));
     }
 
     public double getStochasticKAt(int kPeriod, int barIndex) {
@@ -447,11 +423,7 @@ public class IndicatorEngine {
     // ========== VWAP (Tier 1 - Orderflow) ==========
 
     public double[] getVWAP() {
-        String key = "vwap";
-        if (!cache.containsKey(key)) {
-            cache.put(key, Indicators.vwap(candles));
-        }
-        return (double[]) cache.get(key);
+        return computeIfAbsent("vwap", () -> Indicators.vwap(candles));
     }
 
     public double getVWAPAt(int barIndex) {
@@ -462,11 +434,7 @@ public class IndicatorEngine {
     // ========== Volume Profile / POC / VAH / VAL (Tier 1 - Orderflow) ==========
 
     public Indicators.VolumeProfileResult getVolumeProfile(int period) {
-        String key = "volumeProfile:" + period;
-        if (!cache.containsKey(key)) {
-            cache.put(key, Indicators.volumeProfile(candles, period, 24, 70.0));
-        }
-        return (Indicators.VolumeProfileResult) cache.get(key);
+        return computeIfAbsent("volumeProfile:" + period, () -> Indicators.volumeProfile(candles, period, 24, 70.0));
     }
 
     public double getPOCAt(int period, int barIndex) {
@@ -915,6 +883,7 @@ public class IndicatorEngine {
      * Set funding rate data for funding indicators.
      */
     public void setFundingRates(List<FundingRate> fundingRates) {
+        log.info("setFundingRates: {} rates", fundingRates != null ? fundingRates.size() : 0);
         this.fundingRates = fundingRates;
         // Clear funding-related cache entries
         cache.remove("fundingArray");
@@ -1047,6 +1016,7 @@ public class IndicatorEngine {
      * Set premium index data for premium indicators.
      */
     public void setPremiumIndex(List<PremiumIndex> premiumIndexData) {
+        log.info("setPremiumIndex: {} records", premiumIndexData != null ? premiumIndexData.size() : 0);
         this.premiumIndexData = premiumIndexData;
         // Clear premium-related cache entries
         cache.remove("premiumArray");
@@ -1217,6 +1187,7 @@ public class IndicatorEngine {
      * Set open interest data for OI indicators.
      */
     public void setOpenInterest(List<OpenInterest> openInterestData) {
+        log.info("setOpenInterest: {} records", openInterestData != null ? openInterestData.size() : 0);
         this.openInterestData = openInterestData;
         // Clear OI-related cache entries
         cache.remove("oiArray");
@@ -1342,11 +1313,7 @@ public class IndicatorEngine {
     // ========== Supertrend ==========
 
     public Supertrend.Result getSupertrend(int period, double multiplier) {
-        String key = "supertrend:" + period + ":" + multiplier;
-        if (!cache.containsKey(key)) {
-            cache.put(key, Supertrend.calculate(candles, period, multiplier));
-        }
-        return (Supertrend.Result) cache.get(key);
+        return computeIfAbsent("supertrend:" + period + ":" + multiplier, () -> Supertrend.calculate(candles, period, multiplier));
     }
 
     /**

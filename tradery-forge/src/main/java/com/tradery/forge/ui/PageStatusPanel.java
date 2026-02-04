@@ -62,6 +62,7 @@ public class PageStatusPanel extends JPanel {
 
     // Special constant for "Overview" selection
     public static final String OVERVIEW_KEY = "__OVERVIEW__";
+    public static final String SYMBOL_DB_KEY = "__SYMBOL_DB__";
 
     // Track if overview is selected
     private boolean overviewSelected = true;  // Default to overview
@@ -179,14 +180,13 @@ public class PageStatusPanel extends JPanel {
         SymbolService symbolService = ApplicationContext.getInstance().getSymbolService();
 
         JPanel row = new JPanel(new BorderLayout(4, 0));
-        row.setBorder(BorderFactory.createEmptyBorder(2, 8, 2, 8));
-        row.setMaximumSize(new Dimension(Integer.MAX_VALUE, 22));
+        row.setBorder(BorderFactory.createEmptyBorder(3, 8, 3, 8));
+        row.setMaximumSize(new Dimension(Integer.MAX_VALUE, 26));
         row.setAlignmentX(Component.LEFT_ALIGNMENT);
-        row.setOpaque(false);
+        row.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
 
         JLabel nameLabel = new JLabel("Symbol Database");
         nameLabel.setFont(nameLabel.getFont().deriveFont(Font.PLAIN, 11f));
-        nameLabel.setForeground(Color.GRAY);
         row.add(nameLabel, BorderLayout.WEST);
 
         JPanel rightPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 4, 0));
@@ -219,6 +219,42 @@ public class PageStatusPanel extends JPanel {
 
             row.setToolTipText("symbols.db not found — run data service to sync");
         }
+
+        // Selection highlight
+        boolean isSelected = SYMBOL_DB_KEY.equals(selectedPageKey);
+        row.setOpaque(isSelected);
+        if (isSelected) {
+            row.setBackground(COLOR_SELECTED_BG);
+        }
+
+        row.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mousePressed(MouseEvent e) {
+                overviewSelected = false;
+                selectedPageKey = SYMBOL_DB_KEY;
+                selectedDataType = null;
+                updateRowSelection();
+                updateIndicatorRowSelection();
+                onPageSelected.accept(SYMBOL_DB_KEY, null);
+            }
+
+            @Override
+            public void mouseEntered(MouseEvent e) {
+                if (!SYMBOL_DB_KEY.equals(selectedPageKey)) {
+                    row.setBackground(COLOR_HOVER_BG);
+                    row.setOpaque(true);
+                    row.repaint();
+                }
+            }
+
+            @Override
+            public void mouseExited(MouseEvent e) {
+                if (!SYMBOL_DB_KEY.equals(selectedPageKey)) {
+                    row.setOpaque(false);
+                    row.repaint();
+                }
+            }
+        });
 
         row.add(rightPanel, BorderLayout.EAST);
         contentPanel.add(row);

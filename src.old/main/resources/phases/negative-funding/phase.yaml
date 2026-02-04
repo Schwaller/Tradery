@@ -1,7 +1,0 @@
-id: negative-funding
-name: Negative Funding Rate
-description: Funding rate below 0 - shorts paying longs
-category: Funding
-condition: FUNDING < 0
-timeframe: 1h
-symbol: BTCUSDT

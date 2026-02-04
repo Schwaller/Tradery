@@ -27,6 +27,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.swing.*;
+import java.time.Instant;
 import java.util.*;
 
 /**
@@ -102,6 +103,12 @@ public class TraderyDeskApp {
     public void start() {
         log.info("Starting Tradery Desk...");
 
+        // Initialize app context for status window
+        DeskAppContext appCtx = DeskAppContext.getInstance();
+        appCtx.setStartTime(Instant.now());
+        appCtx.setConfig(config);
+        appCtx.setAlertDispatcher(alertDispatcher);
+
         // Log library status
         if (library.isAvailable()) {
             log.info("Strategy library: {}", config.getLibraryDir());
@@ -127,6 +134,9 @@ public class TraderyDeskApp {
         for (PublishedStrategy strategy : strategies) {
             initializeStrategy(strategy);
         }
+
+        // Update app context with strategy maps
+        updateAppContext();
 
         // Start strategy file watcher
         if (config.isAutoReload()) {
@@ -231,6 +241,11 @@ public class TraderyDeskApp {
                     frame.updateConnectionState(uiState);
                 }
             });
+
+            // Update app context
+            DeskAppContext.getInstance().setPageConnection(pageConnection);
+            DeskAppContext.getInstance().setDataClient(dataClient);
+            DeskAppContext.getInstance().setCandlePageManager(candlePageMgr);
 
             log.info("Initialized page-based data system");
         } catch (Exception e) {
@@ -537,11 +552,26 @@ public class TraderyDeskApp {
             }
 
             alertDispatcher.dispatch(signal);
+            DeskAppContext.getInstance().incrementSignalCount();
 
             if (frame != null) {
                 frame.addSignal(signal);
             }
         });
+    }
+
+    /**
+     * Update DeskAppContext with current strategy/evaluator/aggregator maps.
+     */
+    private void updateAppContext() {
+        DeskAppContext ctx = DeskAppContext.getInstance();
+        ctx.setEvaluators(Collections.unmodifiableMap(evaluators));
+        ctx.setAggregators(Collections.unmodifiableMap(aggregators));
+        Map<String, PublishedStrategy> strategyMap = new LinkedHashMap<>();
+        for (PublishedStrategy s : strategyStore.getAll()) {
+            strategyMap.put(s.getId(), s);
+        }
+        ctx.setStrategies(Collections.unmodifiableMap(strategyMap));
     }
 
     /**
@@ -559,6 +589,8 @@ public class TraderyDeskApp {
         } else {
             stopStrategy(strategyId);
         }
+
+        updateAppContext();
 
         if (frame != null) {
             frame.setStrategies(strategyStore.getAll());

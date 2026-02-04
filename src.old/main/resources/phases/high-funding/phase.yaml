@@ -1,7 +1,0 @@
-id: high-funding
-name: High Funding Rate
-description: Funding rate above 0.05% - longs are overleveraged
-category: Funding
-condition: FUNDING > 0.05
-timeframe: 1h
-symbol: BTCUSDT

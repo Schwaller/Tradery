@@ -1,7 +1,0 @@
-id: range-middle
-name: Mid Range
-description: Price in middle 30% of 20-bar range - consolidation/chop zone
-category: Technical
-condition: RANGE_POSITION(20) > -0.3 AND RANGE_POSITION(20) < 0.3
-timeframe: 1h
-symbol: BTCUSDT

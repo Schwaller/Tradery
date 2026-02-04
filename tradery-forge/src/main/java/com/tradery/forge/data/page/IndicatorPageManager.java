@@ -269,7 +269,8 @@ public class IndicatorPageManager {
                     page.setState(PageState.READY);
                     page.setLoadProgress(100);  // Mark complete
 
-                    DownloadLogStore.getInstance().logLoadCompleted(page.getKey(), null, candles.size(), elapsed);
+                    DownloadLogStore.getInstance().logIndicatorComputed(
+                        page.getKey(), page.getType().getName(), page.getParams(), candles.size(), elapsed);
                     notifyStateChanged(page, prevState, PageState.READY);
                     notifyDataChanged(page);
                 });
@@ -302,7 +303,8 @@ public class IndicatorPageManager {
                     page.setState(PageState.READY);
                     page.setLoadProgress(100);  // Mark complete
 
-                    DownloadLogStore.getInstance().logLoadCompleted(page.getKey(), null, candles.size(), elapsed);
+                    DownloadLogStore.getInstance().logIndicatorComputed(
+                        page.getKey(), page.getType().getName(), page.getParams(), candles.size(), elapsed);
                     notifyStateChanged(page, prevState, PageState.READY);
                     notifyDataChanged(page);
                 });
