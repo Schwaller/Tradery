@@ -80,6 +80,12 @@ public class TraderyDeskApp {
     private String initialChartSymbol;
     private String initialChartTimeframe;
 
+    // Chart-specific page subscription (independent of strategies)
+    private String chartSymbol;
+    private String chartTimeframe = "1h";
+    private DataPageView<Candle> chartPage;
+    private DataPageListener<Candle> chartPageListener;
+
     // API server
     private DeskApiServer apiServer;
 
@@ -616,6 +622,90 @@ public class TraderyDeskApp {
     }
 
     /**
+     * Switch the chart to display a different symbol.
+     * Creates a new page subscription for the chart independent of strategies.
+     */
+    private void switchChartSymbol(String newSymbol) {
+        if (newSymbol == null || newSymbol.equals(chartSymbol)) {
+            return;
+        }
+
+        log.info("Switching chart to symbol: {}", newSymbol);
+
+        // Release old chart page if exists
+        if (chartPage != null && candlePageMgr != null) {
+            candlePageMgr.release(chartPage, chartPageListener);
+            chartPage = null;
+            chartPageListener = null;
+        }
+
+        chartSymbol = newSymbol;
+
+        if (candlePageMgr == null) {
+            log.warn("Cannot switch symbol: page manager not available");
+            return;
+        }
+
+        // Calculate duration for chart page
+        long barDurationMs = parseTimeframeMs(chartTimeframe);
+        long duration = config.getHistoryBars() * barDurationMs;
+
+        // Create new chart page listener
+        chartPageListener = new DataPageListener<>() {
+            @Override
+            public void onStateChanged(DataPageView<Candle> page, PageState oldState, PageState newState) {
+                log.info("Chart page state: {} -> {} for {}", oldState, newState, newSymbol);
+
+                if (newState == PageState.READY) {
+                    List<Candle> candles = page.getData();
+                    if (candles != null && !candles.isEmpty() && frame != null) {
+                        SwingUtilities.invokeLater(() -> {
+                            frame.setChartCandles(candles, newSymbol, chartTimeframe);
+                            frame.updateSymbol(newSymbol, chartTimeframe);
+                            // Update price from last candle
+                            Candle last = candles.get(candles.size() - 1);
+                            frame.updatePrice(last.close(), last.timestamp());
+                        });
+                    }
+                } else if (newState == PageState.ERROR) {
+                    log.warn("Chart page error for {}: {}", newSymbol, page.getErrorMessage());
+                }
+            }
+
+            @Override
+            public void onLiveUpdate(DataPageView<Candle> page, Candle candle) {
+                if (frame != null) {
+                    SwingUtilities.invokeLater(() -> {
+                        frame.updatePrice(candle.close(), candle.timestamp());
+                        frame.updateChartCandle(candle);
+                    });
+                }
+            }
+
+            @Override
+            public void onLiveAppend(DataPageView<Candle> page, Candle candle) {
+                if (frame != null) {
+                    SwingUtilities.invokeLater(() -> {
+                        frame.addChartCandle(candle);
+                        frame.updatePrice(candle.close(), candle.timestamp());
+                    });
+                }
+            }
+
+            @Override
+            public void onProgress(DataPageView<Candle> page, int progress) {
+                log.trace("Chart loading {}: {}%", newSymbol, progress);
+            }
+        };
+
+        // Request live page for chart
+        chartPage = candlePageMgr.requestLive(
+            newSymbol, chartTimeframe, duration, chartPageListener, "Chart");
+
+        log.info("Chart subscribed to {} {}", newSymbol, chartTimeframe);
+    }
+
+    /**
      * Start the debugging API server.
      */
     private void startApiServer() {
@@ -644,7 +734,17 @@ public class TraderyDeskApp {
             // Set initial chart data if available
             if (initialChartCandles != null && !initialChartCandles.isEmpty()) {
                 frame.setChartCandles(initialChartCandles, initialChartSymbol, initialChartTimeframe);
+                frame.updateSymbol(initialChartSymbol, initialChartTimeframe);
+                chartSymbol = initialChartSymbol;
+                chartTimeframe = initialChartTimeframe;
             }
+
+            // Wire up symbol change listener
+            frame.addSymbolChangeListener(e -> {
+                String newSymbol = frame.getSelectedSymbol();
+                log.info("Symbol picker changed to: {}", newSymbol);
+                switchChartSymbol(newSymbol);
+            });
 
             // Start symbol sync status polling
             if (dataClient != null) {
@@ -679,6 +779,13 @@ public class TraderyDeskApp {
         // Stop API server
         if (apiServer != null) {
             apiServer.stop();
+        }
+
+        // Release chart page
+        if (chartPage != null && candlePageMgr != null) {
+            candlePageMgr.release(chartPage, chartPageListener);
+            chartPage = null;
+            chartPageListener = null;
         }
 
         // Shutdown page system if used

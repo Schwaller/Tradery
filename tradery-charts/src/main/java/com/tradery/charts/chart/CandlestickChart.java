@@ -182,6 +182,15 @@ public class CandlestickChart extends SyncedChart {
             overlay.close();
         }
         overlays.clear();
+
+        // Clear overlay datasets from the plot immediately
+        XYPlot plot = getPlot();
+        if (plot != null) {
+            for (int i = OVERLAY_START_INDEX; i < plot.getDatasetCount(); i++) {
+                plot.setDataset(i, null);
+                plot.setRenderer(i, null);
+            }
+        }
     }
 
     /**

@@ -91,8 +91,10 @@ public class IndicatorSidePanel extends JPanel {
         content.add(createSectionHeader("CORE CHARTS"));
         content.add(volume);
 
-        content.add(Box.createVerticalGlue());
-        add(createScrollableContent(content), BorderLayout.CENTER);
+        // Wrap content in BorderLayout.NORTH to prevent vertical stretching
+        JPanel wrapper = new JPanel(new BorderLayout());
+        wrapper.add(content, BorderLayout.NORTH);
+        add(createScrollableContent(wrapper), BorderLayout.CENTER);
 
         // Initialize default SMA/EMA periods
         smaPanel.setPeriods(java.util.List.of(20, 50));

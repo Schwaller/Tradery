@@ -8,6 +8,7 @@ import com.tradery.core.model.Candle;
 
 import javax.swing.*;
 import java.awt.*;
+import java.awt.event.ActionListener;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.util.List;
@@ -188,5 +189,27 @@ public class DeskFrame extends JFrame {
      */
     public void startSyncPolling(DataServiceClient client) {
         statusPanel.startSyncPolling(client);
+    }
+
+    /**
+     * Add listener for symbol changes from the market info bar.
+     */
+    public void addSymbolChangeListener(ActionListener listener) {
+        marketInfoBar.getSymbolCombo().addActionListener(listener);
+    }
+
+    /**
+     * Get the currently selected symbol info from the market info bar.
+     */
+    public String getSelectedExchange() {
+        return marketInfoBar.getSymbolCombo().getExchange();
+    }
+
+    public String getSelectedMarket() {
+        return marketInfoBar.getSymbolCombo().getSymbolMarket();
+    }
+
+    public String getSelectedSymbol() {
+        return marketInfoBar.getSymbolCombo().getSelectedSymbol();
     }
 }
