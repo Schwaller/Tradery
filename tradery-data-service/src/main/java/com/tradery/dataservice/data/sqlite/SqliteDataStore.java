@@ -201,6 +201,25 @@ public class SqliteDataStore {
         }
     }
 
+    /**
+     * Stream aggregated trades in chunks to avoid loading all into memory.
+     *
+     * @param symbol Trading symbol
+     * @param startTime Start timestamp
+     * @param endTime End timestamp
+     * @param chunkSize Number of trades per chunk
+     * @param chunkConsumer Consumer called with each chunk of trades
+     * @return Total number of trades streamed
+     */
+    public int streamAggTrades(String symbol, long startTime, long endTime, int chunkSize,
+                               java.util.function.Consumer<List<AggTrade>> chunkConsumer) throws IOException {
+        try {
+            return forSymbol(symbol).aggTrades().streamQuery(startTime, endTime, chunkSize, chunkConsumer);
+        } catch (SQLException e) {
+            throw new IOException("SQLite error streaming agg trades: " + e.getMessage(), e);
+        }
+    }
+
     // ========== Coverage Methods ==========
 
     /**

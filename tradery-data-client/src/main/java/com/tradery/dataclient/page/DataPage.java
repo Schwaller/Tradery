@@ -1,7 +1,10 @@
 package com.tradery.dataclient.page;
 
+import com.tradery.core.model.Candle;
+
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 
 /**
@@ -23,6 +26,8 @@ public class DataPage<T> implements DataPageView<T> {
     private final String timeframe;    // null for non-timeframe types (Funding, OI, AggTrades)
     private final long startTime;
     private final long endTime;
+    private final long liveDuration;  // For live pages: fixed duration (0 = anchored page)
+    private final boolean liveEnabled; // True for live pages that receive real-time updates
 
     // State
     private volatile PageState state = PageState.EMPTY;
@@ -34,25 +39,31 @@ public class DataPage<T> implements DataPageView<T> {
     // Data (volatile for visibility across threads)
     private volatile List<T> data = new ArrayList<>();
 
-    // Live updates flag
-    private volatile boolean liveEnabled = false;
-
     /**
-     * Create a new data page.
-     *
-     * @param dataType  Type of data (CANDLES, FUNDING, etc.)
-     * @param symbol    Trading symbol (e.g., "BTCUSDT")
-     * @param timeframe Timeframe for candles/premium, null for other types
-     * @param startTime Start time in milliseconds
-     * @param endTime   End time in milliseconds
+     * Create a new anchored data page.
      */
     public DataPage(DataType dataType, String symbol, String timeframe,
                     long startTime, long endTime) {
+        this(dataType, symbol, timeframe, startTime, endTime, 0);
+    }
+
+    /**
+     * Create a new live (sliding window) data page.
+     */
+    public static <T> DataPage<T> live(DataType dataType, String symbol, String timeframe,
+                                        long startTime, long endTime, long duration) {
+        return new DataPage<>(dataType, symbol, timeframe, startTime, endTime, duration);
+    }
+
+    private DataPage(DataType dataType, String symbol, String timeframe,
+                     long startTime, long endTime, long liveDuration) {
         this.dataType = dataType;
         this.symbol = symbol;
         this.timeframe = timeframe;
         this.startTime = startTime;
         this.endTime = endTime;
+        this.liveDuration = liveDuration;
+        this.liveEnabled = liveDuration > 0;  // Live pages start with updates enabled
     }
 
     // ========== Identity (DataPageView interface) ==========
@@ -84,13 +95,20 @@ public class DataPage<T> implements DataPageView<T> {
 
     @Override
     public String getKey() {
+        // Must match server's PageKey.toKeyString() format: dataType:symbol[:timeframe]:anchor|LIVE:duration
         StringBuilder sb = new StringBuilder();
         sb.append(dataType).append(":");
         sb.append(symbol).append(":");
         if (timeframe != null) {
             sb.append(timeframe).append(":");
         }
-        sb.append(startTime).append(":").append(endTime);
+        if (liveDuration > 0) {
+            // Live page: use LIVE:duration format
+            sb.append("LIVE:").append(liveDuration);
+        } else {
+            // Anchored page: use endTime:duration format
+            sb.append(endTime).append(":").append(endTime - startTime);
+        }
         return sb.toString();
     }
 
@@ -202,14 +220,50 @@ public class DataPage<T> implements DataPageView<T> {
         }
     }
 
+    /**
+     * Remove records by their timestamps.
+     * Used for live pages to maintain sliding window size.
+     * Only works for Candle data type.
+     */
+    public void removeByTimestamps(List<Long> timestamps) {
+        if (timestamps == null || timestamps.isEmpty() || data.isEmpty()) {
+            return;
+        }
+
+        // Only works for Candle type
+        if (dataType != DataType.CANDLES) {
+            return;
+        }
+
+        HashSet<Long> toRemove = new HashSet<>(timestamps);
+        List<T> newData = new ArrayList<>();
+        for (T record : data) {
+            if (record instanceof Candle candle) {
+                if (!toRemove.contains(candle.timestamp())) {
+                    newData.add(record);
+                }
+            } else {
+                newData.add(record);
+            }
+        }
+        this.data = newData;
+    }
+
     // ========== Live Updates ==========
 
     public boolean isLiveEnabled() {
         return liveEnabled;
     }
 
-    public void setLiveEnabled(boolean liveEnabled) {
-        this.liveEnabled = liveEnabled;
+    public long getLiveDuration() {
+        return liveDuration;
+    }
+
+    /**
+     * True if this is a live (sliding window) page rather than anchored.
+     */
+    public boolean isLivePage() {
+        return liveDuration > 0;
     }
 
     // ========== State Checks (DataPageView interface) ==========

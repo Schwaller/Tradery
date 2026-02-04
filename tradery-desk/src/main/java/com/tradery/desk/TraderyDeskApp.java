@@ -370,16 +370,16 @@ public class TraderyDeskApp {
 
     /**
      * Initialize strategy using the unified page system.
-     * Async loading with integrated live updates.
+     * Uses live (sliding window) pages for real-time updates.
      */
     private void initializeStrategyWithPageSystem(PublishedStrategy strategy, CandleAggregator aggregator) {
         String id = strategy.getId();
         String symbol = strategy.getSymbol();
         String timeframe = strategy.getTimeframe();
 
-        long now = System.currentTimeMillis();
+        // Calculate duration for live page (window size in milliseconds)
         long barDurationMs = parseTimeframeMs(timeframe);
-        long startTime = now - (config.getHistoryBars() * barDurationMs);
+        long duration = config.getHistoryBars() * barDurationMs;
 
         // Create page listener
         DataPageListener<Candle> listener = new DataPageListener<>() {
@@ -393,7 +393,7 @@ public class TraderyDeskApp {
                         candles != null ? candles.size() : "null", frame != null);
                     if (candles != null && !candles.isEmpty()) {
                         aggregator.setHistory(candles);
-                        log.info("Warmed up {} with {} candles via page system", strategy.getName(), candles.size());
+                        log.info("Warmed up {} with {} candles via live page", strategy.getName(), candles.size());
 
                         // Store for chart (first strategy only)
                         if (initialChartCandles == null) {
@@ -441,15 +441,12 @@ public class TraderyDeskApp {
         // Store listener for cleanup
         strategyPageListeners.put(id, listener);
 
-        // Request page (async, never blocks)
-        DataPageView<Candle> page = candlePageMgr.request(
-            symbol, timeframe, startTime, now, listener, "Strategy:" + id);
+        // Request live page (sliding window, async)
+        DataPageView<Candle> page = candlePageMgr.requestLive(
+            symbol, timeframe, duration, listener, "Strategy:" + id);
         strategyPages.put(id, page);
 
-        // Enable live updates on the page
-        candlePageMgr.enableLiveUpdates(page);
-
-        log.info("Strategy {} using page system with live updates", id);
+        log.info("Strategy {} using live page (duration={}ms)", id, duration);
     }
 
     /**
@@ -612,7 +609,6 @@ public class TraderyDeskApp {
         DataPageView<Candle> page = strategyPages.remove(strategyId);
         DataPageListener<Candle> listener = strategyPageListeners.remove(strategyId);
         if (page != null && candlePageMgr != null) {
-            candlePageMgr.disableLiveUpdates(page);
             candlePageMgr.release(page, listener);
         }
     }

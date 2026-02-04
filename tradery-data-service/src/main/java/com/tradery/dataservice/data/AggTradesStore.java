@@ -593,6 +593,400 @@ public class AggTradesStore {
     }
 
     /**
+     * Stream aggregated trades to a consumer, fetching from Binance if needed.
+     * This avoids loading all trades into memory - chunks are streamed as they become available.
+     *
+     * Data flows:
+     * 1. Cached data from SQLite is streamed in chunks
+     * 2. For gaps, data is fetched and streamed as it arrives (tee'd to SQLite for persistence)
+     * 3. Progress updates are sent periodically to keep connection alive
+     *
+     * @param symbol        Trading symbol
+     * @param startTime     Start time in milliseconds
+     * @param endTime       End time in milliseconds
+     * @param chunkSize     Number of trades per chunk (recommended: 5000-10000)
+     * @param chunkConsumer Called with each chunk of trades and its source ("cache", "api", "vision")
+     * @param onProgress    Called periodically with progress updates (keeps connection alive)
+     * @return Total number of trades streamed
+     */
+    public int streamAggTrades(String symbol, long startTime, long endTime, int chunkSize,
+                               StreamChunkConsumer chunkConsumer,
+                               Consumer<FetchProgress> onProgress) throws IOException {
+
+        // Reset cancellation flag at start of new stream
+        fetchCancelled.set(false);
+
+        int totalStreamed = 0;
+
+        // Find gaps in SQLite coverage
+        List<long[]> gaps = findGapsInSqlite(symbol, startTime, endTime);
+        List<long[]> cachedRanges = computeCachedRanges(startTime, endTime, gaps);
+
+        log.info("Streaming {} aggTrades: {} cached ranges, {} gaps", symbol, cachedRanges.size(), gaps.size());
+
+        // Interleave cached data and gap fetches in chronological order
+        int gapIndex = 0;
+        int cacheIndex = 0;
+
+        while (gapIndex < gaps.size() || cacheIndex < cachedRanges.size()) {
+            if (fetchCancelled.get()) {
+                log.debug("Stream cancelled after {} trades", totalStreamed);
+                return totalStreamed;
+            }
+
+            // Determine what comes next chronologically
+            long nextGapStart = gapIndex < gaps.size() ? gaps.get(gapIndex)[0] : Long.MAX_VALUE;
+            long nextCacheStart = cacheIndex < cachedRanges.size() ? cachedRanges.get(cacheIndex)[0] : Long.MAX_VALUE;
+
+            if (nextCacheStart <= nextGapStart) {
+                // Stream cached data
+                long[] range = cachedRanges.get(cacheIndex++);
+                int streamed = streamCachedRange(symbol, range[0], range[1], chunkSize, chunkConsumer, onProgress);
+                totalStreamed += streamed;
+            } else {
+                // Fetch and stream gap
+                long[] gap = gaps.get(gapIndex++);
+                int streamed = streamGap(symbol, gap[0], gap[1], chunkSize, chunkConsumer, onProgress,
+                    gapIndex, gaps.size());
+                totalStreamed += streamed;
+            }
+        }
+
+        // Final progress update
+        if (onProgress != null) {
+            onProgress.accept(FetchProgress.complete(totalStreamed));
+        }
+
+        log.info("Stream complete for {} aggTrades: {} total trades", symbol, formatCount(totalStreamed));
+        return totalStreamed;
+    }
+
+    /**
+     * Compute the cached ranges (inverse of gaps) within the requested time range.
+     */
+    private List<long[]> computeCachedRanges(long startTime, long endTime, List<long[]> gaps) {
+        List<long[]> cached = new ArrayList<>();
+        long current = startTime;
+
+        for (long[] gap : gaps) {
+            if (gap[0] > current) {
+                // There's cached data before this gap
+                cached.add(new long[]{current, gap[0] - 1});
+            }
+            current = gap[1] + 1;
+        }
+
+        // Check if there's cached data after the last gap
+        if (current < endTime) {
+            cached.add(new long[]{current, endTime});
+        }
+
+        return cached;
+    }
+
+    /**
+     * Stream cached data from SQLite in chunks.
+     */
+    private int streamCachedRange(String symbol, long start, long end, int chunkSize,
+                                  StreamChunkConsumer chunkConsumer,
+                                  Consumer<FetchProgress> onProgress) throws IOException {
+        log.debug("Streaming cached range [{} - {}]", start, end);
+
+        if (onProgress != null) {
+            onProgress.accept(new FetchProgress(0, 100, "Streaming cached data..."));
+        }
+
+        try {
+            return sqliteStore.streamAggTrades(symbol, start, end, chunkSize,
+                chunk -> chunkConsumer.accept(chunk, "cache"));
+        } catch (IOException e) {
+            log.warn("Failed to stream cached data: {}", e.getMessage());
+            return 0;
+        }
+    }
+
+    /**
+     * Fetch a gap and stream chunks as they arrive, also persisting to SQLite.
+     */
+    private int streamGap(String symbol, long gapStart, long gapEnd, int chunkSize,
+                          StreamChunkConsumer chunkConsumer,
+                          Consumer<FetchProgress> onProgress,
+                          int gapIndex, int totalGaps) throws IOException {
+
+        long gapDuration = gapEnd - gapStart;
+        long gapDays = gapDuration / (24 * 60 * 60 * 1000);
+
+        log.info("Streaming gap [{} - {}] ({} days)", gapStart, gapEnd, gapDays);
+
+        // Use Vision for large gaps
+        if (gapDays >= VISION_THRESHOLD_DAYS) {
+            return streamGapViaVision(symbol, gapStart, gapEnd, chunkSize, chunkConsumer, onProgress);
+        }
+
+        // Use API for smaller gaps
+        return streamGapViaApi(symbol, gapStart, gapEnd, chunkConsumer, onProgress, gapIndex, totalGaps);
+    }
+
+    /**
+     * Stream gap via Binance API, tee'ing to SQLite.
+     */
+    private int streamGapViaApi(String symbol, long gapStart, long gapEnd,
+                                StreamChunkConsumer chunkConsumer,
+                                Consumer<FetchProgress> onProgress,
+                                int gapIndex, int totalGaps) throws IOException {
+
+        LocalDateTime now = LocalDateTime.now(ZoneOffset.UTC);
+        LocalDateTime gapEndTime = LocalDateTime.ofInstant(Instant.ofEpochMilli(gapEnd), ZoneOffset.UTC);
+        boolean includesCurrentHour = gapEndTime.getHour() == now.getHour() &&
+                                      gapEndTime.toLocalDate().equals(now.toLocalDate());
+
+        final int[] totalFetched = {0};
+
+        int fetched = client.streamAggTrades(symbol, gapStart, gapEnd, fetchCancelled,
+            progress -> {
+                if (onProgress != null) {
+                    String msg = String.format("Gap %d/%d: %s", gapIndex, totalGaps, progress.message());
+                    onProgress.accept(new FetchProgress(progress.fetchedCandles(), progress.estimatedTotal(), msg));
+                }
+            },
+            batch -> {
+                // Tee: stream to client AND save to SQLite
+                chunkConsumer.accept(batch, "api");
+                saveToSqlite(symbol, batch);
+                totalFetched[0] += batch.size();
+            });
+
+        // Mark coverage (not complete if includes current hour)
+        if (!includesCurrentHour && !fetchCancelled.get() && fetched > 0) {
+            markCoverage(symbol, gapStart, gapEnd, true);
+        }
+
+        return fetched;
+    }
+
+    /**
+     * Stream gap via Vision bulk download, tee'ing chunks to consumer as they're parsed.
+     */
+    private int streamGapViaVision(String symbol, long gapStart, long gapEnd, int chunkSize,
+                                   StreamChunkConsumer chunkConsumer,
+                                   Consumer<FetchProgress> onProgress) throws IOException {
+
+        LocalDate startDate = Instant.ofEpochMilli(gapStart).atZone(ZoneOffset.UTC).toLocalDate();
+        LocalDate endDate = Instant.ofEpochMilli(gapEnd).atZone(ZoneOffset.UTC).toLocalDate();
+        LocalDate yesterday = LocalDate.now(ZoneOffset.UTC).minusDays(1);
+
+        if (endDate.isAfter(yesterday)) {
+            endDate = yesterday;
+        }
+
+        if (startDate.isAfter(yesterday)) {
+            log.info("Vision: Gap is in the future, no data available");
+            return 0;
+        }
+
+        int totalDays = 0;
+        LocalDate temp = startDate;
+        while (!temp.isAfter(endDate)) {
+            totalDays++;
+            temp = temp.plusDays(1);
+        }
+
+        if (totalDays == 0) {
+            return 0;
+        }
+
+        int completedDays = 0;
+        int totalStreamed = 0;
+        LocalDate current = startDate;
+
+        while (!current.isAfter(endDate)) {
+            if (fetchCancelled.get()) {
+                break;
+            }
+
+            String dateKey = current.format(DATE_FORMAT);
+
+            // Check if day is already cached
+            if (isDayFullyCached(symbol, current)) {
+                log.trace("Vision: Skipping {} (already cached)", dateKey);
+                // Stream from cache instead
+                long dayStart = current.atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli();
+                long dayEnd = current.plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli() - 1;
+                int cached = streamCachedRange(symbol, dayStart, dayEnd, chunkSize, chunkConsumer, onProgress);
+                totalStreamed += cached;
+                completedDays++;
+                current = current.plusDays(1);
+                continue;
+            }
+
+            // Build Vision URL
+            String url = String.format("%s/%s/%s-aggTrades-%s.zip",
+                VISION_BASE_URL, symbol, symbol, dateKey);
+
+            log.info("Vision: Downloading and streaming {}", dateKey);
+
+            final int dayIndex = completedDays;
+            final int finalTotalDays = totalDays;
+
+            if (onProgress != null) {
+                int pct = totalDays > 0 ? (completedDays * 100) / totalDays : 0;
+                onProgress.accept(new FetchProgress(pct, 100,
+                    String.format("Day %d/%d: %s downloading...", completedDays + 1, totalDays, dateKey)));
+            }
+
+            try {
+                int dayStreamed = downloadAndStreamVisionDay(symbol, url, current, chunkSize,
+                    chunkConsumer, onProgress, dayIndex, finalTotalDays);
+                totalStreamed += dayStreamed;
+            } catch (IOException e) {
+                if (e.getMessage() != null && e.getMessage().contains("404")) {
+                    log.debug("Vision: Day {} not available", dateKey);
+                } else {
+                    log.warn("Vision: Failed to download {}: {}", dateKey, e.getMessage());
+                }
+            }
+
+            completedDays++;
+            current = current.plusDays(1);
+        }
+
+        return totalStreamed;
+    }
+
+    /**
+     * Download a Vision day file and stream chunks to consumer while also saving to SQLite.
+     */
+    private int downloadAndStreamVisionDay(String symbol, String url, LocalDate date, int chunkSize,
+                                           StreamChunkConsumer chunkConsumer,
+                                           Consumer<FetchProgress> onProgress,
+                                           int dayIndex, int totalDays) throws IOException {
+        Request request = new Request.Builder()
+            .url(url)
+            .get()
+            .build();
+
+        try (Response response = bulkDownloadClient.newCall(request).execute()) {
+            if (response.code() == 404) {
+                throw new IOException("404 Not Found");
+            }
+            if (!response.isSuccessful()) {
+                throw new IOException("Download failed: " + response.code());
+            }
+
+            long contentLength = response.body().contentLength();
+            String dateKey = date.format(DATE_FORMAT);
+
+            InputStream rawStream = response.body().byteStream();
+            long estimatedSize = contentLength > 0 ? contentLength : 100_000_000L;
+
+            ProgressInputStream progressStream = new ProgressInputStream(rawStream, contentLength, bytesRead -> {
+                if (onProgress != null) {
+                    int overallPercent;
+                    String progressMsg;
+
+                    if (contentLength > 0) {
+                        int filePercent = (int) ((bytesRead * 100) / contentLength);
+                        overallPercent = totalDays > 0
+                            ? (dayIndex * 100 + filePercent) / totalDays
+                            : filePercent;
+                        progressMsg = String.format("Day %d/%d: %s %s / %s",
+                            dayIndex + 1, totalDays, dateKey, formatBytes(bytesRead), formatBytes(contentLength));
+                    } else {
+                        int filePercent = (int) Math.min(95, (bytesRead * 100) / estimatedSize);
+                        overallPercent = totalDays > 0
+                            ? (dayIndex * 100 + filePercent) / totalDays
+                            : filePercent;
+                        progressMsg = String.format("Day %d/%d: %s %s downloaded",
+                            dayIndex + 1, totalDays, dateKey, formatBytes(bytesRead));
+                    }
+                    overallPercent = Math.min(99, Math.max(0, overallPercent));
+                    onProgress.accept(new FetchProgress(overallPercent, 100, progressMsg));
+                }
+            });
+
+            return streamZipToConsumerAndSqlite(symbol, progressStream, date, chunkSize, chunkConsumer);
+        }
+    }
+
+    /**
+     * Stream ZIP contents to both consumer and SQLite.
+     */
+    private int streamZipToConsumerAndSqlite(String symbol, InputStream inputStream, LocalDate date,
+                                             int chunkSize, StreamChunkConsumer chunkConsumer) throws IOException {
+        List<AggTrade> batch = new ArrayList<>(chunkSize);
+        int totalCount = 0;
+
+        try (ZipInputStream zis = new ZipInputStream(inputStream)) {
+            ZipEntry entry;
+            while ((entry = zis.getNextEntry()) != null) {
+                if (entry.getName().endsWith(".csv")) {
+                    BufferedReader reader = new BufferedReader(new InputStreamReader(zis));
+                    String line;
+                    boolean isHeader = true;
+
+                    while ((line = reader.readLine()) != null) {
+                        if (fetchCancelled.get()) {
+                            break;
+                        }
+
+                        if (isHeader) {
+                            isHeader = false;
+                            if (line.startsWith("agg") || !Character.isDigit(line.charAt(0))) {
+                                continue;
+                            }
+                        }
+                        if (!line.isBlank()) {
+                            try {
+                                AggTrade trade = parseVisionAggTrade(line);
+                                batch.add(trade);
+                                totalCount++;
+
+                                // Flush batch periodically - tee to both consumer and SQLite
+                                if (batch.size() >= chunkSize) {
+                                    chunkConsumer.accept(batch, "vision");
+                                    saveToSqlite(symbol, batch);
+                                    batch = new ArrayList<>(chunkSize);
+                                }
+                            } catch (Exception e) {
+                                // Skip malformed lines
+                            }
+                        }
+                    }
+                }
+                zis.closeEntry();
+            }
+        }
+
+        // Flush remaining
+        if (!batch.isEmpty()) {
+            chunkConsumer.accept(batch, "vision");
+            saveToSqlite(symbol, batch);
+        }
+
+        // Mark day as covered
+        if (totalCount > 0 && !fetchCancelled.get()) {
+            long dayStart = date.atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli();
+            long dayEnd = date.plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli() - 1;
+            markCoverage(symbol, dayStart, dayEnd, true);
+        }
+
+        return totalCount;
+    }
+
+    /**
+     * Consumer for streamed chunks that includes the source of the data.
+     */
+    @FunctionalInterface
+    public interface StreamChunkConsumer {
+        /**
+         * Accept a chunk of trades.
+         * @param trades The trades in this chunk
+         * @param source Where the data came from: "cache", "api", or "vision"
+         */
+        void accept(List<AggTrade> trades, String source);
+    }
+
+    /**
      * Find gaps in SQLite coverage for a time range.
      */
     private List<long[]> findGapsInSqlite(String symbol, long startTime, long endTime) {

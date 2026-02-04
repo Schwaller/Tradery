@@ -15,6 +15,7 @@ import java.net.URI;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.function.Consumer;
+import java.util.function.BiConsumer;
 
 /**
  * Unified WebSocket connection to data-service.
@@ -77,6 +78,11 @@ public class DataServiceConnection {
     // Live OI subscriptions: "SYMBOL" -> listeners
     private final Map<String, Set<Consumer<OpenInterestUpdate>>> oiListeners = new ConcurrentHashMap<>();
     private final Set<String> activeOiSubscriptions = ConcurrentHashMap.newKeySet();
+
+    // Historical aggTrades streaming: requestId -> callback
+    private final Map<String, AggTradesHistoryCallback> aggTradesHistoryCallbacks = new ConcurrentHashMap<>();
+    // Track active streams for reconnection: requestId -> request params
+    private final Map<String, AggTradesHistoryRequest> activeAggTradesHistoryStreams = new ConcurrentHashMap<>();
 
     /**
      * Create a new connection to data-service.
@@ -196,6 +202,35 @@ public class DataServiceConnection {
         } else {
             LOG.info("Not connected, queuing page request: {}", pageKey);
             pendingPageRequests.add(request);
+        }
+    }
+
+    /**
+     * Subscribe to a live (sliding window) page.
+     * Live pages have no fixed anchor and slide forward with current time.
+     *
+     * @param dataType     Type of data (CANDLES, etc.)
+     * @param symbol       Trading symbol
+     * @param timeframe    Timeframe (null for non-timeframe types)
+     * @param duration     Window duration in milliseconds
+     * @param callback     Callback for page updates
+     */
+    public void subscribeLivePage(DataType dataType, String symbol, String timeframe,
+                                  long duration, PageUpdateCallback callback) {
+        String pageKey = makeLivePageKey(dataType, symbol, timeframe, duration);
+
+        LOG.debug("Subscribing to live page: {} (connected={})", pageKey, isConnected());
+
+        // Register callback
+        pageCallbacks.computeIfAbsent(pageKey, k -> ConcurrentHashMap.newKeySet()).add(callback);
+
+        if (isConnected()) {
+            sendSubscribeLivePage(dataType, symbol, timeframe, duration);
+            activePageSubscriptions.add(pageKey);
+        } else {
+            LOG.info("Not connected, queuing live page request: {}", pageKey);
+            // Store as pending - need to track live page requests separately
+            pendingPageRequests.add(new PageRequest(dataType, symbol, timeframe, duration, true));
         }
     }
 
@@ -363,6 +398,92 @@ public class DataServiceConnection {
         }
     }
 
+    // ========== Historical AggTrades Streaming API ==========
+
+    /**
+     * Subscribe to historical aggTrades streaming.
+     *
+     * Data is streamed in chunks as it becomes available (from cache and/or fetched from Binance).
+     * Progress updates are sent periodically to keep the connection alive during long fetches.
+     *
+     * @param symbol    Trading symbol
+     * @param startTime Start time in milliseconds
+     * @param endTime   End time in milliseconds
+     * @param callback  Callback for stream events
+     * @return Request ID for this stream (use to cancel or resume)
+     */
+    public String subscribeAggTradesHistory(String symbol, long startTime, long endTime,
+                                            AggTradesHistoryCallback callback) {
+        String requestId = UUID.randomUUID().toString().substring(0, 8);
+        String upperSymbol = symbol.toUpperCase();
+
+        AggTradesHistoryRequest request = new AggTradesHistoryRequest(
+            requestId, upperSymbol, startTime, endTime, 0);
+
+        aggTradesHistoryCallbacks.put(requestId, callback);
+        activeAggTradesHistoryStreams.put(requestId, request);
+
+        if (isConnected()) {
+            sendSubscribeAggTradesHistory(upperSymbol, startTime, endTime);
+        } else {
+            LOG.info("Not connected, queuing aggTrades history request: {}", requestId);
+        }
+
+        return requestId;
+    }
+
+    /**
+     * Cancel an active aggTrades history stream.
+     *
+     * @param requestId The request ID returned from subscribeAggTradesHistory
+     */
+    public void cancelAggTradesHistory(String requestId) {
+        if (isConnected() && activeAggTradesHistoryStreams.containsKey(requestId)) {
+            sendAction("cancel_aggtrades_history", Map.of("requestId", requestId));
+        }
+        // Cleanup happens when we receive AGGTRADES_STREAM_CANCELLED
+    }
+
+    /**
+     * Resume an aggTrades history stream from a specific timestamp.
+     * Use this after reconnection to continue where the previous stream left off.
+     *
+     * @param symbol        Trading symbol
+     * @param lastTimestamp Last timestamp received (stream resumes from lastTimestamp + 1)
+     * @param endTime       Original end time
+     * @param callback      Callback for stream events
+     * @return New request ID for the resumed stream
+     */
+    public String resumeAggTradesHistory(String symbol, long lastTimestamp, long endTime,
+                                         AggTradesHistoryCallback callback) {
+        String requestId = UUID.randomUUID().toString().substring(0, 8);
+        String upperSymbol = symbol.toUpperCase();
+
+        AggTradesHistoryRequest request = new AggTradesHistoryRequest(
+            requestId, upperSymbol, lastTimestamp + 1, endTime, lastTimestamp);
+
+        aggTradesHistoryCallbacks.put(requestId, callback);
+        activeAggTradesHistoryStreams.put(requestId, request);
+
+        if (isConnected()) {
+            sendAction("resume_aggtrades_history", Map.of(
+                "symbol", upperSymbol,
+                "lastTimestamp", lastTimestamp,
+                "end", endTime
+            ));
+        }
+
+        return requestId;
+    }
+
+    private void sendSubscribeAggTradesHistory(String symbol, long startTime, long endTime) {
+        sendAction("subscribe_aggtrades_history", Map.of(
+            "symbol", symbol,
+            "start", startTime,
+            "end", endTime
+        ));
+    }
+
     // ========== Shared send helper ==========
 
     private void sendAction(String action, Map<String, Object> fields) {
@@ -380,6 +501,10 @@ public class DataServiceConnection {
     // ========== WebSocket Message Handlers ==========
 
     private void sendSubscribePage(PageRequest request) {
+        if (request.isLive) {
+            sendSubscribeLivePage(request.dataType, request.symbol, request.timeframe, request.duration);
+            return;
+        }
         try {
             Map<String, Object> message = new LinkedHashMap<>();
             message.put("action", "subscribe_page");
@@ -397,6 +522,26 @@ public class DataServiceConnection {
             LOG.debug("Sent subscribe_page: {} {} {}", request.dataType, request.symbol, request.timeframe);
         } catch (Exception e) {
             LOG.error("Failed to send subscribe_page", e);
+        }
+    }
+
+    private void sendSubscribeLivePage(DataType dataType, String symbol, String timeframe, long duration) {
+        try {
+            Map<String, Object> message = new LinkedHashMap<>();
+            message.put("action", "subscribe_live_page");
+            message.put("dataType", dataType.toWireFormat());
+            message.put("symbol", symbol);
+            if (timeframe != null) {
+                message.put("timeframe", timeframe);
+            }
+            message.put("duration", duration);
+            message.put("consumerName", consumerName);
+
+            String json = objectMapper.writeValueAsString(message);
+            webSocket.send(json);
+            LOG.debug("Sent subscribe_live_page: {} {} {} duration={}", dataType, symbol, timeframe, duration);
+        } catch (Exception e) {
+            LOG.error("Failed to send subscribe_live_page", e);
         }
     }
 
@@ -461,6 +606,17 @@ public class DataServiceConnection {
                 case "AGGTRADE" -> handleAggTrade(node);
                 case "MARK_PRICE_UPDATE" -> handleMarkPriceUpdate(node);
                 case "OI_UPDATE" -> handleOiUpdate(node);
+                // Historical aggTrades streaming
+                case "AGGTRADES_STREAM_START" -> handleAggTradesStreamStart(node);
+                case "AGGTRADES_STREAM_RESUMED" -> handleAggTradesStreamResumed(node);
+                case "AGGTRADES_CHUNK" -> handleAggTradesChunk(node);
+                case "AGGTRADES_PROGRESS" -> handleAggTradesProgress(node);
+                case "AGGTRADES_STREAM_END" -> handleAggTradesStreamEnd(node);
+                case "AGGTRADES_STREAM_CANCELLED" -> handleAggTradesStreamCancelled(node);
+                case "AGGTRADES_STREAM_ERROR" -> handleAggTradesStreamError(node);
+                // Live page updates
+                case "LIVE_UPDATE" -> handleLiveUpdate(node);
+                case "LIVE_APPEND" -> handleLiveAppend(node);
                 default -> LOG.debug("Unknown message type: {}", type);
             }
         } catch (Exception e) {
@@ -559,6 +715,184 @@ public class DataServiceConnection {
         notifyListeners(oiListeners.get(key), update);
     }
 
+    // ========== Historical AggTrades Streaming Handlers ==========
+
+    private void handleAggTradesStreamStart(JsonNode node) {
+        String requestId = node.get("requestId").asText();
+        String symbol = node.get("symbol").asText();
+        long startTime = node.get("startTime").asLong();
+        long endTime = node.get("endTime").asLong();
+
+        AggTradesHistoryCallback callback = aggTradesHistoryCallbacks.get(requestId);
+        if (callback != null) {
+            try {
+                callback.onStreamStart(requestId, symbol, startTime, endTime);
+            } catch (Exception e) {
+                LOG.warn("Error in aggTrades history callback: {}", e.getMessage());
+            }
+        }
+    }
+
+    private void handleAggTradesStreamResumed(JsonNode node) {
+        String requestId = node.get("requestId").asText();
+        String symbol = node.get("symbol").asText();
+        long startTime = node.get("startTime").asLong();
+        long endTime = node.get("endTime").asLong();
+
+        AggTradesHistoryCallback callback = aggTradesHistoryCallbacks.get(requestId);
+        if (callback != null) {
+            try {
+                callback.onStreamResumed(requestId, symbol, startTime, endTime);
+            } catch (Exception e) {
+                LOG.warn("Error in aggTrades history callback: {}", e.getMessage());
+            }
+        }
+    }
+
+    private void handleAggTradesChunk(JsonNode node) {
+        String requestId = node.get("requestId").asText();
+        String source = node.get("source").asText();
+        JsonNode tradesNode = node.get("trades");
+
+        // Parse trades from the chunk
+        List<AggTrade> trades = new ArrayList<>();
+        if (tradesNode != null && tradesNode.isArray()) {
+            for (JsonNode t : tradesNode) {
+                trades.add(new AggTrade(
+                    t.get("id").asLong(),
+                    t.get("price").asDouble(),
+                    t.get("qty").asDouble(),
+                    0L, 0L, // firstTradeId, lastTradeId not sent in chunks
+                    t.get("ts").asLong(),
+                    t.get("isBuyerMaker").asBoolean()
+                ));
+            }
+        }
+
+        // Update last timestamp for resume capability
+        if (!trades.isEmpty()) {
+            AggTradesHistoryRequest request = activeAggTradesHistoryStreams.get(requestId);
+            if (request != null) {
+                long lastTs = trades.get(trades.size() - 1).timestamp();
+                activeAggTradesHistoryStreams.put(requestId, request.withLastTimestamp(lastTs));
+            }
+        }
+
+        AggTradesHistoryCallback callback = aggTradesHistoryCallbacks.get(requestId);
+        if (callback != null) {
+            try {
+                callback.onChunk(requestId, source, trades);
+            } catch (Exception e) {
+                LOG.warn("Error in aggTrades history callback: {}", e.getMessage());
+            }
+        }
+    }
+
+    private void handleAggTradesProgress(JsonNode node) {
+        String requestId = node.get("requestId").asText();
+        int percent = node.get("percent").asInt();
+        String message = node.has("message") ? node.get("message").asText() : "";
+        long totalStreamed = node.has("totalStreamed") ? node.get("totalStreamed").asLong() : 0;
+
+        AggTradesHistoryCallback callback = aggTradesHistoryCallbacks.get(requestId);
+        if (callback != null) {
+            try {
+                callback.onProgress(requestId, percent, message, totalStreamed);
+            } catch (Exception e) {
+                LOG.warn("Error in aggTrades history callback: {}", e.getMessage());
+            }
+        }
+    }
+
+    private void handleAggTradesStreamEnd(JsonNode node) {
+        String requestId = node.get("requestId").asText();
+        long totalCount = node.get("totalCount").asLong();
+
+        AggTradesHistoryCallback callback = aggTradesHistoryCallbacks.remove(requestId);
+        activeAggTradesHistoryStreams.remove(requestId);
+
+        if (callback != null) {
+            try {
+                callback.onComplete(requestId, totalCount);
+            } catch (Exception e) {
+                LOG.warn("Error in aggTrades history callback: {}", e.getMessage());
+            }
+        }
+    }
+
+    private void handleAggTradesStreamCancelled(JsonNode node) {
+        String requestId = node.get("requestId").asText();
+        long totalStreamed = node.has("totalStreamed") ? node.get("totalStreamed").asLong() : 0;
+        long lastTimestamp = node.has("lastTimestamp") ? node.get("lastTimestamp").asLong() : 0;
+
+        AggTradesHistoryCallback callback = aggTradesHistoryCallbacks.remove(requestId);
+        activeAggTradesHistoryStreams.remove(requestId);
+
+        if (callback != null) {
+            try {
+                callback.onCancelled(requestId, totalStreamed, lastTimestamp);
+            } catch (Exception e) {
+                LOG.warn("Error in aggTrades history callback: {}", e.getMessage());
+            }
+        }
+    }
+
+    private void handleAggTradesStreamError(JsonNode node) {
+        String requestId = node.get("requestId").asText();
+        String error = node.has("error") ? node.get("error").asText() : "Unknown error";
+
+        AggTradesHistoryCallback callback = aggTradesHistoryCallbacks.remove(requestId);
+        AggTradesHistoryRequest request = activeAggTradesHistoryStreams.remove(requestId);
+
+        if (callback != null) {
+            try {
+                // Pass request info so caller can retry/resume
+                callback.onError(requestId, error,
+                    request != null ? request.lastTimestamp : 0);
+            } catch (Exception e) {
+                LOG.warn("Error in aggTrades history callback: {}", e.getMessage());
+            }
+        }
+    }
+
+    // ========== Live Page Update Handlers ==========
+
+    private void handleLiveUpdate(JsonNode node) {
+        String pageKey = node.get("pageKey").asText();
+        JsonNode candleNode = node.get("candle");
+        Candle candle = parseCandleData(candleNode);
+
+        notifyPageCallbacks(pageKey, cb -> cb.onLiveUpdate(candle));
+    }
+
+    private void handleLiveAppend(JsonNode node) {
+        String pageKey = node.get("pageKey").asText();
+        JsonNode candleNode = node.get("candle");
+        JsonNode removedNode = node.get("removedTimestamps");
+
+        Candle candle = parseCandleData(candleNode);
+
+        List<Long> removedTimestamps = new ArrayList<>();
+        if (removedNode != null && removedNode.isArray()) {
+            for (JsonNode ts : removedNode) {
+                removedTimestamps.add(ts.asLong());
+            }
+        }
+
+        notifyPageCallbacks(pageKey, cb -> cb.onLiveAppend(candle, removedTimestamps));
+    }
+
+    private Candle parseCandleData(JsonNode node) {
+        return new Candle(
+            node.get("timestamp").asLong(),
+            node.get("open").asDouble(),
+            node.get("high").asDouble(),
+            node.get("low").asDouble(),
+            node.get("close").asDouble(),
+            node.get("volume").asDouble()
+        );
+    }
+
     private <T> void notifyListeners(Set<Consumer<T>> listeners, T value) {
         if (listeners != null) {
             for (Consumer<T> listener : listeners) {
@@ -646,6 +980,24 @@ public class DataServiceConnection {
         for (String symbol : activeOiSubscriptions) {
             sendAction("subscribe_live_oi", Map.of("symbol", symbol));
         }
+
+        // Resume aggTrades history streams
+        for (AggTradesHistoryRequest request : activeAggTradesHistoryStreams.values()) {
+            if (request.lastTimestamp > 0) {
+                // Resume from last received timestamp
+                LOG.info("Resuming aggTrades history stream {} from timestamp {}",
+                    request.requestId, request.lastTimestamp);
+                sendAction("resume_aggtrades_history", Map.of(
+                    "symbol", request.symbol,
+                    "lastTimestamp", request.lastTimestamp,
+                    "end", request.endTime
+                ));
+            } else {
+                // No data received yet, start fresh
+                LOG.info("Restarting aggTrades history stream {}", request.requestId);
+                sendSubscribeAggTradesHistory(request.symbol, request.startTime, request.endTime);
+            }
+        }
     }
 
     private void onDisconnected() {
@@ -683,13 +1035,27 @@ public class DataServiceConnection {
     // ========== Key Generation ==========
 
     private String makePageKey(DataType dataType, String symbol, String timeframe, long startTime, long endTime) {
+        // Must match server's PageKey.toKeyString() format: dataType:symbol[:timeframe]:anchor:duration
+        // For anchored pages: anchor = endTime, duration = endTime - startTime
         StringBuilder sb = new StringBuilder();
         sb.append(dataType.toWireFormat()).append(":");
         sb.append(symbol.toUpperCase()).append(":");
         if (timeframe != null) {
             sb.append(timeframe).append(":");
         }
-        sb.append(startTime).append(":").append(endTime);
+        sb.append(endTime).append(":").append(endTime - startTime);
+        return sb.toString();
+    }
+
+    private String makeLivePageKey(DataType dataType, String symbol, String timeframe, long duration) {
+        // Must match server's PageKey.toKeyString() format for live pages: dataType:symbol[:timeframe]:LIVE:duration
+        StringBuilder sb = new StringBuilder();
+        sb.append(dataType.toWireFormat()).append(":");
+        sb.append(symbol.toUpperCase()).append(":");
+        if (timeframe != null) {
+            sb.append(timeframe).append(":");
+        }
+        sb.append("LIVE:").append(duration);
         return sb.toString();
     }
 
@@ -711,6 +1077,9 @@ public class DataServiceConnection {
 
     /**
      * Callback for page updates.
+     *
+     * Pages can be anchored (fixed time range) or live (sliding with current time).
+     * Live pages receive onLiveUpdate and onLiveAppend callbacks.
      */
     public interface PageUpdateCallback {
         /**
@@ -736,13 +1105,108 @@ public class DataServiceConnection {
          * Called when page is evicted from server.
          */
         void onEvicted();
+
+        /**
+         * Called when the incomplete/forming candle is updated (live pages only).
+         * @param candle The updated incomplete candle
+         */
+        default void onLiveUpdate(Candle candle) {}
+
+        /**
+         * Called when a new completed candle is appended (live pages only).
+         * @param candle            The new completed candle
+         * @param removedTimestamps Timestamps of candles removed to maintain window size
+         */
+        default void onLiveAppend(Candle candle, List<Long> removedTimestamps) {}
     }
 
     /**
      * Internal page request tracking.
      */
     private record PageRequest(DataType dataType, String symbol, String timeframe,
-                               long startTime, long endTime) {}
+                               long startTime, long endTime, long duration, boolean isLive) {
+        // Anchored page constructor
+        PageRequest(DataType dataType, String symbol, String timeframe, long startTime, long endTime) {
+            this(dataType, symbol, timeframe, startTime, endTime, endTime - startTime, false);
+        }
+        // Live page constructor
+        PageRequest(DataType dataType, String symbol, String timeframe, long duration, boolean isLive) {
+            this(dataType, symbol, timeframe, 0, 0, duration, isLive);
+        }
+    }
+
+    /**
+     * Internal aggTrades history request tracking.
+     */
+    private record AggTradesHistoryRequest(String requestId, String symbol, long startTime, long endTime,
+                                           long lastTimestamp) {
+        AggTradesHistoryRequest withLastTimestamp(long ts) {
+            return new AggTradesHistoryRequest(requestId, symbol, startTime, endTime, ts);
+        }
+    }
+
+    /**
+     * Callback for historical aggTrades streaming events.
+     */
+    public interface AggTradesHistoryCallback {
+        /**
+         * Called when the stream starts.
+         * @param requestId The stream request ID
+         * @param symbol    The symbol being streamed
+         * @param startTime Start time of the stream
+         * @param endTime   End time of the stream
+         */
+        default void onStreamStart(String requestId, String symbol, long startTime, long endTime) {}
+
+        /**
+         * Called when a resumed stream starts.
+         * @param requestId The new stream request ID
+         * @param symbol    The symbol being streamed
+         * @param startTime Start time (from resume point)
+         * @param endTime   End time of the stream
+         */
+        default void onStreamResumed(String requestId, String symbol, long startTime, long endTime) {}
+
+        /**
+         * Called when a chunk of trades is received.
+         * @param requestId The stream request ID
+         * @param source    Where the data came from: "cache", "api", or "vision"
+         * @param trades    The trades in this chunk
+         */
+        void onChunk(String requestId, String source, List<AggTrade> trades);
+
+        /**
+         * Called periodically with progress updates (keeps connection alive).
+         * @param requestId     The stream request ID
+         * @param percent       Progress percentage (0-100)
+         * @param message       Human-readable progress message
+         * @param totalStreamed Total trades streamed so far
+         */
+        default void onProgress(String requestId, int percent, String message, long totalStreamed) {}
+
+        /**
+         * Called when the stream completes successfully.
+         * @param requestId  The stream request ID
+         * @param totalCount Total number of trades streamed
+         */
+        void onComplete(String requestId, long totalCount);
+
+        /**
+         * Called when the stream is cancelled.
+         * @param requestId     The stream request ID
+         * @param totalStreamed Total trades streamed before cancellation
+         * @param lastTimestamp Last timestamp received (use for resumption)
+         */
+        default void onCancelled(String requestId, long totalStreamed, long lastTimestamp) {}
+
+        /**
+         * Called when an error occurs.
+         * @param requestId     The stream request ID
+         * @param error         Error message
+         * @param lastTimestamp Last timestamp received (use for resumption)
+         */
+        default void onError(String requestId, String error, long lastTimestamp) {}
+    }
 
     /**
      * WebSocket client implementation.

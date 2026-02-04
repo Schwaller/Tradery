@@ -1,15 +1,27 @@
 package com.tradery.dataservice.page;
 
 import com.tradery.dataservice.config.DataServiceConfig;
+import com.tradery.core.model.Candle;
 
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
+import java.util.function.ToLongFunction;
 
 /**
  * Represents a loaded data page with its consumers and data.
+ *
+ * Pages can be:
+ * - Anchored: Fixed time range, static historical view (data stored as byte[])
+ * - Live: Sliding window that moves with current time, receives live updates
+ *
+ * For live pages, data is stored as a List for efficient append/trim operations.
  */
 public class Page {
     private final PageKey key;
@@ -22,6 +34,12 @@ public class Page {
     private volatile PageState state = PageState.PENDING;
     private volatile byte[] data;
     private volatile Long lastSyncTime;
+
+    // Live page support
+    private final ReentrantReadWriteLock liveDataLock = new ReentrantReadWriteLock();
+    private final List<Candle> liveCandles = new ArrayList<>();
+    private volatile Candle incompleteCandle;
+    private final List<LiveUpdateListener> liveListeners = new CopyOnWriteArrayList<>();
 
     public Page(PageKey key, DataServiceConfig config) {
         this.key = key;
@@ -150,7 +168,145 @@ public class Page {
             lastSyncTime,
             getConsumers(),
             coverage,
-            false
+            key.isLive()
         );
+    }
+
+    // ========== Live Page Support ==========
+
+    /**
+     * Check if this is a live page.
+     */
+    public boolean isLive() {
+        return key.isLive();
+    }
+
+    /**
+     * Set initial candle data for a live page.
+     */
+    public void setLiveCandles(List<Candle> candles) {
+        liveDataLock.writeLock().lock();
+        try {
+            liveCandles.clear();
+            liveCandles.addAll(candles);
+            recordCount.set(candles.size());
+        } finally {
+            liveDataLock.writeLock().unlock();
+        }
+    }
+
+    /**
+     * Get live candle data.
+     */
+    public List<Candle> getLiveCandles() {
+        liveDataLock.readLock().lock();
+        try {
+            lastAccessTime.set(System.currentTimeMillis());
+            return Collections.unmodifiableList(new ArrayList<>(liveCandles));
+        } finally {
+            liveDataLock.readLock().unlock();
+        }
+    }
+
+    /**
+     * Get the incomplete (forming) candle.
+     */
+    public Candle getIncompleteCandle() {
+        return incompleteCandle;
+    }
+
+    /**
+     * Update the incomplete (forming) candle.
+     */
+    public void updateIncomplete(Candle candle) {
+        this.incompleteCandle = candle;
+        notifyUpdate(candle);
+    }
+
+    /**
+     * Append a completed candle and trim old data outside the window duration.
+     *
+     * @param candle The new completed candle
+     * @return List of candles that were removed (fell outside window)
+     */
+    public List<Candle> appendAndTrim(Candle candle) {
+        liveDataLock.writeLock().lock();
+        try {
+            // Append the new candle
+            liveCandles.add(candle);
+
+            // Clear incomplete since it's now complete
+            this.incompleteCandle = null;
+
+            // Trim data outside the duration
+            long windowStart = System.currentTimeMillis() - key.duration();
+            List<Candle> removed = new ArrayList<>();
+
+            while (!liveCandles.isEmpty() && liveCandles.get(0).timestamp() < windowStart) {
+                removed.add(liveCandles.remove(0));
+            }
+
+            recordCount.set(liveCandles.size());
+
+            if (!removed.isEmpty()) {
+                notifyAppend(candle, removed);
+            } else {
+                notifyAppend(candle, Collections.emptyList());
+            }
+
+            return removed;
+        } finally {
+            liveDataLock.writeLock().unlock();
+        }
+    }
+
+    /**
+     * Add a listener for live updates.
+     */
+    public void addLiveListener(LiveUpdateListener listener) {
+        liveListeners.add(listener);
+    }
+
+    /**
+     * Remove a live update listener.
+     */
+    public void removeLiveListener(LiveUpdateListener listener) {
+        liveListeners.remove(listener);
+    }
+
+    private void notifyUpdate(Candle candle) {
+        for (LiveUpdateListener listener : liveListeners) {
+            try {
+                listener.onUpdate(this, candle);
+            } catch (Exception e) {
+                // Log but don't propagate
+            }
+        }
+    }
+
+    private void notifyAppend(Candle candle, List<Candle> removed) {
+        for (LiveUpdateListener listener : liveListeners) {
+            try {
+                listener.onAppend(this, candle, removed);
+            } catch (Exception e) {
+                // Log but don't propagate
+            }
+        }
+    }
+
+    /**
+     * Listener for live page updates.
+     */
+    public interface LiveUpdateListener {
+        /**
+         * Called when the incomplete/forming candle is updated.
+         */
+        void onUpdate(Page page, Candle candle);
+
+        /**
+         * Called when a new completed candle is appended.
+         * @param removed Candles that were removed to maintain window size
+         */
+        void onAppend(Page page, Candle candle, List<Candle> removed);
     }
 }

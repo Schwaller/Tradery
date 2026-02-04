@@ -167,6 +167,89 @@ public class AggTradesDao {
     }
 
     /**
+     * Stream aggregated trades in chunks to avoid loading all into memory.
+     * Calls the consumer with batches of trades as they are read from the database.
+     *
+     * @param startTime Start timestamp
+     * @param endTime End timestamp
+     * @param chunkSize Number of trades per chunk
+     * @param chunkConsumer Consumer called with each chunk of trades
+     * @return Total number of trades streamed
+     */
+    public int streamQuery(long startTime, long endTime, int chunkSize,
+                           java.util.function.Consumer<List<AggTrade>> chunkConsumer) throws SQLException {
+        return streamQueryWithExchange(startTime, endTime, null, chunkSize, chunkConsumer);
+    }
+
+    /**
+     * Stream aggregated trades in chunks, optionally filtered by exchanges.
+     *
+     * @param startTime Start timestamp
+     * @param endTime End timestamp
+     * @param exchanges Set of exchanges to include (null for all)
+     * @param chunkSize Number of trades per chunk
+     * @param chunkConsumer Consumer called with each chunk of trades
+     * @return Total number of trades streamed
+     */
+    public int streamQueryWithExchange(long startTime, long endTime, Set<Exchange> exchanges,
+                                       int chunkSize, java.util.function.Consumer<List<AggTrade>> chunkConsumer)
+            throws SQLException {
+        Connection c = conn.getConnection();
+
+        StringBuilder sql = new StringBuilder("""
+            SELECT agg_trade_id, price, quantity, first_trade_id, last_trade_id, timestamp, is_buyer_maker,
+                   exchange, market_type, raw_symbol, normalized_price
+            FROM agg_trades
+            WHERE timestamp >= ? AND timestamp <= ?
+            """);
+
+        if (exchanges != null && !exchanges.isEmpty()) {
+            sql.append(" AND exchange IN (");
+            for (int i = 0; i < exchanges.size(); i++) {
+                sql.append(i > 0 ? ",?" : "?");
+            }
+            sql.append(")");
+        }
+        sql.append(" ORDER BY timestamp, agg_trade_id");
+
+        int totalCount = 0;
+        List<AggTrade> chunk = new ArrayList<>(chunkSize);
+
+        try (PreparedStatement stmt = c.prepareStatement(sql.toString())) {
+            // Use forward-only cursor for memory efficiency
+            stmt.setFetchSize(chunkSize);
+            stmt.setLong(1, startTime);
+            stmt.setLong(2, endTime);
+
+            int paramIndex = 3;
+            if (exchanges != null && !exchanges.isEmpty()) {
+                for (Exchange ex : exchanges) {
+                    stmt.setString(paramIndex++, ex.getConfigKey());
+                }
+            }
+
+            try (ResultSet rs = stmt.executeQuery()) {
+                while (rs.next()) {
+                    chunk.add(parseAggTrade(rs));
+                    totalCount++;
+
+                    if (chunk.size() >= chunkSize) {
+                        chunkConsumer.accept(chunk);
+                        chunk = new ArrayList<>(chunkSize);
+                    }
+                }
+
+                // Send remaining trades
+                if (!chunk.isEmpty()) {
+                    chunkConsumer.accept(chunk);
+                }
+            }
+        }
+
+        return totalCount;
+    }
+
+    /**
      * Parse an AggTrade from a ResultSet.
      */
     private AggTrade parseAggTrade(ResultSet rs) throws SQLException {

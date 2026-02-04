@@ -99,12 +99,35 @@ public class AggTradesClient {
      * @param cancelled  Optional AtomicBoolean to signal cancellation
      * @param onProgress Optional callback for progress updates
      * @return List of aggregated trades (may be partial if cancelled)
+     * @deprecated Use {@link #streamAggTrades} for memory-efficient streaming
      */
+    @Deprecated
     public List<AggTrade> fetchAllAggTrades(String symbol, long startTime, long endTime,
                                              AtomicBoolean cancelled, Consumer<FetchProgress> onProgress)
             throws IOException {
 
         List<AggTrade> allTrades = new ArrayList<>();
+        streamAggTrades(symbol, startTime, endTime, cancelled, onProgress, allTrades::addAll);
+        return allTrades;
+    }
+
+    /**
+     * Stream aggregated trades between start and end time.
+     * Calls batchConsumer with each batch as it's fetched, avoiding memory accumulation.
+     *
+     * @param symbol        Trading pair (e.g., "BTCUSDT")
+     * @param startTime     Start time in milliseconds
+     * @param endTime       End time in milliseconds
+     * @param cancelled     Optional AtomicBoolean to signal cancellation
+     * @param onProgress    Optional callback for progress updates
+     * @param batchConsumer Consumer called with each batch of trades (up to 1000 per batch)
+     * @return Total number of trades fetched
+     */
+    public int streamAggTrades(String symbol, long startTime, long endTime,
+                               AtomicBoolean cancelled, Consumer<FetchProgress> onProgress,
+                               Consumer<List<AggTrade>> batchConsumer) throws IOException {
+
+        int totalCount = 0;
         long currentStart = startTime;
 
         // Estimate total trades for progress (rough estimate based on symbol)
@@ -112,7 +135,7 @@ public class AggTradesClient {
         long days = Math.max(1, (endTime - startTime) / (24 * 60 * 60 * 1000));
         long estimatedTotal = days * estimatedTradesPerDay;
 
-        log.info("Fetching {} aggTrades from Binance...", symbol);
+        log.info("Streaming {} aggTrades from Binance...", symbol);
 
         // Report starting
         if (onProgress != null) {
@@ -122,11 +145,11 @@ public class AggTradesClient {
         while (currentStart < endTime) {
             // Check for cancellation before each request
             if (cancelled != null && cancelled.get()) {
-                log.debug("Fetch cancelled. Returning {} trades.", allTrades.size());
+                log.debug("Fetch cancelled after {} trades.", totalCount);
                 if (onProgress != null) {
-                    onProgress.accept(FetchProgress.cancelled(allTrades.size()));
+                    onProgress.accept(FetchProgress.cancelled(totalCount));
                 }
-                return allTrades;
+                return totalCount;
             }
 
             List<AggTrade> batch = fetchAggTrades(symbol, currentStart, endTime, MAX_TRADES_PER_REQUEST);
@@ -135,7 +158,9 @@ public class AggTradesClient {
                 break;
             }
 
-            allTrades.addAll(batch);
+            // Stream batch to consumer immediately
+            batchConsumer.accept(batch);
+            totalCount += batch.size();
 
             // Update start time for next batch - use last trade timestamp + 1ms
             AggTrade lastTrade = batch.get(batch.size() - 1);
@@ -148,13 +173,13 @@ public class AggTradesClient {
 
             // Report progress
             if (onProgress != null) {
-                int percent = (int) Math.min(99, (allTrades.size() * 100) / estimatedTotal);
-                String msg = "Fetching " + symbol + " trades: " + formatCount(allTrades.size()) + "...";
-                onProgress.accept(new FetchProgress(allTrades.size(), (int) estimatedTotal, msg));
+                int percent = (int) Math.min(99, (totalCount * 100) / estimatedTotal);
+                String msg = "Fetching " + symbol + " trades: " + formatCount(totalCount) + "...";
+                onProgress.accept(new FetchProgress(totalCount, (int) estimatedTotal, msg));
             }
 
-            if (allTrades.size() % 50000 == 0) {
-                log.debug("Fetched {} trades so far...", formatCount(allTrades.size()));
+            if (totalCount % 50000 == 0) {
+                log.debug("Streamed {} trades so far...", formatCount(totalCount));
             }
 
             // Rate limiting - Binance allows 1200 requests per minute
@@ -163,20 +188,20 @@ public class AggTradesClient {
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 if (onProgress != null) {
-                    onProgress.accept(FetchProgress.cancelled(allTrades.size()));
+                    onProgress.accept(FetchProgress.cancelled(totalCount));
                 }
-                return allTrades;
+                return totalCount;
             }
         }
 
-        log.info("Fetch complete. Total: {} trades", formatCount(allTrades.size()));
+        log.info("Stream complete. Total: {} trades", formatCount(totalCount));
 
         // Report completion
         if (onProgress != null) {
-            onProgress.accept(FetchProgress.complete(allTrades.size()));
+            onProgress.accept(FetchProgress.complete(totalCount));
         }
 
-        return allTrades;
+        return totalCount;
     }
 
     private String formatCount(int count) {

@@ -1,16 +1,19 @@
 package com.tradery.dataservice.api;
 
+import com.tradery.dataservice.data.AggTradesStore;
 import com.tradery.dataservice.live.LiveAggTradeManager;
 import com.tradery.dataservice.live.LiveCandleManager;
 import com.tradery.dataservice.live.LiveMarkPriceManager;
 import com.tradery.dataservice.live.LiveOpenInterestPoller;
 import com.tradery.dataservice.page.PageManager;
+import com.tradery.dataservice.page.Page;
 import com.tradery.dataservice.page.PageKey;
 import com.tradery.dataservice.page.PageState;
 import com.tradery.dataservice.page.PageStatus;
 import com.tradery.dataservice.page.PageUpdateListener;
 import com.tradery.core.model.AggTrade;
 import com.tradery.core.model.Candle;
+import com.tradery.core.model.FetchProgress;
 import com.tradery.core.model.MarkPriceUpdate;
 import com.tradery.core.model.OpenInterestUpdate;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -22,10 +25,19 @@ import io.javalin.websocket.WsMessageContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArraySet;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BiConsumer;
 
 /**
@@ -34,11 +46,16 @@ import java.util.function.BiConsumer;
 public class WebSocketHandler implements PageUpdateListener {
     private static final Logger LOG = LoggerFactory.getLogger(WebSocketHandler.class);
 
+    // Streaming configuration
+    private static final int AGGTRADES_CHUNK_SIZE = 5000;
+    private static final long PROGRESS_HEARTBEAT_INTERVAL_MS = 5000; // Send heartbeat every 5 seconds
+
     private final PageManager pageManager;
     private final LiveCandleManager liveCandleManager;
     private final LiveAggTradeManager liveAggTradeManager;
     private final LiveMarkPriceManager liveMarkPriceManager;
     private final LiveOpenInterestPoller liveOpenInterestPoller;
+    private final AggTradesStore aggTradesStore;
     private final ObjectMapper objectMapper;
     private final Map<String, WsConnectContext> connections = new ConcurrentHashMap<>();
     private final Map<String, Set<String>> subscriptions = new ConcurrentHashMap<>(); // consumerId -> pageKeys
@@ -65,16 +82,49 @@ public class WebSocketHandler implements PageUpdateListener {
     private final Map<String, Set<String>> oiSubscribers = new ConcurrentHashMap<>();
     private final Map<String, BiConsumer<String, OpenInterestUpdate>> oiCallbacks = new ConcurrentHashMap<>();
 
+    // Historical aggTrades streaming
+    private final ExecutorService streamExecutor = Executors.newFixedThreadPool(4);
+    private final ScheduledExecutorService heartbeatExecutor = Executors.newSingleThreadScheduledExecutor();
+    private final Map<String, AggTradesStreamState> activeStreams = new ConcurrentHashMap<>(); // requestId -> state
+    private final Map<String, Set<String>> consumerStreams = new ConcurrentHashMap<>(); // consumerId -> requestIds
+
     public WebSocketHandler(PageManager pageManager, LiveCandleManager liveCandleManager,
                             LiveAggTradeManager liveAggTradeManager, LiveMarkPriceManager liveMarkPriceManager,
-                            LiveOpenInterestPoller liveOpenInterestPoller, ObjectMapper objectMapper) {
+                            LiveOpenInterestPoller liveOpenInterestPoller, AggTradesStore aggTradesStore,
+                            ObjectMapper objectMapper) {
         this.pageManager = pageManager;
         this.liveCandleManager = liveCandleManager;
         this.liveAggTradeManager = liveAggTradeManager;
         this.liveMarkPriceManager = liveMarkPriceManager;
         this.liveOpenInterestPoller = liveOpenInterestPoller;
+        this.aggTradesStore = aggTradesStore;
         this.objectMapper = objectMapper;
         pageManager.addUpdateListener(this);
+    }
+
+    /**
+     * State for an active aggTrades history stream.
+     */
+    private static class AggTradesStreamState {
+        final String requestId;
+        final String consumerId;
+        final String symbol;
+        final long startTime;
+        final long endTime;
+        final AtomicBoolean cancelled = new AtomicBoolean(false);
+        final AtomicLong lastChunkTimestamp = new AtomicLong(0);
+        final AtomicLong totalStreamed = new AtomicLong(0);
+        volatile ScheduledFuture<?> heartbeatTask;
+        volatile String lastProgressMessage = "";
+        volatile int lastProgressPercent = 0;
+
+        AggTradesStreamState(String requestId, String consumerId, String symbol, long startTime, long endTime) {
+            this.requestId = requestId;
+            this.consumerId = consumerId;
+            this.symbol = symbol;
+            this.startTime = startTime;
+            this.endTime = endTime;
+        }
     }
 
     public void onConnect(WsConnectContext ctx) {
@@ -102,6 +152,7 @@ public class WebSocketHandler implements PageUpdateListener {
                 case "subscribe" -> handleSubscribe(consumerId, message);
                 case "unsubscribe" -> handleUnsubscribe(consumerId, message);
                 case "subscribe_page" -> handleSubscribePage(consumerId, message);
+                case "subscribe_live_page" -> handleSubscribeLivePage(consumerId, message);
                 case "subscribe_live" -> handleSubscribeLive(consumerId, message);
                 case "unsubscribe_live" -> handleUnsubscribeLive(consumerId, message);
                 case "subscribe_live_aggtrades" -> handleSubscribeLiveAggTrades(consumerId, message);
@@ -110,6 +161,10 @@ public class WebSocketHandler implements PageUpdateListener {
                 case "unsubscribe_live_markprice" -> handleUnsubscribeLiveMarkPrice(consumerId, message);
                 case "subscribe_live_oi" -> handleSubscribeLiveOi(consumerId, message);
                 case "unsubscribe_live_oi" -> handleUnsubscribeLiveOi(consumerId, message);
+                // Historical aggTrades streaming
+                case "subscribe_aggtrades_history" -> handleSubscribeAggTradesHistory(consumerId, message);
+                case "cancel_aggtrades_history" -> handleCancelAggTradesHistory(consumerId, message);
+                case "resume_aggtrades_history" -> handleResumeAggTradesHistory(consumerId, message);
                 default -> LOG.warn("Unknown WebSocket action: {}", action);
             }
         } catch (Exception e) {
@@ -179,6 +234,21 @@ public class WebSocketHandler implements PageUpdateListener {
                 BiConsumer<String, OpenInterestUpdate> cb = oiCallbacks.remove(symbol);
                 if (cb != null) liveOpenInterestPoller.unsubscribe(symbol, cb);
             });
+
+        // Clean up active aggTrades history streams
+        Set<String> streams = consumerStreams.remove(consumerId);
+        if (streams != null) {
+            for (String requestId : streams) {
+                AggTradesStreamState state = activeStreams.remove(requestId);
+                if (state != null) {
+                    state.cancelled.set(true);
+                    if (state.heartbeatTask != null) {
+                        state.heartbeatTask.cancel(false);
+                    }
+                    LOG.info("Cancelled aggTrades stream {} on disconnect", requestId);
+                }
+            }
+        }
     }
 
     public void onError(WsErrorContext ctx) {
@@ -264,6 +334,52 @@ public class WebSocketHandler implements PageUpdateListener {
             WsConnectContext ctx = connections.get(consumerId);
             if (ctx != null) {
                 sendError(ctx, "Failed to subscribe to page: " + e.getMessage());
+            }
+        }
+    }
+
+    /**
+     * Handle subscribe_live_page action: request a live (sliding window) page.
+     * Live pages have no fixed anchor and slide forward with current time.
+     */
+    private void handleSubscribeLivePage(String consumerId, JsonNode message) {
+        try {
+            String dataType = message.get("dataType").asText();
+            String symbol = message.get("symbol").asText();
+            String timeframe = message.has("timeframe") && !message.get("timeframe").isNull()
+                ? message.get("timeframe").asText() : null;
+            long duration = message.get("duration").asLong();
+            String consumerName = message.has("consumerName")
+                ? message.get("consumerName").asText() : "WebSocket-" + consumerId;
+
+            // Create live PageKey (anchor = null)
+            PageKey key = PageKey.liveCandles(symbol, timeframe, duration);
+            String pageKeyStr = key.toKeyString();
+
+            LOG.info("Consumer {} requesting live page {}", consumerId, pageKeyStr);
+
+            // Request page from manager
+            PageStatus status = pageManager.requestPage(key, consumerId, consumerName);
+
+            // Add to subscription maps
+            subscriptions.computeIfAbsent(consumerId, k -> new CopyOnWriteArraySet<>()).add(pageKeyStr);
+            pageSubscribers.computeIfAbsent(pageKeyStr, k -> new CopyOnWriteArraySet<>()).add(consumerId);
+
+            // Send current status
+            sendStatusUpdate(consumerId, pageKeyStr, status);
+
+            if (status.state() == PageState.READY) {
+                DataReadyMessage dataReady = new DataReadyMessage("DATA_READY", pageKeyStr, status.recordCount());
+                WsConnectContext ctx = connections.get(consumerId);
+                if (ctx != null) {
+                    ctx.send(objectMapper.writeValueAsString(dataReady));
+                }
+            }
+        } catch (Exception e) {
+            LOG.error("Failed to handle subscribe_live_page", e);
+            WsConnectContext ctx = connections.get(consumerId);
+            if (ctx != null) {
+                sendError(ctx, "Failed to subscribe to live page: " + e.getMessage());
             }
         }
     }
@@ -405,6 +521,34 @@ public class WebSocketHandler implements PageUpdateListener {
         broadcast(subscribers, message);
     }
 
+    // ========== Live Page Update Handlers (PageUpdateListener) ==========
+
+    @Override
+    public void onLiveUpdate(PageKey key, Candle candle) {
+        String pageKey = key.toKeyString();
+        Set<String> subscribers = pageSubscribers.get(pageKey);
+        if (subscribers == null || subscribers.isEmpty()) return;
+
+        // Update of incomplete/forming candle
+        LiveUpdateMessage message = new LiveUpdateMessage("LIVE_UPDATE", pageKey,
+            new CandleData(candle.timestamp(), candle.open(), candle.high(), candle.low(), candle.close(), candle.volume()));
+        broadcast(subscribers, message);
+    }
+
+    @Override
+    public void onLiveAppend(PageKey key, Candle candle, List<Candle> removed) {
+        String pageKey = key.toKeyString();
+        Set<String> subscribers = pageSubscribers.get(pageKey);
+        if (subscribers == null || subscribers.isEmpty()) return;
+
+        // New completed candle, with optional removal of old candles
+        List<Long> removedTimestamps = removed.stream().map(Candle::timestamp).toList();
+        LiveAppendMessage message = new LiveAppendMessage("LIVE_APPEND", pageKey,
+            new CandleData(candle.timestamp(), candle.open(), candle.high(), candle.low(), candle.close(), candle.volume()),
+            removedTimestamps);
+        broadcast(subscribers, message);
+    }
+
     private void sendStatusUpdate(String consumerId, String pageKey, PageStatus status) {
         WsConnectContext ctx = connections.get(consumerId);
         if (ctx == null) return;
@@ -542,6 +686,246 @@ public class WebSocketHandler implements PageUpdateListener {
         broadcast(subscribers, msg);
     }
 
+    // ========== Historical AggTrades Streaming ==========
+
+    /**
+     * Handle subscribe_aggtrades_history: Start streaming historical aggTrades to the client.
+     * Data is streamed in chunks as it becomes available (from cache and/or fetched from Binance).
+     */
+    private void handleSubscribeAggTradesHistory(String consumerId, JsonNode message) {
+        try {
+            String symbol = message.get("symbol").asText().toUpperCase();
+            long startTime = message.get("start").asLong();
+            long endTime = message.get("end").asLong();
+
+            // Generate unique request ID
+            String requestId = UUID.randomUUID().toString().substring(0, 8);
+
+            LOG.info("Consumer {} starting aggTrades history stream {} for {} [{} - {}]",
+                consumerId, requestId, symbol, startTime, endTime);
+
+            // Create stream state
+            AggTradesStreamState state = new AggTradesStreamState(requestId, consumerId, symbol, startTime, endTime);
+            activeStreams.put(requestId, state);
+            consumerStreams.computeIfAbsent(consumerId, k -> new CopyOnWriteArraySet<>()).add(requestId);
+
+            // Send stream start message
+            WsConnectContext ctx = connections.get(consumerId);
+            if (ctx == null) {
+                LOG.warn("Consumer {} disconnected before stream could start", consumerId);
+                activeStreams.remove(requestId);
+                return;
+            }
+
+            sendMessage(ctx, new AggTradesStreamStartMessage("AGGTRADES_STREAM_START", requestId, symbol, startTime, endTime));
+
+            // Start heartbeat task to keep connection alive during long fetches
+            state.heartbeatTask = heartbeatExecutor.scheduleAtFixedRate(() -> {
+                sendHeartbeat(state);
+            }, PROGRESS_HEARTBEAT_INTERVAL_MS, PROGRESS_HEARTBEAT_INTERVAL_MS, TimeUnit.MILLISECONDS);
+
+            // Start streaming in background
+            streamExecutor.submit(() -> executeAggTradesStream(state));
+
+        } catch (Exception e) {
+            LOG.error("Failed to start aggTrades history stream", e);
+            WsConnectContext ctx = connections.get(consumerId);
+            if (ctx != null) {
+                sendError(ctx, "Failed to start stream: " + e.getMessage());
+            }
+        }
+    }
+
+    /**
+     * Execute the aggTrades stream, sending chunks to the client as they become available.
+     */
+    private void executeAggTradesStream(AggTradesStreamState state) {
+        try {
+            int totalStreamed = aggTradesStore.streamAggTrades(
+                state.symbol,
+                state.startTime,
+                state.endTime,
+                AGGTRADES_CHUNK_SIZE,
+                (chunk, source) -> {
+                    // Stream chunk to client
+                    if (!state.cancelled.get()) {
+                        sendChunk(state, chunk, source);
+                    }
+                },
+                progress -> {
+                    // Update progress state (heartbeat task will send it)
+                    state.lastProgressMessage = progress.message();
+                    state.lastProgressPercent = progress.percentComplete();
+                }
+            );
+
+            // Stop heartbeat
+            if (state.heartbeatTask != null) {
+                state.heartbeatTask.cancel(false);
+            }
+
+            // Send completion message
+            if (!state.cancelled.get()) {
+                WsConnectContext ctx = connections.get(state.consumerId);
+                if (ctx != null) {
+                    sendMessage(ctx, new AggTradesStreamEndMessage(
+                        "AGGTRADES_STREAM_END", state.requestId, state.totalStreamed.get()));
+                }
+            }
+
+            LOG.info("AggTrades stream {} completed: {} trades", state.requestId, state.totalStreamed.get());
+
+        } catch (Exception e) {
+            LOG.error("AggTrades stream {} failed: {}", state.requestId, e.getMessage(), e);
+            if (state.heartbeatTask != null) {
+                state.heartbeatTask.cancel(false);
+            }
+            if (!state.cancelled.get()) {
+                WsConnectContext ctx = connections.get(state.consumerId);
+                if (ctx != null) {
+                    sendMessage(ctx, new AggTradesStreamErrorMessage(
+                        "AGGTRADES_STREAM_ERROR", state.requestId, e.getMessage()));
+                }
+            }
+        } finally {
+            // Cleanup
+            activeStreams.remove(state.requestId);
+            Set<String> streams = consumerStreams.get(state.consumerId);
+            if (streams != null) {
+                streams.remove(state.requestId);
+            }
+        }
+    }
+
+    /**
+     * Send a chunk of aggTrades to the client.
+     */
+    private void sendChunk(AggTradesStreamState state, List<AggTrade> chunk, String source) {
+        WsConnectContext ctx = connections.get(state.consumerId);
+        if (ctx == null || state.cancelled.get()) return;
+
+        // Track last timestamp for resume capability
+        if (!chunk.isEmpty()) {
+            state.lastChunkTimestamp.set(chunk.get(chunk.size() - 1).timestamp());
+            state.totalStreamed.addAndGet(chunk.size());
+        }
+
+        // Convert to lightweight format for transmission
+        List<AggTradeData> data = chunk.stream()
+            .map(t -> new AggTradeData(t.aggTradeId(), t.price(), t.quantity(), t.timestamp(), t.isBuyerMaker()))
+            .toList();
+
+        sendMessage(ctx, new AggTradesChunkMessage("AGGTRADES_CHUNK", state.requestId, source, data));
+    }
+
+    /**
+     * Send a heartbeat/progress message to keep the connection alive.
+     */
+    private void sendHeartbeat(AggTradesStreamState state) {
+        if (state.cancelled.get()) return;
+
+        WsConnectContext ctx = connections.get(state.consumerId);
+        if (ctx == null) {
+            state.cancelled.set(true);
+            return;
+        }
+
+        sendMessage(ctx, new AggTradesProgressMessage(
+            "AGGTRADES_PROGRESS", state.requestId, state.lastProgressPercent,
+            state.lastProgressMessage, state.totalStreamed.get()));
+    }
+
+    /**
+     * Handle cancel_aggtrades_history: Cancel an active stream.
+     */
+    private void handleCancelAggTradesHistory(String consumerId, JsonNode message) {
+        String requestId = message.get("requestId").asText();
+
+        AggTradesStreamState state = activeStreams.get(requestId);
+        if (state == null) {
+            LOG.debug("Cancel request for unknown stream {}", requestId);
+            return;
+        }
+
+        if (!state.consumerId.equals(consumerId)) {
+            LOG.warn("Consumer {} tried to cancel stream {} owned by {}", consumerId, requestId, state.consumerId);
+            return;
+        }
+
+        LOG.info("Cancelling aggTrades stream {} at consumer request", requestId);
+        state.cancelled.set(true);
+        aggTradesStore.cancelCurrentFetch();
+
+        if (state.heartbeatTask != null) {
+            state.heartbeatTask.cancel(false);
+        }
+
+        WsConnectContext ctx = connections.get(consumerId);
+        if (ctx != null) {
+            sendMessage(ctx, new AggTradesStreamCancelledMessage(
+                "AGGTRADES_STREAM_CANCELLED", requestId, state.totalStreamed.get(), state.lastChunkTimestamp.get()));
+        }
+    }
+
+    /**
+     * Handle resume_aggtrades_history: Resume a stream from a specific timestamp.
+     * This allows clients to reconnect and continue where they left off.
+     */
+    private void handleResumeAggTradesHistory(String consumerId, JsonNode message) {
+        try {
+            String symbol = message.get("symbol").asText().toUpperCase();
+            long startTime = message.get("lastTimestamp").asLong() + 1; // Resume from after last received
+            long endTime = message.get("end").asLong();
+
+            // Treat as a new stream starting from the resume point
+            LOG.info("Consumer {} resuming aggTrades stream for {} from timestamp {}", consumerId, symbol, startTime);
+
+            // Generate new request ID for the resumed stream
+            String requestId = UUID.randomUUID().toString().substring(0, 8);
+
+            // Create stream state
+            AggTradesStreamState state = new AggTradesStreamState(requestId, consumerId, symbol, startTime, endTime);
+            activeStreams.put(requestId, state);
+            consumerStreams.computeIfAbsent(consumerId, k -> new CopyOnWriteArraySet<>()).add(requestId);
+
+            WsConnectContext ctx = connections.get(consumerId);
+            if (ctx == null) {
+                activeStreams.remove(requestId);
+                return;
+            }
+
+            // Send stream start (with isResume flag)
+            sendMessage(ctx, new AggTradesStreamResumedMessage(
+                "AGGTRADES_STREAM_RESUMED", requestId, symbol, startTime, endTime));
+
+            // Start heartbeat
+            state.heartbeatTask = heartbeatExecutor.scheduleAtFixedRate(() -> {
+                sendHeartbeat(state);
+            }, PROGRESS_HEARTBEAT_INTERVAL_MS, PROGRESS_HEARTBEAT_INTERVAL_MS, TimeUnit.MILLISECONDS);
+
+            // Start streaming
+            streamExecutor.submit(() -> executeAggTradesStream(state));
+
+        } catch (Exception e) {
+            LOG.error("Failed to resume aggTrades history stream", e);
+            WsConnectContext ctx = connections.get(consumerId);
+            if (ctx != null) {
+                sendError(ctx, "Failed to resume stream: " + e.getMessage());
+            }
+        }
+    }
+
+    /**
+     * Helper to send a message with JSON serialization.
+     */
+    private void sendMessage(WsConnectContext ctx, Object message) {
+        try {
+            ctx.send(objectMapper.writeValueAsString(message));
+        } catch (Exception e) {
+            LOG.warn("Failed to send message: {}", e.getMessage());
+        }
+    }
+
     // ========== Shared helpers for stream subscriptions ==========
 
     private void removeStreamSubscriber(String consumerId, String key,
@@ -598,4 +982,23 @@ public class WebSocketHandler implements PageUpdateListener {
     public record MarkPriceMessage(String type, String key, long timestamp, double markPrice, double indexPrice,
                                    double premium, double fundingRate, long nextFundingTime) {}
     public record OiUpdateMessage(String type, String key, long timestamp, double openInterest, double oiChange) {}
+
+    // Historical aggTrades streaming message records
+    public record AggTradesStreamStartMessage(String type, String requestId, String symbol, long startTime, long endTime) {}
+    public record AggTradesStreamResumedMessage(String type, String requestId, String symbol, long startTime, long endTime) {}
+    public record AggTradesChunkMessage(String type, String requestId, String source, List<AggTradeData> trades) {}
+    public record AggTradesProgressMessage(String type, String requestId, int percent, String message, long totalStreamed) {}
+    public record AggTradesStreamEndMessage(String type, String requestId, long totalCount) {}
+    public record AggTradesStreamCancelledMessage(String type, String requestId, long totalStreamed, long lastTimestamp) {}
+    public record AggTradesStreamErrorMessage(String type, String requestId, String error) {}
+
+    // Lightweight aggTrade data for chunk transmission (omits fields not needed by client)
+    public record AggTradeData(long id, double price, double qty, long ts, boolean isBuyerMaker) {}
+
+    // Live page update message records
+    public record LiveUpdateMessage(String type, String pageKey, CandleData candle) {}
+    public record LiveAppendMessage(String type, String pageKey, CandleData candle, List<Long> removedTimestamps) {}
+
+    // Candle data for live page messages
+    public record CandleData(long timestamp, double open, double high, double low, double close, double volume) {}
 }

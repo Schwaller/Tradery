@@ -1,6 +1,8 @@
 package com.tradery.dataservice.api;
 
 import com.tradery.dataservice.coingecko.CoinGeckoClient;
+import com.tradery.dataservice.data.AggTradesClient;
+import com.tradery.dataservice.data.AggTradesStore;
 import com.tradery.dataservice.data.sqlite.SqliteDataStore;
 import com.tradery.dataservice.data.sqlite.SymbolsConnection;
 import com.tradery.dataservice.ConsumerRegistry;
@@ -46,14 +48,16 @@ public class DataServiceServer {
                              CoinGeckoClient coingeckoClient) {
         this.config = config;
         this.consumerRegistry = consumerRegistry;
-        this.pageManager = new PageManager(config, dataStore);
         this.objectMapper = createObjectMapper();
         this.liveCandleManager = new LiveCandleManager();
         this.liveAggTradeManager = new LiveAggTradeManager();
         this.liveMarkPriceManager = new LiveMarkPriceManager();
         this.liveOpenInterestPoller = new LiveOpenInterestPoller();
+        // PageManager gets LiveCandleManager for live page support
+        this.pageManager = new PageManager(config, dataStore, liveCandleManager);
         this.webSocketHandler = new WebSocketHandler(pageManager, liveCandleManager,
-            liveAggTradeManager, liveMarkPriceManager, liveOpenInterestPoller, objectMapper);
+            liveAggTradeManager, liveMarkPriceManager, liveOpenInterestPoller,
+            pageManager.getAggTradesStore(), objectMapper);
         this.symbolHandler = new SymbolHandler(symbolSyncService, symbolsConnection, coingeckoClient);
     }
 

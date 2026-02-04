@@ -4,6 +4,7 @@ import com.tradery.dataservice.data.*;
 import com.tradery.dataservice.data.sqlite.SqliteDataStore;
 import com.tradery.dataservice.api.CoverageHandler;
 import com.tradery.dataservice.config.DataServiceConfig;
+import com.tradery.dataservice.live.LiveCandleManager;
 import com.tradery.core.model.*;
 import org.msgpack.jackson.dataformat.MessagePackFactory;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -16,18 +17,26 @@ import java.time.ZoneOffset;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.BiConsumer;
 
 /**
  * Manages data pages - loading, caching, and lifecycle.
  * Adapted from DataPageManager for service-side use (no Swing).
+ *
+ * Supports both:
+ * - Anchored pages: Fixed time range, static historical view
+ * - Live pages: Sliding window that moves with current time
  */
 public class PageManager {
     private static final Logger LOG = LoggerFactory.getLogger(PageManager.class);
+    private static final int CLEANUP_INTERVAL_SECONDS = 10;
 
     private final DataServiceConfig config;
     private final SqliteDataStore dataStore;
+    private final LiveCandleManager liveCandleManager;
     private final ObjectMapper msgpackMapper;
-    private final Map<PageKey, Page> pages = new ConcurrentHashMap<>();
+    // Use key string as map key to handle live pages correctly (PageKey has computed startTime/endTime)
+    private final Map<String, Page> pages = new ConcurrentHashMap<>();
     private final List<PageUpdateListener> listeners = new CopyOnWriteArrayList<>();
     private final ExecutorService loadExecutor;
     private final ScheduledExecutorService cleanupExecutor;
@@ -38,9 +47,14 @@ public class PageManager {
     private final AggTradesStore aggTradesStore;
     private final PremiumIndexStore premiumIndexStore;
 
-    public PageManager(DataServiceConfig config, SqliteDataStore dataStore) {
+    // Live subscription callbacks (for cleanup on page removal)
+    private final Map<String, BiConsumer<String, Candle>> liveUpdateCallbacks = new ConcurrentHashMap<>();
+    private final Map<String, BiConsumer<String, Candle>> liveCloseCallbacks = new ConcurrentHashMap<>();
+
+    public PageManager(DataServiceConfig config, SqliteDataStore dataStore, LiveCandleManager liveCandleManager) {
         this.config = config;
         this.dataStore = dataStore;
+        this.liveCandleManager = liveCandleManager;
 
         // Initialize data stores
         this.fundingRateStore = new FundingRateStore(new FundingRateClient(), dataStore);
@@ -53,7 +67,15 @@ public class PageManager {
         this.cleanupExecutor = Executors.newSingleThreadScheduledExecutor();
 
         // Schedule periodic cleanup of unused pages
-        cleanupExecutor.scheduleAtFixedRate(this::cleanupUnusedPages, 5, 5, TimeUnit.MINUTES);
+        cleanupExecutor.scheduleAtFixedRate(this::cleanupUnusedPages,
+            CLEANUP_INTERVAL_SECONDS, CLEANUP_INTERVAL_SECONDS, TimeUnit.SECONDS);
+    }
+
+    /**
+     * Legacy constructor without LiveCandleManager (live pages won't receive updates).
+     */
+    public PageManager(DataServiceConfig config, SqliteDataStore dataStore) {
+        this(config, dataStore, null);
     }
 
     public void shutdown() {
@@ -64,6 +86,11 @@ public class PageManager {
             cleanupExecutor.awaitTermination(5, TimeUnit.SECONDS);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
+        }
+
+        // Unsubscribe from all live streams
+        for (String pageKeyStr : liveUpdateCallbacks.keySet()) {
+            unsubscribeFromLive(pageKeyStr);
         }
     }
 
@@ -80,8 +107,9 @@ public class PageManager {
      * Creates the page if it doesn't exist, or adds the consumer if it does.
      */
     public PageStatus requestPage(PageKey key, String consumerId, String consumerName) {
-        Page page = pages.computeIfAbsent(key, k -> {
-            Page newPage = new Page(k, config);
+        String keyStr = key.toKeyString();
+        Page page = pages.computeIfAbsent(keyStr, k -> {
+            Page newPage = new Page(key, config);
             loadExecutor.submit(() -> loadPage(newPage));
             return newPage;
         });
@@ -94,14 +122,15 @@ public class PageManager {
      * Release a consumer's hold on a page.
      */
     public boolean releasePage(PageKey key, String consumerId) {
-        Page page = pages.get(key);
+        String keyStr = key.toKeyString();
+        Page page = pages.get(keyStr);
         if (page == null) return false;
 
         page.removeConsumer(consumerId);
 
         // If no consumers left, page becomes candidate for eviction
         if (page.getConsumerCount() == 0) {
-            LOG.debug("Page {} has no consumers, marking for cleanup", key.toKeyString());
+            LOG.debug("Page {} has no consumers, marking for cleanup", keyStr);
         }
 
         return true;
@@ -111,7 +140,7 @@ public class PageManager {
      * Get the current status of a page.
      */
     public PageStatus getPageStatus(PageKey key) {
-        Page page = pages.get(key);
+        Page page = pages.get(key.toKeyString());
         if (page == null) return null;
         return page.getStatus().withConsumers(page.getConsumers());
     }
@@ -122,7 +151,7 @@ public class PageManager {
     public Map<String, PageStatus> getAllPageStatus() {
         Map<String, PageStatus> result = new HashMap<>();
         for (var entry : pages.entrySet()) {
-            result.put(entry.getKey().toKeyString(),
+            result.put(entry.getKey(),
                 entry.getValue().getStatus().withConsumers(entry.getValue().getConsumers()));
         }
         return result;
@@ -132,7 +161,7 @@ public class PageManager {
      * Get the data for a page as MessagePack binary.
      */
     public byte[] getPageData(PageKey key) {
-        Page page = pages.get(key);
+        Page page = pages.get(key.toKeyString());
         if (page == null || page.getStatus().state() != PageState.READY) {
             return null;
         }
@@ -311,6 +340,13 @@ public class PageManager {
     }
 
     /**
+     * Get the AggTradesStore for direct streaming access.
+     */
+    public AggTradesStore getAggTradesStore() {
+        return aggTradesStore;
+    }
+
+    /**
      * Load a page's data.
      */
     private void loadPage(Page page) {
@@ -349,12 +385,75 @@ public class PageManager {
             notifyStateChanged(key, PageState.READY, 100);
             notifyDataReady(key, recordCount);
 
-            LOG.info("Page ready: {} ({} records)", key.toKeyString(), recordCount);
+            LOG.info("Page ready: {} ({} records, live={})", key.toKeyString(), recordCount, key.isLive());
+
+            // For live candle pages, subscribe to live updates
+            if (key.isLive() && key.isCandles() && liveCandleManager != null) {
+                subscribeToLive(page);
+            }
 
         } catch (Exception e) {
             LOG.error("Failed to load page: {}", key.toKeyString(), e);
             page.setState(PageState.ERROR, 0);
             notifyError(key, e.getMessage());
+        }
+    }
+
+    // ========== Live Subscription ==========
+
+    private void subscribeToLive(Page page) {
+        PageKey key = page.getKey();
+        String pageKeyStr = key.toKeyString();
+
+        LOG.info("Subscribing page {} to live updates", pageKeyStr);
+
+        BiConsumer<String, Candle> onUpdate = (k, candle) -> {
+            page.updateIncomplete(candle);
+            notifyLiveUpdate(key, candle);
+        };
+
+        BiConsumer<String, Candle> onClose = (k, candle) -> {
+            List<Candle> removed = page.appendAndTrim(candle);
+            notifyLiveAppend(key, candle, removed);
+        };
+
+        liveUpdateCallbacks.put(pageKeyStr, onUpdate);
+        liveCloseCallbacks.put(pageKeyStr, onClose);
+
+        liveCandleManager.subscribe(key.symbol(), key.timeframe(), onUpdate, onClose);
+    }
+
+    private void unsubscribeFromLive(String pageKeyStr) {
+        Page page = pages.get(pageKeyStr);
+        if (page == null || !page.getKey().isLive()) return;
+
+        PageKey key = page.getKey();
+        BiConsumer<String, Candle> onUpdate = liveUpdateCallbacks.remove(pageKeyStr);
+        BiConsumer<String, Candle> onClose = liveCloseCallbacks.remove(pageKeyStr);
+
+        if ((onUpdate != null || onClose != null) && liveCandleManager != null) {
+            liveCandleManager.unsubscribe(key.symbol(), key.timeframe(), onUpdate, onClose);
+            LOG.info("Unsubscribed page {} from live updates", pageKeyStr);
+        }
+    }
+
+    private void notifyLiveUpdate(PageKey key, Candle candle) {
+        for (PageUpdateListener listener : listeners) {
+            try {
+                listener.onLiveUpdate(key, candle);
+            } catch (Exception e) {
+                LOG.warn("Listener error", e);
+            }
+        }
+    }
+
+    private void notifyLiveAppend(PageKey key, Candle candle, List<Candle> removed) {
+        for (PageUpdateListener listener : listeners) {
+            try {
+                listener.onLiveAppend(key, candle, removed);
+            } catch (Exception e) {
+                LOG.warn("Listener error", e);
+            }
         }
     }
 
@@ -364,30 +463,38 @@ public class PageManager {
     private byte[] loadCandles(PageKey key, Page page) throws Exception {
         String symbol = key.symbol();
         String timeframe = key.timeframe();
-        long startTime = key.startTime();
-        long endTime = key.endTime();
+        // Use effective times for live pages
+        long startTime = key.isLive() ? key.getEffectiveStartTime() : key.startTime();
+        long endTime = key.isLive() ? key.getEffectiveEndTime() : key.endTime();
 
         // Check cache first
         List<Candle> cached = dataStore.getCandles(symbol, timeframe, startTime, endTime);
         long intervalMs = getIntervalMs(timeframe);
         long expectedBars = (endTime - startTime) / intervalMs;
 
-        // If sufficient coverage, return cached data
+        List<Candle> candles;
+        // If sufficient coverage, use cached data
         if (cached.size() >= expectedBars * 0.9) {
-            page.setRecordCount(cached.size());
+            candles = cached;
             LOG.debug("loadCandles: {} {} cache hit ({} candles)", symbol, timeframe, cached.size());
-            return msgpackMapper.writeValueAsBytes(cached);
+        } else {
+            // Need to fetch missing data
+            LOG.info("loadCandles: {} {} fetching (cached {}/{})", symbol, timeframe, cached.size(), expectedBars);
+            fetchCandles(key, page, expectedBars);
+
+            // Read fresh data
+            candles = dataStore.getCandles(symbol, timeframe, startTime, endTime);
+            LOG.info("loadCandles: {} {} complete ({} candles)", symbol, timeframe, candles.size());
         }
 
-        // Need to fetch missing data
-        LOG.info("loadCandles: {} {} fetching (cached {}/{})", symbol, timeframe, cached.size(), expectedBars);
-        fetchCandles(key, page, expectedBars);
+        page.setRecordCount(candles.size());
 
-        // Read fresh data
-        List<Candle> fresh = dataStore.getCandles(symbol, timeframe, startTime, endTime);
-        page.setRecordCount(fresh.size());
-        LOG.info("loadCandles: {} {} complete ({} candles)", symbol, timeframe, fresh.size());
-        return msgpackMapper.writeValueAsBytes(fresh);
+        // For live pages, also store the candle list for live updates
+        if (key.isLive()) {
+            page.setLiveCandles(candles);
+        }
+
+        return msgpackMapper.writeValueAsBytes(candles);
     }
 
     /**
@@ -540,18 +647,29 @@ public class PageManager {
      * Clean up pages with no consumers.
      */
     private void cleanupUnusedPages() {
-        List<PageKey> toRemove = new ArrayList<>();
+        List<String> toRemove = new ArrayList<>();
 
         for (var entry : pages.entrySet()) {
             Page page = entry.getValue();
-            if (page.getConsumerCount() == 0 && page.getIdleTimeMinutes() > 5) {
+            // Use shorter idle time (10 seconds) for quick cleanup
+            if (page.getConsumerCount() == 0 && page.getIdleTimeMinutes() * 60 > CLEANUP_INTERVAL_SECONDS) {
                 toRemove.add(entry.getKey());
             }
         }
 
-        for (PageKey key : toRemove) {
-            LOG.info("Evicting unused page: {}", key.toKeyString());
-            pages.remove(key);
+        for (String pageKeyStr : toRemove) {
+            Page page = pages.get(pageKeyStr);
+            if (page == null) continue;
+
+            PageKey key = page.getKey();
+            LOG.info("Evicting unused page: {}", pageKeyStr);
+
+            // Unsubscribe from live if applicable
+            if (key.isLive()) {
+                unsubscribeFromLive(pageKeyStr);
+            }
+
+            pages.remove(pageKeyStr);
             notifyEvicted(key);
         }
     }

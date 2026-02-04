@@ -52,9 +52,6 @@ public class RemoteCandlePageManager {
         return t;
     });
 
-    // Live update integration: pages with live updates enabled
-    private final Set<String> liveEnabledPages = ConcurrentHashMap.newKeySet();
-
     private volatile boolean shutdown = false;
 
     /**
@@ -141,6 +138,54 @@ public class RemoteCandlePageManager {
     }
 
     /**
+     * Request a live (sliding window) candle page.
+     * Live pages slide forward with current time.
+     *
+     * @param symbol       Trading symbol
+     * @param timeframe    Candle timeframe
+     * @param duration     Window duration in milliseconds
+     * @param listener     Listener for state/data changes (can be null)
+     * @param consumerName Name for tracking/debugging
+     * @return Read-only view of the page
+     */
+    public DataPageView<Candle> requestLive(String symbol, String timeframe, long duration,
+                                             DataPageListener<Candle> listener, String consumerName) {
+        String key = makeLiveKey(symbol, timeframe, duration);
+
+        // Get or create page
+        DataPage<Candle> page = pages.computeIfAbsent(key, k -> {
+            long now = System.currentTimeMillis();
+            DataPage<Candle> newPage = DataPage.live(DataType.CANDLES, symbol, timeframe, now - duration, now, duration);
+            // Subscribe to live page updates from data-service
+            connection.subscribeLivePage(DataType.CANDLES, symbol, timeframe, duration,
+                createPageCallback(key));
+            return newPage;
+        });
+
+        // Register listener
+        if (listener != null) {
+            listeners.computeIfAbsent(key, k -> ConcurrentHashMap.newKeySet()).add(listener);
+
+            if (page.getState() != PageState.EMPTY) {
+                if (page.getState() == PageState.READY && page.getData().isEmpty()) {
+                    // READY but no data yet — skip notification
+                } else {
+                    notifyStateChangedOnEDT(page, PageState.EMPTY, page.getState(), listener);
+                }
+            }
+        }
+
+        // Track consumer
+        consumers.computeIfAbsent(key, k -> ConcurrentHashMap.newKeySet()).add(consumerName);
+
+        // Increment reference count
+        refCounts.merge(key, 1, Integer::sum);
+
+        LOG.debug("Live page requested: {} (refCount={})", key, refCounts.get(key));
+        return page;
+    }
+
+    /**
      * Release a page. Decrements reference count and cleans up when zero.
      *
      * @param pageView The page view to release
@@ -191,48 +236,6 @@ public class RemoteCandlePageManager {
         DataPage<Candle> page = pages.get(key);
         if (page != null && page.isReady()) {
             fetchPageData(key, page);
-        }
-    }
-
-    /**
-     * Enable live updates for a page.
-     * When candles close, they are appended to the page data.
-     *
-     * @param pageView The page to enable live updates for
-     */
-    public void enableLiveUpdates(DataPageView<Candle> pageView) {
-        if (!(pageView instanceof DataPage<Candle> page)) {
-            LOG.warn("Cannot enable live updates - not a DataPage");
-            return;
-        }
-
-        String key = pageView.getKey();
-        if (liveEnabledPages.add(key)) {
-            page.setLiveEnabled(true);
-            connection.subscribeLive(page.getSymbol(), page.getTimeframe(),
-                candle -> handleLiveUpdate(key, candle),
-                candle -> handleLiveClose(key, candle));
-            LOG.debug("Live updates enabled for: {}", key);
-        }
-    }
-
-    /**
-     * Disable live updates for a page.
-     *
-     * @param pageView The page to disable live updates for
-     */
-    public void disableLiveUpdates(DataPageView<Candle> pageView) {
-        if (!(pageView instanceof DataPage<Candle> page)) {
-            return;
-        }
-
-        String key = pageView.getKey();
-        if (liveEnabledPages.remove(key)) {
-            page.setLiveEnabled(false);
-            connection.unsubscribeLive(page.getSymbol(), page.getTimeframe(),
-                candle -> handleLiveUpdate(key, candle),
-                candle -> handleLiveClose(key, candle));
-            LOG.debug("Live updates disabled for: {}", key);
         }
     }
 
@@ -349,6 +352,47 @@ public class RemoteCandlePageManager {
                         page.getStartTime(), page.getEndTime(), this);
                 }
             }
+
+            @Override
+            public void onLiveUpdate(Candle candle) {
+                // Update of incomplete/forming candle from server
+                DataPage<Candle> page = pages.get(pageKey);
+                if (page == null || !page.isLiveEnabled()) return;
+
+                List<Candle> data = page.getData();
+                if (!data.isEmpty()) {
+                    Candle lastCandle = data.get(data.size() - 1);
+                    if (lastCandle.timestamp() == candle.timestamp()) {
+                        page.updateLastRecord(candle);
+                        notifyDataChangedOnEDT(page);
+                    }
+                }
+            }
+
+            @Override
+            public void onLiveAppend(Candle candle, List<Long> removedTimestamps) {
+                // New completed candle from server (with optional removal of old candles)
+                DataPage<Candle> page = pages.get(pageKey);
+                if (page == null || !page.isLiveEnabled()) return;
+
+                LOG.debug("Live append: {} ts={}", pageKey, candle.timestamp());
+
+                // Remove old candles if any
+                if (removedTimestamps != null && !removedTimestamps.isEmpty()) {
+                    page.removeByTimestamps(removedTimestamps);
+                }
+
+                // Append the new candle
+                List<Candle> data = page.getData();
+                if (data.isEmpty() || data.get(data.size() - 1).timestamp() != candle.timestamp()) {
+                    page.appendData(candle);
+                } else {
+                    // Update the last candle if it matches (transition from incomplete to complete)
+                    page.updateLastRecord(candle);
+                }
+
+                notifyDataChangedOnEDT(page);
+            }
         };
     }
 
@@ -377,50 +421,11 @@ public class RemoteCandlePageManager {
         });
     }
 
-    private void handleLiveUpdate(String pageKey, Candle candle) {
-        DataPage<Candle> page = pages.get(pageKey);
-        if (page == null || !page.isLiveEnabled()) return;
-
-        // Update the last candle (incomplete candle update)
-        List<Candle> data = page.getData();
-        if (!data.isEmpty()) {
-            Candle lastCandle = data.get(data.size() - 1);
-            if (lastCandle.timestamp() == candle.timestamp()) {
-                page.updateLastRecord(candle);
-                notifyDataChangedOnEDT(page);
-            }
-        }
-    }
-
-    private void handleLiveClose(String pageKey, Candle candle) {
-        DataPage<Candle> page = pages.get(pageKey);
-        if (page == null || !page.isLiveEnabled()) return;
-
-        // Check if this candle is within our time range
-        if (candle.timestamp() >= page.getStartTime()) {
-            // Append the closed candle
-            List<Candle> data = page.getData();
-            if (data.isEmpty() || data.get(data.size() - 1).timestamp() != candle.timestamp()) {
-                page.appendData(candle);
-                notifyDataChangedOnEDT(page);
-            } else {
-                // Update the last candle if it matches
-                page.updateLastRecord(candle);
-                notifyDataChangedOnEDT(page);
-            }
-        }
-    }
-
     private void cleanupPage(String key) {
         DataPage<Candle> page = pages.remove(key);
         listeners.remove(key);
         consumers.remove(key);
         refCounts.remove(key);
-
-        // Disable live updates if enabled
-        if (liveEnabledPages.remove(key) && page != null) {
-            connection.unsubscribeLive(page.getSymbol(), page.getTimeframe(), null, null);
-        }
 
         // Unsubscribe from data-service
         if (page != null) {
@@ -499,7 +504,14 @@ public class RemoteCandlePageManager {
     }
 
     private String makeKey(String symbol, String timeframe, long startTime, long endTime) {
-        return "CANDLES:" + symbol.toUpperCase() + ":" + timeframe + ":" + startTime + ":" + endTime;
+        // Must match server's PageKey.toKeyString() format: CANDLES:symbol:timeframe:anchor:duration
+        // For anchored pages: anchor = endTime, duration = endTime - startTime
+        return "CANDLES:" + symbol.toUpperCase() + ":" + timeframe + ":" + endTime + ":" + (endTime - startTime);
+    }
+
+    private String makeLiveKey(String symbol, String timeframe, long duration) {
+        // Must match server's PageKey.toKeyString() format for live pages: CANDLES:symbol:timeframe:LIVE:duration
+        return "CANDLES:" + symbol.toUpperCase() + ":" + timeframe + ":LIVE:" + duration;
     }
 
     // ========== Info Record ==========
