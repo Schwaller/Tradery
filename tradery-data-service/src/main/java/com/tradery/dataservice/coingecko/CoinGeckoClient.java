@@ -28,7 +28,7 @@ public class CoinGeckoClient {
     private static final Logger log = LoggerFactory.getLogger(CoinGeckoClient.class);
 
     private static final String BASE_URL = "https://api.coingecko.com/api/v3";
-    private static final long RATE_LIMIT_MS = 8500; // 8.5 seconds between calls
+    private static final long RATE_LIMIT_MS = 5000; // 5 seconds between calls (1/5 rate limit)
     private static final int CIRCUIT_BREAKER_THRESHOLD = 10;
     private static final Duration CIRCUIT_BREAKER_RESET_DURATION = Duration.ofMinutes(15);
     private static final int MAX_RETRIES = 3;

@@ -13,7 +13,6 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
-import java.time.LocalTime;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -112,8 +111,8 @@ public class DataServiceApp {
     }
 
     /**
-     * Schedule daily symbol sync at 3 AM.
-     * Also triggers initial sync if data is stale (>24h old).
+     * Schedule symbol sync every 6 hours.
+     * On startup, resumes any incomplete sync (only syncs exchanges not synced within 6h).
      */
     private static void scheduleSymbolSync() {
         scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
@@ -122,25 +121,19 @@ public class DataServiceApp {
             return t;
         });
 
-        // Calculate delay until 3 AM
-        LocalTime now = LocalTime.now();
-        LocalTime targetTime = LocalTime.of(3, 0);
-        long delayMinutes = now.until(targetTime, java.time.temporal.ChronoUnit.MINUTES);
-        if (delayMinutes < 0) {
-            delayMinutes += 24 * 60; // Tomorrow
-        }
+        final long SYNC_INTERVAL_HOURS = 6;
 
-        // Schedule daily sync at 3 AM - uses skipRecent to avoid re-syncing exchanges synced within 6h
+        // Schedule sync every 6 hours
         scheduler.scheduleAtFixedRate(() -> {
             try {
-                LOG.info("Running scheduled symbol sync (incremental)...");
+                LOG.info("Running scheduled symbol sync...");
                 symbolSyncService.syncAll(true); // Skip exchanges synced within 6h
             } catch (Exception e) {
                 LOG.error("Scheduled symbol sync failed", e);
             }
-        }, delayMinutes, 24 * 60, TimeUnit.MINUTES);
+        }, SYNC_INTERVAL_HOURS, SYNC_INTERVAL_HOURS, TimeUnit.HOURS);
 
-        LOG.info("Symbol sync scheduled at 3 AM daily (first run in {} minutes)", delayMinutes);
+        LOG.info("Symbol sync scheduled every {}h", SYNC_INTERVAL_HOURS);
 
         // 5-minute status heartbeat
         scheduler.scheduleAtFixedRate(() -> {
@@ -159,19 +152,13 @@ public class DataServiceApp {
             }
         }, 1, 5, TimeUnit.MINUTES);
 
-        // Trigger initial sync if data is stale
-        // Uses skipRecent=true to only sync exchanges that weren't synced recently
-        // This prevents re-syncing everything on frequent restarts
+        // Trigger sync on startup - resumes incomplete sync
         scheduler.schedule(() -> {
             try {
-                if (symbolSyncService.isSyncNeeded(Duration.ofHours(24))) {
-                    LOG.info("Symbol data needs sync, running incremental sync (skipping recently synced exchanges)...");
-                    symbolSyncService.syncAll(true); // Skip exchanges synced within 12h
-                } else {
-                    LOG.info("Symbol data is up to date, skipping initial sync");
-                }
+                LOG.info("Running startup symbol sync (resuming incomplete)...");
+                symbolSyncService.syncAll(true); // Skip exchanges synced within 6h
             } catch (Exception e) {
-                LOG.error("Initial symbol sync failed", e);
+                LOG.error("Startup symbol sync failed", e);
             }
         }, 5, TimeUnit.SECONDS);
     }
