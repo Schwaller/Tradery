@@ -25,24 +25,34 @@ public interface DataPageListener<T> {
      * Called when the data in the page changes (new data loaded, updated, etc.).
      * Always called on the Swing EDT.
      *
-     * Default implementation does nothing - override if you need data change notifications.
-     *
      * @param page The page whose data changed (read-only view)
      */
-    default void onDataChanged(DataPageView<T> page) {
-        // Default: do nothing
-    }
+    default void onDataChanged(DataPageView<T> page) {}
 
     /**
      * Called when progress is updated during loading.
      * Always called on the Swing EDT.
      *
-     * Default implementation does nothing - override if you need progress updates.
-     *
      * @param page     The page being loaded
      * @param progress Progress percentage (0-100)
      */
-    default void onProgress(DataPageView<T> page, int progress) {
-        // Default: do nothing
-    }
+    default void onProgress(DataPageView<T> page, int progress) {}
+
+    /**
+     * Called when the incomplete/forming candle is updated (live pages only).
+     * Always called on the Swing EDT.
+     *
+     * @param page   The page
+     * @param record The updated incomplete record
+     */
+    default void onLiveUpdate(DataPageView<T> page, T record) {}
+
+    /**
+     * Called when a new completed record is appended (live pages only).
+     * Always called on the Swing EDT.
+     *
+     * @param page   The page
+     * @param record The new completed record
+     */
+    default void onLiveAppend(DataPageView<T> page, T record) {}
 }

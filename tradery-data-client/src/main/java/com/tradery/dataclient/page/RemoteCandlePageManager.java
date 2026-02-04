@@ -364,7 +364,7 @@ public class RemoteCandlePageManager {
                     Candle lastCandle = data.get(data.size() - 1);
                     if (lastCandle.timestamp() == candle.timestamp()) {
                         page.updateLastRecord(candle);
-                        notifyDataChangedOnEDT(page);
+                        notifyLiveUpdateOnEDT(page, candle);
                     }
                 }
             }
@@ -391,7 +391,7 @@ public class RemoteCandlePageManager {
                     page.updateLastRecord(candle);
                 }
 
-                notifyDataChangedOnEDT(page);
+                notifyLiveAppendOnEDT(page, candle);
             }
         };
     }
@@ -496,6 +496,36 @@ public class RemoteCandlePageManager {
             for (DataPageListener<Candle> listener : pageListeners) {
                 try {
                     listener.onProgress(page, progress);
+                } catch (Exception e) {
+                    LOG.warn("Error in page listener: {}", e.getMessage());
+                }
+            }
+        });
+    }
+
+    private void notifyLiveUpdateOnEDT(DataPage<Candle> page, Candle candle) {
+        Set<DataPageListener<Candle>> pageListeners = listeners.get(page.getKey());
+        if (pageListeners == null || pageListeners.isEmpty()) return;
+
+        SwingUtilities.invokeLater(() -> {
+            for (DataPageListener<Candle> listener : pageListeners) {
+                try {
+                    listener.onLiveUpdate(page, candle);
+                } catch (Exception e) {
+                    LOG.warn("Error in page listener: {}", e.getMessage());
+                }
+            }
+        });
+    }
+
+    private void notifyLiveAppendOnEDT(DataPage<Candle> page, Candle candle) {
+        Set<DataPageListener<Candle>> pageListeners = listeners.get(page.getKey());
+        if (pageListeners == null || pageListeners.isEmpty()) return;
+
+        SwingUtilities.invokeLater(() -> {
+            for (DataPageListener<Candle> listener : pageListeners) {
+                try {
+                    listener.onLiveAppend(page, candle);
                 } catch (Exception e) {
                     LOG.warn("Error in page listener: {}", e.getMessage());
                 }

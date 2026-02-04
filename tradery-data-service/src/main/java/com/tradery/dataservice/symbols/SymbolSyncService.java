@@ -64,22 +64,34 @@ public class SymbolSyncService {
 
     /**
      * Sync all enabled exchanges (both spot and perp).
+     * Forces sync regardless of last sync time.
      *
      * @return Summary of sync results
      */
     public SyncResult syncAll() throws IOException, SQLException {
+        return syncAll(false);
+    }
+
+    /**
+     * Sync all enabled exchanges, optionally skipping recently synced ones.
+     *
+     * @param skipRecent If true, skip exchanges synced within the last 6 hours
+     * @return Summary of sync results
+     */
+    public SyncResult syncAll(boolean skipRecent) throws IOException, SQLException {
         if (!syncing.compareAndSet(false, true)) {
             throw new IllegalStateException("Sync already in progress");
         }
 
         try {
-            log.info("Starting full symbol sync...");
+            log.info("Starting symbol sync (skipRecent={})...", skipRecent);
             Instant start = Instant.now();
 
             // Refresh coins list if stale
             refreshCoinsListIfNeeded();
 
             List<ExchangeSyncResult> results = new ArrayList<>();
+            Duration maxAge = Duration.ofHours(6); // Skip exchanges synced within 6h
 
             // Sync each exchange
             for (Map.Entry<String, ExchangeMapping> entry : EXCHANGE_MAPPINGS.entrySet()) {
@@ -88,35 +100,59 @@ public class SymbolSyncService {
 
                 // Sync spot market
                 if (mapping.spotId() != null) {
-                    try {
-                        ExchangeSyncResult result = syncExchange(exchange, MarketType.SPOT);
-                        results.add(result);
-                    } catch (Exception e) {
-                        log.error("Failed to sync {} SPOT: {}", exchange, e.getMessage());
-                        results.add(new ExchangeSyncResult(exchange, MarketType.SPOT, 0, "ERROR", e.getMessage()));
+                    if (skipRecent && isRecentlySynced(exchange, MarketType.SPOT, maxAge)) {
+                        log.debug("Skipping {} SPOT - recently synced", exchange);
+                        results.add(new ExchangeSyncResult(exchange, MarketType.SPOT, 0, "SKIPPED", "Recently synced"));
+                    } else {
+                        try {
+                            ExchangeSyncResult result = syncExchange(exchange, MarketType.SPOT);
+                            results.add(result);
+                        } catch (Exception e) {
+                            log.error("Failed to sync {} SPOT: {}", exchange, e.getMessage());
+                            results.add(new ExchangeSyncResult(exchange, MarketType.SPOT, 0, "ERROR", e.getMessage()));
+                        }
                     }
                 }
 
                 // Sync perp market
                 if (mapping.perpId() != null) {
-                    try {
-                        ExchangeSyncResult result = syncExchange(exchange, MarketType.PERP);
-                        results.add(result);
-                    } catch (Exception e) {
-                        log.error("Failed to sync {} PERP: {}", exchange, e.getMessage());
-                        results.add(new ExchangeSyncResult(exchange, MarketType.PERP, 0, "ERROR", e.getMessage()));
+                    if (skipRecent && isRecentlySynced(exchange, MarketType.PERP, maxAge)) {
+                        log.debug("Skipping {} PERP - recently synced", exchange);
+                        results.add(new ExchangeSyncResult(exchange, MarketType.PERP, 0, "SKIPPED", "Recently synced"));
+                    } else {
+                        try {
+                            ExchangeSyncResult result = syncExchange(exchange, MarketType.PERP);
+                            results.add(result);
+                        } catch (Exception e) {
+                            log.error("Failed to sync {} PERP: {}", exchange, e.getMessage());
+                            results.add(new ExchangeSyncResult(exchange, MarketType.PERP, 0, "ERROR", e.getMessage()));
+                        }
                     }
                 }
             }
 
             Duration elapsed = Duration.between(start, Instant.now());
             int totalPairs = results.stream().mapToInt(ExchangeSyncResult::pairCount).sum();
-            log.info("Symbol sync complete: {} pairs across {} exchanges in {}s",
-                totalPairs, results.size(), elapsed.getSeconds());
+            int skipped = (int) results.stream().filter(r -> "SKIPPED".equals(r.status())).count();
+            log.info("Symbol sync complete: {} pairs, {} skipped, {} exchanges in {}s",
+                totalPairs, skipped, results.size() - skipped, elapsed.getSeconds());
 
             return new SyncResult(results, elapsed);
         } finally {
             syncing.set(false);
+        }
+    }
+
+    /**
+     * Check if an exchange/market was synced recently.
+     */
+    private boolean isRecentlySynced(String exchange, MarketType marketType, Duration maxAge) {
+        try {
+            Optional<Instant> lastSync = symbolDao.getLastSyncTime(exchange, marketType);
+            return lastSync.isPresent() && Instant.now().isBefore(lastSync.get().plus(maxAge));
+        } catch (SQLException e) {
+            log.warn("Failed to check sync time for {} {}: {}", exchange, marketType, e.getMessage());
+            return false; // Sync if we can't determine last sync time
         }
     }
 

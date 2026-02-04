@@ -414,21 +414,23 @@ public class TraderyDeskApp {
             }
 
             @Override
-            public void onDataChanged(DataPageView<Candle> page) {
-                // Live candle appended - get the last candle
-                List<Candle> candles = page.getData();
-                if (candles != null && !candles.isEmpty()) {
-                    Candle lastCandle = candles.get(candles.size() - 1);
+            public void onLiveUpdate(DataPageView<Candle> page, Candle candle) {
+                // Incomplete candle update - just update price display
+                if (frame != null) {
+                    frame.updatePrice(candle.close(), candle.timestamp());
+                    frame.updateChartCandle(candle);
+                }
+            }
 
-                    // Update aggregator and evaluate signals
-                    aggregator.addClosedCandle(lastCandle);
-                    onCandleClose(strategy, lastCandle, aggregator);
+            @Override
+            public void onLiveAppend(DataPageView<Candle> page, Candle candle) {
+                // New completed candle - update aggregator and evaluate signals
+                aggregator.addClosedCandle(candle);
+                onCandleClose(strategy, candle, aggregator);
 
-                    // Update chart
-                    if (frame != null) {
-                        frame.addChartCandle(lastCandle);
-                        frame.updatePrice(lastCandle.close(), lastCandle.timestamp());
-                    }
+                if (frame != null) {
+                    frame.addChartCandle(candle);
+                    frame.updatePrice(candle.close(), candle.timestamp());
                 }
             }
 

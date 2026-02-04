@@ -130,11 +130,11 @@ public class DataServiceApp {
             delayMinutes += 24 * 60; // Tomorrow
         }
 
-        // Schedule daily sync
+        // Schedule daily sync at 3 AM - uses skipRecent to avoid re-syncing exchanges synced within 6h
         scheduler.scheduleAtFixedRate(() -> {
             try {
-                LOG.info("Running scheduled symbol sync...");
-                symbolSyncService.syncAll();
+                LOG.info("Running scheduled symbol sync (incremental)...");
+                symbolSyncService.syncAll(true); // Skip exchanges synced within 6h
             } catch (Exception e) {
                 LOG.error("Scheduled symbol sync failed", e);
             }
@@ -160,16 +160,18 @@ public class DataServiceApp {
         }, 1, 5, TimeUnit.MINUTES);
 
         // Trigger initial sync if data is stale
+        // Uses skipRecent=true to only sync exchanges that weren't synced recently
+        // This prevents re-syncing everything on frequent restarts
         scheduler.schedule(() -> {
             try {
                 if (symbolSyncService.isSyncNeeded(Duration.ofHours(24))) {
-                    LOG.info("Symbol data is stale, triggering initial sync...");
-                    symbolSyncService.syncAll();
+                    LOG.info("Symbol data needs sync, running incremental sync (skipping recently synced exchanges)...");
+                    symbolSyncService.syncAll(true); // Skip exchanges synced within 12h
                 } else {
                     LOG.info("Symbol data is up to date, skipping initial sync");
                 }
             } catch (Exception e) {
-                LOG.error("Initial symbol sync check failed", e);
+                LOG.error("Initial symbol sync failed", e);
             }
         }, 5, TimeUnit.SECONDS);
     }
