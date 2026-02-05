@@ -14,6 +14,7 @@ import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
 import java.util.List;
+import java.util.Set;
 import java.util.function.Consumer;
 
 /**
@@ -37,6 +38,7 @@ public class TimelineGraphPanel extends JPanel {
     private final List<TopicNode> topicNodes = new ArrayList<>();  // Topics only
     private final List<TopicNode> coinNodes = new ArrayList<>();   // Coins only
     private final Map<String, TopicNode> topicMap = new HashMap<>();
+    private final Set<String> existingArticleIds = new HashSet<>();
 
     private Instant minTime;
     private Instant maxTime;
@@ -101,6 +103,7 @@ public class TimelineGraphPanel extends JPanel {
         topicNodes.clear();
         coinNodes.clear();
         topicMap.clear();
+        existingArticleIds.clear();
 
         // Sort by time, limit to max
         List<Article> sorted = articles.stream()
@@ -128,6 +131,7 @@ public class TimelineGraphPanel extends JPanel {
 
         // Create news nodes (lower half)
         for (Article article : sorted) {
+            existingArticleIds.add(article.id());
             NewsNode node = new NewsNode(article);
             node.setY(lowerTop + Math.random() * (lowerBottom - lowerTop - 40));
             newsNodes.add(node);
@@ -203,6 +207,122 @@ public class TimelineGraphPanel extends JPanel {
         updateXPositions();
         physicsTimer.start();
         repaint();
+    }
+
+    /**
+     * Add new articles without resetting existing nodes.
+     * Returns the number of new articles added.
+     */
+    public int addArticles(List<Article> articles) {
+        // Filter to only new articles
+        List<Article> newArticles = articles.stream()
+            .filter(a -> a.publishedAt() != null)
+            .filter(a -> !existingArticleIds.contains(a.id()))
+            .sorted(Comparator.comparing(Article::publishedAt).reversed())
+            .toList();
+
+        if (newArticles.isEmpty()) {
+            return 0;
+        }
+
+        int midY = getHeight() / 2;
+        int lowerTop = midY + 20;
+        int lowerBottom = getHeight() - MARGIN_BOTTOM;
+
+        // Update time range if needed
+        for (Article article : newArticles) {
+            Instant pubTime = article.publishedAt();
+            if (minTime == null || pubTime.isBefore(minTime)) minTime = pubTime;
+            if (maxTime == null || pubTime.isAfter(maxTime)) maxTime = pubTime;
+        }
+
+        // Add new news nodes
+        List<NewsNode> addedNodes = new ArrayList<>();
+        for (Article article : newArticles) {
+            existingArticleIds.add(article.id());
+            NewsNode node = new NewsNode(article);
+            node.setY(lowerTop + Math.random() * (lowerBottom - lowerTop - 40));
+            newsNodes.add(node);
+            addedNodes.add(node);
+
+            // Create/link topic nodes
+            for (String topic : article.topics()) {
+                TopicNode topicNode = topicMap.computeIfAbsent(topic, t -> {
+                    TopicNode tn = new TopicNode(t, formatTopicLabel(t), TopicNode.Type.TOPIC);
+                    topicNodes.add(tn);
+                    return tn;
+                });
+                topicNode.addConnection(node);
+                node.addTopicConnection(topicNode);
+            }
+
+            // Create/link coin nodes
+            for (String coin : article.coins()) {
+                String coinId = "coin:" + coin;
+                TopicNode coinNode = topicMap.computeIfAbsent(coinId, c -> {
+                    TopicNode cn = new TopicNode(coinId, coin, TopicNode.Type.COIN);
+                    coinNodes.add(cn);
+                    return cn;
+                });
+                coinNode.addConnection(node);
+                node.addTopicConnection(coinNode);
+            }
+        }
+
+        // Re-layout topics and coins (they may have new ones)
+        relayoutTopicsAndCoins();
+        updateXPositions();
+        repaint();
+
+        return addedNodes.size();
+    }
+
+    /**
+     * Re-layout topic and coin nodes without changing news node positions.
+     */
+    private void relayoutTopicsAndCoins() {
+        int midY = getHeight() / 2;
+        int rowSpacing = 26;
+        int topicY1 = MARGIN_TOP + 22;
+        int coinY = midY - 80;
+        int width = getWidth() - MARGIN_LEFT - MARGIN_RIGHT;
+
+        // Sort by article count
+        topicNodes.sort((a, b) -> Integer.compare(b.articleCount(), a.articleCount()));
+        coinNodes.sort((a, b) -> Integer.compare(b.articleCount(), a.articleCount()));
+
+        // Position topics across 5 rows
+        int[] topicYRows = new int[5];
+        for (int r = 0; r < 5; r++) {
+            topicYRows[r] = topicY1 + r * rowSpacing;
+        }
+        int topicsPerRow = (int) Math.ceil(topicNodes.size() / 5.0);
+        for (int i = 0; i < topicNodes.size(); i++) {
+            TopicNode tn = topicNodes.get(i);
+            int row = i / Math.max(1, topicsPerRow);
+            int indexInRow = i % Math.max(1, topicsPerRow);
+            int countInRow = Math.min(topicsPerRow, topicNodes.size() - row * topicsPerRow);
+            tn.setX(MARGIN_LEFT + (indexInRow + 0.5) * width / Math.max(1, countInRow));
+            tn.setY(topicYRows[Math.min(row, 4)]);
+        }
+
+        // Position coins across 3 rows (round-robin)
+        int coinRowSpacing = 32;
+        int[] coinYRows = {coinY, coinY + coinRowSpacing, coinY + 2 * coinRowSpacing};
+        int numCoinRows = 3;
+        int[] coinRowCounts = new int[numCoinRows];
+        for (int i = 0; i < coinNodes.size(); i++) {
+            coinRowCounts[i % numCoinRows]++;
+        }
+        int[] coinRowIndices = new int[numCoinRows];
+        for (int i = 0; i < coinNodes.size(); i++) {
+            TopicNode cn = coinNodes.get(i);
+            int row = i % numCoinRows;
+            int indexInRow = coinRowIndices[row]++;
+            int countInRow = coinRowCounts[row];
+            cn.setX(MARGIN_LEFT + (indexInRow + 0.5) * width / Math.max(1, countInRow));
+            cn.setY(coinYRows[row]);
+        }
     }
 
     private String formatTopicLabel(String topic) {

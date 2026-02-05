@@ -4,7 +4,6 @@ import com.formdev.flatlaf.FlatDarkLaf;
 import com.tradery.dataclient.DataServiceClient;
 import com.tradery.dataclient.DataServiceLauncher;
 import com.tradery.dataclient.DataServiceLocator;
-import com.tradery.dataclient.LiveCandleClient;
 import com.tradery.dataclient.page.DataPageListener;
 import com.tradery.dataclient.page.DataPageView;
 import com.tradery.dataclient.page.DataServiceConnection;
@@ -60,13 +59,9 @@ public class TraderyDeskApp {
     private DataServiceLauncher dataServiceLauncher;
     private DataServiceClient dataClient;
 
-    // Live candle client for real-time updates
-    private LiveCandleClient liveClient;
-
-    // New unified page-based data system (alternative to above)
+    // Page-based data system with live sliding window
     private DataServiceConnection pageConnection;
     private RemoteCandlePageManager candlePageMgr;
-    private boolean usePageSystem = true; // Using new unified page system
 
     // Per-strategy components
     private final Map<String, CandleAggregator> aggregators = new HashMap<>();
@@ -199,11 +194,7 @@ public class TraderyDeskApp {
      * Initialize connection to data service.
      */
     private void initDataService() {
-        if (usePageSystem) {
-            initPageSystem();
-        } else {
-            initLegacyDataService();
-        }
+        initPageSystem();
     }
 
     /**
@@ -265,65 +256,6 @@ public class TraderyDeskApp {
     }
 
     /**
-     * Legacy initialization using separate HTTP and WebSocket clients.
-     */
-    private void initLegacyDataService() {
-        try {
-            var clientOpt = DataServiceLocator.createClient();
-            if (clientOpt.isPresent()) {
-                dataClient = clientOpt.get();
-                if (dataClient.isHealthy()) {
-                    log.info("Connected to data-service");
-
-                    // Create live candle client
-                    var serviceInfo = DataServiceLocator.locate();
-                    if (serviceInfo.isPresent()) {
-                        liveClient = new LiveCandleClient(
-                            serviceInfo.get().host(),
-                            serviceInfo.get().port(),
-                            "tradery-desk-" + UUID.randomUUID().toString().substring(0, 8)
-                        );
-                        liveClient.connect();
-                        log.info("Connected to data-service live stream");
-                    }
-                } else {
-                    log.warn("Data service not healthy, historical data unavailable");
-                    dataClient = null;
-                }
-            } else {
-                log.warn("Data service not found, historical data unavailable");
-            }
-        } catch (Exception e) {
-            log.warn("Failed to connect to data-service: {}", e.getMessage());
-            dataClient = null;
-        }
-    }
-
-    /**
-     * Fetch historical candles from data service for indicator warmup.
-     */
-    private List<Candle> fetchHistoricalCandles(String symbol, String timeframe, int bars) {
-        if (dataClient == null) {
-            log.debug("No data service, skipping historical fetch for {}", symbol);
-            return List.of();
-        }
-
-        try {
-            long now = System.currentTimeMillis();
-            long barDurationMs = parseTimeframeMs(timeframe);
-            long startTime = now - (bars * barDurationMs);
-
-            log.info("Fetching {} historical candles for {} {}", bars, symbol, timeframe);
-            List<Candle> candles = dataClient.getCandles(symbol, timeframe, startTime, now);
-            log.info("Fetched {} historical candles from data-service", candles.size());
-            return candles;
-        } catch (Exception e) {
-            log.warn("Failed to fetch historical candles: {}", e.getMessage());
-            return List.of();
-        }
-    }
-
-    /**
      * Parse timeframe string to milliseconds.
      */
     private long parseTimeframeMs(String timeframe) {
@@ -370,12 +302,10 @@ public class TraderyDeskApp {
         aggregator.setOnCandleUpdate(candle -> onCandleUpdate(candle));
         aggregators.put(id, aggregator);
 
-        if (usePageSystem && candlePageMgr != null) {
-            // Use unified page system (async, with live integration)
+        if (candlePageMgr != null) {
             initializeStrategyWithPageSystem(strategy, aggregator);
         } else {
-            // Legacy: blocking fetch + separate live client
-            initializeStrategyLegacy(strategy, aggregator);
+            log.warn("No candle page manager, strategy {} will not receive data", id);
         }
     }
 
@@ -455,68 +385,12 @@ public class TraderyDeskApp {
         strategyPageListeners.put(id, listener);
 
         // Request live page (sliding window, async)
+        String marketType = strategy.getBacktestSettings().getSymbolMarket();
         DataPageView<Candle> page = candlePageMgr.requestLive(
-            symbol, timeframe, duration, listener, "Strategy:" + id);
+            symbol, timeframe, marketType, duration, listener, "Strategy:" + id);
         strategyPages.put(id, page);
 
         log.info("Strategy {} using live page (duration={}ms)", id, duration);
-    }
-
-    /**
-     * Initialize strategy using legacy blocking fetch + separate WebSocket.
-     */
-    private void initializeStrategyLegacy(PublishedStrategy strategy, CandleAggregator aggregator) {
-        String id = strategy.getId();
-        String symbol = strategy.getSymbol();
-        String timeframe = strategy.getTimeframe();
-
-        // Fetch historical candles from data-service for indicator warmup
-        List<Candle> history = fetchHistoricalCandles(symbol, timeframe, config.getHistoryBars());
-        if (!history.isEmpty()) {
-            aggregator.setHistory(history);
-            log.info("Warmed up {} with {} historical candles", strategy.getName(), history.size());
-
-            // Store for chart (first strategy only, or update existing)
-            if (initialChartCandles == null) {
-                initialChartCandles = history;
-                initialChartSymbol = symbol;
-                initialChartTimeframe = timeframe;
-            }
-
-            // Update chart with historical data if UI is ready
-            if (frame != null) {
-                frame.setChartCandles(history, symbol, timeframe);
-            }
-        }
-
-        // Subscribe to live candles via data-service
-        if (liveClient != null) {
-            liveClient.subscribe(symbol, timeframe,
-                // On update (incomplete candle)
-                candle -> {
-                    if (frame != null) {
-                        frame.updatePrice(candle.close(), candle.timestamp());
-                        frame.updateChartCandle(candle);
-                    }
-                },
-                // On close (complete candle)
-                candle -> {
-                    aggregator.addClosedCandle(candle);
-                    onCandleClose(strategy, candle, aggregator);
-                    if (frame != null) {
-                        frame.addChartCandle(candle);
-                    }
-                }
-            );
-            log.info("Subscribed to live candles for {} {}", symbol, timeframe);
-
-            // Update UI with connection state
-            if (frame != null) {
-                frame.updateSymbol(symbol, timeframe);
-            }
-        } else {
-            log.warn("No live client, real-time updates unavailable");
-        }
     }
 
     /**
@@ -611,10 +485,7 @@ public class TraderyDeskApp {
      * Stop components for a strategy.
      */
     private void stopStrategy(String strategyId) {
-        CandleAggregator aggregator = aggregators.remove(strategyId);
-        if (aggregator != null && liveClient != null) {
-            liveClient.unsubscribe(aggregator.getSymbol(), aggregator.getTimeframe(), null, null);
-        }
+        aggregators.remove(strategyId);
         evaluators.remove(strategyId);
         deduplicator.clearStrategy(strategyId);
 
@@ -870,11 +741,6 @@ public class TraderyDeskApp {
         }
         if (pageConnection != null) {
             pageConnection.disconnect();
-        }
-
-        // Close live candle client (legacy)
-        if (liveClient != null) {
-            liveClient.close();
         }
 
         aggregators.clear();

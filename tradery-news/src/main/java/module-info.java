@@ -6,6 +6,7 @@ module com.tradery.news {
     exports com.tradery.news.store;
     exports com.tradery.news.ai;
     exports com.tradery.news.ui;
+    exports com.tradery.news.ui.coin;
 
     // Java modules
     requires java.desktop;

@@ -10,12 +10,20 @@ application {
     mainClass = 'com.tradery.news.NewsTest'
 }
 
-// Task to run the UI
+// Task to run the news UI
 tasks.register('ui', JavaExec) {
     group = 'application'
     description = 'Run the news timeline UI'
     classpath = sourceSets.main.runtimeClasspath
     mainClass = 'com.tradery.news.ui.NewsFrame'
+}
+
+// Task to run the coin graph UI
+tasks.register('coins', JavaExec) {
+    group = 'application'
+    description = 'Run the coin relationships graph UI'
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.tradery.news.ui.coin.CoinGraphFrame'
 }
 
 dependencies {

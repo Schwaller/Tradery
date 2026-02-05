@@ -16,11 +16,14 @@ public class NewsNode {
     private final String id;
     private final String title;
     private final String source;
+    private final String sourceUrl;
     private final Instant publishedAt;
     private final ImportanceLevel importance;
     private final List<String> topics;
     private final List<String> coins;
     private final double sentiment;
+    private final String summary;
+    private final String content;
 
     // Position (x is fixed by time, y is computed by spring layout)
     private double x;
@@ -39,21 +42,27 @@ public class NewsNode {
         this.id = article.id();
         this.title = article.title();
         this.source = article.sourceName();
+        this.sourceUrl = article.sourceUrl();
         this.publishedAt = article.publishedAt();
         this.importance = article.importance() != null ? article.importance() : ImportanceLevel.MEDIUM;
         this.topics = article.topics() != null ? article.topics() : List.of();
         this.coins = article.coins() != null ? article.coins() : List.of();
         this.sentiment = article.sentimentScore();
+        this.summary = article.summary();
+        this.content = article.content();
     }
 
     public String id() { return id; }
     public String title() { return title; }
     public String source() { return source; }
+    public String sourceUrl() { return sourceUrl; }
     public Instant publishedAt() { return publishedAt; }
     public ImportanceLevel importance() { return importance; }
     public List<String> topics() { return topics; }
     public List<String> coins() { return coins; }
     public double sentiment() { return sentiment; }
+    public String summary() { return summary; }
+    public String content() { return content; }
 
     public double x() { return x; }
     public double y() { return y; }

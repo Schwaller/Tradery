@@ -1,8 +1,12 @@
 package com.tradery.news.ui;
 
 import com.formdev.flatlaf.FlatDarkLaf;
+import com.tradery.news.ai.ClaudeCliProcessor;
+import com.tradery.news.fetch.FetchScheduler;
+import com.tradery.news.fetch.FetcherRegistry;
 import com.tradery.news.model.Article;
 import com.tradery.news.store.SqliteNewsStore;
+import com.tradery.news.topic.TopicRegistry;
 
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
@@ -21,19 +25,23 @@ import java.util.List;
 public class NewsFrame extends JFrame {
 
     private final SqliteNewsStore store;
+    private final Path dataDir;
     private final TimelineGraphPanel graphPanel;
     private final JTextArea detailArea;
     private final JLabel statusLabel;
     private JComboBox<String> limitCombo;
     private JCheckBox connectionsCheck;
     private JCheckBox labelsCheck;
+    private JButton fetchBtn;
+    private volatile boolean fetching = false;
 
-    public NewsFrame(SqliteNewsStore store) {
-        super("CryptoNews Timeline");
+    public NewsFrame(SqliteNewsStore store, Path dataDir) {
+        super("Tradery - News");
         this.store = store;
+        this.dataDir = dataDir;
 
         setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
-        setSize(1400, 800);
+        setSize(1800, 900);
         setLocationRelativeTo(null);
 
         // Main layout
@@ -51,6 +59,7 @@ public class NewsFrame extends JFrame {
         // Detail panel (right sidebar)
         JPanel detailPanel = new JPanel(new BorderLayout());
         detailPanel.setPreferredSize(new Dimension(960, 0));
+        detailPanel.setMinimumSize(new Dimension(640, 0));
         detailPanel.setBackground(new Color(38, 40, 44));
         detailPanel.setBorder(BorderFactory.createMatteBorder(0, 1, 0, 0, new Color(50, 52, 56)));
 
@@ -110,8 +119,15 @@ public class NewsFrame extends JFrame {
         toolbar.setBackground(new Color(38, 40, 44));
         toolbar.setBorder(BorderFactory.createMatteBorder(0, 0, 1, 0, new Color(50, 52, 56)));
 
+        // Fetch new button
+        fetchBtn = new JButton("Fetch New");
+        fetchBtn.setToolTipText("Fetch new articles from RSS feeds with AI extraction");
+        fetchBtn.addActionListener(e -> fetchNewArticles());
+        toolbar.add(fetchBtn);
+
         // Refresh button
-        JButton refreshBtn = new JButton("⟳ Refresh");
+        JButton refreshBtn = new JButton("Refresh");
+        refreshBtn.setToolTipText("Reload from database");
         refreshBtn.addActionListener(e -> loadData());
         toolbar.add(refreshBtn);
 
@@ -142,7 +158,7 @@ public class NewsFrame extends JFrame {
 
         // Legend
         toolbar.add(Box.createHorizontalGlue());
-        JLabel legend = new JLabel("● Size = Importance  |  Color = Sentiment (🟢 positive  ⚪ neutral  🔴 negative)  ");
+        JLabel legend = new JLabel("Size = Importance  |  Color = Sentiment (green=positive, gray=neutral, red=negative)  ");
         legend.setForeground(new Color(120, 120, 130));
         legend.setFont(new Font("SansSerif", Font.PLAIN, 11));
         toolbar.add(legend);
@@ -176,6 +192,66 @@ public class NewsFrame extends JFrame {
         worker.execute();
     }
 
+    private void fetchNewArticles() {
+        if (fetching) return;
+        fetching = true;
+        fetchBtn.setEnabled(false);
+        fetchBtn.setText("Fetching...");
+        statusLabel.setText("Fetching new articles with AI extraction (this may take a while)...");
+
+        SwingWorker<FetchScheduler.FetchResult, String> worker = new SwingWorker<>() {
+            @Override
+            protected FetchScheduler.FetchResult doInBackground() {
+                FetcherRegistry fetchers = new FetcherRegistry();
+                fetchers.registerDefaults();
+
+                TopicRegistry topics = new TopicRegistry(dataDir.resolve("topics.json"));
+                ClaudeCliProcessor ai = new ClaudeCliProcessor();
+
+                if (!ai.isAvailable()) {
+                    publish("Claude CLI not available - fetching without AI extraction");
+                    ai = null;
+                }
+
+                try (var scheduler = new FetchScheduler(fetchers, topics, store, ai)) {
+                    scheduler.withAiEnabled(ai != null)
+                             .withArticlesPerSource(ai != null ? 5 : 10);
+                    return scheduler.fetchAndProcess();
+                }
+            }
+
+            @Override
+            protected void process(List<String> chunks) {
+                if (!chunks.isEmpty()) {
+                    statusLabel.setText(chunks.get(chunks.size() - 1));
+                }
+            }
+
+            @Override
+            protected void done() {
+                fetching = false;
+                fetchBtn.setEnabled(true);
+                fetchBtn.setText("Fetch New");
+                try {
+                    FetchScheduler.FetchResult result = get();
+                    if (result.newArticles() > 0) {
+                        // Get all articles and add only new ones to the graph
+                        int limit = Integer.parseInt((String) limitCombo.getSelectedItem());
+                        List<Article> allArticles = store.getArticles(SqliteNewsStore.ArticleQuery.all(limit));
+                        int added = graphPanel.addArticles(allArticles);
+                        statusLabel.setText(String.format("Added %d new articles (%d AI processed)  |  Total: %d",
+                            added, result.aiProcessed(), store.getArticleCount()));
+                    } else {
+                        statusLabel.setText("No new articles found  |  Total: " + store.getArticleCount());
+                    }
+                } catch (Exception e) {
+                    statusLabel.setText("Fetch error: " + e.getMessage());
+                }
+            }
+        };
+        worker.execute();
+    }
+
     private void showNodeDetails(NewsNode node) {
         StringBuilder sb = new StringBuilder();
         sb.append("TITLE\n");
@@ -183,6 +259,11 @@ public class NewsFrame extends JFrame {
 
         sb.append("SOURCE\n");
         sb.append(node.source()).append("\n\n");
+
+        if (node.sourceUrl() != null && !node.sourceUrl().isEmpty()) {
+            sb.append("URL\n");
+            sb.append(node.sourceUrl()).append("\n\n");
+        }
 
         sb.append("PUBLISHED\n");
         LocalDateTime ldt = LocalDateTime.ofInstant(node.publishedAt(), ZoneId.systemDefault());
@@ -199,10 +280,20 @@ public class NewsFrame extends JFrame {
         sb.append("\n\n");
 
         sb.append("TOPICS\n");
-        sb.append(node.topics().isEmpty() ? "(none)" : String.join("\n", node.topics())).append("\n\n");
+        sb.append(node.topics().isEmpty() ? "(none)" : String.join(", ", node.topics())).append("\n\n");
 
         sb.append("COINS\n");
         sb.append(node.coins().isEmpty() ? "(none)" : String.join(", ", node.coins())).append("\n\n");
+
+        if (node.summary() != null && !node.summary().isEmpty()) {
+            sb.append("SUMMARY\n");
+            sb.append(node.summary()).append("\n\n");
+        }
+
+        if (node.content() != null && !node.content().isEmpty()) {
+            sb.append("CONTENT\n");
+            sb.append(node.content()).append("\n\n");
+        }
 
         sb.append("CONNECTIONS\n");
         sb.append(node.connections().size()).append(" related articles");
@@ -224,11 +315,11 @@ public class NewsFrame extends JFrame {
             e.printStackTrace();
         }
 
-        Path dbPath = Path.of(System.getProperty("user.home"), ".cryptonews", "news.db");
-        SqliteNewsStore store = new SqliteNewsStore(dbPath);
+        Path dataDir = Path.of(System.getProperty("user.home"), ".cryptonews");
+        SqliteNewsStore store = new SqliteNewsStore(dataDir.resolve("news.db"));
 
         SwingUtilities.invokeLater(() -> {
-            NewsFrame frame = new NewsFrame(store);
+            NewsFrame frame = new NewsFrame(store, dataDir);
             frame.setVisible(true);
         });
     }
