@@ -11,6 +11,7 @@ import com.tradery.charts.overlay.EmaOverlay;
 import com.tradery.charts.overlay.HighLowOverlay;
 import com.tradery.charts.overlay.IchimokuOverlay;
 import com.tradery.charts.overlay.LastPriceOverlay;
+import com.tradery.charts.overlay.ReferencePriceOverlay;
 import com.tradery.charts.overlay.SmaOverlay;
 import com.tradery.charts.overlay.SupertrendOverlay;
 import com.tradery.charts.overlay.VwapOverlay;
@@ -74,6 +75,8 @@ public class PriceChartPanel extends JPanel {
     private boolean volumeRatioEnabled = false;
     private LastPriceOverlay lastPriceOverlay;
     private boolean lastPriceEnabled = true;  // Enabled by default
+    private ReferencePriceOverlay referencePriceOverlay;
+    private boolean referencePriceEnabled = false;
     private final ChartInteractionManager interactionManager;
 
     public PriceChartPanel() {
@@ -378,6 +381,50 @@ public class PriceChartPanel extends JPanel {
      */
     public boolean isLastPriceEnabled() {
         return lastPriceEnabled;
+    }
+
+    /**
+     * Enable or disable the reference price overlay (e.g., spot price for comparison).
+     */
+    public void setReferencePriceEnabled(boolean enabled) {
+        if (enabled == referencePriceEnabled) return;
+        referencePriceEnabled = enabled;
+
+        if (enabled) {
+            if (referencePriceOverlay == null) {
+                referencePriceOverlay = new ReferencePriceOverlay("SPOT");
+            }
+            candlestickChart.addOverlay(referencePriceOverlay);
+        } else {
+            if (referencePriceOverlay != null) {
+                candlestickChart.removeOverlay(referencePriceOverlay);
+            }
+        }
+    }
+
+    /**
+     * Check if reference price overlay is enabled.
+     */
+    public boolean isReferencePriceEnabled() {
+        return referencePriceEnabled;
+    }
+
+    /**
+     * Update the reference price value.
+     */
+    public void updateReferencePrice(double price) {
+        if (referencePriceOverlay != null) {
+            referencePriceOverlay.setReferencePrice(price);
+            // Trigger chart refresh to update the marker
+            SwingUtilities.invokeLater(this::refreshCharts);
+        }
+    }
+
+    /**
+     * Get the reference price overlay (for direct access if needed).
+     */
+    public ReferencePriceOverlay getReferencePriceOverlay() {
+        return referencePriceOverlay;
     }
 
     // ===== Volume Chart Support =====

@@ -13,6 +13,7 @@ import com.tradery.dataclient.page.RemoteCandlePageManager;
 import com.tradery.desk.alert.AlertDispatcher;
 import com.tradery.desk.api.DeskApiServer;
 import com.tradery.desk.feed.CandleAggregator;
+import com.tradery.desk.service.SpotReferenceService;
 import com.tradery.desk.signal.SignalDeduplicator;
 import com.tradery.desk.signal.SignalEvaluator;
 import com.tradery.desk.signal.SignalEvent;
@@ -82,6 +83,7 @@ public class TraderyDeskApp {
 
     // Chart-specific page subscription (independent of strategies)
     private String chartSymbol;
+    private String chartMarketType = "perp";
     private String chartTimeframe = "1h";
     private DataPageView<Candle> chartPage;
     private DataPageListener<Candle> chartPageListener;
@@ -91,6 +93,9 @@ public class TraderyDeskApp {
 
     // UI
     private DeskFrame frame;
+
+    // Spot reference price service (for debug comparison)
+    private SpotReferenceService spotReferenceService;
 
     public TraderyDeskApp() {
         this.config = DeskConfig.load();
@@ -636,11 +641,18 @@ public class TraderyDeskApp {
      * Creates a new page subscription for the chart independent of strategies.
      */
     private void switchChartSymbol(String newSymbol, String marketType) {
-        if (newSymbol == null || newSymbol.equals(chartSymbol)) {
+        String mt = marketType != null ? marketType : "perp";
+
+        // Check if anything changed (symbol OR market type)
+        boolean symbolChanged = newSymbol != null && !newSymbol.equals(chartSymbol);
+        boolean marketChanged = !mt.equals(chartMarketType);
+
+        if (!symbolChanged && !marketChanged) {
             return;
         }
 
-        log.info("Switching chart to symbol: {} ({})", newSymbol, marketType);
+        log.info("Switching chart to symbol: {} ({}) [symbolChanged={}, marketChanged={}]",
+            newSymbol, mt, symbolChanged, marketChanged);
 
         // Release old chart page if exists
         if (chartPage != null && candlePageMgr != null) {
@@ -650,6 +662,7 @@ public class TraderyDeskApp {
         }
 
         chartSymbol = newSymbol;
+        chartMarketType = mt;
 
         if (candlePageMgr == null) {
             log.warn("Cannot switch symbol: page manager not available");
@@ -659,7 +672,6 @@ public class TraderyDeskApp {
         // Calculate duration for chart page
         long barDurationMs = parseTimeframeMs(chartTimeframe);
         long duration = config.getHistoryBars() * barDurationMs;
-        String mt = marketType != null ? marketType : "perp";
 
         // Create new chart page listener
         chartPageListener = new DataPageListener<>() {
@@ -776,7 +788,55 @@ public class TraderyDeskApp {
             }
 
             frame.setVisible(true);
+
+            // Force chart to respect UI's selected market type
+            // (initial data may have come from strategy with different market type)
+            String uiSymbol = frame.getSelectedSymbol();
+            String uiMarket = frame.getSelectedMarket();
+            if (uiSymbol != null && !uiSymbol.isEmpty()) {
+                chartMarketType = ""; // Reset to force refresh
+                switchChartSymbol(uiSymbol, uiMarket);
+            }
+
+            // Start spot reference price service (debug: blue BTCUSDT spot line)
+            startSpotReferenceService();
         });
+    }
+
+    /**
+     * Start the spot reference price service for debug comparison.
+     */
+    private void startSpotReferenceService() {
+        spotReferenceService = new SpotReferenceService();
+
+        // Enable the reference price overlay on the chart
+        frame.getPriceChartPanel().setReferencePriceEnabled(true);
+
+        // Wire price updates to the chart
+        spotReferenceService.setPriceListener(price -> {
+            SwingUtilities.invokeLater(() -> {
+                frame.getPriceChartPanel().updateReferencePrice(price);
+                // Force chart repaint
+                frame.getPriceChartPanel().repaint();
+                // Debug: compare with chart price
+                var candles = frame.getPriceChartPanel().getDataProvider().getCandles();
+                if (!candles.isEmpty()) {
+                    double chartPrice = candles.get(candles.size() - 1).close();
+                    double diff = price - chartPrice;
+                    String pageKey = chartPage != null ? chartPage.getKey() : "no-page";
+                    if (Math.abs(diff) > 5) { // Only log if diff > $5
+                        log.info("[PRICE-CMP] Spot ref: {}, Chart: {}, Diff: {}, Page: {}",
+                            String.format("%.2f", price),
+                            String.format("%.2f", chartPrice),
+                            String.format("%.2f", diff),
+                            pageKey);
+                    }
+                }
+            });
+        });
+
+        spotReferenceService.start();
+        log.info("Started spot reference price service (BTCUSDT spot)");
     }
 
     /**
@@ -786,6 +846,11 @@ public class TraderyDeskApp {
         log.info("Shutting down Tradery Desk...");
 
         strategyWatcher.stop();
+
+        // Stop spot reference service
+        if (spotReferenceService != null) {
+            spotReferenceService.stop();
+        }
 
         // Stop API server
         if (apiServer != null) {

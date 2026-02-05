@@ -56,7 +56,7 @@ public class NewsTest {
                                  SqliteNewsStore store, ClaudeCliProcessor ai) {
         try (store; var scheduler = new FetchScheduler(fetchers, topics, store, ai)) {
             scheduler.withAiEnabled(ai != null)
-                     .withArticlesPerSource(ai != null ? 2 : 5);
+                     .withArticlesPerSource(ai != null ? 10 : 20);
 
             var result = scheduler.fetchAndProcess();
 

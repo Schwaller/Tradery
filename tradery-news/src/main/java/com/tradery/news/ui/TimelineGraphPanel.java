@@ -165,16 +165,23 @@ public class TimelineGraphPanel extends JPanel {
             tn.setY(topicYRows[Math.min(row, 4)]);
         }
 
-        // Position coins across 3 horizontal lines
-        int[] coinYRows = {coinY, coinY + rowSpacing, coinY + 2 * rowSpacing};
-        int coinsPerRow = (int) Math.ceil(coinNodes.size() / 3.0);
+        // Position coins across 3 horizontal lines (round-robin to use all rows)
+        int coinRowSpacing = 32;
+        int[] coinYRows = {coinY, coinY + coinRowSpacing, coinY + 2 * coinRowSpacing};
+        int numCoinRows = 3;
+        int[] coinRowCounts = new int[numCoinRows];
+        // Count how many coins per row (round-robin)
+        for (int i = 0; i < coinNodes.size(); i++) {
+            coinRowCounts[i % numCoinRows]++;
+        }
+        int[] coinRowIndices = new int[numCoinRows];
         for (int i = 0; i < coinNodes.size(); i++) {
             TopicNode cn = coinNodes.get(i);
-            int row = i / Math.max(1, coinsPerRow);
-            int indexInRow = i % Math.max(1, coinsPerRow);
-            int countInRow = Math.min(coinsPerRow, coinNodes.size() - row * coinsPerRow);
+            int row = i % numCoinRows;
+            int indexInRow = coinRowIndices[row]++;
+            int countInRow = coinRowCounts[row];
             cn.setX(MARGIN_LEFT + (indexInRow + 0.5) * width / Math.max(1, countInRow));
-            cn.setY(coinYRows[Math.min(row, 2)]);
+            cn.setY(coinYRows[row]);
         }
 
         updateXPositions();

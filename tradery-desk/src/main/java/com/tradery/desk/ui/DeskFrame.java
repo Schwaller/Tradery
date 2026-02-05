@@ -212,4 +212,11 @@ public class DeskFrame extends JFrame {
     public String getSelectedSymbol() {
         return marketInfoBar.getSymbolCombo().getSelectedSymbol();
     }
+
+    /**
+     * Get the price chart panel for direct access.
+     */
+    public PriceChartPanel getPriceChartPanel() {
+        return priceChartPanel;
+    }
 }
