@@ -4,7 +4,7 @@ import com.tradery.charts.core.ChartTheme;
 import com.tradery.forge.ui.theme.Theme;
 import com.tradery.forge.ui.theme.ThemeManager;
 
-import java.awt.Color;
+import java.awt.*;
 
 /**
  * Adapts forge's Theme to the ChartTheme interface.

@@ -1,15 +1,15 @@
 package com.tradery.forge.ui.charts.footprint;
 
-import com.tradery.forge.ApplicationContext;
-import com.tradery.forge.data.PageState;
-import com.tradery.forge.data.page.AggTradesPageManager;
-import com.tradery.forge.data.page.DataPageListener;
-import com.tradery.forge.data.page.DataPageView;
 import com.tradery.core.indicators.FootprintIndicator;
 import com.tradery.core.model.AggTrade;
 import com.tradery.core.model.Candle;
 import com.tradery.core.model.Exchange;
 import com.tradery.core.model.FootprintResult;
+import com.tradery.forge.ApplicationContext;
+import com.tradery.forge.data.PageState;
+import com.tradery.forge.data.page.AggTradesPageManager;
+import com.tradery.forge.data.page.DataPageListener;
+import com.tradery.forge.data.page.DataPageView;
 import org.jfree.chart.JFreeChart;
 import org.jfree.chart.plot.XYPlot;
 import org.slf4j.Logger;

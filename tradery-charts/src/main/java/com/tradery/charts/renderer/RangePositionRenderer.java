@@ -11,7 +11,7 @@ import org.jfree.data.time.Millisecond;
 import org.jfree.data.time.TimeSeries;
 import org.jfree.data.time.TimeSeriesCollection;
 
-import java.awt.Color;
+import java.awt.*;
 import java.util.Date;
 import java.util.List;
 

@@ -5,7 +5,9 @@ import com.tradery.forge.data.log.DownloadEvent;
 import com.tradery.forge.data.log.DownloadLogStore;
 
 import javax.swing.*;
-import javax.swing.table.*;
+import javax.swing.table.AbstractTableModel;
+import javax.swing.table.DefaultTableCellRenderer;
+import javax.swing.table.TableColumnModel;
 import java.awt.*;
 import java.time.Instant;
 import java.time.ZoneId;

@@ -2,7 +2,6 @@ package com.tradery.engine;
 
 import com.tradery.core.dsl.AstNode;
 import com.tradery.core.indicators.IndicatorEngine;
-import com.tradery.core.indicators.Indicators;
 
 import java.util.List;
 

@@ -1,20 +1,12 @@
 package com.tradery.forge.ui;
 
-import com.tradery.core.model.EntryOrderType;
-import com.tradery.core.model.ExitZone;
-import com.tradery.core.model.HoopPatternSettings;
-import com.tradery.core.model.PhaseSettings;
-import com.tradery.core.model.StopLossType;
-import com.tradery.core.model.Strategy;
-import com.tradery.core.model.TakeProfitType;
+import com.tradery.core.model.*;
 
 import javax.swing.*;
 import java.awt.*;
 import java.awt.geom.Path2D;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 /**
  * A visual diagram showing Entry box with arrows projecting to exit zones on a P&L scale.

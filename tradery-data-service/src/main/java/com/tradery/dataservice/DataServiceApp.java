@@ -1,10 +1,10 @@
 package com.tradery.dataservice;
 
+import com.tradery.dataservice.api.DataServiceServer;
 import com.tradery.dataservice.coingecko.CoinGeckoClient;
+import com.tradery.dataservice.config.DataServiceConfig;
 import com.tradery.dataservice.data.sqlite.SqliteDataStore;
 import com.tradery.dataservice.data.sqlite.SymbolsConnection;
-import com.tradery.dataservice.api.DataServiceServer;
-import com.tradery.dataservice.config.DataServiceConfig;
 import com.tradery.dataservice.symbols.SymbolSyncService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

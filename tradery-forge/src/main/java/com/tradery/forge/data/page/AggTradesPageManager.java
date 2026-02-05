@@ -1,16 +1,12 @@
 package com.tradery.forge.data.page;
 
+import com.tradery.core.model.AggTrade;
+import com.tradery.dataclient.DataServiceClient;
 import com.tradery.forge.ApplicationContext;
 import com.tradery.forge.data.DataType;
 import com.tradery.forge.data.log.DownloadLogStore;
-import com.tradery.dataclient.DataServiceClient;
-import com.tradery.core.model.AggTrade;
 
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**

@@ -1,11 +1,6 @@
 package com.tradery.forge.ui;
 
-import com.tradery.core.model.ExitBasis;
-import com.tradery.core.model.ExitReentry;
-import com.tradery.core.model.ExitZone;
-import com.tradery.core.model.StopLossType;
-import com.tradery.core.model.Strategy;
-import com.tradery.core.model.TakeProfitType;
+import com.tradery.core.model.*;
 import com.tradery.forge.ui.base.ConfigurationPanel;
 
 import javax.swing.*;

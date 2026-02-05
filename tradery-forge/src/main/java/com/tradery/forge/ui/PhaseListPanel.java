@@ -1,8 +1,8 @@
 package com.tradery.forge.ui;
 
+import com.tradery.core.model.Phase;
 import com.tradery.forge.ApplicationContext;
 import com.tradery.forge.io.PhaseStore;
-import com.tradery.core.model.Phase;
 import com.tradery.forge.ui.controls.BadgeListPanel;
 
 import javax.swing.*;

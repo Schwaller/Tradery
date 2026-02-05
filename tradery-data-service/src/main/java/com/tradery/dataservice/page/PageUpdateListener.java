@@ -1,6 +1,7 @@
 package com.tradery.dataservice.page;
 
 import com.tradery.core.model.Candle;
+
 import java.util.List;
 
 /**

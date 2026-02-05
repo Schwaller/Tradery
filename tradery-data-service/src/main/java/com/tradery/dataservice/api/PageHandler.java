@@ -1,8 +1,7 @@
 package com.tradery.dataservice.api;
 
-import com.tradery.dataservice.page.PageManager;
 import com.tradery.dataservice.page.PageKey;
-import com.tradery.dataservice.page.PageState;
+import com.tradery.dataservice.page.PageManager;
 import com.tradery.dataservice.page.PageStatus;
 import io.javalin.http.Context;
 import org.slf4j.Logger;

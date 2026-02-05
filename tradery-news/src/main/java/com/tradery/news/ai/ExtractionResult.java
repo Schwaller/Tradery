@@ -1,6 +1,9 @@
 package com.tradery.news.ai;
 
-import com.tradery.news.model.*;
+import com.tradery.news.model.EntityType;
+import com.tradery.news.model.EventType;
+import com.tradery.news.model.ImportanceLevel;
+import com.tradery.news.model.RelationType;
 
 import java.util.List;
 

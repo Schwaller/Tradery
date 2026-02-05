@@ -1,10 +1,10 @@
 package com.tradery.forge.ui;
 
+import com.tradery.charts.core.ChartInteractionManager;
+import com.tradery.charts.renderer.TraderyCandlestickRenderer;
 import com.tradery.core.model.Candle;
 import com.tradery.core.model.Trade;
-import com.tradery.charts.core.ChartInteractionManager;
 import com.tradery.forge.ui.charts.*;
-
 import org.jfree.chart.ChartFactory;
 import org.jfree.chart.JFreeChart;
 import org.jfree.chart.annotations.XYLineAnnotation;
@@ -12,7 +12,6 @@ import org.jfree.chart.annotations.XYTitleAnnotation;
 import org.jfree.chart.axis.DateAxis;
 import org.jfree.chart.axis.ValueAxis;
 import org.jfree.chart.plot.XYPlot;
-import com.tradery.charts.renderer.TraderyCandlestickRenderer;
 import org.jfree.chart.renderer.xy.XYBarRenderer;
 import org.jfree.chart.renderer.xy.XYDifferenceRenderer;
 import org.jfree.chart.renderer.xy.XYLineAndShapeRenderer;
@@ -26,7 +25,6 @@ import org.jfree.data.xy.XYSeriesCollection;
 
 import javax.swing.*;
 import java.awt.*;
-import java.awt.Paint;
 import java.awt.geom.Ellipse2D;
 import java.util.Date;
 import java.util.List;

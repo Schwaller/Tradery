@@ -1,22 +1,16 @@
 package com.tradery.forge.ui;
 
+import com.tradery.core.model.ExitZone;
+import com.tradery.core.model.Strategy;
 import com.tradery.forge.ApplicationContext;
 import com.tradery.forge.TraderyApp;
 import com.tradery.forge.data.sqlite.SqliteDataStore;
-import com.tradery.forge.io.FileWatcher;
-import com.tradery.forge.io.HoopPatternStore;
-import com.tradery.forge.io.PhaseStore;
-import com.tradery.forge.io.StrategyStore;
-import com.tradery.forge.io.WindowStateStore;
-import com.tradery.core.model.ExitZone;
-import com.tradery.core.model.Strategy;
+import com.tradery.forge.io.*;
 
 import javax.swing.*;
 import java.awt.*;
 import java.awt.event.ComponentAdapter;
 import java.awt.event.ComponentEvent;
-import java.awt.event.WindowAdapter;
-import java.awt.event.WindowEvent;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Path;

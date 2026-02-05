@@ -1,7 +1,7 @@
 package com.tradery.forge.data;
 
-import com.tradery.forge.data.sqlite.SqliteDataStore;
 import com.tradery.core.model.FundingRate;
+import com.tradery.forge.data.sqlite.SqliteDataStore;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
@@ -13,7 +13,8 @@ import java.time.Instant;
 import java.time.YearMonth;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 

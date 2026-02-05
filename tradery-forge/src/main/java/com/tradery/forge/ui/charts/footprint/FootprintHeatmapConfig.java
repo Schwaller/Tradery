@@ -4,7 +4,7 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.tradery.core.model.Exchange;
 
-import java.awt.Color;
+import java.awt.*;
 
 /**
  * Configuration for footprint heatmap visualization.

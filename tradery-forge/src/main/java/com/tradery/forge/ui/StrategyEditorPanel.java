@@ -1,7 +1,7 @@
 package com.tradery.forge.ui;
 
-import com.tradery.forge.ApplicationContext;
 import com.tradery.core.model.Strategy;
+import com.tradery.forge.ApplicationContext;
 
 import javax.swing.*;
 import javax.swing.event.DocumentEvent;

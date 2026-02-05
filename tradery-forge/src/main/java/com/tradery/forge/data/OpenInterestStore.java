@@ -1,16 +1,15 @@
 package com.tradery.forge.data;
 
-import com.tradery.forge.data.sqlite.SqliteDataStore;
 import com.tradery.core.model.OpenInterest;
+import com.tradery.forge.data.sqlite.SqliteDataStore;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.*;
-import java.time.Instant;
-import java.time.YearMonth;
-import java.time.ZoneOffset;
+import java.io.File;
+import java.io.IOException;
 import java.time.format.DateTimeFormatter;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.function.Consumer;
 
 /**

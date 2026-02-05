@@ -3,13 +3,13 @@ package com.tradery.forge.api;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.sun.net.httpserver.HttpExchange;
-import com.tradery.forge.data.sqlite.SqliteDataStore;
 import com.tradery.core.dsl.Parser;
-import com.tradery.engine.ConditionEvaluator;
 import com.tradery.core.indicators.IndicatorEngine;
-import com.tradery.forge.io.PhaseStore;
 import com.tradery.core.model.Candle;
 import com.tradery.core.model.Phase;
+import com.tradery.engine.ConditionEvaluator;
+import com.tradery.forge.data.sqlite.SqliteDataStore;
+import com.tradery.forge.io.PhaseStore;
 
 import java.io.IOException;
 import java.time.Instant;

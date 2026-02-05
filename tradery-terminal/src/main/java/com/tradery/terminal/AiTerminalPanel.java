@@ -1,8 +1,8 @@
 package com.tradery.terminal;
 
 import com.jediterm.pty.PtyProcessTtyConnector;
-import com.jediterm.terminal.TtyConnector;
 import com.jediterm.terminal.TerminalColor;
+import com.jediterm.terminal.TtyConnector;
 import com.jediterm.terminal.ui.JediTermWidget;
 import com.jediterm.terminal.ui.settings.DefaultSettingsProvider;
 import com.pty4j.PtyProcess;

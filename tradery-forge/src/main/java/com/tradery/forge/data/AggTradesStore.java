@@ -1,10 +1,10 @@
 package com.tradery.forge.data;
 
-import com.tradery.forge.data.sqlite.SqliteDataStore;
 import com.tradery.core.model.AggTrade;
 import com.tradery.core.model.DataMarketType;
 import com.tradery.core.model.Exchange;
 import com.tradery.core.model.FetchProgress;
+import com.tradery.forge.data.sqlite.SqliteDataStore;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
@@ -14,11 +14,9 @@ import org.slf4j.LoggerFactory;
 import java.io.*;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.sql.SQLException;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.time.YearMonth;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;

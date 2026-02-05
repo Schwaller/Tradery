@@ -5,7 +5,6 @@ import org.jfree.chart.JFreeChart;
 import org.jfree.chart.ui.RectangleInsets;
 
 import javax.swing.*;
-import javax.swing.ButtonGroup;
 
 /**
  * Factory for creating consistently configured chart panels.

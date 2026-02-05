@@ -1,7 +1,7 @@
 package com.tradery.dataservice.page;
 
-import com.tradery.dataservice.config.DataServiceConfig;
 import com.tradery.core.model.Candle;
+import com.tradery.dataservice.config.DataServiceConfig;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -12,7 +12,6 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
-import java.util.function.ToLongFunction;
 
 /**
  * Represents a loaded data page with its consumers and data.

@@ -3,10 +3,7 @@ package com.tradery.charts.util;
 import org.jfree.chart.annotations.XYLineAnnotation;
 import org.jfree.chart.plot.XYPlot;
 
-import java.awt.BasicStroke;
-import java.awt.Color;
-import java.awt.Paint;
-import java.awt.Stroke;
+import java.awt.*;
 
 /**
  * Centralized helper for creating chart reference lines and annotations.

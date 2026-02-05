@@ -1,22 +1,20 @@
 package com.tradery.forge.ui.charts;
 
+import com.tradery.core.indicators.IndicatorEngine;
+import com.tradery.core.model.Candle;
+import com.tradery.core.model.PremiumIndex;
+import com.tradery.core.model.Trade;
 import com.tradery.forge.ApplicationContext;
 import com.tradery.forge.data.PageState;
 import com.tradery.forge.data.page.DataPageListener;
 import com.tradery.forge.data.page.DataPageView;
 import com.tradery.forge.data.page.PremiumPageManager;
-import com.tradery.core.indicators.IndicatorEngine;
-import com.tradery.core.model.Candle;
-import com.tradery.core.model.PremiumIndex;
-import com.tradery.core.model.Trade;
-import org.jfree.chart.ChartFactory;
 import org.jfree.chart.JFreeChart;
 import org.jfree.chart.axis.NumberAxis;
 import org.jfree.chart.plot.XYPlot;
-import org.jfree.chart.renderer.xy.XYAreaRenderer;
+import org.jfree.chart.renderer.xy.StandardXYBarPainter;
 import org.jfree.chart.renderer.xy.XYBarRenderer;
 import org.jfree.chart.renderer.xy.XYLineAndShapeRenderer;
-import org.jfree.chart.renderer.xy.StandardXYBarPainter;
 import org.jfree.data.time.Millisecond;
 import org.jfree.data.time.TimeSeries;
 import org.jfree.data.time.TimeSeriesCollection;
@@ -25,7 +23,9 @@ import org.jfree.data.xy.XYSeriesCollection;
 
 import javax.swing.*;
 import java.awt.*;
-import java.util.*;
+import java.util.Date;
+import java.util.EnumMap;
+import java.util.EnumSet;
 import java.util.List;
 
 import static com.tradery.charts.util.ChartAnnotationHelper.*;

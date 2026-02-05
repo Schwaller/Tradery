@@ -2,13 +2,10 @@ package com.tradery.forge.ui.charts;
 
 import org.jfree.chart.JFreeChart;
 import org.jfree.chart.axis.DateAxis;
-import org.jfree.chart.axis.ValueAxis;
 import org.jfree.chart.plot.XYPlot;
 
 import javax.swing.*;
 import java.awt.*;
-import java.util.Date;
-import java.util.List;
 
 /**
  * Manages zoom state and fixed-width scrolling mode for charts.

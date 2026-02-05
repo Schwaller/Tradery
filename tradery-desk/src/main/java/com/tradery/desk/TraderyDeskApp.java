@@ -1,16 +1,14 @@
 package com.tradery.desk;
 
 import com.formdev.flatlaf.FlatDarkLaf;
+import com.tradery.core.model.Candle;
 import com.tradery.dataclient.DataServiceClient;
 import com.tradery.dataclient.DataServiceLauncher;
 import com.tradery.dataclient.DataServiceLocator;
-import com.tradery.dataclient.page.DataPageListener;
-import com.tradery.dataclient.page.DataPageView;
-import com.tradery.dataclient.page.DataServiceConnection;
-import com.tradery.dataclient.page.PageState;
-import com.tradery.dataclient.page.RemoteCandlePageManager;
+import com.tradery.dataclient.page.*;
 import com.tradery.desk.alert.AlertDispatcher;
 import com.tradery.desk.api.DeskApiServer;
+import com.tradery.desk.feed.BinanceWebSocketClient.ConnectionState;
 import com.tradery.desk.feed.CandleAggregator;
 import com.tradery.desk.service.SpotReferenceService;
 import com.tradery.desk.signal.SignalDeduplicator;
@@ -20,9 +18,7 @@ import com.tradery.desk.strategy.DeskStrategyStore;
 import com.tradery.desk.strategy.PublishedStrategy;
 import com.tradery.desk.strategy.StrategyLibrary;
 import com.tradery.desk.strategy.StrategyWatcher;
-import com.tradery.desk.feed.BinanceWebSocketClient.ConnectionState;
 import com.tradery.desk.ui.DeskFrame;
-import com.tradery.core.model.Candle;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

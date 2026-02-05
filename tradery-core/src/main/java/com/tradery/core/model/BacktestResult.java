@@ -2,10 +2,10 @@ package com.tradery.core.model;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.util.List;
 import java.util.UUID;
-import java.security.MessageDigest;
-import java.nio.charset.StandardCharsets;
 
 /**
  * Result of a backtest run.

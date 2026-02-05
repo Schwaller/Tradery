@@ -2,7 +2,7 @@ package com.tradery.desk.ui.charts;
 
 import com.tradery.charts.core.ChartTheme;
 
-import java.awt.Color;
+import java.awt.*;
 
 /**
  * Dark theme for Desk charts.

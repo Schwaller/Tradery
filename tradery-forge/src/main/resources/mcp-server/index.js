@@ -1,14 +1,11 @@
 #!/usr/bin/env node
 
-import { Server } from "@modelcontextprotocol/sdk/server/index.js";
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import {
-  CallToolRequestSchema,
-  ListToolsRequestSchema,
-} from "@modelcontextprotocol/sdk/types.js";
-import { readFileSync, writeFileSync, existsSync, readdirSync, mkdirSync } from "fs";
-import { homedir } from "os";
-import { join } from "path";
+import {Server} from "@modelcontextprotocol/sdk/server/index.js";
+import {StdioServerTransport} from "@modelcontextprotocol/sdk/server/stdio.js";
+import {CallToolRequestSchema, ListToolsRequestSchema,} from "@modelcontextprotocol/sdk/types.js";
+import {existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync} from "fs";
+import {homedir} from "os";
+import {join} from "path";
 
 const TRADERY_DIR = join(homedir(), ".tradery");
 

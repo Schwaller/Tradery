@@ -6,14 +6,14 @@ import com.tradery.forge.mcp.McpServerSetup;
 import com.tradery.forge.ui.LauncherFrame;
 import com.tradery.forge.ui.theme.ThemeManager;
 
+import javax.imageio.ImageIO;
 import javax.swing.*;
 import java.awt.*;
 import java.io.File;
-import java.io.InputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
-import javax.imageio.ImageIO;
 
 /**
  * Tradery - Java Desktop Trading Strategy Backtester

@@ -1,7 +1,7 @@
 package com.tradery.desk.signal;
 
-import com.tradery.desk.strategy.PublishedStrategy;
 import com.tradery.core.model.Candle;
+import com.tradery.desk.strategy.PublishedStrategy;
 
 import java.time.Instant;
 

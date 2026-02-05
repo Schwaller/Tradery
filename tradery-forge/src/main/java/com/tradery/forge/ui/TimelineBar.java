@@ -1,14 +1,13 @@
 package com.tradery.forge.ui;
 
+import com.tradery.core.model.Candle;
 import com.tradery.forge.ApplicationContext;
 import com.tradery.forge.data.PageState;
 import com.tradery.forge.data.page.CandlePageManager;
 import com.tradery.forge.data.page.DataPageListener;
 import com.tradery.forge.data.page.DataPageView;
-import com.tradery.core.model.Candle;
 
 import javax.swing.*;
-import javax.swing.UIManager;
 import java.awt.*;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;

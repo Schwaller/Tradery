@@ -2,20 +2,17 @@ package com.tradery.forge.ui;
 
 import com.tradery.forge.ApplicationContext;
 import com.tradery.forge.data.AggTradesStore;
-import com.tradery.symbols.ui.SymbolComboBox;
 import com.tradery.forge.data.BinanceVisionClient;
-import com.tradery.forge.data.BinanceVisionClient.VisionDataType;
 import com.tradery.forge.data.BinanceVisionClient.VisionProgress;
 import com.tradery.forge.data.PremiumIndexStore;
 import com.tradery.forge.data.sqlite.SqliteDataStore;
+import com.tradery.symbols.ui.SymbolComboBox;
 
 import javax.swing.*;
 import java.awt.*;
 import java.time.LocalDate;
 import java.time.YearMonth;
 import java.time.ZoneOffset;
-import java.time.format.DateTimeFormatter;
-import java.time.temporal.ChronoUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**

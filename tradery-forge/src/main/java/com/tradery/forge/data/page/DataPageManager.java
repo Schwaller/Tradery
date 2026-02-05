@@ -6,7 +6,7 @@ import com.tradery.forge.data.log.DownloadLogStore;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.swing.SwingUtilities;
+import javax.swing.*;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.*;

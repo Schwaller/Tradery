@@ -1,12 +1,12 @@
 package com.tradery.desk.signal;
 
-import com.tradery.desk.strategy.PublishedStrategy;
 import com.tradery.core.dsl.AstNode;
 import com.tradery.core.dsl.Parser;
-import com.tradery.engine.ConditionEvaluator;
 import com.tradery.core.indicators.IndicatorEngine;
 import com.tradery.core.model.Candle;
 import com.tradery.core.model.ExitZone;
+import com.tradery.desk.strategy.PublishedStrategy;
+import com.tradery.engine.ConditionEvaluator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

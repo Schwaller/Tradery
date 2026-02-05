@@ -1,26 +1,21 @@
 package com.tradery.forge.ui;
 
+import com.tradery.core.model.*;
+import com.tradery.engine.HoopPatternEvaluator;
 import com.tradery.forge.ApplicationContext;
-import com.tradery.symbols.ui.SymbolComboBox;
 import com.tradery.forge.TraderyApp;
 import com.tradery.forge.data.PageState;
 import com.tradery.forge.data.page.CandlePageManager;
 import com.tradery.forge.data.page.DataPageListener;
 import com.tradery.forge.data.page.DataPageView;
-import com.tradery.engine.HoopPatternEvaluator;
 import com.tradery.forge.io.HoopPatternStore;
-import com.tradery.core.model.Candle;
-import com.tradery.core.model.Hoop;
-import com.tradery.core.model.HoopMatchResult;
-import com.tradery.core.model.HoopPattern;
-import com.tradery.core.model.PriceSmoothingType;
+import com.tradery.symbols.ui.SymbolComboBox;
 
 import javax.swing.*;
 import javax.swing.event.ChangeListener;
 import java.awt.*;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 
 /**
  * Interactive editor frame for visually editing hoop patterns with real candle data.

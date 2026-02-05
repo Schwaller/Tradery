@@ -1,13 +1,17 @@
 package com.tradery.forge.data;
 
-import com.tradery.forge.TraderyApp;
 import com.tradery.core.model.Candle;
 import com.tradery.core.model.DataHealth;
 import com.tradery.core.model.DataStatus;
 import com.tradery.core.model.Gap;
 
-import java.io.*;
-import java.time.*;
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileReader;
+import java.io.IOException;
+import java.time.Instant;
+import java.time.YearMonth;
+import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 

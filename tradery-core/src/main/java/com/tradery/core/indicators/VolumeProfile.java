@@ -1,6 +1,7 @@
 package com.tradery.core.indicators;
 
 import com.tradery.core.model.Candle;
+
 import java.util.List;
 
 /**

@@ -1,6 +1,6 @@
 package com.tradery.forge.ui.theme;
 
-import java.awt.Color;
+import java.awt.*;
 
 /**
  * Light theme - lighter backgrounds for daytime use.

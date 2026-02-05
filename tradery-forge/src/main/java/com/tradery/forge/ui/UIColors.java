@@ -1,6 +1,6 @@
 package com.tradery.forge.ui;
 
-import java.awt.Color;
+import java.awt.*;
 
 /**
  * Centralized UI color constants for non-chart UI components.

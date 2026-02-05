@@ -1,6 +1,6 @@
 package com.tradery.forge.ui.theme;
 
-import java.awt.Color;
+import java.awt.*;
 
 /**
  * Dark theme - the default theme with dark backgrounds.

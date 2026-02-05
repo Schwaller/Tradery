@@ -1,22 +1,17 @@
 package com.tradery.forge.ui;
 
-import com.tradery.ui.status.MemoryStatusPanel;
+import com.tradery.core.model.*;
+import com.tradery.engine.BacktestEngine;
 import com.tradery.forge.ApplicationContext;
 import com.tradery.forge.TraderyApp;
 import com.tradery.forge.data.AggTradesStore;
 import com.tradery.forge.data.sqlite.SqliteDataStore;
-import com.tradery.engine.BacktestEngine;
-import com.tradery.forge.io.FileWatcher;
-import com.tradery.forge.io.PhaseStore;
-import com.tradery.forge.io.ResultStore;
-import com.tradery.forge.io.StrategyStore;
-import com.tradery.forge.io.WindowStateStore;
-import com.tradery.core.model.*;
-import com.tradery.forge.publish.DeskPublisher;
+import com.tradery.forge.io.*;
 import com.tradery.forge.ui.charts.ChartConfig;
 import com.tradery.forge.ui.controls.IndicatorControlsPanel;
 import com.tradery.forge.ui.coordination.AutoSaveScheduler;
 import com.tradery.forge.ui.coordination.BacktestCoordinator;
+import com.tradery.ui.status.MemoryStatusPanel;
 
 import javax.swing.*;
 import java.awt.*;

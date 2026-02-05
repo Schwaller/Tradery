@@ -1,12 +1,10 @@
 package com.tradery.forge.ui;
 
-import com.tradery.forge.TraderyApp;
 import com.tradery.core.model.Phase;
+import com.tradery.forge.TraderyApp;
 
 import javax.swing.*;
 import java.awt.*;
-import java.awt.event.WindowAdapter;
-import java.awt.event.WindowEvent;
 
 /**
  * Separate window for displaying the phase preview chart.

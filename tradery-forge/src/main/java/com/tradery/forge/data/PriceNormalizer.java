@@ -1,6 +1,9 @@
 package com.tradery.forge.data;
 
-import com.tradery.core.model.*;
+import com.tradery.core.model.AggTrade;
+import com.tradery.core.model.Exchange;
+import com.tradery.core.model.PriceNormalizationMode;
+import com.tradery.core.model.QuoteCurrency;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

@@ -1,16 +1,16 @@
 package com.tradery.forge.ui;
 
+import com.tradery.charts.core.ChartInteractionManager;
+import com.tradery.core.dsl.Parser;
+import com.tradery.core.indicators.IndicatorEngine;
+import com.tradery.core.model.Candle;
+import com.tradery.core.model.Phase;
+import com.tradery.engine.ConditionEvaluator;
 import com.tradery.forge.ApplicationContext;
 import com.tradery.forge.data.PageState;
 import com.tradery.forge.data.page.CandlePageManager;
 import com.tradery.forge.data.page.DataPageListener;
 import com.tradery.forge.data.page.DataPageView;
-import com.tradery.core.dsl.Parser;
-import com.tradery.engine.ConditionEvaluator;
-import com.tradery.core.indicators.IndicatorEngine;
-import com.tradery.core.model.Candle;
-import com.tradery.core.model.Phase;
-import com.tradery.charts.core.ChartInteractionManager;
 import com.tradery.forge.ui.charts.ChartConfig;
 import com.tradery.forge.ui.charts.ChartStyles;
 import org.jfree.chart.ChartPanel;
@@ -26,15 +26,13 @@ import org.jfree.chart.ui.Layer;
 import org.jfree.data.time.FixedMillisecond;
 import org.jfree.data.time.TimeSeries;
 import org.jfree.data.time.TimeSeriesCollection;
-
-import javax.swing.*;
-import javax.swing.UIManager;
-import java.awt.*;
-import java.awt.event.MouseAdapter;
-import java.awt.event.MouseEvent;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import javax.swing.*;
+import java.awt.*;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.ArrayList;

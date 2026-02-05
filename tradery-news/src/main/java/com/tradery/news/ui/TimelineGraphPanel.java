@@ -5,7 +5,8 @@ import com.tradery.news.model.Article;
 import javax.swing.*;
 import javax.swing.Timer;
 import java.awt.*;
-import java.awt.event.*;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
 import java.awt.geom.Line2D;
 import java.time.Instant;
 import java.time.LocalDateTime;
@@ -14,7 +15,6 @@ import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
 import java.util.List;
-import java.util.Set;
 import java.util.function.Consumer;
 
 /**

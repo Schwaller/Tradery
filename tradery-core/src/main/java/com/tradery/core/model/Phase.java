@@ -1,6 +1,7 @@
 package com.tradery.core.model;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+
 import java.time.Instant;
 
 /**

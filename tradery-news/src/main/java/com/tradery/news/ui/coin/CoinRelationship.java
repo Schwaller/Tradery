@@ -1,6 +1,6 @@
 package com.tradery.news.ui.coin;
 
-import java.awt.Color;
+import java.awt.*;
 
 /**
  * Relationship between two entities in the coin graph.

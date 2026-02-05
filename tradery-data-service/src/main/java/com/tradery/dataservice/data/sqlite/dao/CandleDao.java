@@ -1,7 +1,7 @@
 package com.tradery.dataservice.data.sqlite.dao;
 
-import com.tradery.dataservice.data.sqlite.SqliteConnection;
 import com.tradery.core.model.Candle;
+import com.tradery.dataservice.data.sqlite.SqliteConnection;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

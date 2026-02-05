@@ -5,8 +5,7 @@ import org.jfree.chart.renderer.xy.XYBarRenderer;
 import org.jfree.chart.renderer.xy.XYLineAndShapeRenderer;
 import org.jfree.data.xy.XYDataset;
 
-import java.awt.Paint;
-import java.awt.Stroke;
+import java.awt.*;
 
 /**
  * Fluent builder for creating consistently configured chart renderers.

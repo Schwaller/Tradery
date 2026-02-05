@@ -1,6 +1,5 @@
 package com.tradery.core.indicators.registry.specs;
 
-import com.tradery.core.indicators.registry.DataDependency;
 import com.tradery.core.indicators.registry.IndicatorContext;
 import com.tradery.core.indicators.registry.IndicatorRegistry;
 import com.tradery.core.indicators.registry.SimpleIndicatorSpec;

@@ -1,21 +1,18 @@
 package com.tradery.forge.ui;
 
+import com.tradery.core.model.Phase;
 import com.tradery.forge.TraderyApp;
 import com.tradery.forge.io.FileWatcher;
 import com.tradery.forge.io.PhaseStore;
-import com.tradery.core.model.Phase;
 
 import javax.swing.*;
-import javax.swing.Timer;
 import javax.swing.event.PopupMenuEvent;
 import javax.swing.event.PopupMenuListener;
 import java.awt.*;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
-import java.io.File;
 import java.io.IOException;
 import java.time.Instant;
-import java.util.*;
 import java.util.List;
 
 /**

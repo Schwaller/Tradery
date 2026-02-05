@@ -1,6 +1,6 @@
 package com.tradery.forge.ui.charts;
 
-import java.awt.Color;
+import java.awt.*;
 
 /**
  * Represents a single overlay instance on the price chart.

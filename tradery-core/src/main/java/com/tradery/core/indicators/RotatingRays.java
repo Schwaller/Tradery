@@ -2,6 +2,7 @@ package com.tradery.core.indicators;
 
 import com.tradery.core.indicators.registry.IndicatorContext;
 import com.tradery.core.model.Candle;
+
 import java.util.ArrayList;
 import java.util.List;
 

@@ -2,11 +2,7 @@ package com.tradery.forge.ui;
 
 import com.tradery.core.indicators.EMA;
 import com.tradery.core.indicators.SMA;
-import com.tradery.core.model.Candle;
-import com.tradery.core.model.Hoop;
-import com.tradery.core.model.HoopMatchResult;
-import com.tradery.core.model.HoopPattern;
-import com.tradery.core.model.PriceSmoothingType;
+import com.tradery.core.model.*;
 import com.tradery.forge.ui.charts.ChartStyles;
 import org.jfree.chart.ChartPanel;
 import org.jfree.chart.JFreeChart;
@@ -15,6 +11,7 @@ import org.jfree.chart.annotations.XYTextAnnotation;
 import org.jfree.chart.axis.DateAxis;
 import org.jfree.chart.axis.NumberAxis;
 import org.jfree.chart.plot.CombinedDomainXYPlot;
+import org.jfree.chart.plot.PlotRenderingInfo;
 import org.jfree.chart.plot.XYPlot;
 import org.jfree.chart.renderer.xy.XYAreaRenderer;
 import org.jfree.chart.renderer.xy.XYLineAndShapeRenderer;
@@ -22,19 +19,15 @@ import org.jfree.data.time.FixedMillisecond;
 import org.jfree.data.time.TimeSeries;
 import org.jfree.data.time.TimeSeriesCollection;
 
-import org.jfree.chart.plot.PlotRenderingInfo;
-
 import javax.swing.*;
 import java.awt.*;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.awt.event.MouseMotionAdapter;
-import java.awt.event.MouseWheelEvent;
 import java.awt.event.MouseWheelListener;
 import java.awt.geom.Point2D;
 import java.awt.geom.Rectangle2D;
 import java.util.ArrayList;
-import java.util.Date;
 import java.util.List;
 
 /**

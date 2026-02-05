@@ -10,7 +10,7 @@ import com.tradery.core.model.Candle;
 import org.jfree.chart.plot.XYPlot;
 import org.jfree.data.time.TimeSeriesCollection;
 
-import java.awt.Color;
+import java.awt.*;
 import java.util.List;
 
 /**

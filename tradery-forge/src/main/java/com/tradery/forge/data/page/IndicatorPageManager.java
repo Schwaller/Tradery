@@ -1,7 +1,5 @@
 package com.tradery.forge.data.page;
 
-import com.tradery.forge.data.PageState;
-import com.tradery.forge.data.log.DownloadLogStore;
 import com.tradery.core.indicators.FootprintIndicator;
 import com.tradery.core.indicators.RotatingRays;
 import com.tradery.core.indicators.RotatingRays.RaySet;
@@ -11,11 +9,12 @@ import com.tradery.core.indicators.registry.IndicatorSpec;
 import com.tradery.core.model.AggTrade;
 import com.tradery.core.model.Candle;
 import com.tradery.core.model.Exchange;
-import com.tradery.core.model.FootprintResult;
+import com.tradery.forge.data.PageState;
+import com.tradery.forge.data.log.DownloadLogStore;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.swing.SwingUtilities;
+import javax.swing.*;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;

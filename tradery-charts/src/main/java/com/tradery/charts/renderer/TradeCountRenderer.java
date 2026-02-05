@@ -5,13 +5,13 @@ import com.tradery.charts.indicator.IndicatorPool;
 import com.tradery.charts.indicator.impl.TradeCountCompute;
 import com.tradery.core.model.Candle;
 import org.jfree.chart.plot.XYPlot;
-import org.jfree.chart.renderer.xy.XYBarRenderer;
 import org.jfree.chart.renderer.xy.StandardXYBarPainter;
+import org.jfree.chart.renderer.xy.XYBarRenderer;
 import org.jfree.data.time.Millisecond;
 import org.jfree.data.time.TimeSeries;
 import org.jfree.data.time.TimeSeriesCollection;
 
-import java.awt.Color;
+import java.awt.*;
 import java.util.Date;
 import java.util.List;
 

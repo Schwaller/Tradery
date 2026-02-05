@@ -1,19 +1,12 @@
 package com.tradery.forge;
 
-import com.tradery.forge.api.ApiServer;
-import com.tradery.forge.data.AggTradesStore;
-import com.tradery.forge.data.BinanceVisionClient;
-import com.tradery.forge.data.DataConfig;
-import com.tradery.forge.data.DataInventory;
-import com.tradery.forge.data.FundingRateStore;
-import com.tradery.forge.data.OpenInterestStore;
-import com.tradery.forge.data.PreloadScheduler;
-import com.tradery.forge.data.PremiumIndexStore;
-import com.tradery.forge.data.sqlite.SqliteDataStore;
-import com.tradery.forge.data.page.*;
+import com.tradery.core.indicators.registry.IndicatorRegistryInitializer;
 import com.tradery.dataclient.DataServiceClient;
 import com.tradery.dataclient.DataServiceLauncher;
-import com.tradery.core.indicators.registry.IndicatorRegistryInitializer;
+import com.tradery.forge.api.ApiServer;
+import com.tradery.forge.data.*;
+import com.tradery.forge.data.page.*;
+import com.tradery.forge.data.sqlite.SqliteDataStore;
 import com.tradery.forge.io.HoopPatternStore;
 import com.tradery.forge.io.PhaseStore;
 import com.tradery.forge.io.StrategyStore;

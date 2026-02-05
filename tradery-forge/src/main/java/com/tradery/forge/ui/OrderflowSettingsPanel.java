@@ -1,8 +1,8 @@
 package com.tradery.forge.ui;
 
-import com.tradery.forge.data.SyncEstimator;
 import com.tradery.core.model.OrderflowSettings;
 import com.tradery.core.model.Strategy;
+import com.tradery.forge.data.SyncEstimator;
 import com.tradery.forge.ui.base.ConfigurationPanel;
 
 import javax.swing.*;

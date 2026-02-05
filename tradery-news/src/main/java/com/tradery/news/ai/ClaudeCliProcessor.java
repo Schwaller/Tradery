@@ -2,11 +2,16 @@ package com.tradery.news.ai;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.tradery.news.model.*;
+import com.tradery.news.model.Article;
+import com.tradery.news.model.EntityType;
+import com.tradery.news.model.EventType;
+import com.tradery.news.model.ImportanceLevel;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.*;
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;

@@ -1,13 +1,13 @@
 package com.tradery.forge.ui;
 
+import com.tradery.core.model.DataHealth;
+import com.tradery.core.model.DataStatus;
 import com.tradery.forge.ApplicationContext;
 import com.tradery.forge.data.AggTradesStore;
 import com.tradery.forge.data.DataConfig;
-import com.tradery.forge.data.PremiumIndexStore;
 import com.tradery.forge.data.DataIntegrityChecker;
+import com.tradery.forge.data.PremiumIndexStore;
 import com.tradery.forge.data.sqlite.SqliteDataStore;
-import com.tradery.core.model.DataHealth;
-import com.tradery.core.model.DataStatus;
 
 import javax.swing.*;
 import java.awt.*;

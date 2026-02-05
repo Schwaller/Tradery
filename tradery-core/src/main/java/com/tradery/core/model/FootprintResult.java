@@ -1,6 +1,8 @@
 package com.tradery.core.model;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 
 /**
  * Container for all footprints across a series of candles.

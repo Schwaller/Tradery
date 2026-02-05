@@ -1,10 +1,10 @@
 package com.tradery.forge.ui;
 
+import com.tradery.dataclient.DataServiceLauncher;
 import com.tradery.forge.ApplicationContext;
 import com.tradery.forge.TraderyApp;
-import com.tradery.ui.controls.StatusBadge;
 import com.tradery.forge.data.page.DataPageManager;
-import com.tradery.dataclient.DataServiceLauncher;
+import com.tradery.ui.controls.StatusBadge;
 
 import javax.swing.*;
 import java.awt.*;

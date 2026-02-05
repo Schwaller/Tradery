@@ -7,13 +7,8 @@ import javax.swing.border.EmptyBorder;
 import java.awt.*;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.LinkedHashMap;
+import java.util.*;
 import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.concurrent.ExecutionException;
 
 /**
  * Window for coin relationship visualization.
@@ -21,7 +16,7 @@ import java.util.concurrent.ExecutionException;
 public class CoinGraphFrame extends JFrame {
 
     private final CoinGraphPanel graphPanel;
-    private final JTextArea detailArea;
+    private final JPanel detailContent;
     private final JLabel statusLabel;
     private final JProgressBar progressBar;
 
@@ -57,18 +52,21 @@ public class CoinGraphFrame extends JFrame {
         detailTitle.setPreferredSize(new Dimension(0, 32));
         detailPanel.add(detailTitle, BorderLayout.NORTH);
 
-        detailArea = new JTextArea();
-        detailArea.setEditable(false);
-        detailArea.setLineWrap(true);
-        detailArea.setWrapStyleWord(true);
-        detailArea.setBackground(new Color(38, 40, 44));
-        detailArea.setForeground(new Color(200, 200, 210));
-        detailArea.setFont(new Font("SansSerif", Font.PLAIN, 12));
-        detailArea.setBorder(new EmptyBorder(10, 10, 10, 10));
-        detailArea.setText("Click an entity to see details\n\nScroll to zoom\nShift+drag to pan\nDouble-click to pin/unpin");
+        detailContent = new JPanel();
+        detailContent.setLayout(new BoxLayout(detailContent, BoxLayout.Y_AXIS));
+        detailContent.setBackground(new Color(38, 40, 44));
+        detailContent.setBorder(new EmptyBorder(10, 10, 10, 10));
 
-        JScrollPane detailScroll = new JScrollPane(detailArea);
+        // Initial help text
+        addDetailLabel("Click an entity to see details");
+        addDetailLabel("");
+        addDetailLabel("Scroll to zoom");
+        addDetailLabel("Shift+drag to pan");
+        addDetailLabel("Double-click to pin/unpin");
+
+        JScrollPane detailScroll = new JScrollPane(detailContent);
         detailScroll.setBorder(null);
+        detailScroll.getVerticalScrollBar().setUnitIncrement(16);
         detailPanel.add(detailScroll, BorderLayout.CENTER);
 
         // Split pane
@@ -159,8 +157,10 @@ public class CoinGraphFrame extends JFrame {
                     addManualEntities(entities, relationships);
 
                     // Show graph immediately
+                    System.out.println("Setting graph data: " + entities.size() + " entities, " + relationships.size() + " relationships");
                     javax.swing.SwingUtilities.invokeLater(() -> {
                         graphPanel.setData(entities, relationships);
+                        System.out.println("Graph data set, panel size: " + graphPanel.getWidth() + "x" + graphPanel.getHeight());
                         statusLabel.setText(entities.size() + " entities  |  " + relationships.size() + " relationships");
                         progressBar.setVisible(true);
                         progressBar.setValue(0);
@@ -233,6 +233,13 @@ public class CoinGraphFrame extends JFrame {
                 entities = new ArrayList<>();
                 relationships = new ArrayList<>();
                 loadSampleData(entities, relationships);
+                System.out.println("Loaded fallback data: " + entities.size() + " entities, " + relationships.size() + " relationships");
+                // Show fallback data immediately
+                javax.swing.SwingUtilities.invokeLater(() -> {
+                    graphPanel.setData(entities, relationships);
+                    statusLabel.setText(entities.size() + " entities  |  " + relationships.size() + " relationships  (sample data)");
+                    progressBar.setVisible(false);
+                });
             }
         };
         worker.execute();
@@ -510,37 +517,144 @@ public class CoinGraphFrame extends JFrame {
     }
 
     private void showEntityDetails(CoinEntity entity) {
-        StringBuilder sb = new StringBuilder();
-        sb.append("NAME\n").append(entity.name()).append("\n\n");
+        detailContent.removeAll();
 
+        // Name
+        addDetailHeader(entity.name());
         if (entity.symbol() != null) {
-            sb.append("SYMBOL\n").append(entity.symbol()).append("\n\n");
+            addDetailLabel(entity.symbol());
         }
+        addDetailSpacer();
 
-        sb.append("TYPE\n").append(entity.type()).append("\n\n");
+        // Type
+        addDetailSection("TYPE");
+        addDetailLabel(entity.type().toString());
+        addDetailSpacer();
 
+        // Market cap
         if (entity.marketCap() > 0) {
-            sb.append("MARKET CAP\n$").append(formatMarketCap(entity.marketCap())).append("\n\n");
+            addDetailSection("MARKET CAP");
+            addDetailLabel("$" + formatMarketCap(entity.marketCap()));
+            addDetailSpacer();
         }
 
-        if (entity.parentId() != null) {
-            sb.append("BUILT ON\n").append(entity.parentId().toUpperCase()).append("\n\n");
-        }
+        // Relationships
+        List<CoinRelationship> rels = graphPanel.getRelationshipsFor(entity.id());
+        if (!rels.isEmpty()) {
+            addDetailSection("RELATIONSHIPS (" + rels.size() + ")");
+            for (CoinRelationship rel : rels) {
+                String otherId = rel.fromId().equals(entity.id()) ? rel.toId() : rel.fromId();
+                CoinEntity other = graphPanel.getEntity(otherId);
+                if (other == null) continue;
 
-        sb.append("CONNECTIONS\n").append(entity.connectionCount()).append(" relationships\n\n");
+                // Build description based on relationship direction
+                String description;
+                if (rel.fromId().equals(entity.id())) {
+                    // This entity -> other
+                    description = rel.type().label() + " " + other.name();
+                } else {
+                    // Other -> this entity
+                    description = describeInverseRelation(rel.type(), other.name());
+                }
 
-        if (!entity.categories().isEmpty()) {
-            sb.append("CATEGORIES\n");
-            for (String cat : entity.categories()) {
-                sb.append("  - ").append(cat).append("\n");
+                addRelationshipRow(description, rel.type().color(), otherId, other.name());
             }
-            sb.append("\n");
+            addDetailSpacer();
         }
 
-        sb.append("STATUS\n").append(entity.isPinned() ? "Pinned" : "Free-floating");
+        // Categories
+        if (!entity.categories().isEmpty()) {
+            addDetailSection("CATEGORIES");
+            for (String cat : entity.categories()) {
+                addDetailLabel("  " + cat);
+            }
+            addDetailSpacer();
+        }
 
-        detailArea.setText(sb.toString());
-        detailArea.setCaretPosition(0);
+        // Status
+        addDetailSection("STATUS");
+        addDetailLabel(entity.isPinned() ? "Pinned" : "Free-floating");
+
+        detailContent.revalidate();
+        detailContent.repaint();
+    }
+
+    private String describeInverseRelation(CoinRelationship.Type type, String otherName) {
+        return switch (type) {
+            case L2_OF -> "L1 for " + otherName;
+            case ETF_TRACKS, ETP_TRACKS -> "tracked by " + otherName;
+            case INVESTED_IN -> "investor: " + otherName;
+            case FOUNDED_BY -> "founded " + otherName;
+            case FORK_OF -> "forked to " + otherName;
+            case ECOSYSTEM -> "ecosystem: " + otherName;
+            default -> type.label() + " " + otherName;
+        };
+    }
+
+    private void addDetailHeader(String text) {
+        JLabel label = new JLabel(text);
+        label.setFont(new Font("SansSerif", Font.BOLD, 16));
+        label.setForeground(new Color(220, 220, 230));
+        label.setAlignmentX(Component.LEFT_ALIGNMENT);
+        detailContent.add(label);
+    }
+
+    private void addDetailSection(String text) {
+        JLabel label = new JLabel(text);
+        label.setFont(new Font("SansSerif", Font.BOLD, 11));
+        label.setForeground(new Color(140, 140, 150));
+        label.setAlignmentX(Component.LEFT_ALIGNMENT);
+        detailContent.add(label);
+        detailContent.add(Box.createVerticalStrut(4));
+    }
+
+    private void addDetailLabel(String text) {
+        JLabel label = new JLabel(text);
+        label.setFont(new Font("SansSerif", Font.PLAIN, 12));
+        label.setForeground(new Color(200, 200, 210));
+        label.setAlignmentX(Component.LEFT_ALIGNMENT);
+        detailContent.add(label);
+    }
+
+    private void addDetailSpacer() {
+        detailContent.add(Box.createVerticalStrut(12));
+    }
+
+    private void addRelationshipRow(String description, Color color, String targetId, String targetName) {
+        JPanel row = new JPanel(new BorderLayout(8, 0));
+        row.setBackground(new Color(38, 40, 44));
+        row.setAlignmentX(Component.LEFT_ALIGNMENT);
+        row.setMaximumSize(new Dimension(Integer.MAX_VALUE, 28));
+
+        // Color indicator
+        JPanel colorDot = new JPanel() {
+            @Override
+            protected void paintComponent(Graphics g) {
+                super.paintComponent(g);
+                g.setColor(color);
+                g.fillOval(2, 6, 10, 10);
+            }
+        };
+        colorDot.setPreferredSize(new Dimension(14, 22));
+        colorDot.setBackground(new Color(38, 40, 44));
+        row.add(colorDot, BorderLayout.WEST);
+
+        // Description
+        JLabel descLabel = new JLabel(description);
+        descLabel.setFont(new Font("SansSerif", Font.PLAIN, 12));
+        descLabel.setForeground(new Color(200, 200, 210));
+        row.add(descLabel, BorderLayout.CENTER);
+
+        // Navigate button
+        JButton navBtn = new JButton("\u25B6");  // Triangle
+        navBtn.setFont(new Font("SansSerif", Font.PLAIN, 10));
+        navBtn.setPreferredSize(new Dimension(28, 22));
+        navBtn.setToolTipText("Go to " + targetName);
+        navBtn.addActionListener(e -> graphPanel.selectAndPanTo(targetId));
+        row.add(navBtn, BorderLayout.EAST);
+
+        detailContent.add(row);
+        detailContent.add(Box.createVerticalStrut(2));
     }
 
     private String formatMarketCap(double num) {

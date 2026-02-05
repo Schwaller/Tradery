@@ -4,7 +4,6 @@ import com.tradery.core.model.HoopPatternSettings;
 import com.tradery.core.model.Strategy;
 import com.tradery.forge.ui.base.ConfigurationPanel;
 
-import javax.swing.*;
 import java.awt.*;
 
 /**

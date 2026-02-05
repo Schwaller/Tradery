@@ -1,10 +1,10 @@
 package com.tradery.forge.data.page;
 
+import com.tradery.core.model.Candle;
+import com.tradery.dataclient.DataServiceClient;
 import com.tradery.forge.ApplicationContext;
 import com.tradery.forge.data.DataType;
 import com.tradery.forge.data.log.DownloadLogStore;
-import com.tradery.dataclient.DataServiceClient;
-import com.tradery.core.model.Candle;
 
 import java.util.Collections;
 import java.util.List;

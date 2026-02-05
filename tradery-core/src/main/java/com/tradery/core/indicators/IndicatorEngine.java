@@ -1,12 +1,7 @@
 package com.tradery.core.indicators;
 
-import com.tradery.core.model.AggTrade;
-import com.tradery.core.model.Candle;
-import com.tradery.core.model.FundingRate;
-import com.tradery.core.model.OpenInterest;
-import com.tradery.core.model.PremiumIndex;
 import com.tradery.core.indicators.RotatingRays.RaySet;
-
+import com.tradery.core.model.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

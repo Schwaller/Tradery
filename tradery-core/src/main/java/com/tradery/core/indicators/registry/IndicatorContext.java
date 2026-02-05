@@ -1,10 +1,6 @@
 package com.tradery.core.indicators.registry;
 
-import com.tradery.core.model.AggTrade;
-import com.tradery.core.model.Candle;
-import com.tradery.core.model.FundingRate;
-import com.tradery.core.model.OpenInterest;
-import com.tradery.core.model.PremiumIndex;
+import com.tradery.core.model.*;
 
 import java.util.Collections;
 import java.util.List;

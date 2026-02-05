@@ -1,7 +1,7 @@
 package com.tradery.desk.alert;
 
-import com.tradery.desk.signal.SignalEvent;
 import com.sun.jna.Pointer;
+import com.tradery.desk.signal.SignalEvent;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

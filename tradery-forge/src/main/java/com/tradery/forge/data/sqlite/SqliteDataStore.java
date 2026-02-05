@@ -1,7 +1,7 @@
 package com.tradery.forge.data.sqlite;
 
-import com.tradery.forge.data.sqlite.dao.*;
 import com.tradery.core.model.*;
+import com.tradery.forge.data.sqlite.dao.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

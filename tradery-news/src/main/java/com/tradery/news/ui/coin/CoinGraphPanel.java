@@ -3,8 +3,10 @@ package com.tradery.news.ui.coin;
 import javax.swing.*;
 import javax.swing.Timer;
 import java.awt.*;
-import java.awt.event.*;
-import java.awt.geom.*;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
+import java.awt.event.MouseWheelEvent;
+import java.awt.geom.Line2D;
 import java.util.*;
 import java.util.List;
 import java.util.function.Consumer;
@@ -36,8 +38,9 @@ public class CoinGraphPanel extends JPanel {
     // Physics settings
     private double repulsion = 5000;
     private double attraction = 0.01;
-    private double damping = 0.85;
+    private double damping = 0.92;      // Higher = slower decay
     private double centerPull = 0.001;
+    private double minVelocity = 0.1;   // Below this, stop moving
 
     public CoinGraphPanel() {
         setBackground(new Color(25, 27, 31));
@@ -198,11 +201,26 @@ public class CoinGraphPanel extends JPanel {
             fx += (centerX - entity.x()) * centerPull;
             fy += (centerY - entity.y()) * centerPull;
 
-            // Apply forces
-            entity.setVx((entity.vx() + fx) * damping);
-            entity.setVy((entity.vy() + fy) * damping);
-            entity.setX(entity.x() + entity.vx());
-            entity.setY(entity.y() + entity.vy());
+            // Apply forces with damping
+            double vx = (entity.vx() + fx) * damping;
+            double vy = (entity.vy() + fy) * damping;
+
+            // Clamp max velocity
+            double maxSpeed = 8.0;
+            double speed = Math.sqrt(vx * vx + vy * vy);
+            if (speed > maxSpeed) {
+                vx = (vx / speed) * maxSpeed;
+                vy = (vy / speed) * maxSpeed;
+            }
+
+            // Stop jittering - if velocity is tiny, zero it out
+            if (Math.abs(vx) < minVelocity) vx = 0;
+            if (Math.abs(vy) < minVelocity) vy = 0;
+
+            entity.setVx(vx);
+            entity.setVy(vy);
+            entity.setX(entity.x() + vx);
+            entity.setY(entity.y() + vy);
         }
     }
 
@@ -447,5 +465,42 @@ public class CoinGraphPanel extends JPanel {
         panX = 0;
         panY = 0;
         repaint();
+    }
+
+    public void selectAndPanTo(String entityId) {
+        CoinEntity entity = entityMap.get(entityId);
+        if (entity == null) return;
+
+        // Deselect current
+        if (selectedEntity != null) selectedEntity.setSelected(false);
+
+        // Select new
+        selectedEntity = entity;
+        selectedEntity.setSelected(true);
+
+        // Pan to center on entity
+        panX = getWidth() / 2.0 - entity.x();
+        panY = getHeight() / 2.0 - entity.y();
+
+        // Notify callback
+        if (onEntitySelected != null) {
+            onEntitySelected.accept(entity);
+        }
+
+        repaint();
+    }
+
+    public List<CoinRelationship> getRelationshipsFor(String entityId) {
+        List<CoinRelationship> result = new ArrayList<>();
+        for (CoinRelationship rel : relationships) {
+            if (rel.fromId().equals(entityId) || rel.toId().equals(entityId)) {
+                result.add(rel);
+            }
+        }
+        return result;
+    }
+
+    public CoinEntity getEntity(String id) {
+        return entityMap.get(id);
     }
 }

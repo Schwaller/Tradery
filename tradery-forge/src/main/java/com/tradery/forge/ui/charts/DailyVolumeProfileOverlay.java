@@ -1,12 +1,12 @@
 package com.tradery.forge.ui.charts;
 
+import com.tradery.core.model.Candle;
 import com.tradery.forge.ApplicationContext;
 import com.tradery.forge.data.PageState;
 import com.tradery.forge.data.page.IndicatorPage;
 import com.tradery.forge.data.page.IndicatorPageListener;
 import com.tradery.forge.data.page.IndicatorPageManager;
 import com.tradery.forge.data.page.IndicatorType;
-import com.tradery.core.model.Candle;
 import org.jfree.chart.JFreeChart;
 import org.jfree.chart.plot.XYPlot;
 import org.slf4j.Logger;

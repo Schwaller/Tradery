@@ -1,9 +1,9 @@
 package com.tradery.dataservice.data.sqlite.dao;
 
-import com.tradery.dataservice.data.sqlite.SqliteConnection;
 import com.tradery.core.model.AggTrade;
 import com.tradery.core.model.DataMarketType;
 import com.tradery.core.model.Exchange;
+import com.tradery.dataservice.data.sqlite.SqliteConnection;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

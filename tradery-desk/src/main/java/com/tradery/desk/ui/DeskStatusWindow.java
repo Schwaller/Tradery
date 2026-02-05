@@ -1,6 +1,5 @@
 package com.tradery.desk.ui;
 
-import com.tradery.dataclient.DataServiceClient;
 import com.tradery.dataclient.page.DataServiceConnection;
 import com.tradery.dataclient.page.RemoteCandlePageManager;
 import com.tradery.desk.DeskAppContext;
@@ -17,8 +16,10 @@ import javax.swing.border.EmptyBorder;
 import java.awt.*;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**

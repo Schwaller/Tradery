@@ -1,6 +1,6 @@
 package com.tradery.charts.core;
 
-import java.awt.Color;
+import java.awt.*;
 
 /**
  * Default dark theme for charts.

@@ -1,12 +1,12 @@
 package com.tradery.dataservice.api;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import com.tradery.dataservice.ConsumerRegistry;
 import com.tradery.dataservice.coingecko.CoinGeckoClient;
-import com.tradery.dataservice.data.AggTradesClient;
-import com.tradery.dataservice.data.AggTradesStore;
+import com.tradery.dataservice.config.DataServiceConfig;
 import com.tradery.dataservice.data.sqlite.SqliteDataStore;
 import com.tradery.dataservice.data.sqlite.SymbolsConnection;
-import com.tradery.dataservice.ConsumerRegistry;
-import com.tradery.dataservice.config.DataServiceConfig;
 import com.tradery.dataservice.live.LiveAggTradeManager;
 import com.tradery.dataservice.live.LiveCandleManager;
 import com.tradery.dataservice.live.LiveMarkPriceManager;
@@ -17,8 +17,6 @@ import io.javalin.Javalin;
 import io.javalin.http.Context;
 import io.javalin.json.JavalinJackson;
 import io.javalin.websocket.WsConfig;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

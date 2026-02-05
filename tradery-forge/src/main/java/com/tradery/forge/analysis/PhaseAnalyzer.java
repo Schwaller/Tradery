@@ -1,9 +1,12 @@
 package com.tradery.forge.analysis;
 
-import com.tradery.forge.data.sqlite.SqliteDataStore;
+import com.tradery.core.model.Candle;
+import com.tradery.core.model.Phase;
+import com.tradery.core.model.PhaseAnalysisResult;
+import com.tradery.core.model.Trade;
 import com.tradery.engine.PhaseEvaluator;
+import com.tradery.forge.data.sqlite.SqliteDataStore;
 import com.tradery.forge.io.PhaseStore;
-import com.tradery.core.model.*;
 
 import java.io.IOException;
 import java.time.Duration;

@@ -1,10 +1,10 @@
 package com.tradery.forge.ui;
 
-import com.tradery.forge.data.DataConfig;
-import com.tradery.forge.data.DataIntegrityChecker;
 import com.tradery.core.model.DataHealth;
 import com.tradery.core.model.DataStatus;
 import com.tradery.core.model.Gap;
+import com.tradery.forge.data.DataConfig;
+import com.tradery.forge.data.DataIntegrityChecker;
 
 import javax.swing.*;
 import java.awt.*;

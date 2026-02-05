@@ -1,8 +1,8 @@
 package com.tradery.forge.ui;
 
+import com.tradery.core.model.HoopPattern;
 import com.tradery.forge.ApplicationContext;
 import com.tradery.forge.io.HoopPatternStore;
-import com.tradery.core.model.HoopPattern;
 import com.tradery.forge.ui.controls.BadgeListPanel;
 
 import javax.swing.*;

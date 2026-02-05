@@ -1,14 +1,20 @@
 package com.tradery.dataservice.data;
 
+import com.tradery.core.model.AggTrade;
+import com.tradery.core.model.Candle;
+import com.tradery.core.model.FundingRate;
+import com.tradery.core.model.PremiumIndex;
 import com.tradery.dataservice.data.sqlite.SqliteDataStore;
-import com.tradery.core.model.*;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.*;
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.time.YearMonth;
 import java.time.ZoneOffset;
 import java.util.ArrayList;

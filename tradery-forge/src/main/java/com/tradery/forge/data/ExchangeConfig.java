@@ -5,8 +5,8 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
-import com.tradery.forge.TraderyApp;
 import com.tradery.core.model.*;
+import com.tradery.forge.TraderyApp;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

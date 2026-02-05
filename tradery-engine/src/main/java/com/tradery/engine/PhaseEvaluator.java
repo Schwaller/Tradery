@@ -1,7 +1,6 @@
 package com.tradery.engine;
 
 import com.tradery.core.dsl.Parser;
-import com.tradery.engine.ConditionEvaluator;
 import com.tradery.core.indicators.IndicatorEngine;
 import com.tradery.core.model.Candle;
 import com.tradery.core.model.Phase;

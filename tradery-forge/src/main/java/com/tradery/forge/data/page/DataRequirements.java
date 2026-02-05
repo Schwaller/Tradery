@@ -1,7 +1,7 @@
 package com.tradery.forge.data.page;
 
-import com.tradery.forge.data.PageState;
 import com.tradery.core.model.*;
+import com.tradery.forge.data.PageState;
 
 /**
  * Tracks what data is required for a backtest and when all data is ready.
