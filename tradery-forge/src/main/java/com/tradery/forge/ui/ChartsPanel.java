@@ -2,6 +2,7 @@ package com.tradery.forge.ui;
 
 import com.tradery.core.model.Candle;
 import com.tradery.core.model.Trade;
+import com.tradery.charts.core.ChartInteractionManager;
 import com.tradery.forge.ui.charts.*;
 
 import org.jfree.chart.ChartFactory;
@@ -85,6 +86,7 @@ public class ChartsPanel extends JPanel {
         zoomManager = new ChartZoomManager();
         crosshairManager = new CrosshairManager();
         interactionManager = new ChartInteractionManager();
+        interactionManager.setAxisPositionSupplier(() -> ChartConfig.getInstance().getPriceAxisPosition());
         splitLayoutManager = new SplitPaneLayoutManager();
 
         initializeCharts();

@@ -420,7 +420,7 @@ public class PageManager {
         liveUpdateCallbacks.put(pageKeyStr, onUpdate);
         liveCloseCallbacks.put(pageKeyStr, onClose);
 
-        liveCandleManager.subscribe(key.symbol(), key.timeframe(), onUpdate, onClose);
+        liveCandleManager.subscribe(key.symbol(), key.timeframe(), key.marketType(), onUpdate, onClose);
     }
 
     private void unsubscribeFromLive(String pageKeyStr) {
@@ -432,7 +432,7 @@ public class PageManager {
         BiConsumer<String, Candle> onClose = liveCloseCallbacks.remove(pageKeyStr);
 
         if ((onUpdate != null || onClose != null) && liveCandleManager != null) {
-            liveCandleManager.unsubscribe(key.symbol(), key.timeframe(), onUpdate, onClose);
+            liveCandleManager.unsubscribe(key.symbol(), key.timeframe(), key.marketType(), onUpdate, onClose);
             LOG.info("Unsubscribed page {} from live updates", pageKeyStr);
         }
     }

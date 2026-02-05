@@ -232,6 +232,15 @@ public class DownloadDashboardWindow extends DashboardWindow {
             case PAGE_RELEASED -> "Page released";
             case LISTENER_ADDED -> "Consumer added";
             case LISTENER_REMOVED -> "Consumer removed";
+            case CONNECTION_OPENED -> "Connected";
+            case CONNECTION_CLOSED -> "Disconnected";
+            case LIVE_UPDATE -> "Live update";
+            case LIVE_CANDLE_CLOSED -> "Candle closed";
+            case VISION_DOWNLOAD_STARTED -> "Vision download";
+            case VISION_DOWNLOAD_PROGRESS -> "Vision progress";
+            case VISION_DOWNLOAD_COMPLETED -> "Vision complete";
+            case API_REQUEST_STARTED -> "API request";
+            case API_REQUEST_COMPLETED -> "API response";
         };
     }
 

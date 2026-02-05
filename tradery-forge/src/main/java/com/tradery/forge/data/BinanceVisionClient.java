@@ -1,5 +1,6 @@
 package com.tradery.forge.data;
 
+import com.tradery.forge.data.log.DownloadLogStore;
 import com.tradery.forge.data.sqlite.SqliteDataStore;
 import com.tradery.core.model.*;
 import okhttp3.OkHttpClient;
@@ -223,6 +224,17 @@ public class BinanceVisionClient {
             uncoveredMonths.size(), dataType, symbol, interval,
             months.size() - uncoveredMonths.size());
 
+        // Log to DownloadLogStore for UI visibility
+        String pageKey = String.format("VISION:%s:%s:%s", dataType.name(), symbol, interval != null ? interval : "default");
+        DataType logDataType = switch (dataType) {
+            case KLINES -> DataType.CANDLES;
+            case AGG_TRADES -> DataType.AGG_TRADES;
+            case FUNDING_RATE -> DataType.FUNDING;
+            case PREMIUM_INDEX -> DataType.PREMIUM_INDEX;
+        };
+        DownloadLogStore.getInstance().logVisionDownloadStarted(pageKey, logDataType, symbol, dataType.name(), uncoveredMonths.size());
+        long downloadStartTime = System.currentTimeMillis();
+
         if (onProgress != null) {
             onProgress.accept(VisionProgress.starting(uncoveredMonths.size()));
         }
@@ -294,6 +306,11 @@ public class BinanceVisionClient {
                 }
             }
 
+            // Log completion to DownloadLogStore
+            long downloadDuration = System.currentTimeMillis() - downloadStartTime;
+            DownloadLogStore.getInstance().logVisionDownloadCompleted(pageKey, logDataType, symbol,
+                uncoveredMonths.size(), total, downloadDuration);
+
             return total;
 
         } finally {
@@ -318,6 +335,9 @@ public class BinanceVisionClient {
         String url = buildUrl(dataType, symbol, interval, month);
         log.debug("Downloading: {}", url);
 
+        String connectionKey = String.format("VISION:%s:%s:%s", symbol, dataType.name(), month);
+        long requestStartTime = System.currentTimeMillis();
+
         Request request = new Request.Builder()
             .url(url)
             .get()
@@ -325,12 +345,21 @@ public class BinanceVisionClient {
 
         // Use bulk client with 10-minute timeout for large ZIP files
         try (Response response = bulkClient.newCall(request).execute()) {
+            long connectDuration = System.currentTimeMillis() - requestStartTime;
+
             if (response.code() == 404) {
+                DownloadLogStore.getInstance().logConnectionClosed(connectionKey, "HTTP/Vision", "404 Not Found", false);
                 throw new IOException("404 Not Found: " + url);
             }
             if (!response.isSuccessful()) {
+                DownloadLogStore.getInstance().logConnectionClosed(connectionKey, "HTTP/Vision",
+                    response.code() + " " + response.message(), false);
                 throw new IOException("Download failed: " + response.code() + " " + response.message());
             }
+
+            // Log successful connection
+            DownloadLogStore.getInstance().logConnectionOpened(connectionKey, "HTTP/Vision",
+                String.format("data.binance.vision %s", month), connectDuration);
 
             // Get content length for progress logging
             long contentLength = response.body().contentLength();
@@ -340,6 +369,10 @@ public class BinanceVisionClient {
 
             // Parse ZIP in memory and extract CSV records
             List<String> records = parseZipStream(response.body().byteStream());
+
+            // Log connection close
+            DownloadLogStore.getInstance().logConnectionClosed(connectionKey, "HTTP/Vision",
+                String.format("%d records downloaded", records.size()), false);
 
             if (records.isEmpty()) {
                 log.debug("No records in {}", url);

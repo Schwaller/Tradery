@@ -626,11 +626,21 @@ public class TraderyDeskApp {
      * Creates a new page subscription for the chart independent of strategies.
      */
     private void switchChartSymbol(String newSymbol) {
+        // Get market type from UI (spot/perp)
+        String marketType = frame != null ? frame.getSelectedMarket() : "perp";
+        switchChartSymbol(newSymbol, marketType);
+    }
+
+    /**
+     * Switch the chart to display a different symbol with specific market type.
+     * Creates a new page subscription for the chart independent of strategies.
+     */
+    private void switchChartSymbol(String newSymbol, String marketType) {
         if (newSymbol == null || newSymbol.equals(chartSymbol)) {
             return;
         }
 
-        log.info("Switching chart to symbol: {}", newSymbol);
+        log.info("Switching chart to symbol: {} ({})", newSymbol, marketType);
 
         // Release old chart page if exists
         if (chartPage != null && candlePageMgr != null) {
@@ -649,6 +659,7 @@ public class TraderyDeskApp {
         // Calculate duration for chart page
         long barDurationMs = parseTimeframeMs(chartTimeframe);
         long duration = config.getHistoryBars() * barDurationMs;
+        String mt = marketType != null ? marketType : "perp";
 
         // Create new chart page listener
         chartPageListener = new DataPageListener<>() {
@@ -698,11 +709,11 @@ public class TraderyDeskApp {
             }
         };
 
-        // Request live page for chart
+        // Request live page for chart with market type
         chartPage = candlePageMgr.requestLive(
-            newSymbol, chartTimeframe, duration, chartPageListener, "Chart");
+            newSymbol, chartTimeframe, mt, duration, chartPageListener, "Chart");
 
-        log.info("Chart subscribed to {} {}", newSymbol, chartTimeframe);
+        log.info("Chart subscribed to {} {} ({})", newSymbol, chartTimeframe, mt);
     }
 
     /**

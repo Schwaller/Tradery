@@ -100,7 +100,7 @@ public class RemoteCandlePageManager {
                                          long startTime, long endTime,
                                          DataPageListener<Candle> listener,
                                          String consumerName) {
-        String key = makeKey(symbol, timeframe, startTime, endTime);
+        String key = makeKey(symbol, timeframe, "perp", startTime, endTime);
 
         // Get or create page
         DataPage<Candle> page = pages.computeIfAbsent(key, k -> {
@@ -138,7 +138,7 @@ public class RemoteCandlePageManager {
     }
 
     /**
-     * Request a live (sliding window) candle page.
+     * Request a live (sliding window) candle page (defaults to perp market).
      * Live pages slide forward with current time.
      *
      * @param symbol       Trading symbol
@@ -150,14 +150,31 @@ public class RemoteCandlePageManager {
      */
     public DataPageView<Candle> requestLive(String symbol, String timeframe, long duration,
                                              DataPageListener<Candle> listener, String consumerName) {
-        String key = makeLiveKey(symbol, timeframe, duration);
+        return requestLive(symbol, timeframe, "perp", duration, listener, consumerName);
+    }
+
+    /**
+     * Request a live (sliding window) candle page with market type.
+     * Live pages slide forward with current time.
+     *
+     * @param symbol       Trading symbol
+     * @param timeframe    Candle timeframe
+     * @param marketType   Market type ("spot" or "perp")
+     * @param duration     Window duration in milliseconds
+     * @param listener     Listener for state/data changes (can be null)
+     * @param consumerName Name for tracking/debugging
+     * @return Read-only view of the page
+     */
+    public DataPageView<Candle> requestLive(String symbol, String timeframe, String marketType, long duration,
+                                             DataPageListener<Candle> listener, String consumerName) {
+        String key = makeLiveKey(symbol, timeframe, marketType, duration);
 
         // Get or create page
         DataPage<Candle> page = pages.computeIfAbsent(key, k -> {
             long now = System.currentTimeMillis();
-            DataPage<Candle> newPage = DataPage.live(DataType.CANDLES, symbol, timeframe, now - duration, now, duration);
+            DataPage<Candle> newPage = DataPage.live(DataType.CANDLES, symbol, timeframe, marketType, now - duration, now, duration);
             // Subscribe to live page updates from data-service
-            connection.subscribeLivePage(DataType.CANDLES, symbol, timeframe, duration,
+            connection.subscribeLivePage(DataType.CANDLES, symbol, timeframe, marketType, duration,
                 createPageCallback(key));
             return newPage;
         });
@@ -222,7 +239,7 @@ public class RemoteCandlePageManager {
      * @return Page view if exists, null otherwise
      */
     public DataPageView<Candle> peek(String symbol, String timeframe, long startTime, long endTime) {
-        String key = makeKey(symbol, timeframe, startTime, endTime);
+        String key = makeKey(symbol, timeframe, "perp", startTime, endTime);
         return pages.get(key);
     }
 
@@ -256,6 +273,7 @@ public class RemoteCandlePageManager {
                 page.getDataType(),
                 page.getSymbol(),
                 page.getTimeframe(),
+                page.getMarketType(),
                 page.getStartTime(),
                 page.getEndTime(),
                 pageListeners.size(),
@@ -363,9 +381,19 @@ public class RemoteCandlePageManager {
                 if (!data.isEmpty()) {
                     Candle lastCandle = data.get(data.size() - 1);
                     if (lastCandle.timestamp() == candle.timestamp()) {
+                        // Same candle, just update values
                         page.updateLastRecord(candle);
                         notifyLiveUpdateOnEDT(page, candle);
+                    } else if (candle.timestamp() > lastCandle.timestamp()) {
+                        // New candle started - add it as incomplete
+                        LOG.debug("Live update: new candle started ts={}", candle.timestamp());
+                        page.appendData(candle);
+                        notifyLiveUpdateOnEDT(page, candle);
                     }
+                } else {
+                    // No candles yet - add this one
+                    page.appendData(candle);
+                    notifyLiveUpdateOnEDT(page, candle);
                 }
             }
 
@@ -533,15 +561,17 @@ public class RemoteCandlePageManager {
         });
     }
 
-    private String makeKey(String symbol, String timeframe, long startTime, long endTime) {
-        // Must match server's PageKey.toKeyString() format: CANDLES:symbol:timeframe:anchor:duration
+    private String makeKey(String symbol, String timeframe, String marketType, long startTime, long endTime) {
+        // Must match server's PageKey.toKeyString() format: CANDLES:symbol:timeframe:marketType:anchor:duration
         // For anchored pages: anchor = endTime, duration = endTime - startTime
-        return "CANDLES:" + symbol.toUpperCase() + ":" + timeframe + ":" + endTime + ":" + (endTime - startTime);
+        String mt = marketType != null ? marketType : "perp";
+        return "CANDLES:" + symbol.toUpperCase() + ":" + timeframe + ":" + mt + ":" + endTime + ":" + (endTime - startTime);
     }
 
-    private String makeLiveKey(String symbol, String timeframe, long duration) {
-        // Must match server's PageKey.toKeyString() format for live pages: CANDLES:symbol:timeframe:LIVE:duration
-        return "CANDLES:" + symbol.toUpperCase() + ":" + timeframe + ":LIVE:" + duration;
+    private String makeLiveKey(String symbol, String timeframe, String marketType, long duration) {
+        // Must match server's PageKey.toKeyString() format: CANDLES:symbol:timeframe:marketType:LIVE:duration
+        String mt = marketType != null ? marketType : "perp";
+        return "CANDLES:" + symbol.toUpperCase() + ":" + timeframe + ":" + mt + ":LIVE:" + duration;
     }
 
     // ========== Info Record ==========
@@ -555,6 +585,7 @@ public class RemoteCandlePageManager {
         DataType dataType,
         String symbol,
         String timeframe,
+        String marketType,
         long startTime,
         long endTime,
         int listenerCount,

@@ -10,7 +10,8 @@ import com.tradery.engine.ConditionEvaluator;
 import com.tradery.core.indicators.IndicatorEngine;
 import com.tradery.core.model.Candle;
 import com.tradery.core.model.Phase;
-import com.tradery.forge.ui.charts.ChartInteractionManager;
+import com.tradery.charts.core.ChartInteractionManager;
+import com.tradery.forge.ui.charts.ChartConfig;
 import com.tradery.forge.ui.charts.ChartStyles;
 import org.jfree.chart.ChartPanel;
 import org.jfree.chart.JFreeChart;
@@ -94,6 +95,7 @@ public class PhasePreviewChart extends JPanel implements DataPageListener<Candle
 
     public PhasePreviewChart() {
         interactionManager = new ChartInteractionManager();
+        interactionManager.setAxisPositionSupplier(() -> ChartConfig.getInstance().getPriceAxisPosition());
         setLayout(new BorderLayout());
         initializeChart();
         initializeStatusLabel();

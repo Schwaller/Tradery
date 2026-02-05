@@ -2,6 +2,7 @@ package com.tradery.forge.data.page;
 
 import com.tradery.forge.ApplicationContext;
 import com.tradery.forge.data.DataType;
+import com.tradery.forge.data.log.DownloadLogStore;
 import com.tradery.dataclient.DataServiceClient;
 import com.tradery.core.model.AggTrade;
 
@@ -55,6 +56,8 @@ public class AggTradesPageManager extends DataPageManager<AggTrade> {
         String symbol = page.getSymbol();
         long startTime = page.getStartTime();
         long endTime = page.getEndTime();
+        String forgePageKey = page.getKey();
+        DownloadLogStore logStore = DownloadLogStore.getInstance();
 
         for (int attempt = 1; attempt <= MAX_RETRIES; attempt++) {
             log.info("AggTradesPageManager.loadData: {} attempt {}/{}", symbol, attempt, MAX_RETRIES);
@@ -68,6 +71,8 @@ public class AggTradesPageManager extends DataPageManager<AggTrade> {
                     Thread.sleep(delay);
                     continue;
                 }
+                logStore.logError(forgePageKey, DataType.AGG_TRADES,
+                    "Data service not available after " + MAX_RETRIES + " attempts");
                 updatePageError(page, "Data service not available after " + MAX_RETRIES + " attempts");
                 return;
             }
@@ -75,6 +80,15 @@ public class AggTradesPageManager extends DataPageManager<AggTrade> {
             DataServiceClient client = ctx.getDataServiceClient();
 
             try {
+                // Log the request to data service
+                if (attempt == 1) {
+                    logStore.logApiRequestStarted(forgePageKey, DataType.AGG_TRADES,
+                        "data-service/pages/request",
+                        String.format("%s %d-%d", symbol, startTime, endTime));
+                }
+
+                long requestStart = System.currentTimeMillis();
+
                 // Request page - data service will fetch if cache is incomplete
                 var response = client.requestPage(
                     new DataServiceClient.PageRequest("AGG_TRADES", symbol, null, startTime, endTime),
@@ -83,7 +97,7 @@ public class AggTradesPageManager extends DataPageManager<AggTrade> {
                 );
 
                 // Poll for completion (max 10 minutes, detect stalls after 60s of no progress)
-                String pageKey = response.pageKey();
+                String dataServicePageKey = response.pageKey();
                 int lastProgress = 0;
                 int statusNotFoundCount = 0;
                 boolean pageReady = false;
@@ -96,20 +110,26 @@ public class AggTradesPageManager extends DataPageManager<AggTrade> {
                 while (true) {
                     long now = System.currentTimeMillis();
                     if (now - pollStartTime > maxPollMs) {
-                        log.warn("Polling timeout after {}s for {}", (now - pollStartTime) / 1000, pageKey);
+                        log.warn("Polling timeout after {}s for {}", (now - pollStartTime) / 1000, dataServicePageKey);
+                        logStore.logError(forgePageKey, DataType.AGG_TRADES,
+                            "Polling timeout after " + ((now - pollStartTime) / 1000) + "s");
                         break;
                     }
                     if (now - lastProgressTime > stallTimeoutMs) {
                         log.warn("No progress for {}s (stuck at {}%), treating as stall for {}",
-                            (now - lastProgressTime) / 1000, lastProgress, pageKey);
+                            (now - lastProgressTime) / 1000, lastProgress, dataServicePageKey);
+                        logStore.logError(forgePageKey, DataType.AGG_TRADES,
+                            "Progress stalled at " + lastProgress + "% for " + ((now - lastProgressTime) / 1000) + "s");
                         break;
                     }
 
-                    var status = client.getPageStatus(pageKey);
+                    var status = client.getPageStatus(dataServicePageKey);
                     if (status == null) {
                         statusNotFoundCount++;
                         if (statusNotFoundCount >= MAX_STATUS_NOT_FOUND) {
-                            log.warn("Page status not found {} times for {}, will retry", statusNotFoundCount, pageKey);
+                            log.warn("Page status not found {} times for {}, will retry", statusNotFoundCount, dataServicePageKey);
+                            logStore.logError(forgePageKey, DataType.AGG_TRADES,
+                                "Page status not found " + statusNotFoundCount + " times");
                             break;
                         }
                         Thread.sleep(500);
@@ -129,7 +149,9 @@ public class AggTradesPageManager extends DataPageManager<AggTrade> {
                         pageReady = true;
                         break;
                     } else if ("ERROR".equals(status.state())) {
-                        log.error("Data service reported error for page: {}", pageKey);
+                        log.error("Data service reported error for page: {}", dataServicePageKey);
+                        logStore.logError(forgePageKey, DataType.AGG_TRADES,
+                            "Data service page error: " + dataServicePageKey);
                         pageError = true;
                         break;
                     }
@@ -145,6 +167,8 @@ public class AggTradesPageManager extends DataPageManager<AggTrade> {
                         Thread.sleep(delay);
                         continue;
                     }
+                    logStore.logError(forgePageKey, DataType.AGG_TRADES,
+                        "Page status polling failed after " + MAX_RETRIES + " attempts");
                     updatePageError(page, "Page status polling failed after " + MAX_RETRIES + " attempts");
                     return;
                 }
@@ -156,6 +180,8 @@ public class AggTradesPageManager extends DataPageManager<AggTrade> {
                         Thread.sleep(delay);
                         continue;
                     }
+                    logStore.logError(forgePageKey, DataType.AGG_TRADES,
+                        "Data service error after " + MAX_RETRIES + " attempts");
                     updatePageError(page, "Data service error after " + MAX_RETRIES + " attempts");
                     return;
                 }
@@ -165,12 +191,18 @@ public class AggTradesPageManager extends DataPageManager<AggTrade> {
                 long fetchStart = System.currentTimeMillis();
                 List<AggTrade> trades = client.getAggTrades(symbol, startTime, endTime);
                 long fetchMs = System.currentTimeMillis() - fetchStart;
+                long totalDuration = System.currentTimeMillis() - requestStart;
 
                 // Track memory (atomic operation)
                 long newTotal = currentRecordCount.addAndGet(trades.size() - oldCount);
 
                 log.info("AggTradesPageManager.loadData: {} got {} trades in {}ms (total in memory: {})",
                     symbol, trades.size(), fetchMs, newTotal);
+
+                // Log the response from data service
+                logStore.logApiRequestCompleted(forgePageKey, DataType.AGG_TRADES,
+                    "data-service/aggtrades", trades.size(), totalDuration);
+
                 updatePageData(page, trades);
                 return;  // Success
 
@@ -181,6 +213,8 @@ public class AggTradesPageManager extends DataPageManager<AggTrade> {
                     log.info("Retrying in {}ms...", delay);
                     Thread.sleep(delay);
                 } else {
+                    logStore.logError(forgePageKey, DataType.AGG_TRADES,
+                        "Failed after " + MAX_RETRIES + " attempts: " + e.getMessage());
                     updatePageError(page, "Failed after " + MAX_RETRIES + " attempts: " + e.getMessage());
                 }
             }

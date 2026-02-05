@@ -36,6 +36,7 @@ public class PageHandler {
                 request.dataType(),
                 request.symbol(),
                 request.timeframe(),
+                "perp",  // default market type for HTTP API
                 request.endTime(),  // anchored pages use endTime
                 request.endTime() - request.startTime()  // windowDurationMillis
             );
@@ -64,7 +65,7 @@ public class PageHandler {
             List<PageResponse> responses = request.requests().stream()
                 .map(r -> {
                     // Convert startTime/endTime to endTime/windowDurationMillis
-                    PageKey key = new PageKey(r.dataType(), r.symbol(), r.timeframe(), r.endTime(), r.endTime() - r.startTime());
+                    PageKey key = new PageKey(r.dataType(), r.symbol(), r.timeframe(), "perp", r.endTime(), r.endTime() - r.startTime());
                     PageStatus status = pageManager.requestPage(key, request.consumerId(), request.consumerName());
                     return new PageResponse(key.toKeyString(), status.state().name(), status.progress(), status.isNew());
                 })

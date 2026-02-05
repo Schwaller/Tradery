@@ -37,6 +37,10 @@ public class DownloadLogPanel extends JPanel {
     private static final Color COLOR_LOAD_COMPLETED = new Color(60, 140, 60);
     private static final Color COLOR_UPDATE = new Color(140, 140, 60);
     private static final Color COLOR_PAGE_LIFECYCLE = new Color(100, 100, 100);
+    private static final Color COLOR_CONNECTION = new Color(80, 120, 180);
+    private static final Color COLOR_LIVE = new Color(180, 100, 180);
+    private static final Color COLOR_VISION = new Color(100, 180, 100);
+    private static final Color COLOR_API = new Color(180, 140, 60);
 
     public DownloadLogPanel() {
         setLayout(new BorderLayout(0, 4));
@@ -240,6 +244,15 @@ public class DownloadLogPanel extends JPanel {
                 case PAGE_RELEASED -> "Page released";
                 case LISTENER_ADDED -> "Consumer added";
                 case LISTENER_REMOVED -> "Consumer removed";
+                case CONNECTION_OPENED -> "Connected";
+                case CONNECTION_CLOSED -> "Disconnected";
+                case LIVE_UPDATE -> "Live update";
+                case LIVE_CANDLE_CLOSED -> "Candle closed";
+                case VISION_DOWNLOAD_STARTED -> "Vision download";
+                case VISION_DOWNLOAD_PROGRESS -> "Vision progress";
+                case VISION_DOWNLOAD_COMPLETED -> "Vision complete";
+                case API_REQUEST_STARTED -> "API request";
+                case API_REQUEST_COMPLETED -> "API response";
             };
         }
 
@@ -304,6 +317,10 @@ public class DownloadLogPanel extends JPanel {
                 case LOAD_COMPLETED -> COLOR_LOAD_COMPLETED;
                 case UPDATE_STARTED, UPDATE_COMPLETED -> COLOR_UPDATE;
                 case PAGE_CREATED, PAGE_RELEASED, LISTENER_ADDED, LISTENER_REMOVED -> COLOR_PAGE_LIFECYCLE;
+                case CONNECTION_OPENED, CONNECTION_CLOSED -> COLOR_CONNECTION;
+                case LIVE_UPDATE, LIVE_CANDLE_CLOSED -> COLOR_LIVE;
+                case VISION_DOWNLOAD_STARTED, VISION_DOWNLOAD_PROGRESS, VISION_DOWNLOAD_COMPLETED -> COLOR_VISION;
+                case API_REQUEST_STARTED, API_REQUEST_COMPLETED -> COLOR_API;
             };
         }
     }

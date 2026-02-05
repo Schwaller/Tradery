@@ -133,7 +133,11 @@ public class WebSocketHandler implements PageUpdateListener {
             consumerId = ctx.sessionId();
         }
 
-        LOG.info("WebSocket connected: {}", consumerId);
+        // Set long idle timeout (5 minutes) to prevent premature connection drops
+        // Client sends pings every 60s, so this gives plenty of headroom
+        ctx.session.setIdleTimeout(java.time.Duration.ofMinutes(5));
+
+        LOG.info("WebSocket connected: {} (idleTimeout=5min)", consumerId);
         connections.put(consumerId, ctx);
         subscriptions.put(consumerId, new CopyOnWriteArraySet<>());
     }
@@ -300,13 +304,15 @@ public class WebSocketHandler implements PageUpdateListener {
             String symbol = message.get("symbol").asText();
             String timeframe = message.has("timeframe") && !message.get("timeframe").isNull()
                 ? message.get("timeframe").asText() : null;
+            String marketType = message.has("marketType") && !message.get("marketType").isNull()
+                ? message.get("marketType").asText() : "perp";
             long startTime = message.get("startTime").asLong();
             long endTime = message.get("endTime").asLong();
             String consumerName = message.has("consumerName")
                 ? message.get("consumerName").asText() : "WebSocket-" + consumerId;
 
             // Create PageKey (convert startTime/endTime to endTime/windowDurationMillis)
-            PageKey key = new PageKey(dataType.toUpperCase(), symbol.toUpperCase(), timeframe, endTime, endTime - startTime);
+            PageKey key = new PageKey(dataType.toUpperCase(), symbol.toUpperCase(), timeframe, marketType, endTime, endTime - startTime);
             String pageKeyStr = key.toKeyString();
 
             LOG.info("Consumer {} requesting page {}", consumerId, pageKeyStr);
@@ -348,12 +354,14 @@ public class WebSocketHandler implements PageUpdateListener {
             String symbol = message.get("symbol").asText();
             String timeframe = message.has("timeframe") && !message.get("timeframe").isNull()
                 ? message.get("timeframe").asText() : null;
+            String marketType = message.has("marketType") && !message.get("marketType").isNull()
+                ? message.get("marketType").asText() : "perp";
             long duration = message.get("duration").asLong();
             String consumerName = message.has("consumerName")
                 ? message.get("consumerName").asText() : "WebSocket-" + consumerId;
 
             // Create live PageKey (anchor = null)
-            PageKey key = PageKey.liveCandles(symbol, timeframe, duration);
+            PageKey key = PageKey.liveCandles(symbol, timeframe, marketType, duration);
             String pageKeyStr = key.toKeyString();
 
             LOG.info("Consumer {} requesting live page {}", consumerId, pageKeyStr);
@@ -527,9 +535,13 @@ public class WebSocketHandler implements PageUpdateListener {
     public void onLiveUpdate(PageKey key, Candle candle) {
         String pageKey = key.toKeyString();
         Set<String> subscribers = pageSubscribers.get(pageKey);
-        if (subscribers == null || subscribers.isEmpty()) return;
+        if (subscribers == null || subscribers.isEmpty()) {
+            LOG.trace("No subscribers for live update: {}", pageKey);
+            return;
+        }
 
         // Update of incomplete/forming candle
+        LOG.debug("[LIVE_UPDATE] {} close={} to {} subscribers", pageKey, candle.close(), subscribers.size());
         LiveUpdateMessage message = new LiveUpdateMessage("LIVE_UPDATE", pageKey,
             new CandleData(candle.timestamp(), candle.open(), candle.high(), candle.low(), candle.close(), candle.volume()));
         broadcast(subscribers, message);

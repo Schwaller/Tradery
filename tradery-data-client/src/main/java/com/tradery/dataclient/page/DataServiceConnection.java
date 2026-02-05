@@ -188,7 +188,7 @@ public class DataServiceConnection {
      */
     public void subscribePage(DataType dataType, String symbol, String timeframe,
                               long startTime, long endTime, PageUpdateCallback callback) {
-        String pageKey = makePageKey(dataType, symbol, timeframe, startTime, endTime);
+        String pageKey = makePageKey(dataType, symbol, timeframe, "perp", startTime, endTime);
         PageRequest request = new PageRequest(dataType, symbol, timeframe, startTime, endTime);
 
         LOG.debug("Subscribing to page: {} (connected={})", pageKey, isConnected());
@@ -206,7 +206,7 @@ public class DataServiceConnection {
     }
 
     /**
-     * Subscribe to a live (sliding window) page.
+     * Subscribe to a live (sliding window) page (defaults to perp market).
      * Live pages have no fixed anchor and slide forward with current time.
      *
      * @param dataType     Type of data (CANDLES, etc.)
@@ -217,7 +217,23 @@ public class DataServiceConnection {
      */
     public void subscribeLivePage(DataType dataType, String symbol, String timeframe,
                                   long duration, PageUpdateCallback callback) {
-        String pageKey = makeLivePageKey(dataType, symbol, timeframe, duration);
+        subscribeLivePage(dataType, symbol, timeframe, "perp", duration, callback);
+    }
+
+    /**
+     * Subscribe to a live (sliding window) page with market type.
+     * Live pages have no fixed anchor and slide forward with current time.
+     *
+     * @param dataType     Type of data (CANDLES, etc.)
+     * @param symbol       Trading symbol
+     * @param timeframe    Timeframe (null for non-timeframe types)
+     * @param marketType   Market type ("spot" or "perp")
+     * @param duration     Window duration in milliseconds
+     * @param callback     Callback for page updates
+     */
+    public void subscribeLivePage(DataType dataType, String symbol, String timeframe,
+                                  String marketType, long duration, PageUpdateCallback callback) {
+        String pageKey = makeLivePageKey(dataType, symbol, timeframe, marketType, duration);
 
         LOG.debug("Subscribing to live page: {} (connected={})", pageKey, isConnected());
 
@@ -225,12 +241,12 @@ public class DataServiceConnection {
         pageCallbacks.computeIfAbsent(pageKey, k -> ConcurrentHashMap.newKeySet()).add(callback);
 
         if (isConnected()) {
-            sendSubscribeLivePage(dataType, symbol, timeframe, duration);
+            sendSubscribeLivePage(dataType, symbol, timeframe, marketType, duration);
             activePageSubscriptions.add(pageKey);
         } else {
             LOG.info("Not connected, queuing live page request: {}", pageKey);
             // Store as pending - need to track live page requests separately
-            pendingPageRequests.add(new PageRequest(dataType, symbol, timeframe, duration, true));
+            pendingPageRequests.add(new PageRequest(dataType, symbol, timeframe, marketType, duration, true));
         }
     }
 
@@ -239,7 +255,7 @@ public class DataServiceConnection {
      */
     public void unsubscribePage(DataType dataType, String symbol, String timeframe,
                                 long startTime, long endTime, PageUpdateCallback callback) {
-        String pageKey = makePageKey(dataType, symbol, timeframe, startTime, endTime);
+        String pageKey = makePageKey(dataType, symbol, timeframe, "perp", startTime, endTime);
 
         Set<PageUpdateCallback> callbacks = pageCallbacks.get(pageKey);
         if (callbacks != null) {
@@ -502,7 +518,7 @@ public class DataServiceConnection {
 
     private void sendSubscribePage(PageRequest request) {
         if (request.isLive) {
-            sendSubscribeLivePage(request.dataType, request.symbol, request.timeframe, request.windowDurationMillis);
+            sendSubscribeLivePage(request.dataType, request.symbol, request.timeframe, request.marketType, request.windowDurationMillis);
             return;
         }
         try {
@@ -525,7 +541,7 @@ public class DataServiceConnection {
         }
     }
 
-    private void sendSubscribeLivePage(DataType dataType, String symbol, String timeframe, long duration) {
+    private void sendSubscribeLivePage(DataType dataType, String symbol, String timeframe, String marketType, long duration) {
         try {
             Map<String, Object> message = new LinkedHashMap<>();
             message.put("action", "subscribe_live_page");
@@ -534,12 +550,13 @@ public class DataServiceConnection {
             if (timeframe != null) {
                 message.put("timeframe", timeframe);
             }
+            message.put("marketType", marketType != null ? marketType : "perp");
             message.put("duration", duration);
             message.put("consumerName", consumerName);
 
             String json = objectMapper.writeValueAsString(message);
             webSocket.send(json);
-            LOG.debug("Sent subscribe_live_page: {} {} {} duration={}", dataType, symbol, timeframe, duration);
+            LOG.debug("Sent subscribe_live_page: {} {} {} {} duration={}", dataType, symbol, timeframe, marketType, duration);
         } catch (Exception e) {
             LOG.error("Failed to send subscribe_live_page", e);
         }
@@ -938,8 +955,9 @@ public class DataServiceConnection {
         // Re-subscribe to all pending page requests
         for (PageRequest request : pendingPageRequests) {
             sendSubscribePage(request);
-            String pageKey = makePageKey(request.dataType, request.symbol, request.timeframe,
-                                         request.startTime, request.endTime);
+            String pageKey = request.isLive
+                ? makeLivePageKey(request.dataType, request.symbol, request.timeframe, request.marketType, request.windowDurationMillis)
+                : makePageKey(request.dataType, request.symbol, request.timeframe, request.marketType, request.startTime, request.endTime);
             activePageSubscriptions.add(pageKey);
         }
         pendingPageRequests.clear();
@@ -1034,8 +1052,8 @@ public class DataServiceConnection {
 
     // ========== Key Generation ==========
 
-    private String makePageKey(DataType dataType, String symbol, String timeframe, long startTime, long endTime) {
-        // Must match server's PageKey.toKeyString() format: dataType:symbol[:timeframe]:anchor:duration
+    private String makePageKey(DataType dataType, String symbol, String timeframe, String marketType, long startTime, long endTime) {
+        // Must match server's PageKey.toKeyString() format: dataType:symbol[:timeframe]:marketType:anchor:duration
         // For anchored pages: anchor = endTime, duration = endTime - startTime
         StringBuilder sb = new StringBuilder();
         sb.append(dataType.toWireFormat()).append(":");
@@ -1043,18 +1061,20 @@ public class DataServiceConnection {
         if (timeframe != null) {
             sb.append(timeframe).append(":");
         }
+        sb.append(marketType != null ? marketType : "perp").append(":");
         sb.append(endTime).append(":").append(endTime - startTime);
         return sb.toString();
     }
 
-    private String makeLivePageKey(DataType dataType, String symbol, String timeframe, long duration) {
-        // Must match server's PageKey.toKeyString() format for live pages: dataType:symbol[:timeframe]:LIVE:duration
+    private String makeLivePageKey(DataType dataType, String symbol, String timeframe, String marketType, long duration) {
+        // Must match server's PageKey.toKeyString() format: dataType:symbol[:timeframe]:marketType:LIVE:duration
         StringBuilder sb = new StringBuilder();
         sb.append(dataType.toWireFormat()).append(":");
         sb.append(symbol.toUpperCase()).append(":");
         if (timeframe != null) {
             sb.append(timeframe).append(":");
         }
+        sb.append(marketType != null ? marketType : "perp").append(":");
         sb.append("LIVE:").append(duration);
         return sb.toString();
     }
@@ -1123,15 +1143,15 @@ public class DataServiceConnection {
     /**
      * Internal page request tracking.
      */
-    private record PageRequest(DataType dataType, String symbol, String timeframe,
+    private record PageRequest(DataType dataType, String symbol, String timeframe, String marketType,
                                long startTime, long endTime, long windowDurationMillis, boolean isLive) {
-        // Anchored page constructor
+        // Anchored page constructor (defaults to perp)
         PageRequest(DataType dataType, String symbol, String timeframe, long startTime, long endTime) {
-            this(dataType, symbol, timeframe, startTime, endTime, endTime - startTime, false);
+            this(dataType, symbol, timeframe, "perp", startTime, endTime, endTime - startTime, false);
         }
-        // Live page constructor
-        PageRequest(DataType dataType, String symbol, String timeframe, long windowDurationMillis, boolean isLive) {
-            this(dataType, symbol, timeframe, 0, 0, windowDurationMillis, isLive);
+        // Live page constructor with marketType
+        PageRequest(DataType dataType, String symbol, String timeframe, String marketType, long windowDurationMillis, boolean isLive) {
+            this(dataType, symbol, timeframe, marketType != null ? marketType : "perp", 0, 0, windowDurationMillis, isLive);
         }
     }
 

@@ -158,6 +158,158 @@ public class DownloadLogStore {
             "Listener removed: " + consumerName, meta));
     }
 
+    // ========== Connection Events ==========
+
+    /**
+     * Log a connection opened event.
+     */
+    public void logConnectionOpened(String connectionKey, String connectionType, String target, long connectDurationMs) {
+        String msg = String.format("%s connected to %s in %dms", connectionType, target, connectDurationMs);
+
+        Map<String, Object> meta = new HashMap<>();
+        meta.put("connectionType", connectionType);
+        meta.put("target", target);
+        meta.put("connectDurationMs", connectDurationMs);
+
+        log(DownloadEvent.of(connectionKey, null, DownloadEvent.EventType.CONNECTION_OPENED, msg, meta));
+    }
+
+    /**
+     * Log a connection closed event.
+     */
+    public void logConnectionClosed(String connectionKey, String connectionType, String reason, boolean remote) {
+        String msg = String.format("%s closed: %s (remote=%s)", connectionType, reason, remote);
+
+        Map<String, Object> meta = new HashMap<>();
+        meta.put("connectionType", connectionType);
+        meta.put("reason", reason);
+        meta.put("remote", remote);
+
+        log(DownloadEvent.of(connectionKey, null, DownloadEvent.EventType.CONNECTION_CLOSED, msg, meta));
+    }
+
+    // ========== Live Update Events ==========
+
+    /**
+     * Log a live update received event.
+     */
+    public void logLiveUpdate(String pageKey, DataType dataType, String symbol, String timeframe,
+                              double close, long binanceLatencyMs) {
+        String msg = binanceLatencyMs >= 0
+            ? String.format("Live update %s/%s close=%.2f (latency: %dms)", symbol, timeframe, close, binanceLatencyMs)
+            : String.format("Live update %s/%s close=%.2f", symbol, timeframe, close);
+
+        Map<String, Object> meta = new HashMap<>();
+        meta.put("symbol", symbol);
+        meta.put("timeframe", timeframe);
+        meta.put("close", close);
+        if (binanceLatencyMs >= 0) {
+            meta.put("binanceLatencyMs", binanceLatencyMs);
+        }
+
+        log(DownloadEvent.of(pageKey, dataType, DownloadEvent.EventType.LIVE_UPDATE, msg, meta));
+    }
+
+    /**
+     * Log a live candle closed event.
+     */
+    public void logLiveCandleClosed(String pageKey, DataType dataType, String symbol, String timeframe,
+                                     long timestamp, long binanceLatencyMs) {
+        String msg = binanceLatencyMs >= 0
+            ? String.format("Candle closed %s/%s at %d (latency: %dms)", symbol, timeframe, timestamp, binanceLatencyMs)
+            : String.format("Candle closed %s/%s at %d", symbol, timeframe, timestamp);
+
+        Map<String, Object> meta = new HashMap<>();
+        meta.put("symbol", symbol);
+        meta.put("timeframe", timeframe);
+        meta.put("candleTimestamp", timestamp);
+        if (binanceLatencyMs >= 0) {
+            meta.put("binanceLatencyMs", binanceLatencyMs);
+        }
+
+        log(DownloadEvent.of(pageKey, dataType, DownloadEvent.EventType.LIVE_CANDLE_CLOSED, msg, meta));
+    }
+
+    // ========== Vision Download Events ==========
+
+    /**
+     * Log a Vision download started event.
+     */
+    public void logVisionDownloadStarted(String pageKey, DataType dataType, String symbol,
+                                          String visionDataType, int monthCount) {
+        String msg = String.format("Vision download %s %s: %d months", symbol, visionDataType, monthCount);
+
+        Map<String, Object> meta = new HashMap<>();
+        meta.put("symbol", symbol);
+        meta.put("visionDataType", visionDataType);
+        meta.put("monthCount", monthCount);
+
+        log(DownloadEvent.of(pageKey, dataType, DownloadEvent.EventType.VISION_DOWNLOAD_STARTED, msg, meta));
+    }
+
+    /**
+     * Log a Vision download progress event.
+     */
+    public void logVisionDownloadProgress(String pageKey, DataType dataType, String symbol,
+                                           int completedMonths, int totalMonths, long recordsSoFar) {
+        String msg = String.format("Vision %s: %d/%d months, %d records", symbol, completedMonths, totalMonths, recordsSoFar);
+
+        Map<String, Object> meta = new HashMap<>();
+        meta.put("symbol", symbol);
+        meta.put("completedMonths", completedMonths);
+        meta.put("totalMonths", totalMonths);
+        meta.put("recordsSoFar", recordsSoFar);
+
+        log(DownloadEvent.of(pageKey, dataType, DownloadEvent.EventType.VISION_DOWNLOAD_PROGRESS, msg, meta));
+    }
+
+    /**
+     * Log a Vision download completed event.
+     */
+    public void logVisionDownloadCompleted(String pageKey, DataType dataType, String symbol,
+                                            int monthCount, long totalRecords, long durationMs) {
+        String msg = String.format("Vision %s complete: %d months, %d records in %dms",
+            symbol, monthCount, totalRecords, durationMs);
+
+        Map<String, Object> meta = new HashMap<>();
+        meta.put("symbol", symbol);
+        meta.put("monthCount", monthCount);
+        meta.put("totalRecords", totalRecords);
+        meta.put("durationMs", durationMs);
+
+        log(DownloadEvent.of(pageKey, dataType, DownloadEvent.EventType.VISION_DOWNLOAD_COMPLETED, msg, meta));
+    }
+
+    // ========== API Request Events ==========
+
+    /**
+     * Log an API request started event.
+     */
+    public void logApiRequestStarted(String pageKey, DataType dataType, String endpoint, String params) {
+        String msg = String.format("API request: %s %s", endpoint, params);
+
+        Map<String, Object> meta = new HashMap<>();
+        meta.put("endpoint", endpoint);
+        meta.put("params", params);
+
+        log(DownloadEvent.of(pageKey, dataType, DownloadEvent.EventType.API_REQUEST_STARTED, msg, meta));
+    }
+
+    /**
+     * Log an API request completed event.
+     */
+    public void logApiRequestCompleted(String pageKey, DataType dataType, String endpoint,
+                                        int recordCount, long durationMs) {
+        String msg = String.format("API response: %s returned %d records in %dms", endpoint, recordCount, durationMs);
+
+        Map<String, Object> meta = new HashMap<>();
+        meta.put("endpoint", endpoint);
+        meta.put("recordCount", recordCount);
+        meta.put("durationMs", durationMs);
+
+        log(DownloadEvent.of(pageKey, dataType, DownloadEvent.EventType.API_REQUEST_COMPLETED, msg, meta));
+    }
+
     /**
      * Add an event to the logs.
      */

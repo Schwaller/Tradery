@@ -2,6 +2,7 @@ package com.tradery.forge.data.page;
 
 import com.tradery.forge.ApplicationContext;
 import com.tradery.forge.data.DataType;
+import com.tradery.forge.data.log.DownloadLogStore;
 import com.tradery.dataclient.DataServiceClient;
 import com.tradery.core.model.OpenInterest;
 
@@ -29,6 +30,7 @@ public class OIPageManager extends DataPageManager<OpenInterest> {
         String symbol = page.getSymbol();
         long startTime = page.getStartTime();
         long endTime = page.getEndTime();
+        String forgePageKey = page.getKey();
 
         log.info("OIPageManager.loadData: {} requesting from data service", symbol);
 
@@ -36,13 +38,23 @@ public class OIPageManager extends DataPageManager<OpenInterest> {
         ApplicationContext ctx = ApplicationContext.getInstance();
         if (ctx == null || !ctx.isDataServiceAvailable()) {
             log.error("Data service not available");
+            DownloadLogStore.getInstance().logError(forgePageKey, DataType.OPEN_INTEREST,
+                "Data service not available");
             updatePageData(page, Collections.emptyList());
             return;
         }
 
         DataServiceClient client = ctx.getDataServiceClient();
+        DownloadLogStore logStore = DownloadLogStore.getInstance();
 
         try {
+            // Log the request to data service
+            logStore.logApiRequestStarted(forgePageKey, DataType.OPEN_INTEREST,
+                "data-service/pages/request",
+                String.format("%s %d-%d", symbol, startTime, endTime));
+
+            long requestStart = System.currentTimeMillis();
+
             // Request page - data service will fetch if cache is incomplete
             var response = client.requestPage(
                 new DataServiceClient.PageRequest("OPEN_INTEREST", symbol, null, startTime, endTime),
@@ -51,13 +63,15 @@ public class OIPageManager extends DataPageManager<OpenInterest> {
             );
 
             // Poll for completion
-            String pageKey = response.pageKey();
+            String dataServicePageKey = response.pageKey();
             int lastProgress = 0;
 
             while (true) {
-                var status = client.getPageStatus(pageKey);
+                var status = client.getPageStatus(dataServicePageKey);
                 if (status == null) {
-                    log.error("Page status not found: {}", pageKey);
+                    log.error("Page status not found: {}", dataServicePageKey);
+                    logStore.logError(forgePageKey, DataType.OPEN_INTEREST,
+                        "Page status not found: " + dataServicePageKey);
                     break;
                 }
 
@@ -71,7 +85,9 @@ public class OIPageManager extends DataPageManager<OpenInterest> {
                 if ("READY".equals(status.state())) {
                     break;
                 } else if ("ERROR".equals(status.state())) {
-                    log.error("Page load error: {}", pageKey);
+                    log.error("Page load error: {}", dataServicePageKey);
+                    logStore.logError(forgePageKey, DataType.OPEN_INTEREST,
+                        "Data service page error: " + dataServicePageKey);
                     break;
                 }
 
@@ -80,11 +96,20 @@ public class OIPageManager extends DataPageManager<OpenInterest> {
 
             // Fetch final data
             List<OpenInterest> oi = client.getOpenInterest(symbol, startTime, endTime);
+            long totalDuration = System.currentTimeMillis() - requestStart;
+
             log.info("OIPageManager.loadData: {} got {} records", symbol, oi.size());
+
+            // Log the response from data service
+            logStore.logApiRequestCompleted(forgePageKey, DataType.OPEN_INTEREST,
+                "data-service/openinterest", oi.size(), totalDuration);
+
             updatePageData(page, oi);
 
         } catch (Exception e) {
             log.error("Failed to load OI from data service: {}", e.getMessage());
+            logStore.logError(forgePageKey, DataType.OPEN_INTEREST,
+                "Failed to load from data service: " + e.getMessage());
             updatePageData(page, Collections.emptyList());
         }
     }

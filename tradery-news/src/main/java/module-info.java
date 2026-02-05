@@ -5,6 +5,13 @@ module com.tradery.news {
     exports com.tradery.news.fetch;
     exports com.tradery.news.store;
     exports com.tradery.news.ai;
+    exports com.tradery.news.ui;
+
+    // Java modules
+    requires java.desktop;
+
+    // UI
+    requires com.formdev.flatlaf;
 
     // Jackson
     requires transitive com.fasterxml.jackson.databind;

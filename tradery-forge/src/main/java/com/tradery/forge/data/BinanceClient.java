@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tradery.core.model.Candle;
 import com.tradery.core.model.FetchProgress;
+import com.tradery.forge.data.log.DownloadLogStore;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
@@ -65,8 +66,15 @@ public class BinanceClient {
             .get()
             .build();
 
+        String pageKey = String.format("API:klines:%s:%s", symbol, interval);
+        long requestStart = System.currentTimeMillis();
+
         try (Response response = client.newCall(request).execute()) {
+            long requestDuration = System.currentTimeMillis() - requestStart;
+
             if (!response.isSuccessful()) {
+                DownloadLogStore.getInstance().logError(pageKey, DataType.CANDLES,
+                    "Binance API error: " + response.code() + " " + response.message());
                 throw new IOException("Binance API error: " + response.code() + " " + response.message());
             }
 
@@ -93,6 +101,10 @@ public class BinanceClient {
                 candles.add(new Candle(timestamp, open, high, low, close, volume,
                     tradeCount, quoteVolume, takerBuyVolume, takerBuyQuoteVolume));
             }
+
+            // Log API request completion
+            DownloadLogStore.getInstance().logApiRequestCompleted(pageKey, DataType.CANDLES,
+                "fapi/v1/klines", candles.size(), requestDuration);
 
             return candles;
         }

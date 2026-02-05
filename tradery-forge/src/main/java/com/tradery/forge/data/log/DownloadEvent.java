@@ -38,7 +38,25 @@ public record DownloadEvent(
         /** Listener added to page */
         LISTENER_ADDED,
         /** Listener removed from page */
-        LISTENER_REMOVED
+        LISTENER_REMOVED,
+        /** WebSocket/HTTP connection opened */
+        CONNECTION_OPENED,
+        /** WebSocket/HTTP connection closed */
+        CONNECTION_CLOSED,
+        /** Live update received */
+        LIVE_UPDATE,
+        /** Live candle closed */
+        LIVE_CANDLE_CLOSED,
+        /** Vision download started */
+        VISION_DOWNLOAD_STARTED,
+        /** Vision download progress */
+        VISION_DOWNLOAD_PROGRESS,
+        /** Vision download completed */
+        VISION_DOWNLOAD_COMPLETED,
+        /** API request started */
+        API_REQUEST_STARTED,
+        /** API request completed */
+        API_REQUEST_COMPLETED
     }
 
     /**

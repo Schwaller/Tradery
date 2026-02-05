@@ -31,6 +31,14 @@ public interface DataPageView<T> {
     String getTimeframe();
 
     /**
+     * Get the market type ("spot" or "perp").
+     * Returns "perp" as default.
+     */
+    default String getMarketType() {
+        return "perp";
+    }
+
+    /**
      * Get the start time of the data range in milliseconds.
      */
     long getStartTime();

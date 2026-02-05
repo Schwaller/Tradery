@@ -21,7 +21,8 @@ import java.util.function.BiConsumer;
  */
 public class LiveCandleManager {
     private static final Logger LOG = LoggerFactory.getLogger(LiveCandleManager.class);
-    private static final String BINANCE_WS_BASE = "wss://fstream.binance.com/ws/";
+    private static final String BINANCE_FUTURES_WS = "wss://fstream.binance.com/ws/";
+    private static final String BINANCE_SPOT_WS = "wss://stream.binance.com:9443/ws/";
     private static final int RECONNECT_DELAY_MS = 5000;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
@@ -34,13 +35,23 @@ public class LiveCandleManager {
     private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
 
     /**
-     * Subscribe to live candles for a symbol/timeframe.
+     * Subscribe to live candles for a symbol/timeframe (defaults to perp).
      * Returns the current candle if available.
      */
     public Candle subscribe(String symbol, String timeframe,
                             BiConsumer<String, Candle> onUpdate,
                             BiConsumer<String, Candle> onClose) {
-        String key = makeKey(symbol, timeframe);
+        return subscribe(symbol, timeframe, "perp", onUpdate, onClose);
+    }
+
+    /**
+     * Subscribe to live candles for a symbol/timeframe/marketType.
+     * Returns the current candle if available.
+     */
+    public Candle subscribe(String symbol, String timeframe, String marketType,
+                            BiConsumer<String, Candle> onUpdate,
+                            BiConsumer<String, Candle> onClose) {
+        String key = makeKey(symbol, timeframe, marketType);
 
         // Register listeners
         if (onUpdate != null) {
@@ -52,19 +63,28 @@ public class LiveCandleManager {
 
         // Start connection if not exists
         if (!connections.containsKey(key)) {
-            startConnection(symbol, timeframe);
+            startConnection(symbol, timeframe, marketType);
         }
 
         return currentCandles.get(key);
     }
 
     /**
-     * Unsubscribe from live candles.
+     * Unsubscribe from live candles (defaults to perp).
      */
     public void unsubscribe(String symbol, String timeframe,
                             BiConsumer<String, Candle> onUpdate,
                             BiConsumer<String, Candle> onClose) {
-        String key = makeKey(symbol, timeframe);
+        unsubscribe(symbol, timeframe, "perp", onUpdate, onClose);
+    }
+
+    /**
+     * Unsubscribe from live candles with market type.
+     */
+    public void unsubscribe(String symbol, String timeframe, String marketType,
+                            BiConsumer<String, Candle> onUpdate,
+                            BiConsumer<String, Candle> onClose) {
+        String key = makeKey(symbol, timeframe, marketType);
 
         if (onUpdate != null) {
             Set<BiConsumer<String, Candle>> listeners = updateListeners.get(key);
@@ -94,14 +114,28 @@ public class LiveCandleManager {
      * Get the current (incomplete) candle for a symbol/timeframe.
      */
     public Candle getCurrentCandle(String symbol, String timeframe) {
-        return currentCandles.get(makeKey(symbol, timeframe));
+        return getCurrentCandle(symbol, timeframe, "perp");
+    }
+
+    /**
+     * Get the current (incomplete) candle for a symbol/timeframe/marketType.
+     */
+    public Candle getCurrentCandle(String symbol, String timeframe, String marketType) {
+        return currentCandles.get(makeKey(symbol, timeframe, marketType));
     }
 
     /**
      * Get recent closed candles (up to 10).
      */
     public List<Candle> getRecentClosedCandles(String symbol, String timeframe) {
-        List<Candle> candles = recentClosedCandles.get(makeKey(symbol, timeframe));
+        return getRecentClosedCandles(symbol, timeframe, "perp");
+    }
+
+    /**
+     * Get recent closed candles (up to 10) with market type.
+     */
+    public List<Candle> getRecentClosedCandles(String symbol, String timeframe, String marketType) {
+        List<Candle> candles = recentClosedCandles.get(makeKey(symbol, timeframe, marketType));
         return candles != null ? List.copyOf(candles) : List.of();
     }
 
@@ -109,19 +143,27 @@ public class LiveCandleManager {
      * Check if a stream is active for symbol/timeframe.
      */
     public boolean isActive(String symbol, String timeframe) {
-        BinanceKlineClient client = connections.get(makeKey(symbol, timeframe));
+        return isActive(symbol, timeframe, "perp");
+    }
+
+    /**
+     * Check if a stream is active for symbol/timeframe/marketType.
+     */
+    public boolean isActive(String symbol, String timeframe, String marketType) {
+        BinanceKlineClient client = connections.get(makeKey(symbol, timeframe, marketType));
         return client != null && client.isOpen();
     }
 
-    private void startConnection(String symbol, String timeframe) {
-        String key = makeKey(symbol, timeframe);
+    private void startConnection(String symbol, String timeframe, String marketType) {
+        String key = makeKey(symbol, timeframe, marketType);
         String streamName = symbol.toLowerCase() + "@kline_" + timeframe;
-        String wsUrl = BINANCE_WS_BASE + streamName;
+        boolean isSpot = "spot".equalsIgnoreCase(marketType);
+        String wsUrl = (isSpot ? BINANCE_SPOT_WS : BINANCE_FUTURES_WS) + streamName;
 
-        LOG.info("Starting live stream for {} {}", symbol, timeframe);
+        LOG.info("Starting live stream for {} {} {} ({})", symbol, timeframe, marketType, isSpot ? "SPOT" : "PERP");
 
         try {
-            BinanceKlineClient client = new BinanceKlineClient(new URI(wsUrl), key);
+            BinanceKlineClient client = new BinanceKlineClient(new URI(wsUrl), key, symbol, timeframe, marketType);
             connections.put(key, client);
             client.connect();
         } catch (Exception e) {
@@ -141,18 +183,19 @@ public class LiveCandleManager {
         closeListeners.remove(key);
     }
 
-    private void scheduleReconnect(String key, String symbol, String timeframe) {
+    private void scheduleReconnect(String key, String symbol, String timeframe, String marketType) {
         scheduler.schedule(() -> {
             if (connections.containsKey(key)) {
                 // Still have listeners, reconnect
-                LOG.info("Reconnecting to {} {}", symbol, timeframe);
+                LOG.info("Reconnecting to {} {} {}", symbol, timeframe, marketType);
                 connections.remove(key);
-                startConnection(symbol, timeframe);
+                startConnection(symbol, timeframe, marketType);
             }
         }, RECONNECT_DELAY_MS, TimeUnit.MILLISECONDS);
     }
 
     private void handleKlineMessage(String key, String message) {
+        long receiveTime = System.currentTimeMillis();
         try {
             JsonNode root = objectMapper.readTree(message);
             if (!root.has("e") || !"kline".equals(root.get("e").asText())) {
@@ -161,6 +204,10 @@ public class LiveCandleManager {
 
             JsonNode k = root.get("k");
             if (k == null) return;
+
+            // Extract Binance event time for latency tracking
+            long eventTime = root.has("E") ? root.get("E").asLong() : 0;
+            long latencyMs = eventTime > 0 ? receiveTime - eventTime : -1;
 
             Candle candle = new Candle(
                 k.get("t").asLong(),
@@ -175,11 +222,15 @@ public class LiveCandleManager {
 
             if (isClosed) {
                 // Candle closed
+                LOG.info("[LIVE] {} candle CLOSED at {} (Binance latency: {}ms)",
+                    key, candle.timestamp(), latencyMs);
                 addClosedCandle(key, candle);
                 currentCandles.remove(key);
                 notifyCloseListeners(key, candle);
             } else {
                 // Update current candle
+                LOG.debug("[LIVE] {} candle UPDATE close={} (Binance latency: {}ms)",
+                    key, candle.close(), latencyMs);
                 currentCandles.put(key, candle);
                 notifyUpdateListeners(key, candle);
             }
@@ -234,8 +285,8 @@ public class LiveCandleManager {
         }
     }
 
-    private String makeKey(String symbol, String timeframe) {
-        return symbol.toUpperCase() + ":" + timeframe;
+    private String makeKey(String symbol, String timeframe, String marketType) {
+        return symbol.toUpperCase() + ":" + timeframe + ":" + (marketType != null ? marketType : "perp");
     }
 
     public int getConnectionCount() {
@@ -255,15 +306,26 @@ public class LiveCandleManager {
      */
     private class BinanceKlineClient extends WebSocketClient {
         private final String key;
+        private final String symbol;
+        private final String timeframe;
+        private final String marketType;
+        private final long connectStartTime;
 
-        public BinanceKlineClient(URI serverUri, String key) {
+        public BinanceKlineClient(URI serverUri, String key, String symbol, String timeframe, String marketType) {
             super(serverUri);
             this.key = key;
+            this.symbol = symbol;
+            this.timeframe = timeframe;
+            this.marketType = marketType;
+            this.connectStartTime = System.currentTimeMillis();
+            LOG.info("[WS-BINANCE] Connecting to {} for key={}", serverUri, key);
         }
 
         @Override
         public void onOpen(ServerHandshake handshake) {
-            LOG.info("Live stream connected: {}", key);
+            long connectDuration = System.currentTimeMillis() - connectStartTime;
+            LOG.info("[WS-BINANCE] Connected: {} (connect took {}ms, status={})",
+                key, connectDuration, handshake.getHttpStatus());
         }
 
         @Override
@@ -273,16 +335,14 @@ public class LiveCandleManager {
 
         @Override
         public void onClose(int code, String reason, boolean remote) {
-            LOG.warn("Live stream closed: {} (code={}, reason={})", key, code, reason);
-            String[] parts = key.split(":");
-            if (parts.length == 2) {
-                scheduleReconnect(key, parts[0], parts[1]);
-            }
+            LOG.warn("[WS-BINANCE] Closed: {} (code={}, reason='{}', remote={})",
+                key, code, reason, remote);
+            scheduleReconnect(key, symbol, timeframe, marketType);
         }
 
         @Override
         public void onError(Exception ex) {
-            LOG.error("Live stream error: {} - {}", key, ex.getMessage());
+            LOG.error("[WS-BINANCE] Error: {} - {}", key, ex.getMessage(), ex);
         }
     }
 }

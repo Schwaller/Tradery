@@ -1,4 +1,4 @@
-package com.tradery.forge.ui.charts;
+package com.tradery.charts.core;
 
 import org.jfree.chart.ChartPanel;
 import org.jfree.chart.JFreeChart;
@@ -13,12 +13,21 @@ import java.awt.event.MouseMotionAdapter;
 import java.awt.event.MouseWheelListener;
 import java.awt.geom.Rectangle2D;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.function.Supplier;
 
 /**
  * Centralized zoom/pan/Y-axis drag interaction manager for all charts.
- * Provides unified interaction behavior across ChartsPanel and PhasePreviewChart.
+ * Provides unified interaction behavior across different chart panels.
+ *
+ * Features:
+ * - Mouse wheel zoom (zoom to cursor on X-axis)
+ * - Click and drag to pan
+ * - Y-axis drag to zoom the Y-axis
+ * - Double-click on Y-axis to auto-fit data
+ * - Synchronized zooming/panning across multiple charts
  */
 public class ChartInteractionManager {
 
@@ -42,7 +51,20 @@ public class ChartInteractionManager {
     private Supplier<JScrollBar> scrollBarSupplier;
 
     // Double-click callbacks per chart panel for full-screen toggle
-    private java.util.Map<ChartPanel, Runnable> doubleClickCallbacks = new java.util.HashMap<>();
+    private final Map<ChartPanel, Runnable> doubleClickCallbacks = new HashMap<>();
+
+    // Axis position supplier - returns "left", "right", or "both"
+    private Supplier<String> axisPositionSupplier = () -> "left";
+
+    /**
+     * Set the axis position supplier. This determines which side(s) the Y-axis
+     * is on for Y-axis drag detection.
+     *
+     * @param supplier Returns "left", "right", or "both"
+     */
+    public void setAxisPositionSupplier(Supplier<String> supplier) {
+        this.axisPositionSupplier = supplier != null ? supplier : () -> "left";
+    }
 
     /**
      * Add a chart to the synchronization registry.
@@ -103,10 +125,13 @@ public class ChartInteractionManager {
 
     /**
      * Attach interaction listeners with optional Y-axis position on right side.
+     *
+     * @param panel The chart panel
+     * @param yAxisOnRight Ignored - use setAxisPositionSupplier instead
      */
     public void attachListeners(ChartPanel panel, boolean yAxisOnRight) {
         panel.addMouseWheelListener(createMouseWheelListener(panel));
-        panel.addMouseListener(createMouseListener(panel, yAxisOnRight));
+        panel.addMouseListener(createMouseListener(panel));
         panel.addMouseMotionListener(createMouseMotionListener(panel));
     }
 
@@ -163,12 +188,12 @@ public class ChartInteractionManager {
         };
     }
 
-    private MouseAdapter createMouseListener(ChartPanel panel, boolean yAxisOnRight) {
+    private MouseAdapter createMouseListener(ChartPanel panel) {
         return new MouseAdapter() {
             @Override
             public void mouseClicked(MouseEvent e) {
                 if (e.getClickCount() == 2 && SwingUtilities.isLeftMouseButton(e)) {
-                    if (isOnYAxis(e.getPoint(), panel, yAxisOnRight)) {
+                    if (isOnYAxis(e.getPoint(), panel)) {
                         // Double-click on Y-axis: fit Y to visible data
                         XYPlot plot = panel.getChart().getXYPlot();
                         if (plot != null) {
@@ -188,7 +213,7 @@ public class ChartInteractionManager {
                 if (SwingUtilities.isLeftMouseButton(e)) {
                     if (fixedWidthMode) return;
 
-                    if (isOnYAxis(e.getPoint(), panel, yAxisOnRight)) {
+                    if (isOnYAxis(e.getPoint(), panel)) {
                         startYAxisDrag(e.getY(), panel);
                     } else {
                         startPan(e.getPoint(), panel);
@@ -219,13 +244,12 @@ public class ChartInteractionManager {
         };
     }
 
-    private boolean isOnYAxis(Point point, ChartPanel panel, boolean yAxisOnRight) {
+    private boolean isOnYAxis(Point point, ChartPanel panel) {
         if (panel.getChartRenderingInfo() == null) return false;
         Rectangle2D dataArea = panel.getChartRenderingInfo().getPlotInfo().getDataArea();
         if (dataArea == null) return false;
 
-        // Check current axis position from config
-        String axisPosition = ChartConfig.getInstance().getPriceAxisPosition();
+        String axisPosition = axisPositionSupplier.get();
 
         boolean onLeft = point.x < dataArea.getMinX();
         boolean onRight = point.x > dataArea.getMaxX() && point.x < dataArea.getMaxX() + 60;

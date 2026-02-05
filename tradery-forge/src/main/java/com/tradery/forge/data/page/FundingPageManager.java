@@ -2,6 +2,7 @@ package com.tradery.forge.data.page;
 
 import com.tradery.forge.ApplicationContext;
 import com.tradery.forge.data.DataType;
+import com.tradery.forge.data.log.DownloadLogStore;
 import com.tradery.dataclient.DataServiceClient;
 import com.tradery.core.model.FundingRate;
 
@@ -28,6 +29,7 @@ public class FundingPageManager extends DataPageManager<FundingRate> {
         String symbol = page.getSymbol();
         long startTime = page.getStartTime();
         long endTime = page.getEndTime();
+        String forgePageKey = page.getKey();
 
         log.info("FundingPageManager.loadData: {} requesting from data service", symbol);
 
@@ -35,13 +37,23 @@ public class FundingPageManager extends DataPageManager<FundingRate> {
         ApplicationContext ctx = ApplicationContext.getInstance();
         if (ctx == null || !ctx.isDataServiceAvailable()) {
             log.error("Data service not available");
+            DownloadLogStore.getInstance().logError(forgePageKey, DataType.FUNDING,
+                "Data service not available");
             updatePageData(page, Collections.emptyList());
             return;
         }
 
         DataServiceClient client = ctx.getDataServiceClient();
+        DownloadLogStore logStore = DownloadLogStore.getInstance();
 
         try {
+            // Log the request to data service
+            logStore.logApiRequestStarted(forgePageKey, DataType.FUNDING,
+                "data-service/pages/request",
+                String.format("%s %d-%d", symbol, startTime, endTime));
+
+            long requestStart = System.currentTimeMillis();
+
             // Request page - data service will fetch if cache is incomplete
             var response = client.requestPage(
                 new DataServiceClient.PageRequest("FUNDING", symbol, null, startTime, endTime),
@@ -50,13 +62,15 @@ public class FundingPageManager extends DataPageManager<FundingRate> {
             );
 
             // Poll for completion
-            String pageKey = response.pageKey();
+            String dataServicePageKey = response.pageKey();
             int lastProgress = 0;
 
             while (true) {
-                var status = client.getPageStatus(pageKey);
+                var status = client.getPageStatus(dataServicePageKey);
                 if (status == null) {
-                    log.error("Page status not found: {}", pageKey);
+                    log.error("Page status not found: {}", dataServicePageKey);
+                    logStore.logError(forgePageKey, DataType.FUNDING,
+                        "Page status not found: " + dataServicePageKey);
                     break;
                 }
 
@@ -70,7 +84,9 @@ public class FundingPageManager extends DataPageManager<FundingRate> {
                 if ("READY".equals(status.state())) {
                     break;
                 } else if ("ERROR".equals(status.state())) {
-                    log.error("Page load error: {}", pageKey);
+                    log.error("Page load error: {}", dataServicePageKey);
+                    logStore.logError(forgePageKey, DataType.FUNDING,
+                        "Data service page error: " + dataServicePageKey);
                     break;
                 }
 
@@ -79,11 +95,20 @@ public class FundingPageManager extends DataPageManager<FundingRate> {
 
             // Fetch final data
             List<FundingRate> rates = client.getFundingRates(symbol, startTime, endTime);
+            long totalDuration = System.currentTimeMillis() - requestStart;
+
             log.info("FundingPageManager.loadData: {} got {} rates", symbol, rates.size());
+
+            // Log the response from data service
+            logStore.logApiRequestCompleted(forgePageKey, DataType.FUNDING,
+                "data-service/funding", rates.size(), totalDuration);
+
             updatePageData(page, rates);
 
         } catch (Exception e) {
             log.error("Failed to load funding rates from data service: {}", e.getMessage());
+            logStore.logError(forgePageKey, DataType.FUNDING,
+                "Failed to load from data service: " + e.getMessage());
             updatePageData(page, Collections.emptyList());
         }
     }

@@ -4,11 +4,13 @@ import com.tradery.charts.chart.CandlestickChart;
 import com.tradery.charts.chart.IndicatorChart;
 import com.tradery.charts.chart.VolumeChart;
 import com.tradery.charts.core.ChartCoordinator;
+import com.tradery.charts.core.ChartInteractionManager;
 import com.tradery.charts.core.IndicatorType;
 import com.tradery.charts.overlay.BollingerOverlay;
 import com.tradery.charts.overlay.EmaOverlay;
 import com.tradery.charts.overlay.HighLowOverlay;
 import com.tradery.charts.overlay.IchimokuOverlay;
+import com.tradery.charts.overlay.LastPriceOverlay;
 import com.tradery.charts.overlay.SmaOverlay;
 import com.tradery.charts.overlay.SupertrendOverlay;
 import com.tradery.charts.overlay.VwapOverlay;
@@ -70,6 +72,9 @@ public class PriceChartPanel extends JPanel {
     private boolean rangePositionEnabled = false;
     private boolean tradeCountEnabled = false;
     private boolean volumeRatioEnabled = false;
+    private LastPriceOverlay lastPriceOverlay;
+    private boolean lastPriceEnabled = true;  // Enabled by default
+    private final ChartInteractionManager interactionManager;
 
     public PriceChartPanel() {
         setLayout(new BorderLayout());
@@ -81,10 +86,21 @@ public class PriceChartPanel extends JPanel {
         // Create coordinator for syncing charts
         coordinator = new ChartCoordinator();
 
+        // Create interaction manager for zoom/pan
+        interactionManager = new ChartInteractionManager();
+
         // Create candlestick chart
         candlestickChart = new CandlestickChart(coordinator, "");
         candlestickChart.initialize();
         candlestickChart.setCandlestickMode(true);
+
+        // Add last price line overlay (enabled by default)
+        lastPriceOverlay = new LastPriceOverlay();
+        candlestickChart.addOverlay(lastPriceOverlay);
+
+        // Register chart for synchronized zoom/pan and attach listeners
+        interactionManager.addChart(candlestickChart.getChart());
+        interactionManager.attachListeners(candlestickChart.getChartPanel());
 
         // Add chart panel (volume chart added later if enabled)
         add(candlestickChart.getChartPanel(), BorderLayout.CENTER);
@@ -332,6 +348,36 @@ public class PriceChartPanel extends JPanel {
      */
     public void clearOverlays() {
         candlestickChart.clearOverlays();
+        // Re-add last price overlay if enabled
+        if (lastPriceEnabled && lastPriceOverlay != null) {
+            candlestickChart.addOverlay(lastPriceOverlay);
+        }
+    }
+
+    /**
+     * Enable or disable the last price line overlay.
+     */
+    public void setLastPriceEnabled(boolean enabled) {
+        if (enabled == lastPriceEnabled) return;
+        lastPriceEnabled = enabled;
+
+        if (enabled) {
+            if (lastPriceOverlay == null) {
+                lastPriceOverlay = new LastPriceOverlay();
+            }
+            candlestickChart.addOverlay(lastPriceOverlay);
+        } else {
+            if (lastPriceOverlay != null) {
+                candlestickChart.removeOverlay(lastPriceOverlay);
+            }
+        }
+    }
+
+    /**
+     * Check if last price overlay is enabled.
+     */
+    public boolean isLastPriceEnabled() {
+        return lastPriceEnabled;
     }
 
     // ===== Volume Chart Support =====
@@ -346,8 +392,11 @@ public class PriceChartPanel extends JPanel {
         if (enabled) {
             volumeChart = new VolumeChart(coordinator, "");
             volumeChart.initialize();
+            interactionManager.addChart(volumeChart.getChart());
+            interactionManager.attachListeners(volumeChart.getChartPanel());
         } else {
             if (volumeChart != null) {
+                interactionManager.removeChart(volumeChart.getChart());
                 volumeChart.dispose();
                 volumeChart = null;
             }
@@ -418,9 +467,12 @@ public class PriceChartPanel extends JPanel {
             rsiChart = new IndicatorChart(coordinator, IndicatorType.RSI, new RsiRenderer(period));
             rsiChart.initialize();
             indicatorCharts.add(rsiChart);
+            interactionManager.addChart(rsiChart.getChart());
+            interactionManager.attachListeners(rsiChart.getChartPanel());
         } else {
             if (rsiChart != null) {
                 indicatorCharts.remove(rsiChart);
+                interactionManager.removeChart(rsiChart.getChart());
                 rsiChart.dispose();
                 rsiChart = null;
             }
@@ -447,9 +499,12 @@ public class PriceChartPanel extends JPanel {
             macdChart = new IndicatorChart(coordinator, IndicatorType.MACD, new MacdRenderer(fast, slow, signal));
             macdChart.initialize();
             indicatorCharts.add(macdChart);
+            interactionManager.addChart(macdChart.getChart());
+            interactionManager.attachListeners(macdChart.getChartPanel());
         } else {
             if (macdChart != null) {
                 indicatorCharts.remove(macdChart);
+                interactionManager.removeChart(macdChart.getChart());
                 macdChart.dispose();
                 macdChart = null;
             }
@@ -490,9 +545,12 @@ public class PriceChartPanel extends JPanel {
             atrChart = new IndicatorChart(coordinator, IndicatorType.ATR, new AtrRenderer(period));
             atrChart.initialize();
             indicatorCharts.add(atrChart);
+            interactionManager.addChart(atrChart.getChart());
+            interactionManager.attachListeners(atrChart.getChartPanel());
         } else {
             if (atrChart != null) {
                 indicatorCharts.remove(atrChart);
+                interactionManager.removeChart(atrChart.getChart());
                 atrChart.dispose();
                 atrChart = null;
             }
@@ -526,9 +584,12 @@ public class PriceChartPanel extends JPanel {
             stochasticChart = new IndicatorChart(coordinator, IndicatorType.STOCHASTIC, new StochasticRenderer(kPeriod, dPeriod));
             stochasticChart.initialize();
             indicatorCharts.add(stochasticChart);
+            interactionManager.addChart(stochasticChart.getChart());
+            interactionManager.attachListeners(stochasticChart.getChartPanel());
         } else {
             if (stochasticChart != null) {
                 indicatorCharts.remove(stochasticChart);
+                interactionManager.removeChart(stochasticChart.getChart());
                 stochasticChart.dispose();
                 stochasticChart = null;
             }
@@ -562,9 +623,12 @@ public class PriceChartPanel extends JPanel {
             adxChart = new IndicatorChart(coordinator, IndicatorType.ADX, new AdxRenderer(period));
             adxChart.initialize();
             indicatorCharts.add(adxChart);
+            interactionManager.addChart(adxChart.getChart());
+            interactionManager.attachListeners(adxChart.getChartPanel());
         } else {
             if (adxChart != null) {
                 indicatorCharts.remove(adxChart);
+                interactionManager.removeChart(adxChart.getChart());
                 adxChart.dispose();
                 adxChart = null;
             }
@@ -598,9 +662,12 @@ public class PriceChartPanel extends JPanel {
             deltaChart = new IndicatorChart(coordinator, IndicatorType.DELTA, new DeltaRenderer(showCvd));
             deltaChart.initialize();
             indicatorCharts.add(deltaChart);
+            interactionManager.addChart(deltaChart.getChart());
+            interactionManager.attachListeners(deltaChart.getChartPanel());
         } else {
             if (deltaChart != null) {
                 indicatorCharts.remove(deltaChart);
+                interactionManager.removeChart(deltaChart.getChart());
                 deltaChart.dispose();
                 deltaChart = null;
             }
@@ -634,9 +701,12 @@ public class PriceChartPanel extends JPanel {
             rangePositionChart = new IndicatorChart(coordinator, IndicatorType.RANGE_POSITION, new RangePositionRenderer(period, skip));
             rangePositionChart.initialize();
             indicatorCharts.add(rangePositionChart);
+            interactionManager.addChart(rangePositionChart.getChart());
+            interactionManager.attachListeners(rangePositionChart.getChartPanel());
         } else {
             if (rangePositionChart != null) {
                 indicatorCharts.remove(rangePositionChart);
+                interactionManager.removeChart(rangePositionChart.getChart());
                 rangePositionChart.dispose();
                 rangePositionChart = null;
             }
@@ -663,9 +733,12 @@ public class PriceChartPanel extends JPanel {
             tradeCountChart = new IndicatorChart(coordinator, IndicatorType.TRADE_COUNT, new TradeCountRenderer());
             tradeCountChart.initialize();
             indicatorCharts.add(tradeCountChart);
+            interactionManager.addChart(tradeCountChart.getChart());
+            interactionManager.attachListeners(tradeCountChart.getChartPanel());
         } else {
             if (tradeCountChart != null) {
                 indicatorCharts.remove(tradeCountChart);
+                interactionManager.removeChart(tradeCountChart.getChart());
                 tradeCountChart.dispose();
                 tradeCountChart = null;
             }
@@ -692,9 +765,12 @@ public class PriceChartPanel extends JPanel {
             volumeRatioChart = new IndicatorChart(coordinator, IndicatorType.VOLUME_RATIO, new VolumeRatioRenderer());
             volumeRatioChart.initialize();
             indicatorCharts.add(volumeRatioChart);
+            interactionManager.addChart(volumeRatioChart.getChart());
+            interactionManager.attachListeners(volumeRatioChart.getChartPanel());
         } else {
             if (volumeRatioChart != null) {
                 indicatorCharts.remove(volumeRatioChart);
+                interactionManager.removeChart(volumeRatioChart.getChart());
                 volumeRatioChart.dispose();
                 volumeRatioChart = null;
             }

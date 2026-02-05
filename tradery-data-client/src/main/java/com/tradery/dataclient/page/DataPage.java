@@ -24,6 +24,7 @@ public class DataPage<T> implements DataPageView<T> {
     private final DataType dataType;
     private final String symbol;
     private final String timeframe;    // null for non-timeframe types (Funding, OI, AggTrades)
+    private final String marketType;   // "spot" or "perp" (default: "perp")
     private final long startTime;
     private final long endTime;
     private final long windowDurationMillis;  // Window duration (> 0 for live pages, computed for anchored)
@@ -40,31 +41,40 @@ public class DataPage<T> implements DataPageView<T> {
     private volatile List<T> data = new ArrayList<>();
 
     /**
-     * Create a new anchored data page.
+     * Create a new anchored data page (defaults to perp market).
      */
     public DataPage(DataType dataType, String symbol, String timeframe,
                     long startTime, long endTime) {
-        this(dataType, symbol, timeframe, startTime, endTime, endTime - startTime);
+        this(dataType, symbol, timeframe, "perp", startTime, endTime, endTime - startTime);
     }
 
     /**
-     * Create a new live (sliding window) data page.
+     * Create a new live (sliding window) data page (defaults to perp market).
      */
     public static <T> DataPage<T> live(DataType dataType, String symbol, String timeframe,
                                         long startTime, long endTime, long windowDurationMillis) {
-        return new DataPage<>(dataType, symbol, timeframe, startTime, endTime, windowDurationMillis, true);
+        return new DataPage<>(dataType, symbol, timeframe, "perp", startTime, endTime, windowDurationMillis, true);
     }
 
-    private DataPage(DataType dataType, String symbol, String timeframe,
+    /**
+     * Create a new live (sliding window) data page with market type.
+     */
+    public static <T> DataPage<T> live(DataType dataType, String symbol, String timeframe, String marketType,
+                                        long startTime, long endTime, long windowDurationMillis) {
+        return new DataPage<>(dataType, symbol, timeframe, marketType, startTime, endTime, windowDurationMillis, true);
+    }
+
+    private DataPage(DataType dataType, String symbol, String timeframe, String marketType,
                      long startTime, long endTime, long windowDurationMillis) {
-        this(dataType, symbol, timeframe, startTime, endTime, windowDurationMillis, false);
+        this(dataType, symbol, timeframe, marketType, startTime, endTime, windowDurationMillis, false);
     }
 
-    private DataPage(DataType dataType, String symbol, String timeframe,
+    private DataPage(DataType dataType, String symbol, String timeframe, String marketType,
                      long startTime, long endTime, long windowDurationMillis, boolean liveEnabled) {
         this.dataType = dataType;
         this.symbol = symbol;
         this.timeframe = timeframe;
+        this.marketType = marketType != null ? marketType : "perp";
         this.startTime = startTime;
         this.endTime = endTime;
         this.windowDurationMillis = windowDurationMillis;
@@ -88,6 +98,13 @@ public class DataPage<T> implements DataPageView<T> {
         return timeframe;
     }
 
+    /**
+     * Get the market type ("spot" or "perp").
+     */
+    public String getMarketType() {
+        return marketType;
+    }
+
     @Override
     public long getStartTime() {
         return startTime;
@@ -100,13 +117,14 @@ public class DataPage<T> implements DataPageView<T> {
 
     @Override
     public String getKey() {
-        // Must match server's PageKey.toKeyString() format: dataType:symbol[:timeframe]:endTime|LIVE:windowDurationMillis
+        // Must match server's PageKey.toKeyString() format: dataType:symbol[:timeframe]:marketType:endTime|LIVE:windowDurationMillis
         StringBuilder sb = new StringBuilder();
         sb.append(dataType).append(":");
         sb.append(symbol).append(":");
         if (timeframe != null) {
             sb.append(timeframe).append(":");
         }
+        sb.append(marketType).append(":");
         if (liveEnabled) {
             // Live page: use LIVE:windowDurationMillis format
             sb.append("LIVE:").append(windowDurationMillis);

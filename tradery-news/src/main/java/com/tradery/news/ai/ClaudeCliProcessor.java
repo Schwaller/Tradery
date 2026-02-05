@@ -31,7 +31,7 @@ public class ClaudeCliProcessor implements AiProcessor {
         {
           "summary": "2-3 sentence summary",
           "importance": "CRITICAL|HIGH|MEDIUM|LOW|NOISE",
-          "coins": ["BTC", "ETH"],
+          "coins": ["BTC", "ETH", "SOL"],
           "categories": ["Regulatory", "DeFi", "Exchange", "Security", "Institutional", "Technical"],
           "tags": ["#etf", "#hack"],
           "sentimentScore": 0.5,
@@ -51,6 +51,21 @@ public class ClaudeCliProcessor implements AiProcessor {
             }
           ]
         }
+
+        COIN EXTRACTION - IMPORTANT:
+        Extract ALL cryptocurrencies mentioned using their ticker symbols:
+        - Bitcoin, BTC -> "BTC"
+        - Ethereum, Ether, ETH -> "ETH"
+        - Solana, SOL -> "SOL"
+        - XRP, Ripple -> "XRP"
+        - Cardano, ADA -> "ADA"
+        - Dogecoin, DOGE -> "DOGE"
+        - Polygon, MATIC -> "MATIC"
+        - Avalanche, AVAX -> "AVAX"
+        - Chainlink, LINK -> "LINK"
+        - Polkadot, DOT -> "DOT"
+        - Other coins: use standard ticker symbol
+        Include coins even if only mentioned briefly or in context (e.g., "ETH gas fees", "BTC dominance").
 
         Importance guide:
         - CRITICAL: ETF approvals, major hacks (>$100M), regulatory actions on major exchanges

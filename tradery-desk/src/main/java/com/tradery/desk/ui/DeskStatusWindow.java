@@ -115,7 +115,9 @@ public class DeskStatusWindow extends DashboardWindow {
         RemoteCandlePageManager pageMgr = ctx.getCandlePageManager();
         if (pageMgr != null) {
             for (RemoteCandlePageManager.PageInfo page : pageMgr.getActivePages()) {
-                String displayName = page.symbol();
+                // Show market type prefix: Perps vs Spot
+                String marketType = "spot".equalsIgnoreCase(page.marketType()) ? "Spot" : "Perps";
+                String displayName = marketType + " " + page.symbol();
                 if (page.timeframe() != null) displayName += "/" + page.timeframe();
 
                 result.add(new DashboardPageInfo(
