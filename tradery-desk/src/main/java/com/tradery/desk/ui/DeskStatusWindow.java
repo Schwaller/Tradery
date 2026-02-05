@@ -138,7 +138,7 @@ public class DeskStatusWindow extends DashboardWindow {
         return result;
     }
 
-    private static DashboardPageInfo.State mapPageState(com.tradery.dataclient.page.PageState state) {
+    private static DashboardPageInfo.State mapPageState(com.tradery.data.page.PageState state) {
         return switch (state) {
             case EMPTY -> DashboardPageInfo.State.EMPTY;
             case LOADING -> DashboardPageInfo.State.LOADING;

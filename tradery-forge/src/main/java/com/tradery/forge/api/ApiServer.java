@@ -16,7 +16,7 @@ import com.tradery.core.model.OpenInterest;
 import com.tradery.engine.ConditionEvaluator;
 import com.tradery.forge.ApplicationContext;
 import com.tradery.forge.data.AggTradesStore;
-import com.tradery.forge.data.DataType;
+import com.tradery.data.page.DataType;
 import com.tradery.forge.data.FundingRateStore;
 import com.tradery.forge.data.OpenInterestStore;
 import com.tradery.forge.data.log.DownloadEvent;

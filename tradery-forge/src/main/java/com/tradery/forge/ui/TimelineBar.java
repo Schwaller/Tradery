@@ -2,10 +2,10 @@ package com.tradery.forge.ui;
 
 import com.tradery.core.model.Candle;
 import com.tradery.forge.ApplicationContext;
-import com.tradery.forge.data.PageState;
+import com.tradery.data.page.PageState;
 import com.tradery.forge.data.page.CandlePageManager;
-import com.tradery.forge.data.page.DataPageListener;
-import com.tradery.forge.data.page.DataPageView;
+import com.tradery.data.page.DataPageListener;
+import com.tradery.data.page.DataPageView;
 
 import javax.swing.*;
 import java.awt.*;

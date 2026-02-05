@@ -3,7 +3,7 @@ package com.tradery.forge.ui.charts;
 import com.tradery.core.indicators.RotatingRays.RaySet;
 import com.tradery.core.model.Candle;
 import com.tradery.forge.ApplicationContext;
-import com.tradery.forge.data.PageState;
+import com.tradery.data.page.PageState;
 import com.tradery.forge.data.page.IndicatorPage;
 import com.tradery.forge.data.page.IndicatorPageListener;
 import com.tradery.forge.data.page.IndicatorPageManager;

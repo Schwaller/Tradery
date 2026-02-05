@@ -2,8 +2,8 @@ package com.tradery.forge.ui;
 
 import com.tradery.forge.ApplicationContext;
 import com.tradery.forge.TraderyApp;
-import com.tradery.forge.data.DataType;
-import com.tradery.forge.data.PageState;
+import com.tradery.data.page.DataType;
+import com.tradery.data.page.PageState;
 import com.tradery.forge.data.log.DownloadEvent;
 import com.tradery.forge.data.log.DownloadLogStore;
 import com.tradery.forge.data.page.DataPageManager;

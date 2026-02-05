@@ -10,6 +10,7 @@ module com.tradery.dataservice {
 
     // Dependencies
     requires transitive com.tradery.core;
+    requires com.tradery.data;
     requires com.fasterxml.jackson.databind;
     requires com.fasterxml.jackson.datatype.jsr310;
     requires okhttp3;

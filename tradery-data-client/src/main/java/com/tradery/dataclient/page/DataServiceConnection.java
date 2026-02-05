@@ -6,6 +6,7 @@ import com.tradery.core.model.AggTrade;
 import com.tradery.core.model.Candle;
 import com.tradery.core.model.MarkPriceUpdate;
 import com.tradery.core.model.OpenInterestUpdate;
+import com.tradery.data.page.DataType;
 import org.java_websocket.client.WebSocketClient;
 import org.java_websocket.handshake.ServerHandshake;
 import org.slf4j.Logger;

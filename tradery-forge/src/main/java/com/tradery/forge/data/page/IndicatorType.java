@@ -1,6 +1,6 @@
 package com.tradery.forge.data.page;
 
-import com.tradery.forge.data.DataType;
+import com.tradery.data.page.DataType;
 
 /**
  * Supported indicator types for the indicator page system.

@@ -2,7 +2,10 @@ package com.tradery.forge.data.page;
 
 import com.tradery.core.model.AggTrade;
 import com.tradery.core.model.Candle;
-import com.tradery.forge.data.PageState;
+import com.tradery.data.page.DataPage;
+import com.tradery.data.page.DataPageListener;
+import com.tradery.data.page.DataPageView;
+import com.tradery.data.page.PageState;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

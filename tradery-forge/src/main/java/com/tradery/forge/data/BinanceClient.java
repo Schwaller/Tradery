@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tradery.core.model.Candle;
 import com.tradery.core.model.FetchProgress;
+import com.tradery.data.page.DataType;
 import com.tradery.forge.data.log.DownloadLogStore;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;

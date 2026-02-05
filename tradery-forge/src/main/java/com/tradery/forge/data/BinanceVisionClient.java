@@ -4,6 +4,7 @@ import com.tradery.core.model.AggTrade;
 import com.tradery.core.model.Candle;
 import com.tradery.core.model.FundingRate;
 import com.tradery.core.model.PremiumIndex;
+import com.tradery.data.page.DataType;
 import com.tradery.forge.data.log.DownloadLogStore;
 import com.tradery.forge.data.sqlite.SqliteDataStore;
 import okhttp3.OkHttpClient;

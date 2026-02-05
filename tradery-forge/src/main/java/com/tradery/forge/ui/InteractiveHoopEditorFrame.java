@@ -4,10 +4,10 @@ import com.tradery.core.model.*;
 import com.tradery.engine.HoopPatternEvaluator;
 import com.tradery.forge.ApplicationContext;
 import com.tradery.forge.TraderyApp;
-import com.tradery.forge.data.PageState;
+import com.tradery.data.page.PageState;
 import com.tradery.forge.data.page.CandlePageManager;
-import com.tradery.forge.data.page.DataPageListener;
-import com.tradery.forge.data.page.DataPageView;
+import com.tradery.data.page.DataPageListener;
+import com.tradery.data.page.DataPageView;
 import com.tradery.forge.io.HoopPatternStore;
 import com.tradery.symbols.ui.SymbolComboBox;
 

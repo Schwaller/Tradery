@@ -1,6 +1,6 @@
 package com.tradery.forge.data.log;
 
-import com.tradery.forge.data.DataType;
+import com.tradery.data.page.DataType;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;

@@ -1,7 +1,10 @@
 package com.tradery.forge.data.page;
 
-import com.tradery.forge.data.DataType;
-import com.tradery.forge.data.PageState;
+import com.tradery.data.page.DataPage;
+import com.tradery.data.page.DataPageListener;
+import com.tradery.data.page.DataPageView;
+import com.tradery.data.page.DataType;
+import com.tradery.data.page.PageState;
 import com.tradery.forge.data.log.DownloadLogStore;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

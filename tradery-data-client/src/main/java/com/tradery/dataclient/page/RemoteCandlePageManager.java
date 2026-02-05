@@ -1,6 +1,11 @@
 package com.tradery.dataclient.page;
 
 import com.tradery.core.model.Candle;
+import com.tradery.data.page.DataPage;
+import com.tradery.data.page.DataPageListener;
+import com.tradery.data.page.DataPageView;
+import com.tradery.data.page.DataType;
+import com.tradery.data.page.PageState;
 import com.tradery.dataclient.DataServiceClient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

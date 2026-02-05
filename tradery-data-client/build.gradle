@@ -9,6 +9,9 @@ dependencies {
     // Core module for models
     api project(':tradery-core')
 
+    // Shared data page infrastructure
+    api project(':tradery-data')
+
     // HTTP client
     implementation "com.squareup.okhttp3:okhttp:${rootProject.ext.okhttpVersion}"
 

@@ -9,7 +9,7 @@ import com.tradery.core.indicators.registry.IndicatorSpec;
 import com.tradery.core.model.AggTrade;
 import com.tradery.core.model.Candle;
 import com.tradery.core.model.Exchange;
-import com.tradery.forge.data.PageState;
+import com.tradery.data.page.PageState;
 import com.tradery.forge.data.log.DownloadLogStore;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

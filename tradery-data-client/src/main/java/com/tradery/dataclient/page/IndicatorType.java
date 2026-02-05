@@ -1,5 +1,7 @@
 package com.tradery.dataclient.page;
 
+import com.tradery.data.page.DataType;
+
 /**
  * Supported indicator types for the remote indicator page system.
  *

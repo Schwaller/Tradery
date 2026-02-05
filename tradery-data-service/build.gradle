@@ -14,6 +14,9 @@ dependencies {
     // Core module for models
     implementation project(':tradery-core')
 
+    // Shared data page infrastructure
+    implementation project(':tradery-data')
+
     // HTTP server
     implementation "io.javalin:javalin:${rootProject.ext.javalinVersion}"
 

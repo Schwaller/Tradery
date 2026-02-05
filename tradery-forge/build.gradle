@@ -19,6 +19,9 @@ dependencies {
     // Core module for models, indicators, DSL
     implementation project(':tradery-core')
 
+    // Shared data page infrastructure
+    implementation project(':tradery-data')
+
     // Engine module for backtesting
     implementation project(':tradery-engine')
 

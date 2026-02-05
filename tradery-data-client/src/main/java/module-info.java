@@ -8,6 +8,7 @@ module com.tradery.dataclient {
 
     // Dependencies
     requires transitive com.tradery.core;
+    requires transitive com.tradery.data;
     requires okhttp3;
     requires msgpack.core;
     requires org.java_websocket;
