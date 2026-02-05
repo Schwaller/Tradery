@@ -27,7 +27,6 @@ public class CoinGraphPanel extends JPanel {
     // View settings
     private boolean showLabels = true;
     private boolean showRelationshipLabels = false;
-    private boolean showCategories = false;  // Disabled by default - just show nodes
     private double zoom = 1.0;
     private double panX = 0;
     private double panY = 0;
@@ -39,27 +38,6 @@ public class CoinGraphPanel extends JPanel {
     private double attraction = 0.01;
     private double damping = 0.85;
     private double centerPull = 0.001;
-
-    // Category colors for Venn diagram bounds
-    private static final Map<String, Color> CATEGORY_COLORS = new LinkedHashMap<>();
-    static {
-        CATEGORY_COLORS.put("Stablecoins", new Color(80, 200, 120));
-        CATEGORY_COLORS.put("Meme", new Color(255, 150, 100));
-        CATEGORY_COLORS.put("DeFi", new Color(100, 150, 255));
-        CATEGORY_COLORS.put("Layer 2 (L2)", new Color(180, 130, 255));
-        CATEGORY_COLORS.put("Layer 1 (L1)", new Color(100, 180, 255));
-        CATEGORY_COLORS.put("Smart Contract Platform", new Color(150, 200, 255));
-        CATEGORY_COLORS.put("Decentralized Exchange (DEX)", new Color(255, 200, 100));
-        CATEGORY_COLORS.put("Oracle", new Color(200, 180, 100));
-        CATEGORY_COLORS.put("Gaming", new Color(255, 130, 180));
-        CATEGORY_COLORS.put("Metaverse", new Color(200, 130, 200));
-        CATEGORY_COLORS.put("NFT", new Color(255, 180, 200));
-        CATEGORY_COLORS.put("Privacy", new Color(100, 100, 150));
-        CATEGORY_COLORS.put("Artificial Intelligence", new Color(100, 220, 200));
-        CATEGORY_COLORS.put("Real World Assets", new Color(180, 150, 100));
-        CATEGORY_COLORS.put("Exchange Token", new Color(255, 140, 100));
-    }
-    private Set<String> visibleCategories = new HashSet<>();
 
     public CoinGraphPanel() {
         setBackground(new Color(25, 27, 31));
@@ -239,11 +217,6 @@ public class CoinGraphPanel extends JPanel {
         g2.scale(zoom, zoom);
         g2.translate(-getWidth() / 2.0 + panX, -getHeight() / 2.0 + panY);
 
-        // Draw category bounds (Venn diagram style)
-        if (showCategories) {
-            drawCategoryBounds(g2);
-        }
-
         // Draw relationships
         drawRelationships(g2);
 
@@ -319,170 +292,6 @@ public class CoinGraphPanel extends JPanel {
                 g2.drawString(label, (int)entity.x() - labelWidth / 2, (int)entity.y() + r + 14);
             }
         }
-    }
-
-    private void drawCategoryBounds(Graphics2D g2) {
-        // Group entities by category
-        Map<String, List<CoinEntity>> categoryGroups = new LinkedHashMap<>();
-        for (CoinEntity entity : entities) {
-            for (String cat : entity.categories()) {
-                if (visibleCategories.isEmpty() || visibleCategories.contains(cat)) {
-                    categoryGroups.computeIfAbsent(cat, k -> new ArrayList<>()).add(entity);
-                }
-            }
-        }
-
-        // Draw bounds for each category with >= 2 members
-        for (Map.Entry<String, List<CoinEntity>> entry : categoryGroups.entrySet()) {
-            String category = entry.getKey();
-            List<CoinEntity> members = entry.getValue();
-            if (members.size() < 2) continue;
-
-            Color baseColor = getCategoryColor(category);
-            drawCategoryBlob(g2, category, members, baseColor);
-        }
-    }
-
-    private void drawCategoryBlob(Graphics2D g2, String category, List<CoinEntity> members, Color baseColor) {
-        // Calculate centroid and bounding ellipse
-        double cx = 0, cy = 0;
-        for (CoinEntity e : members) {
-            cx += e.x();
-            cy += e.y();
-        }
-        cx /= members.size();
-        cy /= members.size();
-
-        // Calculate the radius needed to encompass all members
-        double maxDist = 0;
-        for (CoinEntity e : members) {
-            double dx = e.x() - cx;
-            double dy = e.y() - cy;
-            double dist = Math.sqrt(dx * dx + dy * dy) + e.getRadius() + 30;
-            maxDist = Math.max(maxDist, dist);
-        }
-
-        // For better Venn diagram look, compute the convex hull and draw a smooth blob
-        List<Point2D> points = new ArrayList<>();
-        for (CoinEntity e : members) {
-            points.add(new Point2D.Double(e.x(), e.y()));
-        }
-
-        // If only 2-3 points, draw an ellipse; otherwise draw a blob around convex hull
-        if (members.size() <= 3) {
-            // Simple ellipse
-            double padding = 50;
-            g2.setColor(new Color(baseColor.getRed(), baseColor.getGreen(), baseColor.getBlue(), 25));
-            g2.fill(new Ellipse2D.Double(cx - maxDist, cy - maxDist, maxDist * 2, maxDist * 2));
-            g2.setColor(new Color(baseColor.getRed(), baseColor.getGreen(), baseColor.getBlue(), 60));
-            g2.setStroke(new BasicStroke(2f));
-            g2.draw(new Ellipse2D.Double(cx - maxDist, cy - maxDist, maxDist * 2, maxDist * 2));
-        } else {
-            // Draw smooth blob using convex hull + padding
-            List<Point2D> hull = computeConvexHull(points);
-            Path2D blob = createSmoothBlob(hull, cx, cy, 60);
-
-            g2.setColor(new Color(baseColor.getRed(), baseColor.getGreen(), baseColor.getBlue(), 20));
-            g2.fill(blob);
-            g2.setColor(new Color(baseColor.getRed(), baseColor.getGreen(), baseColor.getBlue(), 50));
-            g2.setStroke(new BasicStroke(2f));
-            g2.draw(blob);
-        }
-
-        // Draw category label at top of bounds
-        g2.setFont(new Font("SansSerif", Font.BOLD, 11));
-        g2.setColor(new Color(baseColor.getRed(), baseColor.getGreen(), baseColor.getBlue(), 180));
-        int labelWidth = g2.getFontMetrics().stringWidth(category);
-        g2.drawString(category, (int)(cx - labelWidth / 2), (int)(cy - maxDist + 15));
-    }
-
-    private List<Point2D> computeConvexHull(List<Point2D> points) {
-        if (points.size() < 3) return new ArrayList<>(points);
-
-        // Graham scan algorithm
-        List<Point2D> sorted = new ArrayList<>(points);
-
-        // Find bottom-most point (or left-most in case of tie)
-        Point2D start = sorted.get(0);
-        for (Point2D p : sorted) {
-            if (p.getY() > start.getY() || (p.getY() == start.getY() && p.getX() < start.getX())) {
-                start = p;
-            }
-        }
-        final Point2D anchor = start;
-
-        // Sort by polar angle
-        sorted.sort((a, b) -> {
-            double angleA = Math.atan2(a.getY() - anchor.getY(), a.getX() - anchor.getX());
-            double angleB = Math.atan2(b.getY() - anchor.getY(), b.getX() - anchor.getX());
-            if (angleA != angleB) return Double.compare(angleA, angleB);
-            return Double.compare(
-                anchor.distance(a),
-                anchor.distance(b)
-            );
-        });
-
-        // Build hull
-        List<Point2D> hull = new ArrayList<>();
-        for (Point2D p : sorted) {
-            while (hull.size() > 1 && crossProduct(hull.get(hull.size() - 2), hull.get(hull.size() - 1), p) <= 0) {
-                hull.remove(hull.size() - 1);
-            }
-            hull.add(p);
-        }
-        return hull;
-    }
-
-    private double crossProduct(Point2D o, Point2D a, Point2D b) {
-        return (a.getX() - o.getX()) * (b.getY() - o.getY()) - (a.getY() - o.getY()) * (b.getX() - o.getX());
-    }
-
-    private Path2D createSmoothBlob(List<Point2D> hull, double cx, double cy, double padding) {
-        // Expand hull outward and create smooth curve
-        List<Point2D> expanded = new ArrayList<>();
-        for (Point2D p : hull) {
-            double dx = p.getX() - cx;
-            double dy = p.getY() - cy;
-            double dist = Math.sqrt(dx * dx + dy * dy);
-            if (dist < 1) dist = 1;
-            double scale = (dist + padding) / dist;
-            expanded.add(new Point2D.Double(cx + dx * scale, cy + dy * scale));
-        }
-
-        // Create smooth path using quadratic curves
-        Path2D path = new Path2D.Double();
-        if (expanded.isEmpty()) return path;
-
-        int n = expanded.size();
-        // Start at midpoint between first and last
-        Point2D first = expanded.get(0);
-        Point2D last = expanded.get(n - 1);
-        double startX = (first.getX() + last.getX()) / 2;
-        double startY = (first.getY() + last.getY()) / 2;
-        path.moveTo(startX, startY);
-
-        for (int i = 0; i < n; i++) {
-            Point2D current = expanded.get(i);
-            Point2D next = expanded.get((i + 1) % n);
-            double midX = (current.getX() + next.getX()) / 2;
-            double midY = (current.getY() + next.getY()) / 2;
-            path.quadTo(current.getX(), current.getY(), midX, midY);
-        }
-        path.closePath();
-        return path;
-    }
-
-    private Color getCategoryColor(String category) {
-        Color c = CATEGORY_COLORS.get(category);
-        if (c != null) return c;
-
-        // Generate consistent color from hash
-        int hash = category.hashCode();
-        return new Color(
-            100 + Math.abs(hash % 100),
-            100 + Math.abs((hash >> 8) % 100),
-            150 + Math.abs((hash >> 16) % 80)
-        );
     }
 
     private void drawTooltip(Graphics2D g2) {
@@ -638,23 +447,5 @@ public class CoinGraphPanel extends JPanel {
         panX = 0;
         panY = 0;
         repaint();
-    }
-
-    public void setShowCategories(boolean show) {
-        this.showCategories = show;
-        repaint();
-    }
-
-    public void setVisibleCategories(Set<String> categories) {
-        this.visibleCategories = categories != null ? new HashSet<>(categories) : new HashSet<>();
-        repaint();
-    }
-
-    public Set<String> getAllCategories() {
-        Set<String> cats = new LinkedHashSet<>();
-        for (CoinEntity entity : entities) {
-            cats.addAll(entity.categories());
-        }
-        return cats;
     }
 }

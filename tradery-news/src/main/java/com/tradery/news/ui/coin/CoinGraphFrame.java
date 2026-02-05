@@ -127,10 +127,6 @@ public class CoinGraphFrame extends JFrame {
         relLabelsCheck.addActionListener(e -> graphPanel.setShowRelationshipLabels(relLabelsCheck.isSelected()));
         toolbar.add(relLabelsCheck);
 
-        JCheckBox categoriesCheck = new JCheckBox("Category Bounds", false);
-        categoriesCheck.addActionListener(e -> graphPanel.setShowCategories(categoriesCheck.isSelected()));
-        toolbar.add(categoriesCheck);
-
         toolbar.add(Box.createHorizontalGlue());
 
         JLabel hint = new JLabel("Scroll=zoom  Shift+drag=pan  Double-click=pin  ");
@@ -240,32 +236,79 @@ public class CoinGraphFrame extends JFrame {
     }
 
     private void addManualEntities(List<CoinEntity> entities, List<CoinRelationship> relationships) {
-        java.util.Set<String> existingIds = new java.util.HashSet<>();
+        Set<String> existingIds = new HashSet<>();
         for (CoinEntity e : entities) {
             existingIds.add(e.id());
         }
 
-        // ETFs
+        // === BITCOIN ETFs ===
         entities.add(createETF("ibit", "iShares Bitcoin Trust", "IBIT"));
-        entities.add(createETF("fbtc", "Fidelity Bitcoin Fund", "FBTC"));
+        entities.add(createETF("fbtc", "Fidelity Wise Origin Bitcoin", "FBTC"));
         entities.add(createETF("gbtc", "Grayscale Bitcoin Trust", "GBTC"));
         entities.add(createETF("arkb", "ARK 21Shares Bitcoin", "ARKB"));
+        entities.add(createETF("bitb", "Bitwise Bitcoin ETF", "BITB"));
+        entities.add(createETF("hodl", "VanEck Bitcoin Trust", "HODL"));
+        entities.add(createETF("brrr", "Valkyrie Bitcoin Fund", "BRRR"));
+        entities.add(createETF("ezbc", "Franklin Bitcoin ETF", "EZBC"));
+        entities.add(createETF("btco", "Invesco Galaxy Bitcoin", "BTCO"));
+        entities.add(createETF("btcw", "WisdomTree Bitcoin Fund", "BTCW"));
+
+        // === ETHEREUM ETFs ===
         entities.add(createETF("etha", "iShares Ethereum Trust", "ETHA"));
         entities.add(createETF("feth", "Fidelity Ethereum Fund", "FETH"));
+        entities.add(createETF("ethe", "Grayscale Ethereum Trust", "ETHE"));
+        entities.add(createETF("ethv", "VanEck Ethereum ETF", "ETHV"));
+        entities.add(createETF("ethw", "Bitwise Ethereum ETF", "ETHW"));
+        entities.add(createETF("ceth", "21Shares Core Ethereum", "CETH"));
+        entities.add(createETF("qeth", "Invesco Galaxy Ethereum", "QETH"));
 
-        // ETF relationships
+        // === OTHER GRAYSCALE TRUSTS ===
+        entities.add(createETF("gsol", "Grayscale Solana Trust", "GSOL"));
+        entities.add(createETF("gxlm", "Grayscale Stellar Trust", "GXLM"));
+        entities.add(createETF("glink", "Grayscale Chainlink Trust", "GLINK"));
+        entities.add(createETF("gbat", "Grayscale BAT Trust", "GBAT"));
+        entities.add(createETF("gfil", "Grayscale Filecoin Trust", "GFIL"));
+        entities.add(createETF("gltc", "Grayscale Litecoin Trust", "GLTC"));
+        entities.add(createETF("gsui", "Grayscale SUI Trust", "GSUI"));
+        entities.add(createETF("gavax", "Grayscale Avalanche Trust", "GAVAX"));
+
+        // ETF -> Coin relationships
         if (existingIds.contains("bitcoin")) {
-            relationships.add(new CoinRelationship("ibit", "bitcoin", CoinRelationship.Type.ETF_TRACKS));
-            relationships.add(new CoinRelationship("fbtc", "bitcoin", CoinRelationship.Type.ETF_TRACKS));
-            relationships.add(new CoinRelationship("gbtc", "bitcoin", CoinRelationship.Type.ETF_TRACKS));
-            relationships.add(new CoinRelationship("arkb", "bitcoin", CoinRelationship.Type.ETF_TRACKS));
+            for (String etf : List.of("ibit", "fbtc", "gbtc", "arkb", "bitb", "hodl", "brrr", "ezbc", "btco", "btcw")) {
+                relationships.add(new CoinRelationship(etf, "bitcoin", CoinRelationship.Type.ETF_TRACKS));
+            }
         }
         if (existingIds.contains("ethereum")) {
-            relationships.add(new CoinRelationship("etha", "ethereum", CoinRelationship.Type.ETF_TRACKS));
-            relationships.add(new CoinRelationship("feth", "ethereum", CoinRelationship.Type.ETF_TRACKS));
+            for (String etf : List.of("etha", "feth", "ethe", "ethv", "ethw", "ceth", "qeth")) {
+                relationships.add(new CoinRelationship(etf, "ethereum", CoinRelationship.Type.ETF_TRACKS));
+            }
+        }
+        if (existingIds.contains("solana")) {
+            relationships.add(new CoinRelationship("gsol", "solana", CoinRelationship.Type.ETF_TRACKS));
+        }
+        if (existingIds.contains("stellar")) {
+            relationships.add(new CoinRelationship("gxlm", "stellar", CoinRelationship.Type.ETF_TRACKS));
+        }
+        if (existingIds.contains("chainlink")) {
+            relationships.add(new CoinRelationship("glink", "chainlink", CoinRelationship.Type.ETF_TRACKS));
+        }
+        if (existingIds.contains("basic-attention-token")) {
+            relationships.add(new CoinRelationship("gbat", "basic-attention-token", CoinRelationship.Type.ETF_TRACKS));
+        }
+        if (existingIds.contains("filecoin")) {
+            relationships.add(new CoinRelationship("gfil", "filecoin", CoinRelationship.Type.ETF_TRACKS));
+        }
+        if (existingIds.contains("litecoin")) {
+            relationships.add(new CoinRelationship("gltc", "litecoin", CoinRelationship.Type.ETF_TRACKS));
+        }
+        if (existingIds.contains("sui")) {
+            relationships.add(new CoinRelationship("gsui", "sui", CoinRelationship.Type.ETF_TRACKS));
+        }
+        if (existingIds.contains("avalanche-2")) {
+            relationships.add(new CoinRelationship("gavax", "avalanche-2", CoinRelationship.Type.ETF_TRACKS));
         }
 
-        // VCs
+        // === VENTURE CAPITAL FIRMS ===
         entities.add(createVC("a16z", "Andreessen Horowitz"));
         entities.add(createVC("paradigm", "Paradigm"));
         entities.add(createVC("polychain", "Polychain Capital"));
@@ -273,55 +316,102 @@ public class CoinGraphFrame extends JFrame {
         entities.add(createVC("dragonfly", "Dragonfly"));
         entities.add(createVC("pantera", "Pantera Capital"));
         entities.add(createVC("jump", "Jump Crypto"));
+        entities.add(createVC("dcg", "Digital Currency Group"));
+        entities.add(createVC("binance-labs", "Binance Labs"));
+        entities.add(createVC("coinbase-ventures", "Coinbase Ventures"));
+        entities.add(createVC("sequoia", "Sequoia Capital"));
+        entities.add(createVC("lightspeed", "Lightspeed Venture"));
+        entities.add(createVC("framework", "Framework Ventures"));
+        entities.add(createVC("delphi", "Delphi Digital"));
+        entities.add(createVC("three-arrows", "Three Arrows Capital"));
+        entities.add(createVC("alameda", "Alameda Research"));
+        entities.add(createVC("galaxy", "Galaxy Digital"));
+        entities.add(createVC("hashkey", "HashKey Capital"));
+        entities.add(createVC("animoca", "Animoca Brands"));
+        entities.add(createVC("electric", "Electric Capital"));
 
-        // VC investments
-        if (existingIds.contains("solana")) {
-            relationships.add(new CoinRelationship("a16z", "solana", CoinRelationship.Type.INVESTED_IN));
-            relationships.add(new CoinRelationship("multicoin", "solana", CoinRelationship.Type.INVESTED_IN));
-            relationships.add(new CoinRelationship("pantera", "solana", CoinRelationship.Type.INVESTED_IN));
-            relationships.add(new CoinRelationship("jump", "solana", CoinRelationship.Type.INVESTED_IN));
-        }
-        if (existingIds.contains("near")) {
-            relationships.add(new CoinRelationship("a16z", "near", CoinRelationship.Type.INVESTED_IN));
-            relationships.add(new CoinRelationship("dragonfly", "near", CoinRelationship.Type.INVESTED_IN));
-        }
-        if (existingIds.contains("optimism")) {
-            relationships.add(new CoinRelationship("a16z", "optimism", CoinRelationship.Type.INVESTED_IN));
-            relationships.add(new CoinRelationship("paradigm", "optimism", CoinRelationship.Type.INVESTED_IN));
-        }
-        if (existingIds.contains("arbitrum")) {
-            relationships.add(new CoinRelationship("a16z", "arbitrum", CoinRelationship.Type.INVESTED_IN));
-        }
-        if (existingIds.contains("aptos")) {
-            relationships.add(new CoinRelationship("a16z", "aptos", CoinRelationship.Type.INVESTED_IN));
-            relationships.add(new CoinRelationship("jump", "aptos", CoinRelationship.Type.INVESTED_IN));
-        }
-        if (existingIds.contains("sui")) {
-            relationships.add(new CoinRelationship("a16z", "sui", CoinRelationship.Type.INVESTED_IN));
-            relationships.add(new CoinRelationship("jump", "sui", CoinRelationship.Type.INVESTED_IN));
-        }
-        if (existingIds.contains("cosmos")) {
-            relationships.add(new CoinRelationship("polychain", "cosmos", CoinRelationship.Type.INVESTED_IN));
-            relationships.add(new CoinRelationship("paradigm", "cosmos", CoinRelationship.Type.INVESTED_IN));
-        }
-        if (existingIds.contains("polkadot")) {
-            relationships.add(new CoinRelationship("polychain", "polkadot", CoinRelationship.Type.INVESTED_IN));
-            relationships.add(new CoinRelationship("pantera", "polkadot", CoinRelationship.Type.INVESTED_IN));
-        }
-        if (existingIds.contains("avalanche-2")) {
-            relationships.add(new CoinRelationship("dragonfly", "avalanche-2", CoinRelationship.Type.INVESTED_IN));
-            relationships.add(new CoinRelationship("polychain", "avalanche-2", CoinRelationship.Type.INVESTED_IN));
-        }
-        if (existingIds.contains("starknet")) {
-            relationships.add(new CoinRelationship("paradigm", "starknet", CoinRelationship.Type.INVESTED_IN));
-        }
+        // === VC INVESTMENTS (expanded) ===
+        // a16z portfolio
+        addInvestment(relationships, existingIds, "a16z", "solana", "ethereum", "optimism", "arbitrum",
+            "aptos", "sui", "near", "flow", "celo", "compound-governance-token", "uniswap", "maker",
+            "the-graph", "arweave", "worldcoin-wld", "layerzero");
 
-        // Exchanges and their native tokens
+        // Paradigm portfolio
+        addInvestment(relationships, existingIds, "paradigm", "ethereum", "optimism", "cosmos",
+            "starknet", "uniswap", "maker", "compound-governance-token", "lido-dao", "blur",
+            "osmosis", "celestia", "monad", "eigenlayer");
+
+        // Polychain portfolio
+        addInvestment(relationships, existingIds, "polychain", "cosmos", "polkadot", "avalanche-2",
+            "dfinity", "nervos-network", "celo", "near", "acala", "moonbeam", "filecoin");
+
+        // Multicoin portfolio
+        addInvestment(relationships, existingIds, "multicoin", "solana", "helium", "the-graph",
+            "arweave", "livepeer", "audius", "render-token", "hivemapper", "pyth-network");
+
+        // Dragonfly portfolio
+        addInvestment(relationships, existingIds, "dragonfly", "avalanche-2", "near", "cosmos",
+            "1inch", "compound-governance-token", "ribbon-finance", "bybit");
+
+        // Pantera portfolio
+        addInvestment(relationships, existingIds, "pantera", "polkadot", "solana", "filecoin",
+            "zcash", "0x", "kyber-network-crystal", "injective-protocol", "ankr", "oasis-network");
+
+        // Jump Crypto portfolio
+        addInvestment(relationships, existingIds, "jump", "solana", "aptos", "sui", "wormhole",
+            "pyth-network", "terra-luna", "serum");
+
+        // Binance Labs portfolio
+        addInvestment(relationships, existingIds, "binance-labs", "polygon-matic", "the-sandbox",
+            "axie-infinity", "apecoin", "1inch", "dydx", "perpetual-protocol", "band-protocol",
+            "injective-protocol", "terra-luna", "pancakeswap-token", "venus");
+
+        // Coinbase Ventures portfolio
+        addInvestment(relationships, existingIds, "coinbase-ventures", "polygon-matic", "optimism",
+            "uniswap", "compound-governance-token", "aave", "the-graph", "opensea", "dydx",
+            "alchemy-pay", "arweave", "celo");
+
+        // Sequoia
+        addInvestment(relationships, existingIds, "sequoia", "solana", "polygon-matic", "ethereum");
+
+        // Lightspeed
+        addInvestment(relationships, existingIds, "lightspeed", "solana", "sui", "aptos", "ethereum");
+
+        // Framework Ventures
+        addInvestment(relationships, existingIds, "framework", "chainlink", "aave", "synthetix",
+            "yearn-finance", "tokemak", "fei-usd", "reflexer-ungovernance-token");
+
+        // Delphi Digital
+        addInvestment(relationships, existingIds, "delphi", "axie-infinity", "aavegotchi",
+            "illuvium", "yield-guild-games", "treasure-magic");
+
+        // Animoca Brands (gaming/metaverse focus)
+        addInvestment(relationships, existingIds, "animoca", "the-sandbox", "apecoin", "axie-infinity",
+            "decentraland", "gala", "star-atlas", "stepn", "mocaverse");
+
+        // Galaxy Digital
+        addInvestment(relationships, existingIds, "galaxy", "ethereum", "solana", "polygon-matic",
+            "celestia", "sui", "worldcoin-wld");
+
+        // Electric Capital
+        addInvestment(relationships, existingIds, "electric", "near", "solana", "avalanche-2",
+            "dfinity", "flow", "mina-protocol", "dydx");
+
+        // DCG (Digital Currency Group)
+        addInvestment(relationships, existingIds, "dcg", "ethereum", "ethereum-classic",
+            "zcash", "decentraland", "livepeer", "lido-dao", "near");
+
+        // === EXCHANGES ===
         entities.add(createExchange("binance-ex", "Binance"));
         entities.add(createExchange("coinbase-ex", "Coinbase"));
         entities.add(createExchange("okx-ex", "OKX"));
         entities.add(createExchange("kraken-ex", "Kraken"));
         entities.add(createExchange("crypto-com-ex", "Crypto.com"));
+        entities.add(createExchange("bybit-ex", "Bybit"));
+        entities.add(createExchange("kucoin-ex", "KuCoin"));
+        entities.add(createExchange("gate-ex", "Gate.io"));
+        entities.add(createExchange("htx-ex", "HTX (Huobi)"));
+        entities.add(createExchange("bitfinex-ex", "Bitfinex"));
 
         // Exchange native token relationships
         if (existingIds.contains("binancecoin")) {
@@ -333,10 +423,36 @@ public class CoinGraphFrame extends JFrame {
         if (existingIds.contains("crypto-com-chain")) {
             relationships.add(new CoinRelationship("crypto-com-ex", "crypto-com-chain", CoinRelationship.Type.FOUNDED_BY));
         }
+        if (existingIds.contains("kucoin-shares")) {
+            relationships.add(new CoinRelationship("kucoin-ex", "kucoin-shares", CoinRelationship.Type.FOUNDED_BY));
+        }
+        if (existingIds.contains("gatechain-token")) {
+            relationships.add(new CoinRelationship("gate-ex", "gatechain-token", CoinRelationship.Type.FOUNDED_BY));
+        }
+        if (existingIds.contains("huobi-token")) {
+            relationships.add(new CoinRelationship("htx-ex", "huobi-token", CoinRelationship.Type.FOUNDED_BY));
+        }
+        if (existingIds.contains("unus-sed-leo")) {
+            relationships.add(new CoinRelationship("bitfinex-ex", "unus-sed-leo", CoinRelationship.Type.FOUNDED_BY));
+        }
 
-        // Coinbase - Base relationship
+        // Coinbase - Base L2
         if (existingIds.contains("base")) {
             relationships.add(new CoinRelationship("coinbase-ex", "base", CoinRelationship.Type.FOUNDED_BY));
+        }
+
+        // Binance - BSC/BNB Chain
+        if (existingIds.contains("binancecoin")) {
+            relationships.add(new CoinRelationship("binance-labs", "binancecoin", CoinRelationship.Type.INVESTED_IN));
+        }
+    }
+
+    private void addInvestment(List<CoinRelationship> relationships, Set<String> existingIds,
+                               String vcId, String... coinIds) {
+        for (String coinId : coinIds) {
+            if (existingIds.contains(coinId)) {
+                relationships.add(new CoinRelationship(vcId, coinId, CoinRelationship.Type.INVESTED_IN));
+            }
         }
     }
 
@@ -429,57 +545,6 @@ public class CoinGraphFrame extends JFrame {
         if (num >= 1_000_000_000L) return String.format("%.2fB", num / 1_000_000_000L);
         if (num >= 1_000_000L) return String.format("%.2fM", num / 1_000_000L);
         return String.format("%.0f", num);
-    }
-
-    private void showCategoryFilter() {
-        Set<String> allCats = graphPanel.getAllCategories();
-        if (allCats.isEmpty()) {
-            JOptionPane.showMessageDialog(this, "No categories loaded yet.", "Categories", JOptionPane.INFORMATION_MESSAGE);
-            return;
-        }
-
-        JPanel panel = new JPanel();
-        panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
-
-        JCheckBox showAllCheck = new JCheckBox("Show All Categories", true);
-        panel.add(showAllCheck);
-        panel.add(Box.createVerticalStrut(10));
-
-        Map<String, JCheckBox> checkBoxes = new LinkedHashMap<>();
-        for (String cat : allCats) {
-            JCheckBox cb = new JCheckBox(cat, true);
-            cb.setEnabled(false);
-            checkBoxes.put(cat, cb);
-            panel.add(cb);
-        }
-
-        showAllCheck.addActionListener(e -> {
-            boolean showAll = showAllCheck.isSelected();
-            for (JCheckBox cb : checkBoxes.values()) {
-                cb.setEnabled(!showAll);
-                if (showAll) cb.setSelected(true);
-            }
-        });
-
-        JScrollPane scroll = new JScrollPane(panel);
-        scroll.setPreferredSize(new Dimension(300, 400));
-
-        int result = JOptionPane.showConfirmDialog(this, scroll, "Filter Categories",
-            JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE);
-
-        if (result == JOptionPane.OK_OPTION) {
-            if (showAllCheck.isSelected()) {
-                graphPanel.setVisibleCategories(null);  // Show all
-            } else {
-                Set<String> visible = new HashSet<>();
-                for (Map.Entry<String, JCheckBox> entry : checkBoxes.entrySet()) {
-                    if (entry.getValue().isSelected()) {
-                        visible.add(entry.getKey());
-                    }
-                }
-                graphPanel.setVisibleCategories(visible);
-            }
-        }
     }
 
     public static void main(String[] args) {
