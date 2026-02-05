@@ -5,12 +5,16 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.function.Consumer;
 
 /**
  * Aggregates WebSocket kline messages into a rolling window of candles.
  * Maintains historical candles + current incomplete candle.
+ *
+ * Thread-safe: history and currentCandle can be accessed from WebSocket
+ * callback threads and UI/evaluation threads concurrently.
  */
 public class CandleAggregator {
 
@@ -19,10 +23,14 @@ public class CandleAggregator {
     private final String symbol;
     private final String timeframe;
     private final int maxHistory;
+
+    // Thread-safe: synchronized access via lock object
+    private final Object lock = new Object();
     private final List<Candle> history = new ArrayList<>();
-    private Candle currentCandle;
-    private Consumer<Candle> onCandleClose;
-    private Consumer<Candle> onCandleUpdate;
+    private volatile Candle currentCandle;
+
+    private volatile Consumer<Candle> onCandleClose;
+    private volatile Consumer<Candle> onCandleUpdate;
 
     public CandleAggregator(String symbol, String timeframe, int maxHistory) {
         this.symbol = symbol;
@@ -48,15 +56,17 @@ public class CandleAggregator {
      * Initialize with historical candles (for indicator warmup).
      */
     public void setHistory(List<Candle> candles) {
-        history.clear();
-        if (candles != null) {
-            // Keep only up to maxHistory candles
-            int start = Math.max(0, candles.size() - maxHistory);
-            for (int i = start; i < candles.size(); i++) {
-                history.add(candles.get(i));
+        synchronized (lock) {
+            history.clear();
+            if (candles != null) {
+                // Keep only up to maxHistory candles
+                int start = Math.max(0, candles.size() - maxHistory);
+                for (int i = start; i < candles.size(); i++) {
+                    history.add(candles.get(i));
+                }
             }
+            log.info("Initialized {} with {} historical candles", symbol, history.size());
         }
-        log.info("Initialized {} with {} historical candles", symbol, history.size());
     }
 
     /**
@@ -72,23 +82,28 @@ public class CandleAggregator {
             return;
         }
 
+        Consumer<Candle> closeCallback = null;
+        Consumer<Candle> updateCallback = null;
+
         if (message.isClosed()) {
-            // Candle closed - add to history and notify
-            addClosedCandleInternal(candle);
-
-            if (onCandleClose != null) {
-                onCandleClose.accept(candle);
+            // Candle closed - add to history
+            synchronized (lock) {
+                addClosedCandleInternal(candle);
             }
-
-            // Clear current candle
             currentCandle = null;
+            closeCallback = onCandleClose;
         } else {
             // Update current (incomplete) candle
             currentCandle = candle;
+            updateCallback = onCandleUpdate;
+        }
 
-            if (onCandleUpdate != null) {
-                onCandleUpdate.accept(candle);
-            }
+        // Notify outside synchronized block to avoid potential deadlocks
+        if (closeCallback != null) {
+            closeCallback.accept(candle);
+        }
+        if (updateCallback != null) {
+            updateCallback.accept(candle);
         }
     }
 
@@ -97,11 +112,13 @@ public class CandleAggregator {
      * Note: Does NOT call onCandleClose callback - caller is responsible for handling.
      */
     public void addClosedCandle(Candle candle) {
-        addClosedCandleInternal(candle);
+        synchronized (lock) {
+            addClosedCandleInternal(candle);
+        }
     }
 
     /**
-     * Add a closed candle to history (internal).
+     * Add a closed candle to history (internal, must be called with lock held).
      */
     private void addClosedCandleInternal(Candle candle) {
         // Check if this candle timestamp already exists
@@ -119,7 +136,9 @@ public class CandleAggregator {
 
         history.add(candle);
 
-        // Trim history if needed
+        // Trim history if needed - remove from front efficiently
+        // ArrayList.remove(0) is O(n), but this happens infrequently (once per candle close)
+        // and maxHistory is typically large enough that we rarely trim
         while (history.size() > maxHistory) {
             history.remove(0);
         }
@@ -127,20 +146,27 @@ public class CandleAggregator {
 
     /**
      * Get all candles (history + current if exists).
+     * Returns an immutable snapshot.
      */
     public List<Candle> getAllCandles() {
-        List<Candle> all = new ArrayList<>(history);
-        if (currentCandle != null) {
-            all.add(currentCandle);
+        synchronized (lock) {
+            List<Candle> all = new ArrayList<>(history);
+            Candle current = currentCandle;
+            if (current != null) {
+                all.add(current);
+            }
+            return Collections.unmodifiableList(all);
         }
-        return all;
     }
 
     /**
      * Get historical candles only (closed candles).
+     * Returns an immutable snapshot.
      */
     public List<Candle> getHistory() {
-        return new ArrayList<>(history);
+        synchronized (lock) {
+            return Collections.unmodifiableList(new ArrayList<>(history));
+        }
     }
 
     /**
@@ -154,18 +180,23 @@ public class CandleAggregator {
      * Get the last closed candle.
      */
     public Candle getLastClosedCandle() {
-        return history.isEmpty() ? null : history.get(history.size() - 1);
+        synchronized (lock) {
+            return history.isEmpty() ? null : history.get(history.size() - 1);
+        }
     }
 
     /**
      * Get the current price (close of current or last candle).
      */
     public double getCurrentPrice() {
-        if (currentCandle != null) {
-            return currentCandle.close();
+        Candle current = currentCandle;
+        if (current != null) {
+            return current.close();
         }
-        if (!history.isEmpty()) {
-            return history.get(history.size() - 1).close();
+        synchronized (lock) {
+            if (!history.isEmpty()) {
+                return history.get(history.size() - 1).close();
+            }
         }
         return Double.NaN;
     }
@@ -174,7 +205,9 @@ public class CandleAggregator {
      * Get the number of candles available for evaluation.
      */
     public int getCandleCount() {
-        return history.size() + (currentCandle != null ? 1 : 0);
+        synchronized (lock) {
+            return history.size() + (currentCandle != null ? 1 : 0);
+        }
     }
 
     public String getSymbol() {

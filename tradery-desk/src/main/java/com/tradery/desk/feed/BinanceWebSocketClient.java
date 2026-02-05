@@ -33,7 +33,11 @@ public class BinanceWebSocketClient {
     private BiConsumer<String, Exception> onError;
 
     private volatile ConnectionState state = ConnectionState.DISCONNECTED;
-    private final ScheduledExecutorService reconnectExecutor = Executors.newSingleThreadScheduledExecutor();
+    private final ScheduledExecutorService reconnectExecutor = Executors.newSingleThreadScheduledExecutor(r -> {
+        Thread t = new Thread(r, "BinanceWS-Reconnect");
+        t.setDaemon(true);
+        return t;
+    });
     private volatile boolean shouldReconnect = true;
     private int reconnectAttempts = 0;
     private static final int MAX_RECONNECT_DELAY = 60; // seconds
@@ -187,6 +191,13 @@ public class BinanceWebSocketClient {
     public void shutdown() {
         disconnect();
         reconnectExecutor.shutdownNow();
+        try {
+            if (!reconnectExecutor.awaitTermination(2, TimeUnit.SECONDS)) {
+                log.warn("Reconnect executor did not terminate cleanly for {}", symbol);
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
     }
 
     /**

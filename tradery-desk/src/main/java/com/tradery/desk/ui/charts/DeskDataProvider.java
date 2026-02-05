@@ -7,6 +7,7 @@ import com.tradery.core.indicators.IndicatorEngine;
 import com.tradery.core.model.Candle;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 /**
@@ -16,28 +17,32 @@ import java.util.List;
  *
  * <p>Unlike forge's page-based system, desk uses direct IndicatorEngine
  * calculations via the pool since it deals with smaller, live datasets.</p>
+ *
+ * <p>Thread-safe: candle data can be updated from WebSocket threads while
+ * being read from the UI thread.</p>
  */
 public class DeskDataProvider implements ChartDataProvider {
 
+    private static final int MAX_CANDLES = 500;
+
+    private final Object lock = new Object();
     private List<Candle> candles = new ArrayList<>();
     private final IndicatorPool indicatorPool = new IndicatorPool();
-    private String symbol = "";
-    private String timeframe = "";
+    private volatile String symbol = "";
+    private volatile String timeframe = "";
+
+    // Reused indicator engine to avoid GC pressure on every update
+    private IndicatorEngine engine;
 
     /**
      * Update the candle data.
      */
-    public void setCandles(List<Candle> candles, String symbol, String timeframe) {
-        this.candles = new ArrayList<>(candles);
-        this.symbol = symbol;
-        this.timeframe = timeframe;
-        // Create fresh indicator engine and pass to pool
-        if (!candles.isEmpty()) {
-            IndicatorEngine engine = new IndicatorEngine();
-            engine.setCandles(candles, timeframe);
-            indicatorPool.setDataContext(engine);
-        } else {
-            indicatorPool.setDataContext(null);
+    public void setCandles(List<Candle> newCandles, String symbol, String timeframe) {
+        synchronized (lock) {
+            this.candles = new ArrayList<>(newCandles);
+            this.symbol = symbol;
+            this.timeframe = timeframe;
+            updateIndicatorEngine();
         }
     }
 
@@ -45,23 +50,35 @@ public class DeskDataProvider implements ChartDataProvider {
      * Add or update a candle (for live updates).
      */
     public void updateCandle(Candle candle) {
-        if (candles.isEmpty()) {
-            candles.add(candle);
-        } else {
-            Candle last = candles.get(candles.size() - 1);
-            if (last.timestamp() == candle.timestamp()) {
-                candles.set(candles.size() - 1, candle);
-            } else {
+        synchronized (lock) {
+            if (candles.isEmpty()) {
                 candles.add(candle);
-                // Keep max 500 candles
-                while (candles.size() > 500) {
-                    candles.remove(0);
+            } else {
+                Candle last = candles.get(candles.size() - 1);
+                if (last.timestamp() == candle.timestamp()) {
+                    candles.set(candles.size() - 1, candle);
+                } else {
+                    candles.add(candle);
+                    // Keep max candles - trim from front
+                    while (candles.size() > MAX_CANDLES) {
+                        candles.remove(0);
+                    }
                 }
             }
+            updateIndicatorEngine();
         }
-        // Refresh indicator engine and pass to pool
+    }
+
+    /**
+     * Update the indicator engine with current candle data.
+     * Must be called with lock held.
+     */
+    private void updateIndicatorEngine() {
         if (!candles.isEmpty()) {
-            IndicatorEngine engine = new IndicatorEngine();
+            if (engine == null) {
+                engine = new IndicatorEngine();
+            }
+            // Reuse engine, just update its candle data
             engine.setCandles(candles, timeframe);
             indicatorPool.setDataContext(engine);
         } else {
@@ -71,7 +88,9 @@ public class DeskDataProvider implements ChartDataProvider {
 
     @Override
     public List<Candle> getCandles() {
-        return candles;
+        synchronized (lock) {
+            return Collections.unmodifiableList(new ArrayList<>(candles));
+        }
     }
 
     @Override
@@ -91,16 +110,20 @@ public class DeskDataProvider implements ChartDataProvider {
 
     @Override
     public long getStartTime() {
-        if (candles != null && !candles.isEmpty()) {
-            return candles.get(0).timestamp();
+        synchronized (lock) {
+            if (!candles.isEmpty()) {
+                return candles.get(0).timestamp();
+            }
         }
         return 0;
     }
 
     @Override
     public long getEndTime() {
-        if (candles != null && !candles.isEmpty()) {
-            return candles.get(candles.size() - 1).timestamp();
+        synchronized (lock) {
+            if (!candles.isEmpty()) {
+                return candles.get(candles.size() - 1).timestamp();
+            }
         }
         return 0;
     }
