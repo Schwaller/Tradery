@@ -371,7 +371,7 @@ public class AggTradesDao {
     /**
      * Count trades in a time range.
      */
-    public int countInRange(long startTime, long endTime) throws SQLException {
+    public long countInRange(long startTime, long endTime) throws SQLException {
         Connection c = conn.getConnection();
 
         String sql = "SELECT COUNT(*) FROM agg_trades WHERE timestamp >= ? AND timestamp <= ?";
@@ -379,10 +379,9 @@ public class AggTradesDao {
         try (PreparedStatement stmt = c.prepareStatement(sql)) {
             stmt.setLong(1, startTime);
             stmt.setLong(2, endTime);
-
             try (ResultSet rs = stmt.executeQuery()) {
                 if (rs.next()) {
-                    return rs.getInt(1);
+                    return rs.getLong(1);
                 }
             }
         }

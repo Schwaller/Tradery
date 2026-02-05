@@ -176,6 +176,7 @@ public class DataServiceClient {
 
     /**
      * Fetch aggregated trades directly (without page lifecycle).
+     * Streams from response body to avoid allocating a huge intermediate byte[].
      */
     public List<AggTrade> getAggTrades(String symbol, Long start, Long end) throws IOException {
         HttpUrl.Builder urlBuilder = HttpUrl.parse(baseUrl + "/aggtrades").newBuilder()
@@ -191,8 +192,8 @@ public class DataServiceClient {
 
         try (Response response = httpClient.newCall(request).execute()) {
             if (!response.isSuccessful()) return List.of();
-            byte[] data = response.body().bytes();
-            return msgpackMapper.readValue(data, msgpackMapper.getTypeFactory()
+            // Stream from response body - avoids 2GB byte[] allocation for large datasets
+            return msgpackMapper.readValue(response.body().byteStream(), msgpackMapper.getTypeFactory()
                 .constructCollectionType(List.class, AggTrade.class));
         }
     }

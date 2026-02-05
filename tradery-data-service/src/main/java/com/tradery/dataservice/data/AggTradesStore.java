@@ -492,25 +492,19 @@ public class AggTradesStore {
     }
 
     /**
-     * Get aggregated trades for a symbol within time range.
-     * Uses SQLite for fast cached reads. Fetches from Binance if not cached locally.
-     *
-     * Automatically uses Binance Vision (bulk ZIP downloads) for large date ranges
-     * (>= 3 days). AggTrades are massive - a single day can have 500K+ trades.
+     * Ensure aggregated trades are cached in SQLite, fetching from Binance if needed.
+     * Does NOT load trades into memory - use this when you only need to trigger the fetch.
      */
-    public List<AggTrade> getAggTrades(String symbol, long startTime, long endTime)
-            throws IOException {
-
+    public void ensureCached(String symbol, long startTime, long endTime) throws IOException {
         // Reset cancellation flag at start of new fetch
         fetchCancelled.set(false);
 
-        // First, check SQLite for cached data and find gaps
+        // Check SQLite for cached data and find gaps
         List<long[]> gaps = findGapsInSqlite(symbol, startTime, endTime);
 
         if (gaps.isEmpty()) {
-            // All data is cached in SQLite - fast path!
             log.info("SQLite cache hit for {} aggTrades [{} - {}]", symbol, startTime, endTime);
-            return sqliteStore.getAggTrades(symbol, startTime, endTime);
+            return;
         }
 
         // Calculate total uncached duration
@@ -524,14 +518,36 @@ public class AggTradesStore {
             log.info("Using Vision bulk download for {} aggTrades (large uncached range: {} days)", symbol, uncachedDays);
             try {
                 fetchViaVision(symbol, startTime, endTime);
-                // After Vision download, data should be in SQLite
-                return sqliteStore.getAggTrades(symbol, startTime, endTime);
+                return;
             } catch (Exception e) {
                 log.warn("Vision download failed, falling back to API: {}", e.getMessage());
             }
         }
 
         // Fetch missing data via API for each gap
+        fetchGaps(symbol, gaps);
+    }
+
+    /**
+     * Get aggregated trades for a symbol within time range.
+     * Uses SQLite for fast cached reads. Fetches from Binance if not cached locally.
+     *
+     * WARNING: For large datasets (millions of trades), this loads ALL trades into memory.
+     * Prefer ensureCached() + streamAggTrades() for large ranges.
+     */
+    public List<AggTrade> getAggTrades(String symbol, long startTime, long endTime)
+            throws IOException {
+
+        ensureCached(symbol, startTime, endTime);
+
+        // Return all data from SQLite
+        return sqliteStore.getAggTrades(symbol, startTime, endTime);
+    }
+
+    /**
+     * Fetch missing data via API for each gap.
+     */
+    private void fetchGaps(String symbol, List<long[]> gaps) throws IOException {
         LocalDateTime now = LocalDateTime.now(ZoneOffset.UTC);
         final int totalGaps = gaps.size();
         final int[] completedGaps = {0};
@@ -585,9 +601,6 @@ public class AggTradesStore {
         if (progressCallback != null) {
             progressCallback.accept(new FetchProgress(100, 100, "AggTrades fetch complete"));
         }
-
-        // Return all data from SQLite
-        return sqliteStore.getAggTrades(symbol, startTime, endTime);
     }
 
     /**

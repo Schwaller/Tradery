@@ -203,16 +203,34 @@ public class PageManager {
 
     /**
      * Stream aggregated trades data directly to an output stream.
-     * Avoids allocating a huge byte[] buffer for large datasets.
+     * Streams from SQLite in chunks to avoid loading millions of trades into memory.
      *
      * @return number of trades written, or -1 on error
      */
     public int writeAggTradesData(String symbol, Long start, Long end, java.io.OutputStream out) {
         try {
-            List<AggTrade> trades = dataStore.getAggTrades(symbol, start, end);
-            LOG.debug("writeAggTradesData: {} returned {} trades", symbol, trades.size());
-            msgpackMapper.writeValue(out, trades);
-            return trades.size();
+            // Get count first for the msgpack array header
+            long count = dataStore.countAggTrades(symbol, start, end);
+            LOG.debug("writeAggTradesData: {} streaming {} trades", symbol, count);
+
+            // Write msgpack array header + stream chunks from SQLite
+            var packer = org.msgpack.core.MessagePack.newDefaultPacker(out);
+            packer.packArrayHeader((int) count);
+            packer.flush();
+
+            // Stream trades from SQLite in chunks, serializing each to msgpack
+            int total = dataStore.streamAggTrades(symbol, start, end, 10000, chunk -> {
+                try {
+                    for (AggTrade trade : chunk) {
+                        msgpackMapper.writeValue(out, trade);
+                    }
+                } catch (java.io.IOException e) {
+                    throw new java.io.UncheckedIOException(e);
+                }
+            });
+
+            LOG.debug("writeAggTradesData: {} streamed {} trades", symbol, total);
+            return total;
         } catch (Exception e) {
             LOG.error("Failed to stream aggTrades for {}", symbol, e);
             return -1;
@@ -587,18 +605,19 @@ public class PageManager {
         });
 
         try {
-            // AggTradesStore handles cache check + fetch if needed
-            // This ensures data is in SQLite but we don't serialize it here
+            // Ensure data is cached in SQLite (fetches from Binance if needed)
+            // Does NOT load trades into memory - avoids 1GB+ heap allocation
             long t0 = System.currentTimeMillis();
-            List<AggTrade> trades = aggTradesStore.getAggTrades(symbol, startTime, endTime);
+            aggTradesStore.ensureCached(symbol, startTime, endTime);
             long t1 = System.currentTimeMillis();
-            page.setRecordCount(trades.size());
 
-            // Don't serialize - data is too large for a byte[]
-            // Client will fetch via streaming /aggtrades endpoint
+            // Get count via SQL COUNT query (fast, no memory allocation)
+            long count = dataStore.countAggTrades(symbol, startTime, endTime);
+            page.setRecordCount(count);
+
             LOG.info("loadAggTrades: {} cached {} trades in {}ms (data served via streaming endpoint)",
-                symbol, trades.size(), t1 - t0);
-            return null;  // No in-memory serialization for AggTrades
+                symbol, count, t1 - t0);
+            return null;  // Client fetches via streaming /aggtrades endpoint
         } finally {
             aggTradesStore.setProgressCallback(null);
         }

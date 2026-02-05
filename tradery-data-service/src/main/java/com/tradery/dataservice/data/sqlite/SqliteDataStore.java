@@ -207,6 +207,17 @@ public class SqliteDataStore {
     }
 
     /**
+     * Count aggregated trades in a time range without loading them.
+     */
+    public long countAggTrades(String symbol, long startTime, long endTime) throws IOException {
+        try {
+            return forSymbol(symbol).aggTrades().countInRange(startTime, endTime);
+        } catch (SQLException e) {
+            throw new IOException("SQLite error counting agg trades: " + e.getMessage(), e);
+        }
+    }
+
+    /**
      * Stream aggregated trades in chunks to avoid loading all into memory.
      *
      * @param symbol Trading symbol
