@@ -1,0 +1,33 @@
+// tradery-news: News intelligence module
+// Fetches, parses, and structures crypto news from various sources
+
+plugins {
+    id 'java-library'
+    id 'application'
+}
+
+application {
+    mainClass = 'com.tradery.news.NewsTest'
+}
+
+dependencies {
+    // JSON/YAML serialization
+    api "com.fasterxml.jackson.core:jackson-databind:${rootProject.ext.jacksonVersion}"
+    api "com.fasterxml.jackson.datatype:jackson-datatype-jsr310:${rootProject.ext.jacksonVersion}"
+    api "com.fasterxml.jackson.dataformat:jackson-dataformat-yaml:${rootProject.ext.jacksonVersion}"
+
+    // HTTP client
+    implementation "com.squareup.okhttp3:okhttp:${rootProject.ext.okhttpVersion}"
+
+    // RSS parsing
+    implementation 'com.rometools:rome:2.1.0'
+
+    // HTML parsing (for content extraction)
+    implementation 'org.jsoup:jsoup:1.17.2'
+
+    // SQLite storage
+    implementation "org.xerial:sqlite-jdbc:${rootProject.ext.sqliteVersion}"
+
+    // Logging
+    implementation "org.slf4j:slf4j-api:${rootProject.ext.slf4jVersion}"
+}
