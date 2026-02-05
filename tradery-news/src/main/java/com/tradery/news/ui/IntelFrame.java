@@ -43,6 +43,9 @@ public class IntelFrame extends JFrame {
     private JPanel coinDetailContent;
     private JLabel coinStatusLabel;
     private JProgressBar coinProgressBar;
+    private EntityStore entityStore;
+    private List<CoinEntity> currentEntities;
+    private List<CoinRelationship> currentRelationships;
 
     public IntelFrame() {
         super("Tradery - Intelligence");
@@ -50,6 +53,9 @@ public class IntelFrame extends JFrame {
         // Initialize news store
         this.dataDir = Path.of(System.getProperty("user.home"), ".cryptonews");
         this.store = new SqliteNewsStore(dataDir.resolve("news.db"));
+
+        // Initialize entity store
+        this.entityStore = new EntityStore();
 
         setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
         setSize(1800, 1000);
@@ -76,6 +82,7 @@ public class IntelFrame extends JFrame {
             public void windowClosing(WindowEvent e) {
                 if (newsGraphPanel != null) newsGraphPanel.stopPhysics();
                 if (coinGraphPanel != null) coinGraphPanel.stopPhysics();
+                if (entityStore != null) entityStore.close();
             }
         });
 
@@ -400,6 +407,18 @@ public class IntelFrame extends JFrame {
 
         toolbar.addSeparator();
 
+        JButton manageEntitiesBtn = new JButton("Manage Entities");
+        manageEntitiesBtn.setToolTipText("Open entity manager to add/edit entities");
+        manageEntitiesBtn.addActionListener(e -> showEntityManager());
+        toolbar.add(manageEntitiesBtn);
+
+        JButton addRelBtn = new JButton("+ Relationship");
+        addRelBtn.setToolTipText("Add a relationship between entities");
+        addRelBtn.addActionListener(e -> showAddRelationshipDialog(null));
+        toolbar.add(addRelBtn);
+
+        toolbar.addSeparator();
+
         JCheckBox labelsCheck = new JCheckBox("Labels", true);
         labelsCheck.addActionListener(e -> coinGraphPanel.setShowLabels(labelsCheck.isSelected()));
         toolbar.add(labelsCheck);
@@ -418,6 +437,42 @@ public class IntelFrame extends JFrame {
         return toolbar;
     }
 
+    private void showEntityManager() {
+        EntityManagerFrame manager = new EntityManagerFrame(entityStore, v -> {
+            // Reload data when entities change
+            loadCoinData(false);
+        });
+        manager.setVisible(true);
+    }
+
+    private void showAddRelationshipDialog(String preselectedFromId) {
+        if (currentEntities == null || currentEntities.isEmpty()) {
+            JOptionPane.showMessageDialog(this, "No entities loaded yet", "Error", JOptionPane.ERROR_MESSAGE);
+            return;
+        }
+        RelationshipEditorDialog dialog = new RelationshipEditorDialog(
+            this, entityStore, currentEntities, preselectedFromId, rel -> {
+                // Add to current list and refresh graph
+                if (currentRelationships != null) {
+                    currentRelationships.add(rel);
+                    coinGraphPanel.setData(currentEntities, currentRelationships);
+                    updateCoinStatus();
+                }
+            }
+        );
+        dialog.setVisible(true);
+    }
+
+    private void updateCoinStatus() {
+        int manualEntities = entityStore.getManualEntityCount();
+        int manualRels = entityStore.getManualRelationshipCount();
+        String status = currentEntities.size() + " entities  |  " + currentRelationships.size() + " relationships";
+        if (manualEntities > 0 || manualRels > 0) {
+            status += "  |  " + manualEntities + " manual entities, " + manualRels + " manual relationships";
+        }
+        coinStatusLabel.setText(status);
+    }
+
     private void loadCoinData(boolean forceRefresh) {
         coinStatusLabel.setText("Loading...");
 
@@ -428,72 +483,60 @@ public class IntelFrame extends JFrame {
             @Override
             protected Void doInBackground() {
                 try {
-                    CoinCache cache = new CoinCache();
                     CoinGeckoClient client = new CoinGeckoClient();
                     boolean fromCache = false;
 
-                    if (!forceRefresh && cache.isCacheValid()) {
-                        publish("Loading coins from cache...");
-                        entities = cache.loadCoins();
+                    // Load CoinGecko entities (cached or fresh)
+                    if (!forceRefresh && entityStore.isCoinGeckoCacheValid()) {
+                        publish("Loading coins from database...");
+                        entities = entityStore.loadEntitiesBySource("coingecko");
                         fromCache = !entities.isEmpty();
                     }
 
                     if (entities == null || entities.isEmpty()) {
                         publish("Fetching top 200 coins from CoinGecko...");
-                        entities = client.fetchTopCoins(200);
-                        cache.saveCoins(entities);
+                        List<CoinEntity> cgEntities = client.fetchTopCoins(200);
+                        entityStore.saveCoinGeckoEntities(cgEntities);
+                        entities = new ArrayList<>(cgEntities);
                     }
 
+                    // Load manual entities (always persist)
+                    publish("Loading manual entities...");
+                    List<CoinEntity> manualEntities = entityStore.loadEntitiesBySource("manual");
+                    entities.addAll(manualEntities);
+
+                    // Build auto relationships from CoinGecko data
                     publish("Building relationships...");
-                    relationships = client.buildRelationships(entities);
-                    addManualEntities(entities, relationships);
+                    List<CoinRelationship> autoRels = client.buildRelationships(entities);
+                    entityStore.saveAutoRelationships(autoRels);
+
+                    // Load all relationships (auto + manual)
+                    relationships = entityStore.loadAllRelationships();
+
+                    // Seed default manual entities if this is a fresh DB with none
+                    if (manualEntities.isEmpty()) {
+                        publish("Seeding default entities...");
+                        seedDefaultManualEntities();
+                        // Reload after seeding
+                        manualEntities = entityStore.loadEntitiesBySource("manual");
+                        entities.addAll(manualEntities);
+                        relationships = entityStore.loadAllRelationships();
+                    }
 
                     final boolean cached = fromCache;
+                    final List<CoinEntity> finalEntities = entities;
+                    final List<CoinRelationship> finalRels = relationships;
                     SwingUtilities.invokeLater(() -> {
-                        coinGraphPanel.setData(entities, relationships);
-                        coinStatusLabel.setText(entities.size() + " entities  |  " + relationships.size() + " relationships" + (cached ? " (cached)" : ""));
+                        currentEntities = finalEntities;
+                        currentRelationships = finalRels;
+                        coinGraphPanel.setData(finalEntities, finalRels);
+                        updateCoinStatus();
                         coinProgressBar.setVisible(false);
                     });
 
+                    // Fetch categories if this was a fresh fetch
                     if (!fromCache) {
-                        SwingUtilities.invokeLater(() -> {
-                            coinProgressBar.setVisible(true);
-                            coinProgressBar.setValue(0);
-                            coinProgressBar.setString("Categories: 0%");
-                        });
-
-                        List<String> allIds = entities.stream().map(CoinEntity::id).toList();
-                        int total = allIds.size();
-                        int count = 0;
-
-                        for (String coinId : allIds) {
-                            count++;
-                            int finalCount = count;
-                            int percent = (count * 100) / total;
-                            try {
-                                Map<String, List<String>> catMap = client.fetchCoinCategories(List.of(coinId));
-                                List<String> cats = catMap.get(coinId);
-                                if (cats != null && !cats.isEmpty()) {
-                                    for (CoinEntity entity : entities) {
-                                        if (entity.id().equals(coinId)) {
-                                            entity.setCategories(cats);
-                                            break;
-                                        }
-                                    }
-                                    SwingUtilities.invokeLater(() -> coinGraphPanel.repaint());
-                                }
-                            } catch (Exception e) {
-                                // Skip failed coins
-                            }
-                            int finalPercent = percent;
-                            SwingUtilities.invokeLater(() -> {
-                                coinProgressBar.setValue(finalPercent);
-                                coinProgressBar.setString("Categories: " + finalPercent + "% (" + finalCount + "/" + total + ")");
-                            });
-                        }
-
-                        cache.saveCoins(entities);
-                        SwingUtilities.invokeLater(() -> coinProgressBar.setVisible(false));
+                        fetchCategories(client, entities);
                     }
 
                 } catch (Exception e) {
@@ -503,6 +546,50 @@ public class IntelFrame extends JFrame {
                     loadFallbackData();
                 }
                 return null;
+            }
+
+            private void fetchCategories(CoinGeckoClient client, List<CoinEntity> entities) {
+                SwingUtilities.invokeLater(() -> {
+                    coinProgressBar.setVisible(true);
+                    coinProgressBar.setValue(0);
+                    coinProgressBar.setString("Categories: 0%");
+                });
+
+                List<String> cgIds = entities.stream()
+                    .filter(e -> e.type() == CoinEntity.Type.COIN)
+                    .map(CoinEntity::id)
+                    .toList();
+                int total = cgIds.size();
+                int count = 0;
+
+                for (String coinId : cgIds) {
+                    count++;
+                    int finalCount = count;
+                    int percent = (count * 100) / total;
+                    try {
+                        Map<String, List<String>> catMap = client.fetchCoinCategories(List.of(coinId));
+                        List<String> cats = catMap.get(coinId);
+                        if (cats != null && !cats.isEmpty()) {
+                            for (CoinEntity entity : entities) {
+                                if (entity.id().equals(coinId)) {
+                                    entity.setCategories(cats);
+                                    entityStore.saveEntity(entity, "coingecko");
+                                    break;
+                                }
+                            }
+                            SwingUtilities.invokeLater(() -> coinGraphPanel.repaint());
+                        }
+                    } catch (Exception e) {
+                        // Skip failed coins
+                    }
+                    int finalPercent = percent;
+                    SwingUtilities.invokeLater(() -> {
+                        coinProgressBar.setValue(finalPercent);
+                        coinProgressBar.setString("Categories: " + finalPercent + "% (" + finalCount + "/" + total + ")");
+                    });
+                }
+
+                SwingUtilities.invokeLater(() -> coinProgressBar.setVisible(false));
             }
 
             @Override
@@ -515,11 +602,7 @@ public class IntelFrame extends JFrame {
             @Override
             protected void done() {
                 if (entities != null && !entities.isEmpty()) {
-                    int catCount = 0;
-                    for (CoinEntity e : entities) {
-                        if (!e.categories().isEmpty()) catCount++;
-                    }
-                    coinStatusLabel.setText(entities.size() + " entities  |  " + relationships.size() + " relationships  |  " + catCount + " with categories");
+                    updateCoinStatus();
                 }
             }
 
@@ -528,6 +611,8 @@ public class IntelFrame extends JFrame {
                 relationships = new ArrayList<>();
                 loadSampleData(entities, relationships);
                 SwingUtilities.invokeLater(() -> {
+                    currentEntities = entities;
+                    currentRelationships = relationships;
                     coinGraphPanel.setData(entities, relationships);
                     coinStatusLabel.setText(entities.size() + " entities  |  " + relationships.size() + " relationships  (sample data)");
                     coinProgressBar.setVisible(false);
@@ -535,6 +620,95 @@ public class IntelFrame extends JFrame {
             }
         };
         worker.execute();
+    }
+
+    /**
+     * Seeds the database with default manual entities (ETFs, VCs, exchanges)
+     * on first run when no manual entities exist.
+     */
+    private void seedDefaultManualEntities() {
+        // Get existing coin IDs to check for relationship targets
+        Set<String> existingIds = new HashSet<>();
+        for (CoinEntity e : entityStore.loadAllEntities()) {
+            existingIds.add(e.id());
+        }
+
+        // ETFs
+        saveManualEntity(createETF("ibit", "iShares Bitcoin Trust", "IBIT"));
+        saveManualEntity(createETF("fbtc", "Fidelity Wise Origin Bitcoin", "FBTC"));
+        saveManualEntity(createETF("gbtc", "Grayscale Bitcoin Trust", "GBTC"));
+        saveManualEntity(createETF("arkb", "ARK 21Shares Bitcoin", "ARKB"));
+        saveManualEntity(createETF("bitb", "Bitwise Bitcoin ETF", "BITB"));
+        saveManualEntity(createETF("hodl", "VanEck Bitcoin Trust", "HODL"));
+        saveManualEntity(createETF("etha", "iShares Ethereum Trust", "ETHA"));
+        saveManualEntity(createETF("feth", "Fidelity Ethereum Fund", "FETH"));
+        saveManualEntity(createETF("ethe", "Grayscale Ethereum Trust", "ETHE"));
+        saveManualEntity(createETF("gsol", "Grayscale Solana Trust", "GSOL"));
+
+        // ETF tracking relationships
+        if (existingIds.contains("bitcoin")) {
+            for (String etf : List.of("ibit", "fbtc", "gbtc", "arkb", "bitb", "hodl")) {
+                saveManualRelationship(new CoinRelationship(etf, "bitcoin", CoinRelationship.Type.ETF_TRACKS));
+            }
+        }
+        if (existingIds.contains("ethereum")) {
+            for (String etf : List.of("etha", "feth", "ethe")) {
+                saveManualRelationship(new CoinRelationship(etf, "ethereum", CoinRelationship.Type.ETF_TRACKS));
+            }
+        }
+        if (existingIds.contains("solana")) {
+            saveManualRelationship(new CoinRelationship("gsol", "solana", CoinRelationship.Type.ETF_TRACKS));
+        }
+
+        // VCs
+        saveManualEntity(createVC("a16z", "Andreessen Horowitz"));
+        saveManualEntity(createVC("paradigm", "Paradigm"));
+        saveManualEntity(createVC("polychain", "Polychain Capital"));
+        saveManualEntity(createVC("multicoin", "Multicoin Capital"));
+        saveManualEntity(createVC("dragonfly", "Dragonfly"));
+        saveManualEntity(createVC("pantera", "Pantera Capital"));
+        saveManualEntity(createVC("jump", "Jump Crypto"));
+        saveManualEntity(createVC("binance-labs", "Binance Labs"));
+        saveManualEntity(createVC("coinbase-ventures", "Coinbase Ventures"));
+
+        // VC investments
+        seedInvestments(existingIds, "a16z", "solana", "ethereum", "optimism", "arbitrum", "aptos", "sui", "near", "uniswap", "maker");
+        seedInvestments(existingIds, "paradigm", "ethereum", "optimism", "cosmos", "uniswap", "maker", "lido-dao");
+        seedInvestments(existingIds, "polychain", "cosmos", "polkadot", "avalanche-2", "near", "filecoin");
+        seedInvestments(existingIds, "multicoin", "solana", "helium", "the-graph", "arweave", "render-token");
+        seedInvestments(existingIds, "jump", "solana", "aptos", "sui", "wormhole", "pyth-network");
+        seedInvestments(existingIds, "binance-labs", "polygon-matic", "the-sandbox", "axie-infinity", "1inch", "pancakeswap-token");
+        seedInvestments(existingIds, "coinbase-ventures", "polygon-matic", "optimism", "uniswap", "aave", "the-graph");
+
+        // Exchanges
+        saveManualEntity(createExchange("binance-ex", "Binance"));
+        saveManualEntity(createExchange("coinbase-ex", "Coinbase"));
+        saveManualEntity(createExchange("okx-ex", "OKX"));
+        saveManualEntity(createExchange("kraken-ex", "Kraken"));
+
+        // Exchange relationships
+        if (existingIds.contains("binancecoin")) {
+            saveManualRelationship(new CoinRelationship("binance-ex", "binancecoin", CoinRelationship.Type.FOUNDED_BY));
+        }
+        if (existingIds.contains("okb")) {
+            saveManualRelationship(new CoinRelationship("okx-ex", "okb", CoinRelationship.Type.FOUNDED_BY));
+        }
+    }
+
+    private void saveManualEntity(CoinEntity entity) {
+        entityStore.saveEntity(entity, "manual");
+    }
+
+    private void saveManualRelationship(CoinRelationship rel) {
+        entityStore.saveRelationship(rel, "manual");
+    }
+
+    private void seedInvestments(Set<String> existingIds, String vcId, String... coinIds) {
+        for (String coinId : coinIds) {
+            if (existingIds.contains(coinId)) {
+                saveManualRelationship(new CoinRelationship(vcId, coinId, CoinRelationship.Type.INVESTED_IN));
+            }
+        }
     }
 
     private void showCoinEntityDetails(CoinEntity entity) {
@@ -673,80 +847,7 @@ public class IntelFrame extends JFrame {
         return String.format("%.0f", num);
     }
 
-    // ==================== SAMPLE/MANUAL DATA ====================
-
-    private void addManualEntities(List<CoinEntity> entities, List<CoinRelationship> relationships) {
-        Set<String> existingIds = new HashSet<>();
-        for (CoinEntity e : entities) {
-            existingIds.add(e.id());
-        }
-
-        // ETFs
-        entities.add(createETF("ibit", "iShares Bitcoin Trust", "IBIT"));
-        entities.add(createETF("fbtc", "Fidelity Wise Origin Bitcoin", "FBTC"));
-        entities.add(createETF("gbtc", "Grayscale Bitcoin Trust", "GBTC"));
-        entities.add(createETF("arkb", "ARK 21Shares Bitcoin", "ARKB"));
-        entities.add(createETF("bitb", "Bitwise Bitcoin ETF", "BITB"));
-        entities.add(createETF("hodl", "VanEck Bitcoin Trust", "HODL"));
-        entities.add(createETF("etha", "iShares Ethereum Trust", "ETHA"));
-        entities.add(createETF("feth", "Fidelity Ethereum Fund", "FETH"));
-        entities.add(createETF("ethe", "Grayscale Ethereum Trust", "ETHE"));
-        entities.add(createETF("gsol", "Grayscale Solana Trust", "GSOL"));
-
-        if (existingIds.contains("bitcoin")) {
-            for (String etf : List.of("ibit", "fbtc", "gbtc", "arkb", "bitb", "hodl")) {
-                relationships.add(new CoinRelationship(etf, "bitcoin", CoinRelationship.Type.ETF_TRACKS));
-            }
-        }
-        if (existingIds.contains("ethereum")) {
-            for (String etf : List.of("etha", "feth", "ethe")) {
-                relationships.add(new CoinRelationship(etf, "ethereum", CoinRelationship.Type.ETF_TRACKS));
-            }
-        }
-        if (existingIds.contains("solana")) {
-            relationships.add(new CoinRelationship("gsol", "solana", CoinRelationship.Type.ETF_TRACKS));
-        }
-
-        // VCs
-        entities.add(createVC("a16z", "Andreessen Horowitz"));
-        entities.add(createVC("paradigm", "Paradigm"));
-        entities.add(createVC("polychain", "Polychain Capital"));
-        entities.add(createVC("multicoin", "Multicoin Capital"));
-        entities.add(createVC("dragonfly", "Dragonfly"));
-        entities.add(createVC("pantera", "Pantera Capital"));
-        entities.add(createVC("jump", "Jump Crypto"));
-        entities.add(createVC("binance-labs", "Binance Labs"));
-        entities.add(createVC("coinbase-ventures", "Coinbase Ventures"));
-
-        addInvestment(relationships, existingIds, "a16z", "solana", "ethereum", "optimism", "arbitrum", "aptos", "sui", "near", "uniswap", "maker");
-        addInvestment(relationships, existingIds, "paradigm", "ethereum", "optimism", "cosmos", "uniswap", "maker", "lido-dao");
-        addInvestment(relationships, existingIds, "polychain", "cosmos", "polkadot", "avalanche-2", "near", "filecoin");
-        addInvestment(relationships, existingIds, "multicoin", "solana", "helium", "the-graph", "arweave", "render-token");
-        addInvestment(relationships, existingIds, "jump", "solana", "aptos", "sui", "wormhole", "pyth-network");
-        addInvestment(relationships, existingIds, "binance-labs", "polygon-matic", "the-sandbox", "axie-infinity", "1inch", "pancakeswap-token");
-        addInvestment(relationships, existingIds, "coinbase-ventures", "polygon-matic", "optimism", "uniswap", "aave", "the-graph");
-
-        // Exchanges
-        entities.add(createExchange("binance-ex", "Binance"));
-        entities.add(createExchange("coinbase-ex", "Coinbase"));
-        entities.add(createExchange("okx-ex", "OKX"));
-        entities.add(createExchange("kraken-ex", "Kraken"));
-
-        if (existingIds.contains("binancecoin")) {
-            relationships.add(new CoinRelationship("binance-ex", "binancecoin", CoinRelationship.Type.FOUNDED_BY));
-        }
-        if (existingIds.contains("okb")) {
-            relationships.add(new CoinRelationship("okx-ex", "okb", CoinRelationship.Type.FOUNDED_BY));
-        }
-    }
-
-    private void addInvestment(List<CoinRelationship> relationships, Set<String> existingIds, String vcId, String... coinIds) {
-        for (String coinId : coinIds) {
-            if (existingIds.contains(coinId)) {
-                relationships.add(new CoinRelationship(vcId, coinId, CoinRelationship.Type.INVESTED_IN));
-            }
-        }
-    }
+    // ==================== SAMPLE/FALLBACK DATA ====================
 
     private void loadSampleData(List<CoinEntity> entities, List<CoinRelationship> relationships) {
         entities.add(createCoin("bitcoin", "Bitcoin", "BTC", 1_300_000_000_000L));
@@ -761,7 +862,13 @@ public class IntelFrame extends JFrame {
         relationships.add(new CoinRelationship("arbitrum", "ethereum", CoinRelationship.Type.L2_OF));
         relationships.add(new CoinRelationship("optimism", "ethereum", CoinRelationship.Type.L2_OF));
 
-        addManualEntities(entities, relationships);
+        // Add sample ETF and VC for fallback mode
+        entities.add(createETF("ibit", "iShares Bitcoin Trust", "IBIT"));
+        relationships.add(new CoinRelationship("ibit", "bitcoin", CoinRelationship.Type.ETF_TRACKS));
+
+        entities.add(createVC("a16z", "Andreessen Horowitz"));
+        relationships.add(new CoinRelationship("a16z", "solana", CoinRelationship.Type.INVESTED_IN));
+        relationships.add(new CoinRelationship("a16z", "ethereum", CoinRelationship.Type.INVESTED_IN));
     }
 
     private CoinEntity createCoin(String id, String name, String symbol, long marketCap) {
