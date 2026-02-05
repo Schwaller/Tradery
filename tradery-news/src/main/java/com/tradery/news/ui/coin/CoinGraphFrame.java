@@ -150,6 +150,7 @@ public class CoinGraphFrame extends JFrame {
                     publish("Fetching top 200 coins from CoinGecko...");
                     CoinGeckoClient client = new CoinGeckoClient();
                     entities = client.fetchTopCoins(200);
+                    System.out.println("Fetched " + entities.size() + " coins");
 
                     publish("Building relationships...");
                     relationships = client.buildRelationships(entities);
@@ -202,6 +203,8 @@ public class CoinGraphFrame extends JFrame {
                     }
 
                 } catch (Exception e) {
+                    System.err.println("Error loading data: " + e.getMessage());
+                    e.printStackTrace();
                     publish("Error: " + e.getMessage() + " - Loading sample data...");
                     loadFallbackData();
                 }
