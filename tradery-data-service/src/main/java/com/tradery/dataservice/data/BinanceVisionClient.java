@@ -33,7 +33,8 @@ import java.util.zip.ZipInputStream;
 public class BinanceVisionClient {
 
     private static final Logger log = LoggerFactory.getLogger(BinanceVisionClient.class);
-    private static final String BASE_URL = "https://data.binance.vision/data/futures/um/monthly";
+    private static final String FUTURES_BASE_URL = "https://data.binance.vision/data/futures/um/monthly";
+    private static final String SPOT_BASE_URL = "https://data.binance.vision/data/spot/monthly";
     private static final int DEFAULT_THREAD_COUNT = 4;
     private static final int BATCH_SIZE = 10000; // Save to DB in batches
 
@@ -41,6 +42,11 @@ public class BinanceVisionClient {
     private final OkHttpClient bulkClient;
     private final SqliteDataStore dataStore;
     private final int threadCount;
+    private final String marketType;  // "spot" or "perp"
+
+    private String getBaseUrl() {
+        return "spot".equals(marketType) ? SPOT_BASE_URL : FUTURES_BASE_URL;
+    }
 
     /**
      * Data types available on Binance Vision.
@@ -100,13 +106,18 @@ public class BinanceVisionClient {
     }
 
     public BinanceVisionClient(SqliteDataStore dataStore) {
-        this(dataStore, DEFAULT_THREAD_COUNT);
+        this(dataStore, "perp", DEFAULT_THREAD_COUNT);
     }
 
-    public BinanceVisionClient(SqliteDataStore dataStore, int threadCount) {
+    public BinanceVisionClient(SqliteDataStore dataStore, String marketType) {
+        this(dataStore, marketType, DEFAULT_THREAD_COUNT);
+    }
+
+    public BinanceVisionClient(SqliteDataStore dataStore, String marketType, int threadCount) {
         this.client = HttpClientFactory.getClient();
         this.bulkClient = HttpClientFactory.getBulkDownloadClient();
         this.dataStore = dataStore;
+        this.marketType = marketType;
         this.threadCount = threadCount;
     }
 
@@ -117,19 +128,20 @@ public class BinanceVisionClient {
      */
     public String buildUrl(VisionDataType dataType, String symbol, String interval, YearMonth month) {
         String monthStr = String.format("%d-%02d", month.getYear(), month.getMonthValue());
+        String baseUrl = getBaseUrl();
 
         return switch (dataType) {
             case KLINES -> String.format("%s/klines/%s/%s/%s-%s-%s.zip",
-                BASE_URL, symbol, interval, symbol, interval, monthStr);
+                baseUrl, symbol, interval, symbol, interval, monthStr);
 
             case AGG_TRADES -> String.format("%s/aggTrades/%s/%s-aggTrades-%s.zip",
-                BASE_URL, symbol, symbol, monthStr);
+                baseUrl, symbol, symbol, monthStr);
 
             case PREMIUM_INDEX -> String.format("%s/premiumIndexKlines/%s/%s/%s-%s-%s.zip",
-                BASE_URL, symbol, interval, symbol, interval, monthStr);
+                baseUrl, symbol, interval, symbol, interval, monthStr);
 
             case FUNDING_RATE -> String.format("%s/fundingRate/%s/%s-fundingRate-%s.zip",
-                BASE_URL, symbol, symbol, monthStr);
+                baseUrl, symbol, symbol, monthStr);
         };
     }
 
@@ -403,7 +415,7 @@ public class BinanceVisionClient {
                 candles.add(candle);
 
                 if (candles.size() >= BATCH_SIZE) {
-                    dataStore.saveCandles(symbol, interval, candles);
+                    dataStore.saveCandles(symbol, marketType, interval, candles);
                     candles.clear();
                 }
             } catch (Exception e) {
@@ -412,7 +424,7 @@ public class BinanceVisionClient {
         }
 
         if (!candles.isEmpty()) {
-            dataStore.saveCandles(symbol, interval, candles);
+            dataStore.saveCandles(symbol, marketType, interval, candles);
         }
     }
 
@@ -730,10 +742,10 @@ public class BinanceVisionClient {
         }
 
         // Get the latest candle we have
-        Candle latest = dataStore.getLatestCandle(symbol, interval);
+        Candle latest = dataStore.getLatestCandle(symbol, marketType, interval);
         long apiStart = latest != null ? latest.timestamp() + 1 : currentRange[0];
 
-        List<Candle> apiCandles = apiClient.fetchAllKlines(symbol, interval, apiStart, System.currentTimeMillis(),
+        List<Candle> apiCandles = apiClient.fetchAllKlines(symbol, marketType, interval, apiStart, System.currentTimeMillis(),
             cancelled, progress -> {
                 if (onProgress != null) {
                     onProgress.accept(new VisionProgress(0, 1, progress.fetchedCandles(),
@@ -742,8 +754,8 @@ public class BinanceVisionClient {
             });
 
         if (!apiCandles.isEmpty()) {
-            dataStore.saveCandles(symbol, interval, apiCandles);
-            log.info("API backfill added {} candles for {} {}", apiCandles.size(), symbol, interval);
+            dataStore.saveCandles(symbol, marketType, interval, apiCandles);
+            log.info("API backfill added {} candles for {} {} {}", apiCandles.size(), symbol, marketType, interval);
         }
 
         if (onProgress != null) {

@@ -171,13 +171,13 @@ public class PageManager {
     /**
      * Get candle data directly (for simple requests).
      */
-    public byte[] getCandlesData(String symbol, String timeframe, Long start, Long end) {
+    public byte[] getCandlesData(String symbol, String marketType, String timeframe, Long start, Long end) {
         try {
-            List<Candle> candles = dataStore.getCandles(symbol, timeframe, start, end);
-            LOG.debug("getCandlesData: {} {} returned {} candles", symbol, timeframe, candles.size());
+            List<Candle> candles = dataStore.getCandles(symbol, marketType, timeframe, start, end);
+            LOG.debug("getCandlesData: {} {} {} returned {} candles", symbol, marketType, timeframe, candles.size());
             return msgpackMapper.writeValueAsBytes(candles);
         } catch (Exception e) {
-            LOG.error("Failed to get candles for {} {}", symbol, timeframe, e);
+            LOG.error("Failed to get candles for {} {} {}", symbol, marketType, timeframe, e);
             return null;
         }
     }
@@ -463,12 +463,13 @@ public class PageManager {
     private byte[] loadCandles(PageKey key, Page page) throws Exception {
         String symbol = key.symbol();
         String timeframe = key.timeframe();
+        String marketType = key.marketType();
         // Use effective times (handles both live and anchored pages correctly)
         long startTime = key.getEffectiveStartTime();
         long endTime = key.getEffectiveEndTime();
 
         // Check cache first
-        List<Candle> cached = dataStore.getCandles(symbol, timeframe, startTime, endTime);
+        List<Candle> cached = dataStore.getCandles(symbol, marketType, timeframe, startTime, endTime);
         long intervalMs = getIntervalMs(timeframe);
         long expectedBars = (endTime - startTime) / intervalMs;
 
@@ -476,15 +477,15 @@ public class PageManager {
         // If sufficient coverage, use cached data
         if (cached.size() >= expectedBars * 0.9) {
             candles = cached;
-            LOG.debug("loadCandles: {} {} cache hit ({} candles)", symbol, timeframe, cached.size());
+            LOG.debug("loadCandles: {} {} {} cache hit ({} candles)", symbol, marketType, timeframe, cached.size());
         } else {
             // Need to fetch missing data
-            LOG.info("loadCandles: {} {} fetching (cached {}/{})", symbol, timeframe, cached.size(), expectedBars);
+            LOG.info("loadCandles: {} {} {} fetching (cached {}/{})", symbol, marketType, timeframe, cached.size(), expectedBars);
             fetchCandles(key, page, expectedBars);
 
             // Read fresh data
-            candles = dataStore.getCandles(symbol, timeframe, startTime, endTime);
-            LOG.info("loadCandles: {} {} complete ({} candles)", symbol, timeframe, candles.size());
+            candles = dataStore.getCandles(symbol, marketType, timeframe, startTime, endTime);
+            LOG.info("loadCandles: {} {} {} complete ({} candles)", symbol, marketType, timeframe, candles.size());
         }
 
         page.setRecordCount(candles.size());
@@ -503,6 +504,7 @@ public class PageManager {
     private void fetchCandles(PageKey key, Page page, long expectedBars) throws Exception {
         String symbol = key.symbol();
         String timeframe = key.timeframe();
+        String marketType = key.marketType();
         long startTime = key.getEffectiveStartTime();
         long endTime = key.getEffectiveEndTime();
 
@@ -511,13 +513,13 @@ public class PageManager {
 
         // For weekly/monthly timeframes, use REST API directly
         if ("1w".equals(timeframe) || "1M".equals(timeframe)) {
-            List<Candle> candles = apiClient.fetchAllKlines(symbol, timeframe, startTime, endTime, cancelled,
+            List<Candle> candles = apiClient.fetchAllKlines(symbol, marketType, timeframe, startTime, endTime, cancelled,
                 progress -> {
                     page.setState(PageState.LOADING, progress.percentComplete());
                     notifyStateChanged(key, PageState.LOADING, progress.percentComplete());
                 });
             if (!candles.isEmpty()) {
-                dataStore.saveCandles(symbol, timeframe, candles);
+                dataStore.saveCandles(symbol, marketType, timeframe, candles);
             }
             return;
         }
@@ -525,7 +527,7 @@ public class PageManager {
         // Use Vision for bulk historical + API for recent
         YearMonth startMonth = YearMonth.from(
             Instant.ofEpochMilli(startTime).atZone(ZoneOffset.UTC));
-        BinanceVisionClient visionClient = new BinanceVisionClient(dataStore);
+        BinanceVisionClient visionClient = new BinanceVisionClient(dataStore, marketType);
 
         visionClient.syncWithApiBackfill(symbol, timeframe, startMonth, apiClient, cancelled,
             progress -> {

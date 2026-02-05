@@ -19,12 +19,13 @@ public class DataHandler {
     }
 
     /**
-     * GET /candles?symbol=X&timeframe=Y&start=Z&end=W
+     * GET /candles?symbol=X&timeframe=Y&marketType=Z&start=A&end=B
      */
     public void getCandles(Context ctx) {
         try {
             String symbol = ctx.queryParam("symbol");
             String timeframe = ctx.queryParam("timeframe");
+            String marketType = ctx.queryParamAsClass("marketType", String.class).getOrDefault("perp");
             Long start = ctx.queryParamAsClass("start", Long.class).getOrDefault(null);
             Long end = ctx.queryParamAsClass("end", Long.class).getOrDefault(null);
 
@@ -33,7 +34,7 @@ public class DataHandler {
                 return;
             }
 
-            byte[] data = pageManager.getCandlesData(symbol, timeframe, start, end);
+            byte[] data = pageManager.getCandlesData(symbol, marketType, timeframe, start, end);
             if (data == null) {
                 ctx.status(404).json(new ErrorResponse("No data available"));
                 return;

@@ -44,6 +44,7 @@ public class TimelineGraphPanel extends JPanel {
     private Timer physicsTimer;
     private Object hoveredNode;  // NewsNode or TopicNode
     private Object selectedNode;
+    private Object draggedNode;  // Currently being dragged
     private Consumer<NewsNode> onNodeSelected;
 
     // View settings
@@ -60,6 +61,21 @@ public class TimelineGraphPanel extends JPanel {
             @Override
             public void mouseMoved(MouseEvent e) {
                 updateHover(e.getX(), e.getY());
+            }
+
+            @Override
+            public void mousePressed(MouseEvent e) {
+                startDrag(e.getX(), e.getY());
+            }
+
+            @Override
+            public void mouseDragged(MouseEvent e) {
+                handleDrag(e.getX(), e.getY());
+            }
+
+            @Override
+            public void mouseReleased(MouseEvent e) {
+                stopDrag();
             }
 
             @Override
@@ -230,6 +246,9 @@ public class TimelineGraphPanel extends JPanel {
         double newsCenterY = (lowerTop + lowerBottom) / 2.0;
 
         for (NewsNode node : newsNodes) {
+            // Skip physics for dragged node
+            if (node == draggedNode) continue;
+
             double fy = 0;
 
             // Repulsion from other news nodes
@@ -272,6 +291,9 @@ public class TimelineGraphPanel extends JPanel {
         double maxSpeed = 1.5;  // Limit max velocity for smooth movement
 
         for (TopicNode node : nodes) {
+            // Skip physics for dragged node
+            if (node == draggedNode) continue;
+
             double fx = 0;
 
             // Repulsion from other nodes on the same Y level (same row)
@@ -612,6 +634,55 @@ public class TimelineGraphPanel extends JPanel {
             }
         }
         repaint();
+    }
+
+    private void startDrag(int mx, int my) {
+        // Find node under cursor
+        for (TopicNode node : topicNodes) {
+            if (node.contains(mx, my)) {
+                draggedNode = node;
+                return;
+            }
+        }
+        for (TopicNode node : coinNodes) {
+            if (node.contains(mx, my)) {
+                draggedNode = node;
+                return;
+            }
+        }
+        for (NewsNode node : newsNodes) {
+            if (node.contains(mx, my)) {
+                draggedNode = node;
+                return;
+            }
+        }
+    }
+
+    private void handleDrag(int mx, int my) {
+        if (draggedNode == null) return;
+
+        int leftBound = MARGIN_LEFT + 30;
+        int rightBound = getWidth() - MARGIN_RIGHT - 30;
+        int midY = getHeight() / 2;
+
+        if (draggedNode instanceof TopicNode topic) {
+            // Topics/coins drag on X axis only (Y is fixed)
+            double newX = Math.max(leftBound, Math.min(rightBound, mx));
+            topic.setX(newX);
+            topic.setVx(0);  // Stop physics momentum
+        } else if (draggedNode instanceof NewsNode news) {
+            // News nodes drag on Y axis only (X is time-locked)
+            int lowerTop = midY + 30;
+            int lowerBottom = getHeight() - MARGIN_BOTTOM - 10;
+            double newY = Math.max(lowerTop, Math.min(lowerBottom, my));
+            news.setY(newY);
+            news.setVy(0);  // Stop physics momentum
+        }
+        repaint();
+    }
+
+    private void stopDrag() {
+        draggedNode = null;
     }
 
     public void setOnNodeSelected(Consumer<NewsNode> callback) {

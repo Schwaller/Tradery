@@ -19,13 +19,21 @@ import java.util.function.Consumer;
 
 /**
  * Binance API client for fetching OHLC kline data.
- * Uses the futures API to match aggTrades data source.
+ * Supports both spot and futures APIs based on marketType.
  */
 public class BinanceClient {
 
     private static final Logger log = LoggerFactory.getLogger(BinanceClient.class);
-    private static final String BASE_URL = "https://fapi.binance.com/fapi/v1";
+    private static final String FUTURES_BASE_URL = "https://fapi.binance.com/fapi/v1";
+    private static final String SPOT_BASE_URL = "https://api.binance.com/api/v3";
     private static final int MAX_KLINES_PER_REQUEST = 1000;
+
+    /**
+     * Get the appropriate base URL for the market type.
+     */
+    private static String getBaseUrl(String marketType) {
+        return "spot".equals(marketType) ? SPOT_BASE_URL : FUTURES_BASE_URL;
+    }
 
     private final OkHttpClient client;
     private final ObjectMapper mapper;
@@ -38,17 +46,18 @@ public class BinanceClient {
     /**
      * Fetch klines (candlestick data) from Binance.
      *
-     * @param symbol    Trading pair (e.g., "BTCUSDT")
-     * @param interval  Kline interval (e.g., "1h", "4h", "1d")
-     * @param startTime Start time in milliseconds
-     * @param endTime   End time in milliseconds (optional, 0 for current)
-     * @param limit     Max number of candles (max 1000)
+     * @param symbol     Trading pair (e.g., "BTCUSDT")
+     * @param marketType Market type: "spot" or "perp"
+     * @param interval   Kline interval (e.g., "1h", "4h", "1d")
+     * @param startTime  Start time in milliseconds
+     * @param endTime    End time in milliseconds (optional, 0 for current)
+     * @param limit      Max number of candles (max 1000)
      * @return List of candles
      */
-    public List<Candle> fetchKlines(String symbol, String interval, long startTime, long endTime, int limit)
+    public List<Candle> fetchKlines(String symbol, String marketType, String interval, long startTime, long endTime, int limit)
             throws IOException {
 
-        StringBuilder url = new StringBuilder(BASE_URL + "/klines")
+        StringBuilder url = new StringBuilder(getBaseUrl(marketType) + "/klines")
             .append("?symbol=").append(symbol)
             .append("&interval=").append(interval)
             .append("&limit=").append(Math.min(limit, MAX_KLINES_PER_REQUEST));
@@ -100,11 +109,11 @@ public class BinanceClient {
 
     /**
      * Fetch all klines between start and end time.
-     * Handles pagination automatically.
+     * Handles pagination automatically. Uses perp market by default.
      */
     public List<Candle> fetchAllKlines(String symbol, String interval, long startTime, long endTime)
             throws IOException {
-        return fetchAllKlines(symbol, interval, startTime, endTime, null, null);
+        return fetchAllKlines(symbol, "perp", interval, startTime, endTime, null, null);
     }
 
     /**
@@ -112,6 +121,7 @@ public class BinanceClient {
      * Handles pagination automatically.
      *
      * @param symbol     Trading pair (e.g., "BTCUSDT")
+     * @param marketType Market type: "spot" or "perp"
      * @param interval   Kline interval (e.g., "1h", "4h", "1d")
      * @param startTime  Start time in milliseconds
      * @param endTime    End time in milliseconds
@@ -119,7 +129,7 @@ public class BinanceClient {
      * @param onProgress Optional callback for progress updates
      * @return List of candles (may be partial if cancelled)
      */
-    public List<Candle> fetchAllKlines(String symbol, String interval, long startTime, long endTime,
+    public List<Candle> fetchAllKlines(String symbol, String marketType, String interval, long startTime, long endTime,
                                         AtomicBoolean cancelled, Consumer<FetchProgress> onProgress)
             throws IOException {
 
@@ -130,7 +140,7 @@ public class BinanceClient {
         // Estimate total candles
         int estimatedTotal = (int) ((endTime - startTime) / intervalMs);
 
-        log.info("Fetching {} {} data from Binance...", symbol, interval);
+        log.info("Fetching {} {} {} data from Binance...", symbol, marketType, interval);
 
         // Report starting
         if (onProgress != null) {
@@ -147,7 +157,7 @@ public class BinanceClient {
                 return allCandles;  // Return what we have so far
             }
 
-            List<Candle> batch = fetchKlines(symbol, interval, currentStart, endTime, MAX_KLINES_PER_REQUEST);
+            List<Candle> batch = fetchKlines(symbol, marketType, interval, currentStart, endTime, MAX_KLINES_PER_REQUEST);
 
             if (batch.isEmpty()) {
                 break;
@@ -214,11 +224,11 @@ public class BinanceClient {
     }
 
     /**
-     * Get server time from Binance
+     * Get server time from Binance (uses futures API)
      */
     public long getServerTime() throws IOException {
         Request request = new Request.Builder()
-            .url(BASE_URL + "/time")
+            .url(FUTURES_BASE_URL + "/time")
             .get()
             .build();
 
@@ -233,11 +243,11 @@ public class BinanceClient {
     }
 
     /**
-     * Check if Binance API is accessible
+     * Check if Binance API is accessible (uses futures API)
      */
     public boolean ping() {
         Request request = new Request.Builder()
-            .url(BASE_URL + "/ping")
+            .url(FUTURES_BASE_URL + "/ping")
             .get()
             .build();
 

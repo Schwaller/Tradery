@@ -45,12 +45,12 @@ public class SqliteDataStore {
     // ========== Candle Methods ==========
 
     /**
-     * Get candles for a symbol and timeframe.
+     * Get candles for a symbol, market type, and timeframe.
      */
-    public List<Candle> getCandles(String symbol, String timeframe, long startTime, long endTime)
+    public List<Candle> getCandles(String symbol, String marketType, String timeframe, long startTime, long endTime)
             throws IOException {
         try {
-            return forSymbol(symbol).candles().query(timeframe, startTime, endTime);
+            return forSymbol(symbol).candles().query(timeframe, marketType, startTime, endTime);
         } catch (SQLException e) {
             throw new IOException("SQLite error getting candles: " + e.getMessage(), e);
         }
@@ -59,9 +59,9 @@ public class SqliteDataStore {
     /**
      * Save candles (insert or update).
      */
-    public void saveCandles(String symbol, String timeframe, List<Candle> candles) throws IOException {
+    public void saveCandles(String symbol, String marketType, String timeframe, List<Candle> candles) throws IOException {
         try {
-            forSymbol(symbol).candles().insertBatch(timeframe, candles);
+            forSymbol(symbol).candles().insertBatch(timeframe, marketType, candles);
         } catch (SQLException e) {
             throw new IOException("SQLite error saving candles: " + e.getMessage(), e);
         }
@@ -70,9 +70,9 @@ public class SqliteDataStore {
     /**
      * Get the latest candle.
      */
-    public Candle getLatestCandle(String symbol, String timeframe) throws IOException {
+    public Candle getLatestCandle(String symbol, String marketType, String timeframe) throws IOException {
         try {
-            return forSymbol(symbol).candles().getLatest(timeframe);
+            return forSymbol(symbol).candles().getLatest(timeframe, marketType);
         } catch (SQLException e) {
             throw new IOException("SQLite error getting latest candle: " + e.getMessage(), e);
         }
@@ -80,11 +80,13 @@ public class SqliteDataStore {
 
     /**
      * Check if candle data exists for a range.
+     * Coverage key is "candles:{marketType}" to separate spot vs perp coverage.
      */
-    public boolean hasCandleData(String symbol, String timeframe, long startTime, long endTime)
+    public boolean hasCandleData(String symbol, String marketType, String timeframe, long startTime, long endTime)
             throws IOException {
         try {
-            return forSymbol(symbol).coverage().isFullyCovered("candles", timeframe, startTime, endTime);
+            String coverageKey = "candles:" + marketType;
+            return forSymbol(symbol).coverage().isFullyCovered(coverageKey, timeframe, startTime, endTime);
         } catch (SQLException e) {
             throw new IOException("SQLite error checking candle coverage: " + e.getMessage(), e);
         }
@@ -359,11 +361,12 @@ public class SqliteDataStore {
             SymbolData data = forSymbol(symbol);
             CandleDao.CandleStats candleStats = null;
 
-            // Get candle stats for the most common timeframe (1h)
-            List<String> timeframes = data.candles().getAvailableTimeframes();
+            // Get candle stats for the most common timeframe (1h) from perp data
+            // (most existing data is perp futures)
+            List<String> timeframes = data.candles().getAvailableTimeframes("perp");
             if (!timeframes.isEmpty()) {
                 String tf = timeframes.contains("1h") ? "1h" : timeframes.get(0);
-                candleStats = data.candles().getStats(tf);
+                candleStats = data.candles().getStats(tf, "perp");
             }
 
             long aggTradeCount = data.aggTrades().count();

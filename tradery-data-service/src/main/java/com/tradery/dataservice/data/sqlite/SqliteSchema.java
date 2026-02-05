@@ -19,7 +19,8 @@ public class SqliteSchema {
 
     // Current schema version - increment when schema changes
     // Version 2: Added multi-exchange support (exchange, market_type, raw_symbol, normalized_price columns)
-    public static final int CURRENT_VERSION = 2;
+    // Version 3: Added market_type to candles table (spot vs perp)
+    public static final int CURRENT_VERSION = 3;
 
     /**
      * Initialize the schema for a symbol's database.
@@ -94,9 +95,11 @@ public class SqliteSchema {
 
             // CANDLES (multi-timeframe in one table)
             // Extended fields from Binance klines: tradeCount, quoteVolume, takerBuyVolume, takerBuyQuoteVolume
+            // market_type: spot, perp, dated (to distinguish data source)
             stmt.execute("""
                 CREATE TABLE IF NOT EXISTS candles (
                     timeframe TEXT NOT NULL,
+                    market_type TEXT NOT NULL DEFAULT 'perp',
                     timestamp INTEGER NOT NULL,
                     open REAL NOT NULL,
                     high REAL NOT NULL,
@@ -107,14 +110,14 @@ public class SqliteSchema {
                     quote_volume REAL DEFAULT -1,
                     taker_buy_volume REAL DEFAULT -1,
                     taker_buy_quote_volume REAL DEFAULT -1,
-                    PRIMARY KEY (timeframe, timestamp)
+                    PRIMARY KEY (timeframe, market_type, timestamp)
                 ) WITHOUT ROWID
                 """);
 
-            // Index for time range queries within a timeframe
+            // Index for time range queries within a timeframe and market type
             stmt.execute("""
-                CREATE INDEX IF NOT EXISTS idx_candles_tf_ts
-                ON candles(timeframe, timestamp)
+                CREATE INDEX IF NOT EXISTS idx_candles_tf_mt_ts
+                ON candles(timeframe, market_type, timestamp)
                 """);
 
             // AGGREGATED TRADES (multi-exchange aware)
@@ -221,6 +224,7 @@ public class SqliteSchema {
         for (int v = fromVersion + 1; v <= toVersion; v++) {
             switch (v) {
                 case 2 -> migrateToV2(conn);
+                case 3 -> migrateToV3(conn);
                 default -> log.debug("No migration needed for version {}", v);
             }
         }
@@ -281,6 +285,78 @@ public class SqliteSchema {
         }
 
         log.info("Migration to v2 complete");
+    }
+
+    /**
+     * Migrate to version 3: Add market_type to candles table.
+     * Existing data is assumed to be perp (futures) data.
+     */
+    private static void migrateToV3(Connection conn) throws SQLException {
+        log.info("Migrating to schema v3: Adding market_type to candles...");
+
+        try (Statement stmt = conn.createStatement()) {
+            // Check if market_type column already exists
+            boolean hasMarketTypeColumn = false;
+            try (ResultSet rs = stmt.executeQuery("PRAGMA table_info(candles)")) {
+                while (rs.next()) {
+                    String colName = rs.getString("name");
+                    if ("market_type".equals(colName)) {
+                        hasMarketTypeColumn = true;
+                        break;
+                    }
+                }
+            }
+
+            if (!hasMarketTypeColumn) {
+                // SQLite doesn't allow modifying PRIMARY KEY, so we need to recreate the table
+                // 1. Create new table with market_type
+                stmt.execute("""
+                    CREATE TABLE IF NOT EXISTS candles_new (
+                        timeframe TEXT NOT NULL,
+                        market_type TEXT NOT NULL DEFAULT 'perp',
+                        timestamp INTEGER NOT NULL,
+                        open REAL NOT NULL,
+                        high REAL NOT NULL,
+                        low REAL NOT NULL,
+                        close REAL NOT NULL,
+                        volume REAL NOT NULL,
+                        trade_count INTEGER DEFAULT -1,
+                        quote_volume REAL DEFAULT -1,
+                        taker_buy_volume REAL DEFAULT -1,
+                        taker_buy_quote_volume REAL DEFAULT -1,
+                        PRIMARY KEY (timeframe, market_type, timestamp)
+                    ) WITHOUT ROWID
+                    """);
+
+                // 2. Copy data from old table (assuming all existing data is perp)
+                stmt.execute("""
+                    INSERT INTO candles_new (timeframe, market_type, timestamp, open, high, low, close, volume,
+                        trade_count, quote_volume, taker_buy_volume, taker_buy_quote_volume)
+                    SELECT timeframe, 'perp', timestamp, open, high, low, close, volume,
+                        trade_count, quote_volume, taker_buy_volume, taker_buy_quote_volume
+                    FROM candles
+                    """);
+
+                // 3. Drop old table
+                stmt.execute("DROP TABLE candles");
+
+                // 4. Rename new table
+                stmt.execute("ALTER TABLE candles_new RENAME TO candles");
+
+                // 5. Create index
+                stmt.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_candles_tf_mt_ts
+                    ON candles(timeframe, market_type, timestamp)
+                    """);
+
+                // Drop old index if exists
+                stmt.execute("DROP INDEX IF EXISTS idx_candles_tf_ts");
+
+                log.info("Added market_type column to candles, existing data marked as perp");
+            }
+        }
+
+        log.info("Migration to v3 complete");
     }
 
     /**
