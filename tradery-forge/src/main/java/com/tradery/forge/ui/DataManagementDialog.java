@@ -338,45 +338,6 @@ public class DataManagementDialog extends JDialog {
         progressBar.setVisible(false);
         repairButton.setEnabled(true);
         deleteButton.setEnabled(true);
-        return;
-
-        /*
-        // Legacy repair code - disabled during SQLite migration
-        // Run repair in background
-        String symbol = currentSymbol;
-        String resolution = currentResolution;
-        DataHealth health = selectedHealth;
-
-        SwingWorker<Void, Void> worker = new SwingWorker<>() {
-            @Override
-            protected Void doInBackground() throws Exception {
-                // candleStore.repairMonth(symbol, resolution, health.month());
-                return null;
-            }
-
-            @Override
-            protected void done() {
-                progressBar.setVisible(false);
-
-                try {
-                    get();
-                    JOptionPane.showMessageDialog(DataManagementDialog.this,
-                            "Repair complete for " + health.month().format(MONTH_FORMAT),
-                            "Repair Complete", JOptionPane.INFORMATION_MESSAGE);
-                } catch (Exception e) {
-                    JOptionPane.showMessageDialog(DataManagementDialog.this,
-                            "Repair failed: " + e.getMessage(),
-                            "Repair Error", JOptionPane.ERROR_MESSAGE);
-                }
-
-                // Refresh both panels
-                browserPanel.refreshData();
-                healthPanel.refreshData();
-                updateButtons();
-            }
-        };
-        worker.execute();
-        */
     }
 
     private void deleteSelectedMonth() {

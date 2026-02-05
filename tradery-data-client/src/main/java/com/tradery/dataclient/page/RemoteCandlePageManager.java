@@ -299,6 +299,17 @@ public class RemoteCandlePageManager {
     public void shutdown() {
         shutdown = true;
         fetchExecutor.shutdown();
+        try {
+            if (!fetchExecutor.awaitTermination(5, TimeUnit.SECONDS)) {
+                fetchExecutor.shutdownNow();
+                if (!fetchExecutor.awaitTermination(2, TimeUnit.SECONDS)) {
+                    LOG.warn("FetchExecutor did not terminate");
+                }
+            }
+        } catch (InterruptedException e) {
+            fetchExecutor.shutdownNow();
+            Thread.currentThread().interrupt();
+        }
 
         // Clean up all pages
         for (String key : new ArrayList<>(pages.keySet())) {

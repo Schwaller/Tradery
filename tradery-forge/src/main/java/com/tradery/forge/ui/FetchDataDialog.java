@@ -3,7 +3,6 @@ package com.tradery.forge.ui;
 import com.tradery.forge.ApplicationContext;
 import com.tradery.forge.data.AggTradesStore;
 import com.tradery.symbols.ui.SymbolComboBox;
-import com.tradery.forge.data.BinanceClient;
 import com.tradery.forge.data.BinanceVisionClient;
 import com.tradery.forge.data.BinanceVisionClient.VisionDataType;
 import com.tradery.forge.data.BinanceVisionClient.VisionProgress;
@@ -561,18 +560,6 @@ public class FetchDataDialog extends JDialog {
     private void resetButtonState() {
         fetchButton.setText("Fetch Data");
         cancelButton.setText("Cancel");
-    }
-
-    private void setControlsEnabled(boolean enabled) {
-        dataTypeCombo.setEnabled(enabled);
-        symbolCombo.setEnabled(enabled);
-        timeframeCombo.setEnabled(enabled);
-        startMonthCombo.setEnabled(enabled);
-        startYearSpinner.setEnabled(enabled);
-        endMonthCombo.setEnabled(enabled);
-        endYearSpinner.setEnabled(enabled);
-        fetchButton.setEnabled(enabled);
-        cancelButton.setText(enabled ? "Cancel" : "Stop");
     }
 
     /**

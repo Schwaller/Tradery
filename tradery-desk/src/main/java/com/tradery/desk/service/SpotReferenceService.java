@@ -6,6 +6,8 @@ import okhttp3.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 
@@ -20,10 +22,12 @@ public class SpotReferenceService {
 
     private final OkHttpClient client;
     private final ObjectMapper mapper = new ObjectMapper();
+    private final ScheduledExecutorService reconnectExecutor;
     private WebSocket webSocket;
     private Consumer<Double> priceListener;
     private volatile double lastPrice = Double.NaN;
     private volatile boolean connected = false;
+    private volatile boolean stopped = false;
     private volatile long lastNotifyTime = 0;
     private static final long NOTIFY_INTERVAL_MS = 500; // Throttle updates to every 500ms
 
@@ -31,6 +35,11 @@ public class SpotReferenceService {
         this.client = new OkHttpClient.Builder()
                 .pingInterval(30, TimeUnit.SECONDS)
                 .build();
+        this.reconnectExecutor = Executors.newSingleThreadScheduledExecutor(r -> {
+            Thread t = new Thread(r, "SpotReferenceService-Reconnect");
+            t.setDaemon(true);
+            return t;
+        });
     }
 
     /**
@@ -116,6 +125,8 @@ public class SpotReferenceService {
      * Stop the WebSocket connection.
      */
     public void stop() {
+        stopped = true;
+        reconnectExecutor.shutdownNow();
         if (webSocket != null) {
             webSocket.close(1000, "Stopping");
             webSocket = null;
@@ -124,17 +135,12 @@ public class SpotReferenceService {
     }
 
     private void scheduleReconnect() {
-        // Simple reconnect after 5 seconds
-        new Thread(() -> {
-            try {
-                Thread.sleep(5000);
-                if (!connected && webSocket != null) {
-                    webSocket = null;
-                    start();
-                }
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
+        if (stopped) return;
+        reconnectExecutor.schedule(() -> {
+            if (!stopped && !connected) {
+                webSocket = null;
+                start();
             }
-        }).start();
+        }, 5, TimeUnit.SECONDS);
     }
 }
