@@ -25,6 +25,7 @@ public class CoinGraphPanel extends JPanel {
     private CoinEntity selectedEntity;
     private CoinEntity draggedEntity;
     private Consumer<CoinEntity> onEntitySelected;
+    private Map<String, Integer> connectionDistance = new HashMap<>();  // Distance from selected node (0 = selected, 1 = direct, etc.)
 
     // View settings
     private boolean showLabels = true;
@@ -258,11 +259,38 @@ public class CoinGraphPanel extends JPanel {
             boolean highlight = (from.isHovered() || from.isSelected() ||
                                 to.isHovered() || to.isSelected());
 
+            // Get the max distance of the two endpoints (use the further one)
+            int fromDist = getConnectionDistance(rel.fromId());
+            int toDist = getConnectionDistance(rel.toId());
+            int maxDist = Math.max(fromDist, toDist);
+            float opacity = getOpacityForDistance(maxDist);
+
             Color c = rel.getColor();
-            int alpha = highlight ? 180 : 50;
-            g2.setColor(new Color(c.getRed(), c.getGreen(), c.getBlue(), alpha));
-            g2.setStroke(new BasicStroke(highlight ? 2f : 1f));
-            g2.draw(new Line2D.Double(from.x(), from.y(), to.x(), to.y()));
+            int alpha;
+            if (highlight) {
+                alpha = (int)(200 * opacity);
+            } else {
+                alpha = (int)(60 * opacity);
+            }
+            g2.setColor(new Color(c.getRed(), c.getGreen(), c.getBlue(), Math.max(10, alpha)));
+            g2.setStroke(new BasicStroke(2f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+
+            // Shorten line to stop at node edge + gap
+            double gap = 6;
+            double dx = to.x() - from.x();
+            double dy = to.y() - from.y();
+            double dist = Math.sqrt(dx * dx + dy * dy);
+            if (dist > 0) {
+                double nx = dx / dist;  // normalized direction
+                double ny = dy / dist;
+                double startOffset = from.getRadius() + gap;
+                double endOffset = to.getRadius() + gap;
+                double x1 = from.x() + nx * startOffset;
+                double y1 = from.y() + ny * startOffset;
+                double x2 = to.x() - nx * endOffset;
+                double y2 = to.y() - ny * endOffset;
+                g2.draw(new Line2D.Double(x1, y1, x2, y2));
+            }
 
             // Relationship label
             if (showRelationshipLabels && highlight) {
@@ -279,6 +307,8 @@ public class CoinGraphPanel extends JPanel {
         for (CoinEntity entity : entities) {
             int r = entity.getRadius();
             Color c = entity.getColor();
+            int distance = getConnectionDistance(entity.id());
+            float opacity = getOpacityForDistance(distance);
 
             // Glow for hovered/selected
             if (entity.isHovered() || entity.isSelected()) {
@@ -287,23 +317,25 @@ public class CoinGraphPanel extends JPanel {
             }
 
             // Pinned indicator
-            if (entity.isPinned()) {
-                g2.setColor(new Color(255, 100, 100, 100));
+            if (entity.isPinned() && distance >= 0) {
+                g2.setColor(new Color(255, 100, 100, (int)(100 * opacity)));
                 g2.fillOval((int)entity.x() - r - 4, (int)entity.y() - r - 4, (r + 4) * 2, (r + 4) * 2);
             }
 
-            // Node fill
-            g2.setColor(c);
+            // Node fill (with graduated opacity)
+            g2.setColor(new Color(c.getRed(), c.getGreen(), c.getBlue(), (int)(255 * opacity)));
             g2.fillOval((int)entity.x() - r, (int)entity.y() - r, r * 2, r * 2);
 
             // Node border
-            g2.setColor(c.darker());
+            Color darker = c.darker();
+            g2.setColor(new Color(darker.getRed(), darker.getGreen(), darker.getBlue(), (int)(255 * opacity)));
             g2.setStroke(new BasicStroke(1.5f));
             g2.drawOval((int)entity.x() - r, (int)entity.y() - r, r * 2, r * 2);
 
-            // Label
-            if (showLabels) {
-                g2.setColor(new Color(220, 220, 230));
+            // Label (with graduated opacity, hide only for completely unconnected)
+            if (showLabels && distance >= 0) {
+                int labelAlpha = (int)(230 * Math.max(0.5f, opacity));  // Keep labels readable
+                g2.setColor(new Color(220, 220, 230, labelAlpha));
                 g2.setFont(new Font("SansSerif", Font.PLAIN, 10));
                 String label = entity.label();
                 int labelWidth = g2.getFontMetrics().stringWidth(label);
@@ -439,6 +471,7 @@ public class CoinGraphPanel extends JPanel {
                 onEntitySelected.accept(selectedEntity);
             }
         }
+        updateConnectedSet();
         repaint();
     }
 
@@ -482,6 +515,9 @@ public class CoinGraphPanel extends JPanel {
         panX = getWidth() / 2.0 - entity.x();
         panY = getHeight() / 2.0 - entity.y();
 
+        // Update connected set for opacity
+        updateConnectedSet();
+
         // Notify callback
         if (onEntitySelected != null) {
             onEntitySelected.accept(entity);
@@ -502,5 +538,84 @@ public class CoinGraphPanel extends JPanel {
 
     public CoinEntity getEntity(String id) {
         return entityMap.get(id);
+    }
+
+    private void updateConnectedSet() {
+        connectionDistance.clear();
+        if (selectedEntity == null) return;
+
+        // Level 0: selected coin
+        // Level 1: reachable WITHOUT traversing through another coin
+        // Level 2: requires going through another coin to reach
+
+        connectionDistance.put(selectedEntity.id(), 0);
+
+        // Phase 1: BFS from selected - don't continue through other coins
+        Set<String> level1Coins = new HashSet<>();
+        Queue<String> queue = new LinkedList<>();
+        queue.add(selectedEntity.id());
+
+        while (!queue.isEmpty()) {
+            String current = queue.poll();
+            CoinEntity currentEntity = entityMap.get(current);
+            boolean currentIsCoin = currentEntity != null && currentEntity.type() == CoinEntity.Type.COIN;
+
+            for (CoinRelationship rel : relationships) {
+                String neighbor = null;
+                if (rel.fromId().equals(current)) neighbor = rel.toId();
+                else if (rel.toId().equals(current)) neighbor = rel.fromId();
+
+                if (neighbor != null && !connectionDistance.containsKey(neighbor)) {
+                    CoinEntity neighborEntity = entityMap.get(neighbor);
+                    if (neighborEntity == null) continue;
+
+                    boolean neighborIsCoin = neighborEntity.type() == CoinEntity.Type.COIN;
+
+                    connectionDistance.put(neighbor, 1);
+
+                    if (neighborIsCoin) {
+                        // Track coins at level 1 for phase 2
+                        level1Coins.add(neighbor);
+                        // Don't continue BFS from coins (except selected)
+                    } else {
+                        // Continue BFS through non-coin nodes
+                        queue.add(neighbor);
+                    }
+                }
+            }
+        }
+
+        // Phase 2: BFS from level-1 coins to find level-2 nodes
+        for (String coinId : level1Coins) {
+            Queue<String> q2 = new LinkedList<>();
+            q2.add(coinId);
+
+            while (!q2.isEmpty()) {
+                String current = q2.poll();
+
+                for (CoinRelationship rel : relationships) {
+                    String neighbor = null;
+                    if (rel.fromId().equals(current)) neighbor = rel.toId();
+                    else if (rel.toId().equals(current)) neighbor = rel.fromId();
+
+                    if (neighbor != null && !connectionDistance.containsKey(neighbor)) {
+                        connectionDistance.put(neighbor, 2);
+                        q2.add(neighbor);
+                    }
+                }
+            }
+        }
+    }
+
+    private int getConnectionDistance(String entityId) {
+        if (selectedEntity == null) return 0;  // No selection = full visibility
+        return connectionDistance.getOrDefault(entityId, -1);  // -1 = not connected
+    }
+
+    private float getOpacityForDistance(int distance) {
+        if (distance == -1) return 0.12f;  // Not connected
+        if (distance == 0) return 1.0f;    // Selected
+        if (distance == 1) return 0.85f;   // Level 1 (reachable without crossing coins)
+        return 0.50f;                       // Level 2 (requires crossing a coin)
     }
 }

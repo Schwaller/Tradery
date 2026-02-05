@@ -1,0 +1,11 @@
+// tradery-data: Shared data infrastructure for page management
+// Used by forge, data-client, and data-service
+
+plugins {
+    id 'java-library'
+}
+
+dependencies {
+    // Core module for models (Candle, etc.)
+    api project(':tradery-core')
+}

@@ -102,7 +102,7 @@ public class CoinGraphFrame extends JFrame {
         });
 
         // Load real data
-        SwingUtilities.invokeLater(this::loadRealData);
+        SwingUtilities.invokeLater(() -> loadRealData(false));
     }
 
     private JToolBar createToolbar() {
@@ -114,6 +114,10 @@ public class CoinGraphFrame extends JFrame {
         JButton resetBtn = new JButton("Reset View");
         resetBtn.addActionListener(e -> graphPanel.resetView());
         toolbar.add(resetBtn);
+
+        JButton refreshBtn = new JButton("Refresh Data");
+        refreshBtn.addActionListener(e -> loadRealData(true));
+        toolbar.add(refreshBtn);
 
         toolbar.addSeparator();
 
@@ -135,8 +139,8 @@ public class CoinGraphFrame extends JFrame {
         return toolbar;
     }
 
-    private void loadRealData() {
-        statusLabel.setText("Fetching data from CoinGecko...");
+    private void loadRealData(boolean forceRefresh) {
+        statusLabel.setText("Loading...");
 
         SwingWorker<Void, String> worker = new SwingWorker<>() {
             private List<CoinEntity> entities;
@@ -145,10 +149,29 @@ public class CoinGraphFrame extends JFrame {
             @Override
             protected Void doInBackground() {
                 try {
-                    publish("Fetching top 200 coins from CoinGecko...");
+                    CoinCache cache = new CoinCache();
                     CoinGeckoClient client = new CoinGeckoClient();
-                    entities = client.fetchTopCoins(200);
-                    System.out.println("Fetched " + entities.size() + " coins");
+                    boolean fromCache = false;
+
+                    // Try cache first (unless force refresh)
+                    if (!forceRefresh && cache.isCacheValid()) {
+                        publish("Loading coins from cache...");
+                        entities = cache.loadCoins();
+                        fromCache = !entities.isEmpty();
+                        if (fromCache) {
+                            System.out.println("Loaded " + entities.size() + " coins from cache");
+                        }
+                    }
+
+                    // Fetch from API if cache empty, invalid, or force refresh
+                    if (entities == null || entities.isEmpty()) {
+                        publish("Fetching top 200 coins from CoinGecko...");
+                        entities = client.fetchTopCoins(200);
+                        System.out.println("Fetched " + entities.size() + " coins from API");
+
+                        // Save to cache immediately (will update again after categories)
+                        cache.saveCoins(entities);
+                    }
 
                     publish("Building relationships...");
                     relationships = client.buildRelationships(entities);
@@ -157,49 +180,58 @@ public class CoinGraphFrame extends JFrame {
                     addManualEntities(entities, relationships);
 
                     // Show graph immediately
+                    final boolean cached = fromCache;
                     System.out.println("Setting graph data: " + entities.size() + " entities, " + relationships.size() + " relationships");
                     javax.swing.SwingUtilities.invokeLater(() -> {
                         graphPanel.setData(entities, relationships);
                         System.out.println("Graph data set, panel size: " + graphPanel.getWidth() + "x" + graphPanel.getHeight());
-                        statusLabel.setText(entities.size() + " entities  |  " + relationships.size() + " relationships");
-                        progressBar.setVisible(true);
-                        progressBar.setValue(0);
-                        progressBar.setString("Categories: 0%");
+                        statusLabel.setText(entities.size() + " entities  |  " + relationships.size() + " relationships" + (cached ? " (cached)" : ""));
+                        progressBar.setVisible(false);
                     });
 
-                    // Fetch categories for all coins in background (rate limited)
-                    List<String> allIds = entities.stream()
-                        .map(CoinEntity::id)
-                        .toList();
-
-                    int total = allIds.size();
-                    int count = 0;
-                    for (String coinId : allIds) {
-                        count++;
-                        int finalCount = count;
-                        int percent = (count * 100) / total;
-                        try {
-                            Map<String, List<String>> catMap = client.fetchCoinCategories(List.of(coinId));
-                            List<String> cats = catMap.get(coinId);
-                            if (cats != null && !cats.isEmpty()) {
-                                // Find entity and update
-                                for (CoinEntity entity : entities) {
-                                    if (entity.id().equals(coinId)) {
-                                        entity.setCategories(cats);
-                                        break;
-                                    }
-                                }
-                                // Trigger repaint to show updated categories
-                                javax.swing.SwingUtilities.invokeLater(() -> graphPanel.repaint());
-                            }
-                        } catch (Exception e) {
-                            // Skip failed coins
-                        }
-                        int finalPercent = percent;
+                    // Only fetch categories if we got fresh data from API
+                    if (!fromCache) {
                         javax.swing.SwingUtilities.invokeLater(() -> {
-                            progressBar.setValue(finalPercent);
-                            progressBar.setString("Categories: " + finalPercent + "% (" + finalCount + "/" + total + ")");
+                            progressBar.setVisible(true);
+                            progressBar.setValue(0);
+                            progressBar.setString("Categories: 0%");
                         });
+
+                        List<String> allIds = entities.stream()
+                            .map(CoinEntity::id)
+                            .toList();
+
+                        int total = allIds.size();
+                        int count = 0;
+                        for (String coinId : allIds) {
+                            count++;
+                            int finalCount = count;
+                            int percent = (count * 100) / total;
+                            try {
+                                Map<String, List<String>> catMap = client.fetchCoinCategories(List.of(coinId));
+                                List<String> cats = catMap.get(coinId);
+                                if (cats != null && !cats.isEmpty()) {
+                                    for (CoinEntity entity : entities) {
+                                        if (entity.id().equals(coinId)) {
+                                            entity.setCategories(cats);
+                                            break;
+                                        }
+                                    }
+                                    javax.swing.SwingUtilities.invokeLater(() -> graphPanel.repaint());
+                                }
+                            } catch (Exception e) {
+                                // Skip failed coins
+                            }
+                            int finalPercent = percent;
+                            javax.swing.SwingUtilities.invokeLater(() -> {
+                                progressBar.setValue(finalPercent);
+                                progressBar.setString("Categories: " + finalPercent + "% (" + finalCount + "/" + total + ")");
+                            });
+                        }
+
+                        // Save to cache with categories
+                        cache.saveCoins(entities);
+                        javax.swing.SwingUtilities.invokeLater(() -> progressBar.setVisible(false));
                     }
 
                 } catch (Exception e) {
