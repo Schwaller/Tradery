@@ -185,14 +185,14 @@ public class SqliteMigrator {
                 List<Candle> deduped = new ArrayList<>(candleMap.values());
                 deduped.sort(Comparator.comparingLong(Candle::timestamp));
 
-                // Insert into SQLite
-                dataStore.saveCandles(symbol, timeframe, deduped);
+                // Insert into SQLite (old CSV data was always futures/perp)
+                dataStore.saveCandles(symbol, "perp", timeframe, deduped);
 
                 // Record coverage
                 if (!deduped.isEmpty()) {
                     long start = deduped.get(0).timestamp();
                     long end = deduped.get(deduped.size() - 1).timestamp();
-                    dataStore.addCoverage(symbol, "candles", timeframe, start, end, true);
+                    dataStore.addCoverage(symbol, "candles:perp", timeframe, start, end, true);
                 }
 
                 totalCount += deduped.size();
