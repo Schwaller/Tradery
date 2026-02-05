@@ -568,6 +568,11 @@ public class PageManager {
 
     /**
      * Load aggregated trades data for a page, fetching from Binance if cache is incomplete.
+     *
+     * Unlike other data types, AggTrades are too large to serialize into a single byte[].
+     * (13M+ trades can exceed Java's 2GB array limit)
+     * Instead, we just ensure data is cached in SQLite and return null.
+     * The client fetches data via the streaming /aggtrades endpoint.
      */
     private byte[] loadAggTrades(PageKey key, Page page) throws Exception {
         String symbol = key.symbol();
@@ -583,15 +588,17 @@ public class PageManager {
 
         try {
             // AggTradesStore handles cache check + fetch if needed
+            // This ensures data is in SQLite but we don't serialize it here
             long t0 = System.currentTimeMillis();
             List<AggTrade> trades = aggTradesStore.getAggTrades(symbol, startTime, endTime);
             long t1 = System.currentTimeMillis();
             page.setRecordCount(trades.size());
-            byte[] data = msgpackMapper.writeValueAsBytes(trades);
-            long t2 = System.currentTimeMillis();
-            LOG.info("loadAggTrades: {} loaded {} trades (sqlite={}ms, msgpack={}ms, total={}ms)",
-                symbol, trades.size(), t1 - t0, t2 - t1, t2 - t0);
-            return data;
+
+            // Don't serialize - data is too large for a byte[]
+            // Client will fetch via streaming /aggtrades endpoint
+            LOG.info("loadAggTrades: {} cached {} trades in {}ms (data served via streaming endpoint)",
+                symbol, trades.size(), t1 - t0);
+            return null;  // No in-memory serialization for AggTrades
         } finally {
             aggTradesStore.setProgressCallback(null);
         }
