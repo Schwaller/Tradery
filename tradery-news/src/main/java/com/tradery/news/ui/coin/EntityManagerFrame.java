@@ -1,6 +1,7 @@
 package com.tradery.news.ui.coin;
 
 import com.tradery.news.fetch.RssFetcher;
+import com.tradery.news.ui.IntelConfig;
 
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
@@ -48,6 +49,10 @@ public class EntityManagerFrame extends JFrame {
     private JTable relationshipTable;
     private DefaultTableModel relationshipTableModel;
 
+    // News Sources tab components
+    private JList<RssFetcher> rssSourceList;
+    private DefaultListModel<RssFetcher> rssSourceListModel;
+
     public EntityManagerFrame(EntityStore store, Consumer<Void> onDataChanged) {
         super("Settings");
         this.store = store;
@@ -74,6 +79,12 @@ public class EntityManagerFrame extends JFrame {
 
         // Relationships tab
         tabbedPane.addTab("Relationships", createRelationshipsTab());
+
+        // News Sources tab
+        tabbedPane.addTab("News Sources", createNewsSourcesTab());
+
+        // Config tab
+        tabbedPane.addTab("AI", createAiConfigTab());
 
         mainPanel.add(tabbedPane, BorderLayout.CENTER);
         setContentPane(mainPanel);
@@ -171,6 +182,185 @@ public class EntityManagerFrame extends JFrame {
         return panel;
     }
 
+    private JPanel createNewsSourcesTab() {
+        JPanel panel = new JPanel(new BorderLayout());
+        panel.setBackground(new Color(30, 32, 36));
+
+        // Toolbar
+        JToolBar toolbar = new JToolBar();
+        toolbar.setFloatable(false);
+        toolbar.setBackground(new Color(38, 40, 44));
+        toolbar.setBorder(BorderFactory.createMatteBorder(0, 0, 1, 0, new Color(50, 52, 56)));
+
+        JButton addRssBtn = new JButton("+ Add Feed");
+        addRssBtn.addActionListener(e -> showAddRssFeedDialog());
+        toolbar.add(addRssBtn);
+
+        JButton removeRssBtn = new JButton("Remove");
+        removeRssBtn.addActionListener(e -> removeSelectedRssFeed());
+        toolbar.add(removeRssBtn);
+
+        toolbar.addSeparator();
+
+        JButton resetBtn = new JButton("Reset to Defaults");
+        resetBtn.addActionListener(e -> resetRssFeedsToDefaults());
+        toolbar.add(resetBtn);
+
+        panel.add(toolbar, BorderLayout.NORTH);
+
+        // List of RSS sources
+        rssSourceListModel = new DefaultListModel<>();
+        rssSourceList = new JList<>(rssSourceListModel);
+        rssSourceList.setBackground(new Color(35, 37, 41));
+        rssSourceList.setForeground(new Color(200, 200, 210));
+        rssSourceList.setSelectionBackground(new Color(60, 80, 100));
+        rssSourceList.setSelectionForeground(new Color(220, 220, 230));
+        rssSourceList.setCellRenderer(new RssSourceCellRenderer());
+
+        JScrollPane scroll = new JScrollPane(rssSourceList);
+        scroll.setBorder(null);
+        scroll.getViewport().setBackground(new Color(35, 37, 41));
+        panel.add(scroll, BorderLayout.CENTER);
+
+        // Load sources
+        loadNewsSources();
+
+        return panel;
+    }
+
+    private void loadNewsSources() {
+        if (rssSourceListModel == null) return;
+        rssSourceListModel.clear();
+
+        // Add built-in sources
+        for (RssFetcher fetcher : RssFetcher.defaultSources()) {
+            rssSourceListModel.addElement(fetcher);
+        }
+
+        // Add custom sources from database (NEWS_SOURCE entities)
+        for (CoinEntity entity : store.loadEntitiesBySource("manual")) {
+            if (entity.type() == CoinEntity.Type.NEWS_SOURCE && entity.symbol() != null) {
+                // symbol contains the RSS URL for custom feeds
+                RssFetcher customFetcher = new RssFetcher(
+                    entity.id().replace("rss-", ""),
+                    entity.name(),
+                    entity.symbol()  // URL stored in symbol field
+                );
+                rssSourceListModel.addElement(customFetcher);
+            }
+        }
+    }
+
+    private static class RssSourceCellRenderer extends DefaultListCellRenderer {
+        @Override
+        public Component getListCellRendererComponent(JList<?> list, Object value, int index,
+                                                       boolean isSelected, boolean cellHasFocus) {
+            super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus);
+            if (value instanceof RssFetcher fetcher) {
+                setText(fetcher.getSourceName());
+                setForeground(isSelected ? new Color(220, 220, 230) : CoinEntity.Type.NEWS_SOURCE.color());
+            }
+            return this;
+        }
+    }
+
+    private JPanel createAiConfigTab() {
+        JPanel panel = new JPanel(new BorderLayout());
+        panel.setBackground(new Color(30, 32, 36));
+        panel.setBorder(new EmptyBorder(20, 20, 20, 20));
+
+        IntelConfig config = IntelConfig.get();
+
+        JPanel formPanel = new JPanel(new GridBagLayout());
+        formPanel.setBackground(new Color(30, 32, 36));
+
+        GridBagConstraints labelGbc = new GridBagConstraints();
+        labelGbc.anchor = GridBagConstraints.WEST;
+        labelGbc.insets = new Insets(10, 5, 10, 15);
+
+        GridBagConstraints fieldGbc = new GridBagConstraints();
+        fieldGbc.fill = GridBagConstraints.HORIZONTAL;
+        fieldGbc.weightx = 1.0;
+        fieldGbc.insets = new Insets(10, 0, 10, 5);
+
+        int row = 0;
+
+        // AI Provider
+        labelGbc.gridx = 0; labelGbc.gridy = row;
+        JLabel providerLabel = new JLabel("AI Provider:");
+        providerLabel.setForeground(new Color(180, 180, 190));
+        formPanel.add(providerLabel, labelGbc);
+
+        fieldGbc.gridx = 1; fieldGbc.gridy = row++;
+        JComboBox<IntelConfig.AiProvider> providerCombo = new JComboBox<>(IntelConfig.AiProvider.values());
+        providerCombo.setSelectedItem(config.getAiProvider());
+        providerCombo.setBackground(new Color(60, 62, 66));
+        providerCombo.setForeground(new Color(200, 200, 210));
+        formPanel.add(providerCombo, fieldGbc);
+
+        // Claude path
+        labelGbc.gridx = 0; labelGbc.gridy = row;
+        JLabel claudeLabel = new JLabel("Claude CLI path:");
+        claudeLabel.setForeground(new Color(180, 180, 190));
+        formPanel.add(claudeLabel, labelGbc);
+
+        fieldGbc.gridx = 1; fieldGbc.gridy = row++;
+        JTextField claudeField = new JTextField(config.getClaudePath());
+        claudeField.setBackground(new Color(60, 62, 66));
+        claudeField.setForeground(new Color(200, 200, 210));
+        claudeField.setCaretColor(new Color(200, 200, 210));
+        formPanel.add(claudeField, fieldGbc);
+
+        // Codex path
+        labelGbc.gridx = 0; labelGbc.gridy = row;
+        JLabel codexLabel = new JLabel("Codex CLI path:");
+        codexLabel.setForeground(new Color(180, 180, 190));
+        formPanel.add(codexLabel, labelGbc);
+
+        fieldGbc.gridx = 1; fieldGbc.gridy = row++;
+        JTextField codexField = new JTextField(config.getCodexPath());
+        codexField.setBackground(new Color(60, 62, 66));
+        codexField.setForeground(new Color(200, 200, 210));
+        codexField.setCaretColor(new Color(200, 200, 210));
+        formPanel.add(codexField, fieldGbc);
+
+        // Timeout
+        labelGbc.gridx = 0; labelGbc.gridy = row;
+        JLabel timeoutLabel = new JLabel("Timeout (seconds):");
+        timeoutLabel.setForeground(new Color(180, 180, 190));
+        formPanel.add(timeoutLabel, labelGbc);
+
+        fieldGbc.gridx = 1; fieldGbc.gridy = row++;
+        JSpinner timeoutSpinner = new JSpinner(new SpinnerNumberModel(config.getAiTimeoutSeconds(), 10, 300, 10));
+        formPanel.add(timeoutSpinner, fieldGbc);
+
+        // Spacer
+        labelGbc.gridx = 0; labelGbc.gridy = row;
+        labelGbc.weighty = 1.0;
+        formPanel.add(new JLabel(), labelGbc);
+
+        panel.add(formPanel, BorderLayout.NORTH);
+
+        // Save button
+        JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
+        buttonPanel.setBackground(new Color(30, 32, 36));
+
+        JButton saveBtn = new JButton("Save");
+        saveBtn.addActionListener(e -> {
+            config.setAiProvider((IntelConfig.AiProvider) providerCombo.getSelectedItem());
+            config.setClaudePath(claudeField.getText().trim());
+            config.setCodexPath(codexField.getText().trim());
+            config.setAiTimeoutSeconds((Integer) timeoutSpinner.getValue());
+            config.save();
+            JOptionPane.showMessageDialog(this, "AI settings saved.", "Saved", JOptionPane.INFORMATION_MESSAGE);
+        });
+        buttonPanel.add(saveBtn);
+
+        panel.add(buttonPanel, BorderLayout.SOUTH);
+
+        return panel;
+    }
+
     private void loadRelationships() {
         if (relationshipTableModel == null) return;
         relationshipTableModel.setRowCount(0);
@@ -255,27 +445,6 @@ public class EntityManagerFrame extends JFrame {
         entityTree.setForeground(new Color(200, 200, 210));
         entityTree.setCellRenderer(new EntityTreeCellRenderer());
         entityTree.addTreeSelectionListener(e -> onTreeSelection());
-
-        // Context menu for RSS feeds
-        JPopupMenu rssPopup = new JPopupMenu();
-        JMenuItem addRssItem = new JMenuItem("Add RSS Feed...");
-        addRssItem.addActionListener(e -> showAddRssFeedDialog());
-        rssPopup.add(addRssItem);
-
-        JMenuItem resetRssItem = new JMenuItem("Reset to Defaults");
-        resetRssItem.addActionListener(e -> resetRssFeedsToDefaults());
-        rssPopup.add(resetRssItem);
-
-        entityTree.addMouseListener(new java.awt.event.MouseAdapter() {
-            @Override
-            public void mousePressed(java.awt.event.MouseEvent e) {
-                if (e.isPopupTrigger()) showRssPopup(e, rssPopup);
-            }
-            @Override
-            public void mouseReleased(java.awt.event.MouseEvent e) {
-                if (e.isPopupTrigger()) showRssPopup(e, rssPopup);
-            }
-        });
 
         JScrollPane scroll = new JScrollPane(entityTree);
         scroll.setBorder(null);
@@ -455,41 +624,31 @@ public class EntityManagerFrame extends JFrame {
     private void loadEntities() {
         rootNode.removeAllChildren();
 
-        // Load manual entity IDs first for quick lookup
+        // Load manual entity IDs first for quick lookup (exclude NEWS_SOURCE - shown in separate tab)
         List<CoinEntity> manualEntities = store.loadEntitiesBySource("manual");
         manualEntityIds.clear();
+        int manualCount = 0;
         for (CoinEntity e : manualEntities) {
-            manualEntityIds.add(e.id());
+            if (e.type() != CoinEntity.Type.NEWS_SOURCE) {
+                manualEntityIds.add(e.id());
+                manualCount++;
+            }
         }
 
         // Load CoinGecko entities
         List<CoinEntity> cgEntities = store.loadEntitiesBySource("coingecko");
 
-        // Get RSS sources
-        List<RssFetcher> rssSources = RssFetcher.defaultSources();
-
         // Manual entities section
-        DefaultMutableTreeNode manualNode = new DefaultMutableTreeNode("Manual (" + manualEntities.size() + ")");
+        DefaultMutableTreeNode manualNode = new DefaultMutableTreeNode("Manual (" + manualCount + ")");
         Map<CoinEntity.Type, DefaultMutableTreeNode> manualTypeNodes = new TreeMap<>();
 
         // CoinGecko entities section
         DefaultMutableTreeNode cgNode = new DefaultMutableTreeNode("CoinGecko (" + cgEntities.size() + ")");
         Map<CoinEntity.Type, DefaultMutableTreeNode> cgTypeNodes = new TreeMap<>();
 
-        // Get custom RSS feeds from database
-        List<CoinEntity> customRssFeeds = new java.util.ArrayList<>();
-        for (CoinEntity e : manualEntities) {
-            if (e.type() == CoinEntity.Type.NEWS_SOURCE) {
-                customRssFeeds.add(e);
-            }
-        }
-
-        // RSS Sources section
-        int totalRss = rssSources.size() + customRssFeeds.size();
-        DefaultMutableTreeNode rssNode = new DefaultMutableTreeNode("News Sources (" + totalRss + ")");
-
-        // Add manual entities
+        // Add manual entities (excluding NEWS_SOURCE)
         for (CoinEntity entity : manualEntities) {
+            if (entity.type() == CoinEntity.Type.NEWS_SOURCE) continue;
             EntityTreeNode entityNode = new EntityTreeNode(entity);
             CoinEntity.Type type = entity.type();
             manualTypeNodes.computeIfAbsent(type, t -> new DefaultMutableTreeNode(t.name())).add(entityNode);
@@ -502,32 +661,9 @@ public class EntityManagerFrame extends JFrame {
             cgTypeNodes.computeIfAbsent(type, t -> new DefaultMutableTreeNode(t.name())).add(entityNode);
         }
 
-        // Add built-in RSS sources
-        DefaultMutableTreeNode builtInRssNode = new DefaultMutableTreeNode("Built-in (" + rssSources.size() + ")");
-        for (RssFetcher fetcher : rssSources) {
-            CoinEntity rssEntity = new CoinEntity(
-                "rss-" + fetcher.getSourceId(),
-                fetcher.getSourceName(),
-                null,
-                CoinEntity.Type.NEWS_SOURCE
-            );
-            RssTreeNode rssTreeNode = new RssTreeNode(fetcher, rssEntity);
-            builtInRssNode.add(rssTreeNode);
-        }
-        rssNode.add(builtInRssNode);
-
-        // Add custom RSS sources from database
-        if (!customRssFeeds.isEmpty()) {
-            DefaultMutableTreeNode customRssNode = new DefaultMutableTreeNode("Custom (" + customRssFeeds.size() + ")");
-            for (CoinEntity customFeed : customRssFeeds) {
-                EntityTreeNode entityNode = new EntityTreeNode(customFeed);
-                customRssNode.add(entityNode);
-            }
-            rssNode.add(customRssNode);
-        }
-
         // Add manual type nodes to tree
         for (CoinEntity.Type type : CoinEntity.Type.values()) {
+            if (type == CoinEntity.Type.NEWS_SOURCE) continue;
             DefaultMutableTreeNode typeNode = manualTypeNodes.get(type);
             if (typeNode != null) {
                 manualNode.add(typeNode);
@@ -537,15 +673,13 @@ public class EntityManagerFrame extends JFrame {
 
         // Add CoinGecko type nodes to tree
         for (CoinEntity.Type type : CoinEntity.Type.values()) {
+            if (type == CoinEntity.Type.NEWS_SOURCE) continue;
             DefaultMutableTreeNode typeNode = cgTypeNodes.get(type);
             if (typeNode != null) {
                 cgNode.add(typeNode);
             }
         }
         rootNode.add(cgNode);
-
-        // Add RSS sources
-        rootNode.add(rssNode);
 
         treeModel.reload();
 
@@ -567,34 +701,8 @@ public class EntityManagerFrame extends JFrame {
         Object selected = path.getLastPathComponent();
         if (selected instanceof EntityTreeNode entityNode) {
             showEntity(entityNode.entity);
-        } else if (selected instanceof RssTreeNode rssNode) {
-            showRssSource(rssNode.fetcher);
         } else {
             showPlaceholder();
-        }
-    }
-
-    private void showRssPopup(java.awt.event.MouseEvent e, JPopupMenu popup) {
-        TreePath path = entityTree.getPathForLocation(e.getX(), e.getY());
-        if (path != null) {
-            Object node = path.getLastPathComponent();
-            // Show popup for News Sources folder or RSS items
-            if (node instanceof DefaultMutableTreeNode dmtn) {
-                Object userObj = dmtn.getUserObject();
-                if (userObj instanceof String str && str.startsWith("News Sources")) {
-                    entityTree.setSelectionPath(path);
-                    popup.show(entityTree, e.getX(), e.getY());
-                }
-            }
-            if (node instanceof RssTreeNode) {
-                entityTree.setSelectionPath(path);
-                // Could show item-specific popup here (remove, edit)
-                JPopupMenu itemPopup = new JPopupMenu();
-                JMenuItem removeItem = new JMenuItem("Remove Feed");
-                removeItem.addActionListener(ev -> removeSelectedRssFeed());
-                itemPopup.add(removeItem);
-                itemPopup.show(entityTree, e.getX(), e.getY());
-            }
         }
     }
 
@@ -624,10 +732,11 @@ public class EntityManagerFrame extends JFrame {
                 return;
             }
 
-            // Save as a NEWS_SOURCE entity with URL in notes/parent field
+            // Save as a NEWS_SOURCE entity with URL in symbol field
             CoinEntity rssEntity = new CoinEntity("rss-" + id, name, url, CoinEntity.Type.NEWS_SOURCE);
             store.saveEntity(rssEntity, "manual");
             loadEntities();
+            loadNewsSources();
 
             if (onDataChanged != null) {
                 onDataChanged.accept(null);
@@ -636,20 +745,26 @@ public class EntityManagerFrame extends JFrame {
     }
 
     private void removeSelectedRssFeed() {
-        TreePath path = entityTree.getSelectionPath();
-        if (path == null) return;
+        RssFetcher selected = rssSourceList.getSelectedValue();
+        if (selected == null) {
+            JOptionPane.showMessageDialog(this, "Select a feed to remove", "No Selection", JOptionPane.WARNING_MESSAGE);
+            return;
+        }
 
-        Object node = path.getLastPathComponent();
-        if (node instanceof RssTreeNode rssNode) {
-            int result = JOptionPane.showConfirmDialog(this,
-                "Remove RSS feed '" + rssNode.fetcher.getSourceName() + "'?",
-                "Confirm Remove", JOptionPane.YES_NO_OPTION);
-            if (result == JOptionPane.YES_OPTION) {
-                // For built-in feeds, we can't really remove them from code
-                // But we could mark them as disabled in the database
-                store.deleteEntity("rss-" + rssNode.fetcher.getSourceId());
-                loadEntities();
-            }
+        // Check if it's a custom feed (exists in database)
+        String entityId = "rss-" + selected.getSourceId();
+        if (!store.entityExists(entityId)) {
+            JOptionPane.showMessageDialog(this, "Built-in feeds cannot be removed", "Cannot Remove", JOptionPane.INFORMATION_MESSAGE);
+            return;
+        }
+
+        int result = JOptionPane.showConfirmDialog(this,
+            "Remove RSS feed '" + selected.getSourceName() + "'?",
+            "Confirm Remove", JOptionPane.YES_NO_OPTION);
+        if (result == JOptionPane.YES_OPTION) {
+            store.deleteEntity(entityId);
+            loadEntities();
+            loadNewsSources();
         }
     }
 
@@ -665,31 +780,8 @@ public class EntityManagerFrame extends JFrame {
                 }
             }
             loadEntities();
+            loadNewsSources();
         }
-    }
-
-    private void showRssSource(RssFetcher fetcher) {
-        selectedEntity = null;
-        isNewEntity = false;
-
-        idField.setText(fetcher.getSourceId());
-        idField.setEnabled(false);
-        nameField.setText(fetcher.getSourceName());
-        nameField.setEnabled(false);
-        symbolField.setText("");
-        symbolField.setEnabled(false);
-        typeCombo.setSelectedItem(CoinEntity.Type.NEWS_SOURCE);
-        typeCombo.setEnabled(false);
-        parentIdField.setText("");
-        parentIdField.setEnabled(false);
-        marketCapField.setText("");
-        marketCapField.setEnabled(false);
-        categoriesArea.setText("(n/a for news sources)");
-        sourceLabel.setText("RSS Feed (built-in)");
-        sourceLabel.setForeground(new Color(220, 180, 220));
-
-        saveBtn.setEnabled(false);
-        deleteBtn.setEnabled(false);
     }
 
     private void showEntity(CoinEntity entity) {
@@ -880,23 +972,6 @@ public class EntityManagerFrame extends JFrame {
         }
     }
 
-    // Custom tree node for RSS sources
-    private static class RssTreeNode extends DefaultMutableTreeNode {
-        final RssFetcher fetcher;
-        final CoinEntity entity;
-
-        RssTreeNode(RssFetcher fetcher, CoinEntity entity) {
-            super(fetcher);
-            this.fetcher = fetcher;
-            this.entity = entity;
-        }
-
-        @Override
-        public String toString() {
-            return fetcher.getSourceName();
-        }
-    }
-
     // Custom tree cell renderer
     private static class EntityTreeCellRenderer extends DefaultTreeCellRenderer {
         @Override
@@ -912,11 +987,6 @@ public class EntityManagerFrame extends JFrame {
 
             if (value instanceof EntityTreeNode entityNode) {
                 setForeground(entityNode.entity.type().color());
-                if (sel) {
-                    setForeground(new Color(255, 255, 255));
-                }
-            } else if (value instanceof RssTreeNode) {
-                setForeground(CoinEntity.Type.NEWS_SOURCE.color());
                 if (sel) {
                     setForeground(new Color(255, 255, 255));
                 }

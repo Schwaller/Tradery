@@ -66,15 +66,30 @@ public class IntelFrame extends JFrame {
         this.entityStore = new EntityStore();
 
         setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
-        setSize(1800, 1000);
-        setLocationRelativeTo(null);
+
+        // Restore window size/position from config
+        IntelConfig config = IntelConfig.get();
+        setSize(config.getWindowWidth(), config.getWindowHeight());
+        if (config.getWindowX() >= 0 && config.getWindowY() >= 0) {
+            setLocation(config.getWindowX(), config.getWindowY());
+        } else {
+            setLocationRelativeTo(null);
+        }
 
         initUI();
 
-        // Cleanup on close
+        // Save window state and cleanup on close
         addWindowListener(new WindowAdapter() {
             @Override
             public void windowClosing(WindowEvent e) {
+                // Save window position/size
+                IntelConfig cfg = IntelConfig.get();
+                cfg.setWindowWidth(getWidth());
+                cfg.setWindowHeight(getHeight());
+                cfg.setWindowX(getX());
+                cfg.setWindowY(getY());
+                cfg.save();
+
                 if (newsGraphPanel != null) newsGraphPanel.stopPhysics();
                 if (coinGraphPanel != null) coinGraphPanel.stopPhysics();
                 if (entityStore != null) entityStore.close();
@@ -115,6 +130,10 @@ public class IntelFrame extends JFrame {
         JPanel panel = new JPanel(new BorderLayout());
         panel.setBackground(new Color(30, 32, 36));
 
+        // Tab bar with settings button on right
+        JPanel tabBarPanel = new JPanel(new BorderLayout());
+        tabBarPanel.setBackground(new Color(38, 40, 44));
+
         graphTabs = new JTabbedPane();
         graphTabs.setTabPlacement(JTabbedPane.TOP);
         graphTabs.setFont(new Font("SansSerif", Font.BOLD, 12));
@@ -138,7 +157,19 @@ public class IntelFrame extends JFrame {
         newsPanel.add(createNewsStatusBar(), BorderLayout.SOUTH);
         graphTabs.addTab("News", newsPanel);
 
-        panel.add(graphTabs, BorderLayout.CENTER);
+        // Settings button at right of tabs
+        JButton settingsBtn = new JButton("Settings");
+        settingsBtn.setFont(new Font("SansSerif", Font.PLAIN, 11));
+        settingsBtn.setMargin(new Insets(4, 12, 4, 12));
+        settingsBtn.addActionListener(e -> showSettingsWindow());
+        JPanel settingsBtnPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 4));
+        settingsBtnPanel.setOpaque(false);
+        settingsBtnPanel.add(settingsBtn);
+
+        tabBarPanel.add(graphTabs, BorderLayout.CENTER);
+        tabBarPanel.add(settingsBtnPanel, BorderLayout.EAST);
+
+        panel.add(tabBarPanel, BorderLayout.CENTER);
         return panel;
     }
 
@@ -199,22 +230,6 @@ public class IntelFrame extends JFrame {
         resetBtn.addActionListener(e -> coinGraphPanel.resetView());
         toolbar.add(resetBtn);
 
-        JButton refreshBtn = new JButton("Refresh");
-        refreshBtn.addActionListener(e -> loadCoinData(true));
-        toolbar.add(refreshBtn);
-
-        toolbar.addSeparator();
-
-        JButton settingsBtn = new JButton("Settings");
-        settingsBtn.addActionListener(e -> showSettingsWindow());
-        toolbar.add(settingsBtn);
-
-        toolbar.addSeparator();
-
-        JCheckBox labelsCheck = new JCheckBox("Labels", true);
-        labelsCheck.addActionListener(e -> coinGraphPanel.setShowLabels(labelsCheck.isSelected()));
-        toolbar.add(labelsCheck);
-
         return toolbar;
     }
 
@@ -247,10 +262,6 @@ public class IntelFrame extends JFrame {
         fetchBtn.addActionListener(e -> fetchNewArticles());
         toolbar.add(fetchBtn);
 
-        JButton refreshBtn = new JButton("Refresh");
-        refreshBtn.addActionListener(e -> loadNewsData());
-        toolbar.add(refreshBtn);
-
         toolbar.addSeparator();
 
         toolbar.add(new JLabel(" Show: "));
@@ -261,16 +272,6 @@ public class IntelFrame extends JFrame {
             loadNewsData();
         });
         toolbar.add(limitCombo);
-
-        toolbar.addSeparator();
-
-        JCheckBox connectionsCheck = new JCheckBox("Connections", true);
-        connectionsCheck.addActionListener(e -> newsGraphPanel.setShowConnections(connectionsCheck.isSelected()));
-        toolbar.add(connectionsCheck);
-
-        JCheckBox labelsCheck = new JCheckBox("Labels", true);
-        labelsCheck.addActionListener(e -> newsGraphPanel.setShowLabels(labelsCheck.isSelected()));
-        toolbar.add(labelsCheck);
 
         return toolbar;
     }

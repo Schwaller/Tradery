@@ -2,6 +2,8 @@ package com.tradery.news.ui.coin;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.tradery.news.ui.IntelConfig;
+import com.tradery.news.ui.IntelLogPanel;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -11,33 +13,37 @@ import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
 
 /**
- * AI processor for entity discovery using Claude CLI.
+ * AI processor for entity discovery using Claude or Codex CLI.
  */
 public class EntitySearchProcessor {
 
     private static final Logger log = LoggerFactory.getLogger(EntitySearchProcessor.class);
     private static final ObjectMapper mapper = new ObjectMapper();
 
-    private final String claudePath;
-    private final int timeoutSeconds;
-
     public EntitySearchProcessor() {
-        this("claude", 60);
     }
 
-    public EntitySearchProcessor(String claudePath, int timeoutSeconds) {
-        this.claudePath = claudePath;
-        this.timeoutSeconds = timeoutSeconds;
+    private IntelConfig getConfig() {
+        return IntelConfig.get();
+    }
+
+    private String getCliPath() {
+        IntelConfig config = getConfig();
+        return config.getAiProvider() == IntelConfig.AiProvider.CODEX
+            ? config.getCodexPath()
+            : config.getClaudePath();
     }
 
     /**
-     * Check if Claude CLI is available.
+     * Check if selected AI CLI is available.
      */
     public boolean isAvailable() {
         try {
-            ProcessBuilder pb = new ProcessBuilder(claudePath, "--version");
+            String cliPath = getCliPath();
+            ProcessBuilder pb = new ProcessBuilder(cliPath, "--version");
             pb.redirectErrorStream(true);
             Process p = pb.start();
             boolean finished = p.waitFor(5, TimeUnit.SECONDS);
@@ -48,6 +54,13 @@ public class EntitySearchProcessor {
     }
 
     /**
+     * Get the name of the current AI provider.
+     */
+    public String getProviderName() {
+        return getConfig().getAiProvider().name();
+    }
+
+    /**
      * Search for entities related to the given entity.
      *
      * @param entity  The entity to search related entities for
@@ -55,13 +68,58 @@ public class EntitySearchProcessor {
      * @return Search result containing discovered entities
      */
     public SearchResult searchRelated(CoinEntity entity, CoinRelationship.Type relType) {
+        return searchRelated(entity, relType, null);
+    }
+
+    /**
+     * Search for entities related to the given entity with progress logging.
+     *
+     * @param entity  The entity to search related entities for
+     * @param relType The relationship type to search for (null for all)
+     * @param logger  Optional callback for progress logging
+     * @return Search result containing discovered entities
+     */
+    public SearchResult searchRelated(CoinEntity entity, CoinRelationship.Type relType, Consumer<String> logger) {
         String prompt = buildPrompt(entity, relType);
 
+        // Log prompt detail
+        String searchType = relType != null ? relType.name() : "all relationships";
+        String provider = getProviderName();
+        if (logger != null) {
+            logger.accept("[" + provider + "] Finding " + searchType + " for " + entity.name());
+            // Show truncated prompt
+            String shortPrompt = prompt.length() > 200 ? prompt.substring(0, 200) + "..." : prompt;
+            logger.accept("Prompt: " + shortPrompt.replace("\n", " "));
+        }
+        IntelLogPanel.logAI("Prompt: Find " + searchType + " for " + entity.name() + " (" + entity.type() + ")");
+
         try {
-            String json = runClaude(prompt);
-            return parseResult(json);
+            if (logger != null) logger.accept("Calling " + provider + " CLI...");
+            String json = runAiCli(prompt);
+            if (logger != null) logger.accept("Parsing JSON response...");
+            SearchResult result = parseResult(json);
+
+            // Log response summary
+            if (!result.entities().isEmpty()) {
+                StringBuilder sb = new StringBuilder("Found: ");
+                int count = Math.min(5, result.entities().size());
+                for (int i = 0; i < count; i++) {
+                    if (i > 0) sb.append(", ");
+                    DiscoveredEntity e = result.entities().get(i);
+                    sb.append(e.name());
+                    if (e.symbol() != null) sb.append(" (").append(e.symbol()).append(")");
+                }
+                if (result.entities().size() > 5) {
+                    sb.append(" +").append(result.entities().size() - 5).append(" more");
+                }
+                IntelLogPanel.logData(sb.toString());
+                if (logger != null) logger.accept(sb.toString());
+            }
+
+            return result;
         } catch (Exception e) {
             log.error("Failed to search for related entities: {}", e.getMessage());
+            IntelLogPanel.logError("AI error: " + e.getMessage());
             return new SearchResult(List.of(), "Error: " + e.getMessage());
         }
     }
@@ -179,20 +237,39 @@ public class EntitySearchProcessor {
         return String.format("%.0f", marketCap);
     }
 
-    private String runClaude(String prompt) throws Exception {
-        ProcessBuilder pb = new ProcessBuilder(
-            claudePath,
-            "--print",
-            "--output-format", "text",
-            "--model", "haiku"
-        );
+    private String runAiCli(String prompt) throws Exception {
+        IntelConfig config = getConfig();
+        String cliPath = getCliPath();
+        int timeoutSeconds = config.getAiTimeoutSeconds();
+
+        ProcessBuilder pb;
+        if (config.getAiProvider() == IntelConfig.AiProvider.CODEX) {
+            // Codex CLI (OpenAI)
+            pb = new ProcessBuilder(
+                cliPath,
+                "--quiet",
+                "--approval-mode", "full-auto",
+                prompt
+            );
+        } else {
+            // Claude CLI (default)
+            pb = new ProcessBuilder(
+                cliPath,
+                "--print",
+                "--output-format", "text",
+                "--model", "haiku"
+            );
+        }
         pb.redirectErrorStream(true);
 
         Process process = pb.start();
 
-        try (OutputStream stdin = process.getOutputStream()) {
-            stdin.write(prompt.getBytes());
-            stdin.flush();
+        // For Claude, write prompt to stdin
+        if (config.getAiProvider() == IntelConfig.AiProvider.CLAUDE) {
+            try (OutputStream stdin = process.getOutputStream()) {
+                stdin.write(prompt.getBytes());
+                stdin.flush();
+            }
         }
 
         StringBuilder output = new StringBuilder();
@@ -206,11 +283,11 @@ public class EntitySearchProcessor {
         boolean finished = process.waitFor(timeoutSeconds, TimeUnit.SECONDS);
         if (!finished) {
             process.destroyForcibly();
-            throw new RuntimeException("Claude CLI timed out after " + timeoutSeconds + " seconds");
+            throw new RuntimeException(getProviderName() + " CLI timed out after " + timeoutSeconds + " seconds");
         }
 
         if (process.exitValue() != 0) {
-            throw new RuntimeException("Claude CLI failed: " + output);
+            throw new RuntimeException(getProviderName() + " CLI failed: " + output);
         }
 
         return extractJson(output.toString());

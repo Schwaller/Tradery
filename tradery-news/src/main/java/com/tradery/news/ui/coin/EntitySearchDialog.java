@@ -1,5 +1,7 @@
 package com.tradery.news.ui.coin;
 
+import com.tradery.news.ui.IntelLogPanel;
+
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 import java.awt.*;
@@ -25,6 +27,8 @@ public class EntitySearchDialog extends JDialog {
     private JButton addSelectedBtn;
     private JProgressBar progressBar;
     private JLabel statusLabel;
+    private JTextArea logArea;
+    private JScrollPane logScroll;
 
     private final Map<EntitySearchProcessor.DiscoveredEntity, JCheckBox> checkboxMap = new LinkedHashMap<>();
     private List<EntitySearchProcessor.DiscoveredEntity> lastResults = new ArrayList<>();
@@ -49,7 +53,10 @@ public class EntitySearchDialog extends JDialog {
         JPanel topPanel = createTopPanel();
         mainPanel.add(topPanel, BorderLayout.NORTH);
 
-        // Center: Results panel
+        // Center: Results panel with log area
+        JPanel centerPanel = new JPanel(new BorderLayout());
+        centerPanel.setBackground(new Color(38, 40, 44));
+
         resultsPanel = new JPanel();
         resultsPanel.setLayout(new BoxLayout(resultsPanel, BoxLayout.Y_AXIS));
         resultsPanel.setBackground(new Color(35, 37, 41));
@@ -57,7 +64,23 @@ public class EntitySearchDialog extends JDialog {
         resultsScroll = new JScrollPane(resultsPanel);
         resultsScroll.setBorder(BorderFactory.createLineBorder(new Color(60, 62, 66)));
         resultsScroll.getViewport().setBackground(new Color(35, 37, 41));
-        mainPanel.add(resultsScroll, BorderLayout.CENTER);
+        centerPanel.add(resultsScroll, BorderLayout.CENTER);
+
+        // Log area (small, low visibility)
+        logArea = new JTextArea(3, 40);
+        logArea.setBackground(new Color(32, 34, 38));
+        logArea.setForeground(new Color(90, 90, 100));
+        logArea.setFont(new Font("Monospaced", Font.PLAIN, 10));
+        logArea.setEditable(false);
+        logArea.setLineWrap(true);
+        logArea.setWrapStyleWord(true);
+        logScroll = new JScrollPane(logArea);
+        logScroll.setBorder(BorderFactory.createMatteBorder(1, 0, 0, 0, new Color(50, 52, 56)));
+        logScroll.setPreferredSize(new Dimension(0, 60));
+        logScroll.setVisible(false);  // Hidden until search starts
+        centerPanel.add(logScroll, BorderLayout.SOUTH);
+
+        mainPanel.add(centerPanel, BorderLayout.CENTER);
 
         // Bottom: Status and buttons
         JPanel bottomPanel = createBottomPanel();
@@ -205,28 +228,48 @@ public class EntitySearchDialog extends JDialog {
         resultsPanel.removeAll();
         checkboxMap.clear();
 
+        // Show and clear log area
+        logArea.setText("");
+        logScroll.setVisible(true);
+
         RelationshipOption selected = (RelationshipOption) relationshipCombo.getSelectedItem();
         CoinRelationship.Type relType = selected != null ? selected.type() : null;
 
-        CompletableFuture.supplyAsync(() -> processor.searchRelated(sourceEntity, relType))
+        appendLog("Starting AI search for " + sourceEntity.name() + "...");
+        IntelLogPanel.logAI("Searching for entities related to " + sourceEntity.name() + "...");
+
+        CompletableFuture.supplyAsync(() -> processor.searchRelated(sourceEntity, relType, this::appendLog))
             .thenAccept(result -> SwingUtilities.invokeLater(() -> {
                 progressBar.setVisible(false);
                 searchBtn.setEnabled(true);
 
                 if (result.hasError()) {
+                    appendLog("Error: " + result.error());
+                    IntelLogPanel.logError("AI search failed: " + result.error());
                     showMessage("Search failed: " + result.error());
                     return;
                 }
 
                 lastResults = result.entities();
                 if (lastResults.isEmpty()) {
+                    appendLog("No results found.");
+                    IntelLogPanel.logWarn("AI search returned no results for " + sourceEntity.name());
                     showMessage("No related entities found.");
                     return;
                 }
 
+                appendLog("Found " + lastResults.size() + " entities.");
+                IntelLogPanel.logSuccess("AI found " + lastResults.size() + " related entities for " + sourceEntity.name());
                 displayResults(lastResults);
                 statusLabel.setText(lastResults.size() + " entities found");
             }));
+    }
+
+    private void appendLog(String message) {
+        SwingUtilities.invokeLater(() -> {
+            logArea.append(message + "\n");
+            logArea.setCaretPosition(logArea.getDocument().getLength());
+        });
     }
 
     private void displayResults(List<EntitySearchProcessor.DiscoveredEntity> entities) {
@@ -410,10 +453,10 @@ public class EntitySearchDialog extends JDialog {
             }
         }
 
-        JOptionPane.showMessageDialog(this,
-            "Added " + added + " entities and " + relationships + " relationships.",
-            "Success",
-            JOptionPane.INFORMATION_MESSAGE);
+        String msg = "Added " + added + " entities and " + relationships + " relationships.";
+        IntelLogPanel.logSuccess(msg);
+
+        JOptionPane.showMessageDialog(this, msg, "Success", JOptionPane.INFORMATION_MESSAGE);
 
         // Refresh results to show entities as existing
         if (!lastResults.isEmpty()) {

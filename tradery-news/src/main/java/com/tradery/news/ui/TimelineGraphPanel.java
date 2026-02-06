@@ -55,8 +55,13 @@ public class TimelineGraphPanel extends JPanel {
     private boolean showLabels = true;
     private int maxNodes = 500;
 
+    // Config
+    private final IntelConfig config;
+    private Rectangle topicsLabelClickArea;  // Clickable area for topics config
+
 
     public TimelineGraphPanel() {
+        this.config = IntelConfig.get();
         setBackground(new Color(30, 32, 36));
         setPreferredSize(new Dimension(1200, 600));
 
@@ -139,8 +144,9 @@ public class TimelineGraphPanel extends JPanel {
             node.setY(articleZoneTop + 20 + Math.random() * (articleZoneBottom - articleZoneTop - 60));
             newsNodes.add(node);
 
-            // Create/link topic nodes
+            // Create/link topic nodes (skip hidden topics)
             for (String topic : article.topics()) {
+                if (config.isTopicHidden(topic)) continue;
                 TopicNode topicNode = topicMap.computeIfAbsent(topic, t -> {
                     TopicNode tn = new TopicNode(t, formatTopicLabel(t), TopicNode.Type.TOPIC);
                     topicNodes.add(tn);  // Topics go in topicNodes
@@ -164,33 +170,35 @@ public class TimelineGraphPanel extends JPanel {
         }
 
         // Layout: zones proportioned as topics:coins:articles = 2:3:5
-        int topicZoneHeight = usableHeight * 2 / 10;
-        int coinZoneHeight = usableHeight * 3 / 10;
-        int topicZoneTop = MARGIN_TOP;
-        int coinZoneTop = MARGIN_TOP + topicZoneHeight;
+        int totalHeight = getHeight() - MARGIN_BOTTOM;  // Use full height minus bottom margin
+        int topicZoneTop = 20;  // Small top margin for label
+        int topicZoneBottom = totalHeight * 2 / 10;
+        int coinZoneTop = topicZoneBottom;
+        int coinZoneBottom = totalHeight * 5 / 10;
+        int topicZoneHeight = topicZoneBottom - topicZoneTop;
+        int coinZoneHeight = coinZoneBottom - coinZoneTop;
         int width = getWidth() - MARGIN_LEFT - MARGIN_RIGHT;
 
         // Sort by article count for better placement
         topicNodes.sort((a, b) -> Integer.compare(b.articleCount(), a.articleCount()));
         coinNodes.sort((a, b) -> Integer.compare(b.articleCount(), a.articleCount()));
 
-        // Dynamic row count based on node count (max 5 rows for topics, 4 for coins)
-        int topicRowCount = Math.min(5, Math.max(1, (int)Math.ceil(topicNodes.size() / 8.0)));
+        // Topics: evenly distribute rows within zone
+        int topicRowCount = Math.min(3, Math.max(1, (int)Math.ceil(topicNodes.size() / 10.0)));
         int topicsPerRow = (int) Math.ceil(topicNodes.size() / (double) topicRowCount);
+        int topicRowSpacing = topicZoneHeight / (topicRowCount + 1);
         for (int i = 0; i < topicNodes.size(); i++) {
             TopicNode tn = topicNodes.get(i);
             int row = i / Math.max(1, topicsPerRow);
             int indexInRow = i % Math.max(1, topicsPerRow);
             int countInRow = Math.min(topicsPerRow, topicNodes.size() - row * topicsPerRow);
             tn.setX(MARGIN_LEFT + (indexInRow + 0.5) * width / Math.max(1, countInRow));
-            // Evenly space rows within zone (with padding from edges)
-            int rowY = topicZoneTop + 20 + (topicZoneHeight - 40) * row / Math.max(1, topicRowCount - 1);
-            if (topicRowCount == 1) rowY = topicZoneTop + topicZoneHeight / 2;
-            tn.setY(rowY);
+            tn.setY(topicZoneTop + topicRowSpacing * (row + 1));
         }
 
-        // Dynamic row count for coins (max 4 rows)
-        int coinRowCount = Math.min(4, Math.max(1, (int)Math.ceil(coinNodes.size() / 6.0)));
+        // Coins: evenly distribute rows within zone
+        int coinRowCount = Math.min(4, Math.max(1, (int)Math.ceil(coinNodes.size() / 8.0)));
+        int coinRowSpacing = coinZoneHeight / (coinRowCount + 1);
         int[] coinRowCounts = new int[coinRowCount];
         for (int i = 0; i < coinNodes.size(); i++) {
             coinRowCounts[i % coinRowCount]++;
@@ -202,10 +210,7 @@ public class TimelineGraphPanel extends JPanel {
             int indexInRow = coinRowIndices[row]++;
             int countInRow = coinRowCounts[row];
             cn.setX(MARGIN_LEFT + (indexInRow + 0.5) * width / Math.max(1, countInRow));
-            // Evenly space rows within zone (with padding from edges)
-            int rowY = coinZoneTop + 20 + (coinZoneHeight - 40) * row / Math.max(1, coinRowCount - 1);
-            if (coinRowCount == 1) rowY = coinZoneTop + coinZoneHeight / 2;
-            cn.setY(rowY);
+            cn.setY(coinZoneTop + coinRowSpacing * (row + 1));
         }
 
         updateXPositions();
@@ -250,8 +255,9 @@ public class TimelineGraphPanel extends JPanel {
             newsNodes.add(node);
             addedNodes.add(node);
 
-            // Create/link topic nodes
+            // Create/link topic nodes (skip hidden topics)
             for (String topic : article.topics()) {
+                if (config.isTopicHidden(topic)) continue;
                 TopicNode topicNode = topicMap.computeIfAbsent(topic, t -> {
                     TopicNode tn = new TopicNode(t, formatTopicLabel(t), TopicNode.Type.TOPIC);
                     topicNodes.add(tn);
@@ -287,33 +293,35 @@ public class TimelineGraphPanel extends JPanel {
      */
     private void relayoutTopicsAndCoins() {
         // Layout: zones proportioned as topics:coins:articles = 2:3:5
-        int usableHeight = getHeight() - MARGIN_TOP - MARGIN_BOTTOM;
-        int topicZoneHeight = usableHeight * 2 / 10;
-        int coinZoneHeight = usableHeight * 3 / 10;
-        int topicZoneTop = MARGIN_TOP;
-        int coinZoneTop = MARGIN_TOP + topicZoneHeight;
+        int totalHeight = getHeight() - MARGIN_BOTTOM;
+        int topicZoneTop = 20;
+        int topicZoneBottom = totalHeight * 2 / 10;
+        int coinZoneTop = topicZoneBottom;
+        int coinZoneBottom = totalHeight * 5 / 10;
+        int topicZoneHeight = topicZoneBottom - topicZoneTop;
+        int coinZoneHeight = coinZoneBottom - coinZoneTop;
         int width = getWidth() - MARGIN_LEFT - MARGIN_RIGHT;
 
         // Sort by article count
         topicNodes.sort((a, b) -> Integer.compare(b.articleCount(), a.articleCount()));
         coinNodes.sort((a, b) -> Integer.compare(b.articleCount(), a.articleCount()));
 
-        // Dynamic row count for topics
-        int topicRowCount = Math.min(5, Math.max(1, (int)Math.ceil(topicNodes.size() / 8.0)));
+        // Topics: evenly distribute rows within zone
+        int topicRowCount = Math.min(3, Math.max(1, (int)Math.ceil(topicNodes.size() / 10.0)));
         int topicsPerRow = (int) Math.ceil(topicNodes.size() / (double) topicRowCount);
+        int topicRowSpacing = topicZoneHeight / (topicRowCount + 1);
         for (int i = 0; i < topicNodes.size(); i++) {
             TopicNode tn = topicNodes.get(i);
             int row = i / Math.max(1, topicsPerRow);
             int indexInRow = i % Math.max(1, topicsPerRow);
             int countInRow = Math.min(topicsPerRow, topicNodes.size() - row * topicsPerRow);
             tn.setX(MARGIN_LEFT + (indexInRow + 0.5) * width / Math.max(1, countInRow));
-            int rowY = topicZoneTop + 20 + (topicZoneHeight - 40) * row / Math.max(1, topicRowCount - 1);
-            if (topicRowCount == 1) rowY = topicZoneTop + topicZoneHeight / 2;
-            tn.setY(rowY);
+            tn.setY(topicZoneTop + topicRowSpacing * (row + 1));
         }
 
-        // Dynamic row count for coins
-        int coinRowCount = Math.min(4, Math.max(1, (int)Math.ceil(coinNodes.size() / 6.0)));
+        // Coins: evenly distribute rows within zone
+        int coinRowCount = Math.min(4, Math.max(1, (int)Math.ceil(coinNodes.size() / 8.0)));
+        int coinRowSpacing = coinZoneHeight / (coinRowCount + 1);
         int[] coinRowCounts = new int[coinRowCount];
         for (int i = 0; i < coinNodes.size(); i++) {
             coinRowCounts[i % coinRowCount]++;
@@ -325,9 +333,7 @@ public class TimelineGraphPanel extends JPanel {
             int indexInRow = coinRowIndices[row]++;
             int countInRow = coinRowCounts[row];
             cn.setX(MARGIN_LEFT + (indexInRow + 0.5) * width / Math.max(1, countInRow));
-            int rowY = coinZoneTop + 20 + (coinZoneHeight - 40) * row / Math.max(1, coinRowCount - 1);
-            if (coinRowCount == 1) rowY = coinZoneTop + coinZoneHeight / 2;
-            cn.setY(rowY);
+            cn.setY(coinZoneTop + coinRowSpacing * (row + 1));
         }
     }
 
@@ -469,12 +475,10 @@ public class TimelineGraphPanel extends JPanel {
         updateXPositions();
 
         // Calculate zone boundaries (topics:coins:articles = 2:3:5)
-        int usableHeight = getHeight() - MARGIN_TOP - MARGIN_BOTTOM;
-        int topicZoneHeight = usableHeight * 2 / 10;
-        int coinZoneHeight = usableHeight * 3 / 10;
-        int topicZoneTop = MARGIN_TOP;
-        int coinZoneTop = MARGIN_TOP + topicZoneHeight;
-        int articleZoneTop = coinZoneTop + coinZoneHeight;
+        int totalHeight = getHeight() - MARGIN_BOTTOM;
+        int topicZoneTop = 20;
+        int coinZoneTop = totalHeight * 2 / 10;
+        int articleZoneTop = totalHeight * 5 / 10;
         int timelineY = getHeight() - MARGIN_BOTTOM;
 
         // Draw full-width separator lines
@@ -488,7 +492,22 @@ public class TimelineGraphPanel extends JPanel {
         g2.setColor(new Color(100, 100, 110));
         g2.setFont(new Font("SansSerif", Font.BOLD, 10));
         int labelOffset = 8 + g2.getFontMetrics().getAscent();
-        g2.drawString("TOPICS", MARGIN_LEFT, topicZoneTop + labelOffset);
+
+        // Topics label with clickable triangle
+        String topicsLabel = "TOPICS";
+        g2.drawString(topicsLabel, MARGIN_LEFT, labelOffset);
+        int topicsLabelWidth = g2.getFontMetrics().stringWidth(topicsLabel);
+        int triangleX = MARGIN_LEFT + topicsLabelWidth + 6;
+        int triangleY = labelOffset - 6;
+        // Draw triangle (pointing down)
+        int[] xPoints = {triangleX, triangleX + 8, triangleX + 4};
+        int[] yPoints = {triangleY, triangleY, triangleY + 5};
+        g2.setColor(new Color(120, 120, 140));
+        g2.fillPolygon(xPoints, yPoints, 3);
+        // Store clickable area
+        topicsLabelClickArea = new Rectangle(MARGIN_LEFT, 0, topicsLabelWidth + 20, labelOffset + 4);
+
+        g2.setColor(new Color(100, 100, 110));
         g2.drawString("COINS", MARGIN_LEFT, coinZoneTop + labelOffset);
         g2.drawString("NEWS ARTICLES", MARGIN_LEFT, articleZoneTop + labelOffset);
 
@@ -749,6 +768,12 @@ public class TimelineGraphPanel extends JPanel {
     }
 
     private void handleClick(int mx, int my) {
+        // Check for topics label click (config button)
+        if (topicsLabelClickArea != null && topicsLabelClickArea.contains(mx, my)) {
+            showTopicsConfigDialog();
+            return;
+        }
+
         if (selectedNode instanceof NewsNode n) n.setSelected(false);
         if (selectedNode instanceof TopicNode t) t.setSelected(false);
 
@@ -891,5 +916,127 @@ public class TimelineGraphPanel extends JPanel {
     private String formatTime(Instant instant) {
         return LocalDateTime.ofInstant(instant, ZoneId.systemDefault())
             .format(DateTimeFormatter.ofPattern("MMM d HH:mm"));
+    }
+
+    /**
+     * Show dialog to configure topic visibility.
+     */
+    private void showTopicsConfigDialog() {
+        // Collect all known topics
+        Set<String> allTopics = new TreeSet<>();
+        for (NewsNode node : newsNodes) {
+            allTopics.addAll(node.topics());
+        }
+        // Also add currently visible topics
+        for (TopicNode tn : topicNodes) {
+            allTopics.add(tn.id());
+        }
+        // Add hidden topics from config
+        allTopics.addAll(config.getHiddenTopics());
+
+        if (allTopics.isEmpty()) {
+            JOptionPane.showMessageDialog(this, "No topics found", "Topics", JOptionPane.INFORMATION_MESSAGE);
+            return;
+        }
+
+        // Create dialog
+        JDialog dialog = new JDialog(SwingUtilities.getWindowAncestor(this), "Configure Topics", Dialog.ModalityType.APPLICATION_MODAL);
+        dialog.setSize(300, 400);
+        dialog.setLocationRelativeTo(this);
+
+        JPanel panel = new JPanel(new BorderLayout(10, 10));
+        panel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+        panel.setBackground(new Color(38, 40, 44));
+
+        JLabel label = new JLabel("Select topics to show:");
+        label.setForeground(new Color(200, 200, 210));
+        panel.add(label, BorderLayout.NORTH);
+
+        // Checkbox list
+        JPanel checkboxPanel = new JPanel();
+        checkboxPanel.setLayout(new BoxLayout(checkboxPanel, BoxLayout.Y_AXIS));
+        checkboxPanel.setBackground(new Color(35, 37, 41));
+
+        Map<String, JCheckBox> checkboxes = new LinkedHashMap<>();
+        for (String topic : allTopics) {
+            JCheckBox cb = new JCheckBox(formatTopicLabel(topic), !config.isTopicHidden(topic));
+            cb.setBackground(new Color(35, 37, 41));
+            cb.setForeground(new Color(200, 200, 210));
+            checkboxes.put(topic, cb);
+            checkboxPanel.add(cb);
+        }
+
+        JScrollPane scroll = new JScrollPane(checkboxPanel);
+        scroll.setBorder(null);
+        scroll.getViewport().setBackground(new Color(35, 37, 41));
+        panel.add(scroll, BorderLayout.CENTER);
+
+        // Buttons
+        JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
+        buttonPanel.setBackground(new Color(38, 40, 44));
+
+        JButton showAllBtn = new JButton("Show All");
+        showAllBtn.addActionListener(e -> checkboxes.values().forEach(cb -> cb.setSelected(true)));
+        buttonPanel.add(showAllBtn);
+
+        JButton hideAllBtn = new JButton("Hide All");
+        hideAllBtn.addActionListener(e -> checkboxes.values().forEach(cb -> cb.setSelected(false)));
+        buttonPanel.add(hideAllBtn);
+
+        JButton okBtn = new JButton("OK");
+        okBtn.addActionListener(e -> {
+            // Update config
+            for (var entry : checkboxes.entrySet()) {
+                config.setTopicHidden(entry.getKey(), !entry.getValue().isSelected());
+            }
+            config.save();
+            dialog.dispose();
+            // Rebuild topics to apply filter
+            rebuildTopics();
+        });
+        buttonPanel.add(okBtn);
+
+        JButton cancelBtn = new JButton("Cancel");
+        cancelBtn.addActionListener(e -> dialog.dispose());
+        buttonPanel.add(cancelBtn);
+
+        panel.add(buttonPanel, BorderLayout.SOUTH);
+
+        dialog.setContentPane(panel);
+        dialog.setVisible(true);
+    }
+
+    /**
+     * Rebuild topic nodes after config change.
+     */
+    private void rebuildTopics() {
+        // Clear and rebuild only topics (not coins)
+        List<TopicNode> toRemove = new ArrayList<>();
+        for (TopicNode tn : topicNodes) {
+            if (config.isTopicHidden(tn.id())) {
+                toRemove.add(tn);
+                topicMap.remove(tn.id());
+            }
+        }
+        topicNodes.removeAll(toRemove);
+
+        // Re-add any topics that are no longer hidden
+        for (NewsNode news : newsNodes) {
+            for (String topic : news.topics()) {
+                if (!config.isTopicHidden(topic) && !topicMap.containsKey(topic)) {
+                    TopicNode tn = new TopicNode(topic, formatTopicLabel(topic), TopicNode.Type.TOPIC);
+                    topicNodes.add(tn);
+                    topicMap.put(topic, tn);
+                }
+                // Update connections
+                TopicNode topicNode = topicMap.get(topic);
+                if (topicNode != null) {
+                    topicNode.addConnection(news);
+                }
+            }
+        }
+
+        relayoutTopicsAndCoins();
+        repaint();
     }
 }
