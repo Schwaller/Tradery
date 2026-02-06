@@ -958,6 +958,7 @@ public class ProjectWindow extends JFrame {
         }
     }
 
+    @SuppressWarnings("EmptyMethod")
     private void showBacktestError(String error) {
         // Error is already shown in status bar via handleBacktestStatus
         // No popup dialog needed - less intrusive UX

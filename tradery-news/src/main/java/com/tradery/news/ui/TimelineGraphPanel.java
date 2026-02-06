@@ -127,15 +127,16 @@ public class TimelineGraphPanel extends JPanel {
             minTime = maxTime.minus(1, ChronoUnit.HOURS);
         }
 
-        int midY = getHeight() / 2;
-        int lowerTop = midY + 20;
-        int lowerBottom = getHeight() - MARGIN_BOTTOM;
+        // Calculate article zone (topics:coins:articles = 2:3:5)
+        int usableHeight = getHeight() - MARGIN_TOP - MARGIN_BOTTOM;
+        int articleZoneTop = MARGIN_TOP + usableHeight * 5 / 10;  // After topics (2) + coins (3)
+        int articleZoneBottom = getHeight() - MARGIN_BOTTOM;
 
-        // Create news nodes (lower half)
+        // Create news nodes (article zone)
         for (Article article : sorted) {
             existingArticleIds.add(article.id());
             NewsNode node = new NewsNode(article);
-            node.setY(lowerTop + Math.random() * (lowerBottom - lowerTop - 40));
+            node.setY(articleZoneTop + 20 + Math.random() * (articleZoneBottom - articleZoneTop - 60));
             newsNodes.add(node);
 
             // Create/link topic nodes
@@ -162,13 +163,11 @@ public class TimelineGraphPanel extends JPanel {
             }
         }
 
-        // Layout: upper half split evenly between topics and coins
-        // Topics get upper portion, coins get lower portion of upper half
-        int upperHeight = midY - MARGIN_TOP - 20;  // Available height for topics + coins
-        int topicZoneHeight = upperHeight / 2;
-        int coinZoneHeight = upperHeight / 2;
-        int topicY1 = MARGIN_TOP + 20;
-        int coinY1 = MARGIN_TOP + 20 + topicZoneHeight + 10;  // Gap between zones
+        // Layout: zones proportioned as topics:coins:articles = 2:3:5
+        int topicZoneHeight = usableHeight * 2 / 10;
+        int coinZoneHeight = usableHeight * 3 / 10;
+        int topicZoneTop = MARGIN_TOP;
+        int coinZoneTop = MARGIN_TOP + topicZoneHeight;
         int width = getWidth() - MARGIN_LEFT - MARGIN_RIGHT;
 
         // Sort by article count for better placement
@@ -177,11 +176,6 @@ public class TimelineGraphPanel extends JPanel {
 
         // Dynamic row count based on node count (max 5 rows for topics, 4 for coins)
         int topicRowCount = Math.min(5, Math.max(1, (int)Math.ceil(topicNodes.size() / 8.0)));
-        int topicRowSpacing = topicZoneHeight / Math.max(1, topicRowCount);
-        int[] topicYRows = new int[topicRowCount];
-        for (int r = 0; r < topicRowCount; r++) {
-            topicYRows[r] = topicY1 + r * topicRowSpacing;
-        }
         int topicsPerRow = (int) Math.ceil(topicNodes.size() / (double) topicRowCount);
         for (int i = 0; i < topicNodes.size(); i++) {
             TopicNode tn = topicNodes.get(i);
@@ -189,18 +183,15 @@ public class TimelineGraphPanel extends JPanel {
             int indexInRow = i % Math.max(1, topicsPerRow);
             int countInRow = Math.min(topicsPerRow, topicNodes.size() - row * topicsPerRow);
             tn.setX(MARGIN_LEFT + (indexInRow + 0.5) * width / Math.max(1, countInRow));
-            tn.setY(topicYRows[Math.min(row, topicRowCount - 1)]);
+            // Evenly space rows within zone (with padding from edges)
+            int rowY = topicZoneTop + 20 + (topicZoneHeight - 40) * row / Math.max(1, topicRowCount - 1);
+            if (topicRowCount == 1) rowY = topicZoneTop + topicZoneHeight / 2;
+            tn.setY(rowY);
         }
 
         // Dynamic row count for coins (max 4 rows)
         int coinRowCount = Math.min(4, Math.max(1, (int)Math.ceil(coinNodes.size() / 6.0)));
-        int coinRowSpacing = coinZoneHeight / Math.max(1, coinRowCount);
-        int[] coinYRows = new int[coinRowCount];
-        for (int r = 0; r < coinRowCount; r++) {
-            coinYRows[r] = coinY1 + r * coinRowSpacing;
-        }
         int[] coinRowCounts = new int[coinRowCount];
-        // Count how many coins per row (round-robin)
         for (int i = 0; i < coinNodes.size(); i++) {
             coinRowCounts[i % coinRowCount]++;
         }
@@ -211,7 +202,10 @@ public class TimelineGraphPanel extends JPanel {
             int indexInRow = coinRowIndices[row]++;
             int countInRow = coinRowCounts[row];
             cn.setX(MARGIN_LEFT + (indexInRow + 0.5) * width / Math.max(1, countInRow));
-            cn.setY(coinYRows[row]);
+            // Evenly space rows within zone (with padding from edges)
+            int rowY = coinZoneTop + 20 + (coinZoneHeight - 40) * row / Math.max(1, coinRowCount - 1);
+            if (coinRowCount == 1) rowY = coinZoneTop + coinZoneHeight / 2;
+            cn.setY(rowY);
         }
 
         updateXPositions();
@@ -235,9 +229,10 @@ public class TimelineGraphPanel extends JPanel {
             return 0;
         }
 
-        int midY = getHeight() / 2;
-        int lowerTop = midY + 20;
-        int lowerBottom = getHeight() - MARGIN_BOTTOM;
+        // Calculate article zone (topics:coins:articles = 2:3:5)
+        int usableHeight = getHeight() - MARGIN_TOP - MARGIN_BOTTOM;
+        int articleZoneTop = MARGIN_TOP + usableHeight * 5 / 10;
+        int articleZoneBottom = getHeight() - MARGIN_BOTTOM;
 
         // Update time range if needed
         for (Article article : newArticles) {
@@ -251,7 +246,7 @@ public class TimelineGraphPanel extends JPanel {
         for (Article article : newArticles) {
             existingArticleIds.add(article.id());
             NewsNode node = new NewsNode(article);
-            node.setY(lowerTop + Math.random() * (lowerBottom - lowerTop - 40));
+            node.setY(articleZoneTop + 20 + Math.random() * (articleZoneBottom - articleZoneTop - 60));
             newsNodes.add(node);
             addedNodes.add(node);
 
@@ -291,12 +286,12 @@ public class TimelineGraphPanel extends JPanel {
      * Re-layout topic and coin nodes without changing news node positions.
      */
     private void relayoutTopicsAndCoins() {
-        int midY = getHeight() / 2;
-        int upperHeight = midY - MARGIN_TOP - 20;
-        int topicZoneHeight = upperHeight / 2;
-        int coinZoneHeight = upperHeight / 2;
-        int topicY1 = MARGIN_TOP + 20;
-        int coinY1 = MARGIN_TOP + 20 + topicZoneHeight + 10;
+        // Layout: zones proportioned as topics:coins:articles = 2:3:5
+        int usableHeight = getHeight() - MARGIN_TOP - MARGIN_BOTTOM;
+        int topicZoneHeight = usableHeight * 2 / 10;
+        int coinZoneHeight = usableHeight * 3 / 10;
+        int topicZoneTop = MARGIN_TOP;
+        int coinZoneTop = MARGIN_TOP + topicZoneHeight;
         int width = getWidth() - MARGIN_LEFT - MARGIN_RIGHT;
 
         // Sort by article count
@@ -305,11 +300,6 @@ public class TimelineGraphPanel extends JPanel {
 
         // Dynamic row count for topics
         int topicRowCount = Math.min(5, Math.max(1, (int)Math.ceil(topicNodes.size() / 8.0)));
-        int topicRowSpacing = topicZoneHeight / Math.max(1, topicRowCount);
-        int[] topicYRows = new int[topicRowCount];
-        for (int r = 0; r < topicRowCount; r++) {
-            topicYRows[r] = topicY1 + r * topicRowSpacing;
-        }
         int topicsPerRow = (int) Math.ceil(topicNodes.size() / (double) topicRowCount);
         for (int i = 0; i < topicNodes.size(); i++) {
             TopicNode tn = topicNodes.get(i);
@@ -317,16 +307,13 @@ public class TimelineGraphPanel extends JPanel {
             int indexInRow = i % Math.max(1, topicsPerRow);
             int countInRow = Math.min(topicsPerRow, topicNodes.size() - row * topicsPerRow);
             tn.setX(MARGIN_LEFT + (indexInRow + 0.5) * width / Math.max(1, countInRow));
-            tn.setY(topicYRows[Math.min(row, topicRowCount - 1)]);
+            int rowY = topicZoneTop + 20 + (topicZoneHeight - 40) * row / Math.max(1, topicRowCount - 1);
+            if (topicRowCount == 1) rowY = topicZoneTop + topicZoneHeight / 2;
+            tn.setY(rowY);
         }
 
         // Dynamic row count for coins
         int coinRowCount = Math.min(4, Math.max(1, (int)Math.ceil(coinNodes.size() / 6.0)));
-        int coinRowSpacing = coinZoneHeight / Math.max(1, coinRowCount);
-        int[] coinYRows = new int[coinRowCount];
-        for (int r = 0; r < coinRowCount; r++) {
-            coinYRows[r] = coinY1 + r * coinRowSpacing;
-        }
         int[] coinRowCounts = new int[coinRowCount];
         for (int i = 0; i < coinNodes.size(); i++) {
             coinRowCounts[i % coinRowCount]++;
@@ -338,7 +325,9 @@ public class TimelineGraphPanel extends JPanel {
             int indexInRow = coinRowIndices[row]++;
             int countInRow = coinRowCounts[row];
             cn.setX(MARGIN_LEFT + (indexInRow + 0.5) * width / Math.max(1, countInRow));
-            cn.setY(coinYRows[row]);
+            int rowY = coinZoneTop + 20 + (coinZoneHeight - 40) * row / Math.max(1, coinRowCount - 1);
+            if (coinRowCount == 1) rowY = coinZoneTop + coinZoneHeight / 2;
+            cn.setY(rowY);
         }
     }
 
@@ -372,15 +361,15 @@ public class TimelineGraphPanel extends JPanel {
     private void runPhysicsStep() {
         if (newsNodes.isEmpty()) return;
 
-        int midY = getHeight() / 2;
         double damping = 0.85;
         double repulsion = 400;
         double topicAttraction = 0.02;
 
-        // Physics for news nodes (lower half, Y only)
-        int lowerTop = midY + 30;
-        int lowerBottom = getHeight() - MARGIN_BOTTOM - 10;
-        double newsCenterY = (lowerTop + lowerBottom) / 2.0;
+        // Calculate article zone (topics:coins:articles = 2:3:5)
+        int usableHeight = getHeight() - MARGIN_TOP - MARGIN_BOTTOM;
+        int articleZoneTop = MARGIN_TOP + usableHeight * 5 / 10 + 20;
+        int articleZoneBottom = getHeight() - MARGIN_BOTTOM - 10;
+        double newsCenterY = (articleZoneTop + articleZoneBottom) / 2.0;
 
         for (NewsNode node : newsNodes) {
             // Skip physics for dragged node
@@ -400,12 +389,12 @@ public class TimelineGraphPanel extends JPanel {
                 }
             }
 
-            // Weak pull toward center of lower half
+            // Weak pull toward center of article zone
             fy += (newsCenterY - node.y()) * 0.001;
 
             node.setVy((node.vy() + fy) * damping);
             node.setY(node.y() + node.vy());
-            node.setY(Math.max(lowerTop, Math.min(lowerBottom, node.y())));
+            node.setY(Math.max(articleZoneTop, Math.min(articleZoneBottom, node.y())));
         }
 
         // Gentle X-axis physics for topics (stay on fixed Y line)
@@ -479,27 +468,29 @@ public class TimelineGraphPanel extends JPanel {
 
         updateXPositions();
 
-        int midY = getHeight() / 2;
-
-        // Calculate zone boundaries
-        int upperHeight = midY - MARGIN_TOP - 20;
-        int topicZoneHeight = upperHeight / 2;
-        int coinY1 = MARGIN_TOP + 20 + topicZoneHeight + 10;
+        // Calculate zone boundaries (topics:coins:articles = 2:3:5)
+        int usableHeight = getHeight() - MARGIN_TOP - MARGIN_BOTTOM;
+        int topicZoneHeight = usableHeight * 2 / 10;
+        int coinZoneHeight = usableHeight * 3 / 10;
+        int topicZoneTop = MARGIN_TOP;
+        int coinZoneTop = MARGIN_TOP + topicZoneHeight;
+        int articleZoneTop = coinZoneTop + coinZoneHeight;
         int timelineY = getHeight() - MARGIN_BOTTOM;
 
         // Draw full-width separator lines
         g2.setColor(new Color(50, 52, 56));
         g2.setStroke(new BasicStroke(1f));
-        g2.drawLine(0, coinY1 - 15, getWidth(), coinY1 - 15);  // Between topics and coins
-        g2.drawLine(0, midY, getWidth(), midY);                 // Between coins and news
-        g2.drawLine(0, timelineY, getWidth(), timelineY);       // Timeline separator
+        g2.drawLine(0, coinZoneTop, getWidth(), coinZoneTop);       // Between topics and coins
+        g2.drawLine(0, articleZoneTop, getWidth(), articleZoneTop); // Between coins and articles
+        g2.drawLine(0, timelineY, getWidth(), timelineY);           // Timeline separator
 
-        // Labels for each zone
+        // Labels for each zone (8px from zone top + font ascent)
         g2.setColor(new Color(100, 100, 110));
         g2.setFont(new Font("SansSerif", Font.BOLD, 10));
-        g2.drawString("TOPICS", MARGIN_LEFT, MARGIN_TOP + 8);
-        g2.drawString("COINS", MARGIN_LEFT, coinY1 - 8);
-        g2.drawString("NEWS ARTICLES", MARGIN_LEFT, midY + 15);
+        int labelOffset = 8 + g2.getFontMetrics().getAscent();
+        g2.drawString("TOPICS", MARGIN_LEFT, topicZoneTop + labelOffset);
+        g2.drawString("COINS", MARGIN_LEFT, coinZoneTop + labelOffset);
+        g2.drawString("NEWS ARTICLES", MARGIN_LEFT, articleZoneTop + labelOffset);
 
         // Draw time axis
         drawTimeAxis(g2);
@@ -833,7 +824,6 @@ public class TimelineGraphPanel extends JPanel {
 
         int leftBound = MARGIN_LEFT + 30;
         int rightBound = getWidth() - MARGIN_RIGHT - 30;
-        int midY = getHeight() / 2;
 
         if (draggedNode instanceof TopicNode topic) {
             // Topics/coins drag on X axis only (Y is fixed)
@@ -842,9 +832,10 @@ public class TimelineGraphPanel extends JPanel {
             topic.setVx(0);  // Stop physics momentum
         } else if (draggedNode instanceof NewsNode news) {
             // News nodes drag on Y axis only (X is time-locked)
-            int lowerTop = midY + 30;
-            int lowerBottom = getHeight() - MARGIN_BOTTOM - 10;
-            double newY = Math.max(lowerTop, Math.min(lowerBottom, my));
+            int usableHeight = getHeight() - MARGIN_TOP - MARGIN_BOTTOM;
+            int articleZoneTop = MARGIN_TOP + usableHeight * 5 / 10 + 20;
+            int articleZoneBottom = getHeight() - MARGIN_BOTTOM - 10;
+            double newY = Math.max(articleZoneTop, Math.min(articleZoneBottom, my));
             news.setY(newY);
             news.setVy(0);  // Stop physics momentum
         }
