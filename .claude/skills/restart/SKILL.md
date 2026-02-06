@@ -9,16 +9,15 @@ Kill any running Tradery instance and start fresh.
 
 ## Modules
 
-The project has multiple runnable modules. Unless the user specifies otherwise, restart **tradery-forge** (the main UI app).
+The project has multiple runnable modules. **Restart the module you're currently working on** — infer from context (e.g., if editing tradery-news files, restart intel).
 
-| Module | Gradle Task | Description |
-|--------|-------------|-------------|
-| **tradery-forge** | `./gradlew :tradery-forge:run` | Main UI app (default) |
-| **tradery-data-service** | `./gradlew :tradery-data-service:run` | Background data service |
-| **tradery-desk** | `./gradlew :tradery-desk:run` | Real-time signal desk |
-| **tradery-runner** | `./gradlew :tradery-runner:run` | Strategy runner |
-
-**IMPORTANT:** Do NOT use bare `./gradlew run` — it runs the data service, not the main app.
+| Module | Start Script | Kill Script | Description |
+|--------|--------------|-------------|-------------|
+| **tradery-forge** | `scripts/start-forge.sh` | `scripts/kill-forge.sh` | Main UI app |
+| **tradery-news** | `scripts/start-intel.sh` | `scripts/kill-intel.sh` | Intel/news app |
+| **tradery-data-service** | `scripts/start-data-service.sh` | `scripts/kill-data-service.sh` | Background data service |
+| **tradery-desk** | `scripts/start-desk.sh` | `scripts/kill-desk.sh` | Real-time signal desk |
+| **tradery-runner** | `./gradlew :tradery-runner:run` | - | Strategy runner |
 
 ## Instructions
 
@@ -29,11 +28,14 @@ The project has multiple runnable modules. Unless the user specifies otherwise, 
    sleep 1
    ```
 
-2. Start **both** the data service and forge in background (data service first, forge depends on it):
+2. Start data service first (all apps depend on it), then the app:
    ```bash
-   cd /Users/martinschwaller/Code/Tradery && ./gradlew :tradery-data-service:run &
-   sleep 3
-   cd /Users/martinschwaller/Code/Tradery && ./gradlew :tradery-forge:run &
+   scripts/start-data-service.sh && sleep 2 && scripts/start-forge.sh
+   ```
+
+   Or for intel:
+   ```bash
+   scripts/start-data-service.sh && sleep 2 && scripts/start-intel.sh
    ```
 
 ## Data Service Log
@@ -45,8 +47,7 @@ curl -s "http://localhost:$(cat ~/.tradery/dataservice.port)/logs?lines=50"
 
 ## Notes
 
-- Always run in background (`&`) so Claude Code isn't blocked
-- The `|| true` ensures no failure if nothing is running
-- Start data service before forge — forge connects to it for aggTrades, funding, etc.
+- **Use scripts, not gradle commands directly**
+- Start data service before any app — they connect to it for aggTrades, funding, etc.
 - App window appears within a few seconds
 - Strategies auto-reload from `~/.tradery/strategies/` on file changes

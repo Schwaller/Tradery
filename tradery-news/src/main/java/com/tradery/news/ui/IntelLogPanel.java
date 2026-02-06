@@ -2,27 +2,23 @@ package com.tradery.news.ui;
 
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
-import javax.swing.text.*;
 import java.awt.*;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 
 /**
  * Log panel for displaying AI interactions, data processing events, and system messages.
+ * Supports expandable entries with detailed view for AI prompts/responses.
  */
 public class IntelLogPanel extends JPanel {
 
     private static final DateTimeFormatter TIME_FMT = DateTimeFormatter.ofPattern("HH:mm:ss");
+    private static final int MAX_ENTRIES = 200;
 
-    private final JTextPane logPane;
-    private final StyledDocument doc;
-    private final Style timestampStyle;
-    private final Style infoStyle;
-    private final Style successStyle;
-    private final Style warningStyle;
-    private final Style errorStyle;
-    private final Style aiStyle;
-    private final Style dataStyle;
+    private final DefaultListModel<LogEntry> listModel;
+    private final JList<LogEntry> entryList;
+    private final JTextArea detailArea;
+    private final JSplitPane splitPane;
 
     private static IntelLogPanel instance;
 
@@ -49,44 +45,66 @@ public class IntelLogPanel extends JPanel {
 
         add(header, BorderLayout.NORTH);
 
-        // Log pane
-        logPane = new JTextPane();
-        logPane.setEditable(false);
-        logPane.setBackground(new Color(25, 27, 31));
-        logPane.setFont(new Font("JetBrains Mono", Font.PLAIN, 11));
-        logPane.setBorder(new EmptyBorder(8, 8, 8, 8));
+        // Entry list
+        listModel = new DefaultListModel<>();
+        entryList = new JList<>(listModel);
+        entryList.setBackground(new Color(25, 27, 31));
+        entryList.setForeground(new Color(180, 180, 190));
+        entryList.setSelectionBackground(new Color(50, 60, 80));
+        entryList.setSelectionForeground(new Color(220, 220, 230));
+        entryList.setFont(new Font("JetBrains Mono", Font.PLAIN, 11));
+        entryList.setCellRenderer(new LogEntryCellRenderer());
+        entryList.addListSelectionListener(e -> {
+            if (!e.getValueIsAdjusting()) {
+                showEntryDetail(entryList.getSelectedValue());
+            }
+        });
 
-        doc = logPane.getStyledDocument();
+        JScrollPane listScroll = new JScrollPane(entryList);
+        listScroll.setBorder(null);
+        listScroll.getVerticalScrollBar().setUnitIncrement(16);
 
-        // Define styles
-        timestampStyle = doc.addStyle("timestamp", null);
-        StyleConstants.setForeground(timestampStyle, new Color(100, 100, 110));
-        StyleConstants.setFontSize(timestampStyle, 10);
+        // Detail area
+        detailArea = new JTextArea();
+        detailArea.setEditable(false);
+        detailArea.setBackground(new Color(20, 22, 26));
+        detailArea.setForeground(new Color(160, 160, 170));
+        detailArea.setFont(new Font("JetBrains Mono", Font.PLAIN, 10));
+        detailArea.setBorder(new EmptyBorder(8, 8, 8, 8));
+        detailArea.setLineWrap(true);
+        detailArea.setWrapStyleWord(true);
+        detailArea.setText("Select a log entry to view details");
 
-        infoStyle = doc.addStyle("info", null);
-        StyleConstants.setForeground(infoStyle, new Color(180, 180, 190));
+        JScrollPane detailScroll = new JScrollPane(detailArea);
+        detailScroll.setBorder(BorderFactory.createMatteBorder(1, 0, 0, 0, new Color(50, 52, 56)));
 
-        successStyle = doc.addStyle("success", null);
-        StyleConstants.setForeground(successStyle, new Color(100, 200, 120));
+        // Split pane
+        splitPane = new JSplitPane(JSplitPane.VERTICAL_SPLIT, listScroll, detailScroll);
+        splitPane.setDividerLocation(150);
+        splitPane.setDividerSize(4);
+        splitPane.setBorder(null);
+        splitPane.setBackground(new Color(30, 32, 36));
 
-        warningStyle = doc.addStyle("warning", null);
-        StyleConstants.setForeground(warningStyle, new Color(220, 180, 80));
-
-        errorStyle = doc.addStyle("error", null);
-        StyleConstants.setForeground(errorStyle, new Color(220, 100, 100));
-
-        aiStyle = doc.addStyle("ai", null);
-        StyleConstants.setForeground(aiStyle, new Color(150, 130, 255));
-
-        dataStyle = doc.addStyle("data", null);
-        StyleConstants.setForeground(dataStyle, new Color(100, 180, 220));
-
-        JScrollPane scroll = new JScrollPane(logPane);
-        scroll.setBorder(null);
-        scroll.getVerticalScrollBar().setUnitIncrement(16);
-        add(scroll, BorderLayout.CENTER);
+        add(splitPane, BorderLayout.CENTER);
 
         instance = this;
+    }
+
+    private void showEntryDetail(LogEntry entry) {
+        if (entry == null) {
+            detailArea.setText("Select a log entry to view details");
+            detailArea.setForeground(new Color(100, 100, 110));
+            return;
+        }
+
+        detailArea.setForeground(entry.type.color);
+
+        if (entry.detail != null && !entry.detail.isEmpty()) {
+            detailArea.setText(entry.detail);
+        } else {
+            detailArea.setText(entry.message);
+        }
+        detailArea.setCaretPosition(0);
     }
 
     /**
@@ -96,106 +114,82 @@ public class IntelLogPanel extends JPanel {
         return instance;
     }
 
-    /**
-     * Log an info message.
-     */
+    // ==================== Logging methods ====================
+
     public void info(String message) {
-        log(message, infoStyle, null);
+        addEntry(new LogEntry(LogType.INFO, message, null));
     }
 
-    /**
-     * Log a success message.
-     */
+    public void info(String message, String detail) {
+        addEntry(new LogEntry(LogType.INFO, message, detail));
+    }
+
     public void success(String message) {
-        log(message, successStyle, "OK");
+        addEntry(new LogEntry(LogType.SUCCESS, message, null));
     }
 
-    /**
-     * Log a warning message.
-     */
     public void warn(String message) {
-        log(message, warningStyle, "WARN");
+        addEntry(new LogEntry(LogType.WARNING, message, null));
     }
 
-    /**
-     * Log an error message.
-     */
     public void error(String message) {
-        log(message, errorStyle, "ERR");
+        addEntry(new LogEntry(LogType.ERROR, message, null));
     }
 
-    /**
-     * Log an AI-related message.
-     */
+    public void error(String message, String detail) {
+        addEntry(new LogEntry(LogType.ERROR, message, detail));
+    }
+
     public void ai(String message) {
-        log(message, aiStyle, "AI");
+        addEntry(new LogEntry(LogType.AI, message, null));
     }
 
-    /**
-     * Log a data processing message.
-     */
+    public void ai(String summary, String prompt, String response) {
+        StringBuilder detail = new StringBuilder();
+        if (prompt != null) {
+            detail.append("━━━ PROMPT ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
+            detail.append(prompt);
+            detail.append("\n\n");
+        }
+        if (response != null) {
+            detail.append("━━━ RESPONSE ━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
+            detail.append(response);
+        }
+        addEntry(new LogEntry(LogType.AI, summary, detail.toString()));
+    }
+
     public void data(String message) {
-        log(message, dataStyle, "DATA");
+        addEntry(new LogEntry(LogType.DATA, message, null));
     }
 
-    private void log(String message, Style style, String tag) {
+    private void addEntry(LogEntry entry) {
         SwingUtilities.invokeLater(() -> {
-            try {
-                String timestamp = LocalTime.now().format(TIME_FMT);
-                doc.insertString(doc.getLength(), timestamp + " ", timestampStyle);
+            listModel.addElement(entry);
 
-                if (tag != null) {
-                    Style tagStyle = style;
-                    doc.insertString(doc.getLength(), "[" + tag + "] ", tagStyle);
-                }
-
-                doc.insertString(doc.getLength(), message + "\n", style);
-
-                // Auto-scroll to bottom
-                logPane.setCaretPosition(doc.getLength());
-
-                // Limit log size (keep last 500 lines)
-                trimLog(500);
-            } catch (BadLocationException e) {
-                // Ignore
+            // Trim old entries
+            while (listModel.size() > MAX_ENTRIES) {
+                listModel.remove(0);
             }
+
+            // Auto-scroll to bottom
+            entryList.ensureIndexIsVisible(listModel.size() - 1);
         });
     }
 
-    private void trimLog(int maxLines) {
-        try {
-            String text = doc.getText(0, doc.getLength());
-            int lines = text.split("\n").length;
-            if (lines > maxLines) {
-                int removeLines = lines - maxLines;
-                int pos = 0;
-                for (int i = 0; i < removeLines; i++) {
-                    int next = text.indexOf('\n', pos);
-                    if (next >= 0) pos = next + 1;
-                }
-                if (pos > 0) {
-                    doc.remove(0, pos);
-                }
-            }
-        } catch (BadLocationException e) {
-            // Ignore
-        }
-    }
-
-    /**
-     * Clear all log entries.
-     */
     public void clear() {
-        try {
-            doc.remove(0, doc.getLength());
-        } catch (BadLocationException e) {
-            // Ignore
-        }
+        listModel.clear();
+        detailArea.setText("Select a log entry to view details");
+        detailArea.setForeground(new Color(100, 100, 110));
     }
 
-    // Static convenience methods
+    // ==================== Static convenience methods ====================
+
     public static void logInfo(String message) {
         if (instance != null) instance.info(message);
+    }
+
+    public static void logInfo(String message, String detail) {
+        if (instance != null) instance.info(message, detail);
     }
 
     public static void logSuccess(String message) {
@@ -210,11 +204,77 @@ public class IntelLogPanel extends JPanel {
         if (instance != null) instance.error(message);
     }
 
+    public static void logError(String message, String detail) {
+        if (instance != null) instance.error(message, detail);
+    }
+
     public static void logAI(String message) {
         if (instance != null) instance.ai(message);
     }
 
+    public static void logAI(String summary, String prompt, String response) {
+        if (instance != null) instance.ai(summary, prompt, response);
+    }
+
     public static void logData(String message) {
         if (instance != null) instance.data(message);
+    }
+
+    // ==================== Inner classes ====================
+
+    public enum LogType {
+        INFO("INFO", new Color(180, 180, 190)),
+        SUCCESS("OK", new Color(100, 200, 120)),
+        WARNING("WARN", new Color(220, 180, 80)),
+        ERROR("ERR", new Color(220, 100, 100)),
+        AI("AI", new Color(150, 130, 255)),
+        DATA("DATA", new Color(100, 180, 220));
+
+        final String tag;
+        final Color color;
+
+        LogType(String tag, Color color) {
+            this.tag = tag;
+            this.color = color;
+        }
+    }
+
+    public static class LogEntry {
+        final LocalTime time;
+        final LogType type;
+        final String message;
+        final String detail;  // Optional expanded content
+
+        LogEntry(LogType type, String message, String detail) {
+            this.time = LocalTime.now();
+            this.type = type;
+            this.message = message;
+            this.detail = detail;
+        }
+
+        boolean hasDetail() {
+            return detail != null && !detail.isEmpty();
+        }
+    }
+
+    private static class LogEntryCellRenderer extends DefaultListCellRenderer {
+        @Override
+        public Component getListCellRendererComponent(JList<?> list, Object value, int index,
+                                                      boolean isSelected, boolean cellHasFocus) {
+            super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus);
+
+            if (value instanceof LogEntry entry) {
+                String timestamp = entry.time.format(TIME_FMT);
+                String prefix = entry.hasDetail() ? "▸ " : "  ";
+                setText(prefix + timestamp + " [" + entry.type.tag + "] " + entry.message);
+
+                if (!isSelected) {
+                    setForeground(entry.type.color);
+                }
+                setBackground(isSelected ? new Color(50, 60, 80) : new Color(25, 27, 31));
+            }
+
+            return this;
+        }
     }
 }

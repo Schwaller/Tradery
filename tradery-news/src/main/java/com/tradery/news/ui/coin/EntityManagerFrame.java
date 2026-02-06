@@ -326,6 +326,33 @@ public class EntityManagerFrame extends JFrame {
         codexField.setCaretColor(new Color(200, 200, 210));
         formPanel.add(codexField, fieldGbc);
 
+        // Custom command
+        labelGbc.gridx = 0; labelGbc.gridy = row;
+        JLabel customLabel = new JLabel("Custom command:");
+        customLabel.setForeground(new Color(180, 180, 190));
+        formPanel.add(customLabel, labelGbc);
+
+        fieldGbc.gridx = 1; fieldGbc.gridy = row++;
+        JTextField customField = new JTextField(config.getCustomCommand());
+        customField.setBackground(new Color(60, 62, 66));
+        customField.setForeground(new Color(200, 200, 210));
+        customField.setCaretColor(new Color(200, 200, 210));
+        customField.setToolTipText("Full command with args. Prompt appended as last argument.");
+        formPanel.add(customField, fieldGbc);
+
+        // Visibility updater for path fields
+        Runnable updateFieldVisibility = () -> {
+            IntelConfig.AiProvider selected = (IntelConfig.AiProvider) providerCombo.getSelectedItem();
+            claudeLabel.setVisible(selected == IntelConfig.AiProvider.CLAUDE);
+            claudeField.setVisible(selected == IntelConfig.AiProvider.CLAUDE);
+            codexLabel.setVisible(selected == IntelConfig.AiProvider.CODEX);
+            codexField.setVisible(selected == IntelConfig.AiProvider.CODEX);
+            customLabel.setVisible(selected == IntelConfig.AiProvider.CUSTOM);
+            customField.setVisible(selected == IntelConfig.AiProvider.CUSTOM);
+        };
+        providerCombo.addActionListener(e -> updateFieldVisibility.run());
+        updateFieldVisibility.run();
+
         // Timeout
         labelGbc.gridx = 0; labelGbc.gridy = row;
         JLabel timeoutLabel = new JLabel("Timeout (seconds):");
@@ -338,7 +365,7 @@ public class EntityManagerFrame extends JFrame {
 
         // Test button
         labelGbc.gridx = 0; labelGbc.gridy = row;
-        formPanel.add(new JLabel(), labelGbc);  // Empty label for alignment
+        formPanel.add(new JLabel(), labelGbc);
 
         fieldGbc.gridx = 1; fieldGbc.gridy = row++;
         JPanel testPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
@@ -347,12 +374,12 @@ public class EntityManagerFrame extends JFrame {
         testPanel.add(testBtn);
         formPanel.add(testPanel, fieldGbc);
 
-        // Test log area
+        // Test log area (taller for more detail)
         labelGbc.gridx = 0; labelGbc.gridy = row;
         formPanel.add(new JLabel(), labelGbc);
 
         fieldGbc.gridx = 1; fieldGbc.gridy = row++;
-        JTextArea testLogArea = new JTextArea(4, 40);
+        JTextArea testLogArea = new JTextArea(8, 40);
         testLogArea.setFont(new Font("Monospaced", Font.PLAIN, 10));
         testLogArea.setBackground(new Color(35, 37, 41));
         testLogArea.setForeground(new Color(140, 140, 150));
@@ -366,6 +393,7 @@ public class EntityManagerFrame extends JFrame {
             (IntelConfig.AiProvider) providerCombo.getSelectedItem(),
             claudeField.getText().trim(),
             codexField.getText().trim(),
+            customField.getText().trim(),
             testLogArea,
             testBtn
         ));
@@ -386,6 +414,7 @@ public class EntityManagerFrame extends JFrame {
             config.setAiProvider((IntelConfig.AiProvider) providerCombo.getSelectedItem());
             config.setClaudePath(claudeField.getText().trim());
             config.setCodexPath(codexField.getText().trim());
+            config.setCustomCommand(customField.getText().trim());
             config.setAiTimeoutSeconds((Integer) timeoutSpinner.getValue());
             config.save();
             JOptionPane.showMessageDialog(this, "Settings saved.", "Saved", JOptionPane.INFORMATION_MESSAGE);
@@ -1037,11 +1066,10 @@ public class EntityManagerFrame extends JFrame {
     }
 
     private void testAiConnection(IntelConfig.AiProvider provider, String claudePath, String codexPath,
-                                    JTextArea logArea, JButton testBtn) {
+                                    String customCommand, JTextArea logArea, JButton testBtn) {
         testBtn.setEnabled(false);
         logArea.setText("");
 
-        String cliPath = provider == IntelConfig.AiProvider.CODEX ? codexPath : claudePath;
         String providerName = provider.name();
 
         Consumer<String> log = msg -> SwingUtilities.invokeLater(() -> {
@@ -1049,8 +1077,18 @@ public class EntityManagerFrame extends JFrame {
             logArea.setCaretPosition(logArea.getDocument().getLength());
         });
 
+        // Determine CLI path based on provider
+        String cliPath = switch (provider) {
+            case CLAUDE -> claudePath;
+            case CODEX -> codexPath;
+            case CUSTOM -> {
+                if (customCommand == null || customCommand.isBlank()) yield "";
+                yield customCommand.split("\\s+")[0];
+            }
+        };
+
         if (cliPath == null || cliPath.trim().isEmpty()) {
-            log.accept("❌ Path not configured for " + providerName);
+            log.accept("❌ Path/command not configured for " + providerName);
             testBtn.setEnabled(true);
             return;
         }
@@ -1060,49 +1098,139 @@ public class EntityManagerFrame extends JFrame {
         IntelConfig.AiProvider originalProvider = config.getAiProvider();
         String originalClaudePath = config.getClaudePath();
         String originalCodexPath = config.getCodexPath();
+        String originalCustomCommand = config.getCustomCommand();
 
         config.setAiProvider(provider);
         config.setClaudePath(claudePath);
         config.setCodexPath(codexPath);
+        config.setCustomCommand(customCommand);
 
         new Thread(() -> {
-            log.accept("🔍 Checking " + providerName + " CLI at: " + cliPath);
-
-            AiClient aiClient = AiClient.getInstance();
-
-            // Step 1: Check version
-            String version;
             try {
-                version = aiClient.getVersion();
-                log.accept("✓ Found: " + version);
+                // Step 1: Check CLI exists
+                log.accept("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+                log.accept("Step 1: Checking CLI availability");
+                log.accept("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+                log.accept("Provider: " + providerName);
+                log.accept("CLI path: " + cliPath);
+                log.accept("Running: " + cliPath + " --version");
+
+                ProcessBuilder versionPb = new ProcessBuilder(cliPath, "--version");
+                versionPb.redirectErrorStream(true);
+                Process versionProcess = versionPb.start();
+
+                StringBuilder versionOutput = new StringBuilder();
+                try (var reader = new java.io.BufferedReader(new java.io.InputStreamReader(versionProcess.getInputStream()))) {
+                    String line;
+                    while ((line = reader.readLine()) != null) {
+                        versionOutput.append(line);
+                        log.accept("  → " + line);
+                    }
+                }
+
+                boolean versionFinished = versionProcess.waitFor(10, java.util.concurrent.TimeUnit.SECONDS);
+                if (!versionFinished) {
+                    versionProcess.destroyForcibly();
+                    log.accept("❌ CLI timed out");
+                    return;
+                }
+                if (versionProcess.exitValue() != 0) {
+                    log.accept("❌ CLI not found or returned error");
+                    return;
+                }
+                log.accept("✓ CLI found");
+
+                // Step 2: Build and show the test command
+                log.accept("");
+                log.accept("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+                log.accept("Step 2: Testing AI query");
+                log.accept("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+
+                String testPrompt = "Respond with exactly: OK";
+                java.util.List<String> cmd = new java.util.ArrayList<>();
+                boolean useStdin = false;
+
+                switch (provider) {
+                    case CLAUDE -> {
+                        cmd.addAll(java.util.List.of(claudePath, "--print", "--output-format", "text", "--model", "haiku"));
+                        useStdin = true;
+                    }
+                    case CODEX -> cmd.addAll(java.util.List.of(codexPath, "--quiet", "--approval-mode", "full-auto", testPrompt));
+                    case CUSTOM -> {
+                        if (customCommand != null && !customCommand.isBlank()) {
+                            cmd.addAll(java.util.Arrays.asList(customCommand.split("\\s+")));
+                        }
+                        cmd.add(testPrompt);
+                    }
+                }
+
+                log.accept("Command: " + String.join(" ", cmd));
+                log.accept("Prompt: \"" + testPrompt + "\"");
+                if (useStdin) {
+                    log.accept("(prompt sent via stdin)");
+                }
+                log.accept("");
+                log.accept("Waiting for response...");
+
+                ProcessBuilder testPb = new ProcessBuilder(cmd);
+                testPb.redirectErrorStream(true);
+                Process testProcess = testPb.start();
+
+                // Write to stdin if needed
+                if (useStdin) {
+                    try (var stdin = testProcess.getOutputStream()) {
+                        stdin.write(testPrompt.getBytes());
+                        stdin.flush();
+                    }
+                }
+
+                // Read output line by line
+                StringBuilder testOutput = new StringBuilder();
+                try (var reader = new java.io.BufferedReader(new java.io.InputStreamReader(testProcess.getInputStream()))) {
+                    String line;
+                    while ((line = reader.readLine()) != null) {
+                        testOutput.append(line).append("\n");
+                        log.accept("  ← " + line);
+                    }
+                }
+
+                boolean testFinished = testProcess.waitFor(60, java.util.concurrent.TimeUnit.SECONDS);
+                if (!testFinished) {
+                    testProcess.destroyForcibly();
+                    log.accept("❌ Timeout after 60s");
+                    return;
+                }
+
+                log.accept("");
+                if (testProcess.exitValue() != 0) {
+                    String out = testOutput.toString().toLowerCase();
+                    if (out.contains("log in") || out.contains("login") || out.contains("authenticate")) {
+                        log.accept("❌ Not logged in - run CLI in terminal to authenticate");
+                    } else if (out.contains("api key") || out.contains("apikey")) {
+                        log.accept("❌ API key missing or invalid");
+                    } else {
+                        log.accept("❌ CLI returned error (exit code " + testProcess.exitValue() + ")");
+                    }
+                } else {
+                    log.accept("✅ Connection working!");
+                }
+
             } catch (Exception e) {
-                log.accept("❌ " + e.getMessage());
-                restoreAndFinish(config, originalProvider, originalClaudePath, originalCodexPath, testBtn, logArea);
-                return;
+                log.accept("❌ Error: " + e.getMessage());
+            } finally {
+                restoreAndFinish(config, originalProvider, originalClaudePath, originalCodexPath, originalCustomCommand, testBtn, logArea);
             }
-
-            // Step 2: Test with a simple prompt
-            log.accept("🧠 Testing AI response (this may take ~10-30s)...");
-            AiClient.TestResult result = aiClient.testConnection();
-
-            if (result.success()) {
-                log.accept("✓ " + result.message());
-                log.accept("✅ Connection working!");
-            } else {
-                log.accept("❌ " + result.message());
-            }
-
-            restoreAndFinish(config, originalProvider, originalClaudePath, originalCodexPath, testBtn, logArea);
         }).start();
     }
 
     private void restoreAndFinish(IntelConfig config, IntelConfig.AiProvider originalProvider,
-                                   String originalClaudePath, String originalCodexPath,
+                                   String originalClaudePath, String originalCodexPath, String originalCustomCommand,
                                    JButton testBtn, JTextArea logArea) {
         // Restore original settings (don't save - user may cancel)
         config.setAiProvider(originalProvider);
         config.setClaudePath(originalClaudePath);
         config.setCodexPath(originalCodexPath);
+        config.setCustomCommand(originalCustomCommand);
 
         SwingUtilities.invokeLater(() -> {
             testBtn.setEnabled(true);

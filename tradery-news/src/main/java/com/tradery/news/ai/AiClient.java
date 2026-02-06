@@ -116,7 +116,6 @@ public class AiClient {
         int timeoutSeconds = config.getAiTimeoutSeconds();
         String provider = getProviderName();
 
-        logActivity("[" + provider + "] Sending query (" + prompt.length() + " chars)");
         log.debug("AI query to {}: {}", provider, truncate(prompt, 100));
 
         try {
@@ -125,8 +124,8 @@ public class AiClient {
 
             Process process = pb.start();
 
-            // For Claude, write prompt to stdin
-            if (config.getAiProvider() == IntelConfig.AiProvider.CLAUDE) {
+            // For Claude, write prompt to stdin (others pass as argument)
+            if (usesStdin()) {
                 try (OutputStream stdin = process.getOutputStream()) {
                     stdin.write(prompt.getBytes());
                     stdin.flush();
@@ -145,7 +144,7 @@ public class AiClient {
             boolean finished = process.waitFor(timeoutSeconds, TimeUnit.SECONDS);
             if (!finished) {
                 process.destroyForcibly();
-                logActivity("[" + provider + "] Timeout after " + timeoutSeconds + "s");
+                logActivityWithDetail("[" + provider + "] Timeout after " + timeoutSeconds + "s", prompt, null);
                 throw new AiException(AiException.ErrorType.TIMEOUT,
                     provider + " CLI timed out after " + timeoutSeconds + " seconds");
             }
@@ -154,18 +153,20 @@ public class AiClient {
 
             if (process.exitValue() != 0) {
                 AiException error = parseError(result, provider, cliPath);
-                logActivity("[" + provider + "] Error: " + error.getMessage());
+                logActivityWithDetail("[" + provider + "] Error: " + error.getMessage(), prompt, result);
                 throw error;
             }
 
-            logActivity("[" + provider + "] Response received (" + result.length() + " chars)");
+            // Log successful query with full details
+            String summary = "[" + provider + "] Query completed (" + result.length() + " chars)";
+            logActivityWithDetail(summary, prompt, result);
             log.debug("AI response from {}: {}", provider, truncate(result, 200));
 
             return result;
         } catch (AiException e) {
             throw e;
         } catch (Exception e) {
-            logActivity("[" + provider + "] Error: " + e.getMessage());
+            logActivityWithDetail("[" + provider + "] Error: " + e.getMessage(), prompt, null);
             throw new AiException(AiException.ErrorType.UNKNOWN, "Query failed: " + e.getMessage(), e);
         }
     }
@@ -230,29 +231,52 @@ public class AiClient {
 
     private String getCliPath() {
         IntelConfig config = getConfig();
-        return config.getAiProvider() == IntelConfig.AiProvider.CODEX
-            ? config.getCodexPath()
-            : config.getClaudePath();
+        return switch (config.getAiProvider()) {
+            case CODEX -> config.getCodexPath();
+            case CUSTOM -> {
+                // For custom, extract the command (first word)
+                String cmd = config.getCustomCommand();
+                if (cmd == null || cmd.isBlank()) yield "";
+                String[] parts = cmd.trim().split("\\s+", 2);
+                yield parts[0];
+            }
+            default -> config.getClaudePath();
+        };
     }
 
     private ProcessBuilder buildProcess(IntelConfig config, String cliPath, String prompt) {
-        if (config.getAiProvider() == IntelConfig.AiProvider.CODEX) {
-            // Codex CLI - prompt as argument
-            return new ProcessBuilder(
+        return switch (config.getAiProvider()) {
+            case CODEX -> new ProcessBuilder(
                 cliPath,
                 "--quiet",
                 "--approval-mode", "full-auto",
                 prompt
             );
-        } else {
-            // Claude CLI - prompt via stdin
-            return new ProcessBuilder(
+            case CUSTOM -> {
+                // Parse custom command and append prompt as argument
+                String cmd = config.getCustomCommand();
+                if (cmd == null || cmd.isBlank()) {
+                    yield new ProcessBuilder(cliPath, prompt);
+                }
+                String[] parts = cmd.trim().split("\\s+");
+                java.util.List<String> args = new java.util.ArrayList<>(java.util.Arrays.asList(parts));
+                args.add(prompt);
+                yield new ProcessBuilder(args);
+            }
+            default -> new ProcessBuilder(
                 cliPath,
                 "--print",
                 "--output-format", "text",
                 "--model", "haiku"
             );
-        }
+        };
+    }
+
+    /**
+     * Check if prompt is sent via stdin (Claude) or as argument (Codex, Custom).
+     */
+    private boolean usesStdin() {
+        return getConfig().getAiProvider() == IntelConfig.AiProvider.CLAUDE;
     }
 
     private AiException parseError(String output, String provider, String cliPath) {
@@ -279,6 +303,15 @@ public class AiClient {
         }
         // Also log to IntelLogPanel static method
         IntelLogPanel.logAI(message);
+    }
+
+    private void logActivityWithDetail(String summary, String prompt, String response) {
+        // Log to callback if set (summary only)
+        if (logCallback != null) {
+            logCallback.accept(summary);
+        }
+        // Log to IntelLogPanel with full details
+        IntelLogPanel.logAI(summary, prompt, response);
     }
 
     private String truncate(String s, int max) {
