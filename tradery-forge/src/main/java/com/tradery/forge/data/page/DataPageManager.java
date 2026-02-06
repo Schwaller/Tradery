@@ -147,7 +147,7 @@ public abstract class DataPageManager<T> {
     public void release(DataPageView<T> pageView, DataPageListener<T> listener) {
         if (pageView == null) return;
 
-        String key = pageView.getKey();
+        String key = keyOf(pageView);
 
         // Remove listener or decrement anonymous refs
         if (listener != null) {
@@ -228,7 +228,7 @@ public abstract class DataPageManager<T> {
     public void refresh(DataPageView<T> pageView) {
         if (pageView == null) return;
         // Internal lookup by key since we can't cast from interface
-        DataPage<T> page = pages.get(pageView.getKey());
+        DataPage<T> page = pages.get(keyOf(pageView));
         if (page == null) return;
         startLoad(page);
     }
@@ -290,6 +290,15 @@ public abstract class DataPageManager<T> {
         }
         sb.append(startTime).append(":").append(endTime);
         return sb.toString();
+    }
+
+    /**
+     * Reconstruct the makeKey() from a page's fields.
+     * DataPage.getKey() has a different format (includes marketType, windowDuration),
+     * so we must use makeKey() for consistent map lookups.
+     */
+    private String keyOf(DataPageView<T> page) {
+        return makeKey(page.getSymbol(), page.getTimeframe(), page.getStartTime(), page.getEndTime());
     }
 
     /**
@@ -388,7 +397,7 @@ public abstract class DataPageManager<T> {
      * Notify all listeners of state change.
      */
     protected void notifyStateChanged(DataPage<T> page, PageState oldState, PageState newState) {
-        Set<DataPageListener<T>> pageListeners = listeners.get(page.getKey());
+        Set<DataPageListener<T>> pageListeners = listeners.get(keyOf(page));
         if (pageListeners == null || pageListeners.isEmpty()) return;
 
         // Ensure we're on EDT
@@ -409,7 +418,7 @@ public abstract class DataPageManager<T> {
      * Notify all listeners of data change.
      */
     protected void notifyDataChanged(DataPage<T> page) {
-        Set<DataPageListener<T>> pageListeners = listeners.get(page.getKey());
+        Set<DataPageListener<T>> pageListeners = listeners.get(keyOf(page));
         if (pageListeners == null || pageListeners.isEmpty()) return;
 
         // Ensure we're on EDT

@@ -18,7 +18,8 @@ public class CoinEntity {
         VC(new Color(255, 180, 80)),          // Orange - Venture Capital
         EXCHANGE(new Color(255, 140, 100)),   // Coral - Exchanges
         FOUNDATION(new Color(180, 150, 255)), // Lavender - Foundations
-        COMPANY(new Color(200, 200, 120));    // Yellow - Companies
+        COMPANY(new Color(200, 200, 120)),    // Yellow - Companies
+        NEWS_SOURCE(new Color(220, 180, 220)); // Pink - News Sources
 
         private final Color color;
         Type(Color color) { this.color = color; }
