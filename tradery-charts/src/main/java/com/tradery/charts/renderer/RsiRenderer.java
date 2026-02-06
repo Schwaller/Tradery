@@ -16,38 +16,33 @@ import java.util.List;
 
 /**
  * Renderer for RSI (Relative Strength Index) indicator.
- * Uses IndicatorPool with RsiCompute for async calculation.
+ * Subscribes to RsiCompute in the constructor; the onReady callback
+ * handles both initial rendering and recomputation.
  */
 public class RsiRenderer implements IndicatorChartRenderer {
 
     private final int period;
-    private IndicatorSubscription<double[]> subscription;
+    private final IndicatorSubscription<double[]> subscription;
 
-    public RsiRenderer(int period) {
+    public RsiRenderer(int period, XYPlot plot, ChartDataProvider provider) {
         this.period = period;
-    }
 
-    @Override
-    public void render(XYPlot plot, ChartDataProvider provider) {
         IndicatorPool pool = provider.getIndicatorPool();
-        if (pool == null) return;
-
-        if (subscription != null) subscription.close();
-        subscription = pool.subscribe(new RsiCompute(period));
+        this.subscription = pool.subscribe(new RsiCompute(period));
         subscription.onReady(rsi -> {
             if (rsi == null || rsi.length == 0) return;
 
+            clearPlot(plot);
+            ChartStyles.addChartTitleAnnotation(plot, "RSI");
+
             List<Candle> candles = provider.getCandles();
 
-            // Build time series
             TimeSeriesCollection dataset = TimeSeriesBuilder.build(
                 "RSI(" + period + ")", candles, rsi, period);
 
-            // Add to plot
             plot.setDataset(0, dataset);
             plot.setRenderer(0, RendererBuilder.lineRenderer(ChartStyles.RSI_COLOR));
 
-            // Add reference lines (30, 50, 70)
             if (!candles.isEmpty()) {
                 long startTime = candles.get(0).timestamp();
                 long endTime = candles.get(candles.size() - 1).timestamp();
@@ -60,10 +55,7 @@ public class RsiRenderer implements IndicatorChartRenderer {
 
     @Override
     public void close() {
-        if (subscription != null) {
-            subscription.close();
-            subscription = null;
-        }
+        subscription.close();
     }
 
     @Override
@@ -73,5 +65,10 @@ public class RsiRenderer implements IndicatorChartRenderer {
 
     public int getPeriod() {
         return period;
+    }
+
+    private static void clearPlot(XYPlot plot) {
+        for (int i = 0; i < plot.getDatasetCount(); i++) plot.setDataset(i, null);
+        plot.clearAnnotations();
     }
 }

@@ -487,7 +487,8 @@ public class PriceChartPanel extends JPanel {
         rsiEnabled = enabled;
 
         if (enabled) {
-            rsiChart = new IndicatorChart(coordinator, IndicatorType.RSI, new RsiRenderer(period));
+            rsiChart = new IndicatorChart(coordinator, IndicatorType.RSI,
+                (plot, prov) -> new RsiRenderer(period, plot, prov));
             rsiChart.initialize();
             indicatorCharts.add(rsiChart);
             interactionManager.addChart(rsiChart.getChart());
@@ -519,7 +520,8 @@ public class PriceChartPanel extends JPanel {
         macdEnabled = enabled;
 
         if (enabled) {
-            macdChart = new IndicatorChart(coordinator, IndicatorType.MACD, new MacdRenderer(fast, slow, signal));
+            macdChart = new IndicatorChart(coordinator, IndicatorType.MACD,
+                (plot, prov) -> new MacdRenderer(fast, slow, signal, plot, prov));
             macdChart.initialize();
             indicatorCharts.add(macdChart);
             interactionManager.addChart(macdChart.getChart());
@@ -565,7 +567,8 @@ public class PriceChartPanel extends JPanel {
         atrEnabled = enabled;
 
         if (enabled) {
-            atrChart = new IndicatorChart(coordinator, IndicatorType.ATR, new AtrRenderer(period));
+            atrChart = new IndicatorChart(coordinator, IndicatorType.ATR,
+                (plot, prov) -> new AtrRenderer(period, plot, prov));
             atrChart.initialize();
             indicatorCharts.add(atrChart);
             interactionManager.addChart(atrChart.getChart());
@@ -604,7 +607,8 @@ public class PriceChartPanel extends JPanel {
         stochasticEnabled = enabled;
 
         if (enabled) {
-            stochasticChart = new IndicatorChart(coordinator, IndicatorType.STOCHASTIC, new StochasticRenderer(kPeriod, dPeriod));
+            stochasticChart = new IndicatorChart(coordinator, IndicatorType.STOCHASTIC,
+                (plot, prov) -> new StochasticRenderer(kPeriod, dPeriod, plot, prov));
             stochasticChart.initialize();
             indicatorCharts.add(stochasticChart);
             interactionManager.addChart(stochasticChart.getChart());
@@ -643,7 +647,8 @@ public class PriceChartPanel extends JPanel {
         adxEnabled = enabled;
 
         if (enabled) {
-            adxChart = new IndicatorChart(coordinator, IndicatorType.ADX, new AdxRenderer(period));
+            adxChart = new IndicatorChart(coordinator, IndicatorType.ADX,
+                (plot, prov) -> new AdxRenderer(period, plot, prov));
             adxChart.initialize();
             indicatorCharts.add(adxChart);
             interactionManager.addChart(adxChart.getChart());
@@ -682,7 +687,8 @@ public class PriceChartPanel extends JPanel {
         deltaEnabled = enabled;
 
         if (enabled) {
-            deltaChart = new IndicatorChart(coordinator, IndicatorType.DELTA, new DeltaRenderer(showCvd));
+            deltaChart = new IndicatorChart(coordinator, IndicatorType.DELTA,
+                (plot, prov) -> new DeltaRenderer(showCvd, plot, prov));
             deltaChart.initialize();
             indicatorCharts.add(deltaChart);
             interactionManager.addChart(deltaChart.getChart());
@@ -721,7 +727,8 @@ public class PriceChartPanel extends JPanel {
         rangePositionEnabled = enabled;
 
         if (enabled) {
-            rangePositionChart = new IndicatorChart(coordinator, IndicatorType.RANGE_POSITION, new RangePositionRenderer(period, skip));
+            rangePositionChart = new IndicatorChart(coordinator, IndicatorType.RANGE_POSITION,
+                (plot, prov) -> new RangePositionRenderer(period, skip, plot, prov));
             rangePositionChart.initialize();
             indicatorCharts.add(rangePositionChart);
             interactionManager.addChart(rangePositionChart.getChart());
@@ -753,7 +760,8 @@ public class PriceChartPanel extends JPanel {
         tradeCountEnabled = enabled;
 
         if (enabled) {
-            tradeCountChart = new IndicatorChart(coordinator, IndicatorType.TRADE_COUNT, new TradeCountRenderer());
+            tradeCountChart = new IndicatorChart(coordinator, IndicatorType.TRADE_COUNT,
+                (plot, prov) -> new TradeCountRenderer(plot, prov));
             tradeCountChart.initialize();
             indicatorCharts.add(tradeCountChart);
             interactionManager.addChart(tradeCountChart.getChart());
@@ -785,7 +793,8 @@ public class PriceChartPanel extends JPanel {
         volumeRatioEnabled = enabled;
 
         if (enabled) {
-            volumeRatioChart = new IndicatorChart(coordinator, IndicatorType.VOLUME_RATIO, new VolumeRatioRenderer());
+            volumeRatioChart = new IndicatorChart(coordinator, IndicatorType.VOLUME_RATIO,
+                (plot, prov) -> new VolumeRatioRenderer(plot, prov));
             volumeRatioChart.initialize();
             indicatorCharts.add(volumeRatioChart);
             interactionManager.addChart(volumeRatioChart.getChart());

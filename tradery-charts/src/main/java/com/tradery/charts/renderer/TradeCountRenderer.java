@@ -4,6 +4,7 @@ import com.tradery.charts.core.ChartDataProvider;
 import com.tradery.charts.indicator.IndicatorPool;
 import com.tradery.charts.indicator.IndicatorSubscription;
 import com.tradery.charts.indicator.impl.TradeCountCompute;
+import com.tradery.charts.util.ChartStyles;
 import com.tradery.core.model.Candle;
 import org.jfree.chart.plot.XYPlot;
 import org.jfree.chart.renderer.xy.StandardXYBarPainter;
@@ -18,32 +19,26 @@ import java.util.List;
 
 /**
  * Renderer for Trade Count indicator.
- * Shows the number of individual trades per candle.
- * Higher trade counts indicate more market activity.
- * Uses IndicatorPool with TradeCountCompute for async calculation.
+ * Subscribes to TradeCountCompute in the constructor; the onReady callback
+ * handles both initial rendering and recomputation.
  */
 public class TradeCountRenderer implements IndicatorChartRenderer {
 
-    private static final Color TRADE_COUNT_COLOR = new Color(255, 152, 0);  // Orange
+    private static final Color TRADE_COUNT_COLOR = new Color(255, 152, 0);
 
-    private IndicatorSubscription<double[]> subscription;
+    private final IndicatorSubscription<double[]> subscription;
 
-    public TradeCountRenderer() {
-    }
-
-    @Override
-    public void render(XYPlot plot, ChartDataProvider provider) {
+    public TradeCountRenderer(XYPlot plot, ChartDataProvider provider) {
         IndicatorPool pool = provider.getIndicatorPool();
-        if (pool == null) return;
-
-        if (subscription != null) subscription.close();
-        subscription = pool.subscribe(new TradeCountCompute());
+        this.subscription = pool.subscribe(new TradeCountCompute());
         subscription.onReady(tradeCount -> {
             if (tradeCount == null || tradeCount.length == 0) return;
 
+            clearPlot(plot);
+            ChartStyles.addChartTitleAnnotation(plot, "Trade Count");
+
             List<Candle> candles = provider.getCandles();
 
-            // Build time series
             TimeSeries series = new TimeSeries("Trade Count");
             for (int i = 0; i < candles.size() && i < tradeCount.length; i++) {
                 Candle c = candles.get(i);
@@ -55,7 +50,6 @@ public class TradeCountRenderer implements IndicatorChartRenderer {
             TimeSeriesCollection dataset = new TimeSeriesCollection();
             dataset.addSeries(series);
 
-            // Use bar renderer for trade count
             XYBarRenderer renderer = new XYBarRenderer(0.1);
             renderer.setSeriesPaint(0, TRADE_COUNT_COLOR);
             renderer.setBarPainter(new StandardXYBarPainter());
@@ -71,14 +65,16 @@ public class TradeCountRenderer implements IndicatorChartRenderer {
 
     @Override
     public void close() {
-        if (subscription != null) {
-            subscription.close();
-            subscription = null;
-        }
+        subscription.close();
     }
 
     @Override
     public String getParameterString() {
         return "";
+    }
+
+    private static void clearPlot(XYPlot plot) {
+        for (int i = 0; i < plot.getDatasetCount(); i++) plot.setDataset(i, null);
+        plot.clearAnnotations();
     }
 }

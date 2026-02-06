@@ -19,55 +19,54 @@ import java.util.List;
 
 /**
  * Renderer for Delta (buy-sell volume difference) indicator.
- * Uses ChartDataProvider.getDelta() for orderflow data, with OHLCV delta fallback
- * via IndicatorPool and OhlcvDeltaCompute.
+ * Subscribes to OhlcvDeltaCompute in the constructor for OHLCV delta fallback;
+ * the onReady callback handles both initial rendering and recomputation.
+ * Also checks provider.getDelta() for orderflow data on each callback.
  * Displays delta as bars (green positive, red negative) with optional CVD line.
  */
 public class DeltaRenderer implements IndicatorChartRenderer {
 
     private final boolean showCvd;
-    private IndicatorSubscription<OhlcvDeltaCompute.Result> deltaSubscription;
-    private IndicatorSubscription<OhlcvDeltaCompute.Result> cvdSubscription;
+    private final IndicatorSubscription<OhlcvDeltaCompute.Result> deltaSubscription;
 
-    /**
-     * Create a Delta renderer without CVD line.
-     */
-    public DeltaRenderer() {
-        this(false);
-    }
-
-    /**
-     * Create a Delta renderer with optional CVD line.
-     */
-    public DeltaRenderer(boolean showCvd) {
+    public DeltaRenderer(boolean showCvd, XYPlot plot, ChartDataProvider provider) {
         this.showCvd = showCvd;
-    }
 
-    @Override
-    public void render(XYPlot plot, ChartDataProvider provider) {
-        List<Candle> candles = provider.getCandles();
+        IndicatorPool pool = provider.getIndicatorPool();
+        this.deltaSubscription = pool.subscribe(new OhlcvDeltaCompute());
+        deltaSubscription.onReady(result -> {
+            clearPlot(plot);
+            ChartStyles.addChartTitleAnnotation(plot, "Delta");
 
-        // Get Delta from provider (may be null if no orderflow data)
-        double[] delta = provider.getDelta();
-        if (delta != null && delta.length > 0) {
-            renderDelta(plot, provider, candles, delta);
-        } else {
-            // Fallback to OHLCV delta via pool
-            IndicatorPool pool = provider.getIndicatorPool();
-            if (pool == null) return;
+            List<Candle> candles = provider.getCandles();
 
-            if (deltaSubscription != null) deltaSubscription.close();
-            deltaSubscription = pool.subscribe(new OhlcvDeltaCompute());
-            deltaSubscription.onReady(result -> {
+            // Prefer orderflow delta if available, otherwise use OHLCV delta
+            double[] delta = provider.getDelta();
+            if (delta == null || delta.length == 0) {
                 if (result == null || result.delta() == null || result.delta().length == 0) return;
-                renderDelta(plot, provider, provider.getCandles(), result.delta());
-                plot.getChart().fireChartChanged();
-            });
-        }
+                delta = result.delta();
+            }
+
+            renderDelta(plot, candles, delta);
+
+            // Optionally add CVD line
+            if (showCvd) {
+                double[] cvd = provider.getCumulativeDelta();
+                if (cvd == null || cvd.length == 0) {
+                    if (result != null && result.cvd() != null && result.cvd().length > 0) {
+                        cvd = result.cvd();
+                    }
+                }
+                if (cvd != null && cvd.length > 0) {
+                    renderCvdLine(plot, candles, cvd);
+                }
+            }
+
+            plot.getChart().fireChartChanged();
+        });
     }
 
-    private void renderDelta(XYPlot plot, ChartDataProvider provider, List<Candle> candles, double[] delta) {
-        // Create separate series for positive and negative delta
+    private void renderDelta(XYPlot plot, List<Candle> candles, double[] delta) {
         TimeSeries positiveSeries = new TimeSeries("Delta+");
         TimeSeries negativeSeries = new TimeSeries("Delta-");
 
@@ -89,7 +88,6 @@ public class DeltaRenderer implements IndicatorChartRenderer {
         deltaDataset.addSeries(positiveSeries);
         deltaDataset.addSeries(negativeSeries);
 
-        // Create bar renderer with colors
         XYBarRenderer barRenderer = new XYBarRenderer();
         barRenderer.setSeriesPaint(0, ChartStyles.DELTA_POSITIVE);
         barRenderer.setSeriesPaint(1, ChartStyles.DELTA_NEGATIVE);
@@ -98,32 +96,10 @@ public class DeltaRenderer implements IndicatorChartRenderer {
 
         plot.setDataset(0, deltaDataset);
         plot.setRenderer(0, barRenderer);
-
-        // Optionally add CVD line
-        if (showCvd) {
-            double[] cvd = provider.getCumulativeDelta();
-            if (cvd != null && cvd.length > 0) {
-                renderCvdLine(plot, candles, cvd);
-            } else {
-                // Fallback to OHLCV CVD via pool
-                IndicatorPool pool = provider.getIndicatorPool();
-                if (pool != null) {
-                    if (cvdSubscription != null) cvdSubscription.close();
-                    cvdSubscription = pool.subscribe(new OhlcvDeltaCompute());
-                    cvdSubscription.onReady(result -> {
-                        if (result != null && result.cvd() != null && result.cvd().length > 0) {
-                            renderCvdLine(plot, provider.getCandles(), result.cvd());
-                            plot.getChart().fireChartChanged();
-                        }
-                    });
-                }
-            }
-        }
     }
 
     private void renderCvdLine(XYPlot plot, List<Candle> candles, double[] cvd) {
-        TimeSeriesCollection cvdDataset = TimeSeriesBuilder.build(
-            "CVD", candles, cvd, 0);
+        TimeSeriesCollection cvdDataset = TimeSeriesBuilder.build("CVD", candles, cvd, 0);
 
         XYLineAndShapeRenderer lineRenderer = new XYLineAndShapeRenderer(true, false);
         lineRenderer.setSeriesPaint(0, ChartStyles.CVD_COLOR);
@@ -135,14 +111,7 @@ public class DeltaRenderer implements IndicatorChartRenderer {
 
     @Override
     public void close() {
-        if (deltaSubscription != null) {
-            deltaSubscription.close();
-            deltaSubscription = null;
-        }
-        if (cvdSubscription != null) {
-            cvdSubscription.close();
-            cvdSubscription = null;
-        }
+        deltaSubscription.close();
     }
 
     @Override
@@ -152,5 +121,10 @@ public class DeltaRenderer implements IndicatorChartRenderer {
 
     public boolean isShowCvd() {
         return showCvd;
+    }
+
+    private static void clearPlot(XYPlot plot) {
+        for (int i = 0; i < plot.getDatasetCount(); i++) plot.setDataset(i, null);
+        plot.clearAnnotations();
     }
 }

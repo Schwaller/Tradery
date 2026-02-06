@@ -15,41 +15,30 @@ import java.util.List;
 
 /**
  * Renderer for ATR (Average True Range) indicator.
- * Uses IndicatorPool with AtrCompute for async calculation.
+ * Subscribes to AtrCompute in the constructor; the onReady callback
+ * handles both initial rendering and recomputation.
  */
 public class AtrRenderer implements IndicatorChartRenderer {
 
     private final int period;
-    private IndicatorSubscription<double[]> subscription;
+    private final IndicatorSubscription<double[]> subscription;
 
-    public AtrRenderer(int period) {
+    public AtrRenderer(int period, XYPlot plot, ChartDataProvider provider) {
         this.period = period;
-    }
 
-    /**
-     * Create an ATR renderer with default period (14).
-     */
-    public AtrRenderer() {
-        this(14);
-    }
-
-    @Override
-    public void render(XYPlot plot, ChartDataProvider provider) {
         IndicatorPool pool = provider.getIndicatorPool();
-        if (pool == null) return;
-
-        if (subscription != null) subscription.close();
-        subscription = pool.subscribe(new AtrCompute(period));
+        this.subscription = pool.subscribe(new AtrCompute(period));
         subscription.onReady(atr -> {
             if (atr == null || atr.length == 0) return;
 
+            clearPlot(plot);
+            ChartStyles.addChartTitleAnnotation(plot, "ATR");
+
             List<Candle> candles = provider.getCandles();
 
-            // Build time series
             TimeSeriesCollection dataset = TimeSeriesBuilder.build(
                 "ATR(" + period + ")", candles, atr, period - 1);
 
-            // Add to plot
             plot.setDataset(0, dataset);
             plot.setRenderer(0, RendererBuilder.lineRenderer(ChartStyles.ATR_COLOR));
 
@@ -59,10 +48,7 @@ public class AtrRenderer implements IndicatorChartRenderer {
 
     @Override
     public void close() {
-        if (subscription != null) {
-            subscription.close();
-            subscription = null;
-        }
+        subscription.close();
     }
 
     @Override
@@ -72,5 +58,10 @@ public class AtrRenderer implements IndicatorChartRenderer {
 
     public int getPeriod() {
         return period;
+    }
+
+    private static void clearPlot(XYPlot plot) {
+        for (int i = 0; i < plot.getDatasetCount(); i++) plot.setDataset(i, null);
+        plot.clearAnnotations();
     }
 }

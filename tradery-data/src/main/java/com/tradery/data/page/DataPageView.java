@@ -39,6 +39,14 @@ public interface DataPageView<T> {
     }
 
     /**
+     * Get the exchange this data is from (e.g., "binance", "bybit").
+     * Returns "binance" as default.
+     */
+    default String getExchange() {
+        return "binance";
+    }
+
+    /**
      * Get the start time of the data range in milliseconds.
      */
     long getStartTime();

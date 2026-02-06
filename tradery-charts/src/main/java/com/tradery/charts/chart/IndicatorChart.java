@@ -4,7 +4,6 @@ import com.tradery.charts.core.ChartCoordinator;
 import com.tradery.charts.core.ChartDataProvider;
 import com.tradery.charts.core.IndicatorType;
 import com.tradery.charts.renderer.IndicatorChartRenderer;
-import com.tradery.charts.util.ChartStyles;
 import org.jfree.chart.JFreeChart;
 import org.jfree.chart.axis.DateAxis;
 import org.jfree.chart.axis.NumberAxis;
@@ -14,27 +13,32 @@ import org.jfree.chart.plot.XYPlot;
  * Generic indicator chart that uses pluggable renderers.
  *
  * <p>Instead of one class per indicator, this chart delegates
- * rendering to {@link IndicatorChartRenderer} implementations.</p>
+ * rendering to {@link IndicatorChartRenderer} implementations
+ * created via a {@link RendererFactory}.</p>
  *
- * <h2>Usage</h2>
- * <pre>{@code
- * IndicatorChart rsiChart = new IndicatorChart(
- *     coordinator,
- *     IndicatorType.RSI,
- *     new RsiRenderer(14));
- * rsiChart.initialize();
- * rsiChart.updateData(provider);
- * }</pre>
+ * <p>The renderer is created lazily on the first {@link #updateData} call,
+ * which is when both the plot and provider are available. Once created,
+ * the renderer's subscription handles all subsequent data updates via
+ * the pool's {@code onReady} callback.</p>
  */
 public class IndicatorChart extends SyncedChart {
 
-    private final IndicatorType indicatorType;
-    private final IndicatorChartRenderer renderer;
+    /**
+     * Factory for creating renderers. Called once when both plot and provider are available.
+     */
+    @FunctionalInterface
+    public interface RendererFactory {
+        IndicatorChartRenderer create(XYPlot plot, ChartDataProvider provider);
+    }
 
-    public IndicatorChart(ChartCoordinator coordinator, IndicatorType type, IndicatorChartRenderer renderer) {
+    private final IndicatorType indicatorType;
+    private final RendererFactory rendererFactory;
+    private IndicatorChartRenderer renderer;
+
+    public IndicatorChart(ChartCoordinator coordinator, IndicatorType type, RendererFactory factory) {
         super(coordinator, type.getTitle());
         this.indicatorType = type;
-        this.renderer = renderer;
+        this.rendererFactory = factory;
     }
 
     @Override
@@ -58,23 +62,17 @@ public class IndicatorChart extends SyncedChart {
     @Override
     public void updateData(ChartDataProvider provider) {
         if (!provider.hasCandles()) return;
+        if (renderer != null) return;  // Already bound - pool handles updates
 
-        XYPlot plot = getPlot();
-
-        // Clear old data
-        for (int i = 0; i < plot.getDatasetCount(); i++) {
-            plot.setDataset(i, null);
-        }
-        plot.clearAnnotations();
-        ChartStyles.addChartTitleAnnotation(plot, title);
-
-        // Delegate to renderer
-        renderer.render(plot, provider);
+        renderer = rendererFactory.create(getPlot(), provider);
     }
 
     @Override
     public void dispose() {
-        renderer.close();
+        if (renderer != null) {
+            renderer.close();
+            renderer = null;
+        }
         super.dispose();
     }
 
@@ -86,7 +84,7 @@ public class IndicatorChart extends SyncedChart {
     }
 
     /**
-     * Get the renderer.
+     * Get the renderer (may be null before first updateData).
      */
     public IndicatorChartRenderer getRenderer() {
         return renderer;

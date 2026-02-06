@@ -17,27 +17,22 @@ import java.util.List;
 
 /**
  * Renderer for Stochastic oscillator.
- * Uses IndicatorPool with StochasticCompute for async calculation.
+ * Subscribes to StochasticCompute in the constructor; the onReady callback
+ * handles both initial rendering and recomputation.
  * Displays %K and %D lines with overbought/oversold zones.
  */
 public class StochasticRenderer implements IndicatorChartRenderer {
 
     private final int kPeriod;
     private final int dPeriod;
-    private IndicatorSubscription<Indicators.StochasticResult> subscription;
+    private final IndicatorSubscription<Indicators.StochasticResult> subscription;
 
-    public StochasticRenderer(int kPeriod, int dPeriod) {
+    public StochasticRenderer(int kPeriod, int dPeriod, XYPlot plot, ChartDataProvider provider) {
         this.kPeriod = kPeriod;
         this.dPeriod = dPeriod;
-    }
 
-    @Override
-    public void render(XYPlot plot, ChartDataProvider provider) {
         IndicatorPool pool = provider.getIndicatorPool();
-        if (pool == null) return;
-
-        if (subscription != null) subscription.close();
-        subscription = pool.subscribe(new StochasticCompute(kPeriod, dPeriod));
+        this.subscription = pool.subscribe(new StochasticCompute(kPeriod, dPeriod));
         subscription.onReady(stoch -> {
             if (stoch == null) return;
 
@@ -45,22 +40,22 @@ public class StochasticRenderer implements IndicatorChartRenderer {
             double[] dValues = stoch.d();
             if (kValues == null || kValues.length == 0) return;
 
+            clearPlot(plot);
+            ChartStyles.addChartTitleAnnotation(plot, "Stochastic");
+
             List<Candle> candles = provider.getCandles();
 
-            // Build time series for %K and %D
             TimeSeriesCollection dataset = new TimeSeriesCollection();
             dataset.addSeries(TimeSeriesBuilder.createTimeSeries(
                 "%K(" + kPeriod + ")", candles, kValues, kPeriod));
             dataset.addSeries(TimeSeriesBuilder.createTimeSeries(
                 "%D(" + dPeriod + ")", candles, dValues, kPeriod + dPeriod - 1));
 
-            // Add to plot
             plot.setDataset(0, dataset);
             plot.setRenderer(0, RendererBuilder.lineRenderer(
                 ChartStyles.STOCHASTIC_K_COLOR, ChartStyles.MEDIUM_STROKE,
                 ChartStyles.STOCHASTIC_D_COLOR, ChartStyles.MEDIUM_STROKE));
 
-            // Add reference lines (20, 50, 80)
             if (!candles.isEmpty()) {
                 long startTime = candles.get(0).timestamp();
                 long endTime = candles.get(candles.size() - 1).timestamp();
@@ -73,10 +68,7 @@ public class StochasticRenderer implements IndicatorChartRenderer {
 
     @Override
     public void close() {
-        if (subscription != null) {
-            subscription.close();
-            subscription = null;
-        }
+        subscription.close();
     }
 
     @Override
@@ -90,5 +82,10 @@ public class StochasticRenderer implements IndicatorChartRenderer {
 
     public int getDPeriod() {
         return dPeriod;
+    }
+
+    private static void clearPlot(XYPlot plot) {
+        for (int i = 0; i < plot.getDatasetCount(); i++) plot.setDataset(i, null);
+        plot.clearAnnotations();
     }
 }

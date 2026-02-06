@@ -18,42 +18,32 @@ import java.util.List;
 
 /**
  * Renderer for Range Position indicator.
- * Shows where the current price is within the high-low range of the last N bars.
+ * Subscribes to RangePositionCompute in the constructor; the onReady callback
+ * handles both initial rendering and recomputation.
  * Values range from -1 (at range low) to +1 (at range high).
- * Uses IndicatorPool with RangePositionCompute for async calculation.
  */
 public class RangePositionRenderer implements IndicatorChartRenderer {
 
-    private static final Color HIGH_ZONE_COLOR = new Color(76, 175, 80, 50);   // Green transparent
-    private static final Color LOW_ZONE_COLOR = new Color(244, 67, 54, 50);    // Red transparent
-    private static final Color LINE_COLOR = new Color(33, 150, 243);           // Blue
+    private static final Color LINE_COLOR = new Color(33, 150, 243);
 
     private final int period;
     private final int skip;
-    private IndicatorSubscription<double[]> subscription;
+    private final IndicatorSubscription<double[]> subscription;
 
-    public RangePositionRenderer(int period) {
-        this(period, 0);
-    }
-
-    public RangePositionRenderer(int period, int skip) {
+    public RangePositionRenderer(int period, int skip, XYPlot plot, ChartDataProvider provider) {
         this.period = period;
         this.skip = skip;
-    }
 
-    @Override
-    public void render(XYPlot plot, ChartDataProvider provider) {
         IndicatorPool pool = provider.getIndicatorPool();
-        if (pool == null) return;
-
-        if (subscription != null) subscription.close();
-        subscription = pool.subscribe(new RangePositionCompute(period, skip));
+        this.subscription = pool.subscribe(new RangePositionCompute(period, skip));
         subscription.onReady(rangePos -> {
             if (rangePos == null || rangePos.length == 0) return;
 
+            clearPlot(plot);
+            ChartStyles.addChartTitleAnnotation(plot, "Range Position");
+
             List<Candle> candles = provider.getCandles();
 
-            // Build time series
             TimeSeries series = new TimeSeries("Range Position");
             int warmup = period + skip;
             for (int i = warmup; i < candles.size() && i < rangePos.length; i++) {
@@ -66,11 +56,9 @@ public class RangePositionRenderer implements IndicatorChartRenderer {
             TimeSeriesCollection dataset = new TimeSeriesCollection();
             dataset.addSeries(series);
 
-            // Add to plot
             plot.setDataset(0, dataset);
             plot.setRenderer(0, RendererBuilder.lineRenderer(LINE_COLOR, ChartStyles.MEDIUM_STROKE));
 
-            // Set Y axis range to -1 to +1
             plot.getRangeAxis().setRange(-1.0, 1.0);
 
             plot.getChart().fireChartChanged();
@@ -79,10 +67,7 @@ public class RangePositionRenderer implements IndicatorChartRenderer {
 
     @Override
     public void close() {
-        if (subscription != null) {
-            subscription.close();
-            subscription = null;
-        }
+        subscription.close();
     }
 
     @Override
@@ -91,5 +76,10 @@ public class RangePositionRenderer implements IndicatorChartRenderer {
             return String.format("(%d,%d)", period, skip);
         }
         return String.format("(%d)", period);
+    }
+
+    private static void clearPlot(XYPlot plot) {
+        for (int i = 0; i < plot.getDatasetCount(); i++) plot.setDataset(i, null);
+        plot.clearAnnotations();
     }
 }

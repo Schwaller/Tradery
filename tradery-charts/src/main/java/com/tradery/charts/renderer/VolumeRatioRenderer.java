@@ -18,29 +18,19 @@ import java.util.List;
 
 /**
  * Renderer for Volume Ratio indicator (Buy Volume / Total Volume).
- * Shows the proportion of buying vs selling pressure.
+ * Subscribes to VolumeRatioCompute in the constructor; the onReady callback
+ * handles both initial rendering and recomputation.
  * Values above 0.5 indicate more buying, below 0.5 more selling.
- * Uses IndicatorPool with VolumeRatioCompute for async calculation.
  */
 public class VolumeRatioRenderer implements IndicatorChartRenderer {
 
-    private static final Color BUY_COLOR = new Color(76, 175, 80);     // Green
-    private static final Color SELL_COLOR = new Color(244, 67, 54);    // Red
-    private static final Color NEUTRAL_COLOR = new Color(158, 158, 158); // Gray
-    private static final Color RATIO_LINE_COLOR = new Color(255, 193, 7); // Amber
+    private static final Color RATIO_LINE_COLOR = new Color(255, 193, 7);
 
-    private IndicatorSubscription<VolumeRatioCompute.Result> subscription;
+    private final IndicatorSubscription<VolumeRatioCompute.Result> subscription;
 
-    public VolumeRatioRenderer() {
-    }
-
-    @Override
-    public void render(XYPlot plot, ChartDataProvider provider) {
+    public VolumeRatioRenderer(XYPlot plot, ChartDataProvider provider) {
         IndicatorPool pool = provider.getIndicatorPool();
-        if (pool == null) return;
-
-        if (subscription != null) subscription.close();
-        subscription = pool.subscribe(new VolumeRatioCompute());
+        this.subscription = pool.subscribe(new VolumeRatioCompute());
         subscription.onReady(result -> {
             if (result == null) return;
 
@@ -48,16 +38,17 @@ public class VolumeRatioRenderer implements IndicatorChartRenderer {
             double[] sellVol = result.sellVolume();
             if (buyVol == null || sellVol == null || buyVol.length == 0) return;
 
+            clearPlot(plot);
+            ChartStyles.addChartTitleAnnotation(plot, "Volume Ratio");
+
             List<Candle> candles = provider.getCandles();
 
-            // Calculate ratio: buyVol / (buyVol + sellVol)
             double[] ratio = new double[buyVol.length];
             for (int i = 0; i < buyVol.length; i++) {
                 double total = buyVol[i] + sellVol[i];
                 ratio[i] = total > 0 ? buyVol[i] / total : 0.5;
             }
 
-            // Build time series
             TimeSeries ratioSeries = new TimeSeries("Volume Ratio");
             for (int i = 0; i < candles.size() && i < ratio.length; i++) {
                 Candle c = candles.get(i);
@@ -69,11 +60,9 @@ public class VolumeRatioRenderer implements IndicatorChartRenderer {
             TimeSeriesCollection dataset = new TimeSeriesCollection();
             dataset.addSeries(ratioSeries);
 
-            // Add to plot with line renderer
             plot.setDataset(0, dataset);
             plot.setRenderer(0, RendererBuilder.lineRenderer(RATIO_LINE_COLOR, ChartStyles.MEDIUM_STROKE));
 
-            // Set Y axis range to 0-1
             plot.getRangeAxis().setRange(0.0, 1.0);
 
             plot.getChart().fireChartChanged();
@@ -82,14 +71,16 @@ public class VolumeRatioRenderer implements IndicatorChartRenderer {
 
     @Override
     public void close() {
-        if (subscription != null) {
-            subscription.close();
-            subscription = null;
-        }
+        subscription.close();
     }
 
     @Override
     public String getParameterString() {
         return "";
+    }
+
+    private static void clearPlot(XYPlot plot) {
+        for (int i = 0; i < plot.getDatasetCount(); i++) plot.setDataset(i, null);
+        plot.clearAnnotations();
     }
 }

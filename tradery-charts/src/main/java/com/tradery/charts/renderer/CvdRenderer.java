@@ -16,50 +16,30 @@ import java.util.List;
 
 /**
  * Renderer for Cumulative Volume Delta (CVD) indicator.
- * Shows the running sum of delta (buy volume - sell volume) over time.
- * Uses IndicatorPool with CumulativeDeltaCompute for async calculation.
+ * Subscribes to CumulativeDeltaCompute in the constructor; the onReady callback
+ * handles both initial rendering and recomputation.
  */
 public class CvdRenderer implements IndicatorChartRenderer {
 
-    private static final Color CVD_POSITIVE_COLOR = new Color(76, 175, 80);   // Green
-    private static final Color CVD_NEGATIVE_COLOR = new Color(244, 67, 54);   // Red
-    private static final Color CVD_LINE_COLOR = new Color(33, 150, 243);      // Blue
+    private static final Color CVD_LINE_COLOR = new Color(33, 150, 243);
 
-    private final boolean showAsLine;
-    private IndicatorSubscription<double[]> subscription;
+    private final IndicatorSubscription<double[]> subscription;
 
-    public CvdRenderer() {
-        this(true);  // Default to line chart
-    }
-
-    public CvdRenderer(boolean showAsLine) {
-        this.showAsLine = showAsLine;
-    }
-
-    @Override
-    public void render(XYPlot plot, ChartDataProvider provider) {
+    public CvdRenderer(XYPlot plot, ChartDataProvider provider) {
         IndicatorPool pool = provider.getIndicatorPool();
-        if (pool == null) return;
-
-        if (subscription != null) subscription.close();
-        subscription = pool.subscribe(new CumulativeDeltaCompute());
+        this.subscription = pool.subscribe(new CumulativeDeltaCompute());
         subscription.onReady(cvd -> {
             if (cvd == null || cvd.length == 0) return;
 
+            clearPlot(plot);
+            ChartStyles.addChartTitleAnnotation(plot, "CVD");
+
             List<Candle> candles = provider.getCandles();
 
-            // Build time series
             TimeSeriesCollection dataset = TimeSeriesBuilder.build("CVD", candles, cvd, 0);
 
-            // Add to plot
             plot.setDataset(0, dataset);
-
-            if (showAsLine) {
-                plot.setRenderer(0, RendererBuilder.lineRenderer(CVD_LINE_COLOR, ChartStyles.MEDIUM_STROKE));
-            } else {
-                // Could use area renderer for filled CVD
-                plot.setRenderer(0, RendererBuilder.lineRenderer(CVD_LINE_COLOR, ChartStyles.MEDIUM_STROKE));
-            }
+            plot.setRenderer(0, RendererBuilder.lineRenderer(CVD_LINE_COLOR, ChartStyles.MEDIUM_STROKE));
 
             plot.getChart().fireChartChanged();
         });
@@ -67,14 +47,16 @@ public class CvdRenderer implements IndicatorChartRenderer {
 
     @Override
     public void close() {
-        if (subscription != null) {
-            subscription.close();
-            subscription = null;
-        }
+        subscription.close();
     }
 
     @Override
     public String getParameterString() {
         return "";
+    }
+
+    private static void clearPlot(XYPlot plot) {
+        for (int i = 0; i < plot.getDatasetCount(); i++) plot.setDataset(i, null);
+        plot.clearAnnotations();
     }
 }

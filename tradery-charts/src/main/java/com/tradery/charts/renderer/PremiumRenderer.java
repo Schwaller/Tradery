@@ -18,35 +18,26 @@ import java.util.List;
 
 /**
  * Renderer for Premium/Basis indicator.
- * Shows the difference between futures and spot price (as percentage).
- * Positive values indicate futures trading at a premium (contango).
- * Negative values indicate futures trading at a discount (backwardation).
- * Uses IndicatorPool with PremiumCompute for async calculation.
+ * Subscribes to PremiumCompute in the constructor; the onReady callback
+ * handles both initial rendering and recomputation.
  */
 public class PremiumRenderer implements IndicatorChartRenderer {
 
-    private static final Color PREMIUM_COLOR = new Color(76, 175, 80);    // Green (contango)
-    private static final Color DISCOUNT_COLOR = new Color(244, 67, 54);   // Red (backwardation)
-    private static final Color LINE_COLOR = new Color(156, 39, 176);      // Purple
+    private static final Color LINE_COLOR = new Color(156, 39, 176);
 
-    private IndicatorSubscription<double[]> subscription;
+    private final IndicatorSubscription<double[]> subscription;
 
-    public PremiumRenderer() {
-    }
-
-    @Override
-    public void render(XYPlot plot, ChartDataProvider provider) {
+    public PremiumRenderer(XYPlot plot, ChartDataProvider provider) {
         IndicatorPool pool = provider.getIndicatorPool();
-        if (pool == null) return;
-
-        if (subscription != null) subscription.close();
-        subscription = pool.subscribe(new PremiumCompute());
+        this.subscription = pool.subscribe(new PremiumCompute());
         subscription.onReady(premium -> {
             if (premium == null || premium.length == 0) return;
 
+            clearPlot(plot);
+            ChartStyles.addChartTitleAnnotation(plot, "Premium");
+
             List<Candle> candles = provider.getCandles();
 
-            // Build time series
             TimeSeries series = new TimeSeries("Premium");
             for (int i = 0; i < candles.size() && i < premium.length; i++) {
                 Candle c = candles.get(i);
@@ -58,7 +49,6 @@ public class PremiumRenderer implements IndicatorChartRenderer {
             TimeSeriesCollection dataset = new TimeSeriesCollection();
             dataset.addSeries(series);
 
-            // Add to plot
             plot.setDataset(0, dataset);
             plot.setRenderer(0, RendererBuilder.lineRenderer(LINE_COLOR, ChartStyles.MEDIUM_STROKE));
 
@@ -68,14 +58,16 @@ public class PremiumRenderer implements IndicatorChartRenderer {
 
     @Override
     public void close() {
-        if (subscription != null) {
-            subscription.close();
-            subscription = null;
-        }
+        subscription.close();
     }
 
     @Override
     public String getParameterString() {
         return "";
+    }
+
+    private static void clearPlot(XYPlot plot) {
+        for (int i = 0; i < plot.getDatasetCount(); i++) plot.setDataset(i, null);
+        plot.clearAnnotations();
     }
 }

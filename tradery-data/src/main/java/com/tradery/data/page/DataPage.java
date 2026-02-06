@@ -23,6 +23,7 @@ public class DataPage<T> implements DataPageView<T> {
     private final String symbol;
     private final String timeframe;    // null for non-timeframe types (Funding, OI, AggTrades)
     private final String marketType;   // "spot" or "perp" (default: "perp")
+    private final String exchange;     // exchange config key (e.g., "binance", "bybit")
     private final long startTime;
     private final long endTime;
     private final long windowDurationMillis;  // Window duration (> 0 for live pages, computed for anchored)
@@ -39,19 +40,28 @@ public class DataPage<T> implements DataPageView<T> {
     private volatile List<T> data = new ArrayList<>();
 
     /**
-     * Create a new anchored data page (defaults to perp market).
+     * Create a new anchored data page (defaults to perp market, binance exchange).
      */
     public DataPage(DataType dataType, String symbol, String timeframe,
                     long startTime, long endTime) {
-        this(dataType, symbol, timeframe, "perp", startTime, endTime, endTime - startTime);
+        this(dataType, symbol, timeframe, "perp", "binance", startTime, endTime, endTime - startTime);
     }
 
     /**
-     * Create a new live (sliding window) data page (defaults to perp market).
+     * Create a new anchored data page with market type and exchange.
+     */
+    public DataPage(DataType dataType, String symbol, String timeframe,
+                    String marketType, String exchange,
+                    long startTime, long endTime) {
+        this(dataType, symbol, timeframe, marketType, exchange, startTime, endTime, endTime - startTime);
+    }
+
+    /**
+     * Create a new live (sliding window) data page (defaults to perp market, binance).
      */
     public static <T> DataPage<T> live(DataType dataType, String symbol, String timeframe,
                                         long startTime, long endTime, long windowDurationMillis) {
-        return new DataPage<>(dataType, symbol, timeframe, "perp", startTime, endTime, windowDurationMillis, true);
+        return new DataPage<>(dataType, symbol, timeframe, "perp", "binance", startTime, endTime, windowDurationMillis, true);
     }
 
     /**
@@ -59,20 +69,32 @@ public class DataPage<T> implements DataPageView<T> {
      */
     public static <T> DataPage<T> live(DataType dataType, String symbol, String timeframe, String marketType,
                                         long startTime, long endTime, long windowDurationMillis) {
-        return new DataPage<>(dataType, symbol, timeframe, marketType, startTime, endTime, windowDurationMillis, true);
+        return new DataPage<>(dataType, symbol, timeframe, marketType, "binance", startTime, endTime, windowDurationMillis, true);
     }
 
-    private DataPage(DataType dataType, String symbol, String timeframe, String marketType,
+    /**
+     * Create a new live (sliding window) data page with market type and exchange.
+     */
+    public static <T> DataPage<T> live(DataType dataType, String symbol, String timeframe,
+                                        String marketType, String exchange,
+                                        long startTime, long endTime, long windowDurationMillis) {
+        return new DataPage<>(dataType, symbol, timeframe, marketType, exchange, startTime, endTime, windowDurationMillis, true);
+    }
+
+    private DataPage(DataType dataType, String symbol, String timeframe,
+                     String marketType, String exchange,
                      long startTime, long endTime, long windowDurationMillis) {
-        this(dataType, symbol, timeframe, marketType, startTime, endTime, windowDurationMillis, false);
+        this(dataType, symbol, timeframe, marketType, exchange, startTime, endTime, windowDurationMillis, false);
     }
 
-    private DataPage(DataType dataType, String symbol, String timeframe, String marketType,
+    private DataPage(DataType dataType, String symbol, String timeframe,
+                     String marketType, String exchange,
                      long startTime, long endTime, long windowDurationMillis, boolean liveEnabled) {
         this.dataType = dataType;
         this.symbol = symbol;
         this.timeframe = timeframe;
         this.marketType = marketType != null ? marketType : "perp";
+        this.exchange = exchange != null ? exchange : "binance";
         this.startTime = startTime;
         this.endTime = endTime;
         this.windowDurationMillis = windowDurationMillis;
@@ -102,6 +124,11 @@ public class DataPage<T> implements DataPageView<T> {
     }
 
     @Override
+    public String getExchange() {
+        return exchange;
+    }
+
+    @Override
     public long getStartTime() {
         return startTime;
     }
@@ -115,6 +142,7 @@ public class DataPage<T> implements DataPageView<T> {
     public String getKey() {
         StringBuilder sb = new StringBuilder();
         sb.append(dataType).append(":");
+        sb.append(exchange).append(":");
         sb.append(symbol).append(":");
         if (timeframe != null) {
             sb.append(timeframe).append(":");
@@ -303,7 +331,7 @@ public class DataPage<T> implements DataPageView<T> {
     public String toString() {
         String tfStr = timeframe != null ? "/" + timeframe : "";
         String liveStr = liveEnabled ? " [LIVE]" : "";
-        return "DataPage[" + dataType.getDisplayName() + " " + symbol + tfStr +
-               " " + state + " (" + data.size() + " records)" + liveStr + "]";
+        return "DataPage[" + exchange + " " + dataType.getDisplayName() + " " + symbol + tfStr +
+               " " + marketType + " " + state + " (" + data.size() + " records)" + liveStr + "]";
     }
 }

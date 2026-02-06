@@ -16,34 +16,28 @@ import java.util.List;
 
 /**
  * Renderer for Open Interest indicator.
- * Uses IndicatorPool with OpenInterestCompute for async calculation.
- * Displays open interest as a line chart.
+ * Subscribes to OpenInterestCompute in the constructor; the onReady callback
+ * handles both initial rendering and recomputation.
  */
 public class OpenInterestRenderer implements IndicatorChartRenderer {
 
-    private static final Color OI_COLOR = new Color(156, 39, 176);  // Purple
+    private static final Color OI_COLOR = new Color(156, 39, 176);
 
-    private IndicatorSubscription<double[]> subscription;
+    private final IndicatorSubscription<double[]> subscription;
 
-    public OpenInterestRenderer() {
-    }
-
-    @Override
-    public void render(XYPlot plot, ChartDataProvider provider) {
+    public OpenInterestRenderer(XYPlot plot, ChartDataProvider provider) {
         IndicatorPool pool = provider.getIndicatorPool();
-        if (pool == null) return;
-
-        if (subscription != null) subscription.close();
-        subscription = pool.subscribe(new OpenInterestCompute());
+        this.subscription = pool.subscribe(new OpenInterestCompute());
         subscription.onReady(oi -> {
             if (oi == null || oi.length == 0) return;
 
+            clearPlot(plot);
+            ChartStyles.addChartTitleAnnotation(plot, "OI");
+
             List<Candle> candles = provider.getCandles();
 
-            // Build time series
             TimeSeriesCollection dataset = TimeSeriesBuilder.build("OI", candles, oi, 0);
 
-            // Add to plot
             plot.setDataset(0, dataset);
             plot.setRenderer(0, RendererBuilder.lineRenderer(OI_COLOR, ChartStyles.MEDIUM_STROKE));
 
@@ -53,14 +47,16 @@ public class OpenInterestRenderer implements IndicatorChartRenderer {
 
     @Override
     public void close() {
-        if (subscription != null) {
-            subscription.close();
-            subscription = null;
-        }
+        subscription.close();
     }
 
     @Override
     public String getParameterString() {
         return "";
+    }
+
+    private static void clearPlot(XYPlot plot) {
+        for (int i = 0; i < plot.getDatasetCount(); i++) plot.setDataset(i, null);
+        plot.clearAnnotations();
     }
 }

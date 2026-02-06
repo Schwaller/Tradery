@@ -17,34 +17,31 @@ import java.util.List;
 
 /**
  * Renderer for ADX (Average Directional Index) indicator.
- * Uses IndicatorPool with AdxCompute for async calculation.
+ * Subscribes to AdxCompute in the constructor; the onReady callback
+ * handles both initial rendering and recomputation.
  * Displays ADX line with +DI and -DI, plus trend strength threshold at 25.
  */
 public class AdxRenderer implements IndicatorChartRenderer {
 
     private final int period;
-    private IndicatorSubscription<Indicators.ADXResult> subscription;
+    private final IndicatorSubscription<Indicators.ADXResult> subscription;
 
-    public AdxRenderer(int period) {
+    public AdxRenderer(int period, XYPlot plot, ChartDataProvider provider) {
         this.period = period;
-    }
 
-    @Override
-    public void render(XYPlot plot, ChartDataProvider provider) {
         IndicatorPool pool = provider.getIndicatorPool();
-        if (pool == null) return;
-
-        if (subscription != null) subscription.close();
-        subscription = pool.subscribe(new AdxCompute(period));
+        this.subscription = pool.subscribe(new AdxCompute(period));
         subscription.onReady(adxResult -> {
             if (adxResult == null || adxResult.adx() == null || adxResult.adx().length == 0) return;
+
+            clearPlot(plot);
+            ChartStyles.addChartTitleAnnotation(plot, "ADX");
 
             List<Candle> candles = provider.getCandles();
             double[] adxValues = adxResult.adx();
             double[] plusDI = adxResult.plusDI();
             double[] minusDI = adxResult.minusDI();
 
-            // Build time series for ADX, +DI, -DI
             TimeSeriesCollection dataset = new TimeSeriesCollection();
             dataset.addSeries(TimeSeriesBuilder.createTimeSeries(
                 "ADX(" + period + ")", candles, adxValues, period));
@@ -53,14 +50,12 @@ public class AdxRenderer implements IndicatorChartRenderer {
             dataset.addSeries(TimeSeriesBuilder.createTimeSeries(
                 "-DI(" + period + ")", candles, minusDI, period));
 
-            // Add to plot
             plot.setDataset(0, dataset);
             plot.setRenderer(0, RendererBuilder.lineRenderer(
-                ChartStyles.ADX_COLOR, ChartStyles.MEDIUM_STROKE,       // ADX - orange
-                ChartStyles.PLUS_DI_COLOR, ChartStyles.THIN_STROKE,     // +DI - green
-                ChartStyles.MINUS_DI_COLOR, ChartStyles.THIN_STROKE));  // -DI - red
+                ChartStyles.ADX_COLOR, ChartStyles.MEDIUM_STROKE,
+                ChartStyles.PLUS_DI_COLOR, ChartStyles.THIN_STROKE,
+                ChartStyles.MINUS_DI_COLOR, ChartStyles.THIN_STROKE));
 
-            // Add reference lines (25 = trend threshold)
             if (!candles.isEmpty()) {
                 long startTime = candles.get(0).timestamp();
                 long endTime = candles.get(candles.size() - 1).timestamp();
@@ -73,10 +68,7 @@ public class AdxRenderer implements IndicatorChartRenderer {
 
     @Override
     public void close() {
-        if (subscription != null) {
-            subscription.close();
-            subscription = null;
-        }
+        subscription.close();
     }
 
     @Override
@@ -86,5 +78,10 @@ public class AdxRenderer implements IndicatorChartRenderer {
 
     public int getPeriod() {
         return period;
+    }
+
+    private static void clearPlot(XYPlot plot) {
+        for (int i = 0; i < plot.getDatasetCount(); i++) plot.setDataset(i, null);
+        plot.clearAnnotations();
     }
 }

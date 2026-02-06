@@ -4,6 +4,7 @@ import com.tradery.charts.core.ChartDataProvider;
 import com.tradery.charts.indicator.IndicatorPool;
 import com.tradery.charts.indicator.IndicatorSubscription;
 import com.tradery.charts.indicator.impl.FundingCompute;
+import com.tradery.charts.util.ChartStyles;
 import com.tradery.core.model.Candle;
 import org.jfree.chart.plot.XYPlot;
 import org.jfree.chart.renderer.xy.XYBarRenderer;
@@ -17,32 +18,28 @@ import java.util.List;
 
 /**
  * Renderer for Funding Rate indicator.
- * Uses IndicatorPool with FundingCompute for async calculation.
+ * Subscribes to FundingCompute in the constructor; the onReady callback
+ * handles both initial rendering and recomputation.
  * Displays funding rate as bars (green positive, red negative).
  */
 public class FundingRenderer implements IndicatorChartRenderer {
 
-    private static final Color POSITIVE_FUNDING = new Color(76, 175, 80);   // Green - longs pay shorts
-    private static final Color NEGATIVE_FUNDING = new Color(244, 67, 54);   // Red - shorts pay longs
+    private static final Color POSITIVE_FUNDING = new Color(76, 175, 80);
+    private static final Color NEGATIVE_FUNDING = new Color(244, 67, 54);
 
-    private IndicatorSubscription<double[]> subscription;
+    private final IndicatorSubscription<double[]> subscription;
 
-    public FundingRenderer() {
-    }
-
-    @Override
-    public void render(XYPlot plot, ChartDataProvider provider) {
+    public FundingRenderer(XYPlot plot, ChartDataProvider provider) {
         IndicatorPool pool = provider.getIndicatorPool();
-        if (pool == null) return;
-
-        if (subscription != null) subscription.close();
-        subscription = pool.subscribe(new FundingCompute());
+        this.subscription = pool.subscribe(new FundingCompute());
         subscription.onReady(funding -> {
             if (funding == null || funding.length == 0) return;
 
+            clearPlot(plot);
+            ChartStyles.addChartTitleAnnotation(plot, "Funding");
+
             List<Candle> candles = provider.getCandles();
 
-            // Create separate series for positive and negative funding
             TimeSeries positiveSeries = new TimeSeries("Funding+");
             TimeSeries negativeSeries = new TimeSeries("Funding-");
 
@@ -51,7 +48,6 @@ public class FundingRenderer implements IndicatorChartRenderer {
                 Candle c = candles.get(i);
                 Millisecond time = new Millisecond(new Date(c.timestamp()));
 
-                // Funding is typically in percentage, multiply by 100 for display
                 double value = funding[i] * 100;
 
                 if (value >= 0) {
@@ -67,7 +63,6 @@ public class FundingRenderer implements IndicatorChartRenderer {
             dataset.addSeries(positiveSeries);
             dataset.addSeries(negativeSeries);
 
-            // Create bar renderer with colors
             XYBarRenderer renderer = new XYBarRenderer();
             renderer.setSeriesPaint(0, POSITIVE_FUNDING);
             renderer.setSeriesPaint(1, NEGATIVE_FUNDING);
@@ -83,14 +78,16 @@ public class FundingRenderer implements IndicatorChartRenderer {
 
     @Override
     public void close() {
-        if (subscription != null) {
-            subscription.close();
-            subscription = null;
-        }
+        subscription.close();
     }
 
     @Override
     public String getParameterString() {
         return "";
+    }
+
+    private static void clearPlot(XYPlot plot) {
+        for (int i = 0; i < plot.getDatasetCount(); i++) plot.setDataset(i, null);
+        plot.clearAnnotations();
     }
 }

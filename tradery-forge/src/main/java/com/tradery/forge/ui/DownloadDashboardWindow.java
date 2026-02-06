@@ -177,7 +177,11 @@ public class DownloadDashboardWindow extends DashboardWindow {
     private void collectDataPages(DataPageManager<?> manager, List<DashboardPageInfo> result) {
         if (manager == null) return;
         for (DataPageManager.PageInfo page : manager.getActivePages()) {
-            String displayName = page.symbol();
+            String market = "spot".equals(page.marketType()) ? "spot" : "perp";
+            String exchange = page.exchange() != null ? page.exchange() : "binance";
+            // Capitalize first letter of exchange for display
+            String exchangeDisplay = exchange.substring(0, 1).toUpperCase() + exchange.substring(1);
+            String displayName = exchangeDisplay + " " + page.symbol() + " " + market;
             if (page.timeframe() != null) displayName += "/" + page.timeframe();
 
             result.add(new DashboardPageInfo(
@@ -188,7 +192,7 @@ public class DownloadDashboardWindow extends DashboardWindow {
                 page.listenerCount(),
                 page.recordCount(),
                 page.loadProgress(),
-                false,
+                page.liveEnabled(),
                 page.consumers() != null ? page.consumers() : List.of()
             ));
         }

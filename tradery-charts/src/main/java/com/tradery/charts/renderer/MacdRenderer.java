@@ -19,42 +19,32 @@ import java.util.List;
 
 /**
  * Renderer for MACD (Moving Average Convergence Divergence) indicator.
- * Uses IndicatorPool with MacdCompute for async calculation.
+ * Subscribes to MacdCompute in the constructor; the onReady callback
+ * handles both initial rendering and recomputation.
  */
 public class MacdRenderer implements IndicatorChartRenderer {
 
     private final int fastPeriod;
     private final int slowPeriod;
     private final int signalPeriod;
-    private IndicatorSubscription<Indicators.MACDResult> subscription;
+    private final IndicatorSubscription<Indicators.MACDResult> subscription;
 
-    public MacdRenderer(int fastPeriod, int slowPeriod, int signalPeriod) {
+    public MacdRenderer(int fastPeriod, int slowPeriod, int signalPeriod, XYPlot plot, ChartDataProvider provider) {
         this.fastPeriod = fastPeriod;
         this.slowPeriod = slowPeriod;
         this.signalPeriod = signalPeriod;
-    }
 
-    /**
-     * Create a MACD renderer with default parameters (12, 26, 9).
-     */
-    public MacdRenderer() {
-        this(12, 26, 9);
-    }
-
-    @Override
-    public void render(XYPlot plot, ChartDataProvider provider) {
         IndicatorPool pool = provider.getIndicatorPool();
-        if (pool == null) return;
-
-        if (subscription != null) subscription.close();
-        subscription = pool.subscribe(new MacdCompute(fastPeriod, slowPeriod, signalPeriod));
+        this.subscription = pool.subscribe(new MacdCompute(fastPeriod, slowPeriod, signalPeriod));
         subscription.onReady(macd -> {
             if (macd == null) return;
+
+            clearPlot(plot);
+            ChartStyles.addChartTitleAnnotation(plot, "MACD");
 
             List<Candle> candles = provider.getCandles();
             int startIdx = slowPeriod - 1;
 
-            // Build line series (MACD line + signal)
             TimeSeries macdSeries = TimeSeriesBuilder.createTimeSeries("MACD", candles, macd.line(), startIdx);
             TimeSeries signalSeries = TimeSeriesBuilder.createTimeSeries("Signal", candles, macd.signal(), startIdx);
 
@@ -67,14 +57,12 @@ public class MacdRenderer implements IndicatorChartRenderer {
                 ChartStyles.MACD_LINE_COLOR, ChartStyles.MEDIUM_STROKE,
                 ChartStyles.MACD_SIGNAL_COLOR, ChartStyles.MEDIUM_STROKE));
 
-            // Build histogram (bar chart)
             XYSeriesCollection histDataset = TimeSeriesBuilder.buildXY("Histogram", candles, macd.histogram(), startIdx);
 
             plot.setDataset(1, histDataset);
             plot.setRenderer(1, RendererBuilder.colorCodedBarRenderer(
                 histDataset, ChartStyles.MACD_HIST_POS, ChartStyles.MACD_HIST_NEG));
 
-            // Add zero reference line
             if (!candles.isEmpty()) {
                 long startTime = candles.get(0).timestamp();
                 long endTime = candles.get(candles.size() - 1).timestamp();
@@ -87,10 +75,7 @@ public class MacdRenderer implements IndicatorChartRenderer {
 
     @Override
     public void close() {
-        if (subscription != null) {
-            subscription.close();
-            subscription = null;
-        }
+        subscription.close();
     }
 
     @Override
@@ -108,5 +93,10 @@ public class MacdRenderer implements IndicatorChartRenderer {
 
     public int getSignalPeriod() {
         return signalPeriod;
+    }
+
+    private static void clearPlot(XYPlot plot) {
+        for (int i = 0; i < plot.getDatasetCount(); i++) plot.setDataset(i, null);
+        plot.clearAnnotations();
     }
 }
