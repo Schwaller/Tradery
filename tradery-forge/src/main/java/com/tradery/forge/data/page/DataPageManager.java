@@ -4,6 +4,7 @@ import com.tradery.data.page.DataPage;
 import com.tradery.data.page.DataPageListener;
 import com.tradery.data.page.DataPageView;
 import com.tradery.data.page.DataType;
+import com.tradery.data.page.PageKey;
 import com.tradery.data.page.PageState;
 import com.tradery.forge.data.log.DownloadLogStore;
 import org.slf4j.Logger;
@@ -279,23 +280,31 @@ public abstract class DataPageManager<T> {
     }
 
     /**
-     * Generate a key for page deduplication.
+     * Build a PageKey for page deduplication and map lookups.
+     * Uses the unified PageKey format so all keys are consistent across modules.
      */
-    protected String makeKey(String symbol, String timeframe, long startTime, long endTime) {
-        StringBuilder sb = new StringBuilder();
-        sb.append(dataType).append(":");
-        sb.append(symbol).append(":");
-        if (timeframe != null) {
-            sb.append(timeframe).append(":");
-        }
-        sb.append(startTime).append(":").append(endTime);
-        return sb.toString();
+    protected PageKey makePageKey(String symbol, String timeframe, long startTime, long endTime) {
+        return new PageKey(
+            dataType.toWireFormat(),
+            "binance",
+            symbol,
+            timeframe,
+            "perp",
+            endTime,
+            endTime - startTime
+        );
     }
 
     /**
-     * Reconstruct the makeKey() from a page's fields.
-     * DataPage.getKey() has a different format (includes marketType, windowDuration),
-     * so we must use makeKey() for consistent map lookups.
+     * Generate a key string for page deduplication.
+     */
+    protected String makeKey(String symbol, String timeframe, long startTime, long endTime) {
+        return makePageKey(symbol, timeframe, startTime, endTime).toKeyString();
+    }
+
+    /**
+     * Get the map key for a page view.
+     * Uses PageKey.toKeyString() for consistent lookups.
      */
     private String keyOf(DataPageView<T> page) {
         return makeKey(page.getSymbol(), page.getTimeframe(), page.getStartTime(), page.getEndTime());

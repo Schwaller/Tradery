@@ -1,4 +1,4 @@
-package com.tradery.dataservice.page;
+package com.tradery.data.page;
 
 /**
  * Unique identifier for a data page.
@@ -11,16 +11,19 @@ package com.tradery.dataservice.page;
  */
 public record PageKey(
     String dataType,           // CANDLES, AGGTRADES, FUNDING, OI, PREMIUM
+    String exchange,           // "binance", "bybit", "okx", etc. (default: "binance")
     String symbol,
     String timeframe,          // null for AGGTRADES, FUNDING, OI
     String marketType,         // "spot" or "perp" (default: "perp")
     Long endTime,              // null = live (window moves with current time), else fixed end time
     long windowDurationMillis  // window duration in milliseconds
 ) {
-    // Canonical constructor with default marketType
+    // Canonical constructor with defaults
     public PageKey {
         if (marketType == null) marketType = "perp";
+        if (exchange == null) exchange = "binance";
     }
+
     /**
      * Check if this is a live (moving) page.
      */
@@ -42,6 +45,7 @@ public record PageKey(
     public long getEffectiveStartTime() {
         return getEffectiveEndTime() - windowDurationMillis;
     }
+
     /**
      * Check if this is a spot market page.
      */
@@ -58,11 +62,12 @@ public record PageKey(
 
     /**
      * Create a string representation of the key for use in URLs and maps.
-     * Format: dataType:symbol[:timeframe]:marketType:endTime|LIVE:windowDurationMillis
+     * Format: dataType:exchange:symbol[:timeframe]:marketType:endTime|LIVE:windowDurationMillis
      */
     public String toKeyString() {
         StringBuilder sb = new StringBuilder();
         sb.append(dataType).append(":");
+        sb.append(exchange).append(":");
         sb.append(symbol).append(":");
         if (timeframe != null) {
             sb.append(timeframe).append(":");
@@ -75,39 +80,51 @@ public record PageKey(
 
     /**
      * Parse a key string back into a PageKey.
-     * Format: dataType:symbol[:timeframe]:marketType:endTime|LIVE:windowDurationMillis
+     *
+     * Supports multiple formats for backward compatibility:
+     * - New:  dataType:exchange:symbol[:timeframe]:marketType:endTime|LIVE:duration
+     * - Old:  dataType:symbol[:timeframe]:marketType:endTime|LIVE:duration  (no exchange)
+     * - Legacy: dataType:symbol[:timeframe]:startTime:endTime               (forge makeKey format)
      */
     public static PageKey fromKeyString(String keyString) {
         String[] parts = keyString.split(":");
         int idx = 0;
 
         String dataType = parts[idx++];
+
+        // Determine if second part is exchange or symbol.
+        // Exchange names are lowercase alpha (binance, bybit, okx).
+        // Symbols are uppercase with digits (BTCUSDT, ETHUSDT).
+        String exchange = "binance";
+        String second = parts[idx];
+        if (isExchangeName(second)) {
+            exchange = parts[idx++];
+        }
+
         String symbol = parts[idx++];
 
         String timeframe = null;
         String marketType = "perp";
 
-        // Parse remaining parts: [timeframe]:marketType:endTime:duration
-        // We need to figure out which parts are timeframe vs marketType
+        // Parse remaining parts
         int remaining = parts.length - idx;
 
         if (remaining == 4) {
-            // Has timeframe: timeframe:marketType:endTime:duration
+            // timeframe:marketType:endTime:duration
             timeframe = parts[idx++];
             marketType = parts[idx++];
         } else if (remaining == 3) {
-            // Could be: marketType:endTime:duration (no timeframe)
-            // Or old format without marketType: endTime:duration (need backwards compat)
             String next = parts[idx];
             if (next.equals("spot") || next.equals("perp")) {
+                // marketType:endTime:duration (no timeframe)
                 marketType = parts[idx++];
             } else if (!next.equals("LIVE") && !isNumeric(next)) {
-                // Old format: timeframe:endTime:duration (no marketType)
+                // timeframe:endTime:duration (no marketType, old format)
                 timeframe = parts[idx++];
-                marketType = "perp"; // default for old keys
+                marketType = "perp";
             }
         } else if (remaining == 2) {
-            // Old format: endTime:duration (no timeframe, no marketType)
+            // endTime:duration (no timeframe, no marketType, old format)
             marketType = "perp";
         }
 
@@ -116,7 +133,19 @@ public record PageKey(
 
         long windowDurationMillis = Long.parseLong(parts[idx]);
 
-        return new PageKey(dataType, symbol, timeframe, marketType, endTime, windowDurationMillis);
+        return new PageKey(dataType, exchange, symbol, timeframe, marketType, endTime, windowDurationMillis);
+    }
+
+    private static boolean isExchangeName(String s) {
+        // Exchange names: lowercase alpha strings like "binance", "bybit", "okx"
+        // Symbols: uppercase with digits like "BTCUSDT"
+        if (s == null || s.isEmpty()) return false;
+        // If it's all lowercase letters, it's an exchange name
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            if (c < 'a' || c > 'z') return false;
+        }
+        return true;
     }
 
     private static boolean isNumeric(String s) {
@@ -128,61 +157,93 @@ public record PageKey(
         }
     }
 
+    // ========== Factory Methods ==========
+
     /**
-     * Create a live candle page key.
+     * Create a live candle page key (defaults to binance perp).
      */
     public static PageKey liveCandles(String symbol, String timeframe, long windowDurationMillis) {
-        return liveCandles(symbol, timeframe, "perp", windowDurationMillis);
+        return liveCandles(symbol, timeframe, "perp", "binance", windowDurationMillis);
     }
 
     /**
-     * Create a live candle page key with market type.
+     * Create a live candle page key with market type (defaults to binance).
      */
     public static PageKey liveCandles(String symbol, String timeframe, String marketType, long windowDurationMillis) {
-        return new PageKey("CANDLES", symbol.toUpperCase(), timeframe, marketType, null, windowDurationMillis);
+        return liveCandles(symbol, timeframe, marketType, "binance", windowDurationMillis);
     }
 
     /**
-     * Create an anchored candle page key.
+     * Create a live candle page key with market type and exchange.
+     */
+    public static PageKey liveCandles(String symbol, String timeframe, String marketType, String exchange, long windowDurationMillis) {
+        return new PageKey("CANDLES", exchange, symbol.toUpperCase(), timeframe, marketType, null, windowDurationMillis);
+    }
+
+    /**
+     * Create an anchored candle page key (defaults to binance perp).
      */
     public static PageKey anchoredCandles(String symbol, String timeframe, long endTime, long windowDurationMillis) {
-        return anchoredCandles(symbol, timeframe, "perp", endTime, windowDurationMillis);
+        return anchoredCandles(symbol, timeframe, "perp", "binance", endTime, windowDurationMillis);
     }
 
     /**
-     * Create an anchored candle page key with market type.
+     * Create an anchored candle page key with market type (defaults to binance).
      */
     public static PageKey anchoredCandles(String symbol, String timeframe, String marketType, long endTime, long windowDurationMillis) {
-        return new PageKey("CANDLES", symbol.toUpperCase(), timeframe, marketType, endTime, windowDurationMillis);
+        return anchoredCandles(symbol, timeframe, marketType, "binance", endTime, windowDurationMillis);
     }
 
     /**
-     * Create a live aggTrades page key.
+     * Create an anchored candle page key with market type and exchange.
+     */
+    public static PageKey anchoredCandles(String symbol, String timeframe, String marketType, String exchange, long endTime, long windowDurationMillis) {
+        return new PageKey("CANDLES", exchange, symbol.toUpperCase(), timeframe, marketType, endTime, windowDurationMillis);
+    }
+
+    /**
+     * Create a live aggTrades page key (defaults to binance perp).
      */
     public static PageKey liveAggTrades(String symbol, long windowDurationMillis) {
-        return liveAggTrades(symbol, "perp", windowDurationMillis);
+        return liveAggTrades(symbol, "perp", "binance", windowDurationMillis);
     }
 
     /**
-     * Create a live aggTrades page key with market type.
+     * Create a live aggTrades page key with market type (defaults to binance).
      */
     public static PageKey liveAggTrades(String symbol, String marketType, long windowDurationMillis) {
-        return new PageKey("AGGTRADES", symbol.toUpperCase(), null, marketType, null, windowDurationMillis);
+        return liveAggTrades(symbol, marketType, "binance", windowDurationMillis);
     }
 
     /**
-     * Create an anchored aggTrades page key.
+     * Create a live aggTrades page key with market type and exchange.
+     */
+    public static PageKey liveAggTrades(String symbol, String marketType, String exchange, long windowDurationMillis) {
+        return new PageKey("AGGTRADES", exchange, symbol.toUpperCase(), null, marketType, null, windowDurationMillis);
+    }
+
+    /**
+     * Create an anchored aggTrades page key (defaults to binance perp).
      */
     public static PageKey anchoredAggTrades(String symbol, long endTime, long windowDurationMillis) {
-        return anchoredAggTrades(symbol, "perp", endTime, windowDurationMillis);
+        return anchoredAggTrades(symbol, "perp", "binance", endTime, windowDurationMillis);
     }
 
     /**
-     * Create an anchored aggTrades page key with market type.
+     * Create an anchored aggTrades page key with market type (defaults to binance).
      */
     public static PageKey anchoredAggTrades(String symbol, String marketType, long endTime, long windowDurationMillis) {
-        return new PageKey("AGGTRADES", symbol.toUpperCase(), null, marketType, endTime, windowDurationMillis);
+        return anchoredAggTrades(symbol, marketType, "binance", endTime, windowDurationMillis);
     }
+
+    /**
+     * Create an anchored aggTrades page key with market type and exchange.
+     */
+    public static PageKey anchoredAggTrades(String symbol, String marketType, String exchange, long endTime, long windowDurationMillis) {
+        return new PageKey("AGGTRADES", exchange, symbol.toUpperCase(), null, marketType, endTime, windowDurationMillis);
+    }
+
+    // ========== Type Checks ==========
 
     /**
      * Check if this page key is for candle data.

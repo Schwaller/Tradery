@@ -1,6 +1,6 @@
 package com.tradery.dataservice.api;
 
-import com.tradery.dataservice.page.PageKey;
+import com.tradery.data.page.PageKey;
 import com.tradery.dataservice.page.PageManager;
 import com.tradery.dataservice.page.PageStatus;
 import io.javalin.http.Context;
@@ -33,6 +33,7 @@ public class PageHandler {
             // Convert startTime/endTime to endTime/windowDurationMillis
             PageKey key = new PageKey(
                 request.dataType(),
+                "binance",  // default exchange for HTTP API
                 request.symbol(),
                 request.timeframe(),
                 "perp",  // default market type for HTTP API
@@ -64,7 +65,7 @@ public class PageHandler {
             List<PageResponse> responses = request.requests().stream()
                 .map(r -> {
                     // Convert startTime/endTime to endTime/windowDurationMillis
-                    PageKey key = new PageKey(r.dataType(), r.symbol(), r.timeframe(), "perp", r.endTime(), r.endTime() - r.startTime());
+                    PageKey key = new PageKey(r.dataType(), "binance", r.symbol(), r.timeframe(), "perp", r.endTime(), r.endTime() - r.startTime());
                     PageStatus status = pageManager.requestPage(key, request.consumerId(), request.consumerName());
                     return new PageResponse(key.toKeyString(), status.state().name(), status.progress(), status.isNew());
                 })

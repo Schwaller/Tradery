@@ -18,15 +18,10 @@ import java.util.List;
  */
 public class DataPage<T> implements DataPageView<T> {
 
-    // Identity (determines deduplication - NOT including consumer)
-    private final DataType dataType;
-    private final String symbol;
-    private final String timeframe;    // null for non-timeframe types (Funding, OI, AggTrades)
-    private final String marketType;   // "spot" or "perp" (default: "perp")
-    private final String exchange;     // exchange config key (e.g., "binance", "bybit")
+    // Identity — a single PageKey replaces dataType, exchange, symbol, timeframe, marketType, endTime, windowDuration
+    private final PageKey pageKey;
     private final long startTime;
     private final long endTime;
-    private final long windowDurationMillis;  // Window duration (> 0 for live pages, computed for anchored)
     private final boolean liveEnabled; // True for live pages that receive real-time updates
 
     // State
@@ -81,6 +76,13 @@ public class DataPage<T> implements DataPageView<T> {
         return new DataPage<>(dataType, symbol, timeframe, marketType, exchange, startTime, endTime, windowDurationMillis, true);
     }
 
+    /**
+     * Create a DataPage from an existing PageKey (anchored).
+     */
+    public static <T> DataPage<T> fromPageKey(PageKey pageKey) {
+        return new DataPage<>(pageKey, pageKey.getEffectiveStartTime(), pageKey.getEffectiveEndTime(), pageKey.isLive());
+    }
+
     private DataPage(DataType dataType, String symbol, String timeframe,
                      String marketType, String exchange,
                      long startTime, long endTime, long windowDurationMillis) {
@@ -90,42 +92,61 @@ public class DataPage<T> implements DataPageView<T> {
     private DataPage(DataType dataType, String symbol, String timeframe,
                      String marketType, String exchange,
                      long startTime, long endTime, long windowDurationMillis, boolean liveEnabled) {
-        this.dataType = dataType;
-        this.symbol = symbol;
-        this.timeframe = timeframe;
-        this.marketType = marketType != null ? marketType : "perp";
-        this.exchange = exchange != null ? exchange : "binance";
+        this.pageKey = new PageKey(
+            dataType.toWireFormat(),
+            exchange != null ? exchange : "binance",
+            symbol,
+            timeframe,
+            marketType != null ? marketType : "perp",
+            liveEnabled ? null : endTime,
+            windowDurationMillis
+        );
         this.startTime = startTime;
         this.endTime = endTime;
-        this.windowDurationMillis = windowDurationMillis;
         this.liveEnabled = liveEnabled;
+    }
+
+    private DataPage(PageKey pageKey, long startTime, long endTime, boolean liveEnabled) {
+        this.pageKey = pageKey;
+        this.startTime = startTime;
+        this.endTime = endTime;
+        this.liveEnabled = liveEnabled;
+    }
+
+    // ========== PageKey access ==========
+
+    /**
+     * Get the underlying PageKey for this page.
+     */
+    public PageKey getPageKey() {
+        return pageKey;
     }
 
     // ========== Identity (DataPageView interface) ==========
 
     @Override
     public DataType getDataType() {
-        return dataType;
+        return DataType.fromWireFormat(pageKey.dataType());
     }
 
     @Override
     public String getSymbol() {
-        return symbol;
+        return pageKey.symbol();
     }
 
     @Override
     public String getTimeframe() {
-        return timeframe;
+        return pageKey.timeframe();
     }
 
     @Override
     public String getMarketType() {
-        return marketType;
+        return pageKey.marketType();
     }
 
     @Override
     public String getExchange() {
-        return exchange;
+        return pageKey.exchange();
     }
 
     @Override
@@ -140,20 +161,7 @@ public class DataPage<T> implements DataPageView<T> {
 
     @Override
     public String getKey() {
-        StringBuilder sb = new StringBuilder();
-        sb.append(dataType).append(":");
-        sb.append(exchange).append(":");
-        sb.append(symbol).append(":");
-        if (timeframe != null) {
-            sb.append(timeframe).append(":");
-        }
-        sb.append(marketType).append(":");
-        if (liveEnabled) {
-            sb.append("LIVE:").append(windowDurationMillis);
-        } else {
-            sb.append(endTime).append(":").append(windowDurationMillis);
-        }
-        return sb.toString();
+        return pageKey.toKeyString();
     }
 
     // ========== State (DataPageView interface) ==========
@@ -275,7 +283,7 @@ public class DataPage<T> implements DataPageView<T> {
         }
 
         // Only works for Candle type
-        if (dataType != DataType.CANDLES) {
+        if (getDataType() != DataType.CANDLES) {
             return;
         }
 
@@ -300,7 +308,7 @@ public class DataPage<T> implements DataPageView<T> {
     }
 
     public long getWindowDurationMillis() {
-        return windowDurationMillis;
+        return pageKey.windowDurationMillis();
     }
 
     /**
@@ -329,9 +337,9 @@ public class DataPage<T> implements DataPageView<T> {
 
     @Override
     public String toString() {
-        String tfStr = timeframe != null ? "/" + timeframe : "";
+        String tfStr = pageKey.timeframe() != null ? "/" + pageKey.timeframe() : "";
         String liveStr = liveEnabled ? " [LIVE]" : "";
-        return "DataPage[" + exchange + " " + dataType.getDisplayName() + " " + symbol + tfStr +
-               " " + marketType + " " + state + " (" + data.size() + " records)" + liveStr + "]";
+        return "DataPage[" + pageKey.exchange() + " " + getDataType().getDisplayName() + " " + pageKey.symbol() + tfStr +
+               " " + pageKey.marketType() + " " + state + " (" + data.size() + " records)" + liveStr + "]";
     }
 }

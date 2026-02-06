@@ -1,6 +1,7 @@
 package com.tradery.forge.ui;
 
 import com.tradery.data.page.DataType;
+import com.tradery.data.page.PageKey;
 import com.tradery.forge.data.log.DownloadEvent;
 import com.tradery.forge.data.log.DownloadLogStore;
 
@@ -259,13 +260,14 @@ public class DownloadLogPanel extends JPanel {
         }
 
         private String simplifyPageKey(String pageKey) {
-            // Extract just symbol/timeframe from key like "CANDLES:BTCUSDT:1h:123456:789012"
             if (pageKey == null) return "";
-            String[] parts = pageKey.split(":");
-            if (parts.length >= 3) {
-                return parts[1] + (parts.length > 3 && !parts[2].matches("\\d+") ? "/" + parts[2] : "");
+            try {
+                PageKey key = PageKey.fromKeyString(pageKey);
+                return key.symbol() + (key.timeframe() != null ? "/" + key.timeframe() : "");
+            } catch (Exception e) {
+                // Fallback for unparseable keys
+                return pageKey;
             }
-            return pageKey;
         }
     }
 

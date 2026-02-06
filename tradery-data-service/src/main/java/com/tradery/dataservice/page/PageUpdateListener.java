@@ -1,6 +1,7 @@
 package com.tradery.dataservice.page;
 
 import com.tradery.core.model.Candle;
+import com.tradery.data.page.PageKey;
 
 import java.util.List;
 

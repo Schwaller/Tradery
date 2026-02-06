@@ -7,6 +7,7 @@ import com.tradery.core.model.Candle;
 import com.tradery.core.model.MarkPriceUpdate;
 import com.tradery.core.model.OpenInterestUpdate;
 import com.tradery.data.page.DataType;
+import com.tradery.data.page.PageKey;
 import org.java_websocket.client.WebSocketClient;
 import org.java_websocket.handshake.ServerHandshake;
 import org.slf4j.Logger;
@@ -1056,30 +1057,17 @@ public class DataServiceConnection {
     // ========== Key Generation ==========
 
     private String makePageKey(DataType dataType, String symbol, String timeframe, String marketType, long startTime, long endTime) {
-        // Must match server's PageKey.toKeyString() format: dataType:symbol[:timeframe]:marketType:anchor:duration
-        // For anchored pages: anchor = endTime, duration = endTime - startTime
-        StringBuilder sb = new StringBuilder();
-        sb.append(dataType.toWireFormat()).append(":");
-        sb.append(symbol.toUpperCase()).append(":");
-        if (timeframe != null) {
-            sb.append(timeframe).append(":");
-        }
-        sb.append(marketType != null ? marketType : "perp").append(":");
-        sb.append(endTime).append(":").append(endTime - startTime);
-        return sb.toString();
+        return new PageKey(
+            dataType.toWireFormat(), "binance", symbol.toUpperCase(), timeframe,
+            marketType != null ? marketType : "perp", endTime, endTime - startTime
+        ).toKeyString();
     }
 
     private String makeLivePageKey(DataType dataType, String symbol, String timeframe, String marketType, long duration) {
-        // Must match server's PageKey.toKeyString() format: dataType:symbol[:timeframe]:marketType:LIVE:duration
-        StringBuilder sb = new StringBuilder();
-        sb.append(dataType.toWireFormat()).append(":");
-        sb.append(symbol.toUpperCase()).append(":");
-        if (timeframe != null) {
-            sb.append(timeframe).append(":");
-        }
-        sb.append(marketType != null ? marketType : "perp").append(":");
-        sb.append("LIVE:").append(duration);
-        return sb.toString();
+        return new PageKey(
+            dataType.toWireFormat(), "binance", symbol.toUpperCase(), timeframe,
+            marketType != null ? marketType : "perp", null, duration
+        ).toKeyString();
     }
 
     private String makeLiveKey(String symbol, String timeframe) {

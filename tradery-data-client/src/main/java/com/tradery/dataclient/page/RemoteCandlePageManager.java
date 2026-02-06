@@ -5,6 +5,7 @@ import com.tradery.data.page.DataPage;
 import com.tradery.data.page.DataPageListener;
 import com.tradery.data.page.DataPageView;
 import com.tradery.data.page.DataType;
+import com.tradery.data.page.PageKey;
 import com.tradery.data.page.PageState;
 import com.tradery.dataclient.DataServiceClient;
 import org.slf4j.Logger;
@@ -583,16 +584,13 @@ public class RemoteCandlePageManager {
     }
 
     private String makeKey(String symbol, String timeframe, String marketType, long startTime, long endTime) {
-        // Must match server's PageKey.toKeyString() format: CANDLES:symbol:timeframe:marketType:anchor:duration
-        // For anchored pages: anchor = endTime, duration = endTime - startTime
-        String mt = marketType != null ? marketType : "perp";
-        return "CANDLES:" + symbol.toUpperCase() + ":" + timeframe + ":" + mt + ":" + endTime + ":" + (endTime - startTime);
+        return PageKey.anchoredCandles(symbol, timeframe, marketType != null ? marketType : "perp", endTime, endTime - startTime)
+            .toKeyString();
     }
 
     private String makeLiveKey(String symbol, String timeframe, String marketType, long duration) {
-        // Must match server's PageKey.toKeyString() format: CANDLES:symbol:timeframe:marketType:LIVE:duration
-        String mt = marketType != null ? marketType : "perp";
-        return "CANDLES:" + symbol.toUpperCase() + ":" + timeframe + ":" + mt + ":LIVE:" + duration;
+        return PageKey.liveCandles(symbol, timeframe, marketType != null ? marketType : "perp", duration)
+            .toKeyString();
     }
 
     // ========== Info Record ==========

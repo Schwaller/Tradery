@@ -11,6 +11,7 @@ import com.tradery.dataservice.live.LiveAggTradeManager;
 import com.tradery.dataservice.live.LiveCandleManager;
 import com.tradery.dataservice.live.LiveMarkPriceManager;
 import com.tradery.dataservice.live.LiveOpenInterestPoller;
+import com.tradery.data.page.PageKey;
 import com.tradery.dataservice.page.*;
 import io.javalin.websocket.WsCloseContext;
 import io.javalin.websocket.WsConnectContext;
@@ -300,7 +301,7 @@ public class WebSocketHandler implements PageUpdateListener {
                 ? message.get("consumerName").asText() : "WebSocket-" + consumerId;
 
             // Create PageKey (convert startTime/endTime to endTime/windowDurationMillis)
-            PageKey key = new PageKey(dataType.toUpperCase(), symbol.toUpperCase(), timeframe, marketType, endTime, endTime - startTime);
+            PageKey key = new PageKey(dataType.toUpperCase(), "binance", symbol.toUpperCase(), timeframe, marketType, endTime, endTime - startTime);
             String pageKeyStr = key.toKeyString();
 
             LOG.info("Consumer {} requesting page {}", consumerId, pageKeyStr);
