@@ -16,3 +16,4 @@ Thumbs.db
 # Runtime
 logs/
 *.log
+/report/

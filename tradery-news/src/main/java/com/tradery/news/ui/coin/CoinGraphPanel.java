@@ -55,14 +55,25 @@ public class CoinGraphPanel extends JPanel {
 
             @Override
             public void mousePressed(MouseEvent e) {
-                if (SwingUtilities.isMiddleMouseButton(e) ||
-                    (SwingUtilities.isLeftMouseButton(e) && e.isShiftDown())) {
+                if (SwingUtilities.isLeftMouseButton(e)) {
+                    // Check if clicking on a node
+                    CoinEntity entity = findEntityAt(e.getX(), e.getY());
+                    if (entity != null) {
+                        // Drag node
+                        startDrag(e.getX(), e.getY());
+                    } else {
+                        // Pan background
+                        panning = true;
+                        lastMouseX = e.getX();
+                        lastMouseY = e.getY();
+                        setCursor(Cursor.getPredefinedCursor(Cursor.MOVE_CURSOR));
+                    }
+                } else if (SwingUtilities.isMiddleMouseButton(e)) {
+                    // Middle mouse always pans
                     panning = true;
                     lastMouseX = e.getX();
                     lastMouseY = e.getY();
                     setCursor(Cursor.getPredefinedCursor(Cursor.MOVE_CURSOR));
-                } else {
-                    startDrag(e.getX(), e.getY());
                 }
             }
 
@@ -408,7 +419,7 @@ public class CoinGraphPanel extends JPanel {
         y += 10;
         g2.setColor(new Color(120, 120, 130));
         g2.setFont(new Font("SansSerif", Font.PLAIN, 9));
-        g2.drawString("Scroll to zoom, Shift+drag to pan", x, y);
+        g2.drawString("Scroll to zoom, drag background to pan", x, y);
         g2.drawString("Double-click to pin/unpin node", x, y + 12);
     }
 

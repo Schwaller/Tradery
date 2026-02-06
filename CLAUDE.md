@@ -38,8 +38,19 @@ src/main/java/com/tradery/
 ./gradlew :tradery-forge:run         # Run main UI app
 ./gradlew :tradery-data-service:run  # Run data service
 ./gradlew :tradery-desk:run          # Run trading desk
+./gradlew :tradery-news:run          # Run intel/news app (entity manager, coin graph)
 ./gradlew :tradery-runner:run        # Run strategy runner
 ./gradlew build                      # Build JAR
+
+# Scripts (in /scripts directory)
+scripts/start-forge.sh               # Start main UI
+scripts/start-data-service.sh        # Start data service
+scripts/start-desk.sh                # Start trading desk
+scripts/start-intel.sh               # Start intel/news app
+scripts/kill-forge.sh                # Kill main UI
+scripts/kill-data-service.sh         # Kill data service
+scripts/kill-desk.sh                 # Kill trading desk
+scripts/kill-intel.sh                # Kill intel/news app
 ```
 
 ---

@@ -22,59 +22,54 @@ import java.util.*;
 import java.util.List;
 
 /**
- * Combined intelligence window with tabs for News and Coin Relationships.
+ * Combined intelligence window with Coins and News visualization.
+ * Layout: Left (graph tabs) | Right (detail panel + log panel)
  */
 public class IntelFrame extends JFrame {
 
-    private final JTabbedPane tabbedPane;
-
-    // News tab components
+    // News components
     private final SqliteNewsStore store;
     private final Path dataDir;
     private TimelineGraphPanel newsGraphPanel;
-    private JTextArea newsDetailArea;
     private JLabel newsStatusLabel;
     private JComboBox<String> limitCombo;
     private JButton fetchBtn;
     private volatile boolean fetching = false;
 
-    // Coins tab components
+    // Coins components
     private CoinGraphPanel coinGraphPanel;
-    private JPanel coinDetailContent;
     private JLabel coinStatusLabel;
     private JProgressBar coinProgressBar;
     private EntityStore entityStore;
     private List<CoinEntity> currentEntities;
     private List<CoinRelationship> currentRelationships;
 
+    // Shared components
+    private JTabbedPane graphTabs;
+    private JPanel detailPanel;
+    private JPanel detailContent;
+    private JLabel detailTitleLabel;
+    private IntelLogPanel logPanel;
+
+    // Current selection
+    private enum DetailMode { NONE, ARTICLE, ENTITY }
+    private DetailMode currentMode = DetailMode.NONE;
+    private NewsNode selectedArticle;
+    private CoinEntity selectedEntity;
+
     public IntelFrame() {
         super("Tradery - Intelligence");
 
-        // Initialize news store
+        // Initialize stores
         this.dataDir = Path.of(System.getProperty("user.home"), ".cryptonews");
         this.store = new SqliteNewsStore(dataDir.resolve("news.db"));
-
-        // Initialize entity store
         this.entityStore = new EntityStore();
 
         setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
         setSize(1800, 1000);
         setLocationRelativeTo(null);
 
-        // Main layout with tabbed pane
-        JPanel mainPanel = new JPanel(new BorderLayout());
-        mainPanel.setBackground(new Color(30, 32, 36));
-
-        tabbedPane = new JTabbedPane();
-        tabbedPane.setTabPlacement(JTabbedPane.TOP);
-        tabbedPane.setFont(new Font("SansSerif", Font.BOLD, 12));
-
-        // Create tabs
-        tabbedPane.addTab("Coins", createCoinsTab());
-        tabbedPane.addTab("News", createNewsTab());
-
-        mainPanel.add(tabbedPane, BorderLayout.CENTER);
-        setContentPane(mainPanel);
+        initUI();
 
         // Cleanup on close
         addWindowListener(new WindowAdapter() {
@@ -86,70 +81,163 @@ public class IntelFrame extends JFrame {
             }
         });
 
-        // Load data for visible tab
+        // Load data
         SwingUtilities.invokeLater(() -> {
+            logPanel.info("Starting Intelligence module...");
             loadCoinData(false);
             loadNewsData();
         });
     }
 
-    // ==================== NEWS TAB ====================
+    private void initUI() {
+        JPanel mainPanel = new JPanel(new BorderLayout());
+        mainPanel.setBackground(new Color(30, 32, 36));
 
-    private JPanel createNewsTab() {
-        JPanel panel = new JPanel(new BorderLayout(0, 0));
+        // Left side: Graph tabs with toolbars
+        JPanel leftPanel = createGraphPanel();
+
+        // Right side: Detail panel + Log panel
+        JPanel rightPanel = createRightPanel();
+        rightPanel.setPreferredSize(new Dimension(400, 0));
+        rightPanel.setMinimumSize(new Dimension(300, 0));
+
+        // Main split
+        JSplitPane mainSplit = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, leftPanel, rightPanel);
+        mainSplit.setResizeWeight(1.0);
+        mainSplit.setDividerSize(4);
+        mainSplit.setBorder(null);
+
+        mainPanel.add(mainSplit, BorderLayout.CENTER);
+        setContentPane(mainPanel);
+    }
+
+    private JPanel createGraphPanel() {
+        JPanel panel = new JPanel(new BorderLayout());
         panel.setBackground(new Color(30, 32, 36));
 
-        // Toolbar
-        panel.add(createNewsToolbar(), BorderLayout.NORTH);
+        graphTabs = new JTabbedPane();
+        graphTabs.setTabPlacement(JTabbedPane.TOP);
+        graphTabs.setFont(new Font("SansSerif", Font.BOLD, 12));
 
-        // Graph panel
+        // Coins tab
+        JPanel coinsPanel = new JPanel(new BorderLayout());
+        coinsPanel.add(createCoinsToolbar(), BorderLayout.NORTH);
+        coinGraphPanel = new CoinGraphPanel();
+        coinGraphPanel.setOnEntitySelected(this::showEntityDetails);
+        coinsPanel.add(coinGraphPanel, BorderLayout.CENTER);
+        coinsPanel.add(createCoinsStatusBar(), BorderLayout.SOUTH);
+        graphTabs.addTab("Coins", coinsPanel);
+
+        // News tab
+        JPanel newsPanel = new JPanel(new BorderLayout());
+        newsPanel.add(createNewsToolbar(), BorderLayout.NORTH);
         newsGraphPanel = new TimelineGraphPanel();
-        newsGraphPanel.setOnNodeSelected(this::showNewsNodeDetails);
+        newsGraphPanel.setOnNodeSelected(this::showArticleDetails);
+        newsGraphPanel.setOnTopicSelected(this::showTopicDetails);
+        newsPanel.add(newsGraphPanel, BorderLayout.CENTER);
+        newsPanel.add(createNewsStatusBar(), BorderLayout.SOUTH);
+        graphTabs.addTab("News", newsPanel);
 
-        // Detail panel (right sidebar)
-        JPanel detailPanel = new JPanel(new BorderLayout());
-        detailPanel.setPreferredSize(new Dimension(960, 0));
-        detailPanel.setMinimumSize(new Dimension(640, 0));
+        panel.add(graphTabs, BorderLayout.CENTER);
+        return panel;
+    }
+
+    private JPanel createRightPanel() {
+        JPanel panel = new JPanel(new BorderLayout());
+        panel.setBackground(new Color(38, 40, 44));
+        panel.setBorder(BorderFactory.createMatteBorder(0, 1, 0, 0, new Color(50, 52, 56)));
+
+        // Detail panel (top)
+        detailPanel = new JPanel(new BorderLayout());
         detailPanel.setBackground(new Color(38, 40, 44));
-        detailPanel.setBorder(BorderFactory.createMatteBorder(0, 1, 0, 0, new Color(50, 52, 56)));
 
-        JLabel detailTitle = new JLabel("  Article Details");
-        detailTitle.setFont(new Font("SansSerif", Font.BOLD, 12));
-        detailTitle.setForeground(new Color(180, 180, 190));
-        detailTitle.setPreferredSize(new Dimension(0, 32));
-        detailPanel.add(detailTitle, BorderLayout.NORTH);
+        JPanel detailHeader = new JPanel(new BorderLayout());
+        detailHeader.setBackground(new Color(35, 37, 41));
+        detailHeader.setBorder(new EmptyBorder(8, 10, 8, 10));
 
-        newsDetailArea = new JTextArea();
-        newsDetailArea.setEditable(false);
-        newsDetailArea.setLineWrap(true);
-        newsDetailArea.setWrapStyleWord(true);
-        newsDetailArea.setBackground(new Color(38, 40, 44));
-        newsDetailArea.setForeground(new Color(200, 200, 210));
-        newsDetailArea.setFont(new Font("SansSerif", Font.PLAIN, 12));
-        newsDetailArea.setBorder(new EmptyBorder(10, 10, 10, 10));
-        newsDetailArea.setText("Click a node to see details");
+        detailTitleLabel = new JLabel("Details");
+        detailTitleLabel.setFont(new Font("SansSerif", Font.BOLD, 12));
+        detailTitleLabel.setForeground(new Color(180, 180, 190));
+        detailHeader.add(detailTitleLabel, BorderLayout.WEST);
 
-        JScrollPane detailScroll = new JScrollPane(newsDetailArea);
+        detailPanel.add(detailHeader, BorderLayout.NORTH);
+
+        detailContent = new JPanel();
+        detailContent.setLayout(new BoxLayout(detailContent, BoxLayout.Y_AXIS));
+        detailContent.setBackground(new Color(38, 40, 44));
+        detailContent.setBorder(new EmptyBorder(10, 10, 10, 10));
+        showPlaceholderDetails();
+
+        JScrollPane detailScroll = new JScrollPane(detailContent);
         detailScroll.setBorder(null);
+        detailScroll.getVerticalScrollBar().setUnitIncrement(16);
         detailPanel.add(detailScroll, BorderLayout.CENTER);
 
-        // Split pane
-        JSplitPane splitPane = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, newsGraphPanel, detailPanel);
-        splitPane.setResizeWeight(1.0);
-        splitPane.setDividerSize(4);
-        splitPane.setBorder(null);
-        panel.add(splitPane, BorderLayout.CENTER);
+        // Log panel (bottom)
+        logPanel = new IntelLogPanel();
+        logPanel.setPreferredSize(new Dimension(0, 200));
 
-        // Status bar
+        // Vertical split
+        JSplitPane vertSplit = new JSplitPane(JSplitPane.VERTICAL_SPLIT, detailPanel, logPanel);
+        vertSplit.setResizeWeight(0.7);
+        vertSplit.setDividerSize(4);
+        vertSplit.setBorder(null);
+
+        panel.add(vertSplit, BorderLayout.CENTER);
+        return panel;
+    }
+
+    // ==================== TOOLBARS ====================
+
+    private JToolBar createCoinsToolbar() {
+        JToolBar toolbar = new JToolBar();
+        toolbar.setFloatable(false);
+        toolbar.setBackground(new Color(38, 40, 44));
+        toolbar.setBorder(BorderFactory.createMatteBorder(0, 0, 1, 0, new Color(50, 52, 56)));
+
+        JButton resetBtn = new JButton("Reset View");
+        resetBtn.addActionListener(e -> coinGraphPanel.resetView());
+        toolbar.add(resetBtn);
+
+        JButton refreshBtn = new JButton("Refresh");
+        refreshBtn.addActionListener(e -> loadCoinData(true));
+        toolbar.add(refreshBtn);
+
+        toolbar.addSeparator();
+
+        JButton manageBtn = new JButton("Manage Entities");
+        manageBtn.addActionListener(e -> showEntityManager());
+        toolbar.add(manageBtn);
+
+        JButton addRelBtn = new JButton("+ Relationship");
+        addRelBtn.addActionListener(e -> showAddRelationshipDialog(null));
+        toolbar.add(addRelBtn);
+
+        toolbar.addSeparator();
+
+        JCheckBox labelsCheck = new JCheckBox("Labels", true);
+        labelsCheck.addActionListener(e -> coinGraphPanel.setShowLabels(labelsCheck.isSelected()));
+        toolbar.add(labelsCheck);
+
+        return toolbar;
+    }
+
+    private JPanel createCoinsStatusBar() {
         JPanel statusBar = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 5));
         statusBar.setBackground(new Color(35, 37, 41));
         statusBar.setBorder(BorderFactory.createMatteBorder(1, 0, 0, 0, new Color(50, 52, 56)));
-        newsStatusLabel = new JLabel("Loading...");
-        newsStatusLabel.setForeground(new Color(140, 140, 150));
-        statusBar.add(newsStatusLabel);
-        panel.add(statusBar, BorderLayout.SOUTH);
 
-        return panel;
+        coinStatusLabel = new JLabel("Loading...");
+        coinStatusLabel.setForeground(new Color(140, 140, 150));
+        statusBar.add(coinStatusLabel);
+
+        coinProgressBar = new JProgressBar(0, 100);
+        coinProgressBar.setPreferredSize(new Dimension(150, 16));
+        coinProgressBar.setStringPainted(true);
+        coinProgressBar.setVisible(false);
+        statusBar.add(coinProgressBar);
+
+        return statusBar;
     }
 
     private JToolBar createNewsToolbar() {
@@ -159,12 +247,11 @@ public class IntelFrame extends JFrame {
         toolbar.setBorder(BorderFactory.createMatteBorder(0, 0, 1, 0, new Color(50, 52, 56)));
 
         fetchBtn = new JButton("Fetch New");
-        fetchBtn.setToolTipText("Fetch new articles from RSS feeds with AI extraction");
+        fetchBtn.setToolTipText("Fetch new articles with AI extraction");
         fetchBtn.addActionListener(e -> fetchNewArticles());
         toolbar.add(fetchBtn);
 
         JButton refreshBtn = new JButton("Refresh");
-        refreshBtn.setToolTipText("Reload from database");
         refreshBtn.addActionListener(e -> loadNewsData());
         toolbar.add(refreshBtn);
 
@@ -189,550 +276,241 @@ public class IntelFrame extends JFrame {
         labelsCheck.addActionListener(e -> newsGraphPanel.setShowLabels(labelsCheck.isSelected()));
         toolbar.add(labelsCheck);
 
-        toolbar.addSeparator();
-        toolbar.add(Box.createHorizontalGlue());
-
-        JLabel legend = new JLabel("Size = Importance  |  Color = Sentiment (green=positive, gray=neutral, red=negative)  ");
-        legend.setForeground(new Color(120, 120, 130));
-        legend.setFont(new Font("SansSerif", Font.PLAIN, 11));
-        toolbar.add(legend);
-
         return toolbar;
     }
 
-    private void loadNewsData() {
-        newsStatusLabel.setText("Loading...");
-
-        SwingWorker<List<Article>, Void> worker = new SwingWorker<>() {
-            @Override
-            protected List<Article> doInBackground() {
-                int limit = Integer.parseInt((String) limitCombo.getSelectedItem());
-                return store.getArticles(SqliteNewsStore.ArticleQuery.all(limit));
-            }
-
-            @Override
-            protected void done() {
-                try {
-                    List<Article> articles = get();
-                    newsGraphPanel.setArticles(articles);
-                    newsStatusLabel.setText(articles.size() + " articles loaded  |  " +
-                        store.getArticleCount() + " total in database  |  " +
-                        store.getTopicCounts().size() + " topics");
-                } catch (Exception e) {
-                    newsStatusLabel.setText("Error: " + e.getMessage());
-                }
-            }
-        };
-        worker.execute();
-    }
-
-    private void fetchNewArticles() {
-        if (fetching) return;
-        fetching = true;
-        fetchBtn.setEnabled(false);
-        fetchBtn.setText("Fetching...");
-        newsStatusLabel.setText("Fetching new articles with AI extraction (this may take a while)...");
-
-        SwingWorker<FetchScheduler.FetchResult, String> worker = new SwingWorker<>() {
-            @Override
-            protected FetchScheduler.FetchResult doInBackground() {
-                FetcherRegistry fetchers = new FetcherRegistry();
-                fetchers.registerDefaults();
-
-                TopicRegistry topics = new TopicRegistry(dataDir.resolve("topics.json"));
-                ClaudeCliProcessor ai = new ClaudeCliProcessor();
-
-                if (!ai.isAvailable()) {
-                    publish("Claude CLI not available - fetching without AI extraction");
-                    ai = null;
-                }
-
-                try (var scheduler = new FetchScheduler(fetchers, topics, store, ai)) {
-                    scheduler.withAiEnabled(ai != null)
-                             .withArticlesPerSource(ai != null ? 5 : 10);
-                    return scheduler.fetchAndProcess();
-                }
-            }
-
-            @Override
-            protected void process(List<String> chunks) {
-                if (!chunks.isEmpty()) {
-                    newsStatusLabel.setText(chunks.get(chunks.size() - 1));
-                }
-            }
-
-            @Override
-            protected void done() {
-                fetching = false;
-                fetchBtn.setEnabled(true);
-                fetchBtn.setText("Fetch New");
-                try {
-                    FetchScheduler.FetchResult result = get();
-                    if (result.newArticles() > 0) {
-                        int limit = Integer.parseInt((String) limitCombo.getSelectedItem());
-                        List<Article> allArticles = store.getArticles(SqliteNewsStore.ArticleQuery.all(limit));
-                        int added = newsGraphPanel.addArticles(allArticles);
-                        newsStatusLabel.setText(String.format("Added %d new articles (%d AI processed)  |  Total: %d",
-                            added, result.aiProcessed(), store.getArticleCount()));
-                    } else {
-                        newsStatusLabel.setText("No new articles found  |  Total: " + store.getArticleCount());
-                    }
-                } catch (Exception e) {
-                    newsStatusLabel.setText("Fetch error: " + e.getMessage());
-                }
-            }
-        };
-        worker.execute();
-    }
-
-    private void showNewsNodeDetails(NewsNode node) {
-        StringBuilder sb = new StringBuilder();
-        sb.append("TITLE\n").append(node.title()).append("\n\n");
-        sb.append("SOURCE\n").append(node.source()).append("\n\n");
-
-        if (node.sourceUrl() != null && !node.sourceUrl().isEmpty()) {
-            sb.append("URL\n").append(node.sourceUrl()).append("\n\n");
-        }
-
-        sb.append("PUBLISHED\n");
-        LocalDateTime ldt = LocalDateTime.ofInstant(node.publishedAt(), ZoneId.systemDefault());
-        sb.append(ldt.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"))).append("\n\n");
-
-        sb.append("IMPORTANCE\n").append(node.importance()).append("\n\n");
-
-        sb.append("SENTIMENT\n");
-        sb.append(String.format("%.2f", node.sentiment()));
-        if (node.sentiment() > 0.3) sb.append(" (Positive)");
-        else if (node.sentiment() < -0.3) sb.append(" (Negative)");
-        else sb.append(" (Neutral)");
-        sb.append("\n\n");
-
-        sb.append("TOPICS\n").append(node.topics().isEmpty() ? "(none)" : String.join(", ", node.topics())).append("\n\n");
-        sb.append("COINS\n").append(node.coins().isEmpty() ? "(none)" : String.join(", ", node.coins())).append("\n\n");
-
-        if (node.summary() != null && !node.summary().isEmpty()) {
-            sb.append("SUMMARY\n").append(node.summary()).append("\n\n");
-        }
-        if (node.content() != null && !node.content().isEmpty()) {
-            sb.append("CONTENT\n").append(node.content()).append("\n\n");
-        }
-
-        sb.append("CONNECTIONS\n").append(node.connections().size()).append(" related articles");
-
-        newsDetailArea.setText(sb.toString());
-        newsDetailArea.setCaretPosition(0);
-    }
-
-    // ==================== COINS TAB ====================
-
-    private JPanel createCoinsTab() {
-        JPanel panel = new JPanel(new BorderLayout(0, 0));
-        panel.setBackground(new Color(30, 32, 36));
-
-        // Toolbar
-        panel.add(createCoinsToolbar(), BorderLayout.NORTH);
-
-        // Graph panel
-        coinGraphPanel = new CoinGraphPanel();
-        coinGraphPanel.setOnEntitySelected(this::showCoinEntityDetails);
-
-        // Detail panel
-        JPanel detailPanel = new JPanel(new BorderLayout());
-        detailPanel.setPreferredSize(new Dimension(350, 0));
-        detailPanel.setMinimumSize(new Dimension(250, 0));
-        detailPanel.setBackground(new Color(38, 40, 44));
-        detailPanel.setBorder(BorderFactory.createMatteBorder(0, 1, 0, 0, new Color(50, 52, 56)));
-
-        JLabel detailTitle = new JLabel("  Entity Details");
-        detailTitle.setFont(new Font("SansSerif", Font.BOLD, 12));
-        detailTitle.setForeground(new Color(180, 180, 190));
-        detailTitle.setPreferredSize(new Dimension(0, 32));
-        detailPanel.add(detailTitle, BorderLayout.NORTH);
-
-        coinDetailContent = new JPanel();
-        coinDetailContent.setLayout(new BoxLayout(coinDetailContent, BoxLayout.Y_AXIS));
-        coinDetailContent.setBackground(new Color(38, 40, 44));
-        coinDetailContent.setBorder(new EmptyBorder(10, 10, 10, 10));
-
-        addCoinDetailLabel("Click an entity to see details");
-        addCoinDetailLabel("");
-        addCoinDetailLabel("Scroll to zoom");
-        addCoinDetailLabel("Shift+drag to pan");
-        addCoinDetailLabel("Double-click to pin/unpin");
-
-        JScrollPane detailScroll = new JScrollPane(coinDetailContent);
-        detailScroll.setBorder(null);
-        detailScroll.getVerticalScrollBar().setUnitIncrement(16);
-        detailPanel.add(detailScroll, BorderLayout.CENTER);
-
-        // Split pane
-        JSplitPane splitPane = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, coinGraphPanel, detailPanel);
-        splitPane.setResizeWeight(1.0);
-        splitPane.setDividerSize(4);
-        splitPane.setBorder(null);
-        panel.add(splitPane, BorderLayout.CENTER);
-
-        // Status bar
+    private JPanel createNewsStatusBar() {
         JPanel statusBar = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 5));
         statusBar.setBackground(new Color(35, 37, 41));
         statusBar.setBorder(BorderFactory.createMatteBorder(1, 0, 0, 0, new Color(50, 52, 56)));
-        coinStatusLabel = new JLabel("Loading...");
-        coinStatusLabel.setForeground(new Color(140, 140, 150));
-        statusBar.add(coinStatusLabel);
 
-        coinProgressBar = new JProgressBar(0, 100);
-        coinProgressBar.setPreferredSize(new Dimension(200, 16));
-        coinProgressBar.setStringPainted(true);
-        coinProgressBar.setVisible(false);
-        statusBar.add(coinProgressBar);
+        newsStatusLabel = new JLabel("Loading...");
+        newsStatusLabel.setForeground(new Color(140, 140, 150));
+        statusBar.add(newsStatusLabel);
 
-        panel.add(statusBar, BorderLayout.SOUTH);
-
-        return panel;
+        return statusBar;
     }
 
-    private JToolBar createCoinsToolbar() {
-        JToolBar toolbar = new JToolBar();
-        toolbar.setFloatable(false);
-        toolbar.setBackground(new Color(38, 40, 44));
-        toolbar.setBorder(BorderFactory.createMatteBorder(0, 0, 1, 0, new Color(50, 52, 56)));
+    // ==================== DETAIL PANEL ====================
 
-        JButton resetBtn = new JButton("Reset View");
-        resetBtn.addActionListener(e -> coinGraphPanel.resetView());
-        toolbar.add(resetBtn);
+    private void showPlaceholderDetails() {
+        detailContent.removeAll();
+        currentMode = DetailMode.NONE;
+        detailTitleLabel.setText("Details");
 
-        JButton refreshBtn = new JButton("Refresh Data");
-        refreshBtn.addActionListener(e -> loadCoinData(true));
-        toolbar.add(refreshBtn);
+        addDetailLabel("Select an entity or article to see details", new Color(140, 140, 150));
+        addDetailSpacer();
+        addDetailLabel("Coins tab:", new Color(120, 120, 130));
+        addDetailLabel("  Click entity to select", new Color(100, 100, 110));
+        addDetailLabel("  Drag background to pan", new Color(100, 100, 110));
+        addDetailLabel("  Scroll to zoom", new Color(100, 100, 110));
+        addDetailLabel("  Double-click to pin", new Color(100, 100, 110));
 
-        toolbar.addSeparator();
-
-        JButton manageEntitiesBtn = new JButton("Manage Entities");
-        manageEntitiesBtn.setToolTipText("Open entity manager to add/edit entities");
-        manageEntitiesBtn.addActionListener(e -> showEntityManager());
-        toolbar.add(manageEntitiesBtn);
-
-        JButton addRelBtn = new JButton("+ Relationship");
-        addRelBtn.setToolTipText("Add a relationship between entities");
-        addRelBtn.addActionListener(e -> showAddRelationshipDialog(null));
-        toolbar.add(addRelBtn);
-
-        toolbar.addSeparator();
-
-        JCheckBox labelsCheck = new JCheckBox("Labels", true);
-        labelsCheck.addActionListener(e -> coinGraphPanel.setShowLabels(labelsCheck.isSelected()));
-        toolbar.add(labelsCheck);
-
-        JCheckBox relLabelsCheck = new JCheckBox("Relationship Labels", false);
-        relLabelsCheck.addActionListener(e -> coinGraphPanel.setShowRelationshipLabels(relLabelsCheck.isSelected()));
-        toolbar.add(relLabelsCheck);
-
-        toolbar.add(Box.createHorizontalGlue());
-
-        JLabel hint = new JLabel("Scroll=zoom  Shift+drag=pan  Double-click=pin  ");
-        hint.setForeground(new Color(120, 120, 130));
-        hint.setFont(new Font("SansSerif", Font.PLAIN, 11));
-        toolbar.add(hint);
-
-        return toolbar;
+        detailContent.revalidate();
+        detailContent.repaint();
     }
 
-    private void showEntityManager() {
-        EntityManagerFrame manager = new EntityManagerFrame(entityStore, v -> {
-            // Reload data when entities change
-            loadCoinData(false);
-        });
-        manager.setVisible(true);
-    }
+    private void showTopicDetails(TopicNode node) {
+        selectedArticle = null;
+        selectedEntity = null;
+        currentMode = DetailMode.NONE;
 
-    private void showAddRelationshipDialog(String preselectedFromId) {
-        if (currentEntities == null || currentEntities.isEmpty()) {
-            JOptionPane.showMessageDialog(this, "No entities loaded yet", "Error", JOptionPane.ERROR_MESSAGE);
-            return;
+        boolean isCoin = node.type() == TopicNode.Type.COIN;
+        detailTitleLabel.setText(isCoin ? "Coin" : "Topic");
+
+        detailContent.removeAll();
+
+        addDetailHeader(node.label());
+        addDetailSpacer();
+
+        addDetailSection("TYPE");
+        addDetailLabel(isCoin ? "Cryptocurrency" : "News Topic",
+            isCoin ? new Color(200, 160, 80) : new Color(100, 140, 200));
+        addDetailSpacer();
+
+        if (!isCoin) {
+            addDetailSection("FULL PATH");
+            addDetailLabel(node.id());
+            addDetailSpacer();
         }
-        RelationshipEditorDialog dialog = new RelationshipEditorDialog(
-            this, entityStore, currentEntities, preselectedFromId, rel -> {
-                // Add to current list and refresh graph
-                if (currentRelationships != null) {
-                    currentRelationships.add(rel);
-                    coinGraphPanel.setData(currentEntities, currentRelationships);
-                    updateCoinStatus();
-                }
-            }
-        );
-        dialog.setVisible(true);
-    }
 
-    private void updateCoinStatus() {
-        int manualEntities = entityStore.getManualEntityCount();
-        int manualRels = entityStore.getManualRelationshipCount();
-        String status = currentEntities.size() + " entities  |  " + currentRelationships.size() + " relationships";
-        if (manualEntities > 0 || manualRels > 0) {
-            status += "  |  " + manualEntities + " manual entities, " + manualRels + " manual relationships";
+        addDetailSection("ARTICLES (" + node.articleCount() + ")");
+
+        // Show connected articles (most recent first, limit to 20)
+        List<NewsNode> articles = node.connections().stream()
+            .sorted((a, b) -> b.publishedAt().compareTo(a.publishedAt()))
+            .limit(20)
+            .toList();
+
+        for (NewsNode article : articles) {
+            addArticleRow(article);
         }
-        coinStatusLabel.setText(status);
+
+        if (node.articleCount() > 20) {
+            addDetailLabel("... and " + (node.articleCount() - 20) + " more", new Color(120, 120, 130));
+        }
+
+        detailContent.revalidate();
+        detailContent.repaint();
     }
 
-    private void loadCoinData(boolean forceRefresh) {
-        coinStatusLabel.setText("Loading...");
+    private void addArticleRow(NewsNode article) {
+        JPanel row = new JPanel(new BorderLayout(8, 0));
+        row.setBackground(new Color(38, 40, 44));
+        row.setAlignmentX(Component.LEFT_ALIGNMENT);
+        row.setMaximumSize(new Dimension(Integer.MAX_VALUE, 40));
+        row.setBorder(BorderFactory.createEmptyBorder(4, 0, 4, 0));
 
-        SwingWorker<Void, String> worker = new SwingWorker<>() {
-            private List<CoinEntity> entities;
-            private List<CoinRelationship> relationships;
-
+        // Sentiment indicator
+        Color sentColor = article.sentiment() > 0.2 ? new Color(80, 180, 100) :
+                          article.sentiment() < -0.2 ? new Color(200, 80, 80) :
+                          new Color(120, 120, 130);
+        JPanel dot = new JPanel() {
             @Override
-            protected Void doInBackground() {
-                try {
-                    CoinGeckoClient client = new CoinGeckoClient();
-                    boolean fromCache = false;
-
-                    // Load CoinGecko entities (cached or fresh)
-                    if (!forceRefresh && entityStore.isCoinGeckoCacheValid()) {
-                        publish("Loading coins from database...");
-                        entities = entityStore.loadEntitiesBySource("coingecko");
-                        fromCache = !entities.isEmpty();
-                    }
-
-                    if (entities == null || entities.isEmpty()) {
-                        publish("Fetching top 200 coins from CoinGecko...");
-                        List<CoinEntity> cgEntities = client.fetchTopCoins(200);
-                        entityStore.saveCoinGeckoEntities(cgEntities);
-                        entities = new ArrayList<>(cgEntities);
-                    }
-
-                    // Load manual entities (always persist)
-                    publish("Loading manual entities...");
-                    List<CoinEntity> manualEntities = entityStore.loadEntitiesBySource("manual");
-                    entities.addAll(manualEntities);
-
-                    // Build auto relationships from CoinGecko data
-                    publish("Building relationships...");
-                    List<CoinRelationship> autoRels = client.buildRelationships(entities);
-                    entityStore.saveAutoRelationships(autoRels);
-
-                    // Load all relationships (auto + manual)
-                    relationships = entityStore.loadAllRelationships();
-
-                    // Seed default manual entities if this is a fresh DB with none
-                    if (manualEntities.isEmpty()) {
-                        publish("Seeding default entities...");
-                        seedDefaultManualEntities();
-                        // Reload after seeding
-                        manualEntities = entityStore.loadEntitiesBySource("manual");
-                        entities.addAll(manualEntities);
-                        relationships = entityStore.loadAllRelationships();
-                    }
-
-                    final boolean cached = fromCache;
-                    final List<CoinEntity> finalEntities = entities;
-                    final List<CoinRelationship> finalRels = relationships;
-                    SwingUtilities.invokeLater(() -> {
-                        currentEntities = finalEntities;
-                        currentRelationships = finalRels;
-                        coinGraphPanel.setData(finalEntities, finalRels);
-                        updateCoinStatus();
-                        coinProgressBar.setVisible(false);
-                    });
-
-                    // Fetch categories if this was a fresh fetch
-                    if (!fromCache) {
-                        fetchCategories(client, entities);
-                    }
-
-                } catch (Exception e) {
-                    System.err.println("Error loading coin data: " + e.getMessage());
-                    e.printStackTrace();
-                    publish("Error: " + e.getMessage());
-                    loadFallbackData();
-                }
-                return null;
-            }
-
-            private void fetchCategories(CoinGeckoClient client, List<CoinEntity> entities) {
-                SwingUtilities.invokeLater(() -> {
-                    coinProgressBar.setVisible(true);
-                    coinProgressBar.setValue(0);
-                    coinProgressBar.setString("Categories: 0%");
-                });
-
-                List<String> cgIds = entities.stream()
-                    .filter(e -> e.type() == CoinEntity.Type.COIN)
-                    .map(CoinEntity::id)
-                    .toList();
-                int total = cgIds.size();
-                int count = 0;
-
-                for (String coinId : cgIds) {
-                    count++;
-                    int finalCount = count;
-                    int percent = (count * 100) / total;
-                    try {
-                        Map<String, List<String>> catMap = client.fetchCoinCategories(List.of(coinId));
-                        List<String> cats = catMap.get(coinId);
-                        if (cats != null && !cats.isEmpty()) {
-                            for (CoinEntity entity : entities) {
-                                if (entity.id().equals(coinId)) {
-                                    entity.setCategories(cats);
-                                    entityStore.saveEntity(entity, "coingecko");
-                                    break;
-                                }
-                            }
-                            SwingUtilities.invokeLater(() -> coinGraphPanel.repaint());
-                        }
-                    } catch (Exception e) {
-                        // Skip failed coins
-                    }
-                    int finalPercent = percent;
-                    SwingUtilities.invokeLater(() -> {
-                        coinProgressBar.setValue(finalPercent);
-                        coinProgressBar.setString("Categories: " + finalPercent + "% (" + finalCount + "/" + total + ")");
-                    });
-                }
-
-                SwingUtilities.invokeLater(() -> coinProgressBar.setVisible(false));
-            }
-
-            @Override
-            protected void process(List<String> chunks) {
-                if (!chunks.isEmpty()) {
-                    coinStatusLabel.setText(chunks.get(chunks.size() - 1));
-                }
-            }
-
-            @Override
-            protected void done() {
-                if (entities != null && !entities.isEmpty()) {
-                    updateCoinStatus();
-                }
-            }
-
-            private void loadFallbackData() {
-                entities = new ArrayList<>();
-                relationships = new ArrayList<>();
-                loadSampleData(entities, relationships);
-                SwingUtilities.invokeLater(() -> {
-                    currentEntities = entities;
-                    currentRelationships = relationships;
-                    coinGraphPanel.setData(entities, relationships);
-                    coinStatusLabel.setText(entities.size() + " entities  |  " + relationships.size() + " relationships  (sample data)");
-                    coinProgressBar.setVisible(false);
-                });
+            protected void paintComponent(Graphics g) {
+                super.paintComponent(g);
+                g.setColor(sentColor);
+                g.fillOval(2, 12, 8, 8);
             }
         };
-        worker.execute();
-    }
+        dot.setPreferredSize(new Dimension(12, 32));
+        dot.setBackground(new Color(38, 40, 44));
+        row.add(dot, BorderLayout.WEST);
 
-    /**
-     * Seeds the database with default manual entities (ETFs, VCs, exchanges)
-     * on first run when no manual entities exist.
-     */
-    private void seedDefaultManualEntities() {
-        // Get existing coin IDs to check for relationship targets
-        Set<String> existingIds = new HashSet<>();
-        for (CoinEntity e : entityStore.loadAllEntities()) {
-            existingIds.add(e.id());
-        }
+        // Title and source
+        JPanel textPanel = new JPanel();
+        textPanel.setLayout(new BoxLayout(textPanel, BoxLayout.Y_AXIS));
+        textPanel.setBackground(new Color(38, 40, 44));
 
-        // ETFs
-        saveManualEntity(createETF("ibit", "iShares Bitcoin Trust", "IBIT"));
-        saveManualEntity(createETF("fbtc", "Fidelity Wise Origin Bitcoin", "FBTC"));
-        saveManualEntity(createETF("gbtc", "Grayscale Bitcoin Trust", "GBTC"));
-        saveManualEntity(createETF("arkb", "ARK 21Shares Bitcoin", "ARKB"));
-        saveManualEntity(createETF("bitb", "Bitwise Bitcoin ETF", "BITB"));
-        saveManualEntity(createETF("hodl", "VanEck Bitcoin Trust", "HODL"));
-        saveManualEntity(createETF("etha", "iShares Ethereum Trust", "ETHA"));
-        saveManualEntity(createETF("feth", "Fidelity Ethereum Fund", "FETH"));
-        saveManualEntity(createETF("ethe", "Grayscale Ethereum Trust", "ETHE"));
-        saveManualEntity(createETF("gsol", "Grayscale Solana Trust", "GSOL"));
+        String title = article.title();
+        if (title.length() > 50) title = title.substring(0, 47) + "...";
+        JLabel titleLabel = new JLabel(title);
+        titleLabel.setFont(new Font("SansSerif", Font.PLAIN, 11));
+        titleLabel.setForeground(new Color(200, 200, 210));
+        textPanel.add(titleLabel);
 
-        // ETF tracking relationships
-        if (existingIds.contains("bitcoin")) {
-            for (String etf : List.of("ibit", "fbtc", "gbtc", "arkb", "bitb", "hodl")) {
-                saveManualRelationship(new CoinRelationship(etf, "bitcoin", CoinRelationship.Type.ETF_TRACKS));
+        LocalDateTime ldt = LocalDateTime.ofInstant(article.publishedAt(), ZoneId.systemDefault());
+        JLabel metaLabel = new JLabel(article.source() + " • " +
+            ldt.format(DateTimeFormatter.ofPattern("MMM d HH:mm")));
+        metaLabel.setFont(new Font("SansSerif", Font.PLAIN, 10));
+        metaLabel.setForeground(new Color(120, 120, 130));
+        textPanel.add(metaLabel);
+
+        row.add(textPanel, BorderLayout.CENTER);
+
+        // Click to show article details
+        row.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+        row.addMouseListener(new java.awt.event.MouseAdapter() {
+            @Override
+            public void mouseClicked(java.awt.event.MouseEvent e) {
+                showArticleDetails(article);
             }
-        }
-        if (existingIds.contains("ethereum")) {
-            for (String etf : List.of("etha", "feth", "ethe")) {
-                saveManualRelationship(new CoinRelationship(etf, "ethereum", CoinRelationship.Type.ETF_TRACKS));
+            @Override
+            public void mouseEntered(java.awt.event.MouseEvent e) {
+                row.setBackground(new Color(45, 47, 51));
+                textPanel.setBackground(new Color(45, 47, 51));
+                dot.setBackground(new Color(45, 47, 51));
             }
-        }
-        if (existingIds.contains("solana")) {
-            saveManualRelationship(new CoinRelationship("gsol", "solana", CoinRelationship.Type.ETF_TRACKS));
-        }
-
-        // VCs
-        saveManualEntity(createVC("a16z", "Andreessen Horowitz"));
-        saveManualEntity(createVC("paradigm", "Paradigm"));
-        saveManualEntity(createVC("polychain", "Polychain Capital"));
-        saveManualEntity(createVC("multicoin", "Multicoin Capital"));
-        saveManualEntity(createVC("dragonfly", "Dragonfly"));
-        saveManualEntity(createVC("pantera", "Pantera Capital"));
-        saveManualEntity(createVC("jump", "Jump Crypto"));
-        saveManualEntity(createVC("binance-labs", "Binance Labs"));
-        saveManualEntity(createVC("coinbase-ventures", "Coinbase Ventures"));
-
-        // VC investments
-        seedInvestments(existingIds, "a16z", "solana", "ethereum", "optimism", "arbitrum", "aptos", "sui", "near", "uniswap", "maker");
-        seedInvestments(existingIds, "paradigm", "ethereum", "optimism", "cosmos", "uniswap", "maker", "lido-dao");
-        seedInvestments(existingIds, "polychain", "cosmos", "polkadot", "avalanche-2", "near", "filecoin");
-        seedInvestments(existingIds, "multicoin", "solana", "helium", "the-graph", "arweave", "render-token");
-        seedInvestments(existingIds, "jump", "solana", "aptos", "sui", "wormhole", "pyth-network");
-        seedInvestments(existingIds, "binance-labs", "polygon-matic", "the-sandbox", "axie-infinity", "1inch", "pancakeswap-token");
-        seedInvestments(existingIds, "coinbase-ventures", "polygon-matic", "optimism", "uniswap", "aave", "the-graph");
-
-        // Exchanges
-        saveManualEntity(createExchange("binance-ex", "Binance"));
-        saveManualEntity(createExchange("coinbase-ex", "Coinbase"));
-        saveManualEntity(createExchange("okx-ex", "OKX"));
-        saveManualEntity(createExchange("kraken-ex", "Kraken"));
-
-        // Exchange relationships
-        if (existingIds.contains("binancecoin")) {
-            saveManualRelationship(new CoinRelationship("binance-ex", "binancecoin", CoinRelationship.Type.FOUNDED_BY));
-        }
-        if (existingIds.contains("okb")) {
-            saveManualRelationship(new CoinRelationship("okx-ex", "okb", CoinRelationship.Type.FOUNDED_BY));
-        }
-    }
-
-    private void saveManualEntity(CoinEntity entity) {
-        entityStore.saveEntity(entity, "manual");
-    }
-
-    private void saveManualRelationship(CoinRelationship rel) {
-        entityStore.saveRelationship(rel, "manual");
-    }
-
-    private void seedInvestments(Set<String> existingIds, String vcId, String... coinIds) {
-        for (String coinId : coinIds) {
-            if (existingIds.contains(coinId)) {
-                saveManualRelationship(new CoinRelationship(vcId, coinId, CoinRelationship.Type.INVESTED_IN));
+            @Override
+            public void mouseExited(java.awt.event.MouseEvent e) {
+                row.setBackground(new Color(38, 40, 44));
+                textPanel.setBackground(new Color(38, 40, 44));
+                dot.setBackground(new Color(38, 40, 44));
             }
-        }
+        });
+
+        detailContent.add(row);
     }
 
-    private void showCoinEntityDetails(CoinEntity entity) {
-        coinDetailContent.removeAll();
+    private void showArticleDetails(NewsNode node) {
+        selectedArticle = node;
+        selectedEntity = null;
+        currentMode = DetailMode.ARTICLE;
+        detailTitleLabel.setText("Article");
 
-        addCoinDetailHeader(entity.name());
+        detailContent.removeAll();
+
+        addDetailHeader(node.title());
+        addDetailSpacer();
+
+        addDetailSection("SOURCE");
+        addDetailLabel(node.source());
+        if (node.sourceUrl() != null && !node.sourceUrl().isEmpty()) {
+            addDetailLink(node.sourceUrl());
+        }
+        addDetailSpacer();
+
+        addDetailSection("PUBLISHED");
+        LocalDateTime ldt = LocalDateTime.ofInstant(node.publishedAt(), ZoneId.systemDefault());
+        addDetailLabel(ldt.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")));
+        addDetailSpacer();
+
+        addDetailSection("IMPORTANCE");
+        addDetailLabel(node.importance().toString());
+        addDetailSpacer();
+
+        addDetailSection("SENTIMENT");
+        String sentimentText = String.format("%.2f", node.sentiment());
+        if (node.sentiment() > 0.3) sentimentText += " (Positive)";
+        else if (node.sentiment() < -0.3) sentimentText += " (Negative)";
+        else sentimentText += " (Neutral)";
+        addDetailLabel(sentimentText);
+        addDetailSpacer();
+
+        if (!node.coins().isEmpty()) {
+            addDetailSection("COINS");
+            addDetailLabel(String.join(", ", node.coins()));
+            addDetailSpacer();
+        }
+
+        if (!node.topics().isEmpty()) {
+            addDetailSection("TOPICS");
+            addDetailLabel(String.join(", ", node.topics()));
+            addDetailSpacer();
+        }
+
+        if (node.summary() != null && !node.summary().isEmpty()) {
+            addDetailSection("SUMMARY");
+            addDetailText(node.summary());
+            addDetailSpacer();
+        }
+
+        if (node.content() != null && !node.content().isEmpty()) {
+            addDetailSection("CONTENT");
+            addDetailText(node.content());
+        }
+
+        detailContent.revalidate();
+        detailContent.repaint();
+    }
+
+    private void showEntityDetails(CoinEntity entity) {
+        selectedEntity = entity;
+        selectedArticle = null;
+        currentMode = DetailMode.ENTITY;
+        detailTitleLabel.setText("Entity");
+
+        detailContent.removeAll();
+
+        addDetailHeader(entity.name());
         if (entity.symbol() != null) {
-            addCoinDetailLabel(entity.symbol());
+            addDetailLabel(entity.symbol(), entity.type().color());
         }
-        addCoinDetailSpacer();
+        addDetailSpacer();
 
-        addCoinDetailSection("TYPE");
-        addCoinDetailLabel(entity.type().toString());
-        addCoinDetailSpacer();
+        addDetailSection("TYPE");
+        addDetailLabel(entity.type().toString(), entity.type().color());
+        addDetailSpacer();
 
         if (entity.marketCap() > 0) {
-            addCoinDetailSection("MARKET CAP");
-            addCoinDetailLabel("$" + formatMarketCap(entity.marketCap()));
-            addCoinDetailSpacer();
+            addDetailSection("MARKET CAP");
+            addDetailLabel("$" + formatMarketCap(entity.marketCap()));
+            addDetailSpacer();
         }
 
         List<CoinRelationship> rels = coinGraphPanel.getRelationshipsFor(entity.id());
         if (!rels.isEmpty()) {
-            addCoinDetailSection("RELATIONSHIPS (" + rels.size() + ")");
+            addDetailSection("RELATIONSHIPS (" + rels.size() + ")");
             for (CoinRelationship rel : rels) {
                 String otherId = rel.fromId().equals(entity.id()) ? rel.toId() : rel.fromId();
                 CoinEntity other = coinGraphPanel.getEntity(otherId);
@@ -745,24 +523,146 @@ public class IntelFrame extends JFrame {
                     description = describeInverseRelation(rel.type(), other.name());
                 }
 
-                addCoinRelationshipRow(description, rel.type().color(), otherId, other.name());
+                addRelationshipRow(description, rel.type().color(), otherId, other.name());
             }
-            addCoinDetailSpacer();
+            addDetailSpacer();
         }
 
         if (!entity.categories().isEmpty()) {
-            addCoinDetailSection("CATEGORIES");
+            addDetailSection("CATEGORIES");
             for (String cat : entity.categories()) {
-                addCoinDetailLabel("  " + cat);
+                addDetailLabel("  " + cat);
             }
-            addCoinDetailSpacer();
+            addDetailSpacer();
         }
 
-        addCoinDetailSection("STATUS");
-        addCoinDetailLabel(entity.isPinned() ? "Pinned" : "Free-floating");
+        addDetailSection("STATUS");
+        addDetailLabel(entity.isPinned() ? "Pinned" : "Free-floating");
 
-        coinDetailContent.revalidate();
-        coinDetailContent.repaint();
+        // Action buttons
+        addDetailSpacer();
+        JPanel btnPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 0));
+        btnPanel.setBackground(new Color(38, 40, 44));
+        btnPanel.setAlignmentX(Component.LEFT_ALIGNMENT);
+        btnPanel.setMaximumSize(new Dimension(Integer.MAX_VALUE, 30));
+
+        JButton searchRelatedBtn = new JButton("Search Related...");
+        searchRelatedBtn.addActionListener(e -> {
+            EntitySearchDialog dialog = new EntitySearchDialog(this, entity, entityStore);
+            dialog.setVisible(true);
+            loadCoinData(false);
+        });
+        btnPanel.add(searchRelatedBtn);
+
+        JButton addRelBtn = new JButton("+ Relationship");
+        addRelBtn.addActionListener(e -> showAddRelationshipDialog(entity.id()));
+        btnPanel.add(addRelBtn);
+
+        detailContent.add(btnPanel);
+
+        detailContent.revalidate();
+        detailContent.repaint();
+    }
+
+    // Detail panel helper methods
+    private void addDetailHeader(String text) {
+        JLabel label = new JLabel("<html><body style='width: 280px'>" + text + "</body></html>");
+        label.setFont(new Font("SansSerif", Font.BOLD, 14));
+        label.setForeground(new Color(220, 220, 230));
+        label.setAlignmentX(Component.LEFT_ALIGNMENT);
+        detailContent.add(label);
+    }
+
+    private void addDetailSection(String text) {
+        JLabel label = new JLabel(text);
+        label.setFont(new Font("SansSerif", Font.BOLD, 10));
+        label.setForeground(new Color(120, 120, 130));
+        label.setAlignmentX(Component.LEFT_ALIGNMENT);
+        detailContent.add(label);
+        detailContent.add(Box.createVerticalStrut(3));
+    }
+
+    private void addDetailLabel(String text) {
+        addDetailLabel(text, new Color(200, 200, 210));
+    }
+
+    private void addDetailLabel(String text, Color color) {
+        JLabel label = new JLabel(text);
+        label.setFont(new Font("SansSerif", Font.PLAIN, 12));
+        label.setForeground(color);
+        label.setAlignmentX(Component.LEFT_ALIGNMENT);
+        detailContent.add(label);
+    }
+
+    private void addDetailText(String text) {
+        JTextArea area = new JTextArea(text);
+        area.setFont(new Font("SansSerif", Font.PLAIN, 11));
+        area.setForeground(new Color(180, 180, 190));
+        area.setBackground(new Color(35, 37, 41));
+        area.setLineWrap(true);
+        area.setWrapStyleWord(true);
+        area.setEditable(false);
+        area.setAlignmentX(Component.LEFT_ALIGNMENT);
+        area.setMaximumSize(new Dimension(Integer.MAX_VALUE, 200));
+        detailContent.add(area);
+    }
+
+    private void addDetailLink(String url) {
+        JLabel label = new JLabel("<html><a href=''>" + truncate(url, 40) + "</a></html>");
+        label.setFont(new Font("SansSerif", Font.PLAIN, 11));
+        label.setForeground(new Color(100, 150, 220));
+        label.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+        label.setAlignmentX(Component.LEFT_ALIGNMENT);
+        label.addMouseListener(new java.awt.event.MouseAdapter() {
+            @Override
+            public void mouseClicked(java.awt.event.MouseEvent e) {
+                try {
+                    Desktop.getDesktop().browse(new java.net.URI(url));
+                } catch (Exception ex) {
+                    logPanel.error("Failed to open URL: " + ex.getMessage());
+                }
+            }
+        });
+        detailContent.add(label);
+    }
+
+    private void addDetailSpacer() {
+        detailContent.add(Box.createVerticalStrut(12));
+    }
+
+    private void addRelationshipRow(String description, Color color, String targetId, String targetName) {
+        JPanel row = new JPanel(new BorderLayout(8, 0));
+        row.setBackground(new Color(38, 40, 44));
+        row.setAlignmentX(Component.LEFT_ALIGNMENT);
+        row.setMaximumSize(new Dimension(Integer.MAX_VALUE, 26));
+
+        JPanel colorDot = new JPanel() {
+            @Override
+            protected void paintComponent(Graphics g) {
+                super.paintComponent(g);
+                g.setColor(color);
+                g.fillOval(2, 5, 8, 8);
+            }
+        };
+        colorDot.setPreferredSize(new Dimension(12, 20));
+        colorDot.setBackground(new Color(38, 40, 44));
+        row.add(colorDot, BorderLayout.WEST);
+
+        JLabel descLabel = new JLabel(description);
+        descLabel.setFont(new Font("SansSerif", Font.PLAIN, 11));
+        descLabel.setForeground(new Color(200, 200, 210));
+        row.add(descLabel, BorderLayout.CENTER);
+
+        JButton navBtn = new JButton("\u25B6");
+        navBtn.setFont(new Font("SansSerif", Font.PLAIN, 9));
+        navBtn.setPreferredSize(new Dimension(24, 20));
+        navBtn.setMargin(new Insets(0, 0, 0, 0));
+        navBtn.setToolTipText("Go to " + targetName);
+        navBtn.addActionListener(e -> coinGraphPanel.selectAndPanTo(targetId));
+        row.add(navBtn, BorderLayout.EAST);
+
+        detailContent.add(row);
+        detailContent.add(Box.createVerticalStrut(2));
     }
 
     private String describeInverseRelation(CoinRelationship.Type type, String otherName) {
@@ -777,67 +677,338 @@ public class IntelFrame extends JFrame {
         };
     }
 
-    private void addCoinDetailHeader(String text) {
-        JLabel label = new JLabel(text);
-        label.setFont(new Font("SansSerif", Font.BOLD, 16));
-        label.setForeground(new Color(220, 220, 230));
-        label.setAlignmentX(Component.LEFT_ALIGNMENT);
-        coinDetailContent.add(label);
-    }
+    // ==================== DATA LOADING ====================
 
-    private void addCoinDetailSection(String text) {
-        JLabel label = new JLabel(text);
-        label.setFont(new Font("SansSerif", Font.BOLD, 11));
-        label.setForeground(new Color(140, 140, 150));
-        label.setAlignmentX(Component.LEFT_ALIGNMENT);
-        coinDetailContent.add(label);
-        coinDetailContent.add(Box.createVerticalStrut(4));
-    }
+    private void loadNewsData() {
+        newsStatusLabel.setText("Loading...");
+        logPanel.data("Loading news articles...");
 
-    private void addCoinDetailLabel(String text) {
-        JLabel label = new JLabel(text);
-        label.setFont(new Font("SansSerif", Font.PLAIN, 12));
-        label.setForeground(new Color(200, 200, 210));
-        label.setAlignmentX(Component.LEFT_ALIGNMENT);
-        coinDetailContent.add(label);
-    }
-
-    private void addCoinDetailSpacer() {
-        coinDetailContent.add(Box.createVerticalStrut(12));
-    }
-
-    private void addCoinRelationshipRow(String description, Color color, String targetId, String targetName) {
-        JPanel row = new JPanel(new BorderLayout(8, 0));
-        row.setBackground(new Color(38, 40, 44));
-        row.setAlignmentX(Component.LEFT_ALIGNMENT);
-        row.setMaximumSize(new Dimension(Integer.MAX_VALUE, 28));
-
-        JPanel colorDot = new JPanel() {
+        SwingWorker<List<Article>, Void> worker = new SwingWorker<>() {
             @Override
-            protected void paintComponent(Graphics g) {
-                super.paintComponent(g);
-                g.setColor(color);
-                g.fillOval(2, 6, 10, 10);
+            protected List<Article> doInBackground() {
+                int limit = Integer.parseInt((String) limitCombo.getSelectedItem());
+                return store.getArticles(SqliteNewsStore.ArticleQuery.all(limit));
+            }
+
+            @Override
+            protected void done() {
+                try {
+                    List<Article> articles = get();
+                    newsGraphPanel.setArticles(articles);
+                    newsStatusLabel.setText(articles.size() + " articles  |  " + store.getArticleCount() + " total");
+                    logPanel.success("Loaded " + articles.size() + " news articles");
+                } catch (Exception e) {
+                    newsStatusLabel.setText("Error: " + e.getMessage());
+                    logPanel.error("Failed to load news: " + e.getMessage());
+                }
             }
         };
-        colorDot.setPreferredSize(new Dimension(14, 22));
-        colorDot.setBackground(new Color(38, 40, 44));
-        row.add(colorDot, BorderLayout.WEST);
+        worker.execute();
+    }
 
-        JLabel descLabel = new JLabel(description);
-        descLabel.setFont(new Font("SansSerif", Font.PLAIN, 12));
-        descLabel.setForeground(new Color(200, 200, 210));
-        row.add(descLabel, BorderLayout.CENTER);
+    private void fetchNewArticles() {
+        if (fetching) return;
+        fetching = true;
+        fetchBtn.setEnabled(false);
+        fetchBtn.setText("Fetching...");
+        newsStatusLabel.setText("Fetching...");
+        logPanel.ai("Starting AI-powered news fetch...");
 
-        JButton navBtn = new JButton("\u25B6");
-        navBtn.setFont(new Font("SansSerif", Font.PLAIN, 10));
-        navBtn.setPreferredSize(new Dimension(28, 22));
-        navBtn.setToolTipText("Go to " + targetName);
-        navBtn.addActionListener(e -> coinGraphPanel.selectAndPanTo(targetId));
-        row.add(navBtn, BorderLayout.EAST);
+        SwingWorker<FetchScheduler.FetchResult, String> worker = new SwingWorker<>() {
+            @Override
+            protected FetchScheduler.FetchResult doInBackground() {
+                FetcherRegistry fetchers = new FetcherRegistry();
+                fetchers.registerDefaults();
 
-        coinDetailContent.add(row);
-        coinDetailContent.add(Box.createVerticalStrut(2));
+                TopicRegistry topics = new TopicRegistry(dataDir.resolve("topics.json"));
+                ClaudeCliProcessor ai = new ClaudeCliProcessor();
+
+                if (!ai.isAvailable()) {
+                    publish("Claude CLI not available");
+                    ai = null;
+                }
+
+                try (var scheduler = new FetchScheduler(fetchers, topics, store, ai)) {
+                    scheduler.withAiEnabled(ai != null).withArticlesPerSource(ai != null ? 5 : 10);
+                    return scheduler.fetchAndProcess();
+                }
+            }
+
+            @Override
+            protected void process(List<String> chunks) {
+                for (String msg : chunks) {
+                    logPanel.warn(msg);
+                }
+            }
+
+            @Override
+            protected void done() {
+                fetching = false;
+                fetchBtn.setEnabled(true);
+                fetchBtn.setText("Fetch New");
+                try {
+                    FetchScheduler.FetchResult result = get();
+                    if (result.newArticles() > 0) {
+                        int limit = Integer.parseInt((String) limitCombo.getSelectedItem());
+                        List<Article> allArticles = store.getArticles(SqliteNewsStore.ArticleQuery.all(limit));
+                        int added = newsGraphPanel.addArticles(allArticles);
+                        newsStatusLabel.setText(added + " new  |  " + store.getArticleCount() + " total");
+                        logPanel.success("Fetched " + result.newArticles() + " articles (" + result.aiProcessed() + " AI processed)");
+                    } else {
+                        newsStatusLabel.setText("No new articles  |  " + store.getArticleCount() + " total");
+                        logPanel.info("No new articles found");
+                    }
+                } catch (Exception e) {
+                    newsStatusLabel.setText("Error: " + e.getMessage());
+                    logPanel.error("Fetch failed: " + e.getMessage());
+                }
+            }
+        };
+        worker.execute();
+    }
+
+    private void loadCoinData(boolean forceRefresh) {
+        coinStatusLabel.setText("Loading...");
+        logPanel.data("Loading coin entities...");
+
+        SwingWorker<Void, String> worker = new SwingWorker<>() {
+            private List<CoinEntity> entities;
+            private List<CoinRelationship> relationships;
+
+            @Override
+            protected Void doInBackground() {
+                try {
+                    CoinGeckoClient client = new CoinGeckoClient();
+                    boolean fromCache = false;
+
+                    if (!forceRefresh && entityStore.isCoinGeckoCacheValid()) {
+                        publish("Loading from cache...");
+                        entities = entityStore.loadEntitiesBySource("coingecko");
+                        fromCache = !entities.isEmpty();
+                    }
+
+                    if (entities == null || entities.isEmpty()) {
+                        publish("Fetching from CoinGecko...");
+                        List<CoinEntity> cgEntities = client.fetchTopCoins(200);
+                        entityStore.saveCoinGeckoEntities(cgEntities);
+                        entities = new ArrayList<>(cgEntities);
+                    }
+
+                    publish("Loading manual entities...");
+                    List<CoinEntity> manualEntities = entityStore.loadEntitiesBySource("manual");
+                    entities.addAll(manualEntities);
+
+                    publish("Building relationships...");
+                    List<CoinRelationship> autoRels = client.buildRelationships(entities);
+                    entityStore.saveAutoRelationships(autoRels);
+                    relationships = entityStore.loadAllRelationships();
+
+                    if (manualEntities.isEmpty()) {
+                        publish("Seeding defaults...");
+                        seedDefaultManualEntities();
+                        manualEntities = entityStore.loadEntitiesBySource("manual");
+                        entities.addAll(manualEntities);
+                        relationships = entityStore.loadAllRelationships();
+                    }
+
+                    final List<CoinEntity> finalEntities = entities;
+                    final List<CoinRelationship> finalRels = relationships;
+                    SwingUtilities.invokeLater(() -> {
+                        currentEntities = finalEntities;
+                        currentRelationships = finalRels;
+                        coinGraphPanel.setData(finalEntities, finalRels);
+                        updateCoinStatus();
+                        coinProgressBar.setVisible(false);
+                    });
+
+                    if (!fromCache) {
+                        fetchCategories(client, entities);
+                    }
+
+                } catch (Exception e) {
+                    publish("Error: " + e.getMessage());
+                    loadFallbackData();
+                }
+                return null;
+            }
+
+            private void fetchCategories(CoinGeckoClient client, List<CoinEntity> entities) {
+                SwingUtilities.invokeLater(() -> {
+                    coinProgressBar.setVisible(true);
+                    coinProgressBar.setValue(0);
+                });
+
+                List<String> cgIds = entities.stream()
+                    .filter(e -> e.type() == CoinEntity.Type.COIN)
+                    .map(CoinEntity::id).toList();
+                int total = cgIds.size();
+                int count = 0;
+
+                for (String coinId : cgIds) {
+                    count++;
+                    int pct = (count * 100) / total;
+                    try {
+                        Map<String, List<String>> catMap = client.fetchCoinCategories(List.of(coinId));
+                        List<String> cats = catMap.get(coinId);
+                        if (cats != null && !cats.isEmpty()) {
+                            for (CoinEntity entity : entities) {
+                                if (entity.id().equals(coinId)) {
+                                    entity.setCategories(cats);
+                                    entityStore.saveEntity(entity, "coingecko");
+                                    break;
+                                }
+                            }
+                        }
+                    } catch (Exception ignored) {}
+                    int finalPct = pct;
+                    SwingUtilities.invokeLater(() -> {
+                        coinProgressBar.setValue(finalPct);
+                        coinProgressBar.setString(finalPct + "%");
+                    });
+                }
+
+                SwingUtilities.invokeLater(() -> coinProgressBar.setVisible(false));
+            }
+
+            @Override
+            protected void process(List<String> chunks) {
+                for (String msg : chunks) {
+                    coinStatusLabel.setText(msg);
+                    logPanel.data(msg);
+                }
+            }
+
+            @Override
+            protected void done() {
+                if (entities != null) {
+                    updateCoinStatus();
+                    logPanel.success("Loaded " + entities.size() + " entities, " + relationships.size() + " relationships");
+                }
+            }
+
+            private void loadFallbackData() {
+                entities = new ArrayList<>();
+                relationships = new ArrayList<>();
+                loadSampleData(entities, relationships);
+                SwingUtilities.invokeLater(() -> {
+                    currentEntities = entities;
+                    currentRelationships = relationships;
+                    coinGraphPanel.setData(entities, relationships);
+                    coinStatusLabel.setText(entities.size() + " entities (sample)");
+                    coinProgressBar.setVisible(false);
+                });
+            }
+        };
+        worker.execute();
+    }
+
+    private void updateCoinStatus() {
+        int manual = entityStore.getManualEntityCount();
+        int manualRels = entityStore.getManualRelationshipCount();
+        String status = currentEntities.size() + " entities  |  " + currentRelationships.size() + " rels";
+        if (manual > 0) status += "  |  " + manual + " manual";
+        coinStatusLabel.setText(status);
+    }
+
+    // ==================== DIALOGS ====================
+
+    private void showEntityManager() {
+        logPanel.info("Opening Entity Manager...");
+        EntityManagerFrame manager = new EntityManagerFrame(entityStore, v -> loadCoinData(false));
+        manager.setVisible(true);
+    }
+
+    private void showAddRelationshipDialog(String preselectedFromId) {
+        if (currentEntities == null || currentEntities.isEmpty()) {
+            JOptionPane.showMessageDialog(this, "No entities loaded", "Error", JOptionPane.ERROR_MESSAGE);
+            return;
+        }
+        RelationshipEditorDialog dialog = new RelationshipEditorDialog(
+            this, entityStore, currentEntities, preselectedFromId, rel -> {
+                if (currentRelationships != null) {
+                    currentRelationships.add(rel);
+                    coinGraphPanel.setData(currentEntities, currentRelationships);
+                    updateCoinStatus();
+                    logPanel.success("Added relationship: " + rel.type().label());
+                }
+            }
+        );
+        dialog.setVisible(true);
+    }
+
+    // ==================== SEED DATA ====================
+
+    private void seedDefaultManualEntities() {
+        Set<String> existingIds = new HashSet<>();
+        for (CoinEntity e : entityStore.loadAllEntities()) existingIds.add(e.id());
+
+        // ETFs
+        saveManualEntity(createETF("ibit", "iShares Bitcoin Trust", "IBIT"));
+        saveManualEntity(createETF("fbtc", "Fidelity Wise Origin Bitcoin", "FBTC"));
+        saveManualEntity(createETF("gbtc", "Grayscale Bitcoin Trust", "GBTC"));
+        saveManualEntity(createETF("etha", "iShares Ethereum Trust", "ETHA"));
+
+        if (existingIds.contains("bitcoin")) {
+            for (String etf : List.of("ibit", "fbtc", "gbtc"))
+                saveManualRelationship(new CoinRelationship(etf, "bitcoin", CoinRelationship.Type.ETF_TRACKS));
+        }
+        if (existingIds.contains("ethereum")) {
+            saveManualRelationship(new CoinRelationship("etha", "ethereum", CoinRelationship.Type.ETF_TRACKS));
+        }
+
+        // VCs
+        saveManualEntity(createVC("a16z", "Andreessen Horowitz"));
+        saveManualEntity(createVC("paradigm", "Paradigm"));
+        saveManualEntity(createVC("multicoin", "Multicoin Capital"));
+
+        seedInvestments(existingIds, "a16z", "solana", "ethereum", "optimism", "uniswap");
+        seedInvestments(existingIds, "paradigm", "ethereum", "optimism", "uniswap");
+        seedInvestments(existingIds, "multicoin", "solana", "helium");
+
+        // Exchanges
+        saveManualEntity(createExchange("binance-ex", "Binance"));
+        saveManualEntity(createExchange("coinbase-ex", "Coinbase"));
+
+        if (existingIds.contains("binancecoin"))
+            saveManualRelationship(new CoinRelationship("binance-ex", "binancecoin", CoinRelationship.Type.FOUNDED_BY));
+    }
+
+    private void saveManualEntity(CoinEntity entity) { entityStore.saveEntity(entity, "manual"); }
+    private void saveManualRelationship(CoinRelationship rel) { entityStore.saveRelationship(rel, "manual"); }
+
+    private void seedInvestments(Set<String> existingIds, String vcId, String... coinIds) {
+        for (String coinId : coinIds) {
+            if (existingIds.contains(coinId))
+                saveManualRelationship(new CoinRelationship(vcId, coinId, CoinRelationship.Type.INVESTED_IN));
+        }
+    }
+
+    private void loadSampleData(List<CoinEntity> entities, List<CoinRelationship> relationships) {
+        entities.add(createCoin("bitcoin", "Bitcoin", "BTC", 1_300_000_000_000L));
+        entities.add(createCoin("ethereum", "Ethereum", "ETH", 350_000_000_000L));
+        entities.add(createCoin("solana", "Solana", "SOL", 80_000_000_000L));
+        entities.add(createL2("arbitrum", "Arbitrum", "ARB", "ethereum"));
+        relationships.add(new CoinRelationship("arbitrum", "ethereum", CoinRelationship.Type.L2_OF));
+        entities.add(createETF("ibit", "iShares Bitcoin Trust", "IBIT"));
+        relationships.add(new CoinRelationship("ibit", "bitcoin", CoinRelationship.Type.ETF_TRACKS));
+    }
+
+    private CoinEntity createCoin(String id, String name, String symbol, long marketCap) {
+        CoinEntity e = new CoinEntity(id, name, symbol, CoinEntity.Type.COIN);
+        e.setMarketCap(marketCap);
+        return e;
+    }
+    private CoinEntity createL2(String id, String name, String symbol, String parentId) {
+        return new CoinEntity(id, name, symbol, CoinEntity.Type.L2, parentId);
+    }
+    private CoinEntity createETF(String id, String name, String symbol) {
+        return new CoinEntity(id, name, symbol, CoinEntity.Type.ETF);
+    }
+    private CoinEntity createVC(String id, String name) {
+        return new CoinEntity(id, name, null, CoinEntity.Type.VC);
+    }
+    private CoinEntity createExchange(String id, String name) {
+        return new CoinEntity(id, name, null, CoinEntity.Type.EXCHANGE);
     }
 
     private String formatMarketCap(double num) {
@@ -847,50 +1018,8 @@ public class IntelFrame extends JFrame {
         return String.format("%.0f", num);
     }
 
-    // ==================== SAMPLE/FALLBACK DATA ====================
-
-    private void loadSampleData(List<CoinEntity> entities, List<CoinRelationship> relationships) {
-        entities.add(createCoin("bitcoin", "Bitcoin", "BTC", 1_300_000_000_000L));
-        entities.add(createCoin("ethereum", "Ethereum", "ETH", 350_000_000_000L));
-        entities.add(createCoin("solana", "Solana", "SOL", 80_000_000_000L));
-        entities.add(createCoin("cardano", "Cardano", "ADA", 25_000_000_000L));
-        entities.add(createCoin("avalanche-2", "Avalanche", "AVAX", 15_000_000_000L));
-
-        entities.add(createL2("arbitrum", "Arbitrum", "ARB", "ethereum"));
-        entities.add(createL2("optimism", "Optimism", "OP", "ethereum"));
-
-        relationships.add(new CoinRelationship("arbitrum", "ethereum", CoinRelationship.Type.L2_OF));
-        relationships.add(new CoinRelationship("optimism", "ethereum", CoinRelationship.Type.L2_OF));
-
-        // Add sample ETF and VC for fallback mode
-        entities.add(createETF("ibit", "iShares Bitcoin Trust", "IBIT"));
-        relationships.add(new CoinRelationship("ibit", "bitcoin", CoinRelationship.Type.ETF_TRACKS));
-
-        entities.add(createVC("a16z", "Andreessen Horowitz"));
-        relationships.add(new CoinRelationship("a16z", "solana", CoinRelationship.Type.INVESTED_IN));
-        relationships.add(new CoinRelationship("a16z", "ethereum", CoinRelationship.Type.INVESTED_IN));
-    }
-
-    private CoinEntity createCoin(String id, String name, String symbol, long marketCap) {
-        CoinEntity e = new CoinEntity(id, name, symbol, CoinEntity.Type.COIN);
-        e.setMarketCap(marketCap);
-        return e;
-    }
-
-    private CoinEntity createL2(String id, String name, String symbol, String parentId) {
-        return new CoinEntity(id, name, symbol, CoinEntity.Type.L2, parentId);
-    }
-
-    private CoinEntity createETF(String id, String name, String symbol) {
-        return new CoinEntity(id, name, symbol, CoinEntity.Type.ETF);
-    }
-
-    private CoinEntity createVC(String id, String name) {
-        return new CoinEntity(id, name, null, CoinEntity.Type.VC);
-    }
-
-    private CoinEntity createExchange(String id, String name) {
-        return new CoinEntity(id, name, null, CoinEntity.Type.EXCHANGE);
+    private String truncate(String s, int max) {
+        return s.length() <= max ? s : s.substring(0, max) + "...";
     }
 
     // ==================== MAIN ====================
@@ -905,9 +1034,6 @@ public class IntelFrame extends JFrame {
             e.printStackTrace();
         }
 
-        SwingUtilities.invokeLater(() -> {
-            IntelFrame frame = new IntelFrame();
-            frame.setVisible(true);
-        });
+        SwingUtilities.invokeLater(() -> new IntelFrame().setVisible(true));
     }
 }

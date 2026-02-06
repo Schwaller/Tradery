@@ -48,6 +48,7 @@ public class TimelineGraphPanel extends JPanel {
     private Object selectedNode;
     private Object draggedNode;  // Currently being dragged
     private Consumer<NewsNode> onNodeSelected;
+    private Consumer<TopicNode> onTopicSelected;
 
     // View settings
     private boolean showConnections = true;
@@ -725,6 +726,9 @@ public class TimelineGraphPanel extends JPanel {
             if (node.contains(mx, my)) {
                 selectedNode = node;
                 node.setSelected(true);
+                if (onTopicSelected != null) {
+                    onTopicSelected.accept(node);
+                }
                 break;
             }
         }
@@ -735,6 +739,9 @@ public class TimelineGraphPanel extends JPanel {
                 if (node.contains(mx, my)) {
                     selectedNode = node;
                     node.setSelected(true);
+                    if (onTopicSelected != null) {
+                        onTopicSelected.accept(node);
+                    }
                     break;
                 }
             }
@@ -807,6 +814,10 @@ public class TimelineGraphPanel extends JPanel {
 
     public void setOnNodeSelected(Consumer<NewsNode> callback) {
         this.onNodeSelected = callback;
+    }
+
+    public void setOnTopicSelected(Consumer<TopicNode> callback) {
+        this.onTopicSelected = callback;
     }
 
     public void setShowConnections(boolean show) {
