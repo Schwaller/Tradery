@@ -2,6 +2,7 @@ package com.tradery.charts.renderer;
 
 import com.tradery.charts.core.ChartDataProvider;
 import com.tradery.charts.indicator.IndicatorPool;
+import com.tradery.charts.indicator.IndicatorSubscription;
 import com.tradery.charts.indicator.impl.VolumeRatioCompute;
 import com.tradery.charts.util.ChartStyles;
 import com.tradery.charts.util.RendererBuilder;
@@ -28,6 +29,8 @@ public class VolumeRatioRenderer implements IndicatorChartRenderer {
     private static final Color NEUTRAL_COLOR = new Color(158, 158, 158); // Gray
     private static final Color RATIO_LINE_COLOR = new Color(255, 193, 7); // Amber
 
+    private IndicatorSubscription<VolumeRatioCompute.Result> subscription;
+
     public VolumeRatioRenderer() {
     }
 
@@ -36,7 +39,9 @@ public class VolumeRatioRenderer implements IndicatorChartRenderer {
         IndicatorPool pool = provider.getIndicatorPool();
         if (pool == null) return;
 
-        pool.subscribe(new VolumeRatioCompute()).onReady(result -> {
+        if (subscription != null) subscription.close();
+        subscription = pool.subscribe(new VolumeRatioCompute());
+        subscription.onReady(result -> {
             if (result == null) return;
 
             double[] buyVol = result.buyVolume();
@@ -73,6 +78,14 @@ public class VolumeRatioRenderer implements IndicatorChartRenderer {
 
             plot.getChart().fireChartChanged();
         });
+    }
+
+    @Override
+    public void close() {
+        if (subscription != null) {
+            subscription.close();
+            subscription = null;
+        }
     }
 
     @Override

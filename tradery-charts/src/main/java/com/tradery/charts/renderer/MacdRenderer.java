@@ -2,7 +2,9 @@ package com.tradery.charts.renderer;
 
 import com.tradery.charts.core.ChartDataProvider;
 import com.tradery.charts.indicator.IndicatorPool;
+import com.tradery.charts.indicator.IndicatorSubscription;
 import com.tradery.charts.indicator.impl.MacdCompute;
+import com.tradery.core.indicators.Indicators;
 import com.tradery.charts.util.ChartAnnotationHelper;
 import com.tradery.charts.util.ChartStyles;
 import com.tradery.charts.util.RendererBuilder;
@@ -24,6 +26,7 @@ public class MacdRenderer implements IndicatorChartRenderer {
     private final int fastPeriod;
     private final int slowPeriod;
     private final int signalPeriod;
+    private IndicatorSubscription<Indicators.MACDResult> subscription;
 
     public MacdRenderer(int fastPeriod, int slowPeriod, int signalPeriod) {
         this.fastPeriod = fastPeriod;
@@ -43,7 +46,9 @@ public class MacdRenderer implements IndicatorChartRenderer {
         IndicatorPool pool = provider.getIndicatorPool();
         if (pool == null) return;
 
-        pool.subscribe(new MacdCompute(fastPeriod, slowPeriod, signalPeriod)).onReady(macd -> {
+        if (subscription != null) subscription.close();
+        subscription = pool.subscribe(new MacdCompute(fastPeriod, slowPeriod, signalPeriod));
+        subscription.onReady(macd -> {
             if (macd == null) return;
 
             List<Candle> candles = provider.getCandles();
@@ -78,6 +83,14 @@ public class MacdRenderer implements IndicatorChartRenderer {
 
             plot.getChart().fireChartChanged();
         });
+    }
+
+    @Override
+    public void close() {
+        if (subscription != null) {
+            subscription.close();
+            subscription = null;
+        }
     }
 
     @Override

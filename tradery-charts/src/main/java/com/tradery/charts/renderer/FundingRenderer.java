@@ -2,6 +2,7 @@ package com.tradery.charts.renderer;
 
 import com.tradery.charts.core.ChartDataProvider;
 import com.tradery.charts.indicator.IndicatorPool;
+import com.tradery.charts.indicator.IndicatorSubscription;
 import com.tradery.charts.indicator.impl.FundingCompute;
 import com.tradery.core.model.Candle;
 import org.jfree.chart.plot.XYPlot;
@@ -24,6 +25,8 @@ public class FundingRenderer implements IndicatorChartRenderer {
     private static final Color POSITIVE_FUNDING = new Color(76, 175, 80);   // Green - longs pay shorts
     private static final Color NEGATIVE_FUNDING = new Color(244, 67, 54);   // Red - shorts pay longs
 
+    private IndicatorSubscription<double[]> subscription;
+
     public FundingRenderer() {
     }
 
@@ -32,7 +35,9 @@ public class FundingRenderer implements IndicatorChartRenderer {
         IndicatorPool pool = provider.getIndicatorPool();
         if (pool == null) return;
 
-        pool.subscribe(new FundingCompute()).onReady(funding -> {
+        if (subscription != null) subscription.close();
+        subscription = pool.subscribe(new FundingCompute());
+        subscription.onReady(funding -> {
             if (funding == null || funding.length == 0) return;
 
             List<Candle> candles = provider.getCandles();
@@ -74,6 +79,14 @@ public class FundingRenderer implements IndicatorChartRenderer {
 
             plot.getChart().fireChartChanged();
         });
+    }
+
+    @Override
+    public void close() {
+        if (subscription != null) {
+            subscription.close();
+            subscription = null;
+        }
     }
 
     @Override

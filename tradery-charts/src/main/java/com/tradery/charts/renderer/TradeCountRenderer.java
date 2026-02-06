@@ -2,6 +2,7 @@ package com.tradery.charts.renderer;
 
 import com.tradery.charts.core.ChartDataProvider;
 import com.tradery.charts.indicator.IndicatorPool;
+import com.tradery.charts.indicator.IndicatorSubscription;
 import com.tradery.charts.indicator.impl.TradeCountCompute;
 import com.tradery.core.model.Candle;
 import org.jfree.chart.plot.XYPlot;
@@ -25,6 +26,8 @@ public class TradeCountRenderer implements IndicatorChartRenderer {
 
     private static final Color TRADE_COUNT_COLOR = new Color(255, 152, 0);  // Orange
 
+    private IndicatorSubscription<double[]> subscription;
+
     public TradeCountRenderer() {
     }
 
@@ -33,7 +36,9 @@ public class TradeCountRenderer implements IndicatorChartRenderer {
         IndicatorPool pool = provider.getIndicatorPool();
         if (pool == null) return;
 
-        pool.subscribe(new TradeCountCompute()).onReady(tradeCount -> {
+        if (subscription != null) subscription.close();
+        subscription = pool.subscribe(new TradeCountCompute());
+        subscription.onReady(tradeCount -> {
             if (tradeCount == null || tradeCount.length == 0) return;
 
             List<Candle> candles = provider.getCandles();
@@ -62,6 +67,14 @@ public class TradeCountRenderer implements IndicatorChartRenderer {
 
             plot.getChart().fireChartChanged();
         });
+    }
+
+    @Override
+    public void close() {
+        if (subscription != null) {
+            subscription.close();
+            subscription = null;
+        }
     }
 
     @Override

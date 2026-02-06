@@ -2,6 +2,7 @@ package com.tradery.charts.renderer;
 
 import com.tradery.charts.core.ChartDataProvider;
 import com.tradery.charts.indicator.IndicatorPool;
+import com.tradery.charts.indicator.IndicatorSubscription;
 import com.tradery.charts.indicator.impl.OhlcvDeltaCompute;
 import com.tradery.charts.util.ChartStyles;
 import com.tradery.charts.util.TimeSeriesBuilder;
@@ -25,6 +26,8 @@ import java.util.List;
 public class DeltaRenderer implements IndicatorChartRenderer {
 
     private final boolean showCvd;
+    private IndicatorSubscription<OhlcvDeltaCompute.Result> deltaSubscription;
+    private IndicatorSubscription<OhlcvDeltaCompute.Result> cvdSubscription;
 
     /**
      * Create a Delta renderer without CVD line.
@@ -53,7 +56,9 @@ public class DeltaRenderer implements IndicatorChartRenderer {
             IndicatorPool pool = provider.getIndicatorPool();
             if (pool == null) return;
 
-            pool.subscribe(new OhlcvDeltaCompute()).onReady(result -> {
+            if (deltaSubscription != null) deltaSubscription.close();
+            deltaSubscription = pool.subscribe(new OhlcvDeltaCompute());
+            deltaSubscription.onReady(result -> {
                 if (result == null || result.delta() == null || result.delta().length == 0) return;
                 renderDelta(plot, provider, provider.getCandles(), result.delta());
                 plot.getChart().fireChartChanged();
@@ -103,7 +108,9 @@ public class DeltaRenderer implements IndicatorChartRenderer {
                 // Fallback to OHLCV CVD via pool
                 IndicatorPool pool = provider.getIndicatorPool();
                 if (pool != null) {
-                    pool.subscribe(new OhlcvDeltaCompute()).onReady(result -> {
+                    if (cvdSubscription != null) cvdSubscription.close();
+                    cvdSubscription = pool.subscribe(new OhlcvDeltaCompute());
+                    cvdSubscription.onReady(result -> {
                         if (result != null && result.cvd() != null && result.cvd().length > 0) {
                             renderCvdLine(plot, provider.getCandles(), result.cvd());
                             plot.getChart().fireChartChanged();
@@ -124,6 +131,18 @@ public class DeltaRenderer implements IndicatorChartRenderer {
 
         plot.setDataset(1, cvdDataset);
         plot.setRenderer(1, lineRenderer);
+    }
+
+    @Override
+    public void close() {
+        if (deltaSubscription != null) {
+            deltaSubscription.close();
+            deltaSubscription = null;
+        }
+        if (cvdSubscription != null) {
+            cvdSubscription.close();
+            cvdSubscription = null;
+        }
     }
 
     @Override

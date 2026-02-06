@@ -2,6 +2,7 @@ package com.tradery.charts.renderer;
 
 import com.tradery.charts.core.ChartDataProvider;
 import com.tradery.charts.indicator.IndicatorPool;
+import com.tradery.charts.indicator.IndicatorSubscription;
 import com.tradery.charts.indicator.impl.CumulativeDeltaCompute;
 import com.tradery.charts.util.ChartStyles;
 import com.tradery.charts.util.RendererBuilder;
@@ -25,6 +26,7 @@ public class CvdRenderer implements IndicatorChartRenderer {
     private static final Color CVD_LINE_COLOR = new Color(33, 150, 243);      // Blue
 
     private final boolean showAsLine;
+    private IndicatorSubscription<double[]> subscription;
 
     public CvdRenderer() {
         this(true);  // Default to line chart
@@ -39,7 +41,9 @@ public class CvdRenderer implements IndicatorChartRenderer {
         IndicatorPool pool = provider.getIndicatorPool();
         if (pool == null) return;
 
-        pool.subscribe(new CumulativeDeltaCompute()).onReady(cvd -> {
+        if (subscription != null) subscription.close();
+        subscription = pool.subscribe(new CumulativeDeltaCompute());
+        subscription.onReady(cvd -> {
             if (cvd == null || cvd.length == 0) return;
 
             List<Candle> candles = provider.getCandles();
@@ -59,6 +63,14 @@ public class CvdRenderer implements IndicatorChartRenderer {
 
             plot.getChart().fireChartChanged();
         });
+    }
+
+    @Override
+    public void close() {
+        if (subscription != null) {
+            subscription.close();
+            subscription = null;
+        }
     }
 
     @Override

@@ -72,6 +72,12 @@ public class IndicatorChart extends SyncedChart {
         renderer.render(plot, provider);
     }
 
+    @Override
+    public void dispose() {
+        renderer.close();
+        super.dispose();
+    }
+
     /**
      * Get the indicator type.
      */

@@ -2,6 +2,7 @@ package com.tradery.charts.renderer;
 
 import com.tradery.charts.core.ChartDataProvider;
 import com.tradery.charts.indicator.IndicatorPool;
+import com.tradery.charts.indicator.IndicatorSubscription;
 import com.tradery.charts.indicator.impl.WhaleDeltaCompute;
 import com.tradery.core.model.Candle;
 import org.jfree.chart.plot.XYPlot;
@@ -26,6 +27,7 @@ public class WhaleRenderer implements IndicatorChartRenderer {
     private static final Color WHALE_SELL_COLOR = new Color(233, 30, 99);  // Pink
 
     private final double threshold;
+    private IndicatorSubscription<double[]> subscription;
 
     public WhaleRenderer(double threshold) {
         this.threshold = threshold;
@@ -36,7 +38,9 @@ public class WhaleRenderer implements IndicatorChartRenderer {
         IndicatorPool pool = provider.getIndicatorPool();
         if (pool == null) return;
 
-        pool.subscribe(new WhaleDeltaCompute(threshold)).onReady(whaleDelta -> {
+        if (subscription != null) subscription.close();
+        subscription = pool.subscribe(new WhaleDeltaCompute(threshold));
+        subscription.onReady(whaleDelta -> {
             if (whaleDelta == null || whaleDelta.length == 0) return;
 
             List<Candle> candles = provider.getCandles();
@@ -88,6 +92,14 @@ public class WhaleRenderer implements IndicatorChartRenderer {
 
             plot.getChart().fireChartChanged();
         });
+    }
+
+    @Override
+    public void close() {
+        if (subscription != null) {
+            subscription.close();
+            subscription = null;
+        }
     }
 
     @Override

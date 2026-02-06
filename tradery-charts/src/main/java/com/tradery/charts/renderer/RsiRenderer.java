@@ -2,6 +2,7 @@ package com.tradery.charts.renderer;
 
 import com.tradery.charts.core.ChartDataProvider;
 import com.tradery.charts.indicator.IndicatorPool;
+import com.tradery.charts.indicator.IndicatorSubscription;
 import com.tradery.charts.indicator.impl.RsiCompute;
 import com.tradery.charts.util.ChartAnnotationHelper;
 import com.tradery.charts.util.ChartStyles;
@@ -20,6 +21,7 @@ import java.util.List;
 public class RsiRenderer implements IndicatorChartRenderer {
 
     private final int period;
+    private IndicatorSubscription<double[]> subscription;
 
     public RsiRenderer(int period) {
         this.period = period;
@@ -30,7 +32,9 @@ public class RsiRenderer implements IndicatorChartRenderer {
         IndicatorPool pool = provider.getIndicatorPool();
         if (pool == null) return;
 
-        pool.subscribe(new RsiCompute(period)).onReady(rsi -> {
+        if (subscription != null) subscription.close();
+        subscription = pool.subscribe(new RsiCompute(period));
+        subscription.onReady(rsi -> {
             if (rsi == null || rsi.length == 0) return;
 
             List<Candle> candles = provider.getCandles();
@@ -52,6 +56,14 @@ public class RsiRenderer implements IndicatorChartRenderer {
 
             plot.getChart().fireChartChanged();
         });
+    }
+
+    @Override
+    public void close() {
+        if (subscription != null) {
+            subscription.close();
+            subscription = null;
+        }
     }
 
     @Override

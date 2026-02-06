@@ -17,7 +17,7 @@ import org.jfree.chart.plot.XYPlot;
  *   <li>Add reference lines using {@link com.tradery.charts.util.ChartAnnotationHelper}</li>
  * </ul>
  */
-public interface IndicatorChartRenderer {
+public interface IndicatorChartRenderer extends AutoCloseable {
 
     /**
      * Render the indicator on the plot.
@@ -32,4 +32,11 @@ public interface IndicatorChartRenderer {
      * Used for chart titles and legends.
      */
     String getParameterString();
+
+    /**
+     * Release resources held by this renderer (e.g. indicator subscriptions).
+     * Default no-op for renderers that don't hold resources.
+     */
+    @Override
+    default void close() {}
 }

@@ -2,7 +2,9 @@ package com.tradery.charts.renderer;
 
 import com.tradery.charts.core.ChartDataProvider;
 import com.tradery.charts.indicator.IndicatorPool;
+import com.tradery.charts.indicator.IndicatorSubscription;
 import com.tradery.charts.indicator.impl.StochasticCompute;
+import com.tradery.core.indicators.Indicators;
 import com.tradery.charts.util.ChartAnnotationHelper;
 import com.tradery.charts.util.ChartStyles;
 import com.tradery.charts.util.RendererBuilder;
@@ -22,6 +24,7 @@ public class StochasticRenderer implements IndicatorChartRenderer {
 
     private final int kPeriod;
     private final int dPeriod;
+    private IndicatorSubscription<Indicators.StochasticResult> subscription;
 
     public StochasticRenderer(int kPeriod, int dPeriod) {
         this.kPeriod = kPeriod;
@@ -33,7 +36,9 @@ public class StochasticRenderer implements IndicatorChartRenderer {
         IndicatorPool pool = provider.getIndicatorPool();
         if (pool == null) return;
 
-        pool.subscribe(new StochasticCompute(kPeriod, dPeriod)).onReady(stoch -> {
+        if (subscription != null) subscription.close();
+        subscription = pool.subscribe(new StochasticCompute(kPeriod, dPeriod));
+        subscription.onReady(stoch -> {
             if (stoch == null) return;
 
             double[] kValues = stoch.k();
@@ -64,6 +69,14 @@ public class StochasticRenderer implements IndicatorChartRenderer {
 
             plot.getChart().fireChartChanged();
         });
+    }
+
+    @Override
+    public void close() {
+        if (subscription != null) {
+            subscription.close();
+            subscription = null;
+        }
     }
 
     @Override

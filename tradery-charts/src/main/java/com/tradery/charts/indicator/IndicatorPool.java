@@ -50,7 +50,7 @@ public class IndicatorPool {
 
         IndicatorSubscription<T> subscription = new IndicatorSubscription<>(() -> {
             // On close: remove from active list (but keep cache)
-            activeSubscriptions.removeIf(a -> a.key.equals(key) && a.subscription.getData() == null);
+            activeSubscriptions.removeIf(a -> a.key.equals(key));
         });
 
         // Track active subscription for recomputation

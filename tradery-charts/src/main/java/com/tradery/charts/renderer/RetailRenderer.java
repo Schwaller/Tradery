@@ -2,6 +2,7 @@ package com.tradery.charts.renderer;
 
 import com.tradery.charts.core.ChartDataProvider;
 import com.tradery.charts.indicator.IndicatorPool;
+import com.tradery.charts.indicator.IndicatorSubscription;
 import com.tradery.charts.indicator.impl.RetailDeltaCompute;
 import com.tradery.core.model.Candle;
 import org.jfree.chart.plot.XYPlot;
@@ -26,6 +27,7 @@ public class RetailRenderer implements IndicatorChartRenderer {
     private static final Color RETAIL_SELL_COLOR = new Color(239, 154, 154);  // Light red
 
     private final double threshold;
+    private IndicatorSubscription<double[]> subscription;
 
     public RetailRenderer(double threshold) {
         this.threshold = threshold;
@@ -36,7 +38,9 @@ public class RetailRenderer implements IndicatorChartRenderer {
         IndicatorPool pool = provider.getIndicatorPool();
         if (pool == null) return;
 
-        pool.subscribe(new RetailDeltaCompute(threshold)).onReady(retailDelta -> {
+        if (subscription != null) subscription.close();
+        subscription = pool.subscribe(new RetailDeltaCompute(threshold));
+        subscription.onReady(retailDelta -> {
             if (retailDelta == null || retailDelta.length == 0) return;
 
             List<Candle> candles = provider.getCandles();
@@ -88,6 +92,14 @@ public class RetailRenderer implements IndicatorChartRenderer {
 
             plot.getChart().fireChartChanged();
         });
+    }
+
+    @Override
+    public void close() {
+        if (subscription != null) {
+            subscription.close();
+            subscription = null;
+        }
     }
 
     @Override

@@ -2,6 +2,7 @@ package com.tradery.charts.renderer;
 
 import com.tradery.charts.core.ChartDataProvider;
 import com.tradery.charts.indicator.IndicatorPool;
+import com.tradery.charts.indicator.IndicatorSubscription;
 import com.tradery.charts.indicator.impl.RangePositionCompute;
 import com.tradery.charts.util.ChartStyles;
 import com.tradery.charts.util.RendererBuilder;
@@ -29,6 +30,7 @@ public class RangePositionRenderer implements IndicatorChartRenderer {
 
     private final int period;
     private final int skip;
+    private IndicatorSubscription<double[]> subscription;
 
     public RangePositionRenderer(int period) {
         this(period, 0);
@@ -44,7 +46,9 @@ public class RangePositionRenderer implements IndicatorChartRenderer {
         IndicatorPool pool = provider.getIndicatorPool();
         if (pool == null) return;
 
-        pool.subscribe(new RangePositionCompute(period, skip)).onReady(rangePos -> {
+        if (subscription != null) subscription.close();
+        subscription = pool.subscribe(new RangePositionCompute(period, skip));
+        subscription.onReady(rangePos -> {
             if (rangePos == null || rangePos.length == 0) return;
 
             List<Candle> candles = provider.getCandles();
@@ -71,6 +75,14 @@ public class RangePositionRenderer implements IndicatorChartRenderer {
 
             plot.getChart().fireChartChanged();
         });
+    }
+
+    @Override
+    public void close() {
+        if (subscription != null) {
+            subscription.close();
+            subscription = null;
+        }
     }
 
     @Override

@@ -2,6 +2,7 @@ package com.tradery.charts.renderer;
 
 import com.tradery.charts.core.ChartDataProvider;
 import com.tradery.charts.indicator.IndicatorPool;
+import com.tradery.charts.indicator.IndicatorSubscription;
 import com.tradery.charts.indicator.impl.AtrCompute;
 import com.tradery.charts.util.ChartStyles;
 import com.tradery.charts.util.RendererBuilder;
@@ -19,6 +20,7 @@ import java.util.List;
 public class AtrRenderer implements IndicatorChartRenderer {
 
     private final int period;
+    private IndicatorSubscription<double[]> subscription;
 
     public AtrRenderer(int period) {
         this.period = period;
@@ -36,7 +38,9 @@ public class AtrRenderer implements IndicatorChartRenderer {
         IndicatorPool pool = provider.getIndicatorPool();
         if (pool == null) return;
 
-        pool.subscribe(new AtrCompute(period)).onReady(atr -> {
+        if (subscription != null) subscription.close();
+        subscription = pool.subscribe(new AtrCompute(period));
+        subscription.onReady(atr -> {
             if (atr == null || atr.length == 0) return;
 
             List<Candle> candles = provider.getCandles();
@@ -51,6 +55,14 @@ public class AtrRenderer implements IndicatorChartRenderer {
 
             plot.getChart().fireChartChanged();
         });
+    }
+
+    @Override
+    public void close() {
+        if (subscription != null) {
+            subscription.close();
+            subscription = null;
+        }
     }
 
     @Override

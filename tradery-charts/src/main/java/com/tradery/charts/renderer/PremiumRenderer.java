@@ -2,6 +2,7 @@ package com.tradery.charts.renderer;
 
 import com.tradery.charts.core.ChartDataProvider;
 import com.tradery.charts.indicator.IndicatorPool;
+import com.tradery.charts.indicator.IndicatorSubscription;
 import com.tradery.charts.indicator.impl.PremiumCompute;
 import com.tradery.charts.util.ChartStyles;
 import com.tradery.charts.util.RendererBuilder;
@@ -28,6 +29,8 @@ public class PremiumRenderer implements IndicatorChartRenderer {
     private static final Color DISCOUNT_COLOR = new Color(244, 67, 54);   // Red (backwardation)
     private static final Color LINE_COLOR = new Color(156, 39, 176);      // Purple
 
+    private IndicatorSubscription<double[]> subscription;
+
     public PremiumRenderer() {
     }
 
@@ -36,7 +39,9 @@ public class PremiumRenderer implements IndicatorChartRenderer {
         IndicatorPool pool = provider.getIndicatorPool();
         if (pool == null) return;
 
-        pool.subscribe(new PremiumCompute()).onReady(premium -> {
+        if (subscription != null) subscription.close();
+        subscription = pool.subscribe(new PremiumCompute());
+        subscription.onReady(premium -> {
             if (premium == null || premium.length == 0) return;
 
             List<Candle> candles = provider.getCandles();
@@ -59,6 +64,14 @@ public class PremiumRenderer implements IndicatorChartRenderer {
 
             plot.getChart().fireChartChanged();
         });
+    }
+
+    @Override
+    public void close() {
+        if (subscription != null) {
+            subscription.close();
+            subscription = null;
+        }
     }
 
     @Override

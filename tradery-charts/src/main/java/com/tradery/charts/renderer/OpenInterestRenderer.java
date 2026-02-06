@@ -2,6 +2,7 @@ package com.tradery.charts.renderer;
 
 import com.tradery.charts.core.ChartDataProvider;
 import com.tradery.charts.indicator.IndicatorPool;
+import com.tradery.charts.indicator.IndicatorSubscription;
 import com.tradery.charts.indicator.impl.OpenInterestCompute;
 import com.tradery.charts.util.ChartStyles;
 import com.tradery.charts.util.RendererBuilder;
@@ -22,6 +23,8 @@ public class OpenInterestRenderer implements IndicatorChartRenderer {
 
     private static final Color OI_COLOR = new Color(156, 39, 176);  // Purple
 
+    private IndicatorSubscription<double[]> subscription;
+
     public OpenInterestRenderer() {
     }
 
@@ -30,7 +33,9 @@ public class OpenInterestRenderer implements IndicatorChartRenderer {
         IndicatorPool pool = provider.getIndicatorPool();
         if (pool == null) return;
 
-        pool.subscribe(new OpenInterestCompute()).onReady(oi -> {
+        if (subscription != null) subscription.close();
+        subscription = pool.subscribe(new OpenInterestCompute());
+        subscription.onReady(oi -> {
             if (oi == null || oi.length == 0) return;
 
             List<Candle> candles = provider.getCandles();
@@ -44,6 +49,14 @@ public class OpenInterestRenderer implements IndicatorChartRenderer {
 
             plot.getChart().fireChartChanged();
         });
+    }
+
+    @Override
+    public void close() {
+        if (subscription != null) {
+            subscription.close();
+            subscription = null;
+        }
     }
 
     @Override

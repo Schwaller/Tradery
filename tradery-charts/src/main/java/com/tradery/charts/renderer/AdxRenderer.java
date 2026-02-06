@@ -2,7 +2,9 @@ package com.tradery.charts.renderer;
 
 import com.tradery.charts.core.ChartDataProvider;
 import com.tradery.charts.indicator.IndicatorPool;
+import com.tradery.charts.indicator.IndicatorSubscription;
 import com.tradery.charts.indicator.impl.AdxCompute;
+import com.tradery.core.indicators.Indicators;
 import com.tradery.charts.util.ChartAnnotationHelper;
 import com.tradery.charts.util.ChartStyles;
 import com.tradery.charts.util.RendererBuilder;
@@ -21,6 +23,7 @@ import java.util.List;
 public class AdxRenderer implements IndicatorChartRenderer {
 
     private final int period;
+    private IndicatorSubscription<Indicators.ADXResult> subscription;
 
     public AdxRenderer(int period) {
         this.period = period;
@@ -31,7 +34,9 @@ public class AdxRenderer implements IndicatorChartRenderer {
         IndicatorPool pool = provider.getIndicatorPool();
         if (pool == null) return;
 
-        pool.subscribe(new AdxCompute(period)).onReady(adxResult -> {
+        if (subscription != null) subscription.close();
+        subscription = pool.subscribe(new AdxCompute(period));
+        subscription.onReady(adxResult -> {
             if (adxResult == null || adxResult.adx() == null || adxResult.adx().length == 0) return;
 
             List<Candle> candles = provider.getCandles();
@@ -64,6 +69,14 @@ public class AdxRenderer implements IndicatorChartRenderer {
 
             plot.getChart().fireChartChanged();
         });
+    }
+
+    @Override
+    public void close() {
+        if (subscription != null) {
+            subscription.close();
+            subscription = null;
+        }
     }
 
     @Override
