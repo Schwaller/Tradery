@@ -27,11 +27,23 @@ public class IntelConfig {
     // News map settings
     private Set<String> hiddenTopics = new HashSet<>();
 
-    // Window settings
+    // Main window settings
     private int windowWidth = 1800;
     private int windowHeight = 1000;
     private int windowX = -1;  // -1 means center
     private int windowY = -1;
+
+    // Settings window settings
+    private int settingsWidth = -1;   // -1 means use default (80% of screen)
+    private int settingsHeight = -1;
+    private int settingsX = -1;
+    private int settingsY = -1;
+
+    // Data structure window settings
+    private int dataStructureWidth = -1;
+    private int dataStructureHeight = -1;
+    private int dataStructureX = -1;
+    private int dataStructureY = -1;
 
     // AI settings
     public enum AiProvider { CLAUDE, CODEX, CUSTOM }
@@ -128,6 +140,72 @@ public class IntelConfig {
 
     public void setWindowY(int windowY) {
         this.windowY = windowY;
+    }
+
+    // Settings window
+    public int getSettingsWidth() {
+        return settingsWidth;
+    }
+
+    public void setSettingsWidth(int settingsWidth) {
+        this.settingsWidth = settingsWidth;
+    }
+
+    public int getSettingsHeight() {
+        return settingsHeight;
+    }
+
+    public void setSettingsHeight(int settingsHeight) {
+        this.settingsHeight = settingsHeight;
+    }
+
+    public int getSettingsX() {
+        return settingsX;
+    }
+
+    public void setSettingsX(int settingsX) {
+        this.settingsX = settingsX;
+    }
+
+    public int getSettingsY() {
+        return settingsY;
+    }
+
+    public void setSettingsY(int settingsY) {
+        this.settingsY = settingsY;
+    }
+
+    // Data structure window
+    public int getDataStructureWidth() {
+        return dataStructureWidth;
+    }
+
+    public void setDataStructureWidth(int dataStructureWidth) {
+        this.dataStructureWidth = dataStructureWidth;
+    }
+
+    public int getDataStructureHeight() {
+        return dataStructureHeight;
+    }
+
+    public void setDataStructureHeight(int dataStructureHeight) {
+        this.dataStructureHeight = dataStructureHeight;
+    }
+
+    public int getDataStructureX() {
+        return dataStructureX;
+    }
+
+    public void setDataStructureX(int dataStructureX) {
+        this.dataStructureX = dataStructureX;
+    }
+
+    public int getDataStructureY() {
+        return dataStructureY;
+    }
+
+    public void setDataStructureY(int dataStructureY) {
+        this.dataStructureY = dataStructureY;
     }
 
     // ==================== AI Settings ====================

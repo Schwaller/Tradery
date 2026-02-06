@@ -6,9 +6,10 @@ import com.tradery.news.ui.IntelConfig;
 
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
-import javax.swing.table.DefaultTableModel;
 import javax.swing.tree.*;
 import java.awt.*;
+import java.awt.event.WindowAdapter;
+import java.awt.event.WindowEvent;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -46,10 +47,6 @@ public class EntityManagerFrame extends JFrame {
     private CoinEntity selectedEntity;
     private boolean isNewEntity = false;
 
-    // Relationships tab components
-    private JTable relationshipTable;
-    private DefaultTableModel relationshipTableModel;
-
     // News Sources tab components
     private JList<RssFetcher> rssSourceList;
     private DefaultListModel<RssFetcher> rssSourceListModel;
@@ -59,11 +56,39 @@ public class EntityManagerFrame extends JFrame {
         this.store = store;
         this.onDataChanged = onDataChanged;
 
-        setSize(950, 650);
-        setLocationRelativeTo(null);
+        // Restore window size/position from config or use large default
+        IntelConfig config = IntelConfig.get();
+        if (config.getSettingsWidth() > 0 && config.getSettingsHeight() > 0) {
+            setSize(config.getSettingsWidth(), config.getSettingsHeight());
+            if (config.getSettingsX() >= 0 && config.getSettingsY() >= 0) {
+                setLocation(config.getSettingsX(), config.getSettingsY());
+            } else {
+                setLocationRelativeTo(null);
+            }
+        } else {
+            // Default: 80% of screen size
+            Dimension screen = Toolkit.getDefaultToolkit().getScreenSize();
+            int width = (int) (screen.width * 0.8);
+            int height = (int) (screen.height * 0.8);
+            setSize(width, height);
+            setLocationRelativeTo(null);
+        }
+
+        // Save window state on close
+        addWindowListener(new WindowAdapter() {
+            @Override
+            public void windowClosing(WindowEvent e) {
+                IntelConfig cfg = IntelConfig.get();
+                cfg.setSettingsWidth(getWidth());
+                cfg.setSettingsHeight(getHeight());
+                cfg.setSettingsX(getX());
+                cfg.setSettingsY(getY());
+                cfg.save();
+            }
+        });
+
         initUI();
         loadEntities();
-        loadRelationships();
     }
 
     private void initUI() {
@@ -77,9 +102,6 @@ public class EntityManagerFrame extends JFrame {
 
         // Entities tab
         tabbedPane.addTab("Entities", createEntitiesTab());
-
-        // Relationships tab
-        tabbedPane.addTab("Relationships", createRelationshipsTab());
 
         // News Sources tab
         tabbedPane.addTab("News Sources", createNewsSourcesTab());
@@ -123,63 +145,6 @@ public class EntityManagerFrame extends JFrame {
         splitPane.setDividerLocation(300);
         splitPane.setDividerSize(4);
         panel.add(splitPane, BorderLayout.CENTER);
-
-        return panel;
-    }
-
-    private JPanel createRelationshipsTab() {
-        JPanel panel = new JPanel(new BorderLayout());
-        panel.setBackground(new Color(30, 32, 36));
-
-        // Toolbar
-        JToolBar toolbar = new JToolBar();
-        toolbar.setFloatable(false);
-        toolbar.setBackground(new Color(38, 40, 44));
-        toolbar.setBorder(BorderFactory.createMatteBorder(0, 0, 1, 0, new Color(50, 52, 56)));
-
-        JButton addRelBtn = new JButton("+ Add Relationship");
-        addRelBtn.addActionListener(e -> showAddRelationshipDialog());
-        toolbar.add(addRelBtn);
-
-        JButton deleteRelBtn = new JButton("Delete Selected");
-        deleteRelBtn.addActionListener(e -> deleteSelectedRelationship());
-        toolbar.add(deleteRelBtn);
-
-        JButton refreshRelBtn = new JButton("Refresh");
-        refreshRelBtn.addActionListener(e -> loadRelationships());
-        toolbar.add(refreshRelBtn);
-
-        panel.add(toolbar, BorderLayout.NORTH);
-
-        // Relationship table
-        String[] columns = {"From", "Relationship", "To", "Note", "Source"};
-        relationshipTableModel = new DefaultTableModel(columns, 0) {
-            @Override
-            public boolean isCellEditable(int row, int column) {
-                return false;
-            }
-        };
-        relationshipTable = new JTable(relationshipTableModel);
-        relationshipTable.setBackground(new Color(35, 37, 41));
-        relationshipTable.setForeground(new Color(200, 200, 210));
-        relationshipTable.setGridColor(new Color(50, 52, 56));
-        relationshipTable.setSelectionBackground(new Color(60, 80, 100));
-        relationshipTable.setSelectionForeground(new Color(220, 220, 230));
-        relationshipTable.getTableHeader().setBackground(new Color(45, 47, 51));
-        relationshipTable.getTableHeader().setForeground(new Color(180, 180, 190));
-        relationshipTable.setRowHeight(24);
-
-        // Column widths
-        relationshipTable.getColumnModel().getColumn(0).setPreferredWidth(180);
-        relationshipTable.getColumnModel().getColumn(1).setPreferredWidth(120);
-        relationshipTable.getColumnModel().getColumn(2).setPreferredWidth(180);
-        relationshipTable.getColumnModel().getColumn(3).setPreferredWidth(150);
-        relationshipTable.getColumnModel().getColumn(4).setPreferredWidth(80);
-
-        JScrollPane scroll = new JScrollPane(relationshipTable);
-        scroll.setBorder(null);
-        scroll.getViewport().setBackground(new Color(35, 37, 41));
-        panel.add(scroll, BorderLayout.CENTER);
 
         return panel;
     }
@@ -512,25 +477,6 @@ public class EntityManagerFrame extends JFrame {
         return panel;
     }
 
-    private void loadRelationships() {
-        if (relationshipTableModel == null) return;
-        relationshipTableModel.setRowCount(0);
-
-        List<CoinRelationship> relationships = store.loadAllRelationships();
-        for (CoinRelationship rel : relationships) {
-            String fromName = getEntityDisplayName(rel.fromId());
-            String toName = getEntityDisplayName(rel.toId());
-
-            relationshipTableModel.addRow(new Object[]{
-                fromName,
-                rel.type().label(),
-                toName,
-                rel.note() != null ? rel.note() : "",
-                "manual"  // Source is manual by default for visible relationships
-            });
-        }
-    }
-
     private String getEntityDisplayName(String entityId) {
         CoinEntity entity = store.getEntity(entityId);
         if (entity != null) {
@@ -540,46 +486,6 @@ public class EntityManagerFrame extends JFrame {
             return entity.name();
         }
         return entityId;
-    }
-
-    private void showAddRelationshipDialog() {
-        List<CoinEntity> allEntities = store.loadAllEntities();
-        RelationshipEditorDialog dialog = new RelationshipEditorDialog(
-            this, store, allEntities, null,
-            rel -> {
-                loadRelationships();
-                if (onDataChanged != null) {
-                    onDataChanged.accept(null);
-                }
-            }
-        );
-        dialog.setVisible(true);
-    }
-
-    private void deleteSelectedRelationship() {
-        int row = relationshipTable.getSelectedRow();
-        if (row < 0) {
-            JOptionPane.showMessageDialog(this, "Please select a relationship to delete",
-                "No Selection", JOptionPane.WARNING_MESSAGE);
-            return;
-        }
-
-        int result = JOptionPane.showConfirmDialog(this,
-            "Delete this relationship?", "Confirm Delete",
-            JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE);
-
-        if (result == JOptionPane.YES_OPTION) {
-            // Get relationship data from table
-            List<CoinRelationship> relationships = store.loadAllRelationships();
-            if (row < relationships.size()) {
-                CoinRelationship rel = relationships.get(row);
-                store.deleteRelationship(rel.fromId(), rel.toId(), rel.type());
-                loadRelationships();
-                if (onDataChanged != null) {
-                    onDataChanged.accept(null);
-                }
-            }
-        }
     }
 
     private JPanel createLeftPanel() {

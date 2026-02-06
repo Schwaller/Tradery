@@ -59,6 +59,9 @@ public class IntelFrame extends JFrame {
     private JLabel detailTitleLabel;
     private IntelLogPanel logPanel;
 
+    // Singleton windows
+    private DataStructureFrame dataStructureFrame;
+
     // Current selection
     private enum DetailMode { NONE, ARTICLE, ENTITY }
     private DetailMode currentMode = DetailMode.NONE;
@@ -221,6 +224,12 @@ public class IntelFrame extends JFrame {
         resetViewBtn.addActionListener(e -> coinGraphPanel.resetView());
         resetViewBtn.setVisible(false);  // Hidden by default (News is selected)
         rightBtns.add(resetViewBtn);
+
+        JButton dataStructureBtn = new JButton("Data Structure");
+        dataStructureBtn.setFont(new Font("SansSerif", Font.PLAIN, 11));
+        dataStructureBtn.setMargin(new Insets(6, 14, 6, 14));
+        dataStructureBtn.addActionListener(e -> showDataStructureWindow());
+        rightBtns.add(dataStructureBtn);
 
         JButton settingsBtn = new JButton("Settings");
         settingsBtn.setFont(new Font("SansSerif", Font.PLAIN, 11));
@@ -702,10 +711,14 @@ public class IntelFrame extends JFrame {
     }
 
     private void addRelationshipRow(String description, Color color, String targetId, String targetName) {
+        Color bg = new Color(38, 40, 44);
+        Color bgHover = new Color(45, 47, 51);
+
         JPanel row = new JPanel(new BorderLayout(8, 0));
-        row.setBackground(new Color(38, 40, 44));
+        row.setBackground(bg);
         row.setAlignmentX(Component.LEFT_ALIGNMENT);
         row.setMaximumSize(new Dimension(Integer.MAX_VALUE, 26));
+        row.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
 
         JPanel colorDot = new JPanel() {
             @Override
@@ -716,7 +729,7 @@ public class IntelFrame extends JFrame {
             }
         };
         colorDot.setPreferredSize(new Dimension(12, 20));
-        colorDot.setBackground(new Color(38, 40, 44));
+        colorDot.setBackground(bg);
         row.add(colorDot, BorderLayout.WEST);
 
         JLabel descLabel = new JLabel(description);
@@ -724,13 +737,22 @@ public class IntelFrame extends JFrame {
         descLabel.setForeground(new Color(200, 200, 210));
         row.add(descLabel, BorderLayout.CENTER);
 
-        JButton navBtn = new JButton("\u25B6");
-        navBtn.setFont(new Font("SansSerif", Font.PLAIN, 9));
-        navBtn.setPreferredSize(new Dimension(24, 20));
-        navBtn.setMargin(new Insets(0, 0, 0, 0));
-        navBtn.setToolTipText("Go to " + targetName);
-        navBtn.addActionListener(e -> coinGraphPanel.selectAndPanTo(targetId));
-        row.add(navBtn, BorderLayout.EAST);
+        row.addMouseListener(new java.awt.event.MouseAdapter() {
+            @Override
+            public void mouseClicked(java.awt.event.MouseEvent e) {
+                coinGraphPanel.selectAndPanTo(targetId);
+            }
+            @Override
+            public void mouseEntered(java.awt.event.MouseEvent e) {
+                row.setBackground(bgHover);
+                colorDot.setBackground(bgHover);
+            }
+            @Override
+            public void mouseExited(java.awt.event.MouseEvent e) {
+                row.setBackground(bg);
+                colorDot.setBackground(bg);
+            }
+        });
 
         detailContent.add(row);
         detailContent.add(Box.createVerticalStrut(2));
@@ -982,6 +1004,17 @@ public class IntelFrame extends JFrame {
     }
 
     // ==================== DIALOGS ====================
+
+    private void showDataStructureWindow() {
+        if (dataStructureFrame != null && dataStructureFrame.isShowing()) {
+            dataStructureFrame.toFront();
+            dataStructureFrame.requestFocus();
+            return;
+        }
+        logPanel.info("Opening Data Structure...");
+        dataStructureFrame = new DataStructureFrame(entityStore, v -> loadCoinData(false));
+        dataStructureFrame.setVisible(true);
+    }
 
     private void showSettingsWindow() {
         logPanel.info("Opening Settings...");
