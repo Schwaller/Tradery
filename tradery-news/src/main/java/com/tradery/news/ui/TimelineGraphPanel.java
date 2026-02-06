@@ -55,6 +55,7 @@ public class TimelineGraphPanel extends JPanel {
     private boolean showLabels = true;
     private int maxNodes = 500;
 
+
     public TimelineGraphPanel() {
         setBackground(new Color(30, 32, 36));
         setPreferredSize(new Dimension(1200, 600));
@@ -161,44 +162,52 @@ public class TimelineGraphPanel extends JPanel {
             }
         }
 
-        // Fixed Y positions for topics (5 rows) and coins (3 rows)
-        int rowSpacing = 26;
-        int topicY1 = MARGIN_TOP + 22;
-        int coinY = midY - 80;  // Start coins above midline
+        // Layout: upper half split evenly between topics and coins
+        // Topics get upper portion, coins get lower portion of upper half
+        int upperHeight = midY - MARGIN_TOP - 20;  // Available height for topics + coins
+        int topicZoneHeight = upperHeight / 2;
+        int coinZoneHeight = upperHeight / 2;
+        int topicY1 = MARGIN_TOP + 20;
+        int coinY1 = MARGIN_TOP + 20 + topicZoneHeight + 10;  // Gap between zones
         int width = getWidth() - MARGIN_LEFT - MARGIN_RIGHT;
 
         // Sort by article count for better placement
         topicNodes.sort((a, b) -> Integer.compare(b.articleCount(), a.articleCount()));
         coinNodes.sort((a, b) -> Integer.compare(b.articleCount(), a.articleCount()));
 
-        // Position topics across 5 horizontal lines
-        int[] topicYRows = new int[5];
-        for (int r = 0; r < 5; r++) {
-            topicYRows[r] = topicY1 + r * rowSpacing;
+        // Dynamic row count based on node count (max 5 rows for topics, 4 for coins)
+        int topicRowCount = Math.min(5, Math.max(1, (int)Math.ceil(topicNodes.size() / 8.0)));
+        int topicRowSpacing = topicZoneHeight / Math.max(1, topicRowCount);
+        int[] topicYRows = new int[topicRowCount];
+        for (int r = 0; r < topicRowCount; r++) {
+            topicYRows[r] = topicY1 + r * topicRowSpacing;
         }
-        int topicsPerRow = (int) Math.ceil(topicNodes.size() / 5.0);
+        int topicsPerRow = (int) Math.ceil(topicNodes.size() / (double) topicRowCount);
         for (int i = 0; i < topicNodes.size(); i++) {
             TopicNode tn = topicNodes.get(i);
             int row = i / Math.max(1, topicsPerRow);
             int indexInRow = i % Math.max(1, topicsPerRow);
             int countInRow = Math.min(topicsPerRow, topicNodes.size() - row * topicsPerRow);
             tn.setX(MARGIN_LEFT + (indexInRow + 0.5) * width / Math.max(1, countInRow));
-            tn.setY(topicYRows[Math.min(row, 4)]);
+            tn.setY(topicYRows[Math.min(row, topicRowCount - 1)]);
         }
 
-        // Position coins across 3 horizontal lines (round-robin to use all rows)
-        int coinRowSpacing = 32;
-        int[] coinYRows = {coinY, coinY + coinRowSpacing, coinY + 2 * coinRowSpacing};
-        int numCoinRows = 3;
-        int[] coinRowCounts = new int[numCoinRows];
+        // Dynamic row count for coins (max 4 rows)
+        int coinRowCount = Math.min(4, Math.max(1, (int)Math.ceil(coinNodes.size() / 6.0)));
+        int coinRowSpacing = coinZoneHeight / Math.max(1, coinRowCount);
+        int[] coinYRows = new int[coinRowCount];
+        for (int r = 0; r < coinRowCount; r++) {
+            coinYRows[r] = coinY1 + r * coinRowSpacing;
+        }
+        int[] coinRowCounts = new int[coinRowCount];
         // Count how many coins per row (round-robin)
         for (int i = 0; i < coinNodes.size(); i++) {
-            coinRowCounts[i % numCoinRows]++;
+            coinRowCounts[i % coinRowCount]++;
         }
-        int[] coinRowIndices = new int[numCoinRows];
+        int[] coinRowIndices = new int[coinRowCount];
         for (int i = 0; i < coinNodes.size(); i++) {
             TopicNode cn = coinNodes.get(i);
-            int row = i % numCoinRows;
+            int row = i % coinRowCount;
             int indexInRow = coinRowIndices[row]++;
             int countInRow = coinRowCounts[row];
             cn.setX(MARGIN_LEFT + (indexInRow + 0.5) * width / Math.max(1, countInRow));
@@ -283,42 +292,49 @@ public class TimelineGraphPanel extends JPanel {
      */
     private void relayoutTopicsAndCoins() {
         int midY = getHeight() / 2;
-        int rowSpacing = 26;
-        int topicY1 = MARGIN_TOP + 22;
-        int coinY = midY - 80;
+        int upperHeight = midY - MARGIN_TOP - 20;
+        int topicZoneHeight = upperHeight / 2;
+        int coinZoneHeight = upperHeight / 2;
+        int topicY1 = MARGIN_TOP + 20;
+        int coinY1 = MARGIN_TOP + 20 + topicZoneHeight + 10;
         int width = getWidth() - MARGIN_LEFT - MARGIN_RIGHT;
 
         // Sort by article count
         topicNodes.sort((a, b) -> Integer.compare(b.articleCount(), a.articleCount()));
         coinNodes.sort((a, b) -> Integer.compare(b.articleCount(), a.articleCount()));
 
-        // Position topics across 5 rows
-        int[] topicYRows = new int[5];
-        for (int r = 0; r < 5; r++) {
-            topicYRows[r] = topicY1 + r * rowSpacing;
+        // Dynamic row count for topics
+        int topicRowCount = Math.min(5, Math.max(1, (int)Math.ceil(topicNodes.size() / 8.0)));
+        int topicRowSpacing = topicZoneHeight / Math.max(1, topicRowCount);
+        int[] topicYRows = new int[topicRowCount];
+        for (int r = 0; r < topicRowCount; r++) {
+            topicYRows[r] = topicY1 + r * topicRowSpacing;
         }
-        int topicsPerRow = (int) Math.ceil(topicNodes.size() / 5.0);
+        int topicsPerRow = (int) Math.ceil(topicNodes.size() / (double) topicRowCount);
         for (int i = 0; i < topicNodes.size(); i++) {
             TopicNode tn = topicNodes.get(i);
             int row = i / Math.max(1, topicsPerRow);
             int indexInRow = i % Math.max(1, topicsPerRow);
             int countInRow = Math.min(topicsPerRow, topicNodes.size() - row * topicsPerRow);
             tn.setX(MARGIN_LEFT + (indexInRow + 0.5) * width / Math.max(1, countInRow));
-            tn.setY(topicYRows[Math.min(row, 4)]);
+            tn.setY(topicYRows[Math.min(row, topicRowCount - 1)]);
         }
 
-        // Position coins across 3 rows (round-robin)
-        int coinRowSpacing = 32;
-        int[] coinYRows = {coinY, coinY + coinRowSpacing, coinY + 2 * coinRowSpacing};
-        int numCoinRows = 3;
-        int[] coinRowCounts = new int[numCoinRows];
-        for (int i = 0; i < coinNodes.size(); i++) {
-            coinRowCounts[i % numCoinRows]++;
+        // Dynamic row count for coins
+        int coinRowCount = Math.min(4, Math.max(1, (int)Math.ceil(coinNodes.size() / 6.0)));
+        int coinRowSpacing = coinZoneHeight / Math.max(1, coinRowCount);
+        int[] coinYRows = new int[coinRowCount];
+        for (int r = 0; r < coinRowCount; r++) {
+            coinYRows[r] = coinY1 + r * coinRowSpacing;
         }
-        int[] coinRowIndices = new int[numCoinRows];
+        int[] coinRowCounts = new int[coinRowCount];
+        for (int i = 0; i < coinNodes.size(); i++) {
+            coinRowCounts[i % coinRowCount]++;
+        }
+        int[] coinRowIndices = new int[coinRowCount];
         for (int i = 0; i < coinNodes.size(); i++) {
             TopicNode cn = coinNodes.get(i);
-            int row = i % numCoinRows;
+            int row = i % coinRowCount;
             int indexInRow = coinRowIndices[row]++;
             int countInRow = coinRowCounts[row];
             cn.setX(MARGIN_LEFT + (indexInRow + 0.5) * width / Math.max(1, countInRow));
@@ -465,16 +481,24 @@ public class TimelineGraphPanel extends JPanel {
 
         int midY = getHeight() / 2;
 
-        // Draw divider line between coins and news
+        // Calculate zone boundaries
+        int upperHeight = midY - MARGIN_TOP - 20;
+        int topicZoneHeight = upperHeight / 2;
+        int coinY1 = MARGIN_TOP + 20 + topicZoneHeight + 10;
+        int timelineY = getHeight() - MARGIN_BOTTOM;
+
+        // Draw full-width separator lines
         g2.setColor(new Color(50, 52, 56));
         g2.setStroke(new BasicStroke(1f));
-        g2.drawLine(MARGIN_LEFT, midY, getWidth() - MARGIN_RIGHT, midY);
+        g2.drawLine(0, coinY1 - 15, getWidth(), coinY1 - 15);  // Between topics and coins
+        g2.drawLine(0, midY, getWidth(), midY);                 // Between coins and news
+        g2.drawLine(0, timelineY, getWidth(), timelineY);       // Timeline separator
 
-        // Labels for each row
+        // Labels for each zone
         g2.setColor(new Color(100, 100, 110));
         g2.setFont(new Font("SansSerif", Font.BOLD, 10));
         g2.drawString("TOPICS", MARGIN_LEFT, MARGIN_TOP + 8);
-        g2.drawString("COINS", MARGIN_LEFT, midY - 98);
+        g2.drawString("COINS", MARGIN_LEFT, coinY1 - 8);
         g2.drawString("NEWS ARTICLES", MARGIN_LEFT, midY + 15);
 
         // Draw time axis
@@ -526,8 +550,6 @@ public class TimelineGraphPanel extends JPanel {
     }
 
     private void drawConnections(Graphics2D g2) {
-        g2.setStroke(new BasicStroke(0.8f));
-
         // Draw connections from topics
         for (TopicNode topic : topicNodes) {
             drawNodeConnections(g2, topic);
@@ -544,10 +566,27 @@ public class TimelineGraphPanel extends JPanel {
             boolean highlight = node.isHovered() || node.isSelected() ||
                                news.isHovered() || news.isSelected();
 
-            int alpha = highlight ? 100 : 20;
+            int alpha = highlight ? 180 : 25;
             Color c = node.getColor();
             g2.setColor(new Color(c.getRed(), c.getGreen(), c.getBlue(), alpha));
-            g2.draw(new Line2D.Double(node.x(), node.y(), news.x(), news.y()));
+            g2.setStroke(new BasicStroke(highlight ? 2.0f : 1.5f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+
+            // Shorten line to stop at node edges + gap
+            double gap = 4;
+            double dx = news.x() - node.x();
+            double dy = news.y() - node.y();
+            double dist = Math.sqrt(dx * dx + dy * dy);
+            if (dist > 0) {
+                double nx = dx / dist;
+                double ny = dy / dist;
+                double startOffset = node.getRadius() + gap;
+                double endOffset = news.getRadius() + gap;
+                double x1 = node.x() + nx * startOffset;
+                double y1 = node.y() + ny * startOffset;
+                double x2 = news.x() - nx * endOffset;
+                double y2 = news.y() - ny * endOffset;
+                g2.draw(new Line2D.Double(x1, y1, x2, y2));
+            }
         }
     }
 
@@ -565,9 +604,10 @@ public class TimelineGraphPanel extends JPanel {
     private void drawSingleTopicNode(Graphics2D g2, TopicNode node) {
         int r = node.getRadius();
         Color c = node.getColor();
+        boolean highlight = node.isHovered() || node.isSelected();
 
-        // Glow
-        if (node.isHovered() || node.isSelected()) {
+        // Glow for highlight
+        if (highlight) {
             g2.setColor(new Color(c.getRed(), c.getGreen(), c.getBlue(), 60));
             g2.fillOval((int)node.x() - r - 5, (int)node.y() - r - 5, (r + 5) * 2, (r + 5) * 2);
         }
@@ -593,9 +633,10 @@ public class TimelineGraphPanel extends JPanel {
         for (NewsNode node : newsNodes) {
             int r = node.getRadius();
             Color c = node.getColor();
+            boolean highlight = node.isHovered() || node.isSelected();
 
-            // Glow
-            if (node.isHovered() || node.isSelected()) {
+            // Glow for highlight
+            if (highlight) {
                 g2.setColor(new Color(c.getRed(), c.getGreen(), c.getBlue(), 50));
                 g2.fillOval((int)node.x() - r - 4, (int)node.y() - r - 4, (r + 4) * 2, (r + 4) * 2);
             }
@@ -618,10 +659,11 @@ public class TimelineGraphPanel extends JPanel {
         if (hoveredNode instanceof NewsNode news) {
             nodeX = news.x();
             nodeY = news.y();
+            String sentimentStr = formatSentiment(news.sentiment());
             lines = new String[]{
                 news.title(),
                 news.source() + " • " + formatTime(news.publishedAt()),
-                "Importance: " + news.importance() + "  Sentiment: " + String.format("%.2f", news.sentiment()),
+                "Importance: " + news.importance() + "  Sentiment: " + sentimentStr,
                 "Topics: " + String.join(", ", news.topics()),
                 "Coins: " + (news.coins().isEmpty() ? "-" : String.join(", ", news.coins()))
             };
@@ -760,6 +802,7 @@ public class TimelineGraphPanel extends JPanel {
                 }
             }
         }
+
         repaint();
     }
 
@@ -841,6 +884,17 @@ public class TimelineGraphPanel extends JPanel {
     private String truncate(String s, int max) {
         if (s == null) return "";
         return s.length() <= max ? s : s.substring(0, max) + "...";
+    }
+
+    private String formatSentiment(double sentiment) {
+        int percent = (int) Math.round(sentiment * 100);
+        if (percent > 0) {
+            return "+" + percent + "%";
+        } else if (percent < 0) {
+            return percent + "%";
+        } else {
+            return "0%";
+        }
     }
 
     private String formatTime(Instant instant) {

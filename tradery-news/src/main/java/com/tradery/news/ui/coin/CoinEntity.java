@@ -114,11 +114,9 @@ public class CoinEntity {
     }
 
     /**
-     * Get node color based on type and state.
+     * Get node color based on type (color stays consistent, only transparency changes for highlight).
      */
     public Color getColor() {
-        if (selected) return new Color(255, 220, 80);
-        if (hovered) return new Color(150, 220, 255);
         return type.color();
     }
 

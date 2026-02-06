@@ -71,12 +71,9 @@ public class TopicNode {
     }
 
     /**
-     * Get node color based on type.
+     * Get node color based on type (color stays consistent, only transparency changes for highlight).
      */
     public Color getColor() {
-        if (selected) return new Color(255, 200, 0);
-        if (hovered) return new Color(100, 200, 255);
-
         return switch (type) {
             case TOPIC -> new Color(100, 140, 200);  // Blue for topics
             case COIN -> new Color(200, 160, 80);    // Gold for coins

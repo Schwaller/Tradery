@@ -104,12 +104,9 @@ public class NewsNode {
     }
 
     /**
-     * Get node color based on sentiment.
+     * Get node color based on sentiment (color stays consistent, only transparency changes for highlight).
      */
     public Color getColor() {
-        if (selected) return new Color(255, 200, 0);
-        if (hovered) return new Color(100, 200, 255);
-
         // Sentiment gradient: red (negative) -> gray (neutral) -> green (positive)
         if (sentiment > 0.3) {
             int g = 150 + (int)(sentiment * 100);

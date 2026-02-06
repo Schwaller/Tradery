@@ -205,13 +205,9 @@ public class IntelFrame extends JFrame {
 
         toolbar.addSeparator();
 
-        JButton manageBtn = new JButton("Manage Entities");
-        manageBtn.addActionListener(e -> showEntityManager());
-        toolbar.add(manageBtn);
-
-        JButton addRelBtn = new JButton("+ Relationship");
-        addRelBtn.addActionListener(e -> showAddRelationshipDialog(null));
-        toolbar.add(addRelBtn);
+        JButton settingsBtn = new JButton("Settings");
+        settingsBtn.addActionListener(e -> showSettingsWindow());
+        toolbar.add(settingsBtn);
 
         toolbar.addSeparator();
 
@@ -553,10 +549,6 @@ public class IntelFrame extends JFrame {
             loadCoinData(false);
         });
         btnPanel.add(searchRelatedBtn);
-
-        JButton addRelBtn = new JButton("+ Relationship");
-        addRelBtn.addActionListener(e -> showAddRelationshipDialog(entity.id()));
-        btnPanel.add(addRelBtn);
 
         detailContent.add(btnPanel);
 
@@ -912,10 +904,10 @@ public class IntelFrame extends JFrame {
 
     // ==================== DIALOGS ====================
 
-    private void showEntityManager() {
-        logPanel.info("Opening Entity Manager...");
-        EntityManagerFrame manager = new EntityManagerFrame(entityStore, v -> loadCoinData(false));
-        manager.setVisible(true);
+    private void showSettingsWindow() {
+        logPanel.info("Opening Settings...");
+        EntityManagerFrame settings = new EntityManagerFrame(entityStore, v -> loadCoinData(false));
+        settings.setVisible(true);
     }
 
     private void showAddRelationshipDialog(String preselectedFromId) {

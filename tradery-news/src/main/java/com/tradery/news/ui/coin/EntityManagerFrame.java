@@ -4,6 +4,7 @@ import com.tradery.news.fetch.RssFetcher;
 
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
+import javax.swing.table.DefaultTableModel;
 import javax.swing.tree.*;
 import java.awt.*;
 import java.util.HashSet;
@@ -14,13 +15,14 @@ import java.util.TreeMap;
 import java.util.function.Consumer;
 
 /**
- * Entity manager window with left navigation tree and right detail panel.
+ * Settings window with tabs for Entities and Relationships.
  */
 public class EntityManagerFrame extends JFrame {
 
     private final EntityStore store;
     private final Consumer<Void> onDataChanged;
 
+    // Entity tab components
     private JTree entityTree;
     private DefaultTreeModel treeModel;
     private DefaultMutableTreeNode rootNode;
@@ -42,20 +44,44 @@ public class EntityManagerFrame extends JFrame {
     private CoinEntity selectedEntity;
     private boolean isNewEntity = false;
 
+    // Relationships tab components
+    private JTable relationshipTable;
+    private DefaultTableModel relationshipTableModel;
+
     public EntityManagerFrame(EntityStore store, Consumer<Void> onDataChanged) {
-        super("Entity Manager");
+        super("Settings");
         this.store = store;
         this.onDataChanged = onDataChanged;
 
-        setSize(900, 600);
+        setSize(950, 650);
         setLocationRelativeTo(null);
         initUI();
         loadEntities();
+        loadRelationships();
     }
 
     private void initUI() {
         JPanel mainPanel = new JPanel(new BorderLayout());
         mainPanel.setBackground(new Color(30, 32, 36));
+
+        // Tabbed pane
+        JTabbedPane tabbedPane = new JTabbedPane();
+        tabbedPane.setBackground(new Color(38, 40, 44));
+        tabbedPane.setForeground(new Color(200, 200, 210));
+
+        // Entities tab
+        tabbedPane.addTab("Entities", createEntitiesTab());
+
+        // Relationships tab
+        tabbedPane.addTab("Relationships", createRelationshipsTab());
+
+        mainPanel.add(tabbedPane, BorderLayout.CENTER);
+        setContentPane(mainPanel);
+    }
+
+    private JPanel createEntitiesTab() {
+        JPanel panel = new JPanel(new BorderLayout());
+        panel.setBackground(new Color(30, 32, 36));
 
         // Toolbar
         JToolBar toolbar = new JToolBar();
@@ -71,7 +97,7 @@ public class EntityManagerFrame extends JFrame {
         refreshBtn.addActionListener(e -> loadEntities());
         toolbar.add(refreshBtn);
 
-        mainPanel.add(toolbar, BorderLayout.NORTH);
+        panel.add(toolbar, BorderLayout.NORTH);
 
         // Left: Tree navigation
         JPanel leftPanel = createLeftPanel();
@@ -83,9 +109,136 @@ public class EntityManagerFrame extends JFrame {
         JSplitPane splitPane = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, leftPanel, detailPanel);
         splitPane.setDividerLocation(300);
         splitPane.setDividerSize(4);
-        mainPanel.add(splitPane, BorderLayout.CENTER);
+        panel.add(splitPane, BorderLayout.CENTER);
 
-        setContentPane(mainPanel);
+        return panel;
+    }
+
+    private JPanel createRelationshipsTab() {
+        JPanel panel = new JPanel(new BorderLayout());
+        panel.setBackground(new Color(30, 32, 36));
+
+        // Toolbar
+        JToolBar toolbar = new JToolBar();
+        toolbar.setFloatable(false);
+        toolbar.setBackground(new Color(38, 40, 44));
+        toolbar.setBorder(BorderFactory.createMatteBorder(0, 0, 1, 0, new Color(50, 52, 56)));
+
+        JButton addRelBtn = new JButton("+ Add Relationship");
+        addRelBtn.addActionListener(e -> showAddRelationshipDialog());
+        toolbar.add(addRelBtn);
+
+        JButton deleteRelBtn = new JButton("Delete Selected");
+        deleteRelBtn.addActionListener(e -> deleteSelectedRelationship());
+        toolbar.add(deleteRelBtn);
+
+        JButton refreshRelBtn = new JButton("Refresh");
+        refreshRelBtn.addActionListener(e -> loadRelationships());
+        toolbar.add(refreshRelBtn);
+
+        panel.add(toolbar, BorderLayout.NORTH);
+
+        // Relationship table
+        String[] columns = {"From", "Relationship", "To", "Note", "Source"};
+        relationshipTableModel = new DefaultTableModel(columns, 0) {
+            @Override
+            public boolean isCellEditable(int row, int column) {
+                return false;
+            }
+        };
+        relationshipTable = new JTable(relationshipTableModel);
+        relationshipTable.setBackground(new Color(35, 37, 41));
+        relationshipTable.setForeground(new Color(200, 200, 210));
+        relationshipTable.setGridColor(new Color(50, 52, 56));
+        relationshipTable.setSelectionBackground(new Color(60, 80, 100));
+        relationshipTable.setSelectionForeground(new Color(220, 220, 230));
+        relationshipTable.getTableHeader().setBackground(new Color(45, 47, 51));
+        relationshipTable.getTableHeader().setForeground(new Color(180, 180, 190));
+        relationshipTable.setRowHeight(24);
+
+        // Column widths
+        relationshipTable.getColumnModel().getColumn(0).setPreferredWidth(180);
+        relationshipTable.getColumnModel().getColumn(1).setPreferredWidth(120);
+        relationshipTable.getColumnModel().getColumn(2).setPreferredWidth(180);
+        relationshipTable.getColumnModel().getColumn(3).setPreferredWidth(150);
+        relationshipTable.getColumnModel().getColumn(4).setPreferredWidth(80);
+
+        JScrollPane scroll = new JScrollPane(relationshipTable);
+        scroll.setBorder(null);
+        scroll.getViewport().setBackground(new Color(35, 37, 41));
+        panel.add(scroll, BorderLayout.CENTER);
+
+        return panel;
+    }
+
+    private void loadRelationships() {
+        if (relationshipTableModel == null) return;
+        relationshipTableModel.setRowCount(0);
+
+        List<CoinRelationship> relationships = store.loadAllRelationships();
+        for (CoinRelationship rel : relationships) {
+            String fromName = getEntityDisplayName(rel.fromId());
+            String toName = getEntityDisplayName(rel.toId());
+
+            relationshipTableModel.addRow(new Object[]{
+                fromName,
+                rel.type().label(),
+                toName,
+                rel.note() != null ? rel.note() : "",
+                "manual"  // Source is manual by default for visible relationships
+            });
+        }
+    }
+
+    private String getEntityDisplayName(String entityId) {
+        CoinEntity entity = store.getEntity(entityId);
+        if (entity != null) {
+            if (entity.symbol() != null) {
+                return entity.name() + " (" + entity.symbol() + ")";
+            }
+            return entity.name();
+        }
+        return entityId;
+    }
+
+    private void showAddRelationshipDialog() {
+        List<CoinEntity> allEntities = store.loadAllEntities();
+        RelationshipEditorDialog dialog = new RelationshipEditorDialog(
+            this, store, allEntities, null,
+            rel -> {
+                loadRelationships();
+                if (onDataChanged != null) {
+                    onDataChanged.accept(null);
+                }
+            }
+        );
+        dialog.setVisible(true);
+    }
+
+    private void deleteSelectedRelationship() {
+        int row = relationshipTable.getSelectedRow();
+        if (row < 0) {
+            JOptionPane.showMessageDialog(this, "Please select a relationship to delete",
+                "No Selection", JOptionPane.WARNING_MESSAGE);
+            return;
+        }
+
+        int result = JOptionPane.showConfirmDialog(this,
+            "Delete this relationship?", "Confirm Delete",
+            JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE);
+
+        if (result == JOptionPane.YES_OPTION) {
+            // Get relationship data from table
+            List<CoinRelationship> relationships = store.loadAllRelationships();
+            if (row < relationships.size()) {
+                CoinRelationship rel = relationships.get(row);
+                store.deleteRelationship(rel.fromId(), rel.toId(), rel.type());
+                loadRelationships();
+                if (onDataChanged != null) {
+                    onDataChanged.accept(null);
+                }
+            }
+        }
     }
 
     private JPanel createLeftPanel() {
