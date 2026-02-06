@@ -16,14 +16,10 @@ import java.util.concurrent.atomic.AtomicLong;
  * Page manager for aggregated trade data.
  *
  * AggTrades are tick-level trades used for orderflow analysis and sub-minute candles.
- * This data can be very large, so the manager implements LRU eviction.
  * Delegates all data loading to the Data Service which handles
  * caching and fetching from Binance.
  */
 public class AggTradesPageManager extends DataPageManager<AggTrade> {
-
-    // Memory management: max records across all pages
-    private static final long MAX_RECORDS = 100_000_000; // ~4GB
 
     // Current record count (AtomicLong for thread-safe compound operations)
     private final AtomicLong currentRecordCount = new AtomicLong(0);
@@ -37,8 +33,6 @@ public class AggTradesPageManager extends DataPageManager<AggTrade> {
                                            long startTime, long endTime,
                                            DataPageListener<AggTrade> listener,
                                            String consumerName) {
-        // Check memory before loading large data
-        evictIfNeeded();
         // AggTrades are tick-level data — timeframe is irrelevant for deduplication.
         // Always use null to ensure all consumers share the same page.
         return super.request(symbol, null, startTime, endTime, listener, consumerName);
@@ -220,13 +214,6 @@ public class AggTradesPageManager extends DataPageManager<AggTrade> {
         }
     }
 
-    @Override
-    protected void onPageReleased(DataPage<AggTrade> page) {
-        // Decrement record count (atomic, with floor at 0)
-        currentRecordCount.updateAndGet(current ->
-            Math.max(0, current - page.getRecordCount()));
-    }
-
     /**
      * Load from cache via data service.
      */
@@ -244,54 +231,6 @@ public class AggTradesPageManager extends DataPageManager<AggTrade> {
         } catch (Exception e) {
             log.error("Failed to load aggTrades from data service: {}", e.getMessage());
             return Collections.emptyList();
-        }
-    }
-
-    /**
-     * Evict least-recently-used pages if memory threshold exceeded.
-     */
-    private void evictIfNeeded() {
-        long current = currentRecordCount.get();
-        if (current <= MAX_RECORDS) return;
-
-        log.info("AggTrades memory threshold exceeded ({} records), evicting...", current);
-
-        // Find pages with refCount == 0 (not currently in use)
-        // and evict oldest first until under 80% threshold
-        long target = (long) (MAX_RECORDS * 0.8);
-
-        // Collect candidates first to avoid stream mutation during iteration
-        List<String> evictionCandidates = new ArrayList<>();
-        for (Map.Entry<String, DataPage<AggTrade>> entry : pages.entrySet()) {
-            String k = entry.getKey();
-            Set<DataPageListener<AggTrade>> pageListeners = listeners.get(k);
-            boolean hasListeners = pageListeners != null && !pageListeners.isEmpty();
-            boolean hasAnonymous = anonymousRefs.containsKey(k);
-            if (!hasListeners && !hasAnonymous) {
-                evictionCandidates.add(k);
-            }
-        }
-
-        // Sort by last sync time (oldest first)
-        evictionCandidates.sort((a, b) -> {
-            DataPage<AggTrade> pageA = pages.get(a);
-            DataPage<AggTrade> pageB = pages.get(b);
-            if (pageA == null || pageB == null) return 0;
-            return Long.compare(pageA.getLastSyncTime(), pageB.getLastSyncTime());
-        });
-
-        // Evict until under target
-        for (String key : evictionCandidates) {
-            if (currentRecordCount.get() <= target) break;
-
-            DataPage<AggTrade> page = pages.remove(key);
-            if (page != null) {
-                currentRecordCount.addAndGet(-page.getRecordCount());
-                listeners.remove(key);
-                anonymousRefs.remove(key);
-                log.debug("Evicted aggTrades page: {} ({} records)",
-                    key, page.getRecordCount());
-            }
         }
     }
 
