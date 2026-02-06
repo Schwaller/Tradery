@@ -186,6 +186,19 @@ public class ErdPanel extends JPanel {
         }
 
         g2.dispose();
+
+        // Hint text when not in manual mode
+        if (layoutMode != LayoutMode.MANUAL) {
+            Graphics2D sg = (Graphics2D) g;
+            sg.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
+            sg.setFont(new Font("SansSerif", Font.PLAIN, 11));
+            String hint = "Click \"Manual\" to save current positions";
+            FontMetrics fm = sg.getFontMetrics();
+            int tx = (getWidth() - fm.stringWidth(hint)) / 2;
+            int ty = getHeight() - 16;
+            sg.setColor(new Color(130, 130, 140));
+            sg.drawString(hint, tx, ty);
+        }
     }
 
     private void drawDotGrid(Graphics2D g2) {

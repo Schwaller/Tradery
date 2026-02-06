@@ -323,6 +323,19 @@ public class ErdLayoutEngine {
         }
 
         for (List<SchemaType> group : relsByColumnPair.values()) {
+            // Sort diamonds by the Y of the source entity in the lower-depth column
+            // so diamond order matches entity order (avoids crossing arrows)
+            group.sort((a, b) -> {
+                SchemaType aFrom = byId.get(a.fromTypeId());
+                SchemaType aTo = byId.get(a.toTypeId());
+                SchemaType bFrom = byId.get(b.fromTypeId());
+                SchemaType bTo = byId.get(b.toTypeId());
+                // Use the average Y of both connected entities
+                double aY = ((aFrom != null ? aFrom.erdY() : 0) + (aTo != null ? aTo.erdY() : 0)) / 2.0;
+                double bY = ((bFrom != null ? bFrom.erdY() : 0) + (bTo != null ? bTo.erdY() : 0)) / 2.0;
+                return Double.compare(aY, bY);
+            });
+
             double totalGroupH = group.size() * diamondH + (group.size() - 1) * diamondSpacing;
             // Find the midpoint between the first from/to pair for x positioning
             SchemaType firstRel = group.get(0);

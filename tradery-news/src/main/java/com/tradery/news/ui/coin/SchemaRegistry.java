@@ -30,6 +30,8 @@ public class SchemaRegistry {
         for (SchemaType t : loaded) {
             types.put(t.id(), t);
         }
+        // Incremental migrations for types added after initial seed
+        seedIfMissing();
     }
 
     public SchemaType getType(String id) {
@@ -194,6 +196,65 @@ public class SchemaRegistry {
         store.saveSchemaType(inCat);
         for (SchemaAttribute attr : inCat.attributes()) {
             store.saveSchemaAttribute(inCat.id(), attr);
+        }
+    }
+
+    /** Add types that were missing from the initial seed. */
+    private void seedIfMissing() {
+        // Exchange -> Coin relationship ("hosts pair")
+        if (!types.containsKey("hosts_pair")) {
+            SchemaType hp = new SchemaType("hosts_pair", "Hosts Pair",
+                new Color(200, 160, 100), SchemaType.KIND_RELATIONSHIP);
+            hp.setLabel("hosts");
+            hp.setFromTypeId("exchange");
+            hp.setToTypeId("coin");
+            hp.setDisplayOrder(types.size());
+            hp.addAttribute(new SchemaAttribute("note", SchemaAttribute.TEXT, false, 0));
+            store.saveSchemaType(hp);
+            for (SchemaAttribute attr : hp.attributes()) store.saveSchemaAttribute(hp.id(), attr);
+            types.put(hp.id(), hp);
+        }
+
+        // News Article entity type
+        if (!types.containsKey("news_article")) {
+            SchemaType na = new SchemaType("news_article", "News Article",
+                new Color(220, 180, 100), SchemaType.KIND_ENTITY);
+            na.setDisplayOrder(types.size());
+            na.addAttribute(new SchemaAttribute("title", SchemaAttribute.TEXT, true, 0));
+            na.addAttribute(new SchemaAttribute("url", SchemaAttribute.TEXT, false, 1));
+            na.addAttribute(new SchemaAttribute("published_at", SchemaAttribute.TEXT, false, 2));
+            na.addAttribute(new SchemaAttribute("source", SchemaAttribute.TEXT, false, 3));
+            store.saveSchemaType(na);
+            for (SchemaAttribute attr : na.attributes()) store.saveSchemaAttribute(na.id(), attr);
+            types.put(na.id(), na);
+        }
+
+        // News Article -> Coin relationship ("mentions")
+        if (!types.containsKey("mentions")) {
+            SchemaType m = new SchemaType("mentions", "Mentions",
+                new Color(210, 170, 90), SchemaType.KIND_RELATIONSHIP);
+            m.setLabel("mentions");
+            m.setFromTypeId("news_article");
+            m.setToTypeId("coin");
+            m.setDisplayOrder(types.size());
+            m.addAttribute(new SchemaAttribute("note", SchemaAttribute.TEXT, false, 0));
+            store.saveSchemaType(m);
+            for (SchemaAttribute attr : m.attributes()) store.saveSchemaAttribute(m.id(), attr);
+            types.put(m.id(), m);
+        }
+
+        // News Article -> News Source relationship ("published by")
+        if (!types.containsKey("published_by")) {
+            SchemaType pb = new SchemaType("published_by", "Published By",
+                new Color(200, 180, 120), SchemaType.KIND_RELATIONSHIP);
+            pb.setLabel("published by");
+            pb.setFromTypeId("news_article");
+            pb.setToTypeId("news_source");
+            pb.setDisplayOrder(types.size());
+            pb.addAttribute(new SchemaAttribute("note", SchemaAttribute.TEXT, false, 0));
+            store.saveSchemaType(pb);
+            for (SchemaAttribute attr : pb.attributes()) store.saveSchemaAttribute(pb.id(), attr);
+            types.put(pb.id(), pb);
         }
     }
 
