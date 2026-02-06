@@ -125,7 +125,7 @@ public class IndicatorPage<T> implements DataPageListener<Candle> {
      * @param aggTradesPageMgr AggTrades page manager (can be null if not needed)
      * @param callback         Callback for triggering computation
      */
-    public void requestSourceData(CandlePageManager candlePageMgr,
+    public void requestSourceData(DataPageManager<Candle> candlePageMgr,
                                    AggTradesPageManager aggTradesPageMgr,
                                    ComputeCallback<T> callback) {
         this.computeCallback = callback;
@@ -166,7 +166,7 @@ public class IndicatorPage<T> implements DataPageListener<Candle> {
      * Release source data pages.
      * This is the "disposal" side of the star.
      */
-    public void releaseSourcePages(CandlePageManager candlePageMgr, AggTradesPageManager aggTradesPageMgr) {
+    public void releaseSourcePages(DataPageManager<Candle> candlePageMgr, AggTradesPageManager aggTradesPageMgr) {
         if (sourceCandlePage != null && candlePageMgr != null) {
             candlePageMgr.release(sourceCandlePage, this);
             sourceCandlePage = null;

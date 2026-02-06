@@ -39,11 +39,8 @@ public class IndicatorPageManager {
     private static final Logger log = LoggerFactory.getLogger(IndicatorPageManager.class);
 
     // Source data managers
-    private final CandlePageManager candlePageMgr;
-    private final FundingPageManager fundingPageMgr;
-    private final OIPageManager oiPageMgr;
+    private final DataPageManager<Candle> candlePageMgr;
     private final AggTradesPageManager aggTradesPageMgr;
-    private final PremiumPageManager premiumPageMgr;
 
     // Active indicator pages
     private final Map<String, IndicatorPage<?>> pages = new ConcurrentHashMap<>();
@@ -60,16 +57,10 @@ public class IndicatorPageManager {
     private final ExecutorService computeExecutor;
     private final ExecutorService aggTradesExecutor;  // Dedicated for aggTrades-based indicators
 
-    public IndicatorPageManager(CandlePageManager candlePageMgr,
-                                 FundingPageManager fundingPageMgr,
-                                 OIPageManager oiPageMgr,
-                                 AggTradesPageManager aggTradesPageMgr,
-                                 PremiumPageManager premiumPageMgr) {
+    public IndicatorPageManager(DataPageManager<Candle> candlePageMgr,
+                                 AggTradesPageManager aggTradesPageMgr) {
         this.candlePageMgr = candlePageMgr;
-        this.fundingPageMgr = fundingPageMgr;
-        this.oiPageMgr = oiPageMgr;
         this.aggTradesPageMgr = aggTradesPageMgr;
-        this.premiumPageMgr = premiumPageMgr;
 
         // Thread pool size: min 3, max 1/3 of CPUs
         int cpus = Runtime.getRuntime().availableProcessors();

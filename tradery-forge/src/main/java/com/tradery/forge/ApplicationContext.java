@@ -1,8 +1,13 @@
 package com.tradery.forge;
 
 import com.tradery.core.indicators.registry.IndicatorRegistryInitializer;
+import com.tradery.core.model.Candle;
+import com.tradery.core.model.FundingRate;
+import com.tradery.core.model.OpenInterest;
+import com.tradery.core.model.PremiumIndex;
 import com.tradery.dataclient.DataServiceClient;
 import com.tradery.dataclient.DataServiceLauncher;
+import com.tradery.data.page.DataType;
 import com.tradery.forge.api.ApiServer;
 import com.tradery.forge.data.*;
 import com.tradery.forge.data.page.*;
@@ -52,11 +57,11 @@ public class ApplicationContext {
     private final PreloadScheduler preloadScheduler;
 
     // Event-driven page managers (clean architecture)
-    private final CandlePageManager candlePageManager;
-    private final FundingPageManager fundingPageManager;
-    private final OIPageManager oiPageManager;
+    private final DataServicePageManager<Candle> candlePageManager;
+    private final DataServicePageManager<FundingRate> fundingPageManager;
+    private final DataServicePageManager<OpenInterest> oiPageManager;
     private final AggTradesPageManager aggTradesPageManager;
-    private final PremiumPageManager premiumPageManager;
+    private final DataServicePageManager<PremiumIndex> premiumPageManager;
     private final IndicatorPageManager indicatorPageManager;
 
     // Data service client (for remote data access)
@@ -79,13 +84,25 @@ public class ApplicationContext {
         this.binanceVisionClient = new BinanceVisionClient(sqliteDataStore);
 
         // Initialize event-driven page managers (all delegate to data service)
-        this.candlePageManager = new CandlePageManager();
-        this.fundingPageManager = new FundingPageManager();
-        this.oiPageManager = new OIPageManager();
+        this.candlePageManager = new DataServicePageManager<>(
+            DataType.CANDLES, "CANDLES", 4,
+            (client, sym, tf, start, end) -> client.getCandles(sym, tf, start, end),
+            "data-service/candles", 88);
+        this.fundingPageManager = new DataServicePageManager<>(
+            DataType.FUNDING, "FUNDING", 2,
+            (client, sym, tf, start, end) -> client.getFundingRates(sym, start, end),
+            "data-service/funding");
+        this.oiPageManager = new DataServicePageManager<>(
+            DataType.OPEN_INTEREST, "OPEN_INTEREST", 2,
+            (client, sym, tf, start, end) -> client.getOpenInterest(sym, start, end),
+            "data-service/openinterest");
         this.aggTradesPageManager = new AggTradesPageManager();
-        this.premiumPageManager = new PremiumPageManager();
+        this.premiumPageManager = new DataServicePageManager<>(
+            DataType.PREMIUM_INDEX, "PREMIUM_INDEX", 2,
+            (client, sym, tf, start, end) -> client.getPremiumIndex(sym, tf, start, end),
+            "data-service/premium");
         this.indicatorPageManager = new IndicatorPageManager(
-            candlePageManager, fundingPageManager, oiPageManager, aggTradesPageManager, premiumPageManager);
+            candlePageManager, aggTradesPageManager);
 
         this.strategyStore = new StrategyStore(new File(TraderyApp.USER_DIR, "strategies"));
         this.phaseStore = new PhaseStore(new File(TraderyApp.USER_DIR, "phases"));
@@ -210,15 +227,15 @@ public class ApplicationContext {
 
     // ========== Page Managers ==========
 
-    public CandlePageManager getCandlePageManager() {
+    public DataPageManager<Candle> getCandlePageManager() {
         return candlePageManager;
     }
 
-    public FundingPageManager getFundingPageManager() {
+    public DataPageManager<FundingRate> getFundingPageManager() {
         return fundingPageManager;
     }
 
-    public OIPageManager getOIPageManager() {
+    public DataPageManager<OpenInterest> getOIPageManager() {
         return oiPageManager;
     }
 
@@ -226,7 +243,7 @@ public class ApplicationContext {
         return aggTradesPageManager;
     }
 
-    public PremiumPageManager getPremiumPageManager() {
+    public DataPageManager<PremiumIndex> getPremiumPageManager() {
         return premiumPageManager;
     }
 
