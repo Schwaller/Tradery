@@ -67,6 +67,10 @@ public class ErdPanel extends JPanel {
     private Rectangle saveLabelBounds;
     private boolean saveLabelHovered;
 
+    // Animated viewport (zoom/pan targets)
+    private double targetZoom, targetPanX, targetPanY;
+    private boolean viewAnimating;
+
     // Cached dot grid
     private java.awt.image.BufferedImage gridCache;
     private int gridCacheW, gridCacheH;

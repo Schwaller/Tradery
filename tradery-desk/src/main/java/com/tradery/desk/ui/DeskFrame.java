@@ -5,6 +5,8 @@ import com.tradery.dataclient.DataServiceClient;
 import com.tradery.desk.feed.BinanceWebSocketClient.ConnectionState;
 import com.tradery.desk.signal.SignalEvent;
 import com.tradery.desk.strategy.PublishedStrategy;
+import com.tradery.symbols.service.SymbolService;
+import com.tradery.symbols.ui.SymbolComboBox;
 
 import com.formdev.flatlaf.util.SystemInfo;
 
@@ -23,7 +25,11 @@ import java.util.List;
 public class DeskFrame extends JFrame {
 
     private final StatusPanel statusPanel;
-    private final MarketInfoBar marketInfoBar;
+    private final SymbolComboBox symbolCombo;
+    private final JLabel priceLabel;
+    private final JLabel updatedLabel;
+    private volatile long lastUpdateReceived;
+    private final Timer agoTimer;
     private final StrategyListPanel strategyListPanel;
     private final SignalLogPanel signalLogPanel;
     private final PriceChartPanel priceChartPanel;
@@ -37,12 +43,27 @@ public class DeskFrame extends JFrame {
         setSize(1000, 700);
         setLocationRelativeTo(null);
 
+        // Transparent title bar (same style as IntelFrame)
+        getRootPane().putClientProperty("apple.awt.fullWindowContent", true);
+        getRootPane().putClientProperty("apple.awt.transparentTitleBar", true);
+        getRootPane().putClientProperty("apple.awt.windowTitleVisible", false);
+
+        // Initialize header bar components before layout
+        symbolCombo = new SymbolComboBox(new SymbolService(), true);
+        priceLabel = new JLabel("\u2014");
+        priceLabel.setFont(new Font(Font.MONOSPACED, Font.BOLD, 14));
+        updatedLabel = new JLabel("");
+        updatedLabel.setFont(new Font("SansSerif", Font.PLAIN, 9));
+        updatedLabel.setForeground(new Color(120, 120, 130));
+        agoTimer = new Timer(1000, e -> refreshAgoLabel());
+        agoTimer.start();
+
         // Main layout
         JPanel mainPanel = new JPanel(new BorderLayout(0, 0));
+        mainPanel.setBackground(new Color(30, 32, 36));
 
-        // Market info top bar (full width)
-        marketInfoBar = new MarketInfoBar();
-        mainPanel.add(marketInfoBar, BorderLayout.NORTH);
+        // Single header bar: [symbol combo]  --Tradery Desk--  [price]
+        mainPanel.add(createHeaderBar(), BorderLayout.NORTH);
 
         // Status bar at bottom
         statusPanel = new StatusPanel();
@@ -101,6 +122,67 @@ public class DeskFrame extends JFrame {
         });
     }
 
+    private JPanel createHeaderBar() {
+        int barHeight = 46;
+
+        JPanel headerBar = new JPanel(new GridBagLayout());
+        headerBar.setBackground(new Color(38, 40, 44));
+        headerBar.setBorder(BorderFactory.createMatteBorder(0, 0, 1, 0, new Color(50, 52, 56)));
+        headerBar.setPreferredSize(new Dimension(0, barHeight));
+        headerBar.setMinimumSize(new Dimension(0, barHeight));
+
+        GridBagConstraints gbc = new GridBagConstraints();
+        gbc.gridy = 0;
+        gbc.anchor = GridBagConstraints.CENTER;
+
+        // Left: Symbol combo (with spacer for macOS traffic lights)
+        gbc.gridx = 0;
+        gbc.weightx = 1.0;
+        gbc.fill = GridBagConstraints.HORIZONTAL;
+        gbc.anchor = GridBagConstraints.WEST;
+        JPanel leftPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
+        leftPanel.setOpaque(false);
+        if (SystemInfo.isMacOS) {
+            leftPanel.setBorder(new EmptyBorder(0, 70, 0, 0));
+        }
+        leftPanel.add(symbolCombo);
+        headerBar.add(leftPanel, gbc);
+
+        // Center: Title
+        gbc.gridx = 1;
+        gbc.weightx = 0;
+        gbc.fill = GridBagConstraints.NONE;
+        gbc.anchor = GridBagConstraints.CENTER;
+        JLabel titleLabel = new JLabel("Tradery Desk");
+        titleLabel.setFont(new Font("SansSerif", Font.BOLD, 13));
+        titleLabel.setForeground(new Color(160, 160, 170));
+        headerBar.add(titleLabel, gbc);
+
+        // Right: Price + updated ago
+        gbc.gridx = 2;
+        gbc.weightx = 1.0;
+        gbc.fill = GridBagConstraints.HORIZONTAL;
+        gbc.anchor = GridBagConstraints.EAST;
+        JPanel rightPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
+        rightPanel.setOpaque(false);
+        rightPanel.add(priceLabel);
+        rightPanel.add(updatedLabel);
+        headerBar.add(rightPanel, gbc);
+
+        return headerBar;
+    }
+
+    private void refreshAgoLabel() {
+        if (lastUpdateReceived == 0) return;
+        long agoMs = System.currentTimeMillis() - lastUpdateReceived;
+        String agoText;
+        if (agoMs < 1000) agoText = "just now";
+        else if (agoMs < 60_000) agoText = (agoMs / 1000) + "s ago";
+        else if (agoMs < 3_600_000) agoText = (agoMs / 60_000) + "m ago";
+        else agoText = (agoMs / 3_600_000) + "h ago";
+        updatedLabel.setText(agoText);
+    }
+
     /**
      * Set callback for window close.
      */
@@ -120,7 +202,7 @@ public class DeskFrame extends JFrame {
      */
     public void updateSymbol(String symbol, String timeframe) {
         statusPanel.updateSymbol(symbol, timeframe);
-        marketInfoBar.updateSymbol(symbol, timeframe);
+        SwingUtilities.invokeLater(() -> symbolCombo.setSelectedSymbol(symbol));
     }
 
     /**
@@ -135,7 +217,16 @@ public class DeskFrame extends JFrame {
      */
     public void updatePrice(double price, long exchangeTimestamp) {
         statusPanel.updatePrice(price);
-        marketInfoBar.updatePrice(price, exchangeTimestamp);
+        this.lastUpdateReceived = System.currentTimeMillis();
+        SwingUtilities.invokeLater(() -> {
+            if (Double.isNaN(price)) {
+                priceLabel.setText("\u2014");
+                updatedLabel.setText("");
+            } else {
+                priceLabel.setText(String.format("%,.2f", price));
+                refreshAgoLabel();
+            }
+        });
     }
 
     /**
@@ -195,25 +286,25 @@ public class DeskFrame extends JFrame {
     }
 
     /**
-     * Add listener for symbol changes from the market info bar.
+     * Add listener for symbol changes from the header bar.
      */
     public void addSymbolChangeListener(ActionListener listener) {
-        marketInfoBar.getSymbolCombo().addActionListener(listener);
+        symbolCombo.addActionListener(listener);
     }
 
     /**
-     * Get the currently selected symbol info from the market info bar.
+     * Get the currently selected symbol info from the header bar.
      */
     public String getSelectedExchange() {
-        return marketInfoBar.getSymbolCombo().getExchange();
+        return symbolCombo.getExchange();
     }
 
     public String getSelectedMarket() {
-        return marketInfoBar.getSymbolCombo().getSymbolMarket();
+        return symbolCombo.getSymbolMarket();
     }
 
     public String getSelectedSymbol() {
-        return marketInfoBar.getSymbolCombo().getSelectedSymbol();
+        return symbolCombo.getSelectedSymbol();
     }
 
     /**

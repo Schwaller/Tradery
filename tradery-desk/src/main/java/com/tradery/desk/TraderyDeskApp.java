@@ -298,8 +298,6 @@ public class TraderyDeskApp {
 
         // Create candle aggregator
         CandleAggregator aggregator = new CandleAggregator(symbol, timeframe, config.getHistoryBars());
-        aggregator.setOnCandleClose(candle -> onCandleClose(strategy, candle, aggregator));
-        aggregator.setOnCandleUpdate(candle -> onCandleUpdate(candle));
         aggregators.put(id, aggregator);
 
         if (candlePageMgr != null) {
@@ -356,23 +354,17 @@ public class TraderyDeskApp {
 
             @Override
             public void onLiveUpdate(DataPageView<Candle> page, Candle candle) {
-                // Incomplete candle update - just update price display
+                // Strategy page only updates price display — chart is driven by the chart page
                 if (frame != null) {
                     frame.updatePrice(candle.close(), candle.timestamp());
-                    frame.updateChartCandle(candle);
                 }
             }
 
             @Override
             public void onLiveAppend(DataPageView<Candle> page, Candle candle) {
-                // New completed candle - update aggregator and evaluate signals
+                // Strategy page: update aggregator and evaluate signals (chart driven by chart page)
                 aggregator.addClosedCandle(candle);
                 onCandleClose(strategy, candle, aggregator);
-
-                if (frame != null) {
-                    frame.addChartCandle(candle);
-                    frame.updatePrice(candle.close(), candle.timestamp());
-                }
             }
 
             @Override
@@ -394,27 +386,11 @@ public class TraderyDeskApp {
     }
 
     /**
-     * Handle live candle update (incomplete candle).
-     */
-    private void onCandleUpdate(Candle candle) {
-        if (frame != null) {
-            frame.updatePrice(candle.close(), candle.timestamp());
-            frame.updateChartCandle(candle);
-        }
-    }
-
-    /**
      * Handle candle close event - evaluate signals.
      */
     private void onCandleClose(PublishedStrategy strategy, Candle closedCandle, CandleAggregator aggregator) {
         log.debug("Candle closed for {}: {} @ {}",
             strategy.getId(), closedCandle.timestamp(), closedCandle.close());
-
-        // Update price display and chart
-        if (frame != null) {
-            frame.updatePrice(closedCandle.close(), closedCandle.timestamp());
-            frame.addChartCandle(closedCandle);
-        }
 
         SignalEvaluator evaluator = evaluators.get(strategy.getId());
         if (evaluator == null) {

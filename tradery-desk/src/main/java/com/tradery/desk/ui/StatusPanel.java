@@ -23,7 +23,6 @@ public class StatusPanel extends JPanel {
     private final StatusBadge symbolBadge;
     private final StatusBadge syncBadge;
     private final MemoryStatusPanel memoryStatusPanel;
-    private final JLabel priceLabel;
     private final Timer syncPollTimer;
 
     public StatusPanel() {
@@ -52,16 +51,6 @@ public class StatusPanel extends JPanel {
         leftPanel.add(memoryStatusPanel);
 
         add(leftPanel, BorderLayout.WEST);
-
-        // Right side: current price
-        JPanel rightPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 4, 0));
-        rightPanel.setOpaque(false);
-
-        priceLabel = new JLabel("");
-        priceLabel.setFont(new Font(Font.MONOSPACED, Font.BOLD, 18));
-        rightPanel.add(priceLabel);
-
-        add(rightPanel, BorderLayout.EAST);
 
         updateState(ConnectionState.DISCONNECTED);
 
@@ -124,16 +113,10 @@ public class StatusPanel extends JPanel {
     }
 
     /**
-     * Update the current price display.
+     * Update the current price display (no-op, price now shown in header bar).
      */
     public void updatePrice(double price) {
-        SwingUtilities.invokeLater(() -> {
-            if (Double.isNaN(price)) {
-                priceLabel.setText("");
-            } else {
-                priceLabel.setText(String.format("%,.2f", price));
-            }
-        });
+        // Price moved to header bar
     }
 
     /**
