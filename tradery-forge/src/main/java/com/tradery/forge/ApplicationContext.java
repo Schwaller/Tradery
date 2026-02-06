@@ -7,6 +7,7 @@ import com.tradery.core.model.OpenInterest;
 import com.tradery.core.model.PremiumIndex;
 import com.tradery.dataclient.DataServiceClient;
 import com.tradery.dataclient.DataServiceLauncher;
+import com.tradery.dataclient.page.DataServiceConnection;
 import com.tradery.forge.api.ApiServer;
 import com.tradery.forge.data.*;
 import com.tradery.forge.data.page.*;
@@ -65,6 +66,7 @@ public class ApplicationContext {
 
     // Data service client (for remote data access)
     private DataServiceClient dataServiceClient;
+    private DataServiceConnection dataServiceConnection;
 
     private ApplicationContext() {
         // Initialize indicator registry (must be done before IndicatorPageManager)
@@ -131,6 +133,17 @@ public class ApplicationContext {
             this.dataServiceClient = new DataServiceClient("localhost", port);
             if (dataServiceClient.isHealthy()) {
                 log.info("DataServiceClient connected to port {}", port);
+
+                // Create and connect WebSocket for push-based data delivery
+                this.dataServiceConnection = new DataServiceConnection(
+                    "localhost", port,
+                    launcher.getConsumerId(), launcher.getConsumerName());
+                dataServiceConnection.connect();
+                dataServiceClient.setConnection(dataServiceConnection);
+
+                // WS connection now manages consumer lifecycle (register/unregister/heartbeat)
+                launcher.setWsManaged(true);
+                log.info("DataServiceConnection established for WS push delivery");
             } else {
                 log.warn("DataServiceClient created but service not healthy");
                 this.dataServiceClient = null;
@@ -294,6 +307,11 @@ public class ApplicationContext {
         }
         if (premiumPageManager != null) {
             premiumPageManager.shutdown();
+        }
+
+        // Close WebSocket connection
+        if (dataServiceConnection != null) {
+            dataServiceConnection.disconnect();
         }
 
         // Close SQLite connections

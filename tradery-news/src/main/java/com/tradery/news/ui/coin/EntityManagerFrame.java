@@ -333,6 +333,45 @@ public class EntityManagerFrame extends JFrame {
         customField.setToolTipText("Full command with args. Prompt appended as last argument.");
         formPanel.add(customField, fieldGbc);
 
+        // Gemini API key
+        labelGbc.gridx = 0; labelGbc.gridy = row;
+        JLabel geminiKeyLabel = new JLabel("API Key:");
+        geminiKeyLabel.setForeground(new Color(180, 180, 190));
+        formPanel.add(geminiKeyLabel, labelGbc);
+
+        fieldGbc.gridx = 1; fieldGbc.gridy = row++;
+        JPasswordField geminiKeyField = new JPasswordField(config.getGeminiApiKey());
+        geminiKeyField.setBackground(new Color(60, 62, 66));
+        geminiKeyField.setForeground(new Color(200, 200, 210));
+        geminiKeyField.setCaretColor(new Color(200, 200, 210));
+        geminiKeyField.setToolTipText("Free API key from aistudio.google.com");
+        formPanel.add(geminiKeyField, fieldGbc);
+
+        // Gemini model
+        labelGbc.gridx = 0; labelGbc.gridy = row;
+        JLabel geminiModelLabel = new JLabel("Model:");
+        geminiModelLabel.setForeground(new Color(180, 180, 190));
+        formPanel.add(geminiModelLabel, labelGbc);
+
+        fieldGbc.gridx = 1; fieldGbc.gridy = row++;
+        JComboBox<String> geminiModelCombo = new JComboBox<>(new String[]{
+            "gemini-2.5-flash-lite", "gemini-2.5-flash", "gemini-2.0-flash"
+        });
+        geminiModelCombo.setSelectedItem(config.getGeminiModel());
+        geminiModelCombo.setBackground(new Color(60, 62, 66));
+        geminiModelCombo.setForeground(new Color(200, 200, 210));
+        formPanel.add(geminiModelCombo, fieldGbc);
+
+        // Gemini help text
+        labelGbc.gridx = 0; labelGbc.gridy = row;
+        formPanel.add(new JLabel(), labelGbc);
+
+        fieldGbc.gridx = 1; fieldGbc.gridy = row++;
+        JLabel geminiHelpLabel = new JLabel("Free API key from aistudio.google.com - no credit card needed");
+        geminiHelpLabel.setForeground(new Color(120, 140, 120));
+        geminiHelpLabel.setFont(geminiHelpLabel.getFont().deriveFont(Font.ITALIC, 11f));
+        formPanel.add(geminiHelpLabel, fieldGbc);
+
         // Visibility updater for path fields
         Runnable updateFieldVisibility = () -> {
             IntelConfig.AiProvider selected = (IntelConfig.AiProvider) providerCombo.getSelectedItem();
@@ -346,6 +385,11 @@ public class EntityManagerFrame extends JFrame {
             codexArgsField.setVisible(selected == IntelConfig.AiProvider.CODEX);
             customLabel.setVisible(selected == IntelConfig.AiProvider.CUSTOM);
             customField.setVisible(selected == IntelConfig.AiProvider.CUSTOM);
+            geminiKeyLabel.setVisible(selected == IntelConfig.AiProvider.GEMINI);
+            geminiKeyField.setVisible(selected == IntelConfig.AiProvider.GEMINI);
+            geminiModelLabel.setVisible(selected == IntelConfig.AiProvider.GEMINI);
+            geminiModelCombo.setVisible(selected == IntelConfig.AiProvider.GEMINI);
+            geminiHelpLabel.setVisible(selected == IntelConfig.AiProvider.GEMINI);
         };
         providerCombo.addActionListener(e -> updateFieldVisibility.run());
         updateFieldVisibility.run();
@@ -393,6 +437,8 @@ public class EntityManagerFrame extends JFrame {
             codexField.getText().trim(),
             codexArgsField.getText().trim(),
             customField.getText().trim(),
+            new String(geminiKeyField.getPassword()).trim(),
+            (String) geminiModelCombo.getSelectedItem(),
             testLogArea,
             testBtn
         ));
@@ -416,6 +462,8 @@ public class EntityManagerFrame extends JFrame {
             config.setCodexPath(codexField.getText().trim());
             config.setCodexArgs(codexArgsField.getText().trim());
             config.setCustomCommand(customField.getText().trim());
+            config.setGeminiApiKey(new String(geminiKeyField.getPassword()).trim());
+            config.setGeminiModel((String) geminiModelCombo.getSelectedItem());
             config.setAiTimeoutSeconds((Integer) timeoutSpinner.getValue());
             config.save();
             JOptionPane.showMessageDialog(this, "Settings saved.", "Saved", JOptionPane.INFORMATION_MESSAGE);
@@ -471,6 +519,28 @@ public class EntityManagerFrame extends JFrame {
         themeScroll.setAlignmentX(Component.LEFT_ALIGNMENT);
         themeScroll.setPreferredSize(new Dimension(300, 400));
         contentPanel.add(themeScroll);
+
+        // ERD settings section
+        contentPanel.add(Box.createVerticalStrut(25));
+
+        JLabel erdHeader = new JLabel("ERD Rendering");
+        erdHeader.setForeground(new Color(180, 180, 190));
+        erdHeader.setFont(erdHeader.getFont().deriveFont(Font.BOLD, 14f));
+        erdHeader.setAlignmentX(Component.LEFT_ALIGNMENT);
+        contentPanel.add(erdHeader);
+        contentPanel.add(Box.createVerticalStrut(10));
+
+        JCheckBox flowModeCheck = new JCheckBox("Flow mode (relationship connections widen through boxes)");
+        flowModeCheck.setBackground(new Color(30, 32, 36));
+        flowModeCheck.setForeground(new Color(200, 200, 210));
+        flowModeCheck.setSelected(IntelConfig.get().isErdFlowMode());
+        flowModeCheck.setAlignmentX(Component.LEFT_ALIGNMENT);
+        flowModeCheck.addActionListener(e -> {
+            IntelConfig cfg = IntelConfig.get();
+            cfg.setErdFlowMode(flowModeCheck.isSelected());
+            cfg.save();
+        });
+        contentPanel.add(flowModeCheck);
 
         panel.add(contentPanel, BorderLayout.WEST);
 
@@ -1009,6 +1079,7 @@ public class EntityManagerFrame extends JFrame {
 
     private void testAiConnection(IntelConfig.AiProvider provider, String claudePath, String claudeArgs,
                                     String codexPath, String codexArgs, String customCommand,
+                                    String geminiApiKey, String geminiModel,
                                     JTextArea logArea, JButton testBtn) {
         testBtn.setEnabled(false);
         logArea.setText("");
@@ -1020,7 +1091,70 @@ public class EntityManagerFrame extends JFrame {
             logArea.setCaretPosition(logArea.getDocument().getLength());
         });
 
-        // Determine CLI path based on provider
+        // For Gemini, test the HTTP API directly
+        if (provider == IntelConfig.AiProvider.GEMINI) {
+            if (geminiApiKey == null || geminiApiKey.isBlank()) {
+                log.accept("❌ API key not configured");
+                testBtn.setEnabled(true);
+                return;
+            }
+
+            // Temporarily apply Gemini settings
+            IntelConfig config = IntelConfig.get();
+            IntelConfig.AiProvider originalProvider = config.getAiProvider();
+            String originalGeminiKey = config.getGeminiApiKey();
+            String originalGeminiModel = config.getGeminiModel();
+
+            config.setAiProvider(provider);
+            config.setGeminiApiKey(geminiApiKey);
+            config.setGeminiModel(geminiModel);
+
+            new Thread(() -> {
+                try {
+                    log.accept("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+                    log.accept("Step 1: Validating API key");
+                    log.accept("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+                    log.accept("Provider: GEMINI");
+                    log.accept("Model: " + geminiModel);
+                    log.accept("Key: " + geminiApiKey.substring(0, Math.min(8, geminiApiKey.length())) + "...");
+
+                    AiClient client = AiClient.getInstance();
+                    boolean available = client.isAvailable();
+                    if (!available) {
+                        log.accept("❌ API key invalid or cannot reach Gemini API");
+                        return;
+                    }
+                    log.accept("✓ API key valid");
+
+                    log.accept("");
+                    log.accept("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+                    log.accept("Step 2: Testing AI query");
+                    log.accept("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+                    log.accept("Prompt: \"Say OK\"");
+                    log.accept("");
+                    log.accept("Waiting for response...");
+
+                    String response = client.query("Say OK");
+                    log.accept("  ← " + response.trim());
+                    log.accept("");
+                    log.accept("✅ Connection working! Model: " + geminiModel);
+
+                } catch (Exception e) {
+                    log.accept("❌ Error: " + e.getMessage());
+                } finally {
+                    config.setAiProvider(originalProvider);
+                    config.setGeminiApiKey(originalGeminiKey);
+                    config.setGeminiModel(originalGeminiModel);
+                    SwingUtilities.invokeLater(() -> {
+                        testBtn.setEnabled(true);
+                        logArea.setForeground(logArea.getText().contains("✅") ? new Color(100, 200, 120) : new Color(200, 140, 140));
+                    });
+                }
+            }).start();
+            return;
+        }
+
+        // CLI-based providers (Claude, Codex, Custom)
         String cliPath = switch (provider) {
             case CLAUDE -> claudePath;
             case CODEX -> codexPath;
@@ -1028,6 +1162,7 @@ public class EntityManagerFrame extends JFrame {
                 if (customCommand == null || customCommand.isBlank()) yield "";
                 yield customCommand.split("\\s+")[0];
             }
+            default -> "";
         };
 
         if (cliPath == null || cliPath.trim().isEmpty()) {
@@ -1118,6 +1253,7 @@ public class EntityManagerFrame extends JFrame {
                         }
                         cmd.add(testPrompt);
                     }
+                    default -> {}
                 }
 
                 log.accept("Command: " + String.join(" ", cmd));

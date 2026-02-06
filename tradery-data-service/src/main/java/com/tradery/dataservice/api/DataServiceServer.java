@@ -53,8 +53,8 @@ public class DataServiceServer {
         this.liveOpenInterestPoller = new LiveOpenInterestPoller();
         // PageManager gets LiveCandleManager for live page support
         this.pageManager = new PageManager(config, dataStore, liveCandleManager);
-        this.webSocketHandler = new WebSocketHandler(pageManager, liveCandleManager,
-            liveAggTradeManager, liveMarkPriceManager, liveOpenInterestPoller,
+        this.webSocketHandler = new WebSocketHandler(pageManager, consumerRegistry,
+            liveCandleManager, liveAggTradeManager, liveMarkPriceManager, liveOpenInterestPoller,
             pageManager.getAggTradesStore(), objectMapper);
         this.symbolHandler = new SymbolHandler(symbolSyncService, symbolsConnection, coingeckoClient);
     }
@@ -109,7 +109,8 @@ public class DataServiceServer {
 
     /**
      * Consumer registration and heartbeat endpoints.
-     * Apps must register on startup and send periodic heartbeats.
+     * DEPRECATED: WebSocket connections now auto-register/unregister consumers.
+     * These endpoints remain as fallback for non-WS clients (scripts, curl).
      */
     private void configureConsumerRoutes() {
         // Register a consumer (app)

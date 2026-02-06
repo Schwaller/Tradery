@@ -45,14 +45,19 @@ public class IntelConfig {
     private int dataStructureX = -1;
     private int dataStructureY = -1;
 
+    // ERD settings
+    private boolean erdFlowMode = false;
+
     // AI settings
-    public enum AiProvider { CLAUDE, CODEX, CUSTOM }
+    public enum AiProvider { CLAUDE, CODEX, CUSTOM, GEMINI }
     private AiProvider aiProvider = AiProvider.CLAUDE;
     private String claudePath = "claude";
     private String claudeArgs = "--print --output-format text --model haiku";
     private String codexPath = "codex";
     private String codexArgs = "exec";
     private String customCommand = "";  // Full command for custom AI
+    private String geminiApiKey = "";
+    private String geminiModel = "gemini-2.5-flash-lite";
     private int aiTimeoutSeconds = 60;
 
     // Theme settings (shared with forge via theme.txt)
@@ -208,6 +213,16 @@ public class IntelConfig {
         this.dataStructureY = dataStructureY;
     }
 
+    // ==================== ERD Settings ====================
+
+    public boolean isErdFlowMode() {
+        return erdFlowMode;
+    }
+
+    public void setErdFlowMode(boolean erdFlowMode) {
+        this.erdFlowMode = erdFlowMode;
+    }
+
     // ==================== AI Settings ====================
 
     public AiProvider getAiProvider() {
@@ -256,6 +271,22 @@ public class IntelConfig {
 
     public void setCustomCommand(String customCommand) {
         this.customCommand = customCommand;
+    }
+
+    public String getGeminiApiKey() {
+        return geminiApiKey;
+    }
+
+    public void setGeminiApiKey(String geminiApiKey) {
+        this.geminiApiKey = geminiApiKey;
+    }
+
+    public String getGeminiModel() {
+        return geminiModel;
+    }
+
+    public void setGeminiModel(String geminiModel) {
+        this.geminiModel = geminiModel;
     }
 
     public int getAiTimeoutSeconds() {

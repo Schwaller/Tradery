@@ -6,6 +6,7 @@ import com.tradery.core.model.AggTrade;
 import com.tradery.core.model.Candle;
 import com.tradery.core.model.MarkPriceUpdate;
 import com.tradery.core.model.OpenInterestUpdate;
+import com.tradery.dataservice.ConsumerRegistry;
 import com.tradery.dataservice.data.AggTradesStore;
 import com.tradery.dataservice.live.LiveAggTradeManager;
 import com.tradery.dataservice.live.LiveCandleManager;
@@ -20,6 +21,8 @@ import io.javalin.websocket.WsMessageContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -40,6 +43,7 @@ public class WebSocketHandler implements PageUpdateListener {
     private static final long PROGRESS_HEARTBEAT_INTERVAL_MS = 5000; // Send heartbeat every 5 seconds
 
     private final PageManager pageManager;
+    private final ConsumerRegistry consumerRegistry;
     private final LiveCandleManager liveCandleManager;
     private final LiveAggTradeManager liveAggTradeManager;
     private final LiveMarkPriceManager liveMarkPriceManager;
@@ -77,11 +81,13 @@ public class WebSocketHandler implements PageUpdateListener {
     private final Map<String, AggTradesStreamState> activeStreams = new ConcurrentHashMap<>(); // requestId -> state
     private final Map<String, Set<String>> consumerStreams = new ConcurrentHashMap<>(); // consumerId -> requestIds
 
-    public WebSocketHandler(PageManager pageManager, LiveCandleManager liveCandleManager,
+    public WebSocketHandler(PageManager pageManager, ConsumerRegistry consumerRegistry,
+                            LiveCandleManager liveCandleManager,
                             LiveAggTradeManager liveAggTradeManager, LiveMarkPriceManager liveMarkPriceManager,
                             LiveOpenInterestPoller liveOpenInterestPoller, AggTradesStore aggTradesStore,
                             ObjectMapper objectMapper) {
         this.pageManager = pageManager;
+        this.consumerRegistry = consumerRegistry;
         this.liveCandleManager = liveCandleManager;
         this.liveAggTradeManager = liveAggTradeManager;
         this.liveMarkPriceManager = liveMarkPriceManager;
@@ -129,6 +135,11 @@ public class WebSocketHandler implements PageUpdateListener {
         LOG.info("WebSocket connected: {} (idleTimeout=5min)", consumerId);
         connections.put(consumerId, ctx);
         subscriptions.put(consumerId, new CopyOnWriteArraySet<>());
+
+        // Auto-register consumer via WS lifecycle (replaces HTTP register endpoint)
+        String consumerName = ctx.queryParam("consumerName");
+        if (consumerName == null) consumerName = "ws-" + consumerId.substring(0, 8);
+        consumerRegistry.register(consumerId, consumerName, 0);
     }
 
     public void onMessage(WsMessageContext ctx) {
@@ -242,6 +253,9 @@ public class WebSocketHandler implements PageUpdateListener {
                 }
             }
         }
+
+        // Auto-unregister consumer via WS lifecycle (replaces HTTP unregister endpoint)
+        consumerRegistry.unregister(consumerId);
     }
 
     public void onError(WsErrorContext ctx) {
@@ -316,13 +330,16 @@ public class WebSocketHandler implements PageUpdateListener {
             // Send current status immediately
             sendStatusUpdate(consumerId, pageKeyStr, status);
 
-            // If already ready, also send data ready message
+            // If already ready, send data ready + binary data
             if (status.state() == PageState.READY) {
                 DataReadyMessage dataReady = new DataReadyMessage("DATA_READY", pageKeyStr, status.recordCount());
                 WsConnectContext ctx = connections.get(consumerId);
                 if (ctx != null) {
                     ctx.send(objectMapper.writeValueAsString(dataReady));
                 }
+                // Also push binary data
+                sendBinaryPageData(key, pageKeyStr, status.recordCount(),
+                    Set.of(consumerId));
             }
         } catch (Exception e) {
             LOG.error("Failed to handle subscribe_page", e);
@@ -371,6 +388,9 @@ public class WebSocketHandler implements PageUpdateListener {
                 if (ctx != null) {
                     ctx.send(objectMapper.writeValueAsString(dataReady));
                 }
+                // Also push binary data
+                sendBinaryPageData(key, pageKeyStr, status.recordCount(),
+                    Set.of(consumerId));
             }
         } catch (Exception e) {
             LOG.error("Failed to handle subscribe_live_page", e);
@@ -494,8 +514,60 @@ public class WebSocketHandler implements PageUpdateListener {
         Set<String> subscribers = pageSubscribers.get(pageKey);
         if (subscribers == null || subscribers.isEmpty()) return;
 
+        // Send text DATA_READY notification (backward compatibility)
         DataReadyMessage message = new DataReadyMessage("DATA_READY", pageKey, recordCount);
         broadcast(subscribers, message);
+
+        // Send binary page data frame to all subscribers
+        sendBinaryPageData(key, pageKey, recordCount, subscribers);
+    }
+
+    /**
+     * Send page data as a binary WebSocket frame.
+     *
+     * Binary frame layout:
+     * [4 bytes: header length (int32 big-endian)]
+     * [N bytes: UTF-8 JSON header {"pageKey","type","dataType","recordCount"}]
+     * [remaining: msgpack payload]
+     */
+    private void sendBinaryPageData(PageKey key, String pageKey, long recordCount, Set<String> subscribers) {
+        // AggTrades pages don't hold data in memory (null page data) — skip binary push
+        if (key.isAggTrades()) return;
+
+        byte[] msgpackData = pageManager.getPageData(key);
+        if (msgpackData == null) return;
+
+        try {
+            // Build header JSON
+            String headerJson = objectMapper.writeValueAsString(new BinaryFrameHeader(
+                pageKey, "PAGE_DATA", key.dataType(), recordCount));
+            byte[] headerBytes = headerJson.getBytes(StandardCharsets.UTF_8);
+
+            // Assemble binary frame: [4-byte header length][header JSON][msgpack payload]
+            ByteBuffer frame = ByteBuffer.allocate(4 + headerBytes.length + msgpackData.length);
+            frame.putInt(headerBytes.length);
+            frame.put(headerBytes);
+            frame.put(msgpackData);
+            frame.flip();
+
+            // Send to all subscribers
+            for (String consumerId : subscribers) {
+                WsConnectContext ctx = connections.get(consumerId);
+                if (ctx != null) {
+                    try {
+                        // Each send needs its own buffer position (duplicate shares content, not position)
+                        ctx.send(frame.duplicate());
+                    } catch (Exception e) {
+                        LOG.warn("Failed to send binary page data to {}: {}", consumerId, e.getMessage());
+                    }
+                }
+            }
+
+            LOG.debug("Sent binary page data for {} ({} bytes header + {} bytes payload) to {} subscribers",
+                pageKey, headerBytes.length, msgpackData.length, subscribers.size());
+        } catch (Exception e) {
+            LOG.error("Failed to build binary page data frame for {}", pageKey, e);
+        }
     }
 
     @Override
@@ -970,6 +1042,9 @@ public class WebSocketHandler implements PageUpdateListener {
             LOG.warn("Failed to send error message", e);
         }
     }
+
+    // Binary frame header (serialized as JSON inside binary WS frames)
+    public record BinaryFrameHeader(String pageKey, String type, String dataType, long recordCount) {}
 
     // Message records
     public record StateChangedMessage(String type, String pageKey, String state, int progress) {}

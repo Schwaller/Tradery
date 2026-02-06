@@ -8,6 +8,7 @@ import com.tradery.desk.strategy.PublishedStrategy;
 import com.tradery.symbols.service.SymbolService;
 import com.tradery.symbols.ui.SymbolComboBox;
 
+import com.formdev.flatlaf.FlatClientProperties;
 import com.formdev.flatlaf.util.SystemInfo;
 
 import javax.swing.*;
@@ -47,6 +48,9 @@ public class DeskFrame extends JFrame {
         getRootPane().putClientProperty("apple.awt.fullWindowContent", true);
         getRootPane().putClientProperty("apple.awt.transparentTitleBar", true);
         getRootPane().putClientProperty("apple.awt.windowTitleVisible", false);
+        // Move traffic light buttons down to match native macOS spacing (FlatLaf 3.4+)
+        getRootPane().putClientProperty(FlatClientProperties.MACOS_WINDOW_BUTTONS_SPACING,
+                FlatClientProperties.MACOS_WINDOW_BUTTONS_SPACING_LARGE);
 
         // Initialize header bar components before layout
         symbolCombo = new SymbolComboBox(new SymbolService(), true);
@@ -135,17 +139,28 @@ public class DeskFrame extends JFrame {
         gbc.gridy = 0;
         gbc.anchor = GridBagConstraints.CENTER;
 
-        // Left: Symbol combo (with spacer for macOS traffic lights)
+        // Left: Buttons placeholder + symbol combo
         gbc.gridx = 0;
         gbc.weightx = 1.0;
-        gbc.fill = GridBagConstraints.HORIZONTAL;
+        gbc.fill = GridBagConstraints.BOTH;
         gbc.anchor = GridBagConstraints.WEST;
-        JPanel leftPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
+        JPanel leftPanel = new JPanel(new GridBagLayout());
         leftPanel.setOpaque(false);
+        JPanel leftContent = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
+        leftContent.setOpaque(false);
         if (SystemInfo.isMacOS) {
-            leftPanel.setBorder(new EmptyBorder(0, 70, 0, 0));
+            // Auto-sized placeholder that reserves space for traffic light buttons
+            JPanel buttonsPlaceholder = new JPanel();
+            buttonsPlaceholder.putClientProperty(FlatClientProperties.FULL_WINDOW_CONTENT_BUTTONS_PLACEHOLDER, "mac");
+            buttonsPlaceholder.setOpaque(false);
+            leftContent.add(buttonsPlaceholder);
         }
-        leftPanel.add(symbolCombo);
+        leftContent.add(symbolCombo);
+        GridBagConstraints lc = new GridBagConstraints();
+        lc.anchor = GridBagConstraints.WEST;
+        lc.fill = GridBagConstraints.HORIZONTAL;
+        lc.weightx = 1.0;
+        leftPanel.add(leftContent, lc);
         headerBar.add(leftPanel, gbc);
 
         // Center: Title

@@ -30,10 +30,13 @@ public class ErdPanel extends JPanel {
     private static final int DIAMOND_H = 80;
     private static final int PORT_RADIUS = 5;
     private static final int GRID_SPACING = 20;
+    private static final int FLOW_REL_W = 130;
+    private static final int FLOW_REL_H = 34;
 
     private SchemaRegistry registry;
     private Consumer<Void> onDataChanged;
     private Runnable onManualSelected;
+    private boolean flowMode;
 
     // View transform
     private double zoom = 1.0;
@@ -57,7 +60,7 @@ public class ErdPanel extends JPanel {
     private SchemaType hoveredPortType;
 
     // Layout mode
-    private enum LayoutMode { MANUAL, SPRING, TREE_ANIMATING, TREE }
+    private enum LayoutMode { MANUAL, MANUAL_ANIMATING, SPRING, TREE_ANIMATING, TREE }
     private LayoutMode layoutMode = LayoutMode.MANUAL;
 
     // Cached manual positions (restored when switching back to manual mode)
@@ -96,7 +99,7 @@ public class ErdPanel extends JPanel {
                 if (!moving) {
                     physicsTimer.stop();
                 }
-            } else if (layoutMode == LayoutMode.TREE_ANIMATING) {
+            } else if (layoutMode == LayoutMode.TREE_ANIMATING || layoutMode == LayoutMode.MANUAL_ANIMATING) {
                 boolean anyMoving = false;
                 for (SchemaType t : registry.allTypes()) {
                     if (!t.isErdAnimating()) continue;
@@ -112,9 +115,26 @@ public class ErdPanel extends JPanel {
                         anyMoving = true;
                     }
                 }
+                // Animate viewport (zoom/pan)
+                if (viewAnimating) {
+                    double dz = targetZoom - zoom;
+                    double dpx = targetPanX - panX;
+                    double dpy = targetPanY - panY;
+                    if (Math.abs(dz) < 0.005 && Math.abs(dpx) < 0.5 && Math.abs(dpy) < 0.5) {
+                        zoom = targetZoom;
+                        panX = targetPanX;
+                        panY = targetPanY;
+                        viewAnimating = false;
+                    } else {
+                        zoom += dz * ANIM_LERP;
+                        panX += dpx * ANIM_LERP;
+                        panY += dpy * ANIM_LERP;
+                        anyMoving = true;
+                    }
+                }
                 repaint();
                 if (!anyMoving) {
-                    layoutMode = LayoutMode.TREE;
+                    layoutMode = layoutMode == LayoutMode.TREE_ANIMATING ? LayoutMode.TREE : LayoutMode.MANUAL;
                     physicsTimer.stop();
                 }
             } else {
@@ -140,28 +160,55 @@ public class ErdPanel extends JPanel {
         this.onManualSelected = onManualSelected;
     }
 
+    public void setFlowMode(boolean flowMode) {
+        this.flowMode = flowMode;
+        repaint();
+    }
+
+    public boolean isFlowMode() {
+        return flowMode;
+    }
+
     public SchemaRegistry getRegistry() {
         return registry;
     }
 
-    /** Switch to manual layout mode: restore saved manual positions. */
+    /** Switch to manual layout mode: animate back to saved manual positions. */
     public void manualLayout() {
         if (registry == null) return;
-        layoutMode = LayoutMode.MANUAL;
         physicsTimer.stop();
-        // Restore saved manual positions
+
+        boolean needsAnimation = false;
         for (SchemaType t : registry.allTypes()) {
             double[] pos = savedManualPositions.get(t.id());
             if (pos != null) {
-                t.setErdX(pos[0]);
-                t.setErdY(pos[1]);
+                t.setErdTargetX(pos[0]);
+                t.setErdTargetY(pos[1]);
+                double dx = pos[0] - t.erdX();
+                double dy = pos[1] - t.erdY();
+                if (Math.abs(dx) > ANIM_SNAP || Math.abs(dy) > ANIM_SNAP) {
+                    needsAnimation = true;
+                    t.setErdAnimating(true);
+                } else {
+                    t.setErdX(pos[0]);
+                    t.setErdY(pos[1]);
+                    t.setErdAnimating(false);
+                }
+            } else {
+                t.setErdAnimating(false);
             }
             t.setErdPinned(false);
             t.setErdVx(0);
             t.setErdVy(0);
-            t.setErdAnimating(false);
         }
-        repaint();
+
+        if (needsAnimation) {
+            layoutMode = LayoutMode.MANUAL_ANIMATING;
+            physicsTimer.start();
+        } else {
+            layoutMode = LayoutMode.MANUAL;
+            repaint();
+        }
     }
 
     /** Save current positions as the manual layout and switch to manual mode. */
@@ -210,7 +257,11 @@ public class ErdPanel extends JPanel {
 
         // Draw arrows first (behind boxes)
         for (SchemaType rel : registry.relationshipTypes()) {
-            drawArrows(g2, rel);
+            if (flowMode) {
+                drawFlowArrows(g2, rel);
+            } else {
+                drawArrows(g2, rel);
+            }
         }
 
         // Draw entity type boxes
@@ -218,9 +269,13 @@ public class ErdPanel extends JPanel {
             drawEntityBox(g2, entityType);
         }
 
-        // Draw relationship type diamonds
+        // Draw relationship type diamonds/rectangles
         for (SchemaType relType : registry.relationshipTypes()) {
-            drawRelationshipDiamond(g2, relType);
+            if (flowMode) {
+                drawFlowRelationshipBox(g2, relType);
+            } else {
+                drawRelationshipDiamond(g2, relType);
+            }
         }
 
         // Draw port drag line
@@ -235,8 +290,8 @@ public class ErdPanel extends JPanel {
 
         g2.dispose();
 
-        // Floating "Save as Manual Layout" label when not in manual mode
-        if (layoutMode != LayoutMode.MANUAL) {
+        // Floating "Save as Manual Layout" label when not in manual mode (hide during transition to manual)
+        if (layoutMode != LayoutMode.MANUAL && layoutMode != LayoutMode.MANUAL_ANIMATING) {
             Graphics2D sg = (Graphics2D) g;
             sg.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
             sg.setFont(new Font("SansSerif", Font.PLAIN, 11));
@@ -393,6 +448,116 @@ public class ErdPanel extends JPanel {
         }
     }
 
+    private void drawFlowRelationshipBox(Graphics2D g2, SchemaType type) {
+        double x = type.erdX();
+        double y = type.erdY();
+        boolean isSelected = type == selectedType;
+        boolean isHovered = type == hoveredType;
+
+        // Selection/hover indicator only (no box fill or border — flow tube is the background)
+        if (isSelected || isHovered) {
+            g2.setStroke(new BasicStroke(isSelected ? 2.5f : 1.5f));
+            g2.setColor(isSelected ? SELECTION_COLOR : type.color().brighter());
+            g2.draw(new RoundRectangle2D.Double(x - 2, y - 2, FLOW_REL_W + 4, FLOW_REL_H + 4, 8, 8));
+        }
+
+        double cx = x + FLOW_REL_W / 2.0;
+        double cy = y + FLOW_REL_H / 2.0;
+
+        boolean hasLabel = type.label() != null && !type.label().isEmpty();
+
+        // Name (shift up slightly if label present)
+        g2.setColor(type.color());
+        g2.setFont(new Font("SansSerif", Font.BOLD, 11));
+        FontMetrics fm = g2.getFontMetrics();
+        String name = type.name();
+        double nameY = hasLabel ? cy - 2 : cy + fm.getAscent() / 2.0 - 1;
+        g2.drawString(name, (int) (cx - fm.stringWidth(name) / 2.0), (int) nameY);
+
+        // Label
+        if (hasLabel) {
+            g2.setColor(new Color(150, 150, 160));
+            g2.setFont(new Font("SansSerif", Font.ITALIC, 9));
+            fm = g2.getFontMetrics();
+            String label = "\"" + type.label() + "\"";
+            g2.drawString(label, (int) (cx - fm.stringWidth(label) / 2.0), (int) (cy + 10));
+        }
+    }
+
+    private void drawFlowArrows(Graphics2D g2, SchemaType rel) {
+        if (rel.fromTypeId() == null || rel.toTypeId() == null) return;
+
+        SchemaType fromType = registry.getType(rel.fromTypeId());
+        SchemaType toType = registry.getType(rel.toTypeId());
+        if (fromType == null || toType == null) return;
+
+        Color relColor = rel.color();
+
+        // Rel box edges
+        double relLeft = rel.erdX();
+        double relRight = rel.erdX() + FLOW_REL_W;
+        double relTop = rel.erdY();
+        double relBottom = rel.erdY() + FLOW_REL_H;
+
+        // Entity centers (thin end connects at center, entity box draws on top)
+        Point2D fromPt = getBoxCenter(fromType);
+        Point2D toPt = getBoxCenter(toType);
+
+        double thinHalf = 2.0;
+        double HELPER = 150.0;
+
+        // From-entity thin endpoints
+        double fTopX = fromPt.getX(), fTopY = fromPt.getY() - thinHalf;
+        double fBotX = fromPt.getX(), fBotY = fromPt.getY() + thinHalf;
+
+        // To-entity thin endpoints
+        double tTopX = toPt.getX(), tTopY = toPt.getY() - thinHalf;
+        double tBotX = toPt.getX(), tBotY = toPt.getY() + thinHalf;
+
+        Path2D flow = new Path2D.Double();
+
+        // Top outline: from-entity → relLeft,relTop → relRight,relTop → to-entity
+        flow.moveTo(fTopX, fTopY);
+        flow.curveTo(
+            fTopX, fTopY,
+            relLeft - HELPER, relTop,
+            relLeft, relTop
+        );
+        flow.lineTo(relRight, relTop);
+        flow.curveTo(
+            relRight + HELPER, relTop,
+            tTopX, tTopY,
+            tTopX, tTopY
+        );
+
+        // Cross to bottom at to-entity
+        flow.lineTo(tBotX, tBotY);
+
+        // Bottom outline (reversed): to-entity → relRight,relBottom → relLeft,relBottom → from-entity
+        flow.curveTo(
+            tBotX, tBotY,
+            relRight + HELPER, relBottom,
+            relRight, relBottom
+        );
+        flow.lineTo(relLeft, relBottom);
+        flow.curveTo(
+            relLeft - HELPER, relBottom,
+            fBotX, fBotY,
+            fBotX, fBotY
+        );
+
+        flow.closePath();
+
+        // Fill with low alpha
+        g2.setColor(new Color(relColor.getRed(), relColor.getGreen(), relColor.getBlue(), 35));
+        g2.fill(flow);
+
+        // Stroke with slightly higher alpha
+        g2.setColor(new Color(relColor.getRed(), relColor.getGreen(), relColor.getBlue(), 80));
+        g2.setStroke(new BasicStroke(1.5f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        g2.draw(flow);
+    }
+
     private void drawArrows(Graphics2D g2, SchemaType rel) {
         if (rel.fromTypeId() == null || rel.toTypeId() == null) return;
 
@@ -442,6 +607,9 @@ public class ErdPanel extends JPanel {
         if (type.isEntity()) {
             hw = ENTITY_WIDTH / 2.0;
             hh = (ENTITY_HEADER_H + type.attributes().size() * ATTR_ROW_H + 8) / 2.0;
+        } else if (flowMode) {
+            hw = FLOW_REL_W / 2.0;
+            hh = FLOW_REL_H / 2.0;
         } else {
             hw = DIAMOND_W / 2.0;
             hh = DIAMOND_H / 2.0;
@@ -536,6 +704,8 @@ public class ErdPanel extends JPanel {
         if (type.isEntity()) {
             int h = ENTITY_HEADER_H + type.attributes().size() * ATTR_ROW_H + 8;
             return new Point2D.Double(type.erdX() + ENTITY_WIDTH / 2.0, type.erdY() + h / 2.0);
+        } else if (flowMode) {
+            return new Point2D.Double(type.erdX() + FLOW_REL_W / 2.0, type.erdY() + FLOW_REL_H / 2.0);
         } else {
             return new Point2D.Double(type.erdX() + DIAMOND_W / 2.0, type.erdY() + DIAMOND_H / 2.0);
         }
@@ -559,6 +729,10 @@ public class ErdPanel extends JPanel {
             int h = ENTITY_HEADER_H + type.attributes().size() * ATTR_ROW_H + 8;
             return wx >= type.erdX() && wx <= type.erdX() + ENTITY_WIDTH
                 && wy >= type.erdY() && wy <= type.erdY() + h;
+        } else if (flowMode) {
+            // Rectangle hit test for flow mode
+            return wx >= type.erdX() && wx <= type.erdX() + FLOW_REL_W
+                && wy >= type.erdY() && wy <= type.erdY() + FLOW_REL_H;
         } else {
             // Diamond hit test
             double cx = type.erdX() + DIAMOND_W / 2.0;
@@ -812,7 +986,7 @@ public class ErdPanel extends JPanel {
             menu.addSeparator();
 
             JMenuItem treeItem = new JMenuItem("Tree Layout");
-            treeItem.addActionListener(ev -> { treeLayout(); fitToView(); });
+            treeItem.addActionListener(ev -> treeLayout());
             menu.add(treeItem);
 
             JMenuItem springItem = new JMenuItem("Spring Layout");
@@ -877,15 +1051,52 @@ public class ErdPanel extends JPanel {
             t.setErdVy(0);
         }
 
+        // Compute target fit-to-view based on tree target positions
+        computeTargetFitToView();
+
         if (needsAnimation) {
             layoutMode = LayoutMode.TREE_ANIMATING;
             physicsTimer.start();
         } else {
             // No animation needed (first open with no prior positions)
-            layoutMode = LayoutMode.MANUAL;
-            savePositions();
+            zoom = targetZoom;
+            panX = targetPanX;
+            panY = targetPanY;
+            viewAnimating = false;
+            layoutMode = LayoutMode.TREE;
             repaint();
         }
+    }
+
+    /** Compute target zoom/pan to fit all target positions, and start view animation. */
+    private void computeTargetFitToView() {
+        if (registry == null || registry.allTypes().isEmpty()) return;
+
+        // Use target positions (where nodes are heading) to compute bounds
+        double minX = Double.MAX_VALUE, minY = Double.MAX_VALUE;
+        double maxX = -Double.MAX_VALUE, maxY = -Double.MAX_VALUE;
+        for (SchemaType t : registry.allTypes()) {
+            double x = t.isErdAnimating() ? t.erdTargetX() : t.erdX();
+            double y = t.isErdAnimating() ? t.erdTargetY() : t.erdY();
+            double w = t.isEntity() ? 180 : 140;
+            double h = t.isEntity() ? 60 + t.attributes().size() * 20 : 80;
+            minX = Math.min(minX, x - 20);
+            minY = Math.min(minY, y - 20);
+            maxX = Math.max(maxX, x + w + 20);
+            maxY = Math.max(maxY, y + h + 20);
+        }
+        if (minX == Double.MAX_VALUE) return;
+
+        double bw = maxX - minX;
+        double bh = maxY - minY;
+        double zx = (getWidth() - 40.0) / bw;
+        double zy = (getHeight() - 40.0) / bh;
+        targetZoom = Math.max(0.2, Math.min(4.0, Math.min(zx, zy)));
+        double cx = (minX + maxX) / 2.0;
+        double cy = (minY + maxY) / 2.0;
+        targetPanX = getWidth() / 2.0 - cx;
+        targetPanY = getHeight() / 2.0 - cy;
+        viewAnimating = true;
     }
 
     public void fitToView() {

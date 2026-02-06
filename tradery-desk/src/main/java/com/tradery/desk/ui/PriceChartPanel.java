@@ -2,12 +2,14 @@ package com.tradery.desk.ui;
 
 import com.tradery.charts.chart.CandlestickChart;
 import com.tradery.charts.chart.IndicatorChart;
+import com.tradery.charts.chart.SyncedChart;
 import com.tradery.charts.chart.VolumeChart;
 import com.tradery.charts.core.ChartCoordinator;
 import com.tradery.charts.core.ChartInteractionManager;
 import com.tradery.charts.core.IndicatorType;
 import com.tradery.charts.overlay.*;
 import com.tradery.charts.renderer.*;
+import com.tradery.charts.util.ChartPanelFactory;
 import com.tradery.core.model.Candle;
 import com.tradery.desk.ui.charts.DeskDataProvider;
 
@@ -72,6 +74,10 @@ public class PriceChartPanel extends JPanel {
         candlestickChart = new CandlestickChart(coordinator, "");
         candlestickChart.initialize();
         candlestickChart.setCandlestickMode(true);
+
+        // Default price axis to right side, configurable via right-click menu
+        ChartPanelFactory.setAxisPositionConfig("right", this::applyAxisPosition);
+        candlestickChart.setRangeAxisPosition("right");
 
         // Add last price line overlay (enabled by default)
         lastPriceOverlay = new LastPriceOverlay();
@@ -819,6 +825,19 @@ public class PriceChartPanel extends JPanel {
     }
 
     /**
+     * Apply axis position to all charts.
+     */
+    private void applyAxisPosition(String position) {
+        SwingUtilities.invokeLater(() -> {
+            candlestickChart.setRangeAxisPosition(position);
+            if (volumeChart != null) volumeChart.setRangeAxisPosition(position);
+            for (IndicatorChart ic : indicatorCharts) {
+                ic.setRangeAxisPosition(position);
+            }
+        });
+    }
+
+    /**
      * Rebuild the layout with all enabled charts.
      */
     private void rebuildLayout() {
@@ -844,6 +863,9 @@ public class PriceChartPanel extends JPanel {
             JComponent combined = createNestedSplitPanes(panels);
             add(combined, BorderLayout.CENTER);
         }
+
+        // Apply current axis position to all charts
+        applyAxisPosition(ChartPanelFactory.getAxisPosition());
 
         // Update all charts with current data
         if (!dataProvider.getCandles().isEmpty()) {

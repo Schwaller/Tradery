@@ -9,6 +9,7 @@ public class AiException extends Exception {
         NOT_FOUND,       // CLI not found at configured path
         NOT_LOGGED_IN,   // Authentication required
         API_KEY_MISSING, // API key not configured
+        RATE_LIMITED,    // Too many requests (HTTP 429)
         TIMEOUT,         // Request timed out
         UNKNOWN          // Other errors
     }

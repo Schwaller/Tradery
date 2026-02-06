@@ -7,9 +7,11 @@ module com.tradery.news {
     exports com.tradery.news.ai;
     exports com.tradery.news.ui;
     exports com.tradery.news.ui.coin;
+    exports com.tradery.news.api;
 
     // Java modules
     requires java.desktop;
+    requires jdk.httpserver;
 
     // UI
     requires com.formdev.flatlaf;

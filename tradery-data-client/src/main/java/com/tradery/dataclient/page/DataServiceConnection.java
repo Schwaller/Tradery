@@ -13,7 +13,11 @@ import org.java_websocket.handshake.ServerHandshake;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import org.msgpack.jackson.dataformat.MessagePackFactory;
+
 import java.net.URI;
+import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
@@ -44,6 +48,7 @@ public class DataServiceConnection {
     private final String consumerId;
     private final String consumerName;
     private final ObjectMapper objectMapper = new ObjectMapper();
+    private final ObjectMapper msgpackMapper = new ObjectMapper(new MessagePackFactory());
     private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
         Thread t = new Thread(r, "DataServiceConnection-Scheduler");
         t.setDaemon(true);
@@ -88,6 +93,9 @@ public class DataServiceConnection {
     // Track active streams for reconnection: requestId -> request params
     private final Map<String, AggTradesHistoryRequest> activeAggTradesHistoryStreams = new ConcurrentHashMap<>();
 
+    // Binary page data callbacks: pageKey -> callback
+    private final Map<String, PageDataCallback> pageDataCallbacks = new ConcurrentHashMap<>();
+
     /**
      * Create a new connection to data-service.
      *
@@ -121,7 +129,7 @@ public class DataServiceConnection {
         setConnectionState(ConnectionState.CONNECTING);
 
         try {
-            String wsUrl = String.format("ws://%s:%d/subscribe?consumerId=%s", host, port, consumerId);
+            String wsUrl = String.format("ws://%s:%d/subscribe?consumerId=%s&consumerName=%s", host, port, consumerId, consumerName);
             webSocket = new DataServiceWebSocket(new URI(wsUrl));
             webSocket.setConnectionLostTimeout(60);
             webSocket.connectBlocking(CONNECT_TIMEOUT_MS, TimeUnit.MILLISECONDS);
@@ -1054,6 +1062,83 @@ public class DataServiceConnection {
         }
     }
 
+    // ========== Binary Frame Handling ==========
+
+    /**
+     * Handle a binary WebSocket frame.
+     *
+     * Binary frame layout:
+     * [4 bytes: header length (int32 big-endian)]
+     * [N bytes: UTF-8 JSON header]
+     * [remaining: msgpack payload]
+     */
+    private void handleBinaryMessage(ByteBuffer buffer) {
+        try {
+            if (buffer.remaining() < 4) {
+                LOG.warn("Binary frame too small: {} bytes", buffer.remaining());
+                return;
+            }
+
+            // Read header length
+            int headerLength = buffer.getInt();
+            if (headerLength <= 0 || headerLength > buffer.remaining()) {
+                LOG.warn("Invalid header length: {} (remaining: {})", headerLength, buffer.remaining());
+                return;
+            }
+
+            // Read header JSON
+            byte[] headerBytes = new byte[headerLength];
+            buffer.get(headerBytes);
+            String headerJson = new String(headerBytes, StandardCharsets.UTF_8);
+            JsonNode header = objectMapper.readTree(headerJson);
+
+            String type = header.get("type").asText();
+            String pageKey = header.get("pageKey").asText();
+
+            if ("PAGE_DATA".equals(type)) {
+                String dataType = header.get("dataType").asText();
+                long recordCount = header.get("recordCount").asLong();
+
+                // Read remaining msgpack payload
+                byte[] msgpackData = new byte[buffer.remaining()];
+                buffer.get(msgpackData);
+
+                // Deliver to callback
+                PageDataCallback callback = pageDataCallbacks.get(pageKey);
+                if (callback != null) {
+                    callback.onBinaryData(pageKey, dataType, recordCount, msgpackData);
+                } else {
+                    LOG.debug("No data callback for page {} (binary data discarded)", pageKey);
+                }
+            } else {
+                LOG.debug("Unknown binary frame type: {}", type);
+            }
+        } catch (Exception e) {
+            LOG.warn("Failed to parse binary frame: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * Register a callback for receiving binary page data.
+     *
+     * @param pageKey  The page key to listen for
+     * @param callback Callback that receives raw msgpack bytes
+     */
+    public void setPageDataCallback(String pageKey, PageDataCallback callback) {
+        if (callback != null) {
+            pageDataCallbacks.put(pageKey, callback);
+        } else {
+            pageDataCallbacks.remove(pageKey);
+        }
+    }
+
+    /**
+     * Remove a page data callback.
+     */
+    public void removePageDataCallback(String pageKey) {
+        pageDataCallbacks.remove(pageKey);
+    }
+
     // ========== Key Generation ==========
 
     private String makePageKey(DataType dataType, String symbol, String timeframe, String marketType, long startTime, long endTime) {
@@ -1129,6 +1214,22 @@ public class DataServiceConnection {
          * @param removedTimestamps Timestamps of candles removed to maintain window size
          */
         default void onLiveAppend(Candle candle, List<Long> removedTimestamps) {}
+    }
+
+    /**
+     * Callback for receiving binary page data pushed over WebSocket.
+     * The raw msgpack bytes can be deserialized into the appropriate type.
+     */
+    public interface PageDataCallback {
+        /**
+         * Called when binary page data is received.
+         *
+         * @param pageKey     The page this data belongs to
+         * @param dataType    Data type string (CANDLES, FUNDING_RATES, etc.)
+         * @param recordCount Number of records in the payload
+         * @param msgpackData Raw msgpack bytes to deserialize
+         */
+        void onBinaryData(String pageKey, String dataType, long recordCount, byte[] msgpackData);
     }
 
     /**
@@ -1236,6 +1337,11 @@ public class DataServiceConnection {
         @Override
         public void onMessage(String message) {
             handleMessage(message);
+        }
+
+        @Override
+        public void onMessage(ByteBuffer bytes) {
+            handleBinaryMessage(bytes);
         }
 
         @Override

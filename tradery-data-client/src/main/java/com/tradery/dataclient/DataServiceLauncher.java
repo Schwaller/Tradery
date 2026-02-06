@@ -38,6 +38,7 @@ public class DataServiceLauncher {
     private Process dataServiceProcess;
     private int servicePort;
     private volatile boolean registered = false;
+    private volatile boolean wsManaged = false;
 
     public DataServiceLauncher(String consumerName) {
         this.consumerId = UUID.randomUUID().toString();
@@ -91,6 +92,26 @@ public class DataServiceLauncher {
         return servicePort;
     }
 
+    public String getConsumerId() {
+        return consumerId;
+    }
+
+    public String getConsumerName() {
+        return consumerName;
+    }
+
+    /**
+     * Mark that a WebSocket connection is managing the consumer lifecycle.
+     * When set, HTTP register/heartbeat/unregister are skipped.
+     */
+    public void setWsManaged(boolean wsManaged) {
+        this.wsManaged = wsManaged;
+        if (wsManaged) {
+            // WS onConnect handles registration, so mark as registered
+            registered = true;
+        }
+    }
+
     /**
      * Check if we're registered with the data service.
      */
@@ -104,7 +125,9 @@ public class DataServiceLauncher {
     public void shutdown() {
         heartbeatExecutor.shutdownNow();
 
-        if (registered) {
+        // Only HTTP-unregister if WS isn't managing the lifecycle
+        // (WS onClose handles unregistration automatically)
+        if (registered && !wsManaged) {
             try {
                 unregister();
             } catch (Exception e) {
@@ -292,9 +315,10 @@ public class DataServiceLauncher {
 
     /**
      * Send heartbeat to the data service.
+     * Skipped when WS manages the consumer lifecycle (WS ping/pong handles liveness).
      */
     private void sendHeartbeat() {
-        if (!registered) return;
+        if (!registered || wsManaged) return;
 
         try {
             String url = String.format("http://localhost:%d/consumers/heartbeat", servicePort);

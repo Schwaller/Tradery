@@ -1,13 +1,17 @@
 package com.tradery.news.ai;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tradery.news.ui.IntelConfig;
 import com.tradery.news.ui.IntelLogPanel;
+import okhttp3.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
+import java.time.Duration;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 
@@ -18,10 +22,14 @@ import java.util.function.Consumer;
 public class AiClient {
 
     private static final Logger log = LoggerFactory.getLogger(AiClient.class);
+    private static final String GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta/models/";
+    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final MediaType JSON_MEDIA = MediaType.get("application/json");
 
     private static AiClient instance;
 
     private Consumer<String> logCallback;
+    private OkHttpClient httpClient;
 
     private AiClient() {
     }
@@ -55,6 +63,22 @@ public class AiClient {
      * Check if the configured AI CLI is available.
      */
     public boolean isAvailable() {
+        if (getConfig().getAiProvider() == IntelConfig.AiProvider.GEMINI) {
+            try {
+                IntelConfig config = getConfig();
+                String apiKey = config.getGeminiApiKey();
+                if (apiKey == null || apiKey.isBlank()) return false;
+                Request request = new Request.Builder()
+                    .url("https://generativelanguage.googleapis.com/v1beta/models?key=" + apiKey)
+                    .get()
+                    .build();
+                try (Response response = getHttpClient().newCall(request).execute()) {
+                    return response.isSuccessful();
+                }
+            } catch (Exception e) {
+                return false;
+            }
+        }
         try {
             String cliPath = getCliPath();
             ProcessBuilder pb = new ProcessBuilder(cliPath, "--version");
@@ -71,6 +95,9 @@ public class AiClient {
      * Get the version string from the CLI.
      */
     public String getVersion() throws AiException {
+        if (getConfig().getAiProvider() == IntelConfig.AiProvider.GEMINI) {
+            return "Gemini API - " + getConfig().getGeminiModel();
+        }
         try {
             String cliPath = getCliPath();
             ProcessBuilder pb = new ProcessBuilder(cliPath, "--version");
@@ -112,11 +139,16 @@ public class AiClient {
      */
     public String query(String prompt) throws AiException {
         IntelConfig config = getConfig();
-        String cliPath = getCliPath();
         int timeoutSeconds = config.getAiTimeoutSeconds();
         String provider = getProviderName();
 
         log.debug("AI query to {}: {}", provider, truncate(prompt, 100));
+
+        if (config.getAiProvider() == IntelConfig.AiProvider.GEMINI) {
+            return queryGemini(prompt);
+        }
+
+        String cliPath = getCliPath();
 
         try {
             ProcessBuilder pb = buildProcess(config, cliPath, prompt);
@@ -240,8 +272,94 @@ public class AiClient {
                 String[] parts = cmd.trim().split("\\s+", 2);
                 yield parts[0];
             }
+            case GEMINI -> config.getGeminiModel();
             default -> config.getClaudePath();
         };
+    }
+
+    private OkHttpClient getHttpClient() {
+        if (httpClient == null) {
+            int timeout = getConfig().getAiTimeoutSeconds();
+            httpClient = new OkHttpClient.Builder()
+                .connectTimeout(Duration.ofSeconds(10))
+                .readTimeout(Duration.ofSeconds(timeout))
+                .writeTimeout(Duration.ofSeconds(timeout))
+                .build();
+        }
+        return httpClient;
+    }
+
+    private String queryGemini(String prompt) throws AiException {
+        IntelConfig config = getConfig();
+        String apiKey = config.getGeminiApiKey();
+        String model = config.getGeminiModel();
+        String provider = "GEMINI";
+
+        if (apiKey == null || apiKey.isBlank()) {
+            throw new AiException(AiException.ErrorType.API_KEY_MISSING, "Gemini API key not configured");
+        }
+
+        try {
+            String url = GEMINI_API_BASE + model + ":generateContent";
+
+            String body = JSON.writeValueAsString(java.util.Map.of(
+                "contents", java.util.List.of(java.util.Map.of(
+                    "parts", java.util.List.of(java.util.Map.of("text", prompt))
+                )),
+                "generationConfig", java.util.Map.of(
+                    "temperature", 0.1,
+                    "maxOutputTokens", 4096
+                )
+            ));
+
+            Request request = new Request.Builder()
+                .url(url)
+                .header("x-goog-api-key", apiKey)
+                .header("Content-Type", "application/json")
+                .post(RequestBody.create(body, JSON_MEDIA))
+                .build();
+
+            try (Response response = getHttpClient().newCall(request).execute()) {
+                String responseBody = response.body() != null ? response.body().string() : "";
+
+                if (!response.isSuccessful()) {
+                    AiException error = switch (response.code()) {
+                        case 401, 403 -> new AiException(AiException.ErrorType.API_KEY_MISSING,
+                            "Gemini API key invalid or unauthorized (HTTP " + response.code() + ")");
+                        case 429 -> new AiException(AiException.ErrorType.RATE_LIMITED,
+                            "Gemini rate limit exceeded - free tier allows 15 RPM / 1,000 RPD");
+                        default -> new AiException(AiException.ErrorType.UNKNOWN,
+                            "Gemini API error (HTTP " + response.code() + "): " + truncate(responseBody, 200));
+                    };
+                    logActivityWithDetail("[" + provider + "] Error: " + error.getMessage(), prompt, responseBody);
+                    throw error;
+                }
+
+                JsonNode root = JSON.readTree(responseBody);
+                JsonNode candidates = root.path("candidates");
+                if (candidates.isMissingNode() || candidates.isEmpty()) {
+                    throw new AiException(AiException.ErrorType.UNKNOWN,
+                        "Gemini returned no candidates: " + truncate(responseBody, 200));
+                }
+
+                String result = candidates.get(0).path("content").path("parts").get(0).path("text").asText("");
+
+                String summary = "[" + provider + "] Query completed (" + result.length() + " chars)";
+                logActivityWithDetail(summary, prompt, result);
+                log.debug("AI response from {}: {}", provider, truncate(result, 200));
+
+                return result;
+            }
+        } catch (AiException e) {
+            throw e;
+        } catch (java.net.SocketTimeoutException e) {
+            logActivityWithDetail("[" + provider + "] Timeout", prompt, null);
+            throw new AiException(AiException.ErrorType.TIMEOUT,
+                "Gemini API timed out after " + config.getAiTimeoutSeconds() + " seconds", e);
+        } catch (Exception e) {
+            logActivityWithDetail("[" + provider + "] Error: " + e.getMessage(), prompt, null);
+            throw new AiException(AiException.ErrorType.UNKNOWN, "Gemini query failed: " + e.getMessage(), e);
+        }
     }
 
     private ProcessBuilder buildProcess(IntelConfig config, String cliPath, String prompt) {

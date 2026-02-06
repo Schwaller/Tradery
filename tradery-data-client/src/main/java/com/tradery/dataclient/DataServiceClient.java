@@ -2,6 +2,8 @@ package com.tradery.dataclient;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tradery.core.model.*;
+import com.tradery.data.page.DataType;
+import com.tradery.dataclient.page.DataServiceConnection;
 import okhttp3.*;
 import org.msgpack.jackson.dataformat.MessagePackFactory;
 import org.slf4j.Logger;
@@ -10,6 +12,7 @@ import org.slf4j.LoggerFactory;
 import java.io.IOException;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -19,12 +22,19 @@ import java.util.concurrent.TimeUnit;
 public class DataServiceClient {
     private static final Logger LOG = LoggerFactory.getLogger(DataServiceClient.class);
 
+    private final String host;
+    private final int port;
     private final String baseUrl;
     private final OkHttpClient httpClient;
     private final ObjectMapper jsonMapper;
     private final ObjectMapper msgpackMapper;
 
+    // Optional WebSocket connection for push-based data delivery
+    private volatile DataServiceConnection connection;
+
     public DataServiceClient(String host, int port) {
+        this.host = host;
+        this.port = port;
         this.baseUrl = String.format("http://%s:%d", host, port);
         this.httpClient = new OkHttpClient.Builder()
             .connectTimeout(30, TimeUnit.SECONDS)
@@ -34,6 +44,204 @@ public class DataServiceClient {
         this.jsonMapper = new ObjectMapper();
         // Use default ObjectMapper for MessagePack - records are handled correctly
         this.msgpackMapper = new ObjectMapper(new MessagePackFactory());
+    }
+
+    /**
+     * Set the WebSocket connection for push-based data delivery.
+     * When set, subscribePage() will use WS instead of HTTP polling.
+     */
+    public void setConnection(DataServiceConnection connection) {
+        this.connection = connection;
+    }
+
+    /**
+     * Get the WebSocket connection, or null if not set.
+     */
+    public DataServiceConnection getConnection() {
+        return connection;
+    }
+
+    /**
+     * Get the msgpack ObjectMapper for deserializing binary data.
+     */
+    public ObjectMapper getMsgpackMapper() {
+        return msgpackMapper;
+    }
+
+    /**
+     * Check if a WebSocket connection is active.
+     */
+    public boolean hasActiveConnection() {
+        return connection != null && connection.isConnected();
+    }
+
+    // ==================== WS-based Page Subscription ====================
+
+    /**
+     * Subscribe to a page via WebSocket. Data is pushed to the callback
+     * as binary msgpack frames — no HTTP round-trip needed.
+     *
+     * Falls back to HTTP polling if no WS connection is available.
+     *
+     * @param dataType      Data type (CANDLES, FUNDING, etc.)
+     * @param symbol        Trading symbol
+     * @param timeframe     Timeframe (null for non-timeframe types)
+     * @param startTime     Start time in milliseconds
+     * @param endTime       End time in milliseconds
+     * @param callback      Callback for page lifecycle + data delivery
+     * @return A future that completes with the raw msgpack bytes when data arrives
+     */
+    public CompletableFuture<byte[]> subscribePage(DataType dataType, String symbol, String timeframe,
+                                                     long startTime, long endTime,
+                                                     DataPageCallback callback) {
+        DataServiceConnection conn = this.connection;
+        if (conn == null || !conn.isConnected()) {
+            // No WS — fall back to synchronous HTTP
+            return CompletableFuture.supplyAsync(() -> {
+                try {
+                    return subscribePageViaHttp(dataType, symbol, timeframe, startTime, endTime, callback);
+                } catch (Exception e) {
+                    callback.onError("HTTP fallback failed: " + e.getMessage());
+                    throw new java.util.concurrent.CompletionException(e);
+                }
+            });
+        }
+
+        // WS path: subscribe to page updates + register data callback
+        CompletableFuture<byte[]> future = new CompletableFuture<>();
+
+        conn.subscribePage(dataType, symbol, timeframe, startTime, endTime,
+            new DataServiceConnection.PageUpdateCallback() {
+                @Override
+                public void onStateChanged(String state, int progress) {
+                    callback.onStateChanged(state, progress);
+                }
+
+                @Override
+                public void onDataReady(long recordCount) {
+                    // Binary data will arrive via PageDataCallback
+                }
+
+                @Override
+                public void onError(String message) {
+                    callback.onError(message);
+                    future.completeExceptionally(new IOException(message));
+                }
+
+                @Override
+                public void onEvicted() {
+                    callback.onError("Page evicted");
+                }
+
+                @Override
+                public void onLiveUpdate(Candle candle) {
+                    callback.onLiveUpdate(candle);
+                }
+
+                @Override
+                public void onLiveAppend(Candle candle, List<Long> removedTimestamps) {
+                    callback.onLiveAppend(candle, removedTimestamps);
+                }
+            });
+
+        // Register for binary data push
+        String pageKey = makePageKey(dataType, symbol, timeframe, startTime, endTime);
+        conn.setPageDataCallback(pageKey, (key, dt, recordCount, msgpackData) -> {
+            callback.onData(msgpackData, recordCount);
+            future.complete(msgpackData);
+            // Remove callback after first data delivery (page data is one-shot for anchored pages)
+            conn.removePageDataCallback(key);
+        });
+
+        return future;
+    }
+
+    /**
+     * Unsubscribe from a page.
+     */
+    public void unsubscribePage(DataType dataType, String symbol, String timeframe,
+                                 long startTime, long endTime) {
+        DataServiceConnection conn = this.connection;
+        if (conn != null) {
+            conn.unsubscribePage(dataType, symbol, timeframe, startTime, endTime, null);
+            String pageKey = makePageKey(dataType, symbol, timeframe, startTime, endTime);
+            conn.removePageDataCallback(pageKey);
+        }
+    }
+
+    /**
+     * HTTP fallback for subscribePage when WS is not available.
+     */
+    private byte[] subscribePageViaHttp(DataType dataType, String symbol, String timeframe,
+                                          long startTime, long endTime,
+                                          DataPageCallback callback) throws IOException, InterruptedException {
+        callback.onStateChanged("LOADING", 0);
+
+        // Request page
+        var response = requestPage(
+            new PageRequest(dataType.toWireFormat(), symbol, timeframe, startTime, endTime),
+            "http-fallback-" + System.currentTimeMillis(),
+            "DataServiceClient"
+        );
+
+        // Poll for completion
+        String dsPageKey = response.pageKey();
+        int lastProgress = 0;
+
+        while (true) {
+            var status = getPageStatus(dsPageKey);
+            if (status == null) {
+                throw new IOException("Page status not found: " + dsPageKey);
+            }
+
+            if (status.progress() > lastProgress) {
+                lastProgress = status.progress();
+                callback.onStateChanged("LOADING", Math.min(lastProgress, 95));
+            }
+
+            if ("READY".equals(status.state())) {
+                break;
+            } else if ("ERROR".equals(status.state())) {
+                throw new IOException("Page load error: " + dsPageKey);
+            }
+
+            Thread.sleep(100);
+        }
+
+        // Fetch data
+        byte[] data = getPageData(dsPageKey);
+        if (data != null) {
+            callback.onData(data, 0);
+        }
+        return data;
+    }
+
+    private String makePageKey(DataType dataType, String symbol, String timeframe, long startTime, long endTime) {
+        return new com.tradery.data.page.PageKey(
+            dataType.toWireFormat(), "binance", symbol.toUpperCase(), timeframe,
+            "perp", endTime, endTime - startTime
+        ).toKeyString();
+    }
+
+    /**
+     * Callback for unified page data delivery.
+     * Works for both WS push and HTTP fallback paths.
+     */
+    public interface DataPageCallback {
+        /** Called when page state changes (LOADING, READY, ERROR). */
+        void onStateChanged(String state, int progress);
+
+        /** Called when raw msgpack data is received. */
+        void onData(byte[] msgpackData, long recordCount);
+
+        /** Called on error. */
+        void onError(String message);
+
+        /** Called when an incomplete/forming candle is updated (live pages). */
+        default void onLiveUpdate(Candle candle) {}
+
+        /** Called when a new completed candle is appended (live pages). */
+        default void onLiveAppend(Candle candle, List<Long> removedTimestamps) {}
     }
 
     /**

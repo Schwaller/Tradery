@@ -100,7 +100,7 @@ public class DataStructureFrame extends JFrame {
         erdPanel.setOnManualSelected(() -> manualBtn.setSelected(true));
 
         JToggleButton treeBtn = createLayoutToggle("Tree");
-        treeBtn.addActionListener(e -> { erdPanel.treeLayout(); erdPanel.fitToView(); });
+        treeBtn.addActionListener(e -> erdPanel.treeLayout());
         layoutGroup.add(treeBtn);
         leftPanel.add(treeBtn);
 
@@ -108,6 +108,27 @@ public class DataStructureFrame extends JFrame {
         springBtn.addActionListener(e -> erdPanel.springLayout());
         layoutGroup.add(springBtn);
         leftPanel.add(springBtn);
+
+        // Separator
+        JSeparator sep = new JSeparator(SwingConstants.VERTICAL);
+        sep.setPreferredSize(new Dimension(1, 20));
+        sep.setForeground(new Color(60, 62, 66));
+        leftPanel.add(sep);
+
+        // Flow mode toggle (separate from layout group)
+        boolean initialFlowMode = IntelConfig.get().isErdFlowMode();
+        erdPanel.setFlowMode(initialFlowMode);
+
+        JToggleButton flowToggle = createLayoutToggle("Flow");
+        flowToggle.setSelected(initialFlowMode);
+        flowToggle.addActionListener(e -> {
+            boolean flow = flowToggle.isSelected();
+            erdPanel.setFlowMode(flow);
+            IntelConfig cfg = IntelConfig.get();
+            cfg.setErdFlowMode(flow);
+            cfg.save();
+        });
+        leftPanel.add(flowToggle);
 
         headerBar.add(leftPanel, BorderLayout.WEST);
 

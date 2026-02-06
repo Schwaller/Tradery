@@ -3,6 +3,8 @@ package com.tradery.forge.data.page;
 import com.tradery.core.model.PremiumIndex;
 import com.tradery.data.page.DataType;
 
+import java.util.List;
+
 /**
  * Page manager for premium index data (futures vs spot spread).
  * Requires a timeframe to match strategy resolution.
@@ -13,6 +15,8 @@ public class PremiumPageManager extends DataServicePageManager<PremiumIndex> {
     public PremiumPageManager() {
         super(DataType.PREMIUM_INDEX, "PREMIUM_INDEX", 2,
             (client, pageKey) -> client.getPremiumIndex(pageKey),
-            "data-service/premium");
+            "data-service/premium", 64,
+            (mapper, data) -> mapper.readValue(data,
+                mapper.getTypeFactory().constructCollectionType(List.class, PremiumIndex.class)));
     }
 }

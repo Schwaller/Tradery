@@ -8,6 +8,7 @@ import com.tradery.news.fetch.FetcherRegistry;
 import com.tradery.news.model.Article;
 import com.tradery.news.store.SqliteNewsStore;
 import com.tradery.news.topic.TopicRegistry;
+import com.tradery.news.api.IntelApiServer;
 import com.tradery.news.ui.coin.*;
 
 import javax.swing.*;
@@ -62,6 +63,9 @@ public class IntelFrame extends JFrame {
     // Singleton windows
     private DataStructureFrame dataStructureFrame;
 
+    // API server
+    private IntelApiServer apiServer;
+
     // Current selection
     private enum DetailMode { NONE, ARTICLE, ENTITY }
     private DetailMode currentMode = DetailMode.NONE;
@@ -94,6 +98,14 @@ public class IntelFrame extends JFrame {
 
         initUI();
 
+        // Start API server
+        try {
+            apiServer = new IntelApiServer(this::openWindow);
+            apiServer.start();
+        } catch (Exception e) {
+            System.err.println("Failed to start Intel API server: " + e.getMessage());
+        }
+
         // Save window state and cleanup on close
         addWindowListener(new WindowAdapter() {
             @Override
@@ -106,6 +118,7 @@ public class IntelFrame extends JFrame {
                 cfg.setWindowY(getY());
                 cfg.save();
 
+                if (apiServer != null) apiServer.stop();
                 if (newsGraphPanel != null) newsGraphPanel.stopPhysics();
                 if (coinGraphPanel != null) coinGraphPanel.stopPhysics();
                 if (entityStore != null) entityStore.close();
@@ -1004,6 +1017,18 @@ public class IntelFrame extends JFrame {
     }
 
     // ==================== DIALOGS ====================
+
+    private void openWindow(String windowName) {
+        switch (windowName) {
+            case "data-structure" -> showDataStructureWindow();
+            case "settings" -> showSettingsWindow();
+            default -> {
+                // Bring main frame to front
+                toFront();
+                requestFocus();
+            }
+        }
+    }
 
     private void showDataStructureWindow() {
         if (dataStructureFrame != null && dataStructureFrame.isShowing()) {

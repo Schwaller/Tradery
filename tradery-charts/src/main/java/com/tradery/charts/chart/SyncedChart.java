@@ -6,6 +6,8 @@ import com.tradery.charts.util.ChartPanelFactory;
 import com.tradery.charts.util.ChartStyles;
 import org.jfree.chart.ChartPanel;
 import org.jfree.chart.JFreeChart;
+import org.jfree.chart.axis.AxisLocation;
+import org.jfree.chart.axis.NumberAxis;
 import org.jfree.chart.plot.XYPlot;
 
 /**
@@ -89,6 +91,42 @@ public abstract class SyncedChart {
     public void setFullScreenCallback(Runnable callback) {
         if (chartPanel != null) {
             ChartPanelFactory.setFullScreenCallback(chartPanel, callback);
+        }
+    }
+
+    /**
+     * Set the range axis position: "left", "right", or "both".
+     */
+    public void setRangeAxisPosition(String position) {
+        if (chart == null) return;
+        XYPlot plot = chart.getXYPlot();
+        if ("right".equals(position)) {
+            plot.setRangeAxisLocation(AxisLocation.TOP_OR_RIGHT);
+            // Remove secondary axis if it was in "both" mode
+            if (plot.getRangeAxis(1) != null) {
+                plot.setRangeAxis(1, null);
+            }
+        } else if ("both".equals(position)) {
+            plot.setRangeAxisLocation(AxisLocation.TOP_OR_LEFT);
+            NumberAxis leftAxis = (NumberAxis) plot.getRangeAxis();
+            NumberAxis rightAxis = new NumberAxis();
+            ChartStyles.styleNumberAxis(rightAxis, ChartStyles.getTheme());
+            rightAxis.setAutoRange(false);
+            rightAxis.setRange(leftAxis.getRange());
+            plot.setRangeAxis(1, rightAxis);
+            plot.setRangeAxisLocation(1, AxisLocation.TOP_OR_RIGHT);
+            plot.addChangeListener(event -> {
+                org.jfree.data.Range leftRange = leftAxis.getRange();
+                org.jfree.data.Range rightRange = rightAxis.getRange();
+                if (!leftRange.equals(rightRange)) {
+                    rightAxis.setRange(leftRange);
+                }
+            });
+        } else {
+            plot.setRangeAxisLocation(AxisLocation.TOP_OR_LEFT);
+            if (plot.getRangeAxis(1) != null) {
+                plot.setRangeAxis(1, null);
+            }
         }
     }
 

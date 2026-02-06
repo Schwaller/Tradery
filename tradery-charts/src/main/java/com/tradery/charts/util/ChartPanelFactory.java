@@ -5,6 +5,7 @@ import org.jfree.chart.JFreeChart;
 import org.jfree.chart.ui.RectangleInsets;
 
 import javax.swing.*;
+import java.util.function.Consumer;
 
 /**
  * Factory for creating consistently configured chart panels.
@@ -18,6 +19,26 @@ public final class ChartPanelFactory {
      * Client property key for storing the full-screen toggle callback on a ChartPanel.
      */
     public static final String FULL_SCREEN_CALLBACK_KEY = "fullScreenCallback";
+
+    // Axis position state and callback
+    private static String axisPosition = "left";
+    private static Consumer<String> axisPositionCallback;
+
+    /**
+     * Set the current axis position and callback for changes.
+     * The callback is invoked when the user changes the position via context menu.
+     */
+    public static void setAxisPositionConfig(String position, Consumer<String> onChange) {
+        axisPosition = position;
+        axisPositionCallback = onChange;
+    }
+
+    /**
+     * Get the current axis position.
+     */
+    public static String getAxisPosition() {
+        return axisPosition;
+    }
 
     /**
      * Create a new ChartPanel with standard configuration.
@@ -92,6 +113,33 @@ public final class ChartPanelFactory {
         JMenuItem fitBoth = new JMenuItem("Fit Both");
         fitBoth.addActionListener(e -> panel.restoreAutoBounds());
         popup.add(fitBoth);
+
+        popup.addSeparator();
+
+        // Price axis position submenu
+        JMenu axisMenu = new JMenu("Price Axis");
+        ButtonGroup axisGroup = new ButtonGroup();
+
+        JRadioButtonMenuItem leftItem = new JRadioButtonMenuItem("Left");
+        JRadioButtonMenuItem rightItem = new JRadioButtonMenuItem("Right");
+        JRadioButtonMenuItem bothItem = new JRadioButtonMenuItem("Both");
+
+        leftItem.setSelected("left".equals(axisPosition));
+        rightItem.setSelected("right".equals(axisPosition));
+        bothItem.setSelected("both".equals(axisPosition));
+
+        leftItem.addActionListener(e -> { axisPosition = "left"; if (axisPositionCallback != null) axisPositionCallback.accept("left"); });
+        rightItem.addActionListener(e -> { axisPosition = "right"; if (axisPositionCallback != null) axisPositionCallback.accept("right"); });
+        bothItem.addActionListener(e -> { axisPosition = "both"; if (axisPositionCallback != null) axisPositionCallback.accept("both"); });
+
+        axisGroup.add(leftItem);
+        axisGroup.add(rightItem);
+        axisGroup.add(bothItem);
+
+        axisMenu.add(leftItem);
+        axisMenu.add(rightItem);
+        axisMenu.add(bothItem);
+        popup.add(axisMenu);
 
         popup.addSeparator();
 
