@@ -223,12 +223,12 @@ public class IntelLogPanel extends JPanel {
     // ==================== Inner classes ====================
 
     public enum LogType {
-        INFO("INFO", new Color(180, 180, 190)),
-        SUCCESS("OK", new Color(100, 200, 120)),
-        WARNING("WARN", new Color(220, 180, 80)),
-        ERROR("ERR", new Color(220, 100, 100)),
+        INFO("INFO", new Color(140, 140, 150)),
+        SUCCESS("OK", new Color(140, 160, 140)),
+        WARNING("WARN", new Color(170, 160, 130)),
+        ERROR("ERR", new Color(180, 130, 130)),
         AI("AI", new Color(150, 130, 255)),
-        DATA("DATA", new Color(100, 180, 220));
+        DATA("DATA", new Color(130, 150, 170));
 
         final String tag;
         final Color color;
