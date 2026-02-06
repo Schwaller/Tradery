@@ -244,9 +244,9 @@ public class EntitySearchDialog extends JDialog {
                 searchBtn.setEnabled(true);
 
                 if (result.hasError()) {
-                    appendLog("Error: " + result.error());
                     IntelLogPanel.logError("AI search failed: " + result.error());
-                    showMessage("Search failed: " + result.error());
+                    // Just update status, error details are in activity log
+                    statusLabel.setText("Search failed - see activity log");
                     return;
                 }
 
@@ -260,6 +260,7 @@ public class EntitySearchDialog extends JDialog {
 
                 appendLog("Found " + lastResults.size() + " entities.");
                 IntelLogPanel.logSuccess("AI found " + lastResults.size() + " related entities for " + sourceEntity.name());
+                logScroll.setVisible(false);  // Hide log when results are shown
                 displayResults(lastResults);
                 statusLabel.setText(lastResults.size() + " entities found");
             }));

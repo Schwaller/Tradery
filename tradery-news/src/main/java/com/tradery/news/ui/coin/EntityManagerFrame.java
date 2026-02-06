@@ -313,6 +313,20 @@ public class EntityManagerFrame extends JFrame {
         claudeField.setCaretColor(new Color(200, 200, 210));
         formPanel.add(claudeField, fieldGbc);
 
+        // Claude args
+        labelGbc.gridx = 0; labelGbc.gridy = row;
+        JLabel claudeArgsLabel = new JLabel("Claude CLI args:");
+        claudeArgsLabel.setForeground(new Color(150, 150, 160));
+        formPanel.add(claudeArgsLabel, labelGbc);
+
+        fieldGbc.gridx = 1; fieldGbc.gridy = row++;
+        JTextField claudeArgsField = new JTextField(config.getClaudeArgs());
+        claudeArgsField.setBackground(new Color(60, 62, 66));
+        claudeArgsField.setForeground(new Color(200, 200, 210));
+        claudeArgsField.setCaretColor(new Color(200, 200, 210));
+        claudeArgsField.setToolTipText("CLI args. Prompt sent via stdin.");
+        formPanel.add(claudeArgsField, fieldGbc);
+
         // Codex path
         labelGbc.gridx = 0; labelGbc.gridy = row;
         JLabel codexLabel = new JLabel("Codex CLI path:");
@@ -325,6 +339,20 @@ public class EntityManagerFrame extends JFrame {
         codexField.setForeground(new Color(200, 200, 210));
         codexField.setCaretColor(new Color(200, 200, 210));
         formPanel.add(codexField, fieldGbc);
+
+        // Codex args
+        labelGbc.gridx = 0; labelGbc.gridy = row;
+        JLabel codexArgsLabel = new JLabel("Codex CLI args:");
+        codexArgsLabel.setForeground(new Color(150, 150, 160));
+        formPanel.add(codexArgsLabel, labelGbc);
+
+        fieldGbc.gridx = 1; fieldGbc.gridy = row++;
+        JTextField codexArgsField = new JTextField(config.getCodexArgs());
+        codexArgsField.setBackground(new Color(60, 62, 66));
+        codexArgsField.setForeground(new Color(200, 200, 210));
+        codexArgsField.setCaretColor(new Color(200, 200, 210));
+        codexArgsField.setToolTipText("CLI args. Prompt appended as last argument.");
+        formPanel.add(codexArgsField, fieldGbc);
 
         // Custom command
         labelGbc.gridx = 0; labelGbc.gridy = row;
@@ -345,8 +373,12 @@ public class EntityManagerFrame extends JFrame {
             IntelConfig.AiProvider selected = (IntelConfig.AiProvider) providerCombo.getSelectedItem();
             claudeLabel.setVisible(selected == IntelConfig.AiProvider.CLAUDE);
             claudeField.setVisible(selected == IntelConfig.AiProvider.CLAUDE);
+            claudeArgsLabel.setVisible(selected == IntelConfig.AiProvider.CLAUDE);
+            claudeArgsField.setVisible(selected == IntelConfig.AiProvider.CLAUDE);
             codexLabel.setVisible(selected == IntelConfig.AiProvider.CODEX);
             codexField.setVisible(selected == IntelConfig.AiProvider.CODEX);
+            codexArgsLabel.setVisible(selected == IntelConfig.AiProvider.CODEX);
+            codexArgsField.setVisible(selected == IntelConfig.AiProvider.CODEX);
             customLabel.setVisible(selected == IntelConfig.AiProvider.CUSTOM);
             customField.setVisible(selected == IntelConfig.AiProvider.CUSTOM);
         };
@@ -392,7 +424,9 @@ public class EntityManagerFrame extends JFrame {
         testBtn.addActionListener(e -> testAiConnection(
             (IntelConfig.AiProvider) providerCombo.getSelectedItem(),
             claudeField.getText().trim(),
+            claudeArgsField.getText().trim(),
             codexField.getText().trim(),
+            codexArgsField.getText().trim(),
             customField.getText().trim(),
             testLogArea,
             testBtn
@@ -413,7 +447,9 @@ public class EntityManagerFrame extends JFrame {
         saveBtn.addActionListener(e -> {
             config.setAiProvider((IntelConfig.AiProvider) providerCombo.getSelectedItem());
             config.setClaudePath(claudeField.getText().trim());
+            config.setClaudeArgs(claudeArgsField.getText().trim());
             config.setCodexPath(codexField.getText().trim());
+            config.setCodexArgs(codexArgsField.getText().trim());
             config.setCustomCommand(customField.getText().trim());
             config.setAiTimeoutSeconds((Integer) timeoutSpinner.getValue());
             config.save();
@@ -1065,8 +1101,9 @@ public class EntityManagerFrame extends JFrame {
         }
     }
 
-    private void testAiConnection(IntelConfig.AiProvider provider, String claudePath, String codexPath,
-                                    String customCommand, JTextArea logArea, JButton testBtn) {
+    private void testAiConnection(IntelConfig.AiProvider provider, String claudePath, String claudeArgs,
+                                    String codexPath, String codexArgs, String customCommand,
+                                    JTextArea logArea, JButton testBtn) {
         testBtn.setEnabled(false);
         logArea.setText("");
 
@@ -1097,12 +1134,16 @@ public class EntityManagerFrame extends JFrame {
         IntelConfig config = IntelConfig.get();
         IntelConfig.AiProvider originalProvider = config.getAiProvider();
         String originalClaudePath = config.getClaudePath();
+        String originalClaudeArgs = config.getClaudeArgs();
         String originalCodexPath = config.getCodexPath();
+        String originalCodexArgs = config.getCodexArgs();
         String originalCustomCommand = config.getCustomCommand();
 
         config.setAiProvider(provider);
         config.setClaudePath(claudePath);
+        config.setClaudeArgs(claudeArgs);
         config.setCodexPath(codexPath);
+        config.setCodexArgs(codexArgs);
         config.setCustomCommand(customCommand);
 
         new Thread(() -> {
@@ -1152,10 +1193,19 @@ public class EntityManagerFrame extends JFrame {
 
                 switch (provider) {
                     case CLAUDE -> {
-                        cmd.addAll(java.util.List.of(claudePath, "--print", "--output-format", "text", "--model", "haiku"));
+                        cmd.add(claudePath);
+                        if (claudeArgs != null && !claudeArgs.isBlank()) {
+                            cmd.addAll(java.util.Arrays.asList(claudeArgs.split("\\s+")));
+                        }
                         useStdin = true;
                     }
-                    case CODEX -> cmd.addAll(java.util.List.of(codexPath, "--quiet", "--approval-mode", "full-auto", testPrompt));
+                    case CODEX -> {
+                        cmd.add(codexPath);
+                        if (codexArgs != null && !codexArgs.isBlank()) {
+                            cmd.addAll(java.util.Arrays.asList(codexArgs.split("\\s+")));
+                        }
+                        cmd.add(testPrompt);
+                    }
                     case CUSTOM -> {
                         if (customCommand != null && !customCommand.isBlank()) {
                             cmd.addAll(java.util.Arrays.asList(customCommand.split("\\s+")));
@@ -1218,18 +1268,22 @@ public class EntityManagerFrame extends JFrame {
             } catch (Exception e) {
                 log.accept("❌ Error: " + e.getMessage());
             } finally {
-                restoreAndFinish(config, originalProvider, originalClaudePath, originalCodexPath, originalCustomCommand, testBtn, logArea);
+                restoreAndFinish(config, originalProvider, originalClaudePath, originalClaudeArgs,
+                    originalCodexPath, originalCodexArgs, originalCustomCommand, testBtn, logArea);
             }
         }).start();
     }
 
     private void restoreAndFinish(IntelConfig config, IntelConfig.AiProvider originalProvider,
-                                   String originalClaudePath, String originalCodexPath, String originalCustomCommand,
+                                   String originalClaudePath, String originalClaudeArgs,
+                                   String originalCodexPath, String originalCodexArgs, String originalCustomCommand,
                                    JButton testBtn, JTextArea logArea) {
         // Restore original settings (don't save - user may cancel)
         config.setAiProvider(originalProvider);
         config.setClaudePath(originalClaudePath);
+        config.setClaudeArgs(originalClaudeArgs);
         config.setCodexPath(originalCodexPath);
+        config.setCodexArgs(originalCodexArgs);
         config.setCustomCommand(originalCustomCommand);
 
         SwingUtilities.invokeLater(() -> {

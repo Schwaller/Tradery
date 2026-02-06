@@ -246,12 +246,17 @@ public class AiClient {
 
     private ProcessBuilder buildProcess(IntelConfig config, String cliPath, String prompt) {
         return switch (config.getAiProvider()) {
-            case CODEX -> new ProcessBuilder(
-                cliPath,
-                "--quiet",
-                "--approval-mode", "full-auto",
-                prompt
-            );
+            case CODEX -> {
+                java.util.List<String> args = new java.util.ArrayList<>();
+                args.add(cliPath);
+                // Add configurable args (e.g., "exec")
+                String codexArgs = config.getCodexArgs();
+                if (codexArgs != null && !codexArgs.isBlank()) {
+                    args.addAll(java.util.Arrays.asList(codexArgs.trim().split("\\s+")));
+                }
+                args.add(prompt);
+                yield new ProcessBuilder(args);
+            }
             case CUSTOM -> {
                 // Parse custom command and append prompt as argument
                 String cmd = config.getCustomCommand();
@@ -263,12 +268,16 @@ public class AiClient {
                 args.add(prompt);
                 yield new ProcessBuilder(args);
             }
-            default -> new ProcessBuilder(
-                cliPath,
-                "--print",
-                "--output-format", "text",
-                "--model", "haiku"
-            );
+            default -> {
+                // Claude - use configurable args
+                java.util.List<String> args = new java.util.ArrayList<>();
+                args.add(cliPath);
+                String claudeArgs = config.getClaudeArgs();
+                if (claudeArgs != null && !claudeArgs.isBlank()) {
+                    args.addAll(java.util.Arrays.asList(claudeArgs.trim().split("\\s+")));
+                }
+                yield new ProcessBuilder(args);
+            }
         };
     }
 

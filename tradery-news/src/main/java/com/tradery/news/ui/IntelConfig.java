@@ -37,7 +37,9 @@ public class IntelConfig {
     public enum AiProvider { CLAUDE, CODEX, CUSTOM }
     private AiProvider aiProvider = AiProvider.CLAUDE;
     private String claudePath = "claude";
+    private String claudeArgs = "--print --output-format text --model haiku";
     private String codexPath = "codex";
+    private String codexArgs = "exec";
     private String customCommand = "";  // Full command for custom AI
     private int aiTimeoutSeconds = 60;
 
@@ -146,12 +148,28 @@ public class IntelConfig {
         this.claudePath = claudePath;
     }
 
+    public String getClaudeArgs() {
+        return claudeArgs;
+    }
+
+    public void setClaudeArgs(String claudeArgs) {
+        this.claudeArgs = claudeArgs;
+    }
+
     public String getCodexPath() {
         return codexPath;
     }
 
     public void setCodexPath(String codexPath) {
         this.codexPath = codexPath;
+    }
+
+    public String getCodexArgs() {
+        return codexArgs;
+    }
+
+    public void setCodexArgs(String codexArgs) {
+        this.codexArgs = codexArgs;
     }
 
     public String getCustomCommand() {
