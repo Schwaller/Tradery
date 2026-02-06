@@ -1,6 +1,7 @@
 package com.tradery.news.ui;
 
 import com.formdev.flatlaf.FlatDarkLaf;
+import com.formdev.flatlaf.util.SystemInfo;
 import com.tradery.news.ai.ClaudeCliProcessor;
 import com.tradery.news.fetch.FetchScheduler;
 import com.tradery.news.fetch.FetcherRegistry;
@@ -33,7 +34,6 @@ public class IntelFrame extends JFrame {
     private TimelineGraphPanel newsGraphPanel;
     private JLabel newsStatusLabel;
     private JComboBox<String> limitCombo;
-    private JButton fetchBtn;
     private volatile boolean fetching = false;
 
     // Coins components
@@ -45,7 +45,14 @@ public class IntelFrame extends JFrame {
     private List<CoinRelationship> currentRelationships;
 
     // Shared components
-    private JTabbedPane graphTabs;
+    private JPanel cardPanel;
+    private CardLayout cardLayout;
+    private JToggleButton newsBtn;
+    private JToggleButton coinsBtn;
+
+    // Header action buttons (shown conditionally)
+    private JButton fetchBtn;
+    private JButton resetViewBtn;
     private JPanel detailPanel;
     private JPanel detailContent;
     private JLabel detailTitleLabel;
@@ -66,6 +73,11 @@ public class IntelFrame extends JFrame {
         this.entityStore = new EntityStore();
 
         setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
+
+        // Transparent title bar - title shown in header bar instead
+        getRootPane().putClientProperty("apple.awt.fullWindowContent", true);
+        getRootPane().putClientProperty("apple.awt.transparentTitleBar", true);
+        getRootPane().putClientProperty("apple.awt.windowTitleVisible", false);
 
         // Restore window size/position from config
         IntelConfig config = IntelConfig.get();
@@ -108,7 +120,15 @@ public class IntelFrame extends JFrame {
         JPanel mainPanel = new JPanel(new BorderLayout());
         mainPanel.setBackground(new Color(30, 32, 36));
 
-        // Left side: Graph tabs with toolbars
+        // Initialize card layout first (header buttons reference it)
+        cardLayout = new CardLayout();
+        cardPanel = new JPanel(cardLayout);
+
+        // Full-width header bar: [News][Coin Relations]  --title--  [Settings]
+        JPanel headerBar = createHeaderBar();
+        mainPanel.add(headerBar, BorderLayout.NORTH);
+
+        // Left side: Graph content (cards with toolbars)
         JPanel leftPanel = createGraphPanel();
 
         // Right side: Detail panel + Log panel
@@ -126,28 +146,83 @@ public class IntelFrame extends JFrame {
         setContentPane(mainPanel);
     }
 
+    private JPanel createHeaderBar() {
+        JPanel headerBar = new JPanel(new BorderLayout());
+        headerBar.setBackground(new Color(38, 40, 44));
+        headerBar.setBorder(BorderFactory.createMatteBorder(0, 0, 1, 0, new Color(50, 52, 56)));
+
+        // Left: Toggle buttons (with spacer for macOS traffic lights)
+        JPanel leftBtns = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 4));
+        leftBtns.setOpaque(false);
+        if (SystemInfo.isMacOS) {
+            leftBtns.setBorder(new EmptyBorder(0, 70, 0, 0));
+        }
+
+        ButtonGroup btnGroup = new ButtonGroup();
+
+        newsBtn = createHeaderToggle("News");
+        newsBtn.setSelected(true);
+        newsBtn.addActionListener(e -> {
+            cardLayout.show(cardPanel, "news");
+            updateHeaderButtons();
+        });
+        btnGroup.add(newsBtn);
+        leftBtns.add(newsBtn);
+
+        coinsBtn = createHeaderToggle("Coin Relations");
+        coinsBtn.addActionListener(e -> {
+            cardLayout.show(cardPanel, "coins");
+            updateHeaderButtons();
+        });
+        btnGroup.add(coinsBtn);
+        leftBtns.add(coinsBtn);
+
+        headerBar.add(leftBtns, BorderLayout.WEST);
+
+        // Center: Title
+        JLabel titleLabel = new JLabel("Tradery - Intelligence", SwingConstants.CENTER);
+        titleLabel.setFont(new Font("SansSerif", Font.BOLD, 13));
+        titleLabel.setForeground(new Color(160, 160, 170));
+        headerBar.add(titleLabel, BorderLayout.CENTER);
+
+        // Right: Action buttons + Settings
+        JPanel rightBtns = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 4));
+        rightBtns.setOpaque(false);
+
+        // Fetch New button (for News view)
+        fetchBtn = new JButton("Fetch New");
+        fetchBtn.setFont(new Font("SansSerif", Font.PLAIN, 11));
+        fetchBtn.setMargin(new Insets(6, 14, 6, 14));
+        fetchBtn.setToolTipText("Fetch new articles with AI extraction");
+        fetchBtn.addActionListener(e -> fetchNewArticles());
+        rightBtns.add(fetchBtn);
+
+        // Reset View button (for Coins view)
+        resetViewBtn = new JButton("Reset View");
+        resetViewBtn.setFont(new Font("SansSerif", Font.PLAIN, 11));
+        resetViewBtn.setMargin(new Insets(6, 14, 6, 14));
+        resetViewBtn.addActionListener(e -> coinGraphPanel.resetView());
+        resetViewBtn.setVisible(false);  // Hidden by default (News is selected)
+        rightBtns.add(resetViewBtn);
+
+        JButton settingsBtn = new JButton("Settings");
+        settingsBtn.setFont(new Font("SansSerif", Font.PLAIN, 11));
+        settingsBtn.setMargin(new Insets(6, 14, 6, 14));
+        settingsBtn.addActionListener(e -> showSettingsWindow());
+        rightBtns.add(settingsBtn);
+
+        headerBar.add(rightBtns, BorderLayout.EAST);
+
+        return headerBar;
+    }
+
     private JPanel createGraphPanel() {
         JPanel panel = new JPanel(new BorderLayout());
         panel.setBackground(new Color(30, 32, 36));
 
-        // Tab bar with settings button on right
-        JPanel tabBarPanel = new JPanel(new BorderLayout());
-        tabBarPanel.setBackground(new Color(38, 40, 44));
+        // cardLayout and cardPanel already initialized in initUI()
 
-        graphTabs = new JTabbedPane();
-        graphTabs.setTabPlacement(JTabbedPane.TOP);
-        graphTabs.setFont(new Font("SansSerif", Font.BOLD, 12));
-
-        // Coins tab
-        JPanel coinsPanel = new JPanel(new BorderLayout());
-        coinsPanel.add(createCoinsToolbar(), BorderLayout.NORTH);
-        coinGraphPanel = new CoinGraphPanel();
-        coinGraphPanel.setOnEntitySelected(this::showEntityDetails);
-        coinsPanel.add(coinGraphPanel, BorderLayout.CENTER);
-        coinsPanel.add(createCoinsStatusBar(), BorderLayout.SOUTH);
-        graphTabs.addTab("Coins", coinsPanel);
-
-        // News tab
+        // News panel
         JPanel newsPanel = new JPanel(new BorderLayout());
         newsPanel.add(createNewsToolbar(), BorderLayout.NORTH);
         newsGraphPanel = new TimelineGraphPanel();
@@ -155,22 +230,45 @@ public class IntelFrame extends JFrame {
         newsGraphPanel.setOnTopicSelected(this::showTopicDetails);
         newsPanel.add(newsGraphPanel, BorderLayout.CENTER);
         newsPanel.add(createNewsStatusBar(), BorderLayout.SOUTH);
-        graphTabs.addTab("News", newsPanel);
+        cardPanel.add(newsPanel, "news");
 
-        // Settings button at right of tabs
-        JButton settingsBtn = new JButton("Settings");
-        settingsBtn.setFont(new Font("SansSerif", Font.PLAIN, 11));
-        settingsBtn.setMargin(new Insets(4, 12, 4, 12));
-        settingsBtn.addActionListener(e -> showSettingsWindow());
-        JPanel settingsBtnPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 4));
-        settingsBtnPanel.setOpaque(false);
-        settingsBtnPanel.add(settingsBtn);
+        // Coins panel
+        JPanel coinsPanel = new JPanel(new BorderLayout());
+        coinsPanel.add(createCoinsToolbar(), BorderLayout.NORTH);
+        coinGraphPanel = new CoinGraphPanel();
+        coinGraphPanel.setOnEntitySelected(this::showEntityDetails);
+        coinsPanel.add(coinGraphPanel, BorderLayout.CENTER);
+        coinsPanel.add(createCoinsStatusBar(), BorderLayout.SOUTH);
+        cardPanel.add(coinsPanel, "coins");
 
-        tabBarPanel.add(graphTabs, BorderLayout.CENTER);
-        tabBarPanel.add(settingsBtnPanel, BorderLayout.EAST);
-
-        panel.add(tabBarPanel, BorderLayout.CENTER);
+        panel.add(cardPanel, BorderLayout.CENTER);
         return panel;
+    }
+
+    private JToggleButton createHeaderToggle(String text) {
+        JToggleButton btn = new JToggleButton(text);
+        btn.setFont(new Font("SansSerif", Font.BOLD, 11));
+        btn.setMargin(new Insets(6, 14, 6, 14));
+        btn.setFocusPainted(false);
+        btn.setBorderPainted(false);
+        btn.setBackground(new Color(38, 40, 44));
+        btn.setForeground(new Color(160, 160, 170));
+        btn.addChangeListener(e -> {
+            if (btn.isSelected()) {
+                btn.setBackground(new Color(55, 57, 61));
+                btn.setForeground(new Color(220, 220, 230));
+            } else {
+                btn.setBackground(new Color(38, 40, 44));
+                btn.setForeground(new Color(160, 160, 170));
+            }
+        });
+        return btn;
+    }
+
+    private void updateHeaderButtons() {
+        boolean isNewsView = newsBtn.isSelected();
+        fetchBtn.setVisible(isNewsView);
+        resetViewBtn.setVisible(!isNewsView);
     }
 
     private JPanel createRightPanel() {
@@ -220,16 +318,11 @@ public class IntelFrame extends JFrame {
 
     // ==================== TOOLBARS ====================
 
-    private JToolBar createCoinsToolbar() {
-        JToolBar toolbar = new JToolBar();
-        toolbar.setFloatable(false);
+    private JPanel createCoinsToolbar() {
+        // Empty toolbar placeholder (Reset View moved to header)
+        JPanel toolbar = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 4));
         toolbar.setBackground(new Color(38, 40, 44));
         toolbar.setBorder(BorderFactory.createMatteBorder(0, 0, 1, 0, new Color(50, 52, 56)));
-
-        JButton resetBtn = new JButton("Reset View");
-        resetBtn.addActionListener(e -> coinGraphPanel.resetView());
-        toolbar.add(resetBtn);
-
         return toolbar;
     }
 
@@ -251,20 +344,13 @@ public class IntelFrame extends JFrame {
         return statusBar;
     }
 
-    private JToolBar createNewsToolbar() {
-        JToolBar toolbar = new JToolBar();
-        toolbar.setFloatable(false);
+    private JPanel createNewsToolbar() {
+        // Toolbar with Show: limit combo (Fetch New moved to header)
+        JPanel toolbar = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 4));
         toolbar.setBackground(new Color(38, 40, 44));
         toolbar.setBorder(BorderFactory.createMatteBorder(0, 0, 1, 0, new Color(50, 52, 56)));
 
-        fetchBtn = new JButton("Fetch New");
-        fetchBtn.setToolTipText("Fetch new articles with AI extraction");
-        fetchBtn.addActionListener(e -> fetchNewArticles());
-        toolbar.add(fetchBtn);
-
-        toolbar.addSeparator();
-
-        toolbar.add(new JLabel(" Show: "));
+        toolbar.add(new JLabel("Show:"));
         limitCombo = new JComboBox<>(new String[]{"100", "250", "500", "1000"});
         limitCombo.setSelectedItem("500");
         limitCombo.addActionListener(e -> {
@@ -1019,7 +1105,8 @@ public class IntelFrame extends JFrame {
 
     public static void main(String[] args) {
         try {
-            FlatDarkLaf.setup();
+            // Apply saved theme (or default)
+            IntelConfig.applyCurrentTheme();
             UIManager.put("Button.arc", 5);
             UIManager.put("Component.arc", 5);
             UIManager.put("TextComponent.arc", 5);
