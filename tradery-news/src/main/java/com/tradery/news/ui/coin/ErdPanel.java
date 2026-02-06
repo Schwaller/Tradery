@@ -31,7 +31,7 @@ public class ErdPanel extends JPanel {
     private static final int PORT_RADIUS = 5;
     private static final int GRID_SPACING = 20;
     private static final int FLOW_REL_W = 130;
-    private static final int FLOW_REL_H = 34;
+    private static final int FLOW_REL_H = 26;
 
     private SchemaRegistry registry;
     private Consumer<Void> onDataChanged;
@@ -453,35 +453,59 @@ public class ErdPanel extends JPanel {
         double y = type.erdY();
         boolean isSelected = type == selectedType;
         boolean isHovered = type == hoveredType;
+        boolean hasLabel = type.label() != null && !type.label().isEmpty();
+
+        // Measure text to compute actual width
+        g2.setFont(new Font("SansSerif", Font.BOLD, 11));
+        FontMetrics fmName = g2.getFontMetrics();
+        int nameW = fmName.stringWidth(type.name());
+
+        int labelW = 0;
+        FontMetrics fmLabel = null;
+        String labelText = null;
+        if (hasLabel) {
+            g2.setFont(new Font("SansSerif", Font.ITALIC, 9));
+            fmLabel = g2.getFontMetrics();
+            labelText = "\"" + type.label() + "\"";
+            labelW = fmLabel.stringWidth(labelText);
+        }
+
+        int w = Math.max(nameW, labelW) + 6; // 3px padding each side
+        double cx = x + FLOW_REL_W / 2.0; // keep centered on layout position
+        double cy = y + FLOW_REL_H / 2.0;
+        double bx = cx - w / 2.0;
 
         // Selection/hover indicator only (no box fill or border — flow tube is the background)
         if (isSelected || isHovered) {
             g2.setStroke(new BasicStroke(isSelected ? 2.5f : 1.5f));
             g2.setColor(isSelected ? SELECTION_COLOR : type.color().brighter());
-            g2.draw(new RoundRectangle2D.Double(x - 2, y - 2, FLOW_REL_W + 4, FLOW_REL_H + 4, 8, 8));
+            g2.draw(new RoundRectangle2D.Double(bx - 2, y - 2, w + 4, FLOW_REL_H + 4, 8, 8));
         }
 
-        double cx = x + FLOW_REL_W / 2.0;
-        double cy = y + FLOW_REL_H / 2.0;
-
-        boolean hasLabel = type.label() != null && !type.label().isEmpty();
-
-        // Name (shift up slightly if label present)
+        // Name
         g2.setColor(type.color());
         g2.setFont(new Font("SansSerif", Font.BOLD, 11));
-        FontMetrics fm = g2.getFontMetrics();
-        String name = type.name();
-        double nameY = hasLabel ? cy - 2 : cy + fm.getAscent() / 2.0 - 1;
-        g2.drawString(name, (int) (cx - fm.stringWidth(name) / 2.0), (int) nameY);
+        double nameY = hasLabel ? cy - 1 : cy + fmName.getAscent() / 2.0;
+        g2.drawString(type.name(), (int) (cx - nameW / 2.0), (int) nameY);
 
         // Label
         if (hasLabel) {
             g2.setColor(new Color(150, 150, 160));
             g2.setFont(new Font("SansSerif", Font.ITALIC, 9));
-            fm = g2.getFontMetrics();
-            String label = "\"" + type.label() + "\"";
-            g2.drawString(label, (int) (cx - fm.stringWidth(label) / 2.0), (int) (cy + 10));
+            g2.drawString(labelText, (int) (cx - labelW / 2.0), (int) (cy + 10));
         }
+    }
+
+    /** Compute the actual flow rel box width based on text content. */
+    private int flowRelWidth(Graphics2D g2, SchemaType rel) {
+        g2.setFont(new Font("SansSerif", Font.BOLD, 11));
+        int nameW = g2.getFontMetrics().stringWidth(rel.name());
+        int labelW = 0;
+        if (rel.label() != null && !rel.label().isEmpty()) {
+            g2.setFont(new Font("SansSerif", Font.ITALIC, 9));
+            labelW = g2.getFontMetrics().stringWidth("\"" + rel.label() + "\"");
+        }
+        return Math.max(nameW, labelW) + 16;
     }
 
     private void drawFlowArrows(Graphics2D g2, SchemaType rel) {
@@ -493,9 +517,11 @@ public class ErdPanel extends JPanel {
 
         Color relColor = rel.color();
 
-        // Rel box edges
-        double relLeft = rel.erdX();
-        double relRight = rel.erdX() + FLOW_REL_W;
+        // Rel box edges (dynamic width based on text)
+        int actualW = flowRelWidth(g2, rel);
+        double relCx = rel.erdX() + FLOW_REL_W / 2.0;
+        double relLeft = relCx - actualW / 2.0;
+        double relRight = relCx + actualW / 2.0;
         double relTop = rel.erdY();
         double relBottom = rel.erdY() + FLOW_REL_H;
 
