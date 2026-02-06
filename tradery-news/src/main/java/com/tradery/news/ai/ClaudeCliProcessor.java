@@ -9,15 +9,11 @@ import com.tradery.news.model.ImportanceLevel;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.BufferedReader;
-import java.io.InputStreamReader;
-import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.TimeUnit;
 
 /**
- * AI processor using Claude CLI (no API costs - uses existing subscription).
+ * AI processor using AiClient for news extraction.
  */
 public class ClaudeCliProcessor implements AiProcessor {
 
@@ -82,29 +78,15 @@ public class ClaudeCliProcessor implements AiProcessor {
         Sentiment: -1.0 (very negative) to +1.0 (very positive)
         """;
 
-    private final String claudePath;
-    private final int timeoutSeconds;
+    private final AiClient aiClient;
 
     public ClaudeCliProcessor() {
-        this("claude", 60);
-    }
-
-    public ClaudeCliProcessor(String claudePath, int timeoutSeconds) {
-        this.claudePath = claudePath;
-        this.timeoutSeconds = timeoutSeconds;
+        this.aiClient = AiClient.getInstance();
     }
 
     @Override
     public boolean isAvailable() {
-        try {
-            ProcessBuilder pb = new ProcessBuilder(claudePath, "--version");
-            pb.redirectErrorStream(true);
-            Process p = pb.start();
-            boolean finished = p.waitFor(5, TimeUnit.SECONDS);
-            return finished && p.exitValue() == 0;
-        } catch (Exception e) {
-            return false;
-        }
+        return aiClient.isAvailable();
     }
 
     @Override
@@ -116,51 +98,16 @@ public class ClaudeCliProcessor implements AiProcessor {
         );
 
         try {
-            String json = runClaude(prompt);
+            String response = aiClient.query(prompt);
+            String json = extractJson(response);
             return parseResult(json);
+        } catch (AiException e) {
+            log.error("Failed to process article {}: {}", article.id(), e.getMessage());
+            return emptyResult();
         } catch (Exception e) {
             log.error("Failed to process article {}: {}", article.id(), e.getMessage());
             return emptyResult();
         }
-    }
-
-    private String runClaude(String prompt) throws Exception {
-        ProcessBuilder pb = new ProcessBuilder(
-            claudePath,
-            "--print",              // Non-interactive mode
-            "--output-format", "text",
-            "--model", "haiku"      // Fast & cheap
-        );
-        pb.redirectErrorStream(true);
-
-        Process process = pb.start();
-
-        // Write prompt to stdin
-        try (OutputStream stdin = process.getOutputStream()) {
-            stdin.write(prompt.getBytes());
-            stdin.flush();
-        }
-
-        // Read output
-        StringBuilder output = new StringBuilder();
-        try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
-            String line;
-            while ((line = reader.readLine()) != null) {
-                output.append(line).append("\n");
-            }
-        }
-
-        boolean finished = process.waitFor(timeoutSeconds, TimeUnit.SECONDS);
-        if (!finished) {
-            process.destroyForcibly();
-            throw new RuntimeException("Claude CLI timed out");
-        }
-
-        if (process.exitValue() != 0) {
-            throw new RuntimeException("Claude CLI failed: " + output);
-        }
-
-        return extractJson(output.toString());
     }
 
     private String extractJson(String text) {

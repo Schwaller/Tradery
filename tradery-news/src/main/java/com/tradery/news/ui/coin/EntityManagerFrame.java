@@ -1,5 +1,6 @@
 package com.tradery.news.ui.coin;
 
+import com.tradery.news.ai.AiClient;
 import com.tradery.news.fetch.RssFetcher;
 import com.tradery.news.ui.IntelConfig;
 
@@ -83,8 +84,9 @@ public class EntityManagerFrame extends JFrame {
         // News Sources tab
         tabbedPane.addTab("News Sources", createNewsSourcesTab());
 
-        // Config tab
+        // Config tabs
         tabbedPane.addTab("AI", createAiConfigTab());
+        tabbedPane.addTab("Theme", createThemeTab());
 
         mainPanel.add(tabbedPane, BorderLayout.CENTER);
         setContentPane(mainPanel);
@@ -334,6 +336,40 @@ public class EntityManagerFrame extends JFrame {
         JSpinner timeoutSpinner = new JSpinner(new SpinnerNumberModel(config.getAiTimeoutSeconds(), 10, 300, 10));
         formPanel.add(timeoutSpinner, fieldGbc);
 
+        // Test button
+        labelGbc.gridx = 0; labelGbc.gridy = row;
+        formPanel.add(new JLabel(), labelGbc);  // Empty label for alignment
+
+        fieldGbc.gridx = 1; fieldGbc.gridy = row++;
+        JPanel testPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
+        testPanel.setBackground(new Color(30, 32, 36));
+        JButton testBtn = new JButton("Test Connection");
+        testPanel.add(testBtn);
+        formPanel.add(testPanel, fieldGbc);
+
+        // Test log area
+        labelGbc.gridx = 0; labelGbc.gridy = row;
+        formPanel.add(new JLabel(), labelGbc);
+
+        fieldGbc.gridx = 1; fieldGbc.gridy = row++;
+        JTextArea testLogArea = new JTextArea(4, 40);
+        testLogArea.setFont(new Font("Monospaced", Font.PLAIN, 10));
+        testLogArea.setBackground(new Color(35, 37, 41));
+        testLogArea.setForeground(new Color(140, 140, 150));
+        testLogArea.setEditable(false);
+        testLogArea.setLineWrap(true);
+        JScrollPane testLogScroll = new JScrollPane(testLogArea);
+        testLogScroll.setBorder(BorderFactory.createLineBorder(new Color(50, 52, 56)));
+        formPanel.add(testLogScroll, fieldGbc);
+
+        testBtn.addActionListener(e -> testAiConnection(
+            (IntelConfig.AiProvider) providerCombo.getSelectedItem(),
+            claudeField.getText().trim(),
+            codexField.getText().trim(),
+            testLogArea,
+            testBtn
+        ));
+
         // Spacer
         labelGbc.gridx = 0; labelGbc.gridy = row;
         labelGbc.weighty = 1.0;
@@ -352,11 +388,61 @@ public class EntityManagerFrame extends JFrame {
             config.setCodexPath(codexField.getText().trim());
             config.setAiTimeoutSeconds((Integer) timeoutSpinner.getValue());
             config.save();
-            JOptionPane.showMessageDialog(this, "AI settings saved.", "Saved", JOptionPane.INFORMATION_MESSAGE);
+            JOptionPane.showMessageDialog(this, "Settings saved.", "Saved", JOptionPane.INFORMATION_MESSAGE);
         });
         buttonPanel.add(saveBtn);
 
         panel.add(buttonPanel, BorderLayout.SOUTH);
+
+        return panel;
+    }
+
+    private JPanel createThemeTab() {
+        JPanel panel = new JPanel(new BorderLayout());
+        panel.setBackground(new Color(30, 32, 36));
+        panel.setBorder(new EmptyBorder(20, 20, 20, 20));
+
+        JPanel contentPanel = new JPanel();
+        contentPanel.setLayout(new BoxLayout(contentPanel, BoxLayout.Y_AXIS));
+        contentPanel.setBackground(new Color(30, 32, 36));
+
+        // Header
+        JLabel headerLabel = new JLabel("Select UI Theme");
+        headerLabel.setForeground(new Color(180, 180, 190));
+        headerLabel.setFont(headerLabel.getFont().deriveFont(Font.BOLD, 14f));
+        headerLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
+        contentPanel.add(headerLabel);
+        contentPanel.add(Box.createVerticalStrut(15));
+
+        // Theme list
+        DefaultListModel<String> themeListModel = new DefaultListModel<>();
+        for (String theme : IntelConfig.getAvailableThemes()) {
+            themeListModel.addElement(theme);
+        }
+
+        JList<String> themeList = new JList<>(themeListModel);
+        themeList.setBackground(new Color(35, 37, 41));
+        themeList.setForeground(new Color(200, 200, 210));
+        themeList.setSelectionBackground(new Color(60, 80, 100));
+        themeList.setSelectionForeground(new Color(220, 220, 230));
+        themeList.setSelectedValue(IntelConfig.getCurrentTheme(), true);
+        themeList.setFixedCellHeight(28);
+        themeList.addListSelectionListener(e -> {
+            if (!e.getValueIsAdjusting()) {
+                String selected = themeList.getSelectedValue();
+                if (selected != null) {
+                    IntelConfig.setTheme(selected);
+                }
+            }
+        });
+
+        JScrollPane themeScroll = new JScrollPane(themeList);
+        themeScroll.setBorder(BorderFactory.createLineBorder(new Color(60, 62, 66)));
+        themeScroll.setAlignmentX(Component.LEFT_ALIGNMENT);
+        themeScroll.setPreferredSize(new Dimension(300, 400));
+        contentPanel.add(themeScroll);
+
+        panel.add(contentPanel, BorderLayout.WEST);
 
         return panel;
     }
@@ -948,6 +1034,80 @@ public class EntityManagerFrame extends JFrame {
                 }
             }
         }
+    }
+
+    private void testAiConnection(IntelConfig.AiProvider provider, String claudePath, String codexPath,
+                                    JTextArea logArea, JButton testBtn) {
+        testBtn.setEnabled(false);
+        logArea.setText("");
+
+        String cliPath = provider == IntelConfig.AiProvider.CODEX ? codexPath : claudePath;
+        String providerName = provider.name();
+
+        Consumer<String> log = msg -> SwingUtilities.invokeLater(() -> {
+            logArea.append(msg + "\n");
+            logArea.setCaretPosition(logArea.getDocument().getLength());
+        });
+
+        if (cliPath == null || cliPath.trim().isEmpty()) {
+            log.accept("❌ Path not configured for " + providerName);
+            testBtn.setEnabled(true);
+            return;
+        }
+
+        // Temporarily apply the settings being tested
+        IntelConfig config = IntelConfig.get();
+        IntelConfig.AiProvider originalProvider = config.getAiProvider();
+        String originalClaudePath = config.getClaudePath();
+        String originalCodexPath = config.getCodexPath();
+
+        config.setAiProvider(provider);
+        config.setClaudePath(claudePath);
+        config.setCodexPath(codexPath);
+
+        new Thread(() -> {
+            log.accept("🔍 Checking " + providerName + " CLI at: " + cliPath);
+
+            AiClient aiClient = AiClient.getInstance();
+
+            // Step 1: Check version
+            String version;
+            try {
+                version = aiClient.getVersion();
+                log.accept("✓ Found: " + version);
+            } catch (Exception e) {
+                log.accept("❌ " + e.getMessage());
+                restoreAndFinish(config, originalProvider, originalClaudePath, originalCodexPath, testBtn, logArea);
+                return;
+            }
+
+            // Step 2: Test with a simple prompt
+            log.accept("🧠 Testing AI response (this may take ~10-30s)...");
+            AiClient.TestResult result = aiClient.testConnection();
+
+            if (result.success()) {
+                log.accept("✓ " + result.message());
+                log.accept("✅ Connection working!");
+            } else {
+                log.accept("❌ " + result.message());
+            }
+
+            restoreAndFinish(config, originalProvider, originalClaudePath, originalCodexPath, testBtn, logArea);
+        }).start();
+    }
+
+    private void restoreAndFinish(IntelConfig config, IntelConfig.AiProvider originalProvider,
+                                   String originalClaudePath, String originalCodexPath,
+                                   JButton testBtn, JTextArea logArea) {
+        // Restore original settings (don't save - user may cancel)
+        config.setAiProvider(originalProvider);
+        config.setClaudePath(originalClaudePath);
+        config.setCodexPath(originalCodexPath);
+
+        SwingUtilities.invokeLater(() -> {
+            testBtn.setEnabled(true);
+            logArea.setForeground(logArea.getText().contains("✅") ? new Color(100, 200, 120) : new Color(200, 140, 140));
+        });
     }
 
     private void showError(String message) {

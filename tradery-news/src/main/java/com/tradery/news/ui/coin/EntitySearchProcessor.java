@@ -2,62 +2,42 @@ package com.tradery.news.ui.coin;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.tradery.news.ui.IntelConfig;
+import com.tradery.news.ai.AiClient;
+import com.tradery.news.ai.AiException;
 import com.tradery.news.ui.IntelLogPanel;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.BufferedReader;
-import java.io.InputStreamReader;
-import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 
 /**
- * AI processor for entity discovery using Claude or Codex CLI.
+ * AI processor for entity discovery using AiClient.
  */
 public class EntitySearchProcessor {
 
     private static final Logger log = LoggerFactory.getLogger(EntitySearchProcessor.class);
     private static final ObjectMapper mapper = new ObjectMapper();
 
+    private final AiClient aiClient;
+
     public EntitySearchProcessor() {
-    }
-
-    private IntelConfig getConfig() {
-        return IntelConfig.get();
-    }
-
-    private String getCliPath() {
-        IntelConfig config = getConfig();
-        return config.getAiProvider() == IntelConfig.AiProvider.CODEX
-            ? config.getCodexPath()
-            : config.getClaudePath();
+        this.aiClient = AiClient.getInstance();
     }
 
     /**
      * Check if selected AI CLI is available.
      */
     public boolean isAvailable() {
-        try {
-            String cliPath = getCliPath();
-            ProcessBuilder pb = new ProcessBuilder(cliPath, "--version");
-            pb.redirectErrorStream(true);
-            Process p = pb.start();
-            boolean finished = p.waitFor(5, TimeUnit.SECONDS);
-            return finished && p.exitValue() == 0;
-        } catch (Exception e) {
-            return false;
-        }
+        return aiClient.isAvailable();
     }
 
     /**
      * Get the name of the current AI provider.
      */
     public String getProviderName() {
-        return getConfig().getAiProvider().name();
+        return aiClient.getProviderName();
     }
 
     /**
@@ -95,7 +75,8 @@ public class EntitySearchProcessor {
 
         try {
             if (logger != null) logger.accept("Calling " + provider + " CLI...");
-            String json = runAiCli(prompt);
+            String response = aiClient.query(prompt);
+            String json = extractJson(response);
             if (logger != null) logger.accept("Parsing JSON response...");
             SearchResult result = parseResult(json);
 
@@ -117,6 +98,10 @@ public class EntitySearchProcessor {
             }
 
             return result;
+        } catch (AiException e) {
+            log.error("Failed to search for related entities: {}", e.getMessage());
+            IntelLogPanel.logError("AI error: " + e.getMessage());
+            return new SearchResult(List.of(), "Error: " + e.getMessage());
         } catch (Exception e) {
             log.error("Failed to search for related entities: {}", e.getMessage());
             IntelLogPanel.logError("AI error: " + e.getMessage());
@@ -235,62 +220,6 @@ public class EntitySearchProcessor {
             return String.format("%.1fM", marketCap / 1_000_000L);
         }
         return String.format("%.0f", marketCap);
-    }
-
-    private String runAiCli(String prompt) throws Exception {
-        IntelConfig config = getConfig();
-        String cliPath = getCliPath();
-        int timeoutSeconds = config.getAiTimeoutSeconds();
-
-        ProcessBuilder pb;
-        if (config.getAiProvider() == IntelConfig.AiProvider.CODEX) {
-            // Codex CLI (OpenAI)
-            pb = new ProcessBuilder(
-                cliPath,
-                "--quiet",
-                "--approval-mode", "full-auto",
-                prompt
-            );
-        } else {
-            // Claude CLI (default)
-            pb = new ProcessBuilder(
-                cliPath,
-                "--print",
-                "--output-format", "text",
-                "--model", "haiku"
-            );
-        }
-        pb.redirectErrorStream(true);
-
-        Process process = pb.start();
-
-        // For Claude, write prompt to stdin
-        if (config.getAiProvider() == IntelConfig.AiProvider.CLAUDE) {
-            try (OutputStream stdin = process.getOutputStream()) {
-                stdin.write(prompt.getBytes());
-                stdin.flush();
-            }
-        }
-
-        StringBuilder output = new StringBuilder();
-        try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
-            String line;
-            while ((line = reader.readLine()) != null) {
-                output.append(line).append("\n");
-            }
-        }
-
-        boolean finished = process.waitFor(timeoutSeconds, TimeUnit.SECONDS);
-        if (!finished) {
-            process.destroyForcibly();
-            throw new RuntimeException(getProviderName() + " CLI timed out after " + timeoutSeconds + " seconds");
-        }
-
-        if (process.exitValue() != 0) {
-            throw new RuntimeException(getProviderName() + " CLI failed: " + output);
-        }
-
-        return extractJson(output.toString());
     }
 
     private String extractJson(String text) {
