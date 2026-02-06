@@ -30,7 +30,7 @@ public class TimelineGraphPanel extends JPanel {
     private static final int MARGIN_RIGHT = 20;
     private static final int MARGIN_TOP = 30;
     private static final int MARGIN_BOTTOM = 50;
-    private static final int TIMELINE_OFFSET = 20;  // Extra offset to push timeline lower
+    private static final int TIMELINE_OFFSET = 25;  // Extra offset to push timeline lower
 
     private static final DateTimeFormatter TIME_FMT = DateTimeFormatter.ofPattern("HH:mm");
     private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ofPattern("MMM d");
