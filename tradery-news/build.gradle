@@ -4,6 +4,7 @@
 plugins {
     id 'java-library'
     id 'application'
+    id 'org.beryx.jlink'
 }
 
 application {
@@ -34,4 +35,141 @@ dependencies {
     // UI
     implementation 'com.formdev:flatlaf:3.4'
     implementation 'com.formdev:flatlaf-intellij-themes:3.4'
+}
+
+// jlink configuration for creating minimal custom JRE
+jlink {
+    moduleName = 'com.tradery.news'
+    mergedModuleName = 'com.tradery.news.merged'
+
+    options = [
+        '--strip-debug',
+        '--compress', 'zip-9',
+        '--no-header-files',
+        '--no-man-pages'
+    ]
+
+    // Add transitive dependencies that might be missing
+    addExtraDependencies("jackson")
+    addExtraDependencies("yaml")
+
+    launcher {
+        name = 'intelligence'
+        jvmArgs = [
+            '-Xmx512m',
+            // Required for Jackson reflection on modular code
+            '--add-opens', 'com.tradery.news/com.tradery.news.model=com.fasterxml.jackson.databind',
+            '--add-opens', 'com.tradery.news/com.tradery.news.topic=com.fasterxml.jackson.databind'
+        ]
+    }
+
+    // Merge non-modular JARs into a single module
+    mergedModule {
+        additive = true
+
+        // ServiceLoader declarations for SLF4J
+        uses 'org.slf4j.spi.SLF4JServiceProvider'
+    }
+
+    // Force merge non-modular/automatic module dependencies
+    forceMerge('rome', 'jdom2', 'jsoup', 'okhttp', 'okio', 'slf4j')
+
+    jpackage {
+        imageName = 'Intelligence'
+        installerName = 'Intelligence'
+        appVersion = project.version
+
+        // macOS
+        if (org.gradle.internal.os.OperatingSystem.current().isMacOsX()) {
+            icon = 'src/main/resources/icon.icns'
+            installerType = 'dmg'
+        }
+        // Windows
+        if (org.gradle.internal.os.OperatingSystem.current().isWindows()) {
+            icon = 'src/main/resources/icon.ico'
+            installerType = 'msi'
+            winMenu = true
+            winShortcut = true
+        }
+        // Linux
+        if (org.gradle.internal.os.OperatingSystem.current().isLinux()) {
+            icon = 'src/main/resources/icon.png'
+            installerType = 'deb'
+        }
+    }
+}
+
+// jlink image created callback
+tasks.jlink {
+    doLast {
+        println "jlink image created at: ${jlink.imageDir.get()}"
+    }
+}
+
+// macOS app bundle using jpackage (included in JDK 14+)
+tasks.register('jpackageApp', Exec) {
+    dependsOn 'fatJar'
+
+    def outputDir = layout.buildDirectory.dir('jpackage').get().asFile
+    def fatJarFile = layout.buildDirectory.file("libs/${project.name}-${project.version}-all.jar").get().asFile
+
+    doFirst {
+        outputDir.mkdirs()
+    }
+
+    def args = [
+            'jpackage',
+            '--type', 'app-image',
+            '--name', 'Intelligence',
+            '--app-version', project.version,
+            '--input', fatJarFile.parentFile.absolutePath,
+            '--main-jar', fatJarFile.name,
+            '--main-class', application.mainClass.get(),
+            '--dest', outputDir.absolutePath,
+            '--java-options', '-Xmx512m',
+            '--mac-package-name', 'Intelligence'
+    ]
+
+    // Add icon if it exists
+    def iconFile = file('src/main/resources/icon.icns')
+    if (iconFile.exists()) {
+        args.addAll(['--icon', iconFile.absolutePath])
+    }
+
+    commandLine args
+
+    doLast {
+        println "Created: ${outputDir}/Intelligence.app"
+    }
+}
+
+// Create DMG installer
+tasks.register('jpackageDmg', Exec) {
+    dependsOn 'jpackageApp'
+
+    def outputDir = layout.buildDirectory.dir('jpackage').get().asFile
+    def appPath = new File(outputDir, 'Intelligence.app')
+    def dmgPath = new File(outputDir, "Intelligence-${project.version}.dmg")
+
+    commandLine 'hdiutil', 'create', '-volname', 'Intelligence',
+            '-srcfolder', appPath.absolutePath,
+            '-ov', '-format', 'UDZO',
+            dmgPath.absolutePath
+
+    doLast {
+        println "Created: ${dmgPath}"
+    }
+}
+
+// Create fat JAR for easy distribution
+tasks.register('fatJar', Jar) {
+    archiveClassifier = 'all'
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    manifest {
+        attributes 'Main-Class': application.mainClass
+    }
+    from {
+        configurations.runtimeClasspath.collect { it.isDirectory() ? it : zipTree(it) }
+    }
+    with jar
 }
