@@ -37,6 +37,7 @@ public class EntityManagerFrame extends JFrame {
     private JLabel sourceLabel;
     private JButton saveBtn;
     private JButton deleteBtn;
+    private JButton searchRelatedBtn;
 
     private CoinEntity selectedEntity;
     private boolean isNewEntity = false;
@@ -237,6 +238,12 @@ public class EntityManagerFrame extends JFrame {
         JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 0));
         buttonPanel.setBackground(new Color(38, 40, 44));
 
+        searchRelatedBtn = new JButton("Search Related...");
+        searchRelatedBtn.setToolTipText("Use AI to discover related entities");
+        searchRelatedBtn.addActionListener(e -> showSearchRelatedDialog());
+        searchRelatedBtn.setEnabled(false);
+        buttonPanel.add(searchRelatedBtn);
+
         deleteBtn = new JButton("Delete");
         deleteBtn.setForeground(new Color(255, 100, 100));
         deleteBtn.addActionListener(e -> deleteEntity());
@@ -267,6 +274,7 @@ public class EntityManagerFrame extends JFrame {
         sourceLabel.setText("-");
         saveBtn.setEnabled(false);
         deleteBtn.setEnabled(false);
+        searchRelatedBtn.setEnabled(false);
         selectedEntity = null;
         isNewEntity = false;
     }
@@ -562,6 +570,10 @@ public class EntityManagerFrame extends JFrame {
         typeCombo.setEnabled(isManual);
         parentIdField.setEnabled(isManual);
         marketCapField.setEnabled(isManual);
+
+        // Enable search related for entity types that support it
+        boolean canSearch = entity.type() != CoinEntity.Type.NEWS_SOURCE;
+        searchRelatedBtn.setEnabled(canSearch);
     }
 
     private void createNewEntity() {
@@ -658,6 +670,19 @@ public class EntityManagerFrame extends JFrame {
             if (onDataChanged != null) {
                 onDataChanged.accept(null);
             }
+        }
+    }
+
+    private void showSearchRelatedDialog() {
+        if (selectedEntity == null) return;
+
+        EntitySearchDialog dialog = new EntitySearchDialog(this, selectedEntity, store);
+        dialog.setVisible(true);
+
+        // Refresh after dialog closes in case entities were added
+        loadEntities();
+        if (onDataChanged != null) {
+            onDataChanged.accept(null);
         }
     }
 

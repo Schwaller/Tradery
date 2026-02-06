@@ -27,6 +27,21 @@ public class CoinRelationship {
         }
         public Color color() { return color; }
         public String label() { return label; }
+
+        /**
+         * Get relationship types that are searchable for a given entity type.
+         */
+        public static java.util.List<Type> getSearchableTypes(CoinEntity.Type entityType) {
+            return switch (entityType) {
+                case COIN, L2 -> java.util.List.of(ETF_TRACKS, ETP_TRACKS, INVESTED_IN, L2_OF, ECOSYSTEM, PARTNER, FORK_OF);
+                case VC -> java.util.List.of(INVESTED_IN, FOUNDED_BY, PARTNER);
+                case EXCHANGE -> java.util.List.of(ECOSYSTEM, PARTNER);
+                case ETF, ETP, DAT -> java.util.List.of(ETF_TRACKS, ETP_TRACKS);
+                case FOUNDATION -> java.util.List.of(FOUNDED_BY, ECOSYSTEM, PARTNER);
+                case COMPANY -> java.util.List.of(INVESTED_IN, PARTNER, FOUNDED_BY);
+                default -> java.util.List.of();
+            };
+        }
     }
 
     private final String fromId;
