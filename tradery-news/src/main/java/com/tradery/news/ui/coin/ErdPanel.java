@@ -33,6 +33,7 @@ public class ErdPanel extends JPanel {
 
     private SchemaRegistry registry;
     private Consumer<Void> onDataChanged;
+    private Runnable onManualSelected;
 
     // View transform
     private double zoom = 1.0;
@@ -56,8 +57,15 @@ public class ErdPanel extends JPanel {
     private SchemaType hoveredPortType;
 
     // Layout mode
-    private enum LayoutMode { MANUAL, SPRING, TREE_ANIMATING }
+    private enum LayoutMode { MANUAL, SPRING, TREE_ANIMATING, TREE }
     private LayoutMode layoutMode = LayoutMode.MANUAL;
+
+    // Cached manual positions (restored when switching back to manual mode)
+    private Map<String, double[]> savedManualPositions = new HashMap<>();
+
+    // Clickable "save" label bounds (screen coords)
+    private Rectangle saveLabelBounds;
+    private boolean saveLabelHovered;
 
     // Cached dot grid
     private java.awt.image.BufferedImage gridCache;
@@ -83,7 +91,6 @@ public class ErdPanel extends JPanel {
                 repaint();
                 if (!moving) {
                     physicsTimer.stop();
-                    savePositions();
                 }
             } else if (layoutMode == LayoutMode.TREE_ANIMATING) {
                 boolean anyMoving = false;
@@ -103,9 +110,8 @@ public class ErdPanel extends JPanel {
                 }
                 repaint();
                 if (!anyMoving) {
-                    layoutMode = LayoutMode.MANUAL;
+                    layoutMode = LayoutMode.TREE;
                     physicsTimer.stop();
-                    savePositions();
                 }
             } else {
                 physicsTimer.stop();
@@ -115,7 +121,10 @@ public class ErdPanel extends JPanel {
 
     public void setRegistry(SchemaRegistry registry) {
         this.registry = registry;
-        // Positions are loaded from DB - no auto layout
+        // Cache positions loaded from DB as the saved manual layout
+        if (registry != null) {
+            cacheManualPositions();
+        }
         repaint();
     }
 
@@ -123,12 +132,36 @@ public class ErdPanel extends JPanel {
         this.onDataChanged = onDataChanged;
     }
 
+    public void setOnManualSelected(Runnable onManualSelected) {
+        this.onManualSelected = onManualSelected;
+    }
+
     public SchemaRegistry getRegistry() {
         return registry;
     }
 
-    /** Switch to manual layout mode: stop all physics/animation. */
+    /** Switch to manual layout mode: restore saved manual positions. */
     public void manualLayout() {
+        if (registry == null) return;
+        layoutMode = LayoutMode.MANUAL;
+        physicsTimer.stop();
+        // Restore saved manual positions
+        for (SchemaType t : registry.allTypes()) {
+            double[] pos = savedManualPositions.get(t.id());
+            if (pos != null) {
+                t.setErdX(pos[0]);
+                t.setErdY(pos[1]);
+            }
+            t.setErdPinned(false);
+            t.setErdVx(0);
+            t.setErdVy(0);
+            t.setErdAnimating(false);
+        }
+        repaint();
+    }
+
+    /** Save current positions as the manual layout and switch to manual mode. */
+    public void saveAsManualLayout() {
         if (registry == null) return;
         layoutMode = LayoutMode.MANUAL;
         physicsTimer.stop();
@@ -138,7 +171,18 @@ public class ErdPanel extends JPanel {
             t.setErdVy(0);
             t.setErdAnimating(false);
         }
+        cacheManualPositions();
+        savePositions();
         repaint();
+    }
+
+    private void cacheManualPositions() {
+        savedManualPositions.clear();
+        if (registry != null) {
+            for (SchemaType t : registry.allTypes()) {
+                savedManualPositions.put(t.id(), new double[]{t.erdX(), t.erdY()});
+            }
+        }
     }
 
     // ==================== RENDERING ====================
@@ -187,17 +231,28 @@ public class ErdPanel extends JPanel {
 
         g2.dispose();
 
-        // Hint text when not in manual mode
+        // Floating "Save as Manual Layout" label when not in manual mode
         if (layoutMode != LayoutMode.MANUAL) {
             Graphics2D sg = (Graphics2D) g;
             sg.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
             sg.setFont(new Font("SansSerif", Font.PLAIN, 11));
-            String hint = "Click \"Manual\" to save current positions";
+            String hint = "Save as Manual Layout";
             FontMetrics fm = sg.getFontMetrics();
-            int tx = (getWidth() - fm.stringWidth(hint)) / 2;
-            int ty = getHeight() - 16;
-            sg.setColor(new Color(130, 130, 140));
-            sg.drawString(hint, tx, ty);
+            int pad = 8;
+            int tx = 86; // aligned under Manual button (after macOS traffic lights)
+            int ty = 20;
+            int tw = fm.stringWidth(hint) + pad * 2;
+            int th = fm.getHeight() + pad;
+            saveLabelBounds = new Rectangle(tx, ty, tw, th);
+
+            // Background pill
+            sg.setColor(saveLabelHovered ? new Color(55, 57, 61) : new Color(40, 42, 46));
+            sg.fillRoundRect(tx, ty, tw, th, 8, 8);
+            // Text
+            sg.setColor(saveLabelHovered ? new Color(220, 220, 230) : new Color(140, 140, 150));
+            sg.drawString(hint, tx + pad, ty + fm.getAscent() + pad / 2);
+        } else {
+            saveLabelBounds = null;
         }
     }
 
@@ -637,23 +692,46 @@ public class ErdPanel extends JPanel {
                 if (draggedType != null) {
                     draggedType = null;
                     setCursor(Cursor.getDefaultCursor());
-                    savePositions();
+                    // Only persist position changes in manual mode
+                    if (layoutMode == LayoutMode.MANUAL) {
+                        cacheManualPositions();
+                        savePositions();
+                    }
                 }
             }
 
             @Override
             public void mouseClicked(MouseEvent e) {
-                if (e.getClickCount() == 2 && SwingUtilities.isLeftMouseButton(e)) {
-                    Point2D wp = screenToWorld(e.getX(), e.getY());
-                    SchemaType type = findTypeAt(wp.getX(), wp.getY());
-                    if (type != null) {
-                        showTypeEditor(type);
+                if (SwingUtilities.isLeftMouseButton(e)) {
+                    // Check save label click
+                    if (saveLabelBounds != null && saveLabelBounds.contains(e.getX(), e.getY())) {
+                        saveAsManualLayout();
+                        // Also select the Manual toggle in the parent toolbar
+                        fireManualSelected();
+                        return;
+                    }
+                    if (e.getClickCount() == 2) {
+                        Point2D wp = screenToWorld(e.getX(), e.getY());
+                        SchemaType type = findTypeAt(wp.getX(), wp.getY());
+                        if (type != null) {
+                            showTypeEditor(type);
+                        }
                     }
                 }
             }
 
             @Override
             public void mouseMoved(MouseEvent e) {
+                // Check save label hover
+                boolean oldSaveHover = saveLabelHovered;
+                saveLabelHovered = saveLabelBounds != null && saveLabelBounds.contains(e.getX(), e.getY());
+                if (saveLabelHovered) {
+                    setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+                    if (!oldSaveHover) repaint();
+                    return;
+                }
+                if (oldSaveHover) repaint();
+
                 Point2D wp = screenToWorld(e.getX(), e.getY());
                 double wx = wp.getX(), wy = wp.getY();
 
@@ -971,6 +1049,12 @@ public class ErdPanel extends JPanel {
     private void fireDataChanged() {
         if (onDataChanged != null) {
             onDataChanged.accept(null);
+        }
+    }
+
+    private void fireManualSelected() {
+        if (onManualSelected != null) {
+            onManualSelected.run();
         }
     }
 

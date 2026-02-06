@@ -96,6 +96,9 @@ public class DataStructureFrame extends JFrame {
         layoutGroup.add(manualBtn);
         leftPanel.add(manualBtn);
 
+        // When save label is clicked inside the ERD, select the Manual toggle
+        erdPanel.setOnManualSelected(() -> manualBtn.setSelected(true));
+
         JToggleButton treeBtn = createLayoutToggle("Tree");
         treeBtn.addActionListener(e -> { erdPanel.treeLayout(); erdPanel.fitToView(); });
         layoutGroup.add(treeBtn);
