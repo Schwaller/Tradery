@@ -124,7 +124,7 @@ public class DataStructureFrame extends JFrame {
         fitBtn.addActionListener(e -> erdPanel.fitToView());
         rightPanel.add(fitBtn);
 
-        JButton addEntityTypeBtn = new JButton("+ Entity Type");
+        JButton addEntityTypeBtn = new JButton("New Type");
         addEntityTypeBtn.setFont(new Font("SansSerif", Font.PLAIN, 11));
         addEntityTypeBtn.setMargin(new Insets(6, 14, 6, 14));
         addEntityTypeBtn.addActionListener(e -> {
