@@ -64,10 +64,10 @@ public class IntelLogPanel extends JPanel {
         listScroll.setBorder(null);
         listScroll.getVerticalScrollBar().setUnitIncrement(16);
 
-        // Detail area
+        // Detail area (same background as list)
         detailArea = new JTextArea();
         detailArea.setEditable(false);
-        detailArea.setBackground(new Color(20, 22, 26));
+        detailArea.setBackground(new Color(25, 27, 31));
         detailArea.setForeground(new Color(160, 160, 170));
         detailArea.setFont(new Font("JetBrains Mono", Font.PLAIN, 10));
         detailArea.setBorder(new EmptyBorder(8, 8, 8, 8));
@@ -77,10 +77,11 @@ public class IntelLogPanel extends JPanel {
 
         JScrollPane detailScroll = new JScrollPane(detailArea);
         detailScroll.setBorder(BorderFactory.createMatteBorder(1, 0, 0, 0, new Color(50, 52, 56)));
+        detailScroll.getViewport().setBackground(new Color(25, 27, 31));
 
-        // Split pane
+        // Split pane (list takes 66%)
         splitPane = new JSplitPane(JSplitPane.VERTICAL_SPLIT, listScroll, detailScroll);
-        splitPane.setDividerLocation(150);
+        splitPane.setResizeWeight(0.66);
         splitPane.setDividerSize(4);
         splitPane.setBorder(null);
         splitPane.setBackground(new Color(30, 32, 36));
@@ -88,6 +89,18 @@ public class IntelLogPanel extends JPanel {
         add(splitPane, BorderLayout.CENTER);
 
         instance = this;
+    }
+
+    @Override
+    public void addNotify() {
+        super.addNotify();
+        // Set initial divider location to 66% after component is added
+        SwingUtilities.invokeLater(() -> {
+            int height = splitPane.getHeight();
+            if (height > 0) {
+                splitPane.setDividerLocation((int) (height * 0.66));
+            }
+        });
     }
 
     private void showEntryDetail(LogEntry entry) {

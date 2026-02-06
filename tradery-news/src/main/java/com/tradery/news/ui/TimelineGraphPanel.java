@@ -30,6 +30,7 @@ public class TimelineGraphPanel extends JPanel {
     private static final int MARGIN_RIGHT = 20;
     private static final int MARGIN_TOP = 30;
     private static final int MARGIN_BOTTOM = 50;
+    private static final int TIMELINE_OFFSET = 20;  // Extra offset to push timeline lower
 
     private static final DateTimeFormatter TIME_FMT = DateTimeFormatter.ofPattern("HH:mm");
     private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ofPattern("MMM d");
@@ -479,7 +480,7 @@ public class TimelineGraphPanel extends JPanel {
         int topicZoneTop = 20;
         int coinZoneTop = totalHeight * 2 / 10;
         int articleZoneTop = totalHeight * 5 / 10;
-        int timelineY = getHeight() - MARGIN_BOTTOM;
+        int timelineY = getHeight() - MARGIN_BOTTOM + TIMELINE_OFFSET;
 
         // Draw full-width separator lines
         g2.setColor(new Color(50, 52, 56));
@@ -532,7 +533,7 @@ public class TimelineGraphPanel extends JPanel {
     private void drawTimeAxis(Graphics2D g2) {
         if (minTime == null || maxTime == null) return;
 
-        int y = getHeight() - MARGIN_BOTTOM + 15;
+        int y = getHeight() - MARGIN_BOTTOM + TIMELINE_OFFSET + 15;
         int width = getWidth() - MARGIN_LEFT - MARGIN_RIGHT;
 
         g2.setColor(new Color(50, 52, 56));
@@ -663,45 +664,67 @@ public class TimelineGraphPanel extends JPanel {
     private void drawTooltip(Graphics2D g2) {
         if (hoveredNode == null) return;
 
-        String[] lines;
+        java.util.List<String> linesList = new java.util.ArrayList<>();
         double nodeX, nodeY;
+
+        int padding = 8;
+        int lineHeight = 16;
+        int width = 320;
+        int maxCharsPerLine = 48;
 
         if (hoveredNode instanceof NewsNode news) {
             nodeX = news.x();
             nodeY = news.y();
+
+            // Wrap title to up to 3 lines
+            String title = news.title();
+            if (title.length() <= maxCharsPerLine) {
+                linesList.add(title);
+            } else {
+                int maxTitleLines = 3;
+                int pos = 0;
+                while (pos < title.length() && linesList.size() < maxTitleLines) {
+                    int end = Math.min(pos + maxCharsPerLine, title.length());
+                    // Find a good break point (space) if not at end
+                    if (end < title.length() && linesList.size() < maxTitleLines - 1) {
+                        int spacePos = title.lastIndexOf(' ', end);
+                        if (spacePos > pos + maxCharsPerLine / 2) {
+                            end = spacePos;
+                        }
+                    }
+                    String line = title.substring(pos, end).trim();
+                    // Add ellipsis if this is the last line and there's more text
+                    if (linesList.size() == maxTitleLines - 1 && end < title.length()) {
+                        line = line + "...";
+                    }
+                    linesList.add(line);
+                    pos = end;
+                    if (pos < title.length() && title.charAt(pos) == ' ') pos++;
+                }
+            }
+
             String sentimentStr = formatSentiment(news.sentiment());
-            lines = new String[]{
-                news.title(),
-                news.source() + " • " + formatTime(news.publishedAt()),
-                "Importance: " + news.importance() + "  Sentiment: " + sentimentStr,
-                "Topics: " + String.join(", ", news.topics()),
-                "Coins: " + (news.coins().isEmpty() ? "-" : String.join(", ", news.coins()))
-            };
+            linesList.add(news.source() + " • " + formatTime(news.publishedAt()));
+            linesList.add("Importance: " + news.importance() + "  Sentiment: " + sentimentStr);
+            linesList.add("Topics: " + String.join(", ", news.topics()));
+            linesList.add("Coins: " + (news.coins().isEmpty() ? "-" : String.join(", ", news.coins())));
         } else if (hoveredNode instanceof TopicNode topic) {
             nodeX = topic.x();
             nodeY = topic.y();
             if (topic.type() == TopicNode.Type.COIN) {
-                lines = new String[]{
-                    "Coin: " + topic.label(),
-                    topic.articleCount() + " articles"
-                };
+                linesList.add("Coin: " + topic.label());
+                linesList.add(topic.articleCount() + " articles");
             } else {
-                // Show full topic path (id) and short label
                 String fullPath = topic.id();
-                lines = new String[]{
-                    "Topic: " + topic.label(),
-                    "Path: " + fullPath,
-                    topic.articleCount() + " articles"
-                };
+                linesList.add("Topic: " + topic.label());
+                linesList.add("Path: " + fullPath);
+                linesList.add(topic.articleCount() + " articles");
             }
         } else {
             return;
         }
 
-        int padding = 8;
-        int lineHeight = 16;
-        int width = 320;
-        int height = lines.length * lineHeight + padding * 2;
+        int height = linesList.size() * lineHeight + padding * 2;
 
         int x = (int)nodeX + 15;
         int y = (int)nodeY - height / 2;
@@ -717,8 +740,8 @@ public class TimelineGraphPanel extends JPanel {
 
         g2.setColor(new Color(220, 220, 230));
         g2.setFont(new Font("SansSerif", Font.PLAIN, 11));
-        for (int i = 0; i < lines.length; i++) {
-            g2.drawString(truncate(lines[i], 48), x + padding, y + padding + (i + 1) * lineHeight - 4);
+        for (int i = 0; i < linesList.size(); i++) {
+            g2.drawString(truncate(linesList.get(i), maxCharsPerLine), x + padding, y + padding + (i + 1) * lineHeight - 4);
         }
     }
 

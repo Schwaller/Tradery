@@ -51,6 +51,7 @@ public class IntelFrame extends JFrame {
     private JToggleButton coinsBtn;
 
     // Header action buttons (shown conditionally)
+    private JLabel showLabel;
     private JButton fetchBtn;
     private JButton resetViewBtn;
     private JPanel detailPanel;
@@ -189,6 +190,22 @@ public class IntelFrame extends JFrame {
         JPanel rightBtns = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 4));
         rightBtns.setOpaque(false);
 
+        // Show: combo (for News view)
+        showLabel = new JLabel("Show:");
+        showLabel.setFont(new Font("SansSerif", Font.PLAIN, 11));
+        showLabel.setForeground(new Color(160, 160, 170));
+        rightBtns.add(showLabel);
+
+        limitCombo = new JComboBox<>(new String[]{"100", "250", "500", "1000"});
+        limitCombo.setSelectedItem("500");
+        limitCombo.addActionListener(e -> {
+            if (newsGraphPanel != null) {
+                newsGraphPanel.setMaxNodes(Integer.parseInt((String) limitCombo.getSelectedItem()));
+                loadNewsData();
+            }
+        });
+        rightBtns.add(limitCombo);
+
         // Fetch New button (for News view)
         fetchBtn = new JButton("Fetch New");
         fetchBtn.setFont(new Font("SansSerif", Font.PLAIN, 11));
@@ -224,7 +241,6 @@ public class IntelFrame extends JFrame {
 
         // News panel
         JPanel newsPanel = new JPanel(new BorderLayout());
-        newsPanel.add(createNewsToolbar(), BorderLayout.NORTH);
         newsGraphPanel = new TimelineGraphPanel();
         newsGraphPanel.setOnNodeSelected(this::showArticleDetails);
         newsGraphPanel.setOnTopicSelected(this::showTopicDetails);
@@ -234,7 +250,6 @@ public class IntelFrame extends JFrame {
 
         // Coins panel
         JPanel coinsPanel = new JPanel(new BorderLayout());
-        coinsPanel.add(createCoinsToolbar(), BorderLayout.NORTH);
         coinGraphPanel = new CoinGraphPanel();
         coinGraphPanel.setOnEntitySelected(this::showEntityDetails);
         coinsPanel.add(coinGraphPanel, BorderLayout.CENTER);
@@ -267,6 +282,8 @@ public class IntelFrame extends JFrame {
 
     private void updateHeaderButtons() {
         boolean isNewsView = newsBtn.isSelected();
+        showLabel.setVisible(isNewsView);
+        limitCombo.setVisible(isNewsView);
         fetchBtn.setVisible(isNewsView);
         resetViewBtn.setVisible(!isNewsView);
     }
@@ -316,15 +333,7 @@ public class IntelFrame extends JFrame {
         return panel;
     }
 
-    // ==================== TOOLBARS ====================
-
-    private JPanel createCoinsToolbar() {
-        // Empty toolbar placeholder (Reset View moved to header)
-        JPanel toolbar = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 4));
-        toolbar.setBackground(new Color(38, 40, 44));
-        toolbar.setBorder(BorderFactory.createMatteBorder(0, 0, 1, 0, new Color(50, 52, 56)));
-        return toolbar;
-    }
+    // ==================== STATUS BARS ====================
 
     private JPanel createCoinsStatusBar() {
         JPanel statusBar = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 5));
@@ -344,23 +353,6 @@ public class IntelFrame extends JFrame {
         return statusBar;
     }
 
-    private JPanel createNewsToolbar() {
-        // Toolbar with Show: limit combo (Fetch New moved to header)
-        JPanel toolbar = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 4));
-        toolbar.setBackground(new Color(38, 40, 44));
-        toolbar.setBorder(BorderFactory.createMatteBorder(0, 0, 1, 0, new Color(50, 52, 56)));
-
-        toolbar.add(new JLabel("Show:"));
-        limitCombo = new JComboBox<>(new String[]{"100", "250", "500", "1000"});
-        limitCombo.setSelectedItem("500");
-        limitCombo.addActionListener(e -> {
-            newsGraphPanel.setMaxNodes(Integer.parseInt((String) limitCombo.getSelectedItem()));
-            loadNewsData();
-        });
-        toolbar.add(limitCombo);
-
-        return toolbar;
-    }
 
     private JPanel createNewsStatusBar() {
         JPanel statusBar = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 5));
