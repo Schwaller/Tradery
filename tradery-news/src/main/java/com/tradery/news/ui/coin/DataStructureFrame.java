@@ -16,11 +16,11 @@ import java.util.function.Consumer;
 public class DataStructureFrame extends JFrame {
 
     private final ErdPanel erdPanel;
-    private final SchemaRegistry schemaRegistry;
+    private SchemaRegistry schemaRegistry;
 
     public DataStructureFrame(EntityStore store, Consumer<Void> onDataChanged) {
         super("Data Structure");
-        this.schemaRegistry = new SchemaRegistry(store);
+        this.schemaRegistry = null; // loaded off EDT below
 
         setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
 
@@ -62,8 +62,16 @@ public class DataStructureFrame extends JFrame {
 
         // Create ERD panel first so toolbar lambdas can reference it
         erdPanel = new ErdPanel();
-        erdPanel.setRegistry(schemaRegistry);
         erdPanel.setOnDataChanged(onDataChanged);
+
+        // Load schema registry off EDT, then set it
+        new Thread(() -> {
+            SchemaRegistry reg = new SchemaRegistry(store);
+            SwingUtilities.invokeLater(() -> {
+                schemaRegistry = reg;
+                erdPanel.setRegistry(reg);
+            });
+        }).start();
 
         JPanel mainPanel = new JPanel(new BorderLayout());
         mainPanel.setBackground(new Color(30, 32, 36));
