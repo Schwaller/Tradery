@@ -97,9 +97,10 @@ public class TimelineGraphPanel extends JPanel {
         addMouseMotionListener(mouseAdapter);
 
         // Physics simulation timer
-        physicsTimer = new Timer(16, e -> {
-            runPhysicsStep();
+        physicsTimer = new Timer(32, e -> {
+            boolean moving = runPhysicsStep();
             repaint();
+            if (!moving) physicsTimer.stop();
         });
     }
 
@@ -365,12 +366,14 @@ public class TimelineGraphPanel extends JPanel {
     /**
      * Run one physics simulation step.
      */
-    private void runPhysicsStep() {
-        if (newsNodes.isEmpty()) return;
+    private boolean runPhysicsStep() {
+        if (newsNodes.isEmpty()) return false;
 
         double damping = 0.85;
         double repulsion = 400;
         double topicAttraction = 0.02;
+        double minVelocity = 0.1;
+        boolean anyMoving = false;
 
         // Calculate article zone (topics:coins:articles = 2:3:5)
         int usableHeight = getHeight() - MARGIN_TOP - MARGIN_BOTTOM;
@@ -399,9 +402,14 @@ public class TimelineGraphPanel extends JPanel {
             // Weak pull toward center of article zone
             fy += (newsCenterY - node.y()) * 0.001;
 
-            node.setVy((node.vy() + fy) * damping);
-            node.setY(node.y() + node.vy());
-            node.setY(Math.max(articleZoneTop, Math.min(articleZoneBottom, node.y())));
+            double vy = (node.vy() + fy) * damping;
+            if (Math.abs(vy) < minVelocity) vy = 0;
+            node.setVy(vy);
+            if (vy != 0) {
+                node.setY(node.y() + vy);
+                node.setY(Math.max(articleZoneTop, Math.min(articleZoneBottom, node.y())));
+                anyMoving = true;
+            }
         }
 
         // Gentle X-axis physics for topics (stay on fixed Y line)
@@ -411,39 +419,37 @@ public class TimelineGraphPanel extends JPanel {
         double strongRepulsion = repulsion * 2.0;  // Stronger repulsion to spread out
         double weakAttraction = topicAttraction * 0.3;  // Weaker attraction to news
 
-        applyRowPhysics(topicNodes, leftBound, rightBound, strongRepulsion, weakAttraction, rowDamping);
-        applyRowPhysics(coinNodes, leftBound, rightBound, strongRepulsion, weakAttraction, rowDamping);
+        anyMoving |= applyRowPhysics(topicNodes, leftBound, rightBound, strongRepulsion, weakAttraction, rowDamping);
+        anyMoving |= applyRowPhysics(coinNodes, leftBound, rightBound, strongRepulsion, weakAttraction, rowDamping);
+        return anyMoving;
     }
 
     /**
      * Apply gentle horizontal physics to a row of nodes (topics or coins).
      * Nodes repel each other and are attracted to the average X of their connected articles.
      */
-    private void applyRowPhysics(List<TopicNode> nodes, int leftBound, int rightBound,
+    private boolean applyRowPhysics(List<TopicNode> nodes, int leftBound, int rightBound,
                                   double repulsion, double attraction, double damping) {
-        double maxSpeed = 1.5;  // Limit max velocity for smooth movement
+        double maxSpeed = 1.5;
+        boolean anyMoving = false;
 
         for (TopicNode node : nodes) {
-            // Skip physics for dragged node
             if (node == draggedNode) continue;
 
             double fx = 0;
 
-            // Repulsion from other nodes on the same Y level (same row)
             for (TopicNode other : nodes) {
                 if (other == node) continue;
-                // Only repel nodes on the same row
                 if (Math.abs(node.y() - other.y()) > 10) continue;
 
                 double dx = node.x() - other.x();
                 double dist = Math.abs(dx);
                 if (dist < 1) dist = 1;
-                if (dist < 180) {  // Larger repulsion range
+                if (dist < 180) {
                     fx += Math.signum(dx) * repulsion / (dist * dist);
                 }
             }
 
-            // Gentle attraction toward average X of connected news nodes
             if (!node.connections().isEmpty()) {
                 double avgX = node.connections().stream()
                     .mapToDouble(NewsNode::x)
@@ -452,19 +458,20 @@ public class TimelineGraphPanel extends JPanel {
                 fx += (avgX - node.x()) * attraction;
             }
 
-            double vx = (node.vx() + fx * 0.3) * damping;  // Scale down force impact
+            double vx = (node.vx() + fx * 0.3) * damping;
 
-            // Clamp velocity
             if (vx > maxSpeed) vx = maxSpeed;
             if (vx < -maxSpeed) vx = -maxSpeed;
-
-            // Stop jitter when nearly stationary
             if (Math.abs(vx) < 0.05) vx = 0;
 
             node.setVx(vx);
-            node.setX(node.x() + node.vx());
-            node.setX(Math.max(leftBound, Math.min(rightBound, node.x())));
+            if (vx != 0) {
+                node.setX(node.x() + vx);
+                node.setX(Math.max(leftBound, Math.min(rightBound, node.x())));
+                anyMoving = true;
+            }
         }
+        return anyMoving;
     }
 
     @Override
@@ -850,18 +857,21 @@ public class TimelineGraphPanel extends JPanel {
         for (TopicNode node : topicNodes) {
             if (node.contains(mx, my)) {
                 draggedNode = node;
+                if (!physicsTimer.isRunning()) physicsTimer.start();
                 return;
             }
         }
         for (TopicNode node : coinNodes) {
             if (node.contains(mx, my)) {
                 draggedNode = node;
+                if (!physicsTimer.isRunning()) physicsTimer.start();
                 return;
             }
         }
         for (NewsNode node : newsNodes) {
             if (node.contains(mx, my)) {
                 draggedNode = node;
+                if (!physicsTimer.isRunning()) physicsTimer.start();
                 return;
             }
         }

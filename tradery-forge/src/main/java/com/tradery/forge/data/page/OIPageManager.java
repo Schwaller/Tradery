@@ -12,7 +12,7 @@ public class OIPageManager extends DataServicePageManager<OpenInterest> {
 
     public OIPageManager() {
         super(DataType.OPEN_INTEREST, "OPEN_INTEREST", 2,
-            (client, sym, tf, start, end) -> client.getOpenInterest(sym, start, end),
+            (client, pageKey) -> client.getOpenInterest(pageKey),
             "data-service/openinterest");
     }
 }

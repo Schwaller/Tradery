@@ -173,36 +173,6 @@ public class PageManager {
     }
 
     /**
-     * Get candle data directly (for simple requests).
-     */
-    public byte[] getCandlesData(String symbol, String marketType, String timeframe, Long start, Long end) {
-        try {
-            List<Candle> candles = dataStore.getCandles(symbol, marketType, timeframe, start, end);
-            LOG.debug("getCandlesData: {} {} {} returned {} candles", symbol, marketType, timeframe, candles.size());
-            return msgpackMapper.writeValueAsBytes(candles);
-        } catch (Exception e) {
-            LOG.error("Failed to get candles for {} {} {}", symbol, marketType, timeframe, e);
-            return null;
-        }
-    }
-
-    /**
-     * Get aggregated trades data directly.
-     * @deprecated Use {@link #writeAggTradesData(String, Long, Long, java.io.OutputStream)} for streaming
-     */
-    @Deprecated
-    public byte[] getAggTradesData(String symbol, Long start, Long end) {
-        try {
-            List<AggTrade> trades = dataStore.getAggTrades(symbol, start, end);
-            LOG.debug("getAggTradesData: {} returned {} trades", symbol, trades.size());
-            return msgpackMapper.writeValueAsBytes(trades);
-        } catch (Exception e) {
-            LOG.error("Failed to get aggTrades for {}", symbol, e);
-            return null;
-        }
-    }
-
-    /**
      * Stream aggregated trades data directly to an output stream.
      * Streams from SQLite in chunks to avoid loading millions of trades into memory.
      *
@@ -212,6 +182,10 @@ public class PageManager {
         try {
             // Get count first for the msgpack array header
             long count = dataStore.countAggTrades(symbol, start, end);
+            if (count > Integer.MAX_VALUE) {
+                LOG.error("writeAggTradesData: {} has {} trades, exceeds msgpack array limit", symbol, count);
+                return -1;
+            }
             LOG.debug("writeAggTradesData: {} streaming {} trades", symbol, count);
 
             // Write msgpack array header + stream chunks from SQLite
@@ -235,48 +209,6 @@ public class PageManager {
         } catch (Exception e) {
             LOG.error("Failed to stream aggTrades for {}", symbol, e);
             return -1;
-        }
-    }
-
-    /**
-     * Get funding rate data directly.
-     */
-    public byte[] getFundingData(String symbol, Long start, Long end) {
-        try {
-            List<FundingRate> rates = dataStore.getFundingRates(symbol, start, end);
-            LOG.debug("getFundingData: {} returned {} rates", symbol, rates.size());
-            return msgpackMapper.writeValueAsBytes(rates);
-        } catch (Exception e) {
-            LOG.error("Failed to get funding for {}", symbol, e);
-            return null;
-        }
-    }
-
-    /**
-     * Get open interest data directly.
-     */
-    public byte[] getOpenInterestData(String symbol, Long start, Long end) {
-        try {
-            List<OpenInterest> oi = dataStore.getOpenInterest(symbol, start, end);
-            LOG.debug("getOpenInterestData: {} returned {} records", symbol, oi.size());
-            return msgpackMapper.writeValueAsBytes(oi);
-        } catch (Exception e) {
-            LOG.error("Failed to get OI for {}", symbol, e);
-            return null;
-        }
-    }
-
-    /**
-     * Get premium index data directly.
-     */
-    public byte[] getPremiumData(String symbol, String timeframe, Long start, Long end) {
-        try {
-            List<PremiumIndex> premium = dataStore.getPremiumIndex(symbol, timeframe, start, end);
-            LOG.debug("getPremiumData: {} {} returned {} records", symbol, timeframe, premium.size());
-            return msgpackMapper.writeValueAsBytes(premium);
-        } catch (Exception e) {
-            LOG.error("Failed to get premium for {} {}", symbol, timeframe, e);
-            return null;
         }
     }
 

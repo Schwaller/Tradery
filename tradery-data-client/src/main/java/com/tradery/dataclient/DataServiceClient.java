@@ -141,40 +141,6 @@ public class DataServiceClient {
     }
 
     /**
-     * Fetch candles directly (without page lifecycle).
-     */
-    public List<Candle> getCandles(String symbol, String timeframe, Long start, Long end) throws IOException {
-        HttpUrl.Builder urlBuilder = HttpUrl.parse(baseUrl + "/candles").newBuilder()
-            .addQueryParameter("symbol", symbol)
-            .addQueryParameter("timeframe", timeframe);
-
-        if (start != null) urlBuilder.addQueryParameter("start", start.toString());
-        if (end != null) urlBuilder.addQueryParameter("end", end.toString());
-
-        Request request = new Request.Builder()
-            .url(urlBuilder.build())
-            .get()
-            .build();
-
-        try (Response response = httpClient.newCall(request).execute()) {
-            if (!response.isSuccessful()) return List.of();
-            byte[] data = response.body().bytes();
-            return msgpackMapper.readValue(data, msgpackMapper.getTypeFactory()
-                .constructCollectionType(List.class, Candle.class));
-        }
-    }
-
-    /**
-     * Fetch aggregated trades from a page.
-     */
-    public List<AggTrade> getAggTrades(String pageKey) throws IOException {
-        byte[] data = getPageData(pageKey);
-        if (data == null) return List.of();
-        return msgpackMapper.readValue(data, msgpackMapper.getTypeFactory()
-            .constructCollectionType(List.class, AggTrade.class));
-    }
-
-    /**
      * Fetch aggregated trades directly (without page lifecycle).
      * Streams from response body to avoid allocating a huge intermediate byte[].
      */
@@ -209,29 +175,6 @@ public class DataServiceClient {
     }
 
     /**
-     * Fetch funding rates directly (without page lifecycle).
-     */
-    public List<FundingRate> getFundingRates(String symbol, Long start, Long end) throws IOException {
-        HttpUrl.Builder urlBuilder = HttpUrl.parse(baseUrl + "/funding").newBuilder()
-            .addQueryParameter("symbol", symbol);
-
-        if (start != null) urlBuilder.addQueryParameter("start", start.toString());
-        if (end != null) urlBuilder.addQueryParameter("end", end.toString());
-
-        Request request = new Request.Builder()
-            .url(urlBuilder.build())
-            .get()
-            .build();
-
-        try (Response response = httpClient.newCall(request).execute()) {
-            if (!response.isSuccessful()) return List.of();
-            byte[] data = response.body().bytes();
-            return msgpackMapper.readValue(data, msgpackMapper.getTypeFactory()
-                .constructCollectionType(List.class, FundingRate.class));
-        }
-    }
-
-    /**
      * Fetch open interest from a page.
      */
     public List<OpenInterest> getOpenInterest(String pageKey) throws IOException {
@@ -242,29 +185,6 @@ public class DataServiceClient {
     }
 
     /**
-     * Fetch open interest directly (without page lifecycle).
-     */
-    public List<OpenInterest> getOpenInterest(String symbol, Long start, Long end) throws IOException {
-        HttpUrl.Builder urlBuilder = HttpUrl.parse(baseUrl + "/openinterest").newBuilder()
-            .addQueryParameter("symbol", symbol);
-
-        if (start != null) urlBuilder.addQueryParameter("start", start.toString());
-        if (end != null) urlBuilder.addQueryParameter("end", end.toString());
-
-        Request request = new Request.Builder()
-            .url(urlBuilder.build())
-            .get()
-            .build();
-
-        try (Response response = httpClient.newCall(request).execute()) {
-            if (!response.isSuccessful()) return List.of();
-            byte[] data = response.body().bytes();
-            return msgpackMapper.readValue(data, msgpackMapper.getTypeFactory()
-                .constructCollectionType(List.class, OpenInterest.class));
-        }
-    }
-
-    /**
      * Fetch premium index from a page.
      */
     public List<PremiumIndex> getPremiumIndex(String pageKey) throws IOException {
@@ -272,30 +192,6 @@ public class DataServiceClient {
         if (data == null) return List.of();
         return msgpackMapper.readValue(data, msgpackMapper.getTypeFactory()
             .constructCollectionType(List.class, PremiumIndex.class));
-    }
-
-    /**
-     * Fetch premium index directly (without page lifecycle).
-     */
-    public List<PremiumIndex> getPremiumIndex(String symbol, String timeframe, Long start, Long end) throws IOException {
-        HttpUrl.Builder urlBuilder = HttpUrl.parse(baseUrl + "/premium").newBuilder()
-            .addQueryParameter("symbol", symbol);
-
-        if (timeframe != null) urlBuilder.addQueryParameter("timeframe", timeframe);
-        if (start != null) urlBuilder.addQueryParameter("start", start.toString());
-        if (end != null) urlBuilder.addQueryParameter("end", end.toString());
-
-        Request request = new Request.Builder()
-            .url(urlBuilder.build())
-            .get()
-            .build();
-
-        try (Response response = httpClient.newCall(request).execute()) {
-            if (!response.isSuccessful()) return List.of();
-            byte[] data = response.body().bytes();
-            return msgpackMapper.readValue(data, msgpackMapper.getTypeFactory()
-                .constructCollectionType(List.class, PremiumIndex.class));
-        }
     }
 
     // ==================== Symbol Resolution ====================

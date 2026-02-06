@@ -23,12 +23,11 @@ import java.util.List;
 public class DataServicePageManager<T> extends DataPageManager<T> {
 
     /**
-     * Fetches data from the data service for a given symbol/timeframe/range.
+     * Fetches data from the data service using the page key.
      */
     @FunctionalInterface
     public interface DataFetcher<T> {
-        List<T> fetch(DataServiceClient client, String symbol, String timeframe,
-                      long startTime, long endTime) throws Exception;
+        List<T> fetch(DataServiceClient client, String pageKey) throws Exception;
     }
 
     private final String wireFormat;
@@ -131,8 +130,8 @@ public class DataServicePageManager<T> extends DataPageManager<T> {
                 Thread.sleep(100);
             }
 
-            // Fetch final data
-            List<T> data = dataFetcher.fetch(client, symbol, timeframe, startTime, endTime);
+            // Fetch final data via page key (same path as desk)
+            List<T> data = dataFetcher.fetch(client, dataServicePageKey);
             long totalDuration = System.currentTimeMillis() - requestStart;
 
             log.info("{}.loadData: {} {} got {} records", dataType.getDisplayName(), symbol,

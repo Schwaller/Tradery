@@ -1,5 +1,6 @@
 package com.tradery.news.ui.coin;
 
+import java.awt.*;
 import java.io.File;
 import java.sql.*;
 import java.util.ArrayList;
@@ -20,6 +21,11 @@ public class EntityStore {
         try {
             new File(System.getProperty("user.home") + "/.tradery").mkdirs();
             conn = DriverManager.getConnection("jdbc:sqlite:" + DB_PATH);
+            // WAL mode allows concurrent reads while writing
+            try (Statement s = conn.createStatement()) {
+                s.execute("PRAGMA journal_mode=WAL");
+                s.execute("PRAGMA busy_timeout=100");
+            }
             createTables();
         } catch (SQLException e) {
             System.err.println("Failed to initialize entity store: " + e.getMessage());
@@ -72,6 +78,33 @@ public class EntityStore {
                 CREATE TABLE IF NOT EXISTS cache_meta (
                     key TEXT PRIMARY KEY,
                     value TEXT
+                )
+            """);
+
+            // Schema types (dynamic entity and relationship type definitions)
+            stmt.execute("""
+                CREATE TABLE IF NOT EXISTS schema_types (
+                    id TEXT PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    color TEXT NOT NULL,
+                    kind TEXT NOT NULL,
+                    from_type_id TEXT,
+                    to_type_id TEXT,
+                    label TEXT,
+                    display_order INTEGER DEFAULT 0
+                )
+            """);
+
+            // Attributes per schema type
+            stmt.execute("""
+                CREATE TABLE IF NOT EXISTS schema_attributes (
+                    type_id TEXT NOT NULL,
+                    name TEXT NOT NULL,
+                    data_type TEXT NOT NULL,
+                    required INTEGER DEFAULT 0,
+                    display_order INTEGER DEFAULT 0,
+                    PRIMARY KEY (type_id, name),
+                    FOREIGN KEY (type_id) REFERENCES schema_types(id) ON DELETE CASCADE
                 )
             """);
 
@@ -508,6 +541,138 @@ public class EntityStore {
             return rs.next() ? rs.getInt(1) : 0;
         } catch (SQLException e) {
             return 0;
+        }
+    }
+
+    // ==================== SCHEMA TYPE CRUD ====================
+
+    public List<SchemaType> loadSchemaTypes() {
+        List<SchemaType> types = new ArrayList<>();
+        if (conn == null) return types;
+
+        try (Statement stmt = conn.createStatement();
+             ResultSet rs = stmt.executeQuery("SELECT * FROM schema_types ORDER BY display_order")) {
+            while (rs.next()) {
+                SchemaType type = new SchemaType();
+                type.setId(rs.getString("id"));
+                type.setName(rs.getString("name"));
+                type.setColor(SchemaType.parseColor(rs.getString("color")));
+                type.setKind(rs.getString("kind"));
+                type.setFromTypeId(rs.getString("from_type_id"));
+                type.setToTypeId(rs.getString("to_type_id"));
+                type.setLabel(rs.getString("label"));
+                type.setDisplayOrder(rs.getInt("display_order"));
+
+                // Load attributes
+                loadSchemaAttributesFor(type);
+                types.add(type);
+            }
+        } catch (Exception e) {
+            System.err.println("Failed to load schema types: " + e.getMessage());
+        }
+        return types;
+    }
+
+    private void loadSchemaAttributesFor(SchemaType type) {
+        try (PreparedStatement ps = conn.prepareStatement(
+                "SELECT * FROM schema_attributes WHERE type_id = ? ORDER BY display_order")) {
+            ps.setString(1, type.id());
+            ResultSet rs = ps.executeQuery();
+            while (rs.next()) {
+                type.addAttribute(new SchemaAttribute(
+                    rs.getString("name"),
+                    rs.getString("data_type"),
+                    rs.getInt("required") == 1,
+                    rs.getInt("display_order")
+                ));
+            }
+        } catch (SQLException e) {
+            System.err.println("Failed to load schema attributes for " + type.id() + ": " + e.getMessage());
+        }
+    }
+
+    public void saveSchemaType(SchemaType type) {
+        if (conn == null) return;
+
+        try (PreparedStatement ps = conn.prepareStatement("""
+            INSERT INTO schema_types (id, name, color, kind, from_type_id, to_type_id, label, display_order)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+                name = excluded.name,
+                color = excluded.color,
+                kind = excluded.kind,
+                from_type_id = excluded.from_type_id,
+                to_type_id = excluded.to_type_id,
+                label = excluded.label,
+                display_order = excluded.display_order
+        """)) {
+            ps.setString(1, type.id());
+            ps.setString(2, type.name());
+            ps.setString(3, type.colorHex());
+            ps.setString(4, type.kind());
+            ps.setString(5, type.fromTypeId());
+            ps.setString(6, type.toTypeId());
+            ps.setString(7, type.label());
+            ps.setInt(8, type.displayOrder());
+            ps.execute();
+        } catch (SQLException e) {
+            System.err.println("Failed to save schema type: " + e.getMessage());
+        }
+    }
+
+    public void deleteSchemaType(String id) {
+        if (conn == null) return;
+
+        try {
+            // Delete attributes first
+            try (PreparedStatement ps = conn.prepareStatement(
+                    "DELETE FROM schema_attributes WHERE type_id = ?")) {
+                ps.setString(1, id);
+                ps.execute();
+            }
+            // Delete type
+            try (PreparedStatement ps = conn.prepareStatement(
+                    "DELETE FROM schema_types WHERE id = ?")) {
+                ps.setString(1, id);
+                ps.execute();
+            }
+        } catch (SQLException e) {
+            System.err.println("Failed to delete schema type: " + e.getMessage());
+        }
+    }
+
+    public void saveSchemaAttribute(String typeId, SchemaAttribute attr) {
+        if (conn == null) return;
+
+        try (PreparedStatement ps = conn.prepareStatement("""
+            INSERT INTO schema_attributes (type_id, name, data_type, required, display_order)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(type_id, name) DO UPDATE SET
+                data_type = excluded.data_type,
+                required = excluded.required,
+                display_order = excluded.display_order
+        """)) {
+            ps.setString(1, typeId);
+            ps.setString(2, attr.name());
+            ps.setString(3, attr.dataType());
+            ps.setInt(4, attr.required() ? 1 : 0);
+            ps.setInt(5, attr.displayOrder());
+            ps.execute();
+        } catch (SQLException e) {
+            System.err.println("Failed to save schema attribute: " + e.getMessage());
+        }
+    }
+
+    public void removeSchemaAttribute(String typeId, String attrName) {
+        if (conn == null) return;
+
+        try (PreparedStatement ps = conn.prepareStatement(
+                "DELETE FROM schema_attributes WHERE type_id = ? AND name = ?")) {
+            ps.setString(1, typeId);
+            ps.setString(2, attrName);
+            ps.execute();
+        } catch (SQLException e) {
+            System.err.println("Failed to remove schema attribute: " + e.getMessage());
         }
     }
 

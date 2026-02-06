@@ -11,7 +11,7 @@ public class CandlePageManager extends DataServicePageManager<Candle> {
 
     public CandlePageManager() {
         super(DataType.CANDLES, "CANDLES", 4,
-            (client, sym, tf, start, end) -> client.getCandles(sym, tf, start, end),
+            (client, pageKey) -> client.getCandles(pageKey),
             "data-service/candles", 88);
     }
 }

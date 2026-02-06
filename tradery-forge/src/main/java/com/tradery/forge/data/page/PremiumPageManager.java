@@ -12,7 +12,7 @@ public class PremiumPageManager extends DataServicePageManager<PremiumIndex> {
 
     public PremiumPageManager() {
         super(DataType.PREMIUM_INDEX, "PREMIUM_INDEX", 2,
-            (client, sym, tf, start, end) -> client.getPremiumIndex(sym, tf, start, end),
+            (client, pageKey) -> client.getPremiumIndex(pageKey),
             "data-service/premium");
     }
 }

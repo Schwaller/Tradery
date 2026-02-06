@@ -154,12 +154,8 @@ public class DataServiceServer {
     private void configureDataRoutes() {
         DataHandler dataHandler = new DataHandler(pageManager);
 
-        // Direct data access
-        app.get("/candles", dataHandler::getCandles);
+        // AggTrades must use direct streaming (page system returns null — data too large for memory)
         app.get("/aggtrades", dataHandler::getAggTrades);
-        app.get("/funding", dataHandler::getFunding);
-        app.get("/openinterest", dataHandler::getOpenInterest);
-        app.get("/premium", dataHandler::getPremium);
     }
 
     private void configureCoverageRoutes() {

@@ -1,0 +1,204 @@
+package com.tradery.news.ui.coin;
+
+import java.awt.*;
+import java.util.*;
+import java.util.List;
+import java.util.stream.Collectors;
+
+/**
+ * Singleton registry of dynamic schema types loaded from the EntityStore DB.
+ * Provides lookup methods that gradually replace enum usage.
+ */
+public class SchemaRegistry {
+
+    private final EntityStore store;
+    private final Map<String, SchemaType> types = new LinkedHashMap<>();
+
+    public SchemaRegistry(EntityStore store) {
+        this.store = store;
+        reload();
+    }
+
+    /** Reload all types from DB. Seeds defaults if tables are empty. */
+    public void reload() {
+        types.clear();
+        List<SchemaType> loaded = store.loadSchemaTypes();
+        if (loaded.isEmpty()) {
+            seedFromEnums();
+            loaded = store.loadSchemaTypes();
+        }
+        for (SchemaType t : loaded) {
+            types.put(t.id(), t);
+        }
+    }
+
+    public SchemaType getType(String id) {
+        return types.get(id);
+    }
+
+    public Collection<SchemaType> allTypes() {
+        return types.values();
+    }
+
+    public List<SchemaType> entityTypes() {
+        return types.values().stream()
+            .filter(SchemaType::isEntity)
+            .sorted(Comparator.comparingInt(SchemaType::displayOrder))
+            .collect(Collectors.toList());
+    }
+
+    public List<SchemaType> relationshipTypes() {
+        return types.values().stream()
+            .filter(SchemaType::isRelationship)
+            .sorted(Comparator.comparingInt(SchemaType::displayOrder))
+            .collect(Collectors.toList());
+    }
+
+    /** Get relationship types where fromTypeId or toTypeId matches the given entity type. */
+    public List<SchemaType> getRelationshipTypesFor(String entityTypeId) {
+        return types.values().stream()
+            .filter(SchemaType::isRelationship)
+            .filter(t -> entityTypeId.equals(t.fromTypeId()) || entityTypeId.equals(t.toTypeId()))
+            .collect(Collectors.toList());
+    }
+
+    /** Get relationship types that connect fromTypeId -> toTypeId. */
+    public List<SchemaType> getRelationshipTypesBetween(String fromTypeId, String toTypeId) {
+        return types.values().stream()
+            .filter(SchemaType::isRelationship)
+            .filter(t -> (fromTypeId.equals(t.fromTypeId()) && toTypeId.equals(t.toTypeId()))
+                      || (fromTypeId.equals(t.toTypeId()) && toTypeId.equals(t.fromTypeId())))
+            .collect(Collectors.toList());
+    }
+
+    public void save(SchemaType type) {
+        store.saveSchemaType(type);
+        types.put(type.id(), type);
+    }
+
+    public void deleteType(String id) {
+        store.deleteSchemaType(id);
+        types.remove(id);
+    }
+
+    public void addAttribute(String typeId, SchemaAttribute attr) {
+        store.saveSchemaAttribute(typeId, attr);
+        SchemaType type = types.get(typeId);
+        if (type != null) {
+            type.removeAttribute(attr.name());
+            type.addAttribute(attr);
+        }
+    }
+
+    public void removeAttribute(String typeId, String attrName) {
+        store.removeSchemaAttribute(typeId, attrName);
+        SchemaType type = types.get(typeId);
+        if (type != null) {
+            type.removeAttribute(attrName);
+        }
+    }
+
+    // ==================== SEED FROM EXISTING ENUMS ====================
+
+    private void seedFromEnums() {
+        int order = 0;
+
+        // Entity types from CoinEntity.Type
+        for (CoinEntity.Type enumType : CoinEntity.Type.values()) {
+            SchemaType st = new SchemaType(
+                enumType.name().toLowerCase(),
+                formatEnumName(enumType.name()),
+                enumType.color(),
+                SchemaType.KIND_ENTITY
+            );
+            st.setDisplayOrder(order++);
+
+            // Common attributes for all entity types
+            st.addAttribute(new SchemaAttribute("name", SchemaAttribute.TEXT, true, 0));
+            st.addAttribute(new SchemaAttribute("symbol", SchemaAttribute.TEXT, false, 1));
+
+            // Type-specific attributes
+            switch (enumType) {
+                case COIN, L2, ETF, ETP, DAT -> {
+                    st.addAttribute(new SchemaAttribute("market_cap", SchemaAttribute.NUMBER, false, 2));
+                }
+                case VC, EXCHANGE, FOUNDATION, COMPANY, NEWS_SOURCE -> {
+                    // no extra attributes beyond name/symbol
+                }
+            }
+
+            store.saveSchemaType(st);
+            for (SchemaAttribute attr : st.attributes()) {
+                store.saveSchemaAttribute(st.id(), attr);
+            }
+        }
+
+        // Relationship types from CoinRelationship.Type
+        order = 0;
+        for (CoinRelationship.Type enumType : CoinRelationship.Type.values()) {
+            SchemaType st = new SchemaType(
+                enumType.name().toLowerCase(),
+                formatEnumName(enumType.name()),
+                enumType.color(),
+                SchemaType.KIND_RELATIONSHIP
+            );
+            st.setLabel(enumType.label());
+            st.setDisplayOrder(order++);
+
+            // Determine from/to types based on relationship semantics
+            switch (enumType) {
+                case L2_OF -> { st.setFromTypeId("l2"); st.setToTypeId("coin"); }
+                case ETF_TRACKS -> { st.setFromTypeId("etf"); st.setToTypeId("coin"); }
+                case ETP_TRACKS -> { st.setFromTypeId("etp"); st.setToTypeId("coin"); }
+                case INVESTED_IN -> { st.setFromTypeId("vc"); st.setToTypeId("coin"); }
+                case FOUNDED_BY -> { st.setFromTypeId("coin"); st.setToTypeId("foundation"); }
+                case PARTNER -> { st.setFromTypeId("coin"); st.setToTypeId("coin"); }
+                case FORK_OF -> { st.setFromTypeId("coin"); st.setToTypeId("coin"); }
+                case BRIDGE -> { st.setFromTypeId("coin"); st.setToTypeId("coin"); }
+                case ECOSYSTEM -> { st.setFromTypeId("coin"); st.setToTypeId("coin"); }
+                case COMPETITOR -> { st.setFromTypeId("coin"); st.setToTypeId("coin"); }
+            }
+
+            // Add note attribute to all relationship types
+            st.addAttribute(new SchemaAttribute("note", SchemaAttribute.TEXT, false, 0));
+
+            store.saveSchemaType(st);
+            for (SchemaAttribute attr : st.attributes()) {
+                store.saveSchemaAttribute(st.id(), attr);
+            }
+        }
+
+        // Crypto Category entity type (replaces categories LIST attribute)
+        SchemaType catType = new SchemaType("crypto_category", "Crypto Category",
+            new Color(180, 200, 140), SchemaType.KIND_ENTITY);
+        catType.setDisplayOrder(order);
+        catType.addAttribute(new SchemaAttribute("name", SchemaAttribute.TEXT, true, 0));
+        store.saveSchemaType(catType);
+        for (SchemaAttribute attr : catType.attributes()) {
+            store.saveSchemaAttribute(catType.id(), attr);
+        }
+
+        // "in_category" relationship: coin -> crypto_category
+        SchemaType inCat = new SchemaType("in_category", "In Category",
+            new Color(160, 190, 130), SchemaType.KIND_RELATIONSHIP);
+        inCat.setLabel("in");
+        inCat.setFromTypeId("coin");
+        inCat.setToTypeId("crypto_category");
+        inCat.setDisplayOrder(order + 1);
+        inCat.addAttribute(new SchemaAttribute("note", SchemaAttribute.TEXT, false, 0));
+        store.saveSchemaType(inCat);
+        for (SchemaAttribute attr : inCat.attributes()) {
+            store.saveSchemaAttribute(inCat.id(), attr);
+        }
+    }
+
+    private static String formatEnumName(String enumName) {
+        String[] parts = enumName.split("_");
+        StringBuilder sb = new StringBuilder();
+        for (String part : parts) {
+            if (!sb.isEmpty()) sb.append(" ");
+            sb.append(part.charAt(0)).append(part.substring(1).toLowerCase());
+        }
+        return sb.toString();
+    }
+}

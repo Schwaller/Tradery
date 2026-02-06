@@ -60,11 +60,13 @@ public class CandlestickChart extends SyncedChart {
         XYPlot plot = getPlot();
         List<Candle> candles = provider.getCandles();
 
-        // Clear old data
+        // Clear old data — datasets, renderers, annotations, and markers
         for (int i = 0; i < plot.getDatasetCount(); i++) {
             plot.setDataset(i, null);
+            plot.setRenderer(i, null);
         }
         plot.clearAnnotations();
+        plot.clearRangeMarkers();
         ChartStyles.addChartTitleAnnotation(plot, title);
 
         // Create price data

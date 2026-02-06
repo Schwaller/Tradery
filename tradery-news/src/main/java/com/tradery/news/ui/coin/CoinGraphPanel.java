@@ -126,9 +126,10 @@ public class CoinGraphPanel extends JPanel {
         addMouseWheelListener(mouseAdapter);
 
         // Physics timer
-        physicsTimer = new Timer(16, e -> {
-            runPhysicsStep();
+        physicsTimer = new Timer(32, e -> {
+            boolean moving = runPhysicsStep();
             repaint();
+            if (!moving) physicsTimer.stop();
         });
     }
 
@@ -165,11 +166,12 @@ public class CoinGraphPanel extends JPanel {
         repaint();
     }
 
-    private void runPhysicsStep() {
-        if (entities.isEmpty()) return;
+    private boolean runPhysicsStep() {
+        if (entities.isEmpty()) return false;
 
         int centerX = getWidth() / 2;
         int centerY = getHeight() / 2;
+        boolean anyMoving = false;
 
         for (CoinEntity entity : entities) {
             if (entity.isPinned() || entity == draggedEntity) continue;
@@ -231,9 +233,13 @@ public class CoinGraphPanel extends JPanel {
 
             entity.setVx(vx);
             entity.setVy(vy);
-            entity.setX(entity.x() + vx);
-            entity.setY(entity.y() + vy);
+            if (vx != 0 || vy != 0) {
+                entity.setX(entity.x() + vx);
+                entity.setY(entity.y() + vy);
+                anyMoving = true;
+            }
         }
+        return anyMoving;
     }
 
     @Override
@@ -456,6 +462,9 @@ public class CoinGraphPanel extends JPanel {
 
     private void startDrag(int mx, int my) {
         draggedEntity = findEntityAt(mx, my);
+        if (draggedEntity != null && !physicsTimer.isRunning()) {
+            physicsTimer.start();
+        }
     }
 
     private void handleDrag(int mx, int my) {

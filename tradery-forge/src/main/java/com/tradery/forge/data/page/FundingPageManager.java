@@ -12,7 +12,7 @@ public class FundingPageManager extends DataServicePageManager<FundingRate> {
 
     public FundingPageManager() {
         super(DataType.FUNDING, "FUNDING", 2,
-            (client, sym, tf, start, end) -> client.getFundingRates(sym, start, end),
+            (client, pageKey) -> client.getFundingRates(pageKey),
             "data-service/funding");
     }
 }
