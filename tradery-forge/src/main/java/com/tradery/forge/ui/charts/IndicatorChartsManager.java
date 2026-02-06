@@ -8,7 +8,7 @@ import com.tradery.forge.ApplicationContext;
 import com.tradery.data.page.PageState;
 import com.tradery.data.page.DataPageListener;
 import com.tradery.data.page.DataPageView;
-import com.tradery.forge.data.page.DataPageManager;
+import com.tradery.forge.data.page.PremiumPageManager;
 import org.jfree.chart.JFreeChart;
 import org.jfree.chart.axis.NumberAxis;
 import org.jfree.chart.plot.XYPlot;
@@ -157,7 +157,7 @@ public class IndicatorChartsManager {
      * Request premium data from PremiumPageManager.
      */
     private void requestPremiumData(String symbol, String timeframe, long startTime, long endTime) {
-        DataPageManager<PremiumIndex> premiumPageMgr = ApplicationContext.getInstance().getPremiumPageManager();
+        PremiumPageManager premiumPageMgr = ApplicationContext.getInstance().getPremiumPageManager();
         if (premiumPageMgr == null) {
             return;
         }

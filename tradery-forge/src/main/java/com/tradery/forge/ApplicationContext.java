@@ -7,7 +7,6 @@ import com.tradery.core.model.OpenInterest;
 import com.tradery.core.model.PremiumIndex;
 import com.tradery.dataclient.DataServiceClient;
 import com.tradery.dataclient.DataServiceLauncher;
-import com.tradery.data.page.DataType;
 import com.tradery.forge.api.ApiServer;
 import com.tradery.forge.data.*;
 import com.tradery.forge.data.page.*;
@@ -57,11 +56,11 @@ public class ApplicationContext {
     private final PreloadScheduler preloadScheduler;
 
     // Event-driven page managers (clean architecture)
-    private final DataServicePageManager<Candle> candlePageManager;
-    private final DataServicePageManager<FundingRate> fundingPageManager;
-    private final DataServicePageManager<OpenInterest> oiPageManager;
+    private final CandlePageManager candlePageManager;
+    private final FundingPageManager fundingPageManager;
+    private final OIPageManager oiPageManager;
     private final AggTradesPageManager aggTradesPageManager;
-    private final DataServicePageManager<PremiumIndex> premiumPageManager;
+    private final PremiumPageManager premiumPageManager;
     private final IndicatorPageManager indicatorPageManager;
 
     // Data service client (for remote data access)
@@ -84,23 +83,11 @@ public class ApplicationContext {
         this.binanceVisionClient = new BinanceVisionClient(sqliteDataStore);
 
         // Initialize event-driven page managers (all delegate to data service)
-        this.candlePageManager = new DataServicePageManager<>(
-            DataType.CANDLES, "CANDLES", 4,
-            (client, sym, tf, start, end) -> client.getCandles(sym, tf, start, end),
-            "data-service/candles", 88);
-        this.fundingPageManager = new DataServicePageManager<>(
-            DataType.FUNDING, "FUNDING", 2,
-            (client, sym, tf, start, end) -> client.getFundingRates(sym, start, end),
-            "data-service/funding");
-        this.oiPageManager = new DataServicePageManager<>(
-            DataType.OPEN_INTEREST, "OPEN_INTEREST", 2,
-            (client, sym, tf, start, end) -> client.getOpenInterest(sym, start, end),
-            "data-service/openinterest");
+        this.candlePageManager = new CandlePageManager();
+        this.fundingPageManager = new FundingPageManager();
+        this.oiPageManager = new OIPageManager();
         this.aggTradesPageManager = new AggTradesPageManager();
-        this.premiumPageManager = new DataServicePageManager<>(
-            DataType.PREMIUM_INDEX, "PREMIUM_INDEX", 2,
-            (client, sym, tf, start, end) -> client.getPremiumIndex(sym, tf, start, end),
-            "data-service/premium");
+        this.premiumPageManager = new PremiumPageManager();
         this.indicatorPageManager = new IndicatorPageManager(
             candlePageManager, aggTradesPageManager);
 
@@ -227,15 +214,15 @@ public class ApplicationContext {
 
     // ========== Page Managers ==========
 
-    public DataPageManager<Candle> getCandlePageManager() {
+    public CandlePageManager getCandlePageManager() {
         return candlePageManager;
     }
 
-    public DataPageManager<FundingRate> getFundingPageManager() {
+    public FundingPageManager getFundingPageManager() {
         return fundingPageManager;
     }
 
-    public DataPageManager<OpenInterest> getOIPageManager() {
+    public OIPageManager getOIPageManager() {
         return oiPageManager;
     }
 
@@ -243,7 +230,7 @@ public class ApplicationContext {
         return aggTradesPageManager;
     }
 
-    public DataPageManager<PremiumIndex> getPremiumPageManager() {
+    public PremiumPageManager getPremiumPageManager() {
         return premiumPageManager;
     }
 

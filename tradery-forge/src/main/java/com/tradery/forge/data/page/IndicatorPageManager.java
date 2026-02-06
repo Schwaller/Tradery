@@ -39,7 +39,7 @@ public class IndicatorPageManager {
     private static final Logger log = LoggerFactory.getLogger(IndicatorPageManager.class);
 
     // Source data managers
-    private final DataPageManager<Candle> candlePageMgr;
+    private final CandlePageManager candlePageMgr;
     private final AggTradesPageManager aggTradesPageMgr;
 
     // Active indicator pages
@@ -57,7 +57,7 @@ public class IndicatorPageManager {
     private final ExecutorService computeExecutor;
     private final ExecutorService aggTradesExecutor;  // Dedicated for aggTrades-based indicators
 
-    public IndicatorPageManager(DataPageManager<Candle> candlePageMgr,
+    public IndicatorPageManager(CandlePageManager candlePageMgr,
                                  AggTradesPageManager aggTradesPageMgr) {
         this.candlePageMgr = candlePageMgr;
         this.aggTradesPageMgr = aggTradesPageMgr;

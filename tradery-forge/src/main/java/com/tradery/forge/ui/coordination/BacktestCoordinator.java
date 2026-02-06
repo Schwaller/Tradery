@@ -40,11 +40,11 @@ import java.util.function.Consumer;
 public class BacktestCoordinator {
 
     // Page managers (from ApplicationContext)
-    private final DataPageManager<Candle> candlePageMgr;
-    private final DataPageManager<FundingRate> fundingPageMgr;
-    private final DataPageManager<OpenInterest> oiPageMgr;
+    private final CandlePageManager candlePageMgr;
+    private final FundingPageManager fundingPageMgr;
+    private final OIPageManager oiPageMgr;
     private final AggTradesPageManager aggTradesPageMgr;
-    private final DataPageManager<PremiumIndex> premiumPageMgr;
+    private final PremiumPageManager premiumPageMgr;
 
     // Engine and stores
     private final BacktestEngine backtestEngine;

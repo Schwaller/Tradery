@@ -3,7 +3,7 @@ package com.tradery.forge.ui;
 import com.tradery.core.model.Candle;
 import com.tradery.forge.ApplicationContext;
 import com.tradery.data.page.PageState;
-import com.tradery.forge.data.page.DataPageManager;
+import com.tradery.forge.data.page.CandlePageManager;
 import com.tradery.data.page.DataPageListener;
 import com.tradery.data.page.DataPageView;
 
@@ -31,7 +31,7 @@ public class TimelineBar extends JPanel implements DataPageListener<Candle> {
 
     private static final long TEN_YEARS_MS = 10L * 365 * 24 * 60 * 60 * 1000;
 
-    private final DataPageManager<Candle> candlePageMgr;
+    private final CandlePageManager candlePageMgr;
 
     private String symbol = "BTCUSDT";
     private String title = "";

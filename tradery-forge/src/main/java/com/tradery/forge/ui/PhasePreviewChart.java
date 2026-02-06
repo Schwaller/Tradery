@@ -8,7 +8,7 @@ import com.tradery.core.model.Phase;
 import com.tradery.engine.ConditionEvaluator;
 import com.tradery.forge.ApplicationContext;
 import com.tradery.data.page.PageState;
-import com.tradery.forge.data.page.DataPageManager;
+import com.tradery.forge.data.page.CandlePageManager;
 import com.tradery.data.page.DataPageListener;
 import com.tradery.data.page.DataPageView;
 import com.tradery.forge.ui.charts.ChartConfig;
@@ -278,7 +278,7 @@ public class PhasePreviewChart extends JPanel implements DataPageListener<Candle
         // Request data from CandlePageManager
         log.info("PhasePreviewChart requesting: symbol={}, timeframe={}, start={}, end={}",
             symbol, timeframe, startTime, endTime);
-        DataPageManager<Candle> pageManager = ApplicationContext.getInstance().getCandlePageManager();
+        CandlePageManager pageManager = ApplicationContext.getInstance().getCandlePageManager();
         currentPage = pageManager.request(symbol, timeframe, startTime, endTime, this, "PhasePreviewChart");
 
         // If already ready, onStateChanged will be called immediately

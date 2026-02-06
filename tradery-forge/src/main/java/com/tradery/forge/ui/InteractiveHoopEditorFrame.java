@@ -5,7 +5,7 @@ import com.tradery.engine.HoopPatternEvaluator;
 import com.tradery.forge.ApplicationContext;
 import com.tradery.forge.TraderyApp;
 import com.tradery.data.page.PageState;
-import com.tradery.forge.data.page.DataPageManager;
+import com.tradery.forge.data.page.CandlePageManager;
 import com.tradery.data.page.DataPageListener;
 import com.tradery.data.page.DataPageView;
 import com.tradery.forge.io.HoopPatternStore;
@@ -382,7 +382,7 @@ public class InteractiveHoopEditorFrame extends JFrame implements DataPageListen
         }
 
         // Request data from CandlePageManager
-        DataPageManager<Candle> pageManager = ApplicationContext.getInstance().getCandlePageManager();
+        CandlePageManager pageManager = ApplicationContext.getInstance().getCandlePageManager();
         currentPage = pageManager.request(symbol, timeframe, startTime, endTime, this, "HoopEditor");
 
         // If already ready, onStateChanged will be called immediately
