@@ -81,14 +81,52 @@ public class DataStructureFrame extends JFrame {
         headerBar.setBackground(new Color(38, 40, 44));
         headerBar.setBorder(BorderFactory.createMatteBorder(0, 0, 1, 0, new Color(50, 52, 56)));
 
-        // Left: spacer for macOS traffic lights
-        JPanel leftPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 4));
+        // Left: Layout mode toggles (badge-style like IntelFrame News/Coin Relations)
+        JPanel leftPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 4));
         leftPanel.setOpaque(false);
         if (SystemInfo.isMacOS) {
             leftPanel.setBorder(new EmptyBorder(0, 70, 0, 0));
         }
 
-        JButton addEntityTypeBtn = createHeaderButton("+ Entity Type");
+        ButtonGroup layoutGroup = new ButtonGroup();
+
+        JToggleButton manualBtn = createLayoutToggle("Manual");
+        manualBtn.setSelected(true);
+        manualBtn.addActionListener(e -> erdPanel.manualLayout());
+        layoutGroup.add(manualBtn);
+        leftPanel.add(manualBtn);
+
+        JToggleButton treeBtn = createLayoutToggle("Tree");
+        treeBtn.addActionListener(e -> { erdPanel.treeLayout(); erdPanel.fitToView(); });
+        layoutGroup.add(treeBtn);
+        leftPanel.add(treeBtn);
+
+        JToggleButton springBtn = createLayoutToggle("Spring");
+        springBtn.addActionListener(e -> erdPanel.springLayout());
+        layoutGroup.add(springBtn);
+        leftPanel.add(springBtn);
+
+        headerBar.add(leftPanel, BorderLayout.WEST);
+
+        // Center: Title
+        JLabel titleLabel = new JLabel("Data Structure", SwingConstants.CENTER);
+        titleLabel.setFont(new Font("SansSerif", Font.BOLD, 13));
+        titleLabel.setForeground(new Color(160, 160, 170));
+        headerBar.add(titleLabel, BorderLayout.CENTER);
+
+        // Right: Fit + Entity Type
+        JPanel rightPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 4));
+        rightPanel.setOpaque(false);
+
+        JButton fitBtn = new JButton("Fit");
+        fitBtn.setFont(new Font("SansSerif", Font.PLAIN, 11));
+        fitBtn.setMargin(new Insets(6, 14, 6, 14));
+        fitBtn.addActionListener(e -> erdPanel.fitToView());
+        rightPanel.add(fitBtn);
+
+        JButton addEntityTypeBtn = new JButton("+ Entity Type");
+        addEntityTypeBtn.setFont(new Font("SansSerif", Font.PLAIN, 11));
+        addEntityTypeBtn.setMargin(new Insets(6, 14, 6, 14));
         addEntityTypeBtn.addActionListener(e -> {
             String name = JOptionPane.showInputDialog(this, "Entity type name:", "Add Entity Type",
                 JOptionPane.PLAIN_MESSAGE);
@@ -102,54 +140,32 @@ public class DataStructureFrame extends JFrame {
                 type.addAttribute(nameAttr);
                 schemaRegistry.save(type);
                 schemaRegistry.addAttribute(id, nameAttr);
-                erdPanel.autoLayout();
             }
         });
-        leftPanel.add(addEntityTypeBtn);
-
-        headerBar.add(leftPanel, BorderLayout.WEST);
-
-        // Center: Title
-        JLabel titleLabel = new JLabel("Data Structure", SwingConstants.CENTER);
-        titleLabel.setFont(new Font("SansSerif", Font.BOLD, 13));
-        titleLabel.setForeground(new Color(160, 160, 170));
-        headerBar.add(titleLabel, BorderLayout.CENTER);
-
-        // Right: Layout buttons
-        JPanel rightPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 4));
-        rightPanel.setOpaque(false);
-
-        JButton treeLayoutBtn = createHeaderButton("Tree Layout");
-        treeLayoutBtn.addActionListener(e -> { erdPanel.treeLayout(); erdPanel.fitToView(); });
-        rightPanel.add(treeLayoutBtn);
-
-        JButton autoLayoutBtn = createHeaderButton("Spring Layout");
-        autoLayoutBtn.addActionListener(e -> erdPanel.autoLayout());
-        rightPanel.add(autoLayoutBtn);
-
-        JButton fitBtn = createHeaderButton("Fit to View");
-        fitBtn.addActionListener(e -> erdPanel.fitToView());
-        rightPanel.add(fitBtn);
-
-        JToggleButton pinBtn = new JToggleButton("Pin All");
-        pinBtn.setFont(new Font("SansSerif", Font.PLAIN, 11));
-        pinBtn.setMargin(new Insets(6, 14, 6, 14));
-        pinBtn.addActionListener(e -> {
-            boolean pinned = pinBtn.isSelected();
-            erdPanel.setPinAll(pinned);
-            pinBtn.setText(pinned ? "Unpin All" : "Pin All");
-        });
-        rightPanel.add(pinBtn);
+        rightPanel.add(addEntityTypeBtn);
 
         headerBar.add(rightPanel, BorderLayout.EAST);
 
         return headerBar;
     }
 
-    private JButton createHeaderButton(String text) {
-        JButton btn = new JButton(text);
-        btn.setFont(new Font("SansSerif", Font.PLAIN, 11));
+    private JToggleButton createLayoutToggle(String text) {
+        JToggleButton btn = new JToggleButton(text);
+        btn.setFont(new Font("SansSerif", Font.BOLD, 11));
         btn.setMargin(new Insets(6, 14, 6, 14));
+        btn.setFocusPainted(false);
+        btn.setBorderPainted(false);
+        btn.setBackground(new Color(38, 40, 44));
+        btn.setForeground(new Color(160, 160, 170));
+        btn.addChangeListener(e -> {
+            if (btn.isSelected()) {
+                btn.setBackground(new Color(55, 57, 61));
+                btn.setForeground(new Color(220, 220, 230));
+            } else {
+                btn.setBackground(new Color(38, 40, 44));
+                btn.setForeground(new Color(160, 160, 170));
+            }
+        });
         return btn;
     }
 }

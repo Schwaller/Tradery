@@ -639,6 +639,7 @@ public class ProjectWindow extends JFrame {
 
     private void onStrategyFileChanged(Path path) {
         if (autoSaveScheduler.isIgnoringFileChanges()) return;
+        if (autoSaveScheduler.tryConsumeSaveEvent()) return;
 
         SwingUtilities.invokeLater(() -> {
             statusManager.startBacktest("File changed externally - reloading...");

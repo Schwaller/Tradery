@@ -6,7 +6,10 @@ import com.tradery.desk.feed.BinanceWebSocketClient.ConnectionState;
 import com.tradery.desk.signal.SignalEvent;
 import com.tradery.desk.strategy.PublishedStrategy;
 
+import com.formdev.flatlaf.util.SystemInfo;
+
 import javax.swing.*;
+import javax.swing.border.EmptyBorder;
 import java.awt.*;
 import java.awt.event.ActionListener;
 import java.awt.event.WindowAdapter;

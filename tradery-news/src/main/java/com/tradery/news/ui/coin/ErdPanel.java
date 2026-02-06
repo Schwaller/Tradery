@@ -6,6 +6,7 @@ import java.awt.event.*;
 import java.awt.geom.*;
 import java.util.*;
 import java.util.List;
+import java.util.Map;
 import java.util.function.Consumer;
 
 /**
@@ -54,15 +55,18 @@ public class ErdPanel extends JPanel {
     // Hover port info
     private SchemaType hoveredPortType;
 
-    // Layout mode: when false, physics simulation is disabled (e.g. tree layout)
-    private boolean springMode = true;
+    // Layout mode
+    private enum LayoutMode { MANUAL, SPRING, TREE_ANIMATING }
+    private LayoutMode layoutMode = LayoutMode.MANUAL;
 
     // Cached dot grid
     private java.awt.image.BufferedImage gridCache;
     private int gridCacheW, gridCacheH;
 
-    // Physics timer
+    // Physics/animation timer
     private javax.swing.Timer physicsTimer;
+    private static final double ANIM_LERP = 0.12;
+    private static final double ANIM_SNAP = 1.0;
 
     public ErdPanel() {
         setBackground(BG_COLOR);
@@ -70,12 +74,40 @@ public class ErdPanel extends JPanel {
         setupMouseHandlers();
 
         physicsTimer = new javax.swing.Timer(32, e -> {
-            if (registry == null || !springMode) { physicsTimer.stop(); return; }
-            double cx = getWidth() / 2.0;
-            double cy = getHeight() / 2.0;
-            boolean moving = ErdLayoutEngine.step(registry.allTypes(), cx, cy, draggedType);
-            repaint();
-            if (!moving) {
+            if (registry == null) { physicsTimer.stop(); return; }
+
+            if (layoutMode == LayoutMode.SPRING) {
+                double cx = getWidth() / 2.0;
+                double cy = getHeight() / 2.0;
+                boolean moving = ErdLayoutEngine.step(registry.allTypes(), cx, cy, draggedType);
+                repaint();
+                if (!moving) {
+                    physicsTimer.stop();
+                    savePositions();
+                }
+            } else if (layoutMode == LayoutMode.TREE_ANIMATING) {
+                boolean anyMoving = false;
+                for (SchemaType t : registry.allTypes()) {
+                    if (!t.isErdAnimating()) continue;
+                    double dx = t.erdTargetX() - t.erdX();
+                    double dy = t.erdTargetY() - t.erdY();
+                    if (Math.abs(dx) < ANIM_SNAP && Math.abs(dy) < ANIM_SNAP) {
+                        t.setErdX(t.erdTargetX());
+                        t.setErdY(t.erdTargetY());
+                        t.setErdAnimating(false);
+                    } else {
+                        t.setErdX(t.erdX() + dx * ANIM_LERP);
+                        t.setErdY(t.erdY() + dy * ANIM_LERP);
+                        anyMoving = true;
+                    }
+                }
+                repaint();
+                if (!anyMoving) {
+                    layoutMode = LayoutMode.MANUAL;
+                    physicsTimer.stop();
+                    savePositions();
+                }
+            } else {
                 physicsTimer.stop();
             }
         });
@@ -83,12 +115,7 @@ public class ErdPanel extends JPanel {
 
     public void setRegistry(SchemaRegistry registry) {
         this.registry = registry;
-        if (registry != null) {
-            double cx = getWidth() > 0 ? getWidth() / 2.0 : 600;
-            double cy = getHeight() > 0 ? getHeight() / 2.0 : 300;
-            ErdLayoutEngine.initPositions(registry.allTypes(), cx, cy);
-            if (springMode) physicsTimer.start();
-        }
+        // Positions are loaded from DB - no auto layout
         repaint();
     }
 
@@ -100,16 +127,16 @@ public class ErdPanel extends JPanel {
         return registry;
     }
 
-    /** Pin or unpin all nodes. When pinned, physics stops and the user can drag freely. */
-    public void setPinAll(boolean pinned) {
+    /** Switch to manual layout mode: stop all physics/animation. */
+    public void manualLayout() {
         if (registry == null) return;
+        layoutMode = LayoutMode.MANUAL;
+        physicsTimer.stop();
         for (SchemaType t : registry.allTypes()) {
-            t.setErdPinned(pinned);
+            t.setErdPinned(false);
             t.setErdVx(0);
             t.setErdVy(0);
-        }
-        if (pinned) {
-            physicsTimer.stop();
+            t.setErdAnimating(false);
         }
         repaint();
     }
@@ -159,9 +186,6 @@ public class ErdPanel extends JPanel {
         }
 
         g2.dispose();
-
-        // Draw minimap (in screen coordinates)
-        drawMinimap((Graphics2D) g);
     }
 
     private void drawDotGrid(Graphics2D g2) {
@@ -312,34 +336,29 @@ public class ErdPanel extends JPanel {
         double relRightX = rel.erdX() + DIAMOND_W;
         double relMidY = rel.erdY() + DIAMOND_H / 2.0;
 
-        // Closest edge point on the from-entity box toward the diamond left
-        Point2D fromEdge = getBoxEdgePoint(fromType, relLeftX, relMidY);
-        // Closest edge point on the to-entity box from the diamond right
-        Point2D toEdge = getBoxEdgePoint(toType, relRightX, relMidY);
+        // Entity centers as start/end points
+        Point2D fromCenter = getBoxCenter(fromType);
+        Point2D toCenter = getBoxCenter(toType);
 
-        // Curve: from-entity edge -> diamond left (arrives horizontally)
-        double dx1 = Math.abs(relLeftX - fromEdge.getX());
-        double tangent1 = Math.max(80, dx1 * 1.0);
+        // Curve: from-entity center -> diamond left (arrives horizontally)
+        double tangent = ENTITY_WIDTH;
         CubicCurve2D curve1 = new CubicCurve2D.Double(
-            fromEdge.getX(), fromEdge.getY(),
-            fromEdge.getX(), fromEdge.getY(),                // no constraint on entity side
-            relLeftX - tangent1, relMidY,                     // arrive at diamond horizontally
+            fromCenter.getX(), fromCenter.getY(),
+            fromCenter.getX(), fromCenter.getY(),             // no constraint on entity side
+            relLeftX - tangent, relMidY,                      // arrive at diamond horizontally
             relLeftX, relMidY
         );
         g2.draw(curve1);
-        drawArrowHead(g2, relLeftX - tangent1, relMidY, relLeftX, relMidY);
-
-        // Curve: diamond right -> to-entity edge (leaves horizontally)
-        double dx2 = Math.abs(toEdge.getX() - relRightX);
-        double tangent2 = Math.max(80, dx2 * 1.0);
+        drawArrowHead(g2, relLeftX - tangent, relMidY, relLeftX, relMidY);
+        // Curve: diamond right -> to-entity center (leaves horizontally)
         CubicCurve2D curve2 = new CubicCurve2D.Double(
             relRightX, relMidY,
-            relRightX + tangent2, relMidY,                    // leave diamond horizontally
-            toEdge.getX(), toEdge.getY(),                     // no constraint on entity side
-            toEdge.getX(), toEdge.getY()
+            relRightX + tangent, relMidY,                     // leave diamond horizontally
+            toCenter.getX(), toCenter.getY(),                 // no constraint on entity side
+            toCenter.getX(), toCenter.getY()
         );
         g2.draw(curve2);
-        drawArrowHead(g2, relRightX + tangent2, relMidY, toEdge.getX(), toEdge.getY());
+        drawArrowHead(g2, relRightX + tangent, relMidY, toCenter.getX(), toCenter.getY());
     }
 
     /** Get the closest edge point on an entity/diamond box toward a target point. */
@@ -541,7 +560,7 @@ public class ErdPanel extends JPanel {
                         dragOffsetX = wx - type.erdX();
                         dragOffsetY = wy - type.erdY();
                         setCursor(Cursor.getPredefinedCursor(Cursor.MOVE_CURSOR));
-                        if (springMode) { ErdLayoutEngine.reheat(); physicsTimer.start(); }
+                        if (layoutMode == LayoutMode.SPRING) { ErdLayoutEngine.reheat(); physicsTimer.start(); }
                     } else {
                         // Pan
                         selectedType = null;
@@ -605,6 +624,7 @@ public class ErdPanel extends JPanel {
                 if (draggedType != null) {
                     draggedType = null;
                     setCursor(Cursor.getDefaultCursor());
+                    savePositions();
                 }
             }
 
@@ -696,9 +716,13 @@ public class ErdPanel extends JPanel {
 
             menu.addSeparator();
 
-            JMenuItem autoLayoutItem = new JMenuItem("Auto Layout");
-            autoLayoutItem.addActionListener(ev -> autoLayout());
-            menu.add(autoLayoutItem);
+            JMenuItem treeItem = new JMenuItem("Tree Layout");
+            treeItem.addActionListener(ev -> { treeLayout(); fitToView(); });
+            menu.add(treeItem);
+
+            JMenuItem springItem = new JMenuItem("Spring Layout");
+            springItem.addActionListener(ev -> springLayout());
+            menu.add(springItem);
 
             JMenuItem fitItem = new JMenuItem("Fit to View");
             fitItem.addActionListener(ev -> fitToView());
@@ -710,27 +734,61 @@ public class ErdPanel extends JPanel {
 
     // ==================== ACTIONS ====================
 
-    public void autoLayout() {
+    public void springLayout() {
         if (registry != null) {
-            springMode = true;
+            layoutMode = LayoutMode.SPRING;
             double cx = getWidth() / 2.0;
             double cy = getHeight() / 2.0;
-            for (SchemaType t : registry.allTypes()) {
-                t.setErdX(0);
-                t.setErdY(0);
-            }
+            // Only scatter types that have no position yet; keep existing positions
             ErdLayoutEngine.initPositions(registry.allTypes(), cx, cy);
+            ErdLayoutEngine.reheat();
             physicsTimer.start();
         }
     }
 
     public void treeLayout() {
-        if (registry != null) {
-            springMode = false;
-            physicsTimer.stop();
-            double cx = 60;
-            double cy = getHeight() > 0 ? getHeight() / 2.0 : 300;
-            ErdLayoutEngine.treeLayout(registry.allTypes(), cx, cy);
+        if (registry == null) return;
+        // Compute target positions using a temporary copy approach:
+        // save current positions, run tree layout to get targets, then restore
+        double cx = 60;
+        double cy = getHeight() > 0 ? getHeight() / 2.0 : 300;
+
+        // Store current positions
+        Map<String, double[]> currentPos = new HashMap<>();
+        for (SchemaType t : registry.allTypes()) {
+            currentPos.put(t.id(), new double[]{t.erdX(), t.erdY()});
+        }
+
+        // Compute tree target positions
+        ErdLayoutEngine.treeLayout(registry.allTypes(), cx, cy);
+
+        // Set targets and restore current positions for animation
+        boolean needsAnimation = false;
+        for (SchemaType t : registry.allTypes()) {
+            t.setErdTargetX(t.erdX());
+            t.setErdTargetY(t.erdY());
+            double[] cur = currentPos.get(t.id());
+            if (cur != null && (cur[0] != 0 || cur[1] != 0)) {
+                t.setErdX(cur[0]);
+                t.setErdY(cur[1]);
+                double dx = t.erdTargetX() - t.erdX();
+                double dy = t.erdTargetY() - t.erdY();
+                if (Math.abs(dx) > ANIM_SNAP || Math.abs(dy) > ANIM_SNAP) {
+                    needsAnimation = true;
+                }
+            }
+            t.setErdAnimating(true);
+            t.setErdVx(0);
+            t.setErdVy(0);
+        }
+
+        if (needsAnimation) {
+            layoutMode = LayoutMode.TREE_ANIMATING;
+            physicsTimer.start();
+        } else {
+            // No animation needed (first open with no prior positions)
+            layoutMode = LayoutMode.MANUAL;
+            savePositions();
             repaint();
         }
     }
@@ -784,7 +842,7 @@ public class ErdPanel extends JPanel {
 
         registry.save(type);
         registry.addAttribute(id, nameAttr);
-        if (springMode) physicsTimer.start();
+        if (layoutMode == LayoutMode.SPRING) physicsTimer.start();
         fireDataChanged();
     }
 
@@ -833,7 +891,7 @@ public class ErdPanel extends JPanel {
             type.setErdY(wy);
 
             registry.save(type);
-            if (springMode) physicsTimer.start();
+            if (layoutMode == LayoutMode.SPRING) physicsTimer.start();
             fireDataChanged();
         }
     }
@@ -891,6 +949,10 @@ public class ErdPanel extends JPanel {
             fireDataChanged();
         });
         popup.show(this, e.getX(), e.getY());
+    }
+
+    private void savePositions() {
+        if (registry != null) registry.savePositions();
     }
 
     private void fireDataChanged() {

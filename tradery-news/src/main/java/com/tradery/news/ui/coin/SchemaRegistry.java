@@ -90,6 +90,11 @@ public class SchemaRegistry {
         }
     }
 
+    /** Persist current ERD positions to DB. */
+    public void savePositions() {
+        store.saveSchemaPositions(types.values());
+    }
+
     public void removeAttribute(String typeId, String attrName) {
         store.removeSchemaAttribute(typeId, attrName);
         SchemaType type = types.get(typeId);

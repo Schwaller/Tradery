@@ -250,68 +250,109 @@ public class ErdLayoutEngine {
         double rowSpacing = 50;
         double selfRelDiamondH = 90;    // vertical space per self-relation diamond
 
-        // Position entities in columns, with self-relation diamonds stacked below
+        // Position entities in columns, with self-relation diamonds split above/below
         int col = 0;
         for (Map.Entry<Integer, List<SchemaType>> entry : levels.entrySet()) {
             List<SchemaType> level = entry.getValue();
 
-            // Compute total height including self-relations
+            // Compute total height including self-relations (split above/below)
             double totalHeight = 0;
             for (SchemaType e : level) {
-                double blockH = entityHeight(e);
                 List<SchemaType> selfRels = selfRelsByEntity.getOrDefault(e.id(), List.of());
-                if (!selfRels.isEmpty()) {
-                    blockH += selfRels.size() * selfRelDiamondH;
-                }
+                int aboveCount = selfRels.size() / 2;
+                int belowCount = selfRels.size() - aboveCount;
+                double blockH = aboveCount * selfRelDiamondH + entityHeight(e) + belowCount * selfRelDiamondH;
                 totalHeight += blockH + rowSpacing;
             }
             totalHeight -= rowSpacing;
 
             double y = startY - totalHeight / 2.0;
             double x = startX + col * (entityColWidth + relColWidth);
+            double selfRelX = x + (entityColWidth - 150) / 2.0;  // center diamond under entity
+
             for (SchemaType e : level) {
+                List<SchemaType> selfRels = selfRelsByEntity.getOrDefault(e.id(), List.of());
+                int aboveCount = selfRels.size() / 2;
+
+                // Place above self-relations
+                for (int i = 0; i < aboveCount; i++) {
+                    SchemaType sr = selfRels.get(i);
+                    sr.setErdX(selfRelX);
+                    sr.setErdY(y);
+                    sr.setErdVx(0);
+                    sr.setErdVy(0);
+                    y += selfRelDiamondH;
+                }
+
+                // Place entity
                 e.setErdX(x);
                 e.setErdY(y);
                 e.setErdVx(0);
                 e.setErdVy(0);
+                y += entityHeight(e);
 
-                double blockBottom = y + entityHeight(e);
-
-                // Place self-relation diamonds below this entity
-                List<SchemaType> selfRels = selfRelsByEntity.getOrDefault(e.id(), List.of());
-                for (SchemaType sr : selfRels) {
-                    sr.setErdX(x + (entityColWidth - 150) / 2.0);  // center diamond under entity
-                    sr.setErdY(blockBottom + 5);
+                // Place below self-relations
+                for (int i = aboveCount; i < selfRels.size(); i++) {
+                    SchemaType sr = selfRels.get(i);
+                    sr.setErdX(selfRelX);
+                    sr.setErdY(y);
                     sr.setErdVx(0);
                     sr.setErdVy(0);
-                    blockBottom += selfRelDiamondH;
+                    y += selfRelDiamondH;
                 }
 
-                y = blockBottom + rowSpacing;
+                y += rowSpacing;
             }
             col++;
         }
 
-        // Position cross-entity relationship diamonds between their from/to entities
+        // Position cross-entity relationship diamonds between their from/to entities.
+        // Group by column pair so multiple rels between the same columns get stacked vertically.
+        double diamondH = 80;
+        double diamondSpacing = 30;
+        Map<String, List<SchemaType>> relsByColumnPair = new LinkedHashMap<>();
         for (SchemaType rel : relationships) {
             SchemaType from = byId.get(rel.fromTypeId());
             SchemaType to = byId.get(rel.toTypeId());
             if (from != null && to != null) {
-                double mx = (from.erdX() + entityColWidth + to.erdX()) / 2.0 - 75;
-                double fromMidY = from.erdY() + entityHeight(from) / 2.0;
-                double toMidY = to.erdY() + entityHeight(to) / 2.0;
-                double my = (fromMidY + toMidY) / 2.0 - 40;
+                int fromDepth = depth.getOrDefault(rel.fromTypeId(), 0);
+                int toDepth = depth.getOrDefault(rel.toTypeId(), 0);
+                String key = Math.min(fromDepth, toDepth) + ":" + Math.max(fromDepth, toDepth);
+                relsByColumnPair.computeIfAbsent(key, k -> new ArrayList<>()).add(rel);
+            }
+        }
+
+        for (List<SchemaType> group : relsByColumnPair.values()) {
+            double totalGroupH = group.size() * diamondH + (group.size() - 1) * diamondSpacing;
+            // Find the midpoint between the first from/to pair for x positioning
+            SchemaType firstRel = group.get(0);
+            SchemaType from = byId.get(firstRel.fromTypeId());
+            SchemaType to = byId.get(firstRel.toTypeId());
+            double mx = (from.erdX() + entityColWidth + to.erdX()) / 2.0 - 75;
+            double groupStartY = startY - totalGroupH / 2.0;
+
+            for (int i = 0; i < group.size(); i++) {
+                SchemaType rel = group.get(i);
                 rel.setErdX(mx);
-                rel.setErdY(my);
-            } else {
+                rel.setErdY(groupStartY + i * (diamondH + diamondSpacing));
+                rel.setErdVx(0);
+                rel.setErdVy(0);
+            }
+        }
+
+        // Position unconnected relationship diamonds
+        for (SchemaType rel : relationships) {
+            SchemaType from = byId.get(rel.fromTypeId());
+            SchemaType to = byId.get(rel.toTypeId());
+            if (from == null || to == null) {
                 SchemaType anchor = from != null ? from : to;
                 if (anchor != null) {
                     rel.setErdX(anchor.erdX() + entityColWidth + 50);
                     rel.setErdY(anchor.erdY());
                 }
+                rel.setErdVx(0);
+                rel.setErdVy(0);
             }
-            rel.setErdVx(0);
-            rel.setErdVy(0);
         }
     }
 

@@ -23,12 +23,16 @@ public class SchemaType {
     private int displayOrder;
     private final List<SchemaAttribute> attributes = new ArrayList<>();
 
-    // Transient position and velocity on ERD canvas (not persisted)
+    // Position on ERD canvas (persisted to DB)
     private double erdX;
     private double erdY;
+    // Transient velocity and animation state
     private double erdVx;
     private double erdVy;
     private boolean erdPinned;
+    private double erdTargetX;
+    private double erdTargetY;
+    private boolean erdAnimating;
 
     public SchemaType() {}
 
@@ -87,6 +91,15 @@ public class SchemaType {
 
     public boolean isErdPinned() { return erdPinned; }
     public void setErdPinned(boolean erdPinned) { this.erdPinned = erdPinned; }
+
+    public double erdTargetX() { return erdTargetX; }
+    public void setErdTargetX(double erdTargetX) { this.erdTargetX = erdTargetX; }
+
+    public double erdTargetY() { return erdTargetY; }
+    public void setErdTargetY(double erdTargetY) { this.erdTargetY = erdTargetY; }
+
+    public boolean isErdAnimating() { return erdAnimating; }
+    public void setErdAnimating(boolean erdAnimating) { this.erdAnimating = erdAnimating; }
 
     public boolean isEntity() { return KIND_ENTITY.equals(kind); }
     public boolean isRelationship() { return KIND_RELATIONSHIP.equals(kind); }

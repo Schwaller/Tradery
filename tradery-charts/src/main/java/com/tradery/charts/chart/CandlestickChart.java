@@ -61,7 +61,10 @@ public class CandlestickChart extends SyncedChart {
         List<Candle> candles = provider.getCandles();
 
         // Clear old data — datasets, renderers, annotations, and markers
-        for (int i = 0; i < plot.getDatasetCount(); i++) {
+        // Snapshot count first: JFreeChart 1.5.x uses Map internally, setDataset(i, null)
+        // removes the entry and getDatasetCount() returns map size, shrinking during iteration
+        int datasetCount = plot.getDatasetCount();
+        for (int i = 0; i < datasetCount; i++) {
             plot.setDataset(i, null);
             plot.setRenderer(i, null);
         }
@@ -188,7 +191,8 @@ public class CandlestickChart extends SyncedChart {
         // Clear overlay datasets from the plot immediately
         XYPlot plot = getPlot();
         if (plot != null) {
-            for (int i = OVERLAY_START_INDEX; i < plot.getDatasetCount(); i++) {
+            int datasetCount = plot.getDatasetCount();
+            for (int i = OVERLAY_START_INDEX; i < datasetCount; i++) {
                 plot.setDataset(i, null);
                 plot.setRenderer(i, null);
             }

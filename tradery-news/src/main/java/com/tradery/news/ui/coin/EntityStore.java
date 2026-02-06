@@ -4,6 +4,7 @@ import java.awt.*;
 import java.io.File;
 import java.sql.*;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 
 /**
@@ -107,6 +108,10 @@ public class EntityStore {
                     FOREIGN KEY (type_id) REFERENCES schema_types(id) ON DELETE CASCADE
                 )
             """);
+
+            // Add erd position columns if missing (migration)
+            addColumnIfMissing(stmt, "schema_types", "erd_x", "REAL DEFAULT 0");
+            addColumnIfMissing(stmt, "schema_types", "erd_y", "REAL DEFAULT 0");
 
             // Create indexes
             stmt.execute("CREATE INDEX IF NOT EXISTS idx_entities_source ON entities(source)");
@@ -562,6 +567,8 @@ public class EntityStore {
                 type.setToTypeId(rs.getString("to_type_id"));
                 type.setLabel(rs.getString("label"));
                 type.setDisplayOrder(rs.getInt("display_order"));
+                type.setErdX(rs.getDouble("erd_x"));
+                type.setErdY(rs.getDouble("erd_y"));
 
                 // Load attributes
                 loadSchemaAttributesFor(type);
@@ -595,8 +602,8 @@ public class EntityStore {
         if (conn == null) return;
 
         try (PreparedStatement ps = conn.prepareStatement("""
-            INSERT INTO schema_types (id, name, color, kind, from_type_id, to_type_id, label, display_order)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO schema_types (id, name, color, kind, from_type_id, to_type_id, label, display_order, erd_x, erd_y)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
                 name = excluded.name,
                 color = excluded.color,
@@ -604,7 +611,9 @@ public class EntityStore {
                 from_type_id = excluded.from_type_id,
                 to_type_id = excluded.to_type_id,
                 label = excluded.label,
-                display_order = excluded.display_order
+                display_order = excluded.display_order,
+                erd_x = excluded.erd_x,
+                erd_y = excluded.erd_y
         """)) {
             ps.setString(1, type.id());
             ps.setString(2, type.name());
@@ -614,6 +623,8 @@ public class EntityStore {
             ps.setString(6, type.toTypeId());
             ps.setString(7, type.label());
             ps.setInt(8, type.displayOrder());
+            ps.setDouble(9, type.erdX());
+            ps.setDouble(10, type.erdY());
             ps.execute();
         } catch (SQLException e) {
             System.err.println("Failed to save schema type: " + e.getMessage());
@@ -663,6 +674,24 @@ public class EntityStore {
         }
     }
 
+    /** Bulk save just ERD positions for all types. */
+    public void saveSchemaPositions(Collection<SchemaType> types) {
+        if (conn == null || types.isEmpty()) return;
+
+        try (PreparedStatement ps = conn.prepareStatement(
+                "UPDATE schema_types SET erd_x = ?, erd_y = ? WHERE id = ?")) {
+            for (SchemaType t : types) {
+                ps.setDouble(1, t.erdX());
+                ps.setDouble(2, t.erdY());
+                ps.setString(3, t.id());
+                ps.addBatch();
+            }
+            ps.executeBatch();
+        } catch (SQLException e) {
+            System.err.println("Failed to save schema positions: " + e.getMessage());
+        }
+    }
+
     public void removeSchemaAttribute(String typeId, String attrName) {
         if (conn == null) return;
 
@@ -673,6 +702,21 @@ public class EntityStore {
             ps.execute();
         } catch (SQLException e) {
             System.err.println("Failed to remove schema attribute: " + e.getMessage());
+        }
+    }
+
+    private void addColumnIfMissing(Statement stmt, String table, String column, String type) {
+        try {
+            ResultSet rs = stmt.executeQuery("PRAGMA table_info(" + table + ")");
+            boolean found = false;
+            while (rs.next()) {
+                if (column.equals(rs.getString("name"))) { found = true; break; }
+            }
+            if (!found) {
+                stmt.execute("ALTER TABLE " + table + " ADD COLUMN " + column + " " + type);
+            }
+        } catch (SQLException e) {
+            // Ignore - column may already exist
         }
     }
 

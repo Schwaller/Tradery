@@ -1,6 +1,7 @@
 package com.tradery.forge.ui.coordination;
 
 import javax.swing.*;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Manages auto-save and auto-backtest timers with debouncing.
@@ -10,13 +11,17 @@ public class AutoSaveScheduler {
 
     private static final int AUTO_SAVE_DELAY_MS = 500;
     private static final int AUTO_BACKTEST_DELAY_MS = 800;
-    private static final int FILE_CHANGE_IGNORE_MS = 600;
 
     private Timer autoSaveTimer;
     private Timer autoBacktestTimer;
 
-    // Flag to temporarily ignore file changes during save
+    // Flag to suppress auto-save during load operations (e.g., reloading strategy from disk)
     private volatile boolean ignoringFileChanges = false;
+
+    // Counter for pending self-writes: incremented on save, decremented when the
+    // corresponding file-watcher event arrives. Replaces the old timer-based approach
+    // which could race with the FileWatcher debounce delay.
+    private final AtomicInteger pendingSaveCount = new AtomicInteger(0);
 
     // Callbacks
     private Runnable onSave;
@@ -83,14 +88,20 @@ public class AutoSaveScheduler {
     }
 
     /**
-     * Mark that a save just occurred, temporarily ignore file change events.
-     * This prevents the file watcher from triggering a reload right after we save.
+     * Mark that a save just occurred. The next file-watcher event will be
+     * suppressed via {@link #tryConsumeSaveEvent()}.
      */
     public void markSaveOccurred() {
-        ignoringFileChanges = true;
-        Timer timer = new Timer(FILE_CHANGE_IGNORE_MS, e -> ignoringFileChanges = false);
-        timer.setRepeats(false);
-        timer.start();
+        pendingSaveCount.incrementAndGet();
+    }
+
+    /**
+     * Called from file-watcher callbacks. If a save is pending, consume it
+     * (decrement counter) and return true — the caller should skip the reload.
+     * If no save is pending, return false — it's a genuine external change.
+     */
+    public boolean tryConsumeSaveEvent() {
+        return pendingSaveCount.getAndUpdate(c -> c > 0 ? c - 1 : 0) > 0;
     }
 
     private void performSave() {

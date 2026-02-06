@@ -14,6 +14,7 @@ import java.awt.event.WindowEvent;
 import java.io.IOException;
 import java.time.Instant;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Window for managing phase definitions.
@@ -33,7 +34,8 @@ public class PhaseChooserFrame extends JFrame {
     private FileWatcher fileWatcher;
     private Phase currentPhase;
     private Timer autoSaveTimer;
-    private boolean ignoringFileChanges = false;
+    private final AtomicInteger pendingSaveCount = new AtomicInteger(0);
+    private boolean saving = false;
 
     private static final int AUTO_SAVE_DELAY_MS = 500;
 
@@ -277,7 +279,7 @@ public class PhaseChooserFrame extends JFrame {
     }
 
     private void scheduleAutoSave() {
-        if (ignoringFileChanges || currentPhase == null) return;
+        if (saving || currentPhase == null) return;
         autoSaveTimer.restart();
     }
 
@@ -288,7 +290,8 @@ public class PhaseChooserFrame extends JFrame {
         editorPanel.applyTo(currentPhase);
         currentPhase.setUpdated(Instant.now());
 
-        ignoringFileChanges = true;
+        saving = true;
+        pendingSaveCount.incrementAndGet();
         try {
             phaseStore.save(currentPhase);
 
@@ -301,10 +304,7 @@ public class PhaseChooserFrame extends JFrame {
             // Refresh the embedded preview chart
             previewChart.setPhase(currentPhase);
         } finally {
-            // Reset flag after a delay to allow file system to settle
-            Timer resetTimer = new Timer(200, e -> ignoringFileChanges = false);
-            resetTimer.setRepeats(false);
-            resetTimer.start();
+            saving = false;
         }
     }
 
@@ -323,7 +323,7 @@ public class PhaseChooserFrame extends JFrame {
     }
 
     private void onFileChanged() {
-        if (ignoringFileChanges) return;
+        if (pendingSaveCount.getAndUpdate(c -> c > 0 ? c - 1 : 0) > 0) return;
 
         SwingUtilities.invokeLater(() -> {
             String selectedId = currentPhase != null ? currentPhase.getId() : null;
