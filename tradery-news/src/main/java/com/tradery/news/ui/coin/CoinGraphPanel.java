@@ -103,11 +103,12 @@ public class CoinGraphPanel extends JPanel {
             @Override
             public void mouseClicked(MouseEvent e) {
                 if (e.getClickCount() == 2) {
-                    // Double-click to pin/unpin
+                    // Double-click: zoom to connected nodes or fit all
                     CoinEntity entity = findEntityAt(e.getX(), e.getY());
                     if (entity != null) {
-                        entity.setPinned(!entity.isPinned());
-                        repaint();
+                        zoomToConnectedNodes(entity);
+                    } else {
+                        fitToView();
                     }
                 } else {
                     handleClick(e.getX(), e.getY());
@@ -370,7 +371,7 @@ public class CoinGraphPanel extends JPanel {
             hoveredEntity.symbol() != null ? "Symbol: " + hoveredEntity.symbol() : null,
             hoveredEntity.marketCap() > 0 ? "Market Cap: $" + formatNumber(hoveredEntity.marketCap()) : null,
             "Connections: " + hoveredEntity.connectionCount(),
-            hoveredEntity.isPinned() ? "(Pinned - double-click to unpin)" : "(Double-click to pin)"
+            "Double-click to zoom to connections"
         };
 
         // Filter nulls
@@ -426,7 +427,7 @@ public class CoinGraphPanel extends JPanel {
         g2.setColor(new Color(120, 120, 130));
         g2.setFont(new Font("SansSerif", Font.PLAIN, 9));
         g2.drawString("Scroll to zoom, drag background to pan", x, y);
-        g2.drawString("Double-click to pin/unpin node", x, y + 12);
+        g2.drawString("Double-click node to zoom, background to fit all", x, y + 12);
     }
 
     private String formatNumber(double num) {
@@ -517,6 +518,113 @@ public class CoinGraphPanel extends JPanel {
         zoom = 1.0;
         panX = 0;
         panY = 0;
+        repaint();
+    }
+
+    /**
+     * Zoom to fit all nodes in view.
+     */
+    public void fitToView() {
+        if (entities.isEmpty()) return;
+
+        // Find bounding box
+        double minX = Double.MAX_VALUE, minY = Double.MAX_VALUE;
+        double maxX = Double.MIN_VALUE, maxY = Double.MIN_VALUE;
+        for (CoinEntity entity : entities) {
+            minX = Math.min(minX, entity.x());
+            maxX = Math.max(maxX, entity.x());
+            minY = Math.min(minY, entity.y());
+            maxY = Math.max(maxY, entity.y());
+        }
+
+        zoomToBounds(minX, minY, maxX, maxY);
+    }
+
+    /**
+     * Zoom to show connected nodes (direct and indirect) from the given entity.
+     * Caps at a reasonable level to show around 20 nodes.
+     */
+    private void zoomToConnectedNodes(CoinEntity startEntity) {
+        // BFS to find connected nodes, cap at ~20 nodes
+        Set<String> connectedIds = new LinkedHashSet<>();
+        Queue<String> queue = new LinkedList<>();
+        queue.add(startEntity.id());
+        connectedIds.add(startEntity.id());
+
+        int maxNodes = 20;
+
+        while (!queue.isEmpty() && connectedIds.size() < maxNodes) {
+            String current = queue.poll();
+
+            for (CoinRelationship rel : relationships) {
+                String neighbor = null;
+                if (rel.fromId().equals(current)) neighbor = rel.toId();
+                else if (rel.toId().equals(current)) neighbor = rel.fromId();
+
+                if (neighbor != null && !connectedIds.contains(neighbor)) {
+                    connectedIds.add(neighbor);
+                    if (connectedIds.size() < maxNodes) {
+                        queue.add(neighbor);
+                    }
+                }
+            }
+        }
+
+        // Collect entities for bounding box
+        List<CoinEntity> connectedEntities = new ArrayList<>();
+        for (String id : connectedIds) {
+            CoinEntity entity = entityMap.get(id);
+            if (entity != null) {
+                connectedEntities.add(entity);
+            }
+        }
+
+        if (connectedEntities.isEmpty()) return;
+
+        // Find bounding box
+        double minX = Double.MAX_VALUE, minY = Double.MAX_VALUE;
+        double maxX = Double.MIN_VALUE, maxY = Double.MIN_VALUE;
+        for (CoinEntity entity : connectedEntities) {
+            minX = Math.min(minX, entity.x());
+            maxX = Math.max(maxX, entity.x());
+            minY = Math.min(minY, entity.y());
+            maxY = Math.max(maxY, entity.y());
+        }
+
+        zoomToBounds(minX, minY, maxX, maxY);
+
+        // Also select the entity and update connected set
+        if (selectedEntity != null) selectedEntity.setSelected(false);
+        selectedEntity = startEntity;
+        selectedEntity.setSelected(true);
+        updateConnectedSet();
+        if (onEntitySelected != null) {
+            onEntitySelected.accept(startEntity);
+        }
+    }
+
+    /**
+     * Zoom and pan to fit the given bounds with padding.
+     */
+    private void zoomToBounds(double minX, double minY, double maxX, double maxY) {
+        double padding = 80;
+        double width = maxX - minX + padding * 2;
+        double height = maxY - minY + padding * 2;
+
+        if (width < 100) width = 100;
+        if (height < 100) height = 100;
+
+        double zoomX = getWidth() / width;
+        double zoomY = getHeight() / height;
+        zoom = Math.min(zoomX, zoomY);
+        zoom = Math.max(0.1, Math.min(3.0, zoom));  // Cap zoom level
+
+        // Center on the bounds
+        double centerX = (minX + maxX) / 2;
+        double centerY = (minY + maxY) / 2;
+        panX = getWidth() / 2.0 - centerX;
+        panY = getHeight() / 2.0 - centerY;
+
         repaint();
     }
 
