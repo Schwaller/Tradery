@@ -213,6 +213,53 @@ public class PageManager {
     }
 
     /**
+     * Stream aggregated trades as chunked binary (msgpack) data.
+     * Each chunk contains up to chunkSize trades serialized as a msgpack array.
+     * Used by WebSocketHandler to push aggTrades data over WS in manageable frames.
+     *
+     * @param key           Page key identifying the aggTrades page
+     * @param chunkSize     Number of trades per chunk
+     * @param chunkConsumer Called for each chunk with (chunkIndex, totalChunks, chunkRecordCount, msgpackBytes)
+     * @return total number of trades streamed
+     */
+    public int streamAggTradesBinary(PageKey key, int chunkSize, AggTradesChunkConsumer chunkConsumer) throws Exception {
+        String symbol = key.symbol();
+        long start = key.getEffectiveStartTime();
+        long end = key.getEffectiveEndTime();
+
+        long count = dataStore.countAggTrades(symbol, start, end);
+        int totalChunks = Math.max(1, (int) Math.ceil((double) count / chunkSize));
+
+        LOG.debug("streamAggTradesBinary: {} streaming {} trades in {} chunks", symbol, count, totalChunks);
+
+        if (count == 0) {
+            chunkConsumer.onChunk(0, 1, 0, msgpackMapper.writeValueAsBytes(java.util.List.of()));
+            return 0;
+        }
+
+        java.util.concurrent.atomic.AtomicInteger chunkIndex = new java.util.concurrent.atomic.AtomicInteger(0);
+        int total = dataStore.streamAggTrades(symbol, start, end, chunkSize, chunk -> {
+            try {
+                byte[] msgpackData = msgpackMapper.writeValueAsBytes(chunk);
+                chunkConsumer.onChunk(chunkIndex.getAndIncrement(), totalChunks, chunk.size(), msgpackData);
+            } catch (Exception e) {
+                throw new RuntimeException("Failed to serialize aggTrades chunk", e);
+            }
+        });
+
+        LOG.debug("streamAggTradesBinary: {} streamed {} trades in {} chunks", symbol, total, chunkIndex.get());
+        return total;
+    }
+
+    /**
+     * Callback for receiving chunked aggTrades binary data.
+     */
+    @FunctionalInterface
+    public interface AggTradesChunkConsumer {
+        void onChunk(int chunkIndex, int totalChunks, int chunkRecordCount, byte[] msgpackData) throws Exception;
+    }
+
+    /**
      * Get coverage information for a symbol/data type.
      * dataType can be "candles:1h", "agg_trades", "funding_rates", "open_interest", "premium_index:1h"
      */

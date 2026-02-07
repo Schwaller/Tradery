@@ -8,13 +8,12 @@ import java.util.List;
 /**
  * Page manager for open interest data.
  * Fixed 5-minute resolution from Binance Futures API.
- * Delegates all data loading to the Data Service.
+ * Delegates all data loading to the Data Service via WebSocket.
  */
 public class OIPageManager extends DataServicePageManager<OpenInterest> {
 
     public OIPageManager() {
-        super(DataType.OPEN_INTEREST, "OPEN_INTEREST", 2,
-            (client, pageKey) -> client.getOpenInterest(pageKey),
+        super(DataType.OPEN_INTEREST, 2,
             "data-service/openinterest", 64,
             (mapper, data) -> mapper.readValue(data,
                 mapper.getTypeFactory().constructCollectionType(List.class, OpenInterest.class)));

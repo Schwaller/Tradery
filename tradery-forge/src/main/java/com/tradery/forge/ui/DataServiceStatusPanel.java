@@ -1,8 +1,6 @@
 package com.tradery.forge.ui;
 
-import com.tradery.dataclient.DataServiceLauncher;
 import com.tradery.forge.ApplicationContext;
-import com.tradery.forge.TraderyApp;
 import com.tradery.forge.data.page.DataPageManager;
 import com.tradery.ui.controls.StatusBadge;
 
@@ -44,16 +42,16 @@ public class DataServiceStatusPanel extends JPanel {
     }
 
     public void refresh() {
-        DataServiceLauncher launcher = TraderyApp.getDataServiceLauncher();
+        ApplicationContext ctx = ApplicationContext.getInstance();
 
-        if (launcher == null) {
-            statusLabel.setText("Data Service: N/A");
-            statusLabel.setStatusColor(StatusBadge.BG_IDLE, StatusBadge.FG_IDLE);
-            statusLabel.setToolTipText("Data Service not initialized");
+        if (ctx == null || !ctx.isDataServiceAvailable()) {
+            statusLabel.setText("Data Service: Offline");
+            statusLabel.setStatusColor(StatusBadge.BG_ERROR, StatusBadge.FG_ERROR);
+            statusLabel.setToolTipText("Data Service not available");
             return;
         }
 
-        boolean connected = launcher.isRegistered();
+        boolean connected = ctx.getDataServiceClient() != null && ctx.getDataServiceClient().hasActiveConnection();
 
         if (connected) {
             String sizeText = formatTotalDataSize();

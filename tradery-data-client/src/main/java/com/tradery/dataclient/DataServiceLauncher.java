@@ -1,7 +1,5 @@
 package com.tradery.dataclient;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import okhttp3.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -10,54 +8,32 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.UUID;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
 
 /**
  * Manages the data service lifecycle from client apps.
  * - Starts the data service if not running
- * - Registers as a consumer
- * - Sends periodic heartbeats
- * - Unregisters on shutdown
+ * - Provides consumerId for WebSocket connection (WS handles registration)
  */
 public class DataServiceLauncher {
     private static final Logger LOG = LoggerFactory.getLogger(DataServiceLauncher.class);
 
-    private static final int DEFAULT_PORT = 9810;
     private static final long STARTUP_TIMEOUT_MS = 15_000;
-    private static final long HEARTBEAT_INTERVAL_MS = 10_000;
 
     private final String consumerId;
     private final String consumerName;
     private final int pid;
-    private final OkHttpClient httpClient;
-    private final ObjectMapper objectMapper;
-    private final ScheduledExecutorService heartbeatExecutor;
 
     private Process dataServiceProcess;
     private int servicePort;
-    private volatile boolean registered = false;
-    private volatile boolean wsManaged = false;
 
     public DataServiceLauncher(String consumerName) {
         this.consumerId = UUID.randomUUID().toString();
         this.consumerName = consumerName;
         this.pid = (int) ProcessHandle.current().pid();
-        this.httpClient = new OkHttpClient.Builder()
-            .connectTimeout(5, TimeUnit.SECONDS)
-            .readTimeout(10, TimeUnit.SECONDS)
-            .build();
-        this.objectMapper = new ObjectMapper();
-        this.heartbeatExecutor = Executors.newSingleThreadScheduledExecutor(r -> {
-            Thread t = new Thread(r, "DataService-Heartbeat");
-            t.setDaemon(true);
-            return t;
-        });
     }
 
     /**
-     * Ensure the data service is running and register as a consumer.
+     * Ensure the data service is running.
      * Starts the service if not already running.
      *
      * @return the port the service is running on
@@ -74,13 +50,6 @@ public class DataServiceLauncher {
             servicePort = startDataService();
             LOG.info("Started data service on port {}", servicePort);
         }
-
-        // Register as consumer
-        register();
-
-        // Start heartbeat
-        heartbeatExecutor.scheduleAtFixedRate(this::sendHeartbeat,
-            HEARTBEAT_INTERVAL_MS, HEARTBEAT_INTERVAL_MS, TimeUnit.MILLISECONDS);
 
         return servicePort;
     }
@@ -101,42 +70,10 @@ public class DataServiceLauncher {
     }
 
     /**
-     * Mark that a WebSocket connection is managing the consumer lifecycle.
-     * When set, HTTP register/heartbeat/unregister are skipped.
-     */
-    public void setWsManaged(boolean wsManaged) {
-        this.wsManaged = wsManaged;
-        if (wsManaged) {
-            // WS onConnect handles registration, so mark as registered
-            registered = true;
-        }
-    }
-
-    /**
-     * Check if we're registered with the data service.
-     */
-    public boolean isRegistered() {
-        return registered;
-    }
-
-    /**
-     * Shutdown - unregister from the data service.
+     * Shutdown the launcher.
      */
     public void shutdown() {
-        heartbeatExecutor.shutdownNow();
-
-        // Only HTTP-unregister if WS isn't managing the lifecycle
-        // (WS onClose handles unregistration automatically)
-        if (registered && !wsManaged) {
-            try {
-                unregister();
-            } catch (Exception e) {
-                LOG.warn("Failed to unregister from data service", e);
-            }
-        }
-
-        httpClient.dispatcher().executorService().shutdown();
-        httpClient.connectionPool().evictAll();
+        // Nothing to clean up — WS connection handles consumer lifecycle
     }
 
     /**
@@ -270,77 +207,4 @@ public class DataServiceLauncher {
         LOG.warn("Could not find data service JAR in any location");
         return null;
     }
-
-    /**
-     * Register with the data service.
-     */
-    private void register() throws IOException {
-        String url = String.format("http://localhost:%d/consumers/register", servicePort);
-        String json = objectMapper.writeValueAsString(new RegisterRequest(consumerId, consumerName, pid));
-
-        Request request = new Request.Builder()
-            .url(url)
-            .post(RequestBody.create(json, MediaType.parse("application/json")))
-            .build();
-
-        try (Response response = httpClient.newCall(request).execute()) {
-            if (response.isSuccessful()) {
-                registered = true;
-                LOG.info("Registered with data service as {} ({})", consumerName, consumerId);
-            } else {
-                throw new IOException("Failed to register: " + response.code());
-            }
-        }
-    }
-
-    /**
-     * Unregister from the data service.
-     */
-    private void unregister() throws IOException {
-        String url = String.format("http://localhost:%d/consumers/unregister", servicePort);
-        String json = objectMapper.writeValueAsString(new UnregisterRequest(consumerId));
-
-        Request request = new Request.Builder()
-            .url(url)
-            .post(RequestBody.create(json, MediaType.parse("application/json")))
-            .build();
-
-        try (Response response = httpClient.newCall(request).execute()) {
-            if (response.isSuccessful()) {
-                registered = false;
-                LOG.info("Unregistered from data service");
-            }
-        }
-    }
-
-    /**
-     * Send heartbeat to the data service.
-     * Skipped when WS manages the consumer lifecycle (WS ping/pong handles liveness).
-     */
-    private void sendHeartbeat() {
-        if (!registered || wsManaged) return;
-
-        try {
-            String url = String.format("http://localhost:%d/consumers/heartbeat", servicePort);
-            String json = objectMapper.writeValueAsString(new HeartbeatRequest(consumerId));
-
-            Request request = new Request.Builder()
-                .url(url)
-                .post(RequestBody.create(json, MediaType.parse("application/json")))
-                .build();
-
-            try (Response response = httpClient.newCall(request).execute()) {
-                if (!response.isSuccessful()) {
-                    LOG.warn("Heartbeat failed: {}", response.code());
-                }
-            }
-        } catch (Exception e) {
-            LOG.warn("Failed to send heartbeat", e);
-        }
-    }
-
-    // Request records
-    private record RegisterRequest(String consumerId, String consumerName, int pid) {}
-    private record UnregisterRequest(String consumerId) {}
-    private record HeartbeatRequest(String consumerId) {}
 }

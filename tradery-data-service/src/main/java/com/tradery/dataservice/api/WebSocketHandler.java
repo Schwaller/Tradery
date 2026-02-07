@@ -533,8 +533,11 @@ public class WebSocketHandler implements PageUpdateListener {
      * [remaining: msgpack payload]
      */
     private void sendBinaryPageData(PageKey key, String pageKey, long recordCount, Set<String> subscribers) {
-        // AggTrades pages don't hold data in memory (null page data) — skip binary push
-        if (key.isAggTrades()) return;
+        // AggTrades: stream as chunked binary frames (too large for a single frame)
+        if (key.isAggTrades()) {
+            sendChunkedAggTradesData(key, pageKey, subscribers);
+            return;
+        }
 
         byte[] msgpackData = pageManager.getPageData(key);
         if (msgpackData == null) return;
@@ -570,6 +573,57 @@ public class WebSocketHandler implements PageUpdateListener {
         } catch (Exception e) {
             LOG.error("Failed to build binary page data frame for {}", pageKey, e);
         }
+    }
+
+    /**
+     * Stream aggTrades data as chunked binary WS frames.
+     * Each frame contains a batch of trades serialized as msgpack.
+     * Runs on streamExecutor to avoid blocking the page load thread.
+     */
+    private void sendChunkedAggTradesData(PageKey key, String pageKey, Set<String> subscribers) {
+        streamExecutor.submit(() -> {
+            try {
+                long t0 = System.currentTimeMillis();
+                int total = pageManager.streamAggTradesBinary(key, 10000,
+                    (chunkIndex, totalChunks, chunkRecordCount, msgpackData) -> {
+                        // Build chunk header JSON
+                        String headerJson = objectMapper.writeValueAsString(new BinaryChunkHeader(
+                            pageKey, "PAGE_DATA_CHUNK", "AGG_TRADES",
+                            chunkRecordCount, chunkIndex, totalChunks));
+                        byte[] headerBytes = headerJson.getBytes(StandardCharsets.UTF_8);
+
+                        // Assemble binary frame
+                        ByteBuffer frame = ByteBuffer.allocate(4 + headerBytes.length + msgpackData.length);
+                        frame.putInt(headerBytes.length);
+                        frame.put(headerBytes);
+                        frame.put(msgpackData);
+                        frame.flip();
+
+                        // Send to all subscribers
+                        for (String consumerId : subscribers) {
+                            WsConnectContext ctx = connections.get(consumerId);
+                            if (ctx != null) {
+                                try {
+                                    ctx.send(frame.duplicate());
+                                } catch (Exception e) {
+                                    LOG.warn("Failed to send aggTrades chunk to {}: {}", consumerId, e.getMessage());
+                                }
+                            }
+                        }
+
+                        if (chunkIndex % 50 == 0 || chunkIndex == totalChunks - 1) {
+                            LOG.debug("Sent aggTrades chunk {}/{} for {} ({} records, {} bytes)",
+                                chunkIndex + 1, totalChunks, pageKey, chunkRecordCount, msgpackData.length);
+                        }
+                    });
+
+                long elapsed = System.currentTimeMillis() - t0;
+                LOG.info("Completed streaming {} aggTrades binary chunks for {} in {}ms",
+                    total, pageKey, elapsed);
+            } catch (Exception e) {
+                LOG.error("Failed to stream aggTrades binary data for {}", pageKey, e);
+            }
+        });
     }
 
     @Override
@@ -1045,8 +1099,10 @@ public class WebSocketHandler implements PageUpdateListener {
         }
     }
 
-    // Binary frame header (serialized as JSON inside binary WS frames)
+    // Binary frame headers (serialized as JSON inside binary WS frames)
     public record BinaryFrameHeader(String pageKey, String type, String dataType, long recordCount) {}
+    public record BinaryChunkHeader(String pageKey, String type, String dataType,
+                                     long recordCount, int chunkIndex, int totalChunks) {}
 
     // Message records
     public record StateChangedMessage(String type, String pageKey, String state, int progress) {}

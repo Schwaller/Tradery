@@ -128,7 +128,7 @@ public class ApplicationContext {
      */
     private void initDataServiceClient() {
         DataServiceLauncher launcher = TraderyApp.getDataServiceLauncher();
-        if (launcher != null && launcher.isRegistered()) {
+        if (launcher != null && launcher.getPort() > 0) {
             int port = launcher.getPort();
             this.dataServiceClient = new DataServiceClient("localhost", port);
             if (dataServiceClient.isHealthy()) {
@@ -141,8 +141,6 @@ public class ApplicationContext {
                 dataServiceConnection.connect();
                 dataServiceClient.setConnection(dataServiceConnection);
 
-                // WS connection now manages consumer lifecycle (register/unregister/heartbeat)
-                launcher.setWsManaged(true);
                 log.info("DataServiceConnection established for WS push delivery");
             } else {
                 log.warn("DataServiceClient created but service not healthy");

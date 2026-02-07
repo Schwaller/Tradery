@@ -72,7 +72,6 @@ public class DataServiceServer {
         });
 
         // Configure routes
-        configureConsumerRoutes();
         configurePageRoutes();
         configureDataRoutes();
         configureCoverageRoutes();
@@ -105,39 +104,6 @@ public class DataServiceServer {
         liveAggTradeManager.shutdown();
         liveMarkPriceManager.shutdown();
         liveOpenInterestPoller.shutdown();
-    }
-
-    /**
-     * Consumer registration and heartbeat endpoints.
-     * DEPRECATED: WebSocket connections now auto-register/unregister consumers.
-     * These endpoints remain as fallback for non-WS clients (scripts, curl).
-     */
-    private void configureConsumerRoutes() {
-        // Register a consumer (app)
-        app.post("/consumers/register", ctx -> {
-            RegisterRequest req = ctx.bodyAsClass(RegisterRequest.class);
-            consumerRegistry.register(req.consumerId(), req.consumerName(), req.pid());
-            ctx.json(new RegisterResponse(true, "Registered"));
-        });
-
-        // Unregister a consumer
-        app.post("/consumers/unregister", ctx -> {
-            UnregisterRequest req = ctx.bodyAsClass(UnregisterRequest.class);
-            consumerRegistry.unregister(req.consumerId());
-            ctx.json(new RegisterResponse(true, "Unregistered"));
-        });
-
-        // Heartbeat from a consumer
-        app.post("/consumers/heartbeat", ctx -> {
-            HeartbeatRequest req = ctx.bodyAsClass(HeartbeatRequest.class);
-            consumerRegistry.heartbeat(req.consumerId());
-            ctx.json(new HeartbeatResponse(true));
-        });
-
-        // Get consumer count
-        app.get("/consumers/count", ctx -> {
-            ctx.json(new ConsumerCountResponse(consumerRegistry.getConsumerCount()));
-        });
     }
 
     private void configurePageRoutes() {
@@ -206,12 +172,6 @@ public class DataServiceServer {
     }
 
     // Request/Response records
-    public record RegisterRequest(String consumerId, String consumerName, int pid) {}
-    public record UnregisterRequest(String consumerId) {}
-    public record HeartbeatRequest(String consumerId) {}
-    public record RegisterResponse(boolean success, String message) {}
-    public record HeartbeatResponse(boolean success) {}
-    public record ConsumerCountResponse(int count) {}
     public record HealthResponse(String status, int activePages, int consumers) {}
     public record ServiceInfo(String name, String version, int port) {}
 }

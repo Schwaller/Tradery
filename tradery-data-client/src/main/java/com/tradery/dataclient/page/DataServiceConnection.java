@@ -96,6 +96,7 @@ public class DataServiceConnection {
     // Binary page data callbacks: pageKey -> callback
     private final Map<String, PageDataCallback> pageDataCallbacks = new ConcurrentHashMap<>();
 
+
     /**
      * Create a new connection to data-service.
      *
@@ -1110,6 +1111,32 @@ public class DataServiceConnection {
                 } else {
                     LOG.debug("No data callback for page {} (binary data discarded)", pageKey);
                 }
+            } else if ("PAGE_DATA_CHUNK".equals(type)) {
+                String dataType = header.get("dataType").asText();
+                int chunkIndex = header.get("chunkIndex").asInt();
+                int totalChunks = header.get("totalChunks").asInt();
+                long chunkRecordCount = header.get("recordCount").asLong();
+
+                // Read msgpack payload for this chunk
+                byte[] msgpackData = new byte[buffer.remaining()];
+                buffer.get(msgpackData);
+
+                if (chunkIndex % 100 == 0 || chunkIndex == totalChunks - 1) {
+                    LOG.debug("Received chunk {}/{} for {} ({} records, {} bytes)",
+                        chunkIndex + 1, totalChunks, pageKey, chunkRecordCount, msgpackData.length);
+                }
+
+                // Deliver each chunk immediately — caller deserializes inline to avoid OOM
+                PageDataCallback callback = pageDataCallbacks.get(pageKey);
+                if (callback != null) {
+                    callback.onBinaryChunk(pageKey, dataType, chunkIndex, totalChunks,
+                        chunkRecordCount, msgpackData);
+
+                    // Signal completion after last chunk
+                    if (chunkIndex == totalChunks - 1) {
+                        callback.onBinaryChunksComplete(pageKey, dataType, totalChunks);
+                    }
+                }
             } else {
                 LOG.debug("Unknown binary frame type: {}", type);
             }
@@ -1222,14 +1249,25 @@ public class DataServiceConnection {
      */
     public interface PageDataCallback {
         /**
-         * Called when binary page data is received.
-         *
-         * @param pageKey     The page this data belongs to
-         * @param dataType    Data type string (CANDLES, FUNDING_RATES, etc.)
-         * @param recordCount Number of records in the payload
-         * @param msgpackData Raw msgpack bytes to deserialize
+         * Called when binary page data is received (non-chunked, single frame).
+         * Used for candles, funding, OI, premium.
          */
         void onBinaryData(String pageKey, String dataType, long recordCount, byte[] msgpackData);
+
+        /**
+         * Called for each chunk of binary data as it arrives (chunked streaming).
+         * Used for aggTrades which are too large for a single frame.
+         * Default implementation does nothing — override for chunked data handling.
+         */
+        default void onBinaryChunk(String pageKey, String dataType,
+                                    int chunkIndex, int totalChunks,
+                                    long chunkRecordCount, byte[] msgpackData) {}
+
+        /**
+         * Called when all chunks have been received.
+         * Default implementation does nothing — override for chunked data handling.
+         */
+        default void onBinaryChunksComplete(String pageKey, String dataType, int totalChunks) {}
     }
 
     /**
