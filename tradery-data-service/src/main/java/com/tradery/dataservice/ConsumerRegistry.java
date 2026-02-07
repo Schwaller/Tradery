@@ -56,6 +56,18 @@ public class ConsumerRegistry {
     }
 
     /**
+     * Mark a consumer as WS-connected. WS-managed consumers skip heartbeat
+     * timeout checks — the WS connection itself proves liveness.
+     */
+    public void setWsConnected(String consumerId, boolean wsConnected) {
+        ConsumerInfo info = consumers.get(consumerId);
+        if (info != null) {
+            info.wsConnected = wsConnected;
+            info.lastHeartbeat = System.currentTimeMillis();
+        }
+    }
+
+    /**
      * Update heartbeat for a consumer.
      */
     public void heartbeat(String consumerId) {
@@ -92,6 +104,8 @@ public class ConsumerRegistry {
 
         for (var entry : consumers.entrySet()) {
             ConsumerInfo info = entry.getValue();
+            // Skip heartbeat check for WS-connected consumers — WS ping/pong handles liveness
+            if (info.wsConnected) continue;
             if (now - info.lastHeartbeat > HEARTBEAT_TIMEOUT_MS) {
                 LOG.warn("Consumer {} timed out (no heartbeat for {}ms)", info.name, now - info.lastHeartbeat);
                 consumers.remove(entry.getKey());
@@ -121,6 +135,7 @@ public class ConsumerRegistry {
         final String name;
         final int pid;
         volatile long lastHeartbeat;
+        volatile boolean wsConnected; // WS-managed consumers skip heartbeat timeout
 
         ConsumerInfo(String id, String name, int pid, long lastHeartbeat) {
             this.id = id;

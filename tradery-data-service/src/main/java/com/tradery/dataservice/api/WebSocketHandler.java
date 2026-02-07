@@ -140,6 +140,8 @@ public class WebSocketHandler implements PageUpdateListener {
         String consumerName = ctx.queryParam("consumerName");
         if (consumerName == null) consumerName = "ws-" + consumerId.substring(0, 8);
         consumerRegistry.register(consumerId, consumerName, 0);
+        // Mark as WS-connected so heartbeat timeout is skipped (WS ping/pong handles liveness)
+        consumerRegistry.setWsConnected(consumerId, true);
     }
 
     public void onMessage(WsMessageContext ctx) {
