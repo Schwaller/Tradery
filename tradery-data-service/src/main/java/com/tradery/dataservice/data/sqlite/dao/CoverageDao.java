@@ -38,47 +38,44 @@ public class CoverageDao {
      */
     public void addCoverage(String dataType, String subKey, long rangeStart, long rangeEnd,
                             boolean isComplete) throws SQLException {
-        Connection c = conn.getConnection();
+        conn.executeInTransaction(c -> {
+            // Find all ranges that overlap or are adjacent (within 1ms) to the new range
+            List<CoverageRange> overlapping = new ArrayList<>();
+            String selectSql = """
+                SELECT range_start, range_end, is_complete, last_updated
+                FROM data_coverage
+                WHERE data_type = ? AND sub_key = ?
+                  AND range_start <= ? AND range_end >= ?
+                ORDER BY range_start
+                """;
 
-        // Find all ranges that overlap or are adjacent (within 1ms) to the new range
-        List<CoverageRange> overlapping = new ArrayList<>();
-        String selectSql = """
-            SELECT range_start, range_end, is_complete, last_updated
-            FROM data_coverage
-            WHERE data_type = ? AND sub_key = ?
-              AND range_start <= ? AND range_end >= ?
-            ORDER BY range_start
-            """;
-
-        try (PreparedStatement stmt = c.prepareStatement(selectSql)) {
-            stmt.setString(1, dataType);
-            stmt.setString(2, subKey);
-            stmt.setLong(3, rangeEnd + 1);   // adjacent on the right
-            stmt.setLong(4, rangeStart - 1); // adjacent on the left
-            try (ResultSet rs = stmt.executeQuery()) {
-                while (rs.next()) {
-                    overlapping.add(new CoverageRange(
-                        rs.getLong("range_start"),
-                        rs.getLong("range_end"),
-                        rs.getInt("is_complete") == 1,
-                        rs.getLong("last_updated")
-                    ));
+            try (PreparedStatement stmt = c.prepareStatement(selectSql)) {
+                stmt.setString(1, dataType);
+                stmt.setString(2, subKey);
+                stmt.setLong(3, rangeEnd + 1);   // adjacent on the right
+                stmt.setLong(4, rangeStart - 1); // adjacent on the left
+                try (ResultSet rs = stmt.executeQuery()) {
+                    while (rs.next()) {
+                        overlapping.add(new CoverageRange(
+                            rs.getLong("range_start"),
+                            rs.getLong("range_end"),
+                            rs.getInt("is_complete") == 1,
+                            rs.getLong("last_updated")
+                        ));
+                    }
                 }
             }
-        }
 
-        // Compute merged range
-        long mergedStart = rangeStart;
-        long mergedEnd = rangeEnd;
-        boolean mergedComplete = isComplete;
-        for (CoverageRange r : overlapping) {
-            mergedStart = Math.min(mergedStart, r.rangeStart());
-            mergedEnd = Math.max(mergedEnd, r.rangeEnd());
-            mergedComplete = mergedComplete && r.isComplete();
-        }
+            // Compute merged range
+            long mergedStart = rangeStart;
+            long mergedEnd = rangeEnd;
+            boolean mergedComplete = isComplete;
+            for (CoverageRange r : overlapping) {
+                mergedStart = Math.min(mergedStart, r.rangeStart());
+                mergedEnd = Math.max(mergedEnd, r.rangeEnd());
+                mergedComplete = mergedComplete && r.isComplete();
+            }
 
-        c.setAutoCommit(false);
-        try {
             // Delete all overlapping/adjacent ranges
             if (!overlapping.isEmpty()) {
                 String deleteSql = """
@@ -111,18 +108,11 @@ public class CoverageDao {
                 stmt.executeUpdate();
             }
 
-            c.commit();
-
             if (overlapping.size() > 1) {
                 log.debug("Coverage compacted: merged {} ranges into 1 for {}/{} [{} - {}]",
                     overlapping.size(), dataType, subKey, mergedStart, mergedEnd);
             }
-        } catch (SQLException e) {
-            c.rollback();
-            throw e;
-        } finally {
-            c.setAutoCommit(true);
-        }
+        });
     }
 
     /**
@@ -250,11 +240,7 @@ public class CoverageDao {
             return;
         }
 
-        Connection c = conn.getConnection();
-
-        // Start transaction
-        c.setAutoCommit(false);
-        try {
+        conn.executeInTransaction(c -> {
             // Delete all existing ranges for this type/key
             try (PreparedStatement stmt = c.prepareStatement(
                     "DELETE FROM data_coverage WHERE data_type = ? AND sub_key = ?")) {
@@ -288,46 +274,52 @@ public class CoverageDao {
             merged.add(current);
 
             // Insert merged ranges
-            for (CoverageRange range : merged) {
-                addCoverage(dataType, subKey, range.rangeStart(), range.rangeEnd(), range.isComplete());
+            String insertSql = """
+                INSERT OR REPLACE INTO data_coverage
+                (data_type, sub_key, range_start, range_end, is_complete, last_updated)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """;
+            try (PreparedStatement stmt = c.prepareStatement(insertSql)) {
+                for (CoverageRange range : merged) {
+                    stmt.setString(1, dataType);
+                    stmt.setString(2, subKey);
+                    stmt.setLong(3, range.rangeStart());
+                    stmt.setLong(4, range.rangeEnd());
+                    stmt.setInt(5, range.isComplete() ? 1 : 0);
+                    stmt.setLong(6, System.currentTimeMillis());
+                    stmt.executeUpdate();
+                }
             }
 
-            c.commit();
             log.debug("Consolidated {} ranges into {} for {}/{}", ranges.size(), merged.size(), dataType, subKey);
-
-        } catch (SQLException e) {
-            c.rollback();
-            throw e;
-        } finally {
-            c.setAutoCommit(true);
-        }
+        });
     }
 
     /**
      * Delete coverage records for a data type (used when clearing cache).
      */
     public void deleteCoverage(String dataType, String subKey) throws SQLException {
-        Connection c = conn.getConnection();
-
-        try (PreparedStatement stmt = c.prepareStatement(
-                "DELETE FROM data_coverage WHERE data_type = ? AND sub_key = ?")) {
-            stmt.setString(1, dataType);
-            stmt.setString(2, subKey);
-            stmt.executeUpdate();
-        }
+        conn.executeInTransaction(c -> {
+            try (PreparedStatement stmt = c.prepareStatement(
+                    "DELETE FROM data_coverage WHERE data_type = ? AND sub_key = ?")) {
+                stmt.setString(1, dataType);
+                stmt.setString(2, subKey);
+                stmt.executeUpdate();
+            }
+        });
     }
 
     /**
      * Delete all coverage records for a data type (all sub keys).
      */
     public void deleteAllCoverage(String dataType) throws SQLException {
-        Connection c = conn.getConnection();
-
-        try (PreparedStatement stmt = c.prepareStatement(
-                "DELETE FROM data_coverage WHERE data_type = ?")) {
-            stmt.setString(1, dataType);
-            stmt.executeUpdate();
-        }
+        conn.executeInTransaction(c -> {
+            try (PreparedStatement stmt = c.prepareStatement(
+                    "DELETE FROM data_coverage WHERE data_type = ?")) {
+                stmt.setString(1, dataType);
+                stmt.executeUpdate();
+            }
+        });
     }
 
     /**

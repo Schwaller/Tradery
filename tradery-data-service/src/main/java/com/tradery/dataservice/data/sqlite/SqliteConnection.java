@@ -117,8 +117,8 @@ public class SqliteConnection {
      * Automatically commits on success, rolls back on failure.
      */
     public <T> T executeInTransaction(TransactionFunction<T> function) throws SQLException {
-        Connection conn = getConnection();
         synchronized (lock) {
+            Connection conn = getConnection();
             boolean autoCommitOriginal = conn.getAutoCommit();
             try {
                 conn.setAutoCommit(false);
