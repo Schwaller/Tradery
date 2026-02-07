@@ -257,35 +257,6 @@ public class DataServiceClient {
         }
     }
 
-    /**
-     * Get page data as raw bytes (MessagePack).
-     * Used by desk's RemoteCandlePageManager for HTTP data fetch.
-     */
-    public byte[] getPageData(String pageKey) throws IOException {
-        Request request = new Request.Builder()
-            .url(baseUrl + "/pages/" + pageKey + "/data")
-            .get()
-            .build();
-
-        try (Response response = httpClient.newCall(request).execute()) {
-            if (!response.isSuccessful()) {
-                return null;
-            }
-            return response.body().bytes();
-        }
-    }
-
-    /**
-     * Fetch candles from a page via HTTP.
-     * Used by desk's RemoteCandlePageManager for HTTP data fetch.
-     */
-    public List<Candle> getCandles(String pageKey) throws IOException {
-        byte[] data = getPageData(pageKey);
-        if (data == null) return List.of();
-        return msgpackMapper.readValue(data, msgpackMapper.getTypeFactory()
-            .constructCollectionType(List.class, Candle.class));
-    }
-
     // ==================== Symbol Resolution ====================
 
     /**

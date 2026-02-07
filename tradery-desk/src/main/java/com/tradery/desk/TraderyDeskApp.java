@@ -224,11 +224,11 @@ public class TraderyDeskApp {
             );
             pageConnection.connect();
 
-            // Create HTTP client for fetching page data
+            // Create HTTP client (used for sync status polling)
             dataClient = new DataServiceClient(serviceInfo.get().host(), serviceInfo.get().port());
 
             // Create page manager
-            candlePageMgr = new RemoteCandlePageManager(pageConnection, dataClient, "TraderyDesk");
+            candlePageMgr = new RemoteCandlePageManager(pageConnection, "TraderyDesk");
 
             // Monitor connection state and update UI
             pageConnection.addConnectionListener(state -> {

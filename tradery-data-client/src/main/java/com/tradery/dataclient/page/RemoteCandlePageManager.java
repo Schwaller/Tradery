@@ -1,5 +1,6 @@
 package com.tradery.dataclient.page;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tradery.core.model.Candle;
 import com.tradery.data.page.DataPage;
 import com.tradery.data.page.DataPageListener;
@@ -7,20 +8,16 @@ import com.tradery.data.page.DataPageView;
 import com.tradery.data.page.DataType;
 import com.tradery.data.page.PageKey;
 import com.tradery.data.page.PageState;
-import com.tradery.dataclient.DataServiceClient;
+import org.msgpack.jackson.dataformat.MessagePackFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.swing.*;
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
 
 /**
  * Remote page manager for candle data.
@@ -41,8 +38,8 @@ public class RemoteCandlePageManager {
     private static final Logger LOG = LoggerFactory.getLogger(RemoteCandlePageManager.class);
 
     private final DataServiceConnection connection;
-    private final DataServiceClient httpClient;
     private final String consumerName;
+    private final ObjectMapper msgpackMapper;
 
     // Page storage: pageKey -> page
     private final Map<String, DataPage<Candle>> pages = new ConcurrentHashMap<>();
@@ -56,27 +53,18 @@ public class RemoteCandlePageManager {
     // Reference counting: pageKey -> count
     private final Map<String, Integer> refCounts = new ConcurrentHashMap<>();
 
-    // Executor for data fetching
-    private final ExecutorService fetchExecutor = Executors.newFixedThreadPool(4, r -> {
-        Thread t = new Thread(r, "RemoteCandlePageManager-Fetch");
-        t.setDaemon(true);
-        return t;
-    });
-
     private volatile boolean shutdown = false;
 
     /**
      * Create a new remote candle page manager.
      *
      * @param connection   WebSocket connection to data-service
-     * @param httpClient   HTTP client for fetching data
      * @param consumerName Default consumer name for pages
      */
-    public RemoteCandlePageManager(DataServiceConnection connection, DataServiceClient httpClient,
-                                   String consumerName) {
+    public RemoteCandlePageManager(DataServiceConnection connection, String consumerName) {
         this.connection = connection;
-        this.httpClient = httpClient;
         this.consumerName = consumerName;
+        this.msgpackMapper = new ObjectMapper(new MessagePackFactory());
     }
 
     /**
@@ -119,6 +107,8 @@ public class RemoteCandlePageManager {
             // Subscribe to updates from data-service
             connection.subscribePage(DataType.CANDLES, symbol, timeframe, startTime, endTime,
                 createPageCallback(key));
+            // Register for binary data delivery
+            connection.setPageDataCallback(key, createDataCallback(key));
             return newPage;
         });
 
@@ -127,14 +117,8 @@ public class RemoteCandlePageManager {
             listeners.computeIfAbsent(key, k -> ConcurrentHashMap.newKeySet()).add(listener);
 
             // Immediately notify of current state if not EMPTY
-            // Only notify READY if data is actually present (avoids race with HTTP fetch)
             if (page.getState() != PageState.EMPTY) {
-                if (page.getState() == PageState.READY && page.getData().isEmpty()) {
-                    // READY but no data yet — HTTP fetch still in progress, skip notification
-                    // fetchPageData() will notify when data arrives
-                } else {
-                    notifyStateChangedOnEDT(page, PageState.EMPTY, page.getState(), listener);
-                }
+                notifyStateChangedOnEDT(page, PageState.EMPTY, page.getState(), listener);
             }
         }
 
@@ -187,6 +171,8 @@ public class RemoteCandlePageManager {
             // Subscribe to live page updates from data-service
             connection.subscribeLivePage(DataType.CANDLES, symbol, timeframe, marketType, duration,
                 createPageCallback(key));
+            // Register for binary data delivery
+            connection.setPageDataCallback(key, createDataCallback(key));
             return newPage;
         });
 
@@ -195,11 +181,7 @@ public class RemoteCandlePageManager {
             listeners.computeIfAbsent(key, k -> ConcurrentHashMap.newKeySet()).add(listener);
 
             if (page.getState() != PageState.EMPTY) {
-                if (page.getState() == PageState.READY && page.getData().isEmpty()) {
-                    // READY but no data yet — skip notification
-                } else {
-                    notifyStateChangedOnEDT(page, PageState.EMPTY, page.getState(), listener);
-                }
+                notifyStateChangedOnEDT(page, PageState.EMPTY, page.getState(), listener);
             }
         }
 
@@ -262,8 +244,16 @@ public class RemoteCandlePageManager {
     public void refresh(DataPageView<Candle> pageView) {
         String key = pageView.getKey();
         DataPage<Candle> page = pages.get(key);
-        if (page != null && page.isReady()) {
-            fetchPageData(key, page);
+        if (page == null || !page.isReady()) return;
+
+        page.setState(PageState.LOADING);
+        connection.setPageDataCallback(key, createDataCallback(key));
+        if (page.isLiveEnabled()) {
+            connection.subscribeLivePage(DataType.CANDLES, page.getSymbol(), page.getTimeframe(),
+                page.getMarketType(), page.getEndTime() - page.getStartTime(), createPageCallback(key));
+        } else {
+            connection.subscribePage(DataType.CANDLES, page.getSymbol(), page.getTimeframe(),
+                page.getStartTime(), page.getEndTime(), createPageCallback(key));
         }
     }
 
@@ -309,18 +299,6 @@ public class RemoteCandlePageManager {
      */
     public void shutdown() {
         shutdown = true;
-        fetchExecutor.shutdown();
-        try {
-            if (!fetchExecutor.awaitTermination(5, TimeUnit.SECONDS)) {
-                fetchExecutor.shutdownNow();
-                if (!fetchExecutor.awaitTermination(2, TimeUnit.SECONDS)) {
-                    LOG.warn("FetchExecutor did not terminate");
-                }
-            }
-        } catch (InterruptedException e) {
-            fetchExecutor.shutdownNow();
-            Thread.currentThread().interrupt();
-        }
 
         // Clean up all pages
         for (String key : new ArrayList<>(pages.keySet())) {
@@ -341,8 +319,8 @@ public class RemoteCandlePageManager {
                 PageState newState = parseState(state);
                 page.setLoadProgress(progress);
 
-                // Don't propagate READY until data is actually fetched via HTTP.
-                // The fetchPageData() method handles the READY transition after data arrives.
+                // Don't propagate READY until data arrives via binary callback.
+                // The createDataCallback() handles the READY transition after data is deserialized.
                 if (newState == PageState.READY) {
                     notifyProgressOnEDT(page, progress);
                     return;
@@ -359,11 +337,7 @@ public class RemoteCandlePageManager {
 
             @Override
             public void onDataReady(long recordCount) {
-                DataPage<Candle> page = pages.get(pageKey);
-                if (page == null) return;
-
-                // Fetch the actual data
-                fetchPageData(pageKey, page);
+                // Data arrives via binary WS callback — no HTTP fetch needed
             }
 
             @Override
@@ -446,11 +420,16 @@ public class RemoteCandlePageManager {
         };
     }
 
-    private void fetchPageData(String pageKey, DataPage<Candle> page) {
-        fetchExecutor.submit(() -> {
-            try {
-                List<Candle> candles = httpClient.getCandles(pageKey);
-                if (candles != null && !candles.isEmpty()) {
+    private DataServiceConnection.PageDataCallback createDataCallback(String pageKey) {
+        return new DataServiceConnection.PageDataCallback() {
+            @Override
+            public void onBinaryData(String key, String dt, long recordCount, byte[] msgpackData) {
+                DataPage<Candle> page = pages.get(pageKey);
+                if (page == null) return;
+
+                try {
+                    List<Candle> candles = msgpackMapper.readValue(msgpackData,
+                        msgpackMapper.getTypeFactory().constructCollectionType(List.class, Candle.class));
                     page.setData(candles);
                     page.setLastSyncTime(System.currentTimeMillis());
 
@@ -460,15 +439,17 @@ public class RemoteCandlePageManager {
                         notifyStateChangedOnEDT(page, oldState, PageState.READY);
                     }
                     notifyDataChangedOnEDT(page);
+                } catch (Exception e) {
+                    LOG.error("Failed to deserialize candle data for {}: {}", pageKey, e.getMessage());
+                    PageState oldState = page.getState();
+                    page.setState(PageState.ERROR);
+                    page.setErrorMessage("Failed to deserialize data: " + e.getMessage());
+                    notifyStateChangedOnEDT(page, oldState, PageState.ERROR);
                 }
-            } catch (IOException e) {
-                LOG.error("Failed to fetch page data: {}", pageKey, e);
-                PageState oldState = page.getState();
-                page.setState(PageState.ERROR);
-                page.setErrorMessage("Failed to fetch data: " + e.getMessage());
-                notifyStateChangedOnEDT(page, oldState, PageState.ERROR);
+
+                connection.removePageDataCallback(key);
             }
-        });
+        };
     }
 
     private void cleanupPage(String key) {
@@ -476,6 +457,9 @@ public class RemoteCandlePageManager {
         listeners.remove(key);
         consumers.remove(key);
         refCounts.remove(key);
+
+        // Remove binary data callback
+        connection.removePageDataCallback(key);
 
         // Unsubscribe from data-service
         if (page != null) {
