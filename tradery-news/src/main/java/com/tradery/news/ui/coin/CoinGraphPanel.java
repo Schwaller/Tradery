@@ -36,6 +36,13 @@ public class CoinGraphPanel extends JPanel {
     private int lastMouseX, lastMouseY;
     private boolean panning = false;
 
+    // View animation
+    private Timer viewAnimTimer;
+    private double animStartZoom, animStartPanX, animStartPanY;
+    private double animTargetZoom, animTargetPanX, animTargetPanY;
+    private long animStartTime;
+    private static final int ANIM_DURATION_MS = 350;
+
     // Physics settings
     private double repulsion = 5000;
     private double attraction = 0.01;
@@ -55,6 +62,11 @@ public class CoinGraphPanel extends JPanel {
 
             @Override
             public void mousePressed(MouseEvent e) {
+                // Cancel any running view animation on user interaction
+                if (viewAnimTimer != null && viewAnimTimer.isRunning()) {
+                    viewAnimTimer.stop();
+                }
+
                 if (SwingUtilities.isLeftMouseButton(e)) {
                     // Check if clicking on a node
                     CoinEntity entity = findEntityAt(e.getX(), e.getY());
@@ -117,6 +129,9 @@ public class CoinGraphPanel extends JPanel {
 
             @Override
             public void mouseWheelMoved(MouseWheelEvent e) {
+                if (viewAnimTimer != null && viewAnimTimer.isRunning()) {
+                    viewAnimTimer.stop();
+                }
                 double factor = e.getWheelRotation() < 0 ? 1.1 : 0.9;
                 zoom = Math.max(0.1, Math.min(5.0, zoom * factor));
                 repaint();
@@ -518,10 +533,7 @@ public class CoinGraphPanel extends JPanel {
     }
 
     public void resetView() {
-        zoom = 1.0;
-        panX = 0;
-        panY = 0;
-        repaint();
+        animateViewTo(1.0, 0, 0);
     }
 
     /**
@@ -619,16 +631,50 @@ public class CoinGraphPanel extends JPanel {
 
         double zoomX = getWidth() / width;
         double zoomY = getHeight() / height;
-        zoom = Math.min(zoomX, zoomY);
-        zoom = Math.max(0.1, Math.min(3.0, zoom));  // Cap zoom level
+        double targetZoom = Math.min(zoomX, zoomY);
+        targetZoom = Math.max(0.1, Math.min(3.0, targetZoom));
 
-        // Center on the bounds
         double centerX = (minX + maxX) / 2;
         double centerY = (minY + maxY) / 2;
-        panX = getWidth() / 2.0 - centerX;
-        panY = getHeight() / 2.0 - centerY;
+        double targetPanX = getWidth() / 2.0 - centerX;
+        double targetPanY = getHeight() / 2.0 - centerY;
 
-        repaint();
+        animateViewTo(targetZoom, targetPanX, targetPanY);
+    }
+
+    /**
+     * Smoothly animate zoom and pan to target values using ease-out cubic.
+     */
+    private void animateViewTo(double targetZoom, double targetPanX, double targetPanY) {
+        if (viewAnimTimer != null && viewAnimTimer.isRunning()) {
+            viewAnimTimer.stop();
+        }
+
+        animStartZoom = zoom;
+        animStartPanX = panX;
+        animStartPanY = panY;
+        animTargetZoom = targetZoom;
+        animTargetPanX = targetPanX;
+        animTargetPanY = targetPanY;
+        animStartTime = System.currentTimeMillis();
+
+        viewAnimTimer = new Timer(16, e -> {
+            long elapsed = System.currentTimeMillis() - animStartTime;
+            double t = Math.min(1.0, (double) elapsed / ANIM_DURATION_MS);
+            // Ease-out cubic: 1 - (1-t)^3
+            double ease = 1.0 - Math.pow(1.0 - t, 3);
+
+            zoom = animStartZoom + (animTargetZoom - animStartZoom) * ease;
+            panX = animStartPanX + (animTargetPanX - animStartPanX) * ease;
+            panY = animStartPanY + (animTargetPanY - animStartPanY) * ease;
+
+            repaint();
+
+            if (t >= 1.0) {
+                ((Timer) e.getSource()).stop();
+            }
+        });
+        viewAnimTimer.start();
     }
 
     public void selectAndPanTo(String entityId) {
@@ -642,9 +688,10 @@ public class CoinGraphPanel extends JPanel {
         selectedEntity = entity;
         selectedEntity.setSelected(true);
 
-        // Pan to center on entity
-        panX = getWidth() / 2.0 - entity.x();
-        panY = getHeight() / 2.0 - entity.y();
+        // Animate pan to center on entity (keep current zoom)
+        double targetPanX = getWidth() / 2.0 - entity.x();
+        double targetPanY = getHeight() / 2.0 - entity.y();
+        animateViewTo(zoom, targetPanX, targetPanY);
 
         // Update connected set for opacity
         updateConnectedSet();
@@ -653,8 +700,6 @@ public class CoinGraphPanel extends JPanel {
         if (onEntitySelected != null) {
             onEntitySelected.accept(entity);
         }
-
-        repaint();
     }
 
     public List<CoinRelationship> getRelationshipsFor(String entityId) {
