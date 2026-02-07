@@ -103,7 +103,8 @@ public class IntelFrame extends JFrame {
 
         // Start API server
         try {
-            apiServer = new IntelApiServer(this::openWindow);
+            EntitySearchProcessor searchProcessor = new EntitySearchProcessor();
+            apiServer = new IntelApiServer(this::openWindow, entityStore, store, searchProcessor);
             apiServer.start();
         } catch (Exception e) {
             System.err.println("Failed to start Intel API server: " + e.getMessage());
