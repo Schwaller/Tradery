@@ -1,5 +1,6 @@
 package com.tradery.news.ui;
 
+import com.formdev.flatlaf.FlatClientProperties;
 import com.formdev.flatlaf.FlatDarkLaf;
 import com.formdev.flatlaf.util.SystemInfo;
 import com.tradery.news.ai.ClaudeCliProcessor;
@@ -86,6 +87,8 @@ public class IntelFrame extends JFrame {
         getRootPane().putClientProperty("apple.awt.fullWindowContent", true);
         getRootPane().putClientProperty("apple.awt.transparentTitleBar", true);
         getRootPane().putClientProperty("apple.awt.windowTitleVisible", false);
+        getRootPane().putClientProperty(FlatClientProperties.MACOS_WINDOW_BUTTONS_SPACING,
+                FlatClientProperties.MACOS_WINDOW_BUTTONS_SPACING_LARGE);
 
         // Restore window size/position from config
         IntelConfig config = IntelConfig.get();
@@ -164,15 +167,31 @@ public class IntelFrame extends JFrame {
     }
 
     private JPanel createHeaderBar() {
-        JPanel headerBar = new JPanel(new BorderLayout());
+        int barHeight = 52;
+
+        JPanel headerBar = new JPanel(new GridBagLayout());
         headerBar.setBackground(new Color(38, 40, 44));
         headerBar.setBorder(BorderFactory.createMatteBorder(0, 0, 1, 0, new Color(50, 52, 56)));
+        headerBar.setPreferredSize(new Dimension(0, barHeight));
+        headerBar.setMinimumSize(new Dimension(0, barHeight));
 
-        // Left: Toggle buttons (with spacer for macOS traffic lights)
-        JPanel leftBtns = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 4));
-        leftBtns.setOpaque(false);
+        GridBagConstraints gbc = new GridBagConstraints();
+        gbc.gridy = 0;
+
+        // Left: Toggle buttons (with FlatLaf placeholder for macOS traffic lights)
+        gbc.gridx = 0;
+        gbc.weightx = 1.0;
+        gbc.fill = GridBagConstraints.BOTH;
+        gbc.anchor = GridBagConstraints.WEST;
+        JPanel leftPanel = new JPanel(new GridBagLayout());
+        leftPanel.setOpaque(false);
+        JPanel leftContent = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
+        leftContent.setOpaque(false);
         if (SystemInfo.isMacOS) {
-            leftBtns.setBorder(new EmptyBorder(0, 70, 0, 0));
+            JPanel buttonsPlaceholder = new JPanel();
+            buttonsPlaceholder.putClientProperty(FlatClientProperties.FULL_WINDOW_CONTENT_BUTTONS_PLACEHOLDER, "mac");
+            buttonsPlaceholder.setOpaque(false);
+            leftContent.add(buttonsPlaceholder);
         }
 
         ButtonGroup btnGroup = new ButtonGroup();
@@ -184,7 +203,7 @@ public class IntelFrame extends JFrame {
             updateHeaderButtons();
         });
         btnGroup.add(newsBtn);
-        leftBtns.add(newsBtn);
+        leftContent.add(newsBtn);
 
         coinsBtn = createHeaderToggle("Coin Relations");
         coinsBtn.addActionListener(e -> {
@@ -192,25 +211,40 @@ public class IntelFrame extends JFrame {
             updateHeaderButtons();
         });
         btnGroup.add(coinsBtn);
-        leftBtns.add(coinsBtn);
+        leftContent.add(coinsBtn);
 
-        headerBar.add(leftBtns, BorderLayout.WEST);
+        GridBagConstraints lc = new GridBagConstraints();
+        lc.anchor = GridBagConstraints.WEST;
+        lc.fill = GridBagConstraints.HORIZONTAL;
+        lc.weightx = 1.0;
+        leftPanel.add(leftContent, lc);
+        headerBar.add(leftPanel, gbc);
 
         // Center: Title
-        JLabel titleLabel = new JLabel("Tradery - Intelligence", SwingConstants.CENTER);
+        gbc.gridx = 1;
+        gbc.weightx = 0;
+        gbc.fill = GridBagConstraints.NONE;
+        gbc.anchor = GridBagConstraints.CENTER;
+        JLabel titleLabel = new JLabel("Tradery - Intelligence");
         titleLabel.setFont(new Font("SansSerif", Font.BOLD, 13));
         titleLabel.setForeground(new Color(160, 160, 170));
-        headerBar.add(titleLabel, BorderLayout.CENTER);
+        headerBar.add(titleLabel, gbc);
 
         // Right: Action buttons + Settings
-        JPanel rightBtns = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 4));
-        rightBtns.setOpaque(false);
+        gbc.gridx = 2;
+        gbc.weightx = 1.0;
+        gbc.fill = GridBagConstraints.BOTH;
+        gbc.anchor = GridBagConstraints.EAST;
+        JPanel rightPanel = new JPanel(new GridBagLayout());
+        rightPanel.setOpaque(false);
+        JPanel rightContent = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
+        rightContent.setOpaque(false);
 
         // Show: combo (for News view)
         showLabel = new JLabel("Show:");
         showLabel.setFont(new Font("SansSerif", Font.PLAIN, 11));
         showLabel.setForeground(new Color(160, 160, 170));
-        rightBtns.add(showLabel);
+        rightContent.add(showLabel);
 
         limitCombo = new JComboBox<>(new String[]{"100", "250", "500", "1000"});
         limitCombo.setSelectedItem("500");
@@ -220,7 +254,7 @@ public class IntelFrame extends JFrame {
                 loadNewsData();
             }
         });
-        rightBtns.add(limitCombo);
+        rightContent.add(limitCombo);
 
         // Fetch New button (for News view)
         fetchBtn = new JButton("Fetch New");
@@ -228,7 +262,7 @@ public class IntelFrame extends JFrame {
         fetchBtn.setMargin(new Insets(6, 14, 6, 14));
         fetchBtn.setToolTipText("Fetch new articles with AI extraction");
         fetchBtn.addActionListener(e -> fetchNewArticles());
-        rightBtns.add(fetchBtn);
+        rightContent.add(fetchBtn);
 
         // Reset View button (for Coins view)
         resetViewBtn = new JButton("Reset View");
@@ -236,21 +270,26 @@ public class IntelFrame extends JFrame {
         resetViewBtn.setMargin(new Insets(6, 14, 6, 14));
         resetViewBtn.addActionListener(e -> coinGraphPanel.resetView());
         resetViewBtn.setVisible(false);  // Hidden by default (News is selected)
-        rightBtns.add(resetViewBtn);
+        rightContent.add(resetViewBtn);
 
         JButton dataStructureBtn = new JButton("Data Structure");
         dataStructureBtn.setFont(new Font("SansSerif", Font.PLAIN, 11));
         dataStructureBtn.setMargin(new Insets(6, 14, 6, 14));
         dataStructureBtn.addActionListener(e -> showDataStructureWindow());
-        rightBtns.add(dataStructureBtn);
+        rightContent.add(dataStructureBtn);
 
         JButton settingsBtn = new JButton("Settings");
         settingsBtn.setFont(new Font("SansSerif", Font.PLAIN, 11));
         settingsBtn.setMargin(new Insets(6, 14, 6, 14));
         settingsBtn.addActionListener(e -> showSettingsWindow());
-        rightBtns.add(settingsBtn);
+        rightContent.add(settingsBtn);
 
-        headerBar.add(rightBtns, BorderLayout.EAST);
+        GridBagConstraints rc = new GridBagConstraints();
+        rc.anchor = GridBagConstraints.EAST;
+        rc.fill = GridBagConstraints.HORIZONTAL;
+        rc.weightx = 1.0;
+        rightPanel.add(rightContent, rc);
+        headerBar.add(rightPanel, gbc);
 
         return headerBar;
     }

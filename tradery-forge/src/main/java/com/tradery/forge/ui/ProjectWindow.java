@@ -1,5 +1,7 @@
 package com.tradery.forge.ui;
 
+import com.formdev.flatlaf.FlatClientProperties;
+import com.formdev.flatlaf.util.SystemInfo;
 import com.tradery.core.model.*;
 import com.tradery.engine.BacktestEngine;
 import com.tradery.forge.ApplicationContext;
@@ -59,6 +61,7 @@ public class ProjectWindow extends JFrame {
     private JButton phaseAnalysisBtn;
     private JButton publishBtn;
     private JButton phaseOverlayBtn;
+    private JLabel titleLabel;
     private PageManagerBadgesPanel pageManagerBadges;
     private MemoryStatusPanel memoryStatusPanel;
     private DataServiceStatusPanel dataServiceStatusPanel;
@@ -135,6 +138,8 @@ public class ProjectWindow extends JFrame {
         getRootPane().putClientProperty("apple.awt.fullWindowContent", true);
         getRootPane().putClientProperty("apple.awt.transparentTitleBar", true);
         getRootPane().putClientProperty("apple.awt.windowTitleVisible", false);
+        getRootPane().putClientProperty(FlatClientProperties.MACOS_WINDOW_BUTTONS_SPACING,
+                FlatClientProperties.MACOS_WINDOW_BUTTONS_SPACING_LARGE);
 
         addWindowListener(new WindowAdapter() {
             @Override
@@ -355,7 +360,7 @@ public class ProjectWindow extends JFrame {
         autoSaveScheduler.markSaveOccurred();
         strategyStore.save(strategy);
         setTitle(strategy.getName() + " - " + TraderyApp.APP_NAME);
-        timelineBar.setTitle(strategy.getName());
+        if (titleLabel != null) titleLabel.setText(strategy.getName());
         statusManager.setInfoStatus(StatusManager.SOURCE_AUTOSAVE, "Auto-saved");
     }
 
@@ -363,20 +368,56 @@ public class ProjectWindow extends JFrame {
         JPanel contentPane = new JPanel(new BorderLayout());
         setContentPane(contentPane);
 
-        // Set title on timeline bar
-        timelineBar.setTitle(strategy.getName());
+        // Toolbar header bar (integrated with title bar)
+        int barHeight = 52;
 
-        // Left side: Claude, Codex, Help
-        JPanel toolbarLeft = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 4));
+        JPanel toolbarPanel = new JPanel(new GridBagLayout());
+        toolbarPanel.setPreferredSize(new Dimension(0, barHeight));
+        toolbarPanel.setMinimumSize(new Dimension(0, barHeight));
+        toolbarPanel.setMaximumSize(new Dimension(Integer.MAX_VALUE, barHeight));
+
+        GridBagConstraints gbc = new GridBagConstraints();
+        gbc.gridy = 0;
+
+        // Left: traffic light placeholder + title + Claude, Codex, Help
+        gbc.gridx = 0;
+        gbc.weightx = 0;
+        gbc.fill = GridBagConstraints.BOTH;
+        JPanel leftWrapper = new JPanel(new GridBagLayout());
+        leftWrapper.setOpaque(false);
+        JPanel toolbarLeft = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
+        toolbarLeft.setOpaque(false);
+        if (SystemInfo.isMacOS) {
+            JPanel buttonsPlaceholder = new JPanel();
+            buttonsPlaceholder.putClientProperty(FlatClientProperties.FULL_WINDOW_CONTENT_BUTTONS_PLACEHOLDER, "mac");
+            buttonsPlaceholder.setOpaque(false);
+            toolbarLeft.add(buttonsPlaceholder);
+        }
+        titleLabel = new JLabel(strategy.getName());
+        titleLabel.setFont(new Font("SansSerif", Font.BOLD, 13));
+        titleLabel.setForeground(new Color(160, 160, 170));
+        toolbarLeft.add(titleLabel);
         toolbarLeft.add(claudeBtn);
         toolbarLeft.add(codexBtn);
         JButton helpBtn = new JButton("Help");
         helpBtn.setToolTipText("Strategy Guide & DSL Reference");
         helpBtn.addActionListener(e -> StrategyHelpDialog.show(this));
         toolbarLeft.add(helpBtn);
+        GridBagConstraints lc = new GridBagConstraints();
+        lc.anchor = GridBagConstraints.WEST;
+        lc.fill = GridBagConstraints.HORIZONTAL;
+        lc.weightx = 1.0;
+        leftWrapper.add(toolbarLeft, lc);
+        toolbarPanel.add(leftWrapper, gbc);
 
         // Center: Chart controls and Indicators
-        JPanel toolbarCenter = new JPanel(new FlowLayout(FlowLayout.CENTER, 8, 4));
+        gbc.gridx = 1;
+        gbc.weightx = 1.0;
+        gbc.fill = GridBagConstraints.BOTH;
+        JPanel centerWrapper = new JPanel(new GridBagLayout());
+        centerWrapper.setOpaque(false);
+        JPanel toolbarCenter = new JPanel(new FlowLayout(FlowLayout.CENTER, 8, 0));
+        toolbarCenter.setOpaque(false);
         toolbarCenter.add(candlestickToggle);
         toolbarCenter.add(priceOpacitySlider);
         toolbarCenter.add(Box.createHorizontalStrut(8));
@@ -387,25 +428,33 @@ public class ProjectWindow extends JFrame {
         toolbarCenter.add(indicatorControls);
         toolbarCenter.add(Box.createHorizontalStrut(8));
         toolbarCenter.add(phaseOverlayBtn);
+        centerWrapper.add(toolbarCenter);
+        toolbarPanel.add(centerWrapper, gbc);
 
-        // Right side: Actions
-        JPanel toolbarRight = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 4));
+        // Right: Actions
+        gbc.gridx = 2;
+        gbc.weightx = 0;
+        gbc.fill = GridBagConstraints.BOTH;
+        JPanel rightWrapper = new JPanel(new GridBagLayout());
+        rightWrapper.setOpaque(false);
+        JPanel toolbarRight = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
+        toolbarRight.setOpaque(false);
         toolbarRight.add(phaseAnalysisBtn);
         toolbarRight.add(historyBtn);
         toolbarRight.add(publishBtn);
+        GridBagConstraints rc = new GridBagConstraints();
+        rc.anchor = GridBagConstraints.EAST;
+        rc.fill = GridBagConstraints.HORIZONTAL;
+        rc.weightx = 1.0;
+        rightWrapper.add(toolbarRight, rc);
+        toolbarPanel.add(rightWrapper, gbc);
 
-        JPanel toolbarPanel = new JPanel(new BorderLayout(0, 0));
-        toolbarPanel.add(toolbarLeft, BorderLayout.WEST);
-        toolbarPanel.add(toolbarCenter, BorderLayout.CENTER);
-        toolbarPanel.add(toolbarRight, BorderLayout.EAST);
-        toolbarPanel.add(new JSeparator(), BorderLayout.SOUTH);
-
-        // Stack: timeline, toolbar
+        // Stack: toolbar, timeline (toolbar on top, acts as title bar)
         JPanel topStack = new JPanel();
         topStack.setLayout(new BoxLayout(topStack, BoxLayout.Y_AXIS));
-        topStack.add(timelineBar);
-        topStack.add(new JSeparator());
         topStack.add(toolbarPanel);
+        topStack.add(new JSeparator());
+        topStack.add(timelineBar);
 
         contentPane.add(topStack, BorderLayout.NORTH);
 
@@ -650,7 +699,7 @@ public class ProjectWindow extends JFrame {
                 this.strategy = reloaded;
                 loadStrategyData();
                 setTitle(strategy.getName() + " - " + TraderyApp.APP_NAME);
-                timelineBar.setTitle(strategy.getName());
+                if (titleLabel != null) titleLabel.setText(strategy.getName());
                 runBacktest();
             }
         });

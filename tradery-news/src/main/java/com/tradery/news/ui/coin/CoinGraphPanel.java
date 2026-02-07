@@ -128,6 +128,9 @@ public class CoinGraphPanel extends JPanel {
 
         // Physics timer
         physicsTimer = new Timer(32, e -> {
+            // Skip physics + repaint entirely when window is inactive (avoid starving other windows)
+            java.awt.Window w = SwingUtilities.getWindowAncestor(this);
+            if (w != null && !w.isActive()) return;
             boolean moving = runPhysicsStep();
             repaint();
             if (!moving) physicsTimer.stop();

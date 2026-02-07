@@ -24,7 +24,7 @@ import java.util.function.Consumer;
  */
 public class TimelineBar extends JPanel implements DataPageListener<Candle> {
 
-    private static final int BAR_HEIGHT = 56;
+    private static final int BAR_HEIGHT = 36;
     private static final Color CANDLE_UP = new Color(38, 166, 91);
     private static final Color CANDLE_DOWN = new Color(214, 69, 65);
     private static final Color GRID_LINE = new Color(128, 128, 128, 80);
@@ -51,7 +51,7 @@ public class TimelineBar extends JPanel implements DataPageListener<Candle> {
     private long minTime;
     private long maxTime;
     private int padding = 4;
-    private int topPadding = 22;  // Extra space for title
+    private int topPadding = 4;
 
     // Callback when anchor date changes
     private Consumer<Long> onAnchorDateChanged;
@@ -267,21 +267,6 @@ public class TimelineBar extends JPanel implements DataPageListener<Candle> {
         int width = getWidth();
         int height = getHeight();
         int chartHeight = height - topPadding - padding;
-
-        // Always draw title, even while loading
-        if (title != null && !title.isEmpty()) {
-            Font titleFont = g2.getFont().deriveFont(Font.BOLD).deriveFont(14f);
-            g2.setFont(titleFont);
-            FontMetrics tfm = g2.getFontMetrics();
-            int titleWidth = tfm.stringWidth(title);
-            int titleX = (width - titleWidth) / 2;
-            int titleY = (topPadding + tfm.getAscent() - tfm.getDescent()) / 2;
-            Color titleColor = UIManager.getColor("TitlePane.foreground");
-            if (titleColor == null) titleColor = UIManager.getColor("Label.foreground");
-            if (titleColor == null) titleColor = Color.GRAY;
-            g2.setColor(titleColor);
-            g2.drawString(title, titleX, titleY);
-        }
 
         if (weeklyCandles == null || weeklyCandles.isEmpty()) {
             g2.dispose();

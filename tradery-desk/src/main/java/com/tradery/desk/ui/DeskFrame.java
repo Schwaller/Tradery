@@ -127,7 +127,7 @@ public class DeskFrame extends JFrame {
     }
 
     private JPanel createHeaderBar() {
-        int barHeight = 46;
+        int barHeight = 52;
 
         JPanel headerBar = new JPanel(new GridBagLayout());
         headerBar.setBackground(new Color(38, 40, 44));

@@ -1,10 +1,10 @@
 package com.tradery.news.ui.coin;
 
+import com.formdev.flatlaf.FlatClientProperties;
 import com.formdev.flatlaf.util.SystemInfo;
 import com.tradery.news.ui.IntelConfig;
 
 import javax.swing.*;
-import javax.swing.border.EmptyBorder;
 import java.awt.*;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
@@ -59,6 +59,8 @@ public class DataStructureFrame extends JFrame {
         getRootPane().putClientProperty("apple.awt.fullWindowContent", true);
         getRootPane().putClientProperty("apple.awt.transparentTitleBar", true);
         getRootPane().putClientProperty("apple.awt.windowTitleVisible", false);
+        getRootPane().putClientProperty(FlatClientProperties.MACOS_WINDOW_BUTTONS_SPACING,
+                FlatClientProperties.MACOS_WINDOW_BUTTONS_SPACING_LARGE);
 
         // Create ERD panel first so toolbar lambdas can reference it
         erdPanel = new ErdPanel();
@@ -85,15 +87,31 @@ public class DataStructureFrame extends JFrame {
     }
 
     private JPanel createHeaderBar() {
-        JPanel headerBar = new JPanel(new BorderLayout());
+        int barHeight = 52;
+
+        JPanel headerBar = new JPanel(new GridBagLayout());
         headerBar.setBackground(new Color(38, 40, 44));
         headerBar.setBorder(BorderFactory.createMatteBorder(0, 0, 1, 0, new Color(50, 52, 56)));
+        headerBar.setPreferredSize(new Dimension(0, barHeight));
+        headerBar.setMinimumSize(new Dimension(0, barHeight));
 
-        // Left: Layout mode toggles (badge-style like IntelFrame News/Coin Relations)
-        JPanel leftPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 4));
+        GridBagConstraints gbc = new GridBagConstraints();
+        gbc.gridy = 0;
+
+        // Left: Layout mode toggles with FlatLaf placeholder for traffic lights
+        gbc.gridx = 0;
+        gbc.weightx = 1.0;
+        gbc.fill = GridBagConstraints.BOTH;
+        gbc.anchor = GridBagConstraints.WEST;
+        JPanel leftPanel = new JPanel(new GridBagLayout());
         leftPanel.setOpaque(false);
+        JPanel leftContent = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
+        leftContent.setOpaque(false);
         if (SystemInfo.isMacOS) {
-            leftPanel.setBorder(new EmptyBorder(0, 70, 0, 0));
+            JPanel buttonsPlaceholder = new JPanel();
+            buttonsPlaceholder.putClientProperty(FlatClientProperties.FULL_WINDOW_CONTENT_BUTTONS_PLACEHOLDER, "mac");
+            buttonsPlaceholder.setOpaque(false);
+            leftContent.add(buttonsPlaceholder);
         }
 
         ButtonGroup layoutGroup = new ButtonGroup();
@@ -102,7 +120,7 @@ public class DataStructureFrame extends JFrame {
         manualBtn.setSelected(true);
         manualBtn.addActionListener(e -> erdPanel.manualLayout());
         layoutGroup.add(manualBtn);
-        leftPanel.add(manualBtn);
+        leftContent.add(manualBtn);
 
         // When save label is clicked inside the ERD, select the Manual toggle
         erdPanel.setOnManualSelected(() -> manualBtn.setSelected(true));
@@ -110,18 +128,18 @@ public class DataStructureFrame extends JFrame {
         JToggleButton treeBtn = createLayoutToggle("Tree");
         treeBtn.addActionListener(e -> erdPanel.treeLayout());
         layoutGroup.add(treeBtn);
-        leftPanel.add(treeBtn);
+        leftContent.add(treeBtn);
 
         JToggleButton springBtn = createLayoutToggle("Spring");
         springBtn.addActionListener(e -> erdPanel.springLayout());
         layoutGroup.add(springBtn);
-        leftPanel.add(springBtn);
+        leftContent.add(springBtn);
 
         // Separator
         JSeparator sep = new JSeparator(SwingConstants.VERTICAL);
         sep.setPreferredSize(new Dimension(1, 20));
         sep.setForeground(new Color(60, 62, 66));
-        leftPanel.add(sep);
+        leftContent.add(sep);
 
         // Flow mode toggle (separate from layout group)
         boolean initialFlowMode = IntelConfig.get().isErdFlowMode();
@@ -136,25 +154,40 @@ public class DataStructureFrame extends JFrame {
             cfg.setErdFlowMode(flow);
             cfg.save();
         });
-        leftPanel.add(flowToggle);
+        leftContent.add(flowToggle);
 
-        headerBar.add(leftPanel, BorderLayout.WEST);
+        GridBagConstraints lc = new GridBagConstraints();
+        lc.anchor = GridBagConstraints.WEST;
+        lc.fill = GridBagConstraints.HORIZONTAL;
+        lc.weightx = 1.0;
+        leftPanel.add(leftContent, lc);
+        headerBar.add(leftPanel, gbc);
 
         // Center: Title
-        JLabel titleLabel = new JLabel("Data Structure", SwingConstants.CENTER);
+        gbc.gridx = 1;
+        gbc.weightx = 0;
+        gbc.fill = GridBagConstraints.NONE;
+        gbc.anchor = GridBagConstraints.CENTER;
+        JLabel titleLabel = new JLabel("Data Structure");
         titleLabel.setFont(new Font("SansSerif", Font.BOLD, 13));
         titleLabel.setForeground(new Color(160, 160, 170));
-        headerBar.add(titleLabel, BorderLayout.CENTER);
+        headerBar.add(titleLabel, gbc);
 
         // Right: Fit + Entity Type
-        JPanel rightPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 4));
+        gbc.gridx = 2;
+        gbc.weightx = 1.0;
+        gbc.fill = GridBagConstraints.BOTH;
+        gbc.anchor = GridBagConstraints.EAST;
+        JPanel rightPanel = new JPanel(new GridBagLayout());
         rightPanel.setOpaque(false);
+        JPanel rightContent = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
+        rightContent.setOpaque(false);
 
         JButton fitBtn = new JButton("Fit");
         fitBtn.setFont(new Font("SansSerif", Font.PLAIN, 11));
         fitBtn.setMargin(new Insets(6, 14, 6, 14));
         fitBtn.addActionListener(e -> erdPanel.fitToView());
-        rightPanel.add(fitBtn);
+        rightContent.add(fitBtn);
 
         JButton addEntityTypeBtn = new JButton("New Type");
         addEntityTypeBtn.setFont(new Font("SansSerif", Font.PLAIN, 11));
@@ -174,9 +207,14 @@ public class DataStructureFrame extends JFrame {
                 schemaRegistry.addAttribute(id, nameAttr);
             }
         });
-        rightPanel.add(addEntityTypeBtn);
+        rightContent.add(addEntityTypeBtn);
 
-        headerBar.add(rightPanel, BorderLayout.EAST);
+        GridBagConstraints rc = new GridBagConstraints();
+        rc.anchor = GridBagConstraints.EAST;
+        rc.fill = GridBagConstraints.HORIZONTAL;
+        rc.weightx = 1.0;
+        rightPanel.add(rightContent, rc);
+        headerBar.add(rightPanel, gbc);
 
         return headerBar;
     }
