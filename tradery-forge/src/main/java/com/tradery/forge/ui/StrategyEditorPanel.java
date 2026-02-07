@@ -2,6 +2,7 @@ package com.tradery.forge.ui;
 
 import com.tradery.core.model.Strategy;
 import com.tradery.forge.ApplicationContext;
+import com.tradery.ui.controls.BorderlessScrollPane;
 
 import javax.swing.*;
 import javax.swing.event.DocumentEvent;
@@ -158,10 +159,9 @@ public class StrategyEditorPanel extends JPanel {
         headerPanel.add(tradeSettingsPanel, BorderLayout.NORTH);
 
         // Notes below trade settings
-        JScrollPane notesScroll = new JScrollPane(notesArea);
+        BorderlessScrollPane notesScroll = new BorderlessScrollPane(notesArea);
         notesScroll.setVerticalScrollBarPolicy(JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED);
         notesScroll.setHorizontalScrollBarPolicy(JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
-        notesScroll.setBorder(null);
         notesScroll.setViewportBorder(null);
         headerPanel.add(notesScroll, BorderLayout.SOUTH);
 

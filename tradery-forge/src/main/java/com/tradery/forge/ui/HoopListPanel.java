@@ -1,6 +1,7 @@
 package com.tradery.forge.ui;
 
 import com.tradery.core.model.Hoop;
+import com.tradery.ui.controls.BorderlessTable;
 
 import javax.swing.*;
 import javax.swing.table.AbstractTableModel;
@@ -32,7 +33,7 @@ public class HoopListPanel extends JPanel {
 
     private void initializeComponents() {
         tableModel = new HoopTableModel();
-        hoopTable = new JTable(tableModel);
+        hoopTable = new BorderlessTable(tableModel);
         hoopTable.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
         hoopTable.setRowHeight(24);
         hoopTable.getTableHeader().setReorderingAllowed(false);

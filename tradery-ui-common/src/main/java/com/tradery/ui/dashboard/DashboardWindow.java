@@ -1,5 +1,7 @@
 package com.tradery.ui.dashboard;
 
+import com.tradery.ui.controls.ThinSplitPane;
+
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 import java.awt.*;
@@ -161,7 +163,7 @@ public abstract class DashboardWindow extends JFrame {
         rebuildSidebar();
 
         // Split pane
-        JSplitPane splitPane = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT);
+        ThinSplitPane splitPane = new ThinSplitPane(JSplitPane.HORIZONTAL_SPLIT);
         splitPane.setLeftComponent(leftPanel);
         splitPane.setRightComponent(contentCards);
         splitPane.setDividerLocation(getSidebarWidth());

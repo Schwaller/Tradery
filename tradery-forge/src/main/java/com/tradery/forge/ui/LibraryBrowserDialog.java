@@ -1,6 +1,8 @@
 package com.tradery.forge.ui;
 
 import com.tradery.forge.publish.DeskPublisher;
+import com.tradery.ui.controls.BorderlessTable;
+import com.tradery.ui.controls.ThinSplitPane;
 
 import javax.swing.*;
 import javax.swing.table.DefaultTableModel;
@@ -70,7 +72,7 @@ public class LibraryBrowserDialog extends JDialog {
                 return false;
             }
         };
-        versionsTable = new JTable(tableModel);
+        versionsTable = new BorderlessTable(tableModel);
         versionsTable.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
         versionsTable.getColumnModel().getColumn(0).setPreferredWidth(60);
         versionsTable.getColumnModel().getColumn(1).setPreferredWidth(140);
@@ -113,7 +115,7 @@ public class LibraryBrowserDialog extends JDialog {
         content.add(headerPanel, BorderLayout.NORTH);
 
         // Split: Tree on left, versions table on right
-        JSplitPane splitPane = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT);
+        ThinSplitPane splitPane = new ThinSplitPane(JSplitPane.HORIZONTAL_SPLIT);
         splitPane.setDividerLocation(200);
 
         // Left: Strategy tree

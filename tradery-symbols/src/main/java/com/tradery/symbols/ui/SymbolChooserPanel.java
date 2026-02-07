@@ -2,6 +2,7 @@ package com.tradery.symbols.ui;
 
 import com.tradery.symbols.model.SymbolEntry;
 import com.tradery.symbols.service.SymbolService;
+import com.tradery.ui.controls.BorderlessTable;
 
 import javax.swing.*;
 import javax.swing.table.AbstractTableModel;
@@ -84,7 +85,7 @@ public class SymbolChooserPanel extends JPanel {
 
         // --- Table ---
         tableModel = new SymbolTableModel();
-        table = new JTable(tableModel);
+        table = new BorderlessTable(tableModel);
         table.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
         table.setRowHeight(24);
         table.getColumnModel().getColumn(0).setPreferredWidth(150); // Symbol

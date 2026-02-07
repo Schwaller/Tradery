@@ -1,6 +1,7 @@
 package com.tradery.desk.ui;
 
 import com.tradery.desk.strategy.PublishedStrategy;
+import com.tradery.ui.controls.BorderlessTable;
 
 import javax.swing.*;
 import javax.swing.table.AbstractTableModel;
@@ -27,7 +28,7 @@ public class StrategyListPanel extends JPanel {
         add(header, BorderLayout.NORTH);
 
         tableModel = new StrategyTableModel();
-        table = new JTable(tableModel);
+        table = new BorderlessTable(tableModel);
         table.setFillsViewportHeight(true);
         table.setRowHeight(24);
         table.getColumnModel().getColumn(0).setPreferredWidth(200); // Name
@@ -36,13 +37,14 @@ public class StrategyListPanel extends JPanel {
         table.getColumnModel().getColumn(3).setPreferredWidth(50);  // TF
 
         JScrollPane scrollPane = new JScrollPane(table);
+        scrollPane.setBorder(BorderFactory.createEmptyBorder());
         scrollPane.setPreferredSize(new Dimension(400, 150));
         add(scrollPane, BorderLayout.CENTER);
 
         // Empty state label
         emptyLabel = new JLabel("No strategies published. Publish from Forge to start.");
         emptyLabel.setHorizontalAlignment(SwingConstants.CENTER);
-        emptyLabel.setForeground(Color.GRAY);
+        emptyLabel.setForeground(UIManager.getColor("Label.disabledForeground"));
         emptyLabel.setVisible(false);
         add(emptyLabel, BorderLayout.SOUTH);
     }

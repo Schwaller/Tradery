@@ -4,6 +4,7 @@ import com.tradery.data.page.DataType;
 import com.tradery.data.page.PageKey;
 import com.tradery.forge.data.log.DownloadEvent;
 import com.tradery.forge.data.log.DownloadLogStore;
+import com.tradery.ui.controls.BorderlessTable;
 
 import javax.swing.*;
 import javax.swing.table.AbstractTableModel;
@@ -86,10 +87,8 @@ public class DownloadLogPanel extends JPanel {
 
         // Table
         tableModel = new LogTableModel();
-        table = new JTable(tableModel);
+        table = new BorderlessTable(tableModel);
         table.setRowHeight(20);
-        table.setShowGrid(false);
-        table.setIntercellSpacing(new Dimension(0, 0));
         table.setFillsViewportHeight(true);
 
         // Configure columns

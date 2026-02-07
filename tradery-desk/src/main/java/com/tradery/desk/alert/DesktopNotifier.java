@@ -123,6 +123,11 @@ public class DesktopNotifier implements AlertOutput {
         private static final int FADE_MS = 300;
         private static int activeCount = 0;
 
+        private static Color ui(String key, Color fallback) {
+            Color c = UIManager.getColor(key);
+            return c != null ? c : fallback;
+        }
+
         @Override
         public void post(String title, String message) {
             SwingUtilities.invokeLater(() -> showToast(title, message));
@@ -134,9 +139,9 @@ public class DesktopNotifier implements AlertOutput {
 
             var panel = new JPanel();
             panel.setLayout(new BorderLayout(8, 2));
-            panel.setBackground(new Color(50, 50, 54));
+            panel.setBackground(ui("ToolTip.background", new Color(50, 50, 54)));
             panel.setBorder(BorderFactory.createCompoundBorder(
-                BorderFactory.createLineBorder(new Color(70, 70, 74), 1, true),
+                BorderFactory.createLineBorder(ui("Component.borderColor", new Color(70, 70, 74)), 1, true),
                 BorderFactory.createEmptyBorder(10, 14, 10, 14)
             ));
 
@@ -144,11 +149,11 @@ public class DesktopNotifier implements AlertOutput {
 
             var titleLabel = new JLabel(title);
             titleLabel.setFont(baseFont.deriveFont(Font.BOLD, 13f));
-            titleLabel.setForeground(new Color(230, 230, 235));
+            titleLabel.setForeground(ui("ToolTip.foreground", new Color(230, 230, 235)));
 
             var msgLabel = new JLabel(message);
             msgLabel.setFont(baseFont.deriveFont(Font.PLAIN, 11.5f));
-            msgLabel.setForeground(new Color(170, 170, 178));
+            msgLabel.setForeground(ui("Label.disabledForeground", new Color(170, 170, 178)));
 
             panel.add(titleLabel, BorderLayout.NORTH);
             panel.add(msgLabel, BorderLayout.CENTER);

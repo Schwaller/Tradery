@@ -1,5 +1,7 @@
 package com.tradery.news.ui.coin;
 
+import com.tradery.ui.controls.BorderlessTable;
+
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 import javax.swing.table.DefaultTableModel;
@@ -134,10 +136,9 @@ public class SchemaTypeEditorDialog extends JDialog {
             attrTableModel.addRow(new Object[]{attr.name(), attr.dataType(), attr.required() ? "Yes" : ""});
         }
 
-        JTable attrTable = new JTable(attrTableModel);
+        JTable attrTable = new BorderlessTable(attrTableModel);
         attrTable.setBackground(new Color(35, 37, 41));
         attrTable.setForeground(new Color(200, 200, 210));
-        attrTable.setGridColor(new Color(50, 52, 56));
         attrTable.setSelectionBackground(new Color(60, 80, 100));
         attrTable.setRowHeight(22);
         attrTable.getTableHeader().setBackground(new Color(45, 47, 51));

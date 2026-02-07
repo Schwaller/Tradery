@@ -15,7 +15,10 @@ import com.tradery.forge.ui.controls.IndicatorSelectorPopup;
 import com.tradery.forge.ui.coordination.AutoSaveScheduler;
 import com.tradery.forge.ui.coordination.BacktestCoordinator;
 import com.tradery.ui.controls.SegmentedToggle;
+import com.tradery.ui.controls.ThinSplitPane;
 import com.tradery.ui.controls.ToolbarButton;
+
+import static com.tradery.forge.ui.UIColors.textSecondary;
 import com.tradery.ui.status.MemoryStatusPanel;
 
 import javax.swing.*;
@@ -78,8 +81,11 @@ public class ProjectWindow extends JFrame {
     private JButton indicatorsBtn;
 
     // Embedded AI terminal (for Claude/Codex)
-    private JSplitPane editorTerminalSplit;  // Vertical split: editor | terminal (left side)
+    private ThinSplitPane editorTerminalSplit;  // Vertical split: editor | terminal (left side)
     private AiTerminalController aiTerminalController;
+
+    // Panels that need border refresh on theme change
+    private JPanel toolbarPanel;
 
     // Data stores
     private final StrategyStore strategyStore;
@@ -200,7 +206,17 @@ public class ProjectWindow extends JFrame {
         chartPanel.setOnStatusUpdate(statusManager::setHoverStatus);
 
         // Wire up theme change listener
-        themeChangeListener = chartPanel::refreshTheme;
+        themeChangeListener = () -> {
+            chartPanel.refreshTheme();
+            // Update matte borders to match new theme
+            Color separatorColor = UIManager.getColor("Separator.foreground");
+            if (toolbarPanel != null) {
+                toolbarPanel.setBorder(BorderFactory.createMatteBorder(0, 0, 1, 0, separatorColor));
+            }
+            if (editorPanel != null) {
+                editorPanel.setBorder(BorderFactory.createMatteBorder(0, 0, 1, 0, separatorColor));
+            }
+        };
         com.tradery.forge.ui.theme.ThemeManager.getInstance().addThemeChangeListener(themeChangeListener);
 
         // Wire up trade table hover/select to chart highlight
@@ -278,6 +294,7 @@ public class ProjectWindow extends JFrame {
 
         // Phase Overlay button - select phases to display on chart
         phaseOverlayBtn = new ToolbarButton("Phases \u25BE");
+        phaseOverlayBtn.setMargin(new Insets(6, 8, 6, 8));
         phaseOverlayBtn.setToolTipText("Show phase overlays on price chart");
         phaseOverlayBtn.addActionListener(e ->
             com.tradery.forge.ui.controls.PhaseSelectorPopup.showBelow(phaseOverlayBtn, this::applyPhaseOverlays));
@@ -291,6 +308,7 @@ public class ProjectWindow extends JFrame {
 
         // Indicators button (opens popup for configuring overlays and indicator panels)
         indicatorsBtn = new ToolbarButton("Indicators \u25BE");
+        indicatorsBtn.setMargin(new Insets(6, 8, 6, 8));
         indicatorsBtn.setToolTipText("Configure chart overlays and indicator panels");
         indicatorsBtn.addActionListener(e ->
             IndicatorSelectorPopup.showBelow(indicatorsBtn, chartPanel, this::runBacktest));
@@ -380,7 +398,8 @@ public class ProjectWindow extends JFrame {
         // Toolbar header bar (integrated with title bar)
         int barHeight = 52;
 
-        JPanel toolbarPanel = new JPanel(new GridBagLayout());
+        toolbarPanel = new JPanel(new GridBagLayout());
+        toolbarPanel.setBorder(BorderFactory.createMatteBorder(0, 0, 1, 0, UIManager.getColor("Separator.foreground")));
         toolbarPanel.setPreferredSize(new Dimension(0, barHeight));
         toolbarPanel.setMinimumSize(new Dimension(0, barHeight));
         toolbarPanel.setMaximumSize(new Dimension(Integer.MAX_VALUE, barHeight));
@@ -388,7 +407,7 @@ public class ProjectWindow extends JFrame {
         GridBagConstraints gbc = new GridBagConstraints();
         gbc.gridy = 0;
 
-        // Left: traffic light placeholder + title + Claude, Codex, Help
+        // Left: traffic light placeholder + Claude, Codex, Help
         gbc.gridx = 0;
         gbc.weightx = 0;
         gbc.fill = GridBagConstraints.BOTH;
@@ -402,10 +421,6 @@ public class ProjectWindow extends JFrame {
             buttonsPlaceholder.setOpaque(false);
             toolbarLeft.add(buttonsPlaceholder);
         }
-        titleLabel = new JLabel(strategy.getName());
-        titleLabel.setFont(new Font("SansSerif", Font.BOLD, 13));
-        titleLabel.setForeground(new Color(160, 160, 170));
-        toolbarLeft.add(titleLabel);
         toolbarLeft.add(claudeBtn);
         toolbarLeft.add(codexBtn);
         JButton helpBtn = new ToolbarButton("Help");
@@ -419,25 +434,46 @@ public class ProjectWindow extends JFrame {
         leftWrapper.add(toolbarLeft, lc);
         toolbarPanel.add(leftWrapper, gbc);
 
-        // Center: Chart controls and Indicators
+        // Center: chart controls + title (with growing space around title) + indicators
         gbc.gridx = 1;
         gbc.weightx = 1.0;
         gbc.fill = GridBagConstraints.BOTH;
+        JPanel toolbarCenterPanel = new JPanel();
+        toolbarCenterPanel.setLayout(new BoxLayout(toolbarCenterPanel, BoxLayout.X_AXIS));
+        toolbarCenterPanel.setOpaque(false);
+
+        // Chart controls (left of title)
+        JPanel chartControls = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
+        chartControls.setOpaque(false);
+        chartControls.add(chartModeToggle);
+        chartControls.add(priceOpacitySlider);
+
+        // Title label with growing glue on both sides
+        titleLabel = new JLabel(strategy.getName());
+        titleLabel.setFont(new Font("SansSerif", Font.BOLD, 13));
+        titleLabel.setForeground(textSecondary());
+        titleLabel.setHorizontalAlignment(SwingConstants.CENTER);
+
+        // Indicator/phase controls (right of title)
+        JPanel indicatorControls2 = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
+        indicatorControls2.setOpaque(false);
+        indicatorControls2.add(fitWidthBtn);
+        indicatorControls2.add(fitYBtn);
+        indicatorControls2.add(fullYBtn);
+        indicatorControls2.add(Box.createHorizontalStrut(4));
+        indicatorControls2.add(indicatorsBtn);
+        indicatorControls2.add(phaseOverlayBtn);
+
+        toolbarCenterPanel.add(chartControls);
+        toolbarCenterPanel.add(Box.createHorizontalGlue());
+        toolbarCenterPanel.add(titleLabel);
+        toolbarCenterPanel.add(Box.createHorizontalGlue());
+        toolbarCenterPanel.add(indicatorControls2);
+
+        // Wrap in GridBagLayout for vertical centering
         JPanel centerWrapper = new JPanel(new GridBagLayout());
         centerWrapper.setOpaque(false);
-        JPanel toolbarCenter = new JPanel(new FlowLayout(FlowLayout.CENTER, 8, 0));
-        toolbarCenter.setOpaque(false);
-        toolbarCenter.add(chartModeToggle);
-        toolbarCenter.add(priceOpacitySlider);
-        toolbarCenter.add(Box.createHorizontalStrut(8));
-        toolbarCenter.add(fitWidthBtn);
-        toolbarCenter.add(fitYBtn);
-        toolbarCenter.add(fullYBtn);
-        toolbarCenter.add(Box.createHorizontalStrut(8));
-        toolbarCenter.add(indicatorsBtn);
-        toolbarCenter.add(Box.createHorizontalStrut(8));
-        toolbarCenter.add(phaseOverlayBtn);
-        centerWrapper.add(toolbarCenter);
+        centerWrapper.add(toolbarCenterPanel);
         toolbarPanel.add(centerWrapper, gbc);
 
         // Right: Actions
@@ -462,17 +498,14 @@ public class ProjectWindow extends JFrame {
         JPanel topStack = new JPanel();
         topStack.setLayout(new BoxLayout(topStack, BoxLayout.Y_AXIS));
         topStack.add(toolbarPanel);
-        topStack.add(new JSeparator());
         topStack.add(timelineBar);
+        topStack.add(new JSeparator());
 
         contentPane.add(topStack, BorderLayout.NORTH);
 
         // Left side: Editor on top, terminal on bottom (in vertical split)
-        editorTerminalSplit = new JSplitPane(JSplitPane.VERTICAL_SPLIT);
-        editorTerminalSplit.setBorder(null);
-        editorTerminalSplit.setDividerSize(4);
+        editorTerminalSplit = new ThinSplitPane(JSplitPane.VERTICAL_SPLIT);
         editorTerminalSplit.setResizeWeight(0.6);
-        editorTerminalSplit.setContinuousLayout(true);
         editorPanel.setBorder(BorderFactory.createMatteBorder(0, 0, 1, 0, UIManager.getColor("Separator.foreground")));
         editorTerminalSplit.setTopComponent(editorPanel);
 
@@ -521,21 +554,15 @@ public class ProjectWindow extends JFrame {
 
         // Split: Center (charts) | Right (metrics+trades)
         // resizeWeight=1.0 means all extra space goes to charts, right panel stays fixed width
-        JSplitPane rightSplit = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT);
-        rightSplit.setBorder(null);
-        rightSplit.setDividerSize(1);
+        ThinSplitPane rightSplit = new ThinSplitPane(JSplitPane.HORIZONTAL_SPLIT);
         rightSplit.setResizeWeight(1.0);
-        rightSplit.setContinuousLayout(true);
         rightSplit.setLeftComponent(centerPanel);
         rightSplit.setRightComponent(rightPanel);
         rightPanel.setMinimumSize(new Dimension(250, 0));
 
         // Main split: Left | Center+Right
-        JSplitPane mainSplit = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT);
-        mainSplit.setBorder(null);
-        mainSplit.setDividerSize(1);
+        ThinSplitPane mainSplit = new ThinSplitPane(JSplitPane.HORIZONTAL_SPLIT);
         mainSplit.setDividerLocation(640);
-        mainSplit.setContinuousLayout(true);
         mainSplit.setLeftComponent(leftPanel);
         mainSplit.setRightComponent(rightSplit);
 

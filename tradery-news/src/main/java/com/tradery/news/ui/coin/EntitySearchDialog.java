@@ -1,7 +1,11 @@
 package com.tradery.news.ui.coin;
 
+import com.formdev.flatlaf.FlatClientProperties;
+import com.formdev.flatlaf.util.SystemInfo;
 import com.tradery.news.ui.IntelLogPanel;
+import com.tradery.ui.controls.BorderlessScrollPane;
 import com.tradery.ui.controls.SegmentedToggle;
+import com.tradery.ui.controls.ThinSplitPane;
 import com.tradery.ui.controls.ToolbarButton;
 
 import javax.swing.*;
@@ -62,7 +66,7 @@ public class EntitySearchDialog extends JDialog {
     // UI components
     private JPanel typesPanel;
     private JPanel resultsPanel;
-    private JScrollPane resultsScroll;
+    private BorderlessScrollPane resultsScroll;
     private JButton addSelectedBtn;
     private JLabel statusLabel;
 
@@ -72,11 +76,18 @@ public class EntitySearchDialog extends JDialog {
     private static final String PREF_HEIGHT = "entitySearchDialog.height";
 
     public EntitySearchDialog(Frame owner, CoinEntity entity, EntityStore store) {
-        super(owner, "Search Related Entities", false);
+        super(owner, "Search Related — " + entity.name(), false);
         this.sourceEntity = entity;
         this.store = store;
         this.processor = new EntitySearchProcessor();
         this.matcher = new EntityMatcher(store);
+
+        // Transparent title bar (same style as IntelFrame)
+        getRootPane().putClientProperty("apple.awt.fullWindowContent", true);
+        getRootPane().putClientProperty("apple.awt.transparentTitleBar", true);
+        getRootPane().putClientProperty("apple.awt.windowTitleVisible", false);
+        getRootPane().putClientProperty(FlatClientProperties.MACOS_WINDOW_BUTTONS_SPACING,
+                FlatClientProperties.MACOS_WINDOW_BUTTONS_SPACING_LARGE);
 
         setAlwaysOnTop(true);
         restoreBounds(owner);
@@ -114,34 +125,46 @@ public class EntitySearchDialog extends JDialog {
     }
 
     private void initUI() {
-        JPanel mainPanel = new JPanel(new BorderLayout(10, 10));
-        mainPanel.setBorder(new EmptyBorder(15, 15, 15, 15));
+        JPanel mainPanel = new JPanel(new BorderLayout());
 
-        // Top: Source entity info
-        mainPanel.add(createHeaderPanel(), BorderLayout.NORTH);
+        // Header bar (same style as IntelFrame)
+        mainPanel.add(createHeaderBar(), BorderLayout.NORTH);
+
+        // Content area (no vertical padding so split spans full height)
+        JPanel contentPanel = new JPanel(new BorderLayout());
+        contentPanel.setBorder(new EmptyBorder(0, 15, 0, 0));
 
         // Center: Split pane with types on left, results on right
-        JSplitPane splitPane = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT);
-        splitPane.setDividerLocation(280);
+        ThinSplitPane splitPane = new ThinSplitPane(JSplitPane.HORIZONTAL_SPLIT);
+        splitPane.setDividerLocation(320);
         splitPane.setResizeWeight(0);
 
+        Color mutedText = UIManager.getColor("Label.disabledForeground");
+
         // Left: Entity types with search buttons
+        JPanel leftPanel = new JPanel(new BorderLayout());
+        JLabel typesTitle = new JLabel("Search by Type");
+        typesTitle.setForeground(mutedText);
+        typesTitle.setBorder(BorderFactory.createEmptyBorder(5, 5, 5, 0));
+        leftPanel.add(typesTitle, BorderLayout.NORTH);
+
         typesPanel = new JPanel();
         typesPanel.setLayout(new BoxLayout(typesPanel, BoxLayout.Y_AXIS));
-        JScrollPane typesScroll = new JScrollPane(typesPanel);
-        typesScroll.setBorder(BorderFactory.createTitledBorder("Search by Type"));
-        splitPane.setLeftComponent(typesScroll);
+        BorderlessScrollPane typesScroll = new BorderlessScrollPane(typesPanel);
+        leftPanel.add(typesScroll, BorderLayout.CENTER);
+        splitPane.setLeftComponent(leftPanel);
 
-        // Right: Results
+        // Right: Results (scroll pane directly, no wrapper)
         resultsPanel = new JPanel();
         resultsPanel.setLayout(new BoxLayout(resultsPanel, BoxLayout.Y_AXIS));
-        resultsScroll = new JScrollPane(resultsPanel);
-        resultsScroll.setBorder(BorderFactory.createTitledBorder("Results"));
+        resultsScroll = new BorderlessScrollPane(resultsPanel);
         splitPane.setRightComponent(resultsScroll);
 
-        mainPanel.add(splitPane, BorderLayout.CENTER);
+        contentPanel.add(splitPane, BorderLayout.CENTER);
 
-        // Bottom: Status and action buttons
+        mainPanel.add(contentPanel, BorderLayout.CENTER);
+
+        // Bottom: Status bar (outside content area so separator spans full width)
         mainPanel.add(createBottomPanel(), BorderLayout.SOUTH);
 
         setContentPane(mainPanel);
@@ -151,30 +174,96 @@ public class EntitySearchDialog extends JDialog {
         showMessage("Click search buttons to find related entities.");
     }
 
-    private JPanel createHeaderPanel() {
-        Color secondaryText = UIManager.getColor("Label.disabledForeground");
-        JPanel panel = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 5));
+    private JPanel createHeaderBar() {
+        int barHeight = 52;
 
-        JLabel sourceLabel = new JLabel("Source:");
-        sourceLabel.setForeground(secondaryText);
-        panel.add(sourceLabel);
+        JPanel headerBar = new JPanel(new GridBagLayout());
+        headerBar.setBorder(BorderFactory.createMatteBorder(0, 0, 1, 0, UIManager.getColor("Separator.foreground")));
+        headerBar.setPreferredSize(new Dimension(0, barHeight));
+        headerBar.setMinimumSize(new Dimension(0, barHeight));
+
+        GridBagConstraints gbc = new GridBagConstraints();
+        gbc.gridy = 0;
+
+        // Left: traffic light placeholder + source entity info
+        gbc.gridx = 0;
+        gbc.weightx = 1.0;
+        gbc.fill = GridBagConstraints.BOTH;
+        gbc.anchor = GridBagConstraints.WEST;
+        JPanel leftPanel = new JPanel(new GridBagLayout());
+        leftPanel.setOpaque(false);
+        JPanel leftContent = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
+        leftContent.setOpaque(false);
+
+        if (SystemInfo.isMacOS) {
+            JPanel buttonsPlaceholder = new JPanel();
+            buttonsPlaceholder.putClientProperty(FlatClientProperties.FULL_WINDOW_CONTENT_BUTTONS_PLACEHOLDER, "mac");
+            buttonsPlaceholder.setOpaque(false);
+            leftContent.add(buttonsPlaceholder);
+        }
 
         JLabel nameLabel = new JLabel(sourceEntity.name());
         nameLabel.setForeground(sourceEntity.type().color());
-        nameLabel.setFont(nameLabel.getFont().deriveFont(Font.BOLD));
-        panel.add(nameLabel);
+        nameLabel.setFont(ToolbarButton.TOOLBAR_FONT.deriveFont(Font.BOLD));
+        leftContent.add(nameLabel);
 
         if (sourceEntity.symbol() != null) {
             JLabel symbolLabel = new JLabel("(" + sourceEntity.symbol() + ")");
-            symbolLabel.setForeground(secondaryText);
-            panel.add(symbolLabel);
+            symbolLabel.setFont(ToolbarButton.TOOLBAR_FONT);
+            leftContent.add(symbolLabel);
         }
 
         JLabel typeLabel = new JLabel("[" + sourceEntity.type().name() + "]");
-        typeLabel.setForeground(secondaryText);
-        panel.add(typeLabel);
+        typeLabel.setFont(ToolbarButton.TOOLBAR_FONT);
+        leftContent.add(typeLabel);
 
-        return panel;
+        GridBagConstraints lc = new GridBagConstraints();
+        lc.anchor = GridBagConstraints.WEST;
+        lc.fill = GridBagConstraints.HORIZONTAL;
+        lc.weightx = 1.0;
+        leftPanel.add(leftContent, lc);
+        headerBar.add(leftPanel, gbc);
+
+        // Center: Title
+        gbc.gridx = 1;
+        gbc.weightx = 0;
+        gbc.fill = GridBagConstraints.NONE;
+        gbc.anchor = GridBagConstraints.CENTER;
+        JLabel titleLabel = new JLabel("Search Related");
+        titleLabel.setFont(new Font("SansSerif", Font.BOLD, 13));
+        headerBar.add(titleLabel, gbc);
+
+        // Right: action buttons
+        gbc.gridx = 2;
+        gbc.weightx = 1.0;
+        gbc.fill = GridBagConstraints.BOTH;
+        gbc.anchor = GridBagConstraints.EAST;
+        JPanel rightPanel = new JPanel(new GridBagLayout());
+        rightPanel.setOpaque(false);
+        JPanel rightContent = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
+        rightContent.setOpaque(false);
+
+        JButton selectAllBtn = new ToolbarButton("Select All");
+        selectAllBtn.addActionListener(e -> selectAll(true));
+        rightContent.add(selectAllBtn);
+
+        JButton selectNoneBtn = new ToolbarButton("Select None");
+        selectNoneBtn.addActionListener(e -> selectAll(false));
+        rightContent.add(selectNoneBtn);
+
+        addSelectedBtn = new ToolbarButton("Add Selected");
+        addSelectedBtn.setEnabled(false);
+        addSelectedBtn.addActionListener(e -> addSelectedEntities());
+        rightContent.add(addSelectedBtn);
+
+        GridBagConstraints rc = new GridBagConstraints();
+        rc.anchor = GridBagConstraints.EAST;
+        rc.fill = GridBagConstraints.HORIZONTAL;
+        rc.weightx = 1.0;
+        rightPanel.add(rightContent, rc);
+        headerBar.add(rightPanel, gbc);
+
+        return headerBar;
     }
 
     private void populateTypesPanel() {
@@ -183,29 +272,46 @@ public class EntitySearchDialog extends JDialog {
         List<CoinRelationship.Type> searchableTypes = CoinRelationship.Type.getSearchableTypes(sourceEntity.type());
 
         // Grid: 4 columns (label + 3 buttons), N rows
-        JPanel gridPanel = new JPanel(new GridLayout(searchableTypes.size(), 4, 5, 5));
-        gridPanel.setBorder(BorderFactory.createEmptyBorder(5, 5, 5, 5));
+        JPanel gridPanel = new JPanel(new GridBagLayout());
+        gridPanel.setBorder(BorderFactory.createEmptyBorder(0, 0, 0, 0));
+        gridPanel.setAlignmentX(Component.LEFT_ALIGNMENT);
 
+        int row = 0;
         for (CoinRelationship.Type relType : searchableTypes) {
-            addTypeRow(gridPanel, relType);
+            addTypeRow(gridPanel, relType, row++);
         }
 
-        typesPanel.add(gridPanel);
-        typesPanel.add(Box.createVerticalGlue());
+        // Wrap grid in a panel that doesn't expand vertically
+        JPanel wrapperPanel = new JPanel(new BorderLayout());
+        wrapperPanel.add(gridPanel, BorderLayout.NORTH);
+        wrapperPanel.setAlignmentX(Component.LEFT_ALIGNMENT);
+
+        typesPanel.add(wrapperPanel);
         typesPanel.revalidate();
     }
 
-    private void addTypeRow(JPanel gridPanel, CoinRelationship.Type relType) {
+    private void addTypeRow(JPanel gridPanel, CoinRelationship.Type relType, int row) {
+        GridBagConstraints gbc = new GridBagConstraints();
+        gbc.gridy = row;
+        gbc.insets = new Insets(9, 3, 9, 3);
+        gbc.fill = GridBagConstraints.NONE;
+        gbc.anchor = GridBagConstraints.WEST;
+
         // Type label
         String label = getShortLabel(relType, sourceEntity.type());
         JLabel typeLabel = new JLabel(label);
         typeLabel.setForeground(relType.color());
         typeLabel.setFont(typeLabel.getFont().deriveFont(Font.BOLD));
-        gridPanel.add(typeLabel);
+        gbc.gridx = 0;
+        gbc.weightx = 1.0;
+        gridPanel.add(typeLabel, gbc);
 
         Map<SearchLevel, JButton> buttons = new HashMap<>();
         Map<SearchLevel, Integer> counts = new HashMap<>();
 
+        gbc.weightx = 0;
+        gbc.fill = GridBagConstraints.HORIZONTAL;
+        int col = 1;
         for (SearchLevel level : SearchLevel.values()) {
             ToolbarButton btn = new ToolbarButton(level.label);
             btn.setToolTipText(level.tooltip);
@@ -214,7 +320,8 @@ public class EntitySearchDialog extends JDialog {
 
             buttons.put(level, btn);
             counts.put(level, -1);
-            gridPanel.add(btn);
+            gbc.gridx = col++;
+            gridPanel.add(btn, gbc);
         }
 
         typeStates.put(relType, new TypeSearchState(buttons, counts));
@@ -237,34 +344,16 @@ public class EntitySearchDialog extends JDialog {
 
     private JPanel createBottomPanel() {
         Color secondaryText = UIManager.getColor("Label.disabledForeground");
-        JPanel panel = new JPanel(new BorderLayout(10, 5));
+        JPanel panel = new JPanel(new BorderLayout());
+        panel.setBorder(BorderFactory.createCompoundBorder(
+            BorderFactory.createMatteBorder(1, 0, 0, 0, UIManager.getColor("Separator.foreground")),
+            BorderFactory.createEmptyBorder(6, 15, 6, 15)
+        ));
 
-        // Status
         statusLabel = new JLabel(" ");
         statusLabel.setForeground(secondaryText);
-        panel.add(statusLabel, BorderLayout.WEST);
+        panel.add(statusLabel, BorderLayout.CENTER);
 
-        // Buttons
-        JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 0));
-
-        JButton selectAllBtn = new JButton("Select All");
-        selectAllBtn.addActionListener(e -> selectAll(true));
-        buttonPanel.add(selectAllBtn);
-
-        JButton selectNoneBtn = new JButton("Select None");
-        selectNoneBtn.addActionListener(e -> selectAll(false));
-        buttonPanel.add(selectNoneBtn);
-
-        addSelectedBtn = new JButton("Add Selected");
-        addSelectedBtn.setEnabled(false);
-        addSelectedBtn.addActionListener(e -> addSelectedEntities());
-        buttonPanel.add(addSelectedBtn);
-
-        JButton closeBtn = new JButton("Close");
-        closeBtn.addActionListener(e -> dispose());
-        buttonPanel.add(closeBtn);
-
-        panel.add(buttonPanel, BorderLayout.EAST);
         return panel;
     }
 
@@ -296,53 +385,56 @@ public class EntitySearchDialog extends JDialog {
             btn.setText("...");
         }
 
-        List<CoinRelationship.Type> types = new ArrayList<>(typeStates.keySet());
-        IntelLogPanel.logAI("Starting general investigation of all types for " + sourceEntity.name());
+        activeInvestigations = 1;
+        updateStatus();
+        IntelLogPanel.logAI("Starting general investigation for " + sourceEntity.name());
 
-        // Search all types in parallel
-        for (CoinRelationship.Type type : types) {
-            activeInvestigations++;
-            updateStatus();
+        // Single search for all types at once (relType = null)
+        CompletableFuture.supplyAsync(() ->
+            processor.searchRelated(sourceEntity, null, msg -> {})
+        ).thenAccept(result -> SwingUtilities.invokeLater(() -> {
+            activeInvestigations = 0;
+            generalSearchInProgress = false;
 
-            CompletableFuture.supplyAsync(() ->
-                processor.searchRelated(sourceEntity, type, msg -> {})
-            ).thenAccept(result -> SwingUtilities.invokeLater(() -> {
-                activeInvestigations--;
-                JButton btn = typeStates.get(type).buttons().get(SearchLevel.GENERAL);
-
-                if (result.hasError()) {
+            if (result.hasError()) {
+                // Reset all buttons on error
+                for (TypeSearchState state : typeStates.values()) {
+                    JButton btn = state.buttons().get(SearchLevel.GENERAL);
                     btn.setText("General");
                     btn.setEnabled(true);
-                    IntelLogPanel.logError("Search failed for " + type.name() + ": " + result.error());
-                } else {
-                    List<EntitySearchProcessor.DiscoveredEntity> entities = result.entities();
-                    int count = entities.size();
+                }
+                IntelLogPanel.logError("Search failed: " + result.error());
+            } else {
+                List<EntitySearchProcessor.DiscoveredEntity> entities = result.entities();
 
-                    btn.setText("General: " + count);
-                    typeStates.get(type).resultCounts().put(SearchLevel.GENERAL, count);
+                // Count results per relationship type
+                Map<CoinRelationship.Type, Integer> countsByType = new HashMap<>();
+                for (EntitySearchProcessor.DiscoveredEntity entity : entities) {
+                    countsByType.merge(entity.relationshipType(), 1, Integer::sum);
 
-                    for (EntitySearchProcessor.DiscoveredEntity entity : entities) {
-                        String id = entity.generateId();
-                        boolean exists = allResults.stream()
-                            .anyMatch(e -> e.generateId().equals(id));
-                        if (!exists) {
-                            allResults.add(entity);
-                        }
+                    String id = entity.generateId();
+                    boolean exists = allResults.stream()
+                        .anyMatch(e -> e.generateId().equals(id));
+                    if (!exists) {
+                        allResults.add(entity);
                     }
-
-                    IntelLogPanel.logSuccess("Found " + count + " " + type.name() + " entities");
                 }
 
-                // Check if all general searches are done
-                if (activeInvestigations == 0) {
-                    generalSearchInProgress = false;
-                    // Don't re-enable - they show counts now
+                // Update buttons with counts per type
+                for (Map.Entry<CoinRelationship.Type, TypeSearchState> entry : typeStates.entrySet()) {
+                    CoinRelationship.Type type = entry.getKey();
+                    JButton btn = entry.getValue().buttons().get(SearchLevel.GENERAL);
+                    int count = countsByType.getOrDefault(type, 0);
+                    btn.setText("General: " + count);
+                    entry.getValue().resultCounts().put(SearchLevel.GENERAL, count);
                 }
 
-                displayResults();
-                updateStatus();
-            }));
-        }
+                IntelLogPanel.logSuccess("Found " + entities.size() + " related entities");
+            }
+
+            displayResults();
+            updateStatus();
+        }));
     }
 
     private void performSingleSearch(CoinRelationship.Type relType, SearchLevel level, JButton button) {
@@ -408,38 +500,42 @@ public class EntitySearchDialog extends JDialog {
             return;
         }
 
-        Color headerBg = UIManager.getColor("TableHeader.background");
-
-        // Group by relationship type
-        Map<CoinRelationship.Type, List<EntitySearchProcessor.DiscoveredEntity>> grouped = new LinkedHashMap<>();
+        // Group by entity type (not relationship type) for clearer organization
+        Map<CoinEntity.Type, List<EntitySearchProcessor.DiscoveredEntity>> grouped = new LinkedHashMap<>();
         for (EntitySearchProcessor.DiscoveredEntity entity : allResults) {
-            grouped.computeIfAbsent(entity.relationshipType(), k -> new ArrayList<>()).add(entity);
+            grouped.computeIfAbsent(entity.type(), k -> new ArrayList<>()).add(entity);
         }
 
-        for (Map.Entry<CoinRelationship.Type, List<EntitySearchProcessor.DiscoveredEntity>> entry : grouped.entrySet()) {
-            // Group header
-            JPanel headerPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 5));
-            headerPanel.setBackground(headerBg);
-            headerPanel.setMaximumSize(new Dimension(Integer.MAX_VALUE, 30));
+        // Content panel that won't expand
+        JPanel contentPanel = new JPanel();
+        contentPanel.setLayout(new BoxLayout(contentPanel, BoxLayout.Y_AXIS));
+        contentPanel.setAlignmentX(Component.LEFT_ALIGNMENT);
 
-            JLabel headerLabel = new JLabel(entry.getKey().name().replace("_", " ") +
+        for (Map.Entry<CoinEntity.Type, List<EntitySearchProcessor.DiscoveredEntity>> entry : grouped.entrySet()) {
+            // Group header
+            JPanel headerPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 2));
+            headerPanel.setMaximumSize(new Dimension(Integer.MAX_VALUE, 24));
+            headerPanel.setAlignmentX(Component.LEFT_ALIGNMENT);
+
+            JLabel headerLabel = new JLabel(entry.getKey().name() +
                 " (" + entry.getValue().size() + ")");
             headerLabel.setForeground(entry.getKey().color());
             headerLabel.setFont(headerLabel.getFont().deriveFont(Font.BOLD, 12f));
             headerPanel.add(headerLabel);
 
-            resultsPanel.add(headerPanel);
+            contentPanel.add(headerPanel);
 
             // Entities
             for (EntitySearchProcessor.DiscoveredEntity entity : entry.getValue()) {
-                resultsPanel.add(createEntityPanel(entity));
+                contentPanel.add(createEntityPanel(entity));
             }
-
-            resultsPanel.add(Box.createVerticalStrut(5));
         }
 
-        // Spacer to consume extra vertical space
-        resultsPanel.add(Box.createVerticalGlue());
+        // Wrap in BorderLayout.NORTH to push content up
+        JPanel wrapperPanel = new JPanel(new BorderLayout());
+        wrapperPanel.add(contentPanel, BorderLayout.NORTH);
+
+        resultsPanel.add(wrapperPanel);
 
         resultsPanel.revalidate();
         resultsPanel.repaint();
@@ -452,12 +548,17 @@ public class EntitySearchDialog extends JDialog {
         Color textColor = UIManager.getColor("Label.foreground");
         Font baseFont = UIManager.getFont("Label.font");
 
-        JPanel panel = new JPanel();
-        panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
+        // Main panel with BorderLayout: content on left, link section on right
+        JPanel panel = new JPanel(new BorderLayout(10, 0));
         panel.setBorder(BorderFactory.createCompoundBorder(
             BorderFactory.createMatteBorder(0, 0, 1, 0, borderColor),
             BorderFactory.createEmptyBorder(6, 8, 6, 8)
         ));
+        panel.setAlignmentX(Component.LEFT_ALIGNMENT);
+
+        // Left content panel
+        JPanel contentPanel = new JPanel();
+        contentPanel.setLayout(new BoxLayout(contentPanel, BoxLayout.Y_AXIS));
 
         // Top row: [checkbox] [name (symbol) [TYPE]] [confidence]
         JPanel topRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 0));
@@ -479,41 +580,45 @@ public class EntitySearchDialog extends JDialog {
             topRow.add(symbolLabel);
         }
 
-        JLabel typeLabel = new JLabel("[" + entity.type().name() + "]");
-        typeLabel.setForeground(mutedText);
-        typeLabel.setFont(baseFont.deriveFont(baseFont.getSize() - 2f));
-        topRow.add(typeLabel);
+        // Show relationship type (entity type is already in the group header)
+        String relLabel = getShortLabel(entity.relationshipType(), sourceEntity.type());
+        JLabel relTypeLabel = new JLabel("[" + relLabel + "]");
+        relTypeLabel.setForeground(entity.relationshipType().color());
+        relTypeLabel.setFont(baseFont.deriveFont(baseFont.getSize() - 2f));
+        topRow.add(relTypeLabel);
 
         JLabel confLabel = new JLabel(String.format("%.0f%%", entity.confidence() * 100));
         confLabel.setForeground(getConfidenceColor(entity.confidence()));
         confLabel.setFont(baseFont);
         topRow.add(confLabel);
 
-        panel.add(topRow);
+        contentPanel.add(topRow);
 
         // Reason/description
         if (!entity.reason().isEmpty()) {
             JPanel reasonPanel = new JPanel(new BorderLayout());
             reasonPanel.setBorder(BorderFactory.createEmptyBorder(2, 28, 0, 10));
 
-            String html = "<html><body style='width: 350px;'>" +
+            String html = "<html><body style='width: 300px;'>" +
                 escapeHtml(entity.reason()) + "</body></html>";
             JLabel reasonLabel = new JLabel(html);
             reasonLabel.setForeground(textColor);
             reasonLabel.setFont(baseFont.deriveFont(baseFont.getSize() - 1f));
             reasonPanel.add(reasonLabel, BorderLayout.CENTER);
-            panel.add(reasonPanel);
+            contentPanel.add(reasonPanel);
         }
 
-        // Fuzzy match indicator
+        panel.add(contentPanel, BorderLayout.CENTER);
+
+        // Right side: Link section (vertically centered)
+        JPanel linkPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 5, 0));
+
         List<EntityMatcher.MatchCandidate> matches = matcher.findMatches(entity);
-        JPanel matchPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 0));
-        matchPanel.setBorder(BorderFactory.createEmptyBorder(0, 28, 0, 0));
 
         if (!matches.isEmpty()) {
             JLabel matchLabel = new JLabel("Link to:");
             matchLabel.setForeground(mutedText);
-            matchPanel.add(matchLabel);
+            linkPanel.add(matchLabel);
 
             List<String> labels = new ArrayList<>();
             List<CoinEntity> matchEntities = new ArrayList<>();
@@ -535,7 +640,7 @@ public class EntitySearchDialog extends JDialog {
             matchToggle.setOnSelectionChanged(index ->
                 selectedMatches.put(entity, matchEntities.get(index)));
 
-            matchPanel.add(matchToggle);
+            linkPanel.add(matchToggle);
         } else {
             String generatedId = entity.generateId();
             if (store.entityExists(generatedId)) {
@@ -544,15 +649,24 @@ public class EntitySearchDialog extends JDialog {
                 nameLabel.setForeground(mutedText);
                 JLabel existsLabel = new JLabel("(exists)");
                 existsLabel.setForeground(mutedText);
-                matchPanel.add(existsLabel);
+                linkPanel.add(existsLabel);
             } else {
-                JLabel newLabel = new JLabel("(new)");
-                newLabel.setForeground(new Color(80, 200, 120));
-                matchPanel.add(newLabel);
+                // Always show "Link to: New" for visual consistency
+                JLabel matchLabel = new JLabel("Link to:");
+                matchLabel.setForeground(mutedText);
+                linkPanel.add(matchLabel);
+
+                SegmentedToggle newToggle = new SegmentedToggle(new String[]{"New"});
+                newToggle.setSelectedIndex(0);
+                linkPanel.add(newToggle);
                 selectedMatches.put(entity, null);
             }
         }
-        panel.add(matchPanel);
+
+        // Wrap linkPanel in a vertically centered container
+        JPanel linkWrapper = new JPanel(new GridBagLayout());
+        linkWrapper.add(linkPanel);
+        panel.add(linkWrapper, BorderLayout.EAST);
 
         return panel;
     }

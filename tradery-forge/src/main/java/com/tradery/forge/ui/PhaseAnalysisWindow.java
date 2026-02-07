@@ -5,6 +5,8 @@ import com.tradery.core.model.PhaseAnalysisResult.Recommendation;
 import com.tradery.forge.analysis.PhaseAnalyzer;
 import com.tradery.forge.data.sqlite.SqliteDataStore;
 import com.tradery.forge.io.PhaseStore;
+import com.tradery.ui.controls.BorderlessTable;
+import com.tradery.ui.controls.ThinSplitPane;
 
 import javax.swing.*;
 import javax.swing.table.DefaultTableCellRenderer;
@@ -107,11 +109,9 @@ public class PhaseAnalysisWindow extends JFrame {
 
         // Table
         tableModel = new PhaseAnalysisTableModel();
-        table = new JTable(tableModel);
+        table = new BorderlessTable(tableModel);
         table.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 11));
         table.setRowHeight(22);
-        table.setShowGrid(false);
-        table.setIntercellSpacing(new Dimension(0, 0));
         table.getTableHeader().setReorderingAllowed(false);
         table.setAutoResizeMode(JTable.AUTO_RESIZE_OFF);
 
@@ -220,7 +220,7 @@ public class PhaseAnalysisWindow extends JFrame {
         tablePanel.add(detailsPanel, BorderLayout.SOUTH);
 
         // Split pane: table on top, chart preview on bottom
-        JSplitPane splitPane = new JSplitPane(JSplitPane.VERTICAL_SPLIT, tablePanel, previewChart);
+        ThinSplitPane splitPane = new ThinSplitPane(JSplitPane.VERTICAL_SPLIT, tablePanel, previewChart);
         splitPane.setResizeWeight(0.5);  // 50% each initially
         splitPane.setDividerLocation(250);
         splitPane.setOneTouchExpandable(true);

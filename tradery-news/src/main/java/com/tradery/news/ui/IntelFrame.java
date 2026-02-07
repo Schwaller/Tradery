@@ -11,8 +11,11 @@ import com.tradery.news.store.SqliteNewsStore;
 import com.tradery.news.topic.TopicRegistry;
 import com.tradery.news.api.IntelApiServer;
 import com.tradery.news.ui.coin.*;
+import com.tradery.ui.controls.BorderlessScrollPane;
 import com.tradery.ui.controls.SegmentedToggle;
+import com.tradery.ui.controls.ThinSplitPane;
 import com.tradery.ui.controls.ToolbarButton;
+import com.tradery.ui.controls.ToolbarComboBox;
 
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
@@ -73,6 +76,41 @@ public class IntelFrame extends JFrame {
     private DetailMode currentMode = DetailMode.NONE;
     private NewsNode selectedArticle;
     private CoinEntity selectedEntity;
+
+    // Theme-aware colors (call these methods to get current theme colors)
+    private static Color bgMain() { return UIManager.getColor("Panel.background"); }
+    private static Color bgHeader() {
+        Color bg = UIManager.getColor("Panel.background");
+        return darker(bg, 0.05f);
+    }
+    private static Color bgCard() { return UIManager.getColor("Panel.background"); }
+    private static Color bgHover() {
+        Color bg = UIManager.getColor("Panel.background");
+        return brighter(bg, 0.05f);
+    }
+    private static Color borderColor() { return UIManager.getColor("Separator.foreground"); }
+    private static Color textPrimary() { return UIManager.getColor("Label.foreground"); }
+    private static Color textSecondary() { return UIManager.getColor("Label.disabledForeground"); }
+    private static Color textMuted() {
+        Color fg = UIManager.getColor("Label.disabledForeground");
+        return new Color(fg.getRed(), fg.getGreen(), fg.getBlue(), 180);
+    }
+    private static Color linkColor() { return linkColor(); }
+
+    private static Color darker(Color c, float factor) {
+        return new Color(
+            Math.max(0, (int)(c.getRed() * (1 - factor))),
+            Math.max(0, (int)(c.getGreen() * (1 - factor))),
+            Math.max(0, (int)(c.getBlue() * (1 - factor)))
+        );
+    }
+    private static Color brighter(Color c, float factor) {
+        return new Color(
+            Math.min(255, (int)(c.getRed() + (255 - c.getRed()) * factor)),
+            Math.min(255, (int)(c.getGreen() + (255 - c.getGreen()) * factor)),
+            Math.min(255, (int)(c.getBlue() + (255 - c.getBlue()) * factor))
+        );
+    }
 
     public IntelFrame() {
         super("Tradery - Intelligence");
@@ -140,7 +178,7 @@ public class IntelFrame extends JFrame {
 
     private void initUI() {
         JPanel mainPanel = new JPanel(new BorderLayout());
-        mainPanel.setBackground(new Color(30, 32, 36));
+        mainPanel.setBackground(bgMain());
 
         // Initialize card layout first (header buttons reference it)
         cardLayout = new CardLayout();
@@ -159,10 +197,8 @@ public class IntelFrame extends JFrame {
         rightPanel.setMinimumSize(new Dimension(300, 0));
 
         // Main split
-        JSplitPane mainSplit = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, leftPanel, rightPanel);
+        ThinSplitPane mainSplit = new ThinSplitPane(JSplitPane.HORIZONTAL_SPLIT, leftPanel, rightPanel);
         mainSplit.setResizeWeight(1.0);
-        mainSplit.setDividerSize(4);
-        mainSplit.setBorder(null);
 
         mainPanel.add(mainSplit, BorderLayout.CENTER);
         setContentPane(mainPanel);
@@ -172,8 +208,8 @@ public class IntelFrame extends JFrame {
         int barHeight = 52;
 
         JPanel headerBar = new JPanel(new GridBagLayout());
-        headerBar.setBackground(new Color(38, 40, 44));
-        headerBar.setBorder(BorderFactory.createMatteBorder(0, 0, 1, 0, new Color(50, 52, 56)));
+        headerBar.setBackground(bgCard());
+        headerBar.setBorder(BorderFactory.createMatteBorder(0, 0, 1, 0, borderColor()));
         headerBar.setPreferredSize(new Dimension(0, barHeight));
         headerBar.setMinimumSize(new Dimension(0, barHeight));
 
@@ -223,7 +259,7 @@ public class IntelFrame extends JFrame {
         gbc.anchor = GridBagConstraints.CENTER;
         JLabel titleLabel = new JLabel("Tradery - Intelligence");
         titleLabel.setFont(new Font("SansSerif", Font.BOLD, 13));
-        titleLabel.setForeground(new Color(160, 160, 170));
+        titleLabel.setForeground(textSecondary());
         headerBar.add(titleLabel, gbc);
 
         // Right: Action buttons + Settings
@@ -239,10 +275,10 @@ public class IntelFrame extends JFrame {
         // Show: combo (for News view)
         showLabel = new JLabel("Show:");
         showLabel.setFont(new Font("SansSerif", Font.PLAIN, 11));
-        showLabel.setForeground(new Color(160, 160, 170));
+        showLabel.setForeground(textSecondary());
         rightContent.add(showLabel);
 
-        limitCombo = new JComboBox<>(new String[]{"100", "250", "500", "1000"});
+        limitCombo = new ToolbarComboBox<>(new String[]{"100", "250", "500", "1000"});
         limitCombo.setSelectedItem("500");
         limitCombo.addActionListener(e -> {
             if (newsGraphPanel != null) {
@@ -284,7 +320,7 @@ public class IntelFrame extends JFrame {
 
     private JPanel createGraphPanel() {
         JPanel panel = new JPanel(new BorderLayout());
-        panel.setBackground(new Color(30, 32, 36));
+        panel.setBackground(bgMain());
 
         // cardLayout and cardPanel already initialized in initUI()
 
@@ -319,32 +355,29 @@ public class IntelFrame extends JFrame {
 
     private JPanel createRightPanel() {
         JPanel panel = new JPanel(new BorderLayout());
-        panel.setBackground(new Color(38, 40, 44));
-        panel.setBorder(BorderFactory.createMatteBorder(0, 1, 0, 0, new Color(50, 52, 56)));
+        panel.setBackground(bgCard());
+        panel.setBorder(BorderFactory.createMatteBorder(0, 1, 0, 0, borderColor()));
 
         // Detail panel (top)
         detailPanel = new JPanel(new BorderLayout());
-        detailPanel.setBackground(new Color(38, 40, 44));
+        detailPanel.setBackground(bgCard());
 
         JPanel detailHeader = new JPanel(new BorderLayout());
-        detailHeader.setBackground(new Color(35, 37, 41));
         detailHeader.setBorder(new EmptyBorder(8, 10, 8, 10));
 
         detailTitleLabel = new JLabel("Details");
         detailTitleLabel.setFont(new Font("SansSerif", Font.BOLD, 12));
-        detailTitleLabel.setForeground(new Color(180, 180, 190));
         detailHeader.add(detailTitleLabel, BorderLayout.WEST);
 
         detailPanel.add(detailHeader, BorderLayout.NORTH);
 
         detailContent = new JPanel();
         detailContent.setLayout(new BoxLayout(detailContent, BoxLayout.Y_AXIS));
-        detailContent.setBackground(new Color(38, 40, 44));
+        detailContent.setBackground(bgCard());
         detailContent.setBorder(new EmptyBorder(10, 10, 10, 10));
         showPlaceholderDetails();
 
-        JScrollPane detailScroll = new JScrollPane(detailContent);
-        detailScroll.setBorder(null);
+        BorderlessScrollPane detailScroll = new BorderlessScrollPane(detailContent);
         detailScroll.getVerticalScrollBar().setUnitIncrement(16);
         detailPanel.add(detailScroll, BorderLayout.CENTER);
 
@@ -353,10 +386,8 @@ public class IntelFrame extends JFrame {
         logPanel.setPreferredSize(new Dimension(0, 200));
 
         // Vertical split
-        JSplitPane vertSplit = new JSplitPane(JSplitPane.VERTICAL_SPLIT, detailPanel, logPanel);
+        ThinSplitPane vertSplit = new ThinSplitPane(JSplitPane.VERTICAL_SPLIT, detailPanel, logPanel);
         vertSplit.setResizeWeight(0.7);
-        vertSplit.setDividerSize(4);
-        vertSplit.setBorder(null);
 
         panel.add(vertSplit, BorderLayout.CENTER);
         return panel;
@@ -366,11 +397,11 @@ public class IntelFrame extends JFrame {
 
     private JPanel createCoinsStatusBar() {
         JPanel statusBar = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 5));
-        statusBar.setBackground(new Color(35, 37, 41));
-        statusBar.setBorder(BorderFactory.createMatteBorder(1, 0, 0, 0, new Color(50, 52, 56)));
+        statusBar.setBackground(bgHeader());
+        statusBar.setBorder(BorderFactory.createMatteBorder(1, 0, 0, 0, borderColor()));
 
         coinStatusLabel = new JLabel("Loading...");
-        coinStatusLabel.setForeground(new Color(140, 140, 150));
+        coinStatusLabel.setForeground(textSecondary());
         statusBar.add(coinStatusLabel);
 
         coinProgressBar = new JProgressBar(0, 100);
@@ -385,11 +416,11 @@ public class IntelFrame extends JFrame {
 
     private JPanel createNewsStatusBar() {
         JPanel statusBar = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 5));
-        statusBar.setBackground(new Color(35, 37, 41));
-        statusBar.setBorder(BorderFactory.createMatteBorder(1, 0, 0, 0, new Color(50, 52, 56)));
+        statusBar.setBackground(bgHeader());
+        statusBar.setBorder(BorderFactory.createMatteBorder(1, 0, 0, 0, borderColor()));
 
         newsStatusLabel = new JLabel("Loading...");
-        newsStatusLabel.setForeground(new Color(140, 140, 150));
+        newsStatusLabel.setForeground(textSecondary());
         statusBar.add(newsStatusLabel);
 
         return statusBar;
@@ -402,13 +433,13 @@ public class IntelFrame extends JFrame {
         currentMode = DetailMode.NONE;
         detailTitleLabel.setText("Details");
 
-        addDetailLabel("Select an entity or article to see details", new Color(140, 140, 150));
+        addDetailLabel("Select an entity or article to see details", textSecondary());
         addDetailSpacer();
-        addDetailLabel("Coins tab:", new Color(120, 120, 130));
-        addDetailLabel("  Click entity to select", new Color(100, 100, 110));
-        addDetailLabel("  Drag background to pan", new Color(100, 100, 110));
-        addDetailLabel("  Scroll to zoom", new Color(100, 100, 110));
-        addDetailLabel("  Double-click to pin", new Color(100, 100, 110));
+        addDetailLabel("Coins tab:", textMuted());
+        addDetailLabel("  Click entity to select", textMuted());
+        addDetailLabel("  Drag background to pan", textMuted());
+        addDetailLabel("  Scroll to zoom", textMuted());
+        addDetailLabel("  Double-click to pin", textMuted());
 
         detailContent.revalidate();
         detailContent.repaint();
@@ -451,7 +482,7 @@ public class IntelFrame extends JFrame {
         }
 
         if (node.articleCount() > 20) {
-            addDetailLabel("... and " + (node.articleCount() - 20) + " more", new Color(120, 120, 130));
+            addDetailLabel("... and " + (node.articleCount() - 20) + " more", textMuted());
         }
 
         detailContent.revalidate();
@@ -460,7 +491,7 @@ public class IntelFrame extends JFrame {
 
     private void addArticleRow(NewsNode article) {
         JPanel row = new JPanel(new BorderLayout(8, 0));
-        row.setBackground(new Color(38, 40, 44));
+        row.setBackground(bgCard());
         row.setAlignmentX(Component.LEFT_ALIGNMENT);
         row.setMaximumSize(new Dimension(Integer.MAX_VALUE, 40));
         row.setBorder(BorderFactory.createEmptyBorder(4, 0, 4, 0));
@@ -468,7 +499,7 @@ public class IntelFrame extends JFrame {
         // Sentiment indicator
         Color sentColor = article.sentiment() > 0.2 ? new Color(80, 180, 100) :
                           article.sentiment() < -0.2 ? new Color(200, 80, 80) :
-                          new Color(120, 120, 130);
+                          textMuted();
         JPanel dot = new JPanel() {
             @Override
             protected void paintComponent(Graphics g) {
@@ -478,26 +509,26 @@ public class IntelFrame extends JFrame {
             }
         };
         dot.setPreferredSize(new Dimension(12, 32));
-        dot.setBackground(new Color(38, 40, 44));
+        dot.setBackground(bgCard());
         row.add(dot, BorderLayout.WEST);
 
         // Title and source
         JPanel textPanel = new JPanel();
         textPanel.setLayout(new BoxLayout(textPanel, BoxLayout.Y_AXIS));
-        textPanel.setBackground(new Color(38, 40, 44));
+        textPanel.setBackground(bgCard());
 
         String title = article.title();
         if (title.length() > 50) title = title.substring(0, 47) + "...";
         JLabel titleLabel = new JLabel(title);
         titleLabel.setFont(new Font("SansSerif", Font.PLAIN, 11));
-        titleLabel.setForeground(new Color(200, 200, 210));
+        titleLabel.setForeground(textPrimary());
         textPanel.add(titleLabel);
 
         LocalDateTime ldt = LocalDateTime.ofInstant(article.publishedAt(), ZoneId.systemDefault());
         JLabel metaLabel = new JLabel(article.source() + " • " +
             ldt.format(DateTimeFormatter.ofPattern("MMM d HH:mm")));
         metaLabel.setFont(new Font("SansSerif", Font.PLAIN, 10));
-        metaLabel.setForeground(new Color(120, 120, 130));
+        metaLabel.setForeground(textMuted());
         textPanel.add(metaLabel);
 
         row.add(textPanel, BorderLayout.CENTER);
@@ -511,15 +542,15 @@ public class IntelFrame extends JFrame {
             }
             @Override
             public void mouseEntered(java.awt.event.MouseEvent e) {
-                row.setBackground(new Color(45, 47, 51));
-                textPanel.setBackground(new Color(45, 47, 51));
-                dot.setBackground(new Color(45, 47, 51));
+                row.setBackground(bgHover());
+                textPanel.setBackground(bgHover());
+                dot.setBackground(bgHover());
             }
             @Override
             public void mouseExited(java.awt.event.MouseEvent e) {
-                row.setBackground(new Color(38, 40, 44));
-                textPanel.setBackground(new Color(38, 40, 44));
-                dot.setBackground(new Color(38, 40, 44));
+                row.setBackground(bgCard());
+                textPanel.setBackground(bgCard());
+                dot.setBackground(bgCard());
             }
         });
 
@@ -646,7 +677,7 @@ public class IntelFrame extends JFrame {
         // Action buttons
         addDetailSpacer();
         JPanel btnPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 0));
-        btnPanel.setBackground(new Color(38, 40, 44));
+        btnPanel.setBackground(bgCard());
         btnPanel.setAlignmentX(Component.LEFT_ALIGNMENT);
         btnPanel.setMaximumSize(new Dimension(Integer.MAX_VALUE, 30));
 
@@ -668,7 +699,7 @@ public class IntelFrame extends JFrame {
     private void addDetailHeader(String text) {
         JLabel label = new JLabel("<html><body style='width: 280px'>" + text + "</body></html>");
         label.setFont(new Font("SansSerif", Font.BOLD, 14));
-        label.setForeground(new Color(220, 220, 230));
+        label.setForeground(textPrimary());
         label.setAlignmentX(Component.LEFT_ALIGNMENT);
         detailContent.add(label);
     }
@@ -676,14 +707,14 @@ public class IntelFrame extends JFrame {
     private void addDetailSection(String text) {
         JLabel label = new JLabel(text);
         label.setFont(new Font("SansSerif", Font.BOLD, 10));
-        label.setForeground(new Color(120, 120, 130));
+        label.setForeground(textMuted());
         label.setAlignmentX(Component.LEFT_ALIGNMENT);
         detailContent.add(label);
         detailContent.add(Box.createVerticalStrut(3));
     }
 
     private void addDetailLabel(String text) {
-        addDetailLabel(text, new Color(200, 200, 210));
+        addDetailLabel(text, textPrimary());
     }
 
     private void addDetailLabel(String text, Color color) {
@@ -697,8 +728,8 @@ public class IntelFrame extends JFrame {
     private void addDetailText(String text) {
         JTextArea area = new JTextArea(text);
         area.setFont(new Font("SansSerif", Font.PLAIN, 11));
-        area.setForeground(new Color(180, 180, 190));
-        area.setBackground(new Color(35, 37, 41));
+        area.setForeground(textSecondary());
+        area.setBackground(bgHeader());
         area.setLineWrap(true);
         area.setWrapStyleWord(true);
         area.setEditable(false);
@@ -710,7 +741,7 @@ public class IntelFrame extends JFrame {
     private void addDetailLink(String url) {
         JLabel label = new JLabel("<html><a href=''>" + truncate(url, 40) + "</a></html>");
         label.setFont(new Font("SansSerif", Font.PLAIN, 11));
-        label.setForeground(new Color(100, 150, 220));
+        label.setForeground(linkColor());
         label.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
         label.setAlignmentX(Component.LEFT_ALIGNMENT);
         label.addMouseListener(new java.awt.event.MouseAdapter() {
@@ -731,8 +762,8 @@ public class IntelFrame extends JFrame {
     }
 
     private void addRelationshipRow(String description, Color color, String targetId, String targetName) {
-        Color bg = new Color(38, 40, 44);
-        Color bgHover = new Color(45, 47, 51);
+        Color bg = bgCard();
+        Color bgHover = bgHover();
 
         JPanel row = new JPanel(new BorderLayout(8, 0));
         row.setBackground(bg);
@@ -754,7 +785,7 @@ public class IntelFrame extends JFrame {
 
         JLabel descLabel = new JLabel(description);
         descLabel.setFont(new Font("SansSerif", Font.PLAIN, 11));
-        descLabel.setForeground(new Color(200, 200, 210));
+        descLabel.setForeground(textPrimary());
         row.add(descLabel, BorderLayout.CENTER);
 
         row.addMouseListener(new java.awt.event.MouseAdapter() {

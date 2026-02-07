@@ -1,5 +1,8 @@
 package com.tradery.ui.dashboard;
 
+import com.tradery.ui.controls.BorderlessScrollPane;
+import com.tradery.ui.controls.ThinSplitPane;
+
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 import java.awt.*;
@@ -98,7 +101,7 @@ public class PageDetailPanel extends JPanel {
         add(topPanel, BorderLayout.NORTH);
 
         // Split: consumers + log
-        JSplitPane splitPane = new JSplitPane(JSplitPane.VERTICAL_SPLIT);
+        ThinSplitPane splitPane = new ThinSplitPane(JSplitPane.VERTICAL_SPLIT);
 
         // Consumers
         JPanel consumersSection = new JPanel(new BorderLayout(0, 6));
@@ -107,8 +110,7 @@ public class PageDetailPanel extends JPanel {
         consumersModel = new DefaultListModel<>();
         JList<String> consumersList = new JList<>(consumersModel);
         consumersList.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 11));
-        JScrollPane consumersScroll = new JScrollPane(consumersList);
-        consumersScroll.setBorder(BorderFactory.createEmptyBorder());
+        BorderlessScrollPane consumersScroll = new BorderlessScrollPane(consumersList);
         consumersSection.add(consumersScroll, BorderLayout.CENTER);
         splitPane.setTopComponent(consumersSection);
 
@@ -120,8 +122,7 @@ public class PageDetailPanel extends JPanel {
         JList<String> logList = new JList<>(logModel);
         logList.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 11));
         logList.setCellRenderer(new LogCellRenderer());
-        JScrollPane logScroll = new JScrollPane(logList);
-        logScroll.setBorder(BorderFactory.createEmptyBorder());
+        BorderlessScrollPane logScroll = new BorderlessScrollPane(logList);
         logSection.add(logScroll, BorderLayout.CENTER);
         splitPane.setBottomComponent(logSection);
 

@@ -5,6 +5,9 @@ import com.tradery.core.model.PerformanceMetrics;
 import javax.swing.*;
 import java.awt.*;
 
+import static com.tradery.forge.ui.UIColors.TRADE_PROFIT;
+import static com.tradery.forge.ui.UIColors.TRADE_LOSS;
+
 /**
  * Panel displaying backtest performance metrics.
  * Shows key stats like win rate, profit factor, Sharpe ratio, etc.
@@ -101,21 +104,20 @@ public class MetricsPanel extends JPanel {
 
         String returnPrefix = metrics.totalReturnPercent() >= 0 ? "+" : "";
         totalReturnLabel.setText(String.format("%s%.2f%%", returnPrefix, metrics.totalReturnPercent()));
-        totalReturnLabel.setForeground(metrics.totalReturnPercent() >= 0 ?
-            new Color(76, 175, 80) : new Color(244, 67, 54));
+        totalReturnLabel.setForeground(metrics.totalReturnPercent() >= 0 ? TRADE_PROFIT : TRADE_LOSS);
 
         maxDrawdownLabel.setText(String.format("-%.2f%%", metrics.maxDrawdownPercent()));
-        maxDrawdownLabel.setForeground(new Color(244, 67, 54));
+        maxDrawdownLabel.setForeground(TRADE_LOSS);
 
         sharpeRatioLabel.setText(String.format("%.2f", metrics.sharpeRatio()));
         avgWinLabel.setText(String.format("$%.2f", metrics.averageWin()));
-        avgWinLabel.setForeground(new Color(76, 175, 80));
+        avgWinLabel.setForeground(TRADE_PROFIT);
 
         avgLossLabel.setText(String.format("$%.2f", metrics.averageLoss()));
-        avgLossLabel.setForeground(new Color(244, 67, 54));
+        avgLossLabel.setForeground(TRADE_LOSS);
 
         totalFeesLabel.setText(String.format("$%.2f", metrics.totalFees()));
-        totalFeesLabel.setForeground(new Color(244, 67, 54));
+        totalFeesLabel.setForeground(TRADE_LOSS);
 
         // Display holding costs (can be positive = cost, negative = earnings from funding)
         double holdingCosts = metrics.totalHoldingCosts();
@@ -124,10 +126,10 @@ public class MetricsPanel extends JPanel {
             holdingCostsLabel.setForeground(Color.GRAY);
         } else if (holdingCosts > 0) {
             holdingCostsLabel.setText(String.format("$%.2f", holdingCosts));
-            holdingCostsLabel.setForeground(new Color(244, 67, 54));  // Red for costs
+            holdingCostsLabel.setForeground(TRADE_LOSS);  // Red for costs
         } else {
             holdingCostsLabel.setText(String.format("+$%.2f", Math.abs(holdingCosts)));
-            holdingCostsLabel.setForeground(new Color(76, 175, 80));  // Green for earnings
+            holdingCostsLabel.setForeground(TRADE_PROFIT);  // Green for earnings
         }
 
         maxCapitalUsageLabel.setText(String.format("$%,.0f (%.1f%%)", metrics.maxCapitalDollars(), metrics.maxCapitalUsage()));

@@ -56,6 +56,7 @@ public class IndicatorSidePanel extends JPanel {
     public IndicatorSidePanel(PriceChartPanel chartPanel) {
         this.chartPanel = chartPanel;
         setLayout(new BorderLayout());
+        setBorder(null);
         setMinimumSize(new Dimension(140, 0));
 
         // EMA colors continue after SMA colors
@@ -93,8 +94,11 @@ public class IndicatorSidePanel extends JPanel {
 
         // Wrap content in BorderLayout.NORTH to prevent vertical stretching
         JPanel wrapper = new JPanel(new BorderLayout());
+        wrapper.setBorder(null);
         wrapper.add(content, BorderLayout.NORTH);
-        add(createScrollableContent(wrapper), BorderLayout.CENTER);
+        JScrollPane scrollPane = createScrollableContent(wrapper);
+        scrollPane.setBorder(null);
+        add(scrollPane, BorderLayout.CENTER);
 
         // Initialize default SMA/EMA periods
         smaPanel.setPeriods(java.util.List.of(20, 50));

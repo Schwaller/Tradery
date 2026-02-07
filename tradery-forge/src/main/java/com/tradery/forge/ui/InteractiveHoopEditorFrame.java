@@ -10,6 +10,7 @@ import com.tradery.data.page.DataPageListener;
 import com.tradery.data.page.DataPageView;
 import com.tradery.forge.io.HoopPatternStore;
 import com.tradery.symbols.ui.SymbolComboBox;
+import com.tradery.ui.controls.ThinSplitPane;
 
 import javax.swing.*;
 import javax.swing.event.ChangeListener;
@@ -327,7 +328,7 @@ public class InteractiveHoopEditorFrame extends JFrame implements DataPageListen
         chartAndRight.add(rightPanel, BorderLayout.EAST);
 
         // Main split: left | center+right
-        JSplitPane mainSplit = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT);
+        ThinSplitPane mainSplit = new ThinSplitPane(JSplitPane.HORIZONTAL_SPLIT);
         mainSplit.setLeftComponent(leftPanel);
         mainSplit.setRightComponent(chartAndRight);
         mainSplit.setDividerLocation(180);

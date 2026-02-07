@@ -3,6 +3,8 @@ package com.tradery.help;
 import com.formdev.flatlaf.FlatClientProperties;
 import com.formdev.flatlaf.util.SystemInfo;
 import com.tradery.help.MarkdownHelpRenderer.TocEntry;
+import com.tradery.ui.controls.BorderlessScrollPane;
+import com.tradery.ui.controls.ThinSplitPane;
 import com.tradery.ui.controls.ToolbarSearchField;
 
 import javax.swing.*;
@@ -25,7 +27,7 @@ public class MarkdownHelpDialog extends JDialog {
     private JList<TocEntry> tocList;
     private DefaultListModel<TocEntry> tocModel;
     private JEditorPane helpPane;
-    private JScrollPane contentScrollPane;
+    private BorderlessScrollPane contentScrollPane;
     private boolean isScrollingFromToc = false;
     private boolean isUpdatingFromScroll = false;
     private List<TocEntry> tocEntries;
@@ -47,8 +49,9 @@ public class MarkdownHelpDialog extends JDialog {
      */
     public MarkdownHelpDialog(Window owner, String title, String resourcePath, Dimension size) {
         super(owner, title, ModalityType.MODELESS);
+        setDefaultCloseOperation(DISPOSE_ON_CLOSE);
 
-        // Integrated title bar look (macOS) — large header style matching ProjectWindow
+        // Integrated title bar look (macOS)
         getRootPane().putClientProperty("apple.awt.fullWindowContent", true);
         getRootPane().putClientProperty("apple.awt.transparentTitleBar", true);
         getRootPane().putClientProperty("apple.awt.windowTitleVisible", false);
@@ -68,7 +71,7 @@ public class MarkdownHelpDialog extends JDialog {
         searchHighlightPainter = new DefaultHighlighter.DefaultHighlightPainter(highlightColor);
         currentMatchPainter = new DefaultHighlighter.DefaultHighlightPainter(currentMatchColor);
 
-        // Title bar area (52px height matching ProjectWindow large header)
+        // Title bar area (52px — matching ProjectWindow)
         int barHeight = 52;
         JPanel titleBar = new JPanel(new BorderLayout());
         titleBar.setPreferredSize(new Dimension(0, barHeight));
@@ -95,23 +98,21 @@ public class MarkdownHelpDialog extends JDialog {
         searchField.setNextMatchAction(this::goToNextMatch);
         searchField.setPrevMatchAction(this::goToPreviousMatch);
 
-        JPanel searchWrapper = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 0));
-        searchWrapper.setOpaque(false);
-        searchWrapper.setBorder(new EmptyBorder(0, 0, 0, 8));
-        searchWrapper.add(searchField);
-
-        // Vertically center left panel and search panel
+        // Vertically center both sides using GridBagLayout
         JPanel leftWrapper = new JPanel(new GridBagLayout());
         leftWrapper.setOpaque(false);
         leftWrapper.add(leftPanel);
 
         JPanel rightWrapper = new JPanel(new GridBagLayout());
         rightWrapper.setOpaque(false);
-        rightWrapper.add(searchWrapper);
+        rightWrapper.setBorder(new EmptyBorder(0, 0, 0, 8));
+        rightWrapper.add(searchField);
 
         titleBar.add(leftWrapper, BorderLayout.WEST);
         titleBar.add(Box.createHorizontalGlue(), BorderLayout.CENTER);
         titleBar.add(rightWrapper, BorderLayout.EAST);
+        titleBar.setBorder(BorderFactory.createMatteBorder(0, 0, 1, 0,
+                UIManager.getColor("Separator.foreground")));
 
         // Load and render markdown content
         String markdown = MarkdownHelpRenderer.loadFromResource(resourcePath);
@@ -132,8 +133,7 @@ public class MarkdownHelpDialog extends JDialog {
             }
         });
 
-        JScrollPane tocScrollPane = new JScrollPane(tocList);
-        tocScrollPane.setBorder(null);
+        BorderlessScrollPane tocScrollPane = new BorderlessScrollPane(tocList);
         tocScrollPane.setPreferredSize(new Dimension(180, 0));
 
         // Create content pane
@@ -143,8 +143,7 @@ public class MarkdownHelpDialog extends JDialog {
         helpPane.setBorder(new EmptyBorder(4, 4, 4, 4));
         helpPane.setBackground(UIManager.getColor("Panel.background"));
 
-        contentScrollPane = new JScrollPane(helpPane);
-        contentScrollPane.setBorder(null);
+        contentScrollPane = new BorderlessScrollPane(helpPane);
 
         // Track scroll position to update TOC selection
         contentScrollPane.getViewport().addChangeListener(new ChangeListener() {
@@ -162,11 +161,10 @@ public class MarkdownHelpDialog extends JDialog {
         });
 
         // Create split pane
-        JSplitPane splitPane = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT);
+        ThinSplitPane splitPane = new ThinSplitPane(JSplitPane.HORIZONTAL_SPLIT);
         splitPane.setLeftComponent(tocScrollPane);
         splitPane.setRightComponent(contentScrollPane);
         splitPane.setDividerLocation(180);
-        splitPane.setDividerSize(1);
         splitPane.setResizeWeight(0);
 
         JButton closeButton = new JButton("Close");
@@ -175,9 +173,7 @@ public class MarkdownHelpDialog extends JDialog {
         JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
         buttonPanel.add(closeButton);
 
-        // Wrap content with separators
         JPanel mainContent = new JPanel(new BorderLayout());
-        mainContent.add(new JSeparator(), BorderLayout.NORTH);
         mainContent.add(splitPane, BorderLayout.CENTER);
         mainContent.setPreferredSize(size);
 

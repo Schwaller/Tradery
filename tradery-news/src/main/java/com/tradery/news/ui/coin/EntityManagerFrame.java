@@ -4,6 +4,8 @@ import com.tradery.news.ai.AiClient;
 import com.tradery.news.fetch.RssFetcher;
 import com.tradery.news.ui.IntelConfig;
 
+import com.tradery.ui.controls.ThinSplitPane;
+
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 import javax.swing.tree.*;
@@ -141,9 +143,8 @@ public class EntityManagerFrame extends JFrame {
         // Right: Detail panel
         detailPanel = createDetailPanel();
 
-        JSplitPane splitPane = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, leftPanel, detailPanel);
+        ThinSplitPane splitPane = new ThinSplitPane(JSplitPane.HORIZONTAL_SPLIT, leftPanel, detailPanel);
         splitPane.setDividerLocation(300);
-        splitPane.setDividerSize(4);
         panel.add(splitPane, BorderLayout.CENTER);
 
         return panel;

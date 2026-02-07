@@ -12,6 +12,7 @@ import com.tradery.charts.renderer.*;
 import com.tradery.charts.util.ChartPanelFactory;
 import com.tradery.core.model.Candle;
 import com.tradery.desk.ui.charts.DeskDataProvider;
+import com.tradery.ui.controls.ThinSplitPane;
 
 import javax.swing.*;
 import java.awt.*;
@@ -24,8 +25,6 @@ import java.util.List;
  * Supports overlays (SMA, EMA, Bollinger) and optional volume chart.
  */
 public class PriceChartPanel extends JPanel {
-
-    private static final Color BACKGROUND_COLOR = new Color(30, 30, 30);
 
     private final DeskDataProvider dataProvider;
     private final ChartCoordinator coordinator;
@@ -59,7 +58,7 @@ public class PriceChartPanel extends JPanel {
 
     public PriceChartPanel() {
         setLayout(new BorderLayout());
-        setBackground(BACKGROUND_COLOR);
+        setBackground(UIManager.getColor("Panel.background"));
 
         // Create data provider
         dataProvider = new DeskDataProvider();
@@ -890,9 +889,7 @@ public class PriceChartPanel extends JPanel {
         JComponent current = panels.get(panels.size() - 1);
 
         for (int i = panels.size() - 2; i >= 0; i--) {
-            JSplitPane split = new JSplitPane(JSplitPane.VERTICAL_SPLIT);
-            split.setBorder(null);
-            split.setDividerSize(3);
+            ThinSplitPane split = new ThinSplitPane(JSplitPane.VERTICAL_SPLIT);
 
             // Price chart (index 0) gets more space
             if (i == 0) {

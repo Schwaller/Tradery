@@ -10,13 +10,15 @@ import com.tradery.symbols.ui.SymbolComboBox;
 
 import com.formdev.flatlaf.FlatClientProperties;
 import com.formdev.flatlaf.util.SystemInfo;
+import com.tradery.ui.controls.ThinSplitPane;
+import com.tradery.ui.controls.ToolbarButton;
 
 import javax.swing.*;
-import javax.swing.border.EmptyBorder;
 import java.awt.*;
 import java.awt.event.ActionListener;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
+import java.beans.PropertyChangeListener;
 import java.util.List;
 
 /**
@@ -35,6 +37,8 @@ public class DeskFrame extends JFrame {
     private final SignalLogPanel signalLogPanel;
     private final PriceChartPanel priceChartPanel;
     private final IndicatorSidePanel indicatorSidePanel;
+    private JPanel headerBar;
+    private PropertyChangeListener lafChangeListener;
 
     private Runnable onClose;
 
@@ -54,17 +58,17 @@ public class DeskFrame extends JFrame {
 
         // Initialize header bar components before layout
         symbolCombo = new SymbolComboBox(new SymbolService(), true);
+        symbolCombo.setToolbarMode();
         priceLabel = new JLabel("\u2014");
         priceLabel.setFont(new Font(Font.MONOSPACED, Font.BOLD, 14));
         updatedLabel = new JLabel("");
         updatedLabel.setFont(new Font("SansSerif", Font.PLAIN, 9));
-        updatedLabel.setForeground(new Color(120, 120, 130));
+        updatedLabel.setForeground(UIManager.getColor("Label.disabledForeground"));
         agoTimer = new Timer(1000, e -> refreshAgoLabel());
         agoTimer.start();
 
         // Main layout
         JPanel mainPanel = new JPanel(new BorderLayout(0, 0));
-        mainPanel.setBackground(new Color(30, 32, 36));
 
         // Single header bar: [symbol combo]  --Tradery Desk--  [price]
         mainPanel.add(createHeaderBar(), BorderLayout.NORTH);
@@ -80,9 +84,8 @@ public class DeskFrame extends JFrame {
         JPanel leftPanel = new JPanel(new BorderLayout(0, 0));
         leftPanel.setPreferredSize(new Dimension(280, 0));
 
-        JSplitPane leftSplit = new JSplitPane(JSplitPane.VERTICAL_SPLIT);
+        ThinSplitPane leftSplit = new ThinSplitPane(JSplitPane.VERTICAL_SPLIT);
         leftSplit.setResizeWeight(0.3);
-        leftSplit.setBorder(null);
 
         strategyListPanel = new StrategyListPanel();
         leftSplit.setTopComponent(strategyListPanel);
@@ -103,9 +106,7 @@ public class DeskFrame extends JFrame {
         chartPanel.add(indicatorSidePanel, BorderLayout.EAST);
 
         // Main horizontal split
-        JSplitPane mainSplit = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT);
-        mainSplit.setBorder(null);
-        mainSplit.setDividerSize(1);
+        ThinSplitPane mainSplit = new ThinSplitPane(JSplitPane.HORIZONTAL_SPLIT);
         mainSplit.setDividerLocation(280);
         mainSplit.setLeftComponent(leftPanel);
         mainSplit.setRightComponent(chartPanel);
@@ -114,10 +115,22 @@ public class DeskFrame extends JFrame {
 
         setContentPane(mainPanel);
 
+        // Listen for LAF changes to update borders
+        lafChangeListener = evt -> {
+            if ("lookAndFeel".equals(evt.getPropertyName()) && headerBar != null) {
+                headerBar.setBackground(UIManager.getColor("Panel.background"));
+                headerBar.setBorder(BorderFactory.createMatteBorder(0, 0, 1, 0, UIManager.getColor("Separator.foreground")));
+            }
+        };
+        UIManager.addPropertyChangeListener(lafChangeListener);
+
         // Handle window close
         addWindowListener(new WindowAdapter() {
             @Override
             public void windowClosing(WindowEvent e) {
+                if (lafChangeListener != null) {
+                    UIManager.removePropertyChangeListener(lafChangeListener);
+                }
                 if (onClose != null) {
                     onClose.run();
                 }
@@ -129,9 +142,9 @@ public class DeskFrame extends JFrame {
     private JPanel createHeaderBar() {
         int barHeight = 52;
 
-        JPanel headerBar = new JPanel(new GridBagLayout());
-        headerBar.setBackground(new Color(38, 40, 44));
-        headerBar.setBorder(BorderFactory.createMatteBorder(0, 0, 1, 0, new Color(50, 52, 56)));
+        headerBar = new JPanel(new GridBagLayout());
+        headerBar.setBackground(UIManager.getColor("Panel.background"));
+        headerBar.setBorder(BorderFactory.createMatteBorder(0, 0, 1, 0, UIManager.getColor("Separator.foreground")));
         headerBar.setPreferredSize(new Dimension(0, barHeight));
         headerBar.setMinimumSize(new Dimension(0, barHeight));
 
@@ -170,18 +183,31 @@ public class DeskFrame extends JFrame {
         gbc.anchor = GridBagConstraints.CENTER;
         JLabel titleLabel = new JLabel("Tradery Desk");
         titleLabel.setFont(new Font("SansSerif", Font.BOLD, 13));
-        titleLabel.setForeground(new Color(160, 160, 170));
+        titleLabel.setForeground(UIManager.getColor("Label.disabledForeground"));
         headerBar.add(titleLabel, gbc);
 
-        // Right: Price + updated ago
+        // Right: Price + updated ago + Settings
         gbc.gridx = 2;
         gbc.weightx = 1.0;
-        gbc.fill = GridBagConstraints.HORIZONTAL;
+        gbc.fill = GridBagConstraints.BOTH;
         gbc.anchor = GridBagConstraints.EAST;
-        JPanel rightPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
+        JPanel rightPanel = new JPanel(new GridBagLayout());
         rightPanel.setOpaque(false);
-        rightPanel.add(priceLabel);
-        rightPanel.add(updatedLabel);
+        JPanel rightContent = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
+        rightContent.setOpaque(false);
+        rightContent.add(priceLabel);
+        rightContent.add(updatedLabel);
+        JButton dataBtn = new ToolbarButton("Data");
+        dataBtn.addActionListener(e -> DeskStatusWindow.showWindow());
+        rightContent.add(dataBtn);
+        JButton settingsBtn = new ToolbarButton("Settings");
+        settingsBtn.addActionListener(e -> new DeskSettingsDialog(this).setVisible(true));
+        rightContent.add(settingsBtn);
+        GridBagConstraints rc = new GridBagConstraints();
+        rc.anchor = GridBagConstraints.EAST;
+        rc.fill = GridBagConstraints.HORIZONTAL;
+        rc.weightx = 1.0;
+        rightPanel.add(rightContent, rc);
         headerBar.add(rightPanel, gbc);
 
         return headerBar;

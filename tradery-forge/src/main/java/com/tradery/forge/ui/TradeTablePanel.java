@@ -2,6 +2,8 @@ package com.tradery.forge.ui;
 
 import com.tradery.core.model.Candle;
 import com.tradery.core.model.Trade;
+import com.tradery.ui.controls.BorderlessScrollPane;
+import com.tradery.ui.controls.BorderlessTable;
 
 import javax.swing.*;
 import javax.swing.table.AbstractTableModel;
@@ -11,6 +13,8 @@ import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.util.ArrayList;
 import java.util.List;
+
+import static com.tradery.forge.ui.UIColors.*;
 
 /**
  * Panel displaying trades from a backtest with tree-like DCA grouping.
@@ -38,12 +42,10 @@ public class TradeTablePanel extends JPanel {
 
     private void initializeTable() {
         tableModel = new TreeTradeTableModel();
-        table = new JTable(tableModel);
+        table = new BorderlessTable(tableModel);
 
         table.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 11));
         table.setRowHeight(20);
-        table.setShowGrid(false);
-        table.setIntercellSpacing(new Dimension(0, 0));
         table.getTableHeader().setReorderingAllowed(false);
 
         // Column widths
@@ -137,8 +139,7 @@ public class TradeTablePanel extends JPanel {
         headerPanel.add(title, BorderLayout.WEST);
         headerPanel.add(detailsButton, BorderLayout.EAST);
 
-        JScrollPane tableScrollPane = new JScrollPane(table);
-        tableScrollPane.setBorder(BorderFactory.createEmptyBorder());
+        BorderlessScrollPane tableScrollPane = new BorderlessScrollPane(table);
 
         JPanel headerWrapper = new JPanel(new BorderLayout(0, 0));
         headerWrapper.setBorder(BorderFactory.createEmptyBorder(8, 8, 4, 8));
@@ -412,9 +413,9 @@ public class TradeTablePanel extends JPanel {
 
             TableRow tableRow = model.getRowAt(row);
             if (tableRow.isRejected()) {
-                setForeground(new Color(180, 180, 180));
+                setForeground(textSecondary());
             } else if (tableRow.isChild) {
-                setForeground(new Color(150, 150, 150));
+                setForeground(textSecondary());
             } else {
                 setForeground(isSelected ? table.getSelectionForeground() : table.getForeground());
             }
@@ -428,6 +429,9 @@ public class TradeTablePanel extends JPanel {
      */
     private static class PnlCellRenderer extends DefaultTableCellRenderer {
         private final TreeTradeTableModel model;
+        // Muted profit/loss colors for child rows
+        private static final Color MUTED_PROFIT = new Color(120, 180, 120);
+        private static final Color MUTED_LOSS = new Color(200, 120, 120);
 
         PnlCellRenderer(TreeTradeTableModel model) {
             this.model = model;
@@ -442,23 +446,23 @@ public class TradeTablePanel extends JPanel {
 
             TableRow tableRow = model.getRowAt(row);
             if (tableRow.isRejected()) {
-                setForeground(new Color(180, 180, 180));
+                setForeground(textSecondary());
             } else if (tableRow.isChild) {
                 // Slightly muted colors for children
                 if (value instanceof String s && !s.equals("-")) {
                     if (s.startsWith("+")) {
-                        setForeground(new Color(120, 180, 120));
+                        setForeground(MUTED_PROFIT);
                     } else if (s.startsWith("-")) {
-                        setForeground(new Color(200, 120, 120));
+                        setForeground(MUTED_LOSS);
                     } else {
                         setForeground(Color.GRAY);
                     }
                 }
             } else if (value instanceof String s && !s.equals("-")) {
                 if (s.startsWith("+")) {
-                    setForeground(new Color(76, 175, 80));
+                    setForeground(TRADE_PROFIT);
                 } else if (s.startsWith("-")) {
-                    setForeground(new Color(244, 67, 54));
+                    setForeground(TRADE_LOSS);
                 } else {
                     setForeground(Color.GRAY);
                 }

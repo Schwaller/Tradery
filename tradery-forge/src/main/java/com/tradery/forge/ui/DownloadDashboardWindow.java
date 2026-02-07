@@ -12,7 +12,12 @@ import com.tradery.symbols.service.SymbolService;
 import com.tradery.ui.dashboard.DashboardPageInfo;
 import com.tradery.ui.dashboard.DashboardSection;
 import com.tradery.ui.dashboard.DashboardWindow;
+import com.tradery.ui.controls.BorderlessScrollPane;
+import com.tradery.ui.controls.ThinSplitPane;
 import com.tradery.ui.dashboard.PageLogEntry;
+
+import static com.tradery.forge.ui.UIColors.STATUS_ERROR;
+import static com.tradery.forge.ui.UIColors.STATUS_READY;
 
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
@@ -107,7 +112,7 @@ public class DownloadDashboardWindow extends DashboardWindow {
         List<DashboardSection> sections = new ArrayList<>();
 
         // Overview: timeline + log
-        JSplitPane overviewSplit = new JSplitPane(JSplitPane.VERTICAL_SPLIT);
+        ThinSplitPane overviewSplit = new ThinSplitPane(JSplitPane.VERTICAL_SPLIT);
         JPanel timelineWrapper = new JPanel(new BorderLayout());
         timelineWrapper.setBorder(new EmptyBorder(8, 8, 0, 8));
         timelineWrapper.setPreferredSize(new Dimension(0, 300));
@@ -335,7 +340,7 @@ public class DownloadDashboardWindow extends DashboardWindow {
         infoSection.add(infoGrid, BorderLayout.CENTER);
         panel.add(infoSection, BorderLayout.NORTH);
 
-        JSplitPane split = new JSplitPane(JSplitPane.VERTICAL_SPLIT);
+        ThinSplitPane split = new ThinSplitPane(JSplitPane.VERTICAL_SPLIT);
 
         JPanel exchSection = new JPanel(new BorderLayout(0, 6));
         exchSection.setBorder(BorderFactory.createEmptyBorder(4, 0, 0, 0));
@@ -343,8 +348,7 @@ public class DownloadDashboardWindow extends DashboardWindow {
         symDbExchangeModel = new DefaultListModel<>();
         JList<String> exchList = new JList<>(symDbExchangeModel);
         exchList.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 11));
-        JScrollPane exchScroll = new JScrollPane(exchList);
-        exchScroll.setBorder(BorderFactory.createEmptyBorder());
+        BorderlessScrollPane exchScroll = new BorderlessScrollPane(exchList);
         exchSection.add(exchScroll, BorderLayout.CENTER);
         split.setTopComponent(exchSection);
 
@@ -354,8 +358,7 @@ public class DownloadDashboardWindow extends DashboardWindow {
         symDbLogModel = new DefaultListModel<>();
         JList<String> logList = new JList<>(symDbLogModel);
         logList.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 11));
-        JScrollPane logScroll = new JScrollPane(logList);
-        logScroll.setBorder(BorderFactory.createEmptyBorder());
+        BorderlessScrollPane logScroll = new BorderlessScrollPane(logList);
         logSection.add(logScroll, BorderLayout.CENTER);
         split.setBottomComponent(logSection);
 
@@ -371,7 +374,7 @@ public class DownloadDashboardWindow extends DashboardWindow {
 
         if (!symbolService.isDatabaseAvailable()) {
             symDbStatusLabel.setText("Unavailable");
-            symDbStatusLabel.setForeground(new Color(180, 80, 80));
+            symDbStatusLabel.setForeground(STATUS_ERROR);
             symDbPairCountLabel.setText("-");
             symDbLastSyncLabel.setText("-");
             symDbPathLabel.setText("symbols.db not found \u2014 run data service to sync");
@@ -385,7 +388,7 @@ public class DownloadDashboardWindow extends DashboardWindow {
         SymbolService.SyncStatus status = symbolService.getSyncStatus();
 
         symDbStatusLabel.setText("Available");
-        symDbStatusLabel.setForeground(new Color(60, 140, 60));
+        symDbStatusLabel.setForeground(STATUS_READY);
         symDbPairCountLabel.setText(String.format("%,d", status.pairCount()));
 
         if (status.lastSync() != null) {

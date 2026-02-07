@@ -7,8 +7,10 @@ import com.tradery.desk.DeskConfig;
 import com.tradery.desk.feed.CandleAggregator;
 import com.tradery.desk.signal.SignalEvaluator;
 import com.tradery.desk.strategy.PublishedStrategy;
+import com.tradery.ui.controls.StatusBadge;
 import com.tradery.ui.dashboard.DashboardPageInfo;
 import com.tradery.ui.dashboard.DashboardSection;
+import com.tradery.ui.controls.BorderlessScrollPane;
 import com.tradery.ui.dashboard.DashboardWindow;
 
 import javax.swing.*;
@@ -35,11 +37,6 @@ public class DeskStatusWindow extends DashboardWindow {
     private static final String SECTION_CONNECTION = "connection";
     private static final String SECTION_ALERTS = "alerts";
     private static final String SECTION_SYSTEM = "system";
-
-    private static final Color COLOR_OK = new Color(60, 140, 60);
-    private static final Color COLOR_WARNING = new Color(180, 160, 60);
-    private static final Color COLOR_ERROR = new Color(180, 80, 80);
-    private static final Color COLOR_IDLE = new Color(100, 100, 100);
 
     // Overview labels
     private JLabel ovConnectionLabel;
@@ -209,8 +206,7 @@ public class DeskStatusWindow extends DashboardWindow {
         sc.weighty = 1.0;
         strategyPanel = new JPanel();
         strategyPanel.setLayout(new BoxLayout(strategyPanel, BoxLayout.Y_AXIS));
-        JScrollPane stratScroll = new JScrollPane(strategyPanel);
-        stratScroll.setBorder(BorderFactory.createEmptyBorder());
+        BorderlessScrollPane stratScroll = new BorderlessScrollPane(strategyPanel);
         panel.add(stratScroll, sc);
 
         return wrapCard(panel);
@@ -343,7 +339,7 @@ public class DeskStatusWindow extends DashboardWindow {
             connUrlLabel.setText(conn.isConnected() ? "Connected" : "Disconnected");
         } else {
             connStateLabel.setText("No page connection");
-            connStateLabel.setForeground(COLOR_ERROR);
+            connStateLabel.setForeground(StatusBadge.BG_ERROR);
             connReconnectLabel.setText("-");
             connUrlLabel.setText("-");
         }
@@ -356,13 +352,13 @@ public class DeskStatusWindow extends DashboardWindow {
         if (config != null) {
             DeskConfig.AlertSettings alerts = config.getAlerts();
             alertDesktopLabel.setText(alerts.isDesktop() ? "Enabled" : "Disabled");
-            alertDesktopLabel.setForeground(alerts.isDesktop() ? COLOR_OK : COLOR_IDLE);
+            alertDesktopLabel.setForeground(alerts.isDesktop() ? StatusBadge.BG_OK : StatusBadge.BG_IDLE);
             alertAudioLabel.setText(alerts.isAudio() ? "Enabled" : "Disabled");
-            alertAudioLabel.setForeground(alerts.isAudio() ? COLOR_OK : COLOR_IDLE);
+            alertAudioLabel.setForeground(alerts.isAudio() ? StatusBadge.BG_OK : StatusBadge.BG_IDLE);
             alertConsoleLabel.setText(alerts.isConsole() ? "Enabled" : "Disabled");
-            alertConsoleLabel.setForeground(alerts.isConsole() ? COLOR_OK : COLOR_IDLE);
+            alertConsoleLabel.setForeground(alerts.isConsole() ? StatusBadge.BG_OK : StatusBadge.BG_IDLE);
             alertWebhookLabel.setText(alerts.getWebhook().isEnabled() ? "Enabled" : "Disabled");
-            alertWebhookLabel.setForeground(alerts.getWebhook().isEnabled() ? COLOR_OK : COLOR_IDLE);
+            alertWebhookLabel.setForeground(alerts.getWebhook().isEnabled() ? StatusBadge.BG_OK : StatusBadge.BG_IDLE);
             String url = alerts.getWebhook().getUrl();
             alertWebhookUrlLabel.setText(url != null && !url.isEmpty() ? url : "-");
         }
@@ -377,7 +373,7 @@ public class DeskStatusWindow extends DashboardWindow {
         long max = rt.maxMemory();
         double pct = (double) used / max * 100;
         sysHeapLabel.setText(String.format("%s / %s (%.1f%%)", formatBytes(used), formatBytes(max), pct));
-        sysHeapLabel.setForeground(pct > 80 ? COLOR_ERROR : pct > 60 ? COLOR_WARNING : COLOR_OK);
+        sysHeapLabel.setForeground(pct > 80 ? StatusBadge.BG_ERROR : pct > 60 ? StatusBadge.BG_WARNING : StatusBadge.BG_OK);
 
         Instant start = ctx.getStartTime();
         if (start != null) {
@@ -446,7 +442,7 @@ public class DeskStatusWindow extends DashboardWindow {
 
             if (strategies.isEmpty()) {
                 JLabel empty = new JLabel("No strategies loaded");
-                empty.setForeground(Color.GRAY);
+                empty.setForeground(UIManager.getColor("Label.disabledForeground"));
                 empty.setFont(empty.getFont().deriveFont(Font.ITALIC, 11f));
                 strategyPanel.add(empty);
             }
@@ -480,11 +476,11 @@ public class DeskStatusWindow extends DashboardWindow {
     // ========== Helpers ==========
 
     private Color getConnectionColor(DataServiceConnection conn) {
-        if (conn == null) return COLOR_IDLE;
+        if (conn == null) return StatusBadge.BG_IDLE;
         return switch (conn.getConnectionState()) {
-            case CONNECTED -> COLOR_OK;
-            case CONNECTING, RECONNECTING -> COLOR_WARNING;
-            case DISCONNECTED -> COLOR_ERROR;
+            case CONNECTED -> StatusBadge.BG_OK;
+            case CONNECTING, RECONNECTING -> StatusBadge.BG_WARNING;
+            case DISCONNECTED -> StatusBadge.BG_ERROR;
         };
     }
 

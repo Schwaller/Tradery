@@ -8,9 +8,9 @@ import java.awt.*;
  */
 public class ToolbarButton extends JButton {
 
-    static final Font TOOLBAR_FONT = new Font("SansSerif", Font.PLAIN, 11);
-    static final Insets TOOLBAR_MARGIN = new Insets(6, 14, 6, 14);
-    static final int HEIGHT = 32;
+    public static final Font TOOLBAR_FONT = new Font("SansSerif", Font.PLAIN, 11);
+    public static final Insets TOOLBAR_MARGIN = new Insets(6, 14, 6, 14);
+    public static final int HEIGHT = 32;
 
     /** Vertical pixels added by FlatLaf's outer focus border (top + bottom). */
     static int focusBorderHeight() {

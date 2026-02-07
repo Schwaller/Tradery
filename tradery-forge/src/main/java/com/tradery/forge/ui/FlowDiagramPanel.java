@@ -8,6 +8,9 @@ import java.awt.geom.Path2D;
 import java.util.ArrayList;
 import java.util.List;
 
+import static com.tradery.forge.ui.UIColors.ACCENT_PRIMARY;
+import static com.tradery.forge.ui.UIColors.ARROW_COLOR;
+
 /**
  * A visual diagram showing Entry box with arrows projecting to exit zones on a P&L scale.
  * Entry spans full height, arrows fan out to zones positioned by their P&L range.
@@ -50,13 +53,14 @@ public class FlowDiagramPanel extends JPanel {
 
         // Colors
         Color accentColor = UIManager.getColor("Component.accentColor");
-        if (accentColor == null) accentColor = new Color(100, 140, 180);
+        if (accentColor == null) accentColor = ACCENT_PRIMARY;
         Color boxBg = new Color(accentColor.getRed(), accentColor.getGreen(), accentColor.getBlue(), 30);
-        Color arrowColor = new Color(150, 150, 150, 180);
+        Color arrowColor = ARROW_COLOR;
         Color textColor = UIManager.getColor("Label.foreground");
         if (textColor == null) textColor = Color.DARK_GRAY;
         Color dimColor = new Color(textColor.getRed(), textColor.getGreen(), textColor.getBlue(), 100);
-        Color axisColor = new Color(180, 180, 180);
+        Color axisColor = UIManager.getColor("Separator.foreground");
+        if (axisColor == null) axisColor = new Color(180, 180, 180);
 
         Font mainFont = getFont().deriveFont(Font.PLAIN, 12f);
         Font smallFont = mainFont.deriveFont(Font.PLAIN, 10f);
@@ -334,8 +338,10 @@ public class FlowDiagramPanel extends JPanel {
             flow.closePath();
             g2.fill(flow);
 
-            // Draw white edge lines on top and bottom curves
-            g2.setColor(new Color(255, 255, 255, 180));
+            // Draw edge lines on top and bottom curves (light on dark themes, dark on light)
+            Color bg = UIManager.getColor("Panel.background");
+            boolean isDark = bg != null && (bg.getRed() + bg.getGreen() + bg.getBlue()) / 3 < 128;
+            g2.setColor(isDark ? new Color(255, 255, 255, 180) : new Color(0, 0, 0, 60));
             g2.setStroke(new BasicStroke(1f));
 
             // Top edge curve

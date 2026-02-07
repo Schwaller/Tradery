@@ -1,5 +1,8 @@
 package com.tradery.news.ui;
 
+import com.tradery.ui.controls.BorderlessScrollPane;
+import com.tradery.ui.controls.ThinSplitPane;
+
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 import java.awt.*;
@@ -18,23 +21,23 @@ public class IntelLogPanel extends JPanel {
     private final DefaultListModel<LogEntry> listModel;
     private final JList<LogEntry> entryList;
     private final JTextArea detailArea;
-    private final JSplitPane splitPane;
+    private final ThinSplitPane splitPane;
 
     private static IntelLogPanel instance;
 
     public IntelLogPanel() {
         super(new BorderLayout());
         setBackground(new Color(30, 32, 36));
-        setBorder(BorderFactory.createMatteBorder(1, 0, 0, 0, new Color(50, 52, 56)));
 
         // Header
         JPanel header = new JPanel(new BorderLayout());
-        header.setBackground(new Color(35, 37, 41));
-        header.setBorder(new EmptyBorder(4, 8, 4, 8));
+        header.setBorder(BorderFactory.createCompoundBorder(
+            BorderFactory.createMatteBorder(1, 0, 0, 0, UIManager.getColor("Separator.foreground")),
+            new EmptyBorder(4, 8, 4, 8)
+        ));
 
         JLabel titleLabel = new JLabel("Activity Log");
         titleLabel.setFont(new Font("SansSerif", Font.BOLD, 11));
-        titleLabel.setForeground(new Color(150, 150, 160));
         header.add(titleLabel, BorderLayout.WEST);
 
         JButton clearBtn = new JButton("Clear");
@@ -60,8 +63,7 @@ public class IntelLogPanel extends JPanel {
             }
         });
 
-        JScrollPane listScroll = new JScrollPane(entryList);
-        listScroll.setBorder(null);
+        BorderlessScrollPane listScroll = new BorderlessScrollPane(entryList);
         listScroll.getVerticalScrollBar().setUnitIncrement(16);
 
         // Detail area (same background as list)
@@ -80,10 +82,8 @@ public class IntelLogPanel extends JPanel {
         detailScroll.getViewport().setBackground(new Color(25, 27, 31));
 
         // Split pane (list takes 66%)
-        splitPane = new JSplitPane(JSplitPane.VERTICAL_SPLIT, listScroll, detailScroll);
+        splitPane = new ThinSplitPane(JSplitPane.VERTICAL_SPLIT, listScroll, detailScroll);
         splitPane.setResizeWeight(0.66);
-        splitPane.setDividerSize(4);
-        splitPane.setBorder(null);
         splitPane.setBackground(new Color(30, 32, 36));
 
         add(splitPane, BorderLayout.CENTER);

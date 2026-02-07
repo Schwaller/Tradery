@@ -6,6 +6,7 @@ import com.tradery.forge.data.log.DownloadEvent;
 import com.tradery.forge.data.log.DownloadLogStore;
 import com.tradery.forge.data.page.DataPageManager;
 import com.tradery.forge.data.page.IndicatorPageManager;
+import com.tradery.ui.controls.ThinSplitPane;
 
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
@@ -58,7 +59,7 @@ public class PageDetailPanel extends JPanel {
         add(topPanel, BorderLayout.NORTH);
 
         // Split pane for consumers and log
-        JSplitPane splitPane = new JSplitPane(JSplitPane.VERTICAL_SPLIT);
+        ThinSplitPane splitPane = new ThinSplitPane(JSplitPane.VERTICAL_SPLIT);
         splitPane.setTopComponent(createConsumersSection());
         splitPane.setBottomComponent(createLogSection());
         splitPane.setDividerLocation(120);

@@ -121,6 +121,32 @@ public class SymbolComboBox extends JPanel {
         }
     }
 
+    /**
+     * Apply compact toolbar styling to internal combos and browse button.
+     * Matches ToolbarButton height (32px) and font (11pt SansSerif).
+     */
+    public void setToolbarMode() {
+        Font toolbarFont = new Font("SansSerif", Font.PLAIN, 11);
+        int height = 32;
+        applyToolbarStyle(exchangeCombo, toolbarFont, height);
+        applyToolbarStyle(marketCombo, toolbarFont, height);
+        applyToolbarStyle(pairCombo, toolbarFont, height);
+        browseButton.setFont(toolbarFont);
+        browseButton.setMargin(new Insets(6, 10, 6, 10));
+        browseButton.setFocusPainted(false);
+        browseButton.setPreferredSize(new Dimension(browseButton.getPreferredSize().width, height));
+        browseButton.setMinimumSize(new Dimension(browseButton.getMinimumSize().width, height));
+        browseButton.setMaximumSize(new Dimension(browseButton.getMaximumSize().width, height));
+    }
+
+    private void applyToolbarStyle(JComboBox<?> combo, Font font, int height) {
+        combo.setFont(font);
+        Dimension pref = combo.getPreferredSize();
+        combo.setPreferredSize(new Dimension(pref.width, height));
+        combo.setMinimumSize(new Dimension(combo.getMinimumSize().width, height));
+        combo.setMaximumSize(new Dimension(combo.getMaximumSize().width, height));
+    }
+
     public void addActionListener(ActionListener l) {
         changeListeners.add(() -> l.actionPerformed(
             new ActionEvent(this, ActionEvent.ACTION_PERFORMED, "symbolChanged")));

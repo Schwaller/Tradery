@@ -2,6 +2,7 @@ package com.tradery.forge.ui;
 
 import com.tradery.core.model.Strategy;
 import com.tradery.forge.publish.DeskPublisher;
+import com.tradery.ui.controls.BorderlessTable;
 
 import javax.swing.*;
 import javax.swing.table.DefaultTableModel;
@@ -59,7 +60,7 @@ public class PublishDialog extends JDialog {
                 return false;
             }
         };
-        versionsTable = new JTable(tableModel);
+        versionsTable = new BorderlessTable(tableModel);
         versionsTable.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
         versionsTable.getColumnModel().getColumn(0).setPreferredWidth(60);
         versionsTable.getColumnModel().getColumn(1).setPreferredWidth(140);

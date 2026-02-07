@@ -5,6 +5,7 @@ import com.tradery.forge.data.AggTradesStore;
 import com.tradery.forge.data.DataConfig;
 import com.tradery.forge.data.PremiumIndexStore;
 import com.tradery.forge.data.sqlite.SqliteDataStore;
+import com.tradery.ui.controls.BorderlessScrollPane;
 
 import javax.swing.*;
 import java.awt.*;
@@ -74,8 +75,7 @@ public class DataManagementDialog extends JDialog {
         browserPanel = new DataBrowserPanel();
         browserPanel.setOnSelectionChanged(this::onSeriesSelected);
 
-        JScrollPane browserScroll = new JScrollPane(browserPanel);
-        browserScroll.setBorder(BorderFactory.createEmptyBorder());
+        BorderlessScrollPane browserScroll = new BorderlessScrollPane(browserPanel);
         browserScroll.setPreferredSize(new Dimension(220, 0));
 
         // Storage info at bottom of left panel

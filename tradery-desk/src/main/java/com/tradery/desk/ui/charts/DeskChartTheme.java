@@ -2,6 +2,7 @@ package com.tradery.desk.ui.charts;
 
 import com.tradery.charts.core.ChartTheme;
 
+import javax.swing.*;
 import java.awt.*;
 
 /**
@@ -22,37 +23,42 @@ public class DeskChartTheme implements ChartTheme {
 
     @Override
     public Color getBackgroundColor() {
-        return new Color(30, 30, 30);
+        return ui("Panel.background", new Color(30, 30, 30));
     }
 
     @Override
     public Color getPlotBackgroundColor() {
-        return new Color(30, 30, 30);
+        return ui("Panel.background", new Color(30, 30, 30));
     }
 
     @Override
     public Color getGridlineColor() {
-        return new Color(60, 60, 60);
+        return ui("Separator.foreground", new Color(60, 60, 60));
     }
 
     @Override
     public Color getTextColor() {
-        return new Color(200, 200, 200);
+        return ui("Label.foreground", new Color(200, 200, 200));
     }
 
     @Override
     public Color getCrosshairColor() {
-        return new Color(150, 150, 150);
+        return ui("Label.disabledForeground", new Color(150, 150, 150));
     }
 
     @Override
     public Color getAxisLabelColor() {
-        return new Color(200, 200, 200);
+        return ui("Label.foreground", new Color(200, 200, 200));
     }
 
     @Override
     public Color getPriceLineColor() {
-        return new Color(100, 100, 100);
+        return ui("Label.disabledForeground", new Color(100, 100, 100));
+    }
+
+    private static Color ui(String key, Color fallback) {
+        Color c = UIManager.getColor(key);
+        return c != null ? c : fallback;
     }
 
     // ===== Candlestick Colors =====

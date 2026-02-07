@@ -4,6 +4,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.tradery.core.model.Strategy;
+import com.tradery.ui.controls.BorderlessTable;
+import com.tradery.ui.controls.ThinSplitPane;
 
 import javax.swing.*;
 import javax.swing.table.AbstractTableModel;
@@ -49,7 +51,7 @@ public class HistoryDialog extends JDialog {
 
         // Create table
         HistoryTableModel tableModel = new HistoryTableModel();
-        historyTable = new JTable(tableModel);
+        historyTable = new BorderlessTable(tableModel);
         historyTable.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
         historyTable.setRowHeight(24);
         historyTable.getSelectionModel().addListSelectionListener(e -> {
@@ -109,7 +111,7 @@ public class HistoryDialog extends JDialog {
         buttonPanel.add(closeBtn);
 
         // Layout
-        JSplitPane splitPane = new JSplitPane(JSplitPane.VERTICAL_SPLIT, tableScroll, detailsScroll);
+        ThinSplitPane splitPane = new ThinSplitPane(JSplitPane.VERTICAL_SPLIT, tableScroll, detailsScroll);
         splitPane.setDividerLocation(280);
 
         JPanel mainPanel = new JPanel(new BorderLayout(8, 8));

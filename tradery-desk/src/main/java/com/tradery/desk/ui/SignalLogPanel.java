@@ -1,6 +1,7 @@
 package com.tradery.desk.ui;
 
 import com.tradery.desk.signal.SignalEvent;
+import com.tradery.ui.controls.BorderlessTable;
 
 import javax.swing.*;
 import javax.swing.table.AbstractTableModel;
@@ -35,7 +36,7 @@ public class SignalLogPanel extends JPanel {
         add(header, BorderLayout.NORTH);
 
         tableModel = new SignalTableModel();
-        table = new JTable(tableModel);
+        table = new BorderlessTable(tableModel);
         table.setFillsViewportHeight(true);
         table.setRowHeight(22);
         table.getColumnModel().getColumn(0).setPreferredWidth(70);  // Time
@@ -48,13 +49,14 @@ public class SignalLogPanel extends JPanel {
         table.getColumnModel().getColumn(1).setCellRenderer(new SignalTypeRenderer());
 
         JScrollPane scrollPane = new JScrollPane(table);
+        scrollPane.setBorder(BorderFactory.createEmptyBorder());
         scrollPane.setPreferredSize(new Dimension(500, 200));
         add(scrollPane, BorderLayout.CENTER);
 
         // Empty state label
         emptyLabel = new JLabel("Waiting for signals...");
         emptyLabel.setHorizontalAlignment(SwingConstants.CENTER);
-        emptyLabel.setForeground(Color.GRAY);
+        emptyLabel.setForeground(UIManager.getColor("Label.disabledForeground"));
         add(emptyLabel, BorderLayout.SOUTH);
     }
 

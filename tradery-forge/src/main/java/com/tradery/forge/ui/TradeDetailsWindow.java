@@ -2,6 +2,8 @@ package com.tradery.forge.ui;
 
 import com.tradery.core.model.Candle;
 import com.tradery.core.model.Trade;
+import com.tradery.ui.controls.BorderlessTable;
+import com.tradery.ui.controls.ThinSplitPane;
 
 import javax.swing.*;
 import javax.swing.table.AbstractTableModel;
@@ -15,6 +17,8 @@ import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.Map;
+
+import static com.tradery.forge.ui.UIColors.*;
 
 /**
  * Window showing comprehensive trade details with tree-like DCA grouping.
@@ -63,12 +67,10 @@ public class TradeDetailsWindow extends JDialog {
 
     private void initializeComponents() {
         tableModel = new TreeDetailedTableModel(trades);
-        table = new JTable(tableModel);
+        table = new BorderlessTable(tableModel);
 
         table.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 11));
         table.setRowHeight(22);
-        table.setShowGrid(false);
-        table.setIntercellSpacing(new Dimension(0, 0));
         table.getTableHeader().setReorderingAllowed(false);
         table.setAutoResizeMode(JTable.AUTO_RESIZE_OFF);
 
@@ -157,12 +159,12 @@ public class TradeDetailsWindow extends JDialog {
 
         // Empty state
         JLabel emptyLabel = new JLabel("Select a trade to view details");
-        emptyLabel.setForeground(new Color(120, 120, 120));
+        emptyLabel.setForeground(textSecondary());
         emptyLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
         detailContentPanel.add(emptyLabel);
 
         detailScrollPane = new JScrollPane(detailContentPanel);
-        detailScrollPane.setBorder(BorderFactory.createLineBorder(new Color(60, 60, 65)));
+        detailScrollPane.setBorder(BorderFactory.createLineBorder(border()));
         detailScrollPane.getVerticalScrollBar().setUnitIncrement(16);
         detailScrollPane.setHorizontalScrollBarPolicy(JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
 
@@ -203,7 +205,7 @@ public class TradeDetailsWindow extends JDialog {
 
         // Position details
         addSection("Position");
-        addRow("Side", row.getSide().toUpperCase(), row.getSide().equals("long") ? new Color(76, 175, 80) : new Color(244, 67, 54));
+        addRow("Side", row.getSide().toUpperCase(), row.getSide().equals("long") ? TRADE_PROFIT : TRADE_LOSS);
         addRow("Entries", String.valueOf(row.trades.size()), null);
         addRow("Total Qty", String.format("%.6f", row.getTotalQuantity()), null);
         addRow("Total Value", String.format("$%,.2f", row.getTotalValue()), null);
@@ -229,15 +231,15 @@ public class TradeDetailsWindow extends JDialog {
 
         // Header
         if (isRejected) {
-            addHeader("REJECTED", new Color(150, 150, 150));
+            addHeader("REJECTED", textSecondary());
             addSpacer(4);
             JLabel note = new JLabel("<html><i>Signal fired but no capital available</i></html>");
             note.setFont(note.getFont().deriveFont(10f));
-            note.setForeground(new Color(120, 120, 120));
+            note.setForeground(textSecondary());
             note.setAlignmentX(Component.LEFT_ALIGNMENT);
             detailContentPanel.add(note);
         } else {
-            Color headerColor = t.pnl() != null && t.pnl() >= 0 ? new Color(76, 175, 80) : new Color(244, 67, 54);
+            Color headerColor = t.pnl() != null && t.pnl() >= 0 ? TRADE_PROFIT : TRADE_LOSS;
             addHeader(t.pnl() != null && t.pnl() >= 0 ? "WINNER" : "LOSER", headerColor);
 
             // Big P&L display
@@ -266,7 +268,7 @@ public class TradeDetailsWindow extends JDialog {
             "Candle index when entry occurred.\nUseful for finding this trade on the chart.");
         addRow("Price", "$" + formatPrice(t.entryPrice()), null,
             "The price at which the position was entered.\nCompare with Better Entry to see if timing could improve.");
-        addRow("Side", t.side().toUpperCase(), t.side().equals("long") ? new Color(76, 175, 80) : new Color(244, 67, 54),
+        addRow("Side", t.side().toUpperCase(), t.side().equals("long") ? TRADE_PROFIT : TRADE_LOSS,
             "Trade direction: LONG (buy) or SHORT (sell).\nLong profits when price goes up, short profits when price goes down.");
         if (!isRejected) {
             addRow("Quantity", String.format("%.6f", t.quantity()), null,
@@ -300,7 +302,7 @@ public class TradeDetailsWindow extends JDialog {
             }
             // Holding costs (funding fees for futures)
             if (t.holdingCosts() != null && t.holdingCosts() != 0) {
-                Color holdingColor = t.holdingCosts() > 0 ? new Color(244, 67, 54) : new Color(76, 175, 80);
+                Color holdingColor = t.holdingCosts() > 0 ? TRADE_LOSS : TRADE_PROFIT;
                 addRow("Holding Costs", String.format("%+.2f", t.holdingCosts()), holdingColor,
                     "Funding fees accumulated while holding (futures only).\nPositive = you paid, Negative = you received.\nHigh funding can erode profits on longer holds.");
             }
@@ -314,7 +316,7 @@ public class TradeDetailsWindow extends JDialog {
                     if (t.barsToMfe() != null) {
                         mfeText += String.format(" (%d bars)", t.barsToMfe());
                     }
-                    addRow("MFE", mfeText, new Color(76, 175, 80),
+                    addRow("MFE", mfeText, TRADE_PROFIT,
                         "Maximum Favorable Excursion - the BEST unrealized P&L during the trade.\nThis is the peak profit you could have captured.\nIf MFE >> actual P&L, your exits are leaving money on the table.");
                 }
                 if (t.mae() != null) {
@@ -322,18 +324,18 @@ public class TradeDetailsWindow extends JDialog {
                     if (t.barsToMae() != null) {
                         maeText += String.format(" (%d bars)", t.barsToMae());
                     }
-                    addRow("MAE", maeText, new Color(244, 67, 54),
+                    addRow("MAE", maeText, TRADE_LOSS,
                         "Maximum Adverse Excursion - the WORST drawdown during the trade.\nThis is the deepest the trade went against you.\nLarge MAE on winners suggests stop loss could be tighter.");
                 }
                 if (t.captureRatio() != null) {
-                    Color captureColor = t.captureRatio() >= 0.7 ? new Color(76, 175, 80) :
-                                         t.captureRatio() >= 0.4 ? new Color(255, 193, 7) : new Color(244, 67, 54);
+                    Color captureColor = t.captureRatio() >= 0.7 ? TRADE_PROFIT :
+                                         t.captureRatio() >= 0.4 ? TRADE_WARNING : TRADE_LOSS;
                     addRow("Capture", String.format("%.0f%%", t.captureRatio() * 100), captureColor,
                         "What percentage of MFE was actually captured at exit.\nCapture = P&L ÷ MFE\n\n• >70% (green): Excellent exit timing\n• 40-70% (yellow): Room for improvement\n• <40% (red): Exiting way too early\n\nLow capture across many trades = exit strategy needs work.");
                 }
                 if (t.painRatio() != null) {
-                    Color painColor = t.painRatio() <= 0.3 ? new Color(76, 175, 80) :
-                                      t.painRatio() <= 0.6 ? new Color(255, 193, 7) : new Color(244, 67, 54);
+                    Color painColor = t.painRatio() <= 0.3 ? TRADE_PROFIT :
+                                      t.painRatio() <= 0.6 ? TRADE_WARNING : TRADE_LOSS;
                     addRow("Pain Ratio", String.format("%.2f", t.painRatio()), painColor,
                         "How much pain (drawdown) vs reward (profit potential).\nPain Ratio = |MAE| ÷ MFE\n\n• <0.3 (green): Smooth ride, minimal heat\n• 0.3-0.6 (yellow): Moderate drawdown\n• >0.6 (red): Suffered significant pain\n\nHigh pain ratio = consider tighter entries or wider stops.");
                 }
@@ -344,14 +346,14 @@ public class TradeDetailsWindow extends JDialog {
                 addSeparator();
                 addSection("Could Have Been");
                 if (t.betterEntryImprovement() != null) {
-                    Color entryColor = t.betterEntryImprovement() < 1.0 ? new Color(76, 175, 80) :
-                                       t.betterEntryImprovement() < 3.0 ? new Color(255, 193, 7) : new Color(244, 67, 54);
+                    Color entryColor = t.betterEntryImprovement() < 1.0 ? TRADE_PROFIT :
+                                       t.betterEntryImprovement() < 3.0 ? TRADE_WARNING : TRADE_LOSS;
                     addRow("Better Entry", String.format("+%.1f%%", t.betterEntryImprovement()), entryColor,
                         "How much better P&L if entered at the best price within " + Trade.CONTEXT_BARS + " bars before entry.\n\n• <1% (green): Entry timing was good\n• 1-3% (yellow): Moderate room for improvement\n• >3% (red): Significant improvement possible\n\nConsistently high = consider limit orders or better entry conditions.");
                 }
                 if (t.betterExitImprovement() != null) {
-                    Color exitColor = t.betterExitImprovement() < 1.0 ? new Color(76, 175, 80) :
-                                      t.betterExitImprovement() < 3.0 ? new Color(255, 193, 7) : new Color(244, 67, 54);
+                    Color exitColor = t.betterExitImprovement() < 1.0 ? TRADE_PROFIT :
+                                      t.betterExitImprovement() < 3.0 ? TRADE_WARNING : TRADE_LOSS;
                     addRow("Better Exit", String.format("+%.1f%%", t.betterExitImprovement()), exitColor,
                         "How much better P&L if held until the best price within " + Trade.CONTEXT_BARS + " bars after exit.\n\n• <1% (green): Exit timing was good\n• 1-3% (yellow): Exited a bit early\n• >3% (red): Left significant profit on table\n\nConsistently high = consider trailing stops or delayed exits.");
                 }
@@ -370,7 +372,7 @@ public class TradeDetailsWindow extends JDialog {
             addSectionWithTooltip("Phases at Entry",
                 "Market phases that were active when this trade opened.\nPhases are multi-timeframe filters (trend, session, calendar, etc.).\nCompare entry vs exit phases to understand regime changes.");
             for (String phase : t.activePhasesAtEntry()) {
-                addTag(phase, new Color(70, 130, 180));
+                addTag(phase, TAG_PHASE);
             }
         }
 
@@ -380,7 +382,7 @@ public class TradeDetailsWindow extends JDialog {
             addSectionWithTooltip("Phases at Exit",
                 "Market phases active when this trade closed.\nIf different from entry phases, the market regime changed during the trade.\nThis can explain unexpected outcomes.");
             for (String phase : t.activePhasesAtExit()) {
-                addTag(phase, new Color(130, 100, 180));
+                addTag(phase, TAG_PHASE_ALT);
             }
         }
 
@@ -395,28 +397,28 @@ public class TradeDetailsWindow extends JDialog {
 
         // Entry Indicators (collapsible)
         if (t.entryIndicators() != null && !t.entryIndicators().isEmpty()) {
-            addCollapsibleIndicatorSection("Entry Indicators", t.entryIndicators(), new Color(100, 180, 255),
+            addCollapsibleIndicatorSection("Entry Indicators", t.entryIndicators(), IND_ENTRY,
                 "Indicator values at the moment of entry.\nThese are the conditions that triggered the trade.\nUse to verify entry logic is working as expected.");
         }
 
         // Exit Indicators (collapsible)
         if (t.exitIndicators() != null && !t.exitIndicators().isEmpty()) {
             addSpacer(4);
-            addCollapsibleIndicatorSection("Exit Indicators", t.exitIndicators(), new Color(180, 130, 100),
+            addCollapsibleIndicatorSection("Exit Indicators", t.exitIndicators(), IND_EXIT,
                 "Indicator values at the moment of exit.\nCompare with entry to see how conditions changed.\nUseful for tuning exit conditions.");
         }
 
         // MFE Indicators (collapsible)
         if (t.mfeIndicators() != null && !t.mfeIndicators().isEmpty()) {
             addSpacer(4);
-            addCollapsibleIndicatorSection("MFE Indicators", t.mfeIndicators(), new Color(100, 180, 100),
+            addCollapsibleIndicatorSection("MFE Indicators", t.mfeIndicators(), IND_MFE,
                 "Indicator values when trade reached Maximum Favorable Excursion (best price).\nStudy these to understand what conditions look like at the ideal exit point.\nPattern here = potential exit signal.");
         }
 
         // MAE Indicators (collapsible)
         if (t.maeIndicators() != null && !t.maeIndicators().isEmpty()) {
             addSpacer(4);
-            addCollapsibleIndicatorSection("MAE Indicators", t.maeIndicators(), new Color(180, 100, 100),
+            addCollapsibleIndicatorSection("MAE Indicators", t.maeIndicators(), IND_MAE,
                 "Indicator values when trade hit Maximum Adverse Excursion (worst drawdown).\nStudy these to understand what conditions preceded the worst point.\nPattern here = potential warning signal or stop trigger.");
         }
     }
@@ -425,13 +427,13 @@ public class TradeDetailsWindow extends JDialog {
         JPanel box = new JPanel();
         box.setLayout(new BoxLayout(box, BoxLayout.Y_AXIS));
         box.setBorder(BorderFactory.createCompoundBorder(
-            BorderFactory.createLineBorder(new Color(80, 80, 85)),
+            BorderFactory.createLineBorder(border()),
             BorderFactory.createEmptyBorder(10, 12, 10, 12)
         ));
         box.setMaximumSize(new Dimension(Integer.MAX_VALUE, 100));
 
         double pnl = row.getTotalPnl();
-        Color pnlColor = pnl >= 0 ? new Color(76, 175, 80) : new Color(244, 67, 54);
+        Color pnlColor = pnl >= 0 ? TRADE_PROFIT : TRADE_LOSS;
 
         JLabel pnlLabel = new JLabel(String.format("%+.2f", pnl));
         pnlLabel.setFont(pnlLabel.getFont().deriveFont(Font.BOLD, 22f));
@@ -460,7 +462,7 @@ public class TradeDetailsWindow extends JDialog {
             if (row.getMae() != null) {
                 JLabel mae = new JLabel(String.format("MAE %.1f%%", row.getMae()));
                 mae.setFont(mae.getFont().deriveFont(10f));
-                mae.setForeground(new Color(180, 100, 100));
+                mae.setForeground(IND_MAE);
                 mfeRow.add(mae);
             }
             box.add(mfeRow);
@@ -473,13 +475,13 @@ public class TradeDetailsWindow extends JDialog {
         JPanel box = new JPanel();
         box.setLayout(new BoxLayout(box, BoxLayout.Y_AXIS));
         box.setBorder(BorderFactory.createCompoundBorder(
-            BorderFactory.createLineBorder(new Color(80, 80, 85)),
+            BorderFactory.createLineBorder(border()),
             BorderFactory.createEmptyBorder(10, 12, 10, 12)
         ));
         box.setMaximumSize(new Dimension(Integer.MAX_VALUE, 100));
 
         double pnl = t.pnl() != null ? t.pnl() : 0;
-        Color pnlColor = pnl >= 0 ? new Color(76, 175, 80) : new Color(244, 67, 54);
+        Color pnlColor = pnl >= 0 ? TRADE_PROFIT : TRADE_LOSS;
 
         JLabel pnlLabel = new JLabel(String.format("%+.2f", pnl));
         pnlLabel.setFont(pnlLabel.getFont().deriveFont(Font.BOLD, 22f));
@@ -508,14 +510,14 @@ public class TradeDetailsWindow extends JDialog {
             if (t.mae() != null) {
                 JLabel mae = new JLabel(String.format("MAE %.1f%%", t.mae()));
                 mae.setFont(mae.getFont().deriveFont(10f));
-                mae.setForeground(new Color(180, 100, 100));
+                mae.setForeground(IND_MAE);
                 mfeRow.add(mae);
             }
             if (t.captureRatio() != null) {
                 JLabel capture = new JLabel(String.format("Capture %.0f%%", t.captureRatio() * 100));
                 capture.setFont(capture.getFont().deriveFont(10f));
                 Color captureColor = t.captureRatio() >= 0.7 ? new Color(100, 160, 100) :
-                                     t.captureRatio() >= 0.4 ? new Color(180, 160, 80) : new Color(180, 100, 100);
+                                     t.captureRatio() >= 0.4 ? new Color(180, 160, 80) : IND_MAE;
                 capture.setForeground(captureColor);
                 mfeRow.add(capture);
             }
@@ -659,7 +661,7 @@ public class TradeDetailsWindow extends JDialog {
                     int closeY = priceToY.applyAsInt(c.close());
 
                     boolean bullish = c.close() >= c.open();
-                    Color candleColor = bullish ? new Color(76, 175, 80) : new Color(244, 67, 54);
+                    Color candleColor = bullish ? TRADE_PROFIT : TRADE_LOSS;
 
                     // Dim candles outside trade
                     if (i < fEntryBar || i > fExitBar) {
@@ -703,7 +705,7 @@ public class TradeDetailsWindow extends JDialog {
                 if (fEntryBar >= 0 && fEntryBar < chartCandles.size()) {
                     int x = offsetX + fEntryBar * barWidth + barWidth / 2;
                     int y = priceToY.applyAsInt(t.entryPrice());
-                    g2.setColor(new Color(100, 180, 255));
+                    g2.setColor(IND_ENTRY);
                     g2.fillOval(x - 5, y - 5, 10, 10);
                     g2.setColor(new Color(255, 255, 255, 200));
                     g2.setStroke(new BasicStroke(1.5f));
@@ -714,7 +716,7 @@ public class TradeDetailsWindow extends JDialog {
                 if (fExitBar >= 0 && fExitBar < chartCandles.size()) {
                     int x = offsetX + fExitBar * barWidth + barWidth / 2;
                     int y = priceToY.applyAsInt(t.exitPrice());
-                    Color exitColor = isWinner ? new Color(76, 175, 80) : new Color(244, 67, 54);
+                    Color exitColor = isWinner ? TRADE_PROFIT : TRADE_LOSS;
                     g2.setColor(exitColor);
                     g2.fillOval(x - 5, y - 5, 10, 10);
                     g2.setColor(new Color(255, 255, 255, 200));
@@ -788,7 +790,7 @@ public class TradeDetailsWindow extends JDialog {
 
         chartPanel.setPreferredSize(new Dimension(280, 120));
         chartPanel.setMaximumSize(new Dimension(Integer.MAX_VALUE, 120));
-        chartPanel.setBorder(BorderFactory.createLineBorder(new Color(60, 60, 65)));
+        chartPanel.setBorder(BorderFactory.createLineBorder(border()));
         chartPanel.setToolTipText("<html>● Entry (light blue) → Exit<br/>" +
             "▲ MFE | ▼ MAE<br/>" +
             "● Blue = better entry/exit (perfect trade path)</html>");
@@ -828,7 +830,7 @@ public class TradeDetailsWindow extends JDialog {
                     .toList();
 
                 if (validTrades.isEmpty() || candles.isEmpty()) {
-                    g2.setColor(new Color(100, 100, 100));
+                    g2.setColor(textSecondary());
                     g2.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 11));
                     String msg = "No completed trades to display";
                     int msgW = g2.getFontMetrics().stringWidth(msg);
@@ -890,7 +892,7 @@ public class TradeDetailsWindow extends JDialog {
 
                 // Draw zero line (entry level)
                 int zeroY = chartY + (int) ((maxPnl - 0) / pnlRange * chartH);
-                g2.setColor(new Color(80, 80, 85));
+                g2.setColor(border());
                 g2.setStroke(new BasicStroke(1f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER, 10f, new float[]{4f, 4f}, 0f));
                 g2.drawLine(margin, zeroY, margin + chartW, zeroY);
 
@@ -937,39 +939,39 @@ public class TradeDetailsWindow extends JDialog {
 
                 // Title and stats
                 g2.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 10));
-                g2.setColor(new Color(180, 180, 180));
+                g2.setColor(textSecondary());
                 g2.drawString("Trade Overlay", margin, 12);
 
                 g2.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 9));
                 String stats = String.format("%d trades | ", validTrades.size());
                 int statsX = margin + 80;
-                g2.setColor(new Color(130, 130, 130));
+                g2.setColor(textSecondary());
                 g2.drawString(stats, statsX, 12);
                 statsX += g2.getFontMetrics().stringWidth(stats);
 
-                g2.setColor(new Color(76, 175, 80));
+                g2.setColor(TRADE_PROFIT);
                 String winText = String.format("%d wins ", winners);
                 g2.drawString(winText, statsX, 12);
                 statsX += g2.getFontMetrics().stringWidth(winText);
 
-                g2.setColor(new Color(244, 67, 54));
+                g2.setColor(TRADE_LOSS);
                 g2.drawString(String.format("%d losses", losers), statsX, 12);
 
                 // Legend on right side
                 int legendX = margin + chartW - 100;
                 g2.setColor(new Color(76, 175, 80, 100));
                 g2.fillRect(legendX, 4, 12, 8);
-                g2.setColor(new Color(100, 100, 100));
+                g2.setColor(textSecondary());
                 g2.drawString("Win", legendX + 16, 12);
 
                 g2.setColor(new Color(244, 67, 54, 100));
                 g2.fillRect(legendX + 45, 4, 12, 8);
-                g2.setColor(new Color(100, 100, 100));
+                g2.setColor(textSecondary());
                 g2.drawString("Loss", legendX + 61, 12);
 
                 // Show zoom indicator if zoomed
                 if (chartZoomFactor > 1.01) {
-                    g2.setColor(new Color(100, 100, 100));
+                    g2.setColor(textSecondary());
                     g2.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 9));
                     g2.drawString(String.format("%.0fx", chartZoomFactor), margin + chartW - 20, chartY + chartH - 5);
                 }
@@ -1047,7 +1049,7 @@ public class TradeDetailsWindow extends JDialog {
 
         panel.setPreferredSize(new Dimension(0, 120));
         panel.setMinimumSize(new Dimension(0, 80));
-        panel.setBorder(BorderFactory.createMatteBorder(1, 0, 0, 0, new Color(60, 60, 65)));
+        panel.setBorder(BorderFactory.createMatteBorder(1, 0, 0, 0, border()));
         panel.setToolTipText("<html>All trades overlaid with entry at x=0<br/>Green = winners, Red = losers<br/>Mouse wheel to zoom, drag to pan<br/>Right-click for options</html>");
 
         return panel;
@@ -1140,7 +1142,7 @@ public class TradeDetailsWindow extends JDialog {
         }
 
         // Set color and stroke based on selection and outcome
-        Color baseColor = isWinner ? new Color(76, 175, 80) : new Color(244, 67, 54);
+        Color baseColor = isWinner ? TRADE_PROFIT : TRADE_LOSS;
         int alpha = isSelected ? 255 : 190;  // 75% opacity for non-selected
         float strokeWidth = isSelected ? 2.5f : 1f;
 
@@ -1155,7 +1157,7 @@ public class TradeDetailsWindow extends JDialog {
             if (entryNormX >= visibleStart && entryNormX <= visibleEnd) {
                 int entryX = margin + (int) ((entryNormX - visibleStart) / (visibleEnd - visibleStart) * chartW);
                 int entryY = chartY + (int) ((maxPnl - 0) / pnlRange * chartH);
-                g2.setColor(new Color(100, 180, 255));
+                g2.setColor(IND_ENTRY);
                 g2.fillOval(entryX - 4, entryY - 4, 8, 8);
             }
 
@@ -1192,7 +1194,7 @@ public class TradeDetailsWindow extends JDialog {
     private void addSectionWithTooltip(String title, String tooltip) {
         JLabel section = new JLabel(title.toUpperCase());
         section.setFont(section.getFont().deriveFont(Font.BOLD, 9f));
-        section.setForeground(new Color(100, 100, 100));
+        section.setForeground(textSecondary());
         section.setBorder(BorderFactory.createEmptyBorder(0, 0, 4, 0));
         section.setAlignmentX(Component.LEFT_ALIGNMENT);
         if (tooltip != null) {
@@ -1214,12 +1216,12 @@ public class TradeDetailsWindow extends JDialog {
 
         JLabel labelComp = new JLabel(label);
         labelComp.setFont(labelComp.getFont().deriveFont(11f));
-        labelComp.setForeground(new Color(140, 140, 140));
+        labelComp.setForeground(textSecondary());
         labelComp.setPreferredSize(new Dimension(95, 16));  // Fixed width for alignment
 
         JLabel valueComp = new JLabel(value);
         valueComp.setFont(valueComp.getFont().deriveFont(11f));
-        valueComp.setForeground(valueColor != null ? valueColor : new Color(200, 200, 200));
+        valueComp.setForeground(valueColor != null ? valueColor : textPrimary());
 
         if (tooltip != null) {
             String htmlTooltip = "<html><div style='width:250px;padding:4px'>" + tooltip.replace("\n", "<br/>") + "</div></html>";
@@ -1237,7 +1239,7 @@ public class TradeDetailsWindow extends JDialog {
         addSpacer(8);
         JSeparator sep = new JSeparator(SwingConstants.HORIZONTAL);
         sep.setMaximumSize(new Dimension(Integer.MAX_VALUE, 1));
-        sep.setForeground(new Color(60, 60, 65));
+        sep.setForeground(border());
         detailContentPanel.add(sep);
         addSpacer(8);
     }
@@ -1304,12 +1306,12 @@ public class TradeDetailsWindow extends JDialog {
 
             JLabel labelComp = new JLabel(k + ": ");
             labelComp.setFont(labelComp.getFont().deriveFont(10f));
-            labelComp.setForeground(new Color(150, 150, 150));
+            labelComp.setForeground(textSecondary());
             labelComp.setPreferredSize(new Dimension(80, 16));
 
             JLabel valueComp = new JLabel(formatIndicatorValue(k, v));
             valueComp.setFont(valueComp.getFont().deriveFont(Font.BOLD, 10f));
-            valueComp.setForeground(new Color(200, 200, 200));
+            valueComp.setForeground(textPrimary());
 
             row.add(labelComp);
             row.add(valueComp);
@@ -1344,7 +1346,7 @@ public class TradeDetailsWindow extends JDialog {
     private void clearDetailPanel() {
         detailContentPanel.removeAll();
         JLabel emptyLabel = new JLabel("Select a trade to view details");
-        emptyLabel.setForeground(new Color(120, 120, 120));
+        emptyLabel.setForeground(textSecondary());
         emptyLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
         detailContentPanel.add(emptyLabel);
         detailContentPanel.revalidate();
@@ -1433,11 +1435,11 @@ public class TradeDetailsWindow extends JDialog {
         double winRate = totalTrades > 0 ? (double) winners / totalTrades * 100 : 0;
 
         headerPanel.add(createSummaryLabel("Total Trades", String.valueOf(totalTrades)));
-        headerPanel.add(createSummaryLabel("Winners", String.valueOf(winners), new Color(76, 175, 80)));
-        headerPanel.add(createSummaryLabel("Losers", String.valueOf(losers), new Color(244, 67, 54)));
+        headerPanel.add(createSummaryLabel("Winners", String.valueOf(winners), TRADE_PROFIT));
+        headerPanel.add(createSummaryLabel("Losers", String.valueOf(losers), TRADE_LOSS));
         headerPanel.add(createSummaryLabel("Win Rate", String.format("%.1f%%", winRate)));
         headerPanel.add(createSummaryLabel("Total P&L", String.format("%+.2f", totalPnl),
-            totalPnl >= 0 ? new Color(76, 175, 80) : new Color(244, 67, 54)));
+            totalPnl >= 0 ? TRADE_PROFIT : TRADE_LOSS));
         if (rejected > 0) {
             headerPanel.add(createSummaryLabel("Rejected", String.valueOf(rejected), Color.GRAY));
         }
@@ -1447,22 +1449,18 @@ public class TradeDetailsWindow extends JDialog {
 
         // Vertical split: table on top, chart on bottom
         // Bottom chart is now a compact overview (120px), giving more space to the table
-        JSplitPane tableChartSplit = new JSplitPane(JSplitPane.VERTICAL_SPLIT);
+        ThinSplitPane tableChartSplit = new ThinSplitPane(JSplitPane.VERTICAL_SPLIT);
         tableChartSplit.setTopComponent(tableScrollPane);
         tableChartSplit.setBottomComponent(progressionChartPanel);
         tableChartSplit.setDividerLocation(380);  // More space for table
         tableChartSplit.setResizeWeight(1.0);     // Extra space goes to table
-        tableChartSplit.setDividerSize(4);
-        tableChartSplit.setBorder(null);
 
         // Horizontal split: table+chart | detail panel
-        JSplitPane splitPane = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT);
+        ThinSplitPane splitPane = new ThinSplitPane(JSplitPane.HORIZONTAL_SPLIT);
         splitPane.setLeftComponent(tableChartSplit);
         splitPane.setRightComponent(detailPanel);
         splitPane.setDividerLocation(1100);
         splitPane.setResizeWeight(1.0); // Give extra space to table
-        splitPane.setDividerSize(4);
-        splitPane.setBorder(null);
 
         JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
         JButton closeButton = new JButton("Close");
@@ -1897,9 +1895,9 @@ public class TradeDetailsWindow extends JDialog {
 
             TableRow tableRow = model.getRowAt(row);
             if (tableRow.isRejected()) {
-                setForeground(new Color(180, 180, 180));
+                setForeground(textSecondary());
             } else if (tableRow.isChild) {
-                setForeground(new Color(150, 150, 150));
+                setForeground(textSecondary());
             } else {
                 setForeground(isSelected ? table.getSelectionForeground() : table.getForeground());
             }
@@ -1928,9 +1926,9 @@ public class TradeDetailsWindow extends JDialog {
 
             TableRow tableRow = model.getRowAt(row);
             if (tableRow.isRejected()) {
-                setForeground(new Color(180, 180, 180));
+                setForeground(textSecondary());
             } else if (tableRow.isChild) {
-                setForeground(new Color(150, 150, 150));
+                setForeground(textSecondary());
             } else {
                 setForeground(isSelected ? table.getSelectionForeground() : table.getForeground());
             }
@@ -1957,7 +1955,7 @@ public class TradeDetailsWindow extends JDialog {
 
             TableRow tableRow = model.getRowAt(row);
             if (tableRow.isRejected()) {
-                setForeground(new Color(180, 180, 180));
+                setForeground(textSecondary());
             } else if (tableRow.isChild) {
                 if (value instanceof String s && !s.equals("-")) {
                     if (s.startsWith("+")) setForeground(new Color(120, 180, 120));
@@ -1965,8 +1963,8 @@ public class TradeDetailsWindow extends JDialog {
                     else setForeground(Color.GRAY);
                 }
             } else if (value instanceof String s && !s.equals("-")) {
-                if (s.startsWith("+")) setForeground(new Color(76, 175, 80));
-                else if (s.startsWith("-")) setForeground(new Color(244, 67, 54));
+                if (s.startsWith("+")) setForeground(TRADE_PROFIT);
+                else if (s.startsWith("-")) setForeground(TRADE_LOSS);
                 else setForeground(Color.GRAY);
             } else {
                 setForeground(Color.GRAY);
@@ -1994,11 +1992,11 @@ public class TradeDetailsWindow extends JDialog {
 
             TableRow tableRow = model.getRowAt(row);
             if (tableRow.isRejected() || "-".equals(value)) {
-                setForeground(new Color(180, 180, 180));
+                setForeground(textSecondary());
             } else if (tableRow.isChild) {
                 setForeground(new Color(120, 180, 120));
             } else {
-                setForeground(new Color(76, 175, 80));
+                setForeground(TRADE_PROFIT);
             }
 
             return this;
@@ -2023,11 +2021,11 @@ public class TradeDetailsWindow extends JDialog {
 
             TableRow tableRow = model.getRowAt(row);
             if (tableRow.isRejected() || "-".equals(value)) {
-                setForeground(new Color(180, 180, 180));
+                setForeground(textSecondary());
             } else if (tableRow.isChild) {
                 setForeground(new Color(200, 120, 120));
             } else {
-                setForeground(new Color(244, 67, 54));
+                setForeground(TRADE_LOSS);
             }
 
             return this;
@@ -2052,7 +2050,7 @@ public class TradeDetailsWindow extends JDialog {
 
             TableRow tableRow = model.getRowAt(row);
             if (tableRow.isRejected() || "-".equals(value)) {
-                setForeground(new Color(180, 180, 180));
+                setForeground(textSecondary());
             } else if (value instanceof String s) {
                 // Color based on capture percentage: >70% green, 40-70% yellow, <40% red
                 try {
@@ -2062,9 +2060,9 @@ public class TradeDetailsWindow extends JDialog {
                         else if (pct >= 40) setForeground(new Color(180, 180, 100));
                         else setForeground(new Color(200, 120, 120));
                     } else {
-                        if (pct >= 70) setForeground(new Color(76, 175, 80));
-                        else if (pct >= 40) setForeground(new Color(255, 193, 7));
-                        else setForeground(new Color(244, 67, 54));
+                        if (pct >= 70) setForeground(TRADE_PROFIT);
+                        else if (pct >= 40) setForeground(TRADE_WARNING);
+                        else setForeground(TRADE_LOSS);
                     }
                 } catch (NumberFormatException e) {
                     setForeground(Color.GRAY);
@@ -2094,7 +2092,7 @@ public class TradeDetailsWindow extends JDialog {
 
             TableRow tableRow = model.getRowAt(row);
             if (tableRow.isRejected() || "-".equals(value)) {
-                setForeground(new Color(180, 180, 180));
+                setForeground(textSecondary());
             } else if (value instanceof String s && s.startsWith("+")) {
                 // Color based on improvement: lower is better (entry/exit was closer to optimal)
                 // <1% = green (good), 1-3% = yellow (ok), >3% = red (significant room for improvement)
@@ -2105,9 +2103,9 @@ public class TradeDetailsWindow extends JDialog {
                         else if (pct < 3.0) setForeground(new Color(180, 180, 100));
                         else setForeground(new Color(200, 120, 120));
                     } else {
-                        if (pct < 1.0) setForeground(new Color(76, 175, 80));
-                        else if (pct < 3.0) setForeground(new Color(255, 193, 7));
-                        else setForeground(new Color(244, 67, 54));
+                        if (pct < 1.0) setForeground(TRADE_PROFIT);
+                        else if (pct < 3.0) setForeground(TRADE_WARNING);
+                        else setForeground(TRADE_LOSS);
                     }
                 } catch (NumberFormatException e) {
                     setForeground(Color.GRAY);

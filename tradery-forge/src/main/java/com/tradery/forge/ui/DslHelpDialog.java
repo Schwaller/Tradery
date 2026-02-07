@@ -19,21 +19,28 @@ public class DslHelpDialog {
      * Shows the DSL help dialog (singleton - reuses existing instance).
      */
     public static void show(Component parent) {
-        if (instance != null && instance.isDisplayable()) {
-            instance.toFront();
-            instance.requestFocus();
-            return;
-        }
-
-        Window window = SwingUtilities.getWindowAncestor(parent);
-        instance = new MarkdownHelpDialog(window, "DSL Reference",
-                "/help/dsl-reference.md", new Dimension(1100, 600));
-        instance.addWindowListener(new WindowAdapter() {
-            @Override
-            public void windowClosed(WindowEvent e) {
-                instance = null;
+        try {
+            if (instance != null && instance.isDisplayable()) {
+                instance.toFront();
+                instance.requestFocus();
+                return;
             }
-        });
-        instance.setVisible(true);
+
+            Window window = SwingUtilities.getWindowAncestor(parent);
+            instance = new MarkdownHelpDialog(window, "DSL Reference",
+                    "/help/dsl-reference.md", new Dimension(1100, 600));
+            instance.addWindowListener(new WindowAdapter() {
+                @Override
+                public void windowClosed(WindowEvent e) {
+                    instance = null;
+                }
+            });
+            instance.setVisible(true);
+            instance.toFront();
+        } catch (Exception e) {
+            System.err.println("Failed to open DSL Help: " + e.getMessage());
+            e.printStackTrace();
+            instance = null;
+        }
     }
 }

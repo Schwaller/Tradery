@@ -19,9 +19,9 @@ public class MarketInfoBar extends JPanel {
 
     public MarketInfoBar() {
         setLayout(new FlowLayout(FlowLayout.LEFT, 12, 4));
-        setBackground(new Color(38, 40, 44));
+        setBackground(UIManager.getColor("Panel.background"));
         setBorder(BorderFactory.createCompoundBorder(
-            BorderFactory.createMatteBorder(0, 0, 1, 0, new Color(50, 52, 56)),
+            BorderFactory.createMatteBorder(0, 0, 1, 0, UIManager.getColor("Separator.foreground")),
             BorderFactory.createEmptyBorder(2, 8, 2, 8)
         ));
 

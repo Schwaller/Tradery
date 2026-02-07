@@ -1,6 +1,6 @@
 package com.tradery.desk;
 
-import com.formdev.flatlaf.FlatDarkLaf;
+import com.tradery.ui.ThemeHelper;
 import com.tradery.core.model.Candle;
 import com.tradery.dataclient.DataServiceClient;
 import com.tradery.dataclient.DataServiceLauncher;
@@ -592,7 +592,10 @@ public class TraderyDeskApp {
      */
     private void initializeUI() {
         try {
-            UIManager.setLookAndFeel(new FlatDarkLaf());
+            ThemeHelper.applyCurrentTheme();
+            UIManager.put("Button.arc", 5);
+            UIManager.put("Component.arc", 5);
+            UIManager.put("TextComponent.arc", 5);
         } catch (Exception e) {
             log.warn("Failed to set look and feel: {}", e.getMessage());
         }

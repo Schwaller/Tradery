@@ -4,6 +4,8 @@ import com.tradery.core.model.Phase;
 import com.tradery.forge.TraderyApp;
 import com.tradery.forge.io.FileWatcher;
 import com.tradery.forge.io.PhaseStore;
+import com.tradery.ui.controls.BorderlessScrollPane;
+import com.tradery.ui.controls.ThinSplitPane;
 
 import javax.swing.*;
 import javax.swing.event.PopupMenuEvent;
@@ -132,8 +134,7 @@ public class PhaseChooserFrame extends JFrame {
         listPanel.setBorder(BorderFactory.createEmptyBorder(0, 0, 0, 0));
         listPanel.setPreferredSize(new Dimension(200, 0));
 
-        JScrollPane listScroll = new JScrollPane(phaseList);
-        listScroll.setBorder(BorderFactory.createEmptyBorder());
+        BorderlessScrollPane listScroll = new BorderlessScrollPane(phaseList);
         listPanel.add(listScroll, BorderLayout.CENTER);
 
         // Right panel: editor on top, chart below
@@ -145,14 +146,14 @@ public class PhaseChooserFrame extends JFrame {
         chartWrapper.setBorder(BorderFactory.createEmptyBorder(0, 8, 8, 8));
         chartWrapper.add(previewChart, BorderLayout.CENTER);
 
-        JSplitPane rightSplit = new JSplitPane(JSplitPane.VERTICAL_SPLIT);
+        ThinSplitPane rightSplit = new ThinSplitPane(JSplitPane.VERTICAL_SPLIT);
         rightSplit.setTopComponent(editorWrapper);
         rightSplit.setBottomComponent(chartWrapper);
         rightSplit.setDividerLocation(220);
         rightSplit.setResizeWeight(0.5);
 
         // Main split
-        JSplitPane splitPane = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT);
+        ThinSplitPane splitPane = new ThinSplitPane(JSplitPane.HORIZONTAL_SPLIT);
         splitPane.setLeftComponent(listPanel);
         splitPane.setRightComponent(rightSplit);
         splitPane.setDividerLocation(200);
