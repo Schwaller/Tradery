@@ -64,7 +64,7 @@ import java.util.regex.Pattern;
  *   GET  /data-status                   - Data coverage and gaps info
  *   GET  /pages                         - Active data pages and listeners (debugging)
  *   GET  /ui                            - Open windows and chart/indicator config (debugging)
- *   POST /ui/open?window={type}         - Open a window (phases, hoops, settings, data, dsl-help, launcher, project)
+ *   POST /ui/open?window={type}         - Open a window (phases, hoops, settings, data, dsl-help, strategy-help, launcher, project)
  *   GET  /thread-dump                   - Thread dump with EDT analysis (debugging)
  */
 public class ApiServer {
@@ -1034,7 +1034,7 @@ public class ApiServer {
         String window = params.get("window");
         if (window == null || window.isEmpty()) {
             sendError(exchange, 400, "Missing required parameter: window. " +
-                "Valid options: phases, hoops, settings, data, dsl-help, downloads, launcher, project");
+                "Valid options: phases, hoops, settings, data, dsl-help, strategy-help, downloads, launcher, project");
             return;
         }
 
@@ -1068,10 +1068,15 @@ public class ApiServer {
                 response.put("success", true);
                 response.put("message", "Data Management dialog opened");
             }
-            case "dsl-help", "dsl", "help" -> {
+            case "dsl-help", "dsl" -> {
                 launcher.openDslHelp();
                 response.put("success", true);
                 response.put("message", "DSL Help dialog opened");
+            }
+            case "strategy-help", "help" -> {
+                launcher.openStrategyHelp();
+                response.put("success", true);
+                response.put("message", "Strategy Guide dialog opened");
             }
             case "downloads", "download-dashboard" -> {
                 launcher.openDownloadDashboard();
@@ -1100,7 +1105,7 @@ public class ApiServer {
             }
             default -> {
                 sendError(exchange, 400, "Unknown window type: " + window + ". " +
-                    "Valid options: phases, hoops, settings, data, dsl-help, downloads, launcher, project");
+                    "Valid options: phases, hoops, settings, data, dsl-help, strategy-help, downloads, launcher, project");
                 return;
             }
         }

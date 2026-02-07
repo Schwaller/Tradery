@@ -1,11 +1,8 @@
 package com.tradery.forge.ui;
 
-import com.tradery.core.model.DataHealth;
-import com.tradery.core.model.DataStatus;
 import com.tradery.forge.ApplicationContext;
 import com.tradery.forge.data.AggTradesStore;
 import com.tradery.forge.data.DataConfig;
-import com.tradery.forge.data.DataIntegrityChecker;
 import com.tradery.forge.data.PremiumIndexStore;
 import com.tradery.forge.data.sqlite.SqliteDataStore;
 
@@ -15,7 +12,6 @@ import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.io.File;
 import java.text.DecimalFormat;
-import java.time.format.DateTimeFormatter;
 
 /**
  * Dialog for managing cached data (candles, aggTrades, funding).
@@ -24,35 +20,27 @@ import java.time.format.DateTimeFormatter;
  */
 public class DataManagementDialog extends JDialog {
 
-    private static final DateTimeFormatter MONTH_FORMAT = DateTimeFormatter.ofPattern("MMMM yyyy");
     private static final DecimalFormat SIZE_FORMAT = new DecimalFormat("#,##0.0");
 
-    private final DataIntegrityChecker checker;
     private final SqliteDataStore dataStore;
     private final File dataDir;
-    private final File aggTradesDir;
 
     private DataBrowserPanel browserPanel;
     private DataHealthPanel healthPanel;
     private JLabel detailLabel;
     private JLabel storageLabel;
-    private JButton repairButton;
-    private JButton deleteButton;
     private JButton deleteSeriesButton;
     private JButton deleteAllButton;
     private JProgressBar progressBar;
 
     private String currentSymbol;
     private String currentResolution;
-    private DataHealth selectedHealth;
     private Timer refreshTimer;
 
     public DataManagementDialog(Frame owner, SqliteDataStore dataStore) {
         super(owner, "Manage Data", true);
         this.dataStore = dataStore;
-        this.checker = new DataIntegrityChecker();
         this.dataDir = DataConfig.getInstance().getDataDir();
-        this.aggTradesDir = DataConfig.getInstance().getDataDir();
 
         initUI();
 
@@ -119,15 +107,11 @@ public class DataManagementDialog extends JDialog {
         detailLabel.setFont(detailLabel.getFont().deriveFont(Font.BOLD, 12f));
         detailLabel.setBorder(BorderFactory.createEmptyBorder(8, 12, 8, 12));
 
-        healthPanel = new DataHealthPanel(checker);
-        healthPanel.setOnMonthSelected(this::onMonthSelected);
-
-        JScrollPane healthScroll = new JScrollPane(healthPanel);
-        healthScroll.setBorder(BorderFactory.createEmptyBorder());
+        healthPanel = new DataHealthPanel(dataStore);
 
         JPanel rightPanel = new JPanel(new BorderLayout(0, 0));
         rightPanel.add(detailLabel, BorderLayout.NORTH);
-        rightPanel.add(healthScroll, BorderLayout.CENTER);
+        rightPanel.add(healthPanel, BorderLayout.CENTER);
 
         add(rightPanel, BorderLayout.CENTER);
 
@@ -156,16 +140,6 @@ public class DataManagementDialog extends JDialog {
         buttonPanel.add(fetchButton);
 
         buttonPanel.add(Box.createHorizontalStrut(12));
-
-        repairButton = new JButton("Repair Month");
-        repairButton.setEnabled(false);
-        repairButton.addActionListener(e -> repairSelectedMonth());
-        buttonPanel.add(repairButton);
-
-        deleteButton = new JButton("Delete Month");
-        deleteButton.setEnabled(false);
-        deleteButton.addActionListener(e -> deleteSelectedMonth());
-        buttonPanel.add(deleteButton);
 
         deleteSeriesButton = new JButton("Delete Series");
         deleteSeriesButton.setEnabled(false);
@@ -223,7 +197,6 @@ public class DataManagementDialog extends JDialog {
         if ("aggTrades".equals(resolution)) {
             healthPanel.setAggTradesData(symbol);
             detailLabel.setText(getAggTradesInfo(symbol));
-            selectedHealth = null;
             updateButtons();
             return;
         }
@@ -232,7 +205,6 @@ public class DataManagementDialog extends JDialog {
         if ("fundingRate".equals(resolution)) {
             healthPanel.setFundingRateData(symbol);
             detailLabel.setText(getFundingRateInfo(symbol));
-            selectedHealth = null;
             updateButtons();
             return;
         }
@@ -241,7 +213,6 @@ public class DataManagementDialog extends JDialog {
         if ("openInterest".equals(resolution)) {
             healthPanel.setOpenInterestData(symbol);
             detailLabel.setText(getOpenInterestInfo(symbol));
-            selectedHealth = null;
             updateButtons();
             return;
         }
@@ -250,104 +221,18 @@ public class DataManagementDialog extends JDialog {
         if ("premiumIndex".equals(resolution)) {
             healthPanel.setPremiumIndexData(symbol);
             detailLabel.setText(getPremiumIndexInfo(symbol));
-            selectedHealth = null;
             updateButtons();
             return;
         }
 
         healthPanel.setData(symbol, resolution);
-        selectedHealth = null;
-        updateDetailLabel();
+        detailLabel.setText(currentSymbol + " / " + currentResolution);
         updateButtons();
-    }
-
-    private void onMonthSelected(DataHealth health) {
-        selectedHealth = health;
-        updateDetailLabel();
-        updateButtons();
-    }
-
-    private void updateDetailLabel() {
-        // Don't overwrite aggTrades, funding rate, OI, or premium index info
-        if ("aggTrades".equals(currentResolution) || "fundingRate".equals(currentResolution) ||
-            "openInterest".equals(currentResolution) || "premiumIndex".equals(currentResolution)) {
-            return;
-        }
-
-        if (currentSymbol == null || currentResolution == null) {
-            detailLabel.setText("Select a data series from the left");
-            return;
-        }
-
-        if (selectedHealth == null) {
-            detailLabel.setText(currentSymbol + " / " + currentResolution + " - Click a month block to select");
-            return;
-        }
-
-        StringBuilder sb = new StringBuilder();
-        sb.append(selectedHealth.month().format(MONTH_FORMAT));
-        sb.append(" - ");
-        sb.append(selectedHealth.status());
-        sb.append(" (");
-        sb.append(selectedHealth.actualCandles());
-        sb.append("/");
-        sb.append(selectedHealth.expectedCandles());
-        sb.append(" candles, ");
-        sb.append(String.format("%.1f%%", selectedHealth.completenessPercent()));
-        sb.append(")");
-
-        if (!selectedHealth.gaps().isEmpty()) {
-            sb.append(" - ");
-            sb.append(selectedHealth.gaps().size());
-            sb.append(" gap(s)");
-        }
-
-        detailLabel.setText(sb.toString());
     }
 
     private void updateButtons() {
-        boolean canRepair = selectedHealth != null &&
-                (selectedHealth.status() == DataStatus.PARTIAL ||
-                 selectedHealth.status() == DataStatus.MISSING);
-
-        boolean canDeleteMonth = selectedHealth != null &&
-                selectedHealth.status() != DataStatus.MISSING;
-
         boolean canDeleteSeries = currentSymbol != null && currentResolution != null;
-
-        repairButton.setEnabled(canRepair);
-        deleteButton.setEnabled(canDeleteMonth);
         deleteSeriesButton.setEnabled(canDeleteSeries);
-    }
-
-    private void repairSelectedMonth() {
-        if (selectedHealth == null || currentSymbol == null || currentResolution == null) return;
-
-        repairButton.setEnabled(false);
-        deleteButton.setEnabled(false);
-        progressBar.setVisible(true);
-        progressBar.setIndeterminate(true);
-        progressBar.setString("Repairing " + selectedHealth.month().format(MONTH_FORMAT) + "...");
-
-        // TODO: Repair functionality needs to be reimplemented for SQLite
-        // For now, show not implemented message
-        JOptionPane.showMessageDialog(this,
-            "Repair functionality is being migrated to SQLite.\n" +
-            "Use 'Fetch Data' to re-download missing data.",
-            "Not Implemented", JOptionPane.INFORMATION_MESSAGE);
-        progressBar.setVisible(false);
-        repairButton.setEnabled(true);
-        deleteButton.setEnabled(true);
-    }
-
-    private void deleteSelectedMonth() {
-        if (selectedHealth == null || currentSymbol == null || currentResolution == null) return;
-
-        // TODO: Delete functionality needs to be reimplemented for SQLite
-        JOptionPane.showMessageDialog(this,
-            "Delete functionality is being migrated to SQLite.\n" +
-            "Data deletion will be available in a future update.",
-            "Not Implemented", JOptionPane.INFORMATION_MESSAGE);
     }
 
     private void deleteSelectedSeries() {
@@ -373,7 +258,6 @@ public class DataManagementDialog extends JDialog {
             }
             currentSymbol = null;
             currentResolution = null;
-            selectedHealth = null;
             refreshAll();
         }
     }
@@ -401,7 +285,6 @@ public class DataManagementDialog extends JDialog {
             dataDir.mkdirs();
             currentSymbol = null;
             currentResolution = null;
-            selectedHealth = null;
             refreshAll();
             JOptionPane.showMessageDialog(this, "All cached data deleted.",
                     "Deleted", JOptionPane.INFORMATION_MESSAGE);
@@ -411,7 +294,7 @@ public class DataManagementDialog extends JDialog {
     private void refreshAll() {
         browserPanel.refreshData();
         healthPanel.refreshData();
-        updateDetailLabel();
+        detailLabel.setText("Select a data series from the left");
         updateButtons();
         updateStorageLabel();
     }
@@ -475,7 +358,7 @@ public class DataManagementDialog extends JDialog {
      * Get info string for aggTrades data.
      */
     private String getAggTradesInfo(String symbol) {
-        File symbolDir = new File(new File(aggTradesDir, symbol), "aggTrades");
+        File symbolDir = new File(new File(dataDir, symbol), "aggTrades");
         if (!symbolDir.exists()) {
             return symbol + " / AggTrades - No data. Use 'Fetch New' to download.";
         }

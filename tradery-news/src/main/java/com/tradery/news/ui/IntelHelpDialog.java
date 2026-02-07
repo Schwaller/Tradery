@@ -1,4 +1,4 @@
-package com.tradery.forge.ui;
+package com.tradery.news.ui;
 
 import com.tradery.help.MarkdownHelpDialog;
 
@@ -8,16 +8,13 @@ import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 
 /**
- * Dialog explaining strategy concepts at a user level.
- * Thin wrapper around MarkdownHelpDialog loading /help/strategy-guide.md.
+ * Help dialog for the Intelligence app.
+ * Thin wrapper around MarkdownHelpDialog loading /help/intel-guide.md.
  */
-public class StrategyHelpDialog {
+public class IntelHelpDialog {
 
     private static MarkdownHelpDialog instance;
 
-    /**
-     * Shows the strategy help dialog (singleton - reuses existing instance).
-     */
     public static void show(Component parent) {
         if (instance != null && instance.isDisplayable()) {
             instance.toFront();
@@ -26,8 +23,8 @@ public class StrategyHelpDialog {
         }
 
         Window window = SwingUtilities.getWindowAncestor(parent);
-        instance = new MarkdownHelpDialog(window, "Strategy Guide",
-                "/help/strategy-guide.md", new Dimension(1000, 700));
+        instance = new MarkdownHelpDialog(window, "Intelligence Guide",
+                "/help/intel-guide.md", new Dimension(800, 600));
         instance.addWindowListener(new WindowAdapter() {
             @Override
             public void windowClosed(WindowEvent e) {

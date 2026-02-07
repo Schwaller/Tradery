@@ -562,6 +562,32 @@ Hoop fields:
     },
   },
 
+  // ========== Help Tools ==========
+  {
+    name: "tradery_get_help",
+    description: `Get help documentation as text. Returns the full content of a help topic, or searches for a term across all help docs.
+
+Available topics:
+- dsl: DSL syntax reference (all indicators, functions, operators, examples)
+- strategy: Strategy guide (concepts, entry/exit settings, phases, hoops, metrics)
+
+Use the 'search' parameter to find specific terms (e.g., search for "RSI" or "trailing stop").`,
+    inputSchema: {
+      type: "object",
+      properties: {
+        topic: {
+          type: "string",
+          description: "Help topic: 'dsl' or 'strategy'. If omitted with a search term, searches all topics.",
+        },
+        search: {
+          type: "string",
+          description: "Search term to find in help docs. Returns matching sections with context. Case-insensitive.",
+        },
+      },
+      required: [],
+    },
+  },
+
   // ========== UI Tools ==========
   {
     name: "tradery_open_window",
@@ -571,6 +597,7 @@ Hoop fields:
 - settings: Open Settings dialog
 - data: Open Data Management dialog
 - dsl-help: Open DSL syntax help
+- strategy-help: Open Strategy Guide
 - downloads: Open Download Dashboard (data loading status and logs)
 - launcher: Bring the launcher window to front
 - project: Open a specific strategy project (requires strategyId)`,
@@ -579,7 +606,7 @@ Hoop fields:
       properties: {
         window: {
           type: "string",
-          description: "Window to open: phases, hoops, settings, data, dsl-help, downloads, launcher, project",
+          description: "Window to open: phases, hoops, settings, data, dsl-help, strategy-help, downloads, launcher, project",
         },
         strategyId: {
           type: "string",
@@ -1286,6 +1313,90 @@ async function handleTool(name, args) {
       return apiCall("GET", url);
     }
 
+    // ========== Help Handlers ==========
+
+    case "tradery_get_help": {
+      const HELP_TOPICS = {
+        dsl: { file: "DSL_REFERENCE.md", label: "DSL Reference" },
+        strategy: { file: "STRATEGY_GUIDE.md", label: "Strategy Guide" },
+      };
+
+      const topic = args.topic;
+      const search = args.search;
+
+      // Determine which files to read
+      let topicEntries;
+      if (topic) {
+        const entry = HELP_TOPICS[topic];
+        if (!entry) {
+          return { error: `Unknown topic '${topic}'. Available: ${Object.keys(HELP_TOPICS).join(", ")}` };
+        }
+        topicEntries = [[topic, entry]];
+      } else {
+        topicEntries = Object.entries(HELP_TOPICS);
+      }
+
+      const results = [];
+      for (const [key, entry] of topicEntries) {
+        const filePath = join(TRADERY_DIR, entry.file);
+        if (!existsSync(filePath)) {
+          results.push({ topic: key, error: `Help file not found: ${entry.file}. Start Tradery to generate it.` });
+          continue;
+        }
+
+        const content = readFileSync(filePath, "utf-8");
+
+        if (!search) {
+          // Return full content
+          results.push({ topic: key, title: entry.label, content });
+        } else {
+          // Search: find matching sections with context
+          const searchLower = search.toLowerCase();
+          const lines = content.split("\n");
+          const matches = [];
+          let currentSection = "";
+
+          for (let i = 0; i < lines.length; i++) {
+            // Track section headers
+            if (lines[i].startsWith("## ")) {
+              currentSection = lines[i].replace(/^#+\s*/, "");
+            }
+
+            if (lines[i].toLowerCase().includes(searchLower)) {
+              // Grab context: 2 lines before and after
+              const start = Math.max(0, i - 2);
+              const end = Math.min(lines.length - 1, i + 2);
+              const contextLines = lines.slice(start, end + 1).join("\n");
+              matches.push({
+                section: currentSection,
+                line: i + 1,
+                context: contextLines,
+              });
+            }
+          }
+
+          if (matches.length > 0) {
+            // Deduplicate overlapping contexts
+            const deduped = [];
+            let lastEnd = -1;
+            for (const m of matches) {
+              if (m.line - 2 > lastEnd) {
+                deduped.push(m);
+              }
+              lastEnd = m.line + 2;
+            }
+            results.push({ topic: key, title: entry.label, searchTerm: search, matchCount: matches.length, matches: deduped });
+          }
+        }
+      }
+
+      if (search && results.length === 0) {
+        return { message: `No matches found for '${search}' in ${topic ? `topic '${topic}'` : "any help topic"}.` };
+      }
+
+      return results.length === 1 ? results[0] : { results };
+    }
+
     // ========== UI Handlers ==========
 
     case "tradery_open_window": {
@@ -1384,7 +1495,7 @@ async function handleTool(name, args) {
 const server = new Server(
   {
     name: "tradery-mcp-server",
-    version: "1.4.0",
+    version: "1.5.0",
   },
   {
     capabilities: {

@@ -11,9 +11,12 @@ module com.tradery.news {
 
     // Java modules
     requires java.desktop;
+    requires java.prefs;
     requires jdk.httpserver;
 
     // UI
+    requires com.tradery.ui.common;
+    requires com.tradery.help;
     requires com.formdev.flatlaf;
 
     // Jackson

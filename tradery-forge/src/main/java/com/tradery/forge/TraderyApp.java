@@ -137,7 +137,7 @@ public class TraderyApp {
      */
     private static void ensureClaudeFiles() {
         // Always copy instruction files from resources (overwrite existing to keep up-to-date)
-        String[] files = {"CLAUDE.md", "CODEX.md", "AGENTS.md", "STRATEGY_GUIDE.md"};
+        String[] files = {"CLAUDE.md", "CODEX.md", "AGENTS.md", "STRATEGY_GUIDE.md", "DSL_REFERENCE.md"};
         for (String filename : files) {
             File target = new File(USER_DIR, filename);
             try (InputStream is = TraderyApp.class.getResourceAsStream("/" + filename)) {

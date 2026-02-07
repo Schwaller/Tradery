@@ -1,4 +1,4 @@
-package com.tradery.forge.ui.help;
+package com.tradery.help;
 
 import javax.swing.*;
 import java.awt.*;
@@ -92,7 +92,7 @@ public class HelpStyles {
             }
             h3 {
                 color: %s;
-                font-size: 11px;
+                font-size: 12px;
                 margin: 10px 0 4px 0;
                 font-weight: 600;
             }
@@ -188,7 +188,7 @@ public class HelpStyles {
                 colors.bgHex, colors.fgHex,                     // body
                 colors.accentHex,                               // h1
                 colors.accentHex, colors.fgSecHex,              // h2
-                colors.fgSecHex,                                // h3
+                colors.accentHex,                               // h3
                 colors.fgSecHex,                                // h4
                 colors.codeBgHex,                               // .box
                 colors.codeBgHex, colors.accentHex,             // .tip

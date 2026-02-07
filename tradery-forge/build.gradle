@@ -16,6 +16,9 @@ dependencies {
     // Shared UI components (StatusBadge, MemoryStatusPanel)
     implementation project(':tradery-ui-common')
 
+    // Help dialog system (markdown-based help with TOC and search)
+    implementation project(':tradery-help')
+
     // Core module for models, indicators, DSL
     implementation project(':tradery-core')
 
@@ -65,8 +68,7 @@ dependencies {
     // SQLite JDBC driver for data storage (during transition, may be removed later)
     implementation "org.xerial:sqlite-jdbc:${rootProject.ext.sqliteVersion}"
 
-    // Markdown parsing for help dialogs
-    implementation 'com.vladsch.flexmark:flexmark-all:0.64.8'
+    // Markdown parsing (transitive via tradery-help)
 }
 
 // jlink configuration for creating minimal custom JRE

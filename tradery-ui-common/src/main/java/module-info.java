@@ -5,4 +5,5 @@ module com.tradery.ui.common {
     exports com.tradery.ui.controls.indicators;
     exports com.tradery.ui.status;
     exports com.tradery.ui.dashboard;
+    exports com.tradery.ui.coverage;
 }

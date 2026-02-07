@@ -1,4 +1,4 @@
-package com.tradery.forge.ui.help;
+package com.tradery.help;
 
 import com.vladsch.flexmark.ast.Heading;
 import com.vladsch.flexmark.ext.tables.TablesExtension;

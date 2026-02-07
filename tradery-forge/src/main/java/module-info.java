@@ -1,6 +1,7 @@
 module com.tradery.forge {
     // Internal modules
     requires com.tradery.ui.common;
+    requires com.tradery.help;
     requires transitive com.tradery.core;
     requires com.tradery.data;
     requires com.tradery.engine;
@@ -28,16 +29,6 @@ module com.tradery.forge {
     requires com.fasterxml.jackson.dataformat.yaml;
     requires okhttp3;
     requires directory.watcher;
-
-    // Markdown - flexmark (use individual modules)
-    requires com.vladsch.flexmark;
-    requires com.vladsch.flexmark.util;
-    requires com.vladsch.flexmark.util.ast;
-    requires com.vladsch.flexmark.util.data;
-    requires com.vladsch.flexmark.util.misc;
-    requires com.vladsch.flexmark.util.sequence;
-    requires com.vladsch.flexmark.util.html;
-    requires com.vladsch.flexmark.ext.tables;
 
     // Logging
     requires org.slf4j;

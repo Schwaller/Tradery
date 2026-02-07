@@ -11,6 +11,8 @@ import com.tradery.news.store.SqliteNewsStore;
 import com.tradery.news.topic.TopicRegistry;
 import com.tradery.news.api.IntelApiServer;
 import com.tradery.news.ui.coin.*;
+import com.tradery.ui.controls.SegmentedToggle;
+import com.tradery.ui.controls.ToolbarButton;
 
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
@@ -49,8 +51,7 @@ public class IntelFrame extends JFrame {
     // Shared components
     private JPanel cardPanel;
     private CardLayout cardLayout;
-    private JToggleButton newsBtn;
-    private JToggleButton coinsBtn;
+    private SegmentedToggle viewToggle;
 
     // Header action buttons (shown conditionally)
     private JLabel showLabel;
@@ -195,24 +196,18 @@ public class IntelFrame extends JFrame {
             leftContent.add(buttonsPlaceholder);
         }
 
-        ButtonGroup btnGroup = new ButtonGroup();
-
-        newsBtn = createHeaderToggle("News");
-        newsBtn.setSelected(true);
-        newsBtn.addActionListener(e -> {
-            cardLayout.show(cardPanel, "news");
+        String[] views = {"News", "Coin Relations"};
+        String[] cards = {"news", "coins"};
+        viewToggle = new SegmentedToggle(views);
+        viewToggle.setOnSelectionChanged(i -> {
+            cardLayout.show(cardPanel, cards[i]);
             updateHeaderButtons();
         });
-        btnGroup.add(newsBtn);
-        leftContent.add(newsBtn);
+        leftContent.add(viewToggle);
 
-        coinsBtn = createHeaderToggle("Coin Relations");
-        coinsBtn.addActionListener(e -> {
-            cardLayout.show(cardPanel, "coins");
-            updateHeaderButtons();
-        });
-        btnGroup.add(coinsBtn);
-        leftContent.add(coinsBtn);
+        JButton helpBtn = new ToolbarButton("Help");
+        helpBtn.addActionListener(e -> IntelHelpDialog.show(this));
+        leftContent.add(helpBtn);
 
         GridBagConstraints lc = new GridBagConstraints();
         lc.anchor = GridBagConstraints.WEST;
@@ -258,30 +253,22 @@ public class IntelFrame extends JFrame {
         rightContent.add(limitCombo);
 
         // Fetch New button (for News view)
-        fetchBtn = new JButton("Fetch New");
-        fetchBtn.setFont(new Font("SansSerif", Font.PLAIN, 11));
-        fetchBtn.setMargin(new Insets(6, 14, 6, 14));
+        fetchBtn = new ToolbarButton("Fetch New");
         fetchBtn.setToolTipText("Fetch new articles with AI extraction");
         fetchBtn.addActionListener(e -> fetchNewArticles());
         rightContent.add(fetchBtn);
 
         // Reset View button (for Coins view)
-        resetViewBtn = new JButton("Reset View");
-        resetViewBtn.setFont(new Font("SansSerif", Font.PLAIN, 11));
-        resetViewBtn.setMargin(new Insets(6, 14, 6, 14));
+        resetViewBtn = new ToolbarButton("Reset View");
         resetViewBtn.addActionListener(e -> coinGraphPanel.resetView());
         resetViewBtn.setVisible(false);  // Hidden by default (News is selected)
         rightContent.add(resetViewBtn);
 
-        JButton dataStructureBtn = new JButton("Data Structure");
-        dataStructureBtn.setFont(new Font("SansSerif", Font.PLAIN, 11));
-        dataStructureBtn.setMargin(new Insets(6, 14, 6, 14));
+        JButton dataStructureBtn = new ToolbarButton("Data Structure");
         dataStructureBtn.addActionListener(e -> showDataStructureWindow());
         rightContent.add(dataStructureBtn);
 
-        JButton settingsBtn = new JButton("Settings");
-        settingsBtn.setFont(new Font("SansSerif", Font.PLAIN, 11));
-        settingsBtn.setMargin(new Insets(6, 14, 6, 14));
+        JButton settingsBtn = new ToolbarButton("Settings");
         settingsBtn.addActionListener(e -> showSettingsWindow());
         rightContent.add(settingsBtn);
 
@@ -322,28 +309,8 @@ public class IntelFrame extends JFrame {
         return panel;
     }
 
-    private JToggleButton createHeaderToggle(String text) {
-        JToggleButton btn = new JToggleButton(text);
-        btn.setFont(new Font("SansSerif", Font.BOLD, 11));
-        btn.setMargin(new Insets(6, 14, 6, 14));
-        btn.setFocusPainted(false);
-        btn.setBorderPainted(false);
-        btn.setBackground(new Color(38, 40, 44));
-        btn.setForeground(new Color(160, 160, 170));
-        btn.addChangeListener(e -> {
-            if (btn.isSelected()) {
-                btn.setBackground(new Color(55, 57, 61));
-                btn.setForeground(new Color(220, 220, 230));
-            } else {
-                btn.setBackground(new Color(38, 40, 44));
-                btn.setForeground(new Color(160, 160, 170));
-            }
-        });
-        return btn;
-    }
-
     private void updateHeaderButtons() {
-        boolean isNewsView = newsBtn.isSelected();
+        boolean isNewsView = viewToggle.getSelectedIndex() == 0;
         showLabel.setVisible(isNewsView);
         limitCombo.setVisible(isNewsView);
         fetchBtn.setVisible(isNewsView);

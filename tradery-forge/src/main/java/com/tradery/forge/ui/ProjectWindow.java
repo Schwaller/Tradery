@@ -11,8 +11,11 @@ import com.tradery.forge.data.sqlite.SqliteDataStore;
 import com.tradery.forge.io.*;
 import com.tradery.forge.ui.charts.ChartConfig;
 import com.tradery.forge.ui.controls.IndicatorControlsPanel;
+import com.tradery.forge.ui.controls.IndicatorSelectorPopup;
 import com.tradery.forge.ui.coordination.AutoSaveScheduler;
 import com.tradery.forge.ui.coordination.BacktestCoordinator;
+import com.tradery.ui.controls.SegmentedToggle;
+import com.tradery.ui.controls.ToolbarButton;
 import com.tradery.ui.status.MemoryStatusPanel;
 
 import javax.swing.*;
@@ -51,7 +54,7 @@ public class ProjectWindow extends JFrame {
 
     // Toolbar controls
     private JButton fitWidthBtn;
-    private JToggleButton candlestickToggle;
+    private SegmentedToggle chartModeToggle;
     private JSlider priceOpacitySlider;
     private JButton fitYBtn;
     private JButton fullYBtn;
@@ -70,8 +73,9 @@ public class ProjectWindow extends JFrame {
     private PhaseAnalysisWindow phaseAnalysisWindow;
     private BacktestResult currentResult;
 
-    // Indicator controls panel (extracted)
+    // Indicator controls
     private IndicatorControlsPanel indicatorControls;
+    private JButton indicatorsBtn;
 
     // Embedded AI terminal (for Claude/Codex)
     private JSplitPane editorTerminalSplit;  // Vertical split: editor | terminal (left side)
@@ -204,16 +208,15 @@ public class ProjectWindow extends JFrame {
         tradeTablePanel.setOnTradeSelect(chartPanel::highlightTrades);
 
         // Fit width button (always fits chart horizontally)
-        fitWidthBtn = new JButton("↔");
+        fitWidthBtn = new ToolbarButton("↔");
         fitWidthBtn.setToolTipText("Fit chart horizontally");
         fitWidthBtn.addActionListener(e -> chartPanel.setFixedWidthMode(false));
 
-        // Candlestick toggle
-        candlestickToggle = new JToggleButton("Candles");
-        candlestickToggle.setToolTipText("Toggle between line and candlestick chart");
-        candlestickToggle.setSelected(ChartConfig.getInstance().isCandlestickMode());
-        candlestickToggle.addActionListener(e -> {
-            ChartConfig.getInstance().setCandlestickMode(candlestickToggle.isSelected());
+        // Chart mode toggle (Line / Candles)
+        chartModeToggle = new SegmentedToggle("Line", "Candles");
+        chartModeToggle.setSelectedIndex(ChartConfig.getInstance().isCandlestickMode() ? 1 : 0);
+        chartModeToggle.setOnSelectionChanged(index -> {
+            ChartConfig.getInstance().setCandlestickMode(index == 1);
             chartPanel.refreshPriceChart();
         });
 
@@ -231,11 +234,11 @@ public class ProjectWindow extends JFrame {
         });
 
         // Y-axis buttons
-        fitYBtn = new JButton("↕");
+        fitYBtn = new ToolbarButton("↕");
         fitYBtn.setToolTipText("Fit Y-axis to visible data");
         fitYBtn.addActionListener(e -> chartPanel.setFitYAxisToVisibleData(true));
 
-        fullYBtn = new JButton("↕ Full");
+        fullYBtn = new ToolbarButton("↕ Full");
         fullYBtn.setToolTipText("Show full Y-axis range");
         fullYBtn.addActionListener(e -> chartPanel.setFitYAxisToVisibleData(false));
 
@@ -243,7 +246,7 @@ public class ProjectWindow extends JFrame {
         aiTerminalController = new AiTerminalController(this, this::runBacktest, this::setStatus);
 
         // Claude button - opens terminal with Claude CLI
-        claudeBtn = new JButton("Claude");
+        claudeBtn = new ToolbarButton("Claude");
         claudeBtn.setToolTipText("Open Claude CLI to help optimize this strategy");
         claudeBtn.addActionListener(e -> aiTerminalController.openClaudeTerminal(
             strategy.getId(), strategy.getName(),
@@ -253,7 +256,7 @@ public class ProjectWindow extends JFrame {
         ));
 
         // Codex button - opens terminal with Codex CLI
-        codexBtn = new JButton("Codex");
+        codexBtn = new ToolbarButton("Codex");
         codexBtn.setToolTipText("Open Codex CLI to help optimize this strategy");
         codexBtn.addActionListener(e -> aiTerminalController.openCodexTerminal(
             strategy.getId(), strategy.getName(),
@@ -263,30 +266,36 @@ public class ProjectWindow extends JFrame {
         ));
 
         // History button - browse and restore previous versions
-        historyBtn = new JButton("History");
+        historyBtn = new ToolbarButton("History");
         historyBtn.setToolTipText("Browse strategy history and restore previous versions");
         historyBtn.addActionListener(e -> showHistory());
 
         // Phase Analysis button - analyze phase correlation with trade performance
-        phaseAnalysisBtn = new JButton("Phase Analysis");
+        phaseAnalysisBtn = new ToolbarButton("Phase Analysis");
         phaseAnalysisBtn.setToolTipText("Analyze which phases correlate with trade performance");
         phaseAnalysisBtn.setEnabled(false);  // Enabled after backtest completes
         phaseAnalysisBtn.addActionListener(e -> openPhaseAnalysis());
 
         // Phase Overlay button - select phases to display on chart
-        phaseOverlayBtn = new JButton("Phases \u25BE");
+        phaseOverlayBtn = new ToolbarButton("Phases \u25BE");
         phaseOverlayBtn.setToolTipText("Show phase overlays on price chart");
         phaseOverlayBtn.addActionListener(e ->
             com.tradery.forge.ui.controls.PhaseSelectorPopup.showBelow(phaseOverlayBtn, this::applyPhaseOverlays));
 
         // Publish button - publish strategy to library for Desk
-        publishBtn = new JButton("Publish");
+        publishBtn = new ToolbarButton("Publish");
         publishBtn.setToolTipText("Publish strategy to library for Tradery Desk");
         publishBtn.addActionListener(e -> publishStrategy());
 
         // Data status panel created later in status bar
 
-        // Indicator controls panel (extracted to separate class)
+        // Indicators button (opens popup for configuring overlays and indicator panels)
+        indicatorsBtn = new ToolbarButton("Indicators \u25BE");
+        indicatorsBtn.setToolTipText("Configure chart overlays and indicator panels");
+        indicatorsBtn.addActionListener(e ->
+            IndicatorSelectorPopup.showBelow(indicatorsBtn, chartPanel, this::runBacktest));
+
+        // Keep IndicatorControlsPanel for backward-compat API (setCurrentCandles, refreshOverlays)
         indicatorControls = new IndicatorControlsPanel();
         indicatorControls.setChartPanel(chartPanel);
         indicatorControls.setOnBacktestNeeded(this::runBacktest);
@@ -399,7 +408,7 @@ public class ProjectWindow extends JFrame {
         toolbarLeft.add(titleLabel);
         toolbarLeft.add(claudeBtn);
         toolbarLeft.add(codexBtn);
-        JButton helpBtn = new JButton("Help");
+        JButton helpBtn = new ToolbarButton("Help");
         helpBtn.setToolTipText("Strategy Guide & DSL Reference");
         helpBtn.addActionListener(e -> StrategyHelpDialog.show(this));
         toolbarLeft.add(helpBtn);
@@ -418,14 +427,14 @@ public class ProjectWindow extends JFrame {
         centerWrapper.setOpaque(false);
         JPanel toolbarCenter = new JPanel(new FlowLayout(FlowLayout.CENTER, 8, 0));
         toolbarCenter.setOpaque(false);
-        toolbarCenter.add(candlestickToggle);
+        toolbarCenter.add(chartModeToggle);
         toolbarCenter.add(priceOpacitySlider);
         toolbarCenter.add(Box.createHorizontalStrut(8));
         toolbarCenter.add(fitWidthBtn);
         toolbarCenter.add(fitYBtn);
         toolbarCenter.add(fullYBtn);
         toolbarCenter.add(Box.createHorizontalStrut(8));
-        toolbarCenter.add(indicatorControls);
+        toolbarCenter.add(indicatorsBtn);
         toolbarCenter.add(Box.createHorizontalStrut(8));
         toolbarCenter.add(phaseOverlayBtn);
         centerWrapper.add(toolbarCenter);

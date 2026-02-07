@@ -610,10 +610,14 @@ public class LauncherFrame extends JFrame {
      * Open the DSL Help dialog (for API access).
      */
     public void openDslHelp() {
-        SwingUtilities.invokeLater(() -> {
-            DslHelpDialog dialog = new DslHelpDialog(this);
-            dialog.setVisible(true);
-        });
+        SwingUtilities.invokeLater(() -> DslHelpDialog.show(this));
+    }
+
+    /**
+     * Open the Strategy Guide dialog (for API access).
+     */
+    public void openStrategyHelp() {
+        SwingUtilities.invokeLater(() -> StrategyHelpDialog.show(this));
     }
 
     /**

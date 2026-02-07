@@ -1,0 +1,17 @@
+// tradery-help: Markdown-based help dialog system
+// Provides reusable MarkdownHelpDialog for rendering .md files with TOC, search, and theming.
+
+plugins {
+    id 'java-library'
+}
+
+dependencies {
+    // FlatLaf Look and Feel (for theme colors)
+    implementation 'com.formdev:flatlaf:3.4'
+
+    // Shared UI controls (ToolbarButton, ToolbarSearchField)
+    implementation project(':tradery-ui-common')
+
+    // Markdown parsing
+    api 'com.vladsch.flexmark:flexmark-all:0.64.8'
+}

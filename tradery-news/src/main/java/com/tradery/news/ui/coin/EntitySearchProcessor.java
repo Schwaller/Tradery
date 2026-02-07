@@ -146,11 +146,7 @@ public class EntitySearchProcessor {
             - reason: Brief explanation of why this entity is related (1 sentence)
             - confidence: Confidence score from 0.0 to 1.0
 
-            Example:
-            [
-              {"name": "BlackRock iShares Bitcoin Trust", "symbol": "IBIT", "type": "ETF", "relationshipType": "ETF_TRACKS", "reason": "Spot Bitcoin ETF approved Jan 2024", "confidence": 0.99},
-              {"name": "Grayscale Bitcoin Trust", "symbol": "GBTC", "type": "ETF", "relationshipType": "ETF_TRACKS", "reason": "First Bitcoin trust converted to spot ETF", "confidence": 0.99}
-            ]
+            Required JSON fields per entity: name (string), symbol (string or null), type (COIN|L2|ETF|ETP|DAT|VC|EXCHANGE|FOUNDATION|COMPANY), relationshipType (L2_OF|ETF_TRACKS|ETP_TRACKS|INVESTED_IN|FOUNDED_BY|PARTNER|FORK_OF|BRIDGE|ECOSYSTEM|COMPETITOR), reason (string), confidence (0.0-1.0).
 
             Guidelines:
             - Only include entities you are highly confident about (confidence > 0.7)
