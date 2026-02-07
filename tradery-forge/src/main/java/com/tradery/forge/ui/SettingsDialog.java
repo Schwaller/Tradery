@@ -1,5 +1,6 @@
 package com.tradery.forge.ui;
 
+import com.formdev.flatlaf.FlatClientProperties;
 import com.tradery.forge.TraderyApp;
 import com.tradery.forge.data.DataConfig;
 import com.tradery.forge.io.WindowStateStore;
@@ -8,7 +9,6 @@ import com.tradery.forge.ui.theme.ThemeManager;
 
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
-import javax.swing.border.TitledBorder;
 import java.awt.*;
 import java.io.File;
 import java.util.ArrayList;
@@ -30,6 +30,13 @@ public class SettingsDialog extends JDialog {
         super(owner, "Settings", ModalityType.APPLICATION_MODAL);
         setDefaultCloseOperation(DISPOSE_ON_CLOSE);
 
+        // Integrated title bar look (same as ProjectWindow)
+        getRootPane().putClientProperty("apple.awt.fullWindowContent", true);
+        getRootPane().putClientProperty("apple.awt.transparentTitleBar", true);
+        getRootPane().putClientProperty("apple.awt.windowTitleVisible", false);
+        getRootPane().putClientProperty(FlatClientProperties.MACOS_WINDOW_BUTTONS_SPACING,
+                FlatClientProperties.MACOS_WINDOW_BUTTONS_SPACING_LARGE);
+
         initComponents();
         pack();
         setMinimumSize(new Dimension(500, 600));
@@ -37,60 +44,79 @@ public class SettingsDialog extends JDialog {
     }
 
     private void initComponents() {
-        JPanel contentPane = new JPanel(new BorderLayout(0, 16));
-        contentPane.setBorder(new EmptyBorder(16, 16, 16, 16));
+        JPanel contentPane = new JPanel(new BorderLayout());
+        setContentPane(contentPane);
 
-        // Theme section
-        JPanel themeSection = createThemeSection();
+        // Toolbar header bar (same height/style as ProjectWindow)
+        int barHeight = 52;
+        JPanel headerWrapper = new JPanel(new BorderLayout());
+        JPanel headerBar = new JPanel(new BorderLayout());
+        headerBar.setPreferredSize(new Dimension(0, barHeight));
 
-        // AI Terminal section
-        JPanel aiTerminalSection = createAiTerminalSection();
+        JLabel titleLabel = new JLabel("Settings", SwingConstants.CENTER);
+        titleLabel.setFont(new Font("SansSerif", Font.BOLD, 13));
+        titleLabel.setForeground(UIColors.textSecondary());
+        headerBar.add(titleLabel, BorderLayout.CENTER);
 
-        // Charts section
-        JPanel chartsSection = createChartsSection();
+        headerWrapper.add(headerBar, BorderLayout.CENTER);
+        headerWrapper.add(new JSeparator(), BorderLayout.SOUTH);
+        contentPane.add(headerWrapper, BorderLayout.NORTH);
 
-        // Data section
-        JPanel dataSection = createDataSection();
-
-        // Factory Reset section
-        JPanel resetSection = createFactoryResetSection();
-
-        // Stack sections vertically
+        // Sections
         JPanel sectionsPanel = new JPanel();
         sectionsPanel.setLayout(new BoxLayout(sectionsPanel, BoxLayout.Y_AXIS));
-        sectionsPanel.add(themeSection);
-        sectionsPanel.add(Box.createVerticalStrut(12));
-        sectionsPanel.add(aiTerminalSection);
-        sectionsPanel.add(Box.createVerticalStrut(12));
-        sectionsPanel.add(chartsSection);
-        sectionsPanel.add(Box.createVerticalStrut(12));
-        sectionsPanel.add(dataSection);
-        sectionsPanel.add(Box.createVerticalStrut(12));
-        sectionsPanel.add(resetSection);
+        sectionsPanel.add(createSection("Appearance", createThemeContent(), false));
+        sectionsPanel.add(createSection("AI Terminal", createAiTerminalContent(), true));
+        sectionsPanel.add(createSection("Chart Defaults", createChartsContent(), true));
+        sectionsPanel.add(createSection("Data Storage", createDataContent(), true));
+        sectionsPanel.add(createSection("Factory Reset", createFactoryResetContent(), true));
 
-        // Close button
-        JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
+        // Button bar with separator above
+        JPanel buttonBar = new JPanel(new BorderLayout());
+        buttonBar.add(new JSeparator(), BorderLayout.NORTH);
+        JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
+        buttonPanel.setBorder(new EmptyBorder(10, 16, 10, 16));
         JButton closeBtn = new JButton("Close");
         closeBtn.addActionListener(e -> dispose());
         buttonPanel.add(closeBtn);
+        buttonBar.add(buttonPanel, BorderLayout.CENTER);
 
-        contentPane.add(sectionsPanel, BorderLayout.CENTER);
-        contentPane.add(buttonPanel, BorderLayout.SOUTH);
+        JPanel bodyPanel = new JPanel(new BorderLayout());
+        bodyPanel.add(sectionsPanel, BorderLayout.NORTH);
+        bodyPanel.add(buttonBar, BorderLayout.SOUTH);
 
-        setContentPane(contentPane);
+        contentPane.add(bodyPanel, BorderLayout.CENTER);
     }
 
-    private JPanel createThemeSection() {
+    private JPanel createSection(String title, JPanel content, boolean showSeparator) {
+        JPanel section = new JPanel(new BorderLayout());
+
+        // Full-width separator between sections
+        if (showSeparator) {
+            section.add(new JSeparator(), BorderLayout.NORTH);
+        }
+
+        // Content wrapper with padding
+        JPanel inner = new JPanel(new BorderLayout(0, 6));
+        inner.setBorder(new EmptyBorder(10, 20, 10, 20));
+
+        // Section title as bold label
+        JLabel titleLabel = new JLabel(title);
+        titleLabel.setFont(titleLabel.getFont().deriveFont(Font.BOLD, titleLabel.getFont().getSize2D() + 1f));
+        inner.add(titleLabel, BorderLayout.NORTH);
+        inner.add(content, BorderLayout.CENTER);
+
+        section.add(inner, BorderLayout.CENTER);
+        return section;
+    }
+
+    private JPanel createThemeContent() {
         JPanel panel = new JPanel(new GridBagLayout());
-        panel.setBorder(BorderFactory.createTitledBorder(
-            BorderFactory.createEtchedBorder(), "Appearance",
-            TitledBorder.LEFT, TitledBorder.TOP));
 
         GridBagConstraints gbc = new GridBagConstraints();
-        gbc.insets = new Insets(4, 8, 4, 8);
+        gbc.insets = new Insets(4, 0, 4, 8);
         gbc.anchor = GridBagConstraints.WEST;
 
-        // Theme row
         gbc.gridx = 0; gbc.gridy = 0;
         panel.add(new JLabel("Theme:"), gbc);
 
@@ -112,17 +138,13 @@ public class SettingsDialog extends JDialog {
         return panel;
     }
 
-    private JPanel createAiTerminalSection() {
+    private JPanel createAiTerminalContent() {
         JPanel panel = new JPanel(new GridBagLayout());
-        panel.setBorder(BorderFactory.createTitledBorder(
-            BorderFactory.createEtchedBorder(), "AI Terminal",
-            TitledBorder.LEFT, TitledBorder.TOP));
 
         GridBagConstraints gbc = new GridBagConstraints();
-        gbc.insets = new Insets(4, 8, 4, 8);
+        gbc.insets = new Insets(4, 0, 4, 8);
         gbc.anchor = GridBagConstraints.WEST;
 
-        // Terminal mode row
         gbc.gridx = 0; gbc.gridy = 0;
         panel.add(new JLabel("Terminal Mode:"), gbc);
 
@@ -148,14 +170,11 @@ public class SettingsDialog extends JDialog {
         return panel;
     }
 
-    private JPanel createChartsSection() {
+    private JPanel createChartsContent() {
         JPanel panel = new JPanel(new GridBagLayout());
-        panel.setBorder(BorderFactory.createTitledBorder(
-            BorderFactory.createEtchedBorder(), "Chart Defaults",
-            TitledBorder.LEFT, TitledBorder.TOP));
 
         GridBagConstraints gbc = new GridBagConstraints();
-        gbc.insets = new Insets(4, 8, 4, 8);
+        gbc.insets = new Insets(4, 0, 4, 8);
         gbc.anchor = GridBagConstraints.WEST;
 
         ChartConfig config = ChartConfig.getInstance();
@@ -256,14 +275,11 @@ public class SettingsDialog extends JDialog {
             overlaysEnabled, indicatorChartsEnabled, coreChartsEnabled);
     }
 
-    private JPanel createDataSection() {
+    private JPanel createDataContent() {
         JPanel panel = new JPanel(new GridBagLayout());
-        panel.setBorder(BorderFactory.createTitledBorder(
-            BorderFactory.createEtchedBorder(), "Data Storage",
-            TitledBorder.LEFT, TitledBorder.TOP));
 
         GridBagConstraints gbc = new GridBagConstraints();
-        gbc.insets = new Insets(4, 8, 4, 8);
+        gbc.insets = new Insets(4, 0, 4, 8);
         gbc.anchor = GridBagConstraints.WEST;
 
         DataConfig config = DataConfig.getInstance();
@@ -448,14 +464,11 @@ public class SettingsDialog extends JDialog {
         return "..." + path.substring(path.length() - maxLen + 3);
     }
 
-    private JPanel createFactoryResetSection() {
+    private JPanel createFactoryResetContent() {
         JPanel panel = new JPanel(new GridBagLayout());
-        panel.setBorder(BorderFactory.createTitledBorder(
-            BorderFactory.createEtchedBorder(), "Factory Reset",
-            TitledBorder.LEFT, TitledBorder.TOP));
 
         GridBagConstraints gbc = new GridBagConstraints();
-        gbc.insets = new Insets(4, 8, 4, 8);
+        gbc.insets = new Insets(4, 0, 4, 8);
         gbc.anchor = GridBagConstraints.WEST;
         gbc.fill = GridBagConstraints.HORIZONTAL;
 

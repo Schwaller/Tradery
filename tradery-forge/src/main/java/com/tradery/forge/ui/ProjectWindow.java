@@ -434,50 +434,59 @@ public class ProjectWindow extends JFrame {
         leftWrapper.add(toolbarLeft, lc);
         toolbarPanel.add(leftWrapper, gbc);
 
-        // Center: chart controls + title (with growing space around title) + indicators
+        // Chart controls (left of title)
         gbc.gridx = 1;
         gbc.weightx = 1.0;
         gbc.fill = GridBagConstraints.BOTH;
-        JPanel toolbarCenterPanel = new JPanel();
-        toolbarCenterPanel.setLayout(new BoxLayout(toolbarCenterPanel, BoxLayout.X_AXIS));
-        toolbarCenterPanel.setOpaque(false);
-
-        // Chart controls (left of title)
         JPanel chartControls = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
         chartControls.setOpaque(false);
         chartControls.add(chartModeToggle);
         chartControls.add(priceOpacitySlider);
+        JPanel chartControlsWrapper = new JPanel(new GridBagLayout());
+        chartControlsWrapper.setOpaque(false);
+        chartControlsWrapper.setBorder(BorderFactory.createEmptyBorder(0, 32, 0, 0));
+        GridBagConstraints cc = new GridBagConstraints();
+        cc.anchor = GridBagConstraints.EAST;
+        cc.fill = GridBagConstraints.HORIZONTAL;
+        cc.weightx = 1.0;
+        chartControlsWrapper.add(chartControls, cc);
+        toolbarPanel.add(chartControlsWrapper, gbc);
 
-        // Title label with growing glue on both sides
+        // Title (flex space on both sides)
+        gbc.gridx = 2;
+        gbc.weightx = 1.0;
         titleLabel = new JLabel(strategy.getName());
         titleLabel.setFont(new Font("SansSerif", Font.BOLD, 13));
         titleLabel.setForeground(textSecondary());
         titleLabel.setHorizontalAlignment(SwingConstants.CENTER);
+        JPanel titleWrapper = new JPanel(new GridBagLayout());
+        titleWrapper.setOpaque(false);
+        titleWrapper.add(titleLabel);
+        toolbarPanel.add(titleWrapper, gbc);
 
         // Indicator/phase controls (right of title)
+        gbc.gridx = 3;
+        gbc.weightx = 1.0;
         JPanel indicatorControls2 = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
         indicatorControls2.setOpaque(false);
         indicatorControls2.add(fitWidthBtn);
         indicatorControls2.add(fitYBtn);
         indicatorControls2.add(fullYBtn);
-        indicatorControls2.add(Box.createHorizontalStrut(4));
+        indicatorControls2.add(Box.createHorizontalStrut(32));
         indicatorControls2.add(indicatorsBtn);
         indicatorControls2.add(phaseOverlayBtn);
-
-        toolbarCenterPanel.add(chartControls);
-        toolbarCenterPanel.add(Box.createHorizontalGlue());
-        toolbarCenterPanel.add(titleLabel);
-        toolbarCenterPanel.add(Box.createHorizontalGlue());
-        toolbarCenterPanel.add(indicatorControls2);
-
-        // Wrap in GridBagLayout for vertical centering
-        JPanel centerWrapper = new JPanel(new GridBagLayout());
-        centerWrapper.setOpaque(false);
-        centerWrapper.add(toolbarCenterPanel);
-        toolbarPanel.add(centerWrapper, gbc);
+        JPanel indicatorControlsWrapper = new JPanel(new GridBagLayout());
+        indicatorControlsWrapper.setOpaque(false);
+        indicatorControlsWrapper.setBorder(BorderFactory.createEmptyBorder(0, 0, 0, 32));
+        GridBagConstraints ic = new GridBagConstraints();
+        ic.anchor = GridBagConstraints.WEST;
+        ic.fill = GridBagConstraints.HORIZONTAL;
+        ic.weightx = 1.0;
+        indicatorControlsWrapper.add(indicatorControls2, ic);
+        toolbarPanel.add(indicatorControlsWrapper, gbc);
 
         // Right: Actions
-        gbc.gridx = 2;
+        gbc.gridx = 4;
         gbc.weightx = 0;
         gbc.fill = GridBagConstraints.BOTH;
         JPanel rightWrapper = new JPanel(new GridBagLayout());

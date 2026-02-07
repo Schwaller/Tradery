@@ -381,7 +381,7 @@ public class ChartZoomManager {
             gbc.gridy = 0;
             gbc.weighty = 1.0;
             chartsContainer.add(chartWrappers[fullScreenChartIndex], gbc);
-            chartsContainer.setBackground(ChartStyles.BACKGROUND_COLOR);
+            chartsContainer.setBackground(ChartStyles.BACKGROUND_COLOR());
 
             // Show time labels on the full screen chart
             for (int i = 0; i < allCharts.length; i++) {
@@ -409,7 +409,7 @@ public class ChartZoomManager {
             gbc.gridy = 0;
             gbc.weighty = 1.0;
             chartsContainer.add(indicatorWrappers[fullScreenIndicatorIndex], gbc);
-            chartsContainer.setBackground(ChartStyles.BACKGROUND_COLOR);
+            chartsContainer.setBackground(ChartStyles.BACKGROUND_COLOR());
 
             // Show time labels on the full screen chart (indicators stay at bottom)
             for (int i = 0; i < allCharts.length; i++) {
@@ -542,7 +542,7 @@ public class ChartZoomManager {
             }
             chartsContainer.add(panel, gbc);
         }
-        chartsContainer.setBackground(ChartStyles.BACKGROUND_COLOR);
+        chartsContainer.setBackground(ChartStyles.BACKGROUND_COLOR());
 
         // Show time labels only on first and last chart
         for (int i = 0; i < allCharts.length; i++) {

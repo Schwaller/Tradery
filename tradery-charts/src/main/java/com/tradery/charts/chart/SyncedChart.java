@@ -131,6 +131,16 @@ public abstract class SyncedChart {
     }
 
     /**
+     * Re-apply theme styling to this chart (call after theme changes).
+     */
+    public void refreshTheme() {
+        if (chart != null) {
+            ChartStyles.stylizeChart(chart, title);
+            chart.fireChartChanged();
+        }
+    }
+
+    /**
      * Unregister from the coordinator and clean up.
      */
     public void dispose() {

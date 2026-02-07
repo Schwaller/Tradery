@@ -1006,8 +1006,8 @@ public class IndicatorChartsManager {
         NumberAxis oiAxis = new NumberAxis();
         oiAxis.setAutoRangeIncludesZero(false);
         oiAxis.setAutoRange(true);
-        oiAxis.setLabelPaint(ChartStyles.TEXT_COLOR);
-        oiAxis.setTickLabelPaint(ChartStyles.TEXT_COLOR);
+        oiAxis.setLabelPaint(ChartStyles.TEXT_COLOR());
+        oiAxis.setTickLabelPaint(ChartStyles.TEXT_COLOR());
         oiAxis.setFixedDimension(60); // Match width with other chart axes
         oiAxis.setAxisLineVisible(false); // Hide the axis line
         oiAxis.setTickMarksVisible(false); // Hide tick marks

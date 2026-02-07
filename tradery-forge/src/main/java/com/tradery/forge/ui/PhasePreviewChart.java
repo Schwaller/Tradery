@@ -102,33 +102,33 @@ public class PhasePreviewChart extends JPanel implements DataPageListener<Candle
     private void initializeChart() {
         // Shared date axis
         DateAxis dateAxis = new DateAxis();
-        dateAxis.setTickLabelPaint(Color.LIGHT_GRAY);
+        dateAxis.setTickLabelPaint(ChartStyles.TEXT_COLOR());
         dateAxis.setAxisLineVisible(false);
 
         // Price subplot (80% weight) - Y axis on right side
         NumberAxis priceAxis = new NumberAxis();
         priceAxis.setAutoRangeIncludesZero(false);
-        priceAxis.setTickLabelPaint(Color.LIGHT_GRAY);
+        priceAxis.setTickLabelPaint(ChartStyles.TEXT_COLOR());
         priceAxis.setAxisLineVisible(false);
 
         pricePlot = new XYPlot(new TimeSeriesCollection(), null, priceAxis, createPriceRenderer());
         pricePlot.setRangeAxisLocation(org.jfree.chart.axis.AxisLocation.TOP_OR_RIGHT);
-        pricePlot.setBackgroundPaint(ChartStyles.PLOT_BACKGROUND_COLOR);
-        pricePlot.setDomainGridlinePaint(ChartStyles.GRIDLINE_COLOR);
-        pricePlot.setRangeGridlinePaint(ChartStyles.GRIDLINE_COLOR);
+        pricePlot.setBackgroundPaint(ChartStyles.PLOT_BACKGROUND_COLOR());
+        pricePlot.setDomainGridlinePaint(ChartStyles.GRIDLINE_COLOR());
+        pricePlot.setRangeGridlinePaint(ChartStyles.GRIDLINE_COLOR());
         pricePlot.setOutlineVisible(false);
 
         // Volume subplot (20% weight)
         NumberAxis volumeAxis = new NumberAxis();
         volumeAxis.setAutoRangeIncludesZero(true);
-        volumeAxis.setTickLabelPaint(Color.LIGHT_GRAY);
+        volumeAxis.setTickLabelPaint(ChartStyles.TEXT_COLOR());
         volumeAxis.setAxisLineVisible(false);
         volumeAxis.setTickLabelsVisible(false);
 
         volumePlot = new XYPlot(new TimeSeriesCollection(), null, volumeAxis, createVolumeRenderer());
-        volumePlot.setBackgroundPaint(ChartStyles.PLOT_BACKGROUND_COLOR);
-        volumePlot.setDomainGridlinePaint(ChartStyles.GRIDLINE_COLOR);
-        volumePlot.setRangeGridlinePaint(ChartStyles.GRIDLINE_COLOR);
+        volumePlot.setBackgroundPaint(ChartStyles.PLOT_BACKGROUND_COLOR());
+        volumePlot.setDomainGridlinePaint(ChartStyles.GRIDLINE_COLOR());
+        volumePlot.setRangeGridlinePaint(ChartStyles.GRIDLINE_COLOR());
         volumePlot.setOutlineVisible(false);
 
         // Combined plot: price (80%) + volume (20%)
@@ -136,12 +136,12 @@ public class PhasePreviewChart extends JPanel implements DataPageListener<Candle
         combinedPlot.setGap(0);
         combinedPlot.add(pricePlot, 4);   // 80%
         combinedPlot.add(volumePlot, 1);  // 20%
-        combinedPlot.setBackgroundPaint(ChartStyles.BACKGROUND_COLOR);
+        combinedPlot.setBackgroundPaint(ChartStyles.BACKGROUND_COLOR());
         combinedPlot.setOutlineVisible(false);
 
         // Create chart
         chart = new JFreeChart(null, null, combinedPlot, false);
-        chart.setBackgroundPaint(ChartStyles.BACKGROUND_COLOR);
+        chart.setBackgroundPaint(ChartStyles.BACKGROUND_COLOR());
 
         // Create chart panel with custom controls
         chartPanel = new ChartPanel(chart);

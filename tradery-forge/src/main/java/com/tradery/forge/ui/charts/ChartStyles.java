@@ -1,8 +1,7 @@
 package com.tradery.forge.ui.charts;
 
+import com.tradery.charts.core.ChartTheme;
 import com.tradery.charts.util.AdaptiveDateFormat;
-import com.tradery.forge.ui.theme.Theme;
-import com.tradery.forge.ui.theme.ThemeManager;
 import org.jfree.chart.JFreeChart;
 import org.jfree.chart.annotations.XYTitleAnnotation;
 import org.jfree.chart.axis.AxisLocation;
@@ -23,8 +22,8 @@ public final class ChartStyles {
 
     private ChartStyles() {} // Prevent instantiation
 
-    // ===== Theme-aware color getters =====
-    private static Theme theme() { return ThemeManager.theme(); }
+    // ===== Theme-aware color getters (delegates to shared tradery-charts theme) =====
+    private static ChartTheme theme() { return com.tradery.charts.util.ChartStyles.getTheme(); }
 
     // ===== Background Colors (dynamic) =====
     public static Color BACKGROUND_COLOR() { return theme().getBackgroundColor(); }
@@ -32,13 +31,6 @@ public final class ChartStyles {
     public static Color GRIDLINE_COLOR() { return theme().getGridlineColor(); }
     public static Color TEXT_COLOR() { return theme().getTextColor(); }
     public static Color CROSSHAIR_COLOR() { return theme().getCrosshairColor(); }
-
-    // ===== Legacy static fields (for compatibility) =====
-    public static final Color BACKGROUND_COLOR = new Color(30, 30, 35);
-    public static final Color PLOT_BACKGROUND_COLOR = new Color(20, 20, 25);
-    public static final Color GRIDLINE_COLOR = new Color(60, 60, 65);
-    public static final Color TEXT_COLOR = new Color(150, 150, 150);
-    public static final Color CROSSHAIR_COLOR = new Color(150, 150, 150, 180);
 
     // ===== Price Chart Colors =====
     public static final Color PRICE_LINE_COLOR = new Color(255, 255, 255, 180);
@@ -204,7 +196,7 @@ public final class ChartStyles {
      * Apply theme styling to a chart.
      */
     public static void stylizeChart(JFreeChart chart, String title) {
-        Theme t = theme();
+        ChartTheme t = theme();
         chart.setBackgroundPaint(t.getBackgroundColor());
 
         XYPlot plot = chart.getXYPlot();
@@ -270,7 +262,7 @@ public final class ChartStyles {
     /**
      * Apply consistent styling to a NumberAxis.
      */
-    private static void styleNumberAxis(NumberAxis axis, Theme t) {
+    private static void styleNumberAxis(NumberAxis axis, ChartTheme t) {
         axis.setTickLabelPaint(t.getAxisLabelColor());
         axis.setTickLabelFont(AXIS_TICK_FONT);
         axis.setAxisLineVisible(false);
@@ -284,7 +276,7 @@ public final class ChartStyles {
      */
     public static void addChartTitleAnnotation(XYPlot plot, String title) {
         TextTitle textTitle = new TextTitle(title, new Font(Font.SANS_SERIF, Font.PLAIN, 11));
-        textTitle.setPaint(TEXT_COLOR);
+        textTitle.setPaint(TEXT_COLOR());
         textTitle.setBackgroundPaint(null);
         XYTitleAnnotation titleAnnotation = new XYTitleAnnotation(0.01, 0.98, textTitle, RectangleAnchor.TOP_LEFT);
         plot.addAnnotation(titleAnnotation);

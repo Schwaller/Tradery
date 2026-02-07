@@ -12,6 +12,7 @@ import com.tradery.charts.renderer.*;
 import com.tradery.charts.util.ChartPanelFactory;
 import com.tradery.core.model.Candle;
 import com.tradery.desk.ui.charts.DeskDataProvider;
+import com.tradery.ui.ThemeHelper;
 import com.tradery.ui.controls.ThinSplitPane;
 
 import javax.swing.*;
@@ -88,6 +89,22 @@ public class PriceChartPanel extends JPanel {
 
         // Add chart panel (volume chart added later if enabled)
         add(candlestickChart.getChartPanel(), BorderLayout.CENTER);
+
+        // Refresh chart colors when theme changes
+        ThemeHelper.addThemeChangeListener(() -> SwingUtilities.invokeLater(this::refreshTheme));
+    }
+
+    /**
+     * Re-apply theme styling to all charts.
+     */
+    private void refreshTheme() {
+        setBackground(UIManager.getColor("Panel.background"));
+        candlestickChart.refreshTheme();
+        if (volumeChart != null) volumeChart.refreshTheme();
+        for (IndicatorChart ic : indicatorCharts) {
+            ic.refreshTheme();
+        }
+        repaint();
     }
 
     /**

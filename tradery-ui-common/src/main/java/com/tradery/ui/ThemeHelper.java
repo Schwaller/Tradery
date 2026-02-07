@@ -19,6 +19,8 @@ public class ThemeHelper {
         System.getProperty("user.home"), ".tradery", "theme.txt"
     );
 
+    private static final List<Runnable> listeners = new ArrayList<>();
+
     private static final Map<String, String> THEMES = new LinkedHashMap<>();
     static {
         THEMES.put("Hiberbee Dark", "com.formdev.flatlaf.intellijthemes.FlatHiberbeeDarkIJTheme");
@@ -85,8 +87,23 @@ public class ThemeHelper {
             for (Window window : Window.getWindows()) {
                 SwingUtilities.updateComponentTreeUI(window);
             }
+            notifyListeners();
         } catch (Exception e) {
             System.err.println("Failed to apply theme: " + e.getMessage());
+        }
+    }
+
+    public static void addThemeChangeListener(Runnable listener) {
+        listeners.add(listener);
+    }
+
+    public static void removeThemeChangeListener(Runnable listener) {
+        listeners.remove(listener);
+    }
+
+    private static void notifyListeners() {
+        for (Runnable listener : listeners) {
+            listener.run();
         }
     }
 

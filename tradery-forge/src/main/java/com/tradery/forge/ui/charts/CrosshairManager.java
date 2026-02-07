@@ -123,7 +123,7 @@ public class CrosshairManager {
         if (panel == null) return;
 
         Crosshair crosshair = new Crosshair(Double.NaN);
-        crosshair.setPaint(ChartStyles.CROSSHAIR_COLOR);
+        crosshair.setPaint(ChartStyles.CROSSHAIR_COLOR());
         crosshairs.add(crosshair);
 
         CrosshairOverlay overlay = new CrosshairOverlay();

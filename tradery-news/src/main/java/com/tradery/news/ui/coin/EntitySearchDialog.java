@@ -510,11 +510,17 @@ public class EntitySearchDialog extends JDialog {
         contentPanel.setLayout(new BoxLayout(contentPanel, BoxLayout.Y_AXIS));
         contentPanel.setAlignmentX(Component.LEFT_ALIGNMENT);
 
+        Color sepColor = UIManager.getColor("Separator.foreground");
+        boolean firstGroup = true;
+
         for (Map.Entry<CoinEntity.Type, List<EntitySearchProcessor.DiscoveredEntity>> entry : grouped.entrySet()) {
-            // Group header
+            // Group header with full-width top separator (skip for first group)
             JPanel headerPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 2));
             headerPanel.setMaximumSize(new Dimension(Integer.MAX_VALUE, 24));
             headerPanel.setAlignmentX(Component.LEFT_ALIGNMENT);
+            if (!firstGroup) {
+                headerPanel.setBorder(BorderFactory.createMatteBorder(1, 0, 0, 0, sepColor));
+            }
 
             JLabel headerLabel = new JLabel(entry.getKey().name() +
                 " (" + entry.getValue().size() + ")");
@@ -524,10 +530,24 @@ public class EntitySearchDialog extends JDialog {
 
             contentPanel.add(headerPanel);
 
-            // Entities
+            // Entities with indented separators between them
+            boolean first = true;
             for (EntitySearchProcessor.DiscoveredEntity entity : entry.getValue()) {
+                if (!first) {
+                    JPanel sep = new JPanel(new BorderLayout());
+                    sep.setAlignmentX(Component.LEFT_ALIGNMENT);
+                    sep.setPreferredSize(new Dimension(0, 1));
+                    sep.setMaximumSize(new Dimension(Integer.MAX_VALUE, 1));
+                    sep.setBorder(BorderFactory.createEmptyBorder(0, 35, 0, 0));
+                    JPanel line = new JPanel();
+                    line.setBackground(sepColor);
+                    sep.add(line, BorderLayout.CENTER);
+                    contentPanel.add(sep);
+                }
                 contentPanel.add(createEntityPanel(entity));
+                first = false;
             }
+            firstGroup = false;
         }
 
         // Wrap in BorderLayout.NORTH to push content up
@@ -542,17 +562,13 @@ public class EntitySearchDialog extends JDialog {
     }
 
     private JPanel createEntityPanel(EntitySearchProcessor.DiscoveredEntity entity) {
-        Color borderColor = UIManager.getColor("Separator.foreground");
         Color mutedText = UIManager.getColor("Label.disabledForeground");
         Color textColor = UIManager.getColor("Label.foreground");
         Font baseFont = UIManager.getFont("Label.font");
 
         // Main panel with BorderLayout: content on left, link section on right
         JPanel panel = new JPanel(new BorderLayout(10, 0));
-        panel.setBorder(BorderFactory.createCompoundBorder(
-            BorderFactory.createMatteBorder(0, 0, 1, 0, borderColor),
-            BorderFactory.createEmptyBorder(6, 8, 6, 8)
-        ));
+        panel.setBorder(BorderFactory.createEmptyBorder(6, 8, 6, 8));
         panel.setAlignmentX(Component.LEFT_ALIGNMENT);
 
         // Left content panel

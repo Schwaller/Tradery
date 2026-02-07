@@ -98,6 +98,7 @@ public abstract class DashboardWindow extends JFrame {
         getRootPane().putClientProperty("apple.awt.fullWindowContent", true);
         getRootPane().putClientProperty("apple.awt.transparentTitleBar", true);
         getRootPane().putClientProperty("apple.awt.windowTitleVisible", false);
+        getRootPane().putClientProperty("FlatLaf.macOS.windowButtonsSpacing", "large");
 
         addWindowListener(new WindowAdapter() {
             @Override
@@ -109,12 +110,12 @@ public abstract class DashboardWindow extends JFrame {
     }
 
     private void buildLayout() {
-        // Title bar
+        // Title bar (52px, matching ProjectWindow style)
         JPanel titleBar = new JPanel(new BorderLayout());
-        titleBar.setPreferredSize(new Dimension(0, 28));
-        titleBar.setOpaque(false);
+        titleBar.setPreferredSize(new Dimension(0, 52));
         JLabel titleLabel = new JLabel(getTitle(), SwingConstants.CENTER);
         titleLabel.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 13));
+        titleLabel.setForeground(UIManager.getColor("Label.disabledForeground"));
         titleBar.add(titleLabel, BorderLayout.CENTER);
 
         // Sidebar
@@ -123,12 +124,14 @@ public abstract class DashboardWindow extends JFrame {
         sidebarContent.setBorder(new EmptyBorder(8, 8, 8, 8));
 
         JScrollPane sidebarScroll = new JScrollPane(sidebarContent);
-        sidebarScroll.setBorder(BorderFactory.createMatteBorder(0, 0, 0, 1, new Color(80, 80, 80)));
+        sidebarScroll.setBorder(null);
         sidebarScroll.getVerticalScrollBar().setUnitIncrement(16);
 
         JPanel leftPanel = new JPanel(new BorderLayout());
         leftPanel.setPreferredSize(new Dimension(getSidebarWidth(), 0));
         leftPanel.add(sidebarScroll, BorderLayout.CENTER);
+        // Vertical separator on right edge (theme-aware via JSeparator)
+        leftPanel.add(new JSeparator(SwingConstants.VERTICAL), BorderLayout.EAST);
 
         // Pre-create bottomButtons so subclasses can add to it in collectSections()
         bottomButtons = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
@@ -585,14 +588,11 @@ public abstract class DashboardWindow extends JFrame {
     // ========== UI Helpers ==========
 
     public static JPanel createSectionHeader(String title) {
-        JPanel header = new JPanel(new BorderLayout(8, 0));
+        JPanel header = new JPanel(new BorderLayout());
         header.setOpaque(false);
         JLabel label = new JLabel(title);
-        label.setFont(label.getFont().deriveFont(Font.BOLD, 12f));
+        label.setFont(label.getFont().deriveFont(Font.BOLD, label.getFont().getSize2D() + 1f));
         header.add(label, BorderLayout.WEST);
-        JSeparator sep = new JSeparator();
-        sep.setForeground(new Color(80, 80, 80));
-        header.add(sep, BorderLayout.CENTER);
         return header;
     }
 
