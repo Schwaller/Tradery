@@ -27,7 +27,7 @@ public class IntelLogPanel extends JPanel {
 
     public IntelLogPanel() {
         super(new BorderLayout());
-        setBackground(new Color(30, 32, 36));
+        setOpaque(false);
 
         // Header
         JPanel header = new JPanel(new BorderLayout());
@@ -51,10 +51,6 @@ public class IntelLogPanel extends JPanel {
         // Entry list
         listModel = new DefaultListModel<>();
         entryList = new JList<>(listModel);
-        entryList.setBackground(new Color(25, 27, 31));
-        entryList.setForeground(new Color(180, 180, 190));
-        entryList.setSelectionBackground(new Color(50, 60, 80));
-        entryList.setSelectionForeground(new Color(220, 220, 230));
         entryList.setFont(new Font("JetBrains Mono", Font.PLAIN, 11));
         entryList.setCellRenderer(new LogEntryCellRenderer());
         entryList.addListSelectionListener(e -> {
@@ -69,8 +65,6 @@ public class IntelLogPanel extends JPanel {
         // Detail area (same background as list)
         detailArea = new JTextArea();
         detailArea.setEditable(false);
-        detailArea.setBackground(new Color(25, 27, 31));
-        detailArea.setForeground(new Color(160, 160, 170));
         detailArea.setFont(new Font("JetBrains Mono", Font.PLAIN, 10));
         detailArea.setBorder(new EmptyBorder(8, 8, 8, 8));
         detailArea.setLineWrap(true);
@@ -78,13 +72,11 @@ public class IntelLogPanel extends JPanel {
         detailArea.setText("Select a log entry to view details");
 
         JScrollPane detailScroll = new JScrollPane(detailArea);
-        detailScroll.setBorder(BorderFactory.createMatteBorder(1, 0, 0, 0, new Color(50, 52, 56)));
-        detailScroll.getViewport().setBackground(new Color(25, 27, 31));
+        detailScroll.setBorder(BorderFactory.createMatteBorder(1, 0, 0, 0, UIManager.getColor("Separator.foreground")));
 
         // Split pane (list takes 66%)
         splitPane = new ThinSplitPane(JSplitPane.VERTICAL_SPLIT, listScroll, detailScroll);
         splitPane.setResizeWeight(0.66);
-        splitPane.setBackground(new Color(30, 32, 36));
 
         add(splitPane, BorderLayout.CENTER);
 
@@ -106,7 +98,7 @@ public class IntelLogPanel extends JPanel {
     private void showEntryDetail(LogEntry entry) {
         if (entry == null) {
             detailArea.setText("Select a log entry to view details");
-            detailArea.setForeground(new Color(100, 100, 110));
+            detailArea.setForeground(UIManager.getColor("Label.disabledForeground"));
             return;
         }
 
@@ -192,7 +184,7 @@ public class IntelLogPanel extends JPanel {
     public void clear() {
         listModel.clear();
         detailArea.setText("Select a log entry to view details");
-        detailArea.setForeground(new Color(100, 100, 110));
+        detailArea.setForeground(UIManager.getColor("Label.disabledForeground"));
     }
 
     // ==================== Static convenience methods ====================
@@ -284,7 +276,6 @@ public class IntelLogPanel extends JPanel {
                 if (!isSelected) {
                     setForeground(entry.type.color);
                 }
-                setBackground(isSelected ? new Color(50, 60, 80) : new Color(25, 27, 31));
             }
 
             return this;

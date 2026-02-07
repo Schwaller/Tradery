@@ -51,7 +51,7 @@ public class CoinGraphPanel extends JPanel {
     private double minVelocity = 0.1;   // Below this, stop moving
 
     public CoinGraphPanel() {
-        setBackground(new Color(25, 27, 31));
+        setBackground(UIManager.getColor("Panel.background"));
         setPreferredSize(new Dimension(1200, 800));
 
         MouseAdapter mouseAdapter = new MouseAdapter() {

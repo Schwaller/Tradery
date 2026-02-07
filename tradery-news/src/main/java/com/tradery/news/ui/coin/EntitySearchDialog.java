@@ -89,7 +89,6 @@ public class EntitySearchDialog extends JDialog {
         getRootPane().putClientProperty(FlatClientProperties.MACOS_WINDOW_BUTTONS_SPACING,
                 FlatClientProperties.MACOS_WINDOW_BUTTONS_SPACING_LARGE);
 
-        setAlwaysOnTop(true);
         restoreBounds(owner);
         initUI();
 
@@ -136,7 +135,7 @@ public class EntitySearchDialog extends JDialog {
 
         // Center: Split pane with types on left, results on right
         ThinSplitPane splitPane = new ThinSplitPane(JSplitPane.HORIZONTAL_SPLIT);
-        splitPane.setDividerLocation(320);
+        splitPane.setDividerLocation(420);
         splitPane.setResizeWeight(0);
 
         Color mutedText = UIManager.getColor("Label.disabledForeground");
@@ -273,7 +272,7 @@ public class EntitySearchDialog extends JDialog {
 
         // Grid: 4 columns (label + 3 buttons), N rows
         JPanel gridPanel = new JPanel(new GridBagLayout());
-        gridPanel.setBorder(BorderFactory.createEmptyBorder(0, 0, 0, 0));
+        gridPanel.setBorder(BorderFactory.createEmptyBorder(0, 0, 0, 24));
         gridPanel.setAlignmentX(Component.LEFT_ALIGNMENT);
 
         int row = 0;

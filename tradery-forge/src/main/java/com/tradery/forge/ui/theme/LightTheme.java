@@ -1,9 +1,11 @@
 package com.tradery.forge.ui.theme;
 
+import javax.swing.*;
 import java.awt.*;
 
 /**
  * Light theme - lighter backgrounds for daytime use.
+ * Reads background colors from UIManager so charts adapt to the active FlatLaf theme.
  */
 public class LightTheme implements Theme {
 
@@ -11,11 +13,14 @@ public class LightTheme implements Theme {
     public String getName() { return "Light"; }
 
     // ===== Background Colors =====
-    @Override public Color getBackgroundColor() { return new Color(245, 245, 248); }
-    @Override public Color getPlotBackgroundColor() { return new Color(255, 255, 255); }
-    @Override public Color getGridlineColor() { return new Color(220, 220, 225); }
-    @Override public Color getTextColor() { return new Color(80, 80, 85); }
-    @Override public Color getCrosshairColor() { return new Color(100, 100, 100, 180); }
+    @Override public Color getBackgroundColor() { return ui("Panel.background", new Color(245, 245, 248)); }
+    @Override public Color getPlotBackgroundColor() { return darker(getBackgroundColor(), 0.03f); }
+    @Override public Color getGridlineColor() { return ui("Separator.foreground", new Color(220, 220, 225)); }
+    @Override public Color getTextColor() { return ui("Label.disabledForeground", new Color(80, 80, 85)); }
+    @Override public Color getCrosshairColor() {
+        Color base = ui("Label.disabledForeground", new Color(100, 100, 100));
+        return new Color(base.getRed(), base.getGreen(), base.getBlue(), 180);
+    }
 
     // ===== Price Chart Colors =====
     @Override public Color getPriceLineColor() { return new Color(50, 50, 55, 200); }
@@ -61,5 +66,18 @@ public class LightTheme implements Theme {
     @Override public Color getFundingNegative() { return new Color(33, 150, 243); }
 
     // ===== Axis Colors =====
-    @Override public Color getAxisLabelColor() { return new Color(60, 60, 65); }
+    @Override public Color getAxisLabelColor() { return ui("Label.disabledForeground", new Color(60, 60, 65)); }
+
+    private static Color ui(String key, Color fallback) {
+        Color c = UIManager.getColor(key);
+        return c != null ? c : fallback;
+    }
+
+    private static Color darker(Color c, float amount) {
+        return new Color(
+            Math.max(0, (int)(c.getRed() * (1 - amount))),
+            Math.max(0, (int)(c.getGreen() * (1 - amount))),
+            Math.max(0, (int)(c.getBlue() * (1 - amount)))
+        );
+    }
 }

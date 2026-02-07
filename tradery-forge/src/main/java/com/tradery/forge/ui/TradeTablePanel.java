@@ -141,17 +141,12 @@ public class TradeTablePanel extends JPanel {
 
         BorderlessScrollPane tableScrollPane = new BorderlessScrollPane(table);
 
-        JPanel headerWrapper = new JPanel(new BorderLayout(0, 0));
-        headerWrapper.setBorder(BorderFactory.createEmptyBorder(8, 8, 4, 8));
-        headerWrapper.add(headerPanel, BorderLayout.CENTER);
+        headerPanel.setBorder(BorderFactory.createCompoundBorder(
+            BorderFactory.createMatteBorder(0, 0, 1, 0, UIManager.getColor("Separator.foreground")),
+            BorderFactory.createEmptyBorder(4, 6, 4, 6)
+        ));
 
-        JSeparator headerSeparator = new JSeparator();
-
-        JPanel topWrapper = new JPanel(new BorderLayout(0, 0));
-        topWrapper.add(headerWrapper, BorderLayout.CENTER);
-        topWrapper.add(headerSeparator, BorderLayout.SOUTH);
-
-        add(topWrapper, BorderLayout.NORTH);
+        add(headerPanel, BorderLayout.NORTH);
         add(tableScrollPane, BorderLayout.CENTER);
     }
 
