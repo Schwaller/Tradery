@@ -360,157 +360,265 @@ MEMBER_UPDATE → {documentId, members:[...]}   (admin syncs member list changes
 
 ---
 
+## Module Architecture
+
+All sharing/networking code lives in **separate Gradle modules**. The existing `tradery-news` module gets only one small change: making `EntityStore` accept a `Path` parameter so external code can open arbitrary DBs. Everything else is additive.
+
+```
+┌───────────────────────────────────────────────────────────────────┐
+│ tradery-news (EXISTING — minimal changes)                         │
+│   EntityStore, CoinEntity, CoinRelationship, SchemaType,         │
+│   SchemaRegistry, DataSourceRegistry, all UI panels              │
+│   Change: EntityStore(Path) constructor overload                  │
+└───────────────────┬───────────────────────────────────────────────┘
+                    │ depends on (uses EntityStore, SchemaRegistry)
+                    ▼
+┌───────────────────────────────────────────────────────────────────┐
+│ tradery-documents (NEW — Phase 1+2, no account needed)            │
+│   Document, DocumentManager, DocumentMember, UuidGenerator        │
+│   Manages ~/.tradery/documents/, opens EntityStore per doc        │
+│   Document switcher UI (panel injected into IntelFrame)           │
+└───────────────────┬───────────────────────────────────────────────┘
+                    │ depends on (uses DocumentManager, EntityStore)
+                    ▼
+┌───────────────────────────────────────────────────────────────────┐
+│ tradery-sharing (NEW — Phase 2b+3+4, requires account)            │
+│   UserSession, EntitySigner, SharingUpgrade                       │
+│   PeerServer, PeerConnection, PeerManager, SyncEngine             │
+│   RendezvousClient, LanDiscovery, NetworkMessage                  │
+│   GovernanceEngine, SubmissionStore                               │
+│   Sharing UI (login, network panel, review queue)                 │
+└───────────────────────────────────────────────────────────────────┘
+```
+
+**Dependency direction:**
+- `tradery-news` → **no new dependencies** (stays standalone)
+- `tradery-documents` → depends on `tradery-news` (uses EntityStore, SchemaRegistry)
+- `tradery-sharing` → depends on `tradery-documents` + `tradery-news`
+- `tradery-news` remains independently runnable — documents/sharing are optional add-ons
+
+**Integration point:** `tradery-news` exposes a hook/callback for add-on modules to inject UI elements (document switcher in header, network panel in sidebar). Alternatively, a thin `tradery-intel` app module composes all three at launch time.
+
+---
+
 ## Implementation Plan (Phased)
 
-### Phase 1: Data Model Foundation
-Make the entity model document-aware without any networking or accounts.
+### Phase 1: EntityStore Path Refactor (tradery-news — minimal change)
+The **only** change to existing code. Make EntityStore openable on arbitrary DB paths.
 
-**Files to modify:**
+**Files to modify in `tradery-news`:**
 
 - **`EntityStore.java`** (~965 LOC)
-  - Refactor constructor to accept `Path dbPath` parameter. Add a second constructor `EntityStore(Path dbPath)` alongside the existing no-arg one (which becomes `this(Path.of(DB_PATH))`) for backward compat.
-  - Add `upgradeToShared(String authorId)` method that:
-    - Adds sharing columns via `addColumnIfMissing()` (uuid, author_id, version, signature, status on entities; uuid, author_id, version, signature on relationships; etc.)
-    - Backfills UUID v7 on all existing rows where uuid IS NULL
-    - Sets author_id on all existing rows
-    - Called only when a document is upgraded from `local` → shared
-  - Add `isShared()` method — checks if the uuid column exists on entities table (cheap PRAGMA check)
-  - Update `mapEntityFromResultSet()` to conditionally read sharing columns (only if `isShared()`)
-  - Update `mapRelationshipFromResultSet()` — same
-  - Update `saveEntity()` — if shared, auto-generate UUID v7 for new entities, write sharing columns
-  - Update `saveRelationship()` — same
-  - Add `getEntityManifest()` → `Map<String, String>` (uuid → "contentHash:version") for sync
-  - Add `getRelationshipManifest()` → same
-  - **Local documents are unchanged** — no extra columns, no UUID generation, no overhead
+  - Add constructor overload: `EntityStore(Path dbPath)` — the existing no-arg constructor becomes `this(Path.of(DB_PATH))`
+  - Extract `DB_PATH` into a `public static Path defaultPath()` method so external code can reference it
+  - **That's it.** No sharing columns, no UUID fields, no new methods. EntityStore stays exactly as-is otherwise.
 
-- **`CoinEntity.java`** (~140 LOC)
-  - Add optional fields: `uuid` (String, null for local), `authorId` (String, null for local), `version` (int, default 1), `signature` (String, null for local), `status` (String, default "published")
-  - Add getters/setters for all new fields
-  - Existing constructors unchanged — sharing fields default to null/1
+- **No changes** to CoinEntity, CoinRelationship, SchemaType, SchemaAttribute, SchemaRegistry, or any UI classes.
 
-- **`CoinRelationship.java`** (~72 LOC)
-  - Add optional fields: `uuid` (String), `authorId` (String), `version` (int, default 1), `signature` (String)
-  - Add getters/setters for sharing fields (mutable, since the rest of the class already has final fields for core data — sharing fields are metadata that gets set after construction)
+### Phase 2: Document Management (tradery-documents — new module)
+Multiple isolated entity databases. No networking, no accounts.
 
-- **`SchemaType.java`** (~118 LOC)
-  - Add optional fields: `uuid` (String), `version` (int, default 1)
-  - Add getters/setters
+**New module: `tradery-documents`**
 
-**New files:**
+```
+tradery-documents/
+├── build.gradle
+└── src/main/java/
+    ├── module-info.java
+    └── com/tradery/documents/
+        ├── Document.java              # Record: id, name, ownerId, visibility, governance, createdAt
+        ├── DocumentManager.java       # Manages ~/.tradery/documents/ directory
+        ├── DocumentMember.java        # Record: userId, role (owner/admin/member/viewer)
+        ├── DocumentWorkspace.java     # Binds EntityStore + SchemaRegistry + DataSourceRegistry for one doc
+        ├── UuidGenerator.java         # UUID v7 (~20 LOC)
+        └── ui/
+            └── DocumentSwitcherPanel.java  # Dropdown for switching active document
+```
 
-- **`tradery-news/.../network/EntitySigner.java`**
-  - Canonical JSON serialization of entity content (deterministic key order, no whitespace)
-  - Ed25519 sign/verify using `java.security.Signature` with "Ed25519" algorithm
-  - `sign(entity, privateKey)` → signature string (base64)
-  - `verify(entity, signature, publicKey)` → boolean
-  - Content hash: SHA-256 of canonical JSON (used in manifests)
-  - **Only used after document upgrade** — local documents never sign
+```groovy
+// tradery-documents/build.gradle
+dependencies {
+    implementation project(':tradery-news')
+    implementation "com.fasterxml.jackson.dataformat:jackson-dataformat-yaml:${jacksonVersion}"
+}
+```
 
-- **`tradery-news/.../network/UuidGenerator.java`**
-  - UUID v7 generation (timestamp + random): ~20 LOC pure Java
-  - `generate()` → String (standard UUID format)
+```java
+// module-info.java
+module com.tradery.documents {
+    requires com.tradery.news;
+    requires com.fasterxml.jackson.databind;
+    requires com.fasterxml.jackson.dataformat.yaml;
+    requires java.desktop;
 
-### Phase 2: Documents (no account required)
-The document abstraction — multiple isolated entity databases. No networking, no accounts.
+    exports com.tradery.documents;
+    exports com.tradery.documents.ui;
+    opens com.tradery.documents to com.fasterxml.jackson.databind;
+}
+```
 
-**New files:**
+**Key classes:**
 
-- **`tradery-news/.../network/Document.java`**
+- **`Document.java`**
   - Record: `Document(String id, String name, String ownerId, Visibility visibility, Governance governance, long createdAt)`
   - `Visibility` enum: LOCAL, PRIVATE, FRIENDS, PUBLIC
   - `Governance` record: `Governance(Type type, double votingQuorum)` with `Type` enum: OPEN, ADMIN_APPROVED, VOTING
   - `ownerId` is null for LOCAL documents
+  - `isLocal()` → `visibility == LOCAL`
   - YAML serialization via Jackson
 
-- **`tradery-news/.../network/DocumentMember.java`**
-  - Record: `DocumentMember(String userId, Role role)`
-  - `Role` enum: OWNER, ADMIN, MEMBER, VIEWER
-  - Only exists in members.yaml for non-LOCAL documents
-
-- **`tradery-news/.../network/DocumentManager.java`**
-  - Manages `~/.tradery/documents/` directory
-  - `createDocument(name)` → creates dir, document.yaml (visibility=LOCAL), empty entities.db — **no account needed**
-  - `openDocument(docId)` → returns `EntityStore` instance for that document's DB
-  - `listDocuments()` → all known documents from index.yaml
+- **`DocumentManager.java`**
+  - Manages `~/.tradery/documents/` directory + `index.yaml`
+  - `createDocument(name)` → creates dir, `document.yaml` (visibility=LOCAL), empty `entities.db` — **no account needed**
+  - `openDocument(docId)` → returns `DocumentWorkspace` (EntityStore + SchemaRegistry bound to that DB)
+  - `listDocuments()` → all known documents
   - `deleteDocument(docId)`
-  - `upgradeDocument(docId, visibility, userSession)` → adds sharing columns, backfills UUIDs/author/signatures, creates members.yaml — **requires account**
-  - Each document gets its own `EntityStore` + `SchemaRegistry` instance
-  - **Important:** `DataSourceRegistry` needs to work per-document, since sources feed into a specific EntityStore
+  - `migrateDefault()` → on first startup, moves `entity-network.db` into `documents/{uuid}/entities.db`, creates LOCAL document.yaml
+
+- **`DocumentWorkspace.java`**
+  - Holds one open document's full stack: `EntityStore` + `SchemaRegistry` + `DataSourceRegistry`
+  - Created by `DocumentManager.openDocument()`
+  - UI panels bind to the active workspace
+  - `close()` cleans up connections
 
 **Migration:**
 - The existing `~/.tradery/entity-network.db` becomes the user's default LOCAL document
-- On first startup: create `~/.tradery/documents/{generated-uuid}/`, move (or copy+verify) `entity-network.db` → `entities.db`, create `document.yaml` with visibility=LOCAL, ownerId=null
+- On first startup: `DocumentManager.migrateDefault()` creates `~/.tradery/documents/{uuid}/`, moves `entity-network.db` → `entities.db`, writes `document.yaml` (visibility=LOCAL, ownerId=null)
 - `CoinCache` (`~/.tradery/coins.db`) stays separate — it's a fetch cache, not user data
 - **No account prompt** — migration is completely offline
 
-**UI changes:**
-- Document switcher in IntelFrame header (dropdown showing all local documents)
-- "New Document" dialog (just name — creates a LOCAL document)
-- Document settings panel (name, and a "Share..." button that triggers upgrade flow)
-- Each document opens its own `EntityStore` → `SchemaRegistry` → `DataSourceRegistry` chain
-- When switching documents: `CoinGraphPanel`, `EntityManagerFrame`, `ErdPanel`, `DataStructureFrame` all rebind to the new EntityStore
-- **Key concern:** Several UI classes receive `EntityStore`/`SchemaRegistry` in constructor. Need to make them rebindable (setter or event-based) rather than final.
+**UI integration:**
+- `DocumentSwitcherPanel` — dropdown showing all local documents, "New Document" button
+- IntelFrame gets a small integration point: the document switcher goes in the header bar
+- When switching documents: the `DocumentWorkspace` swaps, and UI panels rebind via a listener/callback pattern
+- **Key concern:** Several UI classes in `tradery-news` receive `EntityStore`/`SchemaRegistry` in constructor. Need to make them rebindable (setter or event-driven). This is the main UI refactor needed in `tradery-news`.
 
-### Phase 2b: Identity (opt-in for sharing)
-Keycloak accounts, only needed when a user wants to share a document.
+### Phase 3: Sharing & P2P (tradery-sharing — new module)
+Identity, upgrade, networking, governance. All opt-in.
 
-**New files:**
+**New module: `tradery-sharing`**
 
-- **`tradery-news/.../network/UserSession.java`**
-  - Keycloak login flow (OAuth2 device flow or browser redirect)
+```
+tradery-sharing/
+├── build.gradle
+└── src/main/java/
+    ├── module-info.java
+    └── com/tradery/sharing/
+        ├── identity/
+        │   ├── UserSession.java           # Keycloak login, JWT, Ed25519 keypair
+        │   └── KeyPairStore.java          # Local keypair storage (~/.tradery/keys/)
+        ├── upgrade/
+        │   ├── SharingUpgrade.java        # Adds sharing columns to a document's DB
+        │   └── EntitySigner.java          # Canonical JSON + Ed25519 sign/verify
+        ├── sync/
+        │   ├── PeerServer.java            # TLS TCP server on random port
+        │   ├── PeerConnection.java        # Single peer connection (read/write messages)
+        │   ├── PeerManager.java           # Connection lifecycle, peer state, reconnect
+        │   ├── SyncEngine.java            # Per-document manifest diff, entity transfer
+        │   └── NetworkMessage.java        # Sealed interface with record subtypes
+        ├── discovery/
+        │   ├── RendezvousClient.java      # HTTP client for rendezvous server
+        │   └── LanDiscovery.java          # mDNS _tradery._tcp for LAN peers
+        ├── governance/
+        │   ├── GovernanceEngine.java       # Apply governance rules per document
+        │   └── SubmissionStore.java        # Pending submissions + votes (extra DB tables)
+        └── ui/
+            ├── LoginDialog.java           # Keycloak login UI
+            ├── ShareDialog.java           # Upgrade doc to shared + set visibility
+            ├── NetworkPanel.java          # Online peers, sync status
+            ├── MemberPanel.java           # Member management per document
+            └── ReviewQueuePanel.java      # Admin review for admin_approved docs
+```
+
+```groovy
+// tradery-sharing/build.gradle
+dependencies {
+    implementation project(':tradery-news')
+    implementation project(':tradery-documents')
+    implementation "com.squareup.okhttp3:okhttp:${okhttpVersion}"           // rendezvous client
+    implementation "com.fasterxml.jackson.databind:jackson-databind:${jacksonVersion}"
+}
+```
+
+```java
+// module-info.java
+module com.tradery.sharing {
+    requires com.tradery.news;
+    requires com.tradery.documents;
+    requires com.fasterxml.jackson.databind;
+    requires okhttp3;
+    requires java.desktop;
+
+    exports com.tradery.sharing;
+    exports com.tradery.sharing.identity;
+    exports com.tradery.sharing.sync;
+    exports com.tradery.sharing.ui;
+    opens com.tradery.sharing to com.fasterxml.jackson.databind;
+}
+```
+
+**Key classes:**
+
+- **`SharingUpgrade.java`** — the document upgrade logic:
+  - Takes an EntityStore (from DocumentWorkspace) and adds sharing columns via `addColumnIfMissing()`
+  - Backfills UUID v7 on all existing entities/relationships/schema_types/attribute_values
+  - Sets author_id on all existing rows
+  - Signs all entities with user's Ed25519 key
+  - Creates members.yaml with user as owner
+  - Updates document.yaml visibility
+  - **This is the only code that touches EntityStore's DB schema** — and it does so externally via ALTER TABLE, not by modifying EntityStore itself
+
+- **`UserSession.java`** — Keycloak integration:
+  - OAuth2 device flow or browser redirect
   - JWT token management (refresh, expiry)
   - Local Ed25519 keypair generation on first login
-  - Public key registration with Keycloak
-  - `getCurrentUserId()`, `getSigningKey()`, `getJwt()`
-  - `isLoggedIn()` — false by default, true after first login
-  - Persists session to `~/.tradery/session.yaml` (token, keypair path, user UUID)
+  - `getCurrentUserId()`, `getSigningKey()`, `getJwt()`, `isLoggedIn()`
+  - Persists to `~/.tradery/session.yaml`
 
-**UI changes:**
-- "Share..." button on document settings → triggers login if not already logged in
-- Login dialog (email/password or "Create account" link)
-- Account indicator in IntelFrame header (avatar/name when logged in, nothing when offline)
-- After login + upgrade: document settings panel shows member management, visibility controls, governance options
+- **`SyncEngine.java`** — per-document P2P sync:
+  - Reads directly from document's SQLite via DocumentWorkspace's EntityStore
+  - Manifest generation: queries entities/relationships for uuid + content hash
+  - Entity transfer: serializes CoinEntity/CoinRelationship to JSON with sharing fields
+  - Signature verification before storage
+  - Conflict resolution: version + author-wins
+  - P2P source tag `"p2p:{authorId}"` so `replaceEntitiesBySource()` doesn't interfere
+  - Respects `AttributeValue.Origin` priority during merge
 
-### Phase 3: P2P Networking
-Live peer-to-peer sync per document.
+**Sharing columns** (added by SharingUpgrade to an existing entities.db):
 
-**New files:**
+```sql
+-- On entities table
+ALTER TABLE entities ADD COLUMN uuid TEXT;
+ALTER TABLE entities ADD COLUMN author_id TEXT;
+ALTER TABLE entities ADD COLUMN version INTEGER DEFAULT 1;
+ALTER TABLE entities ADD COLUMN signature TEXT;
+ALTER TABLE entities ADD COLUMN status TEXT DEFAULT 'published';
 
-- **`tradery-news/.../network/PeerServer.java`** — TLS TCP server on random port
-- **`tradery-news/.../network/PeerConnection.java`** — single peer connection (read/write length-prefixed JSON messages)
-- **`tradery-news/.../network/PeerManager.java`** — connection lifecycle, peer state, reconnection
-- **`tradery-news/.../network/RendezvousClient.java`** — HTTP client for rendezvous server (OkHttp)
-- **`tradery-news/.../network/LanDiscovery.java`** — mDNS `_tradery._tcp` for LAN peers
-- **`tradery-news/.../network/SyncEngine.java`** — per-document manifest diff, entity transfer, signature verification, conflict resolution
-- **`tradery-news/.../network/NetworkMessage.java`** — sealed interface with record subtypes for each message type
+-- On relationships table
+ALTER TABLE relationships ADD COLUMN uuid TEXT;
+ALTER TABLE relationships ADD COLUMN author_id TEXT;
+ALTER TABLE relationships ADD COLUMN version INTEGER DEFAULT 1;
+ALTER TABLE relationships ADD COLUMN signature TEXT;
 
-**Sync considerations with current model:**
-- `replaceEntitiesBySource()` and `replaceRelationshipsBySource()` do atomic source replacement — P2P entities should use a distinct source tag (e.g., `"p2p:{authorId}"`) so source-based bulk operations don't interfere
-- `entity_attribute_values` with Origin priority: when syncing, remote attribute values arrive as SOURCE or AI origin — they won't overwrite local USER edits (priority already handled by EntityStore)
-- `SchemaType` sync: when receiving schema types from a peer, merge strategy is version-wins. User-added attributes on received types are preserved.
+-- On schema_types table
+ALTER TABLE schema_types ADD COLUMN uuid TEXT;
+ALTER TABLE schema_types ADD COLUMN version INTEGER DEFAULT 1;
 
-**UI changes:**
-- "Network" panel in IntelFrame — online peers per document, sync status
-- Per-document sync controls (manual sync button, auto-sync toggle)
-- Received entity staging area for admin_approved documents
-- Member management (invite by Keycloak user ID/email)
+-- On entity_attribute_values table (origin + updated_at already exist)
+ALTER TABLE entity_attribute_values ADD COLUMN uuid TEXT;
+ALTER TABLE entity_attribute_values ADD COLUMN author_id TEXT;
+ALTER TABLE entity_attribute_values ADD COLUMN version INTEGER DEFAULT 1;
+ALTER TABLE entity_attribute_values ADD COLUMN signature TEXT;
+```
 
-### Phase 4: Governance
-Voting, admin review, submissions — per document.
-
-**New files:**
-
-- **`tradery-news/.../network/SubmissionStore.java`** — pending submissions, votes (stored in each document's entities.db as additional tables)
-- **`tradery-news/.../network/GovernanceEngine.java`** — apply governance rules based on document.yaml config
-
-**New tables in entities.db (for non-OPEN governance):**
+**Governance tables** (added by GovernanceEngine for non-OPEN documents):
 
 ```sql
 submissions (
     uuid TEXT PRIMARY KEY,
     entity_uuid TEXT NOT NULL,
     submitter_id TEXT NOT NULL,
-    status TEXT DEFAULT 'pending',    -- pending, approved, rejected
+    status TEXT DEFAULT 'pending',
     submitted_at INTEGER,
     resolved_at INTEGER
 )
@@ -518,39 +626,54 @@ submissions (
 votes (
     submission_uuid TEXT NOT NULL,
     voter_id TEXT NOT NULL,
-    approve INTEGER NOT NULL,         -- 1=approve, 0=reject
+    approve INTEGER NOT NULL,
     voted_at INTEGER,
     PRIMARY KEY (submission_uuid, voter_id)
 )
 ```
 
-**UI changes:**
-- Review queue panel for document admins
-- Voting UI for voting-type documents
-- Submission status indicators on entities (pending/approved/rejected badge in EntityManagerFrame tree + CoinGraphPanel)
+**UI integration:**
+- "Share..." button in document settings → opens `ShareDialog` → triggers login if needed → runs `SharingUpgrade`
+- `NetworkPanel` injected into IntelFrame sidebar (only when module is present)
+- `MemberPanel`, `ReviewQueuePanel` — per-document panels in document settings
+- Account indicator in header (avatar/name when logged in, absent when offline)
+
+---
+
+## Changes to tradery-news (minimal)
+
+The **only** change to existing code:
+
+| File | Change | Invasiveness |
+|------|--------|-------------|
+| `EntityStore.java` | Add `EntityStore(Path dbPath)` constructor overload | 1 line + extract constant |
+| `settings.gradle` | Add `include 'tradery-documents'` and `include 'tradery-sharing'` | 2 lines |
+
+Everything else — documents, sharing, identity, P2P, governance, all new UI — lives in the new modules.
+
+**Future optional refactor:** To support live document switching in the UI (rebinding panels to a different EntityStore), some `tradery-news` UI classes may need setter methods or listener patterns. But this can be done incrementally and isn't required for the initial document support (first doc = default, no switching needed at first).
 
 ---
 
 ## Dependencies
 
-**No new external Java dependencies needed for core P2P:**
-- Ed25519: `java.security` (JDK 21 built-in — `KeyPairGenerator.getInstance("Ed25519")`)
-- TLS sockets: `javax.net.ssl` (built-in)
-- JSON: Jackson (already present — `com.fasterxml.jackson.databind`)
-- YAML: Jackson YAML (already present — `com.fasterxml.jackson.dataformat.yaml`)
-- HTTP for rendezvous: OkHttp (already present — `okhttp3`)
-- UUID v7: Pure Java implementation (~20 LOC)
-- mDNS: `javax.jmdns` or JDK multicast (built-in)
+**tradery-documents:**
+- `tradery-news` (uses EntityStore, SchemaRegistry, DataSourceRegistry)
+- Jackson YAML (already in project)
+- No new external dependencies
 
-**New infrastructure:**
+**tradery-sharing:**
+- `tradery-documents` + `tradery-news`
+- OkHttp (already in project — for rendezvous HTTP)
+- Ed25519: `java.security` (JDK 21 built-in)
+- TLS sockets: `javax.net.ssl` (built-in)
+- UUID v7: Pure Java (~20 LOC in tradery-documents)
+- mDNS: JDK multicast (built-in)
+- **No new external dependencies**
+
+**New infrastructure (only needed for Phase 3):**
 - Keycloak instance (Docker, free)
 - Rendezvous server (~200 LOC HTTP service, free-tier cloud)
-
-**module-info.java changes:**
-```java
-exports com.tradery.news.network;
-opens com.tradery.news.network to com.fasterxml.jackson.databind;  // for Document YAML
-```
 
 ---
 
@@ -558,8 +681,10 @@ opens com.tradery.news.network to com.fasterxml.jackson.databind;  // for Docume
 
 | Decision | Choice | Rationale |
 |----------|--------|-----------|
+| Code organization | Separate modules (`tradery-documents`, `tradery-sharing`) | Non-invasive to existing `tradery-news` code; add-on architecture |
+| tradery-news changes | Only `EntityStore(Path)` constructor overload | One-line change; everything else is additive in new modules |
+| Sharing columns | Added externally by `SharingUpgrade`, not baked into EntityStore | EntityStore stays unaware of sharing; upgrade runs ALTER TABLE from outside |
 | Account requirement | Optional, only for sharing | Solo users never blocked by auth; zero friction for local-only use |
-| Sharing columns | Added on upgrade, not eagerly | Local documents have zero overhead — same perf as today |
 | Entity data transport | P2P (direct TCP) | Avoid hosting data traffic |
 | Auth/identity | Keycloak + local signing key | Proper user management with P2P integrity |
 | Peer discovery | Hybrid (rendezvous + mDNS) | Works behind NAT + free LAN discovery |
@@ -568,46 +693,41 @@ opens com.tradery.news.network to com.fasterxml.jackson.databind;  // for Docume
 | Entity ID | UUID v7 alongside existing string `id` | Backward compatible, time-sortable |
 | Document governance | Pluggable (open/admin/voting) | Flexible per-community needs |
 | Attribute sync | Respects existing Origin priority | USER edits never overwritten by remote SOURCE data |
-| EntityStore refactor | Constructor overload with `Path` | Minimal disruption — existing no-arg constructor still works |
 | Schema sync unit | Full SchemaType + attributes | Documents carry their own schema — peers don't need pre-shared type defs |
 
 ---
 
 ## Verification
 
-**Phase 1 (data model):**
+**Phase 1 (EntityStore Path — tradery-news):**
 - Compile: `./gradlew :tradery-news:compileJava`
-- Restart intel: `scripts/kill-intel.sh && scripts/start-intel.sh`
-- Verify `EntityStore(Path)` constructor works: `new EntityStore(Path.of("/tmp/test-entities.db"))`
-- Verify existing entities work normally (no new columns yet — local document)
-- Verify `isShared()` returns false on existing DB
+- Verify `new EntityStore(Path.of("/tmp/test-entities.db"))` creates a working DB
+- Verify existing no-arg `EntityStore()` still works (backward compat)
+- Restart intel: `scripts/kill-intel.sh && scripts/start-intel.sh` — everything works as before
 
-**Phase 2 (documents, no account):**
-- Create a new LOCAL document via UI
-- Verify `~/.tradery/documents/{uuid}/` directory created with `entities.db` + `document.yaml` (visibility=local, ownerId=null)
-- Switch between documents, verify entity isolation (different entity sets in each)
-- Verify existing DB migrated into default LOCAL document
-- Verify no members.yaml created for LOCAL documents
-- Verify DataSourceRegistry works per-document (CoinGecko refresh goes to active document)
+**Phase 2 (documents — tradery-documents module):**
+- Compile: `./gradlew :tradery-documents:compileJava`
+- `DocumentManager.migrateDefault()` — verify existing `entity-network.db` moved into `~/.tradery/documents/{uuid}/entities.db`
+- Create new LOCAL document via `DocumentManager.createDocument("Test")`
+- Verify `~/.tradery/documents/{uuid}/` created with `entities.db` + `document.yaml` (visibility=local, ownerId=null)
+- Verify no members.yaml for LOCAL documents
+- Open two DocumentWorkspaces, verify entity isolation (different entity sets)
+- UI: document switcher shows all local documents, switching works
 
-**Phase 2b (identity + upgrade):**
-- Click "Share..." on a LOCAL document → prompted to log in
+**Phase 3 (sharing + P2P — tradery-sharing module):**
+- Compile: `./gradlew :tradery-sharing:compileJava`
+- Click "Share..." on a LOCAL document → login dialog appears
 - Create Keycloak account, log in
-- Upgrade document to FRIENDS visibility
-- Verify sharing columns added: `sqlite3 ~/.tradery/documents/{uuid}/entities.db "SELECT id, uuid, author_id FROM entities LIMIT 5"`
-- Verify all existing entities have UUIDs and author_id backfilled
+- `SharingUpgrade` runs: verify sharing columns added to DB
+- Verify: `sqlite3 ~/.tradery/documents/{uuid}/entities.db "SELECT id, uuid, author_id FROM entities LIMIT 5"`
 - Verify members.yaml created with user as owner
-- Create new entity after upgrade → verify UUID, author_id, signature populated automatically
-
-**Phase 3 (P2P):**
-- Run two instances on same machine (different `~/.tradery` dirs via system property)
-- Share a document between them (both users logged in, document upgraded to FRIENDS)
-- Create entity in instance A → appears in instance B after sync
+- Run two instances (different `~/.tradery` dirs), share a FRIENDS document
+- Create entity in A → appears in B after sync
 - Verify signature verification rejects tampered entities
 - Test mDNS discovery on LAN
-- Test attribute value priority during sync (USER edit on B not overwritten by SOURCE data from A)
+- Test attribute value priority (USER edit on B not overwritten by SOURCE data from A)
 
-**Phase 4 (governance):**
-- Create admin_approved document, submit entity from non-admin member → appears in review queue
-- Admin approves → entity status changes to published, syncs to all peers
-- Create voting document, submit entity, cast votes from multiple members, verify quorum logic
+**Phase 4 (governance — part of tradery-sharing):**
+- Create admin_approved document, submit entity from non-admin → review queue
+- Admin approves → entity status → published, syncs to peers
+- Create voting document, submit, cast votes, verify quorum logic
