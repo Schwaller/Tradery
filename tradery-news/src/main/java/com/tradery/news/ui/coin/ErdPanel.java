@@ -78,7 +78,6 @@ public class ErdPanel extends JPanel {
     private int gridCacheW, gridCacheH;
 
     // Debounced position save (avoid blocking EDT with DB writes)
-    private javax.swing.Timer saveTimer;
 
     // Physics/animation timer
     private javax.swing.Timer physicsTimer;
@@ -1645,16 +1644,9 @@ public class ErdPanel extends JPanel {
     }
 
     private void savePositions() {
-        // Debounce: coalesce rapid saves, then run off EDT
-        if (saveTimer != null) saveTimer.stop();
-        saveTimer = new javax.swing.Timer(500, e -> {
-            saveTimer.stop();
-            new Thread(() -> {
-                if (registry != null) registry.savePositions();
-            }).start();
-        });
-        saveTimer.setRepeats(false);
-        saveTimer.start();
+        new Thread(() -> {
+            if (registry != null) registry.savePositions();
+        }).start();
     }
 
     private void fireDataChanged() {
