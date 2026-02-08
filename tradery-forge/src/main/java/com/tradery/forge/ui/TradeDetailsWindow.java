@@ -1477,7 +1477,10 @@ public class TradeDetailsWindow extends JDialog {
         if (rejected > 0) {
             statsPanel.add(createSummaryLabel("Rej", String.valueOf(rejected), textSecondary()));
         }
-        bottomContent.add(statsPanel, BorderLayout.WEST);
+        JPanel statsWrapper = new JPanel(new GridBagLayout());
+        statsWrapper.setOpaque(false);
+        statsWrapper.add(statsPanel);
+        bottomContent.add(statsWrapper, BorderLayout.WEST);
 
         JButton closeButton = new JButton("Close");
         closeButton.addActionListener(e -> dispose());
