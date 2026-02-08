@@ -187,7 +187,6 @@ public class EntitySearchDialog extends JDialog {
         int barHeight = 52;
 
         JPanel headerBar = new JPanel(new GridBagLayout());
-        headerBar.setBorder(BorderFactory.createMatteBorder(0, 0, 1, 0, UIManager.getColor("Separator.foreground")));
         headerBar.setPreferredSize(new Dimension(0, barHeight));
         headerBar.setMinimumSize(new Dimension(0, barHeight));
 
@@ -254,6 +253,10 @@ public class EntitySearchDialog extends JDialog {
 
         rightPanel.add(Box.createHorizontalStrut(24));
 
+        JButton cancelBtn = new ToolbarButton("Cancel");
+        cancelBtn.addActionListener(e -> dispose());
+        rightPanel.add(cancelBtn);
+
         addSelectedBtn = new ToolbarButton("Apply");
         addSelectedBtn.setEnabled(false);
         addSelectedBtn.addActionListener(e -> addSelectedEntities());
@@ -261,7 +264,10 @@ public class EntitySearchDialog extends JDialog {
 
         headerBar.add(rightPanel, gbc);
 
-        return headerBar;
+        JPanel headerWrapper = new JPanel(new BorderLayout());
+        headerWrapper.add(headerBar, BorderLayout.CENTER);
+        headerWrapper.add(new JSeparator(), BorderLayout.SOUTH);
+        return headerWrapper;
     }
 
     private void populateTypesPanel() {
@@ -348,10 +354,10 @@ public class EntitySearchDialog extends JDialog {
     private JPanel createBottomPanel() {
         Color secondaryText = UIManager.getColor("Label.disabledForeground");
         JPanel panel = new JPanel(new BorderLayout());
-        panel.setBorder(BorderFactory.createCompoundBorder(
-            BorderFactory.createMatteBorder(1, 0, 0, 0, UIManager.getColor("Separator.foreground")),
-            BorderFactory.createEmptyBorder(6, 15, 6, 15)
-        ));
+        panel.add(new JSeparator(), BorderLayout.NORTH);
+
+        JPanel innerPanel = new JPanel(new BorderLayout());
+        innerPanel.setBorder(BorderFactory.createEmptyBorder(6, 15, 6, 15));
 
         statusSpinner = new JProgressBar();
         statusSpinner.setIndeterminate(true);
@@ -365,8 +371,9 @@ public class EntitySearchDialog extends JDialog {
         statusPanel.setOpaque(false);
         statusPanel.add(statusSpinner);
         statusPanel.add(statusLabel);
-        panel.add(statusPanel, BorderLayout.CENTER);
+        innerPanel.add(statusPanel, BorderLayout.CENTER);
 
+        panel.add(innerPanel, BorderLayout.CENTER);
         return panel;
     }
 
@@ -604,13 +611,18 @@ public class EntitySearchDialog extends JDialog {
         boolean firstGroup = true;
 
         for (Map.Entry<CoinEntity.Type, List<EntitySearchProcessor.DiscoveredEntity>> entry : grouped.entrySet()) {
-            // Group header with full-width top separator (skip for first group)
+            // Full-width separator between groups (skip for first group)
+            if (!firstGroup) {
+                JSeparator groupSep = new JSeparator();
+                groupSep.setMaximumSize(new Dimension(Integer.MAX_VALUE, 2));
+                groupSep.setAlignmentX(Component.LEFT_ALIGNMENT);
+                contentPanel.add(groupSep);
+            }
+
+            // Group header
             JPanel headerPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 2));
             headerPanel.setMaximumSize(new Dimension(Integer.MAX_VALUE, 24));
             headerPanel.setAlignmentX(Component.LEFT_ALIGNMENT);
-            if (!firstGroup) {
-                headerPanel.setBorder(BorderFactory.createMatteBorder(1, 0, 0, 0, sepColor));
-            }
 
             JLabel headerLabel = new JLabel(entry.getKey().name() +
                 " (" + entry.getValue().size() + ")");
@@ -967,10 +979,7 @@ public class EntitySearchDialog extends JDialog {
         msg.append(".");
 
         IntelLogPanel.logSuccess(msg.toString());
-        JOptionPane.showMessageDialog(this, msg.toString(), "Success",
-            JOptionPane.INFORMATION_MESSAGE);
-
-        displayResults();
+        dispose();
     }
 
     private CoinRelationship createRelationship(String sourceId, String targetId,
