@@ -565,30 +565,35 @@ public class OkxExchangeClient implements ExchangeClient {
                 if (data == null || !data.isArray() || data.isEmpty()) break;
 
                 List<FundingRate> batch = new ArrayList<>();
-                long oldestTime = Long.MAX_VALUE;
+                long oldestTimeInPage = Long.MAX_VALUE;
+                boolean anyBeforeStart = false;
 
                 for (JsonNode node : data) {
                     double fundingRate = Double.parseDouble(node.get("fundingRate").asText());
                     long fundingTime = Long.parseLong(node.get("fundingTime").asText());
 
-                    if (fundingTime < startTime) continue;
+                    // Track the oldest time in the raw page for pagination
+                    if (fundingTime < oldestTimeInPage) {
+                        oldestTimeInPage = fundingTime;
+                    }
+
+                    if (fundingTime < startTime) {
+                        anyBeforeStart = true;
+                        continue;
+                    }
                     if (fundingTime > endTime) continue;
 
                     batch.add(new FundingRate(symbol, fundingRate, fundingTime, 0.0));
-
-                    if (fundingTime < oldestTime) {
-                        oldestTime = fundingTime;
-                    }
                 }
 
                 // OKX returns newest first
                 Collections.reverse(batch);
                 allRates.addAll(0, batch); // Prepend since we're going backwards
 
-                // Stop if we've gone past start time or got fewer than requested
-                if (oldestTime <= startTime || data.size() < 100) break;
+                // Stop if: we've seen records before our start time, or got fewer than limit
+                if (anyBeforeStart || data.size() < 100) break;
 
-                currentEnd = oldestTime;
+                currentEnd = oldestTimeInPage;
             }
         }
 
@@ -650,7 +655,8 @@ public class OkxExchangeClient implements ExchangeClient {
                 if (data == null || !data.isArray() || data.isEmpty()) break;
 
                 List<OpenInterest> batch = new ArrayList<>();
-                long oldestTime = Long.MAX_VALUE;
+                long oldestTimeInPage = Long.MAX_VALUE;
+                boolean anyBeforeStart = false;
 
                 for (JsonNode node : data) {
                     // Response: [ts, oi, oiCcy, oiUsdValue]
@@ -658,22 +664,25 @@ public class OkxExchangeClient implements ExchangeClient {
                     double oi = Double.parseDouble(node.get(1).asText());
                     double oiValue = node.has(3) ? Double.parseDouble(node.get(3).asText()) : 0.0;
 
-                    if (timestamp < startTime) continue;
+                    if (timestamp < oldestTimeInPage) {
+                        oldestTimeInPage = timestamp;
+                    }
+
+                    if (timestamp < startTime) {
+                        anyBeforeStart = true;
+                        continue;
+                    }
                     if (timestamp > endTime) continue;
 
                     batch.add(new OpenInterest(symbol, timestamp, oi, oiValue));
-
-                    if (timestamp < oldestTime) {
-                        oldestTime = timestamp;
-                    }
                 }
 
                 Collections.reverse(batch);
                 allData.addAll(0, batch);
 
-                if (oldestTime <= startTime || data.size() < 100) break;
+                if (anyBeforeStart || data.size() < 100) break;
 
-                currentEnd = oldestTime;
+                currentEnd = oldestTimeInPage;
             }
         }
 
