@@ -9,10 +9,13 @@ import com.tradery.forge.data.log.DownloadLogStore;
 import com.tradery.forge.data.page.DataPageManager;
 import com.tradery.forge.data.page.IndicatorPageManager;
 import com.tradery.symbols.service.SymbolService;
+import com.tradery.symbols.service.SymbolService.ExchangeCoverage;
+import com.tradery.symbols.service.SymbolService.ExchangeSyncInfo;
 import com.tradery.ui.dashboard.DashboardPageInfo;
 import com.tradery.ui.dashboard.DashboardSection;
 import com.tradery.ui.dashboard.DashboardWindow;
 import com.tradery.ui.controls.BorderlessScrollPane;
+import com.tradery.ui.controls.BorderlessTable;
 import com.tradery.ui.controls.ThinSplitPane;
 import com.tradery.ui.dashboard.PageLogEntry;
 
@@ -21,11 +24,17 @@ import static com.tradery.forge.ui.UIColors.STATUS_READY;
 
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
+import javax.swing.table.AbstractTableModel;
+import javax.swing.table.DefaultTableCellRenderer;
 import java.awt.*;
+import java.time.Duration;
+import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Forge download dashboard. Extends the shared DashboardWindow,
@@ -49,7 +58,7 @@ public class DownloadDashboardWindow extends DashboardWindow {
     private JLabel symDbPairCountLabel;
     private JLabel symDbLastSyncLabel;
     private JLabel symDbPathLabel;
-    private DefaultListModel<String> symDbExchangeModel;
+    private CoverageTableModel coverageTableModel;
     private DefaultListModel<String> symDbLogModel;
 
     public DownloadDashboardWindow() {
@@ -345,10 +354,52 @@ public class DownloadDashboardWindow extends DashboardWindow {
         JPanel exchSection = new JPanel(new BorderLayout(0, 6));
         exchSection.setBorder(BorderFactory.createEmptyBorder(4, 0, 0, 0));
         exchSection.add(createSectionHeader("Exchanges"), BorderLayout.NORTH);
-        symDbExchangeModel = new DefaultListModel<>();
-        JList<String> exchList = new JList<>(symDbExchangeModel);
-        exchList.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 11));
-        BorderlessScrollPane exchScroll = new BorderlessScrollPane(exchList);
+        coverageTableModel = new CoverageTableModel();
+        JTable coverageTable = new BorderlessTable(coverageTableModel);
+        coverageTable.setRowHeight(20);
+        coverageTable.setFocusable(false);
+        coverageTable.setRowSelectionAllowed(false);
+        coverageTable.setFont(coverageTable.getFont().deriveFont(11f));
+        coverageTable.getTableHeader().setFont(coverageTable.getFont().deriveFont(Font.BOLD, 11f));
+        coverageTable.getTableHeader().setReorderingAllowed(false);
+
+        coverageTable.getColumnModel().getColumn(0).setPreferredWidth(80);  // Exchange
+        coverageTable.getColumnModel().getColumn(1).setPreferredWidth(50);  // Market
+        coverageTable.getColumnModel().getColumn(2).setPreferredWidth(60);  // Pairs
+        coverageTable.getColumnModel().getColumn(3).setPreferredWidth(90);  // Matched
+        coverageTable.getColumnModel().getColumn(4).setPreferredWidth(70);  // Last Sync
+        coverageTable.getColumnModel().getColumn(5).setPreferredWidth(50);  // Status
+
+        // Dim secondary columns
+        DefaultTableCellRenderer dimRenderer = new DefaultTableCellRenderer() {
+            @Override
+            public Component getTableCellRendererComponent(JTable t, Object value, boolean sel, boolean focus, int row, int col) {
+                Component c = super.getTableCellRendererComponent(t, value, sel, focus, row, col);
+                c.setForeground(UIManager.getColor("Label.disabledForeground"));
+                return c;
+            }
+        };
+        coverageTable.getColumnModel().getColumn(1).setCellRenderer(dimRenderer);
+        coverageTable.getColumnModel().getColumn(4).setCellRenderer(dimRenderer);
+
+        DefaultTableCellRenderer rightRenderer = new DefaultTableCellRenderer();
+        rightRenderer.setHorizontalAlignment(SwingConstants.RIGHT);
+        coverageTable.getColumnModel().getColumn(2).setCellRenderer(rightRenderer);
+
+        DefaultTableCellRenderer matchedRenderer = new DefaultTableCellRenderer() {
+            @Override
+            public Component getTableCellRendererComponent(JTable t, Object value, boolean sel, boolean focus, int row, int col) {
+                Component c = super.getTableCellRendererComponent(t, value, sel, focus, row, col);
+                setHorizontalAlignment(SwingConstants.RIGHT);
+                c.setForeground(UIManager.getColor("Label.disabledForeground"));
+                return c;
+            }
+        };
+        coverageTable.getColumnModel().getColumn(3).setCellRenderer(matchedRenderer);
+
+        coverageTable.getColumnModel().getColumn(5).setCellRenderer(new StatusCellRenderer());
+
+        BorderlessScrollPane exchScroll = new BorderlessScrollPane(coverageTable);
         exchSection.add(exchScroll, BorderLayout.CENTER);
         split.setTopComponent(exchSection);
 
@@ -378,8 +429,7 @@ public class DownloadDashboardWindow extends DashboardWindow {
             symDbPairCountLabel.setText("-");
             symDbLastSyncLabel.setText("-");
             symDbPathLabel.setText("symbols.db not found \u2014 run data service to sync");
-            symDbExchangeModel.clear();
-            symDbExchangeModel.addElement("(database unavailable)");
+            coverageTableModel.setRows(List.of());
             symDbLogModel.clear();
             symDbLogModel.addElement("Database file not found");
             return;
@@ -401,24 +451,110 @@ public class DownloadDashboardWindow extends DashboardWindow {
 
         symDbPathLabel.setText(System.getProperty("user.home") + "/.tradery/symbols.db");
 
-        symDbExchangeModel.clear();
-        List<String> exchanges = symbolService.getExchanges();
-        for (String exchange : exchanges) {
-            List<String> marketTypes = symbolService.getMarketTypes(exchange);
-            symDbExchangeModel.addElement(exchange + " \u2014 " + String.join(", ", marketTypes));
+        // Populate coverage table
+        List<ExchangeCoverage> coverage = symbolService.getExchangeCoverage();
+        List<ExchangeSyncInfo> syncInfo = symbolService.getSyncInfo();
+        Map<String, ExchangeSyncInfo> syncMap = new LinkedHashMap<>();
+        for (ExchangeSyncInfo info : syncInfo) {
+            syncMap.put(info.exchange() + "|" + info.marketType(), info);
         }
-        if (symDbExchangeModel.isEmpty()) {
-            symDbExchangeModel.addElement("(no exchanges)");
+
+        List<CoverageRow> rows = new ArrayList<>();
+        for (ExchangeCoverage cov : coverage) {
+            ExchangeSyncInfo info = syncMap.get(cov.exchange() + "|" + cov.marketType());
+            Instant lastSync = info != null ? info.lastSync() : null;
+            String syncStatus = info != null ? info.status() : null;
+
+            String displayStatus;
+            if ("error".equalsIgnoreCase(syncStatus)) {
+                displayStatus = "ERROR";
+            } else if (lastSync != null && Duration.between(lastSync, Instant.now()).toHours() > 24) {
+                displayStatus = "STALE";
+            } else if (lastSync != null) {
+                displayStatus = "OK";
+            } else {
+                displayStatus = "\u2014";
+            }
+
+            rows.add(new CoverageRow(
+                cov.exchange(), cov.marketType(), cov.pairCount(), cov.matchedCount(),
+                lastSync != null ? formatRelativeTime(lastSync) : "\u2014",
+                displayStatus
+            ));
         }
+        coverageTableModel.setRows(rows);
 
         symDbLogModel.clear();
         if (status.lastSync() != null) {
             symDbLogModel.addElement("Last sync: " + symDbLastSyncLabel.getText());
         }
         symDbLogModel.addElement("Active pairs: " + status.pairCount());
-        symDbLogModel.addElement("Exchanges: " + exchanges.size());
+        symDbLogModel.addElement("Exchanges: " + symbolService.getExchanges().size());
         if (symDbLogModel.isEmpty()) {
             symDbLogModel.addElement("(no activity)");
+        }
+    }
+
+    private static String formatRelativeTime(Instant instant) {
+        Duration d = Duration.between(instant, Instant.now());
+        long minutes = d.toMinutes();
+        if (minutes < 1) return "just now";
+        if (minutes < 60) return minutes + "m ago";
+        long hours = d.toHours();
+        if (hours < 24) return hours + "h ago";
+        long days = d.toDays();
+        return days + "d ago";
+    }
+
+    // --- Coverage table data ---
+
+    record CoverageRow(String exchange, String market, int pairs, int matched, String lastSync, String status) {}
+
+    private static class CoverageTableModel extends AbstractTableModel {
+        private static final String[] COLUMNS = {"Exchange", "Market", "Pairs", "Matched", "Last Sync", "Status"};
+        private List<CoverageRow> rows = List.of();
+
+        void setRows(List<CoverageRow> rows) {
+            this.rows = rows;
+            fireTableDataChanged();
+        }
+
+        @Override public int getRowCount() { return rows.size(); }
+        @Override public int getColumnCount() { return COLUMNS.length; }
+        @Override public String getColumnName(int col) { return COLUMNS[col]; }
+
+        @Override
+        public Object getValueAt(int row, int col) {
+            CoverageRow r = rows.get(row);
+            return switch (col) {
+                case 0 -> r.exchange();
+                case 1 -> r.market();
+                case 2 -> String.format("%,d", r.pairs());
+                case 3 -> String.format("%,d / %,d", r.matched(), r.pairs());
+                case 4 -> r.lastSync();
+                case 5 -> r.status();
+                default -> "";
+            };
+        }
+    }
+
+    private static class StatusCellRenderer extends DefaultTableCellRenderer {
+        private static final Color COLOR_OK = new Color(60, 140, 60);
+        private static final Color COLOR_ERROR = new Color(180, 60, 60);
+        private static final Color COLOR_STALE = new Color(180, 120, 40);
+
+        @Override
+        public Component getTableCellRendererComponent(JTable table, Object value, boolean sel, boolean focus, int row, int col) {
+            Component c = super.getTableCellRendererComponent(table, value, sel, focus, row, col);
+            setHorizontalAlignment(SwingConstants.CENTER);
+            String status = value != null ? value.toString() : "";
+            c.setForeground(switch (status) {
+                case "OK" -> COLOR_OK;
+                case "ERROR" -> COLOR_ERROR;
+                case "STALE" -> COLOR_STALE;
+                default -> UIManager.getColor("Label.disabledForeground");
+            });
+            return c;
         }
     }
 }
