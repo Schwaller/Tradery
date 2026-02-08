@@ -292,36 +292,37 @@ This is a one-time migration per document — after upgrade, new entities are cr
 
 **Local documents** use the exact same table schema as today — no extra columns, zero overhead.
 
-**Shared documents** (`private`/`friends`/`public`) add sharing columns via `addColumnIfMissing()` migration when a document is upgraded:
+**Core provenance columns** (added to all databases in Phase 1 — part of `tradery-news`):
 
 ```sql
--- Sharing columns on entities table
+-- On entities table (via addColumnIfMissing migration)
 ALTER TABLE entities ADD COLUMN uuid TEXT;            -- UUID v7 (globally unique)
-ALTER TABLE entities ADD COLUMN author_id TEXT;        -- Keycloak user UUID
+ALTER TABLE entities ADD COLUMN author_id TEXT;        -- null until account exists
 ALTER TABLE entities ADD COLUMN version INTEGER DEFAULT 1;
-ALTER TABLE entities ADD COLUMN signature TEXT;        -- Ed25519 sig of content hash
-ALTER TABLE entities ADD COLUMN status TEXT DEFAULT 'published';
-  -- published | pending_review | rejected
 
--- Sharing columns on relationships table
+-- On relationships table
 ALTER TABLE relationships ADD COLUMN uuid TEXT;
 ALTER TABLE relationships ADD COLUMN author_id TEXT;
 ALTER TABLE relationships ADD COLUMN version INTEGER DEFAULT 1;
+```
+
+These are **always present** — even local documents get UUIDs. They're fundamental provenance data useful for dedup, import/export, and cross-document references.
+
+**Sharing-specific columns** (added by `tradery-sharing` module when a document is upgraded):
+
+```sql
+-- On entities table
+ALTER TABLE entities ADD COLUMN signature TEXT;        -- Ed25519 sig for P2P integrity
+ALTER TABLE entities ADD COLUMN status TEXT DEFAULT 'published';  -- governance status
+
+-- On relationships table
 ALTER TABLE relationships ADD COLUMN signature TEXT;
 
--- Sharing columns on schema_types table
-ALTER TABLE schema_types ADD COLUMN uuid TEXT;
-ALTER TABLE schema_types ADD COLUMN version INTEGER DEFAULT 1;
-
--- Sharing columns on entity_attribute_values table
--- (origin and updated_at already exist)
-ALTER TABLE entity_attribute_values ADD COLUMN uuid TEXT;
-ALTER TABLE entity_attribute_values ADD COLUMN author_id TEXT;
-ALTER TABLE entity_attribute_values ADD COLUMN version INTEGER DEFAULT 1;
+-- On entity_attribute_values table
 ALTER TABLE entity_attribute_values ADD COLUMN signature TEXT;
 ```
 
-These columns are **only added when a document is upgraded from `local` to a shared visibility**. The `addColumnIfMissing()` pattern already used in EntityStore handles this gracefully — columns are added idempotently.
+These are **only added when a document is upgraded from `local` to a shared visibility**.
 
 Note: no `space_id` or `visibility` on entities — the **document** itself is the isolation boundary. All entities in a document share the document's visibility and governance.
 
@@ -414,17 +415,39 @@ All networking/P2P code lives in **separate Gradle modules**. The existing `trad
 
 ## Implementation Plan (Phased)
 
-### Phase 1: EntityStore Path Refactor (tradery-news — minimal change)
-The **only** change to existing code. Make EntityStore openable on arbitrary DB paths.
+### Phase 1: Core Provenance Fields (tradery-news)
+Add provenance columns to the data model and make EntityStore path-configurable. These are natural extensions — useful even without sharing (dedup, import/export, attribution).
 
 **Files to modify in `tradery-news`:**
 
 - **`EntityStore.java`** (~965 LOC)
   - Add constructor overload: `EntityStore(Path dbPath)` — the existing no-arg constructor becomes `this(Path.of(DB_PATH))`
   - Extract `DB_PATH` into a `public static Path defaultPath()` method so external code can reference it
-  - **That's it.** No sharing columns, no UUID fields, no new methods. EntityStore stays exactly as-is otherwise.
+  - Add provenance columns via `addColumnIfMissing()` in `createTables()`:
+    - `entities`: `uuid TEXT`, `author_id TEXT`, `version INTEGER DEFAULT 1`
+    - `relationships`: `uuid TEXT`, `author_id TEXT`, `version INTEGER DEFAULT 1`
+  - Backfill migration: generate UUID v7 for existing rows where `uuid IS NULL` (runs once on upgrade)
+  - Update `mapEntityFromResultSet()` to read uuid, author_id, version
+  - Update `mapRelationshipFromResultSet()` to read uuid, author_id, version
+  - Update `saveEntity()` to auto-generate UUID v7 if null, write author_id/version
+  - Update `saveRelationship()` — same
+  - `author_id` defaults to null (no account yet) — it's filled in when/if the user creates an account
 
-- **No changes** to CoinEntity, CoinRelationship, SchemaType, SchemaAttribute, SchemaRegistry, or any UI classes.
+- **`CoinEntity.java`** (~140 LOC)
+  - Add fields: `uuid` (String, null initially), `authorId` (String, null), `version` (int, default 1)
+  - Add getters/setters. Existing constructors unchanged.
+
+- **`CoinRelationship.java`** (~72 LOC)
+  - Add fields: `uuid` (String), `authorId` (String), `version` (int, default 1)
+  - Add getters/setters for the new fields.
+
+**New file in `tradery-news`:**
+
+- **`UuidGenerator.java`** (in `com.tradery.news.ui.coin` or a util package)
+  - UUID v7 generation (timestamp + random): ~20 LOC pure Java
+  - Used by EntityStore on save
+
+**No changes** to SchemaType, SchemaAttribute, SchemaRegistry, DataSourceRegistry, or any UI classes.
 
 ### Phase 2: Document Management (tradery-documents — new module)
 Multiple isolated entity databases. No networking, no accounts.
@@ -571,13 +594,14 @@ module com.tradery.sharing {
 **Key classes:**
 
 - **`SharingUpgrade.java`** — the document upgrade logic:
-  - Takes an EntityStore (from DocumentWorkspace) and adds sharing columns via `addColumnIfMissing()`
-  - Backfills UUID v7 on all existing entities/relationships/schema_types/attribute_values
-  - Sets author_id on all existing rows
-  - Signs all entities with user's Ed25519 key
+  - Takes an EntityStore (from DocumentWorkspace) and adds **sharing-specific** columns via ALTER TABLE:
+    - `entities`: `signature TEXT`, `status TEXT DEFAULT 'published'`
+    - `relationships`: `signature TEXT`
+    - `entity_attribute_values`: `signature TEXT`
+  - Backfills `author_id` on all existing rows (uuid/version already exist from Phase 1 core model)
+  - Signs all entities with user's Ed25519 key (populates signature column)
   - Creates members.yaml with user as owner
   - Updates document.yaml visibility
-  - **This is the only code that touches EntityStore's DB schema** — and it does so externally via ALTER TABLE, not by modifying EntityStore itself
 
 - **`UserSession.java`** — Keycloak integration:
   - OAuth2 device flow or browser redirect
@@ -595,30 +619,17 @@ module com.tradery.sharing {
   - P2P source tag `"p2p:{authorId}"` so `replaceEntitiesBySource()` doesn't interfere
   - Respects `AttributeValue.Origin` priority during merge
 
-**Sharing columns** (added by SharingUpgrade to an existing entities.db):
+**Sharing-specific columns** (added by SharingUpgrade — uuid/author_id/version already exist from Phase 1):
 
 ```sql
 -- On entities table
-ALTER TABLE entities ADD COLUMN uuid TEXT;
-ALTER TABLE entities ADD COLUMN author_id TEXT;
-ALTER TABLE entities ADD COLUMN version INTEGER DEFAULT 1;
-ALTER TABLE entities ADD COLUMN signature TEXT;
-ALTER TABLE entities ADD COLUMN status TEXT DEFAULT 'published';
+ALTER TABLE entities ADD COLUMN signature TEXT;        -- Ed25519 signature for P2P verification
+ALTER TABLE entities ADD COLUMN status TEXT DEFAULT 'published';  -- published/pending_review/rejected
 
 -- On relationships table
-ALTER TABLE relationships ADD COLUMN uuid TEXT;
-ALTER TABLE relationships ADD COLUMN author_id TEXT;
-ALTER TABLE relationships ADD COLUMN version INTEGER DEFAULT 1;
 ALTER TABLE relationships ADD COLUMN signature TEXT;
 
--- On schema_types table
-ALTER TABLE schema_types ADD COLUMN uuid TEXT;
-ALTER TABLE schema_types ADD COLUMN version INTEGER DEFAULT 1;
-
--- On entity_attribute_values table (origin + updated_at already exist)
-ALTER TABLE entity_attribute_values ADD COLUMN uuid TEXT;
-ALTER TABLE entity_attribute_values ADD COLUMN author_id TEXT;
-ALTER TABLE entity_attribute_values ADD COLUMN version INTEGER DEFAULT 1;
+-- On entity_attribute_values table
 ALTER TABLE entity_attribute_values ADD COLUMN signature TEXT;
 ```
 
@@ -651,16 +662,21 @@ votes (
 
 ---
 
-## Changes to tradery-news (minimal)
+## Changes to tradery-news (Phase 1)
 
-The **only** change to existing code:
+Small, natural additions to the core data model:
 
-| File | Change | Invasiveness |
-|------|--------|-------------|
-| `EntityStore.java` | Add `EntityStore(Path dbPath)` constructor overload | 1 line + extract constant |
-| `settings.gradle` | Add `include 'tradery-documents'` and `include 'tradery-sharing'` | 2 lines |
+| File | Change | Why it belongs in core |
+|------|--------|----------------------|
+| `EntityStore.java` | `EntityStore(Path)` constructor overload | Multi-DB support for documents |
+| `EntityStore.java` | `uuid`, `author_id`, `version` columns on entities + relationships | Provenance is fundamental — dedup, import/export, attribution |
+| `EntityStore.java` | UUID v7 auto-generation on save, backfill migration | Every entity gets a globally unique ID from the start |
+| `CoinEntity.java` | `uuid`, `authorId`, `version` fields + getters/setters | Model reflects what's in the DB |
+| `CoinRelationship.java` | `uuid`, `authorId`, `version` fields + getters/setters | Same |
+| `UuidGenerator.java` | New file (~20 LOC) | Utility for UUID v7 generation |
+| `settings.gradle` | Add `include 'tradery-documents'` and `include 'tradery-sharing'` | Register new modules |
 
-Everything else — documents, sharing, identity, P2P, governance, all new UI — lives in the new modules.
+Everything else — documents, sharing, identity, P2P, governance, signatures, all new UI — lives in the new modules.
 
 **Future optional refactor:** To support live document switching in the UI (rebinding panels to a different EntityStore), some `tradery-news` UI classes may need setter methods or listener patterns. But this can be done incrementally and isn't required for the initial document support (first doc = default, no switching needed at first).
 
@@ -710,11 +726,13 @@ Everything else — documents, sharing, identity, P2P, governance, all new UI �
 
 ## Verification
 
-**Phase 1 (EntityStore Path — tradery-news):**
+**Phase 1 (core provenance — tradery-news):**
 - Compile: `./gradlew :tradery-news:compileJava`
+- Restart intel: `scripts/kill-intel.sh && scripts/start-intel.sh`
+- Verify existing entities get UUIDs: `sqlite3 ~/.tradery/entity-network.db "SELECT id, uuid, author_id, version FROM entities LIMIT 5"`
+- Verify `author_id` is null (no account yet), uuid is populated, version is 1
+- Create new entity via UI → verify UUID auto-generated
 - Verify `new EntityStore(Path.of("/tmp/test-entities.db"))` creates a working DB
-- Verify existing no-arg `EntityStore()` still works (backward compat)
-- Restart intel: `scripts/kill-intel.sh && scripts/start-intel.sh` — everything works as before
 
 **Phase 2 (documents — tradery-documents module):**
 - Compile: `./gradlew :tradery-documents:compileJava`
