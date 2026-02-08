@@ -12,12 +12,12 @@ const TRADERY_DIR = join(homedir(), ".tradery");
 function getApiPort() {
   const portFile = join(TRADERY_DIR, "api.port");
   if (!existsSync(portFile)) {
-    return { error: "Tradery is not running. Start the app first." };
+    return { error: "Strategy Forge is not running. Start the app first." };
   }
   try {
     const port = parseInt(readFileSync(portFile, "utf-8").trim(), 10);
     if (isNaN(port)) {
-      return { error: "Invalid port file. Restart Tradery." };
+      return { error: "Invalid port file. Restart Strategy Forge." };
     }
     return { port };
   } catch (e) {
@@ -56,7 +56,7 @@ async function apiCall(method, path, body = null) {
     }
   } catch (e) {
     if (e.code === 'ECONNREFUSED') {
-      return { error: `Cannot connect to Tradery on port ${portResult.port}. Make sure the app is running.` };
+      return { error: `Cannot connect to Strategy Forge on port ${portResult.port}. Make sure the app is running.` };
     }
     return { error: `API call failed: ${e.message}` };
   }
@@ -591,7 +591,7 @@ Use the 'search' parameter to find specific terms (e.g., search for "RSI" or "tr
   // ========== UI Tools ==========
   {
     name: "tradery_open_window",
-    description: `Open a window in the Tradery UI. Available windows:
+    description: `Open a window in the Strategy Forge UI. Available windows:
 - phases: Open the Phases editor
 - hoops: Open the Hoops pattern editor
 - settings: Open Settings dialog
@@ -1340,7 +1340,7 @@ async function handleTool(name, args) {
       for (const [key, entry] of topicEntries) {
         const filePath = join(TRADERY_DIR, entry.file);
         if (!existsSync(filePath)) {
-          results.push({ topic: key, error: `Help file not found: ${entry.file}. Start Tradery to generate it.` });
+          results.push({ topic: key, error: `Help file not found: ${entry.file}. Start Strategy Forge to generate it.` });
           continue;
         }
 
@@ -1494,7 +1494,7 @@ async function handleTool(name, args) {
 // Create and run server
 const server = new Server(
   {
-    name: "tradery-mcp-server",
+    name: "plaiiin-mcp-server",
     version: "1.5.0",
   },
   {
@@ -1530,7 +1530,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           type: "text",
           text: JSON.stringify({
             error: error.message,
-            hint: "Check if Tradery is running and try again."
+            hint: "Check if Strategy Forge is running and try again."
           }, null, 2),
         },
       ],
@@ -1543,7 +1543,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  console.error("Tradery MCP server v1.4.0 running");
+  console.error("Plaiiin MCP server v1.4.0 running");
 }
 
 main().catch(console.error);

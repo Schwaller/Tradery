@@ -1,5 +1,5 @@
 #!/bin/bash
-# Publish Tradery apps to plaiiin.com
+# Publish Plaiiin apps to plaiiin.com
 # Usage:
 #   scripts/publish.sh                    # Publish all 3 apps (unsigned)
 #   scripts/publish.sh forge              # Publish specific app(s)
@@ -79,7 +79,7 @@ else
 fi
 
 echo "═══════════════════════════════════════════════════════════"
-echo "  Tradery Publish v${VERSION}"
+echo "  Plaiiin Publish v${VERSION}"
 echo "  Apps: ${APPS}"
 echo "  Build: ${BUILD_MODE}"
 echo "  Date: ${DATE}"

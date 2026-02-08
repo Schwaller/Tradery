@@ -47,7 +47,7 @@ public class WebhookSender implements AlertOutput {
             .url(url)
             .post(body)
             .addHeader("Content-Type", "application/json")
-            .addHeader("User-Agent", "TraderyDesk/1.0")
+            .addHeader("User-Agent", "TradingDesk/1.0")
             .build();
 
         // Send asynchronously to not block

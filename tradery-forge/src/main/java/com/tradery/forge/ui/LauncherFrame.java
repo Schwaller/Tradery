@@ -52,7 +52,7 @@ public class LauncherFrame extends JFrame {
     private static LauncherFrame instance;
 
     public LauncherFrame() {
-        super("Tradery - Projects");
+        super("Strategy Forge");
         instance = this;
 
         strategyStore = ApplicationContext.getInstance().getStrategyStore();

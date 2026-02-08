@@ -1,4 +1,4 @@
-# Tradery Strategy Optimizer
+# Plaiiin Strategy Optimizer
 
 You are helping optimize trading strategies for a backtesting application. The app watches for file changes and automatically re-runs backtests when you modify strategy files.
 

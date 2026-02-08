@@ -156,7 +156,7 @@ public class DataServiceServer {
     private void configureHealthRoutes() {
         app.get("/health", ctx -> ctx.json(new HealthResponse("ok",
             pageManager.getActivePageCount(), consumerRegistry.getConsumerCount())));
-        app.get("/", ctx -> ctx.json(new ServiceInfo("Tradery Data Service", "1.0.0", config.getPort())));
+        app.get("/", ctx -> ctx.json(new ServiceInfo("Plaiiin Data Service", "1.0.0", config.getPort())));
         app.get("/logs", this::handleLogs);
     }
 

@@ -2,12 +2,12 @@
 // Apply to modules that produce .app bundles (forge, news, desk).
 //
 // Usage:
-//   ./gradlew :tradery-forge:packageRelease -PmacSignIdentity="Developer ID Application: ..." -PmacKeychainProfile="tradery-notary"
+//   ./gradlew :tradery-forge:packageRelease -PmacSignIdentity="Developer ID Application: ..." -PmacKeychainProfile="plaiiin-notary"
 //
 // Prerequisites:
 //   - Xcode command line tools installed
 //   - Valid Developer ID Application certificate in keychain
-//   - Notarization credentials stored via: xcrun notarytool store-credentials tradery-notary
+//   - Notarization credentials stored via: xcrun notarytool store-credentials plaiiin-notary
 
 // These tasks expect jpackage to have already run and produced an .app bundle.
 // The app name and DMG name are configured per-module via ext properties.
@@ -97,7 +97,7 @@ tasks.register('notarizeDmg', Exec) {
     description = 'Submit DMG to Apple for notarization'
 
     def dmgPath = layout.buildDirectory.file("jpackage/${project.ext.packagingDmgName}-${project.version}.dmg").get().asFile
-    def keychainProfile = project.findProperty('macKeychainProfile') ?: 'tradery-notary'
+    def keychainProfile = project.findProperty('macKeychainProfile') ?: 'plaiiin-notary'
 
     commandLine 'xcrun', 'notarytool', 'submit',
         dmgPath.absolutePath,

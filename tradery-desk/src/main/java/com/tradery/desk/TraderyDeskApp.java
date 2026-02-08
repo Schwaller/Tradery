@@ -33,13 +33,13 @@ import java.time.Instant;
 import java.util.*;
 
 /**
- * Tradery Desk - Real-time signal evaluation and alerting.
+ * Trading Desk - Real-time signal evaluation and alerting.
  *
  * Monitors activated strategies and generates alerts when entry/exit
  * conditions are met on live market data.
  *
  * Architecture:
- * - Library: iCloud Drive (~/Library/Mobile Documents/com~apple~CloudDocs/Tradery/)
+ * - Library: iCloud Drive (~/Library/Mobile Documents/com~apple~CloudDocs/Plaiiin/)
  *   - Versioned strategies published from Forge
  * - Active: ~/.tradery/desk/active/
  *   - Imported copies of specific versions from library
@@ -109,7 +109,7 @@ public class TraderyDeskApp {
      * Start the application.
      */
     public void start() {
-        log.info("Starting Tradery Desk...");
+        log.info("Starting Trading Desk...");
 
         // Initialize app context for status window
         DeskAppContext appCtx = DeskAppContext.getInstance();
@@ -162,7 +162,7 @@ public class TraderyDeskApp {
             frame.setStrategies(strategies);
         }
 
-        log.info("Tradery Desk started");
+        log.info("Trading Desk started");
     }
 
     /**
@@ -695,7 +695,7 @@ public class TraderyDeskApp {
      * Shutdown the application.
      */
     public void shutdown() {
-        log.info("Shutting down Tradery Desk...");
+        log.info("Shutting down Trading Desk...");
 
         strategyWatcher.stop();
 
@@ -739,7 +739,7 @@ public class TraderyDeskApp {
 
         alertDispatcher.shutdown();
 
-        log.info("Tradery Desk shutdown complete");
+        log.info("Trading Desk shutdown complete");
         System.exit(0);
     }
 
@@ -748,7 +748,7 @@ public class TraderyDeskApp {
      */
     public static void main(String[] args) {
         String version = System.getProperty("tradery.version", "1.0.0");
-        log.info("Tradery Desk v{}", version);
+        log.info("Trading Desk v{}", version);
 
         // Ensure directories exist
         try {

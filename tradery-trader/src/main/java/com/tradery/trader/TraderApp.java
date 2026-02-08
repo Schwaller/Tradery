@@ -11,7 +11,7 @@ public class TraderApp {
     private static final Logger log = LoggerFactory.getLogger(TraderApp.class);
 
     public static void main(String[] args) {
-        log.info("Starting Tradery Trader...");
+        log.info("Starting Trader...");
 
         // Set up FlatLaf dark theme
         FlatDarkLaf.setup();

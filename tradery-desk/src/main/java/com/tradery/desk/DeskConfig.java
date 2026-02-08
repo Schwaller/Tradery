@@ -14,7 +14,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Configuration for Tradery Desk.
+ * Configuration for Trading Desk.
  * Stored in ~/.tradery/desk/desk-config.yaml
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
@@ -37,7 +37,7 @@ public class DeskConfig {
     // Default library path on iCloud Drive
     public static final Path DEFAULT_LIBRARY_PATH = Path.of(
         System.getProperty("user.home"),
-        "Library", "Mobile Documents", "com~apple~CloudDocs", "Tradery"
+        "Library", "Mobile Documents", "com~apple~CloudDocs", "Plaiiin"
     );
 
     // Library path (where Forge publishes strategies)

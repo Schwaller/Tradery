@@ -18,14 +18,14 @@ import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
 
 /**
- * Tradery - Java Desktop Trading Strategy Backtester
+ * Strategy Forge - Java Desktop Trading Strategy Backtester
  *
  * File-based architecture for seamless Claude Code integration.
  * All data stored in ~/.tradery/ as plain JSON/CSV files.
  */
 public class TraderyApp {
 
-    public static final String APP_NAME = "Tradery";
+    public static final String APP_NAME = "Strategy Forge";
     public static final String VERSION = System.getProperty("tradery.version", "1.0.0");
     public static final File USER_DIR = new File(System.getProperty("user.home"), ".tradery");
 
@@ -61,7 +61,7 @@ public class TraderyApp {
         AppLock appLock = AppLock.getInstance();
         if (appLock.isAnotherInstanceRunning()) {
             JOptionPane.showMessageDialog(null,
-                "Tradery is already running.\n\nCheck your running applications.",
+                "Strategy Forge is already running.\n\nCheck your running applications.",
                 "Already Running",
                 JOptionPane.WARNING_MESSAGE);
             System.exit(EXIT_CODE_ALREADY_RUNNING);

@@ -1,7 +1,7 @@
 {
-  "name": "tradery-mcp-server",
+  "name": "plaiiin-mcp-server",
   "version": "1.0.0",
-  "description": "MCP server for Tradery trading strategy backtester",
+  "description": "MCP server for Plaiiin trading strategy backtester",
   "main": "index.js",
   "type": "module",
   "scripts": {

@@ -7,7 +7,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 ICONS_DIR="$PROJECT_DIR/src/main/resources/icons"
 SOURCE_PNG="$ICONS_DIR/application-icon.png"
-ICONSET_DIR="$ICONS_DIR/Tradery.iconset"
+ICONSET_DIR="$ICONS_DIR/Plaiiin.iconset"
 OUTPUT_ICNS="$PROJECT_DIR/src/main/resources/icon.icns"
 
 if [ ! -f "$SOURCE_PNG" ]; then

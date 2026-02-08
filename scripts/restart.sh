@@ -1,5 +1,5 @@
 #!/bin/bash
-# Restart Tradery - kill any running instance and start fresh
+# Restart Strategy Forge - kill any running instance and start fresh
 #
 # Usage:
 #   ./scripts/restart.sh              # Start tradery-forge (default)
@@ -13,7 +13,7 @@ set -e
 PROJECT_DIR="/Users/martinschwaller/Code/Tradery"
 MODULE="${1:-forge}"
 
-echo "Stopping Tradery..."
+echo "Stopping Strategy Forge..."
 pkill -f "GradleWorkerMain" 2>/dev/null || true
 pkill -f "com.tradery" 2>/dev/null || true
 sleep 1

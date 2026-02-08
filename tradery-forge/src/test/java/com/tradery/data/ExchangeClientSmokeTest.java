@@ -5,6 +5,7 @@ import com.tradery.forge.data.BybitExchangeClient;
 import com.tradery.forge.data.OkxExchangeClient;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 
 import java.util.List;
 
@@ -15,6 +16,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * Tagged "integration" so it doesn't run on every build.
  */
 @Tag("integration")
+@Timeout(30) // Kill hung tests after 30 seconds
 class ExchangeClientSmokeTest {
 
     // ========== Bybit ==========

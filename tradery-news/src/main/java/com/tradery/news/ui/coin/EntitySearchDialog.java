@@ -314,7 +314,7 @@ public class EntitySearchDialog extends JDialog {
         gbc.fill = GridBagConstraints.HORIZONTAL;
         int col = 1;
         for (SearchLevel level : SearchLevel.values()) {
-            String btnLabel = level == SearchLevel.DEEP ? "Deep \u25be" : level.label;
+            String btnLabel = level == SearchLevel.DEEP ? "More ..." : level.label;
             ToolbarButton btn = new ToolbarButton(btnLabel);
             btn.setToolTipText(level.tooltip);
 
@@ -396,9 +396,8 @@ public class EntitySearchDialog extends JDialog {
         for (AiProfile profile : profiles) {
             String star = profile.getId() != null && profile.getId().equals(defaultId) ? "\u2605 " : "";
             String desc = profile.getDescription() != null && !profile.getDescription().isEmpty()
-                ? "<br><font color='gray'>" + profile.getDescription() + "</font>" : "";
-            JMenuItem item = new JMenuItem("<html><b>" + star + profile.getName() + "</b> "
-                + "<font color='gray'>[" + profile.getProvider() + "]</font>"
+                ? "<br><font color='gray' size='-2'>" + profile.getDescription() + "</font>" : "";
+            JMenuItem item = new JMenuItem("<html><b>" + star + profile.getName() + "</b>"
                 + desc + "</html>");
             item.addActionListener(e -> performDeepSearch(relType, profile, button));
             popup.add(item);
@@ -433,7 +432,7 @@ public class EntitySearchDialog extends JDialog {
             java.util.List<EntitySearchProcessor.DiscoveredEntity> entities = result.entities();
             int count = entities.size();
 
-            button.setText("Deep: " + count);
+            button.setText("More: " + count);
             typeStates.get(relType).resultCounts().put(SearchLevel.DEEP, count);
 
             for (EntitySearchProcessor.DiscoveredEntity entity : entities) {

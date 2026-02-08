@@ -31,7 +31,7 @@ public class LicenseGate {
         // License missing, invalid, or expired
         if (headless) {
             System.err.println("========================================");
-            System.err.println("  Tradery: No valid license found.");
+            System.err.println("  Plaiiin: No valid license found.");
             System.err.println("  Please run a GUI app to enter your key,");
             System.err.println("  or add it to ~/.tradery/license.yaml");
             System.err.println("========================================");

@@ -70,8 +70,8 @@ public class AiDetector {
         return List.of(
             new DetectedProvider(
                 AiProvider.CLAUDE,
-                "Claude Haiku" + versionSuffix,
-                "Fast and cheap \u2014 good for extraction and simple tasks",
+                "Claude \u2014 Fast (Haiku)",
+                "Quick extraction and simple tasks",
                 ver, null, "claude",
                 "--print --output-format text --model haiku",
                 true, false,
@@ -79,8 +79,8 @@ public class AiDetector {
             ),
             new DetectedProvider(
                 AiProvider.CLAUDE,
-                "Claude Sonnet" + versionSuffix,
-                "Balanced \u2014 good for analysis and research",
+                "Claude \u2014 Balanced (Sonnet)",
+                "Analysis and research",
                 ver, null, "claude",
                 "--print --output-format text --model sonnet",
                 true, false,
@@ -88,8 +88,8 @@ public class AiDetector {
             ),
             new DetectedProvider(
                 AiProvider.CLAUDE,
-                "Claude Opus" + versionSuffix,
-                "Smartest \u2014 best for complex reasoning and deep research",
+                "Claude \u2014 Thinking (Opus)",
+                "Complex reasoning and deep research",
                 ver, null, "claude",
                 "--print --output-format text --model opus",
                 true, false,

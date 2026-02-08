@@ -141,7 +141,7 @@ public class IntelFrame extends JFrame {
     }
 
     public IntelFrame() {
-        super("Tradery - Intelligence");
+        super("Intelligence");
 
         // Initialize stores
         this.dataDir = Path.of(System.getProperty("user.home"), ".cryptonews");
@@ -296,7 +296,7 @@ public class IntelFrame extends JFrame {
         gbc.weightx = 0;
         gbc.fill = GridBagConstraints.NONE;
         gbc.anchor = GridBagConstraints.CENTER;
-        JLabel titleLabel = new JLabel("Tradery - Intelligence");
+        JLabel titleLabel = new JLabel("Intelligence");
         titleLabel.setFont(new Font("SansSerif", Font.BOLD, 13));
         titleLabel.setForeground(textSecondary());
         headerBar.add(titleLabel, gbc);

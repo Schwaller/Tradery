@@ -12,7 +12,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Settings dialog for Tradery Desk.
+ * Settings dialog for Trading Desk.
  * Extends the shared base which provides the Appearance section and modern styling.
  * Adds Chart Defaults, Data Storage, and Factory Reset sections.
  */

@@ -1,4 +1,4 @@
-# Tradery - Java Desktop Trading Strategy Backtester
+# Plaiiin - Java Desktop Trading Strategy Backtester
 
 ## Project Overview
 Java Swing desktop app for backtesting trading strategies. File-based storage enables Claude Code integration.

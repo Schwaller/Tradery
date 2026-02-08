@@ -1,6 +1,6 @@
 ## Overview
 
-**Tradery Intelligence** is a research tool for mapping the crypto ecosystem. It combines a **news timeline**, a **coin relationship graph**, and **AI-powered entity discovery** to help you understand connections between projects, investors, and exchanges.
+**Intelligence** is a research tool for mapping the crypto ecosystem. It combines a **news timeline**, a **coin relationship graph**, and **AI-powered entity discovery** to help you understand connections between projects, investors, and exchanges.
 
 ### Views
 

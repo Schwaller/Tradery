@@ -801,6 +801,8 @@ public class IntelSettingsDialog extends SettingsDialog {
 
         JButton addBtn = new JButton("Add Selected");
         addBtn.addActionListener(e -> {
+            boolean hadNoDefault = aiConfig.getDefaultProfileId() == null;
+            String firstAddedId = null;
             for (int i = 0; i < checkboxes.size(); i++) {
                 if (!checkboxes.get(i).isSelected()) continue;
                 DetectedProvider dp = newProviders.get(i);
@@ -813,6 +815,10 @@ public class IntelSettingsDialog extends SettingsDialog {
                 if (dp.args() != null) profile.setArgs(dp.args());
                 if (dp.command() != null) profile.setCommand(dp.command());
                 aiConfig.addProfile(profile);
+                if (firstAddedId == null) firstAddedId = id;
+            }
+            if (hadNoDefault && firstAddedId != null) {
+                aiConfig.setDefaultProfileId(firstAddedId);
             }
             aiConfig.save();
             loadProfiles.run();

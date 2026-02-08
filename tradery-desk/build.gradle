@@ -205,7 +205,7 @@ tasks.register('notarizeDmg', Exec) {
     description = 'Submit DMG to Apple for notarization'
 
     def dmgPath = layout.buildDirectory.file("jpackage/Trading Desk-${project.version}.dmg").get().asFile
-    def keychainProfile = project.findProperty('macKeychainProfile') ?: 'tradery-notary'
+    def keychainProfile = project.findProperty('macKeychainProfile') ?: 'plaiiin-notary'
 
     commandLine 'xcrun', 'notarytool', 'submit',
         dmgPath.absolutePath,

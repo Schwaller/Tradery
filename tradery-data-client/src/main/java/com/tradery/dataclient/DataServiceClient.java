@@ -16,7 +16,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 
 /**
- * Client for the Tradery Data Service.
+ * Client for the Plaiiin Data Service.
  * All data delivery uses WebSocket push (binary msgpack frames).
  * HTTP is used only for health checks, symbol resolution, and aggTrades cache access.
  */

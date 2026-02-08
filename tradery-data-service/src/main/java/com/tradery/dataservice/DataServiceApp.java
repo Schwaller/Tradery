@@ -20,7 +20,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
 /**
- * Tradery Data Service - standalone daemon for data fetching and caching.
+ * Plaiiin Data Service - standalone daemon for data fetching and caching.
  * Provides HTTP/WebSocket API for Strategy Designer and Local Runner.
  *
  * Lifecycle: Started by apps on demand, shuts down automatically when no consumers remain.
@@ -39,7 +39,7 @@ public class DataServiceApp {
     private static java.time.Instant startTime;
 
     public static void main(String[] args) {
-        LOG.info("Starting Tradery Data Service...");
+        LOG.info("Starting Plaiiin Data Service...");
         startTime = java.time.Instant.now();
 
         try {
@@ -78,12 +78,12 @@ public class DataServiceApp {
 
             // Register shutdown hook to clean up
             Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-                LOG.info("Shutting down Tradery Data Service...");
+                LOG.info("Shutting down Plaiiin Data Service...");
                 cleanup();
             }));
 
             server.start();
-            LOG.info("Tradery Data Service started on port {}", config.getPort());
+            LOG.info("Plaiiin Data Service started on port {}", config.getPort());
 
             // Wait for shutdown signal (either from consumer registry or external)
             shutdownLatch.await();

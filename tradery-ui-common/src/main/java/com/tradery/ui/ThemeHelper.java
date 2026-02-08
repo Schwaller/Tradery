@@ -9,7 +9,7 @@ import java.util.*;
 import java.util.List;
 
 /**
- * Shared theme management across all Tradery apps.
+ * Shared theme management across all Plaiiin apps.
  * Persists theme choice in ~/.tradery/theme.txt (shared file).
  * Uses string-based class loading so intellij-themes jar is only needed at runtime.
  */

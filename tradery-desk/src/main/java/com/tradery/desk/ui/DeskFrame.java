@@ -23,7 +23,7 @@ import java.beans.PropertyChangeListener;
 import java.util.List;
 
 /**
- * Main window for Tradery Desk.
+ * Main window for Trading Desk.
  * Displays connection status, active strategies, price chart, and signal log.
  */
 public class DeskFrame extends JFrame {
@@ -44,7 +44,7 @@ public class DeskFrame extends JFrame {
     private Runnable onClose;
 
     public DeskFrame() {
-        super("Tradery Desk");
+        super("Trading Desk");
         setDefaultCloseOperation(JFrame.DO_NOTHING_ON_CLOSE);
         setSize(1000, 700);
         setLocationRelativeTo(null);
@@ -71,7 +71,7 @@ public class DeskFrame extends JFrame {
         // Main layout
         JPanel mainPanel = new JPanel(new BorderLayout(0, 0));
 
-        // Single header bar: [symbol combo]  --Tradery Desk--  [price]
+        // Single header bar: [symbol combo]  --Trading Desk--  [price]
         mainPanel.add(createHeaderBar(), BorderLayout.NORTH);
 
         // Status bar at bottom
@@ -187,7 +187,7 @@ public class DeskFrame extends JFrame {
         gbc.weightx = 0;
         gbc.fill = GridBagConstraints.NONE;
         gbc.anchor = GridBagConstraints.CENTER;
-        JLabel titleLabel = new JLabel("Tradery Desk");
+        JLabel titleLabel = new JLabel("Trading Desk");
         titleLabel.setFont(new Font("SansSerif", Font.BOLD, 13));
         titleLabel.setForeground(UIManager.getColor("Label.disabledForeground"));
         headerBar.add(titleLabel, gbc);

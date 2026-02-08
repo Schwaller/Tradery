@@ -1,6 +1,6 @@
-# Tradery Strategy Guide
+# Plaiiin Strategy Guide
 
-A comprehensive guide to building trading strategies in Tradery.
+A comprehensive guide to building trading strategies in Plaiiin.
 
 ---
 
@@ -19,7 +19,7 @@ A comprehensive guide to building trading strategies in Tradery.
 ## Entry Settings
 
 ### Entry Condition (DSL)
-The entry condition is written in Tradery's Domain Specific Language (DSL). When this condition becomes true, an entry signal is generated.
+The entry condition is written in Plaiiin's Domain Specific Language (DSL). When this condition becomes true, an entry signal is generated.
 
 **Example conditions:**
 - `RSI(14) < 30` - RSI oversold

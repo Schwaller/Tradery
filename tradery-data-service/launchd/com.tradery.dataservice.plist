@@ -3,14 +3,14 @@
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>com.tradery.dataservice</string>
+    <string>com.plaiiin.dataservice</string>
 
     <key>ProgramArguments</key>
     <array>
         <string>/usr/bin/java</string>
         <string>-Xmx2g</string>
         <string>-jar</string>
-        <string>/Applications/Tradery/tradery-data-service.jar</string>
+        <string>/Applications/Plaiiin/tradery-data-service.jar</string>
     </array>
 
     <key>RunAtLoad</key>

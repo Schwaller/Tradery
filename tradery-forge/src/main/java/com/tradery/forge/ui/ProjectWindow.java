@@ -301,7 +301,7 @@ public class ProjectWindow extends JFrame {
 
         // Publish button - publish strategy to library for Desk
         publishBtn = new ToolbarButton("Publish");
-        publishBtn.setToolTipText("Publish strategy to library for Tradery Desk");
+        publishBtn.setToolTipText("Publish strategy to library for Trading Desk");
         publishBtn.addActionListener(e -> publishStrategy());
 
         // Data status panel created later in status bar

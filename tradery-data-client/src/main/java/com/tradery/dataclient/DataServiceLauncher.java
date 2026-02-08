@@ -134,7 +134,7 @@ public class DataServiceLauncher {
             "tradery-data-service.jar",
             // Installed: in Applications
             "/Applications/Strategy Forge.app/Contents/app/tradery-data-service.jar",
-            "/Applications/Tradery.app/Contents/app/tradery-data-service.jar",
+            "/Applications/Plaiiin.app/Contents/app/tradery-data-service.jar",
         };
 
         // First, try relative to current working directory

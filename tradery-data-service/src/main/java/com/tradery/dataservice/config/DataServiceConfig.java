@@ -4,7 +4,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 
 /**
- * Configuration for the Tradery Data Service.
+ * Configuration for the Plaiiin Data Service.
  */
 public class DataServiceConfig {
     private static final String DEFAULT_DATA_DIR = System.getProperty("user.home") + "/.tradery";

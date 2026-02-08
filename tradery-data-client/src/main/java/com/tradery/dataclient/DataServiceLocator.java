@@ -12,7 +12,7 @@ import java.nio.file.Paths;
 import java.util.Optional;
 
 /**
- * Locates and connects to a running Tradery Data Service.
+ * Locates and connects to a running Plaiiin Data Service.
  */
 public class DataServiceLocator {
     private static final Logger LOG = LoggerFactory.getLogger(DataServiceLocator.class);

@@ -26,7 +26,7 @@ public class TraderFrame extends JFrame {
     private final JButton connectButton = new JButton("Connect");
 
     public TraderFrame() {
-        setTitle("Tradery Trader");
+        setTitle("Trader");
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setSize(1000, 700);
         setLocationRelativeTo(null);

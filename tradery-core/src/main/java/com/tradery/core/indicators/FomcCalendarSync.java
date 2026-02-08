@@ -164,7 +164,7 @@ public class FomcCalendarSync {
     private static Map<Integer, Set<LocalDate>> fetchFromFed() throws IOException {
         Request request = new Request.Builder()
                 .url(FED_URL)
-                .header("User-Agent", "Tradery/1.0 (Trading Strategy Backtester)")
+                .header("User-Agent", "Plaiiin/1.0 (Trading Strategy Backtester)")
                 .build();
 
         try (Response response = httpClient.newCall(request).execute()) {

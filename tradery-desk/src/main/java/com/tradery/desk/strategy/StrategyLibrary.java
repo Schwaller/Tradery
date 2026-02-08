@@ -19,7 +19,7 @@ import java.util.stream.Stream;
  * Provides access to published strategies and their versions.
  *
  * Library structure:
- * ~/Library/Mobile Documents/com~apple~CloudDocs/Tradery/
+ * ~/Library/Mobile Documents/com~apple~CloudDocs/Plaiiin/
  * └── strategies/
  *     ├── rsi-reversal/
  *     │   ├── v1.yaml

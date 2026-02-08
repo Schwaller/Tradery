@@ -3,7 +3,7 @@ set -e
 
 GRAALVM_HOME="$HOME/.graalvm/graalvm-jdk-21.0.5+9.1/Contents/Home"
 BUILD_DIR="/Users/martinschwaller/Code/Tradery/tradery-forge/build"
-APP_NAME="Tradery"
+APP_NAME="Strategy Forge"
 APP_DIR="$BUILD_DIR/$APP_NAME.app"
 
 echo "=== Creating macOS .app bundle ==="
@@ -32,13 +32,13 @@ cp "$GRAALVM_HOME/lib/libjavajpeg.dylib" "$APP_DIR/Contents/Frameworks/" 2>/dev/
 cp "$GRAALVM_HOME/lib/libsplashscreen.dylib" "$APP_DIR/Contents/Frameworks/" 2>/dev/null || true
 
 # Create launcher script that sets library path
-cat > "$APP_DIR/Contents/MacOS/Tradery" << 'LAUNCHER'
+cat > "$APP_DIR/Contents/MacOS/Strategy Forge" << 'LAUNCHER'
 #!/bin/bash
 DIR="$(cd "$(dirname "$0")" && pwd)"
 export DYLD_LIBRARY_PATH="$DIR/../Frameworks:$DYLD_LIBRARY_PATH"
 exec "$DIR/tradery-bin" "$@"
 LAUNCHER
-chmod +x "$APP_DIR/Contents/MacOS/Tradery"
+chmod +x "$APP_DIR/Contents/MacOS/Strategy Forge"
 
 # Create Info.plist
 cat > "$APP_DIR/Contents/Info.plist" << PLIST
@@ -47,9 +47,9 @@ cat > "$APP_DIR/Contents/Info.plist" << PLIST
 <plist version="1.0">
 <dict>
     <key>CFBundleName</key>
-    <string>Tradery</string>
+    <string>Strategy Forge</string>
     <key>CFBundleDisplayName</key>
-    <string>Tradery</string>
+    <string>Strategy Forge</string>
     <key>CFBundleIdentifier</key>
     <string>com.tradery.forge</string>
     <key>CFBundleVersion</key>
@@ -57,7 +57,7 @@ cat > "$APP_DIR/Contents/Info.plist" << PLIST
     <key>CFBundleShortVersionString</key>
     <string>1.0.0</string>
     <key>CFBundleExecutable</key>
-    <string>Tradery</string>
+    <string>Strategy Forge</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>LSMinimumSystemVersion</key>
@@ -83,4 +83,4 @@ echo "App bundle: $APP_DIR"
 du -sh "$APP_DIR"
 echo ""
 echo "To run: open $APP_DIR"
-echo "Or:     $APP_DIR/Contents/MacOS/Tradery"
+echo "Or:     $APP_DIR/Contents/MacOS/Strategy Forge"

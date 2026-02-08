@@ -10,7 +10,7 @@ import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 
 /**
- * Handles automatic setup of the Tradery MCP server for Claude Code integration.
+ * Handles automatic setup of the Plaiiin MCP server for Claude Code integration.
  * On startup, always overwrites index.js (like CLAUDE.md) and only runs npm install when version changes.
  */
 public class McpServerSetup {
@@ -91,7 +91,7 @@ public class McpServerSetup {
         String mcpConfig = """
             {
               "mcpServers": {
-                "tradery": {
+                "plaiiin": {
                   "command": "node",
                   "args": ["%s"]
                 }
@@ -125,7 +125,7 @@ public class McpServerSetup {
         return """
             {
               "mcpServers": {
-                "tradery": {
+                "plaiiin": {
                   "command": "node",
                   "args": ["%s"]
                 }

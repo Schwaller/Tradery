@@ -25,7 +25,7 @@ import java.util.stream.Stream;
  * Publishes strategies from Forge to the Strategy Library (iCloud Drive by default).
  *
  * Library structure:
- * ~/Library/Mobile Documents/com~apple~CloudDocs/Tradery/
+ * ~/Library/Mobile Documents/com~apple~CloudDocs/Plaiiin/
  * └── strategies/
  *     ├── rsi-reversal/
  *     │   ├── v1.yaml
@@ -43,7 +43,7 @@ public class DeskPublisher {
     // Default library path on iCloud Drive
     public static final Path DEFAULT_LIBRARY_PATH = Path.of(
         System.getProperty("user.home"),
-        "Library", "Mobile Documents", "com~apple~CloudDocs", "Tradery"
+        "Library", "Mobile Documents", "com~apple~CloudDocs", "Plaiiin"
     );
 
     private static final ObjectMapper YAML;
@@ -218,7 +218,7 @@ public class DeskPublisher {
     }
 
     /**
-     * Ensure the library directory exists (creates iCloud Tradery folder if needed).
+     * Ensure the library directory exists (creates iCloud Plaiiin folder if needed).
      */
     public void ensureLibraryExists() throws IOException {
         Files.createDirectories(getStrategiesDir());

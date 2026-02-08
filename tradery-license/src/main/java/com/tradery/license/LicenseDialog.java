@@ -58,7 +58,7 @@ public class LicenseDialog extends JDialog {
         JPanel content = new JPanel(new BorderLayout(0, 12));
         content.setBorder(new EmptyBorder(16, 24, 12, 24));
 
-        JLabel subtitle = new JLabel("Enter your license key to activate Tradery:");
+        JLabel subtitle = new JLabel("Enter your license key to activate Plaiiin:");
         subtitle.setFont(new Font("SansSerif", Font.PLAIN, 12));
         content.add(subtitle, BorderLayout.NORTH);
 
