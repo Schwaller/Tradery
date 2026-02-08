@@ -305,7 +305,7 @@ members:
 4. Change `visibility` in `document.yaml`
 5. Generate Ed25519 keypair if not yet created
 
-No schema migration needed — the FactStore tables already have all the fields needed for P2P sync (`peer_id`, `lclock`, `wall_clock`, unique fact IDs).
+No schema migration needed — the FactStore tables already have all the fields needed for P2P sync (`peer_id`, `lclock`, `wall_clock`, unique fact IDs). Alpha/beta policy: we delete old DBs rather than migrate.
 
 **Governance types** (only meaningful for `friends`/`public`):
 - `open` — any member can publish facts directly
@@ -454,17 +454,17 @@ dependencies {
   - Manages `~/.tradery/documents/` directory + `index.yaml`
   - `createDocument(name)` → creates dir, `document.yaml` (visibility=LOCAL), empty `facts.db`
   - `openDocument(docId)` → returns `DocumentWorkspace` (FactStore/EntityStore/SchemaRegistry bound to that DB)
-  - `migrateDefault()` → moves existing `entity-network.db` into `documents/{uuid}/facts.db`
+  - On first startup: deletes old `entity-network.db` if present, creates fresh default document
 
 - **`DocumentWorkspace.java`**
   - Holds one open document's full stack: `FactStore` + `EntityStore` + `SchemaRegistry` + `DataSourceRegistry`
   - Created by `DocumentManager.openDocument()`
   - UI panels bind to the active workspace
 
-**Migration:**
-- The existing `~/.tradery/entity-network.db` becomes the user's default LOCAL document
-- On first startup: `DocumentManager.migrateDefault()` creates `~/.tradery/documents/{uuid}/`, moves DB → `facts.db`, writes `document.yaml`
-- **No account prompt** — migration is completely offline
+**No migration (alpha/beta):**
+- On first startup with documents enabled, if `~/.tradery/entity-network.db` exists, delete it
+- Create a fresh default LOCAL document in `~/.tradery/documents/{uuid}/facts.db`
+- Users re-fetch data from sources (CoinGecko, RSS) — no data migration needed
 
 **UI integration:**
 - `DocumentSwitcherPanel` — dropdown showing all local documents, "New Document" button
@@ -788,7 +788,7 @@ These run instantly and cover the core sync logic without Docker overhead. The T
 
 **Phase 2 (documents — tradery-documents module):**
 - Compile: `./gradlew :tradery-documents:compileJava`
-- `DocumentManager.migrateDefault()` — verify existing `entity-network.db` moved into `~/.tradery/documents/{uuid}/facts.db`
+- First startup: verify old `entity-network.db` deleted, fresh default document created in `~/.tradery/documents/{uuid}/`
 - Create new LOCAL document — verify directory + `facts.db` + `document.yaml` created
 - Open two DocumentWorkspaces — verify entity isolation (different FactStores)
 - UI: document switcher shows all local documents, switching works
