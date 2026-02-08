@@ -1305,6 +1305,100 @@ public class IndicatorEngine {
         return (double[]) cache.get(key);
     }
 
+    // ========== Fear & Greed Index (requires F&G data to be loaded) ==========
+
+    private List<FearGreedIndex> fearGreedData;
+
+    /**
+     * Set Fear & Greed Index data.
+     */
+    public void setFearGreedData(List<FearGreedIndex> fearGreedData) {
+        log.info("setFearGreedData: {} records", fearGreedData != null ? fearGreedData.size() : 0);
+        this.fearGreedData = fearGreedData;
+        cache.remove("fearGreedArray");
+    }
+
+    /**
+     * Check if Fear & Greed data is available.
+     */
+    public boolean hasFearGreedData() {
+        return fearGreedData != null && !fearGreedData.isEmpty();
+    }
+
+    /**
+     * Get the Fear & Greed value at bar index.
+     * Returns the most recent daily value at or before the candle timestamp.
+     */
+    public double getFearGreedAt(int barIndex) {
+        if (!hasFearGreedData()) {
+            return Double.NaN;
+        }
+
+        long candleTime = getTimestampAt(barIndex);
+        if (candleTime == 0) return Double.NaN;
+
+        // Find the most recent F&G value at or before this candle
+        FearGreedIndex latest = null;
+        for (FearGreedIndex fg : fearGreedData) {
+            if (fg.timestamp() <= candleTime) {
+                latest = fg;
+            } else {
+                break; // Data is sorted by time
+            }
+        }
+
+        if (latest == null) return Double.NaN;
+        return latest.value();
+    }
+
+    /**
+     * Get the average Fear & Greed value over N bars.
+     * @param period Number of bars to average
+     * @param barIndex Current bar index
+     */
+    public double getFearGreedAvgAt(int period, int barIndex) {
+        if (!hasFearGreedData() || barIndex < period - 1) {
+            return Double.NaN;
+        }
+
+        double sum = 0;
+        int count = 0;
+
+        for (int i = barIndex - period + 1; i <= barIndex; i++) {
+            double val = getFearGreedAt(i);
+            if (!Double.isNaN(val)) {
+                sum += val;
+                count++;
+            }
+        }
+
+        if (count == 0) return Double.NaN;
+        return sum / count;
+    }
+
+    // ========== Fear & Greed Arrays for Charts ==========
+
+    /**
+     * Get Fear & Greed array for all bars.
+     */
+    public double[] getFearGreed() {
+        int size = candles != null ? candles.size() : 0;
+        if (!hasFearGreedData() || size == 0) {
+            double[] result = new double[size];
+            java.util.Arrays.fill(result, Double.NaN);
+            return result;
+        }
+        String key = "fearGreedArray";
+        if (!cache.containsKey(key)) {
+            double[] result = new double[size];
+            for (int i = 0; i < size; i++) {
+                result[i] = getFearGreedAt(i);
+            }
+            cache.put(key, result);
+        }
+        return (double[]) cache.get(key);
+    }
+
     // ========== Supertrend ==========
 
     public Supertrend.Result getSupertrend(int period, double multiplier) {

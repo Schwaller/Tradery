@@ -35,7 +35,10 @@ public record BacktestContext(
     List<OpenInterest> openInterest,
 
     // Premium index data (optional)
-    List<PremiumIndex> premiumIndex
+    List<PremiumIndex> premiumIndex,
+
+    // Fear & Greed Index data (optional)
+    List<FearGreedIndex> fearGreedIndex
 ) {
     /**
      * Create a minimal context with just candles.
@@ -46,6 +49,7 @@ public record BacktestContext(
             Collections.emptyMap(),
             Collections.emptyMap(),
             Collections.emptyList(),
+            null,
             null,
             null,
             null,
@@ -62,6 +66,7 @@ public record BacktestContext(
             phaseStates,
             Collections.emptyMap(),
             Collections.emptyList(),
+            null,
             null,
             null,
             null,
@@ -85,6 +90,7 @@ public record BacktestContext(
         private List<FundingRate> fundingRates;
         private List<OpenInterest> openInterest;
         private List<PremiumIndex> premiumIndex;
+        private List<FearGreedIndex> fearGreedIndex;
 
         private Builder(List<Candle> candles) {
             this.candles = candles;
@@ -125,6 +131,11 @@ public record BacktestContext(
             return this;
         }
 
+        public Builder fearGreedIndex(List<FearGreedIndex> fearGreedIndex) {
+            this.fearGreedIndex = fearGreedIndex;
+            return this;
+        }
+
         public BacktestContext build() {
             return new BacktestContext(
                 candles,
@@ -134,7 +145,8 @@ public record BacktestContext(
                 aggTrades,
                 fundingRates,
                 openInterest,
-                premiumIndex
+                premiumIndex,
+                fearGreedIndex
             );
         }
     }

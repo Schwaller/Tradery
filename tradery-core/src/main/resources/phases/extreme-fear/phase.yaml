@@ -1,0 +1,7 @@
+id: extreme-fear
+name: Extreme Fear
+description: Fear & Greed Index below 25 - market in extreme fear
+category: Sentiment
+condition: FEAR_GREED < 25
+timeframe: 1d
+symbol: BTCUSDT

@@ -79,6 +79,7 @@ public class IndicatorSelectorPopup extends JDialog {
     private final IndicatorToggleRow premium = new IndicatorToggleRow("Premium Index", "Show futures premium vs spot index (leading indicator)");
     private final IndicatorToggleRow holdingCostCumulative = new IndicatorToggleRow("Cumulative Holding Costs", "Show running total of funding fees/margin interest");
     private final IndicatorToggleRow holdingCostEvents = new IndicatorToggleRow("Holding Cost Events", "Show individual funding fee/interest charges per trade");
+    private final IndicatorToggleRow fearGreed = new IndicatorToggleRow("Fear & Greed", "Show Crypto Fear & Greed Index (0-100 sentiment)");
 
     // Core charts
     private final IndicatorToggleRow volumeChart = new IndicatorToggleRow("Volume", "Show volume chart");
@@ -201,6 +202,10 @@ public class IndicatorSelectorPopup extends JDialog {
         contentPane.add(createSectionHeader("PREMIUM INDEX"));
         contentPane.add(premium);
 
+        contentPane.add(Box.createVerticalStrut(4));
+        contentPane.add(createSectionHeader("SENTIMENT"));
+        contentPane.add(fearGreed);
+
         contentPane.add(createSectionSeparator());
         contentPane.add(createSectionHeader("HOLDING COSTS"));
         contentPane.add(holdingCostCumulative);
@@ -269,6 +274,7 @@ public class IndicatorSelectorPopup extends JDialog {
         premium.addChangeListener(update);
         holdingCostCumulative.addChangeListener(update);
         holdingCostEvents.addChangeListener(update);
+        fearGreed.addChangeListener(update);
         volumeChart.addChangeListener(update);
         equityChart.addChangeListener(update);
         comparisonChart.addChangeListener(update);
@@ -517,6 +523,7 @@ public class IndicatorSelectorPopup extends JDialog {
         premium.setSelected(config.isPremiumEnabled());
         holdingCostCumulative.setSelected(config.isHoldingCostCumulativeEnabled());
         holdingCostEvents.setSelected(config.isHoldingCostEventsEnabled());
+        fearGreed.setSelected(config.isFearGreedEnabled());
 
         // Core charts
         volumeChart.setSelected(config.isVolumeChartEnabled());
@@ -735,6 +742,9 @@ public class IndicatorSelectorPopup extends JDialog {
         config.setHoldingCostCumulativeEnabled(holdingCostCumulative.isSelected());
         chartPanel.setHoldingCostEventsChartEnabled(holdingCostEvents.isSelected());
         config.setHoldingCostEventsEnabled(holdingCostEvents.isSelected());
+
+        chartPanel.setFearGreedChartEnabled(fearGreed.isSelected());
+        config.setFearGreedEnabled(fearGreed.isSelected());
 
         // Core charts
         chartPanel.setVolumeChartEnabled(volumeChart.isSelected());

@@ -58,6 +58,7 @@ public class ConditionEvaluator {
             case AstNode.CandlePropCall c -> evaluateCandleProp(c, barIndex);
             case AstNode.FootprintFunctionCall f -> evaluateFootprintFunction(f, barIndex);
             case AstNode.ExchangeFunctionCall e -> evaluateExchangeFunction(e, barIndex);
+            case AstNode.FearGreedFunctionCall fg -> evaluateFearGreedFunction(fg, barIndex);
             case AstNode.LookbackAccess l -> evaluateLookback(l, barIndex);
             case AstNode.PriceReference p -> evaluatePrice(p, barIndex);
             case AstNode.NumberLiteral n -> n.value();
@@ -324,6 +325,14 @@ public class ConditionEvaluator {
             case "FUNDING" -> engine.getFundingAt(barIndex);
             case "FUNDING_8H" -> engine.getFunding8HAvgAt(barIndex);
             default -> throw new EvaluationException("Unknown funding function: " + node.func());
+        };
+    }
+
+    private double evaluateFearGreedFunction(AstNode.FearGreedFunctionCall node, int barIndex) {
+        return switch (node.func()) {
+            case "FEAR_GREED" -> engine.getFearGreedAt(barIndex);
+            case "FEAR_GREED_AVG" -> engine.getFearGreedAvgAt(node.period(), barIndex);
+            default -> throw new EvaluationException("Unknown Fear & Greed function: " + node.func());
         };
     }
 

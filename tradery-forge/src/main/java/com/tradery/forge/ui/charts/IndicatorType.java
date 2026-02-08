@@ -21,7 +21,8 @@ public enum IndicatorType {
     TRADE_COUNT("Trade Count", null),
     PREMIUM("Premium Index", null),
     HOLDING_COST_CUMULATIVE("Cumulative Holding Costs", null),
-    HOLDING_COST_EVENTS("Holding Cost Events", null);
+    HOLDING_COST_EVENTS("Holding Cost Events", null),
+    FEAR_GREED("Fear & Greed Index", new double[]{0, 100});
 
     private final String title;
     private final double[] yAxisRange;

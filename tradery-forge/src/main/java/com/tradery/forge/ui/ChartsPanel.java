@@ -148,6 +148,9 @@ public class ChartsPanel extends JPanel {
         setHoldingCostCumulativeChartEnabled(config.isHoldingCostCumulativeEnabled());
         setHoldingCostEventsChartEnabled(config.isHoldingCostEventsEnabled());
 
+        // Apply Fear & Greed chart setting
+        setFearGreedChartEnabled(config.isFearGreedEnabled());
+
         // Apply trade count chart setting
         setTradeCountChartEnabled(config.isTradeCountEnabled());
 
@@ -1161,6 +1164,14 @@ public class ChartsPanel extends JPanel {
 
     public boolean isHoldingCostEventsChartEnabled() {
         return indicatorManager.isHoldingCostEventsChartEnabled();
+    }
+
+    public void setFearGreedChartEnabled(boolean enabled) {
+        indicatorManager.setFearGreedChartEnabled(enabled);
+    }
+
+    public boolean isFearGreedChartEnabled() {
+        return indicatorManager.isFearGreedChartEnabled();
     }
 
     public boolean isAnyOrderflowChartEnabled() {

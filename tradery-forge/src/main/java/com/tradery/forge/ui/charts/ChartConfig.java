@@ -73,6 +73,9 @@ public class ChartConfig {
     // Premium Index chart
     private boolean premiumEnabled = false;
 
+    // Fear & Greed Index chart
+    private boolean fearGreedEnabled = false;
+
     // Holding Cost charts
     private boolean holdingCostCumulativeEnabled = false;
     private boolean holdingCostEventsEnabled = false;
@@ -355,6 +358,11 @@ public class ChartConfig {
     public boolean isPremiumEnabled() { return premiumEnabled; }
     public void setPremiumEnabled(boolean enabled) { this.premiumEnabled = enabled; save(); }
 
+    // ===== Fear & Greed Index Chart Getters/Setters =====
+
+    public boolean isFearGreedEnabled() { return fearGreedEnabled; }
+    public void setFearGreedEnabled(boolean enabled) { this.fearGreedEnabled = enabled; save(); }
+
     public boolean isHoldingCostCumulativeEnabled() { return holdingCostCumulativeEnabled; }
     public void setHoldingCostCumulativeEnabled(boolean enabled) { this.holdingCostCumulativeEnabled = enabled; save(); }
 
@@ -601,6 +609,9 @@ public class ChartConfig {
         // Premium Index
         this.premiumEnabled = other.premiumEnabled;
 
+        // Fear & Greed Index
+        this.fearGreedEnabled = other.fearGreedEnabled;
+
         // POC overlays
         this.dailyPocEnabled = other.dailyPocEnabled;
         this.floatingPocEnabled = other.floatingPocEnabled;
@@ -706,6 +717,9 @@ public class ChartConfig {
 
         // Premium Index - off by default
         premiumEnabled = false;
+
+        // Fear & Greed Index - off by default
+        fearGreedEnabled = false;
 
         // POC overlays - off by default
         dailyPocEnabled = false;
@@ -885,6 +899,9 @@ public class ChartConfig {
 
         // Premium Index
         this.premiumEnabled = other.premiumEnabled;
+
+        // Fear & Greed Index
+        this.fearGreedEnabled = other.fearGreedEnabled;
 
         // POC overlays
         this.dailyPocEnabled = other.dailyPocEnabled;

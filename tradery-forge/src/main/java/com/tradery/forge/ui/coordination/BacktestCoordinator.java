@@ -53,6 +53,7 @@ public class BacktestCoordinator {
     private final OIPageManager oiPageMgr;
     private final AggTradesPageManager aggTradesPageMgr;
     private final PremiumPageManager premiumPageMgr;
+    private final FearGreedPageManager fearGreedPageMgr;
 
     // Engine and stores
     private final BacktestEngine backtestEngine;
@@ -76,6 +77,7 @@ public class BacktestCoordinator {
     private DataPageListener<FundingRate> fundingListener;
     private DataPageListener<OpenInterest> oiListener;
     private DataPageListener<PremiumIndex> premiumListener;
+    private DataPageListener<FearGreedIndex> fearGreedListener;
     private final Map<String, DataPageListener<Candle>> phaseCandleListeners = new HashMap<>();
 
     // Current data (cached after backtest runs)
@@ -84,6 +86,7 @@ public class BacktestCoordinator {
     private List<FundingRate> currentFundingRates;
     private List<OpenInterest> currentOpenInterest;
     private List<PremiumIndex> currentPremiumIndex;
+    private List<FearGreedIndex> currentFearGreedIndex;
     private BacktestResult currentResult;  // Tracks if backtest has completed
 
     // Callbacks
@@ -118,6 +121,7 @@ public class BacktestCoordinator {
         this.oiPageMgr = ctx.getOIPageManager();
         this.aggTradesPageMgr = ctx.getAggTradesPageManager();
         this.premiumPageMgr = ctx.getPremiumPageManager();
+        this.fearGreedPageMgr = ctx.getFearGreedPageManager();
 
         this.backtestExecutor = Executors.newSingleThreadExecutor(r -> {
             Thread t = new Thread(r, "BacktestCoordinator");
@@ -225,6 +229,10 @@ public class BacktestCoordinator {
         return currentPremiumIndex;
     }
 
+    public List<FearGreedIndex> getCurrentFearGreedIndex() {
+        return currentFearGreedIndex;
+    }
+
     public IndicatorEngine getIndicatorEngine() {
         return backtestEngine.getIndicatorEngine();
     }
@@ -270,6 +278,12 @@ public class BacktestCoordinator {
                 if (requirements.getPremiumPage() != null) {
                     currentPremiumIndex = new ArrayList<>(requirements.getPremiumPage().getData());
                     backtestEngine.setPremiumIndex(currentPremiumIndex);
+                }
+            }
+            case "F&G" -> {
+                if (requirements.getFearGreedPage() != null) {
+                    currentFearGreedIndex = new ArrayList<>(requirements.getFearGreedPage().getData());
+                    backtestEngine.setFearGreedData(currentFearGreedIndex);
                 }
             }
         }
@@ -352,6 +366,7 @@ public class BacktestCoordinator {
         boolean strategyNeedsFunding = strategy.requiresFunding();
         boolean strategyNeedsOI = strategy.requiresOpenInterest();
         boolean strategyNeedsPremium = strategy.requiresPremium();
+        boolean strategyNeedsFearGreed = strategy.requiresFearGreed();
 
         // Combined needs (strategy + view)
         boolean needsAggTrades = strategyNeedsAggTrades || viewNeedsAggTrades;
@@ -408,6 +423,14 @@ public class BacktestCoordinator {
             DataPageView<PremiumIndex> premiumPage = premiumPageMgr.request(
                 symbol, timeframe, startTime, endTime, premiumListener, "BacktestCoordinator");
             requirements.setPremiumPage(premiumPage, viewOnly);
+        }
+
+        if (strategyNeedsFearGreed) {
+            reportDataStatus("F&G", "loading");
+            fearGreedListener = createFearGreedListener();
+            DataPageView<FearGreedIndex> fearGreedPage = fearGreedPageMgr.request(
+                symbol, null, startTime, endTime, fearGreedListener, "BacktestCoordinator");
+            requirements.setFearGreedPage(fearGreedPage, false);
         }
 
         // Request candles for phase timeframes (may differ from strategy timeframe)
@@ -541,6 +564,8 @@ public class BacktestCoordinator {
                         !requirements.isOiRequired();
             case "Premium" -> requirements.getPremiumPage() != null &&
                              !requirements.isPremiumRequired();
+            case "F&G" -> requirements.getFearGreedPage() != null &&
+                          !requirements.isFearGreedRequired();
             default -> false;
         };
     }
@@ -606,6 +631,8 @@ public class BacktestCoordinator {
                     ? new ArrayList<>(requirements.getOiPage().getData()) : null;
                 List<PremiumIndex> premium = requirements.getPremiumPage() != null
                     ? new ArrayList<>(requirements.getPremiumPage().getData()) : null;
+                List<FearGreedIndex> fearGreed = requirements.getFearGreedPage() != null
+                    ? new ArrayList<>(requirements.getFearGreedPage().getData()) : null;
 
                 // Store current data for later access
                 currentCandles = candles;
@@ -613,6 +640,7 @@ public class BacktestCoordinator {
                 currentFundingRates = funding;
                 currentOpenInterest = oi;
                 currentPremiumIndex = premium;
+                currentFearGreedIndex = fearGreed;
 
                 // Pre-compute phase states using engine's stateless evaluator
                 Map<String, boolean[]> phaseStates = new HashMap<>();
@@ -658,6 +686,7 @@ public class BacktestCoordinator {
                     .fundingRates(funding)
                     .openInterest(oi)
                     .premiumIndex(premium)
+                    .fearGreedIndex(fearGreed)
                     .build();
 
                 // Run backtest using engine's clean context-based API
@@ -784,6 +813,9 @@ public class BacktestCoordinator {
         if (requirements.getPremiumPage() != null) {
             premiumPageMgr.release(requirements.getPremiumPage(), premiumListener);
         }
+        if (requirements.getFearGreedPage() != null) {
+            fearGreedPageMgr.release(requirements.getFearGreedPage(), fearGreedListener);
+        }
 
         // Release phase candle pages
         for (Map.Entry<String, DataPageView<Candle>> entry : requirements.getPhaseCandlePages().entrySet()) {
@@ -797,6 +829,7 @@ public class BacktestCoordinator {
         fundingListener = null;
         oiListener = null;
         premiumListener = null;
+        fearGreedListener = null;
         phaseCandleListeners.clear();
     }
 
@@ -888,6 +921,19 @@ public class BacktestCoordinator {
             }
             @Override
             public void onDataChanged(DataPageView<PremiumIndex> page) {
+                handleDataChanged();
+            }
+        };
+    }
+
+    private DataPageListener<FearGreedIndex> createFearGreedListener() {
+        return new DataPageListener<FearGreedIndex>() {
+            @Override
+            public void onStateChanged(DataPageView<FearGreedIndex> page, PageState oldState, PageState newState) {
+                handleStateChanged("F&G", newState);
+            }
+            @Override
+            public void onDataChanged(DataPageView<FearGreedIndex> page) {
                 handleDataChanged();
             }
         };

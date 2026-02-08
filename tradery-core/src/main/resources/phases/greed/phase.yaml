@@ -1,0 +1,7 @@
+id: greed
+name: Greed
+description: Fear & Greed Index between 50 and 74 - market in greed
+category: Sentiment
+condition: FEAR_GREED >= 50 AND FEAR_GREED <= 74
+timeframe: 1d
+symbol: BTCUSDT

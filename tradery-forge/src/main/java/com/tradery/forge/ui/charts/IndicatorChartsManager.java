@@ -1169,6 +1169,74 @@ public class IndicatorChartsManager {
         }
     }
 
+    // ===== Fear & Greed Index Methods =====
+
+    public void setFearGreedChartEnabled(boolean enabled) {
+        setEnabled(IndicatorType.FEAR_GREED, enabled);
+        if (onLayoutChange != null) {
+            onLayoutChange.run();
+        }
+    }
+
+    public boolean isFearGreedChartEnabled() {
+        return isEnabled(IndicatorType.FEAR_GREED);
+    }
+
+    public void updateFearGreedChart(List<Candle> candles) {
+        if (!isEnabled(IndicatorType.FEAR_GREED) || candles == null || candles.isEmpty() || indicatorEngine == null) {
+            return;
+        }
+
+        XYPlot plot = components.get(IndicatorType.FEAR_GREED).getChart().getXYPlot();
+
+        double[] fearGreed = indicatorEngine.getFearGreed();
+        if (fearGreed == null || fearGreed.length == 0) {
+            return;
+        }
+
+        // Build dataset - color-coded bars by sentiment zones
+        XYSeriesCollection dataset = new XYSeriesCollection();
+        XYSeries series = new XYSeries("Fear & Greed");
+
+        for (int i = 0; i < candles.size() && i < fearGreed.length; i++) {
+            Candle c = candles.get(i);
+            if (!Double.isNaN(fearGreed[i])) {
+                series.add(c.timestamp(), fearGreed[i]);
+            }
+        }
+
+        dataset.addSeries(series);
+        plot.setDataset(0, dataset);
+
+        // Color-coded line renderer: red (<25), orange (25-49), yellow-green (50-74), green (>=75)
+        final XYSeriesCollection finalDataset = dataset;
+        XYLineAndShapeRenderer renderer = new XYLineAndShapeRenderer(true, false) {
+            @Override
+            public Paint getItemPaint(int s, int item) {
+                double value = finalDataset.getYValue(s, item);
+                if (value < 25) return new Color(231, 76, 60);       // Extreme Fear - red
+                if (value < 50) return new Color(230, 126, 34);      // Fear - orange
+                if (value <= 74) return new Color(142, 171, 59);     // Greed - yellow-green
+                return new Color(38, 166, 91);                        // Extreme Greed - green
+            }
+        };
+        renderer.setSeriesStroke(0, ChartStyles.MEDIUM_STROKE);
+        plot.setRenderer(0, renderer);
+
+        // Add reference lines at zone boundaries
+        plot.clearAnnotations();
+        ChartStyles.addChartTitleAnnotation(plot, "Fear & Greed Index");
+
+        if (!candles.isEmpty()) {
+            long startTime = candles.get(0).timestamp();
+            long endTime = candles.get(candles.size() - 1).timestamp();
+            // Zone boundary lines at 25, 50, 75
+            addHorizontalLine(plot, 25, ChartStyles.DASHED_STROKE, new Color(231, 76, 60, 80), startTime, endTime);
+            addHorizontalLine(plot, 50, ChartStyles.DASHED_STROKE, new Color(200, 200, 200, 80), startTime, endTime);
+            addHorizontalLine(plot, 75, ChartStyles.DASHED_STROKE, new Color(38, 166, 91, 80), startTime, endTime);
+        }
+    }
+
     // ===== Holding Cost Chart Methods =====
 
     /**
@@ -1598,6 +1666,7 @@ public class IndicatorChartsManager {
     public JFreeChart getPremiumChart() { return getChart(IndicatorType.PREMIUM); }
     public JFreeChart getHoldingCostCumulativeChart() { return getChart(IndicatorType.HOLDING_COST_CUMULATIVE); }
     public JFreeChart getHoldingCostEventsChart() { return getChart(IndicatorType.HOLDING_COST_EVENTS); }
+    public JFreeChart getFearGreedChart() { return getChart(IndicatorType.FEAR_GREED); }
 
     public org.jfree.chart.ChartPanel getRsiChartPanel() { return getChartPanel(IndicatorType.RSI); }
     public org.jfree.chart.ChartPanel getMacdChartPanel() { return getChartPanel(IndicatorType.MACD); }
@@ -1616,6 +1685,7 @@ public class IndicatorChartsManager {
     public org.jfree.chart.ChartPanel getPremiumChartPanel() { return getChartPanel(IndicatorType.PREMIUM); }
     public org.jfree.chart.ChartPanel getHoldingCostCumulativeChartPanel() { return getChartPanel(IndicatorType.HOLDING_COST_CUMULATIVE); }
     public org.jfree.chart.ChartPanel getHoldingCostEventsChartPanel() { return getChartPanel(IndicatorType.HOLDING_COST_EVENTS); }
+    public org.jfree.chart.ChartPanel getFearGreedChartPanel() { return getChartPanel(IndicatorType.FEAR_GREED); }
 
     public JPanel getRsiChartWrapper() { return getChartWrapper(IndicatorType.RSI); }
     public JPanel getMacdChartWrapper() { return getChartWrapper(IndicatorType.MACD); }
@@ -1634,6 +1704,7 @@ public class IndicatorChartsManager {
     public JPanel getPremiumChartWrapper() { return getChartWrapper(IndicatorType.PREMIUM); }
     public JPanel getHoldingCostCumulativeChartWrapper() { return getChartWrapper(IndicatorType.HOLDING_COST_CUMULATIVE); }
     public JPanel getHoldingCostEventsChartWrapper() { return getChartWrapper(IndicatorType.HOLDING_COST_EVENTS); }
+    public JPanel getFearGreedChartWrapper() { return getChartWrapper(IndicatorType.FEAR_GREED); }
 
     public JButton getZoomButton(IndicatorType type) { return components.get(type).getZoomButton(); }
 
@@ -1730,6 +1801,7 @@ public class IndicatorChartsManager {
         updateTradeCountChart(candles);
         updateHoldingCostCumulativeChart(candles);
         updateHoldingCostEventsChart(candles);
+        updateFearGreedChart(candles);
     }
 
     /**

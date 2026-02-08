@@ -30,6 +30,7 @@ public class BacktestEngine {
     private List<FundingRate> fundingRates;
     private List<OpenInterest> openInterestData;
     private List<PremiumIndex> premiumIndexData;
+    private List<FearGreedIndex> fearGreedData;
 
     public BacktestEngine() {
         this.indicatorEngine = new IndicatorEngine();
@@ -74,6 +75,14 @@ public class BacktestEngine {
      */
     public void setPremiumIndex(List<PremiumIndex> premiumIndexData) {
         this.premiumIndexData = premiumIndexData;
+    }
+
+    /**
+     * Set Fear & Greed Index data for sentiment indicators (FEAR_GREED, FEAR_GREED_AVG).
+     * Must be called before run() for F&G indicators to work.
+     */
+    public void setFearGreedData(List<FearGreedIndex> fearGreedData) {
+        this.fearGreedData = fearGreedData;
     }
 
     /**
@@ -143,6 +152,9 @@ public class BacktestEngine {
         }
         if (context.premiumIndex() != null) {
             this.premiumIndexData = context.premiumIndex();
+        }
+        if (context.fearGreedIndex() != null) {
+            this.fearGreedData = context.fearGreedIndex();
         }
 
         if (onProgress != null) {
@@ -1187,6 +1199,9 @@ public class BacktestEngine {
                 onProgress.accept(new Progress(4, 5, 80, "Processing premium index..."));
             }
             indicatorEngine.setPremiumIndex(premiumIndexData);
+        }
+        if (fearGreedData != null && !fearGreedData.isEmpty()) {
+            indicatorEngine.setFearGreedData(fearGreedData);
         }
     }
 

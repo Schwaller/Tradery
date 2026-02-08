@@ -790,6 +790,31 @@ public class Strategy implements Identifiable {
         return upper.contains("PREMIUM");
     }
 
+    /**
+     * Check if strategy DSL uses Fear & Greed Index functions (FEAR_GREED, FEAR_GREED_AVG).
+     */
+    @JsonIgnore
+    public boolean requiresFearGreed() {
+        String entry = getEntrySettings().getCondition();
+        if (entry != null && containsFearGreedFunction(entry)) {
+            return true;
+        }
+
+        for (ExitZone zone : getExitZones()) {
+            String condition = zone.exitCondition();
+            if (condition != null && containsFearGreedFunction(condition)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private boolean containsFearGreedFunction(String condition) {
+        String upper = condition.toUpperCase();
+        return upper.contains("FEAR_GREED");
+    }
+
     @Override
     public String toString() {
         return name;

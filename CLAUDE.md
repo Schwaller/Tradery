@@ -78,6 +78,7 @@ DSL is used for entry/exit conditions and phase definitions.
 | **Calendar** | `IS_US_HOLIDAY`, `IS_FOMC_MEETING`, `MOON_PHASE` (0=new, 0.5=full) |
 | **Funding** | `FUNDING`, `FUNDING_8H` |
 | **Premium** | `PREMIUM`, `PREMIUM_AVG(n)` - futures vs spot spread |
+| **Sentiment** | `FEAR_GREED` (0-100), `FEAR_GREED_AVG(n)` - Crypto Fear & Greed Index |
 | **Open Interest** | `OI`, `OI_CHANGE`, `OI_DELTA(n)` |
 | **OHLCV Volume** | `QUOTE_VOLUME`, `BUY_VOLUME`, `SELL_VOLUME`, `OHLCV_DELTA`, `OHLCV_CVD`, `BUY_RATIO`, `TRADE_COUNT` |
 
@@ -162,6 +163,8 @@ BBANDS(20,2).width < LOWEST(BBANDS(20,2).width, 20) * 1.15  # Squeeze
 ATR(14) > ATR(14)[1]                                 # Volatility expanding
 SUPERTREND(10,3).trend == 1                          # Uptrend
 FUNDING > 0.05 AND DELTA < 0                         # Overleveraged + selling
+FEAR_GREED < 25                                       # Extreme fear (contrarian buy)
+FEAR_GREED_AVG(7) < 30 AND RSI(14) < 35             # Sustained fear + oversold
 close crosses_above PREV_DAY_POC                     # Reclaim POC
 RESISTANCE_RAY_CROSSED(1, 200, 5) == 1               # Breakout
 
@@ -211,6 +214,7 @@ timeframe: 1d
 | **Calendar** | `month-start`, `month-end`, `quarter-end`, `us-bank-holiday`, `fomc-meeting-day/hour/week` |
 | **Moon** | `full-moon-day/hour`, `new-moon-day/hour` |
 | **Funding** | `high-funding`, `negative-funding`, `extreme-funding`, `neutral-funding` |
+| **Sentiment** | `extreme-fear`, `fear`, `greed`, `extreme-greed` |
 | **Orderflow** | `exchange-divergence-bullish`, `exchange-divergence-bearish`, `cross-exchange-buy-pressure`, `cross-exchange-sell-pressure`, `whale-accumulation-multi`, `whale-distribution-multi` |
 
 ### Strategy Integration
@@ -444,7 +448,7 @@ curl -X POST http://localhost:PORT/ui/chart-config -d '{
 }'
 ```
 Available overlays: `SMA`, `EMA` (with `periods` array), `BBANDS`, `HighLow`, `Mayer` (with `period`), `VWAP`, `DailyPOC`, `FloatingPOC`, `Rays`, `Ichimoku`.
-Available indicators: `RSI`, `ATR`, `ADX`, `RANGE_POSITION` (with `period`), `MACD` (with `fast`, `slow`, `signal`), `STOCHASTIC` (with `kPeriod`, `dPeriod`), `DELTA`, `CVD`, `FUNDING`, `OI`, `PREMIUM`.
+Available indicators: `RSI`, `ATR`, `ADX`, `RANGE_POSITION` (with `period`), `MACD` (with `fast`, `slow`, `signal`), `STOCHASTIC` (with `kPeriod`, `dPeriod`), `DELTA`, `CVD`, `FUNDING`, `OI`, `PREMIUM`, `FEAR_GREED`.
 
 ### Session Startup (IMPORTANT)
 **On every new session**, before doing any work, call `tradery_get_context`. This single call returns everything you need: open windows, last focused strategy ID, chart config, the focused strategy's full config, and its backtest summary with metrics and AI suggestions. Use this context — e.g. if the user asks about "this strategy", they mean the last focused one.

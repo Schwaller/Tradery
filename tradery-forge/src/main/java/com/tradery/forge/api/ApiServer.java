@@ -910,6 +910,7 @@ public class ApiServer {
             applySimpleOverlay(indicators, "FUNDING", config::setFundingEnabled);
             applySimpleOverlay(indicators, "OI", config::setOiEnabled);
             applySimpleOverlay(indicators, "PREMIUM", config::setPremiumEnabled);
+            applySimpleOverlay(indicators, "FEAR_GREED", config::setFearGreedEnabled);
         }
 
         config.notifyChanged();
@@ -1004,6 +1005,7 @@ public class ApiServer {
         indicators.putObject("FUNDING").put("enabled", config.isFundingEnabled());
         indicators.putObject("OI").put("enabled", config.isOiEnabled());
         indicators.putObject("PREMIUM").put("enabled", config.isPremiumEnabled());
+        indicators.putObject("FEAR_GREED").put("enabled", config.isFearGreedEnabled());
 
         // Phase overlays
         ArrayNode phaseOverlays = root.putArray("phaseOverlays");

@@ -25,12 +25,14 @@ public class DataRequirements {
     private DataPageView<FundingRate> fundingPage;     // If FUNDING in DSL
     private DataPageView<OpenInterest> oiPage;         // If OI in DSL
     private DataPageView<PremiumIndex> premiumPage;    // If PREMIUM in DSL
+    private DataPageView<FearGreedIndex> fearGreedPage; // If FEAR_GREED in DSL
 
     // Track which pages are view-only (don't block backtest)
     private boolean aggTradesViewOnly = false;
     private boolean fundingViewOnly = false;
     private boolean oiViewOnly = false;
     private boolean premiumViewOnly = false;
+    private boolean fearGreedViewOnly = false;
 
     // Phase candle pages keyed by "symbol:timeframe"
     private final java.util.Map<String, DataPageView<Candle>> phaseCandlePages = new java.util.HashMap<>();
@@ -66,6 +68,11 @@ public class DataRequirements {
     public void setPremiumPage(DataPageView<PremiumIndex> premiumPage, boolean viewOnly) {
         this.premiumPage = premiumPage;
         this.premiumViewOnly = viewOnly;
+    }
+
+    public void setFearGreedPage(DataPageView<FearGreedIndex> fearGreedPage, boolean viewOnly) {
+        this.fearGreedPage = fearGreedPage;
+        this.fearGreedViewOnly = viewOnly;
     }
 
     /**
@@ -114,6 +121,10 @@ public class DataRequirements {
         return premiumPage;
     }
 
+    public DataPageView<FearGreedIndex> getFearGreedPage() {
+        return fearGreedPage;
+    }
+
     /**
      * Get phase candle pages map.
      */
@@ -153,6 +164,10 @@ public class DataRequirements {
         return premiumPage != null && !premiumViewOnly;
     }
 
+    public boolean isFearGreedRequired() {
+        return fearGreedPage != null && !fearGreedViewOnly;
+    }
+
     // ========== State Checks ==========
 
     /**
@@ -178,6 +193,9 @@ public class DataRequirements {
         if (premiumPage != null && !premiumViewOnly && !premiumPage.isReady()) {
             return false;
         }
+        if (fearGreedPage != null && !fearGreedViewOnly && !fearGreedPage.isReady()) {
+            return false;
+        }
 
         // Check phase candle pages (always required for backtest)
         for (DataPageView<Candle> phasePage : phaseCandlePages.values()) {
@@ -198,6 +216,7 @@ public class DataRequirements {
         if (fundingPage != null && fundingPage.isLoading()) return true;
         if (oiPage != null && oiPage.isLoading()) return true;
         if (premiumPage != null && premiumPage.isLoading()) return true;
+        if (fearGreedPage != null && fearGreedPage.isLoading()) return true;
         for (DataPageView<Candle> phasePage : phaseCandlePages.values()) {
             if (phasePage.isLoading()) return true;
         }
@@ -213,6 +232,7 @@ public class DataRequirements {
         if (fundingPage != null && fundingPage.hasError()) return true;
         if (oiPage != null && oiPage.hasError()) return true;
         if (premiumPage != null && premiumPage.hasError()) return true;
+        if (fearGreedPage != null && fearGreedPage.hasError()) return true;
         for (DataPageView<Candle> phasePage : phaseCandlePages.values()) {
             if (phasePage.hasError()) return true;
         }
@@ -239,6 +259,7 @@ public class DataRequirements {
         appendError(sb, "Funding", fundingPage);
         appendError(sb, "OI", oiPage);
         appendError(sb, "Premium", premiumPage);
+        appendError(sb, "F&G", fearGreedPage);
         return sb.isEmpty() ? null : sb.toString();
     }
 
@@ -260,6 +281,7 @@ public class DataRequirements {
         appendStatus(sb, "Funding", fundingPage);
         appendStatus(sb, "OI", oiPage);
         appendStatus(sb, "Premium", premiumPage);
+        appendStatus(sb, "F&G", fearGreedPage);
         return sb.toString();
     }
 

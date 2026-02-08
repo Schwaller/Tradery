@@ -62,6 +62,7 @@ public class ApplicationContext {
     private final OIPageManager oiPageManager;
     private final AggTradesPageManager aggTradesPageManager;
     private final PremiumPageManager premiumPageManager;
+    private final FearGreedPageManager fearGreedPageManager;
     private final IndicatorPageManager indicatorPageManager;
 
     // Data service client (for remote data access)
@@ -90,6 +91,7 @@ public class ApplicationContext {
         this.oiPageManager = new OIPageManager();
         this.aggTradesPageManager = new AggTradesPageManager();
         this.premiumPageManager = new PremiumPageManager();
+        this.fearGreedPageManager = new FearGreedPageManager();
         this.indicatorPageManager = new IndicatorPageManager(
             candlePageManager, aggTradesPageManager);
 
@@ -245,6 +247,10 @@ public class ApplicationContext {
         return premiumPageManager;
     }
 
+    public FearGreedPageManager getFearGreedPageManager() {
+        return fearGreedPageManager;
+    }
+
     public IndicatorPageManager getIndicatorPageManager() {
         return indicatorPageManager;
     }
@@ -305,6 +311,9 @@ public class ApplicationContext {
         }
         if (premiumPageManager != null) {
             premiumPageManager.shutdown();
+        }
+        if (fearGreedPageManager != null) {
+            fearGreedPageManager.shutdown();
         }
 
         // Close WebSocket connection

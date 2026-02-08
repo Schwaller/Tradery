@@ -1,0 +1,7 @@
+id: extreme-greed
+name: Extreme Greed
+description: Fear & Greed Index 75 or above - market in extreme greed
+category: Sentiment
+condition: FEAR_GREED >= 75
+timeframe: 1d
+symbol: BTCUSDT
