@@ -24,6 +24,7 @@ public class PageManagerBadgesPanel extends JPanel {
     private final StatusBadge oiBadge;
     private final StatusBadge aggTradesBadge;
     private final StatusBadge premiumBadge;
+    private final StatusBadge fearGreedBadge;
     private final StatusBadge indicatorsBadge;
 
     private final Timer refreshTimer;
@@ -39,6 +40,7 @@ public class PageManagerBadgesPanel extends JPanel {
         oiBadge = new StatusBadge("OI 0");
         aggTradesBadge = new StatusBadge("AggTrades 0");
         premiumBadge = new StatusBadge("Premium 0");
+        fearGreedBadge = new StatusBadge("F&G 0");
         indicatorsBadge = new StatusBadge("Indicators 0");
 
         addClickHandler(candlesBadge, DataType.CANDLES);
@@ -46,6 +48,7 @@ public class PageManagerBadgesPanel extends JPanel {
         addClickHandler(oiBadge, DataType.OPEN_INTEREST);
         addClickHandler(aggTradesBadge, DataType.AGG_TRADES);
         addClickHandler(premiumBadge, DataType.PREMIUM_INDEX);
+        addClickHandler(fearGreedBadge, DataType.FEAR_GREED);
         indicatorsBadge.addMouseListener(new MouseAdapter() {
             @Override
             public void mouseClicked(MouseEvent e) {
@@ -58,6 +61,7 @@ public class PageManagerBadgesPanel extends JPanel {
         add(oiBadge);
         add(aggTradesBadge);
         add(premiumBadge);
+        add(fearGreedBadge);
         add(indicatorsBadge);
 
         // Context menu for right-click to open Download Dashboard
@@ -110,6 +114,7 @@ public class PageManagerBadgesPanel extends JPanel {
         updateDataPageBadge(oiBadge, "OI", ctx.getOIPageManager());
         updateDataPageBadge(aggTradesBadge, "AggTrades", ctx.getAggTradesPageManager());
         updateDataPageBadge(premiumBadge, "Premium", ctx.getPremiumPageManager());
+        updateDataPageBadge(fearGreedBadge, "F&G", ctx.getFearGreedPageManager());
         updateIndicatorsBadge(ctx.getIndicatorPageManager());
     }
 

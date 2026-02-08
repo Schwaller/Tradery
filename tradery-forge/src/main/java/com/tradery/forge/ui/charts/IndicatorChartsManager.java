@@ -1819,14 +1819,17 @@ public class IndicatorChartsManager {
             }
         }
 
-        // RSI: fixed 0-100 range in Full Y mode, auto in Fit Y mode
-        ChartComponent rsiComp = components.get(IndicatorType.RSI);
-        if (fitYAxisToVisible) {
-            rsiComp.getChart().getXYPlot().getRangeAxis().setAutoRange(true);
-            rsiComp.getChart().getXYPlot().configureRangeAxes();
-        } else {
-            rsiComp.getChart().getXYPlot().getRangeAxis().setAutoRange(false);
-            rsiComp.getChart().getXYPlot().getRangeAxis().setRange(0, 100);
+        // Fixed-range indicators: 0-100 in Full Y mode, auto-fit in Fit Y mode
+        IndicatorType[] fixedRangeTypes = {IndicatorType.RSI, IndicatorType.FEAR_GREED};
+        for (IndicatorType type : fixedRangeTypes) {
+            ChartComponent comp = components.get(type);
+            if (fitYAxisToVisible) {
+                comp.getChart().getXYPlot().getRangeAxis().setAutoRange(true);
+                comp.getChart().getXYPlot().configureRangeAxes();
+            } else {
+                comp.getChart().getXYPlot().getRangeAxis().setAutoRange(false);
+                comp.getChart().getXYPlot().getRangeAxis().setRange(0, 100);
+            }
         }
     }
 }

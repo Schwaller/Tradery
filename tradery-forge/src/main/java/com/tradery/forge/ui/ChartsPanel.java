@@ -389,6 +389,7 @@ public class ChartsPanel extends JPanel {
             indicatorManager.getPremiumChartPanel(), indicatorManager.getStochasticChartPanel(),
             indicatorManager.getRangePositionChartPanel(), indicatorManager.getAdxChartPanel(),
             indicatorManager.getTradeCountChartPanel(),
+            indicatorManager.getFearGreedChartPanel(),
             indicatorManager.getHoldingCostCumulativeChartPanel(), indicatorManager.getHoldingCostEventsChartPanel()
         };
         for (int i = 0; i < indicatorPanels.length; i++) {
@@ -433,6 +434,7 @@ public class ChartsPanel extends JPanel {
         splitLayoutManager.registerPanel(indicatorManager.getAdxChartWrapper(), "adx");
         splitLayoutManager.registerPanel(indicatorManager.getTradeCountChartWrapper(), "trade_count");
         splitLayoutManager.registerPanel(indicatorManager.getPremiumChartWrapper(), "premium");
+        splitLayoutManager.registerPanel(indicatorManager.getFearGreedChartWrapper(), "fear_greed");
         splitLayoutManager.registerPanel(indicatorManager.getHoldingCostCumulativeChartWrapper(), "holding_cost_cumulative");
         splitLayoutManager.registerPanel(indicatorManager.getHoldingCostEventsChartWrapper(), "holding_cost_events");
     }
@@ -456,6 +458,7 @@ public class ChartsPanel extends JPanel {
         interactionManager.addChart(indicatorManager.getFundingChart());
         interactionManager.addChart(indicatorManager.getOiChart());
         interactionManager.addChart(indicatorManager.getPremiumChart());
+        interactionManager.addChart(indicatorManager.getFearGreedChart());
         interactionManager.addChart(indicatorManager.getStochasticChart());
         interactionManager.addChart(indicatorManager.getRangePositionChart());
         interactionManager.addChart(indicatorManager.getAdxChart());
@@ -474,7 +477,7 @@ public class ChartsPanel extends JPanel {
             indicatorManager.getRsiChart(), indicatorManager.getMacdChart(), indicatorManager.getAtrChart(),
             indicatorManager.getDeltaChart(), indicatorManager.getCvdChart(), indicatorManager.getVolumeRatioChart(),
             indicatorManager.getWhaleChart(), indicatorManager.getRetailChart(),
-            indicatorManager.getFundingChart(), indicatorManager.getOiChart(), indicatorManager.getPremiumChart(),
+            indicatorManager.getFundingChart(), indicatorManager.getOiChart(), indicatorManager.getPremiumChart(), indicatorManager.getFearGreedChart(),
             indicatorManager.getStochasticChart(), indicatorManager.getRangePositionChart(), indicatorManager.getAdxChart(),
             indicatorManager.getTradeCountChart(),
             indicatorManager.getHoldingCostCumulativeChart(), indicatorManager.getHoldingCostEventsChart(),
@@ -485,7 +488,7 @@ public class ChartsPanel extends JPanel {
             indicatorManager.getRsiChartWrapper(), indicatorManager.getMacdChartWrapper(), indicatorManager.getAtrChartWrapper(),
             indicatorManager.getDeltaChartWrapper(), indicatorManager.getCvdChartWrapper(), indicatorManager.getVolumeRatioChartWrapper(),
             indicatorManager.getWhaleChartWrapper(), indicatorManager.getRetailChartWrapper(),
-            indicatorManager.getFundingChartWrapper(), indicatorManager.getOiChartWrapper(), indicatorManager.getPremiumChartWrapper(),
+            indicatorManager.getFundingChartWrapper(), indicatorManager.getOiChartWrapper(), indicatorManager.getPremiumChartWrapper(), indicatorManager.getFearGreedChartWrapper(),
             indicatorManager.getStochasticChartWrapper(), indicatorManager.getRangePositionChartWrapper(), indicatorManager.getAdxChartWrapper(),
             indicatorManager.getTradeCountChartWrapper(),
             indicatorManager.getHoldingCostCumulativeChartWrapper(), indicatorManager.getHoldingCostEventsChartWrapper(),
@@ -585,6 +588,9 @@ public class ChartsPanel extends JPanel {
         }
         if (indicatorManager.isPremiumChartEnabled()) {
             visibleCharts.add(indicatorManager.getPremiumChartWrapper());
+        }
+        if (indicatorManager.isFearGreedChartEnabled()) {
+            visibleCharts.add(indicatorManager.getFearGreedChartWrapper());
         }
 
         // Core charts at the end
@@ -1555,6 +1561,7 @@ public class ChartsPanel extends JPanel {
             indicatorManager.getDeltaChart(), indicatorManager.getCvdChart(), indicatorManager.getVolumeRatioChart(),
             indicatorManager.getWhaleChart(), indicatorManager.getRetailChart(),
             indicatorManager.getFundingChart(), indicatorManager.getOiChart(), indicatorManager.getPremiumChart(),
+            indicatorManager.getFearGreedChart(),
             indicatorManager.getStochasticChart(), indicatorManager.getRangePositionChart(),
             indicatorManager.getAdxChart(), indicatorManager.getTradeCountChart()
         };
@@ -2109,6 +2116,12 @@ public class ChartsPanel extends JPanel {
     public void refreshPremiumChart() {
         if (currentCandles != null && !currentCandles.isEmpty()) {
             indicatorManager.updatePremiumChart(currentCandles);
+        }
+    }
+
+    public void refreshFearGreedChart() {
+        if (currentCandles != null && !currentCandles.isEmpty()) {
+            indicatorManager.updateFearGreedChart(currentCandles);
         }
     }
 

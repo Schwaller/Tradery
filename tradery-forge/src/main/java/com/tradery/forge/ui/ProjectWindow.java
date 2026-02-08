@@ -968,7 +968,8 @@ public class ProjectWindow extends JFrame {
             chartPanel.isAnyOrderflowChartEnabled(),
             chartPanel.isFundingChartEnabled(),
             chartPanel.isOiChartEnabled(),
-            chartPanel.isPremiumChartEnabled()
+            chartPanel.isPremiumChartEnabled(),
+            chartPanel.isFearGreedChartEnabled()
         );
 
         // Run backtest via coordinator
@@ -1099,6 +1100,11 @@ public class ProjectWindow extends JFrame {
                 System.out.println("VIEW data ready: Premium - refreshing chart");
                 chartPanel.setIndicatorEngine(backtestCoordinator.getIndicatorEngine());
                 chartPanel.refreshPremiumChart();
+            }
+            case "F&G" -> {
+                System.out.println("VIEW data ready: F&G - refreshing chart");
+                chartPanel.setIndicatorEngine(backtestCoordinator.getIndicatorEngine());
+                chartPanel.refreshFearGreedChart();
             }
         }
     }

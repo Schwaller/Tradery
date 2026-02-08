@@ -104,6 +104,7 @@ public class BacktestCoordinator {
     private boolean viewNeedsFunding = false;
     private boolean viewNeedsOI = false;
     private boolean viewNeedsPremium = false;
+    private boolean viewNeedsFearGreed = false;
 
     public BacktestCoordinator(BacktestEngine backtestEngine,
                                SqliteDataStore dataStore,
@@ -190,13 +191,16 @@ public class BacktestCoordinator {
      * @param needsFunding True if Funding chart is enabled
      * @param needsOI True if OI chart is enabled
      * @param needsPremium True if Premium chart is enabled
+     * @param needsFearGreed True if Fear & Greed chart is enabled
      */
     public void setViewRequirements(boolean needsAggTrades, boolean needsFunding,
-                                     boolean needsOI, boolean needsPremium) {
+                                     boolean needsOI, boolean needsPremium,
+                                     boolean needsFearGreed) {
         this.viewNeedsAggTrades = needsAggTrades;
         this.viewNeedsFunding = needsFunding;
         this.viewNeedsOI = needsOI;
         this.viewNeedsPremium = needsPremium;
+        this.viewNeedsFearGreed = needsFearGreed;
     }
 
     /**
@@ -284,6 +288,9 @@ public class BacktestCoordinator {
                 if (requirements.getFearGreedPage() != null) {
                     currentFearGreedIndex = new ArrayList<>(requirements.getFearGreedPage().getData());
                     backtestEngine.setFearGreedData(currentFearGreedIndex);
+                    if (engine != null) {
+                        engine.setFearGreedData(currentFearGreedIndex);
+                    }
                 }
             }
         }
@@ -373,6 +380,7 @@ public class BacktestCoordinator {
         boolean needsFunding = strategyNeedsFunding || viewNeedsFunding;
         boolean needsOI = strategyNeedsOI || viewNeedsOI;
         boolean needsPremium = strategyNeedsPremium || viewNeedsPremium;
+        boolean needsFearGreed = strategyNeedsFearGreed || viewNeedsFearGreed;
 
         // Request candles (always required)
         reportDataStatus("Candles", "loading");
@@ -425,12 +433,13 @@ public class BacktestCoordinator {
             requirements.setPremiumPage(premiumPage, viewOnly);
         }
 
-        if (strategyNeedsFearGreed) {
-            reportDataStatus("F&G", "loading");
+        if (needsFearGreed) {
+            boolean viewOnly = !strategyNeedsFearGreed;
+            reportDataStatus("F&G", viewOnly ? "loading (view)" : "loading");
             fearGreedListener = createFearGreedListener();
             DataPageView<FearGreedIndex> fearGreedPage = fearGreedPageMgr.request(
                 symbol, null, startTime, endTime, fearGreedListener, "BacktestCoordinator");
-            requirements.setFearGreedPage(fearGreedPage, false);
+            requirements.setFearGreedPage(fearGreedPage, viewOnly);
         }
 
         // Request candles for phase timeframes (may differ from strategy timeframe)
@@ -698,6 +707,9 @@ public class BacktestCoordinator {
                 // Store result so we can track completion for view-only data notifications
                 currentResult = result;
 
+                // Apply any view-only data that loaded during the backtest to the new indicator engine
+                applyViewOnlyDataToEngine();
+
                 // Notify completion on EDT
                 SwingUtilities.invokeLater(() -> {
                     backtestRunning = false;
@@ -937,6 +949,26 @@ public class BacktestCoordinator {
                 handleDataChanged();
             }
         };
+    }
+
+    /**
+     * Apply view-only data that loaded during the backtest to the new indicator engine.
+     * The backtest creates a fresh IndicatorEngine, so view-only data that arrived
+     * after engine initialization needs to be set manually.
+     */
+    private void applyViewOnlyDataToEngine() {
+        IndicatorEngine engine = backtestEngine.getIndicatorEngine();
+        if (engine == null || requirements == null) return;
+
+        // Fear & Greed (view-only when chart enabled but strategy doesn't use it)
+        if (requirements.getFearGreedPage() != null && !requirements.isFearGreedRequired()
+                && !engine.hasFearGreedData()) {
+            List<FearGreedIndex> data = requirements.getFearGreedPage().getData();
+            if (data != null && !data.isEmpty()) {
+                currentFearGreedIndex = new ArrayList<>(data);
+                engine.setFearGreedData(currentFearGreedIndex);
+            }
+        }
     }
 
     // ========== Reporting ==========
