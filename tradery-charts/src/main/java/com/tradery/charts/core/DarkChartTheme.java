@@ -38,26 +38,20 @@ public class DarkChartTheme implements ChartTheme {
     }
 
     @Override
-    public Color getTextColor() {
+    public Color getDimForeground() {
         return ui("Label.disabledForeground", isDark() ? new Color(150, 150, 150) : new Color(80, 80, 85));
     }
 
     @Override
-    public Color getCrosshairColor() {
-        Color base = ui("Label.disabledForeground", new Color(150, 150, 150));
-        return new Color(base.getRed(), base.getGreen(), base.getBlue(), 180);
-    }
-
-    @Override
-    public Color getAxisLabelColor() {
-        return ui("Label.disabledForeground", Color.LIGHT_GRAY);
+    public Color getStrongForeground() {
+        return isDark() ? new Color(240, 240, 245) : new Color(30, 30, 35);
     }
 
     // ===== Price Chart Colors =====
 
     @Override public Color getCandleUpColor() { return isDark() ? new Color(76, 175, 80) : new Color(46, 125, 50); }
     @Override public Color getCandleDownColor() { return isDark() ? new Color(244, 67, 54) : new Color(198, 40, 40); }
-    @Override public Color getPriceLineColor() { return isDark() ? new Color(255, 255, 255, 180) : new Color(50, 50, 55, 200); }
+    // getPriceLineColor() inherited from ChartTheme → getStrongForeground()
     @Override public Color getWinColor() { return isDark() ? new Color(76, 175, 80, 180) : new Color(46, 125, 50, 200); }
     @Override public Color getLossColor() { return isDark() ? new Color(244, 67, 54, 180) : new Color(198, 40, 40, 200); }
 

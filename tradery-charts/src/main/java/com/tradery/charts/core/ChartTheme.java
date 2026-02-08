@@ -12,14 +12,24 @@ public interface ChartTheme {
     Color getBackgroundColor();
     Color getPlotBackgroundColor();
     Color getGridlineColor();
-    Color getTextColor();
-    Color getCrosshairColor();
-    Color getAxisLabelColor();
+
+    // ===== Foreground Colors =====
+    /** Low-visibility foreground for labels, axis ticks, crosshair — doesn't distract from data. */
+    Color getDimForeground();
+    /** High-visibility foreground for price line, key data — pops against the background. */
+    Color getStrongForeground();
+
+    default Color getTextColor() { return getDimForeground(); }
+    default Color getCrosshairColor() {
+        Color c = getDimForeground();
+        return new Color(c.getRed(), c.getGreen(), c.getBlue(), 180);
+    }
+    default Color getAxisLabelColor() { return getDimForeground(); }
 
     // ===== Price Chart Colors =====
     default Color getCandleUpColor() { return new Color(76, 175, 80); }
     default Color getCandleDownColor() { return new Color(244, 67, 54); }
-    default Color getPriceLineColor() { return new Color(255, 255, 255, 180); }
+    default Color getPriceLineColor() { return getStrongForeground(); }
     default Color getWinColor() { return new Color(76, 175, 80, 180); }
     default Color getLossColor() { return new Color(244, 67, 54, 180); }
 

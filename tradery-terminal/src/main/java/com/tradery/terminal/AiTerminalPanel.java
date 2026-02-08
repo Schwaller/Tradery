@@ -29,7 +29,6 @@ public class AiTerminalPanel extends JPanel {
 
     public AiTerminalPanel() {
         setLayout(new BorderLayout());
-        setBackground(new Color(50, 49, 48));
 
         // Create terminal widget with custom settings
         terminalWidget = new JediTermWidget(new AiTerminalSettingsProvider());
@@ -59,42 +58,11 @@ public class AiTerminalPanel extends JPanel {
     }
 
     /**
-     * Find JediTerm's internal scrollbar and make it look more native.
+     * Find JediTerm's internal scrollbar and let FlatLaf style it.
      */
     private void customizeScrollbar(JediTermWidget widget) {
-        // JediTerm uses a custom scrollbar - find it and customize
         for (Component comp : widget.getComponents()) {
             if (comp instanceof JScrollBar scrollBar) {
-                // Use system default UI for native look
-                scrollBar.setUI(new javax.swing.plaf.basic.BasicScrollBarUI() {
-                    @Override
-                    protected void configureScrollBarColors() {
-                        this.thumbColor = new Color(100, 100, 100);
-                        this.thumbDarkShadowColor = new Color(70, 70, 70);
-                        this.thumbHighlightColor = new Color(120, 120, 120);
-                        this.thumbLightShadowColor = new Color(90, 90, 90);
-                        this.trackColor = new Color(45, 45, 45);
-                        this.trackHighlightColor = new Color(50, 50, 50);
-                    }
-
-                    @Override
-                    protected JButton createDecreaseButton(int orientation) {
-                        return createZeroButton();
-                    }
-
-                    @Override
-                    protected JButton createIncreaseButton(int orientation) {
-                        return createZeroButton();
-                    }
-
-                    private JButton createZeroButton() {
-                        JButton button = new JButton();
-                        button.setPreferredSize(new Dimension(0, 0));
-                        button.setMinimumSize(new Dimension(0, 0));
-                        button.setMaximumSize(new Dimension(0, 0));
-                        return button;
-                    }
-                });
                 scrollBar.setPreferredSize(new Dimension(12, 0));
             }
         }
@@ -276,7 +244,8 @@ public class AiTerminalPanel extends JPanel {
     }
 
     /**
-     * Custom settings provider for dark theme terminal.
+     * Custom settings provider that reads background/foreground from UIManager
+     * so the terminal adapts to the current FlatLaf theme.
      */
     private static class AiTerminalSettingsProvider extends DefaultSettingsProvider {
 
@@ -292,12 +261,16 @@ public class AiTerminalPanel extends JPanel {
 
         @Override
         public TerminalColor getDefaultForeground() {
-            return TerminalColor.rgb(204, 204, 204);
+            Color fg = UIManager.getColor("Panel.foreground");
+            if (fg == null) fg = new Color(204, 204, 204);
+            return TerminalColor.rgb(fg.getRed(), fg.getGreen(), fg.getBlue());
         }
 
         @Override
         public TerminalColor getDefaultBackground() {
-            return TerminalColor.rgb(50, 49, 48);
+            Color bg = UIManager.getColor("Panel.background");
+            if (bg == null) bg = new Color(50, 49, 48);
+            return TerminalColor.rgb(bg.getRed(), bg.getGreen(), bg.getBlue());
         }
     }
 }

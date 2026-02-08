@@ -127,13 +127,18 @@ public class SchemaTypeEditorDialog extends JDialog {
         attrLabel.setFont(attrLabel.getFont().deriveFont(Font.BOLD));
         attrPanel.add(attrLabel, BorderLayout.NORTH);
 
-        String[] columns = {"Name", "Type", "Required"};
+        String[] columns = {"Name", "Type", "Required", "Labels", "Config"};
         attrTableModel = new DefaultTableModel(columns, 0) {
             @Override
             public boolean isCellEditable(int row1, int col) { return false; }
         };
         for (SchemaAttribute attr : type.attributes()) {
-            attrTableModel.addRow(new Object[]{attr.name(), attr.dataType(), attr.required() ? "Yes" : ""});
+            int labelCount = attr.labels() != null ? attr.labels().size() : 0;
+            attrTableModel.addRow(new Object[]{
+                attr.name(), attr.dataType(), attr.required() ? "Yes" : "",
+                labelCount > 0 ? labelCount + " lang" : "",
+                attr.configSummary()
+            });
         }
 
         JTable attrTable = new BorderlessTable(attrTableModel);
@@ -143,6 +148,19 @@ public class SchemaTypeEditorDialog extends JDialog {
         attrTable.setRowHeight(22);
         attrTable.getTableHeader().setBackground(new Color(45, 47, 51));
         attrTable.getTableHeader().setForeground(new Color(180, 180, 190));
+
+        // Double-click to edit attribute
+        attrTable.addMouseListener(new java.awt.event.MouseAdapter() {
+            @Override
+            public void mouseClicked(java.awt.event.MouseEvent e) {
+                if (e.getClickCount() == 2) {
+                    int selectedRow = attrTable.getSelectedRow();
+                    if (selectedRow >= 0) {
+                        editAttribute(selectedRow);
+                    }
+                }
+            }
+        });
 
         JScrollPane tableScroll = new JScrollPane(attrTable);
         tableScroll.setBorder(BorderFactory.createLineBorder(new Color(60, 62, 66)));
@@ -190,33 +208,34 @@ public class SchemaTypeEditorDialog extends JDialog {
     }
 
     private void addAttribute() {
-        JPanel panel = new JPanel(new GridLayout(3, 2, 5, 5));
-        JTextField nameInput = new JTextField();
-        JComboBox<String> typeInput = new JComboBox<>(new String[]{
-            SchemaAttribute.TEXT, SchemaAttribute.NUMBER, SchemaAttribute.LIST, SchemaAttribute.BOOLEAN
-        });
-        JCheckBox reqCheck = new JCheckBox("Required");
-
-        panel.add(new JLabel("Name:"));
-        panel.add(nameInput);
-        panel.add(new JLabel("Type:"));
-        panel.add(typeInput);
-        panel.add(new JLabel());
-        panel.add(reqCheck);
-
-        int result = JOptionPane.showConfirmDialog(this, panel, "Add Attribute",
-            JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE);
-
-        if (result == JOptionPane.OK_OPTION) {
-            String name = nameInput.getText().trim().toLowerCase().replaceAll("\\s+", "_");
-            if (name.isEmpty()) return;
-
-            String dataType = (String) typeInput.getSelectedItem();
-            boolean required = reqCheck.isSelected();
-
-            SchemaAttribute attr = new SchemaAttribute(name, dataType, required, type.attributes().size());
+        SchemaAttribute attr = ErdPanel.showAttributeEditorDialog(this, type, null);
+        if (attr != null) {
             registry.addAttribute(type.id(), attr);
-            attrTableModel.addRow(new Object[]{name, dataType, required ? "Yes" : ""});
+            int labelCount = attr.labels() != null ? attr.labels().size() : 0;
+            attrTableModel.addRow(new Object[]{
+                attr.name(), attr.dataType(), attr.required() ? "Yes" : "",
+                labelCount > 0 ? labelCount + " lang" : "",
+                attr.configSummary()
+            });
+        }
+    }
+
+    private void editAttribute(int tableRow) {
+        String attrName = (String) attrTableModel.getValueAt(tableRow, 0);
+        SchemaAttribute existing = type.attributes().stream()
+            .filter(a -> a.name().equals(attrName))
+            .findFirst().orElse(null);
+        if (existing == null) return;
+
+        SchemaAttribute updated = ErdPanel.showAttributeEditorDialog(this, type, existing);
+        if (updated != null) {
+            registry.addAttribute(type.id(), updated);
+            int labelCount = updated.labels() != null ? updated.labels().size() : 0;
+            attrTableModel.setValueAt(updated.name(), tableRow, 0);
+            attrTableModel.setValueAt(updated.dataType(), tableRow, 1);
+            attrTableModel.setValueAt(updated.required() ? "Yes" : "", tableRow, 2);
+            attrTableModel.setValueAt(labelCount > 0 ? labelCount + " lang" : "", tableRow, 3);
+            attrTableModel.setValueAt(updated.configSummary(), tableRow, 4);
         }
     }
 

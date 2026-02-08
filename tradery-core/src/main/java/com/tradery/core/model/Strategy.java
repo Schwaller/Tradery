@@ -625,6 +625,47 @@ public class Strategy implements Identifiable {
     }
 
     /**
+     * Check if strategy uses cross-exchange functions that require data from
+     * non-Binance exchanges (BYBIT_DELTA, OKX_DELTA, EXCHANGE_DIVERGENCE, etc.)
+     * or spot-vs-futures functions (SPOT_DELTA, FUTURES_DELTA, etc.).
+     */
+    @JsonIgnore
+    public boolean requiresCrossExchangeData() {
+        String entry = getEntrySettings().getCondition();
+        if (entry != null && containsCrossExchangeFunction(entry)) {
+            return true;
+        }
+
+        for (ExitZone zone : getExitZones()) {
+            String condition = zone.exitCondition();
+            if (condition != null && containsCrossExchangeFunction(condition)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private boolean containsCrossExchangeFunction(String condition) {
+        String upper = condition.toUpperCase();
+        return upper.contains("BYBIT_DELTA") ||
+               upper.contains("OKX_DELTA") ||
+               upper.contains("COMBINED_DELTA") ||
+               upper.contains("EXCHANGE_DELTA_SPREAD") ||
+               upper.contains("EXCHANGE_DIVERGENCE") ||
+               upper.contains("COMBINED_IMBALANCE") ||
+               upper.contains("EXCHANGES_WITH_BUY") ||
+               upper.contains("EXCHANGES_WITH_SELL") ||
+               upper.contains("WHALE_DELTA_COMBINED") ||
+               upper.contains("DOMINANT_EXCHANGE") ||
+               upper.contains("SPOT_DELTA") ||
+               upper.contains("FUTURES_DELTA") ||
+               upper.contains("SPOT_VOLUME") ||
+               upper.contains("FUTURES_VOLUME") ||
+               upper.contains("SPOT_FUTURES");
+    }
+
+    /**
      * Check if strategy uses any orderflow functions (Tier 1 or Tier 2).
      * Used for informational display, not data requirements.
      */

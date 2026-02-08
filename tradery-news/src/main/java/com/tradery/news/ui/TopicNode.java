@@ -23,6 +23,7 @@ public class TopicNode {
     // Visual state
     private boolean selected = false;
     private boolean hovered = false;
+    private Color color;
 
     // Connected news articles
     private final List<NewsNode> connections = new ArrayList<>();
@@ -70,10 +71,13 @@ public class TopicNode {
         return 6;
     }
 
+    public void setColor(Color color) { this.color = color; }
+
     /**
-     * Get node color based on type (color stays consistent, only transparency changes for highlight).
+     * Get node color. Returns custom color if set, otherwise falls back to type-based default.
      */
     public Color getColor() {
+        if (color != null) return color;
         return switch (type) {
             case TOPIC -> new Color(100, 140, 200);  // Blue for topics
             case COIN -> new Color(200, 160, 80);    // Gold for coins

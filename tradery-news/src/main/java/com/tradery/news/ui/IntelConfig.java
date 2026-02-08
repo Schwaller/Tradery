@@ -2,6 +2,7 @@ package com.tradery.news.ui;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
+import com.tradery.news.ai.AiProfile;
 
 import javax.swing.*;
 import java.awt.*;
@@ -59,6 +60,14 @@ public class IntelConfig {
     private String geminiApiKey = "";
     private String geminiModel = "gemini-2.5-flash-lite";
     private int aiTimeoutSeconds = 60;
+
+    // AI profiles
+    private List<AiProfile> aiProfiles = new ArrayList<>();
+    private String defaultProfileId = null;
+
+    // News fetch settings (0 = manual only)
+    private int fetchIntervalMinutes = 0;
+    private Set<String> disabledFeedIds = new HashSet<>();
 
     // Theme settings (shared with forge via theme.txt)
     private static final Path THEME_PATH = Path.of(
@@ -297,6 +306,83 @@ public class IntelConfig {
         this.aiTimeoutSeconds = aiTimeoutSeconds;
     }
 
+    // ==================== AI Profile Settings ====================
+
+    public List<AiProfile> getAiProfiles() {
+        return aiProfiles;
+    }
+
+    public void setAiProfiles(List<AiProfile> aiProfiles) {
+        this.aiProfiles = aiProfiles != null ? aiProfiles : new ArrayList<>();
+    }
+
+    public String getDefaultProfileId() {
+        return defaultProfileId;
+    }
+
+    public void setDefaultProfileId(String defaultProfileId) {
+        this.defaultProfileId = defaultProfileId;
+    }
+
+    public AiProfile getDefaultProfile() {
+        if (aiProfiles.isEmpty()) return null;
+        if (defaultProfileId != null) {
+            for (AiProfile p : aiProfiles) {
+                if (defaultProfileId.equals(p.getId())) return p;
+            }
+        }
+        return aiProfiles.get(0);
+    }
+
+    public AiProfile getProfile(String id) {
+        for (AiProfile p : aiProfiles) {
+            if (id != null && id.equals(p.getId())) return p;
+        }
+        return null;
+    }
+
+    public void addProfile(AiProfile profile) {
+        aiProfiles.add(profile);
+    }
+
+    public void removeProfile(String id) {
+        if (aiProfiles.size() <= 1) return;
+        aiProfiles.removeIf(p -> id != null && id.equals(p.getId()));
+        if (id != null && id.equals(defaultProfileId)) {
+            defaultProfileId = aiProfiles.isEmpty() ? null : aiProfiles.get(0).getId();
+        }
+    }
+
+    // ==================== Fetch Settings ====================
+
+    public int getFetchIntervalMinutes() {
+        return fetchIntervalMinutes;
+    }
+
+    public void setFetchIntervalMinutes(int fetchIntervalMinutes) {
+        this.fetchIntervalMinutes = fetchIntervalMinutes;
+    }
+
+    public Set<String> getDisabledFeedIds() {
+        return disabledFeedIds;
+    }
+
+    public void setDisabledFeedIds(Set<String> disabledFeedIds) {
+        this.disabledFeedIds = disabledFeedIds != null ? disabledFeedIds : new HashSet<>();
+    }
+
+    public boolean isFeedDisabled(String feedId) {
+        return disabledFeedIds.contains(feedId);
+    }
+
+    public void setFeedDisabled(String feedId, boolean disabled) {
+        if (disabled) {
+            disabledFeedIds.add(feedId);
+        } else {
+            disabledFeedIds.remove(feedId);
+        }
+    }
+
     // ==================== Theme Settings ====================
 
     public static List<String> getAvailableThemes() {
@@ -367,17 +453,57 @@ public class IntelConfig {
     }
 
     private static IntelConfig load() {
+        IntelConfig config;
         if (Files.exists(CONFIG_PATH)) {
             try {
-                return YAML.readValue(CONFIG_PATH.toFile(), IntelConfig.class);
+                config = YAML.readValue(CONFIG_PATH.toFile(), IntelConfig.class);
             } catch (IOException e) {
                 System.err.println("Failed to load intel config: " + e.getMessage());
+                config = new IntelConfig();
+                config.setHiddenTopics(new HashSet<>(DEFAULT_HIDDEN_TOPICS));
             }
+        } else {
+            config = new IntelConfig();
+            config.setHiddenTopics(new HashSet<>(DEFAULT_HIDDEN_TOPICS));
         }
-        // Return default config
-        IntelConfig config = new IntelConfig();
-        config.setHiddenTopics(new HashSet<>(DEFAULT_HIDDEN_TOPICS));
-        config.save();
+
+        // Migrate old flat AI settings to profile if no profiles exist
+        if (config.getAiProfiles().isEmpty()) {
+            AiProfile profile = new AiProfile();
+            profile.setProvider(config.getAiProvider());
+            profile.setTimeoutSeconds(config.getAiTimeoutSeconds());
+
+            switch (config.getAiProvider()) {
+                case CLAUDE -> {
+                    profile.setId("claude");
+                    profile.setName("Claude");
+                    profile.setPath(config.getClaudePath());
+                    profile.setArgs(config.getClaudeArgs());
+                }
+                case CODEX -> {
+                    profile.setId("codex");
+                    profile.setName("Codex");
+                    profile.setPath(config.getCodexPath());
+                    profile.setArgs(config.getCodexArgs());
+                }
+                case GEMINI -> {
+                    profile.setId("gemini");
+                    profile.setName("Gemini");
+                    profile.setApiKey(config.getGeminiApiKey());
+                    profile.setModel(config.getGeminiModel());
+                }
+                case CUSTOM -> {
+                    profile.setId("custom");
+                    profile.setName("Custom");
+                    profile.setCommand(config.getCustomCommand());
+                }
+            }
+
+            config.getAiProfiles().add(profile);
+            config.setDefaultProfileId(profile.getId());
+            config.save();
+        }
+
         return config;
     }
 }

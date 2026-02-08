@@ -50,6 +50,31 @@ public class CoinGraphPanel extends JPanel {
     private double centerPull = 0.001;
     private double minVelocity = 0.1;   // Below this, stop moving
 
+    // Theme-aware color helpers
+    private static Color labelColor() {
+        Color c = UIManager.getColor("Label.foreground");
+        return c != null ? c : new Color(220, 220, 230);
+    }
+    private static Color secondaryColor() {
+        Color c = UIManager.getColor("Label.disabledForeground");
+        return c != null ? c : new Color(150, 150, 160);
+    }
+    private static Color tooltipBg() {
+        Color bg = UIManager.getColor("Panel.background");
+        if (bg == null) bg = new Color(40, 42, 48);
+        int lum = (bg.getRed() + bg.getGreen() + bg.getBlue()) / 3;
+        int offset = lum < 128 ? 15 : -15;
+        return new Color(clamp(bg.getRed() + offset), clamp(bg.getGreen() + offset), clamp(bg.getBlue() + offset), 240);
+    }
+    private static Color tooltipBorder() {
+        Color bg = UIManager.getColor("Panel.background");
+        if (bg == null) bg = new Color(40, 42, 48);
+        int lum = (bg.getRed() + bg.getGreen() + bg.getBlue()) / 3;
+        int offset = lum < 128 ? 40 : -40;
+        return new Color(clamp(bg.getRed() + offset), clamp(bg.getGreen() + offset), clamp(bg.getBlue() + offset));
+    }
+    private static int clamp(int v) { return Math.max(0, Math.min(255, v)); }
+
     public CoinGraphPanel() {
         setBackground(UIManager.getColor("Panel.background"));
         setPreferredSize(new Dimension(1200, 800));
@@ -263,6 +288,7 @@ public class CoinGraphPanel extends JPanel {
 
     @Override
     protected void paintComponent(Graphics g) {
+        setBackground(UIManager.getColor("Panel.background"));
         super.paintComponent(g);
         Graphics2D g2 = (Graphics2D) g;
         g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
@@ -333,7 +359,7 @@ public class CoinGraphPanel extends JPanel {
                 double midX = (from.x() + to.x()) / 2;
                 double midY = (from.y() + to.y()) / 2;
                 g2.setFont(new Font("SansSerif", Font.PLAIN, 9));
-                g2.setColor(new Color(180, 180, 190));
+                g2.setColor(secondaryColor());
                 g2.drawString(rel.type().label(), (int)midX, (int)midY);
             }
         }
@@ -371,7 +397,8 @@ public class CoinGraphPanel extends JPanel {
             // Label (with graduated opacity, hide only for completely unconnected)
             if (showLabels && distance >= 0) {
                 int labelAlpha = (int)(230 * Math.max(0.5f, opacity));  // Keep labels readable
-                g2.setColor(new Color(220, 220, 230, labelAlpha));
+                Color lc = labelColor();
+                g2.setColor(new Color(lc.getRed(), lc.getGreen(), lc.getBlue(), labelAlpha));
                 g2.setFont(new Font("SansSerif", Font.PLAIN, 10));
                 String label = entity.label();
                 int labelWidth = g2.getFontMetrics().stringWidth(label);
@@ -409,12 +436,12 @@ public class CoinGraphPanel extends JPanel {
         if (y < 10) y = 10;
         if (y + height > getHeight() - 10) y = getHeight() - height - 10;
 
-        g2.setColor(new Color(40, 42, 48, 240));
+        g2.setColor(tooltipBg());
         g2.fillRoundRect(x, y, width, height, 8, 8);
-        g2.setColor(new Color(70, 72, 78));
+        g2.setColor(tooltipBorder());
         g2.drawRoundRect(x, y, width, height, 8, 8);
 
-        g2.setColor(new Color(220, 220, 230));
+        g2.setColor(labelColor());
         g2.setFont(new Font("SansSerif", Font.PLAIN, 11));
         for (int i = 0; i < lines.length; i++) {
             g2.drawString(lines[i], x + padding, y + padding + (i + 1) * lineHeight - 4);
@@ -428,7 +455,7 @@ public class CoinGraphPanel extends JPanel {
         int lineHeight = 18;
 
         g2.setFont(new Font("SansSerif", Font.BOLD, 10));
-        g2.setColor(new Color(150, 150, 160));
+        g2.setColor(secondaryColor());
         g2.drawString("ENTITY TYPES", x, y + 10);
         y += 20;
 
@@ -436,13 +463,13 @@ public class CoinGraphPanel extends JPanel {
         for (CoinEntity.Type type : CoinEntity.Type.values()) {
             g2.setColor(type.color());
             g2.fillOval(x, y, boxSize, boxSize);
-            g2.setColor(new Color(180, 180, 190));
+            g2.setColor(secondaryColor());
             g2.drawString(type.name(), x + boxSize + 6, y + 10);
             y += lineHeight;
         }
 
         y += 10;
-        g2.setColor(new Color(120, 120, 130));
+        g2.setColor(secondaryColor());
         g2.setFont(new Font("SansSerif", Font.PLAIN, 9));
         g2.drawString("Scroll to zoom, drag background to pan", x, y);
         g2.drawString("Double-click node to zoom, background to fit all", x, y + 12);

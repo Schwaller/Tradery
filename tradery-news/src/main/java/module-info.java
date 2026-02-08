@@ -8,6 +8,7 @@ module com.tradery.news {
     exports com.tradery.news.ui;
     exports com.tradery.news.ui.coin;
     exports com.tradery.news.api;
+    exports com.tradery.news.source;
 
     // Java modules
     requires java.desktop;
@@ -39,4 +40,5 @@ module com.tradery.news {
     // Jackson reflection access
     opens com.tradery.news.model to com.fasterxml.jackson.databind;
     opens com.tradery.news.topic to com.fasterxml.jackson.databind;
+    opens com.tradery.news.ai to com.fasterxml.jackson.databind;
 }

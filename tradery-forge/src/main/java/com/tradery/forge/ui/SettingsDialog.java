@@ -1,11 +1,9 @@
 package com.tradery.forge.ui;
 
-import com.formdev.flatlaf.FlatClientProperties;
 import com.tradery.forge.TraderyApp;
 import com.tradery.forge.data.DataConfig;
 import com.tradery.forge.io.WindowStateStore;
 import com.tradery.forge.ui.charts.ChartConfig;
-import com.tradery.forge.ui.theme.ThemeManager;
 
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
@@ -15,127 +13,28 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Unified settings dialog for theme and data configuration.
+ * Forge settings dialog. Extends the shared base for header, Appearance section,
+ * and button bar, then adds forge-specific sections.
  */
-public class SettingsDialog extends JDialog {
+public class SettingsDialog extends com.tradery.ui.settings.SettingsDialog {
 
-    private JComboBox<String> themeCombo;
-    private JComboBox<String> aiTerminalModeCombo;
     private JLabel dataLocationLabel;
     private JLabel dataSizeLabel;
     private JButton changeLocationBtn;
     private JButton resetLocationBtn;
 
     public SettingsDialog(Window owner) {
-        super(owner, "Settings", ModalityType.APPLICATION_MODAL);
-        setDefaultCloseOperation(DISPOSE_ON_CLOSE);
-
-        // Integrated title bar look (same as ProjectWindow)
-        getRootPane().putClientProperty("apple.awt.fullWindowContent", true);
-        getRootPane().putClientProperty("apple.awt.transparentTitleBar", true);
-        getRootPane().putClientProperty("apple.awt.windowTitleVisible", false);
-        getRootPane().putClientProperty(FlatClientProperties.MACOS_WINDOW_BUTTONS_SPACING,
-                FlatClientProperties.MACOS_WINDOW_BUTTONS_SPACING_LARGE);
-
-        initComponents();
-        pack();
-        setMinimumSize(new Dimension(500, 600));
-        setLocationRelativeTo(owner);
+        super(owner);
     }
 
-    private void initComponents() {
-        JPanel contentPane = new JPanel(new BorderLayout());
-        setContentPane(contentPane);
-
-        // Toolbar header bar (same height/style as ProjectWindow)
-        int barHeight = 52;
-        JPanel headerWrapper = new JPanel(new BorderLayout());
-        JPanel headerBar = new JPanel(new BorderLayout());
-        headerBar.setPreferredSize(new Dimension(0, barHeight));
-
-        JLabel titleLabel = new JLabel("Settings", SwingConstants.CENTER);
-        titleLabel.setFont(new Font("SansSerif", Font.BOLD, 13));
-        titleLabel.setForeground(UIColors.textSecondary());
-        headerBar.add(titleLabel, BorderLayout.CENTER);
-
-        headerWrapper.add(headerBar, BorderLayout.CENTER);
-        headerWrapper.add(new JSeparator(), BorderLayout.SOUTH);
-        contentPane.add(headerWrapper, BorderLayout.NORTH);
-
-        // Sections
-        JPanel sectionsPanel = new JPanel();
-        sectionsPanel.setLayout(new BoxLayout(sectionsPanel, BoxLayout.Y_AXIS));
-        sectionsPanel.add(createSection("Appearance", createThemeContent(), false));
-        sectionsPanel.add(createSection("AI Terminal", createAiTerminalContent(), true));
-        sectionsPanel.add(createSection("Chart Defaults", createChartsContent(), true));
-        sectionsPanel.add(createSection("Data Storage", createDataContent(), true));
-        sectionsPanel.add(createSection("Factory Reset", createFactoryResetContent(), true));
-
-        // Button bar with separator above
-        JPanel buttonBar = new JPanel(new BorderLayout());
-        buttonBar.add(new JSeparator(), BorderLayout.NORTH);
-        JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
-        buttonPanel.setBorder(new EmptyBorder(10, 16, 10, 16));
-        JButton closeBtn = new JButton("Close");
-        closeBtn.addActionListener(e -> dispose());
-        buttonPanel.add(closeBtn);
-        buttonBar.add(buttonPanel, BorderLayout.CENTER);
-
-        JPanel bodyPanel = new JPanel(new BorderLayout());
-        bodyPanel.add(sectionsPanel, BorderLayout.NORTH);
-        bodyPanel.add(buttonBar, BorderLayout.SOUTH);
-
-        contentPane.add(bodyPanel, BorderLayout.CENTER);
-    }
-
-    private JPanel createSection(String title, JPanel content, boolean showSeparator) {
-        JPanel section = new JPanel(new BorderLayout());
-
-        // Full-width separator between sections
-        if (showSeparator) {
-            section.add(new JSeparator(), BorderLayout.NORTH);
-        }
-
-        // Content wrapper with padding
-        JPanel inner = new JPanel(new BorderLayout(0, 6));
-        inner.setBorder(new EmptyBorder(10, 20, 10, 20));
-
-        // Section title as bold label
-        JLabel titleLabel = new JLabel(title);
-        titleLabel.setFont(titleLabel.getFont().deriveFont(Font.BOLD, titleLabel.getFont().getSize2D() + 1f));
-        inner.add(titleLabel, BorderLayout.NORTH);
-        inner.add(content, BorderLayout.CENTER);
-
-        section.add(inner, BorderLayout.CENTER);
-        return section;
-    }
-
-    private JPanel createThemeContent() {
-        JPanel panel = new JPanel(new GridBagLayout());
-
-        GridBagConstraints gbc = new GridBagConstraints();
-        gbc.insets = new Insets(4, 0, 4, 8);
-        gbc.anchor = GridBagConstraints.WEST;
-
-        gbc.gridx = 0; gbc.gridy = 0;
-        panel.add(new JLabel("Theme:"), gbc);
-
-        themeCombo = new JComboBox<>();
-        for (String themeName : ThemeManager.getInstance().getAvailableThemeNames()) {
-            themeCombo.addItem(themeName);
-        }
-        themeCombo.setSelectedItem(ThemeManager.getInstance().getCurrentThemeName());
-        themeCombo.addActionListener(e -> {
-            String selected = (String) themeCombo.getSelectedItem();
-            if (selected != null) {
-                ThemeManager.getInstance().setTheme(selected);
-            }
-        });
-
-        gbc.gridx = 1; gbc.fill = GridBagConstraints.HORIZONTAL; gbc.weightx = 1.0;
-        panel.add(themeCombo, gbc);
-
-        return panel;
+    @Override
+    protected List<SectionEntry> addSections() {
+        return List.of(
+            new SectionEntry("AI Terminal", createAiTerminalContent()),
+            new SectionEntry("Chart Defaults", createChartsContent()),
+            new SectionEntry("Data Storage", createDataContent()),
+            new SectionEntry("Factory Reset", createFactoryResetContent())
+        );
     }
 
     private JPanel createAiTerminalContent() {
@@ -148,7 +47,7 @@ public class SettingsDialog extends JDialog {
         gbc.gridx = 0; gbc.gridy = 0;
         panel.add(new JLabel("Terminal Mode:"), gbc);
 
-        aiTerminalModeCombo = new JComboBox<>(new String[]{"Integrated", "External (OS Terminal)"});
+        JComboBox<String> aiTerminalModeCombo = new JComboBox<>(new String[]{"Integrated", "External (OS Terminal)"});
         String currentMode = WindowStateStore.getInstance().getAiTerminalMode();
         aiTerminalModeCombo.setSelectedIndex("external".equals(currentMode) ? 1 : 0);
         aiTerminalModeCombo.addActionListener(e -> {
@@ -354,7 +253,6 @@ public class SettingsDialog extends JDialog {
         if (chooser.showOpenDialog(this) == JFileChooser.APPROVE_OPTION) {
             File newDir = chooser.getSelectedFile();
 
-            // Confirm if directory has existing data
             DataConfig config = DataConfig.getInstance();
             File oldDir = config.getDataDir();
 
@@ -391,7 +289,6 @@ public class SettingsDialog extends JDialog {
     }
 
     private void moveDataAndRestart(File sourceDir, File targetDir) {
-        // Show progress dialog
         JDialog progressDialog = new JDialog(this, "Moving Data...", true);
         JProgressBar progressBar = new JProgressBar();
         progressBar.setIndeterminate(true);
@@ -410,12 +307,10 @@ public class SettingsDialog extends JDialog {
         SwingWorker<Boolean, Void> worker = new SwingWorker<>() {
             @Override
             protected Boolean doInBackground() throws Exception {
-                // Create target directory
                 if (!targetDir.exists()) {
                     targetDir.mkdirs();
                 }
 
-                // Move contents
                 if (sourceDir.exists()) {
                     File[] files = sourceDir.listFiles();
                     if (files != null) {
@@ -428,7 +323,6 @@ public class SettingsDialog extends JDialog {
                     }
                 }
 
-                // Update config
                 DataConfig.getInstance().setDataDir(targetDir);
                 return true;
             }
@@ -442,8 +336,6 @@ public class SettingsDialog extends JDialog {
                             "Data moved successfully. The application will now restart.",
                             "Success",
                             JOptionPane.INFORMATION_MESSAGE);
-
-                        // Restart application
                         System.exit(0);
                     }
                 } catch (Exception e) {
@@ -544,7 +436,6 @@ public class SettingsDialog extends JDialog {
                 phasesSizeText = formatDirectorySize(phasesDir);
                 hoopsSizeText = formatDirectorySize(hoopsDir);
 
-                // Market data includes multiple directories
                 long marketDataBytes = calculateDirectorySize(dataConfig.getDataDir());
                 marketDataBytes += calculateDirectorySize(new File(userDir, "aggtrades"));
                 marketDataBytes += calculateDirectorySize(new File(userDir, "funding"));
@@ -572,7 +463,6 @@ public class SettingsDialog extends JDialog {
 
         JButton resetButton = new JButton("Clear Selected Data...");
         resetButton.addActionListener(e -> {
-            // Collect selected categories
             List<String> selected = new ArrayList<>();
             if (strategiesCheck.isSelected()) selected.add("Strategies & Backtest Results");
             if (phasesCheck.isSelected()) selected.add("Phases");
@@ -588,7 +478,6 @@ public class SettingsDialog extends JDialog {
                 return;
             }
 
-            // Confirm
             StringBuilder message = new StringBuilder();
             message.append("<html>Are you sure you want to delete the following data?<br><br>");
             for (String item : selected) {
@@ -596,7 +485,6 @@ public class SettingsDialog extends JDialog {
             }
             message.append("<br><b>This cannot be undone!</b>");
 
-            // Add restore notes
             boolean willRestore = strategiesCheck.isSelected() || phasesCheck.isSelected();
             if (willRestore) {
                 message.append("<br><br><i>Note: ");
@@ -642,7 +530,6 @@ public class SettingsDialog extends JDialog {
         File userDir = TraderyApp.USER_DIR;
         DataConfig dataConfig = DataConfig.getInstance();
 
-        // Show progress
         JDialog progressDialog = new JDialog(this, "Clearing Data...", true);
         JProgressBar progressBar = new JProgressBar();
         progressBar.setIndeterminate(true);
@@ -680,7 +567,6 @@ public class SettingsDialog extends JDialog {
                         deleteDirectoryContents(new File(userDir, "openinterest"));
                     }
                     if (settings) {
-                        // Delete settings files
                         new File(userDir, "window-state.json").delete();
                         new File(userDir, "chart-config.json").delete();
                         new File(userDir, "theme.txt").delete();

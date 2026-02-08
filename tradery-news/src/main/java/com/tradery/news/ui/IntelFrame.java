@@ -1,15 +1,11 @@
 package com.tradery.news.ui;
 
 import com.formdev.flatlaf.FlatClientProperties;
-import com.formdev.flatlaf.FlatDarkLaf;
 import com.formdev.flatlaf.util.SystemInfo;
-import com.tradery.news.ai.ClaudeCliProcessor;
-import com.tradery.news.fetch.FetchScheduler;
-import com.tradery.news.fetch.FetcherRegistry;
 import com.tradery.news.model.Article;
 import com.tradery.news.store.SqliteNewsStore;
-import com.tradery.news.topic.TopicRegistry;
 import com.tradery.news.api.IntelApiServer;
+import com.tradery.news.source.*;
 import com.tradery.news.ui.coin.*;
 import com.tradery.ui.controls.BorderlessScrollPane;
 import com.tradery.ui.controls.SegmentedToggle;
@@ -42,12 +38,27 @@ public class IntelFrame extends JFrame {
     private JLabel newsStatusLabel;
     private JComboBox<String> limitCombo;
     private volatile boolean fetching = false;
+    private javax.swing.Timer autoFetchTimer;
 
     // Coins components
     private CoinGraphPanel coinGraphPanel;
     private JLabel coinStatusLabel;
     private JProgressBar coinProgressBar;
     private EntityStore entityStore;
+    EntityStore getEntityStore() { return entityStore; }
+
+    void updateAutoFetchTimer() {
+        if (autoFetchTimer != null) {
+            autoFetchTimer.stop();
+            autoFetchTimer = null;
+        }
+        int minutes = IntelConfig.get().getFetchIntervalMinutes();
+        if (minutes > 0) {
+            autoFetchTimer = new javax.swing.Timer(minutes * 60 * 1000, e -> fetchNewArticles());
+            autoFetchTimer.setRepeats(true);
+            autoFetchTimer.start();
+        }
+    }
     private List<CoinEntity> currentEntities;
     private List<CoinRelationship> currentRelationships;
 
@@ -67,6 +78,8 @@ public class IntelFrame extends JFrame {
 
     // Singleton windows
     private DataStructureFrame dataStructureFrame;
+    private SchemaRegistry schemaRegistry;
+    private DataSourceRegistry sourceRegistry;
 
     // API server
     private IntelApiServer apiServer;
@@ -95,7 +108,10 @@ public class IntelFrame extends JFrame {
         Color fg = UIManager.getColor("Label.disabledForeground");
         return new Color(fg.getRed(), fg.getGreen(), fg.getBlue(), 180);
     }
-    private static Color linkColor() { return linkColor(); }
+    private static Color linkColor() {
+        Color c = UIManager.getColor("Component.linkColor");
+        return c != null ? c : new Color(88, 157, 246);
+    }
 
     private static Color darker(Color c, float factor) {
         return new Color(
@@ -119,6 +135,10 @@ public class IntelFrame extends JFrame {
         this.dataDir = Path.of(System.getProperty("user.home"), ".cryptonews");
         this.store = new SqliteNewsStore(dataDir.resolve("news.db"));
         this.entityStore = new EntityStore();
+        this.schemaRegistry = new SchemaRegistry(entityStore);
+        this.sourceRegistry = new DataSourceRegistry(entityStore, schemaRegistry);
+        sourceRegistry.register(new CoinGeckoSource());
+        sourceRegistry.register(new RssNewsSource(store, dataDir));
 
         setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
 
@@ -161,6 +181,7 @@ public class IntelFrame extends JFrame {
                 cfg.setWindowY(getY());
                 cfg.save();
 
+                if (autoFetchTimer != null) autoFetchTimer.stop();
                 if (apiServer != null) apiServer.stop();
                 if (newsGraphPanel != null) newsGraphPanel.stopPhysics();
                 if (coinGraphPanel != null) coinGraphPanel.stopPhysics();
@@ -173,6 +194,7 @@ public class IntelFrame extends JFrame {
             logPanel.info("Starting Intelligence module...");
             loadCoinData(false);
             loadNewsData();
+            updateAutoFetchTimer();
         });
     }
 
@@ -186,7 +208,10 @@ public class IntelFrame extends JFrame {
 
         // Full-width header bar: [News][Coin Relations]  --title--  [Settings]
         JPanel headerBar = createHeaderBar();
-        mainPanel.add(headerBar, BorderLayout.NORTH);
+        JPanel headerWrapper = new JPanel(new BorderLayout());
+        headerWrapper.add(headerBar, BorderLayout.CENTER);
+        headerWrapper.add(new JSeparator(), BorderLayout.SOUTH);
+        mainPanel.add(headerWrapper, BorderLayout.NORTH);
 
         // Left side: Graph content (cards with toolbars)
         JPanel leftPanel = createGraphPanel();
@@ -208,8 +233,6 @@ public class IntelFrame extends JFrame {
         int barHeight = 52;
 
         JPanel headerBar = new JPanel(new GridBagLayout());
-        headerBar.setBackground(bgCard());
-        headerBar.setBorder(BorderFactory.createMatteBorder(0, 0, 1, 0, borderColor()));
         headerBar.setPreferredSize(new Dimension(0, barHeight));
         headerBar.setMinimumSize(new Dimension(0, barHeight));
 
@@ -300,6 +323,10 @@ public class IntelFrame extends JFrame {
         resetViewBtn.setVisible(false);  // Hidden by default (News is selected)
         rightContent.add(resetViewBtn);
 
+        JButton entitiesBtn = new ToolbarButton("Entities");
+        entitiesBtn.addActionListener(e -> showEntityManager());
+        rightContent.add(entitiesBtn);
+
         JButton dataStructureBtn = new ToolbarButton("Data Structure");
         dataStructureBtn.addActionListener(e -> showDataStructureWindow());
         rightContent.add(dataStructureBtn);
@@ -327,6 +354,7 @@ public class IntelFrame extends JFrame {
         // News panel
         JPanel newsPanel = new JPanel(new BorderLayout());
         newsGraphPanel = new TimelineGraphPanel();
+        newsGraphPanel.setSchemaRegistry(schemaRegistry);
         newsGraphPanel.setOnNodeSelected(this::showArticleDetails);
         newsGraphPanel.setOnTopicSelected(this::showTopicDetails);
         newsPanel.add(newsGraphPanel, BorderLayout.CENTER);
@@ -355,8 +383,7 @@ public class IntelFrame extends JFrame {
 
     private JPanel createRightPanel() {
         JPanel panel = new JPanel(new BorderLayout());
-        panel.setBackground(bgCard());
-        panel.setBorder(BorderFactory.createMatteBorder(0, 1, 0, 0, borderColor()));
+        panel.add(new JSeparator(SwingConstants.VERTICAL), BorderLayout.WEST);
 
         // Detail panel (top)
         detailPanel = new JPanel(new BorderLayout());
@@ -397,8 +424,6 @@ public class IntelFrame extends JFrame {
 
     private JPanel createCoinsStatusBar() {
         JPanel statusBar = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 5));
-        statusBar.setBackground(bgHeader());
-        statusBar.setBorder(BorderFactory.createMatteBorder(1, 0, 0, 0, borderColor()));
 
         coinStatusLabel = new JLabel("Loading...");
         coinStatusLabel.setForeground(textSecondary());
@@ -410,20 +435,24 @@ public class IntelFrame extends JFrame {
         coinProgressBar.setVisible(false);
         statusBar.add(coinProgressBar);
 
-        return statusBar;
+        JPanel wrapper = new JPanel(new BorderLayout());
+        wrapper.add(new JSeparator(), BorderLayout.NORTH);
+        wrapper.add(statusBar, BorderLayout.CENTER);
+        return wrapper;
     }
 
 
     private JPanel createNewsStatusBar() {
         JPanel statusBar = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 5));
-        statusBar.setBackground(bgHeader());
-        statusBar.setBorder(BorderFactory.createMatteBorder(1, 0, 0, 0, borderColor()));
 
         newsStatusLabel = new JLabel("Loading...");
         newsStatusLabel.setForeground(textSecondary());
         statusBar.add(newsStatusLabel);
 
-        return statusBar;
+        JPanel wrapper = new JPanel(new BorderLayout());
+        wrapper.add(new JSeparator(), BorderLayout.NORTH);
+        wrapper.add(statusBar, BorderLayout.CENTER);
+        return wrapper;
     }
 
     // ==================== DETAIL PANEL ====================
@@ -858,30 +887,17 @@ public class IntelFrame extends JFrame {
         newsStatusLabel.setText("Fetching...");
         logPanel.ai("Starting AI-powered news fetch...");
 
-        SwingWorker<FetchScheduler.FetchResult, String> worker = new SwingWorker<>() {
+        SwingWorker<DataSource.FetchResult, String> worker = new SwingWorker<>() {
             @Override
-            protected FetchScheduler.FetchResult doInBackground() {
-                FetcherRegistry fetchers = new FetcherRegistry();
-                fetchers.registerDefaults();
-
-                TopicRegistry topics = new TopicRegistry(dataDir.resolve("topics.json"));
-                ClaudeCliProcessor ai = new ClaudeCliProcessor();
-
-                if (!ai.isAvailable()) {
-                    publish("Claude CLI not available");
-                    ai = null;
-                }
-
-                try (var scheduler = new FetchScheduler(fetchers, topics, store, ai)) {
-                    scheduler.withAiEnabled(ai != null).withArticlesPerSource(ai != null ? 5 : 10);
-                    return scheduler.fetchAndProcess();
-                }
+            protected DataSource.FetchResult doInBackground() {
+                return sourceRegistry.refresh("rss", true, (msg, pct) ->
+                    publish(msg));
             }
 
             @Override
             protected void process(List<String> chunks) {
                 for (String msg : chunks) {
-                    logPanel.warn(msg);
+                    logPanel.data(msg);
                 }
             }
 
@@ -891,13 +907,13 @@ public class IntelFrame extends JFrame {
                 fetchBtn.setEnabled(true);
                 fetchBtn.setText("Fetch New");
                 try {
-                    FetchScheduler.FetchResult result = get();
-                    if (result.newArticles() > 0) {
+                    DataSource.FetchResult result = get();
+                    if (result.entitiesAdded() > 0) {
                         int limit = Integer.parseInt((String) limitCombo.getSelectedItem());
                         List<Article> allArticles = store.getArticles(SqliteNewsStore.ArticleQuery.all(limit));
                         int added = newsGraphPanel.addArticles(allArticles);
                         newsStatusLabel.setText(added + " new  |  " + store.getArticleCount() + " total");
-                        logPanel.success("Fetched " + result.newArticles() + " articles (" + result.aiProcessed() + " AI processed)");
+                        logPanel.success(result.message());
                     } else {
                         newsStatusLabel.setText("No new articles  |  " + store.getArticleCount() + " total");
                         logPanel.info("No new articles found");
@@ -915,103 +931,21 @@ public class IntelFrame extends JFrame {
         coinStatusLabel.setText("Loading...");
         logPanel.data("Loading coin entities...");
 
-        SwingWorker<Void, String> worker = new SwingWorker<>() {
-            private List<CoinEntity> entities;
-            private List<CoinRelationship> relationships;
-
+        SwingWorker<DataSource.FetchResult, String> worker = new SwingWorker<>() {
             @Override
-            protected Void doInBackground() {
-                try {
-                    CoinGeckoClient client = new CoinGeckoClient();
-                    boolean fromCache = false;
-
-                    if (!forceRefresh && entityStore.isCoinGeckoCacheValid()) {
-                        publish("Loading from cache...");
-                        entities = entityStore.loadEntitiesBySource("coingecko");
-                        fromCache = !entities.isEmpty();
-                    }
-
-                    if (entities == null || entities.isEmpty()) {
-                        publish("Fetching from CoinGecko...");
-                        List<CoinEntity> cgEntities = client.fetchTopCoins(200);
-                        entityStore.saveCoinGeckoEntities(cgEntities);
-                        entities = new ArrayList<>(cgEntities);
-                    }
-
-                    publish("Loading manual entities...");
-                    List<CoinEntity> manualEntities = entityStore.loadEntitiesBySource("manual");
-                    entities.addAll(manualEntities);
-
-                    publish("Building relationships...");
-                    List<CoinRelationship> autoRels = client.buildRelationships(entities);
-                    entityStore.saveAutoRelationships(autoRels);
-                    relationships = entityStore.loadAllRelationships();
-
-                    if (manualEntities.isEmpty()) {
-                        publish("Seeding defaults...");
-                        seedDefaultManualEntities();
-                        manualEntities = entityStore.loadEntitiesBySource("manual");
-                        entities.addAll(manualEntities);
-                        relationships = entityStore.loadAllRelationships();
-                    }
-
-                    final List<CoinEntity> finalEntities = entities;
-                    final List<CoinRelationship> finalRels = relationships;
+            protected DataSource.FetchResult doInBackground() {
+                return sourceRegistry.refresh("coingecko", forceRefresh, (msg, pct) -> {
+                    publish(msg);
                     SwingUtilities.invokeLater(() -> {
-                        currentEntities = finalEntities;
-                        currentRelationships = finalRels;
-                        coinGraphPanel.setData(finalEntities, finalRels);
-                        updateCoinStatus();
-                        coinProgressBar.setVisible(false);
-                    });
-
-                    if (!fromCache) {
-                        fetchCategories(client, entities);
-                    }
-
-                } catch (Exception e) {
-                    publish("Error: " + e.getMessage());
-                    loadFallbackData();
-                }
-                return null;
-            }
-
-            private void fetchCategories(CoinGeckoClient client, List<CoinEntity> entities) {
-                SwingUtilities.invokeLater(() -> {
-                    coinProgressBar.setVisible(true);
-                    coinProgressBar.setValue(0);
-                });
-
-                List<String> cgIds = entities.stream()
-                    .filter(e -> e.type() == CoinEntity.Type.COIN)
-                    .map(CoinEntity::id).toList();
-                int total = cgIds.size();
-                int count = 0;
-
-                for (String coinId : cgIds) {
-                    count++;
-                    int pct = (count * 100) / total;
-                    try {
-                        Map<String, List<String>> catMap = client.fetchCoinCategories(List.of(coinId));
-                        List<String> cats = catMap.get(coinId);
-                        if (cats != null && !cats.isEmpty()) {
-                            for (CoinEntity entity : entities) {
-                                if (entity.id().equals(coinId)) {
-                                    entity.setCategories(cats);
-                                    entityStore.saveEntity(entity, "coingecko");
-                                    break;
-                                }
-                            }
+                        if (pct > 0 && pct < 100) {
+                            coinProgressBar.setVisible(true);
+                            coinProgressBar.setValue(pct);
+                            coinProgressBar.setString(pct + "%");
+                        } else {
+                            coinProgressBar.setVisible(false);
                         }
-                    } catch (Exception ignored) {}
-                    int finalPct = pct;
-                    SwingUtilities.invokeLater(() -> {
-                        coinProgressBar.setValue(finalPct);
-                        coinProgressBar.setString(finalPct + "%");
                     });
-                }
-
-                SwingUtilities.invokeLater(() -> coinProgressBar.setVisible(false));
+                });
             }
 
             @Override
@@ -1024,23 +958,34 @@ public class IntelFrame extends JFrame {
 
             @Override
             protected void done() {
-                if (entities != null) {
-                    updateCoinStatus();
-                    logPanel.success("Loaded " + entities.size() + " entities, " + relationships.size() + " relationships");
-                }
-            }
+                try {
+                    DataSource.FetchResult result = get();
 
-            private void loadFallbackData() {
-                entities = new ArrayList<>();
-                relationships = new ArrayList<>();
-                loadSampleData(entities, relationships);
-                SwingUtilities.invokeLater(() -> {
+                    // Reload all data from store into graph
+                    List<CoinEntity> allEntities = new ArrayList<>();
+                    allEntities.addAll(entityStore.loadEntitiesBySource("coingecko"));
+                    allEntities.addAll(entityStore.loadEntitiesBySource("manual"));
+                    List<CoinRelationship> allRels = entityStore.loadAllRelationships();
+
+                    currentEntities = allEntities;
+                    currentRelationships = allRels;
+                    coinGraphPanel.setData(allEntities, allRels);
+                    updateCoinStatus();
+                    coinProgressBar.setVisible(false);
+
+                    logPanel.success(result.message());
+                } catch (Exception e) {
+                    // Fallback to sample data
+                    List<CoinEntity> entities = new ArrayList<>();
+                    List<CoinRelationship> relationships = new ArrayList<>();
+                    loadSampleData(entities, relationships);
                     currentEntities = entities;
                     currentRelationships = relationships;
                     coinGraphPanel.setData(entities, relationships);
                     coinStatusLabel.setText(entities.size() + " entities (sample)");
                     coinProgressBar.setVisible(false);
-                });
+                    logPanel.error("Failed to load coin data: " + e.getMessage());
+                }
             }
         };
         worker.execute();
@@ -1075,14 +1020,21 @@ public class IntelFrame extends JFrame {
             return;
         }
         logPanel.info("Opening Data Structure...");
-        dataStructureFrame = new DataStructureFrame(entityStore, v -> loadCoinData(false));
+        dataStructureFrame = new DataStructureFrame(entityStore, schemaRegistry, v -> loadCoinData(false));
         dataStructureFrame.setVisible(true);
+    }
+
+    private void showEntityManager() {
+        logPanel.info("Opening Entity Manager...");
+        EntityManagerFrame entityManager = new EntityManagerFrame(entityStore, v -> loadCoinData(false));
+        entityManager.setSchemaRegistry(schemaRegistry);
+        entityManager.setVisible(true);
     }
 
     private void showSettingsWindow() {
         logPanel.info("Opening Settings...");
-        EntityManagerFrame settings = new EntityManagerFrame(entityStore, v -> loadCoinData(false));
-        settings.setVisible(true);
+        IntelSettingsDialog dialog = new IntelSettingsDialog(this);
+        dialog.setVisible(true);
     }
 
     private void showAddRelationshipDialog(String preselectedFromId) {
@@ -1101,53 +1053,6 @@ public class IntelFrame extends JFrame {
             }
         );
         dialog.setVisible(true);
-    }
-
-    // ==================== SEED DATA ====================
-
-    private void seedDefaultManualEntities() {
-        Set<String> existingIds = new HashSet<>();
-        for (CoinEntity e : entityStore.loadAllEntities()) existingIds.add(e.id());
-
-        // ETFs
-        saveManualEntity(createETF("ibit", "iShares Bitcoin Trust", "IBIT"));
-        saveManualEntity(createETF("fbtc", "Fidelity Wise Origin Bitcoin", "FBTC"));
-        saveManualEntity(createETF("gbtc", "Grayscale Bitcoin Trust", "GBTC"));
-        saveManualEntity(createETF("etha", "iShares Ethereum Trust", "ETHA"));
-
-        if (existingIds.contains("bitcoin")) {
-            for (String etf : List.of("ibit", "fbtc", "gbtc"))
-                saveManualRelationship(new CoinRelationship(etf, "bitcoin", CoinRelationship.Type.ETF_TRACKS));
-        }
-        if (existingIds.contains("ethereum")) {
-            saveManualRelationship(new CoinRelationship("etha", "ethereum", CoinRelationship.Type.ETF_TRACKS));
-        }
-
-        // VCs
-        saveManualEntity(createVC("a16z", "Andreessen Horowitz"));
-        saveManualEntity(createVC("paradigm", "Paradigm"));
-        saveManualEntity(createVC("multicoin", "Multicoin Capital"));
-
-        seedInvestments(existingIds, "a16z", "solana", "ethereum", "optimism", "uniswap");
-        seedInvestments(existingIds, "paradigm", "ethereum", "optimism", "uniswap");
-        seedInvestments(existingIds, "multicoin", "solana", "helium");
-
-        // Exchanges
-        saveManualEntity(createExchange("binance-ex", "Binance"));
-        saveManualEntity(createExchange("coinbase-ex", "Coinbase"));
-
-        if (existingIds.contains("binancecoin"))
-            saveManualRelationship(new CoinRelationship("binance-ex", "binancecoin", CoinRelationship.Type.FOUNDED_BY));
-    }
-
-    private void saveManualEntity(CoinEntity entity) { entityStore.saveEntity(entity, "manual"); }
-    private void saveManualRelationship(CoinRelationship rel) { entityStore.saveRelationship(rel, "manual"); }
-
-    private void seedInvestments(Set<String> existingIds, String vcId, String... coinIds) {
-        for (String coinId : coinIds) {
-            if (existingIds.contains(coinId))
-                saveManualRelationship(new CoinRelationship(vcId, coinId, CoinRelationship.Type.INVESTED_IN));
-        }
     }
 
     private void loadSampleData(List<CoinEntity> entities, List<CoinRelationship> relationships) {
@@ -1170,12 +1075,6 @@ public class IntelFrame extends JFrame {
     }
     private CoinEntity createETF(String id, String name, String symbol) {
         return new CoinEntity(id, name, symbol, CoinEntity.Type.ETF);
-    }
-    private CoinEntity createVC(String id, String name) {
-        return new CoinEntity(id, name, null, CoinEntity.Type.VC);
-    }
-    private CoinEntity createExchange(String id, String name) {
-        return new CoinEntity(id, name, null, CoinEntity.Type.EXCHANGE);
     }
 
     private String formatMarketCap(double num) {

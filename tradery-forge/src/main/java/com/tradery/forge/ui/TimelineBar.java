@@ -7,6 +7,8 @@ import com.tradery.forge.data.page.CandlePageManager;
 import com.tradery.data.page.DataPageListener;
 import com.tradery.data.page.DataPageView;
 
+import com.tradery.charts.util.ChartStyles;
+
 import javax.swing.*;
 import java.awt.*;
 import java.awt.event.MouseAdapter;
@@ -50,8 +52,9 @@ public class TimelineBar extends JPanel implements DataPageListener<Candle> {
     // Cached time range for coordinate conversion
     private long minTime;
     private long maxTime;
-    private int padding = 4;
+    private int padding = 4;  // left/right padding for candle x-coords
     private int topPadding = 4;
+    private int bottomPadding = 0;
 
     // Callback when anchor date changes
     private Consumer<Long> onAnchorDateChanged;
@@ -70,7 +73,7 @@ public class TimelineBar extends JPanel implements DataPageListener<Candle> {
         setPreferredSize(new Dimension(0, BAR_HEIGHT));
         setMinimumSize(new Dimension(0, BAR_HEIGHT));
         setMaximumSize(new Dimension(Integer.MAX_VALUE, BAR_HEIGHT));
-        setOpaque(false);
+        setOpaque(true);
 
         createContextMenu();
         setupMouseHandlers();
@@ -266,7 +269,11 @@ public class TimelineBar extends JPanel implements DataPageListener<Candle> {
 
         int width = getWidth();
         int height = getHeight();
-        int chartHeight = height - topPadding - padding;
+        int chartHeight = height - topPadding - bottomPadding;
+
+        // Fill with chart plot background
+        g2.setColor(ChartStyles.getTheme().getPlotBackgroundColor());
+        g2.fillRect(0, 0, width, height);
 
         if (weeklyCandles == null || weeklyCandles.isEmpty()) {
             g2.dispose();
@@ -320,36 +327,19 @@ public class TimelineBar extends JPanel implements DataPageListener<Candle> {
                 double x1 = padding + ((visibleStart - minTime) / (double) timeRange) * (width - padding * 2);
                 double x2 = padding + ((visibleEnd - minTime) / (double) timeRange) * (width - padding * 2);
 
-                // Check theme brightness
-                Color bg = UIManager.getColor("Panel.background");
-                boolean isDarkTheme = bg == null || (bg.getRed() + bg.getGreen() + bg.getBlue()) / 3 < 128;
+                // Use candle bar color at 1/3 opacity for fill
+                Color accent = UIManager.getColor("Component.accentColor");
+                if (accent == null) accent = new Color(100, 140, 180);
+                int fillAlpha = accent.getAlpha() / 3;
 
-                // Pulse alpha when loading
-                int fillAlpha = 64;
-                int borderAlpha = 128;
-                if (isLoading) {
-                    fillAlpha = 32 + (int) (64 * (0.5 + 0.5 * Math.sin(pulsePhase * 2 * Math.PI)));
-                    borderAlpha = 64 + (int) (128 * (0.5 + 0.5 * Math.sin(pulsePhase * 2 * Math.PI)));
-                }
+                g2.setColor(new Color(accent.getRed(), accent.getGreen(), accent.getBlue(), fillAlpha));
+                g2.fill(new Rectangle2D.Double(x1, 0, x2 - x1, height));
 
-                // Rounded selection rectangle (extend 3px closer to bottom)
-                java.awt.geom.RoundRectangle2D selectionRect =
-                    new java.awt.geom.RoundRectangle2D.Double(x1, topPadding, x2 - x1, chartHeight + 3, 5, 5);
-
-                // Fill with pulsing alpha
-                Color fillColor = isDarkTheme
-                    ? new Color(255, 255, 255, fillAlpha)
-                    : new Color(0, 0, 0, fillAlpha);
-                g2.setColor(fillColor);
-                g2.fill(selectionRect);
-
-                // Border around selection (0.5px)
-                Color borderColor = isDarkTheme
-                    ? new Color(255, 255, 255, borderAlpha)
-                    : new Color(0, 0, 0, borderAlpha);
-                g2.setColor(borderColor);
+                // Left and right border lines in full candle color
+                g2.setColor(accent);
                 g2.setStroke(new BasicStroke(0.5f));
-                g2.draw(selectionRect);
+                g2.draw(new java.awt.geom.Line2D.Double(x1, 0, x1, height));
+                g2.draw(new java.awt.geom.Line2D.Double(x2, 0, x2, height));
             }
         }
 
@@ -382,6 +372,13 @@ public class TimelineBar extends JPanel implements DataPageListener<Candle> {
             g2.drawString(yearStr, (int) x - textWidth - 2, height - 2);
 
             cal.add(java.util.Calendar.YEAR, 1);
+        }
+
+        // Bottom separator line (1 logical pixel)
+        Color sep = UIManager.getColor("Separator.foreground");
+        if (sep != null) {
+            g2.setColor(sep);
+            g2.fillRect(0, height - 1, width, 1);
         }
 
         g2.dispose();

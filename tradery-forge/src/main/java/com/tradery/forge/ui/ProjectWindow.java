@@ -217,7 +217,7 @@ public class ProjectWindow extends JFrame {
                 editorPanel.setBorder(BorderFactory.createMatteBorder(0, 0, 1, 0, separatorColor));
             }
         };
-        com.tradery.forge.ui.theme.ThemeManager.getInstance().addThemeChangeListener(themeChangeListener);
+        com.tradery.ui.ThemeHelper.addThemeChangeListener(themeChangeListener);
 
         // Wire up trade table hover/select to chart highlight
         tradeTablePanel.setOnTradeHover(chartPanel::highlightTrades);
@@ -508,7 +508,6 @@ public class ProjectWindow extends JFrame {
         topStack.setLayout(new BoxLayout(topStack, BoxLayout.Y_AXIS));
         topStack.add(toolbarPanel);
         topStack.add(timelineBar);
-        topStack.add(new JSeparator());
 
         contentPane.add(topStack, BorderLayout.NORTH);
 
@@ -1178,7 +1177,7 @@ public class ProjectWindow extends JFrame {
 
         // Unregister singleton listeners
         if (themeChangeListener != null) {
-            com.tradery.forge.ui.theme.ThemeManager.getInstance().removeThemeChangeListener(themeChangeListener);
+            com.tradery.ui.ThemeHelper.removeThemeChangeListener(themeChangeListener);
         }
         // Close auxiliary windows
         if (phaseAnalysisWindow != null) {

@@ -31,10 +31,7 @@ public class IntelLogPanel extends JPanel {
 
         // Header
         JPanel header = new JPanel(new BorderLayout());
-        header.setBorder(BorderFactory.createCompoundBorder(
-            BorderFactory.createMatteBorder(1, 0, 0, 0, UIManager.getColor("Separator.foreground")),
-            new EmptyBorder(4, 8, 4, 8)
-        ));
+        header.setBorder(new EmptyBorder(4, 8, 4, 8));
 
         JLabel titleLabel = new JLabel("Activity Log");
         titleLabel.setFont(new Font("SansSerif", Font.BOLD, 11));
@@ -46,7 +43,10 @@ public class IntelLogPanel extends JPanel {
         clearBtn.addActionListener(e -> clear());
         header.add(clearBtn, BorderLayout.EAST);
 
-        add(header, BorderLayout.NORTH);
+        JPanel headerWrapper = new JPanel(new BorderLayout());
+        headerWrapper.add(new JSeparator(), BorderLayout.NORTH);
+        headerWrapper.add(header, BorderLayout.CENTER);
+        add(headerWrapper, BorderLayout.NORTH);
 
         // Entry list
         listModel = new DefaultListModel<>();
@@ -72,10 +72,13 @@ public class IntelLogPanel extends JPanel {
         detailArea.setText("Select a log entry to view details");
 
         JScrollPane detailScroll = new JScrollPane(detailArea);
-        detailScroll.setBorder(BorderFactory.createMatteBorder(1, 0, 0, 0, UIManager.getColor("Separator.foreground")));
+        detailScroll.setBorder(null);
+        JPanel detailWrapper = new JPanel(new BorderLayout());
+        detailWrapper.add(new JSeparator(), BorderLayout.NORTH);
+        detailWrapper.add(detailScroll, BorderLayout.CENTER);
 
         // Split pane (list takes 66%)
-        splitPane = new ThinSplitPane(JSplitPane.VERTICAL_SPLIT, listScroll, detailScroll);
+        splitPane = new ThinSplitPane(JSplitPane.VERTICAL_SPLIT, listScroll, detailWrapper);
         splitPane.setResizeWeight(0.66);
 
         add(splitPane, BorderLayout.CENTER);

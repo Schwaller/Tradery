@@ -180,7 +180,7 @@ public class PhasePreviewChart extends JPanel implements DataPageListener<Candle
 
     private XYLineAndShapeRenderer createPriceRenderer() {
         XYLineAndShapeRenderer renderer = new XYLineAndShapeRenderer(true, false);
-        renderer.setSeriesPaint(0, ChartStyles.PRICE_LINE_COLOR);
+        renderer.setSeriesPaint(0, com.tradery.charts.util.ChartStyles.getTheme().getPriceLineColor());
         renderer.setSeriesStroke(0, new BasicStroke(1.0f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
         return renderer;
     }

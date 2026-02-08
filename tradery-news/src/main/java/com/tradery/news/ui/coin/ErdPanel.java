@@ -4,8 +4,10 @@ import javax.swing.*;
 import java.awt.*;
 import java.awt.event.*;
 import java.awt.geom.*;
+import java.awt.image.BufferedImage;
 import java.util.*;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.function.Consumer;
 
@@ -15,12 +17,9 @@ import java.util.function.Consumer;
  */
 public class ErdPanel extends JPanel {
 
-    private static final Color BG_COLOR = new Color(25, 27, 31);
-    private static final Color GRID_COLOR = new Color(40, 42, 46);
     private static final Color SELECTION_COLOR = new Color(100, 160, 255);
     private static final Color ARROW_COLOR = new Color(120, 120, 130);
     private static final Color PORT_COLOR = new Color(100, 160, 255, 180);
-    private static final Color MINIMAP_BG = new Color(30, 32, 36, 200);
     private static final Color MINIMAP_VIEWPORT = new Color(100, 160, 255, 60);
 
     private static final int ENTITY_WIDTH = 180;
@@ -86,8 +85,62 @@ public class ErdPanel extends JPanel {
     private static final double ANIM_LERP = 0.12;
     private static final double ANIM_SNAP = 1.0;
 
+    /** Panel background from UIManager, adapts to theme. */
+    private static Color bgColor() {
+        Color c = UIManager.getColor("Panel.background");
+        return c != null ? c : new Color(25, 27, 31);
+    }
+
+    /** Grid dot color: slightly offset from background. */
+    private static Color gridColor() {
+        Color bg = bgColor();
+        // Shift toward lighter in dark themes, darker in light themes
+        int lum = (bg.getRed() + bg.getGreen() + bg.getBlue()) / 3;
+        int offset = lum < 128 ? 15 : -15;
+        return new Color(
+            Math.max(0, Math.min(255, bg.getRed() + offset)),
+            Math.max(0, Math.min(255, bg.getGreen() + offset)),
+            Math.max(0, Math.min(255, bg.getBlue() + offset))
+        );
+    }
+
+    /** Entity box body color: slightly offset from background. */
+    private static Color boxColor() {
+        Color bg = bgColor();
+        int lum = (bg.getRed() + bg.getGreen() + bg.getBlue()) / 3;
+        int offset = lum < 128 ? 12 : -12;
+        return new Color(
+            Math.max(0, Math.min(255, bg.getRed() + offset)),
+            Math.max(0, Math.min(255, bg.getGreen() + offset)),
+            Math.max(0, Math.min(255, bg.getBlue() + offset))
+        );
+    }
+
+    /** Strong foreground for labels. */
+    private static Color labelColor() {
+        Color c = UIManager.getColor("Label.foreground");
+        return c != null ? c : new Color(220, 220, 230);
+    }
+    /** Secondary foreground for less important text. */
+    private static Color secondaryColor() {
+        Color c = UIManager.getColor("Label.disabledForeground");
+        return c != null ? c : new Color(150, 150, 160);
+    }
+
+    /** Minimap background: slightly offset from background with alpha. */
+    private static Color minimapBg() {
+        Color bg = bgColor();
+        int lum = (bg.getRed() + bg.getGreen() + bg.getBlue()) / 3;
+        int offset = lum < 128 ? 5 : -5;
+        return new Color(
+            Math.max(0, Math.min(255, bg.getRed() + offset)),
+            Math.max(0, Math.min(255, bg.getGreen() + offset)),
+            Math.max(0, Math.min(255, bg.getBlue() + offset)),
+            200
+        );
+    }
+
     public ErdPanel() {
-        setBackground(BG_COLOR);
         setPreferredSize(new Dimension(1200, 600));
         setupMouseHandlers();
 
@@ -243,6 +296,7 @@ public class ErdPanel extends JPanel {
 
     @Override
     protected void paintComponent(Graphics g) {
+        setBackground(bgColor());
         super.paintComponent(g);
         if (registry == null) return;
 
@@ -308,26 +362,33 @@ public class ErdPanel extends JPanel {
             saveLabelBounds = new Rectangle(tx, ty, tw, th);
 
             // Background pill
-            sg.setColor(saveLabelHovered ? new Color(55, 57, 61) : new Color(40, 42, 46));
+            sg.setColor(saveLabelHovered ? gridColor().brighter() : gridColor());
             sg.fillRoundRect(tx, ty, tw, th, 8, 8);
             // Text
-            sg.setColor(saveLabelHovered ? new Color(220, 220, 230) : new Color(140, 140, 150));
+            Color fg = UIManager.getColor("Label.foreground");
+            if (fg == null) fg = new Color(200, 200, 210);
+            sg.setColor(saveLabelHovered ? fg : new Color(fg.getRed(), fg.getGreen(), fg.getBlue(), 160));
             sg.drawString(hint, tx + pad, ty + fm.getAscent() + pad / 2);
         } else {
             saveLabelBounds = null;
         }
     }
 
+    private int gridCacheColorRgb;
+
     private void drawDotGrid(Graphics2D g2) {
         int w = getWidth();
         int h = getHeight();
         if (w <= 0 || h <= 0) return;
 
-        // Rebuild cache only when size changes
-        if (gridCache == null || gridCacheW != w || gridCacheH != h) {
+        Color gc = gridColor();
+        int colorRgb = gc.getRGB();
+
+        // Rebuild cache when size or color changes
+        if (gridCache == null || gridCacheW != w || gridCacheH != h || gridCacheColorRgb != colorRgb) {
             gridCache = new java.awt.image.BufferedImage(w, h, java.awt.image.BufferedImage.TYPE_INT_ARGB);
             Graphics2D gg = gridCache.createGraphics();
-            gg.setColor(GRID_COLOR);
+            gg.setColor(gc);
             for (int x = 0; x < w; x += GRID_SPACING) {
                 for (int y = 0; y < h; y += GRID_SPACING) {
                     gg.fillRect(x, y, 1, 1);
@@ -336,6 +397,7 @@ public class ErdPanel extends JPanel {
             gg.dispose();
             gridCacheW = w;
             gridCacheH = h;
+            gridCacheColorRgb = colorRgb;
         }
         g2.drawImage(gridCache, 0, 0, null);
     }
@@ -347,12 +409,8 @@ public class ErdPanel extends JPanel {
         boolean isSelected = type == selectedType;
         boolean isHovered = type == hoveredType;
 
-        // Shadow
-        g2.setColor(new Color(0, 0, 0, 40));
-        g2.fill(new RoundRectangle2D.Double(x + 3, y + 3, ENTITY_WIDTH, h, 8, 8));
-
         // Body
-        g2.setColor(new Color(38, 40, 44));
+        g2.setColor(boxColor());
         g2.fill(new RoundRectangle2D.Double(x, y, ENTITY_WIDTH, h, 8, 8));
 
         // Header bar
@@ -369,17 +427,27 @@ public class ErdPanel extends JPanel {
         g2.drawString(headerText, textX, (int) (y + ENTITY_HEADER_H - 8));
 
         // Attribute rows
-        g2.setFont(new Font("Monospaced", Font.PLAIN, 11));
-        fm = g2.getFontMetrics();
         for (int i = 0; i < type.attributes().size(); i++) {
             SchemaAttribute attr = type.attributes().get(i);
             int rowY = (int) (y + ENTITY_HEADER_H + 4 + i * ATTR_ROW_H);
 
-            // Attribute name
-            g2.setColor(new Color(180, 180, 190));
-            String attrText = attr.name() + ": " + attr.dataType();
-            if (attr.required()) attrText += " *";
-            g2.drawString(attrText, (int) (x + 10), rowY + fm.getAscent());
+            // Display name (locale-aware)
+            g2.setFont(new Font("SansSerif", Font.PLAIN, 11));
+            fm = g2.getFontMetrics();
+            String displayName = attr.displayName(Locale.getDefault());
+            if (attr.required()) displayName += " *";
+            g2.setColor(labelColor());
+            g2.drawString(displayName, (int) (x + 10), rowY + fm.getAscent());
+
+            // Type badge (right-aligned)
+            String badge = attr.dataType();
+            String configInfo = attr.configSummary();
+            if (!configInfo.isEmpty()) badge += " " + configInfo;
+            g2.setFont(new Font("SansSerif", Font.PLAIN, 9));
+            fm = g2.getFontMetrics();
+            g2.setColor(secondaryColor());
+            int badgeX = (int) (x + ENTITY_WIDTH - fm.stringWidth(badge) - 8);
+            g2.drawString(badge, badgeX, rowY + fm.getAscent() + 1);
         }
 
         // Border
@@ -407,13 +475,8 @@ public class ErdPanel extends JPanel {
         diamond.lineTo(cx - DIAMOND_W / 2.0, cy);
         diamond.closePath();
 
-        // Shadow
-        AffineTransform shadowTx = AffineTransform.getTranslateInstance(3, 3);
-        g2.setColor(new Color(0, 0, 0, 40));
-        g2.fill(shadowTx.createTransformedShape(diamond));
-
         // Fill
-        g2.setColor(new Color(35, 37, 41));
+        g2.setColor(boxColor());
         g2.fill(diamond);
 
         // Border
@@ -430,7 +493,7 @@ public class ErdPanel extends JPanel {
 
         // Label
         if (type.label() != null) {
-            g2.setColor(new Color(150, 150, 160));
+            g2.setColor(secondaryColor());
             g2.setFont(new Font("SansSerif", Font.ITALIC, 10));
             fm = g2.getFontMetrics();
             String label = "\"" + type.label() + "\"";
@@ -439,12 +502,12 @@ public class ErdPanel extends JPanel {
 
         // Attributes below label
         if (!type.attributes().isEmpty()) {
-            g2.setFont(new Font("Monospaced", Font.PLAIN, 9));
+            g2.setFont(new Font("SansSerif", Font.PLAIN, 9));
             fm = g2.getFontMetrics();
-            g2.setColor(new Color(140, 140, 150));
+            g2.setColor(secondaryColor());
             int attrY = (int) (cy + 22);
             for (SchemaAttribute attr : type.attributes()) {
-                String text = attr.name() + ": " + attr.dataType();
+                String text = attr.displayName(Locale.getDefault()) + ": " + attr.dataType();
                 g2.drawString(text, (int) (cx - fm.stringWidth(text) / 2.0), attrY);
                 attrY += 12;
             }
@@ -493,7 +556,7 @@ public class ErdPanel extends JPanel {
 
         // Label
         if (hasLabel) {
-            g2.setColor(new Color(150, 150, 160));
+            g2.setColor(secondaryColor());
             g2.setFont(new Font("SansSerif", Font.ITALIC, 9));
             g2.drawString(labelText, (int) (cx - labelW / 2.0), (int) (cy + 10));
         }
@@ -695,9 +758,9 @@ public class ErdPanel extends JPanel {
         int mmY = getHeight() - mmH - 10;
 
         // Background
-        g2.setColor(MINIMAP_BG);
+        g2.setColor(minimapBg());
         g2.fillRoundRect(mmX, mmY, mmW, mmH, 6, 6);
-        g2.setColor(new Color(60, 62, 66));
+        g2.setColor(gridColor());
         g2.drawRoundRect(mmX, mmY, mmW, mmH, 6, 6);
 
         // Compute bounds
@@ -1185,7 +1248,6 @@ public class ErdPanel extends JPanel {
         Window window = SwingUtilities.getWindowAncestor(this);
 
         JPanel panel = new JPanel(new GridLayout(4, 2, 5, 5));
-        panel.setBackground(new Color(45, 47, 51));
 
         JTextField nameField = new JTextField();
         JTextField labelField = new JTextField();
@@ -1232,36 +1294,323 @@ public class ErdPanel extends JPanel {
     }
 
     private void showAddAttributeDialog(SchemaType type) {
-        JPanel panel = new JPanel(new GridLayout(3, 2, 5, 5));
-        JTextField nameField = new JTextField();
-        JComboBox<String> dataTypeCombo = new JComboBox<>(new String[]{
-            SchemaAttribute.TEXT, SchemaAttribute.NUMBER, SchemaAttribute.LIST, SchemaAttribute.BOOLEAN
+        showAttributeEditorDialog(type, null);
+    }
+
+    /**
+     * Show the full attribute editor dialog (used for both add and edit).
+     * If editAttr is non-null, pre-fills with existing values.
+     */
+    static SchemaAttribute showAttributeEditorDialog(Component parent, SchemaType type, SchemaAttribute editAttr) {
+        JPanel main = new JPanel(new BorderLayout(0, 10));
+
+        // === Basic section ===
+        JPanel basicPanel = new JPanel(new GridBagLayout());
+        GridBagConstraints lc = new GridBagConstraints();
+        lc.anchor = GridBagConstraints.WEST;
+        lc.insets = new Insets(4, 5, 4, 10);
+        GridBagConstraints fc = new GridBagConstraints();
+        fc.fill = GridBagConstraints.HORIZONTAL;
+        fc.weightx = 1.0;
+        fc.insets = new Insets(4, 0, 4, 5);
+
+        int row = 0;
+
+        JTextField nameField = new JTextField(editAttr != null ? editAttr.name() : "", 20);
+        nameField.setEnabled(editAttr == null); // can't rename existing
+        lc.gridx = 0; lc.gridy = row;
+        basicPanel.add(new JLabel("Name:"), lc);
+        fc.gridx = 1; fc.gridy = row++;
+        basicPanel.add(nameField, fc);
+
+        JComboBox<String> dataTypeCombo = new JComboBox<>(SchemaAttribute.ALL_TYPES.toArray(new String[0]));
+        if (editAttr != null) dataTypeCombo.setSelectedItem(editAttr.dataType());
+        lc.gridx = 0; lc.gridy = row;
+        basicPanel.add(new JLabel("Type:"), lc);
+        fc.gridx = 1; fc.gridy = row++;
+        basicPanel.add(dataTypeCombo, fc);
+
+        JCheckBox requiredCheck = new JCheckBox("Required", editAttr != null && editAttr.required());
+        lc.gridx = 0; lc.gridy = row;
+        basicPanel.add(new JLabel(), lc);
+        fc.gridx = 1; fc.gridy = row++;
+        basicPanel.add(requiredCheck, fc);
+
+        main.add(basicPanel, BorderLayout.NORTH);
+
+        // === Format section (dynamic) ===
+        JPanel formatContainer = new JPanel(new BorderLayout());
+        formatContainer.setBorder(BorderFactory.createTitledBorder("Format"));
+
+        // Config input fields
+        JTextField unitField = new JTextField(10);
+        JTextField unitCategoryField = new JTextField(10);
+        JTextField decimalPlacesField = new JTextField("2", 5);
+        JCheckBox thousandsCheck = new JCheckBox("Thousands separator", false);
+        JTextField currencyCodeField = new JTextField("USD", 5);
+        JTextField currencySymbolField = new JTextField("$", 3);
+        JComboBox<String> symbolPosCombo = new JComboBox<>(new String[]{"prefix", "suffix"});
+        JComboBox<String> dateFormatCombo = new JComboBox<>(new String[]{
+            "yyyy-MM-dd", "dd/MM/yyyy", "MM/dd/yyyy", "dd.MM.yyyy"});
+        dateFormatCombo.setEditable(true);
+        JComboBox<String> timeFormatCombo = new JComboBox<>(new String[]{"HH:mm", "HH:mm:ss", "hh:mm a"});
+        timeFormatCombo.setEditable(true);
+        JComboBox<String> datetimeFormatCombo = new JComboBox<>(new String[]{
+            "yyyy-MM-dd HH:mm:ss", "yyyy-MM-dd HH:mm", "dd/MM/yyyy HH:mm"});
+        datetimeFormatCombo.setEditable(true);
+        JTextField timezoneField = new JTextField("America/New_York", 15);
+        JTextArea enumValuesArea = new JTextArea(4, 20);
+        enumValuesArea.setToolTipText("One value per line");
+
+        // Pre-fill config from editAttr
+        if (editAttr != null && editAttr.config() != null) {
+            Map<String, Object> cfg = editAttr.config();
+            if (cfg.containsKey("unit")) unitField.setText(String.valueOf(cfg.get("unit")));
+            if (cfg.containsKey("unitCategory")) unitCategoryField.setText(String.valueOf(cfg.get("unitCategory")));
+            if (cfg.containsKey("decimalPlaces")) decimalPlacesField.setText(String.valueOf(cfg.get("decimalPlaces")));
+            if (cfg.containsKey("thousandsSeparator")) thousandsCheck.setSelected(Boolean.TRUE.equals(cfg.get("thousandsSeparator")));
+            if (cfg.containsKey("currencyCode")) currencyCodeField.setText(String.valueOf(cfg.get("currencyCode")));
+            if (cfg.containsKey("currencySymbol")) currencySymbolField.setText(String.valueOf(cfg.get("currencySymbol")));
+            if (cfg.containsKey("symbolPosition")) symbolPosCombo.setSelectedItem(cfg.get("symbolPosition"));
+            if (cfg.containsKey("format")) {
+                String fmt = String.valueOf(cfg.get("format"));
+                dateFormatCombo.setSelectedItem(fmt);
+                timeFormatCombo.setSelectedItem(fmt);
+                datetimeFormatCombo.setSelectedItem(fmt);
+            }
+            if (cfg.containsKey("timezone")) timezoneField.setText(String.valueOf(cfg.get("timezone")));
+            if (cfg.containsKey("values") && cfg.get("values") instanceof List<?> vals) {
+                enumValuesArea.setText(String.join("\n", vals.stream().map(String::valueOf).toList()));
+            }
+        }
+
+        Runnable updateFormatPanel = () -> {
+            formatContainer.removeAll();
+            String selectedType = (String) dataTypeCombo.getSelectedItem();
+            JPanel fp = new JPanel(new GridBagLayout());
+            GridBagConstraints flc = new GridBagConstraints();
+            flc.anchor = GridBagConstraints.WEST;
+            flc.insets = new Insets(3, 5, 3, 10);
+            GridBagConstraints ffc = new GridBagConstraints();
+            ffc.fill = GridBagConstraints.HORIZONTAL;
+            ffc.weightx = 1.0;
+            ffc.insets = new Insets(3, 0, 3, 5);
+
+            int frow = 0;
+
+            if (SchemaAttribute.NUMBER.equals(selectedType)) {
+                flc.gridx = 0; flc.gridy = frow;
+                fp.add(new JLabel("Unit:"), flc);
+                ffc.gridx = 1; ffc.gridy = frow++;
+                fp.add(unitField, ffc);
+                flc.gridx = 0; flc.gridy = frow;
+                fp.add(new JLabel("Unit Category:"), flc);
+                ffc.gridx = 1; ffc.gridy = frow++;
+                fp.add(unitCategoryField, ffc);
+                flc.gridx = 0; flc.gridy = frow;
+                fp.add(new JLabel("Decimal Places:"), flc);
+                ffc.gridx = 1; ffc.gridy = frow++;
+                fp.add(decimalPlacesField, ffc);
+                flc.gridx = 0; flc.gridy = frow;
+                fp.add(new JLabel(), flc);
+                ffc.gridx = 1; ffc.gridy = frow++;
+                fp.add(thousandsCheck, ffc);
+            } else if (SchemaAttribute.CURRENCY.equals(selectedType)) {
+                flc.gridx = 0; flc.gridy = frow;
+                fp.add(new JLabel("Currency Code:"), flc);
+                ffc.gridx = 1; ffc.gridy = frow++;
+                fp.add(currencyCodeField, ffc);
+                flc.gridx = 0; flc.gridy = frow;
+                fp.add(new JLabel("Symbol:"), flc);
+                ffc.gridx = 1; ffc.gridy = frow++;
+                fp.add(currencySymbolField, ffc);
+                flc.gridx = 0; flc.gridy = frow;
+                fp.add(new JLabel("Symbol Position:"), flc);
+                ffc.gridx = 1; ffc.gridy = frow++;
+                fp.add(symbolPosCombo, ffc);
+                flc.gridx = 0; flc.gridy = frow;
+                fp.add(new JLabel("Decimal Places:"), flc);
+                ffc.gridx = 1; ffc.gridy = frow++;
+                fp.add(decimalPlacesField, ffc);
+            } else if (SchemaAttribute.PERCENTAGE.equals(selectedType)) {
+                flc.gridx = 0; flc.gridy = frow;
+                fp.add(new JLabel("Decimal Places:"), flc);
+                ffc.gridx = 1; ffc.gridy = frow++;
+                fp.add(decimalPlacesField, ffc);
+            } else if (SchemaAttribute.DATE.equals(selectedType)) {
+                flc.gridx = 0; flc.gridy = frow;
+                fp.add(new JLabel("Format:"), flc);
+                ffc.gridx = 1; ffc.gridy = frow++;
+                fp.add(dateFormatCombo, ffc);
+            } else if (SchemaAttribute.TIME.equals(selectedType)) {
+                flc.gridx = 0; flc.gridy = frow;
+                fp.add(new JLabel("Format:"), flc);
+                ffc.gridx = 1; ffc.gridy = frow++;
+                fp.add(timeFormatCombo, ffc);
+            } else if (SchemaAttribute.DATETIME.equals(selectedType)) {
+                flc.gridx = 0; flc.gridy = frow;
+                fp.add(new JLabel("Format:"), flc);
+                ffc.gridx = 1; ffc.gridy = frow++;
+                fp.add(datetimeFormatCombo, ffc);
+            } else if (SchemaAttribute.DATETIME_TZ.equals(selectedType)) {
+                flc.gridx = 0; flc.gridy = frow;
+                fp.add(new JLabel("Format:"), flc);
+                ffc.gridx = 1; ffc.gridy = frow++;
+                fp.add(datetimeFormatCombo, ffc);
+                flc.gridx = 0; flc.gridy = frow;
+                fp.add(new JLabel("Timezone:"), flc);
+                ffc.gridx = 1; ffc.gridy = frow++;
+                fp.add(timezoneField, ffc);
+            } else if (SchemaAttribute.ENUM.equals(selectedType)) {
+                flc.gridx = 0; flc.gridy = frow;
+                flc.anchor = GridBagConstraints.NORTHWEST;
+                fp.add(new JLabel("Values:"), flc);
+                ffc.gridx = 1; ffc.gridy = frow++;
+                ffc.fill = GridBagConstraints.BOTH;
+                ffc.weighty = 1.0;
+                fp.add(new JScrollPane(enumValuesArea), ffc);
+                flc.anchor = GridBagConstraints.WEST;
+                ffc.fill = GridBagConstraints.HORIZONTAL;
+                ffc.weighty = 0;
+            }
+
+            if (frow == 0) {
+                fp.add(new JLabel("No format options for this type."));
+            }
+
+            formatContainer.add(fp, BorderLayout.CENTER);
+            formatContainer.revalidate();
+            formatContainer.repaint();
+        };
+
+        dataTypeCombo.addActionListener(e -> updateFormatPanel.run());
+        updateFormatPanel.run();
+
+        // === Labels section ===
+        JPanel labelsPanel = new JPanel(new BorderLayout(0, 5));
+        labelsPanel.setBorder(BorderFactory.createTitledBorder("Labels (i18n)"));
+
+        javax.swing.table.DefaultTableModel labelsModel = new javax.swing.table.DefaultTableModel(
+            new String[]{"Locale", "Display Name"}, 0) {
+            @Override
+            public boolean isCellEditable(int r, int c) { return true; }
+        };
+        if (editAttr != null && editAttr.labels() != null) {
+            editAttr.labels().forEach((k, v) -> labelsModel.addRow(new Object[]{k, v}));
+        }
+        JTable labelsTable = new JTable(labelsModel);
+        labelsTable.setRowHeight(22);
+        labelsPanel.add(new JScrollPane(labelsTable), BorderLayout.CENTER);
+
+        JPanel labelBtns = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 0));
+        JButton addLabelBtn = new JButton("+ Add");
+        addLabelBtn.addActionListener(e -> labelsModel.addRow(new Object[]{"en", ""}));
+        labelBtns.add(addLabelBtn);
+        JButton removeLabelBtn = new JButton("- Remove");
+        removeLabelBtn.addActionListener(e -> {
+            int sel = labelsTable.getSelectedRow();
+            if (sel >= 0) labelsModel.removeRow(sel);
         });
-        JCheckBox requiredCheck = new JCheckBox("Required");
+        labelBtns.add(removeLabelBtn);
+        labelsPanel.add(labelBtns, BorderLayout.SOUTH);
 
-        panel.add(new JLabel("Attribute name:"));
-        panel.add(nameField);
-        panel.add(new JLabel("Data type:"));
-        panel.add(dataTypeCombo);
-        panel.add(new JLabel());
-        panel.add(requiredCheck);
+        // === Assemble ===
+        JPanel centerPanel = new JPanel(new GridLayout(2, 1, 0, 5));
+        centerPanel.add(formatContainer);
+        centerPanel.add(labelsPanel);
+        main.add(centerPanel, BorderLayout.CENTER);
 
-        int result = JOptionPane.showConfirmDialog(this, panel, "Add Attribute to " + type.name(),
+        String title = editAttr != null ? "Edit Attribute" : "Add Attribute to " + type.name();
+        int result = JOptionPane.showConfirmDialog(parent, main, title,
             JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE);
 
         if (result == JOptionPane.OK_OPTION) {
             String name = nameField.getText().trim();
-            if (name.isEmpty()) return;
+            if (name.isEmpty()) return null;
 
-            SchemaAttribute attr = new SchemaAttribute(
+            String dataType = (String) dataTypeCombo.getSelectedItem();
+            boolean required = requiredCheck.isSelected();
+
+            // Build config map
+            Map<String, Object> config = new LinkedHashMap<>();
+            switch (dataType) {
+                case SchemaAttribute.NUMBER -> {
+                    String unit = unitField.getText().trim();
+                    if (!unit.isEmpty()) config.put("unit", unit);
+                    String unitCat = unitCategoryField.getText().trim();
+                    if (!unitCat.isEmpty()) config.put("unitCategory", unitCat);
+                    config.put("decimalPlaces", parseIntSafe(decimalPlacesField.getText(), 2));
+                    config.put("thousandsSeparator", thousandsCheck.isSelected());
+                }
+                case SchemaAttribute.CURRENCY -> {
+                    config.put("currencyCode", currencyCodeField.getText().trim());
+                    config.put("currencySymbol", currencySymbolField.getText().trim());
+                    config.put("symbolPosition", symbolPosCombo.getSelectedItem());
+                    config.put("decimalPlaces", parseIntSafe(decimalPlacesField.getText(), 2));
+                }
+                case SchemaAttribute.PERCENTAGE -> {
+                    config.put("decimalPlaces", parseIntSafe(decimalPlacesField.getText(), 1));
+                }
+                case SchemaAttribute.DATE -> {
+                    config.put("format", dateFormatCombo.getSelectedItem());
+                }
+                case SchemaAttribute.TIME -> {
+                    config.put("format", timeFormatCombo.getSelectedItem());
+                }
+                case SchemaAttribute.DATETIME -> {
+                    config.put("format", datetimeFormatCombo.getSelectedItem());
+                }
+                case SchemaAttribute.DATETIME_TZ -> {
+                    config.put("format", datetimeFormatCombo.getSelectedItem());
+                    String tz = timezoneField.getText().trim();
+                    if (!tz.isEmpty()) config.put("timezone", tz);
+                }
+                case SchemaAttribute.ENUM -> {
+                    String[] lines = enumValuesArea.getText().split("\n");
+                    List<String> vals = new ArrayList<>();
+                    for (String line : lines) {
+                        String v = line.trim();
+                        if (!v.isEmpty()) vals.add(v);
+                    }
+                    if (!vals.isEmpty()) config.put("values", vals);
+                }
+            }
+
+            // Build labels map
+            Map<String, String> labels = new LinkedHashMap<>();
+            for (int i = 0; i < labelsModel.getRowCount(); i++) {
+                String locale = String.valueOf(labelsModel.getValueAt(i, 0)).trim();
+                String display = String.valueOf(labelsModel.getValueAt(i, 1)).trim();
+                if (!locale.isEmpty() && !display.isEmpty()) {
+                    labels.put(locale, display);
+                }
+            }
+
+            int displayOrder = editAttr != null ? editAttr.displayOrder() : type.attributes().size();
+            return new SchemaAttribute(
                 name.toLowerCase().replaceAll("\\s+", "_"),
-                (String) dataTypeCombo.getSelectedItem(),
-                requiredCheck.isSelected(),
-                type.attributes().size()
+                dataType, required, displayOrder,
+                labels.isEmpty() ? null : labels,
+                config.isEmpty() ? null : config
             );
+        }
+        return null;
+    }
+
+    private void showAttributeEditorDialog(SchemaType type, SchemaAttribute editAttr) {
+        SchemaAttribute attr = showAttributeEditorDialog(this, type, editAttr);
+        if (attr != null) {
             registry.addAttribute(type.id(), attr);
             repaint();
             fireDataChanged();
+        }
+    }
+
+    private static int parseIntSafe(String text, int defaultValue) {
+        try {
+            return Integer.parseInt(text.trim());
+        } catch (NumberFormatException e) {
+            return defaultValue;
         }
     }
 

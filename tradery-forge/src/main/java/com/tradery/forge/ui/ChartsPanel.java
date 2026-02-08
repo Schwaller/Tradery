@@ -1247,6 +1247,30 @@ public class ChartsPanel extends JPanel {
         ChartStyles.stylizeChart(indicatorManager.getHoldingCostCumulativeChart(), "Holding Cost");
         ChartStyles.stylizeChart(indicatorManager.getHoldingCostEventsChart(), "Holding Cost Events");
 
+        // Update price renderer colors for new theme
+        XYPlot pricePlot = priceChart.getXYPlot();
+        boolean candlestickMode = ChartConfig.getInstance().isCandlestickMode();
+        int priceOpacity = ChartConfig.getInstance().getPriceOpacity();
+        int alpha = (int) (priceOpacity * 2.55);
+
+        if (candlestickMode) {
+            if (pricePlot.getRenderer(0) instanceof TraderyCandlestickRenderer) {
+                Color baseUp = com.tradery.charts.util.ChartStyles.getTheme().getCandleUpColor();
+                Color baseDown = com.tradery.charts.util.ChartStyles.getTheme().getCandleDownColor();
+                Color upColor = new Color(baseUp.getRed(), baseUp.getGreen(), baseUp.getBlue(), alpha);
+                Color downColor = new Color(baseDown.getRed(), baseDown.getGreen(), baseDown.getBlue(), alpha);
+                TraderyCandlestickRenderer renderer = new TraderyCandlestickRenderer(upColor, downColor);
+                renderer.setCandleWidth(3.0);
+                pricePlot.setRenderer(0, renderer);
+            }
+        } else {
+            if (pricePlot.getRenderer(1) instanceof XYLineAndShapeRenderer lineRenderer) {
+                Color base = com.tradery.charts.util.ChartStyles.getTheme().getPriceLineColor();
+                Color priceLineColor = new Color(base.getRed(), base.getGreen(), base.getBlue(), alpha);
+                lineRenderer.setSeriesPaint(0, priceLineColor);
+            }
+        }
+
         // Update container background
         chartsContainer.setBackground(ChartStyles.BACKGROUND_COLOR());
 
@@ -1566,16 +1590,10 @@ public class ChartsPanel extends JPanel {
             plot.setDataset(dataset);
 
             // Apply opacity to candle colors
-            Color upColor = new Color(
-                ChartStyles.CANDLE_UP_COLOR.getRed(),
-                ChartStyles.CANDLE_UP_COLOR.getGreen(),
-                ChartStyles.CANDLE_UP_COLOR.getBlue(),
-                alpha);
-            Color downColor = new Color(
-                ChartStyles.CANDLE_DOWN_COLOR.getRed(),
-                ChartStyles.CANDLE_DOWN_COLOR.getGreen(),
-                ChartStyles.CANDLE_DOWN_COLOR.getBlue(),
-                alpha);
+            Color baseUp = com.tradery.charts.util.ChartStyles.getTheme().getCandleUpColor();
+            Color baseDown = com.tradery.charts.util.ChartStyles.getTheme().getCandleDownColor();
+            Color upColor = new Color(baseUp.getRed(), baseUp.getGreen(), baseUp.getBlue(), alpha);
+            Color downColor = new Color(baseDown.getRed(), baseDown.getGreen(), baseDown.getBlue(), alpha);
 
             TraderyCandlestickRenderer renderer = new TraderyCandlestickRenderer(upColor, downColor);
             renderer.setCandleWidth(3.0);  // Fixed width in pixels
@@ -1612,11 +1630,8 @@ public class ChartsPanel extends JPanel {
             plot.setDataset(1, priceDataset);
 
             // Apply opacity to price line (not the cloud)
-            Color priceLineColor = new Color(
-                ChartStyles.PRICE_LINE_COLOR.getRed(),
-                ChartStyles.PRICE_LINE_COLOR.getGreen(),
-                ChartStyles.PRICE_LINE_COLOR.getBlue(),
-                alpha);
+            Color base = com.tradery.charts.util.ChartStyles.getTheme().getPriceLineColor();
+            Color priceLineColor = new Color(base.getRed(), base.getGreen(), base.getBlue(), alpha);
 
             XYLineAndShapeRenderer renderer = new XYLineAndShapeRenderer(true, false);
             renderer.setSeriesPaint(0, priceLineColor);

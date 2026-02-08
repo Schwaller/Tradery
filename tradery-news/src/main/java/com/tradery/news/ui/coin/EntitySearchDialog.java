@@ -2,6 +2,8 @@ package com.tradery.news.ui.coin;
 
 import com.formdev.flatlaf.FlatClientProperties;
 import com.formdev.flatlaf.util.SystemInfo;
+import com.tradery.news.ai.AiProfile;
+import com.tradery.news.ui.IntelConfig;
 import com.tradery.news.ui.IntelLogPanel;
 import com.tradery.ui.controls.BorderlessScrollPane;
 import com.tradery.ui.controls.SegmentedToggle;
@@ -312,10 +314,15 @@ public class EntitySearchDialog extends JDialog {
         gbc.fill = GridBagConstraints.HORIZONTAL;
         int col = 1;
         for (SearchLevel level : SearchLevel.values()) {
-            ToolbarButton btn = new ToolbarButton(level.label);
+            String label = level == SearchLevel.DEEP ? "Deep \u25be" : level.label;
+            ToolbarButton btn = new ToolbarButton(label);
             btn.setToolTipText(level.tooltip);
 
-            btn.addActionListener(e -> performSearch(relType, level, btn));
+            if (level == SearchLevel.DEEP) {
+                btn.addActionListener(e -> showDeepProfileMenu(relType, btn));
+            } else {
+                btn.addActionListener(e -> performSearch(relType, level, btn));
+            }
 
             buttons.put(level, btn);
             counts.put(level, -1);
@@ -359,7 +366,7 @@ public class EntitySearchDialog extends JDialog {
     private void performSearch(CoinRelationship.Type relType, SearchLevel level, JButton button) {
         if (!processor.isAvailable()) {
             JOptionPane.showMessageDialog(this,
-                "Claude CLI is not available. Please install it first.",
+                "AI is not available. Please configure an AI profile in Settings.",
                 "Error", JOptionPane.ERROR_MESSAGE);
             return;
         }
@@ -370,8 +377,79 @@ public class EntitySearchDialog extends JDialog {
             return;
         }
 
-        // SPECIFIC and DEEP search just this type
+        // SPECIFIC searches just this type
         performSingleSearch(relType, level, button);
+    }
+
+    private void showDeepProfileMenu(CoinRelationship.Type relType, JButton button) {
+        java.util.List<AiProfile> profiles = IntelConfig.get().getAiProfiles();
+        if (profiles.isEmpty()) {
+            JOptionPane.showMessageDialog(this,
+                "No AI profiles configured. Please add one in Settings.",
+                "Error", JOptionPane.ERROR_MESSAGE);
+            return;
+        }
+
+        JPopupMenu popup = new JPopupMenu();
+        String defaultId = IntelConfig.get().getDefaultProfileId();
+
+        for (AiProfile profile : profiles) {
+            String star = profile.getId() != null && profile.getId().equals(defaultId) ? "\u2605 " : "";
+            String desc = profile.getDescription() != null && !profile.getDescription().isEmpty()
+                ? "<br><font color='gray'>" + profile.getDescription() + "</font>" : "";
+            JMenuItem item = new JMenuItem("<html><b>" + star + profile.getName() + "</b> "
+                + "<font color='gray'>[" + profile.getProvider() + "]</font>"
+                + desc + "</html>");
+            item.addActionListener(e -> performDeepSearch(relType, profile, button));
+            popup.add(item);
+        }
+
+        popup.show(button, 0, button.getHeight());
+    }
+
+    private void performDeepSearch(CoinRelationship.Type relType, AiProfile profile, JButton button) {
+        String originalText = button.getText();
+        button.setEnabled(false);
+        button.setText("...");
+
+        activeInvestigations++;
+        updateStatus();
+        IntelLogPanel.logAI("Deep search for " + relType.name() + " related to " + sourceEntity.name()
+            + " using " + profile.getName());
+
+        CompletableFuture.supplyAsync(() ->
+            processor.searchRelatedDeep(sourceEntity, relType, profile, msg -> {})
+        ).thenAccept(result -> SwingUtilities.invokeLater(() -> {
+            activeInvestigations--;
+            button.setEnabled(true);
+
+            if (result.hasError()) {
+                button.setText(originalText);
+                IntelLogPanel.logError("Search failed: " + result.error());
+                updateStatus();
+                return;
+            }
+
+            java.util.List<EntitySearchProcessor.DiscoveredEntity> entities = result.entities();
+            int count = entities.size();
+
+            button.setText("Deep: " + count);
+            typeStates.get(relType).resultCounts().put(SearchLevel.DEEP, count);
+
+            for (EntitySearchProcessor.DiscoveredEntity entity : entities) {
+                String id = entity.generateId();
+                boolean exists = allResults.stream()
+                    .anyMatch(e -> e.generateId().equals(id));
+                if (!exists) {
+                    allResults.add(entity);
+                }
+            }
+
+            displayResults();
+            updateStatus();
+
+            IntelLogPanel.logSuccess("Found " + count + " " + relType.name() + " entities (deep)");
+        }));
     }
 
     private void performGeneralSearchAll() {

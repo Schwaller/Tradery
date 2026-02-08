@@ -4,7 +4,7 @@ import com.tradery.dataclient.DataServiceLauncher;
 import com.tradery.forge.io.AppLock;
 import com.tradery.forge.mcp.McpServerSetup;
 import com.tradery.forge.ui.LauncherFrame;
-import com.tradery.forge.ui.theme.ThemeManager;
+import com.tradery.ui.ThemeHelper;
 
 import javax.imageio.ImageIO;
 import javax.swing.*;
@@ -38,7 +38,7 @@ public class TraderyApp {
         try {
             System.setProperty("apple.laf.useScreenMenuBar", "true");
             System.setProperty("apple.awt.application.name", APP_NAME);
-            ThemeManager.getInstance().applyCurrentTheme();
+            ThemeHelper.applyCurrentTheme();
         } catch (Exception e) {
             System.err.println("Could not set FlatLaf look and feel: " + e.getMessage());
         }

@@ -153,6 +153,16 @@ public class PriceChartPanel extends JPanel {
         return candlestickChart;
     }
 
+    /**
+     * Set candlestick mode (true) or line mode (false) and refresh.
+     */
+    public void setCandlestickMode(boolean candlestick) {
+        candlestickChart.setCandlestickMode(candlestick);
+        if (!dataProvider.getCandles().isEmpty()) {
+            refreshCharts();
+        }
+    }
+
     // ===== Overlay Support =====
 
     /**

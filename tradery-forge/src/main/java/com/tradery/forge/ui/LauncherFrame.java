@@ -7,6 +7,8 @@ import com.tradery.forge.TraderyApp;
 import com.tradery.forge.data.sqlite.SqliteDataStore;
 import com.tradery.forge.io.*;
 
+import com.formdev.flatlaf.FlatClientProperties;
+
 import javax.swing.*;
 import java.awt.*;
 import java.awt.event.ComponentAdapter;
@@ -79,6 +81,8 @@ public class LauncherFrame extends JFrame {
         getRootPane().putClientProperty("apple.awt.fullWindowContent", true);
         getRootPane().putClientProperty("apple.awt.transparentTitleBar", true);
         getRootPane().putClientProperty("apple.awt.windowTitleVisible", false);
+        getRootPane().putClientProperty(FlatClientProperties.MACOS_WINDOW_BUTTONS_SPACING,
+                FlatClientProperties.MACOS_WINDOW_BUTTONS_SPACING_LARGE);
 
         // Save position on move/resize
         addComponentListener(new ComponentAdapter() {
@@ -190,12 +194,16 @@ public class LauncherFrame extends JFrame {
         JPanel contentPane = new JPanel(new BorderLayout());
         setContentPane(contentPane);
 
-        // Title bar area (28px height for macOS traffic lights)
-        JPanel titleBar = new JPanel(new BorderLayout());
-        titleBar.setPreferredSize(new Dimension(0, 28));
-        JLabel titleLabel = new JLabel(TraderyApp.APP_NAME, SwingConstants.CENTER);
-        titleLabel.setFont(titleLabel.getFont().deriveFont(Font.BOLD, 13f));
-        titleBar.add(titleLabel, BorderLayout.CENTER);
+        // Header bar
+        JPanel headerWrapper = new JPanel(new BorderLayout());
+        JPanel headerBar = new JPanel(new BorderLayout());
+        headerBar.setPreferredSize(new Dimension(0, 52));
+        JLabel titleLabel = new JLabel("Strategies", SwingConstants.CENTER);
+        titleLabel.setFont(new Font("SansSerif", Font.BOLD, 13));
+        titleLabel.setForeground(UIColors.textSecondary());
+        headerBar.add(titleLabel, BorderLayout.CENTER);
+        headerWrapper.add(headerBar, BorderLayout.CENTER);
+        headerWrapper.add(new JSeparator(), BorderLayout.SOUTH);
 
         // Main content - full width
         JPanel mainContent = new JPanel(new BorderLayout());
@@ -204,9 +212,8 @@ public class LauncherFrame extends JFrame {
         JScrollPane scrollPane = new JScrollPane(projectList);
         scrollPane.setBorder(BorderFactory.createEmptyBorder());
 
-        // Wrap list with separators above and below
+        // Wrap list with separator below
         JPanel listWrapper = new JPanel(new BorderLayout());
-        listWrapper.add(new JSeparator(), BorderLayout.NORTH);
         listWrapper.add(scrollPane, BorderLayout.CENTER);
         listWrapper.add(new JSeparator(), BorderLayout.SOUTH);
 
@@ -228,7 +235,7 @@ public class LauncherFrame extends JFrame {
         mainContent.add(listWrapper, BorderLayout.CENTER);
         mainContent.add(buttonPanel, BorderLayout.SOUTH);
 
-        contentPane.add(titleBar, BorderLayout.NORTH);
+        contentPane.add(headerWrapper, BorderLayout.NORTH);
         contentPane.add(mainContent, BorderLayout.CENTER);
     }
 

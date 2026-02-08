@@ -1,7 +1,5 @@
 package com.tradery.news.ui.coin;
 
-import com.tradery.news.ai.AiClient;
-import com.tradery.news.fetch.RssFetcher;
 import com.tradery.news.ui.IntelConfig;
 
 import com.tradery.ui.controls.ThinSplitPane;
@@ -12,11 +10,9 @@ import javax.swing.tree.*;
 import java.awt.*;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
-import java.util.HashSet;
+import java.awt.event.ActionEvent;
+import java.util.*;
 import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.TreeMap;
 import java.util.function.Consumer;
 
 /**
@@ -26,6 +22,7 @@ public class EntityManagerFrame extends JFrame {
 
     private final EntityStore store;
     private final Consumer<Void> onDataChanged;
+    private SchemaRegistry schemaRegistry;
 
     // Entity tab components
     private JTree entityTree;
@@ -46,15 +43,15 @@ public class EntityManagerFrame extends JFrame {
     private JButton deleteBtn;
     private JButton searchRelatedBtn;
 
+    // Custom attributes section
+    private JPanel customAttrsPanel;
+    private final Map<String, JComponent> attrInputComponents = new LinkedHashMap<>();
+
     private CoinEntity selectedEntity;
     private boolean isNewEntity = false;
 
-    // News Sources tab components
-    private JList<RssFetcher> rssSourceList;
-    private DefaultListModel<RssFetcher> rssSourceListModel;
-
     public EntityManagerFrame(EntityStore store, Consumer<Void> onDataChanged) {
-        super("Settings");
+        super("Entity Manager");
         this.store = store;
         this.onDataChanged = onDataChanged;
 
@@ -93,38 +90,22 @@ public class EntityManagerFrame extends JFrame {
         loadEntities();
     }
 
+    public void setSchemaRegistry(SchemaRegistry registry) {
+        this.schemaRegistry = registry;
+    }
+
     private void initUI() {
         JPanel mainPanel = new JPanel(new BorderLayout());
-        mainPanel.setBackground(new Color(30, 32, 36));
 
-        // Tabbed pane
-        JTabbedPane tabbedPane = new JTabbedPane();
-        tabbedPane.setBackground(new Color(38, 40, 44));
-        tabbedPane.setForeground(new Color(200, 200, 210));
-
-        // Entities tab
-        tabbedPane.addTab("Entities", createEntitiesTab());
-
-        // News Sources tab
-        tabbedPane.addTab("News Sources", createNewsSourcesTab());
-
-        // Config tabs
-        tabbedPane.addTab("AI", createAiConfigTab());
-        tabbedPane.addTab("Theme", createThemeTab());
-
-        mainPanel.add(tabbedPane, BorderLayout.CENTER);
+        mainPanel.add(createEntitiesTab(), BorderLayout.CENTER);
         setContentPane(mainPanel);
     }
 
     private JPanel createEntitiesTab() {
         JPanel panel = new JPanel(new BorderLayout());
-        panel.setBackground(new Color(30, 32, 36));
 
-        // Toolbar
         JToolBar toolbar = new JToolBar();
         toolbar.setFloatable(false);
-        toolbar.setBackground(new Color(38, 40, 44));
-        toolbar.setBorder(BorderFactory.createMatteBorder(0, 0, 1, 0, new Color(50, 52, 56)));
 
         JButton addBtn = new JButton("+ New Entity");
         addBtn.addActionListener(e -> createNewEntity());
@@ -150,404 +131,6 @@ public class EntityManagerFrame extends JFrame {
         return panel;
     }
 
-    private JPanel createNewsSourcesTab() {
-        JPanel panel = new JPanel(new BorderLayout());
-        panel.setBackground(new Color(30, 32, 36));
-
-        // Toolbar
-        JToolBar toolbar = new JToolBar();
-        toolbar.setFloatable(false);
-        toolbar.setBackground(new Color(38, 40, 44));
-        toolbar.setBorder(BorderFactory.createMatteBorder(0, 0, 1, 0, new Color(50, 52, 56)));
-
-        JButton addRssBtn = new JButton("+ Add Feed");
-        addRssBtn.addActionListener(e -> showAddRssFeedDialog());
-        toolbar.add(addRssBtn);
-
-        JButton removeRssBtn = new JButton("Remove");
-        removeRssBtn.addActionListener(e -> removeSelectedRssFeed());
-        toolbar.add(removeRssBtn);
-
-        toolbar.addSeparator();
-
-        JButton resetBtn = new JButton("Reset to Defaults");
-        resetBtn.addActionListener(e -> resetRssFeedsToDefaults());
-        toolbar.add(resetBtn);
-
-        panel.add(toolbar, BorderLayout.NORTH);
-
-        // List of RSS sources
-        rssSourceListModel = new DefaultListModel<>();
-        rssSourceList = new JList<>(rssSourceListModel);
-        rssSourceList.setBackground(new Color(35, 37, 41));
-        rssSourceList.setForeground(new Color(200, 200, 210));
-        rssSourceList.setSelectionBackground(new Color(60, 80, 100));
-        rssSourceList.setSelectionForeground(new Color(220, 220, 230));
-        rssSourceList.setCellRenderer(new RssSourceCellRenderer());
-
-        JScrollPane scroll = new JScrollPane(rssSourceList);
-        scroll.setBorder(null);
-        scroll.getViewport().setBackground(new Color(35, 37, 41));
-        panel.add(scroll, BorderLayout.CENTER);
-
-        // Load sources
-        loadNewsSources();
-
-        return panel;
-    }
-
-    private void loadNewsSources() {
-        if (rssSourceListModel == null) return;
-        rssSourceListModel.clear();
-
-        // Add built-in sources
-        for (RssFetcher fetcher : RssFetcher.defaultSources()) {
-            rssSourceListModel.addElement(fetcher);
-        }
-
-        // Add custom sources from database (NEWS_SOURCE entities)
-        for (CoinEntity entity : store.loadEntitiesBySource("manual")) {
-            if (entity.type() == CoinEntity.Type.NEWS_SOURCE && entity.symbol() != null) {
-                // symbol contains the RSS URL for custom feeds
-                RssFetcher customFetcher = new RssFetcher(
-                    entity.id().replace("rss-", ""),
-                    entity.name(),
-                    entity.symbol()  // URL stored in symbol field
-                );
-                rssSourceListModel.addElement(customFetcher);
-            }
-        }
-    }
-
-    private static class RssSourceCellRenderer extends DefaultListCellRenderer {
-        @Override
-        public Component getListCellRendererComponent(JList<?> list, Object value, int index,
-                                                       boolean isSelected, boolean cellHasFocus) {
-            super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus);
-            if (value instanceof RssFetcher fetcher) {
-                setText(fetcher.getSourceName());
-                setForeground(isSelected ? new Color(220, 220, 230) : CoinEntity.Type.NEWS_SOURCE.color());
-            }
-            return this;
-        }
-    }
-
-    private JPanel createAiConfigTab() {
-        JPanel panel = new JPanel(new BorderLayout());
-        panel.setBackground(new Color(30, 32, 36));
-        panel.setBorder(new EmptyBorder(20, 20, 20, 20));
-
-        IntelConfig config = IntelConfig.get();
-
-        JPanel formPanel = new JPanel(new GridBagLayout());
-        formPanel.setBackground(new Color(30, 32, 36));
-
-        GridBagConstraints labelGbc = new GridBagConstraints();
-        labelGbc.anchor = GridBagConstraints.WEST;
-        labelGbc.insets = new Insets(10, 5, 10, 15);
-
-        GridBagConstraints fieldGbc = new GridBagConstraints();
-        fieldGbc.fill = GridBagConstraints.HORIZONTAL;
-        fieldGbc.weightx = 1.0;
-        fieldGbc.insets = new Insets(10, 0, 10, 5);
-
-        int row = 0;
-
-        // AI Provider
-        labelGbc.gridx = 0; labelGbc.gridy = row;
-        JLabel providerLabel = new JLabel("AI Provider:");
-        providerLabel.setForeground(new Color(180, 180, 190));
-        formPanel.add(providerLabel, labelGbc);
-
-        fieldGbc.gridx = 1; fieldGbc.gridy = row++;
-        JComboBox<IntelConfig.AiProvider> providerCombo = new JComboBox<>(IntelConfig.AiProvider.values());
-        providerCombo.setSelectedItem(config.getAiProvider());
-        providerCombo.setBackground(new Color(60, 62, 66));
-        providerCombo.setForeground(new Color(200, 200, 210));
-        formPanel.add(providerCombo, fieldGbc);
-
-        // Claude path
-        labelGbc.gridx = 0; labelGbc.gridy = row;
-        JLabel claudeLabel = new JLabel("Claude CLI path:");
-        claudeLabel.setForeground(new Color(180, 180, 190));
-        formPanel.add(claudeLabel, labelGbc);
-
-        fieldGbc.gridx = 1; fieldGbc.gridy = row++;
-        JTextField claudeField = new JTextField(config.getClaudePath());
-        claudeField.setBackground(new Color(60, 62, 66));
-        claudeField.setForeground(new Color(200, 200, 210));
-        claudeField.setCaretColor(new Color(200, 200, 210));
-        formPanel.add(claudeField, fieldGbc);
-
-        // Claude args
-        labelGbc.gridx = 0; labelGbc.gridy = row;
-        JLabel claudeArgsLabel = new JLabel("Claude CLI args:");
-        claudeArgsLabel.setForeground(new Color(150, 150, 160));
-        formPanel.add(claudeArgsLabel, labelGbc);
-
-        fieldGbc.gridx = 1; fieldGbc.gridy = row++;
-        JTextField claudeArgsField = new JTextField(config.getClaudeArgs());
-        claudeArgsField.setBackground(new Color(60, 62, 66));
-        claudeArgsField.setForeground(new Color(200, 200, 210));
-        claudeArgsField.setCaretColor(new Color(200, 200, 210));
-        claudeArgsField.setToolTipText("CLI args. Prompt sent via stdin.");
-        formPanel.add(claudeArgsField, fieldGbc);
-
-        // Codex path
-        labelGbc.gridx = 0; labelGbc.gridy = row;
-        JLabel codexLabel = new JLabel("Codex CLI path:");
-        codexLabel.setForeground(new Color(180, 180, 190));
-        formPanel.add(codexLabel, labelGbc);
-
-        fieldGbc.gridx = 1; fieldGbc.gridy = row++;
-        JTextField codexField = new JTextField(config.getCodexPath());
-        codexField.setBackground(new Color(60, 62, 66));
-        codexField.setForeground(new Color(200, 200, 210));
-        codexField.setCaretColor(new Color(200, 200, 210));
-        formPanel.add(codexField, fieldGbc);
-
-        // Codex args
-        labelGbc.gridx = 0; labelGbc.gridy = row;
-        JLabel codexArgsLabel = new JLabel("Codex CLI args:");
-        codexArgsLabel.setForeground(new Color(150, 150, 160));
-        formPanel.add(codexArgsLabel, labelGbc);
-
-        fieldGbc.gridx = 1; fieldGbc.gridy = row++;
-        JTextField codexArgsField = new JTextField(config.getCodexArgs());
-        codexArgsField.setBackground(new Color(60, 62, 66));
-        codexArgsField.setForeground(new Color(200, 200, 210));
-        codexArgsField.setCaretColor(new Color(200, 200, 210));
-        codexArgsField.setToolTipText("CLI args. Prompt appended as last argument.");
-        formPanel.add(codexArgsField, fieldGbc);
-
-        // Custom command
-        labelGbc.gridx = 0; labelGbc.gridy = row;
-        JLabel customLabel = new JLabel("Custom command:");
-        customLabel.setForeground(new Color(180, 180, 190));
-        formPanel.add(customLabel, labelGbc);
-
-        fieldGbc.gridx = 1; fieldGbc.gridy = row++;
-        JTextField customField = new JTextField(config.getCustomCommand());
-        customField.setBackground(new Color(60, 62, 66));
-        customField.setForeground(new Color(200, 200, 210));
-        customField.setCaretColor(new Color(200, 200, 210));
-        customField.setToolTipText("Full command with args. Prompt appended as last argument.");
-        formPanel.add(customField, fieldGbc);
-
-        // Gemini API key
-        labelGbc.gridx = 0; labelGbc.gridy = row;
-        JLabel geminiKeyLabel = new JLabel("API Key:");
-        geminiKeyLabel.setForeground(new Color(180, 180, 190));
-        formPanel.add(geminiKeyLabel, labelGbc);
-
-        fieldGbc.gridx = 1; fieldGbc.gridy = row++;
-        JPasswordField geminiKeyField = new JPasswordField(config.getGeminiApiKey());
-        geminiKeyField.setBackground(new Color(60, 62, 66));
-        geminiKeyField.setForeground(new Color(200, 200, 210));
-        geminiKeyField.setCaretColor(new Color(200, 200, 210));
-        geminiKeyField.setToolTipText("Free API key from aistudio.google.com");
-        formPanel.add(geminiKeyField, fieldGbc);
-
-        // Gemini model
-        labelGbc.gridx = 0; labelGbc.gridy = row;
-        JLabel geminiModelLabel = new JLabel("Model:");
-        geminiModelLabel.setForeground(new Color(180, 180, 190));
-        formPanel.add(geminiModelLabel, labelGbc);
-
-        fieldGbc.gridx = 1; fieldGbc.gridy = row++;
-        JComboBox<String> geminiModelCombo = new JComboBox<>(new String[]{
-            "gemini-2.5-flash-lite", "gemini-2.5-flash", "gemini-2.0-flash"
-        });
-        geminiModelCombo.setSelectedItem(config.getGeminiModel());
-        geminiModelCombo.setBackground(new Color(60, 62, 66));
-        geminiModelCombo.setForeground(new Color(200, 200, 210));
-        formPanel.add(geminiModelCombo, fieldGbc);
-
-        // Gemini help text
-        labelGbc.gridx = 0; labelGbc.gridy = row;
-        formPanel.add(new JLabel(), labelGbc);
-
-        fieldGbc.gridx = 1; fieldGbc.gridy = row++;
-        JLabel geminiHelpLabel = new JLabel("Free API key from aistudio.google.com - no credit card needed");
-        geminiHelpLabel.setForeground(new Color(120, 140, 120));
-        geminiHelpLabel.setFont(geminiHelpLabel.getFont().deriveFont(Font.ITALIC, 11f));
-        formPanel.add(geminiHelpLabel, fieldGbc);
-
-        // Visibility updater for path fields
-        Runnable updateFieldVisibility = () -> {
-            IntelConfig.AiProvider selected = (IntelConfig.AiProvider) providerCombo.getSelectedItem();
-            claudeLabel.setVisible(selected == IntelConfig.AiProvider.CLAUDE);
-            claudeField.setVisible(selected == IntelConfig.AiProvider.CLAUDE);
-            claudeArgsLabel.setVisible(selected == IntelConfig.AiProvider.CLAUDE);
-            claudeArgsField.setVisible(selected == IntelConfig.AiProvider.CLAUDE);
-            codexLabel.setVisible(selected == IntelConfig.AiProvider.CODEX);
-            codexField.setVisible(selected == IntelConfig.AiProvider.CODEX);
-            codexArgsLabel.setVisible(selected == IntelConfig.AiProvider.CODEX);
-            codexArgsField.setVisible(selected == IntelConfig.AiProvider.CODEX);
-            customLabel.setVisible(selected == IntelConfig.AiProvider.CUSTOM);
-            customField.setVisible(selected == IntelConfig.AiProvider.CUSTOM);
-            geminiKeyLabel.setVisible(selected == IntelConfig.AiProvider.GEMINI);
-            geminiKeyField.setVisible(selected == IntelConfig.AiProvider.GEMINI);
-            geminiModelLabel.setVisible(selected == IntelConfig.AiProvider.GEMINI);
-            geminiModelCombo.setVisible(selected == IntelConfig.AiProvider.GEMINI);
-            geminiHelpLabel.setVisible(selected == IntelConfig.AiProvider.GEMINI);
-        };
-        providerCombo.addActionListener(e -> updateFieldVisibility.run());
-        updateFieldVisibility.run();
-
-        // Timeout
-        labelGbc.gridx = 0; labelGbc.gridy = row;
-        JLabel timeoutLabel = new JLabel("Timeout (seconds):");
-        timeoutLabel.setForeground(new Color(180, 180, 190));
-        formPanel.add(timeoutLabel, labelGbc);
-
-        fieldGbc.gridx = 1; fieldGbc.gridy = row++;
-        JSpinner timeoutSpinner = new JSpinner(new SpinnerNumberModel(config.getAiTimeoutSeconds(), 10, 300, 10));
-        formPanel.add(timeoutSpinner, fieldGbc);
-
-        // Test button
-        labelGbc.gridx = 0; labelGbc.gridy = row;
-        formPanel.add(new JLabel(), labelGbc);
-
-        fieldGbc.gridx = 1; fieldGbc.gridy = row++;
-        JPanel testPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
-        testPanel.setBackground(new Color(30, 32, 36));
-        JButton testBtn = new JButton("Test Connection");
-        testPanel.add(testBtn);
-        formPanel.add(testPanel, fieldGbc);
-
-        // Test log area (taller for more detail)
-        labelGbc.gridx = 0; labelGbc.gridy = row;
-        formPanel.add(new JLabel(), labelGbc);
-
-        fieldGbc.gridx = 1; fieldGbc.gridy = row++;
-        JTextArea testLogArea = new JTextArea(8, 40);
-        testLogArea.setFont(new Font("Monospaced", Font.PLAIN, 10));
-        testLogArea.setBackground(new Color(35, 37, 41));
-        testLogArea.setForeground(new Color(140, 140, 150));
-        testLogArea.setEditable(false);
-        testLogArea.setLineWrap(true);
-        JScrollPane testLogScroll = new JScrollPane(testLogArea);
-        testLogScroll.setBorder(BorderFactory.createLineBorder(new Color(50, 52, 56)));
-        formPanel.add(testLogScroll, fieldGbc);
-
-        testBtn.addActionListener(e -> testAiConnection(
-            (IntelConfig.AiProvider) providerCombo.getSelectedItem(),
-            claudeField.getText().trim(),
-            claudeArgsField.getText().trim(),
-            codexField.getText().trim(),
-            codexArgsField.getText().trim(),
-            customField.getText().trim(),
-            new String(geminiKeyField.getPassword()).trim(),
-            (String) geminiModelCombo.getSelectedItem(),
-            testLogArea,
-            testBtn
-        ));
-
-        // Spacer
-        labelGbc.gridx = 0; labelGbc.gridy = row;
-        labelGbc.weighty = 1.0;
-        formPanel.add(new JLabel(), labelGbc);
-
-        panel.add(formPanel, BorderLayout.NORTH);
-
-        // Save button
-        JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
-        buttonPanel.setBackground(new Color(30, 32, 36));
-
-        JButton saveBtn = new JButton("Save");
-        saveBtn.addActionListener(e -> {
-            config.setAiProvider((IntelConfig.AiProvider) providerCombo.getSelectedItem());
-            config.setClaudePath(claudeField.getText().trim());
-            config.setClaudeArgs(claudeArgsField.getText().trim());
-            config.setCodexPath(codexField.getText().trim());
-            config.setCodexArgs(codexArgsField.getText().trim());
-            config.setCustomCommand(customField.getText().trim());
-            config.setGeminiApiKey(new String(geminiKeyField.getPassword()).trim());
-            config.setGeminiModel((String) geminiModelCombo.getSelectedItem());
-            config.setAiTimeoutSeconds((Integer) timeoutSpinner.getValue());
-            config.save();
-            JOptionPane.showMessageDialog(this, "Settings saved.", "Saved", JOptionPane.INFORMATION_MESSAGE);
-        });
-        buttonPanel.add(saveBtn);
-
-        panel.add(buttonPanel, BorderLayout.SOUTH);
-
-        return panel;
-    }
-
-    private JPanel createThemeTab() {
-        JPanel panel = new JPanel(new BorderLayout());
-        panel.setBackground(new Color(30, 32, 36));
-        panel.setBorder(new EmptyBorder(20, 20, 20, 20));
-
-        JPanel contentPanel = new JPanel();
-        contentPanel.setLayout(new BoxLayout(contentPanel, BoxLayout.Y_AXIS));
-        contentPanel.setBackground(new Color(30, 32, 36));
-
-        // Header
-        JLabel headerLabel = new JLabel("Select UI Theme");
-        headerLabel.setForeground(new Color(180, 180, 190));
-        headerLabel.setFont(headerLabel.getFont().deriveFont(Font.BOLD, 14f));
-        headerLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
-        contentPanel.add(headerLabel);
-        contentPanel.add(Box.createVerticalStrut(15));
-
-        // Theme list
-        DefaultListModel<String> themeListModel = new DefaultListModel<>();
-        for (String theme : IntelConfig.getAvailableThemes()) {
-            themeListModel.addElement(theme);
-        }
-
-        JList<String> themeList = new JList<>(themeListModel);
-        themeList.setBackground(new Color(35, 37, 41));
-        themeList.setForeground(new Color(200, 200, 210));
-        themeList.setSelectionBackground(new Color(60, 80, 100));
-        themeList.setSelectionForeground(new Color(220, 220, 230));
-        themeList.setSelectedValue(IntelConfig.getCurrentTheme(), true);
-        themeList.setFixedCellHeight(28);
-        themeList.addListSelectionListener(e -> {
-            if (!e.getValueIsAdjusting()) {
-                String selected = themeList.getSelectedValue();
-                if (selected != null) {
-                    IntelConfig.setTheme(selected);
-                }
-            }
-        });
-
-        JScrollPane themeScroll = new JScrollPane(themeList);
-        themeScroll.setBorder(BorderFactory.createLineBorder(new Color(60, 62, 66)));
-        themeScroll.setAlignmentX(Component.LEFT_ALIGNMENT);
-        themeScroll.setPreferredSize(new Dimension(300, 400));
-        contentPanel.add(themeScroll);
-
-        // ERD settings section
-        contentPanel.add(Box.createVerticalStrut(25));
-
-        JLabel erdHeader = new JLabel("ERD Rendering");
-        erdHeader.setForeground(new Color(180, 180, 190));
-        erdHeader.setFont(erdHeader.getFont().deriveFont(Font.BOLD, 14f));
-        erdHeader.setAlignmentX(Component.LEFT_ALIGNMENT);
-        contentPanel.add(erdHeader);
-        contentPanel.add(Box.createVerticalStrut(10));
-
-        JCheckBox flowModeCheck = new JCheckBox("Flow mode (relationship connections widen through boxes)");
-        flowModeCheck.setBackground(new Color(30, 32, 36));
-        flowModeCheck.setForeground(new Color(200, 200, 210));
-        flowModeCheck.setSelected(IntelConfig.get().isErdFlowMode());
-        flowModeCheck.setAlignmentX(Component.LEFT_ALIGNMENT);
-        flowModeCheck.addActionListener(e -> {
-            IntelConfig cfg = IntelConfig.get();
-            cfg.setErdFlowMode(flowModeCheck.isSelected());
-            cfg.save();
-        });
-        contentPanel.add(flowModeCheck);
-
-        panel.add(contentPanel, BorderLayout.WEST);
-
-        return panel;
-    }
-
     private String getEntityDisplayName(String entityId) {
         CoinEntity entity = store.getEntity(entityId);
         if (entity != null) {
@@ -561,35 +144,31 @@ public class EntityManagerFrame extends JFrame {
 
     private JPanel createLeftPanel() {
         JPanel panel = new JPanel(new BorderLayout());
-        panel.setBackground(new Color(35, 37, 41));
-        panel.setBorder(BorderFactory.createMatteBorder(0, 0, 0, 1, new Color(50, 52, 56)));
 
         rootNode = new DefaultMutableTreeNode("Entities");
         treeModel = new DefaultTreeModel(rootNode);
         entityTree = new JTree(treeModel);
         entityTree.setRootVisible(false);
         entityTree.setShowsRootHandles(true);
-        entityTree.setBackground(new Color(35, 37, 41));
-        entityTree.setForeground(new Color(200, 200, 210));
         entityTree.setCellRenderer(new EntityTreeCellRenderer());
         entityTree.addTreeSelectionListener(e -> onTreeSelection());
 
         JScrollPane scroll = new JScrollPane(entityTree);
         scroll.setBorder(null);
-        scroll.getViewport().setBackground(new Color(35, 37, 41));
         panel.add(scroll, BorderLayout.CENTER);
+
+        // Vertical separator on the right
+        panel.add(new JSeparator(SwingConstants.VERTICAL), BorderLayout.EAST);
 
         return panel;
     }
 
     private JPanel createDetailPanel() {
         JPanel panel = new JPanel(new BorderLayout());
-        panel.setBackground(new Color(38, 40, 44));
         panel.setBorder(new EmptyBorder(15, 15, 15, 15));
 
         // Form
         JPanel form = new JPanel(new GridBagLayout());
-        form.setBackground(new Color(38, 40, 44));
 
         GridBagConstraints labelGbc = new GridBagConstraints();
         labelGbc.anchor = GridBagConstraints.WEST;
@@ -638,8 +217,6 @@ public class EntityManagerFrame extends JFrame {
         form.add(createLabel("Type:"), labelGbc);
         fieldGbc.gridx = 1; fieldGbc.gridy = row++;
         typeCombo = new JComboBox<>(CoinEntity.Type.values());
-        typeCombo.setBackground(new Color(60, 62, 66));
-        typeCombo.setForeground(new Color(200, 200, 210));
         form.add(typeCombo, fieldGbc);
 
         // Parent ID
@@ -666,15 +243,11 @@ public class EntityManagerFrame extends JFrame {
         fieldGbc.fill = GridBagConstraints.BOTH;
         fieldGbc.weighty = 1.0;
         categoriesArea = new JTextArea(4, 20);
-        categoriesArea.setBackground(new Color(50, 52, 56));
-        categoriesArea.setForeground(new Color(180, 200, 180));
-        categoriesArea.setCaretColor(new Color(200, 200, 210));
         categoriesArea.setEditable(false);
         categoriesArea.setLineWrap(true);
         categoriesArea.setWrapStyleWord(true);
         categoriesArea.setFont(new Font("SansSerif", Font.PLAIN, 11));
         JScrollPane catScroll = new JScrollPane(categoriesArea);
-        catScroll.setBorder(BorderFactory.createLineBorder(new Color(70, 72, 76)));
         form.add(catScroll, fieldGbc);
 
         // Reset constraints
@@ -682,11 +255,28 @@ public class EntityManagerFrame extends JFrame {
         fieldGbc.fill = GridBagConstraints.HORIZONTAL;
         fieldGbc.weighty = 0;
 
-        panel.add(form, BorderLayout.CENTER);
+        // Custom Attributes section
+        customAttrsPanel = new JPanel();
+        customAttrsPanel.setLayout(new BoxLayout(customAttrsPanel, BoxLayout.Y_AXIS));
+        customAttrsPanel.setBorder(BorderFactory.createTitledBorder("Custom Attributes"));
+        customAttrsPanel.setVisible(false);
+
+        // Wrap form + custom attrs in a vertical box inside a scroll pane
+        JPanel formWrapper = new JPanel();
+        formWrapper.setLayout(new BoxLayout(formWrapper, BoxLayout.Y_AXIS));
+        formWrapper.add(form);
+        formWrapper.add(Box.createVerticalStrut(10));
+        formWrapper.add(customAttrsPanel);
+        formWrapper.add(Box.createVerticalGlue());
+
+        JScrollPane formScroll = new JScrollPane(formWrapper);
+        formScroll.setBorder(null);
+        formScroll.getVerticalScrollBar().setUnitIncrement(16);
+
+        panel.add(formScroll, BorderLayout.CENTER);
 
         // Buttons
         JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 0));
-        buttonPanel.setBackground(new Color(38, 40, 44));
 
         searchRelatedBtn = new JButton("Search Related...");
         searchRelatedBtn.setToolTipText("Use AI to discover related entities");
@@ -727,22 +317,18 @@ public class EntityManagerFrame extends JFrame {
         searchRelatedBtn.setEnabled(false);
         selectedEntity = null;
         isNewEntity = false;
+        clearCustomAttributes();
     }
 
     private JLabel createLabel(String text) {
-        JLabel label = new JLabel(text);
-        label.setForeground(new Color(180, 180, 190));
-        return label;
+        return new JLabel(text);
     }
 
     private JTextField createTextField() {
         JTextField field = new JTextField(20);
-        field.setBackground(new Color(60, 62, 66));
-        field.setForeground(new Color(200, 200, 210));
-        field.setCaretColor(new Color(200, 200, 210));
         field.setBorder(BorderFactory.createCompoundBorder(
-            BorderFactory.createLineBorder(new Color(70, 72, 76)),
-            BorderFactory.createEmptyBorder(5, 8, 5, 8)
+            field.getBorder(),
+            BorderFactory.createEmptyBorder(3, 4, 3, 4)
         ));
         return field;
     }
@@ -834,84 +420,6 @@ public class EntityManagerFrame extends JFrame {
         }
     }
 
-    private void showAddRssFeedDialog() {
-        JPanel panel = new JPanel(new GridLayout(3, 2, 5, 5));
-        JTextField idField = new JTextField();
-        JTextField nameField = new JTextField();
-        JTextField urlField = new JTextField();
-
-        panel.add(new JLabel("ID (unique):"));
-        panel.add(idField);
-        panel.add(new JLabel("Name:"));
-        panel.add(nameField);
-        panel.add(new JLabel("RSS URL:"));
-        panel.add(urlField);
-
-        int result = JOptionPane.showConfirmDialog(this, panel, "Add RSS Feed",
-            JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE);
-
-        if (result == JOptionPane.OK_OPTION) {
-            String id = idField.getText().trim();
-            String name = nameField.getText().trim();
-            String url = urlField.getText().trim();
-
-            if (id.isEmpty() || name.isEmpty() || url.isEmpty()) {
-                showError("All fields are required");
-                return;
-            }
-
-            // Save as a NEWS_SOURCE entity with URL in symbol field
-            CoinEntity rssEntity = new CoinEntity("rss-" + id, name, url, CoinEntity.Type.NEWS_SOURCE);
-            store.saveEntity(rssEntity, "manual");
-            loadEntities();
-            loadNewsSources();
-
-            if (onDataChanged != null) {
-                onDataChanged.accept(null);
-            }
-        }
-    }
-
-    private void removeSelectedRssFeed() {
-        RssFetcher selected = rssSourceList.getSelectedValue();
-        if (selected == null) {
-            JOptionPane.showMessageDialog(this, "Select a feed to remove", "No Selection", JOptionPane.WARNING_MESSAGE);
-            return;
-        }
-
-        // Check if it's a custom feed (exists in database)
-        String entityId = "rss-" + selected.getSourceId();
-        if (!store.entityExists(entityId)) {
-            JOptionPane.showMessageDialog(this, "Built-in feeds cannot be removed", "Cannot Remove", JOptionPane.INFORMATION_MESSAGE);
-            return;
-        }
-
-        int result = JOptionPane.showConfirmDialog(this,
-            "Remove RSS feed '" + selected.getSourceName() + "'?",
-            "Confirm Remove", JOptionPane.YES_NO_OPTION);
-        if (result == JOptionPane.YES_OPTION) {
-            store.deleteEntity(entityId);
-            loadEntities();
-            loadNewsSources();
-        }
-    }
-
-    private void resetRssFeedsToDefaults() {
-        int result = JOptionPane.showConfirmDialog(this,
-            "Reset RSS feeds to factory defaults?\nThis will remove any custom feeds.",
-            "Reset to Defaults", JOptionPane.YES_NO_OPTION);
-        if (result == JOptionPane.YES_OPTION) {
-            // Delete all manual NEWS_SOURCE entities
-            for (CoinEntity entity : store.loadEntitiesBySource("manual")) {
-                if (entity.type() == CoinEntity.Type.NEWS_SOURCE) {
-                    store.deleteEntity(entity.id());
-                }
-            }
-            loadEntities();
-            loadNewsSources();
-        }
-    }
-
     private void showEntity(CoinEntity entity) {
         selectedEntity = entity;
         isNewEntity = false;
@@ -947,6 +455,9 @@ public class EntityManagerFrame extends JFrame {
         // Enable search related for entity types that support it
         boolean canSearch = entity.type() != CoinEntity.Type.NEWS_SOURCE;
         searchRelatedBtn.setEnabled(canSearch);
+
+        // Custom attributes
+        populateCustomAttributes(entity, isManual);
     }
 
     private void createNewEntity() {
@@ -971,6 +482,7 @@ public class EntityManagerFrame extends JFrame {
 
         saveBtn.setEnabled(true);
         deleteBtn.setEnabled(false);
+        clearCustomAttributes();
 
         idField.requestFocus();
     }
@@ -1016,6 +528,10 @@ public class EntityManagerFrame extends JFrame {
         entity.setMarketCap(marketCap);
 
         store.saveEntity(entity, "manual");
+
+        // Save custom attribute values
+        saveCustomAttributeValues(id, type);
+
         loadEntities();
 
         if (onDataChanged != null) {
@@ -1078,265 +594,182 @@ public class EntityManagerFrame extends JFrame {
         }
     }
 
-    private void testAiConnection(IntelConfig.AiProvider provider, String claudePath, String claudeArgs,
-                                    String codexPath, String codexArgs, String customCommand,
-                                    String geminiApiKey, String geminiModel,
-                                    JTextArea logArea, JButton testBtn) {
-        testBtn.setEnabled(false);
-        logArea.setText("");
-
-        String providerName = provider.name();
-
-        Consumer<String> log = msg -> SwingUtilities.invokeLater(() -> {
-            logArea.append(msg + "\n");
-            logArea.setCaretPosition(logArea.getDocument().getLength());
-        });
-
-        // For Gemini, test the HTTP API directly
-        if (provider == IntelConfig.AiProvider.GEMINI) {
-            if (geminiApiKey == null || geminiApiKey.isBlank()) {
-                log.accept("❌ API key not configured");
-                testBtn.setEnabled(true);
-                return;
-            }
-
-            // Temporarily apply Gemini settings
-            IntelConfig config = IntelConfig.get();
-            IntelConfig.AiProvider originalProvider = config.getAiProvider();
-            String originalGeminiKey = config.getGeminiApiKey();
-            String originalGeminiModel = config.getGeminiModel();
-
-            config.setAiProvider(provider);
-            config.setGeminiApiKey(geminiApiKey);
-            config.setGeminiModel(geminiModel);
-
-            new Thread(() -> {
-                try {
-                    log.accept("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-                    log.accept("Step 1: Validating API key");
-                    log.accept("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-                    log.accept("Provider: GEMINI");
-                    log.accept("Model: " + geminiModel);
-                    log.accept("Key: " + geminiApiKey.substring(0, Math.min(8, geminiApiKey.length())) + "...");
-
-                    AiClient client = AiClient.getInstance();
-                    boolean available = client.isAvailable();
-                    if (!available) {
-                        log.accept("❌ API key invalid or cannot reach Gemini API");
-                        return;
-                    }
-                    log.accept("✓ API key valid");
-
-                    log.accept("");
-                    log.accept("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-                    log.accept("Step 2: Testing AI query");
-                    log.accept("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-                    log.accept("Prompt: \"Say OK\"");
-                    log.accept("");
-                    log.accept("Waiting for response...");
-
-                    String response = client.query("Say OK");
-                    log.accept("  ← " + response.trim());
-                    log.accept("");
-                    log.accept("✅ Connection working! Model: " + geminiModel);
-
-                } catch (Exception e) {
-                    log.accept("❌ Error: " + e.getMessage());
-                } finally {
-                    config.setAiProvider(originalProvider);
-                    config.setGeminiApiKey(originalGeminiKey);
-                    config.setGeminiModel(originalGeminiModel);
-                    SwingUtilities.invokeLater(() -> {
-                        testBtn.setEnabled(true);
-                        logArea.setForeground(logArea.getText().contains("✅") ? new Color(100, 200, 120) : new Color(200, 140, 140));
-                    });
-                }
-            }).start();
-            return;
-        }
-
-        // CLI-based providers (Claude, Codex, Custom)
-        String cliPath = switch (provider) {
-            case CLAUDE -> claudePath;
-            case CODEX -> codexPath;
-            case CUSTOM -> {
-                if (customCommand == null || customCommand.isBlank()) yield "";
-                yield customCommand.split("\\s+")[0];
-            }
-            default -> "";
-        };
-
-        if (cliPath == null || cliPath.trim().isEmpty()) {
-            log.accept("❌ Path/command not configured for " + providerName);
-            testBtn.setEnabled(true);
-            return;
-        }
-
-        // Temporarily apply the settings being tested
-        IntelConfig config = IntelConfig.get();
-        IntelConfig.AiProvider originalProvider = config.getAiProvider();
-        String originalClaudePath = config.getClaudePath();
-        String originalClaudeArgs = config.getClaudeArgs();
-        String originalCodexPath = config.getCodexPath();
-        String originalCodexArgs = config.getCodexArgs();
-        String originalCustomCommand = config.getCustomCommand();
-
-        config.setAiProvider(provider);
-        config.setClaudePath(claudePath);
-        config.setClaudeArgs(claudeArgs);
-        config.setCodexPath(codexPath);
-        config.setCodexArgs(codexArgs);
-        config.setCustomCommand(customCommand);
-
-        new Thread(() -> {
-            try {
-                // Step 1: Check CLI exists
-                log.accept("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-                log.accept("Step 1: Checking CLI availability");
-                log.accept("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-                log.accept("Provider: " + providerName);
-                log.accept("CLI path: " + cliPath);
-                log.accept("Running: " + cliPath + " --version");
-
-                ProcessBuilder versionPb = new ProcessBuilder(cliPath, "--version");
-                versionPb.redirectErrorStream(true);
-                Process versionProcess = versionPb.start();
-
-                StringBuilder versionOutput = new StringBuilder();
-                try (var reader = new java.io.BufferedReader(new java.io.InputStreamReader(versionProcess.getInputStream()))) {
-                    String line;
-                    while ((line = reader.readLine()) != null) {
-                        versionOutput.append(line);
-                        log.accept("  → " + line);
-                    }
-                }
-
-                boolean versionFinished = versionProcess.waitFor(10, java.util.concurrent.TimeUnit.SECONDS);
-                if (!versionFinished) {
-                    versionProcess.destroyForcibly();
-                    log.accept("❌ CLI timed out");
-                    return;
-                }
-                if (versionProcess.exitValue() != 0) {
-                    log.accept("❌ CLI not found or returned error");
-                    return;
-                }
-                log.accept("✓ CLI found");
-
-                // Step 2: Build and show the test command
-                log.accept("");
-                log.accept("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-                log.accept("Step 2: Testing AI query");
-                log.accept("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-
-                String testPrompt = "Respond with exactly: OK";
-                java.util.List<String> cmd = new java.util.ArrayList<>();
-                boolean useStdin = false;
-
-                switch (provider) {
-                    case CLAUDE -> {
-                        cmd.add(claudePath);
-                        if (claudeArgs != null && !claudeArgs.isBlank()) {
-                            cmd.addAll(java.util.Arrays.asList(claudeArgs.split("\\s+")));
-                        }
-                        useStdin = true;
-                    }
-                    case CODEX -> {
-                        cmd.add(codexPath);
-                        if (codexArgs != null && !codexArgs.isBlank()) {
-                            cmd.addAll(java.util.Arrays.asList(codexArgs.split("\\s+")));
-                        }
-                        cmd.add(testPrompt);
-                    }
-                    case CUSTOM -> {
-                        if (customCommand != null && !customCommand.isBlank()) {
-                            cmd.addAll(java.util.Arrays.asList(customCommand.split("\\s+")));
-                        }
-                        cmd.add(testPrompt);
-                    }
-                    default -> {}
-                }
-
-                log.accept("Command: " + String.join(" ", cmd));
-                log.accept("Prompt: \"" + testPrompt + "\"");
-                if (useStdin) {
-                    log.accept("(prompt sent via stdin)");
-                }
-                log.accept("");
-                log.accept("Waiting for response...");
-
-                ProcessBuilder testPb = new ProcessBuilder(cmd);
-                testPb.redirectErrorStream(true);
-                Process testProcess = testPb.start();
-
-                // Write to stdin if needed
-                if (useStdin) {
-                    try (var stdin = testProcess.getOutputStream()) {
-                        stdin.write(testPrompt.getBytes());
-                        stdin.flush();
-                    }
-                }
-
-                // Read output line by line
-                StringBuilder testOutput = new StringBuilder();
-                try (var reader = new java.io.BufferedReader(new java.io.InputStreamReader(testProcess.getInputStream()))) {
-                    String line;
-                    while ((line = reader.readLine()) != null) {
-                        testOutput.append(line).append("\n");
-                        log.accept("  ← " + line);
-                    }
-                }
-
-                boolean testFinished = testProcess.waitFor(60, java.util.concurrent.TimeUnit.SECONDS);
-                if (!testFinished) {
-                    testProcess.destroyForcibly();
-                    log.accept("❌ Timeout after 60s");
-                    return;
-                }
-
-                log.accept("");
-                if (testProcess.exitValue() != 0) {
-                    String out = testOutput.toString().toLowerCase();
-                    if (out.contains("log in") || out.contains("login") || out.contains("authenticate")) {
-                        log.accept("❌ Not logged in - run CLI in terminal to authenticate");
-                    } else if (out.contains("api key") || out.contains("apikey")) {
-                        log.accept("❌ API key missing or invalid");
-                    } else {
-                        log.accept("❌ CLI returned error (exit code " + testProcess.exitValue() + ")");
-                    }
-                } else {
-                    log.accept("✅ Connection working!");
-                }
-
-            } catch (Exception e) {
-                log.accept("❌ Error: " + e.getMessage());
-            } finally {
-                restoreAndFinish(config, originalProvider, originalClaudePath, originalClaudeArgs,
-                    originalCodexPath, originalCodexArgs, originalCustomCommand, testBtn, logArea);
-            }
-        }).start();
-    }
-
-    private void restoreAndFinish(IntelConfig config, IntelConfig.AiProvider originalProvider,
-                                   String originalClaudePath, String originalClaudeArgs,
-                                   String originalCodexPath, String originalCodexArgs, String originalCustomCommand,
-                                   JButton testBtn, JTextArea logArea) {
-        // Restore original settings (don't save - user may cancel)
-        config.setAiProvider(originalProvider);
-        config.setClaudePath(originalClaudePath);
-        config.setClaudeArgs(originalClaudeArgs);
-        config.setCodexPath(originalCodexPath);
-        config.setCodexArgs(originalCodexArgs);
-        config.setCustomCommand(originalCustomCommand);
-
-        SwingUtilities.invokeLater(() -> {
-            testBtn.setEnabled(true);
-            logArea.setForeground(logArea.getText().contains("✅") ? new Color(100, 200, 120) : new Color(200, 140, 140));
-        });
-    }
-
     private void showError(String message) {
         JOptionPane.showMessageDialog(this, message, "Error", JOptionPane.ERROR_MESSAGE);
+    }
+
+    // ==================== CUSTOM ATTRIBUTES ====================
+
+    private void clearCustomAttributes() {
+        attrInputComponents.clear();
+        customAttrsPanel.removeAll();
+        customAttrsPanel.setVisible(false);
+        customAttrsPanel.revalidate();
+        customAttrsPanel.repaint();
+    }
+
+    private void populateCustomAttributes(CoinEntity entity, boolean editable) {
+        clearCustomAttributes();
+
+        if (schemaRegistry == null) return;
+
+        // Find the schema type matching this entity's type
+        String typeId = entity.type().name().toLowerCase();
+        SchemaType schemaType = schemaRegistry.getType(typeId);
+        if (schemaType == null || schemaType.attributes().isEmpty()) return;
+
+        // Load stored values
+        Map<String, String> storedValues = store.getAttributeValues(entity.id(), typeId);
+
+        JPanel grid = new JPanel(new GridBagLayout());
+        GridBagConstraints lc = new GridBagConstraints();
+        lc.anchor = GridBagConstraints.WEST;
+        lc.insets = new Insets(4, 5, 4, 10);
+        GridBagConstraints fc = new GridBagConstraints();
+        fc.fill = GridBagConstraints.HORIZONTAL;
+        fc.weightx = 1.0;
+        fc.insets = new Insets(4, 0, 4, 5);
+
+        int row = 0;
+        for (SchemaAttribute attr : schemaType.attributes()) {
+            // Skip hardcoded fields
+            if ("name".equals(attr.name()) || "symbol".equals(attr.name()) ||
+                "market_cap".equals(attr.name())) continue;
+
+            String displayLabel = attr.displayName(Locale.getDefault());
+            String storedValue = storedValues.getOrDefault(attr.name(), "");
+
+            lc.gridx = 0; lc.gridy = row;
+            grid.add(new JLabel(displayLabel + ":"), lc);
+
+            fc.gridx = 1; fc.gridy = row;
+            JComponent input = createInputForAttribute(attr, storedValue, editable);
+            grid.add(input, fc);
+            attrInputComponents.put(attr.name(), input);
+
+            row++;
+        }
+
+        if (row > 0) {
+            grid.setAlignmentX(Component.LEFT_ALIGNMENT);
+            customAttrsPanel.add(grid);
+            customAttrsPanel.setVisible(true);
+        }
+
+        customAttrsPanel.revalidate();
+        customAttrsPanel.repaint();
+    }
+
+    private JComponent createInputForAttribute(SchemaAttribute attr, String value, boolean editable) {
+        return switch (attr.dataType()) {
+            case SchemaAttribute.BOOLEAN -> {
+                JCheckBox cb = new JCheckBox();
+                cb.setSelected("true".equalsIgnoreCase(value));
+                cb.setEnabled(editable);
+                yield cb;
+            }
+            case SchemaAttribute.ENUM -> {
+                List<?> values = attr.configValue("values");
+                JComboBox<String> combo = new JComboBox<>();
+                combo.addItem(""); // empty option
+                if (values != null) {
+                    for (Object v : values) combo.addItem(String.valueOf(v));
+                }
+                combo.setSelectedItem(value);
+                combo.setEnabled(editable);
+                yield combo;
+            }
+            case SchemaAttribute.LIST -> {
+                JTextArea area = new JTextArea(3, 20);
+                area.setText(value);
+                area.setEditable(editable);
+                area.setLineWrap(true);
+                JScrollPane sp = new JScrollPane(area);
+                yield sp;
+            }
+            case SchemaAttribute.URL -> {
+                JPanel urlPanel = new JPanel(new BorderLayout(5, 0));
+                JTextField tf = new JTextField(value, 20);
+                tf.setEnabled(editable);
+                urlPanel.add(tf, BorderLayout.CENTER);
+                JButton openBtn = new JButton("Open");
+                openBtn.addActionListener(e -> {
+                    String url = tf.getText().trim();
+                    if (!url.isEmpty()) {
+                        try {
+                            Desktop.getDesktop().browse(java.net.URI.create(url));
+                        } catch (Exception ex) {
+                            // ignore
+                        }
+                    }
+                });
+                urlPanel.add(openBtn, BorderLayout.EAST);
+                // Store the text field reference for reading value later
+                urlPanel.putClientProperty("textField", tf);
+                yield urlPanel;
+            }
+            default -> {
+                // TEXT, NUMBER, CURRENCY, PERCENTAGE, DATE, TIME, DATETIME, DATETIME_TZ
+                JTextField tf = new JTextField(value, 20);
+                tf.setEnabled(editable);
+                String hint = switch (attr.dataType()) {
+                    case SchemaAttribute.CURRENCY -> {
+                        String sym = attr.configValue("currencySymbol", "");
+                        yield sym + " amount";
+                    }
+                    case SchemaAttribute.PERCENTAGE -> "0.15 = 15%";
+                    case SchemaAttribute.DATE -> attr.configValue("format", "yyyy-MM-dd");
+                    case SchemaAttribute.TIME -> attr.configValue("format", "HH:mm");
+                    case SchemaAttribute.DATETIME -> "epoch ms";
+                    case SchemaAttribute.DATETIME_TZ -> "ISO-8601 with zone";
+                    case SchemaAttribute.NUMBER -> {
+                        String unit = attr.configValue("unit");
+                        yield unit != null ? unit : "";
+                    }
+                    default -> "";
+                };
+                if (!hint.isEmpty()) tf.setToolTipText(hint);
+                yield tf;
+            }
+        };
+    }
+
+    private String readValueFromComponent(JComponent comp, SchemaAttribute attr) {
+        if (comp instanceof JCheckBox cb) {
+            return String.valueOf(cb.isSelected());
+        } else if (comp instanceof JComboBox<?> combo) {
+            Object sel = combo.getSelectedItem();
+            return sel != null ? sel.toString() : "";
+        } else if (comp instanceof JScrollPane sp && sp.getViewport().getView() instanceof JTextArea ta) {
+            return ta.getText().trim();
+        } else if (comp instanceof JPanel panel) {
+            // URL panel with textField in client property
+            Object tf = panel.getClientProperty("textField");
+            if (tf instanceof JTextField textField) {
+                return textField.getText().trim();
+            }
+        } else if (comp instanceof JTextField tf) {
+            return tf.getText().trim();
+        }
+        return "";
+    }
+
+    private void saveCustomAttributeValues(String entityId, CoinEntity.Type entityType) {
+        if (schemaRegistry == null || attrInputComponents.isEmpty()) return;
+
+        String typeId = entityType.name().toLowerCase();
+        SchemaType schemaType = schemaRegistry.getType(typeId);
+        if (schemaType == null) return;
+
+        for (SchemaAttribute attr : schemaType.attributes()) {
+            JComponent comp = attrInputComponents.get(attr.name());
+            if (comp == null) continue;
+
+            String value = readValueFromComponent(comp, attr);
+            if (!value.isEmpty()) {
+                store.saveAttributeValue(entityId, typeId, attr.name(), value);
+            }
+        }
     }
 
     // Custom tree node for entities
@@ -1357,24 +790,15 @@ public class EntityManagerFrame extends JFrame {
         }
     }
 
-    // Custom tree cell renderer
+    // Custom tree cell renderer - uses FlatLaf defaults, just colorizes entity type
     private static class EntityTreeCellRenderer extends DefaultTreeCellRenderer {
         @Override
         public Component getTreeCellRendererComponent(JTree tree, Object value, boolean sel,
                                                       boolean expanded, boolean leaf, int row, boolean hasFocus) {
             super.getTreeCellRendererComponent(tree, value, sel, expanded, leaf, row, hasFocus);
 
-            setBackground(sel ? new Color(60, 80, 100) : new Color(35, 37, 41));
-            setBackgroundNonSelectionColor(new Color(35, 37, 41));
-            setBackgroundSelectionColor(new Color(60, 80, 100));
-            setTextNonSelectionColor(new Color(200, 200, 210));
-            setTextSelectionColor(new Color(220, 220, 230));
-
-            if (value instanceof EntityTreeNode entityNode) {
+            if (value instanceof EntityTreeNode entityNode && !sel) {
                 setForeground(entityNode.entity.type().color());
-                if (sel) {
-                    setForeground(new Color(255, 255, 255));
-                }
             }
 
             return this;

@@ -8,6 +8,9 @@ import com.tradery.engine.HoopPatternEvaluator;
 import com.tradery.engine.PhaseEvaluator;
 import com.tradery.forge.ApplicationContext;
 import com.tradery.forge.data.AggTradesStore;
+import com.tradery.forge.data.ExchangeClient;
+import com.tradery.forge.data.ExchangeClientFactory;
+import com.tradery.forge.data.ExchangeConfig;
 import com.tradery.data.page.DataPage;
 import com.tradery.data.page.DataPageListener;
 import com.tradery.data.page.DataPageView;
@@ -19,6 +22,9 @@ import com.tradery.forge.data.sqlite.SqliteDataStore;
 import com.tradery.forge.io.HoopPatternStore;
 import com.tradery.forge.io.PhaseStore;
 import com.tradery.forge.io.ResultStore;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import javax.swing.*;
 import java.util.*;
@@ -38,6 +44,8 @@ import java.util.function.Consumer;
  * - Clean separation via DataRequirements
  */
 public class BacktestCoordinator {
+
+    private static final Logger log = LoggerFactory.getLogger(BacktestCoordinator.class);
 
     // Page managers (from ApplicationContext)
     private final CandlePageManager candlePageMgr;
@@ -585,6 +593,13 @@ public class BacktestCoordinator {
                 List<Candle> candles = new ArrayList<>(requirements.getCandlePage().getData());
                 List<AggTrade> aggTrades = requirements.getAggTradesPage() != null
                     ? new ArrayList<>(requirements.getAggTradesPage().getData()) : null;
+
+                // Fetch cross-exchange aggTrades if strategy uses cross-exchange functions
+                if (aggTrades != null && currentStrategy.requiresCrossExchangeData()) {
+                    aggTrades = fetchCrossExchangeAggTrades(aggTrades,
+                        requirements.getSymbol(), requirements.getStartTime(), requirements.getEndTime());
+                }
+
                 List<FundingRate> funding = requirements.getFundingPage() != null
                     ? new ArrayList<>(requirements.getFundingPage().getData()) : null;
                 List<OpenInterest> oi = requirements.getOiPage() != null
@@ -690,6 +705,62 @@ public class BacktestCoordinator {
                 });
             }
         });
+    }
+
+    /**
+     * Fetch aggTrades from non-Binance exchanges and merge with existing trades.
+     * Only fetches from exchanges that are enabled in ExchangeConfig.
+     */
+    private List<AggTrade> fetchCrossExchangeAggTrades(List<AggTrade> binanceTrades,
+                                                         String symbol, long startTime, long endTime) {
+        ExchangeConfig config = ExchangeConfig.getInstance();
+        ExchangeClientFactory factory = ExchangeClientFactory.getInstance();
+        List<AggTrade> merged = new ArrayList<>(binanceTrades);
+
+        for (Exchange exchange : config.getEnabledExchanges()) {
+            if (exchange == Exchange.BINANCE) continue; // Already have Binance data
+
+            ExchangeClient client = factory.getClient(exchange);
+            if (client == null) continue;
+
+            try {
+                DataMarketType marketType = client.getDefaultMarketType();
+                String exchangeSymbol = config.getSymbol(
+                    extractBaseSymbol(symbol), exchange);
+
+                log.info("Fetching cross-exchange aggTrades from {} ({})", exchange.getDisplayName(), exchangeSymbol);
+                reportProgress(15, "Fetching " + exchange.getDisplayName() + " trades...");
+
+                List<AggTrade> trades = client.fetchAllAggTrades(
+                    exchangeSymbol, startTime, endTime, null, null);
+
+                if (!trades.isEmpty()) {
+                    merged.addAll(trades);
+                    log.info("Got {} trades from {}", trades.size(), exchange.getDisplayName());
+                }
+            } catch (Exception e) {
+                log.warn("Failed to fetch aggTrades from {}: {}", exchange.getDisplayName(), e.getMessage());
+            }
+        }
+
+        // Sort merged trades by timestamp for chronological processing
+        if (merged.size() > binanceTrades.size()) {
+            merged.sort(Comparator.comparingLong(AggTrade::timestamp));
+        }
+
+        return merged;
+    }
+
+    /**
+     * Extract base symbol from a combined symbol (e.g., "BTCUSDT" -> "BTC").
+     */
+    private String extractBaseSymbol(String symbol) {
+        for (String quote : new String[]{"USDT", "USDC", "USD", "BUSD"}) {
+            if (symbol.endsWith(quote) && symbol.length() > quote.length()) {
+                return symbol.substring(0, symbol.length() - quote.length());
+            }
+        }
+        return symbol;
     }
 
     /**

@@ -96,7 +96,7 @@ public class CandlestickChart extends SyncedChart {
         TimeSeriesCollection dataset = new TimeSeriesCollection(series);
         plot.setDataset(0, dataset);
 
-        Color lineColor = applyOpacity(ChartStyles.PRICE_LINE_COLOR);
+        Color lineColor = applyOpacity(ChartStyles.getTheme().getPriceLineColor());
         XYLineAndShapeRenderer renderer = new XYLineAndShapeRenderer(true, false);
         renderer.setSeriesPaint(0, lineColor);
         renderer.setSeriesStroke(0, ChartStyles.LINE_STROKE);
@@ -126,8 +126,8 @@ public class CandlestickChart extends SyncedChart {
             "Price", dates, high, low, open, close, volume);
         plot.setDataset(0, dataset);
 
-        Color upColor = applyOpacity(ChartStyles.CANDLE_UP_COLOR);
-        Color downColor = applyOpacity(ChartStyles.CANDLE_DOWN_COLOR);
+        Color upColor = applyOpacity(ChartStyles.getTheme().getCandleUpColor());
+        Color downColor = applyOpacity(ChartStyles.getTheme().getCandleDownColor());
         TraderyCandlestickRenderer renderer = new TraderyCandlestickRenderer(upColor, downColor);
         renderer.setAutoWidthMethod(TraderyCandlestickRenderer.WIDTHMETHOD_SMALLEST);
         plot.setRenderer(0, renderer);
@@ -136,6 +136,26 @@ public class CandlestickChart extends SyncedChart {
     private Color applyOpacity(Color color) {
         if (priceOpacity >= 255) return color;
         return new Color(color.getRed(), color.getGreen(), color.getBlue(), priceOpacity);
+    }
+
+    @Override
+    public void refreshTheme() {
+        super.refreshTheme();
+
+        // Update renderer colors to match new theme
+        XYPlot plot = getPlot();
+        if (plot == null || plot.getRenderer(0) == null) return;
+
+        if (candlestickMode && plot.getRenderer(0) instanceof TraderyCandlestickRenderer) {
+            Color upColor = applyOpacity(ChartStyles.getTheme().getCandleUpColor());
+            Color downColor = applyOpacity(ChartStyles.getTheme().getCandleDownColor());
+            TraderyCandlestickRenderer renderer = new TraderyCandlestickRenderer(upColor, downColor);
+            renderer.setAutoWidthMethod(TraderyCandlestickRenderer.WIDTHMETHOD_SMALLEST);
+            plot.setRenderer(0, renderer);
+        } else if (!candlestickMode && plot.getRenderer(0) instanceof XYLineAndShapeRenderer lineRenderer) {
+            Color lineColor = applyOpacity(ChartStyles.getTheme().getPriceLineColor());
+            lineRenderer.setSeriesPaint(0, lineColor);
+        }
     }
 
     // ===== Configuration =====

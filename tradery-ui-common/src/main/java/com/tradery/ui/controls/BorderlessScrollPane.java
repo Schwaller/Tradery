@@ -12,12 +12,17 @@ public class BorderlessScrollPane extends JScrollPane {
 
     public BorderlessScrollPane(Component view) {
         super(view);
-        setBorder(null);
+        applyBorderless();
     }
 
     @Override
     public void updateUI() {
         super.updateUI();
-        setBorder(null);
+        applyBorderless();
+    }
+
+    private void applyBorderless() {
+        setBorder(BorderFactory.createEmptyBorder());
+        setViewportBorder(BorderFactory.createEmptyBorder());
     }
 }

@@ -1,10 +1,13 @@
 package com.tradery.news.ui.coin;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
 import java.awt.*;
 import java.io.File;
 import java.sql.*;
-import java.util.ArrayList;
-import java.util.Collection;
+import java.time.Duration;
+import java.util.*;
 import java.util.List;
 
 /**
@@ -14,8 +17,7 @@ import java.util.List;
 public class EntityStore {
 
     private static final String DB_PATH = System.getProperty("user.home") + "/.tradery/entity-network.db";
-    private static final long COINGECKO_CACHE_TTL_MS = 6 * 60 * 60 * 1000L;  // 6 hours
-
+    private static final ObjectMapper JSON = new ObjectMapper();
     private Connection conn;
 
     public EntityStore() {
@@ -104,14 +106,37 @@ public class EntityStore {
                     data_type TEXT NOT NULL,
                     required INTEGER DEFAULT 0,
                     display_order INTEGER DEFAULT 0,
+                    labels TEXT,
+                    config TEXT,
                     PRIMARY KEY (type_id, name),
                     FOREIGN KEY (type_id) REFERENCES schema_types(id) ON DELETE CASCADE
                 )
             """);
 
+            // Per-entity attribute values
+            stmt.execute("""
+                CREATE TABLE IF NOT EXISTS entity_attribute_values (
+                    entity_id TEXT NOT NULL,
+                    type_id TEXT NOT NULL,
+                    attr_name TEXT NOT NULL,
+                    value TEXT,
+                    PRIMARY KEY (entity_id, type_id, attr_name),
+                    FOREIGN KEY (entity_id) REFERENCES entities(id) ON DELETE CASCADE
+                )
+            """);
+
+            // Migration: add labels/config columns if missing
+            addColumnIfMissing(stmt, "schema_attributes", "labels", "TEXT");
+            addColumnIfMissing(stmt, "schema_attributes", "config", "TEXT");
+
             // Add erd position columns if missing (migration)
             addColumnIfMissing(stmt, "schema_types", "erd_x", "REAL DEFAULT 0");
             addColumnIfMissing(stmt, "schema_types", "erd_y", "REAL DEFAULT 0");
+
+            // Attribute provenance migration
+            addColumnIfMissing(stmt, "schema_attributes", "mutability", "TEXT DEFAULT 'MANUAL'");
+            addColumnIfMissing(stmt, "entity_attribute_values", "origin", "TEXT DEFAULT 'USER'");
+            addColumnIfMissing(stmt, "entity_attribute_values", "updated_at", "INTEGER DEFAULT 0");
 
             // Create indexes
             stmt.execute("CREATE INDEX IF NOT EXISTS idx_entities_source ON entities(source)");
@@ -124,14 +149,16 @@ public class EntityStore {
 
     // ==================== CACHE VALIDITY ====================
 
-    public boolean isCoinGeckoCacheValid() {
+    /** Check if a source's cached data is still valid within the given TTL. */
+    public boolean isSourceCacheValid(String sourceId, Duration ttl) {
         if (conn == null) return false;
         try (PreparedStatement ps = conn.prepareStatement(
-                "SELECT value FROM cache_meta WHERE key = 'coingecko_last_fetch'")) {
+                "SELECT value FROM cache_meta WHERE key = ?")) {
+            ps.setString(1, sourceId + "_last_fetch");
             ResultSet rs = ps.executeQuery();
             if (rs.next()) {
                 long lastFetch = Long.parseLong(rs.getString("value"));
-                return System.currentTimeMillis() - lastFetch < COINGECKO_CACHE_TTL_MS;
+                return System.currentTimeMillis() - lastFetch < ttl.toMillis();
             }
         } catch (Exception e) {
             // Ignore
@@ -139,14 +166,16 @@ public class EntityStore {
         return false;
     }
 
-    public void updateCoinGeckoFetchTime() {
+    /** Record the current time as the last fetch time for a source. */
+    public void updateSourceFetchTime(String sourceId) {
         if (conn == null) return;
         try (PreparedStatement ps = conn.prepareStatement(
-                "INSERT OR REPLACE INTO cache_meta (key, value) VALUES ('coingecko_last_fetch', ?)")) {
-            ps.setString(1, String.valueOf(System.currentTimeMillis()));
+                "INSERT OR REPLACE INTO cache_meta (key, value) VALUES (?, ?)")) {
+            ps.setString(1, sourceId + "_last_fetch");
+            ps.setString(2, String.valueOf(System.currentTimeMillis()));
             ps.execute();
         } catch (SQLException e) {
-            System.err.println("Failed to update cache time: " + e.getMessage());
+            System.err.println("Failed to update cache time for " + sourceId + ": " + e.getMessage());
         }
     }
 
@@ -292,22 +321,22 @@ public class EntityStore {
         }
     }
 
-    public void saveCoinGeckoEntities(List<CoinEntity> entities) {
+    /** Replace all entities for a given source atomically. Manual entities are never touched. */
+    public void replaceEntitiesBySource(String sourceId, List<CoinEntity> entities) {
         if (conn == null) return;
 
         try {
             conn.setAutoCommit(false);
 
-            // Delete all coingecko entities (manual ones persist)
-            try (Statement stmt = conn.createStatement()) {
-                stmt.execute("DELETE FROM entities WHERE source = 'coingecko'");
+            try (PreparedStatement ps = conn.prepareStatement("DELETE FROM entities WHERE source = ?")) {
+                ps.setString(1, sourceId);
+                ps.execute();
             }
 
-            // Insert new coingecko entities
             long now = System.currentTimeMillis();
             try (PreparedStatement ps = conn.prepareStatement("""
                 INSERT INTO entities (id, name, symbol, type, parent_id, market_cap, source, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, 'coingecko', ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """)) {
                 for (CoinEntity entity : entities) {
                     ps.setString(1, entity.id());
@@ -316,26 +345,26 @@ public class EntityStore {
                     ps.setString(4, entity.type().name());
                     ps.setString(5, entity.parentId());
                     ps.setDouble(6, entity.marketCap());
-                    ps.setLong(7, now);
+                    ps.setString(7, sourceId);
                     ps.setLong(8, now);
+                    ps.setLong(9, now);
                     ps.addBatch();
                 }
                 ps.executeBatch();
             }
 
-            // Save categories
             for (CoinEntity entity : entities) {
                 if (!entity.categories().isEmpty()) {
                     saveCategoriesFor(entity);
                 }
             }
 
-            updateCoinGeckoFetchTime();
+            updateSourceFetchTime(sourceId);
             conn.commit();
             conn.setAutoCommit(true);
-            System.out.println("Saved " + entities.size() + " CoinGecko entities to store");
+            System.out.println("Saved " + entities.size() + " entities from source '" + sourceId + "'");
         } catch (Exception e) {
-            System.err.println("Failed to save CoinGecko entities: " + e.getMessage());
+            System.err.println("Failed to save entities for source " + sourceId + ": " + e.getMessage());
             try { conn.rollback(); } catch (SQLException ignored) {}
         }
     }
@@ -344,6 +373,13 @@ public class EntityStore {
         if (conn == null) return;
 
         try {
+            // Delete attribute values
+            try (PreparedStatement ps = conn.prepareStatement(
+                    "DELETE FROM entity_attribute_values WHERE entity_id = ?")) {
+                ps.setString(1, id);
+                ps.execute();
+            }
+
             // Delete categories
             try (PreparedStatement ps = conn.prepareStatement(
                     "DELETE FROM entity_categories WHERE entity_id = ?")) {
@@ -443,29 +479,30 @@ public class EntityStore {
         }
     }
 
-    public void saveAutoRelationships(List<CoinRelationship> relationships) {
+    /** Replace all relationships for a given source atomically. Manual relationships are never touched. */
+    public void replaceRelationshipsBySource(String sourceId, List<CoinRelationship> relationships) {
         if (conn == null) return;
 
         try {
             conn.setAutoCommit(false);
 
-            // Delete auto-generated relationships (manual ones persist)
-            try (Statement stmt = conn.createStatement()) {
-                stmt.execute("DELETE FROM relationships WHERE source = 'auto'");
+            try (PreparedStatement ps = conn.prepareStatement("DELETE FROM relationships WHERE source = ?")) {
+                ps.setString(1, sourceId);
+                ps.execute();
             }
 
-            // Insert new
             long now = System.currentTimeMillis();
             try (PreparedStatement ps = conn.prepareStatement("""
                 INSERT OR IGNORE INTO relationships (from_id, to_id, type, note, source, created_at)
-                VALUES (?, ?, ?, ?, 'auto', ?)
+                VALUES (?, ?, ?, ?, ?, ?)
             """)) {
                 for (CoinRelationship rel : relationships) {
                     ps.setString(1, rel.fromId());
                     ps.setString(2, rel.toId());
                     ps.setString(3, rel.type().name());
                     ps.setString(4, rel.note());
-                    ps.setLong(5, now);
+                    ps.setString(5, sourceId);
+                    ps.setLong(6, now);
                     ps.addBatch();
                 }
                 ps.executeBatch();
@@ -473,9 +510,9 @@ public class EntityStore {
 
             conn.commit();
             conn.setAutoCommit(true);
-            System.out.println("Saved " + relationships.size() + " auto relationships");
+            System.out.println("Saved " + relationships.size() + " relationships from source '" + sourceId + "'");
         } catch (Exception e) {
-            System.err.println("Failed to save auto relationships: " + e.getMessage());
+            System.err.println("Failed to save relationships for source " + sourceId + ": " + e.getMessage());
             try { conn.rollback(); } catch (SQLException ignored) {}
         }
     }
@@ -586,11 +623,15 @@ public class EntityStore {
             ps.setString(1, type.id());
             ResultSet rs = ps.executeQuery();
             while (rs.next()) {
+                Map<String, String> labels = parseJsonMap(rs.getString("labels"));
+                Map<String, Object> config = parseJsonObjectMap(rs.getString("config"));
                 type.addAttribute(new SchemaAttribute(
                     rs.getString("name"),
                     rs.getString("data_type"),
                     rs.getInt("required") == 1,
-                    rs.getInt("display_order")
+                    rs.getInt("display_order"),
+                    labels,
+                    config
                 ));
             }
         } catch (SQLException e) {
@@ -656,18 +697,22 @@ public class EntityStore {
         if (conn == null) return;
 
         try (PreparedStatement ps = conn.prepareStatement("""
-            INSERT INTO schema_attributes (type_id, name, data_type, required, display_order)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO schema_attributes (type_id, name, data_type, required, display_order, labels, config)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(type_id, name) DO UPDATE SET
                 data_type = excluded.data_type,
                 required = excluded.required,
-                display_order = excluded.display_order
+                display_order = excluded.display_order,
+                labels = excluded.labels,
+                config = excluded.config
         """)) {
             ps.setString(1, typeId);
             ps.setString(2, attr.name());
             ps.setString(3, attr.dataType());
             ps.setInt(4, attr.required() ? 1 : 0);
             ps.setInt(5, attr.displayOrder());
+            ps.setString(6, toJson(attr.labels()));
+            ps.setString(7, toJson(attr.config()));
             ps.execute();
         } catch (SQLException e) {
             System.err.println("Failed to save schema attribute: " + e.getMessage());
@@ -702,6 +747,93 @@ public class EntityStore {
             ps.execute();
         } catch (SQLException e) {
             System.err.println("Failed to remove schema attribute: " + e.getMessage());
+        }
+    }
+
+    // ==================== ATTRIBUTE VALUE CRUD ====================
+
+    /** Save a single attribute value for an entity. */
+    public void saveAttributeValue(String entityId, String typeId, String attrName, String value) {
+        if (conn == null) return;
+
+        try (PreparedStatement ps = conn.prepareStatement("""
+            INSERT INTO entity_attribute_values (entity_id, type_id, attr_name, value)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(entity_id, type_id, attr_name) DO UPDATE SET value = excluded.value
+        """)) {
+            ps.setString(1, entityId);
+            ps.setString(2, typeId);
+            ps.setString(3, attrName);
+            ps.setString(4, value);
+            ps.execute();
+        } catch (SQLException e) {
+            System.err.println("Failed to save attribute value: " + e.getMessage());
+        }
+    }
+
+    /** Get all attribute values for a specific entity and type. */
+    public Map<String, String> getAttributeValues(String entityId, String typeId) {
+        Map<String, String> values = new LinkedHashMap<>();
+        if (conn == null) return values;
+
+        try (PreparedStatement ps = conn.prepareStatement(
+                "SELECT attr_name, value FROM entity_attribute_values WHERE entity_id = ? AND type_id = ?")) {
+            ps.setString(1, entityId);
+            ps.setString(2, typeId);
+            ResultSet rs = ps.executeQuery();
+            while (rs.next()) {
+                values.put(rs.getString("attr_name"), rs.getString("value"));
+            }
+        } catch (SQLException e) {
+            System.err.println("Failed to get attribute values: " + e.getMessage());
+        }
+        return values;
+    }
+
+    /** Get all attribute values for an entity across all types. */
+    public Map<String, String> getAllAttributeValues(String entityId) {
+        Map<String, String> values = new LinkedHashMap<>();
+        if (conn == null) return values;
+
+        try (PreparedStatement ps = conn.prepareStatement(
+                "SELECT attr_name, value FROM entity_attribute_values WHERE entity_id = ?")) {
+            ps.setString(1, entityId);
+            ResultSet rs = ps.executeQuery();
+            while (rs.next()) {
+                values.put(rs.getString("attr_name"), rs.getString("value"));
+            }
+        } catch (SQLException e) {
+            System.err.println("Failed to get all attribute values: " + e.getMessage());
+        }
+        return values;
+    }
+
+    // ==================== JSON HELPERS ====================
+
+    private static String toJson(Object obj) {
+        if (obj == null) return null;
+        try {
+            return JSON.writeValueAsString(obj);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private static Map<String, String> parseJsonMap(String json) {
+        if (json == null || json.isEmpty()) return null;
+        try {
+            return JSON.readValue(json, new TypeReference<LinkedHashMap<String, String>>() {});
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private static Map<String, Object> parseJsonObjectMap(String json) {
+        if (json == null || json.isEmpty()) return null;
+        try {
+            return JSON.readValue(json, new TypeReference<LinkedHashMap<String, Object>>() {});
+        } catch (Exception e) {
+            return null;
         }
     }
 

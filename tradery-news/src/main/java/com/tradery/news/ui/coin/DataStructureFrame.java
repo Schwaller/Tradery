@@ -18,9 +18,9 @@ public class DataStructureFrame extends JFrame {
     private final ErdPanel erdPanel;
     private SchemaRegistry schemaRegistry;
 
-    public DataStructureFrame(EntityStore store, Consumer<Void> onDataChanged) {
+    public DataStructureFrame(EntityStore store, SchemaRegistry registry, Consumer<Void> onDataChanged) {
         super("Data Structure");
-        this.schemaRegistry = null; // loaded off EDT below
+        this.schemaRegistry = registry;
 
         setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
 
@@ -66,21 +66,16 @@ public class DataStructureFrame extends JFrame {
         erdPanel = new ErdPanel();
         erdPanel.setOnDataChanged(onDataChanged);
 
-        // Load schema registry off EDT, then set it
-        new Thread(() -> {
-            SchemaRegistry reg = new SchemaRegistry(store);
-            SwingUtilities.invokeLater(() -> {
-                schemaRegistry = reg;
-                erdPanel.setRegistry(reg);
-            });
-        }).start();
+        // Set schema registry on the ERD panel
+        erdPanel.setRegistry(schemaRegistry);
 
         JPanel mainPanel = new JPanel(new BorderLayout());
-        mainPanel.setBackground(new Color(30, 32, 36));
 
         // Header bar (unified with title bar)
-        JPanel headerBar = createHeaderBar();
-        mainPanel.add(headerBar, BorderLayout.NORTH);
+        JPanel headerWrapper = new JPanel(new BorderLayout());
+        headerWrapper.add(createHeaderBar(), BorderLayout.CENTER);
+        headerWrapper.add(new JSeparator(), BorderLayout.SOUTH);
+        mainPanel.add(headerWrapper, BorderLayout.NORTH);
         mainPanel.add(erdPanel, BorderLayout.CENTER);
 
         setContentPane(mainPanel);
@@ -90,8 +85,6 @@ public class DataStructureFrame extends JFrame {
         int barHeight = 52;
 
         JPanel headerBar = new JPanel(new GridBagLayout());
-        headerBar.setBackground(new Color(38, 40, 44));
-        headerBar.setBorder(BorderFactory.createMatteBorder(0, 0, 1, 0, new Color(50, 52, 56)));
         headerBar.setPreferredSize(new Dimension(0, barHeight));
         headerBar.setMinimumSize(new Dimension(0, barHeight));
 
@@ -138,7 +131,6 @@ public class DataStructureFrame extends JFrame {
         // Separator
         JSeparator sep = new JSeparator(SwingConstants.VERTICAL);
         sep.setPreferredSize(new Dimension(1, 20));
-        sep.setForeground(new Color(60, 62, 66));
         leftContent.add(sep);
 
         // Flow mode toggle (separate from layout group)
@@ -170,7 +162,7 @@ public class DataStructureFrame extends JFrame {
         gbc.anchor = GridBagConstraints.CENTER;
         JLabel titleLabel = new JLabel("Data Structure");
         titleLabel.setFont(new Font("SansSerif", Font.BOLD, 13));
-        titleLabel.setForeground(new Color(160, 160, 170));
+        titleLabel.setForeground(UIManager.getColor("Label.disabledForeground"));
         headerBar.add(titleLabel, gbc);
 
         // Right: Fit + Entity Type
@@ -224,18 +216,6 @@ public class DataStructureFrame extends JFrame {
         btn.setFont(new Font("SansSerif", Font.BOLD, 11));
         btn.setMargin(new Insets(6, 14, 6, 14));
         btn.setFocusPainted(false);
-        btn.setBorderPainted(false);
-        btn.setBackground(new Color(38, 40, 44));
-        btn.setForeground(new Color(160, 160, 170));
-        btn.addChangeListener(e -> {
-            if (btn.isSelected()) {
-                btn.setBackground(new Color(55, 57, 61));
-                btn.setForeground(new Color(220, 220, 230));
-            } else {
-                btn.setBackground(new Color(38, 40, 44));
-                btn.setForeground(new Color(160, 160, 170));
-            }
-        });
         return btn;
     }
 }

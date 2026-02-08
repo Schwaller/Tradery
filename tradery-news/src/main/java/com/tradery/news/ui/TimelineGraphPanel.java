@@ -1,6 +1,8 @@
 package com.tradery.news.ui;
 
 import com.tradery.news.model.Article;
+import com.tradery.news.ui.coin.SchemaRegistry;
+import com.tradery.news.ui.coin.SchemaType;
 
 import javax.swing.*;
 import javax.swing.Timer;
@@ -58,12 +60,44 @@ public class TimelineGraphPanel extends JPanel {
 
     // Config
     private final IntelConfig config;
+    private SchemaRegistry schemaRegistry;
     private Rectangle topicsLabelClickArea;  // Clickable area for topics config
 
+    // Theme-aware color helpers
+    private static Color bgColor() {
+        Color c = UIManager.getColor("Panel.background");
+        return c != null ? c : new Color(30, 32, 36);
+    }
+    private static Color gridLineColor() {
+        Color bg = bgColor();
+        int lum = (bg.getRed() + bg.getGreen() + bg.getBlue()) / 3;
+        int offset = lum < 128 ? 20 : -20;
+        return new Color(clamp(bg.getRed() + offset), clamp(bg.getGreen() + offset), clamp(bg.getBlue() + offset));
+    }
+    private static Color labelColor() {
+        Color c = UIManager.getColor("Label.foreground");
+        return c != null ? c : new Color(220, 220, 230);
+    }
+    private static Color secondaryColor() {
+        Color c = UIManager.getColor("Label.disabledForeground");
+        return c != null ? c : new Color(150, 150, 160);
+    }
+    private static Color tooltipBg() {
+        Color bg = bgColor();
+        int lum = (bg.getRed() + bg.getGreen() + bg.getBlue()) / 3;
+        int offset = lum < 128 ? 15 : -15;
+        return new Color(clamp(bg.getRed() + offset), clamp(bg.getGreen() + offset), clamp(bg.getBlue() + offset), 240);
+    }
+    private static Color tooltipBorder() {
+        Color bg = bgColor();
+        int lum = (bg.getRed() + bg.getGreen() + bg.getBlue()) / 3;
+        int offset = lum < 128 ? 40 : -40;
+        return new Color(clamp(bg.getRed() + offset), clamp(bg.getGreen() + offset), clamp(bg.getBlue() + offset));
+    }
+    private static int clamp(int v) { return Math.max(0, Math.min(255, v)); }
 
     public TimelineGraphPanel() {
         this.config = IntelConfig.get();
-        setBackground(new Color(30, 32, 36));
         setPreferredSize(new Dimension(1200, 600));
 
         // Mouse interaction
@@ -105,6 +139,17 @@ public class TimelineGraphPanel extends JPanel {
             repaint();
             if (!moving) physicsTimer.stop();
         });
+    }
+
+    public void setSchemaRegistry(SchemaRegistry registry) {
+        this.schemaRegistry = registry;
+    }
+
+    private java.awt.Color resolveSchemaColor(TopicNode.Type type) {
+        if (schemaRegistry == null) return null;
+        String typeId = type == TopicNode.Type.TOPIC ? "topic" : "coin";
+        SchemaType st = schemaRegistry.getType(typeId);
+        return st != null ? st.color() : null;
     }
 
     /**
@@ -154,6 +199,8 @@ public class TimelineGraphPanel extends JPanel {
                 if (config.isTopicHidden(topic)) continue;
                 TopicNode topicNode = topicMap.computeIfAbsent(topic, t -> {
                     TopicNode tn = new TopicNode(t, formatTopicLabel(t), TopicNode.Type.TOPIC);
+                    Color sc = resolveSchemaColor(TopicNode.Type.TOPIC);
+                    if (sc != null) tn.setColor(sc);
                     topicNodes.add(tn);  // Topics go in topicNodes
                     return tn;
                 });
@@ -166,6 +213,8 @@ public class TimelineGraphPanel extends JPanel {
                 String coinId = "coin:" + coin;
                 TopicNode coinNode = topicMap.computeIfAbsent(coinId, c -> {
                     TopicNode cn = new TopicNode(coinId, coin, TopicNode.Type.COIN);
+                    Color sc = resolveSchemaColor(TopicNode.Type.COIN);
+                    if (sc != null) cn.setColor(sc);
                     coinNodes.add(cn);  // Coins go in coinNodes
                     return cn;
                 });
@@ -265,6 +314,8 @@ public class TimelineGraphPanel extends JPanel {
                 if (config.isTopicHidden(topic)) continue;
                 TopicNode topicNode = topicMap.computeIfAbsent(topic, t -> {
                     TopicNode tn = new TopicNode(t, formatTopicLabel(t), TopicNode.Type.TOPIC);
+                    Color sc = resolveSchemaColor(TopicNode.Type.TOPIC);
+                    if (sc != null) tn.setColor(sc);
                     topicNodes.add(tn);
                     return tn;
                 });
@@ -277,6 +328,8 @@ public class TimelineGraphPanel extends JPanel {
                 String coinId = "coin:" + coin;
                 TopicNode coinNode = topicMap.computeIfAbsent(coinId, c -> {
                     TopicNode cn = new TopicNode(coinId, coin, TopicNode.Type.COIN);
+                    Color sc = resolveSchemaColor(TopicNode.Type.COIN);
+                    if (sc != null) cn.setColor(sc);
                     coinNodes.add(cn);
                     return cn;
                 });
@@ -479,6 +532,7 @@ public class TimelineGraphPanel extends JPanel {
 
     @Override
     protected void paintComponent(Graphics g) {
+        setBackground(bgColor());
         super.paintComponent(g);
         Graphics2D g2 = (Graphics2D) g;
         g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
@@ -493,14 +547,14 @@ public class TimelineGraphPanel extends JPanel {
         int timelineY = getHeight() - MARGIN_BOTTOM + TIMELINE_OFFSET;
 
         // Draw full-width separator lines
-        g2.setColor(new Color(50, 52, 56));
+        g2.setColor(gridLineColor());
         g2.setStroke(new BasicStroke(1f));
         g2.drawLine(0, coinZoneTop, getWidth(), coinZoneTop);       // Between topics and coins
         g2.drawLine(0, articleZoneTop, getWidth(), articleZoneTop); // Between coins and articles
         g2.drawLine(0, timelineY, getWidth(), timelineY);           // Timeline separator
 
         // Labels for each zone (8px from zone top + font ascent)
-        g2.setColor(new Color(100, 100, 110));
+        g2.setColor(secondaryColor());
         g2.setFont(new Font("SansSerif", Font.BOLD, 10));
         int labelOffset = 8 + g2.getFontMetrics().getAscent();
 
@@ -513,12 +567,12 @@ public class TimelineGraphPanel extends JPanel {
         // Draw triangle (pointing down)
         int[] xPoints = {triangleX, triangleX + 8, triangleX + 4};
         int[] yPoints = {triangleY, triangleY, triangleY + 5};
-        g2.setColor(new Color(120, 120, 140));
+        g2.setColor(secondaryColor());
         g2.fillPolygon(xPoints, yPoints, 3);
         // Store clickable area
         topicsLabelClickArea = new Rectangle(MARGIN_LEFT, 0, topicsLabelWidth + 20, labelOffset + 4);
 
-        g2.setColor(new Color(100, 100, 110));
+        g2.setColor(secondaryColor());
         g2.drawString("COINS", MARGIN_LEFT, coinZoneTop + labelOffset);
         g2.drawString("NEWS ARTICLES", MARGIN_LEFT, articleZoneTop + labelOffset);
 
@@ -546,10 +600,10 @@ public class TimelineGraphPanel extends JPanel {
         int y = getHeight() - MARGIN_BOTTOM + TIMELINE_OFFSET + 15;
         int width = getWidth() - MARGIN_LEFT - MARGIN_RIGHT;
 
-        g2.setColor(new Color(50, 52, 56));
+        g2.setColor(gridLineColor());
         g2.drawLine(MARGIN_LEFT, y - 15, getWidth() - MARGIN_RIGHT, y - 15);
 
-        g2.setColor(new Color(120, 120, 130));
+        g2.setColor(secondaryColor());
         g2.setFont(new Font("SansSerif", Font.PLAIN, 10));
 
         long range = maxTime.toEpochMilli() - minTime.toEpochMilli();
@@ -642,7 +696,7 @@ public class TimelineGraphPanel extends JPanel {
 
         // Label
         if (showLabels) {
-            g2.setColor(new Color(200, 200, 210));
+            g2.setColor(labelColor());
             g2.setFont(new Font("SansSerif", Font.PLAIN, 10));
             String label = node.label();
             int labelWidth = g2.getFontMetrics().stringWidth(label);
@@ -743,12 +797,12 @@ public class TimelineGraphPanel extends JPanel {
         if (y < 10) y = 10;
         if (y + height > getHeight() - 10) y = getHeight() - height - 10;
 
-        g2.setColor(new Color(45, 47, 52, 245));
+        g2.setColor(tooltipBg());
         g2.fillRoundRect(x, y, width, height, 8, 8);
-        g2.setColor(new Color(70, 72, 76));
+        g2.setColor(tooltipBorder());
         g2.drawRoundRect(x, y, width, height, 8, 8);
 
-        g2.setColor(new Color(220, 220, 230));
+        g2.setColor(labelColor());
         g2.setFont(new Font("SansSerif", Font.PLAIN, 11));
         for (int i = 0; i < linesList.size(); i++) {
             g2.drawString(truncate(linesList.get(i), maxCharsPerLine), x + padding, y + padding + (i + 1) * lineHeight - 4);
@@ -982,34 +1036,27 @@ public class TimelineGraphPanel extends JPanel {
 
         JPanel panel = new JPanel(new BorderLayout(10, 10));
         panel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
-        panel.setBackground(new Color(38, 40, 44));
 
         JLabel label = new JLabel("Select topics to show:");
-        label.setForeground(new Color(200, 200, 210));
         panel.add(label, BorderLayout.NORTH);
 
         // Checkbox list
         JPanel checkboxPanel = new JPanel();
         checkboxPanel.setLayout(new BoxLayout(checkboxPanel, BoxLayout.Y_AXIS));
-        checkboxPanel.setBackground(new Color(35, 37, 41));
 
         Map<String, JCheckBox> checkboxes = new LinkedHashMap<>();
         for (String topic : allTopics) {
             JCheckBox cb = new JCheckBox(formatTopicLabel(topic), !config.isTopicHidden(topic));
-            cb.setBackground(new Color(35, 37, 41));
-            cb.setForeground(new Color(200, 200, 210));
             checkboxes.put(topic, cb);
             checkboxPanel.add(cb);
         }
 
         JScrollPane scroll = new JScrollPane(checkboxPanel);
         scroll.setBorder(null);
-        scroll.getViewport().setBackground(new Color(35, 37, 41));
         panel.add(scroll, BorderLayout.CENTER);
 
         // Buttons
         JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
-        buttonPanel.setBackground(new Color(38, 40, 44));
 
         JButton showAllBtn = new JButton("Show All");
         showAllBtn.addActionListener(e -> checkboxes.values().forEach(cb -> cb.setSelected(true)));
@@ -1061,6 +1108,8 @@ public class TimelineGraphPanel extends JPanel {
             for (String topic : news.topics()) {
                 if (!config.isTopicHidden(topic) && !topicMap.containsKey(topic)) {
                     TopicNode tn = new TopicNode(topic, formatTopicLabel(topic), TopicNode.Type.TOPIC);
+                    Color sc = resolveSchemaColor(TopicNode.Type.TOPIC);
+                    if (sc != null) tn.setColor(sc);
                     topicNodes.add(tn);
                     topicMap.put(topic, tn);
                 }

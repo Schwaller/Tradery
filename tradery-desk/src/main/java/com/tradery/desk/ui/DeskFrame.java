@@ -10,6 +10,7 @@ import com.tradery.symbols.ui.SymbolComboBox;
 
 import com.formdev.flatlaf.FlatClientProperties;
 import com.formdev.flatlaf.util.SystemInfo;
+import com.tradery.ui.controls.SegmentedToggle;
 import com.tradery.ui.controls.ThinSplitPane;
 import com.tradery.ui.controls.ToolbarButton;
 
@@ -169,6 +170,11 @@ public class DeskFrame extends JFrame {
             leftContent.add(buttonsPlaceholder);
         }
         leftContent.add(symbolCombo);
+        SegmentedToggle chartModeToggle = new SegmentedToggle("Line", "Candles");
+        chartModeToggle.setSelectedIndex(1); // Desk defaults to candles
+        chartModeToggle.setOnSelectionChanged(index ->
+            priceChartPanel.setCandlestickMode(index == 1));
+        leftContent.add(chartModeToggle);
         GridBagConstraints lc = new GridBagConstraints();
         lc.anchor = GridBagConstraints.WEST;
         lc.fill = GridBagConstraints.HORIZONTAL;

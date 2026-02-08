@@ -24,7 +24,7 @@ dependencies {
     implementation 'com.rometools:rome:2.1.0'
 
     // HTML parsing (for content extraction)
-    implementation 'org.jsoup:jsoup:1.17.2'
+    implementation 'org.jsoup:jsoup:1.18.3'
 
     // SQLite storage
     implementation "org.xerial:sqlite-jdbc:${rootProject.ext.sqliteVersion}"

@@ -51,6 +51,10 @@ public class RssFetcher implements NewsFetcher {
         return sourceName;
     }
 
+    public String getFeedUrl() {
+        return feedUrl;
+    }
+
     @Override
     public SourceType getSourceType() {
         return SourceType.RSS;

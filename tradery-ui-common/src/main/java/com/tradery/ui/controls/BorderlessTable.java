@@ -29,5 +29,6 @@ public class BorderlessTable extends JTable {
     private void applyBorderless() {
         setShowGrid(false);
         setIntercellSpacing(new Dimension(0, 0));
+        setBorder(null);
     }
 }

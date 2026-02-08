@@ -47,11 +47,7 @@ public class TradeTablePanel extends JPanel {
         table.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 11));
         table.setRowHeight(20);
         table.getTableHeader().setReorderingAllowed(false);
-
-        // Column widths
-        table.getColumnModel().getColumn(0).setPreferredWidth(50);   // # (with expand icon)
-        table.getColumnModel().getColumn(1).setPreferredWidth(70);   // P&L
-        table.getColumnModel().getColumn(2).setPreferredWidth(60);   // Return
+        table.setAutoResizeMode(JTable.AUTO_RESIZE_ALL_COLUMNS);
 
         // Custom renderers
         table.getColumnModel().getColumn(0).setCellRenderer(new TreeCellRenderer(tableModel));
@@ -129,7 +125,7 @@ public class TradeTablePanel extends JPanel {
 
         JLabel title = new JLabel("Trades");
         title.setFont(title.getFont().deriveFont(Font.BOLD, 12f));
-        title.setForeground(Color.GRAY);
+        title.setForeground(UIColors.textSecondary());
 
         detailsButton = new JButton("Details...");
         detailsButton.setFont(detailsButton.getFont().deriveFont(11f));
@@ -141,12 +137,14 @@ public class TradeTablePanel extends JPanel {
 
         BorderlessScrollPane tableScrollPane = new BorderlessScrollPane(table);
 
-        headerPanel.setBorder(BorderFactory.createCompoundBorder(
-            BorderFactory.createMatteBorder(0, 0, 1, 0, UIManager.getColor("Separator.foreground")),
-            BorderFactory.createEmptyBorder(4, 6, 4, 6)
-        ));
+        headerPanel.setBorder(BorderFactory.createEmptyBorder(2, 4, 2, 4));
 
-        add(headerPanel, BorderLayout.NORTH);
+        setBorder(null);
+        JPanel topWrapper = new JPanel(new BorderLayout());
+        topWrapper.add(new JSeparator(), BorderLayout.NORTH);
+        topWrapper.add(headerPanel, BorderLayout.CENTER);
+        topWrapper.add(new JSeparator(), BorderLayout.SOUTH);
+        add(topWrapper, BorderLayout.NORTH);
         add(tableScrollPane, BorderLayout.CENTER);
     }
 

@@ -1,5 +1,6 @@
 package com.tradery.forge.ui;
 
+import com.formdev.flatlaf.FlatClientProperties;
 import com.tradery.core.model.Candle;
 import com.tradery.core.model.Trade;
 import com.tradery.ui.controls.BorderlessTable;
@@ -57,6 +58,8 @@ public class TradeDetailsWindow extends JDialog {
         getRootPane().putClientProperty("apple.awt.fullWindowContent", true);
         getRootPane().putClientProperty("apple.awt.transparentTitleBar", true);
         getRootPane().putClientProperty("apple.awt.windowTitleVisible", false);
+        getRootPane().putClientProperty(FlatClientProperties.MACOS_WINDOW_BUTTONS_SPACING,
+                FlatClientProperties.MACOS_WINDOW_BUTTONS_SPACING_LARGE);
 
         initializeComponents();
         layoutComponents();
@@ -72,7 +75,7 @@ public class TradeDetailsWindow extends JDialog {
         table.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 11));
         table.setRowHeight(22);
         table.getTableHeader().setReorderingAllowed(false);
-        table.setAutoResizeMode(JTable.AUTO_RESIZE_OFF);
+        table.setAutoResizeMode(JTable.AUTO_RESIZE_ALL_COLUMNS);
 
         // Column widths
         int[] widths = {40, 50, 45, 130, 130, 85, 85, 70, 70, 75, 55, 60, 65, 55, 55, 75, 80, 60, 80, 75};
@@ -150,7 +153,6 @@ public class TradeDetailsWindow extends JDialog {
 
     private JPanel createDetailPanel() {
         JPanel panel = new JPanel(new BorderLayout(0, 0));
-        panel.setBorder(BorderFactory.createEmptyBorder(0, 12, 0, 0));
         panel.setPreferredSize(new Dimension(300, 0));
 
         detailContentPanel = new JPanel();
@@ -164,10 +166,13 @@ public class TradeDetailsWindow extends JDialog {
         detailContentPanel.add(emptyLabel);
 
         detailScrollPane = new JScrollPane(detailContentPanel);
-        detailScrollPane.setBorder(BorderFactory.createLineBorder(border()));
+        detailScrollPane.setBorder(BorderFactory.createEmptyBorder());
         detailScrollPane.getVerticalScrollBar().setUnitIncrement(16);
         detailScrollPane.setHorizontalScrollBarPolicy(JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
 
+        // Vertical separator on left edge
+        JSeparator vertSep = new JSeparator(SwingConstants.VERTICAL);
+        panel.add(vertSep, BorderLayout.WEST);
         panel.add(detailScrollPane, BorderLayout.CENTER);
         return panel;
     }
@@ -194,7 +199,7 @@ public class TradeDetailsWindow extends JDialog {
 
     private void buildGroupDetail(TableRow row, SimpleDateFormat df) {
         // Header
-        addHeader("DCA GROUP", new Color(100, 140, 200));
+        addHeader("DCA GROUP", ACCENT_PRIMARY);
         addSpacer(8);
 
         // Summary metrics in a highlight box
@@ -426,10 +431,7 @@ public class TradeDetailsWindow extends JDialog {
     private JPanel createMetricsBox(TableRow row) {
         JPanel box = new JPanel();
         box.setLayout(new BoxLayout(box, BoxLayout.Y_AXIS));
-        box.setBorder(BorderFactory.createCompoundBorder(
-            BorderFactory.createLineBorder(border()),
-            BorderFactory.createEmptyBorder(10, 12, 10, 12)
-        ));
+        box.setBorder(BorderFactory.createEmptyBorder(10, 0, 10, 0));
         box.setMaximumSize(new Dimension(Integer.MAX_VALUE, 100));
 
         double pnl = row.getTotalPnl();
@@ -456,7 +458,7 @@ public class TradeDetailsWindow extends JDialog {
             if (row.getMfe() != null) {
                 JLabel mfe = new JLabel(String.format("MFE +%.1f%%", row.getMfe()));
                 mfe.setFont(mfe.getFont().deriveFont(10f));
-                mfe.setForeground(new Color(100, 160, 100));
+                mfe.setForeground(IND_MFE);
                 mfeRow.add(mfe);
             }
             if (row.getMae() != null) {
@@ -474,10 +476,7 @@ public class TradeDetailsWindow extends JDialog {
     private JPanel createTradeMetricsBox(Trade t) {
         JPanel box = new JPanel();
         box.setLayout(new BoxLayout(box, BoxLayout.Y_AXIS));
-        box.setBorder(BorderFactory.createCompoundBorder(
-            BorderFactory.createLineBorder(border()),
-            BorderFactory.createEmptyBorder(10, 12, 10, 12)
-        ));
+        box.setBorder(BorderFactory.createEmptyBorder(10, 0, 10, 0));
         box.setMaximumSize(new Dimension(Integer.MAX_VALUE, 100));
 
         double pnl = t.pnl() != null ? t.pnl() : 0;
@@ -504,7 +503,7 @@ public class TradeDetailsWindow extends JDialog {
             if (t.mfe() != null) {
                 JLabel mfe = new JLabel(String.format("MFE +%.1f%%", t.mfe()));
                 mfe.setFont(mfe.getFont().deriveFont(10f));
-                mfe.setForeground(new Color(100, 160, 100));
+                mfe.setForeground(IND_MFE);
                 mfeRow.add(mfe);
             }
             if (t.mae() != null) {
@@ -516,8 +515,8 @@ public class TradeDetailsWindow extends JDialog {
             if (t.captureRatio() != null) {
                 JLabel capture = new JLabel(String.format("Capture %.0f%%", t.captureRatio() * 100));
                 capture.setFont(capture.getFont().deriveFont(10f));
-                Color captureColor = t.captureRatio() >= 0.7 ? new Color(100, 160, 100) :
-                                     t.captureRatio() >= 0.4 ? new Color(180, 160, 80) : IND_MAE;
+                Color captureColor = t.captureRatio() >= 0.7 ? TRADE_PROFIT :
+                                     t.captureRatio() >= 0.4 ? TRADE_WARNING : TRADE_LOSS;
                 capture.setForeground(captureColor);
                 mfeRow.add(capture);
             }
@@ -599,7 +598,7 @@ public class TradeDetailsWindow extends JDialog {
                 int offsetX = (w - chartWidth) / 2;
 
                 // Background
-                g2.setColor(new Color(30, 30, 35));
+                g2.setColor(com.tradery.charts.util.ChartStyles.getTheme().getPlotBackgroundColor());
                 g2.fillRect(0, 0, w, h);
 
                 // Helper to convert price to Y coordinate
@@ -790,7 +789,7 @@ public class TradeDetailsWindow extends JDialog {
 
         chartPanel.setPreferredSize(new Dimension(280, 120));
         chartPanel.setMaximumSize(new Dimension(Integer.MAX_VALUE, 120));
-        chartPanel.setBorder(BorderFactory.createLineBorder(border()));
+        chartPanel.setBorder(BorderFactory.createEmptyBorder());
         chartPanel.setToolTipText("<html>● Entry (light blue) → Exit<br/>" +
             "▲ MFE | ▼ MAE<br/>" +
             "● Blue = better entry/exit (perfect trade path)</html>");
@@ -821,7 +820,7 @@ public class TradeDetailsWindow extends JDialog {
                 int chartY = 18;
 
                 // Background
-                g2.setColor(new Color(30, 30, 35));
+                g2.setColor(com.tradery.charts.util.ChartStyles.getTheme().getPlotBackgroundColor());
                 g2.fillRect(0, 0, w, h);
 
                 // Get valid trades (completed with exit data)
@@ -897,17 +896,36 @@ public class TradeDetailsWindow extends JDialog {
                 g2.drawLine(margin, zeroY, margin + chartW, zeroY);
 
                 // Draw horizontal grid lines and labels
+                com.tradery.charts.core.ChartTheme theme = com.tradery.charts.util.ChartStyles.getTheme();
                 g2.setStroke(new BasicStroke(1f));
                 int numGridLines = 4;
                 for (int i = 0; i <= numGridLines; i++) {
                     int y = chartY + (i * chartH / numGridLines);
-                    g2.setColor(new Color(40, 40, 45));
+                    g2.setColor(theme.getGridlineColor());
                     g2.drawLine(margin, y, margin + chartW, y);
 
                     double pnlAtLine = maxPnl - (i * pnlRange / numGridLines);
-                    g2.setColor(new Color(90, 90, 90));
+                    g2.setColor(theme.getAxisLabelColor());
                     g2.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 9));
                     g2.drawString(String.format("%+.0f%%", pnlAtLine), 5, y + 4);
+                }
+
+                // Draw vertical grid lines and bar labels on X axis
+                int numXGridLines = Math.min(10, maxDuration);
+                int barStep = Math.max(1, maxDuration / numXGridLines);
+                g2.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 9));
+                for (int bar = 0; bar <= maxDuration; bar += barStep) {
+                    double normX = (double) bar / maxDuration;
+                    if (normX < visibleStart || normX > visibleEnd) continue;
+                    int x = margin + (int) ((normX - visibleStart) / (visibleEnd - visibleStart) * chartW);
+
+                    g2.setColor(theme.getGridlineColor());
+                    g2.drawLine(x, chartY, x, chartY + chartH);
+
+                    g2.setColor(theme.getAxisLabelColor());
+                    String label = bar + "b";
+                    int labelW = g2.getFontMetrics().stringWidth(label);
+                    g2.drawString(label, x - labelW / 2, chartY + chartH + 12);
                 }
 
                 // Draw vertical line at entry (bar 0) if visible
@@ -1049,7 +1067,7 @@ public class TradeDetailsWindow extends JDialog {
 
         panel.setPreferredSize(new Dimension(0, 120));
         panel.setMinimumSize(new Dimension(0, 80));
-        panel.setBorder(BorderFactory.createMatteBorder(1, 0, 0, 0, border()));
+        panel.setBorder(BorderFactory.createEmptyBorder());
         panel.setToolTipText("<html>All trades overlaid with entry at x=0<br/>Green = winners, Red = losers<br/>Mouse wheel to zoom, drag to pan<br/>Right-click for options</html>");
 
         return panel;
@@ -1239,7 +1257,6 @@ public class TradeDetailsWindow extends JDialog {
         addSpacer(8);
         JSeparator sep = new JSeparator(SwingConstants.HORIZONTAL);
         sep.setMaximumSize(new Dimension(Integer.MAX_VALUE, 1));
-        sep.setForeground(border());
         detailContentPanel.add(sep);
         addSpacer(8);
     }
@@ -1387,32 +1404,7 @@ public class TradeDetailsWindow extends JDialog {
     private void layoutComponents() {
         JPanel contentPane = new JPanel(new BorderLayout(0, 0));
 
-        // Title bar area (44px height for macOS traffic lights)
-        JPanel titleBar = new JPanel(new BorderLayout());
-        titleBar.setPreferredSize(new Dimension(0, 44));
-
-        // Left spacer for traffic lights
-        JPanel leftSpacer = new JPanel();
-        leftSpacer.setPreferredSize(new Dimension(70, 0));
-        leftSpacer.setOpaque(false);
-
-        // Title in center
-        JLabel titleLabel = new JLabel("Trade Details - " + strategyName, SwingConstants.CENTER);
-        titleLabel.setFont(titleLabel.getFont().deriveFont(Font.BOLD, 13f));
-
-        titleBar.add(leftSpacer, BorderLayout.WEST);
-        titleBar.add(titleLabel, BorderLayout.CENTER);
-
-        // Main content panel with padding
-        JPanel mainContent = new JPanel(new BorderLayout(0, 8));
-        mainContent.setBorder(BorderFactory.createEmptyBorder(0, 12, 12, 12));
-
-        // Summary header panel
-        JPanel topPanel = new JPanel(new BorderLayout(0, 8));
-
-        // Summary header
-        JPanel headerPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 16, 0));
-
+        // Compute summary stats
         int totalTrades = 0;
         int winners = 0;
         int losers = 0;
@@ -1431,48 +1423,75 @@ public class TradeDetailsWindow extends JDialog {
                 }
             }
         }
-
         double winRate = totalTrades > 0 ? (double) winners / totalTrades * 100 : 0;
 
-        headerPanel.add(createSummaryLabel("Total Trades", String.valueOf(totalTrades)));
-        headerPanel.add(createSummaryLabel("Winners", String.valueOf(winners), TRADE_PROFIT));
-        headerPanel.add(createSummaryLabel("Losers", String.valueOf(losers), TRADE_LOSS));
-        headerPanel.add(createSummaryLabel("Win Rate", String.format("%.1f%%", winRate)));
-        headerPanel.add(createSummaryLabel("Total P&L", String.format("%+.2f", totalPnl),
-            totalPnl >= 0 ? TRADE_PROFIT : TRADE_LOSS));
-        if (rejected > 0) {
-            headerPanel.add(createSummaryLabel("Rejected", String.valueOf(rejected), Color.GRAY));
-        }
+        // Header bar with centered title
+        int barHeight = 52;
+        JPanel toolbar = new JPanel(new BorderLayout());
+        toolbar.setPreferredSize(new Dimension(0, barHeight));
+
+        JLabel titleLabel = new JLabel("Trade Details", SwingConstants.CENTER);
+        titleLabel.setFont(new Font("SansSerif", Font.BOLD, 13));
+        titleLabel.setForeground(textSecondary());
+        toolbar.add(titleLabel, BorderLayout.CENTER);
+
+        JPanel headerWrapper = new JPanel(new BorderLayout());
+        headerWrapper.add(toolbar, BorderLayout.CENTER);
+        headerWrapper.add(new JSeparator(), BorderLayout.SOUTH);
+
+        // Main content (no side padding - table fills full width)
+        JPanel mainContent = new JPanel(new BorderLayout(0, 0));
 
         JScrollPane tableScrollPane = new JScrollPane(table);
-        tableScrollPane.setHorizontalScrollBarPolicy(JScrollPane.HORIZONTAL_SCROLLBAR_AS_NEEDED);
+        tableScrollPane.setBorder(BorderFactory.createEmptyBorder());
 
         // Vertical split: table on top, chart on bottom
-        // Bottom chart is now a compact overview (120px), giving more space to the table
         ThinSplitPane tableChartSplit = new ThinSplitPane(JSplitPane.VERTICAL_SPLIT);
         tableChartSplit.setTopComponent(tableScrollPane);
         tableChartSplit.setBottomComponent(progressionChartPanel);
-        tableChartSplit.setDividerLocation(380);  // More space for table
-        tableChartSplit.setResizeWeight(1.0);     // Extra space goes to table
+        tableChartSplit.setDividerLocation(380);
+        tableChartSplit.setResizeWeight(1.0);
 
         // Horizontal split: table+chart | detail panel
         ThinSplitPane splitPane = new ThinSplitPane(JSplitPane.HORIZONTAL_SPLIT);
         splitPane.setLeftComponent(tableChartSplit);
         splitPane.setRightComponent(detailPanel);
-        splitPane.setDividerLocation(1100);
-        splitPane.setResizeWeight(1.0); // Give extra space to table
+        splitPane.setDividerLocation(1000);
+        splitPane.setResizeWeight(1.0);
 
-        JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
+        // Bottom bar: stats on left, Close on right
+        JPanel bottomBar = new JPanel(new BorderLayout());
+        bottomBar.add(new JSeparator(), BorderLayout.NORTH);
+
+        JPanel bottomContent = new JPanel(new BorderLayout());
+        bottomContent.setBorder(BorderFactory.createEmptyBorder(6, 16, 6, 16));
+
+        JPanel statsPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 0));
+        statsPanel.setOpaque(false);
+        statsPanel.add(createSummaryLabel("Trades", String.valueOf(totalTrades)));
+        statsPanel.add(createSummaryLabel("W", String.valueOf(winners), TRADE_PROFIT));
+        statsPanel.add(createSummaryLabel("L", String.valueOf(losers), TRADE_LOSS));
+        statsPanel.add(createSummaryLabel("WR", String.format("%.0f%%", winRate)));
+        statsPanel.add(createSummaryLabel("P&L", String.format("%+.2f", totalPnl),
+            totalPnl >= 0 ? TRADE_PROFIT : TRADE_LOSS));
+        if (rejected > 0) {
+            statsPanel.add(createSummaryLabel("Rej", String.valueOf(rejected), textSecondary()));
+        }
+        bottomContent.add(statsPanel, BorderLayout.WEST);
+
         JButton closeButton = new JButton("Close");
         closeButton.addActionListener(e -> dispose());
-        buttonPanel.add(closeButton);
+        JPanel closePanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 0));
+        closePanel.setOpaque(false);
+        closePanel.add(closeButton);
+        bottomContent.add(closePanel, BorderLayout.EAST);
 
-        topPanel.add(headerPanel, BorderLayout.CENTER);
-        mainContent.add(topPanel, BorderLayout.NORTH);
+        bottomBar.add(bottomContent, BorderLayout.CENTER);
+
         mainContent.add(splitPane, BorderLayout.CENTER);
-        mainContent.add(buttonPanel, BorderLayout.SOUTH);
+        mainContent.add(bottomBar, BorderLayout.SOUTH);
 
-        contentPane.add(titleBar, BorderLayout.NORTH);
+        contentPane.add(headerWrapper, BorderLayout.NORTH);
         contentPane.add(mainContent, BorderLayout.CENTER);
 
         setContentPane(contentPane);
@@ -1488,7 +1507,7 @@ public class TradeDetailsWindow extends JDialog {
 
         JLabel labelComponent = new JLabel(label + ":");
         labelComponent.setFont(labelComponent.getFont().deriveFont(11f));
-        labelComponent.setForeground(Color.GRAY);
+        labelComponent.setForeground(textSecondary());
 
         JLabel valueComponent = new JLabel(value);
         valueComponent.setFont(valueComponent.getFont().deriveFont(Font.BOLD, 12f));
@@ -1960,14 +1979,14 @@ public class TradeDetailsWindow extends JDialog {
                 if (value instanceof String s && !s.equals("-")) {
                     if (s.startsWith("+")) setForeground(new Color(120, 180, 120));
                     else if (s.startsWith("-")) setForeground(new Color(200, 120, 120));
-                    else setForeground(Color.GRAY);
+                    else setForeground(textSecondary());
                 }
             } else if (value instanceof String s && !s.equals("-")) {
                 if (s.startsWith("+")) setForeground(TRADE_PROFIT);
                 else if (s.startsWith("-")) setForeground(TRADE_LOSS);
-                else setForeground(Color.GRAY);
+                else setForeground(textSecondary());
             } else {
-                setForeground(Color.GRAY);
+                setForeground(textSecondary());
             }
 
             return this;
@@ -2065,7 +2084,7 @@ public class TradeDetailsWindow extends JDialog {
                         else setForeground(TRADE_LOSS);
                     }
                 } catch (NumberFormatException e) {
-                    setForeground(Color.GRAY);
+                    setForeground(textSecondary());
                 }
             }
 
@@ -2108,7 +2127,7 @@ public class TradeDetailsWindow extends JDialog {
                         else setForeground(TRADE_LOSS);
                     }
                 } catch (NumberFormatException e) {
-                    setForeground(Color.GRAY);
+                    setForeground(textSecondary());
                 }
             }
 

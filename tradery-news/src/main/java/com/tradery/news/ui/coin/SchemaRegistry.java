@@ -3,6 +3,7 @@ package com.tradery.news.ui.coin;
 import java.awt.*;
 import java.util.*;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
@@ -105,6 +106,16 @@ public class SchemaRegistry {
         }
     }
 
+    // ==================== ATTRIBUTE VALUE PASS-THROUGH ====================
+
+    public void saveAttributeValue(String entityId, String typeId, String attrName, String value) {
+        store.saveAttributeValue(entityId, typeId, attrName, value);
+    }
+
+    public Map<String, String> getAttributeValues(String entityId, String typeId) {
+        return store.getAttributeValues(entityId, typeId);
+    }
+
     // ==================== SEED FROM EXISTING ENUMS ====================
 
     private void seedFromEnums() {
@@ -127,7 +138,10 @@ public class SchemaRegistry {
             // Type-specific attributes
             switch (enumType) {
                 case COIN, L2, ETF, ETP, DAT -> {
-                    st.addAttribute(new SchemaAttribute("market_cap", SchemaAttribute.NUMBER, false, 2));
+                    st.addAttribute(new SchemaAttribute("market_cap", SchemaAttribute.CURRENCY, false, 2,
+                        Map.of("en", "Market Cap"),
+                        Map.of("currencyCode", "USD", "currencySymbol", "$",
+                               "symbolPosition", "prefix", "decimalPlaces", 0)));
                 }
                 case VC, EXCHANGE, FOUNDATION, COMPANY, NEWS_SOURCE -> {
                     // no extra attributes beyond name/symbol
@@ -221,8 +235,10 @@ public class SchemaRegistry {
                 new Color(220, 180, 100), SchemaType.KIND_ENTITY);
             na.setDisplayOrder(types.size());
             na.addAttribute(new SchemaAttribute("title", SchemaAttribute.TEXT, true, 0));
-            na.addAttribute(new SchemaAttribute("url", SchemaAttribute.TEXT, false, 1));
-            na.addAttribute(new SchemaAttribute("published_at", SchemaAttribute.TEXT, false, 2));
+            na.addAttribute(new SchemaAttribute("url", SchemaAttribute.URL, false, 1));
+            na.addAttribute(new SchemaAttribute("published_at", SchemaAttribute.DATETIME, false, 2,
+                Map.of("en", "Published At"),
+                Map.of("format", "yyyy-MM-dd HH:mm")));
             na.addAttribute(new SchemaAttribute("source", SchemaAttribute.TEXT, false, 3));
             store.saveSchemaType(na);
             for (SchemaAttribute attr : na.attributes()) store.saveSchemaAttribute(na.id(), attr);
@@ -241,6 +257,31 @@ public class SchemaRegistry {
             store.saveSchemaType(m);
             for (SchemaAttribute attr : m.attributes()) store.saveSchemaAttribute(m.id(), attr);
             types.put(m.id(), m);
+        }
+
+        // Topic entity type
+        if (!types.containsKey("topic")) {
+            SchemaType topic = new SchemaType("topic", "Topic",
+                new Color(140, 180, 220), SchemaType.KIND_ENTITY);
+            topic.setDisplayOrder(types.size());
+            topic.addAttribute(new SchemaAttribute("name", SchemaAttribute.TEXT, true, 0));
+            store.saveSchemaType(topic);
+            for (SchemaAttribute attr : topic.attributes()) store.saveSchemaAttribute(topic.id(), attr);
+            types.put(topic.id(), topic);
+        }
+
+        // News Article -> Topic relationship ("tagged")
+        if (!types.containsKey("tagged")) {
+            SchemaType tagged = new SchemaType("tagged", "Tagged",
+                new Color(130, 170, 210), SchemaType.KIND_RELATIONSHIP);
+            tagged.setLabel("tagged");
+            tagged.setFromTypeId("news_article");
+            tagged.setToTypeId("topic");
+            tagged.setDisplayOrder(types.size());
+            tagged.addAttribute(new SchemaAttribute("note", SchemaAttribute.TEXT, false, 0));
+            store.saveSchemaType(tagged);
+            for (SchemaAttribute attr : tagged.attributes()) store.saveSchemaAttribute(tagged.id(), attr);
+            types.put(tagged.id(), tagged);
         }
 
         // News Article -> News Source relationship ("published by")
