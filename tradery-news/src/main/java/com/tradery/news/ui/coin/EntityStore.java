@@ -3,6 +3,7 @@ package com.tradery.news.ui.coin;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+import java.nio.file.Path;
 import java.time.Duration;
 import java.util.*;
 import java.util.List;
@@ -21,6 +22,10 @@ public class EntityStore {
 
     public EntityStore() {
         this.factStore = new FactStore();
+    }
+
+    public EntityStore(Path dbPath) {
+        this.factStore = new FactStore(dbPath);
     }
 
     public void setDraftMode(boolean enabled) { this.draftMode = enabled; }

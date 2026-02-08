@@ -1,6 +1,7 @@
 package com.tradery.news.ui.coin;
 
 import java.io.File;
+import java.nio.file.Path;
 import java.sql.*;
 import java.util.*;
 
@@ -11,16 +12,22 @@ import java.util.*;
  */
 public class FactStore {
 
-    private static final String DB_PATH = System.getProperty("user.home") + "/.tradery/entity-network.db";
+    private static final Path DEFAULT_PATH = Path.of(System.getProperty("user.home"), ".tradery", "entity-network.db");
 
+    private final Path dbPath;
     private Connection conn;
     private String peerId;
     private long lclock;
 
     public FactStore() {
+        this(DEFAULT_PATH);
+    }
+
+    public FactStore(Path dbPath) {
+        this.dbPath = dbPath;
         try {
-            new File(System.getProperty("user.home") + "/.tradery").mkdirs();
-            conn = DriverManager.getConnection("jdbc:sqlite:" + DB_PATH);
+            dbPath.getParent().toFile().mkdirs();
+            conn = DriverManager.getConnection("jdbc:sqlite:" + dbPath);
             try (Statement s = conn.createStatement()) {
                 s.execute("PRAGMA journal_mode=WAL");
                 s.execute("PRAGMA busy_timeout=100");
@@ -29,8 +36,8 @@ public class FactStore {
             // If schema is outdated, nuke the DB and start fresh
             if (needsReset()) {
                 conn.close();
-                new File(DB_PATH).delete();
-                conn = DriverManager.getConnection("jdbc:sqlite:" + DB_PATH);
+                dbPath.toFile().delete();
+                conn = DriverManager.getConnection("jdbc:sqlite:" + dbPath);
                 try (Statement s = conn.createStatement()) {
                     s.execute("PRAGMA journal_mode=WAL");
                     s.execute("PRAGMA busy_timeout=100");
@@ -43,6 +50,10 @@ public class FactStore {
             System.err.println("Failed to initialize fact store: " + e.getMessage());
             e.printStackTrace();
         }
+    }
+
+    public static Path defaultPath() {
+        return DEFAULT_PATH;
     }
 
     /** Check if DB has outdated schema and needs a full reset. */
