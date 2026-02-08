@@ -128,8 +128,11 @@ public class SymbolChooserPanel extends JPanel {
         add(scrollPane, BorderLayout.CENTER);
 
         // --- Status bar ---
+        JPanel southPanel = new JPanel(new BorderLayout(0, 0));
+        southPanel.add(new JSeparator(), BorderLayout.NORTH);
         syncStatusPanel = new SyncStatusPanel(service);
-        add(syncStatusPanel, BorderLayout.SOUTH);
+        southPanel.add(syncStatusPanel, BorderLayout.CENTER);
+        add(southPanel, BorderLayout.SOUTH);
 
         // Initial load
         triggerSearch();

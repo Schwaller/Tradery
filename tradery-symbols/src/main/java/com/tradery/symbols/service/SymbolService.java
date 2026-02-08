@@ -338,4 +338,74 @@ public class SymbolService implements AutoCloseable {
     }
 
     public record SyncStatus(int pairCount, Instant lastSync) {}
+
+    public record ExchangeCoverage(String exchange, String marketType, int pairCount, int matchedCount) {}
+
+    public record ExchangeSyncInfo(String exchange, String marketType, Instant lastSync, String status) {}
+
+    /**
+     * Get per-exchange/market pair counts with CoinGecko match rates.
+     */
+    public List<ExchangeCoverage> getExchangeCoverage() {
+        List<ExchangeCoverage> results = new ArrayList<>();
+        if (!isDatabaseAvailable()) return results;
+
+        String sql = """
+            SELECT exchange, market_type,
+                   COUNT(*) as pair_count,
+                   COUNT(CASE WHEN coingecko_base_id IS NOT NULL AND coingecko_base_id != '' THEN 1 END) as matched_count
+            FROM trading_pairs WHERE is_active = 1
+            GROUP BY exchange, market_type
+            ORDER BY exchange, market_type
+            """;
+
+        try {
+            Connection c = getConnection();
+            try (PreparedStatement stmt = c.prepareStatement(sql);
+                 ResultSet rs = stmt.executeQuery()) {
+                while (rs.next()) {
+                    results.add(new ExchangeCoverage(
+                        rs.getString("exchange"),
+                        rs.getString("market_type"),
+                        rs.getInt("pair_count"),
+                        rs.getInt("matched_count")
+                    ));
+                }
+            }
+        } catch (SQLException e) {
+            log.error("Failed to get exchange coverage", e);
+        }
+        return results;
+    }
+
+    /**
+     * Get sync metadata per exchange/market from sync_metadata table.
+     */
+    public List<ExchangeSyncInfo> getSyncInfo() {
+        List<ExchangeSyncInfo> results = new ArrayList<>();
+        if (!isDatabaseAvailable()) return results;
+
+        String sql = "SELECT exchange, market_type, last_sync, status FROM sync_metadata ORDER BY exchange, market_type";
+
+        try {
+            Connection c = getConnection();
+            try (PreparedStatement stmt = c.prepareStatement(sql);
+                 ResultSet rs = stmt.executeQuery()) {
+                while (rs.next()) {
+                    Instant lastSync = null;
+                    String val = rs.getString("last_sync");
+                    if (val != null) lastSync = Instant.parse(val);
+                    results.add(new ExchangeSyncInfo(
+                        rs.getString("exchange"),
+                        rs.getString("market_type"),
+                        lastSync,
+                        rs.getString("status")
+                    ));
+                }
+            }
+        } catch (SQLException e) {
+            log.error("Failed to get sync info", e);
+        }
+        return results;
+    }
 }
