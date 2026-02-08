@@ -1,0 +1,4 @@
+# Tradery MCP server — gives Codex access to strategy, phase, and market data tools
+[mcp_servers.tradery]
+command = "node"
+args = ["/Users/martinschwaller/.tradery/mcp-server/index.js"]

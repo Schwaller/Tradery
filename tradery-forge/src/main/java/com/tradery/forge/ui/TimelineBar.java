@@ -275,13 +275,15 @@ public class TimelineBar extends JPanel implements DataPageListener<Candle> {
         g2.setColor(ChartStyles.getTheme().getPlotBackgroundColor());
         g2.fillRect(0, 0, width, height);
 
+        // Top and bottom separator lines
+        Color sep = UIManager.getColor("Separator.foreground");
+        if (sep != null) {
+            g2.setColor(sep);
+            g2.fillRect(0, 0, width, 1);
+            g2.fillRect(0, height - 1, width, 1);
+        }
+
         if (weeklyCandles == null || weeklyCandles.isEmpty()) {
-            // Still draw bottom separator even with no data
-            Color sep = UIManager.getColor("Separator.foreground");
-            if (sep != null) {
-                g2.setColor(sep);
-                g2.fillRect(0, height - 1, width, 1);
-            }
             g2.dispose();
             return;
         }
@@ -380,12 +382,6 @@ public class TimelineBar extends JPanel implements DataPageListener<Candle> {
             cal.add(java.util.Calendar.YEAR, 1);
         }
 
-        // Bottom separator line (1 logical pixel)
-        Color sep = UIManager.getColor("Separator.foreground");
-        if (sep != null) {
-            g2.setColor(sep);
-            g2.fillRect(0, height - 1, width, 1);
-        }
 
         g2.dispose();
     }

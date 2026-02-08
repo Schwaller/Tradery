@@ -1,5 +1,7 @@
 package com.tradery.ui;
 
+import com.formdev.flatlaf.FlatLaf;
+
 import javax.swing.*;
 import java.awt.*;
 import java.io.IOException;
@@ -83,7 +85,9 @@ public class ThemeHelper {
         if (className == null) return;
 
         try {
-            UIManager.setLookAndFeel(className);
+            LookAndFeel laf = (LookAndFeel) Class.forName(className)
+                .getDeclaredConstructor().newInstance();
+            FlatLaf.setup(laf);
             for (Window window : Window.getWindows()) {
                 SwingUtilities.updateComponentTreeUI(window);
             }

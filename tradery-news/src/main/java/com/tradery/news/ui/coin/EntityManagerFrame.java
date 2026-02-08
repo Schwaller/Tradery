@@ -46,7 +46,9 @@ public class EntityManagerFrame extends JFrame {
     // Custom attributes section
     private JPanel customAttrsPanel;
     private JPanel customAttrsContent;
+    private JPanel layoutTogglePanel;
     private final Map<String, JComponent> attrInputComponents = new LinkedHashMap<>();
+    private int selectedFormLayoutIndex = 0;
 
     private CoinEntity selectedEntity;
     private boolean isNewEntity = false;
@@ -274,19 +276,31 @@ public class EntityManagerFrame extends JFrame {
         fieldGbc.fill = GridBagConstraints.HORIZONTAL;
         fieldGbc.weighty = 0;
 
-        // Custom Attributes section (JSeparator + bold label + content)
+        // Custom Attributes section (JSeparator + header with toggle + content)
         customAttrsPanel = new JPanel(new BorderLayout());
         customAttrsPanel.setVisible(false);
-        customAttrsPanel.add(new JSeparator(), BorderLayout.NORTH);
+
+        JPanel customAttrsHeader = new JPanel(new BorderLayout());
+        customAttrsHeader.add(new JSeparator(), BorderLayout.NORTH);
+
+        JPanel headerRow = new JPanel(new BorderLayout());
         JLabel customAttrsLabel = new JLabel("Custom Attributes");
         customAttrsLabel.setFont(customAttrsLabel.getFont().deriveFont(Font.BOLD, customAttrsLabel.getFont().getSize() + 1f));
         customAttrsLabel.setBorder(BorderFactory.createEmptyBorder(8, 20, 4, 0));
-        customAttrsPanel.add(customAttrsLabel, BorderLayout.CENTER);
+        headerRow.add(customAttrsLabel, BorderLayout.WEST);
+
+        layoutTogglePanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 4, 4));
+        layoutTogglePanel.setBorder(BorderFactory.createEmptyBorder(4, 0, 0, 20));
+        layoutTogglePanel.setVisible(false);
+        headerRow.add(layoutTogglePanel, BorderLayout.EAST);
+
+        customAttrsHeader.add(headerRow, BorderLayout.CENTER);
+        customAttrsPanel.add(customAttrsHeader, BorderLayout.NORTH);
 
         customAttrsContent = new JPanel();
         customAttrsContent.setLayout(new BoxLayout(customAttrsContent, BoxLayout.Y_AXIS));
         customAttrsContent.setBorder(BorderFactory.createEmptyBorder(0, 20, 10, 20));
-        customAttrsPanel.add(customAttrsContent, BorderLayout.SOUTH);
+        customAttrsPanel.add(customAttrsContent, BorderLayout.CENTER);
 
         // Wrap form + custom attrs in a vertical box inside a scroll pane
         JPanel formWrapper = new JPanel();
@@ -631,6 +645,9 @@ public class EntityManagerFrame extends JFrame {
         attrInputComponents.clear();
         customAttrsContent.removeAll();
         customAttrsPanel.setVisible(false);
+        layoutTogglePanel.removeAll();
+        layoutTogglePanel.setVisible(false);
+        selectedFormLayoutIndex = 0;
         customAttrsContent.revalidate();
         customAttrsContent.repaint();
     }
@@ -648,54 +665,215 @@ public class EntityManagerFrame extends JFrame {
         // Load stored values with provenance
         Map<String, AttributeValue> richValues = store.getAttributeValuesRich(entity.id(), typeId);
 
-        JPanel grid = new JPanel(new GridBagLayout());
-        GridBagConstraints lc = new GridBagConstraints();
-        lc.anchor = GridBagConstraints.WEST;
-        lc.insets = new Insets(4, 5, 4, 10);
-        GridBagConstraints fc = new GridBagConstraints();
-        fc.fill = GridBagConstraints.HORIZONTAL;
-        fc.weightx = 1.0;
-        fc.insets = new Insets(4, 0, 4, 5);
+        List<FormLayout> layouts = schemaType.formLayouts();
+        boolean hasLayouts = layouts != null && !layouts.isEmpty();
 
-        int row = 0;
-        for (SchemaAttribute attr : schemaType.attributes()) {
-            // Skip hardcoded fields
-            if ("name".equals(attr.name()) || "symbol".equals(attr.name()) ||
-                "market_cap".equals(attr.name())) continue;
-
-            String displayLabel = attr.displayName(Locale.getDefault());
-            AttributeValue av = richValues.get(attr.name());
-            String storedValue = av != null ? av.value() : "";
-
-            // SOURCE attributes are always read-only
-            boolean attrEditable = editable && !attr.isSource();
-
-            lc.gridx = 0; lc.gridy = row;
-            // Build label with origin badge for DERIVED attributes
-            JPanel labelPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 2, 0));
-            labelPanel.setOpaque(false);
-            labelPanel.add(new JLabel(displayLabel + ":"));
-            if (attr.isDerived() && av != null && av.value() != null && !av.value().isEmpty()) {
-                labelPanel.add(createOriginBadge(av.origin()));
-            }
-            grid.add(labelPanel, lc);
-
-            fc.gridx = 1; fc.gridy = row;
-            JComponent input = createInputForAttribute(attr, storedValue, attrEditable);
-            grid.add(input, fc);
-            attrInputComponents.put(attr.name(), input);
-
-            row++;
+        // Build the layout toggle if multiple layouts exist
+        if (hasLayouts && layouts.size() > 1) {
+            buildLayoutToggle(layouts, schemaType, richValues, editable);
         }
 
-        if (row > 0) {
-            grid.setAlignmentX(Component.LEFT_ALIGNMENT);
-            customAttrsContent.add(grid);
-            customAttrsPanel.setVisible(true);
+        // Render fields for the active layout (or all attrs if no layouts)
+        if (hasLayouts) {
+            FormLayout active = layouts.get(Math.min(selectedFormLayoutIndex, layouts.size() - 1));
+            renderFormLayout(active, schemaType, richValues, editable);
+        } else {
+            renderDefaultLayout(schemaType, richValues, editable);
         }
 
         customAttrsContent.revalidate();
         customAttrsContent.repaint();
+    }
+
+    private void buildLayoutToggle(List<FormLayout> layouts, SchemaType schemaType,
+                                    Map<String, AttributeValue> richValues, boolean editable) {
+        layoutTogglePanel.removeAll();
+
+        int maxVisible = layouts.size() <= 4 ? layouts.size() : 3;
+        ButtonGroup group = new ButtonGroup();
+
+        for (int i = 0; i < maxVisible; i++) {
+            int idx = i;
+            JToggleButton btn = new JToggleButton(layouts.get(i).name());
+            btn.setFont(btn.getFont().deriveFont(Font.PLAIN, 11f));
+            btn.setFocusPainted(false);
+            btn.setSelected(idx == selectedFormLayoutIndex);
+            btn.addActionListener(e -> {
+                selectedFormLayoutIndex = idx;
+                rebuildFormContent(schemaType, richValues, editable);
+            });
+            group.add(btn);
+            layoutTogglePanel.add(btn);
+        }
+
+        if (layouts.size() > 4) {
+            JButton moreBtn = new JButton("...");
+            moreBtn.setFont(moreBtn.getFont().deriveFont(Font.PLAIN, 11f));
+            moreBtn.setFocusPainted(false);
+            moreBtn.addActionListener(e -> {
+                JPopupMenu popup = new JPopupMenu();
+                for (int i = 3; i < layouts.size(); i++) {
+                    int idx = i;
+                    JMenuItem item = new JMenuItem(layouts.get(i).name());
+                    item.addActionListener(ev -> {
+                        selectedFormLayoutIndex = idx;
+                        // Rebuild toggle to reflect new selection
+                        buildLayoutToggle(layouts, schemaType, richValues, editable);
+                        rebuildFormContent(schemaType, richValues, editable);
+                    });
+                    popup.add(item);
+                }
+                popup.show(moreBtn, 0, moreBtn.getHeight());
+            });
+            layoutTogglePanel.add(moreBtn);
+        }
+
+        layoutTogglePanel.setVisible(true);
+        layoutTogglePanel.revalidate();
+    }
+
+    private void rebuildFormContent(SchemaType schemaType,
+                                     Map<String, AttributeValue> richValues, boolean editable) {
+        attrInputComponents.clear();
+        customAttrsContent.removeAll();
+
+        List<FormLayout> layouts = schemaType.formLayouts();
+        if (layouts != null && !layouts.isEmpty()) {
+            FormLayout active = layouts.get(Math.min(selectedFormLayoutIndex, layouts.size() - 1));
+            renderFormLayout(active, schemaType, richValues, editable);
+        } else {
+            renderDefaultLayout(schemaType, richValues, editable);
+        }
+
+        customAttrsContent.revalidate();
+        customAttrsContent.repaint();
+    }
+
+    /** Render a specific FormLayout with row grouping. */
+    private void renderFormLayout(FormLayout layout, SchemaType schemaType,
+                                   Map<String, AttributeValue> richValues, boolean editable) {
+        // Build rows: group fields with the same group string
+        List<List<FormLayout.FormLayoutField>> rows = new ArrayList<>();
+        Map<String, List<FormLayout.FormLayoutField>> groupMap = new LinkedHashMap<>();
+
+        for (FormLayout.FormLayoutField f : layout.fields()) {
+            if (f.group() != null && !f.group().isEmpty()) {
+                groupMap.computeIfAbsent(f.group(), k -> new ArrayList<>()).add(f);
+            } else {
+                // Own row
+                rows.add(List.of(f));
+            }
+        }
+
+        // Insert grouped rows at position of first field in each group
+        Set<String> insertedGroups = new HashSet<>();
+        List<List<FormLayout.FormLayoutField>> orderedRows = new ArrayList<>();
+        for (FormLayout.FormLayoutField f : layout.fields()) {
+            if (f.group() != null && !f.group().isEmpty()) {
+                if (!insertedGroups.contains(f.group())) {
+                    List<FormLayout.FormLayoutField> groupFields = groupMap.get(f.group());
+                    // Sort by displayOrder of referenced attribute
+                    groupFields.sort(Comparator.comparingInt(gf -> {
+                        SchemaAttribute a = findAttribute(schemaType, gf.attributeName());
+                        return a != null ? a.displayOrder() : 0;
+                    }));
+                    orderedRows.add(groupFields);
+                    insertedGroups.add(f.group());
+                }
+            } else {
+                orderedRows.add(List.of(f));
+            }
+        }
+
+        renderRows(orderedRows, schemaType, richValues, editable);
+    }
+
+    /** Default layout: all non-core attributes, one per row. */
+    private void renderDefaultLayout(SchemaType schemaType,
+                                      Map<String, AttributeValue> richValues, boolean editable) {
+        List<List<FormLayout.FormLayoutField>> rows = new ArrayList<>();
+        for (SchemaAttribute attr : schemaType.attributes()) {
+            if ("name".equals(attr.name()) || "symbol".equals(attr.name()) ||
+                "market_cap".equals(attr.name())) continue;
+            rows.add(List.of(new FormLayout.FormLayoutField(attr.name(), null)));
+        }
+        renderRows(rows, schemaType, richValues, editable);
+    }
+
+    /** Render rows of fields into the customAttrsContent panel using GridBagLayout. */
+    private void renderRows(List<List<FormLayout.FormLayoutField>> rows, SchemaType schemaType,
+                             Map<String, AttributeValue> richValues, boolean editable) {
+        // Compute max columns (for grid alignment)
+        int maxCols = 1;
+        for (List<FormLayout.FormLayoutField> row : rows) {
+            maxCols = Math.max(maxCols, row.size());
+        }
+
+        JPanel grid = new JPanel(new GridBagLayout());
+        int gridRow = 0;
+        boolean hasContent = false;
+
+        for (List<FormLayout.FormLayoutField> row : rows) {
+            int colOffset = 0;
+            for (int c = 0; c < row.size(); c++) {
+                FormLayout.FormLayoutField f = row.get(c);
+                SchemaAttribute attr = findAttribute(schemaType, f.attributeName());
+                if (attr == null) continue;
+
+                String displayLabel = attr.displayName(Locale.getDefault());
+                AttributeValue av = richValues.get(attr.name());
+                String storedValue = av != null ? av.value() : "";
+                boolean attrEditable = editable && !attr.isSource();
+
+                // Label
+                GridBagConstraints lc = new GridBagConstraints();
+                lc.anchor = GridBagConstraints.WEST;
+                lc.insets = new Insets(4, c == 0 ? 5 : 15, 4, 10);
+                lc.gridx = colOffset;
+                lc.gridy = gridRow;
+
+                JPanel labelPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 2, 0));
+                labelPanel.setOpaque(false);
+                labelPanel.add(new JLabel(displayLabel + ":"));
+                if (attr.isDerived() && av != null && av.value() != null && !av.value().isEmpty()) {
+                    labelPanel.add(createOriginBadge(av.origin()));
+                }
+                grid.add(labelPanel, lc);
+
+                // Field
+                GridBagConstraints fc = new GridBagConstraints();
+                fc.fill = GridBagConstraints.HORIZONTAL;
+                fc.insets = new Insets(4, 0, 4, 5);
+                fc.gridx = colOffset + 1;
+                fc.gridy = gridRow;
+                // If single column in a multi-col layout, span remaining columns
+                if (row.size() == 1 && maxCols > 1) {
+                    fc.gridwidth = maxCols * 2 - 1;
+                }
+                fc.weightx = 1.0;
+
+                JComponent input = createInputForAttribute(attr, storedValue, attrEditable);
+                grid.add(input, fc);
+                attrInputComponents.put(attr.name(), input);
+
+                hasContent = true;
+                colOffset += 2;
+            }
+            gridRow++;
+        }
+
+        if (hasContent) {
+            grid.setAlignmentX(Component.LEFT_ALIGNMENT);
+            customAttrsContent.add(grid);
+            customAttrsPanel.setVisible(true);
+        }
+    }
+
+    private SchemaAttribute findAttribute(SchemaType schemaType, String name) {
+        for (SchemaAttribute a : schemaType.attributes()) {
+            if (a.name().equals(name)) return a;
+        }
+        return null;
     }
 
     private JLabel createOriginBadge(AttributeValue.Origin origin) {

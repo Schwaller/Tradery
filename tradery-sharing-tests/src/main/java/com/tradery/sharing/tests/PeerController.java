@@ -36,7 +36,7 @@ public class PeerController {
         this.peerId = peerId;
         this.mapper = mapper;
         this.documentManager = new DocumentManager(dataDir.resolve("documents"));
-        this.peerManager = new PeerManager(peerId, documentManager, mapper);
+        this.peerManager = new PeerManager(peerId, peerId, documentManager, mapper);
     }
 
     public void registerRoutes(Javalin app) {

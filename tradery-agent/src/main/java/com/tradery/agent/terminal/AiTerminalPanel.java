@@ -1,4 +1,4 @@
-package com.tradery.terminal;
+package com.tradery.agent.terminal;
 
 import com.jediterm.pty.PtyProcessTtyConnector;
 import com.jediterm.terminal.TerminalColor;

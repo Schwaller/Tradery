@@ -1,5 +1,6 @@
 package com.tradery.dataservice.api;
 
+import com.tradery.dataservice.data.sqlite.DataStoreType;
 import com.tradery.dataservice.data.sqlite.SqliteDataStore;
 import com.tradery.dataservice.data.sqlite.dao.CoverageDao;
 import com.tradery.dataservice.page.PageManager;
@@ -80,7 +81,8 @@ public class CoverageHandler {
                 return;
             }
 
-            CoverageDao dao = dataStore.forSymbol(symbol).coverage();
+            DataStoreType dbType = DataStoreType.fromCoverageKey(dataType);
+            CoverageDao dao = dataStore.forSymbol(symbol).coverageFor(dbType);
             List<CoverageDao.CoverageRange> ranges = dao.getCoverageRanges(dataType, subKey);
 
             List<CoverageRangeResponse> response = ranges.stream()

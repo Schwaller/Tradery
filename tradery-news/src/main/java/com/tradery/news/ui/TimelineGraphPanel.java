@@ -284,6 +284,10 @@ public class TimelineGraphPanel extends JPanel {
             .toList();
 
         if (sorted.isEmpty()) {
+            // Set a default time range so the time axis and band structure render
+            maxTime = Instant.now();
+            minTime = maxTime.minus(24, ChronoUnit.HOURS);
+            buildBands();
             for (Band band : bands) {
                 band.topicNodes.clear();
                 band.newsNodes.clear();

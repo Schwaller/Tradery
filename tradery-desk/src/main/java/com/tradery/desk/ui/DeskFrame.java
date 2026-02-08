@@ -201,12 +201,23 @@ public class DeskFrame extends JFrame {
         rightContent.setOpaque(false);
         rightContent.add(priceLabel);
         rightContent.add(updatedLabel);
-        JButton dataBtn = new ToolbarButton("Manage Data");
+        JButton dataBtn = new ToolbarButton("Data Service");
         dataBtn.addActionListener(e -> {
             com.tradery.dataclient.DataServiceClient client = com.tradery.desk.DeskAppContext.getInstance().getDataClient();
             com.tradery.data.ui.DataManagementDialog.show(DeskFrame.this, client, null);
         });
         rightContent.add(dataBtn);
+
+        // Periodically update button text with disk usage
+        Timer diskTimer = new Timer(30_000, ev -> Thread.startVirtualThread(() -> {
+            try {
+                var usage = com.tradery.desk.DeskAppContext.getInstance().getDataClient().getDiskUsage();
+                String size = formatDiskSize(usage.totalBytes());
+                SwingUtilities.invokeLater(() -> dataBtn.setText("Data Service (" + size + ")"));
+            } catch (Exception ignored) {}
+        }));
+        diskTimer.setInitialDelay(0);
+        diskTimer.start();
         JButton settingsBtn = new ToolbarButton("Settings");
         settingsBtn.addActionListener(e -> new DeskSettingsDialog(this).setVisible(true));
         rightContent.add(settingsBtn);
@@ -356,6 +367,13 @@ public class DeskFrame extends JFrame {
 
     public String getSelectedSymbol() {
         return symbolCombo.getSelectedSymbol();
+    }
+
+    private static String formatDiskSize(long bytes) {
+        if (bytes < 1024) return bytes + " B";
+        if (bytes < 1024 * 1024) return String.format("%.1f KB", bytes / 1024.0);
+        if (bytes < 1024L * 1024 * 1024) return String.format("%.1f MB", bytes / (1024.0 * 1024));
+        return String.format("%.1f GB", bytes / (1024.0 * 1024 * 1024));
     }
 
     /**

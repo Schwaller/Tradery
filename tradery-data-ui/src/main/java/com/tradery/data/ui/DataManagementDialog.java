@@ -13,6 +13,8 @@ import java.text.DecimalFormat;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 /**
  * Dialog for managing cached data (candles, aggTrades, funding, OI, premium, F&G).
@@ -31,18 +33,24 @@ public class DataManagementDialog extends JDialog {
 
     private DataBrowserPanel browserPanel;
     private DataHealthPanel healthPanel;
+    private ExchangeInfoPanel exchangeInfoPanel;
+    private JPanel rightCardPanel;
     private JLabel detailLabel;
-    private JLabel storageLabel;
     private JButton deleteSeriesButton;
     private JButton deleteAllButton;
     private JProgressBar progressBar;
+    private JPanel diskBarPanel;
+    private JLabel diskDataLabel;
+    private JLabel diskOtherLabel;
+    private JLabel diskFreeLabel;
+    private volatile DiskUsageResponse lastDiskUsage;
 
     private String currentSymbol;
     private String currentResolution;
     private Timer refreshTimer;
 
     public DataManagementDialog(Frame owner, DataServiceClient client, Runnable onFetchNew) {
-        super(owner, "Manage Data", true);
+        super(owner, "Data Service", true);
         this.client = client;
         this.onFetchNew = onFetchNew;
 
@@ -63,7 +71,7 @@ public class DataManagementDialog extends JDialog {
             if (currentSymbol != null && currentResolution != null) {
                 healthPanel.refreshKeepSelection();
             }
-            updateStorageLabel();
+            updateDiskBar();
         });
         refreshTimer.start();
 
@@ -84,7 +92,7 @@ public class DataManagementDialog extends JDialog {
         int barHeight = 52;
         JPanel headerBar = new JPanel(new BorderLayout());
         headerBar.setPreferredSize(new Dimension(0, barHeight));
-        JLabel titleLabel = new JLabel("Manage Data", SwingConstants.CENTER);
+        JLabel titleLabel = new JLabel("Data Service", SwingConstants.CENTER);
         titleLabel.setFont(new Font("SansSerif", Font.BOLD, 13));
         titleLabel.setForeground(UIManager.getColor("Label.disabledForeground"));
         headerBar.add(titleLabel, BorderLayout.CENTER);
@@ -98,42 +106,145 @@ public class DataManagementDialog extends JDialog {
         browserPanel.setOnSelectionChanged(this::onSeriesSelected);
 
         BorderlessScrollPane browserScroll = new BorderlessScrollPane(browserPanel);
-
-        // Storage info at bottom of left panel
-        storageLabel = new JLabel();
-        storageLabel.setForeground(UIManager.getColor("Label.disabledForeground"));
-        storageLabel.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 11));
-        storageLabel.setBorder(BorderFactory.createEmptyBorder(6, 8, 6, 8));
-        updateStorageLabel();
-
-        // Storage label with separator above
-        JPanel storagePanel = new JPanel(new BorderLayout(0, 0));
-        storagePanel.add(new JSeparator(), BorderLayout.NORTH);
-        storagePanel.add(storageLabel, BorderLayout.CENTER);
+        browserScroll.getVerticalScrollBar().setUnitIncrement(16);
 
         JPanel leftPanel = new JPanel(new BorderLayout(0, 0));
         leftPanel.add(browserScroll, BorderLayout.CENTER);
-        leftPanel.add(storagePanel, BorderLayout.SOUTH);
 
-        // Right side: Title + Health panel (block diagram)
+        // Right side: Title + switchable content (heatmap or exchange info)
         detailLabel = new JLabel("Select a data series from the left");
         detailLabel.setFont(detailLabel.getFont().deriveFont(Font.BOLD, 12f));
         detailLabel.setBorder(BorderFactory.createEmptyBorder(8, 12, 8, 12));
 
         healthPanel = new DataHealthPanel(client);
 
+        exchangeInfoPanel = new ExchangeInfoPanel();
+
+        rightCardPanel = new JPanel(new CardLayout());
+        rightCardPanel.add(healthPanel, "heatmap");
+        rightCardPanel.add(exchangeInfoPanel, "exchange");
+
         JPanel rightPanel = new JPanel(new BorderLayout(0, 0));
         rightPanel.add(detailLabel, BorderLayout.NORTH);
-        rightPanel.add(healthPanel, BorderLayout.CENTER);
+        rightPanel.add(rightCardPanel, BorderLayout.CENTER);
 
         // Split pane: left navigation | right detail
         ThinSplitPane splitPane = new ThinSplitPane(JSplitPane.HORIZONTAL_SPLIT, leftPanel, rightPanel);
         splitPane.setDividerLocation(298);
         add(splitPane, BorderLayout.CENTER);
 
-        // Bottom panel with actions
-        JPanel bottomPanel = createBottomPanel();
-        add(bottomPanel, BorderLayout.SOUTH);
+        // Bottom: disk usage bar + button panel
+        JPanel southPanel = new JPanel(new BorderLayout(0, 0));
+        southPanel.add(createDiskPanel(), BorderLayout.NORTH);
+        southPanel.add(createBottomPanel(), BorderLayout.CENTER);
+        add(southPanel, BorderLayout.SOUTH);
+    }
+
+    private JPanel createDiskPanel() {
+        JPanel outer = new JPanel(new BorderLayout(0, 0));
+        outer.add(new JSeparator(), BorderLayout.NORTH);
+
+        JLabel title = new JLabel("Disk Usage");
+        title.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 10));
+        title.setForeground(UIManager.getColor("Label.disabledForeground"));
+        title.setBorder(BorderFactory.createEmptyBorder(6, 12, 2, 12));
+        outer.add(title, BorderLayout.CENTER);
+
+        JPanel panel = new JPanel(new BorderLayout(0, 3));
+        panel.setBorder(BorderFactory.createEmptyBorder(0, 12, 4, 12));
+        outer.add(panel, BorderLayout.SOUTH);
+
+        diskBarPanel = new JPanel() {
+            @Override
+            protected void paintComponent(Graphics g) {
+                super.paintComponent(g);
+                paintDiskBar((Graphics2D) g);
+            }
+
+            @Override
+            public Dimension getPreferredSize() {
+                return new Dimension(0, 10);
+            }
+        };
+        diskBarPanel.setOpaque(false);
+        panel.add(diskBarPanel, BorderLayout.CENTER);
+
+        Font legendFont = new Font(Font.SANS_SERIF, Font.PLAIN, 10);
+        Color legendColor = UIManager.getColor("Label.disabledForeground");
+
+        diskDataLabel = new JLabel(" ");
+        diskDataLabel.setFont(legendFont);
+        diskDataLabel.setForeground(legendColor);
+
+        diskOtherLabel = new JLabel(" ");
+        diskOtherLabel.setFont(legendFont);
+        diskOtherLabel.setForeground(legendColor);
+
+        diskFreeLabel = new JLabel(" ");
+        diskFreeLabel.setFont(legendFont);
+        diskFreeLabel.setForeground(legendColor);
+
+        JPanel legendPanel = new JPanel();
+        legendPanel.setLayout(new BoxLayout(legendPanel, BoxLayout.X_AXIS));
+        legendPanel.setOpaque(false);
+        legendPanel.add(diskDataLabel);
+        legendPanel.add(Box.createHorizontalGlue());
+        legendPanel.add(diskOtherLabel);
+        legendPanel.add(Box.createHorizontalGlue());
+        legendPanel.add(diskFreeLabel);
+        panel.add(legendPanel, BorderLayout.SOUTH);
+
+        updateDiskBar();
+        return outer;
+    }
+
+    private void paintDiskBar(Graphics2D g2) {
+        DiskUsageResponse usage = lastDiskUsage;
+        int w = diskBarPanel.getWidth();
+        int h = diskBarPanel.getHeight();
+        if (w <= 0 || h <= 0) return;
+
+        g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+
+        int arc = h;
+        Shape oldClip = g2.getClip();
+        g2.setClip(new java.awt.geom.RoundRectangle2D.Float(0, 0, w, h, arc, arc));
+
+        if (usage == null || usage.volumeTotalBytes() <= 0) {
+            Color bg = UIManager.getColor("ProgressBar.background");
+            if (bg == null) bg = new Color(60, 63, 65);
+            g2.setColor(bg);
+            g2.fillRect(0, 0, w, h);
+            g2.setClip(oldClip);
+            return;
+        }
+
+        long volumeTotal = usage.volumeTotalBytes();
+        long dataUsed = usage.totalBytes();
+        long volumeUsed = volumeTotal - usage.volumeFreeBytes();
+        long otherUsed = Math.max(0, volumeUsed - dataUsed);
+
+        int dataW = (int) (dataUsed * w / volumeTotal);
+        int otherW = (int) (otherUsed * w / volumeTotal);
+        if (dataUsed > 0 && dataW < 2) dataW = 2;
+
+        // 1) Data service — accent color
+        Color accent = UIManager.getColor("Component.accentColor");
+        if (accent == null) accent = new Color(86, 156, 214);
+        g2.setColor(accent);
+        g2.fillRect(0, 0, dataW, h);
+
+        // 2) Other stuff — text selection background
+        Color selBg = UIManager.getColor("TextArea.selectionBackground");
+        if (selBg == null) selBg = new Color(80, 80, 90);
+        g2.setColor(selBg);
+        g2.fillRect(dataW, 0, otherW, h);
+
+        // 3) Free space — green
+        g2.setColor(new Color(76, 175, 80));
+        g2.fillRect(dataW + otherW, 0, w - dataW - otherW, h);
+
+        g2.setClip(oldClip);
     }
 
     private JPanel createBottomPanel() {
@@ -202,7 +313,16 @@ public class DataManagementDialog extends JDialog {
 
         if (resolution == null) {
             healthPanel.setData(null, null);
+            showCard("heatmap");
             detailLabel.setText("Select a data series from the left");
+            updateButtons();
+            return;
+        }
+
+        // Exchange selection — show symbol list
+        if ("exchange".equals(resolution)) {
+            String exchange = browserPanel.getSelectedExchange();
+            showExchangeInfo(exchange);
             updateButtons();
             return;
         }
@@ -210,6 +330,7 @@ public class DataManagementDialog extends JDialog {
         // Build info text from inventory
         detailLabel.setText(buildInfoText(symbol, resolution));
         updateButtons();
+        showCard("heatmap");
 
         // Update health panel
         switch (resolution) {
@@ -217,9 +338,67 @@ public class DataManagementDialog extends JDialog {
             case "fundingRate" -> healthPanel.setFundingRateData(symbol);
             case "openInterest" -> healthPanel.setOpenInterestData(symbol);
             case "premiumIndex" -> healthPanel.setPremiumIndexData(symbol);
-            case "fearGreed" -> healthPanel.setCustomMessage("Fear & Greed Index \u2014 daily resolution, no hourly coverage view.");
+            case "fearGreed" -> {
+                InventoryResponse inv = browserPanel.getInventory();
+                if (inv != null && inv.fearGreed() != null) {
+                    healthPanel.setFearGreedData(inv.fearGreed().startTime(), inv.fearGreed().endTime());
+                } else {
+                    healthPanel.setCustomMessage("No Fear & Greed data");
+                }
+            }
             default -> healthPanel.setData(symbol, resolution);
         }
+    }
+
+    private void showCard(String name) {
+        ((CardLayout) rightCardPanel.getLayout()).show(rightCardPanel, name);
+    }
+
+    private void showExchangeInfo(String exchange) {
+        detailLabel.setText(formatExchangeName(exchange) + " \u2014 loading...");
+        showCard("exchange");
+
+        Thread.startVirtualThread(() -> {
+            try {
+                // Fetch all known pairs for this exchange from symbol discovery
+                java.util.List<SymbolSearchResult> pairs = client.searchSymbols("", exchange, 500);
+
+                // Group by base symbol: coin -> {spot, perp} and coin -> quote currencies
+                Map<String, boolean[]> coinMarkets = new java.util.LinkedHashMap<>();
+                Map<String, java.util.Set<String>> coinQuotes = new java.util.LinkedHashMap<>();
+                for (SymbolSearchResult p : pairs) {
+                    String base = p.base() != null ? p.base() : p.symbol();
+                    boolean[] markets = coinMarkets.computeIfAbsent(base, k -> new boolean[2]);
+                    if ("spot".equals(p.marketType())) markets[0] = true;
+                    if ("perp".equals(p.marketType())) markets[1] = true;
+                    if (p.quote() != null && !p.quote().isBlank()) {
+                        coinQuotes.computeIfAbsent(base, k -> new java.util.TreeSet<>()).add(p.quote());
+                    }
+                }
+
+                // Build entries
+                java.util.List<ExchangeInfoPanel.SymbolEntry> entries = new java.util.ArrayList<>();
+                int spotCount = 0, perpCount = 0;
+                for (var e : coinMarkets.entrySet()) {
+                    boolean spot = e.getValue()[0], perp = e.getValue()[1];
+                    if (spot) spotCount++;
+                    if (perp) perpCount++;
+                    java.util.Set<String> quotes = coinQuotes.get(e.getKey());
+                    String pairsStr = quotes != null ? String.join(", ", quotes) : "";
+                    entries.add(new ExchangeInfoPanel.SymbolEntry(e.getKey(), spot, perp, pairsStr));
+                }
+
+                int sc = spotCount, pc = perpCount;
+                SwingUtilities.invokeLater(() -> {
+                    String stats = entries.size() + " coins \u00b7 " + pc + " futures \u00b7 " + sc + " spot";
+                    detailLabel.setText(formatExchangeName(exchange) + " \u2014 " + stats);
+                    exchangeInfoPanel.setEntries(entries, stats);
+                });
+            } catch (Exception e) {
+                SwingUtilities.invokeLater(() ->
+                    detailLabel.setText(formatExchangeName(exchange) + " \u2014 " + e.getMessage()));
+            }
+        });
     }
 
     private String buildInfoText(String symbol, String resolution) {
@@ -428,16 +607,28 @@ public class DataManagementDialog extends JDialog {
         healthPanel.refreshData();
         detailLabel.setText("Select a data series from the left");
         updateButtons();
-        updateStorageLabel();
+        updateDiskBar();
     }
 
-    private void updateStorageLabel() {
+    private void updateDiskBar() {
         Thread.startVirtualThread(() -> {
             try {
                 if (client == null) return;
                 DiskUsageResponse usage = client.getDiskUsage();
                 SwingUtilities.invokeLater(() -> {
-                    storageLabel.setText(formatSize(usage.totalBytes()) + " (" + usage.bySymbol().size() + " databases)");
+                    lastDiskUsage = usage;
+                    diskBarPanel.repaint();
+
+                    long volumeTotal = usage.volumeTotalBytes();
+                    long volumeFree = usage.volumeFreeBytes();
+                    long dataUsed = usage.totalBytes();
+                    long volumeUsed = volumeTotal - volumeFree;
+                    long otherUsed = Math.max(0, volumeUsed - dataUsed);
+                    int dbCount = usage.byDataType() != null ? usage.byDataType().size() : 0;
+
+                    diskDataLabel.setText(formatSize(dataUsed) + " across " + dbCount + " databases");
+                    diskOtherLabel.setText(formatSize(otherUsed) + " other files");
+                    diskFreeLabel.setText(formatSize(volumeFree) + " free");
                 });
             } catch (Exception e) {
                 // Ignore - data service may not be running

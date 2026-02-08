@@ -1,19 +1,8 @@
-// tradery-terminal: AI terminal integration with JediTerm + pty4j
-// Provides embedded Claude/Codex terminal support
+// tradery-agent: Agentic AI module
+// Provides terminal integration (JediTerm + pty4j) and AI profile-driven launching
 
 plugins {
-    id 'java'
-}
-
-dependencies {
-    // PTY support for terminal
-    implementation 'org.jetbrains.pty4j:pty4j:0.12.13'
-
-    // JediTerm - use merged JAR to avoid JPMS split package problem
-    implementation files("$buildDir/libs/jediterm-merged.jar")
-
-    // Logging
-    implementation "org.slf4j:slf4j-api:${rootProject.ext.slf4jVersion}"
+    id 'java-library'
 }
 
 // Configuration for JediTerm JARs to be merged
@@ -52,3 +41,20 @@ tasks.register('mergeJediTerm', Jar) {
 
 tasks.compileJava.dependsOn mergeJediTerm
 tasks.processResources.dependsOn mergeJediTerm
+
+dependencies {
+    // AI profiles & detection
+    api project(':tradery-ai')
+
+    // UI
+    implementation 'com.formdev:flatlaf:3.4'
+
+    // PTY support for terminal
+    implementation 'org.jetbrains.pty4j:pty4j:0.12.13'
+
+    // JediTerm - use merged JAR to avoid JPMS split package problem
+    implementation files("$buildDir/libs/jediterm-merged.jar")
+
+    // Logging
+    implementation "org.slf4j:slf4j-api:${rootProject.ext.slf4jVersion}"
+}

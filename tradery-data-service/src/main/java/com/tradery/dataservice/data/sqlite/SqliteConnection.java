@@ -14,13 +14,13 @@ import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Manages SQLite database connections with WAL mode for concurrent reads.
- * One database file per symbol (e.g., ~/.tradery/data/BTCUSDT.db)
+ * One database file per symbol per data type (e.g., ~/.tradery/data/BTCUSDT/candles.db)
  */
 public class SqliteConnection {
 
     private static final Logger log = LoggerFactory.getLogger(SqliteConnection.class);
 
-    // Connection pool - one connection per symbol
+    // Connection pool - one connection per symbol:type key
     private static final Map<String, SqliteConnection> instances = new ConcurrentHashMap<>();
 
     private final String symbol;
@@ -28,17 +28,35 @@ public class SqliteConnection {
     private Connection connection;
     private final Object lock = new Object();
 
-    private SqliteConnection(String symbol) {
+    private SqliteConnection(String symbol, File dbFile) {
         this.symbol = symbol;
-        File dataDir = DataConfig.getInstance().getDataDir();
-        this.dbFile = new File(dataDir, symbol + ".db");
+        this.dbFile = dbFile;
     }
 
     /**
-     * Get or create a connection for a symbol.
+     * Get or create a connection for a symbol and data store type.
+     * DB file: {dataDir}/{symbol}/{type.filename}
      */
-    public static SqliteConnection forSymbol(String symbol) {
-        return instances.computeIfAbsent(symbol, SqliteConnection::new);
+    public static SqliteConnection forSymbolAndType(String symbol, DataStoreType type) {
+        String key = symbol + ":" + type.name();
+        return instances.computeIfAbsent(key, k -> {
+            File dataDir = DataConfig.getInstance().getDataDir();
+            File dbFile = new File(new File(dataDir, symbol), type.getFilename());
+            return new SqliteConnection(symbol, dbFile);
+        });
+    }
+
+    /**
+     * Get or create a connection for a global (non-symbol) database.
+     * DB file: {dataDir}/__global/{dbName}
+     */
+    public static SqliteConnection forGlobal(String dbName) {
+        String key = "__global:" + dbName;
+        return instances.computeIfAbsent(key, k -> {
+            File dataDir = DataConfig.getInstance().getDataDir();
+            File dbFile = new File(new File(dataDir, "__global"), dbName);
+            return new SqliteConnection("__global", dbFile);
+        });
     }
 
     /**

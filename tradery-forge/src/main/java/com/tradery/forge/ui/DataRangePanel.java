@@ -74,13 +74,26 @@ public class DataRangePanel extends ConfigurationPanel {
         title.setFont(title.getFont().deriveFont(Font.BOLD, 12f));
         title.setForeground(Color.GRAY);
 
-        manageButton = new JButton("Manage...");
+        manageButton = new JButton("Data Service...");
         manageButton.setFont(manageButton.getFont().deriveFont(11f));
         manageButton.addActionListener(e -> {
             if (onManageClicked != null) {
                 onManageClicked.run();
             }
         });
+
+        // Periodically update button text with disk usage
+        Timer diskTimer = new Timer(30_000, e -> Thread.startVirtualThread(() -> {
+            try {
+                var dsc = ApplicationContext.getInstance().getDataServiceClient();
+                if (dsc == null) return;
+                var usage = dsc.getDiskUsage();
+                String size = formatDiskSize(usage.totalBytes());
+                SwingUtilities.invokeLater(() -> manageButton.setText("Data Service (" + size + ")"));
+            } catch (Exception ignored) {}
+        }));
+        diskTimer.setInitialDelay(3000);
+        diskTimer.start();
 
         headerPanel.add(title, BorderLayout.WEST);
         headerPanel.add(manageButton, BorderLayout.EAST);
@@ -302,5 +315,12 @@ public class DataRangePanel extends ConfigurationPanel {
 
     public void setOnManageClicked(Runnable callback) {
         this.onManageClicked = callback;
+    }
+
+    private static String formatDiskSize(long bytes) {
+        if (bytes < 1024) return bytes + " B";
+        if (bytes < 1024 * 1024) return String.format("%.1f KB", bytes / 1024.0);
+        if (bytes < 1024L * 1024 * 1024) return String.format("%.1f MB", bytes / (1024.0 * 1024));
+        return String.format("%.1f GB", bytes / (1024.0 * 1024 * 1024));
     }
 }

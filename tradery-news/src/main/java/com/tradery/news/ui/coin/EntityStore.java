@@ -513,6 +513,12 @@ public class EntityStore {
             }
         }
 
+        // Load form layouts
+        String formLayoutsJson = attrs.get("form_layouts");
+        if (formLayoutsJson != null) {
+            type.setFormLayouts(parseFormLayouts(formLayoutsJson));
+        }
+
         return type;
     }
 
@@ -576,6 +582,7 @@ public class EntityStore {
         facts.add(new FactStore.PendingFact(eid, "display_order", String.valueOf(type.displayOrder()), "manual"));
         facts.add(new FactStore.PendingFact(eid, "erd_x", String.valueOf(type.erdX()), "manual"));
         facts.add(new FactStore.PendingFact(eid, "erd_y", String.valueOf(type.erdY()), "manual"));
+        facts.add(new FactStore.PendingFact(eid, "form_layouts", formLayoutsToJson(type.formLayouts()), "manual"));
         facts.add(new FactStore.PendingFact(eid, "_deleted", null, "manual"));
         routeFacts(facts, "manual");
     }
@@ -712,6 +719,53 @@ public class EntityStore {
     }
 
     // ==================== HELPERS ====================
+
+    private List<FormLayout> parseFormLayouts(String json) {
+        if (json == null || json.isEmpty()) return null;
+        try {
+            List<Map<String, Object>> raw = JSON.readValue(json, new TypeReference<List<Map<String, Object>>>() {});
+            List<FormLayout> layouts = new ArrayList<>();
+            for (Map<String, Object> layoutMap : raw) {
+                String name = (String) layoutMap.get("name");
+                @SuppressWarnings("unchecked")
+                List<Map<String, String>> rawFields = (List<Map<String, String>>) layoutMap.get("fields");
+                List<FormLayout.FormLayoutField> fields = new ArrayList<>();
+                if (rawFields != null) {
+                    for (Map<String, String> f : rawFields) {
+                        fields.add(new FormLayout.FormLayoutField(f.get("attr"), f.get("group")));
+                    }
+                }
+                layouts.add(new FormLayout(name, fields));
+            }
+            return layouts.isEmpty() ? null : layouts;
+        } catch (Exception e) {
+            System.err.println("Failed to parse form_layouts JSON: " + e.getMessage());
+            return null;
+        }
+    }
+
+    private String formLayoutsToJson(List<FormLayout> layouts) {
+        if (layouts == null || layouts.isEmpty()) return null;
+        try {
+            List<Map<String, Object>> raw = new ArrayList<>();
+            for (FormLayout layout : layouts) {
+                Map<String, Object> layoutMap = new LinkedHashMap<>();
+                layoutMap.put("name", layout.name());
+                List<Map<String, String>> rawFields = new ArrayList<>();
+                for (FormLayout.FormLayoutField f : layout.fields()) {
+                    Map<String, String> fm = new LinkedHashMap<>();
+                    fm.put("attr", f.attributeName());
+                    if (f.group() != null) fm.put("group", f.group());
+                    rawFields.add(fm);
+                }
+                layoutMap.put("fields", rawFields);
+                raw.add(layoutMap);
+            }
+            return JSON.writeValueAsString(raw);
+        } catch (Exception e) {
+            return null;
+        }
+    }
 
     private List<String> parseStringList(String json) {
         if (json == null || json.isEmpty()) return new ArrayList<>();

@@ -1,5 +1,6 @@
 package com.tradery.documents;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
@@ -10,12 +11,18 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class Document {
 
+    @JsonProperty("id")
     private String id;
+    @JsonProperty("name")
     private String name;
     @JsonProperty("owner_id")
     private String ownerId;
+    @JsonProperty("visibility")
     private Visibility visibility = Visibility.LOCAL;
+    @JsonProperty("governance")
     private Governance governance;
+    @JsonProperty("template_id")
+    private String templateId;
     @JsonProperty("created_at")
     private long createdAt;
 
@@ -43,10 +50,15 @@ public class Document {
     public Governance governance() { return governance; }
     public void setGovernance(Governance governance) { this.governance = governance; }
 
+    public String templateId() { return templateId; }
+    public void setTemplateId(String templateId) { this.templateId = templateId; }
+
     public long createdAt() { return createdAt; }
     public void setCreatedAt(long createdAt) { this.createdAt = createdAt; }
 
+    @JsonIgnore
     public boolean isLocal() { return visibility == Visibility.LOCAL; }
+    @JsonIgnore
     public boolean isShared() { return visibility != Visibility.LOCAL; }
 
     public enum Visibility {
@@ -55,6 +67,7 @@ public class Document {
 
     @JsonIgnoreProperties(ignoreUnknown = true)
     public static class Governance {
+        @JsonProperty("type")
         private Type type = Type.OPEN;
         @JsonProperty("voting_quorum")
         private double votingQuorum = 0.51;

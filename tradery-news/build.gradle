@@ -43,6 +43,10 @@ dependencies {
     implementation project(':tradery-help')
     implementation 'com.formdev:flatlaf:3.4'
     implementation 'com.formdev:flatlaf-intellij-themes:3.4'
+
+    // Optional sharing support (loaded via reflection at runtime)
+    runtimeOnly project(':tradery-documents')
+    runtimeOnly project(':tradery-sharing')
 }
 
 // jlink configuration for creating minimal custom JRE

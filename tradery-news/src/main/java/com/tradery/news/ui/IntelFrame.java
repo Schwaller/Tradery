@@ -12,6 +12,7 @@ import com.tradery.news.store.SqliteNewsStore;
 import com.tradery.news.api.IntelApiServer;
 import com.tradery.news.source.*;
 import com.tradery.news.ui.coin.*;
+import com.tradery.ui.ThemeHelper;
 import com.tradery.ui.controls.BorderlessScrollPane;
 import com.tradery.ui.controls.SegmentedToggle;
 import com.tradery.ui.controls.ThinSplitPane;
@@ -810,6 +811,9 @@ public class IntelFrame extends JFrame {
             addDetailLabel("Pinned");
         }
 
+        // Custom attributes from schema
+        addEntityCustomAttributes(entity);
+
         // Action buttons
         addDetailSpacer();
         JPanel btnPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 0));
@@ -829,6 +833,50 @@ public class IntelFrame extends JFrame {
 
         detailContent.revalidate();
         detailContent.repaint();
+    }
+
+    private void addEntityCustomAttributes(CoinEntity entity) {
+        if (schemaRegistry == null) return;
+
+        String typeId = entity.type().name().toLowerCase();
+        SchemaType schemaType = schemaRegistry.getType(typeId);
+        if (schemaType == null || schemaType.attributes().isEmpty()) return;
+
+        Map<String, AttributeValue> richValues = entityStore.getAttributeValuesRich(entity.id(), typeId);
+
+        // Determine which attributes to show
+        List<SchemaAttribute> attrsToShow = new java.util.ArrayList<>();
+        List<FormLayout> layouts = schemaType.formLayouts();
+        if (layouts != null && !layouts.isEmpty()) {
+            // Use first form layout
+            FormLayout layout = layouts.get(0);
+            for (FormLayout.FormLayoutField f : layout.fields()) {
+                SchemaAttribute attr = schemaType.attributes().stream()
+                    .filter(a -> a.name().equals(f.attributeName()))
+                    .findFirst().orElse(null);
+                if (attr != null) attrsToShow.add(attr);
+            }
+        } else {
+            attrsToShow.addAll(schemaType.attributes());
+        }
+
+        // Filter to only attributes that have values, skip core fields
+        boolean hasAny = false;
+        for (SchemaAttribute attr : attrsToShow) {
+            if ("name".equals(attr.name()) || "symbol".equals(attr.name()) ||
+                "market_cap".equals(attr.name())) continue;
+            AttributeValue av = richValues.get(attr.name());
+            if (av == null || av.value() == null || av.value().isEmpty()) continue;
+
+            if (!hasAny) {
+                addDetailSpacer();
+                addDetailSection("ATTRIBUTES");
+                hasAny = true;
+            }
+
+            String displayLabel = attr.displayName(java.util.Locale.getDefault());
+            addDetailLabel(displayLabel + ": " + av.value(), textSecondary());
+        }
     }
 
     // Detail panel helper methods
@@ -1341,7 +1389,7 @@ public class IntelFrame extends JFrame {
     public static void main(String[] args) {
         try {
             // Apply saved theme (or default)
-            IntelConfig.applyCurrentTheme();
+            ThemeHelper.applyCurrentTheme();
             UIManager.put("Button.arc", 5);
             UIManager.put("Component.arc", 5);
             UIManager.put("TextComponent.arc", 5);
@@ -1366,7 +1414,38 @@ public class IntelFrame extends JFrame {
             AiClient.getInstance().setActivityListener((summary, prompt, response) ->
                 IntelLogPanel.logAI(summary, prompt, response));
 
-            new IntelFrame().setVisible(true);
+            // Initialize document manager and launch
+            IntelDocumentManager documentManager = new IntelDocumentManager();
+            try {
+                documentManager.initialize();
+            } catch (Exception e) {
+                System.err.println("Failed to initialize documents: " + e.getMessage());
+            }
+
+            // Try to load sharing module (optional runtime dependency)
+            try {
+                Class<?> implClass = Class.forName("com.tradery.sharing.SharingServiceImpl");
+                Object service = implClass.getConstructor(java.nio.file.Path.class)
+                    .newInstance(java.nio.file.Path.of(System.getProperty("user.home"), ".tradery", "documents"));
+                SharingService sharingService = (SharingService) service;
+                IntelDocumentFrame.setSharingService(sharingService);
+
+                // Bootstrap peer infrastructure so LAN discovery starts immediately
+                sharingService.bootstrap();
+            } catch (ClassNotFoundException e) {
+                // Sharing module not on classpath — Share button will be hidden
+            } catch (Exception e) {
+                System.err.println("Failed to initialize sharing: " + e.getMessage());
+            }
+
+            IntelLauncherFrame launcher = new IntelLauncherFrame(documentManager);
+            launcher.setVisible(true);
+
+            // Auto-open last document if available
+            String lastDocId = IntelConfig.get().getLastOpenedDocId();
+            if (lastDocId != null) {
+                launcher.openDocumentById(lastDocId);
+            }
         });
     }
 }

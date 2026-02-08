@@ -6,6 +6,7 @@ import com.tradery.data.page.PageKey;
 import com.tradery.dataservice.api.CoverageHandler;
 import com.tradery.dataservice.config.DataServiceConfig;
 import com.tradery.dataservice.data.*;
+import com.tradery.dataservice.data.sqlite.DataStoreType;
 import com.tradery.dataservice.data.sqlite.SqliteDataStore;
 import com.tradery.dataservice.live.LiveCandleManager;
 import org.msgpack.jackson.dataformat.MessagePackFactory;
@@ -279,7 +280,7 @@ public class PageManager {
                 subKey = covType.equals("klines") ? "1h" : "default";
             }
 
-            var coverageDao = dataStore.forSymbol(symbol).coverage();
+            var coverageDao = dataStore.forSymbol(symbol).coverageFor(DataStoreType.fromCoverageKey(covType));
             var summary = coverageDao.getCoverageSummary(covType, subKey);
 
             // Find gaps across the full covered range

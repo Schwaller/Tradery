@@ -19,9 +19,7 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * Main facade for SQLite data storage.
  * Provides unified access to all DAOs with lazy initialization per symbol.
- *
- * This class is designed to match the APIs of the existing CSV-based stores
- * to enable seamless migration.
+ * Each symbol gets a subdirectory with one DB per data type.
  */
 public class SqliteDataStore {
 
@@ -32,14 +30,12 @@ public class SqliteDataStore {
 
     /**
      * Get or create DAO container for a symbol.
-     * Initializes schema on first access.
+     * Initializes schema on first access for each DB.
      */
     public SymbolData forSymbol(String symbol) {
         return symbolDataMap.computeIfAbsent(symbol, sym -> {
             try {
-                SqliteConnection conn = SqliteConnection.forSymbol(sym);
-                SqliteSchema.initialize(conn);
-                return new SymbolData(conn);
+                return new SymbolData(sym);
             } catch (SQLException e) {
                 throw new RuntimeException("Failed to initialize SQLite for " + sym, e);
             }
@@ -90,7 +86,7 @@ public class SqliteDataStore {
             throws IOException {
         try {
             String coverageKey = "candles:" + marketType;
-            return forSymbol(symbol).coverage().isFullyCovered(coverageKey, timeframe, startTime, endTime);
+            return forSymbol(symbol).coverageFor(DataStoreType.CANDLES).isFullyCovered(coverageKey, timeframe, startTime, endTime);
         } catch (SQLException e) {
             throw new IOException("SQLite error checking candle coverage: " + e.getMessage(), e);
         }
@@ -98,16 +94,15 @@ public class SqliteDataStore {
 
     // ========== Fear & Greed Index Methods ==========
 
-    private static final String FEAR_GREED_SYMBOL = "__feargreed";
     private FearGreedDao fearGreedDao;
 
     /**
-     * Get or create the FearGreedDao (lazy, uses dedicated DB).
+     * Get or create the FearGreedDao (lazy, uses dedicated global DB).
      */
     public synchronized FearGreedDao getFearGreedDao() {
         if (fearGreedDao == null) {
             try {
-                SqliteConnection conn = SqliteConnection.forSymbol(FEAR_GREED_SYMBOL);
+                SqliteConnection conn = SqliteConnection.forGlobal("fear_greed.db");
                 fearGreedDao = new FearGreedDao(conn);
                 fearGreedDao.createTable();
             } catch (java.sql.SQLException e) {
@@ -285,13 +280,6 @@ public class SqliteDataStore {
 
     /**
      * Stream aggregated trades in chunks to avoid loading all into memory.
-     *
-     * @param symbol Trading symbol
-     * @param startTime Start timestamp
-     * @param endTime End timestamp
-     * @param chunkSize Number of trades per chunk
-     * @param chunkConsumer Consumer called with each chunk of trades
-     * @return Total number of trades streamed
      */
     public int streamAggTrades(String symbol, long startTime, long endTime, int chunkSize,
                                java.util.function.Consumer<List<AggTrade>> chunkConsumer) throws IOException {
@@ -306,11 +294,13 @@ public class SqliteDataStore {
 
     /**
      * Record coverage for a data type.
+     * Routes to the correct DB based on dataType.
      */
     public void addCoverage(String symbol, String dataType, String subKey,
                             long rangeStart, long rangeEnd, boolean isComplete) throws IOException {
         try {
-            forSymbol(symbol).coverage().addCoverage(dataType, subKey, rangeStart, rangeEnd, isComplete);
+            DataStoreType dbType = DataStoreType.fromCoverageKey(dataType);
+            forSymbol(symbol).coverageFor(dbType).addCoverage(dataType, subKey, rangeStart, rangeEnd, isComplete);
         } catch (SQLException e) {
             throw new IOException("SQLite error adding coverage: " + e.getMessage(), e);
         }
@@ -322,7 +312,8 @@ public class SqliteDataStore {
     public List<long[]> findGaps(String symbol, String dataType, String subKey,
                                   long start, long end) throws IOException {
         try {
-            return forSymbol(symbol).coverage().findGaps(dataType, subKey, start, end);
+            DataStoreType dbType = DataStoreType.fromCoverageKey(dataType);
+            return forSymbol(symbol).coverageFor(dbType).findGaps(dataType, subKey, start, end);
         } catch (SQLException e) {
             throw new IOException("SQLite error finding gaps: " + e.getMessage(), e);
         }
@@ -334,7 +325,8 @@ public class SqliteDataStore {
     public boolean isFullyCovered(String symbol, String dataType, String subKey,
                                    long start, long end) throws IOException {
         try {
-            return forSymbol(symbol).coverage().isFullyCovered(dataType, subKey, start, end);
+            DataStoreType dbType = DataStoreType.fromCoverageKey(dataType);
+            return forSymbol(symbol).coverageFor(dbType).isFullyCovered(dataType, subKey, start, end);
         } catch (SQLException e) {
             throw new IOException("SQLite error checking coverage: " + e.getMessage(), e);
         }
@@ -342,20 +334,29 @@ public class SqliteDataStore {
 
     /**
      * Consolidate fragmented coverage ranges for a symbol.
-     * Call once on startup to compact ranges accumulated before inline compaction was added.
      */
     public void consolidateCoverage(String symbol) throws IOException {
         try {
-            CoverageDao dao = forSymbol(symbol).coverage();
-            for (String dataType : List.of("agg_trades", "candles", "funding_rates", "open_interest", "premium_index")) {
-                // Get all sub_keys for this data type
-                var ranges = dao.getCoverageRanges(dataType, "");
-                if (ranges.size() > 1) {
-                    dao.consolidateRanges(dataType, "");
-                }
-                var defaultRanges = dao.getCoverageRanges(dataType, "default");
-                if (defaultRanges.size() > 1) {
-                    dao.consolidateRanges(dataType, "default");
+            // Consolidate coverage in each DB
+            Map<DataStoreType, List<String>> typeKeys = Map.of(
+                DataStoreType.CANDLES, List.of("candles", "klines", "candles:perp", "candles:spot"),
+                DataStoreType.AGG_TRADES, List.of("agg_trades"),
+                DataStoreType.FUNDING_RATES, List.of("funding_rates"),
+                DataStoreType.OPEN_INTEREST, List.of("open_interest"),
+                DataStoreType.PREMIUM_INDEX, List.of("premium_index")
+            );
+
+            for (var entry : typeKeys.entrySet()) {
+                CoverageDao dao = forSymbol(symbol).coverageFor(entry.getKey());
+                for (String dataType : entry.getValue()) {
+                    var ranges = dao.getCoverageRanges(dataType, "");
+                    if (ranges.size() > 1) {
+                        dao.consolidateRanges(dataType, "");
+                    }
+                    var defaultRanges = dao.getCoverageRanges(dataType, "default");
+                    if (defaultRanges.size() > 1) {
+                        dao.consolidateRanges(dataType, "default");
+                    }
                 }
             }
         } catch (SQLException e) {
@@ -366,20 +367,25 @@ public class SqliteDataStore {
     // ========== Discovery Methods ==========
 
     /**
-     * Get all symbols that have a database file in the data directory.
+     * Get all symbols that have a subdirectory in the data directory.
      */
     public List<String> getAvailableSymbolNames() {
         File dataDir = DataConfig.getInstance().getDataDir();
         if (dataDir == null || !dataDir.exists()) return List.of();
 
-        File[] dbFiles = dataDir.listFiles((dir, name) ->
-            name.endsWith(".db") && !name.equals("symbols.db"));
-        if (dbFiles == null) return List.of();
+        File[] dirs = dataDir.listFiles(File::isDirectory);
+        if (dirs == null) return List.of();
 
         List<String> symbols = new ArrayList<>();
-        for (File f : dbFiles) {
-            String name = f.getName();
-            symbols.add(name.substring(0, name.length() - 3)); // strip .db
+        for (File d : dirs) {
+            String name = d.getName();
+            // Skip internal directories
+            if (name.startsWith("__")) continue;
+            // Must contain at least one .db file
+            File[] dbs = d.listFiles((dir, n) -> n.endsWith(".db"));
+            if (dbs != null && dbs.length > 0) {
+                symbols.add(name);
+            }
         }
         symbols.sort(String::compareTo);
         return symbols;
@@ -387,20 +393,24 @@ public class SqliteDataStore {
 
     /**
      * Get distinct data types with coverage for a symbol.
-     * Returns map of dataType -> list of subKeys (e.g. "klines" -> ["1h","4h"]).
+     * Queries all 5 DBs and merges results.
      */
     public Map<String, List<String>> getCoverageDataTypes(String symbol) throws IOException {
         try {
-            java.sql.Connection c = forSymbol(symbol).connection.getConnection();
             Map<String, List<String>> result = new LinkedHashMap<>();
+            SymbolData data = forSymbol(symbol);
 
             String sql = "SELECT DISTINCT data_type, sub_key FROM data_coverage ORDER BY data_type, sub_key";
-            try (java.sql.PreparedStatement stmt = c.prepareStatement(sql);
-                 java.sql.ResultSet rs = stmt.executeQuery()) {
-                while (rs.next()) {
-                    String dt = rs.getString("data_type");
-                    String sk = rs.getString("sub_key");
-                    result.computeIfAbsent(dt, k -> new ArrayList<>()).add(sk);
+
+            for (DataStoreType type : DataStoreType.values()) {
+                java.sql.Connection c = data.connectionFor(type).getConnection();
+                try (java.sql.PreparedStatement stmt = c.prepareStatement(sql);
+                     java.sql.ResultSet rs = stmt.executeQuery()) {
+                    while (rs.next()) {
+                        String dt = rs.getString("data_type");
+                        String sk = rs.getString("sub_key");
+                        result.computeIfAbsent(dt, k -> new ArrayList<>()).add(sk);
+                    }
                 }
             }
             return result;
@@ -420,29 +430,24 @@ public class SqliteDataStore {
     }
 
     /**
-     * Get the SQLite connection for a symbol (for advanced operations).
-     */
-    public SqliteConnection getConnection(String symbol) {
-        return forSymbol(symbol).connection;
-    }
-
-    /**
-     * Check if a symbol database exists.
+     * Check if a symbol database exists (has a subdirectory with any .db files).
      */
     public boolean symbolExists(String symbol) {
-        return SqliteConnection.forSymbol(symbol).exists();
+        File dataDir = DataConfig.getInstance().getDataDir();
+        File symbolDir = new File(dataDir, symbol);
+        if (!symbolDir.isDirectory()) return false;
+        File[] dbs = symbolDir.listFiles((dir, name) -> name.endsWith(".db"));
+        return dbs != null && dbs.length > 0;
     }
 
     /**
-     * Get statistics for a symbol's database.
+     * Get statistics for a symbol's databases.
      */
     public DatabaseStats getStats(String symbol) throws IOException {
         try {
             SymbolData data = forSymbol(symbol);
             CandleDao.CandleStats candleStats = null;
 
-            // Get candle stats for the most common timeframe (1h) from perp data
-            // (most existing data is perp futures)
             List<String> timeframes = data.candles().getAvailableTimeframes("perp");
             if (!timeframes.isEmpty()) {
                 String tf = timeframes.contains("1h") ? "1h" : timeframes.get(0);
@@ -453,13 +458,26 @@ public class SqliteDataStore {
             int fundingCount = data.fundingRates().count();
             int oiCount = data.openInterest().count();
 
+            // Sum file sizes across all DBs in the symbol subdirectory
+            long totalSize = 0;
+            File dataDir = DataConfig.getInstance().getDataDir();
+            File symbolDir = new File(dataDir, symbol);
+            if (symbolDir.isDirectory()) {
+                File[] dbFiles = symbolDir.listFiles((dir, name) -> name.endsWith(".db") || name.endsWith("-wal") || name.endsWith("-shm"));
+                if (dbFiles != null) {
+                    for (File f : dbFiles) {
+                        totalSize += f.length();
+                    }
+                }
+            }
+
             return new DatabaseStats(
                 symbol,
                 candleStats != null ? candleStats.count() : 0,
                 aggTradeCount,
                 fundingCount,
                 oiCount,
-                data.connection.getDbFile().length()
+                totalSize
             );
         } catch (SQLException e) {
             throw new IOException("SQLite error getting stats: " + e.getMessage(), e);
@@ -491,24 +509,57 @@ public class SqliteDataStore {
 
     /**
      * Container for all DAOs for a single symbol.
+     * Each data type gets its own SqliteConnection and CoverageDao.
      */
     public static class SymbolData {
-        private final SqliteConnection connection;
+        private final String symbol;
+        private final SqliteConnection candlesConn;
+        private final SqliteConnection aggTradesConn;
+        private final SqliteConnection fundingRatesConn;
+        private final SqliteConnection openInterestConn;
+        private final SqliteConnection premiumIndexConn;
+
         private final CandleDao candleDao;
         private final AggTradesDao aggTradesDao;
         private final FundingRateDao fundingRateDao;
         private final OpenInterestDao openInterestDao;
         private final PremiumIndexDao premiumIndexDao;
-        private final CoverageDao coverageDao;
 
-        SymbolData(SqliteConnection connection) {
-            this.connection = connection;
-            this.candleDao = new CandleDao(connection);
-            this.aggTradesDao = new AggTradesDao(connection);
-            this.fundingRateDao = new FundingRateDao(connection);
-            this.openInterestDao = new OpenInterestDao(connection);
-            this.premiumIndexDao = new PremiumIndexDao(connection);
-            this.coverageDao = new CoverageDao(connection);
+        private final CoverageDao candlesCoverage;
+        private final CoverageDao aggTradesCoverage;
+        private final CoverageDao fundingRatesCoverage;
+        private final CoverageDao openInterestCoverage;
+        private final CoverageDao premiumIndexCoverage;
+
+        SymbolData(String symbol) throws SQLException {
+            this.symbol = symbol;
+
+            candlesConn = SqliteConnection.forSymbolAndType(symbol, DataStoreType.CANDLES);
+            SqliteSchema.initialize(candlesConn, DataStoreType.CANDLES);
+
+            aggTradesConn = SqliteConnection.forSymbolAndType(symbol, DataStoreType.AGG_TRADES);
+            SqliteSchema.initialize(aggTradesConn, DataStoreType.AGG_TRADES);
+
+            fundingRatesConn = SqliteConnection.forSymbolAndType(symbol, DataStoreType.FUNDING_RATES);
+            SqliteSchema.initialize(fundingRatesConn, DataStoreType.FUNDING_RATES);
+
+            openInterestConn = SqliteConnection.forSymbolAndType(symbol, DataStoreType.OPEN_INTEREST);
+            SqliteSchema.initialize(openInterestConn, DataStoreType.OPEN_INTEREST);
+
+            premiumIndexConn = SqliteConnection.forSymbolAndType(symbol, DataStoreType.PREMIUM_INDEX);
+            SqliteSchema.initialize(premiumIndexConn, DataStoreType.PREMIUM_INDEX);
+
+            this.candleDao = new CandleDao(candlesConn);
+            this.aggTradesDao = new AggTradesDao(aggTradesConn);
+            this.fundingRateDao = new FundingRateDao(fundingRatesConn);
+            this.openInterestDao = new OpenInterestDao(openInterestConn);
+            this.premiumIndexDao = new PremiumIndexDao(premiumIndexConn);
+
+            this.candlesCoverage = new CoverageDao(candlesConn);
+            this.aggTradesCoverage = new CoverageDao(aggTradesConn);
+            this.fundingRatesCoverage = new CoverageDao(fundingRatesConn);
+            this.openInterestCoverage = new CoverageDao(openInterestConn);
+            this.premiumIndexCoverage = new CoverageDao(premiumIndexConn);
         }
 
         public CandleDao candles() {
@@ -531,12 +582,41 @@ public class SqliteDataStore {
             return premiumIndexDao;
         }
 
-        public CoverageDao coverage() {
-            return coverageDao;
+        /**
+         * Get the CoverageDao for a specific data store type.
+         */
+        public CoverageDao coverageFor(DataStoreType type) {
+            return switch (type) {
+                case CANDLES -> candlesCoverage;
+                case AGG_TRADES -> aggTradesCoverage;
+                case FUNDING_RATES -> fundingRatesCoverage;
+                case OPEN_INTEREST -> openInterestCoverage;
+                case PREMIUM_INDEX -> premiumIndexCoverage;
+            };
         }
 
-        public SqliteConnection connection() {
-            return connection;
+        /**
+         * Get the SqliteConnection for a specific data store type.
+         */
+        public SqliteConnection connectionFor(DataStoreType type) {
+            return switch (type) {
+                case CANDLES -> candlesConn;
+                case AGG_TRADES -> aggTradesConn;
+                case FUNDING_RATES -> fundingRatesConn;
+                case OPEN_INTEREST -> openInterestConn;
+                case PREMIUM_INDEX -> premiumIndexConn;
+            };
+        }
+
+        /**
+         * Get all coverage entries across all DBs for this symbol.
+         */
+        public List<CoverageDao.CoverageEntry> getAllCoverage() throws SQLException {
+            List<CoverageDao.CoverageEntry> all = new ArrayList<>();
+            for (DataStoreType type : DataStoreType.values()) {
+                all.addAll(coverageFor(type).getAllCoverage());
+            }
+            return all;
         }
     }
 }

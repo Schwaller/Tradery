@@ -17,12 +17,14 @@ import java.util.List;
     @JsonSubTypes.Type(value = NetworkMessage.SyncResponse.class, name = "SYNC_RESPONSE"),
     @JsonSubTypes.Type(value = NetworkMessage.SyncDone.class, name = "SYNC_DONE"),
     @JsonSubTypes.Type(value = NetworkMessage.MemberUpdate.class, name = "MEMBER_UPDATE"),
+    @JsonSubTypes.Type(value = NetworkMessage.ChatMessage.class, name = "CHAT"),
 })
 public sealed interface NetworkMessage {
 
     /** Initial handshake: identify peer and shared documents. */
     record Hello(
         String peerId,
+        String deviceId,
         String publicKey,
         String token,
         List<String> documentIds
@@ -52,4 +54,11 @@ public sealed interface NetworkMessage {
     ) implements NetworkMessage {
         public record MemberEntry(String userId, String role) {}
     }
+
+    /** Ephemeral chat message broadcast to connected peers. */
+    record ChatMessage(
+        String senderId,
+        String text,
+        long timestamp
+    ) implements NetworkMessage {}
 }

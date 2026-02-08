@@ -52,7 +52,7 @@ class PeerConnectionTest {
     @Test
     void helloMessage_roundTrips() throws Exception {
         try (PeerConnection client = connectClient()) {
-            var hello = new NetworkMessage.Hello("peer-1", "pubkey-base64", "token-123",
+            var hello = new NetworkMessage.Hello("peer-1", "device-1", "pubkey-base64", "token-123",
                     List.of("doc-a", "doc-b"));
             client.send(hello);
 
@@ -146,7 +146,7 @@ class PeerConnectionTest {
     @Test
     void multipleMessages_inSequence() throws Exception {
         try (PeerConnection client = connectClient()) {
-            client.send(new NetworkMessage.Hello("p1", null, null, List.of("doc-1")));
+            client.send(new NetworkMessage.Hello("p1", null, null, null, List.of("doc-1")));
             client.send(new NetworkMessage.SyncRequest("doc-1", 0));
             client.send(new NetworkMessage.SyncDone("doc-1"));
 
@@ -163,7 +163,7 @@ class PeerConnectionTest {
     void bidirectionalCommunication() throws Exception {
         try (PeerConnection client = connectClient()) {
             // Client sends hello
-            client.send(new NetworkMessage.Hello("client-peer", null, null, List.of("doc-1")));
+            client.send(new NetworkMessage.Hello("client-peer", null, null, null, List.of("doc-1")));
 
             PeerConnection serverConn = serverConnections.poll(5, TimeUnit.SECONDS);
             assertNotNull(serverConn);
@@ -172,7 +172,7 @@ class PeerConnectionTest {
             NetworkMessage received = serverConn.receive();
             assertInstanceOf(NetworkMessage.Hello.class, received);
 
-            serverConn.send(new NetworkMessage.Hello("server-peer", null, null, List.of("doc-1", "doc-2")));
+            serverConn.send(new NetworkMessage.Hello("server-peer", null, null, null, List.of("doc-1", "doc-2")));
 
             // Client receives server's response
             NetworkMessage serverHello = client.receive();

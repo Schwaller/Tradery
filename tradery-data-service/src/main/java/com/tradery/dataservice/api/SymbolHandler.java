@@ -136,12 +136,9 @@ public class SymbolHandler {
             String exchange = ctx.queryParam("exchange");
             int limit = ctx.queryParamAsClass("limit", Integer.class).getOrDefault(50);
 
-            if (query == null || query.isBlank()) {
-                ctx.status(400).json(new ErrorResponse("q parameter is required"));
-                return;
-            }
+            if (query == null) query = "";
 
-            List<TradingPair> pairs = symbolDao.searchPairs(query, exchange, Math.min(limit, 100));
+            List<TradingPair> pairs = symbolDao.searchPairs(query, exchange, Math.min(limit, 500));
 
             List<SearchResult> results = pairs.stream()
                 .map(p -> new SearchResult(

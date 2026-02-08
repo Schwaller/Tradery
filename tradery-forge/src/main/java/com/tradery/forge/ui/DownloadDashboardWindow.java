@@ -353,7 +353,7 @@ public class DownloadDashboardWindow extends DashboardWindow {
         exchSection.add(createSectionHeader("Exchanges"), BorderLayout.NORTH);
         coverageTableModel = new CoverageTableModel();
         JTable coverageTable = new BorderlessTable(coverageTableModel);
-        coverageTable.setRowHeight(20);
+        coverageTable.setRowHeight(24);
         coverageTable.setFocusable(false);
         coverageTable.setRowSelectionAllowed(false);
         coverageTable.setFont(coverageTable.getFont().deriveFont(11f));

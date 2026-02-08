@@ -43,8 +43,8 @@ dependencies {
     // Symbol picker UI
     implementation project(':tradery-symbols')
 
-    // Terminal module for embedded AI terminal (Claude/Codex)
-    implementation project(':tradery-terminal')
+    // Agent module for embedded AI terminal (Claude/Codex/Gemini)
+    implementation project(':tradery-agent')
 
     // JSON/YAML serialization
     implementation "com.fasterxml.jackson.core:jackson-databind:${rootProject.ext.jacksonVersion}"
@@ -129,8 +129,8 @@ jlink {
     // jlink cannot use automatic modules, so we merge them
     // Force merge non-modular/automatic module dependencies into the merged module
     // jlink cannot use automatic modules, so we merge them
-    // Note: tradery-terminal is merged because its JediTerm/pty4j deps need to be merged
-    forceMerge('tradery-terminal', 'jediterm-merged', 'pty4j', 'purejavacomm', 'jna', 'flexmark', 'directory-watcher', 'log4j', 'okhttp', 'okio', 'jfreechart', 'pdfbox', 'fontbox', 'openhtmltopdf', 'jsoup', 'icu4j', 'graphics2d', 'xmpbox', 'autolink', 'commons-logging')
+    // Note: tradery-agent is merged because its JediTerm/pty4j deps need to be merged
+    forceMerge('tradery-agent', 'jediterm-merged', 'pty4j', 'purejavacomm', 'jna', 'flexmark', 'directory-watcher', 'log4j', 'okhttp', 'okio', 'jfreechart', 'pdfbox', 'fontbox', 'openhtmltopdf', 'jsoup', 'icu4j', 'graphics2d', 'xmpbox', 'autolink', 'commons-logging')
 
     jpackage {
         imageName = 'Strategy Forge'

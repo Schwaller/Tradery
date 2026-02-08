@@ -37,8 +37,9 @@ public class McpServerSetup {
                 Files.writeString(VERSION_FILE, MCP_VERSION);
             }
 
-            // Always ensure .mcp.json config exists
+            // Always ensure MCP configs exist for all supported AI CLIs
             writeMcpConfig();
+            writeCodexConfig();
         } catch (Exception e) {
             System.err.println("Failed to setup MCP server: " + e.getMessage());
             // Non-fatal - app continues without MCP
@@ -100,6 +101,25 @@ public class McpServerSetup {
             """.formatted(getServerPath());
 
         Files.writeString(mcpConfigPath, mcpConfig);
+    }
+
+    /**
+     * Write Codex CLI project-level MCP config to ~/.tradery/.codex/config.toml.
+     * Codex reads project-scoped config from .codex/config.toml in the working directory.
+     */
+    private static void writeCodexConfig() throws IOException {
+        Path traderyDir = Paths.get(System.getProperty("user.home"), ".tradery");
+        Path codexDir = traderyDir.resolve(".codex");
+        Files.createDirectories(codexDir);
+
+        String codexConfig = """
+            # Tradery MCP server — gives Codex access to strategy, phase, and market data tools
+            [mcp_servers.tradery]
+            command = "node"
+            args = ["%s"]
+            """.formatted(getServerPath());
+
+        Files.writeString(codexDir.resolve("config.toml"), codexConfig);
     }
 
     private static void copyResource(String resourceName, Path target) throws IOException {

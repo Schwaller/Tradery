@@ -9,7 +9,6 @@ import com.tradery.ai.AiProfile;
 import com.tradery.ai.AiProvider;
 import com.tradery.news.fetch.RssFetcher;
 import com.tradery.news.ui.coin.CoinEntity;
-import com.tradery.news.ui.coin.CoinRelationship;
 import com.tradery.news.ui.coin.EntityStore;
 import com.tradery.news.ui.coin.SchemaRegistry;
 import com.tradery.news.ui.coin.SchemaType;
@@ -17,6 +16,7 @@ import com.tradery.ui.settings.SettingsDialog;
 
 import javax.swing.*;
 import java.awt.*;
+import java.nio.file.Path;
 import java.util.*;
 import java.util.List;
 import java.util.function.Consumer;
@@ -33,11 +33,25 @@ public class IntelSettingsDialog extends SettingsDialog {
     }
 
     private EntityStore getEntityStore() {
-        return (getOwner() instanceof IntelFrame frame) ? frame.getEntityStore() : null;
+        if (getOwner() instanceof IntelDocumentFrame frame) return frame.getEntityStore();
+        if (getOwner() instanceof IntelFrame frame) return frame.getEntityStore();
+        return null;
     }
 
     private SchemaRegistry getSchemaRegistry() {
-        return (getOwner() instanceof IntelFrame frame) ? frame.getSchemaRegistry() : null;
+        if (getOwner() instanceof IntelDocumentFrame frame) return frame.getSchemaRegistry();
+        if (getOwner() instanceof IntelFrame frame) return frame.getSchemaRegistry();
+        return null;
+    }
+
+    private DocumentServices getDocumentServices() {
+        if (getOwner() instanceof IntelDocumentFrame frame) return frame.getDocumentServices();
+        return null;
+    }
+
+    private Path getDocDir() {
+        if (getOwner() instanceof IntelDocumentFrame frame) return frame.getDocDir();
+        return null;
     }
 
     @Override
@@ -68,32 +82,7 @@ public class IntelSettingsDialog extends SettingsDialog {
         };
         loadPanels.run();
 
-        panelList.setCellRenderer(new ListCellRenderer<>() {
-            @Override
-            public Component getListCellRendererComponent(JList<? extends PanelConfig> list, PanelConfig pc,
-                                                           int index, boolean isSelected, boolean cellHasFocus) {
-                JPanel cell = new JPanel(new BorderLayout(8, 0));
-                cell.setBorder(BorderFactory.createEmptyBorder(4, 8, 4, 8));
-                cell.setBackground(isSelected ? list.getSelectionBackground() : list.getBackground());
-
-                JLabel nameLabel = new JLabel(pc.getName());
-                nameLabel.setFont(nameLabel.getFont().deriveFont(Font.BOLD));
-                nameLabel.setForeground(isSelected ? list.getSelectionForeground() : list.getForeground());
-
-                String badge = pc.getType() == PanelConfig.PanelType.NEWS_MAP ? "News Map" : "Coin Graph";
-                JLabel typeLabel = new JLabel(badge);
-                typeLabel.setForeground(UIManager.getColor("Label.disabledForeground"));
-                typeLabel.setFont(typeLabel.getFont().deriveFont(typeLabel.getFont().getSize2D() - 1f));
-
-                JPanel textPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 0));
-                textPanel.setOpaque(false);
-                textPanel.add(nameLabel);
-                textPanel.add(typeLabel);
-                cell.add(textPanel, BorderLayout.CENTER);
-
-                return cell;
-            }
-        });
+        panelList.setCellRenderer(new PanelCellRenderer());
 
         JScrollPane scroll = new JScrollPane(panelList);
         scroll.setPreferredSize(new Dimension(0, 120));
@@ -332,16 +321,18 @@ public class IntelSettingsDialog extends SettingsDialog {
         fieldGbc.gridx = 1; fieldGbc.gridy = row++;
 
         // Build entity type checkboxes from schema registry
-        String[] entityTypeNames = {"coin", "l2", "etf", "etp", "dat", "vc", "exchange", "foundation", "company"};
         JPanel typesPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 2));
         typesPanel.setOpaque(false);
         Map<String, JCheckBox> typeCheckboxes = new LinkedHashMap<>();
         Set<String> existingFilter = existing != null ? existing.getEntityTypeFilter() : null;
-        for (String typeName : entityTypeNames) {
-            JCheckBox cb = new JCheckBox(typeName);
-            cb.setSelected(existingFilter == null || existingFilter.contains(typeName));
-            typeCheckboxes.put(typeName, cb);
-            typesPanel.add(cb);
+        SchemaRegistry registry = getSchemaRegistry();
+        if (registry != null) {
+            for (SchemaType st : registry.entityTypes()) {
+                JCheckBox cb = new JCheckBox(st.name());
+                cb.setSelected(existingFilter == null || existingFilter.contains(st.id()));
+                typeCheckboxes.put(st.id(), cb);
+                typesPanel.add(cb);
+            }
         }
         formPanel.add(typesPanel, fieldGbc);
 
@@ -368,11 +359,13 @@ public class IntelSettingsDialog extends SettingsDialog {
         relTypesPanel.setOpaque(false);
         Map<String, JCheckBox> relTypeCheckboxes = new LinkedHashMap<>();
         Set<String> existingRelFilter = existing != null ? existing.getRelationshipTypeFilter() : null;
-        for (CoinRelationship.Type rt : CoinRelationship.Type.values()) {
-            JCheckBox cb = new JCheckBox(rt.label());
-            cb.setSelected(existingRelFilter == null || existingRelFilter.contains(rt.name().toLowerCase()));
-            relTypeCheckboxes.put(rt.name().toLowerCase(), cb);
-            relTypesPanel.add(cb);
+        if (registry != null) {
+            for (SchemaType rt : registry.relationshipTypes()) {
+                JCheckBox cb = new JCheckBox(rt.label() != null ? rt.label() : rt.name());
+                cb.setSelected(existingRelFilter == null || existingRelFilter.contains(rt.id()));
+                relTypeCheckboxes.put(rt.id(), cb);
+                relTypesPanel.add(cb);
+            }
         }
         formPanel.add(relTypesPanel, fieldGbc);
 
@@ -654,7 +647,9 @@ public class IntelSettingsDialog extends SettingsDialog {
     }
 
     private void notifyPanelsChanged() {
-        if (getOwner() instanceof IntelFrame frame) {
+        if (getOwner() instanceof IntelDocumentFrame frame) {
+            frame.rebuildPanels();
+        } else if (getOwner() instanceof IntelFrame frame) {
             frame.rebuildPanels();
         }
     }
@@ -668,39 +663,7 @@ public class IntelSettingsDialog extends SettingsDialog {
         DefaultListModel<RssFetcher> listModel = new DefaultListModel<>();
         JList<RssFetcher> sourceList = new JList<>(listModel);
         sourceList.setFixedCellHeight(-1);
-        sourceList.setCellRenderer(new ListCellRenderer<>() {
-            @Override
-            public Component getListCellRendererComponent(JList<? extends RssFetcher> list, RssFetcher fetcher,
-                                                           int index, boolean isSelected, boolean cellHasFocus) {
-                JPanel cell = new JPanel(new BorderLayout(6, 0));
-                cell.setBorder(BorderFactory.createEmptyBorder(3, 6, 3, 6));
-                cell.setBackground(isSelected ? list.getSelectionBackground() : list.getBackground());
-
-                JCheckBox cb = new JCheckBox();
-                cb.setSelected(!config0.isFeedDisabled(fetcher.getSourceId()));
-                cb.setOpaque(false);
-                cell.add(cb, BorderLayout.WEST);
-
-                JPanel textPanel = new JPanel(new BorderLayout());
-                textPanel.setOpaque(false);
-
-                JLabel nameLabel = new JLabel(fetcher.getSourceName());
-                boolean disabled = config0.isFeedDisabled(fetcher.getSourceId());
-                nameLabel.setForeground(disabled
-                    ? UIManager.getColor("Label.disabledForeground")
-                    : (isSelected ? list.getSelectionForeground() : list.getForeground()));
-                textPanel.add(nameLabel, BorderLayout.NORTH);
-
-                JLabel urlLabel = new JLabel(fetcher.getFeedUrl());
-                urlLabel.setFont(urlLabel.getFont().deriveFont(urlLabel.getFont().getSize2D() - 1f));
-                urlLabel.setForeground(UIManager.getColor("Label.disabledForeground"));
-                textPanel.add(urlLabel, BorderLayout.SOUTH);
-
-                cell.add(textPanel, BorderLayout.CENTER);
-
-                return cell;
-            }
-        });
+        sourceList.setCellRenderer(new FeedCellRenderer(config0));
         sourceList.addMouseListener(new java.awt.event.MouseAdapter() {
             @Override
             public void mouseClicked(java.awt.event.MouseEvent e) {
@@ -842,7 +805,9 @@ public class IntelSettingsDialog extends SettingsDialog {
             if (idx >= 0 && idx < intervalValues.length) {
                 config.setFetchIntervalMinutes(intervalValues[idx]);
                 config.save();
-                if (getOwner() instanceof IntelFrame frame) {
+                if (getOwner() instanceof IntelDocumentFrame frame) {
+                    frame.updateAutoFetchTimer();
+                } else if (getOwner() instanceof IntelFrame frame) {
                     frame.updateAutoFetchTimer();
                 }
             }
@@ -873,46 +838,7 @@ public class IntelSettingsDialog extends SettingsDialog {
         };
         loadProfiles.run();
 
-        profileList.setCellRenderer(new ListCellRenderer<>() {
-            @Override
-            public Component getListCellRendererComponent(JList<? extends AiProfile> list, AiProfile profile,
-                                                           int index, boolean isSelected, boolean cellHasFocus) {
-                JPanel cell = new JPanel(new BorderLayout(8, 0));
-                cell.setBorder(BorderFactory.createEmptyBorder(4, 8, 4, 8));
-                cell.setBackground(isSelected ? list.getSelectionBackground() : list.getBackground());
-
-                boolean isDefault = profile.getId() != null && profile.getId().equals(aiConfig.getDefaultProfileId());
-
-                JPanel textPanel = new JPanel(new BorderLayout());
-                textPanel.setOpaque(false);
-
-                String nameText = (isDefault ? "\u2605 " : "") + profile.getName();
-                JLabel nameLabel = new JLabel(nameText);
-                nameLabel.setFont(nameLabel.getFont().deriveFont(Font.BOLD));
-                nameLabel.setForeground(isSelected ? list.getSelectionForeground() : list.getForeground());
-
-                JLabel providerLabel = new JLabel("[" + profile.getProvider() + "]");
-                providerLabel.setForeground(UIManager.getColor("Label.disabledForeground"));
-                providerLabel.setFont(providerLabel.getFont().deriveFont(providerLabel.getFont().getSize2D() - 1f));
-
-                JPanel topRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 0));
-                topRow.setOpaque(false);
-                topRow.add(nameLabel);
-                topRow.add(providerLabel);
-                textPanel.add(topRow, BorderLayout.NORTH);
-
-                if (profile.getDescription() != null && !profile.getDescription().isEmpty()) {
-                    JLabel descLabel = new JLabel(profile.getDescription());
-                    descLabel.setFont(descLabel.getFont().deriveFont(descLabel.getFont().getSize2D() - 1f));
-                    descLabel.setForeground(UIManager.getColor("Label.disabledForeground"));
-                    descLabel.setBorder(BorderFactory.createEmptyBorder(0, 3, 0, 0));
-                    textPanel.add(descLabel, BorderLayout.SOUTH);
-                }
-
-                cell.add(textPanel, BorderLayout.CENTER);
-                return cell;
-            }
-        });
+        profileList.setCellRenderer(new ProfileCellRenderer(aiConfig));
 
         JScrollPane scroll = new JScrollPane(profileList);
         scroll.setPreferredSize(new Dimension(0, 140));
@@ -1405,6 +1331,104 @@ public class IntelSettingsDialog extends SettingsDialog {
             return java.util.HexFormat.of().formatHex(hash).substring(0, 16);
         } catch (Exception e) {
             return String.valueOf(url.hashCode());
+        }
+    }
+
+    // --- Reusable cell renderers (rubber-stamp pattern) ---
+
+    private static class PanelCellRenderer extends JPanel implements ListCellRenderer<PanelConfig> {
+        private final JLabel nameLabel = new JLabel();
+        private final JLabel typeLabel = new JLabel();
+
+        PanelCellRenderer() {
+            setLayout(new FlowLayout(FlowLayout.LEFT, 6, 0));
+            setBorder(BorderFactory.createEmptyBorder(4, 8, 4, 8));
+            nameLabel.setFont(nameLabel.getFont().deriveFont(Font.BOLD));
+            typeLabel.setForeground(UIManager.getColor("Label.disabledForeground"));
+            typeLabel.setFont(typeLabel.getFont().deriveFont(typeLabel.getFont().getSize2D() - 1f));
+            add(nameLabel);
+            add(typeLabel);
+        }
+
+        @Override
+        public Component getListCellRendererComponent(JList<? extends PanelConfig> list, PanelConfig pc,
+                                                       int index, boolean isSelected, boolean cellHasFocus) {
+            nameLabel.setText(pc.getName());
+            typeLabel.setText(pc.getType() == PanelConfig.PanelType.NEWS_MAP ? "News Map" : "Coin Graph");
+            setBackground(isSelected ? list.getSelectionBackground() : list.getBackground());
+            nameLabel.setForeground(isSelected ? list.getSelectionForeground() : list.getForeground());
+            return this;
+        }
+    }
+
+    private static class FeedCellRenderer extends JPanel implements ListCellRenderer<RssFetcher> {
+        private final JCheckBox cb = new JCheckBox();
+        private final JLabel nameLabel = new JLabel();
+        private final JLabel urlLabel = new JLabel();
+        private final IntelConfig config;
+
+        FeedCellRenderer(IntelConfig config) {
+            this.config = config;
+            setLayout(new BorderLayout(6, 0));
+            setBorder(BorderFactory.createEmptyBorder(3, 6, 3, 6));
+            cb.setOpaque(false);
+            add(cb, BorderLayout.WEST);
+
+            JPanel textPanel = new JPanel(new BorderLayout());
+            textPanel.setOpaque(false);
+            textPanel.add(nameLabel, BorderLayout.NORTH);
+            urlLabel.setFont(urlLabel.getFont().deriveFont(urlLabel.getFont().getSize2D() - 1f));
+            urlLabel.setForeground(UIManager.getColor("Label.disabledForeground"));
+            textPanel.add(urlLabel, BorderLayout.SOUTH);
+            add(textPanel, BorderLayout.CENTER);
+        }
+
+        @Override
+        public Component getListCellRendererComponent(JList<? extends RssFetcher> list, RssFetcher fetcher,
+                                                       int index, boolean isSelected, boolean cellHasFocus) {
+            boolean disabled = config.isFeedDisabled(fetcher.getSourceId());
+            cb.setSelected(!disabled);
+            nameLabel.setText(fetcher.getSourceName());
+            nameLabel.setForeground(disabled
+                ? UIManager.getColor("Label.disabledForeground")
+                : (isSelected ? list.getSelectionForeground() : list.getForeground()));
+            urlLabel.setText(fetcher.getFeedUrl());
+            setBackground(isSelected ? list.getSelectionBackground() : list.getBackground());
+            return this;
+        }
+    }
+
+    private static class ProfileCellRenderer extends JPanel implements ListCellRenderer<AiProfile> {
+        private final JLabel nameLabel = new JLabel();
+        private final JLabel descLabel = new JLabel();
+        private final AiConfig aiConfig;
+
+        ProfileCellRenderer(AiConfig aiConfig) {
+            this.aiConfig = aiConfig;
+            setLayout(new BorderLayout(4, 0));
+            setBorder(BorderFactory.createEmptyBorder(4, 8, 4, 8));
+
+            nameLabel.setFont(nameLabel.getFont().deriveFont(Font.BOLD));
+            descLabel.setFont(descLabel.getFont().deriveFont(descLabel.getFont().getSize2D() - 1f));
+            descLabel.setForeground(UIManager.getColor("Label.disabledForeground"));
+
+            add(nameLabel, BorderLayout.NORTH);
+            add(descLabel, BorderLayout.SOUTH);
+        }
+
+        @Override
+        public Component getListCellRendererComponent(JList<? extends AiProfile> list, AiProfile profile,
+                                                       int index, boolean isSelected, boolean cellHasFocus) {
+            boolean isDefault = profile.getId() != null && profile.getId().equals(aiConfig.getDefaultProfileId());
+            String name = (isDefault ? "\u2605 " : "") + profile.getName();
+            String provider = " [" + profile.getProvider() + "]";
+            nameLabel.setText(name + provider);
+            descLabel.setVisible(profile.getDescription() != null && !profile.getDescription().isEmpty());
+            descLabel.setText(profile.getDescription() != null ? profile.getDescription() : "");
+            setBackground(isSelected ? list.getSelectionBackground() : list.getBackground());
+            nameLabel.setForeground(isSelected ? list.getSelectionForeground() : list.getForeground());
+            setOpaque(true);
+            return this;
         }
     }
 }

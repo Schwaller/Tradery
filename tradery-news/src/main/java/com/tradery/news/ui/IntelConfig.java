@@ -7,13 +7,12 @@ import com.tradery.ai.AiConfig;
 import com.tradery.ai.AiProfile;
 import com.tradery.ai.AiProvider;
 
-import javax.swing.*;
-import java.awt.*;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
 import java.util.List;
+import java.util.UUID;
 
 /**
  * Configuration for the Intelligence app.
@@ -43,6 +42,21 @@ public class IntelConfig {
     private int settingsX = -1;
     private int settingsY = -1;
 
+    // Launcher window settings
+    private int launcherWidth = -1;
+    private int launcherHeight = -1;
+    private int launcherX = -1;
+    private int launcherY = -1;
+
+    // Last opened document
+    private String lastOpenedDocId;
+
+    // User identity for sharing
+    private String userEmail;
+
+    // Unique device ID (generated on first load, persists across sessions)
+    private String deviceId;
+
     // Data structure window settings
     private int dataStructureWidth = -1;
     private int dataStructureHeight = -1;
@@ -70,33 +84,12 @@ public class IntelConfig {
     // Panel configurations
     private List<PanelConfig> panels = new ArrayList<>();
 
+    // Friends
+    private List<FriendConfig> friends = new ArrayList<>();
+
     // News fetch settings (0 = manual only)
     private int fetchIntervalMinutes = 0;
     private Set<String> disabledFeedIds = new HashSet<>();
-
-    // Theme settings (shared with forge via theme.txt)
-    private static final Path THEME_PATH = Path.of(
-        System.getProperty("user.home"), ".tradery", "theme.txt"
-    );
-    private static final Map<String, String> THEMES = new LinkedHashMap<>();
-    static {
-        THEMES.put("Hiberbee Dark", "com.formdev.flatlaf.intellijthemes.FlatHiberbeeDarkIJTheme");
-        THEMES.put("Flat Dark", "com.formdev.flatlaf.FlatDarkLaf");
-        THEMES.put("Flat Light", "com.formdev.flatlaf.FlatLightLaf");
-        THEMES.put("Flat Darcula", "com.formdev.flatlaf.FlatDarculaLaf");
-        THEMES.put("macOS Dark", "com.formdev.flatlaf.themes.FlatMacDarkLaf");
-        THEMES.put("macOS Light", "com.formdev.flatlaf.themes.FlatMacLightLaf");
-        THEMES.put("Arc Dark", "com.formdev.flatlaf.intellijthemes.FlatArcDarkIJTheme");
-        THEMES.put("Dracula", "com.formdev.flatlaf.intellijthemes.FlatDraculaIJTheme");
-        THEMES.put("Nord", "com.formdev.flatlaf.intellijthemes.FlatNordIJTheme");
-        THEMES.put("One Dark", "com.formdev.flatlaf.intellijthemes.FlatOneDarkIJTheme");
-        THEMES.put("Monokai Pro", "com.formdev.flatlaf.intellijthemes.FlatMonokaiProIJTheme");
-        THEMES.put("Solarized Dark", "com.formdev.flatlaf.intellijthemes.FlatSolarizedDarkIJTheme");
-        THEMES.put("Solarized Light", "com.formdev.flatlaf.intellijthemes.FlatSolarizedLightIJTheme");
-        THEMES.put("Gruvbox Dark", "com.formdev.flatlaf.intellijthemes.FlatGruvboxDarkHardIJTheme");
-        THEMES.put("Material Oceanic", "com.formdev.flatlaf.intellijthemes.materialthemeuilite.FlatMaterialOceanicIJTheme");
-        THEMES.put("Carbon", "com.formdev.flatlaf.intellijthemes.FlatCarbonIJTheme");
-    }
 
     // Default hidden topics
     private static final Set<String> DEFAULT_HIDDEN_TOPICS = Set.of("crypto");
@@ -193,6 +186,28 @@ public class IntelConfig {
     public void setSettingsY(int settingsY) {
         this.settingsY = settingsY;
     }
+
+    // Launcher window
+    public int getLauncherWidth() { return launcherWidth; }
+    public void setLauncherWidth(int launcherWidth) { this.launcherWidth = launcherWidth; }
+    public int getLauncherHeight() { return launcherHeight; }
+    public void setLauncherHeight(int launcherHeight) { this.launcherHeight = launcherHeight; }
+    public int getLauncherX() { return launcherX; }
+    public void setLauncherX(int launcherX) { this.launcherX = launcherX; }
+    public int getLauncherY() { return launcherY; }
+    public void setLauncherY(int launcherY) { this.launcherY = launcherY; }
+
+    // Last opened document
+    public String getLastOpenedDocId() { return lastOpenedDocId; }
+    public void setLastOpenedDocId(String lastOpenedDocId) { this.lastOpenedDocId = lastOpenedDocId; }
+
+    // User identity
+    public String getUserEmail() { return userEmail; }
+    public void setUserEmail(String userEmail) { this.userEmail = userEmail; }
+
+    // Device ID
+    public String getDeviceId() { return deviceId; }
+    public void setDeviceId(String deviceId) { this.deviceId = deviceId; }
 
     // Data structure window
     public int getDataStructureWidth() {
@@ -374,6 +389,31 @@ public class IntelConfig {
         return null;
     }
 
+    // ==================== Friends ====================
+
+    public List<FriendConfig> getFriends() { return friends; }
+
+    public void setFriends(List<FriendConfig> friends) {
+        this.friends = friends != null ? friends : new ArrayList<>();
+    }
+
+    public void addFriend(FriendConfig friend) {
+        friends.removeIf(f -> friend.getEmail().equalsIgnoreCase(f.getEmail()));
+        friends.add(friend);
+    }
+
+    public void removeFriend(String email) {
+        friends.removeIf(f -> email.equalsIgnoreCase(f.getEmail()));
+    }
+
+    @JsonIgnore
+    public FriendConfig getFriendByEmail(String email) {
+        for (FriendConfig f : friends) {
+            if (email.equalsIgnoreCase(f.getEmail())) return f;
+        }
+        return null;
+    }
+
     // ==================== Fetch Settings ====================
 
     public int getFetchIntervalMinutes() {
@@ -402,57 +442,6 @@ public class IntelConfig {
         } else {
             disabledFeedIds.remove(feedId);
         }
-    }
-
-    // ==================== Theme Settings ====================
-
-    public static List<String> getAvailableThemes() {
-        return new ArrayList<>(THEMES.keySet());
-    }
-
-    public static String getCurrentTheme() {
-        try {
-            if (Files.exists(THEME_PATH)) {
-                String theme = Files.readString(THEME_PATH).trim();
-                if (THEMES.containsKey(theme)) {
-                    return theme;
-                }
-            }
-        } catch (IOException e) {
-            // Ignore
-        }
-        return "Hiberbee Dark";
-    }
-
-    public static void setTheme(String themeName) {
-        if (!THEMES.containsKey(themeName)) return;
-
-        try {
-            Files.createDirectories(THEME_PATH.getParent());
-            Files.writeString(THEME_PATH, themeName);
-        } catch (IOException e) {
-            System.err.println("Failed to save theme: " + e.getMessage());
-        }
-
-        applyTheme(themeName);
-    }
-
-    public static void applyTheme(String themeName) {
-        String className = THEMES.get(themeName);
-        if (className == null) return;
-
-        try {
-            UIManager.setLookAndFeel(className);
-            for (Window window : Window.getWindows()) {
-                SwingUtilities.updateComponentTreeUI(window);
-            }
-        } catch (Exception e) {
-            System.err.println("Failed to apply theme: " + e.getMessage());
-        }
-    }
-
-    public static void applyCurrentTheme() {
-        applyTheme(getCurrentTheme());
     }
 
     // ==================== Persistence ====================
@@ -527,6 +516,12 @@ public class IntelConfig {
             AiConfig.get().addProfile(profile);
             AiConfig.get().setDefaultProfileId(profile.getId());
             AiConfig.get().save();
+        }
+
+        // Generate device ID on first load
+        if (config.deviceId == null) {
+            config.deviceId = UUID.randomUUID().toString();
+            config.save();
         }
 
         // Seed default panels if none exist

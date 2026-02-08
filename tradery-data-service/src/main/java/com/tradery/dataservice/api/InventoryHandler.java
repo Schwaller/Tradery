@@ -65,27 +65,63 @@ public class InventoryHandler {
         try {
             File dataDir = DataConfig.getInstance().getDataDir();
             Map<String, Long> bySymbol = new LinkedHashMap<>();
+            Map<String, Long> byDataType = new LinkedHashMap<>();
             long total = 0;
 
             if (dataDir != null && dataDir.exists()) {
-                File[] dbFiles = dataDir.listFiles((dir, name) -> name.endsWith(".db"));
-                if (dbFiles != null) {
-                    Arrays.sort(dbFiles, Comparator.comparing(File::getName));
-                    for (File f : dbFiles) {
-                        String name = f.getName();
-                        String key = name.substring(0, name.length() - 3); // strip .db
-                        long size = f.length();
-                        bySymbol.put(key, size);
-                        total += size;
+                // Scan subdirectories (new format: one dir per symbol)
+                File[] dirs = dataDir.listFiles(File::isDirectory);
+                if (dirs != null) {
+                    Arrays.sort(dirs, Comparator.comparing(File::getName));
+                    for (File dir : dirs) {
+                        if (dir.getName().startsWith("__")) continue; // skip __global
+                        long symbolTotal = 0;
+                        // Per-DB-file sizes
+                        File[] dbFiles = dir.listFiles((d, name) -> name.endsWith(".db"));
+                        if (dbFiles != null) {
+                            for (File db : dbFiles) {
+                                long dbSize = db.length();
+                                // Add WAL/SHM companion sizes
+                                File wal = new File(dir, db.getName() + "-wal");
+                                File shm = new File(dir, db.getName() + "-shm");
+                                if (wal.exists()) dbSize += wal.length();
+                                if (shm.exists()) dbSize += shm.length();
+                                symbolTotal += dbSize;
+                                // Key: "BTCUSDT:candles.db" -> size
+                                byDataType.put(dir.getName() + ":" + db.getName(), dbSize);
+                            }
+                        }
+                        if (symbolTotal > 0) {
+                            bySymbol.put(dir.getName(), symbolTotal);
+                            total += symbolTotal;
+                        }
                     }
+                }
+                // Also include __global
+                File globalDir = new File(dataDir, "__global");
+                if (globalDir.isDirectory()) {
+                    total += sumDbFileSizes(globalDir);
                 }
             }
 
-            ctx.json(new DiskUsageResponse(total, bySymbol));
+            long volumeFree = (dataDir != null && dataDir.exists()) ? dataDir.getUsableSpace() : 0;
+            long volumeTotal = (dataDir != null && dataDir.exists()) ? dataDir.getTotalSpace() : 0;
+            ctx.json(new DiskUsageResponse(total, bySymbol, byDataType, volumeFree, volumeTotal));
         } catch (Exception e) {
             LOG.error("Failed to get disk usage", e);
             ctx.status(500).json(new ErrorResponse(e.getMessage()));
         }
+    }
+
+    private long sumDbFileSizes(File dir) {
+        long size = 0;
+        File[] files = dir.listFiles((d, name) -> name.endsWith(".db") || name.endsWith("-wal") || name.endsWith("-shm"));
+        if (files != null) {
+            for (File f : files) {
+                size += f.length();
+            }
+        }
+        return size;
     }
 
     /**
@@ -143,7 +179,7 @@ public class InventoryHandler {
      */
     private SymbolInventory buildSymbolInventory(String symbol) throws Exception {
         SqliteDataStore.SymbolData data = dataStore.forSymbol(symbol);
-        List<CoverageDao.CoverageEntry> allCoverage = data.coverage().getAllCoverage();
+        List<CoverageDao.CoverageEntry> allCoverage = data.getAllCoverage();
 
         List<CandleInventory> candles = new ArrayList<>();
         List<AggTradesInventory> aggTrades = new ArrayList<>();
@@ -266,10 +302,10 @@ public class InventoryHandler {
         if (dataDir == null || !dataDir.exists()) return 0;
 
         long total = 0;
-        File[] dbFiles = dataDir.listFiles((dir, name) -> name.endsWith(".db"));
-        if (dbFiles != null) {
-            for (File f : dbFiles) {
-                total += f.length();
+        File[] dirs = dataDir.listFiles(File::isDirectory);
+        if (dirs != null) {
+            for (File dir : dirs) {
+                total += sumDbFileSizes(dir);
             }
         }
         return total;
@@ -382,7 +418,7 @@ public class InventoryHandler {
 
     public record FearGreedInventory(long startTime, long endTime, int recordCount, int latestValue) {}
 
-    public record DiskUsageResponse(long totalBytes, Map<String, Long> bySymbol, long volumeFreeBytes, long volumeTotalBytes) {}
+    public record DiskUsageResponse(long totalBytes, Map<String, Long> bySymbol, Map<String, Long> byDataType, long volumeFreeBytes, long volumeTotalBytes) {}
 
     public record DeleteResponse(long deletedRecords) {}
 

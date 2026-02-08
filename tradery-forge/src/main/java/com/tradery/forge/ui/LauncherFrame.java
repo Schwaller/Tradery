@@ -131,7 +131,7 @@ public class LauncherFrame extends JFrame {
         newButton = new JButton("New Project");
         newButton.addActionListener(e -> createProject());
 
-        manageDataButton = new JButton("Manage Data");
+        manageDataButton = new JButton("Data Service");
         manageDataButton.addActionListener(e -> {
             DataServiceClient dataServiceClient = ApplicationContext.getInstance().getDataServiceClient();
             com.tradery.data.ui.DataManagementDialog.show(this, dataServiceClient, () -> {
@@ -142,6 +142,21 @@ public class LauncherFrame extends JFrame {
                     () -> { /* refresh handled by dialog timer */ });
             });
         });
+
+        // Periodically update button text with disk usage
+        Timer diskTimer = new Timer(30_000, e -> Thread.startVirtualThread(() -> {
+            try {
+                DataServiceClient dsc = ApplicationContext.getInstance().getDataServiceClient();
+                if (dsc == null) return;
+                var usage = dsc.getDiskUsage();
+                String size = formatDiskSize(usage.totalBytes());
+                SwingUtilities.invokeLater(() -> manageDataButton.setText("Data Service (" + size + ")"));
+            } catch (Exception ex) {
+                System.err.println("Disk usage fetch failed: " + ex.getMessage());
+            }
+        }));
+        diskTimer.setInitialDelay(3000);
+        diskTimer.start();
 
         settingsButton = new JButton("Settings");
         settingsButton.setToolTipText("Configure theme and data storage");
@@ -704,6 +719,13 @@ public class LauncherFrame extends JFrame {
             fileWatcher.stop();
         }
         super.dispose();
+    }
+
+    private static String formatDiskSize(long bytes) {
+        if (bytes < 1024) return bytes + " B";
+        if (bytes < 1024 * 1024) return String.format("%.1f KB", bytes / 1024.0);
+        if (bytes < 1024L * 1024 * 1024) return String.format("%.1f MB", bytes / (1024.0 * 1024));
+        return String.format("%.1f GB", bytes / (1024.0 * 1024 * 1024));
     }
 
     /**

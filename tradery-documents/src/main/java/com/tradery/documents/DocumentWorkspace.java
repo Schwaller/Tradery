@@ -19,6 +19,8 @@ public class DocumentWorkspace implements AutoCloseable {
     private final SchemaRegistry schemaRegistry;
     private final DataSourceRegistry dataSourceRegistry;
 
+    private final boolean ownsEntityStore;
+
     public DocumentWorkspace(Document document, Path documentDir) {
         this.document = document;
         this.documentDir = documentDir;
@@ -27,6 +29,17 @@ public class DocumentWorkspace implements AutoCloseable {
         this.entityStore = new EntityStore(dbPath);
         this.schemaRegistry = new SchemaRegistry(entityStore);
         this.dataSourceRegistry = new DataSourceRegistry(entityStore, schemaRegistry);
+        this.ownsEntityStore = true;
+    }
+
+    /** Constructor that reuses an existing EntityStore (avoids duplicate SQLite connections). */
+    public DocumentWorkspace(Document document, Path documentDir, EntityStore entityStore) {
+        this.document = document;
+        this.documentDir = documentDir;
+        this.entityStore = entityStore;
+        this.schemaRegistry = new SchemaRegistry(entityStore);
+        this.dataSourceRegistry = new DataSourceRegistry(entityStore, schemaRegistry);
+        this.ownsEntityStore = false;
     }
 
     public Document document() { return document; }
@@ -37,6 +50,8 @@ public class DocumentWorkspace implements AutoCloseable {
 
     @Override
     public void close() {
-        entityStore.close();
+        if (ownsEntityStore) {
+            entityStore.close();
+        }
     }
 }

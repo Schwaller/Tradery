@@ -8,9 +8,6 @@ import java.awt.*;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.text.DecimalFormat;
-import java.time.Instant;
-import java.time.ZoneOffset;
-import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.List;
 import java.util.function.BiConsumer;
@@ -30,14 +27,16 @@ public class DataBrowserPanel extends JPanel {
     private static final int ROW_HEIGHT = 24;
     private static final int INDENT = 20;
     private static final DecimalFormat COUNT_FORMAT = new DecimalFormat("#,###");
-    private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ofPattern("yy-MM-dd").withZone(ZoneOffset.UTC);
-    private static final DateTimeFormatter MONTH_FMT = DateTimeFormatter.ofPattern("yy-MM").withZone(ZoneOffset.UTC);
+
 
     private final DataServiceClient client;
     private final List<RowData> rows = new ArrayList<>();
 
-    // Cached inventory
+    // Cached data
     private volatile InventoryResponse inventory;
+    private Map<String, Long> symbolSizes = Map.of();
+    private Map<String, Long> dataTypeSizes = Map.of();
+    private Map<String, List<DataServiceClient.ExchangeMarketStats>> exchangeStats = Map.of();
 
     private String selectedSymbol;
     private String selectedResolution; // timeframe, "aggTrades", "funding", "openInterest", "premiumIndex", "fearGreed"
@@ -129,8 +128,26 @@ public class DataBrowserPanel extends JPanel {
             try {
                 if (client == null) return;
                 InventoryResponse inv = client.getInventory();
+                Map<String, Long> sizes = Map.of();
+                Map<String, Long> dtSizes = Map.of();
+                try {
+                    DiskUsageResponse du = client.getDiskUsage();
+                    if (du.bySymbol() != null) sizes = du.bySymbol();
+                    if (du.byDataType() != null) dtSizes = du.byDataType();
+                } catch (Exception ignored) {}
+                Map<String, List<DataServiceClient.ExchangeMarketStats>> exStats = Map.of();
+                try {
+                    DataServiceClient.SymbolStats ss = client.getSymbolStats();
+                    if (ss.byExchange() != null) exStats = ss.byExchange();
+                } catch (Exception ignored) {}
+                Map<String, Long> finalSizes = sizes;
+                Map<String, Long> finalDtSizes = dtSizes;
+                Map<String, List<DataServiceClient.ExchangeMarketStats>> finalExStats = exStats;
                 SwingUtilities.invokeLater(() -> {
                     this.inventory = inv;
+                    this.symbolSizes = finalSizes;
+                    this.dataTypeSizes = finalDtSizes;
+                    this.exchangeStats = finalExStats;
                     rebuildRows();
                     revalidate();
                     repaint();
@@ -149,6 +166,20 @@ public class DataBrowserPanel extends JPanel {
         List<SymbolInventory> symbols = (inventory != null && inventory.symbols() != null)
             ? inventory.symbols() : List.of();
 
+        // === Symbols & Pairs ===
+        rows.add(RowData.sectionHeader("Symbols & Pairs"));
+        if (!exchangeStats.isEmpty()) {
+            for (var entry : exchangeStats.entrySet()) {
+                String exchange = entry.getKey();
+                int totalPairs = entry.getValue().stream().mapToInt(DataServiceClient.ExchangeMarketStats::pairCount).sum();
+                String info = totalPairs + " pairs";
+                rows.add(new RowData(null, "exchange", exchange, null, null,
+                    true, false, false, false, 1, formatExchange(exchange), info, null));
+            }
+        } else {
+            rows.add(RowData.emptyLabel("No exchange data"));
+        }
+
         // === Candles ===
         rows.add(RowData.sectionHeader("Candles (OHLCV)"));
         boolean hasCandles = symbols.stream().anyMatch(s -> s.candles() != null && !s.candles().isEmpty());
@@ -156,13 +187,12 @@ public class DataBrowserPanel extends JPanel {
             for (SymbolInventory sym : symbols) {
                 if (sym.candles() == null || sym.candles().isEmpty()) continue;
 
-                rows.add(RowData.symbolHeader(sym.symbol()));
+                rows.add(symbolHeaderWithSize(sym.symbol(), "candles.db"));
 
                 for (CandleInventory c : sym.candles()) {
                     String label = formatExchange(c.exchange()) + " " + formatMarketType(c.marketType()) + " " + c.timeframe();
-                    String info = formatTimeRange(c.startTime(), c.endTime()) + " (" + COUNT_FORMAT.format(c.recordCount()) + ")";
                     rows.add(new RowData(sym.symbol(), c.timeframe(), c.exchange(), c.marketType(), null,
-                        true, false, false, false, 2, label, info, COMPLETE_COLOR));
+                        true, false, false, false, 2, label, null, COMPLETE_COLOR));
                 }
             }
         } else {
@@ -176,23 +206,12 @@ public class DataBrowserPanel extends JPanel {
             for (SymbolInventory sym : symbols) {
                 if (sym.aggTrades() == null || sym.aggTrades().isEmpty()) continue;
 
-                rows.add(RowData.symbolHeader(sym.symbol()));
+                rows.add(symbolHeaderWithSize(sym.symbol(), "agg_trades.db"));
 
                 for (AggTradesInventory at : sym.aggTrades()) {
-                    String dateRange = formatTimeRange(at.startTime(), at.endTime());
-                    long days = (at.endTime() - at.startTime()) / 86_400_000L;
-                    String info;
-                    if (at.recordCount() > 0) {
-                        String countStr = at.recordCount() >= 1_000_000
-                            ? String.format("%.1fM", at.recordCount() / 1_000_000.0)
-                            : COUNT_FORMAT.format(at.recordCount());
-                        info = dateRange + " (" + days + "d, " + countStr + ")";
-                    } else {
-                        info = dateRange + " (" + days + "d)";
-                    }
                     String label = formatExchange(at.exchange()) + " " + formatMarketType(at.marketType());
                     rows.add(new RowData(sym.symbol(), "aggTrades", at.exchange(), at.marketType(), null,
-                        true, false, false, false, 2, label, info, COMPLETE_COLOR));
+                        true, false, false, false, 2, label, null, COMPLETE_COLOR));
                 }
             }
         } else {
@@ -205,12 +224,9 @@ public class DataBrowserPanel extends JPanel {
         if (hasFunding) {
             for (SymbolInventory sym : symbols) {
                 if (sym.funding() == null) continue;
-                FundingInventory f = sym.funding();
-                long days = (f.endTime() - f.startTime()) / 86_400_000L;
-                String info = formatTimeRange(f.startTime(), f.endTime()) + " (" + days + "d, " + COUNT_FORMAT.format(f.recordCount()) + ")";
-                rows.add(RowData.symbolHeader(sym.symbol()));
+                rows.add(symbolHeaderWithSize(sym.symbol(), "funding_rates.db"));
                 rows.add(new RowData(sym.symbol(), "fundingRate", "binance", "perp", null,
-                    true, false, false, false, 2, "Binance Futures", info, COMPLETE_COLOR));
+                    true, false, false, false, 2, "Binance Futures", null, COMPLETE_COLOR));
             }
         } else {
             rows.add(RowData.emptyLabel("No funding data"));
@@ -222,12 +238,9 @@ public class DataBrowserPanel extends JPanel {
         if (hasOi) {
             for (SymbolInventory sym : symbols) {
                 if (sym.openInterest() == null) continue;
-                OpenInterestInventory oi = sym.openInterest();
-                long days = (oi.endTime() - oi.startTime()) / 86_400_000L;
-                String info = formatTimeRange(oi.startTime(), oi.endTime()) + " (" + days + "d, " + COUNT_FORMAT.format(oi.recordCount()) + ")";
-                rows.add(RowData.symbolHeader(sym.symbol()));
+                rows.add(symbolHeaderWithSize(sym.symbol(), "open_interest.db"));
                 rows.add(new RowData(sym.symbol(), "openInterest", "binance", "perp", null,
-                    true, false, false, false, 2, "Binance Futures", info, COMPLETE_COLOR));
+                    true, false, false, false, 2, "Binance Futures", null, COMPLETE_COLOR));
             }
         } else {
             rows.add(RowData.emptyLabel("No open interest data"));
@@ -239,12 +252,10 @@ public class DataBrowserPanel extends JPanel {
         if (hasPremium) {
             for (SymbolInventory sym : symbols) {
                 if (sym.premiumIndex() == null || sym.premiumIndex().isEmpty()) continue;
-                rows.add(RowData.symbolHeader(sym.symbol()));
+                rows.add(symbolHeaderWithSize(sym.symbol(), "premium_index.db"));
                 for (PremiumIndexInventory pi : sym.premiumIndex()) {
-                    long days = (pi.endTime() - pi.startTime()) / 86_400_000L;
-                    String info = formatTimeRange(pi.startTime(), pi.endTime()) + " (" + days + "d, " + COUNT_FORMAT.format(pi.recordCount()) + ")";
                     rows.add(new RowData(sym.symbol(), "premiumIndex", "binance", "perp", pi.interval(),
-                        true, false, false, false, 2, "Binance " + pi.interval(), info, COMPLETE_COLOR));
+                        true, false, false, false, 2, "Binance " + pi.interval(), null, COMPLETE_COLOR));
                 }
             }
         } else {
@@ -255,9 +266,8 @@ public class DataBrowserPanel extends JPanel {
         rows.add(RowData.sectionHeader("Fear & Greed Index"));
         if (inventory != null && inventory.fearGreed() != null) {
             FearGreedInventory fg = inventory.fearGreed();
-            String info = formatTimeRange(fg.startTime(), fg.endTime()) + " (" + COUNT_FORMAT.format(fg.recordCount()) + " entries)";
             rows.add(new RowData(null, "fearGreed", null, null, null,
-                true, false, false, false, 1, "Global", info, COMPLETE_COLOR));
+                true, false, false, false, 1, "Global", COUNT_FORMAT.format(fg.recordCount()) + " entries", COMPLETE_COLOR));
         } else {
             rows.add(RowData.emptyLabel("No fear & greed data"));
         }
@@ -275,7 +285,7 @@ public class DataBrowserPanel extends JPanel {
             RowData row = rows.get(i);
 
             if (row.isSectionHeader) {
-                drawSectionHeader(g2, row.label, y);
+                drawSectionHeader(g2, row.label, y, i > 0);
                 y += ROW_HEIGHT;
                 continue;
             }
@@ -320,16 +330,19 @@ public class DataBrowserPanel extends JPanel {
             g2.drawString(row.label, x, y + 16);
 
             // Status dot + info (for data rows)
-            if (row.info != null && row.statusColor != null) {
+            if (row.info != null) {
                 int labelWidth = g2.getFontMetrics().stringWidth(row.label);
-                int dotX = x + labelWidth + 6;
+                int infoX = x + labelWidth + 6;
 
-                g2.setColor(row.statusColor);
-                g2.fillOval(dotX, y + 8, 8, 8);
+                if (row.statusColor != null) {
+                    g2.setColor(row.statusColor);
+                    g2.fillOval(infoX, y + 8, 8, 8);
+                    infoX += 12;
+                }
 
                 g2.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 10));
                 g2.setColor(UIManager.getColor("Label.disabledForeground"));
-                g2.drawString(row.info, dotX + 12, y + 15);
+                g2.drawString(row.info, infoX, y + 15);
             }
 
             y += ROW_HEIGHT;
@@ -348,9 +361,11 @@ public class DataBrowserPanel extends JPanel {
         return true;
     }
 
-    private void drawSectionHeader(Graphics2D g2, String title, int y) {
-        g2.setColor(UIManager.getColor("Separator.foreground"));
-        g2.drawLine(8, y + 2, getWidth() - 8, y + 2);
+    private void drawSectionHeader(Graphics2D g2, String title, int y, boolean drawSeparator) {
+        if (drawSeparator) {
+            g2.setColor(UIManager.getColor("Separator.foreground"));
+            g2.drawLine(8, y + 2, getWidth() - 8, y + 2);
+        }
 
         g2.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 10));
         Color accentColor = UIManager.getColor("Component.accentColor");
@@ -368,9 +383,25 @@ public class DataBrowserPanel extends JPanel {
 
     // ========== Formatting helpers ==========
 
-    private String formatTimeRange(long startMs, long endMs) {
-        if (startMs <= 0 || endMs <= 0) return "\u2014";
-        return MONTH_FMT.format(Instant.ofEpochMilli(startMs)) + "\u2192" + MONTH_FMT.format(Instant.ofEpochMilli(endMs));
+    /**
+     * Symbol header row that shows the per-data-type DB file size next to the symbol name.
+     * @param dbFilename e.g. "candles.db", "agg_trades.db"
+     */
+    private RowData symbolHeaderWithSize(String symbol, String dbFilename) {
+        String size = sizeOfDataType(symbol, dbFilename);
+        return new RowData(symbol, null, null, null, null, false, false, false, false, 1, symbol, size, null);
+    }
+
+    private String sizeOfDataType(String symbol, String dbFilename) {
+        Long bytes = dataTypeSizes.get(symbol + ":" + dbFilename);
+        return bytes != null ? formatSize(bytes) : null;
+    }
+
+    private String formatSize(long bytes) {
+        if (bytes < 1024) return bytes + " B";
+        if (bytes < 1024 * 1024) return String.format("%.1f KB", bytes / 1024.0);
+        if (bytes < 1024L * 1024 * 1024) return String.format("%.0f MB", bytes / (1024.0 * 1024));
+        return String.format("%.1f GB", bytes / (1024.0 * 1024 * 1024));
     }
 
     private String formatMarketType(String mt) {

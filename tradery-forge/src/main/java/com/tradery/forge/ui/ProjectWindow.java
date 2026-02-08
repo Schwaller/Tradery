@@ -15,9 +15,13 @@ import com.tradery.forge.ui.controls.IndicatorControlsPanel;
 import com.tradery.forge.ui.controls.IndicatorSelectorPopup;
 import com.tradery.forge.ui.coordination.AutoSaveScheduler;
 import com.tradery.forge.ui.coordination.BacktestCoordinator;
+import com.tradery.agent.terminal.AiTerminalController;
+import com.tradery.ai.AiConfig;
+import com.tradery.ai.AiProfile;
 import com.tradery.ui.controls.SegmentedToggle;
 import com.tradery.ui.controls.ThinSplitPane;
 import com.tradery.ui.controls.ToolbarButton;
+
 
 import static com.tradery.forge.ui.UIColors.textSecondary;
 import com.tradery.ui.status.MemoryStatusPanel;
@@ -62,8 +66,8 @@ public class ProjectWindow extends JFrame {
     private JSlider priceOpacitySlider;
     private JButton fitYBtn;
     private JButton fullYBtn;
-    private JButton claudeBtn;
-    private JButton codexBtn;
+    private JButton aiToggleBtn;
+    private JButton aiProfileBtn;
     private JButton historyBtn;
     private JButton phaseAnalysisBtn;
     private JButton publishBtn;
@@ -259,26 +263,25 @@ public class ProjectWindow extends JFrame {
 
         // Initialize AI terminal controller
         aiTerminalController = new AiTerminalController(this, this::runBacktest, this::setStatus);
+        aiTerminalController.setTerminalMode(WindowStateStore.getInstance().getAiTerminalMode());
 
-        // Claude button - opens terminal with Claude CLI
-        claudeBtn = new ToolbarButton("Claude");
-        claudeBtn.setToolTipText("Open Claude CLI to help optimize this strategy");
-        claudeBtn.addActionListener(e -> aiTerminalController.openClaudeTerminal(
-            strategy.getId(), strategy.getName(),
-            dataRangePanel.getSymbol(),
-            dataRangePanel.getTimeframe(),
-            dataRangePanel.getDuration()
-        ));
+        // AI toggle button — on/off for the terminal
+        aiToggleBtn = new ToolbarButton("AI");
+        aiToggleBtn.setToolTipText("Toggle AI terminal");
+        aiToggleBtn.addActionListener(e -> {
+            aiTerminalController.openDefaultAiTerminal(
+                strategy.getId(), strategy.getName(),
+                dataRangePanel.getSymbol(),
+                dataRangePanel.getTimeframe(),
+                dataRangePanel.getDuration()
+            );
+        });
 
-        // Codex button - opens terminal with Codex CLI
-        codexBtn = new ToolbarButton("Codex");
-        codexBtn.setToolTipText("Open Codex CLI to help optimize this strategy");
-        codexBtn.addActionListener(e -> aiTerminalController.openCodexTerminal(
-            strategy.getId(), strategy.getName(),
-            dataRangePanel.getSymbol(),
-            dataRangePanel.getTimeframe(),
-            dataRangePanel.getDuration()
-        ));
+        // AI profile switcher — always visible
+        aiProfileBtn = new ToolbarButton("\u25BE");
+        aiProfileBtn.setToolTipText("Switch AI profile");
+        aiProfileBtn.setMargin(new Insets(6, 4, 6, 4));
+        aiProfileBtn.addActionListener(e -> showAiProfilePopup());
 
         // History button - browse and restore previous versions
         historyBtn = new ToolbarButton("History");
@@ -286,7 +289,7 @@ public class ProjectWindow extends JFrame {
         historyBtn.addActionListener(e -> showHistory());
 
         // Phase Analysis button - analyze phase correlation with trade performance
-        phaseAnalysisBtn = new ToolbarButton("Phase Analysis");
+        phaseAnalysisBtn = new ToolbarButton("Analysis");
         phaseAnalysisBtn.setToolTipText("Analyze which phases correlate with trade performance");
         phaseAnalysisBtn.setEnabled(false);  // Enabled after backtest completes
         phaseAnalysisBtn.addActionListener(e -> openPhaseAnalysis());
@@ -419,11 +422,11 @@ public class ProjectWindow extends JFrame {
             buttonsPlaceholder.setOpaque(false);
             toolbarLeft.add(buttonsPlaceholder);
         }
-        JButton strategiesBtn = new ToolbarButton("Strategies \u2026");
-        strategiesBtn.addActionListener(e -> LauncherFrame.getInstance().bringToFront());
-        toolbarLeft.add(strategiesBtn);
-        toolbarLeft.add(claudeBtn);
-        toolbarLeft.add(codexBtn);
+        JPanel aiGroup = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
+        aiGroup.setOpaque(false);
+        aiGroup.add(aiToggleBtn);
+        aiGroup.add(aiProfileBtn);
+        toolbarLeft.add(aiGroup);
         JButton helpBtn = new ToolbarButton("Help");
         helpBtn.setToolTipText("Strategy Guide & DSL Reference");
         helpBtn.addActionListener(e -> StrategyHelpDialog.show(this));
@@ -443,6 +446,9 @@ public class ProjectWindow extends JFrame {
         chartControls.setOpaque(false);
         chartControls.add(chartModeToggle);
         chartControls.add(priceOpacitySlider);
+        chartControls.add(indicatorsBtn);
+        chartControls.add(phaseOverlayBtn);
+        chartControls.add(phaseAnalysisBtn);
         JPanel chartControlsWrapper = new JPanel(new GridBagLayout());
         chartControlsWrapper.setOpaque(false);
         chartControlsWrapper.setBorder(BorderFactory.createEmptyBorder(0, 32, 0, 0));
@@ -473,9 +479,6 @@ public class ProjectWindow extends JFrame {
         indicatorControls2.add(fitWidthBtn);
         indicatorControls2.add(fitYBtn);
         indicatorControls2.add(fullYBtn);
-        indicatorControls2.add(Box.createHorizontalStrut(32));
-        indicatorControls2.add(indicatorsBtn);
-        indicatorControls2.add(phaseOverlayBtn);
         JPanel indicatorControlsWrapper = new JPanel(new GridBagLayout());
         indicatorControlsWrapper.setOpaque(false);
         indicatorControlsWrapper.setBorder(BorderFactory.createEmptyBorder(0, 0, 0, 32));
@@ -494,7 +497,6 @@ public class ProjectWindow extends JFrame {
         rightWrapper.setOpaque(false);
         JPanel toolbarRight = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
         toolbarRight.setOpaque(false);
-        toolbarRight.add(phaseAnalysisBtn);
         toolbarRight.add(historyBtn);
         toolbarRight.add(publishBtn);
 
@@ -504,6 +506,9 @@ public class ProjectWindow extends JFrame {
             dialog.setVisible(true);
         });
         toolbarRight.add(settingsBtn);
+        JButton strategiesBtn = new ToolbarButton("Strategies \u2026");
+        strategiesBtn.addActionListener(e -> LauncherFrame.getInstance().bringToFront());
+        toolbarRight.add(strategiesBtn);
         GridBagConstraints rc = new GridBagConstraints();
         rc.anchor = GridBagConstraints.EAST;
         rc.fill = GridBagConstraints.HORIZONTAL;
@@ -515,7 +520,6 @@ public class ProjectWindow extends JFrame {
         JPanel topStack = new JPanel();
         topStack.setLayout(new BoxLayout(topStack, BoxLayout.Y_AXIS));
         topStack.add(toolbarPanel);
-        topStack.add(new JSeparator());
         topStack.add(timelineBar);
 
         contentPane.add(topStack, BorderLayout.NORTH);
@@ -1155,6 +1159,50 @@ public class ProjectWindow extends JFrame {
                 timelineBar.setLoading(true);
             }
         });
+    }
+
+    /**
+     * Show a popup listing all AI profiles. Selecting one switches the terminal.
+     */
+    private void showAiProfilePopup() {
+        List<AiProfile> profiles = AiConfig.get().getProfiles();
+        if (profiles.isEmpty()) {
+            return;
+        }
+
+        JPopupMenu popup = new JPopupMenu();
+        AiProfile currentDefault = AiConfig.get().getDefaultProfile();
+
+        for (AiProfile profile : profiles) {
+            JMenuItem item = new JMenuItem(profile.getName());
+            if (currentDefault != null && profile.getId().equals(currentDefault.getId())) {
+                item.setFont(item.getFont().deriveFont(Font.BOLD));
+            }
+            item.addActionListener(e -> {
+                // Confirm if switching while a session is running
+                if (aiTerminalController.isTerminalRunning()
+                        && (currentDefault == null || !profile.getId().equals(currentDefault.getId()))) {
+                    int confirm = JOptionPane.showConfirmDialog(this,
+                        "This will end the current AI session and start a new one.\n\nSwitch to " + profile.getName() + "?",
+                        "Switch AI Profile",
+                        JOptionPane.OK_CANCEL_OPTION,
+                        JOptionPane.WARNING_MESSAGE);
+                    if (confirm != JOptionPane.OK_OPTION) return;
+                }
+                AiConfig.get().setDefaultProfileId(profile.getId());
+                AiConfig.get().save();
+                aiTerminalController.openAiTerminalForProfile(profile, strategy.getName());
+            });
+            popup.add(item);
+        }
+
+        popup.addSeparator();
+        JMenuItem settingsItem = new JMenuItem("AI Settings\u2026");
+        settingsItem.addActionListener(e ->
+            com.tradery.ai.AiSetupDialog.showSetup(SwingUtilities.getWindowAncestor(aiProfileBtn)));
+        popup.add(settingsItem);
+
+        popup.show(aiProfileBtn, 0, aiProfileBtn.getHeight());
     }
 
     private void closeWindow() {

@@ -1,4 +1,4 @@
-package com.tradery.terminal;
+package com.tradery.agent.terminal;
 
 import javax.swing.*;
 import java.awt.*;

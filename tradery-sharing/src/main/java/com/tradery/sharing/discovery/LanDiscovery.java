@@ -14,8 +14,9 @@ import java.util.concurrent.ConcurrentHashMap;
  * mDNS-style LAN discovery using UDP multicast.
  * Peers on the same local network can discover each other without a rendezvous server.
  *
- * Protocol: peers broadcast "{peerId}:{port}" to a multicast group every 30 seconds.
+ * Protocol: peers broadcast "{peerId}|{deviceId}:{port}" to a multicast group every 30 seconds.
  * Listeners collect announcements and maintain a list of known LAN peers.
+ * Self-filter uses deviceId (not peerId) so the same user on different devices can discover each other.
  */
 public class LanDiscovery implements AutoCloseable {
 
@@ -27,6 +28,7 @@ public class LanDiscovery implements AutoCloseable {
     private static final int PEER_TIMEOUT_MS = 90_000;
 
     private final String peerId;
+    private final String deviceId;
     private final int serverPort;
     private final Map<String, LanPeer> lanPeers = new ConcurrentHashMap<>();
 
@@ -35,8 +37,9 @@ public class LanDiscovery implements AutoCloseable {
     private NetworkInterface networkInterface;
     private volatile boolean running;
 
-    public LanDiscovery(String peerId, int serverPort) {
+    public LanDiscovery(String peerId, String deviceId, int serverPort) {
         this.peerId = peerId;
+        this.deviceId = deviceId;
         this.serverPort = serverPort;
     }
 
@@ -68,21 +71,35 @@ public class LanDiscovery implements AutoCloseable {
     }
 
     private void listenLoop() {
-        byte[] buf = new byte[256];
+        byte[] buf = new byte[512];
         while (running) {
             try {
                 DatagramPacket packet = new DatagramPacket(buf, buf.length);
                 socket.receive(packet);
                 String data = new String(packet.getData(), 0, packet.getLength(), StandardCharsets.UTF_8);
-                String[] parts = data.split(":", 2);
-                if (parts.length == 2) {
-                    String remotePeerId = parts[0];
-                    int remotePort = Integer.parseInt(parts[1]);
 
-                    if (!remotePeerId.equals(peerId)) {
-                        String host = packet.getAddress().getHostAddress();
-                        lanPeers.put(remotePeerId, new LanPeer(remotePeerId, host, remotePort, System.currentTimeMillis()));
-                    }
+                // Wire format: "{peerId}|{deviceId}:{port}"
+                int colonIdx = data.lastIndexOf(':');
+                if (colonIdx < 0) continue;
+                String identity = data.substring(0, colonIdx);
+                int remotePort = Integer.parseInt(data.substring(colonIdx + 1));
+
+                int pipeIdx = identity.indexOf('|');
+                String remotePeerId;
+                String remoteDeviceId;
+                if (pipeIdx >= 0) {
+                    remotePeerId = identity.substring(0, pipeIdx);
+                    remoteDeviceId = identity.substring(pipeIdx + 1);
+                } else {
+                    // Backward compat: old format "{peerId}:{port}"
+                    remotePeerId = identity;
+                    remoteDeviceId = identity;
+                }
+
+                // Filter by deviceId so same user on different devices can see each other
+                if (!remoteDeviceId.equals(deviceId)) {
+                    String host = packet.getAddress().getHostAddress();
+                    lanPeers.put(remoteDeviceId, new LanPeer(remotePeerId, remoteDeviceId, host, remotePort, System.currentTimeMillis()));
                 }
             } catch (IOException e) {
                 if (running) {
@@ -93,7 +110,7 @@ public class LanDiscovery implements AutoCloseable {
     }
 
     private void announceLoop() {
-        byte[] data = (peerId + ":" + serverPort).getBytes(StandardCharsets.UTF_8);
+        byte[] data = (peerId + "|" + deviceId + ":" + serverPort).getBytes(StandardCharsets.UTF_8);
         while (running) {
             try {
                 DatagramPacket packet = new DatagramPacket(data, data.length,
@@ -131,5 +148,5 @@ public class LanDiscovery implements AutoCloseable {
         }
     }
 
-    public record LanPeer(String peerId, String host, int port, long lastSeen) {}
+    public record LanPeer(String peerId, String deviceId, String host, int port, long lastSeen) {}
 }

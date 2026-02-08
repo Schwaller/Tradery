@@ -7,7 +7,9 @@ import javax.swing.border.EmptyBorder;
 import javax.swing.table.DefaultTableModel;
 import java.awt.*;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Modal dialog for editing a schema type's name, color, label, and attributes.
@@ -25,6 +27,11 @@ public class SchemaTypeEditorDialog extends JDialog {
     private JComboBox<SchemaType> toCombo;
     private DefaultTableModel attrTableModel;
 
+    // Form layouts editor state
+    private DefaultListModel<FormLayout> layoutListModel;
+    private JList<FormLayout> layoutList;
+    private DefaultTableModel layoutFieldsTableModel;
+
     public SchemaTypeEditorDialog(Window owner, SchemaRegistry registry, SchemaType type) {
         super(owner, "Edit " + type.name(), ModalityType.APPLICATION_MODAL);
         this.registry = registry;
@@ -39,7 +46,7 @@ public class SchemaTypeEditorDialog extends JDialog {
 
         initUI();
         pack();
-        setMinimumSize(new Dimension(450, 400));
+        setMinimumSize(new Dimension(550, 600));
         setLocationRelativeTo(owner);
     }
 
@@ -141,7 +148,12 @@ public class SchemaTypeEditorDialog extends JDialog {
 
         content.add(formPanel, BorderLayout.NORTH);
 
-        // Attributes table
+        // Center: vertically stacked Attributes table + Form Layouts
+        JPanel centerPanel = new JPanel();
+        centerPanel.setLayout(new BoxLayout(centerPanel, BoxLayout.Y_AXIS));
+        centerPanel.setBackground(new Color(45, 47, 51));
+
+        // --- Attributes table ---
         JPanel attrPanel = new JPanel(new BorderLayout(0, 5));
         attrPanel.setBackground(new Color(45, 47, 51));
 
@@ -209,7 +221,15 @@ public class SchemaTypeEditorDialog extends JDialog {
         attrBtnPanel.add(removeAttrBtn);
 
         attrPanel.add(attrBtnPanel, BorderLayout.SOUTH);
-        content.add(attrPanel, BorderLayout.CENTER);
+        centerPanel.add(attrPanel);
+
+        // --- Form Layouts section ---
+        if (type.isEntity()) {
+            centerPanel.add(Box.createVerticalStrut(10));
+            centerPanel.add(createFormLayoutsPanel());
+        }
+
+        content.add(centerPanel, BorderLayout.CENTER);
 
         // Bottom buttons
         JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 0));
@@ -260,6 +280,203 @@ public class SchemaTypeEditorDialog extends JDialog {
         }
     }
 
+    private JPanel createFormLayoutsPanel() {
+        JPanel panel = new JPanel(new BorderLayout(0, 5));
+        panel.setBackground(new Color(45, 47, 51));
+
+        JLabel title = createLabel("Form Layouts:");
+        title.setFont(title.getFont().deriveFont(Font.BOLD));
+        panel.add(title, BorderLayout.NORTH);
+
+        // Left: layout list
+        layoutListModel = new DefaultListModel<>();
+        List<FormLayout> existing = type.formLayouts();
+        if (existing != null) {
+            for (FormLayout fl : existing) layoutListModel.addElement(fl);
+        }
+
+        layoutList = new JList<>(layoutListModel);
+        layoutList.setBackground(new Color(35, 37, 41));
+        layoutList.setForeground(new Color(200, 200, 210));
+        layoutList.setSelectionBackground(new Color(60, 80, 100));
+        layoutList.setCellRenderer(new DefaultListCellRenderer() {
+            @Override
+            public Component getListCellRendererComponent(JList<?> list, Object value, int index,
+                                                           boolean isSelected, boolean cellHasFocus) {
+                super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus);
+                if (value instanceof FormLayout fl) setText(fl.name());
+                setBackground(isSelected ? new Color(60, 80, 100) : new Color(35, 37, 41));
+                setForeground(new Color(200, 200, 210));
+                return this;
+            }
+        });
+        layoutList.addListSelectionListener(e -> {
+            if (!e.getValueIsAdjusting()) onLayoutSelected();
+        });
+
+        JScrollPane listScroll = new JScrollPane(layoutList);
+        listScroll.setBorder(BorderFactory.createLineBorder(new Color(60, 62, 66)));
+        listScroll.setPreferredSize(new Dimension(150, 100));
+        listScroll.getViewport().setBackground(new Color(35, 37, 41));
+
+        // Layout list buttons
+        JPanel listBtnPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 0));
+        listBtnPanel.setBackground(new Color(45, 47, 51));
+        JButton addLayoutBtn = new JButton("+");
+        addLayoutBtn.addActionListener(e -> {
+            String name = JOptionPane.showInputDialog(this, "Layout name:", "New Form Layout",
+                JOptionPane.PLAIN_MESSAGE);
+            if (name != null && !name.trim().isEmpty()) {
+                FormLayout fl = new FormLayout(name.trim(), new ArrayList<>());
+                layoutListModel.addElement(fl);
+                layoutList.setSelectedIndex(layoutListModel.size() - 1);
+            }
+        });
+        listBtnPanel.add(addLayoutBtn);
+
+        JButton renameLayoutBtn = new JButton("Rename");
+        renameLayoutBtn.addActionListener(e -> {
+            FormLayout sel = layoutList.getSelectedValue();
+            if (sel == null) return;
+            String name = JOptionPane.showInputDialog(this, "Layout name:", sel.name());
+            if (name != null && !name.trim().isEmpty()) {
+                sel.setName(name.trim());
+                layoutList.repaint();
+            }
+        });
+        listBtnPanel.add(renameLayoutBtn);
+
+        JButton removeLayoutBtn = new JButton("-");
+        removeLayoutBtn.addActionListener(e -> {
+            int idx = layoutList.getSelectedIndex();
+            if (idx >= 0) layoutListModel.remove(idx);
+        });
+        listBtnPanel.add(removeLayoutBtn);
+
+        JPanel leftPanel = new JPanel(new BorderLayout(0, 3));
+        leftPanel.setBackground(new Color(45, 47, 51));
+        leftPanel.add(listScroll, BorderLayout.CENTER);
+        leftPanel.add(listBtnPanel, BorderLayout.SOUTH);
+
+        // Right: fields table for selected layout
+        JPanel rightPanel = new JPanel(new BorderLayout(0, 3));
+        rightPanel.setBackground(new Color(45, 47, 51));
+
+        String[] fieldCols = {"Attribute", "Group"};
+        layoutFieldsTableModel = new DefaultTableModel(fieldCols, 0) {
+            @Override
+            public boolean isCellEditable(int r, int col) { return col == 1; } // group is editable
+        };
+
+        JTable fieldsTable = new BorderlessTable(layoutFieldsTableModel);
+        fieldsTable.setBackground(new Color(35, 37, 41));
+        fieldsTable.setForeground(new Color(200, 200, 210));
+        fieldsTable.setSelectionBackground(new Color(60, 80, 100));
+        fieldsTable.setRowHeight(22);
+        fieldsTable.getTableHeader().setBackground(new Color(45, 47, 51));
+        fieldsTable.getTableHeader().setForeground(new Color(180, 180, 190));
+
+        // Sync edits back to the FormLayout
+        layoutFieldsTableModel.addTableModelListener(e -> {
+            if (e.getType() == javax.swing.event.TableModelEvent.UPDATE) {
+                syncFieldsToSelectedLayout();
+            }
+        });
+
+        JScrollPane fieldsScroll = new JScrollPane(fieldsTable);
+        fieldsScroll.setBorder(BorderFactory.createLineBorder(new Color(60, 62, 66)));
+        fieldsScroll.getViewport().setBackground(new Color(35, 37, 41));
+        rightPanel.add(fieldsScroll, BorderLayout.CENTER);
+
+        // Field buttons
+        JPanel fieldBtnPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 0));
+        fieldBtnPanel.setBackground(new Color(45, 47, 51));
+
+        JButton addFieldBtn = new JButton("+ Add Field");
+        addFieldBtn.addActionListener(e -> {
+            FormLayout sel = layoutList.getSelectedValue();
+            if (sel == null) return;
+
+            // Show chooser with available attributes
+            List<String> available = new ArrayList<>();
+            java.util.Set<String> used = new java.util.HashSet<>();
+            for (FormLayout.FormLayoutField f : sel.fields()) used.add(f.attributeName());
+            for (SchemaAttribute a : type.attributes()) {
+                if (!used.contains(a.name())) available.add(a.name());
+            }
+            if (available.isEmpty()) {
+                JOptionPane.showMessageDialog(this, "All attributes are already in this layout.");
+                return;
+            }
+            String chosen = (String) JOptionPane.showInputDialog(this, "Select attribute:",
+                "Add Field", JOptionPane.PLAIN_MESSAGE, null,
+                available.toArray(new String[0]), available.get(0));
+            if (chosen != null) {
+                sel.fields().add(new FormLayout.FormLayoutField(chosen, null));
+                layoutFieldsTableModel.addRow(new Object[]{chosen, ""});
+            }
+        });
+        fieldBtnPanel.add(addFieldBtn);
+
+        JButton moveUpBtn = new JButton("Up");
+        moveUpBtn.addActionListener(e -> moveFieldRow(fieldsTable, -1));
+        fieldBtnPanel.add(moveUpBtn);
+
+        JButton moveDownBtn = new JButton("Down");
+        moveDownBtn.addActionListener(e -> moveFieldRow(fieldsTable, 1));
+        fieldBtnPanel.add(moveDownBtn);
+
+        JButton removeFieldBtn = new JButton("-");
+        removeFieldBtn.addActionListener(e -> {
+            int idx = fieldsTable.getSelectedRow();
+            if (idx >= 0) {
+                layoutFieldsTableModel.removeRow(idx);
+                syncFieldsToSelectedLayout();
+            }
+        });
+        fieldBtnPanel.add(removeFieldBtn);
+
+        rightPanel.add(fieldBtnPanel, BorderLayout.SOUTH);
+
+        JSplitPane splitPane = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, leftPanel, rightPanel);
+        splitPane.setDividerLocation(150);
+        splitPane.setBackground(new Color(45, 47, 51));
+        panel.add(splitPane, BorderLayout.CENTER);
+
+        return panel;
+    }
+
+    private void onLayoutSelected() {
+        layoutFieldsTableModel.setRowCount(0);
+        FormLayout sel = layoutList.getSelectedValue();
+        if (sel == null) return;
+        for (FormLayout.FormLayoutField f : sel.fields()) {
+            layoutFieldsTableModel.addRow(new Object[]{f.attributeName(), f.group() != null ? f.group() : ""});
+        }
+    }
+
+    private void syncFieldsToSelectedLayout() {
+        FormLayout sel = layoutList.getSelectedValue();
+        if (sel == null) return;
+        List<FormLayout.FormLayoutField> fields = new ArrayList<>();
+        for (int i = 0; i < layoutFieldsTableModel.getRowCount(); i++) {
+            String attr = (String) layoutFieldsTableModel.getValueAt(i, 0);
+            String group = (String) layoutFieldsTableModel.getValueAt(i, 1);
+            if (group != null && group.trim().isEmpty()) group = null;
+            fields.add(new FormLayout.FormLayoutField(attr, group));
+        }
+        sel.setFields(fields);
+    }
+
+    private void moveFieldRow(JTable table, int direction) {
+        int idx = table.getSelectedRow();
+        int target = idx + direction;
+        if (idx < 0 || target < 0 || target >= layoutFieldsTableModel.getRowCount()) return;
+        layoutFieldsTableModel.moveRow(idx, idx, target);
+        table.setRowSelectionInterval(target, target);
+        syncFieldsToSelectedLayout();
+    }
+
     private void save() {
         String name = nameField.getText().trim();
         if (name.isEmpty()) {
@@ -276,6 +493,15 @@ public class SchemaTypeEditorDialog extends JDialog {
             SchemaType to = (SchemaType) toCombo.getSelectedItem();
             type.setFromTypeId(from != null ? from.id() : null);
             type.setToTypeId(to != null ? to.id() : null);
+        }
+
+        // Save form layouts
+        if (layoutListModel != null) {
+            List<FormLayout> layouts = new ArrayList<>();
+            for (int i = 0; i < layoutListModel.size(); i++) {
+                layouts.add(layoutListModel.get(i));
+            }
+            type.setFormLayouts(layouts.isEmpty() ? null : layouts);
         }
 
         registry.save(type);

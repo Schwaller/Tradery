@@ -31,6 +31,7 @@ public class SchemaType {
     private boolean hasMarketCap; // entity type gets market_cap attribute
     private int displayOrder;
     private final List<SchemaAttribute> attributes = new ArrayList<>();
+    private List<FormLayout> formLayouts; // null = default (all attrs, one per row)
 
     // Position on ERD canvas (persisted to DB)
     private double erdX;
@@ -101,6 +102,9 @@ public class SchemaType {
     public void setDisplayOrder(int displayOrder) { this.displayOrder = displayOrder; }
 
     public List<SchemaAttribute> attributes() { return attributes; }
+
+    public List<FormLayout> formLayouts() { return formLayouts; }
+    public void setFormLayouts(List<FormLayout> formLayouts) { this.formLayouts = formLayouts; }
 
     public void addAttribute(SchemaAttribute attr) {
         attributes.add(attr);

@@ -10,6 +10,8 @@ import java.io.IOException;
 import java.net.Socket;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.function.Consumer;
 
 /**
  * Manages the lifecycle of peer connections and orchestrates sync.
@@ -21,19 +23,27 @@ public class PeerManager implements AutoCloseable {
     private static final Logger log = LoggerFactory.getLogger(PeerManager.class);
 
     private final String localPeerId;
+    private final String localDeviceId;
     private final DocumentManager documentManager;
     private final SyncEngine syncEngine;
     private final ObjectMapper mapper;
     private final PeerServer server;
 
-    /** Active connections indexed by remote peer ID. */
+    /** Active connections indexed by remote device ID. */
     private final Map<String, PeerConnection> connections = new ConcurrentHashMap<>();
+
+    /** Maps remote device ID to peer email (for member matching). */
+    private final Map<String, String> deviceToPeerEmail = new ConcurrentHashMap<>();
 
     /** Open document workspaces by document ID. */
     private final Map<String, DocumentWorkspace> workspaces = new ConcurrentHashMap<>();
 
-    public PeerManager(String localPeerId, DocumentManager documentManager, ObjectMapper mapper) throws IOException {
+    /** Chat message listeners. */
+    private final List<Consumer<NetworkMessage.ChatMessage>> chatListeners = new CopyOnWriteArrayList<>();
+
+    public PeerManager(String localPeerId, String localDeviceId, DocumentManager documentManager, ObjectMapper mapper) throws IOException {
         this.localPeerId = localPeerId;
+        this.localDeviceId = localDeviceId;
         this.documentManager = documentManager;
         this.syncEngine = new SyncEngine();
         this.mapper = mapper;
@@ -81,13 +91,15 @@ public class PeerManager implements AutoCloseable {
                 return;
             }
 
-            conn.setRemotePeerId(hello.peerId());
-            connections.put(hello.peerId(), conn);
-            log.info("Peer {} connected from {}", hello.peerId(), conn.remoteAddress());
+            String remoteKey = hello.deviceId() != null ? hello.deviceId() : hello.peerId();
+            conn.setRemotePeerId(remoteKey);
+            connections.put(remoteKey, conn);
+            deviceToPeerEmail.put(remoteKey, hello.peerId());
+            log.info("Peer {} (device {}) connected from {}", hello.peerId(), remoteKey, conn.remoteAddress());
 
             // Send our HELLO back
             conn.send(new NetworkMessage.Hello(
-                    localPeerId, null, null,
+                    localPeerId, localDeviceId, null, null,
                     List.copyOf(workspaces.keySet())));
 
             // Also request sync for shared documents (bidirectional sync)
@@ -110,6 +122,7 @@ public class PeerManager implements AutoCloseable {
         } finally {
             if (conn.remotePeerId() != null) {
                 connections.remove(conn.remotePeerId());
+                deviceToPeerEmail.remove(conn.remotePeerId());
             }
         }
     }
@@ -121,7 +134,7 @@ public class PeerManager implements AutoCloseable {
         try {
             // Send HELLO
             conn.send(new NetworkMessage.Hello(
-                    localPeerId, null, null,
+                    localPeerId, localDeviceId, null, null,
                     List.copyOf(workspaces.keySet())));
 
             // Wait for HELLO back
@@ -132,9 +145,11 @@ public class PeerManager implements AutoCloseable {
                 return;
             }
 
-            conn.setRemotePeerId(hello.peerId());
-            connections.put(hello.peerId(), conn);
-            log.info("Connected to peer {} at {}", hello.peerId(), conn.remoteAddress());
+            String remoteKey = hello.deviceId() != null ? hello.deviceId() : hello.peerId();
+            conn.setRemotePeerId(remoteKey);
+            connections.put(remoteKey, conn);
+            deviceToPeerEmail.put(remoteKey, hello.peerId());
+            log.info("Connected to peer {} (device {}) at {}", hello.peerId(), remoteKey, conn.remoteAddress());
 
             // Find shared documents and request sync
             Set<String> sharedDocs = new HashSet<>(workspaces.keySet());
@@ -156,6 +171,7 @@ public class PeerManager implements AutoCloseable {
         } finally {
             if (conn.remotePeerId() != null) {
                 connections.remove(conn.remotePeerId());
+                deviceToPeerEmail.remove(conn.remotePeerId());
             }
         }
     }
@@ -187,6 +203,12 @@ public class PeerManager implements AutoCloseable {
                     log.debug("Sync complete for doc {} from {}", done.documentId(), conn.remotePeerId());
                 case NetworkMessage.MemberUpdate update ->
                     log.info("Member update for doc {} from {}", update.documentId(), conn.remotePeerId());
+                case NetworkMessage.ChatMessage chat -> {
+                    log.debug("Chat from {}: {}", chat.senderId(), chat.text());
+                    for (var listener : chatListeners) {
+                        try { listener.accept(chat); } catch (Exception ex) { log.warn("Chat listener error", ex); }
+                    }
+                }
                 case NetworkMessage.Hello ignored ->
                     log.warn("Unexpected HELLO from {}", conn.remotePeerId());
             }
@@ -224,8 +246,35 @@ public class PeerManager implements AutoCloseable {
         }
     }
 
+    /** Returns connected peer emails (for member matching). */
     public Collection<String> connectedPeerIds() {
+        return Collections.unmodifiableCollection(deviceToPeerEmail.values());
+    }
+
+    /** Returns connected device IDs (for dedup). */
+    public Collection<String> connectedDeviceIds() {
         return Collections.unmodifiableCollection(connections.keySet());
+    }
+
+    /** Broadcast a chat message to all connected peers. */
+    public void broadcastChat(String senderId, String text) {
+        var msg = new NetworkMessage.ChatMessage(senderId, text, System.currentTimeMillis());
+        for (PeerConnection conn : connections.values()) {
+            if (conn.isClosed()) continue;
+            try {
+                conn.send(msg);
+            } catch (IOException e) {
+                log.warn("Failed to send chat to {}: {}", conn.remotePeerId(), e.getMessage());
+            }
+        }
+    }
+
+    public void addChatListener(Consumer<NetworkMessage.ChatMessage> listener) {
+        chatListeners.add(listener);
+    }
+
+    public void removeChatListener(Consumer<NetworkMessage.ChatMessage> listener) {
+        chatListeners.remove(listener);
     }
 
     @Override

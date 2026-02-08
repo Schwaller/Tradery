@@ -3,6 +3,7 @@ package com.tradery.dataservice;
 import com.tradery.dataservice.api.DataServiceServer;
 import com.tradery.dataservice.coingecko.CoinGeckoClient;
 import com.tradery.dataservice.config.DataServiceConfig;
+import com.tradery.dataservice.data.DataConfig;
 import com.tradery.dataservice.data.sqlite.SqliteDataStore;
 import com.tradery.dataservice.data.sqlite.SymbolsConnection;
 import com.tradery.dataservice.symbols.SymbolSyncService;
@@ -47,6 +48,9 @@ public class DataServiceApp {
             LicenseGate.checkOrExit(true);
 
             DataServiceConfig config = DataServiceConfig.load();
+
+            // Delete old-format monolithic .db files (pre-split layout)
+            cleanupOldDatabases();
 
             // Create data store for SQLite access
             dataStore = new SqliteDataStore();
@@ -95,6 +99,39 @@ public class DataServiceApp {
         } catch (Exception e) {
             LOG.error("Failed to start Data Service", e);
             System.exit(1);
+        }
+    }
+
+    /**
+     * Delete old-format monolithic .db files from the data directory root.
+     * Old layout: ~/.tradery/data/BTCUSDT.db (one file per symbol)
+     * New layout: ~/.tradery/data/BTCUSDT/candles.db, agg_trades.db, etc.
+     */
+    private static void cleanupOldDatabases() {
+        java.io.File dataDir = DataConfig.getInstance().getDataDir();
+        if (dataDir == null || !dataDir.exists()) return;
+
+        java.io.File[] oldDbFiles = dataDir.listFiles((dir, name) ->
+            name.endsWith(".db") && !name.equals("symbols.db"));
+        if (oldDbFiles == null || oldDbFiles.length == 0) return;
+
+        LOG.info("Found {} old-format database files to clean up", oldDbFiles.length);
+        for (java.io.File dbFile : oldDbFiles) {
+            String baseName = dbFile.getName();
+            long size = dbFile.length();
+
+            // Delete main .db file + WAL/SHM companions
+            boolean deleted = dbFile.delete();
+            java.io.File walFile = new java.io.File(dataDir, baseName + "-wal");
+            java.io.File shmFile = new java.io.File(dataDir, baseName + "-shm");
+            if (walFile.exists()) walFile.delete();
+            if (shmFile.exists()) shmFile.delete();
+
+            if (deleted) {
+                LOG.info("Deleted old database: {} ({} bytes)", baseName, size);
+            } else {
+                LOG.warn("Failed to delete old database: {}", baseName);
+            }
         }
     }
 

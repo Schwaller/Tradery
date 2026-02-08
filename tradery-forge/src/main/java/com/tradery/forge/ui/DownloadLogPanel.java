@@ -88,7 +88,7 @@ public class DownloadLogPanel extends JPanel {
         // Table
         tableModel = new LogTableModel();
         table = new BorderlessTable(tableModel);
-        table.setRowHeight(20);
+        table.setRowHeight(24);
         table.setFillsViewportHeight(true);
 
         // Configure columns

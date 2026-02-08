@@ -33,10 +33,10 @@ class PeerManagerTest {
         Path docDirA = Files.createTempDirectory("docs-a-");
         Path docDirB = Files.createTempDirectory("docs-b-");
 
-        managerA = new PeerManager("peer-A", new DocumentManager(docDirA), mapper);
+        managerA = new PeerManager("peer-A", "device-A", new DocumentManager(docDirA), mapper);
         managerA.registerWorkspace(DOC_ID, fixtureA.workspace());
 
-        managerB = new PeerManager("peer-B", new DocumentManager(docDirB), mapper);
+        managerB = new PeerManager("peer-B", "device-B", new DocumentManager(docDirB), mapper);
         managerB.registerWorkspace(DOC_ID, fixtureB.workspace());
     }
 

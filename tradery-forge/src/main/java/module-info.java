@@ -17,8 +17,8 @@ module com.tradery.forge {
     requires com.formdev.flatlaf;
     requires com.formdev.flatlaf.intellijthemes;
 
-    // Terminal module for embedded AI terminal
-    requires com.tradery.terminal;
+    // Agent module for embedded AI terminal
+    requires com.tradery.agent;
 
     // HTTP server for API
     requires jdk.httpserver;

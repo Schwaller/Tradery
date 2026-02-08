@@ -105,6 +105,32 @@ public class DataHealthPanel extends JPanel {
         loadCoverageFromApi(symbol, "premium_index", "1m");
     }
 
+    public void setFearGreedData(long startTime, long endTime) {
+        ++loadGeneration;
+        this.symbol = null;
+        this.resolution = "fearGreed";
+        this.customMessage = null;
+        loadingBar.setVisible(false);
+        hideMessage();
+
+        // Generate synthetic coverage — all 24 hours per day marked as FULL
+        ZoneOffset utc = ZoneOffset.UTC;
+        LocalDateTime startDt = LocalDateTime.ofInstant(Instant.ofEpochMilli(startTime), utc)
+                .withHour(0).withMinute(0).withSecond(0).withNano(0);
+        LocalDateTime endDt = LocalDateTime.ofInstant(Instant.ofEpochMilli(endTime), utc)
+                .withHour(23).withMinute(0).withSecond(0).withNano(0);
+
+        List<CoverageSlice> slices = new ArrayList<>();
+        LocalDateTime cursor = startDt;
+        while (!cursor.isAfter(endDt)) {
+            slices.add(new CoverageSlice(
+                    cursor.getYear(), cursor.getMonthValue(),
+                    cursor.getDayOfMonth(), cursor.getHour(), CoverageLevel.FULL));
+            cursor = cursor.plusHours(1);
+        }
+        heatmap.setData(slices);
+    }
+
     /**
      * Refresh data while preserving context.
      */

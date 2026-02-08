@@ -45,7 +45,7 @@ public class TradeTablePanel extends JPanel {
         table = new BorderlessTable(tableModel);
 
         table.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 11));
-        table.setRowHeight(20);
+        table.setRowHeight(24);
         table.getTableHeader().setReorderingAllowed(false);
         table.setAutoResizeMode(JTable.AUTO_RESIZE_ALL_COLUMNS);
 

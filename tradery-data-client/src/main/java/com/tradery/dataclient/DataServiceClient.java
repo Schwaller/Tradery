@@ -1,5 +1,6 @@
 package com.tradery.dataclient;
 
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tradery.core.model.*;
 import com.tradery.data.page.DataType;
@@ -42,9 +43,10 @@ public class DataServiceClient {
             .readTimeout(60, TimeUnit.SECONDS)
             .writeTimeout(30, TimeUnit.SECONDS)
             .build();
-        this.jsonMapper = new ObjectMapper();
-        // Use default ObjectMapper for MessagePack - records are handled correctly
-        this.msgpackMapper = new ObjectMapper(new MessagePackFactory());
+        this.jsonMapper = new ObjectMapper()
+            .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+        this.msgpackMapper = new ObjectMapper(new MessagePackFactory())
+            .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
     }
 
     /**
@@ -530,7 +532,7 @@ public class DataServiceClient {
 
     public record FearGreedInventory(long startTime, long endTime, int recordCount, int latestValue) {}
 
-    public record DiskUsageResponse(long totalBytes, java.util.Map<String, Long> bySymbol) {}
+    public record DiskUsageResponse(long totalBytes, java.util.Map<String, Long> bySymbol, java.util.Map<String, Long> byDataType, long volumeFreeBytes, long volumeTotalBytes) {}
 
     public record DeleteResponse(long deletedRecords) {}
 
@@ -551,5 +553,9 @@ public class DataServiceClient {
 
     public record SymbolSearchResponse(String query, int count, List<SymbolSearchResult> results) {}
 
-    public record SymbolStats(int totalPairs, int totalAssets, int totalCoins, boolean syncInProgress) {}
+    public record ExchangeMarketStats(String marketType, int pairCount) {}
+
+    public record SymbolStats(int totalPairs, int totalAssets, int totalCoins,
+                              java.util.Map<String, java.util.List<ExchangeMarketStats>> byExchange,
+                              boolean syncInProgress) {}
 }

@@ -1,18 +1,19 @@
-package com.tradery.forge.ui;
+package com.tradery.agent.terminal;
 
-import com.tradery.forge.io.WindowStateStore;
-import com.tradery.terminal.AiTerminalFrame;
-import com.tradery.terminal.AiTerminalPanel;
+import com.tradery.ai.AiConfig;
+import com.tradery.ai.AiDetector;
+import com.tradery.ai.AiProfile;
+import com.tradery.ai.AiProvider;
 
 import javax.swing.*;
 import java.awt.*;
-import java.io.File;
 import java.io.IOException;
 import java.util.function.Consumer;
 
 /**
- * Controls the AI terminal (Claude/Codex) integration in ProjectWindow.
+ * Controls the AI terminal integration.
  * Handles launching, docking/undocking, and switching between AI assistants.
+ * Decoupled from any specific app's persistence — callers set terminalMode externally.
  */
 public class AiTerminalController {
 
@@ -28,10 +29,21 @@ public class AiTerminalController {
     private boolean terminalDocked = true;
     private String currentAiType = null;  // "claude" or "codex" or null
 
+    // Terminal mode: "integrated" or "external" — set by caller
+    private String terminalMode = "integrated";
+
     public AiTerminalController(JFrame parentFrame, Runnable onBacktest, Consumer<String> onStatus) {
         this.parentFrame = parentFrame;
         this.onBacktest = onBacktest;
         this.onStatus = onStatus;
+    }
+
+    /**
+     * Set the terminal mode ("integrated" or "external").
+     * Callers wire this from their own persistence (e.g. WindowStateStore).
+     */
+    public void setTerminalMode(String mode) {
+        this.terminalMode = mode != null ? mode : "integrated";
     }
 
     /**
@@ -73,53 +85,56 @@ public class AiTerminalController {
     }
 
     /**
-     * Check if a command is available on the system PATH.
+     * Open the default AI terminal using the profile from AiConfig.
      */
-    public boolean isCommandAvailable(String command) {
-        // Method 1: Use login shell to get full PATH (includes ~/.zshrc, ~/.bashrc paths)
-        try {
-            ProcessBuilder pb = new ProcessBuilder("/bin/bash", "-l", "-c", "which " + command);
-            pb.redirectErrorStream(true);
-            Process process = pb.start();
-            int exitCode = process.waitFor();
-            if (exitCode == 0) return true;
-        } catch (Exception ignored) {}
-
-        // Method 2: Try zsh login shell (default on macOS)
-        try {
-            ProcessBuilder pb = new ProcessBuilder("/bin/zsh", "-l", "-c", "which " + command);
-            pb.redirectErrorStream(true);
-            Process process = pb.start();
-            int exitCode = process.waitFor();
-            if (exitCode == 0) return true;
-        } catch (Exception ignored) {}
-
-        // Method 3: Check common installation paths directly
-        String[] commonPaths = {
-            "/usr/local/bin/" + command,
-            "/opt/homebrew/bin/" + command,
-            System.getProperty("user.home") + "/.local/bin/" + command,
-            System.getProperty("user.home") + "/.npm-global/bin/" + command,
-            "/usr/bin/" + command
-        };
-        for (String path : commonPaths) {
-            if (new File(path).exists()) {
-                return true;
-            }
+    public void openDefaultAiTerminal(String strategyId, String strategyName,
+                                       String symbol, String timeframe, String duration) {
+        AiProfile profile = AiConfig.get().getDefaultProfile();
+        if (profile == null) {
+            onStatus.accept("No AI profiles configured. Add one in Settings.");
+            return;
         }
-
-        return false;
+        openAiTerminalForProfile(profile, strategyName);
     }
 
     /**
-     * Open a URL in the default browser.
+     * Open AI terminal for a specific profile.
      */
-    public void openUrl(String url) {
-        try {
-            Desktop.getDesktop().browse(new java.net.URI(url));
-        } catch (Exception e) {
-            onStatus.accept("Could not open browser: " + e.getMessage());
+    public void openAiTerminalForProfile(AiProfile profile, String strategyName) {
+        AiProvider provider = profile.getProvider();
+        String aiType;
+
+        switch (provider) {
+            case CLAUDE -> aiType = "claude";
+            case CODEX -> aiType = "codex";
+            case GEMINI -> aiType = "gemini";
+            default -> aiType = profile.getCommand() != null && !profile.getCommand().isEmpty()
+                ? profile.getCommand() : "claude";
         }
+
+        // Check if the CLI is available using AiDetector
+        String cliCommand = switch (provider) {
+            case CLAUDE -> "claude";
+            case CODEX -> "codex";
+            case GEMINI -> "gemini";
+            default -> null;  // Custom commands — skip check
+        };
+
+        if (cliCommand != null && !isCommandAvailable(cliCommand)) {
+            String installUrl = getInstallUrl(provider);
+            int result = JOptionPane.showConfirmDialog(parentFrame,
+                profile.getName() + " CLI is not installed.\n\n" +
+                "Would you like to open the installation instructions?",
+                "CLI Not Found",
+                JOptionPane.YES_NO_OPTION,
+                JOptionPane.QUESTION_MESSAGE);
+            if (result == JOptionPane.YES_OPTION && installUrl != null) {
+                openUrl(installUrl);
+            }
+            return;
+        }
+
+        openAiTerminal(aiType, strategyName);
     }
 
     /**
@@ -172,7 +187,6 @@ public class AiTerminalController {
         String displayName = aiType.substring(0, 1).toUpperCase() + aiType.substring(1);
 
         // Check if external terminal mode is configured
-        String terminalMode = WindowStateStore.getInstance().getAiTerminalMode();
         if ("external".equals(terminalMode)) {
             openOsAiTerminal(aiType, traderyDir, strategyName);
             return;
@@ -242,7 +256,7 @@ public class AiTerminalController {
         aiTerminalFrame.setVisible(true);
         aiTerminalFrame.toFront();
 
-        onStatus.accept("Undocked Claude terminal");
+        onStatus.accept("Undocked AI terminal");
     }
 
     private void redockTerminal() {
@@ -263,7 +277,66 @@ public class AiTerminalController {
         dockedTerminalWrapper.revalidate();
         dockedTerminalWrapper.repaint();
 
-        onStatus.accept("Redocked Claude terminal");
+        onStatus.accept("Redocked AI terminal");
+    }
+
+    /**
+     * Check if a command is available on the system PATH.
+     */
+    public boolean isCommandAvailable(String command) {
+        // Method 1: Use login shell to get full PATH (includes ~/.zshrc, ~/.bashrc paths)
+        try {
+            ProcessBuilder pb = new ProcessBuilder("/bin/bash", "-l", "-c", "which " + command);
+            pb.redirectErrorStream(true);
+            Process process = pb.start();
+            int exitCode = process.waitFor();
+            if (exitCode == 0) return true;
+        } catch (Exception ignored) {}
+
+        // Method 2: Try zsh login shell (default on macOS)
+        try {
+            ProcessBuilder pb = new ProcessBuilder("/bin/zsh", "-l", "-c", "which " + command);
+            pb.redirectErrorStream(true);
+            Process process = pb.start();
+            int exitCode = process.waitFor();
+            if (exitCode == 0) return true;
+        } catch (Exception ignored) {}
+
+        // Method 3: Check common installation paths directly
+        String[] commonPaths = {
+            "/usr/local/bin/" + command,
+            "/opt/homebrew/bin/" + command,
+            System.getProperty("user.home") + "/.local/bin/" + command,
+            System.getProperty("user.home") + "/.npm-global/bin/" + command,
+            "/usr/bin/" + command
+        };
+        for (String path : commonPaths) {
+            if (new java.io.File(path).exists()) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Open a URL in the default browser.
+     */
+    public void openUrl(String url) {
+        try {
+            Desktop.getDesktop().browse(new java.net.URI(url));
+        } catch (Exception e) {
+            onStatus.accept("Could not open browser: " + e.getMessage());
+        }
+    }
+
+    private String getInstallUrl(AiProvider provider) {
+        return switch (provider) {
+            case CLAUDE -> "https://docs.anthropic.com/en/docs/claude-code";
+            case CODEX -> "https://github.com/openai/codex";
+            case GEMINI -> "https://github.com/google-gemini/gemini-cli";
+            default -> null;
+        };
     }
 
     private void openOsAiTerminal(String aiType, String traderyDir, String strategyName) {
@@ -334,6 +407,15 @@ public class AiTerminalController {
                 "Error",
                 JOptionPane.ERROR_MESSAGE);
         }
+    }
+
+    /**
+     * Check if an AI terminal session is currently running.
+     */
+    public boolean isTerminalRunning() {
+        if (dockedTerminalPanel != null && dockedTerminalPanel.isRunning()) return true;
+        if (aiTerminalFrame != null && aiTerminalFrame.isAiRunning()) return true;
+        return false;
     }
 
     /**
