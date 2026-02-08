@@ -1,11 +1,11 @@
 ---
 name: restart
-description: Restart the Tradery application. Use when asked to restart, relaunch, or reboot the app, or after making code changes that need testing.
+description: Restart the Plaiiin application. Use when asked to restart, relaunch, or reboot the app, or after making code changes that need testing.
 ---
 
-# Restart Tradery
+# Restart Plaiiin
 
-Kill any running Tradery instance and start fresh.
+Kill any running Plaiiin instance and start fresh.
 
 ## Modules
 

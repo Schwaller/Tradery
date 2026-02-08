@@ -36,8 +36,8 @@ public class AiDetector {
         // Claude (may return multiple entries, one per model tier)
         results.addAll(detectClaude());
 
-        // Codex
-        results.add(detectCodex());
+        // Codex (may return multiple entries, one per model tier)
+        results.addAll(detectCodex());
 
         // Ollama (may return multiple entries, one per model)
         results.addAll(detectOllama());
@@ -98,20 +98,51 @@ public class AiDetector {
         );
     }
 
-    private static DetectedProvider detectCodex() {
+    private static List<DetectedProvider> detectCodex() {
         String version = runCommand("codex", "--version");
         boolean detected = version != null;
-        return new DetectedProvider(
-            AiProvider.CODEX,
-            "Codex CLI" + (detected ? "  v" + version.trim() : ""),
-            "OpenAI's coding CLI",
-            detected ? version.trim() : null,
-            null,
-            "codex",
-            "exec",
-            detected,
-            false,
-            "https://github.com/openai/codex"
+        String ver = detected ? version.trim() : null;
+
+        if (!detected) {
+            return List.of(new DetectedProvider(
+                AiProvider.CODEX,
+                "Codex CLI",
+                "OpenAI's coding CLI",
+                null, null, "codex",
+                "exec",
+                false, false,
+                "https://github.com/openai/codex"
+            ));
+        }
+
+        return List.of(
+            new DetectedProvider(
+                AiProvider.CODEX,
+                "Codex \u2014 Fast (Mini)",
+                "Smaller, cost-effective model",
+                ver, null, "codex",
+                "exec -m gpt-5.1-codex-mini",
+                true, false,
+                "https://github.com/openai/codex"
+            ),
+            new DetectedProvider(
+                AiProvider.CODEX,
+                "Codex \u2014 Latest",
+                "Most capable coding model",
+                ver, null, "codex",
+                "exec -m gpt-5.3-codex",
+                true, false,
+                "https://github.com/openai/codex"
+            ),
+            new DetectedProvider(
+                AiProvider.CODEX,
+                "Codex \u2014 Max",
+                "Long-horizon agentic tasks",
+                ver, null, "codex",
+                "exec -m gpt-5.1-codex-max",
+                true, false,
+                "https://github.com/openai/codex"
+            )
         );
     }
 

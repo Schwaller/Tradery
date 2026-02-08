@@ -362,27 +362,38 @@ MEMBER_UPDATE → {documentId, members:[...]}   (admin syncs member list changes
 
 ## Module Architecture
 
-All sharing/networking code lives in **separate Gradle modules**. The existing `tradery-news` module gets only one small change: making `EntityStore` accept a `Path` parameter so external code can open arbitrary DBs. Everything else is additive.
+All networking/P2P code lives in **separate Gradle modules**. The existing `tradery-news` module gets small, natural additions to the data model (provenance fields that belong on entities regardless of sharing), plus a `Path`-based EntityStore constructor. Everything P2P/identity/governance is additive in new modules.
+
+**What belongs in the core model vs add-on modules:**
+
+| Field | Where | Why |
+|-------|-------|-----|
+| `uuid` | **Core** (EntityStore) | Globally unique ID is fundamental provenance — useful even without sharing (dedup, import/export, cross-doc references) |
+| `author_id` | **Core** (EntityStore) | Who created this is basic metadata — null until an account exists, filled in on upgrade |
+| `version` | **Core** (EntityStore) | Version tracking is a general data management concern |
+| `signature` | **Add-on** (tradery-sharing) | Only meaningful for P2P integrity verification |
+| `status` | **Add-on** (tradery-sharing) | published/pending_review/rejected is governance-specific |
 
 ```
 ┌───────────────────────────────────────────────────────────────────┐
-│ tradery-news (EXISTING — minimal changes)                         │
+│ tradery-news (EXISTING — small model additions)                   │
 │   EntityStore, CoinEntity, CoinRelationship, SchemaType,         │
 │   SchemaRegistry, DataSourceRegistry, all UI panels              │
-│   Change: EntityStore(Path) constructor overload                  │
+│   Changes: EntityStore(Path) constructor, uuid/author_id/version  │
+│   columns on entities + relationships tables                      │
 └───────────────────┬───────────────────────────────────────────────┘
                     │ depends on (uses EntityStore, SchemaRegistry)
                     ▼
 ┌───────────────────────────────────────────────────────────────────┐
-│ tradery-documents (NEW — Phase 1+2, no account needed)            │
-│   Document, DocumentManager, DocumentMember, UuidGenerator        │
+│ tradery-documents (NEW — Phase 2, no account needed)              │
+│   Document, DocumentManager, DocumentMember                       │
 │   Manages ~/.tradery/documents/, opens EntityStore per doc        │
 │   Document switcher UI (panel injected into IntelFrame)           │
 └───────────────────┬───────────────────────────────────────────────┘
                     │ depends on (uses DocumentManager, EntityStore)
                     ▼
 ┌───────────────────────────────────────────────────────────────────┐
-│ tradery-sharing (NEW — Phase 2b+3+4, requires account)            │
+│ tradery-sharing (NEW — Phase 3+4, requires account)               │
 │   UserSession, EntitySigner, SharingUpgrade                       │
 │   PeerServer, PeerConnection, PeerManager, SyncEngine             │
 │   RendezvousClient, LanDiscovery, NetworkMessage                  │

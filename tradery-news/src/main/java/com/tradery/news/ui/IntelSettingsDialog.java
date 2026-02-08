@@ -3,6 +3,7 @@ package com.tradery.news.ui;
 import com.tradery.ai.AiClient;
 import com.tradery.ai.AiConfig;
 import com.tradery.ai.AiDetector;
+import com.tradery.ai.AiSetupDialog;
 import com.tradery.ai.AiDetector.DetectedProvider;
 import com.tradery.ai.AiProfile;
 import com.tradery.ai.AiProvider;
@@ -724,8 +725,8 @@ public class IntelSettingsDialog extends SettingsDialog {
                                             exists = true;
                                             break;
                                         }
-                                    } else if (dp.provider() == AiProvider.CLAUDE) {
-                                        // Match by args for Claude (different model tiers)
+                                    } else if (dp.provider() == AiProvider.CLAUDE || dp.provider() == AiProvider.CODEX) {
+                                        // Match by args for providers with multiple model tiers
                                         if (dp.args() != null && dp.args().equals(existing.getArgs())) {
                                             exists = true;
                                             break;
@@ -756,11 +757,26 @@ public class IntelSettingsDialog extends SettingsDialog {
             }.execute();
         });
 
+        JButton resetBtn = new JButton("Reset...");
+        resetBtn.addActionListener(e -> {
+            int confirm = JOptionPane.showConfirmDialog(this,
+                "This will remove all AI profiles and re-run the initial setup.\nContinue?",
+                "Reset AI Profiles", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE);
+            if (confirm != JOptionPane.YES_OPTION) return;
+            aiConfig.getProfiles().clear();
+            aiConfig.setDefaultProfileId(null);
+            aiConfig.save();
+            loadProfiles.run();
+            AiSetupDialog.showSetup(this);
+            loadProfiles.run();
+        });
+
         buttonPanel.add(addBtn);
         buttonPanel.add(editBtn);
         buttonPanel.add(removeBtn);
         buttonPanel.add(setDefaultBtn);
         buttonPanel.add(autoDetectBtn);
+        buttonPanel.add(resetBtn);
         panel.add(buttonPanel, BorderLayout.SOUTH);
 
         return panel;
