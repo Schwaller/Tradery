@@ -1336,6 +1336,13 @@ public class ErdPanel extends JPanel {
         fc.gridx = 1; fc.gridy = row++;
         basicPanel.add(requiredCheck, fc);
 
+        JComboBox<SchemaAttribute.Mutability> mutabilityCombo = new JComboBox<>(SchemaAttribute.Mutability.values());
+        mutabilityCombo.setSelectedItem(editAttr != null ? editAttr.mutability() : SchemaAttribute.Mutability.MANUAL);
+        lc.gridx = 0; lc.gridy = row;
+        basicPanel.add(new JLabel("Mutability:"), lc);
+        fc.gridx = 1; fc.gridy = row++;
+        basicPanel.add(mutabilityCombo, fc);
+
         main.add(basicPanel, BorderLayout.NORTH);
 
         // === Format section (dynamic) ===
@@ -1587,11 +1594,13 @@ public class ErdPanel extends JPanel {
             }
 
             int displayOrder = editAttr != null ? editAttr.displayOrder() : type.attributes().size();
+            SchemaAttribute.Mutability mutability = (SchemaAttribute.Mutability) mutabilityCombo.getSelectedItem();
             return new SchemaAttribute(
                 name.toLowerCase().replaceAll("\\s+", "_"),
                 dataType, required, displayOrder,
                 labels.isEmpty() ? null : labels,
-                config.isEmpty() ? null : config
+                config.isEmpty() ? null : config,
+                mutability
             );
         }
         return null;

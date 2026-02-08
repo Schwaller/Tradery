@@ -314,8 +314,8 @@ public class EntitySearchDialog extends JDialog {
         gbc.fill = GridBagConstraints.HORIZONTAL;
         int col = 1;
         for (SearchLevel level : SearchLevel.values()) {
-            String label = level == SearchLevel.DEEP ? "Deep \u25be" : level.label;
-            ToolbarButton btn = new ToolbarButton(label);
+            String btnLabel = level == SearchLevel.DEEP ? "Deep \u25be" : level.label;
+            ToolbarButton btn = new ToolbarButton(btnLabel);
             btn.setToolTipText(level.tooltip);
 
             if (level == SearchLevel.DEEP) {

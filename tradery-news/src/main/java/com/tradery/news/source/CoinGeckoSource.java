@@ -1,6 +1,10 @@
 package com.tradery.news.source;
 
-import com.tradery.news.ui.coin.*;
+import com.tradery.news.ui.coin.AttributeValue;
+import com.tradery.news.ui.coin.CoinEntity;
+import com.tradery.news.ui.coin.CoinGeckoClient;
+import com.tradery.news.ui.coin.CoinRelationship;
+import com.tradery.news.ui.coin.EntityStore;
 
 import java.time.Duration;
 import java.util.*;
@@ -56,6 +60,9 @@ public class CoinGeckoSource implements DataSource {
                 List<CoinEntity> cgEntities = client.fetchTopCoins(200);
                 store.replaceEntitiesBySource("coingecko", cgEntities);
                 entities = new ArrayList<>(cgEntities);
+
+                // Write attribute values with SOURCE origin for provenance tracking
+                writeSourceAttributeValues(store, cgEntities);
             }
 
             // Load manual entities for relationship building
@@ -89,6 +96,23 @@ public class CoinGeckoSource implements DataSource {
 
         } catch (Exception e) {
             return new FetchResult(0, 0, "Error: " + e.getMessage());
+        }
+    }
+
+    private void writeSourceAttributeValues(EntityStore store, List<CoinEntity> entities) {
+        AttributeValue.Origin source = AttributeValue.Origin.SOURCE;
+        for (CoinEntity entity : entities) {
+            String typeId = entity.type().name().toLowerCase();
+            if (entity.name() != null) {
+                store.saveAttributeValue(entity.id(), typeId, "name", entity.name(), source);
+            }
+            if (entity.symbol() != null) {
+                store.saveAttributeValue(entity.id(), typeId, "symbol", entity.symbol(), source);
+            }
+            if (entity.marketCap() > 0) {
+                store.saveAttributeValue(entity.id(), typeId, "market_cap",
+                    String.valueOf((long) entity.marketCap()), source);
+            }
         }
     }
 

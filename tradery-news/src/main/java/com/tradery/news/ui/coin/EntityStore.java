@@ -625,13 +625,19 @@ public class EntityStore {
             while (rs.next()) {
                 Map<String, String> labels = parseJsonMap(rs.getString("labels"));
                 Map<String, Object> config = parseJsonObjectMap(rs.getString("config"));
+                String mutStr = rs.getString("mutability");
+                SchemaAttribute.Mutability mut = SchemaAttribute.Mutability.MANUAL;
+                if (mutStr != null) {
+                    try { mut = SchemaAttribute.Mutability.valueOf(mutStr); } catch (IllegalArgumentException ignored) {}
+                }
                 type.addAttribute(new SchemaAttribute(
                     rs.getString("name"),
                     rs.getString("data_type"),
                     rs.getInt("required") == 1,
                     rs.getInt("display_order"),
                     labels,
-                    config
+                    config,
+                    mut
                 ));
             }
         } catch (SQLException e) {
@@ -697,14 +703,15 @@ public class EntityStore {
         if (conn == null) return;
 
         try (PreparedStatement ps = conn.prepareStatement("""
-            INSERT INTO schema_attributes (type_id, name, data_type, required, display_order, labels, config)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO schema_attributes (type_id, name, data_type, required, display_order, labels, config, mutability)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(type_id, name) DO UPDATE SET
                 data_type = excluded.data_type,
                 required = excluded.required,
                 display_order = excluded.display_order,
                 labels = excluded.labels,
-                config = excluded.config
+                config = excluded.config,
+                mutability = excluded.mutability
         """)) {
             ps.setString(1, typeId);
             ps.setString(2, attr.name());
@@ -713,6 +720,7 @@ public class EntityStore {
             ps.setInt(5, attr.displayOrder());
             ps.setString(6, toJson(attr.labels()));
             ps.setString(7, toJson(attr.config()));
+            ps.setString(8, attr.mutability().name());
             ps.execute();
         } catch (SQLException e) {
             System.err.println("Failed to save schema attribute: " + e.getMessage());
@@ -752,22 +760,118 @@ public class EntityStore {
 
     // ==================== ATTRIBUTE VALUE CRUD ====================
 
-    /** Save a single attribute value for an entity. */
+    /** Save a single attribute value for an entity (defaults to Origin.USER). */
     public void saveAttributeValue(String entityId, String typeId, String attrName, String value) {
+        saveAttributeValue(entityId, typeId, attrName, value, AttributeValue.Origin.USER);
+    }
+
+    /** Save a single attribute value with explicit origin. Respects priority: lower-priority writes are skipped. */
+    public void saveAttributeValue(String entityId, String typeId, String attrName, String value, AttributeValue.Origin origin) {
         if (conn == null) return;
 
-        try (PreparedStatement ps = conn.prepareStatement("""
-            INSERT INTO entity_attribute_values (entity_id, type_id, attr_name, value)
-            VALUES (?, ?, ?, ?)
-            ON CONFLICT(entity_id, type_id, attr_name) DO UPDATE SET value = excluded.value
-        """)) {
+        try {
+            // Check existing origin priority
+            try (PreparedStatement ps = conn.prepareStatement(
+                    "SELECT origin FROM entity_attribute_values WHERE entity_id = ? AND type_id = ? AND attr_name = ?")) {
+                ps.setString(1, entityId);
+                ps.setString(2, typeId);
+                ps.setString(3, attrName);
+                ResultSet rs = ps.executeQuery();
+                if (rs.next()) {
+                    String existingOriginStr = rs.getString("origin");
+                    if (existingOriginStr != null) {
+                        try {
+                            AttributeValue.Origin existingOrigin = AttributeValue.Origin.valueOf(existingOriginStr);
+                            if (!existingOrigin.canBeOverriddenBy(origin)) {
+                                return; // Skip: existing value has higher priority
+                            }
+                        } catch (IllegalArgumentException ignored) {}
+                    }
+                }
+            }
+
+            try (PreparedStatement ps = conn.prepareStatement("""
+                INSERT INTO entity_attribute_values (entity_id, type_id, attr_name, value, origin, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(entity_id, type_id, attr_name) DO UPDATE SET
+                    value = excluded.value,
+                    origin = excluded.origin,
+                    updated_at = excluded.updated_at
+            """)) {
+                ps.setString(1, entityId);
+                ps.setString(2, typeId);
+                ps.setString(3, attrName);
+                ps.setString(4, value);
+                ps.setString(5, origin.name());
+                ps.setLong(6, System.currentTimeMillis());
+                ps.execute();
+            }
+        } catch (SQLException e) {
+            System.err.println("Failed to save attribute value: " + e.getMessage());
+        }
+    }
+
+    /** Get a single attribute value with provenance. */
+    public AttributeValue getAttributeValue(String entityId, String typeId, String attrName) {
+        if (conn == null) return null;
+
+        try (PreparedStatement ps = conn.prepareStatement(
+                "SELECT value, origin, updated_at FROM entity_attribute_values WHERE entity_id = ? AND type_id = ? AND attr_name = ?")) {
             ps.setString(1, entityId);
             ps.setString(2, typeId);
             ps.setString(3, attrName);
-            ps.setString(4, value);
+            ResultSet rs = ps.executeQuery();
+            if (rs.next()) {
+                return mapAttributeValue(rs);
+            }
+        } catch (SQLException e) {
+            System.err.println("Failed to get attribute value: " + e.getMessage());
+        }
+        return null;
+    }
+
+    /** Get all attribute values with provenance for an entity and type. */
+    public Map<String, AttributeValue> getAttributeValuesRich(String entityId, String typeId) {
+        Map<String, AttributeValue> values = new LinkedHashMap<>();
+        if (conn == null) return values;
+
+        try (PreparedStatement ps = conn.prepareStatement(
+                "SELECT attr_name, value, origin, updated_at FROM entity_attribute_values WHERE entity_id = ? AND type_id = ?")) {
+            ps.setString(1, entityId);
+            ps.setString(2, typeId);
+            ResultSet rs = ps.executeQuery();
+            while (rs.next()) {
+                values.put(rs.getString("attr_name"), mapAttributeValue(rs));
+            }
+        } catch (SQLException e) {
+            System.err.println("Failed to get rich attribute values: " + e.getMessage());
+        }
+        return values;
+    }
+
+    private AttributeValue mapAttributeValue(ResultSet rs) throws SQLException {
+        String value = rs.getString("value");
+        String originStr = rs.getString("origin");
+        long updatedAt = rs.getLong("updated_at");
+        AttributeValue.Origin origin = AttributeValue.Origin.USER;
+        if (originStr != null) {
+            try { origin = AttributeValue.Origin.valueOf(originStr); } catch (IllegalArgumentException ignored) {}
+        }
+        return AttributeValue.of(value, origin, updatedAt);
+    }
+
+    /** Update mutability for an attribute only if it's currently MANUAL (won't overwrite user changes). */
+    public void updateMutabilityIfDefault(String typeId, String attrName, SchemaAttribute.Mutability mut) {
+        if (conn == null) return;
+
+        try (PreparedStatement ps = conn.prepareStatement(
+                "UPDATE schema_attributes SET mutability = ? WHERE type_id = ? AND name = ? AND (mutability IS NULL OR mutability = 'MANUAL')")) {
+            ps.setString(1, mut.name());
+            ps.setString(2, typeId);
+            ps.setString(3, attrName);
             ps.execute();
         } catch (SQLException e) {
-            System.err.println("Failed to save attribute value: " + e.getMessage());
+            System.err.println("Failed to update mutability: " + e.getMessage());
         }
     }
 

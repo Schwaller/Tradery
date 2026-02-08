@@ -11,6 +11,8 @@ import java.util.function.Consumer;
 /**
  * Segmented toggle button group — tab-style selector for switching views.
  * Each segment is a styled JToggleButton managed by a ButtonGroup.
+ * The selected segment is rendered using a phantom JButton so it inherits
+ * the full themed button appearance (borders, shadows, gradients).
  * Colors are derived from the current FlatLaf theme and update on theme changes.
  */
 public class SegmentedToggle extends JPanel {
@@ -19,9 +21,9 @@ public class SegmentedToggle extends JPanel {
 
     private final ButtonGroup group = new ButtonGroup();
     private final List<JToggleButton> buttons = new ArrayList<>();
+    private final JButton phantom = new JButton();
     private Consumer<Integer> onSelectionChanged;
 
-    private Color bgSelected;
     private Color fgSelected;
     private Color fgUnselected;
     private Color fgHover;
@@ -31,6 +33,8 @@ public class SegmentedToggle extends JPanel {
         super(new FlowLayout(FlowLayout.LEFT, 0, 0));
         setOpaque(false);
         loadThemeColors();
+
+        phantom.setFocusPainted(false);
 
         for (int i = 0; i < labels.length; i++) {
             JToggleButton btn = createButton(labels[i]);
@@ -50,7 +54,7 @@ public class SegmentedToggle extends JPanel {
     }
 
     private int toggleHeight() {
-        return ToolbarButton.HEIGHT - ToolbarButton.focusBorderHeight();
+        return ToolbarButton.HEIGHT;
     }
 
     @Override
@@ -75,9 +79,6 @@ public class SegmentedToggle extends JPanel {
     }
 
     private void loadThemeColors() {
-        // FlatLaf overrides button background during updateUI() to a different value
-        // than UIManager "Button.background" — sample from a real JButton to match
-        bgSelected = new JButton().getBackground();
         fgSelected = UIManager.getColor("Label.foreground");
         fgUnselected = UIManager.getColor("Label.disabledForeground");
         fgHover = UIManager.getColor("Label.foreground");
@@ -93,20 +94,24 @@ public class SegmentedToggle extends JPanel {
         if (!buttons.isEmpty()) {
             Rectangle first = buttons.get(0).getBounds();
             Rectangle last = buttons.get(buttons.size() - 1).getBounds();
-            int x = first.x, y = first.y;
-            int w = last.x + last.width - first.x;
-            int h = first.height;
 
-            // Track
+            // Track — inset by focus border so it aligns with the painted button area
+            int fb = ToolbarButton.focusBorderHeight() / 2;
+            int x = first.x + fb, y = first.y + fb;
+            int w = last.x + last.width - first.x - fb * 2;
+            int h = first.height - fb * 2;
             g2.setColor(TRACK_COLOR);
             g2.fillRoundRect(x, y, w, h, arc, arc);
 
-            // Selected highlight
+            // Selected highlight — paint phantom JButton for full themed appearance
             for (JToggleButton btn : buttons) {
                 if (btn.isSelected()) {
                     Rectangle b = btn.getBounds();
-                    g2.setColor(bgSelected);
-                    g2.fillRoundRect(b.x, b.y, b.width, b.height, arc, arc);
+                    phantom.setSize(b.width, b.height);
+                    phantom.doLayout();
+                    Graphics2D bg = (Graphics2D) g2.create(b.x, b.y, b.width, b.height);
+                    phantom.paint(bg);
+                    bg.dispose();
                     break;
                 }
             }
@@ -120,6 +125,7 @@ public class SegmentedToggle extends JPanel {
     public void updateUI() {
         super.updateUI();
         loadThemeColors();
+        if (phantom != null) phantom.updateUI();
         if (buttons != null) {
             for (JToggleButton btn : buttons) {
                 applyColors(btn, false);

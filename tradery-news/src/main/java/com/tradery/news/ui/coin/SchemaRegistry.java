@@ -33,6 +33,12 @@ public class SchemaRegistry {
         }
         // Incremental migrations for types added after initial seed
         seedIfMissing();
+
+        // Re-read types to pick up any mutability migration changes
+        types.clear();
+        for (SchemaType t : store.loadSchemaTypes()) {
+            types.put(t.id(), t);
+        }
     }
 
     public SchemaType getType(String id) {
@@ -112,8 +118,20 @@ public class SchemaRegistry {
         store.saveAttributeValue(entityId, typeId, attrName, value);
     }
 
+    public void saveAttributeValue(String entityId, String typeId, String attrName, String value, AttributeValue.Origin origin) {
+        store.saveAttributeValue(entityId, typeId, attrName, value, origin);
+    }
+
     public Map<String, String> getAttributeValues(String entityId, String typeId) {
         return store.getAttributeValues(entityId, typeId);
+    }
+
+    public AttributeValue getAttributeValue(String entityId, String typeId, String attrName) {
+        return store.getAttributeValue(entityId, typeId, attrName);
+    }
+
+    public Map<String, AttributeValue> getAttributeValuesRich(String entityId, String typeId) {
+        return store.getAttributeValuesRich(entityId, typeId);
     }
 
     // ==================== SEED FROM EXISTING ENUMS ====================
@@ -131,9 +149,11 @@ public class SchemaRegistry {
             );
             st.setDisplayOrder(order++);
 
-            // Common attributes for all entity types
-            st.addAttribute(new SchemaAttribute("name", SchemaAttribute.TEXT, true, 0));
-            st.addAttribute(new SchemaAttribute("symbol", SchemaAttribute.TEXT, false, 1));
+            // Common attributes for all entity types (SOURCE = read-only, set by data sources)
+            st.addAttribute(new SchemaAttribute("name", SchemaAttribute.TEXT, true, 0,
+                null, null, SchemaAttribute.Mutability.SOURCE));
+            st.addAttribute(new SchemaAttribute("symbol", SchemaAttribute.TEXT, false, 1,
+                null, null, SchemaAttribute.Mutability.SOURCE));
 
             // Type-specific attributes
             switch (enumType) {
@@ -141,7 +161,8 @@ public class SchemaRegistry {
                     st.addAttribute(new SchemaAttribute("market_cap", SchemaAttribute.CURRENCY, false, 2,
                         Map.of("en", "Market Cap"),
                         Map.of("currencyCode", "USD", "currencySymbol", "$",
-                               "symbolPosition", "prefix", "decimalPlaces", 0)));
+                               "symbolPosition", "prefix", "decimalPlaces", 0),
+                        SchemaAttribute.Mutability.SOURCE));
                 }
                 case VC, EXCHANGE, FOUNDATION, COMPANY, NEWS_SOURCE -> {
                     // no extra attributes beyond name/symbol
@@ -234,12 +255,16 @@ public class SchemaRegistry {
             SchemaType na = new SchemaType("news_article", "News Article",
                 new Color(220, 180, 100), SchemaType.KIND_ENTITY);
             na.setDisplayOrder(types.size());
-            na.addAttribute(new SchemaAttribute("title", SchemaAttribute.TEXT, true, 0));
-            na.addAttribute(new SchemaAttribute("url", SchemaAttribute.URL, false, 1));
+            na.addAttribute(new SchemaAttribute("title", SchemaAttribute.TEXT, true, 0,
+                null, null, SchemaAttribute.Mutability.SOURCE));
+            na.addAttribute(new SchemaAttribute("url", SchemaAttribute.URL, false, 1,
+                null, null, SchemaAttribute.Mutability.SOURCE));
             na.addAttribute(new SchemaAttribute("published_at", SchemaAttribute.DATETIME, false, 2,
                 Map.of("en", "Published At"),
-                Map.of("format", "yyyy-MM-dd HH:mm")));
-            na.addAttribute(new SchemaAttribute("source", SchemaAttribute.TEXT, false, 3));
+                Map.of("format", "yyyy-MM-dd HH:mm"),
+                SchemaAttribute.Mutability.SOURCE));
+            na.addAttribute(new SchemaAttribute("source", SchemaAttribute.TEXT, false, 3,
+                null, null, SchemaAttribute.Mutability.SOURCE));
             store.saveSchemaType(na);
             for (SchemaAttribute attr : na.attributes()) store.saveSchemaAttribute(na.id(), attr);
             types.put(na.id(), na);
@@ -297,6 +322,29 @@ public class SchemaRegistry {
             for (SchemaAttribute attr : pb.attributes()) store.saveSchemaAttribute(pb.id(), attr);
             types.put(pb.id(), pb);
         }
+
+        // Migration: update mutability for source attributes on existing databases
+        migrateMutability();
+    }
+
+    /** Set correct mutability for known source attributes (only updates if still MANUAL). */
+    private void migrateMutability() {
+        // Entity types with source fields
+        for (String typeId : List.of("coin", "l2", "etf", "etp", "dat")) {
+            store.updateMutabilityIfDefault(typeId, "name", SchemaAttribute.Mutability.SOURCE);
+            store.updateMutabilityIfDefault(typeId, "symbol", SchemaAttribute.Mutability.SOURCE);
+            store.updateMutabilityIfDefault(typeId, "market_cap", SchemaAttribute.Mutability.SOURCE);
+        }
+        // VC, exchange, foundation etc only have name/symbol
+        for (String typeId : List.of("vc", "exchange", "foundation", "company", "news_source")) {
+            store.updateMutabilityIfDefault(typeId, "name", SchemaAttribute.Mutability.SOURCE);
+            store.updateMutabilityIfDefault(typeId, "symbol", SchemaAttribute.Mutability.SOURCE);
+        }
+        // News article source fields
+        store.updateMutabilityIfDefault("news_article", "title", SchemaAttribute.Mutability.SOURCE);
+        store.updateMutabilityIfDefault("news_article", "url", SchemaAttribute.Mutability.SOURCE);
+        store.updateMutabilityIfDefault("news_article", "published_at", SchemaAttribute.Mutability.SOURCE);
+        store.updateMutabilityIfDefault("news_article", "source", SchemaAttribute.Mutability.SOURCE);
     }
 
     private static String formatEnumName(String enumName) {

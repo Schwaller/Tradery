@@ -232,11 +232,159 @@ public class IntelSettingsDialog extends SettingsDialog {
         return panel;
     }
 
-    // --- AI Provider ---
+    // --- AI Profiles ---
 
-    private JPanel createAiContent() {
-        JPanel panel = new JPanel(new GridBagLayout());
+    private JPanel createAiProfilesContent() {
+        JPanel panel = new JPanel(new BorderLayout(0, 8));
         IntelConfig config = IntelConfig.get();
+
+        DefaultListModel<AiProfile> listModel = new DefaultListModel<>();
+        JList<AiProfile> profileList = new JList<>(listModel);
+        profileList.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+
+        Runnable loadProfiles = () -> {
+            listModel.clear();
+            for (AiProfile p : config.getAiProfiles()) {
+                listModel.addElement(p);
+            }
+        };
+        loadProfiles.run();
+
+        profileList.setCellRenderer(new ListCellRenderer<>() {
+            @Override
+            public Component getListCellRendererComponent(JList<? extends AiProfile> list, AiProfile profile,
+                                                           int index, boolean isSelected, boolean cellHasFocus) {
+                JPanel cell = new JPanel(new BorderLayout(8, 0));
+                cell.setBorder(BorderFactory.createEmptyBorder(4, 8, 4, 8));
+                cell.setBackground(isSelected ? list.getSelectionBackground() : list.getBackground());
+
+                boolean isDefault = profile.getId() != null && profile.getId().equals(config.getDefaultProfileId());
+
+                JPanel textPanel = new JPanel(new BorderLayout());
+                textPanel.setOpaque(false);
+
+                String nameText = (isDefault ? "\u2605 " : "") + profile.getName();
+                JLabel nameLabel = new JLabel(nameText);
+                nameLabel.setFont(nameLabel.getFont().deriveFont(Font.BOLD));
+                nameLabel.setForeground(isSelected ? list.getSelectionForeground() : list.getForeground());
+
+                JLabel providerLabel = new JLabel("[" + profile.getProvider() + "]");
+                providerLabel.setForeground(UIManager.getColor("Label.disabledForeground"));
+                providerLabel.setFont(providerLabel.getFont().deriveFont(providerLabel.getFont().getSize2D() - 1f));
+
+                JPanel topRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 0));
+                topRow.setOpaque(false);
+                topRow.add(nameLabel);
+                topRow.add(providerLabel);
+                textPanel.add(topRow, BorderLayout.NORTH);
+
+                if (profile.getDescription() != null && !profile.getDescription().isEmpty()) {
+                    JLabel descLabel = new JLabel(profile.getDescription());
+                    descLabel.setFont(descLabel.getFont().deriveFont(descLabel.getFont().getSize2D() - 1f));
+                    descLabel.setForeground(UIManager.getColor("Label.disabledForeground"));
+                    descLabel.setBorder(BorderFactory.createEmptyBorder(0, 3, 0, 0));
+                    textPanel.add(descLabel, BorderLayout.SOUTH);
+                }
+
+                cell.add(textPanel, BorderLayout.CENTER);
+                return cell;
+            }
+        });
+
+        JScrollPane scroll = new JScrollPane(profileList);
+        scroll.setPreferredSize(new Dimension(0, 140));
+        scroll.setBorder(UIManager.getBorder("ScrollPane.border"));
+        panel.add(scroll, BorderLayout.CENTER);
+
+        // Buttons
+        JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
+        JButton addBtn = new JButton("Add...");
+        JButton editBtn = new JButton("Edit...");
+        JButton removeBtn = new JButton("Remove");
+        JButton setDefaultBtn = new JButton("Set Default");
+
+        addBtn.addActionListener(e -> {
+            AiProfile newProfile = showProfileEditor(null);
+            if (newProfile != null) {
+                config.addProfile(newProfile);
+                if (config.getAiProfiles().size() == 1) {
+                    config.setDefaultProfileId(newProfile.getId());
+                }
+                config.save();
+                loadProfiles.run();
+            }
+        });
+
+        editBtn.addActionListener(e -> {
+            AiProfile selected = profileList.getSelectedValue();
+            if (selected == null) {
+                JOptionPane.showMessageDialog(this, "Select a profile to edit.", "No Selection", JOptionPane.WARNING_MESSAGE);
+                return;
+            }
+            AiProfile edited = showProfileEditor(selected);
+            if (edited != null) {
+                // Update in-place
+                selected.setName(edited.getName());
+                selected.setDescription(edited.getDescription());
+                selected.setProvider(edited.getProvider());
+                selected.setPath(edited.getPath());
+                selected.setArgs(edited.getArgs());
+                selected.setCommand(edited.getCommand());
+                selected.setApiKey(edited.getApiKey());
+                selected.setModel(edited.getModel());
+                selected.setTimeoutSeconds(edited.getTimeoutSeconds());
+                config.save();
+                loadProfiles.run();
+            }
+        });
+
+        removeBtn.addActionListener(e -> {
+            AiProfile selected = profileList.getSelectedValue();
+            if (selected == null) {
+                JOptionPane.showMessageDialog(this, "Select a profile to remove.", "No Selection", JOptionPane.WARNING_MESSAGE);
+                return;
+            }
+            if (config.getAiProfiles().size() <= 1) {
+                JOptionPane.showMessageDialog(this, "Cannot remove the last profile.", "Cannot Remove", JOptionPane.WARNING_MESSAGE);
+                return;
+            }
+            int result = JOptionPane.showConfirmDialog(this,
+                "Remove profile '" + selected.getName() + "'?",
+                "Confirm Remove", JOptionPane.YES_NO_OPTION);
+            if (result == JOptionPane.YES_OPTION) {
+                config.removeProfile(selected.getId());
+                config.save();
+                loadProfiles.run();
+            }
+        });
+
+        setDefaultBtn.addActionListener(e -> {
+            AiProfile selected = profileList.getSelectedValue();
+            if (selected == null) {
+                JOptionPane.showMessageDialog(this, "Select a profile to set as default.", "No Selection", JOptionPane.WARNING_MESSAGE);
+                return;
+            }
+            config.setDefaultProfileId(selected.getId());
+            config.save();
+            loadProfiles.run();
+        });
+
+        buttonPanel.add(addBtn);
+        buttonPanel.add(editBtn);
+        buttonPanel.add(removeBtn);
+        buttonPanel.add(setDefaultBtn);
+        panel.add(buttonPanel, BorderLayout.SOUTH);
+
+        return panel;
+    }
+
+    private AiProfile showProfileEditor(AiProfile existing) {
+        JDialog dialog = new JDialog(this, existing != null ? "Edit Profile" : "Add Profile", true);
+        dialog.setSize(480, 420);
+        dialog.setLocationRelativeTo(this);
+
+        JPanel formPanel = new JPanel(new GridBagLayout());
+        formPanel.setBorder(BorderFactory.createEmptyBorder(12, 16, 8, 16));
 
         GridBagConstraints labelGbc = new GridBagConstraints();
         labelGbc.anchor = GridBagConstraints.WEST;
@@ -249,138 +397,93 @@ public class IntelSettingsDialog extends SettingsDialog {
 
         int row = 0;
 
-        // Provider combo
+        // Name
         labelGbc.gridx = 0; labelGbc.gridy = row;
-        panel.add(new JLabel("Provider:"), labelGbc);
+        formPanel.add(new JLabel("Name:"), labelGbc);
+        fieldGbc.gridx = 1; fieldGbc.gridy = row++;
+        JTextField nameField = new JTextField(existing != null ? existing.getName() : "");
+        formPanel.add(nameField, fieldGbc);
 
+        // Description
+        labelGbc.gridx = 0; labelGbc.gridy = row;
+        formPanel.add(new JLabel("Description:"), labelGbc);
+        fieldGbc.gridx = 1; fieldGbc.gridy = row++;
+        JTextField descField = new JTextField(existing != null && existing.getDescription() != null ? existing.getDescription() : "");
+        formPanel.add(descField, fieldGbc);
+
+        // Provider
+        labelGbc.gridx = 0; labelGbc.gridy = row;
+        formPanel.add(new JLabel("Provider:"), labelGbc);
         fieldGbc.gridx = 1; fieldGbc.gridy = row++;
         JComboBox<IntelConfig.AiProvider> providerCombo = new JComboBox<>(IntelConfig.AiProvider.values());
-        providerCombo.setSelectedItem(config.getAiProvider());
-        panel.add(providerCombo, fieldGbc);
+        providerCombo.setSelectedItem(existing != null ? existing.getProvider() : IntelConfig.AiProvider.CLAUDE);
+        formPanel.add(providerCombo, fieldGbc);
 
-        // Claude path
+        // CLI path
         labelGbc.gridx = 0; labelGbc.gridy = row;
-        JLabel claudeLabel = new JLabel("Claude CLI path:");
-        panel.add(claudeLabel, labelGbc);
-
+        JLabel pathLabel = new JLabel("CLI path:");
+        formPanel.add(pathLabel, labelGbc);
         fieldGbc.gridx = 1; fieldGbc.gridy = row++;
-        JTextField claudeField = new JTextField(config.getClaudePath());
-        panel.add(claudeField, fieldGbc);
+        JTextField pathField = new JTextField(existing != null ? existing.getPath() : "claude");
+        formPanel.add(pathField, fieldGbc);
 
-        // Claude args
+        // CLI args
         labelGbc.gridx = 0; labelGbc.gridy = row;
-        JLabel claudeArgsLabel = new JLabel("Claude CLI args:");
-        panel.add(claudeArgsLabel, labelGbc);
-
+        JLabel argsLabel = new JLabel("CLI args:");
+        formPanel.add(argsLabel, labelGbc);
         fieldGbc.gridx = 1; fieldGbc.gridy = row++;
-        JTextField claudeArgsField = new JTextField(config.getClaudeArgs());
-        claudeArgsField.setToolTipText("CLI args. Prompt sent via stdin.");
-        panel.add(claudeArgsField, fieldGbc);
-
-        // Codex path
-        labelGbc.gridx = 0; labelGbc.gridy = row;
-        JLabel codexLabel = new JLabel("Codex CLI path:");
-        panel.add(codexLabel, labelGbc);
-
-        fieldGbc.gridx = 1; fieldGbc.gridy = row++;
-        JTextField codexField = new JTextField(config.getCodexPath());
-        panel.add(codexField, fieldGbc);
-
-        // Codex args
-        labelGbc.gridx = 0; labelGbc.gridy = row;
-        JLabel codexArgsLabel = new JLabel("Codex CLI args:");
-        panel.add(codexArgsLabel, labelGbc);
-
-        fieldGbc.gridx = 1; fieldGbc.gridy = row++;
-        JTextField codexArgsField = new JTextField(config.getCodexArgs());
-        codexArgsField.setToolTipText("CLI args. Prompt appended as last argument.");
-        panel.add(codexArgsField, fieldGbc);
+        JTextField argsField = new JTextField(existing != null ? existing.getArgs() : "--print --output-format text --model haiku");
+        formPanel.add(argsField, fieldGbc);
 
         // Custom command
         labelGbc.gridx = 0; labelGbc.gridy = row;
-        JLabel customLabel = new JLabel("Custom command:");
-        panel.add(customLabel, labelGbc);
-
+        JLabel commandLabel = new JLabel("Command:");
+        formPanel.add(commandLabel, labelGbc);
         fieldGbc.gridx = 1; fieldGbc.gridy = row++;
-        JTextField customField = new JTextField(config.getCustomCommand());
-        customField.setToolTipText("Full command with args. Prompt appended as last argument.");
-        panel.add(customField, fieldGbc);
+        JTextField commandField = new JTextField(existing != null ? existing.getCommand() : "");
+        formPanel.add(commandField, fieldGbc);
 
         // Gemini API key
         labelGbc.gridx = 0; labelGbc.gridy = row;
-        JLabel geminiKeyLabel = new JLabel("API Key:");
-        panel.add(geminiKeyLabel, labelGbc);
-
+        JLabel apiKeyLabel = new JLabel("API Key:");
+        formPanel.add(apiKeyLabel, labelGbc);
         fieldGbc.gridx = 1; fieldGbc.gridy = row++;
-        JPasswordField geminiKeyField = new JPasswordField(config.getGeminiApiKey());
-        geminiKeyField.setToolTipText("Free API key from aistudio.google.com");
-        panel.add(geminiKeyField, fieldGbc);
+        JPasswordField apiKeyField = new JPasswordField(existing != null ? existing.getApiKey() : "");
+        formPanel.add(apiKeyField, fieldGbc);
 
         // Gemini model
         labelGbc.gridx = 0; labelGbc.gridy = row;
-        JLabel geminiModelLabel = new JLabel("Model:");
-        panel.add(geminiModelLabel, labelGbc);
-
+        JLabel modelLabel = new JLabel("Model:");
+        formPanel.add(modelLabel, labelGbc);
         fieldGbc.gridx = 1; fieldGbc.gridy = row++;
-        JComboBox<String> geminiModelCombo = new JComboBox<>(new String[]{
+        JComboBox<String> modelCombo = new JComboBox<>(new String[]{
             "gemini-2.5-flash-lite", "gemini-2.5-flash", "gemini-2.0-flash"
         });
-        geminiModelCombo.setSelectedItem(config.getGeminiModel());
-        panel.add(geminiModelCombo, fieldGbc);
+        modelCombo.setEditable(true);
+        modelCombo.setSelectedItem(existing != null ? existing.getModel() : "gemini-2.5-flash-lite");
+        formPanel.add(modelCombo, fieldGbc);
 
-        // Gemini help text
+        // Gemini help
         labelGbc.gridx = 0; labelGbc.gridy = row;
-        panel.add(new JLabel(), labelGbc);
+        formPanel.add(new JLabel(), labelGbc);
         fieldGbc.gridx = 1; fieldGbc.gridy = row++;
-        JLabel geminiHelpLabel = new JLabel("<html><small>Free API key from aistudio.google.com - no credit card needed</small></html>");
-        geminiHelpLabel.setForeground(UIManager.getColor("Label.disabledForeground"));
-        panel.add(geminiHelpLabel, fieldGbc);
+        JLabel geminiHelp = new JLabel("<html><small>Free API key from aistudio.google.com</small></html>");
+        geminiHelp.setForeground(UIManager.getColor("Label.disabledForeground"));
+        formPanel.add(geminiHelp, fieldGbc);
 
         // Timeout
         labelGbc.gridx = 0; labelGbc.gridy = row;
-        panel.add(new JLabel("Timeout (seconds):"), labelGbc);
-
+        formPanel.add(new JLabel("Timeout (sec):"), labelGbc);
         fieldGbc.gridx = 1; fieldGbc.gridy = row++;
-        JSpinner timeoutSpinner = new JSpinner(new SpinnerNumberModel(config.getAiTimeoutSeconds(), 10, 300, 10));
-        panel.add(timeoutSpinner, fieldGbc);
-
-        // Visibility updater
-        Runnable updateVisibility = () -> {
-            IntelConfig.AiProvider selected = (IntelConfig.AiProvider) providerCombo.getSelectedItem();
-            claudeLabel.setVisible(selected == IntelConfig.AiProvider.CLAUDE);
-            claudeField.setVisible(selected == IntelConfig.AiProvider.CLAUDE);
-            claudeArgsLabel.setVisible(selected == IntelConfig.AiProvider.CLAUDE);
-            claudeArgsField.setVisible(selected == IntelConfig.AiProvider.CLAUDE);
-            codexLabel.setVisible(selected == IntelConfig.AiProvider.CODEX);
-            codexField.setVisible(selected == IntelConfig.AiProvider.CODEX);
-            codexArgsLabel.setVisible(selected == IntelConfig.AiProvider.CODEX);
-            codexArgsField.setVisible(selected == IntelConfig.AiProvider.CODEX);
-            customLabel.setVisible(selected == IntelConfig.AiProvider.CUSTOM);
-            customField.setVisible(selected == IntelConfig.AiProvider.CUSTOM);
-            geminiKeyLabel.setVisible(selected == IntelConfig.AiProvider.GEMINI);
-            geminiKeyField.setVisible(selected == IntelConfig.AiProvider.GEMINI);
-            geminiModelLabel.setVisible(selected == IntelConfig.AiProvider.GEMINI);
-            geminiModelCombo.setVisible(selected == IntelConfig.AiProvider.GEMINI);
-            geminiHelpLabel.setVisible(selected == IntelConfig.AiProvider.GEMINI);
-        };
-        providerCombo.addActionListener(e -> updateVisibility.run());
-        updateVisibility.run();
-
-        // Test + Save buttons
-        labelGbc.gridx = 0; labelGbc.gridy = row;
-        panel.add(new JLabel(), labelGbc);
-
-        fieldGbc.gridx = 1; fieldGbc.gridy = row++;
-        JPanel buttonRow = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
-        JButton testBtn = new JButton("Test Connection");
-        JButton saveBtn = new JButton("Save");
+        JSpinner timeoutSpinner = new JSpinner(new SpinnerNumberModel(
+            existing != null ? existing.getTimeoutSeconds() : 60, 10, 300, 10));
+        formPanel.add(timeoutSpinner, fieldGbc);
 
         // Test log area
         labelGbc.gridx = 0; labelGbc.gridy = row;
-        panel.add(new JLabel(), labelGbc);
-
+        formPanel.add(new JLabel(), labelGbc);
         fieldGbc.gridx = 1; fieldGbc.gridy = row++;
-        JTextArea testLogArea = new JTextArea(5, 40);
+        JTextArea testLogArea = new JTextArea(3, 40);
         testLogArea.setFont(new Font("Monospaced", Font.PLAIN, 10));
         testLogArea.setEditable(false);
         testLogArea.setLineWrap(true);
@@ -388,206 +491,123 @@ public class IntelSettingsDialog extends SettingsDialog {
         JScrollPane testLogScroll = new JScrollPane(testLogArea);
         testLogScroll.setBorder(UIManager.getBorder("ScrollPane.border"));
         testLogScroll.setVisible(false);
-        panel.add(testLogScroll, fieldGbc);
+        formPanel.add(testLogScroll, fieldGbc);
+
+        // Visibility updater
+        Runnable updateVisibility = () -> {
+            IntelConfig.AiProvider selected = (IntelConfig.AiProvider) providerCombo.getSelectedItem();
+            boolean isCli = selected == IntelConfig.AiProvider.CLAUDE || selected == IntelConfig.AiProvider.CODEX;
+            pathLabel.setVisible(isCli);
+            pathField.setVisible(isCli);
+            argsLabel.setVisible(isCli);
+            argsField.setVisible(isCli);
+            commandLabel.setVisible(selected == IntelConfig.AiProvider.CUSTOM);
+            commandField.setVisible(selected == IntelConfig.AiProvider.CUSTOM);
+            apiKeyLabel.setVisible(selected == IntelConfig.AiProvider.GEMINI);
+            apiKeyField.setVisible(selected == IntelConfig.AiProvider.GEMINI);
+            modelLabel.setVisible(selected == IntelConfig.AiProvider.GEMINI);
+            modelCombo.setVisible(selected == IntelConfig.AiProvider.GEMINI);
+            geminiHelp.setVisible(selected == IntelConfig.AiProvider.GEMINI);
+            formPanel.revalidate();
+        };
+        providerCombo.addActionListener(e -> updateVisibility.run());
+        updateVisibility.run();
+
+        // Buttons
+        JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
+        buttonPanel.setBorder(BorderFactory.createEmptyBorder(8, 16, 12, 16));
+        JButton testBtn = new JButton("Test Connection");
+        JButton cancelBtn = new JButton("Cancel");
+        JButton saveBtn = new JButton("Save");
+
+        AiProfile[] result = {null};
 
         testBtn.addActionListener(e -> {
             testLogArea.setVisible(true);
             testLogScroll.setVisible(true);
             testLogArea.setText("");
-            panel.revalidate();
+            formPanel.revalidate();
+            dialog.pack();
 
-            IntelConfig.AiProvider selectedProvider = (IntelConfig.AiProvider) providerCombo.getSelectedItem();
-            testAiConnection(selectedProvider,
-                claudeField.getText().trim(), claudeArgsField.getText().trim(),
-                codexField.getText().trim(), codexArgsField.getText().trim(),
-                customField.getText().trim(),
-                new String(geminiKeyField.getPassword()).trim(),
-                (String) geminiModelCombo.getSelectedItem(),
-                testLogArea, testBtn);
+            AiProfile tempProfile = buildProfileFromForm(
+                existing != null ? existing.getId() : null,
+                nameField, descField, providerCombo, pathField, argsField,
+                commandField, apiKeyField, modelCombo, timeoutSpinner);
+
+            testBtn.setEnabled(false);
+            new Thread(() -> {
+                try {
+                    Consumer<String> log = msg -> SwingUtilities.invokeLater(() -> {
+                        testLogArea.append(msg + "\n");
+                        testLogArea.setCaretPosition(testLogArea.getDocument().getLength());
+                    });
+
+                    log.accept("Testing " + tempProfile.getProvider() + " profile...");
+                    AiClient.TestResult testResult = AiClient.getInstance().testConnection(tempProfile);
+                    if (testResult.version() != null) {
+                        log.accept("Version: " + testResult.version());
+                    }
+                    log.accept(testResult.success() ? "Connection working!" : "Failed: " + testResult.message());
+                } catch (Exception ex) {
+                    SwingUtilities.invokeLater(() -> testLogArea.append("Error: " + ex.getMessage() + "\n"));
+                } finally {
+                    SwingUtilities.invokeLater(() -> testBtn.setEnabled(true));
+                }
+            }).start();
         });
+
+        cancelBtn.addActionListener(e -> dialog.dispose());
 
         saveBtn.addActionListener(e -> {
-            config.setAiProvider((IntelConfig.AiProvider) providerCombo.getSelectedItem());
-            config.setClaudePath(claudeField.getText().trim());
-            config.setClaudeArgs(claudeArgsField.getText().trim());
-            config.setCodexPath(codexField.getText().trim());
-            config.setCodexArgs(codexArgsField.getText().trim());
-            config.setCustomCommand(customField.getText().trim());
-            config.setGeminiApiKey(new String(geminiKeyField.getPassword()).trim());
-            config.setGeminiModel((String) geminiModelCombo.getSelectedItem());
-            config.setAiTimeoutSeconds((Integer) timeoutSpinner.getValue());
-            config.save();
-            JOptionPane.showMessageDialog(this, "AI settings saved.", "Saved", JOptionPane.INFORMATION_MESSAGE);
+            String name = nameField.getText().trim();
+            if (name.isEmpty()) {
+                JOptionPane.showMessageDialog(dialog, "Name is required.", "Validation", JOptionPane.WARNING_MESSAGE);
+                return;
+            }
+            result[0] = buildProfileFromForm(
+                existing != null ? existing.getId() : generateProfileId(name),
+                nameField, descField, providerCombo, pathField, argsField,
+                commandField, apiKeyField, modelCombo, timeoutSpinner);
+            dialog.dispose();
         });
 
-        buttonRow.add(testBtn);
-        buttonRow.add(saveBtn);
-        panel.add(buttonRow, fieldGbc);
+        buttonPanel.add(testBtn);
+        buttonPanel.add(cancelBtn);
+        buttonPanel.add(saveBtn);
 
-        return panel;
+        dialog.setLayout(new BorderLayout());
+        dialog.add(formPanel, BorderLayout.CENTER);
+        dialog.add(buttonPanel, BorderLayout.SOUTH);
+        dialog.pack();
+        dialog.setVisible(true);
+
+        return result[0];
     }
 
-    private void testAiConnection(IntelConfig.AiProvider provider,
-                                   String claudePath, String claudeArgs,
-                                   String codexPath, String codexArgs,
-                                   String customCommand, String geminiApiKey, String geminiModel,
-                                   JTextArea logArea, JButton testBtn) {
-        testBtn.setEnabled(false);
-
-        Consumer<String> log = msg -> SwingUtilities.invokeLater(() -> {
-            logArea.append(msg + "\n");
-            logArea.setCaretPosition(logArea.getDocument().getLength());
-        });
-
-        IntelConfig config = IntelConfig.get();
-        IntelConfig.AiProvider origProvider = config.getAiProvider();
-        String origClaudePath = config.getClaudePath();
-        String origClaudeArgs = config.getClaudeArgs();
-        String origCodexPath = config.getCodexPath();
-        String origCodexArgs = config.getCodexArgs();
-        String origCustomCommand = config.getCustomCommand();
-        String origGeminiKey = config.getGeminiApiKey();
-        String origGeminiModel = config.getGeminiModel();
-
-        config.setAiProvider(provider);
-        config.setClaudePath(claudePath);
-        config.setClaudeArgs(claudeArgs);
-        config.setCodexPath(codexPath);
-        config.setCodexArgs(codexArgs);
-        config.setCustomCommand(customCommand);
-        config.setGeminiApiKey(geminiApiKey);
-        config.setGeminiModel(geminiModel);
-
-        new Thread(() -> {
-            try {
-                if (provider == IntelConfig.AiProvider.GEMINI) {
-                    testGeminiConnection(log, geminiApiKey, geminiModel);
-                } else {
-                    testCliConnection(provider, log, claudePath, claudeArgs, codexPath, codexArgs, customCommand);
-                }
-            } catch (Exception e) {
-                log.accept("Error: " + e.getMessage());
-            } finally {
-                config.setAiProvider(origProvider);
-                config.setClaudePath(origClaudePath);
-                config.setClaudeArgs(origClaudeArgs);
-                config.setCodexPath(origCodexPath);
-                config.setCodexArgs(origCodexArgs);
-                config.setCustomCommand(origCustomCommand);
-                config.setGeminiApiKey(origGeminiKey);
-                config.setGeminiModel(origGeminiModel);
-                SwingUtilities.invokeLater(() -> testBtn.setEnabled(true));
-            }
-        }).start();
+    private AiProfile buildProfileFromForm(String id, JTextField nameField, JTextField descField,
+                                            JComboBox<IntelConfig.AiProvider> providerCombo,
+                                            JTextField pathField, JTextField argsField,
+                                            JTextField commandField, JPasswordField apiKeyField,
+                                            JComboBox<String> modelCombo, JSpinner timeoutSpinner) {
+        AiProfile profile = new AiProfile();
+        profile.setId(id);
+        profile.setName(nameField.getText().trim());
+        String desc = descField.getText().trim();
+        profile.setDescription(desc.isEmpty() ? null : desc);
+        profile.setProvider((IntelConfig.AiProvider) providerCombo.getSelectedItem());
+        profile.setPath(pathField.getText().trim());
+        profile.setArgs(argsField.getText().trim());
+        profile.setCommand(commandField.getText().trim());
+        profile.setApiKey(new String(apiKeyField.getPassword()).trim());
+        profile.setModel((String) modelCombo.getSelectedItem());
+        profile.setTimeoutSeconds((Integer) timeoutSpinner.getValue());
+        return profile;
     }
 
-    private void testGeminiConnection(Consumer<String> log, String apiKey, String model) {
-        if (apiKey == null || apiKey.isBlank()) {
-            log.accept("API key not configured");
-            return;
-        }
-        log.accept("Testing Gemini API (" + model + ")...");
-        try {
-            AiClient client = AiClient.getInstance();
-            if (!client.isAvailable()) {
-                log.accept("API key invalid or cannot reach Gemini API");
-                return;
-            }
-            log.accept("API key valid. Sending test query...");
-            String response = client.query("Say OK");
-            log.accept("Response: " + response.trim());
-            log.accept("Connection working!");
-        } catch (Exception e) {
-            log.accept("Error: " + e.getMessage());
-        }
-    }
-
-    private void testCliConnection(IntelConfig.AiProvider provider, Consumer<String> log,
-                                    String claudePath, String claudeArgs,
-                                    String codexPath, String codexArgs, String customCommand) {
-        String cliPath = switch (provider) {
-            case CLAUDE -> claudePath;
-            case CODEX -> codexPath;
-            case CUSTOM -> (customCommand != null && !customCommand.isBlank()) ? customCommand.split("\\s+")[0] : "";
-            default -> "";
-        };
-
-        if (cliPath == null || cliPath.isBlank()) {
-            log.accept("Path/command not configured");
-            return;
-        }
-
-        try {
-            log.accept("Checking CLI: " + cliPath + " --version");
-            ProcessBuilder versionPb = new ProcessBuilder(cliPath, "--version");
-            versionPb.redirectErrorStream(true);
-            Process p = versionPb.start();
-            try (var reader = new java.io.BufferedReader(new java.io.InputStreamReader(p.getInputStream()))) {
-                String line;
-                while ((line = reader.readLine()) != null) log.accept("  " + line);
-            }
-            if (!p.waitFor(10, java.util.concurrent.TimeUnit.SECONDS)) {
-                p.destroyForcibly();
-                log.accept("CLI timed out");
-                return;
-            }
-            if (p.exitValue() != 0) {
-                log.accept("CLI not found or returned error");
-                return;
-            }
-            log.accept("CLI found. Sending test query...");
-
-            java.util.List<String> cmd = new java.util.ArrayList<>();
-            boolean useStdin = false;
-            String testPrompt = "Respond with exactly: OK";
-
-            switch (provider) {
-                case CLAUDE -> {
-                    cmd.add(claudePath);
-                    if (claudeArgs != null && !claudeArgs.isBlank())
-                        cmd.addAll(java.util.Arrays.asList(claudeArgs.split("\\s+")));
-                    useStdin = true;
-                }
-                case CODEX -> {
-                    cmd.add(codexPath);
-                    if (codexArgs != null && !codexArgs.isBlank())
-                        cmd.addAll(java.util.Arrays.asList(codexArgs.split("\\s+")));
-                    cmd.add(testPrompt);
-                }
-                case CUSTOM -> {
-                    if (customCommand != null && !customCommand.isBlank())
-                        cmd.addAll(java.util.Arrays.asList(customCommand.split("\\s+")));
-                    cmd.add(testPrompt);
-                }
-                default -> {}
-            }
-
-            ProcessBuilder testPb = new ProcessBuilder(cmd);
-            testPb.redirectErrorStream(true);
-            Process testProcess = testPb.start();
-
-            if (useStdin) {
-                try (var stdin = testProcess.getOutputStream()) {
-                    stdin.write(testPrompt.getBytes());
-                    stdin.flush();
-                }
-            }
-
-            try (var reader = new java.io.BufferedReader(new java.io.InputStreamReader(testProcess.getInputStream()))) {
-                String line;
-                while ((line = reader.readLine()) != null) log.accept("  " + line);
-            }
-
-            if (!testProcess.waitFor(60, java.util.concurrent.TimeUnit.SECONDS)) {
-                testProcess.destroyForcibly();
-                log.accept("Timeout after 60s");
-                return;
-            }
-
-            log.accept(testProcess.exitValue() == 0 ? "Connection working!" : "CLI returned error (exit " + testProcess.exitValue() + ")");
-        } catch (Exception e) {
-            log.accept("Error: " + e.getMessage());
-        }
+    private String generateProfileId(String name) {
+        return name.toLowerCase()
+            .replaceAll("[^a-z0-9]+", "-")
+            .replaceAll("^-|-$", "");
     }
 
     // --- ERD Rendering ---

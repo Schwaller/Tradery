@@ -618,8 +618,8 @@ public class EntityManagerFrame extends JFrame {
         SchemaType schemaType = schemaRegistry.getType(typeId);
         if (schemaType == null || schemaType.attributes().isEmpty()) return;
 
-        // Load stored values
-        Map<String, String> storedValues = store.getAttributeValues(entity.id(), typeId);
+        // Load stored values with provenance
+        Map<String, AttributeValue> richValues = store.getAttributeValuesRich(entity.id(), typeId);
 
         JPanel grid = new JPanel(new GridBagLayout());
         GridBagConstraints lc = new GridBagConstraints();
@@ -637,13 +637,24 @@ public class EntityManagerFrame extends JFrame {
                 "market_cap".equals(attr.name())) continue;
 
             String displayLabel = attr.displayName(Locale.getDefault());
-            String storedValue = storedValues.getOrDefault(attr.name(), "");
+            AttributeValue av = richValues.get(attr.name());
+            String storedValue = av != null ? av.value() : "";
+
+            // SOURCE attributes are always read-only
+            boolean attrEditable = editable && !attr.isSource();
 
             lc.gridx = 0; lc.gridy = row;
-            grid.add(new JLabel(displayLabel + ":"), lc);
+            // Build label with origin badge for DERIVED attributes
+            JPanel labelPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 2, 0));
+            labelPanel.setOpaque(false);
+            labelPanel.add(new JLabel(displayLabel + ":"));
+            if (attr.isDerived() && av != null && av.value() != null && !av.value().isEmpty()) {
+                labelPanel.add(createOriginBadge(av.origin()));
+            }
+            grid.add(labelPanel, lc);
 
             fc.gridx = 1; fc.gridy = row;
-            JComponent input = createInputForAttribute(attr, storedValue, editable);
+            JComponent input = createInputForAttribute(attr, storedValue, attrEditable);
             grid.add(input, fc);
             attrInputComponents.put(attr.name(), input);
 
@@ -658,6 +669,23 @@ public class EntityManagerFrame extends JFrame {
 
         customAttrsPanel.revalidate();
         customAttrsPanel.repaint();
+    }
+
+    private JLabel createOriginBadge(AttributeValue.Origin origin) {
+        String text = switch (origin) {
+            case SOURCE -> "src";
+            case AI -> "ai";
+            case USER -> "user";
+        };
+        Color color = switch (origin) {
+            case SOURCE -> new Color(120, 140, 160);   // blue-grey
+            case AI -> new Color(200, 170, 80);         // amber
+            case USER -> new Color(100, 170, 100);      // green
+        };
+        JLabel badge = new JLabel(text);
+        badge.setFont(new Font("SansSerif", Font.ITALIC, 9));
+        badge.setForeground(color);
+        return badge;
     }
 
     private JComponent createInputForAttribute(SchemaAttribute attr, String value, boolean editable) {
@@ -762,12 +790,15 @@ public class EntityManagerFrame extends JFrame {
         if (schemaType == null) return;
 
         for (SchemaAttribute attr : schemaType.attributes()) {
+            // Skip SOURCE attributes — they're read-only
+            if (attr.isSource()) continue;
+
             JComponent comp = attrInputComponents.get(attr.name());
             if (comp == null) continue;
 
             String value = readValueFromComponent(comp, attr);
             if (!value.isEmpty()) {
-                store.saveAttributeValue(entityId, typeId, attr.name(), value);
+                store.saveAttributeValue(entityId, typeId, attr.name(), value, AttributeValue.Origin.USER);
             }
         }
     }
