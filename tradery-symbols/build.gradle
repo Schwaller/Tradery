@@ -9,6 +9,9 @@ dependencies {
     // SQLite JDBC driver for read-only symbol database access
     api "org.xerial:sqlite-jdbc:${rootProject.ext.sqliteVersion}"
 
+    // Core enums (Exchange, DataMarketType) for display name formatting
+    implementation project(':tradery-core')
+
     // UI controls (BorderlessTable, etc.)
     implementation project(':tradery-ui-common')
 

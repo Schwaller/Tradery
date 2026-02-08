@@ -1,5 +1,6 @@
 package com.tradery.desk.ui;
 
+import com.tradery.core.model.DataMarketType;
 import com.tradery.dataclient.page.DataServiceConnection;
 import com.tradery.dataclient.page.RemoteCandlePageManager;
 import com.tradery.desk.DeskAppContext;
@@ -113,8 +114,8 @@ public class DeskStatusWindow extends DashboardWindow {
         RemoteCandlePageManager pageMgr = ctx.getCandlePageManager();
         if (pageMgr != null) {
             for (RemoteCandlePageManager.PageInfo page : pageMgr.getActivePages()) {
-                // Show market type prefix: Perps vs Spot
-                String marketType = "spot".equalsIgnoreCase(page.marketType()) ? "Spot" : "Perps";
+                DataMarketType mt = DataMarketType.fromConfigKey(page.marketType());
+                String marketType = mt != null ? mt.getDisplayName() : page.marketType();
                 String displayName = marketType + " " + page.symbol();
                 if (page.timeframe() != null) displayName += "/" + page.timeframe();
 

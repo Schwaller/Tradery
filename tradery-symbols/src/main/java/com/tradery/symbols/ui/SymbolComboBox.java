@@ -1,5 +1,7 @@
 package com.tradery.symbols.ui;
 
+import com.tradery.core.model.DataMarketType;
+import com.tradery.core.model.Exchange;
 import com.tradery.symbols.model.SymbolEntry;
 import com.tradery.symbols.service.SymbolService;
 
@@ -172,9 +174,11 @@ public class SymbolComboBox extends JPanel {
         try {
             List<String> exchanges = service.getExchanges();
             exchangeCombo.removeAllItems();
-            for (String ex : exchanges) exchangeCombo.addItem(ex);
-            if (exchanges.contains(exchange)) {
-                exchangeCombo.setSelectedItem(exchange);
+            for (String ex : exchanges) exchangeCombo.addItem(formatExchange(ex));
+            String displayName = formatExchange(exchange);
+            int idx = indexOfItem(exchangeCombo, displayName);
+            if (idx >= 0) {
+                exchangeCombo.setSelectedIndex(idx);
             } else if (!exchanges.isEmpty()) {
                 exchangeCombo.setSelectedIndex(0);
                 exchange = exchanges.get(0);
@@ -190,9 +194,11 @@ public class SymbolComboBox extends JPanel {
         try {
             List<String> markets = service.getMarketTypes(exchange);
             marketCombo.removeAllItems();
-            for (String m : markets) marketCombo.addItem(m);
-            if (markets.contains(symbolMarket)) {
-                marketCombo.setSelectedItem(symbolMarket);
+            for (String m : markets) marketCombo.addItem(formatMarket(m));
+            String displayName = formatMarket(symbolMarket);
+            int idx = indexOfItem(marketCombo, displayName);
+            if (idx >= 0) {
+                marketCombo.setSelectedIndex(idx);
             } else if (!markets.isEmpty()) {
                 marketCombo.setSelectedIndex(0);
                 symbolMarket = markets.get(0);
@@ -228,7 +234,7 @@ public class SymbolComboBox extends JPanel {
                 populateExchanges();
                 return;
             }
-            exchangeCombo.setSelectedItem(exchange);
+            exchangeCombo.setSelectedItem(formatExchange(exchange));
             populateMarkets();
         } finally {
             suppressEvents = false;
@@ -237,7 +243,7 @@ public class SymbolComboBox extends JPanel {
 
     private void onExchangeChanged() {
         if (suppressEvents) return;
-        String sel = (String) exchangeCombo.getSelectedItem();
+        String sel = exchangeConfigKey((String) exchangeCombo.getSelectedItem());
         if (sel == null || sel.equals(exchange)) return;
         exchange = sel;
         suppressEvents = true;
@@ -251,7 +257,7 @@ public class SymbolComboBox extends JPanel {
 
     private void onMarketChanged() {
         if (suppressEvents) return;
-        String sel = (String) marketCombo.getSelectedItem();
+        String sel = marketConfigKey((String) marketCombo.getSelectedItem());
         if (sel == null || sel.equals(symbolMarket)) return;
         symbolMarket = sel;
         suppressEvents = true;
@@ -287,5 +293,40 @@ public class SymbolComboBox extends JPanel {
             syncCombosToState();
             fireChange();
         }
+    }
+
+    // --- Display name helpers ---
+
+    private static String formatExchange(String configKey) {
+        Exchange ex = Exchange.fromConfigKey(configKey);
+        return ex != null ? ex.getDisplayName() : configKey;
+    }
+
+    private static String formatMarket(String configKey) {
+        DataMarketType mt = DataMarketType.fromConfigKey(configKey);
+        return mt != null ? mt.getDisplayName() : configKey;
+    }
+
+    private static String exchangeConfigKey(String displayName) {
+        if (displayName == null) return null;
+        for (Exchange ex : Exchange.values()) {
+            if (ex.getDisplayName().equals(displayName)) return ex.getConfigKey();
+        }
+        return displayName;
+    }
+
+    private static String marketConfigKey(String displayName) {
+        if (displayName == null) return null;
+        for (DataMarketType mt : DataMarketType.values()) {
+            if (mt.getDisplayName().equals(displayName)) return mt.getConfigKey();
+        }
+        return displayName;
+    }
+
+    private static int indexOfItem(JComboBox<String> combo, String item) {
+        for (int i = 0; i < combo.getItemCount(); i++) {
+            if (combo.getItemAt(i).equals(item)) return i;
+        }
+        return -1;
     }
 }

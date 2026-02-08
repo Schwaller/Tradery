@@ -1,5 +1,7 @@
 package com.tradery.forge.ui;
 
+import com.tradery.core.model.DataMarketType;
+import com.tradery.core.model.Exchange;
 import com.tradery.forge.ApplicationContext;
 import com.tradery.forge.TraderyApp;
 import com.tradery.data.page.DataType;
@@ -191,11 +193,9 @@ public class DownloadDashboardWindow extends DashboardWindow {
     private void collectDataPages(DataPageManager<?> manager, List<DashboardPageInfo> result) {
         if (manager == null) return;
         for (DataPageManager.PageInfo page : manager.getActivePages()) {
-            String market = "spot".equals(page.marketType()) ? "spot" : "perp";
-            String exchange = page.exchange() != null ? page.exchange() : "binance";
-            // Capitalize first letter of exchange for display
-            String exchangeDisplay = exchange.substring(0, 1).toUpperCase() + exchange.substring(1);
-            String displayName = exchangeDisplay + " " + page.symbol() + " " + market;
+            String marketDisplay = formatMarket(page.marketType());
+            String exchangeDisplay = formatExchange(page.exchange() != null ? page.exchange() : "binance");
+            String displayName = exchangeDisplay + " " + page.symbol() + " " + marketDisplay;
             if (page.timeframe() != null) displayName += "/" + page.timeframe();
 
             result.add(new DashboardPageInfo(
@@ -347,9 +347,6 @@ public class DownloadDashboardWindow extends DashboardWindow {
         infoGrid.add(symDbPathLabel, vc);
 
         infoSection.add(infoGrid, BorderLayout.CENTER);
-        panel.add(infoSection, BorderLayout.NORTH);
-
-        ThinSplitPane split = new ThinSplitPane(JSplitPane.VERTICAL_SPLIT);
 
         JPanel exchSection = new JPanel(new BorderLayout(0, 6));
         exchSection.setBorder(BorderFactory.createEmptyBorder(4, 0, 0, 0));
@@ -400,8 +397,13 @@ public class DownloadDashboardWindow extends DashboardWindow {
         coverageTable.getColumnModel().getColumn(5).setCellRenderer(new StatusCellRenderer());
 
         BorderlessScrollPane exchScroll = new BorderlessScrollPane(coverageTable);
+        exchScroll.setVerticalScrollBarPolicy(ScrollPaneConstants.VERTICAL_SCROLLBAR_NEVER);
         exchSection.add(exchScroll, BorderLayout.CENTER);
-        split.setTopComponent(exchSection);
+
+        JPanel topPanel = new JPanel(new BorderLayout());
+        topPanel.add(infoSection, BorderLayout.NORTH);
+        topPanel.add(exchSection, BorderLayout.CENTER);
+        panel.add(topPanel, BorderLayout.NORTH);
 
         JPanel logSection = new JPanel(new BorderLayout(0, 6));
         logSection.setBorder(BorderFactory.createEmptyBorder(4, 0, 0, 0));
@@ -411,11 +413,7 @@ public class DownloadDashboardWindow extends DashboardWindow {
         logList.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 11));
         BorderlessScrollPane logScroll = new BorderlessScrollPane(logList);
         logSection.add(logScroll, BorderLayout.CENTER);
-        split.setBottomComponent(logSection);
-
-        split.setDividerLocation(150);
-        split.setResizeWeight(0.4);
-        panel.add(split, BorderLayout.CENTER);
+        panel.add(logSection, BorderLayout.CENTER);
 
         return panel;
     }
@@ -527,8 +525,8 @@ public class DownloadDashboardWindow extends DashboardWindow {
         public Object getValueAt(int row, int col) {
             CoverageRow r = rows.get(row);
             return switch (col) {
-                case 0 -> r.exchange();
-                case 1 -> r.market();
+                case 0 -> formatExchange(r.exchange());
+                case 1 -> formatMarket(r.market());
                 case 2 -> String.format("%,d", r.pairs());
                 case 3 -> String.format("%,d / %,d", r.matched(), r.pairs());
                 case 4 -> r.lastSync();
@@ -536,6 +534,16 @@ public class DownloadDashboardWindow extends DashboardWindow {
                 default -> "";
             };
         }
+    }
+
+    private static String formatExchange(String configKey) {
+        Exchange ex = Exchange.fromConfigKey(configKey);
+        return ex != null ? ex.getDisplayName() : configKey;
+    }
+
+    private static String formatMarket(String configKey) {
+        DataMarketType mt = DataMarketType.fromConfigKey(configKey);
+        return mt != null ? mt.getDisplayName() : configKey;
     }
 
     private static class StatusCellRenderer extends DefaultTableCellRenderer {

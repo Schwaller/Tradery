@@ -1,5 +1,7 @@
 package com.tradery.symbols.ui;
 
+import com.tradery.core.model.DataMarketType;
+import com.tradery.core.model.Exchange;
 import com.tradery.symbols.model.SymbolEntry;
 import com.tradery.symbols.service.SymbolService;
 import com.tradery.ui.controls.BorderlessTable;
@@ -52,7 +54,7 @@ public class SymbolChooserPanel extends JPanel {
         exchangeCombo = new JComboBox<>();
         exchangeCombo.addItem("All Exchanges");
         for (String ex : service.getExchanges()) {
-            exchangeCombo.addItem(ex);
+            exchangeCombo.addItem(formatExchange(ex));
         }
         exchangeCombo.addActionListener(e -> triggerSearch());
         row1.add(exchangeCombo);
@@ -60,7 +62,11 @@ public class SymbolChooserPanel extends JPanel {
         row1.add(Box.createHorizontalStrut(12));
 
         row1.add(makeLabel("2. Market:"));
-        marketCombo = new JComboBox<>(new String[]{"All Markets", "spot", "perp"});
+        marketCombo = new JComboBox<>(new String[]{
+            "All Markets",
+            DataMarketType.SPOT.getDisplayName(),
+            DataMarketType.FUTURES_PERP.getDisplayName()
+        });
         marketCombo.addActionListener(e -> triggerSearch());
         row1.add(marketCombo);
 
@@ -167,8 +173,10 @@ public class SymbolChooserPanel extends JPanel {
 
     private void triggerSearch() {
         String query = searchField.getText().trim();
-        String exchange = exchangeCombo.getSelectedIndex() == 0 ? null : (String) exchangeCombo.getSelectedItem();
-        String market = marketCombo.getSelectedIndex() == 0 ? null : (String) marketCombo.getSelectedItem();
+        String exchange = exchangeCombo.getSelectedIndex() == 0 ? null
+            : exchangeConfigKey((String) exchangeCombo.getSelectedItem());
+        String market = marketCombo.getSelectedIndex() == 0 ? null
+            : marketConfigKey((String) marketCombo.getSelectedItem());
 
         // Run query off EDT
         new SwingWorker<List<SymbolEntry>, Void>() {
@@ -219,12 +227,38 @@ public class SymbolChooserPanel extends JPanel {
             SymbolEntry e = entries.get(row);
             return switch (col) {
                 case 0 -> e.symbol();
-                case 1 -> e.exchange();
-                case 2 -> e.marketType();
+                case 1 -> formatExchange(e.exchange());
+                case 2 -> formatMarket(e.marketType());
                 case 3 -> e.base();
                 case 4 -> e.quote();
                 default -> "";
             };
         }
+    }
+
+    // --- Display name helpers ---
+
+    private static String formatExchange(String configKey) {
+        Exchange ex = Exchange.fromConfigKey(configKey);
+        return ex != null ? ex.getDisplayName() : configKey;
+    }
+
+    private static String formatMarket(String configKey) {
+        DataMarketType mt = DataMarketType.fromConfigKey(configKey);
+        return mt != null ? mt.getDisplayName() : configKey;
+    }
+
+    private static String exchangeConfigKey(String displayName) {
+        for (Exchange ex : Exchange.values()) {
+            if (ex.getDisplayName().equals(displayName)) return ex.getConfigKey();
+        }
+        return displayName;
+    }
+
+    private static String marketConfigKey(String displayName) {
+        for (DataMarketType mt : DataMarketType.values()) {
+            if (mt.getDisplayName().equals(displayName)) return mt.getConfigKey();
+        }
+        return displayName;
     }
 }

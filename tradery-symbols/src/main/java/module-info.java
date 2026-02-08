@@ -5,6 +5,7 @@ module com.tradery.symbols {
     requires org.xerial.sqlitejdbc;
     requires org.slf4j;
     requires com.tradery.ui.common;
+    requires com.tradery.core;
 
     // Public API
     exports com.tradery.symbols.model;
