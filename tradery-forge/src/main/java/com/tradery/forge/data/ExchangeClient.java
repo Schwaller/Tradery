@@ -3,6 +3,7 @@ package com.tradery.forge.data;
 import com.tradery.core.model.*;
 
 import java.io.IOException;
+import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
@@ -120,4 +121,32 @@ public interface ExchangeClient {
      * Get max candles per request for this exchange.
      */
     int getMaxCandlesPerRequest();
+
+    /**
+     * Fetch funding rate history from the exchange.
+     * Default returns empty list (not all exchanges support this).
+     *
+     * @param symbol    Trading pair in exchange format
+     * @param startTime Start time in milliseconds
+     * @param endTime   End time in milliseconds
+     * @return List of funding rates sorted by time ascending
+     */
+    default List<FundingRate> fetchFundingRates(String symbol, long startTime, long endTime)
+            throws IOException {
+        return Collections.emptyList();
+    }
+
+    /**
+     * Fetch open interest history from the exchange.
+     * Default returns empty list (not all exchanges support this).
+     *
+     * @param symbol    Trading pair in exchange format
+     * @param startTime Start time in milliseconds
+     * @param endTime   End time in milliseconds
+     * @return List of open interest data sorted by time ascending
+     */
+    default List<OpenInterest> fetchOpenInterest(String symbol, long startTime, long endTime)
+            throws IOException {
+        return Collections.emptyList();
+    }
 }

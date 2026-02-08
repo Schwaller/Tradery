@@ -350,6 +350,24 @@ public class BinanceExchangeClient implements ExchangeClient {
         return String.valueOf(count);
     }
 
+    // ========== Funding Rates ==========
+
+    @Override
+    public List<FundingRate> fetchFundingRates(String symbol, long startTime, long endTime)
+            throws IOException {
+        FundingRateClient fundingClient = new FundingRateClient();
+        return fundingClient.fetchFundingRates(symbol, startTime, endTime);
+    }
+
+    // ========== Open Interest ==========
+
+    @Override
+    public List<OpenInterest> fetchOpenInterest(String symbol, long startTime, long endTime)
+            throws IOException {
+        OpenInterestClient oiClient = new OpenInterestClient();
+        return oiClient.fetchOpenInterest(symbol, startTime, endTime);
+    }
+
     /**
      * Get server time from Binance
      */

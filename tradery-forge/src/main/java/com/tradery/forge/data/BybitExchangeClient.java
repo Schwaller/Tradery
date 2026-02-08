@@ -309,6 +309,153 @@ public class BybitExchangeClient implements ExchangeClient {
         return allCandles;
     }
 
+    // ========== Funding Rates ==========
+
+    @Override
+    public List<FundingRate> fetchFundingRates(String symbol, long startTime, long endTime)
+            throws IOException {
+
+        List<FundingRate> allRates = new ArrayList<>();
+        long currentStart = startTime;
+
+        log.info("Fetching {} funding rates from Bybit...", symbol);
+
+        String category = getCategory(defaultMarketType);
+
+        while (currentStart < endTime) {
+            rateLimiter.acquire();
+
+            // Bybit V5: GET /v5/market/funding/history
+            String url = BASE_URL + "/v5/market/funding/history"
+                + "?category=" + category
+                + "&symbol=" + symbol
+                + "&startTime=" + currentStart
+                + "&endTime=" + endTime
+                + "&limit=200";
+
+            Request request = new Request.Builder()
+                .url(url)
+                .get()
+                .build();
+
+            try (Response response = client.newCall(request).execute()) {
+                if (!response.isSuccessful()) {
+                    throw new IOException("Bybit API error: " + response.code() + " " + response.message());
+                }
+
+                String body = response.body().string();
+                JsonNode root = mapper.readTree(body);
+
+                int retCode = root.has("retCode") ? root.get("retCode").asInt() : -1;
+                if (retCode != 0) {
+                    String retMsg = root.has("retMsg") ? root.get("retMsg").asText() : "Unknown error";
+                    throw new IOException("Bybit API error: " + retCode + " " + retMsg);
+                }
+
+                JsonNode result = root.get("result");
+                if (result == null || !result.has("list")) break;
+
+                JsonNode list = result.get("list");
+                if (list.isEmpty()) break;
+
+                List<FundingRate> batch = new ArrayList<>();
+                for (JsonNode node : list) {
+                    double fundingRate = Double.parseDouble(node.get("fundingRate").asText());
+                    long fundingTime = Long.parseLong(node.get("fundingRateTimestamp").asText());
+
+                    batch.add(new FundingRate(symbol, fundingRate, fundingTime, 0.0));
+                }
+
+                // Bybit returns newest first, reverse
+                Collections.reverse(batch);
+                allRates.addAll(batch);
+
+                FundingRate last = batch.get(batch.size() - 1);
+                currentStart = last.fundingTime() + 1;
+
+                if (batch.size() < 200) break;
+            }
+        }
+
+        log.info("Bybit funding rates: {} records", allRates.size());
+        return allRates;
+    }
+
+    // ========== Open Interest ==========
+
+    @Override
+    public List<OpenInterest> fetchOpenInterest(String symbol, long startTime, long endTime)
+            throws IOException {
+
+        List<OpenInterest> allData = new ArrayList<>();
+        long currentStart = startTime;
+
+        log.info("Fetching {} open interest from Bybit...", symbol);
+
+        String category = getCategory(defaultMarketType);
+
+        // Bybit provides OI at various intervals; use 5min for consistency with Binance
+        while (currentStart < endTime) {
+            rateLimiter.acquire();
+
+            // Bybit V5: GET /v5/market/open-interest
+            String url = BASE_URL + "/v5/market/open-interest"
+                + "?category=" + category
+                + "&symbol=" + symbol
+                + "&intervalTime=5min"
+                + "&startTime=" + currentStart
+                + "&endTime=" + endTime
+                + "&limit=200";
+
+            Request request = new Request.Builder()
+                .url(url)
+                .get()
+                .build();
+
+            try (Response response = client.newCall(request).execute()) {
+                if (!response.isSuccessful()) {
+                    throw new IOException("Bybit API error: " + response.code() + " " + response.message());
+                }
+
+                String body = response.body().string();
+                JsonNode root = mapper.readTree(body);
+
+                int retCode = root.has("retCode") ? root.get("retCode").asInt() : -1;
+                if (retCode != 0) {
+                    String retMsg = root.has("retMsg") ? root.get("retMsg").asText() : "Unknown error";
+                    throw new IOException("Bybit API error: " + retCode + " " + retMsg);
+                }
+
+                JsonNode result = root.get("result");
+                if (result == null || !result.has("list")) break;
+
+                JsonNode list = result.get("list");
+                if (list.isEmpty()) break;
+
+                List<OpenInterest> batch = new ArrayList<>();
+                for (JsonNode node : list) {
+                    double oi = Double.parseDouble(node.get("openInterest").asText());
+                    long timestamp = Long.parseLong(node.get("timestamp").asText());
+
+                    // Bybit doesn't provide OI value directly; estimate from OI * current price
+                    batch.add(new OpenInterest(symbol, timestamp, oi, 0.0));
+                }
+
+                // Bybit returns newest first, reverse
+                Collections.reverse(batch);
+                allData.addAll(batch);
+
+                OpenInterest last = batch.get(batch.size() - 1);
+                currentStart = last.timestamp() + 1;
+
+                if (batch.size() < 200) break;
+            }
+        }
+
+        log.info("Bybit open interest: {} records", allData.size());
+        return allData;
+    }
+
     // ========== Helper Methods ==========
 
     /**

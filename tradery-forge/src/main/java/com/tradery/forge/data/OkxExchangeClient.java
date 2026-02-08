@@ -13,6 +13,7 @@ import java.io.IOException;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
@@ -515,6 +516,172 @@ public class OkxExchangeClient implements ExchangeClient {
             Collections.reverse(candles);
             return candles;
         }
+    }
+
+    // ========== Funding Rates ==========
+
+    @Override
+    public List<FundingRate> fetchFundingRates(String symbol, long startTime, long endTime)
+            throws IOException {
+
+        List<FundingRate> allRates = new ArrayList<>();
+        long currentEnd = endTime;
+
+        log.info("Fetching {} funding rates from OKX...", symbol);
+
+        // OKX: GET /api/v5/public/funding-rate-history
+        // Pagination: 'after' returns records older than this timestamp
+        while (true) {
+            rateLimiter.acquire();
+
+            StringBuilder url = new StringBuilder(BASE_URL + "/api/v5/public/funding-rate-history")
+                .append("?instId=").append(symbol)
+                .append("&limit=100");
+
+            if (currentEnd > 0) {
+                url.append("&after=").append(currentEnd);
+            }
+
+            Request request = new Request.Builder()
+                .url(url.toString())
+                .get()
+                .build();
+
+            try (Response response = client.newCall(request).execute()) {
+                if (!response.isSuccessful()) {
+                    throw new IOException("OKX API error: " + response.code() + " " + response.message());
+                }
+
+                String body = response.body().string();
+                JsonNode root = mapper.readTree(body);
+
+                String code = root.has("code") ? root.get("code").asText() : "-1";
+                if (!"0".equals(code)) {
+                    String msg = root.has("msg") ? root.get("msg").asText() : "Unknown error";
+                    throw new IOException("OKX API error: " + code + " " + msg);
+                }
+
+                JsonNode data = root.get("data");
+                if (data == null || !data.isArray() || data.isEmpty()) break;
+
+                List<FundingRate> batch = new ArrayList<>();
+                long oldestTime = Long.MAX_VALUE;
+
+                for (JsonNode node : data) {
+                    double fundingRate = Double.parseDouble(node.get("fundingRate").asText());
+                    long fundingTime = Long.parseLong(node.get("fundingTime").asText());
+
+                    if (fundingTime < startTime) continue;
+                    if (fundingTime > endTime) continue;
+
+                    batch.add(new FundingRate(symbol, fundingRate, fundingTime, 0.0));
+
+                    if (fundingTime < oldestTime) {
+                        oldestTime = fundingTime;
+                    }
+                }
+
+                // OKX returns newest first
+                Collections.reverse(batch);
+                allRates.addAll(0, batch); // Prepend since we're going backwards
+
+                // Stop if we've gone past start time or got fewer than requested
+                if (oldestTime <= startTime || data.size() < 100) break;
+
+                currentEnd = oldestTime;
+            }
+        }
+
+        // Sort chronologically
+        allRates.sort(Comparator.comparingLong(FundingRate::fundingTime));
+
+        log.info("OKX funding rates: {} records", allRates.size());
+        return allRates;
+    }
+
+    // ========== Open Interest ==========
+
+    @Override
+    public List<OpenInterest> fetchOpenInterest(String symbol, long startTime, long endTime)
+            throws IOException {
+
+        List<OpenInterest> allData = new ArrayList<>();
+
+        log.info("Fetching {} open interest from OKX...", symbol);
+
+        // OKX: GET /api/v5/rubik/stat/contracts/open-interest-history
+        // Supports period: 5m, 1H, 1D
+        // Pagination via 'after' (timestamp-based, returns older data)
+        long currentEnd = endTime;
+
+        while (true) {
+            rateLimiter.acquire();
+
+            StringBuilder url = new StringBuilder(BASE_URL + "/api/v5/rubik/stat/contracts/open-interest-history")
+                .append("?instId=").append(symbol)
+                .append("&period=5m");
+
+            if (currentEnd > 0) {
+                url.append("&after=").append(currentEnd);
+            }
+
+            Request request = new Request.Builder()
+                .url(url.toString())
+                .get()
+                .build();
+
+            try (Response response = client.newCall(request).execute()) {
+                if (!response.isSuccessful()) {
+                    throw new IOException("OKX API error: " + response.code() + " " + response.message());
+                }
+
+                String body = response.body().string();
+                JsonNode root = mapper.readTree(body);
+
+                String code = root.has("code") ? root.get("code").asText() : "-1";
+                if (!"0".equals(code)) {
+                    String msg = root.has("msg") ? root.get("msg").asText() : "Unknown error";
+                    // OKX may not support this endpoint for all instruments
+                    log.debug("OKX OI endpoint returned: {} {}", code, msg);
+                    break;
+                }
+
+                JsonNode data = root.get("data");
+                if (data == null || !data.isArray() || data.isEmpty()) break;
+
+                List<OpenInterest> batch = new ArrayList<>();
+                long oldestTime = Long.MAX_VALUE;
+
+                for (JsonNode node : data) {
+                    // Response: [ts, oi, oiCcy, oiUsdValue]
+                    long timestamp = Long.parseLong(node.get(0).asText());
+                    double oi = Double.parseDouble(node.get(1).asText());
+                    double oiValue = node.has(3) ? Double.parseDouble(node.get(3).asText()) : 0.0;
+
+                    if (timestamp < startTime) continue;
+                    if (timestamp > endTime) continue;
+
+                    batch.add(new OpenInterest(symbol, timestamp, oi, oiValue));
+
+                    if (timestamp < oldestTime) {
+                        oldestTime = timestamp;
+                    }
+                }
+
+                Collections.reverse(batch);
+                allData.addAll(0, batch);
+
+                if (oldestTime <= startTime || data.size() < 100) break;
+
+                currentEnd = oldestTime;
+            }
+        }
+
+        // Sort chronologically
+        allData.sort(Comparator.comparingLong(OpenInterest::timestamp));
+
+        log.info("OKX open interest: {} records", allData.size());
+        return allData;
     }
 
     // ========== Helper Methods ==========
