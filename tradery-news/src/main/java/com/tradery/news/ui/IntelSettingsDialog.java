@@ -1,6 +1,8 @@
 package com.tradery.news.ui;
 
 import com.tradery.news.ai.AiClient;
+import com.tradery.news.ai.AiDetector;
+import com.tradery.news.ai.AiDetector.DetectedProvider;
 import com.tradery.news.ai.AiProfile;
 import com.tradery.news.fetch.RssFetcher;
 import com.tradery.news.ui.coin.CoinEntity;
@@ -9,6 +11,7 @@ import com.tradery.ui.settings.SettingsDialog;
 
 import javax.swing.*;
 import java.awt.*;
+import java.util.*;
 import java.util.List;
 import java.util.function.Consumer;
 
@@ -30,10 +33,331 @@ public class IntelSettingsDialog extends SettingsDialog {
     @Override
     protected List<SectionEntry> addSections() {
         return List.of(
+            new SectionEntry("Panels", createPanelsContent()),
             new SectionEntry("News Sources", createNewsSourcesContent()),
             new SectionEntry("AI Profiles", createAiProfilesContent()),
             new SectionEntry("ERD Rendering", createErdContent())
         );
+    }
+
+    // --- Panels ---
+
+    private JPanel createPanelsContent() {
+        JPanel panel = new JPanel(new BorderLayout(0, 8));
+        IntelConfig config = IntelConfig.get();
+
+        DefaultListModel<PanelConfig> listModel = new DefaultListModel<>();
+        JList<PanelConfig> panelList = new JList<>(listModel);
+        panelList.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+
+        Runnable loadPanels = () -> {
+            listModel.clear();
+            for (PanelConfig p : config.getPanels()) {
+                listModel.addElement(p);
+            }
+        };
+        loadPanels.run();
+
+        panelList.setCellRenderer(new ListCellRenderer<>() {
+            @Override
+            public Component getListCellRendererComponent(JList<? extends PanelConfig> list, PanelConfig pc,
+                                                           int index, boolean isSelected, boolean cellHasFocus) {
+                JPanel cell = new JPanel(new BorderLayout(8, 0));
+                cell.setBorder(BorderFactory.createEmptyBorder(4, 8, 4, 8));
+                cell.setBackground(isSelected ? list.getSelectionBackground() : list.getBackground());
+
+                JLabel nameLabel = new JLabel(pc.getName());
+                nameLabel.setFont(nameLabel.getFont().deriveFont(Font.BOLD));
+                nameLabel.setForeground(isSelected ? list.getSelectionForeground() : list.getForeground());
+
+                String badge = pc.getType() == PanelConfig.PanelType.NEWS_MAP ? "News Map" : "Coin Graph";
+                JLabel typeLabel = new JLabel(badge);
+                typeLabel.setForeground(UIManager.getColor("Label.disabledForeground"));
+                typeLabel.setFont(typeLabel.getFont().deriveFont(typeLabel.getFont().getSize2D() - 1f));
+
+                JPanel textPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 0));
+                textPanel.setOpaque(false);
+                textPanel.add(nameLabel);
+                textPanel.add(typeLabel);
+                cell.add(textPanel, BorderLayout.CENTER);
+
+                return cell;
+            }
+        });
+
+        JScrollPane scroll = new JScrollPane(panelList);
+        scroll.setPreferredSize(new Dimension(0, 120));
+        scroll.setBorder(UIManager.getBorder("ScrollPane.border"));
+        panel.add(scroll, BorderLayout.CENTER);
+
+        // Buttons
+        JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
+        JButton addBtn = new JButton("Add...");
+        JButton editBtn = new JButton("Edit...");
+        JButton removeBtn = new JButton("Remove");
+        JButton moveUpBtn = new JButton("Move Up");
+        JButton moveDownBtn = new JButton("Move Down");
+
+        addBtn.addActionListener(e -> {
+            PanelConfig newPanel = showPanelEditor(null);
+            if (newPanel != null) {
+                config.addPanel(newPanel);
+                config.save();
+                loadPanels.run();
+                notifyPanelsChanged();
+            }
+        });
+
+        editBtn.addActionListener(e -> {
+            PanelConfig selected = panelList.getSelectedValue();
+            if (selected == null) {
+                JOptionPane.showMessageDialog(this, "Select a panel to edit.", "No Selection", JOptionPane.WARNING_MESSAGE);
+                return;
+            }
+            PanelConfig edited = showPanelEditor(selected);
+            if (edited != null) {
+                selected.setName(edited.getName());
+                selected.setMaxArticles(edited.getMaxArticles());
+                selected.setEntityTypeFilter(edited.getEntityTypeFilter());
+                selected.setEntitySourceFilter(edited.getEntitySourceFilter());
+                selected.setShowLabels(edited.isShowLabels());
+                selected.setShowConnections(edited.isShowConnections());
+                config.save();
+                loadPanels.run();
+                notifyPanelsChanged();
+            }
+        });
+
+        removeBtn.addActionListener(e -> {
+            PanelConfig selected = panelList.getSelectedValue();
+            if (selected == null) {
+                JOptionPane.showMessageDialog(this, "Select a panel to remove.", "No Selection", JOptionPane.WARNING_MESSAGE);
+                return;
+            }
+            if (config.getPanels().size() <= 1) {
+                JOptionPane.showMessageDialog(this, "Cannot remove the last panel.", "Cannot Remove", JOptionPane.WARNING_MESSAGE);
+                return;
+            }
+            int result = JOptionPane.showConfirmDialog(this,
+                "Remove panel '" + selected.getName() + "'?",
+                "Confirm Remove", JOptionPane.YES_NO_OPTION);
+            if (result == JOptionPane.YES_OPTION) {
+                config.removePanel(selected.getId());
+                config.save();
+                loadPanels.run();
+                notifyPanelsChanged();
+            }
+        });
+
+        moveUpBtn.addActionListener(e -> {
+            int idx = panelList.getSelectedIndex();
+            if (idx <= 0) return;
+            List<PanelConfig> panels = config.getPanels();
+            Collections.swap(panels, idx, idx - 1);
+            config.save();
+            loadPanels.run();
+            panelList.setSelectedIndex(idx - 1);
+            notifyPanelsChanged();
+        });
+
+        moveDownBtn.addActionListener(e -> {
+            int idx = panelList.getSelectedIndex();
+            List<PanelConfig> panels = config.getPanels();
+            if (idx < 0 || idx >= panels.size() - 1) return;
+            Collections.swap(panels, idx, idx + 1);
+            config.save();
+            loadPanels.run();
+            panelList.setSelectedIndex(idx + 1);
+            notifyPanelsChanged();
+        });
+
+        buttonPanel.add(addBtn);
+        buttonPanel.add(editBtn);
+        buttonPanel.add(removeBtn);
+        buttonPanel.add(moveUpBtn);
+        buttonPanel.add(moveDownBtn);
+        panel.add(buttonPanel, BorderLayout.SOUTH);
+
+        return panel;
+    }
+
+    private PanelConfig showPanelEditor(PanelConfig existing) {
+        JDialog dialog = new JDialog(this, existing != null ? "Edit Panel" : "Add Panel", true);
+        dialog.setSize(420, 380);
+        dialog.setLocationRelativeTo(this);
+
+        JPanel formPanel = new JPanel(new GridBagLayout());
+        formPanel.setBorder(BorderFactory.createEmptyBorder(12, 16, 8, 16));
+
+        GridBagConstraints labelGbc = new GridBagConstraints();
+        labelGbc.anchor = GridBagConstraints.WEST;
+        labelGbc.insets = new Insets(4, 0, 4, 8);
+
+        GridBagConstraints fieldGbc = new GridBagConstraints();
+        fieldGbc.fill = GridBagConstraints.HORIZONTAL;
+        fieldGbc.weightx = 1.0;
+        fieldGbc.insets = new Insets(4, 0, 4, 0);
+
+        int row = 0;
+
+        // Name
+        labelGbc.gridx = 0; labelGbc.gridy = row;
+        formPanel.add(new JLabel("Name:"), labelGbc);
+        fieldGbc.gridx = 1; fieldGbc.gridy = row++;
+        JTextField nameField = new JTextField(existing != null ? existing.getName() : "");
+        formPanel.add(nameField, fieldGbc);
+
+        // Type
+        labelGbc.gridx = 0; labelGbc.gridy = row;
+        formPanel.add(new JLabel("Type:"), labelGbc);
+        fieldGbc.gridx = 1; fieldGbc.gridy = row++;
+        JComboBox<String> typeCombo = new JComboBox<>(new String[]{"News Map", "Coin Graph"});
+        if (existing != null) {
+            typeCombo.setSelectedIndex(existing.getType() == PanelConfig.PanelType.NEWS_MAP ? 0 : 1);
+            typeCombo.setEnabled(false);
+        }
+        formPanel.add(typeCombo, fieldGbc);
+
+        // --- News Map settings ---
+        labelGbc.gridx = 0; labelGbc.gridy = row;
+        JLabel maxArticlesLabel = new JLabel("Max articles:");
+        formPanel.add(maxArticlesLabel, labelGbc);
+        fieldGbc.gridx = 1; fieldGbc.gridy = row++;
+        JComboBox<String> maxArticlesCombo = new JComboBox<>(new String[]{"100", "250", "500", "1000", "2000"});
+        maxArticlesCombo.setSelectedItem(String.valueOf(existing != null ? existing.getMaxArticles() : 500));
+        formPanel.add(maxArticlesCombo, fieldGbc);
+
+        // --- Coin Graph settings ---
+        labelGbc.gridx = 0; labelGbc.gridy = row;
+        JLabel entityTypeLabel = new JLabel("Entity types:");
+        formPanel.add(entityTypeLabel, labelGbc);
+        fieldGbc.gridx = 1; fieldGbc.gridy = row++;
+
+        // Build entity type checkboxes from schema registry
+        String[] entityTypeNames = {"coin", "l2", "etf", "etp", "dat", "vc", "exchange", "foundation", "company"};
+        JPanel typesPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 2));
+        typesPanel.setOpaque(false);
+        Map<String, JCheckBox> typeCheckboxes = new LinkedHashMap<>();
+        Set<String> existingFilter = existing != null ? existing.getEntityTypeFilter() : null;
+        for (String typeName : entityTypeNames) {
+            JCheckBox cb = new JCheckBox(typeName);
+            cb.setSelected(existingFilter == null || existingFilter.contains(typeName));
+            typeCheckboxes.put(typeName, cb);
+            typesPanel.add(cb);
+        }
+        formPanel.add(typesPanel, fieldGbc);
+
+        // Entity source filter
+        labelGbc.gridx = 0; labelGbc.gridy = row;
+        JLabel sourceFilterLabel = new JLabel("Sources:");
+        formPanel.add(sourceFilterLabel, labelGbc);
+        fieldGbc.gridx = 1; fieldGbc.gridy = row++;
+        JComboBox<String> sourceCombo = new JComboBox<>(new String[]{"All", "CoinGecko only", "Manual only"});
+        if (existing != null && existing.getEntitySourceFilter() != null) {
+            Set<String> sf = existing.getEntitySourceFilter();
+            if (sf.contains("coingecko") && !sf.contains("manual")) sourceCombo.setSelectedIndex(1);
+            else if (sf.contains("manual") && !sf.contains("coingecko")) sourceCombo.setSelectedIndex(2);
+        }
+        formPanel.add(sourceCombo, fieldGbc);
+
+        // --- Shared display settings ---
+        labelGbc.gridx = 0; labelGbc.gridy = row;
+        formPanel.add(new JLabel(), labelGbc);
+        fieldGbc.gridx = 1; fieldGbc.gridy = row++;
+        JCheckBox showLabelsCheck = new JCheckBox("Show labels");
+        showLabelsCheck.setSelected(existing == null || existing.isShowLabels());
+        formPanel.add(showLabelsCheck, fieldGbc);
+
+        labelGbc.gridx = 0; labelGbc.gridy = row;
+        formPanel.add(new JLabel(), labelGbc);
+        fieldGbc.gridx = 1; fieldGbc.gridy = row++;
+        JCheckBox showConnectionsCheck = new JCheckBox("Show connections");
+        showConnectionsCheck.setSelected(existing == null || existing.isShowConnections());
+        formPanel.add(showConnectionsCheck, fieldGbc);
+
+        // Visibility based on type
+        Runnable updateVisibility = () -> {
+            boolean isNewsMap = typeCombo.getSelectedIndex() == 0;
+            maxArticlesLabel.setVisible(isNewsMap);
+            maxArticlesCombo.setVisible(isNewsMap);
+            entityTypeLabel.setVisible(!isNewsMap);
+            typesPanel.setVisible(!isNewsMap);
+            sourceFilterLabel.setVisible(!isNewsMap);
+            sourceCombo.setVisible(!isNewsMap);
+            formPanel.revalidate();
+        };
+        typeCombo.addActionListener(e -> updateVisibility.run());
+        updateVisibility.run();
+
+        // Buttons
+        JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
+        buttonPanel.setBorder(BorderFactory.createEmptyBorder(8, 16, 12, 16));
+        JButton cancelBtn = new JButton("Cancel");
+        JButton saveBtn = new JButton("Save");
+
+        PanelConfig[] result = {null};
+
+        cancelBtn.addActionListener(e -> dialog.dispose());
+
+        saveBtn.addActionListener(e -> {
+            String name = nameField.getText().trim();
+            if (name.isEmpty()) {
+                JOptionPane.showMessageDialog(dialog, "Name is required.", "Validation", JOptionPane.WARNING_MESSAGE);
+                return;
+            }
+
+            PanelConfig pc = new PanelConfig();
+            pc.setId(existing != null ? existing.getId() : generatePanelId(name));
+            pc.setName(name);
+            pc.setType(typeCombo.getSelectedIndex() == 0 ? PanelConfig.PanelType.NEWS_MAP : PanelConfig.PanelType.COIN_GRAPH);
+            pc.setMaxArticles(Integer.parseInt((String) maxArticlesCombo.getSelectedItem()));
+            pc.setShowLabels(showLabelsCheck.isSelected());
+            pc.setShowConnections(showConnectionsCheck.isSelected());
+
+            // Entity type filter (null = all)
+            if (pc.getType() == PanelConfig.PanelType.COIN_GRAPH) {
+                boolean allChecked = typeCheckboxes.values().stream().allMatch(JCheckBox::isSelected);
+                if (!allChecked) {
+                    Set<String> filter = new LinkedHashSet<>();
+                    typeCheckboxes.forEach((typeName, cb) -> {
+                        if (cb.isSelected()) filter.add(typeName);
+                    });
+                    pc.setEntityTypeFilter(filter);
+                }
+
+                // Entity source filter
+                int sourceIdx = sourceCombo.getSelectedIndex();
+                if (sourceIdx == 1) pc.setEntitySourceFilter(Set.of("coingecko"));
+                else if (sourceIdx == 2) pc.setEntitySourceFilter(Set.of("manual"));
+            }
+
+            result[0] = pc;
+            dialog.dispose();
+        });
+
+        buttonPanel.add(cancelBtn);
+        buttonPanel.add(saveBtn);
+
+        dialog.setLayout(new BorderLayout());
+        dialog.add(formPanel, BorderLayout.CENTER);
+        dialog.add(buttonPanel, BorderLayout.SOUTH);
+        dialog.pack();
+        dialog.setVisible(true);
+
+        return result[0];
+    }
+
+    private String generatePanelId(String name) {
+        return name.toLowerCase()
+            .replaceAll("[^a-z0-9]+", "-")
+            .replaceAll("^-|-$", "")
+            + "-" + System.currentTimeMillis() % 10000;
+    }
+
+    private void notifyPanelsChanged() {
+        if (getOwner() instanceof IntelFrame frame) {
+            frame.rebuildPanels();
+        }
     }
 
     // --- News Sources ---
@@ -369,13 +693,127 @@ public class IntelSettingsDialog extends SettingsDialog {
             loadProfiles.run();
         });
 
+        JButton autoDetectBtn = new JButton("Auto-Detect...");
+        autoDetectBtn.addActionListener(e -> {
+            autoDetectBtn.setEnabled(false);
+            autoDetectBtn.setText("Detecting...");
+            new SwingWorker<List<DetectedProvider>, Void>() {
+                @Override
+                protected List<DetectedProvider> doInBackground() {
+                    return AiDetector.detectAll();
+                }
+
+                @Override
+                protected void done() {
+                    autoDetectBtn.setEnabled(true);
+                    autoDetectBtn.setText("Auto-Detect...");
+                    try {
+                        List<DetectedProvider> allProviders = get();
+                        // Filter out providers that already have a matching profile
+                        List<DetectedProvider> newProviders = new ArrayList<>();
+                        for (DetectedProvider dp : allProviders) {
+                            if (!dp.detected() || dp.requiresSetup()) continue;
+                            boolean exists = false;
+                            for (AiProfile existing : config.getAiProfiles()) {
+                                if (existing.getProvider() == dp.provider()) {
+                                    if (dp.provider() == IntelConfig.AiProvider.CUSTOM) {
+                                        if (dp.command() != null && dp.command().equals(existing.getCommand())) {
+                                            exists = true;
+                                            break;
+                                        }
+                                    } else {
+                                        exists = true;
+                                        break;
+                                    }
+                                }
+                            }
+                            if (!exists) newProviders.add(dp);
+                        }
+
+                        if (newProviders.isEmpty()) {
+                            JOptionPane.showMessageDialog(IntelSettingsDialog.this,
+                                "No new AI providers found.",
+                                "Auto-Detect", JOptionPane.INFORMATION_MESSAGE);
+                            return;
+                        }
+
+                        showAutoDetectResults(newProviders, config, loadProfiles);
+                    } catch (Exception ex) {
+                        JOptionPane.showMessageDialog(IntelSettingsDialog.this,
+                            "Detection failed: " + ex.getMessage(),
+                            "Error", JOptionPane.ERROR_MESSAGE);
+                    }
+                }
+            }.execute();
+        });
+
         buttonPanel.add(addBtn);
         buttonPanel.add(editBtn);
         buttonPanel.add(removeBtn);
         buttonPanel.add(setDefaultBtn);
+        buttonPanel.add(autoDetectBtn);
         panel.add(buttonPanel, BorderLayout.SOUTH);
 
         return panel;
+    }
+
+    private void showAutoDetectResults(List<DetectedProvider> newProviders, IntelConfig config, Runnable loadProfiles) {
+        JDialog dialog = new JDialog(this, "New Providers Detected", true);
+        dialog.setSize(420, 300);
+        dialog.setLocationRelativeTo(this);
+
+        JPanel content = new JPanel(new BorderLayout(0, 8));
+        content.setBorder(BorderFactory.createEmptyBorder(12, 16, 8, 16));
+
+        content.add(new JLabel("Select providers to add as profiles:"), BorderLayout.NORTH);
+
+        JPanel listPanel = new JPanel();
+        listPanel.setLayout(new BoxLayout(listPanel, BoxLayout.Y_AXIS));
+        List<JCheckBox> checkboxes = new ArrayList<>();
+
+        for (DetectedProvider dp : newProviders) {
+            JCheckBox cb = new JCheckBox(dp.name() + " — " + dp.description());
+            cb.setSelected(true);
+            checkboxes.add(cb);
+            listPanel.add(cb);
+            listPanel.add(Box.createVerticalStrut(4));
+        }
+
+        JScrollPane scroll = new JScrollPane(listPanel);
+        scroll.setBorder(UIManager.getBorder("ScrollPane.border"));
+        content.add(scroll, BorderLayout.CENTER);
+
+        JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
+        buttonPanel.setBorder(BorderFactory.createEmptyBorder(8, 0, 4, 0));
+
+        JButton cancelBtn = new JButton("Cancel");
+        cancelBtn.addActionListener(e -> dialog.dispose());
+        buttonPanel.add(cancelBtn);
+
+        JButton addBtn = new JButton("Add Selected");
+        addBtn.addActionListener(e -> {
+            for (int i = 0; i < checkboxes.size(); i++) {
+                if (!checkboxes.get(i).isSelected()) continue;
+                DetectedProvider dp = newProviders.get(i);
+                AiProfile profile = new AiProfile();
+                String id = generateProfileId(dp.name());
+                profile.setId(id);
+                profile.setName(dp.name().replaceAll("\\s+v[\\d.]+$", "").trim());
+                profile.setProvider(dp.provider());
+                if (dp.path() != null) profile.setPath(dp.path());
+                if (dp.args() != null) profile.setArgs(dp.args());
+                if (dp.command() != null) profile.setCommand(dp.command());
+                config.addProfile(profile);
+            }
+            config.save();
+            loadProfiles.run();
+            dialog.dispose();
+        });
+        buttonPanel.add(addBtn);
+        content.add(buttonPanel, BorderLayout.SOUTH);
+
+        dialog.setContentPane(content);
+        dialog.setVisible(true);
     }
 
     private AiProfile showProfileEditor(AiProfile existing) {

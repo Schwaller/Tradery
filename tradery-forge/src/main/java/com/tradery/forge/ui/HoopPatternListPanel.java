@@ -101,6 +101,14 @@ public class HoopPatternListPanel extends JPanel {
             clearAll.addActionListener(e -> badgePanel.clearAll());
             popup.add(clearAll);
         }
+
+        popup.addSeparator();
+        JMenuItem openEditor = new JMenuItem("Open Hoop Editor...");
+        openEditor.addActionListener(e -> {
+            LauncherFrame launcher = LauncherFrame.getInstance();
+            if (launcher != null) launcher.openHoops();
+        });
+        popup.add(openEditor);
     }
 
     public void setOnChange(Runnable onChange) {

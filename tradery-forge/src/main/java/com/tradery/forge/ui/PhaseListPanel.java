@@ -79,6 +79,14 @@ public class PhaseListPanel extends JPanel {
             clearAll.addActionListener(e -> badgePanel.clearAll());
             popup.add(clearAll);
         }
+
+        popup.addSeparator();
+        JMenuItem openEditor = new JMenuItem("Open Phase Editor...");
+        openEditor.addActionListener(e -> {
+            LauncherFrame launcher = LauncherFrame.getInstance();
+            if (launcher != null) launcher.openPhases();
+        });
+        popup.add(openEditor);
     }
 
     private void buildCategorySubmenus(JMenu parentMenu, List<Phase> phases, boolean isRequired) {

@@ -1,5 +1,6 @@
 package com.tradery.news.ui;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 import com.tradery.news.ai.AiProfile;
@@ -64,6 +65,9 @@ public class IntelConfig {
     // AI profiles
     private List<AiProfile> aiProfiles = new ArrayList<>();
     private String defaultProfileId = null;
+
+    // Panel configurations
+    private List<PanelConfig> panels = new ArrayList<>();
 
     // News fetch settings (0 = manual only)
     private int fetchIntervalMinutes = 0;
@@ -324,6 +328,7 @@ public class IntelConfig {
         this.defaultProfileId = defaultProfileId;
     }
 
+    @JsonIgnore
     public AiProfile getDefaultProfile() {
         if (aiProfiles.isEmpty()) return null;
         if (defaultProfileId != null) {
@@ -351,6 +356,32 @@ public class IntelConfig {
         if (id != null && id.equals(defaultProfileId)) {
             defaultProfileId = aiProfiles.isEmpty() ? null : aiProfiles.get(0).getId();
         }
+    }
+
+    // ==================== Panel Settings ====================
+
+    public List<PanelConfig> getPanels() {
+        return panels;
+    }
+
+    public void setPanels(List<PanelConfig> panels) {
+        this.panels = panels != null ? panels : new ArrayList<>();
+    }
+
+    public void addPanel(PanelConfig panel) {
+        panels.add(panel);
+    }
+
+    public void removePanel(String id) {
+        panels.removeIf(p -> id != null && id.equals(p.getId()));
+    }
+
+    @JsonIgnore
+    public PanelConfig getPanelById(String id) {
+        for (PanelConfig p : panels) {
+            if (id != null && id.equals(p.getId())) return p;
+        }
+        return null;
     }
 
     // ==================== Fetch Settings ====================
@@ -454,13 +485,15 @@ public class IntelConfig {
 
     private static IntelConfig load() {
         IntelConfig config;
-        if (Files.exists(CONFIG_PATH)) {
+        boolean existingConfig = Files.exists(CONFIG_PATH);
+        if (existingConfig) {
             try {
                 config = YAML.readValue(CONFIG_PATH.toFile(), IntelConfig.class);
             } catch (IOException e) {
                 System.err.println("Failed to load intel config: " + e.getMessage());
                 config = new IntelConfig();
                 config.setHiddenTopics(new HashSet<>(DEFAULT_HIDDEN_TOPICS));
+                existingConfig = false;
             }
         } else {
             config = new IntelConfig();
@@ -468,7 +501,9 @@ public class IntelConfig {
         }
 
         // Migrate old flat AI settings to profile if no profiles exist
-        if (config.getAiProfiles().isEmpty()) {
+        // Only for existing configs that had old-style AI fields — fresh installs
+        // are handled by the setup dialog in IntelFrame.main()
+        if (config.getAiProfiles().isEmpty() && existingConfig) {
             AiProfile profile = new AiProfile();
             profile.setProvider(config.getAiProvider());
             profile.setTimeoutSeconds(config.getAiTimeoutSeconds());
@@ -501,6 +536,12 @@ public class IntelConfig {
 
             config.getAiProfiles().add(profile);
             config.setDefaultProfileId(profile.getId());
+            config.save();
+        }
+
+        // Seed default panels if none exist
+        if (config.getPanels().isEmpty()) {
+            config.setPanels(PanelConfig.defaults());
             config.save();
         }
 

@@ -496,6 +496,13 @@ public class ProjectWindow extends JFrame {
         toolbarRight.add(phaseAnalysisBtn);
         toolbarRight.add(historyBtn);
         toolbarRight.add(publishBtn);
+
+        JButton settingsBtn = new ToolbarButton("Settings");
+        settingsBtn.addActionListener(e -> {
+            SettingsDialog dialog = new SettingsDialog(this);
+            dialog.setVisible(true);
+        });
+        toolbarRight.add(settingsBtn);
         GridBagConstraints rc = new GridBagConstraints();
         rc.anchor = GridBagConstraints.EAST;
         rc.fill = GridBagConstraints.HORIZONTAL;

@@ -74,7 +74,7 @@ public class AiClient {
      * Check if a specific AI profile is available.
      */
     public boolean isAvailable(AiProfile profile) {
-        if (profile.getProvider() == IntelConfig.AiProvider.GEMINI) {
+        if (profile.getProvider() == IntelConfig.AiProvider.GEMINI && isGeminiApiMode(profile)) {
             try {
                 String apiKey = profile.getApiKey();
                 if (apiKey == null || apiKey.isBlank()) return false;
@@ -114,7 +114,7 @@ public class AiClient {
      * Get the version string from a specific profile's CLI.
      */
     public String getVersion(AiProfile profile) throws AiException {
-        if (profile.getProvider() == IntelConfig.AiProvider.GEMINI) {
+        if (profile.getProvider() == IntelConfig.AiProvider.GEMINI && isGeminiApiMode(profile)) {
             return "Gemini API - " + profile.getModel();
         }
         try {
@@ -176,7 +176,7 @@ public class AiClient {
 
         log.debug("AI query to {} ({}): {}", provider, profile.getName(), truncate(prompt, 100));
 
-        if (profile.getProvider() == IntelConfig.AiProvider.GEMINI) {
+        if (profile.getProvider() == IntelConfig.AiProvider.GEMINI && isGeminiApiMode(profile)) {
             return queryGemini(prompt, profile);
         }
 
@@ -300,7 +300,7 @@ public class AiClient {
                 String[] parts = cmd.trim().split("\\s+", 2);
                 yield parts[0];
             }
-            case GEMINI -> profile.getModel();
+            case GEMINI -> isGeminiApiMode(profile) ? profile.getModel() : profile.getPath();
             default -> profile.getPath();
         };
     }
@@ -409,8 +409,19 @@ public class AiClient {
                 args.add(prompt);
                 yield new ProcessBuilder(args);
             }
+            case GEMINI -> {
+                // Gemini CLI: gemini -p "prompt"
+                java.util.List<String> args = new java.util.ArrayList<>();
+                args.add(cliPath);
+                String geminiArgs = profile.getArgs();
+                if (geminiArgs != null && !geminiArgs.isBlank()) {
+                    args.addAll(java.util.Arrays.asList(geminiArgs.trim().split("\\s+")));
+                }
+                args.add(prompt);
+                yield new ProcessBuilder(args);
+            }
             default -> {
-                // Claude - use configurable args
+                // Claude - use configurable args, prompt via stdin
                 java.util.List<String> args = new java.util.ArrayList<>();
                 args.add(cliPath);
                 String claudeArgs = profile.getArgs();
@@ -424,6 +435,12 @@ public class AiClient {
 
     private boolean usesStdin(AiProfile profile) {
         return profile.getProvider() == IntelConfig.AiProvider.CLAUDE;
+    }
+
+    /** Gemini API mode: uses HTTP API with an API key. CLI mode: uses gemini CLI binary. */
+    private boolean isGeminiApiMode(AiProfile profile) {
+        String apiKey = profile.getApiKey();
+        return apiKey != null && !apiKey.isBlank();
     }
 
     private AiException parseError(String output, String provider, String cliPath) {

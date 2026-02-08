@@ -26,7 +26,7 @@ import java.util.function.Consumer;
  */
 public class TimelineBar extends JPanel implements DataPageListener<Candle> {
 
-    private static final int BAR_HEIGHT = 36;
+    private static final int BAR_HEIGHT = 42;
     private static final Color CANDLE_UP = new Color(38, 166, 91);
     private static final Color CANDLE_DOWN = new Color(214, 69, 65);
     private static final Color GRID_LINE = new Color(128, 128, 128, 80);
@@ -54,7 +54,7 @@ public class TimelineBar extends JPanel implements DataPageListener<Candle> {
     private long maxTime;
     private int padding = 4;  // left/right padding for candle x-coords
     private int topPadding = 4;
-    private int bottomPadding = 0;
+    private int bottomPadding = 4;
 
     // Callback when anchor date changes
     private Consumer<Long> onAnchorDateChanged;
@@ -276,6 +276,12 @@ public class TimelineBar extends JPanel implements DataPageListener<Candle> {
         g2.fillRect(0, 0, width, height);
 
         if (weeklyCandles == null || weeklyCandles.isEmpty()) {
+            // Still draw bottom separator even with no data
+            Color sep = UIManager.getColor("Separator.foreground");
+            if (sep != null) {
+                g2.setColor(sep);
+                g2.fillRect(0, height - 1, width, 1);
+            }
             g2.dispose();
             return;
         }
