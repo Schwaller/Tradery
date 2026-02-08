@@ -2,11 +2,13 @@
 
 > **Status:** Ready for implementation
 > **Created:** 2026-02-08
-> **Last updated:** 2026-02-08 (synced to current entity model)
+> **Last updated:** 2026-02-08 (synced to FactStore/draft-commit model)
 
 ## Context
 
-The Intel app is a **general-purpose entity/relationship platform** with a fully dynamic schema system, pluggable data ingestion (`DataSource` interface), and schema-aware UI. The next major leap is **multi-user collaboration** where users can share entities with selective visibility (private, friends, public) and data flows **peer-to-peer** between clients to avoid centralized hosting of entity traffic.
+The Intel app is a **general-purpose entity/relationship platform** with a fully dynamic schema system, pluggable data ingestion (`DataSource` interface), and schema-aware UI. The data model is built on an **append-only fact store** with LWW (Last Writer Wins) conflict resolution — a foundation that maps naturally to P2P replication.
+
+The next major leap is **multi-user collaboration** where users can share entities with selective visibility (private, friends, public) and data flows **peer-to-peer** between clients to avoid centralized hosting of entity traffic.
 
 Key constraints:
 - **Keycloak** handles user accounts (email registration, auth)
@@ -19,145 +21,167 @@ Key constraints:
 
 ## Current Entity Model (as-is)
 
-Understanding the existing model is critical — all P2P work builds on top of it without breaking it.
+Understanding the existing model is critical — all P2P work builds directly on it.
 
-### Storage: EntityStore (~965 LOC)
+### FactStore — The Foundation (~800 LOC)
 
-Single SQLite database at `~/.tradery/entity-network.db` (hardcoded path in constructor). WAL mode, JDBC connection.
+All data lives in an **append-only fact log** with a materialized current-state view. Every mutation — whether creating an entity, changing an attribute, or defining a schema type — becomes an immutable `(entity_id, attribute, value)` fact with full provenance.
+
+**Storage:** Single SQLite database at `~/.tradery/entity-network.db`, WAL mode.
 
 **Tables:**
 
 ```sql
-entities (
-    id TEXT PRIMARY KEY,
-    name TEXT NOT NULL,
-    symbol TEXT,
-    type TEXT NOT NULL,            -- enum name from CoinEntity.Type
-    parent_id TEXT,
-    market_cap REAL,
-    source TEXT NOT NULL DEFAULT 'manual',  -- 'manual', 'coingecko', 'ai-discovery', etc.
-    created_at INTEGER,
-    updated_at INTEGER
+-- Committed facts (immutable append-only log)
+facts (
+    id TEXT PRIMARY KEY,              -- ULID (time-sortable, globally unique)
+    entity_id TEXT NOT NULL,          -- what entity this fact is about
+    attribute TEXT NOT NULL,          -- which attribute is being set
+    value TEXT,                       -- the value (null = tombstone/deletion)
+    source TEXT NOT NULL,             -- who/what created this: 'manual', 'coingecko', 'ai', 'system'
+    peer_id TEXT NOT NULL,            -- which peer generated this fact (ULID)
+    lclock INTEGER NOT NULL,          -- Lamport logical clock (monotonic per peer)
+    wall_clock INTEGER NOT NULL,      -- wall-clock timestamp (ms)
+    commit_id TEXT                    -- groups facts from a single commit
 )
 
-entity_categories (
+-- Staged/draft facts (not yet committed — discardable)
+pending (
+    id TEXT PRIMARY KEY,              -- ULID
     entity_id TEXT NOT NULL,
-    category TEXT NOT NULL,
-    PRIMARY KEY (entity_id, category)
-)
-
-relationships (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    from_id TEXT NOT NULL,
-    to_id TEXT NOT NULL,
-    type TEXT NOT NULL,            -- enum name from CoinRelationship.Type
-    note TEXT,
-    source TEXT NOT NULL DEFAULT 'manual',
-    created_at INTEGER,
-    UNIQUE(from_id, to_id, type)
-)
-
-cache_meta (key TEXT PRIMARY KEY, value TEXT)
-
-schema_types (
-    id TEXT PRIMARY KEY,           -- lowercase enum name or user-defined
-    name TEXT NOT NULL,
-    color TEXT NOT NULL,           -- hex like "#64B4FF"
-    kind TEXT NOT NULL,            -- "entity" or "relationship"
-    from_type_id TEXT,             -- relationship only
-    to_type_id TEXT,               -- relationship only
-    label TEXT,                    -- relationship short verb
-    display_order INTEGER DEFAULT 0,
-    erd_x REAL DEFAULT 0,          -- ERD canvas position
-    erd_y REAL DEFAULT 0
-)
-
-schema_attributes (
-    type_id TEXT NOT NULL,
-    name TEXT NOT NULL,
-    data_type TEXT NOT NULL,       -- TEXT, NUMBER, CURRENCY, PERCENTAGE, BOOLEAN, DATE, TIME, DATETIME, DATETIME_TZ, URL, ENUM, LIST
-    required INTEGER DEFAULT 0,
-    display_order INTEGER DEFAULT 0,
-    labels TEXT,                   -- JSON: {"en":"Market Cap","de":"Marktkapitalisierung"}
-    config TEXT,                   -- JSON: {"currencyCode":"USD","currencySymbol":"$","decimalPlaces":0}
-    mutability TEXT DEFAULT 'MANUAL',  -- SOURCE, DERIVED, MANUAL
-    PRIMARY KEY (type_id, name)
-)
-
-entity_attribute_values (
-    entity_id TEXT NOT NULL,
-    type_id TEXT NOT NULL,
-    attr_name TEXT NOT NULL,
+    attribute TEXT NOT NULL,
     value TEXT,
-    origin TEXT DEFAULT 'USER',    -- SOURCE, AI, USER (priority: USER > AI > SOURCE)
-    updated_at INTEGER DEFAULT 0,
-    PRIMARY KEY (entity_id, type_id, attr_name)
+    source TEXT NOT NULL,
+    peer_id TEXT NOT NULL,
+    lclock INTEGER NOT NULL,
+    wall_clock INTEGER NOT NULL
+)
+
+-- Materialized current state (derived from facts + pending via LWW)
+current (
+    entity_id TEXT NOT NULL,
+    attribute TEXT NOT NULL,
+    value TEXT,
+    fact_id TEXT NOT NULL,            -- references facts.id or pending.id
+    PRIMARY KEY(entity_id, attribute)
+)
+
+-- Peer-local configuration
+local_config (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+    -- Stores: peer_id (ULID), lclock (Lamport counter)
 )
 ```
+
+**Key properties:**
+- Every write increments the Lamport `lclock` — facts are globally orderable
+- Each peer has a unique `peer_id` (ULID, generated on first run, stored in `local_config`)
+- The `current` table is a materialized view — it can be fully rebuilt from `facts` + `pending`
+- LWW resolution: highest `lclock` wins → then `wall_clock` → then `peer_id` (deterministic tiebreak)
+- Fact IDs are ULIDs (time-sortable, globally unique) — generated by `Ulid.java`
+
+### Entity ID Conventions
+
+Everything is stored as facts. Entity types are distinguished by ID prefix conventions:
+
+| Prefix | Example | What it represents |
+|--------|---------|-------------------|
+| (none) | `bitcoin`, `ethereum` | Data entity (coin, L2, exchange, etc.) |
+| `_type:` | `_type:coin`, `_type:invested_in` | Schema type definition |
+| `_rel:` | `_rel:bitcoin:l2_of:ethereum` | Relationship between entities |
+| `_meta` | `_meta` | System metadata (cache timestamps, etc.) |
+
+Attributes are also conventionalized:
+
+| Attribute pattern | Example | What it stores |
+|-------------------|---------|---------------|
+| `type` | `"COIN"` | Entity type enum name |
+| `name`, `symbol`, `market_cap` | `"Bitcoin"`, `"BTC"` | Core entity fields |
+| `cat:*` | `cat:defi` = `"1"` | Category membership |
+| `_source` | `"coingecko"` | Which data source created this |
+| `_deleted` | `"1"` | Soft deletion tombstone |
+| `from`, `to`, `rel_type` | on `_rel:*` entities | Relationship endpoints + type |
+| `val:{typeId}:{attrName}` | `val:coin:market_cap` | Schema attribute value |
+| `val:{typeId}:{attrName}:origin` | `"USER"`, `"SOURCE"`, `"AI"` | Value provenance (priority: USER > AI > SOURCE) |
+| `attr:{attrName}` | on `_type:*` entities | Schema attribute definition (JSON blob) |
+| `name`, `color`, `kind`, `label` | on `_type:*` entities | Schema type metadata |
+| `erd_x`, `erd_y` | on `_type:*` entities | ERD canvas positions |
+
+### Draft/Commit Model
+
+The FactStore has a built-in staging area for user edits:
+
+- **`appendFact()`** — writes directly to `facts` table (committed immediately)
+- **`stageFact()`** — writes to `pending` table (draft, discardable)
+- **`commit()`** — squashes pending by `(entity_id, attribute)`, moves to `facts` with shared `commit_id`
+- **`rollback()`** — discards all pending, rebuilds `current` from `facts` only
+
+**EntityStore** wraps FactStore and routes writes based on source:
+- Manual/AI edits (`shouldStage() == true`) → `stageFact()` (goes to pending)
+- System sources like `coingecko`, `auto`, `system`, `source` → `appendFact()` (direct to facts)
+- SchemaRegistry seeding temporarily sets `draftMode = false` to bypass staging
+
+### P2P Primitives Already Built
+
+FactStore already has the core sync methods:
+
+```java
+// Get all committed facts after a logical clock value
+List<Fact> getFactsSince(long sinceLogicalClock)
+
+// Receive remote facts: insert, update Lamport clock, re-resolve current
+void receiveFacts(List<Fact> facts)
+
+// Rebuild current table from scratch (disaster recovery / full sync)
+void rebuildCurrent()
+```
+
+`receiveFacts()` already handles:
+- Lamport clock advancement: `if (f.lclock() >= lclock) lclock = f.lclock() + 1`
+- Dedup: `INSERT OR IGNORE` (same fact ID = already received)
+- LWW resolution: `updateCurrent()` compares clocks for each received fact
 
 ### Domain Classes
 
 **`CoinEntity`** — mutable class for graph visualization:
 - Fields: `id` (String), `name`, `symbol`, `type` (enum), `parentId`, `x/y/vx/vy` (layout), `selected/hovered/pinned` (UI state), `marketCap`, `connectionCount`, `categories` (List)
 - Inner enum `Type`: COIN, L2, ETF, ETP, DAT, VC, EXCHANGE, FOUNDATION, COMPANY, NEWS_SOURCE — each with a color
-- Has `getRadius()` (market-cap-based sizing), `contains()` (hit testing), `label()` (symbol or name)
 
 **`CoinRelationship`** — immutable value class:
 - Fields: `fromId`, `toId`, `type` (enum), `note`
-- Inner enum `Type`: L2_OF, ETF_TRACKS, ETP_TRACKS, INVESTED_IN, FOUNDED_BY, PARTNER, FORK_OF, BRIDGE, ECOSYSTEM, COMPETITOR — each with color + label
-- `Type.getSearchableTypes(CoinEntity.Type)` for AI search context
+- Inner enum `Type`: L2_OF, ETF_TRACKS, ETP_TRACKS, INVESTED_IN, FOUNDED_BY, PARTNER, FORK_OF, BRIDGE, ECOSYSTEM, COMPETITOR
 
-**`SchemaType`** — dynamic type definition (replaces enum for schema):
-- Fields: `id`, `name`, `color`, `kind` ("entity"/"relationship"), `fromTypeId/toTypeId` (rel only), `label`, `displayOrder`, `attributes` (List<SchemaAttribute>)
+**`SchemaType`** — dynamic type definition:
+- Fields: `id`, `name`, `color`, `kind` ("entity"/"relationship"), `fromTypeId/toTypeId`, `label`, `displayOrder`, `attributes`
 - ERD canvas fields: `erdX/erdY/erdVx/erdVy/erdPinned/erdTargetX/erdTargetY/erdAnimating`
-- Constants: `KIND_ENTITY`, `KIND_RELATIONSHIP`
 
 **`SchemaAttribute`** — attribute definition within a type:
-- Fields: `name`, `dataType`, `required`, `displayOrder`, `labels` (i18n map), `config` (formatting map), `mutability`
 - Data types: TEXT, NUMBER, CURRENCY, PERCENTAGE, BOOLEAN, DATE, TIME, DATETIME, DATETIME_TZ, URL, ENUM, LIST
 - `Mutability` enum: SOURCE (read-only), DERIVED (computed), MANUAL (user-editable)
-- Rich formatting: `formatValue(rawValue)` handles currency symbols, decimal places, date patterns, etc.
-- i18n: `displayName(Locale)` with fallback chain (exact tag → language → english → programmatic name)
+- i18n labels, formatting config, rich `formatValue()` rendering
 
 **`AttributeValue`** — record with provenance:
 - `record AttributeValue(String value, Origin origin, long updatedAt)`
-- `Origin` enum: SOURCE(0), AI(1), USER(2) — priority system where higher overrides lower
-- EntityStore respects priority on write: a SOURCE write won't overwrite a USER correction
+- `Origin` enum: SOURCE(0) < AI(1) < USER(2) — priority system where higher overrides lower
 
 ### Schema Management: SchemaRegistry
 
-- Loads all `SchemaType` records from DB on init
-- Seeds defaults from `CoinEntity.Type` and `CoinRelationship.Type` enums if DB is empty
-- Incremental migrations via `seedIfMissing()` — adds types introduced after initial seed: `hosts_pair`, `news_article`, `mentions`, `topic`, `tagged`, `published_by`
-- `migrateMutability()` — sets correct mutability for known source attributes
-- Pass-through methods to EntityStore for attribute value CRUD
+- Loads all `SchemaType` records from DB on init (reconstructed from `_type:*` facts)
+- Seeds defaults from `CoinEntity.Type` and `CoinRelationship.Type` enums
+- Incremental migrations via `seedIfMissing()` — adds new types after initial seed
+- Temporarily disables draft mode during seeding: `store.setDraftMode(false)`
 
 ### Data Sources: DataSource Interface + DataSourceRegistry
 
-**`DataSource`** interface:
-- `id()`, `name()`, `producedEntityTypes()`, `producedRelationshipTypes()`, `cacheTTL()`
-- `fetch(FetchContext)` → `FetchResult(entitiesAdded, relationshipsAdded, message)`
-- `seedSchemaTypes(SchemaRegistry)` — optional hook on registration
-- `FetchContext` provides `EntityStore` + `SchemaRegistry` + `ProgressCallback`
-
-**`DataSourceRegistry`** — orchestrator:
-- `register(source)` — registers + calls `seedSchemaTypes`
-- `refresh(sourceId, force, progress)` — checks cache TTL, calls `fetch()`
-- `refreshAll()`, `getSourcesForType(schemaTypeId)`
-
-**Implementations:** `CoinGeckoSource`, `RssNewsSource`
-
-### Dual Type System Note
-
-The codebase has **two parallel representations** of types:
-1. **Hardcoded enums** (`CoinEntity.Type`, `CoinRelationship.Type`) — used for type-safe Java code, colors, search logic
-2. **Dynamic DB records** (`SchemaType` + `SchemaAttribute`) — used for ERD editing, attribute definitions, user-defined types
-
-SchemaRegistry bridges them: seeds DB from enums on first run, then the DB becomes source of truth for schema-level operations. Entity `type` column stores the enum name (e.g., "COIN"), while schema_types.id stores lowercase (e.g., "coin").
+- `DataSource` interface: `id()`, `name()`, `producedEntityTypes()`, `cacheTTL()`, `fetch(FetchContext)`
+- `DataSourceRegistry` — orchestrates refresh, checks cache TTL
+- Implementations: `CoinGeckoSource`, `RssNewsSource`
+- Draft mode bypassed during refresh: `entityStore.setDraftMode(false)` around `source.fetch()`
 
 ### Separate News Model (not used for P2P)
 
-`com.tradery.news.model` has a separate set of records (`Entity`, `Relationship`, `EntityType`, `RelationType`) used for news article AI extraction. These are **not** the coin graph entities and are **not** part of the P2P sharing plan.
+`com.tradery.news.model` has a separate set of records (`Entity`, `Relationship`, etc.) used for news article AI extraction. These are **not** the coin graph entities and are **not** part of the P2P sharing plan.
 
 ---
 
@@ -175,8 +199,8 @@ SchemaRegistry bridges them: seeds DB from enums on first run, then the DB becom
          ▼                ▼                ▼
 ┌─────────────┐    P2P TCP/TLS     ┌─────────────┐
 │   Client A  │◄══════════════════►│   Client B  │
-│  (SQLite)   │  entity snapshots  │  (SQLite)   │
-│             │  signed by author  │             │
+│  (FactStore)│  facts exchange    │  (FactStore) │
+│             │  signed by peer    │             │
 └─────────────┘                    └─────────────┘
          ▲
          │ mDNS (LAN discovery)
@@ -193,9 +217,10 @@ SchemaRegistry bridges them: seeds DB from enums on first run, then the DB becom
 - **Doc Index** — metadata about public/discoverable documents (name, description, owner, governance type). No entity data.
 
 **Peer-to-peer** (all entity data):
-- Entities, relationships, schema types, attribute values flow directly between clients
-- Signed by author's key for integrity
-- Manifest-based diff sync (only transfer what's missing/changed)
+- Facts flow directly between clients via `getFactsSince()` / `receiveFacts()`
+- Each fact carries its `peer_id` + `lclock` for provenance and ordering
+- Optionally signed by author's Ed25519 key for integrity verification
+- LWW resolution handles conflicts automatically — no manual merge needed
 
 ---
 
@@ -207,30 +232,31 @@ Identity is **optional until sharing**. Solo users never need an account.
 
 **Offline mode (default):**
 - No account required — the app works exactly as today
-- Documents are `local` visibility — purely local, no sharing columns, no signing
-- `author_id` is null on all entities (single-user, no ambiguity)
+- Documents are `local` visibility — purely local, no signing
+- Each peer has a local `peer_id` (ULID, already generated by FactStore)
 - No keypair, no JWT, no network traffic
 
 **Online mode (opt-in when user wants to share):**
 - User creates a Keycloak account (email registration)
-- **User UUID** — assigned by Keycloak, used as `author_id` on entities
-- **Ed25519 signing keypair** — generated locally on first login, public key registered with Keycloak as a user attribute
-- Existing local documents can be **upgraded** to `private`/`friends`/`public` — this backfills `author_id` on all entities and signs them
+- **User UUID** — assigned by Keycloak, stored in `local_config` as `user_id`
+- **Ed25519 signing keypair** — generated locally on first login, public key registered with Keycloak
+- Facts can be signed for P2P integrity verification
+- Existing local documents can be **upgraded** to shared visibility
 
 ### 2. Documents
 
-Each **Document** is a fully self-contained SQLite database with its own entity graph, schema, member list, and governance. Think of it like a Google Doc — each is independent, separately shared, with its own permissions.
+Each **Document** is a fully self-contained FactStore database with its own entity graph, schema, and member list. Think of it like a Google Doc — each is independent, separately shared, with its own permissions.
 
 ```
 ~/.tradery/documents/
 ├── index.yaml                          # List of known documents + metadata
 ├── {doc-uuid}/
 │   ├── document.yaml                   # Document metadata (below)
-│   ├── entities.db                     # Self-contained SQLite (same schema as entity-network.db + sharing columns)
+│   ├── facts.db                        # Self-contained FactStore (facts, pending, current, local_config)
 │   └── members.yaml                    # Member list + roles (synced via P2P)
 ├── {another-doc-uuid}/
 │   ├── document.yaml
-│   ├── entities.db
+│   ├── facts.db
 │   └── members.yaml
 ```
 
@@ -260,90 +286,46 @@ members:
 ```
 
 **Key properties:**
-- Each document is its **own SQLite database** — completely isolated, separately synced
-- Each has its **own member list and admin structure** — independent of other documents
+- Each document is its **own FactStore database** — completely isolated, separately synced
+- Each has its **own `peer_id` and `lclock`** — independent Lamport clocks per document
 - The existing `~/.tradery/entity-network.db` becomes the user's default `local` document
-- Documents can be opened side-by-side (multiple windows or tabbed)
-- P2P sync operates **per-document** — you sync specific documents with specific peers
-- `local` documents have **no sharing overhead** — no UUIDs, no signatures, no author_id, no members.yaml
+- P2P sync operates **per-document** — sync specific documents with specific peers
+- `local` documents have **no sharing overhead** — no members.yaml, no signing
 
 **Visibility levels (progressive):**
-- `local` — purely local, no account needed, no sharing columns on entities (default)
-- `private` — account required, entities get UUIDs/signatures, but only you can access (useful for backup/sync across your own devices)
+- `local` — purely local, no account needed, no sharing (default)
+- `private` — account required, sync across your own devices only
 - `friends` — account required, only explicitly listed members can access
 - `public` — account required, discoverable by anyone, anyone can request to join
 
 **Upgrade path:** A `local` document can be upgraded to any shared visibility at any time. This triggers:
 1. Prompt user to log in / create Keycloak account (if not already)
-2. Backfill `uuid` (UUID v7) on all entities, relationships, schema types, attribute values
-3. Set `author_id` to the user's Keycloak UUID on all existing rows
-4. Sign all entities with the user's Ed25519 key
-5. Create `members.yaml` with the user as `owner`
-6. Change `visibility` in `document.yaml`
+2. Store `user_id` in the document's `local_config`
+3. Create `members.yaml` with the user as `owner`
+4. Change `visibility` in `document.yaml`
+5. Generate Ed25519 keypair if not yet created
 
-This is a one-time migration per document — after upgrade, new entities are created with sharing columns from the start.
+No schema migration needed — the FactStore tables already have all the fields needed for P2P sync (`peer_id`, `lclock`, `wall_clock`, unique fact IDs).
 
 **Governance types** (only meaningful for `friends`/`public`):
-- `open` — any member can publish entities directly
-- `admin_approved` — submissions go to a review queue, admins accept/reject
-- `voting` — members vote on submissions, accepted at quorum
+- `open` — any member can publish facts directly
+- `admin_approved` — facts from non-admins go to `pending` (staged), admin commits
+- `voting` — members vote on pending submissions, accepted at quorum
 
-### 3. Entities with Global Identity
+### 3. P2P Sync Protocol
 
-**Local documents** use the exact same table schema as today — no extra columns, zero overhead.
-
-**Core provenance columns** (added to all databases in Phase 1 — part of `tradery-news`):
-
-```sql
--- On entities table (via addColumnIfMissing migration)
-ALTER TABLE entities ADD COLUMN uuid TEXT;            -- UUID v7 (globally unique)
-ALTER TABLE entities ADD COLUMN author_id TEXT;        -- null until account exists
-ALTER TABLE entities ADD COLUMN version INTEGER DEFAULT 1;
-
--- On relationships table
-ALTER TABLE relationships ADD COLUMN uuid TEXT;
-ALTER TABLE relationships ADD COLUMN author_id TEXT;
-ALTER TABLE relationships ADD COLUMN version INTEGER DEFAULT 1;
-```
-
-These are **always present** — even local documents get UUIDs. They're fundamental provenance data useful for dedup, import/export, and cross-document references.
-
-**Sharing-specific columns** (added by `tradery-sharing` module when a document is upgraded):
-
-```sql
--- On entities table
-ALTER TABLE entities ADD COLUMN signature TEXT;        -- Ed25519 sig for P2P integrity
-ALTER TABLE entities ADD COLUMN status TEXT DEFAULT 'published';  -- governance status
-
--- On relationships table
-ALTER TABLE relationships ADD COLUMN signature TEXT;
-
--- On entity_attribute_values table
-ALTER TABLE entity_attribute_values ADD COLUMN signature TEXT;
-```
-
-These are **only added when a document is upgraded from `local` to a shared visibility**.
-
-Note: no `space_id` or `visibility` on entities — the **document** itself is the isolation boundary. All entities in a document share the document's visibility and governance.
-
-**What gets synced per document** (shared documents only):
-- `entities` rows + `entity_categories` rows
-- `relationships` rows
-- `schema_types` + `schema_attributes` rows (the full dynamic schema)
-- `entity_attribute_values` rows (with provenance: origin, updated_at)
-
-### 4. P2P Sync Protocol
+The existing FactStore primitives make sync remarkably simple. The protocol is **fact-based**, not entity-based — peers exchange raw facts and let LWW resolution handle conflicts.
 
 **Wire protocol** — length-prefixed JSON over TLS TCP:
 
 ```
 HELLO         → {peerId, publicKey, keycloakToken, documentIds:[...]}
-MANIFEST      → {documentId, entityHashes:{uuid→"contentHash:version"}, relHashes:{...}, schemaHashes:{...}}
-REQUEST       → {documentId, entityUuids:[...], relUuids:[...], schemaTypeIds:[...]}
-ENTITIES      → {documentId, entities:[signed...], relationships:[signed...], schemaTypes:[...], attrValues:[...]}
-SUBMIT        → {documentId, entities:[...]}  (for admin_approved/voting documents)
-VOTE          → {documentId, entityUuid, approve:bool}
-MEMBER_UPDATE → {documentId, members:[...]}   (admin syncs member list changes)
+SYNC_REQUEST  → {documentId, sinceLclock: N}          # "give me facts after lclock N"
+SYNC_RESPONSE → {documentId, facts:[...]}              # List<Fact> serialized
+SYNC_DONE     → {documentId}                           # all caught up
+SUBMIT        → {documentId, facts:[...]}              # for admin_approved/voting docs
+VOTE          → {documentId, factId, approve:bool}
+MEMBER_UPDATE → {documentId, members:[...]}
 ```
 
 **Sync flow:**
@@ -351,51 +333,51 @@ MEMBER_UPDATE → {documentId, members:[...]}   (admin syncs member list changes
 2. Announces to rendezvous: `{userId, ip:port, documentIds:[...], jwt}`
 3. Discovers peers who share the same documents (rendezvous query or mDNS scan)
 4. Opens TLS connection, exchanges HELLO (validates JWT + document memberships)
-5. For each shared document: exchange MANIFESTs, diff, transfer missing entities
-6. Received entities verified via signature before storage
-7. Member list changes propagated via MEMBER_UPDATE messages
+5. For each shared document: peer A sends `SYNC_REQUEST{sinceLclock: lastKnownClock}`
+6. Peer B calls `factStore.getFactsSince(sinceLclock)` and sends facts
+7. Peer A calls `factStore.receiveFacts(facts)` — LWW resolves conflicts automatically
+8. Bidirectional: both peers request and send
 
-**Per-document sync:** Each document syncs independently. If you share Document A with Alice and Document B with Bob, Alice never sees Document B's data — it's completely isolated at the database level.
+**Why fact-based sync is simpler than entity-based:**
+- No manifest/hash comparison needed — just track the last `lclock` seen from each peer
+- No entity-level versioning or conflict forks — LWW on individual attributes
+- `receiveFacts()` already handles dedup (`INSERT OR IGNORE`), clock advancement, and current-state resolution
+- Idempotent: receiving the same fact twice is a no-op
 
-**Conflict resolution:** Version number + author-wins. If two users edit the same entity, the original author's edit takes priority. Non-author edits create a fork (copy with new UUID). For `entity_attribute_values`, the existing `Origin` priority chain (USER > AI > SOURCE) is respected during merge.
+**Conflict resolution:** LWW per `(entity_id, attribute)`. Two users editing different attributes of the same entity = no conflict. Two users editing the same attribute = highest lclock wins (deterministic). No forks, no CRDTs needed.
+
+**Per-document sync state** (stored in each document's `local_config`):
+
+```
+sync:{peerId}:last_lclock → "12345"   # Last lclock received from this peer
+```
 
 ---
 
 ## Module Architecture
 
-All networking/P2P code lives in **separate Gradle modules**. The existing `tradery-news` module gets small, natural additions to the data model (provenance fields that belong on entities regardless of sharing), plus a `Path`-based EntityStore constructor. Everything P2P/identity/governance is additive in new modules.
-
-**What belongs in the core model vs add-on modules:**
-
-| Field | Where | Why |
-|-------|-------|-----|
-| `uuid` | **Core** (EntityStore) | Globally unique ID is fundamental provenance — useful even without sharing (dedup, import/export, cross-doc references) |
-| `author_id` | **Core** (EntityStore) | Who created this is basic metadata — null until an account exists, filled in on upgrade |
-| `version` | **Core** (EntityStore) | Version tracking is a general data management concern |
-| `signature` | **Add-on** (tradery-sharing) | Only meaningful for P2P integrity verification |
-| `status` | **Add-on** (tradery-sharing) | published/pending_review/rejected is governance-specific |
+All networking/P2P code lives in **separate Gradle modules**. The existing `tradery-news` module gets a small change to make FactStore path-configurable. Everything else is additive.
 
 ```
 ┌───────────────────────────────────────────────────────────────────┐
-│ tradery-news (EXISTING — small model additions)                   │
-│   EntityStore, CoinEntity, CoinRelationship, SchemaType,         │
-│   SchemaRegistry, DataSourceRegistry, all UI panels              │
-│   Changes: EntityStore(Path) constructor, uuid/author_id/version  │
-│   columns on entities + relationships tables                      │
+│ tradery-news (EXISTING — minimal change)                          │
+│   FactStore, EntityStore, CoinEntity, CoinRelationship,          │
+│   SchemaType, SchemaRegistry, DataSourceRegistry, all UI panels  │
+│   Change: FactStore(Path) constructor overload                    │
 └───────────────────┬───────────────────────────────────────────────┘
-                    │ depends on (uses EntityStore, SchemaRegistry)
+                    │ depends on (uses FactStore/EntityStore, SchemaRegistry)
                     ▼
 ┌───────────────────────────────────────────────────────────────────┐
 │ tradery-documents (NEW — Phase 2, no account needed)              │
 │   Document, DocumentManager, DocumentMember                       │
-│   Manages ~/.tradery/documents/, opens EntityStore per doc        │
+│   Manages ~/.tradery/documents/, opens FactStore per doc          │
 │   Document switcher UI (panel injected into IntelFrame)           │
 └───────────────────┬───────────────────────────────────────────────┘
-                    │ depends on (uses DocumentManager, EntityStore)
+                    │ depends on (uses DocumentManager, FactStore)
                     ▼
 ┌───────────────────────────────────────────────────────────────────┐
 │ tradery-sharing (NEW — Phase 3+4, requires account)               │
-│   UserSession, EntitySigner, SharingUpgrade                       │
+│   UserSession, FactSigner, SharingUpgrade                         │
 │   PeerServer, PeerConnection, PeerManager, SyncEngine             │
 │   RendezvousClient, LanDiscovery, NetworkMessage                  │
 │   GovernanceEngine, SubmissionStore                               │
@@ -405,7 +387,7 @@ All networking/P2P code lives in **separate Gradle modules**. The existing `trad
 
 **Dependency direction:**
 - `tradery-news` → **no new dependencies** (stays standalone)
-- `tradery-documents` → depends on `tradery-news` (uses EntityStore, SchemaRegistry)
+- `tradery-documents` → depends on `tradery-news` (uses FactStore, EntityStore, SchemaRegistry)
 - `tradery-sharing` → depends on `tradery-documents` + `tradery-news`
 - `tradery-news` remains independently runnable — documents/sharing are optional add-ons
 
@@ -415,42 +397,26 @@ All networking/P2P code lives in **separate Gradle modules**. The existing `trad
 
 ## Implementation Plan (Phased)
 
-### Phase 1: Core Provenance Fields (tradery-news)
-Add provenance columns to the data model and make EntityStore path-configurable. These are natural extensions — useful even without sharing (dedup, import/export, attribution).
+### Phase 1: Path-Configurable FactStore (tradery-news)
+
+Make FactStore accept a custom DB path so multiple document databases can be opened simultaneously.
 
 **Files to modify in `tradery-news`:**
 
-- **`EntityStore.java`** (~965 LOC)
-  - Add constructor overload: `EntityStore(Path dbPath)` — the existing no-arg constructor becomes `this(Path.of(DB_PATH))`
+- **`FactStore.java`** (~800 LOC)
+  - Add constructor overload: `FactStore(Path dbPath)` — the existing no-arg constructor becomes `this(Path.of(DB_PATH))`
   - Extract `DB_PATH` into a `public static Path defaultPath()` method so external code can reference it
-  - Add provenance columns via `addColumnIfMissing()` in `createTables()`:
-    - `entities`: `uuid TEXT`, `author_id TEXT`, `version INTEGER DEFAULT 1`
-    - `relationships`: `uuid TEXT`, `author_id TEXT`, `version INTEGER DEFAULT 1`
-  - Backfill migration: generate UUID v7 for existing rows where `uuid IS NULL` (runs once on upgrade)
-  - Update `mapEntityFromResultSet()` to read uuid, author_id, version
-  - Update `mapRelationshipFromResultSet()` to read uuid, author_id, version
-  - Update `saveEntity()` to auto-generate UUID v7 if null, write author_id/version
-  - Update `saveRelationship()` — same
-  - `author_id` defaults to null (no account yet) — it's filled in when/if the user creates an account
+  - No other changes needed — the tables, P2P primitives, draft/commit model are already correct
 
-- **`CoinEntity.java`** (~140 LOC)
-  - Add fields: `uuid` (String, null initially), `authorId` (String, null), `version` (int, default 1)
-  - Add getters/setters. Existing constructors unchanged.
+- **`EntityStore.java`** (~694 LOC)
+  - Add constructor overload: `EntityStore(Path dbPath)` → `new FactStore(dbPath)`
+  - The existing no-arg constructor becomes `this(FactStore.defaultPath())`
 
-- **`CoinRelationship.java`** (~72 LOC)
-  - Add fields: `uuid` (String), `authorId` (String), `version` (int, default 1)
-  - Add getters/setters for the new fields.
-
-**New file in `tradery-news`:**
-
-- **`UuidGenerator.java`** (in `com.tradery.news.ui.coin` or a util package)
-  - UUID v7 generation (timestamp + random): ~20 LOC pure Java
-  - Used by EntityStore on save
-
-**No changes** to SchemaType, SchemaAttribute, SchemaRegistry, DataSourceRegistry, or any UI classes.
+**No changes** to CoinEntity, CoinRelationship, SchemaType, SchemaAttribute, SchemaRegistry, or any UI classes. The data model already has everything needed for P2P: peer_id, lclock, wall_clock, globally unique fact IDs (ULIDs).
 
 ### Phase 2: Document Management (tradery-documents — new module)
-Multiple isolated entity databases. No networking, no accounts.
+
+Multiple isolated FactStore databases. No networking, no accounts.
 
 **New module: `tradery-documents`**
 
@@ -464,7 +430,6 @@ tradery-documents/
         ├── DocumentManager.java       # Manages ~/.tradery/documents/ directory
         ├── DocumentMember.java        # Record: userId, role (owner/admin/member/viewer)
         ├── DocumentWorkspace.java     # Binds EntityStore + SchemaRegistry + DataSourceRegistry for one doc
-        ├── UuidGenerator.java         # UUID v7 (~20 LOC)
         └── ui/
             └── DocumentSwitcherPanel.java  # Dropdown for switching active document
 ```
@@ -477,58 +442,37 @@ dependencies {
 }
 ```
 
-```java
-// module-info.java
-module com.tradery.documents {
-    requires com.tradery.news;
-    requires com.fasterxml.jackson.databind;
-    requires com.fasterxml.jackson.dataformat.yaml;
-    requires java.desktop;
-
-    exports com.tradery.documents;
-    exports com.tradery.documents.ui;
-    opens com.tradery.documents to com.fasterxml.jackson.databind;
-}
-```
-
 **Key classes:**
 
 - **`Document.java`**
   - Record: `Document(String id, String name, String ownerId, Visibility visibility, Governance governance, long createdAt)`
   - `Visibility` enum: LOCAL, PRIVATE, FRIENDS, PUBLIC
-  - `Governance` record: `Governance(Type type, double votingQuorum)` with `Type` enum: OPEN, ADMIN_APPROVED, VOTING
   - `ownerId` is null for LOCAL documents
-  - `isLocal()` → `visibility == LOCAL`
   - YAML serialization via Jackson
 
 - **`DocumentManager.java`**
   - Manages `~/.tradery/documents/` directory + `index.yaml`
-  - `createDocument(name)` → creates dir, `document.yaml` (visibility=LOCAL), empty `entities.db` — **no account needed**
-  - `openDocument(docId)` → returns `DocumentWorkspace` (EntityStore + SchemaRegistry bound to that DB)
-  - `listDocuments()` → all known documents
-  - `deleteDocument(docId)`
-  - `migrateDefault()` → on first startup, moves `entity-network.db` into `documents/{uuid}/entities.db`, creates LOCAL document.yaml
+  - `createDocument(name)` → creates dir, `document.yaml` (visibility=LOCAL), empty `facts.db`
+  - `openDocument(docId)` → returns `DocumentWorkspace` (FactStore/EntityStore/SchemaRegistry bound to that DB)
+  - `migrateDefault()` → moves existing `entity-network.db` into `documents/{uuid}/facts.db`
 
 - **`DocumentWorkspace.java`**
-  - Holds one open document's full stack: `EntityStore` + `SchemaRegistry` + `DataSourceRegistry`
+  - Holds one open document's full stack: `FactStore` + `EntityStore` + `SchemaRegistry` + `DataSourceRegistry`
   - Created by `DocumentManager.openDocument()`
   - UI panels bind to the active workspace
-  - `close()` cleans up connections
 
 **Migration:**
 - The existing `~/.tradery/entity-network.db` becomes the user's default LOCAL document
-- On first startup: `DocumentManager.migrateDefault()` creates `~/.tradery/documents/{uuid}/`, moves `entity-network.db` → `entities.db`, writes `document.yaml` (visibility=LOCAL, ownerId=null)
-- `CoinCache` (`~/.tradery/coins.db`) stays separate — it's a fetch cache, not user data
+- On first startup: `DocumentManager.migrateDefault()` creates `~/.tradery/documents/{uuid}/`, moves DB → `facts.db`, writes `document.yaml`
 - **No account prompt** — migration is completely offline
 
 **UI integration:**
 - `DocumentSwitcherPanel` — dropdown showing all local documents, "New Document" button
-- IntelFrame gets a small integration point: the document switcher goes in the header bar
-- When switching documents: the `DocumentWorkspace` swaps, and UI panels rebind via a listener/callback pattern
-- **Key concern:** Several UI classes in `tradery-news` receive `EntityStore`/`SchemaRegistry` in constructor. Need to make them rebindable (setter or event-driven). This is the main UI refactor needed in `tradery-news`.
+- When switching documents: the `DocumentWorkspace` swaps, UI panels rebind via a listener/callback pattern
 
-### Phase 3: Sharing & P2P (tradery-sharing — new module)
-Identity, upgrade, networking, governance. All opt-in.
+### Phase 3: P2P Networking (tradery-sharing — new module)
+
+Identity, upgrade, networking. All opt-in.
 
 **New module: `tradery-sharing`**
 
@@ -542,150 +486,256 @@ tradery-sharing/
         │   ├── UserSession.java           # Keycloak login, JWT, Ed25519 keypair
         │   └── KeyPairStore.java          # Local keypair storage (~/.tradery/keys/)
         ├── upgrade/
-        │   ├── SharingUpgrade.java        # Adds sharing columns to a document's DB
-        │   └── EntitySigner.java          # Canonical JSON + Ed25519 sign/verify
+        │   └── SharingUpgrade.java        # Upgrades a document from LOCAL to shared
         ├── sync/
         │   ├── PeerServer.java            # TLS TCP server on random port
         │   ├── PeerConnection.java        # Single peer connection (read/write messages)
         │   ├── PeerManager.java           # Connection lifecycle, peer state, reconnect
-        │   ├── SyncEngine.java            # Per-document manifest diff, entity transfer
+        │   ├── SyncEngine.java            # Per-document fact exchange using getFactsSince/receiveFacts
+        │   ├── FactSigner.java            # Ed25519 sign/verify for facts
         │   └── NetworkMessage.java        # Sealed interface with record subtypes
         ├── discovery/
         │   ├── RendezvousClient.java      # HTTP client for rendezvous server
         │   └── LanDiscovery.java          # mDNS _tradery._tcp for LAN peers
-        ├── governance/
-        │   ├── GovernanceEngine.java       # Apply governance rules per document
-        │   └── SubmissionStore.java        # Pending submissions + votes (extra DB tables)
         └── ui/
             ├── LoginDialog.java           # Keycloak login UI
             ├── ShareDialog.java           # Upgrade doc to shared + set visibility
-            ├── NetworkPanel.java          # Online peers, sync status
-            ├── MemberPanel.java           # Member management per document
-            └── ReviewQueuePanel.java      # Admin review for admin_approved docs
-```
-
-```groovy
-// tradery-sharing/build.gradle
-dependencies {
-    implementation project(':tradery-news')
-    implementation project(':tradery-documents')
-    implementation "com.squareup.okhttp3:okhttp:${okhttpVersion}"           // rendezvous client
-    implementation "com.fasterxml.jackson.databind:jackson-databind:${jacksonVersion}"
-}
-```
-
-```java
-// module-info.java
-module com.tradery.sharing {
-    requires com.tradery.news;
-    requires com.tradery.documents;
-    requires com.fasterxml.jackson.databind;
-    requires okhttp3;
-    requires java.desktop;
-
-    exports com.tradery.sharing;
-    exports com.tradery.sharing.identity;
-    exports com.tradery.sharing.sync;
-    exports com.tradery.sharing.ui;
-    opens com.tradery.sharing to com.fasterxml.jackson.databind;
-}
+            ├── NetworkPanel.java          # Online peers, sync status per document
+            └── MemberPanel.java           # Member management per document
 ```
 
 **Key classes:**
 
-- **`SharingUpgrade.java`** — the document upgrade logic:
-  - Takes an EntityStore (from DocumentWorkspace) and adds **sharing-specific** columns via ALTER TABLE:
-    - `entities`: `signature TEXT`, `status TEXT DEFAULT 'published'`
-    - `relationships`: `signature TEXT`
-    - `entity_attribute_values`: `signature TEXT`
-  - Backfills `author_id` on all existing rows (uuid/version already exist from Phase 1 core model)
-  - Signs all entities with user's Ed25519 key (populates signature column)
-  - Creates members.yaml with user as owner
-  - Updates document.yaml visibility
+- **`SyncEngine.java`** — the core sync logic, trivially thin thanks to FactStore primitives:
+  ```
+  // Outbound: called when a peer requests sync
+  List<Fact> facts = documentWorkspace.getFactStore().getFactsSince(peerLastClock);
+  send(SYNC_RESPONSE, facts);
+
+  // Inbound: called when we receive facts from a peer
+  documentWorkspace.getFactStore().receiveFacts(remoteFacts);
+  updateSyncState(peerId, remoteFacts.lastLclock());
+  ```
+
+- **`SharingUpgrade.java`** — upgrades a LOCAL document to shared:
+  - Stores `user_id` in document's `local_config`
+  - Creates `members.yaml` with user as owner
+  - Updates `document.yaml` visibility
+  - No schema migration — FactStore tables already have peer_id, lclock, etc.
+
+- **`FactSigner.java`** — optional integrity verification:
+  - Signs a fact's content hash with Ed25519: `sign(fact.entityId + fact.attribute + fact.value + ...)`
+  - Stores signature in a `_sig:{factId}` entry in `local_config` or a separate table
+  - Verifies incoming facts from remote peers before `receiveFacts()`
 
 - **`UserSession.java`** — Keycloak integration:
   - OAuth2 device flow or browser redirect
   - JWT token management (refresh, expiry)
   - Local Ed25519 keypair generation on first login
-  - `getCurrentUserId()`, `getSigningKey()`, `getJwt()`, `isLoggedIn()`
-  - Persists to `~/.tradery/session.yaml`
 
-- **`SyncEngine.java`** — per-document P2P sync:
-  - Reads directly from document's SQLite via DocumentWorkspace's EntityStore
-  - Manifest generation: queries entities/relationships for uuid + content hash
-  - Entity transfer: serializes CoinEntity/CoinRelationship to JSON with sharing fields
-  - Signature verification before storage
-  - Conflict resolution: version + author-wins
-  - P2P source tag `"p2p:{authorId}"` so `replaceEntitiesBySource()` doesn't interfere
-  - Respects `AttributeValue.Origin` priority during merge
+### Phase 4: Governance
 
-**Sharing-specific columns** (added by SharingUpgrade — uuid/author_id/version already exist from Phase 1):
+Voting, admin review, submissions — per document.
 
-```sql
--- On entities table
-ALTER TABLE entities ADD COLUMN signature TEXT;        -- Ed25519 signature for P2P verification
-ALTER TABLE entities ADD COLUMN status TEXT DEFAULT 'published';  -- published/pending_review/rejected
+**Additional classes in `tradery-sharing`:**
 
--- On relationships table
-ALTER TABLE relationships ADD COLUMN signature TEXT;
+- **`GovernanceEngine.java`** — per-document governance:
+  - For `open` docs: facts are committed directly
+  - For `admin_approved` docs: non-admin facts go to `pending` (FactStore's staging), admin reviews and commits
+  - For `voting` docs: facts go to pending, members vote, committed when quorum reached
 
--- On entity_attribute_values table
-ALTER TABLE entity_attribute_values ADD COLUMN signature TEXT;
-```
+- **`SubmissionStore.java`** — tracks votes (stored in the document's FactStore as meta-entities):
+  ```
+  entity_id: _vote:{factId}:{voterId}
+  attribute: approve
+  value: "1" or "0"
+  ```
 
-**Governance tables** (added by GovernanceEngine for non-OPEN documents):
-
-```sql
-submissions (
-    uuid TEXT PRIMARY KEY,
-    entity_uuid TEXT NOT NULL,
-    submitter_id TEXT NOT NULL,
-    status TEXT DEFAULT 'pending',
-    submitted_at INTEGER,
-    resolved_at INTEGER
-)
-
-votes (
-    submission_uuid TEXT NOT NULL,
-    voter_id TEXT NOT NULL,
-    approve INTEGER NOT NULL,
-    voted_at INTEGER,
-    PRIMARY KEY (submission_uuid, voter_id)
-)
-```
-
-**UI integration:**
-- "Share..." button in document settings → opens `ShareDialog` → triggers login if needed → runs `SharingUpgrade`
-- `NetworkPanel` injected into IntelFrame sidebar (only when module is present)
-- `MemberPanel`, `ReviewQueuePanel` — per-document panels in document settings
-- Account indicator in header (avatar/name when logged in, absent when offline)
+**UI additions:**
+- `ReviewQueuePanel` — admin review for admin_approved docs (shows pending changes via `factStore.getPendingSummary()`)
+- Voting UI for voting-type documents
 
 ---
 
 ## Changes to tradery-news (Phase 1)
 
-Small, natural additions to the core data model:
+Minimal — just a constructor overload:
 
-| File | Change | Why it belongs in core |
-|------|--------|----------------------|
-| `EntityStore.java` | `EntityStore(Path)` constructor overload | Multi-DB support for documents |
-| `EntityStore.java` | `uuid`, `author_id`, `version` columns on entities + relationships | Provenance is fundamental — dedup, import/export, attribution |
-| `EntityStore.java` | UUID v7 auto-generation on save, backfill migration | Every entity gets a globally unique ID from the start |
-| `CoinEntity.java` | `uuid`, `authorId`, `version` fields + getters/setters | Model reflects what's in the DB |
-| `CoinRelationship.java` | `uuid`, `authorId`, `version` fields + getters/setters | Same |
-| `UuidGenerator.java` | New file (~20 LOC) | Utility for UUID v7 generation |
+| File | Change | Why |
+|------|--------|-----|
+| `FactStore.java` | `FactStore(Path dbPath)` constructor overload | Multi-DB support for documents |
+| `FactStore.java` | `static Path defaultPath()` method | External code can reference default location |
+| `EntityStore.java` | `EntityStore(Path dbPath)` constructor overload | Passes through to FactStore |
 | `settings.gradle` | Add `include 'tradery-documents'` and `include 'tradery-sharing'` | Register new modules |
 
-Everything else — documents, sharing, identity, P2P, governance, signatures, all new UI — lives in the new modules.
+Everything else — documents, sharing, identity, P2P, governance — lives in the new modules.
 
-**Future optional refactor:** To support live document switching in the UI (rebinding panels to a different EntityStore), some `tradery-news` UI classes may need setter methods or listener patterns. But this can be done incrementally and isn't required for the initial document support (first doc = default, no switching needed at first).
+**Why so little changes?** The FactStore already has:
+- Globally unique fact IDs (ULIDs) — no need to add UUIDs
+- `peer_id` on every fact — authorship tracking built in
+- `lclock` + `wall_clock` — versioning/ordering built in
+- `getFactsSince()` / `receiveFacts()` — P2P sync primitives built in
+- `commit()` / `rollback()` — draft/review workflow built in
+- LWW conflict resolution — no manual merge logic needed
+
+---
+
+## Integration Testing with Testcontainers
+
+Network sync is the highest-risk component. We test it under near-real-world conditions using Testcontainers for true process and network isolation.
+
+### Test Module
+
+```
+tradery-sharing-tests/
+├── build.gradle
+└── src/test/java/
+    └── com/tradery/sharing/test/
+        ├── PeerSyncIT.java            # Core sync tests
+        ├── ConflictResolutionIT.java   # LWW conflict scenarios
+        ├── MultiPeerIT.java           # 3+ peer mesh sync
+        ├── NetworkPartitionIT.java    # Split-brain and recovery
+        ├── GovernanceIT.java          # Admin approval / voting flows
+        ├── RendezvousIT.java          # Peer discovery via rendezvous
+        └── support/
+            ├── PeerContainer.java     # Testcontainers GenericContainer for a headless peer
+            ├── RendezvousContainer.java   # Container for the rendezvous server
+            ├── PeerClient.java        # HTTP/TCP client to interact with a peer container
+            └── TestFactories.java     # Factory methods for creating test facts/entities
+```
+
+```groovy
+// tradery-sharing-tests/build.gradle
+plugins {
+    id 'java'
+}
+
+dependencies {
+    testImplementation project(':tradery-sharing')
+    testImplementation project(':tradery-documents')
+    testImplementation project(':tradery-news')
+    testImplementation 'org.testcontainers:testcontainers:1.20.4'
+    testImplementation 'org.testcontainers:junit-jupiter:1.20.4'
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.11.4'
+    testImplementation 'org.assertj:assertj-core:3.27.3'
+    testImplementation "com.squareup.okhttp3:okhttp:${okhttpVersion}"
+}
+```
+
+### Architecture
+
+Each test peer runs as a **Docker container** with:
+- A headless `tradery-sharing` process (no Swing UI)
+- Its own `~/.tradery/documents/` directory (ephemeral)
+- A TCP port exposed for P2P connections
+- An HTTP control port for test orchestration (create facts, query state, trigger sync)
+
+```
+┌─────────────────────┐     ┌─────────────────────┐
+│  Test (JVM)         │     │  Test (JVM)         │
+│  - PeerContainer A  │────►│  RendezvousContainer│
+│  - PeerContainer B  │     └─────────────────────┘
+│  - PeerContainer C  │
+│  - Assertions       │
+└─────────────────────┘
+        │  HTTP control API
+        ▼
+┌───────────┐  P2P TCP  ┌───────────┐
+│  Peer A   │◄─────────►│  Peer B   │
+│  (Docker) │           │  (Docker) │
+└───────────┘           └───────────┘
+```
+
+**Headless peer mode:** The `tradery-sharing` module includes a `HeadlessPeer` main class that:
+- Creates a FactStore with a given DB path
+- Starts the PeerServer on a configurable port
+- Exposes an HTTP control API for tests:
+  - `POST /facts` — append facts to the local FactStore
+  - `GET /facts?since={lclock}` — get facts since a clock value
+  - `GET /current/{entityId}` — read current state
+  - `POST /sync/{peerId}` — trigger sync with a specific peer
+  - `GET /status` — peer status, clock values, pending count
+
+### Test Scenarios
+
+**`PeerSyncIT` — Basic sync:**
+1. Start Peer A and Peer B containers
+2. Create a shared document on both (same document ID, both are members)
+3. Append facts on Peer A: create an entity with attributes
+4. Trigger sync A → B
+5. Assert: Peer B's current state matches Peer A's entity
+6. Append facts on Peer B: create a different entity
+7. Trigger sync B → A
+8. Assert: both peers have both entities
+
+**`ConflictResolutionIT` — LWW conflicts:**
+1. Start Peer A and Peer B (initially synced)
+2. Both modify the same `(entity_id, attribute)` without syncing
+3. Peer A sets `name = "Alpha"` (lclock=10), Peer B sets `name = "Beta"` (lclock=12)
+4. Sync both directions
+5. Assert: both peers resolve to `"Beta"` (higher lclock wins)
+6. Test tiebreakers: same lclock, different wall_clock; same lclock + wall_clock, different peer_id
+
+**`MultiPeerIT` — Mesh sync (3+ peers):**
+1. Start Peers A, B, C
+2. A creates entity, syncs to B
+3. B modifies entity, syncs to C
+4. C creates new entity, syncs to A
+5. Assert: all 3 peers converge to identical current state
+6. Verify Lamport clocks are consistent across all peers
+
+**`NetworkPartitionIT` — Split-brain and recovery:**
+1. Start Peers A, B, C — all synced
+2. Partition: A can reach B but not C; C is isolated
+3. A and B continue making changes, syncing with each other
+4. C makes independent changes
+5. Heal partition: C reconnects
+6. Trigger full sync
+7. Assert: all 3 peers converge to correct LWW-resolved state
+8. No data loss from any peer's changes during partition
+
+**`GovernanceIT` — Admin approval flow:**
+1. Start Peer A (admin) and Peer B (member)
+2. Document governance = `admin_approved`
+3. Peer B creates entity → goes to `pending`
+4. Sync pending submission to Peer A
+5. Peer A approves → commits
+6. Sync committed facts back to Peer B
+7. Assert: entity now committed on both peers
+
+**`RendezvousIT` — Peer discovery:**
+1. Start RendezvousContainer
+2. Peer A registers with rendezvous
+3. Peer B queries rendezvous for peers sharing document X
+4. Assert: Peer B discovers Peer A's address
+5. Peer B connects to Peer A, sync succeeds
+
+### In-Process Tests (No Docker)
+
+For faster feedback during development, also include unit-level sync tests that run **in-process** (no Testcontainers):
+
+```java
+// Two FactStores in the same JVM, different temp directories
+Path dbA = tempDir.resolve("a/facts.db");
+Path dbB = tempDir.resolve("b/facts.db");
+FactStore storeA = new FactStore(dbA);
+FactStore storeB = new FactStore(dbB);
+
+storeA.appendFact("bitcoin", "name", "Bitcoin", "manual");
+List<Fact> facts = storeA.getFactsSince(0);
+storeB.receiveFacts(facts);
+
+assertEquals("Bitcoin", storeB.getCurrent("bitcoin", "name"));
+```
+
+These run instantly and cover the core sync logic without Docker overhead. The Testcontainers tests add real network/process isolation on top.
 
 ---
 
 ## Dependencies
 
 **tradery-documents:**
-- `tradery-news` (uses EntityStore, SchemaRegistry, DataSourceRegistry)
+- `tradery-news` (uses FactStore, EntityStore, SchemaRegistry, DataSourceRegistry)
 - Jackson YAML (already in project)
 - No new external dependencies
 
@@ -694,9 +744,12 @@ Everything else — documents, sharing, identity, P2P, governance, signatures, a
 - OkHttp (already in project — for rendezvous HTTP)
 - Ed25519: `java.security` (JDK 21 built-in)
 - TLS sockets: `javax.net.ssl` (built-in)
-- UUID v7: Pure Java (~20 LOC in tradery-documents)
 - mDNS: JDK multicast (built-in)
 - **No new external dependencies**
+
+**tradery-sharing-tests:**
+- Testcontainers (new, test-only)
+- JUnit 5, AssertJ (test-only)
 
 **New infrastructure (only needed for Phase 3):**
 - Keycloak instance (Docker, free)
@@ -708,55 +761,47 @@ Everything else — documents, sharing, identity, P2P, governance, signatures, a
 
 | Decision | Choice | Rationale |
 |----------|--------|-----------|
-| Code organization | Separate modules (`tradery-documents`, `tradery-sharing`) | Non-invasive to existing `tradery-news` code; add-on architecture |
-| tradery-news changes | Only `EntityStore(Path)` constructor overload | One-line change; everything else is additive in new modules |
-| Sharing columns | Added externally by `SharingUpgrade`, not baked into EntityStore | EntityStore stays unaware of sharing; upgrade runs ALTER TABLE from outside |
-| Account requirement | Optional, only for sharing | Solo users never blocked by auth; zero friction for local-only use |
+| Data model | Append-only fact log (FactStore) | Already built, LWW = natural P2P fit |
+| Sync unit | Individual facts | Simpler than entity-level: no manifests, no hashing, just `getFactsSince(lclock)` |
+| Conflict resolution | LWW per (entity_id, attribute) | Deterministic, no CRDTs needed, already implemented |
+| Code organization | Separate modules (`tradery-documents`, `tradery-sharing`) | Non-invasive to existing `tradery-news` code |
+| tradery-news changes | Only `FactStore(Path)` constructor overload | Everything else is already P2P-ready |
+| Account requirement | Optional, only for sharing | Solo users never blocked by auth |
 | Entity data transport | P2P (direct TCP) | Avoid hosting data traffic |
 | Auth/identity | Keycloak + local signing key | Proper user management with P2P integrity |
 | Peer discovery | Hybrid (rendezvous + mDNS) | Works behind NAT + free LAN discovery |
-| Conflict resolution | Version + author-wins | Simple, predictable, no CRDTs needed |
 | Wire protocol | Length-prefixed JSON over TLS | Simple, debuggable, secure |
-| Entity ID | UUID v7 alongside existing string `id` | Backward compatible, time-sortable |
-| Document governance | Pluggable (open/admin/voting) | Flexible per-community needs |
-| Attribute sync | Respects existing Origin priority | USER edits never overwritten by remote SOURCE data |
-| Schema sync unit | Full SchemaType + attributes | Documents carry their own schema — peers don't need pre-shared type defs |
+| Draft/commit integration | Governance uses FactStore staging natively | `admin_approved` = non-admin writes go to `pending`, admin calls `commit()` |
+| Testing | Testcontainers + in-process | True network isolation for integration, fast in-process for unit |
+| Attribute sync | Respects existing Origin priority via FactStore | USER edits never overwritten by remote SOURCE data |
 
 ---
 
 ## Verification
 
-**Phase 1 (core provenance — tradery-news):**
+**Phase 1 (path-configurable FactStore — tradery-news):**
 - Compile: `./gradlew :tradery-news:compileJava`
 - Restart intel: `scripts/kill-intel.sh && scripts/start-intel.sh`
-- Verify existing entities get UUIDs: `sqlite3 ~/.tradery/entity-network.db "SELECT id, uuid, author_id, version FROM entities LIMIT 5"`
-- Verify `author_id` is null (no account yet), uuid is populated, version is 1
-- Create new entity via UI → verify UUID auto-generated
-- Verify `new EntityStore(Path.of("/tmp/test-entities.db"))` creates a working DB
+- Verify existing data intact: app loads, entities visible in graph
+- Verify `new FactStore(Path.of("/tmp/test.db"))` creates a working DB (in-process test)
+- Verify default path still works: `new FactStore()` behaves as before
 
 **Phase 2 (documents — tradery-documents module):**
 - Compile: `./gradlew :tradery-documents:compileJava`
-- `DocumentManager.migrateDefault()` — verify existing `entity-network.db` moved into `~/.tradery/documents/{uuid}/entities.db`
-- Create new LOCAL document via `DocumentManager.createDocument("Test")`
-- Verify `~/.tradery/documents/{uuid}/` created with `entities.db` + `document.yaml` (visibility=local, ownerId=null)
-- Verify no members.yaml for LOCAL documents
-- Open two DocumentWorkspaces, verify entity isolation (different entity sets)
+- `DocumentManager.migrateDefault()` — verify existing `entity-network.db` moved into `~/.tradery/documents/{uuid}/facts.db`
+- Create new LOCAL document — verify directory + `facts.db` + `document.yaml` created
+- Open two DocumentWorkspaces — verify entity isolation (different FactStores)
 - UI: document switcher shows all local documents, switching works
 
-**Phase 3 (sharing + P2P — tradery-sharing module):**
+**Phase 3 (P2P — tradery-sharing module):**
 - Compile: `./gradlew :tradery-sharing:compileJava`
-- Click "Share..." on a LOCAL document → login dialog appears
-- Create Keycloak account, log in
-- `SharingUpgrade` runs: verify sharing columns added to DB
-- Verify: `sqlite3 ~/.tradery/documents/{uuid}/entities.db "SELECT id, uuid, author_id FROM entities LIMIT 5"`
-- Verify members.yaml created with user as owner
-- Run two instances (different `~/.tradery` dirs), share a FRIENDS document
-- Create entity in A → appears in B after sync
-- Verify signature verification rejects tampered entities
-- Test mDNS discovery on LAN
-- Test attribute value priority (USER edit on B not overwritten by SOURCE data from A)
+- In-process sync test: two FactStores, appendFact on A, getFactsSince → receiveFacts on B
+- Testcontainers: `PeerSyncIT` — two containers, full sync cycle
+- Testcontainers: `ConflictResolutionIT` — LWW tiebreaker verification
+- Testcontainers: `NetworkPartitionIT` — partition + recovery
+- Click "Share..." on a LOCAL document → login dialog → upgrade
+- Two running instances sync a shared document end-to-end
 
 **Phase 4 (governance — part of tradery-sharing):**
-- Create admin_approved document, submit entity from non-admin → review queue
-- Admin approves → entity status → published, syncs to peers
+- Testcontainers: `GovernanceIT` — admin_approved flow
 - Create voting document, submit, cast votes, verify quorum logic
