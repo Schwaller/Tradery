@@ -72,7 +72,7 @@ public class TraderyApp {
         LicenseGate.checkOrExit(false);
 
         // Check for updates (non-blocking)
-        UpdateChecker.checkAsync(VERSION, "https://tradery.app/updates/latest.json");
+        UpdateChecker.checkAsync(VERSION, "https://plaiiin.com/api/app/strategy-forge/latest.json");
 
         // Start data service (or connect to existing) and register as consumer
         startDataService();

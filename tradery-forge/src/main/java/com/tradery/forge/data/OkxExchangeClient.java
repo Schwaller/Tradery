@@ -113,7 +113,7 @@ public class OkxExchangeClient implements ExchangeClient {
             .get()
             .build();
 
-        try (Response response = client.newCall(request).execute()) {
+        try (Response response = executeWithRetry(request)) {
             if (!response.isSuccessful()) {
                 throw new IOException("OKX API error: " + response.code() + " " + response.message());
             }
@@ -262,7 +262,7 @@ public class OkxExchangeClient implements ExchangeClient {
             .get()
             .build();
 
-        try (Response response = client.newCall(request).execute()) {
+        try (Response response = executeWithRetry(request)) {
             if (!response.isSuccessful()) {
                 throw new IOException("OKX API error: " + response.code() + " " + response.message());
             }
@@ -342,7 +342,7 @@ public class OkxExchangeClient implements ExchangeClient {
             .get()
             .build();
 
-        try (Response response = client.newCall(request).execute()) {
+        try (Response response = executeWithRetry(request)) {
             if (!response.isSuccessful()) {
                 throw new IOException("OKX API error: " + response.code() + " " + response.message());
             }
@@ -478,7 +478,7 @@ public class OkxExchangeClient implements ExchangeClient {
             .get()
             .build();
 
-        try (Response response = client.newCall(request).execute()) {
+        try (Response response = executeWithRetry(request)) {
             if (!response.isSuccessful()) {
                 throw new IOException("OKX API error: " + response.code() + " " + response.message());
             }
@@ -547,7 +547,7 @@ public class OkxExchangeClient implements ExchangeClient {
                 .get()
                 .build();
 
-            try (Response response = client.newCall(request).execute()) {
+            try (Response response = executeWithRetry(request)) {
                 if (!response.isSuccessful()) {
                     throw new IOException("OKX API error: " + response.code() + " " + response.message());
                 }
@@ -630,7 +630,7 @@ public class OkxExchangeClient implements ExchangeClient {
                 .get()
                 .build();
 
-            try (Response response = client.newCall(request).execute()) {
+            try (Response response = executeWithRetry(request)) {
                 if (!response.isSuccessful()) {
                     throw new IOException("OKX API error: " + response.code() + " " + response.message());
                 }
@@ -685,6 +685,32 @@ public class OkxExchangeClient implements ExchangeClient {
     }
 
     // ========== Helper Methods ==========
+
+    private static final int MAX_RETRIES = 3;
+    private static final long RETRY_DELAY_MS = 2000;
+
+    /**
+     * Execute an OKX API request with automatic retry on 429 (rate limit).
+     */
+    private Response executeWithRetry(Request request) throws IOException {
+        for (int attempt = 0; attempt < MAX_RETRIES; attempt++) {
+            Response response = client.newCall(request).execute();
+            if (response.code() != 429) {
+                return response;
+            }
+            response.close();
+            log.debug("OKX 429 rate limited, retrying in {}ms (attempt {}/{})",
+                RETRY_DELAY_MS, attempt + 1, MAX_RETRIES);
+            try {
+                Thread.sleep(RETRY_DELAY_MS * (attempt + 1));
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new IOException("Interrupted during rate limit retry", e);
+            }
+        }
+        // Final attempt — let it throw if still 429
+        return client.newCall(request).execute();
+    }
 
     /**
      * Map standard timeframe strings to OKX bar format.

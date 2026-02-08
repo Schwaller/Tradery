@@ -63,6 +63,7 @@ public class ExchangeClientFactory {
             case COINBASE -> null;
             case KRAKEN -> null;
             case BITFINEX -> null;
+            case HYPERLIQUID -> null;
         };
     }
 

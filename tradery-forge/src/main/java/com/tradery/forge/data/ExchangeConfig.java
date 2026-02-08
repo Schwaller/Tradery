@@ -399,6 +399,7 @@ public class ExchangeConfig {
             case COINBASE -> baseSymbol.toUpperCase() + "-USD";
             case KRAKEN -> baseSymbol.toUpperCase() + "USD";
             case BITFINEX -> "t" + baseSymbol.toUpperCase() + "USD";
+            case HYPERLIQUID -> baseSymbol.toUpperCase();
         };
     }
 

@@ -1,0 +1,24 @@
+// tradery-execution: Execution engine, risk management, journaling
+// Headless library — no UI dependencies
+
+plugins {
+    id 'java-library'
+}
+
+dependencies {
+    // Core models
+    api project(':tradery-core')
+
+    // Engine for position sizing
+    implementation project(':tradery-engine')
+
+    // Exchange connectivity
+    api project(':tradery-exchange')
+
+    // JSON serialization (for journal)
+    implementation "com.fasterxml.jackson.core:jackson-databind:${rootProject.ext.jacksonVersion}"
+    implementation "com.fasterxml.jackson.datatype:jackson-datatype-jsr310:${rootProject.ext.jacksonVersion}"
+
+    // Logging
+    implementation "org.slf4j:slf4j-api:${rootProject.ext.slf4jVersion}"
+}

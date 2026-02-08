@@ -1,0 +1,28 @@
+// tradery-exchange: Exchange connectivity adapters (Hyperliquid, Binance Futures, Jupiter)
+// Headless library — no UI dependencies
+
+plugins {
+    id 'java-library'
+}
+
+dependencies {
+    // Core models
+    api project(':tradery-core')
+
+    // HTTP client
+    implementation "com.squareup.okhttp3:okhttp:${rootProject.ext.okhttpVersion}"
+
+    // JSON serialization
+    implementation "com.fasterxml.jackson.core:jackson-databind:${rootProject.ext.jacksonVersion}"
+    implementation "com.fasterxml.jackson.datatype:jackson-datatype-jsr310:${rootProject.ext.jacksonVersion}"
+    implementation "com.fasterxml.jackson.dataformat:jackson-dataformat-yaml:${rootProject.ext.jacksonVersion}"
+
+    // WebSocket client
+    implementation "org.java-websocket:Java-WebSocket:${rootProject.ext.websocketVersion}"
+
+    // BouncyCastle for EIP-712 / secp256k1 signing (Hyperliquid)
+    implementation "org.bouncycastle:bcprov-jdk18on:${rootProject.ext.bouncyCastleVersion}"
+
+    // Logging
+    implementation "org.slf4j:slf4j-api:${rootProject.ext.slf4jVersion}"
+}

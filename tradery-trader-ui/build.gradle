@@ -1,0 +1,25 @@
+// tradery-trader-ui: Reusable Swing trading panels
+// Library module — used by tradery-trader and tradery-desk
+
+plugins {
+    id 'java-library'
+}
+
+dependencies {
+    // Core models
+    api project(':tradery-core')
+
+    // Execution engine + exchange connectivity
+    api project(':tradery-execution')
+    api project(':tradery-exchange')
+
+    // Shared UI components
+    implementation project(':tradery-ui-common')
+
+    // FlatLaf Look and Feel
+    implementation 'com.formdev:flatlaf:3.4'
+    implementation 'com.formdev:flatlaf-intellij-themes:3.4'
+
+    // Logging
+    implementation "org.slf4j:slf4j-api:${rootProject.ext.slf4jVersion}"
+}

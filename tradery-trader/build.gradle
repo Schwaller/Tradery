@@ -1,0 +1,49 @@
+// tradery-trader: Standalone manual trading application
+// No dependency on desk, data-service, or backtesting engine
+
+plugins {
+    id 'java'
+    id 'application'
+}
+
+application {
+    mainClass = 'com.tradery.trader.TraderApp'
+}
+
+dependencies {
+    // Trading UI panels
+    implementation project(':tradery-trader-ui')
+
+    // Execution + exchange (transitive via trader-ui, but explicit for clarity)
+    implementation project(':tradery-execution')
+    implementation project(':tradery-exchange')
+
+    // Core models
+    implementation project(':tradery-core')
+
+    // Shared UI components
+    implementation project(':tradery-ui-common')
+
+    // FlatLaf Look and Feel
+    implementation 'com.formdev:flatlaf:3.4'
+    implementation 'com.formdev:flatlaf-intellij-themes:3.4'
+
+    // Logging
+    implementation "org.slf4j:slf4j-api:${rootProject.ext.slf4jVersion}"
+    implementation "org.apache.logging.log4j:log4j-api:${rootProject.ext.log4jVersion}"
+    implementation "org.apache.logging.log4j:log4j-core:${rootProject.ext.log4jVersion}"
+    implementation "org.apache.logging.log4j:log4j-slf4j2-impl:${rootProject.ext.log4jVersion}"
+}
+
+// Create fat JAR for easy distribution
+tasks.register('fatJar', Jar) {
+    archiveClassifier = 'all'
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    manifest {
+        attributes 'Main-Class': application.mainClass
+    }
+    from {
+        configurations.runtimeClasspath.collect { it.isDirectory() ? it : zipTree(it) }
+    }
+    with jar
+}

@@ -33,8 +33,8 @@ public class AiDetector {
     public static List<DetectedProvider> detectAll() {
         List<DetectedProvider> results = new ArrayList<>();
 
-        // Claude
-        results.add(detectClaude());
+        // Claude (may return multiple entries, one per model tier)
+        results.addAll(detectClaude());
 
         // Codex
         results.add(detectCodex());
@@ -48,20 +48,53 @@ public class AiDetector {
         return results;
     }
 
-    private static DetectedProvider detectClaude() {
+    private static List<DetectedProvider> detectClaude() {
         String version = runCommand("claude", "--version");
         boolean detected = version != null;
-        return new DetectedProvider(
-            AiProvider.CLAUDE,
-            "Claude Code" + (detected ? "  v" + version.trim() : ""),
-            "Anthropic's AI assistant CLI",
-            detected ? version.trim() : null,
-            null,
-            "claude",
-            "--print --output-format text --model haiku",
-            detected,
-            false,
-            "https://docs.anthropic.com/en/docs/claude-code/overview"
+        String ver = detected ? version.trim() : null;
+        String versionSuffix = detected ? "  v" + ver : "";
+
+        if (!detected) {
+            return List.of(new DetectedProvider(
+                AiProvider.CLAUDE,
+                "Claude Code",
+                "Anthropic's AI assistant CLI",
+                null, null, "claude",
+                "--print --output-format text --model haiku",
+                false, false,
+                "https://docs.anthropic.com/en/docs/claude-code/overview"
+            ));
+        }
+
+        // One entry per model tier — haiku (fast/cheap), sonnet (balanced), opus (smartest)
+        return List.of(
+            new DetectedProvider(
+                AiProvider.CLAUDE,
+                "Claude Haiku" + versionSuffix,
+                "Fast and cheap \u2014 good for extraction and simple tasks",
+                ver, null, "claude",
+                "--print --output-format text --model haiku",
+                true, false,
+                "https://docs.anthropic.com/en/docs/claude-code/overview"
+            ),
+            new DetectedProvider(
+                AiProvider.CLAUDE,
+                "Claude Sonnet" + versionSuffix,
+                "Balanced \u2014 good for analysis and research",
+                ver, null, "claude",
+                "--print --output-format text --model sonnet",
+                true, false,
+                "https://docs.anthropic.com/en/docs/claude-code/overview"
+            ),
+            new DetectedProvider(
+                AiProvider.CLAUDE,
+                "Claude Opus" + versionSuffix,
+                "Smartest \u2014 best for complex reasoning and deep research",
+                ver, null, "claude",
+                "--print --output-format text --model opus",
+                true, false,
+                "https://docs.anthropic.com/en/docs/claude-code/overview"
+            )
         );
     }
 

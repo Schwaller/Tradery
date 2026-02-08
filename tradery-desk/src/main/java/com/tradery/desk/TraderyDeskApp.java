@@ -762,7 +762,7 @@ public class TraderyDeskApp {
         LicenseGate.checkOrExit(false);
 
         // Check for updates (non-blocking)
-        UpdateChecker.checkAsync(version, "https://tradery.app/updates/latest.json");
+        UpdateChecker.checkAsync(version, "https://plaiiin.com/api/app/trading-desk/latest.json");
 
         TraderyDeskApp app = new TraderyDeskApp();
         app.start();

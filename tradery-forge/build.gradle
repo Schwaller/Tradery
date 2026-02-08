@@ -117,7 +117,7 @@ jlink {
         uses 'org.apache.logging.log4j.spi.Provider'
         uses 'org.apache.logging.log4j.util.PropertySource'
         uses 'org.apache.logging.log4j.core.util.ContextDataProvider'
-        uses 'org.apache.logging.log4j.core.util.WatchEventService'
+        // WatchEventService auto-detected from merged JARs — do not declare manually
         uses 'org.apache.logging.log4j.message.ThreadDumpMessage.ThreadInfoFactory'
         uses 'org.slf4j.spi.SLF4JServiceProvider'
     }
@@ -199,18 +199,19 @@ tasks.register('jpackageApp', Exec) {
     def args = [
             'jpackage',
             '--type', 'app-image',
-            '--name', 'Tradery',
+            '--name', 'Strategy Forge',
             '--app-version', project.version,
             '--input', fatJarFile.parentFile.absolutePath,
             '--main-jar', fatJarFile.name,
             '--main-class', application.mainClass.get(),
             '--dest', outputDir.absolutePath,
             '--java-options', '-Xmx512m',
-            '--mac-package-name', 'Tradery'
+            '--java-options', "-Dtradery.version=${project.version}",
+            '--mac-package-name', 'Strategy Forge'
     ]
 
     // Add icon if it exists
-    def iconFile = file('../src/main/resources/icon.icns')
+    def iconFile = file('src/main/resources/icon.icns')
     if (iconFile.exists()) {
         args.addAll(['--icon', iconFile.absolutePath])
     }
@@ -218,7 +219,7 @@ tasks.register('jpackageApp', Exec) {
     commandLine args
 
     doLast {
-        println "Created: ${outputDir}/Tradery.app"
+        println "Created: ${outputDir}/Strategy Forge.app"
     }
 }
 
@@ -227,10 +228,10 @@ tasks.register('jpackageDmg', Exec) {
     dependsOn 'jpackageApp'
 
     def outputDir = layout.buildDirectory.dir('jpackage').get().asFile
-    def appPath = new File(outputDir, 'Tradery.app')
-    def dmgPath = new File(outputDir, "Tradery-${project.version}.dmg")
+    def appPath = new File(outputDir, 'Strategy Forge.app')
+    def dmgPath = new File(outputDir, "Strategy Forge-${project.version}.dmg")
 
-    commandLine 'hdiutil', 'create', '-volname', 'Tradery',
+    commandLine 'hdiutil', 'create', '-volname', 'Strategy Forge',
             '-srcfolder', appPath.absolutePath,
             '-ov', '-format', 'UDZO',
             dmgPath.absolutePath

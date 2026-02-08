@@ -77,6 +77,12 @@ if [ -n "$DESK_SRC" ]; then
     png_to_icns "$DESK_SRC" "$(dirname "$0")/../tradery-desk/src/main/resources/icon.icns"
 fi
 
+# Intelligence
+INTEL_SRC=$(find_latest_icon "Intelligence Icon")
+if [ -n "$INTEL_SRC" ]; then
+    png_to_icns "$INTEL_SRC" "$(dirname "$0")/../tradery-news/src/main/resources/icon.icns"
+fi
+
 echo ""
 echo "=== Done ==="
 echo ""
@@ -84,3 +90,4 @@ echo "To rebuild apps with new icons:"
 echo "  ./gradlew :tradery-forge:jpackage"
 echo "  ./gradlew :tradery-runner:jpackage"
 echo "  ./gradlew :tradery-desk:jpackage"
+echo "  ./gradlew :tradery-news:jpackage"

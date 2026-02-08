@@ -92,6 +92,7 @@ public enum DataMarketType {
             case COINBASE -> SPOT; // Coinbase primarily spot
             case KRAKEN -> SPOT;   // Kraken primarily spot for this use case
             case BITFINEX -> SPOT;
+            case HYPERLIQUID -> FUTURES_PERP;
         };
     }
 }

@@ -9,7 +9,8 @@ public enum Exchange {
     OKX("OKX", "okx", "OKX"),
     COINBASE("Coinbase", "coinbase", "CB"),
     KRAKEN("Kraken", "kraken", "KRK"),
-    BITFINEX("Bitfinex", "bitfinex", "BFX");
+    BITFINEX("Bitfinex", "bitfinex", "BFX"),
+    HYPERLIQUID("Hyperliquid", "hyperliquid", "HL");
 
     private final String displayName;
     private final String configKey;

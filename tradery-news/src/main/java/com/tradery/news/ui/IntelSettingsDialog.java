@@ -719,7 +719,14 @@ public class IntelSettingsDialog extends SettingsDialog {
                             for (AiProfile existing : aiConfig.getProfiles()) {
                                 if (existing.getProvider() == dp.provider()) {
                                     if (dp.provider() == AiProvider.CUSTOM) {
+                                        // Match by command for custom providers (e.g. Ollama models)
                                         if (dp.command() != null && dp.command().equals(existing.getCommand())) {
+                                            exists = true;
+                                            break;
+                                        }
+                                    } else if (dp.provider() == AiProvider.CLAUDE) {
+                                        // Match by args for Claude (different model tiers)
+                                        if (dp.args() != null && dp.args().equals(existing.getArgs())) {
                                             exists = true;
                                             break;
                                         }

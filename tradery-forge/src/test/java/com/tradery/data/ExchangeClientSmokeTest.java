@@ -153,15 +153,16 @@ class ExchangeClientSmokeTest {
     void okxFundingRates() throws Exception {
         var client = new OkxExchangeClient(DataMarketType.FUTURES_PERP);
         long now = System.currentTimeMillis();
-        long oneWeekAgo = now - 7 * 24 * 60 * 60 * 1000L;
+        // Use 1 day (3 funding intervals) to minimize API calls
+        long oneDayAgo = now - 24 * 60 * 60 * 1000L;
 
-        List<FundingRate> rates = client.fetchFundingRates("BTC-USDT-SWAP", oneWeekAgo, now);
+        List<FundingRate> rates = client.fetchFundingRates("BTC-USDT-SWAP", oneDayAgo, now);
 
         assertFalse(rates.isEmpty(), "OKX should return funding rates");
         System.out.println("OKX funding rates: " + rates.size());
 
         FundingRate first = rates.get(0);
-        assertTrue(first.fundingTime() > oneWeekAgo, "Funding time in range");
+        assertTrue(first.fundingTime() > oneDayAgo, "Funding time in range");
 
         System.out.println("  First: ts=" + first.fundingTime() + " rate=" + first.fundingRate());
     }
@@ -170,9 +171,10 @@ class ExchangeClientSmokeTest {
     void okxOpenInterest() throws Exception {
         var client = new OkxExchangeClient(DataMarketType.FUTURES_PERP);
         long now = System.currentTimeMillis();
-        long oneHourAgo = now - 60 * 60 * 1000L;
+        // Use 15 min to minimize API calls
+        long fifteenMinAgo = now - 15 * 60 * 1000L;
 
-        List<OpenInterest> data = client.fetchOpenInterest("BTC-USDT-SWAP", oneHourAgo, now);
+        List<OpenInterest> data = client.fetchOpenInterest("BTC-USDT-SWAP", fifteenMinAgo, now);
 
         // OKX OI endpoint may not work for all instruments — just check no exceptions
         System.out.println("OKX OI: " + data.size() + " records");

@@ -354,6 +354,11 @@ public class SymbolResolver {
                 }
                 yield Optional.empty();
             }
+            case HYPERLIQUID -> {
+                // Hyperliquid uses plain base symbol
+                String resolved = resolveAlias(upper);
+                yield mappings.containsKey(resolved) ? Optional.of(resolved) : Optional.empty();
+            }
         };
     }
 
