@@ -58,9 +58,8 @@ public class ExchangeClientFactory {
 
         return switch (exchange) {
             case BINANCE -> new BinanceExchangeClient(defaultMarket);
-            // TODO: Add other exchange clients as they're implemented
-            case BYBIT -> null; // new BybitExchangeClient(defaultMarket);
-            case OKX -> null;   // new OkxExchangeClient(defaultMarket);
+            case BYBIT -> new BybitExchangeClient(defaultMarket);
+            case OKX -> new OkxExchangeClient(defaultMarket);
             case COINBASE -> null;
             case KRAKEN -> null;
             case BITFINEX -> null;

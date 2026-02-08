@@ -137,6 +137,21 @@ public class AggTradesStore {
     }
 
     /**
+     * Get the coverage sub_key for an exchange and market type.
+     * Binance non-spot uses "default" for backward compatibility with existing data.
+     * Other exchanges use "{exchange}_{marketType}" format.
+     */
+    private String getCoverageSubKey(Exchange exchange, DataMarketType marketType) {
+        if (exchange == Exchange.BINANCE && marketType != DataMarketType.SPOT) {
+            return "default";
+        }
+        if (exchange == Exchange.BINANCE && marketType == DataMarketType.SPOT) {
+            return "spot";
+        }
+        return exchange.getConfigKey() + "_" + marketType.getConfigKey();
+    }
+
+    /**
      * Check if Vision bulk download should be used.
      * AggTrades are massive - use Vision for >= 3 days.
      */
@@ -585,6 +600,89 @@ public class AggTradesStore {
 
         return sqliteStore.getAggTrades(symbol, startTime, endTime,
             java.util.Set.of(marketType));
+    }
+
+    /**
+     * Get aggregated trades for a symbol, exchange, and market type within time range.
+     * For Binance, delegates to existing getAggTrades with market type.
+     * For Bybit/OKX, fetches via ExchangeClient and caches to SQLite.
+     */
+    public List<AggTrade> getAggTrades(String symbol, Exchange exchange, DataMarketType marketType,
+                                        long startTime, long endTime) throws IOException {
+        // Binance uses existing optimized path (Vision bulk downloads, etc.)
+        if (exchange == Exchange.BINANCE) {
+            return getAggTrades(symbol, marketType, startTime, endTime);
+        }
+
+        // Reset cancellation flag
+        fetchCancelled.set(false);
+
+        String subKey = getCoverageSubKey(exchange, marketType);
+
+        // Check SQLite cache first
+        List<long[]> gaps = findGapsInSqlite(symbol, subKey, startTime, endTime);
+
+        if (gaps.isEmpty()) {
+            log.debug("SQLite cache hit for {} {} {} aggTrades", symbol, exchange.getShortName(), marketType.getShortName());
+            return sqliteStore.getAggTrades(symbol, startTime, endTime,
+                java.util.Set.of(marketType));
+        }
+
+        // Fetch via exchange client
+        ExchangeClient exchangeClient = ExchangeClientFactory.getInstance().getClient(exchange);
+        if (exchangeClient == null) {
+            log.warn("No client available for {}", exchange.getDisplayName());
+            return sqliteStore.getAggTrades(symbol, startTime, endTime,
+                java.util.Set.of(marketType));
+        }
+
+        String exchangeSymbol = exchangeClient.normalizeSymbol(
+            extractBase(symbol), extractQuote(symbol), marketType);
+
+        log.info("Fetching {} aggTrades from {} (symbol: {})...",
+            symbol, exchange.getDisplayName(), exchangeSymbol);
+
+        List<AggTrade> trades = exchangeClient.fetchAllAggTrades(
+            exchangeSymbol, startTime, endTime, fetchCancelled, progressCallback);
+
+        if (!trades.isEmpty()) {
+            saveToSqlite(symbol, trades);
+
+            // Mark coverage for the range actually fetched (may be limited for non-Binance)
+            long actualStart = trades.get(0).timestamp();
+            long actualEnd = trades.get(trades.size() - 1).timestamp();
+            if (!fetchCancelled.get()) {
+                markCoverage(symbol, subKey, actualStart, actualEnd, true);
+            }
+        }
+
+        return sqliteStore.getAggTrades(symbol, startTime, endTime,
+            java.util.Set.of(marketType));
+    }
+
+    /**
+     * Extract base symbol from a combined symbol (e.g., "BTCUSDT" -> "BTC").
+     */
+    private String extractBase(String symbol) {
+        // Common quote currencies to strip
+        for (String quote : new String[]{"USDT", "USDC", "USD", "BUSD", "BTC", "ETH"}) {
+            if (symbol.endsWith(quote) && symbol.length() > quote.length()) {
+                return symbol.substring(0, symbol.length() - quote.length());
+            }
+        }
+        return symbol;
+    }
+
+    /**
+     * Extract quote symbol from a combined symbol (e.g., "BTCUSDT" -> "USDT").
+     */
+    private String extractQuote(String symbol) {
+        for (String quote : new String[]{"USDT", "USDC", "USD", "BUSD", "BTC", "ETH"}) {
+            if (symbol.endsWith(quote) && symbol.length() > quote.length()) {
+                return quote;
+            }
+        }
+        return "USDT";
     }
 
     /**
