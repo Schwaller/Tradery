@@ -1,0 +1,137 @@
+// Shared macOS signing, notarization, and DMG creation tasks.
+// Apply to modules that produce .app bundles (forge, news, desk).
+//
+// Usage:
+//   ./gradlew :tradery-forge:packageRelease -PmacSignIdentity="Developer ID Application: ..." -PmacKeychainProfile="tradery-notary"
+//
+// Prerequisites:
+//   - Xcode command line tools installed
+//   - Valid Developer ID Application certificate in keychain
+//   - Notarization credentials stored via: xcrun notarytool store-credentials tradery-notary
+
+// These tasks expect jpackage to have already run and produced an .app bundle.
+// The app name and DMG name are configured per-module via ext properties.
+
+ext {
+    // Defaults - override in each module's build.gradle before applying this script
+    if (!project.hasProperty('packagingAppName')) {
+        project.ext.packagingAppName = project.name
+    }
+    if (!project.hasProperty('packagingDmgName')) {
+        project.ext.packagingDmgName = project.name
+    }
+}
+
+// Sign the .app bundle
+tasks.register('signApp', Exec) {
+    dependsOn 'jpackage'
+    group = 'packaging'
+    description = 'Code sign the macOS .app bundle'
+
+    def appPath = layout.buildDirectory.file("jpackage/${project.ext.packagingAppName}.app").get().asFile
+    def entitlements = rootProject.file('packaging/entitlements.plist')
+    def identity = project.findProperty('macSignIdentity') ?: 'Developer ID Application'
+
+    doFirst {
+        if (!appPath.exists()) {
+            throw new GradleException("App bundle not found: ${appPath}. Run jpackage first.")
+        }
+    }
+
+    commandLine 'codesign', '--deep', '--force', '--options', 'runtime',
+        '--entitlements', entitlements.absolutePath,
+        '--sign', identity,
+        appPath.absolutePath
+
+    doLast {
+        println "Signed: ${appPath}"
+    }
+}
+
+// Create DMG from signed .app
+tasks.register('createDmg', Exec) {
+    dependsOn 'signApp'
+    group = 'packaging'
+    description = 'Create DMG from signed .app bundle'
+
+    def outputDir = layout.buildDirectory.dir('jpackage').get().asFile
+    def appPath = new File(outputDir, "${project.ext.packagingAppName}.app")
+    def dmgPath = new File(outputDir, "${project.ext.packagingDmgName}-${project.version}.dmg")
+
+    doFirst {
+        // Remove existing DMG if present
+        if (dmgPath.exists()) dmgPath.delete()
+    }
+
+    commandLine 'hdiutil', 'create',
+        '-volname', project.ext.packagingDmgName,
+        '-srcfolder', appPath.absolutePath,
+        '-ov', '-format', 'UDZO',
+        dmgPath.absolutePath
+
+    doLast {
+        println "Created DMG: ${dmgPath}"
+    }
+}
+
+// Sign the DMG
+tasks.register('signDmg', Exec) {
+    dependsOn 'createDmg'
+    group = 'packaging'
+    description = 'Code sign the DMG'
+
+    def dmgPath = layout.buildDirectory.file("jpackage/${project.ext.packagingDmgName}-${project.version}.dmg").get().asFile
+    def identity = project.findProperty('macSignIdentity') ?: 'Developer ID Application'
+
+    commandLine 'codesign', '--force', '--sign', identity, dmgPath.absolutePath
+
+    doLast {
+        println "Signed DMG: ${dmgPath}"
+    }
+}
+
+// Notarize the DMG
+tasks.register('notarizeDmg', Exec) {
+    dependsOn 'signDmg'
+    group = 'packaging'
+    description = 'Submit DMG to Apple for notarization'
+
+    def dmgPath = layout.buildDirectory.file("jpackage/${project.ext.packagingDmgName}-${project.version}.dmg").get().asFile
+    def keychainProfile = project.findProperty('macKeychainProfile') ?: 'tradery-notary'
+
+    commandLine 'xcrun', 'notarytool', 'submit',
+        dmgPath.absolutePath,
+        '--keychain-profile', keychainProfile,
+        '--wait'
+
+    doLast {
+        println "Notarization complete for: ${dmgPath}"
+    }
+}
+
+// Staple the notarization ticket to the DMG
+tasks.register('stapleDmg', Exec) {
+    dependsOn 'notarizeDmg'
+    group = 'packaging'
+    description = 'Staple notarization ticket to DMG'
+
+    def dmgPath = layout.buildDirectory.file("jpackage/${project.ext.packagingDmgName}-${project.version}.dmg").get().asFile
+
+    commandLine 'xcrun', 'stapler', 'staple', dmgPath.absolutePath
+
+    doLast {
+        println "Stapled: ${dmgPath}"
+    }
+}
+
+// Full release pipeline: sign -> DMG -> sign DMG -> notarize -> staple
+tasks.register('packageRelease') {
+    dependsOn 'stapleDmg'
+    group = 'packaging'
+    description = 'Full release pipeline: sign app, create DMG, notarize, staple'
+
+    doLast {
+        def dmgPath = layout.buildDirectory.file("jpackage/${project.ext.packagingDmgName}-${project.version}.dmg").get().asFile
+        println "Release package ready: ${dmgPath}"
+    }
+}

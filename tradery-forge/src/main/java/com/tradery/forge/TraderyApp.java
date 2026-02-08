@@ -4,6 +4,8 @@ import com.tradery.dataclient.DataServiceLauncher;
 import com.tradery.forge.io.AppLock;
 import com.tradery.forge.mcp.McpServerSetup;
 import com.tradery.forge.ui.LauncherFrame;
+import com.tradery.license.LicenseGate;
+import com.tradery.license.UpdateChecker;
 import com.tradery.ui.ThemeHelper;
 
 import javax.imageio.ImageIO;
@@ -24,7 +26,7 @@ import java.nio.file.StandardCopyOption;
 public class TraderyApp {
 
     public static final String APP_NAME = "Tradery";
-    public static final String VERSION = "1.0.0";
+    public static final String VERSION = System.getProperty("tradery.version", "1.0.0");
     public static final File USER_DIR = new File(System.getProperty("user.home"), ".tradery");
 
     // Exit codes
@@ -65,6 +67,12 @@ public class TraderyApp {
             System.exit(EXIT_CODE_ALREADY_RUNNING);
         }
         appLock.acquire();
+
+        // Check license before proceeding
+        LicenseGate.checkOrExit(false);
+
+        // Check for updates (non-blocking)
+        UpdateChecker.checkAsync(VERSION, "https://tradery.app/updates/latest.json");
 
         // Start data service (or connect to existing) and register as consumer
         startDataService();

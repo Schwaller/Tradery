@@ -1,0 +1,21 @@
+// tradery-license: License key validation, update checker, and distribution support
+// Shared module that all apps depend on for license gating
+
+plugins {
+    id 'java-library'
+}
+
+dependencies {
+    // JSON/YAML serialization for config files
+    api "com.fasterxml.jackson.core:jackson-databind:${rootProject.ext.jacksonVersion}"
+    api "com.fasterxml.jackson.dataformat:jackson-dataformat-yaml:${rootProject.ext.jacksonVersion}"
+
+    // HTTP client for update checker
+    implementation "com.squareup.okhttp3:okhttp:${rootProject.ext.okhttpVersion}"
+
+    // FlatLaf for dialog styling
+    implementation 'com.formdev:flatlaf:3.4'
+
+    // Swing UI
+    implementation 'com.formdev:flatlaf-intellij-themes:3.4'
+}

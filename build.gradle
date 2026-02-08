@@ -75,6 +75,13 @@ subprojects {
     }
 }
 
+// License key generation task
+// Usage: ./gradlew generateLicenseKey --args="365"
+tasks.register('generateLicenseKey', JavaExec) {
+    classpath = project(':tradery-license').sourceSets.main.runtimeClasspath
+    mainClass = 'com.tradery.license.LicenseKeyGenerator'
+}
+
 // Shared dependency versions
 ext {
     jacksonVersion = '2.16.0'
@@ -86,4 +93,5 @@ ext {
     msgpackVersion = '0.9.6'
     websocketVersion = '1.5.6'
     jfreeChartVersion = '1.5.4'
+    bouncyCastleVersion = '1.77'
 }

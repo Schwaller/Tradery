@@ -1,5 +1,6 @@
 module com.tradery.forge {
     // Internal modules
+    requires com.tradery.license;
     requires com.tradery.ui.common;
     requires com.tradery.help;
     requires transitive com.tradery.core;

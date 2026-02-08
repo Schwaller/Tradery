@@ -11,6 +11,9 @@ application {
 }
 
 dependencies {
+    // License checking
+    implementation project(':tradery-license')
+
     // Core module for models
     implementation project(':tradery-core')
 

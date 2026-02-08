@@ -8,6 +8,9 @@ module com.tradery.dataservice {
     // Allow Log4j2 to discover the BufferAppender plugin
     opens com.tradery.dataservice.log to org.apache.logging.log4j.core;
 
+    // License
+    requires com.tradery.license;
+
     // Dependencies
     requires transitive com.tradery.core;
     requires com.tradery.data;

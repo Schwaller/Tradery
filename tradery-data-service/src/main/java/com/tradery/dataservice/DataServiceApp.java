@@ -6,6 +6,7 @@ import com.tradery.dataservice.config.DataServiceConfig;
 import com.tradery.dataservice.data.sqlite.SqliteDataStore;
 import com.tradery.dataservice.data.sqlite.SymbolsConnection;
 import com.tradery.dataservice.symbols.SymbolSyncService;
+import com.tradery.license.LicenseGate;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -42,6 +43,9 @@ public class DataServiceApp {
         startTime = java.time.Instant.now();
 
         try {
+            // Check license (headless - no dialog, just exit if invalid)
+            LicenseGate.checkOrExit(true);
+
             DataServiceConfig config = DataServiceConfig.load();
 
             // Create data store for SQLite access

@@ -2,6 +2,8 @@ package com.tradery.news.ui;
 
 import com.formdev.flatlaf.FlatClientProperties;
 import com.formdev.flatlaf.util.SystemInfo;
+import com.tradery.license.LicenseGate;
+import com.tradery.license.UpdateChecker;
 import com.tradery.news.model.Article;
 import com.tradery.news.store.SqliteNewsStore;
 import com.tradery.news.api.IntelApiServer;
@@ -31,21 +33,25 @@ import java.util.List;
  */
 public class IntelFrame extends JFrame {
 
-    // News components
+    // Stores
     private final SqliteNewsStore store;
     private final Path dataDir;
-    private TimelineGraphPanel newsGraphPanel;
-    private JLabel newsStatusLabel;
-    private JComboBox<String> limitCombo;
-    private volatile boolean fetching = false;
-    private javax.swing.Timer autoFetchTimer;
-
-    // Coins components
-    private CoinGraphPanel coinGraphPanel;
-    private JLabel coinStatusLabel;
-    private JProgressBar coinProgressBar;
     private EntityStore entityStore;
     EntityStore getEntityStore() { return entityStore; }
+
+    // Dynamic panel instances
+    private record PanelInstance(
+        PanelConfig config,
+        JPanel card,
+        JComponent graphPanel,    // TimelineGraphPanel or CoinGraphPanel
+        JLabel statusLabel
+    ) {}
+    private List<PanelInstance> panelInstances = new ArrayList<>();
+
+    // News state
+    private ToolbarComboBox<String> limitCombo;
+    private volatile boolean fetching = false;
+    private javax.swing.Timer autoFetchTimer;
 
     void updateAutoFetchTimer() {
         if (autoFetchTimer != null) {
@@ -59,8 +65,11 @@ public class IntelFrame extends JFrame {
             autoFetchTimer.start();
         }
     }
+
+    // Coin data (shared across all COIN_GRAPH panels)
     private List<CoinEntity> currentEntities;
     private List<CoinRelationship> currentRelationships;
+    private JProgressBar coinProgressBar;
 
     // Shared components
     private JPanel cardPanel;
@@ -183,8 +192,10 @@ public class IntelFrame extends JFrame {
 
                 if (autoFetchTimer != null) autoFetchTimer.stop();
                 if (apiServer != null) apiServer.stop();
-                if (newsGraphPanel != null) newsGraphPanel.stopPhysics();
-                if (coinGraphPanel != null) coinGraphPanel.stopPhysics();
+                for (PanelInstance pi : panelInstances) {
+                    if (pi.graphPanel() instanceof TimelineGraphPanel tgp) tgp.stopPhysics();
+                    if (pi.graphPanel() instanceof CoinGraphPanel cgp) cgp.stopPhysics();
+                }
                 if (entityStore != null) entityStore.close();
             }
         });
@@ -255,11 +266,13 @@ public class IntelFrame extends JFrame {
             leftContent.add(buttonsPlaceholder);
         }
 
-        String[] views = {"News", "Coin Relations"};
-        String[] cards = {"news", "coins"};
+        List<PanelConfig> panels = IntelConfig.get().getPanels();
+        String[] views = panels.stream().map(PanelConfig::getName).toArray(String[]::new);
         viewToggle = new SegmentedToggle(views);
         viewToggle.setOnSelectionChanged(i -> {
-            cardLayout.show(cardPanel, cards[i]);
+            if (i < panelInstances.size()) {
+                cardLayout.show(cardPanel, panelInstances.get(i).config().getId());
+            }
             updateHeaderButtons();
         });
         leftContent.add(viewToggle);
@@ -304,9 +317,17 @@ public class IntelFrame extends JFrame {
         limitCombo = new ToolbarComboBox<>(new String[]{"100", "250", "500", "1000"});
         limitCombo.setSelectedItem("500");
         limitCombo.addActionListener(e -> {
-            if (newsGraphPanel != null) {
-                newsGraphPanel.setMaxNodes(Integer.parseInt((String) limitCombo.getSelectedItem()));
-                loadNewsData();
+            // Update current NEWS_MAP panel's maxArticles and reload
+            int idx = viewToggle.getSelectedIndex();
+            if (idx >= 0 && idx < panelInstances.size()) {
+                PanelInstance pi = panelInstances.get(idx);
+                if (pi.config().getType() == PanelConfig.PanelType.NEWS_MAP) {
+                    int newMax = Integer.parseInt((String) limitCombo.getSelectedItem());
+                    pi.config().setMaxArticles(newMax);
+                    ((TimelineGraphPanel) pi.graphPanel()).setMaxNodes(newMax);
+                    IntelConfig.get().save();
+                    loadNewsData();
+                }
             }
         });
         rightContent.add(limitCombo);
@@ -319,7 +340,10 @@ public class IntelFrame extends JFrame {
 
         // Reset View button (for Coins view)
         resetViewBtn = new ToolbarButton("Reset View");
-        resetViewBtn.addActionListener(e -> coinGraphPanel.resetView());
+        resetViewBtn.addActionListener(e -> {
+            CoinGraphPanel current = getCurrentCoinGraphPanel();
+            if (current != null) current.resetView();
+        });
         resetViewBtn.setVisible(false);  // Hidden by default (News is selected)
         rightContent.add(resetViewBtn);
 
@@ -350,35 +374,71 @@ public class IntelFrame extends JFrame {
         panel.setBackground(bgMain());
 
         // cardLayout and cardPanel already initialized in initUI()
-
-        // News panel
-        JPanel newsPanel = new JPanel(new BorderLayout());
-        newsGraphPanel = new TimelineGraphPanel();
-        newsGraphPanel.setSchemaRegistry(schemaRegistry);
-        newsGraphPanel.setOnNodeSelected(this::showArticleDetails);
-        newsGraphPanel.setOnTopicSelected(this::showTopicDetails);
-        newsPanel.add(newsGraphPanel, BorderLayout.CENTER);
-        newsPanel.add(createNewsStatusBar(), BorderLayout.SOUTH);
-        cardPanel.add(newsPanel, "news");
-
-        // Coins panel
-        JPanel coinsPanel = new JPanel(new BorderLayout());
-        coinGraphPanel = new CoinGraphPanel();
-        coinGraphPanel.setOnEntitySelected(this::showEntityDetails);
-        coinsPanel.add(coinGraphPanel, BorderLayout.CENTER);
-        coinsPanel.add(createCoinsStatusBar(), BorderLayout.SOUTH);
-        cardPanel.add(coinsPanel, "coins");
+        buildPanelCards();
 
         panel.add(cardPanel, BorderLayout.CENTER);
         return panel;
     }
 
+    private void buildPanelCards() {
+        panelInstances.clear();
+        cardPanel.removeAll();
+
+        for (PanelConfig config : IntelConfig.get().getPanels()) {
+            JPanel card = new JPanel(new BorderLayout());
+
+            JComponent graphPanel;
+            JLabel statusLabel = new JLabel("Loading...");
+            statusLabel.setForeground(textSecondary());
+
+            if (config.getType() == PanelConfig.PanelType.NEWS_MAP) {
+                TimelineGraphPanel tgp = new TimelineGraphPanel();
+                tgp.setSchemaRegistry(schemaRegistry);
+                tgp.setOnNodeSelected(this::showArticleDetails);
+                tgp.setOnTopicSelected(this::showTopicDetails);
+                tgp.setMaxNodes(config.getMaxArticles());
+                tgp.setShowLabels(config.isShowLabels());
+                tgp.setShowConnections(config.isShowConnections());
+                graphPanel = tgp;
+            } else {
+                CoinGraphPanel cgp = new CoinGraphPanel();
+                cgp.setOnEntitySelected(this::showEntityDetails);
+                cgp.setShowLabels(config.isShowLabels());
+                graphPanel = cgp;
+            }
+
+            card.add(graphPanel, BorderLayout.CENTER);
+
+            // Status bar
+            JPanel statusBar = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 5));
+            statusBar.add(statusLabel);
+            if (config.getType() == PanelConfig.PanelType.COIN_GRAPH) {
+                coinProgressBar = new JProgressBar(0, 100);
+                coinProgressBar.setPreferredSize(new Dimension(150, 16));
+                coinProgressBar.setStringPainted(true);
+                coinProgressBar.setVisible(false);
+                statusBar.add(coinProgressBar);
+            }
+            JPanel statusWrapper = new JPanel(new BorderLayout());
+            statusWrapper.add(new JSeparator(), BorderLayout.NORTH);
+            statusWrapper.add(statusBar, BorderLayout.CENTER);
+            card.add(statusWrapper, BorderLayout.SOUTH);
+
+            cardPanel.add(card, config.getId());
+            panelInstances.add(new PanelInstance(config, card, graphPanel, statusLabel));
+        }
+    }
+
     private void updateHeaderButtons() {
-        boolean isNewsView = viewToggle.getSelectedIndex() == 0;
+        int idx = viewToggle.getSelectedIndex();
+        boolean isNewsView = idx < panelInstances.size()
+            && panelInstances.get(idx).config().getType() == PanelConfig.PanelType.NEWS_MAP;
+        boolean isCoinView = idx < panelInstances.size()
+            && panelInstances.get(idx).config().getType() == PanelConfig.PanelType.COIN_GRAPH;
         showLabel.setVisible(isNewsView);
         limitCombo.setVisible(isNewsView);
         fetchBtn.setVisible(isNewsView);
-        resetViewBtn.setVisible(!isNewsView);
+        resetViewBtn.setVisible(isCoinView);
     }
 
     private JPanel createRightPanel() {
@@ -420,39 +480,22 @@ public class IntelFrame extends JFrame {
         return panel;
     }
 
-    // ==================== STATUS BARS ====================
+    // ==================== PANEL HELPERS ====================
 
-    private JPanel createCoinsStatusBar() {
-        JPanel statusBar = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 5));
-
-        coinStatusLabel = new JLabel("Loading...");
-        coinStatusLabel.setForeground(textSecondary());
-        statusBar.add(coinStatusLabel);
-
-        coinProgressBar = new JProgressBar(0, 100);
-        coinProgressBar.setPreferredSize(new Dimension(150, 16));
-        coinProgressBar.setStringPainted(true);
-        coinProgressBar.setVisible(false);
-        statusBar.add(coinProgressBar);
-
-        JPanel wrapper = new JPanel(new BorderLayout());
-        wrapper.add(new JSeparator(), BorderLayout.NORTH);
-        wrapper.add(statusBar, BorderLayout.CENTER);
-        return wrapper;
+    private CoinGraphPanel getCurrentCoinGraphPanel() {
+        int idx = viewToggle.getSelectedIndex();
+        if (idx >= 0 && idx < panelInstances.size()
+            && panelInstances.get(idx).graphPanel() instanceof CoinGraphPanel cgp) {
+            return cgp;
+        }
+        return null;
     }
 
-
-    private JPanel createNewsStatusBar() {
-        JPanel statusBar = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 5));
-
-        newsStatusLabel = new JLabel("Loading...");
-        newsStatusLabel.setForeground(textSecondary());
-        statusBar.add(newsStatusLabel);
-
-        JPanel wrapper = new JPanel(new BorderLayout());
-        wrapper.add(new JSeparator(), BorderLayout.NORTH);
-        wrapper.add(statusBar, BorderLayout.CENTER);
-        return wrapper;
+    private CoinGraphPanel getFirstCoinGraphPanel() {
+        for (PanelInstance pi : panelInstances) {
+            if (pi.graphPanel() instanceof CoinGraphPanel cgp) return cgp;
+        }
+        return null;
     }
 
     // ==================== DETAIL PANEL ====================
@@ -672,12 +715,15 @@ public class IntelFrame extends JFrame {
             addDetailSpacer();
         }
 
-        List<CoinRelationship> rels = coinGraphPanel.getRelationshipsFor(entity.id());
+        CoinGraphPanel activeCoinPanel = getCurrentCoinGraphPanel();
+        if (activeCoinPanel == null) activeCoinPanel = getFirstCoinGraphPanel();
+        List<CoinRelationship> rels = activeCoinPanel != null ? activeCoinPanel.getRelationshipsFor(entity.id()) : List.of();
         if (!rels.isEmpty()) {
+            CoinGraphPanel relPanel = activeCoinPanel;
             addDetailSection("RELATIONSHIPS (" + rels.size() + ")");
             for (CoinRelationship rel : rels) {
                 String otherId = rel.fromId().equals(entity.id()) ? rel.toId() : rel.fromId();
-                CoinEntity other = coinGraphPanel.getEntity(otherId);
+                CoinEntity other = relPanel.getEntity(otherId);
                 if (other == null) continue;
 
                 String description;
@@ -820,7 +866,9 @@ public class IntelFrame extends JFrame {
         row.addMouseListener(new java.awt.event.MouseAdapter() {
             @Override
             public void mouseClicked(java.awt.event.MouseEvent e) {
-                coinGraphPanel.selectAndPanTo(targetId);
+                CoinGraphPanel cgp = getCurrentCoinGraphPanel();
+                if (cgp == null) cgp = getFirstCoinGraphPanel();
+                if (cgp != null) cgp.selectAndPanTo(targetId);
             }
             @Override
             public void mouseEntered(java.awt.event.MouseEvent e) {
@@ -853,25 +901,39 @@ public class IntelFrame extends JFrame {
     // ==================== DATA LOADING ====================
 
     private void loadNewsData() {
-        newsStatusLabel.setText("Loading...");
+        List<PanelInstance> newsPanels = panelInstances.stream()
+            .filter(pi -> pi.config().getType() == PanelConfig.PanelType.NEWS_MAP)
+            .toList();
+        if (newsPanels.isEmpty()) return;
+
+        for (PanelInstance pi : newsPanels) pi.statusLabel().setText("Loading...");
         logPanel.data("Loading news articles...");
+
+        // Use the max limit across all news panels
+        int maxLimit = newsPanels.stream()
+            .mapToInt(pi -> pi.config().getMaxArticles())
+            .max().orElse(500);
 
         SwingWorker<List<Article>, Void> worker = new SwingWorker<>() {
             @Override
             protected List<Article> doInBackground() {
-                int limit = Integer.parseInt((String) limitCombo.getSelectedItem());
-                return store.getArticles(SqliteNewsStore.ArticleQuery.all(limit));
+                return store.getArticles(SqliteNewsStore.ArticleQuery.all(maxLimit));
             }
 
             @Override
             protected void done() {
                 try {
                     List<Article> articles = get();
-                    newsGraphPanel.setArticles(articles);
-                    newsStatusLabel.setText(articles.size() + " articles  |  " + store.getArticleCount() + " total");
+                    for (PanelInstance pi : newsPanels) {
+                        TimelineGraphPanel tgp = (TimelineGraphPanel) pi.graphPanel();
+                        int limit = pi.config().getMaxArticles();
+                        List<Article> subset = articles.size() <= limit ? articles : articles.subList(0, limit);
+                        tgp.setArticles(subset);
+                        pi.statusLabel().setText(subset.size() + " articles  |  " + store.getArticleCount() + " total");
+                    }
                     logPanel.success("Loaded " + articles.size() + " news articles");
                 } catch (Exception e) {
-                    newsStatusLabel.setText("Error: " + e.getMessage());
+                    for (PanelInstance pi : newsPanels) pi.statusLabel().setText("Error: " + e.getMessage());
                     logPanel.error("Failed to load news: " + e.getMessage());
                 }
             }
@@ -884,7 +946,11 @@ public class IntelFrame extends JFrame {
         fetching = true;
         fetchBtn.setEnabled(false);
         fetchBtn.setText("Fetching...");
-        newsStatusLabel.setText("Fetching...");
+
+        List<PanelInstance> newsPanels = panelInstances.stream()
+            .filter(pi -> pi.config().getType() == PanelConfig.PanelType.NEWS_MAP)
+            .toList();
+        for (PanelInstance pi : newsPanels) pi.statusLabel().setText("Fetching...");
         logPanel.ai("Starting AI-powered news fetch...");
 
         SwingWorker<DataSource.FetchResult, String> worker = new SwingWorker<>() {
@@ -909,17 +975,22 @@ public class IntelFrame extends JFrame {
                 try {
                     DataSource.FetchResult result = get();
                     if (result.entitiesAdded() > 0) {
-                        int limit = Integer.parseInt((String) limitCombo.getSelectedItem());
-                        List<Article> allArticles = store.getArticles(SqliteNewsStore.ArticleQuery.all(limit));
-                        int added = newsGraphPanel.addArticles(allArticles);
-                        newsStatusLabel.setText(added + " new  |  " + store.getArticleCount() + " total");
+                        for (PanelInstance pi : newsPanels) {
+                            TimelineGraphPanel tgp = (TimelineGraphPanel) pi.graphPanel();
+                            int limit = pi.config().getMaxArticles();
+                            List<Article> allArticles = store.getArticles(SqliteNewsStore.ArticleQuery.all(limit));
+                            int added = tgp.addArticles(allArticles);
+                            pi.statusLabel().setText(added + " new  |  " + store.getArticleCount() + " total");
+                        }
                         logPanel.success(result.message());
                     } else {
-                        newsStatusLabel.setText("No new articles  |  " + store.getArticleCount() + " total");
+                        for (PanelInstance pi : newsPanels) {
+                            pi.statusLabel().setText("No new articles  |  " + store.getArticleCount() + " total");
+                        }
                         logPanel.info("No new articles found");
                     }
                 } catch (Exception e) {
-                    newsStatusLabel.setText("Error: " + e.getMessage());
+                    for (PanelInstance pi : newsPanels) pi.statusLabel().setText("Error: " + e.getMessage());
                     logPanel.error("Fetch failed: " + e.getMessage());
                 }
             }
@@ -928,7 +999,12 @@ public class IntelFrame extends JFrame {
     }
 
     private void loadCoinData(boolean forceRefresh) {
-        coinStatusLabel.setText("Loading...");
+        List<PanelInstance> coinPanels = panelInstances.stream()
+            .filter(pi -> pi.config().getType() == PanelConfig.PanelType.COIN_GRAPH)
+            .toList();
+        if (coinPanels.isEmpty()) return;
+
+        for (PanelInstance pi : coinPanels) pi.statusLabel().setText("Loading...");
         logPanel.data("Loading coin entities...");
 
         SwingWorker<DataSource.FetchResult, String> worker = new SwingWorker<>() {
@@ -937,12 +1013,14 @@ public class IntelFrame extends JFrame {
                 return sourceRegistry.refresh("coingecko", forceRefresh, (msg, pct) -> {
                     publish(msg);
                     SwingUtilities.invokeLater(() -> {
-                        if (pct > 0 && pct < 100) {
-                            coinProgressBar.setVisible(true);
-                            coinProgressBar.setValue(pct);
-                            coinProgressBar.setString(pct + "%");
-                        } else {
-                            coinProgressBar.setVisible(false);
+                        if (coinProgressBar != null) {
+                            if (pct > 0 && pct < 100) {
+                                coinProgressBar.setVisible(true);
+                                coinProgressBar.setValue(pct);
+                                coinProgressBar.setString(pct + "%");
+                            } else {
+                                coinProgressBar.setVisible(false);
+                            }
                         }
                     });
                 });
@@ -951,7 +1029,7 @@ public class IntelFrame extends JFrame {
             @Override
             protected void process(List<String> chunks) {
                 for (String msg : chunks) {
-                    coinStatusLabel.setText(msg);
+                    for (PanelInstance pi : coinPanels) pi.statusLabel().setText(msg);
                     logPanel.data(msg);
                 }
             }
@@ -961,7 +1039,7 @@ public class IntelFrame extends JFrame {
                 try {
                     DataSource.FetchResult result = get();
 
-                    // Reload all data from store into graph
+                    // Reload all data from store
                     List<CoinEntity> allEntities = new ArrayList<>();
                     allEntities.addAll(entityStore.loadEntitiesBySource("coingecko"));
                     allEntities.addAll(entityStore.loadEntitiesBySource("manual"));
@@ -969,9 +1047,13 @@ public class IntelFrame extends JFrame {
 
                     currentEntities = allEntities;
                     currentRelationships = allRels;
-                    coinGraphPanel.setData(allEntities, allRels);
-                    updateCoinStatus();
-                    coinProgressBar.setVisible(false);
+
+                    // Feed each coin panel with filtered data
+                    for (PanelInstance pi : coinPanels) {
+                        CoinGraphPanel cgp = (CoinGraphPanel) pi.graphPanel();
+                        feedCoinPanel(cgp, pi.config(), pi.statusLabel());
+                    }
+                    if (coinProgressBar != null) coinProgressBar.setVisible(false);
 
                     logPanel.success(result.message());
                 } catch (Exception e) {
@@ -981,9 +1063,12 @@ public class IntelFrame extends JFrame {
                     loadSampleData(entities, relationships);
                     currentEntities = entities;
                     currentRelationships = relationships;
-                    coinGraphPanel.setData(entities, relationships);
-                    coinStatusLabel.setText(entities.size() + " entities (sample)");
-                    coinProgressBar.setVisible(false);
+                    for (PanelInstance pi : coinPanels) {
+                        CoinGraphPanel cgp = (CoinGraphPanel) pi.graphPanel();
+                        cgp.setData(entities, relationships);
+                        pi.statusLabel().setText(entities.size() + " entities (sample)");
+                    }
+                    if (coinProgressBar != null) coinProgressBar.setVisible(false);
                     logPanel.error("Failed to load coin data: " + e.getMessage());
                 }
             }
@@ -991,13 +1076,107 @@ public class IntelFrame extends JFrame {
         worker.execute();
     }
 
-    private void updateCoinStatus() {
+    private void feedCoinPanel(CoinGraphPanel cgp, PanelConfig config, JLabel statusLabel) {
+        List<CoinEntity> entities = currentEntities;
+        List<CoinRelationship> rels = currentRelationships;
+
+        // Apply entity type filter
+        if (config.getEntityTypeFilter() != null && !config.getEntityTypeFilter().isEmpty()) {
+            Set<String> typeFilter = config.getEntityTypeFilter();
+            entities = entities.stream()
+                .filter(e -> typeFilter.contains(e.type().name().toLowerCase()))
+                .toList();
+        }
+
+        // Apply entity source filter
+        if (config.getEntitySourceFilter() != null && !config.getEntitySourceFilter().isEmpty()) {
+            Set<String> sourceFilter = config.getEntitySourceFilter();
+            List<CoinEntity> filtered = new ArrayList<>();
+            for (String source : sourceFilter) {
+                filtered.addAll(entityStore.loadEntitiesBySource(source));
+            }
+            // Intersect with type-filtered entities
+            Set<String> filteredIds = new HashSet<>();
+            for (CoinEntity e : filtered) filteredIds.add(e.id());
+            entities = entities.stream()
+                .filter(e -> filteredIds.contains(e.id()))
+                .toList();
+        }
+
+        // Filter relationships to only those between remaining entities
+        Set<String> entityIds = new HashSet<>();
+        for (CoinEntity e : entities) entityIds.add(e.id());
+        List<CoinRelationship> filteredRels = rels.stream()
+            .filter(r -> entityIds.contains(r.fromId()) && entityIds.contains(r.toId()))
+            .toList();
+
+        cgp.setData(new ArrayList<>(entities), new ArrayList<>(filteredRels));
+
         int manual = entityStore.getManualEntityCount();
-        int manualRels = entityStore.getManualRelationshipCount();
-        String status = currentEntities.size() + " entities  |  " + currentRelationships.size() + " rels";
+        String status = entities.size() + " entities  |  " + filteredRels.size() + " rels";
         if (manual > 0) status += "  |  " + manual + " manual";
-        coinStatusLabel.setText(status);
+        statusLabel.setText(status);
     }
+
+    private void refreshAllCoinPanels() {
+        for (PanelInstance pi : panelInstances) {
+            if (pi.graphPanel() instanceof CoinGraphPanel cgp) {
+                feedCoinPanel(cgp, pi.config(), pi.statusLabel());
+            }
+        }
+    }
+
+    /**
+     * Rebuild all panels from updated config. Called from settings dialog.
+     */
+    public void rebuildPanels() {
+        // Stop physics on existing panels
+        for (PanelInstance pi : panelInstances) {
+            if (pi.graphPanel() instanceof TimelineGraphPanel tgp) tgp.stopPhysics();
+            if (pi.graphPanel() instanceof CoinGraphPanel cgp) cgp.stopPhysics();
+        }
+
+        // Rebuild cards
+        buildPanelCards();
+
+        // Rebuild toggle in header
+        List<PanelConfig> panels = IntelConfig.get().getPanels();
+        String[] names = panels.stream().map(PanelConfig::getName).toArray(String[]::new);
+
+        // Find the leftContent panel that contains the toggle and replace it
+        // The toggle's parent is leftContent (FlowLayout panel)
+        Container toggleParent = viewToggle.getParent();
+        if (toggleParent != null) {
+            toggleParent.remove(viewToggle);
+            viewToggle = new SegmentedToggle(names);
+            viewToggle.setOnSelectionChanged(i -> {
+                if (i < panelInstances.size()) {
+                    cardLayout.show(cardPanel, panelInstances.get(i).config().getId());
+                }
+                updateHeaderButtons();
+            });
+            // Insert toggle at position 1 (after macOS placeholder or at start)
+            int insertIdx = toggleParent.getComponentCount() > 0
+                && toggleParent.getComponent(0) instanceof JPanel ? 1 : 0;
+            toggleParent.add(viewToggle, insertIdx);
+            toggleParent.revalidate();
+        }
+
+        // Show first panel
+        if (!panelInstances.isEmpty()) {
+            cardLayout.show(cardPanel, panelInstances.get(0).config().getId());
+        }
+        updateHeaderButtons();
+
+        // Reload data into new panels
+        loadCoinData(false);
+        loadNewsData();
+
+        cardPanel.revalidate();
+        cardPanel.repaint();
+    }
+
+    SchemaRegistry getSchemaRegistry() { return schemaRegistry; }
 
     // ==================== DIALOGS ====================
 
@@ -1046,8 +1225,7 @@ public class IntelFrame extends JFrame {
             this, entityStore, currentEntities, preselectedFromId, rel -> {
                 if (currentRelationships != null) {
                     currentRelationships.add(rel);
-                    coinGraphPanel.setData(currentEntities, currentRelationships);
-                    updateCoinStatus();
+                    refreshAllCoinPanels();
                     logPanel.success("Added relationship: " + rel.type().label());
                 }
             }
@@ -1101,6 +1279,20 @@ public class IntelFrame extends JFrame {
             e.printStackTrace();
         }
 
-        SwingUtilities.invokeLater(() -> new IntelFrame().setVisible(true));
+        // Check license before proceeding
+        LicenseGate.checkOrExit(false);
+
+        // Check for updates (non-blocking)
+        String version = System.getProperty("tradery.version", "1.0.0");
+        UpdateChecker.checkAsync(version, "https://tradery.app/updates/latest.json");
+
+        SwingUtilities.invokeLater(() -> {
+            // First-run: show setup if no AI profiles configured
+            IntelConfig config = IntelConfig.get();
+            if (config.getAiProfiles().isEmpty()) {
+                AiSetupDialog.showSetup(null);
+            }
+            new IntelFrame().setVisible(true);
+        });
     }
 }

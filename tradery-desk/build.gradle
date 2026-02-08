@@ -11,6 +11,9 @@ application {
 }
 
 dependencies {
+    // License and update checking
+    implementation project(':tradery-license')
+
     // Shared UI components (StatusBadge, MemoryStatusPanel)
     implementation project(':tradery-ui-common')
 
@@ -71,4 +74,172 @@ tasks.register('fatJar', Jar) {
         configurations.runtimeClasspath.collect { it.isDirectory() ? it : zipTree(it) }
     }
     with jar
+}
+
+// macOS app bundle using jpackage (via fat JAR)
+tasks.register('jpackageApp', Exec) {
+    dependsOn 'fatJar'
+
+    def outputDir = layout.buildDirectory.dir('jpackage').get().asFile
+    def fatJarFile = layout.buildDirectory.file("libs/${project.name}-${project.version}-all.jar").get().asFile
+
+    doFirst {
+        outputDir.mkdirs()
+    }
+
+    def args = [
+            'jpackage',
+            '--type', 'app-image',
+            '--name', 'Trading Desk',
+            '--app-version', project.version,
+            '--input', fatJarFile.parentFile.absolutePath,
+            '--main-jar', fatJarFile.name,
+            '--main-class', application.mainClass.get(),
+            '--dest', outputDir.absolutePath,
+            '--java-options', '-Xmx512m',
+            '--java-options', "-Dtradery.version=${project.version}",
+            '--mac-package-name', 'Trading Desk'
+    ]
+
+    // Add icon if it exists
+    def iconFile = file('src/main/resources/icon.icns')
+    if (iconFile.exists()) {
+        args.addAll(['--icon', iconFile.absolutePath])
+    }
+
+    commandLine args
+
+    doLast {
+        println "Created: ${outputDir}/Trading Desk.app"
+    }
+}
+
+// Create DMG installer
+tasks.register('jpackageDmg', Exec) {
+    dependsOn 'jpackageApp'
+
+    def outputDir = layout.buildDirectory.dir('jpackage').get().asFile
+    def appPath = new File(outputDir, 'Trading Desk.app')
+    def dmgPath = new File(outputDir, "Trading Desk-${project.version}.dmg")
+
+    commandLine 'hdiutil', 'create', '-volname', 'Trading Desk',
+            '-srcfolder', appPath.absolutePath,
+            '-ov', '-format', 'UDZO',
+            dmgPath.absolutePath
+
+    doLast {
+        println "Created: ${dmgPath}"
+    }
+}
+
+// Packaging configuration for macOS signing and notarization
+// Uses the fatJar-based jpackageApp as the base (no jlink since desk is non-modular)
+ext.packagingAppName = 'Trading Desk'
+ext.packagingDmgName = 'Trading Desk'
+
+// Sign the .app bundle
+tasks.register('signApp', Exec) {
+    dependsOn 'jpackageApp'
+    group = 'packaging'
+    description = 'Code sign the macOS .app bundle'
+
+    def appPath = layout.buildDirectory.file("jpackage/Trading Desk.app").get().asFile
+    def entitlements = rootProject.file('packaging/entitlements.plist')
+    def identity = project.findProperty('macSignIdentity') ?: 'Developer ID Application'
+
+    commandLine 'codesign', '--deep', '--force', '--options', 'runtime',
+        '--entitlements', entitlements.absolutePath,
+        '--sign', identity,
+        appPath.absolutePath
+
+    doLast {
+        println "Signed: ${appPath}"
+    }
+}
+
+// Create signed DMG
+tasks.register('createDmg', Exec) {
+    dependsOn 'signApp'
+    group = 'packaging'
+    description = 'Create DMG from signed .app bundle'
+
+    def outputDir = layout.buildDirectory.dir('jpackage').get().asFile
+    def appPath = new File(outputDir, 'Trading Desk.app')
+    def dmgPath = new File(outputDir, "Trading Desk-${project.version}.dmg")
+
+    doFirst {
+        if (dmgPath.exists()) dmgPath.delete()
+    }
+
+    commandLine 'hdiutil', 'create',
+        '-volname', 'Trading Desk',
+        '-srcfolder', appPath.absolutePath,
+        '-ov', '-format', 'UDZO',
+        dmgPath.absolutePath
+
+    doLast {
+        println "Created DMG: ${dmgPath}"
+    }
+}
+
+// Sign the DMG
+tasks.register('signDmg', Exec) {
+    dependsOn 'createDmg'
+    group = 'packaging'
+    description = 'Code sign the DMG'
+
+    def dmgPath = layout.buildDirectory.file("jpackage/Trading Desk-${project.version}.dmg").get().asFile
+    def identity = project.findProperty('macSignIdentity') ?: 'Developer ID Application'
+
+    commandLine 'codesign', '--force', '--sign', identity, dmgPath.absolutePath
+
+    doLast {
+        println "Signed DMG: ${dmgPath}"
+    }
+}
+
+// Notarize the DMG
+tasks.register('notarizeDmg', Exec) {
+    dependsOn 'signDmg'
+    group = 'packaging'
+    description = 'Submit DMG to Apple for notarization'
+
+    def dmgPath = layout.buildDirectory.file("jpackage/Trading Desk-${project.version}.dmg").get().asFile
+    def keychainProfile = project.findProperty('macKeychainProfile') ?: 'tradery-notary'
+
+    commandLine 'xcrun', 'notarytool', 'submit',
+        dmgPath.absolutePath,
+        '--keychain-profile', keychainProfile,
+        '--wait'
+
+    doLast {
+        println "Notarization complete for: ${dmgPath}"
+    }
+}
+
+// Staple the notarization ticket
+tasks.register('stapleDmg', Exec) {
+    dependsOn 'notarizeDmg'
+    group = 'packaging'
+    description = 'Staple notarization ticket to DMG'
+
+    def dmgPath = layout.buildDirectory.file("jpackage/Trading Desk-${project.version}.dmg").get().asFile
+
+    commandLine 'xcrun', 'stapler', 'staple', dmgPath.absolutePath
+
+    doLast {
+        println "Stapled: ${dmgPath}"
+    }
+}
+
+// Full release pipeline
+tasks.register('packageRelease') {
+    dependsOn 'stapleDmg'
+    group = 'packaging'
+    description = 'Full release pipeline: sign app, create DMG, notarize, staple'
+
+    doLast {
+        def dmgPath = layout.buildDirectory.file("jpackage/Trading Desk-${project.version}.dmg").get().asFile
+        println "Release package ready: ${dmgPath}"
+    }
 }

@@ -1,6 +1,8 @@
 package com.tradery.desk;
 
 import com.tradery.ui.ThemeHelper;
+import com.tradery.license.LicenseGate;
+import com.tradery.license.UpdateChecker;
 import com.tradery.core.model.Candle;
 import com.tradery.dataclient.DataServiceClient;
 import com.tradery.dataclient.DataServiceLauncher;
@@ -745,7 +747,8 @@ public class TraderyDeskApp {
      * Main entry point.
      */
     public static void main(String[] args) {
-        log.info("Tradery Desk v1.0");
+        String version = System.getProperty("tradery.version", "1.0.0");
+        log.info("Tradery Desk v{}", version);
 
         // Ensure directories exist
         try {
@@ -754,6 +757,12 @@ public class TraderyDeskApp {
         } catch (java.io.IOException e) {
             log.error("Failed to create desk directories: {}", e.getMessage());
         }
+
+        // Check license before proceeding
+        LicenseGate.checkOrExit(false);
+
+        // Check for updates (non-blocking)
+        UpdateChecker.checkAsync(version, "https://tradery.app/updates/latest.json");
 
         TraderyDeskApp app = new TraderyDeskApp();
         app.start();

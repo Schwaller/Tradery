@@ -13,6 +13,9 @@ application {
 }
 
 dependencies {
+    // License and update checking
+    implementation project(':tradery-license')
+
     // Shared UI components (StatusBadge, MemoryStatusPanel)
     implementation project(':tradery-ui-common')
 
@@ -93,6 +96,7 @@ jlink {
         name = 'tradery'
         jvmArgs = [
             '-Xmx512m',
+            "-Dtradery.version=${project.version}",
             // Required for Jackson reflection on modular code
             '--add-opens', 'com.tradery.core/com.tradery.core.model=com.fasterxml.jackson.databind',
             // Required for reflection access to forge module
@@ -235,6 +239,11 @@ tasks.register('jpackageDmg', Exec) {
         println "Created: ${dmgPath}"
     }
 }
+
+// Packaging configuration for macOS signing and notarization
+ext.packagingAppName = 'Strategy Forge'
+ext.packagingDmgName = 'Strategy Forge'
+apply from: "${rootProject.projectDir}/gradle/packaging.gradle"
 
 // Create fat JAR for easy distribution
 tasks.register('fatJar', Jar) {

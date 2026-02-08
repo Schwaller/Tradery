@@ -15,6 +15,9 @@ module com.tradery.news {
     requires java.prefs;
     requires jdk.httpserver;
 
+    // License
+    requires com.tradery.license;
+
     // UI
     requires com.tradery.ui.common;
     requires com.tradery.help;

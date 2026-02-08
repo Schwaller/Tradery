@@ -32,6 +32,9 @@ dependencies {
     // Logging
     implementation "org.slf4j:slf4j-api:${rootProject.ext.slf4jVersion}"
 
+    // License and update checking
+    implementation project(':tradery-license')
+
     // UI
     implementation project(':tradery-ui-common')
     implementation project(':tradery-help')
@@ -59,6 +62,7 @@ jlink {
         name = 'intelligence'
         jvmArgs = [
             '-Xmx512m',
+            "-Dtradery.version=${project.version}",
             // Required for Jackson reflection on modular code
             '--add-opens', 'com.tradery.news/com.tradery.news.model=com.fasterxml.jackson.databind',
             '--add-opens', 'com.tradery.news/com.tradery.news.topic=com.fasterxml.jackson.databind'
@@ -162,6 +166,11 @@ tasks.register('jpackageDmg', Exec) {
         println "Created: ${dmgPath}"
     }
 }
+
+// Packaging configuration for macOS signing and notarization
+ext.packagingAppName = 'Intelligence'
+ext.packagingDmgName = 'Intelligence'
+apply from: "${rootProject.projectDir}/gradle/packaging.gradle"
 
 // Create fat JAR for easy distribution
 tasks.register('fatJar', Jar) {
