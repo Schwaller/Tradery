@@ -113,11 +113,64 @@ public class ClaudeCliProcessor implements AiProcessor {
     }
 
     private String extractJson(String text) {
-        // Find JSON block in response
-        int start = text.indexOf('{');
-        int end = text.lastIndexOf('}');
+        // Strip markdown code fences if present
+        String cleaned = text;
+        int fenceStart = cleaned.indexOf("```");
+        if (fenceStart >= 0) {
+            int contentStart = cleaned.indexOf('\n', fenceStart);
+            int fenceEnd = cleaned.indexOf("```", contentStart);
+            if (contentStart >= 0 && fenceEnd > contentStart) {
+                cleaned = cleaned.substring(contentStart + 1, fenceEnd).trim();
+            }
+        }
+
+        // Find first '{' and brace-match to find the correct closing '}'
+        int start = cleaned.indexOf('{');
+        if (start < 0) {
+            throw new RuntimeException("No JSON found in response: " + truncate(text, 200));
+        }
+
+        int depth = 0;
+        boolean inString = false;
+        boolean escaped = false;
+        for (int i = start; i < cleaned.length(); i++) {
+            char c = cleaned.charAt(i);
+            if (escaped) {
+                escaped = false;
+                continue;
+            }
+            if (c == '\\' && inString) {
+                escaped = true;
+                continue;
+            }
+            if (c == '"') {
+                inString = !inString;
+            } else if (!inString) {
+                if (c == '{') depth++;
+                else if (c == '}') {
+                    depth--;
+                    if (depth == 0) {
+                        String json = cleaned.substring(start, i + 1);
+                        // Validate it actually parses
+                        try {
+                            mapper.readTree(json);
+                            return json;
+                        } catch (Exception e) {
+                            // Keep searching for another JSON block
+                            start = cleaned.indexOf('{', i + 1);
+                            if (start < 0) break;
+                            i = start - 1;
+                            depth = 0;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Fallback: try first '{' to last '}'
+        int end = cleaned.lastIndexOf('}');
         if (start >= 0 && end > start) {
-            return text.substring(start, end + 1);
+            return cleaned.substring(start, end + 1);
         }
         throw new RuntimeException("No JSON found in response: " + truncate(text, 200));
     }

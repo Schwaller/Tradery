@@ -71,6 +71,12 @@ public class EntitySearchDialog extends JDialog {
     private BorderlessScrollPane resultsScroll;
     private JButton addSelectedBtn;
     private JLabel statusLabel;
+    private JProgressBar statusSpinner;
+    private JComboBox<AiProfile> aiProfileCombo;
+
+    // Track default-AI investigations so we can cancel on profile switch
+    private final List<CompletableFuture<?>> defaultAiFutures = new ArrayList<>();
+    private int defaultAiInvestigations = 0;
 
     private static final String PREF_X = "entitySearchDialog.x";
     private static final String PREF_Y = "entitySearchDialog.y";
@@ -218,6 +224,24 @@ public class EntitySearchDialog extends JDialog {
         typeLabel.setFont(ToolbarButton.TOOLBAR_FONT);
         leftContent.add(typeLabel);
 
+        // AI profile selector
+        leftContent.add(Box.createHorizontalStrut(12));
+        aiProfileCombo = new JComboBox<>();
+        aiProfileCombo.setFont(ToolbarButton.TOOLBAR_FONT);
+        aiProfileCombo.setRenderer(new DefaultListCellRenderer() {
+            @Override
+            public Component getListCellRendererComponent(JList<?> list, Object value, int index, boolean sel, boolean focus) {
+                super.getListCellRendererComponent(list, value, index, sel, focus);
+                if (value instanceof AiProfile p) {
+                    setText(p.getName());
+                }
+                return this;
+            }
+        });
+        populateAiCombo();
+        aiProfileCombo.addActionListener(e -> onAiProfileChanged());
+        leftContent.add(aiProfileCombo);
+
         GridBagConstraints lc = new GridBagConstraints();
         lc.anchor = GridBagConstraints.WEST;
         lc.fill = GridBagConstraints.HORIZONTAL;
@@ -356,9 +380,19 @@ public class EntitySearchDialog extends JDialog {
             BorderFactory.createEmptyBorder(6, 15, 6, 15)
         ));
 
+        statusSpinner = new JProgressBar();
+        statusSpinner.setIndeterminate(true);
+        statusSpinner.setPreferredSize(new Dimension(16, 16));
+        statusSpinner.setVisible(false);
+
         statusLabel = new JLabel(" ");
         statusLabel.setForeground(secondaryText);
-        panel.add(statusLabel, BorderLayout.CENTER);
+
+        JPanel statusPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 0));
+        statusPanel.setOpaque(false);
+        statusPanel.add(statusSpinner);
+        statusPanel.add(statusLabel);
+        panel.add(statusPanel, BorderLayout.CENTER);
 
         return panel;
     }
@@ -466,9 +500,11 @@ public class EntitySearchDialog extends JDialog {
         IntelLogPanel.logAI("Starting general investigation for " + sourceEntity.name());
 
         // Single search for all types at once (relType = null)
-        CompletableFuture.supplyAsync(() ->
+        defaultAiInvestigations++;
+        CompletableFuture<?> future = CompletableFuture.supplyAsync(() ->
             processor.searchRelated(sourceEntity, null, msg -> {})
         ).thenAccept(result -> SwingUtilities.invokeLater(() -> {
+            defaultAiInvestigations = Math.max(0, defaultAiInvestigations - 1);
             activeInvestigations = 0;
             generalSearchInProgress = false;
 
@@ -511,6 +547,7 @@ public class EntitySearchDialog extends JDialog {
             displayResults();
             updateStatus();
         }));
+        defaultAiFutures.add(future);
     }
 
     private void performSingleSearch(CoinRelationship.Type relType, SearchLevel level, JButton button) {
@@ -519,13 +556,15 @@ public class EntitySearchDialog extends JDialog {
         button.setText("...");
 
         activeInvestigations++;
+        defaultAiInvestigations++;
         updateStatus();
         IntelLogPanel.logAI("Searching for " + relType.name() + " related to " + sourceEntity.name());
 
-        CompletableFuture.supplyAsync(() ->
+        CompletableFuture<?> future = CompletableFuture.supplyAsync(() ->
             processor.searchRelated(sourceEntity, relType, msg -> {})
         ).thenAccept(result -> SwingUtilities.invokeLater(() -> {
             activeInvestigations--;
+            defaultAiInvestigations = Math.max(0, defaultAiInvestigations - 1);
             button.setEnabled(true);
 
             if (result.hasError()) {
@@ -555,6 +594,7 @@ public class EntitySearchDialog extends JDialog {
 
             IntelLogPanel.logSuccess("Found " + count + " " + relType.name() + " entities");
         }));
+        defaultAiFutures.add(future);
     }
 
     private void setAllButtonsEnabled(SearchLevel level, boolean enabled) {
@@ -763,6 +803,76 @@ public class EntitySearchDialog extends JDialog {
         return panel;
     }
 
+    private void populateAiCombo() {
+        aiProfileCombo.removeAllItems();
+        List<AiProfile> profiles = AiConfig.get().getProfiles();
+        String defaultId = AiConfig.get().getDefaultProfileId();
+        AiProfile selected = null;
+        for (AiProfile p : profiles) {
+            aiProfileCombo.addItem(p);
+            if (p.getId() != null && p.getId().equals(defaultId)) {
+                selected = p;
+            }
+        }
+        if (selected != null) {
+            aiProfileCombo.setSelectedItem(selected);
+        }
+    }
+
+    private void onAiProfileChanged() {
+        AiProfile chosen = (AiProfile) aiProfileCombo.getSelectedItem();
+        if (chosen == null) return;
+        String currentDefault = AiConfig.get().getDefaultProfileId();
+        if (chosen.getId().equals(currentDefault)) return;
+
+        // If default-based investigations are running, offer to cancel
+        if (defaultAiInvestigations > 0) {
+            int result = JOptionPane.showConfirmDialog(this,
+                defaultAiInvestigations + " investigation" + (defaultAiInvestigations > 1 ? "s" : "")
+                    + " running with the previous AI.\nCancel and retry with " + chosen.getName() + "?",
+                "Switch AI", JOptionPane.YES_NO_OPTION);
+            if (result == JOptionPane.YES_OPTION) {
+                cancelDefaultAiFutures();
+                AiConfig.get().setDefaultProfileId(chosen.getId());
+                AiConfig.get().save();
+                retryAllSearches();
+                return;
+            }
+        }
+
+        AiConfig.get().setDefaultProfileId(chosen.getId());
+        AiConfig.get().save();
+    }
+
+    private void cancelDefaultAiFutures() {
+        for (CompletableFuture<?> f : defaultAiFutures) {
+            f.cancel(true);
+        }
+        defaultAiFutures.clear();
+        activeInvestigations -= defaultAiInvestigations;
+        defaultAiInvestigations = 0;
+
+        // Reset button states
+        for (TypeSearchState state : typeStates.values()) {
+            for (Map.Entry<SearchLevel, JButton> entry : state.buttons().entrySet()) {
+                if (entry.getKey() != SearchLevel.DEEP) {
+                    entry.getValue().setEnabled(true);
+                    entry.getValue().setText(entry.getKey().label);
+                }
+            }
+            // Clear result counts for non-deep
+            state.resultCounts().remove(SearchLevel.GENERAL);
+            state.resultCounts().remove(SearchLevel.SPECIFIC);
+        }
+        generalSearchInProgress = false;
+        updateStatus();
+    }
+
+    private void retryAllSearches() {
+        // Re-run general search for all types
+        performGeneralSearchAll();
+    }
+
     private void updateStatus() {
         StringBuilder sb = new StringBuilder();
 
@@ -780,6 +890,7 @@ public class EntitySearchDialog extends JDialog {
             sb.append(total).append(" found, ").append(selected).append(" selected");
         }
 
+        statusSpinner.setVisible(activeInvestigations > 0);
         statusLabel.setText(sb.isEmpty() ? " " : sb.toString());
     }
 
