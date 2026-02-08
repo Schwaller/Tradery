@@ -56,6 +56,24 @@ public class FactStore {
         return DEFAULT_PATH;
     }
 
+    /** The local peer ID (ULID, unique per FactStore instance). */
+    public String peerId() { return peerId; }
+
+    /** The current Lamport logical clock value. */
+    public long lclock() { return lclock; }
+
+    /** Read a value from local_config. Returns null if not found or on error. */
+    public String getLocalConfig(String key) {
+        try { return getConfigValue(key); }
+        catch (SQLException e) { return null; }
+    }
+
+    /** Write a value to local_config. Silently ignores errors. */
+    public void setLocalConfig(String key, String value) {
+        try { setConfigValue(key, value); }
+        catch (SQLException ignored) {}
+    }
+
     /** Check if DB has outdated schema and needs a full reset. */
     private boolean needsReset() throws SQLException {
         Set<String> tables = new HashSet<>();
@@ -790,6 +808,214 @@ public class FactStore {
             rs.getLong("wall_clock"),
             rs.getString("commit_id")
         );
+    }
+
+    // ==================== GOVERNANCE SUPPORT ====================
+
+    /**
+     * Stage remote facts into pending (for governance review).
+     * Unlike receiveFacts(), writes to pending instead of facts — preserving
+     * the original peer_id, lclock, etc. from the remote peer.
+     */
+    public void stageRemoteFacts(List<Fact> facts) {
+        if (conn == null || facts.isEmpty()) return;
+        try {
+            conn.setAutoCommit(false);
+
+            for (Fact f : facts) {
+                // Advance Lamport clock
+                if (f.lclock() >= lclock) {
+                    lclock = f.lclock() + 1;
+                }
+
+                try (PreparedStatement ps = conn.prepareStatement(
+                        "INSERT OR IGNORE INTO pending (id, entity_id, attribute, value, source, peer_id, lclock, wall_clock) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")) {
+                    ps.setString(1, f.id());
+                    ps.setString(2, f.entityId());
+                    ps.setString(3, f.attribute());
+                    ps.setString(4, f.value());
+                    ps.setString(5, f.source());
+                    ps.setString(6, f.peerId());
+                    ps.setLong(7, f.lclock());
+                    ps.setLong(8, f.wallClock());
+                    ps.execute();
+                }
+
+                updateCurrent(f.entityId(), f.attribute(), f.value(), f.id(), f.lclock(), f.wallClock(), f.peerId());
+            }
+
+            persistClock();
+            conn.commit();
+            conn.setAutoCommit(true);
+        } catch (SQLException e) {
+            System.err.println("Failed to stage remote facts: " + e.getMessage());
+            try { conn.rollback(); conn.setAutoCommit(true); } catch (SQLException ignored) {}
+        }
+    }
+
+    /** Get all pending facts as Fact records (for governance review UI). */
+    public List<Fact> getPendingFacts() {
+        List<Fact> facts = new ArrayList<>();
+        if (conn == null) return facts;
+        try (Statement s = conn.createStatement();
+             ResultSet rs = s.executeQuery(
+                 "SELECT id, entity_id, attribute, value, source, peer_id, lclock, wall_clock FROM pending ORDER BY lclock, wall_clock")) {
+            while (rs.next()) {
+                facts.add(new Fact(
+                    rs.getString("id"),
+                    rs.getString("entity_id"),
+                    rs.getString("attribute"),
+                    rs.getString("value"),
+                    rs.getString("source"),
+                    rs.getString("peer_id"),
+                    rs.getLong("lclock"),
+                    rs.getLong("wall_clock"),
+                    null // pending facts have no commit_id yet
+                ));
+            }
+        } catch (SQLException e) {
+            System.err.println("Failed to get pending facts: " + e.getMessage());
+        }
+        return facts;
+    }
+
+    /** Get distinct peer IDs that have pending facts (for governance: see who submitted). */
+    public List<String> getPendingPeerIds() {
+        List<String> peerIds = new ArrayList<>();
+        if (conn == null) return peerIds;
+        try (Statement s = conn.createStatement();
+             ResultSet rs = s.executeQuery("SELECT DISTINCT peer_id FROM pending ORDER BY peer_id")) {
+            while (rs.next()) {
+                peerIds.add(rs.getString("peer_id"));
+            }
+        } catch (SQLException e) {
+            System.err.println("Failed to get pending peer IDs: " + e.getMessage());
+        }
+        return peerIds;
+    }
+
+    /**
+     * Commit only pending facts from a specific peer (governance: approve one peer's submission).
+     * Squashes by (entity_id, attribute) within that peer's pending, moves to facts.
+     * Returns the commit_id, or null on failure.
+     */
+    public String commitPendingByPeerId(String targetPeerId) {
+        if (conn == null) return null;
+        try {
+            conn.setAutoCommit(false);
+            String commitId = Ulid.generate();
+
+            // For each unique (entity_id, attribute) in pending from this peer
+            try (PreparedStatement groups = conn.prepareStatement(
+                     "SELECT entity_id, attribute FROM pending WHERE peer_id = ? GROUP BY entity_id, attribute")) {
+                groups.setString(1, targetPeerId);
+                ResultSet grs = groups.executeQuery();
+
+                try (PreparedStatement selectLatest = conn.prepareStatement(
+                         "SELECT id, entity_id, attribute, value, source, peer_id, lclock, wall_clock FROM pending " +
+                         "WHERE entity_id = ? AND attribute = ? AND peer_id = ? ORDER BY lclock DESC, wall_clock DESC LIMIT 1");
+                     PreparedStatement insertFact = conn.prepareStatement(
+                         "INSERT INTO facts (id, entity_id, attribute, value, source, peer_id, lclock, wall_clock, commit_id) " +
+                         "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")) {
+
+                    while (grs.next()) {
+                        String entityId = grs.getString("entity_id");
+                        String attribute = grs.getString("attribute");
+
+                        selectLatest.setString(1, entityId);
+                        selectLatest.setString(2, attribute);
+                        selectLatest.setString(3, targetPeerId);
+                        ResultSet latest = selectLatest.executeQuery();
+
+                        if (latest.next()) {
+                            String newId = Ulid.generate();
+                            insertFact.setString(1, newId);
+                            insertFact.setString(2, latest.getString("entity_id"));
+                            insertFact.setString(3, latest.getString("attribute"));
+                            insertFact.setString(4, latest.getString("value"));
+                            insertFact.setString(5, latest.getString("source"));
+                            insertFact.setString(6, latest.getString("peer_id"));
+                            insertFact.setLong(7, latest.getLong("lclock"));
+                            insertFact.setLong(8, latest.getLong("wall_clock"));
+                            insertFact.setString(9, commitId);
+                            insertFact.addBatch();
+
+                            updateCurrent(entityId, attribute, latest.getString("value"),
+                                    newId, latest.getLong("lclock"), latest.getLong("wall_clock"),
+                                    latest.getString("peer_id"));
+                        }
+                    }
+                    insertFact.executeBatch();
+                }
+            }
+
+            // Delete only this peer's pending
+            try (PreparedStatement ps = conn.prepareStatement("DELETE FROM pending WHERE peer_id = ?")) {
+                ps.setString(1, targetPeerId);
+                ps.execute();
+            }
+
+            conn.commit();
+            conn.setAutoCommit(true);
+            return commitId;
+        } catch (SQLException e) {
+            System.err.println("Failed to commit pending for peer " + targetPeerId + ": " + e.getMessage());
+            try { conn.rollback(); conn.setAutoCommit(true); } catch (SQLException ignored) {}
+            return null;
+        }
+    }
+
+    /**
+     * Rollback only pending facts from a specific peer (governance: reject one peer's submission).
+     * Rebuilds current state to remove the optimistic pending state from that peer.
+     */
+    public void rollbackPendingByPeerId(String targetPeerId) {
+        if (conn == null) return;
+        try {
+            conn.setAutoCommit(false);
+
+            // Delete this peer's pending
+            try (PreparedStatement ps = conn.prepareStatement("DELETE FROM pending WHERE peer_id = ?")) {
+                ps.setString(1, targetPeerId);
+                ps.execute();
+            }
+
+            // Rebuild current from facts + remaining pending
+            rebuildCurrentInternal();
+
+            conn.commit();
+            conn.setAutoCommit(true);
+        } catch (SQLException e) {
+            System.err.println("Failed to rollback pending for peer " + targetPeerId + ": " + e.getMessage());
+            try { conn.rollback(); conn.setAutoCommit(true); } catch (SQLException ignored) {}
+        }
+    }
+
+    /**
+     * Rebuild current table from facts + pending (internal helper, assumes caller manages transaction).
+     */
+    private void rebuildCurrentInternal() throws SQLException {
+        try (Statement s = conn.createStatement()) {
+            s.execute("DELETE FROM current");
+        }
+        // Replay facts
+        try (Statement s = conn.createStatement();
+             ResultSet rs = s.executeQuery(
+                 "SELECT id, entity_id, attribute, value, lclock, wall_clock, peer_id FROM facts ORDER BY lclock, wall_clock, peer_id")) {
+            while (rs.next()) {
+                updateCurrent(rs.getString("entity_id"), rs.getString("attribute"), rs.getString("value"),
+                        rs.getString("id"), rs.getLong("lclock"), rs.getLong("wall_clock"), rs.getString("peer_id"));
+            }
+        }
+        // Replay remaining pending
+        try (Statement s = conn.createStatement();
+             ResultSet rs = s.executeQuery(
+                 "SELECT id, entity_id, attribute, value, lclock, wall_clock, peer_id FROM pending ORDER BY lclock, wall_clock, peer_id")) {
+            while (rs.next()) {
+                updateCurrent(rs.getString("entity_id"), rs.getString("attribute"), rs.getString("value"),
+                        rs.getString("id"), rs.getLong("lclock"), rs.getLong("wall_clock"), rs.getString("peer_id"));
+            }
+        }
     }
 
     public void close() {

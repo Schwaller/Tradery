@@ -1,0 +1,14 @@
+// tradery-documents: Document management for multi-database entity isolation
+
+plugins {
+    id 'java-library'
+}
+
+dependencies {
+    // Core entity model
+    implementation project(':tradery-news')
+
+    // YAML serialization for document.yaml / members.yaml
+    implementation "com.fasterxml.jackson.dataformat:jackson-dataformat-yaml:${rootProject.ext.jacksonVersion}"
+    implementation "com.fasterxml.jackson.core:jackson-databind:${rootProject.ext.jacksonVersion}"
+}

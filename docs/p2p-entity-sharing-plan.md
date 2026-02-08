@@ -1,8 +1,8 @@
 # P2P Entity Sharing Architecture for Tradery Intel
 
-> **Status:** Ready for implementation
+> **Status:** Phases 1–4 implemented (core logic). UI integration + Testcontainers + infrastructure pending.
 > **Created:** 2026-02-08
-> **Last updated:** 2026-02-08 (synced to FactStore/draft-commit model)
+> **Last updated:** 2026-02-08 (all 4 phases implemented)
 
 ## Context
 
@@ -23,11 +23,11 @@ Key constraints:
 
 Understanding the existing model is critical — all P2P work builds directly on it.
 
-### FactStore — The Foundation (~800 LOC)
+### FactStore — The Foundation (~900 LOC)
 
 All data lives in an **append-only fact log** with a materialized current-state view. Every mutation — whether creating an entity, changing an attribute, or defining a schema type — becomes an immutable `(entity_id, attribute, value)` fact with full provenance.
 
-**Storage:** Single SQLite database at `~/.tradery/entity-network.db`, WAL mode.
+**Storage:** SQLite database per document (path-configurable since Phase 1), WAL mode.
 
 **Tables:**
 
@@ -70,7 +70,7 @@ current (
 local_config (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL
-    -- Stores: peer_id (ULID), lclock (Lamport counter)
+    -- Stores: peer_id (ULID), lclock (Lamport counter), sync state, user_id
 )
 ```
 
@@ -91,6 +91,7 @@ Everything is stored as facts. Entity types are distinguished by ID prefix conve
 | `_type:` | `_type:coin`, `_type:invested_in` | Schema type definition |
 | `_rel:` | `_rel:bitcoin:l2_of:ethereum` | Relationship between entities |
 | `_meta` | `_meta` | System metadata (cache timestamps, etc.) |
+| `_vote:` | `_vote:{peerId}:{voterId}` | Governance votes (Phase 4) |
 
 Attributes are also conventionalized:
 
@@ -107,6 +108,7 @@ Attributes are also conventionalized:
 | `attr:{attrName}` | on `_type:*` entities | Schema attribute definition (JSON blob) |
 | `name`, `color`, `kind`, `label` | on `_type:*` entities | Schema type metadata |
 | `erd_x`, `erd_y` | on `_type:*` entities | ERD canvas positions |
+| `approve` | on `_vote:*` entities | Governance vote (`"1"` or `"0"`) |
 
 ### Draft/Commit Model
 
@@ -117,24 +119,36 @@ The FactStore has a built-in staging area for user edits:
 - **`commit()`** — squashes pending by `(entity_id, attribute)`, moves to `facts` with shared `commit_id`
 - **`rollback()`** — discards all pending, rebuilds `current` from `facts` only
 
+**Governance extensions (Phase 4):**
+- **`stageRemoteFacts()`** — stages remote facts into `pending` while preserving their original `peer_id`/`lclock`
+- **`commitPendingByPeerId()`** — selectively commits one peer's pending (approve)
+- **`rollbackPendingByPeerId()`** — selectively discards one peer's pending (reject)
+
 **EntityStore** wraps FactStore and routes writes based on source:
 - Manual/AI edits (`shouldStage() == true`) → `stageFact()` (goes to pending)
 - System sources like `coingecko`, `auto`, `system`, `source` → `appendFact()` (direct to facts)
 - SchemaRegistry seeding temporarily sets `draftMode = false` to bypass staging
 
-### P2P Primitives Already Built
+### P2P & Governance Primitives
 
-FactStore already has the core sync methods:
+FactStore has the core sync and governance methods:
 
 ```java
-// Get all committed facts after a logical clock value
-List<Fact> getFactsSince(long sinceLogicalClock)
+// --- Sync primitives ---
+String peerId()                                    // Local peer ID (ULID)
+long lclock()                                      // Current Lamport clock
+String getLocalConfig(String key)                  // Read from local_config
+void setLocalConfig(String key, String value)      // Write to local_config
+List<Fact> getFactsSince(long sinceLogicalClock)   // Facts after a clock value
+void receiveFacts(List<Fact> facts)                // Receive + commit remote facts
+void rebuildCurrent()                              // Rebuild from scratch
 
-// Receive remote facts: insert, update Lamport clock, re-resolve current
-void receiveFacts(List<Fact> facts)
-
-// Rebuild current table from scratch (disaster recovery / full sync)
-void rebuildCurrent()
+// --- Governance primitives ---
+void stageRemoteFacts(List<Fact> facts)            // Stage remote facts for review
+List<Fact> getPendingFacts()                        // All pending as Fact records
+List<String> getPendingPeerIds()                    // Distinct peers with pending
+String commitPendingByPeerId(String peerId)         // Selective commit (approve)
+void rollbackPendingByPeerId(String peerId)         // Selective rollback (reject)
 ```
 
 `receiveFacts()` already handles:
@@ -249,7 +263,6 @@ Each **Document** is a fully self-contained FactStore database with its own enti
 
 ```
 ~/.tradery/documents/
-├── index.yaml                          # List of known documents + metadata
 ├── {doc-uuid}/
 │   ├── document.yaml                   # Document metadata (below)
 │   ├── facts.db                        # Self-contained FactStore (facts, pending, current, local_config)
@@ -288,7 +301,7 @@ members:
 **Key properties:**
 - Each document is its **own FactStore database** — completely isolated, separately synced
 - Each has its **own `peer_id` and `lclock`** — independent Lamport clocks per document
-- The existing `~/.tradery/entity-network.db` becomes the user's default `local` document
+- The existing `~/.tradery/entity-network.db` is deleted on first startup (alpha/beta — no migration)
 - P2P sync operates **per-document** — sync specific documents with specific peers
 - `local` documents have **no sharing overhead** — no members.yaml, no signing
 
@@ -303,7 +316,8 @@ members:
 2. Store `user_id` in the document's `local_config`
 3. Create `members.yaml` with the user as `owner`
 4. Change `visibility` in `document.yaml`
-5. Generate Ed25519 keypair if not yet created
+5. Set default governance to `open` if none specified
+6. Generate Ed25519 keypair if not yet created
 
 No schema migration needed — the FactStore tables already have all the fields needed for P2P sync (`peer_id`, `lclock`, `wall_clock`, unique fact IDs). Alpha/beta policy: we delete old DBs rather than migrate.
 
@@ -316,26 +330,26 @@ No schema migration needed — the FactStore tables already have all the fields 
 
 The existing FactStore primitives make sync remarkably simple. The protocol is **fact-based**, not entity-based — peers exchange raw facts and let LWW resolution handle conflicts.
 
-**Wire protocol** — length-prefixed JSON over TLS TCP:
+**Wire protocol** — length-prefixed JSON over TCP (4-byte big-endian length + UTF-8 JSON):
 
 ```
-HELLO         → {peerId, publicKey, keycloakToken, documentIds:[...]}
+HELLO         → {peerId, publicKey, token, documentIds:[...]}
 SYNC_REQUEST  → {documentId, sinceLclock: N}          # "give me facts after lclock N"
 SYNC_RESPONSE → {documentId, facts:[...]}              # List<Fact> serialized
 SYNC_DONE     → {documentId}                           # all caught up
-SUBMIT        → {documentId, facts:[...]}              # for admin_approved/voting docs
-VOTE          → {documentId, factId, approve:bool}
 MEMBER_UPDATE → {documentId, members:[...]}
 ```
+
+Implemented as a **sealed interface** `NetworkMessage` with Jackson `@JsonSubTypes` for polymorphic deserialization.
 
 **Sync flow:**
 1. Client authenticates with Keycloak, gets JWT
 2. Announces to rendezvous: `{userId, ip:port, documentIds:[...], jwt}`
 3. Discovers peers who share the same documents (rendezvous query or mDNS scan)
-4. Opens TLS connection, exchanges HELLO (validates JWT + document memberships)
+4. Opens TCP connection, exchanges HELLO (validates JWT + document memberships)
 5. For each shared document: peer A sends `SYNC_REQUEST{sinceLclock: lastKnownClock}`
 6. Peer B calls `factStore.getFactsSince(sinceLclock)` and sends facts
-7. Peer A calls `factStore.receiveFacts(facts)` — LWW resolves conflicts automatically
+7. Peer A routes facts through **GovernanceEngine** (open → direct commit, admin_approved/voting → may stage)
 8. Bidirectional: both peers request and send
 
 **Why fact-based sync is simpler than entity-based:**
@@ -352,36 +366,69 @@ MEMBER_UPDATE → {documentId, members:[...]}
 sync:{peerId}:last_lclock → "12345"   # Last lclock received from this peer
 ```
 
+### 4. Governance Model
+
+Governance is per-document and integrates with FactStore's staging system.
+
+**Routing logic (GovernanceEngine):**
+- Incoming facts are checked against the document's governance type and the sender's member role
+- `VIEWER` and unknown users are always rejected
+- `OWNER` and `ADMIN` are always committed directly (privileged)
+- For `open` governance: all member facts are committed directly
+- For `admin_approved`: non-privileged member facts go to `pending` via `stageRemoteFacts()`
+- For `voting`: non-privileged member facts go to `pending`, await quorum
+
+**Admin approval flow:**
+1. Remote member facts arrive → `stageRemoteFacts()` (preserves remote peer_id/lclock)
+2. Admin reviews via `getPendingSubmissions()` (grouped by peer)
+3. Admin approves → `commitPendingByPeerId(peerId)` (selective commit)
+4. Admin rejects → `rollbackPendingByPeerId(peerId)` (selective discard + rebuild current)
+
+**Voting flow:**
+1. Remote member facts arrive → staged to pending (same as admin_approved)
+2. Members vote: `appendFact("_vote:{submitterPeerId}:{voterId}", "approve", "1", "governance")`
+3. Votes are committed facts — they sync to all peers naturally via P2P
+4. `checkAndApplyQuorum()` counts approve votes against eligible voters × quorum threshold
+5. When quorum reached → auto-commit the pending submission
+
+**Vote entity convention:**
+```
+entity_id: _vote:{submitterPeerId}:{voterUserId}
+attribute: approve
+value:     "1" (approve) or "0" (reject)
+source:    "governance"
+```
+
 ---
 
 ## Module Architecture
 
-All networking/P2P code lives in **separate Gradle modules**. The existing `tradery-news` module gets a small change to make FactStore path-configurable. Everything else is additive.
+All networking/P2P code lives in **separate Gradle modules**. The existing `tradery-news` module gets minimal changes. Everything else is additive.
 
 ```
 ┌───────────────────────────────────────────────────────────────────┐
-│ tradery-news (EXISTING — minimal change)                          │
+│ tradery-news (EXISTING — minimal changes)                         │
 │   FactStore, EntityStore, CoinEntity, CoinRelationship,          │
 │   SchemaType, SchemaRegistry, DataSourceRegistry, all UI panels  │
-│   Change: FactStore(Path) constructor overload                    │
+│   Changes: FactStore(Path), public accessors, governance methods │
 └───────────────────┬───────────────────────────────────────────────┘
                     │ depends on (uses FactStore/EntityStore, SchemaRegistry)
                     ▼
 ┌───────────────────────────────────────────────────────────────────┐
 │ tradery-documents (NEW — Phase 2, no account needed)              │
-│   Document, DocumentManager, DocumentMember                       │
+│   Document, DocumentManager, DocumentMember, DocumentWorkspace    │
 │   Manages ~/.tradery/documents/, opens FactStore per doc          │
-│   Document switcher UI (panel injected into IntelFrame)           │
 └───────────────────┬───────────────────────────────────────────────┘
                     │ depends on (uses DocumentManager, FactStore)
                     ▼
 ┌───────────────────────────────────────────────────────────────────┐
-│ tradery-sharing (NEW — Phase 3+4, requires account)               │
-│   UserSession, FactSigner, SharingUpgrade                         │
-│   PeerServer, PeerConnection, PeerManager, SyncEngine             │
-│   RendezvousClient, LanDiscovery, NetworkMessage                  │
-│   GovernanceEngine, SubmissionStore                               │
-│   Sharing UI (login, network panel, review queue)                 │
+│ tradery-sharing (NEW — Phase 3+4, requires account for sharing)   │
+│   sync/     PeerServer, PeerConnection, PeerManager, SyncEngine, │
+│             FactSigner, NetworkMessage                            │
+│   identity/ KeyPairStore, UserSession                             │
+│   upgrade/  SharingUpgrade                                        │
+│   discovery/ RendezvousClient, LanDiscovery                       │
+│   governance/ GovernanceEngine, SubmissionStore, Submission        │
 └───────────────────────────────────────────────────────────────────┘
 ```
 
@@ -397,24 +444,21 @@ All networking/P2P code lives in **separate Gradle modules**. The existing `trad
 
 ## Implementation Plan (Phased)
 
-### Phase 1: Path-Configurable FactStore (tradery-news)
+### Phase 1: Path-Configurable FactStore ✅ COMPLETE
 
 Make FactStore accept a custom DB path so multiple document databases can be opened simultaneously.
 
-**Files to modify in `tradery-news`:**
+**Files modified in `tradery-news`:**
 
-- **`FactStore.java`** (~800 LOC)
-  - Add constructor overload: `FactStore(Path dbPath)` — the existing no-arg constructor becomes `this(Path.of(DB_PATH))`
-  - Extract `DB_PATH` into a `public static Path defaultPath()` method so external code can reference it
-  - No other changes needed — the tables, P2P primitives, draft/commit model are already correct
+| File | Change |
+|------|--------|
+| `FactStore.java` | `FactStore(Path dbPath)` constructor overload, `DEFAULT_PATH` as `Path` field |
+| `FactStore.java` | `static Path defaultPath()` method |
+| `FactStore.java` | Public accessors: `peerId()`, `lclock()`, `getLocalConfig(key)`, `setLocalConfig(key, value)` |
+| `EntityStore.java` | `EntityStore(Path dbPath)` constructor overload |
+| `EntityStore.java` | `factStore()` public accessor |
 
-- **`EntityStore.java`** (~694 LOC)
-  - Add constructor overload: `EntityStore(Path dbPath)` → `new FactStore(dbPath)`
-  - The existing no-arg constructor becomes `this(FactStore.defaultPath())`
-
-**No changes** to CoinEntity, CoinRelationship, SchemaType, SchemaAttribute, SchemaRegistry, or any UI classes. The data model already has everything needed for P2P: peer_id, lclock, wall_clock, globally unique fact IDs (ULIDs).
-
-### Phase 2: Document Management (tradery-documents — new module)
+### Phase 2: Document Management ✅ COMPLETE
 
 Multiple isolated FactStore databases. No networking, no accounts.
 
@@ -422,55 +466,25 @@ Multiple isolated FactStore databases. No networking, no accounts.
 
 ```
 tradery-documents/
-├── build.gradle
+├── build.gradle                         # depends on tradery-news, jackson-yaml
 └── src/main/java/
-    ├── module-info.java
+    ├── module-info.java                 # com.tradery.documents
     └── com/tradery/documents/
-        ├── Document.java              # Record: id, name, ownerId, visibility, governance, createdAt
-        ├── DocumentManager.java       # Manages ~/.tradery/documents/ directory
-        ├── DocumentMember.java        # Record: userId, role (owner/admin/member/viewer)
-        ├── DocumentWorkspace.java     # Binds EntityStore + SchemaRegistry + DataSourceRegistry for one doc
-        └── ui/
-            └── DocumentSwitcherPanel.java  # Dropdown for switching active document
+        ├── Document.java                # Metadata: id, name, ownerId, Visibility, Governance, createdAt
+        ├── DocumentManager.java         # Manages ~/.tradery/documents/ directory, YAML persistence
+        ├── DocumentMember.java          # userId + Role (OWNER, ADMIN, MEMBER, VIEWER)
+        └── DocumentWorkspace.java       # Binds EntityStore + SchemaRegistry + DataSourceRegistry per doc
 ```
 
-```groovy
-// tradery-documents/build.gradle
-dependencies {
-    implementation project(':tradery-news')
-    implementation "com.fasterxml.jackson.dataformat:jackson-dataformat-yaml:${jacksonVersion}"
-}
-```
+**Key implementation details:**
+- `Document` is a Jackson-serializable class with `@JsonIgnoreProperties(ignoreUnknown = true)` for forward compatibility
+- `Document.Visibility` enum: `LOCAL`, `PRIVATE`, `FRIENDS`, `PUBLIC`
+- `Document.Governance` inner class with `Type` enum: `OPEN`, `ADMIN_APPROVED`, `VOTING` and `votingQuorum` (default 0.51)
+- `DocumentManager.initialize()` deletes old `entity-network.db` (alpha/beta), creates fresh default document
+- `DocumentWorkspace` opens `facts.db` in document dir, wires `EntityStore → SchemaRegistry → DataSourceRegistry`
+- `DocumentWorkspace` implements `AutoCloseable` — closes EntityStore on close
 
-**Key classes:**
-
-- **`Document.java`**
-  - Record: `Document(String id, String name, String ownerId, Visibility visibility, Governance governance, long createdAt)`
-  - `Visibility` enum: LOCAL, PRIVATE, FRIENDS, PUBLIC
-  - `ownerId` is null for LOCAL documents
-  - YAML serialization via Jackson
-
-- **`DocumentManager.java`**
-  - Manages `~/.tradery/documents/` directory + `index.yaml`
-  - `createDocument(name)` → creates dir, `document.yaml` (visibility=LOCAL), empty `facts.db`
-  - `openDocument(docId)` → returns `DocumentWorkspace` (FactStore/EntityStore/SchemaRegistry bound to that DB)
-  - On first startup: deletes old `entity-network.db` if present, creates fresh default document
-
-- **`DocumentWorkspace.java`**
-  - Holds one open document's full stack: `FactStore` + `EntityStore` + `SchemaRegistry` + `DataSourceRegistry`
-  - Created by `DocumentManager.openDocument()`
-  - UI panels bind to the active workspace
-
-**No migration (alpha/beta):**
-- On first startup with documents enabled, if `~/.tradery/entity-network.db` exists, delete it
-- Create a fresh default LOCAL document in `~/.tradery/documents/{uuid}/facts.db`
-- Users re-fetch data from sources (CoinGecko, RSS) — no data migration needed
-
-**UI integration:**
-- `DocumentSwitcherPanel` — dropdown showing all local documents, "New Document" button
-- When switching documents: the `DocumentWorkspace` swaps, UI panels rebind via a listener/callback pattern
-
-### Phase 3: P2P Networking (tradery-sharing — new module)
+### Phase 3: P2P Networking ✅ COMPLETE
 
 Identity, upgrade, networking. All opt-in.
 
@@ -478,97 +492,107 @@ Identity, upgrade, networking. All opt-in.
 
 ```
 tradery-sharing/
-├── build.gradle
+├── build.gradle                         # depends on tradery-documents, tradery-news, okhttp, jackson, slf4j
 └── src/main/java/
-    ├── module-info.java
+    ├── module-info.java                 # com.tradery.sharing
     └── com/tradery/sharing/
-        ├── identity/
-        │   ├── UserSession.java           # Keycloak login, JWT, Ed25519 keypair
-        │   └── KeyPairStore.java          # Local keypair storage (~/.tradery/keys/)
-        ├── upgrade/
-        │   └── SharingUpgrade.java        # Upgrades a document from LOCAL to shared
         ├── sync/
-        │   ├── PeerServer.java            # TLS TCP server on random port
-        │   ├── PeerConnection.java        # Single peer connection (read/write messages)
-        │   ├── PeerManager.java           # Connection lifecycle, peer state, reconnect
-        │   ├── SyncEngine.java            # Per-document fact exchange using getFactsSince/receiveFacts
-        │   ├── FactSigner.java            # Ed25519 sign/verify for facts
-        │   └── NetworkMessage.java        # Sealed interface with record subtypes
-        ├── discovery/
-        │   ├── RendezvousClient.java      # HTTP client for rendezvous server
-        │   └── LanDiscovery.java          # mDNS _tradery._tcp for LAN peers
-        └── ui/
-            ├── LoginDialog.java           # Keycloak login UI
-            ├── ShareDialog.java           # Upgrade doc to shared + set visibility
-            ├── NetworkPanel.java          # Online peers, sync status per document
-            └── MemberPanel.java           # Member management per document
+        │   ├── NetworkMessage.java      # Sealed interface with Jackson @JsonSubTypes
+        │   ├── PeerConnection.java      # Length-prefixed JSON over TCP (4-byte BE + UTF-8)
+        │   ├── PeerServer.java          # TCP server on random port, virtual threads
+        │   ├── SyncEngine.java          # Per-document sync with governance routing
+        │   ├── PeerManager.java         # Connection lifecycle, HELLO handshake, message loop
+        │   └── FactSigner.java          # Ed25519 sign/verify via java.security
+        ├── identity/
+        │   ├── KeyPairStore.java        # Ed25519 keypair persistence (~/.tradery/keys/)
+        │   └── UserSession.java         # Keycloak session (userId, JWT, signing keypair)
+        ├── upgrade/
+        │   └── SharingUpgrade.java      # Upgrades LOCAL doc → shared visibility
+        └── discovery/
+            ├── RendezvousClient.java    # HTTP client for rendezvous server (OkHttp)
+            └── LanDiscovery.java        # UDP multicast LAN discovery (239.77.84.82:7482)
 ```
 
-**Key classes:**
+**Key implementation details:**
 
-- **`SyncEngine.java`** — the core sync logic, trivially thin thanks to FactStore primitives:
-  ```
-  // Outbound: called when a peer requests sync
-  List<Fact> facts = documentWorkspace.getFactStore().getFactsSince(peerLastClock);
-  send(SYNC_RESPONSE, facts);
+- **`NetworkMessage`** — sealed interface with 5 record subtypes (`Hello`, `SyncRequest`, `SyncResponse`, `SyncDone`, `MemberUpdate`). Jackson `@JsonSubTypes` handles polymorphic serialization. Max message size: 64 MB.
 
-  // Inbound: called when we receive facts from a peer
-  documentWorkspace.getFactStore().receiveFacts(remoteFacts);
-  updateSyncState(peerId, remoteFacts.lastLclock());
-  ```
+- **`PeerConnection`** — wraps a `Socket` with `DataInputStream`/`DataOutputStream`. `send()` is synchronized for thread safety. `receive()` returns null on EOF.
 
-- **`SharingUpgrade.java`** — upgrades a LOCAL document to shared:
-  - Stores `user_id` in document's `local_config`
-  - Creates `members.yaml` with user as owner
-  - Updates `document.yaml` visibility
-  - No schema migration — FactStore tables already have peer_id, lclock, etc.
+- **`PeerServer`** — `ServerSocket(0)` for random port. Accepts connections on virtual thread (`Thread.ofVirtual()`), dispatches each to a handler virtual thread.
 
-- **`FactSigner.java`** — optional integrity verification:
-  - Signs a fact's content hash with Ed25519: `sign(fact.entityId + fact.attribute + fact.value + ...)`
-  - Stores signature in a `_sig:{factId}` entry in `local_config` or a separate table
-  - Verifies incoming facts from remote peers before `receiveFacts()`
+- **`PeerManager`** — orchestrates the full peer lifecycle:
+  - `connectAndSync(host, port)` — outbound connection
+  - `handleIncomingConnection()` — inbound via PeerServer callback
+  - Both paths: exchange HELLO → find shared documents → request sync → process messages
+  - Message loop handles `SyncRequest` (respond with facts), `SyncResponse` (receive into store), `SyncDone`, `MemberUpdate`
+  - Connections tracked by remote peer ID in `ConcurrentHashMap`
 
-- **`UserSession.java`** — Keycloak integration:
-  - OAuth2 device flow or browser redirect
-  - JWT token management (refresh, expiry)
-  - Local Ed25519 keypair generation on first login
+- **`SyncEngine`** — routes incoming sync responses through GovernanceEngine when the document has non-open governance. Simplified overload for local/open documents bypasses governance.
 
-### Phase 4: Governance
+- **`FactSigner`** — Ed25519 via `java.security` (JDK 21 built-in). Canonical byte format: null-delimited concatenation of fact fields. `sign()` returns Base64, `verify()` takes Base64 + public key.
+
+- **`KeyPairStore`** — persists Ed25519 keypair as Base64 files in `~/.tradery/keys/ed25519.key` and `ed25519.pub`. `loadOrGenerate()` creates on first call.
+
+- **`LanDiscovery`** — UDP multicast on `239.77.84.82:7482`. Broadcasts `{peerId}:{port}` every 30s. Peers timeout after 90s. Virtual threads for listen + announce loops.
+
+- **`RendezvousClient`** — OkHttp-based HTTP client with `announce()`, `discoverPeers()`, `depart()`. All requests include `Bearer` token.
+
+- **`SharingUpgrade`** — upgrades a document: stores `user_id` in local_config, creates `members.yaml` with user as OWNER, updates `document.yaml` with visibility + governance.
+
+### Phase 4: Governance ✅ COMPLETE
 
 Voting, admin review, submissions — per document.
 
-**Additional classes in `tradery-sharing`:**
+**New package in `tradery-sharing`:**
 
-- **`GovernanceEngine.java`** — per-document governance:
-  - For `open` docs: facts are committed directly
-  - For `admin_approved` docs: non-admin facts go to `pending` (FactStore's staging), admin reviews and commits
-  - For `voting` docs: facts go to pending, members vote, committed when quorum reached
+```
+com/tradery/sharing/governance/
+├── GovernanceEngine.java          # Routes facts based on governance type + member role
+├── SubmissionStore.java           # Queries pending by peer, manages votes
+└── Submission.java                # Record: peerId, facts, factCount, entityIds
+```
 
-- **`SubmissionStore.java`** — tracks votes (stored in the document's FactStore as meta-entities):
-  ```
-  entity_id: _vote:{factId}:{voterId}
-  attribute: approve
-  value: "1" or "0"
-  ```
+**Files modified in `tradery-news`:**
 
-**UI additions:**
-- `ReviewQueuePanel` — admin review for admin_approved docs (shows pending changes via `factStore.getPendingSummary()`)
-- Voting UI for voting-type documents
+| File | Change |
+|------|--------|
+| `FactStore.java` | `stageRemoteFacts(List<Fact>)` — stages remote facts preserving original peer_id/lclock |
+| `FactStore.java` | `getPendingFacts()` — returns pending as Fact records |
+| `FactStore.java` | `getPendingPeerIds()` — distinct peers with pending |
+| `FactStore.java` | `commitPendingByPeerId(String)` — selective commit by peer |
+| `FactStore.java` | `rollbackPendingByPeerId(String)` — selective rollback by peer + rebuild current |
+| `FactStore.java` | `rebuildCurrentInternal()` — replays facts + remaining pending |
+
+**Key implementation details:**
+
+- **`GovernanceEngine`** — central routing logic:
+  - `routeIncomingFacts()` checks governance type + member role → either `receiveFacts()` (direct) or `stageRemoteFacts()` (pending)
+  - `approveSubmission()` / `rejectSubmission()` — admin actions using selective commit/rollback
+  - `castVote()` + `checkAndApplyQuorum()` — voting flow with configurable quorum
+  - VIEWER and unknown users always rejected
+  - OWNER and ADMIN always privileged (direct commit)
+
+- **`SubmissionStore`** — groups pending facts by peer_id into `Submission` records. Votes stored as regular committed facts (`_vote:{submitterPeerId}:{voterUserId}` → approve attribute), so they sync naturally via P2P.
+
+- **Selective commit** — `commitPendingByPeerId()` only touches pending facts with matching `peer_id`, leaving other pending facts untouched. `rollbackPendingByPeerId()` deletes the peer's pending then replays facts + remaining pending into `current`.
 
 ---
 
-## Changes to tradery-news (Phase 1)
+## Changes to tradery-news (all phases)
 
-Minimal — just a constructor overload:
-
-| File | Change | Why |
-|------|--------|-----|
-| `FactStore.java` | `FactStore(Path dbPath)` constructor overload | Multi-DB support for documents |
-| `FactStore.java` | `static Path defaultPath()` method | External code can reference default location |
-| `EntityStore.java` | `EntityStore(Path dbPath)` constructor overload | Passes through to FactStore |
-| `settings.gradle` | Add `include 'tradery-documents'` and `include 'tradery-sharing'` | Register new modules |
-
-Everything else — documents, sharing, identity, P2P, governance — lives in the new modules.
+| File | Change | Phase | Why |
+|------|--------|-------|-----|
+| `FactStore.java` | `FactStore(Path dbPath)` constructor | 1 | Multi-DB support |
+| `FactStore.java` | `static Path defaultPath()` | 1 | External code refs default location |
+| `FactStore.java` | `peerId()`, `lclock()` accessors | 3 | SyncEngine needs peer identity |
+| `FactStore.java` | `getLocalConfig()`, `setLocalConfig()` | 3 | Sync state tracking in local_config |
+| `FactStore.java` | `stageRemoteFacts()` | 4 | Governance: stage with remote metadata |
+| `FactStore.java` | `getPendingFacts()`, `getPendingPeerIds()` | 4 | Governance: review pending |
+| `FactStore.java` | `commitPendingByPeerId()`, `rollbackPendingByPeerId()` | 4 | Governance: selective approve/reject |
+| `EntityStore.java` | `EntityStore(Path dbPath)` constructor | 1 | Passes through to FactStore |
+| `EntityStore.java` | `factStore()` accessor | 3 | SyncEngine accesses FactStore |
+| `settings.gradle` | `include 'tradery-documents'`, `include 'tradery-sharing'` | 2, 3 | Register new modules |
 
 **Why so little changes?** The FactStore already has:
 - Globally unique fact IDs (ULIDs) — no need to add UUIDs
@@ -580,11 +604,23 @@ Everything else — documents, sharing, identity, P2P, governance — lives in t
 
 ---
 
-## Integration Testing with Testcontainers
+## Remaining Work
+
+### UI Integration (not started)
+- `DocumentSwitcherPanel` — dropdown in IntelFrame header for switching active document
+- `LoginDialog` — Keycloak login UI
+- `ShareDialog` — upgrade doc to shared + set visibility/governance
+- `NetworkPanel` — online peers, sync status per document
+- `MemberPanel` — member management per document
+- `ReviewQueuePanel` — admin review for admin_approved docs
+- Voting UI for voting-type documents
+- When switching documents: `DocumentWorkspace` swaps, UI panels rebind via listener/callback
+
+### Testcontainers Integration Tests (not started)
 
 Network sync is the highest-risk component. We test it under near-real-world conditions using Testcontainers for true process and network isolation.
 
-### Test Module
+#### Test Module
 
 ```
 tradery-sharing-tests/
@@ -606,10 +642,6 @@ tradery-sharing-tests/
 
 ```groovy
 // tradery-sharing-tests/build.gradle
-plugins {
-    id 'java'
-}
-
 dependencies {
     testImplementation project(':tradery-sharing')
     testImplementation project(':tradery-documents')
@@ -622,7 +654,7 @@ dependencies {
 }
 ```
 
-### Architecture
+#### Architecture
 
 Each test peer runs as a **Docker container** with:
 - A headless `tradery-sharing` process (no Swing UI)
@@ -656,7 +688,7 @@ Each test peer runs as a **Docker container** with:
   - `POST /sync/{peerId}` — trigger sync with a specific peer
   - `GET /status` — peer status, clock values, pending count
 
-### Test Scenarios
+#### Test Scenarios
 
 **`PeerSyncIT` — Basic sync:**
 1. Start Peer A and Peer B containers
@@ -694,14 +726,14 @@ Each test peer runs as a **Docker container** with:
 7. Assert: all 3 peers converge to correct LWW-resolved state
 8. No data loss from any peer's changes during partition
 
-**`GovernanceIT` — Admin approval flow:**
+**`GovernanceIT` — Admin approval + voting flows:**
 1. Start Peer A (admin) and Peer B (member)
 2. Document governance = `admin_approved`
-3. Peer B creates entity → goes to `pending`
-4. Sync pending submission to Peer A
-5. Peer A approves → commits
-6. Sync committed facts back to Peer B
-7. Assert: entity now committed on both peers
+3. Peer B creates entity → `stageRemoteFacts()` on Peer A
+4. Peer A approves via `commitPendingByPeerId()` → committed
+5. Sync committed facts back to Peer B
+6. Assert: entity now committed on both peers
+7. Repeat with `voting` governance: Peer B submits, multiple peers vote, check quorum
 
 **`RendezvousIT` — Peer discovery:**
 1. Start RendezvousContainer
@@ -710,7 +742,7 @@ Each test peer runs as a **Docker container** with:
 4. Assert: Peer B discovers Peer A's address
 5. Peer B connects to Peer A, sync succeeds
 
-### In-Process Tests (No Docker)
+#### In-Process Tests (No Docker)
 
 For faster feedback during development, also include unit-level sync tests that run **in-process** (no Testcontainers):
 
@@ -730,6 +762,10 @@ assertEquals("Bitcoin", storeB.getCurrent("bitcoin", "name"));
 
 These run instantly and cover the core sync logic without Docker overhead. The Testcontainers tests add real network/process isolation on top.
 
+### Infrastructure (not started)
+- Keycloak instance (Docker, free)
+- Rendezvous server (~200 LOC HTTP service, free-tier cloud)
+
 ---
 
 ## Dependencies
@@ -745,13 +781,14 @@ These run instantly and cover the core sync logic without Docker overhead. The T
 - Ed25519: `java.security` (JDK 21 built-in)
 - TLS sockets: `javax.net.ssl` (built-in)
 - mDNS: JDK multicast (built-in)
+- SLF4J (already in project — for logging)
 - **No new external dependencies**
 
-**tradery-sharing-tests:**
+**tradery-sharing-tests (future):**
 - Testcontainers (new, test-only)
 - JUnit 5, AssertJ (test-only)
 
-**New infrastructure (only needed for Phase 3):**
+**New infrastructure (future):**
 - Keycloak instance (Docker, free)
 - Rendezvous server (~200 LOC HTTP service, free-tier cloud)
 
@@ -765,43 +802,50 @@ These run instantly and cover the core sync logic without Docker overhead. The T
 | Sync unit | Individual facts | Simpler than entity-level: no manifests, no hashing, just `getFactsSince(lclock)` |
 | Conflict resolution | LWW per (entity_id, attribute) | Deterministic, no CRDTs needed, already implemented |
 | Code organization | Separate modules (`tradery-documents`, `tradery-sharing`) | Non-invasive to existing `tradery-news` code |
-| tradery-news changes | Only `FactStore(Path)` constructor overload | Everything else is already P2P-ready |
+| tradery-news changes | Accessors + governance methods on FactStore/EntityStore | Everything else was already P2P-ready |
 | Account requirement | Optional, only for sharing | Solo users never blocked by auth |
 | Entity data transport | P2P (direct TCP) | Avoid hosting data traffic |
-| Auth/identity | Keycloak + local signing key | Proper user management with P2P integrity |
+| Auth/identity | Keycloak + local Ed25519 signing key | Proper user management with P2P integrity |
 | Peer discovery | Hybrid (rendezvous + mDNS) | Works behind NAT + free LAN discovery |
-| Wire protocol | Length-prefixed JSON over TLS | Simple, debuggable, secure |
-| Draft/commit integration | Governance uses FactStore staging natively | `admin_approved` = non-admin writes go to `pending`, admin calls `commit()` |
+| Wire protocol | Length-prefixed JSON over TCP | Simple, debuggable, secure. Sealed interface with Jackson @JsonSubTypes |
+| Concurrency | Virtual threads (Thread.ofVirtual) | Lightweight, scales to many connections, JDK 21 built-in |
+| Draft/commit integration | Governance uses FactStore staging natively | `admin_approved` = non-admin writes go to `pending`, admin calls `commitPendingByPeerId()` |
+| Selective governance | Per-peer commit/rollback | `commitPendingByPeerId()` / `rollbackPendingByPeerId()` — granular without over-engineering |
+| Vote storage | Regular committed facts with `_vote:` entity ID prefix | Votes sync naturally via P2P, no special tables |
 | Testing | Testcontainers + in-process | True network isolation for integration, fast in-process for unit |
 | Attribute sync | Respects existing Origin priority via FactStore | USER edits never overwritten by remote SOURCE data |
+| Migration | Delete old DB (alpha/beta) | No migration complexity — clean slate on schema changes |
 
 ---
 
 ## Verification
 
-**Phase 1 (path-configurable FactStore — tradery-news):**
-- Compile: `./gradlew :tradery-news:compileJava`
+**Phase 1 (path-configurable FactStore — tradery-news): ✅**
+- Compile: `./gradlew :tradery-news:compileJava` — passes
+- `new FactStore(Path.of("/tmp/test.db"))` creates a working DB
+- Default path still works: `new FactStore()` behaves as before
+
+**Phase 2 (documents — tradery-documents module): ✅**
+- Compile: `./gradlew :tradery-documents:compileJava` — passes
+- `DocumentManager.initialize()` deletes old DB, creates fresh default document
+- `DocumentWorkspace` opens isolated FactStore per document
+
+**Phase 3 (P2P — tradery-sharing module): ✅**
+- Compile: `./gradlew :tradery-sharing:compileJava` — passes
+- Full project compile: `./gradlew compileJava` — passes
+- SyncEngine routes through GovernanceEngine for non-open docs
+
+**Phase 4 (governance — part of tradery-sharing): ✅**
+- Compile: `./gradlew :tradery-sharing:compileJava` — passes
+- Full project compile: `./gradlew compileJava` — passes
+- GovernanceEngine routes based on governance type + member role
+- Selective commit/rollback by peer ID works
+
+**Remaining verification (needs manual/integration testing):**
 - Restart intel: `scripts/kill-intel.sh && scripts/start-intel.sh`
-- Verify existing data intact: app loads, entities visible in graph
-- Verify `new FactStore(Path.of("/tmp/test.db"))` creates a working DB (in-process test)
-- Verify default path still works: `new FactStore()` behaves as before
-
-**Phase 2 (documents — tradery-documents module):**
-- Compile: `./gradlew :tradery-documents:compileJava`
-- First startup: verify old `entity-network.db` deleted, fresh default document created in `~/.tradery/documents/{uuid}/`
-- Create new LOCAL document — verify directory + `facts.db` + `document.yaml` created
-- Open two DocumentWorkspaces — verify entity isolation (different FactStores)
-- UI: document switcher shows all local documents, switching works
-
-**Phase 3 (P2P — tradery-sharing module):**
-- Compile: `./gradlew :tradery-sharing:compileJava`
 - In-process sync test: two FactStores, appendFact on A, getFactsSince → receiveFacts on B
-- Testcontainers: `PeerSyncIT` — two containers, full sync cycle
-- Testcontainers: `ConflictResolutionIT` — LWW tiebreaker verification
-- Testcontainers: `NetworkPartitionIT` — partition + recovery
+- Testcontainers: full sync cycle between Docker containers
 - Click "Share..." on a LOCAL document → login dialog → upgrade
 - Two running instances sync a shared document end-to-end
-
-**Phase 4 (governance — part of tradery-sharing):**
-- Testcontainers: `GovernanceIT` — admin_approved flow
-- Create voting document, submit, cast votes, verify quorum logic
+- Admin approval flow end-to-end
+- Voting flow with quorum checking

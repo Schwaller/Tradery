@@ -28,6 +28,8 @@ public class EntityStore {
         this.factStore = new FactStore(dbPath);
     }
 
+    public FactStore factStore() { return factStore; }
+
     public void setDraftMode(boolean enabled) { this.draftMode = enabled; }
     public boolean isDraftMode() { return draftMode; }
 
