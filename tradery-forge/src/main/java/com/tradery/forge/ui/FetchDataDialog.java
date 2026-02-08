@@ -78,13 +78,27 @@ public class FetchDataDialog extends JDialog {
         initUI();
         setupSelectionListeners();
 
-        setSize(400, 360);
+        setSize(400, 410);
         setLocationRelativeTo(owner);
         setResizable(false);
     }
 
     private void initUI() {
-        setLayout(new BorderLayout(0, 0));
+        JPanel contentPane = new JPanel(new BorderLayout(0, 0));
+        setContentPane(contentPane);
+
+        // 52px header bar with centered title
+        int barHeight = 52;
+        JPanel headerBar = new JPanel(new BorderLayout());
+        headerBar.setPreferredSize(new Dimension(0, barHeight));
+        JLabel titleLabel = new JLabel("Fetch Data", SwingConstants.CENTER);
+        titleLabel.setFont(new Font("SansSerif", Font.BOLD, 13));
+        titleLabel.setForeground(UIManager.getColor("Label.disabledForeground"));
+        headerBar.add(titleLabel, BorderLayout.CENTER);
+        JPanel headerWrapper = new JPanel(new BorderLayout());
+        headerWrapper.add(headerBar, BorderLayout.CENTER);
+        headerWrapper.add(new JSeparator(), BorderLayout.SOUTH);
+        contentPane.add(headerWrapper, BorderLayout.NORTH);
 
         // Form panel
         JPanel formPanel = new JPanel(new GridBagLayout());
@@ -163,20 +177,26 @@ public class FetchDataDialog extends JDialog {
         progressBar.setVisible(false);
         formPanel.add(progressBar, gbc);
 
-        add(formPanel, BorderLayout.CENTER);
+        contentPane.add(formPanel, BorderLayout.CENTER);
 
-        // Button panel
-        JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 8));
+        // Bottom bar: separator + buttons
+        JPanel bottomBar = new JPanel(new BorderLayout(0, 0));
+
+        JPanel buttonRow = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
+        buttonRow.setBorder(BorderFactory.createEmptyBorder(8, 12, 8, 12));
 
         cancelButton = new JButton("Cancel");
         cancelButton.addActionListener(e -> onCancel());
-        buttonPanel.add(cancelButton);
+        buttonRow.add(cancelButton);
 
         fetchButton = new JButton("Fetch Data");
         fetchButton.addActionListener(e -> startFetch());
-        buttonPanel.add(fetchButton);
+        buttonRow.add(fetchButton);
 
-        add(buttonPanel, BorderLayout.SOUTH);
+        bottomBar.add(new JSeparator(), BorderLayout.NORTH);
+        bottomBar.add(buttonRow, BorderLayout.CENTER);
+
+        contentPane.add(bottomBar, BorderLayout.SOUTH);
     }
 
     private String[] getMonthNames() {

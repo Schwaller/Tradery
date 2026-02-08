@@ -607,6 +607,87 @@ public class AggTradesDao {
     }
 
     /**
+     * Delete trades for a specific exchange.
+     */
+    public int deleteByExchange(Exchange exchange) throws SQLException {
+        Connection c = conn.getConnection();
+
+        String sql = "DELETE FROM agg_trades WHERE exchange = ?";
+
+        try (PreparedStatement stmt = c.prepareStatement(sql)) {
+            stmt.setString(1, exchange.getConfigKey());
+            return stmt.executeUpdate();
+        }
+    }
+
+    /**
+     * Get the time range of stored trades for a specific exchange.
+     */
+    public long[] getTimeRangeByExchange(Exchange exchange) throws SQLException {
+        Connection c = conn.getConnection();
+
+        String sql = "SELECT MIN(timestamp), MAX(timestamp) FROM agg_trades WHERE exchange = ?";
+
+        try (PreparedStatement stmt = c.prepareStatement(sql)) {
+            stmt.setString(1, exchange.getConfigKey());
+            try (ResultSet rs = stmt.executeQuery()) {
+                if (rs.next()) {
+                    long min = rs.getLong(1);
+                    long max = rs.getLong(2);
+                    if (min > 0 && max > 0) {
+                        return new long[]{min, max};
+                    }
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Count trades for a specific exchange.
+     */
+    public long countByExchange(Exchange exchange) throws SQLException {
+        Connection c = conn.getConnection();
+
+        String sql = "SELECT COUNT(*) FROM agg_trades WHERE exchange = ?";
+
+        try (PreparedStatement stmt = c.prepareStatement(sql)) {
+            stmt.setString(1, exchange.getConfigKey());
+            try (ResultSet rs = stmt.executeQuery()) {
+                if (rs.next()) {
+                    return rs.getLong(1);
+                }
+            }
+        }
+
+        return 0;
+    }
+
+    /**
+     * Get distinct market types that have data for this symbol.
+     */
+    public List<DataMarketType> getMarketTypesWithData() throws SQLException {
+        Connection c = conn.getConnection();
+        List<DataMarketType> types = new ArrayList<>();
+
+        String sql = "SELECT DISTINCT market_type FROM agg_trades";
+
+        try (PreparedStatement stmt = c.prepareStatement(sql);
+             ResultSet rs = stmt.executeQuery()) {
+            while (rs.next()) {
+                String mtStr = rs.getString("market_type");
+                DataMarketType mt = DataMarketType.fromConfigKey(mtStr);
+                if (mt != null) {
+                    types.add(mt);
+                }
+            }
+        }
+
+        return types;
+    }
+
+    /**
      * Get list of exchanges that have data for this symbol.
      */
     public List<Exchange> getExchangesWithData() throws SQLException {

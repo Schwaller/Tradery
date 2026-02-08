@@ -146,6 +146,39 @@ public class FearGreedDao {
     }
 
     /**
+     * Get the time range of stored data.
+     */
+    public long[] getTimeRange() throws SQLException {
+        Connection c = conn.getConnection();
+
+        String sql = "SELECT MIN(timestamp), MAX(timestamp) FROM fear_greed";
+
+        try (PreparedStatement stmt = c.prepareStatement(sql);
+             ResultSet rs = stmt.executeQuery()) {
+            if (rs.next()) {
+                long min = rs.getLong(1);
+                long max = rs.getLong(2);
+                if (min > 0 && max > 0) {
+                    return new long[]{min, max};
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Delete all Fear & Greed records.
+     */
+    public void deleteAll() throws SQLException {
+        Connection c = conn.getConnection();
+
+        try (PreparedStatement stmt = c.prepareStatement("DELETE FROM fear_greed")) {
+            stmt.executeUpdate();
+        }
+    }
+
+    /**
      * Count total records.
      */
     public int count() throws SQLException {

@@ -9,6 +9,8 @@ import com.tradery.news.ui.coin.CoinRelationship;
 import com.tradery.news.ui.coin.EntitySearchProcessor;
 import com.tradery.news.ui.coin.EntitySearchProcessor.DiscoveredEntity;
 import com.tradery.news.ui.coin.EntityStore;
+import com.tradery.news.ui.coin.SchemaRegistry;
+import com.tradery.news.ui.coin.SchemaType;
 
 import java.io.IOException;
 import java.util.List;
@@ -21,10 +23,12 @@ public class DiscoverHandler extends IntelApiHandlerBase {
 
     private final EntityStore entityStore;
     private final EntitySearchProcessor searchProcessor;
+    private final SchemaRegistry schemaRegistry;
 
-    public DiscoverHandler(EntityStore entityStore, EntitySearchProcessor searchProcessor) {
+    public DiscoverHandler(EntityStore entityStore, EntitySearchProcessor searchProcessor, SchemaRegistry schemaRegistry) {
         this.entityStore = entityStore;
         this.searchProcessor = searchProcessor;
+        this.schemaRegistry = schemaRegistry;
     }
 
     // Routes under /entity/{id}/discover
@@ -169,27 +173,15 @@ public class DiscoverHandler extends IntelApiHandlerBase {
     }
 
     /**
-     * Create relationship with correct direction based on relationship type,
-     * mirroring EntitySearchDialog.createRelationship logic.
+     * Create relationship with correct direction based on SchemaType metadata.
      */
     private CoinRelationship createDirectedRelationship(CoinEntity source, String targetId,
                                                          CoinRelationship.Type relType, String note) {
-        return switch (relType) {
-            case ETF_TRACKS, ETP_TRACKS ->
-                // ETF tracks COIN: ETF -> COIN
-                new CoinRelationship(targetId, source.id(), relType, note);
-            case INVESTED_IN ->
-                // VC invested in COIN: VC -> COIN
-                source.type() == CoinEntity.Type.VC
-                    ? new CoinRelationship(source.id(), targetId, relType, note)
-                    : new CoinRelationship(targetId, source.id(), relType, note);
-            case L2_OF ->
-                // L2 built on L1: L2 -> L1
-                source.type() == CoinEntity.Type.L2
-                    ? new CoinRelationship(source.id(), targetId, relType, note)
-                    : new CoinRelationship(targetId, source.id(), relType, note);
-            default ->
-                new CoinRelationship(source.id(), targetId, relType, note);
-        };
+        String sourceTypeId = source.type().name().toLowerCase();
+        SchemaType relSchema = schemaRegistry != null ? schemaRegistry.getType(relType.name().toLowerCase()) : null;
+        if (relSchema != null) {
+            return relSchema.createDirected(source.id(), sourceTypeId, targetId, relType, note);
+        }
+        return new CoinRelationship(source.id(), targetId, relType, note);
     }
 }

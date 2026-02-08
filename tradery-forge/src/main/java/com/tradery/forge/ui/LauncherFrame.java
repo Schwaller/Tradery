@@ -4,7 +4,7 @@ import com.tradery.core.model.ExitZone;
 import com.tradery.core.model.Strategy;
 import com.tradery.forge.ApplicationContext;
 import com.tradery.forge.TraderyApp;
-import com.tradery.forge.data.sqlite.SqliteDataStore;
+import com.tradery.dataclient.DataServiceClient;
 import com.tradery.forge.io.*;
 
 import com.formdev.flatlaf.FlatClientProperties;
@@ -133,8 +133,14 @@ public class LauncherFrame extends JFrame {
 
         manageDataButton = new JButton("Manage Data");
         manageDataButton.addActionListener(e -> {
-            SqliteDataStore dataStore = ApplicationContext.getInstance().getSqliteDataStore();
-            DataManagementDialog.show(this, dataStore);
+            DataServiceClient dataServiceClient = ApplicationContext.getInstance().getDataServiceClient();
+            com.tradery.data.ui.DataManagementDialog.show(this, dataServiceClient, () -> {
+                FetchDataDialog.show(this,
+                    ApplicationContext.getInstance().getSqliteDataStore(),
+                    ApplicationContext.getInstance().getAggTradesStore(),
+                    ApplicationContext.getInstance().getPremiumIndexStore(),
+                    () -> { /* refresh handled by dialog timer */ });
+            });
         });
 
         settingsButton = new JButton("Settings");
@@ -621,8 +627,14 @@ public class LauncherFrame extends JFrame {
      */
     public void openDataManagement() {
         SwingUtilities.invokeLater(() -> {
-            SqliteDataStore dataStore = ApplicationContext.getInstance().getSqliteDataStore();
-            DataManagementDialog.show(this, dataStore);
+            DataServiceClient dataServiceClient = ApplicationContext.getInstance().getDataServiceClient();
+            com.tradery.data.ui.DataManagementDialog.show(this, dataServiceClient, () -> {
+                FetchDataDialog.show(this,
+                    ApplicationContext.getInstance().getSqliteDataStore(),
+                    ApplicationContext.getInstance().getAggTradesStore(),
+                    ApplicationContext.getInstance().getPremiumIndexStore(),
+                    () -> { /* refresh handled by dialog timer */ });
+            });
         });
     }
 

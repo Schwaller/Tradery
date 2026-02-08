@@ -477,6 +477,24 @@ public class EntityStore {
             try { type.setDisplayOrder(Integer.parseInt(displayOrder)); } catch (NumberFormatException ignored) {}
         }
 
+        // Metadata fields
+        type.setInverseLabel(attrs.get("inverse_label"));
+        type.setPluralLabel(attrs.get("plural_label"));
+        type.setInversePluralLabel(attrs.get("inverse_plural_label"));
+        type.setSearchDescription(attrs.get("search_desc"));
+        type.setInverseSearchDescription(attrs.get("inverse_search_desc"));
+        type.setHasMarketCap("true".equals(attrs.get("has_market_cap")));
+
+        // Search hints (stored as JSON arrays)
+        String searchHintsJson = attrs.get("search_hints");
+        if (searchHintsJson != null) {
+            type.setSearchHints(parseStringList(searchHintsJson));
+        }
+        String inverseSearchHintsJson = attrs.get("inverse_search_hints");
+        if (inverseSearchHintsJson != null) {
+            type.setInverseSearchHints(parseStringList(inverseSearchHintsJson));
+        }
+
         String erdX = attrs.get("erd_x");
         String erdY = attrs.get("erd_y");
         if (erdX != null) {
@@ -547,6 +565,14 @@ public class EntityStore {
         facts.add(new FactStore.PendingFact(eid, "from_type", type.fromTypeId(), "manual"));
         facts.add(new FactStore.PendingFact(eid, "to_type", type.toTypeId(), "manual"));
         facts.add(new FactStore.PendingFact(eid, "label", type.label(), "manual"));
+        facts.add(new FactStore.PendingFact(eid, "inverse_label", type.inverseLabel(), "manual"));
+        facts.add(new FactStore.PendingFact(eid, "plural_label", type.pluralLabel(), "manual"));
+        facts.add(new FactStore.PendingFact(eid, "inverse_plural_label", type.inversePluralLabel(), "manual"));
+        facts.add(new FactStore.PendingFact(eid, "search_desc", type.searchDescription(), "manual"));
+        facts.add(new FactStore.PendingFact(eid, "inverse_search_desc", type.inverseSearchDescription(), "manual"));
+        facts.add(new FactStore.PendingFact(eid, "search_hints", toJsonStringList(type.searchHints()), "manual"));
+        facts.add(new FactStore.PendingFact(eid, "inverse_search_hints", toJsonStringList(type.inverseSearchHints()), "manual"));
+        facts.add(new FactStore.PendingFact(eid, "has_market_cap", type.hasMarketCap() ? "true" : null, "manual"));
         facts.add(new FactStore.PendingFact(eid, "display_order", String.valueOf(type.displayOrder()), "manual"));
         facts.add(new FactStore.PendingFact(eid, "erd_x", String.valueOf(type.erdX()), "manual"));
         facts.add(new FactStore.PendingFact(eid, "erd_y", String.valueOf(type.erdY()), "manual"));
@@ -686,6 +712,24 @@ public class EntityStore {
     }
 
     // ==================== HELPERS ====================
+
+    private List<String> parseStringList(String json) {
+        if (json == null || json.isEmpty()) return new ArrayList<>();
+        try {
+            return JSON.readValue(json, new TypeReference<List<String>>() {});
+        } catch (Exception e) {
+            return new ArrayList<>();
+        }
+    }
+
+    private String toJsonStringList(List<String> list) {
+        if (list == null || list.isEmpty()) return null;
+        try {
+            return JSON.writeValueAsString(list);
+        } catch (Exception e) {
+            return null;
+        }
+    }
 
     private static String originToSource(AttributeValue.Origin origin) {
         return switch (origin) {

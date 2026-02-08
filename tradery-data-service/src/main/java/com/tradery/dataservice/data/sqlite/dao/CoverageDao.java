@@ -348,6 +348,46 @@ public class CoverageDao {
     }
 
     /**
+     * Get all coverage entries across all data types.
+     * Returns (data_type, sub_key, range_start, range_end) for fast inventory.
+     */
+    public List<CoverageEntry> getAllCoverage() throws SQLException {
+        Connection c = conn.getConnection();
+        List<CoverageEntry> entries = new ArrayList<>();
+
+        String sql = """
+            SELECT data_type, sub_key, MIN(range_start) as min_start, MAX(range_end) as max_end
+            FROM data_coverage
+            GROUP BY data_type, sub_key
+            ORDER BY data_type, sub_key
+            """;
+
+        try (java.sql.Statement stmt = c.createStatement();
+             ResultSet rs = stmt.executeQuery(sql)) {
+            while (rs.next()) {
+                entries.add(new CoverageEntry(
+                    rs.getString("data_type"),
+                    rs.getString("sub_key"),
+                    rs.getLong("min_start"),
+                    rs.getLong("max_end")
+                ));
+            }
+        }
+
+        return entries;
+    }
+
+    /**
+     * Aggregated coverage entry for inventory display.
+     */
+    public record CoverageEntry(
+        String dataType,
+        String subKey,
+        long startTime,
+        long endTime
+    ) {}
+
+    /**
      * Coverage range record.
      */
     public record CoverageRange(

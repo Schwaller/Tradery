@@ -566,6 +566,17 @@ public class IntelFrame extends JFrame {
     }
 
     private void showTopicDetails(TopicNode node) {
+        // Delegate to entity details if this is a coin with a matching entity
+        if ("coin".equals(node.typeId()) && currentEntities != null) {
+            String symbol = node.id().contains(":") ? node.id().substring(node.id().indexOf(':') + 1) : node.id();
+            for (CoinEntity e : currentEntities) {
+                if (symbol.equalsIgnoreCase(e.symbol())) {
+                    showEntityDetails(e);
+                    return;
+                }
+            }
+        }
+
         selectedArticle = null;
         selectedEntity = null;
         currentMode = DetailMode.NONE;
@@ -1155,6 +1166,19 @@ public class IntelFrame extends JFrame {
         List<CoinRelationship> filteredRels = rels.stream()
             .filter(r -> entityIds.contains(r.fromId()) && entityIds.contains(r.toId()))
             .toList();
+
+        // Apply relationship type filter
+        if (config.getRelationshipTypeFilter() != null && !config.getRelationshipTypeFilter().isEmpty()) {
+            Set<String> relTypeFilter = config.getRelationshipTypeFilter();
+            filteredRels = filteredRels.stream()
+                .filter(r -> relTypeFilter.contains(r.type().name().toLowerCase()))
+                .toList();
+        }
+
+        // Respect showConnections toggle
+        if (!config.isShowConnections()) {
+            filteredRels = List.of();
+        }
 
         cgp.setData(new ArrayList<>(entities), new ArrayList<>(filteredRels));
 

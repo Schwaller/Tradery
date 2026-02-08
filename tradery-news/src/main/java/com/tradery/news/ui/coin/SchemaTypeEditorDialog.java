@@ -44,9 +44,25 @@ public class SchemaTypeEditorDialog extends JDialog {
     }
 
     private void initUI() {
+        JPanel contentPane = new JPanel(new BorderLayout(0, 0));
+        setContentPane(contentPane);
+
+        // 52px header bar with centered title
+        JPanel hBar = new JPanel(new BorderLayout());
+        hBar.setPreferredSize(new Dimension(0, 52));
+        JLabel windowTitle = new JLabel("Edit " + type.name(), SwingConstants.CENTER);
+        windowTitle.setFont(new Font("SansSerif", Font.BOLD, 13));
+        windowTitle.setForeground(UIManager.getColor("Label.disabledForeground"));
+        hBar.add(windowTitle, BorderLayout.CENTER);
+        JPanel hWrapper = new JPanel(new BorderLayout());
+        hWrapper.add(hBar, BorderLayout.CENTER);
+        hWrapper.add(new JSeparator(), BorderLayout.SOUTH);
+        contentPane.add(hWrapper, BorderLayout.NORTH);
+
         JPanel content = new JPanel(new BorderLayout(10, 10));
         content.setBorder(new EmptyBorder(15, 15, 15, 15));
         content.setBackground(new Color(45, 47, 51));
+        contentPane.add(content, BorderLayout.CENTER);
 
         // Top form
         JPanel formPanel = new JPanel(new GridBagLayout());
@@ -209,7 +225,6 @@ public class SchemaTypeEditorDialog extends JDialog {
 
         content.add(buttonPanel, BorderLayout.SOUTH);
 
-        setContentPane(content);
         getRootPane().setDefaultButton(saveBtn);
     }
 

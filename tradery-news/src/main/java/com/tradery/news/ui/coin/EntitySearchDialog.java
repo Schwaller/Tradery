@@ -33,6 +33,7 @@ public class EntitySearchDialog extends JDialog {
 
     private final CoinEntity sourceEntity;
     private final EntityStore store;
+    private final SchemaRegistry schemaRegistry;
     private final EntitySearchProcessor processor;
     private final EntityMatcher matcher;
 
@@ -57,7 +58,7 @@ public class EntitySearchDialog extends JDialog {
         Map<SearchLevel, Integer> resultCounts
     ) {}
 
-    private final Map<CoinRelationship.Type, TypeSearchState> typeStates = new LinkedHashMap<>();
+    private final Map<SchemaType, TypeSearchState> typeStates = new LinkedHashMap<>();
     private boolean generalSearchInProgress = false;
     private int activeInvestigations = 0;
 
@@ -85,11 +86,12 @@ public class EntitySearchDialog extends JDialog {
     private static final String PREF_WIDTH = "entitySearchDialog.width";
     private static final String PREF_HEIGHT = "entitySearchDialog.height";
 
-    public EntitySearchDialog(Frame owner, CoinEntity entity, EntityStore store) {
+    public EntitySearchDialog(Frame owner, CoinEntity entity, EntityStore store, SchemaRegistry schemaRegistry) {
         super((Frame) null, "Search Related — " + entity.name(), false);
         this.sourceEntity = entity;
         this.store = store;
-        this.processor = new EntitySearchProcessor();
+        this.schemaRegistry = schemaRegistry;
+        this.processor = new EntitySearchProcessor(schemaRegistry);
         this.matcher = new EntityMatcher(store);
 
         // Transparent title bar (same style as IntelFrame)
@@ -273,7 +275,8 @@ public class EntitySearchDialog extends JDialog {
     private void populateTypesPanel() {
         typesPanel.removeAll();
 
-        List<CoinRelationship.Type> searchableTypes = CoinRelationship.Type.getSearchableTypes(sourceEntity.type());
+        String sourceTypeId = sourceEntity.type().name().toLowerCase();
+        List<SchemaType> searchableTypes = schemaRegistry.getRelationshipTypesFor(sourceTypeId);
 
         // Grid: 4 columns (label + 3 buttons), N rows
         JPanel gridPanel = new JPanel(new GridBagLayout());
@@ -281,8 +284,8 @@ public class EntitySearchDialog extends JDialog {
         gridPanel.setAlignmentX(Component.LEFT_ALIGNMENT);
 
         int row = 0;
-        for (CoinRelationship.Type relType : searchableTypes) {
-            addTypeRow(gridPanel, relType, row++);
+        for (SchemaType relSchema : searchableTypes) {
+            addTypeRow(gridPanel, relSchema, row++);
         }
 
         // Wrap grid in a panel that doesn't expand vertically
@@ -294,21 +297,25 @@ public class EntitySearchDialog extends JDialog {
         typesPanel.revalidate();
     }
 
-    private void addTypeRow(JPanel gridPanel, CoinRelationship.Type relType, int row) {
+    private void addTypeRow(JPanel gridPanel, SchemaType relSchema, int row) {
         GridBagConstraints gbc = new GridBagConstraints();
         gbc.gridy = row;
         gbc.insets = new Insets(9, 3, 9, 3);
         gbc.fill = GridBagConstraints.NONE;
         gbc.anchor = GridBagConstraints.WEST;
 
-        // Type label
-        String label = getShortLabel(relType, sourceEntity.type());
+        // Type label from schema metadata
+        String sourceTypeId = sourceEntity.type().name().toLowerCase();
+        String label = relSchema.pluralLabelFor(sourceTypeId);
         JLabel typeLabel = new JLabel(label);
-        typeLabel.setForeground(relType.color());
+        typeLabel.setForeground(relSchema.color());
         typeLabel.setFont(typeLabel.getFont().deriveFont(Font.BOLD));
         gbc.gridx = 0;
         gbc.weightx = 1.0;
         gridPanel.add(typeLabel, gbc);
+
+        // Resolve the enum type for search calls
+        CoinRelationship.Type relType = resolveRelType(relSchema.id());
 
         Map<SearchLevel, JButton> buttons = new HashMap<>();
         Map<SearchLevel, Integer> counts = new HashMap<>();
@@ -333,22 +340,25 @@ public class EntitySearchDialog extends JDialog {
             gridPanel.add(btn, gbc);
         }
 
-        typeStates.put(relType, new TypeSearchState(buttons, counts));
+        typeStates.put(relSchema, new TypeSearchState(buttons, counts));
     }
 
-    private String getShortLabel(CoinRelationship.Type relType, CoinEntity.Type entityType) {
-        return switch (relType) {
-            case ETF_TRACKS -> "ETFs";
-            case ETP_TRACKS -> "ETPs";
-            case INVESTED_IN -> entityType == CoinEntity.Type.VC ? "Investments" : "VCs";
-            case L2_OF -> entityType == CoinEntity.Type.L2 ? "L1" : "L2s";
-            case ECOSYSTEM -> "Ecosystem";
-            case PARTNER -> "Partners";
-            case FORK_OF -> "Forks";
-            case FOUNDED_BY -> "Founders";
-            case BRIDGE -> "Bridges";
-            case COMPETITOR -> "Competitors";
-        };
+    private TypeSearchState findTypeSearchState(CoinRelationship.Type relType) {
+        if (relType == null) return null;
+        for (Map.Entry<SchemaType, TypeSearchState> entry : typeStates.entrySet()) {
+            if (entry.getKey().id().equalsIgnoreCase(relType.name())) {
+                return entry.getValue();
+            }
+        }
+        return null;
+    }
+
+    private CoinRelationship.Type resolveRelType(String schemaId) {
+        try {
+            return CoinRelationship.Type.valueOf(schemaId.toUpperCase());
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
     }
 
     private JPanel createBottomPanel() {
@@ -447,7 +457,8 @@ public class EntitySearchDialog extends JDialog {
             int count = entities.size();
 
             button.setText("More: " + count);
-            typeStates.get(relType).resultCounts().put(SearchLevel.DEEP, count);
+            TypeSearchState tss = findTypeSearchState(relType);
+            if (tss != null) tss.resultCounts().put(SearchLevel.DEEP, count);
 
             for (EntitySearchProcessor.DiscoveredEntity entity : entities) {
                 String id = entity.generateId();
@@ -513,10 +524,11 @@ public class EntitySearchDialog extends JDialog {
                 }
 
                 // Update buttons with counts per type
-                for (Map.Entry<CoinRelationship.Type, TypeSearchState> entry : typeStates.entrySet()) {
-                    CoinRelationship.Type type = entry.getKey();
+                for (Map.Entry<SchemaType, TypeSearchState> entry : typeStates.entrySet()) {
+                    SchemaType schemaType = entry.getKey();
+                    CoinRelationship.Type relType = resolveRelType(schemaType.id());
                     JButton btn = entry.getValue().buttons().get(SearchLevel.GENERAL);
-                    int count = countsByType.getOrDefault(type, 0);
+                    int count = relType != null ? countsByType.getOrDefault(relType, 0) : 0;
                     btn.setText("General: " + count);
                     entry.getValue().resultCounts().put(SearchLevel.GENERAL, count);
                 }
@@ -558,7 +570,8 @@ public class EntitySearchDialog extends JDialog {
             int count = entities.size();
 
             button.setText(originalText + ": " + count);
-            typeStates.get(relType).resultCounts().put(level, count);
+            TypeSearchState tss = findTypeSearchState(relType);
+            if (tss != null) tss.resultCounts().put(level, count);
 
             for (EntitySearchProcessor.DiscoveredEntity entity : entities) {
                 String id = entity.generateId();
@@ -698,9 +711,12 @@ public class EntitySearchDialog extends JDialog {
         }
 
         // Show relationship type (entity type is already in the group header)
-        String relLabel = getShortLabel(entity.relationshipType(), sourceEntity.type());
+        String sourceTypeId = sourceEntity.type().name().toLowerCase();
+        SchemaType relSchema = schemaRegistry.getType(entity.relationshipType().name().toLowerCase());
+        String relLabel = relSchema != null ? relSchema.pluralLabelFor(sourceTypeId) : entity.relationshipType().label();
         JLabel relTypeLabel = new JLabel("[" + relLabel + "]");
-        relTypeLabel.setForeground(entity.relationshipType().color());
+        Color relColor = relSchema != null ? relSchema.color() : entity.relationshipType().color();
+        relTypeLabel.setForeground(relColor);
         relTypeLabel.setFont(baseFont.deriveFont(baseFont.getSize() - 2f));
         topRow.add(relTypeLabel);
 
@@ -984,19 +1000,12 @@ public class EntitySearchDialog extends JDialog {
 
     private CoinRelationship createRelationship(String sourceId, String targetId,
                                                  CoinRelationship.Type relType, String note) {
-        return switch (relType) {
-            case ETF_TRACKS, ETP_TRACKS ->
-                new CoinRelationship(targetId, sourceId, relType, note);
-            case INVESTED_IN ->
-                sourceEntity.type() == CoinEntity.Type.VC
-                    ? new CoinRelationship(sourceId, targetId, relType, note)
-                    : new CoinRelationship(targetId, sourceId, relType, note);
-            case L2_OF ->
-                sourceEntity.type() == CoinEntity.Type.L2
-                    ? new CoinRelationship(sourceId, targetId, relType, note)
-                    : new CoinRelationship(targetId, sourceId, relType, note);
-            default ->
-                new CoinRelationship(sourceId, targetId, relType, note);
-        };
+        SchemaType relSchema = schemaRegistry.getType(relType.name().toLowerCase());
+        if (relSchema != null) {
+            String sourceTypeId = sourceEntity.type().name().toLowerCase();
+            return relSchema.createDirected(sourceId, sourceTypeId, targetId, relType, note);
+        }
+        // Fallback if schema not found
+        return new CoinRelationship(sourceId, targetId, relType, note);
     }
 }

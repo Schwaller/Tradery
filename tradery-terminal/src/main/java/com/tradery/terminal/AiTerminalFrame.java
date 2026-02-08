@@ -45,15 +45,23 @@ public class AiTerminalFrame extends JFrame {
         contentPanel = new JPanel(new BorderLayout(0, 0));
         contentPanel.setBackground(new Color(30, 30, 30));
 
-        // Header with redock button
+        // 52px header with redock button
         JPanel header = new JPanel(new BorderLayout());
         header.setBackground(new Color(45, 45, 45));
-        header.setBorder(BorderFactory.createEmptyBorder(4, 8, 4, 8));
+        header.setPreferredSize(new Dimension(0, 52));
+
+        JPanel headerLeft = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
+        headerLeft.setOpaque(false);
+        headerLeft.add(javax.swing.Box.createHorizontalStrut(70)); // space for traffic light buttons
 
         JLabel titleLabel = new JLabel("Claude Terminal");
         titleLabel.setForeground(Color.WHITE);
-        titleLabel.setFont(titleLabel.getFont().deriveFont(Font.BOLD, 12f));
+        titleLabel.setFont(new Font("SansSerif", Font.BOLD, 13));
+        headerLeft.add(titleLabel);
+        header.add(headerLeft, BorderLayout.WEST);
 
+        JPanel headerRight = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
+        headerRight.setOpaque(false);
         redockBtn = new JButton("Redock");
         redockBtn.setFont(redockBtn.getFont().deriveFont(10f));
         redockBtn.setMargin(new Insets(2, 8, 2, 8));
@@ -62,11 +70,13 @@ public class AiTerminalFrame extends JFrame {
                 onRedock.run();
             }
         });
+        headerRight.add(redockBtn);
+        header.add(headerRight, BorderLayout.EAST);
 
-        header.add(titleLabel, BorderLayout.WEST);
-        header.add(redockBtn, BorderLayout.EAST);
-
-        contentPanel.add(header, BorderLayout.NORTH);
+        JPanel headerWrapper = new JPanel(new BorderLayout());
+        headerWrapper.add(header, BorderLayout.CENTER);
+        headerWrapper.add(new javax.swing.JSeparator(), BorderLayout.SOUTH);
+        contentPanel.add(headerWrapper, BorderLayout.NORTH);
         add(contentPanel);
 
         // Center relative to parent or screen

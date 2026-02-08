@@ -1,0 +1,20 @@
+// tradery-data-ui: Shared data management UI components
+// Used by both tradery-forge and tradery-desk for the "Manage Data" dialog
+
+plugins {
+    id 'java-library'
+}
+
+dependencies {
+    // Data client for accessing data service (DataServiceClient + DTOs)
+    api project(':tradery-data-client')
+
+    // Shared UI components (CoverageHeatmapPanel, BorderlessScrollPane)
+    api project(':tradery-ui-common')
+
+    // Core module for DataHealth model (used by stub method)
+    implementation project(':tradery-core')
+
+    // FlatLaf Look and Feel
+    implementation 'com.formdev:flatlaf:3.4'
+}

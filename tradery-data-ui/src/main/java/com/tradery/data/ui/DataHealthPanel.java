@@ -1,16 +1,13 @@
-package com.tradery.forge.ui;
+package com.tradery.data.ui;
 
-import com.tradery.forge.data.DataConfig;
-import com.tradery.forge.data.sqlite.SqliteDataStore;
-import com.tradery.forge.data.sqlite.dao.CoverageDao;
+import com.tradery.dataclient.DataServiceClient;
+import com.tradery.dataclient.DataServiceClient.*;
 import com.tradery.ui.coverage.CoverageHeatmapPanel;
 import com.tradery.ui.coverage.CoverageLevel;
 import com.tradery.ui.coverage.CoverageSlice;
 
 import javax.swing.*;
 import java.awt.*;
-import java.io.File;
-import java.sql.SQLException;
 import java.time.*;
 import java.util.*;
 import java.util.List;
@@ -18,19 +15,22 @@ import java.util.List;
 /**
  * Hourly-resolution coverage heatmap for data health visualization.
  * Delegates rendering to CoverageHeatmapPanel from ui-common.
+ * All data access goes through the data service API.
  */
 public class DataHealthPanel extends JPanel {
 
-    private final SqliteDataStore dataStore;
+    private final DataServiceClient client;
     private final CoverageHeatmapPanel heatmap;
 
     private String symbol;
     private String resolution;
     private String customMessage;
     private JLabel messageLabel;
+    private JProgressBar loadingBar;
+    private volatile int loadGeneration;  // cancellation token for stale loads
 
-    public DataHealthPanel(SqliteDataStore dataStore) {
-        this.dataStore = dataStore;
+    public DataHealthPanel(DataServiceClient client) {
+        this.client = client;
         this.heatmap = new CoverageHeatmapPanel();
 
         setLayout(new BorderLayout());
@@ -39,11 +39,18 @@ public class DataHealthPanel extends JPanel {
         messageLabel.setForeground(UIManager.getColor("Label.disabledForeground"));
         messageLabel.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 14));
 
+        loadingBar = new JProgressBar();
+        loadingBar.setIndeterminate(true);
+        loadingBar.setPreferredSize(new Dimension(0, 3));
+        loadingBar.setVisible(false);
+
         JScrollPane scroll = new JScrollPane(heatmap,
                 JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED,
                 JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
         scroll.setBorder(BorderFactory.createEmptyBorder());
         scroll.getVerticalScrollBar().setUnitIncrement(16);
+
+        add(loadingBar, BorderLayout.NORTH);
         add(scroll, BorderLayout.CENTER);
     }
 
@@ -61,9 +68,11 @@ public class DataHealthPanel extends JPanel {
      * Set a custom message to display instead of data.
      */
     public void setCustomMessage(String message) {
+        ++loadGeneration; // cancel any in-flight load
         this.symbol = null;
         this.resolution = null;
         this.customMessage = message;
+        loadingBar.setVisible(false);
         heatmap.setData(List.of());
         showMessage(message);
     }
@@ -72,28 +81,28 @@ public class DataHealthPanel extends JPanel {
         this.symbol = symbol;
         this.resolution = "aggTrades";
         this.customMessage = null;
-        loadAggTradesCoverage(symbol);
+        loadCoverageFromApi(symbol, "agg_trades", "default");
     }
 
     public void setFundingRateData(String symbol) {
         this.symbol = symbol;
         this.resolution = "fundingRate";
         this.customMessage = null;
-        loadCoverageFromDao(symbol, "funding_rates", "default");
+        loadCoverageFromApi(symbol, "funding_rates", "default");
     }
 
     public void setOpenInterestData(String symbol) {
         this.symbol = symbol;
         this.resolution = "openInterest";
         this.customMessage = null;
-        loadCoverageFromDao(symbol, "open_interest", "default");
+        loadCoverageFromApi(symbol, "open_interest", "default");
     }
 
     public void setPremiumIndexData(String symbol) {
         this.symbol = symbol;
         this.resolution = "premiumIndex";
         this.customMessage = null;
-        loadCoverageFromDao(symbol, "premium_index", "1m");
+        loadCoverageFromApi(symbol, "premium_index", "1m");
     }
 
     /**
@@ -103,13 +112,13 @@ public class DataHealthPanel extends JPanel {
         if (symbol == null) return;
 
         if ("aggTrades".equals(resolution)) {
-            loadAggTradesCoverage(symbol);
+            loadCoverageFromApi(symbol, "agg_trades", "default");
         } else if ("fundingRate".equals(resolution)) {
-            loadCoverageFromDao(symbol, "funding_rates", "default");
+            loadCoverageFromApi(symbol, "funding_rates", "default");
         } else if ("openInterest".equals(resolution)) {
-            loadCoverageFromDao(symbol, "open_interest", "default");
+            loadCoverageFromApi(symbol, "open_interest", "default");
         } else if ("premiumIndex".equals(resolution)) {
-            loadCoverageFromDao(symbol, "premium_index", "1m");
+            loadCoverageFromApi(symbol, "premium_index", "1m");
         } else if (resolution != null) {
             refreshData();
         }
@@ -122,8 +131,8 @@ public class DataHealthPanel extends JPanel {
             return;
         }
 
-        // For standard candle resolutions, use coverage DAO
-        loadCoverageFromDao(symbol, "klines", resolution);
+        // For standard candle resolutions, use coverage API
+        loadCoverageFromApi(symbol, "klines", resolution);
     }
 
     // ========== Unused stubs kept for API compatibility ==========
@@ -134,103 +143,55 @@ public class DataHealthPanel extends JPanel {
 
     // ========== Coverage loading ==========
 
-    private void loadCoverageFromDao(String symbol, String dataType, String subKey) {
-        try {
-            CoverageDao dao = dataStore.forSymbol(symbol).coverage();
-            List<CoverageDao.CoverageRange> ranges = dao.getCoverageRanges(dataType, subKey);
+    private void loadCoverageFromApi(String symbol, String dataType, String subKey) {
+        int gen = ++loadGeneration;
 
-            if (ranges.isEmpty()) {
-                heatmap.setData(List.of());
-                showMessage("No coverage data for " + symbol + " / " + (subKey.isEmpty() ? dataType : subKey));
-                return;
-            }
-
-            hideMessage();
-            List<CoverageSlice> slices = rangesToSlices(ranges);
-            heatmap.setData(slices);
-        } catch (SQLException e) {
-            heatmap.setData(List.of());
-            showMessage("Error loading coverage: " + e.getMessage());
-        }
-    }
-
-    private void loadAggTradesCoverage(String symbol) {
-        // AggTrades stored as hourly files: data/{symbol}/aggTrades/yyyy-MM-dd/HH.csv
-        File aggDir = new File(DataConfig.getInstance().getDataDir(), symbol + "/aggTrades");
-        if (!aggDir.exists()) {
-            heatmap.setData(List.of());
-            showMessage("No aggTrades data for " + symbol);
-            return;
-        }
-
-        File[] dayDirs = aggDir.listFiles(File::isDirectory);
-        if (dayDirs == null || dayDirs.length == 0) {
-            heatmap.setData(List.of());
-            showMessage("No aggTrades data for " + symbol);
-            return;
-        }
-
-        List<CoverageSlice> slices = new ArrayList<>();
-
-        for (File dayDir : dayDirs) {
-            try {
-                LocalDate date = LocalDate.parse(dayDir.getName());
-                int year = date.getYear();
-                int month = date.getMonthValue();
-                int day = date.getDayOfMonth();
-
-                // Scan hourly files
-                Set<Integer> completeHours = new HashSet<>();
-                Set<Integer> partialHours = new HashSet<>();
-                File[] hourFiles = dayDir.listFiles((dir, name) -> name.endsWith(".csv"));
-                if (hourFiles == null) continue;
-
-                for (File hf : hourFiles) {
-                    String name = hf.getName();
-                    boolean partial = name.endsWith(".partial.csv");
-                    String hourStr = name.replace(".partial.csv", "").replace(".csv", "");
-                    try {
-                        int hour = Integer.parseInt(hourStr);
-                        if (partial) {
-                            partialHours.add(hour);
-                        } else {
-                            completeHours.add(hour);
-                        }
-                    } catch (NumberFormatException ignored) {}
-                }
-
-                // Emit slices for all 24 hours
-                for (int h = 0; h < 24; h++) {
-                    CoverageLevel level;
-                    if (completeHours.contains(h)) {
-                        level = CoverageLevel.FULL;
-                    } else if (partialHours.contains(h)) {
-                        level = CoverageLevel.PARTIAL;
-                    } else {
-                        level = CoverageLevel.MISSING;
-                    }
-                    slices.add(new CoverageSlice(year, month, day, h, level));
-                }
-            } catch (Exception ignored) {
-                // Skip invalid directory names
-            }
-        }
-
-        if (slices.isEmpty()) {
-            heatmap.setData(List.of());
-            showMessage("No aggTrades data for " + symbol);
-            return;
-        }
-
+        // Show loading state immediately on EDT
         hideMessage();
-        heatmap.setData(slices);
+        loadingBar.setVisible(true);
+
+        Thread.startVirtualThread(() -> {
+            try {
+                if (client == null) return;
+                CoverageRangesResponse response = client.getCoverageRanges(symbol, dataType, subKey);
+                if (gen != loadGeneration) return; // stale
+
+                if (response.ranges() == null || response.ranges().isEmpty()) {
+                    SwingUtilities.invokeLater(() -> {
+                        if (gen != loadGeneration) return;
+                        loadingBar.setVisible(false);
+                        heatmap.setData(List.of());
+                        showMessage("No coverage data for " + symbol + " / " + (subKey.equals("default") ? dataType : subKey));
+                    });
+                    return;
+                }
+
+                // Build slices off EDT (can be large for multi-year data)
+                List<CoverageSlice> slices = rangesToSlices(response.ranges());
+                if (gen != loadGeneration) return; // stale
+
+                SwingUtilities.invokeLater(() -> {
+                    if (gen != loadGeneration) return;
+                    loadingBar.setVisible(false);
+                    hideMessage();
+                    heatmap.setData(slices);
+                });
+            } catch (Exception e) {
+                SwingUtilities.invokeLater(() -> {
+                    if (gen != loadGeneration) return;
+                    loadingBar.setVisible(false);
+                    heatmap.setData(List.of());
+                    showMessage("Error loading coverage: " + e.getMessage());
+                });
+            }
+        });
     }
 
     /**
      * Convert coverage ranges (millisecond timestamps) to hourly CoverageSlices.
      * Each range is a continuous block of covered time. Hours outside any range are MISSING.
      */
-    private List<CoverageSlice> rangesToSlices(List<CoverageDao.CoverageRange> ranges) {
+    private List<CoverageSlice> rangesToSlices(List<CoverageRange> ranges) {
         if (ranges.isEmpty()) return List.of();
 
         // Find overall time bounds
@@ -254,7 +215,7 @@ public class DataHealthPanel extends JPanel {
 
             // Check if this hour overlaps any coverage range
             CoverageLevel level = CoverageLevel.MISSING;
-            for (CoverageDao.CoverageRange range : ranges) {
+            for (CoverageRange range : ranges) {
                 if (range.rangeEnd() < hourStartMs) continue;
                 if (range.rangeStart() > hourEndMs) break;
 

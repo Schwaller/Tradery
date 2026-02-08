@@ -47,17 +47,6 @@ public abstract class SettingsDialog extends JDialog {
         JPanel headerBar = new JPanel(new BorderLayout());
         headerBar.setPreferredSize(new Dimension(0, barHeight));
 
-        // Spacers to keep title clear of macOS traffic light buttons
-        JPanel leftSpacer = new JPanel();
-        leftSpacer.setPreferredSize(new Dimension(80, 0));
-        leftSpacer.setOpaque(false);
-        headerBar.add(leftSpacer, BorderLayout.WEST);
-
-        JPanel rightSpacer = new JPanel();
-        rightSpacer.setPreferredSize(new Dimension(80, 0));
-        rightSpacer.setOpaque(false);
-        headerBar.add(rightSpacer, BorderLayout.EAST);
-
         JLabel titleLabel = new JLabel("Settings", SwingConstants.CENTER);
         titleLabel.setFont(new Font("SansSerif", Font.BOLD, 13));
         titleLabel.setForeground(UIManager.getColor("Label.disabledForeground"));

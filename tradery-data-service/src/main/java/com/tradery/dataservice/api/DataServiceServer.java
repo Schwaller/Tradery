@@ -37,8 +37,10 @@ public class DataServiceServer {
     private final LiveAggTradeManager liveAggTradeManager;
     private final LiveMarkPriceManager liveMarkPriceManager;
     private final LiveOpenInterestPoller liveOpenInterestPoller;
+    private final SqliteDataStore dataStore;
     private final WebSocketHandler webSocketHandler;
     private final SymbolHandler symbolHandler;
+    private final InventoryHandler inventoryHandler;
     private Javalin app;
 
     public DataServiceServer(DataServiceConfig config, ConsumerRegistry consumerRegistry, SqliteDataStore dataStore,
@@ -46,6 +48,7 @@ public class DataServiceServer {
                              CoinGeckoClient coingeckoClient) {
         this.config = config;
         this.consumerRegistry = consumerRegistry;
+        this.dataStore = dataStore;
         this.objectMapper = createObjectMapper();
         this.liveCandleManager = new LiveCandleManager();
         this.liveAggTradeManager = new LiveAggTradeManager();
@@ -57,6 +60,7 @@ public class DataServiceServer {
             liveCandleManager, liveAggTradeManager, liveMarkPriceManager, liveOpenInterestPoller,
             pageManager.getAggTradesStore(), objectMapper);
         this.symbolHandler = new SymbolHandler(symbolSyncService, symbolsConnection, coingeckoClient);
+        this.inventoryHandler = new InventoryHandler(dataStore);
     }
 
     private ObjectMapper createObjectMapper() {
@@ -74,6 +78,7 @@ public class DataServiceServer {
         // Configure routes
         configurePageRoutes();
         configureDataRoutes();
+        configureInventoryRoutes();
         configureCoverageRoutes();
         configureSymbolRoutes();
         configureWebSocket();
@@ -125,10 +130,17 @@ public class DataServiceServer {
         app.get("/aggtrades", dataHandler::getAggTrades);
     }
 
+    private void configureInventoryRoutes() {
+        app.get("/inventory", inventoryHandler::getInventory);
+        app.get("/inventory/disk-usage", inventoryHandler::getDiskUsage);
+        app.delete("/data", inventoryHandler::deleteData);
+    }
+
     private void configureCoverageRoutes() {
-        CoverageHandler coverageHandler = new CoverageHandler(pageManager);
+        CoverageHandler coverageHandler = new CoverageHandler(pageManager, dataStore);
 
         app.get("/coverage", coverageHandler::getCoverage);
+        app.get("/coverage/ranges", coverageHandler::getCoverageRanges);
         app.get("/coverage/symbols", coverageHandler::getAvailableSymbols);
     }
 

@@ -63,6 +63,7 @@ public class PhaseChooserFrame extends JFrame {
         getRootPane().putClientProperty("apple.awt.fullWindowContent", true);
         getRootPane().putClientProperty("apple.awt.transparentTitleBar", true);
         getRootPane().putClientProperty("apple.awt.windowTitleVisible", false);
+        getRootPane().putClientProperty("FlatLaf.macOS.windowButtonsSpacing", "large");
 
         // Clean up on close
         addWindowListener(new WindowAdapter() {
@@ -121,12 +122,12 @@ public class PhaseChooserFrame extends JFrame {
     }
 
     private void layoutComponents() {
-        // Title bar
+        // 52px header bar with centered title
         JPanel titleBar = new JPanel(new BorderLayout());
-        titleBar.setPreferredSize(new Dimension(0, 28));
-        titleBar.setOpaque(false);
+        titleBar.setPreferredSize(new Dimension(0, 52));
         JLabel titleLabel = new JLabel("Phases", SwingConstants.CENTER);
-        titleLabel.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 13));
+        titleLabel.setFont(new Font("SansSerif", Font.BOLD, 13));
+        titleLabel.setForeground(UIManager.getColor("Label.disabledForeground"));
         titleBar.add(titleLabel, BorderLayout.CENTER);
 
         // Left panel: phase list (snug to all edges)

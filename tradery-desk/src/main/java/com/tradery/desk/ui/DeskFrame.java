@@ -201,8 +201,11 @@ public class DeskFrame extends JFrame {
         rightContent.setOpaque(false);
         rightContent.add(priceLabel);
         rightContent.add(updatedLabel);
-        JButton dataBtn = new ToolbarButton("Data");
-        dataBtn.addActionListener(e -> DeskStatusWindow.showWindow());
+        JButton dataBtn = new ToolbarButton("Manage Data");
+        dataBtn.addActionListener(e -> {
+            com.tradery.dataclient.DataServiceClient client = com.tradery.desk.DeskAppContext.getInstance().getDataClient();
+            com.tradery.data.ui.DataManagementDialog.show(DeskFrame.this, client, null);
+        });
         rightContent.add(dataBtn);
         JButton settingsBtn = new ToolbarButton("Settings");
         settingsBtn.addActionListener(e -> new DeskSettingsDialog(this).setVisible(true));

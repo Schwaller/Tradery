@@ -53,9 +53,23 @@ public class SymbolChooserDialog extends JDialog {
         buttonPanel.add(selectBtn);
         buttonPanel.add(cancelBtn);
 
-        setLayout(new BorderLayout());
-        add(panel, BorderLayout.CENTER);
-        add(buttonPanel, BorderLayout.SOUTH);
+        JPanel contentPane = new JPanel(new BorderLayout(0, 0));
+        setContentPane(contentPane);
+
+        // 52px header bar with centered title
+        JPanel hBar = new JPanel(new BorderLayout());
+        hBar.setPreferredSize(new Dimension(0, 52));
+        JLabel windowTitle = new JLabel(title, SwingConstants.CENTER);
+        windowTitle.setFont(new Font("SansSerif", Font.BOLD, 13));
+        windowTitle.setForeground(UIManager.getColor("Label.disabledForeground"));
+        hBar.add(windowTitle, BorderLayout.CENTER);
+        JPanel hWrapper = new JPanel(new BorderLayout());
+        hWrapper.add(hBar, BorderLayout.CENTER);
+        hWrapper.add(new JSeparator(), BorderLayout.SOUTH);
+        contentPane.add(hWrapper, BorderLayout.NORTH);
+
+        contentPane.add(panel, BorderLayout.CENTER);
+        contentPane.add(buttonPanel, BorderLayout.SOUTH);
 
         setSize(700, 500);
         setLocationRelativeTo(parent);

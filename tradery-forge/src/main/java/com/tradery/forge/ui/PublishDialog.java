@@ -53,7 +53,7 @@ public class PublishDialog extends JDialog {
         layoutComponents();
         loadVersions();
 
-        setSize(500, 400);
+        setSize(500, 450);
         setLocationRelativeTo(owner);
     }
 
@@ -98,8 +98,25 @@ public class PublishDialog extends JDialog {
     }
 
     private void layoutComponents() {
+        JPanel contentPane = new JPanel(new BorderLayout(0, 0));
+        setContentPane(contentPane);
+
+        // 52px header bar with centered title
+        int barHeight = 52;
+        JPanel titleBar = new JPanel(new BorderLayout());
+        titleBar.setPreferredSize(new Dimension(0, barHeight));
+        JLabel windowTitle = new JLabel("Publish to Library", SwingConstants.CENTER);
+        windowTitle.setFont(new Font("SansSerif", Font.BOLD, 13));
+        windowTitle.setForeground(UIManager.getColor("Label.disabledForeground"));
+        titleBar.add(windowTitle, BorderLayout.CENTER);
+        JPanel titleBarWrapper = new JPanel(new BorderLayout());
+        titleBarWrapper.add(titleBar, BorderLayout.CENTER);
+        titleBarWrapper.add(new JSeparator(), BorderLayout.SOUTH);
+        contentPane.add(titleBarWrapper, BorderLayout.NORTH);
+
         JPanel content = new JPanel(new BorderLayout(8, 8));
         content.setBorder(BorderFactory.createEmptyBorder(12, 12, 12, 12));
+        contentPane.add(content, BorderLayout.CENTER);
 
         // Header
         JPanel headerPanel = new JPanel(new BorderLayout(8, 4));
@@ -140,8 +157,6 @@ public class PublishDialog extends JDialog {
         buttonPanel.add(statusLabel, BorderLayout.SOUTH);
 
         content.add(buttonPanel, BorderLayout.SOUTH);
-
-        setContentPane(content);
     }
 
     private void loadVersions() {

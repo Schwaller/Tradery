@@ -208,6 +208,17 @@ public class InteractiveHoopEditorFrame extends JFrame implements DataPageListen
         JPanel contentPane = new JPanel(new BorderLayout(0, 0));
         setContentPane(contentPane);
 
+        // 52px header bar with centered title
+        JPanel hBar = new JPanel(new BorderLayout());
+        hBar.setPreferredSize(new Dimension(0, 52));
+        JLabel windowTitle = new JLabel("Hoop Patterns", SwingConstants.CENTER);
+        windowTitle.setFont(new Font("SansSerif", Font.BOLD, 13));
+        windowTitle.setForeground(UIManager.getColor("Label.disabledForeground"));
+        hBar.add(windowTitle, BorderLayout.CENTER);
+        JPanel hWrapper = new JPanel(new BorderLayout());
+        hWrapper.add(hBar, BorderLayout.CENTER);
+        hWrapper.add(new JSeparator(), BorderLayout.SOUTH);
+
         // Toolbar
         JPanel toolbar = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 4));
         toolbar.add(new JLabel("Symbol:"));
@@ -232,7 +243,12 @@ public class InteractiveHoopEditorFrame extends JFrame implements DataPageListen
         toolbar.add(Box.createHorizontalGlue());
         toolbar.add(statusLabel);
 
-        contentPane.add(toolbar, BorderLayout.NORTH);
+        JPanel topStack = new JPanel();
+        topStack.setLayout(new BoxLayout(topStack, BoxLayout.Y_AXIS));
+        topStack.add(hWrapper);
+        topStack.add(toolbar);
+        topStack.add(new JSeparator());
+        contentPane.add(topStack, BorderLayout.NORTH);
 
         // Left panel: Pattern list
         JPanel leftPanel = new JPanel(new BorderLayout(0, 4));

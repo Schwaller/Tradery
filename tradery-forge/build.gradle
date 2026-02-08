@@ -34,6 +34,9 @@ dependencies {
     // Data client for accessing data service
     implementation project(':tradery-data-client')
 
+    // Shared data management UI (DataManagementDialog)
+    implementation project(':tradery-data-ui')
+
     // Charts module for reusable chart components
     implementation project(':tradery-charts')
 

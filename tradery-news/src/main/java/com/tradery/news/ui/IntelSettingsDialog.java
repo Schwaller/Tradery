@@ -9,6 +9,7 @@ import com.tradery.ai.AiProfile;
 import com.tradery.ai.AiProvider;
 import com.tradery.news.fetch.RssFetcher;
 import com.tradery.news.ui.coin.CoinEntity;
+import com.tradery.news.ui.coin.CoinRelationship;
 import com.tradery.news.ui.coin.EntityStore;
 import com.tradery.news.ui.coin.SchemaRegistry;
 import com.tradery.news.ui.coin.SchemaType;
@@ -130,6 +131,7 @@ public class IntelSettingsDialog extends SettingsDialog {
                 selected.setBands(edited.getBands());
                 selected.setEntityTypeFilter(edited.getEntityTypeFilter());
                 selected.setEntitySourceFilter(edited.getEntitySourceFilter());
+                selected.setRelationshipTypeFilter(edited.getRelationshipTypeFilter());
                 selected.setShowLabels(edited.isShowLabels());
                 selected.setShowConnections(edited.isShowConnections());
                 config.save();
@@ -356,6 +358,24 @@ public class IntelSettingsDialog extends SettingsDialog {
         }
         formPanel.add(sourceCombo, fieldGbc);
 
+        // Relationship type filter
+        labelGbc.gridx = 0; labelGbc.gridy = row;
+        JLabel relTypeLabel = new JLabel("Relationships:");
+        formPanel.add(relTypeLabel, labelGbc);
+        fieldGbc.gridx = 1; fieldGbc.gridy = row++;
+
+        JPanel relTypesPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 2));
+        relTypesPanel.setOpaque(false);
+        Map<String, JCheckBox> relTypeCheckboxes = new LinkedHashMap<>();
+        Set<String> existingRelFilter = existing != null ? existing.getRelationshipTypeFilter() : null;
+        for (CoinRelationship.Type rt : CoinRelationship.Type.values()) {
+            JCheckBox cb = new JCheckBox(rt.label());
+            cb.setSelected(existingRelFilter == null || existingRelFilter.contains(rt.name().toLowerCase()));
+            relTypeCheckboxes.put(rt.name().toLowerCase(), cb);
+            relTypesPanel.add(cb);
+        }
+        formPanel.add(relTypesPanel, fieldGbc);
+
         // --- Shared display settings ---
         labelGbc.gridx = 0; labelGbc.gridy = row;
         formPanel.add(new JLabel(), labelGbc);
@@ -382,6 +402,8 @@ public class IntelSettingsDialog extends SettingsDialog {
             typesPanel.setVisible(!isNewsMap);
             sourceFilterLabel.setVisible(!isNewsMap);
             sourceCombo.setVisible(!isNewsMap);
+            relTypeLabel.setVisible(!isNewsMap);
+            relTypesPanel.setVisible(!isNewsMap);
             formPanel.revalidate();
         };
         typeCombo.addActionListener(e -> updateVisibility.run());
@@ -434,6 +456,16 @@ public class IntelSettingsDialog extends SettingsDialog {
                 int sourceIdx = sourceCombo.getSelectedIndex();
                 if (sourceIdx == 1) pc.setEntitySourceFilter(Set.of("coingecko"));
                 else if (sourceIdx == 2) pc.setEntitySourceFilter(Set.of("manual"));
+
+                // Relationship type filter (null = all)
+                boolean allRelChecked = relTypeCheckboxes.values().stream().allMatch(JCheckBox::isSelected);
+                if (!allRelChecked) {
+                    Set<String> relFilter = new LinkedHashSet<>();
+                    relTypeCheckboxes.forEach((typeName, cb) -> {
+                        if (cb.isSelected()) relFilter.add(typeName);
+                    });
+                    pc.setRelationshipTypeFilter(relFilter);
+                }
             }
 
             result[0] = pc;

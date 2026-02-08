@@ -104,7 +104,7 @@ public class SqliteDataStore {
     /**
      * Get or create the FearGreedDao (lazy, uses dedicated DB).
      */
-    private synchronized FearGreedDao getFearGreedDao() {
+    public synchronized FearGreedDao getFearGreedDao() {
         if (fearGreedDao == null) {
             try {
                 SqliteConnection conn = SqliteConnection.forSymbol(FEAR_GREED_SYMBOL);

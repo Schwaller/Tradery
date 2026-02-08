@@ -1,0 +1,101 @@
+// tradery-sharing-tests: HeadlessPeer app + Testcontainers integration tests
+
+plugins {
+    id 'java'
+    id 'application'
+}
+
+application {
+    mainClass = 'com.tradery.sharing.tests.HeadlessPeerApp'
+}
+
+// Separate configuration for external (non-project) dependencies only
+// This avoids the ExtraJavaModuleInfo transform failing on project JARs with module-info.java
+configurations {
+    externalRuntime {
+        canBeResolved = true
+        canBeConsumed = false
+    }
+}
+
+dependencies {
+    // Main: HeadlessPeer app
+    implementation project(':tradery-sharing')
+    implementation project(':tradery-documents')
+    implementation project(':tradery-news')
+
+    // HTTP server for control API
+    implementation "io.javalin:javalin:${rootProject.ext.javalinVersion}"
+
+    // JSON + YAML
+    implementation "com.fasterxml.jackson.core:jackson-databind:${rootProject.ext.jacksonVersion}"
+    implementation "com.fasterxml.jackson.dataformat:jackson-dataformat-yaml:${rootProject.ext.jacksonVersion}"
+
+    // SQLite (needed by FactStore at runtime)
+    implementation "org.xerial:sqlite-jdbc:${rootProject.ext.sqliteVersion}"
+
+    // Logging
+    implementation "org.slf4j:slf4j-api:${rootProject.ext.slf4jVersion}"
+    runtimeOnly "org.slf4j:slf4j-simple:${rootProject.ext.slf4jVersion}"
+
+    // Mirror external deps in the externalRuntime config
+    externalRuntime "io.javalin:javalin:${rootProject.ext.javalinVersion}"
+    externalRuntime "com.fasterxml.jackson.core:jackson-databind:${rootProject.ext.jacksonVersion}"
+    externalRuntime "com.fasterxml.jackson.dataformat:jackson-dataformat-yaml:${rootProject.ext.jacksonVersion}"
+    externalRuntime "org.xerial:sqlite-jdbc:${rootProject.ext.sqliteVersion}"
+    externalRuntime "org.slf4j:slf4j-api:${rootProject.ext.slf4jVersion}"
+    externalRuntime "org.slf4j:slf4j-simple:${rootProject.ext.slf4jVersion}"
+    // OkHttp needed transitively by tradery-sharing
+    externalRuntime "com.squareup.okhttp3:okhttp:${rootProject.ext.okhttpVersion}"
+
+    // Test: Testcontainers 2.x + OkHttp client
+    testImplementation "org.testcontainers:testcontainers:2.0.3"
+    testImplementation "org.testcontainers:testcontainers-junit-jupiter:2.0.3"
+    testImplementation "com.squareup.okhttp3:okhttp:${rootProject.ext.okhttpVersion}"
+}
+
+// Compile on classpath (no module-info.java in this project)
+tasks.named('compileJava') {
+    modularity.inferModulePath = false
+}
+
+tasks.named('compileTestJava') {
+    modularity.inferModulePath = false
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+    modularity.inferModulePath = false
+
+    // Integration tests need the fat JARs built first
+    dependsOn ':tradery-rendezvous:fatJar', ':tradery-sharing-tests:fatJar'
+}
+
+// Project modules whose compiled classes go into the fat JAR
+def projectModules = [':tradery-sharing', ':tradery-documents', ':tradery-news',
+                      ':tradery-ui-common', ':tradery-help', ':tradery-ai', ':tradery-license']
+
+// Create fat JAR for distribution
+tasks.register('fatJar', Jar) {
+    dependsOn projectModules.collect { it + ':classes' }
+    dependsOn 'classes'
+
+    archiveClassifier = 'all'
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    manifest {
+        attributes 'Main-Class': application.mainClass
+    }
+
+    // This project's compiled classes
+    from sourceSets.main.output
+
+    // All project dependency compiled classes (avoids JPMS transform issues)
+    from {
+        projectModules.collect { project(it).sourceSets.main.output }
+    }
+
+    // All external runtime JARs (exploded)
+    from {
+        configurations.externalRuntime.collect { it.isDirectory() ? it : zipTree(it) }
+    }
+}

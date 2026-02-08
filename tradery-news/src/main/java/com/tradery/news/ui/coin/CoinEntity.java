@@ -19,7 +19,9 @@ public class CoinEntity {
         EXCHANGE(new Color(255, 140, 100)),   // Coral - Exchanges
         FOUNDATION(new Color(180, 150, 255)), // Lavender - Foundations
         COMPANY(new Color(200, 200, 120)),    // Yellow - Companies
-        NEWS_SOURCE(new Color(220, 180, 220)); // Pink - News Sources
+        NEWS_SOURCE(new Color(220, 180, 220)), // Pink - News Sources
+        RISK(new Color(220, 100, 100)),          // Red - Risks
+        STRENGTH(new Color(100, 200, 160));      // Mint - Strengths
 
         private final Color color;
         Type(Color color) { this.color = color; }

@@ -389,6 +389,104 @@ public class DataServiceClient {
         }
     }
 
+    // ==================== Inventory ====================
+
+    /**
+     * Get a comprehensive inventory of all stored data.
+     */
+    public InventoryResponse getInventory() throws IOException {
+        Request request = new Request.Builder()
+            .url(baseUrl + "/inventory")
+            .get()
+            .build();
+
+        try (Response response = httpClient.newCall(request).execute()) {
+            if (!response.isSuccessful()) {
+                throw new IOException("Inventory request failed: " + response.code());
+            }
+            return jsonMapper.readValue(response.body().string(), InventoryResponse.class);
+        }
+    }
+
+    /**
+     * Get disk usage breakdown by symbol.
+     */
+    public DiskUsageResponse getDiskUsage() throws IOException {
+        Request request = new Request.Builder()
+            .url(baseUrl + "/inventory/disk-usage")
+            .get()
+            .build();
+
+        try (Response response = httpClient.newCall(request).execute()) {
+            if (!response.isSuccessful()) {
+                throw new IOException("Disk usage request failed: " + response.code());
+            }
+            return jsonMapper.readValue(response.body().string(), DiskUsageResponse.class);
+        }
+    }
+
+    /**
+     * Delete specific data from the data service.
+     *
+     * @param symbol    Symbol name (null for global data types like fearGreed)
+     * @param dataType  Data type: candles, aggTrades, funding, openInterest, premiumIndex, fearGreed
+     * @param timeframe Timeframe (for candles only, optional)
+     * @param marketType Market type (for candles only, optional)
+     * @param exchange  Exchange (for aggTrades only, optional)
+     * @param interval  Interval (for premiumIndex only, optional)
+     * @return Number of deleted records
+     */
+    public long deleteData(String symbol, String dataType, String timeframe, String marketType,
+                           String exchange, String interval) throws IOException {
+        HttpUrl.Builder urlBuilder = HttpUrl.parse(baseUrl + "/data").newBuilder()
+            .addQueryParameter("dataType", dataType);
+
+        if (symbol != null) urlBuilder.addQueryParameter("symbol", symbol);
+        if (timeframe != null) urlBuilder.addQueryParameter("timeframe", timeframe);
+        if (marketType != null) urlBuilder.addQueryParameter("marketType", marketType);
+        if (exchange != null) urlBuilder.addQueryParameter("exchange", exchange);
+        if (interval != null) urlBuilder.addQueryParameter("interval", interval);
+
+        Request request = new Request.Builder()
+            .url(urlBuilder.build())
+            .delete()
+            .build();
+
+        try (Response response = httpClient.newCall(request).execute()) {
+            if (!response.isSuccessful()) {
+                throw new IOException("Delete failed: " + response.code());
+            }
+            DeleteResponse result = jsonMapper.readValue(response.body().string(), DeleteResponse.class);
+            return result.deletedRecords();
+        }
+    }
+
+    /**
+     * Get raw coverage ranges for a symbol and data type.
+     *
+     * @param symbol   Symbol name
+     * @param dataType Coverage data type (klines, agg_trades, funding_rates, open_interest, premium_index)
+     * @param subKey   Sub key (timeframe for candles, interval for premium, "default" for others)
+     */
+    public CoverageRangesResponse getCoverageRanges(String symbol, String dataType, String subKey) throws IOException {
+        HttpUrl.Builder urlBuilder = HttpUrl.parse(baseUrl + "/coverage/ranges").newBuilder()
+            .addQueryParameter("symbol", symbol)
+            .addQueryParameter("dataType", dataType);
+        if (subKey != null) urlBuilder.addQueryParameter("subKey", subKey);
+
+        Request request = new Request.Builder()
+            .url(urlBuilder.build())
+            .get()
+            .build();
+
+        try (Response response = httpClient.newCall(request).execute()) {
+            if (!response.isSuccessful()) {
+                throw new IOException("Coverage ranges request failed: " + response.code());
+            }
+            return jsonMapper.readValue(response.body().string(), CoverageRangesResponse.class);
+        }
+    }
+
     /**
      * Close the client.
      */
@@ -397,7 +495,52 @@ public class DataServiceClient {
         httpClient.connectionPool().evictAll();
     }
 
-    // Symbol resolution DTOs
+    // ==================== Inventory DTOs ====================
+
+    public record InventoryResponse(
+        List<SymbolInventory> symbols,
+        FearGreedInventory fearGreed,
+        long totalDiskUsage
+    ) {}
+
+    public record SymbolInventory(
+        String symbol,
+        List<CandleInventory> candles,
+        List<AggTradesInventory> aggTrades,
+        FundingInventory funding,
+        OpenInterestInventory openInterest,
+        List<PremiumIndexInventory> premiumIndex
+    ) {}
+
+    public record CandleInventory(
+        String timeframe, String marketType, String exchange,
+        long startTime, long endTime, int recordCount
+    ) {}
+
+    public record AggTradesInventory(
+        String exchange, String marketType,
+        long startTime, long endTime, long recordCount
+    ) {}
+
+    public record FundingInventory(long startTime, long endTime, int recordCount) {}
+
+    public record OpenInterestInventory(long startTime, long endTime, int recordCount) {}
+
+    public record PremiumIndexInventory(String interval, long startTime, long endTime, int recordCount) {}
+
+    public record FearGreedInventory(long startTime, long endTime, int recordCount, int latestValue) {}
+
+    public record DiskUsageResponse(long totalBytes, java.util.Map<String, Long> bySymbol) {}
+
+    public record DeleteResponse(long deletedRecords) {}
+
+    // ==================== Coverage DTOs ====================
+
+    public record CoverageRange(long rangeStart, long rangeEnd, boolean isComplete) {}
+
+    public record CoverageRangesResponse(List<CoverageRange> ranges) {}
+
+    // ==================== Symbol resolution DTOs ====================
     public record SymbolResolveResponse(String canonical, String exchange, String marketType, String quote, String symbol) {}
 
     public record SymbolReverseResponse(String symbol, String exchange, String marketType, String base, String quote,

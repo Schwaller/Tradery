@@ -25,9 +25,15 @@ public class EntitySearchProcessor {
     private static final ObjectMapper mapper = new ObjectMapper();
 
     private final AiClient aiClient;
+    private final SchemaRegistry schemaRegistry;
 
     public EntitySearchProcessor() {
+        this(null);
+    }
+
+    public EntitySearchProcessor(SchemaRegistry schemaRegistry) {
         this.aiClient = AiClient.getInstance();
+        this.schemaRegistry = schemaRegistry;
     }
 
     /**
@@ -207,6 +213,7 @@ public class EntitySearchProcessor {
     private List<String> generateSearchQueries(CoinEntity entity, CoinRelationship.Type relType) {
         String name = entity.name();
         String symbol = entity.symbol();
+        String sourceTypeId = entity.type().name().toLowerCase();
         List<String> queries = new ArrayList<>();
 
         if (relType == null) {
@@ -216,58 +223,16 @@ public class EntitySearchProcessor {
                 queries.add(symbol + " crypto partnerships investors VCs");
             }
             queries.add(name + " blockchain DeFi integrations 2024 2025");
+        } else if (schemaRegistry != null) {
+            SchemaType schema = schemaRegistry.getType(relType.name().toLowerCase());
+            if (schema != null) {
+                queries.addAll(schema.searchQueriesFor(name, sourceTypeId));
+            } else {
+                queries.add(name + " " + relType.label() + " cryptocurrency");
+            }
         } else {
-            queries.addAll(switch (relType) {
-                case ECOSYSTEM -> List.of(
-                    name + " ecosystem projects tokens DeFi",
-                    name + " blockchain ecosystem dApps protocols"
-                );
-                case INVESTED_IN -> entity.type() == CoinEntity.Type.VC
-                    ? List.of(
-                        name + " crypto portfolio investments",
-                        name + " blockchain investments funding rounds"
-                    )
-                    : List.of(
-                        name + " investors venture capital funding",
-                        name + " Series A B funding round crypto"
-                    );
-                case ETF_TRACKS -> List.of(
-                    name + " cryptocurrency ETF list spot",
-                    (symbol != null ? symbol : name) + " ETF approved SEC"
-                );
-                case ETP_TRACKS -> List.of(
-                    name + " cryptocurrency ETP exchange traded product",
-                    (symbol != null ? symbol : name) + " ETP Europe"
-                );
-                case L2_OF -> entity.type() == CoinEntity.Type.COIN
-                    ? List.of(
-                        name + " Layer 2 networks rollups",
-                        name + " L2 scaling solutions"
-                    )
-                    : List.of(
-                        name + " Layer 1 blockchain built on"
-                    );
-                case PARTNER -> List.of(
-                    name + " strategic partnerships crypto",
-                    name + " blockchain partners integrations"
-                );
-                case FORK_OF -> List.of(
-                    name + " fork forked from blockchain",
-                    name + " hard fork code fork crypto"
-                );
-                case FOUNDED_BY -> List.of(
-                    name + " founders co-founders team",
-                    name + " who founded created blockchain"
-                );
-                case BRIDGE -> List.of(
-                    name + " cross-chain bridge interoperability",
-                    name + " blockchain bridge protocols"
-                );
-                case COMPETITOR -> List.of(
-                    name + " competitors alternatives crypto",
-                    name + " vs comparison blockchain"
-                );
-            });
+            // Fallback without schema
+            queries.add(name + " " + relType.label() + " cryptocurrency");
         }
 
         return queries;
@@ -399,50 +364,30 @@ public class EntitySearchProcessor {
     }
 
     private String getSearchDescriptionForAllTypes(CoinEntity entity) {
-        return switch (entity.type()) {
-            case COIN, L2 -> """
-                All related entities including:
-                - ETFs and ETPs that track this cryptocurrency
-                - Venture capital firms that have invested in this project
-                - Layer 2 networks built on this chain (if L1)
-                - Projects in the same ecosystem
-                - Known forks of this project
-                - Key partners and integrations""";
-            case VC -> """
-                All cryptocurrencies and blockchain projects this VC has invested in.
-                Include both direct investments and fund participation.""";
-            case EXCHANGE -> """
-                - The exchange's native token (if any)
-                - Key blockchain projects the exchange has invested in or partnered with
-                - Major ecosystem partnerships""";
-            case ETF, ETP, DAT -> "The cryptocurrency assets this fund tracks";
-            case FOUNDATION -> """
-                - Projects founded or supported by this foundation
-                - Ecosystem partners and grantees""";
-            case COMPANY -> """
-                - Blockchain investments made by this company
-                - Crypto partnerships and integrations""";
-            default -> "Related entities in the cryptocurrency ecosystem";
-        };
+        if (schemaRegistry != null) {
+            String sourceTypeId = entity.type().name().toLowerCase();
+            List<SchemaType> relTypes = schemaRegistry.getRelationshipTypesFor(sourceTypeId);
+            if (!relTypes.isEmpty()) {
+                StringBuilder sb = new StringBuilder("All related entities including:\n");
+                for (SchemaType rel : relTypes) {
+                    sb.append("- ").append(rel.searchDescriptionFor(entity.name(), sourceTypeId)).append("\n");
+                }
+                return sb.toString();
+            }
+        }
+        // Fallback
+        return "Related entities in the cryptocurrency ecosystem for " + entity.name();
     }
 
     private String getSearchDescriptionForType(CoinEntity entity, CoinRelationship.Type relType) {
-        return switch (relType) {
-            case ETF_TRACKS -> "ETFs (Exchange-Traded Funds) that track " + entity.name();
-            case ETP_TRACKS -> "ETPs (Exchange-Traded Products) that track " + entity.name();
-            case INVESTED_IN -> entity.type() == CoinEntity.Type.VC
-                ? "Cryptocurrency projects that " + entity.name() + " has invested in"
-                : "Venture capital firms and investors that have funded " + entity.name();
-            case L2_OF -> entity.type() == CoinEntity.Type.COIN
-                ? "Layer 2 networks built on " + entity.name()
-                : "The Layer 1 blockchain that " + entity.name() + " is built on";
-            case ECOSYSTEM -> "Projects and tokens in the " + entity.name() + " ecosystem";
-            case PARTNER -> "Strategic partners of " + entity.name();
-            case FORK_OF -> "Projects that forked from " + entity.name() + " or that " + entity.name() + " forked from";
-            case FOUNDED_BY -> "Founders and founding organizations of " + entity.name();
-            case BRIDGE -> "Blockchain bridges connected to " + entity.name();
-            case COMPETITOR -> "Direct competitors of " + entity.name();
-        };
+        if (schemaRegistry != null) {
+            SchemaType schema = schemaRegistry.getType(relType.name().toLowerCase());
+            if (schema != null) {
+                String sourceTypeId = entity.type().name().toLowerCase();
+                return schema.searchDescriptionFor(entity.name(), sourceTypeId);
+            }
+        }
+        return relType.label() + " related to " + entity.name();
     }
 
     private String formatMarketCap(double marketCap) {

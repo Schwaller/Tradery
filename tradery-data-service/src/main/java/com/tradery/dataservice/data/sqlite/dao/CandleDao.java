@@ -378,6 +378,25 @@ public class CandleDao {
     }
 
     /**
+     * Get list of market types that have data.
+     */
+    public List<String> getAvailableMarketTypes() throws SQLException {
+        Connection c = conn.getConnection();
+        List<String> types = new ArrayList<>();
+
+        String sql = "SELECT DISTINCT market_type FROM candles ORDER BY market_type";
+
+        try (PreparedStatement stmt = c.prepareStatement(sql);
+             ResultSet rs = stmt.executeQuery()) {
+            while (rs.next()) {
+                types.add(rs.getString(1));
+            }
+        }
+
+        return types;
+    }
+
+    /**
      * Find gaps in candle data for a timeframe and market type.
      *
      * @param timeframe  Candle timeframe (e.g., "1h")

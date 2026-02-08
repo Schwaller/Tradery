@@ -90,6 +90,18 @@ public class PeerManager implements AutoCloseable {
                     localPeerId, null, null,
                     List.copyOf(workspaces.keySet())));
 
+            // Also request sync for shared documents (bidirectional sync)
+            Set<String> sharedDocs = new HashSet<>(workspaces.keySet());
+            sharedDocs.retainAll(new HashSet<>(hello.documentIds()));
+
+            for (String docId : sharedDocs) {
+                DocumentWorkspace ws = workspaces.get(docId);
+                if (ws != null) {
+                    NetworkMessage.SyncRequest req = syncEngine.createSyncRequest(ws, docId, hello.peerId());
+                    conn.send(req);
+                }
+            }
+
             // Process messages
             processMessages(conn, hello);
 
@@ -177,6 +189,37 @@ public class PeerManager implements AutoCloseable {
                     log.info("Member update for doc {} from {}", update.documentId(), conn.remotePeerId());
                 case NetworkMessage.Hello ignored ->
                     log.warn("Unexpected HELLO from {}", conn.remotePeerId());
+            }
+        }
+    }
+
+    /**
+     * Push local data to all connected peers and request their latest data.
+     * Sends SyncResponses with our facts and SyncRequests to pull theirs.
+     */
+    public void requestSync() {
+        for (Map.Entry<String, PeerConnection> entry : connections.entrySet()) {
+            String remotePeerId = entry.getKey();
+            PeerConnection conn = entry.getValue();
+            if (conn.isClosed()) continue;
+
+            for (Map.Entry<String, DocumentWorkspace> wsEntry : workspaces.entrySet()) {
+                String docId = wsEntry.getKey();
+                DocumentWorkspace ws = wsEntry.getValue();
+                try {
+                    // Push our facts to remote
+                    NetworkMessage.SyncResponse push = syncEngine.handleSyncRequest(ws,
+                            new NetworkMessage.SyncRequest(docId, 0));
+                    if (!push.facts().isEmpty()) {
+                        conn.send(push);
+                    }
+
+                    // Pull their facts
+                    NetworkMessage.SyncRequest req = syncEngine.createSyncRequest(ws, docId, remotePeerId);
+                    conn.send(req);
+                } catch (IOException e) {
+                    log.warn("Failed to sync with {}: {}", remotePeerId, e.getMessage());
+                }
             }
         }
     }

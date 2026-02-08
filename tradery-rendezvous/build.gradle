@@ -1,0 +1,47 @@
+// tradery-rendezvous: Standalone peer discovery server
+
+plugins {
+    id 'java'
+    id 'application'
+}
+
+application {
+    mainClass = 'com.tradery.rendezvous.RendezvousApp'
+}
+
+java {
+    modularity.inferModulePath = false
+}
+
+dependencies {
+    // HTTP server
+    implementation "io.javalin:javalin:${rootProject.ext.javalinVersion}"
+
+    // JSON serialization
+    implementation "com.fasterxml.jackson.core:jackson-databind:${rootProject.ext.jacksonVersion}"
+
+    // Logging
+    implementation "org.slf4j:slf4j-api:${rootProject.ext.slf4jVersion}"
+    runtimeOnly "org.slf4j:slf4j-simple:${rootProject.ext.slf4jVersion}"
+
+    // Test
+    testImplementation "com.squareup.okhttp3:okhttp:${rootProject.ext.okhttpVersion}"
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+    modularity.inferModulePath = false
+}
+
+// Create fat JAR for distribution
+tasks.register('fatJar', Jar) {
+    archiveClassifier = 'all'
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    manifest {
+        attributes 'Main-Class': application.mainClass
+    }
+    from {
+        configurations.runtimeClasspath.collect { it.isDirectory() ? it : zipTree(it) }
+    }
+    with jar
+}

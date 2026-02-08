@@ -7,6 +7,7 @@ module com.tradery.forge {
     requires com.tradery.data;
     requires com.tradery.engine;
     requires com.tradery.dataclient;
+    requires com.tradery.data.ui;
     requires com.tradery.charts;
     requires com.tradery.symbols;
 

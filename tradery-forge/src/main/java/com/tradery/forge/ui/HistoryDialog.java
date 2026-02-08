@@ -120,13 +120,28 @@ public class HistoryDialog extends JDialog {
         ThinSplitPane splitPane = new ThinSplitPane(JSplitPane.VERTICAL_SPLIT, tableScroll, detailsScroll);
         splitPane.setDividerLocation(280);
 
+        JPanel contentPane = new JPanel(new BorderLayout(0, 0));
+
+        // 52px header bar with centered title
+        JPanel headerBar = new JPanel(new BorderLayout());
+        headerBar.setPreferredSize(new Dimension(0, 52));
+        JLabel windowTitle = new JLabel("Strategy History", SwingConstants.CENTER);
+        windowTitle.setFont(new Font("SansSerif", Font.BOLD, 13));
+        windowTitle.setForeground(UIManager.getColor("Label.disabledForeground"));
+        headerBar.add(windowTitle, BorderLayout.CENTER);
+        JPanel headerWrapper = new JPanel(new BorderLayout());
+        headerWrapper.add(headerBar, BorderLayout.CENTER);
+        headerWrapper.add(new JSeparator(), BorderLayout.SOUTH);
+        contentPane.add(headerWrapper, BorderLayout.NORTH);
+
         JPanel mainPanel = new JPanel(new BorderLayout(8, 8));
         mainPanel.setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
         mainPanel.add(new JLabel("Select a version to view details or restore:"), BorderLayout.NORTH);
         mainPanel.add(splitPane, BorderLayout.CENTER);
         mainPanel.add(buttonPanel, BorderLayout.SOUTH);
+        contentPane.add(mainPanel, BorderLayout.CENTER);
 
-        setContentPane(mainPanel);
+        setContentPane(contentPane);
 
         // Select first row
         if (!entries.isEmpty()) {

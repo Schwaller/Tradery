@@ -3,6 +3,7 @@ package com.tradery.news.ui.coin;
 import java.awt.*;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Collectors;
 
 /**
  * A dynamic type definition for entities or relationships, stored in the DB.
@@ -20,6 +21,14 @@ public class SchemaType {
     private String fromTypeId;  // relationship only
     private String toTypeId;    // relationship only
     private String label;       // relationship only (short verb)
+    private String inverseLabel; // relationship only (reverse description verb, e.g. "L1 for")
+    private String pluralLabel;  // UI list label from the 'from' side (e.g. "L2s", "ETFs")
+    private String inversePluralLabel; // UI list label from the 'to' side
+    private String searchDescription;  // AI prompt template (forward), use %s for entity name
+    private String inverseSearchDescription; // AI prompt template (reverse)
+    private List<String> searchHints = new ArrayList<>();  // web search query fragments (forward)
+    private List<String> inverseSearchHints = new ArrayList<>(); // web search query fragments (reverse)
+    private boolean hasMarketCap; // entity type gets market_cap attribute
     private int displayOrder;
     private final List<SchemaAttribute> attributes = new ArrayList<>();
 
@@ -63,6 +72,30 @@ public class SchemaType {
 
     public String label() { return label; }
     public void setLabel(String label) { this.label = label; }
+
+    public String inverseLabel() { return inverseLabel; }
+    public void setInverseLabel(String inverseLabel) { this.inverseLabel = inverseLabel; }
+
+    public String pluralLabel() { return pluralLabel; }
+    public void setPluralLabel(String pluralLabel) { this.pluralLabel = pluralLabel; }
+
+    public String inversePluralLabel() { return inversePluralLabel; }
+    public void setInversePluralLabel(String inversePluralLabel) { this.inversePluralLabel = inversePluralLabel; }
+
+    public String searchDescription() { return searchDescription; }
+    public void setSearchDescription(String searchDescription) { this.searchDescription = searchDescription; }
+
+    public String inverseSearchDescription() { return inverseSearchDescription; }
+    public void setInverseSearchDescription(String inverseSearchDescription) { this.inverseSearchDescription = inverseSearchDescription; }
+
+    public List<String> searchHints() { return searchHints; }
+    public void setSearchHints(List<String> searchHints) { this.searchHints = searchHints != null ? searchHints : new ArrayList<>(); }
+
+    public List<String> inverseSearchHints() { return inverseSearchHints; }
+    public void setInverseSearchHints(List<String> inverseSearchHints) { this.inverseSearchHints = inverseSearchHints != null ? inverseSearchHints : new ArrayList<>(); }
+
+    public boolean hasMarketCap() { return hasMarketCap; }
+    public void setHasMarketCap(boolean hasMarketCap) { this.hasMarketCap = hasMarketCap; }
 
     public int displayOrder() { return displayOrder; }
     public void setDisplayOrder(int displayOrder) { this.displayOrder = displayOrder; }
@@ -113,5 +146,51 @@ public class SchemaType {
     public static Color parseColor(String hex) {
         if (hex == null || hex.isEmpty()) return Color.GRAY;
         return Color.decode(hex);
+    }
+
+    // ==================== DERIVED METHODS (for relationship types) ====================
+
+    /** Get the plural label appropriate for the source entity type. */
+    public String pluralLabelFor(String sourceEntityTypeId) {
+        if (sourceEntityTypeId != null && sourceEntityTypeId.equals(fromTypeId)) {
+            return pluralLabel != null ? pluralLabel : name;
+        }
+        return inversePluralLabel != null ? inversePluralLabel : (pluralLabel != null ? pluralLabel : name);
+    }
+
+    /** Get AI search description with entity name substituted. */
+    public String searchDescriptionFor(String entityName, String sourceEntityTypeId) {
+        String template = (sourceEntityTypeId != null && sourceEntityTypeId.equals(fromTypeId))
+            ? searchDescription : inverseSearchDescription;
+        if (template == null) template = searchDescription;
+        return template != null ? String.format(template, entityName) : name + " of " + entityName;
+    }
+
+    /** Get web search queries with entity name substituted. */
+    public List<String> searchQueriesFor(String entityName, String sourceEntityTypeId) {
+        List<String> hints = (sourceEntityTypeId != null && sourceEntityTypeId.equals(fromTypeId))
+            ? searchHints : inverseSearchHints;
+        if (hints == null || hints.isEmpty()) hints = searchHints;
+        if (hints == null || hints.isEmpty()) return List.of(entityName + " " + name);
+        return hints.stream().map(h -> String.format(h, entityName)).collect(Collectors.toList());
+    }
+
+    /**
+     * Create a relationship with correct direction based on source entity type.
+     * If sourceTypeId matches fromTypeId, source is the 'from' entity.
+     * Otherwise, source is the 'to' entity (inverse direction).
+     */
+    public CoinRelationship createDirected(String sourceId, String sourceTypeId,
+                                            String targetId, CoinRelationship.Type relType, String note) {
+        if (sourceTypeId != null && sourceTypeId.equals(fromTypeId)) {
+            return new CoinRelationship(sourceId, targetId, relType, note);
+        }
+        return new CoinRelationship(targetId, sourceId, relType, note);
+    }
+
+    /** Describe the inverse relationship (e.g. "L1 for Arbitrum"). */
+    public String inverseDescription(String otherName) {
+        if (inverseLabel != null) return inverseLabel + " " + otherName;
+        return label != null ? label + " " + otherName : name + " " + otherName;
     }
 }

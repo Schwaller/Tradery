@@ -3,6 +3,7 @@ package com.tradery.forge.ui;
 import com.formdev.flatlaf.FlatClientProperties;
 import com.formdev.flatlaf.util.SystemInfo;
 import com.tradery.core.model.*;
+import com.tradery.dataclient.DataServiceClient;
 import com.tradery.engine.BacktestEngine;
 import com.tradery.forge.ApplicationContext;
 import com.tradery.forge.TraderyApp;
@@ -198,8 +199,14 @@ public class ProjectWindow extends JFrame {
 
         // Wire up data range manage button
         dataRangePanel.setOnManageClicked(() -> {
-            SqliteDataStore dataStore = ApplicationContext.getInstance().getSqliteDataStore();
-            DataManagementDialog.show(this, dataStore);
+            DataServiceClient dataServiceClient = ApplicationContext.getInstance().getDataServiceClient();
+            com.tradery.data.ui.DataManagementDialog.show(this, dataServiceClient, () -> {
+                FetchDataDialog.show((Frame) this,
+                    ApplicationContext.getInstance().getSqliteDataStore(),
+                    ApplicationContext.getInstance().getAggTradesStore(),
+                    ApplicationContext.getInstance().getPremiumIndexStore(),
+                    () -> { /* refresh handled by dialog timer */ });
+            });
         });
 
         // Wire up chart status callback (hover info uses low priority)
@@ -1107,6 +1114,9 @@ public class ProjectWindow extends JFrame {
                 chartPanel.refreshFearGreedChart();
             }
         }
+
+        // Re-apply Y-axis fit mode so newly loaded data fits properly
+        chartPanel.updateYAxisAutoRange();
     }
 
     /**

@@ -109,8 +109,24 @@ public class LibraryBrowserDialog extends JDialog {
     }
 
     private void layoutComponents() {
+        JPanel contentPane = new JPanel(new BorderLayout(0, 0));
+        setContentPane(contentPane);
+
+        // 52px header bar with centered title
+        JPanel hBar = new JPanel(new BorderLayout());
+        hBar.setPreferredSize(new Dimension(0, 52));
+        JLabel windowTitle = new JLabel("Strategy Library", SwingConstants.CENTER);
+        windowTitle.setFont(new Font("SansSerif", Font.BOLD, 13));
+        windowTitle.setForeground(UIManager.getColor("Label.disabledForeground"));
+        hBar.add(windowTitle, BorderLayout.CENTER);
+        JPanel hWrapper = new JPanel(new BorderLayout());
+        hWrapper.add(hBar, BorderLayout.CENTER);
+        hWrapper.add(new JSeparator(), BorderLayout.SOUTH);
+        contentPane.add(hWrapper, BorderLayout.NORTH);
+
         JPanel content = new JPanel(new BorderLayout(8, 8));
         content.setBorder(BorderFactory.createEmptyBorder(12, 12, 12, 12));
+        contentPane.add(content, BorderLayout.CENTER);
 
         // Header
         JPanel headerPanel = new JPanel(new BorderLayout(8, 4));
@@ -130,17 +146,15 @@ public class LibraryBrowserDialog extends JDialog {
         splitPane.setLeftComponent(treeScroll);
 
         // Right: Versions table
-        JPanel rightPanel = new JPanel(new BorderLayout(4, 4));
-        JLabel versionsLabel = new JLabel("Versions:");
-        versionsLabel.setFont(versionsLabel.getFont().deriveFont(Font.BOLD));
-        rightPanel.add(versionsLabel, BorderLayout.NORTH);
-        rightPanel.add(new JScrollPane(versionsTable), BorderLayout.CENTER);
-        splitPane.setRightComponent(rightPanel);
+        splitPane.setRightComponent(new JScrollPane(versionsTable));
 
         content.add(splitPane, BorderLayout.CENTER);
 
-        // Button panel
-        JPanel buttonPanel = new JPanel(new BorderLayout(8, 8));
+        // Bottom bar: separator + buttons + status
+        JPanel bottomBar = new JPanel(new BorderLayout(0, 0));
+
+        JPanel buttonRow = new JPanel(new BorderLayout(0, 0));
+        buttonRow.setBorder(BorderFactory.createEmptyBorder(8, 12, 8, 12));
 
         JPanel leftButtons = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
         leftButtons.add(deleteVersionBtn);
@@ -152,16 +166,16 @@ public class LibraryBrowserDialog extends JDialog {
         closeBtn.addActionListener(e -> dispose());
         rightButtons.add(closeBtn);
 
-        buttonPanel.add(leftButtons, BorderLayout.WEST);
-        buttonPanel.add(rightButtons, BorderLayout.EAST);
+        buttonRow.add(leftButtons, BorderLayout.WEST);
+        buttonRow.add(rightButtons, BorderLayout.EAST);
 
-        JPanel bottomPanel = new JPanel(new BorderLayout(4, 4));
-        bottomPanel.add(buttonPanel, BorderLayout.NORTH);
-        bottomPanel.add(statusLabel, BorderLayout.SOUTH);
+        statusLabel.setBorder(BorderFactory.createEmptyBorder(0, 12, 8, 12));
 
-        content.add(bottomPanel, BorderLayout.SOUTH);
+        bottomBar.add(new JSeparator(), BorderLayout.NORTH);
+        bottomBar.add(buttonRow, BorderLayout.CENTER);
+        bottomBar.add(statusLabel, BorderLayout.SOUTH);
 
-        setContentPane(content);
+        contentPane.add(bottomBar, BorderLayout.SOUTH);
     }
 
     private void loadLibrary() {

@@ -739,7 +739,7 @@ public class ChartsPanel extends JPanel {
         }
     }
 
-    private void updateYAxisAutoRange() {
+    public void updateYAxisAutoRange() {
         boolean fitYAxis = zoomManager.isFitYAxisToVisible();
         JFreeChart[] charts = {priceChart, volumeChart, equityChart, comparisonChart, tradePLChart};
 

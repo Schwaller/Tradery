@@ -16,6 +16,10 @@ public class PanelConfig {
     // COIN_GRAPH settings
     private Set<String> entityTypeFilter;    // null = all
     private Set<String> entitySourceFilter;  // null = all
+    private Set<String> relationshipTypeFilter; // null = all
+
+    // NEWS_MAP band configuration
+    private List<BandConfig> bands;
 
     // Shared display
     private boolean showLabels = true;
@@ -30,8 +34,10 @@ public class PanelConfig {
     }
 
     public static List<PanelConfig> defaults() {
+        var newsMap = new PanelConfig("news-default", "News", PanelType.NEWS_MAP);
+        newsMap.setBands(BandConfig.defaultNewsBands());
         return new ArrayList<>(List.of(
-            new PanelConfig("news-default", "News", PanelType.NEWS_MAP),
+            newsMap,
             new PanelConfig("coin-default", "Coin Relations", PanelType.COIN_GRAPH)
         ));
     }
@@ -55,6 +61,12 @@ public class PanelConfig {
 
     public Set<String> getEntitySourceFilter() { return entitySourceFilter; }
     public void setEntitySourceFilter(Set<String> entitySourceFilter) { this.entitySourceFilter = entitySourceFilter; }
+
+    public Set<String> getRelationshipTypeFilter() { return relationshipTypeFilter; }
+    public void setRelationshipTypeFilter(Set<String> relationshipTypeFilter) { this.relationshipTypeFilter = relationshipTypeFilter; }
+
+    public List<BandConfig> getBands() { return bands; }
+    public void setBands(List<BandConfig> bands) { this.bands = bands; }
 
     public boolean isShowLabels() { return showLabels; }
     public void setShowLabels(boolean showLabels) { this.showLabels = showLabels; }

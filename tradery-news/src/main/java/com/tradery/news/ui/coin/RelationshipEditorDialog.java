@@ -40,9 +40,25 @@ public class RelationshipEditorDialog extends JDialog {
     }
 
     private void initUI(String preselectedFromId) {
+        JPanel contentPane = new JPanel(new BorderLayout(0, 0));
+        setContentPane(contentPane);
+
+        // 52px header bar with centered title
+        JPanel hBar = new JPanel(new BorderLayout());
+        hBar.setPreferredSize(new Dimension(0, 52));
+        JLabel windowTitle = new JLabel("Add Relationship", SwingConstants.CENTER);
+        windowTitle.setFont(new Font("SansSerif", Font.BOLD, 13));
+        windowTitle.setForeground(UIManager.getColor("Label.disabledForeground"));
+        hBar.add(windowTitle, BorderLayout.CENTER);
+        JPanel hWrapper = new JPanel(new BorderLayout());
+        hWrapper.add(hBar, BorderLayout.CENTER);
+        hWrapper.add(new JSeparator(), BorderLayout.SOUTH);
+        contentPane.add(hWrapper, BorderLayout.NORTH);
+
         JPanel content = new JPanel(new GridBagLayout());
         content.setBorder(new EmptyBorder(15, 15, 15, 15));
         content.setBackground(new Color(45, 47, 51));
+        contentPane.add(content, BorderLayout.CENTER);
 
         GridBagConstraints labelGbc = new GridBagConstraints();
         labelGbc.anchor = GridBagConstraints.WEST;
@@ -149,7 +165,6 @@ public class RelationshipEditorDialog extends JDialog {
         labelGbc.insets = new Insets(15, 5, 5, 5);
         content.add(buttonPanel, labelGbc);
 
-        setContentPane(content);
         getRootPane().setDefaultButton(saveBtn);
     }
 
