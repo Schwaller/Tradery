@@ -20,11 +20,8 @@ import java.util.List;
 import java.util.function.Consumer;
 
 /**
- * Graph visualization with tripartite layout:
- * - Top row: Topics (fixed Y, spread on X)
- * - Middle row: Coins (fixed Y, spread on X)
- * - Bottom half: News articles (time on X, spring physics on Y)
- * - Connections between news and their topics/coins
+ * Graph visualization with configurable band layout.
+ * Each band can display Topics, Coins, or Articles with different layout modes.
  */
 public class TimelineGraphPanel extends JPanel {
 
@@ -32,24 +29,27 @@ public class TimelineGraphPanel extends JPanel {
     private static final int MARGIN_RIGHT = 20;
     private static final int MARGIN_TOP = 30;
     private static final int MARGIN_BOTTOM = 50;
-    private static final int TIMELINE_OFFSET = 25;  // Extra offset to push timeline lower
+    private static final int TIMELINE_OFFSET = 25;
 
     private static final DateTimeFormatter TIME_FMT = DateTimeFormatter.ofPattern("HH:mm");
     private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ofPattern("MMM d");
 
+    // All nodes (flat lists for quick lookup)
     private final List<NewsNode> newsNodes = new ArrayList<>();
-    private final List<TopicNode> topicNodes = new ArrayList<>();  // Topics only
-    private final List<TopicNode> coinNodes = new ArrayList<>();   // Coins only
     private final Map<String, TopicNode> topicMap = new HashMap<>();
     private final Set<String> existingArticleIds = new HashSet<>();
+
+    // Band-based layout
+    private List<Band> bands = new ArrayList<>();
+    private List<BandConfig> bandConfigs;
 
     private Instant minTime;
     private Instant maxTime;
 
     private Timer physicsTimer;
-    private Object hoveredNode;  // NewsNode or TopicNode
+    private Object hoveredNode;
     private Object selectedNode;
-    private Object draggedNode;  // Currently being dragged
+    private Object draggedNode;
     private Consumer<NewsNode> onNodeSelected;
     private Consumer<TopicNode> onTopicSelected;
 
@@ -61,7 +61,23 @@ public class TimelineGraphPanel extends JPanel {
     // Config
     private final IntelConfig config;
     private SchemaRegistry schemaRegistry;
-    private Rectangle topicsLabelClickArea;  // Clickable area for topics config
+    private Rectangle topicsLabelClickArea;
+
+    /**
+     * Runtime band with pixel boundaries and node assignments.
+     */
+    private static class Band {
+        final BandConfig config;
+        int pixelTop, pixelBottom;
+        final List<TopicNode> topicNodes = new ArrayList<>();
+        final List<NewsNode> newsNodes = new ArrayList<>();
+
+        Band(BandConfig config) {
+            this.config = config;
+        }
+
+        int height() { return pixelBottom - pixelTop; }
+    }
 
     // Theme-aware color helpers
     private static Color bgColor() {
@@ -132,7 +148,6 @@ public class TimelineGraphPanel extends JPanel {
 
         // Physics simulation timer
         physicsTimer = new Timer(32, e -> {
-            // Skip physics + repaint entirely when window is inactive (avoid starving other windows)
             java.awt.Window w = SwingUtilities.getWindowAncestor(this);
             if (w != null && !w.isActive()) return;
             boolean moving = runPhysicsStep();
@@ -145,11 +160,98 @@ public class TimelineGraphPanel extends JPanel {
         this.schemaRegistry = registry;
     }
 
-    private java.awt.Color resolveSchemaColor(TopicNode.Type type) {
+    /**
+     * Set band configurations. Rebuilds layout from scratch.
+     */
+    public void setBandConfigs(List<BandConfig> configs) {
+        this.bandConfigs = configs != null ? configs : BandConfig.defaultNewsBands();
+        buildBands();
+        if (!newsNodes.isEmpty()) {
+            assignNodesToBands();
+            for (Band band : bands) {
+                relayoutBand(band);
+            }
+            updateXPositions();
+            physicsTimer.start();
+            repaint();
+        }
+    }
+
+    private List<BandConfig> effectiveConfigs() {
+        return bandConfigs != null ? bandConfigs : BandConfig.defaultNewsBands();
+    }
+
+    private java.awt.Color resolveSchemaColor(String typeId) {
         if (schemaRegistry == null) return null;
-        String typeId = type == TopicNode.Type.TOPIC ? "topic" : "coin";
         SchemaType st = schemaRegistry.getType(typeId);
         return st != null ? st.color() : null;
+    }
+
+    /**
+     * Build Band objects from configs and compute pixel boundaries.
+     */
+    private void buildBands() {
+        bands.clear();
+        List<BandConfig> configs = effectiveConfigs();
+
+        // Calculate total weight of visible bands
+        double totalWeight = 0;
+        for (BandConfig bc : configs) {
+            if (bc.isVisible()) totalWeight += bc.getWeight();
+        }
+        if (totalWeight == 0) totalWeight = 1;
+
+        int usableTop = 20; // small top margin for label
+        int usableBottom = getHeight() - MARGIN_BOTTOM;
+        int usableHeight = usableBottom - usableTop;
+
+        int currentTop = usableTop;
+        for (BandConfig bc : configs) {
+            Band band = new Band(bc);
+            if (bc.isVisible()) {
+                int bandHeight = (int)(usableHeight * bc.getWeight() / totalWeight);
+                band.pixelTop = currentTop;
+                band.pixelBottom = currentTop + bandHeight;
+                currentTop += bandHeight;
+            } else {
+                band.pixelTop = currentTop;
+                band.pixelBottom = currentTop; // 0 height
+            }
+            bands.add(band);
+        }
+        // Adjust last visible band to fill any rounding gap
+        for (int i = bands.size() - 1; i >= 0; i--) {
+            if (bands.get(i).config.isVisible()) {
+                bands.get(i).pixelBottom = usableBottom;
+                break;
+            }
+        }
+    }
+
+    /**
+     * Assign existing nodes to their matching bands based on filter.
+     */
+    private void assignNodesToBands() {
+        // Clear all band node lists
+        for (Band band : bands) {
+            band.topicNodes.clear();
+            band.newsNodes.clear();
+        }
+
+        // Assign each node to its matching band
+        for (Band band : bands) {
+            if (!band.config.isVisible()) continue;
+            String filter = band.config.getFilter();
+            if ("articles".equals(filter)) {
+                band.newsNodes.addAll(newsNodes);
+            } else {
+                for (TopicNode tn : topicMap.values()) {
+                    if (filter.equals(tn.typeId())) {
+                        band.topicNodes.add(tn);
+                    }
+                }
+            }
+        }
     }
 
     /**
@@ -157,8 +259,6 @@ public class TimelineGraphPanel extends JPanel {
      */
     public void setArticles(List<Article> articles) {
         newsNodes.clear();
-        topicNodes.clear();
-        coinNodes.clear();
         topicMap.clear();
         existingArticleIds.clear();
 
@@ -170,6 +270,10 @@ public class TimelineGraphPanel extends JPanel {
             .toList();
 
         if (sorted.isEmpty()) {
+            for (Band band : bands) {
+                band.topicNodes.clear();
+                band.newsNodes.clear();
+            }
             repaint();
             return;
         }
@@ -182,26 +286,19 @@ public class TimelineGraphPanel extends JPanel {
             minTime = maxTime.minus(1, ChronoUnit.HOURS);
         }
 
-        // Calculate article zone (topics:coins:articles = 2:3:5)
-        int usableHeight = getHeight() - MARGIN_TOP - MARGIN_BOTTOM;
-        int articleZoneTop = MARGIN_TOP + usableHeight * 5 / 10;  // After topics (2) + coins (3)
-        int articleZoneBottom = getHeight() - MARGIN_BOTTOM;
-
-        // Create news nodes (article zone)
+        // Create news nodes
         for (Article article : sorted) {
             existingArticleIds.add(article.id());
             NewsNode node = new NewsNode(article);
-            node.setY(articleZoneTop + 20 + Math.random() * (articleZoneBottom - articleZoneTop - 60));
             newsNodes.add(node);
 
             // Create/link topic nodes (skip hidden topics)
             for (String topic : article.topics()) {
                 if (config.isTopicHidden(topic)) continue;
                 TopicNode topicNode = topicMap.computeIfAbsent(topic, t -> {
-                    TopicNode tn = new TopicNode(t, formatTopicLabel(t), TopicNode.Type.TOPIC);
-                    Color sc = resolveSchemaColor(TopicNode.Type.TOPIC);
+                    TopicNode tn = new TopicNode(t, formatTopicLabel(t), "topic");
+                    Color sc = resolveSchemaColor("topic");
                     if (sc != null) tn.setColor(sc);
-                    topicNodes.add(tn);  // Topics go in topicNodes
                     return tn;
                 });
                 topicNode.addConnection(node);
@@ -212,10 +309,9 @@ public class TimelineGraphPanel extends JPanel {
             for (String coin : article.coins()) {
                 String coinId = "coin:" + coin;
                 TopicNode coinNode = topicMap.computeIfAbsent(coinId, c -> {
-                    TopicNode cn = new TopicNode(coinId, coin, TopicNode.Type.COIN);
-                    Color sc = resolveSchemaColor(TopicNode.Type.COIN);
+                    TopicNode cn = new TopicNode(coinId, coin, "coin");
+                    Color sc = resolveSchemaColor("coin");
                     if (sc != null) cn.setColor(sc);
-                    coinNodes.add(cn);  // Coins go in coinNodes
                     return cn;
                 });
                 coinNode.addConnection(node);
@@ -223,48 +319,13 @@ public class TimelineGraphPanel extends JPanel {
             }
         }
 
-        // Layout: zones proportioned as topics:coins:articles = 2:3:5
-        int totalHeight = getHeight() - MARGIN_BOTTOM;  // Use full height minus bottom margin
-        int topicZoneTop = 20;  // Small top margin for label
-        int topicZoneBottom = totalHeight * 2 / 10;
-        int coinZoneTop = topicZoneBottom;
-        int coinZoneBottom = totalHeight * 5 / 10;
-        int topicZoneHeight = topicZoneBottom - topicZoneTop;
-        int coinZoneHeight = coinZoneBottom - coinZoneTop;
-        int width = getWidth() - MARGIN_LEFT - MARGIN_RIGHT;
+        // Build bands and assign nodes
+        buildBands();
+        assignNodesToBands();
 
-        // Sort by article count for better placement
-        topicNodes.sort((a, b) -> Integer.compare(b.articleCount(), a.articleCount()));
-        coinNodes.sort((a, b) -> Integer.compare(b.articleCount(), a.articleCount()));
-
-        // Topics: evenly distribute rows within zone
-        int topicRowCount = Math.min(3, Math.max(1, (int)Math.ceil(topicNodes.size() / 10.0)));
-        int topicsPerRow = (int) Math.ceil(topicNodes.size() / (double) topicRowCount);
-        int topicRowSpacing = topicZoneHeight / (topicRowCount + 1);
-        for (int i = 0; i < topicNodes.size(); i++) {
-            TopicNode tn = topicNodes.get(i);
-            int row = i / Math.max(1, topicsPerRow);
-            int indexInRow = i % Math.max(1, topicsPerRow);
-            int countInRow = Math.min(topicsPerRow, topicNodes.size() - row * topicsPerRow);
-            tn.setX(MARGIN_LEFT + (indexInRow + 0.5) * width / Math.max(1, countInRow));
-            tn.setY(topicZoneTop + topicRowSpacing * (row + 1));
-        }
-
-        // Coins: evenly distribute rows within zone
-        int coinRowCount = Math.min(4, Math.max(1, (int)Math.ceil(coinNodes.size() / 8.0)));
-        int coinRowSpacing = coinZoneHeight / (coinRowCount + 1);
-        int[] coinRowCounts = new int[coinRowCount];
-        for (int i = 0; i < coinNodes.size(); i++) {
-            coinRowCounts[i % coinRowCount]++;
-        }
-        int[] coinRowIndices = new int[coinRowCount];
-        for (int i = 0; i < coinNodes.size(); i++) {
-            TopicNode cn = coinNodes.get(i);
-            int row = i % coinRowCount;
-            int indexInRow = coinRowIndices[row]++;
-            int countInRow = coinRowCounts[row];
-            cn.setX(MARGIN_LEFT + (indexInRow + 0.5) * width / Math.max(1, countInRow));
-            cn.setY(coinZoneTop + coinRowSpacing * (row + 1));
+        // Layout each band
+        for (Band band : bands) {
+            relayoutBand(band);
         }
 
         updateXPositions();
@@ -277,7 +338,6 @@ public class TimelineGraphPanel extends JPanel {
      * Returns the number of new articles added.
      */
     public int addArticles(List<Article> articles) {
-        // Filter to only new articles
         List<Article> newArticles = articles.stream()
             .filter(a -> a.publishedAt() != null)
             .filter(a -> !existingArticleIds.contains(a.id()))
@@ -287,11 +347,6 @@ public class TimelineGraphPanel extends JPanel {
         if (newArticles.isEmpty()) {
             return 0;
         }
-
-        // Calculate article zone (topics:coins:articles = 2:3:5)
-        int usableHeight = getHeight() - MARGIN_TOP - MARGIN_BOTTOM;
-        int articleZoneTop = MARGIN_TOP + usableHeight * 5 / 10;
-        int articleZoneBottom = getHeight() - MARGIN_BOTTOM;
 
         // Update time range if needed
         for (Article article : newArticles) {
@@ -305,7 +360,6 @@ public class TimelineGraphPanel extends JPanel {
         for (Article article : newArticles) {
             existingArticleIds.add(article.id());
             NewsNode node = new NewsNode(article);
-            node.setY(articleZoneTop + 20 + Math.random() * (articleZoneBottom - articleZoneTop - 60));
             newsNodes.add(node);
             addedNodes.add(node);
 
@@ -313,10 +367,9 @@ public class TimelineGraphPanel extends JPanel {
             for (String topic : article.topics()) {
                 if (config.isTopicHidden(topic)) continue;
                 TopicNode topicNode = topicMap.computeIfAbsent(topic, t -> {
-                    TopicNode tn = new TopicNode(t, formatTopicLabel(t), TopicNode.Type.TOPIC);
-                    Color sc = resolveSchemaColor(TopicNode.Type.TOPIC);
+                    TopicNode tn = new TopicNode(t, formatTopicLabel(t), "topic");
+                    Color sc = resolveSchemaColor("topic");
                     if (sc != null) tn.setColor(sc);
-                    topicNodes.add(tn);
                     return tn;
                 });
                 topicNode.addConnection(node);
@@ -327,10 +380,9 @@ public class TimelineGraphPanel extends JPanel {
             for (String coin : article.coins()) {
                 String coinId = "coin:" + coin;
                 TopicNode coinNode = topicMap.computeIfAbsent(coinId, c -> {
-                    TopicNode cn = new TopicNode(coinId, coin, TopicNode.Type.COIN);
-                    Color sc = resolveSchemaColor(TopicNode.Type.COIN);
+                    TopicNode cn = new TopicNode(coinId, coin, "coin");
+                    Color sc = resolveSchemaColor("coin");
                     if (sc != null) cn.setColor(sc);
-                    coinNodes.add(cn);
                     return cn;
                 });
                 coinNode.addConnection(node);
@@ -338,8 +390,26 @@ public class TimelineGraphPanel extends JPanel {
             }
         }
 
-        // Re-layout topics and coins (they may have new ones)
-        relayoutTopicsAndCoins();
+        // Re-build bands and assign nodes
+        buildBands();
+        assignNodesToBands();
+
+        // Only re-layout non-article bands (topics/coins may have new entries)
+        // For article bands, just set Y for the new nodes
+        for (Band band : bands) {
+            if (!band.config.isVisible()) continue;
+            if ("articles".equals(band.config.getFilter())) {
+                // Set initial Y for new nodes only
+                for (NewsNode node : addedNodes) {
+                    int zoneTop = band.pixelTop + 20;
+                    int zoneBottom = band.pixelBottom - 10;
+                    node.setY(zoneTop + Math.random() * Math.max(1, zoneBottom - zoneTop - 40));
+                }
+            } else {
+                relayoutBand(band);
+            }
+        }
+
         updateXPositions();
         repaint();
 
@@ -347,56 +417,116 @@ public class TimelineGraphPanel extends JPanel {
     }
 
     /**
-     * Re-layout topic and coin nodes without changing news node positions.
+     * Layout nodes within a single band based on its layout mode.
      */
-    private void relayoutTopicsAndCoins() {
-        // Layout: zones proportioned as topics:coins:articles = 2:3:5
-        int totalHeight = getHeight() - MARGIN_BOTTOM;
-        int topicZoneTop = 20;
-        int topicZoneBottom = totalHeight * 2 / 10;
-        int coinZoneTop = topicZoneBottom;
-        int coinZoneBottom = totalHeight * 5 / 10;
-        int topicZoneHeight = topicZoneBottom - topicZoneTop;
-        int coinZoneHeight = coinZoneBottom - coinZoneTop;
-        int width = getWidth() - MARGIN_LEFT - MARGIN_RIGHT;
+    private void relayoutBand(Band band) {
+        if (!band.config.isVisible() || band.height() < 10) return;
 
-        // Sort by article count
-        topicNodes.sort((a, b) -> Integer.compare(b.articleCount(), a.articleCount()));
-        coinNodes.sort((a, b) -> Integer.compare(b.articleCount(), a.articleCount()));
-
-        // Topics: evenly distribute rows within zone
-        int topicRowCount = Math.min(3, Math.max(1, (int)Math.ceil(topicNodes.size() / 10.0)));
-        int topicsPerRow = (int) Math.ceil(topicNodes.size() / (double) topicRowCount);
-        int topicRowSpacing = topicZoneHeight / (topicRowCount + 1);
-        for (int i = 0; i < topicNodes.size(); i++) {
-            TopicNode tn = topicNodes.get(i);
-            int row = i / Math.max(1, topicsPerRow);
-            int indexInRow = i % Math.max(1, topicsPerRow);
-            int countInRow = Math.min(topicsPerRow, topicNodes.size() - row * topicsPerRow);
-            tn.setX(MARGIN_LEFT + (indexInRow + 0.5) * width / Math.max(1, countInRow));
-            tn.setY(topicZoneTop + topicRowSpacing * (row + 1));
-        }
-
-        // Coins: evenly distribute rows within zone
-        int coinRowCount = Math.min(4, Math.max(1, (int)Math.ceil(coinNodes.size() / 8.0)));
-        int coinRowSpacing = coinZoneHeight / (coinRowCount + 1);
-        int[] coinRowCounts = new int[coinRowCount];
-        for (int i = 0; i < coinNodes.size(); i++) {
-            coinRowCounts[i % coinRowCount]++;
-        }
-        int[] coinRowIndices = new int[coinRowCount];
-        for (int i = 0; i < coinNodes.size(); i++) {
-            TopicNode cn = coinNodes.get(i);
-            int row = i % coinRowCount;
-            int indexInRow = coinRowIndices[row]++;
-            int countInRow = coinRowCounts[row];
-            cn.setX(MARGIN_LEFT + (indexInRow + 0.5) * width / Math.max(1, countInRow));
-            cn.setY(coinZoneTop + coinRowSpacing * (row + 1));
+        switch (band.config.getLayoutMode()) {
+            case HORIZONTAL_ROWS -> relayoutHorizontalRows(band);
+            case SPRING_PHYSICS -> relayoutSpringPhysics(band);
+            case MAPPED_TO_FIELD -> relayoutMappedToField(band);
         }
     }
 
+    private void relayoutHorizontalRows(Band band) {
+        List<TopicNode> nodes = band.topicNodes;
+        if (nodes.isEmpty()) return;
+
+        int zoneTop = band.pixelTop;
+        int zoneHeight = band.height();
+        int width = getWidth() - MARGIN_LEFT - MARGIN_RIGHT;
+
+        nodes.sort((a, b) -> Integer.compare(b.articleCount(), a.articleCount()));
+
+        int maxRows = band.config.getMaxRows();
+        int rowCount = Math.min(maxRows, Math.max(1, (int) Math.ceil(nodes.size() / 8.0)));
+        int rowSpacing = zoneHeight / (rowCount + 1);
+
+        int[] rowCounts = new int[rowCount];
+        for (int i = 0; i < nodes.size(); i++) {
+            rowCounts[i % rowCount]++;
+        }
+        int[] rowIndices = new int[rowCount];
+        for (int i = 0; i < nodes.size(); i++) {
+            TopicNode tn = nodes.get(i);
+            int row = i % rowCount;
+            int indexInRow = rowIndices[row]++;
+            int countInRow = rowCounts[row];
+            tn.setX(MARGIN_LEFT + (indexInRow + 0.5) * width / Math.max(1, countInRow));
+            tn.setY(zoneTop + rowSpacing * (row + 1));
+        }
+    }
+
+    private void relayoutSpringPhysics(Band band) {
+        // For article bands: set initial random Y within band
+        int zoneTop = band.pixelTop + 20;
+        int zoneBottom = band.pixelBottom - 10;
+
+        for (NewsNode node : band.newsNodes) {
+            if (node.y() < zoneTop || node.y() > zoneBottom) {
+                node.setY(zoneTop + Math.random() * Math.max(1, zoneBottom - zoneTop));
+            }
+        }
+
+        // For topic/coin bands with spring physics (less common but supported)
+        for (TopicNode node : band.topicNodes) {
+            if (node.y() < zoneTop || node.y() > zoneBottom) {
+                node.setY(zoneTop + Math.random() * Math.max(1, zoneBottom - zoneTop));
+            }
+        }
+    }
+
+    private void relayoutMappedToField(Band band) {
+        String yField = band.config.getYField();
+        if (yField == null) return;
+
+        int zoneTop = band.pixelTop + 10;
+        int zoneBottom = band.pixelBottom - 10;
+        int zoneHeight = zoneBottom - zoneTop;
+
+        if ("articles".equals(band.config.getFilter())) {
+            for (NewsNode node : band.newsNodes) {
+                double normalized = getFieldValue(node, yField);
+                // Map normalized 0..1 to pixel range (0=top, 1=bottom)
+                node.setY(zoneTop + normalized * zoneHeight);
+            }
+        } else {
+            // Topics/Coins
+            int maxCount = band.topicNodes.stream().mapToInt(TopicNode::articleCount).max().orElse(1);
+            for (TopicNode node : band.topicNodes) {
+                double normalized = getFieldValue(node, yField, maxCount);
+                node.setY(zoneTop + normalized * zoneHeight);
+                // Distribute X evenly
+                int idx = band.topicNodes.indexOf(node);
+                int width = getWidth() - MARGIN_LEFT - MARGIN_RIGHT;
+                node.setX(MARGIN_LEFT + (idx + 0.5) * width / Math.max(1, band.topicNodes.size()));
+            }
+        }
+    }
+
+    /**
+     * Get a normalized (0..1) field value from a NewsNode for Y-mapping.
+     */
+    private double getFieldValue(NewsNode node, String field) {
+        return switch (field) {
+            case "sentiment" -> (node.sentiment() + 1.0) / 2.0; // -1..+1 → 0..1
+            case "importance" -> node.importance().ordinal() / 4.0; // 0..4 → 0..1
+            default -> 0.5;
+        };
+    }
+
+    /**
+     * Get a normalized (0..1) field value from a TopicNode for Y-mapping.
+     */
+    private double getFieldValue(TopicNode node, String field, int maxArticleCount) {
+        return switch (field) {
+            case "articleCount" -> maxArticleCount > 0 ? 1.0 - (double) node.articleCount() / maxArticleCount : 0.5;
+            default -> 0.5;
+        };
+    }
+
     private String formatTopicLabel(String topic) {
-        // "crypto.regulation" -> "regulation"
         int dot = topic.lastIndexOf('.');
         if (dot >= 0) return topic.substring(dot + 1);
         return topic;
@@ -425,26 +555,55 @@ public class TimelineGraphPanel extends JPanel {
     private boolean runPhysicsStep() {
         if (newsNodes.isEmpty()) return false;
 
+        boolean anyMoving = false;
+
         double damping = 0.85;
         double repulsion = 400;
         double topicAttraction = 0.02;
+
+        for (Band band : bands) {
+            if (!band.config.isVisible()) continue;
+
+            switch (band.config.getLayoutMode()) {
+                case SPRING_PHYSICS -> {
+                    if ("articles".equals(band.config.getFilter())) {
+                        anyMoving |= applyArticlePhysics(band, damping, repulsion);
+                    } else {
+                        // TopicNodes with spring physics: Y repulsion within band
+                        anyMoving |= applyTopicSpringPhysics(band, damping, repulsion);
+                    }
+                }
+                case HORIZONTAL_ROWS -> {
+                    // X repulsion for row-based bands
+                    int leftBound = MARGIN_LEFT + 30;
+                    int rightBound = getWidth() - MARGIN_RIGHT - 30;
+                    double rowDamping = 0.92;
+                    double strongRepulsion = repulsion * 2.0;
+                    double weakAttraction = topicAttraction * 0.3;
+                    anyMoving |= applyRowPhysics(band.topicNodes, leftBound, rightBound, strongRepulsion, weakAttraction, rowDamping);
+                }
+                case MAPPED_TO_FIELD -> {
+                    // Deterministic — no physics
+                }
+            }
+        }
+
+        return anyMoving;
+    }
+
+    private boolean applyArticlePhysics(Band band, double damping, double repulsion) {
+        int zoneTop = band.pixelTop + 20;
+        int zoneBottom = band.pixelBottom - 10;
+        double centerY = (zoneTop + zoneBottom) / 2.0;
         double minVelocity = 0.1;
         boolean anyMoving = false;
 
-        // Calculate article zone (topics:coins:articles = 2:3:5)
-        int usableHeight = getHeight() - MARGIN_TOP - MARGIN_BOTTOM;
-        int articleZoneTop = MARGIN_TOP + usableHeight * 5 / 10 + 20;
-        int articleZoneBottom = getHeight() - MARGIN_BOTTOM - 10;
-        double newsCenterY = (articleZoneTop + articleZoneBottom) / 2.0;
-
-        for (NewsNode node : newsNodes) {
-            // Skip physics for dragged node
+        for (NewsNode node : band.newsNodes) {
             if (node == draggedNode) continue;
 
             double fy = 0;
 
-            // Repulsion from other news nodes
-            for (NewsNode other : newsNodes) {
+            for (NewsNode other : band.newsNodes) {
                 if (other == node) continue;
                 double dy = node.y() - other.y();
                 double dx = node.x() - other.x();
@@ -455,34 +614,58 @@ public class TimelineGraphPanel extends JPanel {
                 }
             }
 
-            // Weak pull toward center of article zone
-            fy += (newsCenterY - node.y()) * 0.001;
+            fy += (centerY - node.y()) * 0.001;
 
             double vy = (node.vy() + fy) * damping;
             if (Math.abs(vy) < minVelocity) vy = 0;
             node.setVy(vy);
             if (vy != 0) {
                 node.setY(node.y() + vy);
-                node.setY(Math.max(articleZoneTop, Math.min(articleZoneBottom, node.y())));
+                node.setY(Math.max(zoneTop, Math.min(zoneBottom, node.y())));
                 anyMoving = true;
             }
         }
+        return anyMoving;
+    }
 
-        // Gentle X-axis physics for topics (stay on fixed Y line)
-        int leftBound = MARGIN_LEFT + 30;
-        int rightBound = getWidth() - MARGIN_RIGHT - 30;
-        double rowDamping = 0.92;  // Higher damping for smoother movement
-        double strongRepulsion = repulsion * 2.0;  // Stronger repulsion to spread out
-        double weakAttraction = topicAttraction * 0.3;  // Weaker attraction to news
+    private boolean applyTopicSpringPhysics(Band band, double damping, double repulsion) {
+        int zoneTop = band.pixelTop + 10;
+        int zoneBottom = band.pixelBottom - 10;
+        double centerY = (zoneTop + zoneBottom) / 2.0;
+        double minVelocity = 0.1;
+        boolean anyMoving = false;
 
-        anyMoving |= applyRowPhysics(topicNodes, leftBound, rightBound, strongRepulsion, weakAttraction, rowDamping);
-        anyMoving |= applyRowPhysics(coinNodes, leftBound, rightBound, strongRepulsion, weakAttraction, rowDamping);
+        for (TopicNode node : band.topicNodes) {
+            if (node == draggedNode) continue;
+
+            double fy = 0;
+            for (TopicNode other : band.topicNodes) {
+                if (other == node) continue;
+                double dy = node.y() - other.y();
+                double dx = node.x() - other.x();
+                double dist = Math.sqrt(dx * dx + dy * dy);
+                if (dist < 1) dist = 1;
+                if (dist < 80) {
+                    fy += (dy / dist) * repulsion / (dist * dist);
+                }
+            }
+
+            fy += (centerY - node.y()) * 0.001;
+
+            double vy = (node.vx() + fy) * damping; // reuse vx as velocity
+            if (Math.abs(vy) < minVelocity) vy = 0;
+            node.setVx(vy);
+            if (vy != 0) {
+                node.setY(node.y() + vy);
+                node.setY(Math.max(zoneTop, Math.min(zoneBottom, node.y())));
+                anyMoving = true;
+            }
+        }
         return anyMoving;
     }
 
     /**
      * Apply gentle horizontal physics to a row of nodes (topics or coins).
-     * Nodes repel each other and are attracted to the average X of their connected articles.
      */
     private boolean applyRowPhysics(List<TopicNode> nodes, int leftBound, int rightBound,
                                   double repulsion, double attraction, double damping) {
@@ -539,42 +722,53 @@ public class TimelineGraphPanel extends JPanel {
 
         updateXPositions();
 
-        // Calculate zone boundaries (topics:coins:articles = 2:3:5)
-        int totalHeight = getHeight() - MARGIN_BOTTOM;
-        int topicZoneTop = 20;
-        int coinZoneTop = totalHeight * 2 / 10;
-        int articleZoneTop = totalHeight * 5 / 10;
+        // Ensure bands are built (may not have been if setArticles hasn't been called yet)
+        if (bands.isEmpty()) {
+            buildBands();
+        }
+
         int timelineY = getHeight() - MARGIN_BOTTOM + TIMELINE_OFFSET;
 
-        // Draw full-width separator lines
+        // Draw band separators, labels, and nodes
+        g2.setFont(new Font("SansSerif", Font.BOLD, 10));
+        int labelFontAscent = g2.getFontMetrics().getAscent();
+        topicsLabelClickArea = null; // reset
+
+        for (int i = 0; i < bands.size(); i++) {
+            Band band = bands.get(i);
+            if (!band.config.isVisible()) continue;
+
+            // Draw separator line at top of each band (except the first)
+            if (i > 0) {
+                g2.setColor(gridLineColor());
+                g2.setStroke(new BasicStroke(1f));
+                g2.drawLine(0, band.pixelTop, getWidth(), band.pixelTop);
+            }
+
+            // Draw band label
+            int labelY = band.pixelTop + 8 + labelFontAscent;
+            String label = band.config.getName().toUpperCase();
+            g2.setColor(secondaryColor());
+            g2.setFont(new Font("SansSerif", Font.BOLD, 10));
+            g2.drawString(label, MARGIN_LEFT, labelY);
+
+            // For the "topic" band, add clickable config triangle
+            if ("topic".equals(band.config.getFilter())) {
+                int topicsLabelWidth = g2.getFontMetrics().stringWidth(label);
+                int triangleX = MARGIN_LEFT + topicsLabelWidth + 6;
+                int triangleYPos = labelY - 6;
+                int[] xPoints = {triangleX, triangleX + 8, triangleX + 4};
+                int[] yPoints = {triangleYPos, triangleYPos, triangleYPos + 5};
+                g2.setColor(secondaryColor());
+                g2.fillPolygon(xPoints, yPoints, 3);
+                topicsLabelClickArea = new Rectangle(MARGIN_LEFT, band.pixelTop, topicsLabelWidth + 20, labelY - band.pixelTop + 4);
+            }
+        }
+
+        // Timeline separator
         g2.setColor(gridLineColor());
         g2.setStroke(new BasicStroke(1f));
-        g2.drawLine(0, coinZoneTop, getWidth(), coinZoneTop);       // Between topics and coins
-        g2.drawLine(0, articleZoneTop, getWidth(), articleZoneTop); // Between coins and articles
-        g2.drawLine(0, timelineY, getWidth(), timelineY);           // Timeline separator
-
-        // Labels for each zone (8px from zone top + font ascent)
-        g2.setColor(secondaryColor());
-        g2.setFont(new Font("SansSerif", Font.BOLD, 10));
-        int labelOffset = 8 + g2.getFontMetrics().getAscent();
-
-        // Topics label with clickable triangle
-        String topicsLabel = "TOPICS";
-        g2.drawString(topicsLabel, MARGIN_LEFT, labelOffset);
-        int topicsLabelWidth = g2.getFontMetrics().stringWidth(topicsLabel);
-        int triangleX = MARGIN_LEFT + topicsLabelWidth + 6;
-        int triangleY = labelOffset - 6;
-        // Draw triangle (pointing down)
-        int[] xPoints = {triangleX, triangleX + 8, triangleX + 4};
-        int[] yPoints = {triangleY, triangleY, triangleY + 5};
-        g2.setColor(secondaryColor());
-        g2.fillPolygon(xPoints, yPoints, 3);
-        // Store clickable area
-        topicsLabelClickArea = new Rectangle(MARGIN_LEFT, 0, topicsLabelWidth + 20, labelOffset + 4);
-
-        g2.setColor(secondaryColor());
-        g2.drawString("COINS", MARGIN_LEFT, coinZoneTop + labelOffset);
-        g2.drawString("NEWS ARTICLES", MARGIN_LEFT, articleZoneTop + labelOffset);
+        g2.drawLine(0, timelineY, getWidth(), timelineY);
 
         // Draw time axis
         drawTimeAxis(g2);
@@ -584,11 +778,16 @@ public class TimelineGraphPanel extends JPanel {
             drawConnections(g2);
         }
 
-        // Draw topic nodes (upper half)
-        drawTopicNodes(g2);
-
-        // Draw news nodes (lower half)
-        drawNewsNodes(g2);
+        // Draw nodes per band
+        for (Band band : bands) {
+            if (!band.config.isVisible()) continue;
+            for (TopicNode node : band.topicNodes) {
+                drawSingleTopicNode(g2, node);
+            }
+            for (NewsNode node : band.newsNodes) {
+                drawSingleNewsNode(g2, node);
+            }
+        }
 
         // Draw hover tooltip
         drawTooltip(g2);
@@ -625,14 +824,11 @@ public class TimelineGraphPanel extends JPanel {
     }
 
     private void drawConnections(Graphics2D g2) {
-        // Draw connections from topics
-        for (TopicNode topic : topicNodes) {
-            drawNodeConnections(g2, topic);
-        }
-
-        // Draw connections from coins
-        for (TopicNode coin : coinNodes) {
-            drawNodeConnections(g2, coin);
+        for (Band band : bands) {
+            if (!band.config.isVisible()) continue;
+            for (TopicNode node : band.topicNodes) {
+                drawNodeConnections(g2, node);
+            }
         }
     }
 
@@ -646,7 +842,6 @@ public class TimelineGraphPanel extends JPanel {
             g2.setColor(new Color(c.getRed(), c.getGreen(), c.getBlue(), alpha));
             g2.setStroke(new BasicStroke(highlight ? 2.0f : 1.5f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
 
-            // Shorten line to stop at node edges + gap
             double gap = 4;
             double dx = news.x() - node.x();
             double dy = news.y() - node.y();
@@ -665,36 +860,22 @@ public class TimelineGraphPanel extends JPanel {
         }
     }
 
-    private void drawTopicNodes(Graphics2D g2) {
-        // Draw topics (upper row)
-        for (TopicNode node : topicNodes) {
-            drawSingleTopicNode(g2, node);
-        }
-        // Draw coins (middle row)
-        for (TopicNode node : coinNodes) {
-            drawSingleTopicNode(g2, node);
-        }
-    }
-
     private void drawSingleTopicNode(Graphics2D g2, TopicNode node) {
         int r = node.getRadius();
         Color c = node.getColor();
         boolean highlight = node.isHovered() || node.isSelected();
 
-        // Glow for highlight
         if (highlight) {
             g2.setColor(new Color(c.getRed(), c.getGreen(), c.getBlue(), 60));
             g2.fillOval((int)node.x() - r - 5, (int)node.y() - r - 5, (r + 5) * 2, (r + 5) * 2);
         }
 
-        // Node
         g2.setColor(c);
         g2.fillOval((int)node.x() - r, (int)node.y() - r, r * 2, r * 2);
         g2.setColor(c.darker());
         g2.setStroke(new BasicStroke(1.5f));
         g2.drawOval((int)node.x() - r, (int)node.y() - r, r * 2, r * 2);
 
-        // Label
         if (showLabels) {
             g2.setColor(labelColor());
             g2.setFont(new Font("SansSerif", Font.PLAIN, 10));
@@ -704,25 +885,21 @@ public class TimelineGraphPanel extends JPanel {
         }
     }
 
-    private void drawNewsNodes(Graphics2D g2) {
-        for (NewsNode node : newsNodes) {
-            int r = node.getRadius();
-            Color c = node.getColor();
-            boolean highlight = node.isHovered() || node.isSelected();
+    private void drawSingleNewsNode(Graphics2D g2, NewsNode node) {
+        int r = node.getRadius();
+        Color c = node.getColor();
+        boolean highlight = node.isHovered() || node.isSelected();
 
-            // Glow for highlight
-            if (highlight) {
-                g2.setColor(new Color(c.getRed(), c.getGreen(), c.getBlue(), 50));
-                g2.fillOval((int)node.x() - r - 4, (int)node.y() - r - 4, (r + 4) * 2, (r + 4) * 2);
-            }
-
-            // Node
-            g2.setColor(c);
-            g2.fillOval((int)node.x() - r, (int)node.y() - r, r * 2, r * 2);
-            g2.setColor(c.darker());
-            g2.setStroke(new BasicStroke(1f));
-            g2.drawOval((int)node.x() - r, (int)node.y() - r, r * 2, r * 2);
+        if (highlight) {
+            g2.setColor(new Color(c.getRed(), c.getGreen(), c.getBlue(), 50));
+            g2.fillOval((int)node.x() - r - 4, (int)node.y() - r - 4, (r + 4) * 2, (r + 4) * 2);
         }
+
+        g2.setColor(c);
+        g2.fillOval((int)node.x() - r, (int)node.y() - r, r * 2, r * 2);
+        g2.setColor(c.darker());
+        g2.setStroke(new BasicStroke(1f));
+        g2.drawOval((int)node.x() - r, (int)node.y() - r, r * 2, r * 2);
     }
 
     private void drawTooltip(Graphics2D g2) {
@@ -740,7 +917,6 @@ public class TimelineGraphPanel extends JPanel {
             nodeX = news.x();
             nodeY = news.y();
 
-            // Wrap title to up to 3 lines
             String title = news.title();
             if (title.length() <= maxCharsPerLine) {
                 linesList.add(title);
@@ -749,7 +925,6 @@ public class TimelineGraphPanel extends JPanel {
                 int pos = 0;
                 while (pos < title.length() && linesList.size() < maxTitleLines) {
                     int end = Math.min(pos + maxCharsPerLine, title.length());
-                    // Find a good break point (space) if not at end
                     if (end < title.length() && linesList.size() < maxTitleLines - 1) {
                         int spacePos = title.lastIndexOf(' ', end);
                         if (spacePos > pos + maxCharsPerLine / 2) {
@@ -757,7 +932,6 @@ public class TimelineGraphPanel extends JPanel {
                         }
                     }
                     String line = title.substring(pos, end).trim();
-                    // Add ellipsis if this is the last line and there's more text
                     if (linesList.size() == maxTitleLines - 1 && end < title.length()) {
                         line = line + "...";
                     }
@@ -775,7 +949,7 @@ public class TimelineGraphPanel extends JPanel {
         } else if (hoveredNode instanceof TopicNode topic) {
             nodeX = topic.x();
             nodeY = topic.y();
-            if (topic.type() == TopicNode.Type.COIN) {
+            if ("coin".equals(topic.typeId())) {
                 linesList.add("Coin: " + topic.label());
                 linesList.add(topic.articleCount() + " articles");
             } else {
@@ -812,32 +986,23 @@ public class TimelineGraphPanel extends JPanel {
     private void updateHover(int mx, int my) {
         Object newHover = null;
 
-        // Check topic nodes (upper row)
-        for (TopicNode node : topicNodes) {
-            if (node.contains(mx, my)) {
-                newHover = node;
-                break;
-            }
-        }
-
-        // Check coin nodes (middle row)
-        if (newHover == null) {
-            for (TopicNode node : coinNodes) {
+        // Check all bands
+        for (Band band : bands) {
+            if (!band.config.isVisible()) continue;
+            for (TopicNode node : band.topicNodes) {
                 if (node.contains(mx, my)) {
                     newHover = node;
                     break;
                 }
             }
-        }
-
-        // Then check news nodes
-        if (newHover == null) {
-            for (NewsNode node : newsNodes) {
+            if (newHover != null) break;
+            for (NewsNode node : band.newsNodes) {
                 if (node.contains(mx, my)) {
                     newHover = node;
                     break;
                 }
             }
+            if (newHover != null) break;
         }
 
         if (newHover != hoveredNode) {
@@ -866,42 +1031,29 @@ public class TimelineGraphPanel extends JPanel {
 
         selectedNode = null;
 
-        // Check topics
-        for (TopicNode node : topicNodes) {
-            if (node.contains(mx, my)) {
-                selectedNode = node;
-                node.setSelected(true);
-                if (onTopicSelected != null) {
-                    onTopicSelected.accept(node);
-                }
-                break;
-            }
-        }
-
-        // Check coins
-        if (selectedNode == null) {
-            for (TopicNode node : coinNodes) {
+        // Check all bands
+        for (Band band : bands) {
+            if (!band.config.isVisible()) continue;
+            for (TopicNode node : band.topicNodes) {
                 if (node.contains(mx, my)) {
                     selectedNode = node;
                     node.setSelected(true);
                     if (onTopicSelected != null) {
                         onTopicSelected.accept(node);
                     }
-                    break;
+                    repaint();
+                    return;
                 }
             }
-        }
-
-        // Check news
-        if (selectedNode == null) {
-            for (NewsNode node : newsNodes) {
+            for (NewsNode node : band.newsNodes) {
                 if (node.contains(mx, my)) {
                     selectedNode = node;
                     node.setSelected(true);
                     if (onNodeSelected != null) {
                         onNodeSelected.accept(node);
                     }
-                    break;
+                    repaint();
+                    return;
                 }
             }
         }
@@ -910,26 +1062,21 @@ public class TimelineGraphPanel extends JPanel {
     }
 
     private void startDrag(int mx, int my) {
-        // Find node under cursor
-        for (TopicNode node : topicNodes) {
-            if (node.contains(mx, my)) {
-                draggedNode = node;
-                if (!physicsTimer.isRunning()) physicsTimer.start();
-                return;
+        for (Band band : bands) {
+            if (!band.config.isVisible()) continue;
+            for (TopicNode node : band.topicNodes) {
+                if (node.contains(mx, my)) {
+                    draggedNode = node;
+                    if (!physicsTimer.isRunning()) physicsTimer.start();
+                    return;
+                }
             }
-        }
-        for (TopicNode node : coinNodes) {
-            if (node.contains(mx, my)) {
-                draggedNode = node;
-                if (!physicsTimer.isRunning()) physicsTimer.start();
-                return;
-            }
-        }
-        for (NewsNode node : newsNodes) {
-            if (node.contains(mx, my)) {
-                draggedNode = node;
-                if (!physicsTimer.isRunning()) physicsTimer.start();
-                return;
+            for (NewsNode node : band.newsNodes) {
+                if (node.contains(mx, my)) {
+                    draggedNode = node;
+                    if (!physicsTimer.isRunning()) physicsTimer.start();
+                    return;
+                }
             }
         }
     }
@@ -940,21 +1087,42 @@ public class TimelineGraphPanel extends JPanel {
         int leftBound = MARGIN_LEFT + 30;
         int rightBound = getWidth() - MARGIN_RIGHT - 30;
 
+        // Find which band this node belongs to
+        Band ownerBand = findBandForNode(draggedNode);
+
         if (draggedNode instanceof TopicNode topic) {
-            // Topics/coins drag on X axis only (Y is fixed)
-            double newX = Math.max(leftBound, Math.min(rightBound, mx));
-            topic.setX(newX);
-            topic.setVx(0);  // Stop physics momentum
+            if (ownerBand != null && ownerBand.config.getLayoutMode() == BandConfig.LayoutMode.HORIZONTAL_ROWS) {
+                // Drag on X axis only (Y is row-fixed)
+                double newX = Math.max(leftBound, Math.min(rightBound, mx));
+                topic.setX(newX);
+                topic.setVx(0);
+            } else if (ownerBand != null) {
+                // Free drag within band
+                double newX = Math.max(leftBound, Math.min(rightBound, mx));
+                double newY = Math.max(ownerBand.pixelTop + 10, Math.min(ownerBand.pixelBottom - 10, my));
+                topic.setX(newX);
+                topic.setY(newY);
+                topic.setVx(0);
+            }
         } else if (draggedNode instanceof NewsNode news) {
-            // News nodes drag on Y axis only (X is time-locked)
-            int usableHeight = getHeight() - MARGIN_TOP - MARGIN_BOTTOM;
-            int articleZoneTop = MARGIN_TOP + usableHeight * 5 / 10 + 20;
-            int articleZoneBottom = getHeight() - MARGIN_BOTTOM - 10;
-            double newY = Math.max(articleZoneTop, Math.min(articleZoneBottom, my));
-            news.setY(newY);
-            news.setVy(0);  // Stop physics momentum
+            if (ownerBand != null) {
+                // Constrain Y within band
+                int zoneTop = ownerBand.pixelTop + 20;
+                int zoneBottom = ownerBand.pixelBottom - 10;
+                double newY = Math.max(zoneTop, Math.min(zoneBottom, my));
+                news.setY(newY);
+                news.setVy(0);
+            }
         }
         repaint();
+    }
+
+    private Band findBandForNode(Object node) {
+        for (Band band : bands) {
+            if (node instanceof TopicNode tn && band.topicNodes.contains(tn)) return band;
+            if (node instanceof NewsNode nn && band.newsNodes.contains(nn)) return band;
+        }
+        return null;
     }
 
     private void stopDrag() {
@@ -1018,8 +1186,10 @@ public class TimelineGraphPanel extends JPanel {
             allTopics.addAll(node.topics());
         }
         // Also add currently visible topics
-        for (TopicNode tn : topicNodes) {
-            allTopics.add(tn.id());
+        for (TopicNode tn : topicMap.values()) {
+            if ("topic".equals(tn.typeId())) {
+                allTopics.add(tn.id());
+            }
         }
         // Add hidden topics from config
         allTopics.addAll(config.getHiddenTopics());
@@ -1029,7 +1199,6 @@ public class TimelineGraphPanel extends JPanel {
             return;
         }
 
-        // Create dialog
         JDialog dialog = new JDialog(SwingUtilities.getWindowAncestor(this), "Configure Topics", Dialog.ModalityType.APPLICATION_MODAL);
         dialog.setSize(300, 400);
         dialog.setLocationRelativeTo(this);
@@ -1040,7 +1209,6 @@ public class TimelineGraphPanel extends JPanel {
         JLabel label = new JLabel("Select topics to show:");
         panel.add(label, BorderLayout.NORTH);
 
-        // Checkbox list
         JPanel checkboxPanel = new JPanel();
         checkboxPanel.setLayout(new BoxLayout(checkboxPanel, BoxLayout.Y_AXIS));
 
@@ -1055,7 +1223,6 @@ public class TimelineGraphPanel extends JPanel {
         scroll.setBorder(null);
         panel.add(scroll, BorderLayout.CENTER);
 
-        // Buttons
         JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
 
         JButton showAllBtn = new JButton("Show All");
@@ -1068,13 +1235,11 @@ public class TimelineGraphPanel extends JPanel {
 
         JButton okBtn = new JButton("OK");
         okBtn.addActionListener(e -> {
-            // Update config
             for (var entry : checkboxes.entrySet()) {
                 config.setTopicHidden(entry.getKey(), !entry.getValue().isSelected());
             }
             config.save();
             dialog.dispose();
-            // Rebuild topics to apply filter
             rebuildTopics();
         });
         buttonPanel.add(okBtn);
@@ -1093,27 +1258,24 @@ public class TimelineGraphPanel extends JPanel {
      * Rebuild topic nodes after config change.
      */
     private void rebuildTopics() {
-        // Clear and rebuild only topics (not coins)
-        List<TopicNode> toRemove = new ArrayList<>();
-        for (TopicNode tn : topicNodes) {
-            if (config.isTopicHidden(tn.id())) {
-                toRemove.add(tn);
-                topicMap.remove(tn.id());
+        // Remove hidden topics from topicMap
+        List<String> toRemove = new ArrayList<>();
+        for (var entry : topicMap.entrySet()) {
+            if ("topic".equals(entry.getValue().typeId()) && config.isTopicHidden(entry.getKey())) {
+                toRemove.add(entry.getKey());
             }
         }
-        topicNodes.removeAll(toRemove);
+        toRemove.forEach(topicMap::remove);
 
         // Re-add any topics that are no longer hidden
         for (NewsNode news : newsNodes) {
             for (String topic : news.topics()) {
                 if (!config.isTopicHidden(topic) && !topicMap.containsKey(topic)) {
-                    TopicNode tn = new TopicNode(topic, formatTopicLabel(topic), TopicNode.Type.TOPIC);
-                    Color sc = resolveSchemaColor(TopicNode.Type.TOPIC);
+                    TopicNode tn = new TopicNode(topic, formatTopicLabel(topic), "topic");
+                    Color sc = resolveSchemaColor("topic");
                     if (sc != null) tn.setColor(sc);
-                    topicNodes.add(tn);
                     topicMap.put(topic, tn);
                 }
-                // Update connections
                 TopicNode topicNode = topicMap.get(topic);
                 if (topicNode != null) {
                     topicNode.addConnection(news);
@@ -1121,7 +1283,13 @@ public class TimelineGraphPanel extends JPanel {
             }
         }
 
-        relayoutTopicsAndCoins();
+        // Reassign and relayout
+        assignNodesToBands();
+        for (Band band : bands) {
+            if (!"articles".equals(band.config.getFilter())) {
+                relayoutBand(band);
+            }
+        }
         repaint();
     }
 }

@@ -9,11 +9,9 @@ import java.util.List;
  */
 public class TopicNode {
 
-    public enum Type { TOPIC, COIN }
-
     private final String id;
     private final String label;
-    private final Type type;
+    private final String typeId;
 
     // Position
     private double x;
@@ -29,15 +27,15 @@ public class TopicNode {
     private final List<NewsNode> connections = new ArrayList<>();
     private int articleCount = 0;
 
-    public TopicNode(String id, String label, Type type) {
+    public TopicNode(String id, String label, String typeId) {
         this.id = id;
         this.label = label;
-        this.type = type;
+        this.typeId = typeId;
     }
 
     public String id() { return id; }
     public String label() { return label; }
-    public Type type() { return type; }
+    public String typeId() { return typeId; }
 
     public double x() { return x; }
     public double y() { return y; }
@@ -78,10 +76,9 @@ public class TopicNode {
      */
     public Color getColor() {
         if (color != null) return color;
-        return switch (type) {
-            case TOPIC -> new Color(100, 140, 200);  // Blue for topics
-            case COIN -> new Color(200, 160, 80);    // Gold for coins
-        };
+        if ("topic".equals(typeId)) return new Color(100, 140, 200);  // Blue for topics
+        if ("coin".equals(typeId)) return new Color(200, 160, 80);    // Gold for coins
+        return new Color(160, 160, 170);  // Gray for other types
     }
 
     /**

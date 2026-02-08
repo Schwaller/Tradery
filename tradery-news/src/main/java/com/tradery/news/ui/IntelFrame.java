@@ -446,6 +446,7 @@ public class IntelFrame extends JFrame {
                 tgp.setMaxNodes(config.getMaxArticles());
                 tgp.setShowLabels(config.isShowLabels());
                 tgp.setShowConnections(config.isShowConnections());
+                if (config.getBands() != null) tgp.setBandConfigs(config.getBands());
                 graphPanel = tgp;
             } else {
                 CoinGraphPanel cgp = new CoinGraphPanel();
@@ -569,7 +570,7 @@ public class IntelFrame extends JFrame {
         selectedEntity = null;
         currentMode = DetailMode.NONE;
 
-        boolean isCoin = node.type() == TopicNode.Type.COIN;
+        boolean isCoin = "coin".equals(node.typeId());
         detailTitleLabel.setText(isCoin ? "Coin" : "Topic");
 
         detailContent.removeAll();

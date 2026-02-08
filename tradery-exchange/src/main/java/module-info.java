@@ -11,7 +11,7 @@ module com.tradery.exchange {
     requires com.fasterxml.jackson.databind;
     requires com.fasterxml.jackson.datatype.jsr310;
     requires com.fasterxml.jackson.dataformat.yaml;
-    requires org.java.websocket;
+    requires org.java_websocket;
     requires org.bouncycastle.provider;
     requires org.slf4j;
 

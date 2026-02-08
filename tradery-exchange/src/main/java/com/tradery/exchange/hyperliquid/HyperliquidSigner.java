@@ -228,13 +228,12 @@ public class HyperliquidSigner {
     }
 
     static byte[] keccak256(byte[] input) {
-        try {
-            org.bouncycastle.jcajce.provider.digest.Keccak.DigestKeccak256 digest =
-                    new org.bouncycastle.jcajce.provider.digest.Keccak.DigestKeccak256();
-            return digest.digest(input);
-        } catch (Exception e) {
-            throw new RuntimeException("Keccak-256 not available", e);
-        }
+        org.bouncycastle.crypto.digests.KeccakDigest digest =
+                new org.bouncycastle.crypto.digests.KeccakDigest(256);
+        digest.update(input, 0, input.length);
+        byte[] result = new byte[digest.getDigestSize()];
+        digest.doFinal(result, 0);
+        return result;
     }
 
     private static byte[] toBytes32(BigInteger value) {

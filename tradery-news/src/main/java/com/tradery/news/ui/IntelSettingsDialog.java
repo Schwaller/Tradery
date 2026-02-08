@@ -10,6 +10,8 @@ import com.tradery.ai.AiProvider;
 import com.tradery.news.fetch.RssFetcher;
 import com.tradery.news.ui.coin.CoinEntity;
 import com.tradery.news.ui.coin.EntityStore;
+import com.tradery.news.ui.coin.SchemaRegistry;
+import com.tradery.news.ui.coin.SchemaType;
 import com.tradery.ui.settings.SettingsDialog;
 
 import javax.swing.*;
@@ -31,6 +33,10 @@ public class IntelSettingsDialog extends SettingsDialog {
 
     private EntityStore getEntityStore() {
         return (getOwner() instanceof IntelFrame frame) ? frame.getEntityStore() : null;
+    }
+
+    private SchemaRegistry getSchemaRegistry() {
+        return (getOwner() instanceof IntelFrame frame) ? frame.getSchemaRegistry() : null;
     }
 
     @Override
@@ -121,6 +127,7 @@ public class IntelSettingsDialog extends SettingsDialog {
             if (edited != null) {
                 selected.setName(edited.getName());
                 selected.setMaxArticles(edited.getMaxArticles());
+                selected.setBands(edited.getBands());
                 selected.setEntityTypeFilter(edited.getEntityTypeFilter());
                 selected.setEntitySourceFilter(edited.getEntitySourceFilter());
                 selected.setShowLabels(edited.isShowLabels());
@@ -186,7 +193,7 @@ public class IntelSettingsDialog extends SettingsDialog {
 
     private PanelConfig showPanelEditor(PanelConfig existing) {
         JDialog dialog = new JDialog(this, existing != null ? "Edit Panel" : "Add Panel", true);
-        dialog.setSize(420, 380);
+        dialog.setSize(420, 520);
         dialog.setLocationRelativeTo(this);
 
         JPanel formPanel = new JPanel(new GridBagLayout());
@@ -229,6 +236,92 @@ public class IntelSettingsDialog extends SettingsDialog {
         JComboBox<String> maxArticlesCombo = new JComboBox<>(new String[]{"100", "250", "500", "1000", "2000"});
         maxArticlesCombo.setSelectedItem(String.valueOf(existing != null ? existing.getMaxArticles() : 500));
         formPanel.add(maxArticlesCombo, fieldGbc);
+
+        // --- Bands editor (NEWS_MAP only) ---
+        labelGbc.gridx = 0; labelGbc.gridy = row;
+        JLabel bandsLabel = new JLabel("Bands:");
+        labelGbc.anchor = GridBagConstraints.NORTHWEST;
+        formPanel.add(bandsLabel, labelGbc);
+        labelGbc.anchor = GridBagConstraints.WEST; // restore
+
+        fieldGbc.gridx = 1; fieldGbc.gridy = row++;
+        fieldGbc.fill = GridBagConstraints.BOTH;
+        fieldGbc.weighty = 1.0;
+
+        // Initialize bands list from existing config or defaults
+        List<BandConfig> editableBands = new ArrayList<>(
+            existing != null && existing.getBands() != null ? existing.getBands() : BandConfig.defaultNewsBands()
+        );
+        DefaultListModel<BandConfig> bandsModel = new DefaultListModel<>();
+        editableBands.forEach(bandsModel::addElement);
+
+        JList<BandConfig> bandsList = new JList<>(bandsModel);
+        bandsList.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+        bandsList.setVisibleRowCount(4);
+
+        JPanel bandsPanel = new JPanel(new BorderLayout(4, 4));
+        bandsPanel.setOpaque(false);
+
+        JScrollPane bandsScroll = new JScrollPane(bandsList);
+        bandsScroll.setPreferredSize(new Dimension(0, 90));
+        bandsScroll.setBorder(UIManager.getBorder("ScrollPane.border"));
+        bandsPanel.add(bandsScroll, BorderLayout.CENTER);
+
+        JPanel bandsButtons = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
+        bandsButtons.setOpaque(false);
+        JButton bandAddBtn = new JButton("Add");
+        JButton bandEditBtn = new JButton("Edit");
+        JButton bandRemoveBtn = new JButton("Remove");
+        JButton bandUpBtn = new JButton("\u25B2");
+        JButton bandDownBtn = new JButton("\u25BC");
+        bandUpBtn.setMargin(new Insets(1, 4, 1, 4));
+        bandDownBtn.setMargin(new Insets(1, 4, 1, 4));
+
+        bandAddBtn.addActionListener(ev -> {
+            BandConfig newBand = showBandEditor(dialog, null);
+            if (newBand != null) {
+                bandsModel.addElement(newBand);
+            }
+        });
+        bandEditBtn.addActionListener(ev -> {
+            int idx = bandsList.getSelectedIndex();
+            if (idx < 0) return;
+            BandConfig edited = showBandEditor(dialog, bandsModel.get(idx));
+            if (edited != null) {
+                bandsModel.set(idx, edited);
+            }
+        });
+        bandRemoveBtn.addActionListener(ev -> {
+            int idx = bandsList.getSelectedIndex();
+            if (idx >= 0) bandsModel.remove(idx);
+        });
+        bandUpBtn.addActionListener(ev -> {
+            int idx = bandsList.getSelectedIndex();
+            if (idx > 0) {
+                BandConfig item = bandsModel.remove(idx);
+                bandsModel.add(idx - 1, item);
+                bandsList.setSelectedIndex(idx - 1);
+            }
+        });
+        bandDownBtn.addActionListener(ev -> {
+            int idx = bandsList.getSelectedIndex();
+            if (idx >= 0 && idx < bandsModel.size() - 1) {
+                BandConfig item = bandsModel.remove(idx);
+                bandsModel.add(idx + 1, item);
+                bandsList.setSelectedIndex(idx + 1);
+            }
+        });
+
+        bandsButtons.add(bandAddBtn);
+        bandsButtons.add(bandEditBtn);
+        bandsButtons.add(bandRemoveBtn);
+        bandsButtons.add(bandUpBtn);
+        bandsButtons.add(bandDownBtn);
+        bandsPanel.add(bandsButtons, BorderLayout.SOUTH);
+
+        formPanel.add(bandsPanel, fieldGbc);
+        fieldGbc.fill = GridBagConstraints.HORIZONTAL;
+        fieldGbc.weighty = 0;
 
         // --- Coin Graph settings ---
         labelGbc.gridx = 0; labelGbc.gridy = row;
@@ -283,6 +376,8 @@ public class IntelSettingsDialog extends SettingsDialog {
             boolean isNewsMap = typeCombo.getSelectedIndex() == 0;
             maxArticlesLabel.setVisible(isNewsMap);
             maxArticlesCombo.setVisible(isNewsMap);
+            bandsLabel.setVisible(isNewsMap);
+            bandsPanel.setVisible(isNewsMap);
             entityTypeLabel.setVisible(!isNewsMap);
             typesPanel.setVisible(!isNewsMap);
             sourceFilterLabel.setVisible(!isNewsMap);
@@ -317,6 +412,13 @@ public class IntelSettingsDialog extends SettingsDialog {
             pc.setShowLabels(showLabelsCheck.isSelected());
             pc.setShowConnections(showConnectionsCheck.isSelected());
 
+            // Bands (NEWS_MAP)
+            if (pc.getType() == PanelConfig.PanelType.NEWS_MAP && bandsModel.size() > 0) {
+                List<BandConfig> savedBands = new ArrayList<>();
+                for (int i = 0; i < bandsModel.size(); i++) savedBands.add(bandsModel.get(i));
+                pc.setBands(savedBands);
+            }
+
             // Entity type filter (null = all)
             if (pc.getType() == PanelConfig.PanelType.COIN_GRAPH) {
                 boolean allChecked = typeCheckboxes.values().stream().allMatch(JCheckBox::isSelected);
@@ -344,6 +446,159 @@ public class IntelSettingsDialog extends SettingsDialog {
         dialog.setLayout(new BorderLayout());
         dialog.add(formPanel, BorderLayout.CENTER);
         dialog.add(buttonPanel, BorderLayout.SOUTH);
+        dialog.pack();
+        dialog.setVisible(true);
+
+        return result[0];
+    }
+
+    private BandConfig showBandEditor(Dialog owner, BandConfig existing) {
+        JDialog dialog = new JDialog(owner, existing != null ? "Edit Band" : "Add Band", true);
+        dialog.setSize(350, 350);
+        dialog.setLocationRelativeTo(owner);
+
+        JPanel form = new JPanel(new GridBagLayout());
+        form.setBorder(BorderFactory.createEmptyBorder(12, 16, 8, 16));
+
+        GridBagConstraints lc = new GridBagConstraints();
+        lc.anchor = GridBagConstraints.WEST;
+        lc.insets = new Insets(4, 0, 4, 8);
+
+        GridBagConstraints fc = new GridBagConstraints();
+        fc.fill = GridBagConstraints.HORIZONTAL;
+        fc.weightx = 1.0;
+        fc.insets = new Insets(4, 0, 4, 0);
+
+        int r = 0;
+
+        // Name
+        lc.gridx = 0; lc.gridy = r;
+        form.add(new JLabel("Name:"), lc);
+        fc.gridx = 1; fc.gridy = r++;
+        JTextField nameField = new JTextField(existing != null ? existing.getName() : "");
+        form.add(nameField, fc);
+
+        // Filter (populated from SchemaRegistry entity types + "articles")
+        lc.gridx = 0; lc.gridy = r;
+        form.add(new JLabel("Filter:"), lc);
+        fc.gridx = 1; fc.gridy = r++;
+        JComboBox<String> filterCombo = new JComboBox<>();
+        filterCombo.addItem("articles");
+        SchemaRegistry registry = getSchemaRegistry();
+        if (registry != null) {
+            for (SchemaType st : registry.entityTypes()) {
+                filterCombo.addItem(st.id());
+            }
+        }
+        if (existing != null) filterCombo.setSelectedItem(existing.getFilter());
+        form.add(filterCombo, fc);
+
+        // Layout mode
+        lc.gridx = 0; lc.gridy = r;
+        form.add(new JLabel("Layout:"), lc);
+        fc.gridx = 1; fc.gridy = r++;
+        JComboBox<BandConfig.LayoutMode> layoutCombo = new JComboBox<>(BandConfig.LayoutMode.values());
+        if (existing != null) layoutCombo.setSelectedItem(existing.getLayoutMode());
+        form.add(layoutCombo, fc);
+
+        // Weight
+        lc.gridx = 0; lc.gridy = r;
+        form.add(new JLabel("Weight:"), lc);
+        fc.gridx = 1; fc.gridy = r++;
+        JSpinner weightSpinner = new JSpinner(new SpinnerNumberModel(
+            existing != null ? (int) existing.getWeight() : 1, 1, 10, 1));
+        form.add(weightSpinner, fc);
+
+        // Visible
+        lc.gridx = 0; lc.gridy = r;
+        form.add(new JLabel(), lc);
+        fc.gridx = 1; fc.gridy = r++;
+        JCheckBox visibleCheck = new JCheckBox("Visible", existing == null || existing.isVisible());
+        form.add(visibleCheck, fc);
+
+        // Max rows (HORIZONTAL_ROWS only)
+        lc.gridx = 0; lc.gridy = r;
+        JLabel maxRowsLabel = new JLabel("Max rows:");
+        form.add(maxRowsLabel, lc);
+        fc.gridx = 1; fc.gridy = r++;
+        JSpinner maxRowsSpinner = new JSpinner(new SpinnerNumberModel(
+            existing != null ? existing.getMaxRows() : 3, 1, 10, 1));
+        form.add(maxRowsSpinner, fc);
+
+        // Y field (MAPPED_TO_FIELD only)
+        lc.gridx = 0; lc.gridy = r;
+        JLabel yFieldLabel = new JLabel("Y field:");
+        form.add(yFieldLabel, lc);
+        fc.gridx = 1; fc.gridy = r++;
+        JComboBox<String> yFieldCombo = new JComboBox<>();
+        form.add(yFieldCombo, fc);
+
+        // Update conditional fields
+        Runnable updateFields = () -> {
+            BandConfig.LayoutMode mode = (BandConfig.LayoutMode) layoutCombo.getSelectedItem();
+            maxRowsLabel.setVisible(mode == BandConfig.LayoutMode.HORIZONTAL_ROWS);
+            maxRowsSpinner.setVisible(mode == BandConfig.LayoutMode.HORIZONTAL_ROWS);
+            yFieldLabel.setVisible(mode == BandConfig.LayoutMode.MAPPED_TO_FIELD);
+            yFieldCombo.setVisible(mode == BandConfig.LayoutMode.MAPPED_TO_FIELD);
+
+            // Update yField options based on filter
+            if (mode == BandConfig.LayoutMode.MAPPED_TO_FIELD) {
+                String filter = (String) filterCombo.getSelectedItem();
+                String prev = (String) yFieldCombo.getSelectedItem();
+                yFieldCombo.removeAllItems();
+                for (String f : BandConfig.yFieldsForFilter(filter)) {
+                    yFieldCombo.addItem(f);
+                }
+                if (prev != null) yFieldCombo.setSelectedItem(prev);
+                if (existing != null && existing.getYField() != null && yFieldCombo.getSelectedItem() == null) {
+                    yFieldCombo.setSelectedItem(existing.getYField());
+                }
+            }
+            form.revalidate();
+        };
+        layoutCombo.addActionListener(e -> updateFields.run());
+        filterCombo.addActionListener(e -> updateFields.run());
+        updateFields.run();
+
+        // Pre-select existing yField
+        if (existing != null && existing.getYField() != null) {
+            yFieldCombo.setSelectedItem(existing.getYField());
+        }
+
+        // Buttons
+        JPanel buttons = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
+        buttons.setBorder(BorderFactory.createEmptyBorder(8, 16, 12, 16));
+        JButton cancelBtn = new JButton("Cancel");
+        JButton saveBtn = new JButton("Save");
+
+        BandConfig[] result = {null};
+
+        cancelBtn.addActionListener(e -> dialog.dispose());
+        saveBtn.addActionListener(e -> {
+            String name = nameField.getText().trim();
+            if (name.isEmpty()) {
+                JOptionPane.showMessageDialog(dialog, "Name is required.", "Validation", JOptionPane.WARNING_MESSAGE);
+                return;
+            }
+            BandConfig bc = new BandConfig(name,
+                (String) filterCombo.getSelectedItem(),
+                (BandConfig.LayoutMode) layoutCombo.getSelectedItem(),
+                (Integer) weightSpinner.getValue());
+            bc.setVisible(visibleCheck.isSelected());
+            bc.setMaxRows((Integer) maxRowsSpinner.getValue());
+            if (layoutCombo.getSelectedItem() == BandConfig.LayoutMode.MAPPED_TO_FIELD) {
+                bc.setYField((String) yFieldCombo.getSelectedItem());
+            }
+            result[0] = bc;
+            dialog.dispose();
+        });
+
+        buttons.add(cancelBtn);
+        buttons.add(saveBtn);
+
+        dialog.setLayout(new BorderLayout());
+        dialog.add(form, BorderLayout.CENTER);
+        dialog.add(buttons, BorderLayout.SOUTH);
         dialog.pack();
         dialog.setVisible(true);
 
