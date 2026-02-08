@@ -1,4 +1,4 @@
-package com.tradery.news.ai;
+package com.tradery.ai;
 
 /**
  * Exception thrown when a web search operation fails.

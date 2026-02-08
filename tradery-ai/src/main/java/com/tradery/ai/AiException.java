@@ -1,4 +1,4 @@
-package com.tradery.news.ai;
+package com.tradery.ai;
 
 /**
  * Exception thrown by AiClient for AI-related errors.

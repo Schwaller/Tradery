@@ -1,9 +1,7 @@
-package com.tradery.news.ai;
+package com.tradery.ai;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.tradery.news.ui.IntelConfig;
-import com.tradery.news.ui.IntelLogPanel;
 import okhttp3.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -30,7 +28,7 @@ public class AiClient {
 
     private static AiClient instance;
 
-    private Consumer<String> logCallback;
+    private AiActivityListener activityListener;
     private final Map<Integer, OkHttpClient> httpClients = new ConcurrentHashMap<>();
 
     private AiClient() {
@@ -47,18 +45,17 @@ public class AiClient {
     }
 
     /**
-     * Set a callback for activity logging.
-     * All AI activity will be logged through this callback.
+     * Set an activity listener for logging AI interactions.
      */
-    public void setLogCallback(Consumer<String> callback) {
-        this.logCallback = callback;
+    public void setActivityListener(AiActivityListener listener) {
+        this.activityListener = listener;
     }
 
     /**
      * Get the name of the currently configured AI provider.
      */
     public String getProviderName() {
-        AiProfile profile = IntelConfig.get().getDefaultProfile();
+        AiProfile profile = AiConfig.get().getDefaultProfile();
         return profile != null ? profile.getProvider().name() : "NONE";
     }
 
@@ -66,7 +63,7 @@ public class AiClient {
      * Check if the default AI profile is available.
      */
     public boolean isAvailable() {
-        AiProfile profile = IntelConfig.get().getDefaultProfile();
+        AiProfile profile = AiConfig.get().getDefaultProfile();
         return profile != null && isAvailable(profile);
     }
 
@@ -74,7 +71,7 @@ public class AiClient {
      * Check if a specific AI profile is available.
      */
     public boolean isAvailable(AiProfile profile) {
-        if (profile.getProvider() == IntelConfig.AiProvider.GEMINI && isGeminiApiMode(profile)) {
+        if (profile.getProvider() == AiProvider.GEMINI && isGeminiApiMode(profile)) {
             try {
                 String apiKey = profile.getApiKey();
                 if (apiKey == null || apiKey.isBlank()) return false;
@@ -105,7 +102,7 @@ public class AiClient {
      * Get the version string from the default profile's CLI.
      */
     public String getVersion() throws AiException {
-        AiProfile profile = IntelConfig.get().getDefaultProfile();
+        AiProfile profile = AiConfig.get().getDefaultProfile();
         if (profile == null) throw new AiException(AiException.ErrorType.NOT_FOUND, "No AI profile configured");
         return getVersion(profile);
     }
@@ -114,7 +111,7 @@ public class AiClient {
      * Get the version string from a specific profile's CLI.
      */
     public String getVersion(AiProfile profile) throws AiException {
-        if (profile.getProvider() == IntelConfig.AiProvider.GEMINI && isGeminiApiMode(profile)) {
+        if (profile.getProvider() == AiProvider.GEMINI && isGeminiApiMode(profile)) {
             return "Gemini API - " + profile.getModel();
         }
         try {
@@ -157,7 +154,7 @@ public class AiClient {
      * @throws AiException If the query fails
      */
     public String query(String prompt) throws AiException {
-        AiProfile defaultProfile = IntelConfig.get().getDefaultProfile();
+        AiProfile defaultProfile = AiConfig.get().getDefaultProfile();
         if (defaultProfile == null) throw new AiException(AiException.ErrorType.NOT_FOUND, "No AI profile configured");
         return query(prompt, defaultProfile);
     }
@@ -176,7 +173,7 @@ public class AiClient {
 
         log.debug("AI query to {} ({}): {}", provider, profile.getName(), truncate(prompt, 100));
 
-        if (profile.getProvider() == IntelConfig.AiProvider.GEMINI && isGeminiApiMode(profile)) {
+        if (profile.getProvider() == AiProvider.GEMINI && isGeminiApiMode(profile)) {
             return queryGemini(prompt, profile);
         }
 
@@ -208,7 +205,7 @@ public class AiClient {
             boolean finished = process.waitFor(timeoutSeconds, TimeUnit.SECONDS);
             if (!finished) {
                 process.destroyForcibly();
-                logActivityWithDetail("[" + provider + "] Timeout after " + timeoutSeconds + "s", prompt, null);
+                fireActivity("[" + provider + "] Timeout after " + timeoutSeconds + "s", prompt, null);
                 throw new AiException(AiException.ErrorType.TIMEOUT,
                     provider + " CLI timed out after " + timeoutSeconds + " seconds");
             }
@@ -217,20 +214,20 @@ public class AiClient {
 
             if (process.exitValue() != 0) {
                 AiException error = parseError(result, provider, cliPath);
-                logActivityWithDetail("[" + provider + "] Error: " + error.getMessage(), prompt, result);
+                fireActivity("[" + provider + "] Error: " + error.getMessage(), prompt, result);
                 throw error;
             }
 
             // Log successful query with full details
             String summary = "[" + provider + "] Query completed (" + result.length() + " chars)";
-            logActivityWithDetail(summary, prompt, result);
+            fireActivity(summary, prompt, result);
             log.debug("AI response from {}: {}", provider, truncate(result, 200));
 
             return result;
         } catch (AiException e) {
             throw e;
         } catch (Exception e) {
-            logActivityWithDetail("[" + provider + "] Error: " + e.getMessage(), prompt, null);
+            fireActivity("[" + provider + "] Error: " + e.getMessage(), prompt, null);
             throw new AiException(AiException.ErrorType.UNKNOWN, "Query failed: " + e.getMessage(), e);
         }
     }
@@ -255,7 +252,7 @@ public class AiClient {
      * Test the default profile's AI connection.
      */
     public TestResult testConnection() {
-        AiProfile profile = IntelConfig.get().getDefaultProfile();
+        AiProfile profile = AiConfig.get().getDefaultProfile();
         if (profile == null) return new TestResult(false, null, "No AI profile configured");
         return testConnection(profile);
     }
@@ -356,7 +353,7 @@ public class AiClient {
                         default -> new AiException(AiException.ErrorType.UNKNOWN,
                             "Gemini API error (HTTP " + response.code() + "): " + truncate(responseBody, 200));
                     };
-                    logActivityWithDetail("[" + provider + "] Error: " + error.getMessage(), prompt, responseBody);
+                    fireActivity("[" + provider + "] Error: " + error.getMessage(), prompt, responseBody);
                     throw error;
                 }
 
@@ -370,7 +367,7 @@ public class AiClient {
                 String result = candidates.get(0).path("content").path("parts").get(0).path("text").asText("");
 
                 String summary = "[" + provider + "] Query completed (" + result.length() + " chars)";
-                logActivityWithDetail(summary, prompt, result);
+                fireActivity(summary, prompt, result);
                 log.debug("AI response from {}: {}", provider, truncate(result, 200));
 
                 return result;
@@ -378,11 +375,11 @@ public class AiClient {
         } catch (AiException e) {
             throw e;
         } catch (java.net.SocketTimeoutException e) {
-            logActivityWithDetail("[" + provider + "] Timeout", prompt, null);
+            fireActivity("[" + provider + "] Timeout", prompt, null);
             throw new AiException(AiException.ErrorType.TIMEOUT,
                 "Gemini API timed out after " + profile.getTimeoutSeconds() + " seconds", e);
         } catch (Exception e) {
-            logActivityWithDetail("[" + provider + "] Error: " + e.getMessage(), prompt, null);
+            fireActivity("[" + provider + "] Error: " + e.getMessage(), prompt, null);
             throw new AiException(AiException.ErrorType.UNKNOWN, "Gemini query failed: " + e.getMessage(), e);
         }
     }
@@ -434,7 +431,7 @@ public class AiClient {
     }
 
     private boolean usesStdin(AiProfile profile) {
-        return profile.getProvider() == IntelConfig.AiProvider.CLAUDE;
+        return profile.getProvider() == AiProvider.CLAUDE;
     }
 
     /** Gemini API mode: uses HTTP API with an API key. CLI mode: uses gemini CLI binary. */
@@ -460,11 +457,10 @@ public class AiClient {
             provider + " CLI failed: " + truncate(output, 100));
     }
 
-    private void logActivityWithDetail(String summary, String prompt, String response) {
-        if (logCallback != null) {
-            logCallback.accept(summary);
+    private void fireActivity(String summary, String prompt, String response) {
+        if (activityListener != null) {
+            activityListener.onActivity(summary, prompt, response);
         }
-        IntelLogPanel.logAI(summary, prompt, response);
     }
 
     private String truncate(String s, int max) {

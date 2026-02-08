@@ -35,6 +35,9 @@ dependencies {
     // License and update checking
     implementation project(':tradery-license')
 
+    // AI infrastructure
+    implementation project(':tradery-ai')
+
     // UI
     implementation project(':tradery-ui-common')
     implementation project(':tradery-help')

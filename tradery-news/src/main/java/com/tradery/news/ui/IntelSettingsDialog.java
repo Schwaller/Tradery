@@ -1,9 +1,11 @@
 package com.tradery.news.ui;
 
-import com.tradery.news.ai.AiClient;
-import com.tradery.news.ai.AiDetector;
-import com.tradery.news.ai.AiDetector.DetectedProvider;
-import com.tradery.news.ai.AiProfile;
+import com.tradery.ai.AiClient;
+import com.tradery.ai.AiConfig;
+import com.tradery.ai.AiDetector;
+import com.tradery.ai.AiDetector.DetectedProvider;
+import com.tradery.ai.AiProfile;
+import com.tradery.ai.AiProvider;
 import com.tradery.news.fetch.RssFetcher;
 import com.tradery.news.ui.coin.CoinEntity;
 import com.tradery.news.ui.coin.EntityStore;
@@ -560,7 +562,7 @@ public class IntelSettingsDialog extends SettingsDialog {
 
     private JPanel createAiProfilesContent() {
         JPanel panel = new JPanel(new BorderLayout(0, 8));
-        IntelConfig config = IntelConfig.get();
+        AiConfig aiConfig = AiConfig.get();
 
         DefaultListModel<AiProfile> listModel = new DefaultListModel<>();
         JList<AiProfile> profileList = new JList<>(listModel);
@@ -568,7 +570,7 @@ public class IntelSettingsDialog extends SettingsDialog {
 
         Runnable loadProfiles = () -> {
             listModel.clear();
-            for (AiProfile p : config.getAiProfiles()) {
+            for (AiProfile p : aiConfig.getProfiles()) {
                 listModel.addElement(p);
             }
         };
@@ -582,7 +584,7 @@ public class IntelSettingsDialog extends SettingsDialog {
                 cell.setBorder(BorderFactory.createEmptyBorder(4, 8, 4, 8));
                 cell.setBackground(isSelected ? list.getSelectionBackground() : list.getBackground());
 
-                boolean isDefault = profile.getId() != null && profile.getId().equals(config.getDefaultProfileId());
+                boolean isDefault = profile.getId() != null && profile.getId().equals(aiConfig.getDefaultProfileId());
 
                 JPanel textPanel = new JPanel(new BorderLayout());
                 textPanel.setOpaque(false);
@@ -630,11 +632,11 @@ public class IntelSettingsDialog extends SettingsDialog {
         addBtn.addActionListener(e -> {
             AiProfile newProfile = showProfileEditor(null);
             if (newProfile != null) {
-                config.addProfile(newProfile);
-                if (config.getAiProfiles().size() == 1) {
-                    config.setDefaultProfileId(newProfile.getId());
+                aiConfig.addProfile(newProfile);
+                if (aiConfig.getProfiles().size() == 1) {
+                    aiConfig.setDefaultProfileId(newProfile.getId());
                 }
-                config.save();
+                aiConfig.save();
                 loadProfiles.run();
             }
         });
@@ -657,7 +659,7 @@ public class IntelSettingsDialog extends SettingsDialog {
                 selected.setApiKey(edited.getApiKey());
                 selected.setModel(edited.getModel());
                 selected.setTimeoutSeconds(edited.getTimeoutSeconds());
-                config.save();
+                aiConfig.save();
                 loadProfiles.run();
             }
         });
@@ -668,7 +670,7 @@ public class IntelSettingsDialog extends SettingsDialog {
                 JOptionPane.showMessageDialog(this, "Select a profile to remove.", "No Selection", JOptionPane.WARNING_MESSAGE);
                 return;
             }
-            if (config.getAiProfiles().size() <= 1) {
+            if (aiConfig.getProfiles().size() <= 1) {
                 JOptionPane.showMessageDialog(this, "Cannot remove the last profile.", "Cannot Remove", JOptionPane.WARNING_MESSAGE);
                 return;
             }
@@ -676,8 +678,8 @@ public class IntelSettingsDialog extends SettingsDialog {
                 "Remove profile '" + selected.getName() + "'?",
                 "Confirm Remove", JOptionPane.YES_NO_OPTION);
             if (result == JOptionPane.YES_OPTION) {
-                config.removeProfile(selected.getId());
-                config.save();
+                aiConfig.removeProfile(selected.getId());
+                aiConfig.save();
                 loadProfiles.run();
             }
         });
@@ -688,8 +690,8 @@ public class IntelSettingsDialog extends SettingsDialog {
                 JOptionPane.showMessageDialog(this, "Select a profile to set as default.", "No Selection", JOptionPane.WARNING_MESSAGE);
                 return;
             }
-            config.setDefaultProfileId(selected.getId());
-            config.save();
+            aiConfig.setDefaultProfileId(selected.getId());
+            aiConfig.save();
             loadProfiles.run();
         });
 
@@ -714,9 +716,9 @@ public class IntelSettingsDialog extends SettingsDialog {
                         for (DetectedProvider dp : allProviders) {
                             if (!dp.detected() || dp.requiresSetup()) continue;
                             boolean exists = false;
-                            for (AiProfile existing : config.getAiProfiles()) {
+                            for (AiProfile existing : aiConfig.getProfiles()) {
                                 if (existing.getProvider() == dp.provider()) {
-                                    if (dp.provider() == IntelConfig.AiProvider.CUSTOM) {
+                                    if (dp.provider() == AiProvider.CUSTOM) {
                                         if (dp.command() != null && dp.command().equals(existing.getCommand())) {
                                             exists = true;
                                             break;
@@ -737,7 +739,7 @@ public class IntelSettingsDialog extends SettingsDialog {
                             return;
                         }
 
-                        showAutoDetectResults(newProviders, config, loadProfiles);
+                        showAutoDetectResults(newProviders, aiConfig, loadProfiles);
                     } catch (Exception ex) {
                         JOptionPane.showMessageDialog(IntelSettingsDialog.this,
                             "Detection failed: " + ex.getMessage(),
@@ -757,7 +759,7 @@ public class IntelSettingsDialog extends SettingsDialog {
         return panel;
     }
 
-    private void showAutoDetectResults(List<DetectedProvider> newProviders, IntelConfig config, Runnable loadProfiles) {
+    private void showAutoDetectResults(List<DetectedProvider> newProviders, AiConfig aiConfig, Runnable loadProfiles) {
         JDialog dialog = new JDialog(this, "New Providers Detected", true);
         dialog.setSize(420, 300);
         dialog.setLocationRelativeTo(this);
@@ -803,9 +805,9 @@ public class IntelSettingsDialog extends SettingsDialog {
                 if (dp.path() != null) profile.setPath(dp.path());
                 if (dp.args() != null) profile.setArgs(dp.args());
                 if (dp.command() != null) profile.setCommand(dp.command());
-                config.addProfile(profile);
+                aiConfig.addProfile(profile);
             }
-            config.save();
+            aiConfig.save();
             loadProfiles.run();
             dialog.dispose();
         });
@@ -853,8 +855,8 @@ public class IntelSettingsDialog extends SettingsDialog {
         labelGbc.gridx = 0; labelGbc.gridy = row;
         formPanel.add(new JLabel("Provider:"), labelGbc);
         fieldGbc.gridx = 1; fieldGbc.gridy = row++;
-        JComboBox<IntelConfig.AiProvider> providerCombo = new JComboBox<>(IntelConfig.AiProvider.values());
-        providerCombo.setSelectedItem(existing != null ? existing.getProvider() : IntelConfig.AiProvider.CLAUDE);
+        JComboBox<AiProvider> providerCombo = new JComboBox<>(AiProvider.values());
+        providerCombo.setSelectedItem(existing != null ? existing.getProvider() : AiProvider.CLAUDE);
         formPanel.add(providerCombo, fieldGbc);
 
         // CLI path
@@ -933,19 +935,19 @@ public class IntelSettingsDialog extends SettingsDialog {
 
         // Visibility updater
         Runnable updateVisibility = () -> {
-            IntelConfig.AiProvider selected = (IntelConfig.AiProvider) providerCombo.getSelectedItem();
-            boolean isCli = selected == IntelConfig.AiProvider.CLAUDE || selected == IntelConfig.AiProvider.CODEX;
+            AiProvider selected = (AiProvider) providerCombo.getSelectedItem();
+            boolean isCli = selected == AiProvider.CLAUDE || selected == AiProvider.CODEX;
             pathLabel.setVisible(isCli);
             pathField.setVisible(isCli);
             argsLabel.setVisible(isCli);
             argsField.setVisible(isCli);
-            commandLabel.setVisible(selected == IntelConfig.AiProvider.CUSTOM);
-            commandField.setVisible(selected == IntelConfig.AiProvider.CUSTOM);
-            apiKeyLabel.setVisible(selected == IntelConfig.AiProvider.GEMINI);
-            apiKeyField.setVisible(selected == IntelConfig.AiProvider.GEMINI);
-            modelLabel.setVisible(selected == IntelConfig.AiProvider.GEMINI);
-            modelCombo.setVisible(selected == IntelConfig.AiProvider.GEMINI);
-            geminiHelp.setVisible(selected == IntelConfig.AiProvider.GEMINI);
+            commandLabel.setVisible(selected == AiProvider.CUSTOM);
+            commandField.setVisible(selected == AiProvider.CUSTOM);
+            apiKeyLabel.setVisible(selected == AiProvider.GEMINI);
+            apiKeyField.setVisible(selected == AiProvider.GEMINI);
+            modelLabel.setVisible(selected == AiProvider.GEMINI);
+            modelCombo.setVisible(selected == AiProvider.GEMINI);
+            geminiHelp.setVisible(selected == AiProvider.GEMINI);
             formPanel.revalidate();
         };
         providerCombo.addActionListener(e -> updateVisibility.run());
@@ -1023,7 +1025,7 @@ public class IntelSettingsDialog extends SettingsDialog {
     }
 
     private AiProfile buildProfileFromForm(String id, JTextField nameField, JTextField descField,
-                                            JComboBox<IntelConfig.AiProvider> providerCombo,
+                                            JComboBox<AiProvider> providerCombo,
                                             JTextField pathField, JTextField argsField,
                                             JTextField commandField, JPasswordField apiKeyField,
                                             JComboBox<String> modelCombo, JSpinner timeoutSpinner) {
@@ -1032,7 +1034,7 @@ public class IntelSettingsDialog extends SettingsDialog {
         profile.setName(nameField.getText().trim());
         String desc = descField.getText().trim();
         profile.setDescription(desc.isEmpty() ? null : desc);
-        profile.setProvider((IntelConfig.AiProvider) providerCombo.getSelectedItem());
+        profile.setProvider((AiProvider) providerCombo.getSelectedItem());
         profile.setPath(pathField.getText().trim());
         profile.setArgs(argsField.getText().trim());
         profile.setCommand(commandField.getText().trim());

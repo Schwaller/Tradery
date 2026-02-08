@@ -1,6 +1,4 @@
-package com.tradery.news.ai;
-
-import com.tradery.news.ui.IntelConfig;
+package com.tradery.ai;
 
 /**
  * Named AI profile containing all provider settings.
@@ -11,7 +9,7 @@ public class AiProfile {
     private String id;
     private String name;
     private String description;
-    private IntelConfig.AiProvider provider = IntelConfig.AiProvider.CLAUDE;
+    private AiProvider provider = AiProvider.CLAUDE;
     private int timeoutSeconds = 60;
 
     // CLI providers (CLAUDE, CODEX)
@@ -28,7 +26,7 @@ public class AiProfile {
     public AiProfile() {
     }
 
-    public AiProfile(String id, String name, IntelConfig.AiProvider provider) {
+    public AiProfile(String id, String name, AiProvider provider) {
         this.id = id;
         this.name = name;
         this.provider = provider;
@@ -58,11 +56,11 @@ public class AiProfile {
         this.description = description;
     }
 
-    public IntelConfig.AiProvider getProvider() {
+    public AiProvider getProvider() {
         return provider;
     }
 
-    public void setProvider(IntelConfig.AiProvider provider) {
+    public void setProvider(AiProvider provider) {
         this.provider = provider;
     }
 

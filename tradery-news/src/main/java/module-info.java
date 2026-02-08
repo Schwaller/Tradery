@@ -15,6 +15,9 @@ module com.tradery.news {
     requires java.prefs;
     requires jdk.httpserver;
 
+    // AI infrastructure
+    requires com.tradery.ai;
+
     // License
     requires com.tradery.license;
 
@@ -43,5 +46,5 @@ module com.tradery.news {
     // Jackson reflection access
     opens com.tradery.news.model to com.fasterxml.jackson.databind;
     opens com.tradery.news.topic to com.fasterxml.jackson.databind;
-    opens com.tradery.news.ai to com.fasterxml.jackson.databind;
+    opens com.tradery.news.ui to com.fasterxml.jackson.databind;
 }

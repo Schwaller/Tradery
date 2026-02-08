@@ -2,6 +2,9 @@ package com.tradery.news.ui;
 
 import com.formdev.flatlaf.FlatClientProperties;
 import com.formdev.flatlaf.util.SystemInfo;
+import com.tradery.ai.AiClient;
+import com.tradery.ai.AiConfig;
+import com.tradery.ai.AiSetupDialog;
 import com.tradery.license.LicenseGate;
 import com.tradery.license.UpdateChecker;
 import com.tradery.news.model.Article;
@@ -1284,14 +1287,18 @@ public class IntelFrame extends JFrame {
 
         // Check for updates (non-blocking)
         String version = System.getProperty("tradery.version", "1.0.0");
-        UpdateChecker.checkAsync(version, "https://tradery.app/updates/latest.json");
+        UpdateChecker.checkAsync(version, "https://plaiiin.com/api/app/intelligence/latest.json");
 
         SwingUtilities.invokeLater(() -> {
             // First-run: show setup if no AI profiles configured
-            IntelConfig config = IntelConfig.get();
-            if (config.getAiProfiles().isEmpty()) {
+            if (AiConfig.get().getProfiles().isEmpty()) {
                 AiSetupDialog.showSetup(null);
             }
+
+            // Wire up AI activity logging to the log panel
+            AiClient.getInstance().setActivityListener((summary, prompt, response) ->
+                IntelLogPanel.logAI(summary, prompt, response));
+
             new IntelFrame().setVisible(true);
         });
     }

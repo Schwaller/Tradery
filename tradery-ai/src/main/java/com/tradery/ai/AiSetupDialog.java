@@ -1,9 +1,7 @@
-package com.tradery.news.ui;
+package com.tradery.ai;
 
 import com.formdev.flatlaf.FlatClientProperties;
-import com.tradery.news.ai.AiDetector;
-import com.tradery.news.ai.AiDetector.DetectedProvider;
-import com.tradery.news.ai.AiProfile;
+import com.tradery.ai.AiDetector.DetectedProvider;
 
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
@@ -61,8 +59,7 @@ public class AiSetupDialog extends JDialog {
         content.setBorder(new EmptyBorder(16, 20, 12, 20));
 
         JLabel subtitle = new JLabel(
-            "<html>Intelligence uses AI for entity discovery and deep research.<br>" +
-            "Select which providers to enable:</html>");
+            "<html>Select which AI providers to enable:</html>");
         subtitle.setFont(new Font("SansSerif", Font.PLAIN, 12));
         subtitle.setBorder(new EmptyBorder(0, 0, 12, 0));
         content.add(subtitle, BorderLayout.NORTH);
@@ -224,7 +221,7 @@ public class AiSetupDialog extends JDialog {
     }
 
     private void createProfiles() {
-        IntelConfig config = IntelConfig.get();
+        AiConfig config = AiConfig.get();
         boolean firstProfile = true;
 
         for (int i = 0; i < checkboxes.size(); i++) {
@@ -240,7 +237,7 @@ public class AiSetupDialog extends JDialog {
             if (dp.path() != null) profile.setPath(dp.path());
             if (dp.args() != null) profile.setArgs(dp.args());
             if (dp.command() != null) profile.setCommand(dp.command());
-            if (dp.provider() == IntelConfig.AiProvider.GEMINI) {
+            if (dp.provider() == AiProvider.GEMINI) {
                 profile.setModel("gemini-2.5-flash-lite");
             }
 
@@ -261,7 +258,7 @@ public class AiSetupDialog extends JDialog {
             .replaceAll("[^a-z0-9]+", "-")
             .replaceAll("^-|-$", "");
         // Ensure uniqueness
-        IntelConfig config = IntelConfig.get();
+        AiConfig config = AiConfig.get();
         String id = base;
         int counter = 2;
         while (config.getProfile(id) != null) {

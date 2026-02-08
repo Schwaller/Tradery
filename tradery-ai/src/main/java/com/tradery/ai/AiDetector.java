@@ -1,6 +1,4 @@
-package com.tradery.news.ai;
-
-import com.tradery.news.ui.IntelConfig;
+package com.tradery.ai;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
@@ -17,7 +15,7 @@ public class AiDetector {
     private static final int TIMEOUT_SECONDS = 3;
 
     public record DetectedProvider(
-        IntelConfig.AiProvider provider,
+        AiProvider provider,
         String name,
         String description,
         String version,
@@ -54,7 +52,7 @@ public class AiDetector {
         String version = runCommand("claude", "--version");
         boolean detected = version != null;
         return new DetectedProvider(
-            IntelConfig.AiProvider.CLAUDE,
+            AiProvider.CLAUDE,
             "Claude Code" + (detected ? "  v" + version.trim() : ""),
             "Anthropic's AI assistant CLI",
             detected ? version.trim() : null,
@@ -71,7 +69,7 @@ public class AiDetector {
         String version = runCommand("codex", "--version");
         boolean detected = version != null;
         return new DetectedProvider(
-            IntelConfig.AiProvider.CODEX,
+            AiProvider.CODEX,
             "Codex CLI" + (detected ? "  v" + version.trim() : ""),
             "OpenAI's coding CLI",
             detected ? version.trim() : null,
@@ -95,7 +93,7 @@ public class AiDetector {
             }
         }
         return new DetectedProvider(
-            IntelConfig.AiProvider.GEMINI,
+            AiProvider.GEMINI,
             "Gemini CLI" + (detected ? "  v" + ver : ""),
             detected
                 ? "Google's AI CLI \u2014 free tier (1,000 req/day with Google account)"
@@ -117,7 +115,7 @@ public class AiDetector {
 
         if (!installed) {
             results.add(new DetectedProvider(
-                IntelConfig.AiProvider.CUSTOM,
+                AiProvider.CUSTOM,
                 "Ollama",
                 "Local AI \u2014 free, private, no internet needed. Install from ollama.com",
                 null,
@@ -143,7 +141,7 @@ public class AiDetector {
 
         if (models.isEmpty()) {
             results.add(new DetectedProvider(
-                IntelConfig.AiProvider.CUSTOM,
+                AiProvider.CUSTOM,
                 "Ollama  v" + ver,
                 "Local AI \u2014 installed but no models. Run `ollama pull llama3` to download a model",
                 ver,
@@ -161,7 +159,7 @@ public class AiDetector {
                 String model = models.get(i);
                 String displayName = model.contains(":") ? model.substring(0, model.indexOf(':')) : model;
                 results.add(new DetectedProvider(
-                    IntelConfig.AiProvider.CUSTOM,
+                    AiProvider.CUSTOM,
                     "Ollama \u2014 " + displayName,
                     "Local AI \u2014 free, private, no internet needed",
                     ver,

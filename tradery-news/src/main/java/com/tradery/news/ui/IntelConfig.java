@@ -3,7 +3,9 @@ package com.tradery.news.ui;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
-import com.tradery.news.ai.AiProfile;
+import com.tradery.ai.AiConfig;
+import com.tradery.ai.AiProfile;
+import com.tradery.ai.AiProvider;
 
 import javax.swing.*;
 import java.awt.*;
@@ -50,8 +52,7 @@ public class IntelConfig {
     // ERD settings
     private boolean erdFlowMode = false;
 
-    // AI settings
-    public enum AiProvider { CLAUDE, CODEX, CUSTOM, GEMINI }
+    // AI settings (AiProvider enum moved to com.tradery.ai)
     private AiProvider aiProvider = AiProvider.CLAUDE;
     private String claudePath = "claude";
     private String claudeArgs = "--print --output-format text --model haiku";
@@ -311,6 +312,8 @@ public class IntelConfig {
     }
 
     // ==================== AI Profile Settings ====================
+    // Delegates to AiConfig for actual storage.
+    // Local fields kept for YAML backward compat (deserialization from old configs).
 
     public List<AiProfile> getAiProfiles() {
         return aiProfiles;
@@ -330,32 +333,19 @@ public class IntelConfig {
 
     @JsonIgnore
     public AiProfile getDefaultProfile() {
-        if (aiProfiles.isEmpty()) return null;
-        if (defaultProfileId != null) {
-            for (AiProfile p : aiProfiles) {
-                if (defaultProfileId.equals(p.getId())) return p;
-            }
-        }
-        return aiProfiles.get(0);
+        return AiConfig.get().getDefaultProfile();
     }
 
     public AiProfile getProfile(String id) {
-        for (AiProfile p : aiProfiles) {
-            if (id != null && id.equals(p.getId())) return p;
-        }
-        return null;
+        return AiConfig.get().getProfile(id);
     }
 
     public void addProfile(AiProfile profile) {
-        aiProfiles.add(profile);
+        AiConfig.get().addProfile(profile);
     }
 
     public void removeProfile(String id) {
-        if (aiProfiles.size() <= 1) return;
-        aiProfiles.removeIf(p -> id != null && id.equals(p.getId()));
-        if (id != null && id.equals(defaultProfileId)) {
-            defaultProfileId = aiProfiles.isEmpty() ? null : aiProfiles.get(0).getId();
-        }
+        AiConfig.get().removeProfile(id);
     }
 
     // ==================== Panel Settings ====================
@@ -500,10 +490,10 @@ public class IntelConfig {
             config.setHiddenTopics(new HashSet<>(DEFAULT_HIDDEN_TOPICS));
         }
 
-        // Migrate old flat AI settings to profile if no profiles exist
+        // Migrate old flat AI settings to AiConfig if no profiles exist anywhere.
         // Only for existing configs that had old-style AI fields — fresh installs
         // are handled by the setup dialog in IntelFrame.main()
-        if (config.getAiProfiles().isEmpty() && existingConfig) {
+        if (AiConfig.get().getProfiles().isEmpty() && existingConfig) {
             AiProfile profile = new AiProfile();
             profile.setProvider(config.getAiProvider());
             profile.setTimeoutSeconds(config.getAiTimeoutSeconds());
@@ -534,9 +524,9 @@ public class IntelConfig {
                 }
             }
 
-            config.getAiProfiles().add(profile);
-            config.setDefaultProfileId(profile.getId());
-            config.save();
+            AiConfig.get().addProfile(profile);
+            AiConfig.get().setDefaultProfileId(profile.getId());
+            AiConfig.get().save();
         }
 
         // Seed default panels if none exist

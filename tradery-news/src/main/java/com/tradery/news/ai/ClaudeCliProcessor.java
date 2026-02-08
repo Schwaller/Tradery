@@ -2,6 +2,8 @@ package com.tradery.news.ai;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.tradery.ai.AiClient;
+import com.tradery.ai.AiException;
 import com.tradery.news.model.Article;
 import com.tradery.news.model.EntityType;
 import com.tradery.news.model.EventType;

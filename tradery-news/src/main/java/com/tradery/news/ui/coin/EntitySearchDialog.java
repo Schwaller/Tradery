@@ -2,8 +2,8 @@ package com.tradery.news.ui.coin;
 
 import com.formdev.flatlaf.FlatClientProperties;
 import com.formdev.flatlaf.util.SystemInfo;
-import com.tradery.news.ai.AiProfile;
-import com.tradery.news.ui.IntelConfig;
+import com.tradery.ai.AiConfig;
+import com.tradery.ai.AiProfile;
 import com.tradery.news.ui.IntelLogPanel;
 import com.tradery.ui.controls.BorderlessScrollPane;
 import com.tradery.ui.controls.SegmentedToggle;
@@ -382,7 +382,7 @@ public class EntitySearchDialog extends JDialog {
     }
 
     private void showDeepProfileMenu(CoinRelationship.Type relType, JButton button) {
-        java.util.List<AiProfile> profiles = IntelConfig.get().getAiProfiles();
+        java.util.List<AiProfile> profiles = AiConfig.get().getProfiles();
         if (profiles.isEmpty()) {
             JOptionPane.showMessageDialog(this,
                 "No AI profiles configured. Please add one in Settings.",
@@ -391,7 +391,7 @@ public class EntitySearchDialog extends JDialog {
         }
 
         JPopupMenu popup = new JPopupMenu();
-        String defaultId = IntelConfig.get().getDefaultProfileId();
+        String defaultId = AiConfig.get().getDefaultProfileId();
 
         for (AiProfile profile : profiles) {
             String star = profile.getId() != null && profile.getId().equals(defaultId) ? "\u2605 " : "";

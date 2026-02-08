@@ -2,12 +2,12 @@ package com.tradery.news.ui.coin;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.tradery.news.ai.AiClient;
-import com.tradery.news.ai.AiException;
-import com.tradery.news.ai.AiProfile;
-import com.tradery.news.ai.DuckDuckGoSearchProvider;
-import com.tradery.news.ai.WebSearchException;
-import com.tradery.news.ai.WebSearchProvider;
+import com.tradery.ai.AiClient;
+import com.tradery.ai.AiException;
+import com.tradery.ai.AiProfile;
+import com.tradery.ai.DuckDuckGoSearchProvider;
+import com.tradery.ai.WebSearchException;
+import com.tradery.ai.WebSearchProvider;
 import com.tradery.news.ui.IntelLogPanel;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
