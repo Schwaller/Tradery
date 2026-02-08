@@ -174,8 +174,8 @@ public class IntelFrame extends JFrame {
 
         // Start API server
         try {
-            EntitySearchProcessor searchProcessor = new EntitySearchProcessor();
-            apiServer = new IntelApiServer(this::openWindow, entityStore, store, searchProcessor);
+            EntitySearchProcessor searchProcessor = new EntitySearchProcessor(schemaRegistry);
+            apiServer = new IntelApiServer(this::openWindow, entityStore, store, searchProcessor, schemaRegistry);
             apiServer.start();
         } catch (Exception e) {
             System.err.println("Failed to start Intel API server: " + e.getMessage());
@@ -807,7 +807,7 @@ public class IntelFrame extends JFrame {
 
         JButton searchRelatedBtn = new JButton("Search Related...");
         searchRelatedBtn.addActionListener(e -> {
-            EntitySearchDialog dialog = new EntitySearchDialog(this, entity, entityStore);
+            EntitySearchDialog dialog = new EntitySearchDialog(this, entity, entityStore, schemaRegistry);
             dialog.setVisible(true);
             loadCoinData(false);
         });
@@ -936,15 +936,11 @@ public class IntelFrame extends JFrame {
     }
 
     private String describeInverseRelation(CoinRelationship.Type type, String otherName) {
-        return switch (type) {
-            case L2_OF -> "L1 for " + otherName;
-            case ETF_TRACKS, ETP_TRACKS -> "tracked by " + otherName;
-            case INVESTED_IN -> "investor: " + otherName;
-            case FOUNDED_BY -> "founded " + otherName;
-            case FORK_OF -> "forked to " + otherName;
-            case ECOSYSTEM -> "ecosystem: " + otherName;
-            default -> type.label() + " " + otherName;
-        };
+        SchemaType relSchema = schemaRegistry.getType(type.name().toLowerCase());
+        if (relSchema != null) {
+            return relSchema.inverseDescription(otherName);
+        }
+        return type.label() + " " + otherName;
     }
 
     // ==================== DATA LOADING ====================

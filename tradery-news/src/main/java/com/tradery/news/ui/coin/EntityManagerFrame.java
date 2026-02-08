@@ -102,10 +102,22 @@ public class EntityManagerFrame extends JFrame {
     }
 
     private void initUI() {
-        JPanel mainPanel = new JPanel(new BorderLayout());
+        JPanel contentPane = new JPanel(new BorderLayout(0, 0));
 
-        mainPanel.add(createEntitiesTab(), BorderLayout.CENTER);
-        setContentPane(mainPanel);
+        // 52px header bar with centered title
+        JPanel hBar = new JPanel(new BorderLayout());
+        hBar.setPreferredSize(new Dimension(0, 52));
+        JLabel windowTitle = new JLabel("Entity Manager", SwingConstants.CENTER);
+        windowTitle.setFont(new Font("SansSerif", Font.BOLD, 13));
+        windowTitle.setForeground(UIManager.getColor("Label.disabledForeground"));
+        hBar.add(windowTitle, BorderLayout.CENTER);
+        JPanel hWrapper = new JPanel(new BorderLayout());
+        hWrapper.add(hBar, BorderLayout.CENTER);
+        hWrapper.add(new JSeparator(), BorderLayout.SOUTH);
+        contentPane.add(hWrapper, BorderLayout.NORTH);
+
+        contentPane.add(createEntitiesTab(), BorderLayout.CENTER);
+        setContentPane(contentPane);
     }
 
     private JPanel createEntitiesTab() {
@@ -580,7 +592,7 @@ public class EntityManagerFrame extends JFrame {
     private void showSearchRelatedDialog() {
         if (selectedEntity == null) return;
 
-        EntitySearchDialog dialog = new EntitySearchDialog(this, selectedEntity, store);
+        EntitySearchDialog dialog = new EntitySearchDialog(this, selectedEntity, store, schemaRegistry);
         dialog.setVisible(true);
 
         // Refresh after dialog closes in case entities were added

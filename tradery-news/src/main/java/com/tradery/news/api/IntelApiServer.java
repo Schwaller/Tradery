@@ -5,6 +5,7 @@ import com.sun.net.httpserver.HttpServer;
 import com.tradery.news.store.SqliteNewsStore;
 import com.tradery.news.ui.coin.EntitySearchProcessor;
 import com.tradery.news.ui.coin.EntityStore;
+import com.tradery.news.ui.coin.SchemaRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -64,11 +65,12 @@ public class IntelApiServer {
     public IntelApiServer(Consumer<String> windowOpener,
                           EntityStore entityStore,
                           SqliteNewsStore newsStore,
-                          EntitySearchProcessor searchProcessor) {
+                          EntitySearchProcessor searchProcessor,
+                          SchemaRegistry schemaRegistry) {
         this.windowOpener = windowOpener;
         this.statsHandler = new StatsHandler(entityStore, newsStore);
         this.entityHandler = new EntityHandler(entityStore);
-        this.discoverHandler = new DiscoverHandler(entityStore, searchProcessor);
+        this.discoverHandler = new DiscoverHandler(entityStore, searchProcessor, schemaRegistry);
         this.articleHandler = new ArticleHandler(newsStore);
         this.schemaHandler = new SchemaHandler(entityStore);
     }
