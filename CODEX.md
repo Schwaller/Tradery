@@ -1,4 +1,4 @@
-# Tradery - Codex Instructions
+# Plaiiin - Codex Instructions
 
 ## Session Startup (REQUIRED)
 

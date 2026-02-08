@@ -1,6 +1,6 @@
 ## Overview
 
-**Tradery** is a backtesting engine for cryptocurrency trading strategies. It lets you define trading rules using a simple DSL (Domain Specific Language), test them against historical data, and analyze the results to improve your approach.
+**Plaiiin** is a backtesting engine for cryptocurrency trading strategies. It lets you define trading rules using a simple DSL (Domain Specific Language), test them against historical data, and analyze the results to improve your approach.
 
 ### How It Works
 
@@ -42,7 +42,7 @@ Load Candles → Check Phases → Evaluate Entry → Manage Position → Check E
 
 ## Charts & Visualizations
 
-Tradery provides multiple charts to help you understand strategy performance and market conditions.
+Strategy Forge provides multiple charts to help you understand strategy performance and market conditions.
 
 ### Price Chart
 

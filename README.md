@@ -1,4 +1,4 @@
-# Tradery
+# Plaiiin
 
 A Java desktop application for building and backtesting trading strategies on cryptocurrency markets.
 
