@@ -41,6 +41,7 @@ public class ToolbarSearchField extends JPanel {
         textField.putClientProperty("JTextField.placeholderText", "Search\u2026");
         textField.putClientProperty("JTextField.leadingIcon", new SearchIcon());
         textField.putClientProperty("JTextField.showClearButton", true);
+        textField.putClientProperty("JComponent.roundRect", true);
 
         // Live search on text change
         textField.getDocument().addDocumentListener(new javax.swing.event.DocumentListener() {
@@ -141,7 +142,7 @@ public class ToolbarSearchField extends JPanel {
      * Magnifying glass icon painted with Java2D. Theme-aware via Label.disabledForeground.
      */
     private static class SearchIcon implements Icon {
-        private static final int PADDING_LEFT = 2;
+        private static final int PADDING_LEFT = 4;
         private static final int SIZE = 14 + PADDING_LEFT;
 
         @Override
@@ -156,7 +157,7 @@ public class ToolbarSearchField extends JPanel {
             g2.setStroke(new BasicStroke(1.5f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
 
             // Circle (lens) — centered in upper-left area
-            double cx = x + PADDING_LEFT + 6, cy = y + 6, r = 4.5;
+            double cx = x + PADDING_LEFT + 6, cy = y + 7, r = 4.5;
             g2.draw(new Ellipse2D.Double(cx - r, cy - r, r * 2, r * 2));
 
             // Handle — from lower-right of circle outward

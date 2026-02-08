@@ -40,7 +40,7 @@ public class ToolbarTestWindow extends JFrame {
 
     private static final List<String> PREVIEW_THEMES = List.of(
             "Hiberbee Dark", "Flat Light", "Flat Dark", "macOS Dark",
-            "Nord", "Dracula", "Solarized Light"
+            "macOS Light", "Nord", "Dracula", "Solarized Light"
     );
 
     public ToolbarTestWindow() {
