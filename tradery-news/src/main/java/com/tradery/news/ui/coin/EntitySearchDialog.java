@@ -9,6 +9,7 @@ import com.tradery.ui.controls.BorderlessScrollPane;
 import com.tradery.ui.controls.SegmentedToggle;
 import com.tradery.ui.controls.ThinSplitPane;
 import com.tradery.ui.controls.ToolbarButton;
+import com.tradery.ui.controls.ToolbarComboBox;
 
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
@@ -72,7 +73,8 @@ public class EntitySearchDialog extends JDialog {
     private JButton addSelectedBtn;
     private JLabel statusLabel;
     private JProgressBar statusSpinner;
-    private JComboBox<AiProfile> aiProfileCombo;
+    private ToolbarComboBox<String> aiProfileCombo;
+    private List<AiProfile> aiProfileList = new ArrayList<>();
 
     // Track default-AI investigations so we can cancel on profile switch
     private final List<CompletableFuture<?>> defaultAiFutures = new ArrayList<>();
@@ -84,7 +86,7 @@ public class EntitySearchDialog extends JDialog {
     private static final String PREF_HEIGHT = "entitySearchDialog.height";
 
     public EntitySearchDialog(Frame owner, CoinEntity entity, EntityStore store) {
-        super(owner, "Search Related — " + entity.name(), false);
+        super((Frame) null, "Search Related — " + entity.name(), false);
         this.sourceEntity = entity;
         this.store = store;
         this.processor = new EntitySearchProcessor();
@@ -191,101 +193,72 @@ public class EntitySearchDialog extends JDialog {
 
         GridBagConstraints gbc = new GridBagConstraints();
         gbc.gridy = 0;
+        gbc.fill = GridBagConstraints.NONE;
+        gbc.insets = new Insets(0, 0, 0, 0);
 
-        // Left: traffic light placeholder + source entity info
+        // [AI switch]
         gbc.gridx = 0;
-        gbc.weightx = 1.0;
-        gbc.fill = GridBagConstraints.BOTH;
+        gbc.weightx = 0;
         gbc.anchor = GridBagConstraints.WEST;
-        JPanel leftPanel = new JPanel(new GridBagLayout());
+        JPanel leftPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
         leftPanel.setOpaque(false);
-        JPanel leftContent = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
-        leftContent.setOpaque(false);
-
         if (SystemInfo.isMacOS) {
             JPanel buttonsPlaceholder = new JPanel();
             buttonsPlaceholder.putClientProperty(FlatClientProperties.FULL_WINDOW_CONTENT_BUTTONS_PLACEHOLDER, "mac");
             buttonsPlaceholder.setOpaque(false);
-            leftContent.add(buttonsPlaceholder);
+            leftPanel.add(buttonsPlaceholder);
         }
-
-        JLabel nameLabel = new JLabel(sourceEntity.name());
-        nameLabel.setForeground(sourceEntity.type().color());
-        nameLabel.setFont(ToolbarButton.TOOLBAR_FONT.deriveFont(Font.BOLD));
-        leftContent.add(nameLabel);
-
-        if (sourceEntity.symbol() != null) {
-            JLabel symbolLabel = new JLabel("(" + sourceEntity.symbol() + ")");
-            symbolLabel.setFont(ToolbarButton.TOOLBAR_FONT);
-            leftContent.add(symbolLabel);
-        }
-
-        JLabel typeLabel = new JLabel("[" + sourceEntity.type().name() + "]");
-        typeLabel.setFont(ToolbarButton.TOOLBAR_FONT);
-        leftContent.add(typeLabel);
-
-        // AI profile selector
-        leftContent.add(Box.createHorizontalStrut(12));
-        aiProfileCombo = new JComboBox<>();
-        aiProfileCombo.setFont(ToolbarButton.TOOLBAR_FONT);
-        aiProfileCombo.setRenderer(new DefaultListCellRenderer() {
-            @Override
-            public Component getListCellRendererComponent(JList<?> list, Object value, int index, boolean sel, boolean focus) {
-                super.getListCellRendererComponent(list, value, index, sel, focus);
-                if (value instanceof AiProfile p) {
-                    setText(p.getName());
-                }
-                return this;
-            }
-        });
         populateAiCombo();
         aiProfileCombo.addActionListener(e -> onAiProfileChanged());
-        leftContent.add(aiProfileCombo);
-
-        GridBagConstraints lc = new GridBagConstraints();
-        lc.anchor = GridBagConstraints.WEST;
-        lc.fill = GridBagConstraints.HORIZONTAL;
-        lc.weightx = 1.0;
-        leftPanel.add(leftContent, lc);
+        leftPanel.add(aiProfileCombo);
         headerBar.add(leftPanel, gbc);
 
-        // Center: Title
+        // flexible space
         gbc.gridx = 1;
+        gbc.weightx = 1.0;
+        gbc.fill = GridBagConstraints.HORIZONTAL;
+        headerBar.add(Box.createGlue(), gbc);
+
+        // [Search Related: Entity Name]
+        gbc.gridx = 2;
         gbc.weightx = 0;
         gbc.fill = GridBagConstraints.NONE;
         gbc.anchor = GridBagConstraints.CENTER;
-        JLabel titleLabel = new JLabel("Search Related");
+        String entityName = sourceEntity.name();
+        JLabel titleLabel = new JLabel("Search Related: " + entityName);
         titleLabel.setFont(new Font("SansSerif", Font.BOLD, 13));
+        titleLabel.setForeground(UIManager.getColor("Label.foreground"));
         headerBar.add(titleLabel, gbc);
 
-        // Right: action buttons
-        gbc.gridx = 2;
+        // flexible space
+        gbc.gridx = 3;
         gbc.weightx = 1.0;
-        gbc.fill = GridBagConstraints.BOTH;
+        gbc.fill = GridBagConstraints.HORIZONTAL;
+        headerBar.add(Box.createGlue(), gbc);
+
+        // [Select All] [Select None] 24px [Apply]
+        gbc.gridx = 4;
+        gbc.weightx = 0;
+        gbc.fill = GridBagConstraints.NONE;
         gbc.anchor = GridBagConstraints.EAST;
-        JPanel rightPanel = new JPanel(new GridBagLayout());
+        JPanel rightPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
         rightPanel.setOpaque(false);
-        JPanel rightContent = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
-        rightContent.setOpaque(false);
 
         JButton selectAllBtn = new ToolbarButton("Select All");
         selectAllBtn.addActionListener(e -> selectAll(true));
-        rightContent.add(selectAllBtn);
+        rightPanel.add(selectAllBtn);
 
         JButton selectNoneBtn = new ToolbarButton("Select None");
         selectNoneBtn.addActionListener(e -> selectAll(false));
-        rightContent.add(selectNoneBtn);
+        rightPanel.add(selectNoneBtn);
 
-        addSelectedBtn = new ToolbarButton("Add Selected");
+        rightPanel.add(Box.createHorizontalStrut(24));
+
+        addSelectedBtn = new ToolbarButton("Apply");
         addSelectedBtn.setEnabled(false);
         addSelectedBtn.addActionListener(e -> addSelectedEntities());
-        rightContent.add(addSelectedBtn);
+        rightPanel.add(addSelectedBtn);
 
-        GridBagConstraints rc = new GridBagConstraints();
-        rc.anchor = GridBagConstraints.EAST;
-        rc.fill = GridBagConstraints.HORIZONTAL;
-        rc.weightx = 1.0;
-        rightPanel.add(rightContent, rc);
         headerBar.add(rightPanel, gbc);
 
         return headerBar;
@@ -804,24 +777,23 @@ public class EntitySearchDialog extends JDialog {
     }
 
     private void populateAiCombo() {
-        aiProfileCombo.removeAllItems();
-        List<AiProfile> profiles = AiConfig.get().getProfiles();
+        aiProfileList = AiConfig.get().getProfiles();
         String defaultId = AiConfig.get().getDefaultProfileId();
-        AiProfile selected = null;
-        for (AiProfile p : profiles) {
-            aiProfileCombo.addItem(p);
+        String[] names = aiProfileList.stream().map(AiProfile::getName).toArray(String[]::new);
+        aiProfileCombo = new ToolbarComboBox<>(names);
+        for (int i = 0; i < aiProfileList.size(); i++) {
+            AiProfile p = aiProfileList.get(i);
             if (p.getId() != null && p.getId().equals(defaultId)) {
-                selected = p;
+                aiProfileCombo.setSelectedIndex(i);
+                break;
             }
-        }
-        if (selected != null) {
-            aiProfileCombo.setSelectedItem(selected);
         }
     }
 
     private void onAiProfileChanged() {
-        AiProfile chosen = (AiProfile) aiProfileCombo.getSelectedItem();
-        if (chosen == null) return;
+        int idx = aiProfileCombo.getSelectedIndex();
+        if (idx < 0 || idx >= aiProfileList.size()) return;
+        AiProfile chosen = aiProfileList.get(idx);
         String currentDefault = AiConfig.get().getDefaultProfileId();
         if (chosen.getId().equals(currentDefault)) return;
 
