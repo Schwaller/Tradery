@@ -279,4 +279,11 @@ public record PageKey(
     public boolean isPremium() {
         return "PREMIUM".equals(dataType) || "PREMIUM_INDEX".equals(dataType);
     }
+
+    /**
+     * Check if this page key is for Fear & Greed Index data.
+     */
+    public boolean isFearGreed() {
+        return "FEAR_GREED".equals(dataType);
+    }
 }

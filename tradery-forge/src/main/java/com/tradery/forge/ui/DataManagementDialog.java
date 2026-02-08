@@ -43,6 +43,12 @@ public class DataManagementDialog extends JDialog {
         this.dataStore = dataStore;
         this.dataDir = DataConfig.getInstance().getDataDir();
 
+        // Integrated macOS title bar
+        getRootPane().putClientProperty("apple.awt.fullWindowContent", true);
+        getRootPane().putClientProperty("apple.awt.transparentTitleBar", true);
+        getRootPane().putClientProperty("apple.awt.windowTitleVisible", false);
+        getRootPane().putClientProperty("FlatLaf.macOS.windowButtonsSpacing", "large");
+
         initUI();
 
         setSize(800, 550);

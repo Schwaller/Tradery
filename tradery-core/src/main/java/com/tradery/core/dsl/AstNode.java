@@ -224,4 +224,14 @@ public sealed interface AstNode {
      * @param params Parameters (e.g., threshold for whale detection)
      */
     record ExchangeFunctionCall(String func, List<Double> params) implements AstNode {}
+
+    /**
+     * Fear & Greed Index function call:
+     * - FEAR_GREED: Current value (0-100)
+     * - FEAR_GREED_AVG(period): Average over N bars
+     *
+     * @param func Function name (FEAR_GREED, FEAR_GREED_AVG)
+     * @param period Averaging period (null for FEAR_GREED)
+     */
+    record FearGreedFunctionCall(String func, Integer period) implements AstNode {}
 }

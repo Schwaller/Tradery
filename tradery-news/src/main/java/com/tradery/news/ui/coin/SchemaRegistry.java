@@ -23,21 +23,27 @@ public class SchemaRegistry {
     /** Reload all types from DB. Seeds defaults if tables are empty. */
     public void reload() {
         types.clear();
-        List<SchemaType> loaded = store.loadSchemaTypes();
-        if (loaded.isEmpty()) {
-            seedFromEnums();
-            loaded = store.loadSchemaTypes();
-        }
-        for (SchemaType t : loaded) {
-            types.put(t.id(), t);
-        }
-        // Incremental migrations for types added after initial seed
-        seedIfMissing();
+        // Seeding must bypass draft mode — these are system writes
+        store.setDraftMode(false);
+        try {
+            List<SchemaType> loaded = store.loadSchemaTypes();
+            if (loaded.isEmpty()) {
+                seedFromEnums();
+                loaded = store.loadSchemaTypes();
+            }
+            for (SchemaType t : loaded) {
+                types.put(t.id(), t);
+            }
+            // Incremental migrations for types added after initial seed
+            seedIfMissing();
 
-        // Re-read types to pick up any mutability migration changes
-        types.clear();
-        for (SchemaType t : store.loadSchemaTypes()) {
-            types.put(t.id(), t);
+            // Re-read types to pick up any mutability migration changes
+            types.clear();
+            for (SchemaType t : store.loadSchemaTypes()) {
+                types.put(t.id(), t);
+            }
+        } finally {
+            store.setDraftMode(true);
         }
     }
 

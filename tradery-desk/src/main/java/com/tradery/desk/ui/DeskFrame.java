@@ -116,11 +116,10 @@ public class DeskFrame extends JFrame {
 
         setContentPane(mainPanel);
 
-        // Listen for LAF changes to update borders
+        // Listen for LAF changes to update background
         lafChangeListener = evt -> {
             if ("lookAndFeel".equals(evt.getPropertyName()) && headerBar != null) {
                 headerBar.setBackground(UIManager.getColor("Panel.background"));
-                headerBar.setBorder(BorderFactory.createMatteBorder(0, 0, 1, 0, UIManager.getColor("Separator.foreground")));
             }
         };
         UIManager.addPropertyChangeListener(lafChangeListener);
@@ -145,7 +144,6 @@ public class DeskFrame extends JFrame {
 
         headerBar = new JPanel(new GridBagLayout());
         headerBar.setBackground(UIManager.getColor("Panel.background"));
-        headerBar.setBorder(BorderFactory.createMatteBorder(0, 0, 1, 0, UIManager.getColor("Separator.foreground")));
         headerBar.setPreferredSize(new Dimension(0, barHeight));
         headerBar.setMinimumSize(new Dimension(0, barHeight));
 
@@ -216,7 +214,10 @@ public class DeskFrame extends JFrame {
         rightPanel.add(rightContent, rc);
         headerBar.add(rightPanel, gbc);
 
-        return headerBar;
+        JPanel headerWrapper = new JPanel(new BorderLayout());
+        headerWrapper.add(headerBar, BorderLayout.CENTER);
+        headerWrapper.add(new JSeparator(), BorderLayout.SOUTH);
+        return headerWrapper;
     }
 
     private void refreshAgoLabel() {

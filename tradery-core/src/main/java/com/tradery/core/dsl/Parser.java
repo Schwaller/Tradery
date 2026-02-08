@@ -251,6 +251,11 @@ public class Parser {
             return exchangeFunctionCall();
         }
 
+        // Fear & Greed Index functions (FEAR_GREED, FEAR_GREED_AVG)
+        if (check(TokenType.FEAR_GREED_FUNC)) {
+            return fearGreedFunctionCall();
+        }
+
         throw new ParserException("Unexpected token '" + current().value() +
             "' at position " + current().position());
     }
@@ -736,6 +741,38 @@ public class Parser {
         }
 
         return new AstNode.ExchangeFunctionCall(func, params);
+    }
+
+    private AstNode.FearGreedFunctionCall fearGreedFunctionCall() {
+        String func = current().value();
+        advance();
+
+        Integer period = null;
+
+        // FEAR_GREED_AVG requires a period parameter, FEAR_GREED does not
+        if (check(TokenType.LPAREN)) {
+            advance();
+            List<Double> params = parseNumberList();
+            expect(TokenType.RPAREN, "Expected ')' after " + func + " parameters");
+
+            if (!params.isEmpty()) {
+                period = params.get(0).intValue();
+            }
+        }
+
+        // Validate based on function type
+        switch (func) {
+            case "FEAR_GREED" -> {
+                // No parameters needed
+            }
+            case "FEAR_GREED_AVG" -> {
+                if (period == null) {
+                    throw new ParserException("FEAR_GREED_AVG requires a period parameter, e.g., FEAR_GREED_AVG(7)");
+                }
+            }
+        }
+
+        return new AstNode.FearGreedFunctionCall(func, period);
     }
 
     // ========== Helper Methods ==========

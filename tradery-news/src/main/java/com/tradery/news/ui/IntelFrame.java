@@ -350,6 +350,50 @@ public class IntelFrame extends JFrame {
         resetViewBtn.setVisible(false);  // Hidden by default (News is selected)
         rightContent.add(resetViewBtn);
 
+        // Pending changes indicator + commit/discard (visible only when pending > 0)
+        JPanel pendingPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
+        pendingPanel.setOpaque(false);
+        JLabel pendingLabel = new JLabel();
+        pendingLabel.setFont(new Font("SansSerif", Font.BOLD, 11));
+        pendingLabel.setForeground(new Color(255, 180, 80));
+        JButton commitBtn = new ToolbarButton("Commit");
+        commitBtn.setToolTipText("Commit all pending changes");
+        JButton discardBtn = new ToolbarButton("Discard");
+        discardBtn.setToolTipText("Discard all pending changes");
+        pendingPanel.add(pendingLabel);
+        pendingPanel.add(commitBtn);
+        pendingPanel.add(discardBtn);
+        pendingPanel.setVisible(false);
+
+        commitBtn.addActionListener(e -> {
+            String commitId = entityStore.commit();
+            if (commitId != null) {
+                logPanel.success("Committed changes (" + commitId.substring(0, 8) + ")");
+                loadCoinData(false);
+            }
+        });
+        discardBtn.addActionListener(e -> {
+            int result = JOptionPane.showConfirmDialog(this,
+                "Discard all pending changes? This cannot be undone.",
+                "Discard Changes", JOptionPane.OK_CANCEL_OPTION, JOptionPane.WARNING_MESSAGE);
+            if (result == JOptionPane.OK_OPTION) {
+                entityStore.rollback();
+                logPanel.info("Discarded pending changes");
+                loadCoinData(false);
+            }
+        });
+
+        Runnable updatePending = () -> {
+            int count = entityStore.getPendingCount();
+            pendingPanel.setVisible(count > 0);
+            pendingLabel.setText(count + " pending");
+        };
+        entityStore.setOnPendingChanged(updatePending);
+        // Check for pending changes from previous session
+        SwingUtilities.invokeLater(updatePending);
+
+        rightContent.add(pendingPanel);
+
         JButton entitiesBtn = new ToolbarButton("Entities");
         entitiesBtn.addActionListener(e -> showEntityManager());
         rightContent.add(entitiesBtn);
@@ -749,8 +793,10 @@ public class IntelFrame extends JFrame {
             addDetailSpacer();
         }
 
-        addDetailSection("STATUS");
-        addDetailLabel(entity.isPinned() ? "Pinned" : "Free-floating");
+        if (entity.isPinned()) {
+            addDetailSection("STATUS");
+            addDetailLabel("Pinned");
+        }
 
         // Action buttons
         addDetailSpacer();

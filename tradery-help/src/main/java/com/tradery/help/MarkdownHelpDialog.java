@@ -111,8 +111,6 @@ public class MarkdownHelpDialog extends JDialog {
         titleBar.add(leftWrapper, BorderLayout.WEST);
         titleBar.add(Box.createHorizontalGlue(), BorderLayout.CENTER);
         titleBar.add(rightWrapper, BorderLayout.EAST);
-        titleBar.setBorder(BorderFactory.createMatteBorder(0, 0, 1, 0,
-                UIManager.getColor("Separator.foreground")));
 
         // Load and render markdown content
         String markdown = MarkdownHelpRenderer.loadFromResource(resourcePath);
@@ -183,7 +181,10 @@ public class MarkdownHelpDialog extends JDialog {
         bottomPanel.add(buttonPanel, BorderLayout.CENTER);
         mainContent.add(bottomPanel, BorderLayout.SOUTH);
 
-        contentPane.add(titleBar, BorderLayout.NORTH);
+        JPanel titleBarWrapper = new JPanel(new BorderLayout());
+        titleBarWrapper.add(titleBar, BorderLayout.CENTER);
+        titleBarWrapper.add(new JSeparator(), BorderLayout.SOUTH);
+        contentPane.add(titleBarWrapper, BorderLayout.NORTH);
         contentPane.add(mainContent, BorderLayout.CENTER);
 
         pack();

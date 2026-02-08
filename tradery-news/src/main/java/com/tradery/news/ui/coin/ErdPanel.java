@@ -1345,8 +1345,16 @@ public class ErdPanel extends JPanel {
         main.add(basicPanel, BorderLayout.NORTH);
 
         // === Format section (dynamic) ===
+        JPanel formatSection = new JPanel(new BorderLayout());
+        formatSection.add(new JSeparator(), BorderLayout.NORTH);
+        JLabel formatLabel = new JLabel("Format");
+        formatLabel.setFont(formatLabel.getFont().deriveFont(Font.BOLD, formatLabel.getFont().getSize() + 1f));
+        formatLabel.setBorder(BorderFactory.createEmptyBorder(8, 20, 4, 0));
+        formatSection.add(formatLabel, BorderLayout.CENTER);
+
         JPanel formatContainer = new JPanel(new BorderLayout());
-        formatContainer.setBorder(BorderFactory.createTitledBorder("Format"));
+        formatContainer.setBorder(BorderFactory.createEmptyBorder(0, 20, 10, 20));
+        formatSection.add(formatContainer, BorderLayout.SOUTH);
 
         // Config input fields
         JTextField unitField = new JTextField(10);
@@ -1493,8 +1501,16 @@ public class ErdPanel extends JPanel {
         updateFormatPanel.run();
 
         // === Labels section ===
+        JPanel labelsSection = new JPanel(new BorderLayout());
+        labelsSection.add(new JSeparator(), BorderLayout.NORTH);
+        JLabel labelsLabel = new JLabel("Labels (i18n)");
+        labelsLabel.setFont(labelsLabel.getFont().deriveFont(Font.BOLD, labelsLabel.getFont().getSize() + 1f));
+        labelsLabel.setBorder(BorderFactory.createEmptyBorder(8, 20, 4, 0));
+        labelsSection.add(labelsLabel, BorderLayout.CENTER);
+
         JPanel labelsPanel = new JPanel(new BorderLayout(0, 5));
-        labelsPanel.setBorder(BorderFactory.createTitledBorder("Labels (i18n)"));
+        labelsPanel.setBorder(BorderFactory.createEmptyBorder(0, 20, 10, 20));
+        labelsSection.add(labelsPanel, BorderLayout.SOUTH);
 
         javax.swing.table.DefaultTableModel labelsModel = new javax.swing.table.DefaultTableModel(
             new String[]{"Locale", "Display Name"}, 0) {
@@ -1522,8 +1538,8 @@ public class ErdPanel extends JPanel {
 
         // === Assemble ===
         JPanel centerPanel = new JPanel(new GridLayout(2, 1, 0, 5));
-        centerPanel.add(formatContainer);
-        centerPanel.add(labelsPanel);
+        centerPanel.add(formatSection);
+        centerPanel.add(labelsSection);
         main.add(centerPanel, BorderLayout.CENTER);
 
         String title = editAttr != null ? "Edit Attribute" : "Add Attribute to " + type.name();

@@ -47,6 +47,12 @@ public class LibraryBrowserDialog extends JDialog {
         super(owner, "Strategy Library", true);
         this.publisher = new DeskPublisher();
 
+        // Integrated macOS title bar
+        getRootPane().putClientProperty("apple.awt.fullWindowContent", true);
+        getRootPane().putClientProperty("apple.awt.transparentTitleBar", true);
+        getRootPane().putClientProperty("apple.awt.windowTitleVisible", false);
+        getRootPane().putClientProperty("FlatLaf.macOS.windowButtonsSpacing", "large");
+
         initializeComponents();
         layoutComponents();
         loadLibrary();

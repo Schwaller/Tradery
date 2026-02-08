@@ -33,7 +33,13 @@ public enum DataType {
      * Aggregated trade data (tick-level trades for orderflow analysis).
      * Does not require timeframe - raw trade data is stored.
      */
-    AGG_TRADES("AggTrades");
+    AGG_TRADES("AggTrades"),
+
+    /**
+     * Fear & Greed Index data (daily sentiment from Alternative.me).
+     * Does not require timeframe - one value per day.
+     */
+    FEAR_GREED("F&G");
 
     private final String displayName;
 
@@ -56,6 +62,13 @@ public enum DataType {
     }
 
     /**
+     * Check if this data type is global (not per-symbol).
+     */
+    public boolean isGlobal() {
+        return this == FEAR_GREED;
+    }
+
+    /**
      * Get the wire format name used in service communication.
      */
     public String toWireFormat() {
@@ -65,6 +78,7 @@ public enum DataType {
             case OPEN_INTEREST -> "OI";
             case PREMIUM_INDEX -> "PREMIUM";
             case AGG_TRADES -> "AGGTRADES";
+            case FEAR_GREED -> "FEAR_GREED";
         };
     }
 
@@ -78,6 +92,7 @@ public enum DataType {
             case "OI", "OPEN_INTEREST" -> OPEN_INTEREST;
             case "PREMIUM", "PREMIUM_INDEX" -> PREMIUM_INDEX;
             case "AGGTRADES", "AGG_TRADES" -> AGG_TRADES;
+            case "FEAR_GREED" -> FEAR_GREED;
             default -> throw new IllegalArgumentException("Unknown data type: " + wire);
         };
     }

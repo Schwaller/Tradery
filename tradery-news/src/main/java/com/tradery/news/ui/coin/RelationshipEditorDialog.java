@@ -28,6 +28,12 @@ public class RelationshipEditorDialog extends JDialog {
         this.entities = entities;
         this.onSave = onSave;
 
+        // Integrated macOS title bar
+        getRootPane().putClientProperty("apple.awt.fullWindowContent", true);
+        getRootPane().putClientProperty("apple.awt.transparentTitleBar", true);
+        getRootPane().putClientProperty("apple.awt.windowTitleVisible", false);
+        getRootPane().putClientProperty("FlatLaf.macOS.windowButtonsSpacing", "large");
+
         initUI(preselectedFromId);
         pack();
         setLocationRelativeTo(owner);

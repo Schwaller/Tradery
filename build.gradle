@@ -63,6 +63,12 @@ subprojects {
         // PTY4J - terminal support
         automaticModule("org.jetbrains.pty4j:pty4j", "pty4j")
         automaticModule("org.jetbrains.pty4j:purejavacomm", "purejavacomm")
+
+        // Java-WebSocket
+        automaticModule("org.java-websocket:Java-WebSocket", "org.java.websocket")
+
+        // BouncyCastle (secp256k1 signing for Hyperliquid)
+        automaticModule("org.bouncycastle:bcprov-jdk18on", "org.bouncycastle.provider")
     }
 
     dependencies {

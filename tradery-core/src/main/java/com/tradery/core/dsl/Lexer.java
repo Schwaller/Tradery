@@ -198,7 +198,11 @@ public class Lexer {
         Map.entry("SPOT_VOLUME", TokenType.EXCHANGE_FUNC),
         Map.entry("FUTURES_VOLUME", TokenType.EXCHANGE_FUNC),
         Map.entry("SPOT_FUTURES_DIVERGENCE", TokenType.EXCHANGE_FUNC),
-        Map.entry("SPOT_FUTURES_DELTA_SPREAD", TokenType.EXCHANGE_FUNC)
+        Map.entry("SPOT_FUTURES_DELTA_SPREAD", TokenType.EXCHANGE_FUNC),
+
+        // Fear & Greed Index functions
+        Map.entry("FEAR_GREED", TokenType.FEAR_GREED_FUNC),
+        Map.entry("FEAR_GREED_AVG", TokenType.FEAR_GREED_FUNC)
     );
 
     private final String source;

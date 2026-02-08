@@ -26,8 +26,8 @@ public class FactStore {
                 s.execute("PRAGMA busy_timeout=100");
             }
 
-            // Check for old tables — if present, nuke the DB and start fresh
-            if (hasOldTables()) {
+            // If schema is outdated, nuke the DB and start fresh
+            if (needsReset()) {
                 conn.close();
                 new File(DB_PATH).delete();
                 conn = DriverManager.getConnection("jdbc:sqlite:" + DB_PATH);
@@ -41,15 +41,37 @@ public class FactStore {
             loadLocalConfig();
         } catch (SQLException e) {
             System.err.println("Failed to initialize fact store: " + e.getMessage());
+            e.printStackTrace();
         }
     }
 
-    private boolean hasOldTables() throws SQLException {
+    /** Check if DB has outdated schema and needs a full reset. */
+    private boolean needsReset() throws SQLException {
+        Set<String> tables = new HashSet<>();
         try (Statement s = conn.createStatement();
              ResultSet rs = s.executeQuery(
-                     "SELECT name FROM sqlite_master WHERE type='table' AND name='entities'")) {
-            return rs.next();
+                     "SELECT name FROM sqlite_master WHERE type='table'")) {
+            while (rs.next()) tables.add(rs.getString("name"));
         }
+        // Pre-fact-store schema
+        if (tables.contains("entities")) return true;
+        // Missing required tables
+        if (!tables.contains("pending")) return true;
+        // Missing commit_id column on facts
+        if (tables.contains("facts")) {
+            boolean hasCommitId = false;
+            try (Statement s = conn.createStatement();
+                 ResultSet rs = s.executeQuery("PRAGMA table_info(facts)")) {
+                while (rs.next()) {
+                    if ("commit_id".equals(rs.getString("name"))) {
+                        hasCommitId = true;
+                        break;
+                    }
+                }
+            }
+            if (!hasCommitId) return true;
+        }
+        return false;
     }
 
     private void createTables() throws SQLException {
@@ -63,11 +85,13 @@ public class FactStore {
                     source TEXT NOT NULL,
                     peer_id TEXT NOT NULL,
                     lclock INTEGER NOT NULL,
-                    wall_clock INTEGER NOT NULL
+                    wall_clock INTEGER NOT NULL,
+                    commit_id TEXT
                 )
             """);
             s.execute("CREATE INDEX IF NOT EXISTS idx_facts_entity ON facts(entity_id)");
             s.execute("CREATE INDEX IF NOT EXISTS idx_facts_lclock ON facts(lclock)");
+            s.execute("CREATE INDEX IF NOT EXISTS idx_facts_commit ON facts(commit_id)");
 
             s.execute("""
                 CREATE TABLE IF NOT EXISTS current (
@@ -79,6 +103,20 @@ public class FactStore {
                 )
             """);
             s.execute("CREATE INDEX IF NOT EXISTS idx_current_attr_val ON current(attribute, value)");
+
+            s.execute("""
+                CREATE TABLE IF NOT EXISTS pending (
+                    id TEXT PRIMARY KEY,
+                    entity_id TEXT NOT NULL,
+                    attribute TEXT NOT NULL,
+                    value TEXT,
+                    source TEXT NOT NULL,
+                    peer_id TEXT NOT NULL,
+                    lclock INTEGER NOT NULL,
+                    wall_clock INTEGER NOT NULL
+                )
+            """);
+            s.execute("CREATE INDEX IF NOT EXISTS idx_pending_entity ON pending(entity_id)");
 
             s.execute("""
                 CREATE TABLE IF NOT EXISTS local_config (
@@ -128,10 +166,11 @@ public class FactStore {
         try {
             lclock++;
             String id = Ulid.generate();
+            String commitId = Ulid.generate();
             long wallClock = System.currentTimeMillis();
 
             try (PreparedStatement ps = conn.prepareStatement(
-                    "INSERT INTO facts (id, entity_id, attribute, value, source, peer_id, lclock, wall_clock) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")) {
+                    "INSERT INTO facts (id, entity_id, attribute, value, source, peer_id, lclock, wall_clock, commit_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")) {
                 ps.setString(1, id);
                 ps.setString(2, entityId);
                 ps.setString(3, attribute);
@@ -140,6 +179,7 @@ public class FactStore {
                 ps.setString(6, peerId);
                 ps.setLong(7, lclock);
                 ps.setLong(8, wallClock);
+                ps.setString(9, commitId);
                 ps.execute();
             }
 
@@ -158,10 +198,11 @@ public class FactStore {
         try {
             conn.setAutoCommit(false);
             lclock++;
+            String commitId = Ulid.generate();
             long wallClock = System.currentTimeMillis();
 
             try (PreparedStatement ps = conn.prepareStatement(
-                    "INSERT INTO facts (id, entity_id, attribute, value, source, peer_id, lclock, wall_clock) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")) {
+                    "INSERT INTO facts (id, entity_id, attribute, value, source, peer_id, lclock, wall_clock, commit_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")) {
                 for (PendingFact f : facts) {
                     String id = Ulid.generate();
                     ps.setString(1, id);
@@ -172,6 +213,7 @@ public class FactStore {
                     ps.setString(6, peerId);
                     ps.setLong(7, lclock);
                     ps.setLong(8, wallClock);
+                    ps.setString(9, commitId);
                     ps.addBatch();
 
                     updateCurrent(f.entityId(), f.attribute(), f.value(), id, lclock, wallClock, peerId);
@@ -191,6 +233,7 @@ public class FactStore {
     /**
      * Update the current table for a (entity_id, attribute) pair.
      * Uses LWW: highest lclock wins, then wall_clock, then peer_id.
+     * The factId may reference either the facts or pending table.
      */
     private void updateCurrent(String entityId, String attribute, String value,
                                 String factId, long factLclock, long factWallClock, String factPeerId) throws SQLException {
@@ -236,28 +279,257 @@ public class FactStore {
      * Check if a new fact wins over the existing fact referenced by existingFactId.
      * For local single-peer appends, the new fact always wins (higher lclock).
      * For P2P, we compare lclock → wall_clock → peer_id.
+     * Looks up the existing fact in both facts and pending tables.
      */
     private boolean factWins(String newFactId, long newLclock, long newWallClock, String newPeerId,
                               String existingFactId) throws SQLException {
-        try (PreparedStatement ps = conn.prepareStatement(
-                "SELECT lclock, wall_clock, peer_id FROM facts WHERE id = ?")) {
-            ps.setString(1, existingFactId);
-            ResultSet rs = ps.executeQuery();
-            if (!rs.next()) return true; // Existing fact not found, new wins
+        // Try facts table first, then pending
+        for (String table : new String[]{"facts", "pending"}) {
+            try (PreparedStatement ps = conn.prepareStatement(
+                    "SELECT lclock, wall_clock, peer_id FROM " + table + " WHERE id = ?")) {
+                ps.setString(1, existingFactId);
+                ResultSet rs = ps.executeQuery();
+                if (rs.next()) {
+                    long existLclock = rs.getLong("lclock");
+                    long existWallClock = rs.getLong("wall_clock");
+                    String existPeerId = rs.getString("peer_id");
 
-            long existLclock = rs.getLong("lclock");
-            long existWallClock = rs.getLong("wall_clock");
-            String existPeerId = rs.getString("peer_id");
-
-            if (newLclock != existLclock) return newLclock > existLclock;
-            if (newWallClock != existWallClock) return newWallClock > existWallClock;
-            return newPeerId.compareTo(existPeerId) > 0;
+                    if (newLclock != existLclock) return newLclock > existLclock;
+                    if (newWallClock != existWallClock) return newWallClock > existWallClock;
+                    return newPeerId.compareTo(existPeerId) > 0;
+                }
+            }
         }
+        return true; // Existing fact not found in either table, new wins
     }
 
     private void persistClock() throws SQLException {
         setConfigValue("lclock", String.valueOf(lclock));
     }
+
+    // ==================== STAGE / COMMIT / ROLLBACK ====================
+
+    /** Stage a single fact to pending, update current optimistically. Returns the pending row ID. */
+    public String stageFact(String entityId, String attribute, String value, String source) {
+        if (conn == null) return null;
+        try {
+            lclock++;
+            String id = Ulid.generate();
+            long wallClock = System.currentTimeMillis();
+
+            try (PreparedStatement ps = conn.prepareStatement(
+                    "INSERT INTO pending (id, entity_id, attribute, value, source, peer_id, lclock, wall_clock) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")) {
+                ps.setString(1, id);
+                ps.setString(2, entityId);
+                ps.setString(3, attribute);
+                ps.setString(4, value);
+                ps.setString(5, source);
+                ps.setString(6, peerId);
+                ps.setLong(7, lclock);
+                ps.setLong(8, wallClock);
+                ps.execute();
+            }
+
+            updateCurrent(entityId, attribute, value, id, lclock, wallClock, peerId);
+            persistClock();
+            return id;
+        } catch (SQLException e) {
+            System.err.println("Failed to stage fact: " + e.getMessage());
+            return null;
+        }
+    }
+
+    /** Batch stage facts to pending in a single transaction. */
+    public void stageFacts(List<PendingFact> facts) {
+        if (conn == null || facts.isEmpty()) return;
+        try {
+            conn.setAutoCommit(false);
+            lclock++;
+            long wallClock = System.currentTimeMillis();
+
+            try (PreparedStatement ps = conn.prepareStatement(
+                    "INSERT INTO pending (id, entity_id, attribute, value, source, peer_id, lclock, wall_clock) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")) {
+                for (PendingFact f : facts) {
+                    String id = Ulid.generate();
+                    ps.setString(1, id);
+                    ps.setString(2, f.entityId());
+                    ps.setString(3, f.attribute());
+                    ps.setString(4, f.value());
+                    ps.setString(5, f.source());
+                    ps.setString(6, peerId);
+                    ps.setLong(7, lclock);
+                    ps.setLong(8, wallClock);
+                    ps.addBatch();
+
+                    updateCurrent(f.entityId(), f.attribute(), f.value(), id, lclock, wallClock, peerId);
+                }
+                ps.executeBatch();
+            }
+
+            persistClock();
+            conn.commit();
+            conn.setAutoCommit(true);
+        } catch (SQLException e) {
+            System.err.println("Failed to stage facts batch: " + e.getMessage());
+            try { conn.rollback(); conn.setAutoCommit(true); } catch (SQLException ignored) {}
+        }
+    }
+
+    /**
+     * Commit pending facts: squash by (entity_id, attribute), move to facts table.
+     * Returns the commit_id.
+     */
+    public String commit() {
+        if (conn == null) return null;
+        try {
+            conn.setAutoCommit(false);
+            String commitId = Ulid.generate();
+
+            // For each unique (entity_id, attribute) in pending, take the latest row (highest lclock, then wall_clock)
+            try (Statement s = conn.createStatement();
+                 ResultSet groups = s.executeQuery(
+                     "SELECT entity_id, attribute FROM pending GROUP BY entity_id, attribute")) {
+
+                try (PreparedStatement selectLatest = conn.prepareStatement(
+                         "SELECT id, entity_id, attribute, value, source, peer_id, lclock, wall_clock FROM pending " +
+                         "WHERE entity_id = ? AND attribute = ? ORDER BY lclock DESC, wall_clock DESC LIMIT 1");
+                     PreparedStatement insertFact = conn.prepareStatement(
+                         "INSERT INTO facts (id, entity_id, attribute, value, source, peer_id, lclock, wall_clock, commit_id) " +
+                         "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")) {
+
+                    while (groups.next()) {
+                        String entityId = groups.getString("entity_id");
+                        String attribute = groups.getString("attribute");
+
+                        selectLatest.setString(1, entityId);
+                        selectLatest.setString(2, attribute);
+                        ResultSet latest = selectLatest.executeQuery();
+
+                        if (latest.next()) {
+                            String newId = Ulid.generate();
+                            insertFact.setString(1, newId);
+                            insertFact.setString(2, latest.getString("entity_id"));
+                            insertFact.setString(3, latest.getString("attribute"));
+                            insertFact.setString(4, latest.getString("value"));
+                            insertFact.setString(5, latest.getString("source"));
+                            insertFact.setString(6, latest.getString("peer_id"));
+                            insertFact.setLong(7, latest.getLong("lclock"));
+                            insertFact.setLong(8, latest.getLong("wall_clock"));
+                            insertFact.setString(9, commitId);
+                            insertFact.addBatch();
+
+                            // Update current to point to the new fact ID (in facts table)
+                            updateCurrent(entityId, attribute, latest.getString("value"),
+                                    newId, latest.getLong("lclock"), latest.getLong("wall_clock"),
+                                    latest.getString("peer_id"));
+                        }
+                    }
+                    insertFact.executeBatch();
+                }
+            }
+
+            // Clear pending
+            try (Statement s = conn.createStatement()) {
+                s.execute("DELETE FROM pending");
+            }
+
+            conn.commit();
+            conn.setAutoCommit(true);
+            return commitId;
+        } catch (SQLException e) {
+            System.err.println("Failed to commit pending facts: " + e.getMessage());
+            try { conn.rollback(); conn.setAutoCommit(true); } catch (SQLException ignored) {}
+            return null;
+        }
+    }
+
+    /** Rollback: discard all pending facts and rebuild current from committed facts only. */
+    public void rollback() {
+        if (conn == null) return;
+        try {
+            conn.setAutoCommit(false);
+            try (Statement s = conn.createStatement()) {
+                s.execute("DELETE FROM pending");
+            }
+            // Rebuild current from facts only (discards optimistic pending state)
+            try (Statement s = conn.createStatement()) {
+                s.execute("DELETE FROM current");
+            }
+            try (Statement s = conn.createStatement();
+                 ResultSet rs = s.executeQuery(
+                     "SELECT id, entity_id, attribute, value, lclock, wall_clock, peer_id FROM facts ORDER BY lclock, wall_clock, peer_id")) {
+                while (rs.next()) {
+                    try (PreparedStatement ps = conn.prepareStatement(
+                            "INSERT OR REPLACE INTO current (entity_id, attribute, value, fact_id) VALUES (?, ?, ?, ?)")) {
+                        ps.setString(1, rs.getString("entity_id"));
+                        ps.setString(2, rs.getString("attribute"));
+                        ps.setString(3, rs.getString("value"));
+                        ps.setString(4, rs.getString("id"));
+                        ps.execute();
+                    }
+                }
+            }
+            conn.commit();
+            conn.setAutoCommit(true);
+        } catch (SQLException e) {
+            System.err.println("Failed to rollback pending facts: " + e.getMessage());
+            try { conn.rollback(); conn.setAutoCommit(true); } catch (SQLException ignored) {}
+        }
+    }
+
+    /** Count distinct (entity_id, attribute) pairs in pending. */
+    public int getPendingCount() {
+        if (conn == null) return 0;
+        try (Statement s = conn.createStatement();
+             ResultSet rs = s.executeQuery(
+                 "SELECT COUNT(*) FROM (SELECT DISTINCT entity_id, attribute FROM pending)")) {
+            return rs.next() ? rs.getInt(1) : 0;
+        } catch (SQLException e) {
+            System.err.println("Failed to get pending count: " + e.getMessage());
+            return 0;
+        }
+    }
+
+    /** Summary of pending changes: for each unique (entity_id, attribute), old value (from facts) vs new value (from pending). */
+    public List<PendingChange> getPendingSummary() {
+        List<PendingChange> changes = new ArrayList<>();
+        if (conn == null) return changes;
+        try (Statement s = conn.createStatement();
+             ResultSet rs = s.executeQuery(
+                 "SELECT entity_id, attribute FROM pending GROUP BY entity_id, attribute ORDER BY entity_id, attribute")) {
+            while (rs.next()) {
+                String entityId = rs.getString("entity_id");
+                String attribute = rs.getString("attribute");
+
+                // Old value: latest from facts
+                String oldValue = null;
+                try (PreparedStatement ps = conn.prepareStatement(
+                        "SELECT value FROM facts WHERE entity_id = ? AND attribute = ? ORDER BY lclock DESC, wall_clock DESC LIMIT 1")) {
+                    ps.setString(1, entityId);
+                    ps.setString(2, attribute);
+                    ResultSet ors = ps.executeQuery();
+                    if (ors.next()) oldValue = ors.getString("value");
+                }
+
+                // New value: latest from pending
+                String newValue = null;
+                try (PreparedStatement ps = conn.prepareStatement(
+                        "SELECT value FROM pending WHERE entity_id = ? AND attribute = ? ORDER BY lclock DESC, wall_clock DESC LIMIT 1")) {
+                    ps.setString(1, entityId);
+                    ps.setString(2, attribute);
+                    ResultSet nrs = ps.executeQuery();
+                    if (nrs.next()) newValue = nrs.getString("value");
+                }
+
+                changes.add(new PendingChange(entityId, attribute, oldValue, newValue));
+            }
+        } catch (SQLException e) {
+            System.err.println("Failed to get pending summary: " + e.getMessage());
+        }
+        return changes;
+    }
+
+    public record PendingChange(String entityId, String attribute, String oldValue, String newValue) {}
 
     // ==================== READ CURRENT STATE ====================
 
@@ -470,7 +742,7 @@ public class FactStore {
 
                 // Insert fact (ignore if already received)
                 try (PreparedStatement ps = conn.prepareStatement(
-                        "INSERT OR IGNORE INTO facts (id, entity_id, attribute, value, source, peer_id, lclock, wall_clock) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")) {
+                        "INSERT OR IGNORE INTO facts (id, entity_id, attribute, value, source, peer_id, lclock, wall_clock, commit_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")) {
                     ps.setString(1, f.id());
                     ps.setString(2, f.entityId());
                     ps.setString(3, f.attribute());
@@ -479,6 +751,7 @@ public class FactStore {
                     ps.setString(6, f.peerId());
                     ps.setLong(7, f.lclock());
                     ps.setLong(8, f.wallClock());
+                    ps.setString(9, f.commitId());
                     ps.execute();
                 }
 
@@ -503,7 +776,8 @@ public class FactStore {
             rs.getString("source"),
             rs.getString("peer_id"),
             rs.getLong("lclock"),
-            rs.getLong("wall_clock")
+            rs.getLong("wall_clock"),
+            rs.getString("commit_id")
         );
     }
 
@@ -516,7 +790,8 @@ public class FactStore {
     // ==================== RECORDS ====================
 
     public record Fact(String id, String entityId, String attribute, String value,
-                       String source, String peerId, long lclock, long wallClock) {}
+                       String source, String peerId, long lclock, long wallClock,
+                       String commitId) {}
 
     public record PendingFact(String entityId, String attribute, String value, String source) {}
 }

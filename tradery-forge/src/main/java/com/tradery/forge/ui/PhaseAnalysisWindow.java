@@ -163,10 +163,7 @@ public class PhaseAnalysisWindow extends JFrame {
 
         // Details panel
         detailsPanel = new JPanel(new BorderLayout(8, 4));
-        detailsPanel.setBorder(BorderFactory.createCompoundBorder(
-            BorderFactory.createMatteBorder(1, 0, 0, 0, Color.LIGHT_GRAY),
-            BorderFactory.createEmptyBorder(8, 0, 0, 0)
-        ));
+        detailsPanel.setBorder(BorderFactory.createEmptyBorder(8, 0, 0, 0));
         detailsLabel = new JLabel("Select a phase to see details");
         detailsLabel.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 11));
         detailsLabel.setForeground(Color.GRAY);
@@ -217,7 +214,10 @@ public class PhaseAnalysisWindow extends JFrame {
         tablePanel.add(scrollPane, BorderLayout.CENTER);
 
         // Details panel below table
-        tablePanel.add(detailsPanel, BorderLayout.SOUTH);
+        JPanel detailsWrapper = new JPanel(new BorderLayout());
+        detailsWrapper.add(new JSeparator(), BorderLayout.NORTH);
+        detailsWrapper.add(detailsPanel, BorderLayout.CENTER);
+        tablePanel.add(detailsWrapper, BorderLayout.SOUTH);
 
         // Split pane: table on top, chart preview on bottom
         ThinSplitPane splitPane = new ThinSplitPane(JSplitPane.VERTICAL_SPLIT, tablePanel, previewChart);

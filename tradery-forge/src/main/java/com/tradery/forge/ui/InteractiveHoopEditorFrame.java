@@ -88,6 +88,12 @@ public class InteractiveHoopEditorFrame extends JFrame implements DataPageListen
         setSize(1100, 700);
         setMinimumSize(new Dimension(800, 500));
 
+        // Integrated macOS title bar
+        getRootPane().putClientProperty("apple.awt.fullWindowContent", true);
+        getRootPane().putClientProperty("apple.awt.transparentTitleBar", true);
+        getRootPane().putClientProperty("apple.awt.windowTitleVisible", false);
+        getRootPane().putClientProperty("FlatLaf.macOS.windowButtonsSpacing", "large");
+
         // Auto-load data when frame becomes visible
         addWindowListener(new java.awt.event.WindowAdapter() {
             @Override
@@ -274,10 +280,7 @@ public class InteractiveHoopEditorFrame extends JFrame implements DataPageListen
 
         // Properties panel (vertical layout)
         JPanel propsPanel = new JPanel(new GridBagLayout());
-        propsPanel.setBorder(BorderFactory.createCompoundBorder(
-            BorderFactory.createMatteBorder(1, 0, 0, 0, Color.GRAY),
-            BorderFactory.createEmptyBorder(8, 0, 0, 0)
-        ));
+        propsPanel.setBorder(BorderFactory.createEmptyBorder(8, 0, 0, 0));
 
         GridBagConstraints gbc = new GridBagConstraints();
         gbc.insets = new Insets(2, 2, 2, 2);
@@ -319,8 +322,12 @@ public class InteractiveHoopEditorFrame extends JFrame implements DataPageListen
         gbc.gridx = 1; gbc.fill = GridBagConstraints.HORIZONTAL; gbc.weightx = 1;
         propsPanel.add(anchorModeCombo, gbc);
 
+        JPanel propsWrapper = new JPanel(new BorderLayout());
+        propsWrapper.add(new JSeparator(), BorderLayout.NORTH);
+        propsWrapper.add(propsPanel, BorderLayout.CENTER);
+
         rightPanel.add(hoopListPanel, BorderLayout.CENTER);
-        rightPanel.add(propsPanel, BorderLayout.SOUTH);
+        rightPanel.add(propsWrapper, BorderLayout.SOUTH);
 
         // Center: Chart with right panel
         JPanel chartAndRight = new JPanel(new BorderLayout());

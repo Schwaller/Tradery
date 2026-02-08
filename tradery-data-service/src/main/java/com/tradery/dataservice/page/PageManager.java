@@ -50,6 +50,7 @@ public class PageManager {
     private final OpenInterestStore openInterestStore;
     private final AggTradesStore aggTradesStore;
     private final PremiumIndexStore premiumIndexStore;
+    private final FearGreedStore fearGreedStore;
 
     // Live subscription callbacks (for cleanup on page removal)
     private final Map<String, BiConsumer<String, Candle>> liveUpdateCallbacks = new ConcurrentHashMap<>();
@@ -65,6 +66,7 @@ public class PageManager {
         this.openInterestStore = new OpenInterestStore(new OpenInterestClient(), dataStore);
         this.aggTradesStore = new AggTradesStore(new AggTradesClient(), dataStore);
         this.premiumIndexStore = new PremiumIndexStore(new PremiumIndexClient(), dataStore);
+        this.fearGreedStore = new FearGreedStore(new FearGreedClient(), dataStore);
         // Use default ObjectMapper for MessagePack - records are handled correctly
         this.msgpackMapper = new ObjectMapper(new MessagePackFactory());
         this.loadExecutor = Executors.newFixedThreadPool(config.getMaxConcurrentDownloads());
@@ -377,6 +379,9 @@ public class PageManager {
             } else if (key.isPremium()) {
                 data = loadPremium(key, page);
                 recordCount = page.getRecordCount();
+            } else if (key.isFearGreed()) {
+                data = loadFearGreed(key, page);
+                recordCount = page.getRecordCount();
             } else {
                 throw new IllegalArgumentException("Unknown data type: " + key.dataType());
             }
@@ -652,6 +657,19 @@ public class PageManager {
         page.setRecordCount(premium.size());
         LOG.info("loadPremium: {} {} loaded {} records", symbol, timeframe, premium.size());
         return msgpackMapper.writeValueAsBytes(premium);
+    }
+
+    /**
+     * Load Fear & Greed Index data for a page, fetching from Alternative.me if stale.
+     */
+    private byte[] loadFearGreed(PageKey key, Page page) throws Exception {
+        long startTime = key.getEffectiveStartTime();
+        long endTime = key.getEffectiveEndTime();
+
+        List<FearGreedIndex> data = fearGreedStore.getFearGreedData(startTime, endTime);
+        page.setRecordCount(data.size());
+        LOG.info("loadFearGreed: loaded {} records", data.size());
+        return msgpackMapper.writeValueAsBytes(data);
     }
 
     /**

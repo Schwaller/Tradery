@@ -37,7 +37,14 @@ public class DataSourceRegistry {
             return new DataSource.FetchResult(0, 0, "Cache still valid");
         }
 
-        return source.fetch(new DataSource.FetchContext(entityStore, schemaRegistry, progress));
+        // Data source fetches are system operations — bypass draft mode so all writes
+        // (including seed defaults with source "manual") commit directly
+        entityStore.setDraftMode(false);
+        try {
+            return source.fetch(new DataSource.FetchContext(entityStore, schemaRegistry, progress));
+        } finally {
+            entityStore.setDraftMode(true);
+        }
     }
 
     /** Refresh all sources, checking cache for each. */

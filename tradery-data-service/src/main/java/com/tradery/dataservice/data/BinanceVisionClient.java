@@ -513,6 +513,10 @@ public class BinanceVisionClient {
         }
 
         long timestamp = Long.parseLong(parts[0].trim());
+        // Spot Vision CSVs use microsecond timestamps (16 digits) vs futures milliseconds (13 digits)
+        if (timestamp > 9_999_999_999_999L) {
+            timestamp = timestamp / 1000;
+        }
         double open = Double.parseDouble(parts[1].trim());
         double high = Double.parseDouble(parts[2].trim());
         double low = Double.parseDouble(parts[3].trim());
@@ -538,13 +542,18 @@ public class BinanceVisionClient {
         if (parts.length < 7) {
             throw new IllegalArgumentException("Invalid aggTrade CSV: " + line);
         }
+        long transactTime = Long.parseLong(parts[5].trim());
+        // Spot Vision CSVs use microsecond timestamps (16 digits) vs futures milliseconds (13 digits)
+        if (transactTime > 9_999_999_999_999L) {
+            transactTime = transactTime / 1000;
+        }
         return new AggTrade(
             Long.parseLong(parts[0].trim()),     // agg_trade_id
             Double.parseDouble(parts[1].trim()), // price
             Double.parseDouble(parts[2].trim()), // quantity
             Long.parseLong(parts[3].trim()),     // first_trade_id
             Long.parseLong(parts[4].trim()),     // last_trade_id
-            Long.parseLong(parts[5].trim()),     // transact_time
+            transactTime,                        // transact_time
             parseBoolean(parts[6].trim())        // is_buyer_maker
         );
     }
@@ -632,10 +641,12 @@ public class BinanceVisionClient {
     }
 
     private String getSubKey(VisionDataType dataType, String interval) {
-        return switch (dataType) {
+        String base = switch (dataType) {
             case KLINES, PREMIUM_INDEX -> interval != null ? interval : "1h";
             case AGG_TRADES, FUNDING_RATE -> "default";
         };
+        // Include market type so spot and perp coverage are tracked separately
+        return base + ":" + marketType;
     }
 
     /**

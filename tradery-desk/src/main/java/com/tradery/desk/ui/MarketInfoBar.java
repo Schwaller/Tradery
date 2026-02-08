@@ -18,24 +18,27 @@ public class MarketInfoBar extends JPanel {
     private final Timer agoTimer;
 
     public MarketInfoBar() {
-        setLayout(new FlowLayout(FlowLayout.LEFT, 12, 4));
+        setLayout(new BorderLayout());
         setBackground(UIManager.getColor("Panel.background"));
-        setBorder(BorderFactory.createCompoundBorder(
-            BorderFactory.createMatteBorder(0, 0, 1, 0, UIManager.getColor("Separator.foreground")),
-            BorderFactory.createEmptyBorder(2, 8, 2, 8)
-        ));
+
+        JPanel content = new JPanel(new FlowLayout(FlowLayout.LEFT, 12, 4));
+        content.setOpaque(false);
+        content.setBorder(BorderFactory.createEmptyBorder(2, 8, 2, 8));
 
         symbolCombo = new SymbolComboBox(new SymbolService(), true);
-        add(symbolCombo);
+        content.add(symbolCombo);
 
         priceLabel = new JLabel("\u2014");
         priceLabel.setFont(new Font(Font.MONOSPACED, Font.BOLD, 16));
-        add(priceLabel);
+        content.add(priceLabel);
 
         updatedLabel = new JLabel("");
         updatedLabel.setFont(updatedLabel.getFont().deriveFont(Font.PLAIN, 9f));
         updatedLabel.setForeground(UIManager.getColor("Label.disabledForeground"));
-        add(updatedLabel);
+        content.add(updatedLabel);
+
+        add(content, BorderLayout.CENTER);
+        add(new JSeparator(), BorderLayout.SOUTH);
 
         agoTimer = new Timer(1000, e -> refreshAgoLabel());
         agoTimer.start();

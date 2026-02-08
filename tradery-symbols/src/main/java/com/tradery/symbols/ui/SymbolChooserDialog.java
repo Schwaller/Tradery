@@ -19,6 +19,12 @@ public class SymbolChooserDialog extends JDialog {
         super(SwingUtilities.getWindowAncestor(parent), title, ModalityType.APPLICATION_MODAL);
         setDefaultCloseOperation(DISPOSE_ON_CLOSE);
 
+        // Integrated macOS title bar
+        getRootPane().putClientProperty("apple.awt.fullWindowContent", true);
+        getRootPane().putClientProperty("apple.awt.transparentTitleBar", true);
+        getRootPane().putClientProperty("apple.awt.windowTitleVisible", false);
+        getRootPane().putClientProperty("FlatLaf.macOS.windowButtonsSpacing", "large");
+
         SymbolChooserPanel panel = new SymbolChooserPanel(service);
         panel.setSelectionCallback(entry -> {
             result = entry;

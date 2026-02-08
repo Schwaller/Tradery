@@ -32,6 +32,12 @@ public class AiTerminalFrame extends JFrame {
         setSize(700, 500);
         setMinimumSize(new Dimension(400, 300));
 
+        // Integrated macOS title bar
+        getRootPane().putClientProperty("apple.awt.fullWindowContent", true);
+        getRootPane().putClientProperty("apple.awt.transparentTitleBar", true);
+        getRootPane().putClientProperty("apple.awt.windowTitleVisible", false);
+        getRootPane().putClientProperty("FlatLaf.macOS.windowButtonsSpacing", "large");
+
         // Dark theme for terminal
         getContentPane().setBackground(new Color(30, 30, 30));
 

@@ -208,14 +208,6 @@ public class ProjectWindow extends JFrame {
         // Wire up theme change listener
         themeChangeListener = () -> {
             chartPanel.refreshTheme();
-            // Update matte borders to match new theme
-            Color separatorColor = UIManager.getColor("Separator.foreground");
-            if (toolbarPanel != null) {
-                toolbarPanel.setBorder(BorderFactory.createMatteBorder(0, 0, 1, 0, separatorColor));
-            }
-            if (editorPanel != null) {
-                editorPanel.setBorder(BorderFactory.createMatteBorder(0, 0, 1, 0, separatorColor));
-            }
         };
         com.tradery.ui.ThemeHelper.addThemeChangeListener(themeChangeListener);
 
@@ -399,7 +391,6 @@ public class ProjectWindow extends JFrame {
         int barHeight = 52;
 
         toolbarPanel = new JPanel(new GridBagLayout());
-        toolbarPanel.setBorder(BorderFactory.createMatteBorder(0, 0, 1, 0, UIManager.getColor("Separator.foreground")));
         toolbarPanel.setPreferredSize(new Dimension(0, barHeight));
         toolbarPanel.setMinimumSize(new Dimension(0, barHeight));
         toolbarPanel.setMaximumSize(new Dimension(Integer.MAX_VALUE, barHeight));
@@ -421,6 +412,9 @@ public class ProjectWindow extends JFrame {
             buttonsPlaceholder.setOpaque(false);
             toolbarLeft.add(buttonsPlaceholder);
         }
+        JButton strategiesBtn = new ToolbarButton("Strategies \u2026");
+        strategiesBtn.addActionListener(e -> LauncherFrame.getInstance().bringToFront());
+        toolbarLeft.add(strategiesBtn);
         toolbarLeft.add(claudeBtn);
         toolbarLeft.add(codexBtn);
         JButton helpBtn = new ToolbarButton("Help");
@@ -510,10 +504,11 @@ public class ProjectWindow extends JFrame {
         rightWrapper.add(toolbarRight, rc);
         toolbarPanel.add(rightWrapper, gbc);
 
-        // Stack: toolbar, timeline (toolbar on top, acts as title bar)
+        // Stack: toolbar, separator, timeline (toolbar on top, acts as title bar)
         JPanel topStack = new JPanel();
         topStack.setLayout(new BoxLayout(topStack, BoxLayout.Y_AXIS));
         topStack.add(toolbarPanel);
+        topStack.add(new JSeparator());
         topStack.add(timelineBar);
 
         contentPane.add(topStack, BorderLayout.NORTH);
@@ -521,8 +516,10 @@ public class ProjectWindow extends JFrame {
         // Left side: Editor on top, terminal on bottom (in vertical split)
         editorTerminalSplit = new ThinSplitPane(JSplitPane.VERTICAL_SPLIT);
         editorTerminalSplit.setResizeWeight(0.6);
-        editorPanel.setBorder(BorderFactory.createMatteBorder(0, 0, 1, 0, UIManager.getColor("Separator.foreground")));
-        editorTerminalSplit.setTopComponent(editorPanel);
+        JPanel editorWrapper = new JPanel(new BorderLayout());
+        editorWrapper.add(editorPanel, BorderLayout.CENTER);
+        editorWrapper.add(new JSeparator(), BorderLayout.SOUTH);
+        editorTerminalSplit.setTopComponent(editorWrapper);
 
         // Initialize docked terminal via controller
         aiTerminalController.initializeDockedTerminal(editorTerminalSplit);

@@ -45,6 +45,7 @@ public class EntityManagerFrame extends JFrame {
 
     // Custom attributes section
     private JPanel customAttrsPanel;
+    private JPanel customAttrsContent;
     private final Map<String, JComponent> attrInputComponents = new LinkedHashMap<>();
 
     private CoinEntity selectedEntity;
@@ -54,6 +55,12 @@ public class EntityManagerFrame extends JFrame {
         super("Entity Manager");
         this.store = store;
         this.onDataChanged = onDataChanged;
+
+        // Integrated macOS title bar
+        getRootPane().putClientProperty("apple.awt.fullWindowContent", true);
+        getRootPane().putClientProperty("apple.awt.transparentTitleBar", true);
+        getRootPane().putClientProperty("apple.awt.windowTitleVisible", false);
+        getRootPane().putClientProperty("FlatLaf.macOS.windowButtonsSpacing", "large");
 
         // Restore window size/position from config or use large default
         IntelConfig config = IntelConfig.get();
@@ -255,11 +262,19 @@ public class EntityManagerFrame extends JFrame {
         fieldGbc.fill = GridBagConstraints.HORIZONTAL;
         fieldGbc.weighty = 0;
 
-        // Custom Attributes section
-        customAttrsPanel = new JPanel();
-        customAttrsPanel.setLayout(new BoxLayout(customAttrsPanel, BoxLayout.Y_AXIS));
-        customAttrsPanel.setBorder(BorderFactory.createTitledBorder("Custom Attributes"));
+        // Custom Attributes section (JSeparator + bold label + content)
+        customAttrsPanel = new JPanel(new BorderLayout());
         customAttrsPanel.setVisible(false);
+        customAttrsPanel.add(new JSeparator(), BorderLayout.NORTH);
+        JLabel customAttrsLabel = new JLabel("Custom Attributes");
+        customAttrsLabel.setFont(customAttrsLabel.getFont().deriveFont(Font.BOLD, customAttrsLabel.getFont().getSize() + 1f));
+        customAttrsLabel.setBorder(BorderFactory.createEmptyBorder(8, 20, 4, 0));
+        customAttrsPanel.add(customAttrsLabel, BorderLayout.CENTER);
+
+        customAttrsContent = new JPanel();
+        customAttrsContent.setLayout(new BoxLayout(customAttrsContent, BoxLayout.Y_AXIS));
+        customAttrsContent.setBorder(BorderFactory.createEmptyBorder(0, 20, 10, 20));
+        customAttrsPanel.add(customAttrsContent, BorderLayout.SOUTH);
 
         // Wrap form + custom attrs in a vertical box inside a scroll pane
         JPanel formWrapper = new JPanel();
@@ -602,10 +617,10 @@ public class EntityManagerFrame extends JFrame {
 
     private void clearCustomAttributes() {
         attrInputComponents.clear();
-        customAttrsPanel.removeAll();
+        customAttrsContent.removeAll();
         customAttrsPanel.setVisible(false);
-        customAttrsPanel.revalidate();
-        customAttrsPanel.repaint();
+        customAttrsContent.revalidate();
+        customAttrsContent.repaint();
     }
 
     private void populateCustomAttributes(CoinEntity entity, boolean editable) {
@@ -663,12 +678,12 @@ public class EntityManagerFrame extends JFrame {
 
         if (row > 0) {
             grid.setAlignmentX(Component.LEFT_ALIGNMENT);
-            customAttrsPanel.add(grid);
+            customAttrsContent.add(grid);
             customAttrsPanel.setVisible(true);
         }
 
-        customAttrsPanel.revalidate();
-        customAttrsPanel.repaint();
+        customAttrsContent.revalidate();
+        customAttrsContent.repaint();
     }
 
     private JLabel createOriginBadge(AttributeValue.Origin origin) {

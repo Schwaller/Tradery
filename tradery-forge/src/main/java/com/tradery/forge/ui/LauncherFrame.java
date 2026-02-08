@@ -65,7 +65,7 @@ public class LauncherFrame extends JFrame {
     }
 
     private void initializeFrame() {
-        setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        setDefaultCloseOperation(JFrame.HIDE_ON_CLOSE);
         setSize(400, 500);
         setMinimumSize(new Dimension(300, 400));
 
@@ -84,7 +84,7 @@ public class LauncherFrame extends JFrame {
         getRootPane().putClientProperty(FlatClientProperties.MACOS_WINDOW_BUTTONS_SPACING,
                 FlatClientProperties.MACOS_WINDOW_BUTTONS_SPACING_LARGE);
 
-        // Save position on move/resize
+        // Save position on move/resize, exit when hidden with no project windows
         addComponentListener(new ComponentAdapter() {
             @Override
             public void componentMoved(ComponentEvent e) {
@@ -94,6 +94,11 @@ public class LauncherFrame extends JFrame {
             @Override
             public void componentResized(ComponentEvent e) {
                 saveLauncherState();
+            }
+
+            @Override
+            public void componentHidden(ComponentEvent e) {
+                exitIfNoWindows();
             }
         });
     }
@@ -454,6 +459,14 @@ public class LauncherFrame extends JFrame {
 
     private void onWindowClosed(String strategyId) {
         openWindows.remove(strategyId);
+        exitIfNoWindows();
+    }
+
+    private void exitIfNoWindows() {
+        if (openWindows.isEmpty() && !isVisible()) {
+            dispose();
+            System.exit(0);
+        }
     }
 
     private void restorePresets() {

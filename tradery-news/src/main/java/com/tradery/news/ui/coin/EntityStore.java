@@ -16,10 +16,66 @@ public class EntityStore {
 
     private static final ObjectMapper JSON = new ObjectMapper();
     private final FactStore factStore;
+    private boolean draftMode = true;
+    private Runnable onPendingChanged;
 
     public EntityStore() {
         this.factStore = new FactStore();
     }
+
+    public void setDraftMode(boolean enabled) { this.draftMode = enabled; }
+    public boolean isDraftMode() { return draftMode; }
+
+    public void setOnPendingChanged(Runnable callback) { this.onPendingChanged = callback; }
+
+    private void notifyPendingChanged() {
+        if (onPendingChanged != null) {
+            javax.swing.SwingUtilities.invokeLater(onPendingChanged);
+        }
+    }
+
+    private boolean shouldStage(String source) {
+        if (!draftMode) return false;
+        return !"coingecko".equals(source) && !"auto".equals(source)
+            && !"system".equals(source) && !"source".equals(source);
+    }
+
+    /** Route a single fact write through stage or append based on source. */
+    private String routeFact(String entityId, String attribute, String value, String source) {
+        if (shouldStage(source)) {
+            String id = factStore.stageFact(entityId, attribute, value, source);
+            notifyPendingChanged();
+            return id;
+        }
+        return factStore.appendFact(entityId, attribute, value, source);
+    }
+
+    /** Route a batch fact write through stage or append based on source. */
+    private void routeFacts(List<FactStore.PendingFact> facts, String source) {
+        if (shouldStage(source)) {
+            factStore.stageFacts(facts);
+            notifyPendingChanged();
+        } else {
+            factStore.appendFacts(facts);
+        }
+    }
+
+    // ==================== COMMIT / ROLLBACK ====================
+
+    public String commit() {
+        String commitId = factStore.commit();
+        notifyPendingChanged();
+        return commitId;
+    }
+
+    public void rollback() {
+        factStore.rollback();
+        notifyPendingChanged();
+    }
+
+    public int getPendingCount() { return factStore.getPendingCount(); }
+
+    public List<FactStore.PendingChange> getPendingSummary() { return factStore.getPendingSummary(); }
 
     // ==================== CACHE VALIDITY ====================
 
@@ -35,7 +91,7 @@ public class EntityStore {
     }
 
     public void updateSourceFetchTime(String sourceId) {
-        factStore.appendFact("_meta", "cache:" + sourceId + "_last_fetch",
+        routeFact("_meta", "cache:" + sourceId + "_last_fetch",
                 String.valueOf(System.currentTimeMillis()), "system");
     }
 
@@ -147,7 +203,7 @@ public class EntityStore {
             facts.add(new FactStore.PendingFact(entity.id(), "cat:" + cat, "1", source));
         }
 
-        factStore.appendFacts(facts);
+        routeFacts(facts, source);
     }
 
     public void replaceEntitiesBySource(String sourceId, List<CoinEntity> entities) {
@@ -194,7 +250,7 @@ public class EntityStore {
         facts.add(new FactStore.PendingFact("_meta", "cache:" + sourceId + "_last_fetch",
                 String.valueOf(System.currentTimeMillis()), "system"));
 
-        factStore.appendFacts(facts);
+        routeFacts(facts, sourceId);
         System.out.println("Saved " + entities.size() + " entities from source '" + sourceId + "'");
     }
 
@@ -217,7 +273,7 @@ public class EntityStore {
             }
         }
 
-        factStore.appendFacts(facts);
+        routeFacts(facts, "manual");
     }
 
     public boolean entityExists(String id) {
@@ -285,7 +341,7 @@ public class EntityStore {
                 new FactStore.PendingFact(relId, "note", rel.note(), source),
                 new FactStore.PendingFact(relId, "_deleted", null, source)
         );
-        factStore.appendFacts(new ArrayList<>(facts));
+        routeFacts(new ArrayList<>(facts), source);
     }
 
     public void replaceRelationshipsBySource(String sourceId, List<CoinRelationship> relationships) {
@@ -326,13 +382,13 @@ public class EntityStore {
             facts.add(new FactStore.PendingFact(relId, "_deleted", null, sourceId));
         }
 
-        factStore.appendFacts(facts);
+        routeFacts(facts, sourceId);
         System.out.println("Saved " + relationships.size() + " relationships from source '" + sourceId + "'");
     }
 
     public void deleteRelationship(String fromId, String toId, CoinRelationship.Type type) {
         String relId = relEntityId(fromId, type.name(), toId);
-        factStore.appendFact(relId, "_deleted", "1", "manual");
+        routeFact(relId, "_deleted", "1", "manual");
     }
 
     public boolean relationshipExists(String fromId, String toId, CoinRelationship.Type type) {
@@ -488,18 +544,18 @@ public class EntityStore {
         facts.add(new FactStore.PendingFact(eid, "erd_x", String.valueOf(type.erdX()), "manual"));
         facts.add(new FactStore.PendingFact(eid, "erd_y", String.valueOf(type.erdY()), "manual"));
         facts.add(new FactStore.PendingFact(eid, "_deleted", null, "manual"));
-        factStore.appendFacts(facts);
+        routeFacts(facts, "manual");
     }
 
     public void deleteSchemaType(String id) {
         String eid = "_type:" + id;
-        factStore.appendFact(eid, "_deleted", "1", "manual");
+        routeFact(eid, "_deleted", "1", "manual");
     }
 
     public void saveSchemaAttribute(String typeId, SchemaAttribute attr) {
         String eid = "_type:" + typeId;
         String json = schemaAttributeToJson(attr);
-        factStore.appendFact(eid, "attr:" + attr.name(), json, "manual");
+        routeFact(eid, "attr:" + attr.name(), json, "manual");
     }
 
     public void saveSchemaPositions(Collection<SchemaType> types) {
@@ -510,13 +566,13 @@ public class EntityStore {
             facts.add(new FactStore.PendingFact(eid, "erd_x", String.valueOf(t.erdX()), "manual"));
             facts.add(new FactStore.PendingFact(eid, "erd_y", String.valueOf(t.erdY()), "manual"));
         }
-        factStore.appendFacts(facts);
+        routeFacts(facts, "manual");
     }
 
     public void removeSchemaAttribute(String typeId, String attrName) {
         String eid = "_type:" + typeId;
         // Tombstone the attribute by setting value to null
-        factStore.appendFact(eid, "attr:" + attrName, null, "manual");
+        routeFact(eid, "attr:" + attrName, null, "manual");
     }
 
     // ==================== ATTRIBUTE VALUE CRUD ====================
@@ -538,10 +594,10 @@ public class EntityStore {
         }
 
         String source = originToSource(origin);
-        factStore.appendFacts(List.of(
+        routeFacts(List.of(
                 new FactStore.PendingFact(entityId, "val:" + typeId + ":" + attrName, value, source),
                 new FactStore.PendingFact(entityId, "val:" + typeId + ":" + attrName + ":origin", origin.name(), source)
-        ));
+        ), source);
     }
 
     public AttributeValue getAttributeValue(String entityId, String typeId, String attrName) {
@@ -590,7 +646,7 @@ public class EntityStore {
                 current.name(), current.dataType(), current.required(), current.displayOrder(),
                 current.labels(), current.config(), mut);
         String updatedJson = schemaAttributeToJson(updated);
-        factStore.appendFact(eid, "attr:" + attrName, updatedJson, "manual");
+        routeFact(eid, "attr:" + attrName, updatedJson, "manual");
     }
 
     public Map<String, String> getAttributeValues(String entityId, String typeId) {

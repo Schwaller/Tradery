@@ -3,6 +3,7 @@ package com.tradery.dataservice.data.sqlite;
 import com.tradery.core.model.*;
 import com.tradery.dataservice.data.DataConfig;
 import com.tradery.dataservice.data.sqlite.dao.*;
+import com.tradery.dataservice.data.sqlite.dao.FearGreedDao;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -92,6 +93,71 @@ public class SqliteDataStore {
             return forSymbol(symbol).coverage().isFullyCovered(coverageKey, timeframe, startTime, endTime);
         } catch (SQLException e) {
             throw new IOException("SQLite error checking candle coverage: " + e.getMessage(), e);
+        }
+    }
+
+    // ========== Fear & Greed Index Methods ==========
+
+    private static final String FEAR_GREED_SYMBOL = "__feargreed";
+    private FearGreedDao fearGreedDao;
+
+    /**
+     * Get or create the FearGreedDao (lazy, uses dedicated DB).
+     */
+    private synchronized FearGreedDao getFearGreedDao() {
+        if (fearGreedDao == null) {
+            try {
+                SqliteConnection conn = SqliteConnection.forSymbol(FEAR_GREED_SYMBOL);
+                fearGreedDao = new FearGreedDao(conn);
+                fearGreedDao.createTable();
+            } catch (java.sql.SQLException e) {
+                throw new RuntimeException("Failed to initialize Fear & Greed DB", e);
+            }
+        }
+        return fearGreedDao;
+    }
+
+    /**
+     * Get Fear & Greed Index data for a time range.
+     */
+    public List<FearGreedIndex> getFearGreed(long startTime, long endTime) throws IOException {
+        try {
+            return getFearGreedDao().query(startTime, endTime);
+        } catch (java.sql.SQLException e) {
+            throw new IOException("SQLite error getting Fear & Greed data: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Get Fear & Greed Index data with lookback for averaging.
+     */
+    public List<FearGreedIndex> getFearGreedWithLookback(long startTime, long endTime, int lookbackDays) throws IOException {
+        try {
+            return getFearGreedDao().queryWithLookback(startTime, endTime, lookbackDays);
+        } catch (java.sql.SQLException e) {
+            throw new IOException("SQLite error getting Fear & Greed data: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Save Fear & Greed Index data.
+     */
+    public void saveFearGreed(List<FearGreedIndex> data) throws IOException {
+        try {
+            getFearGreedDao().insertBatch(data);
+        } catch (java.sql.SQLException e) {
+            throw new IOException("SQLite error saving Fear & Greed data: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Get the latest Fear & Greed record.
+     */
+    public FearGreedIndex getLatestFearGreed() throws IOException {
+        try {
+            return getFearGreedDao().getLatest();
+        } catch (java.sql.SQLException e) {
+            throw new IOException("SQLite error getting latest Fear & Greed: " + e.getMessage(), e);
         }
     }
 

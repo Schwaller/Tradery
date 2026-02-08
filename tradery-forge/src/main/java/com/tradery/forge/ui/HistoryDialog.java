@@ -43,6 +43,12 @@ public class HistoryDialog extends JDialog {
         this.mapper = new ObjectMapper();
         this.mapper.registerModule(new JavaTimeModule());
 
+        // Integrated macOS title bar
+        getRootPane().putClientProperty("apple.awt.fullWindowContent", true);
+        getRootPane().putClientProperty("apple.awt.transparentTitleBar", true);
+        getRootPane().putClientProperty("apple.awt.windowTitleVisible", false);
+        getRootPane().putClientProperty("FlatLaf.macOS.windowButtonsSpacing", "large");
+
         setSize(900, 600);
         setLocationRelativeTo(owner);
 

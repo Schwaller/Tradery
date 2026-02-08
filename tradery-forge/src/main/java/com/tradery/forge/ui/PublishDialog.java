@@ -43,6 +43,12 @@ public class PublishDialog extends JDialog {
         this.publisher = new DeskPublisher();
         this.onStatus = onStatus;
 
+        // Integrated macOS title bar
+        getRootPane().putClientProperty("apple.awt.fullWindowContent", true);
+        getRootPane().putClientProperty("apple.awt.transparentTitleBar", true);
+        getRootPane().putClientProperty("apple.awt.windowTitleVisible", false);
+        getRootPane().putClientProperty("FlatLaf.macOS.windowButtonsSpacing", "large");
+
         initializeComponents();
         layoutComponents();
         loadVersions();

@@ -69,6 +69,12 @@ public class FetchDataDialog extends JDialog {
         this.visionClient = ApplicationContext.getInstance().getBinanceVisionClient();
         this.onComplete = onComplete;
 
+        // Integrated macOS title bar
+        getRootPane().putClientProperty("apple.awt.fullWindowContent", true);
+        getRootPane().putClientProperty("apple.awt.transparentTitleBar", true);
+        getRootPane().putClientProperty("apple.awt.windowTitleVisible", false);
+        getRootPane().putClientProperty("FlatLaf.macOS.windowButtonsSpacing", "large");
+
         initUI();
         setupSelectionListeners();
 
