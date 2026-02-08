@@ -484,10 +484,19 @@ public class IntelSettingsDialog extends SettingsDialog {
         fc.gridx = 1; fc.gridy = r++;
         JComboBox<String> filterCombo = new JComboBox<>();
         filterCombo.addItem("articles");
+        // Built-in article field extractors (always available)
+        Set<String> addedFilters = new HashSet<>();
+        for (String builtIn : List.of("topic", "coin", "category", "tag")) {
+            filterCombo.addItem(builtIn);
+            addedFilters.add(builtIn);
+        }
+        // Schema entity types (may overlap with built-ins)
         SchemaRegistry registry = getSchemaRegistry();
         if (registry != null) {
             for (SchemaType st : registry.entityTypes()) {
-                filterCombo.addItem(st.id());
+                if (!addedFilters.contains(st.id())) {
+                    filterCombo.addItem(st.id());
+                }
             }
         }
         if (existing != null) filterCombo.setSelectedItem(existing.getFilter());

@@ -18,6 +18,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.*;
 import java.util.List;
 import java.util.function.Consumer;
+import java.util.function.Function;
 
 /**
  * Graph visualization with configurable band layout.
@@ -62,6 +63,9 @@ public class TimelineGraphPanel extends JPanel {
     private final IntelConfig config;
     private SchemaRegistry schemaRegistry;
     private Rectangle topicsLabelClickArea;
+
+    // Data-driven node extraction: type ID → article field accessor
+    private final Map<String, Function<Article, List<String>>> nodeExtractors = new LinkedHashMap<>();
 
     /**
      * Runtime band with pixel boundaries and node assignments.
@@ -116,6 +120,12 @@ public class TimelineGraphPanel extends JPanel {
         this.config = IntelConfig.get();
         setPreferredSize(new Dimension(1200, 600));
 
+        // Register default node extractors
+        nodeExtractors.put("topic", Article::topics);
+        nodeExtractors.put("coin", Article::coins);
+        nodeExtractors.put("category", Article::categories);
+        nodeExtractors.put("tag", Article::tags);
+
         // Mouse interaction
         MouseAdapter mouseAdapter = new MouseAdapter() {
             @Override
@@ -158,6 +168,10 @@ public class TimelineGraphPanel extends JPanel {
 
     public void setSchemaRegistry(SchemaRegistry registry) {
         this.schemaRegistry = registry;
+    }
+
+    public void registerNodeExtractor(String typeId, Function<Article, List<String>> extractor) {
+        nodeExtractors.put(typeId, extractor);
     }
 
     /**
@@ -292,30 +306,22 @@ public class TimelineGraphPanel extends JPanel {
             NewsNode node = new NewsNode(article);
             newsNodes.add(node);
 
-            // Create/link topic nodes (skip hidden topics)
-            for (String topic : article.topics()) {
-                if (config.isTopicHidden(topic)) continue;
-                TopicNode topicNode = topicMap.computeIfAbsent(topic, t -> {
-                    TopicNode tn = new TopicNode(t, formatTopicLabel(t), "topic");
-                    Color sc = resolveSchemaColor("topic");
-                    if (sc != null) tn.setColor(sc);
-                    return tn;
-                });
-                topicNode.addConnection(node);
-                node.addTopicConnection(topicNode);
-            }
-
-            // Create/link coin nodes
-            for (String coin : article.coins()) {
-                String coinId = "coin:" + coin;
-                TopicNode coinNode = topicMap.computeIfAbsent(coinId, c -> {
-                    TopicNode cn = new TopicNode(coinId, coin, "coin");
-                    Color sc = resolveSchemaColor("coin");
-                    if (sc != null) cn.setColor(sc);
-                    return cn;
-                });
-                coinNode.addConnection(node);
-                node.addTopicConnection(coinNode);
+            // Create/link nodes for all registered extractors
+            for (var ext : nodeExtractors.entrySet()) {
+                String typeId = ext.getKey();
+                for (String value : ext.getValue().apply(article)) {
+                    if ("topic".equals(typeId) && config.isTopicHidden(value)) continue;
+                    String nodeId = "topic".equals(typeId) ? value : typeId + ":" + value;
+                    String label = "topic".equals(typeId) ? formatTopicLabel(value) : value;
+                    TopicNode tn = topicMap.computeIfAbsent(nodeId, id -> {
+                        TopicNode n = new TopicNode(id, label, typeId);
+                        Color sc = resolveSchemaColor(typeId);
+                        if (sc != null) n.setColor(sc);
+                        return n;
+                    });
+                    tn.addConnection(node);
+                    node.addTopicConnection(tn);
+                }
             }
         }
 
@@ -363,30 +369,22 @@ public class TimelineGraphPanel extends JPanel {
             newsNodes.add(node);
             addedNodes.add(node);
 
-            // Create/link topic nodes (skip hidden topics)
-            for (String topic : article.topics()) {
-                if (config.isTopicHidden(topic)) continue;
-                TopicNode topicNode = topicMap.computeIfAbsent(topic, t -> {
-                    TopicNode tn = new TopicNode(t, formatTopicLabel(t), "topic");
-                    Color sc = resolveSchemaColor("topic");
-                    if (sc != null) tn.setColor(sc);
-                    return tn;
-                });
-                topicNode.addConnection(node);
-                node.addTopicConnection(topicNode);
-            }
-
-            // Create/link coin nodes
-            for (String coin : article.coins()) {
-                String coinId = "coin:" + coin;
-                TopicNode coinNode = topicMap.computeIfAbsent(coinId, c -> {
-                    TopicNode cn = new TopicNode(coinId, coin, "coin");
-                    Color sc = resolveSchemaColor("coin");
-                    if (sc != null) cn.setColor(sc);
-                    return cn;
-                });
-                coinNode.addConnection(node);
-                node.addTopicConnection(coinNode);
+            // Create/link nodes for all registered extractors
+            for (var ext : nodeExtractors.entrySet()) {
+                String typeId = ext.getKey();
+                for (String value : ext.getValue().apply(article)) {
+                    if ("topic".equals(typeId) && config.isTopicHidden(value)) continue;
+                    String nodeId = "topic".equals(typeId) ? value : typeId + ":" + value;
+                    String label = "topic".equals(typeId) ? formatTopicLabel(value) : value;
+                    TopicNode tn = topicMap.computeIfAbsent(nodeId, id -> {
+                        TopicNode n = new TopicNode(id, label, typeId);
+                        Color sc = resolveSchemaColor(typeId);
+                        if (sc != null) n.setColor(sc);
+                        return n;
+                    });
+                    tn.addConnection(node);
+                    node.addTopicConnection(tn);
+                }
             }
         }
 
