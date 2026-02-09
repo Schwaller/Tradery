@@ -33,7 +33,7 @@ public class SymbolSyncService {
         "binance", new ExchangeMapping("binance", "binance_futures"),
         "bybit", new ExchangeMapping("bybit_spot", "bybit"),
         "okx", new ExchangeMapping("okex", "okx_swap"),
-        "coinbase", new ExchangeMapping("gdax", null), // No perp
+        "coinbase", new ExchangeMapping("gdax", "coinbase_international_derivatives"),
         "kraken", new ExchangeMapping("kraken", "kraken_futures")
     );
 
@@ -404,7 +404,10 @@ public class SymbolSyncService {
 
     private static final Map<String, String> EXCHANGE_INFO_URLS = Map.of(
         "binance", "https://fapi.binance.com/fapi/v1/exchangeInfo",
-        "bybit", "https://api.bybit.com/v5/market/instruments-info?category=linear&limit=1000"
+        "bybit", "https://api.bybit.com/v5/market/instruments-info?category=linear&limit=1000",
+        "okx", "https://www.okx.com/api/v5/public/instruments?instType=SWAP",
+        "kraken", "https://futures.kraken.com/derivatives/api/v3/instruments",
+        "coinbase", "https://api.international.coinbase.com/api/v1/instruments"
     );
 
     /**
@@ -432,6 +435,9 @@ public class SymbolSyncService {
                 return switch (exchange) {
                     case "binance" -> parseBinanceFuturesExchangeInfo(root);
                     case "bybit" -> parseBybitLinearInstruments(root);
+                    case "okx" -> parseOkxSwapInstruments(root);
+                    case "kraken" -> parseKrakenFuturesInstruments(root);
+                    case "coinbase" -> parseCoinbaseInstruments(root);
                     default -> List.of();
                 };
             }
@@ -491,6 +497,101 @@ public class SymbolSyncService {
         }
 
         log.info("Parsed {} Bybit linear perpetual pairs from API", pairs.size());
+        return pairs;
+    }
+
+    private List<TradingPair> parseOkxSwapInstruments(JsonNode root) {
+        List<TradingPair> pairs = new ArrayList<>();
+        JsonNode data = root.get("data");
+        if (data == null) return pairs;
+
+        for (JsonNode inst : data) {
+            String state = inst.has("state") ? inst.get("state").asText() : "";
+            if (!"live".equals(state)) continue;
+
+            // Only linear (USDT-margined) swaps
+            String ctType = inst.has("ctType") ? inst.get("ctType").asText() : "";
+            if (!"linear".equals(ctType)) continue;
+
+            String instId = inst.get("instId").asText(); // e.g., "BTC-USDT-SWAP"
+            // Parse base and quote from instId: "BTC-USDT-SWAP" -> base=BTC, quote=USDT
+            String[] parts = instId.replace("-SWAP", "").split("-");
+            if (parts.length < 2) continue;
+            String base = parts[0];
+            String quote = parts[1];
+            if (!isCommonQuote(quote)) continue;
+
+            // OKX symbol format: BTC-USDT-SWAP
+            String symbol = base + "-" + quote + "-SWAP";
+            String coingeckoId = lookupCoingeckoId(base);
+            String quoteCoingeckoId = lookupCoingeckoId(quote);
+
+            pairs.add(TradingPair.create("okx", MarketType.PERP, symbol, base, quote,
+                coingeckoId, quoteCoingeckoId));
+        }
+
+        log.info("Parsed {} OKX perpetual swap pairs from API", pairs.size());
+        return pairs;
+    }
+
+    private List<TradingPair> parseKrakenFuturesInstruments(JsonNode root) {
+        List<TradingPair> pairs = new ArrayList<>();
+        JsonNode instruments = root.get("instruments");
+        if (instruments == null) return pairs;
+
+        for (JsonNode inst : instruments) {
+            boolean tradeable = inst.has("tradeable") && inst.get("tradeable").asBoolean();
+            if (!tradeable) continue;
+
+            String symbol = inst.has("symbol") ? inst.get("symbol").asText() : "";
+            // PF_ prefix = perpetual futures (flexible_futures type)
+            if (!symbol.startsWith("PF_")) continue;
+
+            // Parse base/quote from "pair" field: "BTC:USD"
+            String pairStr = inst.has("pair") ? inst.get("pair").asText() : "";
+            String[] parts = pairStr.split(":");
+            if (parts.length < 2) continue;
+            String base = parts[0];
+            String quote = parts[1];
+            if (!isCommonQuote(quote)) continue;
+
+            // Kraken uses XBT for Bitcoin
+            String adjustedBase = "XBT".equals(base) ? "BTC" : base;
+            String coingeckoId = lookupCoingeckoId(adjustedBase);
+            String quoteCoingeckoId = lookupCoingeckoId(quote);
+
+            pairs.add(TradingPair.create("kraken", MarketType.PERP, symbol, adjustedBase, quote,
+                coingeckoId, quoteCoingeckoId));
+        }
+
+        log.info("Parsed {} Kraken perpetual futures pairs from API", pairs.size());
+        return pairs;
+    }
+
+    private List<TradingPair> parseCoinbaseInstruments(JsonNode root) {
+        List<TradingPair> pairs = new ArrayList<>();
+        if (!root.isArray()) return pairs;
+
+        for (JsonNode inst : root) {
+            String type = inst.has("type") ? inst.get("type").asText() : "";
+            if (!"PERP".equals(type)) continue;
+
+            String sym = inst.has("symbol") ? inst.get("symbol").asText() : ""; // e.g., "BTC-PERP"
+            String baseAsset = inst.has("base_asset_name") ? inst.get("base_asset_name").asText() : "";
+            String quoteAsset = inst.has("quote_asset_name") ? inst.get("quote_asset_name").asText() : "";
+            if (baseAsset.isEmpty() || quoteAsset.isEmpty()) continue;
+            if (!isCommonQuote(quoteAsset)) continue;
+
+            // Coinbase symbol format: BTCUSD (base+quote, no separator)
+            String symbol = baseAsset + quoteAsset;
+            String coingeckoId = lookupCoingeckoId(baseAsset);
+            String quoteCoingeckoId = lookupCoingeckoId(quoteAsset);
+
+            pairs.add(TradingPair.create("coinbase", MarketType.PERP, symbol, baseAsset, quoteAsset,
+                coingeckoId, quoteCoingeckoId));
+        }
+
+        log.info("Parsed {} Coinbase perpetual pairs from API", pairs.size());
         return pairs;
     }
 

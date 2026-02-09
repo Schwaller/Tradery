@@ -47,6 +47,9 @@ public class PeerManager implements AutoCloseable {
     /** Tracks whether each connected peer (by device ID) has mutual friendship with us. */
     private final Map<String, Boolean> mutualFriends = new ConcurrentHashMap<>();
 
+    /** Tracks whether each connected peer has us in their friend list (their last FriendshipAck). */
+    private final Map<String, Boolean> peerFriendsUs = new ConcurrentHashMap<>();
+
     /** Callback when friendship status changes (e.g. FriendshipAck received). */
     private volatile Runnable friendshipChangeCallback;
 
@@ -140,6 +143,7 @@ public class PeerManager implements AutoCloseable {
             }
 
             boolean mutual = weFriendThem && theyFriendUs;
+            peerFriendsUs.put(remoteKey, theyFriendUs);
             mutualFriends.put(remoteKey, mutual);
             log.info("Friendship with {} ({}): we={}, they={}, mutual={}", hello.peerId(), remoteKey, weFriendThem, theyFriendUs, mutual);
             if (friendshipChangeCallback != null) friendshipChangeCallback.run();
@@ -172,6 +176,7 @@ public class PeerManager implements AutoCloseable {
                 connections.remove(conn.remotePeerId());
                 deviceToPeerEmail.remove(conn.remotePeerId());
                 mutualFriends.remove(conn.remotePeerId());
+                peerFriendsUs.remove(conn.remotePeerId());
             }
         }
     }
@@ -214,6 +219,7 @@ public class PeerManager implements AutoCloseable {
             }
 
             boolean mutual = weFriendThem && theyFriendUs;
+            peerFriendsUs.put(remoteKey, theyFriendUs);
             mutualFriends.put(remoteKey, mutual);
             log.info("Friendship with {} ({}): we={}, they={}, mutual={}", hello.peerId(), remoteKey, weFriendThem, theyFriendUs, mutual);
             if (friendshipChangeCallback != null) friendshipChangeCallback.run();
@@ -246,6 +252,7 @@ public class PeerManager implements AutoCloseable {
                 connections.remove(conn.remotePeerId());
                 deviceToPeerEmail.remove(conn.remotePeerId());
                 mutualFriends.remove(conn.remotePeerId());
+                peerFriendsUs.remove(conn.remotePeerId());
             }
         }
     }
@@ -300,6 +307,7 @@ public class PeerManager implements AutoCloseable {
             }
             case NetworkMessage.FriendshipAck ack -> {
                 // Re-evaluate mutual status (e.g. they added/removed us)
+                peerFriendsUs.put(remoteKey, ack.isFriend());
                 boolean weFriendThem = isFriendLocally(hello.peerId());
                 boolean newMutual = weFriendThem && ack.isFriend();
                 mutualFriends.put(remoteKey, newMutual);
@@ -411,6 +419,16 @@ public class PeerManager implements AutoCloseable {
                 conn.send(new NetworkMessage.FriendshipAck(weFriendThem));
             } catch (IOException e) {
                 log.warn("Failed to re-announce friendship to {}: {}", deviceId, e.getMessage());
+            }
+
+            // Re-evaluate mutual status locally using the peer's last-known FriendshipAck
+            boolean theyFriendUs = Boolean.TRUE.equals(peerFriendsUs.get(deviceId));
+            boolean newMutual = weFriendThem && theyFriendUs;
+            boolean oldMutual = Boolean.TRUE.equals(mutualFriends.get(deviceId));
+            if (newMutual != oldMutual) {
+                mutualFriends.put(deviceId, newMutual);
+                log.info("Friendship re-evaluated with {} ({}): mutual={}", peerEmail, deviceId, newMutual);
+                if (friendshipChangeCallback != null) friendshipChangeCallback.run();
             }
         }
     }

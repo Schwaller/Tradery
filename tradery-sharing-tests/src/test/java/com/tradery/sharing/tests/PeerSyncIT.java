@@ -27,11 +27,15 @@ class PeerSyncIT {
     static PeerClient clientB;
 
     @BeforeAll
-    static void start() {
+    static void start() throws Exception {
         peerA.start();
         peerB.start();
         clientA = new PeerClient(peerA.controlUrl());
         clientB = new PeerClient(peerB.controlUrl());
+
+        // Establish mutual friendship (required for sync)
+        clientA.addFriend("peer-b", "Peer B");
+        clientB.addFriend("peer-a", "Peer A");
     }
 
     @AfterAll

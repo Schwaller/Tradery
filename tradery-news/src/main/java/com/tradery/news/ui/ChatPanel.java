@@ -125,6 +125,7 @@ public class ChatPanel extends JPanel {
         for (ChatStore.Message msg : messages) {
             addMessageBubble(msg.senderEmail(), msg.text(), msg.timestamp(), userEmail);
         }
+        messageListPanel.add(Box.createVerticalGlue());
 
         revalidate();
         repaint();
@@ -160,11 +161,16 @@ public class ChatPanel extends JPanel {
         String time = LocalTime.ofInstant(Instant.ofEpochMilli(timestamp), ZoneId.systemDefault())
             .format(TIME_FMT);
 
-        JPanel bubble = new JPanel(new BorderLayout());
-        bubble.setAlignmentX(isSelf ? Component.RIGHT_ALIGNMENT : Component.LEFT_ALIGNMENT);
+        JPanel bubble = new JPanel(new BorderLayout()) {
+            @Override
+            public Dimension getMaximumSize() {
+                Dimension pref = getPreferredSize();
+                return new Dimension(Integer.MAX_VALUE, pref.height);
+            }
+        };
+        bubble.setAlignmentX(Component.LEFT_ALIGNMENT);
         bubble.setBorder(new EmptyBorder(2, 0, 2, 0));
         bubble.setOpaque(false);
-        bubble.setMaximumSize(new Dimension(Integer.MAX_VALUE, Short.MAX_VALUE));
 
         JPanel msgContent = new JPanel();
         msgContent.setLayout(new BoxLayout(msgContent, BoxLayout.Y_AXIS));

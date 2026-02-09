@@ -5,8 +5,11 @@ import com.tradery.documents.Document;
 import com.tradery.documents.DocumentManager;
 import com.tradery.documents.DocumentMember;
 import com.tradery.documents.DocumentWorkspace;
+import com.tradery.news.ui.FriendConfig;
+import com.tradery.news.ui.IntelConfig;
 import com.tradery.news.ui.coin.FactStore;
 import com.tradery.sharing.governance.GovernanceEngine;
+import com.tradery.sharing.sync.NetworkMessage;
 import com.tradery.sharing.sync.PeerManager;
 import io.javalin.Javalin;
 import io.javalin.http.Context;
@@ -17,6 +20,7 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
  * HTTP control API that bridges Javalin requests to DocumentManager/PeerManager/FactStore.
@@ -31,12 +35,22 @@ public class PeerController {
     private final PeerManager peerManager;
     private final ObjectMapper mapper;
     private final Map<String, DocumentWorkspace> workspaces = new ConcurrentHashMap<>();
+    private final List<NetworkMessage.ChatMessage> receivedChats = new CopyOnWriteArrayList<>();
 
     public PeerController(String peerId, Path dataDir, ObjectMapper mapper) throws IOException {
         this.peerId = peerId;
         this.mapper = mapper;
         this.documentManager = new DocumentManager(dataDir.resolve("documents"));
         this.peerManager = new PeerManager(peerId, peerId, documentManager, mapper);
+
+        // Initialize IntelConfig for this peer
+        IntelConfig config = IntelConfig.get();
+        config.setUserEmail(peerId);
+        config.setDeviceId(peerId);
+        config.save();
+
+        // Listen for incoming chat messages
+        peerManager.addChatListener(receivedChats::add);
     }
 
     public void registerRoutes(Javalin app) {
@@ -54,6 +68,16 @@ public class PeerController {
         app.post("/connect", this::handleConnect);
         app.post("/sync", this::handleSync);
         app.get("/peers", this::handleGetPeers);
+
+        // Friendship management
+        app.post("/friends", this::handleAddFriend);
+        app.delete("/friends/{email}", this::handleRemoveFriend);
+        app.get("/friends", this::handleGetFriends);
+        app.get("/mutual/{email}", this::handleIsMutualFriend);
+
+        // Chat
+        app.post("/chat", this::handleSendChat);
+        app.get("/chat", this::handleGetChatMessages);
     }
 
     private void handleStatus(Context ctx) {
@@ -248,6 +272,59 @@ public class PeerController {
     private void handleGetPeers(Context ctx) {
         ctx.json(List.copyOf(peerManager.connectedPeerIds()));
     }
+
+    // ==================== Friendship ====================
+
+    private void handleAddFriend(Context ctx) {
+        AddFriendRequest req = ctx.bodyAsClass(AddFriendRequest.class);
+        IntelConfig.get().addFriend(new FriendConfig(req.email(), req.displayName()));
+        IntelConfig.get().save();
+        peerManager.reannounceFriendship();
+        log.info("Added friend: {}", req.email());
+        ctx.status(200).result("OK");
+    }
+
+    private void handleRemoveFriend(Context ctx) {
+        String email = ctx.pathParam("email");
+        IntelConfig.get().removeFriend(email);
+        IntelConfig.get().save();
+        peerManager.reannounceFriendship();
+        log.info("Removed friend: {}", email);
+        ctx.status(200).result("OK");
+    }
+
+    private void handleGetFriends(Context ctx) {
+        List<Map<String, String>> friends = IntelConfig.get().getFriends().stream()
+                .map(f -> Map.of("email", f.getEmail(), "displayName", f.label()))
+                .toList();
+        ctx.json(friends);
+    }
+
+    private void handleIsMutualFriend(Context ctx) {
+        String email = ctx.pathParam("email");
+        boolean mutual = peerManager.isMutualFriendByEmail(email);
+        ctx.json(Map.of("mutual", mutual));
+    }
+
+    // ==================== Chat ====================
+
+    private void handleSendChat(Context ctx) {
+        SendChatRequest req = ctx.bodyAsClass(SendChatRequest.class);
+        peerManager.sendChat(peerId, req.recipientId(), req.text());
+        log.info("Sent chat to {}: {}", req.recipientId(), req.text());
+        ctx.status(200).result("OK");
+    }
+
+    private void handleGetChatMessages(Context ctx) {
+        ctx.json(receivedChats.stream().map(msg -> Map.of(
+                "senderId", msg.senderId(),
+                "recipientId", msg.recipientId() != null ? msg.recipientId() : "",
+                "text", msg.text(),
+                "timestamp", String.valueOf(msg.timestamp())
+        )).toList());
+    }
+
+    // ==================================================
 
     public void close() {
         peerManager.close();

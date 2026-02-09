@@ -83,8 +83,7 @@ jlink {
     mergedModule {
         additive = true
 
-        // ServiceLoader declarations for SLF4J + Log4j2
-        uses 'org.slf4j.spi.SLF4JServiceProvider'
+        // ServiceLoader declarations for Log4j2 (SLF4J auto-detected)
         uses 'org.apache.logging.log4j.spi.Provider'
         uses 'org.apache.logging.log4j.util.PropertySource'
         uses 'org.apache.logging.log4j.core.util.ContextDataProvider'

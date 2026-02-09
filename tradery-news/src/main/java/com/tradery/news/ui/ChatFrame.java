@@ -32,6 +32,7 @@ public class ChatFrame extends JFrame {
     private DefaultListModel<ConversationEntry> conversationModel;
     private JList<ConversationEntry> conversationList;
     private javax.swing.Timer refreshTimer;
+    private boolean refreshing; // re-entrancy guard
 
     private record ConversationEntry(String email, String displayName, String lastMessage,
                                      long lastTimestamp, int unreadCount, boolean isMutual) {}
@@ -183,6 +184,19 @@ public class ChatFrame extends JFrame {
     }
 
     void refreshConversationList() {
+        if (refreshing) return;
+        refreshing = true;
+        try {
+            refreshConversationListImpl();
+        } finally {
+            refreshing = false;
+        }
+    }
+
+    private void refreshConversationListImpl() {
+        // Save focus so the text field doesn't lose it during rebuild
+        Component focusOwner = KeyboardFocusManager.getCurrentKeyboardFocusManager().getFocusOwner();
+
         String selectedEmail = null;
         ConversationEntry sel = conversationList.getSelectedValue();
         if (sel != null) selectedEmail = sel.email();
@@ -237,7 +251,7 @@ public class ChatFrame extends JFrame {
         for (var e : friends) conversationModel.addElement(e);
         for (var e : requests) conversationModel.addElement(e);
 
-        // Re-select
+        // Re-select without triggering showConversation (already showing the right one)
         if (selectedEmail != null) {
             for (int i = 0; i < conversationModel.size(); i++) {
                 if (conversationModel.get(i).email().equals(selectedEmail)) {
@@ -245,6 +259,11 @@ public class ChatFrame extends JFrame {
                     break;
                 }
             }
+        }
+
+        // Restore focus
+        if (focusOwner != null && focusOwner.isDisplayable()) {
+            focusOwner.requestFocusInWindow();
         }
     }
 

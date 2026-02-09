@@ -95,10 +95,12 @@ public class IntelDocumentFrame extends JFrame {
     // Sharing
     private static SharingService sharingService;
     public static void setSharingService(SharingService s) { sharingService = s; }
+    public static SharingService getSharingService() { return sharingService; }
 
     // Chat
-    private JButton chatBtn;
     private static ChatStore chatStore;
+    public static void setChatStore(ChatStore s) { chatStore = s; }
+    public static ChatStore getChatStore() { return chatStore; }
 
     // Network status bar
     private javax.swing.Timer networkStatusTimer;
@@ -187,12 +189,6 @@ public class IntelDocumentFrame extends JFrame {
         // Register with sharing service for multi-device sync
         if (sharingService != null) {
             sharingService.registerDocument(docId, docDir, entityStore);
-        }
-
-        // Initialize chat persistence (shared across all document windows)
-        if (chatStore == null) {
-            Path chatDbPath = Path.of(System.getProperty("user.home"), ".tradery", "chat.db");
-            chatStore = new ChatStore(chatDbPath);
         }
 
         setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
@@ -421,11 +417,6 @@ public class IntelDocumentFrame extends JFrame {
         shareBtn.addActionListener(e -> showShareDialog());
         shareBtn.setVisible(sharingService != null);
         rightContent.add(shareBtn);
-
-        chatBtn = new ToolbarButton("Chat");
-        chatBtn.addActionListener(e -> openChat());
-        chatBtn.setVisible(sharingService != null);
-        rightContent.add(chatBtn);
 
         JButton dataStructureBtn = new ToolbarButton("Data Structure");
         dataStructureBtn.addActionListener(e -> showDataStructureWindow());
@@ -1439,9 +1430,6 @@ public class IntelDocumentFrame extends JFrame {
             JMenuItem friendsItem = new JMenuItem("Friends");
             friendsItem.addActionListener(ev -> showFriendsDialog());
             menu.add(friendsItem);
-            JMenuItem chatItem = new JMenuItem("Chat");
-            chatItem.addActionListener(ev -> openChat());
-            menu.add(chatItem);
             menu.addSeparator();
             JMenuItem logoutItem = new JMenuItem("Sign Out");
             logoutItem.addActionListener(ev -> {
@@ -1591,19 +1579,6 @@ public class IntelDocumentFrame extends JFrame {
         if (sharingService == null) return;
         FriendsDialog dialog = new FriendsDialog(this, sharingService, chatStore);
         dialog.setVisible(true);
-    }
-
-    private void openChat() {
-        if (sharingService == null) return;
-        ChatFrame.open(sharingService, chatStore, this);
-        ChatFrame.setOnUnreadChanged(this::updateChatBadge);
-    }
-
-    private void updateChatBadge() {
-        if (chatBtn == null) return;
-        int unread = ChatFrame.getUnreadCount();
-        SwingUtilities.invokeLater(() ->
-            chatBtn.setText(unread > 0 ? "Chat (" + unread + ")" : "Chat"));
     }
 
     private void showSettingsWindow() {

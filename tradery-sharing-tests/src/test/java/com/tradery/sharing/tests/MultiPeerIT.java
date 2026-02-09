@@ -28,13 +28,21 @@ class MultiPeerIT {
     static PeerClient clientC;
 
     @BeforeAll
-    static void start() {
+    static void start() throws Exception {
         peerA.start();
         peerB.start();
         peerC.start();
         clientA = new PeerClient(peerA.controlUrl());
         clientB = new PeerClient(peerB.controlUrl());
         clientC = new PeerClient(peerC.controlUrl());
+
+        // Establish mutual friendship between all peers (required for sync)
+        clientA.addFriend("multi-b", "B");
+        clientA.addFriend("multi-c", "C");
+        clientB.addFriend("multi-a", "A");
+        clientB.addFriend("multi-c", "C");
+        clientC.addFriend("multi-a", "A");
+        clientC.addFriend("multi-b", "B");
     }
 
     @AfterAll

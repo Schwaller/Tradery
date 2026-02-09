@@ -93,7 +93,7 @@ public class IntelApiServer {
         this.entityHandler = new EntityHandler(entityStore);
         this.discoverHandler = new DiscoverHandler(entityStore, searchProcessor, schemaRegistry);
         this.articleHandler = new ArticleHandler(newsStore);
-        this.schemaHandler = new SchemaHandler(entityStore);
+        this.schemaHandler = new SchemaHandler(entityStore, schemaRegistry);
     }
 
     public void start() throws IOException {
@@ -133,6 +133,8 @@ public class IntelApiServer {
         server.createContext("/stories", articleHandler::handleStories);
         server.createContext("/events", articleHandler::handleEvents);
         server.createContext("/schema/types", schemaHandler::handleSchema);
+        server.createContext("/schema/type/", schemaHandler::routeSchemaType);
+        server.createContext("/schema/type", schemaHandler::routeSchemaType);
         server.createContext("/network", this::handleNetwork);
 
         // UI control endpoints

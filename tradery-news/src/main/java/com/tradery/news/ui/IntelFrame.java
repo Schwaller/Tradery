@@ -1497,6 +1497,12 @@ public class IntelFrame extends JFrame {
                 SharingService sharingService = (SharingService) service;
                 IntelDocumentFrame.setSharingService(sharingService);
 
+                // Initialize chat persistence
+                java.nio.file.Path chatDbPath = java.nio.file.Path.of(
+                    System.getProperty("user.home"), ".tradery", "chat.db");
+                ChatStore chatStore = new ChatStore(chatDbPath);
+                IntelDocumentFrame.setChatStore(chatStore);
+
                 // Bootstrap peer infrastructure so LAN discovery starts immediately
                 sharingService.bootstrap();
             } catch (ClassNotFoundException e) {

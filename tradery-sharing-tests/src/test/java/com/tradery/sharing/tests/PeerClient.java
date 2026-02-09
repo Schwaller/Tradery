@@ -138,6 +138,71 @@ public class PeerClient {
         return lastCount;
     }
 
+    // ==================== Friendship ====================
+
+    public void addFriend(String email, String displayName) throws IOException {
+        post("/friends", Map.of("email", email, "displayName", displayName != null ? displayName : email));
+    }
+
+    public void removeFriend(String email) throws IOException {
+        delete("/friends/" + email);
+    }
+
+    public JsonNode getFriends() throws IOException {
+        return get("/friends");
+    }
+
+    public boolean isMutualFriend(String email) throws IOException {
+        return get("/mutual/" + email).get("mutual").asBoolean();
+    }
+
+    /**
+     * Poll isMutualFriend() until the expected value appears or timeout.
+     */
+    public boolean waitForMutual(String email, boolean expected, int timeoutSecs) throws Exception {
+        long deadline = System.currentTimeMillis() + timeoutSecs * 1000L;
+        while (System.currentTimeMillis() < deadline) {
+            try {
+                if (isMutualFriend(email) == expected) return expected;
+            } catch (IOException e) {
+                // Transient error, keep polling
+            }
+            Thread.sleep(200);
+        }
+        return isMutualFriend(email);
+    }
+
+    // ==================== Chat ====================
+
+    public void sendChat(String recipientId, String text) throws IOException {
+        post("/chat", Map.of("recipientId", recipientId, "text", text));
+    }
+
+    public JsonNode getChatMessages() throws IOException {
+        return get("/chat");
+    }
+
+    /**
+     * Poll getChatMessages() until a message with the expected text appears or timeout.
+     */
+    public boolean waitForChat(String expectedText, int timeoutSecs) throws Exception {
+        long deadline = System.currentTimeMillis() + timeoutSecs * 1000L;
+        while (System.currentTimeMillis() < deadline) {
+            try {
+                JsonNode msgs = getChatMessages();
+                for (int i = 0; i < msgs.size(); i++) {
+                    if (expectedText.equals(msgs.get(i).get("text").asText())) return true;
+                }
+            } catch (IOException e) {
+                // Transient error
+            }
+            Thread.sleep(200);
+        }
+        return false;
+    }
+
+    // ==================================================
+
     private JsonNode get(String path) throws IOException {
         Request req = new Request.Builder().url(baseUrl + path).build();
         try (Response resp = http.newCall(req).execute()) {
@@ -145,6 +210,16 @@ public class PeerClient {
                 throw new IOException("GET " + path + " failed: " + resp.code() + " " + resp.body().string());
             }
             return mapper.readTree(resp.body().string());
+        }
+    }
+
+    private JsonNode delete(String path) throws IOException {
+        Request req = new Request.Builder().url(baseUrl + path).delete().build();
+        try (Response resp = http.newCall(req).execute()) {
+            if (!resp.isSuccessful()) {
+                throw new IOException("DELETE " + path + " failed: " + resp.code());
+            }
+            return mapper.createObjectNode();
         }
     }
 

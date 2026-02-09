@@ -634,6 +634,17 @@ public class ChartZoomManager {
         return chartWrappers;
     }
 
+    /**
+     * Get the JLayeredPane inside a chart wrapper, for adding overlay components.
+     */
+    public JLayeredPane getLayeredPane(int chartIndex) {
+        if (chartIndex < 0 || chartIndex >= chartWrappers.length || chartWrappers[chartIndex] == null) return null;
+        for (Component c : chartWrappers[chartIndex].getComponents()) {
+            if (c instanceof JLayeredPane lp) return lp;
+        }
+        return null;
+    }
+
     public int getZoomedChartIndex() {
         return zoomedChartIndex;
     }

@@ -63,7 +63,6 @@ public class ProjectWindow extends JFrame {
     // Toolbar controls
     private JButton fitWidthBtn;
     private SegmentedToggle chartModeToggle;
-    private JSlider priceOpacitySlider;
     private JButton fitYBtn;
     private JButton fullYBtn;
     private JButton aiToggleBtn;
@@ -237,19 +236,6 @@ public class ProjectWindow extends JFrame {
         chartModeToggle.setOnSelectionChanged(index -> {
             ChartConfig.getInstance().setCandlestickMode(index == 1);
             chartPanel.refreshPriceChart();
-        });
-
-        // Price opacity slider
-        priceOpacitySlider = new JSlider(0, 100, ChartConfig.getInstance().getPriceOpacity());
-        priceOpacitySlider.setPreferredSize(new Dimension(60, 20));
-        priceOpacitySlider.setToolTipText("Price opacity: " + priceOpacitySlider.getValue() + "%");
-        priceOpacitySlider.addChangeListener(e -> {
-            int value = priceOpacitySlider.getValue();
-            priceOpacitySlider.setToolTipText("Price opacity: " + value + "%");
-            if (!priceOpacitySlider.getValueIsAdjusting()) {
-                ChartConfig.getInstance().setPriceOpacity(value);
-                chartPanel.refreshPriceChart();
-            }
         });
 
         // Y-axis buttons
@@ -445,7 +431,6 @@ public class ProjectWindow extends JFrame {
         JPanel chartControls = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
         chartControls.setOpaque(false);
         chartControls.add(chartModeToggle);
-        chartControls.add(priceOpacitySlider);
         chartControls.add(indicatorsBtn);
         chartControls.add(phaseOverlayBtn);
         chartControls.add(phaseAnalysisBtn);

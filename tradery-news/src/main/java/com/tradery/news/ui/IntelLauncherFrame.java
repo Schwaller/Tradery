@@ -28,6 +28,7 @@ public class IntelLauncherFrame extends JFrame {
     private DefaultListModel<IntelDocumentManager.DocMeta> listModel;
     private JList<IntelDocumentManager.DocMeta> documentList;
     private JButton openButton;
+    private JButton chatBtn;
 
     private static final DateTimeFormatter DATE_FORMAT =
         DateTimeFormatter.ofPattern("MMM d, yyyy").withZone(ZoneId.systemDefault());
@@ -158,6 +159,17 @@ public class IntelLauncherFrame extends JFrame {
         // Buttons
         JPanel buttonPanel = new JPanel(new BorderLayout());
         JPanel leftButtons = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 8));
+
+        chatBtn = new JButton("Chat");
+        chatBtn.addActionListener(e -> openChat());
+        chatBtn.setVisible(IntelDocumentFrame.getSharingService() != null);
+        leftButtons.add(chatBtn);
+
+        JButton friendsBtn = new JButton("Friends");
+        friendsBtn.addActionListener(e -> showFriends());
+        friendsBtn.setVisible(IntelDocumentFrame.getSharingService() != null);
+        leftButtons.add(friendsBtn);
+
         JButton settingsBtn = new JButton("Settings");
         settingsBtn.addActionListener(e -> showSettings());
         leftButtons.add(settingsBtn);
@@ -356,9 +368,30 @@ public class IntelLauncherFrame extends JFrame {
         }
     }
 
+    private void openChat() {
+        SharingService ss = IntelDocumentFrame.getSharingService();
+        ChatStore cs = IntelDocumentFrame.getChatStore();
+        if (ss == null || cs == null) return;
+        ChatFrame.open(ss, cs, this);
+        ChatFrame.setOnUnreadChanged(this::updateChatBadge);
+    }
+
+    private void updateChatBadge() {
+        if (chatBtn == null) return;
+        int unread = ChatFrame.getUnreadCount();
+        SwingUtilities.invokeLater(() ->
+            chatBtn.setText(unread > 0 ? "Chat (" + unread + ")" : "Chat"));
+    }
+
+    private void showFriends() {
+        SharingService ss = IntelDocumentFrame.getSharingService();
+        ChatStore cs = IntelDocumentFrame.getChatStore();
+        if (ss == null) return;
+        FriendsDialog dialog = new FriendsDialog(this, ss, cs);
+        dialog.setVisible(true);
+    }
+
     private void showSettings() {
-        // Settings without a document frame — global settings only
-        // Create a temporary settings dialog owned by the launcher
         IntelSettingsDialog dialog = new IntelSettingsDialog(this);
         dialog.setVisible(true);
     }

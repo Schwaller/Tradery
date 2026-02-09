@@ -71,6 +71,9 @@ public class ChartsPanel extends JPanel {
     // Highlight state
     private List<org.jfree.chart.annotations.XYAnnotation> highlightAnnotations = new java.util.ArrayList<>();
 
+    // Price opacity slider (overlaid on price chart)
+    private JSlider priceOpacitySlider;
+
     // UI components
     private JPanel chartsContainer;
     private JPanel mainPanel;
@@ -300,6 +303,9 @@ public class ChartsPanel extends JPanel {
         };
         zoomManager.createWrappers(coreChartPanels);
 
+        // Add price opacity slider overlaid on price chart, next to "Price" label
+        addPriceOpacitySlider();
+
         // Setup indicator manager
         indicatorManager.setOnLayoutChange(this::updateChartLayout);
         indicatorManager.createWrappers(this::toggleIndicatorZoom, this::toggleIndicatorFullScreen, zoomManager::exitFullScreen);
@@ -335,6 +341,54 @@ public class ChartsPanel extends JPanel {
             indicatorManager.getAdxChart(), indicatorManager.getTradeCountChart(), indicatorManager.getPremiumChart()
         };
         crosshairManager.syncDomainAxes(priceChart, otherCharts);
+    }
+
+    private void addPriceOpacitySlider() {
+        JLayeredPane layeredPane = zoomManager.getLayeredPane(0);
+        if (layeredPane == null) return;
+
+        priceOpacitySlider = new JSlider(0, 100, ChartConfig.getInstance().getPriceOpacity());
+        priceOpacitySlider.setOpaque(false);
+        priceOpacitySlider.setPreferredSize(new Dimension(60, 16));
+        priceOpacitySlider.setToolTipText("Price opacity: " + priceOpacitySlider.getValue() + "%");
+        priceOpacitySlider.addChangeListener(e -> {
+            int value = priceOpacitySlider.getValue();
+            priceOpacitySlider.setToolTipText("Price opacity: " + value + "%");
+            if (!priceOpacitySlider.getValueIsAdjusting()) {
+                ChartConfig.getInstance().setPriceOpacity(value);
+                refreshPriceChart();
+            }
+        });
+
+        // Position dynamically based on plot area
+        repositionPriceOpacitySlider();
+        layeredPane.add(priceOpacitySlider, JLayeredPane.PALETTE_LAYER);
+
+        layeredPane.addComponentListener(new java.awt.event.ComponentAdapter() {
+            @Override
+            public void componentResized(java.awt.event.ComponentEvent e) {
+                repositionPriceOpacitySlider();
+            }
+        });
+    }
+
+    private void repositionPriceOpacitySlider() {
+        if (priceOpacitySlider == null || priceChartPanel == null) return;
+        // Get the plot area from chart rendering info — available after first paint
+        var info = priceChartPanel.getChartRenderingInfo();
+        if (info != null && info.getPlotInfo() != null) {
+            java.awt.geom.Rectangle2D plotArea = info.getPlotInfo().getPlotArea();
+            if (plotArea != null && plotArea.getHeight() > 0) {
+                // "Price" annotation is at (0.01, 0.98) in plot coords with TOP_LEFT anchor
+                // 0.98 = 98% from bottom = 2% from top of plot area
+                int plotTop = (int) plotArea.getY();
+                int yOffset = (int) (plotArea.getHeight() * 0.02);
+                priceOpacitySlider.setBounds(42, plotTop + yOffset, 60, 16);
+                return;
+            }
+        }
+        // Fallback before first render
+        priceOpacitySlider.setBounds(42, 30, 60, 16);
     }
 
     private void toggleIndicatorZoom(int index) {
