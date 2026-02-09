@@ -1431,36 +1431,24 @@ public class IntelSettingsDialog extends SettingsDialog {
         }
     }
 
-    private static class ProfileCellRenderer extends JPanel implements ListCellRenderer<AiProfile> {
-        private final JLabel nameLabel = new JLabel();
-        private final JLabel descLabel = new JLabel();
+    private static class ProfileCellRenderer extends DefaultListCellRenderer {
         private final AiConfig aiConfig;
 
         ProfileCellRenderer(AiConfig aiConfig) {
             this.aiConfig = aiConfig;
-            setLayout(new BorderLayout(4, 0));
-            setBorder(BorderFactory.createEmptyBorder(4, 8, 4, 8));
-
-            nameLabel.setFont(nameLabel.getFont().deriveFont(Font.BOLD));
-            descLabel.setFont(descLabel.getFont().deriveFont(descLabel.getFont().getSize2D() - 1f));
-            descLabel.setForeground(UIManager.getColor("Label.disabledForeground"));
-
-            add(nameLabel, BorderLayout.NORTH);
-            add(descLabel, BorderLayout.SOUTH);
         }
 
         @Override
-        public Component getListCellRendererComponent(JList<? extends AiProfile> list, AiProfile profile,
+        public Component getListCellRendererComponent(JList<?> list, Object value,
                                                        int index, boolean isSelected, boolean cellHasFocus) {
-            boolean isDefault = profile.getId() != null && profile.getId().equals(aiConfig.getDefaultProfileId());
-            String name = (isDefault ? "\u2605 " : "") + profile.getName();
-            String provider = " [" + profile.getProvider() + "]";
-            nameLabel.setText(name + provider);
-            descLabel.setVisible(profile.getDescription() != null && !profile.getDescription().isEmpty());
-            descLabel.setText(profile.getDescription() != null ? profile.getDescription() : "");
-            setBackground(isSelected ? list.getSelectionBackground() : list.getBackground());
-            nameLabel.setForeground(isSelected ? list.getSelectionForeground() : list.getForeground());
-            setOpaque(true);
+            super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus);
+            if (value instanceof AiProfile profile) {
+                boolean isDefault = profile.getId() != null && profile.getId().equals(aiConfig.getDefaultProfileId());
+                String prefix = isDefault ? "\u2605 " : "";
+                String desc = profile.getDescription() != null && !profile.getDescription().isEmpty()
+                        ? " \u2014 " + profile.getDescription() : "";
+                setText(prefix + profile.getName() + " [" + profile.getProvider() + "]" + desc);
+            }
             return this;
         }
     }

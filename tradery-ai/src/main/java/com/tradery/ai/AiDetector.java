@@ -1,5 +1,8 @@
 package com.tradery.ai;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.util.ArrayList;
@@ -12,6 +15,7 @@ import java.util.concurrent.TimeUnit;
  */
 public class AiDetector {
 
+    private static final Logger log = LoggerFactory.getLogger(AiDetector.class);
     private static final int TIMEOUT_SECONDS = 3;
 
     public record DetectedProvider(
@@ -49,6 +53,7 @@ public class AiDetector {
     }
 
     private static List<DetectedProvider> detectClaude() {
+        String resolvedPath = AiEnvironment.resolve("claude");
         String version = runCommand("claude", "--version");
         boolean detected = version != null;
         String ver = detected ? version.trim() : null;
@@ -59,7 +64,7 @@ public class AiDetector {
                 AiProvider.CLAUDE,
                 "Claude Code",
                 "Anthropic's AI assistant CLI",
-                null, null, "claude",
+                null, null, resolvedPath,
                 "--print --output-format text --model haiku",
                 false, false,
                 "https://docs.anthropic.com/en/docs/claude-code/overview"
@@ -72,7 +77,7 @@ public class AiDetector {
                 AiProvider.CLAUDE,
                 "Claude \u2014 Fast (Haiku)",
                 "Quick extraction and simple tasks",
-                ver, null, "claude",
+                ver, null, resolvedPath,
                 "--print --output-format text --model haiku",
                 true, false,
                 "https://docs.anthropic.com/en/docs/claude-code/overview"
@@ -81,7 +86,7 @@ public class AiDetector {
                 AiProvider.CLAUDE,
                 "Claude \u2014 Balanced (Sonnet)",
                 "Analysis and research",
-                ver, null, "claude",
+                ver, null, resolvedPath,
                 "--print --output-format text --model sonnet",
                 true, false,
                 "https://docs.anthropic.com/en/docs/claude-code/overview"
@@ -90,7 +95,7 @@ public class AiDetector {
                 AiProvider.CLAUDE,
                 "Claude \u2014 Thinking (Opus)",
                 "Complex reasoning and deep research",
-                ver, null, "claude",
+                ver, null, resolvedPath,
                 "--print --output-format text --model opus",
                 true, false,
                 "https://docs.anthropic.com/en/docs/claude-code/overview"
@@ -99,6 +104,7 @@ public class AiDetector {
     }
 
     private static List<DetectedProvider> detectCodex() {
+        String resolvedPath = AiEnvironment.resolve("codex");
         String version = runCommand("codex", "--version");
         boolean detected = version != null;
         String ver = detected ? version.trim() : null;
@@ -108,7 +114,7 @@ public class AiDetector {
                 AiProvider.CODEX,
                 "Codex CLI",
                 "OpenAI's coding CLI",
-                null, null, "codex",
+                null, null, resolvedPath,
                 "exec",
                 false, false,
                 "https://github.com/openai/codex"
@@ -120,7 +126,7 @@ public class AiDetector {
                 AiProvider.CODEX,
                 "Codex \u2014 Fast (Mini)",
                 "Smaller, cost-effective model",
-                ver, null, "codex",
+                ver, null, resolvedPath,
                 "exec -m gpt-5.1-codex-mini",
                 true, false,
                 "https://github.com/openai/codex"
@@ -129,7 +135,7 @@ public class AiDetector {
                 AiProvider.CODEX,
                 "Codex \u2014 Latest",
                 "Most capable coding model",
-                ver, null, "codex",
+                ver, null, resolvedPath,
                 "exec -m gpt-5.3-codex",
                 true, false,
                 "https://github.com/openai/codex"
@@ -138,7 +144,7 @@ public class AiDetector {
                 AiProvider.CODEX,
                 "Codex \u2014 Max",
                 "Long-horizon agentic tasks",
-                ver, null, "codex",
+                ver, null, resolvedPath,
                 "exec -m gpt-5.1-codex-max",
                 true, false,
                 "https://github.com/openai/codex"
@@ -147,6 +153,7 @@ public class AiDetector {
     }
 
     private static DetectedProvider detectGemini() {
+        String resolvedPath = AiEnvironment.resolve("gemini");
         String version = runCommand("gemini", "--version");
         boolean detected = version != null;
         String ver = null;
@@ -164,7 +171,7 @@ public class AiDetector {
                 : "Google's AI CLI \u2014 free tier (1,000 req/day). Install: npm i -g @google/gemini-cli",
             ver,
             null,
-            "gemini",
+            resolvedPath,
             "-p",
             detected,
             false,
@@ -173,6 +180,7 @@ public class AiDetector {
     }
 
     private static List<DetectedProvider> detectOllama() {
+        String resolvedPath = AiEnvironment.resolve("ollama");
         List<DetectedProvider> results = new ArrayList<>();
         String version = runCommand("ollama", "--version");
         boolean installed = version != null;
@@ -227,7 +235,7 @@ public class AiDetector {
                     "Ollama \u2014 " + displayName,
                     "Local AI \u2014 free, private, no internet needed",
                     ver,
-                    "ollama run " + model,
+                    resolvedPath + " run " + model,
                     null,
                     null,
                     true,
@@ -259,10 +267,14 @@ public class AiDetector {
 
     private static String runCommand(String... command) {
         try {
-            ProcessBuilder pb = new ProcessBuilder(command);
+            // Resolve the CLI binary to an absolute path (handles .app bundle PATH issues)
+            String[] resolved = command.clone();
+            resolved[0] = AiEnvironment.resolve(command[0]);
+            log.debug("runCommand: {} -> {}", command[0], resolved[0]);
+
+            ProcessBuilder pb = new ProcessBuilder(resolved);
             pb.redirectErrorStream(true);
-            // Use expanded PATH to find CLIs in .app bundle environment
-            pb.environment().put("PATH", AiEnvironment.getExpandedPath());
+            AiEnvironment.applyToProcess(pb);
             Process process = pb.start();
 
             StringBuilder output = new StringBuilder();

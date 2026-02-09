@@ -423,6 +423,29 @@ public class SharingServiceImpl implements SharingService {
         }
     }
 
+    /**
+     * Clear stale device credential and re-enroll.
+     * Called when the rendezvous server rejects the current credential (e.g., backend key rotated).
+     */
+    private void reEnrollDevice() {
+        deviceCredential = null;
+        AuthConfig auth = AuthConfig.load();
+        auth.setDeviceId(null);
+        auth.setDeviceCredential(null);
+        auth.setBackendPublicKey(null);
+        auth.save();
+        try {
+            ensureSession(); // refresh Keycloak token (enrollment requires it)
+        } catch (Exception e) {
+            log.warn("Rendezvous: session refresh failed during re-enrollment: {}", e.getMessage());
+            return;
+        }
+        ensureDeviceEnrolled();
+        if (deviceCredential != null) {
+            log.info("Rendezvous: successfully re-enrolled after credential rejection");
+        }
+    }
+
     /** Sync IntelConfig.userEmail from Keycloak identity. */
     private void updateConfigEmail(String email) {
         IntelConfig config = IntelConfig.get();
@@ -451,7 +474,8 @@ public class SharingServiceImpl implements SharingService {
         AuthConfig auth = AuthConfig.load();
         auth.clear();
         localSession = null;
-        log.info("Logged out — auth tokens cleared");
+        deviceCredential = null;
+        log.info("Logged out — auth tokens and device credential cleared");
     }
 
     @Override
@@ -539,6 +563,19 @@ public class SharingServiceImpl implements SharingService {
                 var docIds = new ArrayList<>(workspaces.keySet());
                 rendezvousClient.announce(deviceCredential, peerId, announcePort, docIds);
                 log.info("Rendezvous: announced as {} with {} documents", peerId, docIds.size());
+            } catch (RendezvousClient.CredentialRejectedException e) {
+                log.warn("Rendezvous: credential rejected on initial announce, re-enrolling...");
+                reEnrollDevice();
+                // Re-announce with fresh credential
+                if (deviceCredential != null) {
+                    try {
+                        var docIds2 = new ArrayList<>(workspaces.keySet());
+                        rendezvousClient.announce(deviceCredential, peerId, announcePort, docIds2);
+                        log.info("Rendezvous: re-announced after re-enrollment with {} documents", docIds2.size());
+                    } catch (Exception e2) {
+                        log.warn("Rendezvous: re-announce after re-enrollment failed: {}", e2.getMessage());
+                    }
+                }
             } catch (Exception e) {
                 log.warn("Rendezvous: initial announce failed: {}", e.getMessage());
             }
@@ -566,6 +603,10 @@ public class SharingServiceImpl implements SharingService {
 
                         try {
                             rendezvousClient.announce(deviceCredential, peerId, announcePort, docIds);
+                        } catch (RendezvousClient.CredentialRejectedException e) {
+                            log.warn("Rendezvous: credential rejected, re-enrolling...");
+                            reEnrollDevice();
+                            continue; // retry on next loop iteration with fresh credential
                         } catch (Exception e) {
                             log.debug("Rendezvous: re-announce failed: {}", e.getMessage());
                         }
@@ -584,6 +625,10 @@ public class SharingServiceImpl implements SharingService {
                                 if (!peers.isEmpty()) {
                                     log.debug("Rendezvous: discovered {} peers for doc {}", peers.size(), docId);
                                 }
+                            } catch (RendezvousClient.CredentialRejectedException e) {
+                                log.warn("Rendezvous: credential rejected during discover, re-enrolling...");
+                                reEnrollDevice();
+                                break; // retry on next loop iteration
                             } catch (Exception e) {
                                 log.debug("Rendezvous: discover failed for doc {}: {}", docId, e.getMessage());
                             }

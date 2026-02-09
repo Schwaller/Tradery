@@ -151,6 +151,10 @@ upload_app() {
     local dmg_path="${module}/build/jpackage/${dmg_file}"
     local remote_dir="${SERVER_BASE}/${id}/releases/mac-os"
 
+    # Remove old DMGs before uploading new one
+    echo "  Cleaning old releases..."
+    ssh "$SERVER" "rm -f ${remote_dir}/*.dmg"
+
     echo "  Uploading ${dmg_file}..."
     scp "$dmg_path" "${SERVER}:${remote_dir}/${dmg_file}"
 

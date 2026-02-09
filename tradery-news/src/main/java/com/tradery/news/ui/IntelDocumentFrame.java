@@ -98,6 +98,7 @@ public class IntelDocumentFrame extends JFrame {
     public static SharingService getSharingService() { return sharingService; }
 
     // Chat
+    private JButton chatBtn;
     private static ChatStore chatStore;
     public static void setChatStore(ChatStore s) { chatStore = s; }
     public static ChatStore getChatStore() { return chatStore; }
@@ -434,6 +435,11 @@ public class IntelDocumentFrame extends JFrame {
         shareBtn.addActionListener(e -> showShareDialog());
         shareBtn.setVisible(sharingService != null);
         rightContent.add(shareBtn);
+
+        chatBtn = new ToolbarButton("Chat");
+        chatBtn.addActionListener(e -> openChat());
+        chatBtn.setVisible(sharingService != null);
+        rightContent.add(chatBtn);
 
         JButton dataStructureBtn = new ToolbarButton("Data Structure");
         dataStructureBtn.addActionListener(e -> showDataStructureWindow());
@@ -1473,6 +1479,9 @@ public class IntelDocumentFrame extends JFrame {
             JMenuItem friendsItem = new JMenuItem("Friends");
             friendsItem.addActionListener(ev -> showFriendsDialog());
             menu.add(friendsItem);
+            JMenuItem chatItem = new JMenuItem("Chat");
+            chatItem.addActionListener(ev -> openChat());
+            menu.add(chatItem);
             menu.addSeparator();
             JMenuItem logoutItem = new JMenuItem("Sign Out");
             logoutItem.addActionListener(ev -> {
@@ -1627,6 +1636,19 @@ public class IntelDocumentFrame extends JFrame {
         if (sharingService == null) return;
         FriendsDialog dialog = new FriendsDialog(this, sharingService, chatStore);
         dialog.setVisible(true);
+    }
+
+    private void openChat() {
+        if (sharingService == null) return;
+        ChatFrame.open(sharingService, chatStore, this);
+        ChatFrame.setOnUnreadChanged(this::updateChatBadge);
+    }
+
+    private void updateChatBadge() {
+        if (chatBtn == null) return;
+        int unread = ChatFrame.getUnreadCount();
+        SwingUtilities.invokeLater(() ->
+            chatBtn.setText(unread > 0 ? "Chat (" + unread + ")" : "Chat"));
     }
 
     private void showSettingsWindow() {

@@ -27,7 +27,7 @@ public class RendezvousServer {
     private static final Logger log = LoggerFactory.getLogger(RendezvousServer.class);
 
     /** Endpoints that don't require any auth. */
-    private static final Set<String> NO_AUTH_PATHS = Set.of("/health", "/backend-key");
+    private static final Set<String> NO_AUTH_PATHS = Set.of("/health", "/backend-key", "/stats");
 
     /** Endpoints that use Keycloak Bearer token (enrollment only). */
     private static final Set<String> KEYCLOAK_AUTH_PATHS = Set.of("/enroll-device");
@@ -138,6 +138,10 @@ public class RendezvousServer {
         });
 
         javalin.get("/health", ctx -> ctx.status(200).result("OK"));
+        javalin.get("/stats", ctx -> ctx.json(java.util.Map.of(
+                "onlinePeers", peerRegistry.size(),
+                "enrolledDevices", deviceRegistry.size()
+        )));
         javalin.get("/backend-key", ctx -> ctx.json(new BackendKeyResponse(keyStore.publicKeyBase64())));
         javalin.post("/enroll-device", this::handleEnroll);
         javalin.post("/rotate-credential", this::handleRotate);
@@ -210,14 +214,28 @@ public class RendezvousServer {
 
     private void handleAnnounce(Context ctx) {
         AnnounceRequest req = ctx.bodyAsClass(AnnounceRequest.class);
-        String userId = ctx.attribute("userId");
-        if (userId == null) userId = req.peerId(); // fallback for backward compat
-        String host = ctx.ip();
-        peerRegistry.announce(userId, host, req.port(),
+        // Use peerId from request body (email) — this is what clients use for self-skip.
+        // The credential userId (Keycloak UUID) is different from the email the client knows.
+        String peerId = req.peerId();
+        String host = getRealIp(ctx);
+        peerRegistry.announce(peerId, host, req.port(),
                 req.documentIds() != null ? req.documentIds() : List.of());
-        log.info("Announce: peer={} host={} port={} docs={}", userId, host, req.port(),
+        log.info("Announce: peer={} host={} port={} docs={}", peerId, host, req.port(),
                 req.documentIds() != null ? req.documentIds().size() : 0);
         ctx.status(200).result("OK");
+    }
+
+    /** Extract real client IP from X-Forwarded-For (set by Traefik/reverse proxy), fallback to ctx.ip(). */
+    private String getRealIp(Context ctx) {
+        String xff = ctx.header("X-Forwarded-For");
+        if (xff != null && !xff.isBlank()) {
+            // X-Forwarded-For: client, proxy1, proxy2 — first entry is the original client
+            String clientIp = xff.split(",")[0].trim();
+            if (!clientIp.isBlank()) return clientIp;
+        }
+        String xRealIp = ctx.header("X-Real-IP");
+        if (xRealIp != null && !xRealIp.isBlank()) return xRealIp.trim();
+        return ctx.ip();
     }
 
     private void handlePeers(Context ctx) {

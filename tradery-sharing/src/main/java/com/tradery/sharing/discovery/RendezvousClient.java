@@ -117,6 +117,9 @@ public class RendezvousClient {
                 .build();
 
         try (Response response = http.newCall(request).execute()) {
+            if (response.code() == 401 || response.code() == 403) {
+                throw new CredentialRejectedException("Announce rejected: " + response.code());
+            }
             if (!response.isSuccessful()) {
                 log.warn("Announce failed: {} {}", response.code(), response.message());
             }
@@ -134,6 +137,9 @@ public class RendezvousClient {
                 .build();
 
         try (Response response = http.newCall(request).execute()) {
+            if (response.code() == 401 || response.code() == 403) {
+                throw new CredentialRejectedException("Discover rejected: " + response.code());
+            }
             if (!response.isSuccessful() || response.body() == null) {
                 log.warn("Discover failed: {} {}", response.code(), response.message());
                 return List.of();
@@ -174,4 +180,9 @@ public class RendezvousClient {
     public record EnrollResult(String deviceId, String deviceCredential, String backendPublicKey) {}
     private record EnrollRequest(String keycloakToken, String devicePublicKey, String deviceName) {}
     private record AnnouncePayload(String peerId, int port, List<String> documentIds) {}
+
+    /** Thrown when the server rejects the device credential (401/403). */
+    public static class CredentialRejectedException extends IOException {
+        public CredentialRejectedException(String message) { super(message); }
+    }
 }
