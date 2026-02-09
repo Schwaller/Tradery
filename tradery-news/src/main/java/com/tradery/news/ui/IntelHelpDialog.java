@@ -24,7 +24,7 @@ public class IntelHelpDialog {
 
         Window window = SwingUtilities.getWindowAncestor(parent);
         instance = new MarkdownHelpDialog(window, "Intelligence Guide",
-                "/help/intel-guide.md", new Dimension(800, 600));
+                "/com/tradery/news/help/intel-guide.md", new Dimension(800, 600));
         instance.addWindowListener(new WindowAdapter() {
             @Override
             public void windowClosed(WindowEvent e) {

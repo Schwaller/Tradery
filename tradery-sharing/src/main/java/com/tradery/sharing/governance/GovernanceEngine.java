@@ -15,6 +15,7 @@ import java.util.List;
  *
  * <ul>
  *   <li><b>open</b> — all member facts are committed directly</li>
+ *   <li><b>user_curated</b> — same as open (full sync); per-user acceptance is display-layer only</li>
  *   <li><b>admin_approved</b> — admin/owner facts are committed directly;
  *       member facts go to pending for admin review</li>
  *   <li><b>voting</b> — all non-admin facts go to pending;
@@ -69,10 +70,10 @@ public class GovernanceEngine {
         FactStore store = workspace.entityStore().factStore();
 
         switch (govType) {
-            case OPEN -> {
-                // All members can commit directly
+            case OPEN, USER_CURATED -> {
+                // All members can commit directly (USER_CURATED filtering is display-layer only)
                 store.receiveFacts(facts);
-                log.info("OPEN: committed {} facts from {} for doc {}", facts.size(), remoteUserId, document.id());
+                log.info("{}: committed {} facts from {} for doc {}", govType, facts.size(), remoteUserId, document.id());
             }
             case ADMIN_APPROVED -> {
                 if (isPrivileged(role)) {

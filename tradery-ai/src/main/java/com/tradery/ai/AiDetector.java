@@ -261,8 +261,8 @@ public class AiDetector {
         try {
             ProcessBuilder pb = new ProcessBuilder(command);
             pb.redirectErrorStream(true);
-            // Inherit PATH from environment
-            pb.environment().putIfAbsent("PATH", System.getenv("PATH"));
+            // Use expanded PATH to find CLIs in .app bundle environment
+            pb.environment().put("PATH", AiEnvironment.getExpandedPath());
             Process process = pb.start();
 
             StringBuilder output = new StringBuilder();

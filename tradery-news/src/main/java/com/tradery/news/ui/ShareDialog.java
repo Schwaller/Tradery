@@ -31,7 +31,7 @@ public class ShareDialog extends JDialog {
 
     // Governance
     private ButtonGroup governanceGroup;
-    private JRadioButton openRadio, adminRadio, votingRadio;
+    private JRadioButton openRadio, adminRadio, votingRadio, curatedRadio;
     private JSpinner quorumSpinner;
     private JPanel governancePanel;
 
@@ -160,13 +160,17 @@ public class ShareDialog extends JDialog {
 
         governanceGroup = new ButtonGroup();
         openRadio = createRadio("Open", "All members can edit freely");
+        curatedRadio = createRadio("User Curated", "All data syncs \u2014 each user picks which entities to show");
         adminRadio = createRadio("Admin Approved", "Owner reviews incoming changes");
         votingRadio = createRadio("Voting", "Members vote on changes");
         governanceGroup.add(openRadio);
+        governanceGroup.add(curatedRadio);
         governanceGroup.add(adminRadio);
         governanceGroup.add(votingRadio);
 
         governancePanel.add(openRadio);
+        governancePanel.add(Box.createVerticalStrut(2));
+        governancePanel.add(curatedRadio);
         governancePanel.add(Box.createVerticalStrut(2));
         governancePanel.add(adminRadio);
         governancePanel.add(Box.createVerticalStrut(2));
@@ -257,6 +261,7 @@ public class ShareDialog extends JDialog {
         privateRadio.addActionListener(e -> updateSections());
         votingRadio.addActionListener(e -> quorumSpinner.setEnabled(true));
         openRadio.addActionListener(e -> quorumSpinner.setEnabled(false));
+        curatedRadio.addActionListener(e -> quorumSpinner.setEnabled(false));
         adminRadio.addActionListener(e -> quorumSpinner.setEnabled(false));
     }
 
@@ -275,7 +280,9 @@ public class ShareDialog extends JDialog {
 
         // Governance
         String govType = state.governanceType();
-        if ("ADMIN_APPROVED".equals(govType)) {
+        if ("USER_CURATED".equals(govType)) {
+            curatedRadio.setSelected(true);
+        } else if ("ADMIN_APPROVED".equals(govType)) {
             adminRadio.setSelected(true);
         } else if ("VOTING".equals(govType)) {
             votingRadio.setSelected(true);
@@ -435,7 +442,8 @@ public class ShareDialog extends JDialog {
         }
 
         String visibility = wantLocal ? "LOCAL" : "PRIVATE";
-        String govType = adminRadio.isSelected() ? "ADMIN_APPROVED"
+        String govType = curatedRadio.isSelected() ? "USER_CURATED"
+                       : adminRadio.isSelected() ? "ADMIN_APPROVED"
                        : votingRadio.isSelected() ? "VOTING" : "OPEN";
         double quorum = ((Number) quorumSpinner.getValue()).doubleValue() / 100.0;
 

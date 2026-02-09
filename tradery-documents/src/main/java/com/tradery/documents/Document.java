@@ -85,7 +85,7 @@ public class Document {
         public void setVotingQuorum(double votingQuorum) { this.votingQuorum = votingQuorum; }
 
         public enum Type {
-            OPEN, ADMIN_APPROVED, VOTING
+            OPEN, ADMIN_APPROVED, VOTING, USER_CURATED
         }
     }
 }

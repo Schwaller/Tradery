@@ -13,6 +13,7 @@ module com.tradery.news {
     // Java modules
     requires java.desktop;
     requires java.prefs;
+    requires java.sql;
     requires jdk.httpserver;
 
     // AI infrastructure
@@ -37,8 +38,7 @@ module com.tradery.news {
     requires static com.rometools.rome;  // RSS fetching
     requires static org.jsoup;           // HTML parsing
 
-    // SQLite
-    requires static org.xerial.sqlitejdbc;  // Optional - only needed for SQLite store
+    // SQLite (force-merged into merged module)
 
     // Logging
     requires org.slf4j;

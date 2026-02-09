@@ -71,7 +71,9 @@ public class SyncEngine {
 
         // Route through governance if the document has non-open governance
         Document.Governance governance = document.governance();
-        boolean hasGovernance = governance != null && governance.type() != Document.Governance.Type.OPEN;
+        boolean hasGovernance = governance != null
+                && governance.type() != Document.Governance.Type.OPEN
+                && governance.type() != Document.Governance.Type.USER_CURATED;
 
         if (hasGovernance && remoteUserId != null) {
             governanceEngine.routeIncomingFacts(workspace, document, members,

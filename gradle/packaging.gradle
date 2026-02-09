@@ -130,27 +130,44 @@ tasks.register('signApp') {
 }
 
 // Create DMG from signed .app
-tasks.register('createDmg', Exec) {
+// Uses two-step approach: writable image with extra headroom, then convert to compressed UDZO
+tasks.register('createDmg') {
     dependsOn 'signApp'
     group = 'packaging'
     description = 'Create DMG from signed .app bundle'
 
-    def outputDir = layout.buildDirectory.dir('jpackage').get().asFile
-    def appPath = new File(outputDir, "${project.ext.packagingAppName}.app")
-    def dmgPath = new File(outputDir, "${project.ext.packagingDmgName}-${project.version}.dmg")
-
-    doFirst {
-        // Remove existing DMG if present
-        if (dmgPath.exists()) dmgPath.delete()
-    }
-
-    commandLine 'hdiutil', 'create',
-        '-volname', project.ext.packagingDmgName,
-        '-srcfolder', appPath.absolutePath,
-        '-ov', '-format', 'UDZO',
-        dmgPath.absolutePath
-
     doLast {
+        def outputDir = layout.buildDirectory.dir('jpackage').get().asFile
+        def appPath = new File(outputDir, "${project.ext.packagingAppName}.app")
+        def dmgPath = new File(outputDir, "${project.ext.packagingDmgName}-${project.version}.dmg")
+        def tmpDmg = new File(outputDir, "tmp-rw.dmg")
+
+        if (dmgPath.exists()) dmgPath.delete()
+        if (tmpDmg.exists()) tmpDmg.delete()
+
+        // Calculate size with 50% headroom for filesystem overhead
+        def appSizeKb = 0L
+        appPath.eachFileRecurse { appSizeKb += it.length() }
+        def sizeMb = Math.max(((appSizeKb / 1024 / 1024) * 1.5).intValue(), 150)
+
+        // Create writable DMG with explicit size
+        project.exec {
+            commandLine 'hdiutil', 'create',
+                '-volname', project.ext.packagingDmgName,
+                '-srcfolder', appPath.absolutePath,
+                '-ov', '-format', 'UDRW',
+                '-size', "${sizeMb}m",
+                tmpDmg.absolutePath
+        }
+
+        // Convert to compressed read-only UDZO
+        project.exec {
+            commandLine 'hdiutil', 'convert', tmpDmg.absolutePath,
+                '-format', 'UDZO',
+                '-o', dmgPath.absolutePath
+        }
+
+        tmpDmg.delete()
         println "Created DMG: ${dmgPath}"
     }
 }

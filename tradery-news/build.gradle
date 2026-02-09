@@ -91,7 +91,7 @@ jlink {
     }
 
     // Force merge non-modular/automatic module dependencies
-    forceMerge('rome', 'jdom2', 'jsoup', 'okhttp', 'okio', 'slf4j', 'log4j')
+    forceMerge('rome', 'jdom2', 'jsoup', 'okhttp', 'okio', 'slf4j', 'log4j', 'sqlite')
 
     jpackage {
         imageName = 'Intelligence'

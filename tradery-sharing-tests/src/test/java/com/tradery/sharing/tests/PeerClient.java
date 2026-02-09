@@ -138,6 +138,20 @@ public class PeerClient {
         return lastCount;
     }
 
+    // ==================== Entity Acceptance (USER_CURATED) ====================
+
+    public void acceptEntity(String docId, String entityId) throws IOException {
+        post("/documents/" + docId + "/accept?entityId=" + entityId, Map.of());
+    }
+
+    public void unacceptEntity(String docId, String entityId) throws IOException {
+        post("/documents/" + docId + "/unaccept?entityId=" + entityId, Map.of());
+    }
+
+    public JsonNode getAcceptedEntities(String docId) throws IOException {
+        return get("/documents/" + docId + "/accepted");
+    }
+
     // ==================== Friendship ====================
 
     public void addFriend(String email, String displayName) throws IOException {

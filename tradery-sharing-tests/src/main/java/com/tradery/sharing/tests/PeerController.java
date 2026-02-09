@@ -69,6 +69,11 @@ public class PeerController {
         app.post("/sync", this::handleSync);
         app.get("/peers", this::handleGetPeers);
 
+        // Entity acceptance (USER_CURATED)
+        app.post("/documents/{id}/accept", this::handleAcceptEntity);
+        app.post("/documents/{id}/unaccept", this::handleUnacceptEntity);
+        app.get("/documents/{id}/accepted", this::handleGetAccepted);
+
         // Friendship management
         app.post("/friends", this::handleAddFriend);
         app.delete("/friends/{email}", this::handleRemoveFriend);
@@ -271,6 +276,58 @@ public class PeerController {
 
     private void handleGetPeers(Context ctx) {
         ctx.json(List.copyOf(peerManager.connectedPeerIds()));
+    }
+
+    // ==================== Entity Acceptance (USER_CURATED) ====================
+
+    private void handleAcceptEntity(Context ctx) {
+        String docId = ctx.pathParam("id");
+        DocumentWorkspace ws = workspaces.get(docId);
+        if (ws == null) {
+            ctx.status(404).result("Document not found: " + docId);
+            return;
+        }
+
+        String entityId = ctx.queryParam("entityId");
+        if (entityId == null) {
+            ctx.status(400).result("entityId required");
+            return;
+        }
+
+        ws.entityStore().factStore().acceptEntity(entityId);
+        log.info("Accepted entity {} in doc {}", entityId, docId);
+        ctx.status(200).result("OK");
+    }
+
+    private void handleUnacceptEntity(Context ctx) {
+        String docId = ctx.pathParam("id");
+        DocumentWorkspace ws = workspaces.get(docId);
+        if (ws == null) {
+            ctx.status(404).result("Document not found: " + docId);
+            return;
+        }
+
+        String entityId = ctx.queryParam("entityId");
+        if (entityId == null) {
+            ctx.status(400).result("entityId required");
+            return;
+        }
+
+        ws.entityStore().factStore().unacceptEntity(entityId);
+        log.info("Unaccepted entity {} in doc {}", entityId, docId);
+        ctx.status(200).result("OK");
+    }
+
+    private void handleGetAccepted(Context ctx) {
+        String docId = ctx.pathParam("id");
+        DocumentWorkspace ws = workspaces.get(docId);
+        if (ws == null) {
+            ctx.status(404).result("Document not found: " + docId);
+            return;
+        }
+
+        Set<String> accepted = ws.entityStore().factStore().getAcceptedEntityIds();
+        ctx.json(accepted);
     }
 
     // ==================== Friendship ====================

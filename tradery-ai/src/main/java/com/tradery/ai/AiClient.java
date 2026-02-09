@@ -90,6 +90,7 @@ public class AiClient {
             String cliPath = getCliPath(profile);
             ProcessBuilder pb = new ProcessBuilder(cliPath, "--version");
             pb.redirectErrorStream(true);
+            AiEnvironment.applyToProcess(pb);
             Process p = pb.start();
             boolean finished = p.waitFor(5, TimeUnit.SECONDS);
             return finished && p.exitValue() == 0;
@@ -118,6 +119,7 @@ public class AiClient {
             String cliPath = getCliPath(profile);
             ProcessBuilder pb = new ProcessBuilder(cliPath, "--version");
             pb.redirectErrorStream(true);
+            AiEnvironment.applyToProcess(pb);
             Process p = pb.start();
 
             StringBuilder output = new StringBuilder();
@@ -182,6 +184,7 @@ public class AiClient {
         try {
             ProcessBuilder pb = buildProcess(profile, cliPath, prompt);
             pb.redirectErrorStream(true);
+            AiEnvironment.applyToProcess(pb);
 
             Process process = pb.start();
 

@@ -105,6 +105,11 @@ public class SchemaRegistry {
         }
     }
 
+    /** Persist a single type's ERD position to DB. */
+    public void savePosition(SchemaType type) {
+        store.saveSchemaPosition(type);
+    }
+
     /** Persist current ERD positions to DB. */
     public void savePositions() {
         store.saveSchemaPositions(types.values());

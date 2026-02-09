@@ -209,19 +209,19 @@ public class ChartsPanel extends JPanel {
         }
         if (config.isIchimokuEnabled()) {
             overlayManager.setIchimokuOverlay(
-                config.getIchimokuConversionPeriod(),
-                config.getIchimokuBasePeriod(),
-                config.getIchimokuSpanBPeriod(),
-                config.getIchimokuDisplacement(),
-                candles
+                    config.getIchimokuConversionPeriod(),
+                    config.getIchimokuBasePeriod(),
+                    config.getIchimokuSpanBPeriod(),
+                    config.getIchimokuDisplacement(),
+                    candles
             );
         }
         if (config.isDailyVolumeProfileEnabled()) {
             overlayManager.setDailyVolumeProfileOverlay(
-                candles,
-                config.getDailyVolumeProfileBins(),
-                70.0,
-                config.getDailyVolumeProfileWidth()
+                    candles,
+                    config.getDailyVolumeProfileBins(),
+                    70.0,
+                    config.getDailyVolumeProfileWidth()
             );
         }
         // Pivot Points overlay (tradery-charts)
@@ -252,38 +252,38 @@ public class ChartsPanel extends JPanel {
     private void initializeCharts() {
         // Price chart
         priceChart = ChartFactory.createTimeSeriesChart(
-            null, null, null, new TimeSeriesCollection(), false, true, false);
+                null, null, null, new TimeSeriesCollection(), false, true, false);
         ChartStyles.stylizeChart(priceChart, "Price");
         priceChartPanel = createChartPanel(priceChart);
 
         // Equity chart
         equityChart = ChartFactory.createTimeSeriesChart(
-            null, null, null, new TimeSeriesCollection(), false, true, false);
+                null, null, null, new TimeSeriesCollection(), false, true, false);
         ChartStyles.stylizeChart(equityChart, "Equity");
         equityChartPanel = createChartPanel(equityChart);
 
         // Comparison chart
         comparisonChart = ChartFactory.createTimeSeriesChart(
-            null, null, null, new TimeSeriesCollection(), false, true, false);
+                null, null, null, new TimeSeriesCollection(), false, true, false);
         ChartStyles.stylizeChart(comparisonChart, "Strategy vs Buy & Hold");
         comparisonChartPanel = createChartPanel(comparisonChart);
 
         // Capital usage chart
         capitalUsageChart = ChartFactory.createTimeSeriesChart(
-            null, null, null, new TimeSeriesCollection(), false, true, false);
+                null, null, null, new TimeSeriesCollection(), false, true, false);
         ChartStyles.stylizeChart(capitalUsageChart, "Capital Usage");
         capitalUsageChartPanel = createChartPanel(capitalUsageChart);
 
         // Trade P&L chart
         tradePLChart = ChartFactory.createTimeSeriesChart(
-            null, null, null, new TimeSeriesCollection(), false, true, false);
+                null, null, null, new TimeSeriesCollection(), false, true, false);
         ChartStyles.stylizeChart(tradePLChart, "Trade P&L %");
         tradePLChartPanel = createChartPanel(tradePLChart);
 
         // Volume chart
         volumeChart = ChartFactory.createXYBarChart(
-            null, null, true, null, new XYSeriesCollection(),
-            org.jfree.chart.plot.PlotOrientation.VERTICAL, false, false, false);
+                null, null, true, null, new XYSeriesCollection(),
+                org.jfree.chart.plot.PlotOrientation.VERTICAL, false, false, false);
         ChartStyles.stylizeChart(volumeChart, "Volume");
         volumeChartPanel = createChartPanel(volumeChart);
     }
@@ -298,8 +298,8 @@ public class ChartsPanel extends JPanel {
         zoomManager.setOnLayoutChange(this::updateChartLayout);
 
         org.jfree.chart.ChartPanel[] coreChartPanels = {
-            priceChartPanel, volumeChartPanel, equityChartPanel,
-            comparisonChartPanel, capitalUsageChartPanel, tradePLChartPanel
+                priceChartPanel, volumeChartPanel, equityChartPanel,
+                comparisonChartPanel, capitalUsageChartPanel, tradePLChartPanel
         };
         zoomManager.createWrappers(coreChartPanels);
 
@@ -312,33 +312,33 @@ public class ChartsPanel extends JPanel {
 
         // Setup crosshairs
         crosshairManager.setupCoreChartCrosshairs(
-            priceChartPanel, equityChartPanel, comparisonChartPanel,
-            capitalUsageChartPanel, tradePLChartPanel, volumeChartPanel);
+                priceChartPanel, equityChartPanel, comparisonChartPanel,
+                capitalUsageChartPanel, tradePLChartPanel, volumeChartPanel);
         crosshairManager.setupIndicatorChartCrosshairs(
-            indicatorManager.getRsiChartPanel(),
-            indicatorManager.getMacdChartPanel(),
-            indicatorManager.getAtrChartPanel(),
-            indicatorManager.getDeltaChartPanel(),
-            indicatorManager.getCvdChartPanel(),
-            indicatorManager.getVolumeRatioChartPanel(),
-            indicatorManager.getWhaleChartPanel(),
-            indicatorManager.getRetailChartPanel(),
-            indicatorManager.getFundingChartPanel(),
-            indicatorManager.getOiChartPanel(),
-            indicatorManager.getStochasticChartPanel(),
-            indicatorManager.getRangePositionChartPanel(),
-            indicatorManager.getAdxChartPanel(),
-            indicatorManager.getTradeCountChartPanel(),
-            indicatorManager.getPremiumChartPanel());
+                indicatorManager.getRsiChartPanel(),
+                indicatorManager.getMacdChartPanel(),
+                indicatorManager.getAtrChartPanel(),
+                indicatorManager.getDeltaChartPanel(),
+                indicatorManager.getCvdChartPanel(),
+                indicatorManager.getVolumeRatioChartPanel(),
+                indicatorManager.getWhaleChartPanel(),
+                indicatorManager.getRetailChartPanel(),
+                indicatorManager.getFundingChartPanel(),
+                indicatorManager.getOiChartPanel(),
+                indicatorManager.getStochasticChartPanel(),
+                indicatorManager.getRangePositionChartPanel(),
+                indicatorManager.getAdxChartPanel(),
+                indicatorManager.getTradeCountChartPanel(),
+                indicatorManager.getPremiumChartPanel());
 
         // Sync domain axes
         JFreeChart[] otherCharts = {
-            volumeChart, equityChart, comparisonChart, capitalUsageChart, tradePLChart,
-            indicatorManager.getRsiChart(), indicatorManager.getMacdChart(), indicatorManager.getAtrChart(),
-            indicatorManager.getDeltaChart(), indicatorManager.getCvdChart(), indicatorManager.getVolumeRatioChart(),
-            indicatorManager.getWhaleChart(), indicatorManager.getRetailChart(), indicatorManager.getFundingChart(),
-            indicatorManager.getOiChart(), indicatorManager.getStochasticChart(), indicatorManager.getRangePositionChart(),
-            indicatorManager.getAdxChart(), indicatorManager.getTradeCountChart(), indicatorManager.getPremiumChart()
+                volumeChart, equityChart, comparisonChart, capitalUsageChart, tradePLChart,
+                indicatorManager.getRsiChart(), indicatorManager.getMacdChart(), indicatorManager.getAtrChart(),
+                indicatorManager.getDeltaChart(), indicatorManager.getCvdChart(), indicatorManager.getVolumeRatioChart(),
+                indicatorManager.getWhaleChart(), indicatorManager.getRetailChart(), indicatorManager.getFundingChart(),
+                indicatorManager.getOiChart(), indicatorManager.getStochasticChart(), indicatorManager.getRangePositionChart(),
+                indicatorManager.getAdxChart(), indicatorManager.getTradeCountChart(), indicatorManager.getPremiumChart()
         };
         crosshairManager.syncDomainAxes(priceChart, otherCharts);
     }
@@ -383,7 +383,7 @@ public class ChartsPanel extends JPanel {
                 // 0.98 = 98% from bottom = 2% from top of plot area
                 int plotTop = (int) plotArea.getY();
                 int yOffset = (int) (plotArea.getHeight() * 0.02);
-                priceOpacitySlider.setBounds(42, plotTop + yOffset, 60, 16);
+                priceOpacitySlider.setBounds(42, 20 + plotTop + yOffset, 60, 16);
                 return;
             }
         }
@@ -421,8 +421,8 @@ public class ChartsPanel extends JPanel {
 
         // Add zoom/pan/Y-axis drag listeners to all core chart panels with double-click callbacks
         org.jfree.chart.ChartPanel[] corePanels = {
-            priceChartPanel, equityChartPanel, comparisonChartPanel,
-            capitalUsageChartPanel, tradePLChartPanel, volumeChartPanel
+                priceChartPanel, equityChartPanel, comparisonChartPanel,
+                capitalUsageChartPanel, tradePLChartPanel, volumeChartPanel
         };
         int[] coreIndices = {0, 2, 3, 4, 5, 1}; // Map to zoomManager indices
         for (int i = 0; i < corePanels.length; i++) {
@@ -435,16 +435,16 @@ public class ChartsPanel extends JPanel {
 
         // Add zoom/pan listeners to indicator chart panels with double-click callbacks
         org.jfree.chart.ChartPanel[] indicatorPanels = {
-            indicatorManager.getRsiChartPanel(), indicatorManager.getMacdChartPanel(),
-            indicatorManager.getAtrChartPanel(), indicatorManager.getDeltaChartPanel(),
-            indicatorManager.getCvdChartPanel(), indicatorManager.getVolumeRatioChartPanel(),
-            indicatorManager.getWhaleChartPanel(), indicatorManager.getRetailChartPanel(),
-            indicatorManager.getFundingChartPanel(), indicatorManager.getOiChartPanel(),
-            indicatorManager.getPremiumChartPanel(), indicatorManager.getStochasticChartPanel(),
-            indicatorManager.getRangePositionChartPanel(), indicatorManager.getAdxChartPanel(),
-            indicatorManager.getTradeCountChartPanel(),
-            indicatorManager.getFearGreedChartPanel(),
-            indicatorManager.getHoldingCostCumulativeChartPanel(), indicatorManager.getHoldingCostEventsChartPanel()
+                indicatorManager.getRsiChartPanel(), indicatorManager.getMacdChartPanel(),
+                indicatorManager.getAtrChartPanel(), indicatorManager.getDeltaChartPanel(),
+                indicatorManager.getCvdChartPanel(), indicatorManager.getVolumeRatioChartPanel(),
+                indicatorManager.getWhaleChartPanel(), indicatorManager.getRetailChartPanel(),
+                indicatorManager.getFundingChartPanel(), indicatorManager.getOiChartPanel(),
+                indicatorManager.getPremiumChartPanel(), indicatorManager.getStochasticChartPanel(),
+                indicatorManager.getRangePositionChartPanel(), indicatorManager.getAdxChartPanel(),
+                indicatorManager.getTradeCountChartPanel(),
+                indicatorManager.getFearGreedChartPanel(),
+                indicatorManager.getHoldingCostCumulativeChartPanel(), indicatorManager.getHoldingCostEventsChartPanel()
         };
         for (int i = 0; i < indicatorPanels.length; i++) {
             interactionManager.attachListeners(indicatorPanels[i]);
@@ -527,27 +527,27 @@ public class ChartsPanel extends JPanel {
 
         // Include ALL charts so axis visibility can be controlled for each
         JFreeChart[] allCharts = {
-            priceChart, volumeChart,
-            indicatorManager.getRsiChart(), indicatorManager.getMacdChart(), indicatorManager.getAtrChart(),
-            indicatorManager.getDeltaChart(), indicatorManager.getCvdChart(), indicatorManager.getVolumeRatioChart(),
-            indicatorManager.getWhaleChart(), indicatorManager.getRetailChart(),
-            indicatorManager.getFundingChart(), indicatorManager.getOiChart(), indicatorManager.getPremiumChart(), indicatorManager.getFearGreedChart(),
-            indicatorManager.getStochasticChart(), indicatorManager.getRangePositionChart(), indicatorManager.getAdxChart(),
-            indicatorManager.getTradeCountChart(),
-            indicatorManager.getHoldingCostCumulativeChart(), indicatorManager.getHoldingCostEventsChart(),
-            equityChart, comparisonChart, capitalUsageChart, tradePLChart
+                priceChart, volumeChart,
+                indicatorManager.getRsiChart(), indicatorManager.getMacdChart(), indicatorManager.getAtrChart(),
+                indicatorManager.getDeltaChart(), indicatorManager.getCvdChart(), indicatorManager.getVolumeRatioChart(),
+                indicatorManager.getWhaleChart(), indicatorManager.getRetailChart(),
+                indicatorManager.getFundingChart(), indicatorManager.getOiChart(), indicatorManager.getPremiumChart(), indicatorManager.getFearGreedChart(),
+                indicatorManager.getStochasticChart(), indicatorManager.getRangePositionChart(), indicatorManager.getAdxChart(),
+                indicatorManager.getTradeCountChart(),
+                indicatorManager.getHoldingCostCumulativeChart(), indicatorManager.getHoldingCostEventsChart(),
+                equityChart, comparisonChart, capitalUsageChart, tradePLChart
         };
         JPanel[] allWrappers = {
-            zoomManager.getChartWrappers()[0], zoomManager.getChartWrappers()[1],
-            indicatorManager.getRsiChartWrapper(), indicatorManager.getMacdChartWrapper(), indicatorManager.getAtrChartWrapper(),
-            indicatorManager.getDeltaChartWrapper(), indicatorManager.getCvdChartWrapper(), indicatorManager.getVolumeRatioChartWrapper(),
-            indicatorManager.getWhaleChartWrapper(), indicatorManager.getRetailChartWrapper(),
-            indicatorManager.getFundingChartWrapper(), indicatorManager.getOiChartWrapper(), indicatorManager.getPremiumChartWrapper(), indicatorManager.getFearGreedChartWrapper(),
-            indicatorManager.getStochasticChartWrapper(), indicatorManager.getRangePositionChartWrapper(), indicatorManager.getAdxChartWrapper(),
-            indicatorManager.getTradeCountChartWrapper(),
-            indicatorManager.getHoldingCostCumulativeChartWrapper(), indicatorManager.getHoldingCostEventsChartWrapper(),
-            zoomManager.getChartWrappers()[2], zoomManager.getChartWrappers()[3],
-            zoomManager.getChartWrappers()[4], zoomManager.getChartWrappers()[5]
+                zoomManager.getChartWrappers()[0], zoomManager.getChartWrappers()[1],
+                indicatorManager.getRsiChartWrapper(), indicatorManager.getMacdChartWrapper(), indicatorManager.getAtrChartWrapper(),
+                indicatorManager.getDeltaChartWrapper(), indicatorManager.getCvdChartWrapper(), indicatorManager.getVolumeRatioChartWrapper(),
+                indicatorManager.getWhaleChartWrapper(), indicatorManager.getRetailChartWrapper(),
+                indicatorManager.getFundingChartWrapper(), indicatorManager.getOiChartWrapper(), indicatorManager.getPremiumChartWrapper(), indicatorManager.getFearGreedChartWrapper(),
+                indicatorManager.getStochasticChartWrapper(), indicatorManager.getRangePositionChartWrapper(), indicatorManager.getAdxChartWrapper(),
+                indicatorManager.getTradeCountChartWrapper(),
+                indicatorManager.getHoldingCostCumulativeChartWrapper(), indicatorManager.getHoldingCostEventsChartWrapper(),
+                zoomManager.getChartWrappers()[2], zoomManager.getChartWrappers()[3],
+                zoomManager.getChartWrappers()[4], zoomManager.getChartWrappers()[5]
         };
 
         // Check if in full-screen mode - use simple layout for single chart
@@ -676,8 +676,8 @@ public class ChartsPanel extends JPanel {
                     axis.setTickMarksVisible(showLabels);
                     // Price chart (first) has time labels at top, others at bottom
                     plot.setDomainAxisLocation(isFirst
-                        ? org.jfree.chart.axis.AxisLocation.TOP_OR_RIGHT
-                        : org.jfree.chart.axis.AxisLocation.BOTTOM_OR_LEFT);
+                            ? org.jfree.chart.axis.AxisLocation.TOP_OR_RIGHT
+                            : org.jfree.chart.axis.AxisLocation.BOTTOM_OR_LEFT);
                 }
             }
         }
@@ -705,9 +705,9 @@ public class ChartsPanel extends JPanel {
             return;
         }
         zoomManager.updateFixedWidthMode(
-            chartsContainer.getWidth(),
-            currentCandles.size(),
-            this::updateVisibleTimeRange
+                chartsContainer.getWidth(),
+                currentCandles.size(),
+                this::updateVisibleTimeRange
         );
         if (!zoomManager.isFixedWidthMode()) {
             resetDomainAxisRange();
@@ -780,8 +780,8 @@ public class ChartsPanel extends JPanel {
         long startTime = currentCandles.get(0).timestamp();
         long endTime = currentCandles.get(currentCandles.size() - 1).timestamp();
         JFreeChart[] charts = {
-            priceChart, volumeChart, equityChart, comparisonChart, capitalUsageChart, tradePLChart,
-            indicatorManager.getRsiChart(), indicatorManager.getMacdChart(), indicatorManager.getAtrChart()
+                priceChart, volumeChart, equityChart, comparisonChart, capitalUsageChart, tradePLChart,
+                indicatorManager.getRsiChart(), indicatorManager.getMacdChart(), indicatorManager.getAtrChart()
         };
 
         for (JFreeChart chart : charts) {
@@ -1237,7 +1237,7 @@ public class ChartsPanel extends JPanel {
     public boolean isAnyOrderflowChartEnabled() {
         // Include footprint heatmap overlay - it also needs aggTrades
         return indicatorManager.isAnyOrderflowEnabled()
-            || ChartConfig.getInstance().isFootprintHeatmapEnabled();
+                || ChartConfig.getInstance().isFootprintHeatmapEnabled();
     }
 
     public void setIndicatorEngine(com.tradery.core.indicators.IndicatorEngine engine) {
@@ -1389,7 +1389,7 @@ public class ChartsPanel extends JPanel {
     /**
      * Set ATR Bands overlay using tradery-charts AtrBandsOverlay.
      *
-     * @param period ATR calculation period
+     * @param period     ATR calculation period
      * @param multiplier Band width multiplier
      */
     public void setAtrBandsOverlay(int period, double multiplier) {
@@ -1422,7 +1422,7 @@ public class ChartsPanel extends JPanel {
     /**
      * Set Supertrend overlay using tradery-charts SupertrendOverlay.
      *
-     * @param period ATR period for Supertrend calculation
+     * @param period     ATR period for Supertrend calculation
      * @param multiplier ATR multiplier for band width
      */
     public void setSupertrendOverlay(int period, double multiplier) {
@@ -1455,8 +1455,8 @@ public class ChartsPanel extends JPanel {
     /**
      * Set Keltner Channel overlay using tradery-charts KeltnerChannelOverlay.
      *
-     * @param emaPeriod EMA period for the middle line
-     * @param atrPeriod ATR period for band calculation
+     * @param emaPeriod  EMA period for the middle line
+     * @param atrPeriod  ATR period for band calculation
      * @param multiplier ATR multiplier for band width
      */
     public void setKeltnerOverlay(int emaPeriod, int atrPeriod, double multiplier) {
@@ -1489,7 +1489,7 @@ public class ChartsPanel extends JPanel {
     /**
      * Set Donchian Channel overlay using tradery-charts DonchianChannelOverlay.
      *
-     * @param period Lookback period for highest high/lowest low
+     * @param period     Lookback period for highest high/lowest low
      * @param showMiddle Whether to show the middle line
      */
     public void setDonchianOverlay(int period, boolean showMiddle) {
@@ -1571,7 +1571,7 @@ public class ChartsPanel extends JPanel {
      * Call this before updateCharts() when candles change.
      */
     public void setIndicatorDataContext(List<Candle> candles, String symbol, String timeframe,
-                                         long startTime, long endTime) {
+                                        long startTime, long endTime) {
         if (candles != null && !candles.isEmpty()) {
             indicatorManager.setDataContext(candles, symbol, timeframe, startTime, endTime);
             overlayManager.setDataContext(symbol, timeframe);
@@ -1610,14 +1610,14 @@ public class ChartsPanel extends JPanel {
         long startTime = candles.get(0).timestamp();
         long endTime = candles.get(candles.size() - 1).timestamp();
         JFreeChart[] allCharts = {
-            priceChart, volumeChart, equityChart, comparisonChart, capitalUsageChart, tradePLChart,
-            indicatorManager.getRsiChart(), indicatorManager.getMacdChart(), indicatorManager.getAtrChart(),
-            indicatorManager.getDeltaChart(), indicatorManager.getCvdChart(), indicatorManager.getVolumeRatioChart(),
-            indicatorManager.getWhaleChart(), indicatorManager.getRetailChart(),
-            indicatorManager.getFundingChart(), indicatorManager.getOiChart(), indicatorManager.getPremiumChart(),
-            indicatorManager.getFearGreedChart(),
-            indicatorManager.getStochasticChart(), indicatorManager.getRangePositionChart(),
-            indicatorManager.getAdxChart(), indicatorManager.getTradeCountChart()
+                priceChart, volumeChart, equityChart, comparisonChart, capitalUsageChart, tradePLChart,
+                indicatorManager.getRsiChart(), indicatorManager.getMacdChart(), indicatorManager.getAtrChart(),
+                indicatorManager.getDeltaChart(), indicatorManager.getCvdChart(), indicatorManager.getVolumeRatioChart(),
+                indicatorManager.getWhaleChart(), indicatorManager.getRetailChart(),
+                indicatorManager.getFundingChart(), indicatorManager.getOiChart(), indicatorManager.getPremiumChart(),
+                indicatorManager.getFearGreedChart(),
+                indicatorManager.getStochasticChart(), indicatorManager.getRangePositionChart(),
+                indicatorManager.getAdxChart(), indicatorManager.getTradeCountChart()
         };
         for (JFreeChart chart : allCharts) {
             if (chart != null) {
@@ -1640,11 +1640,11 @@ public class ChartsPanel extends JPanel {
 
         // Clear annotations except title and overlays (footprint heatmap, daily volume profile)
         plot.getAnnotations().stream()
-            .filter(a -> !(a instanceof XYTitleAnnotation))
-            .filter(a -> !(a instanceof com.tradery.forge.ui.charts.footprint.FootprintHeatmapAnnotation))
-            .filter(a -> !(a instanceof com.tradery.forge.ui.charts.DailyVolumeProfileAnnotation))
-            .toList()
-            .forEach(plot::removeAnnotation);
+                .filter(a -> !(a instanceof XYTitleAnnotation))
+                .filter(a -> !(a instanceof com.tradery.forge.ui.charts.footprint.FootprintHeatmapAnnotation))
+                .filter(a -> !(a instanceof com.tradery.forge.ui.charts.DailyVolumeProfileAnnotation))
+                .toList()
+                .forEach(plot::removeAnnotation);
 
         boolean candlestickMode = ChartConfig.getInstance().isCandlestickMode();
         int priceOpacity = ChartConfig.getInstance().getPriceOpacity();
@@ -1655,7 +1655,7 @@ public class ChartsPanel extends JPanel {
             OHLCSeries ohlcSeries = new OHLCSeries("Price");
             for (Candle c : candles) {
                 ohlcSeries.add(new Millisecond(new Date(c.timestamp())),
-                    c.open(), c.high(), c.low(), c.close());
+                        c.open(), c.high(), c.low(), c.close());
             }
             OHLCSeriesCollection dataset = new OHLCSeriesCollection();
             dataset.addSeries(ohlcSeries);
@@ -1688,7 +1688,7 @@ public class ChartsPanel extends JPanel {
 
             // Use XYDifferenceRenderer for blueish cloud fill
             XYDifferenceRenderer cloudRenderer = new XYDifferenceRenderer(
-                ChartStyles.HL_CLOUD_COLOR, ChartStyles.HL_CLOUD_COLOR, false);
+                    ChartStyles.HL_CLOUD_COLOR, ChartStyles.HL_CLOUD_COLOR, false);
             cloudRenderer.setSeriesPaint(0, new Color(0, 0, 0, 0));  // Invisible lines
             cloudRenderer.setSeriesPaint(1, new Color(0, 0, 0, 0));
             plot.setRenderer(0, cloudRenderer);
@@ -1719,9 +1719,9 @@ public class ChartsPanel extends JPanel {
         if (trades == null) return;
 
         java.util.List<Trade> validTrades = trades.stream()
-            .filter(t -> t.exitTime() != null && t.exitPrice() != null && !"rejected".equals(t.exitReason()))
-            .sorted((a, b) -> Long.compare(a.entryTime(), b.entryTime()))
-            .toList();
+                .filter(t -> t.exitTime() != null && t.exitPrice() != null && !"rejected".equals(t.exitReason()))
+                .sorted((a, b) -> Long.compare(a.entryTime(), b.entryTime()))
+                .toList();
 
         java.util.Map<String, java.util.List<Trade>> tradesByGroup = new java.util.LinkedHashMap<>();
         for (Trade t : validTrades) {
@@ -1736,9 +1736,9 @@ public class ChartsPanel extends JPanel {
                 Color color = isWin ? ChartStyles.WIN_COLOR : ChartStyles.LOSS_COLOR;
 
                 XYLineAnnotation tradeLine = new XYLineAnnotation(
-                    t.entryTime(), t.entryPrice(),
-                    t.exitTime(), t.exitPrice(),
-                    ChartStyles.TRADE_LINE_STROKE, color);
+                        t.entryTime(), t.entryPrice(),
+                        t.exitTime(), t.exitPrice(),
+                        ChartStyles.TRADE_LINE_STROKE, color);
                 plot.addAnnotation(tradeLine);
             } else {
                 // DCA position
@@ -1761,23 +1761,23 @@ public class ChartsPanel extends JPanel {
                 Color verticalColor = new Color(color.getRed(), color.getGreen(), color.getBlue(), 89);
                 for (Trade t : group) {
                     XYLineAnnotation verticalLine = new XYLineAnnotation(
-                        t.entryTime(), t.entryPrice(),
-                        t.entryTime(), avgEntryPrice,
-                        ChartStyles.THIN_STROKE, verticalColor);
+                            t.entryTime(), t.entryPrice(),
+                            t.entryTime(), avgEntryPrice,
+                            ChartStyles.THIN_STROKE, verticalColor);
                     plot.addAnnotation(verticalLine);
                 }
 
                 XYLineAnnotation avgLine = new XYLineAnnotation(
-                    firstEntryTime, avgEntryPrice,
-                    lastEntryTime, avgEntryPrice,
-                    ChartStyles.TRADE_LINE_STROKE, color);
+                        firstEntryTime, avgEntryPrice,
+                        lastEntryTime, avgEntryPrice,
+                        ChartStyles.TRADE_LINE_STROKE, color);
                 plot.addAnnotation(avgLine);
 
                 long centerTime = (firstEntryTime + lastEntryTime) / 2;
                 XYLineAnnotation exitLine = new XYLineAnnotation(
-                    centerTime, avgEntryPrice,
-                    lastTrade.exitTime(), lastTrade.exitPrice(),
-                    ChartStyles.TRADE_LINE_STROKE, color);
+                        centerTime, avgEntryPrice,
+                        lastTrade.exitTime(), lastTrade.exitPrice(),
+                        ChartStyles.TRADE_LINE_STROKE, color);
                 plot.addAnnotation(exitLine);
 
                 // Dots at endpoints
@@ -1791,15 +1791,15 @@ public class ChartsPanel extends JPanel {
                 plot.addAnnotation(new org.jfree.chart.annotations.AbstractXYAnnotation() {
                     @Override
                     public void draw(java.awt.Graphics2D g2, XYPlot plot, java.awt.geom.Rectangle2D dataArea,
-                            ValueAxis domainAxis, ValueAxis rangeAxis, int rendererIndex,
-                            org.jfree.chart.plot.PlotRenderingInfo info) {
+                                     ValueAxis domainAxis, ValueAxis rangeAxis, int rendererIndex,
+                                     org.jfree.chart.plot.PlotRenderingInfo info) {
                         double x1 = domainAxis.valueToJava2D(cTime, dataArea, plot.getDomainAxisEdge());
                         double y1 = rangeAxis.valueToJava2D(avgPrice, dataArea, plot.getRangeAxisEdge());
                         double x2 = domainAxis.valueToJava2D(exitTime, dataArea, plot.getDomainAxisEdge());
                         double y2 = rangeAxis.valueToJava2D(exitPrice, dataArea, plot.getRangeAxisEdge());
                         g2.setColor(dotColor);
-                        g2.fill(new Ellipse2D.Double(x1 - dotSize/2, y1 - dotSize/2, dotSize, dotSize));
-                        g2.fill(new Ellipse2D.Double(x2 - dotSize/2, y2 - dotSize/2, dotSize, dotSize));
+                        g2.fill(new Ellipse2D.Double(x1 - dotSize / 2, y1 - dotSize / 2, dotSize, dotSize));
+                        g2.fill(new Ellipse2D.Double(x2 - dotSize / 2, y2 - dotSize / 2, dotSize, dotSize));
                     }
                 });
             }
@@ -1831,46 +1831,46 @@ public class ChartsPanel extends JPanel {
 
             // Draw highlight line (thicker, brighter)
             XYLineAnnotation highlight = new XYLineAnnotation(
-                entryTime, entryPrice,
-                exitTime, exitPrice,
-                highlightStroke, new Color(255, 215, 0)); // Gold
+                    entryTime, entryPrice,
+                    exitTime, exitPrice,
+                    highlightStroke, new Color(255, 215, 0)); // Gold
             plot.addAnnotation(highlight);
             highlightAnnotations.add(highlight);
 
             // Draw entry/exit markers
             double markerSize = 10.0;
             org.jfree.chart.annotations.AbstractXYAnnotation entryMarker =
-                new org.jfree.chart.annotations.AbstractXYAnnotation() {
-                    @Override
-                    public void draw(java.awt.Graphics2D g2, XYPlot plot, java.awt.geom.Rectangle2D dataArea,
-                            ValueAxis domainAxis, ValueAxis rangeAxis, int rendererIndex,
-                            org.jfree.chart.plot.PlotRenderingInfo info) {
-                        double x = domainAxis.valueToJava2D(entryTime, dataArea, plot.getDomainAxisEdge());
-                        double y = rangeAxis.valueToJava2D(entryPrice, dataArea, plot.getRangeAxisEdge());
-                        g2.setColor(new Color(255, 215, 0));
-                        g2.setStroke(new BasicStroke(2.0f));
-                        g2.draw(new Ellipse2D.Double(x - markerSize/2, y - markerSize/2, markerSize, markerSize));
-                        g2.fill(new Ellipse2D.Double(x - 3, y - 3, 6, 6));
-                    }
-                };
+                    new org.jfree.chart.annotations.AbstractXYAnnotation() {
+                        @Override
+                        public void draw(java.awt.Graphics2D g2, XYPlot plot, java.awt.geom.Rectangle2D dataArea,
+                                         ValueAxis domainAxis, ValueAxis rangeAxis, int rendererIndex,
+                                         org.jfree.chart.plot.PlotRenderingInfo info) {
+                            double x = domainAxis.valueToJava2D(entryTime, dataArea, plot.getDomainAxisEdge());
+                            double y = rangeAxis.valueToJava2D(entryPrice, dataArea, plot.getRangeAxisEdge());
+                            g2.setColor(new Color(255, 215, 0));
+                            g2.setStroke(new BasicStroke(2.0f));
+                            g2.draw(new Ellipse2D.Double(x - markerSize / 2, y - markerSize / 2, markerSize, markerSize));
+                            g2.fill(new Ellipse2D.Double(x - 3, y - 3, 6, 6));
+                        }
+                    };
             plot.addAnnotation(entryMarker);
             highlightAnnotations.add(entryMarker);
 
             if (t.exitTime() != null && t.exitPrice() != null) {
                 org.jfree.chart.annotations.AbstractXYAnnotation exitMarker =
-                    new org.jfree.chart.annotations.AbstractXYAnnotation() {
-                        @Override
-                        public void draw(java.awt.Graphics2D g2, XYPlot plot, java.awt.geom.Rectangle2D dataArea,
-                                ValueAxis domainAxis, ValueAxis rangeAxis, int rendererIndex,
-                                org.jfree.chart.plot.PlotRenderingInfo info) {
-                            double x = domainAxis.valueToJava2D(exitTime, dataArea, plot.getDomainAxisEdge());
-                            double y = rangeAxis.valueToJava2D(exitPrice, dataArea, plot.getRangeAxisEdge());
-                            g2.setColor(new Color(255, 215, 0));
-                            g2.setStroke(new BasicStroke(2.0f));
-                            g2.draw(new Ellipse2D.Double(x - markerSize/2, y - markerSize/2, markerSize, markerSize));
-                            g2.fill(new Ellipse2D.Double(x - 3, y - 3, 6, 6));
-                        }
-                    };
+                        new org.jfree.chart.annotations.AbstractXYAnnotation() {
+                            @Override
+                            public void draw(java.awt.Graphics2D g2, XYPlot plot, java.awt.geom.Rectangle2D dataArea,
+                                             ValueAxis domainAxis, ValueAxis rangeAxis, int rendererIndex,
+                                             org.jfree.chart.plot.PlotRenderingInfo info) {
+                                double x = domainAxis.valueToJava2D(exitTime, dataArea, plot.getDomainAxisEdge());
+                                double y = rangeAxis.valueToJava2D(exitPrice, dataArea, plot.getRangeAxisEdge());
+                                g2.setColor(new Color(255, 215, 0));
+                                g2.setStroke(new BasicStroke(2.0f));
+                                g2.draw(new Ellipse2D.Double(x - markerSize / 2, y - markerSize / 2, markerSize, markerSize));
+                                g2.fill(new Ellipse2D.Double(x - 3, y - 3, 6, 6));
+                            }
+                        };
                 plot.addAnnotation(exitMarker);
                 highlightAnnotations.add(exitMarker);
             }
@@ -1965,7 +1965,7 @@ public class ChartsPanel extends JPanel {
         TimeSeries usageSeries = new TimeSeries("Capital Usage");
 
         List<Trade> validTrades = trades == null ? List.of() : trades.stream()
-            .filter(t -> t.quantity() > 0).toList();
+                .filter(t -> t.quantity() > 0).toList();
 
         if (validTrades.isEmpty()) {
             for (Candle c : candles) {

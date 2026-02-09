@@ -18,6 +18,7 @@ public class EntityStore {
     private static final ObjectMapper JSON = new ObjectMapper();
     private final FactStore factStore;
     private boolean draftMode = true;
+    private boolean curatedMode = false;
     private Runnable onPendingChanged;
 
     public EntityStore() {
@@ -34,6 +35,77 @@ public class EntityStore {
     public boolean isDraftMode() { return draftMode; }
 
     public void setOnPendingChanged(Runnable callback) { this.onPendingChanged = callback; }
+
+    public boolean isCuratedMode() { return curatedMode; }
+
+    /**
+     * Enable or disable curated mode. When enabling for the first time,
+     * bulk-accepts all existing entities to prevent data loss on transition.
+     */
+    public void setCuratedMode(boolean enabled) {
+        this.curatedMode = enabled;
+        if (enabled) {
+            // If no entities are accepted yet, bulk-accept all existing ones (transition safety)
+            if (factStore.getAcceptedCount() == 0) {
+                List<CoinEntity> all = loadAllEntities();
+                if (!all.isEmpty()) {
+                    List<String> ids = new ArrayList<>();
+                    for (CoinEntity e : all) ids.add(e.id());
+                    factStore.acceptEntities(ids);
+                }
+            }
+        }
+    }
+
+    // ==================== CURATED ENTITY QUERIES ====================
+
+    /** Load only entities that are accepted in the local view (USER_CURATED mode). */
+    public List<CoinEntity> loadAcceptedEntities() {
+        Set<String> accepted = factStore.getAcceptedEntityIds();
+        List<CoinEntity> all = loadAllEntities();
+        return all.stream().filter(e -> accepted.contains(e.id())).toList();
+    }
+
+    /** Load entities that are NOT accepted (the "pool" in USER_CURATED mode). */
+    public List<CoinEntity> loadUnacceptedEntities() {
+        Set<String> accepted = factStore.getAcceptedEntityIds();
+        List<CoinEntity> all = loadAllEntities();
+        return all.stream().filter(e -> !accepted.contains(e.id())).toList();
+    }
+
+    /** Load relationships where both endpoints are accepted. */
+    public List<CoinRelationship> loadAcceptedRelationships() {
+        Set<String> accepted = factStore.getAcceptedEntityIds();
+        List<CoinRelationship> all = loadAllRelationships();
+        return all.stream()
+                .filter(r -> accepted.contains(r.fromId()) && accepted.contains(r.toId()))
+                .toList();
+    }
+
+    /** Accept an entity into the local view. */
+    public void acceptEntity(String entityId) {
+        factStore.acceptEntity(entityId);
+    }
+
+    /** Remove an entity from the local view. */
+    public void unacceptEntity(String entityId) {
+        factStore.unacceptEntity(entityId);
+    }
+
+    /** Check if an entity is accepted. */
+    public boolean isEntityAccepted(String entityId) {
+        return factStore.isEntityAccepted(entityId);
+    }
+
+    /** Get count of accepted entities. */
+    public int getAcceptedCount() {
+        return factStore.getAcceptedCount();
+    }
+
+    /** Get all accepted entity IDs. */
+    public Set<String> getAcceptedEntityIds() {
+        return factStore.getAcceptedEntityIds();
+    }
 
     private void notifyPendingChanged() {
         if (onPendingChanged != null) {
@@ -211,6 +283,11 @@ public class EntityStore {
         }
 
         routeFacts(facts, source);
+
+        // Auto-accept locally created entities in curated mode
+        if (curatedMode) {
+            factStore.acceptEntity(entity.id());
+        }
     }
 
     public void replaceEntitiesBySource(String sourceId, List<CoinEntity> entities) {
@@ -596,6 +673,15 @@ public class EntityStore {
         String eid = "_type:" + typeId;
         String json = schemaAttributeToJson(attr);
         routeFact(eid, "attr:" + attr.name(), json, "manual");
+    }
+
+    public void saveSchemaPosition(SchemaType type) {
+        String eid = "_type:" + type.id();
+        List<FactStore.PendingFact> facts = List.of(
+            new FactStore.PendingFact(eid, "erd_x", String.valueOf(type.erdX()), "manual"),
+            new FactStore.PendingFact(eid, "erd_y", String.valueOf(type.erdY()), "manual")
+        );
+        routeFacts(facts, "manual");
     }
 
     public void saveSchemaPositions(Collection<SchemaType> types) {

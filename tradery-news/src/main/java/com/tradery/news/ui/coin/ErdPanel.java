@@ -46,6 +46,7 @@ public class ErdPanel extends JPanel {
     private SchemaType selectedType;
     private SchemaType hoveredType;
     private SchemaType draggedType;
+    private boolean didDrag; // true only if mouseDragged actually moved the type
     private double dragOffsetX, dragOffsetY;
     private boolean panning;
     private int lastMouseX, lastMouseY;
@@ -891,9 +892,10 @@ public class ErdPanel extends JPanel {
                     }
 
                     if (type != null) {
-                        // Start dragging type
+                        // Start potential drag
                         selectedType = type;
                         draggedType = type;
+                        didDrag = false;
                         dragOffsetX = wx - type.erdX();
                         dragOffsetY = wy - type.erdY();
                         setCursor(Cursor.getPredefinedCursor(Cursor.MOVE_CURSOR));
@@ -932,6 +934,7 @@ public class ErdPanel extends JPanel {
                     lastMouseY = e.getY();
                     repaint();
                 } else if (draggedType != null) {
+                    didDrag = true;
                     Point2D wp = screenToWorld(e.getX(), e.getY());
                     draggedType.setErdX(wp.getX() - dragOffsetX);
                     draggedType.setErdY(wp.getY() - dragOffsetY);
@@ -959,12 +962,13 @@ public class ErdPanel extends JPanel {
                     setCursor(Cursor.getDefaultCursor());
                 }
                 if (draggedType != null) {
+                    SchemaType movedType = draggedType;
                     draggedType = null;
                     setCursor(Cursor.getDefaultCursor());
-                    // Only persist position changes in manual mode
-                    if (layoutMode == LayoutMode.MANUAL) {
+                    // Only persist if actually dragged (not just clicked) and in manual mode
+                    if (didDrag && layoutMode == LayoutMode.MANUAL) {
                         cacheManualPositions();
-                        savePositions();
+                        savePosition(movedType);
                     }
                 }
             }
@@ -1657,6 +1661,12 @@ public class ErdPanel extends JPanel {
             fireDataChanged();
         });
         popup.show(this, e.getX(), e.getY());
+    }
+
+    private void savePosition(SchemaType type) {
+        new Thread(() -> {
+            if (registry != null) registry.savePosition(type);
+        }).start();
     }
 
     private void savePositions() {

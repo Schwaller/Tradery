@@ -74,6 +74,76 @@ public class FactStore {
         catch (SQLException ignored) {}
     }
 
+    /** Delete a key from local_config. Silently ignores errors. */
+    public void deleteLocalConfig(String key) {
+        if (conn == null) return;
+        try (PreparedStatement ps = conn.prepareStatement(
+                "DELETE FROM local_config WHERE key = ?")) {
+            ps.setString(1, key);
+            ps.execute();
+        } catch (SQLException ignored) {}
+    }
+
+    // ==================== ENTITY ACCEPTANCE (USER_CURATED) ====================
+
+    private static final String ACCEPTED_PREFIX = "accepted:";
+
+    /** Mark an entity as accepted in the local view (USER_CURATED mode). */
+    public void acceptEntity(String entityId) {
+        setLocalConfig(ACCEPTED_PREFIX + entityId, "1");
+    }
+
+    /** Remove an entity from the local accepted set (USER_CURATED mode). */
+    public void unacceptEntity(String entityId) {
+        deleteLocalConfig(ACCEPTED_PREFIX + entityId);
+    }
+
+    /** Check if an entity is accepted in the local view. */
+    public boolean isEntityAccepted(String entityId) {
+        return "1".equals(getLocalConfig(ACCEPTED_PREFIX + entityId));
+    }
+
+    /** Get all accepted entity IDs. */
+    public Set<String> getAcceptedEntityIds() {
+        Set<String> ids = new HashSet<>();
+        if (conn == null) return ids;
+        try (PreparedStatement ps = conn.prepareStatement(
+                "SELECT key FROM local_config WHERE key LIKE ?")) {
+            ps.setString(1, ACCEPTED_PREFIX + "%");
+            ResultSet rs = ps.executeQuery();
+            while (rs.next()) {
+                ids.add(rs.getString("key").substring(ACCEPTED_PREFIX.length()));
+            }
+        } catch (SQLException ignored) {}
+        return ids;
+    }
+
+    /** Batch-accept multiple entities. */
+    public void acceptEntities(Collection<String> entityIds) {
+        if (conn == null || entityIds.isEmpty()) return;
+        try (PreparedStatement ps = conn.prepareStatement(
+                "INSERT OR REPLACE INTO local_config (key, value) VALUES (?, '1')")) {
+            for (String entityId : entityIds) {
+                ps.setString(1, ACCEPTED_PREFIX + entityId);
+                ps.addBatch();
+            }
+            ps.executeBatch();
+        } catch (SQLException ignored) {}
+    }
+
+    /** Count accepted entities. */
+    public int getAcceptedCount() {
+        if (conn == null) return 0;
+        try (PreparedStatement ps = conn.prepareStatement(
+                "SELECT COUNT(*) FROM local_config WHERE key LIKE ?")) {
+            ps.setString(1, ACCEPTED_PREFIX + "%");
+            ResultSet rs = ps.executeQuery();
+            return rs.next() ? rs.getInt(1) : 0;
+        } catch (SQLException e) {
+            return 0;
+        }
+    }
+
     /** Check if DB has outdated schema and needs a full reset. */
     private boolean needsReset() throws SQLException {
         Set<String> tables = new HashSet<>();

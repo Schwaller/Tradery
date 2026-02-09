@@ -192,13 +192,17 @@ public class SymbolSyncService {
 
         log.info("Syncing {} {} (CoinGecko ID: {})...", exchange, marketType, coingeckoId);
 
-        // Fetch tickers from CoinGecko
-        List<JsonNode> tickers = coingeckoClient.fetchExchangeTickers(coingeckoId);
+        // Fetch tickers from CoinGecko (may fail for some perp exchanges)
+        List<TradingPair> pairs;
+        try {
+            List<JsonNode> tickers = coingeckoClient.fetchExchangeTickers(coingeckoId);
+            pairs = parseTickers(exchange, marketType, tickers);
+        } catch (Exception e) {
+            log.warn("CoinGecko failed for {} {} ({}): {}", exchange, marketType, coingeckoId, e.getMessage());
+            pairs = List.of();
+        }
 
-        // Parse tickers into trading pairs
-        List<TradingPair> pairs = parseTickers(exchange, marketType, tickers);
-
-        // Fallback: if CoinGecko returned nothing for perp, try exchange API directly
+        // Fallback: if CoinGecko returned nothing/failed for perp, try exchange API directly
         if (pairs.isEmpty() && marketType == MarketType.PERP) {
             log.info("CoinGecko returned 0 perp tickers for {}, falling back to exchange API...", exchange);
             pairs = fetchPerpSymbolsFromExchangeApi(exchange);

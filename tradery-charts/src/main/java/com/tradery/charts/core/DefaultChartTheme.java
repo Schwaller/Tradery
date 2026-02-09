@@ -8,11 +8,11 @@ import java.awt.*;
  * and detects light/dark mode from the active FlatLaf theme.
  * Returns indicator colors appropriate for the current background brightness.
  */
-public class DarkChartTheme implements ChartTheme {
+public class DefaultChartTheme implements ChartTheme {
 
-    public static final DarkChartTheme INSTANCE = new DarkChartTheme();
+    public static final DefaultChartTheme INSTANCE = new DefaultChartTheme();
 
-    private DarkChartTheme() {}
+    private DefaultChartTheme() {}
 
     private boolean isDark() {
         Color bg = ui("Panel.background", new Color(30, 30, 35));

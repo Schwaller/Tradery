@@ -1,7 +1,7 @@
 package com.tradery.charts.util;
 
 import com.tradery.charts.core.ChartTheme;
-import com.tradery.charts.core.DarkChartTheme;
+import com.tradery.charts.core.DefaultChartTheme;
 import org.jfree.chart.JFreeChart;
 import org.jfree.chart.annotations.XYTitleAnnotation;
 import org.jfree.chart.axis.DateAxis;
@@ -22,13 +22,13 @@ public final class ChartStyles {
     private ChartStyles() {} // Prevent instantiation
 
     // Theme provider - can be set by application
-    private static ChartTheme currentTheme = DarkChartTheme.INSTANCE;
+    private static ChartTheme currentTheme = DefaultChartTheme.INSTANCE;
 
     /**
      * Set the current theme for all charts.
      */
     public static void setTheme(ChartTheme theme) {
-        currentTheme = theme != null ? theme : DarkChartTheme.INSTANCE;
+        currentTheme = theme != null ? theme : DefaultChartTheme.INSTANCE;
     }
 
     /**

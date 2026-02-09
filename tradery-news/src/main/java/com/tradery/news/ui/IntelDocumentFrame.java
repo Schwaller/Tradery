@@ -113,6 +113,10 @@ public class IntelDocumentFrame extends JFrame {
     // API server
     private IntelApiServer apiServer;
 
+    // Curated mode (USER_CURATED governance)
+    private boolean isCuratedMode = false;
+    private JButton browsePoolBtn;
+
     // Current selection
     private enum DetailMode { NONE, ARTICLE, ENTITY }
     private DetailMode currentMode = DetailMode.NONE;
@@ -189,6 +193,13 @@ public class IntelDocumentFrame extends JFrame {
         // Register with sharing service for multi-device sync
         if (sharingService != null) {
             sharingService.registerDocument(docId, docDir, entityStore);
+
+            // Detect USER_CURATED governance mode
+            SharingService.SharingState state = sharingService.getState(docId);
+            if (state != null && "USER_CURATED".equals(state.governanceType())) {
+                isCuratedMode = true;
+                entityStore.setCuratedMode(true);
+            }
         }
 
         setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
@@ -412,6 +423,12 @@ public class IntelDocumentFrame extends JFrame {
         SwingUtilities.invokeLater(updatePending);
 
         rightContent.add(pendingPanel);
+
+        browsePoolBtn = new ToolbarButton("Browse Pool");
+        browsePoolBtn.setToolTipText("Browse and accept unaccepted entities");
+        browsePoolBtn.addActionListener(e -> showEntityPoolBrowser());
+        browsePoolBtn.setVisible(isCuratedMode);
+        rightContent.add(browsePoolBtn);
 
         JButton shareBtn = new ToolbarButton("Share");
         shareBtn.addActionListener(e -> showShareDialog());
@@ -946,6 +963,21 @@ public class IntelDocumentFrame extends JFrame {
         });
         btnPanel.add(searchRelatedBtn);
 
+        if (isCuratedMode) {
+            JButton removeFromViewBtn = new JButton("Remove from View");
+            removeFromViewBtn.addActionListener(e -> {
+                entityStore.unacceptEntity(entity.id());
+                selectedEntity = null;
+                currentMode = DetailMode.NONE;
+                detailContent.removeAll();
+                detailContent.revalidate();
+                detailContent.repaint();
+                loadCoinData(false);
+                logPanel.info("Removed '" + entity.name() + "' from view");
+            });
+            btnPanel.add(removeFromViewBtn);
+        }
+
         detailContent.add(btnPanel);
     }
 
@@ -1211,10 +1243,17 @@ public class IntelDocumentFrame extends JFrame {
                 try {
                     DataSource.FetchResult result = get();
 
-                    List<CoinEntity> allEntities = new ArrayList<>();
-                    allEntities.addAll(entityStore.loadEntitiesBySource("coingecko"));
-                    allEntities.addAll(entityStore.loadEntitiesBySource("manual"));
-                    List<CoinRelationship> allRels = entityStore.loadAllRelationships();
+                    List<CoinEntity> allEntities;
+                    List<CoinRelationship> allRels;
+                    if (isCuratedMode) {
+                        allEntities = entityStore.loadAcceptedEntities();
+                        allRels = entityStore.loadAcceptedRelationships();
+                    } else {
+                        allEntities = new ArrayList<>();
+                        allEntities.addAll(entityStore.loadEntitiesBySource("coingecko"));
+                        allEntities.addAll(entityStore.loadEntitiesBySource("manual"));
+                        allRels = entityStore.loadAllRelationships();
+                    }
 
                     currentEntities = allEntities;
                     currentRelationships = allRels;
@@ -1291,6 +1330,10 @@ public class IntelDocumentFrame extends JFrame {
         int manual = entityStore.getManualEntityCount();
         String status = entities.size() + " entities  |  " + filteredRels.size() + " rels";
         if (manual > 0) status += "  |  " + manual + " manual";
+        if (isCuratedMode) {
+            int poolCount = entityStore.getEntityCount() - entityStore.getAcceptedCount();
+            if (poolCount > 0) status += "  |  " + poolCount + " in pool";
+        }
         statusLabel.setText(status);
     }
 
@@ -1572,6 +1615,11 @@ public class IntelDocumentFrame extends JFrame {
         if (sharingService == null) return;
         logPanel.info("Opening Share settings...");
         ShareDialog dialog = new ShareDialog(this, docId, docDir, entityStore, sharingService, logPanel);
+        dialog.setVisible(true);
+    }
+
+    private void showEntityPoolBrowser() {
+        EntityPoolBrowserDialog dialog = new EntityPoolBrowserDialog(this, entityStore, schemaRegistry, () -> loadCoinData(false));
         dialog.setVisible(true);
     }
 
