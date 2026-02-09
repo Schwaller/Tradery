@@ -67,10 +67,10 @@ public class NatPmpMapper {
     public void unmap() {
         if (gateway == null || mappedInternalPort == 0) return;
         try {
-            // Opcode 2 = TCP, lifetime 0 = delete
+            // Opcode 1 = UDP, lifetime 0 = delete
             ByteBuffer req = ByteBuffer.allocate(12).order(ByteOrder.BIG_ENDIAN);
             req.put((byte) 0);  // version
-            req.put((byte) 2);  // opcode: TCP
+            req.put((byte) 1);  // opcode: UDP
             req.putShort((short) 0);  // reserved
             req.putShort((short) mappedInternalPort);
             req.putShort((short) 0);  // suggested external port
@@ -106,10 +106,10 @@ public class NatPmpMapper {
     }
 
     private int requestMapping(int internalPort) throws IOException {
-        // Opcode 2 = TCP mapping
+        // Opcode 1 = UDP mapping
         ByteBuffer req = ByteBuffer.allocate(12).order(ByteOrder.BIG_ENDIAN);
         req.put((byte) 0);  // version
-        req.put((byte) 2);  // opcode: TCP
+        req.put((byte) 1);  // opcode: UDP
         req.putShort((short) 0);  // reserved
         req.putShort((short) internalPort);
         req.putShort((short) internalPort);  // suggested external port = same

@@ -94,7 +94,7 @@ public class UpnpPortMapper {
             String body = soapEnvelope("DeletePortMapping",
                     "<NewRemoteHost></NewRemoteHost>"
                     + "<NewExternalPort>" + mappedExternalPort + "</NewExternalPort>"
-                    + "<NewProtocol>TCP</NewProtocol>");
+                    + "<NewProtocol>UDP</NewProtocol>");
 
             soapPost("DeletePortMapping", body);
             log.info("UPnP: unmapped port {}", mappedExternalPort);
@@ -144,7 +144,7 @@ public class UpnpPortMapper {
         String body = soapEnvelope("AddPortMapping",
                 "<NewRemoteHost></NewRemoteHost>"
                 + "<NewExternalPort>" + externalPort + "</NewExternalPort>"
-                + "<NewProtocol>TCP</NewProtocol>"
+                + "<NewProtocol>UDP</NewProtocol>"
                 + "<NewInternalPort>" + internalPort + "</NewInternalPort>"
                 + "<NewInternalClient>" + localIp + "</NewInternalClient>"
                 + "<NewEnabled>1</NewEnabled>"

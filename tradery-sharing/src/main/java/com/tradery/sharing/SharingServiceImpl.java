@@ -11,12 +11,12 @@ import com.tradery.sharing.discovery.LanDiscovery;
 import com.tradery.sharing.discovery.NatPmpMapper;
 import com.tradery.sharing.discovery.RendezvousClient;
 import com.tradery.sharing.discovery.StunClient;
-import com.tradery.sharing.discovery.TcpHolePuncher;
 import com.tradery.sharing.discovery.UpnpPortMapper;
 import com.tradery.sharing.identity.AuthConfig;
 import com.tradery.sharing.identity.KeyPairStore;
 import com.tradery.sharing.identity.OAuthLogin;
 import com.tradery.sharing.identity.UserSession;
+import com.tradery.sharing.sync.FriendshipDocId;
 import com.tradery.sharing.sync.PeerManager;
 import com.tradery.sharing.upgrade.SharingUpgrade;
 import okhttp3.OkHttpClient;
@@ -56,9 +56,9 @@ public class SharingServiceImpl implements SharingService {
     private RendezvousClient rendezvousClient;
     private NatPmpMapper natPmpMapper;
     private UpnpPortMapper upnpMapper;
-    private TcpHolePuncher holePuncher;
     private volatile String portMappingMethod;  // "NAT-PMP", "UPnP", or null
     private volatile String publicIp;           // from STUN or port mapper
+    private volatile int announcePort;          // external port to announce to rendezvous
     private volatile boolean lanActive;
     private UserSession localSession;
 
@@ -510,8 +510,24 @@ public class SharingServiceImpl implements SharingService {
         String deviceId = IntelConfig.get().getDeviceId();
         peerManager = new PeerManager(peerId, deviceId, documentManager, mapper);
         peerManager.addChatListener(this::onNetworkChat);
-        lanDiscovery = new LanDiscovery(peerId, deviceId, peerManager.serverPort());
+        peerManager.setFriendshipDocIds(computeFriendshipDocIds());
+        announcePort = peerManager.serverPort();
 
+        // STUN discovery from server socket BEFORE dispatch starts.
+        // This discovers the NAT-mapped external port for the actual UDP socket,
+        // so we announce the correct port to rendezvous for hole punching.
+        var stun = new StunClient();
+        var stunEndpoint = stun.discover(peerManager.serverSocket());
+        if (stunEndpoint != null) {
+            publicIp = stunEndpoint.ip();
+            announcePort = stunEndpoint.port();
+            log.info("STUN: public endpoint {}:{} (local port {})", stunEndpoint.ip(), stunEndpoint.port(), peerManager.serverPort());
+        }
+
+        // Now start the dispatch loop (after STUN is done using the socket)
+        peerManager.startServer();
+
+        lanDiscovery = new LanDiscovery(peerId, deviceId, peerManager.serverPort());
         try {
             lanDiscovery.start();
             lanActive = true;
@@ -519,37 +535,34 @@ public class SharingServiceImpl implements SharingService {
             log.warn("LAN discovery failed to start: {}", e.getMessage());
         }
 
-        // Port mapping: try NAT-PMP → UPnP → STUN (for hole punching)
+        // Port mapping: try NAT-PMP → UPnP (may override STUN-discovered port)
         natPmpMapper = new NatPmpMapper();
         upnpMapper = new UpnpPortMapper();
-        holePuncher = new TcpHolePuncher();
-        int announcePort = peerManager.serverPort();
         Thread.ofVirtual().name("port-mapper").start(() -> {
             // Try NAT-PMP
             var mapping = natPmpMapper.mapPort(peerManager.serverPort());
             if (mapping != null) {
                 portMappingMethod = "NAT-PMP";
                 publicIp = mapping.externalIp();
+                announcePort = mapping.externalPort();
+                log.info("NAT-PMP: mapped port {} → {}", peerManager.serverPort(), mapping.externalPort());
                 return;
             }
 
             // Try UPnP
             var upnpMapping = upnpMapper.mapPort(peerManager.serverPort());
             if (upnpMapping != null) {
-                log.info("Port mapped via UPnP: {} → {}:{}", peerManager.serverPort(), upnpMapping.externalIp(), upnpMapping.externalPort());
                 portMappingMethod = "UPnP";
                 publicIp = upnpMapping.externalIp();
+                announcePort = upnpMapping.externalPort();
+                log.info("UPnP: mapped port {} → {}:{}", peerManager.serverPort(), upnpMapping.externalIp(), upnpMapping.externalPort());
                 return;
             }
 
-            // No port mapping — discover public IP via STUN for hole punching
-            var stun = new StunClient();
-            var endpoint = stun.discover();
-            if (endpoint != null) {
-                publicIp = endpoint.ip();
-                log.info("STUN: public IP is {} (no port mapping, will use hole punching)", endpoint.ip());
-            } else {
+            if (publicIp == null) {
                 log.info("No port mapping or STUN available — LAN/rendezvous only");
+            } else {
+                log.info("STUN: public IP is {} (no port mapping, will use hole punching)", publicIp);
             }
         });
 
@@ -561,8 +574,9 @@ public class SharingServiceImpl implements SharingService {
         if (deviceCredential != null) {
             try {
                 var docIds = new ArrayList<>(workspaces.keySet());
+                docIds.addAll(computeFriendshipDocIds());
                 rendezvousClient.announce(deviceCredential, peerId, announcePort, docIds);
-                log.info("Rendezvous: announced as {} with {} documents", peerId, docIds.size());
+                log.info("Rendezvous: announced as {} with {} docs ({}+{} friendship)", peerId, docIds.size(), workspaces.size(), docIds.size() - workspaces.size());
             } catch (RendezvousClient.CredentialRejectedException e) {
                 log.warn("Rendezvous: credential rejected on initial announce, re-enrolling...");
                 reEnrollDevice();
@@ -570,8 +584,9 @@ public class SharingServiceImpl implements SharingService {
                 if (deviceCredential != null) {
                     try {
                         var docIds2 = new ArrayList<>(workspaces.keySet());
+                        docIds2.addAll(computeFriendshipDocIds());
                         rendezvousClient.announce(deviceCredential, peerId, announcePort, docIds2);
-                        log.info("Rendezvous: re-announced after re-enrollment with {} documents", docIds2.size());
+                        log.info("Rendezvous: re-announced after re-enrollment with {} docs", docIds2.size());
                     } catch (Exception e2) {
                         log.warn("Rendezvous: re-announce after re-enrollment failed: {}", e2.getMessage());
                     }
@@ -600,6 +615,7 @@ public class SharingServiceImpl implements SharingService {
                     // Rendezvous re-announce + discover (uses device credential, not access token)
                     if (deviceCredential != null) {
                         var docIds = new ArrayList<>(workspaces.keySet());
+                        docIds.addAll(computeFriendshipDocIds());
 
                         try {
                             rendezvousClient.announce(deviceCredential, peerId, announcePort, docIds);
@@ -616,11 +632,8 @@ public class SharingServiceImpl implements SharingService {
                                 var peers = rendezvousClient.discoverPeers(deviceCredential, docId);
                                 for (var rp : peers) {
                                     if (peerId.equals(rp.peerId())) continue;
-                                    if (portMappingMethod != null) {
-                                        peerManager.connectAndSync(rp.host(), rp.port());
-                                    } else {
-                                        tryConnectWithHolePunch(rp.host(), rp.port());
-                                    }
+                                    // UDP connect IS the hole punch — always use connectAndSync
+                                    peerManager.connectAndSync(rp.host(), rp.port());
                                 }
                                 if (!peers.isEmpty()) {
                                     log.debug("Rendezvous: discovered {} peers for doc {}", peers.size(), docId);
@@ -657,30 +670,6 @@ public class SharingServiceImpl implements SharingService {
         log.info("PeerManager started on port {}", peerManager.serverPort());
     }
 
-    /**
-     * Try direct TCP connect first. If that fails quickly, attempt TCP hole punching
-     * which binds to the PeerServer port and retries to create a NAT mapping.
-     */
-    private void tryConnectWithHolePunch(String host, int port) {
-        Thread.ofVirtual().name("hole-punch-" + host).start(() -> {
-            // Quick direct connect attempt (might work for full-cone NAT)
-            try {
-                var socket = new java.net.Socket();
-                socket.connect(new java.net.InetSocketAddress(host, port), 3000);
-                peerManager.connectWithSocket(socket);
-                return;
-            } catch (IOException e) {
-                log.debug("Direct connect to {}:{} failed, trying hole punch", host, port);
-            }
-
-            // TCP hole punch: bind to PeerServer port and retry
-            var socket = holePuncher.punch(peerManager.serverPort(), host, port);
-            if (socket != null) {
-                peerManager.connectWithSocket(socket);
-            }
-        });
-    }
-
     // ==================== Friends ====================
 
     @Override
@@ -692,8 +681,9 @@ public class SharingServiceImpl implements SharingService {
         List<FriendStatus> result = new ArrayList<>();
         for (FriendConfig f : IntelConfig.get().getFriends()) {
             var peer = peerMap.get(f.getEmail());
-            boolean online = peer != null;
-            long lastSeen = online ? peer.lastSeen() : 0;
+            boolean online = peer != null
+                    || (peerManager != null && peerManager.isMutualFriendByEmail(f.getEmail()));
+            long lastSeen = (peer != null) ? peer.lastSeen() : 0;
             result.add(new FriendStatus(f.getEmail(), f.label(), online, lastSeen));
         }
         return result;
@@ -701,6 +691,7 @@ public class SharingServiceImpl implements SharingService {
 
     @Override
     public boolean isFriendOnline(String email) {
+        if (peerManager != null && peerManager.isMutualFriendByEmail(email)) return true;
         if (lanDiscovery == null) return false;
         for (var peer : lanDiscovery.activePeers()) {
             if (email.equals(peer.peerId())) return true;
@@ -746,6 +737,7 @@ public class SharingServiceImpl implements SharingService {
     @Override
     public void onFriendListChanged() {
         if (peerManager != null) {
+            peerManager.setFriendshipDocIds(computeFriendshipDocIds());
             peerManager.reannounceFriendship();
         }
     }
@@ -754,6 +746,17 @@ public class SharingServiceImpl implements SharingService {
     public boolean isMutualFriend(String email) {
         if (peerManager == null) return false;
         return peerManager.isMutualFriendByEmail(email);
+    }
+
+    /** Compute friendship doc IDs from the local friend list. */
+    private List<String> computeFriendshipDocIds() {
+        String localEmail = localSession != null ? localSession.userId() : AuthConfig.load().getEmail();
+        if (localEmail == null || localEmail.isBlank()) return List.of();
+        var ids = new ArrayList<String>();
+        for (FriendConfig f : IntelConfig.get().getFriends()) {
+            ids.add(FriendshipDocId.compute(localEmail, f.getEmail()));
+        }
+        return ids;
     }
 
     /** Collect all member emails across all shared documents + friends + own email (for peer filtering). */

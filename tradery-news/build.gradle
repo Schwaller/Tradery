@@ -118,68 +118,6 @@ jlink {
     }
 }
 
-// jlink image created callback
-tasks.jlink {
-    doLast {
-        println "jlink image created at: ${jlink.imageDir.get()}"
-    }
-}
-
-// macOS app bundle using jpackage (included in JDK 14+)
-tasks.register('jpackageApp', Exec) {
-    dependsOn 'fatJar'
-
-    def outputDir = layout.buildDirectory.dir('jpackage').get().asFile
-    def fatJarFile = layout.buildDirectory.file("libs/${project.name}-${project.version}-all.jar").get().asFile
-
-    doFirst {
-        outputDir.mkdirs()
-    }
-
-    def args = [
-            'jpackage',
-            '--type', 'app-image',
-            '--name', 'Intelligence',
-            '--app-version', project.version,
-            '--input', fatJarFile.parentFile.absolutePath,
-            '--main-jar', fatJarFile.name,
-            '--main-class', application.mainClass.get(),
-            '--dest', outputDir.absolutePath,
-            '--java-options', '-Xmx512m',
-            '--mac-package-name', 'Intelligence'
-    ]
-
-    // Add icon if it exists
-    def iconFile = file('src/main/resources/icon.icns')
-    if (iconFile.exists()) {
-        args.addAll(['--icon', iconFile.absolutePath])
-    }
-
-    commandLine args
-
-    doLast {
-        println "Created: ${outputDir}/Intelligence.app"
-    }
-}
-
-// Create DMG installer
-tasks.register('jpackageDmg', Exec) {
-    dependsOn 'jpackageApp'
-
-    def outputDir = layout.buildDirectory.dir('jpackage').get().asFile
-    def appPath = new File(outputDir, 'Intelligence.app')
-    def dmgPath = new File(outputDir, "Intelligence-${project.version}.dmg")
-
-    commandLine 'hdiutil', 'create', '-volname', 'Intelligence',
-            '-srcfolder', appPath.absolutePath,
-            '-ov', '-format', 'UDZO',
-            dmgPath.absolutePath
-
-    doLast {
-        println "Created: ${dmgPath}"
-    }
-}
-
 // Packaging configuration for macOS signing and notarization
 ext.packagingAppName = 'Intelligence'
 ext.packagingDmgName = 'Intelligence'
@@ -187,16 +125,3 @@ apply from: "${rootProject.projectDir}/gradle/packaging.gradle"
 
 // signApp depends on jpackage (jlink-based)
 tasks.named('signApp') { dependsOn 'jpackage' }
-
-// Create fat JAR for easy distribution
-tasks.register('fatJar', Jar) {
-    archiveClassifier = 'all'
-    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
-    manifest {
-        attributes 'Main-Class': application.mainClass
-    }
-    from {
-        configurations.runtimeClasspath.collect { it.isDirectory() ? it : zipTree(it) }
-    }
-    with jar
-}

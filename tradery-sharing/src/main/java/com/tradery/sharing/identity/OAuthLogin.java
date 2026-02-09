@@ -230,6 +230,16 @@ public class OAuthLogin {
         return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
     }
 
+    private static final String CALLBACK_TEMPLATE;
+
+    static {
+        try (var is = OAuthLogin.class.getResourceAsStream("oauth-callback.html")) {
+            CALLBACK_TEMPLATE = new String(is.readAllBytes(), StandardCharsets.UTF_8);
+        } catch (IOException e) {
+            throw new ExceptionInInitializerError(e);
+        }
+    }
+
     private static String callbackPage(boolean success, String error) {
         String icon = success
                 ? "<svg width='64' height='64' viewBox='0 0 24 24' fill='none' stroke='#22c55e' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><circle cx='12' cy='12' r='10'/><path d='M8 12l3 3 5-5'/></svg>"
@@ -240,28 +250,11 @@ public class OAuthLogin {
                 : (error != null ? error : "Something went wrong.") + " Please try again.";
         String autoClose = success ? "<script>setTimeout(function(){window.close()},3000)</script>" : "";
 
-        return "<!DOCTYPE html><html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'>"
-                + "<title>" + title + " - Plaiiin</title>"
-                + "<style>"
-                + "*{margin:0;padding:0;box-sizing:border-box}"
-                + "body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;"
-                + "min-height:100vh;display:flex;align-items:center;justify-content:center;"
-                + "background:#0a0a0a;color:#e5e5e5}"
-                + ".card{text-align:center;padding:48px;max-width:400px}"
-                + ".icon{margin-bottom:24px;opacity:0;animation:fadeIn .4s ease forwards}"
-                + "h1{font-size:22px;font-weight:600;margin-bottom:8px;opacity:0;animation:fadeIn .4s .15s ease forwards}"
-                + "p{font-size:15px;color:#a3a3a3;line-height:1.5;opacity:0;animation:fadeIn .4s .25s ease forwards}"
-                + ".countdown{margin-top:20px;font-size:13px;color:#525252;opacity:0;animation:fadeIn .4s .4s ease forwards}"
-                + "@keyframes fadeIn{to{opacity:1}}"
-                + "</style></head><body>"
-                + "<div class='card'>"
-                + "<div class='icon'>" + icon + "</div>"
-                + "<h1>" + title + "</h1>"
-                + "<p>" + subtitle + "</p>"
-                + (success ? "<p class='countdown'>This tab will close automatically...</p>" : "")
-                + "</div>"
-                + autoClose
-                + "</body></html>";
+        return CALLBACK_TEMPLATE
+                .replace("{{ICON}}", icon)
+                .replace("{{TITLE}}", title)
+                .replace("{{SUBTITLE}}", subtitle)
+                .replace("{{AUTO_CLOSE}}", autoClose);
     }
 
     private static String extractParam(String query, String name) {

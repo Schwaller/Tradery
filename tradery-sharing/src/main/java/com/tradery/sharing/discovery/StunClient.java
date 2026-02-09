@@ -53,7 +53,31 @@ public class StunClient {
         return discover(0);
     }
 
+    /**
+     * Discover public IP:port using an existing DatagramSocket.
+     * Use this to discover the NAT mapping for the actual server socket
+     * (must be called before the dispatch loop starts consuming packets).
+     */
+    public PublicEndpoint discover(DatagramSocket existingSocket) {
+        for (String server : STUN_SERVERS) {
+            try {
+                var result = queryStun(server, existingSocket);
+                if (result != null) return result;
+            } catch (Exception e) {
+                log.debug("STUN: {} failed: {}", server, e.getMessage());
+            }
+        }
+        log.info("STUN: all servers failed");
+        return null;
+    }
+
     private PublicEndpoint queryStun(String server, int localPort) throws Exception {
+        try (DatagramSocket socket = new DatagramSocket(localPort)) {
+            return queryStun(server, socket);
+        }
+    }
+
+    private PublicEndpoint queryStun(String server, DatagramSocket socket) throws Exception {
         String[] parts = server.split(":");
         InetAddress addr = InetAddress.getByName(parts[0]);
         int port = Integer.parseInt(parts[1]);
@@ -68,8 +92,9 @@ public class StunClient {
         request.putInt(MAGIC_COOKIE);
         request.put(txnId);
 
-        try (DatagramSocket socket = new DatagramSocket(localPort)) {
-            socket.setSoTimeout(TIMEOUT_MS);
+        int oldTimeout = socket.getSoTimeout();
+        socket.setSoTimeout(TIMEOUT_MS);
+        try {
             socket.send(new DatagramPacket(request.array(), 20, addr, port));
 
             byte[] buf = new byte[512];
@@ -77,6 +102,8 @@ public class StunClient {
             socket.receive(response);
 
             return parseResponse(ByteBuffer.wrap(response.getData(), 0, response.getLength()));
+        } finally {
+            socket.setSoTimeout(oldTimeout);
         }
     }
 

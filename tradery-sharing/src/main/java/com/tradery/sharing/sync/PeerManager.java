@@ -10,7 +10,6 @@ import com.tradery.news.ui.FriendConfig;
 import com.tradery.news.ui.IntelConfig;
 
 import java.io.IOException;
-import java.net.Socket;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -30,10 +29,10 @@ public class PeerManager implements AutoCloseable {
     private final DocumentManager documentManager;
     private final SyncEngine syncEngine;
     private final ObjectMapper mapper;
-    private final PeerServer server;
+    private final UdpPeerServer server;
 
     /** Active connections indexed by remote device ID. */
-    private final Map<String, PeerConnection> connections = new ConcurrentHashMap<>();
+    private final Map<String, UdpPeerConnection> connections = new ConcurrentHashMap<>();
 
     /** Maps remote device ID to peer email (for member matching). */
     private final Map<String, String> deviceToPeerEmail = new ConcurrentHashMap<>();
@@ -50,6 +49,9 @@ public class PeerManager implements AutoCloseable {
     /** Tracks whether each connected peer has us in their friend list (their last FriendshipAck). */
     private final Map<String, Boolean> peerFriendsUs = new ConcurrentHashMap<>();
 
+    /** Friendship doc IDs to include in HELLO for rendezvous discovery. */
+    private final Set<String> friendshipDocIds = ConcurrentHashMap.newKeySet();
+
     /** Callback when friendship status changes (e.g. FriendshipAck received). */
     private volatile Runnable friendshipChangeCallback;
 
@@ -59,10 +61,16 @@ public class PeerManager implements AutoCloseable {
         this.documentManager = documentManager;
         this.syncEngine = new SyncEngine();
         this.mapper = mapper;
-        this.server = new PeerServer(mapper, this::handleIncomingConnection);
+        this.server = new UdpPeerServer(mapper, this::handleIncomingConnection);
     }
 
     public int serverPort() { return server.port(); }
+
+    /** Access the server's socket (e.g. for STUN discovery before dispatch starts). */
+    public java.net.DatagramSocket serverSocket() { return server.socket(); }
+
+    /** Start the server's dispatch loop. Call after any pre-start ops (e.g. STUN). */
+    public void startServer() { server.start(); }
 
     /**
      * Register an open document workspace for sync.
@@ -76,30 +84,16 @@ public class PeerManager implements AutoCloseable {
     }
 
     /**
-     * Connect to a remote peer and sync all shared documents.
+     * Connect to a remote peer via UDP and sync all shared documents.
+     * UDP connect IS the hole punch — no separate hole puncher needed.
      */
     public void connectAndSync(String host, int port) {
         Thread.ofVirtual().name("peer-connect-" + host + ":" + port).start(() -> {
-            try {
-                Socket socket = new Socket(host, port);
-                PeerConnection conn = new PeerConnection(socket, mapper);
+            UdpPeerConnection conn = server.connect(host, port, 30_000);
+            if (conn != null) {
                 handleOutgoingConnection(conn);
-            } catch (IOException e) {
-                log.warn("Failed to connect to {}:{}: {}", host, port, e.getMessage());
-            }
-        });
-    }
-
-    /**
-     * Accept a pre-connected socket (e.g. from TCP hole punching) and sync.
-     */
-    public void connectWithSocket(Socket socket) {
-        Thread.ofVirtual().name("peer-punch-" + socket.getRemoteSocketAddress()).start(() -> {
-            try {
-                PeerConnection conn = new PeerConnection(socket, mapper);
-                handleOutgoingConnection(conn);
-            } catch (IOException e) {
-                log.warn("Failed to use punched connection to {}: {}", socket.getRemoteSocketAddress(), e.getMessage());
+            } else {
+                log.warn("Failed to connect to {}:{}", host, port);
             }
         });
     }
@@ -107,7 +101,7 @@ public class PeerManager implements AutoCloseable {
     /**
      * Handle an incoming connection (called by PeerServer).
      */
-    private void handleIncomingConnection(PeerConnection conn) {
+    private void handleIncomingConnection(UdpPeerConnection conn) {
         try {
             // Wait for HELLO
             NetworkMessage msg = conn.receive();
@@ -126,7 +120,7 @@ public class PeerManager implements AutoCloseable {
             // Send our HELLO back
             conn.send(new NetworkMessage.Hello(
                     localPeerId, localDeviceId, null, null,
-                    List.copyOf(workspaces.keySet())));
+                    allDocIds()));
 
             // Exchange friendship status
             boolean weFriendThem = isFriendLocally(hello.peerId());
@@ -184,12 +178,12 @@ public class PeerManager implements AutoCloseable {
     /**
      * Handle an outgoing connection (we initiated).
      */
-    private void handleOutgoingConnection(PeerConnection conn) {
+    private void handleOutgoingConnection(UdpPeerConnection conn) {
         try {
             // Send HELLO
             conn.send(new NetworkMessage.Hello(
                     localPeerId, localDeviceId, null, null,
-                    List.copyOf(workspaces.keySet())));
+                    allDocIds()));
 
             // Wait for HELLO back
             NetworkMessage msg = conn.receive();
@@ -260,7 +254,7 @@ public class PeerManager implements AutoCloseable {
     /**
      * Message processing loop — handles sync requests/responses until disconnect.
      */
-    private void processMessages(PeerConnection conn, NetworkMessage.Hello hello) throws IOException {
+    private void processMessages(UdpPeerConnection conn, NetworkMessage.Hello hello) throws IOException {
         while (!conn.isClosed()) {
             NetworkMessage msg = conn.receive();
             if (msg == null) break; // EOF
@@ -268,7 +262,7 @@ public class PeerManager implements AutoCloseable {
         }
     }
 
-    private void handleMessage(PeerConnection conn, NetworkMessage.Hello hello, NetworkMessage msg) throws IOException {
+    private void handleMessage(UdpPeerConnection conn, NetworkMessage.Hello hello, NetworkMessage msg) throws IOException {
         String remoteKey = conn.remotePeerId();
         boolean mutual = isMutualFriend(remoteKey);
 
@@ -324,9 +318,9 @@ public class PeerManager implements AutoCloseable {
      * Sends SyncResponses with our facts and SyncRequests to pull theirs.
      */
     public void requestSync() {
-        for (Map.Entry<String, PeerConnection> entry : connections.entrySet()) {
+        for (Map.Entry<String, UdpPeerConnection> entry : connections.entrySet()) {
             String remotePeerId = entry.getKey();
-            PeerConnection conn = entry.getValue();
+            UdpPeerConnection conn = entry.getValue();
             if (conn.isClosed()) continue;
             if (!isMutualFriend(remotePeerId)) continue;
 
@@ -366,7 +360,7 @@ public class PeerManager implements AutoCloseable {
         var msg = new NetworkMessage.ChatMessage(senderId, recipientId, text, System.currentTimeMillis());
         for (var entry : deviceToPeerEmail.entrySet()) {
             if (recipientId.equals(entry.getValue())) {
-                PeerConnection conn = connections.get(entry.getKey());
+                UdpPeerConnection conn = connections.get(entry.getKey());
                 if (conn != null && !conn.isClosed()) {
                     try {
                         conn.send(msg);
@@ -410,7 +404,7 @@ public class PeerManager implements AutoCloseable {
     public void reannounceFriendship() {
         for (var entry : connections.entrySet()) {
             String deviceId = entry.getKey();
-            PeerConnection conn = entry.getValue();
+            UdpPeerConnection conn = entry.getValue();
             if (conn.isClosed()) continue;
 
             String peerEmail = deviceToPeerEmail.get(deviceId);
@@ -433,6 +427,18 @@ public class PeerManager implements AutoCloseable {
         }
     }
 
+    public void setFriendshipDocIds(Collection<String> ids) {
+        friendshipDocIds.clear();
+        friendshipDocIds.addAll(ids);
+    }
+
+    /** All doc IDs to announce: workspace docs + friendship docs. */
+    private List<String> allDocIds() {
+        var all = new ArrayList<>(workspaces.keySet());
+        all.addAll(friendshipDocIds);
+        return all;
+    }
+
     public void setFriendshipChangeCallback(Runnable callback) {
         this.friendshipChangeCallback = callback;
     }
@@ -440,7 +446,7 @@ public class PeerManager implements AutoCloseable {
     @Override
     public void close() {
         server.close();
-        connections.values().forEach(PeerConnection::close);
+        connections.values().forEach(UdpPeerConnection::close);
         connections.clear();
     }
 }

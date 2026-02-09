@@ -2,6 +2,8 @@ package com.tradery.sharing;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tradery.documents.DocumentManager;
+import com.tradery.news.ui.FriendConfig;
+import com.tradery.news.ui.IntelConfig;
 import com.tradery.sharing.sync.PeerManager;
 import org.junit.jupiter.api.*;
 
@@ -33,11 +35,17 @@ class PeerManagerTest {
         Path docDirA = Files.createTempDirectory("docs-a-");
         Path docDirB = Files.createTempDirectory("docs-b-");
 
+        // Set up mutual friendship so sync is allowed
+        IntelConfig.get().addFriend(new FriendConfig("peer-A", "Peer A"));
+        IntelConfig.get().addFriend(new FriendConfig("peer-B", "Peer B"));
+
         managerA = new PeerManager("peer-A", "device-A", new DocumentManager(docDirA), mapper);
         managerA.registerWorkspace(DOC_ID, fixtureA.workspace());
+        managerA.startServer();
 
         managerB = new PeerManager("peer-B", "device-B", new DocumentManager(docDirB), mapper);
         managerB.registerWorkspace(DOC_ID, fixtureB.workspace());
+        managerB.startServer();
     }
 
     @AfterEach
