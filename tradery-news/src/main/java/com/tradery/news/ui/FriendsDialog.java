@@ -136,6 +136,7 @@ public class FriendsDialog extends JDialog {
         String name = nameField.getText().trim();
         IntelConfig.get().addFriend(new FriendConfig(email, name.isEmpty() ? null : name));
         IntelConfig.get().save();
+        sharingService.onFriendAdded(email);
         sharingService.onFriendListChanged();
         loadFriends();
     }

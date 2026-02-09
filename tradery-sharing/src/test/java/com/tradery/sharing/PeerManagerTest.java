@@ -3,13 +3,19 @@ package com.tradery.sharing;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tradery.documents.DocumentManager;
 import com.tradery.news.ui.FriendConfig;
+import com.tradery.news.ui.FriendshipCertData;
 import com.tradery.news.ui.IntelConfig;
+import com.tradery.sharing.identity.CertSigner;
+import com.tradery.sharing.identity.IdentityCert;
+import com.tradery.sharing.sync.FactSigner;
 import com.tradery.sharing.sync.PeerManager;
 import org.junit.jupiter.api.*;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.security.GeneralSecurityException;
+import java.security.KeyPair;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -24,26 +30,51 @@ class PeerManagerTest {
     private PeerManager managerB;
 
     @BeforeEach
-    void setUp() throws IOException {
+    void setUp() throws IOException, GeneralSecurityException {
         fixtureA = TestHelper.createWorkspace(DOC_ID);
         fixtureB = TestHelper.createWorkspace(DOC_ID);
 
         ObjectMapper mapper = new ObjectMapper();
 
-        // PeerManager needs a DocumentManager, but only uses it for listing docs
-        // in some code paths. We create minimal ones pointing to temp dirs.
         Path docDirA = Files.createTempDirectory("docs-a-");
         Path docDirB = Files.createTempDirectory("docs-b-");
 
-        // Set up mutual friendship so sync is allowed
-        IntelConfig.get().addFriend(new FriendConfig("peer-A", "Peer A"));
-        IntelConfig.get().addFriend(new FriendConfig("peer-B", "Peer B"));
+        // Create key pairs and cert signers for each peer
+        KeyPair kpA = FactSigner.generateKeyPair();
+        KeyPair kpB = FactSigner.generateKeyPair();
+        CertSigner signerA = new CertSigner(kpA);
+        CertSigner signerB = new CertSigner(kpB);
+
+        IdentityCert certA = signerA.createIdentityCert("peer-A");
+        IdentityCert certB = signerB.createIdentityCert("peer-B");
+
+        // Create mutual friendship certs:
+        // A signs "I accept B" → B stores as receivedCert
+        // B signs "I accept A" → A stores as receivedCert
+        FriendshipCertData aAcceptsB = signerA.createFriendshipCert("peer-A", "peer-B");
+        FriendshipCertData bAcceptsA = signerB.createFriendshipCert("peer-B", "peer-A");
+
+        // Set up IntelConfig friend entries with certs
+        FriendConfig friendB = new FriendConfig("peer-B", "Peer B");
+        friendB.setIssuedCert(aAcceptsB);   // cert WE (A) signed about THEM (B)
+        friendB.setReceivedCert(bAcceptsA); // cert THEY (B) signed about US (A)
+
+        FriendConfig friendA = new FriendConfig("peer-A", "Peer A");
+        friendA.setIssuedCert(bAcceptsA);   // cert WE (B) signed about THEM (A)
+        friendA.setReceivedCert(aAcceptsB); // cert THEY (A) signed about US (B)
+
+        IntelConfig.get().addFriend(friendA);
+        IntelConfig.get().addFriend(friendB);
 
         managerA = new PeerManager("peer-A", "device-A", new DocumentManager(docDirA), mapper);
+        managerA.setCertSigner(signerA);
+        managerA.setLocalIdentityCert(certA);
         managerA.registerWorkspace(DOC_ID, fixtureA.workspace());
         managerA.startServer();
 
         managerB = new PeerManager("peer-B", "device-B", new DocumentManager(docDirB), mapper);
+        managerB.setCertSigner(signerB);
+        managerB.setLocalIdentityCert(certB);
         managerB.registerWorkspace(DOC_ID, fixtureB.workspace());
         managerB.startServer();
     }
@@ -97,7 +128,6 @@ class PeerManagerTest {
         Thread.sleep(500);
 
         // After A closes, B should eventually see no connections
-        // (PeerManager removes disconnected peers in the message loop)
         assertTrue(managerB.connectedPeerIds().isEmpty() || true,
                 "B should eventually see A as disconnected");
     }

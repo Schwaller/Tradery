@@ -2,13 +2,15 @@ package com.tradery.sharing.sync;
 
 import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
+import com.tradery.news.ui.FriendshipCertData;
 import com.tradery.news.ui.coin.FactStore;
+import com.tradery.sharing.identity.IdentityCert;
 
 import java.util.List;
 
 /**
  * Wire protocol messages for P2P fact sync.
- * Length-prefixed JSON over TLS TCP.
+ * Length-prefixed JSON over UDP.
  */
 @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, property = "type")
 @JsonSubTypes({
@@ -18,16 +20,19 @@ import java.util.List;
     @JsonSubTypes.Type(value = NetworkMessage.SyncDone.class, name = "SYNC_DONE"),
     @JsonSubTypes.Type(value = NetworkMessage.MemberUpdate.class, name = "MEMBER_UPDATE"),
     @JsonSubTypes.Type(value = NetworkMessage.ChatMessage.class, name = "CHAT"),
-    @JsonSubTypes.Type(value = NetworkMessage.FriendshipAck.class, name = "FRIENDSHIP_ACK"),
+    @JsonSubTypes.Type(value = NetworkMessage.CertExchange.class, name = "CERT_EXCHANGE"),
+    @JsonSubTypes.Type(value = NetworkMessage.BackupStore.class, name = "BACKUP_STORE"),
+    @JsonSubTypes.Type(value = NetworkMessage.BackupRequest.class, name = "BACKUP_REQUEST"),
+    @JsonSubTypes.Type(value = NetworkMessage.BackupResponse.class, name = "BACKUP_RESPONSE"),
+    @JsonSubTypes.Type(value = NetworkMessage.FriendImportOffer.class, name = "FRIEND_IMPORT_OFFER"),
 })
 public sealed interface NetworkMessage {
 
-    /** Initial handshake: identify peer and shared documents. */
+    /** Initial handshake: identify peer with identity cert and shared documents. */
     record Hello(
         String peerId,
         String deviceId,
-        String publicKey,
-        String token,
+        IdentityCert identityCert,
         List<String> documentIds
     ) implements NetworkMessage {}
 
@@ -64,8 +69,33 @@ public sealed interface NetworkMessage {
         long timestamp
     ) implements NetworkMessage {}
 
-    /** Sent after HELLO exchange to inform peer of friendship status. */
-    record FriendshipAck(
-        boolean isFriend
+    /** Friendship proof: sends a cert that the REMOTE peer signed about US (proving they accepted us). */
+    record CertExchange(
+        FriendshipCertData proofCert
+    ) implements NetworkMessage {}
+
+    /** Push encrypted UER backup to a mutual friend for storage. */
+    record BackupStore(
+        String ownerEmail,
+        byte[] encryptedRegistry,
+        long updatedAt
+    ) implements NetworkMessage {}
+
+    /** Request a friend's stored backup of our encrypted UER (for recovery). */
+    record BackupRequest(
+        String email
+    ) implements NetworkMessage {}
+
+    /** Response with stored encrypted UER backup. */
+    record BackupResponse(
+        String ownerEmail,
+        byte[] encryptedRegistry,
+        long updatedAt
+    ) implements NetworkMessage {}
+
+    /** Offer old friendship certs when detecting a key mismatch (password reset flow). */
+    record FriendImportOffer(
+        FriendshipCertData theirOldCertAboutUs,
+        FriendshipCertData ourOldCertAboutThem
     ) implements NetworkMessage {}
 }

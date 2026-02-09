@@ -63,7 +63,7 @@ class UdpTransportTest {
         assertNotNull(serverConn, "Server should accept connection");
 
         // Exchange HELLO messages
-        var hello = new NetworkMessage.Hello("peer-A", "device-A", null, null, List.of("doc-1"));
+        var hello = new NetworkMessage.Hello("peer-A", "device-A", null, List.of("doc-1"));
         clientConn.send(hello);
 
         NetworkMessage received = serverConn.receive();
@@ -71,7 +71,7 @@ class UdpTransportTest {
         assertEquals("peer-A", ((NetworkMessage.Hello) received).peerId());
 
         // Server sends back
-        serverConn.send(new NetworkMessage.Hello("peer-B", "device-B", null, null, List.of("doc-1")));
+        serverConn.send(new NetworkMessage.Hello("peer-B", "device-B", null, List.of("doc-1")));
 
         NetworkMessage reply = clientConn.receive();
         assertInstanceOf(NetworkMessage.Hello.class, reply);
@@ -143,7 +143,7 @@ class UdpTransportTest {
         assertNotNull(serverConn);
 
         // Send multiple messages in sequence
-        clientConn.send(new NetworkMessage.Hello("p1", null, null, null, List.of("doc-1")));
+        clientConn.send(new NetworkMessage.Hello("p1", null, null, List.of("doc-1")));
         clientConn.send(new NetworkMessage.SyncRequest("doc-1", 0));
         clientConn.send(new NetworkMessage.SyncDone("doc-1"));
 

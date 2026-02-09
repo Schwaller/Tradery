@@ -53,6 +53,17 @@ public class KeyPairStore {
     }
 
     /**
+     * Overwrite the stored key pair with a recovered one (e.g. from UER backup).
+     */
+    public void overwrite(KeyPair keyPair) throws IOException {
+        Path privPath = keysDir.resolve(PRIVATE_KEY_FILE);
+        Path pubPath = keysDir.resolve(PUBLIC_KEY_FILE);
+        Files.createDirectories(keysDir);
+        Files.writeString(privPath, Base64.getEncoder().encodeToString(keyPair.getPrivate().getEncoded()));
+        Files.writeString(pubPath, Base64.getEncoder().encodeToString(keyPair.getPublic().getEncoded()));
+    }
+
+    /**
      * Load the public key only (for verifying remote peers).
      */
     public static PublicKey decodePublicKey(String base64) throws GeneralSecurityException {

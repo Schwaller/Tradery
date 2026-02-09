@@ -86,7 +86,7 @@ public class UdpProbe {
                     System.out.println("<<< HELLO from " + hello.peerId() + " (device: " + hello.deviceId() + ")");
 
                     // Send HELLO back
-                    conn.send(new NetworkMessage.Hello("probe-server", "server-" + port, null, null, List.of()));
+                    conn.send(new NetworkMessage.Hello("probe-server", "server-" + port, null, List.of()));
                     System.out.println(">>> Sent HELLO back");
 
                     // Wait for test message
@@ -151,7 +151,7 @@ public class UdpProbe {
         System.out.println("Connected in " + elapsed + "ms (remote: " + conn.remoteAddress() + ")");
 
         // Send HELLO
-        conn.send(new NetworkMessage.Hello("probe-client", "client-local", null, null, List.of("test-doc")));
+        conn.send(new NetworkMessage.Hello("probe-client", "client-local", null, List.of("test-doc")));
         System.out.println(">>> Sent HELLO");
 
         // Wait for HELLO back

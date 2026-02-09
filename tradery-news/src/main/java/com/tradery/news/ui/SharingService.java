@@ -90,6 +90,12 @@ public interface SharingService {
     /** Notify that the local friend list has changed (triggers re-announce to connected peers). */
     default void onFriendListChanged() {}
 
+    /** Called when a friend is added — creates and stores friendship cert. */
+    default void onFriendAdded(String friendEmail) {}
+
+    /** Bootstrap recovery from a friend's backup. */
+    default void bootstrapRecovery(String password, String friendEmail) {}
+
     /** Check if a peer email is a mutual friend (both sides have added each other). */
     default boolean isMutualFriend(String email) { return false; }
 

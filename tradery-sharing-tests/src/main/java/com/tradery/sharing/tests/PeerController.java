@@ -336,7 +336,7 @@ public class PeerController {
         AddFriendRequest req = ctx.bodyAsClass(AddFriendRequest.class);
         IntelConfig.get().addFriend(new FriendConfig(req.email(), req.displayName()));
         IntelConfig.get().save();
-        peerManager.reannounceFriendship();
+        // cert exchange handles friendship now (no re-announce needed)
         log.info("Added friend: {}", req.email());
         ctx.status(200).result("OK");
     }
@@ -345,7 +345,7 @@ public class PeerController {
         String email = ctx.pathParam("email");
         IntelConfig.get().removeFriend(email);
         IntelConfig.get().save();
-        peerManager.reannounceFriendship();
+        // cert exchange handles friendship now (no re-announce needed)
         log.info("Removed friend: {}", email);
         ctx.status(200).result("OK");
     }

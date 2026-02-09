@@ -12,10 +12,8 @@ import com.tradery.sharing.discovery.NatPmpMapper;
 import com.tradery.sharing.discovery.RendezvousClient;
 import com.tradery.sharing.discovery.StunClient;
 import com.tradery.sharing.discovery.UpnpPortMapper;
-import com.tradery.sharing.identity.AuthConfig;
-import com.tradery.sharing.identity.KeyPairStore;
-import com.tradery.sharing.identity.OAuthLogin;
-import com.tradery.sharing.identity.UserSession;
+import com.tradery.news.ui.FriendshipCertData;
+import com.tradery.sharing.identity.*;
 import com.tradery.sharing.sync.FriendshipDocId;
 import com.tradery.sharing.sync.PeerManager;
 import com.tradery.sharing.upgrade.SharingUpgrade;
@@ -29,8 +27,10 @@ import com.tradery.sharing.sync.NetworkMessage;
 
 import java.io.IOException;
 import java.nio.file.Path;
+import java.security.GeneralSecurityException;
 import java.security.KeyPair;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -61,6 +61,12 @@ public class SharingServiceImpl implements SharingService {
     private volatile int announcePort;          // external port to announce to rendezvous
     private volatile boolean lanActive;
     private UserSession localSession;
+
+    /** CertSigner for creating identity + friendship certs. */
+    private CertSigner certSigner;
+
+    /** Our identity cert (self-signed, sent in Hello). */
+    private IdentityCert localIdentityCert;
 
     /** Device credential for rendezvous auth (persisted in AuthConfig). */
     private volatile String deviceCredential;
@@ -511,6 +517,18 @@ public class SharingServiceImpl implements SharingService {
         peerManager = new PeerManager(peerId, deviceId, documentManager, mapper);
         peerManager.addChatListener(this::onNetworkChat);
         peerManager.setFriendshipDocIds(computeFriendshipDocIds());
+
+        // Wire up cert signer + identity cert
+        ensureCertSigner();
+        if (certSigner != null) {
+            peerManager.setCertSigner(certSigner);
+            peerManager.setLocalIdentityCert(localIdentityCert);
+        }
+        peerManager.setFriendImportCallback(this::handleFriendImport);
+
+        // Auto-generate certs for existing friends that don't have them yet (migration)
+        migrateFriendCerts();
+
         announcePort = peerManager.serverPort();
 
         // STUN discovery from server socket BEFORE dispatch starts.
@@ -738,7 +756,38 @@ public class SharingServiceImpl implements SharingService {
     public void onFriendListChanged() {
         if (peerManager != null) {
             peerManager.setFriendshipDocIds(computeFriendshipDocIds());
-            peerManager.reannounceFriendship();
+        }
+    }
+
+    @Override
+    public void onFriendAdded(String friendEmail) {
+        if (certSigner == null) {
+            ensureCertSigner();
+        }
+        if (certSigner == null) return;
+
+        String localEmail = localSession != null ? localSession.userId() : AuthConfig.load().getEmail();
+        if (localEmail == null) return;
+
+        try {
+            // Create a friendship cert: "I ({localEmail}) accept {friendEmail}"
+            FriendshipCertData cert = certSigner.createFriendshipCert(localEmail, friendEmail);
+            FriendConfig fc = IntelConfig.get().getFriendByEmail(friendEmail);
+            if (fc != null) {
+                fc.setIssuedCert(cert);
+                IntelConfig.get().save();
+                log.info("Created friendship cert for {}", friendEmail);
+
+                // Deliver to peer if connected
+                if (peerManager != null) {
+                    peerManager.sendCertToFriend(friendEmail, cert);
+                }
+
+                // Update UER
+                updateLocalUer();
+            }
+        } catch (GeneralSecurityException e) {
+            log.warn("Failed to create friendship cert for {}: {}", friendEmail, e.getMessage());
         }
     }
 
@@ -746,6 +795,103 @@ public class SharingServiceImpl implements SharingService {
     public boolean isMutualFriend(String email) {
         if (peerManager == null) return false;
         return peerManager.isMutualFriendByEmail(email);
+    }
+
+    /** Ensure CertSigner and IdentityCert are initialized. */
+    private void ensureCertSigner() {
+        if (certSigner != null) return;
+        try {
+            KeyPairStore keyStore = new KeyPairStore();
+            KeyPair keyPair = keyStore.loadOrGenerate();
+            certSigner = new CertSigner(keyPair);
+
+            // Load or create identity cert
+            AuthConfig auth = AuthConfig.load();
+            String email = localSession != null ? localSession.userId() : auth.getEmail();
+            if (email != null) {
+                if (auth.getIdentityCertJson() != null) {
+                    try {
+                        localIdentityCert = mapper.readValue(auth.getIdentityCertJson(), IdentityCert.class);
+                        // Re-create if email changed
+                        if (!email.equals(localIdentityCert.email())) {
+                            localIdentityCert = certSigner.createIdentityCert(email);
+                            auth.setIdentityCertJson(mapper.writeValueAsString(localIdentityCert));
+                            auth.save();
+                        }
+                    } catch (Exception e) {
+                        log.debug("Failed to parse stored identity cert, creating new one");
+                        localIdentityCert = certSigner.createIdentityCert(email);
+                        auth.setIdentityCertJson(mapper.writeValueAsString(localIdentityCert));
+                        auth.save();
+                    }
+                } else {
+                    localIdentityCert = certSigner.createIdentityCert(email);
+                    auth.setIdentityCertJson(mapper.writeValueAsString(localIdentityCert));
+                    auth.save();
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Failed to initialize cert signer: {}", e.getMessage());
+        }
+    }
+
+    /** Migrate existing friends: auto-generate certs for friends without them. */
+    private void migrateFriendCerts() {
+        if (certSigner == null) return;
+        String localEmail = localSession != null ? localSession.userId() : AuthConfig.load().getEmail();
+        if (localEmail == null) return;
+
+        boolean changed = false;
+        for (FriendConfig f : IntelConfig.get().getFriends()) {
+            if (f.getIssuedCert() == null) {
+                try {
+                    FriendshipCertData cert = certSigner.createFriendshipCert(localEmail, f.getEmail());
+                    f.setIssuedCert(cert);
+                    changed = true;
+                    log.info("Migrated: created friendship cert for {}", f.getEmail());
+                } catch (GeneralSecurityException e) {
+                    log.warn("Failed to migrate cert for {}: {}", f.getEmail(), e.getMessage());
+                }
+            }
+        }
+        if (changed) {
+            IntelConfig.get().save();
+        }
+    }
+
+    /** Encrypt and distribute UER to mutual friends. */
+    private void updateLocalUer() {
+        // UER update is a best-effort background operation
+        // Full implementation will prompt user for password and encrypt
+        // For now, just log that it should happen
+        log.debug("UER update requested (password-based encryption pending UI integration)");
+    }
+
+    /** Handle a FriendImportOffer from a peer with a key mismatch. */
+    private void handleFriendImport(String peerEmail, NetworkMessage.FriendImportOffer offer) {
+        log.info("FriendImportOffer from {} — old certs available for re-import", peerEmail);
+        // UI integration will show FriendImportDialog
+        // For now, auto-accept if we have the friend in our list
+        FriendConfig fc = IntelConfig.get().getFriendByEmail(peerEmail);
+        if (fc != null && certSigner != null) {
+            String localEmail = localSession != null ? localSession.userId() : AuthConfig.load().getEmail();
+            if (localEmail != null) {
+                try {
+                    // Generate new certs with current key
+                    FriendshipCertData newCert = certSigner.createFriendshipCert(localEmail, peerEmail);
+                    fc.setIssuedCert(newCert);
+                    // receivedCert will come from the peer when they re-add us
+                    IntelConfig.get().save();
+                    log.info("Re-established friendship with {} after key change", peerEmail);
+
+                    if (peerManager != null) {
+                        peerManager.sendCertToFriend(peerEmail, newCert);
+                    }
+                } catch (GeneralSecurityException e) {
+                    log.warn("Failed to re-create cert for {}: {}", peerEmail, e.getMessage());
+                }
+            }
+        }
     }
 
     /** Compute friendship doc IDs from the local friend list. */

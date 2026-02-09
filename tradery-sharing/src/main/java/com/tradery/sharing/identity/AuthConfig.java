@@ -33,6 +33,9 @@ public class AuthConfig {
     private String deviceCredential;
     private String backendPublicKey;
 
+    // Identity cert (serialized JSON)
+    private String identityCertJson;
+
     public String getRefreshToken() { return refreshToken; }
     public void setRefreshToken(String refreshToken) { this.refreshToken = refreshToken; }
 
@@ -53,6 +56,9 @@ public class AuthConfig {
 
     public String getBackendPublicKey() { return backendPublicKey; }
     public void setBackendPublicKey(String backendPublicKey) { this.backendPublicKey = backendPublicKey; }
+
+    public String getIdentityCertJson() { return identityCertJson; }
+    public void setIdentityCertJson(String identityCertJson) { this.identityCertJson = identityCertJson; }
 
     public boolean isDeviceEnrolled() {
         return deviceCredential != null && !deviceCredential.isBlank();

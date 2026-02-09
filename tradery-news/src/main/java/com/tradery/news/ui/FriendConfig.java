@@ -8,6 +8,8 @@ public class FriendConfig {
     private String email;
     private String displayName;
     private long addedAt;
+    private FriendshipCertData issuedCert;    // cert WE signed about THEM
+    private FriendshipCertData receivedCert;  // cert THEY signed about US
 
     public FriendConfig() {}
 
@@ -25,6 +27,12 @@ public class FriendConfig {
 
     public long getAddedAt() { return addedAt; }
     public void setAddedAt(long addedAt) { this.addedAt = addedAt; }
+
+    public FriendshipCertData getIssuedCert() { return issuedCert; }
+    public void setIssuedCert(FriendshipCertData issuedCert) { this.issuedCert = issuedCert; }
+
+    public FriendshipCertData getReceivedCert() { return receivedCert; }
+    public void setReceivedCert(FriendshipCertData receivedCert) { this.receivedCert = receivedCert; }
 
     /** Returns displayName if set, otherwise email. */
     public String label() {
