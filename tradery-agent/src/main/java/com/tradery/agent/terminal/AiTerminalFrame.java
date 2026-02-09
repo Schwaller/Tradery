@@ -1,5 +1,8 @@
 package com.tradery.agent.terminal;
 
+import com.formdev.flatlaf.FlatClientProperties;
+import com.tradery.ui.controls.ToolbarButton;
+
 import javax.swing.*;
 import java.awt.*;
 import java.awt.event.WindowAdapter;
@@ -16,10 +19,10 @@ public class AiTerminalFrame extends JFrame {
     private final Runnable onFileChange;
     private final Runnable onRedock;
     private JPanel contentPanel;
-    private JButton redockBtn;
+    private JLabel titleLabel;
 
     public AiTerminalFrame(String strategyName, Runnable onFileChange, Runnable onRedock) {
-        super("Claude - " + strategyName);
+        super("AI Terminal - " + strategyName);
         this.strategyName = strategyName;
         this.onFileChange = onFileChange;
         this.onRedock = onRedock;
@@ -36,47 +39,82 @@ public class AiTerminalFrame extends JFrame {
         getRootPane().putClientProperty("apple.awt.fullWindowContent", true);
         getRootPane().putClientProperty("apple.awt.transparentTitleBar", true);
         getRootPane().putClientProperty("apple.awt.windowTitleVisible", false);
-        getRootPane().putClientProperty("FlatLaf.macOS.windowButtonsSpacing", "large");
+        getRootPane().putClientProperty(FlatClientProperties.MACOS_WINDOW_BUTTONS_SPACING,
+                FlatClientProperties.MACOS_WINDOW_BUTTONS_SPACING_LARGE);
 
-        // Dark theme for terminal
-        getContentPane().setBackground(new Color(30, 30, 30));
-
-        // Content panel to hold terminal + header
+        // Content panel
         contentPanel = new JPanel(new BorderLayout(0, 0));
-        contentPanel.setBackground(new Color(30, 30, 30));
 
-        // 52px header with redock button
-        JPanel header = new JPanel(new BorderLayout());
-        header.setBackground(new Color(45, 45, 45));
-        header.setPreferredSize(new Dimension(0, 52));
+        // --- Toolbar header ---
+        int barHeight = 52;
 
-        JPanel headerLeft = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
-        headerLeft.setOpaque(false);
-        headerLeft.add(javax.swing.Box.createHorizontalStrut(70)); // space for traffic light buttons
+        // OverlayLayout: title layer centered to full width, controls layer on top
+        JPanel toolbar = new JPanel();
+        toolbar.setPreferredSize(new Dimension(0, barHeight));
+        toolbar.setMinimumSize(new Dimension(0, barHeight));
+        toolbar.setLayout(new OverlayLayout(toolbar));
 
-        JLabel titleLabel = new JLabel("Claude Terminal");
-        titleLabel.setForeground(Color.WHITE);
+        // Title layer — fills entire toolbar, centered
+        titleLabel = new JLabel("AI Terminal");
         titleLabel.setFont(new Font("SansSerif", Font.BOLD, 13));
-        headerLeft.add(titleLabel);
-        header.add(headerLeft, BorderLayout.WEST);
+        titleLabel.setForeground(UIManager.getColor("Label.disabledForeground"));
+        titleLabel.setHorizontalAlignment(SwingConstants.CENTER);
+        JPanel titleLayer = new JPanel(new BorderLayout());
+        titleLayer.setOpaque(false);
+        titleLayer.add(titleLabel, BorderLayout.CENTER);
+        titleLayer.setAlignmentX(0.5f);
+        titleLayer.setAlignmentY(0.5f);
 
-        JPanel headerRight = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
-        headerRight.setOpaque(false);
-        redockBtn = new JButton("Redock");
-        redockBtn.setFont(redockBtn.getFont().deriveFont(10f));
-        redockBtn.setMargin(new Insets(2, 8, 2, 8));
+        // Controls layer — GridBagLayout for vertical centering
+        JPanel controlsLayer = new JPanel(new GridBagLayout());
+        controlsLayer.setOpaque(false);
+        controlsLayer.setAlignmentX(0.5f);
+        controlsLayer.setAlignmentY(0.5f);
+
+        GridBagConstraints gbc = new GridBagConstraints();
+        gbc.gridy = 0;
+
+        // Left: traffic light placeholder
+        gbc.gridx = 0;
+        gbc.weightx = 1.0;
+        gbc.fill = GridBagConstraints.BOTH;
+        JPanel leftContent = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
+        leftContent.setOpaque(false);
+        JPanel buttonsPlaceholder = new JPanel();
+        buttonsPlaceholder.putClientProperty(FlatClientProperties.FULL_WINDOW_CONTENT_BUTTONS_PLACEHOLDER, "mac");
+        buttonsPlaceholder.setOpaque(false);
+        leftContent.add(buttonsPlaceholder);
+        controlsLayer.add(leftContent, gbc);
+
+        // Right: redock + close ToolbarButtons
+        gbc.gridx = 1;
+        gbc.weightx = 0;
+        gbc.fill = GridBagConstraints.NONE;
+        gbc.anchor = GridBagConstraints.EAST;
+        gbc.insets = new Insets(0, 0, 0, 8);
+        JPanel rightContent = new JPanel(new FlowLayout(FlowLayout.RIGHT, 2, 0));
+        rightContent.setOpaque(false);
+
+        JButton redockBtn = new ToolbarButton("Redock");
+        redockBtn.setToolTipText("Redock into main window");
         redockBtn.addActionListener(e -> {
-            if (onRedock != null) {
-                onRedock.run();
-            }
+            if (onRedock != null) onRedock.run();
         });
-        headerRight.add(redockBtn);
-        header.add(headerRight, BorderLayout.EAST);
+        rightContent.add(redockBtn);
 
-        JPanel headerWrapper = new JPanel(new BorderLayout());
-        headerWrapper.add(header, BorderLayout.CENTER);
-        headerWrapper.add(new javax.swing.JSeparator(), BorderLayout.SOUTH);
-        contentPanel.add(headerWrapper, BorderLayout.NORTH);
+        controlsLayer.add(rightContent, gbc);
+
+        // Controls on top of title
+        toolbar.add(controlsLayer);
+        toolbar.add(titleLayer);
+
+        // Stack toolbar + separator
+        JPanel topStack = new JPanel();
+        topStack.setLayout(new BoxLayout(topStack, BoxLayout.Y_AXIS));
+        topStack.add(toolbar);
+        topStack.add(new JSeparator());
+
+        contentPanel.add(topStack, BorderLayout.NORTH);
         add(contentPanel);
 
         // Center relative to parent or screen
@@ -85,20 +123,27 @@ public class AiTerminalFrame extends JFrame {
         addWindowListener(new WindowAdapter() {
             @Override
             public void windowClosing(WindowEvent e) {
-                // Don't dispose, just hide - process keeps running
+                // Don't dispose, just hide — process keeps running
             }
         });
+    }
+
+    /**
+     * Update the title label text.
+     */
+    public void setTitleText(String text) {
+        if (titleLabel != null) {
+            titleLabel.setText(text);
+        }
     }
 
     /**
      * Set an external terminal panel (for undocking from main window).
      */
     public void setTerminalPanel(AiTerminalPanel panel) {
-        // Remove existing panel if any
         if (terminalPanel != null) {
             contentPanel.remove(terminalPanel);
         }
-
         this.terminalPanel = panel;
         contentPanel.add(terminalPanel, BorderLayout.CENTER);
         contentPanel.revalidate();

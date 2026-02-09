@@ -79,6 +79,20 @@ public class PeerManager implements AutoCloseable {
     }
 
     /**
+     * Accept a pre-connected socket (e.g. from TCP hole punching) and sync.
+     */
+    public void connectWithSocket(Socket socket) {
+        Thread.ofVirtual().name("peer-punch-" + socket.getRemoteSocketAddress()).start(() -> {
+            try {
+                PeerConnection conn = new PeerConnection(socket, mapper);
+                handleOutgoingConnection(conn);
+            } catch (IOException e) {
+                log.warn("Failed to use punched connection to {}: {}", socket.getRemoteSocketAddress(), e.getMessage());
+            }
+        });
+    }
+
+    /**
      * Handle an incoming connection (called by PeerServer).
      */
     private void handleIncomingConnection(PeerConnection conn) {

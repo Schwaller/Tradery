@@ -2,6 +2,7 @@ module com.tradery.agent {
     // UI
     requires java.desktop;
     requires com.formdev.flatlaf;
+    requires com.tradery.ui.common;
 
     // AI profiles & detection
     requires transitive com.tradery.ai;

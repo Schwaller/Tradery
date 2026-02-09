@@ -5,8 +5,11 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
-import java.net.ServerSocket;
+import java.net.InetSocketAddress;
+import java.net.StandardSocketOptions;
 import java.net.Socket;
+import java.nio.channels.ServerSocketChannel;
+import java.net.ServerSocket;
 import java.util.function.Consumer;
 
 /**
@@ -26,7 +29,11 @@ public class PeerServer implements AutoCloseable {
     public PeerServer(ObjectMapper mapper, Consumer<PeerConnection> connectionHandler) throws IOException {
         this.mapper = mapper;
         this.connectionHandler = connectionHandler;
-        this.serverSocket = new ServerSocket(0); // random available port
+        ServerSocketChannel ssc = ServerSocketChannel.open();
+        ssc.setOption(StandardSocketOptions.SO_REUSEADDR, true);
+        ssc.setOption(StandardSocketOptions.SO_REUSEPORT, true); // allow hole punch sockets to share this port
+        ssc.bind(new InetSocketAddress(0)); // random available port
+        this.serverSocket = ssc.socket();
         this.running = true;
 
         this.acceptThread = Thread.ofVirtual().name("peer-server-accept").start(this::acceptLoop);

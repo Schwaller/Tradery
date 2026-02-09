@@ -86,4 +86,32 @@ public interface SharingService {
 
     /** Remove a chat listener. */
     default void removeChatListener(Consumer<ChatMessage> listener) {}
+
+    // ==================== Network Status ====================
+
+    record NetworkStatus(
+        String email,              // logged-in email, or null
+        boolean deviceEnrolled,    // has rendezvous device credential
+        int serverPort,            // PeerServer listen port, 0 if not started
+        String portMapping,        // "NAT-PMP", "UPnP", null if none
+        String publicIp,           // from STUN or port mapping, null if unknown
+        boolean lanActive,         // LAN discovery running
+        int lanPeerCount,          // visible LAN peers
+        boolean rendezvousAvailable, // device enrolled + rendezvous reachable
+        int connectedPeers,        // unique peer emails connected
+        int connectedDevices       // unique device IDs connected
+    ) {}
+
+    default NetworkStatus getNetworkStatus() { return null; }
+
+    // ==================== Auth ====================
+
+    /** Trigger browser-based Keycloak login. Returns true on success. */
+    default boolean login() { return false; }
+
+    /** Clear stored auth tokens and session. */
+    default void logout() {}
+
+    /** Get email from authenticated session, or null if not logged in. */
+    default String getAuthenticatedEmail() { return null; }
 }

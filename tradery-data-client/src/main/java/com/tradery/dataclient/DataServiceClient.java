@@ -555,7 +555,20 @@ public class DataServiceClient {
 
     public record ExchangeMarketStats(String marketType, int pairCount) {}
 
+    public record SyncProgress(
+        String step,
+        String exchange,
+        String marketType,
+        int currentPage,
+        int completedSteps,
+        int totalSteps,
+        int totalCoins,
+        int pairsFoundSoFar,
+        long startedAtMs
+    ) {}
+
     public record SymbolStats(int totalPairs, int totalAssets, int totalCoins,
                               java.util.Map<String, java.util.List<ExchangeMarketStats>> byExchange,
-                              boolean syncInProgress) {}
+                              boolean syncInProgress,
+                              SyncProgress syncProgress) {}
 }

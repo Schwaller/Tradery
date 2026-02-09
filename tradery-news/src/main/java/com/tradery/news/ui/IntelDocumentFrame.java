@@ -89,6 +89,7 @@ public class IntelDocumentFrame extends JFrame {
     private JButton fetchBtn;
     private JButton resetViewBtn;
     private JPanel detailPanel;
+    private JPanel detailHeader;
     private JPanel detailContent;
     private JLabel detailTitleLabel;
     private IntelLogPanel logPanel;
@@ -98,10 +99,12 @@ public class IntelDocumentFrame extends JFrame {
     public static void setSharingService(SharingService s) { sharingService = s; }
 
     // Chat
-    private ChatPanel chatPanel;
-    private JSplitPane chatSplit;
     private JButton chatBtn;
-    private boolean chatVisible;
+
+    // Network status bar
+    private javax.swing.Timer networkStatusTimer;
+    private JPanel[] statusDots;
+    private JLabel[] statusLabels;
 
     // Singleton windows
     private DataStructureFrame dataStructureFrame;
@@ -114,6 +117,7 @@ public class IntelDocumentFrame extends JFrame {
     private DetailMode currentMode = DetailMode.NONE;
     private NewsNode selectedArticle;
     private CoinEntity selectedEntity;
+    private int entityDetailViewIndex; // tracks which form/All Data tab is selected
 
     // Theme-aware colors
     private static Color bgMain() { return UIManager.getColor("Panel.background"); }
@@ -227,7 +231,7 @@ public class IntelDocumentFrame extends JFrame {
                 cfg.save();
 
                 if (autoFetchTimer != null) autoFetchTimer.stop();
-                if (chatPanel != null) chatPanel.dispose();
+                if (networkStatusTimer != null) networkStatusTimer.stop();
                 if (apiServer != null) apiServer.stop();
                 for (PanelInstance pi : panelInstances) {
                     if (pi.graphPanel() instanceof TimelineGraphPanel tgp) tgp.stopPhysics();
@@ -261,17 +265,24 @@ public class IntelDocumentFrame extends JFrame {
         headerWrapper.add(new JSeparator(), BorderLayout.SOUTH);
         mainPanel.add(headerWrapper, BorderLayout.NORTH);
 
-        JPanel leftPanel = createGraphPanel();
-
         JPanel rightPanel = createRightPanel();
         rightPanel.setPreferredSize(new Dimension(400, 0));
         rightPanel.setMinimumSize(new Dimension(300, 0));
 
-        ThinSplitPane mainSplit = new ThinSplitPane(JSplitPane.HORIZONTAL_SPLIT, leftPanel, rightPanel);
-        mainSplit.setResizeWeight(1.0);
-
-        mainPanel.add(mainSplit, BorderLayout.CENTER);
+        if (services.getPanels().isEmpty()) {
+            // No graph panels — right panel (details + log) is the main content
+            mainPanel.add(rightPanel, BorderLayout.CENTER);
+        } else {
+            JPanel leftPanel = createGraphPanel();
+            ThinSplitPane mainSplit = new ThinSplitPane(JSplitPane.HORIZONTAL_SPLIT, leftPanel, rightPanel);
+            mainSplit.setResizeWeight(1.0);
+            mainPanel.add(mainSplit, BorderLayout.CENTER);
+        }
+        if (sharingService != null) {
+            mainPanel.add(createNetworkStatusBar(), BorderLayout.SOUTH);
+        }
         setContentPane(mainPanel);
+        updateHeaderButtons();
     }
 
     private JPanel createHeaderBar() {
@@ -309,7 +320,10 @@ public class IntelDocumentFrame extends JFrame {
             }
             updateHeaderButtons();
         });
-        leftContent.add(viewToggle);
+        // Hide toggle when there are 0 or 1 panels (nothing to toggle)
+        if (panels.size() > 1) {
+            leftContent.add(viewToggle);
+        }
 
         JButton helpBtn = new ToolbarButton("Help");
         helpBtn.addActionListener(e -> IntelHelpDialog.show(this));
@@ -427,13 +441,9 @@ public class IntelDocumentFrame extends JFrame {
         rightContent.add(shareBtn);
 
         chatBtn = new ToolbarButton("Chat");
-        chatBtn.addActionListener(e -> toggleChat());
+        chatBtn.addActionListener(e -> openChat());
         chatBtn.setVisible(sharingService != null);
         rightContent.add(chatBtn);
-
-        JButton entitiesBtn = new ToolbarButton("Entities");
-        entitiesBtn.addActionListener(e -> showEntityManager());
-        rightContent.add(entitiesBtn);
 
         JButton dataStructureBtn = new ToolbarButton("Data Structure");
         dataStructureBtn.addActionListener(e -> showDataStructureWindow());
@@ -514,10 +524,18 @@ public class IntelDocumentFrame extends JFrame {
     }
 
     private void updateHeaderButtons() {
-        int idx = viewToggle.getSelectedIndex();
-        boolean isNewsView = idx < panelInstances.size()
+        if (panelInstances.isEmpty()) {
+            showLabel.setVisible(false);
+            limitCombo.setVisible(false);
+            fetchBtn.setVisible(false);
+            resetViewBtn.setVisible(false);
+            return;
+        }
+        // When only 1 panel, use index 0 directly (no toggle)
+        int idx = panelInstances.size() == 1 ? 0 : viewToggle.getSelectedIndex();
+        boolean isNewsView = idx >= 0 && idx < panelInstances.size()
             && panelInstances.get(idx).config().getType() == PanelConfig.PanelType.NEWS_MAP;
-        boolean isCoinView = idx < panelInstances.size()
+        boolean isCoinView = idx >= 0 && idx < panelInstances.size()
             && panelInstances.get(idx).config().getType() == PanelConfig.PanelType.COIN_GRAPH;
         showLabel.setVisible(isNewsView);
         limitCombo.setVisible(isNewsView);
@@ -532,7 +550,7 @@ public class IntelDocumentFrame extends JFrame {
         detailPanel = new JPanel(new BorderLayout());
         detailPanel.setBackground(bgCard());
 
-        JPanel detailHeader = new JPanel(new BorderLayout());
+        detailHeader = new JPanel(new BorderLayout());
         detailHeader.setBorder(new EmptyBorder(8, 10, 8, 10));
 
         detailTitleLabel = new JLabel("Details");
@@ -585,6 +603,7 @@ public class IntelDocumentFrame extends JFrame {
         detailContent.removeAll();
         currentMode = DetailMode.NONE;
         detailTitleLabel.setText("Details");
+        detailHeader.setVisible(true);
 
         addDetailLabel("Select an entity or article to see details", textSecondary());
         addDetailSpacer();
@@ -615,6 +634,7 @@ public class IntelDocumentFrame extends JFrame {
 
         boolean isCoin = "coin".equals(node.typeId());
         detailTitleLabel.setText(isCoin ? "Coin" : "Topic");
+        detailHeader.setVisible(true);
 
         detailContent.removeAll();
 
@@ -721,6 +741,7 @@ public class IntelDocumentFrame extends JFrame {
         selectedEntity = null;
         currentMode = DetailMode.ARTICLE;
         detailTitleLabel.setText("Article");
+        detailHeader.setVisible(true);
 
         detailContent.removeAll();
 
@@ -782,10 +803,95 @@ public class IntelDocumentFrame extends JFrame {
         selectedEntity = entity;
         selectedArticle = null;
         currentMode = DetailMode.ENTITY;
-        detailTitleLabel.setText("Entity");
+        detailTitleLabel.setText("");
+        detailHeader.setVisible(false);
+
+        // Check for form layouts
+        String typeId = entity.type().name().toLowerCase();
+        SchemaType schemaType = schemaRegistry != null ? schemaRegistry.getType(typeId) : null;
+        List<FormLayout> layouts = (schemaType != null) ? schemaType.formLayouts() : null;
+        boolean hasLayouts = layouts != null && !layouts.isEmpty();
 
         detailContent.removeAll();
 
+        // Segmented toggle: form names + "All Data" (only when forms exist)
+        if (hasLayouts) {
+            String[] segments = new String[layouts.size() + 1];
+            for (int i = 0; i < layouts.size(); i++) segments[i] = layouts.get(i).name();
+            segments[layouts.size()] = "All Data";
+
+            SegmentedToggle detailToggle = new SegmentedToggle(segments);
+            // Clamp saved index to valid range
+            if (entityDetailViewIndex < 0 || entityDetailViewIndex >= segments.length) {
+                entityDetailViewIndex = 0;
+            }
+            detailToggle.setSelectedIndex(entityDetailViewIndex);
+            detailToggle.setAlignmentX(Component.LEFT_ALIGNMENT);
+            detailToggle.setMaximumSize(new Dimension(Integer.MAX_VALUE, detailToggle.getPreferredSize().height));
+            detailToggle.setOnSelectionChanged(i -> {
+                entityDetailViewIndex = i;
+                showEntityDetails(entity); // rebuild with new selection
+            });
+            detailContent.add(detailToggle);
+            addDetailSpacer();
+        }
+
+        if (hasLayouts && entityDetailViewIndex < layouts.size()) {
+            // Render selected form layout
+            renderFormLayoutView(entity, schemaType, layouts.get(entityDetailViewIndex));
+        } else {
+            // "All Data" view (or no layouts — show everything)
+            renderAllDataView(entity, schemaType);
+        }
+
+        detailContent.revalidate();
+        detailContent.repaint();
+    }
+
+    private void renderFormLayoutView(CoinEntity entity, SchemaType schemaType, FormLayout layout) {
+        String typeId = entity.type().name().toLowerCase();
+        Map<String, AttributeValue> richValues = entityStore.getAttributeValuesRich(entity.id(), typeId);
+
+        for (FormLayout.FormLayoutField f : layout.fields()) {
+            if ("categories".equals(f.attributeName())) {
+                addDetailSection("CATEGORIES");
+                if (entity.categories().isEmpty()) {
+                    addDetailLabel("\u2014");
+                } else {
+                    for (String cat : entity.categories()) {
+                        addDetailLabel("  " + cat);
+                    }
+                }
+                addDetailSpacer();
+                continue;
+            }
+
+            SchemaAttribute attr = schemaType.attributes().stream()
+                .filter(a -> a.name().equals(f.attributeName()))
+                .findFirst().orElse(null);
+            if (attr == null) continue;
+
+            String displayLabel = attr.displayName(java.util.Locale.getDefault());
+            AttributeValue av = richValues.get(attr.name());
+            String value = (av != null && av.value() != null && !av.value().isEmpty())
+                ? av.value() : "\u2014";
+
+            if ("market_cap".equals(attr.name()) && av != null && av.value() != null && !av.value().isEmpty()) {
+                try {
+                    value = "$" + formatMarketCap(Double.parseDouble(av.value()));
+                } catch (NumberFormatException ignored) {}
+            }
+
+            addDetailSection(displayLabel.toUpperCase());
+            addDetailLabel(value);
+            addDetailSpacer();
+        }
+
+        // Action buttons
+        addEntityActionButtons(entity);
+    }
+
+    private void renderAllDataView(CoinEntity entity, SchemaType schemaType) {
         addDetailHeader(entity.name());
         if (entity.symbol() != null) {
             addDetailLabel(entity.symbol(), entity.type().color());
@@ -836,12 +942,35 @@ public class IntelDocumentFrame extends JFrame {
         if (entity.isPinned()) {
             addDetailSection("STATUS");
             addDetailLabel("Pinned");
+            addDetailSpacer();
         }
 
-        // Custom attributes from schema
-        addEntityCustomAttributes(entity);
+        // All custom attributes with values
+        if (schemaType != null && !schemaType.attributes().isEmpty()) {
+            String typeId = entity.type().name().toLowerCase();
+            Map<String, AttributeValue> richValues = entityStore.getAttributeValuesRich(entity.id(), typeId);
+            boolean hasAny = false;
+            for (SchemaAttribute attr : schemaType.attributes()) {
+                if ("name".equals(attr.name()) || "symbol".equals(attr.name()) ||
+                    "market_cap".equals(attr.name())) continue;
+                AttributeValue av = richValues.get(attr.name());
+                if (av == null || av.value() == null || av.value().isEmpty()) continue;
 
-        addDetailSpacer();
+                if (!hasAny) {
+                    addDetailSection("ATTRIBUTES");
+                    hasAny = true;
+                }
+                String displayLabel = attr.displayName(java.util.Locale.getDefault());
+                addDetailLabel(displayLabel + ": " + av.value(), textSecondary());
+            }
+            if (hasAny) addDetailSpacer();
+        }
+
+        // Action buttons
+        addEntityActionButtons(entity);
+    }
+
+    private void addEntityActionButtons(CoinEntity entity) {
         JPanel btnPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 0));
         btnPanel.setBackground(bgCard());
         btnPanel.setAlignmentX(Component.LEFT_ALIGNMENT);
@@ -856,51 +985,6 @@ public class IntelDocumentFrame extends JFrame {
         btnPanel.add(searchRelatedBtn);
 
         detailContent.add(btnPanel);
-
-        detailContent.revalidate();
-        detailContent.repaint();
-    }
-
-    private void addEntityCustomAttributes(CoinEntity entity) {
-        if (schemaRegistry == null) return;
-
-        String typeId = entity.type().name().toLowerCase();
-        SchemaType schemaType = schemaRegistry.getType(typeId);
-        if (schemaType == null || schemaType.attributes().isEmpty()) return;
-
-        Map<String, AttributeValue> richValues = entityStore.getAttributeValuesRich(entity.id(), typeId);
-
-        // Determine which attributes to show
-        List<SchemaAttribute> attrsToShow = new java.util.ArrayList<>();
-        List<FormLayout> layouts = schemaType.formLayouts();
-        if (layouts != null && !layouts.isEmpty()) {
-            FormLayout layout = layouts.get(0);
-            for (FormLayout.FormLayoutField f : layout.fields()) {
-                SchemaAttribute attr = schemaType.attributes().stream()
-                    .filter(a -> a.name().equals(f.attributeName()))
-                    .findFirst().orElse(null);
-                if (attr != null) attrsToShow.add(attr);
-            }
-        } else {
-            attrsToShow.addAll(schemaType.attributes());
-        }
-
-        boolean hasAny = false;
-        for (SchemaAttribute attr : attrsToShow) {
-            if ("name".equals(attr.name()) || "symbol".equals(attr.name()) ||
-                "market_cap".equals(attr.name())) continue;
-            AttributeValue av = richValues.get(attr.name());
-            if (av == null || av.value() == null || av.value().isEmpty()) continue;
-
-            if (!hasAny) {
-                addDetailSpacer();
-                addDetailSection("ATTRIBUTES");
-                hasAny = true;
-            }
-
-            String displayLabel = attr.displayName(java.util.Locale.getDefault());
-            addDetailLabel(displayLabel + ": " + av.value(), textSecondary());
-        }
     }
 
     // Detail panel helpers
@@ -1119,6 +1203,11 @@ public class IntelDocumentFrame extends JFrame {
         worker.execute();
     }
 
+    /** Trigger a forced refresh of coin data (used by CoinGeckoWindow). */
+    public void refreshCoinData() {
+        loadCoinData(true);
+    }
+
     private void loadCoinData(boolean forceRefresh) {
         List<PanelInstance> coinPanels = panelInstances.stream()
             .filter(pi -> pi.config().getType() == PanelConfig.PanelType.COIN_GRAPH)
@@ -1263,18 +1352,24 @@ public class IntelDocumentFrame extends JFrame {
         String[] names = panels.stream().map(PanelConfig::getName).toArray(String[]::new);
 
         Container toggleParent = viewToggle.getParent();
+        // Remove old toggle if it was added
         if (toggleParent != null) {
             toggleParent.remove(viewToggle);
-            viewToggle = new SegmentedToggle(names);
-            viewToggle.setOnSelectionChanged(i -> {
-                if (i < panelInstances.size()) {
-                    cardLayout.show(cardPanel, panelInstances.get(i).config().getId());
-                }
-                updateHeaderButtons();
-            });
+        }
+        viewToggle = new SegmentedToggle(names);
+        viewToggle.setOnSelectionChanged(i -> {
+            if (i < panelInstances.size()) {
+                cardLayout.show(cardPanel, panelInstances.get(i).config().getId());
+            }
+            updateHeaderButtons();
+        });
+        // Only show toggle when there are 2+ panels
+        if (panels.size() > 1 && toggleParent != null) {
             int insertIdx = toggleParent.getComponentCount() > 0
                 && toggleParent.getComponent(0) instanceof JPanel ? 1 : 0;
             toggleParent.add(viewToggle, insertIdx);
+            toggleParent.revalidate();
+        } else if (toggleParent != null) {
             toggleParent.revalidate();
         }
 
@@ -1374,12 +1469,143 @@ public class IntelDocumentFrame extends JFrame {
             friendsItem.addActionListener(ev -> showFriendsDialog());
             menu.add(friendsItem);
             JMenuItem chatItem = new JMenuItem("Chat");
-            chatItem.addActionListener(ev -> toggleChat());
+            chatItem.addActionListener(ev -> openChat());
             menu.add(chatItem);
+            menu.addSeparator();
+            JMenuItem logoutItem = new JMenuItem("Sign Out");
+            logoutItem.addActionListener(ev -> {
+                if (sharingService != null) sharingService.logout();
+                IntelConfig.get().setUserEmail(null);
+                IntelConfig.get().save();
+                userAvatarBtn.setToolTipText("Not logged in — click to set identity");
+                userAvatarBtn.repaint();
+            });
+            menu.add(logoutItem);
             menu.show(userAvatarBtn, 0, userAvatarBtn.getHeight());
         });
 
         return userAvatarBtn;
+    }
+
+    // ==================== NETWORK STATUS BAR ====================
+
+    private JPanel createNetworkStatusBar() {
+        // 6 segments: Identity, Server, NAT, LAN, Rendezvous, Peers
+        statusDots = new JPanel[6];
+        statusLabels = new JLabel[6];
+
+        JPanel bar = new JPanel(new FlowLayout(FlowLayout.LEFT, 12, 3));
+        bar.setPreferredSize(new Dimension(0, 24));
+
+        for (int i = 0; i < 6; i++) {
+            final int idx = i;
+            statusDots[i] = new JPanel() {
+                @Override
+                protected void paintComponent(Graphics g) {
+                    super.paintComponent(g);
+                    Graphics2D g2 = (Graphics2D) g.create();
+                    g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                    g2.setColor(getBackground());
+                    g2.fillOval(0, 0, 8, 8);
+                    g2.dispose();
+                }
+            };
+            statusDots[i].setPreferredSize(new Dimension(8, 8));
+            statusDots[i].setOpaque(false);
+            statusDots[i].setBackground(Color.GRAY);
+
+            statusLabels[i] = new JLabel();
+            statusLabels[i].setFont(new Font("SansSerif", Font.PLAIN, 10));
+            statusLabels[i].setForeground(UIManager.getColor("Label.disabledForeground"));
+
+            JPanel segment = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
+            segment.setOpaque(false);
+            segment.add(statusDots[i]);
+            segment.add(statusLabels[i]);
+            bar.add(segment);
+        }
+
+        JPanel wrapper = new JPanel(new BorderLayout());
+        wrapper.add(new JSeparator(), BorderLayout.NORTH);
+        wrapper.add(bar, BorderLayout.CENTER);
+
+        // Initial update + timer
+        updateNetworkStatus();
+        networkStatusTimer = new javax.swing.Timer(3000, e -> updateNetworkStatus());
+        networkStatusTimer.setRepeats(true);
+        networkStatusTimer.start();
+
+        return wrapper;
+    }
+
+    private void updateNetworkStatus() {
+        if (sharingService == null || statusDots == null) return;
+        SharingService.NetworkStatus ns = sharingService.getNetworkStatus();
+        if (ns == null) return;
+
+        Color green = new Color(80, 180, 100);
+        Color yellow = new Color(220, 180, 60);
+        Color gray = UIManager.getColor("Label.disabledForeground") != null
+            ? UIManager.getColor("Label.disabledForeground") : Color.GRAY;
+
+        // 0: Identity
+        if (ns.email() != null && !ns.email().isBlank()) {
+            statusDots[0].setBackground(green);
+            statusLabels[0].setText(ns.email());
+        } else {
+            statusDots[0].setBackground(gray);
+            statusLabels[0].setText("Not signed in");
+        }
+
+        // 1: Server
+        if (ns.serverPort() > 0) {
+            statusDots[1].setBackground(green);
+            statusLabels[1].setText("Port " + ns.serverPort());
+        } else {
+            statusDots[1].setBackground(gray);
+            statusLabels[1].setText("Server off");
+        }
+
+        // 2: NAT
+        if (ns.portMapping() != null) {
+            statusDots[2].setBackground(green);
+            String label = ns.portMapping();
+            if (ns.publicIp() != null) label += " " + ns.publicIp();
+            statusLabels[2].setText(label);
+        } else if (ns.publicIp() != null) {
+            statusDots[2].setBackground(yellow);
+            statusLabels[2].setText("STUN " + ns.publicIp());
+        } else {
+            statusDots[2].setBackground(gray);
+            statusLabels[2].setText("No NAT");
+        }
+
+        // 3: LAN
+        if (ns.lanActive()) {
+            statusDots[3].setBackground(green);
+            statusLabels[3].setText(ns.lanPeerCount() + " peers");
+        } else {
+            statusDots[3].setBackground(gray);
+            statusLabels[3].setText("LAN off");
+        }
+
+        // 4: Rendezvous
+        if (ns.rendezvousAvailable()) {
+            statusDots[4].setBackground(green);
+            statusLabels[4].setText("Rendezvous");
+        } else {
+            statusDots[4].setBackground(gray);
+            statusLabels[4].setText("No rendezvous");
+        }
+
+        // 5: Peers
+        if (ns.connectedPeers() > 0 || ns.connectedDevices() > 0) {
+            statusDots[5].setBackground(green);
+            statusLabels[5].setText(ns.connectedPeers() + " peers / " + ns.connectedDevices() + " devices");
+        } else {
+            statusDots[5].setBackground(gray);
+            statusLabels[5].setText("No peers");
+        }
     }
 
     // ==================== DIALOGS ====================
@@ -1403,13 +1629,6 @@ public class IntelDocumentFrame extends JFrame {
         dataStructureFrame.setVisible(true);
     }
 
-    private void showEntityManager() {
-        logPanel.info("Opening Entity Manager...");
-        EntityManagerFrame entityManager = new EntityManagerFrame(entityStore, v -> loadCoinData(false));
-        entityManager.setSchemaRegistry(schemaRegistry);
-        entityManager.setVisible(true);
-    }
-
     private void showShareDialog() {
         if (sharingService == null) return;
         logPanel.info("Opening Share settings...");
@@ -1423,49 +1642,17 @@ public class IntelDocumentFrame extends JFrame {
         dialog.setVisible(true);
     }
 
-    private void toggleChat() {
+    private void openChat() {
         if (sharingService == null) return;
-        chatVisible = !chatVisible;
-
-        if (chatVisible) {
-            if (chatPanel == null) {
-                chatPanel = new ChatPanel(sharingService);
-                chatPanel.setOnUnreadChanged(() -> updateChatBadge());
-            }
-            chatPanel.clearUnread();
-            updateChatBadge();
-
-            // Wrap the main content in a split pane with chat on right
-            Container contentPane = getContentPane();
-            Component mainContent = contentPane.getComponent(0);
-            contentPane.removeAll();
-
-            chatSplit = new com.tradery.ui.controls.ThinSplitPane(
-                JSplitPane.HORIZONTAL_SPLIT, (JComponent) mainContent, chatPanel);
-            chatSplit.setResizeWeight(1.0);
-            chatSplit.setDividerLocation(getWidth() - 300);
-
-            contentPane.add(chatSplit, BorderLayout.CENTER);
-            contentPane.revalidate();
-            contentPane.repaint();
-            chatBtn.setText("Chat");
-        } else {
-            if (chatSplit != null) {
-                Component mainContent = chatSplit.getLeftComponent();
-                Container contentPane = getContentPane();
-                contentPane.removeAll();
-                contentPane.add(mainContent, BorderLayout.CENTER);
-                contentPane.revalidate();
-                contentPane.repaint();
-                chatSplit = null;
-            }
-        }
+        ChatFrame.open(sharingService, this);
+        ChatFrame.setOnUnreadChanged(this::updateChatBadge);
     }
 
     private void updateChatBadge() {
-        if (chatPanel == null || chatBtn == null) return;
-        int unread = chatPanel.getUnreadCount();
-        chatBtn.setText(unread > 0 ? "Chat (" + unread + ")" : "Chat");
+        if (chatBtn == null) return;
+        int unread = ChatFrame.getUnreadCount();
+        SwingUtilities.invokeLater(() ->
+            chatBtn.setText(unread > 0 ? "Chat (" + unread + ")" : "Chat"));
     }
 
     private void showSettingsWindow() {

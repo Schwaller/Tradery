@@ -22,28 +22,109 @@ ext {
     }
 }
 
-// Sign the .app bundle
-tasks.register('signApp', Exec) {
-    dependsOn 'jpackage'
+// Sign the .app bundle - signs all binaries individually for notarization
+// Note: dependsOn is set per-module (jpackage for jlink modules, jpackageApp for fatJar modules)
+tasks.register('signApp') {
     group = 'packaging'
-    description = 'Code sign the macOS .app bundle'
+    description = 'Code sign the macOS .app bundle (all binaries)'
 
-    def appPath = layout.buildDirectory.file("jpackage/${project.ext.packagingAppName}.app").get().asFile
-    def entitlements = rootProject.file('packaging/entitlements.plist')
-    def identity = project.findProperty('macSignIdentity') ?: 'Developer ID Application'
+    doLast {
+        def appPath = layout.buildDirectory.file("jpackage/${project.ext.packagingAppName}.app").get().asFile
+        def entitlements = rootProject.file('packaging/entitlements.plist')
+        def identity = project.findProperty('macSignIdentity') ?: 'Developer ID Application'
 
-    doFirst {
         if (!appPath.exists()) {
             throw new GradleException("App bundle not found: ${appPath}. Run jpackage first.")
         }
-    }
 
-    commandLine 'codesign', '--deep', '--force', '--options', 'runtime',
-        '--entitlements', entitlements.absolutePath,
-        '--sign', identity,
-        appPath.absolutePath
+        // Extract and sign native libraries inside JARs
+        def jarsWithNatives = []
+        appPath.eachFileRecurse { file ->
+            if (file.name.endsWith('.jar')) {
+                def tempDir = new File(project.buildDir, "jar-signing/${file.name}")
+                tempDir.deleteDir()
+                tempDir.mkdirs()
 
-    doLast {
+                // Extract JAR
+                project.exec { commandLine 'unzip', '-q', '-o', file.absolutePath, '-d', tempDir.absolutePath }
+
+                // Find dylibs inside
+                def hasDylibs = false
+                tempDir.eachFileRecurse { inner ->
+                    if (inner.name.endsWith('.dylib') || inner.name.endsWith('.jnilib')) {
+                        hasDylibs = true
+                        println "  Signing: ${file.name}/${inner.name}"
+                        project.exec {
+                            commandLine 'codesign', '--force', '--options', 'runtime', '--timestamp',
+                                '--sign', identity, inner.absolutePath
+                        }
+                    }
+                }
+
+                // Repack JAR if we signed anything
+                if (hasDylibs) {
+                    file.delete()
+                    project.exec {
+                        workingDir tempDir
+                        commandLine 'zip', '-q', '-r', file.absolutePath, '.'
+                    }
+                }
+                tempDir.deleteDir()
+            }
+        }
+
+        // Sign all dylibs and executables in the bundle
+        appPath.eachFileRecurse { file ->
+            if (file.name.endsWith('.dylib') || file.name.endsWith('.jnilib')) {
+                println "  Signing: ${file.name}"
+                project.exec {
+                    commandLine 'codesign', '--force', '--options', 'runtime', '--timestamp',
+                        '--sign', identity, file.absolutePath
+                }
+            }
+        }
+
+        // Sign executables in runtime/bin and runtime/lib
+        def runtimeDir = new File(appPath, "Contents/runtime/Contents/Home")
+        if (runtimeDir.exists()) {
+            ['bin', 'lib'].each { subdir ->
+                def dir = new File(runtimeDir, subdir)
+                if (dir.exists()) {
+                    dir.eachFile { file ->
+                        if (file.isFile() && file.canExecute() && !file.name.endsWith('.dylib')) {
+                            println "  Signing executable: ${file.name}"
+                            project.exec {
+                                commandLine 'codesign', '--force', '--options', 'runtime', '--timestamp',
+                                    '--entitlements', entitlements.absolutePath,
+                                    '--sign', identity, file.absolutePath
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Sign the runtime bundle (if present) before the outer app
+        def runtimeBundle = new File(appPath, "Contents/runtime")
+        if (runtimeBundle.exists()) {
+            println "  Signing runtime bundle..."
+            project.exec {
+                commandLine 'codesign', '--force', '--options', 'runtime', '--timestamp',
+                    '--entitlements', entitlements.absolutePath,
+                    '--sign', identity,
+                    runtimeBundle.absolutePath
+            }
+        }
+
+        // Sign the outer .app bundle
+        println "  Signing app bundle..."
+        project.exec {
+            commandLine 'codesign', '--force', '--options', 'runtime', '--timestamp',
+                '--entitlements', entitlements.absolutePath,
+                '--sign', identity,
+                appPath.absolutePath
+        }
+
         println "Signed: ${appPath}"
     }
 }

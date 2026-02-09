@@ -136,113 +136,11 @@ tasks.register('jpackageDmg', Exec) {
 }
 
 // Packaging configuration for macOS signing and notarization
-// Uses the fatJar-based jpackageApp as the base (no jlink since desk is non-modular)
 ext.packagingAppName = 'Trading Desk'
 ext.packagingDmgName = 'Trading Desk'
+apply from: "${rootProject.projectDir}/gradle/packaging.gradle"
 
-// Sign the .app bundle
-tasks.register('signApp', Exec) {
+// Override signApp to depend on jpackageApp (fatJar-based) instead of jpackage (jlink-based)
+tasks.named('signApp') {
     dependsOn 'jpackageApp'
-    group = 'packaging'
-    description = 'Code sign the macOS .app bundle'
-
-    def appPath = layout.buildDirectory.file("jpackage/Trading Desk.app").get().asFile
-    def entitlements = rootProject.file('packaging/entitlements.plist')
-    def identity = project.findProperty('macSignIdentity') ?: 'Developer ID Application'
-
-    commandLine 'codesign', '--deep', '--force', '--options', 'runtime',
-        '--entitlements', entitlements.absolutePath,
-        '--sign', identity,
-        appPath.absolutePath
-
-    doLast {
-        println "Signed: ${appPath}"
-    }
-}
-
-// Create signed DMG
-tasks.register('createDmg', Exec) {
-    dependsOn 'signApp'
-    group = 'packaging'
-    description = 'Create DMG from signed .app bundle'
-
-    def outputDir = layout.buildDirectory.dir('jpackage').get().asFile
-    def appPath = new File(outputDir, 'Trading Desk.app')
-    def dmgPath = new File(outputDir, "Trading Desk-${project.version}.dmg")
-
-    doFirst {
-        if (dmgPath.exists()) dmgPath.delete()
-    }
-
-    commandLine 'hdiutil', 'create',
-        '-volname', 'Trading Desk',
-        '-srcfolder', appPath.absolutePath,
-        '-ov', '-format', 'UDZO',
-        dmgPath.absolutePath
-
-    doLast {
-        println "Created DMG: ${dmgPath}"
-    }
-}
-
-// Sign the DMG
-tasks.register('signDmg', Exec) {
-    dependsOn 'createDmg'
-    group = 'packaging'
-    description = 'Code sign the DMG'
-
-    def dmgPath = layout.buildDirectory.file("jpackage/Trading Desk-${project.version}.dmg").get().asFile
-    def identity = project.findProperty('macSignIdentity') ?: 'Developer ID Application'
-
-    commandLine 'codesign', '--force', '--sign', identity, dmgPath.absolutePath
-
-    doLast {
-        println "Signed DMG: ${dmgPath}"
-    }
-}
-
-// Notarize the DMG
-tasks.register('notarizeDmg', Exec) {
-    dependsOn 'signDmg'
-    group = 'packaging'
-    description = 'Submit DMG to Apple for notarization'
-
-    def dmgPath = layout.buildDirectory.file("jpackage/Trading Desk-${project.version}.dmg").get().asFile
-    def keychainProfile = project.findProperty('macKeychainProfile') ?: 'plaiiin-notary'
-
-    commandLine 'xcrun', 'notarytool', 'submit',
-        dmgPath.absolutePath,
-        '--keychain-profile', keychainProfile,
-        '--wait'
-
-    doLast {
-        println "Notarization complete for: ${dmgPath}"
-    }
-}
-
-// Staple the notarization ticket
-tasks.register('stapleDmg', Exec) {
-    dependsOn 'notarizeDmg'
-    group = 'packaging'
-    description = 'Staple notarization ticket to DMG'
-
-    def dmgPath = layout.buildDirectory.file("jpackage/Trading Desk-${project.version}.dmg").get().asFile
-
-    commandLine 'xcrun', 'stapler', 'staple', dmgPath.absolutePath
-
-    doLast {
-        println "Stapled: ${dmgPath}"
-    }
-}
-
-// Full release pipeline
-tasks.register('packageRelease') {
-    dependsOn 'stapleDmg'
-    group = 'packaging'
-    description = 'Full release pipeline: sign app, create DMG, notarize, staple'
-
-    doLast {
-        def dmgPath = layout.buildDirectory.file("jpackage/Trading Desk-${project.version}.dmg").get().asFile
-        println "Release package ready: ${dmgPath}"
-    }
 }

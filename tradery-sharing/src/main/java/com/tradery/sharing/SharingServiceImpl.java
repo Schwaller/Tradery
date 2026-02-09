@@ -8,9 +8,18 @@ import com.tradery.documents.DocumentWorkspace;
 import com.tradery.news.ui.SharingService;
 import com.tradery.news.ui.coin.EntityStore;
 import com.tradery.sharing.discovery.LanDiscovery;
+import com.tradery.sharing.discovery.NatPmpMapper;
+import com.tradery.sharing.discovery.RendezvousClient;
+import com.tradery.sharing.discovery.StunClient;
+import com.tradery.sharing.discovery.TcpHolePuncher;
+import com.tradery.sharing.discovery.UpnpPortMapper;
+import com.tradery.sharing.identity.AuthConfig;
+import com.tradery.sharing.identity.KeyPairStore;
+import com.tradery.sharing.identity.OAuthLogin;
 import com.tradery.sharing.identity.UserSession;
 import com.tradery.sharing.sync.PeerManager;
 import com.tradery.sharing.upgrade.SharingUpgrade;
+import okhttp3.OkHttpClient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -21,8 +30,6 @@ import com.tradery.sharing.sync.NetworkMessage;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.security.KeyPair;
-import java.security.KeyPairGenerator;
-import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
@@ -41,10 +48,22 @@ public class SharingServiceImpl implements SharingService {
     private final SharingUpgrade sharingUpgrade;
     private final ObjectMapper mapper = new ObjectMapper();
 
+    private static final String RENDEZVOUS_URL = "https://plaiiin.com/rendezvous";
+
     /** Lazy-initialized on first share. */
     private PeerManager peerManager;
     private LanDiscovery lanDiscovery;
+    private RendezvousClient rendezvousClient;
+    private NatPmpMapper natPmpMapper;
+    private UpnpPortMapper upnpMapper;
+    private TcpHolePuncher holePuncher;
+    private volatile String portMappingMethod;  // "NAT-PMP", "UPnP", or null
+    private volatile String publicIp;           // from STUN or port mapper
+    private volatile boolean lanActive;
     private UserSession localSession;
+
+    /** Device credential for rendezvous auth (persisted in AuthConfig). */
+    private volatile String deviceCredential;
 
     /** Tracks open workspaces for sync. */
     private final ConcurrentHashMap<String, DocumentWorkspace> workspaces = new ConcurrentHashMap<>();
@@ -131,14 +150,17 @@ public class SharingServiceImpl implements SharingService {
     public void enableSharing(String docId, String visibility, String governanceType,
                               double votingQuorum, String ownerEmail, Path docDir,
                               EntityStore entityStore) throws Exception {
-        ensureSession(ownerEmail);
+        ensureSession();
         ensurePeerManager();
+
+        // Use authenticated email if available, fall back to parameter
+        String email = localSession != null ? localSession.userId() : ownerEmail;
 
         // Open workspace via DocumentManager
         DocumentWorkspace ws = documentManager.openDocument(docId);
 
         // Migrate any local-* owner to the real email identity
-        migrateOwner(docId, ownerEmail, ws);
+        migrateOwner(docId, email, ws);
 
         // Run upgrade (sets owner, members, visibility)
         Document.Visibility vis = Document.Visibility.valueOf(visibility);
@@ -164,14 +186,19 @@ public class SharingServiceImpl implements SharingService {
     @Override
     public void updateSharing(String docId, String visibility, String governanceType,
                               double votingQuorum, String ownerEmail) throws Exception {
+        ensureSession();
+        ensurePeerManager();
+
         DocumentWorkspace ws = workspaces.get(docId);
         if (ws == null) {
             ws = documentManager.openDocument(docId);
             workspaces.put(docId, ws);
+            peerManager.registerWorkspace(docId, ws);
         }
 
         // Migrate owner identity if needed
-        migrateOwner(docId, ownerEmail, ws);
+        String email = localSession != null ? localSession.userId() : ownerEmail;
+        migrateOwner(docId, email, ws);
 
         Document doc = ws.document();
         doc.setVisibility(Document.Visibility.valueOf(visibility));
@@ -261,12 +288,35 @@ public class SharingServiceImpl implements SharingService {
 
     @Override
     public void bootstrap() {
-        String email = IntelConfig.get().getUserEmail();
-        if (email == null || email.isBlank()) return;
+        // Try silent token refresh — no browser popup on app start
+        AuthConfig auth = AuthConfig.load();
+        if (!auth.isLoggedIn()) return;
+
         try {
-            ensureSession(email);
+            OAuthLogin oauth = new OAuthLogin();
+            var tokens = oauth.refresh(auth.getRefreshToken());
+            if (tokens == null) {
+                log.info("Silent token refresh failed at bootstrap — user will need to sign in again");
+                return;
+            }
+
+            var info = oauth.parseIdToken(tokens.idToken());
+            KeyPairStore keyStore = new KeyPairStore();
+            KeyPair keyPair = keyStore.loadOrGenerate();
+
+            localSession = new UserSession(info.email(), info.displayName(),
+                    tokens.accessToken(), tokens.refreshToken(),
+                    System.currentTimeMillis() + tokens.expiresIn() * 1000L, keyPair);
+
+            auth.setRefreshToken(tokens.refreshToken());
+            auth.setEmail(info.email());
+            auth.setDisplayName(info.displayName());
+            auth.setUserId(info.userId());
+            auth.save();
+            updateConfigEmail(info.email());
+
             ensurePeerManager();
-            log.info("Sharing bootstrapped for {}", email);
+            log.info("Sharing bootstrapped for {} (silent refresh)", info.email());
         } catch (Exception e) {
             log.warn("Failed to bootstrap sharing: {}", e.getMessage());
         }
@@ -295,14 +345,133 @@ public class SharingServiceImpl implements SharingService {
         log.info("Unregistered document {} from sync", docId);
     }
 
-    private synchronized void ensureSession(String email) throws NoSuchAlgorithmException {
-        if (localSession != null && email.equals(localSession.userId())) return;
+    private synchronized void ensureSession() throws Exception {
+        if (localSession != null && !localSession.isTokenExpired()) return;
 
-        KeyPairGenerator kpg = KeyPairGenerator.getInstance("Ed25519");
-        KeyPair keyPair = kpg.generateKeyPair();
+        AuthConfig auth = AuthConfig.load();
+        KeyPairStore keyStore = new KeyPairStore();
+        KeyPair keyPair = keyStore.loadOrGenerate();
+        OAuthLogin oauth = new OAuthLogin();
 
-        localSession = new UserSession(email, email, null, null, Long.MAX_VALUE, keyPair);
-        log.info("Created sharing identity for: {}", email);
+        // Try silent refresh first
+        if (auth.isLoggedIn()) {
+            var tokens = oauth.refresh(auth.getRefreshToken());
+            if (tokens != null) {
+                var info = oauth.parseIdToken(tokens.idToken());
+                localSession = new UserSession(info.email(), info.displayName(),
+                        tokens.accessToken(), tokens.refreshToken(),
+                        System.currentTimeMillis() + tokens.expiresIn() * 1000L, keyPair);
+                auth.setRefreshToken(tokens.refreshToken());
+                auth.setEmail(info.email());
+                auth.setDisplayName(info.displayName());
+                auth.setUserId(info.userId());
+                auth.save();
+                updateConfigEmail(info.email());
+                return;
+            }
+        }
+
+        // Refresh failed or no stored token — interactive browser login
+        var tokens = oauth.login();
+        if (tokens == null) throw new IllegalStateException("Login cancelled or timed out");
+        var info = oauth.parseIdToken(tokens.idToken());
+        localSession = new UserSession(info.email(), info.displayName(),
+                tokens.accessToken(), tokens.refreshToken(),
+                System.currentTimeMillis() + tokens.expiresIn() * 1000L, keyPair);
+        auth.setRefreshToken(tokens.refreshToken());
+        auth.setEmail(info.email());
+        auth.setDisplayName(info.displayName());
+        auth.setUserId(info.userId());
+        auth.save();
+        updateConfigEmail(info.email());
+    }
+
+    /**
+     * Ensure we have a device credential for rendezvous auth.
+     * Enrolls with the rendezvous server on first login, reuses stored credential thereafter.
+     */
+    private void ensureDeviceEnrolled() {
+        AuthConfig auth = AuthConfig.load();
+        if (auth.isDeviceEnrolled()) {
+            deviceCredential = auth.getDeviceCredential();
+            return;
+        }
+
+        if (localSession == null || rendezvousClient == null) return;
+
+        try {
+            KeyPairStore keyStore = new KeyPairStore();
+            java.security.KeyPair keyPair = keyStore.loadOrGenerate();
+            String devicePubKey = java.util.Base64.getEncoder().encodeToString(
+                    keyPair.getPublic().getEncoded());
+            String deviceName = System.getProperty("os.name", "unknown") + " " +
+                    System.getProperty("user.name", "");
+
+            var result = rendezvousClient.enrollDevice(
+                    localSession.accessToken(), devicePubKey, deviceName.trim());
+
+            auth.setDeviceId(result.deviceId());
+            auth.setDeviceCredential(result.deviceCredential());
+            auth.setBackendPublicKey(result.backendPublicKey());
+            auth.save();
+
+            deviceCredential = result.deviceCredential();
+            log.info("Device enrolled with rendezvous: deviceId={}", result.deviceId());
+        } catch (Exception e) {
+            log.warn("Device enrollment failed: {} — rendezvous will be unavailable", e.getMessage());
+        }
+    }
+
+    /** Sync IntelConfig.userEmail from Keycloak identity. */
+    private void updateConfigEmail(String email) {
+        IntelConfig config = IntelConfig.get();
+        if (!email.equals(config.getUserEmail())) {
+            config.setUserEmail(email);
+            config.save();
+        }
+    }
+
+    @Override
+    public boolean login() {
+        try {
+            ensureSession();
+            return localSession != null;
+        } catch (Exception e) {
+            log.warn("Login failed: {}", e.getMessage());
+            return false;
+        }
+    }
+
+    @Override
+    public void logout() {
+        AuthConfig auth = AuthConfig.load();
+        auth.clear();
+        localSession = null;
+        log.info("Logged out — auth tokens cleared");
+    }
+
+    @Override
+    public String getAuthenticatedEmail() {
+        if (localSession != null) return localSession.userId();
+        AuthConfig auth = AuthConfig.load();
+        return auth.getEmail();
+    }
+
+    @Override
+    public NetworkStatus getNetworkStatus() {
+        String email = localSession != null ? localSession.userId() : AuthConfig.load().getEmail();
+        return new NetworkStatus(
+            email,
+            deviceCredential != null,
+            peerManager != null ? peerManager.serverPort() : 0,
+            portMappingMethod,
+            publicIp,
+            lanActive,
+            lanDiscovery != null ? lanDiscovery.activePeers().size() : 0,
+            deviceCredential != null,
+            peerManager != null ? peerManager.connectedPeerIds().size() : 0,
+            peerManager != null ? peerManager.connectedDeviceIds().size() : 0
+        );
     }
 
     private synchronized void ensurePeerManager() throws IOException {
@@ -316,21 +485,103 @@ public class SharingServiceImpl implements SharingService {
 
         try {
             lanDiscovery.start();
+            lanActive = true;
         } catch (IOException e) {
             log.warn("LAN discovery failed to start: {}", e.getMessage());
         }
 
-        // Auto-connect to peers who are members of our shared documents (or our own devices)
-        Thread.ofVirtual().name("peer-auto-connect").start(() -> {
+        // Port mapping: try NAT-PMP → UPnP → STUN (for hole punching)
+        natPmpMapper = new NatPmpMapper();
+        upnpMapper = new UpnpPortMapper();
+        holePuncher = new TcpHolePuncher();
+        int announcePort = peerManager.serverPort();
+        Thread.ofVirtual().name("port-mapper").start(() -> {
+            // Try NAT-PMP
+            var mapping = natPmpMapper.mapPort(peerManager.serverPort());
+            if (mapping != null) {
+                portMappingMethod = "NAT-PMP";
+                publicIp = mapping.externalIp();
+                return;
+            }
+
+            // Try UPnP
+            var upnpMapping = upnpMapper.mapPort(peerManager.serverPort());
+            if (upnpMapping != null) {
+                log.info("Port mapped via UPnP: {} → {}:{}", peerManager.serverPort(), upnpMapping.externalIp(), upnpMapping.externalPort());
+                portMappingMethod = "UPnP";
+                publicIp = upnpMapping.externalIp();
+                return;
+            }
+
+            // No port mapping — discover public IP via STUN for hole punching
+            var stun = new StunClient();
+            var endpoint = stun.discover();
+            if (endpoint != null) {
+                publicIp = endpoint.ip();
+                log.info("STUN: public IP is {} (no port mapping, will use hole punching)", endpoint.ip());
+            } else {
+                log.info("No port mapping or STUN available — LAN/rendezvous only");
+            }
+        });
+
+        // Rendezvous client + device enrollment
+        rendezvousClient = new RendezvousClient(RENDEZVOUS_URL, new OkHttpClient(), mapper);
+        ensureDeviceEnrolled();
+
+        // Initial announce (only if we have a device credential)
+        if (deviceCredential != null) {
+            try {
+                var docIds = new ArrayList<>(workspaces.keySet());
+                rendezvousClient.announce(deviceCredential, peerId, announcePort, docIds);
+                log.info("Rendezvous: announced as {} with {} documents", peerId, docIds.size());
+            } catch (Exception e) {
+                log.warn("Rendezvous: initial announce failed: {}", e.getMessage());
+            }
+        }
+
+        // Combined discovery loop: LAN auto-connect + rendezvous announce/discover
+        Thread.ofVirtual().name("peer-discovery-loop").start(() -> {
             while (true) {
                 try {
-                    Thread.sleep(35_000);
+                    Thread.sleep(60_000);
                     var knownMembers = collectAllMemberEmails();
                     var connectedDevices = peerManager.connectedDeviceIds();
+
+                    // LAN auto-connect
                     for (var peer : lanDiscovery.activePeers()) {
                         if (knownMembers.contains(peer.peerId())
                                 && !connectedDevices.contains(peer.deviceId())) {
                             peerManager.connectAndSync(peer.host(), peer.port());
+                        }
+                    }
+
+                    // Rendezvous re-announce + discover (uses device credential, not access token)
+                    if (deviceCredential != null) {
+                        var docIds = new ArrayList<>(workspaces.keySet());
+
+                        try {
+                            rendezvousClient.announce(deviceCredential, peerId, announcePort, docIds);
+                        } catch (Exception e) {
+                            log.debug("Rendezvous: re-announce failed: {}", e.getMessage());
+                        }
+
+                        for (String docId : docIds) {
+                            try {
+                                var peers = rendezvousClient.discoverPeers(deviceCredential, docId);
+                                for (var rp : peers) {
+                                    if (peerId.equals(rp.peerId())) continue;
+                                    if (portMappingMethod != null) {
+                                        peerManager.connectAndSync(rp.host(), rp.port());
+                                    } else {
+                                        tryConnectWithHolePunch(rp.host(), rp.port());
+                                    }
+                                }
+                                if (!peers.isEmpty()) {
+                                    log.debug("Rendezvous: discovered {} peers for doc {}", peers.size(), docId);
+                                }
+                            } catch (Exception e) {
+                                log.debug("Rendezvous: discover failed for doc {}: {}", docId, e.getMessage());
+                            }
                         }
                     }
                 } catch (InterruptedException e) {
@@ -340,7 +591,44 @@ public class SharingServiceImpl implements SharingService {
             }
         });
 
+        // Shutdown hook for cleanup
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+            if (natPmpMapper != null) natPmpMapper.unmap();
+            if (upnpMapper != null) upnpMapper.unmap();
+            if (rendezvousClient != null && deviceCredential != null) {
+                try {
+                    rendezvousClient.depart(deviceCredential, peerId);
+                } catch (Exception e) {
+                    // shutting down, ignore
+                }
+            }
+        }, "sharing-shutdown"));
+
         log.info("PeerManager started on port {}", peerManager.serverPort());
+    }
+
+    /**
+     * Try direct TCP connect first. If that fails quickly, attempt TCP hole punching
+     * which binds to the PeerServer port and retries to create a NAT mapping.
+     */
+    private void tryConnectWithHolePunch(String host, int port) {
+        Thread.ofVirtual().name("hole-punch-" + host).start(() -> {
+            // Quick direct connect attempt (might work for full-cone NAT)
+            try {
+                var socket = new java.net.Socket();
+                socket.connect(new java.net.InetSocketAddress(host, port), 3000);
+                peerManager.connectWithSocket(socket);
+                return;
+            } catch (IOException e) {
+                log.debug("Direct connect to {}:{} failed, trying hole punch", host, port);
+            }
+
+            // TCP hole punch: bind to PeerServer port and retry
+            var socket = holePuncher.punch(peerManager.serverPort(), host, port);
+            if (socket != null) {
+                peerManager.connectWithSocket(socket);
+            }
+        });
     }
 
     // ==================== Friends ====================

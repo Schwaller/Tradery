@@ -1,5 +1,6 @@
 package com.tradery.news.source;
 
+import com.tradery.news.ui.IntelConfig;
 import com.tradery.news.ui.coin.AttributeValue;
 import com.tradery.news.ui.coin.CoinEntity;
 import com.tradery.news.ui.coin.CoinGeckoClient;
@@ -14,8 +15,6 @@ import java.util.*;
  * Produces coins, L2s, ETFs, ETPs, and exchange entities plus their relationships.
  */
 public class CoinGeckoSource implements DataSource {
-
-    private static final Duration CACHE_TTL = Duration.ofHours(6);
 
     @Override
     public String id() { return "coingecko"; }
@@ -34,20 +33,29 @@ public class CoinGeckoSource implements DataSource {
     }
 
     @Override
-    public Duration cacheTTL() { return CACHE_TTL; }
+    public Duration cacheTTL() {
+        return Duration.ofHours(IntelConfig.get().getCoinGeckoCacheHours());
+    }
 
     @Override
     public FetchResult fetch(FetchContext ctx) {
         EntityStore store = ctx.entityStore();
         ProgressCallback progress = ctx.progress();
 
+        IntelConfig config = IntelConfig.get();
+        if (!config.isCoinGeckoEnabled()) {
+            progress.update("CoinGecko disabled", 100);
+            return new FetchResult(0, 0, "CoinGecko disabled");
+        }
+
         try {
             CoinGeckoClient client = new CoinGeckoClient();
             boolean fromCache = false;
             List<CoinEntity> entities;
+            Duration cacheTtl = cacheTTL();
 
             // Try cache first
-            if (store.isSourceCacheValid("coingecko", CACHE_TTL)) {
+            if (store.isSourceCacheValid("coingecko", cacheTtl)) {
                 progress.update("Loading from cache...", 10);
                 entities = store.loadEntitiesBySource("coingecko");
                 fromCache = !entities.isEmpty();
@@ -57,7 +65,8 @@ public class CoinGeckoSource implements DataSource {
 
             if (entities == null || entities.isEmpty()) {
                 progress.update("Fetching from CoinGecko...", 20);
-                List<CoinEntity> cgEntities = client.fetchTopCoins(200);
+                long delayMs = config.getCoinGeckoRequestDelayMs();
+                List<CoinEntity> cgEntities = client.fetchTopCoins(config.getCoinGeckoLimit(), delayMs);
                 store.replaceEntitiesBySource("coingecko", cgEntities);
                 entities = new ArrayList<>(cgEntities);
 
@@ -85,9 +94,9 @@ public class CoinGeckoSource implements DataSource {
             int entityCount = entities.size();
             int relCount = autoRels.size();
 
-            // Background category enrichment (only on fresh fetch)
-            if (!fromCache) {
-                fetchCategories(client, entities, store, progress);
+            // Background category enrichment (only on fresh fetch, if enabled)
+            if (!fromCache && config.isCoinGeckoFetchCategories()) {
+                fetchCategories(client, entities, store, progress, config.getCoinGeckoRequestDelayMs());
             }
 
             progress.update("Done", 100);
@@ -117,7 +126,7 @@ public class CoinGeckoSource implements DataSource {
     }
 
     private void fetchCategories(CoinGeckoClient client, List<CoinEntity> entities,
-                                  EntityStore store, ProgressCallback progress) {
+                                  EntityStore store, ProgressCallback progress, long delayMs) {
         List<String> cgIds = entities.stream()
             .filter(e -> e.type() == CoinEntity.Type.COIN)
             .map(CoinEntity::id).toList();
@@ -130,7 +139,7 @@ public class CoinGeckoSource implements DataSource {
             progress.update("Categories: " + count + "/" + total, pct);
 
             try {
-                Map<String, List<String>> catMap = client.fetchCoinCategories(List.of(coinId));
+                Map<String, List<String>> catMap = client.fetchCoinCategories(List.of(coinId), delayMs);
                 List<String> cats = catMap.get(coinId);
                 if (cats != null && !cats.isEmpty()) {
                     for (CoinEntity entity : entities) {

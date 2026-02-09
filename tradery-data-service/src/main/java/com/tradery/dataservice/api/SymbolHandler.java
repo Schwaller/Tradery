@@ -224,6 +224,14 @@ public class SymbolHandler {
             // Circuit breaker status
             var cbStatus = coingeckoClient.getCircuitBreakerStatus();
 
+            // Live sync progress
+            SymbolSyncService.SyncProgress progress = syncService.getSyncProgress();
+            SyncProgressInfo progressInfo = progress != null
+                ? new SyncProgressInfo(progress.step(), progress.exchange(), progress.marketType(),
+                    progress.currentPage(), progress.completedSteps(), progress.totalSteps(),
+                    progress.totalCoins(), progress.pairsFoundSoFar(), progress.startedAtMs())
+                : null;
+
             ctx.json(new StatsResponse(
                 pairCount,
                 assetCount,
@@ -236,7 +244,8 @@ public class SymbolHandler {
                     cbStatus.consecutiveFailures(),
                     cbStatus.openedAt() != null ? cbStatus.openedAt().toString() : null,
                     cbStatus.resetsAt() != null ? cbStatus.resetsAt().toString() : null
-                )
+                ),
+                progressInfo
             ));
         } catch (Exception e) {
             log.error("Failed to get stats", e);
@@ -306,6 +315,18 @@ public class SymbolHandler {
         String resetsAt
     ) {}
 
+    public record SyncProgressInfo(
+        String step,
+        String exchange,
+        String marketType,
+        int currentPage,
+        int completedSteps,
+        int totalSteps,
+        int totalCoins,
+        int pairsFoundSoFar,
+        long startedAtMs
+    ) {}
+
     public record StatsResponse(
         int totalPairs,
         int totalAssets,
@@ -313,7 +334,8 @@ public class SymbolHandler {
         Map<String, List<ExchangeMarketStats>> byExchange,
         List<SyncStatus> syncStatus,
         boolean syncInProgress,
-        CircuitBreakerInfo circuitBreaker
+        CircuitBreakerInfo circuitBreaker,
+        SyncProgressInfo syncProgress
     ) {}
 
     public record ExchangesResponse(List<String> exchanges) {}

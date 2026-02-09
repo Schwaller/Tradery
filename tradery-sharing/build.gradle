@@ -9,8 +9,9 @@ dependencies {
     implementation project(':tradery-documents')
     implementation project(':tradery-news')
 
-    // JSON serialization for wire protocol
+    // JSON + YAML serialization
     implementation "com.fasterxml.jackson.core:jackson-databind:${rootProject.ext.jacksonVersion}"
+    implementation "com.fasterxml.jackson.dataformat:jackson-dataformat-yaml:${rootProject.ext.jacksonVersion}"
 
     // HTTP client for rendezvous server
     implementation "com.squareup.okhttp3:okhttp:${rootProject.ext.okhttpVersion}"

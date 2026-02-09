@@ -85,6 +85,7 @@ public class IntelFrame extends JFrame {
     private JButton fetchBtn;
     private JButton resetViewBtn;
     private JPanel detailPanel;
+    private JPanel detailHeader;
     private JPanel detailContent;
     private JLabel detailTitleLabel;
     private IntelLogPanel logPanel;
@@ -102,6 +103,7 @@ public class IntelFrame extends JFrame {
     private DetailMode currentMode = DetailMode.NONE;
     private NewsNode selectedArticle;
     private CoinEntity selectedEntity;
+    private int entityDetailViewIndex;
 
     // Theme-aware colors (call these methods to get current theme colors)
     private static Color bgMain() { return UIManager.getColor("Panel.background"); }
@@ -395,10 +397,6 @@ public class IntelFrame extends JFrame {
 
         rightContent.add(pendingPanel);
 
-        JButton entitiesBtn = new ToolbarButton("Entities");
-        entitiesBtn.addActionListener(e -> showEntityManager());
-        rightContent.add(entitiesBtn);
-
         JButton dataStructureBtn = new ToolbarButton("Data Structure");
         dataStructureBtn.addActionListener(e -> showDataStructureWindow());
         rightContent.add(dataStructureBtn);
@@ -498,7 +496,7 @@ public class IntelFrame extends JFrame {
         detailPanel = new JPanel(new BorderLayout());
         detailPanel.setBackground(bgCard());
 
-        JPanel detailHeader = new JPanel(new BorderLayout());
+        detailHeader = new JPanel(new BorderLayout());
         detailHeader.setBorder(new EmptyBorder(8, 10, 8, 10));
 
         detailTitleLabel = new JLabel("Details");
@@ -553,6 +551,7 @@ public class IntelFrame extends JFrame {
         detailContent.removeAll();
         currentMode = DetailMode.NONE;
         detailTitleLabel.setText("Details");
+        detailHeader.setVisible(true);
 
         addDetailLabel("Select an entity or article to see details", textSecondary());
         addDetailSpacer();
@@ -584,6 +583,7 @@ public class IntelFrame extends JFrame {
 
         boolean isCoin = "coin".equals(node.typeId());
         detailTitleLabel.setText(isCoin ? "Coin" : "Topic");
+        detailHeader.setVisible(true);
 
         detailContent.removeAll();
 
@@ -694,6 +694,7 @@ public class IntelFrame extends JFrame {
         selectedEntity = null;
         currentMode = DetailMode.ARTICLE;
         detailTitleLabel.setText("Article");
+        detailHeader.setVisible(true);
 
         detailContent.removeAll();
 
@@ -755,10 +756,91 @@ public class IntelFrame extends JFrame {
         selectedEntity = entity;
         selectedArticle = null;
         currentMode = DetailMode.ENTITY;
-        detailTitleLabel.setText("Entity");
+        detailTitleLabel.setText("");
+        detailHeader.setVisible(false);
+
+        // Check for form layouts
+        String typeId = entity.type().name().toLowerCase();
+        SchemaType schemaType = schemaRegistry != null ? schemaRegistry.getType(typeId) : null;
+        List<FormLayout> layouts = (schemaType != null) ? schemaType.formLayouts() : null;
+        boolean hasLayouts = layouts != null && !layouts.isEmpty();
 
         detailContent.removeAll();
 
+        // Segmented toggle: form names + "All Data" (only when forms exist)
+        if (hasLayouts) {
+            String[] segments = new String[layouts.size() + 1];
+            for (int i = 0; i < layouts.size(); i++) segments[i] = layouts.get(i).name();
+            segments[layouts.size()] = "All Data";
+
+            SegmentedToggle detailToggle = new SegmentedToggle(segments);
+            if (entityDetailViewIndex < 0 || entityDetailViewIndex >= segments.length) {
+                entityDetailViewIndex = 0;
+            }
+            detailToggle.setSelectedIndex(entityDetailViewIndex);
+            detailToggle.setAlignmentX(Component.LEFT_ALIGNMENT);
+            detailToggle.setMaximumSize(new Dimension(Integer.MAX_VALUE, detailToggle.getPreferredSize().height));
+            detailToggle.setOnSelectionChanged(i -> {
+                entityDetailViewIndex = i;
+                showEntityDetails(entity);
+            });
+            detailContent.add(detailToggle);
+            addDetailSpacer();
+        }
+
+        if (hasLayouts && entityDetailViewIndex < layouts.size()) {
+            renderFormLayoutView(entity, schemaType, layouts.get(entityDetailViewIndex));
+        } else {
+            renderAllDataView(entity, schemaType);
+        }
+
+        detailContent.revalidate();
+        detailContent.repaint();
+    }
+
+    private void renderFormLayoutView(CoinEntity entity, SchemaType schemaType, FormLayout layout) {
+        String typeId = entity.type().name().toLowerCase();
+        Map<String, AttributeValue> richValues = entityStore.getAttributeValuesRich(entity.id(), typeId);
+
+        for (FormLayout.FormLayoutField f : layout.fields()) {
+            if ("categories".equals(f.attributeName())) {
+                addDetailSection("CATEGORIES");
+                if (entity.categories().isEmpty()) {
+                    addDetailLabel("\u2014");
+                } else {
+                    for (String cat : entity.categories()) {
+                        addDetailLabel("  " + cat);
+                    }
+                }
+                addDetailSpacer();
+                continue;
+            }
+
+            SchemaAttribute attr = schemaType.attributes().stream()
+                .filter(a -> a.name().equals(f.attributeName()))
+                .findFirst().orElse(null);
+            if (attr == null) continue;
+
+            String displayLabel = attr.displayName(java.util.Locale.getDefault());
+            AttributeValue av = richValues.get(attr.name());
+            String value = (av != null && av.value() != null && !av.value().isEmpty())
+                ? av.value() : "\u2014";
+
+            if ("market_cap".equals(attr.name()) && av != null && av.value() != null && !av.value().isEmpty()) {
+                try {
+                    value = "$" + formatMarketCap(Double.parseDouble(av.value()));
+                } catch (NumberFormatException ignored) {}
+            }
+
+            addDetailSection(displayLabel.toUpperCase());
+            addDetailLabel(value);
+            addDetailSpacer();
+        }
+
+        addEntityActionButtons(entity);
+    }
+
+    private void renderAllDataView(CoinEntity entity, SchemaType schemaType) {
         addDetailHeader(entity.name());
         if (entity.symbol() != null) {
             addDetailLabel(entity.symbol(), entity.type().color());
@@ -809,13 +891,33 @@ public class IntelFrame extends JFrame {
         if (entity.isPinned()) {
             addDetailSection("STATUS");
             addDetailLabel("Pinned");
+            addDetailSpacer();
         }
 
-        // Custom attributes from schema
-        addEntityCustomAttributes(entity);
+        if (schemaType != null && !schemaType.attributes().isEmpty()) {
+            String typeId = entity.type().name().toLowerCase();
+            Map<String, AttributeValue> richValues = entityStore.getAttributeValuesRich(entity.id(), typeId);
+            boolean hasAny = false;
+            for (SchemaAttribute attr : schemaType.attributes()) {
+                if ("name".equals(attr.name()) || "symbol".equals(attr.name()) ||
+                    "market_cap".equals(attr.name())) continue;
+                AttributeValue av = richValues.get(attr.name());
+                if (av == null || av.value() == null || av.value().isEmpty()) continue;
 
-        // Action buttons
-        addDetailSpacer();
+                if (!hasAny) {
+                    addDetailSection("ATTRIBUTES");
+                    hasAny = true;
+                }
+                String displayLabel = attr.displayName(java.util.Locale.getDefault());
+                addDetailLabel(displayLabel + ": " + av.value(), textSecondary());
+            }
+            if (hasAny) addDetailSpacer();
+        }
+
+        addEntityActionButtons(entity);
+    }
+
+    private void addEntityActionButtons(CoinEntity entity) {
         JPanel btnPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 0));
         btnPanel.setBackground(bgCard());
         btnPanel.setAlignmentX(Component.LEFT_ALIGNMENT);
@@ -830,53 +932,6 @@ public class IntelFrame extends JFrame {
         btnPanel.add(searchRelatedBtn);
 
         detailContent.add(btnPanel);
-
-        detailContent.revalidate();
-        detailContent.repaint();
-    }
-
-    private void addEntityCustomAttributes(CoinEntity entity) {
-        if (schemaRegistry == null) return;
-
-        String typeId = entity.type().name().toLowerCase();
-        SchemaType schemaType = schemaRegistry.getType(typeId);
-        if (schemaType == null || schemaType.attributes().isEmpty()) return;
-
-        Map<String, AttributeValue> richValues = entityStore.getAttributeValuesRich(entity.id(), typeId);
-
-        // Determine which attributes to show
-        List<SchemaAttribute> attrsToShow = new java.util.ArrayList<>();
-        List<FormLayout> layouts = schemaType.formLayouts();
-        if (layouts != null && !layouts.isEmpty()) {
-            // Use first form layout
-            FormLayout layout = layouts.get(0);
-            for (FormLayout.FormLayoutField f : layout.fields()) {
-                SchemaAttribute attr = schemaType.attributes().stream()
-                    .filter(a -> a.name().equals(f.attributeName()))
-                    .findFirst().orElse(null);
-                if (attr != null) attrsToShow.add(attr);
-            }
-        } else {
-            attrsToShow.addAll(schemaType.attributes());
-        }
-
-        // Filter to only attributes that have values, skip core fields
-        boolean hasAny = false;
-        for (SchemaAttribute attr : attrsToShow) {
-            if ("name".equals(attr.name()) || "symbol".equals(attr.name()) ||
-                "market_cap".equals(attr.name())) continue;
-            AttributeValue av = richValues.get(attr.name());
-            if (av == null || av.value() == null || av.value().isEmpty()) continue;
-
-            if (!hasAny) {
-                addDetailSpacer();
-                addDetailSection("ATTRIBUTES");
-                hasAny = true;
-            }
-
-            String displayLabel = attr.displayName(java.util.Locale.getDefault());
-            addDetailLabel(displayLabel + ": " + av.value(), textSecondary());
-        }
     }
 
     // Detail panel helper methods
@@ -1103,6 +1158,11 @@ public class IntelFrame extends JFrame {
         worker.execute();
     }
 
+    /** Trigger a forced refresh of coin data (used by CoinGeckoWindow). */
+    public void refreshCoinData() {
+        loadCoinData(true);
+    }
+
     private void loadCoinData(boolean forceRefresh) {
         List<PanelInstance> coinPanels = panelInstances.stream()
             .filter(pi -> pi.config().getType() == PanelConfig.PanelType.COIN_GRAPH)
@@ -1319,13 +1379,6 @@ public class IntelFrame extends JFrame {
         logPanel.info("Opening Data Structure...");
         dataStructureFrame = new DataStructureFrame(entityStore, schemaRegistry, v -> loadCoinData(false));
         dataStructureFrame.setVisible(true);
-    }
-
-    private void showEntityManager() {
-        logPanel.info("Opening Entity Manager...");
-        EntityManagerFrame entityManager = new EntityManagerFrame(entityStore, v -> loadCoinData(false));
-        entityManager.setSchemaRegistry(schemaRegistry);
-        entityManager.setVisible(true);
     }
 
     private void showSettingsWindow() {

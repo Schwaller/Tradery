@@ -59,6 +59,7 @@ public class IntelSettingsDialog extends SettingsDialog {
         return List.of(
             new SectionEntry("Panels", createPanelsContent()),
             new SectionEntry("News Sources", createNewsSourcesContent()),
+            new SectionEntry("CoinGecko", createCoinGeckoContent()),
             new SectionEntry("AI Profiles", createAiProfilesContent()),
             new SectionEntry("ERD Rendering", createErdContent())
         );
@@ -816,6 +817,38 @@ public class IntelSettingsDialog extends SettingsDialog {
         bottomPanel.add(intervalPanel, BorderLayout.SOUTH);
 
         panel.add(bottomPanel, BorderLayout.SOUTH);
+
+        return panel;
+    }
+
+    // --- CoinGecko ---
+
+    private JPanel createCoinGeckoContent() {
+        JPanel panel = new JPanel(new BorderLayout(0, 8));
+
+        JLabel desc = new JLabel("Market data from CoinGecko API");
+        desc.setForeground(UIManager.getColor("Label.disabledForeground"));
+        panel.add(desc, BorderLayout.NORTH);
+
+        JButton openBtn = new JButton("Open CoinGecko...");
+        openBtn.addActionListener(e -> {
+            EntityStore store = getEntityStore();
+            if (store == null) return;
+            Window owner = getOwner();
+            Runnable onRefresh = () -> {
+                if (owner instanceof IntelDocumentFrame frame) {
+                    frame.refreshCoinData();
+                } else if (owner instanceof IntelFrame frame) {
+                    frame.refreshCoinData();
+                }
+            };
+            dispose(); // Close modal dialog so the window can appear
+            CoinGeckoWindow.open(store, onRefresh, owner);
+        });
+
+        JPanel btnPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
+        btnPanel.add(openBtn);
+        panel.add(btnPanel, BorderLayout.CENTER);
 
         return panel;
     }

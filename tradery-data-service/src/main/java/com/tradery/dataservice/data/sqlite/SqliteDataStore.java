@@ -62,6 +62,14 @@ public class SqliteDataStore {
     public void saveCandles(String symbol, String marketType, String timeframe, List<Candle> candles) throws IOException {
         try {
             forSymbol(symbol).candles().insertBatch(timeframe, marketType, candles);
+
+            // Record coverage so inventory/coverage APIs reflect stored data
+            if (!candles.isEmpty()) {
+                long start = candles.stream().mapToLong(Candle::timestamp).min().getAsLong();
+                long end = candles.stream().mapToLong(Candle::timestamp).max().getAsLong();
+                String subKey = timeframe + ":" + marketType;
+                forSymbol(symbol).coverageFor(DataStoreType.CANDLES).addCoverage("klines", subKey, start, end, true);
+            }
         } catch (SQLException e) {
             throw new IOException("SQLite error saving candles: " + e.getMessage(), e);
         }

@@ -87,6 +87,13 @@ public class IntelConfig {
     // Friends
     private List<FriendConfig> friends = new ArrayList<>();
 
+    // CoinGecko settings
+    private boolean coinGeckoEnabled = true;
+    private int coinGeckoLimit = 200;          // 0 = all coins
+    private int coinGeckoCacheHours = 6;
+    private int coinGeckoRequestDelayMs = 1500; // ms between API requests
+    private boolean coinGeckoFetchCategories = true;
+
     // News fetch settings (0 = manual only)
     private int fetchIntervalMinutes = 0;
     private Set<String> disabledFeedIds = new HashSet<>();
@@ -413,6 +420,23 @@ public class IntelConfig {
         }
         return null;
     }
+
+    // ==================== CoinGecko Settings ====================
+
+    public boolean isCoinGeckoEnabled() { return coinGeckoEnabled; }
+    public void setCoinGeckoEnabled(boolean coinGeckoEnabled) { this.coinGeckoEnabled = coinGeckoEnabled; }
+
+    public int getCoinGeckoLimit() { return coinGeckoLimit; }
+    public void setCoinGeckoLimit(int coinGeckoLimit) { this.coinGeckoLimit = coinGeckoLimit; }
+
+    public int getCoinGeckoCacheHours() { return coinGeckoCacheHours; }
+    public void setCoinGeckoCacheHours(int coinGeckoCacheHours) { this.coinGeckoCacheHours = coinGeckoCacheHours; }
+
+    public int getCoinGeckoRequestDelayMs() { return coinGeckoRequestDelayMs; }
+    public void setCoinGeckoRequestDelayMs(int coinGeckoRequestDelayMs) { this.coinGeckoRequestDelayMs = coinGeckoRequestDelayMs; }
+
+    public boolean isCoinGeckoFetchCategories() { return coinGeckoFetchCategories; }
+    public void setCoinGeckoFetchCategories(boolean coinGeckoFetchCategories) { this.coinGeckoFetchCategories = coinGeckoFetchCategories; }
 
     // ==================== Fetch Settings ====================
 

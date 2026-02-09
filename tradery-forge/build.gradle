@@ -249,6 +249,9 @@ ext.packagingAppName = 'Strategy Forge'
 ext.packagingDmgName = 'Strategy Forge'
 apply from: "${rootProject.projectDir}/gradle/packaging.gradle"
 
+// signApp depends on jpackage (jlink-based)
+tasks.named('signApp') { dependsOn 'jpackage' }
+
 // Create fat JAR for easy distribution
 tasks.register('fatJar', Jar) {
     archiveClassifier = 'all'

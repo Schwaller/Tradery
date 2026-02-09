@@ -45,7 +45,7 @@ png_to_icns() {
 # Find latest version of an icon (V2, V1, etc)
 find_latest_icon() {
     local base_name="$1"
-    for v in V3 V2 V1; do
+    for v in V9 V8 V7 V6 V5 V4 V3 V2 V1; do
         local path="${ARTWORK_DIR}/${base_name} ${v}.png"
         if [ -f "$path" ]; then
             echo "$path"

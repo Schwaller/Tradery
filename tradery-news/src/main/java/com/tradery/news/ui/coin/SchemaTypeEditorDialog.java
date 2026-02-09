@@ -397,13 +397,14 @@ public class SchemaTypeEditorDialog extends JDialog {
             FormLayout sel = layoutList.getSelectedValue();
             if (sel == null) return;
 
-            // Show chooser with available attributes
+            // Show chooser with available attributes (+ virtual fields like categories)
             List<String> available = new ArrayList<>();
             java.util.Set<String> used = new java.util.HashSet<>();
             for (FormLayout.FormLayoutField f : sel.fields()) used.add(f.attributeName());
             for (SchemaAttribute a : type.attributes()) {
                 if (!used.contains(a.name())) available.add(a.name());
             }
+            if (type.isEntity() && !used.contains("categories")) available.add("categories");
             if (available.isEmpty()) {
                 JOptionPane.showMessageDialog(this, "All attributes are already in this layout.");
                 return;

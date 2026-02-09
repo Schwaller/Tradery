@@ -46,6 +46,9 @@ dependencies {
     // AI profiles & detection
     api project(':tradery-ai')
 
+    // Shared UI controls (ToolbarButton)
+    implementation project(':tradery-ui-common')
+
     // UI
     implementation 'com.formdev:flatlaf:3.4'
 

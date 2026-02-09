@@ -31,6 +31,9 @@ dependencies {
 
     // Logging
     implementation "org.slf4j:slf4j-api:${rootProject.ext.slf4jVersion}"
+    runtimeOnly "org.apache.logging.log4j:log4j-api:${rootProject.ext.log4jVersion}"
+    runtimeOnly "org.apache.logging.log4j:log4j-core:${rootProject.ext.log4jVersion}"
+    runtimeOnly "org.apache.logging.log4j:log4j-slf4j2-impl:${rootProject.ext.log4jVersion}"
 
     // License and update checking
     implementation project(':tradery-license')
@@ -80,12 +83,16 @@ jlink {
     mergedModule {
         additive = true
 
-        // ServiceLoader declarations for SLF4J
+        // ServiceLoader declarations for SLF4J + Log4j2
         uses 'org.slf4j.spi.SLF4JServiceProvider'
+        uses 'org.apache.logging.log4j.spi.Provider'
+        uses 'org.apache.logging.log4j.util.PropertySource'
+        uses 'org.apache.logging.log4j.core.util.ContextDataProvider'
+        uses 'org.apache.logging.log4j.message.ThreadDumpMessage.ThreadInfoFactory'
     }
 
     // Force merge non-modular/automatic module dependencies
-    forceMerge('rome', 'jdom2', 'jsoup', 'okhttp', 'okio', 'slf4j')
+    forceMerge('rome', 'jdom2', 'jsoup', 'okhttp', 'okio', 'slf4j', 'log4j')
 
     jpackage {
         imageName = 'Intelligence'
@@ -178,6 +185,9 @@ tasks.register('jpackageDmg', Exec) {
 ext.packagingAppName = 'Intelligence'
 ext.packagingDmgName = 'Intelligence'
 apply from: "${rootProject.projectDir}/gradle/packaging.gradle"
+
+// signApp depends on jpackage (jlink-based)
+tasks.named('signApp') { dependsOn 'jpackage' }
 
 // Create fat JAR for easy distribution
 tasks.register('fatJar', Jar) {

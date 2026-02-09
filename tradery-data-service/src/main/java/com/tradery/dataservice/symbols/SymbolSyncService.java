@@ -45,6 +45,9 @@ public class SymbolSyncService {
     private final SymbolDao symbolDao;
     private final AtomicBoolean syncing = new AtomicBoolean(false);
 
+    // Live sync progress (null when not syncing)
+    private volatile SyncProgress currentProgress = null;
+
     // Cache coins list for ID lookups
     private Map<String, String> symbolToCoingeckoId = new HashMap<>();
     private Instant coinsListLastUpdated = null;
@@ -81,11 +84,23 @@ public class SymbolSyncService {
             log.info("Starting symbol sync (skipRecent={})...", skipRecent);
             Instant start = Instant.now();
 
+            // Count total exchange/market steps
+            int totalSteps = 0;
+            for (ExchangeMapping mapping : EXCHANGE_MAPPINGS.values()) {
+                if (mapping.spotId() != null) totalSteps++;
+                if (mapping.perpId() != null) totalSteps++;
+            }
+
             // Refresh coins list if stale
+            currentProgress = new SyncProgress("coins_list", null, null, 0, 0, totalSteps, 0, 0, start.toEpochMilli());
             refreshCoinsListIfNeeded();
+            int totalCoins = symbolDao.countCoins();
+            currentProgress = currentProgress.withTotalCoins(totalCoins);
 
             List<ExchangeSyncResult> results = new ArrayList<>();
             Duration maxAge = Duration.ofHours(6); // Skip exchanges synced within 6h
+            int completedSteps = 0;
+            int pairsFoundSoFar = 0;
 
             // Sync each exchange
             for (Map.Entry<String, ExchangeMapping> entry : EXCHANGE_MAPPINGS.entrySet()) {
@@ -97,14 +112,19 @@ public class SymbolSyncService {
                     if (skipRecent && isRecentlySynced(exchange, MarketType.SPOT, maxAge)) {
                         log.debug("Skipping {} SPOT - recently synced", exchange);
                         results.add(new ExchangeSyncResult(exchange, MarketType.SPOT, 0, "SKIPPED", "Recently synced"));
+                        completedSteps++;
                     } else {
+                        currentProgress = new SyncProgress("exchange_tickers", exchange, "spot",
+                            0, completedSteps, totalSteps, totalCoins, pairsFoundSoFar, start.toEpochMilli());
                         try {
                             ExchangeSyncResult result = syncExchange(exchange, MarketType.SPOT);
                             results.add(result);
+                            pairsFoundSoFar += result.pairCount();
                         } catch (Exception e) {
                             log.error("Failed to sync {} SPOT: {}", exchange, e.getMessage());
                             results.add(new ExchangeSyncResult(exchange, MarketType.SPOT, 0, "ERROR", e.getMessage()));
                         }
+                        completedSteps++;
                     }
                 }
 
@@ -113,14 +133,19 @@ public class SymbolSyncService {
                     if (skipRecent && isRecentlySynced(exchange, MarketType.PERP, maxAge)) {
                         log.debug("Skipping {} PERP - recently synced", exchange);
                         results.add(new ExchangeSyncResult(exchange, MarketType.PERP, 0, "SKIPPED", "Recently synced"));
+                        completedSteps++;
                     } else {
+                        currentProgress = new SyncProgress("exchange_tickers", exchange, "perp",
+                            0, completedSteps, totalSteps, totalCoins, pairsFoundSoFar, start.toEpochMilli());
                         try {
                             ExchangeSyncResult result = syncExchange(exchange, MarketType.PERP);
                             results.add(result);
+                            pairsFoundSoFar += result.pairCount();
                         } catch (Exception e) {
                             log.error("Failed to sync {} PERP: {}", exchange, e.getMessage());
                             results.add(new ExchangeSyncResult(exchange, MarketType.PERP, 0, "ERROR", e.getMessage()));
                         }
+                        completedSteps++;
                     }
                 }
             }
@@ -133,6 +158,7 @@ public class SymbolSyncService {
 
             return new SyncResult(results, elapsed);
         } finally {
+            currentProgress = null;
             syncing.set(false);
         }
     }
@@ -361,6 +387,13 @@ public class SymbolSyncService {
     }
 
     /**
+     * Get live sync progress, or null if not syncing.
+     */
+    public SyncProgress getSyncProgress() {
+        return currentProgress;
+    }
+
+    /**
      * Get supported exchanges.
      */
     public Set<String> getSupportedExchanges() {
@@ -476,6 +509,25 @@ public class SymbolSyncService {
         String status,
         String errorMessage
     ) {}
+
+    /**
+     * Live progress of a sync operation.
+     */
+    public record SyncProgress(
+        String step,           // "coins_list", "exchange_tickers"
+        String exchange,       // current exchange being synced (null for coins_list)
+        String marketType,     // "spot" or "perp" (null for coins_list)
+        int currentPage,       // current page being fetched (0 if N/A)
+        int completedSteps,    // how many exchange/market combos done
+        int totalSteps,        // total exchange/market combos to sync
+        int totalCoins,        // coins fetched from coins list (0 until fetched)
+        int pairsFoundSoFar,   // running total of pairs upserted
+        long startedAtMs       // sync start timestamp
+    ) {
+        public SyncProgress withTotalCoins(int totalCoins) {
+            return new SyncProgress(step, exchange, marketType, currentPage, completedSteps, totalSteps, totalCoins, pairsFoundSoFar, startedAtMs);
+        }
+    }
 
     /**
      * Result of a full sync operation.

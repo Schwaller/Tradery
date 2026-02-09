@@ -20,7 +20,10 @@ public class ShareDialog extends JDialog {
     private final IntelLogPanel logPanel;
 
     // Identity
-    private JTextField emailField;
+    private JPanel identityPanel;
+    private JLabel emailDisplayLabel;
+    private JButton signInBtn;
+    private JButton signOutBtn;
 
     // Visibility
     private ButtonGroup visibilityGroup;
@@ -104,16 +107,24 @@ public class ShareDialog extends JDialog {
         form.add(identityLabel);
         form.add(Box.createVerticalStrut(6));
 
-        JPanel emailPanel = new JPanel(new BorderLayout(8, 0));
-        emailPanel.setOpaque(false);
-        emailPanel.setAlignmentX(Component.LEFT_ALIGNMENT);
-        emailPanel.setMaximumSize(new Dimension(Integer.MAX_VALUE, 28));
-        emailPanel.add(new JLabel("Email:"), BorderLayout.WEST);
-        emailField = new JTextField();
-        String savedEmail = IntelConfig.get().getUserEmail();
-        if (savedEmail != null) emailField.setText(savedEmail);
-        emailPanel.add(emailField, BorderLayout.CENTER);
-        form.add(emailPanel);
+        identityPanel = new JPanel(new BorderLayout(8, 0));
+        identityPanel.setOpaque(false);
+        identityPanel.setAlignmentX(Component.LEFT_ALIGNMENT);
+        identityPanel.setMaximumSize(new Dimension(Integer.MAX_VALUE, 32));
+
+        emailDisplayLabel = new JLabel();
+        emailDisplayLabel.setFont(new Font("SansSerif", Font.PLAIN, 12));
+
+        signInBtn = new JButton("Sign In with Plaiiin");
+        signInBtn.addActionListener(e -> onSignIn());
+
+        signOutBtn = new JButton("Sign Out");
+        signOutBtn.setFont(signOutBtn.getFont().deriveFont(11f));
+        signOutBtn.addActionListener(e -> onSignOut());
+
+        updateIdentityPanel();
+
+        form.add(identityPanel);
         form.add(Box.createVerticalStrut(12));
         form.add(createSeparator());
         form.add(Box.createVerticalStrut(12));
@@ -413,21 +424,14 @@ public class ShareDialog extends JDialog {
     }
 
     private void onApply() {
-        String email = emailField.getText().trim().toLowerCase();
         boolean wantLocal = localRadio.isSelected();
+        String email = sharingService.getAuthenticatedEmail();
 
-        if (!wantLocal && (email.isEmpty() || !email.contains("@"))) {
+        if (!wantLocal && (email == null || email.isBlank())) {
             JOptionPane.showMessageDialog(this,
-                "Please enter your email address to enable sharing.",
-                "Email Required", JOptionPane.WARNING_MESSAGE);
-            emailField.requestFocus();
+                "Please sign in to enable sharing.",
+                "Sign In Required", JOptionPane.WARNING_MESSAGE);
             return;
-        }
-
-        // Save email to config
-        if (!email.isEmpty()) {
-            IntelConfig.get().setUserEmail(email);
-            IntelConfig.get().save();
         }
 
         String visibility = wantLocal ? "LOCAL" : "PRIVATE";
@@ -436,6 +440,7 @@ public class ShareDialog extends JDialog {
         double quorum = ((Number) quorumSpinner.getValue()).doubleValue() / 100.0;
 
         SharingService.SharingState currentState = sharingService.getState(docId);
+        String ownerEmail = email != null ? email : "";
 
         new SwingWorker<String, Void>() {
             @Override
@@ -445,10 +450,10 @@ public class ShareDialog extends JDialog {
                     return "Sharing disabled";
                 } else if (!wantLocal && !currentState.isShared()) {
                     sharingService.enableSharing(docId, visibility, govType, quorum,
-                        email, docDir, entityStore);
+                        ownerEmail, docDir, entityStore);
                     return "Sharing enabled (" + visibility + ")";
                 } else if (!wantLocal) {
-                    sharingService.updateSharing(docId, visibility, govType, quorum, email);
+                    sharingService.updateSharing(docId, visibility, govType, quorum, ownerEmail);
                     return "Sharing settings updated";
                 }
                 return null;
@@ -471,6 +476,54 @@ public class ShareDialog extends JDialog {
                 }
             }
         }.execute();
+    }
+
+    private void updateIdentityPanel() {
+        identityPanel.removeAll();
+        String email = sharingService.getAuthenticatedEmail();
+        if (email != null && !email.isBlank()) {
+            emailDisplayLabel.setText(email);
+            identityPanel.add(emailDisplayLabel, BorderLayout.CENTER);
+            identityPanel.add(signOutBtn, BorderLayout.EAST);
+        } else {
+            identityPanel.add(signInBtn, BorderLayout.CENTER);
+        }
+        identityPanel.revalidate();
+        identityPanel.repaint();
+    }
+
+    private void onSignIn() {
+        signInBtn.setEnabled(false);
+        signInBtn.setText("Signing in...");
+        new SwingWorker<Boolean, Void>() {
+            @Override
+            protected Boolean doInBackground() {
+                return sharingService.login();
+            }
+
+            @Override
+            protected void done() {
+                try {
+                    boolean success = get();
+                    if (success) {
+                        logPanel.success("Signed in as " + sharingService.getAuthenticatedEmail());
+                    } else {
+                        logPanel.error("Sign in failed or was cancelled");
+                    }
+                } catch (Exception e) {
+                    logPanel.error("Sign in failed: " + e.getMessage());
+                }
+                signInBtn.setEnabled(true);
+                signInBtn.setText("Sign In with Plaiiin");
+                updateIdentityPanel();
+            }
+        }.execute();
+    }
+
+    private void onSignOut() {
+        sharingService.logout();
+        updateIdentityPanel();
+        logPanel.info("Signed out");
     }
 
     private JRadioButton createRadio(String label, String description) {

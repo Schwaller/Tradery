@@ -6,13 +6,19 @@ import com.fasterxml.jackson.annotation.JsonValue;
  * Trade direction: LONG (buy low, sell high) or SHORT (sell high, buy low).
  */
 public enum TradeDirection {
-    LONG("long"),
-    SHORT("short");
+    LONG("long", "Long (Buy)"),
+    SHORT("short", "Short (Sell)");
 
     private final String value;
+    private final String displayName;
 
-    TradeDirection(String value) {
+    TradeDirection(String value, String displayName) {
         this.value = value;
+        this.displayName = displayName;
+    }
+
+    public String getDisplayName() {
+        return displayName;
     }
 
     @JsonValue
@@ -46,6 +52,6 @@ public enum TradeDirection {
 
     @Override
     public String toString() {
-        return value;
+        return displayName;
     }
 }

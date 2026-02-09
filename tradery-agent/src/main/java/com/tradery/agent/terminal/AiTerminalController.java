@@ -221,6 +221,7 @@ public class AiTerminalController {
         terminalTitleLabel.setText(displayName);
         if (aiTerminalFrame != null) {
             aiTerminalFrame.setTitle(displayName + " - " + strategyName);
+            aiTerminalFrame.setTitleText(displayName + " \u2014 " + strategyName);
         }
 
         // Show and start (always use fresh terminal to clear history)
@@ -235,6 +236,7 @@ public class AiTerminalController {
                 aiTerminalFrame = new AiTerminalFrame(strategyName, onBacktest, this::redockTerminal);
             }
             aiTerminalFrame.setTitle(displayName + " - " + strategyName);
+            aiTerminalFrame.setTitleText(displayName + " \u2014 " + strategyName);
             aiTerminalFrame.startAi(aiType, traderyDir);
             onStatus.accept("Opened " + displayName + " for " + strategyName);
         }

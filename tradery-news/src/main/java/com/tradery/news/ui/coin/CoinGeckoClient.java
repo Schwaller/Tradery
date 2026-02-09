@@ -57,13 +57,16 @@ public class CoinGeckoClient {
 
     /**
      * Fetch top coins by market cap.
+     * @param limit max coins to fetch, or 0 for all available
+     * @param delayMs milliseconds to wait between API pages
      */
-    public List<CoinEntity> fetchTopCoins(int limit) throws IOException {
+    public List<CoinEntity> fetchTopCoins(int limit, long delayMs) throws IOException {
+        boolean fetchAll = limit <= 0;
         List<CoinEntity> entities = new ArrayList<>();
-        int perPage = Math.min(limit, 250);  // CoinGecko max per page
-        int pages = (limit + perPage - 1) / perPage;
+        int perPage = fetchAll ? 250 : Math.min(limit, 250);  // CoinGecko max per page
+        int maxPages = fetchAll ? 1000 : (limit + perPage - 1) / perPage;
 
-        for (int page = 1; page <= pages && entities.size() < limit; page++) {
+        for (int page = 1; page <= maxPages; page++) {
             String url = String.format(
                 "%s/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=%d&page=%d&sparkline=false",
                 BASE_URL, perPage, page
@@ -74,6 +77,7 @@ public class CoinGeckoClient {
                 .header("Accept", "application/json")
                 .build();
 
+            int pageSize;
             try (Response response = client.newCall(request).execute()) {
                 if (!response.isSuccessful()) {
                     throw new IOException("CoinGecko API error: " + response.code());
@@ -82,8 +86,9 @@ public class CoinGeckoClient {
                 String json = response.body().string();
                 JsonNode coins = mapper.readTree(json);
 
+                pageSize = 0;
                 for (JsonNode coin : coins) {
-                    if (entities.size() >= limit) break;
+                    if (!fetchAll && entities.size() >= limit) break;
 
                     String id = coin.path("id").asText();
                     String name = coin.path("name").asText();
@@ -101,17 +106,20 @@ public class CoinGeckoClient {
                     }
                     entity.setMarketCap(marketCap);
                     entities.add(entity);
+                    pageSize++;
                 }
             }
 
-            // Rate limiting - CoinGecko free tier is 10-30 calls/min
-            if (page < pages) {
-                try {
-                    Thread.sleep(1500);
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    break;
-                }
+            // Stop if we got fewer results than requested (last page)
+            if (fetchAll && pageSize < perPage) break;
+            if (!fetchAll && entities.size() >= limit) break;
+
+            // Rate limiting
+            try {
+                Thread.sleep(delayMs);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
             }
         }
 
@@ -120,8 +128,9 @@ public class CoinGeckoClient {
 
     /**
      * Fetch coin categories from CoinGecko.
+     * @param delayMs milliseconds to wait between requests
      */
-    public Map<String, List<String>> fetchCoinCategories(List<String> coinIds) throws IOException {
+    public Map<String, List<String>> fetchCoinCategories(List<String> coinIds, long delayMs) throws IOException {
         Map<String, List<String>> categoryMap = new HashMap<>();
 
         for (String coinId : coinIds) {
@@ -150,7 +159,7 @@ public class CoinGeckoClient {
                 }
 
                 // Rate limiting
-                Thread.sleep(1500);
+                Thread.sleep(delayMs);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 break;

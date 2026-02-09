@@ -16,12 +16,14 @@ import com.tradery.symbols.service.SymbolService.ExchangeSyncInfo;
 import com.tradery.ui.dashboard.DashboardPageInfo;
 import com.tradery.ui.dashboard.DashboardSection;
 import com.tradery.ui.dashboard.DashboardWindow;
+import com.tradery.dataclient.DataServiceClient;
 import com.tradery.ui.controls.BorderlessScrollPane;
 import com.tradery.ui.controls.BorderlessTable;
 import com.tradery.ui.controls.ThinSplitPane;
 import com.tradery.ui.dashboard.PageLogEntry;
 
 import static com.tradery.forge.ui.UIColors.STATUS_ERROR;
+import static com.tradery.forge.ui.UIColors.STATUS_LOADING;
 import static com.tradery.forge.ui.UIColors.STATUS_READY;
 
 import javax.swing.*;
@@ -62,6 +64,12 @@ public class DownloadDashboardWindow extends DashboardWindow {
     private JLabel symDbPathLabel;
     private CoverageTableModel coverageTableModel;
     private DefaultListModel<String> symDbLogModel;
+
+    // Background sync progress polling (avoid blocking EDT with HTTP calls)
+    private static final long SYNC_PROGRESS_POLL_INTERVAL_MS = 3000;
+    private volatile DataServiceClient.SyncProgress cachedSyncProgress = null;
+    private volatile long lastSyncProgressFetchMs = 0;
+    private volatile boolean syncProgressFetchInFlight = false;
 
     public DownloadDashboardWindow() {
         super("Download Dashboard - " + TraderyApp.APP_NAME);
@@ -418,6 +426,33 @@ public class DownloadDashboardWindow extends DashboardWindow {
         return panel;
     }
 
+    /**
+     * Kick off a background fetch of sync progress if enough time has passed.
+     * Updates the volatile cachedSyncProgress field; next EDT tick picks it up.
+     */
+    private void maybeFetchSyncProgress() {
+        long now = System.currentTimeMillis();
+        if (syncProgressFetchInFlight || (now - lastSyncProgressFetchMs) < SYNC_PROGRESS_POLL_INTERVAL_MS) {
+            return;
+        }
+        DataServiceClient client = ApplicationContext.getInstance().getDataServiceClient();
+        if (client == null) return;
+
+        syncProgressFetchInFlight = true;
+        Thread.ofVirtual().start(() -> {
+            try {
+                DataServiceClient.SymbolStats stats = client.getSymbolStats();
+                cachedSyncProgress = stats.syncProgress();
+            } catch (Exception e) {
+                // Data service not running or unreachable — clear progress
+                cachedSyncProgress = null;
+            } finally {
+                lastSyncProgressFetchMs = System.currentTimeMillis();
+                syncProgressFetchInFlight = false;
+            }
+        });
+    }
+
     private void refreshSymbolDbPanel() {
         SymbolService symbolService = ApplicationContext.getInstance().getSymbolService();
 
@@ -433,10 +468,22 @@ public class DownloadDashboardWindow extends DashboardWindow {
             return;
         }
 
+        // Trigger background fetch if stale (never blocks EDT)
+        maybeFetchSyncProgress();
+
+        // Read cached progress (written by background thread)
+        DataServiceClient.SyncProgress syncProgress = cachedSyncProgress;
+
         SymbolService.SyncStatus status = symbolService.getSyncStatus();
 
-        symDbStatusLabel.setText("Available");
-        symDbStatusLabel.setForeground(STATUS_READY);
+        if (syncProgress != null) {
+            symDbStatusLabel.setText("Syncing...");
+            symDbStatusLabel.setForeground(STATUS_LOADING);
+        } else {
+            symDbStatusLabel.setText("Available");
+            symDbStatusLabel.setForeground(STATUS_READY);
+        }
+
         symDbPairCountLabel.setText(String.format("%,d", status.pairCount()));
 
         if (status.lastSync() != null) {
@@ -482,14 +529,41 @@ public class DownloadDashboardWindow extends DashboardWindow {
         }
         coverageTableModel.setRows(rows);
 
+        // Activity Log
         symDbLogModel.clear();
-        if (status.lastSync() != null) {
-            symDbLogModel.addElement("Last sync: " + symDbLastSyncLabel.getText());
-        }
-        symDbLogModel.addElement("Active pairs: " + status.pairCount());
-        symDbLogModel.addElement("Exchanges: " + symbolService.getExchanges().size());
-        if (symDbLogModel.isEmpty()) {
-            symDbLogModel.addElement("(no activity)");
+        if (syncProgress != null) {
+            long elapsedMs = System.currentTimeMillis() - syncProgress.startedAtMs();
+            long elapsedSec = elapsedMs / 1000;
+            String elapsed = elapsedSec < 60
+                ? elapsedSec + "s"
+                : (elapsedSec / 60) + "m " + (elapsedSec % 60) + "s";
+
+            symDbLogModel.addElement(String.format("Syncing... (step %d/%d)  \u2022  %s elapsed",
+                syncProgress.completedSteps() + 1, syncProgress.totalSteps(), elapsed));
+
+            if ("coins_list".equals(syncProgress.step())) {
+                symDbLogModel.addElement("Fetching coins list...");
+            } else if ("exchange_tickers".equals(syncProgress.step())) {
+                String exch = syncProgress.exchange() != null ? syncProgress.exchange() : "?";
+                String market = syncProgress.marketType() != null ? syncProgress.marketType().toUpperCase() : "?";
+                symDbLogModel.addElement("Syncing " + exch + " " + market + "...");
+            }
+
+            if (syncProgress.totalCoins() > 0) {
+                symDbLogModel.addElement(String.format("%,d coins loaded", syncProgress.totalCoins()));
+            }
+            if (syncProgress.pairsFoundSoFar() > 0) {
+                symDbLogModel.addElement(String.format("%,d pairs found so far", syncProgress.pairsFoundSoFar()));
+            }
+        } else {
+            if (status.lastSync() != null) {
+                symDbLogModel.addElement("Last sync: " + symDbLastSyncLabel.getText());
+            }
+            symDbLogModel.addElement("Active pairs: " + status.pairCount());
+            symDbLogModel.addElement("Exchanges: " + symbolService.getExchanges().size());
+            if (symDbLogModel.isEmpty()) {
+                symDbLogModel.addElement("(no activity)");
+            }
         }
     }
 

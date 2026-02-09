@@ -10,7 +10,7 @@ import java.util.List;
 
 /**
  * Entity storage backed by an append-only fact log with materialized current state.
- * Public API is unchanged from the original — callers (SchemaRegistry, EntityManagerFrame,
+ * Public API is unchanged from the original — callers (SchemaRegistry,
  * CoinGeckoSource, API handlers, etc.) require no changes.
  */
 public class EntityStore {

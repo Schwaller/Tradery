@@ -82,9 +82,13 @@ public class FriendsDialog extends JDialog {
         JButton editBtn = new JButton("Edit Name...");
         editBtn.addActionListener(e -> onEditName());
 
+        JButton chatBtn = new JButton("Chat");
+        chatBtn.addActionListener(e -> ChatFrame.open(sharingService, this));
+
         buttons.add(addBtn);
         buttons.add(removeBtn);
         buttons.add(editBtn);
+        buttons.add(chatBtn);
 
         JPanel closePanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
         closePanel.setBorder(new EmptyBorder(10, 0, 10, 12));
