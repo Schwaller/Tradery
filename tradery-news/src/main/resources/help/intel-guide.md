@@ -21,9 +21,10 @@ The news timeline visualizes articles as nodes on a time axis, clustered by topi
 
 | Control | Action |
 |---------|--------|
-| **Show** dropdown | Limit number of articles displayed |
-| **Fetch New** | Fetch latest articles from all RSS sources |
+| **Fetch News** | Fetch latest articles from all RSS sources |
 | Click node | View article details in the right panel |
+
+> **Tip:** To change the maximum number of articles displayed, go to **Settings > Panels** and edit the News Map panel.
 
 > **Tip:** Articles are automatically processed by AI to extract entity mentions, topics, and events.
 
@@ -82,6 +83,18 @@ Right-click an entity or use the API to run **AI-powered discovery**. This searc
 ## Data Structure (ERD)
 
 The **Data Structure** window shows the entity-relationship schema as an interactive diagram. Use it to understand and edit the types and attributes that define your entity model.
+
+### Layout Modes
+
+| Mode | Description |
+|------|-------------|
+| **Manual** | Drag nodes freely to arrange the diagram |
+| **Tree** | Automatic hierarchical tree layout |
+| **Spring** | Force-directed spring layout |
+
+### Connection Modes
+
+Use the **Direct / Flow** toggle to switch between straight-line connections and curved flow connections.
 
 ---
 

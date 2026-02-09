@@ -24,6 +24,7 @@ public class DataHealthPanel extends JPanel {
 
     private String symbol;
     private String resolution;
+    private String marketType;  // for candles: "spot", "perp", etc.
     private String customMessage;
     private JLabel messageLabel;
     private JProgressBar loadingBar;
@@ -60,6 +61,7 @@ public class DataHealthPanel extends JPanel {
     public void setData(String symbol, String resolution) {
         this.symbol = symbol;
         this.resolution = resolution;
+        this.marketType = null;
         this.customMessage = null;
         refreshData();
     }
@@ -71,10 +73,20 @@ public class DataHealthPanel extends JPanel {
         ++loadGeneration; // cancel any in-flight load
         this.symbol = null;
         this.resolution = null;
+        this.marketType = null;
         this.customMessage = message;
         loadingBar.setVisible(false);
         heatmap.setData(List.of());
         showMessage(message);
+    }
+
+    public void setCandleData(String symbol, String timeframe, String marketType) {
+        this.symbol = symbol;
+        this.resolution = timeframe;
+        this.marketType = marketType;
+        this.customMessage = null;
+        String subKey = marketType != null ? timeframe + ":" + marketType : timeframe;
+        loadCoverageFromApi(symbol, "klines", subKey);
     }
 
     public void setAggTradesData(String symbol) {
@@ -158,7 +170,8 @@ public class DataHealthPanel extends JPanel {
         }
 
         // For standard candle resolutions, use coverage API
-        loadCoverageFromApi(symbol, "klines", resolution);
+        String subKey = marketType != null ? resolution + ":" + marketType : resolution;
+        loadCoverageFromApi(symbol, "klines", subKey);
     }
 
     // ========== Unused stubs kept for API compatibility ==========

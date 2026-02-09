@@ -11,7 +11,7 @@ import com.tradery.ui.controls.BorderlessScrollPane;
 import com.tradery.ui.controls.SegmentedToggle;
 import com.tradery.ui.controls.ThinSplitPane;
 import com.tradery.ui.controls.ToolbarButton;
-import com.tradery.ui.controls.ToolbarComboBox;
+import com.tradery.ui.controls.StatusBadge;
 
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
@@ -57,7 +57,6 @@ public class IntelDocumentFrame extends JFrame {
     private List<PanelInstance> panelInstances = new ArrayList<>();
 
     // News state
-    private ToolbarComboBox<String> limitCombo;
     private volatile boolean fetching = false;
     private javax.swing.Timer autoFetchTimer;
 
@@ -85,7 +84,6 @@ public class IntelDocumentFrame extends JFrame {
     private SegmentedToggle viewToggle;
 
     // Header action buttons (shown conditionally)
-    private JLabel showLabel;
     private JButton fetchBtn;
     private JButton resetViewBtn;
     private JPanel detailPanel;
@@ -100,14 +98,15 @@ public class IntelDocumentFrame extends JFrame {
 
     // Chat
     private JButton chatBtn;
+    private static ChatStore chatStore;
 
     // Network status bar
     private javax.swing.Timer networkStatusTimer;
-    private JPanel[] statusDots;
-    private JLabel[] statusLabels;
+    private StatusBadge[] networkBadges;
 
     // Singleton windows
     private DataStructureFrame dataStructureFrame;
+    private NetworkStatusDialog networkStatusDialog;
 
     // API server
     private IntelApiServer apiServer;
@@ -190,6 +189,12 @@ public class IntelDocumentFrame extends JFrame {
             sharingService.registerDocument(docId, docDir, entityStore);
         }
 
+        // Initialize chat persistence (shared across all document windows)
+        if (chatStore == null) {
+            Path chatDbPath = Path.of(System.getProperty("user.home"), ".tradery", "chat.db");
+            chatStore = new ChatStore(chatDbPath);
+        }
+
         setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
 
         // Transparent title bar
@@ -213,7 +218,7 @@ public class IntelDocumentFrame extends JFrame {
         // Start API server
         try {
             EntitySearchProcessor searchProcessor = new EntitySearchProcessor(schemaRegistry);
-            apiServer = new IntelApiServer(this::openWindow, entityStore, store, searchProcessor, schemaRegistry);
+            apiServer = new IntelApiServer(this::openWindow, entityStore, store, searchProcessor, schemaRegistry, sharingService, null);
             apiServer.start();
         } catch (Exception e) {
             System.err.println("Failed to start Intel API server: " + e.getMessage());
@@ -356,30 +361,7 @@ public class IntelDocumentFrame extends JFrame {
         JPanel rightContent = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
         rightContent.setOpaque(false);
 
-        // Show: combo (for News view)
-        showLabel = new JLabel("Show:");
-        showLabel.setFont(new Font("SansSerif", Font.PLAIN, 11));
-        showLabel.setForeground(textSecondary());
-        rightContent.add(showLabel);
-
-        limitCombo = new ToolbarComboBox<>(new String[]{"100", "250", "500", "1000"});
-        limitCombo.setSelectedItem("500");
-        limitCombo.addActionListener(e -> {
-            int idx = viewToggle.getSelectedIndex();
-            if (idx >= 0 && idx < panelInstances.size()) {
-                PanelInstance pi = panelInstances.get(idx);
-                if (pi.config().getType() == PanelConfig.PanelType.NEWS_MAP) {
-                    int newMax = Integer.parseInt((String) limitCombo.getSelectedItem());
-                    pi.config().setMaxArticles(newMax);
-                    ((TimelineGraphPanel) pi.graphPanel()).setMaxNodes(newMax);
-                    services.save(docDir);
-                    loadNewsData();
-                }
-            }
-        });
-        rightContent.add(limitCombo);
-
-        fetchBtn = new ToolbarButton("Fetch New");
+        fetchBtn = new ToolbarButton("Fetch News");
         fetchBtn.setToolTipText("Fetch new articles with AI extraction");
         fetchBtn.addActionListener(e -> fetchNewArticles());
         rightContent.add(fetchBtn);
@@ -525,8 +507,6 @@ public class IntelDocumentFrame extends JFrame {
 
     private void updateHeaderButtons() {
         if (panelInstances.isEmpty()) {
-            showLabel.setVisible(false);
-            limitCombo.setVisible(false);
             fetchBtn.setVisible(false);
             resetViewBtn.setVisible(false);
             return;
@@ -537,8 +517,6 @@ public class IntelDocumentFrame extends JFrame {
             && panelInstances.get(idx).config().getType() == PanelConfig.PanelType.NEWS_MAP;
         boolean isCoinView = idx >= 0 && idx < panelInstances.size()
             && panelInstances.get(idx).config().getType() == PanelConfig.PanelType.COIN_GRAPH;
-        showLabel.setVisible(isNewsView);
-        limitCombo.setVisible(isNewsView);
         fetchBtn.setVisible(isNewsView);
         resetViewBtn.setVisible(isCoinView);
     }
@@ -618,10 +596,11 @@ public class IntelDocumentFrame extends JFrame {
     }
 
     private void showTopicDetails(TopicNode node) {
-        if ("coin".equals(node.typeId()) && currentEntities != null) {
+        // Delegate to entity details if a matching entity exists
+        if (currentEntities != null) {
             String symbol = node.id().contains(":") ? node.id().substring(node.id().indexOf(':') + 1) : node.id();
             for (CoinEntity e : currentEntities) {
-                if (symbol.equalsIgnoreCase(e.symbol())) {
+                if (symbol.equalsIgnoreCase(e.symbol()) || node.id().equals(e.id())) {
                     showEntityDetails(e);
                     return;
                 }
@@ -632,8 +611,7 @@ public class IntelDocumentFrame extends JFrame {
         selectedEntity = null;
         currentMode = DetailMode.NONE;
 
-        boolean isCoin = "coin".equals(node.typeId());
-        detailTitleLabel.setText(isCoin ? "Coin" : "Topic");
+        detailTitleLabel.setText(node.typeId());
         detailHeader.setVisible(true);
 
         detailContent.removeAll();
@@ -642,15 +620,8 @@ public class IntelDocumentFrame extends JFrame {
         addDetailSpacer();
 
         addDetailSection("TYPE");
-        addDetailLabel(isCoin ? "Cryptocurrency" : "News Topic",
-            isCoin ? new Color(200, 160, 80) : new Color(100, 140, 200));
+        addDetailLabel(node.typeId());
         addDetailSpacer();
-
-        if (!isCoin) {
-            addDetailSection("FULL PATH");
-            addDetailLabel(node.id());
-            addDetailSpacer();
-        }
 
         addDetailSection("ARTICLES (" + node.articleCount() + ")");
 
@@ -1176,7 +1147,7 @@ public class IntelDocumentFrame extends JFrame {
             protected void done() {
                 fetching = false;
                 fetchBtn.setEnabled(true);
-                fetchBtn.setText("Fetch New");
+                fetchBtn.setText("Fetch News");
                 try {
                     DataSource.FetchResult result = get();
                     if (result.entitiesAdded() > 0) {
@@ -1490,46 +1461,30 @@ public class IntelDocumentFrame extends JFrame {
     // ==================== NETWORK STATUS BAR ====================
 
     private JPanel createNetworkStatusBar() {
-        // 6 segments: Identity, Server, NAT, LAN, Rendezvous, Peers
-        statusDots = new JPanel[6];
-        statusLabels = new JLabel[6];
+        // 5 badges: Identity, NAT, LAN, Rendezvous, Peers
+        networkBadges = new StatusBadge[5];
+        String[] labels = {"Not signed in", "No NAT", "LAN off", "No rendezvous", "No peers"};
 
-        JPanel bar = new JPanel(new FlowLayout(FlowLayout.LEFT, 12, 3));
+        JPanel bar = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 3));
         bar.setPreferredSize(new Dimension(0, 24));
 
-        for (int i = 0; i < 6; i++) {
-            final int idx = i;
-            statusDots[i] = new JPanel() {
-                @Override
-                protected void paintComponent(Graphics g) {
-                    super.paintComponent(g);
-                    Graphics2D g2 = (Graphics2D) g.create();
-                    g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-                    g2.setColor(getBackground());
-                    g2.fillOval(0, 0, 8, 8);
-                    g2.dispose();
-                }
-            };
-            statusDots[i].setPreferredSize(new Dimension(8, 8));
-            statusDots[i].setOpaque(false);
-            statusDots[i].setBackground(Color.GRAY);
+        java.awt.event.MouseListener clickHandler = new java.awt.event.MouseAdapter() {
+            @Override
+            public void mouseClicked(java.awt.event.MouseEvent e) {
+                showNetworkStatusDialog();
+            }
+        };
 
-            statusLabels[i] = new JLabel();
-            statusLabels[i].setFont(new Font("SansSerif", Font.PLAIN, 10));
-            statusLabels[i].setForeground(UIManager.getColor("Label.disabledForeground"));
-
-            JPanel segment = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
-            segment.setOpaque(false);
-            segment.add(statusDots[i]);
-            segment.add(statusLabels[i]);
-            bar.add(segment);
+        for (int i = 0; i < networkBadges.length; i++) {
+            networkBadges[i] = new StatusBadge(labels[i]);
+            networkBadges[i].addMouseListener(clickHandler);
+            bar.add(networkBadges[i]);
         }
 
         JPanel wrapper = new JPanel(new BorderLayout());
         wrapper.add(new JSeparator(), BorderLayout.NORTH);
         wrapper.add(bar, BorderLayout.CENTER);
 
-        // Initial update + timer
         updateNetworkStatus();
         networkStatusTimer = new javax.swing.Timer(3000, e -> updateNetworkStatus());
         networkStatusTimer.setRepeats(true);
@@ -1539,73 +1494,69 @@ public class IntelDocumentFrame extends JFrame {
     }
 
     private void updateNetworkStatus() {
-        if (sharingService == null || statusDots == null) return;
+        if (sharingService == null || networkBadges == null) return;
         SharingService.NetworkStatus ns = sharingService.getNetworkStatus();
         if (ns == null) return;
 
-        Color green = new Color(80, 180, 100);
-        Color yellow = new Color(220, 180, 60);
-        Color gray = UIManager.getColor("Label.disabledForeground") != null
-            ? UIManager.getColor("Label.disabledForeground") : Color.GRAY;
-
         // 0: Identity
         if (ns.email() != null && !ns.email().isBlank()) {
-            statusDots[0].setBackground(green);
-            statusLabels[0].setText(ns.email());
+            networkBadges[0].setText(ns.email());
+            networkBadges[0].setStatusColor(StatusBadge.BG_OK, StatusBadge.FG_OK);
         } else {
-            statusDots[0].setBackground(gray);
-            statusLabels[0].setText("Not signed in");
+            networkBadges[0].setText("Not signed in");
+            networkBadges[0].setStatusColor(StatusBadge.BG_IDLE, StatusBadge.FG_IDLE);
         }
 
-        // 1: Server
-        if (ns.serverPort() > 0) {
-            statusDots[1].setBackground(green);
-            statusLabels[1].setText("Port " + ns.serverPort());
-        } else {
-            statusDots[1].setBackground(gray);
-            statusLabels[1].setText("Server off");
-        }
-
-        // 2: NAT
+        // 1: NAT
         if (ns.portMapping() != null) {
-            statusDots[2].setBackground(green);
             String label = ns.portMapping();
             if (ns.publicIp() != null) label += " " + ns.publicIp();
-            statusLabels[2].setText(label);
+            networkBadges[1].setText(label);
+            networkBadges[1].setStatusColor(StatusBadge.BG_OK, StatusBadge.FG_OK);
         } else if (ns.publicIp() != null) {
-            statusDots[2].setBackground(yellow);
-            statusLabels[2].setText("STUN " + ns.publicIp());
+            networkBadges[1].setText("STUN " + ns.publicIp());
+            networkBadges[1].setStatusColor(StatusBadge.BG_WARNING, StatusBadge.FG_WARNING);
         } else {
-            statusDots[2].setBackground(gray);
-            statusLabels[2].setText("No NAT");
+            networkBadges[1].setText("No NAT");
+            networkBadges[1].setStatusColor(StatusBadge.BG_IDLE, StatusBadge.FG_IDLE);
         }
 
-        // 3: LAN
+        // 2: LAN
         if (ns.lanActive()) {
-            statusDots[3].setBackground(green);
-            statusLabels[3].setText(ns.lanPeerCount() + " peers");
+            networkBadges[2].setText("LAN: " + ns.lanPeerCount());
+            networkBadges[2].setStatusColor(StatusBadge.BG_OK, StatusBadge.FG_OK);
         } else {
-            statusDots[3].setBackground(gray);
-            statusLabels[3].setText("LAN off");
+            networkBadges[2].setText("LAN off");
+            networkBadges[2].setStatusColor(StatusBadge.BG_IDLE, StatusBadge.FG_IDLE);
         }
 
-        // 4: Rendezvous
+        // 3: Rendezvous
         if (ns.rendezvousAvailable()) {
-            statusDots[4].setBackground(green);
-            statusLabels[4].setText("Rendezvous");
+            networkBadges[3].setText("Rendezvous");
+            networkBadges[3].setStatusColor(StatusBadge.BG_OK, StatusBadge.FG_OK);
         } else {
-            statusDots[4].setBackground(gray);
-            statusLabels[4].setText("No rendezvous");
+            networkBadges[3].setText("No rendezvous");
+            networkBadges[3].setStatusColor(StatusBadge.BG_IDLE, StatusBadge.FG_IDLE);
         }
 
-        // 5: Peers
+        // 4: Peers
         if (ns.connectedPeers() > 0 || ns.connectedDevices() > 0) {
-            statusDots[5].setBackground(green);
-            statusLabels[5].setText(ns.connectedPeers() + " peers / " + ns.connectedDevices() + " devices");
+            networkBadges[4].setText(ns.connectedPeers() + " peers / " + ns.connectedDevices() + " devices");
+            networkBadges[4].setStatusColor(StatusBadge.BG_OK, StatusBadge.FG_OK);
         } else {
-            statusDots[5].setBackground(gray);
-            statusLabels[5].setText("No peers");
+            networkBadges[4].setText("No peers");
+            networkBadges[4].setStatusColor(StatusBadge.BG_IDLE, StatusBadge.FG_IDLE);
         }
+    }
+
+    private void showNetworkStatusDialog() {
+        if (networkStatusDialog != null && networkStatusDialog.isShowing()) {
+            networkStatusDialog.toFront();
+            networkStatusDialog.requestFocus();
+            return;
+        }
+        networkStatusDialog = new NetworkStatusDialog(this, sharingService);
+        networkStatusDialog.setVisible(true);
     }
 
     // ==================== DIALOGS ====================
@@ -1638,13 +1589,13 @@ public class IntelDocumentFrame extends JFrame {
 
     private void showFriendsDialog() {
         if (sharingService == null) return;
-        FriendsDialog dialog = new FriendsDialog(this, sharingService);
+        FriendsDialog dialog = new FriendsDialog(this, sharingService, chatStore);
         dialog.setVisible(true);
     }
 
     private void openChat() {
         if (sharingService == null) return;
-        ChatFrame.open(sharingService, this);
+        ChatFrame.open(sharingService, chatStore, this);
         ChatFrame.setOnUnreadChanged(this::updateChatBadge);
     }
 

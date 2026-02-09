@@ -12,13 +12,15 @@ import java.util.List;
 public class FriendsDialog extends JDialog {
 
     private final SharingService sharingService;
+    private final ChatStore chatStore;
     private DefaultListModel<SharingService.FriendStatus> listModel;
     private JList<SharingService.FriendStatus> friendList;
     private javax.swing.Timer refreshTimer;
 
-    public FriendsDialog(JFrame owner, SharingService sharingService) {
+    public FriendsDialog(JFrame owner, SharingService sharingService, ChatStore chatStore) {
         super(owner, "Friends", ModalityType.MODELESS);
         this.sharingService = sharingService;
+        this.chatStore = chatStore;
 
         setDefaultCloseOperation(DISPOSE_ON_CLOSE);
         getRootPane().putClientProperty("apple.awt.fullWindowContent", true);
@@ -83,7 +85,7 @@ public class FriendsDialog extends JDialog {
         editBtn.addActionListener(e -> onEditName());
 
         JButton chatBtn = new JButton("Chat");
-        chatBtn.addActionListener(e -> ChatFrame.open(sharingService, this));
+        chatBtn.addActionListener(e -> ChatFrame.open(sharingService, chatStore, this));
 
         buttons.add(addBtn);
         buttons.add(removeBtn);
@@ -134,6 +136,7 @@ public class FriendsDialog extends JDialog {
         String name = nameField.getText().trim();
         IntelConfig.get().addFriend(new FriendConfig(email, name.isEmpty() ? null : name));
         IntelConfig.get().save();
+        sharingService.onFriendListChanged();
         loadFriends();
     }
 
@@ -146,6 +149,7 @@ public class FriendsDialog extends JDialog {
         if (confirm != JOptionPane.OK_OPTION) return;
         IntelConfig.get().removeFriend(selected.email());
         IntelConfig.get().save();
+        sharingService.onFriendListChanged();
         loadFriends();
     }
 

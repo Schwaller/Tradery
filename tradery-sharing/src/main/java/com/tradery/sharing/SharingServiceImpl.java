@@ -296,7 +296,8 @@ public class SharingServiceImpl implements SharingService {
             OAuthLogin oauth = new OAuthLogin();
             var tokens = oauth.refresh(auth.getRefreshToken());
             if (tokens == null) {
-                log.info("Silent token refresh failed at bootstrap — user will need to sign in again");
+                log.info("Silent token refresh failed at bootstrap — starting LAN-only, user will need to sign in for rendezvous");
+                ensurePeerManager();
                 return;
             }
 
@@ -435,6 +436,9 @@ public class SharingServiceImpl implements SharingService {
     public boolean login() {
         try {
             ensureSession();
+            if (localSession != null) {
+                ensurePeerManager();
+            }
             return localSession != null;
         } catch (Exception e) {
             log.warn("Login failed: {}", e.getMessage());
@@ -477,7 +481,8 @@ public class SharingServiceImpl implements SharingService {
     private synchronized void ensurePeerManager() throws IOException {
         if (peerManager != null) return;
 
-        String peerId = localSession.userId();
+        String peerId = localSession != null ? localSession.userId() : AuthConfig.load().getEmail();
+        if (peerId == null || peerId.isBlank()) throw new IOException("No identity available for peer manager");
         String deviceId = IntelConfig.get().getDeviceId();
         peerManager = new PeerManager(peerId, deviceId, documentManager, mapper);
         peerManager.addChatListener(this::onNetworkChat);
@@ -661,11 +666,11 @@ public class SharingServiceImpl implements SharingService {
     // ==================== Chat ====================
 
     @Override
-    public void sendChat(String text) {
+    public void sendChat(String recipientEmail, String text) {
         if (peerManager == null || localSession == null) return;
-        peerManager.broadcastChat(localSession.userId(), text);
+        peerManager.sendChat(localSession.userId(), recipientEmail, text);
         // Also echo locally so the sender sees their own message
-        var local = new ChatMessage(localSession.userId(), text, System.currentTimeMillis());
+        var local = new ChatMessage(localSession.userId(), recipientEmail, text, System.currentTimeMillis());
         for (var listener : chatListeners) {
             try { listener.accept(local); } catch (Exception ex) { log.warn("Chat listener error", ex); }
         }
@@ -683,7 +688,7 @@ public class SharingServiceImpl implements SharingService {
 
     /** Bridge: forward network chat messages to SharingService.ChatMessage listeners. */
     private void onNetworkChat(NetworkMessage.ChatMessage netMsg) {
-        var msg = new ChatMessage(netMsg.senderId(), netMsg.text(), netMsg.timestamp());
+        var msg = new ChatMessage(netMsg.senderId(), netMsg.recipientId(), netMsg.text(), netMsg.timestamp());
         for (var listener : chatListeners) {
             try {
                 listener.accept(msg);
@@ -691,6 +696,19 @@ public class SharingServiceImpl implements SharingService {
                 log.warn("Chat listener error", ex);
             }
         }
+    }
+
+    @Override
+    public void onFriendListChanged() {
+        if (peerManager != null) {
+            peerManager.reannounceFriendship();
+        }
+    }
+
+    @Override
+    public boolean isMutualFriend(String email) {
+        if (peerManager == null) return false;
+        return peerManager.isMutualFriendByEmail(email);
     }
 
     /** Collect all member emails across all shared documents + friends + own email (for peer filtering). */

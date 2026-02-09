@@ -17,7 +17,6 @@ import com.tradery.ui.controls.BorderlessScrollPane;
 import com.tradery.ui.controls.SegmentedToggle;
 import com.tradery.ui.controls.ThinSplitPane;
 import com.tradery.ui.controls.ToolbarButton;
-import com.tradery.ui.controls.ToolbarComboBox;
 
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
@@ -53,7 +52,6 @@ public class IntelFrame extends JFrame {
     private List<PanelInstance> panelInstances = new ArrayList<>();
 
     // News state
-    private ToolbarComboBox<String> limitCombo;
     private volatile boolean fetching = false;
     private javax.swing.Timer autoFetchTimer;
 
@@ -81,7 +79,6 @@ public class IntelFrame extends JFrame {
     private SegmentedToggle viewToggle;
 
     // Header action buttons (shown conditionally)
-    private JLabel showLabel;
     private JButton fetchBtn;
     private JButton resetViewBtn;
     private JPanel detailPanel;
@@ -178,7 +175,7 @@ public class IntelFrame extends JFrame {
         // Start API server
         try {
             EntitySearchProcessor searchProcessor = new EntitySearchProcessor(schemaRegistry);
-            apiServer = new IntelApiServer(this::openWindow, entityStore, store, searchProcessor, schemaRegistry);
+            apiServer = new IntelApiServer(this::openWindow, entityStore, store, searchProcessor, schemaRegistry, null, this::getUiState);
             apiServer.start();
         } catch (Exception e) {
             System.err.println("Failed to start Intel API server: " + e.getMessage());
@@ -314,32 +311,8 @@ public class IntelFrame extends JFrame {
         JPanel rightContent = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
         rightContent.setOpaque(false);
 
-        // Show: combo (for News view)
-        showLabel = new JLabel("Show:");
-        showLabel.setFont(new Font("SansSerif", Font.PLAIN, 11));
-        showLabel.setForeground(textSecondary());
-        rightContent.add(showLabel);
-
-        limitCombo = new ToolbarComboBox<>(new String[]{"100", "250", "500", "1000"});
-        limitCombo.setSelectedItem("500");
-        limitCombo.addActionListener(e -> {
-            // Update current NEWS_MAP panel's maxArticles and reload
-            int idx = viewToggle.getSelectedIndex();
-            if (idx >= 0 && idx < panelInstances.size()) {
-                PanelInstance pi = panelInstances.get(idx);
-                if (pi.config().getType() == PanelConfig.PanelType.NEWS_MAP) {
-                    int newMax = Integer.parseInt((String) limitCombo.getSelectedItem());
-                    pi.config().setMaxArticles(newMax);
-                    ((TimelineGraphPanel) pi.graphPanel()).setMaxNodes(newMax);
-                    IntelConfig.get().save();
-                    loadNewsData();
-                }
-            }
-        });
-        rightContent.add(limitCombo);
-
         // Fetch New button (for News view)
-        fetchBtn = new ToolbarButton("Fetch New");
+        fetchBtn = new ToolbarButton("Fetch News");
         fetchBtn.setToolTipText("Fetch new articles with AI extraction");
         fetchBtn.addActionListener(e -> fetchNewArticles());
         rightContent.add(fetchBtn);
@@ -482,8 +455,6 @@ public class IntelFrame extends JFrame {
             && panelInstances.get(idx).config().getType() == PanelConfig.PanelType.NEWS_MAP;
         boolean isCoinView = idx < panelInstances.size()
             && panelInstances.get(idx).config().getType() == PanelConfig.PanelType.COIN_GRAPH;
-        showLabel.setVisible(isNewsView);
-        limitCombo.setVisible(isNewsView);
         fetchBtn.setVisible(isNewsView);
         resetViewBtn.setVisible(isCoinView);
     }
@@ -566,11 +537,11 @@ public class IntelFrame extends JFrame {
     }
 
     private void showTopicDetails(TopicNode node) {
-        // Delegate to entity details if this is a coin with a matching entity
-        if ("coin".equals(node.typeId()) && currentEntities != null) {
+        // Delegate to entity details if a matching entity exists
+        if (currentEntities != null) {
             String symbol = node.id().contains(":") ? node.id().substring(node.id().indexOf(':') + 1) : node.id();
             for (CoinEntity e : currentEntities) {
-                if (symbol.equalsIgnoreCase(e.symbol())) {
+                if (symbol.equalsIgnoreCase(e.symbol()) || node.id().equals(e.id())) {
                     showEntityDetails(e);
                     return;
                 }
@@ -581,8 +552,7 @@ public class IntelFrame extends JFrame {
         selectedEntity = null;
         currentMode = DetailMode.NONE;
 
-        boolean isCoin = "coin".equals(node.typeId());
-        detailTitleLabel.setText(isCoin ? "Coin" : "Topic");
+        detailTitleLabel.setText(node.typeId());
         detailHeader.setVisible(true);
 
         detailContent.removeAll();
@@ -591,15 +561,8 @@ public class IntelFrame extends JFrame {
         addDetailSpacer();
 
         addDetailSection("TYPE");
-        addDetailLabel(isCoin ? "Cryptocurrency" : "News Topic",
-            isCoin ? new Color(200, 160, 80) : new Color(100, 140, 200));
+        addDetailLabel(node.typeId());
         addDetailSpacer();
-
-        if (!isCoin) {
-            addDetailSection("FULL PATH");
-            addDetailLabel(node.id());
-            addDetailSpacer();
-        }
 
         addDetailSection("ARTICLES (" + node.articleCount() + ")");
 
@@ -1131,7 +1094,7 @@ public class IntelFrame extends JFrame {
             protected void done() {
                 fetching = false;
                 fetchBtn.setEnabled(true);
-                fetchBtn.setText("Fetch New");
+                fetchBtn.setText("Fetch News");
                 try {
                     DataSource.FetchResult result = get();
                     if (result.entitiesAdded() > 0) {
@@ -1359,6 +1322,16 @@ public class IntelFrame extends JFrame {
     // ==================== DIALOGS ====================
 
     private void openWindow(String windowName) {
+        if (windowName.startsWith("select-entity:")) {
+            String entityId = windowName.substring("select-entity:".length());
+            selectEntityById(entityId);
+            return;
+        }
+        if (windowName.startsWith("view:")) {
+            String viewArg = windowName.substring("view:".length());
+            switchView(viewArg);
+            return;
+        }
         switch (windowName) {
             case "data-structure" -> showDataStructureWindow();
             case "settings" -> showSettingsWindow();
@@ -1369,6 +1342,47 @@ public class IntelFrame extends JFrame {
             }
         }
     }
+
+    private void selectEntityById(String entityId) {
+        // Switch to first COIN_GRAPH tab
+        for (int i = 0; i < panelInstances.size(); i++) {
+            if (panelInstances.get(i).config().getType() == PanelConfig.PanelType.COIN_GRAPH) {
+                viewToggle.setSelectedIndex(i);
+                CoinGraphPanel cgp = (CoinGraphPanel) panelInstances.get(i).graphPanel();
+                cgp.selectAndPanTo(entityId);
+                break;
+            }
+        }
+        toFront();
+        requestFocus();
+    }
+
+    private void switchView(String viewArg) {
+        // Try as index first
+        try {
+            int index = Integer.parseInt(viewArg);
+            if (index >= 0 && index < panelInstances.size()) {
+                viewToggle.setSelectedIndex(index);
+            }
+            return;
+        } catch (NumberFormatException ignored) {}
+
+        // Match by panel name (case-insensitive)
+        for (int i = 0; i < panelInstances.size(); i++) {
+            if (panelInstances.get(i).config().getName().equalsIgnoreCase(viewArg)) {
+                viewToggle.setSelectedIndex(i);
+                return;
+            }
+        }
+    }
+
+    /** Returns current UI state for the /context API endpoint. */
+    public UiState getUiState() {
+        int activeIndex = viewToggle.getSelectedIndex();
+        return new UiState(activeIndex, selectedEntity);
+    }
+
+    public record UiState(int activeViewIndex, CoinEntity selectedEntity) {}
 
     private void showDataStructureWindow() {
         if (dataStructureFrame != null && dataStructureFrame.isShowing()) {

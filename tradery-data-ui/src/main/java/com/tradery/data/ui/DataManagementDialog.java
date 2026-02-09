@@ -346,7 +346,10 @@ public class DataManagementDialog extends JDialog {
                     healthPanel.setCustomMessage("No Fear & Greed data");
                 }
             }
-            default -> healthPanel.setData(symbol, resolution);
+            default -> {
+                String marketType = browserPanel.getSelectedMarketType();
+                healthPanel.setCandleData(symbol, resolution, marketType);
+            }
         }
     }
 

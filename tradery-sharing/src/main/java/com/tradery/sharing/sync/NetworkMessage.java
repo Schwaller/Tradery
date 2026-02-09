@@ -18,6 +18,7 @@ import java.util.List;
     @JsonSubTypes.Type(value = NetworkMessage.SyncDone.class, name = "SYNC_DONE"),
     @JsonSubTypes.Type(value = NetworkMessage.MemberUpdate.class, name = "MEMBER_UPDATE"),
     @JsonSubTypes.Type(value = NetworkMessage.ChatMessage.class, name = "CHAT"),
+    @JsonSubTypes.Type(value = NetworkMessage.FriendshipAck.class, name = "FRIENDSHIP_ACK"),
 })
 public sealed interface NetworkMessage {
 
@@ -55,10 +56,16 @@ public sealed interface NetworkMessage {
         public record MemberEntry(String userId, String role) {}
     }
 
-    /** Ephemeral chat message broadcast to connected peers. */
+    /** Chat message — directed to a specific peer (recipientId), or broadcast if null. */
     record ChatMessage(
         String senderId,
+        String recipientId,
         String text,
         long timestamp
+    ) implements NetworkMessage {}
+
+    /** Sent after HELLO exchange to inform peer of friendship status. */
+    record FriendshipAck(
+        boolean isFriend
     ) implements NetworkMessage {}
 }

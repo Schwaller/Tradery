@@ -34,9 +34,15 @@ public class SchemaHandler extends IntelApiHandlerBase {
             node.put("name", type.name());
             node.put("color", type.colorHex());
             node.put("kind", type.kind());
+            node.put("hasMarketCap", type.hasMarketCap());
             if (type.fromTypeId() != null) node.put("fromTypeId", type.fromTypeId());
             if (type.toTypeId() != null) node.put("toTypeId", type.toTypeId());
             if (type.label() != null) node.put("label", type.label());
+            if (type.inverseLabel() != null) node.put("inverseLabel", type.inverseLabel());
+            if (type.pluralLabel() != null) node.put("pluralLabel", type.pluralLabel());
+            if (type.inversePluralLabel() != null) node.put("inversePluralLabel", type.inversePluralLabel());
+            if (type.searchDescription() != null) node.put("searchDescription", type.searchDescription());
+            if (type.inverseSearchDescription() != null) node.put("inverseSearchDescription", type.inverseSearchDescription());
             node.put("displayOrder", type.displayOrder());
 
             ArrayNode attrs = mapper.createArrayNode();

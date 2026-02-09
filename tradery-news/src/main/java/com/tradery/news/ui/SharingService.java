@@ -76,16 +76,22 @@ public interface SharingService {
 
     // ==================== Chat ====================
 
-    record ChatMessage(String senderEmail, String text, long timestamp) {}
+    record ChatMessage(String senderEmail, String recipientEmail, String text, long timestamp) {}
 
-    /** Send a chat message to all connected friends on the LAN. */
-    default void sendChat(String text) {}
+    /** Send a chat message to a specific peer. */
+    default void sendChat(String recipientEmail, String text) {}
 
     /** Register a listener for incoming chat messages. */
     default void addChatListener(Consumer<ChatMessage> listener) {}
 
     /** Remove a chat listener. */
     default void removeChatListener(Consumer<ChatMessage> listener) {}
+
+    /** Notify that the local friend list has changed (triggers re-announce to connected peers). */
+    default void onFriendListChanged() {}
+
+    /** Check if a peer email is a mutual friend (both sides have added each other). */
+    default boolean isMutualFriend(String email) { return false; }
 
     // ==================== Network Status ====================
 

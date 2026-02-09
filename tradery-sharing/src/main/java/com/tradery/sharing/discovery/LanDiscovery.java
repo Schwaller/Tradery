@@ -47,9 +47,13 @@ public class LanDiscovery implements AutoCloseable {
      * Start broadcasting and listening for LAN peers.
      */
     public void start() throws IOException {
-        socket = new MulticastSocket(MULTICAST_PORT);
         group = new InetSocketAddress(InetAddress.getByName(MULTICAST_GROUP), MULTICAST_PORT);
         networkInterface = findNetworkInterface();
+
+        socket = new MulticastSocket(null);
+        socket.setReuseAddress(true);
+        socket.bind(new InetSocketAddress(MULTICAST_PORT));
+        socket.setNetworkInterface(networkInterface);
         socket.joinGroup(group, networkInterface);
         running = true;
 
@@ -133,7 +137,16 @@ public class LanDiscovery implements AutoCloseable {
         while (interfaces.hasMoreElements()) {
             NetworkInterface ni = interfaces.nextElement();
             if (ni.isUp() && !ni.isLoopback() && ni.supportsMulticast()) {
-                return ni;
+                // Must have an IPv4 address to join multicast group
+                boolean hasIpv4 = false;
+                Enumeration<InetAddress> addrs = ni.getInetAddresses();
+                while (addrs.hasMoreElements()) {
+                    if (addrs.nextElement() instanceof java.net.Inet4Address) {
+                        hasIpv4 = true;
+                        break;
+                    }
+                }
+                if (hasIpv4) return ni;
             }
         }
         throw new SocketException("No suitable network interface found for multicast");

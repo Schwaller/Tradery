@@ -6,6 +6,9 @@ import com.tradery.documents.DocumentWorkspace;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.tradery.news.ui.FriendConfig;
+import com.tradery.news.ui.IntelConfig;
+
 import java.io.IOException;
 import java.net.Socket;
 import java.util.*;
@@ -40,6 +43,12 @@ public class PeerManager implements AutoCloseable {
 
     /** Chat message listeners. */
     private final List<Consumer<NetworkMessage.ChatMessage>> chatListeners = new CopyOnWriteArrayList<>();
+
+    /** Tracks whether each connected peer (by device ID) has mutual friendship with us. */
+    private final Map<String, Boolean> mutualFriends = new ConcurrentHashMap<>();
+
+    /** Callback when friendship status changes (e.g. FriendshipAck received). */
+    private volatile Runnable friendshipChangeCallback;
 
     public PeerManager(String localPeerId, String localDeviceId, DocumentManager documentManager, ObjectMapper mapper) throws IOException {
         this.localPeerId = localPeerId;
@@ -116,16 +125,41 @@ public class PeerManager implements AutoCloseable {
                     localPeerId, localDeviceId, null, null,
                     List.copyOf(workspaces.keySet())));
 
-            // Also request sync for shared documents (bidirectional sync)
-            Set<String> sharedDocs = new HashSet<>(workspaces.keySet());
-            sharedDocs.retainAll(new HashSet<>(hello.documentIds()));
+            // Exchange friendship status
+            boolean weFriendThem = isFriendLocally(hello.peerId());
+            conn.send(new NetworkMessage.FriendshipAck(weFriendThem));
 
-            for (String docId : sharedDocs) {
-                DocumentWorkspace ws = workspaces.get(docId);
-                if (ws != null) {
-                    NetworkMessage.SyncRequest req = syncEngine.createSyncRequest(ws, docId, hello.peerId());
-                    conn.send(req);
+            // Wait for their FriendshipAck
+            NetworkMessage ackMsg = conn.receive();
+            boolean theyFriendUs = false;
+            if (ackMsg instanceof NetworkMessage.FriendshipAck ack) {
+                theyFriendUs = ack.isFriend();
+            } else if (ackMsg != null) {
+                // They may be running an older version without FriendshipAck — push back for processing
+                log.debug("Peer {} did not send FriendshipAck, got {}", remoteKey, ackMsg.getClass().getSimpleName());
+            }
+
+            boolean mutual = weFriendThem && theyFriendUs;
+            mutualFriends.put(remoteKey, mutual);
+            log.info("Friendship with {} ({}): we={}, they={}, mutual={}", hello.peerId(), remoteKey, weFriendThem, theyFriendUs, mutual);
+            if (friendshipChangeCallback != null) friendshipChangeCallback.run();
+
+            // Only sync documents if mutual friends
+            if (mutual) {
+                Set<String> sharedDocs = new HashSet<>(workspaces.keySet());
+                sharedDocs.retainAll(new HashSet<>(hello.documentIds()));
+                for (String docId : sharedDocs) {
+                    DocumentWorkspace ws = workspaces.get(docId);
+                    if (ws != null) {
+                        NetworkMessage.SyncRequest req = syncEngine.createSyncRequest(ws, docId, hello.peerId());
+                        conn.send(req);
+                    }
                 }
+            }
+
+            // If ackMsg was not a FriendshipAck, process it as a regular message first
+            if (ackMsg != null && !(ackMsg instanceof NetworkMessage.FriendshipAck)) {
+                handleMessage(conn, hello, ackMsg);
             }
 
             // Process messages
@@ -137,6 +171,7 @@ public class PeerManager implements AutoCloseable {
             if (conn.remotePeerId() != null) {
                 connections.remove(conn.remotePeerId());
                 deviceToPeerEmail.remove(conn.remotePeerId());
+                mutualFriends.remove(conn.remotePeerId());
             }
         }
     }
@@ -165,16 +200,40 @@ public class PeerManager implements AutoCloseable {
             deviceToPeerEmail.put(remoteKey, hello.peerId());
             log.info("Connected to peer {} (device {}) at {}", hello.peerId(), remoteKey, conn.remoteAddress());
 
-            // Find shared documents and request sync
-            Set<String> sharedDocs = new HashSet<>(workspaces.keySet());
-            sharedDocs.retainAll(new HashSet<>(hello.documentIds()));
+            // Exchange friendship status
+            boolean weFriendThem = isFriendLocally(hello.peerId());
+            conn.send(new NetworkMessage.FriendshipAck(weFriendThem));
 
-            for (String docId : sharedDocs) {
-                DocumentWorkspace ws = workspaces.get(docId);
-                if (ws != null) {
-                    NetworkMessage.SyncRequest req = syncEngine.createSyncRequest(ws, docId, hello.peerId());
-                    conn.send(req);
+            // Wait for their FriendshipAck
+            NetworkMessage ackMsg = conn.receive();
+            boolean theyFriendUs = false;
+            if (ackMsg instanceof NetworkMessage.FriendshipAck ack) {
+                theyFriendUs = ack.isFriend();
+            } else if (ackMsg != null) {
+                log.debug("Peer {} did not send FriendshipAck, got {}", remoteKey, ackMsg.getClass().getSimpleName());
+            }
+
+            boolean mutual = weFriendThem && theyFriendUs;
+            mutualFriends.put(remoteKey, mutual);
+            log.info("Friendship with {} ({}): we={}, they={}, mutual={}", hello.peerId(), remoteKey, weFriendThem, theyFriendUs, mutual);
+            if (friendshipChangeCallback != null) friendshipChangeCallback.run();
+
+            // Only sync documents if mutual friends
+            if (mutual) {
+                Set<String> sharedDocs = new HashSet<>(workspaces.keySet());
+                sharedDocs.retainAll(new HashSet<>(hello.documentIds()));
+                for (String docId : sharedDocs) {
+                    DocumentWorkspace ws = workspaces.get(docId);
+                    if (ws != null) {
+                        NetworkMessage.SyncRequest req = syncEngine.createSyncRequest(ws, docId, hello.peerId());
+                        conn.send(req);
+                    }
                 }
+            }
+
+            // If ackMsg was not a FriendshipAck, process it as a regular message first
+            if (ackMsg != null && !(ackMsg instanceof NetworkMessage.FriendshipAck)) {
+                handleMessage(conn, hello, ackMsg);
             }
 
             // Process messages
@@ -186,6 +245,7 @@ public class PeerManager implements AutoCloseable {
             if (conn.remotePeerId() != null) {
                 connections.remove(conn.remotePeerId());
                 deviceToPeerEmail.remove(conn.remotePeerId());
+                mutualFriends.remove(conn.remotePeerId());
             }
         }
     }
@@ -197,35 +257,57 @@ public class PeerManager implements AutoCloseable {
         while (!conn.isClosed()) {
             NetworkMessage msg = conn.receive();
             if (msg == null) break; // EOF
+            handleMessage(conn, hello, msg);
+        }
+    }
 
-            switch (msg) {
-                case NetworkMessage.SyncRequest req -> {
-                    DocumentWorkspace ws = workspaces.get(req.documentId());
-                    if (ws != null) {
-                        NetworkMessage.SyncResponse resp = syncEngine.handleSyncRequest(ws, req);
-                        conn.send(resp);
-                        conn.send(new NetworkMessage.SyncDone(req.documentId()));
-                    }
+    private void handleMessage(PeerConnection conn, NetworkMessage.Hello hello, NetworkMessage msg) throws IOException {
+        String remoteKey = conn.remotePeerId();
+        boolean mutual = isMutualFriend(remoteKey);
+
+        switch (msg) {
+            case NetworkMessage.SyncRequest req -> {
+                if (!mutual) {
+                    log.debug("Ignoring SyncRequest from non-mutual peer {}", remoteKey);
+                    return;
                 }
-                case NetworkMessage.SyncResponse resp -> {
-                    DocumentWorkspace ws = workspaces.get(resp.documentId());
-                    if (ws != null) {
-                        syncEngine.handleSyncResponse(ws, conn.remotePeerId(), resp);
-                    }
+                DocumentWorkspace ws = workspaces.get(req.documentId());
+                if (ws != null) {
+                    NetworkMessage.SyncResponse resp = syncEngine.handleSyncRequest(ws, req);
+                    conn.send(resp);
+                    conn.send(new NetworkMessage.SyncDone(req.documentId()));
                 }
-                case NetworkMessage.SyncDone done ->
-                    log.debug("Sync complete for doc {} from {}", done.documentId(), conn.remotePeerId());
-                case NetworkMessage.MemberUpdate update ->
-                    log.info("Member update for doc {} from {}", update.documentId(), conn.remotePeerId());
-                case NetworkMessage.ChatMessage chat -> {
-                    log.debug("Chat from {}: {}", chat.senderId(), chat.text());
-                    for (var listener : chatListeners) {
-                        try { listener.accept(chat); } catch (Exception ex) { log.warn("Chat listener error", ex); }
-                    }
-                }
-                case NetworkMessage.Hello ignored ->
-                    log.warn("Unexpected HELLO from {}", conn.remotePeerId());
             }
+            case NetworkMessage.SyncResponse resp -> {
+                if (!mutual) {
+                    log.debug("Ignoring SyncResponse from non-mutual peer {}", remoteKey);
+                    return;
+                }
+                DocumentWorkspace ws = workspaces.get(resp.documentId());
+                if (ws != null) {
+                    syncEngine.handleSyncResponse(ws, remoteKey, resp);
+                }
+            }
+            case NetworkMessage.SyncDone done ->
+                log.debug("Sync complete for doc {} from {}", done.documentId(), remoteKey);
+            case NetworkMessage.MemberUpdate update ->
+                log.info("Member update for doc {} from {}", update.documentId(), remoteKey);
+            case NetworkMessage.ChatMessage chat -> {
+                log.debug("Chat from {}: {}", chat.senderId(), chat.text());
+                for (var listener : chatListeners) {
+                    try { listener.accept(chat); } catch (Exception ex) { log.warn("Chat listener error", ex); }
+                }
+            }
+            case NetworkMessage.FriendshipAck ack -> {
+                // Re-evaluate mutual status (e.g. they added/removed us)
+                boolean weFriendThem = isFriendLocally(hello.peerId());
+                boolean newMutual = weFriendThem && ack.isFriend();
+                mutualFriends.put(remoteKey, newMutual);
+                log.info("Friendship update from {}: they={}, mutual={}", hello.peerId(), ack.isFriend(), newMutual);
+                if (friendshipChangeCallback != null) friendshipChangeCallback.run();
+            }
+            case NetworkMessage.Hello ignored ->
+                log.warn("Unexpected HELLO from {}", remoteKey);
         }
     }
 
@@ -238,6 +320,7 @@ public class PeerManager implements AutoCloseable {
             String remotePeerId = entry.getKey();
             PeerConnection conn = entry.getValue();
             if (conn.isClosed()) continue;
+            if (!isMutualFriend(remotePeerId)) continue;
 
             for (Map.Entry<String, DocumentWorkspace> wsEntry : workspaces.entrySet()) {
                 String docId = wsEntry.getKey();
@@ -270,15 +353,19 @@ public class PeerManager implements AutoCloseable {
         return Collections.unmodifiableCollection(connections.keySet());
     }
 
-    /** Broadcast a chat message to all connected peers. */
-    public void broadcastChat(String senderId, String text) {
-        var msg = new NetworkMessage.ChatMessage(senderId, text, System.currentTimeMillis());
-        for (PeerConnection conn : connections.values()) {
-            if (conn.isClosed()) continue;
-            try {
-                conn.send(msg);
-            } catch (IOException e) {
-                log.warn("Failed to send chat to {}: {}", conn.remotePeerId(), e.getMessage());
+    /** Send a chat message to a specific peer (all their devices). */
+    public void sendChat(String senderId, String recipientId, String text) {
+        var msg = new NetworkMessage.ChatMessage(senderId, recipientId, text, System.currentTimeMillis());
+        for (var entry : deviceToPeerEmail.entrySet()) {
+            if (recipientId.equals(entry.getValue())) {
+                PeerConnection conn = connections.get(entry.getKey());
+                if (conn != null && !conn.isClosed()) {
+                    try {
+                        conn.send(msg);
+                    } catch (IOException e) {
+                        log.warn("Failed to send chat to {}: {}", entry.getKey(), e.getMessage());
+                    }
+                }
             }
         }
     }
@@ -289,6 +376,47 @@ public class PeerManager implements AutoCloseable {
 
     public void removeChatListener(Consumer<NetworkMessage.ChatMessage> listener) {
         chatListeners.remove(listener);
+    }
+
+    /** Check if a connected peer has mutual friendship with us. */
+    public boolean isMutualFriend(String deviceId) {
+        return Boolean.TRUE.equals(mutualFriends.get(deviceId));
+    }
+
+    /** Check if a peer email is a mutual friend (checks all their devices). */
+    public boolean isMutualFriendByEmail(String email) {
+        for (var entry : deviceToPeerEmail.entrySet()) {
+            if (email.equals(entry.getValue()) && isMutualFriend(entry.getKey())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** Check if we have this peer in our local friend list. */
+    private boolean isFriendLocally(String peerEmail) {
+        return IntelConfig.get().getFriendByEmail(peerEmail) != null;
+    }
+
+    /** Re-announce friendship status to all connected peers after friend list changes. */
+    public void reannounceFriendship() {
+        for (var entry : connections.entrySet()) {
+            String deviceId = entry.getKey();
+            PeerConnection conn = entry.getValue();
+            if (conn.isClosed()) continue;
+
+            String peerEmail = deviceToPeerEmail.get(deviceId);
+            boolean weFriendThem = peerEmail != null && isFriendLocally(peerEmail);
+            try {
+                conn.send(new NetworkMessage.FriendshipAck(weFriendThem));
+            } catch (IOException e) {
+                log.warn("Failed to re-announce friendship to {}: {}", deviceId, e.getMessage());
+            }
+        }
+    }
+
+    public void setFriendshipChangeCallback(Runnable callback) {
+        this.friendshipChangeCallback = callback;
     }
 
     @Override

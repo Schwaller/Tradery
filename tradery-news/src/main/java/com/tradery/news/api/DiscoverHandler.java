@@ -12,6 +12,8 @@ import com.tradery.news.ui.coin.EntityStore;
 import com.tradery.news.ui.coin.SchemaRegistry;
 import com.tradery.news.ui.coin.SchemaType;
 
+import com.tradery.news.ui.IntelLogPanel;
+
 import java.io.IOException;
 import java.util.List;
 import java.util.Map;
@@ -78,9 +80,12 @@ public class DiscoverHandler extends IntelApiHandlerBase {
             }
         }
 
+        IntelLogPanel.logAI("API: Discovering entities related to '" + entity.name() + "'" +
+            (relType != null ? " (" + relType + ")" : ""));
         EntitySearchProcessor.SearchResult result = searchProcessor.searchRelated(entity, relType);
 
         if (result.hasError()) {
+            IntelLogPanel.logError("API: Discovery failed for '" + entity.name() + "': " + result.error());
             sendError(exchange, 500, result.error());
             return;
         }
@@ -98,6 +103,8 @@ public class DiscoverHandler extends IntelApiHandlerBase {
             node.put("alreadyExists", entityStore.entityExists(de.generateId()));
             arr.add(node);
         }
+
+        IntelLogPanel.logAI("API: Discovered " + result.entities().size() + " entities related to '" + entity.name() + "'");
 
         ObjectNode response = mapper.createObjectNode();
         response.put("entityId", entity.id());
@@ -164,6 +171,9 @@ public class DiscoverHandler extends IntelApiHandlerBase {
                 addedRelationships++;
             }
         }
+
+        IntelLogPanel.logData("API: Applied discovery for '" + sourceEntity.name() + "': " +
+            addedEntities + " entities, " + addedRelationships + " relationships");
 
         ObjectNode result = mapper.createObjectNode();
         result.put("ok", true);

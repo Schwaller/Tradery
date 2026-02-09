@@ -8,6 +8,8 @@ import com.tradery.news.ui.coin.CoinEntity;
 import com.tradery.news.ui.coin.CoinRelationship;
 import com.tradery.news.ui.coin.EntityStore;
 
+import com.tradery.news.ui.IntelLogPanel;
+
 import java.io.IOException;
 import java.util.*;
 
@@ -222,6 +224,7 @@ public class EntityHandler extends IntelApiHandlerBase {
 
         CoinEntity entity = new CoinEntity(id, name, symbol, type);
         entityStore.saveEntity(entity, "manual");
+        IntelLogPanel.logData("API: Created entity '" + name + "' (" + type + ")");
 
         ObjectNode result = mapper.createObjectNode();
         result.put("ok", true);
@@ -236,6 +239,7 @@ public class EntityHandler extends IntelApiHandlerBase {
         }
 
         entityStore.deleteEntity(entityId);
+        IntelLogPanel.logData("API: Deleted entity '" + entityId + "'");
 
         ObjectNode result = mapper.createObjectNode();
         result.put("ok", true);
@@ -279,6 +283,7 @@ public class EntityHandler extends IntelApiHandlerBase {
 
         CoinRelationship rel = new CoinRelationship(fromId, toId, type, note);
         entityStore.saveRelationship(rel, "manual");
+        IntelLogPanel.logData("API: Created relationship " + fromId + " -[" + type + "]-> " + toId);
 
         ObjectNode result = mapper.createObjectNode();
         result.put("ok", true);
@@ -309,6 +314,7 @@ public class EntityHandler extends IntelApiHandlerBase {
         }
 
         entityStore.deleteRelationship(from, to, type);
+        IntelLogPanel.logData("API: Deleted relationship " + from + " -[" + type + "]-> " + to);
 
         ObjectNode result = mapper.createObjectNode();
         result.put("ok", true);

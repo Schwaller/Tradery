@@ -20,6 +20,10 @@ public class StatsHandler extends IntelApiHandlerBase {
         this.newsStore = newsStore;
     }
 
+    public int getEntityCount() { return entityStore.getEntityCount(); }
+    public int getRelationshipCount() { return entityStore.getRelationshipCount(); }
+    public int getArticleCount() { return newsStore.getArticleCount(); }
+
     public void handleStats(HttpExchange exchange) throws IOException {
         if (handleCors(exchange)) return;
         if (!checkMethod(exchange, "GET")) return;

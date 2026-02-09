@@ -3,6 +3,7 @@ package com.tradery.news.ui.coin;
 import com.formdev.flatlaf.FlatClientProperties;
 import com.formdev.flatlaf.util.SystemInfo;
 import com.tradery.news.ui.IntelConfig;
+import com.tradery.ui.controls.SegmentedToggle;
 
 import javax.swing.*;
 import java.awt.*;
@@ -137,16 +138,16 @@ public class DataStructureFrame extends JFrame {
         boolean initialFlowMode = IntelConfig.get().isErdFlowMode();
         erdPanel.setFlowMode(initialFlowMode);
 
-        JToggleButton flowToggle = createLayoutToggle("Flow");
-        flowToggle.setSelected(initialFlowMode);
-        flowToggle.addActionListener(e -> {
-            boolean flow = flowToggle.isSelected();
+        SegmentedToggle connectionToggle = new SegmentedToggle(new String[]{"Direct", "Flow"});
+        connectionToggle.setSelectedIndex(initialFlowMode ? 1 : 0);
+        connectionToggle.setOnSelectionChanged(i -> {
+            boolean flow = i == 1;
             erdPanel.setFlowMode(flow);
             IntelConfig cfg = IntelConfig.get();
             cfg.setErdFlowMode(flow);
             cfg.save();
         });
-        leftContent.add(flowToggle);
+        leftContent.add(connectionToggle);
 
         GridBagConstraints lc = new GridBagConstraints();
         lc.anchor = GridBagConstraints.WEST;
