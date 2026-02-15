@@ -29,7 +29,7 @@ public class FetchScheduler implements AutoCloseable {
     private final ScheduledExecutorService scheduler;
     private final ExecutorService aiExecutor;
 
-    private Duration fetchInterval = Duration.ofMinutes(5);
+    private Duration fetchInterval = Duration.ofMinutes(1);
     private int articlesPerSource = 10;
     private boolean aiEnabled = false;
     private Consumer<FetchResult> onFetchComplete;

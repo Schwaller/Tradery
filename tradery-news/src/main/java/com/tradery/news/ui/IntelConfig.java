@@ -102,7 +102,7 @@ public class IntelConfig {
     private boolean coinGeckoFetchCategories = true;
 
     // News fetch settings (0 = manual only)
-    private int fetchIntervalMinutes = 0;
+    private int fetchIntervalMinutes = 1;
     private Set<String> disabledFeedIds = new HashSet<>();
 
     // Default hidden topics

@@ -26,6 +26,7 @@ public class RssNewsSource implements DataSource {
 
     private final SqliteNewsStore newsStore;
     private final Path dataDir;
+    private FetcherRegistry fetcherRegistry;
 
     public RssNewsSource(SqliteNewsStore newsStore, Path dataDir) {
         this.newsStore = newsStore;
@@ -108,13 +109,7 @@ public class RssNewsSource implements DataSource {
         try {
             progress.update("Preparing RSS fetchers...", 10);
 
-            FetcherRegistry fetchers = new FetcherRegistry();
-            IntelConfig fetchConfig = IntelConfig.get();
-            for (RssFetcher source : RssFetcher.defaultSources()) {
-                if (!fetchConfig.isFeedDisabled(source.getSourceId())) {
-                    fetchers.register(source);
-                }
-            }
+            ensureFetcherRegistry();
 
             TopicRegistry topics = new TopicRegistry(dataDir.resolve("topics.json"));
             ClaudeCliProcessor ai = new ClaudeCliProcessor();
@@ -125,7 +120,7 @@ public class RssNewsSource implements DataSource {
 
             progress.update("Fetching articles...", 30);
 
-            try (var scheduler = new FetchScheduler(fetchers, topics, newsStore, ai)) {
+            try (var scheduler = new FetchScheduler(fetcherRegistry, topics, newsStore, ai)) {
                 scheduler.withAiEnabled(ai != null).withArticlesPerSource(ai != null ? 5 : 10);
                 FetchScheduler.FetchResult result = scheduler.fetchAndProcess();
 
@@ -138,6 +133,21 @@ public class RssNewsSource implements DataSource {
             }
         } catch (Exception e) {
             return new FetchResult(0, 0, "Error: " + e.getMessage());
+        }
+    }
+
+    private void ensureFetcherRegistry() {
+        if (fetcherRegistry == null) {
+            fetcherRegistry = new FetcherRegistry();
+        }
+        // Sync enabled/disabled state from config each cycle
+        IntelConfig fetchConfig = IntelConfig.get();
+        for (RssFetcher source : RssFetcher.defaultSources()) {
+            if (!fetchConfig.isFeedDisabled(source.getSourceId())) {
+                if (fetcherRegistry.getFetcher(source.getSourceId()).isEmpty()) {
+                    fetcherRegistry.register(source);
+                }
+            }
         }
     }
 }

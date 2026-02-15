@@ -7,16 +7,21 @@ import com.rometools.rome.io.XmlReader;
 import com.tradery.news.model.Article;
 import com.tradery.news.model.ImportanceLevel;
 import com.tradery.news.model.ProcessingStatus;
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.Response;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HexFormat;
 import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * Fetches news articles from RSS feeds.
@@ -24,11 +29,22 @@ import java.util.List;
 public class RssFetcher implements NewsFetcher {
 
     private static final Logger log = LoggerFactory.getLogger(RssFetcher.class);
+    private static final Pattern MAX_AGE_PATTERN = Pattern.compile("max-age=(\\d+)");
+    private static final OkHttpClient HTTP_CLIENT = new OkHttpClient.Builder()
+        .connectTimeout(Duration.ofSeconds(10))
+        .readTimeout(Duration.ofSeconds(15))
+        .followRedirects(true)
+        .build();
 
     private final String sourceId;
     private final String sourceName;
     private final String feedUrl;
     private final boolean enabled;
+
+    // HTTP conditional request state
+    private String lastEtag;
+    private String lastModified;
+    private Instant cacheExpiresAt;
 
     public RssFetcher(String sourceId, String sourceName, String feedUrl) {
         this(sourceId, sourceName, feedUrl, true);
@@ -67,11 +83,58 @@ public class RssFetcher implements NewsFetcher {
 
     @Override
     public List<Article> fetchLatest(int limit) {
+        // Respect Cache-Control max-age
+        if (cacheExpiresAt != null && Instant.now().isBefore(cacheExpiresAt)) {
+            log.debug("{}: cache still fresh, skipping", sourceId);
+            return List.of();
+        }
+
         List<Article> articles = new ArrayList<>();
 
-        try {
+        Request.Builder reqBuilder = new Request.Builder()
+            .url(feedUrl)
+            .header("User-Agent", "Plaiiin/1.0 (RSS Reader)");
+
+        if (lastEtag != null) {
+            reqBuilder.header("If-None-Match", lastEtag);
+        }
+        if (lastModified != null) {
+            reqBuilder.header("If-Modified-Since", lastModified);
+        }
+
+        try (Response response = HTTP_CLIENT.newCall(reqBuilder.build()).execute()) {
+            if (response.code() == 304) {
+                log.debug("{}: not modified (304)", sourceId);
+                return List.of();
+            }
+
+            if (!response.isSuccessful()) {
+                log.error("Failed to fetch RSS feed from {}: HTTP {}", feedUrl, response.code());
+                return List.of();
+            }
+
+            // Store conditional headers for next request
+            String etag = response.header("ETag");
+            if (etag != null) lastEtag = etag;
+
+            String modified = response.header("Last-Modified");
+            if (modified != null) lastModified = modified;
+
+            // Parse Cache-Control max-age
+            String cacheControl = response.header("Cache-Control");
+            if (cacheControl != null) {
+                Matcher m = MAX_AGE_PATTERN.matcher(cacheControl);
+                if (m.find()) {
+                    long maxAge = Long.parseLong(m.group(1));
+                    if (maxAge > 0) {
+                        cacheExpiresAt = Instant.now().plusSeconds(maxAge);
+                    }
+                }
+            }
+
+            // Parse feed from response body
             SyndFeedInput input = new SyndFeedInput();
-            SyndFeed feed = input.build(new XmlReader(URI.create(feedUrl).toURL()));
+            SyndFeed feed = input.build(new XmlReader(response.body().byteStream()));
 
             int count = 0;
             for (SyndEntry entry : feed.getEntries()) {
