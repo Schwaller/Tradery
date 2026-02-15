@@ -6,7 +6,11 @@ import com.tradery.news.ui.coin.CoinEntity;
 import com.tradery.news.ui.coin.CoinGeckoClient;
 import com.tradery.news.ui.coin.CoinRelationship;
 import com.tradery.news.ui.coin.EntityStore;
+import com.tradery.news.ui.coin.SchemaAttribute;
+import com.tradery.news.ui.coin.SchemaRegistry;
+import com.tradery.news.ui.coin.SchemaType;
 
+import java.awt.Color;
 import java.time.Duration;
 import java.util.*;
 
@@ -35,6 +39,113 @@ public class CoinGeckoSource implements DataSource {
     @Override
     public Duration cacheTTL() {
         return Duration.ofHours(IntelConfig.get().getCoinGeckoCacheHours());
+    }
+
+    @Override
+    public void seedSchemaTypes(SchemaRegistry registry) {
+        int order = 0;
+
+        // Entity types
+        seedEntityType(registry, "coin", "Coin", new Color(100, 180, 255), order++, true);
+        seedEntityType(registry, "l2", "L2", new Color(150, 130, 255), order++, true);
+        seedEntityType(registry, "etf", "Etf", new Color(80, 200, 120), order++, true);
+        seedEntityType(registry, "etp", "Etp", new Color(100, 200, 150), order++, true);
+        seedEntityType(registry, "dat", "Dat", new Color(180, 180, 120), order++, true);
+        seedEntityType(registry, "exchange", "Exchange", new Color(200, 160, 100), order++, false);
+        seedEntityType(registry, "news_source", "News Source", new Color(200, 180, 140), order++, false);
+
+        // Relationship types
+        order = 0;
+
+        if (registry.getType("l2_of") == null) {
+            SchemaType st = new SchemaType("l2_of", "L2 Of", new Color(150, 130, 255), SchemaType.KIND_RELATIONSHIP);
+            st.setLabel("L2 of"); st.setFromTypeId("l2"); st.setToTypeId("coin");
+            st.setInverseLabel("L1 for"); st.setPluralLabel("L1"); st.setInversePluralLabel("L2s");
+            st.setSearchDescription("The L1 blockchain that %s is built on");
+            st.setInverseSearchDescription("Layer 2 networks built on %s");
+            st.setSearchHints(List.of("%s Layer 1 blockchain built on"));
+            st.setInverseSearchHints(List.of("%s Layer 2 networks rollups", "%s L2 scaling solutions"));
+            st.setDisplayOrder(order++);
+            st.addAttribute(new SchemaAttribute("note", SchemaAttribute.TEXT, false, 0));
+            registry.save(st);
+        }
+
+        if (registry.getType("etf_tracks") == null) {
+            SchemaType st = new SchemaType("etf_tracks", "Etf Tracks", new Color(80, 200, 120), SchemaType.KIND_RELATIONSHIP);
+            st.setLabel("tracks"); st.setFromTypeId("etf"); st.setToTypeId("coin");
+            st.setInverseLabel("tracked by"); st.setPluralLabel("Tracks"); st.setInversePluralLabel("ETFs");
+            st.setSearchDescription("Cryptocurrencies that %s tracks");
+            st.setInverseSearchDescription("ETFs (Exchange-Traded Funds) that track %s");
+            st.setSearchHints(List.of("%s ETF holdings cryptocurrency"));
+            st.setInverseSearchHints(List.of("%s cryptocurrency ETF list spot", "%s ETF approved SEC"));
+            st.setDisplayOrder(order++);
+            st.addAttribute(new SchemaAttribute("note", SchemaAttribute.TEXT, false, 0));
+            registry.save(st);
+        }
+
+        if (registry.getType("etp_tracks") == null) {
+            SchemaType st = new SchemaType("etp_tracks", "Etp Tracks", new Color(100, 200, 150), SchemaType.KIND_RELATIONSHIP);
+            st.setLabel("tracks"); st.setFromTypeId("etp"); st.setToTypeId("coin");
+            st.setInverseLabel("tracked by"); st.setPluralLabel("Tracks"); st.setInversePluralLabel("ETPs");
+            st.setSearchDescription("Cryptocurrencies that %s tracks");
+            st.setInverseSearchDescription("ETPs (Exchange-Traded Products) that track %s");
+            st.setSearchHints(List.of("%s ETP holdings"));
+            st.setInverseSearchHints(List.of("%s cryptocurrency ETP exchange traded product", "%s ETP Europe"));
+            st.setDisplayOrder(order++);
+            st.addAttribute(new SchemaAttribute("note", SchemaAttribute.TEXT, false, 0));
+            registry.save(st);
+        }
+
+        if (registry.getType("ecosystem") == null) {
+            SchemaType st = new SchemaType("ecosystem", "Ecosystem", new Color(180, 180, 150), SchemaType.KIND_RELATIONSHIP);
+            st.setLabel("ecosystem"); st.setFromTypeId("coin"); st.setToTypeId("coin");
+            st.setInverseLabel("ecosystem:"); st.setPluralLabel("Ecosystem"); st.setInversePluralLabel("Ecosystem");
+            st.setSearchDescription("Projects and tokens in the %s ecosystem");
+            st.setInverseSearchDescription("Projects and tokens in the %s ecosystem");
+            st.setSearchHints(List.of("%s ecosystem projects tokens DeFi", "%s blockchain ecosystem dApps protocols"));
+            st.setInverseSearchHints(List.of("%s ecosystem projects tokens DeFi"));
+            st.setDisplayOrder(order++);
+            st.addAttribute(new SchemaAttribute("note", SchemaAttribute.TEXT, false, 0));
+            registry.save(st);
+        }
+
+        if (registry.getType("fork_of") == null) {
+            SchemaType st = new SchemaType("fork_of", "Fork Of", new Color(200, 150, 150), SchemaType.KIND_RELATIONSHIP);
+            st.setLabel("fork of"); st.setFromTypeId("coin"); st.setToTypeId("coin");
+            st.setInverseLabel("forked to"); st.setPluralLabel("Forks"); st.setInversePluralLabel("Forks");
+            st.setSearchDescription("Projects that forked from %s or that %s forked from");
+            st.setInverseSearchDescription("Projects that forked from %s or that %s forked from");
+            st.setSearchHints(List.of("%s fork forked from blockchain", "%s hard fork code fork crypto"));
+            st.setInverseSearchHints(List.of("%s fork forked from blockchain"));
+            st.setDisplayOrder(order++);
+            st.addAttribute(new SchemaAttribute("note", SchemaAttribute.TEXT, false, 0));
+            registry.save(st);
+        }
+
+        if (registry.getType("hosts_pair") == null) {
+            SchemaType st = new SchemaType("hosts_pair", "Hosts Pair", new Color(200, 160, 100), SchemaType.KIND_RELATIONSHIP);
+            st.setLabel("hosts"); st.setFromTypeId("exchange"); st.setToTypeId("coin");
+            st.setInverseLabel("traded on"); st.setPluralLabel("Pairs"); st.setInversePluralLabel("Exchanges");
+            st.setDisplayOrder(order++);
+            st.addAttribute(new SchemaAttribute("note", SchemaAttribute.TEXT, false, 0));
+            registry.save(st);
+        }
+    }
+
+    private void seedEntityType(SchemaRegistry registry, String id, String name, Color color, int order, boolean hasMarketCap) {
+        if (registry.getType(id) != null) return;
+        SchemaType st = new SchemaType(id, name, color, SchemaType.KIND_ENTITY);
+        st.setDisplayOrder(order);
+        st.setHasMarketCap(hasMarketCap);
+        st.addAttribute(new SchemaAttribute("name", SchemaAttribute.TEXT, true, 0, null, null, SchemaAttribute.Mutability.SOURCE));
+        st.addAttribute(new SchemaAttribute("symbol", SchemaAttribute.TEXT, false, 1, null, null, SchemaAttribute.Mutability.SOURCE));
+        if (hasMarketCap) {
+            st.addAttribute(new SchemaAttribute("market_cap", SchemaAttribute.CURRENCY, false, 2,
+                java.util.Map.of("en", "Market Cap"),
+                java.util.Map.of("currencyCode", "USD", "currencySymbol", "$", "symbolPosition", "prefix", "decimalPlaces", 0),
+                SchemaAttribute.Mutability.SOURCE));
+        }
+        registry.save(st);
     }
 
     @Override
@@ -166,10 +277,10 @@ public class CoinGeckoSource implements DataSource {
 
         if (existingIds.contains("bitcoin")) {
             for (String etf : List.of("ibit", "fbtc", "gbtc"))
-                saveManualRel(store, new CoinRelationship(etf, "bitcoin", CoinRelationship.Type.ETF_TRACKS));
+                saveManualRel(store, new CoinRelationship(etf, "bitcoin", "etf_tracks"));
         }
         if (existingIds.contains("ethereum")) {
-            saveManualRel(store, new CoinRelationship("etha", "ethereum", CoinRelationship.Type.ETF_TRACKS));
+            saveManualRel(store, new CoinRelationship("etha", "ethereum", "etf_tracks"));
         }
 
         // VCs
@@ -186,13 +297,13 @@ public class CoinGeckoSource implements DataSource {
         saveManual(store, createExchange("coinbase-ex", "Coinbase"));
 
         if (existingIds.contains("binancecoin"))
-            saveManualRel(store, new CoinRelationship("binance-ex", "binancecoin", CoinRelationship.Type.FOUNDED_BY));
+            saveManualRel(store, new CoinRelationship("binance-ex", "binancecoin", "founded_by"));
     }
 
     private void seedInvestments(EntityStore store, Set<String> existingIds, String vcId, String... coinIds) {
         for (String coinId : coinIds) {
             if (existingIds.contains(coinId))
-                saveManualRel(store, new CoinRelationship(vcId, coinId, CoinRelationship.Type.INVESTED_IN));
+                saveManualRel(store, new CoinRelationship(vcId, coinId, "invested_in"));
         }
     }
 

@@ -27,6 +27,7 @@ public class CoinGraphPanel extends JPanel {
     private CoinEntity selectedEntity;
     private CoinEntity draggedEntity;
     private Consumer<CoinEntity> onEntitySelected;
+    private SchemaRegistry schemaRegistry;
     private Map<String, Integer> connectionDistance = new HashMap<>();  // Distance from selected node (0 = selected, 1 = direct, etc.)
 
     // View settings
@@ -315,7 +316,7 @@ public class CoinGraphPanel extends JPanel {
             int maxDist = Math.max(fromDist, toDist);
             float opacity = getOpacityForDistance(maxDist);
 
-            Color c = rel.getColor();
+            Color c = rel.getColor(schemaRegistry);
             int alpha;
             if (highlight) {
                 alpha = (int)(200 * opacity);
@@ -348,7 +349,7 @@ public class CoinGraphPanel extends JPanel {
                 double midY = (from.y() + to.y()) / 2;
                 g2.setFont(new Font("SansSerif", Font.PLAIN, 9));
                 g2.setColor(secondaryColor());
-                g2.drawString(rel.type().label(), (int)midX, (int)midY);
+                g2.drawString(rel.getLabel(schemaRegistry), (int)midX, (int)midY);
             }
         }
     }
@@ -448,12 +449,22 @@ public class CoinGraphPanel extends JPanel {
         y += 20;
 
         g2.setFont(new Font("SansSerif", Font.PLAIN, 10));
-        for (CoinEntity.Type type : CoinEntity.Type.values()) {
-            g2.setColor(type.color());
-            g2.fillOval(x, y, boxSize, boxSize);
-            g2.setColor(secondaryColor());
-            g2.drawString(type.name(), x + boxSize + 6, y + 10);
-            y += lineHeight;
+        if (schemaRegistry != null) {
+            for (SchemaType st : schemaRegistry.entityTypes()) {
+                g2.setColor(st.color());
+                g2.fillOval(x, y, boxSize, boxSize);
+                g2.setColor(secondaryColor());
+                g2.drawString(st.id(), x + boxSize + 6, y + 10);
+                y += lineHeight;
+            }
+        } else {
+            for (CoinEntity.Type type : CoinEntity.Type.values()) {
+                g2.setColor(type.color());
+                g2.fillOval(x, y, boxSize, boxSize);
+                g2.setColor(secondaryColor());
+                g2.drawString(type.name(), x + boxSize + 6, y + 10);
+                y += lineHeight;
+            }
         }
 
         y += 10;
@@ -527,6 +538,10 @@ public class CoinGraphPanel extends JPanel {
         }
         updateConnectedSet();
         repaint();
+    }
+
+    public void setSchemaRegistry(SchemaRegistry registry) {
+        this.schemaRegistry = registry;
     }
 
     public void setOnEntitySelected(Consumer<CoinEntity> callback) {

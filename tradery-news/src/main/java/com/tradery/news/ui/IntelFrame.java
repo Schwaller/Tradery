@@ -149,6 +149,7 @@ public class IntelFrame extends JFrame {
         this.entityStore = new EntityStore();
         this.schemaRegistry = new SchemaRegistry(entityStore);
         this.sourceRegistry = new DataSourceRegistry(entityStore, schemaRegistry);
+        sourceRegistry.register(new CoreSource());
         sourceRegistry.register(new CoinGeckoSource());
         sourceRegistry.register(new RssNewsSource(store, dataDir));
 
@@ -420,6 +421,7 @@ public class IntelFrame extends JFrame {
                 graphPanel = tgp;
             } else {
                 CoinGraphPanel cgp = new CoinGraphPanel();
+                cgp.setSchemaRegistry(schemaRegistry);
                 cgp.setOnEntitySelected(this::showEntityDetails);
                 cgp.setShowLabels(config.isShowLabels());
                 graphPanel = cgp;
@@ -831,12 +833,12 @@ public class IntelFrame extends JFrame {
 
                 String description;
                 if (rel.fromId().equals(entity.id())) {
-                    description = rel.type().label() + " " + other.name();
+                    description = rel.getLabel(schemaRegistry) + " " + other.name();
                 } else {
-                    description = describeInverseRelation(rel.type(), other.name());
+                    description = describeInverseRelation(rel.typeId(), other.name());
                 }
 
-                addRelationshipRow(description, rel.type().color(), otherId, other.name());
+                addRelationshipRow(description, rel.getColor(schemaRegistry), otherId, other.name());
             }
             addDetailSpacer();
         }
@@ -1011,12 +1013,12 @@ public class IntelFrame extends JFrame {
         detailContent.add(Box.createVerticalStrut(2));
     }
 
-    private String describeInverseRelation(CoinRelationship.Type type, String otherName) {
-        SchemaType relSchema = schemaRegistry.getType(type.name().toLowerCase());
+    private String describeInverseRelation(String typeId, String otherName) {
+        SchemaType relSchema = schemaRegistry.getType(typeId);
         if (relSchema != null) {
             return relSchema.inverseDescription(otherName);
         }
-        return type.label() + " " + otherName;
+        return typeId + " " + otherName;
     }
 
     // ==================== DATA LOADING ====================
@@ -1169,6 +1171,7 @@ public class IntelFrame extends JFrame {
                     List<CoinEntity> allEntities = new ArrayList<>();
                     allEntities.addAll(entityStore.loadEntitiesBySource("coingecko"));
                     allEntities.addAll(entityStore.loadEntitiesBySource("manual"));
+                    allEntities.addAll(entityStore.loadEntitiesBySource("ai-discovery"));
                     List<CoinRelationship> allRels = entityStore.loadAllRelationships();
 
                     currentEntities = allEntities;
@@ -1240,7 +1243,7 @@ public class IntelFrame extends JFrame {
         if (config.getRelationshipTypeFilter() != null && !config.getRelationshipTypeFilter().isEmpty()) {
             Set<String> relTypeFilter = config.getRelationshipTypeFilter();
             filteredRels = filteredRels.stream()
-                .filter(r -> relTypeFilter.contains(r.type().name().toLowerCase()))
+                .filter(r -> relTypeFilter.contains(r.typeId()))
                 .toList();
         }
 
@@ -1405,11 +1408,11 @@ public class IntelFrame extends JFrame {
             return;
         }
         RelationshipEditorDialog dialog = new RelationshipEditorDialog(
-            this, entityStore, currentEntities, preselectedFromId, rel -> {
+            this, entityStore, schemaRegistry, currentEntities, preselectedFromId, rel -> {
                 if (currentRelationships != null) {
                     currentRelationships.add(rel);
                     refreshAllCoinPanels();
-                    logPanel.success("Added relationship: " + rel.type().label());
+                    logPanel.success("Added relationship: " + rel.getLabel(schemaRegistry));
                 }
             }
         );
@@ -1421,9 +1424,9 @@ public class IntelFrame extends JFrame {
         entities.add(createCoin("ethereum", "Ethereum", "ETH", 350_000_000_000L));
         entities.add(createCoin("solana", "Solana", "SOL", 80_000_000_000L));
         entities.add(createL2("arbitrum", "Arbitrum", "ARB", "ethereum"));
-        relationships.add(new CoinRelationship("arbitrum", "ethereum", CoinRelationship.Type.L2_OF));
+        relationships.add(new CoinRelationship("arbitrum", "ethereum", "l2_of"));
         entities.add(createETF("ibit", "iShares Bitcoin Trust", "IBIT"));
-        relationships.add(new CoinRelationship("ibit", "bitcoin", CoinRelationship.Type.ETF_TRACKS));
+        relationships.add(new CoinRelationship("ibit", "bitcoin", "etf_tracks"));
     }
 
     private CoinEntity createCoin(String id, String name, String symbol, long marketCap) {

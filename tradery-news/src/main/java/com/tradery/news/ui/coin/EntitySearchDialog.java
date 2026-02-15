@@ -1097,15 +1097,15 @@ public class EntitySearchDialog extends JDialog {
                 }
             }
 
-            // Resolve CoinRelationship.Type — fall back to PARTNER for unknown types
-            CoinRelationship.Type relType = discovered.resolveCoinRelationType();
-            if (relType == null) relType = CoinRelationship.Type.PARTNER;
+            // Use string typeId directly — fall back to "partner" for null
+            String relTypeId = discovered.relationshipTypeId();
+            if (relTypeId == null || relTypeId.isEmpty()) relTypeId = "partner";
 
             CoinRelationship relationship = createRelationship(
-                sourceEntity.id(), entityId, relType, discovered.reason()
+                sourceEntity.id(), entityId, relTypeId, discovered.reason()
             );
 
-            if (!store.relationshipExists(relationship.fromId(), relationship.toId(), relationship.type())) {
+            if (!store.relationshipExists(relationship.fromId(), relationship.toId(), relationship.typeId())) {
                 store.saveRelationship(relationship, "ai-discovery");
                 relationships++;
             }
@@ -1129,13 +1129,13 @@ public class EntitySearchDialog extends JDialog {
     }
 
     private CoinRelationship createRelationship(String sourceId, String targetId,
-                                                 CoinRelationship.Type relType, String note) {
-        SchemaType relSchema = schemaRegistry.getType(relType.name().toLowerCase());
+                                                 String relTypeId, String note) {
+        SchemaType relSchema = schemaRegistry.getType(relTypeId);
         if (relSchema != null) {
             String sourceTypeId = sourceEntity.type().name().toLowerCase();
-            return relSchema.createDirected(sourceId, sourceTypeId, targetId, relType, note);
+            return relSchema.createDirected(sourceId, sourceTypeId, targetId, relTypeId, note);
         }
         // Fallback if schema not found
-        return new CoinRelationship(sourceId, targetId, relType, note);
+        return new CoinRelationship(sourceId, targetId, relTypeId, note);
     }
 }

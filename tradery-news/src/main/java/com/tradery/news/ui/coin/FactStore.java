@@ -701,6 +701,23 @@ public class FactStore {
         return ids;
     }
 
+    /** Find entity IDs where a specific attribute has any non-null value. */
+    public List<String> findByAttributeNotNull(String attribute) {
+        List<String> ids = new ArrayList<>();
+        if (conn == null) return ids;
+        try (PreparedStatement ps = conn.prepareStatement(
+                "SELECT entity_id FROM current WHERE attribute = ? AND value IS NOT NULL")) {
+            ps.setString(1, attribute);
+            ResultSet rs = ps.executeQuery();
+            while (rs.next()) {
+                ids.add(rs.getString("entity_id"));
+            }
+        } catch (SQLException e) {
+            System.err.println("Failed to find by attribute not null: " + e.getMessage());
+        }
+        return ids;
+    }
+
     /** Find entity IDs matching a LIKE pattern (e.g., '_type:%' or '_rel:%'). */
     public List<String> findByEntityIdPattern(String pattern) {
         List<String> ids = new ArrayList<>();
@@ -766,6 +783,49 @@ public class FactStore {
             return rs.next() ? rs.getInt(1) : 0;
         } catch (SQLException e) {
             System.err.println("Failed to count by two attributes: " + e.getMessage());
+            return 0;
+        }
+    }
+
+    /** Count entities where a specific attribute has any non-null value, excluding deleted. */
+    public int countByAttributeNotNull(String attribute) {
+        if (conn == null) return 0;
+        try (PreparedStatement ps = conn.prepareStatement("""
+            SELECT COUNT(*) FROM current c1
+            WHERE c1.attribute = ? AND c1.value IS NOT NULL
+            AND NOT EXISTS (
+                SELECT 1 FROM current c2
+                WHERE c2.entity_id = c1.entity_id AND c2.attribute = '_deleted' AND c2.value = '1'
+            )
+        """)) {
+            ps.setString(1, attribute);
+            ResultSet rs = ps.executeQuery();
+            return rs.next() ? rs.getInt(1) : 0;
+        } catch (SQLException e) {
+            System.err.println("Failed to count by attribute not null: " + e.getMessage());
+            return 0;
+        }
+    }
+
+    /** Count entities where attribute is not null AND _source matches, excluding deleted. */
+    public int countByAttributeNotNullAndSource(String attribute, String sourceValue) {
+        if (conn == null) return 0;
+        try (PreparedStatement ps = conn.prepareStatement("""
+            SELECT COUNT(*) FROM current c1
+            JOIN current c2 ON c1.entity_id = c2.entity_id
+            WHERE c1.attribute = ? AND c1.value IS NOT NULL
+            AND c2.attribute = '_source' AND c2.value = ?
+            AND NOT EXISTS (
+                SELECT 1 FROM current c3
+                WHERE c3.entity_id = c1.entity_id AND c3.attribute = '_deleted' AND c3.value = '1'
+            )
+        """)) {
+            ps.setString(1, attribute);
+            ps.setString(2, sourceValue);
+            ResultSet rs = ps.executeQuery();
+            return rs.next() ? rs.getInt(1) : 0;
+        } catch (SQLException e) {
+            System.err.println("Failed to count by attribute not null and source: " + e.getMessage());
             return 0;
         }
     }

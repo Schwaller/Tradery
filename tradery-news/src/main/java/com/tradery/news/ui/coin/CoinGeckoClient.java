@@ -184,7 +184,7 @@ public class CoinGeckoClient {
         // L2 relationships
         for (CoinEntity entity : entities) {
             if (entity.parentId() != null && entityMap.containsKey(entity.parentId())) {
-                relationships.add(new CoinRelationship(entity.id(), entity.parentId(), CoinRelationship.Type.L2_OF));
+                relationships.add(new CoinRelationship(entity.id(), entity.parentId(), "l2_of"));
             }
         }
 
@@ -199,7 +199,7 @@ public class CoinGeckoClient {
         if (entityMap.containsKey("chainlink")) {
             for (String chain : List.of("ethereum", "polygon-pos", "avalanche-2", "arbitrum", "optimism", "solana")) {
                 if (entityMap.containsKey(chain)) {
-                    relationships.add(new CoinRelationship("chainlink", chain, CoinRelationship.Type.ECOSYSTEM));
+                    relationships.add(new CoinRelationship("chainlink", chain, "ecosystem"));
                 }
             }
         }
@@ -207,7 +207,7 @@ public class CoinGeckoClient {
         // Major stablecoins on Ethereum
         for (String stablecoin : List.of("tether", "usd-coin", "dai", "frax")) {
             if (entityMap.containsKey(stablecoin) && entityMap.containsKey("ethereum")) {
-                relationships.add(new CoinRelationship(stablecoin, "ethereum", CoinRelationship.Type.ECOSYSTEM));
+                relationships.add(new CoinRelationship(stablecoin, "ethereum", "ecosystem"));
             }
         }
 
@@ -215,7 +215,7 @@ public class CoinGeckoClient {
         if (entityMap.containsKey("cosmos")) {
             for (String cosmosChain : List.of("osmosis", "injective-protocol", "celestia", "dymension", "sei-network", "kava")) {
                 if (entityMap.containsKey(cosmosChain)) {
-                    relationships.add(new CoinRelationship(cosmosChain, "cosmos", CoinRelationship.Type.ECOSYSTEM));
+                    relationships.add(new CoinRelationship(cosmosChain, "cosmos", "ecosystem"));
                 }
             }
         }
@@ -224,7 +224,7 @@ public class CoinGeckoClient {
         if (entityMap.containsKey("polkadot")) {
             for (String parachain : List.of("moonbeam", "acala", "astar", "phala-network")) {
                 if (entityMap.containsKey(parachain)) {
-                    relationships.add(new CoinRelationship(parachain, "polkadot", CoinRelationship.Type.ECOSYSTEM));
+                    relationships.add(new CoinRelationship(parachain, "polkadot", "ecosystem"));
                 }
             }
         }
@@ -233,14 +233,14 @@ public class CoinGeckoClient {
         if (entityMap.containsKey("bitcoin")) {
             for (String fork : List.of("bitcoin-cash", "litecoin", "bitcoin-sv")) {
                 if (entityMap.containsKey(fork)) {
-                    relationships.add(new CoinRelationship(fork, "bitcoin", CoinRelationship.Type.FORK_OF));
+                    relationships.add(new CoinRelationship(fork, "bitcoin", "fork_of"));
                 }
             }
         }
         if (entityMap.containsKey("ethereum")) {
             for (String fork : List.of("ethereum-classic")) {
                 if (entityMap.containsKey(fork)) {
-                    relationships.add(new CoinRelationship(fork, "ethereum", CoinRelationship.Type.FORK_OF));
+                    relationships.add(new CoinRelationship(fork, "ethereum", "fork_of"));
                 }
             }
         }

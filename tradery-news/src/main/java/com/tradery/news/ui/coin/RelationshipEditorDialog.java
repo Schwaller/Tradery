@@ -13,18 +13,21 @@ import java.util.function.Consumer;
 public class RelationshipEditorDialog extends JDialog {
 
     private final EntityStore store;
+    private final SchemaRegistry schemaRegistry;
     private final List<CoinEntity> entities;
     private final Consumer<CoinRelationship> onSave;
 
     private JComboBox<EntityItem> fromCombo;
     private JComboBox<EntityItem> toCombo;
-    private JComboBox<CoinRelationship.Type> typeCombo;
+    private JComboBox<SchemaType> typeCombo;
     private JTextField noteField;
 
-    public RelationshipEditorDialog(Window owner, EntityStore store, List<CoinEntity> entities,
+    public RelationshipEditorDialog(Window owner, EntityStore store, SchemaRegistry schemaRegistry,
+                                    List<CoinEntity> entities,
                                     String preselectedFromId, Consumer<CoinRelationship> onSave) {
         super(owner, "Add Relationship", ModalityType.APPLICATION_MODAL);
         this.store = store;
+        this.schemaRegistry = schemaRegistry;
         this.entities = entities;
         this.onSave = onSave;
 
@@ -96,11 +99,12 @@ public class RelationshipEditorDialog extends JDialog {
         }
         content.add(fromCombo, fieldGbc);
 
-        // Relationship type
+        // Relationship type (schema-driven)
         labelGbc.gridx = 0; labelGbc.gridy = row;
         content.add(createLabel("Relationship:"), labelGbc);
         fieldGbc.gridx = 1; fieldGbc.gridy = row++;
-        typeCombo = new JComboBox<>(CoinRelationship.Type.values());
+        List<SchemaType> relTypes = schemaRegistry.relationshipTypes();
+        typeCombo = new JComboBox<>(relTypes.toArray(new SchemaType[0]));
         typeCombo.setBackground(new Color(60, 62, 66));
         typeCombo.setForeground(new Color(200, 200, 210));
         typeCombo.setRenderer(new RelationshipTypeRenderer());
@@ -137,9 +141,10 @@ public class RelationshipEditorDialog extends JDialog {
         Runnable updatePreview = () -> {
             EntityItem from = (EntityItem) fromCombo.getSelectedItem();
             EntityItem to = (EntityItem) toCombo.getSelectedItem();
-            CoinRelationship.Type type = (CoinRelationship.Type) typeCombo.getSelectedItem();
+            SchemaType type = (SchemaType) typeCombo.getSelectedItem();
             if (from != null && to != null && type != null) {
-                previewLabel.setText(from.entity.name() + " " + type.label() + " " + to.entity.name());
+                String label = type.label() != null ? type.label() : type.id();
+                previewLabel.setText(from.entity.name() + " " + label + " " + to.entity.name());
             }
         };
         fromCombo.addActionListener(e -> updatePreview.run());
@@ -189,11 +194,11 @@ public class RelationshipEditorDialog extends JDialog {
     private void save() {
         EntityItem fromItem = (EntityItem) fromCombo.getSelectedItem();
         EntityItem toItem = (EntityItem) toCombo.getSelectedItem();
-        CoinRelationship.Type type = (CoinRelationship.Type) typeCombo.getSelectedItem();
+        SchemaType type = (SchemaType) typeCombo.getSelectedItem();
         String note = noteField.getText().trim();
 
-        if (fromItem == null || toItem == null) {
-            showError("Please select both entities");
+        if (fromItem == null || toItem == null || type == null) {
+            showError("Please select both entities and a relationship type");
             return;
         }
 
@@ -203,7 +208,7 @@ public class RelationshipEditorDialog extends JDialog {
         }
 
         // Check for duplicate
-        if (store.relationshipExists(fromItem.entity.id(), toItem.entity.id(), type)) {
+        if (store.relationshipExists(fromItem.entity.id(), toItem.entity.id(), type.id())) {
             showError("This relationship already exists");
             return;
         }
@@ -212,7 +217,7 @@ public class RelationshipEditorDialog extends JDialog {
         CoinRelationship rel = new CoinRelationship(
             fromItem.entity.id(),
             toItem.entity.id(),
-            type,
+            type.id(),
             note.isEmpty() ? null : note
         );
         store.saveRelationship(rel, "manual");
@@ -245,16 +250,17 @@ public class RelationshipEditorDialog extends JDialog {
         }
     }
 
-    // Custom renderer for relationship types
+    // Custom renderer for relationship types (schema-driven)
     private static class RelationshipTypeRenderer extends DefaultListCellRenderer {
         @Override
         public Component getListCellRendererComponent(JList<?> list, Object value, int index,
                                                       boolean isSelected, boolean cellHasFocus) {
             super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus);
-            if (value instanceof CoinRelationship.Type type) {
-                setText(type.name() + " (" + type.label() + ")");
+            if (value instanceof SchemaType st) {
+                String label = st.label() != null ? st.label() : st.id();
+                setText(st.id() + " (" + label + ")");
                 if (!isSelected) {
-                    setForeground(type.color());
+                    setForeground(st.color());
                 }
             }
             return this;

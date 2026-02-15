@@ -7,6 +7,7 @@ import com.sun.net.httpserver.HttpExchange;
 import com.tradery.news.ui.coin.CoinEntity;
 import com.tradery.news.ui.coin.CoinRelationship;
 import com.tradery.news.ui.coin.EntityStore;
+import com.tradery.news.ui.coin.SchemaRegistry;
 
 import com.tradery.news.ui.IntelLogPanel;
 
@@ -19,9 +20,11 @@ import java.util.*;
 public class EntityHandler extends IntelApiHandlerBase {
 
     private final EntityStore entityStore;
+    private final SchemaRegistry schemaRegistry;
 
-    public EntityHandler(EntityStore entityStore) {
+    public EntityHandler(EntityStore entityStore, SchemaRegistry schemaRegistry) {
         this.entityStore = entityStore;
+        this.schemaRegistry = schemaRegistry;
     }
 
     // GET /entities?type=COIN&search=sol
@@ -171,7 +174,7 @@ public class EntityHandler extends IntelApiHandlerBase {
         Set<String> relKeys = new HashSet<>();
         ArrayNode relationships = mapper.createArrayNode();
         for (CoinRelationship rel : graphRels) {
-            String key = rel.fromId() + "|" + rel.toId() + "|" + rel.type().name();
+            String key = rel.fromId() + "|" + rel.toId() + "|" + rel.typeId();
             if (relKeys.add(key)) {
                 relationships.add(serializeRelationship(rel));
             }
@@ -264,11 +267,9 @@ public class EntityHandler extends IntelApiHandlerBase {
             return;
         }
 
-        CoinRelationship.Type type;
-        try {
-            type = CoinRelationship.Type.valueOf(typeStr.toUpperCase());
-        } catch (IllegalArgumentException e) {
-            sendError(exchange, 400, "Invalid relationship type: " + typeStr);
+        String typeId = typeStr.toLowerCase();
+        if (schemaRegistry != null && schemaRegistry.getType(typeId) == null) {
+            sendError(exchange, 400, "Unknown relationship type: " + typeStr);
             return;
         }
 
@@ -281,9 +282,9 @@ public class EntityHandler extends IntelApiHandlerBase {
             return;
         }
 
-        CoinRelationship rel = new CoinRelationship(fromId, toId, type, note);
+        CoinRelationship rel = new CoinRelationship(fromId, toId, typeId, note);
         entityStore.saveRelationship(rel, "manual");
-        IntelLogPanel.logData("API: Created relationship " + fromId + " -[" + type + "]-> " + toId);
+        IntelLogPanel.logData("API: Created relationship " + fromId + " -[" + typeId + "]-> " + toId);
 
         ObjectNode result = mapper.createObjectNode();
         result.put("ok", true);
@@ -305,16 +306,10 @@ public class EntityHandler extends IntelApiHandlerBase {
             return;
         }
 
-        CoinRelationship.Type type;
-        try {
-            type = CoinRelationship.Type.valueOf(typeStr.toUpperCase());
-        } catch (IllegalArgumentException e) {
-            sendError(exchange, 400, "Invalid relationship type: " + typeStr);
-            return;
-        }
+        String typeId = typeStr.toLowerCase();
 
-        entityStore.deleteRelationship(from, to, type);
-        IntelLogPanel.logData("API: Deleted relationship " + from + " -[" + type + "]-> " + to);
+        entityStore.deleteRelationship(from, to, typeId);
+        IntelLogPanel.logData("API: Deleted relationship " + from + " -[" + typeId + "]-> " + to);
 
         ObjectNode result = mapper.createObjectNode();
         result.put("ok", true);
@@ -345,7 +340,7 @@ public class EntityHandler extends IntelApiHandlerBase {
         ObjectNode node = mapper.createObjectNode();
         node.put("fromId", rel.fromId());
         node.put("toId", rel.toId());
-        node.put("type", rel.type().name());
+        node.put("type", rel.typeId());
         if (rel.note() != null) node.put("note", rel.note());
         return node;
     }

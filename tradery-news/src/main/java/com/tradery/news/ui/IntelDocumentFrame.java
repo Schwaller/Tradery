@@ -182,6 +182,9 @@ public class IntelDocumentFrame extends JFrame {
         this.schemaRegistry = new SchemaRegistry(entityStore);
         this.sourceRegistry = new DataSourceRegistry(entityStore, schemaRegistry);
 
+        // Register core schema types (always registered first)
+        sourceRegistry.register(new CoreSource());
+
         // Register data sources based on template services
         if (services.isSourceEnabled("coingecko")) {
             sourceRegistry.register(new CoinGeckoSource());
@@ -484,6 +487,7 @@ public class IntelDocumentFrame extends JFrame {
                 graphPanel = tgp;
             } else {
                 CoinGraphPanel cgp = new CoinGraphPanel();
+                cgp.setSchemaRegistry(schemaRegistry);
                 cgp.setOnEntitySelected(this::showEntityDetails);
                 cgp.setShowLabels(config.isShowLabels());
                 graphPanel = cgp;
@@ -884,12 +888,12 @@ public class IntelDocumentFrame extends JFrame {
 
                 String description;
                 if (rel.fromId().equals(entity.id())) {
-                    description = rel.type().label() + " " + other.name();
+                    description = rel.getLabel(schemaRegistry) + " " + other.name();
                 } else {
-                    description = describeInverseRelation(rel.type(), other.name());
+                    description = describeInverseRelation(rel.typeId(), other.name());
                 }
 
-                addRelationshipRow(description, rel.type().color(), otherId, other.name());
+                addRelationshipRow(description, rel.getColor(schemaRegistry), otherId, other.name());
             }
             addDetailSpacer();
         }
@@ -1078,12 +1082,12 @@ public class IntelDocumentFrame extends JFrame {
         detailContent.add(Box.createVerticalStrut(2));
     }
 
-    private String describeInverseRelation(CoinRelationship.Type type, String otherName) {
-        SchemaType relSchema = schemaRegistry.getType(type.name().toLowerCase());
+    private String describeInverseRelation(String typeId, String otherName) {
+        SchemaType relSchema = schemaRegistry.getType(typeId);
         if (relSchema != null) {
             return relSchema.inverseDescription(otherName);
         }
-        return type.label() + " " + otherName;
+        return typeId + " " + otherName;
     }
 
     // ==================== DATA LOADING ====================
@@ -1273,7 +1277,7 @@ public class IntelDocumentFrame extends JFrame {
         if (config.getRelationshipTypeFilter() != null && !config.getRelationshipTypeFilter().isEmpty()) {
             Set<String> relTypeFilter = config.getRelationshipTypeFilter();
             filteredRels = filteredRels.stream()
-                .filter(r -> relTypeFilter.contains(r.type().name().toLowerCase()))
+                .filter(r -> relTypeFilter.contains(r.typeId()))
                 .toList();
         }
 
@@ -1505,9 +1509,9 @@ public class IntelDocumentFrame extends JFrame {
         entities.add(new CoinEntity("ethereum", "Ethereum", "ETH", CoinEntity.Type.COIN));
         entities.add(new CoinEntity("solana", "Solana", "SOL", CoinEntity.Type.COIN));
         entities.add(new CoinEntity("arbitrum", "Arbitrum", "ARB", CoinEntity.Type.L2, "ethereum"));
-        relationships.add(new CoinRelationship("arbitrum", "ethereum", CoinRelationship.Type.L2_OF));
+        relationships.add(new CoinRelationship("arbitrum", "ethereum", "l2_of"));
         entities.add(new CoinEntity("ibit", "iShares Bitcoin Trust", "IBIT", CoinEntity.Type.ETF));
-        relationships.add(new CoinRelationship("ibit", "bitcoin", CoinRelationship.Type.ETF_TRACKS));
+        relationships.add(new CoinRelationship("ibit", "bitcoin", "etf_tracks"));
     }
 
     private String formatMarketCap(double num) {

@@ -155,14 +155,6 @@ public class DiscoverHandler extends IntelApiHandlerBase {
                 type = CoinEntity.Type.COIN;
             }
 
-            // Resolve CoinRelationship.Type from string — fall back to PARTNER
-            CoinRelationship.Type relType;
-            try {
-                relType = CoinRelationship.Type.valueOf(relTypeId.toUpperCase());
-            } catch (IllegalArgumentException e) {
-                relType = CoinRelationship.Type.PARTNER;
-            }
-
             // Generate ID
             String entityId = node.path("generatedId").asText(null);
             if (entityId == null || entityId.isEmpty()) {
@@ -178,11 +170,11 @@ public class DiscoverHandler extends IntelApiHandlerBase {
                 addedEntities++;
             }
 
-            // Create relationship with correct direction
+            // Create relationship with correct direction (use string typeId directly)
             CoinRelationship rel = createDirectedRelationship(
-                sourceEntity, entityId, relType, reason);
+                sourceEntity, entityId, relTypeId, reason);
 
-            if (!entityStore.relationshipExists(rel.fromId(), rel.toId(), rel.type())) {
+            if (!entityStore.relationshipExists(rel.fromId(), rel.toId(), rel.typeId())) {
                 entityStore.saveRelationship(rel, "ai-discovery");
                 addedRelationships++;
             }
@@ -202,12 +194,12 @@ public class DiscoverHandler extends IntelApiHandlerBase {
      * Create relationship with correct direction based on SchemaType metadata.
      */
     private CoinRelationship createDirectedRelationship(CoinEntity source, String targetId,
-                                                         CoinRelationship.Type relType, String note) {
+                                                         String relTypeId, String note) {
         String sourceTypeId = source.type().name().toLowerCase();
-        SchemaType relSchema = schemaRegistry != null ? schemaRegistry.getType(relType.name().toLowerCase()) : null;
+        SchemaType relSchema = schemaRegistry != null ? schemaRegistry.getType(relTypeId) : null;
         if (relSchema != null) {
-            return relSchema.createDirected(source.id(), sourceTypeId, targetId, relType, note);
+            return relSchema.createDirected(source.id(), sourceTypeId, targetId, relTypeId, note);
         }
-        return new CoinRelationship(source.id(), targetId, relType, note);
+        return new CoinRelationship(source.id(), targetId, relTypeId, note);
     }
 }

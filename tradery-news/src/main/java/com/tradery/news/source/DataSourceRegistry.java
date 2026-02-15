@@ -21,10 +21,11 @@ public class DataSourceRegistry {
         this.schemaRegistry = schemaRegistry;
     }
 
-    /** Register a source. Calls seedSchemaTypes on registration. */
+    /** Register a source. Calls seedSchemaTypes on registration and reloads the registry. */
     public void register(DataSource source) {
         sources.put(source.id(), source);
         source.seedSchemaTypes(schemaRegistry);
+        schemaRegistry.reload();
     }
 
     /** Refresh a single source. Returns null if source not found. */

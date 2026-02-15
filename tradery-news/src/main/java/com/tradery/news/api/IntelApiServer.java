@@ -90,7 +90,7 @@ public class IntelApiServer {
         this.uiStateProvider = uiStateProvider;
         this.schemaRegistry = schemaRegistry;
         this.statsHandler = new StatsHandler(entityStore, newsStore);
-        this.entityHandler = new EntityHandler(entityStore);
+        this.entityHandler = new EntityHandler(entityStore, schemaRegistry);
         this.discoverHandler = new DiscoverHandler(entityStore, searchProcessor, schemaRegistry);
         this.articleHandler = new ArticleHandler(newsStore);
         this.schemaHandler = new SchemaHandler(entityStore, schemaRegistry);

@@ -213,13 +213,7 @@ public class EntityStore {
     }
 
     private List<String> findEntityIdsWithAttribute(String attribute) {
-        // Find all entity_ids in current table where attribute matches
-        List<String> all = new ArrayList<>();
-        // Use findByAttribute with each CoinEntity.Type value
-        for (CoinEntity.Type t : CoinEntity.Type.values()) {
-            all.addAll(factStore.findByAttribute(attribute, t.name()));
-        }
-        return all;
+        return factStore.findByAttributeNotNull(attribute);
     }
 
     private CoinEntity reconstructEntity(String eid) {
@@ -401,14 +395,9 @@ public class EntityStore {
 
         if (fromId == null || toId == null || typeStr == null) return null;
 
-        CoinRelationship.Type type;
-        try {
-            type = CoinRelationship.Type.valueOf(typeStr);
-        } catch (IllegalArgumentException e) {
-            return null;
-        }
-
-        return new CoinRelationship(fromId, toId, type, note);
+        // Normalize enum-style names (e.g. "ETF_TRACKS") to lowercase schema IDs ("etf_tracks")
+        String typeId = typeStr.toLowerCase();
+        return new CoinRelationship(fromId, toId, typeId, note);
     }
 
     private static String relEntityId(String fromId, String typeStr, String toId) {
@@ -416,11 +405,11 @@ public class EntityStore {
     }
 
     public void saveRelationship(CoinRelationship rel, String source) {
-        String relId = relEntityId(rel.fromId(), rel.type().name(), rel.toId());
+        String relId = relEntityId(rel.fromId(), rel.typeId(), rel.toId());
         List<FactStore.PendingFact> facts = List.of(
                 new FactStore.PendingFact(relId, "from", rel.fromId(), source),
                 new FactStore.PendingFact(relId, "to", rel.toId(), source),
-                new FactStore.PendingFact(relId, "rel_type", rel.type().name(), source),
+                new FactStore.PendingFact(relId, "rel_type", rel.typeId(), source),
                 new FactStore.PendingFact(relId, "_source", source, source),
                 new FactStore.PendingFact(relId, "note", rel.note(), source),
                 new FactStore.PendingFact(relId, "_deleted", null, source)
@@ -443,7 +432,7 @@ public class EntityStore {
 
         Set<String> newRelIds = new HashSet<>();
         for (CoinRelationship rel : relationships) {
-            newRelIds.add(relEntityId(rel.fromId(), rel.type().name(), rel.toId()));
+            newRelIds.add(relEntityId(rel.fromId(), rel.typeId(), rel.toId()));
         }
 
         List<FactStore.PendingFact> facts = new ArrayList<>();
@@ -457,10 +446,10 @@ public class EntityStore {
 
         // Add/update relationships
         for (CoinRelationship rel : relationships) {
-            String relId = relEntityId(rel.fromId(), rel.type().name(), rel.toId());
+            String relId = relEntityId(rel.fromId(), rel.typeId(), rel.toId());
             facts.add(new FactStore.PendingFact(relId, "from", rel.fromId(), sourceId));
             facts.add(new FactStore.PendingFact(relId, "to", rel.toId(), sourceId));
-            facts.add(new FactStore.PendingFact(relId, "rel_type", rel.type().name(), sourceId));
+            facts.add(new FactStore.PendingFact(relId, "rel_type", rel.typeId(), sourceId));
             facts.add(new FactStore.PendingFact(relId, "_source", sourceId, sourceId));
             facts.add(new FactStore.PendingFact(relId, "note", rel.note(), sourceId));
             facts.add(new FactStore.PendingFact(relId, "_deleted", null, sourceId));
@@ -470,13 +459,13 @@ public class EntityStore {
         System.out.println("Saved " + relationships.size() + " relationships from source '" + sourceId + "'");
     }
 
-    public void deleteRelationship(String fromId, String toId, CoinRelationship.Type type) {
-        String relId = relEntityId(fromId, type.name(), toId);
+    public void deleteRelationship(String fromId, String toId, String typeId) {
+        String relId = relEntityId(fromId, typeId, toId);
         routeFact(relId, "_deleted", "1", "manual");
     }
 
-    public boolean relationshipExists(String fromId, String toId, CoinRelationship.Type type) {
-        String relId = relEntityId(fromId, type.name(), toId);
+    public boolean relationshipExists(String fromId, String toId, String typeId) {
+        String relId = relEntityId(fromId, typeId, toId);
         if (factStore.isDeleted(relId)) return false;
         return factStore.getCurrent(relId, "rel_type") != null;
     }
@@ -484,19 +473,11 @@ public class EntityStore {
     // ==================== STATS ====================
 
     public int getEntityCount() {
-        int count = 0;
-        for (CoinEntity.Type t : CoinEntity.Type.values()) {
-            count += factStore.countByAttribute("type", t.name());
-        }
-        return count;
+        return factStore.countByAttributeNotNull("type");
     }
 
     public int getManualEntityCount() {
-        int count = 0;
-        for (CoinEntity.Type t : CoinEntity.Type.values()) {
-            count += factStore.countByTwoAttributes("type", t.name(), "_source", "manual");
-        }
-        return count;
+        return factStore.countByAttributeNotNullAndSource("type", "manual");
     }
 
     public int getRelationshipCount() {

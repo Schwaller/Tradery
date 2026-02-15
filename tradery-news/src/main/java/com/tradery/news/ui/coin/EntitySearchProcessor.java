@@ -315,16 +315,5 @@ public class EntitySearchProcessor {
             }
         }
 
-        /**
-         * Try to resolve to a CoinRelationship.Type enum. Returns null if no match.
-         */
-        public CoinRelationship.Type resolveCoinRelationType() {
-            if (relationshipTypeId == null) return null;
-            try {
-                return CoinRelationship.Type.valueOf(relationshipTypeId.toUpperCase());
-            } catch (IllegalArgumentException e) {
-                return null;
-            }
-        }
     }
 }

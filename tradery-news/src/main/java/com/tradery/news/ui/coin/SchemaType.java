@@ -185,11 +185,11 @@ public class SchemaType {
      * Otherwise, source is the 'to' entity (inverse direction).
      */
     public CoinRelationship createDirected(String sourceId, String sourceTypeId,
-                                            String targetId, CoinRelationship.Type relType, String note) {
+                                            String targetId, String typeId, String note) {
         if (sourceTypeId != null && sourceTypeId.equals(fromTypeId)) {
-            return new CoinRelationship(sourceId, targetId, relType, note);
+            return new CoinRelationship(sourceId, targetId, typeId, note);
         }
-        return new CoinRelationship(targetId, sourceId, relType, note);
+        return new CoinRelationship(targetId, sourceId, typeId, note);
     }
 
     /** Describe the inverse relationship (e.g. "L1 for Arbitrum"). */

@@ -8,9 +8,15 @@ import com.tradery.news.store.SqliteNewsStore;
 import com.tradery.news.topic.TopicRegistry;
 import com.tradery.news.ui.IntelConfig;
 
+import com.tradery.news.ui.coin.SchemaAttribute;
+import com.tradery.news.ui.coin.SchemaRegistry;
+import com.tradery.news.ui.coin.SchemaType;
+
+import java.awt.*;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Data source that fetches news articles from RSS feeds with optional AI processing.
@@ -44,6 +50,56 @@ public class RssNewsSource implements DataSource {
 
     @Override
     public Duration cacheTTL() { return Duration.ZERO; }
+
+    @Override
+    public void seedSchemaTypes(SchemaRegistry registry) {
+        int order = 200; // After CoinGecko and Core types
+
+        if (registry.getType("news_article") == null) {
+            SchemaType na = new SchemaType("news_article", "News Article", new Color(220, 180, 100), SchemaType.KIND_ENTITY);
+            na.setDisplayOrder(order++);
+            na.addAttribute(new SchemaAttribute("title", SchemaAttribute.TEXT, true, 0, null, null, SchemaAttribute.Mutability.SOURCE));
+            na.addAttribute(new SchemaAttribute("url", SchemaAttribute.URL, false, 1, null, null, SchemaAttribute.Mutability.SOURCE));
+            na.addAttribute(new SchemaAttribute("published_at", SchemaAttribute.DATETIME, false, 2,
+                Map.of("en", "Published At"), Map.of("format", "yyyy-MM-dd HH:mm"), SchemaAttribute.Mutability.SOURCE));
+            na.addAttribute(new SchemaAttribute("source", SchemaAttribute.TEXT, false, 3, null, null, SchemaAttribute.Mutability.SOURCE));
+            registry.save(na);
+        }
+
+        if (registry.getType("topic") == null) {
+            SchemaType topic = new SchemaType("topic", "Topic", new Color(140, 180, 220), SchemaType.KIND_ENTITY);
+            topic.setDisplayOrder(order++);
+            topic.addAttribute(new SchemaAttribute("name", SchemaAttribute.TEXT, true, 0));
+            registry.save(topic);
+        }
+
+        order = 200;
+
+        if (registry.getType("mentions") == null) {
+            SchemaType m = new SchemaType("mentions", "Mentions", new Color(210, 170, 90), SchemaType.KIND_RELATIONSHIP);
+            m.setLabel("mentions"); m.setFromTypeId("news_article"); m.setToTypeId("coin");
+            m.setInverseLabel("mentioned in"); m.setPluralLabel("Coins"); m.setInversePluralLabel("Articles");
+            m.setDisplayOrder(order++);
+            m.addAttribute(new SchemaAttribute("note", SchemaAttribute.TEXT, false, 0));
+            registry.save(m);
+        }
+
+        if (registry.getType("tagged") == null) {
+            SchemaType tagged = new SchemaType("tagged", "Tagged", new Color(130, 170, 210), SchemaType.KIND_RELATIONSHIP);
+            tagged.setLabel("tagged"); tagged.setFromTypeId("news_article"); tagged.setToTypeId("topic");
+            tagged.setDisplayOrder(order++);
+            tagged.addAttribute(new SchemaAttribute("note", SchemaAttribute.TEXT, false, 0));
+            registry.save(tagged);
+        }
+
+        if (registry.getType("published_by") == null) {
+            SchemaType pb = new SchemaType("published_by", "Published By", new Color(200, 180, 120), SchemaType.KIND_RELATIONSHIP);
+            pb.setLabel("published by"); pb.setFromTypeId("news_article"); pb.setToTypeId("news_source");
+            pb.setDisplayOrder(order++);
+            pb.addAttribute(new SchemaAttribute("note", SchemaAttribute.TEXT, false, 0));
+            registry.save(pb);
+        }
+    }
 
     @Override
     public FetchResult fetch(FetchContext ctx) {

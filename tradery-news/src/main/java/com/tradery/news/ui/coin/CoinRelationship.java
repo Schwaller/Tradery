@@ -4,72 +4,46 @@ import java.awt.*;
 
 /**
  * Relationship between two entities in the coin graph.
+ * Uses string-based typeId resolved from SchemaRegistry.
  */
 public class CoinRelationship {
 
-    public enum Type {
-        L2_OF(new Color(150, 130, 255), "L2 of"),           // L2 built on L1
-        ETF_TRACKS(new Color(80, 200, 120), "tracks"),       // ETF tracks coin
-        ETP_TRACKS(new Color(100, 200, 150), "tracks"),      // ETP tracks coin
-        INVESTED_IN(new Color(255, 180, 80), "invested"),    // VC invested in
-        FOUNDED_BY(new Color(180, 150, 255), "founded"),     // Founded by
-        PARTNER(new Color(150, 150, 200), "partner"),        // Partnership
-        FORK_OF(new Color(200, 150, 150), "fork of"),        // Forked from
-        BRIDGE(new Color(150, 200, 200), "bridge"),          // Bridge connection
-        ECOSYSTEM(new Color(180, 180, 150), "ecosystem"),    // Part of ecosystem
-        COMPETITOR(new Color(200, 100, 100), "competes"),    // Competitors
-        HAS_RISK(new Color(220, 100, 100), "has risk"),       // Coin has risk
-        HAS_STRENGTH(new Color(100, 200, 160), "has strength"); // Coin has strength
-
-        private final Color color;
-        private final String label;
-        Type(Color color, String label) {
-            this.color = color;
-            this.label = label;
-        }
-        public Color color() { return color; }
-        public String label() { return label; }
-
-        /**
-         * Get relationship types that are searchable for a given entity type.
-         */
-        public static java.util.List<Type> getSearchableTypes(CoinEntity.Type entityType) {
-            return switch (entityType) {
-                case COIN, L2 -> java.util.List.of(ETF_TRACKS, ETP_TRACKS, INVESTED_IN, L2_OF, ECOSYSTEM, PARTNER, FORK_OF, HAS_RISK, HAS_STRENGTH);
-                case VC -> java.util.List.of(INVESTED_IN, FOUNDED_BY, PARTNER);
-                case EXCHANGE -> java.util.List.of(ECOSYSTEM, PARTNER);
-                case ETF, ETP, DAT -> java.util.List.of(ETF_TRACKS, ETP_TRACKS);
-                case FOUNDATION -> java.util.List.of(FOUNDED_BY, ECOSYSTEM, PARTNER);
-                case COMPANY -> java.util.List.of(INVESTED_IN, PARTNER, FOUNDED_BY);
-                case RISK -> java.util.List.of(HAS_RISK);
-                case STRENGTH -> java.util.List.of(HAS_STRENGTH);
-                default -> java.util.List.of();
-            };
-        }
-    }
-
     private final String fromId;
     private final String toId;
-    private final Type type;
+    private final String typeId;
     private final String note;  // Optional description
 
-    public CoinRelationship(String fromId, String toId, Type type) {
-        this(fromId, toId, type, null);
+    public CoinRelationship(String fromId, String toId, String typeId) {
+        this(fromId, toId, typeId, null);
     }
 
-    public CoinRelationship(String fromId, String toId, Type type, String note) {
+    public CoinRelationship(String fromId, String toId, String typeId, String note) {
         this.fromId = fromId;
         this.toId = toId;
-        this.type = type;
+        this.typeId = typeId;
         this.note = note;
     }
 
     public String fromId() { return fromId; }
     public String toId() { return toId; }
-    public Type type() { return type; }
+    public String typeId() { return typeId; }
     public String note() { return note; }
 
-    public Color getColor() {
-        return type.color();
+    /** Resolve color from schema registry. Falls back to gray. */
+    public Color getColor(SchemaRegistry registry) {
+        if (registry != null) {
+            SchemaType schema = registry.getType(typeId);
+            if (schema != null) return schema.color();
+        }
+        return Color.GRAY;
+    }
+
+    /** Resolve label from schema registry. Falls back to typeId. */
+    public String getLabel(SchemaRegistry registry) {
+        if (registry != null) {
+            SchemaType schema = registry.getType(typeId);
+            if (schema != null && schema.label() != null) return schema.label();
+        }
+        return typeId;
     }
 }
