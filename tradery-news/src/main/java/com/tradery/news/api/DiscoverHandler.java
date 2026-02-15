@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.sun.net.httpserver.HttpExchange;
+import com.tradery.ai.pipeline.schema.SchemaSuggestion;
 import com.tradery.news.ui.coin.CoinEntity;
 import com.tradery.news.ui.coin.CoinRelationship;
 import com.tradery.news.ui.coin.EntitySearchProcessor;
@@ -60,7 +61,7 @@ public class DiscoverHandler extends IntelApiHandlerBase {
         }
     }
 
-    // POST /entity/{id}/discover?type=INVESTED_IN
+    // POST /entity/{id}/discover?type=invested_in
     private void handleSearch(HttpExchange exchange, CoinEntity entity) throws IOException {
         if (!checkMethod(exchange, "POST")) return;
 
@@ -70,19 +71,11 @@ public class DiscoverHandler extends IntelApiHandlerBase {
         }
 
         Map<String, String> params = parseQuery(exchange.getRequestURI().getQuery());
-        CoinRelationship.Type relType = null;
-        if (params.containsKey("type")) {
-            try {
-                relType = CoinRelationship.Type.valueOf(params.get("type").toUpperCase());
-            } catch (IllegalArgumentException e) {
-                sendError(exchange, 400, "Invalid relationship type: " + params.get("type"));
-                return;
-            }
-        }
+        String relTypeId = params.get("type");  // Schema type ID directly (e.g. "invested_in")
 
         IntelLogPanel.logAI("API: Discovering entities related to '" + entity.name() + "'" +
-            (relType != null ? " (" + relType + ")" : ""));
-        EntitySearchProcessor.SearchResult result = searchProcessor.searchRelated(entity, relType);
+            (relTypeId != null ? " (" + relTypeId + ")" : ""));
+        EntitySearchProcessor.SearchResult result = searchProcessor.searchRelated(entity, relTypeId);
 
         if (result.hasError()) {
             IntelLogPanel.logError("API: Discovery failed for '" + entity.name() + "': " + result.error());
@@ -95,8 +88,8 @@ public class DiscoverHandler extends IntelApiHandlerBase {
             ObjectNode node = mapper.createObjectNode();
             node.put("name", de.name());
             if (de.symbol() != null) node.put("symbol", de.symbol());
-            node.put("type", de.type().name());
-            node.put("relationshipType", de.relationshipType().name());
+            node.put("type", de.typeId());
+            node.put("relationshipType", de.relationshipTypeId());
             node.put("reason", de.reason());
             node.put("confidence", de.confidence());
             node.put("generatedId", de.generateId());
@@ -106,11 +99,27 @@ public class DiscoverHandler extends IntelApiHandlerBase {
 
         IntelLogPanel.logAI("API: Discovered " + result.entities().size() + " entities related to '" + entity.name() + "'");
 
+        // Schema suggestions (types the AI wants but don't exist yet)
+        ArrayNode suggestionsArr = mapper.createArrayNode();
+        for (SchemaSuggestion s : result.schemaSuggestions()) {
+            ObjectNode sNode = mapper.createObjectNode();
+            sNode.put("typeId", s.typeId());
+            sNode.put("suggestedName", s.suggestedName());
+            sNode.put("entityCount", s.entityCount());
+            ArrayNode examples = mapper.createArrayNode();
+            s.exampleEntityNames().forEach(examples::add);
+            sNode.set("exampleEntityNames", examples);
+            suggestionsArr.add(sNode);
+        }
+
         ObjectNode response = mapper.createObjectNode();
         response.put("entityId", entity.id());
         response.put("entityName", entity.name());
         response.put("count", result.entities().size());
         response.set("discovered", arr);
+        if (!suggestionsArr.isEmpty()) {
+            response.set("schemaSuggestions", suggestionsArr);
+        }
         sendJson(exchange, 200, response);
     }
 
@@ -132,19 +141,26 @@ public class DiscoverHandler extends IntelApiHandlerBase {
         for (JsonNode node : entitiesNode) {
             String name = node.path("name").asText(null);
             String symbol = node.path("symbol").asText(null);
-            String typeStr = node.path("type").asText("COIN");
-            String relTypeStr = node.path("relationshipType").asText("PARTNER");
+            String typeId = node.path("type").asText("coin");
+            String relTypeId = node.path("relationshipType").asText("partner");
             String reason = node.path("reason").asText(null);
 
             if (name == null || name.isEmpty()) continue;
 
+            // Resolve CoinEntity.Type from string — fall back to COIN
             CoinEntity.Type type;
+            try {
+                type = CoinEntity.Type.valueOf(typeId.toUpperCase());
+            } catch (IllegalArgumentException e) {
+                type = CoinEntity.Type.COIN;
+            }
+
+            // Resolve CoinRelationship.Type from string — fall back to PARTNER
             CoinRelationship.Type relType;
             try {
-                type = CoinEntity.Type.valueOf(typeStr.toUpperCase());
-                relType = CoinRelationship.Type.valueOf(relTypeStr.toUpperCase());
+                relType = CoinRelationship.Type.valueOf(relTypeId.toUpperCase());
             } catch (IllegalArgumentException e) {
-                continue; // Skip invalid types
+                relType = CoinRelationship.Type.PARTNER;
             }
 
             // Generate ID

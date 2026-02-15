@@ -18,6 +18,7 @@ module com.tradery.news {
 
     // AI infrastructure
     requires com.tradery.ai;
+    requires com.tradery.ai.pipeline;
 
     // License
     requires com.tradery.license;

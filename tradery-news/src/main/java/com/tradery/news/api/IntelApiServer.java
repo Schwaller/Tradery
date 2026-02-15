@@ -142,6 +142,7 @@ public class IntelApiServer {
         server.createContext("/ui/switch-view", this::handleSwitchView);
         server.createContext("/ui/views", this::handleViews);
         server.createContext("/context", this::handleContext);
+        server.createContext("/logs", this::handleLogs);
 
         server.start();
 
@@ -459,6 +460,47 @@ public class IntelApiServer {
         sb.append('}');
 
         sb.append('}');
+        sendJson(exchange, 200, sb.toString());
+    }
+
+    /**
+     * GET /logs?lines=50 — Activity Log entries (same as UI panel).
+     */
+    private void handleLogs(HttpExchange exchange) throws IOException {
+        if (!checkGet(exchange)) return;
+
+        int limit = 50;
+        String query = exchange.getRequestURI().getQuery();
+        if (query != null) {
+            for (String param : query.split("&")) {
+                String[] kv = param.split("=", 2);
+                if (kv.length == 2 && "lines".equals(kv[0])) {
+                    try { limit = Integer.parseInt(kv[1]); } catch (NumberFormatException ignored) {}
+                }
+            }
+        }
+
+        IntelLogPanel panel = IntelLogPanel.getInstance();
+        if (panel == null) {
+            sendJson(exchange, 200, "{\"entries\":[]}");
+            return;
+        }
+
+        java.util.List<IntelLogPanel.LogEntry> entries = panel.getEntries(limit);
+        StringBuilder sb = new StringBuilder();
+        sb.append("{\"entries\":[");
+        for (int i = 0; i < entries.size(); i++) {
+            if (i > 0) sb.append(',');
+            IntelLogPanel.LogEntry e = entries.get(i);
+            sb.append("{\"time\":\"").append(e.time().format(java.time.format.DateTimeFormatter.ofPattern("HH:mm:ss"))).append('"');
+            sb.append(",\"type\":\"").append(e.type().tag()).append('"');
+            sb.append(",\"message\":\"").append(escape(e.message())).append('"');
+            if (e.hasDetail()) {
+                sb.append(",\"detail\":\"").append(escape(e.detail())).append('"');
+            }
+            sb.append('}');
+        }
+        sb.append("]}");
         sendJson(exchange, 200, sb.toString());
     }
 

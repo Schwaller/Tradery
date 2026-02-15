@@ -41,6 +41,7 @@ dependencies {
 
     // AI infrastructure
     implementation project(':tradery-ai')
+    implementation project(':tradery-ai-pipeline')
 
     // UI
     implementation project(':tradery-ui-common')

@@ -8,10 +8,12 @@ import java.util.Set;
 /**
  * Fuzzy matcher for finding existing entities that may match a discovered entity.
  * Used to prevent duplicates and allow linking to existing entities.
+ * Type comparison is schema-driven via string type IDs.
  */
 public class EntityMatcher {
 
     private final EntityStore store;
+    private final SchemaRegistry schemaRegistry;
 
     // Suffixes to strip when normalizing names
     private static final Set<String> STRIP_SUFFIXES = Set.of(
@@ -19,13 +21,18 @@ public class EntityMatcher {
         "dao", "labs", "foundation", "inc", "corp", "limited", "ltd"
     );
 
-    // Compatible entity types (can match across these)
-    private static final Set<Set<CoinEntity.Type>> COMPATIBLE_TYPES = Set.of(
-        Set.of(CoinEntity.Type.COIN, CoinEntity.Type.L2)  // Both are crypto assets
+    // Compatible entity type IDs (can match across these)
+    private static final Set<Set<String>> COMPATIBLE_TYPES = Set.of(
+        Set.of("coin", "l2")  // Both are crypto assets
     );
 
     public EntityMatcher(EntityStore store) {
+        this(store, null);
+    }
+
+    public EntityMatcher(EntityStore store, SchemaRegistry schemaRegistry) {
         this.store = store;
+        this.schemaRegistry = schemaRegistry;
     }
 
     /**
@@ -53,7 +60,9 @@ public class EntityMatcher {
      * Returns null if no reasonable match found.
      */
     private MatchCandidate scoreMatch(EntitySearchProcessor.DiscoveredEntity discovered, CoinEntity existing) {
-        double typeMultiplier = getTypeMultiplier(discovered.type(), existing.type());
+        String discoveredTypeId = discovered.typeId();
+        String existingTypeId = existing.type().name().toLowerCase();
+        double typeMultiplier = getTypeMultiplier(discoveredTypeId, existingTypeId);
 
         // 1. Exact ID match
         if (discovered.generateId().equals(existing.id())) {
@@ -95,13 +104,13 @@ public class EntityMatcher {
      * Get multiplier based on type compatibility.
      * Same type = 1.0, compatible types = 0.9, incompatible = 0.5
      */
-    private double getTypeMultiplier(CoinEntity.Type discovered, CoinEntity.Type existing) {
-        if (discovered == existing) {
+    private double getTypeMultiplier(String discoveredTypeId, String existingTypeId) {
+        if (discoveredTypeId != null && discoveredTypeId.equals(existingTypeId)) {
             return 1.0;
         }
 
-        for (Set<CoinEntity.Type> compatible : COMPATIBLE_TYPES) {
-            if (compatible.contains(discovered) && compatible.contains(existing)) {
+        for (Set<String> compatible : COMPATIBLE_TYPES) {
+            if (compatible.contains(discoveredTypeId) && compatible.contains(existingTypeId)) {
                 return 0.9;
             }
         }

@@ -4,6 +4,7 @@ import com.formdev.flatlaf.FlatClientProperties;
 import com.formdev.flatlaf.util.SystemInfo;
 import com.tradery.ai.AiConfig;
 import com.tradery.ai.AiProfile;
+import com.tradery.ai.pipeline.schema.SchemaSuggestion;
 import com.tradery.news.ui.IntelLogPanel;
 import com.tradery.ui.controls.BorderlessScrollPane;
 import com.tradery.ui.controls.SegmentedToggle;
@@ -28,6 +29,8 @@ import java.util.prefs.Preferences;
  * Dialog for searching and selecting related entities using AI.
  * Left panel shows entity types with search level buttons.
  * Right panel shows combined results from all searches.
+ *
+ * All type resolution is schema-driven via SchemaRegistry.
  */
 public class EntitySearchDialog extends JDialog {
 
@@ -67,6 +70,9 @@ public class EntitySearchDialog extends JDialog {
     private final Map<EntitySearchProcessor.DiscoveredEntity, CoinEntity> selectedMatches = new HashMap<>();
     private final Map<EntitySearchProcessor.DiscoveredEntity, JCheckBox> checkboxMap = new LinkedHashMap<>();
 
+    // Schema suggestions (types the AI wants but don't exist yet)
+    private final Map<String, SchemaSuggestion> pendingSuggestions = new LinkedHashMap<>();
+
     // UI components
     private JPanel typesPanel;
     private JPanel resultsPanel;
@@ -92,7 +98,7 @@ public class EntitySearchDialog extends JDialog {
         this.store = store;
         this.schemaRegistry = schemaRegistry;
         this.processor = new EntitySearchProcessor(schemaRegistry);
-        this.matcher = new EntityMatcher(store);
+        this.matcher = new EntityMatcher(store, schemaRegistry);
 
         // Transparent title bar (same style as IntelFrame)
         getRootPane().putClientProperty("apple.awt.fullWindowContent", true);
@@ -314,8 +320,8 @@ public class EntitySearchDialog extends JDialog {
         gbc.weightx = 1.0;
         gridPanel.add(typeLabel, gbc);
 
-        // Resolve the enum type for search calls
-        CoinRelationship.Type relType = resolveRelType(relSchema.id());
+        // Use schema ID directly (no enum resolution needed)
+        String relTypeId = relSchema.id();
 
         Map<SearchLevel, JButton> buttons = new HashMap<>();
         Map<SearchLevel, Integer> counts = new HashMap<>();
@@ -329,9 +335,9 @@ public class EntitySearchDialog extends JDialog {
             btn.setToolTipText(level.tooltip);
 
             if (level == SearchLevel.DEEP) {
-                btn.addActionListener(e -> showDeepProfileMenu(relType, btn));
+                btn.addActionListener(e -> showDeepProfileMenu(relTypeId, btn));
             } else {
-                btn.addActionListener(e -> performSearch(relType, level, btn));
+                btn.addActionListener(e -> performSearch(relTypeId, level, btn));
             }
 
             buttons.put(level, btn);
@@ -343,22 +349,14 @@ public class EntitySearchDialog extends JDialog {
         typeStates.put(relSchema, new TypeSearchState(buttons, counts));
     }
 
-    private TypeSearchState findTypeSearchState(CoinRelationship.Type relType) {
-        if (relType == null) return null;
+    private TypeSearchState findTypeSearchState(String relTypeId) {
+        if (relTypeId == null) return null;
         for (Map.Entry<SchemaType, TypeSearchState> entry : typeStates.entrySet()) {
-            if (entry.getKey().id().equalsIgnoreCase(relType.name())) {
+            if (entry.getKey().id().equals(relTypeId)) {
                 return entry.getValue();
             }
         }
         return null;
-    }
-
-    private CoinRelationship.Type resolveRelType(String schemaId) {
-        try {
-            return CoinRelationship.Type.valueOf(schemaId.toUpperCase());
-        } catch (IllegalArgumentException e) {
-            return null;
-        }
     }
 
     private JPanel createBottomPanel() {
@@ -387,7 +385,7 @@ public class EntitySearchDialog extends JDialog {
         return panel;
     }
 
-    private void performSearch(CoinRelationship.Type relType, SearchLevel level, JButton button) {
+    private void performSearch(String relTypeId, SearchLevel level, JButton button) {
         if (!processor.isAvailable()) {
             JOptionPane.showMessageDialog(this,
                 "AI is not available. Please configure an AI profile in Settings.",
@@ -402,10 +400,10 @@ public class EntitySearchDialog extends JDialog {
         }
 
         // SPECIFIC searches just this type
-        performSingleSearch(relType, level, button);
+        performSingleSearch(relTypeId, level, button);
     }
 
-    private void showDeepProfileMenu(CoinRelationship.Type relType, JButton button) {
+    private void showDeepProfileMenu(String relTypeId, JButton button) {
         java.util.List<AiProfile> profiles = AiConfig.get().getProfiles();
         if (profiles.isEmpty()) {
             JOptionPane.showMessageDialog(this,
@@ -423,25 +421,25 @@ public class EntitySearchDialog extends JDialog {
                 ? "<br><font color='gray' size='-2'>" + profile.getDescription() + "</font>" : "";
             JMenuItem item = new JMenuItem("<html><b>" + star + profile.getName() + "</b>"
                 + desc + "</html>");
-            item.addActionListener(e -> performDeepSearch(relType, profile, button));
+            item.addActionListener(e -> performDeepSearch(relTypeId, profile, button));
             popup.add(item);
         }
 
         popup.show(button, 0, button.getHeight());
     }
 
-    private void performDeepSearch(CoinRelationship.Type relType, AiProfile profile, JButton button) {
+    private void performDeepSearch(String relTypeId, AiProfile profile, JButton button) {
         String originalText = button.getText();
         button.setEnabled(false);
         button.setText("...");
 
         activeInvestigations++;
         updateStatus();
-        IntelLogPanel.logAI("Deep search for " + relType.name() + " related to " + sourceEntity.name()
+        IntelLogPanel.logAI("Deep search for " + relTypeId + " related to " + sourceEntity.name()
             + " using " + profile.getName());
 
         CompletableFuture.supplyAsync(() ->
-            processor.searchRelatedDeep(sourceEntity, relType, profile, msg -> {})
+            processor.searchRelatedDeep(sourceEntity, relTypeId, profile, msg -> {})
         ).thenAccept(result -> SwingUtilities.invokeLater(() -> {
             activeInvestigations--;
             button.setEnabled(true);
@@ -457,7 +455,7 @@ public class EntitySearchDialog extends JDialog {
             int count = entities.size();
 
             button.setText("More: " + count);
-            TypeSearchState tss = findTypeSearchState(relType);
+            TypeSearchState tss = findTypeSearchState(relTypeId);
             if (tss != null) tss.resultCounts().put(SearchLevel.DEEP, count);
 
             for (EntitySearchProcessor.DiscoveredEntity entity : entities) {
@@ -469,10 +467,11 @@ public class EntitySearchDialog extends JDialog {
                 }
             }
 
+            collectSuggestions(result);
             displayResults();
             updateStatus();
 
-            IntelLogPanel.logSuccess("Found " + count + " " + relType.name() + " entities (deep)");
+            IntelLogPanel.logSuccess("Found " + count + " " + relTypeId + " entities (deep)");
         }));
     }
 
@@ -490,7 +489,7 @@ public class EntitySearchDialog extends JDialog {
         updateStatus();
         IntelLogPanel.logAI("Starting general investigation for " + sourceEntity.name());
 
-        // Single search for all types at once (relType = null)
+        // Single search for all types at once (relTypeId = null)
         defaultAiInvestigations++;
         CompletableFuture<?> future = CompletableFuture.supplyAsync(() ->
             processor.searchRelated(sourceEntity, null, msg -> {})
@@ -510,10 +509,10 @@ public class EntitySearchDialog extends JDialog {
             } else {
                 List<EntitySearchProcessor.DiscoveredEntity> entities = result.entities();
 
-                // Count results per relationship type
-                Map<CoinRelationship.Type, Integer> countsByType = new HashMap<>();
+                // Count results per relationship type (using schema string IDs)
+                Map<String, Integer> countsByRelType = new HashMap<>();
                 for (EntitySearchProcessor.DiscoveredEntity entity : entities) {
-                    countsByType.merge(entity.relationshipType(), 1, Integer::sum);
+                    countsByRelType.merge(entity.relationshipTypeId(), 1, Integer::sum);
 
                     String id = entity.generateId();
                     boolean exists = allResults.stream()
@@ -523,12 +522,14 @@ public class EntitySearchDialog extends JDialog {
                     }
                 }
 
+                // Collect schema suggestions
+                collectSuggestions(result);
+
                 // Update buttons with counts per type
                 for (Map.Entry<SchemaType, TypeSearchState> entry : typeStates.entrySet()) {
                     SchemaType schemaType = entry.getKey();
-                    CoinRelationship.Type relType = resolveRelType(schemaType.id());
                     JButton btn = entry.getValue().buttons().get(SearchLevel.GENERAL);
-                    int count = relType != null ? countsByType.getOrDefault(relType, 0) : 0;
+                    int count = countsByRelType.getOrDefault(schemaType.id(), 0);
                     btn.setText("General: " + count);
                     entry.getValue().resultCounts().put(SearchLevel.GENERAL, count);
                 }
@@ -542,7 +543,7 @@ public class EntitySearchDialog extends JDialog {
         defaultAiFutures.add(future);
     }
 
-    private void performSingleSearch(CoinRelationship.Type relType, SearchLevel level, JButton button) {
+    private void performSingleSearch(String relTypeId, SearchLevel level, JButton button) {
         String originalText = button.getText();
         button.setEnabled(false);
         button.setText("...");
@@ -550,10 +551,10 @@ public class EntitySearchDialog extends JDialog {
         activeInvestigations++;
         defaultAiInvestigations++;
         updateStatus();
-        IntelLogPanel.logAI("Searching for " + relType.name() + " related to " + sourceEntity.name());
+        IntelLogPanel.logAI("Searching for " + relTypeId + " related to " + sourceEntity.name());
 
         CompletableFuture<?> future = CompletableFuture.supplyAsync(() ->
-            processor.searchRelated(sourceEntity, relType, msg -> {})
+            processor.searchRelated(sourceEntity, relTypeId, msg -> {})
         ).thenAccept(result -> SwingUtilities.invokeLater(() -> {
             activeInvestigations--;
             defaultAiInvestigations = Math.max(0, defaultAiInvestigations - 1);
@@ -570,7 +571,7 @@ public class EntitySearchDialog extends JDialog {
             int count = entities.size();
 
             button.setText(originalText + ": " + count);
-            TypeSearchState tss = findTypeSearchState(relType);
+            TypeSearchState tss = findTypeSearchState(relTypeId);
             if (tss != null) tss.resultCounts().put(level, count);
 
             for (EntitySearchProcessor.DiscoveredEntity entity : entities) {
@@ -582,10 +583,11 @@ public class EntitySearchDialog extends JDialog {
                 }
             }
 
+            collectSuggestions(result);
             displayResults();
             updateStatus();
 
-            IntelLogPanel.logSuccess("Found " + count + " " + relType.name() + " entities");
+            IntelLogPanel.logSuccess("Found " + count + " " + relTypeId + " entities");
         }));
         defaultAiFutures.add(future);
     }
@@ -609,10 +611,10 @@ public class EntitySearchDialog extends JDialog {
             return;
         }
 
-        // Group by entity type (not relationship type) for clearer organization
-        Map<CoinEntity.Type, List<EntitySearchProcessor.DiscoveredEntity>> grouped = new LinkedHashMap<>();
+        // Group by entity type ID (schema-driven, not enum-based)
+        Map<String, List<EntitySearchProcessor.DiscoveredEntity>> grouped = new LinkedHashMap<>();
         for (EntitySearchProcessor.DiscoveredEntity entity : allResults) {
-            grouped.computeIfAbsent(entity.type(), k -> new ArrayList<>()).add(entity);
+            grouped.computeIfAbsent(entity.typeId(), k -> new ArrayList<>()).add(entity);
         }
 
         // Content panel that won't expand
@@ -620,10 +622,18 @@ public class EntitySearchDialog extends JDialog {
         contentPanel.setLayout(new BoxLayout(contentPanel, BoxLayout.Y_AXIS));
         contentPanel.setAlignmentX(Component.LEFT_ALIGNMENT);
 
+        // Show schema suggestion banner if there are pending suggestions
+        if (!pendingSuggestions.isEmpty()) {
+            contentPanel.add(createSuggestionBanner());
+            contentPanel.add(Box.createVerticalStrut(4));
+        }
+
         Color sepColor = UIManager.getColor("Separator.foreground");
         boolean firstGroup = true;
 
-        for (Map.Entry<CoinEntity.Type, List<EntitySearchProcessor.DiscoveredEntity>> entry : grouped.entrySet()) {
+        for (Map.Entry<String, List<EntitySearchProcessor.DiscoveredEntity>> entry : grouped.entrySet()) {
+            String typeId = entry.getKey();
+
             // Full-width separator between groups (skip for first group)
             if (!firstGroup) {
                 JSeparator groupSep = new JSeparator();
@@ -632,14 +642,19 @@ public class EntitySearchDialog extends JDialog {
                 contentPanel.add(groupSep);
             }
 
+            // Resolve display name and color from schema
+            SchemaType schemaType = schemaRegistry.getType(typeId);
+            String typeName = schemaType != null ? schemaType.name() : typeId;
+            Color typeColor = schemaType != null ? schemaType.color() : Color.GRAY;
+
             // Group header
             JPanel headerPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 2));
             headerPanel.setMaximumSize(new Dimension(Integer.MAX_VALUE, 24));
             headerPanel.setAlignmentX(Component.LEFT_ALIGNMENT);
 
-            JLabel headerLabel = new JLabel(entry.getKey().name() +
+            JLabel headerLabel = new JLabel(typeName +
                 " (" + entry.getValue().size() + ")");
-            headerLabel.setForeground(entry.getKey().color());
+            headerLabel.setForeground(typeColor);
             headerLabel.setFont(headerLabel.getFont().deriveFont(Font.BOLD, 12f));
             headerPanel.add(headerLabel);
 
@@ -698,8 +713,10 @@ public class EntitySearchDialog extends JDialog {
         checkboxMap.put(entity, checkbox);
         topRow.add(checkbox);
 
+        // Resolve entity type color from schema
+        Color entityColor = entity.resolveColor(schemaRegistry);
         JLabel nameLabel = new JLabel(entity.name());
-        nameLabel.setForeground(entity.type().color());
+        nameLabel.setForeground(entityColor);
         nameLabel.setFont(baseFont.deriveFont(Font.BOLD));
         topRow.add(nameLabel);
 
@@ -710,12 +727,12 @@ public class EntitySearchDialog extends JDialog {
             topRow.add(symbolLabel);
         }
 
-        // Show relationship type (entity type is already in the group header)
+        // Show relationship type — resolve from schema
         String sourceTypeId = sourceEntity.type().name().toLowerCase();
-        SchemaType relSchema = schemaRegistry.getType(entity.relationshipType().name().toLowerCase());
-        String relLabel = relSchema != null ? relSchema.pluralLabelFor(sourceTypeId) : entity.relationshipType().label();
+        SchemaType relSchema = schemaRegistry.getType(entity.relationshipTypeId());
+        String relLabel = relSchema != null ? relSchema.pluralLabelFor(sourceTypeId) : entity.relationshipTypeId();
+        Color relColor = relSchema != null ? relSchema.color() : mutedText;
         JLabel relTypeLabel = new JLabel("[" + relLabel + "]");
-        Color relColor = relSchema != null ? relSchema.color() : entity.relationshipType().color();
         relTypeLabel.setForeground(relColor);
         relTypeLabel.setFont(baseFont.deriveFont(baseFont.getSize() - 2f));
         topRow.add(relTypeLabel);
@@ -933,6 +950,112 @@ public class EntitySearchDialog extends JDialog {
                    .replace("\"", "&quot;");
     }
 
+    /**
+     * Collect schema suggestions from a search result, merging with existing ones.
+     */
+    private void collectSuggestions(EntitySearchProcessor.SearchResult result) {
+        for (SchemaSuggestion suggestion : result.schemaSuggestions()) {
+            // Skip if this type already exists in the schema (maybe added since last search)
+            if (schemaRegistry.getType(suggestion.typeId()) != null) continue;
+            // Merge: keep the one with the higher entity count
+            pendingSuggestions.merge(suggestion.typeId(), suggestion, (old, neu) ->
+                neu.entityCount() > old.entityCount() ? neu : old);
+        }
+    }
+
+    /**
+     * Create a suggestion banner panel for display above results.
+     */
+    private JPanel createSuggestionBanner() {
+        Color bannerBg = new Color(60, 55, 45);
+        Color bannerText = new Color(220, 190, 120);
+
+        JPanel banner = new JPanel(new BorderLayout(8, 0));
+        banner.setBackground(bannerBg);
+        banner.setBorder(BorderFactory.createEmptyBorder(8, 12, 8, 12));
+        banner.setAlignmentX(Component.LEFT_ALIGNMENT);
+        banner.setMaximumSize(new Dimension(Integer.MAX_VALUE, 60));
+
+        // Left: info text
+        JPanel textPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
+        textPanel.setOpaque(false);
+
+        JLabel icon = new JLabel("\u2728"); // sparkle
+        icon.setForeground(bannerText);
+        textPanel.add(icon);
+
+        StringBuilder sb = new StringBuilder("AI suggests new types: ");
+        boolean first = true;
+        for (SchemaSuggestion s : pendingSuggestions.values()) {
+            if (!first) sb.append(", ");
+            sb.append(s.suggestedName()).append(" (").append(s.entityCount()).append(")");
+            first = false;
+        }
+        JLabel label = new JLabel(sb.toString());
+        label.setForeground(bannerText);
+        label.setFont(label.getFont().deriveFont(Font.PLAIN, 12f));
+        textPanel.add(label);
+
+        banner.add(textPanel, BorderLayout.CENTER);
+
+        // Right: "Add to ERD" button
+        JPanel btnPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 4, 0));
+        btnPanel.setOpaque(false);
+
+        ToolbarButton addBtn = new ToolbarButton("Add to ERD");
+        addBtn.setToolTipText("Add suggested types to the entity schema");
+        addBtn.addActionListener(e -> addSuggestedTypes());
+        btnPanel.add(addBtn);
+
+        banner.add(btnPanel, BorderLayout.EAST);
+
+        return banner;
+    }
+
+    /**
+     * Add all pending suggested types to the schema registry.
+     */
+    private void addSuggestedTypes() {
+        int added = 0;
+        for (SchemaSuggestion suggestion : pendingSuggestions.values()) {
+            // Double-check it doesn't exist yet
+            if (schemaRegistry.getType(suggestion.typeId()) != null) continue;
+
+            // Pick a distinct color based on hash
+            float hue = (suggestion.typeId().hashCode() & 0x7fffffff) % 360 / 360f;
+            Color color = Color.getHSBColor(hue, 0.35f, 0.78f);
+
+            SchemaType newType = new SchemaType(
+                suggestion.typeId(), suggestion.suggestedName(), color, SchemaType.KIND_ENTITY);
+            newType.setDisplayOrder(schemaRegistry.entityTypes().size());
+            newType.addAttribute(new SchemaAttribute("name", SchemaAttribute.TEXT, true, 0));
+            newType.addAttribute(new SchemaAttribute("symbol", SchemaAttribute.TEXT, false, 1));
+
+            schemaRegistry.save(newType);
+            for (SchemaAttribute attr : newType.attributes()) {
+                schemaRegistry.addAttribute(newType.id(), attr);
+            }
+
+            IntelLogPanel.logData("Added schema type: " + suggestion.suggestedName()
+                + " (" + suggestion.entityCount() + " discovered entities)");
+            added++;
+        }
+
+        if (added > 0) {
+            pendingSuggestions.clear();
+            IntelLogPanel.logSuccess("Added " + added + " new entity types to schema");
+
+            // Clear old results and re-search so entities get correct types
+            allResults.clear();
+            selectedMatches.clear();
+            checkboxMap.clear();
+            // Refresh left panel (may have new relationship types)
+            populateTypesPanel();
+            // Re-run general search with the new schema
+            performGeneralSearchAll();
+        }
+    }
+
     private void addSelectedEntities() {
         List<EntitySearchProcessor.DiscoveredEntity> selected = new ArrayList<>();
         for (Map.Entry<EntitySearchProcessor.DiscoveredEntity, JCheckBox> entry : checkboxMap.entrySet()) {
@@ -959,20 +1082,27 @@ public class EntitySearchDialog extends JDialog {
             } else {
                 entityId = discovered.generateId();
                 if (!store.entityExists(entityId)) {
+                    // Resolve CoinEntity.Type from schema — fall back to COIN for unknown types
+                    CoinEntity.Type coinType = discovered.resolveCoinEntityType();
+                    if (coinType == null) coinType = CoinEntity.Type.COIN;
+
                     CoinEntity newEntity = new CoinEntity(
                         entityId,
                         discovered.name(),
                         discovered.symbol(),
-                        discovered.type()
+                        coinType
                     );
                     store.saveEntity(newEntity, "ai-discovery");
                     added++;
                 }
             }
 
+            // Resolve CoinRelationship.Type — fall back to PARTNER for unknown types
+            CoinRelationship.Type relType = discovered.resolveCoinRelationType();
+            if (relType == null) relType = CoinRelationship.Type.PARTNER;
+
             CoinRelationship relationship = createRelationship(
-                sourceEntity.id(), entityId,
-                discovered.relationshipType(), discovered.reason()
+                sourceEntity.id(), entityId, relType, discovered.reason()
             );
 
             if (!store.relationshipExists(relationship.fromId(), relationship.toId(), relationship.type())) {

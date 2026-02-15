@@ -56,10 +56,13 @@ public class AiEnvironment {
     }
 
     /**
-     * Apply expanded PATH to a ProcessBuilder.
+     * Apply expanded PATH to a ProcessBuilder and clean up env vars
+     * that would prevent CLI tools from running (e.g. nested Claude Code detection).
      */
     public static void applyToProcess(ProcessBuilder pb) {
         pb.environment().put("PATH", getExpandedPath());
+        // Remove Claude Code session marker so Claude CLI doesn't refuse to run
+        pb.environment().remove("CLAUDECODE");
     }
 
     /**

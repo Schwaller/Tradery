@@ -378,6 +378,20 @@ public class SchemaRegistry {
             types.put(hp.id(), hp);
         }
 
+        // Person entity type (founders, key figures)
+        if (!types.containsKey("person")) {
+            SchemaType person = new SchemaType("person", "Person",
+                new Color(220, 170, 130), SchemaType.KIND_ENTITY);
+            person.setDisplayOrder(types.size());
+            person.addAttribute(new SchemaAttribute("name", SchemaAttribute.TEXT, true, 0,
+                null, null, SchemaAttribute.Mutability.SOURCE));
+            person.addAttribute(new SchemaAttribute("symbol", SchemaAttribute.TEXT, false, 1,
+                null, null, SchemaAttribute.Mutability.SOURCE));
+            store.saveSchemaType(person);
+            for (SchemaAttribute attr : person.attributes()) store.saveSchemaAttribute(person.id(), attr);
+            types.put(person.id(), person);
+        }
+
         // News Article entity type
         if (!types.containsKey("news_article")) {
             SchemaType na = new SchemaType("news_article", "News Article",

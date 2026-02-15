@@ -8,6 +8,8 @@ import javax.swing.border.EmptyBorder;
 import java.awt.*;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Log panel for displaying AI interactions, data processing events, and system messages.
@@ -105,12 +107,12 @@ public class IntelLogPanel extends JPanel {
             return;
         }
 
-        detailArea.setForeground(entry.type.color);
+        detailArea.setForeground(entry.type().color);
 
-        if (entry.detail != null && !entry.detail.isEmpty()) {
-            detailArea.setText(entry.detail);
+        if (entry.hasDetail()) {
+            detailArea.setText(entry.detail());
         } else {
-            detailArea.setText(entry.message);
+            detailArea.setText(entry.message());
         }
         detailArea.setCaretPosition(0);
     }
@@ -190,6 +192,20 @@ public class IntelLogPanel extends JPanel {
         detailArea.setForeground(UIManager.getColor("Label.disabledForeground"));
     }
 
+    /**
+     * Get recent log entries (newest last). Thread-safe snapshot.
+     * @param limit max entries to return (0 = all)
+     */
+    public List<LogEntry> getEntries(int limit) {
+        List<LogEntry> entries = new ArrayList<>();
+        int size = listModel.size();
+        int start = limit > 0 && limit < size ? size - limit : 0;
+        for (int i = start; i < size; i++) {
+            entries.add(listModel.get(i));
+        }
+        return entries;
+    }
+
     // ==================== Static convenience methods ====================
 
     public static void logInfo(String message) {
@@ -238,20 +254,22 @@ public class IntelLogPanel extends JPanel {
         AI("AI", new Color(150, 130, 255)),
         DATA("DATA", new Color(130, 150, 170));
 
-        final String tag;
+        private final String tag;
         final Color color;
 
         LogType(String tag, Color color) {
             this.tag = tag;
             this.color = color;
         }
+
+        public String tag() { return tag; }
     }
 
     public static class LogEntry {
-        final LocalTime time;
-        final LogType type;
-        final String message;
-        final String detail;  // Optional expanded content
+        private final LocalTime time;
+        private final LogType type;
+        private final String message;
+        private final String detail;
 
         LogEntry(LogType type, String message, String detail) {
             this.time = LocalTime.now();
@@ -260,7 +278,12 @@ public class IntelLogPanel extends JPanel {
             this.detail = detail;
         }
 
-        boolean hasDetail() {
+        public LocalTime time() { return time; }
+        public LogType type() { return type; }
+        public String message() { return message; }
+        public String detail() { return detail; }
+
+        public boolean hasDetail() {
             return detail != null && !detail.isEmpty();
         }
     }
@@ -272,12 +295,12 @@ public class IntelLogPanel extends JPanel {
             super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus);
 
             if (value instanceof LogEntry entry) {
-                String timestamp = entry.time.format(TIME_FMT);
+                String timestamp = entry.time().format(TIME_FMT);
                 String prefix = entry.hasDetail() ? "▸ " : "  ";
-                setText(prefix + timestamp + " [" + entry.type.tag + "] " + entry.message);
+                setText(prefix + timestamp + " [" + entry.type().tag() + "] " + entry.message());
 
                 if (!isSelected) {
-                    setForeground(entry.type.color);
+                    setForeground(entry.type().color);
                 }
             }
 
