@@ -105,7 +105,7 @@ public class OAuthLogin {
                     + "&state=" + URLEncoder.encode(state, StandardCharsets.UTF_8)
                     + "&scope=" + URLEncoder.encode(SCOPE, StandardCharsets.UTF_8);
 
-            Desktop.getDesktop().browse(URI.create(authUrl));
+            openBrowser(authUrl);
             log.info("Opened browser for Keycloak login");
 
             // Wait for the callback
@@ -248,13 +248,27 @@ public class OAuthLogin {
         String subtitle = success
                 ? "You can close this tab and return to Plaiiin."
                 : (error != null ? error : "Something went wrong.") + " Please try again.";
-        String autoClose = success ? "<script>setTimeout(function(){window.close()},3000)</script>" : "";
-
         return CALLBACK_TEMPLATE
                 .replace("{{ICON}}", icon)
                 .replace("{{TITLE}}", title)
-                .replace("{{SUBTITLE}}", subtitle)
-                .replace("{{AUTO_CLOSE}}", autoClose);
+                .replace("{{SUBTITLE}}", subtitle);
+    }
+
+    /**
+     * Open URL in system browser. Uses Desktop.browse() first, falls back to /usr/bin/open
+     * for macOS packaged apps where Desktop may not work.
+     */
+    private static void openBrowser(String url) throws IOException {
+        try {
+            if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.BROWSE)) {
+                Desktop.getDesktop().browse(URI.create(url));
+                return;
+            }
+        } catch (Exception e) {
+            log.warn("Desktop.browse() failed: {} — trying /usr/bin/open fallback", e.getMessage());
+        }
+        // macOS fallback with absolute path (no PATH dependency)
+        new ProcessBuilder("/usr/bin/open", url).start();
     }
 
     private static String extractParam(String query, String name) {

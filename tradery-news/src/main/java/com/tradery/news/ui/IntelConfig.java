@@ -63,6 +63,13 @@ public class IntelConfig {
     private int dataStructureX = -1;
     private int dataStructureY = -1;
 
+    // Fact history window settings
+    private int factHistoryWidth = -1;
+    private int factHistoryHeight = -1;
+    private int factHistoryX = -1;
+    private int factHistoryY = -1;
+    private int factHistorySplitPosition = -1;
+
     // ERD settings
     private boolean erdFlowMode = false;
 
@@ -248,6 +255,18 @@ public class IntelConfig {
     public void setDataStructureY(int dataStructureY) {
         this.dataStructureY = dataStructureY;
     }
+
+    // Fact history window
+    public int getFactHistoryWidth() { return factHistoryWidth; }
+    public void setFactHistoryWidth(int factHistoryWidth) { this.factHistoryWidth = factHistoryWidth; }
+    public int getFactHistoryHeight() { return factHistoryHeight; }
+    public void setFactHistoryHeight(int factHistoryHeight) { this.factHistoryHeight = factHistoryHeight; }
+    public int getFactHistoryX() { return factHistoryX; }
+    public void setFactHistoryX(int factHistoryX) { this.factHistoryX = factHistoryX; }
+    public int getFactHistoryY() { return factHistoryY; }
+    public void setFactHistoryY(int factHistoryY) { this.factHistoryY = factHistoryY; }
+    public int getFactHistorySplitPosition() { return factHistorySplitPosition; }
+    public void setFactHistorySplitPosition(int factHistorySplitPosition) { this.factHistorySplitPosition = factHistorySplitPosition; }
 
     // ==================== ERD Settings ====================
 

@@ -8,10 +8,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.*;
 import java.time.Instant;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Optional;
-import java.util.Properties;
+import java.util.*;
 
 /**
  * Read-only service for querying the symbols database (~/.tradery/symbols.db).
@@ -116,10 +113,74 @@ public class SymbolService implements AutoCloseable {
                     }
                 }
             }
+
+            // Post-query: bulk lookup categories for all results
+            if (!results.isEmpty()) {
+                Set<String> coingeckoIds = new HashSet<>();
+                for (SymbolEntry e : results) {
+                    if (e.coingeckoId() != null && !e.coingeckoId().isEmpty()) {
+                        coingeckoIds.add(e.coingeckoId());
+                    }
+                }
+                if (!coingeckoIds.isEmpty()) {
+                    Map<String, List<String>> categoryMap = getCategoriesForCoins(c, coingeckoIds);
+                    if (!categoryMap.isEmpty()) {
+                        List<SymbolEntry> enriched = new ArrayList<>(results.size());
+                        for (SymbolEntry e : results) {
+                            List<String> cats = e.coingeckoId() != null ? categoryMap.get(e.coingeckoId()) : null;
+                            enriched.add(new SymbolEntry(e.symbol(), e.exchange(), e.marketType(),
+                                e.base(), e.quote(), e.coingeckoId(),
+                                cats != null ? cats : List.of()));
+                        }
+                        return enriched;
+                    }
+                }
+            }
         } catch (SQLException e) {
             log.error("Failed to search symbols", e);
         }
         return results;
+    }
+
+    /**
+     * Bulk lookup categories for a set of coingecko IDs from coin_categories table.
+     */
+    private Map<String, List<String>> getCategoriesForCoins(Connection c, Collection<String> coingeckoIds) {
+        Map<String, List<String>> result = new HashMap<>();
+        if (coingeckoIds.isEmpty()) return result;
+
+        // Check if coin_categories table exists
+        try {
+            ResultSet tables = c.getMetaData().getTables(null, null, "coin_categories", null);
+            if (!tables.next()) return result;
+        } catch (SQLException e) {
+            return result;
+        }
+
+        List<String> idList = new ArrayList<>(coingeckoIds);
+        try {
+            for (int i = 0; i < idList.size(); i += 500) {
+                List<String> chunk = idList.subList(i, Math.min(i + 500, idList.size()));
+                String placeholders = String.join(",", Collections.nCopies(chunk.size(), "?"));
+                String sql = "SELECT coingecko_id, category_name FROM coin_categories WHERE coingecko_id IN (" + placeholders + ")";
+
+                try (PreparedStatement stmt = c.prepareStatement(sql)) {
+                    for (int j = 0; j < chunk.size(); j++) {
+                        stmt.setString(j + 1, chunk.get(j));
+                    }
+                    try (ResultSet rs = stmt.executeQuery()) {
+                        while (rs.next()) {
+                            String id = rs.getString("coingecko_id");
+                            String cat = rs.getString("category_name");
+                            result.computeIfAbsent(id, k -> new ArrayList<>()).add(cat);
+                        }
+                    }
+                }
+            }
+        } catch (SQLException e) {
+            log.debug("Failed to lookup categories: {}", e.getMessage());
+        }
+        return result;
     }
 
     /**
@@ -333,7 +394,8 @@ public class SymbolService implements AutoCloseable {
             rs.getString("market_type"),
             rs.getString("base_symbol"),
             rs.getString("quote_symbol"),
-            rs.getString("coingecko_base_id")
+            rs.getString("coingecko_base_id"),
+            List.of()
         );
     }
 
@@ -342,6 +404,8 @@ public class SymbolService implements AutoCloseable {
     public record ExchangeCoverage(String exchange, String marketType, int pairCount, int matchedCount) {}
 
     public record ExchangeSyncInfo(String exchange, String marketType, Instant lastSync, String status) {}
+
+    public record CategoryStats(int categoryCount, int categorizedCoins) {}
 
     /**
      * Get per-exchange/market pair counts with CoinGecko match rates.
@@ -407,5 +471,42 @@ public class SymbolService implements AutoCloseable {
             log.error("Failed to get sync info", e);
         }
         return results;
+    }
+
+    /**
+     * Get category sync statistics.
+     */
+    public CategoryStats getCategoryStats() {
+        if (!isDatabaseAvailable()) return new CategoryStats(0, 0);
+
+        try {
+            Connection c = getConnection();
+
+            // Check if table exists first
+            try (ResultSet tables = c.getMetaData().getTables(null, null, "category_sync_metadata", null)) {
+                if (!tables.next()) return new CategoryStats(0, 0);
+            }
+
+            int categoryCount = 0;
+            try (PreparedStatement stmt = c.prepareStatement("SELECT COUNT(*) FROM category_sync_metadata");
+                 ResultSet rs = stmt.executeQuery()) {
+                if (rs.next()) categoryCount = rs.getInt(1);
+            }
+
+            int categorizedCoins = 0;
+            try (ResultSet tables = c.getMetaData().getTables(null, null, "coin_categories", null)) {
+                if (tables.next()) {
+                    try (PreparedStatement stmt = c.prepareStatement("SELECT COUNT(DISTINCT coingecko_id) FROM coin_categories");
+                         ResultSet rs = stmt.executeQuery()) {
+                        if (rs.next()) categorizedCoins = rs.getInt(1);
+                    }
+                }
+            }
+
+            return new CategoryStats(categoryCount, categorizedCoins);
+        } catch (SQLException e) {
+            log.error("Failed to get category stats", e);
+            return new CategoryStats(0, 0);
+        }
     }
 }

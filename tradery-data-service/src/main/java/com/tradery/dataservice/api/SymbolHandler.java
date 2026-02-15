@@ -10,9 +10,7 @@ import io.javalin.http.Context;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
+import java.util.*;
 import java.util.stream.Collectors;
 
 /**
@@ -140,15 +138,32 @@ public class SymbolHandler {
 
             List<TradingPair> pairs = symbolDao.searchPairs(query, exchange, Math.min(limit, 500));
 
+            // Bulk lookup categories for all results
+            Set<String> coingeckoIds = new HashSet<>();
+            for (TradingPair p : pairs) {
+                if (p.coingeckoBaseId() != null && !p.coingeckoBaseId().isEmpty()) {
+                    coingeckoIds.add(p.coingeckoBaseId());
+                }
+            }
+            Map<String, List<String>> categoryMap = coingeckoIds.isEmpty()
+                ? Map.of()
+                : symbolDao.getCategoriesForCoins(coingeckoIds);
+
             List<SearchResult> results = pairs.stream()
-                .map(p -> new SearchResult(
-                    p.symbol(),
-                    p.exchange(),
-                    p.marketType().getValue(),
-                    p.baseSymbol(),
-                    p.quoteSymbol(),
-                    p.coingeckoBaseId()
-                ))
+                .map(p -> {
+                    List<String> cats = p.coingeckoBaseId() != null
+                        ? categoryMap.getOrDefault(p.coingeckoBaseId(), List.of())
+                        : List.of();
+                    return new SearchResult(
+                        p.symbol(),
+                        p.exchange(),
+                        p.marketType().getValue(),
+                        p.baseSymbol(),
+                        p.quoteSymbol(),
+                        p.coingeckoBaseId(),
+                        cats
+                    );
+                })
                 .collect(Collectors.toList());
 
             ctx.json(new SearchResponse(query, results.size(), results));
@@ -254,6 +269,31 @@ public class SymbolHandler {
     }
 
     /**
+     * GET /symbols/categories
+     * Get category sync stats.
+     */
+    public void categories(Context ctx) {
+        try {
+            List<SymbolDao.CategorySyncMetadata> metadata = symbolDao.getCategorySyncMetadata();
+            int categorizedCoins = symbolDao.countCategorizedCoins();
+
+            List<CategoryInfo> categories = metadata.stream()
+                .map(m -> new CategoryInfo(
+                    m.categoryId(),
+                    m.categoryName(),
+                    m.coinCount(),
+                    m.lastSync() != null ? m.lastSync().toString() : null
+                ))
+                .collect(Collectors.toList());
+
+            ctx.json(new CategoriesResponse(categories.size(), categorizedCoins, categories));
+        } catch (Exception e) {
+            log.error("Failed to get categories", e);
+            ctx.status(500).json(new ErrorResponse(e.getMessage()));
+        }
+    }
+
+    /**
      * GET /symbols/exchanges
      * Get list of supported exchanges.
      */
@@ -289,7 +329,8 @@ public class SymbolHandler {
         String marketType,
         String base,
         String quote,
-        String coingeckoId
+        String coingeckoId,
+        List<String> categories
     ) {}
 
     public record SearchResponse(
@@ -336,6 +377,19 @@ public class SymbolHandler {
         boolean syncInProgress,
         CircuitBreakerInfo circuitBreaker,
         SyncProgressInfo syncProgress
+    ) {}
+
+    public record CategoryInfo(
+        String categoryId,
+        String categoryName,
+        int coinCount,
+        String lastSync
+    ) {}
+
+    public record CategoriesResponse(
+        int categoryCount,
+        int categorizedCoins,
+        List<CategoryInfo> categories
     ) {}
 
     public record ExchangesResponse(List<String> exchanges) {}

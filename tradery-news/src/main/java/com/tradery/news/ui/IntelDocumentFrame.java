@@ -51,8 +51,7 @@ public class IntelDocumentFrame extends JFrame {
     private record PanelInstance(
         PanelConfig config,
         JPanel card,
-        JComponent graphPanel,
-        JLabel statusLabel
+        JComponent graphPanel
     ) {}
     private List<PanelInstance> panelInstances = new ArrayList<>();
 
@@ -76,7 +75,6 @@ public class IntelDocumentFrame extends JFrame {
     // Coin data (shared across all COIN_GRAPH panels)
     private List<CoinEntity> currentEntities;
     private List<CoinRelationship> currentRelationships;
-    private JProgressBar coinProgressBar;
 
     // Shared components
     private JPanel cardPanel;
@@ -124,6 +122,7 @@ public class IntelDocumentFrame extends JFrame {
     private NewsNode selectedArticle;
     private CoinEntity selectedEntity;
     private int entityDetailViewIndex; // tracks which form/All Data tab is selected
+    private SegmentedToggle detailViewToggle; // form selector in header bar
 
     // Theme-aware colors
     private static Color bgMain() { return UIManager.getColor("Panel.background"); }
@@ -171,7 +170,7 @@ public class IntelDocumentFrame extends JFrame {
      */
     public IntelDocumentFrame(String docId, String docName, Path docDir,
                                DocumentServices services, Consumer<String> onClosed) {
-        super(docName + " \u2014 Intelligence");
+        super(docName);
         this.docId = docId;
         this.docDir = docDir;
         this.services = services;
@@ -222,6 +221,7 @@ public class IntelDocumentFrame extends JFrame {
         }
 
         initUI();
+        setJMenuBar(IntelMenuBar.create(this));
 
         // Start API server
         try {
@@ -338,9 +338,21 @@ public class IntelDocumentFrame extends JFrame {
             leftContent.add(viewToggle);
         }
 
-        JButton helpBtn = new ToolbarButton("Help");
-        helpBtn.addActionListener(e -> IntelHelpDialog.show(this));
-        leftContent.add(helpBtn);
+        leftContent.add(Box.createHorizontalStrut(0)); // 8px gap (0 + 8 from FlowLayout)
+
+        fetchBtn = new ToolbarButton("Fetch News");
+        fetchBtn.setToolTipText("Fetch new articles with AI extraction");
+        fetchBtn.addActionListener(e -> fetchNewArticles());
+        leftContent.add(fetchBtn);
+
+        resetViewBtn = new ToolbarButton("\u26F6");
+        resetViewBtn.setToolTipText("Fit all nodes in view");
+        resetViewBtn.addActionListener(e -> {
+            CoinGraphPanel current = getCurrentCoinGraphPanel();
+            if (current != null) current.fitToView();
+        });
+        resetViewBtn.setVisible(false);
+        leftContent.add(resetViewBtn);
 
         GridBagConstraints lc = new GridBagConstraints();
         lc.anchor = GridBagConstraints.WEST;
@@ -349,12 +361,12 @@ public class IntelDocumentFrame extends JFrame {
         leftPanel.add(leftContent, lc);
         headerBar.add(leftPanel, gbc);
 
-        // Center: Title
+        // Center: Title + settings cog
         gbc.gridx = 1;
         gbc.weightx = 0;
         gbc.fill = GridBagConstraints.NONE;
         gbc.anchor = GridBagConstraints.CENTER;
-        JLabel titleLabel = new JLabel("Intelligence");
+        JLabel titleLabel = new JLabel(getTitle());
         titleLabel.setFont(new Font("SansSerif", Font.BOLD, 13));
         titleLabel.setForeground(textSecondary());
         headerBar.add(titleLabel, gbc);
@@ -368,19 +380,6 @@ public class IntelDocumentFrame extends JFrame {
         rightPanel.setOpaque(false);
         JPanel rightContent = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
         rightContent.setOpaque(false);
-
-        fetchBtn = new ToolbarButton("Fetch News");
-        fetchBtn.setToolTipText("Fetch new articles with AI extraction");
-        fetchBtn.addActionListener(e -> fetchNewArticles());
-        rightContent.add(fetchBtn);
-
-        resetViewBtn = new ToolbarButton("Reset View");
-        resetViewBtn.addActionListener(e -> {
-            CoinGraphPanel current = getCurrentCoinGraphPanel();
-            if (current != null) current.resetView();
-        });
-        resetViewBtn.setVisible(false);
-        rightContent.add(resetViewBtn);
 
         // Pending changes indicator
         JPanel pendingPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
@@ -431,26 +430,20 @@ public class IntelDocumentFrame extends JFrame {
         browsePoolBtn.setVisible(isCuratedMode);
         rightContent.add(browsePoolBtn);
 
-        JButton shareBtn = new ToolbarButton("Share");
-        shareBtn.addActionListener(e -> showShareDialog());
-        shareBtn.setVisible(sharingService != null);
-        rightContent.add(shareBtn);
+        detailViewToggle = new SegmentedToggle(new String[0]);
+        detailViewToggle.setVisible(false);
+        rightContent.add(detailViewToggle);
 
-        chatBtn = new ToolbarButton("Chat");
-        chatBtn.addActionListener(e -> openChat());
-        chatBtn.setVisible(sharingService != null);
-        rightContent.add(chatBtn);
+        JButton historyBtn = new ToolbarButton("History");
+        historyBtn.setToolTipText("Browse fact history log");
+        historyBtn.addActionListener(e -> openWindow("fact-history"));
+        rightContent.add(historyBtn);
 
-        JButton dataStructureBtn = new ToolbarButton("Data Structure");
-        dataStructureBtn.addActionListener(e -> showDataStructureWindow());
-        rightContent.add(dataStructureBtn);
+        JButton docSettingsBtn = new ToolbarButton("Document Settings");
+        docSettingsBtn.addActionListener(e -> showShareDialog());
+        docSettingsBtn.setVisible(true);
+        rightContent.add(docSettingsBtn);
 
-        JButton settingsBtn = new ToolbarButton("Settings");
-        settingsBtn.addActionListener(e -> showSettingsWindow());
-        rightContent.add(settingsBtn);
-
-        rightContent.add(Box.createHorizontalStrut(6));
-        rightContent.add(createUserAvatar());
 
         GridBagConstraints rc = new GridBagConstraints();
         rc.anchor = GridBagConstraints.EAST;
@@ -478,8 +471,6 @@ public class IntelDocumentFrame extends JFrame {
             JPanel card = new JPanel(new BorderLayout());
 
             JComponent graphPanel;
-            JLabel statusLabel = new JLabel("Loading...");
-            statusLabel.setForeground(textSecondary());
 
             if (config.getType() == PanelConfig.PanelType.NEWS_MAP) {
                 TimelineGraphPanel tgp = new TimelineGraphPanel();
@@ -500,22 +491,8 @@ public class IntelDocumentFrame extends JFrame {
 
             card.add(graphPanel, BorderLayout.CENTER);
 
-            JPanel statusBar = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 5));
-            statusBar.add(statusLabel);
-            if (config.getType() == PanelConfig.PanelType.COIN_GRAPH) {
-                coinProgressBar = new JProgressBar(0, 100);
-                coinProgressBar.setPreferredSize(new Dimension(150, 16));
-                coinProgressBar.setStringPainted(true);
-                coinProgressBar.setVisible(false);
-                statusBar.add(coinProgressBar);
-            }
-            JPanel statusWrapper = new JPanel(new BorderLayout());
-            statusWrapper.add(new JSeparator(), BorderLayout.NORTH);
-            statusWrapper.add(statusBar, BorderLayout.CENTER);
-            card.add(statusWrapper, BorderLayout.SOUTH);
-
             cardPanel.add(card, config.getId());
-            panelInstances.add(new PanelInstance(config, card, graphPanel, statusLabel));
+            panelInstances.add(new PanelInstance(config, card, graphPanel));
         }
     }
 
@@ -594,6 +571,7 @@ public class IntelDocumentFrame extends JFrame {
     private void showPlaceholderDetails() {
         detailContent.removeAll();
         currentMode = DetailMode.NONE;
+        detailViewToggle.setVisible(false);
         detailTitleLabel.setText("Details");
         detailHeader.setVisible(true);
 
@@ -624,6 +602,7 @@ public class IntelDocumentFrame extends JFrame {
         selectedArticle = null;
         selectedEntity = null;
         currentMode = DetailMode.NONE;
+        detailViewToggle.setVisible(false);
 
         detailTitleLabel.setText(node.typeId());
         detailHeader.setVisible(true);
@@ -725,6 +704,7 @@ public class IntelDocumentFrame extends JFrame {
         selectedArticle = node;
         selectedEntity = null;
         currentMode = DetailMode.ARTICLE;
+        detailViewToggle.setVisible(false);
         detailTitleLabel.setText("Article");
         detailHeader.setVisible(true);
 
@@ -799,26 +779,24 @@ public class IntelDocumentFrame extends JFrame {
 
         detailContent.removeAll();
 
-        // Segmented toggle: form names + "All Data" (only when forms exist)
+        // Update form selector in header bar
         if (hasLayouts) {
             String[] segments = new String[layouts.size() + 1];
             for (int i = 0; i < layouts.size(); i++) segments[i] = layouts.get(i).name();
             segments[layouts.size()] = "All Data";
 
-            SegmentedToggle detailToggle = new SegmentedToggle(segments);
-            // Clamp saved index to valid range
+            detailViewToggle.setSegments(segments);
             if (entityDetailViewIndex < 0 || entityDetailViewIndex >= segments.length) {
                 entityDetailViewIndex = 0;
             }
-            detailToggle.setSelectedIndex(entityDetailViewIndex);
-            detailToggle.setAlignmentX(Component.LEFT_ALIGNMENT);
-            detailToggle.setMaximumSize(new Dimension(Integer.MAX_VALUE, detailToggle.getPreferredSize().height));
-            detailToggle.setOnSelectionChanged(i -> {
+            detailViewToggle.setSelectedIndex(entityDetailViewIndex);
+            detailViewToggle.setOnSelectionChanged(i -> {
                 entityDetailViewIndex = i;
-                showEntityDetails(entity); // rebuild with new selection
+                showEntityDetails(entity);
             });
-            detailContent.add(detailToggle);
-            addDetailSpacer();
+            detailViewToggle.setVisible(true);
+        } else {
+            detailViewToggle.setVisible(false);
         }
 
         if (hasLayouts && entityDetailViewIndex < layouts.size()) {
@@ -975,6 +953,7 @@ public class IntelDocumentFrame extends JFrame {
                 entityStore.unacceptEntity(entity.id());
                 selectedEntity = null;
                 currentMode = DetailMode.NONE;
+                detailViewToggle.setVisible(false);
                 detailContent.removeAll();
                 detailContent.revalidate();
                 detailContent.repaint();
@@ -1115,7 +1094,6 @@ public class IntelDocumentFrame extends JFrame {
             .toList();
         if (newsPanels.isEmpty()) return;
 
-        for (PanelInstance pi : newsPanels) pi.statusLabel().setText("Loading...");
         logPanel.data("Loading news articles...");
 
         int maxLimit = newsPanels.stream()
@@ -1137,11 +1115,9 @@ public class IntelDocumentFrame extends JFrame {
                         int limit = pi.config().getMaxArticles();
                         List<Article> subset = articles.size() <= limit ? articles : articles.subList(0, limit);
                         tgp.setArticles(subset);
-                        pi.statusLabel().setText(subset.size() + " articles  |  " + store.getArticleCount() + " total");
                     }
                     logPanel.success("Loaded " + articles.size() + " news articles");
                 } catch (Exception e) {
-                    for (PanelInstance pi : newsPanels) pi.statusLabel().setText("Error: " + e.getMessage());
                     logPanel.error("Failed to load news: " + e.getMessage());
                 }
             }
@@ -1158,7 +1134,6 @@ public class IntelDocumentFrame extends JFrame {
         List<PanelInstance> newsPanels = panelInstances.stream()
             .filter(pi -> pi.config().getType() == PanelConfig.PanelType.NEWS_MAP)
             .toList();
-        for (PanelInstance pi : newsPanels) pi.statusLabel().setText("Fetching...");
         logPanel.ai("Starting AI-powered news fetch...");
 
         SwingWorker<DataSource.FetchResult, String> worker = new SwingWorker<>() {
@@ -1184,18 +1159,13 @@ public class IntelDocumentFrame extends JFrame {
                             TimelineGraphPanel tgp = (TimelineGraphPanel) pi.graphPanel();
                             int limit = pi.config().getMaxArticles();
                             List<Article> allArticles = store.getArticles(SqliteNewsStore.ArticleQuery.all(limit));
-                            int added = tgp.addArticles(allArticles);
-                            pi.statusLabel().setText(added + " new  |  " + store.getArticleCount() + " total");
+                            tgp.addArticles(allArticles);
                         }
                         logPanel.success(result.message());
                     } else {
-                        for (PanelInstance pi : newsPanels) {
-                            pi.statusLabel().setText("No new articles  |  " + store.getArticleCount() + " total");
-                        }
                         logPanel.info("No new articles found");
                     }
                 } catch (Exception e) {
-                    for (PanelInstance pi : newsPanels) pi.statusLabel().setText("Error: " + e.getMessage());
                     logPanel.error("Fetch failed: " + e.getMessage());
                 }
             }
@@ -1214,34 +1184,17 @@ public class IntelDocumentFrame extends JFrame {
             .toList();
         if (coinPanels.isEmpty()) return;
 
-        for (PanelInstance pi : coinPanels) pi.statusLabel().setText("Loading...");
         logPanel.data("Loading coin entities...");
 
         SwingWorker<DataSource.FetchResult, String> worker = new SwingWorker<>() {
             @Override
             protected DataSource.FetchResult doInBackground() {
-                return sourceRegistry.refresh("coingecko", forceRefresh, (msg, pct) -> {
-                    publish(msg);
-                    SwingUtilities.invokeLater(() -> {
-                        if (coinProgressBar != null) {
-                            if (pct > 0 && pct < 100) {
-                                coinProgressBar.setVisible(true);
-                                coinProgressBar.setValue(pct);
-                                coinProgressBar.setString(pct + "%");
-                            } else {
-                                coinProgressBar.setVisible(false);
-                            }
-                        }
-                    });
-                });
+                return sourceRegistry.refresh("coingecko", forceRefresh, (msg, pct) -> publish(msg));
             }
 
             @Override
             protected void process(List<String> chunks) {
-                for (String msg : chunks) {
-                    for (PanelInstance pi : coinPanels) pi.statusLabel().setText(msg);
-                    logPanel.data(msg);
-                }
+                for (String msg : chunks) logPanel.data(msg);
             }
 
             @Override
@@ -1266,9 +1219,8 @@ public class IntelDocumentFrame extends JFrame {
 
                     for (PanelInstance pi : coinPanels) {
                         CoinGraphPanel cgp = (CoinGraphPanel) pi.graphPanel();
-                        feedCoinPanel(cgp, pi.config(), pi.statusLabel());
+                        feedCoinPanel(cgp, pi.config());
                     }
-                    if (coinProgressBar != null) coinProgressBar.setVisible(false);
 
                     logPanel.success(result.message());
                 } catch (Exception e) {
@@ -1280,9 +1232,7 @@ public class IntelDocumentFrame extends JFrame {
                     for (PanelInstance pi : coinPanels) {
                         CoinGraphPanel cgp = (CoinGraphPanel) pi.graphPanel();
                         cgp.setData(entities, relationships);
-                        pi.statusLabel().setText(entities.size() + " entities (sample)");
                     }
-                    if (coinProgressBar != null) coinProgressBar.setVisible(false);
                     logPanel.error("Failed to load coin data: " + e.getMessage());
                 }
             }
@@ -1290,7 +1240,7 @@ public class IntelDocumentFrame extends JFrame {
         worker.execute();
     }
 
-    private void feedCoinPanel(CoinGraphPanel cgp, PanelConfig config, JLabel statusLabel) {
+    private void feedCoinPanel(CoinGraphPanel cgp, PanelConfig config) {
         List<CoinEntity> entities = currentEntities;
         List<CoinRelationship> rels = currentRelationships;
 
@@ -1332,21 +1282,12 @@ public class IntelDocumentFrame extends JFrame {
         }
 
         cgp.setData(new ArrayList<>(entities), new ArrayList<>(filteredRels));
-
-        int manual = entityStore.getManualEntityCount();
-        String status = entities.size() + " entities  |  " + filteredRels.size() + " rels";
-        if (manual > 0) status += "  |  " + manual + " manual";
-        if (isCuratedMode) {
-            int poolCount = entityStore.getEntityCount() - entityStore.getAcceptedCount();
-            if (poolCount > 0) status += "  |  " + poolCount + " in pool";
-        }
-        statusLabel.setText(status);
     }
 
     private void refreshAllCoinPanels() {
         for (PanelInstance pi : panelInstances) {
             if (pi.graphPanel() instanceof CoinGraphPanel cgp) {
-                feedCoinPanel(cgp, pi.config(), pi.statusLabel());
+                feedCoinPanel(cgp, pi.config());
             }
         }
     }
@@ -1396,107 +1337,6 @@ public class IntelDocumentFrame extends JFrame {
         cardPanel.repaint();
     }
 
-    // ==================== USER AVATAR ====================
-
-    private JButton userAvatarBtn;
-
-    private JButton createUserAvatar() {
-        userAvatarBtn = new JButton() {
-            @Override
-            protected void paintComponent(Graphics g) {
-                Graphics2D g2 = (Graphics2D) g.create();
-                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-
-                int size = Math.min(getWidth(), getHeight()) - 2;
-                int x = (getWidth() - size) / 2;
-                int y = (getHeight() - size) / 2;
-
-                String email = IntelConfig.get().getUserEmail();
-                boolean loggedIn = email != null && !email.isBlank();
-
-                // Circle background
-                g2.setColor(loggedIn
-                    ? new Color(76, 148, 255)     // blue for logged in
-                    : UIManager.getColor("Button.default.borderColor") != null
-                        ? UIManager.getColor("Button.default.borderColor")
-                        : Color.GRAY);
-                g2.fillOval(x, y, size, size);
-
-                // Text/icon
-                g2.setColor(Color.WHITE);
-                if (loggedIn) {
-                    // Show first letter of email
-                    String initial = email.substring(0, 1).toUpperCase();
-                    g2.setFont(new Font("SansSerif", Font.BOLD, size / 2));
-                    FontMetrics fm = g2.getFontMetrics();
-                    int tx = x + (size - fm.stringWidth(initial)) / 2;
-                    int ty = y + (size - fm.getHeight()) / 2 + fm.getAscent();
-                    g2.drawString(initial, tx, ty);
-                } else {
-                    // Person silhouette — head + shoulders
-                    int cx = x + size / 2;
-                    int headR = size / 5;
-                    g2.fillOval(cx - headR, y + size / 4 - headR, headR * 2, headR * 2);
-                    g2.fillArc(cx - size / 3, y + size / 2, size * 2 / 3, size / 2, 0, 180);
-                }
-
-                g2.dispose();
-            }
-
-            @Override
-            public Dimension getPreferredSize() { return new Dimension(32, 32); }
-            @Override
-            public Dimension getMinimumSize() { return getPreferredSize(); }
-            @Override
-            public Dimension getMaximumSize() { return getPreferredSize(); }
-        };
-
-        userAvatarBtn.setContentAreaFilled(false);
-        userAvatarBtn.setBorderPainted(false);
-        userAvatarBtn.setFocusPainted(false);
-        userAvatarBtn.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
-
-        String email = IntelConfig.get().getUserEmail();
-        userAvatarBtn.setToolTipText(email != null && !email.isBlank()
-            ? email : "Not logged in — click to set identity");
-
-        userAvatarBtn.addActionListener(e -> {
-            String avatarEmail = IntelConfig.get().getUserEmail();
-            if (avatarEmail == null || avatarEmail.isBlank()) {
-                // Not logged in — go straight to share dialog for identity setup
-                showShareDialog();
-                return;
-            }
-            // Show popup menu
-            JPopupMenu menu = new JPopupMenu();
-            JMenuItem emailItem = new JMenuItem(avatarEmail);
-            emailItem.setEnabled(false);
-            menu.add(emailItem);
-            menu.addSeparator();
-            JMenuItem shareItem = new JMenuItem("Share Document");
-            shareItem.addActionListener(ev -> showShareDialog());
-            menu.add(shareItem);
-            JMenuItem friendsItem = new JMenuItem("Friends");
-            friendsItem.addActionListener(ev -> showFriendsDialog());
-            menu.add(friendsItem);
-            JMenuItem chatItem = new JMenuItem("Chat");
-            chatItem.addActionListener(ev -> openChat());
-            menu.add(chatItem);
-            menu.addSeparator();
-            JMenuItem logoutItem = new JMenuItem("Sign Out");
-            logoutItem.addActionListener(ev -> {
-                if (sharingService != null) sharingService.logout();
-                IntelConfig.get().setUserEmail(null);
-                IntelConfig.get().save();
-                userAvatarBtn.setToolTipText("Not logged in — click to set identity");
-                userAvatarBtn.repaint();
-            });
-            menu.add(logoutItem);
-            menu.show(userAvatarBtn, 0, userAvatarBtn.getHeight());
-        });
-
-        return userAvatarBtn;
-    }
 
     // ==================== NETWORK STATUS BAR ====================
 
@@ -1604,12 +1444,17 @@ public class IntelDocumentFrame extends JFrame {
     private void openWindow(String windowName) {
         switch (windowName) {
             case "data-structure" -> showDataStructureWindow();
+            case "fact-history" -> showFactHistoryWindow();
             case "settings" -> showSettingsWindow();
             default -> { toFront(); requestFocus(); }
         }
     }
 
-    private void showDataStructureWindow() {
+    private void showFactHistoryWindow() {
+        FactHistoryFrame.open(entityStore.factStore(), entityStore, this);
+    }
+
+    void showDataStructureWindow() {
         if (dataStructureFrame != null && dataStructureFrame.isShowing()) {
             dataStructureFrame.toFront();
             dataStructureFrame.requestFocus();
@@ -1621,9 +1466,7 @@ public class IntelDocumentFrame extends JFrame {
     }
 
     private void showShareDialog() {
-        if (sharingService == null) return;
-        logPanel.info("Opening Share settings...");
-        ShareDialog dialog = new ShareDialog(this, docId, docDir, entityStore, sharingService, logPanel);
+        ShareDialog dialog = new ShareDialog(this, docId, docDir, entityStore, schemaRegistry, sharingService, logPanel);
         dialog.setVisible(true);
     }
 

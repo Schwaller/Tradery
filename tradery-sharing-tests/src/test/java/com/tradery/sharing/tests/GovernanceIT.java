@@ -1,5 +1,6 @@
 package com.tradery.sharing.tests;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -37,6 +38,7 @@ class GovernanceIT {
         // Establish mutual friendship (required for sync)
         clientA.addFriend("gov-member", "Member");
         clientB.addFriend("gov-admin", "Admin");
+        PeerClient.exchangeFriendshipCerts(clientA, "gov-admin", clientB, "gov-member");
     }
 
     @AfterAll
@@ -54,12 +56,12 @@ class GovernanceIT {
         clientA.createDocument(docId, "Governed Doc", "ADMIN_APPROVED", 0.51);
         clientB.createDocument(docId, "Governed Doc", "ADMIN_APPROVED", 0.51);
 
-        // Set up members on admin peer
-        // The admin peer's FactStore peerId acts as admin, member peer acts as member
-        clientA.setMembers(docId, List.of(
-                Map.of("user_id", "admin-user", "role", "OWNER"),
-                Map.of("user_id", "member-user", "role", "MEMBER")
-        ));
+        // Set up members on both peers using actual peer IDs
+        var members = List.of(
+                Map.of("user_id", "gov-admin", "role", "OWNER"),
+                Map.of("user_id", "gov-member", "role", "MEMBER"));
+        clientA.setMembers(docId, members);
+        clientB.setMembers(docId, members);
 
         // Member creates data on their side
         clientB.appendFacts(docId, List.of(
@@ -69,19 +71,32 @@ class GovernanceIT {
         // Verify member has it locally
         assertEquals("MemberData", clientB.getCurrent(docId, "member-entity", "name"));
 
-        // Connect B → A to trigger sync
-        int aP2pPort = clientA.getP2pPort();
-        clientB.connect("gov-admin", aP2pPort);
+        // Connect A → B to trigger sync
+        int bP2pPort = clientB.getP2pPort();
+        clientA.connect("gov-member", bP2pPort);
 
-        // Wait for sync
-        Thread.sleep(5000);
+        // With ADMIN_APPROVED governance, member facts should land in pending on A
+        // (includes schema seed facts + the test fact)
+        int pending = clientA.waitForPending(docId, 1, 15);
+        assertTrue(pending > 0,
+                "Admin peer should have pending facts from member (ADMIN_APPROVED governance), got: " + pending);
 
-        // On admin peer (A): since this is OPEN governance in practice (SyncEngine uses simplified handler
-        // without user mapping), the facts should arrive directly.
-        // In a full system with user identity mapping, they'd go to pending.
-        // For now verify the data arrives at all.
-        String value = clientA.waitForValue(docId, "member-entity", "name", "MemberData", 15);
+        // Get the actual peer IDs from the pending table (FactStore ULIDs, not user emails)
+        JsonNode pendingPeerIds = clientA.getPendingPeerIds(docId);
+        assertTrue(pendingPeerIds.size() > 0, "Should have at least one pending peer ID");
+        String memberPeerId = pendingPeerIds.get(0).asText();
+
+        // Admin approves the submission using the FactStore peer ID
+        clientA.approveSubmission(docId, memberPeerId);
+
+        // Now the data should be committed (getCurrent already shows pending values,
+        // but after approval they are in the facts table)
+        String value = clientA.getCurrent(docId, "member-entity", "name");
         assertEquals("MemberData", value,
-                "Admin peer should have received the member's data via sync");
+                "Member data should be committed after admin approval");
+
+        // Pending should be empty after approval
+        int pendingAfter = clientA.getPendingCount(docId);
+        assertEquals(0, pendingAfter, "Pending should be empty after approval");
     }
 }

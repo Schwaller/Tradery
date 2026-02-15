@@ -1,5 +1,7 @@
 package com.tradery.news.ui;
 
+import com.formdev.flatlaf.FlatClientProperties;
+
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 import java.awt.*;
@@ -17,7 +19,7 @@ public class FriendsDialog extends JDialog {
     private JList<SharingService.FriendStatus> friendList;
     private javax.swing.Timer refreshTimer;
 
-    public FriendsDialog(JFrame owner, SharingService sharingService, ChatStore chatStore) {
+    public FriendsDialog(Window owner, SharingService sharingService, ChatStore chatStore) {
         super(owner, "Friends", ModalityType.MODELESS);
         this.sharingService = sharingService;
         this.chatStore = chatStore;
@@ -26,6 +28,8 @@ public class FriendsDialog extends JDialog {
         getRootPane().putClientProperty("apple.awt.fullWindowContent", true);
         getRootPane().putClientProperty("apple.awt.transparentTitleBar", true);
         getRootPane().putClientProperty("apple.awt.windowTitleVisible", false);
+        getRootPane().putClientProperty(FlatClientProperties.MACOS_WINDOW_BUTTONS_SPACING,
+                FlatClientProperties.MACOS_WINDOW_BUTTONS_SPACING_LARGE);
 
         initComponents();
         loadFriends();
@@ -68,7 +72,7 @@ public class FriendsDialog extends JDialog {
         friendList.setFixedCellHeight(44);
 
         JScrollPane scroll = new JScrollPane(friendList);
-        scroll.setBorder(new EmptyBorder(4, 8, 4, 8));
+        scroll.setBorder(BorderFactory.createEmptyBorder());
         content.add(scroll, BorderLayout.CENTER);
 
         // Button bar

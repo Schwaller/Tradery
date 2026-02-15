@@ -1,9 +1,9 @@
 #!/bin/bash
 # Publish Plaiiin apps to plaiiin.com
 # Usage:
-#   scripts/publish.sh                    # Publish all 3 apps (unsigned)
+#   scripts/publish.sh                    # Publish all 3 apps (signed + notarized)
 #   scripts/publish.sh forge              # Publish specific app(s)
-#   scripts/publish.sh --signed forge     # Signed + notarized build
+#   scripts/publish.sh --unsigned forge   # Skip signing + notarization
 #   scripts/publish.sh desk intelligence
 
 set -euo pipefail
@@ -18,7 +18,7 @@ BASE_URL="https://plaiiin.com/api/app"
 
 VERSION=$(grep "version = " build.gradle | head -1 | sed "s/.*version = '//;s/'.*//")
 DATE=$(date +%Y-%m-%d)
-SIGNED=false
+SIGNED=true
 
 # ── App lookup ──────────────────────────────────────────────────────────────────
 
@@ -51,8 +51,8 @@ app_dmg_name() {
 
 APPS=""
 for arg in "$@"; do
-    if [ "$arg" = "--signed" ]; then
-        SIGNED=true
+    if [ "$arg" = "--unsigned" ]; then
+        SIGNED=false
     else
         APPS="$APPS $arg"
     fi
@@ -126,8 +126,8 @@ build_app() {
         echo "  Running: ./gradlew :${module}:packageRelease"
         ./gradlew ":${module}:packageRelease" --no-daemon
     else
-        echo "  Running: ./gradlew :${module}:jpackageDmg"
-        ./gradlew ":${module}:jpackageDmg" --no-daemon
+        echo "  Running: ./gradlew :${module}:jpackage"
+        ./gradlew ":${module}:jpackage" --no-daemon
     fi
 
     if [ ! -f "$dmg_path" ]; then

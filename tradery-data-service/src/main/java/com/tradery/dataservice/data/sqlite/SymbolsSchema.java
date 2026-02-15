@@ -15,7 +15,7 @@ public class SymbolsSchema {
     private static final Logger log = LoggerFactory.getLogger(SymbolsSchema.class);
 
     // Current schema version - increment when schema changes
-    public static final int CURRENT_VERSION = 1;
+    public static final int CURRENT_VERSION = 2;
 
     /**
      * Initialize the schema for the symbols database.
@@ -179,6 +179,31 @@ public class SymbolsSchema {
                 CREATE INDEX IF NOT EXISTS idx_coins_symbol
                 ON coins_cache(symbol)
                 """);
+
+            // Coin categories (CoinGecko category → coin mapping)
+            stmt.execute("""
+                CREATE TABLE IF NOT EXISTS coin_categories (
+                    coingecko_id TEXT NOT NULL,
+                    category_id TEXT NOT NULL,
+                    category_name TEXT NOT NULL,
+                    PRIMARY KEY(coingecko_id, category_id)
+                )
+                """);
+
+            stmt.execute("""
+                CREATE INDEX IF NOT EXISTS idx_coin_categories_cat
+                ON coin_categories(category_id)
+                """);
+
+            // Category sync metadata
+            stmt.execute("""
+                CREATE TABLE IF NOT EXISTS category_sync_metadata (
+                    category_id TEXT PRIMARY KEY,
+                    category_name TEXT NOT NULL,
+                    last_sync TEXT,
+                    coin_count INTEGER DEFAULT 0
+                )
+                """);
         }
     }
 
@@ -188,10 +213,41 @@ public class SymbolsSchema {
     private static void migrateSchema(Connection conn, int fromVersion, int toVersion) throws SQLException {
         for (int v = fromVersion + 1; v <= toVersion; v++) {
             switch (v) {
-                // Add migrations here as needed
+                case 2 -> migrateToV2(conn);
                 default -> log.debug("No migration needed for version {}", v);
             }
         }
+    }
+
+    /**
+     * V2: Add coin categories tables for CoinGecko category tagging.
+     */
+    private static void migrateToV2(Connection conn) throws SQLException {
+        try (Statement stmt = conn.createStatement()) {
+            stmt.execute("""
+                CREATE TABLE IF NOT EXISTS coin_categories (
+                    coingecko_id TEXT NOT NULL,
+                    category_id TEXT NOT NULL,
+                    category_name TEXT NOT NULL,
+                    PRIMARY KEY(coingecko_id, category_id)
+                )
+                """);
+
+            stmt.execute("""
+                CREATE INDEX IF NOT EXISTS idx_coin_categories_cat
+                ON coin_categories(category_id)
+                """);
+
+            stmt.execute("""
+                CREATE TABLE IF NOT EXISTS category_sync_metadata (
+                    category_id TEXT PRIMARY KEY,
+                    category_name TEXT NOT NULL,
+                    last_sync TEXT,
+                    coin_count INTEGER DEFAULT 0
+                )
+                """);
+        }
+        log.info("Migrated to v2: added coin_categories and category_sync_metadata tables");
     }
 
     /**
@@ -204,6 +260,8 @@ public class SymbolsSchema {
             stmt.execute("DROP TABLE IF EXISTS trading_pairs");
             stmt.execute("DROP TABLE IF EXISTS sync_metadata");
             stmt.execute("DROP TABLE IF EXISTS coins_cache");
+            stmt.execute("DROP TABLE IF EXISTS coin_categories");
+            stmt.execute("DROP TABLE IF EXISTS category_sync_metadata");
         }
     }
 

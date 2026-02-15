@@ -52,6 +52,7 @@ public class ChatFrame extends JFrame {
                 FlatClientProperties.MACOS_WINDOW_BUTTONS_SPACING_LARGE);
 
         initUI();
+        setJMenuBar(IntelMenuBar.create(this));
         setSize(520, 560);
         setMinimumSize(new Dimension(400, 350));
 
@@ -293,6 +294,8 @@ public class ChatFrame extends JFrame {
         instance.toFront();
         instance.requestFocus();
     }
+
+    public static ChatFrame getInstance() { return instance; }
 
     public static int getUnreadCount() {
         return sharedChatStore != null ? sharedChatStore.unreadCount() : 0;

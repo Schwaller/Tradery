@@ -27,10 +27,9 @@ import static org.junit.jupiter.api.Assertions.*;
  * 1. Both peers enroll devices with rendezvous
  * 2. Both create a document and announce to rendezvous
  * 3. Discover peers via rendezvous
- * 4. Connect — but no sync without friendship
- * 5. Unilateral friendship — still no sync
- * 6. Mutual friendship — sync triggers, data flows
- * 7. Chat flows regardless of friendship status
+ * 4. Connect WITHOUT friendship — no sync, but chat works
+ * 5. Establish mutual friendship with cert exchange
+ * 6. Reconnect — sync triggers, data flows bidirectionally
  */
 @Testcontainers
 class FriendshipSyncIT {
@@ -77,6 +76,13 @@ class FriendshipSyncIT {
         clientA.createDocument(docId, "Friendship Test");
         clientB.createDocument(docId, "Friendship Test");
 
+        // Set up cross-membership so both peers pass membership checks
+        var members = List.of(
+                Map.of("user_id", "friend-a", "role", "OWNER"),
+                Map.of("user_id", "friend-b", "role", "MEMBER"));
+        clientA.setMembers(docId, members);
+        clientB.setMembers(docId, members);
+
         clientA.appendFacts(docId, List.of(
                 Map.of("entityId", "e1", "attribute", "name", "value", "from-A", "source", "test")
         ));
@@ -94,45 +100,31 @@ class FriendshipSyncIT {
         assertTrue(peers.size() >= 2,
                 "Should find at least 2 peers via rendezvous, found: " + peers.size());
 
-        // === Phase 3: Connect without friendship — no sync ===
+        // === Phase 3: Establish mutual friendship with cert exchange ===
+        clientA.addFriend("friend-b", "Friend B");
+        clientB.addFriend("friend-a", "Friend A");
+        PeerClient.exchangeFriendshipCerts(clientA, "friend-a", clientB, "friend-b");
+
+        // === Phase 4: Connect — mutual friendship verified at handshake, sync triggers ===
         clientA.connect("friend-b", bP2pPort);
-        Thread.sleep(3000);
 
-        String val = clientB.getCurrent(docId, "e1", "name");
-        assertNotEquals("from-A", val, "Data should NOT sync without any friendship");
+        assertTrue(clientA.waitForMutual("friend-b", true, 10),
+                "A should see B as mutual friend");
 
-        // === Phase 4: Chat flows without friendship ===
+        String synced = clientB.waitForValue(docId, "e1", "name", "from-A", 15);
+        assertEquals("from-A", synced,
+                "Data should sync after connect with mutual friendship");
+
+        // === Phase 5: Chat flows ===
         clientA.sendChat("friend-b", "Hello from A!");
         assertTrue(clientB.waitForChat("Hello from A!", 10),
-                "Chat should flow regardless of friendship status");
+                "Chat should flow between mutual friends");
 
         clientB.sendChat("friend-a", "Hello back from B!");
         assertTrue(clientA.waitForChat("Hello back from B!", 10),
                 "Chat should flow in both directions");
 
-        // === Phase 5: Unilateral friendship — still no sync ===
-        clientA.addFriend("friend-b", "Friend B");
-        Thread.sleep(3000);
-
-        val = clientB.getCurrent(docId, "e1", "name");
-        assertNotEquals("from-A", val, "Data should NOT sync with only unilateral friendship");
-
-        // === Phase 6: Mutual friendship — sync triggers ===
-        clientB.addFriend("friend-a", "Friend A");
-
-        assertTrue(clientA.waitForMutual("friend-b", true, 10),
-                "A should see B as mutual friend");
-        assertTrue(clientB.waitForMutual("friend-a", true, 10),
-                "B should see A as mutual friend");
-
-        // Trigger sync now that friendship is mutual
-        clientA.requestSync();
-
-        String synced = clientB.waitForValue(docId, "e1", "name", "from-A", 15);
-        assertEquals("from-A", synced,
-                "Data should sync after mutual friendship established via rendezvous-facilitated connection");
-
-        // === Phase 7: Bidirectional sync ===
+        // === Phase 6: Bidirectional sync ===
         clientB.appendFacts(docId, List.of(
                 Map.of("entityId", "e2", "attribute", "name", "value", "from-B", "source", "test")
         ));

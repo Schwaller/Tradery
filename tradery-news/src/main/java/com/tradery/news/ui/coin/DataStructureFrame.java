@@ -3,6 +3,7 @@ package com.tradery.news.ui.coin;
 import com.formdev.flatlaf.FlatClientProperties;
 import com.formdev.flatlaf.util.SystemInfo;
 import com.tradery.news.ui.IntelConfig;
+import com.tradery.news.ui.IntelMenuBar;
 import com.tradery.ui.controls.SegmentedToggle;
 
 import javax.swing.*;
@@ -80,6 +81,7 @@ public class DataStructureFrame extends JFrame {
         mainPanel.add(erdPanel, BorderLayout.CENTER);
 
         setContentPane(mainPanel);
+        setJMenuBar(IntelMenuBar.create(this));
     }
 
     private JPanel createHeaderBar() {

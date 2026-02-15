@@ -50,6 +50,7 @@ class RendezvousIT {
         // Establish mutual friendship (required for sync)
         clientA.addFriend("rdv-b", "B");
         clientB.addFriend("rdv-a", "A");
+        PeerClient.exchangeFriendshipCerts(clientA, "rdv-a", clientB, "rdv-b");
 
         // Enroll devices with rendezvous server
         credentialA = enrollDevice("rdv-a");
@@ -71,6 +72,13 @@ class RendezvousIT {
         // Both peers create the document
         clientA.createDocument(docId, "Rendezvous Test");
         clientB.createDocument(docId, "Rendezvous Test");
+
+        // Set up cross-membership so both peers pass membership checks
+        var members = List.of(
+                Map.of("user_id", "rdv-a", "role", "OWNER"),
+                Map.of("user_id", "rdv-b", "role", "MEMBER"));
+        clientA.setMembers(docId, members);
+        clientB.setMembers(docId, members);
 
         // Peer A creates data
         clientA.appendFacts(docId, List.of(

@@ -99,6 +99,56 @@ public interface SharingService {
     /** Check if a peer email is a mutual friend (both sides have added each other). */
     default boolean isMutualFriend(String email) { return false; }
 
+    // ==================== Presence ====================
+
+    /** Enable or disable presence publishing. When disabled, friends see you as OFFLINE. */
+    default void setPresenceEnabled(boolean enabled) {}
+
+    /** Whether presence publishing is enabled. */
+    default boolean isPresenceEnabled() { return true; }
+
+    /** Query a specific friend's presence state ("ONLINE", "IDLE", "OFFLINE"). */
+    default String queryFriendPresence(String friendEmail) { return "OFFLINE"; }
+
+    // ==================== My Devices ====================
+
+    record DeviceInfo(String host, int port, String ipv6Host) {}
+
+    /** Get other devices belonging to this user (discovered via rendezvous). */
+    default List<DeviceInfo> getMyDevices() { return List.of(); }
+
+    // ==================== Friend Network Status ====================
+
+    /**
+     * Detailed connectivity status for a friend.
+     * @param connectionState "connected" (active P2P), "discovered" (on rendezvous), "offline"
+     * @param presence "ONLINE", "IDLE", "OFFLINE"
+     */
+    record FriendNetworkStatus(String email, String displayName,
+                               String connectionState, String presence) {}
+
+    /** Get network connectivity status for all friends. Uses cached data, safe to call from EDT. */
+    default List<FriendNetworkStatus> getFriendNetworkStatuses() { return List.of(); }
+
+    // ==================== Performance Test ====================
+
+    record PerfTestResult(double avgLatencyMs, double minLatencyMs, double maxLatencyMs,
+                          double throughputKBps, double packetLossPercent, int pingsReceived, int pingsSent) {}
+
+    record PerfTestRequest(String testId, String fromEmail, String fromDisplayName) {}
+
+    default void startPerfTest(String friendEmail, Consumer<PerfTestResult> onComplete) {}
+    default void respondToPerfTest(String testId, boolean accept) {}
+    default void addPerfRequestListener(Consumer<PerfTestRequest> l) {}
+    default void removePerfRequestListener(Consumer<PerfTestRequest> l) {}
+
+    // ==================== Connected Devices ====================
+
+    record ConnectedDevice(String email, String displayName, String deviceId,
+                           String address, String connectionType, boolean mutualFriend) {}
+
+    default List<ConnectedDevice> getConnectedDevices() { return List.of(); }
+
     // ==================== Network Status ====================
 
     record NetworkStatus(
@@ -107,6 +157,7 @@ public interface SharingService {
         int serverPort,            // PeerServer listen port, 0 if not started
         String portMapping,        // "NAT-PMP", "UPnP", null if none
         String publicIp,           // from STUN or port mapping, null if unknown
+        String publicIpv6,         // from IPv6 STUN, null if unavailable
         boolean lanActive,         // LAN discovery running
         int lanPeerCount,          // visible LAN peers
         boolean rendezvousAvailable, // device enrolled + rendezvous reachable

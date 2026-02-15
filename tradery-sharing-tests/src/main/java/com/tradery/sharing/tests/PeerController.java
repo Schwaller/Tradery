@@ -6,10 +6,15 @@ import com.tradery.documents.DocumentManager;
 import com.tradery.documents.DocumentMember;
 import com.tradery.documents.DocumentWorkspace;
 import com.tradery.news.ui.FriendConfig;
+import com.tradery.news.ui.FriendshipCertData;
 import com.tradery.news.ui.IntelConfig;
 import com.tradery.news.ui.coin.FactStore;
 import com.tradery.sharing.governance.GovernanceEngine;
+import com.tradery.sharing.identity.CertSigner;
+import com.tradery.sharing.identity.IdentityCert;
+import com.tradery.sharing.sync.FactSigner;
 import com.tradery.sharing.sync.NetworkMessage;
+import com.tradery.sharing.discovery.RendezvousClient;
 import com.tradery.sharing.sync.PeerManager;
 import io.javalin.Javalin;
 import io.javalin.http.Context;
@@ -18,6 +23,8 @@ import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.nio.file.Path;
+import java.security.GeneralSecurityException;
+import java.security.KeyPair;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -33,9 +40,15 @@ public class PeerController {
     private final String peerId;
     private final DocumentManager documentManager;
     private final PeerManager peerManager;
+    private final CertSigner certSigner;
     private final ObjectMapper mapper;
     private final Map<String, DocumentWorkspace> workspaces = new ConcurrentHashMap<>();
     private final List<NetworkMessage.ChatMessage> receivedChats = new CopyOnWriteArrayList<>();
+
+    /** Rendezvous client + credential for presence testing. */
+    private RendezvousClient rendezvousClient;
+    private String deviceCredential;
+    private volatile boolean presenceEnabled = true;
 
     public PeerController(String peerId, Path dataDir, ObjectMapper mapper) throws IOException {
         this.peerId = peerId;
@@ -43,14 +56,33 @@ public class PeerController {
         this.documentManager = new DocumentManager(dataDir.resolve("documents"));
         this.peerManager = new PeerManager(peerId, peerId, documentManager, mapper);
 
+        // Create keypair and identity cert for P2P authentication
+        try {
+            KeyPair kp = FactSigner.generateKeyPair();
+            this.certSigner = new CertSigner(kp);
+            IdentityCert identityCert = certSigner.createIdentityCert(peerId);
+            peerManager.setCertSigner(certSigner);
+            peerManager.setLocalIdentityCert(identityCert);
+        } catch (GeneralSecurityException e) {
+            throw new IOException("Failed to create identity keypair", e);
+        }
+
         // Initialize IntelConfig for this peer
         IntelConfig config = IntelConfig.get();
         config.setUserEmail(peerId);
         config.setDeviceId(peerId);
         config.save();
 
+        // Start the UDP dispatch loop (required for P2P connections)
+        peerManager.startServer();
+
         // Listen for incoming chat messages
         peerManager.addChatListener(receivedChats::add);
+    }
+
+    public void setRendezvousClient(RendezvousClient client, String credential) {
+        this.rendezvousClient = client;
+        this.deviceCredential = credential;
     }
 
     public void registerRoutes(Javalin app) {
@@ -79,10 +111,17 @@ public class PeerController {
         app.delete("/friends/{email}", this::handleRemoveFriend);
         app.get("/friends", this::handleGetFriends);
         app.get("/mutual/{email}", this::handleIsMutualFriend);
+        app.get("/friends/{email}/issued-cert", this::handleGetIssuedCert);
+        app.post("/friends/{email}/received-cert", this::handleSetReceivedCert);
 
         // Chat
         app.post("/chat", this::handleSendChat);
         app.get("/chat", this::handleGetChatMessages);
+
+        // Presence
+        app.post("/presence", this::handlePublishPresence);
+        app.get("/presence/{userId}", this::handleQueryPresence);
+        app.post("/presence/enabled", this::handleSetPresenceEnabled);
     }
 
     private void handleStatus(Context ctx) {
@@ -114,6 +153,10 @@ public class PeerController {
         }
 
         documentManager.updateDocument(doc);
+
+        // Write initial members list with creator as OWNER
+        documentManager.writeMembers(docId, new ArrayList<>(List.of(
+                new DocumentMember(peerId, DocumentMember.Role.OWNER))));
 
         // Open workspace
         DocumentWorkspace ws = documentManager.openDocument(docId);
@@ -334,9 +377,18 @@ public class PeerController {
 
     private void handleAddFriend(Context ctx) {
         AddFriendRequest req = ctx.bodyAsClass(AddFriendRequest.class);
-        IntelConfig.get().addFriend(new FriendConfig(req.email(), req.displayName()));
+        FriendConfig friend = new FriendConfig(req.email(), req.displayName());
+
+        // Create issuedCert (our signature saying "we accept this friend")
+        try {
+            FriendshipCertData issuedCert = certSigner.createFriendshipCert(peerId, req.email());
+            friend.setIssuedCert(issuedCert);
+        } catch (GeneralSecurityException e) {
+            log.warn("Failed to create friendship cert for {}: {}", req.email(), e.getMessage());
+        }
+
+        IntelConfig.get().addFriend(friend);
         IntelConfig.get().save();
-        // cert exchange handles friendship now (no re-announce needed)
         log.info("Added friend: {}", req.email());
         ctx.status(200).result("OK");
     }
@@ -363,6 +415,30 @@ public class PeerController {
         ctx.json(Map.of("mutual", mutual));
     }
 
+    private void handleGetIssuedCert(Context ctx) {
+        String email = ctx.pathParam("email");
+        FriendConfig friend = IntelConfig.get().getFriendByEmail(email);
+        if (friend == null || friend.getIssuedCert() == null) {
+            ctx.status(404).result("No issued cert for " + email);
+            return;
+        }
+        ctx.json(friend.getIssuedCert());
+    }
+
+    private void handleSetReceivedCert(Context ctx) {
+        String email = ctx.pathParam("email");
+        FriendConfig friend = IntelConfig.get().getFriendByEmail(email);
+        if (friend == null) {
+            ctx.status(404).result("Friend not found: " + email);
+            return;
+        }
+        FriendshipCertData cert = ctx.bodyAsClass(FriendshipCertData.class);
+        friend.setReceivedCert(cert);
+        IntelConfig.get().save();
+        log.info("Set received cert for friend {}", email);
+        ctx.status(200).result("OK");
+    }
+
     // ==================== Chat ====================
 
     private void handleSendChat(Context ctx) {
@@ -381,6 +457,60 @@ public class PeerController {
         )).toList());
     }
 
+    // ==================== Presence ====================
+
+    private void handlePublishPresence(Context ctx) {
+        if (rendezvousClient == null || deviceCredential == null) {
+            ctx.status(503).result("Rendezvous not configured");
+            return;
+        }
+        if (!presenceEnabled) {
+            ctx.status(200).result("Presence disabled");
+            return;
+        }
+        PresenceBody body = ctx.bodyAsClass(PresenceBody.class);
+        try {
+            rendezvousClient.publishPresence(deviceCredential, body.state());
+            ctx.status(200).result("OK");
+        } catch (Exception e) {
+            ctx.status(500).result("Presence publish failed: " + e.getMessage());
+        }
+    }
+
+    private void handleQueryPresence(Context ctx) {
+        if (rendezvousClient == null || deviceCredential == null) {
+            ctx.status(503).result("Rendezvous not configured");
+            return;
+        }
+        String targetUserId = ctx.pathParam("userId");
+        String friendId = ctx.queryParam("friendId");
+        if (friendId == null) friendId = targetUserId;
+
+        // Look up the received cert for the target friend
+        FriendConfig fc = IntelConfig.get().getFriendByEmail(friendId);
+        if (fc == null || fc.getReceivedCert() == null) {
+            ctx.status(404).result("No received cert for " + friendId);
+            return;
+        }
+        try {
+            String certJson = mapper.writeValueAsString(fc.getReceivedCert());
+            var info = rendezvousClient.queryPresence(deviceCredential, targetUserId, certJson);
+            if (info != null) {
+                ctx.json(Map.of("userId", info.userId(), "state", info.state(), "updatedAt", info.updatedAt()));
+            } else {
+                ctx.json(Map.of("userId", targetUserId, "state", "OFFLINE", "updatedAt", 0));
+            }
+        } catch (Exception e) {
+            ctx.status(500).result("Presence query failed: " + e.getMessage());
+        }
+    }
+
+    private void handleSetPresenceEnabled(Context ctx) {
+        PresenceEnabledBody body = ctx.bodyAsClass(PresenceEnabledBody.class);
+        this.presenceEnabled = body.enabled();
+        ctx.status(200).result("OK");
+    }
+
     // ==================================================
 
     public void close() {
@@ -389,4 +519,6 @@ public class PeerController {
     }
 
     record MemberListWrapper(List<DocumentMember> members) {}
+    record PresenceBody(String state) {}
+    record PresenceEnabledBody(boolean enabled) {}
 }

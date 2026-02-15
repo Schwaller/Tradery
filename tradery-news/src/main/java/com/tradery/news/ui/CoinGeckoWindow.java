@@ -42,6 +42,7 @@ public class CoinGeckoWindow extends JFrame {
         setMinimumSize(new Dimension(400, 300));
 
         initUI();
+        setJMenuBar(IntelMenuBar.create(this));
         reloadTable();
     }
 

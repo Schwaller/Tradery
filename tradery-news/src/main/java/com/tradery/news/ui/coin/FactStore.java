@@ -191,6 +191,7 @@ public class FactStore {
             s.execute("CREATE INDEX IF NOT EXISTS idx_facts_entity ON facts(entity_id)");
             s.execute("CREATE INDEX IF NOT EXISTS idx_facts_lclock ON facts(lclock)");
             s.execute("CREATE INDEX IF NOT EXISTS idx_facts_commit ON facts(commit_id)");
+            s.execute("CREATE INDEX IF NOT EXISTS idx_facts_wall_clock ON facts(wall_clock)");
 
             s.execute("""
                 CREATE TABLE IF NOT EXISTS current (
@@ -1092,6 +1093,205 @@ public class FactStore {
         if (conn != null) {
             try { conn.close(); } catch (SQLException ignored) {}
         }
+    }
+
+    // ==================== FACT HISTORY QUERIES ====================
+
+    public record FactQuery(int limit, int offset, String search) {}
+
+    /** Paginated query of committed facts, ordered by wall_clock DESC. */
+    public List<Fact> queryFacts(FactQuery query) {
+        List<Fact> facts = new ArrayList<>();
+        if (conn == null) return facts;
+        try {
+            String sql;
+            if (query.search() != null && !query.search().isBlank()) {
+                sql = "SELECT * FROM facts WHERE entity_id LIKE ? OR attribute LIKE ? OR value LIKE ? OR source LIKE ? ORDER BY wall_clock DESC, lclock DESC LIMIT ? OFFSET ?";
+            } else {
+                sql = "SELECT * FROM facts ORDER BY wall_clock DESC, lclock DESC LIMIT ? OFFSET ?";
+            }
+            try (PreparedStatement ps = conn.prepareStatement(sql)) {
+                int idx = 1;
+                if (query.search() != null && !query.search().isBlank()) {
+                    String pattern = "%" + query.search() + "%";
+                    ps.setString(idx++, pattern);
+                    ps.setString(idx++, pattern);
+                    ps.setString(idx++, pattern);
+                    ps.setString(idx++, pattern);
+                }
+                ps.setInt(idx++, query.limit());
+                ps.setInt(idx, query.offset());
+                ResultSet rs = ps.executeQuery();
+                while (rs.next()) {
+                    facts.add(mapFact(rs));
+                }
+            }
+        } catch (SQLException e) {
+            System.err.println("Failed to query facts: " + e.getMessage());
+        }
+        return facts;
+    }
+
+    /** Count facts matching a search query (or all facts if search is null). */
+    public int countFacts(FactQuery query) {
+        if (conn == null) return 0;
+        try {
+            String sql;
+            if (query.search() != null && !query.search().isBlank()) {
+                sql = "SELECT COUNT(*) FROM facts WHERE entity_id LIKE ? OR attribute LIKE ? OR value LIKE ? OR source LIKE ?";
+            } else {
+                sql = "SELECT COUNT(*) FROM facts";
+            }
+            try (PreparedStatement ps = conn.prepareStatement(sql)) {
+                if (query.search() != null && !query.search().isBlank()) {
+                    String pattern = "%" + query.search() + "%";
+                    ps.setString(1, pattern);
+                    ps.setString(2, pattern);
+                    ps.setString(3, pattern);
+                    ps.setString(4, pattern);
+                }
+                ResultSet rs = ps.executeQuery();
+                return rs.next() ? rs.getInt(1) : 0;
+            }
+        } catch (SQLException e) {
+            System.err.println("Failed to count facts: " + e.getMessage());
+            return 0;
+        }
+    }
+
+    // ==================== COMMIT HISTORY QUERIES ====================
+
+    public record CommitQuery(int limit, int offset, String search) {}
+
+    public record CommitSummary(String commitId, long wallClock, String source,
+                                 String peerId, int factCount, int entityCount) {}
+
+    /** Paginated query of commits, ordered by wall_clock DESC. */
+    public List<CommitSummary> queryCommits(CommitQuery query) {
+        List<CommitSummary> commits = new ArrayList<>();
+        if (conn == null) return commits;
+        try {
+            String sql;
+            if (query.search() != null && !query.search().isBlank()) {
+                sql = """
+                    SELECT commit_id, MAX(wall_clock) as wall_clock,
+                           GROUP_CONCAT(DISTINCT source) as sources,
+                           MAX(peer_id) as peer_id,
+                           COUNT(*) as fact_count,
+                           COUNT(DISTINCT entity_id) as entity_count
+                    FROM facts
+                    WHERE commit_id IS NOT NULL
+                      AND (entity_id LIKE ? OR attribute LIKE ? OR value LIKE ? OR source LIKE ?)
+                    GROUP BY commit_id
+                    ORDER BY MAX(wall_clock) DESC
+                    LIMIT ? OFFSET ?
+                    """;
+            } else {
+                sql = """
+                    SELECT commit_id, MAX(wall_clock) as wall_clock,
+                           GROUP_CONCAT(DISTINCT source) as sources,
+                           MAX(peer_id) as peer_id,
+                           COUNT(*) as fact_count,
+                           COUNT(DISTINCT entity_id) as entity_count
+                    FROM facts
+                    WHERE commit_id IS NOT NULL
+                    GROUP BY commit_id
+                    ORDER BY MAX(wall_clock) DESC
+                    LIMIT ? OFFSET ?
+                    """;
+            }
+            try (PreparedStatement ps = conn.prepareStatement(sql)) {
+                int idx = 1;
+                if (query.search() != null && !query.search().isBlank()) {
+                    String pattern = "%" + query.search() + "%";
+                    ps.setString(idx++, pattern);
+                    ps.setString(idx++, pattern);
+                    ps.setString(idx++, pattern);
+                    ps.setString(idx++, pattern);
+                }
+                ps.setInt(idx++, query.limit());
+                ps.setInt(idx, query.offset());
+                ResultSet rs = ps.executeQuery();
+                while (rs.next()) {
+                    commits.add(new CommitSummary(
+                        rs.getString("commit_id"),
+                        rs.getLong("wall_clock"),
+                        rs.getString("sources"),
+                        rs.getString("peer_id"),
+                        rs.getInt("fact_count"),
+                        rs.getInt("entity_count")
+                    ));
+                }
+            }
+        } catch (SQLException e) {
+            System.err.println("Failed to query commits: " + e.getMessage());
+        }
+        return commits;
+    }
+
+    /** Count distinct commits matching a search query (or all commits if search is null). */
+    public int countCommits(CommitQuery query) {
+        if (conn == null) return 0;
+        try {
+            String sql;
+            if (query.search() != null && !query.search().isBlank()) {
+                sql = """
+                    SELECT COUNT(DISTINCT commit_id) FROM facts
+                    WHERE commit_id IS NOT NULL
+                      AND (entity_id LIKE ? OR attribute LIKE ? OR value LIKE ? OR source LIKE ?)
+                    """;
+            } else {
+                sql = "SELECT COUNT(DISTINCT commit_id) FROM facts WHERE commit_id IS NOT NULL";
+            }
+            try (PreparedStatement ps = conn.prepareStatement(sql)) {
+                if (query.search() != null && !query.search().isBlank()) {
+                    String pattern = "%" + query.search() + "%";
+                    ps.setString(1, pattern);
+                    ps.setString(2, pattern);
+                    ps.setString(3, pattern);
+                    ps.setString(4, pattern);
+                }
+                ResultSet rs = ps.executeQuery();
+                return rs.next() ? rs.getInt(1) : 0;
+            }
+        } catch (SQLException e) {
+            System.err.println("Failed to count commits: " + e.getMessage());
+            return 0;
+        }
+    }
+
+    /** Get all facts for a specific commit, ordered by entity_id, attribute. */
+    public List<Fact> getFactsByCommitId(String commitId) {
+        List<Fact> facts = new ArrayList<>();
+        if (conn == null || commitId == null) return facts;
+        try (PreparedStatement ps = conn.prepareStatement(
+                "SELECT * FROM facts WHERE commit_id = ? ORDER BY entity_id, attribute")) {
+            ps.setString(1, commitId);
+            ResultSet rs = ps.executeQuery();
+            while (rs.next()) {
+                facts.add(mapFact(rs));
+            }
+        } catch (SQLException e) {
+            System.err.println("Failed to get facts by commit ID: " + e.getMessage());
+        }
+        return facts;
+    }
+
+    /** Get distinct entity IDs for a commit (for summary display). */
+    public List<String> getEntityIdsForCommit(String commitId) {
+        List<String> ids = new ArrayList<>();
+        if (conn == null || commitId == null) return ids;
+        try (PreparedStatement ps = conn.prepareStatement(
+                "SELECT DISTINCT entity_id FROM facts WHERE commit_id = ? ORDER BY entity_id")) {
+            ps.setString(1, commitId);
+            ResultSet rs = ps.executeQuery();
+            while (rs.next()) {
+                ids.add(rs.getString("entity_id"));
+            }
+        } catch (SQLException e) {
+            System.err.println("Failed to get entity IDs for commit: " + e.getMessage());
+        }
+        return ids;
     }
 
     // ==================== RECORDS ====================

@@ -13,6 +13,8 @@ import okhttp3.Response;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.tradery.dataservice.data.sqlite.dao.SymbolDao.CategorySyncMetadata;
+
 import java.io.IOException;
 import java.sql.SQLException;
 import java.time.Duration;
@@ -39,6 +41,43 @@ public class SymbolSyncService {
 
     // Default quote currencies to look for
     private static final Set<String> COMMON_QUOTES = Set.of("USDT", "USDC", "USD", "BUSD", "BTC", "ETH");
+
+    // Curated CoinGecko categories: id → display name
+    private static final LinkedHashMap<String, String> CATEGORY_IDS = new LinkedHashMap<>();
+    static {
+        // Core categories (what the coin is)
+        CATEGORY_IDS.put("layer-1", "L1");
+        CATEGORY_IDS.put("layer-2", "L2");
+        CATEGORY_IDS.put("layer-0-l0", "L0");
+        CATEGORY_IDS.put("meme-token", "Meme");
+        CATEGORY_IDS.put("decentralized-finance-defi", "DeFi");
+        CATEGORY_IDS.put("artificial-intelligence", "AI");
+        CATEGORY_IDS.put("ai-agents", "AI Agents");
+        CATEGORY_IDS.put("gaming", "Gaming");
+        CATEGORY_IDS.put("oracle", "Oracle");
+        CATEGORY_IDS.put("depin", "DePIN");
+        CATEGORY_IDS.put("privacy-coins", "Privacy");
+        CATEGORY_IDS.put("real-world-assets-rwa", "RWA");
+        CATEGORY_IDS.put("non-fungible-tokens-nft", "NFT");
+        CATEGORY_IDS.put("decentralized-exchange", "DEX");
+        CATEGORY_IDS.put("stablecoins", "Stable");
+        CATEGORY_IDS.put("centralized-exchange-token-cex", "CEX Token");
+        CATEGORY_IDS.put("zero-knowledge-zk", "ZK");
+        CATEGORY_IDS.put("cross-chain-communication", "Bridge");
+        CATEGORY_IDS.put("governance", "Governance");
+        CATEGORY_IDS.put("infrastructure", "Infra");
+        CATEGORY_IDS.put("lending-borrowing", "Lending");
+        CATEGORY_IDS.put("prediction-markets", "Prediction");
+        CATEGORY_IDS.put("storage", "Storage");
+        CATEGORY_IDS.put("metaverse", "Metaverse");
+        // VC/Launchpad categories (who backs it)
+        CATEGORY_IDS.put("yzi-labs-portfolio", "YZi Labs");
+        CATEGORY_IDS.put("binance-launchpool", "Binance Pool");
+        CATEGORY_IDS.put("binance-launchpad", "Binance Pad");
+        CATEGORY_IDS.put("coinlist-launchpad", "CoinList");
+        CATEGORY_IDS.put("world-liberty-financial-portfolio", "WLFI");
+        CATEGORY_IDS.put("binance-alpha-spotlight", "Binance Alpha");
+    }
 
     private final CoinGeckoClient coingeckoClient;
     private final SymbolsConnection connection;
@@ -150,11 +189,19 @@ public class SymbolSyncService {
                 }
             }
 
+            // Sync categories after exchange pairs
+            int categorySyncCount = 0;
+            try {
+                categorySyncCount = syncCategories();
+            } catch (Exception e) {
+                log.error("Category sync failed: {}", e.getMessage());
+            }
+
             Duration elapsed = Duration.between(start, Instant.now());
             int totalPairs = results.stream().mapToInt(ExchangeSyncResult::pairCount).sum();
             int skipped = (int) results.stream().filter(r -> "SKIPPED".equals(r.status())).count();
-            log.info("Symbol sync complete: {} pairs, {} skipped, {} exchanges in {}s",
-                totalPairs, skipped, results.size() - skipped, elapsed.getSeconds());
+            log.info("Symbol sync complete: {} pairs, {} skipped, {} exchanges, {} categories in {}s",
+                totalPairs, skipped, results.size() - skipped, categorySyncCount, elapsed.getSeconds());
 
             return new SyncResult(results, elapsed);
         } finally {
@@ -404,6 +451,66 @@ public class SymbolSyncService {
         return EXCHANGE_MAPPINGS.keySet();
     }
 
+    // ========== Category Sync ==========
+
+    /**
+     * Sync all curated CoinGecko categories.
+     * Fetches coins per category and stores the mapping.
+     *
+     * @return Number of categories successfully synced
+     */
+    public int syncCategories() throws SQLException {
+        log.info("Starting category sync ({} categories)...", CATEGORY_IDS.size());
+
+        int synced = 0;
+        int totalCoins = 0;
+
+        for (Map.Entry<String, String> entry : CATEGORY_IDS.entrySet()) {
+            String categoryId = entry.getKey();
+            String categoryName = entry.getValue();
+
+            currentProgress = new SyncProgress("categories", categoryId, null,
+                0, synced, CATEGORY_IDS.size(), 0, totalCoins, System.currentTimeMillis());
+
+            try {
+                List<String> coinIds = coingeckoClient.fetchCategoryCoins(categoryId);
+                int count = symbolDao.upsertCoinCategoriesBatch(categoryId, categoryName, coinIds);
+                symbolDao.updateCategorySyncMetadata(categoryId, categoryName, count);
+                totalCoins += count;
+                synced++;
+                log.debug("Synced category '{}': {} coins", categoryName, count);
+            } catch (Exception e) {
+                log.warn("Failed to sync category '{}': {}", categoryName, e.getMessage());
+                // Continue with next category
+            }
+        }
+
+        log.info("Category sync complete: {}/{} categories, {} total coin-category mappings",
+            synced, CATEGORY_IDS.size(), totalCoins);
+        return synced;
+    }
+
+    /**
+     * Get the curated category display names map.
+     */
+    public static Map<String, String> getCategoryDisplayNames() {
+        return Collections.unmodifiableMap(CATEGORY_IDS);
+    }
+
+    /**
+     * Get category sync metadata from the database.
+     */
+    public List<CategorySyncMetadata> getCategorySyncMetadata() throws SQLException {
+        return symbolDao.getCategorySyncMetadata();
+    }
+
+    /**
+     * Count categorized coins.
+     */
+    public int countCategorizedCoins() throws SQLException {
+        return symbolDao.countCategorizedCoins();
+    }
+
     // ========== Direct Exchange API Fallback ==========
 
     private static final Map<String, String> EXCHANGE_INFO_URLS = Map.of(
@@ -619,8 +726,8 @@ public class SymbolSyncService {
      * Live progress of a sync operation.
      */
     public record SyncProgress(
-        String step,           // "coins_list", "exchange_tickers"
-        String exchange,       // current exchange being synced (null for coins_list)
+        String step,           // "coins_list", "exchange_tickers", "categories"
+        String exchange,       // current exchange/category being synced (null for coins_list)
         String marketType,     // "spot" or "perp" (null for coins_list)
         int currentPage,       // current page being fetched (0 if N/A)
         int completedSteps,    // how many exchange/market combos done

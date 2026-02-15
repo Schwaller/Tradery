@@ -11,6 +11,7 @@ public class DocumentMember {
 
     @JsonProperty("user_id")
     private String userId;
+    @JsonProperty("role")
     private Role role;
 
     public DocumentMember() {}

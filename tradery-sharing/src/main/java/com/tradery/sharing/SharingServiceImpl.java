@@ -25,6 +25,9 @@ import com.tradery.news.ui.FriendConfig;
 import com.tradery.news.ui.IntelConfig;
 import com.tradery.sharing.sync.NetworkMessage;
 
+import java.awt.AWTEvent;
+import java.awt.Toolkit;
+import java.awt.event.AWTEventListener;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.security.GeneralSecurityException;
@@ -34,6 +37,7 @@ import java.util.Base64;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 
 /**
@@ -58,6 +62,7 @@ public class SharingServiceImpl implements SharingService {
     private UpnpPortMapper upnpMapper;
     private volatile String portMappingMethod;  // "NAT-PMP", "UPnP", or null
     private volatile String publicIp;           // from STUN or port mapper
+    private volatile String publicIpv6;         // from IPv6 STUN, null if unavailable
     private volatile int announcePort;          // external port to announce to rendezvous
     private volatile boolean lanActive;
     private UserSession localSession;
@@ -76,6 +81,32 @@ public class SharingServiceImpl implements SharingService {
 
     /** Chat listeners registered by the UI. */
     private final List<Consumer<ChatMessage>> chatListeners = new CopyOnWriteArrayList<>();
+
+    /** Performance test request listeners registered by the UI. */
+    private final List<Consumer<PerfTestRequest>> perfRequestListeners = new CopyOnWriteArrayList<>();
+
+    /** Tracks active perf test state: testId -> callback. */
+    private final ConcurrentHashMap<String, Consumer<PerfTestResult>> activePerfTests = new ConcurrentHashMap<>();
+
+    /** Tracks which device each perf test is with. */
+    private final ConcurrentHashMap<String, String> perfTestDevices = new ConcurrentHashMap<>();
+
+    /** Tracks which device initiated each incoming perf request. */
+    private final ConcurrentHashMap<String, String> incomingPerfRequests = new ConcurrentHashMap<>();
+
+    /** Presence: track last user activity for ONLINE vs IDLE detection. */
+    private final AtomicLong lastActivityMs = new AtomicLong(System.currentTimeMillis());
+    private static final long IDLE_THRESHOLD_MS = 5 * 60 * 1000; // 5 minutes
+    private volatile boolean presenceEnabled = true;
+
+    /** Cached list of other devices belonging to this user, updated by discovery loop. */
+    private volatile List<DeviceInfo> myDevices = List.of();
+
+    /** Friends visible on rendezvous (their email), updated by discovery loop. */
+    private volatile java.util.Set<String> rendezvousVisibleFriends = java.util.Set.of();
+
+    /** Cached friend presence states, updated by presence heartbeat. */
+    private final ConcurrentHashMap<String, String> friendPresenceCache = new ConcurrentHashMap<>();
 
     public SharingServiceImpl(Path documentsDir) {
         this.documentManager = new DocumentManager(documentsDir);
@@ -500,6 +531,7 @@ public class SharingServiceImpl implements SharingService {
             peerManager != null ? peerManager.serverPort() : 0,
             portMappingMethod,
             publicIp,
+            publicIpv6,
             lanActive,
             lanDiscovery != null ? lanDiscovery.activePeers().size() : 0,
             deviceCredential != null,
@@ -516,6 +548,7 @@ public class SharingServiceImpl implements SharingService {
         String deviceId = IntelConfig.get().getDeviceId();
         peerManager = new PeerManager(peerId, deviceId, documentManager, mapper);
         peerManager.addChatListener(this::onNetworkChat);
+        peerManager.addPerfListener(this::onPerfMessage);
         peerManager.setFriendshipDocIds(computeFriendshipDocIds());
 
         // Wire up cert signer + identity cert
@@ -540,6 +573,13 @@ public class SharingServiceImpl implements SharingService {
             publicIp = stunEndpoint.ip();
             announcePort = stunEndpoint.port();
             log.info("STUN: public endpoint {}:{} (local port {})", stunEndpoint.ip(), stunEndpoint.port(), peerManager.serverPort());
+        }
+
+        // IPv6 STUN discovery (dual-stack socket can send/receive IPv6)
+        var stunV6 = stun.discoverIpv6(peerManager.serverSocket());
+        if (stunV6 != null) {
+            publicIpv6 = stunV6.ip();
+            log.info("IPv6: globally routable at [{}]:{}", stunV6.ip(), stunV6.port());
         }
 
         // Now start the dispatch loop (after STUN is done using the socket)
@@ -593,8 +633,9 @@ public class SharingServiceImpl implements SharingService {
             try {
                 var docIds = new ArrayList<>(workspaces.keySet());
                 docIds.addAll(computeFriendshipDocIds());
-                rendezvousClient.announce(deviceCredential, peerId, announcePort, docIds);
-                log.info("Rendezvous: announced as {} with {} docs ({}+{} friendship)", peerId, docIds.size(), workspaces.size(), docIds.size() - workspaces.size());
+                rendezvousClient.announce(deviceCredential, peerId, announcePort, docIds, publicIpv6);
+                log.info("Rendezvous: announced as {} with {} docs ({}+{} friendship){}", peerId, docIds.size(), workspaces.size(), docIds.size() - workspaces.size(),
+                        publicIpv6 != null ? " [IPv6: " + publicIpv6 + "]" : "");
             } catch (RendezvousClient.CredentialRejectedException e) {
                 log.warn("Rendezvous: credential rejected on initial announce, re-enrolling...");
                 reEnrollDevice();
@@ -603,7 +644,7 @@ public class SharingServiceImpl implements SharingService {
                     try {
                         var docIds2 = new ArrayList<>(workspaces.keySet());
                         docIds2.addAll(computeFriendshipDocIds());
-                        rendezvousClient.announce(deviceCredential, peerId, announcePort, docIds2);
+                        rendezvousClient.announce(deviceCredential, peerId, announcePort, docIds2, publicIpv6);
                         log.info("Rendezvous: re-announced after re-enrollment with {} docs", docIds2.size());
                     } catch (Exception e2) {
                         log.warn("Rendezvous: re-announce after re-enrollment failed: {}", e2.getMessage());
@@ -636,7 +677,7 @@ public class SharingServiceImpl implements SharingService {
                         docIds.addAll(computeFriendshipDocIds());
 
                         try {
-                            rendezvousClient.announce(deviceCredential, peerId, announcePort, docIds);
+                            rendezvousClient.announce(deviceCredential, peerId, announcePort, docIds, publicIpv6);
                         } catch (RendezvousClient.CredentialRejectedException e) {
                             log.warn("Rendezvous: credential rejected, re-enrolling...");
                             reEnrollDevice();
@@ -645,13 +686,15 @@ public class SharingServiceImpl implements SharingService {
                             log.debug("Rendezvous: re-announce failed: {}", e.getMessage());
                         }
 
+                        var visibleFriends = new java.util.HashSet<String>();
                         for (String docId : docIds) {
                             try {
                                 var peers = rendezvousClient.discoverPeers(deviceCredential, docId);
                                 for (var rp : peers) {
                                     if (peerId.equals(rp.peerId())) continue;
-                                    // UDP connect IS the hole punch — always use connectAndSync
-                                    peerManager.connectAndSync(rp.host(), rp.port());
+                                    visibleFriends.add(rp.peerId());
+                                    // UDP connect IS the hole punch — try IPv6 first if available
+                                    peerManager.connectAndSync(rp.host(), rp.ipv6Host(), rp.port());
                                 }
                                 if (!peers.isEmpty()) {
                                     log.debug("Rendezvous: discovered {} peers for doc {}", peers.size(), docId);
@@ -663,6 +706,27 @@ public class SharingServiceImpl implements SharingService {
                             } catch (Exception e) {
                                 log.debug("Rendezvous: discover failed for doc {}: {}", docId, e.getMessage());
                             }
+                        }
+
+                        rendezvousVisibleFriends = java.util.Set.copyOf(visibleFriends);
+
+                        // Self-discovery: find our own devices on other networks
+                        try {
+                            var discoveredDevices = rendezvousClient.discoverMyDevices(deviceCredential);
+                            myDevices = discoveredDevices.stream()
+                                    .map(d -> new DeviceInfo(d.host(), d.port(), d.ipv6Host()))
+                                    .toList();
+                            for (var dev : discoveredDevices) {
+                                peerManager.connectAndSync(dev.host(), dev.ipv6Host(), dev.port());
+                            }
+                            if (!discoveredDevices.isEmpty()) {
+                                log.debug("Rendezvous: discovered {} of my own devices", discoveredDevices.size());
+                            }
+                        } catch (RendezvousClient.CredentialRejectedException e) {
+                            log.warn("Rendezvous: credential rejected during my-devices, re-enrolling...");
+                            reEnrollDevice();
+                        } catch (Exception e) {
+                            log.debug("Rendezvous: my-devices discovery failed: {}", e.getMessage());
                         }
                     }
                 } catch (InterruptedException e) {
@@ -678,14 +742,124 @@ public class SharingServiceImpl implements SharingService {
             if (upnpMapper != null) upnpMapper.unmap();
             if (rendezvousClient != null && deviceCredential != null) {
                 try {
-                    rendezvousClient.depart(deviceCredential, peerId);
+                    rendezvousClient.depart(deviceCredential);
                 } catch (Exception e) {
                     // shutting down, ignore
                 }
             }
         }, "sharing-shutdown"));
 
+        // Start presence heartbeat (30-second interval)
+        startPresenceHeartbeat();
+
         log.info("PeerManager started on port {}", peerManager.serverPort());
+    }
+
+    // ==================== Presence ====================
+
+    @Override
+    public void setPresenceEnabled(boolean enabled) {
+        this.presenceEnabled = enabled;
+    }
+
+    @Override
+    public boolean isPresenceEnabled() {
+        return presenceEnabled;
+    }
+
+    @Override
+    public String queryFriendPresence(String friendEmail) {
+        if (rendezvousClient == null || deviceCredential == null) return "OFFLINE";
+
+        FriendConfig fc = IntelConfig.get().getFriendByEmail(friendEmail);
+        if (fc == null || fc.getReceivedCert() == null) return "OFFLINE";
+
+        try {
+            String certJson = mapper.writeValueAsString(fc.getReceivedCert());
+            var info = rendezvousClient.queryPresence(deviceCredential, friendEmail, certJson);
+            return info != null ? info.state() : "OFFLINE";
+        } catch (RendezvousClient.CredentialRejectedException e) {
+            log.warn("Presence query credential rejected, re-enrolling...");
+            reEnrollDevice();
+            return "OFFLINE";
+        } catch (Exception e) {
+            log.debug("Presence query failed for {}: {}", friendEmail, e.getMessage());
+            return "OFFLINE";
+        }
+    }
+
+    @Override
+    public List<DeviceInfo> getMyDevices() {
+        return myDevices;
+    }
+
+    @Override
+    public List<FriendNetworkStatus> getFriendNetworkStatuses() {
+        List<FriendNetworkStatus> result = new ArrayList<>();
+        for (FriendConfig f : IntelConfig.get().getFriends()) {
+            String email = f.getEmail();
+            String connectionState;
+            if (peerManager != null && peerManager.isMutualFriendByEmail(email)) {
+                connectionState = "connected";
+            } else if (rendezvousVisibleFriends.contains(email)) {
+                connectionState = "discovered";
+            } else {
+                connectionState = "offline";
+            }
+            String presence = friendPresenceCache.getOrDefault(email, "OFFLINE");
+            result.add(new FriendNetworkStatus(email, f.label(), connectionState, presence));
+        }
+        return result;
+    }
+
+    private boolean isUserActive() {
+        return System.currentTimeMillis() - lastActivityMs.get() < IDLE_THRESHOLD_MS;
+    }
+
+    /** Install AWT event listener to track user activity. */
+    private void installActivityListener() {
+        try {
+            AWTEventListener listener = e -> lastActivityMs.set(System.currentTimeMillis());
+            Toolkit.getDefaultToolkit().addAWTEventListener(listener,
+                    AWTEvent.MOUSE_MOTION_EVENT_MASK | AWTEvent.KEY_EVENT_MASK);
+        } catch (Exception e) {
+            log.debug("Could not install AWT activity listener: {}", e.getMessage());
+        }
+    }
+
+    /** Start the heartbeat thread that publishes presence every 30 seconds. */
+    private void startPresenceHeartbeat() {
+        installActivityListener();
+        Thread.ofVirtual().name("presence-heartbeat").start(() -> {
+            while (true) {
+                try {
+                    Thread.sleep(30_000);
+                    if (rendezvousClient != null && deviceCredential != null) {
+                        // Publish our own presence
+                        if (presenceEnabled) {
+                            String state = isUserActive() ? "ONLINE" : "IDLE";
+                            try {
+                                rendezvousClient.publishPresence(deviceCredential, state);
+                            } catch (RendezvousClient.CredentialRejectedException e) {
+                                log.warn("Presence heartbeat credential rejected, re-enrolling...");
+                                reEnrollDevice();
+                            } catch (Exception e) {
+                                log.debug("Presence heartbeat failed: {}", e.getMessage());
+                            }
+                        }
+
+                        // Query friend presence (cached for UI)
+                        for (FriendConfig f : IntelConfig.get().getFriends()) {
+                            String p = queryFriendPresence(f.getEmail());
+                            friendPresenceCache.put(f.getEmail(), p);
+                        }
+                    }
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    break;
+                }
+            }
+        });
     }
 
     // ==================== Friends ====================
@@ -750,6 +924,256 @@ public class SharingServiceImpl implements SharingService {
                 log.warn("Chat listener error", ex);
             }
         }
+    }
+
+    // ==================== Performance Test ====================
+
+    @Override
+    public void startPerfTest(String friendEmail, Consumer<PerfTestResult> onComplete) {
+        if (peerManager == null) {
+            onComplete.accept(null);
+            return;
+        }
+
+        // Find a connected device for this friend
+        String targetDeviceId = null;
+        for (var info : peerManager.getConnectionInfos()) {
+            if (friendEmail.equals(info.email()) && info.mutualFriend()) {
+                targetDeviceId = info.deviceId();
+                break;
+            }
+        }
+        if (targetDeviceId == null) {
+            onComplete.accept(null);
+            return;
+        }
+
+        String testId = java.util.UUID.randomUUID().toString();
+        activePerfTests.put(testId, onComplete);
+        perfTestDevices.put(testId, targetDeviceId);
+
+        try {
+            peerManager.sendToDevice(targetDeviceId, new NetworkMessage.PerfRequest(testId));
+        } catch (IOException e) {
+            log.warn("Failed to send PerfRequest: {}", e.getMessage());
+            activePerfTests.remove(testId);
+            perfTestDevices.remove(testId);
+            onComplete.accept(null);
+        }
+    }
+
+    @Override
+    public void respondToPerfTest(String testId, boolean accept) {
+        if (peerManager == null) return;
+        String deviceId = incomingPerfRequests.remove(testId);
+        if (deviceId == null) return;
+
+        try {
+            if (accept) {
+                peerManager.sendToDevice(deviceId, new NetworkMessage.PerfAccept(testId));
+            } else {
+                peerManager.sendToDevice(deviceId, new NetworkMessage.PerfReject(testId));
+            }
+        } catch (IOException e) {
+            log.warn("Failed to send perf response: {}", e.getMessage());
+        }
+    }
+
+    @Override
+    public void addPerfRequestListener(Consumer<PerfTestRequest> l) {
+        perfRequestListeners.add(l);
+    }
+
+    @Override
+    public void removePerfRequestListener(Consumer<PerfTestRequest> l) {
+        perfRequestListeners.remove(l);
+    }
+
+    /** Handle perf-related messages from PeerManager. */
+    private void onPerfMessage(String deviceId, NetworkMessage msg) {
+        switch (msg) {
+            case NetworkMessage.PerfRequest req -> {
+                incomingPerfRequests.put(req.testId(), deviceId);
+                String email = peerManager != null ? findEmailForDevice(deviceId) : "unknown";
+                FriendConfig fc = IntelConfig.get().getFriendByEmail(email);
+                String displayName = fc != null && fc.label() != null ? fc.label() : email;
+                var request = new PerfTestRequest(req.testId(), email, displayName);
+                for (var l : perfRequestListeners) {
+                    try { l.accept(request); } catch (Exception ex) { log.warn("Perf request listener error", ex); }
+                }
+            }
+            case NetworkMessage.PerfAccept accept -> {
+                if (activePerfTests.containsKey(accept.testId())) {
+                    String targetDeviceId = perfTestDevices.get(accept.testId());
+                    if (targetDeviceId != null) {
+                        Thread.ofVirtual().name("perf-test-" + accept.testId()).start(() ->
+                                runPerfTestSequence(accept.testId(), targetDeviceId));
+                    }
+                }
+            }
+            case NetworkMessage.PerfReject reject -> {
+                var callback = activePerfTests.remove(reject.testId());
+                perfTestDevices.remove(reject.testId());
+                if (callback != null) {
+                    javax.swing.SwingUtilities.invokeLater(() -> callback.accept(null));
+                }
+            }
+            case NetworkMessage.PerfPong pong -> {
+                // Collected by the test sequence thread via perfPongQueue
+                var queue = perfPongQueues.get(pong.testId());
+                if (queue != null) {
+                    queue.offer(pong);
+                }
+            }
+            default -> {} // PerfPing handled by PeerManager auto-reply
+        }
+    }
+
+    /** Per-test pong collection queues. */
+    private final ConcurrentHashMap<String, java.util.concurrent.BlockingQueue<NetworkMessage.PerfPong>> perfPongQueues = new ConcurrentHashMap<>();
+
+    /** Run the actual perf test sequence (latency + throughput). Called on virtual thread after PerfAccept. */
+    private void runPerfTestSequence(String testId, String targetDeviceId) {
+        var pongQueue = new java.util.concurrent.LinkedBlockingQueue<NetworkMessage.PerfPong>();
+        perfPongQueues.put(testId, pongQueue);
+
+        try {
+            // Phase 1: Latency — 20 pings with 32-byte payload, 100ms apart
+            int latencyPings = 20;
+            byte[] smallPayload = new byte[32];
+            List<Double> rtts = new ArrayList<>();
+
+            for (int i = 0; i < latencyPings; i++) {
+                long sendTs = System.nanoTime();
+                try {
+                    peerManager.sendToDevice(targetDeviceId, new NetworkMessage.PerfPing(testId, i, sendTs, smallPayload));
+                } catch (IOException e) {
+                    break;
+                }
+                // Wait for pong with 500ms timeout
+                try {
+                    var pong = pongQueue.poll(500, java.util.concurrent.TimeUnit.MILLISECONDS);
+                    if (pong != null && pong.seq() == i) {
+                        double rttMs = (System.nanoTime() - pong.sendTs()) / 1_000_000.0;
+                        rtts.add(rttMs);
+                    }
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    break;
+                }
+                try { Thread.sleep(100); } catch (InterruptedException e) { Thread.currentThread().interrupt(); break; }
+            }
+
+            // Phase 2: Throughput — 50 pings with 1200-byte payload, sent as fast as possible
+            int throughputPings = 50;
+            byte[] largePayload = new byte[1200];
+            int throughputReceived = 0;
+            long throughputStart = System.nanoTime();
+
+            for (int i = 0; i < throughputPings; i++) {
+                long sendTs = System.nanoTime();
+                try {
+                    peerManager.sendToDevice(targetDeviceId, new NetworkMessage.PerfPing(testId, 100 + i, sendTs, largePayload));
+                } catch (IOException e) {
+                    break;
+                }
+            }
+
+            // Collect pongs for up to 5 seconds
+            long deadline = System.currentTimeMillis() + 5000;
+            while (throughputReceived < throughputPings && System.currentTimeMillis() < deadline) {
+                try {
+                    long remaining = deadline - System.currentTimeMillis();
+                    if (remaining <= 0) break;
+                    var pong = pongQueue.poll(remaining, java.util.concurrent.TimeUnit.MILLISECONDS);
+                    if (pong != null && pong.seq() >= 100) {
+                        throughputReceived++;
+                    }
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    break;
+                }
+            }
+            long throughputElapsedNs = System.nanoTime() - throughputStart;
+
+            // Build result
+            double avgLatency = rtts.isEmpty() ? 0 : rtts.stream().mapToDouble(d -> d).average().orElse(0);
+            double minLatency = rtts.isEmpty() ? 0 : rtts.stream().mapToDouble(d -> d).min().orElse(0);
+            double maxLatency = rtts.isEmpty() ? 0 : rtts.stream().mapToDouble(d -> d).max().orElse(0);
+            double throughputKBps = throughputElapsedNs > 0
+                    ? (throughputReceived * 1200.0 / 1024.0) / (throughputElapsedNs / 1_000_000_000.0)
+                    : 0;
+            double packetLoss = latencyPings > 0 ? (1.0 - (double) rtts.size() / latencyPings) * 100.0 : 100.0;
+
+            var result = new PerfTestResult(avgLatency, minLatency, maxLatency,
+                    throughputKBps, packetLoss, rtts.size(), latencyPings);
+
+            var callback = activePerfTests.remove(testId);
+            perfTestDevices.remove(testId);
+            if (callback != null) {
+                javax.swing.SwingUtilities.invokeLater(() -> callback.accept(result));
+            }
+        } finally {
+            perfPongQueues.remove(testId);
+        }
+    }
+
+    private String findEmailForDevice(String deviceId) {
+        if (peerManager == null) return null;
+        for (var info : peerManager.getConnectionInfos()) {
+            if (deviceId.equals(info.deviceId())) return info.email();
+        }
+        return null;
+    }
+
+    // ==================== Connected Devices ====================
+
+    @Override
+    public List<ConnectedDevice> getConnectedDevices() {
+        if (peerManager == null) return List.of();
+        List<ConnectedDevice> result = new ArrayList<>();
+        for (var info : peerManager.getConnectionInfos()) {
+            String email = info.email();
+            FriendConfig fc = email != null ? IntelConfig.get().getFriendByEmail(email) : null;
+            String displayName = fc != null && fc.label() != null ? fc.label() : email;
+            String connType = classifyConnectionType(info.remoteAddress());
+            result.add(new ConnectedDevice(email, displayName, info.deviceId(),
+                    info.remoteAddress(), connType, info.mutualFriend()));
+        }
+        return result;
+    }
+
+    /** Classify connection type from remote address string. */
+    private static String classifyConnectionType(String address) {
+        if (address == null) return "Unknown";
+        // Remove leading / from InetSocketAddress.toString()
+        String addr = address.startsWith("/") ? address.substring(1) : address;
+
+        // IPv6
+        if (addr.contains(":") && addr.contains("[")) return "IPv6";
+        // Count colons — if more than one, it's IPv6
+        long colonCount = addr.chars().filter(c -> c == ':').count();
+        if (colonCount > 1) return "IPv6";
+
+        // Extract host part (before last :port)
+        String host = addr;
+        int lastColon = addr.lastIndexOf(':');
+        if (lastColon > 0) host = addr.substring(0, lastColon);
+
+        // Private IP ranges
+        if (host.startsWith("10.") || host.startsWith("192.168.")
+                || host.startsWith("172.16.") || host.startsWith("172.17.")
+                || host.startsWith("172.18.") || host.startsWith("172.19.")
+                || host.startsWith("172.20.") || host.startsWith("172.21.")
+                || host.startsWith("172.22.") || host.startsWith("172.23.")
+                || host.startsWith("172.24.") || host.startsWith("172.25.")
+                || host.startsWith("172.26.") || host.startsWith("172.27.")
+                || host.startsWith("172.28.") || host.startsWith("172.29.")
+                || host.startsWith("172.30.") || host.startsWith("172.31.")
+                || host.startsWith("127.")) {
+            return "LAN";
+        }
+        return "Hole Punch";
     }
 
     @Override

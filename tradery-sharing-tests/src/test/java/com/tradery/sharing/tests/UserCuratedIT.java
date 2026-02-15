@@ -38,6 +38,7 @@ class UserCuratedIT {
         // Establish mutual friendship (required for sync)
         clientA.addFriend("curated-b", "Peer B");
         clientB.addFriend("curated-a", "Peer A");
+        PeerClient.exchangeFriendshipCerts(clientA, "curated-a", clientB, "curated-b");
     }
 
     @AfterAll
@@ -54,6 +55,13 @@ class UserCuratedIT {
         // 1. Both create doc with USER_CURATED governance
         clientA.createDocument(docId, "Curated Doc", "USER_CURATED", 0.51);
         clientB.createDocument(docId, "Curated Doc", "USER_CURATED", 0.51);
+
+        // Set up cross-membership so both peers pass membership checks
+        var members = List.of(
+                Map.of("user_id", "curated-a", "role", "OWNER"),
+                Map.of("user_id", "curated-b", "role", "MEMBER"));
+        clientA.setMembers(docId, members);
+        clientB.setMembers(docId, members);
 
         // 2. A creates entities e1, e2, e3
         clientA.appendFacts(docId, List.of(

@@ -1,5 +1,7 @@
 package com.tradery.news.ui.coin;
 
+import com.tradery.ui.ThemeColors;
+
 import javax.swing.*;
 import java.awt.*;
 import java.awt.event.*;
@@ -85,63 +87,18 @@ public class ErdPanel extends JPanel {
     private static final double ANIM_LERP = 0.12;
     private static final double ANIM_SNAP = 1.0;
 
-    /** Panel background from UIManager, adapts to theme. */
-    private static Color bgColor() {
-        Color c = UIManager.getColor("Panel.background");
-        return c != null ? c : new Color(25, 27, 31);
-    }
-
-    /** Grid dot color: slightly offset from background. */
-    private static Color gridColor() {
-        Color bg = bgColor();
-        // Shift toward lighter in dark themes, darker in light themes
-        int lum = (bg.getRed() + bg.getGreen() + bg.getBlue()) / 3;
-        int offset = lum < 128 ? 15 : -15;
-        return new Color(
-            Math.max(0, Math.min(255, bg.getRed() + offset)),
-            Math.max(0, Math.min(255, bg.getGreen() + offset)),
-            Math.max(0, Math.min(255, bg.getBlue() + offset))
-        );
-    }
-
-    /** Entity box body color: slightly offset from background. */
-    private static Color boxColor() {
-        Color bg = bgColor();
-        int lum = (bg.getRed() + bg.getGreen() + bg.getBlue()) / 3;
-        int offset = lum < 128 ? 12 : -12;
-        return new Color(
-            Math.max(0, Math.min(255, bg.getRed() + offset)),
-            Math.max(0, Math.min(255, bg.getGreen() + offset)),
-            Math.max(0, Math.min(255, bg.getBlue() + offset))
-        );
-    }
-
-    /** Strong foreground for labels. */
-    private static Color labelColor() {
-        Color c = UIManager.getColor("Label.foreground");
-        return c != null ? c : new Color(220, 220, 230);
-    }
-    /** Secondary foreground for less important text. */
-    private static Color secondaryColor() {
-        Color c = UIManager.getColor("Label.disabledForeground");
-        return c != null ? c : new Color(150, 150, 160);
-    }
-
-    /** Minimap background: slightly offset from background with alpha. */
+    private static Color bgColor() { return ThemeColors.canvas(); }
+    private static Color gridColor() { return ThemeColors.offset(ThemeColors.background(), ThemeColors.isDark() ? 15 : -15); }
+    private static Color boxColor() { return ThemeColors.offset(ThemeColors.background(), ThemeColors.isDark() ? 12 : -12); }
+    private static Color labelColor() { return ThemeColors.foreground(); }
+    private static Color secondaryColor() { return ThemeColors.dimForeground(); }
     private static Color minimapBg() {
-        Color bg = bgColor();
-        int lum = (bg.getRed() + bg.getGreen() + bg.getBlue()) / 3;
-        int offset = lum < 128 ? 5 : -5;
-        return new Color(
-            Math.max(0, Math.min(255, bg.getRed() + offset)),
-            Math.max(0, Math.min(255, bg.getGreen() + offset)),
-            Math.max(0, Math.min(255, bg.getBlue() + offset)),
-            200
-        );
+        return ThemeColors.offset(ThemeColors.background(), ThemeColors.isDark() ? 5 : -5, 200);
     }
 
     public ErdPanel() {
         setPreferredSize(new Dimension(1200, 600));
+        setBackground(ThemeColors.canvas());
         setupMouseHandlers();
 
         physicsTimer = new javax.swing.Timer(32, e -> {
@@ -295,8 +252,13 @@ public class ErdPanel extends JPanel {
     // ==================== RENDERING ====================
 
     @Override
+    public void updateUI() {
+        super.updateUI();
+        setBackground(ThemeColors.canvas());
+    }
+
+    @Override
     protected void paintComponent(Graphics g) {
-        setBackground(bgColor());
         super.paintComponent(g);
         if (registry == null) return;
 

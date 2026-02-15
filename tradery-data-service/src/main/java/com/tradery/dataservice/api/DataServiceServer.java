@@ -151,6 +151,7 @@ public class DataServiceServer {
         app.get("/symbols/search", symbolHandler::search);
         app.post("/symbols/sync", symbolHandler::sync);
         app.get("/symbols/stats", symbolHandler::stats);
+        app.get("/symbols/categories", symbolHandler::categories);
         app.get("/symbols/exchanges", symbolHandler::exchanges);
     }
 

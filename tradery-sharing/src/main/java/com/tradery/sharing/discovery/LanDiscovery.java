@@ -22,7 +22,8 @@ public class LanDiscovery implements AutoCloseable {
 
     private static final Logger log = LoggerFactory.getLogger(LanDiscovery.class);
 
-    private static final String MULTICAST_GROUP = "239.77.84.82"; // "MTRD" in decimal
+    private static final String MULTICAST_GROUP_V4 = "239.77.84.82"; // "MTRD" in decimal
+    private static final String MULTICAST_GROUP_V6 = "ff02::1:504c"; // link-local scope
     private static final int MULTICAST_PORT = 7482;
     private static final int ANNOUNCE_INTERVAL_MS = 30_000;
     private static final int PEER_TIMEOUT_MS = 90_000;
@@ -32,8 +33,10 @@ public class LanDiscovery implements AutoCloseable {
     private final int serverPort;
     private final Map<String, LanPeer> lanPeers = new ConcurrentHashMap<>();
 
-    private MulticastSocket socket;
-    private InetSocketAddress group;
+    private MulticastSocket socketV4;
+    private MulticastSocket socketV6;
+    private InetSocketAddress groupV4;
+    private InetSocketAddress groupV6;
     private NetworkInterface networkInterface;
     private volatile boolean running;
 
@@ -47,22 +50,38 @@ public class LanDiscovery implements AutoCloseable {
      * Start broadcasting and listening for LAN peers.
      */
     public void start() throws IOException {
-        group = new InetSocketAddress(InetAddress.getByName(MULTICAST_GROUP), MULTICAST_PORT);
         networkInterface = findNetworkInterface();
-
-        socket = new MulticastSocket(null);
-        socket.setReuseAddress(true);
-        socket.bind(new InetSocketAddress(MULTICAST_PORT));
-        socket.setNetworkInterface(networkInterface);
-        socket.joinGroup(group, networkInterface);
         running = true;
 
-        // Listener thread
-        Thread.ofVirtual().name("lan-discovery-listen").start(this::listenLoop);
-        // Announcer thread
-        Thread.ofVirtual().name("lan-discovery-announce").start(this::announceLoop);
+        // IPv4 multicast
+        groupV4 = new InetSocketAddress(InetAddress.getByName(MULTICAST_GROUP_V4), MULTICAST_PORT);
+        socketV4 = new MulticastSocket(null);
+        socketV4.setReuseAddress(true);
+        socketV4.bind(new InetSocketAddress(MULTICAST_PORT));
+        socketV4.setNetworkInterface(networkInterface);
+        socketV4.joinGroup(groupV4, networkInterface);
 
-        log.info("LAN discovery started on {}:{}", MULTICAST_GROUP, MULTICAST_PORT);
+        Thread.ofVirtual().name("lan-discovery-listen-v4").start(() -> listenLoop(socketV4));
+
+        // IPv6 multicast (best-effort — skip if not available)
+        try {
+            groupV6 = new InetSocketAddress(InetAddress.getByName(MULTICAST_GROUP_V6), MULTICAST_PORT);
+            socketV6 = new MulticastSocket(null);
+            socketV6.setReuseAddress(true);
+            socketV6.bind(new InetSocketAddress(MULTICAST_PORT + 1)); // separate port to avoid conflict with v4
+            socketV6.setNetworkInterface(networkInterface);
+            socketV6.joinGroup(groupV6, networkInterface);
+            Thread.ofVirtual().name("lan-discovery-listen-v6").start(() -> listenLoop(socketV6));
+            log.info("LAN discovery started on {} + {} (dual-stack)", MULTICAST_GROUP_V4, MULTICAST_GROUP_V6);
+        } catch (IOException e) {
+            log.debug("IPv6 multicast not available: {}", e.getMessage());
+            socketV6 = null;
+            groupV6 = null;
+            log.info("LAN discovery started on {} (IPv4 only)", MULTICAST_GROUP_V4);
+        }
+
+        // Announcer thread (sends on both groups)
+        Thread.ofVirtual().name("lan-discovery-announce").start(this::announceLoop);
     }
 
     /**
@@ -74,12 +93,12 @@ public class LanDiscovery implements AutoCloseable {
         return List.copyOf(lanPeers.values());
     }
 
-    private void listenLoop() {
+    private void listenLoop(MulticastSocket sock) {
         byte[] buf = new byte[512];
         while (running) {
             try {
                 DatagramPacket packet = new DatagramPacket(buf, buf.length);
-                socket.receive(packet);
+                sock.receive(packet);
                 String data = new String(packet.getData(), 0, packet.getLength(), StandardCharsets.UTF_8);
 
                 // Wire format: "{peerId}|{deviceId}:{port}"
@@ -117,9 +136,22 @@ public class LanDiscovery implements AutoCloseable {
         byte[] data = (peerId + "|" + deviceId + ":" + serverPort).getBytes(StandardCharsets.UTF_8);
         while (running) {
             try {
-                DatagramPacket packet = new DatagramPacket(data, data.length,
-                        InetAddress.getByName(MULTICAST_GROUP), MULTICAST_PORT);
-                socket.send(packet);
+                // Announce on IPv4
+                DatagramPacket packetV4 = new DatagramPacket(data, data.length,
+                        InetAddress.getByName(MULTICAST_GROUP_V4), MULTICAST_PORT);
+                socketV4.send(packetV4);
+
+                // Announce on IPv6 (if available)
+                if (socketV6 != null && groupV6 != null) {
+                    try {
+                        DatagramPacket packetV6 = new DatagramPacket(data, data.length,
+                                InetAddress.getByName(MULTICAST_GROUP_V6), MULTICAST_PORT + 1);
+                        socketV6.send(packetV6);
+                    } catch (IOException e) {
+                        log.debug("LAN announce IPv6 error: {}", e.getMessage());
+                    }
+                }
+
                 Thread.sleep(ANNOUNCE_INTERVAL_MS);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
@@ -137,16 +169,17 @@ public class LanDiscovery implements AutoCloseable {
         while (interfaces.hasMoreElements()) {
             NetworkInterface ni = interfaces.nextElement();
             if (ni.isUp() && !ni.isLoopback() && ni.supportsMulticast()) {
-                // Must have an IPv4 address to join multicast group
-                boolean hasIpv4 = false;
+                // Accept interface with IPv4 or IPv6 address
+                boolean hasIp = false;
                 Enumeration<InetAddress> addrs = ni.getInetAddresses();
                 while (addrs.hasMoreElements()) {
-                    if (addrs.nextElement() instanceof java.net.Inet4Address) {
-                        hasIpv4 = true;
+                    InetAddress addr = addrs.nextElement();
+                    if (addr instanceof java.net.Inet4Address || addr instanceof java.net.Inet6Address) {
+                        hasIp = true;
                         break;
                     }
                 }
-                if (hasIpv4) return ni;
+                if (hasIp) return ni;
             }
         }
         throw new SocketException("No suitable network interface found for multicast");
@@ -155,9 +188,13 @@ public class LanDiscovery implements AutoCloseable {
     @Override
     public void close() {
         running = false;
-        if (socket != null) {
-            try { socket.leaveGroup(group, networkInterface); } catch (IOException ignored) {}
-            socket.close();
+        if (socketV4 != null) {
+            try { socketV4.leaveGroup(groupV4, networkInterface); } catch (IOException ignored) {}
+            socketV4.close();
+        }
+        if (socketV6 != null) {
+            try { socketV6.leaveGroup(groupV6, networkInterface); } catch (IOException ignored) {}
+            socketV6.close();
         }
     }
 

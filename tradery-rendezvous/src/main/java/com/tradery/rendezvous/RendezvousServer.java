@@ -8,6 +8,7 @@ import org.slf4j.LoggerFactory;
 import java.security.PublicKey;
 import java.util.Base64;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
@@ -19,7 +20,10 @@ import java.util.UUID;
  *   GET  /backend-key           — public key for offline credential verification (no auth)
  *   POST /announce              — peer registration (device auth)
  *   GET  /peers                 — peer discovery (device auth)
- *   DELETE /depart              — peer departure (device auth)
+ *   DELETE /depart              — peer departure (device auth, uses deviceId from credential)
+ *   GET  /my-devices            — discover own devices (device auth, same userId)
+ *   POST /presence              — publish presence heartbeat (device auth)
+ *   GET  /presence/{userId}     — query friend's presence (device auth + friendship cert)
  *   GET  /health                — health check (no auth)
  */
 public class RendezvousServer {
@@ -34,12 +38,14 @@ public class RendezvousServer {
 
     private final Javalin app;
     private final PeerRegistry peerRegistry;
+    private final PresenceRegistry presenceRegistry;
     private final DeviceRegistry deviceRegistry;
     private final BackendKeyStore keyStore;
     private final KeycloakValidator keycloakValidator;
 
     public RendezvousServer(int port, BackendKeyStore keyStore, KeycloakValidator keycloakValidator) {
         this.peerRegistry = new PeerRegistry();
+        this.presenceRegistry = new PresenceRegistry();
         this.deviceRegistry = new DeviceRegistry();
         this.keyStore = keyStore;
         this.keycloakValidator = keycloakValidator;
@@ -138,9 +144,10 @@ public class RendezvousServer {
         });
 
         javalin.get("/health", ctx -> ctx.status(200).result("OK"));
-        javalin.get("/stats", ctx -> ctx.json(java.util.Map.of(
+        javalin.get("/stats", ctx -> ctx.json(Map.of(
                 "onlinePeers", peerRegistry.size(),
-                "enrolledDevices", deviceRegistry.size()
+                "enrolledDevices", deviceRegistry.size(),
+                "presenceCount", presenceRegistry.size()
         )));
         javalin.get("/backend-key", ctx -> ctx.json(new BackendKeyResponse(keyStore.publicKeyBase64())));
         javalin.post("/enroll-device", this::handleEnroll);
@@ -148,6 +155,9 @@ public class RendezvousServer {
         javalin.post("/announce", this::handleAnnounce);
         javalin.get("/peers", this::handlePeers);
         javalin.delete("/depart", this::handleDepart);
+        javalin.get("/my-devices", this::handleMyDevices);
+        javalin.post("/presence", this::handlePresencePublish);
+        javalin.get("/presence/{userId}", this::handlePresenceQuery);
 
         return javalin;
     }
@@ -214,13 +224,15 @@ public class RendezvousServer {
 
     private void handleAnnounce(Context ctx) {
         AnnounceRequest req = ctx.bodyAsClass(AnnounceRequest.class);
-        // Use peerId from request body (email) — this is what clients use for self-skip.
-        // The credential userId (Keycloak UUID) is different from the email the client knows.
+        String deviceId = ctx.attribute("deviceId");
+        String userId = ctx.attribute("userId");
+        // peerId from request body (email) — used for document-based peer discovery + self-skip.
+        // userId (Keycloak UUID) from credential — used for same-user device discovery.
         String peerId = req.peerId();
         String host = getRealIp(ctx);
-        peerRegistry.announce(peerId, host, req.port(),
+        peerRegistry.announce(deviceId, userId, peerId, host, req.port(),
                 req.documentIds() != null ? req.documentIds() : List.of());
-        log.info("Announce: peer={} host={} port={} docs={}", peerId, host, req.port(),
+        log.info("Announce: peer={} device={} host={} port={} docs={}", peerId, deviceId, host, req.port(),
                 req.documentIds() != null ? req.documentIds().size() : 0);
         ctx.status(200).result("OK");
     }
@@ -249,17 +261,76 @@ public class RendezvousServer {
     }
 
     private void handleDepart(Context ctx) {
-        String peerId = ctx.queryParam("peerId");
-        if (peerId == null || peerId.isBlank()) {
-            ctx.status(400).result("peerId query parameter is required");
-            return;
-        }
-        peerRegistry.depart(peerId);
-        log.info("Depart: peer={}", peerId);
+        String deviceId = ctx.attribute("deviceId");
+        String userId = ctx.attribute("userId");
+        peerRegistry.depart(deviceId);
+        // Also clear presence — departing means going offline
+        if (userId != null) presenceRegistry.remove(userId);
+        log.info("Depart: device={}", deviceId);
         ctx.status(200).result("OK");
     }
 
+    private void handleMyDevices(Context ctx) {
+        String userId = ctx.attribute("userId");
+        String deviceId = ctx.attribute("deviceId");
+        List<PeerResponse> devices = peerRegistry.findByUser(userId, deviceId);
+        ctx.json(devices);
+    }
+
+    private void handlePresencePublish(Context ctx) {
+        String userId = ctx.attribute("userId");
+        if (userId == null) {
+            ctx.status(401).result("Missing userId");
+            return;
+        }
+        PresenceRequest req = ctx.bodyAsClass(PresenceRequest.class);
+        String state = req.state();
+        if (state == null || (!state.equals("ONLINE") && !state.equals("IDLE"))) {
+            ctx.status(400).result("state must be ONLINE or IDLE");
+            return;
+        }
+        presenceRegistry.update(userId, state);
+        ctx.status(200).result("OK");
+    }
+
+    private void handlePresenceQuery(Context ctx) {
+        String requesterUserId = ctx.attribute("userId");
+        if (requesterUserId == null) {
+            ctx.status(401).result("Missing userId");
+            return;
+        }
+
+        String targetUserId = ctx.pathParam("userId");
+
+        // Require friendship cert
+        String certHeader = ctx.header("X-Friendship-Cert");
+        if (certHeader == null || certHeader.isBlank()) {
+            ctx.status(403).result("Friendship cert required");
+            return;
+        }
+
+        // Decode Base64 → JSON → parse cert
+        String certJson;
+        try {
+            certJson = new String(Base64.getDecoder().decode(certHeader), java.nio.charset.StandardCharsets.UTF_8);
+        } catch (Exception e) {
+            ctx.status(403).result("Invalid cert encoding");
+            return;
+        }
+
+        var cert = FriendshipCertVerifier.parseCert(certJson);
+        if (!FriendshipCertVerifier.verify(cert, targetUserId, requesterUserId)) {
+            ctx.status(403).result("Invalid friendship cert");
+            return;
+        }
+
+        String state = presenceRegistry.getState(targetUserId);
+        long updatedAt = presenceRegistry.getUpdatedAt(targetUserId);
+        ctx.json(Map.of("userId", targetUserId, "state", state, "updatedAt", updatedAt));
+    }
+
     private record BackendKeyResponse(String publicKey) {}
+    private record PresenceRequest(String state) {}
 
     static BackendKeyStore createDefaultKeyStore() {
         String dir = System.getenv("KEY_STORE_DIR");

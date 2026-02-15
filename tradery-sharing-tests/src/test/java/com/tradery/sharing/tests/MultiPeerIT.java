@@ -43,6 +43,9 @@ class MultiPeerIT {
         clientB.addFriend("multi-c", "C");
         clientC.addFriend("multi-a", "A");
         clientC.addFriend("multi-b", "B");
+        PeerClient.exchangeFriendshipCerts(clientA, "multi-a", clientB, "multi-b");
+        PeerClient.exchangeFriendshipCerts(clientA, "multi-a", clientC, "multi-c");
+        PeerClient.exchangeFriendshipCerts(clientB, "multi-b", clientC, "multi-c");
     }
 
     @AfterAll
@@ -61,6 +64,15 @@ class MultiPeerIT {
         clientA.createDocument(docId, "Multi Test");
         clientB.createDocument(docId, "Multi Test");
         clientC.createDocument(docId, "Multi Test");
+
+        // Set up cross-membership so all peers pass membership checks
+        var members = List.of(
+                Map.of("user_id", "multi-a", "role", "OWNER"),
+                Map.of("user_id", "multi-b", "role", "MEMBER"),
+                Map.of("user_id", "multi-c", "role", "MEMBER"));
+        clientA.setMembers(docId, members);
+        clientB.setMembers(docId, members);
+        clientC.setMembers(docId, members);
 
         // Each peer creates unique data
         clientA.appendFacts(docId, List.of(

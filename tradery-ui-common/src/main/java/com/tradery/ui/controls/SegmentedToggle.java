@@ -144,6 +144,29 @@ public class SegmentedToggle extends JPanel {
         return -1;
     }
 
+    public void setSegments(String... labels) {
+        for (JToggleButton btn : buttons) {
+            group.remove(btn);
+            remove(btn);
+        }
+        buttons.clear();
+        for (int i = 0; i < labels.length; i++) {
+            JToggleButton btn = createButton(labels[i]);
+            int index = i;
+            btn.addActionListener(e -> {
+                if (onSelectionChanged != null) onSelectionChanged.accept(index);
+            });
+            group.add(btn);
+            buttons.add(btn);
+            add(btn);
+        }
+        if (!buttons.isEmpty()) {
+            buttons.get(0).setSelected(true);
+        }
+        revalidate();
+        repaint();
+    }
+
     public void setSelectedIndex(int index) {
         if (index >= 0 && index < buttons.size()) {
             buttons.get(index).setSelected(true);

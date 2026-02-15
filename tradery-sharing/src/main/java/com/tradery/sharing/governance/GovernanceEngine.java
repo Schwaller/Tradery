@@ -190,10 +190,11 @@ public class GovernanceEngine {
 
     private DocumentMember.Role findRole(List<DocumentMember> members, String userId) {
         if (userId == null) return null;
-        return members.stream()
-                .filter(m -> userId.equals(m.userId()))
-                .map(DocumentMember::role)
-                .findFirst()
-                .orElse(null);
+        for (DocumentMember m : members) {
+            if (userId.equals(m.userId())) {
+                return m.role(); // may be null if deserialization failed
+            }
+        }
+        return null;
     }
 }

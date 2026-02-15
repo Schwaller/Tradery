@@ -25,6 +25,11 @@ import java.util.List;
     @JsonSubTypes.Type(value = NetworkMessage.BackupRequest.class, name = "BACKUP_REQUEST"),
     @JsonSubTypes.Type(value = NetworkMessage.BackupResponse.class, name = "BACKUP_RESPONSE"),
     @JsonSubTypes.Type(value = NetworkMessage.FriendImportOffer.class, name = "FRIEND_IMPORT_OFFER"),
+    @JsonSubTypes.Type(value = NetworkMessage.PerfRequest.class, name = "PERF_REQUEST"),
+    @JsonSubTypes.Type(value = NetworkMessage.PerfAccept.class, name = "PERF_ACCEPT"),
+    @JsonSubTypes.Type(value = NetworkMessage.PerfReject.class, name = "PERF_REJECT"),
+    @JsonSubTypes.Type(value = NetworkMessage.PerfPing.class, name = "PERF_PING"),
+    @JsonSubTypes.Type(value = NetworkMessage.PerfPong.class, name = "PERF_PONG"),
 })
 public sealed interface NetworkMessage {
 
@@ -98,4 +103,19 @@ public sealed interface NetworkMessage {
         FriendshipCertData theirOldCertAboutUs,
         FriendshipCertData ourOldCertAboutThem
     ) implements NetworkMessage {}
+
+    /** Request to run a performance test with a peer. */
+    record PerfRequest(String testId) implements NetworkMessage {}
+
+    /** Accept a performance test request. */
+    record PerfAccept(String testId) implements NetworkMessage {}
+
+    /** Reject a performance test request. */
+    record PerfReject(String testId) implements NetworkMessage {}
+
+    /** Performance test ping — measures latency and throughput. */
+    record PerfPing(String testId, int seq, long sendTs, byte[] payload) implements NetworkMessage {}
+
+    /** Performance test pong — echo of a ping. */
+    record PerfPong(String testId, int seq, long sendTs, byte[] payload) implements NetworkMessage {}
 }

@@ -3,6 +3,7 @@ package com.tradery.news.ui;
 import com.tradery.news.model.Article;
 import com.tradery.news.ui.coin.SchemaRegistry;
 import com.tradery.news.ui.coin.SchemaType;
+import com.tradery.ui.ThemeColors;
 
 import javax.swing.*;
 import javax.swing.Timer;
@@ -84,41 +85,17 @@ public class TimelineGraphPanel extends JPanel {
     }
 
     // Theme-aware color helpers
-    private static Color bgColor() {
-        Color c = UIManager.getColor("Panel.background");
-        return c != null ? c : new Color(30, 32, 36);
-    }
-    private static Color gridLineColor() {
-        Color bg = bgColor();
-        int lum = (bg.getRed() + bg.getGreen() + bg.getBlue()) / 3;
-        int offset = lum < 128 ? 20 : -20;
-        return new Color(clamp(bg.getRed() + offset), clamp(bg.getGreen() + offset), clamp(bg.getBlue() + offset));
-    }
-    private static Color labelColor() {
-        Color c = UIManager.getColor("Label.foreground");
-        return c != null ? c : new Color(220, 220, 230);
-    }
-    private static Color secondaryColor() {
-        Color c = UIManager.getColor("Label.disabledForeground");
-        return c != null ? c : new Color(150, 150, 160);
-    }
-    private static Color tooltipBg() {
-        Color bg = bgColor();
-        int lum = (bg.getRed() + bg.getGreen() + bg.getBlue()) / 3;
-        int offset = lum < 128 ? 15 : -15;
-        return new Color(clamp(bg.getRed() + offset), clamp(bg.getGreen() + offset), clamp(bg.getBlue() + offset), 240);
-    }
-    private static Color tooltipBorder() {
-        Color bg = bgColor();
-        int lum = (bg.getRed() + bg.getGreen() + bg.getBlue()) / 3;
-        int offset = lum < 128 ? 40 : -40;
-        return new Color(clamp(bg.getRed() + offset), clamp(bg.getGreen() + offset), clamp(bg.getBlue() + offset));
-    }
-    private static int clamp(int v) { return Math.max(0, Math.min(255, v)); }
+    private static Color bgColor() { return ThemeColors.canvas(); }
+    private static Color gridLineColor() { return ThemeColors.offset(ThemeColors.background(), ThemeColors.isDark() ? 20 : -20); }
+    private static Color labelColor() { return ThemeColors.foreground(); }
+    private static Color secondaryColor() { return ThemeColors.dimForeground(); }
+    private static Color tooltipBg() { return ThemeColors.offset(ThemeColors.background(), ThemeColors.isDark() ? 15 : -15, 240); }
+    private static Color tooltipBorder() { return ThemeColors.offset(ThemeColors.background(), ThemeColors.isDark() ? 40 : -40); }
 
     public TimelineGraphPanel() {
         this.config = IntelConfig.get();
         setPreferredSize(new Dimension(1200, 600));
+        setBackground(ThemeColors.canvas());
 
         // Register default node extractors
         nodeExtractors.put("topic", Article::topics);
@@ -716,8 +693,13 @@ public class TimelineGraphPanel extends JPanel {
     }
 
     @Override
+    public void updateUI() {
+        super.updateUI();
+        setBackground(ThemeColors.canvas());
+    }
+
+    @Override
     protected void paintComponent(Graphics g) {
-        setBackground(bgColor());
         super.paintComponent(g);
         Graphics2D g2 = (Graphics2D) g;
         g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);

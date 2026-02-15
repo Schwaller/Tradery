@@ -2,7 +2,7 @@ package com.tradery.charts.core;
 
 import java.awt.*;
 
-import static com.tradery.charts.core.ThemeColors.*;
+import static com.tradery.ui.ThemeColors.*;
 
 /**
  * Adaptive chart theme that reads colors from UIManager (FlatLaf)
@@ -23,7 +23,7 @@ public class DefaultChartTheme implements ChartTheme {
 
     @Override
     public Color getPlotBackgroundColor() {
-        return darker(background(), isDark() ? 0.08f : 0.03f);
+        return canvas();
     }
 
     @Override

@@ -11,6 +11,7 @@ module com.tradery.charts {
     // Required modules
     requires transitive com.tradery.core;
     requires transitive org.jfree.jfreechart;
+    requires com.tradery.ui.common;
     requires java.desktop;
     requires org.slf4j;
 }

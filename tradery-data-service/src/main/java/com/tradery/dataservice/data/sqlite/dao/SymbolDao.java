@@ -13,9 +13,7 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.Instant;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Optional;
+import java.util.*;
 
 /**
  * DAO for symbol resolution operations.
@@ -567,6 +565,147 @@ public class SymbolDao {
         return metadata;
     }
 
+    // ==================== Coin Categories ====================
+
+    /**
+     * Clear all coins for a category (before re-inserting fresh data).
+     */
+    public void clearCategoryCoins(String categoryId) throws SQLException {
+        Connection c = conn.getConnection();
+        try (PreparedStatement stmt = c.prepareStatement("DELETE FROM coin_categories WHERE category_id = ?")) {
+            stmt.setString(1, categoryId);
+            stmt.executeUpdate();
+        }
+    }
+
+    /**
+     * Batch upsert coin→category mappings.
+     */
+    public int upsertCoinCategoriesBatch(String categoryId, String categoryName, List<String> coingeckoIds) throws SQLException {
+        if (coingeckoIds.isEmpty()) return 0;
+
+        return conn.executeInTransaction(c -> {
+            // Clear existing mappings for this category
+            try (PreparedStatement del = c.prepareStatement("DELETE FROM coin_categories WHERE category_id = ?")) {
+                del.setString(1, categoryId);
+                del.executeUpdate();
+            }
+
+            String sql = """
+                INSERT OR REPLACE INTO coin_categories (coingecko_id, category_id, category_name)
+                VALUES (?, ?, ?)
+                """;
+
+            int count = 0;
+            try (PreparedStatement stmt = c.prepareStatement(sql)) {
+                for (String coingeckoId : coingeckoIds) {
+                    stmt.setString(1, coingeckoId);
+                    stmt.setString(2, categoryId);
+                    stmt.setString(3, categoryName);
+                    stmt.addBatch();
+
+                    if (++count % 1000 == 0) {
+                        stmt.executeBatch();
+                    }
+                }
+                stmt.executeBatch();
+            }
+            return coingeckoIds.size();
+        });
+    }
+
+    /**
+     * Bulk lookup categories for a set of coingecko IDs.
+     * Returns map of coingecko_id → list of category display names.
+     */
+    public Map<String, List<String>> getCategoriesForCoins(Collection<String> coingeckoIds) throws SQLException {
+        Map<String, List<String>> result = new HashMap<>();
+        if (coingeckoIds.isEmpty()) return result;
+
+        Connection c = conn.getConnection();
+
+        // Process in chunks of 500 to avoid SQLite variable limits
+        List<String> idList = new ArrayList<>(coingeckoIds);
+        for (int i = 0; i < idList.size(); i += 500) {
+            List<String> chunk = idList.subList(i, Math.min(i + 500, idList.size()));
+            String placeholders = String.join(",", Collections.nCopies(chunk.size(), "?"));
+            String sql = "SELECT coingecko_id, category_name FROM coin_categories WHERE coingecko_id IN (" + placeholders + ")";
+
+            try (PreparedStatement stmt = c.prepareStatement(sql)) {
+                for (int j = 0; j < chunk.size(); j++) {
+                    stmt.setString(j + 1, chunk.get(j));
+                }
+                try (ResultSet rs = stmt.executeQuery()) {
+                    while (rs.next()) {
+                        String id = rs.getString("coingecko_id");
+                        String cat = rs.getString("category_name");
+                        result.computeIfAbsent(id, k -> new ArrayList<>()).add(cat);
+                    }
+                }
+            }
+        }
+        return result;
+    }
+
+    /**
+     * Update category sync metadata.
+     */
+    public void updateCategorySyncMetadata(String categoryId, String categoryName, int coinCount) throws SQLException {
+        Connection c = conn.getConnection();
+
+        String sql = """
+            INSERT INTO category_sync_metadata (category_id, category_name, last_sync, coin_count)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(category_id) DO UPDATE SET
+                category_name = excluded.category_name,
+                last_sync = excluded.last_sync,
+                coin_count = excluded.coin_count
+            """;
+
+        try (PreparedStatement stmt = c.prepareStatement(sql)) {
+            stmt.setString(1, categoryId);
+            stmt.setString(2, categoryName);
+            stmt.setString(3, Instant.now().toString());
+            stmt.setInt(4, coinCount);
+            stmt.executeUpdate();
+        }
+    }
+
+    /**
+     * Get all category sync metadata.
+     */
+    public List<CategorySyncMetadata> getCategorySyncMetadata() throws SQLException {
+        Connection c = conn.getConnection();
+        List<CategorySyncMetadata> metadata = new ArrayList<>();
+
+        String sql = "SELECT category_id, category_name, last_sync, coin_count FROM category_sync_metadata ORDER BY category_name";
+
+        try (PreparedStatement stmt = c.prepareStatement(sql);
+             ResultSet rs = stmt.executeQuery()) {
+            while (rs.next()) {
+                metadata.add(new CategorySyncMetadata(
+                    rs.getString("category_id"),
+                    rs.getString("category_name"),
+                    rs.getString("last_sync") != null ? Instant.parse(rs.getString("last_sync")) : null,
+                    rs.getInt("coin_count")
+                ));
+            }
+        }
+        return metadata;
+    }
+
+    /**
+     * Count total categorized coins (distinct coingecko IDs with at least one category).
+     */
+    public int countCategorizedCoins() throws SQLException {
+        Connection c = conn.getConnection();
+        try (PreparedStatement stmt = c.prepareStatement("SELECT COUNT(DISTINCT coingecko_id) FROM coin_categories");
+             ResultSet rs = stmt.executeQuery()) {
+            if (rs.next()) return rs.getInt(1);
+        }
+        return 0;
+    }
+
     // ==================== Statistics ====================
 
     /**
@@ -686,5 +825,12 @@ public class SymbolDao {
         String exchange,
         MarketType marketType,
         int pairCount
+    ) {}
+
+    public record CategorySyncMetadata(
+        String categoryId,
+        String categoryName,
+        Instant lastSync,
+        int coinCount
     ) {}
 }

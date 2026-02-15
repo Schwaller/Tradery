@@ -2,6 +2,7 @@ package com.tradery.sharing;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tradery.documents.DocumentManager;
+import com.tradery.documents.DocumentMember;
 import com.tradery.news.ui.FriendConfig;
 import com.tradery.news.ui.FriendshipCertData;
 import com.tradery.news.ui.IntelConfig;
@@ -39,6 +40,17 @@ class PeerManagerTest {
         Path docDirA = Files.createTempDirectory("docs-a-");
         Path docDirB = Files.createTempDirectory("docs-b-");
 
+        // Set up document members so both peers pass membership checks
+        DocumentManager dmA = new DocumentManager(docDirA);
+        DocumentManager dmB = new DocumentManager(docDirB);
+        var members = java.util.List.of(
+                new DocumentMember("peer-A", DocumentMember.Role.OWNER),
+                new DocumentMember("peer-B", DocumentMember.Role.MEMBER));
+        Files.createDirectories(docDirA.resolve(DOC_ID));
+        Files.createDirectories(docDirB.resolve(DOC_ID));
+        dmA.writeMembers(DOC_ID, new java.util.ArrayList<>(members));
+        dmB.writeMembers(DOC_ID, new java.util.ArrayList<>(members));
+
         // Create key pairs and cert signers for each peer
         KeyPair kpA = FactSigner.generateKeyPair();
         KeyPair kpB = FactSigner.generateKeyPair();
@@ -66,13 +78,13 @@ class PeerManagerTest {
         IntelConfig.get().addFriend(friendA);
         IntelConfig.get().addFriend(friendB);
 
-        managerA = new PeerManager("peer-A", "device-A", new DocumentManager(docDirA), mapper);
+        managerA = new PeerManager("peer-A", "device-A", dmA, mapper);
         managerA.setCertSigner(signerA);
         managerA.setLocalIdentityCert(certA);
         managerA.registerWorkspace(DOC_ID, fixtureA.workspace());
         managerA.startServer();
 
-        managerB = new PeerManager("peer-B", "device-B", new DocumentManager(docDirB), mapper);
+        managerB = new PeerManager("peer-B", "device-B", dmB, mapper);
         managerB.setCertSigner(signerB);
         managerB.setLocalIdentityCert(certB);
         managerB.registerWorkspace(DOC_ID, fixtureB.workspace());

@@ -36,6 +36,7 @@ class PeerSyncIT {
         // Establish mutual friendship (required for sync)
         clientA.addFriend("peer-b", "Peer B");
         clientB.addFriend("peer-a", "Peer A");
+        PeerClient.exchangeFriendshipCerts(clientA, "peer-a", clientB, "peer-b");
     }
 
     @AfterAll
@@ -52,6 +53,13 @@ class PeerSyncIT {
         // Both peers create the same document
         clientA.createDocument(docId, "Sync Test");
         clientB.createDocument(docId, "Sync Test");
+
+        // Set up cross-membership so both peers pass membership checks
+        var members = List.of(
+                Map.of("user_id", "peer-a", "role", "OWNER"),
+                Map.of("user_id", "peer-b", "role", "MEMBER"));
+        clientA.setMembers(docId, members);
+        clientB.setMembers(docId, members);
 
         // Peer A creates data
         clientA.appendFacts(docId, List.of(

@@ -547,6 +547,9 @@ public class DownloadDashboardWindow extends DashboardWindow {
                 String exch = syncProgress.exchange() != null ? syncProgress.exchange() : "?";
                 String market = syncProgress.marketType() != null ? syncProgress.marketType().toUpperCase() : "?";
                 symDbLogModel.addElement("Syncing " + exch + " " + market + "...");
+            } else if ("categories".equals(syncProgress.step())) {
+                String cat = syncProgress.exchange() != null ? syncProgress.exchange() : "?";
+                symDbLogModel.addElement("Syncing category: " + cat + "...");
             }
 
             if (syncProgress.totalCoins() > 0) {
@@ -561,6 +564,12 @@ public class DownloadDashboardWindow extends DashboardWindow {
             }
             symDbLogModel.addElement("Active pairs: " + status.pairCount());
             symDbLogModel.addElement("Exchanges: " + symbolService.getExchanges().size());
+            // Show category stats
+            SymbolService.CategoryStats catStats = symbolService.getCategoryStats();
+            if (catStats.categoryCount() > 0) {
+                symDbLogModel.addElement(String.format("Categories: %d (%,d coins categorized)",
+                    catStats.categoryCount(), catStats.categorizedCoins()));
+            }
             if (symDbLogModel.isEmpty()) {
                 symDbLogModel.addElement("(no activity)");
             }

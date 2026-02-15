@@ -36,6 +36,7 @@ class ConflictResolutionIT {
         // Establish mutual friendship (required for sync)
         clientA.addFriend("conflict-b", "B");
         clientB.addFriend("conflict-a", "A");
+        PeerClient.exchangeFriendshipCerts(clientA, "conflict-a", clientB, "conflict-b");
     }
 
     @AfterAll
@@ -51,6 +52,13 @@ class ConflictResolutionIT {
 
         clientA.createDocument(docId, "Conflict Test");
         clientB.createDocument(docId, "Conflict Test");
+
+        // Set up cross-membership so both peers pass membership checks
+        var members = List.of(
+                Map.of("user_id", "conflict-a", "role", "OWNER"),
+                Map.of("user_id", "conflict-b", "role", "MEMBER"));
+        clientA.setMembers(docId, members);
+        clientB.setMembers(docId, members);
 
         // Both peers write the same entity/attribute independently
         clientA.appendFacts(docId, List.of(

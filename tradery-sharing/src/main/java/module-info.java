@@ -4,8 +4,8 @@ module com.tradery.sharing {
     requires com.fasterxml.jackson.databind;
     requires com.fasterxml.jackson.annotation;
     requires com.fasterxml.jackson.dataformat.yaml;
-    requires okhttp3;
-    requires org.slf4j;
+    requires static okhttp3;   // force-merged into news.merged in jlink — resolved via --add-reads
+    requires static org.slf4j; // force-merged into news.merged in jlink — resolved via --add-reads
     requires jdk.httpserver;
     requires java.desktop;
     requires java.net.http;
@@ -18,4 +18,6 @@ module com.tradery.sharing {
 
     opens com.tradery.sharing.sync to com.fasterxml.jackson.databind;
     opens com.tradery.sharing.identity to com.fasterxml.jackson.databind;
+    opens com.tradery.sharing.discovery to com.fasterxml.jackson.databind;
+    opens com.tradery.sharing.governance to com.fasterxml.jackson.databind;
 }

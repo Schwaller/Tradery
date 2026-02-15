@@ -99,8 +99,9 @@ public class SymbolChooserPanel extends JPanel {
         table.getColumnModel().getColumn(2).setPreferredWidth(60);  // Market
         table.getColumnModel().getColumn(3).setPreferredWidth(70);  // Base
         table.getColumnModel().getColumn(4).setPreferredWidth(60);  // Quote
+        table.getColumnModel().getColumn(5).setPreferredWidth(120); // Categories
 
-        // Dim exchange and market columns
+        // Dim exchange, market, and categories columns
         DefaultTableCellRenderer dimRenderer = new DefaultTableCellRenderer() {
             @Override
             public Component getTableCellRendererComponent(JTable table, Object value, boolean isSelected, boolean hasFocus, int row, int column) {
@@ -113,6 +114,7 @@ public class SymbolChooserPanel extends JPanel {
         };
         table.getColumnModel().getColumn(1).setCellRenderer(dimRenderer);
         table.getColumnModel().getColumn(2).setCellRenderer(dimRenderer);
+        table.getColumnModel().getColumn(5).setCellRenderer(dimRenderer);
 
         table.addMouseListener(new MouseAdapter() {
             @Override
@@ -206,7 +208,7 @@ public class SymbolChooserPanel extends JPanel {
     // --- Table Model ---
 
     private static class SymbolTableModel extends AbstractTableModel {
-        private static final String[] COLUMNS = {"Symbol", "Exchange", "Market", "Base", "Quote"};
+        private static final String[] COLUMNS = {"Symbol", "Exchange", "Market", "Base", "Quote", "Categories"};
         private List<SymbolEntry> entries = new ArrayList<>();
 
         void setEntries(List<SymbolEntry> entries) {
@@ -231,6 +233,8 @@ public class SymbolChooserPanel extends JPanel {
                 case 2 -> formatMarket(e.marketType());
                 case 3 -> e.base();
                 case 4 -> e.quote();
+                case 5 -> e.categories() != null && !e.categories().isEmpty()
+                    ? String.join(", ", e.categories()) : "";
                 default -> "";
             };
         }

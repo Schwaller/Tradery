@@ -29,6 +29,7 @@ public class IntelLauncherFrame extends JFrame {
     private JList<IntelDocumentManager.DocMeta> documentList;
     private JButton openButton;
     private JButton chatBtn;
+    private JButton userAvatarBtn;
 
     private static final DateTimeFormatter DATE_FORMAT =
         DateTimeFormatter.ofPattern("MMM d, yyyy").withZone(ZoneId.systemDefault());
@@ -78,6 +79,9 @@ public class IntelLauncherFrame extends JFrame {
             @Override
             public void componentHidden(ComponentEvent e) { exitIfNoWindows(); }
         });
+
+        // macOS menu bar (shared across all Intel windows)
+        setJMenuBar(IntelMenuBar.create(this));
     }
 
     private void saveLauncherState() {
@@ -139,12 +143,38 @@ public class IntelLauncherFrame extends JFrame {
 
         // Header bar
         JPanel headerWrapper = new JPanel(new BorderLayout());
-        JPanel headerBar = new JPanel(new BorderLayout());
+        JPanel headerBar = new JPanel(new GridBagLayout());
         headerBar.setPreferredSize(new Dimension(0, 52));
-        JLabel titleLabel = new JLabel("Documents", SwingConstants.CENTER);
+
+        GridBagConstraints gbc = new GridBagConstraints();
+        gbc.gridy = 0;
+
+        // Left spacer (balances the avatar on the right)
+        gbc.gridx = 0;
+        gbc.weightx = 1.0;
+        gbc.fill = GridBagConstraints.HORIZONTAL;
+        headerBar.add(Box.createHorizontalGlue(), gbc);
+
+        // Center: Title
+        gbc.gridx = 1;
+        gbc.weightx = 0;
+        gbc.fill = GridBagConstraints.NONE;
+        JLabel titleLabel = new JLabel("Plaiiin \u2014 Intelligence", SwingConstants.CENTER);
         titleLabel.setFont(new Font("SansSerif", Font.BOLD, 13));
         titleLabel.setForeground(UIManager.getColor("Label.disabledForeground"));
-        headerBar.add(titleLabel, BorderLayout.CENTER);
+        headerBar.add(titleLabel, gbc);
+
+        // Right: User avatar
+        gbc.gridx = 2;
+        gbc.weightx = 1.0;
+        gbc.fill = GridBagConstraints.HORIZONTAL;
+        gbc.anchor = GridBagConstraints.EAST;
+        JPanel rightPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
+        rightPanel.setOpaque(false);
+        rightPanel.setBorder(new EmptyBorder(6, 0, 0, 0));
+        rightPanel.add(createUserAvatar());
+        headerBar.add(rightPanel, gbc);
+
         headerWrapper.add(headerBar, BorderLayout.CENTER);
         headerWrapper.add(new JSeparator(), BorderLayout.SOUTH);
 
@@ -396,6 +426,35 @@ public class IntelLauncherFrame extends JFrame {
         dialog.setVisible(true);
     }
 
+    private void performSignIn() {
+        SharingService ss = IntelDocumentFrame.getSharingService();
+        if (ss == null) return;
+        userAvatarBtn.setEnabled(false);
+        new SwingWorker<Boolean, Void>() {
+            @Override
+            protected Boolean doInBackground() {
+                return ss.login();
+            }
+
+            @Override
+            protected void done() {
+                userAvatarBtn.setEnabled(true);
+                try {
+                    boolean success = get();
+                    if (success) {
+                        String email = ss.getAuthenticatedEmail();
+                        if (email != null) {
+                            IntelConfig.get().setUserEmail(email);
+                            IntelConfig.get().save();
+                        }
+                        userAvatarBtn.setToolTipText(email);
+                        userAvatarBtn.repaint();
+                    }
+                } catch (Exception ignored) {}
+            }
+        }.execute();
+    }
+
     @Override
     public void dispose() {
         for (IntelDocumentFrame frame : openWindows.values()) {
@@ -424,6 +483,106 @@ public class IntelLauncherFrame extends JFrame {
                 return;
             }
         }
+    }
+
+    // ==================== USER AVATAR ====================
+
+    private JButton createUserAvatar() {
+        userAvatarBtn = new JButton() {
+            @Override
+            protected void paintComponent(Graphics g) {
+                Graphics2D g2 = (Graphics2D) g.create();
+                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+
+                int size = Math.min(getWidth(), getHeight()) - 2;
+                int x = (getWidth() - size) / 2;
+                int y = (getHeight() - size) / 2;
+
+                String email = IntelConfig.get().getUserEmail();
+                boolean loggedIn = email != null && !email.isBlank();
+
+                g2.setColor(loggedIn
+                    ? new Color(76, 148, 255)
+                    : UIManager.getColor("Button.default.borderColor") != null
+                        ? UIManager.getColor("Button.default.borderColor")
+                        : Color.GRAY);
+                g2.fillOval(x, y, size, size);
+
+                g2.setColor(Color.WHITE);
+                if (loggedIn) {
+                    String initial = email.substring(0, 1).toUpperCase();
+                    g2.setFont(new Font("SansSerif", Font.BOLD, size / 2));
+                    FontMetrics fm = g2.getFontMetrics();
+                    int tx = x + (size - fm.stringWidth(initial)) / 2;
+                    int ty = y + (size - fm.getHeight()) / 2 + fm.getAscent();
+                    g2.drawString(initial, tx, ty);
+                } else {
+                    // Clip to circle so body extends to bottom edge
+                    Shape oldClip = g2.getClip();
+                    g2.setClip(new java.awt.geom.Ellipse2D.Float(x, y, size, size));
+                    int cx = x + size / 2;
+                    int headR = size / 5;
+                    g2.fillOval(cx - headR, y + size / 4, headR * 2, headR * 2);
+                    int bodyW = size * 3 / 5;
+                    g2.fillOval(cx - bodyW / 2, y + size * 11 / 20, bodyW, size);
+                    g2.setClip(oldClip);
+                }
+                g2.dispose();
+            }
+
+            @Override
+            public Dimension getPreferredSize() { return new Dimension(32, 32); }
+            @Override
+            public Dimension getMinimumSize() { return getPreferredSize(); }
+            @Override
+            public Dimension getMaximumSize() { return getPreferredSize(); }
+        };
+
+        userAvatarBtn.setContentAreaFilled(false);
+        userAvatarBtn.setBorderPainted(false);
+        userAvatarBtn.setFocusPainted(false);
+        userAvatarBtn.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+
+        String email = IntelConfig.get().getUserEmail();
+        userAvatarBtn.setToolTipText(email != null && !email.isBlank()
+            ? email : "Not logged in \u2014 click to set identity");
+
+        userAvatarBtn.addActionListener(e -> {
+            String avatarEmail = IntelConfig.get().getUserEmail();
+            if (avatarEmail == null || avatarEmail.isBlank()) {
+                JPopupMenu signInMenu = new JPopupMenu();
+                JMenuItem signInItem = new JMenuItem("Sign In\u2026");
+                signInItem.addActionListener(ev -> performSignIn());
+                signInMenu.add(signInItem);
+                signInMenu.show(userAvatarBtn, 0, userAvatarBtn.getHeight());
+                return;
+            }
+            JPopupMenu menu = new JPopupMenu();
+            JMenuItem emailItem = new JMenuItem(avatarEmail);
+            emailItem.setEnabled(false);
+            menu.add(emailItem);
+            menu.addSeparator();
+            JMenuItem friendsItem = new JMenuItem("Friends");
+            friendsItem.addActionListener(ev -> showFriends());
+            menu.add(friendsItem);
+            JMenuItem chatItem = new JMenuItem("Chat\u2026");
+            chatItem.addActionListener(ev -> openChat());
+            menu.add(chatItem);
+            menu.addSeparator();
+            JMenuItem logoutItem = new JMenuItem("Sign Out");
+            logoutItem.addActionListener(ev -> {
+                SharingService ss = IntelDocumentFrame.getSharingService();
+                if (ss != null) ss.logout();
+                IntelConfig.get().setUserEmail(null);
+                IntelConfig.get().save();
+                userAvatarBtn.setToolTipText("Not logged in \u2014 click to set identity");
+                userAvatarBtn.repaint();
+            });
+            menu.add(logoutItem);
+            menu.show(userAvatarBtn, 0, userAvatarBtn.getHeight());
+        });
+
+        return userAvatarBtn;
     }
 
     // ==================== Cell Renderer ====================

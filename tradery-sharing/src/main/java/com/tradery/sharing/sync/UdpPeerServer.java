@@ -5,12 +5,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
-import java.net.DatagramPacket;
-import java.net.DatagramSocket;
-import java.net.InetSocketAddress;
-import java.net.SocketException;
+import java.net.*;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.nio.channels.DatagramChannel;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.*;
@@ -55,8 +53,25 @@ public class UdpPeerServer implements AutoCloseable {
     public UdpPeerServer(ObjectMapper mapper, Consumer<UdpPeerConnection> connectionHandler, int port) throws SocketException {
         this.mapper = mapper;
         this.connectionHandler = connectionHandler;
-        this.socket = new DatagramSocket(port);
+        this.socket = createDualStackSocket(port);
         this.running = true;
+    }
+
+    /**
+     * Create a dual-stack (IPv4 + IPv6) DatagramSocket via DatagramChannel.
+     * INET6 sockets accept both IPv4 and IPv6 on most OS's (macOS, Linux default).
+     * Falls back to plain IPv4 DatagramSocket if IPv6 is not available.
+     */
+    private static DatagramSocket createDualStackSocket(int port) throws SocketException {
+        try {
+            DatagramChannel channel = DatagramChannel.open(StandardProtocolFamily.INET6);
+            channel.bind(new InetSocketAddress(port));
+            return channel.socket();
+        } catch (IOException e) {
+            // IPv6 not available — fall back to IPv4-only
+            log.debug("IPv6 dual-stack socket not available, falling back to IPv4: {}", e.getMessage());
+            return new DatagramSocket(port);
+        }
     }
 
     /** Start the dispatch loop. Must be called before connect() or accepting connections. */
@@ -142,7 +157,8 @@ public class UdpPeerServer implements AutoCloseable {
                 DatagramPacket packet = new DatagramPacket(buf, buf.length);
                 socket.receive(packet);
 
-                InetSocketAddress from = new InetSocketAddress(packet.getAddress(), packet.getPort());
+                InetSocketAddress from = normalizeAddress(
+                        new InetSocketAddress(packet.getAddress(), packet.getPort()));
                 int len = packet.getLength();
                 if (len < 1) continue;
 
@@ -263,6 +279,35 @@ public class UdpPeerServer implements AutoCloseable {
         ByteBuffer bb = ByteBuffer.wrap(buf, 1, len - 1).order(ByteOrder.BIG_ENDIAN);
         int seqNum = bb.getInt();
         conn.handleAck(seqNum);
+    }
+
+    /**
+     * Normalize IPv4-mapped IPv6 addresses (::ffff:x.x.x.x) to plain IPv4.
+     * Dual-stack sockets report incoming IPv4 packets as IPv4-mapped IPv6,
+     * but connection map keys use plain IPv4 — this bridges the mismatch.
+     */
+    private static InetSocketAddress normalizeAddress(InetSocketAddress addr) {
+        InetAddress ia = addr.getAddress();
+        if (ia instanceof Inet6Address) {
+            byte[] bytes = ia.getAddress();
+            if (bytes.length == 16) {
+                // Check for ::ffff:x.x.x.x pattern
+                boolean mapped = true;
+                for (int i = 0; i < 10; i++) {
+                    if (bytes[i] != 0) { mapped = false; break; }
+                }
+                if (mapped && bytes[10] == (byte) 0xFF && bytes[11] == (byte) 0xFF) {
+                    byte[] v4 = new byte[4];
+                    System.arraycopy(bytes, 12, v4, 0, 4);
+                    try {
+                        return new InetSocketAddress(InetAddress.getByAddress(v4), addr.getPort());
+                    } catch (java.net.UnknownHostException e) {
+                        return addr;
+                    }
+                }
+            }
+        }
+        return addr;
     }
 
     /** Remove a closed connection from the map. */

@@ -8,7 +8,7 @@ plugins {
 
 allprojects {
     group = 'com.tradery'
-    version = '1.0.7'
+    version = '1.0.13'
 
     repositories {
         mavenCentral()

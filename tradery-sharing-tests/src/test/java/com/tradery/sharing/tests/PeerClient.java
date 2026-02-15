@@ -170,6 +170,29 @@ public class PeerClient {
         return get("/mutual/" + email).get("mutual").asBoolean();
     }
 
+    public JsonNode getIssuedCert(String email) throws IOException {
+        return get("/friends/" + email + "/issued-cert");
+    }
+
+    public void setReceivedCert(String email, JsonNode cert) throws IOException {
+        post("/friends/" + email + "/received-cert", cert);
+    }
+
+    /**
+     * Exchange friendship certs between two peers.
+     * Each peer's issuedCert for the other becomes the other's receivedCert.
+     */
+    public static void exchangeFriendshipCerts(PeerClient a, String aEmail,
+                                                PeerClient b, String bEmail) throws IOException {
+        // A's issuedCert for B → B's receivedCert for A
+        JsonNode aIssuedForB = a.getIssuedCert(bEmail);
+        b.setReceivedCert(aEmail, aIssuedForB);
+
+        // B's issuedCert for A → A's receivedCert for B
+        JsonNode bIssuedForA = b.getIssuedCert(aEmail);
+        a.setReceivedCert(bEmail, bIssuedForA);
+    }
+
     /**
      * Poll isMutualFriend() until the expected value appears or timeout.
      */

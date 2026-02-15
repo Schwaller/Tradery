@@ -149,6 +149,51 @@ public class CoinGeckoClient {
     }
 
     /**
+     * Fetch all coin IDs belonging to a CoinGecko category.
+     * Uses /coins/markets?category={id} with pagination (250 per page).
+     *
+     * @param categoryId CoinGecko category slug (e.g., "meme-token", "layer-2")
+     * @return List of CoinGecko coin IDs in this category
+     */
+    public List<String> fetchCategoryCoins(String categoryId) throws IOException {
+        if (isCircuitOpen()) {
+            throw new IOException("Circuit breaker is open - CoinGecko API unavailable");
+        }
+
+        List<String> coinIds = new ArrayList<>();
+        int page = 1;
+        boolean hasMore = true;
+
+        while (hasMore) {
+            String url = String.format(
+                "%s/coins/markets?vs_currency=usd&category=%s&per_page=250&page=%d&order=market_cap_desc",
+                BASE_URL, categoryId, page);
+
+            JsonNode response = executeRequest(url);
+
+            if (response == null || !response.isArray() || response.isEmpty()) {
+                hasMore = false;
+            } else {
+                for (JsonNode coin : response) {
+                    JsonNode idNode = coin.get("id");
+                    if (idNode != null && !idNode.isNull()) {
+                        coinIds.add(idNode.asText());
+                    }
+                }
+
+                if (response.size() < 250) {
+                    hasMore = false;
+                } else {
+                    page++;
+                }
+            }
+        }
+
+        log.info("Fetched {} coins for category '{}'", coinIds.size(), categoryId);
+        return coinIds;
+    }
+
+    /**
      * Get exchange info from CoinGecko.
      */
     public JsonNode fetchExchangeInfo(String exchangeId) throws IOException {

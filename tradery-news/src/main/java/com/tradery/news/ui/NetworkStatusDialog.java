@@ -8,6 +8,7 @@ import javax.swing.border.EmptyBorder;
 import java.awt.*;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
+import java.util.function.Consumer;
 
 /**
  * Comprehensive network status dialog showing all sharing infrastructure
@@ -29,6 +30,7 @@ public class NetworkStatusDialog extends JDialog {
     // Port Mapping
     private StatusBadge natBadge;
     private JLabel publicIpValue;
+    private JLabel publicIpv6Value;
 
     // LAN Discovery
     private StatusBadge lanBadge;
@@ -37,10 +39,17 @@ public class NetworkStatusDialog extends JDialog {
     // Rendezvous
     private StatusBadge rendezvousBadge;
 
+    // My Devices
+    private JPanel myDevicesListPanel;
+
+    // Friends
+    private JPanel friendsListPanel;
+
     // Connections
-    private StatusBadge connectionsBadge;
-    private JLabel peersValue;
-    private JLabel devicesValue;
+    private JPanel connectionsListPanel;
+
+    /** Listener for incoming perf test requests. */
+    private final Consumer<SharingService.PerfTestRequest> perfRequestListener;
 
     public NetworkStatusDialog(Window owner, SharingService sharingService) {
         super(owner, "Network Status", ModalityType.MODELESS);
@@ -52,9 +61,13 @@ public class NetworkStatusDialog extends JDialog {
         getRootPane().putClientProperty(FlatClientProperties.MACOS_WINDOW_BUTTONS_SPACING,
                 FlatClientProperties.MACOS_WINDOW_BUTTONS_SPACING_LARGE);
 
-        setSize(420, 520);
+        setSize(420, 720);
         setLocationRelativeTo(owner);
         setResizable(false);
+
+        // Register perf request listener
+        perfRequestListener = this::handlePerfRequest;
+        sharingService.addPerfRequestListener(perfRequestListener);
 
         initUI();
         refresh();
@@ -67,6 +80,7 @@ public class NetworkStatusDialog extends JDialog {
             @Override
             public void windowClosing(WindowEvent e) {
                 refreshTimer.stop();
+                sharingService.removePerfRequestListener(perfRequestListener);
             }
         });
     }
@@ -78,15 +92,24 @@ public class NetworkStatusDialog extends JDialog {
         JPanel header = new JPanel(new BorderLayout());
         header.setPreferredSize(new Dimension(0, 52));
         header.setMinimumSize(new Dimension(0, 52));
-        JPanel headerInner = new JPanel(new BorderLayout());
+        JPanel headerInner = new JPanel(null); // null layout for true centering
+        headerInner.setPreferredSize(new Dimension(0, 52));
         JPanel placeholder = new JPanel();
         placeholder.putClientProperty(FlatClientProperties.FULL_WINDOW_CONTENT_BUTTONS_PLACEHOLDER, "mac");
         placeholder.setOpaque(false);
-        headerInner.add(placeholder, BorderLayout.WEST);
+        headerInner.add(placeholder);
         JLabel title = new JLabel("Network Status", SwingConstants.CENTER);
         title.setFont(new Font("SansSerif", Font.BOLD, 13));
         title.setForeground(UIManager.getColor("Label.disabledForeground"));
-        headerInner.add(title, BorderLayout.CENTER);
+        headerInner.add(title);
+        // Position placeholder at left, title fills full width (centered ignoring traffic lights)
+        headerInner.addComponentListener(new java.awt.event.ComponentAdapter() {
+            @Override public void componentResized(java.awt.event.ComponentEvent e) {
+                Dimension phPref = placeholder.getPreferredSize();
+                placeholder.setBounds(0, 0, phPref.width, headerInner.getHeight());
+                title.setBounds(0, 0, headerInner.getWidth(), headerInner.getHeight());
+            }
+        });
         header.add(headerInner, BorderLayout.CENTER);
         header.add(new JSeparator(), BorderLayout.SOUTH);
         main.add(header, BorderLayout.NORTH);
@@ -105,6 +128,10 @@ public class NetworkStatusDialog extends JDialog {
         content.add(createLanSection());
         content.add(new JSeparator());
         content.add(createRendezvousSection());
+        content.add(new JSeparator());
+        content.add(createMyDevicesSection());
+        content.add(new JSeparator());
+        content.add(createFriendsSection());
         content.add(new JSeparator());
         content.add(createConnectionsSection());
         content.add(Box.createVerticalGlue());
@@ -217,8 +244,15 @@ public class NetworkStatusDialog extends JDialog {
         section.add(publicIpValue, gbc);
         gbc.weightx = 0; gbc.fill = GridBagConstraints.NONE;
 
+        gbc.gridy = 3; gbc.gridx = 0;
+        section.add(keyLabel("Public IPv6"), gbc);
+        gbc.gridx = 1; gbc.weightx = 1.0; gbc.fill = GridBagConstraints.HORIZONTAL;
+        publicIpv6Value = valueLabel("");
+        section.add(publicIpv6Value, gbc);
+        gbc.weightx = 0; gbc.fill = GridBagConstraints.NONE;
+
         // Hint
-        gbc.gridy = 3; gbc.gridx = 0; gbc.gridwidth = 2;
+        gbc.gridy = 4; gbc.gridx = 0; gbc.gridwidth = 2;
         gbc.weightx = 1.0; gbc.fill = GridBagConstraints.HORIZONTAL;
         JLabel hint = new JLabel("Enables direct connections from outside your network");
         hint.setFont(new Font("SansSerif", Font.PLAIN, 10));
@@ -295,6 +329,54 @@ public class NetworkStatusDialog extends JDialog {
         return section;
     }
 
+    private JPanel createMyDevicesSection() {
+        JPanel section = new JPanel(new GridBagLayout());
+        section.setBorder(new EmptyBorder(10, 20, 10, 20));
+        section.setAlignmentX(Component.LEFT_ALIGNMENT);
+
+        GridBagConstraints gbc = new GridBagConstraints();
+        gbc.anchor = GridBagConstraints.WEST;
+        gbc.insets = new Insets(2, 0, 2, 8);
+
+        gbc.gridx = 0; gbc.gridy = 0; gbc.gridwidth = 2;
+        section.add(sectionLabel("My Devices"), gbc);
+
+        gbc.gridy = 1; gbc.gridwidth = 2;
+        gbc.weightx = 1.0; gbc.fill = GridBagConstraints.HORIZONTAL;
+        myDevicesListPanel = new JPanel();
+        myDevicesListPanel.setLayout(new BoxLayout(myDevicesListPanel, BoxLayout.Y_AXIS));
+        JLabel placeholder = valueLabel("Discovering...");
+        placeholder.setForeground(UIManager.getColor("Label.disabledForeground"));
+        myDevicesListPanel.add(placeholder);
+        section.add(myDevicesListPanel, gbc);
+
+        return section;
+    }
+
+    private JPanel createFriendsSection() {
+        JPanel section = new JPanel(new GridBagLayout());
+        section.setBorder(new EmptyBorder(10, 20, 10, 20));
+        section.setAlignmentX(Component.LEFT_ALIGNMENT);
+
+        GridBagConstraints gbc = new GridBagConstraints();
+        gbc.anchor = GridBagConstraints.WEST;
+        gbc.insets = new Insets(2, 0, 2, 8);
+
+        gbc.gridx = 0; gbc.gridy = 0; gbc.gridwidth = 2;
+        section.add(sectionLabel("Friends"), gbc);
+
+        gbc.gridy = 1; gbc.gridwidth = 2;
+        gbc.weightx = 1.0; gbc.fill = GridBagConstraints.HORIZONTAL;
+        friendsListPanel = new JPanel();
+        friendsListPanel.setLayout(new BoxLayout(friendsListPanel, BoxLayout.Y_AXIS));
+        JLabel placeholder = valueLabel("Loading...");
+        placeholder.setForeground(UIManager.getColor("Label.disabledForeground"));
+        friendsListPanel.add(placeholder);
+        section.add(friendsListPanel, gbc);
+
+        return section;
+    }
+
     private JPanel createConnectionsSection() {
         JPanel section = new JPanel(new GridBagLayout());
         section.setBorder(new EmptyBorder(10, 20, 10, 20));
@@ -306,26 +388,15 @@ public class NetworkStatusDialog extends JDialog {
 
         gbc.gridx = 0; gbc.gridy = 0; gbc.gridwidth = 2;
         section.add(sectionLabel("Connections"), gbc);
-        gbc.gridwidth = 1;
 
-        gbc.gridy = 1; gbc.gridx = 0;
-        section.add(keyLabel("Status"), gbc);
-        gbc.gridx = 1;
-        connectionsBadge = new StatusBadge("Checking...");
-        section.add(connectionsBadge, gbc);
-
-        gbc.gridy = 2; gbc.gridx = 0;
-        section.add(keyLabel("Peers"), gbc);
-        gbc.gridx = 1; gbc.weightx = 1.0; gbc.fill = GridBagConstraints.HORIZONTAL;
-        peersValue = valueLabel("");
-        section.add(peersValue, gbc);
-        gbc.weightx = 0; gbc.fill = GridBagConstraints.NONE;
-
-        gbc.gridy = 3; gbc.gridx = 0;
-        section.add(keyLabel("Devices"), gbc);
-        gbc.gridx = 1; gbc.weightx = 1.0; gbc.fill = GridBagConstraints.HORIZONTAL;
-        devicesValue = valueLabel("");
-        section.add(devicesValue, gbc);
+        gbc.gridy = 1; gbc.gridwidth = 2;
+        gbc.weightx = 1.0; gbc.fill = GridBagConstraints.HORIZONTAL;
+        connectionsListPanel = new JPanel();
+        connectionsListPanel.setLayout(new BoxLayout(connectionsListPanel, BoxLayout.Y_AXIS));
+        JLabel placeholder = valueLabel("None");
+        placeholder.setForeground(UIManager.getColor("Label.disabledForeground"));
+        connectionsListPanel.add(placeholder);
+        section.add(connectionsListPanel, gbc);
 
         return section;
     }
@@ -373,6 +444,7 @@ public class NetworkStatusDialog extends JDialog {
             natBadge.setStatusColor(StatusBadge.BG_IDLE, StatusBadge.FG_IDLE);
         }
         publicIpValue.setText(ns.publicIp() != null ? ns.publicIp() : "\u2014");
+        publicIpv6Value.setText(ns.publicIpv6() != null ? ns.publicIpv6() : "\u2014");
 
         // LAN
         if (ns.lanActive()) {
@@ -394,18 +466,159 @@ public class NetworkStatusDialog extends JDialog {
             rendezvousBadge.setStatusColor(StatusBadge.BG_IDLE, StatusBadge.FG_IDLE);
         }
 
-        // Connections
-        int totalPeers = ns.connectedPeers();
-        int totalDevices = ns.connectedDevices();
-        if (totalPeers > 0 || totalDevices > 0) {
-            connectionsBadge.setText("Connected");
-            connectionsBadge.setStatusColor(StatusBadge.BG_OK, StatusBadge.FG_OK);
-        } else {
-            connectionsBadge.setText("No connections");
-            connectionsBadge.setStatusColor(StatusBadge.BG_IDLE, StatusBadge.FG_IDLE);
+        // My Devices
+        var devices = sharingService.getMyDevices();
+        myDevicesListPanel.removeAll();
+
+        // This device
+        String localAddr = formatDeviceAddress(ns.publicIp(), ns.publicIpv6(), ns.serverPort());
+        JLabel thisDevice = valueLabel(localAddr + "  (this device)");
+        thisDevice.setForeground(UIManager.getColor("Label.disabledForeground"));
+        myDevicesListPanel.add(thisDevice);
+
+        // Other devices
+        for (var dev : devices) {
+            String addr = formatDeviceAddress(dev.host(), dev.ipv6Host(), dev.port());
+            myDevicesListPanel.add(valueLabel(addr));
         }
-        peersValue.setText(String.valueOf(totalPeers));
-        devicesValue.setText(String.valueOf(totalDevices));
+
+        myDevicesListPanel.revalidate();
+        myDevicesListPanel.repaint();
+
+        // Friends
+        var friends = sharingService.getFriendNetworkStatuses();
+        friendsListPanel.removeAll();
+        if (friends.isEmpty()) {
+            JLabel none = valueLabel("No friends added");
+            none.setForeground(UIManager.getColor("Label.disabledForeground"));
+            friendsListPanel.add(none);
+        } else {
+            for (var f : friends) {
+                JPanel row = new JPanel(new BorderLayout(8, 0));
+                row.setOpaque(false);
+                row.setMaximumSize(new Dimension(Integer.MAX_VALUE, 22));
+
+                String label = f.displayName() != null && !f.displayName().isBlank()
+                        ? f.displayName() : f.email();
+                row.add(valueLabel(label), BorderLayout.CENTER);
+
+                StatusBadge badge = new StatusBadge(formatFriendBadge(f));
+                switch (f.connectionState()) {
+                    case "connected" -> badge.setStatusColor(StatusBadge.BG_OK, StatusBadge.FG_OK);
+                    case "discovered" -> badge.setStatusColor(StatusBadge.BG_WARNING, StatusBadge.FG_WARNING);
+                    default -> badge.setStatusColor(StatusBadge.BG_IDLE, StatusBadge.FG_IDLE);
+                }
+                row.add(badge, BorderLayout.EAST);
+                friendsListPanel.add(row);
+            }
+        }
+        friendsListPanel.revalidate();
+        friendsListPanel.repaint();
+
+        // Connections — show individual connected devices
+        var connectedDevices = sharingService.getConnectedDevices();
+        connectionsListPanel.removeAll();
+        if (connectedDevices.isEmpty()) {
+            JLabel none = valueLabel("No active connections");
+            none.setForeground(UIManager.getColor("Label.disabledForeground"));
+            connectionsListPanel.add(none);
+        } else {
+            String ourEmail = ns.email();
+            for (var dev : connectedDevices) {
+                connectionsListPanel.add(createConnectionRow(dev, ourEmail));
+            }
+        }
+        connectionsListPanel.revalidate();
+        connectionsListPanel.repaint();
+    }
+
+    private JPanel createConnectionRow(SharingService.ConnectedDevice dev, String ourEmail) {
+        JPanel row = new JPanel(new BorderLayout(6, 0));
+        row.setOpaque(false);
+        row.setMaximumSize(new Dimension(Integer.MAX_VALUE, 26));
+        row.setBorder(new EmptyBorder(2, 0, 2, 0));
+
+        // Left: name + address
+        boolean isSelf = ourEmail != null && ourEmail.equals(dev.email());
+        String label = dev.displayName() != null && !dev.displayName().isBlank()
+                ? dev.displayName() : dev.email();
+        if (isSelf) label += "  (self)";
+        JLabel nameLabel = valueLabel(label);
+        nameLabel.setFont(nameLabel.getFont().deriveFont(Font.PLAIN, 11f));
+
+        JPanel left = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
+        left.setOpaque(false);
+        left.add(nameLabel);
+
+        // Connection type badge
+        StatusBadge typeBadge = new StatusBadge(dev.connectionType());
+        typeBadge.setStatusColor(StatusBadge.BG_IDLE, StatusBadge.FG_IDLE);
+        left.add(typeBadge);
+
+        // Mutual badge
+        if (dev.mutualFriend()) {
+            StatusBadge mutualBadge = new StatusBadge("Mutual");
+            mutualBadge.setStatusColor(StatusBadge.BG_OK, StatusBadge.FG_OK);
+            left.add(mutualBadge);
+        }
+
+        row.add(left, BorderLayout.CENTER);
+
+        // Right: Test button (only for mutual friends, not self)
+        if (dev.mutualFriend() && !isSelf) {
+            JButton testBtn = new JButton("Test");
+            testBtn.setFont(testBtn.getFont().deriveFont(Font.PLAIN, 10f));
+            testBtn.putClientProperty("JButton.buttonType", "roundRect");
+            testBtn.addActionListener(e -> startPerfTest(dev, testBtn));
+            row.add(testBtn, BorderLayout.EAST);
+        }
+
+        // Address as tooltip
+        row.setToolTipText(dev.address());
+
+        return row;
+    }
+
+    private void startPerfTest(SharingService.ConnectedDevice dev, JButton testBtn) {
+        testBtn.setText("Requesting...");
+        testBtn.setEnabled(false);
+        sharingService.startPerfTest(dev.email(), result -> {
+            // Called on EDT
+            if (result == null) {
+                testBtn.setText("Declined");
+                javax.swing.Timer reEnableTimer = new javax.swing.Timer(3000, ev -> {
+                    testBtn.setText("Test");
+                    testBtn.setEnabled(true);
+                });
+                reEnableTimer.setRepeats(false);
+                reEnableTimer.start();
+            } else {
+                testBtn.setText("Test");
+                testBtn.setEnabled(true);
+                showPerfResult(dev.displayName() != null ? dev.displayName() : dev.email(), result);
+            }
+        });
+    }
+
+    private void showPerfResult(String peerName, SharingService.PerfTestResult r) {
+        String message = String.format(
+                "Latency     avg %.0f ms  (min %.0f ms / max %.0f ms)\n" +
+                "Throughput  %.0f KB/s\n" +
+                "Packet Loss %.0f%%  (%d/%d pings)",
+                r.avgLatencyMs(), r.minLatencyMs(), r.maxLatencyMs(),
+                r.throughputKBps(),
+                r.packetLossPercent(), r.pingsReceived(), r.pingsSent());
+        JOptionPane.showMessageDialog(this, message,
+                "Performance Test \u2014 " + peerName, JOptionPane.INFORMATION_MESSAGE);
+    }
+
+    private void handlePerfRequest(SharingService.PerfTestRequest request) {
+        SwingUtilities.invokeLater(() -> {
+            int choice = JOptionPane.showConfirmDialog(this,
+                    request.fromDisplayName() + " wants to run a performance test.\nAllow?",
+                    "Performance Test Request", JOptionPane.YES_NO_OPTION);
+            sharingService.respondToPerfTest(request.testId(), choice == JOptionPane.YES_OPTION);
+        });
     }
 
     // ==================== HELPERS ====================
@@ -421,6 +634,21 @@ public class NetworkStatusDialog extends JDialog {
         label.setFont(new Font("SansSerif", Font.PLAIN, 12));
         label.setForeground(UIManager.getColor("Label.disabledForeground"));
         return label;
+    }
+
+    private static String formatFriendBadge(SharingService.FriendNetworkStatus f) {
+        return switch (f.connectionState()) {
+            case "connected" -> "Connected";
+            case "discovered" -> "Discovered";
+            default -> "ONLINE".equals(f.presence()) || "IDLE".equals(f.presence())
+                    ? f.presence() : "Offline";
+        };
+    }
+
+    private static String formatDeviceAddress(String host, String ipv6, int port) {
+        if (ipv6 != null) return "[" + ipv6 + "]:" + port;
+        if (host != null) return host + ":" + port;
+        return ":" + port;
     }
 
     private static JLabel valueLabel(String text) {

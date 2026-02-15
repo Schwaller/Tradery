@@ -12,6 +12,7 @@ import com.tradery.sharing.identity.IdentityCert;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.tradery.documents.DocumentMember;
 import java.io.IOException;
 import java.security.GeneralSecurityException;
 import java.util.*;
@@ -56,6 +57,9 @@ public class PeerManager implements AutoCloseable {
 
     /** Chat message listeners. */
     private final List<Consumer<NetworkMessage.ChatMessage>> chatListeners = new CopyOnWriteArrayList<>();
+
+    /** Performance test listeners (deviceId, message). */
+    private final List<BiConsumer<String, NetworkMessage>> perfListeners = new CopyOnWriteArrayList<>();
 
     /** Tracks whether each connected peer (by device ID) has mutual friendship with us (cert-verified). */
     private final Map<String, Boolean> mutualFriends = new ConcurrentHashMap<>();
@@ -104,8 +108,32 @@ public class PeerManager implements AutoCloseable {
      * Connect to a remote peer via UDP and sync all shared documents.
      */
     public void connectAndSync(String host, int port) {
+        connectAndSync(host, null, port);
+    }
+
+    /**
+     * Connect with IPv6 preference. If ipv6Host is non-null, try IPv6 first
+     * with a short timeout, then fall back to IPv4.
+     */
+    public void connectAndSync(String host, String ipv6Host, int port) {
         Thread.ofVirtual().name("peer-connect-" + host + ":" + port).start(() -> {
-            UdpPeerConnection conn = server.connect(host, port, 30_000);
+            UdpPeerConnection conn = null;
+
+            // Try IPv6 first if available (short 5s timeout — IPv6 should be direct)
+            if (ipv6Host != null) {
+                conn = server.connect(ipv6Host, port, 5_000);
+                if (conn != null) {
+                    log.info("Connected via IPv6 to [{}]:{}", ipv6Host, port);
+                } else {
+                    log.debug("IPv6 connect to [{}]:{} failed, falling back to IPv4", ipv6Host, port);
+                }
+            }
+
+            // Fall back to IPv4
+            if (conn == null) {
+                conn = server.connect(host, port, 30_000);
+            }
+
             if (conn != null) {
                 handleOutgoingConnection(conn);
             } else {
@@ -290,16 +318,52 @@ public class PeerManager implements AutoCloseable {
 
     /**
      * Sync shared documents with a mutual friend.
+     * Only syncs documents where the remote peer is a verified member.
      */
     private void syncSharedDocs(UdpPeerConnection conn, NetworkMessage.Hello hello) throws IOException {
         Set<String> sharedDocs = new HashSet<>(workspaces.keySet());
         sharedDocs.retainAll(new HashSet<>(hello.documentIds()));
         for (String docId : sharedDocs) {
             DocumentWorkspace ws = workspaces.get(docId);
-            if (ws != null) {
-                NetworkMessage.SyncRequest req = syncEngine.createSyncRequest(ws, docId, hello.peerId());
-                conn.send(req);
+            if (ws == null) continue;
+
+            if (!isDocumentMember(docId, hello.peerId())) {
+                log.warn("Rejected sync for doc {} — peer {} is not a member", docId, hello.peerId());
+                continue;
             }
+
+            NetworkMessage.SyncRequest req = syncEngine.createSyncRequest(ws, docId, hello.peerId());
+            conn.send(req);
+        }
+    }
+
+    /**
+     * Check if the given user email is a member of the document.
+     * If no members list exists (local-only doc), returns false — can't verify, deny sync.
+     */
+    private boolean isDocumentMember(String docId, String peerEmail) {
+        try {
+            List<DocumentMember> members = documentManager.readMembers(docId);
+            if (members.isEmpty()) return false;
+            for (DocumentMember m : members) {
+                if (peerEmail.equals(m.userId())) return true;
+            }
+            return false;
+        } catch (IOException e) {
+            log.warn("Failed to read members for doc {}: {}", docId, e.getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Read members for a document, returning empty list on error.
+     */
+    private List<DocumentMember> readMembersSafe(String docId) {
+        try {
+            return documentManager.readMembers(docId);
+        } catch (IOException e) {
+            log.warn("Failed to read members for doc {}: {}", docId, e.getMessage());
+            return List.of();
         }
     }
 
@@ -333,11 +397,18 @@ public class PeerManager implements AutoCloseable {
                     return;
                 }
                 DocumentWorkspace ws = workspaces.get(req.documentId());
-                if (ws != null) {
-                    NetworkMessage.SyncResponse resp = syncEngine.handleSyncRequest(ws, req);
-                    conn.send(resp);
-                    conn.send(new NetworkMessage.SyncDone(req.documentId()));
+                if (ws == null) return;
+
+                String peerEmail = hello.peerId();
+                if (!isDocumentMember(req.documentId(), peerEmail)) {
+                    log.warn("Rejected SyncRequest for doc {} — peer {} is not a member",
+                            req.documentId(), peerEmail);
+                    return;
                 }
+
+                NetworkMessage.SyncResponse resp = syncEngine.handleSyncRequest(ws, req);
+                conn.send(resp);
+                conn.send(new NetworkMessage.SyncDone(req.documentId()));
             }
             case NetworkMessage.SyncResponse resp -> {
                 if (!mutual) {
@@ -345,9 +416,22 @@ public class PeerManager implements AutoCloseable {
                     return;
                 }
                 DocumentWorkspace ws = workspaces.get(resp.documentId());
-                if (ws != null) {
-                    syncEngine.handleSyncResponse(ws, remoteKey, resp);
+                if (ws == null) return;
+
+                String peerEmail = hello.peerId();
+                List<DocumentMember> members = readMembersSafe(resp.documentId());
+                if (!members.isEmpty()) {
+                    boolean isMember = members.stream().anyMatch(m -> peerEmail.equals(m.userId()));
+                    if (!isMember) {
+                        log.warn("Rejected SyncResponse for doc {} — peer {} is not a member",
+                                resp.documentId(), peerEmail);
+                        return;
+                    }
                 }
+
+                // Use full handler with members + remoteUserId so governance routing works
+                syncEngine.handleSyncResponse(ws, ws.document(), members,
+                        remoteKey, peerEmail, resp);
             }
             case NetworkMessage.SyncDone done ->
                 log.debug("Sync complete for doc {} from {}", done.documentId(), remoteKey);
@@ -397,6 +481,37 @@ public class PeerManager implements AutoCloseable {
                     friendImportCallback.accept(hello.peerId(), offer);
                 }
             }
+            case NetworkMessage.PerfRequest req -> {
+                for (var l : perfListeners) {
+                    try { l.accept(remoteKey, req); } catch (Exception ex) { log.warn("Perf listener error", ex); }
+                }
+            }
+            case NetworkMessage.PerfAccept accept -> {
+                for (var l : perfListeners) {
+                    try { l.accept(remoteKey, accept); } catch (Exception ex) { log.warn("Perf listener error", ex); }
+                }
+            }
+            case NetworkMessage.PerfReject reject -> {
+                for (var l : perfListeners) {
+                    try { l.accept(remoteKey, reject); } catch (Exception ex) { log.warn("Perf listener error", ex); }
+                }
+            }
+            case NetworkMessage.PerfPing ping -> {
+                // Auto-reply with PerfPong
+                try {
+                    conn.send(new NetworkMessage.PerfPong(ping.testId(), ping.seq(), ping.sendTs(), ping.payload()));
+                } catch (IOException e) {
+                    log.debug("Failed to send PerfPong: {}", e.getMessage());
+                }
+                for (var l : perfListeners) {
+                    try { l.accept(remoteKey, ping); } catch (Exception ex) { log.warn("Perf listener error", ex); }
+                }
+            }
+            case NetworkMessage.PerfPong pong -> {
+                for (var l : perfListeners) {
+                    try { l.accept(remoteKey, pong); } catch (Exception ex) { log.warn("Perf listener error", ex); }
+                }
+            }
             case NetworkMessage.Hello ignored ->
                 log.warn("Unexpected HELLO from {}", remoteKey);
         }
@@ -404,17 +519,23 @@ public class PeerManager implements AutoCloseable {
 
     /**
      * Push local data to all connected peers and request their latest data.
+     * Only syncs documents where the remote peer is a verified member.
      */
     public void requestSync() {
         for (Map.Entry<String, UdpPeerConnection> entry : connections.entrySet()) {
-            String remotePeerId = entry.getKey();
+            String remoteDeviceId = entry.getKey();
             UdpPeerConnection conn = entry.getValue();
             if (conn.isClosed()) continue;
-            if (!isMutualFriend(remotePeerId)) continue;
+            if (!isMutualFriend(remoteDeviceId)) continue;
+
+            String peerEmail = deviceToPeerEmail.get(remoteDeviceId);
 
             for (Map.Entry<String, DocumentWorkspace> wsEntry : workspaces.entrySet()) {
                 String docId = wsEntry.getKey();
                 DocumentWorkspace ws = wsEntry.getValue();
+
+                if (peerEmail != null && !isDocumentMember(docId, peerEmail)) continue;
+
                 try {
                     // Push our facts to remote
                     NetworkMessage.SyncResponse push = syncEngine.handleSyncRequest(ws,
@@ -424,10 +545,10 @@ public class PeerManager implements AutoCloseable {
                     }
 
                     // Pull their facts
-                    NetworkMessage.SyncRequest req = syncEngine.createSyncRequest(ws, docId, remotePeerId);
+                    NetworkMessage.SyncRequest req = syncEngine.createSyncRequest(ws, docId, remoteDeviceId);
                     conn.send(req);
                 } catch (IOException e) {
-                    log.warn("Failed to sync with {}: {}", remotePeerId, e.getMessage());
+                    log.warn("Failed to sync with {}: {}", remoteDeviceId, e.getMessage());
                 }
             }
         }
@@ -497,6 +618,40 @@ public class PeerManager implements AutoCloseable {
 
     public void removeChatListener(Consumer<NetworkMessage.ChatMessage> listener) {
         chatListeners.remove(listener);
+    }
+
+    public void addPerfListener(BiConsumer<String, NetworkMessage> listener) {
+        perfListeners.add(listener);
+    }
+
+    public void removePerfListener(BiConsumer<String, NetworkMessage> listener) {
+        perfListeners.remove(listener);
+    }
+
+    /** Send a message to a specific device by device ID. */
+    public void sendToDevice(String deviceId, NetworkMessage msg) throws IOException {
+        UdpPeerConnection conn = connections.get(deviceId);
+        if (conn == null || conn.isClosed()) {
+            throw new IOException("No active connection to device: " + deviceId);
+        }
+        conn.send(msg);
+    }
+
+    /** Connection info for UI display. */
+    public record ConnectionInfo(String deviceId, String email, String remoteAddress, boolean mutualFriend) {}
+
+    /** Get info about all active connections. */
+    public List<ConnectionInfo> getConnectionInfos() {
+        List<ConnectionInfo> result = new ArrayList<>();
+        for (var entry : connections.entrySet()) {
+            String devId = entry.getKey();
+            UdpPeerConnection conn = entry.getValue();
+            if (conn.isClosed()) continue;
+            String email = deviceToPeerEmail.get(devId);
+            boolean mutual = isMutualFriend(devId);
+            result.add(new ConnectionInfo(devId, email, conn.remoteAddress(), mutual));
+        }
+        return result;
     }
 
     /** Check if a connected peer has mutual friendship with us. */

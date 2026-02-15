@@ -171,6 +171,7 @@ public class IntelFrame extends JFrame {
         }
 
         initUI();
+        setJMenuBar(IntelMenuBar.create(this));
 
         // Start API server
         try {
@@ -280,9 +281,7 @@ public class IntelFrame extends JFrame {
         });
         leftContent.add(viewToggle);
 
-        JButton helpBtn = new ToolbarButton("Help");
-        helpBtn.addActionListener(e -> IntelHelpDialog.show(this));
-        leftContent.add(helpBtn);
+
 
         GridBagConstraints lc = new GridBagConstraints();
         lc.anchor = GridBagConstraints.WEST;
@@ -318,10 +317,11 @@ public class IntelFrame extends JFrame {
         rightContent.add(fetchBtn);
 
         // Reset View button (for Coins view)
-        resetViewBtn = new ToolbarButton("Reset View");
+        resetViewBtn = new ToolbarButton("\u2194");
+        resetViewBtn.setToolTipText("Fit all nodes in view");
         resetViewBtn.addActionListener(e -> {
             CoinGraphPanel current = getCurrentCoinGraphPanel();
-            if (current != null) current.resetView();
+            if (current != null) current.fitToView();
         });
         resetViewBtn.setVisible(false);  // Hidden by default (News is selected)
         rightContent.add(resetViewBtn);
@@ -374,9 +374,7 @@ public class IntelFrame extends JFrame {
         dataStructureBtn.addActionListener(e -> showDataStructureWindow());
         rightContent.add(dataStructureBtn);
 
-        JButton settingsBtn = new ToolbarButton("Settings");
-        settingsBtn.addActionListener(e -> showSettingsWindow());
-        rightContent.add(settingsBtn);
+
 
         GridBagConstraints rc = new GridBagConstraints();
         rc.anchor = GridBagConstraints.EAST;
@@ -1454,6 +1452,9 @@ public class IntelFrame extends JFrame {
     // ==================== MAIN ====================
 
     public static void main(String[] args) {
+        System.setProperty("apple.laf.useScreenMenuBar", "true");
+        System.setProperty("apple.awt.application.name", "Intelligence");
+
         try {
             // Apply saved theme (or default)
             ThemeHelper.applyCurrentTheme();
@@ -1470,6 +1471,18 @@ public class IntelFrame extends JFrame {
         // Check for updates (non-blocking)
         String version = System.getProperty("tradery.version", "1.0.0");
         UpdateChecker.checkAsync(version, "https://plaiiin.com/api/app/intelligence/latest.json");
+
+        // macOS application menu handlers
+        if (Desktop.isDesktopSupported()) {
+            Desktop desktop = Desktop.getDesktop();
+            if (desktop.isSupported(Desktop.Action.APP_PREFERENCES)) {
+                desktop.setPreferencesHandler(e -> SwingUtilities.invokeLater(() -> {
+                    Window active = javax.swing.FocusManager.getCurrentManager().getActiveWindow();
+                    if (active == null) active = java.awt.KeyboardFocusManager.getCurrentKeyboardFocusManager().getFocusedWindow();
+                    new IntelSettingsDialog(active).setVisible(true);
+                }));
+            }
+        }
 
         SwingUtilities.invokeLater(() -> {
             // First-run: show setup if no AI profiles configured
@@ -1505,10 +1518,12 @@ public class IntelFrame extends JFrame {
 
                 // Bootstrap peer infrastructure so LAN discovery starts immediately
                 sharingService.bootstrap();
+                System.out.println("[Sharing] Module loaded and bootstrapped");
             } catch (ClassNotFoundException e) {
-                // Sharing module not on classpath — Share button will be hidden
+                System.err.println("[Sharing] Module not available: " + e.getMessage());
             } catch (Exception e) {
-                System.err.println("Failed to initialize sharing: " + e.getMessage());
+                System.err.println("[Sharing] Failed to initialize: " + e.getMessage());
+                e.printStackTrace();
             }
 
             IntelLauncherFrame launcher = new IntelLauncherFrame(documentManager);

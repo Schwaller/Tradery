@@ -7,7 +7,9 @@ import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * In-memory peer registry with lazy TTL eviction.
- * Peers that haven't re-announced within the TTL are removed on next access.
+ * Keyed by deviceId (unique per device) so multiple devices per user are supported.
+ * Each entry stores userId (Keycloak UUID) for same-user device discovery,
+ * and peerId (email) for document-based peer discovery.
  */
 public class PeerRegistry {
 
@@ -24,9 +26,10 @@ public class PeerRegistry {
         this.ttlMillis = ttlMillis;
     }
 
-    /** Upsert a peer announcement. */
-    public void announce(String peerId, String host, int port, List<String> documentIds) {
-        peers.put(peerId, new PeerEntry(peerId, host, port, documentIds, Instant.now()));
+    /** Upsert a peer announcement, keyed by deviceId. */
+    public void announce(String deviceId, String userId, String peerId, String host, int port,
+                         List<String> documentIds) {
+        peers.put(deviceId, new PeerEntry(deviceId, userId, peerId, host, port, documentIds, Instant.now()));
     }
 
     /** Find all non-expired peers sharing a given document. */
@@ -41,12 +44,24 @@ public class PeerRegistry {
         return result;
     }
 
-    /** Remove a peer from the registry. */
-    public void depart(String peerId) {
-        peers.remove(peerId);
+    /** Find all non-expired peers belonging to the same user, excluding the given deviceId. */
+    public List<PeerResponse> findByUser(String userId, String excludeDeviceId) {
+        evictExpired();
+        List<PeerResponse> result = new ArrayList<>();
+        for (PeerEntry entry : peers.values()) {
+            if (entry.userId().equals(userId) && !entry.deviceId().equals(excludeDeviceId)) {
+                result.add(new PeerResponse(entry.peerId(), entry.host(), entry.port()));
+            }
+        }
+        return result;
     }
 
-    /** Number of currently registered (possibly expired) peers. */
+    /** Remove a peer by deviceId. */
+    public void depart(String deviceId) {
+        peers.remove(deviceId);
+    }
+
+    /** Number of currently registered (non-expired) peers. */
     public int size() {
         evictExpired();
         return peers.size();
@@ -57,5 +72,6 @@ public class PeerRegistry {
         peers.entrySet().removeIf(e -> e.getValue().lastSeen().isBefore(cutoff));
     }
 
-    record PeerEntry(String peerId, String host, int port, List<String> documentIds, Instant lastSeen) {}
+    record PeerEntry(String deviceId, String userId, String peerId, String host, int port,
+                     List<String> documentIds, Instant lastSeen) {}
 }

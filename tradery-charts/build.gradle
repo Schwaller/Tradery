@@ -9,6 +9,9 @@ dependencies {
     // Core module for models (Candle) and indicators (IndicatorEngine)
     api project(':tradery-core')
 
+    // Shared UI utilities (ThemeColors)
+    api project(':tradery-ui-common')
+
     // JFreeChart for chart rendering
     api "org.jfree:jfreechart:${rootProject.ext.jfreeChartVersion}"
 
