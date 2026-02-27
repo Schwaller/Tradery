@@ -102,11 +102,13 @@ public class AiTerminalPanel extends JPanel {
             if ("claude".equals(aiType)) {
                 // Pre-approve permissions for strategy files, MCP tools, and common bash commands
                 String traderyPath = System.getProperty("user.home") + "/.tradery";
+                // mcp__plaiiin__* matches ~/.tradery/.mcp.json server name
+                // mcp__tradery__* matches project .mcp.json server name
                 String allowedTools = String.format(
                     "Edit:%s/**,Write:%s/**,Read:%s/**," +
                     "Bash(cat %s/**),Bash(head %s/**),Bash(tail %s/**),Bash(ls %s/**)," +
                     "Bash(curl http://localhost:*)," +
-                    "mcp__tradery__*",
+                    "mcp__plaiiin__*,mcp__tradery__*",
                     traderyPath, traderyPath, traderyPath,
                     traderyPath, traderyPath, traderyPath, traderyPath
                 );
