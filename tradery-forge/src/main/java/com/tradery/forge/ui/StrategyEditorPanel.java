@@ -48,13 +48,24 @@ public class StrategyEditorPanel extends JPanel {
         notesArea = new JTextArea(1, 40) {
             @Override
             public Dimension getPreferredScrollableViewportSize() {
-                // Dynamic height: min 1 line, max 7 lines
+                // Dynamic height based on wrapped lines: min 1, max 10
                 FontMetrics fm = getFontMetrics(getFont());
                 int lineHeight = fm.getHeight();
-                int lineCount = getLineCount();
-                int visibleLines = Math.max(1, Math.min(7, lineCount));
+                int wrappedLines = countWrappedLines();
+                int visibleLines = Math.max(1, Math.min(10, wrappedLines));
                 return new Dimension(super.getPreferredScrollableViewportSize().width,
                                      visibleLines * lineHeight + getInsets().top + getInsets().bottom);
+            }
+
+            private int countWrappedLines() {
+                try {
+                    int height = (int) getUI().getRootView(this).getView(0)
+                        .getPreferredSpan(javax.swing.text.View.Y_AXIS);
+                    FontMetrics fm = getFontMetrics(getFont());
+                    return Math.max(1, (int) Math.ceil((double) height / fm.getHeight()));
+                } catch (Exception e) {
+                    return getLineCount(); // fallback to logical lines
+                }
             }
         };
         notesArea.setLineWrap(true);

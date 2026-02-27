@@ -15,9 +15,13 @@ import org.jfree.chart.plot.XYPlot;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import javax.swing.*;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Overlay for footprint heatmap on the price chart.
@@ -57,6 +61,14 @@ public class FootprintHeatmapOverlay {
     // Callback for repaint
     private Runnable onDataReady;
 
+    // Background computation
+    private final ExecutorService computeExecutor = Executors.newSingleThreadExecutor(r -> {
+        Thread t = new Thread(r, "Footprint-Compute");
+        t.setDaemon(true);
+        return t;
+    });
+    private final AtomicInteger computeGeneration = new AtomicInteger(0);
+
     public FootprintHeatmapOverlay(JFreeChart priceChart) {
         this.priceChart = priceChart;
         this.config = new FootprintHeatmapConfig();
@@ -83,6 +95,7 @@ public class FootprintHeatmapOverlay {
     public void setEnabled(boolean enabled) {
         this.enabled = enabled;
         if (!enabled) {
+            computeGeneration.incrementAndGet(); // cancel any in-flight compute
             clear();
             releasePage();
         }
@@ -155,6 +168,7 @@ public class FootprintHeatmapOverlay {
 
     /**
      * Compute footprint using stored candles and aggTrades from page.
+     * Heavy calculation runs on a background thread to avoid blocking the EDT.
      */
     private void computeAndRedraw() {
         if (currentCandles == null || currentCandles.isEmpty()) {
@@ -162,9 +176,11 @@ public class FootprintHeatmapOverlay {
             return;
         }
 
+        // Snapshot inputs for the background thread
+        List<Candle> candles = List.copyOf(currentCandles);
         List<AggTrade> aggTrades = aggTradesPage != null ? aggTradesPage.getData() : null;
+        String timeframe = currentTimeframe;
 
-        // Compute footprint using ChartsPanel candles (ensures alignment)
         int buckets = config.getTargetBuckets();
         Double tickSize = config.getTickSizeMode() == FootprintHeatmapConfig.TickSizeMode.FIXED
             ? config.getFixedTickSize() : null;
@@ -175,19 +191,33 @@ public class FootprintHeatmapOverlay {
         }
 
         log.debug("Computing footprint: candles={}, aggTrades={}, buckets={}, tickSize={}",
-            currentCandles.size(), aggTrades != null ? aggTrades.size() : 0, buckets, tickSize);
+            candles.size(), aggTrades != null ? aggTrades.size() : 0, buckets, tickSize);
 
-        // Log first candle for debugging
-        if (!currentCandles.isEmpty()) {
-            Candle first = currentCandles.get(0);
-            log.debug("First candle: ts={}, high={}, low={}, close={}",
-                first.timestamp(), first.high(), first.low(), first.close());
-        }
+        // Bump generation so stale results are discarded
+        int generation = computeGeneration.incrementAndGet();
 
-        footprintResult = FootprintIndicator.calculate(
-            currentCandles, aggTrades, currentTimeframe, buckets, tickSize, exchangeFilter);
+        Set<Exchange> finalExchangeFilter = exchangeFilter;
+        computeExecutor.submit(() -> {
+            try {
+                FootprintResult result = FootprintIndicator.calculate(
+                    candles, aggTrades, timeframe, buckets, tickSize, finalExchangeFilter);
 
-        redraw();
+                // Only apply if this is still the latest request
+                if (computeGeneration.get() == generation) {
+                    SwingUtilities.invokeLater(() -> {
+                        if (computeGeneration.get() == generation) {
+                            footprintResult = result;
+                            redraw();
+                            if (onDataReady != null) {
+                                onDataReady.run();
+                            }
+                        }
+                    });
+                }
+            } catch (Exception e) {
+                log.error("Footprint computation failed: {}", e.getMessage(), e);
+            }
+        });
     }
 
     /**
@@ -284,18 +314,12 @@ public class FootprintHeatmapOverlay {
         public void onStateChanged(DataPageView<AggTrade> page, PageState oldState, PageState newState) {
             if (newState == PageState.READY) {
                 computeAndRedraw();
-                if (onDataReady != null) {
-                    onDataReady.run();
-                }
             }
         }
 
         @Override
         public void onDataChanged(DataPageView<AggTrade> page) {
             computeAndRedraw();
-            if (onDataReady != null) {
-                onDataReady.run();
-            }
         }
     }
 

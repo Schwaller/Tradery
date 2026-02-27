@@ -7,6 +7,7 @@ import com.tradery.core.model.OpenInterest;
 import com.tradery.core.model.PremiumIndex;
 import com.tradery.dataclient.DataServiceClient;
 import com.tradery.dataclient.DataServiceLauncher;
+import com.tradery.dataclient.DataServiceLocator;
 import com.tradery.dataclient.page.DataServiceConnection;
 import com.tradery.forge.api.ApiServer;
 import com.tradery.forge.data.*;
@@ -170,7 +171,7 @@ public class ApplicationContext {
                 return false;
             }
 
-            // Try existing port first, otherwise (re)start the process
+            // 1. Try the launcher's known port (fast path — service restarted on same port)
             int port = launcher.getPort();
             if (port > 0) {
                 DataServiceClient client = new DataServiceClient("localhost", port);
@@ -179,20 +180,18 @@ public class ApplicationContext {
                 }
             }
 
-            // Service not healthy or no port — try to (re)start it
-            try {
-                port = launcher.ensureRunning();
-            } catch (IOException e) {
-                log.debug("Failed to start data service: {}", e.getMessage());
-                return false;
+            // 2. Locate a running service via port file or default port
+            //    Covers the case where the service was started externally (e.g. via Gradle)
+            var found = DataServiceLocator.findRunningService();
+            if (found.isPresent()) {
+                port = found.get();
+                DataServiceClient client = new DataServiceClient("localhost", port);
+                if (client.isHealthy()) {
+                    return connectClient(launcher, client, port);
+                }
             }
 
-            DataServiceClient client = new DataServiceClient("localhost", port);
-            if (!client.isHealthy()) {
-                return false;
-            }
-
-            return connectClient(launcher, client, port);
+            return false;
         } finally {
             reconnecting.set(false);
         }

@@ -1,0 +1,24 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(~/.tradery/**)",
+      "Edit(~/.tradery/strategies/**)",
+      "Edit(~/.tradery/phases/**)",
+      "Edit(~/.tradery/hoops/**)",
+      "Write(~/.tradery/strategies/**)",
+      "Write(~/.tradery/phases/**)",
+      "Write(~/.tradery/hoops/**)",
+      "Bash(cat ~/.tradery/**)",
+      "Bash(curl http://localhost:*)",
+      "Bash(./gradlew:*)",
+      "Bash(scripts/*)",
+      "Bash(tail ~/.tradery/**)",
+      "Bash(head ~/.tradery/**)",
+      "Bash(ls ~/.tradery/**)",
+      "Skill(restart)",
+      "Skill(analyze)",
+      "mcp__tradery__*"
+    ]
+  },
+  "enableAllProjectMcpServers": true
+}

@@ -453,6 +453,33 @@ Available indicators: `RSI`, `ATR`, `ADX`, `RANGE_POSITION` (with `period`), `MA
 ### Session Startup (IMPORTANT)
 **On every new session**, before doing any work, call `tradery_get_context`. This single call returns everything you need: open windows, last focused strategy ID, chart config, the focused strategy's full config, and its backtest summary with metrics and AI suggestions. Use this context — e.g. if the user asks about "this strategy", they mean the last focused one.
 
+### Permissions & Embedded Terminal
+
+Claude Code can run in two contexts:
+1. **Standalone** (user runs `claude` in a terminal) — permissions come from `.claude/settings.json` (project-level, checked in) and `.claude/settings.local.json` (user-level, not checked in)
+2. **Embedded in Forge** (AI terminal panel) — launched by `AiTerminalPanel.java` with `--allowedTools` flag for runtime permissions, plus the project `settings.json` applies automatically
+
+**`.claude/settings.json`** (checked into repo) pre-approves:
+- All MCP tools: `mcp__tradery__*` — no prompts for strategy/phase/hoop/data operations
+- File access: `Read(~/.tradery/**)`, `Edit`/`Write` on strategies, phases, hoops
+- Bash: `cat`, `curl localhost`, `tail`, `head`, `ls` on `~/.tradery/**`, gradle, scripts
+- Skills: `restart`, `analyze`
+
+**Embedded terminal** (`tradery-agent/.../AiTerminalPanel.java`):
+- Removes `CLAUDECODE` env var so Claude Code doesn't detect nesting and refuse to start
+- Passes `--allowedTools` with file permissions, bash commands, and `mcp__tradery__*`
+- Appends system prompt to call `tradery_get_context` on session start
+- The `--allowedTools` flag and project `settings.json` stack — both apply
+
+**Data flow when Claude updates a strategy:**
+1. Claude calls `tradery_update_strategy` (MCP) → hits Forge HTTP API (`POST /strategy/{id}`)
+2. `StrategyHandler` merges partial updates (entry, exit, phases, notes, hoops, orderflow, etc.) and saves YAML
+3. `FileWatcher` detects the change → `onStrategyFileChanged()` reloads from disk
+4. `loadStrategyData()` refreshes all UI panels (editor, flow diagram, notes, etc.)
+5. Backtest runs automatically on the reloaded strategy
+
+**Important:** `AutoSaveScheduler` guards against loops — saves from the API are flagged so the file watcher doesn't trigger a redundant reload cycle.
+
 ### AI Workflow
 1. **`tradery_get_context`** to know which strategy the user is looking at
 2. Read `summary.json` for overview + suggestions
@@ -463,4 +490,4 @@ Available indicators: `RSI`, `ATR`, `ADX`, `RANGE_POSITION` (with `period`), `MA
 7. Check results, iterate
 
 ### Auto-Reload
-FileWatcher monitors directories. External edits trigger automatic reload and backtest.
+FileWatcher monitors `~/.tradery/strategies/{id}/strategy.yaml` per open project window. External edits (Claude, text editor, MCP) trigger automatic reload and backtest. Phase directory is also watched — changes to required/excluded phases trigger re-evaluation.

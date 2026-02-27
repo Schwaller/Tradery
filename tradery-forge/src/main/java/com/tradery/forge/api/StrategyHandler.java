@@ -266,6 +266,18 @@ public class StrategyHandler extends ApiHandlerBase {
                 PhaseSettings phases = mapper.treeToValue(updates.get("phaseSettings"), PhaseSettings.class);
                 existing.setPhaseSettings(phases);
             }
+            if (updates.has("notes")) {
+                JsonNode notesNode = updates.get("notes");
+                existing.setNotes(notesNode.isNull() ? null : notesNode.asText());
+            }
+            if (updates.has("hoopPatternSettings")) {
+                HoopPatternSettings hoopSettings = mapper.treeToValue(updates.get("hoopPatternSettings"), HoopPatternSettings.class);
+                existing.setHoopPatternSettings(hoopSettings);
+            }
+            if (updates.has("orderflowSettings")) {
+                OrderflowSettings ofSettings = mapper.treeToValue(updates.get("orderflowSettings"), OrderflowSettings.class);
+                existing.setOrderflowSettings(ofSettings);
+            }
 
             // Save
             strategyStore.save(existing);

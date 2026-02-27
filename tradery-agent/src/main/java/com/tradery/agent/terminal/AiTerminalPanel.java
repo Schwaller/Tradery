@@ -83,6 +83,8 @@ public class AiTerminalPanel extends JPanel {
             env.put("COLORTERM", "truecolor");
             env.put("LC_ALL", "en_US.UTF-8");
             env.put("LANG", "en_US.UTF-8");
+            // Remove Claude Code nesting guard so claude can launch in the embedded terminal
+            env.remove("CLAUDECODE");
 
             // Build command based on AI type
             // Use login shell to ensure full PATH is available (npm, homebrew, etc.)
@@ -98,11 +100,15 @@ public class AiTerminalPanel extends JPanel {
             // Build the actual AI command to send after shell starts
             String aiCommand;
             if ("claude".equals(aiType)) {
-                // Pre-approve permissions for strategy files AND MCP tools
+                // Pre-approve permissions for strategy files, MCP tools, and common bash commands
                 String traderyPath = System.getProperty("user.home") + "/.tradery";
                 String allowedTools = String.format(
-                    "Edit:%s/**,Write:%s/**,Read:%s/**,mcp__tradery__*",
-                    traderyPath, traderyPath, traderyPath
+                    "Edit:%s/**,Write:%s/**,Read:%s/**," +
+                    "Bash(cat %s/**),Bash(head %s/**),Bash(tail %s/**),Bash(ls %s/**)," +
+                    "Bash(curl http://localhost:*)," +
+                    "mcp__tradery__*",
+                    traderyPath, traderyPath, traderyPath,
+                    traderyPath, traderyPath, traderyPath, traderyPath
                 );
                 aiCommand = "claude --allowedTools '" + allowedTools + "' --append-system-prompt 'On session start, immediately call tradery_get_context and briefly summarize the focused strategy and its key metrics. Do not list all strategies.'";
             } else if ("codex".equals(aiType)) {
