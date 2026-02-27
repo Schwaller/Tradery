@@ -1,5 +1,7 @@
 package com.tradery.news.ui.coin;
 
+import com.tradery.layout.ForceDirectedLayout;
+import com.tradery.layout.LayoutConfig;
 import com.tradery.ui.ThemeColors;
 
 import javax.swing.*;
@@ -28,6 +30,7 @@ public class CoinGraphPanel extends JPanel {
     private CoinEntity draggedEntity;
     private Consumer<CoinEntity> onEntitySelected;
     private SchemaRegistry schemaRegistry;
+    private final ForceDirectedLayout layout = new ForceDirectedLayout(LayoutConfig.coinGraph());
     private Map<String, Integer> connectionDistance = new HashMap<>();  // Distance from selected node (0 = selected, 1 = direct, etc.)
 
     // View settings
@@ -45,13 +48,6 @@ public class CoinGraphPanel extends JPanel {
     private double animTargetZoom, animTargetPanX, animTargetPanY;
     private long animStartTime;
     private static final int ANIM_DURATION_MS = 350;
-
-    // Physics settings
-    private double repulsion = 5000;
-    private double attraction = 0.01;
-    private double damping = 0.92;      // Higher = slower decay
-    private double centerPull = 0.001;
-    private double minVelocity = 0.1;   // Below this, stop moving
 
     // Theme-aware color helpers
     private static Color labelColor() { return ThemeColors.foreground(); }
@@ -195,79 +191,7 @@ public class CoinGraphPanel extends JPanel {
     }
 
     private boolean runPhysicsStep() {
-        if (entities.isEmpty()) return false;
-
-        int centerX = getWidth() / 2;
-        int centerY = getHeight() / 2;
-        boolean anyMoving = false;
-
-        for (CoinEntity entity : entities) {
-            if (entity.isPinned() || entity == draggedEntity) continue;
-
-            double fx = 0, fy = 0;
-
-            // Repulsion from all other entities
-            for (CoinEntity other : entities) {
-                if (other == entity) continue;
-                double dx = entity.x() - other.x();
-                double dy = entity.y() - other.y();
-                double dist = Math.sqrt(dx * dx + dy * dy);
-                if (dist < 1) dist = 1;
-                if (dist < 300) {
-                    double force = repulsion / (dist * dist);
-                    fx += (dx / dist) * force;
-                    fy += (dy / dist) * force;
-                }
-            }
-
-            // Attraction along relationships
-            for (CoinRelationship rel : relationships) {
-                CoinEntity other = null;
-                if (rel.fromId().equals(entity.id())) {
-                    other = entityMap.get(rel.toId());
-                } else if (rel.toId().equals(entity.id())) {
-                    other = entityMap.get(rel.fromId());
-                }
-                if (other != null) {
-                    double dx = other.x() - entity.x();
-                    double dy = other.y() - entity.y();
-                    double dist = Math.sqrt(dx * dx + dy * dy);
-                    if (dist > 50) {
-                        fx += dx * attraction;
-                        fy += dy * attraction;
-                    }
-                }
-            }
-
-            // Gentle pull toward center
-            fx += (centerX - entity.x()) * centerPull;
-            fy += (centerY - entity.y()) * centerPull;
-
-            // Apply forces with damping
-            double vx = (entity.vx() + fx) * damping;
-            double vy = (entity.vy() + fy) * damping;
-
-            // Clamp max velocity
-            double maxSpeed = 8.0;
-            double speed = Math.sqrt(vx * vx + vy * vy);
-            if (speed > maxSpeed) {
-                vx = (vx / speed) * maxSpeed;
-                vy = (vy / speed) * maxSpeed;
-            }
-
-            // Stop jittering - if velocity is tiny, zero it out
-            if (Math.abs(vx) < minVelocity) vx = 0;
-            if (Math.abs(vy) < minVelocity) vy = 0;
-
-            entity.setVx(vx);
-            entity.setVy(vy);
-            if (vx != 0 || vy != 0) {
-                entity.setX(entity.x() + vx);
-                entity.setY(entity.y() + vy);
-                anyMoving = true;
-            }
-        }
-        return anyMoving;
+        return layout.step(entities, relationships, getWidth() / 2.0, getHeight() / 2.0, draggedEntity);
     }
 
     @Override

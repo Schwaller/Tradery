@@ -4,8 +4,12 @@ import com.tradery.dataservice.api.DataServiceServer;
 import com.tradery.dataservice.coingecko.CoinGeckoClient;
 import com.tradery.dataservice.config.DataServiceConfig;
 import com.tradery.dataservice.data.DataConfig;
+import com.tradery.dataservice.data.sqlite.SqliteConnection;
 import com.tradery.dataservice.data.sqlite.SqliteDataStore;
 import com.tradery.dataservice.data.sqlite.SymbolsConnection;
+import com.tradery.dataservice.news.FeedConfigDao;
+import com.tradery.dataservice.news.NewsArticleDao;
+import com.tradery.dataservice.news.NewsManager;
 import com.tradery.dataservice.symbols.SymbolSyncService;
 import com.tradery.license.LicenseGate;
 import org.slf4j.Logger;
@@ -36,6 +40,7 @@ public class DataServiceApp {
     private static SymbolsConnection symbolsConnection;
     private static SymbolSyncService symbolSyncService;
     private static CoinGeckoClient coingeckoClient;
+    private static NewsManager newsManager;
     private static ScheduledExecutorService scheduler;
     private static java.time.Instant startTime;
 
@@ -73,6 +78,10 @@ public class DataServiceApp {
 
             server = new DataServiceServer(config, consumerRegistry, dataStore,
                 symbolSyncService, symbolsConnection, coingeckoClient);
+
+            // Initialize news polling
+            initializeNews();
+            server.setNewsManager(newsManager);
 
             // Schedule daily symbol sync at 3 AM
             scheduleSymbolSync();
@@ -136,6 +145,9 @@ public class DataServiceApp {
     }
 
     private static void cleanup() {
+        if (newsManager != null) {
+            newsManager.shutdown();
+        }
         if (scheduler != null) {
             scheduler.shutdown();
         }
@@ -149,6 +161,21 @@ public class DataServiceApp {
             symbolsConnection.close();
         }
         deletePortFile();
+    }
+
+    private static void initializeNews() {
+        try {
+            SqliteConnection newsConn = SqliteConnection.forGlobal("news.db");
+            NewsArticleDao newsDao = new NewsArticleDao(newsConn);
+            newsDao.createTable();
+            FeedConfigDao feedConfigDao = new FeedConfigDao(newsConn);
+            feedConfigDao.createTable();
+            newsManager = new NewsManager(newsDao, feedConfigDao);
+            newsManager.startPolling(Duration.ofMinutes(1));
+            LOG.info("NewsManager initialized");
+        } catch (Exception e) {
+            LOG.error("Failed to initialize news polling", e);
+        }
     }
 
     /**

@@ -11,6 +11,7 @@ import com.tradery.dataservice.live.LiveAggTradeManager;
 import com.tradery.dataservice.live.LiveCandleManager;
 import com.tradery.dataservice.live.LiveMarkPriceManager;
 import com.tradery.dataservice.live.LiveOpenInterestPoller;
+import com.tradery.dataservice.news.NewsManager;
 import com.tradery.dataservice.page.PageManager;
 import com.tradery.dataservice.symbols.SymbolSyncService;
 import io.javalin.Javalin;
@@ -41,6 +42,7 @@ public class DataServiceServer {
     private final WebSocketHandler webSocketHandler;
     private final SymbolHandler symbolHandler;
     private final InventoryHandler inventoryHandler;
+    private NewsManager newsManager;
     private Javalin app;
 
     public DataServiceServer(DataServiceConfig config, ConsumerRegistry consumerRegistry, SqliteDataStore dataStore,
@@ -63,6 +65,10 @@ public class DataServiceServer {
         this.inventoryHandler = new InventoryHandler(dataStore);
     }
 
+    public void setNewsManager(NewsManager newsManager) {
+        this.newsManager = newsManager;
+    }
+
     private ObjectMapper createObjectMapper() {
         ObjectMapper mapper = new ObjectMapper();
         mapper.registerModule(new JavaTimeModule());
@@ -82,6 +88,7 @@ public class DataServiceServer {
         configureCoverageRoutes();
         configureSymbolRoutes();
         configureWebSocket();
+        configureNewsRoutes();
         configureHealthRoutes();
 
         // Start server
@@ -164,6 +171,21 @@ public class DataServiceServer {
         };
 
         app.ws("/subscribe", wsConfigConsumer);
+    }
+
+    private void configureNewsRoutes() {
+        if (newsManager == null) {
+            LOG.warn("NewsManager not set, skipping news routes");
+            return;
+        }
+        NewsHandler newsHandler = new NewsHandler(newsManager);
+
+        app.get("/news/articles", newsHandler::getArticles);
+        app.get("/news/sources", newsHandler::getSources);
+        app.post("/news/sources", newsHandler::addSource);
+        app.delete("/news/sources/{id}", newsHandler::deleteSource);
+        app.put("/news/sources/{id}", newsHandler::updateSource);
+        app.post("/news/poll", newsHandler::triggerPoll);
     }
 
     private void configureHealthRoutes() {

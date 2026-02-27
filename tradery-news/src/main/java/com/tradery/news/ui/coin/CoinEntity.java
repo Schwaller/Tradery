@@ -1,5 +1,7 @@
 package com.tradery.news.ui.coin;
 
+import com.tradery.layout.LayoutNode;
+
 import java.awt.*;
 import java.util.ArrayList;
 import java.util.List;
@@ -7,7 +9,7 @@ import java.util.List;
 /**
  * Entity in the coin relationship graph.
  */
-public class CoinEntity {
+public class CoinEntity implements LayoutNode {
 
     public enum Type {
         COIN(new Color(100, 180, 255)),      // Blue - cryptocurrencies

@@ -43,11 +43,28 @@ public class DataServiceStatusPanel extends JPanel {
 
     public void refresh() {
         ApplicationContext ctx = ApplicationContext.getInstance();
+        if (ctx == null) return;
 
-        if (ctx == null || !ctx.isDataServiceAvailable()) {
-            statusLabel.setText("Data Service: Offline");
+        if (!ctx.isDataServiceAvailable()) {
+            statusLabel.setText("Data Service: Reconnecting...");
             statusLabel.setStatusColor(StatusBadge.BG_ERROR, StatusBadge.FG_ERROR);
-            statusLabel.setToolTipText("Data Service not available");
+            statusLabel.setToolTipText("Attempting to connect to Data Service...");
+
+            // Attempt reconnection in background so we don't block the timer
+            new Thread(() -> {
+                boolean ok = ctx.tryReconnectDataService();
+                if (ok) {
+                    SwingUtilities.invokeLater(this::refresh);
+                } else {
+                    SwingUtilities.invokeLater(() -> {
+                        statusLabel.setText("Data Service: Offline");
+                        statusLabel.setToolTipText(
+                            "<html><b>Data Service</b><br>" +
+                            "Status: Disconnected<br><br>" +
+                            "<i>Retrying every 5 seconds...</i></html>");
+                    });
+                }
+            }, "DataService-Reconnect").start();
             return;
         }
 
@@ -67,7 +84,7 @@ public class DataServiceStatusPanel extends JPanel {
             statusLabel.setToolTipText(
                 "<html><b>Data Service</b><br>" +
                 "Status: Disconnected<br><br>" +
-                "<i>The app will try to reconnect automatically</i></html>");
+                "<i>Retrying every 5 seconds...</i></html>");
         }
     }
 

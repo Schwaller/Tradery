@@ -1,5 +1,7 @@
 package com.tradery.news.ui.coin;
 
+import com.tradery.layout.LayoutNode;
+
 import java.awt.*;
 import java.util.ArrayList;
 import java.util.List;
@@ -9,7 +11,7 @@ import java.util.stream.Collectors;
  * A dynamic type definition for entities or relationships, stored in the DB.
  * Replaces hardcoded enum usage for schema-level type info.
  */
-public class SchemaType {
+public class SchemaType implements LayoutNode {
 
     public static final String KIND_ENTITY = "entity";
     public static final String KIND_RELATIONSHIP = "relationship";
@@ -140,6 +142,17 @@ public class SchemaType {
 
     public boolean isEntity() { return KIND_ENTITY.equals(kind); }
     public boolean isRelationship() { return KIND_RELATIONSHIP.equals(kind); }
+
+    // LayoutNode adapter methods (delegate to erdX/erdY/erdVx/erdVy/erdPinned)
+    @Override public double x() { return erdX; }
+    @Override public void setX(double x) { this.erdX = x; }
+    @Override public double y() { return erdY; }
+    @Override public void setY(double y) { this.erdY = y; }
+    @Override public double vx() { return erdVx; }
+    @Override public void setVx(double vx) { this.erdVx = vx; }
+    @Override public double vy() { return erdVy; }
+    @Override public void setVy(double vy) { this.erdVy = vy; }
+    @Override public boolean isPinned() { return erdPinned; }
 
     /** Color as hex string for DB storage. */
     public String colorHex() {

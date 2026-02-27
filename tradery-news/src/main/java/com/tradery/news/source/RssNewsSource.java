@@ -1,36 +1,59 @@
 package com.tradery.news.source;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tradery.news.ai.ClaudeCliProcessor;
-import com.tradery.news.fetch.FetchScheduler;
-import com.tradery.news.fetch.FetcherRegistry;
-import com.tradery.news.fetch.RssFetcher;
+import com.tradery.news.model.Article;
+import com.tradery.news.model.ImportanceLevel;
+import com.tradery.news.model.ProcessingStatus;
 import com.tradery.news.store.SqliteNewsStore;
 import com.tradery.news.topic.TopicRegistry;
-import com.tradery.news.ui.IntelConfig;
-
 import com.tradery.news.ui.coin.SchemaAttribute;
 import com.tradery.news.ui.coin.SchemaRegistry;
 import com.tradery.news.ui.coin.SchemaType;
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.Response;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.awt.*;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 
 /**
- * Data source that fetches news articles from RSS feeds with optional AI processing.
- * Keeps SqliteNewsStore as its backing store (bridge source — not EntityStore).
+ * Data source that fetches news articles from the data service HTTP API.
+ * The data service handles RSS polling; this source consumes articles and
+ * optionally runs AI processing + topic classification.
  */
 public class RssNewsSource implements DataSource {
 
+    private static final Logger log = LoggerFactory.getLogger(RssNewsSource.class);
+    private static final Path PORT_FILE = Path.of(
+        System.getProperty("user.home"), ".tradery", "dataservice.port");
+
+    private static final OkHttpClient HTTP_CLIENT = new OkHttpClient.Builder()
+        .connectTimeout(Duration.ofSeconds(5))
+        .readTimeout(Duration.ofSeconds(10))
+        .build();
+
+    private static final ObjectMapper MAPPER = new ObjectMapper()
+        .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+
     private final SqliteNewsStore newsStore;
     private final Path dataDir;
-    private FetcherRegistry fetcherRegistry;
+    private long lastFetchTimestamp;
 
     public RssNewsSource(SqliteNewsStore newsStore, Path dataDir) {
         this.newsStore = newsStore;
         this.dataDir = dataDir;
+        // Start from 24h ago on first fetch
+        this.lastFetchTimestamp = System.currentTimeMillis() - 86400000L;
     }
 
     @Override
@@ -107,47 +130,131 @@ public class RssNewsSource implements DataSource {
         ProgressCallback progress = ctx.progress();
 
         try {
-            progress.update("Preparing RSS fetchers...", 10);
+            progress.update("Connecting to data service...", 10);
 
-            ensureFetcherRegistry();
+            String baseUrl = getDataServiceUrl();
+            if (baseUrl == null) {
+                return new FetchResult(0, 0, "Data service not running");
+            }
 
+            progress.update("Fetching articles from data service...", 30);
+
+            // Fetch articles from data service
+            String url = baseUrl + "/news/articles?since=" + lastFetchTimestamp;
+            Request request = new Request.Builder().url(url).build();
+
+            List<RawArticle> rawArticles;
+            try (Response response = HTTP_CLIENT.newCall(request).execute()) {
+                if (!response.isSuccessful()) {
+                    return new FetchResult(0, 0, "Data service error: HTTP " + response.code());
+                }
+                rawArticles = MAPPER.readValue(response.body().byteStream(),
+                    new TypeReference<List<RawArticle>>() {});
+            }
+
+            if (rawArticles.isEmpty()) {
+                progress.update("Done", 100);
+                return new FetchResult(0, 0, "No new articles");
+            }
+
+            progress.update("Processing " + rawArticles.size() + " articles...", 50);
+
+            // Setup topic classification and optional AI
             TopicRegistry topics = new TopicRegistry(dataDir.resolve("topics.json"));
             ClaudeCliProcessor ai = new ClaudeCliProcessor();
+            boolean aiAvailable = ai.isAvailable();
 
-            if (!ai.isAvailable()) {
-                ai = null;
+            int newArticles = 0;
+            int aiProcessed = 0;
+
+            for (RawArticle raw : rawArticles) {
+                if (newsStore.articleExists(raw.id)) continue;
+
+                // Classify topics
+                List<String> matchedTopics = topics.classify(raw.title + " " + raw.content);
+
+                Article article;
+                if (aiAvailable) {
+                    Article base = toArticle(raw, matchedTopics);
+                    var result = ai.process(base);
+                    article = new Article(
+                        raw.id, raw.sourceUrl, raw.sourceId, raw.sourceName,
+                        raw.title, raw.content, raw.author,
+                        Instant.ofEpochMilli(raw.publishedAt),
+                        result.summary(), result.importance(), result.coins(),
+                        matchedTopics, result.categories(), result.tags(),
+                        result.sentimentScore(),
+                        List.of(), List.of(),
+                        Instant.ofEpochMilli(raw.fetchedAt), Instant.now(),
+                        ProcessingStatus.COMPLETE
+                    );
+                    aiProcessed++;
+                } else {
+                    article = toArticle(raw, matchedTopics);
+                }
+
+                newsStore.saveArticle(article);
+                newArticles++;
             }
 
-            progress.update("Fetching articles...", 30);
+            // Update timestamp for next incremental fetch
+            lastFetchTimestamp = System.currentTimeMillis();
 
-            try (var scheduler = new FetchScheduler(fetcherRegistry, topics, newsStore, ai)) {
-                scheduler.withAiEnabled(ai != null).withArticlesPerSource(ai != null ? 5 : 10);
-                FetchScheduler.FetchResult result = scheduler.fetchAndProcess();
+            progress.update("Done", 100);
+            return new FetchResult(newArticles, 0,
+                newArticles + " new articles" + (aiProcessed > 0 ? " (" + aiProcessed + " AI processed)" : ""));
 
-                progress.update("Done", 100);
-                return new FetchResult(
-                    result.newArticles(),
-                    0,
-                    result.newArticles() + " new articles (" + result.aiProcessed() + " AI processed)"
-                );
-            }
         } catch (Exception e) {
+            log.error("Failed to fetch from data service: {}", e.getMessage());
             return new FetchResult(0, 0, "Error: " + e.getMessage());
         }
     }
 
-    private void ensureFetcherRegistry() {
-        if (fetcherRegistry == null) {
-            fetcherRegistry = new FetcherRegistry();
+    private Article toArticle(RawArticle raw, List<String> topics) {
+        return Article.builder()
+            .id(raw.id)
+            .sourceUrl(raw.sourceUrl)
+            .sourceId(raw.sourceId)
+            .sourceName(raw.sourceName)
+            .title(raw.title)
+            .content(raw.content)
+            .author(raw.author)
+            .publishedAt(Instant.ofEpochMilli(raw.publishedAt))
+            .fetchedAt(Instant.ofEpochMilli(raw.fetchedAt))
+            .status(ProcessingStatus.PENDING)
+            .importance(ImportanceLevel.MEDIUM)
+            .topics(topics)
+            .coins(List.of())
+            .categories(List.of())
+            .tags(List.of())
+            .eventIds(List.of())
+            .entityIds(List.of())
+            .build();
+    }
+
+    private String getDataServiceUrl() {
+        try {
+            if (!Files.exists(PORT_FILE)) return null;
+            int port = Integer.parseInt(Files.readString(PORT_FILE).trim());
+            return "http://localhost:" + port;
+        } catch (Exception e) {
+            log.warn("Could not read data service port: {}", e.getMessage());
+            return null;
         }
-        // Sync enabled/disabled state from config each cycle
-        IntelConfig fetchConfig = IntelConfig.get();
-        for (RssFetcher source : RssFetcher.defaultSources()) {
-            if (!fetchConfig.isFeedDisabled(source.getSourceId())) {
-                if (fetcherRegistry.getFetcher(source.getSourceId()).isEmpty()) {
-                    fetcherRegistry.register(source);
-                }
-            }
-        }
+    }
+
+    /**
+     * Raw article from data service JSON response.
+     */
+    private static class RawArticle {
+        public String id;
+        public String sourceId;
+        public String sourceName;
+        public String title;
+        public String content;
+        public String author;
+        public String sourceUrl;
+        public long publishedAt;
+        public long fetchedAt;
     }
 }

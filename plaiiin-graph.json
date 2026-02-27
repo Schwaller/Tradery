@@ -1,0 +1,502 @@
+{
+  "nodes": [
+    {
+      "id": -1,
+      "name": "My Root"
+    },
+    {
+      "id": 8,
+      "name": "The original sturdy Oak"
+    },
+    {
+      "id": 13,
+      "name": "TEST"
+    },
+    {
+      "id": 14,
+      "name": "A soaring Eagle with sharp eyes"
+    },
+    {
+      "id": 15,
+      "name": "A playful Dolphin leaping through waves"
+    },
+    {
+      "id": 16,
+      "name": "A lone Wolf howling at the moon"
+    },
+    {
+      "id": 17,
+      "name": "A mighty Bear fishing in the river"
+    },
+    {
+      "id": 18,
+      "name": "A striped Tiger stalking through bamboo"
+    },
+    {
+      "id": 19,
+      "name": "A swift Leopard resting on a branch"
+    },
+    {
+      "id": 20,
+      "name": "A fierce Hawk diving from the clouds"
+    },
+    {
+      "id": 21,
+      "name": "A peregrine Falcon breaking speed records"
+    },
+    {
+      "id": 22,
+      "name": "An intelligent Orca hunting in a pod"
+    },
+    {
+      "id": 23,
+      "name": "A sleek Seal basking on the rocks"
+    },
+    {
+      "id": 24,
+      "name": "A clever Fox outsmarting the hounds"
+    },
+    {
+      "id": 25,
+      "name": "A wild Coyote crossing the desert"
+    },
+    {
+      "id": 26,
+      "name": "A gentle Panda munching on bamboo"
+    },
+    {
+      "id": 27,
+      "name": "A powerful Grizzly standing tall"
+    },
+    {
+      "id": 43,
+      "name": "-"
+    },
+    {
+      "id": 44,
+      "name": "-"
+    },
+    {
+      "id": 45,
+      "name": "-"
+    },
+    {
+      "id": 46,
+      "name": "-"
+    },
+    {
+      "id": 47,
+      "name": "-"
+    },
+    {
+      "id": 48,
+      "name": "-"
+    },
+    {
+      "id": 49,
+      "name": "-"
+    },
+    {
+      "id": 50,
+      "name": "-"
+    },
+    {
+      "id": 51,
+      "name": "-"
+    },
+    {
+      "id": 52,
+      "name": "-"
+    },
+    {
+      "id": 53,
+      "name": "-"
+    },
+    {
+      "id": 54,
+      "name": "-"
+    },
+    {
+      "id": 55,
+      "name": "-"
+    },
+    {
+      "id": 56,
+      "name": "-"
+    },
+    {
+      "id": 57,
+      "name": "-"
+    },
+    {
+      "id": 73,
+      "name": "-"
+    },
+    {
+      "id": 74,
+      "name": "-"
+    },
+    {
+      "id": 75,
+      "name": "-"
+    },
+    {
+      "id": 76,
+      "name": "-"
+    },
+    {
+      "id": 77,
+      "name": "-"
+    },
+    {
+      "id": 78,
+      "name": "-"
+    },
+    {
+      "id": 79,
+      "name": "-"
+    },
+    {
+      "id": 80,
+      "name": "-"
+    },
+    {
+      "id": 81,
+      "name": "-"
+    },
+    {
+      "id": 82,
+      "name": "-"
+    },
+    {
+      "id": 83,
+      "name": "-"
+    },
+    {
+      "id": 84,
+      "name": "-"
+    },
+    {
+      "id": 85,
+      "name": "-"
+    },
+    {
+      "id": 86,
+      "name": "-"
+    },
+    {
+      "id": 87,
+      "name": "-"
+    },
+    {
+      "id": 101,
+      "name": "AI suggested value"
+    },
+    {
+      "id": 103,
+      "name": "Lion"
+    },
+    {
+      "id": 104,
+      "name": "Eagle"
+    },
+    {
+      "id": 105,
+      "name": "Dolphin"
+    },
+    {
+      "id": 106,
+      "name": "Wolf"
+    },
+    {
+      "id": 107,
+      "name": "Bear"
+    },
+    {
+      "id": 108,
+      "name": "Tiger"
+    },
+    {
+      "id": 109,
+      "name": "Leopard"
+    },
+    {
+      "id": 110,
+      "name": "Hawk"
+    },
+    {
+      "id": 111,
+      "name": "Falcon"
+    },
+    {
+      "id": 112,
+      "name": "Orca"
+    },
+    {
+      "id": 113,
+      "name": "Seal"
+    },
+    {
+      "id": 114,
+      "name": "Fox"
+    },
+    {
+      "id": 115,
+      "name": "Coyote"
+    },
+    {
+      "id": 116,
+      "name": "Panda"
+    },
+    {
+      "id": 117,
+      "name": "Grizzly"
+    },
+    {
+      "id": 125,
+      "name": "Hello World Test"
+    }
+  ],
+  "edges": [
+    {
+      "source": 13,
+      "target": -1
+    },
+    {
+      "source": 14,
+      "target": -1
+    },
+    {
+      "source": 15,
+      "target": -1
+    },
+    {
+      "source": 16,
+      "target": -1
+    },
+    {
+      "source": 17,
+      "target": -1
+    },
+    {
+      "source": 18,
+      "target": 13
+    },
+    {
+      "source": 19,
+      "target": 13
+    },
+    {
+      "source": 20,
+      "target": 14
+    },
+    {
+      "source": 21,
+      "target": 14
+    },
+    {
+      "source": 22,
+      "target": 15
+    },
+    {
+      "source": 23,
+      "target": 15
+    },
+    {
+      "source": 24,
+      "target": 16
+    },
+    {
+      "source": 25,
+      "target": 16
+    },
+    {
+      "source": 26,
+      "target": 17
+    },
+    {
+      "source": 27,
+      "target": 17
+    },
+    {
+      "source": 43,
+      "target": -1
+    },
+    {
+      "source": 44,
+      "target": -1
+    },
+    {
+      "source": 45,
+      "target": -1
+    },
+    {
+      "source": 46,
+      "target": -1
+    },
+    {
+      "source": 47,
+      "target": -1
+    },
+    {
+      "source": 48,
+      "target": 43
+    },
+    {
+      "source": 49,
+      "target": 43
+    },
+    {
+      "source": 50,
+      "target": 44
+    },
+    {
+      "source": 51,
+      "target": 44
+    },
+    {
+      "source": 52,
+      "target": 45
+    },
+    {
+      "source": 53,
+      "target": 45
+    },
+    {
+      "source": 54,
+      "target": 46
+    },
+    {
+      "source": 55,
+      "target": 46
+    },
+    {
+      "source": 56,
+      "target": 47
+    },
+    {
+      "source": 57,
+      "target": 47
+    },
+    {
+      "source": 73,
+      "target": -1
+    },
+    {
+      "source": 74,
+      "target": -1
+    },
+    {
+      "source": 75,
+      "target": -1
+    },
+    {
+      "source": 76,
+      "target": -1
+    },
+    {
+      "source": 77,
+      "target": -1
+    },
+    {
+      "source": 78,
+      "target": 73
+    },
+    {
+      "source": 79,
+      "target": 73
+    },
+    {
+      "source": 80,
+      "target": 74
+    },
+    {
+      "source": 81,
+      "target": 74
+    },
+    {
+      "source": 82,
+      "target": 75
+    },
+    {
+      "source": 83,
+      "target": 75
+    },
+    {
+      "source": 84,
+      "target": 76
+    },
+    {
+      "source": 85,
+      "target": 76
+    },
+    {
+      "source": 86,
+      "target": 77
+    },
+    {
+      "source": 87,
+      "target": 77
+    },
+    {
+      "source": 103,
+      "target": -1
+    },
+    {
+      "source": 104,
+      "target": -1
+    },
+    {
+      "source": 105,
+      "target": -1
+    },
+    {
+      "source": 106,
+      "target": -1
+    },
+    {
+      "source": 107,
+      "target": -1
+    },
+    {
+      "source": 108,
+      "target": 103
+    },
+    {
+      "source": 109,
+      "target": 103
+    },
+    {
+      "source": 110,
+      "target": 104
+    },
+    {
+      "source": 111,
+      "target": 104
+    },
+    {
+      "source": 112,
+      "target": 105
+    },
+    {
+      "source": 113,
+      "target": 105
+    },
+    {
+      "source": 114,
+      "target": 106
+    },
+    {
+      "source": 115,
+      "target": 106
+    },
+    {
+      "source": 116,
+      "target": 107
+    },
+    {
+      "source": 117,
+      "target": 107
+    }
+  ]
+}

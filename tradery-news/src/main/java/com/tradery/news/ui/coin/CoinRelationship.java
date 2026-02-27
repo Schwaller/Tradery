@@ -1,12 +1,14 @@
 package com.tradery.news.ui.coin;
 
+import com.tradery.layout.LayoutEdge;
+
 import java.awt.*;
 
 /**
  * Relationship between two entities in the coin graph.
  * Uses string-based typeId resolved from SchemaRegistry.
  */
-public class CoinRelationship {
+public class CoinRelationship implements LayoutEdge {
 
     private final String fromId;
     private final String toId;

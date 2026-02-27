@@ -354,7 +354,7 @@ public class AiTerminalController {
         }
 
         String command = String.format(
-            "cd '%s' && %s",
+            "unset CLAUDECODE && cd '%s' && %s",
             traderyDir.replace("'", "'\\''"),
             aiCommand
         );

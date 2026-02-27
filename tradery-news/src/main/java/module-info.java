@@ -23,6 +23,9 @@ module com.tradery.news {
     // License
     requires com.tradery.license;
 
+    // Layout engine
+    requires com.tradery.layout;
+
     // UI
     requires com.tradery.ui.common;
     requires com.tradery.help;
@@ -36,7 +39,6 @@ module com.tradery.news {
 
     // HTTP & parsing
     requires okhttp3;
-    requires static com.rometools.rome;  // RSS fetching
     requires static org.jsoup;           // HTML parsing
 
     // SQLite (force-merged into merged module)

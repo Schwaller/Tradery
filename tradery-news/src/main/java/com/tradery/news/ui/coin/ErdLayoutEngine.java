@@ -1,5 +1,7 @@
 package com.tradery.news.ui.coin;
 
+import com.tradery.layout.*;
+
 import java.util.*;
 
 /**
@@ -9,41 +11,36 @@ import java.util.*;
  */
 public class ErdLayoutEngine {
 
-    // Physics constants
-    private static final double REPULSION = 80000;
     private static final double ATTRACTION = 0.005;
-    private static final double DAMPING = 0.80;
-    private static final double CENTER_PULL = 0.0005;
-    private static final double MIN_VELOCITY = 0.15;
-    private static final double MAX_SPEED = 10.0;
-    private static final double MIN_DIST = 1.0;
-    private static final double REPULSION_RANGE = 500;
 
-    // Cooling: temperature starts at 1.0, decays each step
-    private static double temperature = 1.0;
-    private static final double COOLING_RATE = 0.97;
-    private static final double MIN_TEMPERATURE = 0.01;
+    private static final ForceDirectedLayout layout = new ForceDirectedLayout(
+        LayoutConfig.erd(),
+        // Same-kind nodes repel 1.5x harder
+        (a, b) -> {
+            if (a instanceof SchemaType sa && b instanceof SchemaType sb) {
+                return sa.kind().equals(sb.kind()) ? 1.5 : 1.0;
+            }
+            return 1.0;
+        },
+        List.of(
+            // Relationship types: pull toward midpoint of connected entities
+            ErdLayoutEngine::midpointAttraction,
+            // Entity types: attracted to partners through shared relationships
+            ErdLayoutEngine::entityThroughRelAttraction
+        )
+    );
 
     /**
      * Scatter types randomly around a center point for initial placement.
      * Resets the cooling temperature.
      */
     public static void initPositions(Collection<SchemaType> allTypes, double cx, double cy) {
-        temperature = 1.0;
-        Random rand = new Random();
-        for (SchemaType t : allTypes) {
-            if (t.erdX() == 0 && t.erdY() == 0) {
-                t.setErdX(cx + (rand.nextDouble() - 0.5) * 600);
-                t.setErdY(cy + (rand.nextDouble() - 0.5) * 400);
-            }
-            t.setErdVx(0);
-            t.setErdVy(0);
-        }
+        layout.initPositions(allTypes, cx, cy, 600, 400);
     }
 
     /** Reset temperature to let the simulation run hot again (e.g. when dragging). */
     public static void reheat() {
-        temperature = Math.max(temperature, 0.5);
+        layout.reheat();
     }
 
     /**
@@ -52,117 +49,51 @@ public class ErdLayoutEngine {
      */
     public static boolean step(Collection<SchemaType> allTypes, double cx, double cy,
                                 SchemaType draggedType) {
-        if (allTypes.isEmpty()) return false;
+        return layout.step(allTypes, List.of(), cx, cy, draggedType);
+    }
 
-        List<SchemaType> types = new ArrayList<>(allTypes);
-        Map<String, SchemaType> byId = new HashMap<>();
-        for (SchemaType t : types) byId.put(t.id(), t);
-
-        // Cool down
-        temperature = Math.max(temperature * COOLING_RATE, MIN_TEMPERATURE);
-
-        boolean anyMoving = false;
-
-        for (SchemaType type : types) {
-            if (type.isErdPinned() || type == draggedType) continue;
-
-            double fx = 0, fy = 0;
-
-            // Repulsion from all other types
-            for (SchemaType other : types) {
-                if (other == type) continue;
-                double dx = type.erdX() - other.erdX();
-                double dy = type.erdY() - other.erdY();
-                double dist = Math.sqrt(dx * dx + dy * dy);
-                if (dist < MIN_DIST) dist = MIN_DIST;
-                if (dist < REPULSION_RANGE) {
-                    double mult = type.kind().equals(other.kind()) ? 1.5 : 1.0;
-                    double force = (REPULSION * mult) / (dist * dist);
-                    fx += (dx / dist) * force;
-                    fy += (dy / dist) * force;
-                }
-            }
-
-            // Relationship types: pull toward midpoint of connected entities
-            if (type.isRelationship()) {
-                SchemaType fromType = byId.get(type.fromTypeId());
-                SchemaType toType = byId.get(type.toTypeId());
-                if (fromType != null && toType != null) {
-                    double midX = (fromType.erdX() + toType.erdX()) / 2.0;
-                    double midY = (fromType.erdY() + toType.erdY()) / 2.0;
-                    double dx = midX - type.erdX();
-                    double dy = midY - type.erdY();
-                    fx += dx * ATTRACTION * 5;
-                    fy += dy * ATTRACTION * 5;
-                } else {
-                    // Only one side connected - pull toward that one
-                    SchemaType anchor = fromType != null ? fromType : toType;
-                    if (anchor != null) {
-                        double dx = anchor.erdX() - type.erdX();
-                        double dy = anchor.erdY() - type.erdY();
-                        fx += dx * ATTRACTION * 3;
-                        fy += dy * ATTRACTION * 3;
-                    }
-                }
-            }
-
-            // Entity types that share a relationship are gently attracted
-            if (type.isEntity()) {
-                for (SchemaType rel : types) {
-                    if (!rel.isRelationship()) continue;
-                    String partnerId = null;
-                    if (type.id().equals(rel.fromTypeId())) partnerId = rel.toTypeId();
-                    else if (type.id().equals(rel.toTypeId())) partnerId = rel.fromTypeId();
-                    if (partnerId != null) {
-                        SchemaType partner = byId.get(partnerId);
-                        if (partner != null) {
-                            double dx = partner.erdX() - type.erdX();
-                            double dy = partner.erdY() - type.erdY();
-                            double dist = Math.sqrt(dx * dx + dy * dy);
-                            if (dist > 200) {
-                                fx += dx * ATTRACTION;
-                                fy += dy * ATTRACTION;
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Gentle pull toward center
-            fx += (cx - type.erdX()) * CENTER_PULL;
-            fy += (cy - type.erdY()) * CENTER_PULL;
-
-            // Scale forces by temperature
-            fx *= temperature;
-            fy *= temperature;
-
-            // Apply forces with damping
-            double vx = (type.erdVx() + fx) * DAMPING;
-            double vy = (type.erdVy() + fy) * DAMPING;
-
-            // Clamp speed (also scaled by temperature)
-            double maxSpd = MAX_SPEED * temperature;
-            double speed = Math.sqrt(vx * vx + vy * vy);
-            if (speed > maxSpd) {
-                vx = (vx / speed) * maxSpd;
-                vy = (vy / speed) * maxSpd;
-            }
-
-            // Stop jittering
-            if (Math.abs(vx) < MIN_VELOCITY) vx = 0;
-            if (Math.abs(vy) < MIN_VELOCITY) vy = 0;
-
-            type.setErdVx(vx);
-            type.setErdVy(vy);
-
-            if (vx != 0 || vy != 0) {
-                type.setErdX(type.erdX() + vx);
-                type.setErdY(type.erdY() + vy);
-                anyMoving = true;
+    /** Relationship types: pull toward midpoint of connected entity types. */
+    private static void midpointAttraction(LayoutNode node, Map<String, ? extends LayoutNode> nodeMap,
+                                            double[] force) {
+        if (!(node instanceof SchemaType type) || !type.isRelationship()) return;
+        LayoutNode fromNode = nodeMap.get(type.fromTypeId());
+        LayoutNode toNode = nodeMap.get(type.toTypeId());
+        if (fromNode != null && toNode != null) {
+            double midX = (fromNode.x() + toNode.x()) / 2.0;
+            double midY = (fromNode.y() + toNode.y()) / 2.0;
+            force[0] += (midX - node.x()) * ATTRACTION * 5;
+            force[1] += (midY - node.y()) * ATTRACTION * 5;
+        } else {
+            LayoutNode anchor = fromNode != null ? fromNode : toNode;
+            if (anchor != null) {
+                force[0] += (anchor.x() - node.x()) * ATTRACTION * 3;
+                force[1] += (anchor.y() - node.y()) * ATTRACTION * 3;
             }
         }
+    }
 
-        return anyMoving;
+    /** Entity types: gently attracted to partners through shared relationship types. */
+    private static void entityThroughRelAttraction(LayoutNode node, Map<String, ? extends LayoutNode> nodeMap,
+                                                    double[] force) {
+        if (!(node instanceof SchemaType type) || !type.isEntity()) return;
+        for (LayoutNode other : nodeMap.values()) {
+            if (!(other instanceof SchemaType rel) || !rel.isRelationship()) continue;
+            String partnerId = null;
+            if (type.id().equals(rel.fromTypeId())) partnerId = rel.toTypeId();
+            else if (type.id().equals(rel.toTypeId())) partnerId = rel.fromTypeId();
+            if (partnerId != null) {
+                LayoutNode partner = nodeMap.get(partnerId);
+                if (partner != null) {
+                    double dx = partner.x() - node.x();
+                    double dy = partner.y() - node.y();
+                    double dist = Math.sqrt(dx * dx + dy * dy);
+                    if (dist > 200) {
+                        force[0] += dx * ATTRACTION;
+                        force[1] += dy * ATTRACTION;
+                    }
+                }
+            }
+        }
     }
 
     /**

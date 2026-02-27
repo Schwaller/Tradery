@@ -1215,6 +1215,7 @@ public class IntelDocumentFrame extends JFrame {
                         allEntities = new ArrayList<>();
                         allEntities.addAll(entityStore.loadEntitiesBySource("coingecko"));
                         allEntities.addAll(entityStore.loadEntitiesBySource("manual"));
+                        allEntities.addAll(entityStore.loadEntitiesBySource("ai-discovery"));
                         allRels = entityStore.loadAllRelationships();
                     }
 

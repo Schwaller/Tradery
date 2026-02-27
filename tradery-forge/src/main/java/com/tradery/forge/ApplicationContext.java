@@ -22,6 +22,7 @@ import org.slf4j.LoggerFactory;
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Singleton application context holding shared resources.
@@ -68,6 +69,7 @@ public class ApplicationContext {
     // Data service client (for remote data access)
     private DataServiceClient dataServiceClient;
     private DataServiceConnection dataServiceConnection;
+    private final AtomicBoolean reconnecting = new AtomicBoolean(false);
 
     private ApplicationContext() {
         // Initialize indicator registry (must be done before IndicatorPageManager)
@@ -151,6 +153,70 @@ public class ApplicationContext {
         } else {
             log.info("Data service not available, using local data access only");
         }
+    }
+
+    /**
+     * Attempt to reconnect to the data service.
+     * Called periodically when the service is detected as offline.
+     * @return true if reconnection succeeded
+     */
+    public boolean tryReconnectDataService() {
+        if (!reconnecting.compareAndSet(false, true)) {
+            return false; // already attempting
+        }
+        try {
+            DataServiceLauncher launcher = TraderyApp.getDataServiceLauncher();
+            if (launcher == null) {
+                return false;
+            }
+
+            // Try existing port first, otherwise (re)start the process
+            int port = launcher.getPort();
+            if (port > 0) {
+                DataServiceClient client = new DataServiceClient("localhost", port);
+                if (client.isHealthy()) {
+                    return connectClient(launcher, client, port);
+                }
+            }
+
+            // Service not healthy or no port — try to (re)start it
+            try {
+                port = launcher.ensureRunning();
+            } catch (IOException e) {
+                log.debug("Failed to start data service: {}", e.getMessage());
+                return false;
+            }
+
+            DataServiceClient client = new DataServiceClient("localhost", port);
+            if (!client.isHealthy()) {
+                return false;
+            }
+
+            return connectClient(launcher, client, port);
+        } finally {
+            reconnecting.set(false);
+        }
+    }
+
+    private boolean connectClient(DataServiceLauncher launcher, DataServiceClient client, int port) {
+        log.info("Data service reconnected on port {}", port);
+
+        // Disconnect old WebSocket if present
+        if (dataServiceConnection != null) {
+            dataServiceConnection.disconnect();
+        }
+
+        this.dataServiceClient = client;
+
+        // Establish new WebSocket connection
+        this.dataServiceConnection = new DataServiceConnection(
+            "localhost", port,
+            launcher.getConsumerId(), launcher.getConsumerName());
+        dataServiceConnection.connect();
+        dataServiceClient.setConnection(dataServiceConnection);
+
+        log.info("DataServiceConnection re-established for WS push delivery");
+        return true;
     }
 
     public static synchronized ApplicationContext getInstance() {

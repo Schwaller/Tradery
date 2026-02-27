@@ -34,6 +34,9 @@ dependencies {
     // WebSocket client for Binance live streams
     implementation "org.java-websocket:Java-WebSocket:${rootProject.ext.websocketVersion}"
 
+    // RSS parsing
+    implementation 'com.rometools:rome:2.1.0'
+
     // SQLite for data caching
     implementation "org.xerial:sqlite-jdbc:${rootProject.ext.sqliteVersion}"
 

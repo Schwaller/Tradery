@@ -1,0 +1,15 @@
+plugins {
+    id 'java-library'
+}
+
+dependencies {
+    testImplementation "com.fasterxml.jackson.core:jackson-databind:${rootProject.ext.jacksonVersion}"
+}
+
+// Visual demo: ./gradlew :tradery-spring-layout:demo
+tasks.register('demo', JavaExec) {
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.tradery.layout.LayoutDemo'
+    workingDir = rootProject.projectDir
+    jvmArgs = ['-Dapple.awt.application.name=Layout Demo']
+}

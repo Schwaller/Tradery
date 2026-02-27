@@ -21,9 +21,6 @@ dependencies {
     // HTTP client
     implementation "com.squareup.okhttp3:okhttp:${rootProject.ext.okhttpVersion}"
 
-    // RSS parsing
-    implementation 'com.rometools:rome:2.1.0'
-
     // HTML parsing (for content extraction)
     implementation 'org.jsoup:jsoup:1.18.3'
 
@@ -42,6 +39,9 @@ dependencies {
     // AI infrastructure
     implementation project(':tradery-ai')
     implementation project(':tradery-ai-pipeline')
+
+    // Layout engine
+    implementation project(':tradery-spring-layout')
 
     // UI
     implementation project(':tradery-ui-common')
@@ -103,7 +103,7 @@ jlink {
     }
 
     // Force merge non-modular/automatic module dependencies
-    forceMerge('rome', 'jdom2', 'jsoup', 'okhttp', 'okio', 'slf4j', 'log4j', 'sqlite')
+    forceMerge('jsoup', 'okhttp', 'okio', 'slf4j', 'log4j', 'sqlite')
 
     jpackage {
         imageName = 'Intelligence'
