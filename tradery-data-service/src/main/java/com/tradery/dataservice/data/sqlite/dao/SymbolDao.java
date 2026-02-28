@@ -158,15 +158,16 @@ public class SymbolDao {
 
         String sql = """
             INSERT INTO trading_pairs
-            (exchange, market_type, symbol, base_symbol, quote_symbol, coingecko_base_id, coingecko_quote_id, is_active, first_seen, last_seen)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (exchange, market_type, symbol, base_symbol, quote_symbol, coingecko_base_id, coingecko_quote_id, is_active, first_seen, last_seen, tick_size)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(exchange, market_type, symbol) DO UPDATE SET
                 base_symbol = excluded.base_symbol,
                 quote_symbol = excluded.quote_symbol,
                 coingecko_base_id = excluded.coingecko_base_id,
                 coingecko_quote_id = excluded.coingecko_quote_id,
                 is_active = excluded.is_active,
-                last_seen = excluded.last_seen
+                last_seen = excluded.last_seen,
+                tick_size = excluded.tick_size
             """;
 
         try (PreparedStatement stmt = c.prepareStatement(sql)) {
@@ -180,6 +181,7 @@ public class SymbolDao {
             stmt.setInt(8, pair.isActive() ? 1 : 0);
             stmt.setString(9, pair.firstSeen().toString());
             stmt.setString(10, pair.lastSeen().toString());
+            stmt.setDouble(11, pair.tickSize());
             stmt.executeUpdate();
         }
     }
@@ -193,15 +195,16 @@ public class SymbolDao {
         return conn.executeInTransaction(c -> {
             String sql = """
                 INSERT INTO trading_pairs
-                (exchange, market_type, symbol, base_symbol, quote_symbol, coingecko_base_id, coingecko_quote_id, is_active, first_seen, last_seen)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (exchange, market_type, symbol, base_symbol, quote_symbol, coingecko_base_id, coingecko_quote_id, is_active, first_seen, last_seen, tick_size)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(exchange, market_type, symbol) DO UPDATE SET
                     base_symbol = excluded.base_symbol,
                     quote_symbol = excluded.quote_symbol,
                     coingecko_base_id = excluded.coingecko_base_id,
                     coingecko_quote_id = excluded.coingecko_quote_id,
                     is_active = excluded.is_active,
-                    last_seen = excluded.last_seen
+                    last_seen = excluded.last_seen,
+                    tick_size = excluded.tick_size
                 """;
 
             int count = 0;
@@ -217,6 +220,7 @@ public class SymbolDao {
                     stmt.setInt(8, pair.isActive() ? 1 : 0);
                     stmt.setString(9, pair.firstSeen().toString());
                     stmt.setString(10, pair.lastSeen().toString());
+                    stmt.setDouble(11, pair.tickSize());
                     stmt.addBatch();
 
                     if (++count % 1000 == 0) {
@@ -297,7 +301,7 @@ public class SymbolDao {
         Connection c = conn.getConnection();
 
         String sql = """
-            SELECT exchange, market_type, symbol, base_symbol, quote_symbol, coingecko_base_id, coingecko_quote_id, is_active, first_seen, last_seen
+            SELECT exchange, market_type, symbol, base_symbol, quote_symbol, coingecko_base_id, coingecko_quote_id, is_active, first_seen, last_seen, tick_size
             FROM trading_pairs
             WHERE symbol = ? AND exchange = ?
             """;
@@ -332,7 +336,7 @@ public class SymbolDao {
         String sql;
         if (exchange != null && !exchange.isEmpty()) {
             sql = """
-                SELECT exchange, market_type, symbol, base_symbol, quote_symbol, coingecko_base_id, coingecko_quote_id, is_active, first_seen, last_seen
+                SELECT exchange, market_type, symbol, base_symbol, quote_symbol, coingecko_base_id, coingecko_quote_id, is_active, first_seen, last_seen, tick_size
                 FROM trading_pairs
                 WHERE exchange = ?
                   AND (LOWER(base_symbol) LIKE ? OR LOWER(symbol) LIKE ? OR LOWER(coingecko_base_id) LIKE ?)
@@ -342,7 +346,7 @@ public class SymbolDao {
                 """;
         } else {
             sql = """
-                SELECT exchange, market_type, symbol, base_symbol, quote_symbol, coingecko_base_id, coingecko_quote_id, is_active, first_seen, last_seen
+                SELECT exchange, market_type, symbol, base_symbol, quote_symbol, coingecko_base_id, coingecko_quote_id, is_active, first_seen, last_seen, tick_size
                 FROM trading_pairs
                 WHERE (LOWER(base_symbol) LIKE ? OR LOWER(symbol) LIKE ? OR LOWER(coingecko_base_id) LIKE ?)
                   AND is_active = 1
@@ -378,7 +382,7 @@ public class SymbolDao {
         List<TradingPair> pairs = new ArrayList<>();
 
         String sql = """
-            SELECT exchange, market_type, symbol, base_symbol, quote_symbol, coingecko_base_id, coingecko_quote_id, is_active, first_seen, last_seen
+            SELECT exchange, market_type, symbol, base_symbol, quote_symbol, coingecko_base_id, coingecko_quote_id, is_active, first_seen, last_seen, tick_size
             FROM trading_pairs
             WHERE exchange = ? AND market_type = ? AND is_active = 1
             ORDER BY base_symbol
@@ -806,7 +810,8 @@ public class SymbolDao {
             rs.getString("coingecko_quote_id"),
             rs.getInt("is_active") == 1,
             Instant.parse(rs.getString("first_seen")),
-            Instant.parse(rs.getString("last_seen"))
+            Instant.parse(rs.getString("last_seen")),
+            rs.getDouble("tick_size")
         );
     }
 

@@ -3,7 +3,6 @@ package com.tradery.dataservice.data.sqlite;
 import com.tradery.core.model.*;
 import com.tradery.dataservice.data.DataConfig;
 import com.tradery.dataservice.data.sqlite.dao.*;
-import com.tradery.dataservice.data.sqlite.dao.FearGreedDao;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -298,6 +297,55 @@ public class SqliteDataStore {
         }
     }
 
+    // ========== Volume Profile Methods ==========
+
+    /**
+     * Get volume profiles for a symbol, timeframe, and time range.
+     */
+    public List<VolumeProfileDao.ProfileRow> getProfiles(String symbol, String timeframe, long startTime, long endTime)
+            throws IOException {
+        try {
+            return forSymbol(symbol).volumeProfiles().query(timeframe, startTime, endTime);
+        } catch (SQLException e) {
+            throw new IOException("SQLite error getting profiles: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Save volume profile rows.
+     */
+    public void saveProfiles(String symbol, List<VolumeProfileDao.ProfileRow> rows) throws IOException {
+        try {
+            forSymbol(symbol).volumeProfiles().upsertBatch(rows);
+        } catch (SQLException e) {
+            throw new IOException("SQLite error saving profiles: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Stream volume profiles in chunks.
+     */
+    public int streamProfiles(String symbol, String timeframe, long startTime, long endTime,
+                              int chunkSize, java.util.function.Consumer<List<VolumeProfileDao.ProfileRow>> consumer)
+            throws IOException {
+        try {
+            return forSymbol(symbol).volumeProfiles().streamQuery(timeframe, startTime, endTime, chunkSize, consumer);
+        } catch (SQLException e) {
+            throw new IOException("SQLite error streaming profiles: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Count volume profiles for a timeframe and time range.
+     */
+    public long countProfiles(String symbol, String timeframe, long startTime, long endTime) throws IOException {
+        try {
+            return forSymbol(symbol).volumeProfiles().count(timeframe, startTime, endTime);
+        } catch (SQLException e) {
+            throw new IOException("SQLite error counting profiles: " + e.getMessage(), e);
+        }
+    }
+
     // ========== Coverage Methods ==========
 
     /**
@@ -351,7 +399,8 @@ public class SqliteDataStore {
                 DataStoreType.AGG_TRADES, List.of("agg_trades"),
                 DataStoreType.FUNDING_RATES, List.of("funding_rates"),
                 DataStoreType.OPEN_INTEREST, List.of("open_interest"),
-                DataStoreType.PREMIUM_INDEX, List.of("premium_index")
+                DataStoreType.PREMIUM_INDEX, List.of("premium_index"),
+                DataStoreType.VOLUME_PROFILES, List.of("volume_profiles")
             );
 
             for (var entry : typeKeys.entrySet()) {
@@ -526,18 +575,21 @@ public class SqliteDataStore {
         private final SqliteConnection fundingRatesConn;
         private final SqliteConnection openInterestConn;
         private final SqliteConnection premiumIndexConn;
+        private final SqliteConnection volumeProfilesConn;
 
         private final CandleDao candleDao;
         private final AggTradesDao aggTradesDao;
         private final FundingRateDao fundingRateDao;
         private final OpenInterestDao openInterestDao;
         private final PremiumIndexDao premiumIndexDao;
+        private final VolumeProfileDao volumeProfileDao;
 
         private final CoverageDao candlesCoverage;
         private final CoverageDao aggTradesCoverage;
         private final CoverageDao fundingRatesCoverage;
         private final CoverageDao openInterestCoverage;
         private final CoverageDao premiumIndexCoverage;
+        private final CoverageDao volumeProfilesCoverage;
 
         SymbolData(String symbol) throws SQLException {
             this.symbol = symbol;
@@ -557,17 +609,22 @@ public class SqliteDataStore {
             premiumIndexConn = SqliteConnection.forSymbolAndType(symbol, DataStoreType.PREMIUM_INDEX);
             SqliteSchema.initialize(premiumIndexConn, DataStoreType.PREMIUM_INDEX);
 
+            volumeProfilesConn = SqliteConnection.forSymbolAndType(symbol, DataStoreType.VOLUME_PROFILES);
+            SqliteSchema.initialize(volumeProfilesConn, DataStoreType.VOLUME_PROFILES);
+
             this.candleDao = new CandleDao(candlesConn);
             this.aggTradesDao = new AggTradesDao(aggTradesConn);
             this.fundingRateDao = new FundingRateDao(fundingRatesConn);
             this.openInterestDao = new OpenInterestDao(openInterestConn);
             this.premiumIndexDao = new PremiumIndexDao(premiumIndexConn);
+            this.volumeProfileDao = new VolumeProfileDao(volumeProfilesConn);
 
             this.candlesCoverage = new CoverageDao(candlesConn);
             this.aggTradesCoverage = new CoverageDao(aggTradesConn);
             this.fundingRatesCoverage = new CoverageDao(fundingRatesConn);
             this.openInterestCoverage = new CoverageDao(openInterestConn);
             this.premiumIndexCoverage = new CoverageDao(premiumIndexConn);
+            this.volumeProfilesCoverage = new CoverageDao(volumeProfilesConn);
         }
 
         public CandleDao candles() {
@@ -590,6 +647,10 @@ public class SqliteDataStore {
             return premiumIndexDao;
         }
 
+        public VolumeProfileDao volumeProfiles() {
+            return volumeProfileDao;
+        }
+
         /**
          * Get the CoverageDao for a specific data store type.
          */
@@ -600,6 +661,7 @@ public class SqliteDataStore {
                 case FUNDING_RATES -> fundingRatesCoverage;
                 case OPEN_INTEREST -> openInterestCoverage;
                 case PREMIUM_INDEX -> premiumIndexCoverage;
+                case VOLUME_PROFILES -> volumeProfilesCoverage;
             };
         }
 
@@ -613,6 +675,7 @@ public class SqliteDataStore {
                 case FUNDING_RATES -> fundingRatesConn;
                 case OPEN_INTEREST -> openInterestConn;
                 case PREMIUM_INDEX -> premiumIndexConn;
+                case VOLUME_PROFILES -> volumeProfilesConn;
             };
         }
 

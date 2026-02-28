@@ -10,7 +10,8 @@ public enum DataStoreType {
     AGG_TRADES("agg_trades.db"),
     FUNDING_RATES("funding_rates.db"),
     OPEN_INTEREST("open_interest.db"),
-    PREMIUM_INDEX("premium_index.db");
+    PREMIUM_INDEX("premium_index.db"),
+    VOLUME_PROFILES("volume_profiles.db");
 
     private final String filename;
 
@@ -39,6 +40,7 @@ public enum DataStoreType {
             case "funding_rates" -> FUNDING_RATES;
             case "open_interest" -> OPEN_INTEREST;
             case "premium_index" -> PREMIUM_INDEX;
+            case "volume_profiles" -> VOLUME_PROFILES;
             default -> CANDLES;
         };
     }

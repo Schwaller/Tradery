@@ -5,8 +5,16 @@ import com.tradery.charts.core.IndicatorType;
 import com.tradery.charts.indicator.IndicatorPool;
 import com.tradery.core.indicators.IndicatorEngine;
 import com.tradery.core.model.Candle;
+import com.tradery.dataclient.DataServiceClient;
+import com.tradery.forge.ApplicationContext;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 /**
  * Forge implementation of ChartDataProvider.
@@ -18,8 +26,15 @@ import java.util.List;
  */
 public class ForgeDataProvider implements ChartDataProvider {
 
+    private static final Logger log = LoggerFactory.getLogger(ForgeDataProvider.class);
+
     private final IndicatorDataService indicatorDataService;
     private final IndicatorPool indicatorPool = new IndicatorPool();
+    private final ExecutorService profileFetcher = Executors.newSingleThreadExecutor(r -> {
+        Thread t = new Thread(r, "DailyProfile-Fetch");
+        t.setDaemon(true);
+        return t;
+    });
     private String symbol = "";
     private String timeframe = "";
     private long startTime;
@@ -44,6 +59,10 @@ public class ForgeDataProvider implements ChartDataProvider {
         if (candles != null && !candles.isEmpty()) {
             IndicatorEngine engine = new IndicatorEngine();
             engine.setCandles(candles, timeframe != null ? timeframe : "1h");
+
+            // Populate daily profiles from data service for PREV_DAY/TODAY POC/VAH/VAL
+            populateDailyProfiles(engine, symbol, candles);
+
             indicatorPool.setDataContext(engine);
         } else {
             indicatorPool.setDataContext(null);
@@ -151,6 +170,40 @@ public class ForgeDataProvider implements ChartDataProvider {
     @Override
     public double[] getWhaleDelta(double threshold) {
         return indicatorDataService.getWhaleDelta(threshold);
+    }
+
+    /**
+     * Populate the IndicatorEngine with precomputed daily profiles from the data service.
+     * Runs on a background thread to avoid blocking the UI — the engine falls back to
+     * candle-based computation until profiles arrive, then subsequent calls use precomputed data.
+     */
+    private void populateDailyProfiles(IndicatorEngine engine, String symbol, List<Candle> candles) {
+        ApplicationContext ctx = ApplicationContext.getInstance();
+        if (ctx == null || !ctx.isDataServiceAvailable() || symbol == null || symbol.isEmpty()) {
+            return;
+        }
+
+        long start = candles.get(0).timestamp();
+        long end = candles.get(candles.size() - 1).timestamp();
+
+        profileFetcher.submit(() -> {
+            try {
+                DataServiceClient client = ctx.getDataServiceClient();
+                List<DataServiceClient.DailyLevelsPoint> levels = client.getProfileDailyLevels(symbol, start, end);
+                if (levels == null || levels.isEmpty()) return;
+
+                Map<Long, double[]> profileMap = new HashMap<>();
+                for (DataServiceClient.DailyLevelsPoint p : levels) {
+                    profileMap.put(p.dayStart(), new double[]{p.poc(), p.vah(), p.val()});
+                }
+
+                engine.setPrecomputedDailyProfiles(profileMap);
+                log.info("Populated {} precomputed daily profiles for {}", profileMap.size(), symbol);
+            } catch (Exception e) {
+                log.warn("Failed to fetch daily profiles from data service for {}, using candle fallback: {}",
+                    symbol, e.getMessage());
+            }
+        });
     }
 
     /**

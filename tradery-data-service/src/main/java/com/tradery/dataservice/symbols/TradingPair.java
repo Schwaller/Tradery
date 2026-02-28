@@ -16,7 +16,8 @@ public record TradingPair(
     String coingeckoQuoteId, // CoinGecko ID of quote (tether)
     boolean isActive,        // Whether pair is currently tradeable
     Instant firstSeen,       // When first discovered
-    Instant lastSeen         // When last seen in sync
+    Instant lastSeen,        // When last seen in sync
+    double tickSize          // Exchange-defined price tick size (e.g., 0.10 for BTCUSDT)
 ) {
     /**
      * Create a new trading pair with current timestamp.
@@ -32,7 +33,26 @@ public record TradingPair(
         Instant now = Instant.now();
         return new TradingPair(
             exchange, marketType, symbol, baseSymbol, quoteSymbol,
-            coingeckoBaseId, coingeckoQuoteId, true, now, now
+            coingeckoBaseId, coingeckoQuoteId, true, now, now, 0
+        );
+    }
+
+    /**
+     * Create a new trading pair with tick size.
+     */
+    public static TradingPair create(
+            String exchange,
+            MarketType marketType,
+            String symbol,
+            String baseSymbol,
+            String quoteSymbol,
+            String coingeckoBaseId,
+            String coingeckoQuoteId,
+            double tickSize) {
+        Instant now = Instant.now();
+        return new TradingPair(
+            exchange, marketType, symbol, baseSymbol, quoteSymbol,
+            coingeckoBaseId, coingeckoQuoteId, true, now, now, tickSize
         );
     }
 
@@ -42,7 +62,7 @@ public record TradingPair(
     public TradingPair withLastSeen(Instant lastSeen) {
         return new TradingPair(
             exchange, marketType, symbol, baseSymbol, quoteSymbol,
-            coingeckoBaseId, coingeckoQuoteId, isActive, firstSeen, lastSeen
+            coingeckoBaseId, coingeckoQuoteId, isActive, firstSeen, lastSeen, tickSize
         );
     }
 
@@ -52,7 +72,7 @@ public record TradingPair(
     public TradingPair withActive(boolean active) {
         return new TradingPair(
             exchange, marketType, symbol, baseSymbol, quoteSymbol,
-            coingeckoBaseId, coingeckoQuoteId, active, firstSeen, lastSeen
+            coingeckoBaseId, coingeckoQuoteId, active, firstSeen, lastSeen, tickSize
         );
     }
 }

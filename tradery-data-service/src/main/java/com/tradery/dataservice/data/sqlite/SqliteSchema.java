@@ -98,6 +98,7 @@ public class SqliteSchema {
                 case FUNDING_RATES -> createFundingRatesTables(stmt);
                 case OPEN_INTEREST -> createOpenInterestTables(stmt);
                 case PREMIUM_INDEX -> createPremiumIndexTables(stmt);
+                case VOLUME_PROFILES -> createVolumeProfilesTables(stmt);
             }
         }
     }
@@ -196,6 +197,21 @@ public class SqliteSchema {
                 close REAL NOT NULL,
                 close_time INTEGER NOT NULL,
                 PRIMARY KEY (interval, open_time)
+            ) WITHOUT ROWID
+            """);
+    }
+
+    private static void createVolumeProfilesTables(Statement stmt) throws SQLException {
+        stmt.execute("""
+            CREATE TABLE IF NOT EXISTS volume_profiles (
+                timeframe TEXT NOT NULL,
+                window_start INTEGER NOT NULL,
+                tick_size REAL NOT NULL,
+                total_buy_volume REAL NOT NULL DEFAULT 0,
+                total_sell_volume REAL NOT NULL DEFAULT 0,
+                level_count INTEGER NOT NULL DEFAULT 0,
+                profile_data BLOB NOT NULL,
+                PRIMARY KEY (timeframe, window_start)
             ) WITHOUT ROWID
             """);
     }

@@ -13,6 +13,9 @@ import com.tradery.dataservice.live.LiveMarkPriceManager;
 import com.tradery.dataservice.live.LiveOpenInterestPoller;
 import com.tradery.dataservice.news.NewsManager;
 import com.tradery.dataservice.page.PageManager;
+import com.tradery.dataservice.profile.TickSizeResolver;
+import com.tradery.dataservice.profile.VolumeProfileAnalyzer;
+import com.tradery.dataservice.profile.VolumeProfileComputer;
 import com.tradery.dataservice.symbols.SymbolSyncService;
 import io.javalin.Javalin;
 import io.javalin.http.Context;
@@ -42,6 +45,9 @@ public class DataServiceServer {
     private final WebSocketHandler webSocketHandler;
     private final SymbolHandler symbolHandler;
     private final InventoryHandler inventoryHandler;
+    private final TickSizeResolver tickSizeResolver;
+    private final VolumeProfileComputer profileComputer;
+    private final VolumeProfileAnalyzer profileAnalyzer;
     private NewsManager newsManager;
     private Javalin app;
 
@@ -63,6 +69,10 @@ public class DataServiceServer {
             pageManager.getAggTradesStore(), objectMapper);
         this.symbolHandler = new SymbolHandler(symbolSyncService, symbolsConnection, coingeckoClient);
         this.inventoryHandler = new InventoryHandler(dataStore);
+        this.tickSizeResolver = new TickSizeResolver(symbolsConnection);
+        this.profileComputer = new VolumeProfileComputer(dataStore, tickSizeResolver);
+        this.profileAnalyzer = new VolumeProfileAnalyzer();
+        this.pageManager.setProfileComputer(profileComputer);
     }
 
     public void setNewsManager(NewsManager newsManager) {
@@ -84,6 +94,7 @@ public class DataServiceServer {
         // Configure routes
         configurePageRoutes();
         configureDataRoutes();
+        configureProfileRoutes();
         configureInventoryRoutes();
         configureCoverageRoutes();
         configureSymbolRoutes();
@@ -135,6 +146,15 @@ public class DataServiceServer {
 
         // AggTrades must use direct streaming (page system returns null — data too large for memory)
         app.get("/aggtrades", dataHandler::getAggTrades);
+    }
+
+    private void configureProfileRoutes() {
+        ProfileHandler profileHandler = new ProfileHandler(dataStore, tickSizeResolver, profileComputer, profileAnalyzer);
+
+        app.get("/profile", profileHandler::getProfile);
+        app.get("/profile/binned", profileHandler::getBinnedProfile);
+        app.get("/profile/poc-series", profileHandler::getPocSeries);
+        app.get("/profile/daily-levels", profileHandler::getDailyLevels);
     }
 
     private void configureInventoryRoutes() {

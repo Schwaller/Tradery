@@ -15,7 +15,7 @@ public class SymbolsSchema {
     private static final Logger log = LoggerFactory.getLogger(SymbolsSchema.class);
 
     // Current schema version - increment when schema changes
-    public static final int CURRENT_VERSION = 2;
+    public static final int CURRENT_VERSION = 3;
 
     /**
      * Initialize the schema for the symbols database.
@@ -128,6 +128,7 @@ public class SymbolsSchema {
                     is_active INTEGER DEFAULT 1,
                     first_seen TEXT,
                     last_seen TEXT,
+                    tick_size REAL NOT NULL DEFAULT 0,
                     UNIQUE(exchange, market_type, symbol)
                 )
                 """);
@@ -214,6 +215,7 @@ public class SymbolsSchema {
         for (int v = fromVersion + 1; v <= toVersion; v++) {
             switch (v) {
                 case 2 -> migrateToV2(conn);
+                case 3 -> migrateToV3(conn);
                 default -> log.debug("No migration needed for version {}", v);
             }
         }
@@ -248,6 +250,16 @@ public class SymbolsSchema {
                 """);
         }
         log.info("Migrated to v2: added coin_categories and category_sync_metadata tables");
+    }
+
+    /**
+     * V3: Add tick_size column to trading_pairs for exchange-defined price precision.
+     */
+    private static void migrateToV3(Connection conn) throws SQLException {
+        try (Statement stmt = conn.createStatement()) {
+            stmt.execute("ALTER TABLE trading_pairs ADD COLUMN tick_size REAL NOT NULL DEFAULT 0");
+        }
+        log.info("Migrated to v3: added tick_size column to trading_pairs");
     }
 
     /**

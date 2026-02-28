@@ -39,7 +39,13 @@ public enum DataType {
      * Fear & Greed Index data (daily sentiment from Alternative.me).
      * Does not require timeframe - one value per day.
      */
-    FEAR_GREED("F&G");
+    FEAR_GREED("F&G"),
+
+    /**
+     * Precomputed volume profile data (pyramid: 10s → 1m → 5m → 30m → 1h → 4h → 1d).
+     * Requires timeframe to select pyramid level.
+     */
+    VOLUME_PROFILE("Profile");
 
     private final String displayName;
 
@@ -58,7 +64,7 @@ public enum DataType {
      * Check if this data type requires a timeframe parameter.
      */
     public boolean requiresTimeframe() {
-        return this == CANDLES || this == PREMIUM_INDEX;
+        return this == CANDLES || this == PREMIUM_INDEX || this == VOLUME_PROFILE;
     }
 
     /**
@@ -79,6 +85,7 @@ public enum DataType {
             case PREMIUM_INDEX -> "PREMIUM";
             case AGG_TRADES -> "AGGTRADES";
             case FEAR_GREED -> "FEAR_GREED";
+            case VOLUME_PROFILE -> "PROFILE";
         };
     }
 
@@ -93,6 +100,7 @@ public enum DataType {
             case "PREMIUM", "PREMIUM_INDEX" -> PREMIUM_INDEX;
             case "AGGTRADES", "AGG_TRADES" -> AGG_TRADES;
             case "FEAR_GREED" -> FEAR_GREED;
+            case "PROFILE", "VOLUME_PROFILE" -> VOLUME_PROFILE;
             default -> throw new IllegalArgumentException("Unknown data type: " + wire);
         };
     }

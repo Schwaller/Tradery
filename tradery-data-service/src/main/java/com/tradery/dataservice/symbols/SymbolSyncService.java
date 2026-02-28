@@ -576,8 +576,20 @@ public class SymbolSyncService {
             String coingeckoId = lookupCoingeckoId(base);
             String quoteCoingeckoId = lookupCoingeckoId(quote);
 
+            // Extract tick size from PRICE_FILTER
+            double tickSize = 0;
+            JsonNode filters = sym.get("filters");
+            if (filters != null && filters.isArray()) {
+                for (JsonNode filter : filters) {
+                    if ("PRICE_FILTER".equals(filter.path("filterType").asText())) {
+                        tickSize = filter.path("tickSize").asDouble(0);
+                        break;
+                    }
+                }
+            }
+
             pairs.add(TradingPair.create("binance", MarketType.PERP, symbol, base, quote,
-                coingeckoId, quoteCoingeckoId));
+                coingeckoId, quoteCoingeckoId, tickSize));
         }
 
         log.info("Parsed {} Binance perpetual pairs from exchangeInfo", pairs.size());

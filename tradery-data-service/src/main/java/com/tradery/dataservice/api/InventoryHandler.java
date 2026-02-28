@@ -245,7 +245,22 @@ public class InventoryHandler {
             }
         }
 
-        return new SymbolInventory(symbol, candles, aggTrades, funding, openInterest, premiumIndex);
+        // Volume profiles (query DAO directly — not in coverage table)
+        List<VolumeProfileInventory> volumeProfiles = new ArrayList<>();
+        try {
+            VolumeProfileDao vpDao = data.volumeProfiles();
+            for (String tf : vpDao.getAvailableTimeframes()) {
+                long count = vpDao.countAll(tf);
+                long[] range = vpDao.getTimeRange(tf);
+                if (count > 0 && range != null) {
+                    volumeProfiles.add(new VolumeProfileInventory(tf, range[0], range[1], count));
+                }
+            }
+        } catch (Exception e) {
+            LOG.warn("Failed to get volume profile inventory for {}: {}", symbol, e.getMessage());
+        }
+
+        return new SymbolInventory(symbol, candles, aggTrades, funding, openInterest, premiumIndex, volumeProfiles);
     }
 
     private int estimateCandleCount(long startMs, long endMs, String timeframe) {
@@ -397,7 +412,8 @@ public class InventoryHandler {
         List<AggTradesInventory> aggTrades,
         FundingInventory funding,
         OpenInterestInventory openInterest,
-        List<PremiumIndexInventory> premiumIndex
+        List<PremiumIndexInventory> premiumIndex,
+        List<VolumeProfileInventory> volumeProfiles
     ) {}
 
     public record CandleInventory(
@@ -417,6 +433,8 @@ public class InventoryHandler {
     public record PremiumIndexInventory(String interval, long startTime, long endTime, int recordCount) {}
 
     public record FearGreedInventory(long startTime, long endTime, int recordCount, int latestValue) {}
+
+    public record VolumeProfileInventory(String timeframe, long startTime, long endTime, long recordCount) {}
 
     public record DiskUsageResponse(long totalBytes, Map<String, Long> bySymbol, Map<String, Long> byDataType, long volumeFreeBytes, long volumeTotalBytes) {}
 

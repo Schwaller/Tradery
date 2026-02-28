@@ -1435,6 +1435,20 @@ public class IndicatorEngine {
     // Cache for daily volume profiles: key = "date:YYYY-MM-DD", value = VolumeProfileResult
     private final Map<String, Indicators.VolumeProfileResult> dailyProfileCache = new ConcurrentHashMap<>();
 
+    // Precomputed daily profiles from data service: dayStartMs → [poc, vah, val]
+    private Map<Long, double[]> precomputedDailyProfiles;
+
+    /**
+     * Set precomputed daily profiles from the data service.
+     * Each entry maps a UTC day start timestamp to [poc, vah, val].
+     * When set, calculateDayProfile() uses these instead of computing from candles.
+     */
+    public void setPrecomputedDailyProfiles(Map<Long, double[]> profiles) {
+        this.precomputedDailyProfiles = profiles;
+        // Clear the candle-based cache since precomputed data takes priority
+        dailyProfileCache.clear();
+    }
+
     /**
      * Get the UTC date for a bar index.
      */
@@ -1482,6 +1496,8 @@ public class IndicatorEngine {
 
     /**
      * Calculate volume profile for a specific day's candles.
+     * Uses precomputed profiles from data service when available,
+     * falls back to candle-based computation (for backtest engine or when data service is unavailable).
      */
     private Indicators.VolumeProfileResult calculateDayProfile(LocalDate date) {
         String cacheKey = "day:" + date.toString();
@@ -1489,6 +1505,19 @@ public class IndicatorEngine {
             return dailyProfileCache.get(cacheKey);
         }
 
+        // Try precomputed profiles first
+        if (precomputedDailyProfiles != null) {
+            long dayStart = date.atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli();
+            double[] levels = precomputedDailyProfiles.get(dayStart);
+            if (levels != null && levels.length >= 3) {
+                var result = new Indicators.VolumeProfileResult(
+                    levels[0], levels[1], levels[2], new double[0], new double[0]);
+                dailyProfileCache.put(cacheKey, result);
+                return result;
+            }
+        }
+
+        // Fall back to candle-based computation
         int startIdx = findDayStartIndex(date);
         int endIdx = findDayEndIndex(date);
 

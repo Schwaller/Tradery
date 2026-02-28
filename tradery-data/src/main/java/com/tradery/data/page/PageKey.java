@@ -286,4 +286,27 @@ public record PageKey(
     public boolean isFearGreed() {
         return "FEAR_GREED".equals(dataType);
     }
+
+    /**
+     * Check if this page key is for volume profile data.
+     */
+    public boolean isProfile() {
+        return "PROFILE".equals(dataType) || "VOLUME_PROFILE".equals(dataType);
+    }
+
+    // ========== Volume Profile Factory Methods ==========
+
+    /**
+     * Create a live volume profile page key.
+     */
+    public static PageKey liveProfile(String symbol, String timeframe, long windowDurationMillis) {
+        return new PageKey("PROFILE", "binance", symbol.toUpperCase(), timeframe, "perp", null, windowDurationMillis);
+    }
+
+    /**
+     * Create an anchored volume profile page key.
+     */
+    public static PageKey anchoredProfile(String symbol, String timeframe, long endTime, long windowDurationMillis) {
+        return new PageKey("PROFILE", "binance", symbol.toUpperCase(), timeframe, "perp", endTime, windowDurationMillis);
+    }
 }

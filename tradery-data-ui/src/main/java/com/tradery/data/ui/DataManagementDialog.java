@@ -477,6 +477,22 @@ public class DataManagementDialog extends JDialog {
                     + DATE_FMT.format(Instant.ofEpochMilli(maxEnd)) + " (" + days + " days)";
             }
             default -> {
+                // Volume profile timeframes
+                if (resolution != null && resolution.startsWith("volumeProfile:")) {
+                    String vpTf = resolution.substring("volumeProfile:".length());
+                    if (sym.volumeProfiles() != null) {
+                        VolumeProfileInventory vp = sym.volumeProfiles().stream()
+                            .filter(v -> v.timeframe().equals(vpTf)).findFirst().orElse(null);
+                        if (vp != null) {
+                            long days = (vp.endTime() - vp.startTime()) / 86_400_000L;
+                            return symbol + " \u2014 Volume Profile " + vp.timeframe() + " \u2014 "
+                                + COUNT_FORMAT.format(vp.recordCount()) + " windows, "
+                                + DATE_FMT.format(Instant.ofEpochMilli(vp.startTime())) + " \u2192 "
+                                + DATE_FMT.format(Instant.ofEpochMilli(vp.endTime())) + " (" + days + " days)";
+                        }
+                    }
+                    return symbol + " \u2014 Volume Profile " + vpTf + " \u2014 No data";
+                }
                 // Candle timeframe - find matching candle inventory
                 if (sym.candles() != null) {
                     CandleInventory match = sym.candles().stream()

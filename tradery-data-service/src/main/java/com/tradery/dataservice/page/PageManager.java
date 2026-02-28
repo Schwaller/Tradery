@@ -57,6 +57,9 @@ public class PageManager {
     private final Map<String, BiConsumer<String, Candle>> liveUpdateCallbacks = new ConcurrentHashMap<>();
     private final Map<String, BiConsumer<String, Candle>> liveCloseCallbacks = new ConcurrentHashMap<>();
 
+    // Optional: set via setProfileComputer() for on-demand profile computation
+    private volatile com.tradery.dataservice.profile.VolumeProfileComputer profileComputer;
+
     public PageManager(DataServiceConfig config, SqliteDataStore dataStore, LiveCandleManager liveCandleManager) {
         this.config = config;
         this.dataStore = dataStore;
@@ -383,6 +386,9 @@ public class PageManager {
             } else if (key.isFearGreed()) {
                 data = loadFearGreed(key, page);
                 recordCount = page.getRecordCount();
+            } else if (key.isProfile()) {
+                data = loadProfiles(key, page);
+                recordCount = page.getRecordCount();
             } else {
                 throw new IllegalArgumentException("Unknown data type: " + key.dataType());
             }
@@ -671,6 +677,36 @@ public class PageManager {
         page.setRecordCount(data.size());
         LOG.info("loadFearGreed: loaded {} records", data.size());
         return msgpackMapper.writeValueAsBytes(data);
+    }
+
+    private byte[] loadProfiles(PageKey key, Page page) throws Exception {
+        long startTime = key.getEffectiveStartTime();
+        long endTime = key.getEffectiveEndTime();
+        String timeframe = key.timeframe() != null ? key.timeframe() : "1h";
+
+        // Check coverage and compute if needed
+        var coverage = dataStore.forSymbol(key.symbol()).coverageFor(DataStoreType.VOLUME_PROFILES);
+        var gaps = coverage.findGaps("volume_profiles", "", startTime, endTime);
+
+        if (!gaps.isEmpty() && profileComputer != null) {
+            LOG.info("loadProfiles: computing {} gap(s) for {} {} [{}-{}]", gaps.size(), key.symbol(), timeframe, startTime, endTime);
+            for (long[] gap : gaps) {
+                profileComputer.compute(key.symbol(), gap[0], gap[1]);
+                coverage.addCoverage("volume_profiles", "", gap[0], gap[1], true);
+            }
+        }
+
+        var profiles = dataStore.getProfiles(key.symbol(), timeframe, startTime, endTime);
+        page.setRecordCount(profiles.size());
+        LOG.info("loadProfiles: loaded {} {} profiles for {}", profiles.size(), timeframe, key.symbol());
+        return msgpackMapper.writeValueAsBytes(profiles);
+    }
+
+    /**
+     * Set the VolumeProfileComputer for on-demand profile computation.
+     */
+    public void setProfileComputer(com.tradery.dataservice.profile.VolumeProfileComputer computer) {
+        this.profileComputer = computer;
     }
 
     /**

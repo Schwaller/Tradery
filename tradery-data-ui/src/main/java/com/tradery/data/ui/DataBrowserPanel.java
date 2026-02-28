@@ -262,6 +262,24 @@ public class DataBrowserPanel extends JPanel {
             rows.add(RowData.emptyLabel("No premium index data"));
         }
 
+        // === Volume Profiles ===
+        rows.add(RowData.sectionHeader("Volume Profiles"));
+        boolean hasProfiles = symbols.stream().anyMatch(s -> s.volumeProfiles() != null && !s.volumeProfiles().isEmpty());
+        if (hasProfiles) {
+            for (SymbolInventory sym : symbols) {
+                if (sym.volumeProfiles() == null || sym.volumeProfiles().isEmpty()) continue;
+                rows.add(symbolHeaderWithSize(sym.symbol(), "volume_profiles.db"));
+                for (VolumeProfileInventory vp : sym.volumeProfiles()) {
+                    String label = vp.timeframe();
+                    String info = COUNT_FORMAT.format(vp.recordCount()) + " windows";
+                    rows.add(new RowData(sym.symbol(), "volumeProfile:" + vp.timeframe(), null, null, vp.timeframe(),
+                        true, false, false, false, 2, label, info, COMPLETE_COLOR));
+                }
+            }
+        } else {
+            rows.add(RowData.emptyLabel("No volume profile data"));
+        }
+
         // === Fear & Greed ===
         rows.add(RowData.sectionHeader("Fear & Greed Index"));
         if (inventory != null && inventory.fearGreed() != null) {

@@ -28,6 +28,7 @@ public class DataServiceClient {
     private final int port;
     private final String baseUrl;
     private final OkHttpClient httpClient;
+    private final OkHttpClient profileHttpClient;  // Short timeout for profile queries (fail fast, fallback to candles)
     private final ObjectMapper jsonMapper;
     private final ObjectMapper msgpackMapper;
 
@@ -42,6 +43,13 @@ public class DataServiceClient {
             .connectTimeout(30, TimeUnit.SECONDS)
             .readTimeout(60, TimeUnit.SECONDS)
             .writeTimeout(30, TimeUnit.SECONDS)
+            .build();
+        // Profile queries use a short timeout — if profiles aren't cached yet, the data service
+        // may block for minutes computing them. We fail fast and let the caller fall back to candles.
+        this.profileHttpClient = new OkHttpClient.Builder()
+            .connectTimeout(5, TimeUnit.SECONDS)
+            .readTimeout(10, TimeUnit.SECONDS)
+            .writeTimeout(5, TimeUnit.SECONDS)
             .build();
         this.jsonMapper = new ObjectMapper()
             .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
@@ -489,12 +497,119 @@ public class DataServiceClient {
         }
     }
 
+    // ==================== Volume Profile endpoints ====================
+
+    /**
+     * GET /profile/binned — returns binned histogram with POC/VAH/VAL for a time range.
+     */
+    public BinnedProfileResponse getProfileBinned(String symbol, String timeframe,
+            long start, long end, int binCount, double valueAreaPct) throws IOException {
+
+        HttpUrl.Builder urlBuilder = HttpUrl.parse(baseUrl + "/profile/binned").newBuilder()
+            .addQueryParameter("symbol", symbol)
+            .addQueryParameter("timeframe", timeframe)
+            .addQueryParameter("start", Long.toString(start))
+            .addQueryParameter("end", Long.toString(end))
+            .addQueryParameter("binParam", Integer.toString(binCount))
+            .addQueryParameter("valueAreaPct", Double.toString(valueAreaPct));
+
+        Request request = new Request.Builder()
+            .url(urlBuilder.build())
+            .get()
+            .build();
+
+        try (Response response = profileHttpClient.newCall(request).execute()) {
+            if (!response.isSuccessful()) {
+                throw new IOException("Profile binned request failed: " + response.code());
+            }
+            return jsonMapper.readValue(response.body().string(), BinnedProfileResponse.class);
+        }
+    }
+
+    /**
+     * GET /profile — returns raw tick-level profiles for a time range.
+     * Each profile has a tick map (tickIndex → [buyVol, sellVol]) and window metadata.
+     */
+    public List<RawProfileResponse> getProfiles(String symbol, String timeframe,
+            long start, long end) throws IOException {
+
+        HttpUrl.Builder urlBuilder = HttpUrl.parse(baseUrl + "/profile").newBuilder()
+            .addQueryParameter("symbol", symbol)
+            .addQueryParameter("timeframe", timeframe)
+            .addQueryParameter("start", Long.toString(start))
+            .addQueryParameter("end", Long.toString(end));
+
+        Request request = new Request.Builder()
+            .url(urlBuilder.build())
+            .get()
+            .build();
+
+        try (Response response = profileHttpClient.newCall(request).execute()) {
+            if (!response.isSuccessful()) {
+                throw new IOException("Profile request failed: " + response.code());
+            }
+            return jsonMapper.readValue(response.body().string(), jsonMapper.getTypeFactory()
+                .constructCollectionType(List.class, RawProfileResponse.class));
+        }
+    }
+
+    /**
+     * GET /profile/poc-series — returns POC time series for a time range.
+     */
+    public List<PocSeriesPoint> getProfilePocSeries(String symbol, String timeframe,
+            long start, long end) throws IOException {
+
+        HttpUrl.Builder urlBuilder = HttpUrl.parse(baseUrl + "/profile/poc-series").newBuilder()
+            .addQueryParameter("symbol", symbol)
+            .addQueryParameter("timeframe", timeframe)
+            .addQueryParameter("start", Long.toString(start))
+            .addQueryParameter("end", Long.toString(end));
+
+        Request request = new Request.Builder()
+            .url(urlBuilder.build())
+            .get()
+            .build();
+
+        try (Response response = profileHttpClient.newCall(request).execute()) {
+            if (!response.isSuccessful()) {
+                throw new IOException("POC series request failed: " + response.code());
+            }
+            return jsonMapper.readValue(response.body().string(), jsonMapper.getTypeFactory()
+                .constructCollectionType(List.class, PocSeriesPoint.class));
+        }
+    }
+
+    /**
+     * GET /profile/daily-levels — returns POC/VAH/VAL per day for a time range.
+     */
+    public List<DailyLevelsPoint> getProfileDailyLevels(String symbol, long start, long end) throws IOException {
+        HttpUrl.Builder urlBuilder = HttpUrl.parse(baseUrl + "/profile/daily-levels").newBuilder()
+            .addQueryParameter("symbol", symbol)
+            .addQueryParameter("start", Long.toString(start))
+            .addQueryParameter("end", Long.toString(end));
+
+        Request request = new Request.Builder()
+            .url(urlBuilder.build())
+            .get()
+            .build();
+
+        try (Response response = profileHttpClient.newCall(request).execute()) {
+            if (!response.isSuccessful()) {
+                throw new IOException("Daily levels request failed: " + response.code());
+            }
+            return jsonMapper.readValue(response.body().string(), jsonMapper.getTypeFactory()
+                .constructCollectionType(List.class, DailyLevelsPoint.class));
+        }
+    }
+
     /**
      * Close the client.
      */
     public void close() {
         httpClient.dispatcher().executorService().shutdown();
         httpClient.connectionPool().evictAll();
+        profileHttpClient.dispatcher().executorService().shutdown();
+        profileHttpClient.connectionPool().evictAll();
     }
 
     // ==================== Inventory DTOs ====================
@@ -511,7 +626,8 @@ public class DataServiceClient {
         List<AggTradesInventory> aggTrades,
         FundingInventory funding,
         OpenInterestInventory openInterest,
-        List<PremiumIndexInventory> premiumIndex
+        List<PremiumIndexInventory> premiumIndex,
+        List<VolumeProfileInventory> volumeProfiles
     ) {}
 
     public record CandleInventory(
@@ -531,6 +647,8 @@ public class DataServiceClient {
     public record PremiumIndexInventory(String interval, long startTime, long endTime, int recordCount) {}
 
     public record FearGreedInventory(long startTime, long endTime, int recordCount, int latestValue) {}
+
+    public record VolumeProfileInventory(String timeframe, long startTime, long endTime, long recordCount) {}
 
     public record DiskUsageResponse(long totalBytes, java.util.Map<String, Long> bySymbol, java.util.Map<String, Long> byDataType, long volumeFreeBytes, long volumeTotalBytes) {}
 
@@ -571,4 +689,23 @@ public class DataServiceClient {
                               java.util.Map<String, java.util.List<ExchangeMarketStats>> byExchange,
                               boolean syncInProgress,
                               SyncProgress syncProgress) {}
+
+    // ==================== Volume Profile DTOs ====================
+
+    public record BinnedProfileResponse(
+        double poc, double vah, double val, double delta,
+        BinnedProfileBins bins
+    ) {
+        public record BinnedProfileBins(double[] priceLevels, double[] buyVolumes, double[] sellVolumes) {}
+    }
+
+    public record RawProfileResponse(
+        long windowStart, double tickSize, double totalBuyVolume, double totalSellVolume,
+        java.util.Map<String, double[]> levels
+    ) {}
+
+    public record PocSeriesPoint(long timestamp, double poc, double volume) {}
+
+    public record DailyLevelsPoint(long dayStart, double poc, double vah, double val,
+                                    double delta, double totalVolume) {}
 }
