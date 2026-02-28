@@ -521,9 +521,61 @@ public class IndicatorPageManager {
             }
             return profiles;
         } catch (Exception e) {
-            log.warn("Failed to fetch daily binned profiles for {}: {}", symbol, e.getMessage());
-            return List.of();
+            log.warn("Failed to fetch daily binned profiles for {}, falling back to candles: {}", symbol, e.getMessage());
         }
+
+        // Fallback: compute from candles when data service is unavailable or profiles aren't cached yet
+        return calculateDayProfilesFromCandles(candles, numBins, valueAreaPct, maxDays);
+    }
+
+    /**
+     * Candle-based daily volume profile fallback.
+     * Less accurate than aggTrades-based profiles but always available.
+     */
+    private List<com.tradery.forge.ui.charts.DailyVolumeProfileAnnotation.DayProfile> calculateDayProfilesFromCandles(
+            List<Candle> candles, int numBins, double valueAreaPct, int maxDays) {
+
+        // Group candles by UTC day
+        java.util.Map<java.time.LocalDate, java.util.List<Candle>> byDay = new java.util.LinkedHashMap<>();
+        for (Candle c : candles) {
+            java.time.LocalDate day = java.time.Instant.ofEpochMilli(c.timestamp())
+                .atZone(java.time.ZoneOffset.UTC).toLocalDate();
+            byDay.computeIfAbsent(day, k -> new java.util.ArrayList<>()).add(c);
+        }
+
+        var days = new java.util.ArrayList<>(byDay.keySet());
+        if (maxDays > 0 && days.size() > maxDays) {
+            days = new java.util.ArrayList<>(days.subList(days.size() - maxDays, days.size()));
+        }
+
+        var profiles = new java.util.ArrayList<com.tradery.forge.ui.charts.DailyVolumeProfileAnnotation.DayProfile>();
+        for (java.time.LocalDate day : days) {
+            java.util.List<Candle> dayCandles = byDay.get(day);
+            if (dayCandles == null || dayCandles.isEmpty()) continue;
+
+            com.tradery.core.indicators.VolumeProfile.Result vp =
+                com.tradery.core.indicators.VolumeProfile.calculate(dayCandles, dayCandles.size(), numBins, valueAreaPct);
+            if (vp.priceLevels().length == 0) continue;
+
+            long dayStart = day.atStartOfDay(java.time.ZoneOffset.UTC).toInstant().toEpochMilli();
+            long dayEnd = day.plusDays(1).atStartOfDay(java.time.ZoneOffset.UTC).toInstant().toEpochMilli() - 1;
+
+            double maxVol = 0;
+            for (double v : vp.volumes()) maxVol = Math.max(maxVol, v);
+
+            double minPrice = Double.MAX_VALUE, maxPrice = Double.MIN_VALUE;
+            for (Candle c : dayCandles) {
+                minPrice = Math.min(minPrice, c.low());
+                maxPrice = Math.max(maxPrice, c.high());
+            }
+
+            profiles.add(new com.tradery.forge.ui.charts.DailyVolumeProfileAnnotation.DayProfile(
+                dayStart, dayEnd, vp.priceLevels(), vp.volumes(),
+                vp.poc(), vp.vah(), vp.val(),
+                maxVol, minPrice, maxPrice
+            ));
+        }
+        return profiles;
     }
 
     /**
