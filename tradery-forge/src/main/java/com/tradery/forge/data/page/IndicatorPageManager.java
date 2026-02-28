@@ -407,14 +407,17 @@ public class IndicatorPageManager {
                     if (parts.length >= 3) maxDays = Integer.parseInt(parts[2]);
                 }
 
-                // Fetch from data service: one /profile/binned call per UTC day
+                if (candles == null || candles.isEmpty()) yield null;
+
+                // Try data service first, fall back to candle computation
                 var ctx = com.tradery.forge.ApplicationContext.getInstance();
-                if (ctx != null && ctx.isDataServiceAvailable() && symbol != null
-                        && candles != null && !candles.isEmpty()) {
-                    yield fetchDayProfilesFromDataService(ctx.getDataServiceClient(),
+                if (ctx != null && ctx.isDataServiceAvailable() && symbol != null) {
+                    var result = fetchDayProfilesFromDataService(ctx.getDataServiceClient(),
                         symbol, candles, numBins, valueAreaPct, maxDays);
+                    if (result != null && !result.isEmpty()) yield result;
                 }
-                yield null;
+                // Fallback: always compute from candles if data service failed or returned empty
+                yield calculateDayProfilesFromCandles(candles, numBins, valueAreaPct, maxDays);
             }
             default -> throw new UnsupportedOperationException("Indicator not implemented: " + type);
         };
@@ -485,7 +488,7 @@ public class IndicatorPageManager {
 
         try {
             var dailyBinned = client.getProfileDailyBinned(symbol, rangeStart, rangeEnd, numBins, valueAreaPct);
-            if (dailyBinned == null || dailyBinned.isEmpty()) return List.of();
+            if (dailyBinned == null || dailyBinned.isEmpty()) return null;  // Let caller fall back to candles
 
             // Limit to most recent maxDays
             if (maxDays > 0 && dailyBinned.size() > maxDays) {
@@ -521,11 +524,9 @@ public class IndicatorPageManager {
             }
             return profiles;
         } catch (Exception e) {
-            log.warn("Failed to fetch daily binned profiles for {}, falling back to candles: {}", symbol, e.getMessage());
+            log.warn("Failed to fetch daily binned profiles for {}: {}", symbol, e.getMessage());
+            return null;  // Let caller fall back to candles
         }
-
-        // Fallback: compute from candles when data service is unavailable or profiles aren't cached yet
-        return calculateDayProfilesFromCandles(candles, numBins, valueAreaPct, maxDays);
     }
 
     /**
