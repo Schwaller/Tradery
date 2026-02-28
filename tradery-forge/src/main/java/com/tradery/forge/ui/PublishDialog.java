@@ -162,35 +162,43 @@ public class PublishDialog extends JDialog {
     private void loadVersions() {
         tableModel.setRowCount(0);
 
-        List<Integer> versions = publisher.listVersions(strategy.getId());
-        Path strategyDir = publisher.getStrategiesDir().resolve(strategy.getId());
+        Thread.startVirtualThread(() -> {
+            List<Integer> versions = publisher.listVersions(strategy.getId());
+            Path strategyDir = publisher.getStrategiesDir().resolve(strategy.getId());
 
-        for (int version : versions) {
-            Path versionFile = strategyDir.resolve("v" + version + ".yaml");
-            String dateStr = "";
-            String sizeStr = "";
+            List<Object[]> rows = new java.util.ArrayList<>();
+            for (int version : versions) {
+                Path versionFile = strategyDir.resolve("v" + version + ".yaml");
+                String dateStr = "";
+                String sizeStr = "";
 
-            try {
-                if (Files.exists(versionFile)) {
-                    FileTime fileTime = Files.getLastModifiedTime(versionFile);
-                    Instant instant = fileTime.toInstant();
-                    dateStr = DATE_FORMAT.format(instant);
+                try {
+                    if (Files.exists(versionFile)) {
+                        FileTime fileTime = Files.getLastModifiedTime(versionFile);
+                        Instant instant = fileTime.toInstant();
+                        dateStr = DATE_FORMAT.format(instant);
 
-                    long size = Files.size(versionFile);
-                    sizeStr = formatSize(size);
+                        long size = Files.size(versionFile);
+                        sizeStr = formatSize(size);
+                    }
+                } catch (IOException e) {
+                    // Ignore
                 }
-            } catch (IOException e) {
-                // Ignore
+
+                rows.add(new Object[]{"v" + version, dateStr, sizeStr});
             }
 
-            tableModel.addRow(new Object[]{"v" + version, dateStr, sizeStr});
-        }
-
-        // Scroll to bottom (latest version)
-        if (tableModel.getRowCount() > 0) {
-            versionsTable.scrollRectToVisible(
-                versionsTable.getCellRect(tableModel.getRowCount() - 1, 0, true));
-        }
+            SwingUtilities.invokeLater(() -> {
+                for (Object[] row : rows) {
+                    tableModel.addRow(row);
+                }
+                // Scroll to bottom (latest version)
+                if (tableModel.getRowCount() > 0) {
+                    versionsTable.scrollRectToVisible(
+                        versionsTable.getCellRect(tableModel.getRowCount() - 1, 0, true));
+                }
+            });
+        });
     }
 
     private String formatSize(long bytes) {

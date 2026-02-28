@@ -10,6 +10,8 @@ import com.tradery.forge.data.log.DownloadLogStore;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.tradery.ui.UiThread;
+
 import javax.swing.*;
 import java.util.Map;
 import java.util.Set;
@@ -248,13 +250,10 @@ public abstract class DataPageManager<T> {
     protected abstract void loadData(DataPage<T> page) throws Exception;
 
     /**
-     * Assert that we're NOT on the EDT. Call at the start of blocking operations.
+     * Assert that we're NOT on the UI thread. Call at the start of blocking operations.
      */
     protected void assertNotEDT(String operation) {
-        if (SwingUtilities.isEventDispatchThread()) {
-            throw new IllegalStateException(
-                operation + " must not be called from EDT - would block UI");
-        }
+        UiThread.assertNotUiThread(operation);
     }
 
     // ========== Template Methods (Override if needed) ==========

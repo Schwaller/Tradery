@@ -187,24 +187,27 @@ public class PhaseChooserFrame extends JFrame {
     }
 
     private void loadPhases() {
-        List<Phase> phases = phaseStore.loadAll();
-        // Sort by category first, then by name
-        phases.sort((a, b) -> {
-            String c1 = a.getCategory() != null ? a.getCategory() : "Custom";
-            String c2 = b.getCategory() != null ? b.getCategory() : "Custom";
-            int catCompare = c1.compareTo(c2);
-            if (catCompare != 0) return catCompare;
-            String n1 = a.getName() != null ? a.getName() : "";
-            String n2 = b.getName() != null ? b.getName() : "";
-            return n1.compareToIgnoreCase(n2);
+        Thread.startVirtualThread(() -> {
+            List<Phase> phases = phaseStore.loadAll();
+            // Sort by category first, then by name
+            phases.sort((a, b) -> {
+                String c1 = a.getCategory() != null ? a.getCategory() : "Custom";
+                String c2 = b.getCategory() != null ? b.getCategory() : "Custom";
+                int catCompare = c1.compareTo(c2);
+                if (catCompare != 0) return catCompare;
+                String n1 = a.getName() != null ? a.getName() : "";
+                String n2 = b.getName() != null ? b.getName() : "";
+                return n1.compareToIgnoreCase(n2);
+            });
+
+            SwingUtilities.invokeLater(() -> {
+                listModel.clear();
+                for (Phase phase : phases) {
+                    listModel.addElement(phase);
+                }
+                updateButtonStates();
+            });
         });
-
-        listModel.clear();
-        for (Phase phase : phases) {
-            listModel.addElement(phase);
-        }
-
-        updateButtonStates();
     }
 
     private void onPhaseSelected() {
@@ -233,29 +236,37 @@ public class PhaseChooserFrame extends JFrame {
     }
 
     private void createPhase() {
-        // Generate unique ID
-        String baseId = "new-phase";
-        String id = baseId;
-        int counter = 1;
-        while (phaseStore.exists(id)) {
-            id = baseId + "-" + counter++;
-        }
-
-        Phase phase = new Phase(id, "New Phase", "close > SMA(200)", "1d", "BTCUSDT");
-        phase.setCategory("Custom");
-        phase.setCreated(Instant.now());
-        phase.setUpdated(Instant.now());
-
-        phaseStore.save(phase);
-        loadPhases();
-
-        // Select the new phase
-        for (int i = 0; i < listModel.size(); i++) {
-            if (listModel.get(i).getId().equals(id)) {
-                phaseList.setSelectedIndex(i);
-                break;
+        Thread.startVirtualThread(() -> {
+            // Generate unique ID
+            String baseId = "new-phase";
+            String id = baseId;
+            int counter = 1;
+            while (phaseStore.exists(id)) {
+                id = baseId + "-" + counter++;
             }
-        }
+
+            Phase phase = new Phase(id, "New Phase", "close > SMA(200)", "1d", "BTCUSDT");
+            phase.setCategory("Custom");
+            phase.setCreated(Instant.now());
+            phase.setUpdated(Instant.now());
+
+            phaseStore.save(phase);
+            String newId = id;
+            SwingUtilities.invokeLater(() -> {
+                loadPhases();
+                // Selection needs to happen after loadPhases async completes,
+                // but loadPhases will trigger list rebuild. We rely on file watcher or
+                // schedule selection after a short delay.
+                // For immediate feedback, add to list model directly
+                listModel.addElement(phase);
+                for (int i = 0; i < listModel.size(); i++) {
+                    if (listModel.get(i).getId().equals(newId)) {
+                        phaseList.setSelectedIndex(i);
+                        break;
+                    }
+                }
+            });
+        });
     }
 
     private void deletePhase() {
@@ -294,20 +305,24 @@ public class PhaseChooserFrame extends JFrame {
 
         saving = true;
         pendingSaveCount.incrementAndGet();
-        try {
-            phaseStore.save(currentPhase);
+        Thread.startVirtualThread(() -> {
+            try {
+                phaseStore.save(currentPhase);
 
-            // Update the list display
-            int selectedIndex = phaseList.getSelectedIndex();
-            if (selectedIndex >= 0) {
-                listModel.set(selectedIndex, currentPhase);
+                SwingUtilities.invokeLater(() -> {
+                    // Update the list display
+                    int selectedIndex = phaseList.getSelectedIndex();
+                    if (selectedIndex >= 0) {
+                        listModel.set(selectedIndex, currentPhase);
+                    }
+
+                    // Refresh the embedded preview chart
+                    previewChart.setPhase(currentPhase);
+                });
+            } finally {
+                saving = false;
             }
-
-            // Refresh the embedded preview chart
-            previewChart.setPhase(currentPhase);
-        } finally {
-            saving = false;
-        }
+        });
     }
 
     private void startFileWatcher() {

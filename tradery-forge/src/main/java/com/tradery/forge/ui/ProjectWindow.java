@@ -366,17 +366,21 @@ public class ProjectWindow extends JFrame {
     }
 
     private void saveStrategyQuietly() {
-        // Apply UI values to strategy
+        // Apply UI values to strategy (must be on EDT - reads UI components)
         editorPanel.applyToStrategy(strategy);
         settingsPanel.applyToStrategy(strategy);
         applyToolbarToStrategy();
 
-        // Save and mark that save occurred (temporarily ignores file changes)
+        // Save on background thread to avoid blocking EDT
         autoSaveScheduler.markSaveOccurred();
-        strategyStore.save(strategy);
-        setTitle(strategy.getName() + " - " + TraderyApp.APP_NAME);
-        if (titleLabel != null) titleLabel.setText(strategy.getName());
-        statusManager.setInfoStatus(StatusManager.SOURCE_AUTOSAVE, "Auto-saved");
+        Thread.startVirtualThread(() -> {
+            strategyStore.save(strategy);
+            SwingUtilities.invokeLater(() -> {
+                setTitle(strategy.getName() + " - " + TraderyApp.APP_NAME);
+                if (titleLabel != null) titleLabel.setText(strategy.getName());
+                statusManager.setInfoStatus(StatusManager.SOURCE_AUTOSAVE, "Auto-saved");
+            });
+        });
     }
 
     private void layoutComponents() {
@@ -734,17 +738,20 @@ public class ProjectWindow extends JFrame {
         if (autoSaveScheduler.isIgnoringFileChanges()) return;
         if (autoSaveScheduler.tryConsumeSaveEvent()) return;
 
-        SwingUtilities.invokeLater(() -> {
-            statusManager.startBacktest("File changed externally - reloading...");
+        SwingUtilities.invokeLater(() ->
+            statusManager.startBacktest("File changed externally - reloading..."));
 
-            // Reload strategy from disk
+        // Reload strategy from disk off EDT
+        Thread.startVirtualThread(() -> {
             Strategy reloaded = strategyStore.load(strategy.getId());
             if (reloaded != null) {
-                this.strategy = reloaded;
-                loadStrategyData();
-                setTitle(strategy.getName() + " - " + TraderyApp.APP_NAME);
-                if (titleLabel != null) titleLabel.setText(strategy.getName());
-                runBacktest();
+                SwingUtilities.invokeLater(() -> {
+                    this.strategy = reloaded;
+                    loadStrategyData();
+                    setTitle(strategy.getName() + " - " + TraderyApp.APP_NAME);
+                    if (titleLabel != null) titleLabel.setText(strategy.getName());
+                    runBacktest();
+                });
             }
         });
     }
@@ -781,16 +788,17 @@ public class ProjectWindow extends JFrame {
     }
 
     private void publishStrategy() {
-        // Apply current UI values before publishing
+        // Apply current UI values before publishing (must be on EDT - reads UI)
         editorPanel.applyToStrategy(strategy);
         settingsPanel.applyToStrategy(strategy);
         applyToolbarToStrategy();
 
-        // Save first to ensure disk is in sync
-        strategyStore.save(strategy);
-
-        // Open the publish dialog
-        PublishDialog.show(this, strategy, statusManager::setInfoStatus);
+        // Save on background thread, then open dialog on EDT
+        Thread.startVirtualThread(() -> {
+            strategyStore.save(strategy);
+            SwingUtilities.invokeLater(() ->
+                PublishDialog.show(this, strategy, statusManager::setInfoStatus));
+        });
     }
 
     /**
@@ -816,32 +824,32 @@ public class ProjectWindow extends JFrame {
         long startTime = chartCandles.get(0).timestamp();
         long endTime = chartCandles.get(chartCandles.size() - 1).timestamp();
 
-        PhaseStore phaseStore = ApplicationContext.getInstance().getPhaseStore();
         SqliteDataStore sqliteStore = ApplicationContext.getInstance().getSqliteDataStore();
 
-        // Load phases
-        java.util.List<Phase> phases = new java.util.ArrayList<>();
-        for (String id : phaseIds) {
-            Phase p = phaseStore.load(id);
-            if (p != null) {
-                // Set symbol if not specified
-                if (p.getSymbol() == null || p.getSymbol().isEmpty()) {
-                    p.setSymbol(symbol);
-                }
-                if (p.getTimeframe() == null || p.getTimeframe().isEmpty()) {
-                    p.setTimeframe(timeframe);
-                }
-                phases.add(p);
-            }
-        }
-
-        if (phases.isEmpty()) {
-            chartPanel.clearPhaseOverlays();
-            return;
-        }
-
-        // Run evaluation on background thread
+        // Run phase loading + evaluation on background thread
         Thread.startVirtualThread(() -> {
+            PhaseStore phaseStore = ApplicationContext.getInstance().getPhaseStore();
+
+            // Load phases
+            java.util.List<Phase> phases = new java.util.ArrayList<>();
+            for (String id : phaseIds) {
+                Phase p = phaseStore.load(id);
+                if (p != null) {
+                    // Set symbol if not specified
+                    if (p.getSymbol() == null || p.getSymbol().isEmpty()) {
+                        p.setSymbol(symbol);
+                    }
+                    if (p.getTimeframe() == null || p.getTimeframe().isEmpty()) {
+                        p.setTimeframe(timeframe);
+                    }
+                    phases.add(p);
+                }
+            }
+
+            if (phases.isEmpty()) {
+                SwingUtilities.invokeLater(() -> chartPanel.clearPhaseOverlays());
+                return;
+            }
             try {
                 // Fetch candles for each unique phase timeframe
                 java.util.Map<String, java.util.List<Candle>> phaseCandles = new java.util.HashMap<>();
@@ -1073,39 +1081,40 @@ public class ProjectWindow extends JFrame {
      * Refreshes the corresponding chart without re-running the backtest.
      */
     private void handleViewDataReady(String dataType) {
-        // First, refresh the data in the IndicatorEngine from the page
-        backtestCoordinator.refreshViewData(dataType);
+        // Refresh the data in the IndicatorEngine from the page (copies off EDT),
+        // then update charts on EDT when the copy completes
+        backtestCoordinator.refreshViewData(dataType, () -> {
+            switch (dataType) {
+                case "Funding" -> {
+                    System.out.println("VIEW data ready: Funding - refreshing chart");
+                    chartPanel.setIndicatorEngine(backtestCoordinator.getIndicatorEngine());
+                    chartPanel.refreshFundingChart();
+                }
+                case "OI" -> {
+                    System.out.println("VIEW data ready: OI - refreshing chart");
+                    chartPanel.setIndicatorEngine(backtestCoordinator.getIndicatorEngine());
+                    chartPanel.refreshOiChart();
+                }
+                case "AggTrades" -> {
+                    System.out.println("VIEW data ready: AggTrades - refreshing orderflow charts");
+                    chartPanel.setIndicatorEngine(backtestCoordinator.getIndicatorEngine());
+                    chartPanel.refreshOrderflowCharts();
+                }
+                case "Premium" -> {
+                    System.out.println("VIEW data ready: Premium - refreshing chart");
+                    chartPanel.setIndicatorEngine(backtestCoordinator.getIndicatorEngine());
+                    chartPanel.refreshPremiumChart();
+                }
+                case "F&G" -> {
+                    System.out.println("VIEW data ready: F&G - refreshing chart");
+                    chartPanel.setIndicatorEngine(backtestCoordinator.getIndicatorEngine());
+                    chartPanel.refreshFearGreedChart();
+                }
+            }
 
-        switch (dataType) {
-            case "Funding" -> {
-                System.out.println("VIEW data ready: Funding - refreshing chart");
-                chartPanel.setIndicatorEngine(backtestCoordinator.getIndicatorEngine());
-                chartPanel.refreshFundingChart();
-            }
-            case "OI" -> {
-                System.out.println("VIEW data ready: OI - refreshing chart");
-                chartPanel.setIndicatorEngine(backtestCoordinator.getIndicatorEngine());
-                chartPanel.refreshOiChart();
-            }
-            case "AggTrades" -> {
-                System.out.println("VIEW data ready: AggTrades - refreshing orderflow charts");
-                chartPanel.setIndicatorEngine(backtestCoordinator.getIndicatorEngine());
-                chartPanel.refreshOrderflowCharts();
-            }
-            case "Premium" -> {
-                System.out.println("VIEW data ready: Premium - refreshing chart");
-                chartPanel.setIndicatorEngine(backtestCoordinator.getIndicatorEngine());
-                chartPanel.refreshPremiumChart();
-            }
-            case "F&G" -> {
-                System.out.println("VIEW data ready: F&G - refreshing chart");
-                chartPanel.setIndicatorEngine(backtestCoordinator.getIndicatorEngine());
-                chartPanel.refreshFearGreedChart();
-            }
-        }
-
-        // Re-apply Y-axis fit mode so newly loaded data fits properly
-        chartPanel.updateYAxisAutoRange();
+            // Re-apply Y-axis fit mode so newly loaded data fits properly
+            chartPanel.updateYAxisAutoRange();
+        });
     }
 
     /**
@@ -1202,6 +1211,11 @@ public class ProjectWindow extends JFrame {
             phaseWatcher.stop();
         }
 
+        // Dispose chart panel (releases overlay pages, indicator pages)
+        if (chartPanel != null) {
+            chartPanel.dispose();
+        }
+
         // Dispose terminal (docked or undocked)
         if (aiTerminalController != null) {
             aiTerminalController.dispose();
@@ -1274,12 +1288,16 @@ public class ProjectWindow extends JFrame {
      * Called when the preset is restored externally.
      */
     public void reloadStrategy() {
-        Strategy reloaded = strategyStore.load(strategy.getId());
-        if (reloaded != null) {
-            this.strategy = reloaded;
-            loadStrategyData();
-            runBacktest();
-        }
+        Thread.startVirtualThread(() -> {
+            Strategy reloaded = strategyStore.load(strategy.getId());
+            if (reloaded != null) {
+                SwingUtilities.invokeLater(() -> {
+                    this.strategy = reloaded;
+                    loadStrategyData();
+                    runBacktest();
+                });
+            }
+        });
     }
 
     public void bringToFront() {

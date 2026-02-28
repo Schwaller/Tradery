@@ -859,6 +859,16 @@ public class OverlayManager {
         resetColorIndex();
     }
 
+    // ===== Lifecycle =====
+
+    /**
+     * Release all resources held by this overlay manager.
+     * Call when the owning ChartsPanel/ProjectWindow is closing.
+     */
+    public void dispose() {
+        clearAll();
+    }
+
     // ===== Internal =====
 
     /**

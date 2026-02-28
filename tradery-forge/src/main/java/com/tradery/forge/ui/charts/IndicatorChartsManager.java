@@ -876,15 +876,22 @@ public class IndicatorChartsManager {
             return;
         }
 
+        // Compute indicator values off EDT
+        IndicatorEngine engine = this.indicatorEngine;
+        Thread.startVirtualThread(() -> {
+            double[] funding = engine.getFunding();
+            double[] funding8H = engine.getFunding8H();
+
+            if (funding == null || funding.length == 0) return;
+
+            SwingUtilities.invokeLater(() -> applyFundingChartData(candles, funding, funding8H));
+        });
+    }
+
+    private void applyFundingChartData(List<Candle> candles, double[] funding, double[] funding8H) {
+        if (!isEnabled(IndicatorType.FUNDING)) return;
+
         XYPlot plot = components.get(IndicatorType.FUNDING).getChart().getXYPlot();
-
-        double[] funding = indicatorEngine.getFunding();
-        double[] funding8H = indicatorEngine.getFunding8H();
-
-        // Check if funding data is available
-        if (funding == null || funding.length == 0) {
-            return;
-        }
 
         // Build datasets
         XYSeriesCollection fundingDataset = new XYSeriesCollection();
@@ -947,10 +954,20 @@ public class IndicatorChartsManager {
             return;
         }
 
-        XYPlot plot = components.get(IndicatorType.OI).getChart().getXYPlot();
+        // Compute indicator values off EDT
+        IndicatorEngine engine = this.indicatorEngine;
+        Thread.startVirtualThread(() -> {
+            double[] oi = engine.getOI();
+            double[] oiChange = engine.getOIChange();
 
-        double[] oi = indicatorEngine.getOI();
-        double[] oiChange = indicatorEngine.getOIChange();
+            SwingUtilities.invokeLater(() -> applyOiChartData(candles, oi, oiChange));
+        });
+    }
+
+    private void applyOiChartData(List<Candle> candles, double[] oi, double[] oiChange) {
+        if (!isEnabled(IndicatorType.OI)) return;
+
+        XYPlot plot = components.get(IndicatorType.OI).getChart().getXYPlot();
 
         // Build datasets - OI value as line, OI change as bars
         TimeSeriesCollection oiLineDataset = new TimeSeriesCollection();
@@ -1043,15 +1060,22 @@ public class IndicatorChartsManager {
             return;
         }
 
+        // Compute indicator values off EDT
+        IndicatorEngine engine = this.indicatorEngine;
+        Thread.startVirtualThread(() -> {
+            double[] premium = engine.getPremium();
+            double[] premiumAvg = engine.getPremiumAvg(24);
+
+            if (premium == null || premium.length == 0) return;
+
+            SwingUtilities.invokeLater(() -> applyPremiumChartData(candles, premium, premiumAvg));
+        });
+    }
+
+    private void applyPremiumChartData(List<Candle> candles, double[] premium, double[] premiumAvg) {
+        if (!isEnabled(IndicatorType.PREMIUM)) return;
+
         XYPlot plot = components.get(IndicatorType.PREMIUM).getChart().getXYPlot();
-
-        double[] premium = indicatorEngine.getPremium();
-        double[] premiumAvg = indicatorEngine.getPremiumAvg(24); // 24-period average
-
-        // Check if premium data is available
-        if (premium == null || premium.length == 0) {
-            return;
-        }
 
         // Build datasets
         XYSeriesCollection premiumDataset = new XYSeriesCollection();
@@ -1187,12 +1211,20 @@ public class IndicatorChartsManager {
             return;
         }
 
-        XYPlot plot = components.get(IndicatorType.FEAR_GREED).getChart().getXYPlot();
+        // Compute indicator values off EDT
+        IndicatorEngine engine = this.indicatorEngine;
+        Thread.startVirtualThread(() -> {
+            double[] fearGreed = engine.getFearGreed();
+            if (fearGreed == null || fearGreed.length == 0) return;
 
-        double[] fearGreed = indicatorEngine.getFearGreed();
-        if (fearGreed == null || fearGreed.length == 0) {
-            return;
-        }
+            SwingUtilities.invokeLater(() -> applyFearGreedChartData(candles, fearGreed));
+        });
+    }
+
+    private void applyFearGreedChartData(List<Candle> candles, double[] fearGreed) {
+        if (!isEnabled(IndicatorType.FEAR_GREED)) return;
+
+        XYPlot plot = components.get(IndicatorType.FEAR_GREED).getChart().getXYPlot();
 
         // Build dataset - color-coded bars by sentiment zones
         XYSeriesCollection dataset = new XYSeriesCollection();

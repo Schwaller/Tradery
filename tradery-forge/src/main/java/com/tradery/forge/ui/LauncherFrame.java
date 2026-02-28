@@ -266,21 +266,24 @@ public class LauncherFrame extends JFrame {
     }
 
     private void loadProjects() {
-        listModel.clear();
-        List<Strategy> strategies = strategyStore.loadAll();
+        Thread.startVirtualThread(() -> {
+            List<Strategy> strategies = strategyStore.loadAll();
 
-        // Sort by last updated, newest first
-        strategies.sort((a, b) -> {
-            Instant aTime = a.getUpdated() != null ? a.getUpdated() : Instant.EPOCH;
-            Instant bTime = b.getUpdated() != null ? b.getUpdated() : Instant.EPOCH;
-            return bTime.compareTo(aTime);
+            // Sort by last updated, newest first
+            strategies.sort((a, b) -> {
+                Instant aTime = a.getUpdated() != null ? a.getUpdated() : Instant.EPOCH;
+                Instant bTime = b.getUpdated() != null ? b.getUpdated() : Instant.EPOCH;
+                return bTime.compareTo(aTime);
+            });
+
+            SwingUtilities.invokeLater(() -> {
+                listModel.clear();
+                for (Strategy s : strategies) {
+                    listModel.addElement(s);
+                }
+                updateButtonStates();
+            });
         });
-
-        for (Strategy s : strategies) {
-            listModel.addElement(s);
-        }
-
-        updateButtonStates();
     }
 
     private void startFileWatcher() {
@@ -301,46 +304,46 @@ public class LauncherFrame extends JFrame {
     }
 
     private void onFileModified(Path path) {
-        SwingUtilities.invokeLater(() -> {
-            loadProjects();
+        loadProjects();
 
-            // Check if this is a strategy.json file
-            if (!path.getFileName().toString().equals("strategy.json")) {
-                return;
-            }
+        // Check if this is a strategy.json file
+        if (!path.getFileName().toString().equals("strategy.json")) {
+            return;
+        }
 
-            // Extract strategy ID from path (parent directory name)
-            Path parent = path.getParent();
-            if (parent == null) return;
-            String strategyId = parent.getFileName().toString();
+        // Extract strategy ID from path (parent directory name)
+        Path parent = path.getParent();
+        if (parent == null) return;
+        String strategyId = parent.getFileName().toString();
 
-            // Skip if window is already open (it handles its own reloading)
-            if (openWindows.containsKey(strategyId)) {
-                return;
-            }
+        // Skip if window is already open (it handles its own reloading)
+        if (openWindows.containsKey(strategyId)) {
+            return;
+        }
 
-            // Load the strategy to get its name
+        // Load the strategy off EDT, then prompt on EDT
+        Thread.startVirtualThread(() -> {
             Strategy strategy = strategyStore.load(strategyId);
             if (strategy == null) return;
 
-            // Ask user if they want to open it
-            int result = JOptionPane.showConfirmDialog(this,
-                "Strategy '" + strategy.getName() + "' was modified externally.\n\n" +
-                "Open it to run the backtest?",
-                "Strategy Modified",
-                JOptionPane.YES_NO_OPTION,
-                JOptionPane.QUESTION_MESSAGE);
+            SwingUtilities.invokeLater(() -> {
+                int result = JOptionPane.showConfirmDialog(this,
+                    "Strategy '" + strategy.getName() + "' was modified externally.\n\n" +
+                    "Open it to run the backtest?",
+                    "Strategy Modified",
+                    JOptionPane.YES_NO_OPTION,
+                    JOptionPane.QUESTION_MESSAGE);
 
-            if (result == JOptionPane.YES_OPTION) {
-                // Select and open the strategy
-                for (int i = 0; i < listModel.size(); i++) {
-                    if (listModel.get(i).getId().equals(strategyId)) {
-                        projectList.setSelectedIndex(i);
-                        break;
+                if (result == JOptionPane.YES_OPTION) {
+                    for (int i = 0; i < listModel.size(); i++) {
+                        if (listModel.get(i).getId().equals(strategyId)) {
+                            projectList.setSelectedIndex(i);
+                            break;
+                        }
                     }
+                    openProject();
                 }
-                openProject();
-            }
+            });
         });
     }
 
@@ -397,41 +400,43 @@ public class LauncherFrame extends JFrame {
         if (name != null && !name.trim().isEmpty()) {
             String id = name.toLowerCase().replaceAll("[^a-z0-9]+", "-");
 
-            // Check for duplicate
-            if (strategyStore.exists(id)) {
-                JOptionPane.showMessageDialog(this,
-                    "A project with this ID already exists: " + id,
-                    "Duplicate Project",
-                    JOptionPane.WARNING_MESSAGE);
-                return;
-            }
-
-            Strategy strategy = new Strategy(
-                id,
-                name.trim(),
-                "",
-                "RSI(14) < 30",
-                true
-            );
-            // Add default exit zone with exit condition
-            strategy.setExitZones(List.of(
-                ExitZone.builder("Default")
-                    .exitCondition("RSI(14) > 70")
-                    .build()
-            ));
-            strategyStore.save(strategy);
-
-            // Reload and select the new project
-            loadProjects();
-            for (int i = 0; i < listModel.size(); i++) {
-                if (listModel.get(i).getId().equals(id)) {
-                    projectList.setSelectedIndex(i);
-                    break;
+            Thread.startVirtualThread(() -> {
+                // Check for duplicate
+                if (strategyStore.exists(id)) {
+                    SwingUtilities.invokeLater(() ->
+                        JOptionPane.showMessageDialog(this,
+                            "A project with this ID already exists: " + id,
+                            "Duplicate Project",
+                            JOptionPane.WARNING_MESSAGE));
+                    return;
                 }
-            }
 
-            // Open the new project
-            openProject();
+                Strategy strategy = new Strategy(
+                    id,
+                    name.trim(),
+                    "",
+                    "RSI(14) < 30",
+                    true
+                );
+                // Add default exit zone with exit condition
+                strategy.setExitZones(List.of(
+                    ExitZone.builder("Default")
+                        .exitCondition("RSI(14) > 70")
+                        .build()
+                ));
+                strategyStore.save(strategy);
+
+                SwingUtilities.invokeLater(() -> {
+                    loadProjects();
+                    // Selection will happen after loadProjects completes asynchronously,
+                    // but we can also directly open the project
+                    Strategy loaded = new Strategy(id, name.trim(), "", "RSI(14) < 30", true);
+                    loaded.setExitZones(strategy.getExitZones());
+                    ProjectWindow window = new ProjectWindow(loaded, this::onWindowClosed);
+                    openWindows.put(id, window);
+                    window.setVisible(true);
+                });
+            });
         }
     }
 
@@ -445,14 +450,17 @@ public class LauncherFrame extends JFrame {
 
         if (newName != null && !newName.trim().isEmpty() && !newName.equals(selected.getName())) {
             selected.setName(newName.trim());
-            strategyStore.save(selected);
-            loadProjects();
-
-            // Update window title if open
-            ProjectWindow window = openWindows.get(selected.getId());
-            if (window != null) {
-                window.setTitle(newName.trim() + " - " + TraderyApp.APP_NAME);
-            }
+            Thread.startVirtualThread(() -> {
+                strategyStore.save(selected);
+                SwingUtilities.invokeLater(() -> {
+                    loadProjects();
+                    // Update window title if open
+                    ProjectWindow window = openWindows.get(selected.getId());
+                    if (window != null) {
+                        window.setTitle(newName.trim() + " - " + TraderyApp.APP_NAME);
+                    }
+                });
+            });
         }
     }
 
@@ -473,8 +481,10 @@ public class LauncherFrame extends JFrame {
                 window.dispose();
             }
 
-            strategyStore.delete(selected.getId());
-            loadProjects();
+            Thread.startVirtualThread(() -> {
+                strategyStore.delete(selected.getId());
+                SwingUtilities.invokeLater(this::loadProjects);
+            });
         }
     }
 

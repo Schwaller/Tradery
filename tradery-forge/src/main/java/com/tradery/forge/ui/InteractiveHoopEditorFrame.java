@@ -637,14 +637,19 @@ public class InteractiveHoopEditorFrame extends JFrame implements DataPageListen
 
     private void loadPatterns() {
         patternListModel.clear();
-        List<HoopPattern> patterns = patternStore.loadAll();
-        for (HoopPattern p : patterns) {
-            patternListModel.addElement(p);
-        }
-        // Select first pattern if available
-        if (!patternListModel.isEmpty()) {
-            patternList.setSelectedIndex(0);
-        }
+        Thread.startVirtualThread(() -> {
+            List<HoopPattern> patterns = patternStore.loadAll();
+            SwingUtilities.invokeLater(() -> {
+                patternListModel.clear();
+                for (HoopPattern p : patterns) {
+                    patternListModel.addElement(p);
+                }
+                // Select first pattern if available
+                if (!patternListModel.isEmpty()) {
+                    patternList.setSelectedIndex(0);
+                }
+            });
+        });
     }
 
     private void onPatternSelected() {

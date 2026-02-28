@@ -82,16 +82,29 @@ public class PhaseSelectorPopup extends JDialog {
     }
 
     private void initComponents() {
-        PhaseStore phaseStore = ApplicationContext.getInstance().getPhaseStore();
-        List<Phase> allPhases = phaseStore.loadAll();
+        // Show loading placeholder while phases load in background
+        JPanel loadingPane = new JPanel(new BorderLayout());
+        loadingPane.setBorder(new EmptyBorder(12, 12, 12, 12));
+        loadingPane.add(new JLabel("Loading phases..."), BorderLayout.CENTER);
+        setContentPane(loadingPane);
+        pack();
 
-        // Group by category
-        Map<String, List<Phase>> grouped = new LinkedHashMap<>();
-        for (Phase phase : allPhases) {
-            String cat = phase.getCategory() != null ? phase.getCategory() : "Custom";
-            grouped.computeIfAbsent(cat, k -> new ArrayList<>()).add(phase);
-        }
+        Thread.startVirtualThread(() -> {
+            PhaseStore phaseStore = ApplicationContext.getInstance().getPhaseStore();
+            List<Phase> allPhases = phaseStore.loadAll();
 
+            // Group by category
+            Map<String, List<Phase>> grouped = new LinkedHashMap<>();
+            for (Phase phase : allPhases) {
+                String cat = phase.getCategory() != null ? phase.getCategory() : "Custom";
+                grouped.computeIfAbsent(cat, k -> new ArrayList<>()).add(phase);
+            }
+
+            SwingUtilities.invokeLater(() -> buildPhaseUI(grouped));
+        });
+    }
+
+    private void buildPhaseUI(Map<String, List<Phase>> grouped) {
         JPanel contentPane = new JPanel();
         contentPane.setLayout(new BoxLayout(contentPane, BoxLayout.Y_AXIS));
         contentPane.setBorder(BorderFactory.createCompoundBorder(
@@ -169,6 +182,8 @@ public class PhaseSelectorPopup extends JDialog {
                 setSize(getWidth() + scrollPane.getVerticalScrollBar().getPreferredSize().width, maxHeight);
             }
         }
+
+        syncFromConfig();
     }
 
     private void syncFromConfig() {

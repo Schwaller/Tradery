@@ -98,6 +98,10 @@ public class IndicatorPage<T> implements DataPageListener<Candle> {
         public void onDataChanged(DataPageView<AggTrade> page) {
             if (page.isReady()) {
                 sourceAggTrades = page.getData();
+                // Re-acquire candles from page (cleared after previous compute)
+                if (sourceCandlePage != null && sourceCandlePage.isReady()) {
+                    sourceCandles = sourceCandlePage.getData();
+                }
                 // Virtual thread - lightweight, doesn't block notification loop
                 Thread.startVirtualThread(() -> checkAndCompute());
             }
@@ -210,6 +214,10 @@ public class IndicatorPage<T> implements DataPageListener<Candle> {
     public void onDataChanged(DataPageView<Candle> page) {
         if (page.isReady()) {
             sourceCandles = page.getData();
+            // Re-acquire aggTrades from page (cleared after previous compute)
+            if (sourceAggTradesPage != null && sourceAggTradesPage.isReady()) {
+                sourceAggTrades = sourceAggTradesPage.getData();
+            }
             // Virtual thread - lightweight, doesn't block notification loop
             Thread.startVirtualThread(() -> checkAndCompute());
         }
@@ -219,10 +227,18 @@ public class IndicatorPage<T> implements DataPageListener<Candle> {
 
     /**
      * Check if all required data is ready and trigger computation.
+     * After dispatching compute, clears local source references to free memory.
+     * Source pages still hold the data and will re-supply it via listeners on change.
      */
     private synchronized void checkAndCompute() {
         if (candlesReady && aggTradesReady && sourceCandles != null && computeCallback != null) {
-            computeCallback.compute(this, sourceCandles, sourceAggTrades);
+            List<Candle> candles = sourceCandles;
+            List<AggTrade> aggTrades = sourceAggTrades;
+            // Clear local references — source pages own the data.
+            // Listeners will re-set these fields before the next checkAndCompute().
+            sourceCandles = null;
+            sourceAggTrades = null;
+            computeCallback.compute(this, candles, aggTrades);
         }
     }
 

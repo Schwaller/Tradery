@@ -61,8 +61,8 @@ public enum IndicatorType {
     SUPPORT_RAYS("SUPPORT_RAYS", DataDependency.CANDLES),
     HISTORIC_RAYS("HISTORIC_RAYS", DataDependency.CANDLES),
 
-    // Daily volume profile (uses aggTrades for accuracy)
-    DAILY_VOLUME_PROFILE("DAILY_VOLUME_PROFILE", DataDependency.AGG_TRADES),
+    // Daily volume profile (candles-only to avoid loading massive aggTrades datasets)
+    DAILY_VOLUME_PROFILE("DAILY_VOLUME_PROFILE", DataDependency.CANDLES),
 
     // Footprint heatmap (uses aggTrades for price-level bucketing)
     FOOTPRINT_HEATMAP("FOOTPRINT_HEATMAP", DataDependency.AGG_TRADES);

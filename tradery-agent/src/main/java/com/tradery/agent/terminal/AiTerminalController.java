@@ -286,25 +286,7 @@ public class AiTerminalController {
      * Check if a command is available on the system PATH.
      */
     public boolean isCommandAvailable(String command) {
-        // Method 1: Use login shell to get full PATH (includes ~/.zshrc, ~/.bashrc paths)
-        try {
-            ProcessBuilder pb = new ProcessBuilder("/bin/bash", "-l", "-c", "which " + command);
-            pb.redirectErrorStream(true);
-            Process process = pb.start();
-            int exitCode = process.waitFor();
-            if (exitCode == 0) return true;
-        } catch (Exception ignored) {}
-
-        // Method 2: Try zsh login shell (default on macOS)
-        try {
-            ProcessBuilder pb = new ProcessBuilder("/bin/zsh", "-l", "-c", "which " + command);
-            pb.redirectErrorStream(true);
-            Process process = pb.start();
-            int exitCode = process.waitFor();
-            if (exitCode == 0) return true;
-        } catch (Exception ignored) {}
-
-        // Method 3: Check common installation paths directly
+        // Method 1: Check common installation paths directly (no process overhead)
         String[] commonPaths = {
             "/usr/local/bin/" + command,
             "/opt/homebrew/bin/" + command,
@@ -316,6 +298,23 @@ public class AiTerminalController {
             if (new java.io.File(path).exists()) {
                 return true;
             }
+        }
+
+        // Method 2: Use login shell to get full PATH (includes ~/.zshrc, ~/.bashrc paths)
+        for (String shell : new String[]{"/bin/zsh", "/bin/bash"}) {
+            try {
+                ProcessBuilder pb = new ProcessBuilder(shell, "-l", "-c", "which " + command);
+                pb.redirectErrorStream(true);
+                Process process = pb.start();
+                try {
+                    // Drain output to prevent pipe buffer blocking
+                    process.getInputStream().readAllBytes();
+                    int exitCode = process.waitFor();
+                    if (exitCode == 0) return true;
+                } finally {
+                    process.destroyForcibly();
+                }
+            } catch (Exception ignored) {}
         }
 
         return false;
@@ -375,7 +374,10 @@ public class AiTerminalController {
                 )
             };
 
-            Runtime.getRuntime().exec(osascript);
+            Process p = Runtime.getRuntime().exec(osascript);
+            p.getInputStream().close();
+            p.getErrorStream().close();
+            p.getOutputStream().close();
             onStatus.accept("Opened " + displayName + " CLI for " + strategyName);
         } catch (IOException e) {
             onStatus.accept("Error opening terminal: " + e.getMessage());
@@ -404,7 +406,10 @@ public class AiTerminalController {
                 )
             };
 
-            Runtime.getRuntime().exec(osascript);
+            Process p = Runtime.getRuntime().exec(osascript);
+            p.getInputStream().close();
+            p.getErrorStream().close();
+            p.getOutputStream().close();
             onStatus.accept("Opened Codex CLI for " + strategyName);
         } catch (IOException e) {
             onStatus.accept("Error opening terminal: " + e.getMessage());

@@ -150,11 +150,27 @@ public class HistoryDialog extends JDialog {
     }
 
     private void loadHistory() {
-        entries.clear();
-        if (historyDir == null || !historyDir.exists()) return;
+        Thread.startVirtualThread(() -> {
+            List<HistoryEntry> loaded = loadHistoryEntries();
+            SwingUtilities.invokeLater(() -> {
+                entries.clear();
+                entries.addAll(loaded);
+                if (historyTable.getModel() instanceof AbstractTableModel model) {
+                    model.fireTableDataChanged();
+                }
+                if (!entries.isEmpty()) {
+                    historyTable.setRowSelectionInterval(0, 0);
+                }
+            });
+        });
+    }
+
+    private List<HistoryEntry> loadHistoryEntries() {
+        List<HistoryEntry> result = new ArrayList<>();
+        if (historyDir == null || !historyDir.exists()) return result;
 
         File[] files = historyDir.listFiles((dir, name) -> name.endsWith(".json"));
-        if (files == null) return;
+        if (files == null) return result;
 
         // Sort by date descending (newest first)
         Arrays.sort(files, Comparator.comparing(File::getName).reversed());
@@ -198,11 +214,12 @@ public class HistoryDialog extends JDialog {
                 // Store raw JSON for details view
                 entry.rawJson = root;
 
-                entries.add(entry);
+                result.add(entry);
             } catch (IOException e) {
                 System.err.println("Failed to parse history file: " + file.getName());
             }
         }
+        return result;
     }
 
     private void showDetails() {

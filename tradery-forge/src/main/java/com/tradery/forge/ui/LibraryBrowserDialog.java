@@ -181,45 +181,57 @@ public class LibraryBrowserDialog extends JDialog {
     private void loadLibrary() {
         rootNode.removeAllChildren();
         tableModel.setRowCount(0);
-
-        Path strategiesDir = publisher.getStrategiesDir();
-        if (!Files.exists(strategiesDir)) {
-            statusLabel.setText("Library folder does not exist yet");
-            treeModel.reload();
-            return;
-        }
-
-        try (Stream<Path> dirs = Files.list(strategiesDir)) {
-            List<Path> strategyDirs = dirs
-                .filter(Files::isDirectory)
-                .sorted()
-                .toList();
-
-            for (Path strategyDir : strategyDirs) {
-                String strategyId = strategyDir.getFileName().toString();
-                List<Integer> versions = publisher.listVersions(strategyId);
-
-                if (!versions.isEmpty()) {
-                    DefaultMutableTreeNode strategyNode = new DefaultMutableTreeNode(
-                        new StrategyNode(strategyId, versions.size())
-                    );
-                    rootNode.add(strategyNode);
-                }
-            }
-
-            statusLabel.setText(strategyDirs.size() + " strategies in library");
-        } catch (IOException e) {
-            statusLabel.setText("Error reading library: " + e.getMessage());
-        }
-
         treeModel.reload();
 
-        // Expand all
-        for (int i = 0; i < strategyTree.getRowCount(); i++) {
-            strategyTree.expandRow(i);
-        }
+        Thread.startVirtualThread(() -> {
+            Path strategiesDir = publisher.getStrategiesDir();
+            if (!Files.exists(strategiesDir)) {
+                SwingUtilities.invokeLater(() -> {
+                    statusLabel.setText("Library folder does not exist yet");
+                    treeModel.reload();
+                });
+                return;
+            }
 
-        updateButtonStates();
+            try (Stream<Path> dirs = Files.list(strategiesDir)) {
+                List<Path> strategyDirs = dirs
+                    .filter(Files::isDirectory)
+                    .sorted()
+                    .toList();
+
+                // Collect nodes off EDT
+                java.util.List<Object[]> nodes = new java.util.ArrayList<>();
+                for (Path strategyDir : strategyDirs) {
+                    String strategyId = strategyDir.getFileName().toString();
+                    List<Integer> versions = publisher.listVersions(strategyId);
+                    if (!versions.isEmpty()) {
+                        nodes.add(new Object[]{strategyId, versions.size()});
+                    }
+                }
+
+                int totalDirs = strategyDirs.size();
+                SwingUtilities.invokeLater(() -> {
+                    rootNode.removeAllChildren();
+                    for (Object[] node : nodes) {
+                        DefaultMutableTreeNode strategyNode = new DefaultMutableTreeNode(
+                            new StrategyNode((String) node[0], (int) node[1])
+                        );
+                        rootNode.add(strategyNode);
+                    }
+                    statusLabel.setText(totalDirs + " strategies in library");
+                    treeModel.reload();
+
+                    // Expand all
+                    for (int i = 0; i < strategyTree.getRowCount(); i++) {
+                        strategyTree.expandRow(i);
+                    }
+                    updateButtonStates();
+                });
+            } catch (IOException e) {
+                String msg = e.getMessage();
+                SwingUtilities.invokeLater(() -> statusLabel.setText("Error reading library: " + msg));
+            }
+        });
     }
 
     private void onStrategySelected() {

@@ -251,49 +251,56 @@ public class BacktestCoordinator {
      *
      * @param dataType The data type ("OI", "Funding", "AggTrades", "Premium")
      */
-    public void refreshViewData(String dataType) {
+    public void refreshViewData(String dataType, Runnable onComplete) {
         if (requirements == null) return;
 
         IndicatorEngine engine = backtestEngine.getIndicatorEngine();
         if (engine == null) return;
 
-        switch (dataType) {
-            case "OI" -> {
-                if (requirements.getOiPage() != null) {
-                    currentOpenInterest = new ArrayList<>(requirements.getOiPage().getData());
-                    backtestEngine.setOpenInterest(currentOpenInterest);
+        // Copy large data lists off EDT to avoid blocking UI
+        Thread.startVirtualThread(() -> {
+            switch (dataType) {
+                case "OI" -> {
+                    if (requirements.getOiPage() != null) {
+                        currentOpenInterest = new ArrayList<>(requirements.getOiPage().getData());
+                        backtestEngine.setOpenInterest(currentOpenInterest);
+                    }
                 }
-            }
-            case "Funding" -> {
-                if (requirements.getFundingPage() != null) {
-                    currentFundingRates = new ArrayList<>(requirements.getFundingPage().getData());
-                    backtestEngine.setFundingRates(currentFundingRates);
+                case "Funding" -> {
+                    if (requirements.getFundingPage() != null) {
+                        currentFundingRates = new ArrayList<>(requirements.getFundingPage().getData());
+                        backtestEngine.setFundingRates(currentFundingRates);
+                    }
                 }
-            }
-            case "AggTrades" -> {
-                if (requirements.getAggTradesPage() != null) {
-                    currentAggTrades = new ArrayList<>(requirements.getAggTradesPage().getData());
-                    backtestEngine.setAggTrades(currentAggTrades);
-                    // Also set on indicator engine for VIEW tier charts
-                    engine.setAggTrades(currentAggTrades);
+                case "AggTrades" -> {
+                    if (requirements.getAggTradesPage() != null) {
+                        currentAggTrades = new ArrayList<>(requirements.getAggTradesPage().getData());
+                        backtestEngine.setAggTrades(currentAggTrades);
+                        // Also set on indicator engine for VIEW tier charts
+                        engine.setAggTrades(currentAggTrades);
+                    }
                 }
-            }
-            case "Premium" -> {
-                if (requirements.getPremiumPage() != null) {
-                    currentPremiumIndex = new ArrayList<>(requirements.getPremiumPage().getData());
-                    backtestEngine.setPremiumIndex(currentPremiumIndex);
+                case "Premium" -> {
+                    if (requirements.getPremiumPage() != null) {
+                        currentPremiumIndex = new ArrayList<>(requirements.getPremiumPage().getData());
+                        backtestEngine.setPremiumIndex(currentPremiumIndex);
+                    }
                 }
-            }
-            case "F&G" -> {
-                if (requirements.getFearGreedPage() != null) {
-                    currentFearGreedIndex = new ArrayList<>(requirements.getFearGreedPage().getData());
-                    backtestEngine.setFearGreedData(currentFearGreedIndex);
-                    if (engine != null) {
-                        engine.setFearGreedData(currentFearGreedIndex);
+                case "F&G" -> {
+                    if (requirements.getFearGreedPage() != null) {
+                        currentFearGreedIndex = new ArrayList<>(requirements.getFearGreedPage().getData());
+                        backtestEngine.setFearGreedData(currentFearGreedIndex);
+                        if (engine != null) {
+                            engine.setFearGreedData(currentFearGreedIndex);
+                        }
                     }
                 }
             }
-        }
+
+            if (onComplete != null) {
+                SwingUtilities.invokeLater(onComplete);
+            }
+        });
     }
 
     // ========== Main API ==========

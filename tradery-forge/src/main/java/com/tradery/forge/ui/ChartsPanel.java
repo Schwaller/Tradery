@@ -2197,4 +2197,17 @@ public class ChartsPanel extends JPanel {
     public List<Candle> getCurrentCandles() {
         return currentCandles;
     }
+
+    /**
+     * Release all resources (overlay pages, indicator pages, etc.).
+     * Call when the owning ProjectWindow is closing.
+     */
+    public void dispose() {
+        if (overlayManager != null) {
+            overlayManager.dispose();
+        }
+        if (indicatorManager != null) {
+            indicatorManager.dispose();
+        }
+    }
 }
