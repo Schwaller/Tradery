@@ -603,6 +603,40 @@ public class DataServiceClient {
     }
 
     /**
+     * GET /profile/daily-binned — returns per-day binned histograms with POC/VAH/VAL
+     * for the entire range in one call. Efficient: single ensureCoverage for the full range.
+     */
+    public List<DailyBinnedProfile> getProfileDailyBinned(String symbol, long start, long end,
+            int binCount, double valueAreaPct) throws IOException {
+        HttpUrl.Builder urlBuilder = HttpUrl.parse(baseUrl + "/profile/daily-binned").newBuilder()
+            .addQueryParameter("symbol", symbol)
+            .addQueryParameter("start", Long.toString(start))
+            .addQueryParameter("end", Long.toString(end))
+            .addQueryParameter("binCount", Integer.toString(binCount))
+            .addQueryParameter("valueAreaPct", Double.toString(valueAreaPct));
+
+        Request request = new Request.Builder()
+            .url(urlBuilder.build())
+            .get()
+            .build();
+
+        try (Response response = profileHttpClient.newCall(request).execute()) {
+            if (!response.isSuccessful()) {
+                throw new IOException("Daily binned profile request failed: " + response.code());
+            }
+            return jsonMapper.readValue(response.body().string(), jsonMapper.getTypeFactory()
+                .constructCollectionType(List.class, DailyBinnedProfile.class));
+        }
+    }
+
+    public record DailyBinnedProfile(
+        long dayStart, double poc, double vah, double val, double delta, double totalVolume,
+        BinnedBins bins
+    ) {}
+
+    public record BinnedBins(double[] priceLevels, double[] buyVolumes, double[] sellVolumes) {}
+
+    /**
      * Close the client.
      */
     public void close() {

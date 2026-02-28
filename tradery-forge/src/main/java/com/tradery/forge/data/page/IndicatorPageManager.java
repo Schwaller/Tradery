@@ -473,45 +473,33 @@ public class IndicatorPageManager {
 
     /**
      * Fetch daily volume profiles from the data service.
-     * Groups candles by UTC day, then fetches a binned profile per day.
+     * Uses the batch /profile/daily-binned endpoint — single ensureCoverage for the full range,
+     * returns all days in one response. Much faster than N per-day calls.
      */
     private List<com.tradery.forge.ui.charts.DailyVolumeProfileAnnotation.DayProfile> fetchDayProfilesFromDataService(
             com.tradery.dataclient.DataServiceClient client, String symbol,
             List<Candle> candles, int numBins, double valueAreaPct, int maxDays) {
 
-        // Group candle timestamps by UTC day to find day boundaries
-        java.util.Map<java.time.LocalDate, long[]> dayBounds = new java.util.LinkedHashMap<>();
-        for (Candle c : candles) {
-            java.time.LocalDate day = java.time.Instant.ofEpochMilli(c.timestamp())
-                .atZone(java.time.ZoneOffset.UTC).toLocalDate();
-            dayBounds.compute(day, (k, v) -> {
-                if (v == null) return new long[]{c.timestamp(), c.timestamp()};
-                v[1] = c.timestamp();
-                return v;
-            });
-        }
+        long rangeStart = candles.get(0).timestamp();
+        long rangeEnd = candles.get(candles.size() - 1).timestamp();
 
-        // Limit to most recent maxDays
-        var days = new java.util.ArrayList<>(dayBounds.keySet());
-        if (maxDays > 0 && days.size() > maxDays) {
-            days = new java.util.ArrayList<>(days.subList(days.size() - maxDays, days.size()));
-        }
+        try {
+            var dailyBinned = client.getProfileDailyBinned(symbol, rangeStart, rangeEnd, numBins, valueAreaPct);
+            if (dailyBinned == null || dailyBinned.isEmpty()) return List.of();
 
-        var profiles = new java.util.ArrayList<com.tradery.forge.ui.charts.DailyVolumeProfileAnnotation.DayProfile>();
-        for (java.time.LocalDate day : days) {
-            long dayStart = day.atStartOfDay(java.time.ZoneOffset.UTC).toInstant().toEpochMilli();
-            long dayEnd = day.plusDays(1).atStartOfDay(java.time.ZoneOffset.UTC).toInstant().toEpochMilli() - 1;
+            // Limit to most recent maxDays
+            if (maxDays > 0 && dailyBinned.size() > maxDays) {
+                dailyBinned = dailyBinned.subList(dailyBinned.size() - maxDays, dailyBinned.size());
+            }
 
-            try {
-                var binned = client.getProfileBinned(symbol, "10s", dayStart, dayEnd, numBins, valueAreaPct);
-                if (binned == null || binned.bins() == null) continue;
-
-                double[] priceLevels = binned.bins().priceLevels();
-                double[] buyVols = binned.bins().buyVolumes();
-                double[] sellVols = binned.bins().sellVolumes();
+            var profiles = new java.util.ArrayList<com.tradery.forge.ui.charts.DailyVolumeProfileAnnotation.DayProfile>();
+            for (var day : dailyBinned) {
+                if (day.bins() == null) continue;
+                double[] priceLevels = day.bins().priceLevels();
+                double[] buyVols = day.bins().buyVolumes();
+                double[] sellVols = day.bins().sellVolumes();
                 if (priceLevels == null || priceLevels.length == 0) continue;
 
-                // Compute total volumes and deltas per bin
                 double[] volumes = new double[priceLevels.length];
                 double[] deltas = new double[priceLevels.length];
                 double maxVol = 0;
@@ -521,19 +509,21 @@ public class IndicatorPageManager {
                     maxVol = Math.max(maxVol, volumes[i]);
                 }
 
+                long dayEnd = day.dayStart() + 86_400_000L - 1;
                 double minPrice = priceLevels[0];
                 double maxPrice = priceLevels[priceLevels.length - 1];
 
                 profiles.add(new com.tradery.forge.ui.charts.DailyVolumeProfileAnnotation.DayProfile(
-                    dayStart, dayEnd, priceLevels, volumes, deltas,
-                    binned.poc(), binned.vah(), binned.val(),
+                    day.dayStart(), dayEnd, priceLevels, volumes, deltas,
+                    day.poc(), day.vah(), day.val(),
                     maxVol, minPrice, maxPrice
                 ));
-            } catch (Exception e) {
-                log.warn("Failed to fetch daily profile for {}: {}", day, e.getMessage());
             }
+            return profiles;
+        } catch (Exception e) {
+            log.warn("Failed to fetch daily binned profiles for {}: {}", symbol, e.getMessage());
+            return List.of();
         }
-        return profiles;
     }
 
     /**

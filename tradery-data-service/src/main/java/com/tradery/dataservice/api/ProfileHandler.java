@@ -211,6 +211,60 @@ public class ProfileHandler {
     }
 
     /**
+     * GET /profile/daily-binned?symbol=X&start=Z&end=W&binCount=24&valueAreaPct=70
+     * Returns per-day binned histograms for the entire range in a single call.
+     * Does ensureCoverage once for the full range, then fetches all "1d" profiles
+     * and bins each one individually. Much more efficient than N calls to /profile/binned.
+     */
+    public void getDailyBinned(Context ctx) {
+        try {
+            String symbol = ctx.queryParam("symbol");
+            Long start = ctx.queryParamAsClass("start", Long.class).getOrDefault(null);
+            Long end = ctx.queryParamAsClass("end", Long.class).getOrDefault(null);
+            int binCount = ctx.queryParamAsClass("binCount", Integer.class).getOrDefault(24);
+            double valueAreaPct = ctx.queryParamAsClass("valueAreaPct", Double.class).getOrDefault(70.0);
+
+            if (symbol == null || start == null || end == null) {
+                ctx.status(400).json(Map.of("error", "symbol, start, and end are required"));
+                return;
+            }
+
+            ensureCoverage(symbol, start, end);
+
+            List<ProfileRow> profiles = dataStore.getProfiles(symbol, "1d", start, end);
+            double tickSize = tickSizeResolver.getTickSize(symbol);
+
+            List<Map<String, Object>> result = new ArrayList<>();
+            for (ProfileRow row : profiles) {
+                Map<Integer, double[]> tickMap = ProfileSerializer.deserialize(row.profileData());
+                if (tickMap.isEmpty()) continue;
+
+                BinnedProfile binned = analyzer.toBinnedByCount(tickMap, tickSize, binCount);
+                ProfileMetrics metrics = analyzer.computeMetrics(tickMap, tickSize, valueAreaPct);
+
+                result.add(Map.of(
+                    "dayStart", row.windowStart(),
+                    "poc", metrics.poc(),
+                    "vah", metrics.vah(),
+                    "val", metrics.val(),
+                    "delta", metrics.delta(),
+                    "totalVolume", metrics.totalVolume(),
+                    "bins", Map.of(
+                        "priceLevels", binned.priceLevels(),
+                        "buyVolumes", binned.buyVolumes(),
+                        "sellVolumes", binned.sellVolumes()
+                    )
+                ));
+            }
+
+            ctx.json(result);
+        } catch (Exception e) {
+            LOG.error("Failed to get daily binned profiles", e);
+            ctx.status(500).json(Map.of("error", e.getMessage()));
+        }
+    }
+
+    /**
      * Check coverage and compute profiles for any gaps.
      */
     private void ensureCoverage(String symbol, long start, long end) throws Exception {

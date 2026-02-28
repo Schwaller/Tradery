@@ -155,6 +155,7 @@ public class DataServiceServer {
         app.get("/profile/binned", profileHandler::getBinnedProfile);
         app.get("/profile/poc-series", profileHandler::getPocSeries);
         app.get("/profile/daily-levels", profileHandler::getDailyLevels);
+        app.get("/profile/daily-binned", profileHandler::getDailyBinned);
     }
 
     private void configureInventoryRoutes() {
