@@ -541,20 +541,55 @@ Add `setSpectrumChartEnabled()`, `updateSpectrumChart()`, `redrawSpectrumChart()
 
 ### Phase 10: DSL Functions (defer to later)
 
+Bucket index = floor(log10(notional)): 0=$1, 1=$10, 2=$100, 3=$1K, 4=$10K, 5=$100K, 6=$1M
+
+#### Range functions (min/max bucket indices)
+
 | Function | Returns | Description |
 |----------|---------|-------------|
-| `SPECTRUM_VOLUME(minBucket, maxBucket)` | double | Total notional in bucket range for current candle |
-| `SPECTRUM_COUNT(minBucket, maxBucket)` | int | Trade count in bucket range |
-| `SPECTRUM_DELTA(minBucket, maxBucket)` | double | Buy - sell notional in bucket range |
-| `WHALE_RATIO(minBucket)` | double | Volume in buckets >= minBucket / total volume |
+| `SPECTRUM_VOLUME(min, max)` | double | Total notional in bucket range [min..max] for current candle |
+| `SPECTRUM_COUNT(min, max)` | int | Trade count in bucket range [min..max] |
+| `SPECTRUM_DELTA(min, max)` | double | Buy - sell notional in bucket range [min..max] |
 
-Example usage:
+#### Single-bucket / threshold functions
+
+| Function | Returns | Description |
+|----------|---------|-------------|
+| `SPECTRUM_COUNT_ABOVE(bucket)` | int | Trade count in buckets >= bucket |
+| `SPECTRUM_COUNT_AT(bucket)` | int | Trade count in exactly that bucket |
+| `SPECTRUM_VOLUME_ABOVE(bucket)` | double | Total volume from buckets >= bucket |
+| `SPECTRUM_VOLUME_AT(bucket)` | double | Volume in exactly that bucket |
+
+#### Derived ratio
+
+| Function | Returns | Description |
+|----------|---------|-------------|
+| `WHALE_RATIO(bucket)` | double | `SPECTRUM_VOLUME_ABOVE(bucket) / SPECTRUM_VOLUME_ABOVE(0)` (0-1 ratio) |
+
+#### Example conditions
+
 ```
-WHALE_RATIO(5) > 0.6 AND RSI(14) < 40
-SPECTRUM_DELTA(5, 7) > 0 AND SPECTRUM_DELTA(1, 3) < 0
+# Whale activity detection
+SPECTRUM_COUNT_ABOVE(5) > 10 AND RSI(14) < 40        # 10+ whale trades ($100K+) while oversold
+SPECTRUM_COUNT_AT(6) > 0                               # At least one $1M+ trade this candle
+WHALE_RATIO(5) > 0.6                                   # Whales are 60%+ of total volume
+
+# Size-based flow divergence
+SPECTRUM_DELTA(5, 7) > 0 AND SPECTRUM_DELTA(1, 3) < 0 # Whales buying, retail selling
+SPECTRUM_VOLUME_ABOVE(5) > SPECTRUM_VOLUME_ABOVE(5)[1] * 2  # Whale volume doubled vs prev bar
+
+# Absorption detection
+SPECTRUM_COUNT_ABOVE(5) > 50 AND ATR(1) < ATR(14) * 0.5  # High whale count, small price move
 ```
 
-Touch points: Lexer, Parser, AstNode, ConditionEvaluator, IndicatorEngine, DslHelpDialog.
+#### Touch points
+
+1. `Lexer.java` — add SPECTRUM_VOLUME, SPECTRUM_COUNT, SPECTRUM_DELTA, SPECTRUM_COUNT_ABOVE, SPECTRUM_COUNT_AT, SPECTRUM_VOLUME_ABOVE, SPECTRUM_VOLUME_AT, WHALE_RATIO keywords
+2. `Parser.java` — parse spectrum functions with 1 or 2 args
+3. `AstNode.java` — add SpectrumFunctionCall node
+4. `ConditionEvaluator.java` — dispatch to IndicatorEngine spectrum methods
+5. `IndicatorEngine.java` — spectrum data getter methods per bar
+6. `DslHelpDialog.java` — help content
 
 ---
 

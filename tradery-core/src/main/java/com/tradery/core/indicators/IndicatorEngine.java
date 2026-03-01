@@ -49,6 +49,21 @@ public class IndicatorEngine {
     }
 
     /**
+     * Set all market data from a unified MarketData source.
+     * Single entry point replacing individual setters — ensures chart and backtest
+     * use the same data through the same path.
+     */
+    public void setMarketData(MarketData data) {
+        setCandles(data.candles(), data.timeframe());
+        if (data.aggTrades() != null) setAggTrades(data.aggTrades());
+        if (data.fundingRates() != null) setFundingRates(data.fundingRates());
+        if (data.openInterest() != null) setOpenInterest(data.openInterest());
+        if (data.premiumIndex() != null) setPremiumIndex(data.premiumIndex());
+        if (data.fearGreedIndex() != null) setFearGreedData(data.fearGreedIndex());
+        if (data.dailyProfiles() != null) setPrecomputedDailyProfiles(data.dailyProfiles());
+    }
+
+    /**
      * Check if aggregated trades data is available.
      */
     public boolean hasAggTrades() {

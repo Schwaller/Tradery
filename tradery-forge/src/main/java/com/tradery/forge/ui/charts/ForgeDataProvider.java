@@ -5,6 +5,7 @@ import com.tradery.charts.core.IndicatorType;
 import com.tradery.charts.indicator.IndicatorPool;
 import com.tradery.core.indicators.IndicatorEngine;
 import com.tradery.core.model.Candle;
+import com.tradery.core.model.MarketDataSnapshot;
 import com.tradery.dataclient.DataServiceClient;
 import com.tradery.forge.ApplicationContext;
 import org.slf4j.Logger;
@@ -55,12 +56,15 @@ public class ForgeDataProvider implements ChartDataProvider {
         this.startTime = startTime;
         this.endTime = endTime;
 
-        // Create indicator engine and pass to pool
+        // Create indicator engine via MarketDataSnapshot and pass to pool
         if (candles != null && !candles.isEmpty()) {
-            IndicatorEngine engine = new IndicatorEngine();
-            engine.setCandles(candles, timeframe != null ? timeframe : "1h");
+            MarketDataSnapshot md = MarketDataSnapshot.builder(
+                this.symbol, this.timeframe, candles).build();
 
-            // Populate daily profiles from data service for PREV_DAY/TODAY POC/VAH/VAL
+            IndicatorEngine engine = new IndicatorEngine();
+            engine.setMarketData(md);
+
+            // Async fetch of daily profiles from data service (updates engine when ready)
             populateDailyProfiles(engine, symbol, candles);
 
             indicatorPool.setDataContext(engine);

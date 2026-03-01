@@ -19,6 +19,15 @@ public record IndicatorContext(
     String resolution
 ) {
     /**
+     * Create context from a unified MarketData source.
+     */
+    public static IndicatorContext from(MarketData data) {
+        return new IndicatorContext(
+            data.candles(), data.aggTrades(), data.fundingRates(),
+            data.openInterest(), data.premiumIndex(), data.timeframe());
+    }
+
+    /**
      * Create context with only candles (most common case).
      */
     public static IndicatorContext ofCandles(List<Candle> candles, String resolution) {

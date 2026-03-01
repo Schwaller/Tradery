@@ -31,6 +31,7 @@ public class BacktestEngine {
     private List<OpenInterest> openInterestData;
     private List<PremiumIndex> premiumIndexData;
     private List<FearGreedIndex> fearGreedData;
+    private MarketData marketData;
 
     public BacktestEngine() {
         this.indicatorEngine = new IndicatorEngine();
@@ -117,6 +118,27 @@ public class BacktestEngine {
         List<String> errors = new ArrayList<>();
         List<Candle> candles = context.candles();
 
+        // Extract all data from context BEFORE initializing indicator engine
+        // Use orderflow data from context
+        if (context.aggTrades() != null) {
+            this.aggTrades = context.aggTrades();
+        }
+        if (context.fundingRates() != null) {
+            this.fundingRates = context.fundingRates();
+        }
+        if (context.openInterest() != null) {
+            this.openInterestData = context.openInterest();
+        }
+        if (context.premiumIndex() != null) {
+            this.premiumIndexData = context.premiumIndex();
+        }
+        if (context.fearGreedIndex() != null) {
+            this.fearGreedData = context.fearGreedIndex();
+        }
+        if (context.marketData() != null) {
+            this.marketData = context.marketData();
+        }
+
         // Initialize indicator engine FIRST so charts can display data even if parsing fails
         if (onProgress != null) {
             onProgress.accept(new Progress(0, candles.size(), 0, "Initializing indicators..."));
@@ -139,23 +161,6 @@ public class BacktestEngine {
         List<String> excludedEntryPatternIds = hoopSettings.getExcludedEntryPatternIds();
         List<String> requiredExitPatternIds = hoopSettings.getRequiredExitPatternIds();
         List<String> excludedExitPatternIds = hoopSettings.getExcludedExitPatternIds();
-
-        // Use orderflow data from context
-        if (context.aggTrades() != null) {
-            this.aggTrades = context.aggTrades();
-        }
-        if (context.fundingRates() != null) {
-            this.fundingRates = context.fundingRates();
-        }
-        if (context.openInterest() != null) {
-            this.openInterestData = context.openInterest();
-        }
-        if (context.premiumIndex() != null) {
-            this.premiumIndexData = context.premiumIndex();
-        }
-        if (context.fearGreedIndex() != null) {
-            this.fearGreedData = context.fearGreedIndex();
-        }
 
         if (onProgress != null) {
             onProgress.accept(new Progress(0, candles.size(), 0, "Parsing strategy..."));
@@ -1171,37 +1176,46 @@ public class BacktestEngine {
      * Initialize the indicator engine with candle data and optional orderflow/funding/OI data.
      */
     private void initializeIndicatorEngine(List<Candle> candles, String resolution, Consumer<Progress> onProgress) {
-        if (onProgress != null) {
-            onProgress.accept(new Progress(0, 4, 0, "Loading candle data..."));
-        }
-        indicatorEngine.setCandles(candles, resolution);
+        if (this.marketData != null) {
+            // Unified path: all data (including daily profiles) via single setMarketData()
+            if (onProgress != null) {
+                onProgress.accept(new Progress(0, 1, 0, "Loading market data..."));
+            }
+            indicatorEngine.setMarketData(this.marketData);
+        } else {
+            // Legacy path: individual setters
+            if (onProgress != null) {
+                onProgress.accept(new Progress(0, 4, 0, "Loading candle data..."));
+            }
+            indicatorEngine.setCandles(candles, resolution);
 
-        if (aggTrades != null && !aggTrades.isEmpty()) {
-            if (onProgress != null) {
-                onProgress.accept(new Progress(1, 4, 25, "Processing orderflow data..."));
+            if (aggTrades != null && !aggTrades.isEmpty()) {
+                if (onProgress != null) {
+                    onProgress.accept(new Progress(1, 4, 25, "Processing orderflow data..."));
+                }
+                indicatorEngine.setAggTrades(aggTrades);
             }
-            indicatorEngine.setAggTrades(aggTrades);
-        }
-        if (fundingRates != null && !fundingRates.isEmpty()) {
-            if (onProgress != null) {
-                onProgress.accept(new Progress(2, 4, 50, "Processing funding rates..."));
+            if (fundingRates != null && !fundingRates.isEmpty()) {
+                if (onProgress != null) {
+                    onProgress.accept(new Progress(2, 4, 50, "Processing funding rates..."));
+                }
+                indicatorEngine.setFundingRates(fundingRates);
             }
-            indicatorEngine.setFundingRates(fundingRates);
-        }
-        if (openInterestData != null && !openInterestData.isEmpty()) {
-            if (onProgress != null) {
-                onProgress.accept(new Progress(3, 4, 75, "Processing open interest..."));
+            if (openInterestData != null && !openInterestData.isEmpty()) {
+                if (onProgress != null) {
+                    onProgress.accept(new Progress(3, 4, 75, "Processing open interest..."));
+                }
+                indicatorEngine.setOpenInterest(openInterestData);
             }
-            indicatorEngine.setOpenInterest(openInterestData);
-        }
-        if (premiumIndexData != null && !premiumIndexData.isEmpty()) {
-            if (onProgress != null) {
-                onProgress.accept(new Progress(4, 5, 80, "Processing premium index..."));
+            if (premiumIndexData != null && !premiumIndexData.isEmpty()) {
+                if (onProgress != null) {
+                    onProgress.accept(new Progress(4, 5, 80, "Processing premium index..."));
+                }
+                indicatorEngine.setPremiumIndex(premiumIndexData);
             }
-            indicatorEngine.setPremiumIndex(premiumIndexData);
-        }
-        if (fearGreedData != null && !fearGreedData.isEmpty()) {
-            indicatorEngine.setFearGreedData(fearGreedData);
+            if (fearGreedData != null && !fearGreedData.isEmpty()) {
+                indicatorEngine.setFearGreedData(fearGreedData);
+            }
         }
     }
 

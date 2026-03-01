@@ -2,6 +2,7 @@ package com.tradery.forge.ui.coordination;
 
 import com.tradery.core.indicators.IndicatorEngine;
 import com.tradery.core.model.*;
+import com.tradery.dataclient.DataServiceClient;
 import com.tradery.engine.BacktestContext;
 import com.tradery.engine.BacktestEngine;
 import com.tradery.engine.HoopPatternEvaluator;
@@ -693,6 +694,40 @@ public class BacktestCoordinator {
                     );
                 }
 
+                // Build unified MarketData with daily profiles from data service
+                String symbol = requirements.getSymbol();
+                String timeframe = currentConfig.resolution();
+                MarketDataSnapshot.Builder mdBuilder = MarketDataSnapshot.builder(symbol, timeframe, candles)
+                    .aggTrades(aggTrades)
+                    .fundingRates(funding)
+                    .openInterest(oi)
+                    .premiumIndex(premium)
+                    .fearGreedIndex(fearGreed);
+
+                // Fetch precomputed daily profiles so backtest uses same data as chart
+                ApplicationContext appCtx = ApplicationContext.getInstance();
+                if (appCtx != null && appCtx.isDataServiceAvailable()) {
+                    try {
+                        long profileStart = candles.get(0).timestamp();
+                        long profileEnd = candles.get(candles.size() - 1).timestamp();
+                        DataServiceClient client = appCtx.getDataServiceClient();
+                        List<DataServiceClient.DailyLevelsPoint> levels =
+                            client.getProfileDailyLevels(symbol, profileStart, profileEnd);
+                        if (levels != null && !levels.isEmpty()) {
+                            Map<Long, double[]> profileMap = new HashMap<>();
+                            for (DataServiceClient.DailyLevelsPoint p : levels) {
+                                profileMap.put(p.dayStart(), new double[]{p.poc(), p.vah(), p.val()});
+                            }
+                            mdBuilder.dailyProfiles(profileMap);
+                            log.info("Loaded {} precomputed daily profiles for backtest", profileMap.size());
+                        }
+                    } catch (Exception e) {
+                        log.warn("Could not fetch daily profiles for backtest: {}", e.getMessage());
+                    }
+                }
+
+                MarketData marketData = mdBuilder.build();
+
                 // Build BacktestContext with all pre-computed data
                 BacktestContext context = BacktestContext.builder(candles)
                     .phaseStates(phaseStates)
@@ -703,6 +738,7 @@ public class BacktestCoordinator {
                     .openInterest(oi)
                     .premiumIndex(premium)
                     .fearGreedIndex(fearGreed)
+                    .marketData(marketData)
                     .build();
 
                 // Run backtest using engine's clean context-based API

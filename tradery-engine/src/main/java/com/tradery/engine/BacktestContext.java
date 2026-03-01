@@ -38,7 +38,10 @@ public record BacktestContext(
     List<PremiumIndex> premiumIndex,
 
     // Fear & Greed Index data (optional)
-    List<FearGreedIndex> fearGreedIndex
+    List<FearGreedIndex> fearGreedIndex,
+
+    // Unified market data (optional) — when present, IndicatorEngine uses setMarketData()
+    MarketData marketData
 ) {
     /**
      * Create a minimal context with just candles.
@@ -49,6 +52,7 @@ public record BacktestContext(
             Collections.emptyMap(),
             Collections.emptyMap(),
             Collections.emptyList(),
+            null,
             null,
             null,
             null,
@@ -66,6 +70,7 @@ public record BacktestContext(
             phaseStates,
             Collections.emptyMap(),
             Collections.emptyList(),
+            null,
             null,
             null,
             null,
@@ -91,6 +96,7 @@ public record BacktestContext(
         private List<OpenInterest> openInterest;
         private List<PremiumIndex> premiumIndex;
         private List<FearGreedIndex> fearGreedIndex;
+        private MarketData marketData;
 
         private Builder(List<Candle> candles) {
             this.candles = candles;
@@ -136,6 +142,11 @@ public record BacktestContext(
             return this;
         }
 
+        public Builder marketData(MarketData marketData) {
+            this.marketData = marketData;
+            return this;
+        }
+
         public BacktestContext build() {
             return new BacktestContext(
                 candles,
@@ -146,7 +157,8 @@ public record BacktestContext(
                 fundingRates,
                 openInterest,
                 premiumIndex,
-                fearGreedIndex
+                fearGreedIndex,
+                marketData
             );
         }
     }

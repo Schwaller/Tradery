@@ -12,4 +12,5 @@ dependencies {
 
     // Logging
     implementation "org.slf4j:slf4j-api:${rootProject.ext.slf4jVersion}"
+    testRuntimeOnly "org.slf4j:slf4j-simple:${rootProject.ext.slf4jVersion}"
 }
