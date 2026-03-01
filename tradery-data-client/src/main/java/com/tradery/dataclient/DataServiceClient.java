@@ -28,7 +28,6 @@ public class DataServiceClient {
     private final int port;
     private final String baseUrl;
     private final OkHttpClient httpClient;
-    private final OkHttpClient profileHttpClient;  // Short timeout for profile queries (fail fast, fallback to candles)
     private final ObjectMapper jsonMapper;
     private final ObjectMapper msgpackMapper;
 
@@ -41,15 +40,8 @@ public class DataServiceClient {
         this.baseUrl = String.format("http://%s:%d", host, port);
         this.httpClient = new OkHttpClient.Builder()
             .connectTimeout(30, TimeUnit.SECONDS)
-            .readTimeout(60, TimeUnit.SECONDS)
+            .readTimeout(5, TimeUnit.MINUTES)
             .writeTimeout(30, TimeUnit.SECONDS)
-            .build();
-        // Profile queries use a short timeout — if profiles aren't cached yet, the data service
-        // may block for minutes computing them. We fail fast and let the caller fall back to candles.
-        this.profileHttpClient = new OkHttpClient.Builder()
-            .connectTimeout(5, TimeUnit.SECONDS)
-            .readTimeout(10, TimeUnit.SECONDS)
-            .writeTimeout(5, TimeUnit.SECONDS)
             .build();
         this.jsonMapper = new ObjectMapper()
             .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
@@ -518,7 +510,7 @@ public class DataServiceClient {
             .get()
             .build();
 
-        try (Response response = profileHttpClient.newCall(request).execute()) {
+        try (Response response = httpClient.newCall(request).execute()) {
             if (!response.isSuccessful()) {
                 throw new IOException("Profile binned request failed: " + response.code());
             }
@@ -544,7 +536,7 @@ public class DataServiceClient {
             .get()
             .build();
 
-        try (Response response = profileHttpClient.newCall(request).execute()) {
+        try (Response response = httpClient.newCall(request).execute()) {
             if (!response.isSuccessful()) {
                 throw new IOException("Profile request failed: " + response.code());
             }
@@ -570,7 +562,7 @@ public class DataServiceClient {
             .get()
             .build();
 
-        try (Response response = profileHttpClient.newCall(request).execute()) {
+        try (Response response = httpClient.newCall(request).execute()) {
             if (!response.isSuccessful()) {
                 throw new IOException("POC series request failed: " + response.code());
             }
@@ -593,7 +585,7 @@ public class DataServiceClient {
             .get()
             .build();
 
-        try (Response response = profileHttpClient.newCall(request).execute()) {
+        try (Response response = httpClient.newCall(request).execute()) {
             if (!response.isSuccessful()) {
                 throw new IOException("Daily levels request failed: " + response.code());
             }
@@ -620,7 +612,7 @@ public class DataServiceClient {
             .get()
             .build();
 
-        try (Response response = profileHttpClient.newCall(request).execute()) {
+        try (Response response = httpClient.newCall(request).execute()) {
             if (!response.isSuccessful()) {
                 throw new IOException("Daily binned profile request failed: " + response.code());
             }
@@ -642,8 +634,6 @@ public class DataServiceClient {
     public void close() {
         httpClient.dispatcher().executorService().shutdown();
         httpClient.connectionPool().evictAll();
-        profileHttpClient.dispatcher().executorService().shutdown();
-        profileHttpClient.connectionPool().evictAll();
     }
 
     // ==================== Inventory DTOs ====================

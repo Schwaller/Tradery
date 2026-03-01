@@ -186,11 +186,18 @@ public class ForgeDataProvider implements ChartDataProvider {
         long start = candles.get(0).timestamp();
         long end = candles.get(candles.size() - 1).timestamp();
 
+        ctx.setProfileStatus(ApplicationContext.ProfileStatus.LOADING,
+            "Fetching daily levels for " + symbol, 0);
+
         profileFetcher.submit(() -> {
             try {
                 DataServiceClient client = ctx.getDataServiceClient();
                 List<DataServiceClient.DailyLevelsPoint> levels = client.getProfileDailyLevels(symbol, start, end);
-                if (levels == null || levels.isEmpty()) return;
+                if (levels == null || levels.isEmpty()) {
+                    ctx.setProfileStatus(ApplicationContext.ProfileStatus.IDLE,
+                        "No daily levels for range", 0);
+                    return;
+                }
 
                 Map<Long, double[]> profileMap = new HashMap<>();
                 for (DataServiceClient.DailyLevelsPoint p : levels) {
@@ -198,8 +205,12 @@ public class ForgeDataProvider implements ChartDataProvider {
                 }
 
                 engine.setPrecomputedDailyProfiles(profileMap);
+                ctx.setProfileStatus(ApplicationContext.ProfileStatus.READY,
+                    profileMap.size() + " daily levels loaded", profileMap.size());
                 log.info("Populated {} precomputed daily profiles for {}", profileMap.size(), symbol);
             } catch (Exception e) {
+                ctx.setProfileStatus(ApplicationContext.ProfileStatus.ERROR,
+                    e.getMessage(), 0);
                 log.warn("Failed to fetch daily profiles from data service for {}, using candle fallback: {}",
                     symbol, e.getMessage());
             }

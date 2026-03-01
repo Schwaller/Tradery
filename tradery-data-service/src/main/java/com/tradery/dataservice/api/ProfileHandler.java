@@ -266,16 +266,31 @@ public class ProfileHandler {
 
     /**
      * Check coverage and compute profiles for any gaps.
+     * Only computes for ranges where aggTrades actually exist — stamps coverage
+     * only for those intersections so we don't falsely claim coverage for empty ranges.
      */
     private void ensureCoverage(String symbol, long start, long end) throws Exception {
-        var coverage = dataStore.forSymbol(symbol).coverageFor(DataStoreType.VOLUME_PROFILES);
-        var gaps = coverage.findGaps("volume_profiles", "", start, end);
+        var profileCoverage = dataStore.forSymbol(symbol).coverageFor(DataStoreType.VOLUME_PROFILES);
+        var gaps = profileCoverage.findGaps("volume_profiles", "", start, end);
 
-        if (!gaps.isEmpty()) {
-            LOG.info("Computing {} gap(s) for {} volume profiles", gaps.size(), symbol);
-            for (long[] gap : gaps) {
-                computer.compute(symbol, gap[0], gap[1]);
-                coverage.addCoverage("volume_profiles", "", gap[0], gap[1], true);
+        if (gaps.isEmpty()) return;
+
+        // Get aggTrades coverage to know where raw data actually exists
+        var aggTradesCoverage = dataStore.forSymbol(symbol).coverageFor(DataStoreType.AGG_TRADES);
+        var aggRanges = aggTradesCoverage.getCoverageRanges("agg_trades", "default");
+
+        for (long[] gap : gaps) {
+            // Find the intersection of this gap with aggTrades coverage
+            for (var aggRange : aggRanges) {
+                long intersectStart = Math.max(gap[0], aggRange.rangeStart());
+                long intersectEnd = Math.min(gap[1], aggRange.rangeEnd());
+
+                if (intersectStart <= intersectEnd) {
+                    LOG.info("Computing volume profiles for {} [{} - {}] (aggTrades available)",
+                        symbol, intersectStart, intersectEnd);
+                    computer.compute(symbol, intersectStart, intersectEnd);
+                    profileCoverage.addCoverage("volume_profiles", "", intersectStart, intersectEnd, true);
+                }
             }
         }
     }

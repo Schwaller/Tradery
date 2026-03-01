@@ -486,9 +486,21 @@ public class IndicatorPageManager {
         long rangeStart = candles.get(0).timestamp();
         long rangeEnd = candles.get(candles.size() - 1).timestamp();
 
+        var appCtx = com.tradery.forge.ApplicationContext.getInstance();
+        if (appCtx != null) {
+            appCtx.setProfileStatus(com.tradery.forge.ApplicationContext.ProfileStatus.LOADING,
+                "Fetching profiles for " + symbol, 0);
+        }
+
         try {
             var dailyBinned = client.getProfileDailyBinned(symbol, rangeStart, rangeEnd, numBins, valueAreaPct);
-            if (dailyBinned == null || dailyBinned.isEmpty()) return null;  // Let caller fall back to candles
+            if (dailyBinned == null || dailyBinned.isEmpty()) {
+                if (appCtx != null) {
+                    appCtx.setProfileStatus(com.tradery.forge.ApplicationContext.ProfileStatus.IDLE,
+                        "No profile data for range", 0);
+                }
+                return null;  // Let caller fall back to candles
+            }
 
             // Limit to most recent maxDays
             if (maxDays > 0 && dailyBinned.size() > maxDays) {
@@ -522,9 +534,17 @@ public class IndicatorPageManager {
                     maxVol, minPrice, maxPrice
                 ));
             }
+            if (appCtx != null) {
+                appCtx.setProfileStatus(com.tradery.forge.ApplicationContext.ProfileStatus.READY,
+                    profiles.size() + " days from data service", profiles.size());
+            }
             return profiles;
         } catch (Exception e) {
             log.warn("Failed to fetch daily binned profiles for {}: {}", symbol, e.getMessage());
+            if (appCtx != null) {
+                appCtx.setProfileStatus(com.tradery.forge.ApplicationContext.ProfileStatus.ERROR,
+                    e.getMessage(), 0);
+            }
             return null;  // Let caller fall back to candles
         }
     }

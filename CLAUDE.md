@@ -1,5 +1,15 @@
 # Plaiiin - Java Desktop Trading Strategy Backtester
 
+## Engineering Standards — NON-NEGOTIABLE
+
+**This is a financial application potentially managing millions. Zero tolerance for hacks, workarounds, or shortcuts.**
+
+- **No timeout-based fallbacks.** If a service call is slow, fix the root cause. Never silently degrade to an approximation.
+- **No silent data downgrades.** If the system promises precomputed tick-level profiles, it must deliver them — not quietly substitute candle-based estimates.
+- **One computation path per metric.** POC, VAH, VAL, delta — each must have a single authoritative source. Multiple paths producing different numbers is a bug, not a feature.
+- **Correctness over speed.** If a computation takes 5 minutes, it takes 5 minutes. The user waits for real data, not a fast lie.
+- **No "fail fast and approximate."** Either the operation succeeds with correct data or it fails visibly with an error the user can act on.
+
 ## Project Overview
 Java Swing desktop app for backtesting trading strategies. File-based storage enables Claude Code integration.
 

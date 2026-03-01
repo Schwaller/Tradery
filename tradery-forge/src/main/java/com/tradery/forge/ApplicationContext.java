@@ -72,6 +72,22 @@ public class ApplicationContext {
     private DataServiceConnection dataServiceConnection;
     private final AtomicBoolean reconnecting = new AtomicBoolean(false);
 
+    // Volume profile status tracking for status badge
+    public enum ProfileStatus { IDLE, LOADING, READY, ERROR }
+    private volatile ProfileStatus profileStatus = ProfileStatus.IDLE;
+    private volatile String profileStatusDetail = "";
+    private volatile int profileDayCount = 0;
+
+    public ProfileStatus getProfileStatus() { return profileStatus; }
+    public String getProfileStatusDetail() { return profileStatusDetail; }
+    public int getProfileDayCount() { return profileDayCount; }
+
+    public void setProfileStatus(ProfileStatus status, String detail, int dayCount) {
+        this.profileStatus = status;
+        this.profileStatusDetail = detail;
+        this.profileDayCount = dayCount;
+    }
+
     private ApplicationContext() {
         // Initialize indicator registry (must be done before IndicatorPageManager)
         IndicatorRegistryInitializer.initialize();

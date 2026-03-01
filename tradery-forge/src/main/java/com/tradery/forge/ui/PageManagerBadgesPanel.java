@@ -25,6 +25,7 @@ public class PageManagerBadgesPanel extends JPanel {
     private final StatusBadge aggTradesBadge;
     private final StatusBadge premiumBadge;
     private final StatusBadge fearGreedBadge;
+    private final StatusBadge profilesBadge;
     private final StatusBadge indicatorsBadge;
 
     private final Timer refreshTimer;
@@ -41,6 +42,7 @@ public class PageManagerBadgesPanel extends JPanel {
         aggTradesBadge = new StatusBadge("AggTrades 0");
         premiumBadge = new StatusBadge("Premium 0");
         fearGreedBadge = new StatusBadge("F&G 0");
+        profilesBadge = new StatusBadge("Profiles");
         indicatorsBadge = new StatusBadge("Indicators 0");
 
         addClickHandler(candlesBadge, DataType.CANDLES);
@@ -62,6 +64,7 @@ public class PageManagerBadgesPanel extends JPanel {
         add(aggTradesBadge);
         add(premiumBadge);
         add(fearGreedBadge);
+        add(profilesBadge);
         add(indicatorsBadge);
 
         // Context menu for right-click to open Download Dashboard
@@ -115,6 +118,7 @@ public class PageManagerBadgesPanel extends JPanel {
         updateDataPageBadge(aggTradesBadge, "AggTrades", ctx.getAggTradesPageManager());
         updateDataPageBadge(premiumBadge, "Premium", ctx.getPremiumPageManager());
         updateDataPageBadge(fearGreedBadge, "F&G", ctx.getFearGreedPageManager());
+        updateProfilesBadge(ctx);
         updateIndicatorsBadge(ctx.getIndicatorPageManager());
     }
 
@@ -139,6 +143,41 @@ public class PageManagerBadgesPanel extends JPanel {
         }
 
         updateBadge(badge, name, total, loading, ready, consumerTimeframes);
+    }
+
+    private void updateProfilesBadge(ApplicationContext ctx) {
+        ApplicationContext.ProfileStatus status = ctx.getProfileStatus();
+        String detail = ctx.getProfileStatusDetail();
+        int days = ctx.getProfileDayCount();
+
+        Color bgColor, fgColor;
+        String text;
+        switch (status) {
+            case LOADING -> {
+                bgColor = StatusBadge.BG_WARNING;
+                fgColor = StatusBadge.FG_WARNING;
+                text = "Profiles...";
+            }
+            case READY -> {
+                bgColor = StatusBadge.BG_OK;
+                fgColor = StatusBadge.FG_OK;
+                text = "Profiles " + days;
+            }
+            case ERROR -> {
+                bgColor = StatusBadge.BG_ERROR;
+                fgColor = StatusBadge.FG_ERROR;
+                text = "Profiles !";
+            }
+            default -> {
+                bgColor = StatusBadge.BG_IDLE;
+                fgColor = StatusBadge.FG_IDLE;
+                text = "Profiles";
+            }
+        }
+
+        profilesBadge.setText(text);
+        profilesBadge.setStatusColor(bgColor, fgColor);
+        profilesBadge.setToolTipText("<html><b>Volume Profiles</b><br>" + detail + "</html>");
     }
 
     private void updateIndicatorsBadge(IndicatorPageManager mgr) {
