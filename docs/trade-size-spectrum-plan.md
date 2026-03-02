@@ -45,21 +45,32 @@ We need to analyze the distribution of trade notionals from aggTrades data using
 ### Log Bucket Strategy
 
 ```
-Bucket index = floor(log10(trade_notional))
+Bucket index = clamp(0, 8, floor(log10(trade_notional)))
 
 Index │ Range              │ Label
 ──────┼────────────────────┼───────
-  0   │ $1 – $10           │ $1
+  0   │ < $10              │ $1
   1   │ $10 – $100         │ $10
   2   │ $100 – $1K         │ $100
   3   │ $1K – $10K         │ $1K
   4   │ $10K – $100K       │ $10K
   5   │ $100K – $1M        │ $100K
   6   │ $1M – $10M         │ $1M
-  7   │ $10M+              │ $10M
+  7   │ $10M – $100M       │ $10M
+  8   │ $100M+             │ $100M
 ```
 
-Scale-invariant: works for BTC ($100K trades), altcoins ($0.10 trades), and everything in between.
+Fixed 9 buckets (0–8). Sub-dollar trades clip to 0, >$100M clips to 8. Scale-invariant: works for BTC, altcoins, and everything in between.
+
+```java
+static final int MAX_BUCKET = 8;
+static final int BUCKET_COUNT = MAX_BUCKET + 1;  // 9
+
+static int bucketIndex(double notional) {
+    if (notional < 1.0) return 0;
+    return Math.min(MAX_BUCKET, (int) Math.floor(Math.log10(notional)));
+}
+```
 
 ### SizeBucket
 
@@ -157,7 +168,7 @@ SpectrumRenderer paints spectrogram
 **New files in `tradery-core/.../model/`:**
 
 - **`SizeBucket.java`** — record(tradeCount, totalVolume, buyVolume, sellVolume) with `merge()`, `delta()`
-- **`SpectrumWindow.java`** — record(windowStart, Map<Integer, SizeBucket>) with `merge()`, static `bucketIndex(double notional)`, `bucketLabel(int index)`
+- **`SpectrumWindow.java`** — record(windowStart, SizeBucket[] buckets) where buckets is always length 9 (indices 0–8). Static helpers: `bucketIndex(double notional)`, `bucketLabel(int index)`, `merge()`
 - **`SpectrumMode.java`** — enum: COUNT, VOLUME, DELTA
 
 #### 1.2 — DataStoreType.SPECTRUM
@@ -602,7 +613,7 @@ SPECTRUM_COUNT_ABOVE(5) > 50 AND ATR(1) < ATR(14) * 0.5  # High whale count, sma
 | Existing aggTrades, no spectrum (migration) | Auto-detect gap → backfill from aggTrades → correct spectrum data. No approximations. |
 | Cross-exchange trades | Use `normalizedNotional()` for consistent USD values when `normalizedPrice` is set. |
 | Concurrent writes | SQLite WAL mode + `executeInTransaction()` serializes writes. |
-| Sub-dollar trades (bucket < 0) | Bucket 0 catches $1–$10. Sub-dollar trades get negative indices — valid, just rare. |
+| Sub-dollar trades | Clipped to bucket 0. Trades >$100M clipped to bucket 8. Fixed 9-slot array, no edge cases. |
 | Backfill of months of data | Stream aggTrades in 10K chunks — never load entire range into memory. |
 
 ---
@@ -627,7 +638,7 @@ SPECTRUM_COUNT_ABOVE(5) > 50 AND ATR(1) < ATR(14) * 0.5  # High whale count, sma
 | File | Module | Purpose |
 |------|--------|---------|
 | `SizeBucket.java` | tradery-core/model | Bucket record with merge/delta |
-| `SpectrumWindow.java` | tradery-core/model | 10s window record with bucket map |
+| `SpectrumWindow.java` | tradery-core/model | 10s window record with fixed SizeBucket[9] array |
 | `SpectrumMode.java` | tradery-core/model | COUNT/VOLUME/DELTA enum |
 | `SpectrumDao.java` | tradery-data-service/dao | SQLite DAO for spectrum table |
 | `SpectrumAggregator.java` | tradery-data-service/data | AggTrade → 10s histogram processor + backfill |
