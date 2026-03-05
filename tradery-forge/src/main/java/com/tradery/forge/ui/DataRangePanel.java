@@ -302,6 +302,11 @@ public class DataRangePanel extends ConfigurationPanel {
         return (String) durationCombo.getSelectedItem();
     }
 
+    public String getMarketType() {
+        String mt = symbolCombo.getSymbolMarket();
+        return mt != null ? mt : "perp";
+    }
+
     public Long getAnchorDate() {
         Date date = (Date) anchorDateSpinner.getValue();
         return date.getTime();

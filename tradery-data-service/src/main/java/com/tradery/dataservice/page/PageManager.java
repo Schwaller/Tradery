@@ -32,7 +32,7 @@ import java.util.function.BiConsumer;
  * - Anchored pages: Fixed time range, static historical view
  * - Live pages: Sliding window that moves with current time
  */
-public class PageManager {
+public class PageManager implements BackfillCompletionCallback {
     private static final Logger LOG = LoggerFactory.getLogger(PageManager.class);
     private static final int CLEANUP_INTERVAL_SECONDS = 10;
 
@@ -52,13 +52,12 @@ public class PageManager {
     private final AggTradesStore aggTradesStore;
     private final PremiumIndexStore premiumIndexStore;
     private final FearGreedStore fearGreedStore;
+    private SpectrumStore spectrumStore;
+    private ProfileStore profileStore;
 
     // Live subscription callbacks (for cleanup on page removal)
     private final Map<String, BiConsumer<String, Candle>> liveUpdateCallbacks = new ConcurrentHashMap<>();
     private final Map<String, BiConsumer<String, Candle>> liveCloseCallbacks = new ConcurrentHashMap<>();
-
-    // Optional: set via setProfileComputer() for on-demand profile computation
-    private volatile com.tradery.dataservice.profile.VolumeProfileComputer profileComputer;
 
     public PageManager(DataServiceConfig config, SqliteDataStore dataStore, LiveCandleManager liveCandleManager) {
         this.config = config;
@@ -389,6 +388,9 @@ public class PageManager {
             } else if (key.isProfile()) {
                 data = loadProfiles(key, page);
                 recordCount = page.getRecordCount();
+            } else if (key.isSpectrum()) {
+                data = loadSpectrum(key, page);
+                recordCount = page.getRecordCount();
             } else {
                 throw new IllegalArgumentException("Unknown data type: " + key.dataType());
             }
@@ -403,6 +405,12 @@ public class PageManager {
             // For live candle pages, subscribe to live updates
             if (key.isLive() && key.isCandles() && liveCandleManager != null) {
                 subscribeToLive(page);
+            }
+
+            // After aggTrades finish loading, re-trigger any spectrum/profile pages that may
+            // have loaded before aggTrades were ready
+            if (key.isAggTrades() && recordCount > 0) {
+                retriggerDerivedPages(key.symbol(), null);
             }
 
         } catch (Exception e) {
@@ -586,6 +594,7 @@ public class PageManager {
      */
     private byte[] loadAggTrades(PageKey key, Page page) throws Exception {
         String symbol = key.symbol();
+        String marketType = key.marketType() != null ? key.marketType() : "perp";
         long startTime = key.getEffectiveStartTime();
         long endTime = key.getEffectiveEndTime();
 
@@ -600,15 +609,15 @@ public class PageManager {
             // Ensure data is cached in SQLite (fetches from Binance if needed)
             // Does NOT load trades into memory - avoids 1GB+ heap allocation
             long t0 = System.currentTimeMillis();
-            aggTradesStore.ensureCached(symbol, startTime, endTime);
+            aggTradesStore.ensureCached(symbol, startTime, endTime, marketType);
             long t1 = System.currentTimeMillis();
 
             // Get count via SQL COUNT query (fast, no memory allocation)
             long count = dataStore.countAggTrades(symbol, startTime, endTime);
             page.setRecordCount(count);
 
-            LOG.info("loadAggTrades: {} cached {} trades in {}ms (data served via streaming endpoint)",
-                symbol, count, t1 - t0);
+            LOG.info("loadAggTrades: {} {} cached {} trades in {}ms (data served via streaming endpoint)",
+                symbol, marketType, count, t1 - t0);
             return null;  // Client fetches via streaming /aggtrades endpoint
         } finally {
             aggTradesStore.setProgressCallback(null);
@@ -679,34 +688,100 @@ public class PageManager {
         return msgpackMapper.writeValueAsBytes(data);
     }
 
+    private byte[] loadSpectrum(PageKey key, Page page) throws Exception {
+        String symbol = key.symbol();
+        long startTime = key.getEffectiveStartTime();
+        long endTime = key.getEffectiveEndTime();
+
+        // The timeframe field carries the bucket mode for spectrum pages (e.g., "raw" or "taker_order").
+        // If null or empty, defaults to "raw".
+        String bucketMode = key.timeframe();
+        if (bucketMode == null || bucketMode.isEmpty()) {
+            bucketMode = "raw";
+        }
+
+        List<SpectrumWindow> windows = spectrumStore.getSpectrum(symbol, startTime, endTime, bucketMode);
+        page.setRecordCount(windows.size());
+        LOG.info("loadSpectrum: {} loaded {} windows (mode={})", symbol, windows.size(), bucketMode);
+        return msgpackMapper.writeValueAsBytes(windows);
+    }
+
+    /**
+     * Re-trigger loading of derived pages (spectrum, profiles) for a symbol.
+     * Called after aggTrades complete or after background backfill completes.
+     *
+     * @param dataTypeFilter if non-null, only re-trigger pages of this type ("spectrum" or "profile")
+     */
+    private void retriggerDerivedPages(String symbol, String dataTypeFilter) {
+        for (var entry : pages.entrySet()) {
+            Page page = entry.getValue();
+            PageKey pageKey = page.getKey();
+
+            if (!pageKey.symbol().equalsIgnoreCase(symbol)) continue;
+            if (page.getState() != PageState.READY) continue;
+
+            boolean isTarget = false;
+            if (dataTypeFilter == null) {
+                // Re-trigger both spectrum and profile pages with 0 records
+                isTarget = (pageKey.isSpectrum() || pageKey.isProfile()) && page.getRecordCount() == 0;
+            } else if ("spectrum".equals(dataTypeFilter)) {
+                isTarget = pageKey.isSpectrum();
+            } else if ("profile".equals(dataTypeFilter)) {
+                isTarget = pageKey.isProfile();
+            }
+
+            if (isTarget) {
+                LOG.info("Re-triggering page after backfill: {}", pageKey.toKeyString());
+                loadExecutor.submit(() -> loadPage(page));
+            }
+        }
+    }
+
+    // ========== BackfillCompletionCallback ==========
+
+    @Override
+    public void onProfileBackfillComplete(String symbol, String marketType, long start, long end) {
+        LOG.info("Profile backfill complete for {} [{}] [{} - {}], re-triggering profile pages",
+            symbol, marketType, start, end);
+        retriggerDerivedPages(symbol, "profile");
+    }
+
+    @Override
+    public void onSpectrumBackfillComplete(String symbol, long start, long end) {
+        LOG.info("Spectrum backfill complete for {} [{} - {}], re-triggering spectrum pages",
+            symbol, start, end);
+        retriggerDerivedPages(symbol, "spectrum");
+    }
+
     private byte[] loadProfiles(PageKey key, Page page) throws Exception {
         long startTime = key.getEffectiveStartTime();
         long endTime = key.getEffectiveEndTime();
         String timeframe = key.timeframe() != null ? key.timeframe() : "1h";
+        String marketType = key.marketType() != null ? key.marketType() : "perp";
 
-        // Check coverage and compute if needed
-        var coverage = dataStore.forSymbol(key.symbol()).coverageFor(DataStoreType.VOLUME_PROFILES);
-        var gaps = coverage.findGaps("volume_profiles", "", startTime, endTime);
-
-        if (!gaps.isEmpty() && profileComputer != null) {
-            LOG.info("loadProfiles: computing {} gap(s) for {} {} [{}-{}]", gaps.size(), key.symbol(), timeframe, startTime, endTime);
-            for (long[] gap : gaps) {
-                profileComputer.compute(key.symbol(), gap[0], gap[1]);
-                coverage.addCoverage("volume_profiles", "", gap[0], gap[1], true);
-            }
+        // Delegate coverage gap detection and computation to ProfileStore
+        if (profileStore != null) {
+            profileStore.ensureCoverage(key.symbol(), marketType, startTime, endTime);
         }
 
-        var profiles = dataStore.getProfiles(key.symbol(), timeframe, startTime, endTime);
+        var profiles = dataStore.getProfiles(key.symbol(), marketType, timeframe, startTime, endTime);
         page.setRecordCount(profiles.size());
-        LOG.info("loadProfiles: loaded {} {} profiles for {}", profiles.size(), timeframe, key.symbol());
+        LOG.info("loadProfiles: loaded {} {} profiles for {} [{}]", profiles.size(), timeframe, key.symbol(), marketType);
         return msgpackMapper.writeValueAsBytes(profiles);
     }
 
     /**
-     * Set the VolumeProfileComputer for on-demand profile computation.
+     * Set the ProfileStore for on-demand profile coverage.
      */
-    public void setProfileComputer(com.tradery.dataservice.profile.VolumeProfileComputer computer) {
-        this.profileComputer = computer;
+    public void setProfileStore(ProfileStore store) {
+        this.profileStore = store;
+    }
+
+    /**
+     * Set the SpectrumStore (singleton, shared with SpectrumHandler).
+     */
+    public void setSpectrumStore(SpectrumStore store) {
+        this.spectrumStore = store;
     }
 
     /**

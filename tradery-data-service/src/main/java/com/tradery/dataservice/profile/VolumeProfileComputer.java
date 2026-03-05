@@ -1,6 +1,7 @@
 package com.tradery.dataservice.profile;
 
 import com.tradery.core.model.AggTrade;
+import com.tradery.core.model.DataMarketType;
 import com.tradery.dataservice.data.sqlite.SqliteDataStore;
 import com.tradery.dataservice.data.sqlite.dao.VolumeProfileDao;
 import com.tradery.dataservice.data.sqlite.dao.VolumeProfileDao.ProfileRow;
@@ -42,45 +43,55 @@ public class VolumeProfileComputer {
     }
 
     /**
-     * Compute volume profiles for a symbol and time range.
-     * Produces 10s base profiles from aggTrades, then aggregates up the pyramid.
+     * Compute volume profiles for a symbol and time range (defaults to "perp" market type).
      */
     public void compute(String symbol, long startTime, long endTime) throws IOException {
+        compute(symbol, "perp", startTime, endTime);
+    }
+
+    /**
+     * Compute volume profiles for a symbol, market type, and time range.
+     * Produces 10s base profiles from aggTrades, then aggregates up the pyramid.
+     */
+    public void compute(String symbol, String marketType, long startTime, long endTime) throws IOException {
         double tickSize = tickSizeResolver.getTickSize(symbol);
         if (tickSize <= 0) {
             log.warn("Invalid tick size {} for {}, skipping profile computation", tickSize, symbol);
             return;
         }
 
-        log.info("Computing volume profiles for {} [{} - {}] tickSize={}", symbol, startTime, endTime, tickSize);
+        log.info("Computing volume profiles for {} [{}] [{} - {}] tickSize={}", symbol, marketType, startTime, endTime, tickSize);
 
-        // Phase 1: Stream aggTrades and produce 10s profiles
-        long baseProfileCount = computeBaseProfiles(symbol, startTime, endTime, tickSize);
-        log.info("Produced {} base (10s) profiles for {}", baseProfileCount, symbol);
+        // Phase 1: Stream aggTrades (filtered by market type) and produce 10s profiles
+        long baseProfileCount = computeBaseProfiles(symbol, marketType, startTime, endTime, tickSize);
+        log.info("Produced {} base (10s) profiles for {} [{}]", baseProfileCount, symbol, marketType);
 
         // Phase 2: Aggregate up the pyramid
         for (PyramidLevel level : PYRAMID) {
             long parentStart = alignToWindow(startTime, level.parentIntervalMs);
             long parentEnd = endTime;
-            int count = aggregateUp(symbol, level.childTimeframe, level.parentTimeframe,
+            int count = aggregateUp(symbol, marketType, level.childTimeframe, level.parentTimeframe,
                 level.parentIntervalMs, parentStart, parentEnd, tickSize);
-            log.info("Aggregated {} {} profiles from {} for {}", count, level.parentTimeframe, level.childTimeframe, symbol);
+            log.info("Aggregated {} {} profiles from {} for {} [{}]", count, level.parentTimeframe, level.childTimeframe, symbol, marketType);
         }
 
-        log.info("Volume profile computation complete for {} [{} - {}]", symbol, startTime, endTime);
+        log.info("Volume profile computation complete for {} [{}] [{} - {}]", symbol, marketType, startTime, endTime);
     }
 
     /**
-     * Compute base 10-second profiles from aggTrades.
+     * Compute base 10-second profiles from aggTrades, filtered by market type.
      */
-    private long computeBaseProfiles(String symbol, long startTime, long endTime, double tickSize) throws IOException {
+    private long computeBaseProfiles(String symbol, String marketType, long startTime, long endTime, double tickSize) throws IOException {
         // Accumulator for current 10s window
         TreeMap<Integer, double[]> currentWindow = new TreeMap<>();
         long[] currentWindowStart = {alignToWindow(startTime, TEN_SECONDS_MS)};
         List<ProfileRow> pendingRows = new ArrayList<>();
         long[] totalRows = {0};
 
-        dataStore.streamAggTrades(symbol, startTime, endTime, CHUNK_SIZE, chunk -> {
+        // Resolve market type for aggTrades filtering
+        DataMarketType dataMarketType = DataMarketType.fromConfigKey(marketType);
+
+        dataStore.streamAggTrades(symbol, dataMarketType, startTime, endTime, CHUNK_SIZE, chunk -> {
             for (AggTrade trade : chunk) {
                 long windowStart = alignToWindow(trade.timestamp(), TEN_SECONDS_MS);
 
@@ -88,7 +99,7 @@ public class VolumeProfileComputer {
                 while (currentWindowStart[0] < windowStart) {
                     if (!currentWindow.isEmpty()) {
                         try {
-                            pendingRows.add(createProfileRow("10s", currentWindowStart[0], tickSize, currentWindow));
+                            pendingRows.add(createProfileRow("10s", marketType, currentWindowStart[0], tickSize, currentWindow));
                         } catch (IOException e) {
                             throw new RuntimeException("Failed to serialize profile", e);
                         }
@@ -125,7 +136,7 @@ public class VolumeProfileComputer {
         // Flush remaining window
         if (!currentWindow.isEmpty()) {
             try {
-                pendingRows.add(createProfileRow("10s", currentWindowStart[0], tickSize, currentWindow));
+                pendingRows.add(createProfileRow("10s", marketType, currentWindowStart[0], tickSize, currentWindow));
             } catch (IOException e) {
                 throw new IOException("Failed to serialize final profile", e);
             }
@@ -144,7 +155,7 @@ public class VolumeProfileComputer {
      * Aggregate child-level profiles into parent-level profiles.
      * E.g., merge 6 × 10s profiles into each 1m profile.
      */
-    private int aggregateUp(String symbol, String childTimeframe, String parentTimeframe,
+    private int aggregateUp(String symbol, String marketType, String childTimeframe, String parentTimeframe,
                             long parentIntervalMs, long startTime, long endTime, double tickSize) throws IOException {
         List<ProfileRow> parentRows = new ArrayList<>();
         long windowStart = alignToWindow(startTime, parentIntervalMs);
@@ -153,7 +164,7 @@ public class VolumeProfileComputer {
             long windowEnd = windowStart + parentIntervalMs - 1;
 
             // Query all child profiles within this parent window
-            List<ProfileRow> children = dataStore.getProfiles(symbol, childTimeframe, windowStart, windowEnd);
+            List<ProfileRow> children = dataStore.getProfiles(symbol, marketType, childTimeframe, windowStart, windowEnd);
 
             if (!children.isEmpty()) {
                 // Merge child tick maps
@@ -163,7 +174,7 @@ public class VolumeProfileComputer {
                     ProfileSerializer.mergeInto(merged, childMap);
                 }
 
-                parentRows.add(createProfileRow(parentTimeframe, windowStart, tickSize, merged));
+                parentRows.add(createProfileRow(parentTimeframe, marketType, windowStart, tickSize, merged));
 
                 if (parentRows.size() >= FLUSH_BATCH_SIZE) {
                     dataStore.saveProfiles(symbol, parentRows);
@@ -181,7 +192,7 @@ public class VolumeProfileComputer {
         return parentRows.size();
     }
 
-    private ProfileRow createProfileRow(String timeframe, long windowStart, double tickSize,
+    private ProfileRow createProfileRow(String timeframe, String marketType, long windowStart, double tickSize,
                                         Map<Integer, double[]> tickMap) throws IOException {
         double totalBuy = 0, totalSell = 0;
         for (double[] vols : tickMap.values()) {
@@ -189,7 +200,7 @@ public class VolumeProfileComputer {
             totalSell += vols[1];
         }
         byte[] data = ProfileSerializer.serialize(tickMap);
-        return new ProfileRow(timeframe, windowStart, tickSize, totalBuy, totalSell, tickMap.size(), data);
+        return new ProfileRow(timeframe, marketType, windowStart, tickSize, totalBuy, totalSell, tickMap.size(), data);
     }
 
     /**

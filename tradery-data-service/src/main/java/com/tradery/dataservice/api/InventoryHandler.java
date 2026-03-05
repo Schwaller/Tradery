@@ -1,6 +1,5 @@
 package com.tradery.dataservice.api;
 
-import com.tradery.core.model.Exchange;
 import com.tradery.core.model.FearGreedIndex;
 import com.tradery.dataservice.data.DataConfig;
 import com.tradery.dataservice.data.sqlite.SqliteDataStore;
@@ -155,6 +154,7 @@ public class InventoryHandler {
                     case "funding" -> deleteFunding(symbol);
                     case "openInterest" -> deleteOpenInterest(symbol);
                     case "premiumIndex" -> deletePremiumIndex(symbol, ctx.queryParam("interval"));
+                    case "spectrum" -> deleteSpectrum(symbol);
                     default -> {
                         ctx.status(400).json(new ErrorResponse("Unknown dataType: " + dataType));
                         yield -1;
@@ -186,6 +186,7 @@ public class InventoryHandler {
         FundingInventory funding = null;
         OpenInterestInventory openInterest = null;
         List<PremiumIndexInventory> premiumIndex = new ArrayList<>();
+        SpectrumInventory spectrum = null;
 
         for (CoverageDao.CoverageEntry entry : allCoverage) {
             String dt = entry.dataType();
@@ -209,7 +210,7 @@ public class InventoryHandler {
                 candles.add(new CandleInventory(timeframe, marketType, "binance", start, end, estimatedCount));
 
             } else if (dt.startsWith("candles:")) {
-                // SqliteMigrator format: data_type="candles:perp", sub_key="1h"
+                // Format: data_type="candles:perp", sub_key="1h"
                 String marketType = dt.substring("candles:".length());
                 String timeframe = subKey;
                 int estimatedCount = estimateCandleCount(start, end, timeframe);
@@ -242,25 +243,34 @@ public class InventoryHandler {
                 String interval = subKey.contains(":") ? subKey.split(":", 2)[0] : subKey;
                 int estimatedCount = estimateCandleCount(start, end, interval);
                 premiumIndex.add(new PremiumIndexInventory(interval, start, end, estimatedCount));
+
+            } else if (dt.equals("spectrum")) {
+                long estimatedCount = (end - start) / 10_000L; // ~1 row per 10s per active bucket
+                spectrum = new SpectrumInventory(start, end, estimatedCount);
             }
         }
 
         // Volume profiles (query DAO directly — not in coverage table)
+        // Scan available qualifier files on disk (e.g., volume_profiles_perp.db, volume_profiles_spot.db)
         List<VolumeProfileInventory> volumeProfiles = new ArrayList<>();
         try {
-            VolumeProfileDao vpDao = data.volumeProfiles();
-            for (String tf : vpDao.getAvailableTimeframes()) {
-                long count = vpDao.countAll(tf);
-                long[] range = vpDao.getTimeRange(tf);
-                if (count > 0 && range != null) {
-                    volumeProfiles.add(new VolumeProfileInventory(tf, range[0], range[1], count));
+            List<String> vpQualifiers = dataStore.getAvailableQualifiers(symbol, com.tradery.dataservice.data.sqlite.DataStoreType.VOLUME_PROFILES);
+            if (vpQualifiers.isEmpty()) vpQualifiers = List.of("perp"); // fallback
+            for (String marketType : vpQualifiers) {
+                VolumeProfileDao vpDao = data.profilesDao(marketType);
+                for (String tf : vpDao.getAvailableTimeframes()) {
+                    long count = vpDao.countAll(tf);
+                    long[] range = vpDao.getTimeRange(tf);
+                    if (count > 0 && range != null) {
+                        volumeProfiles.add(new VolumeProfileInventory(tf, marketType, range[0], range[1], count));
+                    }
                 }
             }
         } catch (Exception e) {
             LOG.warn("Failed to get volume profile inventory for {}: {}", symbol, e.getMessage());
         }
 
-        return new SymbolInventory(symbol, candles, aggTrades, funding, openInterest, premiumIndex, volumeProfiles);
+        return new SymbolInventory(symbol, candles, aggTrades, funding, openInterest, premiumIndex, volumeProfiles, spectrum);
     }
 
     private int estimateCandleCount(long startMs, long endMs, String timeframe) {
@@ -329,33 +339,56 @@ public class InventoryHandler {
     // ========== Delete operations ==========
 
     private long deleteCandles(String symbol, String timeframe, String marketType) throws Exception {
-        CandleDao dao = dataStore.forSymbol(symbol).candles();
         if (timeframe != null && marketType != null) {
-            int count = dao.count(timeframe, marketType);
-            dao.deleteAll(timeframe, marketType);
+            CandleDao dao = dataStore.forSymbol(symbol).candlesDao(marketType);
+            int count = dao.count(timeframe);
+            dao.deleteAll(timeframe);
             return count;
         } else {
-            // Delete all candles for symbol
-            int count = 0;
-            for (String mt : dao.getAvailableMarketTypes()) {
-                for (String tf : dao.getAvailableTimeframes(mt)) {
-                    count += dao.count(tf, mt);
+            // Delete all candles across all market type DBs
+            long count = 0;
+            List<String> qualifiers = dataStore.getAvailableQualifiers(symbol, com.tradery.dataservice.data.sqlite.DataStoreType.CANDLES);
+            if (qualifiers.isEmpty()) qualifiers = List.of("perp");
+            for (String mt : qualifiers) {
+                CandleDao dao = dataStore.forSymbol(symbol).candlesDao(mt);
+                for (String tf : dao.getAvailableTimeframes()) {
+                    count += dao.count(tf);
                 }
+                dao.deleteAll();
             }
-            dao.deleteAll();
             return count;
         }
     }
 
     private long deleteAggTrades(String symbol, String exchange) throws Exception {
-        AggTradesDao dao = dataStore.forSymbol(symbol).aggTrades();
         if (exchange != null) {
-            Exchange ex = Exchange.fromConfigKey(exchange);
-            if (ex == null) return 0;
-            return dao.deleteByExchange(ex);
+            // Delete all market type DBs for this exchange
+            long count = 0;
+            List<String> qualifiers = dataStore.getAvailableQualifiers(symbol, com.tradery.dataservice.data.sqlite.DataStoreType.AGG_TRADES);
+            for (String q : qualifiers) {
+                // qualifiers like "binance_perp", "bybit_perp" — filter by exchange prefix
+                if (q.startsWith(exchange + "_")) {
+                    AggTradesDao dao = dataStore.forSymbol(symbol).aggTradesDao(
+                        q.substring(0, q.indexOf('_')),
+                        q.substring(q.indexOf('_') + 1));
+                    count += dao.count();
+                    dao.deleteAll();
+                }
+            }
+            return count;
         } else {
-            long count = dao.count();
-            dao.deleteAll();
+            // Delete all aggTrades DBs for this symbol
+            long count = 0;
+            List<String> qualifiers = dataStore.getAvailableQualifiers(symbol, com.tradery.dataservice.data.sqlite.DataStoreType.AGG_TRADES);
+            if (qualifiers.isEmpty()) qualifiers = List.of("binance_perp");
+            for (String q : qualifiers) {
+                int sep = q.indexOf('_');
+                String ex = sep > 0 ? q.substring(0, sep) : "binance";
+                String mt = sep > 0 ? q.substring(sep + 1) : q;
+                AggTradesDao dao = dataStore.forSymbol(symbol).aggTradesDao(ex, mt);
+                count += dao.count();
+                dao.deleteAll();
+            }
             return count;
         }
     }
@@ -390,6 +423,18 @@ public class InventoryHandler {
         }
     }
 
+    private long deleteSpectrum(String symbol) throws Exception {
+        long count = 0;
+        List<String> qualifiers = dataStore.getAvailableQualifiers(symbol, com.tradery.dataservice.data.sqlite.DataStoreType.SPECTRUM);
+        if (qualifiers.isEmpty()) qualifiers = List.of("perp");
+        for (String mt : qualifiers) {
+            SpectrumDao dao = dataStore.forSymbol(symbol).spectrumDao(mt);
+            count += dao.count();
+            dao.deleteAll();
+        }
+        return count;
+    }
+
     private long deleteFearGreed() throws Exception {
         FearGreedDao dao = getFearGreedDao();
         if (dao == null) return 0;
@@ -413,7 +458,8 @@ public class InventoryHandler {
         FundingInventory funding,
         OpenInterestInventory openInterest,
         List<PremiumIndexInventory> premiumIndex,
-        List<VolumeProfileInventory> volumeProfiles
+        List<VolumeProfileInventory> volumeProfiles,
+        SpectrumInventory spectrum
     ) {}
 
     public record CandleInventory(
@@ -434,7 +480,9 @@ public class InventoryHandler {
 
     public record FearGreedInventory(long startTime, long endTime, int recordCount, int latestValue) {}
 
-    public record VolumeProfileInventory(String timeframe, long startTime, long endTime, long recordCount) {}
+    public record VolumeProfileInventory(String timeframe, String marketType, long startTime, long endTime, long recordCount) {}
+
+    public record SpectrumInventory(long startTime, long endTime, long recordCount) {}
 
     public record DiskUsageResponse(long totalBytes, Map<String, Long> bySymbol, Map<String, Long> byDataType, long volumeFreeBytes, long volumeTotalBytes) {}
 

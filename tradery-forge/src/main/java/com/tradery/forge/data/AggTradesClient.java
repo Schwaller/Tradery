@@ -3,6 +3,8 @@ package com.tradery.forge.data;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tradery.core.model.AggTrade;
+import com.tradery.core.model.DataMarketType;
+import com.tradery.core.model.Exchange;
 import com.tradery.core.model.FetchProgress;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
@@ -23,8 +25,16 @@ import java.util.function.Consumer;
 public class AggTradesClient {
 
     private static final Logger log = LoggerFactory.getLogger(AggTradesClient.class);
-    private static final String BASE_URL = "https://api.binance.com/api/v3";
+    private static final String SPOT_BASE_URL = "https://api.binance.com/api/v3";
+    private static final String FUTURES_BASE_URL = "https://fapi.binance.com/fapi/v1";
     private static final int MAX_TRADES_PER_REQUEST = 1000;
+
+    /**
+     * Get the correct API base URL for a market type.
+     */
+    private static String getBaseUrl(String marketType) {
+        return "spot".equalsIgnoreCase(marketType) ? SPOT_BASE_URL : FUTURES_BASE_URL;
+    }
 
     private final OkHttpClient client;
     private final ObjectMapper mapper;
@@ -35,18 +45,31 @@ public class AggTradesClient {
     }
 
     /**
-     * Fetch aggregated trades from Binance.
-     *
-     * @param symbol    Trading pair (e.g., "BTCUSDT")
-     * @param startTime Start time in milliseconds
-     * @param endTime   End time in milliseconds
-     * @param limit     Max number of trades (max 1000)
-     * @return List of aggregated trades
+     * Fetch aggregated trades from Binance (defaults to futures/perp).
      */
     public List<AggTrade> fetchAggTrades(String symbol, long startTime, long endTime, int limit)
             throws IOException {
+        return fetchAggTrades(symbol, startTime, endTime, limit, "perp");
+    }
 
-        StringBuilder url = new StringBuilder(BASE_URL + "/aggTrades")
+    /**
+     * Fetch aggregated trades from Binance.
+     *
+     * @param symbol     Trading pair (e.g., "BTCUSDT")
+     * @param startTime  Start time in milliseconds
+     * @param endTime    End time in milliseconds
+     * @param limit      Max number of trades (max 1000)
+     * @param marketType "spot" or "perp" (selects API endpoint)
+     * @return List of aggregated trades
+     */
+    public List<AggTrade> fetchAggTrades(String symbol, long startTime, long endTime, int limit,
+                                          String marketType) throws IOException {
+
+        String baseUrl = getBaseUrl(marketType);
+        DataMarketType dataMarketType = "spot".equalsIgnoreCase(marketType)
+            ? DataMarketType.SPOT : DataMarketType.FUTURES_PERP;
+
+        StringBuilder url = new StringBuilder(baseUrl + "/aggTrades")
             .append("?symbol=").append(symbol)
             .append("&limit=").append(Math.min(limit, MAX_TRADES_PER_REQUEST));
 
@@ -64,7 +87,7 @@ public class AggTradesClient {
 
         try (Response response = client.newCall(request).execute()) {
             if (!response.isSuccessful()) {
-                throw new IOException("Binance API error: " + response.code() + " " + response.message());
+                throw new IOException("Binance " + marketType + " API error: " + response.code() + " " + response.message());
             }
 
             String body = response.body().string();
@@ -82,7 +105,9 @@ public class AggTradesClient {
                 long timestamp = trade.get("T").asLong();
                 boolean isBuyerMaker = trade.get("m").asBoolean();
 
-                trades.add(new AggTrade(aggTradeId, price, quantity, firstTradeId, lastTradeId, timestamp, isBuyerMaker));
+                trades.add(AggTrade.withExchange(
+                    aggTradeId, price, quantity, firstTradeId, lastTradeId, timestamp, isBuyerMaker,
+                    Exchange.BINANCE, dataMarketType, null));
             }
 
             return trades;
@@ -90,19 +115,28 @@ public class AggTradesClient {
     }
 
     /**
+     * Fetch all aggregated trades (defaults to futures/perp).
+     */
+    public List<AggTrade> fetchAllAggTrades(String symbol, long startTime, long endTime,
+                                             AtomicBoolean cancelled, Consumer<FetchProgress> onProgress)
+            throws IOException {
+        return fetchAllAggTrades(symbol, startTime, endTime, cancelled, onProgress, "perp");
+    }
+
+    /**
      * Fetch all aggregated trades between start and end time.
-     * Handles pagination automatically using fromId.
      *
      * @param symbol     Trading pair (e.g., "BTCUSDT")
      * @param startTime  Start time in milliseconds
      * @param endTime    End time in milliseconds
      * @param cancelled  Optional AtomicBoolean to signal cancellation
      * @param onProgress Optional callback for progress updates
+     * @param marketType "spot" or "perp" (selects API endpoint)
      * @return List of aggregated trades (may be partial if cancelled)
      */
     public List<AggTrade> fetchAllAggTrades(String symbol, long startTime, long endTime,
-                                             AtomicBoolean cancelled, Consumer<FetchProgress> onProgress)
-            throws IOException {
+                                             AtomicBoolean cancelled, Consumer<FetchProgress> onProgress,
+                                             String marketType) throws IOException {
 
         List<AggTrade> allTrades = new ArrayList<>();
         long currentStart = startTime;
@@ -112,7 +146,7 @@ public class AggTradesClient {
         long days = Math.max(1, (endTime - startTime) / (24 * 60 * 60 * 1000));
         long estimatedTotal = days * estimatedTradesPerDay;
 
-        log.info("Fetching {} aggTrades from Binance...", symbol);
+        log.info("Fetching {} {} aggTrades from Binance ({})...", symbol, marketType, getBaseUrl(marketType));
 
         // Report starting
         if (onProgress != null) {
@@ -129,7 +163,7 @@ public class AggTradesClient {
                 return allTrades;
             }
 
-            List<AggTrade> batch = fetchAggTrades(symbol, currentStart, endTime, MAX_TRADES_PER_REQUEST);
+            List<AggTrade> batch = fetchAggTrades(symbol, currentStart, endTime, MAX_TRADES_PER_REQUEST, marketType);
 
             if (batch.isEmpty()) {
                 break;
@@ -149,7 +183,7 @@ public class AggTradesClient {
             // Report progress
             if (onProgress != null) {
                 int percent = (int) Math.min(99, (allTrades.size() * 100) / estimatedTotal);
-                String msg = "Fetching " + symbol + " trades: " + formatCount(allTrades.size()) + "...";
+                String msg = "Fetching " + symbol + " " + marketType + " trades: " + formatCount(allTrades.size()) + "...";
                 onProgress.accept(new FetchProgress(allTrades.size(), (int) estimatedTotal, msg));
             }
 

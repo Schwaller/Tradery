@@ -34,16 +34,25 @@ public class SqliteConnection {
     }
 
     /**
-     * Get or create a connection for a symbol and data store type.
+     * Get or create a connection for a symbol, data store type, and optional qualifier.
+     * Qualifier encodes the split dimension (e.g., "binance_perp" for aggTrades, "perp" for candles).
+     * DB file: {dataDir}/{symbol}/{type.qualifiedFilename(qualifier)}
+     */
+    public static SqliteConnection forSymbolAndType(String symbol, DataStoreType type, String qualifier) {
+        String key = symbol + ":" + type.name() + (qualifier != null && !qualifier.isEmpty() ? ":" + qualifier : "");
+        return instances.computeIfAbsent(key, k -> {
+            File dataDir = DataConfig.getInstance().getDataDir();
+            File dbFile = new File(new File(dataDir, symbol), type.qualifiedFilename(qualifier));
+            return new SqliteConnection(symbol, dbFile);
+        });
+    }
+
+    /**
+     * Get or create a connection for a symbol and data store type (no qualifier — for unsplit types).
      * DB file: {dataDir}/{symbol}/{type.filename}
      */
     public static SqliteConnection forSymbolAndType(String symbol, DataStoreType type) {
-        String key = symbol + ":" + type.name();
-        return instances.computeIfAbsent(key, k -> {
-            File dataDir = DataConfig.getInstance().getDataDir();
-            File dbFile = new File(new File(dataDir, symbol), type.getFilename());
-            return new SqliteConnection(symbol, dbFile);
-        });
+        return forSymbolAndType(symbol, type, null);
     }
 
     /**

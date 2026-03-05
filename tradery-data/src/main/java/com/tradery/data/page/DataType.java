@@ -45,7 +45,13 @@ public enum DataType {
      * Precomputed volume profile data (pyramid: 10s → 1m → 5m → 30m → 1h → 4h → 1d).
      * Requires timeframe to select pyramid level.
      */
-    VOLUME_PROFILE("Profile");
+    VOLUME_PROFILE("Profile"),
+
+    /**
+     * Trade size spectrum data (10s histograms of trade notional by log10 bucket).
+     * Does not require timeframe - base resolution is fixed at 10s, merged at query time.
+     */
+    SPECTRUM("Spectrum");
 
     private final String displayName;
 
@@ -86,6 +92,7 @@ public enum DataType {
             case AGG_TRADES -> "AGGTRADES";
             case FEAR_GREED -> "FEAR_GREED";
             case VOLUME_PROFILE -> "PROFILE";
+            case SPECTRUM -> "SPECTRUM";
         };
     }
 
@@ -101,6 +108,7 @@ public enum DataType {
             case "AGGTRADES", "AGG_TRADES" -> AGG_TRADES;
             case "FEAR_GREED" -> FEAR_GREED;
             case "PROFILE", "VOLUME_PROFILE" -> VOLUME_PROFILE;
+            case "SPECTRUM" -> SPECTRUM;
             default -> throw new IllegalArgumentException("Unknown data type: " + wire);
         };
     }

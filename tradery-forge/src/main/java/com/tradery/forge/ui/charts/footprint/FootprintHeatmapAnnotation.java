@@ -22,18 +22,81 @@ public class FootprintHeatmapAnnotation extends AbstractXYAnnotation {
 
     private final List<Footprint> footprints;
     private final FootprintHeatmapConfig config;
-    private final double maxVolume;  // For normalization
+    private final double globalMaxVolume;     // Max total volume across all candles
+    private final double[] perCandleMaxVolume; // Max total volume per candle
+
+    // Per-side max volumes for SPLIT mode normalization
+    private final double globalMaxBuyVolume;
+    private final double globalMaxSellVolume;
+    private final double[] perCandleMaxBuyVolume;
+    private final double[] perCandleMaxSellVolume;
 
     public FootprintHeatmapAnnotation(List<Footprint> footprints, FootprintHeatmapConfig config) {
         this.footprints = footprints;
         this.config = config;
 
-        // Calculate max volume for normalization
-        this.maxVolume = footprints.stream()
+        // Calculate global max volume for normalization
+        this.globalMaxVolume = footprints.stream()
             .flatMap(f -> f.buckets().stream())
             .mapToDouble(FootprintBucket::totalVolume)
             .max()
             .orElse(1.0);
+
+        // Calculate per-side global max for SPLIT mode
+        this.globalMaxBuyVolume = footprints.stream()
+            .flatMap(f -> f.buckets().stream())
+            .mapToDouble(FootprintBucket::totalBuyVolume)
+            .max()
+            .orElse(1.0);
+        this.globalMaxSellVolume = footprints.stream()
+            .flatMap(f -> f.buckets().stream())
+            .mapToDouble(FootprintBucket::totalSellVolume)
+            .max()
+            .orElse(1.0);
+
+        // Calculate per-candle max volumes
+        this.perCandleMaxVolume = new double[footprints.size()];
+        this.perCandleMaxBuyVolume = new double[footprints.size()];
+        this.perCandleMaxSellVolume = new double[footprints.size()];
+        for (int i = 0; i < footprints.size(); i++) {
+            var buckets = footprints.get(i).buckets();
+            this.perCandleMaxVolume[i] = buckets.stream()
+                .mapToDouble(FootprintBucket::totalVolume).max().orElse(1.0);
+            this.perCandleMaxBuyVolume[i] = buckets.stream()
+                .mapToDouble(FootprintBucket::totalBuyVolume).max().orElse(1.0);
+            this.perCandleMaxSellVolume[i] = buckets.stream()
+                .mapToDouble(FootprintBucket::totalSellVolume).max().orElse(1.0);
+        }
+    }
+
+    /**
+     * Get the max volume to use for normalization based on config.
+     */
+    private double getMaxVolume(int footprintIndex) {
+        if (config.isGlobalVolumeNorm()) {
+            return globalMaxVolume;
+        }
+        return perCandleMaxVolume[footprintIndex];
+    }
+
+    /**
+     * Get per-side max buy volume for SPLIT mode normalization.
+     */
+    private double getMaxBuyVolume(int footprintIndex) {
+        if (config.isGlobalVolumeNorm()) {
+            return globalMaxBuyVolume;
+        }
+        return perCandleMaxBuyVolume[footprintIndex];
+    }
+
+    /**
+     * Get per-side max sell volume for SPLIT mode normalization.
+     */
+    private double getMaxSellVolume(int footprintIndex) {
+        if (config.isGlobalVolumeNorm()) {
+            return globalMaxSellVolume;
+        }
+        return perCandleMaxSellVolume[footprintIndex];
     }
 
     @Override
@@ -67,8 +130,8 @@ public class FootprintHeatmapAnnotation extends AbstractXYAnnotation {
             drawZoomHint(g2, dataArea);
         } else {
             // Draw footprints
-            for (Footprint footprint : footprints) {
-                drawFootprint(g2, plot, dataArea, domainAxis, rangeAxis, footprint, halfIntervalMs);
+            for (int i = 0; i < footprints.size(); i++) {
+                drawFootprint(g2, plot, dataArea, domainAxis, rangeAxis, footprints.get(i), halfIntervalMs, i);
             }
         }
 
@@ -110,7 +173,7 @@ public class FootprintHeatmapAnnotation extends AbstractXYAnnotation {
 
     private void drawFootprint(Graphics2D g2, XYPlot plot, Rectangle2D dataArea,
                                 ValueAxis domainAxis, ValueAxis rangeAxis,
-                                Footprint footprint, double halfIntervalMs) {
+                                Footprint footprint, double halfIntervalMs, int fpIndex) {
 
         // Candle timestamp is the START of the candle, so box should span from timestamp to timestamp + interval
         // Using timestamp as left edge and timestamp + 2*halfIntervalMs as right edge
@@ -127,6 +190,8 @@ public class FootprintHeatmapAnnotation extends AbstractXYAnnotation {
             return; // Only skip if truly invisible
         }
 
+        double maxVol = getMaxVolume(fpIndex);
+
         // Draw value area background first
         if (config.isShowValueArea()) {
             drawValueArea(g2, dataArea, rangeAxis, leftX, rightX, footprint);
@@ -134,7 +199,7 @@ public class FootprintHeatmapAnnotation extends AbstractXYAnnotation {
 
         // Draw buckets
         for (FootprintBucket bucket : footprint.buckets()) {
-            drawBucket(g2, dataArea, rangeAxis, leftX, candleWidth, footprint, bucket);
+            drawBucket(g2, dataArea, rangeAxis, leftX, candleWidth, footprint, bucket, maxVol, fpIndex);
         }
 
         // Draw POC buy/sell bar
@@ -158,7 +223,8 @@ public class FootprintHeatmapAnnotation extends AbstractXYAnnotation {
     }
 
     private void drawBucket(Graphics2D g2, Rectangle2D dataArea, ValueAxis rangeAxis,
-                             double leftX, double candleWidth, Footprint footprint, FootprintBucket bucket) {
+                             double leftX, double candleWidth, Footprint footprint, FootprintBucket bucket,
+                             double maxVol, int fpIndex) {
 
         double tickSize = footprint.tickSize();
         double priceLevel = bucket.priceLevel();
@@ -169,14 +235,17 @@ public class FootprintHeatmapAnnotation extends AbstractXYAnnotation {
         int x = (int) leftX;
         int y = (int) Math.min(topY, bottomY);
         int width = (int) candleWidth;
-        int height = Math.max(1, Math.abs((int) (bottomY - topY)));
+        int rawHeight = Math.max(1, Math.abs((int) (bottomY - topY)));
+        // Leave 1px gap between buckets for visual separation
+        int height = rawHeight > 2 ? rawHeight - 1 : rawHeight;
 
-        // Handle SPLIT mode separately
+        // Handle SPLIT mode separately — normalize each side independently
         if (config.getDisplayMode() == FootprintDisplayMode.SPLIT) {
-            drawSplitBucket(g2, x, y, width, height, bucket);
+            drawSplitBucket(g2, x, y, width, height, bucket,
+                getMaxBuyVolume(fpIndex), getMaxSellVolume(fpIndex));
         } else {
             // Get delta color based on mode
-            Color bucketColor = getBucketColor(bucket, footprint);
+            Color bucketColor = getBucketColor(bucket, footprint, maxVol);
              if (bucketColor.getAlpha() == 0) {
                 // Draw faint outline for empty buckets (debug visibility)
                 g2.setColor(new Color(80, 80, 80, 40));
@@ -200,15 +269,15 @@ public class FootprintHeatmapAnnotation extends AbstractXYAnnotation {
 
     /**
      * Draw split bucket - buy volume on left, sell volume on right.
-     * Uses thermal color ramp based on volume intensity.
+     * Uses thermal color ramp based on volume intensity, normalized per side
+     * so the hottest buy bucket and hottest sell bucket both reach full intensity.
      */
-    private void drawSplitBucket(Graphics2D g2, int x, int y, int width, int height, FootprintBucket bucket) {
+    private void drawSplitBucket(Graphics2D g2, int x, int y, int width, int height, FootprintBucket bucket,
+                                  double maxBuyVol, double maxSellVol) {
         double buyVol = bucket.totalBuyVolume();
         double sellVol = bucket.totalSellVolume();
-        double totalVol = buyVol + sellVol;
 
-        if (totalVol <= 0) {
-            // Draw faint outline for empty buckets (debug visibility)
+        if (buyVol + sellVol <= 0) {
             g2.setColor(new Color(80, 80, 80, 40));
             g2.drawRect(x, y, width, height);
             return;
@@ -216,28 +285,28 @@ public class FootprintHeatmapAnnotation extends AbstractXYAnnotation {
 
         int halfWidth = width / 2;
 
-        // Buy side (left) - thermal color ramp based on volume intensity
+        // Buy side (left) - normalized against max buy volume
         if (buyVol > 0) {
-            double buyIntensity = buyVol / maxVolume;
+            double buyIntensity = buyVol / maxBuyVol;
             Color buyColor = config.getVolumeRampColor(buyIntensity);
             g2.setColor(buyColor);
             g2.fillRect(x, y, halfWidth, height);
         }
 
-        // Sell side (right) - thermal color ramp based on volume intensity
+        // Sell side (right) - normalized against max sell volume
         if (sellVol > 0) {
-            double sellIntensity = sellVol / maxVolume;
+            double sellIntensity = sellVol / maxSellVol;
             Color sellColor = config.getVolumeRampColor(sellIntensity);
             g2.setColor(sellColor);
             g2.fillRect(x + halfWidth, y, width - halfWidth, height);
         }
     }
 
-    private Color getBucketColor(FootprintBucket bucket, Footprint footprint) {
+    private Color getBucketColor(FootprintBucket bucket, Footprint footprint, double maxVol) {
         switch (config.getDisplayMode()) {
             case DIVERGENCE -> {
                 if (bucket.hasExchangeDivergence()) {
-                    double volumeIntensity = bucket.totalVolume() / maxVolume;
+                    double volumeIntensity = bucket.totalVolume() / maxVol;
                     int alpha = (int) (100 + volumeIntensity * 100 * config.getOpacity());
                     return new Color(
                         FootprintHeatmapConfig.DIVERGENCE_COLOR.getRed(),
@@ -258,7 +327,7 @@ public class FootprintHeatmapAnnotation extends AbstractXYAnnotation {
                     return new Color(0, 0, 0, 0); // Transparent
                 }
                 double deltaPct = (exBuy - exSell) / exTotal;
-                double volumeIntensity = exTotal / maxVolume;
+                double volumeIntensity = exTotal / maxVol;
                 return config.getDeltaColor(deltaPct, volumeIntensity);
             }
 
@@ -279,7 +348,7 @@ public class FootprintHeatmapAnnotation extends AbstractXYAnnotation {
         }
 
         double deltaPct = bucket.totalDelta() / totalVol;
-        double volumeIntensity = totalVol / maxVolume;
+        double volumeIntensity = totalVol / maxVol;
         return config.getDeltaColor(deltaPct, volumeIntensity);
     }
 

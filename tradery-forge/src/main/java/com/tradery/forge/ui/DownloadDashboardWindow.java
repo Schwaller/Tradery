@@ -181,10 +181,24 @@ public class DownloadDashboardWindow extends DashboardWindow {
         // Indicator pages
         if (ctx.getIndicatorPageManager() != null) {
             for (IndicatorPageManager.IndicatorPageInfo ind : ctx.getIndicatorPageManager().getActivePages()) {
+                // Daily volume profile and footprint get their own categories
+                String category;
+                String displayName;
+                if ("DAILY_VOLUME_PROFILE".equals(ind.type())) {
+                    category = "Profiles";
+                    displayName = "Daily Volume Profile";
+                } else if ("FOOTPRINT_HEATMAP".equals(ind.type())) {
+                    category = "Footprint";
+                    displayName = "Footprint Heatmap";
+                } else {
+                    category = "Indicators";
+                    displayName = ind.type() + "(" + ind.params() + ")";
+                }
+
                 result.add(new DashboardPageInfo(
                     ind.key(),  // Use actual key for log store lookup
-                    ind.type() + "(" + ind.params() + ")",
-                    "Indicators",
+                    displayName,
+                    category,
                     mapPageState(ind.state()),
                     ind.listenerCount(),
                     0,
@@ -194,6 +208,12 @@ public class DownloadDashboardWindow extends DashboardWindow {
                 ));
             }
         }
+
+        // Footprint heatmap (standalone overlay, not through IndicatorPageManager)
+        collectFootprintStatus(ctx, result);
+
+        // Profile status (synthetic entry when active but not through indicator pages)
+        collectProfileStatus(ctx, result);
 
         return result;
     }
@@ -218,6 +238,76 @@ public class DownloadDashboardWindow extends DashboardWindow {
                 page.consumers() != null ? page.consumers() : List.of()
             ));
         }
+    }
+
+    /**
+     * Add footprint heatmap overlay status as a synthetic dashboard entry.
+     * Only adds if the overlay is active and not already represented via IndicatorPageManager.
+     */
+    private void collectFootprintStatus(ApplicationContext ctx, List<DashboardPageInfo> result) {
+        ApplicationContext.ProfileStatus status = ctx.getFootprintStatus();
+        if (status == ApplicationContext.ProfileStatus.IDLE) return;
+
+        // Check if already represented via indicator pages (avoid duplicates)
+        for (DashboardPageInfo existing : result) {
+            if ("Footprint".equals(existing.category())) return;
+        }
+
+        DashboardPageInfo.State state = switch (status) {
+            case LOADING -> DashboardPageInfo.State.LOADING;
+            case READY -> DashboardPageInfo.State.READY;
+            case ERROR -> DashboardPageInfo.State.ERROR;
+            default -> DashboardPageInfo.State.EMPTY;
+        };
+
+        int count = ctx.getFootprintCount();
+        String detail = ctx.getFootprintStatusDetail();
+        result.add(new DashboardPageInfo(
+            "footprint-heatmap-overlay",
+            "Footprint Heatmap" + (detail != null && !detail.isEmpty() ? " — " + detail : ""),
+            "Footprint",
+            state,
+            0,
+            count,
+            status == ApplicationContext.ProfileStatus.READY ? 100 : 0,
+            false,
+            List.of("FootprintHeatmapOverlay")
+        ));
+    }
+
+    /**
+     * Add profile status as a synthetic dashboard entry.
+     * Only adds if profiles are active and not already represented via IndicatorPageManager.
+     */
+    private void collectProfileStatus(ApplicationContext ctx, List<DashboardPageInfo> result) {
+        ApplicationContext.ProfileStatus status = ctx.getProfileStatus();
+        if (status == ApplicationContext.ProfileStatus.IDLE) return;
+
+        // Check if already represented via indicator pages (avoid duplicates)
+        for (DashboardPageInfo existing : result) {
+            if ("Profiles".equals(existing.category())) return;
+        }
+
+        DashboardPageInfo.State state = switch (status) {
+            case LOADING -> DashboardPageInfo.State.LOADING;
+            case READY -> DashboardPageInfo.State.READY;
+            case ERROR -> DashboardPageInfo.State.ERROR;
+            default -> DashboardPageInfo.State.EMPTY;
+        };
+
+        int days = ctx.getProfileDayCount();
+        String detail = ctx.getProfileStatusDetail();
+        result.add(new DashboardPageInfo(
+            "daily-volume-profile-status",
+            "Daily Volume Profile" + (detail != null && !detail.isEmpty() ? " — " + detail : ""),
+            "Profiles",
+            state,
+            0,
+            days,
+            status == ApplicationContext.ProfileStatus.READY ? 100 : 0,
+            false,
+            List.of("DailyVolumeProfileOverlay")
+        ));
     }
 
     private static DashboardPageInfo.State mapPageState(PageState state) {

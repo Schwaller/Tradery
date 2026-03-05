@@ -64,17 +64,40 @@ public class FootprintIndicator {
             int targetBuckets,
             Double fixedTickSize,
             Set<Exchange> exchangeFilter) {
+        return calculate(candles, aggTrades, resolution, targetBuckets, fixedTickSize, exchangeFilter, false);
+    }
+
+    /**
+     * Calculate footprints with custom settings including per-candle bucket mode.
+     *
+     * @param candles List of candles
+     * @param aggTrades List of aggregated trades
+     * @param resolution Candle timeframe
+     * @param targetBuckets Target number of buckets per candle
+     * @param fixedTickSize Optional fixed tick size (null for auto, ignored when perCandle=true)
+     * @param exchangeFilter Optional set of exchanges to include (null for all)
+     * @param perCandle When true, each candle gets its own tick size = (high-low)/targetBuckets
+     * @return FootprintResult containing all footprints
+     */
+    public static FootprintResult calculate(
+            List<Candle> candles,
+            List<AggTrade> aggTrades,
+            String resolution,
+            int targetBuckets,
+            Double fixedTickSize,
+            Set<Exchange> exchangeFilter,
+            boolean perCandle) {
 
         if (candles == null || candles.isEmpty()) {
             return new FootprintResult.Builder().build();
         }
 
-        // Calculate ATR for auto tick size
+        // Calculate global tick size (used for AUTO and FIXED modes, and as fallback for PER_CANDLE dojis)
         double atr = calculateATR(candles, 14);
-        double tickSize = fixedTickSize != null ? fixedTickSize : calculateTickSize(atr, targetBuckets);
+        double globalTickSize = fixedTickSize != null ? fixedTickSize : calculateTickSize(atr, targetBuckets);
 
-        log.debug("Footprint calculation: ATR={}, tickSize={}, candles={}, trades={}",
-            String.format("%.2f", atr), String.format("%.2f", tickSize),
+        log.debug("Footprint calculation: ATR={}, globalTickSize={}, perCandle={}, candles={}, trades={}",
+            String.format("%.2f", atr), String.format("%.2f", globalTickSize), perCandle,
             candles.size(), aggTrades != null ? aggTrades.size() : 0);
 
         // Build bar timestamp index for efficient trade assignment
@@ -90,12 +113,25 @@ public class FootprintIndicator {
         // Calculate footprint for each candle
         String symbol = null; // Will be set from trades
         FootprintResult.Builder resultBuilder = new FootprintResult.Builder()
-            .tickSize(tickSize)
+            .tickSize(globalTickSize)
             .timeframe(resolution);
 
         for (int i = 0; i < candles.size(); i++) {
             Candle candle = candles.get(i);
             List<AggTrade> barTrades = tradesByBar.getOrDefault(i, Collections.emptyList());
+
+            double tickSize;
+            if (perCandle) {
+                double range = candle.high() - candle.low();
+                if (range > 0 && targetBuckets > 0) {
+                    tickSize = range / targetBuckets;
+                } else {
+                    // Doji or zero-range candle: fall back to ATR-based tick size
+                    tickSize = globalTickSize;
+                }
+            } else {
+                tickSize = globalTickSize;
+            }
 
             Footprint footprint = calculateFootprintForBar(candle, barTrades, tickSize, i);
             resultBuilder.addFootprint(footprint);
@@ -176,7 +212,8 @@ public class FootprintIndicator {
     }
 
     /**
-     * Group trades by bar index using binary search.
+     * Group trades by bar index using binary search to skip to the visible range.
+     * Only iterates trades within [barTimestamps[0], barTimestamps[last] + intervalMs).
      */
     private static Map<Integer, List<AggTrade>> groupTradesByBar(
             List<AggTrade> aggTrades,
@@ -190,10 +227,26 @@ public class FootprintIndicator {
             return result;
         }
 
+        long rangeStart = barTimestamps[0];
+        long rangeEnd = barTimestamps[barTimestamps.length - 1] + intervalMs;
+
+        // Binary search for the first trade at or after rangeStart
+        int startIdx = findFirstTradeIndex(aggTrades, rangeStart);
+        if (startIdx >= aggTrades.size()) {
+            return result;
+        }
+
         int currentBarIndex = 0;
         long currentBarEnd = barTimestamps[0] + intervalMs;
 
-        for (AggTrade trade : aggTrades) {
+        for (int i = startIdx; i < aggTrades.size(); i++) {
+            AggTrade trade = aggTrades.get(i);
+
+            // Stop once past the visible range
+            if (trade.timestamp() >= rangeEnd) {
+                break;
+            }
+
             // Apply exchange filter
             if (exchangeFilter != null && !exchangeFilter.isEmpty()) {
                 if (trade.exchange() != null && !exchangeFilter.contains(trade.exchange())) {
@@ -216,6 +269,22 @@ public class FootprintIndicator {
         }
 
         return result;
+    }
+
+    /**
+     * Binary search for the first trade with timestamp >= target.
+     */
+    private static int findFirstTradeIndex(List<AggTrade> trades, long targetTime) {
+        int lo = 0, hi = trades.size();
+        while (lo < hi) {
+            int mid = (lo + hi) >>> 1;
+            if (trades.get(mid).timestamp() < targetTime) {
+                lo = mid + 1;
+            } else {
+                hi = mid;
+            }
+        }
+        return lo;
     }
 
     /**

@@ -27,6 +27,7 @@ public final class DataInventory {
     private final Map<String, DateRangeSet> aggTradesCoverage = new ConcurrentHashMap<>(); // "BTCUSDT"
     private final Map<String, DateRangeSet> fundingCoverage = new ConcurrentHashMap<>();   // "BTCUSDT"
     private final Map<String, DateRangeSet> oiCoverage = new ConcurrentHashMap<>();        // "BTCUSDT"
+    private final Map<String, DateRangeSet> spectrumCoverage = new ConcurrentHashMap<>();   // "BTCUSDT"
 
     private final File dataDir;
     private final ObjectMapper mapper;
@@ -118,6 +119,25 @@ public final class DataInventory {
         return coverage.findGaps(start, end);
     }
 
+    // ========== Spectrum Coverage ==========
+
+    public void recordSpectrumData(String symbol, long start, long end) {
+        spectrumCoverage.computeIfAbsent(symbol, k -> new DateRangeSet()).add(start, end);
+    }
+
+    public boolean hasSpectrumData(String symbol, long start, long end) {
+        DateRangeSet coverage = spectrumCoverage.get(symbol);
+        return coverage != null && coverage.contains(start, end);
+    }
+
+    public List<DateRangeSet.Range> getSpectrumGaps(String symbol, long start, long end) {
+        DateRangeSet coverage = spectrumCoverage.get(symbol);
+        if (coverage == null) {
+            return List.of(new DateRangeSet.Range(start, end));
+        }
+        return coverage.findGaps(start, end);
+    }
+
     // ========== Stats ==========
 
     public record CoverageStats(
@@ -161,6 +181,7 @@ public final class DataInventory {
             state.put("aggTrades", serializeCoverage(aggTradesCoverage));
             state.put("funding", serializeCoverage(fundingCoverage));
             state.put("oi", serializeCoverage(oiCoverage));
+            state.put("spectrum", serializeCoverage(spectrumCoverage));
 
             mapper.writeValue(file, state);
         } catch (IOException e) {
@@ -196,6 +217,7 @@ public final class DataInventory {
             deserializeCoverage((Map<String, List<List<Number>>>) state.get("aggTrades"), aggTradesCoverage);
             deserializeCoverage((Map<String, List<List<Number>>>) state.get("funding"), fundingCoverage);
             deserializeCoverage((Map<String, List<List<Number>>>) state.get("oi"), oiCoverage);
+            deserializeCoverage((Map<String, List<List<Number>>>) state.get("spectrum"), spectrumCoverage);
 
             CoverageStats stats = getStats();
             log.info("DataInventory loaded: {} candle symbols, {} aggTrades symbols, {}h candle coverage",
@@ -227,5 +249,6 @@ public final class DataInventory {
         aggTradesCoverage.clear();
         fundingCoverage.clear();
         oiCoverage.clear();
+        spectrumCoverage.clear();
     }
 }

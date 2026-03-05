@@ -82,38 +82,10 @@ public class CrosshairManager {
     /**
      * Setup crosshairs for indicator charts.
      */
-    public void setupIndicatorChartCrosshairs(
-            ChartPanel rsiPanel,
-            ChartPanel macdPanel,
-            ChartPanel atrPanel,
-            ChartPanel deltaPanel,
-            ChartPanel cvdPanel,
-            ChartPanel volumeRatioPanel,
-            ChartPanel whalePanel,
-            ChartPanel retailPanel,
-            ChartPanel fundingPanel,
-            ChartPanel oiPanel,
-            ChartPanel stochasticPanel,
-            ChartPanel rangePositionPanel,
-            ChartPanel adxPanel,
-            ChartPanel tradeCountPanel,
-            ChartPanel premiumPanel) {
-
-        setupCrosshair(rsiPanel);
-        setupCrosshair(macdPanel);
-        setupCrosshair(atrPanel);
-        setupCrosshair(deltaPanel);
-        setupCrosshair(cvdPanel);
-        setupCrosshair(volumeRatioPanel);
-        setupCrosshair(whalePanel);
-        setupCrosshair(retailPanel);
-        setupCrosshair(fundingPanel);
-        setupCrosshair(oiPanel);
-        setupCrosshair(stochasticPanel);
-        setupCrosshair(rangePositionPanel);
-        setupCrosshair(adxPanel);
-        setupCrosshair(tradeCountPanel);
-        setupCrosshair(premiumPanel);
+    public void setupIndicatorChartCrosshairs(ChartPanel... panels) {
+        for (ChartPanel panel : panels) {
+            setupCrosshair(panel);
+        }
     }
 
     /**

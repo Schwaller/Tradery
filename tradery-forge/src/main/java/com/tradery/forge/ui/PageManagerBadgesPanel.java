@@ -25,7 +25,9 @@ public class PageManagerBadgesPanel extends JPanel {
     private final StatusBadge aggTradesBadge;
     private final StatusBadge premiumBadge;
     private final StatusBadge fearGreedBadge;
+    private final StatusBadge spectrumBadge;
     private final StatusBadge profilesBadge;
+    private final StatusBadge footprintBadge;
     private final StatusBadge indicatorsBadge;
 
     private final Timer refreshTimer;
@@ -42,7 +44,9 @@ public class PageManagerBadgesPanel extends JPanel {
         aggTradesBadge = new StatusBadge("AggTrades 0");
         premiumBadge = new StatusBadge("Premium 0");
         fearGreedBadge = new StatusBadge("F&G 0");
+        spectrumBadge = new StatusBadge("Spectrum 0");
         profilesBadge = new StatusBadge("Profiles");
+        footprintBadge = new StatusBadge("Footprint");
         indicatorsBadge = new StatusBadge("Indicators 0");
 
         addClickHandler(candlesBadge, DataType.CANDLES);
@@ -51,6 +55,9 @@ public class PageManagerBadgesPanel extends JPanel {
         addClickHandler(aggTradesBadge, DataType.AGG_TRADES);
         addClickHandler(premiumBadge, DataType.PREMIUM_INDEX);
         addClickHandler(fearGreedBadge, DataType.FEAR_GREED);
+        addClickHandler(spectrumBadge, DataType.SPECTRUM);
+        addDashboardClickHandler(profilesBadge);
+        addDashboardClickHandler(footprintBadge);
         indicatorsBadge.addMouseListener(new MouseAdapter() {
             @Override
             public void mouseClicked(MouseEvent e) {
@@ -64,7 +71,9 @@ public class PageManagerBadgesPanel extends JPanel {
         add(aggTradesBadge);
         add(premiumBadge);
         add(fearGreedBadge);
+        add(spectrumBadge);
         add(profilesBadge);
+        add(footprintBadge);
         add(indicatorsBadge);
 
         // Context menu for right-click to open Download Dashboard
@@ -98,6 +107,15 @@ public class PageManagerBadgesPanel extends JPanel {
         });
     }
 
+    private void addDashboardClickHandler(StatusBadge badge) {
+        badge.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseClicked(MouseEvent e) {
+                DownloadDashboardWindow.showWindow();
+            }
+        });
+    }
+
     /**
      * Open the Download Dashboard window.
      */
@@ -118,7 +136,9 @@ public class PageManagerBadgesPanel extends JPanel {
         updateDataPageBadge(aggTradesBadge, "AggTrades", ctx.getAggTradesPageManager());
         updateDataPageBadge(premiumBadge, "Premium", ctx.getPremiumPageManager());
         updateDataPageBadge(fearGreedBadge, "F&G", ctx.getFearGreedPageManager());
+        updateDataPageBadge(spectrumBadge, "Spectrum", ctx.getSpectrumPageManager());
         updateProfilesBadge(ctx);
+        updateFootprintBadge(ctx);
         updateIndicatorsBadge(ctx.getIndicatorPageManager());
     }
 
@@ -178,6 +198,41 @@ public class PageManagerBadgesPanel extends JPanel {
         profilesBadge.setText(text);
         profilesBadge.setStatusColor(bgColor, fgColor);
         profilesBadge.setToolTipText("<html><b>Volume Profiles</b><br>" + detail + "</html>");
+    }
+
+    private void updateFootprintBadge(ApplicationContext ctx) {
+        ApplicationContext.ProfileStatus status = ctx.getFootprintStatus();
+        String detail = ctx.getFootprintStatusDetail();
+        int count = ctx.getFootprintCount();
+
+        Color bgColor, fgColor;
+        String text;
+        switch (status) {
+            case LOADING -> {
+                bgColor = StatusBadge.BG_WARNING;
+                fgColor = StatusBadge.FG_WARNING;
+                text = "Footprint...";
+            }
+            case READY -> {
+                bgColor = StatusBadge.BG_OK;
+                fgColor = StatusBadge.FG_OK;
+                text = "Footprint " + count;
+            }
+            case ERROR -> {
+                bgColor = StatusBadge.BG_ERROR;
+                fgColor = StatusBadge.FG_ERROR;
+                text = "Footprint !";
+            }
+            default -> {
+                bgColor = StatusBadge.BG_IDLE;
+                fgColor = StatusBadge.FG_IDLE;
+                text = "Footprint";
+            }
+        }
+
+        footprintBadge.setText(text);
+        footprintBadge.setStatusColor(bgColor, fgColor);
+        footprintBadge.setToolTipText("<html><b>Footprint Heatmap</b><br>" + detail + "</html>");
     }
 
     private void updateIndicatorsBadge(IndicatorPageManager mgr) {

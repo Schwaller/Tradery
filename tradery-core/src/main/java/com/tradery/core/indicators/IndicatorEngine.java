@@ -61,6 +61,7 @@ public class IndicatorEngine {
         if (data.premiumIndex() != null) setPremiumIndex(data.premiumIndex());
         if (data.fearGreedIndex() != null) setFearGreedData(data.fearGreedIndex());
         if (data.dailyProfiles() != null) setPrecomputedDailyProfiles(data.dailyProfiles());
+        if (data.spectrumWindows() != null) setSpectrumWindows(data.spectrumWindows());
     }
 
     /**
@@ -2349,5 +2350,175 @@ public class IndicatorEngine {
         double futures = getFuturesDelta(barIndex);
         if (Double.isNaN(spot) || Double.isNaN(futures)) return Double.NaN;
         return spot - futures;
+    }
+
+    // ========== Spectrum Functions (trade size distribution) ==========
+
+    private List<SpectrumWindow> spectrumWindows;
+
+    /**
+     * Set spectrum window data for trade size distribution analysis.
+     */
+    public void setSpectrumWindows(List<SpectrumWindow> spectrumWindows) {
+        log.info("setSpectrumWindows: {} windows", spectrumWindows != null ? spectrumWindows.size() : 0);
+        this.spectrumWindows = spectrumWindows;
+        cache.remove("spectrumPerBar");
+    }
+
+    /**
+     * Check if spectrum data is available.
+     */
+    public boolean hasSpectrumData() {
+        return spectrumWindows != null && !spectrumWindows.isEmpty();
+    }
+
+    /**
+     * Get the merged SpectrumWindow for a given bar by aggregating all 10s windows
+     * that fall within the candle's time range.
+     */
+    private SpectrumWindow getSpectrumForBar(int barIndex) {
+        if (!hasSpectrumData()) return null;
+
+        @SuppressWarnings("unchecked")
+        SpectrumWindow[] perBar = (SpectrumWindow[]) cache.get("spectrumPerBar");
+        if (perBar == null) {
+            perBar = buildSpectrumPerBar();
+            cache.put("spectrumPerBar", perBar);
+        }
+
+        if (barIndex < 0 || barIndex >= perBar.length) return null;
+        return perBar[barIndex];
+    }
+
+    /**
+     * Pre-compute merged SpectrumWindow per candle bar.
+     * For each candle, aggregates all 10s spectrum windows in [candleStart, nextCandleStart).
+     */
+    private SpectrumWindow[] buildSpectrumPerBar() {
+        int numBars = candles.size();
+        SpectrumWindow[] result = new SpectrumWindow[numBars];
+
+        // Sort spectrum windows by time (should already be sorted, but ensure)
+        int swIdx = 0;
+
+        for (int i = 0; i < numBars; i++) {
+            long candleStart = candles.get(i).timestamp();
+            long candleEnd = (i + 1 < numBars) ? candles.get(i + 1).timestamp() : Long.MAX_VALUE;
+
+            // Skip spectrum windows before this candle
+            while (swIdx < spectrumWindows.size() && spectrumWindows.get(swIdx).windowStart() < candleStart) {
+                swIdx++;
+            }
+
+            // Merge all spectrum windows within this candle
+            SpectrumWindow merged = null;
+            int tempIdx = swIdx;
+            while (tempIdx < spectrumWindows.size() && spectrumWindows.get(tempIdx).windowStart() < candleEnd) {
+                if (merged == null) {
+                    merged = spectrumWindows.get(tempIdx);
+                } else {
+                    merged = merged.merge(spectrumWindows.get(tempIdx));
+                }
+                tempIdx++;
+            }
+
+            result[i] = merged;
+        }
+
+        return result;
+    }
+
+    /**
+     * Total notional volume in bucket range [minBucket..maxBucket].
+     */
+    public double getSpectrumVolume(int minBucket, int maxBucket, int barIndex) {
+        SpectrumWindow sw = getSpectrumForBar(barIndex);
+        if (sw == null) return Double.NaN;
+
+        double total = 0;
+        int lo = Math.max(0, minBucket);
+        int hi = Math.min(SpectrumWindow.MAX_BUCKET, maxBucket);
+        for (int i = lo; i <= hi; i++) {
+            total += sw.buckets()[i].totalVolume();
+        }
+        return total;
+    }
+
+    /**
+     * Trade count in bucket range [minBucket..maxBucket].
+     */
+    public double getSpectrumCount(int minBucket, int maxBucket, int barIndex) {
+        SpectrumWindow sw = getSpectrumForBar(barIndex);
+        if (sw == null) return Double.NaN;
+
+        int total = 0;
+        int lo = Math.max(0, minBucket);
+        int hi = Math.min(SpectrumWindow.MAX_BUCKET, maxBucket);
+        for (int i = lo; i <= hi; i++) {
+            total += sw.buckets()[i].tradeCount();
+        }
+        return total;
+    }
+
+    /**
+     * Buy - sell notional in bucket range [minBucket..maxBucket].
+     */
+    public double getSpectrumDelta(int minBucket, int maxBucket, int barIndex) {
+        SpectrumWindow sw = getSpectrumForBar(barIndex);
+        if (sw == null) return Double.NaN;
+
+        double total = 0;
+        int lo = Math.max(0, minBucket);
+        int hi = Math.min(SpectrumWindow.MAX_BUCKET, maxBucket);
+        for (int i = lo; i <= hi; i++) {
+            total += sw.buckets()[i].delta();
+        }
+        return total;
+    }
+
+    /**
+     * Trade count in buckets >= bucket.
+     */
+    public double getSpectrumCountAbove(int bucket, int barIndex) {
+        return getSpectrumCount(bucket, SpectrumWindow.MAX_BUCKET, barIndex);
+    }
+
+    /**
+     * Trade count in exactly the given bucket.
+     */
+    public double getSpectrumCountAt(int bucket, int barIndex) {
+        return getSpectrumCount(bucket, bucket, barIndex);
+    }
+
+    /**
+     * Total volume from buckets >= bucket.
+     */
+    public double getSpectrumVolumeAbove(int bucket, int barIndex) {
+        return getSpectrumVolume(bucket, SpectrumWindow.MAX_BUCKET, barIndex);
+    }
+
+    /**
+     * Volume in exactly the given bucket.
+     */
+    public double getSpectrumVolumeAt(int bucket, int barIndex) {
+        return getSpectrumVolume(bucket, bucket, barIndex);
+    }
+
+    /**
+     * Ratio of volume in buckets >= bucket to total volume (0-1).
+     * Returns NaN if no spectrum data or zero total volume.
+     */
+    public double getWhaleRatio(int bucket, int barIndex) {
+        SpectrumWindow sw = getSpectrumForBar(barIndex);
+        if (sw == null) return Double.NaN;
+
+        double totalAll = sw.totalVolume();
+        if (totalAll == 0) return Double.NaN;
+
+        double above = 0;
+        for (int i = Math.max(0, bucket); i <= SpectrumWindow.MAX_BUCKET; i++) {
+            above += sw.buckets()[i].totalVolume();
+        }
+        return above / totalAll;
     }
 }

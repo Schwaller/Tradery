@@ -1,5 +1,6 @@
 package com.tradery.forge.data;
 
+import com.tradery.dataclient.DataServiceClient;
 import com.tradery.forge.data.sqlite.SqliteDataStore;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -33,6 +34,7 @@ public final class PreloadScheduler {
     private AggTradesStore aggTradesStore;
     private FundingRateStore fundingRateStore;
     private OpenInterestStore openInterestStore;
+    private DataServiceClient dataServiceClient;
 
     private Thread workerThread;
 
@@ -141,6 +143,21 @@ public final class PreloadScheduler {
     }
 
     /**
+     * Convenience method: queue spectrum preload.
+     */
+    public void queueSpectrum(String symbol, long start, long end,
+                              PreloadRequest.Priority priority) {
+        queuePreload(PreloadRequest.spectrum(symbol, start, end, priority));
+    }
+
+    /**
+     * Set the DataServiceClient for spectrum backfill operations.
+     */
+    public void setDataServiceClient(DataServiceClient client) {
+        this.dataServiceClient = client;
+    }
+
+    /**
      * Pause preloading while trading-tier load is active.
      */
     public void pauseForTradingLoad() {
@@ -233,6 +250,7 @@ public final class PreloadScheduler {
                 case AGGTRADES -> processAggTrades(request);
                 case FUNDING -> processFunding(request);
                 case OI -> processOI(request);
+                case SPECTRUM -> processSpectrum(request);
             }
         } catch (Exception e) {
             log.warn("Preload failed for {}: {}", request, e.getMessage());
@@ -309,6 +327,10 @@ public final class PreloadScheduler {
 
             inventory.recordAggTradesData(request.symbol(), gap.start(), gap.end());
         }
+
+        // Auto-queue spectrum backfill after aggTrades load at LOW priority
+        queueSpectrum(request.symbol(), request.startTime(), request.endTime(),
+            PreloadRequest.Priority.LOW);
     }
 
     private void processFunding(PreloadRequest request) throws Exception {
@@ -380,6 +402,24 @@ public final class PreloadScheduler {
             openInterestStore.getOpenInterest(request.symbol(), effectiveStart, gap.end());
 
             inventory.recordOIData(request.symbol(), effectiveStart, gap.end());
+        }
+    }
+
+    private void processSpectrum(PreloadRequest request) throws Exception {
+        if (dataServiceClient == null) {
+            log.warn("DataServiceClient not set, skipping spectrum preload");
+            return;
+        }
+
+        log.info("Preloading spectrum: {} range {}", request.symbol(),
+            formatDuration(request.getDurationMs()));
+
+        try {
+            long rowsCreated = dataServiceClient.backfillSpectrum(
+                request.symbol(), request.startTime(), request.endTime());
+            log.info("Spectrum backfill complete: {} created {} rows", request.symbol(), rowsCreated);
+        } catch (Exception e) {
+            log.warn("Spectrum backfill failed for {}: {}", request.symbol(), e.getMessage());
         }
     }
 

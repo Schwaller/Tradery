@@ -294,6 +294,13 @@ public record PageKey(
         return "PROFILE".equals(dataType) || "VOLUME_PROFILE".equals(dataType);
     }
 
+    /**
+     * Check if this page key is for trade size spectrum data.
+     */
+    public boolean isSpectrum() {
+        return "SPECTRUM".equals(dataType);
+    }
+
     // ========== Volume Profile Factory Methods ==========
 
     /**

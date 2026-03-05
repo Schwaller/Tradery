@@ -968,13 +968,20 @@ public class ProjectWindow extends JFrame {
         chartPanel.clear();
 
         // Set VIEW tier requirements based on enabled charts
+        boolean needsAggTrades = chartPanel.isAnyOrderflowChartEnabled();
+        var mgr = chartPanel.getIndicatorManager();
         backtestCoordinator.setViewRequirements(
-            chartPanel.isAnyOrderflowChartEnabled(),
-            chartPanel.isFundingChartEnabled(),
-            chartPanel.isOiChartEnabled(),
-            chartPanel.isPremiumChartEnabled(),
-            chartPanel.isFearGreedChartEnabled()
+            needsAggTrades,
+            mgr.isEnabled(com.tradery.forge.ui.charts.IndicatorType.FUNDING),
+            mgr.isEnabled(com.tradery.forge.ui.charts.IndicatorType.OI),
+            mgr.isEnabled(com.tradery.forge.ui.charts.IndicatorType.PREMIUM),
+            mgr.isEnabled(com.tradery.forge.ui.charts.IndicatorType.FEAR_GREED)
         );
+
+        // Tell footprint to wait for coordinator's aggTrades instead of loading its own
+        if (needsAggTrades) {
+            chartPanel.setFootprintWaitForCoordinator(true);
+        }
 
         // Run backtest via coordinator
         backtestCoordinator.runBacktest(
@@ -1022,12 +1029,24 @@ public class ProjectWindow extends JFrame {
             long startTime = candles.get(0).timestamp();
             long endTime = candles.get(candles.size() - 1).timestamp();
             chartPanel.setIndicatorDataContext(candles, dataRangePanel.getSymbol(),
-                dataRangePanel.getTimeframe(), startTime, endTime);
+                dataRangePanel.getTimeframe(), dataRangePanel.getMarketType(), startTime, endTime);
 
             chartPanel.updateCharts(candles, result.trades(), result.config().initialCapital());
 
             // Apply saved overlays
             chartPanel.applySavedOverlays(candles);
+
+            // Reset the wait flag so the footprint overlay can load its own page if needed.
+            // If aggTrades are already available from the coordinator, pass them directly.
+            // If not (still loading or failed), the overlay falls back to its own page request.
+            chartPanel.setFootprintWaitForCoordinator(false);
+            List<com.tradery.core.model.AggTrade> aggTrades = backtestCoordinator.getCurrentAggTrades();
+            if (aggTrades != null && !aggTrades.isEmpty()) {
+                chartPanel.refreshOrderflowCharts(aggTrades);
+            } else {
+                // No aggTrades yet — let the overlay request its own page
+                chartPanel.refreshFootprintHeatmap();
+            }
 
             // Apply phase overlays (async)
             applyPhaseOverlays();
@@ -1098,7 +1117,7 @@ public class ProjectWindow extends JFrame {
                 case "AggTrades" -> {
                     System.out.println("VIEW data ready: AggTrades - refreshing orderflow charts");
                     chartPanel.setIndicatorEngine(backtestCoordinator.getIndicatorEngine());
-                    chartPanel.refreshOrderflowCharts();
+                    chartPanel.refreshOrderflowCharts(backtestCoordinator.getCurrentAggTrades());
                 }
                 case "Premium" -> {
                     System.out.println("VIEW data ready: Premium - refreshing chart");

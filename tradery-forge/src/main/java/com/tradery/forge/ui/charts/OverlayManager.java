@@ -51,6 +51,7 @@ public class OverlayManager {
     // Current data context
     private String currentSymbol = "BTCUSDT";
     private String currentTimeframe = "1h";
+    private String currentMarketType = "perp";
     private List<Candle> currentCandles;
 
     // tradery-charts integration
@@ -85,9 +86,10 @@ public class OverlayManager {
      * Set the data context for overlay computation.
      * Call this when symbol/timeframe changes.
      */
-    public void setDataContext(String symbol, String timeframe) {
+    public void setDataContext(String symbol, String timeframe, String marketType) {
         this.currentSymbol = symbol;
         this.currentTimeframe = timeframe;
+        this.currentMarketType = marketType != null ? marketType : "perp";
     }
 
     /**
@@ -636,6 +638,14 @@ public class OverlayManager {
      * Request footprint heatmap data and render when ready.
      */
     public void updateFootprintHeatmapOverlay() {
+        updateFootprintHeatmapOverlay(null);
+    }
+
+    /**
+     * Request footprint heatmap data with pre-loaded aggTrades from BacktestCoordinator.
+     * When aggTrades are provided, the overlay reuses them instead of loading a duplicate page.
+     */
+    public void updateFootprintHeatmapOverlay(java.util.List<com.tradery.core.model.AggTrade> aggTrades) {
         com.tradery.forge.ui.charts.ChartConfig config = com.tradery.forge.ui.charts.ChartConfig.getInstance();
 
         if (!config.isFootprintHeatmapEnabled()) {
@@ -649,6 +659,10 @@ public class OverlayManager {
 
         footprintHeatmapOverlay.setEnabled(true);
         footprintHeatmapOverlay.setConfig(config.getFootprintHeatmapConfig());
+        footprintHeatmapOverlay.setMarketType(currentMarketType);
+        if (aggTrades != null) {
+            footprintHeatmapOverlay.setAggTrades(aggTrades);
+        }
         footprintHeatmapOverlay.requestData(
             currentCandles,
             currentSymbol,
@@ -660,6 +674,15 @@ public class OverlayManager {
 
     public void clearFootprintHeatmapOverlay() {
         footprintHeatmapOverlay.setEnabled(false);
+    }
+
+    /**
+     * Tell the footprint overlay to wait for aggTrades from BacktestCoordinator
+     * instead of loading its own page. Call this before a backtest starts when
+     * the coordinator will be loading aggTrades.
+     */
+    public void setFootprintWaitForCoordinator(boolean wait) {
+        footprintHeatmapOverlay.setWaitForExternalAggTrades(wait);
     }
 
     public com.tradery.forge.ui.charts.footprint.FootprintHeatmapOverlay getFootprintHeatmapOverlay() {

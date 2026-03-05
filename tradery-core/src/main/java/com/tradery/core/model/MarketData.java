@@ -18,4 +18,5 @@ public interface MarketData {
     List<PremiumIndex> premiumIndex();     // nullable
     List<FearGreedIndex> fearGreedIndex(); // nullable
     Map<Long, double[]> dailyProfiles();   // nullable — dayStartMs → {poc, vah, val}
+    List<SpectrumWindow> spectrumWindows();  // nullable — 10s trade size distribution windows
 }

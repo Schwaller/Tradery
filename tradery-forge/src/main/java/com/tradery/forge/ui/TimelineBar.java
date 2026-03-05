@@ -126,11 +126,30 @@ public class TimelineBar extends JPanel implements DataPageListener<Candle> {
                     showContextMenu(e);
                     return;
                 }
-                if (SwingUtilities.isLeftMouseButton(e) && isOverWindow(e.getX())) {
-                    isDragging = true;
-                    dragStartX = e.getX();
-                    dragStartWindowEnd = windowEnd;
-                    setCursor(Cursor.getPredefinedCursor(Cursor.MOVE_CURSOR));
+                if (SwingUtilities.isLeftMouseButton(e)) {
+                    if (isOverWindow(e.getX())) {
+                        // Drag existing selection
+                        isDragging = true;
+                        dragStartX = e.getX();
+                        dragStartWindowEnd = windowEnd;
+                        setCursor(Cursor.getPredefinedCursor(Cursor.MOVE_CURSOR));
+                    } else if (weeklyCandles != null && !weeklyCandles.isEmpty() && onAnchorDateChanged != null) {
+                        // Click outside selection: jump window center to click position
+                        long clickTime = xToTime(e.getX());
+                        long windowDuration = windowEnd - windowStart;
+                        long newWindowEnd = clickTime + windowDuration / 2;
+
+                        // Clamp to valid range
+                        newWindowEnd = Math.max(minTime + windowDuration, Math.min(maxTime, newWindowEnd));
+
+                        onAnchorDateChanged.accept(newWindowEnd);
+
+                        // Start drag from new position
+                        isDragging = true;
+                        dragStartX = e.getX();
+                        dragStartWindowEnd = newWindowEnd;
+                        setCursor(Cursor.getPredefinedCursor(Cursor.MOVE_CURSOR));
+                    }
                 }
             }
 
@@ -199,6 +218,13 @@ public class TimelineBar extends JPanel implements DataPageListener<Candle> {
         double x2 = padding + ((Math.min(windowEnd, maxTime) - minTime) / (double) timeRange) * (width - padding * 2);
 
         return x >= x1 && x <= x2;
+    }
+
+    private long xToTime(int x) {
+        int width = getWidth();
+        long timeRange = maxTime - minTime;
+        double ratio = (x - padding) / (double) (width - padding * 2);
+        return minTime + (long) (ratio * timeRange);
     }
 
     private long xToTimeDelta(int deltaX) {

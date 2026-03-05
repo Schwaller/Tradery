@@ -617,6 +617,43 @@ public class ConditionEvaluator {
             case "FOOTPRINT_DELTA" -> engine.getFootprintDelta(barIndex);
             case "FOOTPRINT_POC" -> engine.getFootprintPOC(barIndex);
 
+            // Spectrum functions (trade size distribution)
+            case "SPECTRUM_VOLUME" -> {
+                int min = params.get(0).intValue();
+                int max = params.get(1).intValue();
+                yield engine.getSpectrumVolume(min, max, barIndex);
+            }
+            case "SPECTRUM_COUNT" -> {
+                int min = params.get(0).intValue();
+                int max = params.get(1).intValue();
+                yield engine.getSpectrumCount(min, max, barIndex);
+            }
+            case "SPECTRUM_DELTA" -> {
+                int min = params.get(0).intValue();
+                int max = params.get(1).intValue();
+                yield engine.getSpectrumDelta(min, max, barIndex);
+            }
+            case "SPECTRUM_COUNT_ABOVE" -> {
+                int bucket = params.get(0).intValue();
+                yield engine.getSpectrumCountAbove(bucket, barIndex);
+            }
+            case "SPECTRUM_COUNT_AT" -> {
+                int bucket = params.get(0).intValue();
+                yield engine.getSpectrumCountAt(bucket, barIndex);
+            }
+            case "SPECTRUM_VOLUME_ABOVE" -> {
+                int bucket = params.get(0).intValue();
+                yield engine.getSpectrumVolumeAbove(bucket, barIndex);
+            }
+            case "SPECTRUM_VOLUME_AT" -> {
+                int bucket = params.get(0).intValue();
+                yield engine.getSpectrumVolumeAt(bucket, barIndex);
+            }
+            case "WHALE_RATIO" -> {
+                int bucket = params.get(0).intValue();
+                yield engine.getWhaleRatio(bucket, barIndex);
+            }
+
             default -> throw new EvaluationException("Unknown footprint function: " + node.func());
         };
     }

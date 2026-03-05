@@ -51,6 +51,8 @@ public class IndicatorSelectorPopup extends JDialog {
     private JToggleButton footprintAuto40Button;
     private JToggleButton[] footprintGridButtons = new JToggleButton[4];
     private ButtonGroup footprintBucketGroup;
+    private JCheckBox footprintGlobalNormCheckbox;
+    private JPanel footprintOptionsRow;
     private double[] currentGridOptions = new double[4];
 
     private static final double[] NICE_TICKS = {
@@ -80,6 +82,9 @@ public class IndicatorSelectorPopup extends JDialog {
     private final IndicatorToggleRow holdingCostCumulative = new IndicatorToggleRow("Cumulative Holding Costs", "Show running total of funding fees/margin interest");
     private final IndicatorToggleRow holdingCostEvents = new IndicatorToggleRow("Holding Cost Events", "Show individual funding fee/interest charges per trade");
     private final IndicatorToggleRow fearGreed = new IndicatorToggleRow("Fear & Greed", "Show Crypto Fear & Greed Index (0-100 sentiment)");
+    private final IndicatorToggleRow spectrum = new IndicatorToggleRow("Trade Size Spectrum", "Show trade size distribution heatmap (log10 buckets, requires aggTrades)");
+    private final JComboBox<com.tradery.forge.ui.charts.SpectrumColorMode> spectrumColorMode = new JComboBox<>(com.tradery.forge.ui.charts.SpectrumColorMode.values());
+    private final JComboBox<com.tradery.forge.ui.charts.SpectrumBucketMode> spectrumBucketMode = new JComboBox<>(com.tradery.forge.ui.charts.SpectrumBucketMode.values());
 
     // Core charts
     private final IndicatorToggleRow volumeChart = new IndicatorToggleRow("Volume", "Show volume chart");
@@ -206,6 +211,26 @@ public class IndicatorSelectorPopup extends JDialog {
         contentPane.add(createSectionHeader("SENTIMENT"));
         contentPane.add(fearGreed);
 
+        contentPane.add(Box.createVerticalStrut(4));
+        contentPane.add(createSectionHeader("TRADE SIZE SPECTRUM"));
+        contentPane.add(spectrum);
+        // Color mode + bucket mode selector row
+        JPanel spectrumOptionsRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
+        spectrumOptionsRow.setOpaque(false);
+        spectrumOptionsRow.setMaximumSize(new Dimension(Integer.MAX_VALUE, 28));
+        JLabel colorLabel = new JLabel("Color:");
+        colorLabel.setFont(colorLabel.getFont().deriveFont(11f));
+        spectrumOptionsRow.add(Box.createHorizontalStrut(24));
+        spectrumOptionsRow.add(colorLabel);
+        spectrumColorMode.setFont(spectrumColorMode.getFont().deriveFont(11f));
+        spectrumOptionsRow.add(spectrumColorMode);
+        JLabel bucketLabel = new JLabel("Bucket:");
+        bucketLabel.setFont(bucketLabel.getFont().deriveFont(11f));
+        spectrumOptionsRow.add(bucketLabel);
+        spectrumBucketMode.setFont(spectrumBucketMode.getFont().deriveFont(11f));
+        spectrumOptionsRow.add(spectrumBucketMode);
+        contentPane.add(spectrumOptionsRow);
+
         contentPane.add(createSectionSeparator());
         contentPane.add(createSectionHeader("HOLDING COSTS"));
         contentPane.add(holdingCostCumulative);
@@ -275,6 +300,9 @@ public class IndicatorSelectorPopup extends JDialog {
         holdingCostCumulative.addChangeListener(update);
         holdingCostEvents.addChangeListener(update);
         fearGreed.addChangeListener(update);
+        spectrum.addChangeListener(update);
+        spectrumColorMode.addActionListener(e -> update.run());
+        spectrumBucketMode.addActionListener(e -> update.run());
         volumeChart.addChangeListener(update);
         equityChart.addChangeListener(update);
         comparisonChart.addChangeListener(update);
@@ -315,22 +343,38 @@ public class IndicatorSelectorPopup extends JDialog {
             footprintBucketGroup.add(footprintGridButtons[i]);
         }
 
+        footprintGlobalNormCheckbox = new JCheckBox("Global");
+        footprintGlobalNormCheckbox.setToolTipText("Color ramp uses min/max volume across all candles (on) or per candle (off)");
+        footprintGlobalNormCheckbox.setFont(footprintGlobalNormCheckbox.getFont().deriveFont(11f));
+        footprintGlobalNormCheckbox.addActionListener(e -> scheduleUpdate());
+
         footprintSplitButton.addActionListener(e -> { if (footprintSplitButton.isSelected()) scheduleUpdate(); });
         footprintDeltaButton.addActionListener(e -> { if (footprintDeltaButton.isSelected()) scheduleUpdate(); });
 
-        JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 2, 0));
-        row.setAlignmentX(Component.LEFT_ALIGNMENT);
-        row.add(footprintHeatmapCheckbox);
-        row.add(footprintSplitButton);
-        row.add(footprintDeltaButton);
-        row.add(Box.createHorizontalStrut(4));
-        row.add(footprintAuto10Button);
-        row.add(footprintAuto20Button);
-        row.add(footprintAuto40Button);
-        for (JToggleButton btn : footprintGridButtons) row.add(btn);
+        JPanel row1 = new JPanel(new FlowLayout(FlowLayout.LEFT, 2, 0));
+        row1.setAlignmentX(Component.LEFT_ALIGNMENT);
+        row1.add(footprintHeatmapCheckbox);
+        row1.add(footprintSplitButton);
+        row1.add(footprintDeltaButton);
+        row1.add(Box.createHorizontalStrut(4));
+        row1.add(footprintAuto10Button);
+        row1.add(footprintAuto20Button);
+        row1.add(footprintAuto40Button);
+        for (JToggleButton btn : footprintGridButtons) row1.add(btn);
+
+        footprintOptionsRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 2, 0));
+        footprintOptionsRow.setAlignmentX(Component.LEFT_ALIGNMENT);
+        footprintOptionsRow.add(Box.createHorizontalStrut(20));
+        footprintOptionsRow.add(footprintGlobalNormCheckbox);
 
         footprintHeatmapCheckbox.addActionListener(e -> { updateFootprintControlVisibility(); scheduleUpdate(); });
-        return row;
+
+        JPanel wrapper = new JPanel();
+        wrapper.setLayout(new BoxLayout(wrapper, BoxLayout.Y_AXIS));
+        wrapper.setAlignmentX(Component.LEFT_ALIGNMENT);
+        wrapper.add(row1);
+        wrapper.add(footprintOptionsRow);
+        return wrapper;
     }
 
     private JToggleButton createFootprintBucketButton(String text, String tooltip) {
@@ -397,6 +441,7 @@ public class IndicatorSelectorPopup extends JDialog {
         footprintAuto20Button.setVisible(enabled);
         footprintAuto40Button.setVisible(enabled);
         for (JToggleButton btn : footprintGridButtons) btn.setVisible(enabled);
+        footprintOptionsRow.setVisible(enabled);
     }
 
     // ===== Section helpers =====
@@ -472,6 +517,7 @@ public class IndicatorSelectorPopup extends JDialog {
 
         // Footprint
         footprintHeatmapCheckbox.setSelected(config.isFootprintHeatmapEnabled());
+        footprintGlobalNormCheckbox.setSelected(config.getFootprintHeatmapConfig().isGlobalVolumeNorm());
         updateFootprintTickButtons();
         boolean isSplitMode = config.getFootprintHeatmapConfig().getDisplayMode() ==
             com.tradery.forge.ui.charts.footprint.FootprintDisplayMode.SPLIT;
@@ -488,6 +534,7 @@ public class IndicatorSelectorPopup extends JDialog {
             }
             footprintGridButtons[nearestIdx].setSelected(true);
         } else {
+            // AUTO and PER_CANDLE both map to the Auto(N) buttons
             int buckets = fpConfig.getTargetBuckets();
             if (buckets <= 15) footprintAuto10Button.setSelected(true);
             else if (buckets <= 30) footprintAuto20Button.setSelected(true);
@@ -524,6 +571,9 @@ public class IndicatorSelectorPopup extends JDialog {
         holdingCostCumulative.setSelected(config.isHoldingCostCumulativeEnabled());
         holdingCostEvents.setSelected(config.isHoldingCostEventsEnabled());
         fearGreed.setSelected(config.isFearGreedEnabled());
+        spectrum.setSelected(config.isSpectrumEnabled());
+        spectrumColorMode.setSelectedItem(config.getSpectrumColorMode());
+        spectrumBucketMode.setSelectedItem(config.getSpectrumBucketMode());
 
         // Core charts
         volumeChart.setSelected(config.isVolumeChartEnabled());
@@ -662,13 +712,13 @@ public class IndicatorSelectorPopup extends JDialog {
             : com.tradery.forge.ui.charts.footprint.FootprintDisplayMode.COMBINED;
         var fpConfig = config.getFootprintHeatmapConfig();
         if (footprintAuto10Button.isSelected()) {
-            fpConfig.setTickSizeMode(com.tradery.forge.ui.charts.footprint.FootprintHeatmapConfig.TickSizeMode.AUTO);
+            fpConfig.setTickSizeMode(com.tradery.forge.ui.charts.footprint.FootprintHeatmapConfig.TickSizeMode.PER_CANDLE);
             fpConfig.setTargetBuckets(10);
         } else if (footprintAuto20Button.isSelected()) {
-            fpConfig.setTickSizeMode(com.tradery.forge.ui.charts.footprint.FootprintHeatmapConfig.TickSizeMode.AUTO);
+            fpConfig.setTickSizeMode(com.tradery.forge.ui.charts.footprint.FootprintHeatmapConfig.TickSizeMode.PER_CANDLE);
             fpConfig.setTargetBuckets(20);
         } else if (footprintAuto40Button.isSelected()) {
-            fpConfig.setTickSizeMode(com.tradery.forge.ui.charts.footprint.FootprintHeatmapConfig.TickSizeMode.AUTO);
+            fpConfig.setTickSizeMode(com.tradery.forge.ui.charts.footprint.FootprintHeatmapConfig.TickSizeMode.PER_CANDLE);
             fpConfig.setTargetBuckets(40);
         } else {
             for (int i = 0; i < 4; i++) {
@@ -680,18 +730,12 @@ public class IndicatorSelectorPopup extends JDialog {
             }
         }
         fpConfig.setDisplayMode(fpMode);
+        fpConfig.setGlobalVolumeNorm(footprintGlobalNormCheckbox.isSelected());
         config.setFootprintHeatmapEnabled(footprintHeatmapCheckbox.isSelected());
         chartPanel.setFootprintHeatmapEnabled(footprintHeatmapCheckbox.isSelected());
         chartPanel.refreshFootprintHeatmap();
 
-        // Oscillators
-        chartPanel.setRsiChartEnabled(rsi.isSelected(), rsi.getPeriod());
-        chartPanel.setMacdChartEnabled(macd.isSelected(), macd.getFast(), macd.getSlow(), macd.getSignal());
-        chartPanel.setAtrChartEnabled(atr.isSelected(), atr.getPeriod());
-        chartPanel.setStochasticChartEnabled(stochastic.isSelected(), stochastic.getKPeriod(), stochastic.getDPeriod());
-        chartPanel.setRangePositionChartEnabled(rangePosition.isSelected(), rangePosition.getPeriod());
-        chartPanel.setAdxChartEnabled(adx.isSelected(), adx.getPeriod());
-
+        // Update config with all indicator settings
         config.setRsiEnabled(rsi.isSelected());
         config.setRsiPeriod(rsi.getPeriod());
         config.setMacdEnabled(macd.isSelected());
@@ -707,44 +751,26 @@ public class IndicatorSelectorPopup extends JDialog {
         config.setRangePositionPeriod(rangePosition.getPeriod());
         config.setAdxEnabled(adx.isSelected());
         config.setAdxPeriod(adx.getPeriod());
-
-        // Orderflow
-        double whaleThreshold = whale.getThreshold();
-        chartPanel.setWhaleThreshold(whaleThreshold);
-        chartPanel.setDeltaChartEnabled(delta.isSelected());
-        chartPanel.setCvdChartEnabled(cvd.isSelected());
-        chartPanel.setVolumeRatioChartEnabled(volumeRatio.isSelected());
-        chartPanel.setWhaleChartEnabled(whale.isSelected(), whaleThreshold);
-        double retailThreshold = retail.getThreshold();
-        chartPanel.setRetailThreshold(retailThreshold);
-        chartPanel.setRetailChartEnabled(retail.isSelected(), retailThreshold);
-        chartPanel.setTradeCountChartEnabled(tradeCount.isSelected());
-
         config.setDeltaEnabled(delta.isSelected());
         config.setCvdEnabled(cvd.isSelected());
         config.setVolumeRatioEnabled(volumeRatio.isSelected());
         config.setWhaleEnabled(whale.isSelected());
+        config.setWhaleThreshold(whale.getThreshold());
         config.setRetailEnabled(retail.isSelected());
+        config.setRetailThreshold(retail.getThreshold());
         config.setTradeCountEnabled(tradeCount.isSelected());
-        config.setWhaleThreshold(whaleThreshold);
-        config.setRetailThreshold(retailThreshold);
-
-        // Funding / OI / Premium
-        chartPanel.setFundingChartEnabled(funding.isSelected());
         config.setFundingEnabled(funding.isSelected());
-        chartPanel.setOiChartEnabled(oi.isSelected());
         config.setOiEnabled(oi.isSelected());
-        chartPanel.setPremiumChartEnabled(premium.isSelected());
         config.setPremiumEnabled(premium.isSelected());
-
-        // Holding Costs
-        chartPanel.setHoldingCostCumulativeChartEnabled(holdingCostCumulative.isSelected());
         config.setHoldingCostCumulativeEnabled(holdingCostCumulative.isSelected());
-        chartPanel.setHoldingCostEventsChartEnabled(holdingCostEvents.isSelected());
         config.setHoldingCostEventsEnabled(holdingCostEvents.isSelected());
-
-        chartPanel.setFearGreedChartEnabled(fearGreed.isSelected());
         config.setFearGreedEnabled(fearGreed.isSelected());
+        config.setSpectrumEnabled(spectrum.isSelected());
+        config.setSpectrumColorMode((com.tradery.forge.ui.charts.SpectrumColorMode) spectrumColorMode.getSelectedItem());
+        config.setSpectrumBucketMode((com.tradery.forge.ui.charts.SpectrumBucketMode) spectrumBucketMode.getSelectedItem());
+
+        // Apply all indicator settings to the chart manager in one call
+        config.applyTo(chartPanel.getIndicatorManager());
 
         // Core charts
         chartPanel.setVolumeChartEnabled(volumeChart.isSelected());

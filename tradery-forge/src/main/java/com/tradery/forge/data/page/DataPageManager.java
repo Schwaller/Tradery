@@ -127,8 +127,9 @@ public abstract class DataPageManager<T> {
             anonymousRefs.merge(key, 1, Integer::sum);
         }
 
-        // If empty, start loading
-        if (page.getState() == PageState.EMPTY) {
+        // If empty or previously failed (max 1 retry), start loading
+        if (page.getState() == PageState.EMPTY ||
+                (page.getState() == PageState.ERROR && page.getErrorCount() <= 1)) {
             startLoad(page);
         } else if (listener != null && page.getState() == PageState.READY) {
             // Page already ready - notify listener immediately on EDT
@@ -314,6 +315,10 @@ public abstract class DataPageManager<T> {
      */
     protected void startLoad(DataPage<T> page) {
         PageState oldState = page.getState();
+        // On retry from ERROR, clear partial data for a clean reload
+        if (oldState == PageState.ERROR) {
+            page.setData(java.util.Collections.emptyList());
+        }
         PageState newState = page.isEmpty() ? PageState.LOADING : PageState.UPDATING;
 
         page.setState(newState);
@@ -383,6 +388,7 @@ public abstract class DataPageManager<T> {
             PageState prevState = page.getState();
             page.setState(PageState.ERROR);
             page.setErrorMessage(errorMessage);
+            page.incrementErrorCount();
             page.setLoadProgress(100);  // Mark as complete (with error) to avoid stuck progress
 
             notifyStateChanged(page, prevState, PageState.ERROR);

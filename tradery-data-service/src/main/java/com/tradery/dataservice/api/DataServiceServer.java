@@ -5,6 +5,8 @@ import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.tradery.dataservice.ConsumerRegistry;
 import com.tradery.dataservice.coingecko.CoinGeckoClient;
 import com.tradery.dataservice.config.DataServiceConfig;
+import com.tradery.dataservice.data.ProfileStore;
+import com.tradery.dataservice.data.SpectrumStore;
 import com.tradery.dataservice.data.sqlite.SqliteDataStore;
 import com.tradery.dataservice.data.sqlite.SymbolsConnection;
 import com.tradery.dataservice.live.LiveAggTradeManager;
@@ -48,6 +50,8 @@ public class DataServiceServer {
     private final TickSizeResolver tickSizeResolver;
     private final VolumeProfileComputer profileComputer;
     private final VolumeProfileAnalyzer profileAnalyzer;
+    private final ProfileStore profileStore;
+    private final SpectrumStore spectrumStore;
     private NewsManager newsManager;
     private Javalin app;
 
@@ -72,7 +76,14 @@ public class DataServiceServer {
         this.tickSizeResolver = new TickSizeResolver(symbolsConnection);
         this.profileComputer = new VolumeProfileComputer(dataStore, tickSizeResolver);
         this.profileAnalyzer = new VolumeProfileAnalyzer();
-        this.pageManager.setProfileComputer(profileComputer);
+
+        // Create singleton stores and wire to PageManager
+        this.profileStore = new ProfileStore(dataStore, pageManager.getAggTradesStore(), profileComputer);
+        this.spectrumStore = new SpectrumStore(dataStore, pageManager.getAggTradesStore());
+        this.profileStore.setCompletionCallback(pageManager);
+        this.spectrumStore.setCompletionCallback(pageManager);
+        this.pageManager.setProfileStore(profileStore);
+        this.pageManager.setSpectrumStore(spectrumStore);
     }
 
     public void setNewsManager(NewsManager newsManager) {
@@ -94,6 +105,7 @@ public class DataServiceServer {
         // Configure routes
         configurePageRoutes();
         configureDataRoutes();
+        configureSpectrumRoutes();
         configureProfileRoutes();
         configureInventoryRoutes();
         configureCoverageRoutes();
@@ -149,13 +161,21 @@ public class DataServiceServer {
     }
 
     private void configureProfileRoutes() {
-        ProfileHandler profileHandler = new ProfileHandler(dataStore, tickSizeResolver, profileComputer, profileAnalyzer);
+        ProfileHandler profileHandler = new ProfileHandler(dataStore, profileStore,
+            tickSizeResolver, profileAnalyzer);
 
         app.get("/profile", profileHandler::getProfile);
         app.get("/profile/binned", profileHandler::getBinnedProfile);
         app.get("/profile/poc-series", profileHandler::getPocSeries);
         app.get("/profile/daily-levels", profileHandler::getDailyLevels);
         app.get("/profile/daily-binned", profileHandler::getDailyBinned);
+    }
+
+    private void configureSpectrumRoutes() {
+        SpectrumHandler spectrumHandler = new SpectrumHandler(spectrumStore, dataStore);
+
+        app.get("/spectrum", spectrumHandler::getSpectrum);
+        app.post("/spectrum/backfill", spectrumHandler::backfill);
     }
 
     private void configureInventoryRoutes() {

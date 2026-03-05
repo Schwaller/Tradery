@@ -1,6 +1,5 @@
 package com.tradery.forge.data.page;
 
-import com.tradery.core.indicators.FootprintIndicator;
 import com.tradery.core.indicators.RotatingRays;
 import com.tradery.core.indicators.RotatingRays.RaySet;
 import com.tradery.core.indicators.registry.IndicatorContext;
@@ -8,7 +7,6 @@ import com.tradery.core.indicators.registry.IndicatorRegistry;
 import com.tradery.core.indicators.registry.IndicatorSpec;
 import com.tradery.core.model.AggTrade;
 import com.tradery.core.model.Candle;
-import com.tradery.core.model.Exchange;
 import com.tradery.data.page.PageState;
 import com.tradery.forge.data.log.DownloadLogStore;
 import org.slf4j.Logger;
@@ -357,43 +355,9 @@ public class IndicatorPageManager {
                 yield computeHistoricRays(candles, skip, interval);
             }
             case FOOTPRINT_HEATMAP -> {
-                // Params format: buckets:tickSize:displayMode:selectedExchange
-                int buckets = 20;
-                Double tickSize = null;
-                java.util.Set<Exchange> exchangeFilter = null;
-                boolean hasExchangeFilter = false;
-
-                if (params != null && !params.isEmpty()) {
-                    String[] parts = params.split(":");
-                    if (parts.length >= 1 && !parts[0].isEmpty()) {
-                        buckets = Integer.parseInt(parts[0]);
-                    }
-                    if (parts.length >= 2 && !parts[1].isEmpty()) {
-                        tickSize = Double.parseDouble(parts[1]);
-                    }
-                    // parts[2] is displayMode (COMBINED, SINGLE_EXCHANGE, etc.)
-                    if (parts.length >= 4 && !parts[3].isEmpty()) {
-                        exchangeFilter = java.util.EnumSet.of(Exchange.valueOf(parts[3]));
-                        hasExchangeFilter = true;
-                    }
-                }
-
-                // Try precomputed profiles when available (combined mode only — no exchange breakdown)
-                var fpCtx = com.tradery.forge.ApplicationContext.getInstance();
-                if (!hasExchangeFilter && fpCtx != null && fpCtx.isDataServiceAvailable()
-                        && symbol != null && candles != null && !candles.isEmpty()) {
-                    var fpResult = fetchFootprintFromDataService(fpCtx.getDataServiceClient(),
-                        symbol, timeframe, candles, buckets);
-                    if (fpResult != null) {
-                        yield fpResult;
-                    }
-                }
-
-                // Fall back to aggTrades computation (exchange filter, or data service unavailable)
-                if (aggTrades == null || aggTrades.isEmpty()) {
-                    yield null;
-                }
-                yield FootprintIndicator.calculate(candles, aggTrades, timeframe, buckets, tickSize, exchangeFilter);
+                // Footprint heatmap is computed directly by FootprintHeatmapOverlay
+                // (profile-based for COMBINED/SPLIT, aggTrades-based for exchange modes)
+                yield null;
             }
             case DAILY_VOLUME_PROFILE -> {
                 // Params format: numBins:valueAreaPct:maxDays
@@ -597,114 +561,6 @@ public class IndicatorPageManager {
             ));
         }
         return profiles;
-    }
-
-    /**
-     * Fetch footprint data from precomputed profiles in the data service.
-     * Returns a FootprintResult compatible with FootprintHeatmapOverlay, or null if unavailable.
-     * Only works for combined mode (no exchange filter) since profiles don't have per-exchange breakdown.
-     */
-    private com.tradery.core.model.FootprintResult fetchFootprintFromDataService(
-            com.tradery.dataclient.DataServiceClient client, String symbol, String timeframe,
-            List<Candle> candles, int targetBuckets) {
-
-        try {
-            long start = candles.get(0).timestamp();
-            long end = candles.get(candles.size() - 1).timestamp();
-
-            // Fetch raw tick-level profiles at the chart's timeframe
-            var rawProfiles = client.getProfiles(symbol, timeframe, start, end);
-            if (rawProfiles == null || rawProfiles.isEmpty()) return null;
-
-            // Index profiles by window start timestamp for quick lookup
-            java.util.Map<Long, com.tradery.dataclient.DataServiceClient.RawProfileResponse> profileByTimestamp = new java.util.HashMap<>();
-            for (var p : rawProfiles) {
-                profileByTimestamp.put(p.windowStart(), p);
-            }
-
-            // Calculate tick size from ATR (same logic as FootprintIndicator)
-            double atr = FootprintIndicator.calculateTickSize(
-                calculateATRForFootprint(candles, 14), 1) * targetBuckets;
-            double tickSize = FootprintIndicator.calculateTickSize(
-                calculateATRForFootprint(candles, 14), targetBuckets);
-
-            var resultBuilder = new com.tradery.core.model.FootprintResult.Builder()
-                .tickSize(tickSize)
-                .symbol(symbol)
-                .timeframe(timeframe);
-
-            for (int i = 0; i < candles.size(); i++) {
-                Candle candle = candles.get(i);
-                var profile = profileByTimestamp.get(candle.timestamp());
-
-                var fpBuilder = new com.tradery.core.model.Footprint.Builder()
-                    .timestamp(candle.timestamp())
-                    .barIndex(i)
-                    .high(candle.high())
-                    .low(candle.low())
-                    .tickSize(tickSize);
-
-                if (profile != null && profile.levels() != null && !profile.levels().isEmpty()) {
-                    // Convert tick-level profile to footprint buckets
-                    double profileTickSize = profile.tickSize();
-                    for (var entry : profile.levels().entrySet()) {
-                        int tickIndex = Integer.parseInt(entry.getKey());
-                        double[] buySell = entry.getValue();
-                        double priceLevel = tickIndex * profileTickSize;
-                        double buyVol = buySell.length > 0 ? buySell[0] : 0;
-                        double sellVol = buySell.length > 1 ? buySell[1] : 0;
-
-                        // Re-bucket to the target tick size
-                        double snappedPrice = Math.round(priceLevel / tickSize) * tickSize;
-
-                        var bucketBuilder = new com.tradery.core.model.FootprintBucket.Builder(snappedPrice);
-                        bucketBuilder.addBuyVolume(Exchange.BINANCE, buyVol);
-                        bucketBuilder.addSellVolume(Exchange.BINANCE, sellVol);
-                        fpBuilder.addBucket(bucketBuilder.build());
-                    }
-                } else {
-                    // Empty footprint for this candle
-                    double low = FootprintIndicator.calculateTickSize(candle.high() - candle.low(), 1);
-                    // Create empty buckets covering candle range
-                    double snapLow = Math.round(candle.low() / tickSize) * tickSize;
-                    double snapHigh = Math.round(candle.high() / tickSize) * tickSize;
-                    for (double price = snapLow; price <= snapHigh + tickSize / 2; price += tickSize) {
-                        fpBuilder.addBucket(com.tradery.core.model.FootprintBucket.empty(price));
-                    }
-                }
-
-                resultBuilder.addFootprint(fpBuilder.build());
-            }
-
-            log.info("Footprint computed from precomputed profiles: {} candles, {} profiles matched",
-                candles.size(), rawProfiles.size());
-            return resultBuilder.build();
-        } catch (Exception e) {
-            log.warn("Failed to fetch footprint from data service, will fall back to aggTrades: {}", e.getMessage());
-            return null;
-        }
-    }
-
-    /**
-     * Calculate ATR for footprint tick size calculation.
-     */
-    private static double calculateATRForFootprint(List<Candle> candles, int period) {
-        if (candles.size() < 2) {
-            Candle last = candles.get(candles.size() - 1);
-            return last.high() - last.low();
-        }
-        double sum = 0;
-        int count = 0;
-        int start = Math.max(1, candles.size() - period);
-        for (int i = start; i < candles.size(); i++) {
-            Candle current = candles.get(i);
-            Candle prev = candles.get(i - 1);
-            double tr = Math.max(current.high() - current.low(),
-                Math.max(Math.abs(current.high() - prev.close()), Math.abs(current.low() - prev.close())));
-            sum += tr;
-            count++;
-        }
-        return count > 0 ? sum / count : 1.0;
     }
 
     /**

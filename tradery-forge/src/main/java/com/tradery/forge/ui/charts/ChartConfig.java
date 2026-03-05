@@ -76,6 +76,11 @@ public class ChartConfig {
     // Fear & Greed Index chart
     private boolean fearGreedEnabled = false;
 
+    // Spectrum chart
+    private boolean spectrumEnabled = false;
+    private SpectrumColorMode spectrumColorMode = SpectrumColorMode.RELATIVE;
+    private SpectrumBucketMode spectrumBucketMode = SpectrumBucketMode.RAW;
+
     // Holding Cost charts
     private boolean holdingCostCumulativeEnabled = false;
     private boolean holdingCostEventsEnabled = false;
@@ -140,7 +145,7 @@ public class ChartConfig {
 
     // Price chart mode
     private boolean candlestickMode = false;  // false = line, true = candlestick
-    private int priceOpacity = 100;  // 0-100, applied to price line and candles (not cloud)
+    private int priceOpacity = 100;  // 0-100, applied to price line, candles, and cloud
 
     // Axis position: "left", "right", or "both"
     private String priceAxisPosition = "left";
@@ -363,11 +368,76 @@ public class ChartConfig {
     public boolean isFearGreedEnabled() { return fearGreedEnabled; }
     public void setFearGreedEnabled(boolean enabled) { this.fearGreedEnabled = enabled; save(); }
 
+    // ===== Spectrum Chart Getters/Setters =====
+
+    public boolean isSpectrumEnabled() { return spectrumEnabled; }
+    public void setSpectrumEnabled(boolean enabled) { this.spectrumEnabled = enabled; save(); }
+    public SpectrumColorMode getSpectrumColorMode() { return spectrumColorMode != null ? spectrumColorMode : SpectrumColorMode.RELATIVE; }
+    public void setSpectrumColorMode(SpectrumColorMode mode) { this.spectrumColorMode = mode; save(); notifyListeners(); }
+    public SpectrumBucketMode getSpectrumBucketMode() { return spectrumBucketMode != null ? spectrumBucketMode : SpectrumBucketMode.RAW; }
+    public void setSpectrumBucketMode(SpectrumBucketMode mode) { this.spectrumBucketMode = mode; save(); notifyListeners(); }
+
     public boolean isHoldingCostCumulativeEnabled() { return holdingCostCumulativeEnabled; }
     public void setHoldingCostCumulativeEnabled(boolean enabled) { this.holdingCostCumulativeEnabled = enabled; save(); }
 
     public boolean isHoldingCostEventsEnabled() { return holdingCostEventsEnabled; }
     public void setHoldingCostEventsEnabled(boolean enabled) { this.holdingCostEventsEnabled = enabled; save(); }
+
+    // ===== Apply to IndicatorChartsManager =====
+
+    /**
+     * Apply all saved indicator chart settings (enable states + parameters) to the manager.
+     */
+    public void applyTo(IndicatorChartsManager mgr) {
+        // Set parameters before enabling (so subscribe uses correct params)
+        com.tradery.forge.ui.charts.indicator.RsiChart rsi = mgr.getChartImpl(IndicatorType.RSI);
+        rsi.setPeriod(rsiPeriod);
+        mgr.setEnabled(IndicatorType.RSI, rsiEnabled);
+
+        com.tradery.forge.ui.charts.indicator.MacdChart macd = mgr.getChartImpl(IndicatorType.MACD);
+        macd.setFast(macdFast);
+        macd.setSlow(macdSlow);
+        macd.setSignal(macdSignal);
+        mgr.setEnabled(IndicatorType.MACD, macdEnabled);
+
+        com.tradery.forge.ui.charts.indicator.AtrChart atr = mgr.getChartImpl(IndicatorType.ATR);
+        atr.setPeriod(atrPeriod);
+        mgr.setEnabled(IndicatorType.ATR, atrEnabled);
+
+        com.tradery.forge.ui.charts.indicator.StochasticChart stoch = mgr.getChartImpl(IndicatorType.STOCHASTIC);
+        stoch.setKPeriod(stochasticKPeriod);
+        stoch.setDPeriod(stochasticDPeriod);
+        mgr.setEnabled(IndicatorType.STOCHASTIC, stochasticEnabled);
+
+        com.tradery.forge.ui.charts.indicator.RangePositionChart rp = mgr.getChartImpl(IndicatorType.RANGE_POSITION);
+        rp.setPeriod(rangePositionPeriod);
+        mgr.setEnabled(IndicatorType.RANGE_POSITION, rangePositionEnabled);
+
+        com.tradery.forge.ui.charts.indicator.AdxChart adx = mgr.getChartImpl(IndicatorType.ADX);
+        adx.setPeriod(adxPeriod);
+        mgr.setEnabled(IndicatorType.ADX, adxEnabled);
+
+        mgr.setEnabled(IndicatorType.DELTA, deltaEnabled);
+        mgr.setEnabled(IndicatorType.CVD, cvdEnabled);
+        mgr.setEnabled(IndicatorType.VOLUME_RATIO, volumeRatioEnabled);
+
+        com.tradery.forge.ui.charts.indicator.WhaleChart whale = mgr.getChartImpl(IndicatorType.WHALE);
+        whale.setThreshold(whaleThreshold);
+        mgr.setEnabled(IndicatorType.WHALE, whaleEnabled);
+
+        com.tradery.forge.ui.charts.indicator.RetailChart retail = mgr.getChartImpl(IndicatorType.RETAIL);
+        retail.setThreshold(retailThreshold);
+        mgr.setEnabled(IndicatorType.RETAIL, retailEnabled);
+
+        mgr.setEnabled(IndicatorType.TRADE_COUNT, tradeCountEnabled);
+        mgr.setEnabled(IndicatorType.FUNDING, fundingEnabled);
+        mgr.setEnabled(IndicatorType.OI, oiEnabled);
+        mgr.setEnabled(IndicatorType.PREMIUM, premiumEnabled);
+        mgr.setEnabled(IndicatorType.FEAR_GREED, fearGreedEnabled);
+        mgr.setEnabled(IndicatorType.SPECTRUM, spectrumEnabled);
+        mgr.setEnabled(IndicatorType.HOLDING_COST_CUMULATIVE, holdingCostCumulativeEnabled);
+        mgr.setEnabled(IndicatorType.HOLDING_COST_EVENTS, holdingCostEventsEnabled);
+    }
 
     // ===== POC Overlay Getters/Setters =====
 
@@ -612,6 +682,11 @@ public class ChartConfig {
         // Fear & Greed Index
         this.fearGreedEnabled = other.fearGreedEnabled;
 
+        // Spectrum
+        this.spectrumEnabled = other.spectrumEnabled;
+        this.spectrumColorMode = other.spectrumColorMode;
+        this.spectrumBucketMode = other.spectrumBucketMode;
+
         // POC overlays
         this.dailyPocEnabled = other.dailyPocEnabled;
         this.floatingPocEnabled = other.floatingPocEnabled;
@@ -720,6 +795,11 @@ public class ChartConfig {
 
         // Fear & Greed Index - off by default
         fearGreedEnabled = false;
+
+        // Spectrum - off by default
+        spectrumEnabled = false;
+        spectrumColorMode = SpectrumColorMode.RELATIVE;
+        spectrumBucketMode = SpectrumBucketMode.RAW;
 
         // POC overlays - off by default
         dailyPocEnabled = false;
@@ -902,6 +982,11 @@ public class ChartConfig {
 
         // Fear & Greed Index
         this.fearGreedEnabled = other.fearGreedEnabled;
+
+        // Spectrum
+        this.spectrumEnabled = other.spectrumEnabled;
+        this.spectrumColorMode = other.spectrumColorMode;
+        this.spectrumBucketMode = other.spectrumBucketMode;
 
         // POC overlays
         this.dailyPocEnabled = other.dailyPocEnabled;

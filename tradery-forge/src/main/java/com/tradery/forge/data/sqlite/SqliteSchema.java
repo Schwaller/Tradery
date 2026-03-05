@@ -8,13 +8,14 @@ import java.sql.*;
 /**
  * Manages SQLite schema creation and versioning.
  * Creates only the tables relevant to each DataStoreType.
- * Fresh start with version 1 — no migrations from old monolithic format.
+ * No migration logic — incompatible schema versions drop and recreate tables.
+ * Data re-backfills on demand.
  */
 public class SqliteSchema {
 
     private static final Logger log = LoggerFactory.getLogger(SqliteSchema.class);
 
-    public static final int CURRENT_VERSION = 1;
+    public static final int CURRENT_VERSION = 4;
 
     /**
      * Initialize the schema for a specific data store type.
@@ -29,8 +30,56 @@ public class SqliteSchema {
             createTablesForType(c, type);
             setSchemaVersion(c, CURRENT_VERSION);
             log.info("Created SQLite schema v{} for {} ({})", CURRENT_VERSION, conn.getSymbol(), type);
+        } else if (currentVersion < CURRENT_VERSION) {
+            // Incompatible schema — drop all data tables and recreate.
+            // Data re-backfills on demand. No migration logic needed.
+            log.info("Schema v{} outdated (current: v{}) for {} ({}) — dropping and recreating",
+                    currentVersion, CURRENT_VERSION, conn.getSymbol(), type);
+            dropDataTables(c, type);
+            createTablesForType(c, type);
+            setSchemaVersion(c, CURRENT_VERSION);
         } else {
             log.debug("SQLite schema v{} up to date for {} ({})", currentVersion, conn.getSymbol(), type);
+        }
+    }
+
+    /**
+     * Drop all data tables for a type (preserves schema_version and data_coverage structure).
+     * Coverage entries are cleared so data re-backfills on demand.
+     */
+    private static void dropDataTables(Connection c, DataStoreType type) throws SQLException {
+        try (Statement stmt = c.createStatement()) {
+            switch (type) {
+                case CANDLES -> {
+                    stmt.execute("DROP TABLE IF EXISTS candles");
+                    stmt.execute("DELETE FROM data_coverage WHERE data_type LIKE '%candle%' OR data_type = 'klines'");
+                }
+                case AGG_TRADES -> {
+                    stmt.execute("DROP TABLE IF EXISTS agg_trades");
+                    stmt.execute("DROP TABLE IF EXISTS stablecoin_rates");
+                    stmt.execute("DELETE FROM data_coverage WHERE data_type = 'agg_trades'");
+                }
+                case FUNDING_RATES -> {
+                    stmt.execute("DROP TABLE IF EXISTS funding_rates");
+                    stmt.execute("DELETE FROM data_coverage WHERE data_type = 'funding_rates'");
+                }
+                case OPEN_INTEREST -> {
+                    stmt.execute("DROP TABLE IF EXISTS open_interest");
+                    stmt.execute("DELETE FROM data_coverage WHERE data_type = 'open_interest'");
+                }
+                case PREMIUM_INDEX -> {
+                    stmt.execute("DROP TABLE IF EXISTS premium_index");
+                    stmt.execute("DELETE FROM data_coverage WHERE data_type = 'premium_index'");
+                }
+                case VOLUME_PROFILES -> {
+                    stmt.execute("DROP TABLE IF EXISTS volume_profiles");
+                    stmt.execute("DELETE FROM data_coverage WHERE data_type = 'volume_profiles'");
+                }
+                case SPECTRUM -> {
+                    stmt.execute("DROP TABLE IF EXISTS trade_size_spectrum");
+                    stmt.execute("DELETE FROM data_coverage WHERE data_type = 'spectrum'");
+                }
+            }
         }
     }
 
@@ -94,12 +143,13 @@ public class SqliteSchema {
                 case FUNDING_RATES -> createFundingRatesTables(stmt);
                 case OPEN_INTEREST -> createOpenInterestTables(stmt);
                 case PREMIUM_INDEX -> createPremiumIndexTables(stmt);
+                case VOLUME_PROFILES -> createVolumeProfilesTables(stmt);
+                case SPECTRUM -> createSpectrumTables(stmt);
             }
         }
     }
 
     private static void createCandlesTables(Statement stmt) throws SQLException {
-        // Note: forge candles don't have market_type column (simpler schema)
         stmt.execute("""
             CREATE TABLE IF NOT EXISTS candles (
                 timeframe TEXT NOT NULL,
@@ -116,39 +166,26 @@ public class SqliteSchema {
                 PRIMARY KEY (timeframe, timestamp)
             ) WITHOUT ROWID
             """);
-
-        stmt.execute("""
-            CREATE INDEX IF NOT EXISTS idx_candles_tf_ts
-            ON candles(timeframe, timestamp)
-            """);
     }
 
     private static void createAggTradesTables(Statement stmt) throws SQLException {
         stmt.execute("""
             CREATE TABLE IF NOT EXISTS agg_trades (
-                agg_trade_id INTEGER NOT NULL,
+                agg_trade_id INTEGER NOT NULL PRIMARY KEY,
                 price REAL NOT NULL,
                 quantity REAL NOT NULL,
                 first_trade_id INTEGER NOT NULL,
                 last_trade_id INTEGER NOT NULL,
                 timestamp INTEGER NOT NULL,
                 is_buyer_maker INTEGER NOT NULL,
-                exchange TEXT NOT NULL DEFAULT 'binance',
-                market_type TEXT NOT NULL DEFAULT 'perp',
                 raw_symbol TEXT,
-                normalized_price REAL,
-                PRIMARY KEY (exchange, agg_trade_id)
+                normalized_price REAL
             )
             """);
 
         stmt.execute("""
             CREATE INDEX IF NOT EXISTS idx_agg_trades_ts
             ON agg_trades(timestamp)
-            """);
-
-        stmt.execute("""
-            CREATE INDEX IF NOT EXISTS idx_agg_trades_exchange_ts
-            ON agg_trades(exchange, timestamp)
             """);
 
         stmt.execute("""
@@ -193,6 +230,41 @@ public class SqliteSchema {
                 close_time INTEGER NOT NULL,
                 PRIMARY KEY (interval, open_time)
             ) WITHOUT ROWID
+            """);
+    }
+
+    private static void createVolumeProfilesTables(Statement stmt) throws SQLException {
+        stmt.execute("""
+            CREATE TABLE IF NOT EXISTS volume_profiles (
+                timeframe TEXT NOT NULL,
+                window_start INTEGER NOT NULL,
+                tick_size REAL NOT NULL,
+                total_buy_volume REAL NOT NULL DEFAULT 0,
+                total_sell_volume REAL NOT NULL DEFAULT 0,
+                level_count INTEGER NOT NULL DEFAULT 0,
+                profile_data BLOB NOT NULL,
+                PRIMARY KEY (timeframe, window_start)
+            ) WITHOUT ROWID
+            """);
+    }
+
+    private static void createSpectrumTables(Statement stmt) throws SQLException {
+        stmt.execute("""
+            CREATE TABLE IF NOT EXISTS trade_size_spectrum (
+                mode          TEXT NOT NULL DEFAULT 'raw',
+                window_start  INTEGER NOT NULL,
+                bucket_index  INTEGER NOT NULL,
+                trade_count   INTEGER NOT NULL,
+                total_volume  REAL NOT NULL,
+                buy_volume    REAL NOT NULL,
+                sell_volume   REAL NOT NULL,
+                PRIMARY KEY (mode, window_start, bucket_index)
+            ) WITHOUT ROWID
+            """);
+
+        stmt.execute("""
+            CREATE INDEX IF NOT EXISTS idx_spectrum_mode_window
+            ON trade_size_spectrum(mode, window_start)
             """);
     }
 

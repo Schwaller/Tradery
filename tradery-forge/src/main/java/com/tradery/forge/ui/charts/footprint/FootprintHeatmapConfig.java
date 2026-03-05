@@ -33,6 +33,9 @@ public class FootprintHeatmapConfig {
     private boolean showValueArea = true;          // Shade VAH-VAL region
     private double imbalanceThreshold = 3.0;       // Ratio for imbalance detection
 
+    // Volume normalization
+    private boolean globalVolumeNorm = true;  // true = normalize across all candles, false = per-candle
+
     // Opacity
     private double opacity = 0.7;
 
@@ -47,8 +50,9 @@ public class FootprintHeatmapConfig {
      * Tick size calculation mode.
      */
     public enum TickSizeMode {
-        AUTO,   // Calculate based on ATR
-        FIXED   // Use fixedTickSize value
+        AUTO,       // Calculate based on ATR (global grid)
+        FIXED,      // Use fixedTickSize value (global grid)
+        PER_CANDLE  // Each candle gets exactly targetBuckets buckets
     }
 
     // ===== Color Scheme (CryptoPage style) =====
@@ -97,6 +101,7 @@ public class FootprintHeatmapConfig {
         this.targetBuckets = other.targetBuckets;
         this.showDeltaNumbers = other.showDeltaNumbers;
         this.showImbalanceMarkers = other.showImbalanceMarkers;
+        this.globalVolumeNorm = other.globalVolumeNorm;
         this.showPocLine = other.showPocLine;
         this.showValueArea = other.showValueArea;
         this.imbalanceThreshold = other.imbalanceThreshold;
@@ -149,9 +154,14 @@ public class FootprintHeatmapConfig {
         // Clamp to [0, 1]
         volumeIntensity = Math.max(0, Math.min(1, volumeIntensity));
 
-        // Map intensity to ramp index (0 = highest volume = red, 5 = lowest = blue)
-        // Invert so high volume = index 0 (red)
-        double index = (1.0 - volumeIntensity) * (VOLUME_RAMP.length - 1);
+        // Apply power-curve scaling to spread the color range more evenly.
+        // Without this, global normalization causes most buckets to cluster at the
+        // low end (all blue) because a single high-volume bucket dominates maxVol.
+        // pow(x, 0.35) compresses outliers and expands the low end.
+        double scaled = Math.pow(volumeIntensity, 0.35);
+
+        // Map scaled intensity to ramp index (0 = highest volume = red, 5 = lowest = blue)
+        double index = (1.0 - scaled) * (VOLUME_RAMP.length - 1);
         int lowIdx = (int) Math.floor(index);
         int highIdx = Math.min(lowIdx + 1, VOLUME_RAMP.length - 1);
         double t = index - lowIdx;
@@ -164,8 +174,8 @@ public class FootprintHeatmapConfig {
         int g = (int) (low.getGreen() + t * (high.getGreen() - low.getGreen()));
         int b = (int) (low.getBlue() + t * (high.getBlue() - low.getBlue()));
 
-        int alpha = (int) (100 + volumeIntensity * 155 * opacity);
-        alpha = Math.max(100, Math.min(255, alpha));
+        int alpha = (int) (120 + scaled * 135 * opacity);
+        alpha = Math.max(120, Math.min(255, alpha));
 
         return new Color(r, g, b, alpha);
     }
@@ -290,5 +300,13 @@ public class FootprintHeatmapConfig {
 
     public void setModerateBuyThreshold(double moderateBuyThreshold) {
         this.moderateBuyThreshold = moderateBuyThreshold;
+    }
+
+    public boolean isGlobalVolumeNorm() {
+        return globalVolumeNorm;
+    }
+
+    public void setGlobalVolumeNorm(boolean globalVolumeNorm) {
+        this.globalVolumeNorm = globalVolumeNorm;
     }
 }

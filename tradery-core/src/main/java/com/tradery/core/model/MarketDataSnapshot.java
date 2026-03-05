@@ -17,7 +17,8 @@ public record MarketDataSnapshot(
     List<OpenInterest> openInterest,
     List<PremiumIndex> premiumIndex,
     List<FearGreedIndex> fearGreedIndex,
-    Map<Long, double[]> dailyProfiles
+    Map<Long, double[]> dailyProfiles,
+    List<SpectrumWindow> spectrumWindows
 ) implements MarketData {
 
     public static Builder builder(String symbol, String timeframe, List<Candle> candles) {
@@ -34,6 +35,7 @@ public record MarketDataSnapshot(
         private List<PremiumIndex> premiumIndex;
         private List<FearGreedIndex> fearGreedIndex;
         private Map<Long, double[]> dailyProfiles;
+        private List<SpectrumWindow> spectrumWindows;
 
         private Builder(String symbol, String timeframe, List<Candle> candles) {
             this.symbol = symbol;
@@ -71,6 +73,11 @@ public record MarketDataSnapshot(
             return this;
         }
 
+        public Builder spectrumWindows(List<SpectrumWindow> spectrumWindows) {
+            this.spectrumWindows = spectrumWindows;
+            return this;
+        }
+
         public MarketDataSnapshot build() {
             return new MarketDataSnapshot(
                 symbol,
@@ -81,7 +88,8 @@ public record MarketDataSnapshot(
                 openInterest,
                 premiumIndex,
                 fearGreedIndex,
-                dailyProfiles != null ? Map.copyOf(dailyProfiles) : null
+                dailyProfiles != null ? Map.copyOf(dailyProfiles) : null,
+                spectrumWindows
             );
         }
     }

@@ -9,14 +9,14 @@ import org.slf4j.LoggerFactory;
 import java.io.File;
 import java.io.IOException;
 import java.sql.SQLException;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Main facade for SQLite data storage.
  * Provides unified access to all DAOs with lazy initialization per symbol.
  * Each symbol gets a subdirectory with one DB per data type.
+ * Split types (aggTrades, candles) get separate DB files per qualifier.
  */
 public class SqliteDataStore {
 
@@ -42,46 +42,62 @@ public class SqliteDataStore {
     // ========== Candle Methods ==========
 
     /**
-     * Get candles for a symbol and timeframe.
+     * Get candles for a symbol and timeframe. Defaults to perp.
      */
     public List<Candle> getCandles(String symbol, String timeframe, long startTime, long endTime)
             throws IOException {
+        return getCandles(symbol, "perp", timeframe, startTime, endTime);
+    }
+
+    /**
+     * Get candles for a symbol, market type, and timeframe.
+     */
+    public List<Candle> getCandles(String symbol, String marketType, String timeframe, long startTime, long endTime)
+            throws IOException {
         try {
-            return forSymbol(symbol).candles().query(timeframe, startTime, endTime);
+            return forSymbol(symbol).candlesDao(marketType).query(timeframe, startTime, endTime);
         } catch (SQLException e) {
             throw new IOException("SQLite error getting candles: " + e.getMessage(), e);
         }
     }
 
     /**
-     * Save candles (insert or update).
+     * Save candles (insert or update). Defaults to perp.
      */
     public void saveCandles(String symbol, String timeframe, List<Candle> candles) throws IOException {
+        saveCandles(symbol, "perp", timeframe, candles);
+    }
+
+    /**
+     * Save candles for a specific market type.
+     */
+    public void saveCandles(String symbol, String marketType, String timeframe, List<Candle> candles) throws IOException {
         try {
-            forSymbol(symbol).candles().insertBatch(timeframe, candles);
+            forSymbol(symbol).candlesDao(marketType).insertBatch(timeframe, candles);
         } catch (SQLException e) {
             throw new IOException("SQLite error saving candles: " + e.getMessage(), e);
         }
     }
 
     /**
-     * Get the latest candle.
+     * Get the latest candle. Defaults to perp.
      */
     public Candle getLatestCandle(String symbol, String timeframe) throws IOException {
         try {
-            return forSymbol(symbol).candles().getLatest(timeframe);
+            return forSymbol(symbol).candlesDao("perp").getLatest(timeframe);
         } catch (SQLException e) {
             throw new IOException("SQLite error getting latest candle: " + e.getMessage(), e);
         }
     }
 
     /**
-     * Check if candle data exists for a range.
+     * Check if candle data exists for a range. Defaults to perp.
      */
     public boolean hasCandleData(String symbol, String timeframe, long startTime, long endTime)
             throws IOException {
         try {
-            return forSymbol(symbol).coverageFor(DataStoreType.CANDLES).isFullyCovered("candles", timeframe, startTime, endTime);
+            return forSymbol(symbol).coverageFor(DataStoreType.CANDLES, "perp")
+                    .isFullyCovered("candles", timeframe, startTime, endTime);
         } catch (SQLException e) {
             throw new IOException("SQLite error checking candle coverage: " + e.getMessage(), e);
         }
@@ -89,9 +105,6 @@ public class SqliteDataStore {
 
     // ========== Funding Rate Methods ==========
 
-    /**
-     * Get funding rates for a symbol.
-     */
     public List<FundingRate> getFundingRates(String symbol, long startTime, long endTime)
             throws IOException {
         try {
@@ -101,9 +114,6 @@ public class SqliteDataStore {
         }
     }
 
-    /**
-     * Save funding rates.
-     */
     public void saveFundingRates(String symbol, List<FundingRate> rates) throws IOException {
         try {
             forSymbol(symbol).fundingRates().insertBatch(rates);
@@ -114,9 +124,6 @@ public class SqliteDataStore {
 
     // ========== Open Interest Methods ==========
 
-    /**
-     * Get open interest data for a symbol.
-     */
     public List<OpenInterest> getOpenInterest(String symbol, long startTime, long endTime)
             throws IOException {
         try {
@@ -126,9 +133,6 @@ public class SqliteDataStore {
         }
     }
 
-    /**
-     * Save open interest data.
-     */
     public void saveOpenInterest(String symbol, List<OpenInterest> data) throws IOException {
         try {
             forSymbol(symbol).openInterest().insertBatch(data);
@@ -139,9 +143,6 @@ public class SqliteDataStore {
 
     // ========== Premium Index Methods ==========
 
-    /**
-     * Get premium index data for a symbol and interval.
-     */
     public List<PremiumIndex> getPremiumIndex(String symbol, String interval, long startTime, long endTime)
             throws IOException {
         try {
@@ -151,9 +152,6 @@ public class SqliteDataStore {
         }
     }
 
-    /**
-     * Save premium index data.
-     */
     public void savePremiumIndex(String symbol, String interval, List<PremiumIndex> data)
             throws IOException {
         try {
@@ -166,45 +164,88 @@ public class SqliteDataStore {
     // ========== Aggregated Trades Methods ==========
 
     /**
-     * Get aggregated trades for a symbol.
+     * Get aggregated trades for a symbol (all exchanges, default perp).
      */
     public List<AggTrade> getAggTrades(String symbol, long startTime, long endTime) throws IOException {
-        try {
-            return forSymbol(symbol).aggTrades().query(startTime, endTime);
-        } catch (SQLException e) {
-            throw new IOException("SQLite error getting agg trades: " + e.getMessage(), e);
-        }
+        return getAggTrades(symbol, Exchange.BINANCE, DataMarketType.FUTURES_PERP, startTime, endTime);
     }
 
     /**
-     * Get aggregated trades for a symbol, filtered by market type.
+     * Get aggregated trades filtered by market types.
+     * Routes to the appropriate DB file(s) based on market type.
      */
     public List<AggTrade> getAggTrades(String symbol, long startTime, long endTime,
-                                        java.util.Set<DataMarketType> marketTypes) throws IOException {
+                                        Set<DataMarketType> marketTypes) throws IOException {
+        if (marketTypes == null || marketTypes.isEmpty()) {
+            return getAggTrades(symbol, startTime, endTime);
+        }
+
         try {
-            return forSymbol(symbol).aggTrades().queryWithMarketType(startTime, endTime, marketTypes);
+            // If single market type, query directly
+            if (marketTypes.size() == 1) {
+                DataMarketType mt = marketTypes.iterator().next();
+                return forSymbol(symbol).aggTradesDao(Exchange.BINANCE, mt).query(startTime, endTime);
+            }
+
+            // Multiple market types: query each file and merge
+            List<AggTrade> merged = new ArrayList<>();
+            for (DataMarketType mt : marketTypes) {
+                merged.addAll(forSymbol(symbol).aggTradesDao(Exchange.BINANCE, mt).query(startTime, endTime));
+            }
+            merged.sort(Comparator.comparingLong(AggTrade::timestamp).thenComparingLong(AggTrade::aggTradeId));
+            return merged;
         } catch (SQLException e) {
             throw new IOException("SQLite error getting agg trades: " + e.getMessage(), e);
         }
     }
 
     /**
-     * Save aggregated trades.
+     * Get aggregated trades for a specific exchange and market type.
+     */
+    public List<AggTrade> getAggTrades(String symbol, Exchange exchange, DataMarketType marketType,
+                                        long startTime, long endTime) throws IOException {
+        try {
+            return forSymbol(symbol).aggTradesDao(exchange, marketType).query(startTime, endTime);
+        } catch (SQLException e) {
+            throw new IOException("SQLite error getting agg trades: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Save aggregated trades. Routes to the correct DB file based on each trade's exchange + market type.
+     * Trades are grouped by qualifier before saving.
      */
     public void saveAggTrades(String symbol, List<AggTrade> trades) throws IOException {
+        if (trades.isEmpty()) return;
+
+        // Group by exchange + market type qualifier
+        Map<String, List<AggTrade>> grouped = new LinkedHashMap<>();
+        for (AggTrade trade : trades) {
+            Exchange ex = trade.exchange() != null ? trade.exchange() : Exchange.BINANCE;
+            DataMarketType mt = trade.marketType() != null ? trade.marketType() : DataMarketType.FUTURES_PERP;
+            String key = ex.getConfigKey() + "_" + mt.getConfigKey();
+            grouped.computeIfAbsent(key, k -> new ArrayList<>()).add(trade);
+        }
+
         try {
-            forSymbol(symbol).aggTrades().insertBatch(trades);
+            for (var entry : grouped.entrySet()) {
+                List<AggTrade> group = entry.getValue();
+                AggTrade first = group.get(0);
+                Exchange ex = first.exchange() != null ? first.exchange() : Exchange.BINANCE;
+                DataMarketType mt = first.marketType() != null ? first.marketType() : DataMarketType.FUTURES_PERP;
+                forSymbol(symbol).aggTradesDao(ex, mt).insertBatch(group);
+            }
         } catch (SQLException e) {
             throw new IOException("SQLite error saving agg trades: " + e.getMessage(), e);
         }
     }
 
     /**
-     * Get the latest aggregated trade.
+     * Get the latest aggregated trade. Defaults to binance perp.
      */
     public AggTrade getLatestAggTrade(String symbol) throws IOException {
         try {
-            return forSymbol(symbol).aggTrades().getLatest();
+            return forSymbol(symbol).aggTradesDao(Exchange.BINANCE, DataMarketType.FUTURES_PERP).getLatest();
         } catch (SQLException e) {
             throw new IOException("SQLite error getting latest agg trade: " + e.getMessage(), e);
         }
@@ -220,7 +261,9 @@ public class SqliteDataStore {
                             long rangeStart, long rangeEnd, boolean isComplete) throws IOException {
         try {
             DataStoreType dbType = DataStoreType.fromCoverageKey(dataType);
-            forSymbol(symbol).coverageFor(dbType).addCoverage(dataType, subKey, rangeStart, rangeEnd, isComplete);
+            // For split types, derive qualifier from subKey
+            String qualifier = deriveQualifier(dbType, subKey);
+            forSymbol(symbol).coverageFor(dbType, qualifier).addCoverage(dataType, subKey, rangeStart, rangeEnd, isComplete);
         } catch (SQLException e) {
             throw new IOException("SQLite error adding coverage: " + e.getMessage(), e);
         }
@@ -233,7 +276,8 @@ public class SqliteDataStore {
                                   long start, long end) throws IOException {
         try {
             DataStoreType dbType = DataStoreType.fromCoverageKey(dataType);
-            return forSymbol(symbol).coverageFor(dbType).findGaps(dataType, subKey, start, end);
+            String qualifier = deriveQualifier(dbType, subKey);
+            return forSymbol(symbol).coverageFor(dbType, qualifier).findGaps(dataType, subKey, start, end);
         } catch (SQLException e) {
             throw new IOException("SQLite error finding gaps: " + e.getMessage(), e);
         }
@@ -246,10 +290,35 @@ public class SqliteDataStore {
                                    long start, long end) throws IOException {
         try {
             DataStoreType dbType = DataStoreType.fromCoverageKey(dataType);
-            return forSymbol(symbol).coverageFor(dbType).isFullyCovered(dataType, subKey, start, end);
+            String qualifier = deriveQualifier(dbType, subKey);
+            return forSymbol(symbol).coverageFor(dbType, qualifier).isFullyCovered(dataType, subKey, start, end);
         } catch (SQLException e) {
             throw new IOException("SQLite error checking coverage: " + e.getMessage(), e);
         }
+    }
+
+    /**
+     * Derive the file qualifier from a coverage sub_key.
+     * For unsplit types, returns null (uses base filename).
+     * For candles/profiles/spectrum: qualifier is "perp" (default).
+     * For aggTrades: maps sub_key to the file qualifier.
+     *   "default" → "binance_perp", "spot" → "binance_spot", "bybit_perp" → "bybit_perp"
+     */
+    private String deriveQualifier(DataStoreType type, String subKey) {
+        if (!type.isSplit()) return null;
+        if (type.isSplitByMarket()) {
+            // Candles, volume_profiles, spectrum — default to perp
+            return "perp";
+        }
+        // AGG_TRADES — map legacy sub_keys to file qualifiers
+        if (subKey == null || subKey.isEmpty() || "default".equals(subKey)) {
+            return "binance_perp";
+        }
+        if ("spot".equals(subKey)) {
+            return "binance_spot";
+        }
+        // Already in "exchange_marketType" format
+        return subKey;
     }
 
     // ========== Utility Methods ==========
@@ -281,13 +350,14 @@ public class SqliteDataStore {
             SymbolData data = forSymbol(symbol);
             CandleDao.CandleStats candleStats = null;
 
-            List<String> timeframes = data.candles().getAvailableTimeframes();
+            CandleDao candles = data.candlesDao("perp");
+            List<String> timeframes = candles.getAvailableTimeframes();
             if (!timeframes.isEmpty()) {
                 String tf = timeframes.contains("1h") ? "1h" : timeframes.get(0);
-                candleStats = data.candles().getStats(tf);
+                candleStats = candles.getStats(tf);
             }
 
-            long aggTradeCount = data.aggTrades().count();
+            long aggTradeCount = data.aggTradesDao(Exchange.BINANCE, DataMarketType.FUTURES_PERP).count();
             int fundingCount = data.fundingRates().count();
             int oiCount = data.openInterest().count();
 
@@ -343,36 +413,36 @@ public class SqliteDataStore {
     /**
      * Container for all DAOs for a single symbol.
      * Each data type gets its own SqliteConnection and CoverageDao.
+     * Split types (aggTrades, candles) use lazy initialization per qualifier.
      */
     public static class SymbolData {
         private final String symbol;
-        private final SqliteConnection candlesConn;
-        private final SqliteConnection aggTradesConn;
+
+        // Unsplit type connections (initialized eagerly)
         private final SqliteConnection fundingRatesConn;
         private final SqliteConnection openInterestConn;
         private final SqliteConnection premiumIndexConn;
 
-        private final CandleDao candleDao;
-        private final AggTradesDao aggTradesDao;
+        // Unsplit DAOs
         private final FundingRateDao fundingRateDao;
         private final OpenInterestDao openInterestDao;
         private final PremiumIndexDao premiumIndexDao;
 
-        private final CoverageDao candlesCoverage;
-        private final CoverageDao aggTradesCoverage;
+        // Unsplit coverage DAOs
         private final CoverageDao fundingRatesCoverage;
         private final CoverageDao openInterestCoverage;
         private final CoverageDao premiumIndexCoverage;
 
+        // Split type connections + DAOs (lazy per qualifier)
+        private final Map<String, SqliteConnection> connections = new ConcurrentHashMap<>();
+        private final Map<String, CandleDao> candleDaos = new ConcurrentHashMap<>();
+        private final Map<String, AggTradesDao> aggTradesDaos = new ConcurrentHashMap<>();
+        private final Map<String, CoverageDao> coverageDaos = new ConcurrentHashMap<>();
+
         SymbolData(String symbol) throws SQLException {
             this.symbol = symbol;
 
-            candlesConn = SqliteConnection.forSymbolAndType(symbol, DataStoreType.CANDLES);
-            SqliteSchema.initialize(candlesConn, DataStoreType.CANDLES);
-
-            aggTradesConn = SqliteConnection.forSymbolAndType(symbol, DataStoreType.AGG_TRADES);
-            SqliteSchema.initialize(aggTradesConn, DataStoreType.AGG_TRADES);
-
+            // Initialize unsplit type connections
             fundingRatesConn = SqliteConnection.forSymbolAndType(symbol, DataStoreType.FUNDING_RATES);
             SqliteSchema.initialize(fundingRatesConn, DataStoreType.FUNDING_RATES);
 
@@ -382,26 +452,51 @@ public class SqliteDataStore {
             premiumIndexConn = SqliteConnection.forSymbolAndType(symbol, DataStoreType.PREMIUM_INDEX);
             SqliteSchema.initialize(premiumIndexConn, DataStoreType.PREMIUM_INDEX);
 
-            this.candleDao = new CandleDao(candlesConn);
-            this.aggTradesDao = new AggTradesDao(aggTradesConn);
             this.fundingRateDao = new FundingRateDao(fundingRatesConn);
             this.openInterestDao = new OpenInterestDao(openInterestConn);
             this.premiumIndexDao = new PremiumIndexDao(premiumIndexConn);
 
-            this.candlesCoverage = new CoverageDao(candlesConn);
-            this.aggTradesCoverage = new CoverageDao(aggTradesConn);
             this.fundingRatesCoverage = new CoverageDao(fundingRatesConn);
             this.openInterestCoverage = new CoverageDao(openInterestConn);
             this.premiumIndexCoverage = new CoverageDao(premiumIndexConn);
         }
 
-        public CandleDao candles() {
-            return candleDao;
+        // ---- Split type accessors (lazy) ----
+
+        /**
+         * Get candle DAO for a market type (e.g., "perp", "spot").
+         */
+        public CandleDao candlesDao(String marketType) throws SQLException {
+            String qualifier = marketType != null ? marketType : "perp";
+            return candleDaos.computeIfAbsent(qualifier, q -> {
+                try {
+                    SqliteConnection conn = getOrCreateConnection(DataStoreType.CANDLES, q);
+                    return new CandleDao(conn);
+                } catch (SQLException e) {
+                    throw new RuntimeException("Failed to init candles DAO for " + symbol + "/" + q, e);
+                }
+            });
         }
 
-        public AggTradesDao aggTrades() {
-            return aggTradesDao;
+        /**
+         * Get aggTrades DAO for a specific exchange and market type.
+         */
+        public AggTradesDao aggTradesDao(Exchange exchange, DataMarketType marketType) throws SQLException {
+            String exKey = exchange != null ? exchange.getConfigKey() : "binance";
+            String mtKey = marketType != null ? marketType.getConfigKey() : "perp";
+            String qualifier = exKey + "_" + mtKey;
+            return aggTradesDaos.computeIfAbsent(qualifier, q -> {
+                try {
+                    SqliteConnection conn = getOrCreateConnection(DataStoreType.AGG_TRADES, q);
+                    return new AggTradesDao(conn, exchange != null ? exchange : Exchange.BINANCE,
+                            marketType != null ? marketType : DataMarketType.FUTURES_PERP);
+                } catch (SQLException e) {
+                    throw new RuntimeException("Failed to init aggTrades DAO for " + symbol + "/" + q, e);
+                }
+            });
         }
+
+        // ---- Unsplit type accessors ----
 
         public FundingRateDao fundingRates() {
             return fundingRateDao;
@@ -415,30 +510,65 @@ public class SqliteDataStore {
             return premiumIndexDao;
         }
 
+        // ---- Coverage ----
+
         /**
-         * Get the CoverageDao for a specific data store type.
+         * Get coverage DAO for a data store type with optional qualifier.
          */
-        public CoverageDao coverageFor(DataStoreType type) {
+        public CoverageDao coverageFor(DataStoreType type, String qualifier) throws SQLException {
+            if (!type.isSplit() || qualifier == null || qualifier.isEmpty()) {
+                return coverageForUnsplit(type);
+            }
+            String key = type.name() + ":" + qualifier;
+            return coverageDaos.computeIfAbsent(key, k -> {
+                try {
+                    SqliteConnection conn = getOrCreateConnection(type, qualifier);
+                    return new CoverageDao(conn);
+                } catch (SQLException e) {
+                    throw new RuntimeException("Failed to init coverage for " + symbol + "/" + type + "/" + qualifier, e);
+                }
+            });
+        }
+
+        /**
+         * Get coverage DAO for an unsplit type.
+         */
+        public CoverageDao coverageFor(DataStoreType type) throws SQLException {
+            return coverageForUnsplit(type);
+        }
+
+        private CoverageDao coverageForUnsplit(DataStoreType type) {
             return switch (type) {
-                case CANDLES -> candlesCoverage;
-                case AGG_TRADES -> aggTradesCoverage;
                 case FUNDING_RATES -> fundingRatesCoverage;
                 case OPEN_INTEREST -> openInterestCoverage;
                 case PREMIUM_INDEX -> premiumIndexCoverage;
+                default -> throw new IllegalArgumentException(
+                        "Use coverageFor(type, qualifier) for split types: " + type);
             };
         }
 
         /**
-         * Get the SqliteConnection for a specific data store type.
+         * Get the SqliteConnection for a specific data store type (unsplit).
          */
         public SqliteConnection connectionFor(DataStoreType type) {
             return switch (type) {
-                case CANDLES -> candlesConn;
-                case AGG_TRADES -> aggTradesConn;
                 case FUNDING_RATES -> fundingRatesConn;
                 case OPEN_INTEREST -> openInterestConn;
                 case PREMIUM_INDEX -> premiumIndexConn;
+                default -> throw new IllegalArgumentException(
+                        "Use getOrCreateConnection(type, qualifier) for split types: " + type);
             };
+        }
+
+        private SqliteConnection getOrCreateConnection(DataStoreType type, String qualifier) throws SQLException {
+            String key = type.name() + ":" + qualifier;
+            SqliteConnection conn = connections.get(key);
+            if (conn != null) return conn;
+
+            conn = SqliteConnection.forSymbolAndType(symbol, type, qualifier);
+            SqliteSchema.initialize(conn, type);
+            connections.put(key, conn);
+            return conn;
         }
     }
 }

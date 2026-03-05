@@ -1,6 +1,6 @@
 package com.tradery.dataservice.api;
 
-import com.tradery.dataservice.data.sqlite.DataStoreType;
+import com.tradery.dataservice.data.ProfileStore;
 import com.tradery.dataservice.data.sqlite.SqliteDataStore;
 import com.tradery.dataservice.data.sqlite.dao.VolumeProfileDao.ProfileRow;
 import com.tradery.dataservice.profile.*;
@@ -13,26 +13,27 @@ import java.util.*;
 
 /**
  * HTTP endpoints for volume profile queries.
+ * Delegates coverage gap detection and computation to ProfileStore.
  */
 public class ProfileHandler {
 
     private static final Logger LOG = LoggerFactory.getLogger(ProfileHandler.class);
 
     private final SqliteDataStore dataStore;
+    private final ProfileStore profileStore;
     private final TickSizeResolver tickSizeResolver;
-    private final VolumeProfileComputer computer;
     private final VolumeProfileAnalyzer analyzer;
 
-    public ProfileHandler(SqliteDataStore dataStore, TickSizeResolver tickSizeResolver,
-                          VolumeProfileComputer computer, VolumeProfileAnalyzer analyzer) {
+    public ProfileHandler(SqliteDataStore dataStore, ProfileStore profileStore,
+                          TickSizeResolver tickSizeResolver, VolumeProfileAnalyzer analyzer) {
         this.dataStore = dataStore;
+        this.profileStore = profileStore;
         this.tickSizeResolver = tickSizeResolver;
-        this.computer = computer;
         this.analyzer = analyzer;
     }
 
     /**
-     * GET /profile?symbol=X&timeframe=Y&start=Z&end=W
+     * GET /profile?symbol=X&timeframe=Y&start=Z&end=W&marketType=perp
      * Raw tick-level profile data.
      */
     public void getProfile(Context ctx) {
@@ -41,15 +42,16 @@ public class ProfileHandler {
             String timeframe = ctx.queryParam("timeframe");
             Long start = ctx.queryParamAsClass("start", Long.class).getOrDefault(null);
             Long end = ctx.queryParamAsClass("end", Long.class).getOrDefault(null);
+            String marketType = ctx.queryParamAsClass("marketType", String.class).getOrDefault("perp");
 
             if (symbol == null || timeframe == null || start == null || end == null) {
                 ctx.status(400).json(Map.of("error", "symbol, timeframe, start, and end are required"));
                 return;
             }
 
-            ensureCoverage(symbol, start, end);
+            profileStore.ensureCoverage(symbol, marketType, start, end);
 
-            List<ProfileRow> profiles = dataStore.getProfiles(symbol, timeframe, start, end);
+            List<ProfileRow> profiles = dataStore.getProfiles(symbol, marketType, timeframe, start, end);
             double tickSize = tickSizeResolver.getTickSize(symbol);
 
             List<Map<String, Object>> result = new ArrayList<>();
@@ -78,7 +80,7 @@ public class ProfileHandler {
     }
 
     /**
-     * GET /profile/binned?symbol=X&timeframe=Y&start=Z&end=W&mode=BIN_COUNT|PRICE_DELTA&binParam=96&valueAreaPct=70
+     * GET /profile/binned?symbol=X&timeframe=Y&start=Z&end=W&marketType=perp&mode=BIN_COUNT|PRICE_DELTA&binParam=96&valueAreaPct=70
      * Derived histogram with POC/VAH/VAL.
      */
     public void getBinnedProfile(Context ctx) {
@@ -90,15 +92,16 @@ public class ProfileHandler {
             String mode = ctx.queryParamAsClass("mode", String.class).getOrDefault("BIN_COUNT");
             double binParam = ctx.queryParamAsClass("binParam", Double.class).getOrDefault(96.0);
             double valueAreaPct = ctx.queryParamAsClass("valueAreaPct", Double.class).getOrDefault(70.0);
+            String marketType = ctx.queryParamAsClass("marketType", String.class).getOrDefault("perp");
 
             if (symbol == null || timeframe == null || start == null || end == null) {
                 ctx.status(400).json(Map.of("error", "symbol, timeframe, start, and end are required"));
                 return;
             }
 
-            ensureCoverage(symbol, start, end);
+            profileStore.ensureCoverage(symbol, marketType, start, end);
 
-            List<ProfileRow> profiles = dataStore.getProfiles(symbol, timeframe, start, end);
+            List<ProfileRow> profiles = dataStore.getProfiles(symbol, marketType, timeframe, start, end);
             double tickSize = tickSizeResolver.getTickSize(symbol);
 
             // Merge all profiles into a composite tick map
@@ -133,7 +136,7 @@ public class ProfileHandler {
     }
 
     /**
-     * GET /profile/poc-series?symbol=X&timeframe=Y&start=Z&end=W&compositeDays=N
+     * GET /profile/poc-series?symbol=X&timeframe=Y&start=Z&end=W&marketType=perp&compositeDays=N
      * POC time series, optionally with rolling composite.
      */
     public void getPocSeries(Context ctx) {
@@ -143,15 +146,16 @@ public class ProfileHandler {
             Long start = ctx.queryParamAsClass("start", Long.class).getOrDefault(null);
             Long end = ctx.queryParamAsClass("end", Long.class).getOrDefault(null);
             Integer compositeDays = ctx.queryParamAsClass("compositeDays", Integer.class).getOrDefault(null);
+            String marketType = ctx.queryParamAsClass("marketType", String.class).getOrDefault("perp");
 
             if (symbol == null || timeframe == null || start == null || end == null) {
                 ctx.status(400).json(Map.of("error", "symbol, timeframe, start, and end are required"));
                 return;
             }
 
-            ensureCoverage(symbol, start, end);
+            profileStore.ensureCoverage(symbol, marketType, start, end);
 
-            List<ProfileRow> profiles = dataStore.getProfiles(symbol, timeframe, start, end);
+            List<ProfileRow> profiles = dataStore.getProfiles(symbol, marketType, timeframe, start, end);
             double tickSize = tickSizeResolver.getTickSize(symbol);
 
             List<PocPoint> series;
@@ -169,7 +173,7 @@ public class ProfileHandler {
     }
 
     /**
-     * GET /profile/daily-levels?symbol=X&start=Z&end=W
+     * GET /profile/daily-levels?symbol=X&start=Z&end=W&marketType=perp
      * Returns POC/VAH/VAL for each day in the range, using "1d" timeframe profiles.
      */
     public void getDailyLevels(Context ctx) {
@@ -177,15 +181,16 @@ public class ProfileHandler {
             String symbol = ctx.queryParam("symbol");
             Long start = ctx.queryParamAsClass("start", Long.class).getOrDefault(null);
             Long end = ctx.queryParamAsClass("end", Long.class).getOrDefault(null);
+            String marketType = ctx.queryParamAsClass("marketType", String.class).getOrDefault("perp");
 
             if (symbol == null || start == null || end == null) {
                 ctx.status(400).json(Map.of("error", "symbol, start, and end are required"));
                 return;
             }
 
-            ensureCoverage(symbol, start, end);
+            profileStore.ensureCoverage(symbol, marketType, start, end);
 
-            List<ProfileRow> profiles = dataStore.getProfiles(symbol, "1d", start, end);
+            List<ProfileRow> profiles = dataStore.getProfiles(symbol, marketType, "1d", start, end);
             double tickSize = tickSizeResolver.getTickSize(symbol);
 
             List<Map<String, Object>> result = new ArrayList<>();
@@ -211,10 +216,8 @@ public class ProfileHandler {
     }
 
     /**
-     * GET /profile/daily-binned?symbol=X&start=Z&end=W&binCount=24&valueAreaPct=70
+     * GET /profile/daily-binned?symbol=X&start=Z&end=W&marketType=perp&binCount=24&valueAreaPct=70
      * Returns per-day binned histograms for the entire range in a single call.
-     * Does ensureCoverage once for the full range, then fetches all "1d" profiles
-     * and bins each one individually. Much more efficient than N calls to /profile/binned.
      */
     public void getDailyBinned(Context ctx) {
         try {
@@ -223,15 +226,16 @@ public class ProfileHandler {
             Long end = ctx.queryParamAsClass("end", Long.class).getOrDefault(null);
             int binCount = ctx.queryParamAsClass("binCount", Integer.class).getOrDefault(24);
             double valueAreaPct = ctx.queryParamAsClass("valueAreaPct", Double.class).getOrDefault(70.0);
+            String marketType = ctx.queryParamAsClass("marketType", String.class).getOrDefault("perp");
 
             if (symbol == null || start == null || end == null) {
                 ctx.status(400).json(Map.of("error", "symbol, start, and end are required"));
                 return;
             }
 
-            ensureCoverage(symbol, start, end);
+            profileStore.ensureCoverage(symbol, marketType, start, end);
 
-            List<ProfileRow> profiles = dataStore.getProfiles(symbol, "1d", start, end);
+            List<ProfileRow> profiles = dataStore.getProfiles(symbol, marketType, "1d", start, end);
             double tickSize = tickSizeResolver.getTickSize(symbol);
 
             List<Map<String, Object>> result = new ArrayList<>();
@@ -261,37 +265,6 @@ public class ProfileHandler {
         } catch (Exception e) {
             LOG.error("Failed to get daily binned profiles", e);
             ctx.status(500).json(Map.of("error", e.getMessage()));
-        }
-    }
-
-    /**
-     * Check coverage and compute profiles for any gaps.
-     * Only computes for ranges where aggTrades actually exist — stamps coverage
-     * only for those intersections so we don't falsely claim coverage for empty ranges.
-     */
-    private void ensureCoverage(String symbol, long start, long end) throws Exception {
-        var profileCoverage = dataStore.forSymbol(symbol).coverageFor(DataStoreType.VOLUME_PROFILES);
-        var gaps = profileCoverage.findGaps("volume_profiles", "", start, end);
-
-        if (gaps.isEmpty()) return;
-
-        // Get aggTrades coverage to know where raw data actually exists
-        var aggTradesCoverage = dataStore.forSymbol(symbol).coverageFor(DataStoreType.AGG_TRADES);
-        var aggRanges = aggTradesCoverage.getCoverageRanges("agg_trades", "default");
-
-        for (long[] gap : gaps) {
-            // Find the intersection of this gap with aggTrades coverage
-            for (var aggRange : aggRanges) {
-                long intersectStart = Math.max(gap[0], aggRange.rangeStart());
-                long intersectEnd = Math.min(gap[1], aggRange.rangeEnd());
-
-                if (intersectStart <= intersectEnd) {
-                    LOG.info("Computing volume profiles for {} [{} - {}] (aggTrades available)",
-                        symbol, intersectStart, intersectEnd);
-                    computer.compute(symbol, intersectStart, intersectEnd);
-                    profileCoverage.addCoverage("volume_profiles", "", intersectStart, intersectEnd, true);
-                }
-            }
         }
     }
 }

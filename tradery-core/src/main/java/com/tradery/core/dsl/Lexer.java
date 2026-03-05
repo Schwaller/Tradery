@@ -179,6 +179,16 @@ public class Lexer {
         Map.entry("FOOTPRINT_DELTA", TokenType.FOOTPRINT_FUNC),
         Map.entry("FOOTPRINT_POC", TokenType.FOOTPRINT_FUNC),
 
+        // Spectrum functions (trade size distribution)
+        Map.entry("SPECTRUM_VOLUME", TokenType.FOOTPRINT_FUNC),
+        Map.entry("SPECTRUM_COUNT", TokenType.FOOTPRINT_FUNC),
+        Map.entry("SPECTRUM_DELTA", TokenType.FOOTPRINT_FUNC),
+        Map.entry("SPECTRUM_COUNT_ABOVE", TokenType.FOOTPRINT_FUNC),
+        Map.entry("SPECTRUM_COUNT_AT", TokenType.FOOTPRINT_FUNC),
+        Map.entry("SPECTRUM_VOLUME_ABOVE", TokenType.FOOTPRINT_FUNC),
+        Map.entry("SPECTRUM_VOLUME_AT", TokenType.FOOTPRINT_FUNC),
+        Map.entry("WHALE_RATIO", TokenType.FOOTPRINT_FUNC),
+
         // Cross-exchange functions
         Map.entry("BINANCE_DELTA", TokenType.EXCHANGE_FUNC),
         Map.entry("BYBIT_DELTA", TokenType.EXCHANGE_FUNC),

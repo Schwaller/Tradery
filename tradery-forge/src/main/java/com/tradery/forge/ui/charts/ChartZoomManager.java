@@ -359,21 +359,7 @@ public class ChartZoomManager {
 
         // Map indicator wrappers for full screen / zoom detection
         JPanel[] indicatorWrappers = indicatorManager != null ?
-            new JPanel[]{indicatorManager.getRsiChartWrapper(),
-                         indicatorManager.getMacdChartWrapper(),
-                         indicatorManager.getAtrChartWrapper(),
-                         indicatorManager.getDeltaChartWrapper(),
-                         indicatorManager.getCvdChartWrapper(),
-                         indicatorManager.getVolumeRatioChartWrapper(),
-                         indicatorManager.getWhaleChartWrapper(),
-                         indicatorManager.getRetailChartWrapper(),
-                         indicatorManager.getFundingChartWrapper(),
-                         indicatorManager.getOiChartWrapper(),
-                         indicatorManager.getStochasticChartWrapper(),
-                         indicatorManager.getRangePositionChartWrapper(),
-                         indicatorManager.getAdxChartWrapper(),
-                         indicatorManager.getTradeCountChartWrapper(),
-                         indicatorManager.getPremiumChartWrapper()} :
+            indicatorManager.getAllWrappers().toArray(new JPanel[0]) :
             new JPanel[0];
 
         // If in full screen mode, only show the full screen chart
@@ -439,52 +425,7 @@ public class ChartZoomManager {
         }
 
         if (indicatorManager != null) {
-            if (indicatorManager.isRsiChartEnabled()) {
-                visibleCharts.add(indicatorManager.getRsiChartWrapper());
-            }
-            if (indicatorManager.isMacdChartEnabled()) {
-                visibleCharts.add(indicatorManager.getMacdChartWrapper());
-            }
-            if (indicatorManager.isAtrChartEnabled()) {
-                visibleCharts.add(indicatorManager.getAtrChartWrapper());
-            }
-            // Orderflow charts - each has its own panel
-            if (indicatorManager.isDeltaChartEnabled()) {
-                visibleCharts.add(indicatorManager.getDeltaChartWrapper());
-            }
-            if (indicatorManager.isCvdChartEnabled()) {
-                visibleCharts.add(indicatorManager.getCvdChartWrapper());
-            }
-            if (indicatorManager.isVolumeRatioChartEnabled()) {
-                visibleCharts.add(indicatorManager.getVolumeRatioChartWrapper());
-            }
-            if (indicatorManager.isWhaleChartEnabled()) {
-                visibleCharts.add(indicatorManager.getWhaleChartWrapper());
-            }
-            if (indicatorManager.isRetailChartEnabled()) {
-                visibleCharts.add(indicatorManager.getRetailChartWrapper());
-            }
-            if (indicatorManager.isFundingChartEnabled()) {
-                visibleCharts.add(indicatorManager.getFundingChartWrapper());
-            }
-            if (indicatorManager.isOiChartEnabled()) {
-                visibleCharts.add(indicatorManager.getOiChartWrapper());
-            }
-            if (indicatorManager.isStochasticChartEnabled()) {
-                visibleCharts.add(indicatorManager.getStochasticChartWrapper());
-            }
-            if (indicatorManager.isRangePositionChartEnabled()) {
-                visibleCharts.add(indicatorManager.getRangePositionChartWrapper());
-            }
-            if (indicatorManager.isAdxChartEnabled()) {
-                visibleCharts.add(indicatorManager.getAdxChartWrapper());
-            }
-            if (indicatorManager.isTradeCountChartEnabled()) {
-                visibleCharts.add(indicatorManager.getTradeCountChartWrapper());
-            }
-            if (indicatorManager.isPremiumChartEnabled()) {
-                visibleCharts.add(indicatorManager.getPremiumChartWrapper());
-            }
+            visibleCharts.addAll(indicatorManager.getVisibleWrappers());
         }
 
         if (equityChartEnabled) {

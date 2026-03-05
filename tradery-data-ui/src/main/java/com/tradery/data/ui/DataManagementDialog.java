@@ -338,6 +338,7 @@ public class DataManagementDialog extends JDialog {
             case "fundingRate" -> healthPanel.setFundingRateData(symbol);
             case "openInterest" -> healthPanel.setOpenInterestData(symbol);
             case "premiumIndex" -> healthPanel.setPremiumIndexData(symbol);
+            case "spectrum" -> healthPanel.setCustomMessage("Trade Size Spectrum");
             case "fearGreed" -> {
                 InventoryResponse inv = browserPanel.getInventory();
                 if (inv != null && inv.fearGreed() != null) {
@@ -476,22 +477,34 @@ public class DataManagementDialog extends JDialog {
                     + DATE_FMT.format(Instant.ofEpochMilli(minStart)) + " \u2192 "
                     + DATE_FMT.format(Instant.ofEpochMilli(maxEnd)) + " (" + days + " days)";
             }
+            case "spectrum" -> {
+                if (sym.spectrum() == null) return symbol + " \u2014 Trade Size Spectrum \u2014 No data";
+                SpectrumInventory sp = sym.spectrum();
+                long days = (sp.endTime() - sp.startTime()) / 86_400_000L;
+                return symbol + " \u2014 Trade Size Spectrum \u2014 " + COUNT_FORMAT.format(sp.recordCount()) + " records, "
+                    + DATE_FMT.format(Instant.ofEpochMilli(sp.startTime())) + " \u2192 "
+                    + DATE_FMT.format(Instant.ofEpochMilli(sp.endTime())) + " (" + days + " days)";
+            }
             default -> {
-                // Volume profile timeframes
+                // Volume profile timeframes (format: "volumeProfile:1h:perp")
                 if (resolution != null && resolution.startsWith("volumeProfile:")) {
-                    String vpTf = resolution.substring("volumeProfile:".length());
+                    String vpKey = resolution.substring("volumeProfile:".length());
+                    String[] parts = vpKey.split(":");
+                    String vpTf = parts[0];
+                    String vpMt = parts.length > 1 ? parts[1] : "perp";
                     if (sym.volumeProfiles() != null) {
                         VolumeProfileInventory vp = sym.volumeProfiles().stream()
-                            .filter(v -> v.timeframe().equals(vpTf)).findFirst().orElse(null);
+                            .filter(v -> v.timeframe().equals(vpTf) && vpMt.equals(v.marketType() != null ? v.marketType() : "perp"))
+                            .findFirst().orElse(null);
                         if (vp != null) {
                             long days = (vp.endTime() - vp.startTime()) / 86_400_000L;
-                            return symbol + " \u2014 Volume Profile " + vp.timeframe() + " \u2014 "
+                            return symbol + " \u2014 Volume Profile " + vp.timeframe() + " (" + vpMt + ") \u2014 "
                                 + COUNT_FORMAT.format(vp.recordCount()) + " windows, "
                                 + DATE_FMT.format(Instant.ofEpochMilli(vp.startTime())) + " \u2192 "
                                 + DATE_FMT.format(Instant.ofEpochMilli(vp.endTime())) + " (" + days + " days)";
                         }
                     }
-                    return symbol + " \u2014 Volume Profile " + vpTf + " \u2014 No data";
+                    return symbol + " \u2014 Volume Profile " + vpTf + " (" + vpMt + ") \u2014 No data";
                 }
                 // Candle timeframe - find matching candle inventory
                 if (sym.candles() != null) {
@@ -600,6 +613,12 @@ public class DataManagementDialog extends JDialog {
                         if (sym.premiumIndex() != null && !sym.premiumIndex().isEmpty()) {
                             client.deleteData(sym.symbol(), "premiumIndex", null, null, null, null);
                         }
+                        if (sym.volumeProfiles() != null && !sym.volumeProfiles().isEmpty()) {
+                            client.deleteData(sym.symbol(), "volumeProfile", null, null, null, null);
+                        }
+                        if (sym.spectrum() != null) {
+                            client.deleteData(sym.symbol(), "spectrum", null, null, null, null);
+                        }
                     }
                     if (inv.fearGreed() != null) {
                         client.deleteData(null, "fearGreed", null, null, null, null);
@@ -662,6 +681,7 @@ public class DataManagementDialog extends JDialog {
             case "openInterest" -> "openInterest";
             case "premiumIndex" -> "premiumIndex";
             case "fearGreed" -> "fearGreed";
+            case "spectrum" -> "spectrum";
             default -> "candles"; // timeframe strings like "1h", "4h"
         };
     }
@@ -669,7 +689,8 @@ public class DataManagementDialog extends JDialog {
     private boolean isTimeframe(String resolution) {
         return resolution != null && !resolution.equals("aggTrades") && !resolution.equals("fundingRate")
             && !resolution.equals("openInterest") && !resolution.equals("premiumIndex")
-            && !resolution.equals("fearGreed");
+            && !resolution.equals("fearGreed") && !resolution.equals("spectrum")
+            && !resolution.startsWith("volumeProfile:");
     }
 
     private String formatSize(long bytes) {

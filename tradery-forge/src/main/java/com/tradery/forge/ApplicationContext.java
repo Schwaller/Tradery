@@ -65,6 +65,7 @@ public class ApplicationContext {
     private final AggTradesPageManager aggTradesPageManager;
     private final PremiumPageManager premiumPageManager;
     private final FearGreedPageManager fearGreedPageManager;
+    private final SpectrumPageManager spectrumPageManager;
     private final IndicatorPageManager indicatorPageManager;
 
     // Data service client (for remote data access)
@@ -86,6 +87,21 @@ public class ApplicationContext {
         this.profileStatus = status;
         this.profileStatusDetail = detail;
         this.profileDayCount = dayCount;
+    }
+
+    // Footprint heatmap status tracking for status badge and dashboard
+    private volatile ProfileStatus footprintStatus = ProfileStatus.IDLE;
+    private volatile String footprintStatusDetail = "";
+    private volatile int footprintCount = 0;
+
+    public ProfileStatus getFootprintStatus() { return footprintStatus; }
+    public String getFootprintStatusDetail() { return footprintStatusDetail; }
+    public int getFootprintCount() { return footprintCount; }
+
+    public void setFootprintStatus(ProfileStatus status, String detail, int count) {
+        this.footprintStatus = status;
+        this.footprintStatusDetail = detail;
+        this.footprintCount = count;
     }
 
     private ApplicationContext() {
@@ -111,6 +127,7 @@ public class ApplicationContext {
         this.aggTradesPageManager = new AggTradesPageManager();
         this.premiumPageManager = new PremiumPageManager();
         this.fearGreedPageManager = new FearGreedPageManager();
+        this.spectrumPageManager = new SpectrumPageManager();
         this.indicatorPageManager = new IndicatorPageManager(
             candlePageManager, aggTradesPageManager);
 
@@ -330,6 +347,10 @@ public class ApplicationContext {
 
     public FearGreedPageManager getFearGreedPageManager() {
         return fearGreedPageManager;
+    }
+
+    public SpectrumPageManager getSpectrumPageManager() {
+        return spectrumPageManager;
     }
 
     public IndicatorPageManager getIndicatorPageManager() {

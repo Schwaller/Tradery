@@ -428,6 +428,31 @@ public class DataServiceClient {
     }
 
     /**
+     * Backfill spectrum data from existing aggTrades.
+     * @return number of spectrum rows created
+     */
+    public long backfillSpectrum(String symbol, long from, long to) throws IOException {
+        HttpUrl url = HttpUrl.parse(baseUrl + "/spectrum/backfill").newBuilder()
+            .addQueryParameter("symbol", symbol)
+            .addQueryParameter("from", String.valueOf(from))
+            .addQueryParameter("to", String.valueOf(to))
+            .build();
+
+        Request request = new Request.Builder()
+            .url(url)
+            .post(RequestBody.create("", MediaType.parse("application/json")))
+            .build();
+
+        try (Response response = httpClient.newCall(request).execute()) {
+            if (!response.isSuccessful()) {
+                throw new IOException("Spectrum backfill failed: " + response.code());
+            }
+            var node = jsonMapper.readTree(response.body().string());
+            return node.get("rowsCreated").asLong();
+        }
+    }
+
+    /**
      * Delete specific data from the data service.
      *
      * @param symbol    Symbol name (null for global data types like fearGreed)
@@ -492,10 +517,18 @@ public class DataServiceClient {
     // ==================== Volume Profile endpoints ====================
 
     /**
-     * GET /profile/binned — returns binned histogram with POC/VAH/VAL for a time range.
+     * GET /profile/binned — returns binned histogram with POC/VAH/VAL for a time range (defaults to "perp").
      */
     public BinnedProfileResponse getProfileBinned(String symbol, String timeframe,
             long start, long end, int binCount, double valueAreaPct) throws IOException {
+        return getProfileBinned(symbol, timeframe, start, end, binCount, valueAreaPct, "perp");
+    }
+
+    /**
+     * GET /profile/binned — returns binned histogram with POC/VAH/VAL for a time range.
+     */
+    public BinnedProfileResponse getProfileBinned(String symbol, String timeframe,
+            long start, long end, int binCount, double valueAreaPct, String marketType) throws IOException {
 
         HttpUrl.Builder urlBuilder = HttpUrl.parse(baseUrl + "/profile/binned").newBuilder()
             .addQueryParameter("symbol", symbol)
@@ -503,7 +536,8 @@ public class DataServiceClient {
             .addQueryParameter("start", Long.toString(start))
             .addQueryParameter("end", Long.toString(end))
             .addQueryParameter("binParam", Integer.toString(binCount))
-            .addQueryParameter("valueAreaPct", Double.toString(valueAreaPct));
+            .addQueryParameter("valueAreaPct", Double.toString(valueAreaPct))
+            .addQueryParameter("marketType", marketType);
 
         Request request = new Request.Builder()
             .url(urlBuilder.build())
@@ -519,17 +553,26 @@ public class DataServiceClient {
     }
 
     /**
+     * GET /profile — returns raw tick-level profiles (defaults to "perp").
+     */
+    public List<RawProfileResponse> getProfiles(String symbol, String timeframe,
+            long start, long end) throws IOException {
+        return getProfiles(symbol, timeframe, start, end, "perp");
+    }
+
+    /**
      * GET /profile — returns raw tick-level profiles for a time range.
      * Each profile has a tick map (tickIndex → [buyVol, sellVol]) and window metadata.
      */
     public List<RawProfileResponse> getProfiles(String symbol, String timeframe,
-            long start, long end) throws IOException {
+            long start, long end, String marketType) throws IOException {
 
         HttpUrl.Builder urlBuilder = HttpUrl.parse(baseUrl + "/profile").newBuilder()
             .addQueryParameter("symbol", symbol)
             .addQueryParameter("timeframe", timeframe)
             .addQueryParameter("start", Long.toString(start))
-            .addQueryParameter("end", Long.toString(end));
+            .addQueryParameter("end", Long.toString(end))
+            .addQueryParameter("marketType", marketType);
 
         Request request = new Request.Builder()
             .url(urlBuilder.build())
@@ -546,16 +589,25 @@ public class DataServiceClient {
     }
 
     /**
-     * GET /profile/poc-series — returns POC time series for a time range.
+     * GET /profile/poc-series — returns POC time series (defaults to "perp").
      */
     public List<PocSeriesPoint> getProfilePocSeries(String symbol, String timeframe,
             long start, long end) throws IOException {
+        return getProfilePocSeries(symbol, timeframe, start, end, "perp");
+    }
+
+    /**
+     * GET /profile/poc-series — returns POC time series for a time range.
+     */
+    public List<PocSeriesPoint> getProfilePocSeries(String symbol, String timeframe,
+            long start, long end, String marketType) throws IOException {
 
         HttpUrl.Builder urlBuilder = HttpUrl.parse(baseUrl + "/profile/poc-series").newBuilder()
             .addQueryParameter("symbol", symbol)
             .addQueryParameter("timeframe", timeframe)
             .addQueryParameter("start", Long.toString(start))
-            .addQueryParameter("end", Long.toString(end));
+            .addQueryParameter("end", Long.toString(end))
+            .addQueryParameter("marketType", marketType);
 
         Request request = new Request.Builder()
             .url(urlBuilder.build())
@@ -572,13 +624,21 @@ public class DataServiceClient {
     }
 
     /**
-     * GET /profile/daily-levels — returns POC/VAH/VAL per day for a time range.
+     * GET /profile/daily-levels — returns POC/VAH/VAL per day (defaults to "perp").
      */
     public List<DailyLevelsPoint> getProfileDailyLevels(String symbol, long start, long end) throws IOException {
+        return getProfileDailyLevels(symbol, start, end, "perp");
+    }
+
+    /**
+     * GET /profile/daily-levels — returns POC/VAH/VAL per day for a time range.
+     */
+    public List<DailyLevelsPoint> getProfileDailyLevels(String symbol, long start, long end, String marketType) throws IOException {
         HttpUrl.Builder urlBuilder = HttpUrl.parse(baseUrl + "/profile/daily-levels").newBuilder()
             .addQueryParameter("symbol", symbol)
             .addQueryParameter("start", Long.toString(start))
-            .addQueryParameter("end", Long.toString(end));
+            .addQueryParameter("end", Long.toString(end))
+            .addQueryParameter("marketType", marketType);
 
         Request request = new Request.Builder()
             .url(urlBuilder.build())
@@ -595,17 +655,26 @@ public class DataServiceClient {
     }
 
     /**
+     * GET /profile/daily-binned — returns per-day binned histograms (defaults to "perp").
+     */
+    public List<DailyBinnedProfile> getProfileDailyBinned(String symbol, long start, long end,
+            int binCount, double valueAreaPct) throws IOException {
+        return getProfileDailyBinned(symbol, start, end, binCount, valueAreaPct, "perp");
+    }
+
+    /**
      * GET /profile/daily-binned — returns per-day binned histograms with POC/VAH/VAL
      * for the entire range in one call. Efficient: single ensureCoverage for the full range.
      */
     public List<DailyBinnedProfile> getProfileDailyBinned(String symbol, long start, long end,
-            int binCount, double valueAreaPct) throws IOException {
+            int binCount, double valueAreaPct, String marketType) throws IOException {
         HttpUrl.Builder urlBuilder = HttpUrl.parse(baseUrl + "/profile/daily-binned").newBuilder()
             .addQueryParameter("symbol", symbol)
             .addQueryParameter("start", Long.toString(start))
             .addQueryParameter("end", Long.toString(end))
             .addQueryParameter("binCount", Integer.toString(binCount))
-            .addQueryParameter("valueAreaPct", Double.toString(valueAreaPct));
+            .addQueryParameter("valueAreaPct", Double.toString(valueAreaPct))
+            .addQueryParameter("marketType", marketType);
 
         Request request = new Request.Builder()
             .url(urlBuilder.build())
@@ -651,7 +720,8 @@ public class DataServiceClient {
         FundingInventory funding,
         OpenInterestInventory openInterest,
         List<PremiumIndexInventory> premiumIndex,
-        List<VolumeProfileInventory> volumeProfiles
+        List<VolumeProfileInventory> volumeProfiles,
+        SpectrumInventory spectrum
     ) {}
 
     public record CandleInventory(
@@ -672,7 +742,9 @@ public class DataServiceClient {
 
     public record FearGreedInventory(long startTime, long endTime, int recordCount, int latestValue) {}
 
-    public record VolumeProfileInventory(String timeframe, long startTime, long endTime, long recordCount) {}
+    public record VolumeProfileInventory(String timeframe, String marketType, long startTime, long endTime, long recordCount) {}
+
+    public record SpectrumInventory(long startTime, long endTime, long recordCount) {}
 
     public record DiskUsageResponse(long totalBytes, java.util.Map<String, Long> bySymbol, java.util.Map<String, Long> byDataType, long volumeFreeBytes, long volumeTotalBytes) {}
 

@@ -20,7 +20,8 @@ public record PreloadRequest(
         CANDLES,
         AGGTRADES,
         FUNDING,
-        OI
+        OI,
+        SPECTRUM
     }
 
     public enum Priority {
@@ -66,6 +67,13 @@ public record PreloadRequest(
      */
     public static PreloadRequest oi(String symbol, long start, long end, Priority priority) {
         return new PreloadRequest(DataType.OI, symbol, null, start, end, priority, Instant.now());
+    }
+
+    /**
+     * Create a spectrum preload request.
+     */
+    public static PreloadRequest spectrum(String symbol, long start, long end, Priority priority) {
+        return new PreloadRequest(DataType.SPECTRUM, symbol, null, start, end, priority, Instant.now());
     }
 
     /**

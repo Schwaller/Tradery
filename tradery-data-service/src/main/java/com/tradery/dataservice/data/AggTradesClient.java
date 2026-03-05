@@ -3,6 +3,8 @@ package com.tradery.dataservice.data;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tradery.core.model.AggTrade;
+import com.tradery.core.model.DataMarketType;
+import com.tradery.core.model.Exchange;
 import com.tradery.core.model.FetchProgress;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
@@ -23,8 +25,16 @@ import java.util.function.Consumer;
 public class AggTradesClient {
 
     private static final Logger log = LoggerFactory.getLogger(AggTradesClient.class);
-    private static final String BASE_URL = "https://api.binance.com/api/v3";
+    private static final String SPOT_BASE_URL = "https://api.binance.com/api/v3";
+    private static final String FUTURES_BASE_URL = "https://fapi.binance.com/fapi/v1";
     private static final int MAX_TRADES_PER_REQUEST = 1000;
+
+    /**
+     * Get the correct API base URL for a market type.
+     */
+    private static String getBaseUrl(String marketType) {
+        return "spot".equalsIgnoreCase(marketType) ? SPOT_BASE_URL : FUTURES_BASE_URL;
+    }
 
     private final OkHttpClient client;
     private final ObjectMapper mapper;
@@ -35,18 +45,31 @@ public class AggTradesClient {
     }
 
     /**
-     * Fetch aggregated trades from Binance.
-     *
-     * @param symbol    Trading pair (e.g., "BTCUSDT")
-     * @param startTime Start time in milliseconds
-     * @param endTime   End time in milliseconds
-     * @param limit     Max number of trades (max 1000)
-     * @return List of aggregated trades
+     * Fetch aggregated trades from Binance (defaults to futures/perp).
      */
     public List<AggTrade> fetchAggTrades(String symbol, long startTime, long endTime, int limit)
             throws IOException {
+        return fetchAggTrades(symbol, startTime, endTime, limit, "perp");
+    }
 
-        StringBuilder url = new StringBuilder(BASE_URL + "/aggTrades")
+    /**
+     * Fetch aggregated trades from Binance.
+     *
+     * @param symbol     Trading pair (e.g., "BTCUSDT")
+     * @param startTime  Start time in milliseconds
+     * @param endTime    End time in milliseconds
+     * @param limit      Max number of trades (max 1000)
+     * @param marketType "spot" or "perp" (selects API endpoint)
+     * @return List of aggregated trades
+     */
+    public List<AggTrade> fetchAggTrades(String symbol, long startTime, long endTime, int limit,
+                                          String marketType) throws IOException {
+
+        String baseUrl = getBaseUrl(marketType);
+        DataMarketType dataMarketType = "spot".equalsIgnoreCase(marketType)
+            ? DataMarketType.SPOT : DataMarketType.FUTURES_PERP;
+
+        StringBuilder url = new StringBuilder(baseUrl + "/aggTrades")
             .append("?symbol=").append(symbol)
             .append("&limit=").append(Math.min(limit, MAX_TRADES_PER_REQUEST));
 
@@ -62,11 +85,8 @@ public class AggTradesClient {
             .get()
             .build();
 
-        try (Response response = client.newCall(request).execute()) {
-            if (!response.isSuccessful()) {
-                throw new IOException("Binance API error: " + response.code() + " " + response.message());
-            }
-
+        Response response = executeWithRetry(request, marketType);
+        try (response) {
             String body = response.body().string();
             JsonNode root = mapper.readTree(body);
 
@@ -82,7 +102,9 @@ public class AggTradesClient {
                 long timestamp = trade.get("T").asLong();
                 boolean isBuyerMaker = trade.get("m").asBoolean();
 
-                trades.add(new AggTrade(aggTradeId, price, quantity, firstTradeId, lastTradeId, timestamp, isBuyerMaker));
+                trades.add(AggTrade.withExchange(
+                    aggTradeId, price, quantity, firstTradeId, lastTradeId, timestamp, isBuyerMaker,
+                    Exchange.BINANCE, dataMarketType, null));
             }
 
             return trades;
@@ -90,25 +112,37 @@ public class AggTradesClient {
     }
 
     /**
-     * Fetch all aggregated trades between start and end time.
-     * Handles pagination automatically using fromId.
-     *
-     * @param symbol     Trading pair (e.g., "BTCUSDT")
-     * @param startTime  Start time in milliseconds
-     * @param endTime    End time in milliseconds
-     * @param cancelled  Optional AtomicBoolean to signal cancellation
-     * @param onProgress Optional callback for progress updates
-     * @return List of aggregated trades (may be partial if cancelled)
+     * Fetch all aggregated trades (defaults to futures/perp).
      * @deprecated Use {@link #streamAggTrades} for memory-efficient streaming
      */
     @Deprecated
     public List<AggTrade> fetchAllAggTrades(String symbol, long startTime, long endTime,
                                              AtomicBoolean cancelled, Consumer<FetchProgress> onProgress)
             throws IOException {
+        return fetchAllAggTrades(symbol, startTime, endTime, cancelled, onProgress, "perp");
+    }
+
+    /**
+     * Fetch all aggregated trades between start and end time.
+     * @deprecated Use {@link #streamAggTrades} for memory-efficient streaming
+     */
+    @Deprecated
+    public List<AggTrade> fetchAllAggTrades(String symbol, long startTime, long endTime,
+                                             AtomicBoolean cancelled, Consumer<FetchProgress> onProgress,
+                                             String marketType) throws IOException {
 
         List<AggTrade> allTrades = new ArrayList<>();
-        streamAggTrades(symbol, startTime, endTime, cancelled, onProgress, allTrades::addAll);
+        streamAggTrades(symbol, startTime, endTime, cancelled, onProgress, allTrades::addAll, marketType);
         return allTrades;
+    }
+
+    /**
+     * Stream aggregated trades (defaults to futures/perp).
+     */
+    public int streamAggTrades(String symbol, long startTime, long endTime,
+                               AtomicBoolean cancelled, Consumer<FetchProgress> onProgress,
+                               Consumer<List<AggTrade>> batchConsumer) throws IOException {
+        return streamAggTrades(symbol, startTime, endTime, cancelled, onProgress, batchConsumer, "perp");
     }
 
     /**
@@ -121,11 +155,12 @@ public class AggTradesClient {
      * @param cancelled     Optional AtomicBoolean to signal cancellation
      * @param onProgress    Optional callback for progress updates
      * @param batchConsumer Consumer called with each batch of trades (up to 1000 per batch)
+     * @param marketType    "spot" or "perp" (selects API endpoint)
      * @return Total number of trades fetched
      */
     public int streamAggTrades(String symbol, long startTime, long endTime,
                                AtomicBoolean cancelled, Consumer<FetchProgress> onProgress,
-                               Consumer<List<AggTrade>> batchConsumer) throws IOException {
+                               Consumer<List<AggTrade>> batchConsumer, String marketType) throws IOException {
 
         int totalCount = 0;
         long currentStart = startTime;
@@ -135,7 +170,7 @@ public class AggTradesClient {
         long days = Math.max(1, (endTime - startTime) / (24 * 60 * 60 * 1000));
         long estimatedTotal = days * estimatedTradesPerDay;
 
-        log.info("Streaming {} aggTrades from Binance...", symbol);
+        log.info("Streaming {} {} aggTrades from Binance ({})...", symbol, marketType, getBaseUrl(marketType));
 
         // Report starting
         if (onProgress != null) {
@@ -152,7 +187,7 @@ public class AggTradesClient {
                 return totalCount;
             }
 
-            List<AggTrade> batch = fetchAggTrades(symbol, currentStart, endTime, MAX_TRADES_PER_REQUEST);
+            List<AggTrade> batch = fetchAggTrades(symbol, currentStart, endTime, MAX_TRADES_PER_REQUEST, marketType);
 
             if (batch.isEmpty()) {
                 break;
@@ -174,7 +209,7 @@ public class AggTradesClient {
             // Report progress
             if (onProgress != null) {
                 int percent = (int) Math.min(99, (totalCount * 100) / estimatedTotal);
-                String msg = "Fetching " + symbol + " trades: " + formatCount(totalCount) + "...";
+                String msg = "Fetching " + symbol + " " + marketType + " trades: " + formatCount(totalCount) + "...";
                 onProgress.accept(new FetchProgress(totalCount, (int) estimatedTotal, msg));
             }
 
@@ -202,6 +237,59 @@ public class AggTradesClient {
         }
 
         return totalCount;
+    }
+
+    /**
+     * Execute an HTTP request with exponential backoff on 429 (Too Many Requests).
+     * Retries up to 5 times with delays: 5s, 15s, 30s, 60s, 120s.
+     * Reads and logs Binance Retry-After header when available.
+     */
+    private Response executeWithRetry(Request request, String marketType) throws IOException {
+        int maxRetries = 5;
+        long[] backoffMs = {5_000, 15_000, 30_000, 60_000, 120_000};
+
+        for (int attempt = 0; attempt <= maxRetries; attempt++) {
+            Response response = client.newCall(request).execute();
+
+            if (response.code() != 429) {
+                if (!response.isSuccessful()) {
+                    response.close();
+                    throw new IOException("Binance " + marketType + " API error: " + response.code() + " " + response.message());
+                }
+                return response;
+            }
+
+            // 429 — rate limited
+            response.close();
+
+            if (attempt == maxRetries) {
+                throw new IOException("Binance " + marketType + " API rate limit (429) persists after " + maxRetries + " retries");
+            }
+
+            long waitMs = backoffMs[attempt];
+
+            // Check Retry-After header (Binance sometimes sends it)
+            String retryAfter = response.header("Retry-After");
+            if (retryAfter != null) {
+                try {
+                    long retryAfterMs = Long.parseLong(retryAfter) * 1000;
+                    waitMs = Math.max(waitMs, retryAfterMs);
+                } catch (NumberFormatException ignored) {}
+            }
+
+            log.warn("Binance {} API returned 429, waiting {}s before retry {}/{}",
+                marketType, waitMs / 1000, attempt + 1, maxRetries);
+
+            try {
+                Thread.sleep(waitMs);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new IOException("Retry interrupted for " + marketType + " API");
+            }
+        }
+
+        // Unreachable, but compiler needs it
+        throw new IOException("Binance " + marketType + " API rate limit exhausted");
     }
 
     private String formatCount(int count) {

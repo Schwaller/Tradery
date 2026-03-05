@@ -5,6 +5,7 @@ import com.tradery.charts.renderer.TraderyCandlestickRenderer;
 import com.tradery.core.model.Candle;
 import com.tradery.core.model.Trade;
 import com.tradery.forge.ui.charts.*;
+import com.tradery.forge.ui.charts.footprint.FootprintHeatmapOverlay;
 import org.jfree.chart.ChartFactory;
 import org.jfree.chart.JFreeChart;
 import org.jfree.chart.annotations.XYLineAnnotation;
@@ -119,43 +120,7 @@ public class ChartsPanel extends JPanel {
      */
     public void applySavedConfig() {
         ChartConfig config = ChartConfig.getInstance();
-
-        // Apply indicator chart settings
-        setRsiChartEnabled(config.isRsiEnabled(), config.getRsiPeriod());
-        setMacdChartEnabled(config.isMacdEnabled(), config.getMacdFast(), config.getMacdSlow(), config.getMacdSignal());
-        setAtrChartEnabled(config.isAtrEnabled(), config.getAtrPeriod());
-        setStochasticChartEnabled(config.isStochasticEnabled(), config.getStochasticKPeriod(), config.getStochasticDPeriod());
-        setRangePositionChartEnabled(config.isRangePositionEnabled(), config.getRangePositionPeriod());
-        setAdxChartEnabled(config.isAdxEnabled(), config.getAdxPeriod());
-
-        // Apply orderflow chart settings
-        double threshold = config.getWhaleThreshold();
-        setWhaleThreshold(threshold);
-        setDeltaChartEnabled(config.isDeltaEnabled());
-        setCvdChartEnabled(config.isCvdEnabled());
-        setVolumeRatioChartEnabled(config.isVolumeRatioEnabled());
-        setWhaleChartEnabled(config.isWhaleEnabled(), threshold);
-        double retailThreshold = config.getRetailThreshold();
-        setRetailChartEnabled(config.isRetailEnabled(), retailThreshold);
-
-        // Apply funding chart setting
-        setFundingChartEnabled(config.isFundingEnabled());
-
-        // Apply OI chart setting
-        setOiChartEnabled(config.isOiEnabled());
-
-        // Apply premium chart setting
-        setPremiumChartEnabled(config.isPremiumEnabled());
-
-        // Apply holding cost chart settings
-        setHoldingCostCumulativeChartEnabled(config.isHoldingCostCumulativeEnabled());
-        setHoldingCostEventsChartEnabled(config.isHoldingCostEventsEnabled());
-
-        // Apply Fear & Greed chart setting
-        setFearGreedChartEnabled(config.isFearGreedEnabled());
-
-        // Apply trade count chart setting
-        setTradeCountChartEnabled(config.isTradeCountEnabled());
+        config.applyTo(indicatorManager);
 
         // Apply core chart settings
         setVolumeChartEnabled(config.isVolumeChartEnabled());
@@ -314,33 +279,15 @@ public class ChartsPanel extends JPanel {
         crosshairManager.setupCoreChartCrosshairs(
                 priceChartPanel, equityChartPanel, comparisonChartPanel,
                 capitalUsageChartPanel, tradePLChartPanel, volumeChartPanel);
+        var indicatorPanelList = indicatorManager.getAllChartPanels();
         crosshairManager.setupIndicatorChartCrosshairs(
-                indicatorManager.getRsiChartPanel(),
-                indicatorManager.getMacdChartPanel(),
-                indicatorManager.getAtrChartPanel(),
-                indicatorManager.getDeltaChartPanel(),
-                indicatorManager.getCvdChartPanel(),
-                indicatorManager.getVolumeRatioChartPanel(),
-                indicatorManager.getWhaleChartPanel(),
-                indicatorManager.getRetailChartPanel(),
-                indicatorManager.getFundingChartPanel(),
-                indicatorManager.getOiChartPanel(),
-                indicatorManager.getStochasticChartPanel(),
-                indicatorManager.getRangePositionChartPanel(),
-                indicatorManager.getAdxChartPanel(),
-                indicatorManager.getTradeCountChartPanel(),
-                indicatorManager.getPremiumChartPanel());
+                indicatorPanelList.toArray(new org.jfree.chart.ChartPanel[0]));
 
         // Sync domain axes
-        JFreeChart[] otherCharts = {
-                volumeChart, equityChart, comparisonChart, capitalUsageChart, tradePLChart,
-                indicatorManager.getRsiChart(), indicatorManager.getMacdChart(), indicatorManager.getAtrChart(),
-                indicatorManager.getDeltaChart(), indicatorManager.getCvdChart(), indicatorManager.getVolumeRatioChart(),
-                indicatorManager.getWhaleChart(), indicatorManager.getRetailChart(), indicatorManager.getFundingChart(),
-                indicatorManager.getOiChart(), indicatorManager.getStochasticChart(), indicatorManager.getRangePositionChart(),
-                indicatorManager.getAdxChart(), indicatorManager.getTradeCountChart(), indicatorManager.getPremiumChart()
-        };
-        crosshairManager.syncDomainAxes(priceChart, otherCharts);
+        java.util.List<JFreeChart> otherChartList = new java.util.ArrayList<>(java.util.List.of(
+                volumeChart, equityChart, comparisonChart, capitalUsageChart, tradePLChart));
+        otherChartList.addAll(indicatorManager.getAllCharts());
+        crosshairManager.syncDomainAxes(priceChart, otherChartList.toArray(new JFreeChart[0]));
     }
 
     private void addPriceOpacitySlider() {
@@ -374,21 +321,19 @@ public class ChartsPanel extends JPanel {
 
     private void repositionPriceOpacitySlider() {
         if (priceOpacitySlider == null || priceChartPanel == null) return;
-        // Get the plot area from chart rendering info — available after first paint
+        String axisPos = ChartConfig.getInstance().getPriceAxisPosition();
+        int xOffset = "right".equals(axisPos) ? 0 : 60;
         var info = priceChartPanel.getChartRenderingInfo();
         if (info != null && info.getPlotInfo() != null) {
             java.awt.geom.Rectangle2D plotArea = info.getPlotInfo().getPlotArea();
             if (plotArea != null && plotArea.getHeight() > 0) {
-                // "Price" annotation is at (0.01, 0.98) in plot coords with TOP_LEFT anchor
-                // 0.98 = 98% from bottom = 2% from top of plot area
                 int plotTop = (int) plotArea.getY();
                 int yOffset = (int) (plotArea.getHeight() * 0.02);
-                priceOpacitySlider.setBounds(42, 20 + plotTop + yOffset, 60, 16);
+                priceOpacitySlider.setBounds(42 + xOffset, 20 + plotTop + yOffset, 60, 16);
                 return;
             }
         }
-        // Fallback before first render
-        priceOpacitySlider.setBounds(42, 30, 60, 16);
+        priceOpacitySlider.setBounds(42 + xOffset, 30, 60, 16);
     }
 
     private void toggleIndicatorZoom(int index) {
@@ -434,24 +379,13 @@ public class ChartsPanel extends JPanel {
         }
 
         // Add zoom/pan listeners to indicator chart panels with double-click callbacks
-        org.jfree.chart.ChartPanel[] indicatorPanels = {
-                indicatorManager.getRsiChartPanel(), indicatorManager.getMacdChartPanel(),
-                indicatorManager.getAtrChartPanel(), indicatorManager.getDeltaChartPanel(),
-                indicatorManager.getCvdChartPanel(), indicatorManager.getVolumeRatioChartPanel(),
-                indicatorManager.getWhaleChartPanel(), indicatorManager.getRetailChartPanel(),
-                indicatorManager.getFundingChartPanel(), indicatorManager.getOiChartPanel(),
-                indicatorManager.getPremiumChartPanel(), indicatorManager.getStochasticChartPanel(),
-                indicatorManager.getRangePositionChartPanel(), indicatorManager.getAdxChartPanel(),
-                indicatorManager.getTradeCountChartPanel(),
-                indicatorManager.getFearGreedChartPanel(),
-                indicatorManager.getHoldingCostCumulativeChartPanel(), indicatorManager.getHoldingCostEventsChartPanel()
-        };
-        for (int i = 0; i < indicatorPanels.length; i++) {
-            interactionManager.attachListeners(indicatorPanels[i]);
-            final int indicatorIndex = i;
-            Runnable fullScreenCallback = () -> zoomManager.toggleIndicatorFullScreen(indicatorIndex);
-            interactionManager.setDoubleClickCallback(indicatorPanels[i], fullScreenCallback);
-            ChartPanelFactory.setFullScreenCallback(indicatorPanels[i], fullScreenCallback);
+        for (IndicatorType type : IndicatorType.values()) {
+            org.jfree.chart.ChartPanel panel = indicatorManager.getChartPanel(type);
+            interactionManager.attachListeners(panel);
+            final int ordinal = type.ordinal();
+            Runnable fullScreenCallback = () -> zoomManager.toggleIndicatorFullScreen(ordinal);
+            interactionManager.setDoubleClickCallback(panel, fullScreenCallback);
+            ChartPanelFactory.setFullScreenCallback(panel, fullScreenCallback);
         }
 
         mainPanel = new JPanel(new BorderLayout(0, 0));
@@ -473,24 +407,9 @@ public class ChartsPanel extends JPanel {
         }
 
         // Register indicator chart wrappers
-        splitLayoutManager.registerPanel(indicatorManager.getRsiChartWrapper(), "rsi");
-        splitLayoutManager.registerPanel(indicatorManager.getMacdChartWrapper(), "macd");
-        splitLayoutManager.registerPanel(indicatorManager.getAtrChartWrapper(), "atr");
-        splitLayoutManager.registerPanel(indicatorManager.getDeltaChartWrapper(), "delta");
-        splitLayoutManager.registerPanel(indicatorManager.getCvdChartWrapper(), "cvd");
-        splitLayoutManager.registerPanel(indicatorManager.getVolumeRatioChartWrapper(), "volume_ratio");
-        splitLayoutManager.registerPanel(indicatorManager.getWhaleChartWrapper(), "whale");
-        splitLayoutManager.registerPanel(indicatorManager.getRetailChartWrapper(), "retail");
-        splitLayoutManager.registerPanel(indicatorManager.getFundingChartWrapper(), "funding");
-        splitLayoutManager.registerPanel(indicatorManager.getOiChartWrapper(), "oi");
-        splitLayoutManager.registerPanel(indicatorManager.getStochasticChartWrapper(), "stochastic");
-        splitLayoutManager.registerPanel(indicatorManager.getRangePositionChartWrapper(), "range_position");
-        splitLayoutManager.registerPanel(indicatorManager.getAdxChartWrapper(), "adx");
-        splitLayoutManager.registerPanel(indicatorManager.getTradeCountChartWrapper(), "trade_count");
-        splitLayoutManager.registerPanel(indicatorManager.getPremiumChartWrapper(), "premium");
-        splitLayoutManager.registerPanel(indicatorManager.getFearGreedChartWrapper(), "fear_greed");
-        splitLayoutManager.registerPanel(indicatorManager.getHoldingCostCumulativeChartWrapper(), "holding_cost_cumulative");
-        splitLayoutManager.registerPanel(indicatorManager.getHoldingCostEventsChartWrapper(), "holding_cost_events");
+        for (IndicatorType type : IndicatorType.values()) {
+            splitLayoutManager.registerPanel(indicatorManager.getChartWrapper(type), type.name().toLowerCase());
+        }
     }
 
     private void registerChartsWithInteractionManager() {
@@ -501,24 +420,9 @@ public class ChartsPanel extends JPanel {
         interactionManager.addChart(comparisonChart);
         interactionManager.addChart(capitalUsageChart);
         interactionManager.addChart(tradePLChart);
-        interactionManager.addChart(indicatorManager.getRsiChart());
-        interactionManager.addChart(indicatorManager.getMacdChart());
-        interactionManager.addChart(indicatorManager.getAtrChart());
-        interactionManager.addChart(indicatorManager.getDeltaChart());
-        interactionManager.addChart(indicatorManager.getCvdChart());
-        interactionManager.addChart(indicatorManager.getVolumeRatioChart());
-        interactionManager.addChart(indicatorManager.getWhaleChart());
-        interactionManager.addChart(indicatorManager.getRetailChart());
-        interactionManager.addChart(indicatorManager.getFundingChart());
-        interactionManager.addChart(indicatorManager.getOiChart());
-        interactionManager.addChart(indicatorManager.getPremiumChart());
-        interactionManager.addChart(indicatorManager.getFearGreedChart());
-        interactionManager.addChart(indicatorManager.getStochasticChart());
-        interactionManager.addChart(indicatorManager.getRangePositionChart());
-        interactionManager.addChart(indicatorManager.getAdxChart());
-        interactionManager.addChart(indicatorManager.getTradeCountChart());
-        interactionManager.addChart(indicatorManager.getHoldingCostCumulativeChart());
-        interactionManager.addChart(indicatorManager.getHoldingCostEventsChart());
+        for (JFreeChart chart : indicatorManager.getAllCharts()) {
+            interactionManager.addChart(chart);
+        }
     }
 
     private void updateChartLayout() {
@@ -526,29 +430,22 @@ public class ChartsPanel extends JPanel {
         splitLayoutManager.saveDividerPositions();
 
         // Include ALL charts so axis visibility can be controlled for each
-        JFreeChart[] allCharts = {
-                priceChart, volumeChart,
-                indicatorManager.getRsiChart(), indicatorManager.getMacdChart(), indicatorManager.getAtrChart(),
-                indicatorManager.getDeltaChart(), indicatorManager.getCvdChart(), indicatorManager.getVolumeRatioChart(),
-                indicatorManager.getWhaleChart(), indicatorManager.getRetailChart(),
-                indicatorManager.getFundingChart(), indicatorManager.getOiChart(), indicatorManager.getPremiumChart(), indicatorManager.getFearGreedChart(),
-                indicatorManager.getStochasticChart(), indicatorManager.getRangePositionChart(), indicatorManager.getAdxChart(),
-                indicatorManager.getTradeCountChart(),
-                indicatorManager.getHoldingCostCumulativeChart(), indicatorManager.getHoldingCostEventsChart(),
-                equityChart, comparisonChart, capitalUsageChart, tradePLChart
-        };
-        JPanel[] allWrappers = {
-                zoomManager.getChartWrappers()[0], zoomManager.getChartWrappers()[1],
-                indicatorManager.getRsiChartWrapper(), indicatorManager.getMacdChartWrapper(), indicatorManager.getAtrChartWrapper(),
-                indicatorManager.getDeltaChartWrapper(), indicatorManager.getCvdChartWrapper(), indicatorManager.getVolumeRatioChartWrapper(),
-                indicatorManager.getWhaleChartWrapper(), indicatorManager.getRetailChartWrapper(),
-                indicatorManager.getFundingChartWrapper(), indicatorManager.getOiChartWrapper(), indicatorManager.getPremiumChartWrapper(), indicatorManager.getFearGreedChartWrapper(),
-                indicatorManager.getStochasticChartWrapper(), indicatorManager.getRangePositionChartWrapper(), indicatorManager.getAdxChartWrapper(),
-                indicatorManager.getTradeCountChartWrapper(),
-                indicatorManager.getHoldingCostCumulativeChartWrapper(), indicatorManager.getHoldingCostEventsChartWrapper(),
-                zoomManager.getChartWrappers()[2], zoomManager.getChartWrappers()[3],
-                zoomManager.getChartWrappers()[4], zoomManager.getChartWrappers()[5]
-        };
+        java.util.List<JFreeChart> allChartsList = new java.util.ArrayList<>();
+        java.util.List<JPanel> allWrappersList = new java.util.ArrayList<>();
+        allChartsList.add(priceChart);
+        allWrappersList.add(zoomManager.getChartWrappers()[0]);
+        allChartsList.add(volumeChart);
+        allWrappersList.add(zoomManager.getChartWrappers()[1]);
+        for (IndicatorType type : IndicatorType.values()) {
+            allChartsList.add(indicatorManager.getChart(type));
+            allWrappersList.add(indicatorManager.getChartWrapper(type));
+        }
+        allChartsList.add(equityChart); allWrappersList.add(zoomManager.getChartWrappers()[2]);
+        allChartsList.add(comparisonChart); allWrappersList.add(zoomManager.getChartWrappers()[3]);
+        allChartsList.add(capitalUsageChart); allWrappersList.add(zoomManager.getChartWrappers()[4]);
+        allChartsList.add(tradePLChart); allWrappersList.add(zoomManager.getChartWrappers()[5]);
+        JFreeChart[] allCharts = allChartsList.toArray(new JFreeChart[0]);
+        JPanel[] allWrappers = allWrappersList.toArray(new JPanel[0]);
 
         // Check if in full-screen mode - use simple layout for single chart
         if (zoomManager.getFullScreenChartIndex() >= 0 || zoomManager.getFullScreenIndicatorIndex() >= 0) {
@@ -598,54 +495,7 @@ public class ChartsPanel extends JPanel {
         }
 
         // Indicator charts
-        if (indicatorManager.isRsiChartEnabled()) {
-            visibleCharts.add(indicatorManager.getRsiChartWrapper());
-        }
-        if (indicatorManager.isMacdChartEnabled()) {
-            visibleCharts.add(indicatorManager.getMacdChartWrapper());
-        }
-        if (indicatorManager.isAtrChartEnabled()) {
-            visibleCharts.add(indicatorManager.getAtrChartWrapper());
-        }
-        if (indicatorManager.isDeltaChartEnabled()) {
-            visibleCharts.add(indicatorManager.getDeltaChartWrapper());
-        }
-        if (indicatorManager.isCvdChartEnabled()) {
-            visibleCharts.add(indicatorManager.getCvdChartWrapper());
-        }
-        if (indicatorManager.isVolumeRatioChartEnabled()) {
-            visibleCharts.add(indicatorManager.getVolumeRatioChartWrapper());
-        }
-        if (indicatorManager.isWhaleChartEnabled()) {
-            visibleCharts.add(indicatorManager.getWhaleChartWrapper());
-        }
-        if (indicatorManager.isRetailChartEnabled()) {
-            visibleCharts.add(indicatorManager.getRetailChartWrapper());
-        }
-        if (indicatorManager.isFundingChartEnabled()) {
-            visibleCharts.add(indicatorManager.getFundingChartWrapper());
-        }
-        if (indicatorManager.isOiChartEnabled()) {
-            visibleCharts.add(indicatorManager.getOiChartWrapper());
-        }
-        if (indicatorManager.isStochasticChartEnabled()) {
-            visibleCharts.add(indicatorManager.getStochasticChartWrapper());
-        }
-        if (indicatorManager.isRangePositionChartEnabled()) {
-            visibleCharts.add(indicatorManager.getRangePositionChartWrapper());
-        }
-        if (indicatorManager.isAdxChartEnabled()) {
-            visibleCharts.add(indicatorManager.getAdxChartWrapper());
-        }
-        if (indicatorManager.isTradeCountChartEnabled()) {
-            visibleCharts.add(indicatorManager.getTradeCountChartWrapper());
-        }
-        if (indicatorManager.isPremiumChartEnabled()) {
-            visibleCharts.add(indicatorManager.getPremiumChartWrapper());
-        }
-        if (indicatorManager.isFearGreedChartEnabled()) {
-            visibleCharts.add(indicatorManager.getFearGreedChartWrapper());
-        }
+        visibleCharts.addAll(indicatorManager.getVisibleWrappers());
 
         // Core charts at the end
         if (zoomManager.isEquityChartEnabled()) {
@@ -779,10 +629,9 @@ public class ChartsPanel extends JPanel {
 
         long startTime = currentCandles.get(0).timestamp();
         long endTime = currentCandles.get(currentCandles.size() - 1).timestamp();
-        JFreeChart[] charts = {
-                priceChart, volumeChart, equityChart, comparisonChart, capitalUsageChart, tradePLChart,
-                indicatorManager.getRsiChart(), indicatorManager.getMacdChart(), indicatorManager.getAtrChart()
-        };
+        java.util.List<JFreeChart> charts = new java.util.ArrayList<>(java.util.List.of(
+                priceChart, volumeChart, equityChart, comparisonChart, capitalUsageChart, tradePLChart));
+        charts.addAll(indicatorManager.getAllCharts());
 
         for (JFreeChart chart : charts) {
             if (chart != null) {
@@ -1068,176 +917,27 @@ public class ChartsPanel extends JPanel {
         return overlayManager.isIchimokuEnabled();
     }
 
-    // ===== Indicator Chart Delegation =====
+    // ===== Indicator Chart Access =====
 
-    public void setRsiChartEnabled(boolean enabled, int period) {
-        indicatorManager.setRsiChartEnabled(enabled, period);
-    }
-
-    public boolean isRsiChartEnabled() {
-        return indicatorManager.isRsiChartEnabled();
-    }
-
-    public void setMacdChartEnabled(boolean enabled, int fast, int slow, int signal) {
-        indicatorManager.setMacdChartEnabled(enabled, fast, slow, signal);
-    }
-
-    public boolean isMacdChartEnabled() {
-        return indicatorManager.isMacdChartEnabled();
-    }
-
-    public void setAtrChartEnabled(boolean enabled, int period) {
-        indicatorManager.setAtrChartEnabled(enabled, period);
-    }
-
-    public boolean isAtrChartEnabled() {
-        return indicatorManager.isAtrChartEnabled();
-    }
-
-    public void setStochasticChartEnabled(boolean enabled, int kPeriod, int dPeriod) {
-        indicatorManager.setStochasticChartEnabled(enabled, kPeriod, dPeriod);
-    }
-
-    public boolean isStochasticChartEnabled() {
-        return indicatorManager.isStochasticChartEnabled();
-    }
-
-    public void setRangePositionChartEnabled(boolean enabled, int period) {
-        indicatorManager.setRangePositionChartEnabled(enabled, period, 0);
-    }
-
-    public boolean isRangePositionChartEnabled() {
-        return indicatorManager.isRangePositionChartEnabled();
-    }
-
-    public void setAdxChartEnabled(boolean enabled, int period) {
-        indicatorManager.setAdxChartEnabled(enabled, period);
-    }
-
-    public boolean isAdxChartEnabled() {
-        return indicatorManager.isAdxChartEnabled();
-    }
-
-    public void setDeltaChartEnabled(boolean enabled) {
-        indicatorManager.setDeltaChartEnabled(enabled);
-    }
-
-    public boolean isDeltaChartEnabled() {
-        return indicatorManager.isDeltaChartEnabled();
-    }
-
-    public void setCvdChartEnabled(boolean enabled) {
-        indicatorManager.setCvdChartEnabled(enabled);
-    }
-
-    public boolean isCvdChartEnabled() {
-        return indicatorManager.isCvdChartEnabled();
-    }
-
-    public void setVolumeRatioChartEnabled(boolean enabled) {
-        indicatorManager.setVolumeRatioChartEnabled(enabled);
-    }
-
-    public boolean isVolumeRatioChartEnabled() {
-        return indicatorManager.isVolumeRatioChartEnabled();
-    }
-
-    public void setWhaleChartEnabled(boolean enabled, double threshold) {
-        indicatorManager.setWhaleChartEnabled(enabled, threshold);
-    }
-
-    public boolean isWhaleChartEnabled() {
-        return indicatorManager.isWhaleChartEnabled();
-    }
-
-    public void setWhaleThreshold(double threshold) {
-        indicatorManager.setWhaleThreshold(threshold);
-    }
-
-    public double getWhaleThreshold() {
-        return indicatorManager.getWhaleThreshold();
-    }
-
-    public void setRetailChartEnabled(boolean enabled) {
-        indicatorManager.setRetailChartEnabled(enabled);
-    }
-
-    public void setRetailChartEnabled(boolean enabled, double threshold) {
-        indicatorManager.setRetailChartEnabled(enabled, threshold);
-    }
-
-    public void setRetailThreshold(double threshold) {
-        indicatorManager.setRetailThreshold(threshold);
-    }
-
-    public double getRetailThreshold() {
-        return indicatorManager.getRetailThreshold();
-    }
-
-    public boolean isRetailChartEnabled() {
-        return indicatorManager.isRetailChartEnabled();
-    }
-
-    public void setFundingChartEnabled(boolean enabled) {
-        indicatorManager.setFundingChartEnabled(enabled);
-    }
-
-    public boolean isFundingChartEnabled() {
-        return indicatorManager.isFundingChartEnabled();
-    }
-
-    public void setOiChartEnabled(boolean enabled) {
-        indicatorManager.setOiChartEnabled(enabled);
-    }
-
-    public boolean isOiChartEnabled() {
-        return indicatorManager.isOiChartEnabled();
-    }
-
-    public void setTradeCountChartEnabled(boolean enabled) {
-        indicatorManager.setTradeCountChartEnabled(enabled);
-    }
-
-    public boolean isTradeCountChartEnabled() {
-        return indicatorManager.isTradeCountChartEnabled();
-    }
-
-    public void setPremiumChartEnabled(boolean enabled) {
-        indicatorManager.setPremiumChartEnabled(enabled);
-    }
-
-    public boolean isPremiumChartEnabled() {
-        return indicatorManager.isPremiumChartEnabled();
-    }
-
-    public void setHoldingCostCumulativeChartEnabled(boolean enabled) {
-        indicatorManager.setHoldingCostCumulativeChartEnabled(enabled);
-    }
-
-    public boolean isHoldingCostCumulativeChartEnabled() {
-        return indicatorManager.isHoldingCostCumulativeChartEnabled();
-    }
-
-    public void setHoldingCostEventsChartEnabled(boolean enabled) {
-        indicatorManager.setHoldingCostEventsChartEnabled(enabled);
-    }
-
-    public boolean isHoldingCostEventsChartEnabled() {
-        return indicatorManager.isHoldingCostEventsChartEnabled();
-    }
-
-    public void setFearGreedChartEnabled(boolean enabled) {
-        indicatorManager.setFearGreedChartEnabled(enabled);
-    }
-
-    public boolean isFearGreedChartEnabled() {
-        return indicatorManager.isFearGreedChartEnabled();
+    public IndicatorChartsManager getIndicatorManager() {
+        return indicatorManager;
     }
 
     public boolean isAnyOrderflowChartEnabled() {
-        // Include footprint heatmap overlay - it also needs aggTrades
-        return indicatorManager.isAnyOrderflowEnabled()
-                || ChartConfig.getInstance().isFootprintHeatmapEnabled();
+        // Footprint needs aggTrades only for exchange-specific modes (SINGLE_EXCHANGE, STACKED, DIVERGENCE)
+        // COMBINED/SPLIT use precomputed profiles from the data service
+        boolean footprintNeedsAggTrades = ChartConfig.getInstance().isFootprintHeatmapEnabled()
+            && FootprintHeatmapOverlay.requiresAggTrades(
+                ChartConfig.getInstance().getFootprintHeatmapConfig().getDisplayMode());
+        return indicatorManager.isAnyOrderflowEnabled() || footprintNeedsAggTrades;
+    }
+
+    /**
+     * Tell the footprint overlay to wait for aggTrades from BacktestCoordinator
+     * instead of loading its own page.
+     */
+    public void setFootprintWaitForCoordinator(boolean wait) {
+        overlayManager.setFootprintWaitForCoordinator(wait);
     }
 
     public void setIndicatorEngine(com.tradery.core.indicators.IndicatorEngine engine) {
@@ -1300,23 +1000,10 @@ public class ChartsPanel extends JPanel {
         ChartStyles.stylizeChart(tradePLChart, "Trade P&L");
 
         // Re-stylize all indicator charts
-        ChartStyles.stylizeChart(indicatorManager.getRsiChart(), "RSI");
-        ChartStyles.stylizeChart(indicatorManager.getMacdChart(), "MACD");
-        ChartStyles.stylizeChart(indicatorManager.getAtrChart(), "ATR");
-        ChartStyles.stylizeChart(indicatorManager.getDeltaChart(), "Delta");
-        ChartStyles.stylizeChart(indicatorManager.getCvdChart(), "CVD");
-        ChartStyles.stylizeChart(indicatorManager.getVolumeRatioChart(), "Buy/Sell Volume");
-        ChartStyles.stylizeChart(indicatorManager.getWhaleChart(), "Whale Delta");
-        ChartStyles.stylizeChart(indicatorManager.getRetailChart(), "Retail Delta");
-        ChartStyles.stylizeChart(indicatorManager.getFundingChart(), "Funding");
-        ChartStyles.stylizeChart(indicatorManager.getOiChart(), "Open Interest");
-        ChartStyles.stylizeChart(indicatorManager.getPremiumChart(), "Premium");
-        ChartStyles.stylizeChart(indicatorManager.getStochasticChart(), "Stochastic");
-        ChartStyles.stylizeChart(indicatorManager.getRangePositionChart(), "Range Position");
-        ChartStyles.stylizeChart(indicatorManager.getAdxChart(), "ADX");
-        ChartStyles.stylizeChart(indicatorManager.getTradeCountChart(), "Trade Count");
-        ChartStyles.stylizeChart(indicatorManager.getHoldingCostCumulativeChart(), "Holding Cost");
-        ChartStyles.stylizeChart(indicatorManager.getHoldingCostEventsChart(), "Holding Cost Events");
+        indicatorManager.refreshTheme();
+
+        // Re-render spectrum with current color mode
+        indicatorManager.refreshSpectrumChart();
 
         // Update price renderer colors for new theme
         XYPlot pricePlot = priceChart.getXYPlot();
@@ -1340,13 +1027,22 @@ public class ChartsPanel extends JPanel {
                 Color priceLineColor = new Color(base.getRed(), base.getGreen(), base.getBlue(), alpha);
                 lineRenderer.setSeriesPaint(0, priceLineColor);
             }
+            // Update cloud opacity too
+            if (pricePlot.getRenderer(0) instanceof XYDifferenceRenderer cloudRenderer) {
+                Color baseCloud = ChartStyles.HL_CLOUD_COLOR;
+                int cloudAlpha = Math.min(baseCloud.getAlpha(), alpha);
+                Color cloudColor = new Color(baseCloud.getRed(), baseCloud.getGreen(), baseCloud.getBlue(), cloudAlpha);
+                cloudRenderer.setPositivePaint(cloudColor);
+                cloudRenderer.setNegativePaint(cloudColor);
+            }
         }
 
         // Update container background
         chartsContainer.setBackground(ChartStyles.BACKGROUND_COLOR());
 
-        // Force repaint
+        // Force repaint and reposition slider (plot area changes after repaint)
         repaint();
+        SwingUtilities.invokeLater(this::repositionPriceOpacitySlider);
     }
 
     // ===== tradery-charts Integration =====
@@ -1571,13 +1267,13 @@ public class ChartsPanel extends JPanel {
      * Call this before updateCharts() when candles change.
      */
     public void setIndicatorDataContext(List<Candle> candles, String symbol, String timeframe,
-                                        long startTime, long endTime) {
+                                        String marketType, long startTime, long endTime) {
         if (candles != null && !candles.isEmpty()) {
             indicatorManager.setDataContext(candles, symbol, timeframe, startTime, endTime);
-            overlayManager.setDataContext(symbol, timeframe);
+            overlayManager.setDataContext(symbol, timeframe, marketType);
 
             // Update ForgeDataProvider for tradery-charts overlays
-            forgeDataProvider.setDataContext(candles, symbol, timeframe, startTime, endTime);
+            forgeDataProvider.setDataContext(candles, symbol, timeframe, marketType, startTime, endTime);
         }
     }
 
@@ -1609,17 +1305,10 @@ public class ChartsPanel extends JPanel {
         // Set consistent domain axis range
         long startTime = candles.get(0).timestamp();
         long endTime = candles.get(candles.size() - 1).timestamp();
-        JFreeChart[] allCharts = {
-                priceChart, volumeChart, equityChart, comparisonChart, capitalUsageChart, tradePLChart,
-                indicatorManager.getRsiChart(), indicatorManager.getMacdChart(), indicatorManager.getAtrChart(),
-                indicatorManager.getDeltaChart(), indicatorManager.getCvdChart(), indicatorManager.getVolumeRatioChart(),
-                indicatorManager.getWhaleChart(), indicatorManager.getRetailChart(),
-                indicatorManager.getFundingChart(), indicatorManager.getOiChart(), indicatorManager.getPremiumChart(),
-                indicatorManager.getFearGreedChart(),
-                indicatorManager.getStochasticChart(), indicatorManager.getRangePositionChart(),
-                indicatorManager.getAdxChart(), indicatorManager.getTradeCountChart()
-        };
-        for (JFreeChart chart : allCharts) {
+        java.util.List<JFreeChart> allChartsList2 = new java.util.ArrayList<>(java.util.List.of(
+                priceChart, volumeChart, equityChart, comparisonChart, capitalUsageChart, tradePLChart));
+        allChartsList2.addAll(indicatorManager.getAllCharts());
+        for (JFreeChart chart : allChartsList2) {
             if (chart != null) {
                 DateAxis axis = (DateAxis) chart.getXYPlot().getDomainAxis();
                 axis.setAutoRange(false);
@@ -1686,9 +1375,12 @@ public class ChartsPanel extends JPanel {
             cloudDataset.addSeries(lowSeries);
             plot.setDataset(0, cloudDataset);
 
-            // Use XYDifferenceRenderer for blueish cloud fill
+            // Use XYDifferenceRenderer for high/low cloud fill, with opacity applied
+            Color baseCloud = ChartStyles.HL_CLOUD_COLOR;
+            int cloudAlpha = Math.min(baseCloud.getAlpha(), alpha);
+            Color cloudColor = new Color(baseCloud.getRed(), baseCloud.getGreen(), baseCloud.getBlue(), cloudAlpha);
             XYDifferenceRenderer cloudRenderer = new XYDifferenceRenderer(
-                    ChartStyles.HL_CLOUD_COLOR, ChartStyles.HL_CLOUD_COLOR, false);
+                    cloudColor, cloudColor, false);
             cloudRenderer.setSeriesPaint(0, new Color(0, 0, 0, 0));  // Invisible lines
             cloudRenderer.setSeriesPaint(1, new Color(0, 0, 0, 0));
             plot.setRenderer(0, cloudRenderer);
@@ -1701,7 +1393,7 @@ public class ChartsPanel extends JPanel {
             TimeSeriesCollection priceDataset = new TimeSeriesCollection(priceSeries);
             plot.setDataset(1, priceDataset);
 
-            // Apply opacity to price line (not the cloud)
+            // Apply opacity to price line
             Color base = com.tradery.charts.util.ChartStyles.getTheme().getPriceLineColor();
             Color priceLineColor = new Color(base.getRed(), base.getGreen(), base.getBlue(), alpha);
 
@@ -2130,7 +1822,7 @@ public class ChartsPanel extends JPanel {
      */
     public void refreshFundingChart() {
         if (currentCandles != null && !currentCandles.isEmpty()) {
-            indicatorManager.updateFundingChart(currentCandles);
+            indicatorManager.updateChart(IndicatorType.FUNDING, currentCandles);
         }
     }
 
@@ -2140,7 +1832,7 @@ public class ChartsPanel extends JPanel {
      */
     public void refreshOiChart() {
         if (currentCandles != null && !currentCandles.isEmpty()) {
-            indicatorManager.updateOiChart(currentCandles);
+            indicatorManager.updateChart(IndicatorType.OI, currentCandles);
         }
     }
 
@@ -2151,15 +1843,22 @@ public class ChartsPanel extends JPanel {
      * It's calculated once when enabled via applySavedOverlays() or user toggle.
      */
     public void refreshOrderflowCharts() {
-        if (currentCandles != null && !currentCandles.isEmpty()) {
-            indicatorManager.updateDeltaChart(currentCandles);
-            indicatorManager.updateCvdChart(currentCandles);
-            indicatorManager.updateVolumeRatioChart(currentCandles);
-            indicatorManager.updateWhaleChart(currentCandles);
-            indicatorManager.updateRetailChart(currentCandles);
+        refreshOrderflowCharts(null);
+    }
 
-            // Update footprint heatmap if enabled (uses aggTrades from IndicatorEngine)
-            overlayManager.updateFootprintHeatmapOverlay();
+    /**
+     * Refresh orderflow charts with optional pre-loaded aggTrades.
+     * When aggTrades are provided, the footprint overlay reuses them instead of
+     * loading a duplicate page from the data service.
+     */
+    public void refreshOrderflowCharts(java.util.List<com.tradery.core.model.AggTrade> aggTrades) {
+        if (currentCandles != null && !currentCandles.isEmpty()) {
+            indicatorManager.updateCharts(currentCandles,
+                IndicatorType.DELTA, IndicatorType.CVD, IndicatorType.VOLUME_RATIO,
+                IndicatorType.WHALE, IndicatorType.RETAIL);
+
+            // Update footprint heatmap if enabled — pass aggTrades to avoid duplicate load
+            overlayManager.updateFootprintHeatmapOverlay(aggTrades);
         }
     }
 
@@ -2169,13 +1868,13 @@ public class ChartsPanel extends JPanel {
      */
     public void refreshPremiumChart() {
         if (currentCandles != null && !currentCandles.isEmpty()) {
-            indicatorManager.updatePremiumChart(currentCandles);
+            indicatorManager.updateChart(IndicatorType.PREMIUM, currentCandles);
         }
     }
 
     public void refreshFearGreedChart() {
         if (currentCandles != null && !currentCandles.isEmpty()) {
-            indicatorManager.updateFearGreedChart(currentCandles);
+            indicatorManager.updateChart(IndicatorType.FEAR_GREED, currentCandles);
         }
     }
 

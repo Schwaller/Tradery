@@ -16,6 +16,8 @@ import java.util.function.Consumer;
  * DAO for volume profile data.
  * Stores precomputed volume profiles at multiple timeframe levels (10s → 1d pyramid).
  * Each row contains a msgpack-encoded tick map: Map<int_tick, [buy_vol, sell_vol]>.
+ *
+ * Each DB file is scoped to a single market_type, so that column is NOT in the table.
  */
 public class VolumeProfileDao {
 
@@ -33,9 +35,12 @@ public class VolumeProfileDao {
 
     /**
      * A single volume profile row.
+     * marketType is NOT stored in the table — it's implicit in the DB file.
+     * The field is kept in the record for API compatibility with callers that need it.
      */
     public record ProfileRow(
         String timeframe,        // "10s","1m","5m","30m","1h","4h","1d"
+        String marketType,       // "perp" or "spot" — NOT stored in DB, carried for callers
         long windowStart,        // epoch ms, aligned to boundary
         double tickSize,
         double totalBuyVolume,
@@ -124,6 +129,14 @@ public class VolumeProfileDao {
     }
 
     /**
+     * Backward-compatible query with marketType parameter (ignored in SQL, carried in ProfileRow).
+     */
+    public List<ProfileRow> query(String marketType, String timeframe, long startTime, long endTime) throws SQLException {
+        // marketType is now implicit in the DB file — just delegate
+        return query(timeframe, startTime, endTime);
+    }
+
+    /**
      * Stream profiles in chunks to avoid loading all into memory.
      */
     public int streamQuery(String timeframe, long startTime, long endTime, int chunkSize,
@@ -165,6 +178,14 @@ public class VolumeProfileDao {
     }
 
     /**
+     * Backward-compatible stream with marketType parameter.
+     */
+    public int streamQuery(String marketType, String timeframe, long startTime, long endTime, int chunkSize,
+                           Consumer<List<ProfileRow>> chunkConsumer) throws SQLException {
+        return streamQuery(timeframe, startTime, endTime, chunkSize, chunkConsumer);
+    }
+
+    /**
      * Delete profiles in a time range for a timeframe.
      */
     public int deleteRange(String timeframe, long startTime, long endTime) throws SQLException {
@@ -181,6 +202,13 @@ public class VolumeProfileDao {
             stmt.setLong(3, endTime);
             return stmt.executeUpdate();
         }
+    }
+
+    /**
+     * Backward-compatible delete with marketType parameter.
+     */
+    public int deleteRange(String marketType, String timeframe, long startTime, long endTime) throws SQLException {
+        return deleteRange(timeframe, startTime, endTime);
     }
 
     /**
@@ -207,6 +235,13 @@ public class VolumeProfileDao {
     }
 
     /**
+     * Backward-compatible count with marketType parameter.
+     */
+    public long count(String marketType, String timeframe, long startTime, long endTime) throws SQLException {
+        return count(timeframe, startTime, endTime);
+    }
+
+    /**
      * Get available timeframes that have profile data.
      */
     public List<String> getAvailableTimeframes() throws SQLException {
@@ -223,7 +258,7 @@ public class VolumeProfileDao {
     }
 
     /**
-     * Count all profiles for a timeframe (no time range filter).
+     * Count all profiles for a timeframe (for inventory).
      */
     public long countAll(String timeframe) throws SQLException {
         Connection c = conn.getConnection();
@@ -238,8 +273,14 @@ public class VolumeProfileDao {
     }
 
     /**
-     * Get the time range [min, max] of window_start for a timeframe.
-     * Returns null if no data.
+     * Backward-compatible countAll with marketType parameter.
+     */
+    public long countAll(String marketType, String timeframe) throws SQLException {
+        return countAll(timeframe);
+    }
+
+    /**
+     * Get the time range across all data for a timeframe (for inventory).
      */
     public long[] getTimeRange(String timeframe) throws SQLException {
         Connection c = conn.getConnection();
@@ -256,6 +297,13 @@ public class VolumeProfileDao {
             }
         }
         return null;
+    }
+
+    /**
+     * Backward-compatible getTimeRange with marketType parameter.
+     */
+    public long[] getTimeRange(String marketType, String timeframe) throws SQLException {
+        return getTimeRange(timeframe);
     }
 
     /**
@@ -276,6 +324,13 @@ public class VolumeProfileDao {
         return 0;
     }
 
+    /**
+     * Backward-compatible getLatestWindowStart with marketType parameter.
+     */
+    public long getLatestWindowStart(String marketType, String timeframe) throws SQLException {
+        return getLatestWindowStart(timeframe);
+    }
+
     private void setProfileParams(PreparedStatement stmt, ProfileRow row) throws SQLException {
         stmt.setString(1, row.timeframe());
         stmt.setLong(2, row.windowStart());
@@ -289,6 +344,7 @@ public class VolumeProfileDao {
     private ProfileRow readRow(ResultSet rs) throws SQLException {
         return new ProfileRow(
             rs.getString("timeframe"),
+            null,  // marketType — not in table, callers set it from context
             rs.getLong("window_start"),
             rs.getDouble("tick_size"),
             rs.getDouble("total_buy_volume"),

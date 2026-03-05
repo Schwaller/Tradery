@@ -270,6 +270,36 @@ Compare orderflow between spot and futures markets. Requires aggTrades from both
 
 > **Note:** Spot-futures divergence can signal smart money positioning. When spot buyers diverge from futures sellers, it may indicate accumulation. Returns NaN if market type data is unavailable.
 
+### Trade Size Spectrum Functions
+
+Analyze trade notional distribution using log10 buckets (0=$1, 1=$10, 2=$100, 3=$1K, 4=$10K, 5=$100K, 6=$1M, 7=$10M, 8=$100M+). Requires aggTrades data with spectrum aggregation.
+
+**Range queries (min/max bucket index):**
+
+| Function | Description |
+|----------|-------------|
+| `SPECTRUM_VOLUME(min,max)` | Total notional in bucket range [min..max] |
+| `SPECTRUM_COUNT(min,max)` | Trade count in bucket range |
+| `SPECTRUM_DELTA(min,max)` | Buy - sell notional in bucket range |
+
+**Single-bucket / threshold queries:**
+
+| Function | Description |
+|----------|-------------|
+| `SPECTRUM_COUNT_ABOVE(bucket)` | Trade count in buckets >= bucket |
+| `SPECTRUM_COUNT_AT(bucket)` | Trade count in exactly that bucket |
+| `SPECTRUM_VOLUME_ABOVE(bucket)` | Total volume from buckets >= bucket |
+| `SPECTRUM_VOLUME_AT(bucket)` | Volume in exactly that bucket |
+| `WHALE_RATIO(bucket)` | Volume above bucket / total volume (0-1) |
+
+> **Examples:**
+> `SPECTRUM_COUNT_ABOVE(5) > 10 AND RSI(14) < 40` — 10+ whale trades while oversold
+> `SPECTRUM_COUNT_AT(6) > 0` — At least one $1M+ trade
+> `WHALE_RATIO(5) > 0.6` — Whales are 60%+ of volume
+> `SPECTRUM_DELTA(5,7) > 0 AND SPECTRUM_DELTA(1,3) < 0` — Whales buying, retail selling
+
+> **Note:** Bucket indices: 0=$1, 1=$10, 2=$100, 3=$1K, 4=$10K, 5=$100K, 6=$1M, 7=$10M, 8=$100M+. Returns NaN if spectrum data is unavailable.
+
 ### Rotating Ray Functions
 
 Auto-detect trendlines from ATH/ATL. Parameters: `rayNum`, `lookback`, `skip`.

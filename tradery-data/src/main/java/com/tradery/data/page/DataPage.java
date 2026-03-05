@@ -27,6 +27,7 @@ public class DataPage<T> implements DataPageView<T> {
     // State
     private volatile PageState state = PageState.EMPTY;
     private volatile String errorMessage;
+    private volatile int errorCount = 0;  // Number of times load has failed
     private volatile long lastSyncTime;
     private volatile long loadStartTime;  // For duration tracking
     private volatile int loadProgress = 0;  // 0-100 percentage
@@ -189,6 +190,14 @@ public class DataPage<T> implements DataPageView<T> {
 
     public void setErrorMessage(String errorMessage) {
         this.errorMessage = errorMessage;
+    }
+
+    public int getErrorCount() {
+        return errorCount;
+    }
+
+    public void incrementErrorCount() {
+        this.errorCount++;
     }
 
     public long getLastSyncTime() {

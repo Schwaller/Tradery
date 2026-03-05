@@ -38,6 +38,7 @@ public class ForgeDataProvider implements ChartDataProvider {
     });
     private String symbol = "";
     private String timeframe = "";
+    private String marketType = "perp";
     private long startTime;
     private long endTime;
 
@@ -50,9 +51,10 @@ public class ForgeDataProvider implements ChartDataProvider {
      * Call this when candles, symbol, or timeframe change.
      */
     public void setDataContext(List<Candle> candles, String symbol, String timeframe,
-                                long startTime, long endTime) {
+                                String marketType, long startTime, long endTime) {
         this.symbol = symbol != null ? symbol : "";
         this.timeframe = timeframe != null ? timeframe : "";
+        this.marketType = marketType != null ? marketType : "perp";
         this.startTime = startTime;
         this.endTime = endTime;
 
@@ -65,7 +67,7 @@ public class ForgeDataProvider implements ChartDataProvider {
             engine.setMarketData(md);
 
             // Async fetch of daily profiles from data service (updates engine when ready)
-            populateDailyProfiles(engine, symbol, candles);
+            populateDailyProfiles(engine, symbol, this.marketType, candles);
 
             indicatorPool.setDataContext(engine);
         } else {
@@ -181,7 +183,7 @@ public class ForgeDataProvider implements ChartDataProvider {
      * Runs on a background thread to avoid blocking the UI — the engine falls back to
      * candle-based computation until profiles arrive, then subsequent calls use precomputed data.
      */
-    private void populateDailyProfiles(IndicatorEngine engine, String symbol, List<Candle> candles) {
+    private void populateDailyProfiles(IndicatorEngine engine, String symbol, String marketType, List<Candle> candles) {
         ApplicationContext ctx = ApplicationContext.getInstance();
         if (ctx == null || !ctx.isDataServiceAvailable() || symbol == null || symbol.isEmpty()) {
             return;
@@ -196,7 +198,7 @@ public class ForgeDataProvider implements ChartDataProvider {
         profileFetcher.submit(() -> {
             try {
                 DataServiceClient client = ctx.getDataServiceClient();
-                List<DataServiceClient.DailyLevelsPoint> levels = client.getProfileDailyLevels(symbol, start, end);
+                List<DataServiceClient.DailyLevelsPoint> levels = client.getProfileDailyLevels(symbol, start, end, marketType);
                 if (levels == null || levels.isEmpty()) {
                     ctx.setProfileStatus(ApplicationContext.ProfileStatus.IDLE,
                         "No daily levels for range", 0);

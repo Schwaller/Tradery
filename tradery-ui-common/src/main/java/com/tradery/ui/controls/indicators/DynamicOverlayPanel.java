@@ -40,14 +40,18 @@ public class DynamicOverlayPanel extends JPanel {
         this.repackListener = listener;
     }
 
-    /** Rebuild rows from a list of periods (all checked). */
+    /** Rebuild rows from a list of periods (all checked). Empty list shows one unchecked default row. */
     public void setPeriods(List<Integer> periods) {
         removeAll();
-        List<Integer> list = new ArrayList<>(periods);
-        if (list.isEmpty()) list.add(defaultPeriod);
-
-        for (int i = 0; i < list.size(); i++) {
-            add(createRow(list.get(i), i, list.size()));
+        if (periods.isEmpty()) {
+            // Show one unchecked row so the user has the [+] button available
+            OverlayRow row = createRow(defaultPeriod, 0, 1);
+            row.checkbox.setSelected(false);
+            add(row);
+        } else {
+            for (int i = 0; i < periods.size(); i++) {
+                add(createRow(periods.get(i), i, periods.size()));
+            }
         }
         revalidate();
         repaint();

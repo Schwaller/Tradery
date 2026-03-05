@@ -704,6 +704,19 @@ public class Parser {
                  "FOOTPRINT_DELTA", "FOOTPRINT_POC" -> {
                 // No parameters required
             }
+            case "SPECTRUM_VOLUME", "SPECTRUM_COUNT", "SPECTRUM_DELTA" -> {
+                // Required: minBucket, maxBucket (range query)
+                if (params.size() != 2) {
+                    throw new ParserException(func + " requires 2 parameters (minBucket, maxBucket), got " + params.size());
+                }
+            }
+            case "SPECTRUM_COUNT_ABOVE", "SPECTRUM_COUNT_AT",
+                 "SPECTRUM_VOLUME_ABOVE", "SPECTRUM_VOLUME_AT", "WHALE_RATIO" -> {
+                // Required: bucket index
+                if (params.isEmpty()) {
+                    throw new ParserException(func + " requires a parameter (bucket), e.g., " + func + "(5)");
+                }
+            }
         }
 
         return new AstNode.FootprintFunctionCall(func, params);

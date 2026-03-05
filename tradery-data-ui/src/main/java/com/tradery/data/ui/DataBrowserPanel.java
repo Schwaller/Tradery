@@ -270,14 +270,30 @@ public class DataBrowserPanel extends JPanel {
                 if (sym.volumeProfiles() == null || sym.volumeProfiles().isEmpty()) continue;
                 rows.add(symbolHeaderWithSize(sym.symbol(), "volume_profiles.db"));
                 for (VolumeProfileInventory vp : sym.volumeProfiles()) {
-                    String label = vp.timeframe();
+                    String mt = vp.marketType() != null ? vp.marketType() : "perp";
+                    String label = vp.timeframe() + " (" + mt + ")";
                     String info = COUNT_FORMAT.format(vp.recordCount()) + " windows";
-                    rows.add(new RowData(sym.symbol(), "volumeProfile:" + vp.timeframe(), null, null, vp.timeframe(),
+                    rows.add(new RowData(sym.symbol(), "volumeProfile:" + vp.timeframe() + ":" + mt, null, null, vp.timeframe(),
                         true, false, false, false, 2, label, info, COMPLETE_COLOR));
                 }
             }
         } else {
             rows.add(RowData.emptyLabel("No volume profile data"));
+        }
+
+        // === Trade Size Spectrum ===
+        rows.add(RowData.sectionHeader("Trade Size Spectrum"));
+        boolean hasSpectrum = symbols.stream().anyMatch(s -> s.spectrum() != null);
+        if (hasSpectrum) {
+            for (SymbolInventory sym : symbols) {
+                if (sym.spectrum() == null) continue;
+                rows.add(symbolHeaderWithSize(sym.symbol(), "spectrum.db"));
+                String info = COUNT_FORMAT.format(sym.spectrum().recordCount()) + " records";
+                rows.add(new RowData(sym.symbol(), "spectrum", null, null, null,
+                    true, false, false, false, 2, "All modes", info, COMPLETE_COLOR));
+            }
+        } else {
+            rows.add(RowData.emptyLabel("No spectrum data"));
         }
 
         // === Fear & Greed ===
