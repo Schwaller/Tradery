@@ -742,7 +742,6 @@ public class SymbolSyncService {
 
     /**
      * Fetch pairs from a specific Hyperliquid deployed dex.
-     * Deployed dex pairs are TradFi (stocks, commodities, FX) — no CoinGecko resolution.
      */
     private List<TradingPair> fetchHyperliquidDeployedDex(String dex, String exchange) throws IOException {
         OkHttpClient client = HttpClientFactory.getClient();
@@ -763,35 +762,8 @@ public class SymbolSyncService {
             }
 
             JsonNode root = mapper.readTree(response.body().string());
-            return parseHyperliquidDeployedInstruments(root, exchange);
+            return parseHyperliquidInstruments(root, exchange);
         }
-    }
-
-    /**
-     * Parse deployed dex instruments. These are TradFi assets (stocks, commodities, FX, indices)
-     * so we skip CoinGecko resolution entirely — the base symbol IS the readable name.
-     */
-    private List<TradingPair> parseHyperliquidDeployedInstruments(JsonNode root, String exchange) {
-        List<TradingPair> pairs = new ArrayList<>();
-        JsonNode universe = root.get("universe");
-        if (universe == null || !universe.isArray()) return pairs;
-
-        for (JsonNode asset : universe) {
-            if (asset.has("isDelisted") && asset.get("isDelisted").asBoolean()) continue;
-
-            String name = asset.has("name") ? asset.get("name").asText() : "";
-            if (name.isEmpty()) continue;
-
-            // Deployed dex symbols are prefixed: "xyz:GOLD" → base = "GOLD"
-            String base = name.contains(":") ? name.substring(name.indexOf(':') + 1) : name;
-            String quote = "USDC";
-
-            // No CoinGecko resolution for TradFi assets
-            pairs.add(TradingPair.create(exchange, MarketType.PERP, name, base, quote, null, null));
-        }
-
-        log.info("Parsed {} {} perpetual pairs from Hyperliquid API", pairs.size(), exchange);
-        return pairs;
     }
 
     private List<TradingPair> parseBinanceFuturesExchangeInfo(JsonNode root) {
