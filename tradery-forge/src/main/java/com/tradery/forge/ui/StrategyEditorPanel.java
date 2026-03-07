@@ -23,6 +23,7 @@ public class StrategyEditorPanel extends JPanel {
     private FlowDiagramPanel flowDiagramPanel;
     private JTextField nameField;
     private JTextArea notesArea;
+    private JSpinner minCandlesBetweenSpinner;
     private EntryConfigPanel entryConfigPanel;
     private ExitConfigPanel exitConfigPanel;
     private boolean suppressNoteEvents = false;
@@ -94,6 +95,9 @@ public class StrategyEditorPanel extends JPanel {
             @Override
             public void changedUpdate(DocumentEvent e) { onNotesChange(); updateNotesSize(); }
         });
+
+        minCandlesBetweenSpinner = new JSpinner(new SpinnerNumberModel(0, 0, 1000, 1));
+        minCandlesBetweenSpinner.addChangeListener(e -> onStrategyChange());
 
         entryConfigPanel = new EntryConfigPanel();
         exitConfigPanel = new ExitConfigPanel();
@@ -188,26 +192,23 @@ public class StrategyEditorPanel extends JPanel {
         JPanel topPanel = new JPanel(new BorderLayout());
         topPanel.setOpaque(false);
 
-        // Trade settings at top
-        JPanel headerPanel = new JPanel(new BorderLayout());
+        // Name + notes + trade settings
+        JPanel headerPanel = new JPanel();
+        headerPanel.setLayout(new BoxLayout(headerPanel, BoxLayout.Y_AXIS));
         headerPanel.setOpaque(false);
-        headerPanel.add(tradeSettingsPanel, BorderLayout.NORTH);
-
-        // Name + notes below trade settings
-        JPanel nameNotesPanel = new JPanel();
-        nameNotesPanel.setLayout(new BoxLayout(nameNotesPanel, BoxLayout.Y_AXIS));
-        nameNotesPanel.setOpaque(false);
 
         nameField.setMaximumSize(new Dimension(Integer.MAX_VALUE, nameField.getPreferredSize().height));
-        nameNotesPanel.add(nameField);
+        headerPanel.add(nameField);
 
         BorderlessScrollPane notesScroll = new BorderlessScrollPane(notesArea);
         notesScroll.setVerticalScrollBarPolicy(JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED);
         notesScroll.setHorizontalScrollBarPolicy(JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
         notesScroll.setViewportBorder(null);
-        nameNotesPanel.add(notesScroll);
+        headerPanel.add(notesScroll);
 
-        headerPanel.add(nameNotesPanel, BorderLayout.SOUTH);
+        tradeSettingsPanel.setMaximumSize(new Dimension(Integer.MAX_VALUE, tradeSettingsPanel.getPreferredSize().height));
+        tradeSettingsPanel.setAlignmentX(Component.LEFT_ALIGNMENT);
+        headerPanel.add(tradeSettingsPanel);
 
         topPanel.add(headerPanel, BorderLayout.NORTH);
 
@@ -215,7 +216,21 @@ public class StrategyEditorPanel extends JPanel {
         JPanel flowWrapper = new JPanel(new BorderLayout());
         flowWrapper.setOpaque(false);
         flowWrapper.add(flowDiagramPanel, BorderLayout.CENTER);
-        flowWrapper.add(new JSeparator(), BorderLayout.SOUTH);
+
+        // Min candles between, centered below flow diagram
+        JPanel minCandlesPanel = new JPanel(new FlowLayout(FlowLayout.CENTER, 8, 4));
+        minCandlesPanel.setOpaque(false);
+        JLabel minCandlesLabel = new JLabel("Minimum bars between entry and exit:");
+        minCandlesLabel.setForeground(Color.GRAY);
+        minCandlesPanel.add(minCandlesLabel);
+        minCandlesPanel.add(minCandlesBetweenSpinner);
+
+        JPanel flowBottomPanel = new JPanel(new BorderLayout());
+        flowBottomPanel.setOpaque(false);
+        flowBottomPanel.add(minCandlesPanel, BorderLayout.NORTH);
+        flowBottomPanel.add(new JSeparator(), BorderLayout.SOUTH);
+        flowWrapper.add(flowBottomPanel, BorderLayout.SOUTH);
+
         topPanel.add(flowWrapper, BorderLayout.SOUTH);
 
         // Center: entry and exit panels side by side (50/50)
@@ -259,6 +274,7 @@ public class StrategyEditorPanel extends JPanel {
     public void setStrategy(Strategy strategy) {
         this.strategy = strategy;
         tradeSettingsPanel.loadFrom(strategy);
+        minCandlesBetweenSpinner.setValue(strategy != null ? strategy.getMinCandlesBetweenTrades() : 0);
         phaseSelectionPanel.loadFrom(strategy);
         hoopPatternSelectionPanel.loadFrom(strategy);
         flowDiagramPanel.setStrategy(strategy);
@@ -298,6 +314,7 @@ public class StrategyEditorPanel extends JPanel {
         String name = nameField.getText().trim();
         if (!name.isEmpty()) strategy.setName(name);
         tradeSettingsPanel.applyTo(strategy);
+        strategy.setMinCandlesBetweenTrades(((Number) minCandlesBetweenSpinner.getValue()).intValue());
         phaseSelectionPanel.applyTo(strategy);
         hoopPatternSelectionPanel.applyTo(strategy);
         String notes = showingPlaceholder ? null : notesArea.getText();

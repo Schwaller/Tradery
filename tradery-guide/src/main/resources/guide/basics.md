@@ -1,3 +1,9 @@
+![Trading Chart](images/guide-hero.svg)
+
+This guide covers everything you need to understand trading charts, technical indicators, and how to build automated strategies. Start here with the fundamentals, then work through Indicators, Strategy, and Advanced topics at your own pace.
+
+---
+
 ## Markets & Price
 
 ### What Is a Market?

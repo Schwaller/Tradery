@@ -32,7 +32,7 @@ public class TimelineBar extends JPanel implements DataPageListener<Candle> {
     private static final Color GRID_LINE = new Color(128, 128, 128, 80);
 
     private static final long TEN_YEARS_MS = 10L * 365 * 24 * 60 * 60 * 1000;
-    private static final int MIN_CANDLES_FOR_WEEKLY = 30;
+    private static final int MIN_CANDLES_FOR_WEEKLY_FALLBACK = 30;
 
     private final CandlePageManager candlePageMgr;
 
@@ -440,14 +440,20 @@ public class TimelineBar extends JPanel implements DataPageListener<Candle> {
         weeklyCandles = page.getData();
         updateTimeRange();
 
-        // If weekly gives too few candles, switch to daily for better resolution
-        if ("1w".equals(currentTimeframe)
-                && weeklyCandles != null
-                && weeklyCandles.size() < MIN_CANDLES_FOR_WEEKLY
-                && weeklyCandles.size() > 0) {
-            currentTimeframe = "1d";
-            requestTimelinePage();
-            return;
+        // Progressively downgrade timeframe if too few candles for the display width.
+        // Aim for at least 1 candle per 10px for a useful overview.
+        int minCandles = Math.max(MIN_CANDLES_FOR_WEEKLY_FALLBACK, getWidth() / 10);
+        if (weeklyCandles != null && weeklyCandles.size() < minCandles && weeklyCandles.size() > 0) {
+            String next = switch (currentTimeframe) {
+                case "1w" -> "1d";
+                case "1d" -> "4h";
+                default -> null;
+            };
+            if (next != null) {
+                currentTimeframe = next;
+                requestTimelinePage();
+                return;
+            }
         }
 
         repaint();

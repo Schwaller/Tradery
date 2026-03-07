@@ -14,7 +14,6 @@ public class TradeSettingsPanel extends ConfigurationPanel {
 
     private JComboBox<TradeDirection> directionCombo;
     private JSpinner maxOpenTradesSpinner;
-    private JSpinner minCandlesBetweenSpinner;
 
     public TradeSettingsPanel() {
         setLayout(new GridBagLayout());
@@ -27,11 +26,9 @@ public class TradeSettingsPanel extends ConfigurationPanel {
         directionCombo = new JComboBox<>(TradeDirection.values());
         directionCombo.setSelectedItem(TradeDirection.LONG);
         maxOpenTradesSpinner = new JSpinner(new SpinnerNumberModel(1, 1, 100, 1));
-        minCandlesBetweenSpinner = new JSpinner(new SpinnerNumberModel(0, 0, 1000, 1));
 
         directionCombo.addActionListener(e -> fireChange());
         maxOpenTradesSpinner.addChangeListener(e -> fireChange());
-        minCandlesBetweenSpinner.addChangeListener(e -> fireChange());
     }
 
     private void layoutComponents() {
@@ -59,19 +56,8 @@ public class TradeSettingsPanel extends ConfigurationPanel {
         gbc.insets = new Insets(2, 0, 2, 8);
         add(maxOpenTradesSpinner, gbc);
 
-        // Min Candles Between
-        gbc.gridx = 4;
-        gbc.insets = new Insets(2, 16, 2, 8);
-        JLabel minCandlesLabel = new JLabel("Min Candles Between:");
-        minCandlesLabel.setForeground(Color.GRAY);
-        add(minCandlesLabel, gbc);
-
-        gbc.gridx = 5;
-        gbc.insets = new Insets(2, 0, 2, 0);
-        add(minCandlesBetweenSpinner, gbc);
-
         // Spacer to push everything left
-        gbc.gridx = 6;
+        gbc.gridx = 4;
         gbc.weightx = 1;
         gbc.fill = GridBagConstraints.HORIZONTAL;
         add(Box.createHorizontalGlue(), gbc);
@@ -83,11 +69,9 @@ public class TradeSettingsPanel extends ConfigurationPanel {
             if (strategy != null) {
                 directionCombo.setSelectedItem(strategy.getDirection());
                 maxOpenTradesSpinner.setValue(strategy.getMaxOpenTrades());
-                minCandlesBetweenSpinner.setValue(strategy.getMinCandlesBetweenTrades());
             } else {
                 directionCombo.setSelectedItem(TradeDirection.LONG);
                 maxOpenTradesSpinner.setValue(1);
-                minCandlesBetweenSpinner.setValue(0);
             }
         } finally {
             setSuppressChangeEvents(false);
@@ -98,6 +82,5 @@ public class TradeSettingsPanel extends ConfigurationPanel {
         if (strategy == null) return;
         strategy.setDirection((TradeDirection) directionCombo.getSelectedItem());
         strategy.setMaxOpenTrades(((Number) maxOpenTradesSpinner.getValue()).intValue());
-        strategy.setMinCandlesBetweenTrades(((Number) minCandlesBetweenSpinner.getValue()).intValue());
     }
 }

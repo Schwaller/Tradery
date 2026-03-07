@@ -479,9 +479,19 @@ public class PageManager implements BackfillCompletionCallback {
     }
 
     /**
+     * Check if the exchange is a Hyperliquid exchange (main or deployed dex).
+     */
+    private boolean isHyperliquid(String exchange) {
+        return exchange != null && (exchange.equals("hyperliquid") || exchange.startsWith("hl-"));
+    }
+
+    /**
      * Load candle data for a page, fetching from Binance if cache is incomplete.
      */
     private byte[] loadCandles(PageKey key, Page page) throws Exception {
+        if (isHyperliquid(key.exchange())) {
+            return loadHyperliquidCandles(key, page);
+        }
         String symbol = key.symbol();
         String timeframe = key.timeframe();
         String marketType = key.marketType();
@@ -560,6 +570,67 @@ public class PageManager implements BackfillCompletionCallback {
     }
 
     /**
+     * Convert an uppercased PageKey symbol back to Hyperliquid coin format.
+     * PageKey.toUpperCase() turns "km:US500" into "KM:US500", but HL API
+     * needs lowercase dex prefix. Extract it from the exchange name (e.g., "hl-km" → "km").
+     */
+    private String toHyperliquidCoin(String symbol, String exchange) {
+        if (symbol.contains(":") && exchange != null && exchange.startsWith("hl-")) {
+            // Deployed dex: restore lowercase prefix from exchange name
+            String dexPrefix = exchange.substring(3); // "hl-km" → "km"
+            String asset = symbol.substring(symbol.indexOf(':') + 1); // "KM:US500" → "US500"
+            return dexPrefix + ":" + asset;
+        }
+        // Main HL exchange: symbol is just the coin name (already uppercase, e.g., "BTC")
+        return symbol;
+    }
+
+    /**
+     * Load candle data from Hyperliquid API (no local cache).
+     */
+    private byte[] loadHyperliquidCandles(PageKey key, Page page) throws Exception {
+        String coin = toHyperliquidCoin(key.symbol(), key.exchange());
+        String interval = key.timeframe();
+        long startTime = key.getEffectiveStartTime();
+        long endTime = key.getEffectiveEndTime();
+
+        HyperliquidClient hlClient = new HyperliquidClient();
+        AtomicBoolean cancelled = new AtomicBoolean(false);
+        List<Candle> candles = hlClient.fetchAllKlines(coin, interval, startTime, endTime,
+            cancelled,
+            progress -> {
+                int pct = Math.min(95, progress.percentComplete());
+                page.setState(PageState.LOADING, pct);
+                notifyStateChanged(key, PageState.LOADING, pct);
+            });
+
+        page.setRecordCount(candles.size());
+
+        if (key.isLive()) {
+            page.setLiveCandles(candles);
+        }
+
+        LOG.info("loadHyperliquidCandles: {} {} complete ({} candles)", coin, interval, candles.size());
+        return msgpackMapper.writeValueAsBytes(candles);
+    }
+
+    /**
+     * Load funding rate data from Hyperliquid API (no local cache).
+     */
+    private byte[] loadHyperliquidFunding(PageKey key, Page page) throws Exception {
+        String coin = toHyperliquidCoin(key.symbol(), key.exchange());
+        long startTime = key.getEffectiveStartTime();
+        long endTime = key.getEffectiveEndTime();
+
+        HyperliquidClient hlClient = new HyperliquidClient();
+        List<FundingRate> rates = hlClient.fetchFundingRates(coin, startTime, endTime);
+        page.setRecordCount(rates.size());
+
+        LOG.info("loadHyperliquidFunding: {} loaded {} rates", coin, rates.size());
+        return msgpackMapper.writeValueAsBytes(rates);
+    }
+
+    /**
      * Convert timeframe to interval in milliseconds.
      */
     private long getIntervalMs(String timeframe) {
@@ -593,6 +664,12 @@ public class PageManager implements BackfillCompletionCallback {
      * The client fetches data via the streaming /aggtrades endpoint.
      */
     private byte[] loadAggTrades(PageKey key, Page page) throws Exception {
+        if (isHyperliquid(key.exchange())) {
+            // Hyperliquid doesn't provide historical aggTrades
+            page.setRecordCount(0);
+            LOG.info("loadAggTrades: skipped for Hyperliquid exchange {}", key.exchange());
+            return null;
+        }
         String symbol = key.symbol();
         String marketType = key.marketType() != null ? key.marketType() : "perp";
         long startTime = key.getEffectiveStartTime();
@@ -628,6 +705,9 @@ public class PageManager implements BackfillCompletionCallback {
      * Load funding rate data for a page, fetching from Binance if cache is incomplete.
      */
     private byte[] loadFunding(PageKey key, Page page) throws Exception {
+        if (isHyperliquid(key.exchange())) {
+            return loadHyperliquidFunding(key, page);
+        }
         String symbol = key.symbol();
         long startTime = key.getEffectiveStartTime();
         long endTime = key.getEffectiveEndTime();
@@ -643,6 +723,12 @@ public class PageManager implements BackfillCompletionCallback {
      * Load open interest data for a page, fetching from Binance if cache is incomplete.
      */
     private byte[] loadOpenInterest(PageKey key, Page page) throws Exception {
+        if (isHyperliquid(key.exchange())) {
+            // Hyperliquid doesn't provide historical open interest
+            page.setRecordCount(0);
+            LOG.info("loadOpenInterest: skipped for Hyperliquid exchange {}", key.exchange());
+            return msgpackMapper.writeValueAsBytes(List.of());
+        }
         String symbol = key.symbol();
         long startTime = key.getEffectiveStartTime();
         long endTime = key.getEffectiveEndTime();
@@ -663,6 +749,12 @@ public class PageManager implements BackfillCompletionCallback {
      * Load premium index data for a page, fetching from Binance if cache is incomplete.
      */
     private byte[] loadPremium(PageKey key, Page page) throws Exception {
+        if (isHyperliquid(key.exchange())) {
+            // Hyperliquid doesn't provide historical premium index
+            page.setRecordCount(0);
+            LOG.info("loadPremium: skipped for Hyperliquid exchange {}", key.exchange());
+            return msgpackMapper.writeValueAsBytes(List.of());
+        }
         String symbol = key.symbol();
         String timeframe = key.timeframe();
         long startTime = key.getEffectiveStartTime();
