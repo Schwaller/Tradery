@@ -25,11 +25,13 @@ public final class ChartPanelFactory {
     private static Consumer<String> axisPositionCallback;
 
     /**
-     * Set the initial axis position in ChartConfig and a callback for changes.
-     * The callback is invoked when the user changes the position via context menu.
+     * Register a callback for axis position changes from the context menu.
+     * The position parameter is ignored — ChartConfig is the single source of truth.
+     *
+     * @param position ignored (kept for API compatibility)
+     * @param onChange callback invoked when user changes position via context menu
      */
     public static void setAxisPositionConfig(String position, Consumer<String> onChange) {
-        ChartConfig.getInstance().setPriceAxisPosition(position);
         axisPositionCallback = onChange;
     }
 

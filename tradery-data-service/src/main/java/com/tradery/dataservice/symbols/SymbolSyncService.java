@@ -7,8 +7,10 @@ import com.tradery.dataservice.coingecko.CoinInfo;
 import com.tradery.dataservice.data.HttpClientFactory;
 import com.tradery.dataservice.data.sqlite.SymbolsConnection;
 import com.tradery.dataservice.data.sqlite.dao.SymbolDao;
+import okhttp3.MediaType;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
+import okhttp3.RequestBody;
 import okhttp3.Response;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -36,7 +38,8 @@ public class SymbolSyncService {
         "bybit", new ExchangeMapping("bybit_spot", "bybit"),
         "okx", new ExchangeMapping("okex", "okx_swap"),
         "coinbase", new ExchangeMapping("gdax", "coinbase_international_derivatives"),
-        "kraken", new ExchangeMapping("kraken", "kraken_futures")
+        "kraken", new ExchangeMapping("kraken", "kraken_futures"),
+        "hyperliquid", new ExchangeMapping(null, "hyperliquid")
     );
 
     // Default quote currencies to look for
@@ -187,6 +190,15 @@ public class SymbolSyncService {
                         completedSteps++;
                     }
                 }
+            }
+
+            // Sync Hyperliquid deployed dexes (tradfi perps: stocks, commodities, FX, indices)
+            try {
+                List<ExchangeSyncResult> dexResults = syncHyperliquidDeployedDexes(skipRecent, maxAge);
+                results.addAll(dexResults);
+                pairsFoundSoFar += dexResults.stream().mapToInt(ExchangeSyncResult::pairCount).sum();
+            } catch (Exception e) {
+                log.error("Hyperliquid deployed dex sync failed: {}", e.getMessage());
             }
 
             // Sync categories after exchange pairs
@@ -455,10 +467,17 @@ public class SymbolSyncService {
     }
 
     /**
-     * Get supported exchanges.
+     * Get supported exchanges (includes dynamically discovered Hyperliquid deployed dexes).
      */
     public Set<String> getSupportedExchanges() {
-        return EXCHANGE_MAPPINGS.keySet();
+        Set<String> exchanges = new LinkedHashSet<>(EXCHANGE_MAPPINGS.keySet());
+        // Add deployed dexes from sync metadata
+        try {
+            exchanges.addAll(symbolDao.getSyncedExchanges());
+        } catch (SQLException e) {
+            log.debug("Failed to get synced exchanges from DB: {}", e.getMessage());
+        }
+        return exchanges;
     }
 
     // ========== Category Sync ==========
@@ -535,6 +554,11 @@ public class SymbolSyncService {
      * Fetch perpetual symbols directly from exchange API when CoinGecko fails.
      */
     private List<TradingPair> fetchPerpSymbolsFromExchangeApi(String exchange) {
+        // Hyperliquid uses POST, handle separately
+        if ("hyperliquid".equals(exchange)) {
+            return fetchHyperliquidPairs();
+        }
+
         String url = EXCHANGE_INFO_URLS.get(exchange);
         if (url == null) {
             log.debug("No direct API fallback for exchange: {}", exchange);
@@ -566,6 +590,208 @@ public class SymbolSyncService {
             log.error("Failed to fetch perp symbols from {} API: {}", exchange, e.getMessage());
             return List.of();
         }
+    }
+
+    /**
+     * Fetch Hyperliquid perpetual pairs from their direct API.
+     * Hyperliquid uses POST to https://api.hyperliquid.xyz/info with {"type":"meta"}.
+     * Response: { "universe": [{ "name": "BTC", "szDecimals": 5, "maxLeverage": 40, ... }, ...] }
+     * All pairs settle in USDC. Non-crypto pairs (SPX, etc.) won't have coingecko IDs.
+     */
+    private List<TradingPair> fetchHyperliquidPairs() {
+        try {
+            OkHttpClient client = HttpClientFactory.getClient();
+            ObjectMapper mapper = HttpClientFactory.getMapper();
+
+            RequestBody body = RequestBody.create(
+                "{\"type\":\"meta\"}",
+                MediaType.get("application/json")
+            );
+            Request request = new Request.Builder()
+                .url("https://api.hyperliquid.xyz/info")
+                .post(body)
+                .build();
+
+            try (Response response = client.newCall(request).execute()) {
+                if (!response.isSuccessful() || response.body() == null) {
+                    log.warn("Hyperliquid API returned {}", response.code());
+                    return List.of();
+                }
+
+                JsonNode root = mapper.readTree(response.body().string());
+                return parseHyperliquidInstruments(root, "hyperliquid");
+            }
+        } catch (Exception e) {
+            log.error("Failed to fetch Hyperliquid pairs: {}", e.getMessage());
+            return List.of();
+        }
+    }
+
+    private List<TradingPair> parseHyperliquidInstruments(JsonNode root, String exchange) {
+        List<TradingPair> pairs = new ArrayList<>();
+        JsonNode universe = root.get("universe");
+        if (universe == null || !universe.isArray()) return pairs;
+
+        for (JsonNode asset : universe) {
+            // Skip delisted pairs
+            if (asset.has("isDelisted") && asset.get("isDelisted").asBoolean()) continue;
+
+            String name = asset.has("name") ? asset.get("name").asText() : "";
+            if (name.isEmpty()) continue;
+
+            // Deployed dex symbols are prefixed (e.g., "xyz:GOLD") — strip prefix for base
+            String base = name.contains(":") ? name.substring(name.indexOf(':') + 1) : name;
+            String quote = "USDC";
+
+            // Try to find CoinGecko ID (won't exist for tradfi like GOLD, SPX, etc.)
+            String coingeckoId = lookupCoingeckoId(base);
+            String quoteCoingeckoId = lookupCoingeckoId(quote);
+
+            // Symbol = the full name as returned by the API (includes prefix for deployed dexes)
+            pairs.add(TradingPair.create(exchange, MarketType.PERP, name, base, quote,
+                coingeckoId, quoteCoingeckoId));
+        }
+
+        log.info("Parsed {} {} perpetual pairs from Hyperliquid API", pairs.size(), exchange);
+        return pairs;
+    }
+
+    // ========== Hyperliquid Deployed Dexes (TradFi perps) ==========
+
+    /**
+     * Discover and sync Hyperliquid deployed dexes (stocks, commodities, FX, indices, pre-IPO).
+     * Each deployer (xyz, km, vntl, etc.) is treated as an independent exchange.
+     * Exchange names: "hl-xyz", "hl-km", "hl-vntl".
+     */
+    private List<ExchangeSyncResult> syncHyperliquidDeployedDexes(boolean skipRecent, Duration maxAge) {
+        List<ExchangeSyncResult> results = new ArrayList<>();
+
+        // Discover deployed dex names from perpCategories
+        Set<String> dexNames = discoverHyperliquidDexes();
+        if (dexNames.isEmpty()) {
+            log.debug("No Hyperliquid deployed dexes found");
+            return results;
+        }
+
+        log.info("Discovered {} Hyperliquid deployed dexes: {}", dexNames.size(), dexNames);
+
+        for (String dex : dexNames) {
+            String exchange = "hl-" + dex;
+
+            if (skipRecent && isRecentlySynced(exchange, MarketType.PERP, maxAge)) {
+                log.debug("Skipping {} PERP - recently synced", exchange);
+                results.add(new ExchangeSyncResult(exchange, MarketType.PERP, 0, "SKIPPED", "Recently synced"));
+                continue;
+            }
+
+            try {
+                List<TradingPair> pairs = fetchHyperliquidDeployedDex(dex, exchange);
+                int count = symbolDao.upsertPairsBatch(pairs);
+                symbolDao.updateSyncMetadata(exchange, MarketType.PERP, count, "SUCCESS", null);
+                results.add(new ExchangeSyncResult(exchange, MarketType.PERP, count, "SUCCESS", null));
+                log.info("Synced {} pairs for {} (Hyperliquid dex: {})", count, exchange, dex);
+            } catch (Exception e) {
+                log.error("Failed to sync Hyperliquid dex {}: {}", dex, e.getMessage());
+                results.add(new ExchangeSyncResult(exchange, MarketType.PERP, 0, "ERROR", e.getMessage()));
+            }
+        }
+
+        return results;
+    }
+
+    /**
+     * Discover deployed dex names from Hyperliquid's perpCategories endpoint.
+     * Returns unique deployer prefixes (e.g., "xyz", "km", "vntl").
+     */
+    private Set<String> discoverHyperliquidDexes() {
+        try {
+            OkHttpClient client = HttpClientFactory.getClient();
+            ObjectMapper mapper = HttpClientFactory.getMapper();
+
+            RequestBody body = RequestBody.create(
+                "{\"type\":\"perpCategories\"}",
+                MediaType.get("application/json")
+            );
+            Request request = new Request.Builder()
+                .url("https://api.hyperliquid.xyz/info")
+                .post(body)
+                .build();
+
+            try (Response response = client.newCall(request).execute()) {
+                if (!response.isSuccessful() || response.body() == null) return Set.of();
+
+                JsonNode root = mapper.readTree(response.body().string());
+                if (!root.isArray()) return Set.of();
+
+                Set<String> dexNames = new LinkedHashSet<>();
+                for (JsonNode entry : root) {
+                    if (!entry.isArray() || entry.size() < 2) continue;
+                    String name = entry.get(0).asText(); // e.g., "xyz:GOLD"
+                    int colon = name.indexOf(':');
+                    if (colon > 0) {
+                        dexNames.add(name.substring(0, colon));
+                    }
+                }
+                return dexNames;
+            }
+        } catch (Exception e) {
+            log.warn("Failed to discover Hyperliquid deployed dexes: {}", e.getMessage());
+            return Set.of();
+        }
+    }
+
+    /**
+     * Fetch pairs from a specific Hyperliquid deployed dex.
+     * Deployed dex pairs are TradFi (stocks, commodities, FX) — no CoinGecko resolution.
+     */
+    private List<TradingPair> fetchHyperliquidDeployedDex(String dex, String exchange) throws IOException {
+        OkHttpClient client = HttpClientFactory.getClient();
+        ObjectMapper mapper = HttpClientFactory.getMapper();
+
+        RequestBody body = RequestBody.create(
+            "{\"type\":\"meta\",\"dex\":\"" + dex + "\"}",
+            MediaType.get("application/json")
+        );
+        Request request = new Request.Builder()
+            .url("https://api.hyperliquid.xyz/info")
+            .post(body)
+            .build();
+
+        try (Response response = client.newCall(request).execute()) {
+            if (!response.isSuccessful() || response.body() == null) {
+                throw new IOException("Hyperliquid API returned " + response.code() + " for dex: " + dex);
+            }
+
+            JsonNode root = mapper.readTree(response.body().string());
+            return parseHyperliquidDeployedInstruments(root, exchange);
+        }
+    }
+
+    /**
+     * Parse deployed dex instruments. These are TradFi assets (stocks, commodities, FX, indices)
+     * so we skip CoinGecko resolution entirely — the base symbol IS the readable name.
+     */
+    private List<TradingPair> parseHyperliquidDeployedInstruments(JsonNode root, String exchange) {
+        List<TradingPair> pairs = new ArrayList<>();
+        JsonNode universe = root.get("universe");
+        if (universe == null || !universe.isArray()) return pairs;
+
+        for (JsonNode asset : universe) {
+            if (asset.has("isDelisted") && asset.get("isDelisted").asBoolean()) continue;
+
+            String name = asset.has("name") ? asset.get("name").asText() : "";
+            if (name.isEmpty()) continue;
+
+            // Deployed dex symbols are prefixed: "xyz:GOLD" → base = "GOLD"
+            String base = name.contains(":") ? name.substring(name.indexOf(':') + 1) : name;
+            String quote = "USDC";
+
+            // No CoinGecko resolution for TradFi assets
+            pairs.add(TradingPair.create(exchange, MarketType.PERP, name, base, quote, null, null));
+        }
+
+        log.info("Parsed {} {} perpetual pairs from Hyperliquid API", pairs.size(), exchange);
+        return pairs;
     }
 
     private List<TradingPair> parseBinanceFuturesExchangeInfo(JsonNode root) {

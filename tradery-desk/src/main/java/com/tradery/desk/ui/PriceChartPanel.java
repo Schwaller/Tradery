@@ -74,9 +74,9 @@ public class PriceChartPanel extends JPanel {
         overlayManager = new OverlayManager(candlestickChart.getChart());
         overlayManager.setChartDataProvider(dataProvider);
 
-        // Default price axis to right side, configurable via right-click menu
-        ChartPanelFactory.setAxisPositionConfig("right", this::applyAxisPosition);
-        candlestickChart.setRangeAxisPosition("right");
+        // Axis position from saved config, configurable via right-click menu
+        ChartPanelFactory.setAxisPositionConfig(null, this::applyAxisPosition);
+        candlestickChart.setRangeAxisPosition(ChartConfig.getInstance().getPriceAxisPosition());
         interactionManager.setAxisPositionSupplier(ChartPanelFactory::getAxisPosition);
 
         // Add last price line overlay (enabled by default)

@@ -851,6 +851,22 @@ public class SymbolDao {
         return 0;
     }
 
+    /**
+     * Get all exchange names that have sync metadata (includes dynamically discovered ones).
+     */
+    public Set<String> getSyncedExchanges() throws SQLException {
+        Connection c = conn.getConnection();
+        Set<String> exchanges = new LinkedHashSet<>();
+
+        try (PreparedStatement stmt = c.prepareStatement("SELECT DISTINCT exchange FROM sync_metadata");
+             ResultSet rs = stmt.executeQuery()) {
+            while (rs.next()) {
+                exchanges.add(rs.getString("exchange"));
+            }
+        }
+        return exchanges;
+    }
+
     // ==================== Helpers ====================
 
     private ExchangeAsset readAsset(ResultSet rs) throws SQLException {
