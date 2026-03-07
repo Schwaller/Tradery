@@ -123,33 +123,6 @@ Analyze trade flow at price levels within candles:
 | `FOOTPRINT_DELTA` | value | Total delta from bucket aggregation |
 | `FOOTPRINT_POC` | price | POC price from footprint |
 
-### Cross-Exchange Functions (require multi-exchange aggTrades)
-Analyze orderflow across different exchanges:
-| Function | Returns | Description |
-|----------|---------|-------------|
-| `BINANCE_DELTA` | value | Delta from Binance trades only |
-| `BYBIT_DELTA` | value | Delta from Bybit trades only |
-| `OKX_DELTA` | value | Delta from OKX trades only |
-| `COMBINED_DELTA` | value | Sum of delta across all exchanges |
-| `EXCHANGE_DELTA_SPREAD` | value | Max exchange delta - min exchange delta |
-| `EXCHANGE_DIVERGENCE` | 0/1 | 1 if exchanges disagree on direction |
-| `COMBINED_IMBALANCE_AT_POC` | ratio | Aggregated imbalance at combined POC |
-| `EXCHANGES_WITH_BUY_IMBALANCE` | count | How many exchanges show buy imbalance |
-| `EXCHANGES_WITH_SELL_IMBALANCE` | count | How many exchanges show sell imbalance |
-| `WHALE_DELTA_COMBINED(t)` | value | Whale delta across all exchanges |
-| `DOMINANT_EXCHANGE` | enum | Which exchange has largest volume |
-
-### Spot vs Futures Functions (require aggTrades from both market types)
-Compare orderflow between spot and futures markets:
-| Function | Returns | Description |
-|----------|---------|-------------|
-| `SPOT_DELTA` | value | Delta from spot market trades only |
-| `FUTURES_DELTA` | value | Delta from futures market trades (perp + dated) |
-| `SPOT_VOLUME` | value | Volume from spot market trades |
-| `FUTURES_VOLUME` | value | Volume from futures market trades |
-| `SPOT_FUTURES_DIVERGENCE` | 0/1 | 1 if spot and futures delta have opposite signs |
-| `SPOT_FUTURES_DELTA_SPREAD` | value | SPOT_DELTA - FUTURES_DELTA (positive = spot leading) |
-
 ### Rotating Ray Functions
 Auto-detect trendlines from ATH/ATL. Params: `rayNum`, `lookback`, `skip`
 - **Resistance:** `RESISTANCE_RAY_BROKEN/CROSSED/DISTANCE(ray,look,skip)`, `RESISTANCE_RAYS_BROKEN(look,skip)`, `RESISTANCE_RAY_COUNT(look,skip)`
@@ -188,15 +161,6 @@ STACKED_BUY_IMBALANCES(4) == 1 AND price < FOOTPRINT_POC  # Strong buying below 
 ABSORPTION(100000, 0.3) == 1 AND VOLUME_ABOVE_POC_RATIO < 0.3  # Absorption
 IMBALANCE_AT_POC > 3                                 # Strong buy imbalance at POC
 
-# Cross-exchange divergence (key signal)
-BINANCE_DELTA < -10000 AND BYBIT_DELTA > 10000      # Exchange divergence
-EXCHANGE_DIVERGENCE == 1 AND ADX(14) < 20           # Divergence in ranging market
-EXCHANGES_WITH_BUY_IMBALANCE >= 2 AND RSI(14) < 40  # Multi-exchange buy signal
-
-# Spot vs Futures divergence (require spot + futures aggTrades)
-SPOT_FUTURES_DIVERGENCE == 1 AND RSI(14) < 40       # Spot/futures disagree + oversold
-SPOT_DELTA > 0 AND FUTURES_DELTA < 0                 # Spot buying, futures selling
-SPOT_FUTURES_DELTA_SPREAD > 10000                    # Spot significantly leading
 ```
 
 ---
@@ -225,7 +189,6 @@ timeframe: 1d
 | **Moon** | `full-moon-day/hour`, `new-moon-day/hour` |
 | **Funding** | `high-funding`, `negative-funding`, `extreme-funding`, `neutral-funding` |
 | **Sentiment** | `extreme-fear`, `fear`, `greed`, `extreme-greed` |
-| **Orderflow** | `exchange-divergence-bullish`, `exchange-divergence-bearish`, `cross-exchange-buy-pressure`, `cross-exchange-sell-pressure`, `whale-accumulation-multi`, `whale-distribution-multi` |
 
 ### Strategy Integration
 ```yaml
@@ -312,7 +275,6 @@ Trades also capture footprint metrics at entry/exit/mfe/mae points:
 - `absorptionScore` - Whether absorption pattern detected
 - `volumeAbovePocRatio` - Ratio of volume above POC
 - `footprintDelta` - Total delta from footprint
-- `exchangeDivergence` - Whether exchanges disagree on direction
 
 ### summary.json Structure
 ```json
@@ -325,7 +287,6 @@ Trades also capture footprint metrics at entry/exit/mfe/mae points:
       "byImbalance": { "buyImbalance": { "count": 45, "winRate": 72, "vsOverall": +10 } },
       "byStackedImbalances": { "stackedBuyImbalances": { "count": 20, "winRate": 80 } },
       "byAbsorption": { "withAbsorption": { "count": 15, "winRate": 73 } },
-      "byExchangeDivergence": { "exchangesDiverging": { "count": 10, "winRate": 60 } }
     },
     "suggestions": [
       "Consider requiring 'uptrend' phase",
@@ -350,7 +311,6 @@ Trades also capture footprint metrics at entry/exit/mfe/mae points:
 - Moon phases, Funding, Premium, Open Interest
 - Orderflow (VWAP, POC, DELTA, whale detection)
 - Footprint functions (IMBALANCE_AT_POC, STACKED_IMBALANCES, ABSORPTION, etc.)
-- Cross-exchange analysis (BINANCE_DELTA, EXCHANGE_DIVERGENCE, etc.)
 - Footprint-aware trade analytics with AI suggestions
 - Aggregate functions, lookback syntax
 

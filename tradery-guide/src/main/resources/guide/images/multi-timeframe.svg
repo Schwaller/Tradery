@@ -1,0 +1,91 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 560 240">
+  <rect width="560" height="240" fill="#000000" fill-opacity="0.3" rx="8"/>
+  <text x="280" y="28" fill="#cdd6f4" font-family="sans-serif" font-size="16" font-weight="bold" text-anchor="middle">Multi-Timeframe Analysis</text>
+
+  <!-- Daily (trend) -->
+  <g transform="translate(20, 50)">
+    <rect x="0" y="0" width="155" height="150" fill="#313244" fill-opacity="0.5" rx="6"/>
+    <text x="78" y="20" fill="#89b4fa" font-family="sans-serif" font-size="12" font-weight="bold" text-anchor="middle">Daily (Trend)</text>
+
+    <!-- Smooth uptrend line -->
+    <polyline
+      points="15,120 35,110 55,100 75,90 95,80 115,70 135,60"
+      fill="none" stroke="#a6e3a1" stroke-width="2.5" stroke-linejoin="round"/>
+    <!-- SMA line -->
+    <polyline
+      points="15,125 35,118 55,110 75,102 95,94 115,86 135,78"
+      fill="none" stroke="#585b70" stroke-width="1.5" stroke-dasharray="4,3"/>
+
+    <text x="78" y="145" fill="#a6e3a1" font-family="sans-serif" font-size="10" text-anchor="middle">Uptrend confirmed</text>
+  </g>
+
+  <!-- Arrow 1 -->
+  <g transform="translate(180, 120)">
+    <polygon points="0,0 15,7 0,14" fill="#585b70"/>
+  </g>
+
+  <!-- 4H (setup) -->
+  <g transform="translate(200, 50)">
+    <rect x="0" y="0" width="155" height="150" fill="#313244" fill-opacity="0.5" rx="6"/>
+    <text x="78" y="20" fill="#fab387" font-family="sans-serif" font-size="12" font-weight="bold" text-anchor="middle">4H (Setup)</text>
+
+    <!-- Price pulling back to support -->
+    <polyline
+      points="15,90 30,75 45,70 60,80 75,95 90,105 105,100 120,90 135,85"
+      fill="none" stroke="#fab387" stroke-width="2.5" stroke-linejoin="round"/>
+    <!-- Support line -->
+    <line x1="15" y1="108" x2="135" y2="108" stroke="#a6e3a1" stroke-width="1" stroke-dasharray="4,4"/>
+    <text x="138" y="112" fill="#585b70" font-family="sans-serif" font-size="8">Support</text>
+
+    <!-- Pullback annotation -->
+    <text x="78" y="145" fill="#fab387" font-family="sans-serif" font-size="10" text-anchor="middle">Pullback to support</text>
+  </g>
+
+  <!-- Arrow 2 -->
+  <g transform="translate(360, 120)">
+    <polygon points="0,0 15,7 0,14" fill="#585b70"/>
+  </g>
+
+  <!-- 1H (entry) -->
+  <g transform="translate(380, 50)">
+    <rect x="0" y="0" width="155" height="150" fill="#313244" fill-opacity="0.5" rx="6"/>
+    <text x="78" y="20" fill="#cba6f7" font-family="sans-serif" font-size="12" font-weight="bold" text-anchor="middle">1H (Entry)</text>
+
+    <!-- Hammer at support then reversal -->
+    <!-- Few red candles down -->
+    <rect x="20" y="60" width="8" height="20" fill="#f38ba8"/>
+    <line x1="24" y1="55" x2="24" y2="60" stroke="#f38ba8" stroke-width="1.5"/>
+    <line x1="24" y1="80" x2="24" y2="88" stroke="#f38ba8" stroke-width="1.5"/>
+
+    <rect x="35" y="70" width="8" height="18" fill="#f38ba8"/>
+    <line x1="39" y1="65" x2="39" y2="70" stroke="#f38ba8" stroke-width="1.5"/>
+    <line x1="39" y1="88" x2="39" y2="100" stroke="#f38ba8" stroke-width="1.5"/>
+
+    <!-- Hammer -->
+    <rect x="50" y="85" width="8" height="8" fill="#a6e3a1"/>
+    <line x1="54" y1="82" x2="54" y2="85" stroke="#a6e3a1" stroke-width="1.5"/>
+    <line x1="54" y1="93" x2="54" y2="115" stroke="#a6e3a1" stroke-width="1.5"/>
+
+    <!-- Entry arrow -->
+    <text x="54" y="126" fill="#a6e3a1" font-family="sans-serif" font-size="9" font-weight="bold" text-anchor="middle">ENTRY</text>
+    <polygon points="51,76 54,70 57,76" fill="#a6e3a1"/>
+
+    <!-- Green candles up -->
+    <rect x="65" y="68" width="8" height="20" fill="#a6e3a1"/>
+    <line x1="69" y1="62" x2="69" y2="68" stroke="#a6e3a1" stroke-width="1.5"/>
+    <line x1="69" y1="88" x2="69" y2="92" stroke="#a6e3a1" stroke-width="1.5"/>
+
+    <rect x="80" y="55" width="8" height="18" fill="#a6e3a1"/>
+    <line x1="84" y1="50" x2="84" y2="55" stroke="#a6e3a1" stroke-width="1.5"/>
+    <line x1="84" y1="73" x2="84" y2="78" stroke="#a6e3a1" stroke-width="1.5"/>
+
+    <rect x="95" y="45" width="8" height="15" fill="#a6e3a1"/>
+    <line x1="99" y1="40" x2="99" y2="45" stroke="#a6e3a1" stroke-width="1.5"/>
+    <line x1="99" y1="60" x2="99" y2="65" stroke="#a6e3a1" stroke-width="1.5"/>
+
+    <text x="78" y="145" fill="#cba6f7" font-family="sans-serif" font-size="10" text-anchor="middle">Hammer reversal</text>
+  </g>
+
+  <!-- Bottom note -->
+  <text x="280" y="225" fill="#7f849c" font-family="sans-serif" font-size="10" text-anchor="middle">All three timeframes align = high-probability setup</text>
+</svg>

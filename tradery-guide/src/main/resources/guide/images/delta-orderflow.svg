@@ -1,0 +1,61 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 560 280">
+  <rect width="560" height="280" fill="#000000" fill-opacity="0.3" rx="8"/>
+  <text x="280" y="28" fill="#cdd6f4" font-family="sans-serif" font-size="16" font-weight="bold" text-anchor="middle">Delta &amp; Cumulative Delta (CVD)</text>
+
+  <!-- Delta bars (left) -->
+  <g transform="translate(40, 50)">
+    <text x="100" y="0" fill="#cdd6f4" font-family="sans-serif" font-size="12" font-weight="bold" text-anchor="middle">Delta per Bar</text>
+
+    <line x1="0" y1="90" x2="200" y2="90" stroke="#585b70" stroke-width="1" stroke-dasharray="2,4"/>
+    <text x="-5" y="94" fill="#585b70" font-family="sans-serif" font-size="9" text-anchor="end">0</text>
+
+    <!-- Positive delta bars -->
+    <rect x="5" y="65" width="14" height="25" fill="#a6e3a1" opacity="0.7"/>
+    <rect x="23" y="50" width="14" height="40" fill="#a6e3a1" opacity="0.7"/>
+    <rect x="41" y="40" width="14" height="50" fill="#a6e3a1" opacity="0.7"/>
+    <rect x="59" y="55" width="14" height="35" fill="#a6e3a1" opacity="0.7"/>
+    <rect x="77" y="70" width="14" height="20" fill="#a6e3a1" opacity="0.7"/>
+    <!-- Negative delta bars -->
+    <rect x="95" y="90" width="14" height="15" fill="#f38ba8" opacity="0.7"/>
+    <rect x="113" y="90" width="14" height="30" fill="#f38ba8" opacity="0.7"/>
+    <rect x="131" y="90" width="14" height="45" fill="#f38ba8" opacity="0.7"/>
+    <rect x="149" y="90" width="14" height="35" fill="#f38ba8" opacity="0.7"/>
+    <rect x="167" y="90" width="14" height="20" fill="#f38ba8" opacity="0.7"/>
+    <!-- Back to positive -->
+    <rect x="185" y="75" width="14" height="15" fill="#a6e3a1" opacity="0.7"/>
+
+    <text x="48" y="170" fill="#a6e3a1" font-family="sans-serif" font-size="10" text-anchor="middle">Buyers dominate</text>
+    <text x="156" y="170" fill="#f38ba8" font-family="sans-serif" font-size="10" text-anchor="middle">Sellers dominate</text>
+  </g>
+
+  <!-- CVD line (right) -->
+  <g transform="translate(300, 50)">
+    <text x="110" y="0" fill="#cdd6f4" font-family="sans-serif" font-size="12" font-weight="bold" text-anchor="middle">Cumulative Delta</text>
+
+    <line x1="0" y1="90" x2="220" y2="90" stroke="#585b70" stroke-width="1" stroke-dasharray="2,4"/>
+
+    <!-- CVD line rising then falling -->
+    <polyline
+      points="0,90 20,78 40,60 60,42 80,35 100,40 120,55 140,75 160,85 180,80 200,70 220,60"
+      fill="none" stroke="#cba6f7" stroke-width="2.5" stroke-linejoin="round"/>
+
+    <!-- Price line (divergence) -->
+    <polyline
+      points="0,130 20,120 40,105 60,90 80,80 100,75 120,70 140,65 160,58 180,55 200,50 220,48"
+      fill="none" stroke="#585b70" stroke-width="1.5" stroke-linejoin="round" stroke-dasharray="4,3"/>
+
+    <!-- Divergence annotation -->
+    <line x1="80" y1="35" x2="220" y2="60" stroke="#f38ba8" stroke-width="1" stroke-dasharray="3,3"/>
+    <line x1="80" y1="80" x2="220" y2="48" stroke="#a6e3a1" stroke-width="1" stroke-dasharray="3,3"/>
+
+    <text x="170" y="145" fill="#f38ba8" font-family="sans-serif" font-size="10" font-weight="bold" text-anchor="middle">Bearish Divergence</text>
+    <text x="170" y="158" fill="#585b70" font-family="sans-serif" font-size="9" text-anchor="middle">Price up, CVD down</text>
+    <text x="170" y="170" fill="#585b70" font-family="sans-serif" font-size="9" text-anchor="middle">= weakening move</text>
+
+    <!-- Legend -->
+    <line x1="30" y1="185" x2="55" y2="185" stroke="#cba6f7" stroke-width="2.5"/>
+    <text x="60" y="189" fill="#cba6f7" font-family="sans-serif" font-size="9">CVD</text>
+    <line x1="100" y1="185" x2="125" y2="185" stroke="#585b70" stroke-width="1.5" stroke-dasharray="4,3"/>
+    <text x="130" y="189" fill="#585b70" font-family="sans-serif" font-size="9">Price</text>
+  </g>
+</svg>

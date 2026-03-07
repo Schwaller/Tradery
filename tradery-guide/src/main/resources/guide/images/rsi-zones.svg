@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 560 280">
+  <rect width="560" height="280" fill="#000000" fill-opacity="0.3" rx="8"/>
+
+  <text x="280" y="28" fill="#cdd6f4" font-family="sans-serif" font-size="16" font-weight="bold" text-anchor="middle">RSI (Relative Strength Index)</text>
+
+  <!-- Chart area -->
+  <g transform="translate(50, 40)">
+    <!-- Overbought zone -->
+    <rect x="0" y="0" width="460" height="60" fill="#f38ba8" opacity="0.1"/>
+    <line x1="0" y1="60" x2="460" y2="60" stroke="#f38ba8" stroke-width="1" stroke-dasharray="4,4"/>
+    <text x="-8" y="35" fill="#f38ba8" font-family="sans-serif" font-size="11" text-anchor="end">70</text>
+    <text x="470" y="35" fill="#f38ba8" font-family="sans-serif" font-size="10">Overbought</text>
+
+    <!-- Neutral zone -->
+    <rect x="0" y="60" width="460" height="80" fill="#585b70" opacity="0.05"/>
+    <line x1="0" y1="100" x2="460" y2="100" stroke="#585b70" stroke-width="1" stroke-dasharray="2,4"/>
+    <text x="-8" y="104" fill="#585b70" font-family="sans-serif" font-size="11" text-anchor="end">50</text>
+
+    <!-- Oversold zone -->
+    <rect x="0" y="140" width="460" height="60" fill="#a6e3a1" opacity="0.1"/>
+    <line x1="0" y1="140" x2="460" y2="140" stroke="#a6e3a1" stroke-width="1" stroke-dasharray="4,4"/>
+    <text x="-8" y="175" fill="#a6e3a1" font-family="sans-serif" font-size="11" text-anchor="end">30</text>
+    <text x="470" y="175" fill="#a6e3a1" font-family="sans-serif" font-size="10">Oversold</text>
+
+    <!-- Scale labels -->
+    <text x="-8" y="8" fill="#7f849c" font-family="sans-serif" font-size="11" text-anchor="end">100</text>
+    <text x="-8" y="204" fill="#7f849c" font-family="sans-serif" font-size="11" text-anchor="end">0</text>
+
+    <!-- RSI line -->
+    <polyline
+      points="0,100 20,90 40,70 60,50 80,35 100,45 120,55 140,75 160,100 180,120 200,145 220,160 240,155 260,140 280,120 300,100 320,80 340,60 360,45 380,55 400,70 420,90 440,100 460,95"
+      fill="none" stroke="#cba6f7" stroke-width="2.5" stroke-linejoin="round"/>
+
+    <!-- Sell signal at overbought -->
+    <circle cx="80" cy="35" r="5" fill="#f38ba8"/>
+    <text x="80" y="22" fill="#f38ba8" font-family="sans-serif" font-size="9" text-anchor="middle" font-weight="bold">SELL</text>
+
+    <!-- Buy signal at oversold -->
+    <circle cx="220" cy="160" r="5" fill="#a6e3a1"/>
+    <text x="220" y="178" fill="#a6e3a1" font-family="sans-serif" font-size="9" text-anchor="middle" font-weight="bold">BUY</text>
+
+    <!-- Second sell signal -->
+    <circle cx="360" cy="45" r="5" fill="#f38ba8"/>
+    <text x="360" y="32" fill="#f38ba8" font-family="sans-serif" font-size="9" text-anchor="middle" font-weight="bold">SELL</text>
+
+    <!-- Axis -->
+    <line x1="0" y1="0" x2="0" y2="200" stroke="#585b70" stroke-width="1"/>
+    <line x1="0" y1="200" x2="460" y2="200" stroke="#585b70" stroke-width="1"/>
+  </g>
+</svg>

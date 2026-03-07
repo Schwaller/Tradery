@@ -70,6 +70,9 @@ subprojects {
             exportAllPackages()
         }
 
+        // JSVG - SVG rendering
+        automaticModule("com.github.weisj:jsvg", "com.github.weisj.jsvg")
+
         // BouncyCastle (real module - has module-info.class)
         module("org.bouncycastle:bcprov-jdk18on", "org.bouncycastle.provider") {
             patchRealModule()

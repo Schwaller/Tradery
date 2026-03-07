@@ -1,5 +1,7 @@
 package com.tradery.forge.ui.charts;
 
+import com.tradery.ui.controls.ChartConfig;
+
 import javax.swing.*;
 import java.awt.*;
 import java.beans.PropertyChangeListener;

@@ -57,7 +57,6 @@ public class ConditionEvaluator {
             case AstNode.CandlePatternCall c -> evaluateCandlePattern(c, barIndex);
             case AstNode.CandlePropCall c -> evaluateCandleProp(c, barIndex);
             case AstNode.FootprintFunctionCall f -> evaluateFootprintFunction(f, barIndex);
-            case AstNode.ExchangeFunctionCall e -> evaluateExchangeFunction(e, barIndex);
             case AstNode.FearGreedFunctionCall fg -> evaluateFearGreedFunction(fg, barIndex);
             case AstNode.LookbackAccess l -> evaluateLookback(l, barIndex);
             case AstNode.PriceReference p -> evaluatePrice(p, barIndex);
@@ -655,50 +654,6 @@ public class ConditionEvaluator {
             }
 
             default -> throw new EvaluationException("Unknown footprint function: " + node.func());
-        };
-    }
-
-    /**
-     * Evaluate cross-exchange functions for multi-exchange analysis.
-     * These compare orderflow across different exchanges.
-     */
-    private double evaluateExchangeFunction(AstNode.ExchangeFunctionCall node, int barIndex) {
-        List<Double> params = node.params();
-
-        return switch (node.func()) {
-            // Per-exchange delta
-            case "BINANCE_DELTA" -> engine.getExchangeDelta("BINANCE", barIndex);
-            case "BYBIT_DELTA" -> engine.getExchangeDelta("BYBIT", barIndex);
-            case "OKX_DELTA" -> engine.getExchangeDelta("OKX", barIndex);
-
-            // Combined cross-exchange metrics
-            case "COMBINED_DELTA" -> engine.getCombinedDelta(barIndex);
-            case "EXCHANGE_DELTA_SPREAD" -> engine.getExchangeDeltaSpread(barIndex);
-            case "EXCHANGE_DIVERGENCE" -> engine.hasExchangeDivergence(barIndex) ? 1.0 : 0.0;
-
-            // Combined imbalance analysis
-            case "COMBINED_IMBALANCE_AT_POC" -> engine.getCombinedImbalanceAtPOC(barIndex);
-            case "EXCHANGES_WITH_BUY_IMBALANCE" -> engine.getExchangesWithBuyImbalance(barIndex);
-            case "EXCHANGES_WITH_SELL_IMBALANCE" -> engine.getExchangesWithSellImbalance(barIndex);
-
-            // Cross-exchange whale detection
-            case "WHALE_DELTA_COMBINED" -> {
-                double threshold = params.isEmpty() ? 100000 : params.get(0);
-                yield engine.getWhaleDeltaCombined(threshold, barIndex);
-            }
-
-            // Dominant exchange (returns enum ordinal)
-            case "DOMINANT_EXCHANGE" -> engine.getDominantExchange(barIndex);
-
-            // Spot vs Futures market-type functions
-            case "SPOT_DELTA" -> engine.getSpotDelta(barIndex);
-            case "FUTURES_DELTA" -> engine.getFuturesDelta(barIndex);
-            case "SPOT_VOLUME" -> engine.getSpotVolume(barIndex);
-            case "FUTURES_VOLUME" -> engine.getFuturesVolume(barIndex);
-            case "SPOT_FUTURES_DIVERGENCE" -> engine.getSpotFuturesDivergence(barIndex);
-            case "SPOT_FUTURES_DELTA_SPREAD" -> engine.getSpotFuturesDeltaSpread(barIndex);
-
-            default -> throw new EvaluationException("Unknown exchange function: " + node.func());
         };
     }
 

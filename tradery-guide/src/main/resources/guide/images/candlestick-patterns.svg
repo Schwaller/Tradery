@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 580 260">
+  <rect width="580" height="260" fill="#000000" fill-opacity="0.3" rx="8"/>
+  <text x="290" y="28" fill="#cdd6f4" font-family="sans-serif" font-size="16" font-weight="bold" text-anchor="middle">Candlestick Patterns</text>
+
+  <!-- Hammer -->
+  <g transform="translate(50, 50)">
+    <line x1="25" y1="20" x2="25" y2="40" stroke="#a6e3a1" stroke-width="2"/>
+    <rect x="15" y="40" width="20" height="25" fill="#a6e3a1" rx="1"/>
+    <line x1="25" y1="65" x2="25" y2="160" stroke="#a6e3a1" stroke-width="2"/>
+    <text x="25" y="180" fill="#a6e3a1" font-family="sans-serif" font-size="12" font-weight="bold" text-anchor="middle">Hammer</text>
+    <text x="25" y="195" fill="#585b70" font-family="sans-serif" font-size="9" text-anchor="middle">Bullish reversal</text>
+    <text x="65" y="115" fill="#585b70" font-family="sans-serif" font-size="9">Long lower</text>
+    <text x="65" y="127" fill="#585b70" font-family="sans-serif" font-size="9">wick = buyers</text>
+    <text x="65" y="139" fill="#585b70" font-family="sans-serif" font-size="9">stepping in</text>
+  </g>
+
+  <!-- Shooting Star -->
+  <g transform="translate(185, 50)">
+    <line x1="25" y1="20" x2="25" y2="125" stroke="#f38ba8" stroke-width="2"/>
+    <rect x="15" y="125" width="20" height="25" fill="#f38ba8" rx="1"/>
+    <line x1="25" y1="150" x2="25" y2="160" stroke="#f38ba8" stroke-width="2"/>
+    <text x="25" y="180" fill="#f38ba8" font-family="sans-serif" font-size="12" font-weight="bold" text-anchor="middle">Shooting Star</text>
+    <text x="25" y="195" fill="#585b70" font-family="sans-serif" font-size="9" text-anchor="middle">Bearish reversal</text>
+    <text x="65" y="70" fill="#585b70" font-family="sans-serif" font-size="9">Long upper</text>
+    <text x="65" y="82" fill="#585b70" font-family="sans-serif" font-size="9">wick = sellers</text>
+    <text x="65" y="94" fill="#585b70" font-family="sans-serif" font-size="9">pushing back</text>
+  </g>
+
+  <!-- Doji -->
+  <g transform="translate(325, 50)">
+    <line x1="25" y1="30" x2="25" y2="80" stroke="#cba6f7" stroke-width="2"/>
+    <rect x="15" y="80" width="20" height="3" fill="#cba6f7" rx="1"/>
+    <line x1="25" y1="83" x2="25" y2="140" stroke="#cba6f7" stroke-width="2"/>
+    <text x="25" y="180" fill="#cba6f7" font-family="sans-serif" font-size="12" font-weight="bold" text-anchor="middle">Doji</text>
+    <text x="25" y="195" fill="#585b70" font-family="sans-serif" font-size="9" text-anchor="middle">Indecision</text>
+    <text x="65" y="80" fill="#585b70" font-family="sans-serif" font-size="9">Open = Close</text>
+    <text x="65" y="92" fill="#585b70" font-family="sans-serif" font-size="9">Neither side</text>
+    <text x="65" y="104" fill="#585b70" font-family="sans-serif" font-size="9">won</text>
+  </g>
+
+  <!-- Engulfing -->
+  <g transform="translate(455, 50)">
+    <line x1="15" y1="50" x2="15" y2="65" stroke="#f38ba8" stroke-width="2"/>
+    <rect x="7" y="65" width="16" height="40" fill="#f38ba8" rx="1"/>
+    <line x1="15" y1="105" x2="15" y2="120" stroke="#f38ba8" stroke-width="2"/>
+
+    <line x1="40" y1="40" x2="40" y2="55" stroke="#a6e3a1" stroke-width="2"/>
+    <rect x="28" y="55" width="24" height="60" fill="#a6e3a1" rx="1"/>
+    <line x1="40" y1="115" x2="40" y2="130" stroke="#a6e3a1" stroke-width="2"/>
+
+    <text x="28" y="180" fill="#a6e3a1" font-family="sans-serif" font-size="12" font-weight="bold" text-anchor="middle">Engulfing</text>
+    <text x="28" y="195" fill="#585b70" font-family="sans-serif" font-size="9" text-anchor="middle">Strong reversal</text>
+    <text x="80" y="80" fill="#585b70" font-family="sans-serif" font-size="9">Green body</text>
+    <text x="80" y="92" fill="#585b70" font-family="sans-serif" font-size="9">covers the</text>
+    <text x="80" y="104" fill="#585b70" font-family="sans-serif" font-size="9">entire red</text>
+  </g>
+</svg>

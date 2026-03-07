@@ -93,7 +93,7 @@ public class HelpStyles {
             h3 {
                 color: %s;
                 font-size: 12px;
-                margin: 10px 0 4px 0;
+                margin: 20px 0 4px 0;
                 font-weight: 600;
             }
             h4 {
@@ -179,6 +179,10 @@ public class HelpStyles {
                 font-size: 10px;
                 color: %s;
             }
+            a {
+                color: %s;
+                text-decoration: underline;
+            }
             hr {
                 border: none;
                 border-top: 1px solid %s;
@@ -198,6 +202,7 @@ public class HelpStyles {
                 colors.codeBgHex,                               // pre
                 colors.codeBgHex,                               // .flow
                 colors.fgSecHex,                                // .small
+                colors.accentHex,                               // a
                 colors.borderHex                                // hr
         );
     }

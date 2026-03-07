@@ -9,9 +9,6 @@ import com.tradery.engine.HoopPatternEvaluator;
 import com.tradery.engine.PhaseEvaluator;
 import com.tradery.forge.ApplicationContext;
 import com.tradery.forge.data.AggTradesStore;
-import com.tradery.forge.data.ExchangeClient;
-import com.tradery.forge.data.ExchangeClientFactory;
-import com.tradery.forge.data.ExchangeConfig;
 import com.tradery.data.page.DataPage;
 import com.tradery.data.page.DataPageListener;
 import com.tradery.data.page.DataPageView;
@@ -390,11 +387,15 @@ public class BacktestCoordinator {
         boolean needsPremium = strategyNeedsPremium || viewNeedsPremium;
         boolean needsFearGreed = strategyNeedsFearGreed || viewNeedsFearGreed;
 
+        // Extract exchange and market type from strategy settings
+        String exchange = strategy.getExchange();
+        String marketType = strategy.getSymbolMarket();
+
         // Request candles (always required)
         reportDataStatus("Candles", "loading");
         candleListener = createCandleListener();
         DataPageView<Candle> candlePage = candlePageMgr.request(
-            symbol, timeframe, startTime, endTime, candleListener, "BacktestCoordinator");
+            symbol, timeframe, exchange, marketType, startTime, endTime, candleListener, "BacktestCoordinator");
         requirements.setCandlePage(candlePage);
 
         // Request optional data - viewOnly flag means it won't block backtest
@@ -403,7 +404,7 @@ public class BacktestCoordinator {
             reportDataStatus("AggTrades", viewOnly ? "loading (view)" : "loading");
             aggTradesListener = createAggTradesListener();
             DataPageView<AggTrade> aggTradesPage = aggTradesPageMgr.request(
-                symbol, null, startTime, endTime, aggTradesListener, "BacktestCoordinator");
+                symbol, null, exchange, marketType, startTime, endTime, aggTradesListener, "BacktestCoordinator");
             requirements.setAggTradesPage(aggTradesPage, viewOnly);
         }
 
@@ -412,7 +413,7 @@ public class BacktestCoordinator {
             reportDataStatus("Funding", viewOnly ? "loading (view)" : "loading");
             fundingListener = createFundingListener();
             DataPageView<FundingRate> fundingPage = fundingPageMgr.request(
-                symbol, null, startTime, endTime, fundingListener, "BacktestCoordinator");
+                symbol, null, exchange, marketType, startTime, endTime, fundingListener, "BacktestCoordinator");
             requirements.setFundingPage(fundingPage, viewOnly);
         }
 
@@ -427,7 +428,7 @@ public class BacktestCoordinator {
                 reportDataStatus("OI", viewOnly ? "loading (view)" : "loading");
                 oiListener = createOIListener();
                 DataPageView<OpenInterest> oiPage = oiPageMgr.request(
-                    symbol, null, oiStartTime, endTime, oiListener, "BacktestCoordinator");
+                    symbol, null, exchange, marketType, oiStartTime, endTime, oiListener, "BacktestCoordinator");
                 requirements.setOiPage(oiPage, viewOnly);
             }
         }
@@ -437,11 +438,12 @@ public class BacktestCoordinator {
             reportDataStatus("Premium", viewOnly ? "loading (view)" : "loading");
             premiumListener = createPremiumListener();
             DataPageView<PremiumIndex> premiumPage = premiumPageMgr.request(
-                symbol, timeframe, startTime, endTime, premiumListener, "BacktestCoordinator");
+                symbol, timeframe, exchange, marketType, startTime, endTime, premiumListener, "BacktestCoordinator");
             requirements.setPremiumPage(premiumPage, viewOnly);
         }
 
         if (needsFearGreed) {
+            // Fear & Greed is exchange-agnostic (market-wide index) — use defaults
             boolean viewOnly = !strategyNeedsFearGreed;
             reportDataStatus("F&G", viewOnly ? "loading (view)" : "loading");
             fearGreedListener = createFearGreedListener();
@@ -487,8 +489,11 @@ public class BacktestCoordinator {
             DataPageListener<Candle> listener = createPhaseCandleListener(key);
             phaseCandleListeners.put(key, listener);
 
+            // Use strategy's exchange/marketType for phase candle pages
+            String phaseExchange = currentStrategy != null ? currentStrategy.getExchange() : null;
+            String phaseMarketType = currentStrategy != null ? currentStrategy.getSymbolMarket() : null;
             DataPageView<Candle> phasePage = candlePageMgr.request(
-                phaseSymbol, phaseTimeframe, phaseStartTime, endTime, listener, "Phase:" + phaseTimeframe);
+                phaseSymbol, phaseTimeframe, phaseExchange, phaseMarketType, phaseStartTime, endTime, listener, "Phase:" + phaseTimeframe);
             requirements.addPhaseCandlePage(key, phasePage);
         }
     }
@@ -635,12 +640,6 @@ public class BacktestCoordinator {
                 List<Candle> candles = new ArrayList<>(requirements.getCandlePage().getData());
                 List<AggTrade> aggTrades = requirements.getAggTradesPage() != null
                     ? new ArrayList<>(requirements.getAggTradesPage().getData()) : null;
-
-                // Fetch cross-exchange aggTrades if strategy uses cross-exchange functions
-                if (aggTrades != null && currentStrategy.requiresCrossExchangeData()) {
-                    aggTrades = fetchCrossExchangeAggTrades(aggTrades,
-                        requirements.getSymbol(), requirements.getStartTime(), requirements.getEndTime());
-                }
 
                 List<FundingRate> funding = requirements.getFundingPage() != null
                     ? new ArrayList<>(requirements.getFundingPage().getData()) : null;
@@ -789,62 +788,6 @@ public class BacktestCoordinator {
                 });
             }
         });
-    }
-
-    /**
-     * Fetch aggTrades from non-Binance exchanges and merge with existing trades.
-     * Only fetches from exchanges that are enabled in ExchangeConfig.
-     */
-    private List<AggTrade> fetchCrossExchangeAggTrades(List<AggTrade> binanceTrades,
-                                                         String symbol, long startTime, long endTime) {
-        ExchangeConfig config = ExchangeConfig.getInstance();
-        ExchangeClientFactory factory = ExchangeClientFactory.getInstance();
-        List<AggTrade> merged = new ArrayList<>(binanceTrades);
-
-        for (Exchange exchange : config.getEnabledExchanges()) {
-            if (exchange == Exchange.BINANCE) continue; // Already have Binance data
-
-            ExchangeClient client = factory.getClient(exchange);
-            if (client == null) continue;
-
-            try {
-                DataMarketType marketType = client.getDefaultMarketType();
-                String exchangeSymbol = config.getSymbol(
-                    extractBaseSymbol(symbol), exchange);
-
-                log.info("Fetching cross-exchange aggTrades from {} ({})", exchange.getDisplayName(), exchangeSymbol);
-                reportProgress(15, "Fetching " + exchange.getDisplayName() + " trades...");
-
-                List<AggTrade> trades = client.fetchAllAggTrades(
-                    exchangeSymbol, startTime, endTime, null, null);
-
-                if (!trades.isEmpty()) {
-                    merged.addAll(trades);
-                    log.info("Got {} trades from {}", trades.size(), exchange.getDisplayName());
-                }
-            } catch (Exception e) {
-                log.warn("Failed to fetch aggTrades from {}: {}", exchange.getDisplayName(), e.getMessage());
-            }
-        }
-
-        // Sort merged trades by timestamp for chronological processing
-        if (merged.size() > binanceTrades.size()) {
-            merged.sort(Comparator.comparingLong(AggTrade::timestamp));
-        }
-
-        return merged;
-    }
-
-    /**
-     * Extract base symbol from a combined symbol (e.g., "BTCUSDT" -> "BTC").
-     */
-    private String extractBaseSymbol(String symbol) {
-        for (String quote : new String[]{"USDT", "USDC", "USD", "BUSD"}) {
-            if (symbol.endsWith(quote) && symbol.length() > quote.length()) {
-                return symbol.substring(0, symbol.length() - quote.length());
-            }
-        }
-        return symbol;
     }
 
     /**

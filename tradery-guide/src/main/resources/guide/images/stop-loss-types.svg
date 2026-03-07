@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 560 280">
+  <rect width="560" height="280" fill="#000000" fill-opacity="0.3" rx="8"/>
+
+  <text x="280" y="28" fill="#cdd6f4" font-family="sans-serif" font-size="16" font-weight="bold" text-anchor="middle">Fixed vs Trailing Stop Loss</text>
+
+  <!-- Fixed Stop (Left) -->
+  <g transform="translate(30, 45)">
+    <text x="110" y="10" fill="#cdd6f4" font-family="sans-serif" font-size="13" font-weight="bold" text-anchor="middle">Fixed Stop</text>
+
+    <!-- Price line going up -->
+    <polyline
+      points="10,170 30,160 50,150 70,135 90,120 110,100 130,85 150,70 170,55 190,50 210,60 220,55"
+      fill="none" stroke="#89b4fa" stroke-width="2" stroke-linejoin="round"/>
+
+    <!-- Entry point -->
+    <circle cx="10" cy="170" r="4" fill="#89b4fa"/>
+    <text x="15" y="185" fill="#89b4fa" font-family="sans-serif" font-size="10">Entry</text>
+
+    <!-- Fixed stop line -->
+    <line x1="10" y1="200" x2="220" y2="200" stroke="#f38ba8" stroke-width="2" stroke-dasharray="6,3"/>
+    <text x="225" y="204" fill="#f38ba8" font-family="sans-serif" font-size="10">Stop</text>
+
+    <!-- Risk area -->
+    <rect x="10" y="170" width="210" height="30" fill="#f38ba8" opacity="0.08"/>
+
+    <text x="110" y="230" fill="#585b70" font-family="sans-serif" font-size="10" text-anchor="middle">Stop stays at original level</text>
+  </g>
+
+  <!-- Trailing Stop (Right) -->
+  <g transform="translate(290, 45)">
+    <text x="120" y="10" fill="#cdd6f4" font-family="sans-serif" font-size="13" font-weight="bold" text-anchor="middle">Trailing Stop</text>
+
+    <!-- Price line going up then down -->
+    <polyline
+      points="10,170 30,160 50,145 70,130 90,115 110,95 130,80 150,70 170,60 190,65 210,80 230,95"
+      fill="none" stroke="#89b4fa" stroke-width="2" stroke-linejoin="round"/>
+
+    <!-- Entry point -->
+    <circle cx="10" cy="170" r="4" fill="#89b4fa"/>
+    <text x="15" y="185" fill="#89b4fa" font-family="sans-serif" font-size="10">Entry</text>
+
+    <!-- Trailing stop line (follows price with gap) -->
+    <polyline
+      points="10,200 30,200 50,200 70,175 90,160 110,140 130,125 150,115 170,105 190,105 210,105 230,105"
+      fill="none" stroke="#f38ba8" stroke-width="2" stroke-dasharray="6,3" stroke-linejoin="round"/>
+
+    <!-- Stop triggered point -->
+    <circle cx="230" cy="95" r="4" fill="#f38ba8"/>
+    <text x="230" y="85" fill="#f38ba8" font-family="sans-serif" font-size="9" text-anchor="middle">Stopped</text>
+
+    <!-- Locked profit area -->
+    <rect x="170" y="105" width="60" height="65" fill="#a6e3a1" opacity="0.08"/>
+    <text x="200" y="145" fill="#a6e3a1" font-family="sans-serif" font-size="9" text-anchor="middle">Locked</text>
+    <text x="200" y="157" fill="#a6e3a1" font-family="sans-serif" font-size="9" text-anchor="middle">Profit</text>
+
+    <text x="120" y="230" fill="#585b70" font-family="sans-serif" font-size="10" text-anchor="middle">Stop follows price, locks in gains</text>
+  </g>
+</svg>

@@ -1,0 +1,62 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 560 200">
+  <rect width="560" height="200" fill="#000000" fill-opacity="0.3" rx="8"/>
+  <text x="280" y="28" fill="#cdd6f4" font-family="sans-serif" font-size="16" font-weight="bold" text-anchor="middle">Fear &amp; Greed Index</text>
+
+  <g transform="translate(40, 50)">
+    <!-- Gradient bar -->
+    <defs>
+      <linearGradient id="fgGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+        <stop offset="0%" stop-color="#f38ba8"/>
+        <stop offset="25%" stop-color="#fab387"/>
+        <stop offset="50%" stop-color="#f9e2af"/>
+        <stop offset="75%" stop-color="#a6e3a1"/>
+        <stop offset="100%" stop-color="#a6e3a1"/>
+      </linearGradient>
+    </defs>
+
+    <rect x="0" y="0" width="480" height="30" rx="6" fill="url(#fgGrad)" opacity="0.3"/>
+
+    <!-- Zone dividers -->
+    <line x1="120" y1="0" x2="120" y2="30" stroke="#585b70" stroke-width="1" stroke-dasharray="3,3"/>
+    <line x1="216" y1="0" x2="216" y2="30" stroke="#585b70" stroke-width="1" stroke-dasharray="3,3"/>
+    <line x1="264" y1="0" x2="264" y2="30" stroke="#585b70" stroke-width="1" stroke-dasharray="3,3"/>
+    <line x1="360" y1="0" x2="360" y2="30" stroke="#585b70" stroke-width="1" stroke-dasharray="3,3"/>
+
+    <!-- Zone labels -->
+    <text x="60" y="20" fill="#f38ba8" font-family="sans-serif" font-size="10" font-weight="bold" text-anchor="middle">Extreme Fear</text>
+    <text x="168" y="20" fill="#fab387" font-family="sans-serif" font-size="10" font-weight="bold" text-anchor="middle">Fear</text>
+    <text x="240" y="20" fill="#f9e2af" font-family="sans-serif" font-size="10" font-weight="bold" text-anchor="middle">Neutral</text>
+    <text x="312" y="20" fill="#a6e3a1" font-family="sans-serif" font-size="10" font-weight="bold" text-anchor="middle">Greed</text>
+    <text x="420" y="20" fill="#a6e3a1" font-family="sans-serif" font-size="10" font-weight="bold" text-anchor="middle">Extreme Greed</text>
+
+    <!-- Value labels -->
+    <text x="0" y="48" fill="#585b70" font-family="sans-serif" font-size="9" text-anchor="middle">0</text>
+    <text x="120" y="48" fill="#585b70" font-family="sans-serif" font-size="9" text-anchor="middle">25</text>
+    <text x="216" y="48" fill="#585b70" font-family="sans-serif" font-size="9" text-anchor="middle">45</text>
+    <text x="264" y="48" fill="#585b70" font-family="sans-serif" font-size="9" text-anchor="middle">55</text>
+    <text x="360" y="48" fill="#585b70" font-family="sans-serif" font-size="9" text-anchor="middle">75</text>
+    <text x="480" y="48" fill="#585b70" font-family="sans-serif" font-size="9" text-anchor="middle">100</text>
+
+    <!-- Action annotations -->
+    <g transform="translate(60, 65)">
+      <rect x="-45" y="0" width="90" height="42" fill="#a6e3a1" fill-opacity="0.08" rx="4"/>
+      <text x="0" y="16" fill="#a6e3a1" font-family="sans-serif" font-size="10" font-weight="bold" text-anchor="middle">Buy Zone</text>
+      <text x="0" y="30" fill="#585b70" font-family="sans-serif" font-size="8" text-anchor="middle">Best entries</text>
+      <text x="0" y="40" fill="#585b70" font-family="sans-serif" font-size="8" text-anchor="middle">historically</text>
+    </g>
+
+    <g transform="translate(240, 65)">
+      <rect x="-45" y="0" width="90" height="42" fill="#f9e2af" fill-opacity="0.08" rx="4"/>
+      <text x="0" y="16" fill="#f9e2af" font-family="sans-serif" font-size="10" font-weight="bold" text-anchor="middle">Wait</text>
+      <text x="0" y="30" fill="#585b70" font-family="sans-serif" font-size="8" text-anchor="middle">No strong</text>
+      <text x="0" y="40" fill="#585b70" font-family="sans-serif" font-size="8" text-anchor="middle">edge here</text>
+    </g>
+
+    <g transform="translate(420, 65)">
+      <rect x="-45" y="0" width="90" height="42" fill="#f38ba8" fill-opacity="0.08" rx="4"/>
+      <text x="0" y="16" fill="#f38ba8" font-family="sans-serif" font-size="10" font-weight="bold" text-anchor="middle">Caution</text>
+      <text x="0" y="30" fill="#585b70" font-family="sans-serif" font-size="8" text-anchor="middle">Tighten stops</text>
+      <text x="0" y="40" fill="#585b70" font-family="sans-serif" font-size="8" text-anchor="middle">reduce size</text>
+    </g>
+  </g>
+</svg>

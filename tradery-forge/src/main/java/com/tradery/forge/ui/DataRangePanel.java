@@ -22,6 +22,7 @@ public class DataRangePanel extends ConfigurationPanel {
     private static final String[] TIMEFRAMES = {"10s", "15s", "1m", "5m", "15m", "1h", "4h", "1d", "1w"};
 
     private SymbolComboBox symbolCombo;
+    private final boolean externalSymbol;
     private JComboBox<String> timeframeCombo;
     private JComboBox<String> durationCombo;
     private JSpinner anchorDateSpinner;
@@ -29,15 +30,30 @@ public class DataRangePanel extends ConfigurationPanel {
     private Runnable onManageClicked;
 
     public DataRangePanel() {
+        this(null);
+    }
+
+    /**
+     * Create with an external symbol combo (displayed elsewhere, e.g. toolbar).
+     * When provided, the symbol row is not shown in this panel's layout.
+     */
+    public DataRangePanel(SymbolComboBox externalSymbolCombo) {
+        this.externalSymbol = externalSymbolCombo != null;
         setLayout(new BorderLayout(0, 8));
         setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
+
+        if (externalSymbolCombo != null) {
+            this.symbolCombo = externalSymbolCombo;
+        }
 
         initializeComponents();
         layoutComponents();
     }
 
     private void initializeComponents() {
-        symbolCombo = new SymbolComboBox(ApplicationContext.getInstance().getSymbolService());
+        if (symbolCombo == null) {
+            symbolCombo = new SymbolComboBox(ApplicationContext.getInstance().getSymbolService());
+        }
 
         timeframeCombo = new JComboBox<>(TIMEFRAMES);
         timeframeCombo.setSelectedItem("1h");
@@ -112,26 +128,33 @@ public class DataRangePanel extends ConfigurationPanel {
         fieldC.weightx = 1.0;
         fieldC.insets = new Insets(2, 0, 2, 0);
 
-        // Row 0: Symbol
-        labelC.gridx = 0; labelC.gridy = 0;
-        settingsGrid.add(new JLabel("Symbol:"), labelC);
-        fieldC.gridx = 1; fieldC.gridy = 0;
-        settingsGrid.add(symbolCombo, fieldC);
+        int row = 0;
 
-        // Row 1: Timeframe
-        labelC.gridx = 0; labelC.gridy = 1;
+        // Row 0: Symbol (only if not external)
+        if (!externalSymbol) {
+            labelC.gridx = 0; labelC.gridy = row;
+            settingsGrid.add(new JLabel("Symbol:"), labelC);
+            fieldC.gridx = 1; fieldC.gridy = row;
+            settingsGrid.add(symbolCombo, fieldC);
+            row++;
+        }
+
+        // Timeframe
+        labelC.gridx = 0; labelC.gridy = row;
         settingsGrid.add(new JLabel("Timeframe:"), labelC);
-        fieldC.gridx = 1; fieldC.gridy = 1;
+        fieldC.gridx = 1; fieldC.gridy = row;
         settingsGrid.add(timeframeCombo, fieldC);
+        row++;
 
-        // Row 2: Duration
-        labelC.gridx = 0; labelC.gridy = 2;
+        // Duration
+        labelC.gridx = 0; labelC.gridy = row;
         settingsGrid.add(new JLabel("Duration:"), labelC);
-        fieldC.gridx = 1; fieldC.gridy = 2;
+        fieldC.gridx = 1; fieldC.gridy = row;
         settingsGrid.add(durationCombo, fieldC);
+        row++;
 
-        // Row 3: End date with [>] now button (UTC)
-        labelC.gridx = 0; labelC.gridy = 3;
+        // End date with [>] now button (UTC)
+        labelC.gridx = 0; labelC.gridy = row;
         settingsGrid.add(new JLabel("End (UTC):"), labelC);
 
         JButton nowBtn = new JButton("\u25B6");
@@ -149,7 +172,7 @@ public class DataRangePanel extends ConfigurationPanel {
         endRow.add(anchorDateSpinner, BorderLayout.CENTER);
         endRow.add(nowBtn, BorderLayout.EAST);
 
-        fieldC.gridx = 1; fieldC.gridy = 3;
+        fieldC.gridx = 1; fieldC.gridy = row;
         settingsGrid.add(endRow, fieldC);
 
         add(headerPanel, BorderLayout.NORTH);
@@ -300,6 +323,11 @@ public class DataRangePanel extends ConfigurationPanel {
 
     public String getDuration() {
         return (String) durationCombo.getSelectedItem();
+    }
+
+    public String getExchange() {
+        String ex = symbolCombo.getExchange();
+        return ex != null ? ex : "binance";
     }
 
     public String getMarketType() {

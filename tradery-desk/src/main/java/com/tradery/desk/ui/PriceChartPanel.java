@@ -1,18 +1,19 @@
 package com.tradery.desk.ui;
 
 import com.tradery.charts.chart.CandlestickChart;
-import com.tradery.charts.chart.IndicatorChart;
-import com.tradery.charts.chart.SyncedChart;
 import com.tradery.charts.chart.VolumeChart;
 import com.tradery.charts.core.ChartCoordinator;
 import com.tradery.charts.core.ChartInteractionManager;
+import com.tradery.charts.core.ChartLifecycleManager;
 import com.tradery.charts.core.IndicatorType;
+import com.tradery.charts.indicator.*;
 import com.tradery.charts.overlay.*;
-import com.tradery.charts.renderer.*;
 import com.tradery.charts.util.ChartPanelFactory;
 import com.tradery.core.model.Candle;
 import com.tradery.desk.ui.charts.DeskDataProvider;
+import com.tradery.desk.ui.charts.DeskIndicatorDataProvider;
 import com.tradery.ui.ThemeHelper;
+import com.tradery.ui.controls.ChartConfig;
 import com.tradery.ui.controls.ThinSplitPane;
 
 import javax.swing.*;
@@ -23,46 +24,33 @@ import java.util.List;
 /**
  * Price chart panel for Desk using tradery-charts CandlestickChart.
  * Displays candlestick chart with live updates.
- * Supports overlays (SMA, EMA, Bollinger) and optional volume chart.
+ * Uses shared OverlayManager and IndicatorChartsManager for overlay/indicator management.
+ * Persists chart settings via ChartConfig.
  */
 public class PriceChartPanel extends JPanel {
 
     private final DeskDataProvider dataProvider;
+    private final DeskIndicatorDataProvider indicatorDataProvider;
+    private final IndicatorChartsManager indicatorManager;
+    private final OverlayManager overlayManager;
     private final ChartCoordinator coordinator;
     private final CandlestickChart candlestickChart;
     private VolumeChart volumeChart;
-    private IndicatorChart rsiChart;
-    private IndicatorChart macdChart;
-    private IndicatorChart atrChart;
-    private IndicatorChart stochasticChart;
-    private IndicatorChart adxChart;
-    private IndicatorChart deltaChart;
-    private IndicatorChart rangePositionChart;
-    private IndicatorChart tradeCountChart;
-    private IndicatorChart volumeRatioChart;
-    private final List<IndicatorChart> indicatorCharts = new ArrayList<>();
     private boolean volumeEnabled = false;
-    private boolean rsiEnabled = false;
-    private boolean macdEnabled = false;
-    private boolean atrEnabled = false;
-    private boolean stochasticEnabled = false;
-    private boolean adxEnabled = false;
-    private boolean deltaEnabled = false;
-    private boolean rangePositionEnabled = false;
-    private boolean tradeCountEnabled = false;
-    private boolean volumeRatioEnabled = false;
     private LastPriceOverlay lastPriceOverlay;
     private boolean lastPriceEnabled = true;  // Enabled by default
     private ReferencePriceOverlay referencePriceOverlay;
     private boolean referencePriceEnabled = false;
     private final ChartInteractionManager interactionManager;
+    private final ChartLifecycleManager lifecycleManager;
 
     public PriceChartPanel() {
         setLayout(new BorderLayout());
         setBackground(UIManager.getColor("Panel.background"));
 
-        // Create data provider
+        // Create data providers
         dataProvider = new DeskDataProvider();
+        indicatorDataProvider = new DeskIndicatorDataProvider(dataProvider);
 
         // Create coordinator for syncing charts
         coordinator = new ChartCoordinator();
@@ -70,24 +58,35 @@ public class PriceChartPanel extends JPanel {
         // Create interaction manager for zoom/pan
         interactionManager = new ChartInteractionManager();
 
+        // Create lifecycle manager composing coordinator + interaction manager
+        lifecycleManager = new ChartLifecycleManager(coordinator, interactionManager);
+
+        // Create indicator charts manager (no premium/spectrum for desk)
+        indicatorManager = new IndicatorChartsManager(indicatorDataProvider, null, null, null);
+        indicatorManager.setOnLayoutChange(this::rebuildLayout);
+
         // Create candlestick chart
         candlestickChart = new CandlestickChart(coordinator, "");
         candlestickChart.initialize();
         candlestickChart.setCandlestickMode(true);
 
+        // Create shared overlay manager
+        overlayManager = new OverlayManager(candlestickChart.getChart());
+        overlayManager.setChartDataProvider(dataProvider);
+
         // Default price axis to right side, configurable via right-click menu
         ChartPanelFactory.setAxisPositionConfig("right", this::applyAxisPosition);
         candlestickChart.setRangeAxisPosition("right");
+        interactionManager.setAxisPositionSupplier(ChartPanelFactory::getAxisPosition);
 
         // Add last price line overlay (enabled by default)
         lastPriceOverlay = new LastPriceOverlay();
         candlestickChart.addOverlay(lastPriceOverlay);
 
-        // Register chart for synchronized zoom/pan and attach listeners
-        interactionManager.addChart(candlestickChart.getChart());
-        interactionManager.attachListeners(candlestickChart.getChartPanel());
+        // Register candlestick chart for synchronized zoom/pan and attach listeners
+        lifecycleManager.addChart(candlestickChart.getChart(), candlestickChart.getChartPanel());
 
-        // Add chart panel (volume chart added later if enabled)
+        // Add chart panel (volume/indicator charts added later if enabled)
         add(candlestickChart.getChartPanel(), BorderLayout.CENTER);
 
         // Refresh chart colors when theme changes
@@ -101,17 +100,29 @@ public class PriceChartPanel extends JPanel {
         setBackground(UIManager.getColor("Panel.background"));
         candlestickChart.refreshTheme();
         if (volumeChart != null) volumeChart.refreshTheme();
-        for (IndicatorChart ic : indicatorCharts) {
-            ic.refreshTheme();
-        }
+        indicatorManager.refreshTheme();
         repaint();
     }
 
+    // ===== Data Management =====
+
     /**
-     * Set historical candles.
+     * Set historical candles. Applies saved overlay and indicator config.
      */
     public void setCandles(List<Candle> historicalCandles, String symbol, String timeframe) {
         dataProvider.setCandles(historicalCandles, symbol, timeframe);
+        overlayManager.setDataContext(symbol, timeframe, "perp");
+        overlayManager.setCandles(historicalCandles);
+
+        long start = historicalCandles.isEmpty() ? 0 : historicalCandles.get(0).timestamp();
+        long end = historicalCandles.isEmpty() ? 0 : historicalCandles.get(historicalCandles.size() - 1).timestamp();
+        indicatorManager.setDataContext(historicalCandles, symbol, timeframe, start, end);
+
+        // Apply saved overlays and indicators from config
+        ChartConfig config = ChartConfig.getInstance();
+        overlayManager.applyConfig(config, historicalCandles);
+        applyIndicatorConfig(config);
+
         SwingUtilities.invokeLater(this::refreshCharts);
     }
 
@@ -120,6 +131,7 @@ public class PriceChartPanel extends JPanel {
      */
     public void updateCurrentCandle(Candle candle) {
         dataProvider.updateCandle(candle);
+        indicatorManager.updateCharts(dataProvider.getCandles());
         SwingUtilities.invokeLater(this::refreshCharts);
     }
 
@@ -128,6 +140,7 @@ public class PriceChartPanel extends JPanel {
      */
     public void addCandle(Candle candle) {
         dataProvider.updateCandle(candle);
+        indicatorManager.updateCharts(dataProvider.getCandles());
         SwingUtilities.invokeLater(this::refreshCharts);
     }
 
@@ -135,15 +148,44 @@ public class PriceChartPanel extends JPanel {
      * Clear the chart.
      */
     public void clear() {
+        overlayManager.clearAll();
         dataProvider.setCandles(List.of(), "", "");
+        indicatorManager.setDataContext(List.of(), "", "", 0, 0);
         SwingUtilities.invokeLater(this::refreshCharts);
     }
 
     /**
-     * Get the data provider for adding overlays or indicators.
+     * Wire data service client for footprint and DVP overlay support.
+     * Call this after the DataServiceClient becomes available.
+     */
+    public void setDataServiceClient(com.tradery.dataclient.DataServiceClient client) {
+        if (client != null) {
+            overlayManager.setFootprintProfileProvider(
+                new com.tradery.desk.ui.charts.DeskFootprintProfileProvider(client));
+            overlayManager.setDailyProfileProvider(
+                new com.tradery.desk.ui.charts.DeskDailyProfileProvider(client));
+        }
+    }
+
+    /**
+     * Get the data provider.
      */
     public DeskDataProvider getDataProvider() {
         return dataProvider;
+    }
+
+    /**
+     * Get the overlay manager for external control (e.g., side panel).
+     */
+    public OverlayManager getOverlayManager() {
+        return overlayManager;
+    }
+
+    /**
+     * Get the indicator charts manager for external control (e.g., side panel).
+     */
+    public IndicatorChartsManager getIndicatorManager() {
+        return indicatorManager;
     }
 
     /**
@@ -163,211 +205,18 @@ public class PriceChartPanel extends JPanel {
         }
     }
 
-    // ===== Overlay Support =====
-
     /**
-     * Add an SMA overlay with the given period.
+     * Refresh candlestick and volume charts with current data.
      */
-    public void addSmaOverlay(int period) {
-        candlestickChart.addOverlay(new SmaOverlay(period));
-    }
-
-    /**
-     * Add an EMA overlay with the given period.
-     */
-    public void addEmaOverlay(int period) {
-        candlestickChart.addOverlay(new EmaOverlay(period));
-    }
-
-    /**
-     * Add a Bollinger Bands overlay.
-     */
-    public void addBollingerOverlay(int period, double stdDev) {
-        candlestickChart.addOverlay(new BollingerOverlay(period, stdDev));
-    }
-
-    /**
-     * Add a VWAP overlay.
-     */
-    public void addVwapOverlay() {
-        candlestickChart.addOverlay(new VwapOverlay());
-    }
-
-    /**
-     * Add an Ichimoku Cloud overlay with default parameters.
-     */
-    public void addIchimokuOverlay() {
-        candlestickChart.addOverlay(new IchimokuOverlay());
-    }
-
-    /**
-     * Add an Ichimoku Cloud overlay with custom parameters.
-     */
-    public void addIchimokuOverlay(int conversion, int base, int spanB, int displacement) {
-        candlestickChart.addOverlay(new IchimokuOverlay(conversion, base, spanB, displacement));
-    }
-
-    /**
-     * Add a Supertrend overlay with default parameters.
-     */
-    public void addSupertrendOverlay() {
-        candlestickChart.addOverlay(new SupertrendOverlay());
-    }
-
-    /**
-     * Add a Supertrend overlay with custom parameters.
-     */
-    public void addSupertrendOverlay(int period, double multiplier) {
-        candlestickChart.addOverlay(new SupertrendOverlay(period, multiplier));
-    }
-
-    /**
-     * Add a High/Low range overlay with default period.
-     */
-    public void addHighLowOverlay() {
-        candlestickChart.addOverlay(new HighLowOverlay());
-    }
-
-    /**
-     * Add a High/Low range overlay with custom period.
-     */
-    public void addHighLowOverlay(int period) {
-        candlestickChart.addOverlay(new HighLowOverlay(period));
-    }
-
-    /**
-     * Add a Mayer Multiple overlay (200 SMA).
-     */
-    public void addMayerMultipleOverlay() {
-        candlestickChart.addOverlay(new MayerMultipleOverlay());
-    }
-
-    /**
-     * Add a Mayer Multiple overlay with custom period.
-     */
-    public void addMayerMultipleOverlay(int period) {
-        candlestickChart.addOverlay(new MayerMultipleOverlay(period));
-    }
-
-    /**
-     * Add a POC (Point of Control) overlay.
-     */
-    public void addPocOverlay() {
-        candlestickChart.addOverlay(new PocOverlay());
-    }
-
-    /**
-     * Add a POC overlay with custom period.
-     */
-    public void addPocOverlay(int period) {
-        candlestickChart.addOverlay(new PocOverlay(period));
-    }
-
-    /**
-     * Add Daily Levels overlay (Prev Day POC/VAH/VAL + Today's developing levels).
-     */
-    public void addDailyLevelsOverlay() {
-        candlestickChart.addOverlay(new DailyLevelsOverlay());
-    }
-
-    /**
-     * Add Daily Levels overlay with options.
-     */
-    public void addDailyLevelsOverlay(boolean showPrevDay, boolean showToday) {
-        candlestickChart.addOverlay(new DailyLevelsOverlay(showPrevDay, showToday));
-    }
-
-    /**
-     * Add Keltner Channel overlay.
-     */
-    public void addKeltnerOverlay() {
-        candlestickChart.addOverlay(new KeltnerChannelOverlay());
-    }
-
-    /**
-     * Add Keltner Channel overlay with custom parameters.
-     */
-    public void addKeltnerOverlay(int emaPeriod, int atrPeriod, double multiplier) {
-        candlestickChart.addOverlay(new KeltnerChannelOverlay(emaPeriod, atrPeriod, multiplier));
-    }
-
-    /**
-     * Add Donchian Channel overlay.
-     */
-    public void addDonchianOverlay() {
-        candlestickChart.addOverlay(new DonchianChannelOverlay());
-    }
-
-    /**
-     * Add Donchian Channel overlay with custom period.
-     */
-    public void addDonchianOverlay(int period) {
-        candlestickChart.addOverlay(new DonchianChannelOverlay(period));
-    }
-
-    /**
-     * Add Rotating Ray trendlines overlay (resistance + support).
-     */
-    public void addRayOverlay() {
-        candlestickChart.addOverlay(new RayOverlay());
-    }
-
-    /**
-     * Add Rotating Ray overlay with custom lookback and skip.
-     */
-    public void addRayOverlay(int lookback, int skip) {
-        candlestickChart.addOverlay(new RayOverlay(lookback, skip));
-    }
-
-    /**
-     * Add Rotating Ray overlay with full customization.
-     */
-    public void addRayOverlay(int lookback, int skip, int maxRays, boolean showResistance, boolean showSupport) {
-        candlestickChart.addOverlay(new RayOverlay(lookback, skip, maxRays, showResistance, showSupport));
-    }
-
-    /**
-     * Add ATR Bands overlay (volatility envelope around price).
-     */
-    public void addAtrBandsOverlay() {
-        candlestickChart.addOverlay(new AtrBandsOverlay());
-    }
-
-    /**
-     * Add ATR Bands overlay with custom parameters.
-     */
-    public void addAtrBandsOverlay(int period, double multiplier) {
-        candlestickChart.addOverlay(new AtrBandsOverlay(period, multiplier));
-    }
-
-    /**
-     * Add Pivot Points overlay (classic daily pivot levels).
-     */
-    public void addPivotPointsOverlay() {
-        candlestickChart.addOverlay(new PivotPointsOverlay());
-    }
-
-    /**
-     * Add Pivot Points overlay with R3/S3 levels.
-     */
-    public void addPivotPointsOverlay(boolean showR3S3) {
-        candlestickChart.addOverlay(new PivotPointsOverlay(showR3S3));
-    }
-
-    /**
-     * Clear all overlays.
-     */
-    public void clearOverlays() {
-        candlestickChart.clearOverlays();
-        // Re-add last price overlay if enabled
-        if (lastPriceEnabled && lastPriceOverlay != null) {
-            candlestickChart.addOverlay(lastPriceOverlay);
+    private void refreshCharts() {
+        candlestickChart.updateData(dataProvider);
+        if (volumeChart != null) {
+            volumeChart.updateData(dataProvider);
         }
     }
 
-    /**
-     * Enable or disable the last price line overlay.
-     */
+    // ===== Last Price / Reference Price Overlays =====
+
     public void setLastPriceEnabled(boolean enabled) {
         if (enabled == lastPriceEnabled) return;
         lastPriceEnabled = enabled;
@@ -384,16 +233,10 @@ public class PriceChartPanel extends JPanel {
         }
     }
 
-    /**
-     * Check if last price overlay is enabled.
-     */
     public boolean isLastPriceEnabled() {
         return lastPriceEnabled;
     }
 
-    /**
-     * Enable or disable the reference price overlay (e.g., spot price for comparison).
-     */
     public void setReferencePriceEnabled(boolean enabled) {
         if (enabled == referencePriceEnabled) return;
         referencePriceEnabled = enabled;
@@ -410,36 +253,23 @@ public class PriceChartPanel extends JPanel {
         }
     }
 
-    /**
-     * Check if reference price overlay is enabled.
-     */
     public boolean isReferencePriceEnabled() {
         return referencePriceEnabled;
     }
 
-    /**
-     * Update the reference price value.
-     */
     public void updateReferencePrice(double price) {
         if (referencePriceOverlay != null) {
             referencePriceOverlay.setReferencePrice(price);
-            // Trigger chart refresh to update the marker
             SwingUtilities.invokeLater(this::refreshCharts);
         }
     }
 
-    /**
-     * Get the reference price overlay (for direct access if needed).
-     */
     public ReferencePriceOverlay getReferencePriceOverlay() {
         return referencePriceOverlay;
     }
 
     // ===== Volume Chart Support =====
 
-    /**
-     * Enable or disable the volume chart.
-     */
     public void setVolumeEnabled(boolean enabled) {
         if (enabled == volumeEnabled) return;
         volumeEnabled = enabled;
@@ -447,11 +277,10 @@ public class PriceChartPanel extends JPanel {
         if (enabled) {
             volumeChart = new VolumeChart(coordinator, "");
             volumeChart.initialize();
-            interactionManager.addChart(volumeChart.getChart());
-            interactionManager.attachListeners(volumeChart.getChartPanel());
+            lifecycleManager.addChart(volumeChart.getChart(), volumeChart.getChartPanel());
         } else {
             if (volumeChart != null) {
-                interactionManager.removeChart(volumeChart.getChart());
+                lifecycleManager.removeChart(volumeChart.getChart(), volumeChart.getChartPanel());
                 volumeChart.dispose();
                 volumeChart = null;
             }
@@ -460,395 +289,92 @@ public class PriceChartPanel extends JPanel {
         rebuildLayout();
     }
 
-    /**
-     * Check if volume chart is enabled.
-     */
     public boolean isVolumeEnabled() {
         return volumeEnabled;
     }
 
-    /**
-     * Get the volume chart (may be null if not enabled).
-     */
     public VolumeChart getVolumeChart() {
         return volumeChart;
-    }
-
-    /**
-     * Refresh all charts with current data.
-     */
-    private void refreshCharts() {
-        candlestickChart.updateData(dataProvider);
-        if (volumeChart != null) {
-            volumeChart.updateData(dataProvider);
-        }
-        if (rsiChart != null) {
-            rsiChart.updateData(dataProvider);
-        }
-        if (macdChart != null) {
-            macdChart.updateData(dataProvider);
-        }
-        if (atrChart != null) {
-            atrChart.updateData(dataProvider);
-        }
-        if (stochasticChart != null) {
-            stochasticChart.updateData(dataProvider);
-        }
-        if (adxChart != null) {
-            adxChart.updateData(dataProvider);
-        }
-        if (deltaChart != null) {
-            deltaChart.updateData(dataProvider);
-        }
     }
 
     // ===== Indicator Chart Support =====
 
     /**
-     * Enable or disable RSI chart.
+     * Enable or disable an indicator chart type, registering/unregistering
+     * with the coordinator and interaction manager.
      */
-    public void setRsiEnabled(boolean enabled) {
-        setRsiEnabled(enabled, 14);  // Default period
-    }
-
-    /**
-     * Enable or disable RSI chart with custom period.
-     */
-    public void setRsiEnabled(boolean enabled, int period) {
-        if (enabled == rsiEnabled) return;
-        rsiEnabled = enabled;
+    public void setIndicatorEnabled(IndicatorType type, boolean enabled) {
+        boolean wasEnabled = indicatorManager.isEnabled(type);
+        if (enabled == wasEnabled) return;
 
         if (enabled) {
-            rsiChart = new IndicatorChart(coordinator, IndicatorType.RSI,
-                (plot, prov) -> new RsiRenderer(period, plot, prov));
-            rsiChart.initialize();
-            indicatorCharts.add(rsiChart);
-            interactionManager.addChart(rsiChart.getChart());
-            interactionManager.attachListeners(rsiChart.getChartPanel());
+            lifecycleManager.addChart(indicatorManager.getChart(type), indicatorManager.getChartPanel(type));
         } else {
-            if (rsiChart != null) {
-                indicatorCharts.remove(rsiChart);
-                interactionManager.removeChart(rsiChart.getChart());
-                rsiChart.dispose();
-                rsiChart = null;
-            }
+            lifecycleManager.removeChart(indicatorManager.getChart(type), indicatorManager.getChartPanel(type));
         }
 
-        rebuildLayout();
-    }
+        indicatorManager.setEnabled(type, enabled);
 
-    /**
-     * Enable or disable MACD chart.
-     */
-    public void setMacdEnabled(boolean enabled) {
-        setMacdEnabled(enabled, 12, 26, 9);  // Default periods
-    }
-
-    /**
-     * Enable or disable MACD chart with custom periods.
-     */
-    public void setMacdEnabled(boolean enabled, int fast, int slow, int signal) {
-        if (enabled == macdEnabled) return;
-        macdEnabled = enabled;
-
-        if (enabled) {
-            macdChart = new IndicatorChart(coordinator, IndicatorType.MACD,
-                (plot, prov) -> new MacdRenderer(fast, slow, signal, plot, prov));
-            macdChart.initialize();
-            indicatorCharts.add(macdChart);
-            interactionManager.addChart(macdChart.getChart());
-            interactionManager.attachListeners(macdChart.getChartPanel());
-        } else {
-            if (macdChart != null) {
-                indicatorCharts.remove(macdChart);
-                interactionManager.removeChart(macdChart.getChart());
-                macdChart.dispose();
-                macdChart = null;
-            }
+        // Trigger data update for newly enabled chart
+        if (enabled && !dataProvider.getCandles().isEmpty()) {
+            indicatorManager.updateCharts(dataProvider.getCandles(), type);
         }
-
-        rebuildLayout();
     }
 
     /**
-     * Check if RSI chart is enabled.
+     * Apply indicator config from ChartConfig, handling coordinator/interactionManager registration.
      */
-    public boolean isRsiEnabled() {
-        return rsiEnabled;
+    public void applyIndicatorConfig(ChartConfig config) {
+        // Set parameters before enabling
+        indicatorManager.<RsiChart>getChartImpl(IndicatorType.RSI).setPeriod(config.getRsiPeriod());
+        setIndicatorEnabled(IndicatorType.RSI, config.isRsiEnabled());
+
+        MacdChart macd = indicatorManager.getChartImpl(IndicatorType.MACD);
+        macd.setFast(config.getMacdFast());
+        macd.setSlow(config.getMacdSlow());
+        macd.setSignal(config.getMacdSignal());
+        setIndicatorEnabled(IndicatorType.MACD, config.isMacdEnabled());
+
+        indicatorManager.<AtrChart>getChartImpl(IndicatorType.ATR).setPeriod(config.getAtrPeriod());
+        setIndicatorEnabled(IndicatorType.ATR, config.isAtrEnabled());
+
+        StochasticChart stoch = indicatorManager.getChartImpl(IndicatorType.STOCHASTIC);
+        stoch.setKPeriod(config.getStochasticKPeriod());
+        stoch.setDPeriod(config.getStochasticDPeriod());
+        setIndicatorEnabled(IndicatorType.STOCHASTIC, config.isStochasticEnabled());
+
+        indicatorManager.<RangePositionChart>getChartImpl(IndicatorType.RANGE_POSITION).setPeriod(config.getRangePositionPeriod());
+        setIndicatorEnabled(IndicatorType.RANGE_POSITION, config.isRangePositionEnabled());
+
+        indicatorManager.<AdxChart>getChartImpl(IndicatorType.ADX).setPeriod(config.getAdxPeriod());
+        setIndicatorEnabled(IndicatorType.ADX, config.isAdxEnabled());
+
+        setIndicatorEnabled(IndicatorType.DELTA, config.isDeltaEnabled());
+        setIndicatorEnabled(IndicatorType.CVD, config.isCvdEnabled());
+        setIndicatorEnabled(IndicatorType.VOLUME_RATIO, config.isVolumeRatioEnabled());
+
+        WhaleChart whale = indicatorManager.getChartImpl(IndicatorType.WHALE);
+        whale.setThreshold(config.getWhaleThreshold());
+        setIndicatorEnabled(IndicatorType.WHALE, config.isWhaleEnabled());
+
+        RetailChart retail = indicatorManager.getChartImpl(IndicatorType.RETAIL);
+        retail.setThreshold(config.getRetailThreshold());
+        setIndicatorEnabled(IndicatorType.RETAIL, config.isRetailEnabled());
+
+        setIndicatorEnabled(IndicatorType.TRADE_COUNT, config.isTradeCountEnabled());
+        setIndicatorEnabled(IndicatorType.FUNDING, config.isFundingEnabled());
+        setIndicatorEnabled(IndicatorType.OI, config.isOiEnabled());
+        setIndicatorEnabled(IndicatorType.PREMIUM, config.isPremiumEnabled());
+        setIndicatorEnabled(IndicatorType.FEAR_GREED, config.isFearGreedEnabled());
+        setIndicatorEnabled(IndicatorType.SPECTRUM, config.isSpectrumEnabled());
+        setIndicatorEnabled(IndicatorType.HOLDING_COST_CUMULATIVE, config.isHoldingCostCumulativeEnabled());
+        setIndicatorEnabled(IndicatorType.HOLDING_COST_EVENTS, config.isHoldingCostEventsEnabled());
+
+        // Volume chart
+        setVolumeEnabled(config.isVolumeChartEnabled());
     }
 
-    /**
-     * Check if MACD chart is enabled.
-     */
-    public boolean isMacdEnabled() {
-        return macdEnabled;
-    }
-
-    /**
-     * Enable or disable ATR chart.
-     */
-    public void setAtrEnabled(boolean enabled) {
-        setAtrEnabled(enabled, 14);  // Default period
-    }
-
-    /**
-     * Enable or disable ATR chart with custom period.
-     */
-    public void setAtrEnabled(boolean enabled, int period) {
-        if (enabled == atrEnabled) return;
-        atrEnabled = enabled;
-
-        if (enabled) {
-            atrChart = new IndicatorChart(coordinator, IndicatorType.ATR,
-                (plot, prov) -> new AtrRenderer(period, plot, prov));
-            atrChart.initialize();
-            indicatorCharts.add(atrChart);
-            interactionManager.addChart(atrChart.getChart());
-            interactionManager.attachListeners(atrChart.getChartPanel());
-        } else {
-            if (atrChart != null) {
-                indicatorCharts.remove(atrChart);
-                interactionManager.removeChart(atrChart.getChart());
-                atrChart.dispose();
-                atrChart = null;
-            }
-        }
-
-        rebuildLayout();
-    }
-
-    /**
-     * Check if ATR chart is enabled.
-     */
-    public boolean isAtrEnabled() {
-        return atrEnabled;
-    }
-
-    /**
-     * Enable or disable Stochastic chart.
-     */
-    public void setStochasticEnabled(boolean enabled) {
-        setStochasticEnabled(enabled, 14, 3);  // Default periods
-    }
-
-    /**
-     * Enable or disable Stochastic chart with custom periods.
-     */
-    public void setStochasticEnabled(boolean enabled, int kPeriod, int dPeriod) {
-        if (enabled == stochasticEnabled) return;
-        stochasticEnabled = enabled;
-
-        if (enabled) {
-            stochasticChart = new IndicatorChart(coordinator, IndicatorType.STOCHASTIC,
-                (plot, prov) -> new StochasticRenderer(kPeriod, dPeriod, plot, prov));
-            stochasticChart.initialize();
-            indicatorCharts.add(stochasticChart);
-            interactionManager.addChart(stochasticChart.getChart());
-            interactionManager.attachListeners(stochasticChart.getChartPanel());
-        } else {
-            if (stochasticChart != null) {
-                indicatorCharts.remove(stochasticChart);
-                interactionManager.removeChart(stochasticChart.getChart());
-                stochasticChart.dispose();
-                stochasticChart = null;
-            }
-        }
-
-        rebuildLayout();
-    }
-
-    /**
-     * Check if Stochastic chart is enabled.
-     */
-    public boolean isStochasticEnabled() {
-        return stochasticEnabled;
-    }
-
-    /**
-     * Enable or disable ADX chart.
-     */
-    public void setAdxEnabled(boolean enabled) {
-        setAdxEnabled(enabled, 14);  // Default period
-    }
-
-    /**
-     * Enable or disable ADX chart with custom period.
-     */
-    public void setAdxEnabled(boolean enabled, int period) {
-        if (enabled == adxEnabled) return;
-        adxEnabled = enabled;
-
-        if (enabled) {
-            adxChart = new IndicatorChart(coordinator, IndicatorType.ADX,
-                (plot, prov) -> new AdxRenderer(period, plot, prov));
-            adxChart.initialize();
-            indicatorCharts.add(adxChart);
-            interactionManager.addChart(adxChart.getChart());
-            interactionManager.attachListeners(adxChart.getChartPanel());
-        } else {
-            if (adxChart != null) {
-                indicatorCharts.remove(adxChart);
-                interactionManager.removeChart(adxChart.getChart());
-                adxChart.dispose();
-                adxChart = null;
-            }
-        }
-
-        rebuildLayout();
-    }
-
-    /**
-     * Check if ADX chart is enabled.
-     */
-    public boolean isAdxEnabled() {
-        return adxEnabled;
-    }
-
-    /**
-     * Enable or disable Delta chart.
-     */
-    public void setDeltaEnabled(boolean enabled) {
-        setDeltaEnabled(enabled, true);  // Default: show CVD
-    }
-
-    /**
-     * Enable or disable Delta chart with optional CVD line.
-     */
-    public void setDeltaEnabled(boolean enabled, boolean showCvd) {
-        if (enabled == deltaEnabled) return;
-        deltaEnabled = enabled;
-
-        if (enabled) {
-            deltaChart = new IndicatorChart(coordinator, IndicatorType.DELTA,
-                (plot, prov) -> new DeltaRenderer(showCvd, plot, prov));
-            deltaChart.initialize();
-            indicatorCharts.add(deltaChart);
-            interactionManager.addChart(deltaChart.getChart());
-            interactionManager.attachListeners(deltaChart.getChartPanel());
-        } else {
-            if (deltaChart != null) {
-                indicatorCharts.remove(deltaChart);
-                interactionManager.removeChart(deltaChart.getChart());
-                deltaChart.dispose();
-                deltaChart = null;
-            }
-        }
-
-        rebuildLayout();
-    }
-
-    /**
-     * Check if Delta chart is enabled.
-     */
-    public boolean isDeltaEnabled() {
-        return deltaEnabled;
-    }
-
-    /**
-     * Enable or disable Range Position chart.
-     */
-    public void setRangePositionEnabled(boolean enabled) {
-        setRangePositionEnabled(enabled, 200, 0);
-    }
-
-    /**
-     * Enable or disable Range Position chart with custom parameters.
-     */
-    public void setRangePositionEnabled(boolean enabled, int period, int skip) {
-        if (enabled == rangePositionEnabled) return;
-        rangePositionEnabled = enabled;
-
-        if (enabled) {
-            rangePositionChart = new IndicatorChart(coordinator, IndicatorType.RANGE_POSITION,
-                (plot, prov) -> new RangePositionRenderer(period, skip, plot, prov));
-            rangePositionChart.initialize();
-            indicatorCharts.add(rangePositionChart);
-            interactionManager.addChart(rangePositionChart.getChart());
-            interactionManager.attachListeners(rangePositionChart.getChartPanel());
-        } else {
-            if (rangePositionChart != null) {
-                indicatorCharts.remove(rangePositionChart);
-                interactionManager.removeChart(rangePositionChart.getChart());
-                rangePositionChart.dispose();
-                rangePositionChart = null;
-            }
-        }
-
-        rebuildLayout();
-    }
-
-    /**
-     * Check if Range Position chart is enabled.
-     */
-    public boolean isRangePositionEnabled() {
-        return rangePositionEnabled;
-    }
-
-    /**
-     * Enable or disable Trade Count chart.
-     */
-    public void setTradeCountEnabled(boolean enabled) {
-        if (enabled == tradeCountEnabled) return;
-        tradeCountEnabled = enabled;
-
-        if (enabled) {
-            tradeCountChart = new IndicatorChart(coordinator, IndicatorType.TRADE_COUNT,
-                (plot, prov) -> new TradeCountRenderer(plot, prov));
-            tradeCountChart.initialize();
-            indicatorCharts.add(tradeCountChart);
-            interactionManager.addChart(tradeCountChart.getChart());
-            interactionManager.attachListeners(tradeCountChart.getChartPanel());
-        } else {
-            if (tradeCountChart != null) {
-                indicatorCharts.remove(tradeCountChart);
-                interactionManager.removeChart(tradeCountChart.getChart());
-                tradeCountChart.dispose();
-                tradeCountChart = null;
-            }
-        }
-
-        rebuildLayout();
-    }
-
-    /**
-     * Check if Trade Count chart is enabled.
-     */
-    public boolean isTradeCountEnabled() {
-        return tradeCountEnabled;
-    }
-
-    /**
-     * Enable or disable Volume Ratio chart.
-     */
-    public void setVolumeRatioEnabled(boolean enabled) {
-        if (enabled == volumeRatioEnabled) return;
-        volumeRatioEnabled = enabled;
-
-        if (enabled) {
-            volumeRatioChart = new IndicatorChart(coordinator, IndicatorType.VOLUME_RATIO,
-                (plot, prov) -> new VolumeRatioRenderer(plot, prov));
-            volumeRatioChart.initialize();
-            indicatorCharts.add(volumeRatioChart);
-            interactionManager.addChart(volumeRatioChart.getChart());
-            interactionManager.attachListeners(volumeRatioChart.getChartPanel());
-        } else {
-            if (volumeRatioChart != null) {
-                indicatorCharts.remove(volumeRatioChart);
-                interactionManager.removeChart(volumeRatioChart.getChart());
-                volumeRatioChart.dispose();
-                volumeRatioChart = null;
-            }
-        }
-
-        rebuildLayout();
-    }
-
-    /**
-     * Check if Volume Ratio chart is enabled.
-     */
-    public boolean isVolumeRatioEnabled() {
-        return volumeRatioEnabled;
-    }
+    // ===== Layout =====
 
     /**
      * Apply axis position to all charts.
@@ -857,9 +383,6 @@ public class PriceChartPanel extends JPanel {
         SwingUtilities.invokeLater(() -> {
             candlestickChart.setRangeAxisPosition(position);
             if (volumeChart != null) volumeChart.setRangeAxisPosition(position);
-            for (IndicatorChart ic : indicatorCharts) {
-                ic.setRangeAxisPosition(position);
-            }
         });
     }
 
@@ -877,21 +400,35 @@ public class PriceChartPanel extends JPanel {
             panels.add(volumeChart.getChartPanel());
         }
 
-        for (IndicatorChart ic : indicatorCharts) {
-            panels.add(ic.getChartPanel());
+        // Add enabled indicator chart panels
+        for (IndicatorType type : IndicatorType.values()) {
+            if (indicatorManager.isEnabled(type)) {
+                panels.add(indicatorManager.getChartPanel(type));
+            }
         }
 
         if (panels.size() == 1) {
-            // Just price chart
             add(panels.get(0), BorderLayout.CENTER);
         } else {
-            // Multiple charts - use nested split panes
             JComponent combined = createNestedSplitPanes(panels);
             add(combined, BorderLayout.CENTER);
         }
 
         // Apply current axis position to all charts
         applyAxisPosition(ChartPanelFactory.getAxisPosition());
+
+        // Update time axis visibility — labels on first/last chart only
+        List<org.jfree.chart.ChartPanel> visibleChartPanels = new ArrayList<>();
+        visibleChartPanels.add(candlestickChart.getChartPanel());
+        if (volumeChart != null) {
+            visibleChartPanels.add(volumeChart.getChartPanel());
+        }
+        for (IndicatorType type : IndicatorType.values()) {
+            if (indicatorManager.isEnabled(type)) {
+                visibleChartPanels.add(indicatorManager.getChartPanel(type));
+            }
+        }
+        lifecycleManager.updateTimeAxisVisibility(visibleChartPanels);
 
         // Update all charts with current data
         if (!dataProvider.getCandles().isEmpty()) {
@@ -904,21 +441,17 @@ public class PriceChartPanel extends JPanel {
 
     /**
      * Create nested split panes for multiple charts.
-     * Price chart gets more space, indicator charts get less.
      */
     private JComponent createNestedSplitPanes(List<JComponent> panels) {
         if (panels.size() == 1) {
             return panels.get(0);
         }
 
-        // Calculate resize weights: price chart gets more space
-        // Price: 0.6, others: split remaining 0.4
         JComponent current = panels.get(panels.size() - 1);
 
         for (int i = panels.size() - 2; i >= 0; i--) {
             ThinSplitPane split = new ThinSplitPane(JSplitPane.VERTICAL_SPLIT);
 
-            // Price chart (index 0) gets more space
             if (i == 0) {
                 split.setResizeWeight(0.6);
             } else {

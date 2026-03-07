@@ -189,27 +189,6 @@ public class Lexer {
         Map.entry("SPECTRUM_VOLUME_AT", TokenType.FOOTPRINT_FUNC),
         Map.entry("WHALE_RATIO", TokenType.FOOTPRINT_FUNC),
 
-        // Cross-exchange functions
-        Map.entry("BINANCE_DELTA", TokenType.EXCHANGE_FUNC),
-        Map.entry("BYBIT_DELTA", TokenType.EXCHANGE_FUNC),
-        Map.entry("OKX_DELTA", TokenType.EXCHANGE_FUNC),
-        Map.entry("COMBINED_DELTA", TokenType.EXCHANGE_FUNC),
-        Map.entry("EXCHANGE_DELTA_SPREAD", TokenType.EXCHANGE_FUNC),
-        Map.entry("EXCHANGE_DIVERGENCE", TokenType.EXCHANGE_FUNC),
-        Map.entry("COMBINED_IMBALANCE_AT_POC", TokenType.EXCHANGE_FUNC),
-        Map.entry("EXCHANGES_WITH_BUY_IMBALANCE", TokenType.EXCHANGE_FUNC),
-        Map.entry("EXCHANGES_WITH_SELL_IMBALANCE", TokenType.EXCHANGE_FUNC),
-        Map.entry("WHALE_DELTA_COMBINED", TokenType.EXCHANGE_FUNC),
-        Map.entry("DOMINANT_EXCHANGE", TokenType.EXCHANGE_FUNC),
-
-        // Spot vs Futures market-type functions
-        Map.entry("SPOT_DELTA", TokenType.EXCHANGE_FUNC),
-        Map.entry("FUTURES_DELTA", TokenType.EXCHANGE_FUNC),
-        Map.entry("SPOT_VOLUME", TokenType.EXCHANGE_FUNC),
-        Map.entry("FUTURES_VOLUME", TokenType.EXCHANGE_FUNC),
-        Map.entry("SPOT_FUTURES_DIVERGENCE", TokenType.EXCHANGE_FUNC),
-        Map.entry("SPOT_FUTURES_DELTA_SPREAD", TokenType.EXCHANGE_FUNC),
-
         // Fear & Greed Index functions
         Map.entry("FEAR_GREED", TokenType.FEAR_GREED_FUNC),
         Map.entry("FEAR_GREED_AVG", TokenType.FEAR_GREED_FUNC)

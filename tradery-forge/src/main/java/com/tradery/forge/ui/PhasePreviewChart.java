@@ -11,7 +11,7 @@ import com.tradery.data.page.PageState;
 import com.tradery.forge.data.page.CandlePageManager;
 import com.tradery.data.page.DataPageListener;
 import com.tradery.data.page.DataPageView;
-import com.tradery.forge.ui.charts.ChartConfig;
+import com.tradery.ui.controls.ChartConfig;
 import com.tradery.forge.ui.charts.ChartStyles;
 import org.jfree.chart.ChartPanel;
 import org.jfree.chart.JFreeChart;

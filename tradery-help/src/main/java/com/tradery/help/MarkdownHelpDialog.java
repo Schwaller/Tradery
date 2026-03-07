@@ -4,6 +4,7 @@ import com.formdev.flatlaf.FlatClientProperties;
 import com.formdev.flatlaf.util.SystemInfo;
 import com.tradery.help.MarkdownHelpRenderer.TocEntry;
 import com.tradery.ui.controls.BorderlessScrollPane;
+import com.tradery.ui.controls.SegmentedToggle;
 import com.tradery.ui.controls.ThinSplitPane;
 import com.tradery.ui.controls.ToolbarSearchField;
 
@@ -11,11 +12,13 @@ import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 import javax.swing.event.ChangeEvent;
 import javax.swing.event.ChangeListener;
+import javax.swing.event.HyperlinkEvent;
 import javax.swing.text.*;
 import javax.swing.text.html.HTMLDocument;
 import java.awt.*;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.prefs.Preferences;
 
 /**
  * Reusable markdown-based help dialog.
@@ -24,6 +27,9 @@ import java.util.List;
  */
 public class MarkdownHelpDialog extends JDialog {
 
+    /** A tab definition for multi-file help dialogs. */
+    public record Tab(String label, String resourcePath) {}
+
     private JList<TocEntry> tocList;
     private DefaultListModel<TocEntry> tocModel;
     private JEditorPane helpPane;
@@ -31,6 +37,12 @@ public class MarkdownHelpDialog extends JDialog {
     private boolean isScrollingFromToc = false;
     private boolean isUpdatingFromScroll = false;
     private List<TocEntry> tocEntries;
+
+    // Tabs
+    private Tab[] tabs;
+    private Class<?> resourceClass;
+    private String dialogTitle;
+    private SegmentedToggle tabToggle;
 
     // Search
     private ToolbarSearchField searchField;
@@ -48,8 +60,41 @@ public class MarkdownHelpDialog extends JDialog {
      * @param size         Preferred size of the content area
      */
     public MarkdownHelpDialog(Window owner, String title, String resourcePath, Dimension size) {
+        this(owner, title, resourcePath, size, MarkdownHelpRenderer.class);
+    }
+
+    /**
+     * Create a new help dialog loading resources from a specific module.
+     *
+     * @param owner         Parent window
+     * @param title         Dialog title (shown in title bar)
+     * @param resourcePath  Classpath resource path to the .md file
+     * @param size          Preferred size of the content area
+     * @param resourceClass Class whose module/classloader is used to load the resource
+     */
+    public MarkdownHelpDialog(Window owner, String title, String resourcePath, Dimension size, Class<?> resourceClass) {
+        this(owner, title, resourcePath, size, resourceClass, null);
+    }
+
+    /**
+     * Create a help dialog with tabbed navigation.
+     * When tabs are provided, a segmented toggle appears in the title bar.
+     * The first tab is selected by default.
+     *
+     * @param owner         Parent window
+     * @param title         Dialog title
+     * @param resourcePath  Initial resource path (used for first tab if tabs is null)
+     * @param size          Preferred content size
+     * @param resourceClass Class for resource loading
+     * @param tabs          Tab definitions (label + resource path), or null for single-file mode
+     */
+    public MarkdownHelpDialog(Window owner, String title, String resourcePath, Dimension size,
+                              Class<?> resourceClass, Tab[] tabs) {
         super(owner, title, ModalityType.MODELESS);
         setDefaultCloseOperation(DISPOSE_ON_CLOSE);
+        this.tabs = tabs;
+        this.resourceClass = resourceClass;
+        this.dialogTitle = title;
 
         // Integrated title bar look (macOS)
         getRootPane().putClientProperty("apple.awt.fullWindowContent", true);
@@ -58,10 +103,11 @@ public class MarkdownHelpDialog extends JDialog {
         getRootPane().putClientProperty(FlatClientProperties.MACOS_WINDOW_BUTTONS_SPACING,
                 FlatClientProperties.MACOS_WINDOW_BUTTONS_SPACING_LARGE);
 
-        initComponents(title, resourcePath, size);
+        String initialResource = (tabs != null && tabs.length > 0) ? tabs[0].resourcePath : resourcePath;
+        initComponents(title, initialResource, size, resourceClass);
     }
 
-    private void initComponents(String title, String resourcePath, Dimension size) {
+    private void initComponents(String title, String resourcePath, Dimension size, Class<?> resourceClass) {
         JPanel contentPane = new JPanel(new BorderLayout());
         setContentPane(contentPane);
 
@@ -109,11 +155,31 @@ public class MarkdownHelpDialog extends JDialog {
         rightWrapper.add(searchField);
 
         titleBar.add(leftWrapper, BorderLayout.WEST);
-        titleBar.add(Box.createHorizontalGlue(), BorderLayout.CENTER);
+
+        // Tab toggle (center of title bar) when tabs are provided
+        if (tabs != null && tabs.length > 1) {
+            String[] labels = new String[tabs.length];
+            for (int i = 0; i < tabs.length; i++) labels[i] = tabs[i].label;
+            tabToggle = new SegmentedToggle(labels);
+            tabToggle.setOnSelectionChanged(index -> {
+                loadContent(tabs[index].resourcePath, resourceClass);
+                // Persist selected tab
+                Preferences prefs = Preferences.userNodeForPackage(MarkdownHelpDialog.class);
+                prefs.putInt("tab." + dialogTitle, index);
+            });
+
+            JPanel centerWrapper = new JPanel(new GridBagLayout());
+            centerWrapper.setOpaque(false);
+            centerWrapper.add(tabToggle);
+            titleBar.add(centerWrapper, BorderLayout.CENTER);
+        } else {
+            titleBar.add(Box.createHorizontalGlue(), BorderLayout.CENTER);
+        }
+
         titleBar.add(rightWrapper, BorderLayout.EAST);
 
         // Load and render markdown content
-        String markdown = MarkdownHelpRenderer.loadFromResource(resourcePath);
+        String markdown = MarkdownHelpRenderer.loadFromResource(resourcePath, resourceClass);
         MarkdownHelpRenderer.RenderResult result = MarkdownHelpRenderer.render(markdown, title);
         tocEntries = result.tocEntries;
 
@@ -134,14 +200,40 @@ public class MarkdownHelpDialog extends JDialog {
         BorderlessScrollPane tocScrollPane = new BorderlessScrollPane(tocList);
         tocScrollPane.setPreferredSize(new Dimension(180, 0));
 
-        // Create content pane
-        helpPane = new JEditorPane("text/html", result.html);
+        // Create content pane with SVG support
+        helpPane = new JEditorPane();
+        HelpEditorKit editorKit = new HelpEditorKit();
+        helpPane.setEditorKit(editorKit);
+        HTMLDocument doc = (HTMLDocument) editorKit.createDefaultDocument();
+        String basePath = resourcePath.substring(0, resourcePath.lastIndexOf('/') + 1);
+        doc.putProperty("resourceBasePath", basePath);
+        doc.putProperty("resourceClass", resourceClass);
+        helpPane.setDocument(doc);
+        helpPane.setText(result.html);
         helpPane.setEditable(false);
         helpPane.setCaretPosition(0);
+        helpPane.getCaret().setVisible(false);
+        helpPane.putClientProperty("caretWidth", 0);
         helpPane.setBorder(new EmptyBorder(4, 4, 4, 4));
         helpPane.setBackground(UIManager.getColor("Panel.background"));
 
+        // Hyperlink listener for cross-tab links (tab:Label#anchor) and external URLs
+        helpPane.addHyperlinkListener(e -> {
+            if (e.getEventType() != HyperlinkEvent.EventType.ACTIVATED) return;
+            String desc = e.getDescription();
+            if (desc != null && desc.startsWith("tab:")) {
+                handleCrossTabLink(desc.substring(4));
+            } else if (e.getURL() != null) {
+                try {
+                    Desktop.getDesktop().browse(e.getURL().toURI());
+                } catch (Exception ex) {
+                    // Ignore
+                }
+            }
+        });
+
         contentScrollPane = new BorderlessScrollPane(helpPane);
+        contentScrollPane.getVerticalScrollBar().setUnitIncrement(16);
 
         // Track scroll position to update TOC selection
         contentScrollPane.getViewport().addChangeListener(new ChangeListener() {
@@ -189,6 +281,16 @@ public class MarkdownHelpDialog extends JDialog {
 
         pack();
         setLocationRelativeTo(getOwner());
+
+        // Restore persisted tab selection
+        if (tabs != null && tabs.length > 1 && tabToggle != null) {
+            Preferences prefs = Preferences.userNodeForPackage(MarkdownHelpDialog.class);
+            int storedIndex = prefs.getInt("tab." + dialogTitle, 0);
+            if (storedIndex > 0 && storedIndex < tabs.length) {
+                tabToggle.setSelectedIndex(storedIndex);
+                loadContent(tabs[storedIndex].resourcePath, resourceClass);
+            }
+        }
     }
 
     private void calculateTocPositions() {
@@ -207,6 +309,42 @@ public class MarkdownHelpDialog extends JDialog {
                 }
             }
         }
+    }
+
+    /**
+     * Loads new markdown content into the dialog, replacing the current content and TOC.
+     * Used by tab switching.
+     */
+    private void loadContent(String resourcePath, Class<?> resClass) {
+        String markdown = MarkdownHelpRenderer.loadFromResource(resourcePath, resClass);
+        MarkdownHelpRenderer.RenderResult result = MarkdownHelpRenderer.render(markdown, dialogTitle);
+        tocEntries = result.tocEntries;
+
+        // Update TOC
+        tocModel.clear();
+        for (TocEntry entry : tocEntries) {
+            tocModel.addElement(entry);
+        }
+
+        // Update content with SVG support
+        HelpEditorKit editorKit = new HelpEditorKit();
+        helpPane.setEditorKit(editorKit);
+        HTMLDocument doc = (HTMLDocument) editorKit.createDefaultDocument();
+        String basePath = resourcePath.substring(0, resourcePath.lastIndexOf('/') + 1);
+        doc.putProperty("resourceBasePath", basePath);
+        doc.putProperty("resourceClass", resClass);
+        helpPane.setDocument(doc);
+        helpPane.setText(result.html);
+        helpPane.setCaretPosition(0);
+        helpPane.getCaret().setVisible(false);
+
+        // Clear search
+        searchMatches.clear();
+        currentMatchIndex = -1;
+        searchField.clearMatchInfo();
+
+        // Recalculate TOC positions after layout
+        SwingUtilities.invokeLater(() -> SwingUtilities.invokeLater(this::calculateTocPositions));
     }
 
     private void scrollToSelectedSection() {
@@ -395,5 +533,63 @@ public class MarkdownHelpDialog extends JDialog {
 
     private void clearSearchHighlights() {
         helpPane.getHighlighter().removeAllHighlights();
+    }
+
+    /**
+     * Handle a cross-tab link in the format "TabLabel#anchor-slug" or just "TabLabel".
+     */
+    private void handleCrossTabLink(String link) {
+        if (tabs == null || tabToggle == null) return;
+
+        String tabLabel;
+        String anchorSlug = null;
+        int hashIndex = link.indexOf('#');
+        if (hashIndex >= 0) {
+            tabLabel = link.substring(0, hashIndex);
+            anchorSlug = link.substring(hashIndex + 1);
+        } else {
+            tabLabel = link;
+        }
+
+        // Find matching tab
+        for (int i = 0; i < tabs.length; i++) {
+            if (tabs[i].label().equalsIgnoreCase(tabLabel)) {
+                int currentIndex = tabToggle.getSelectedIndex();
+                if (i != currentIndex) {
+                    tabToggle.setSelectedIndex(i);
+                    loadContent(tabs[i].resourcePath(), resourceClass);
+                    // Persist tab change
+                    Preferences prefs = Preferences.userNodeForPackage(MarkdownHelpDialog.class);
+                    prefs.putInt("tab." + dialogTitle, i);
+                }
+                if (anchorSlug != null) {
+                    scrollToAnchor(anchorSlug);
+                }
+                return;
+            }
+        }
+    }
+
+    /**
+     * Scroll to an anchor element by its ID. Deferred to allow layout to complete after tab switch.
+     */
+    private void scrollToAnchor(String anchorId) {
+        SwingUtilities.invokeLater(() -> SwingUtilities.invokeLater(() -> {
+            if (helpPane.getDocument() instanceof HTMLDocument doc) {
+                Element element = doc.getElement(anchorId);
+                if (element != null) {
+                    try {
+                        Rectangle rect = helpPane.modelToView(element.getStartOffset());
+                        if (rect != null) {
+                            rect.y = Math.max(0, rect.y - 10);
+                            rect.height = contentScrollPane.getViewport().getHeight();
+                            helpPane.scrollRectToVisible(rect);
+                        }
+                    } catch (BadLocationException e) {
+                        // Ignore
+                    }
+                }
+            }
+        }));
     }
 }

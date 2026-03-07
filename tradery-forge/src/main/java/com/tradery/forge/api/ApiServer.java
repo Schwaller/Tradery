@@ -28,7 +28,7 @@ import com.tradery.forge.io.PhaseStore;
 import com.tradery.forge.io.StrategyStore;
 import com.tradery.forge.ui.LauncherFrame;
 import com.tradery.forge.ui.ProjectWindow;
-import com.tradery.forge.ui.charts.ChartConfig;
+import com.tradery.ui.controls.ChartConfig;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -1038,7 +1038,7 @@ public class ApiServer {
         String window = params.get("window");
         if (window == null || window.isEmpty()) {
             sendError(exchange, 400, "Missing required parameter: window. " +
-                "Valid options: phases, hoops, settings, data, dsl-help, strategy-help, downloads, launcher, project");
+                "Valid options: phases, hoops, settings, data, dsl-help, strategy-help, trading-guide, downloads, launcher, project");
             return;
         }
 
@@ -1082,6 +1082,11 @@ public class ApiServer {
                 response.put("success", true);
                 response.put("message", "Strategy Guide dialog opened");
             }
+            case "trading-guide" -> {
+                launcher.openTradingGuide();
+                response.put("success", true);
+                response.put("message", "Trading Guide dialog opened");
+            }
             case "downloads", "download-dashboard" -> {
                 launcher.openDownloadDashboard();
                 response.put("success", true);
@@ -1109,7 +1114,7 @@ public class ApiServer {
             }
             default -> {
                 sendError(exchange, 400, "Unknown window type: " + window + ". " +
-                    "Valid options: phases, hoops, settings, data, dsl-help, strategy-help, downloads, launcher, project");
+                    "Valid options: phases, hoops, settings, data, dsl-help, strategy-help, trading-guide, downloads, launcher, project");
                 return;
             }
         }

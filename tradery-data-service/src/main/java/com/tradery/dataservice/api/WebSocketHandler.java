@@ -311,13 +311,15 @@ public class WebSocketHandler implements PageUpdateListener {
                 ? message.get("timeframe").asText() : null;
             String marketType = message.has("marketType") && !message.get("marketType").isNull()
                 ? message.get("marketType").asText() : "perp";
+            String exchange = message.has("exchange") && !message.get("exchange").isNull()
+                ? message.get("exchange").asText() : "binance";
             long startTime = message.get("startTime").asLong();
             long endTime = message.get("endTime").asLong();
             String consumerName = message.has("consumerName")
                 ? message.get("consumerName").asText() : "WebSocket-" + consumerId;
 
             // Create PageKey (convert startTime/endTime to endTime/windowDurationMillis)
-            PageKey key = new PageKey(dataType.toUpperCase(), "binance", symbol.toUpperCase(), timeframe, marketType, endTime, endTime - startTime);
+            PageKey key = new PageKey(dataType.toUpperCase(), exchange, symbol.toUpperCase(), timeframe, marketType, endTime, endTime - startTime);
             String pageKeyStr = key.toKeyString();
 
             LOG.info("Consumer {} requesting page {}", consumerId, pageKeyStr);

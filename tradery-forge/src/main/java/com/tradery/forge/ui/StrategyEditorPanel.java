@@ -21,13 +21,16 @@ public class StrategyEditorPanel extends JPanel {
     private PhaseSelectionPanel phaseSelectionPanel;
     private HoopPatternSelectionPanel hoopPatternSelectionPanel;
     private FlowDiagramPanel flowDiagramPanel;
+    private JTextField nameField;
     private JTextArea notesArea;
     private EntryConfigPanel entryConfigPanel;
     private ExitConfigPanel exitConfigPanel;
     private boolean suppressNoteEvents = false;
+    private boolean suppressNameEvents = false;
 
     private Strategy strategy;
     private Runnable onChange;
+    private Runnable onNameChange;
 
     public StrategyEditorPanel() {
         setLayout(new BorderLayout());
@@ -43,6 +46,16 @@ public class StrategyEditorPanel extends JPanel {
         );
         hoopPatternSelectionPanel = new HoopPatternSelectionPanel();
         flowDiagramPanel = new FlowDiagramPanel();
+
+        // Editable strategy name field
+        nameField = new JTextField();
+        nameField.setFont(new Font("SansSerif", Font.BOLD, 14));
+        nameField.setBorder(BorderFactory.createEmptyBorder(2, 4, 2, 4));
+        nameField.getDocument().addDocumentListener(new DocumentListener() {
+            @Override public void insertUpdate(DocumentEvent e) { onNameFieldChange(); }
+            @Override public void removeUpdate(DocumentEvent e) { onNameFieldChange(); }
+            @Override public void changedUpdate(DocumentEvent e) { onNameFieldChange(); }
+        });
 
         // Notes text area for strategy concept with placeholder
         notesArea = new JTextArea(1, 40) {
@@ -135,6 +148,17 @@ public class StrategyEditorPanel extends JPanel {
         suppressNoteEvents = false;
     }
 
+    private void onNameFieldChange() {
+        if (!suppressNameEvents && strategy != null) {
+            String name = nameField.getText().trim();
+            if (!name.isEmpty()) {
+                strategy.setName(name);
+                if (onNameChange != null) onNameChange.run();
+                fireChange();
+            }
+        }
+    }
+
     private void onNotesChange() {
         // Notes changes only update the strategy but don't trigger recomputation
         if (!suppressNoteEvents && strategy != null) {
@@ -169,12 +193,21 @@ public class StrategyEditorPanel extends JPanel {
         headerPanel.setOpaque(false);
         headerPanel.add(tradeSettingsPanel, BorderLayout.NORTH);
 
-        // Notes below trade settings
+        // Name + notes below trade settings
+        JPanel nameNotesPanel = new JPanel();
+        nameNotesPanel.setLayout(new BoxLayout(nameNotesPanel, BoxLayout.Y_AXIS));
+        nameNotesPanel.setOpaque(false);
+
+        nameField.setMaximumSize(new Dimension(Integer.MAX_VALUE, nameField.getPreferredSize().height));
+        nameNotesPanel.add(nameField);
+
         BorderlessScrollPane notesScroll = new BorderlessScrollPane(notesArea);
         notesScroll.setVerticalScrollBarPolicy(JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED);
         notesScroll.setHorizontalScrollBarPolicy(JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
         notesScroll.setViewportBorder(null);
-        headerPanel.add(notesScroll, BorderLayout.SOUTH);
+        nameNotesPanel.add(notesScroll);
+
+        headerPanel.add(nameNotesPanel, BorderLayout.SOUTH);
 
         topPanel.add(headerPanel, BorderLayout.NORTH);
 
@@ -216,6 +249,10 @@ public class StrategyEditorPanel extends JPanel {
         this.onChange = onChange;
     }
 
+    public void setOnNameChange(Runnable onNameChange) {
+        this.onNameChange = onNameChange;
+    }
+
     /**
      * Set the strategy to edit
      */
@@ -225,6 +262,14 @@ public class StrategyEditorPanel extends JPanel {
         phaseSelectionPanel.loadFrom(strategy);
         hoopPatternSelectionPanel.loadFrom(strategy);
         flowDiagramPanel.setStrategy(strategy);
+
+        // Load name
+        suppressNameEvents = true;
+        try {
+            nameField.setText(strategy != null ? strategy.getName() : "");
+        } finally {
+            suppressNameEvents = false;
+        }
 
         // Load notes
         suppressNoteEvents = true;
@@ -250,6 +295,8 @@ public class StrategyEditorPanel extends JPanel {
      */
     public void applyToStrategy(Strategy strategy) {
         if (strategy == null) return;
+        String name = nameField.getText().trim();
+        if (!name.isEmpty()) strategy.setName(name);
         tradeSettingsPanel.applyTo(strategy);
         phaseSelectionPanel.applyTo(strategy);
         hoopPatternSelectionPanel.applyTo(strategy);

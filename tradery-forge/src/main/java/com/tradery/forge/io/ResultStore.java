@@ -657,12 +657,6 @@ public class ResultStore {
         // Analyze by volume distribution
         analysis.put("byVolumeDistribution", analyzeByVolumeDistribution(tradesWithFootprint, overallWinRate));
 
-        // Analyze by exchange divergence (if multi-exchange data available)
-        Map<String, Object> exchangeAnalysis = analyzeByExchangeDivergence(tradesWithFootprint, overallWinRate);
-        if (!exchangeAnalysis.isEmpty()) {
-            analysis.put("byExchangeDivergence", exchangeAnalysis);
-        }
-
         return analysis;
     }
 
@@ -806,41 +800,6 @@ public class ResultStore {
     }
 
     /**
-     * Analyze trades by exchange divergence (when different exchanges show different direction)
-     */
-    private Map<String, Object> analyzeByExchangeDivergence(List<Trade> trades, double overallWinRate) {
-        Map<String, Object> result = new LinkedHashMap<>();
-
-        List<Trade> withDivergence = new ArrayList<>();
-        List<Trade> withoutDivergence = new ArrayList<>();
-
-        for (Trade t : trades) {
-            Double divergence = t.entryFootprintMetrics().get("exchangeDivergence");
-            if (divergence == null) continue;
-
-            if (divergence > 0) {
-                withDivergence.add(t);
-            } else {
-                withoutDivergence.add(t);
-            }
-        }
-
-        // Only include if we have multi-exchange data
-        if (withDivergence.size() < 3 && withoutDivergence.size() < 3) {
-            return result;  // Not enough multi-exchange data
-        }
-
-        if (withDivergence.size() >= 3) {
-            result.put("exchangesDiverging", computeStats(withDivergence, overallWinRate));
-        }
-        if (withoutDivergence.size() >= 3) {
-            result.put("exchangesAgreeing", computeStats(withoutDivergence, overallWinRate));
-        }
-
-        return result;
-    }
-
-    /**
      * Generate AI suggestions based on footprint patterns
      */
     private List<String> generateFootprintSuggestions(List<Trade> trades) {
@@ -946,31 +905,6 @@ public class ResultStore {
                 suggestions.add(String.format(
                     "%.0f%% of winners vs %.0f%% of losers show absorption - consider ABSORPTION filter",
                     winnerAbsorptionRate, loserAbsorptionRate));
-            }
-        }
-
-        // Check for exchange divergence correlation
-        long winnersWithDivergence = winners.stream()
-            .filter(t -> t.entryFootprintMetrics().containsKey("exchangeDivergence"))
-            .filter(t -> t.entryFootprintMetrics().get("exchangeDivergence") > 0)
-            .count();
-        long losersWithDivergence = losers.stream()
-            .filter(t -> t.entryFootprintMetrics().containsKey("exchangeDivergence"))
-            .filter(t -> t.entryFootprintMetrics().get("exchangeDivergence") > 0)
-            .count();
-
-        if (winnersWithDivergence + losersWithDivergence >= 5) {
-            double winnerDivergenceRate = (double) winnersWithDivergence / winners.size() * 100;
-            double loserDivergenceRate = (double) losersWithDivergence / losers.size() * 100;
-
-            if (winnerDivergenceRate > loserDivergenceRate + 10) {
-                suggestions.add(String.format(
-                    "%.0f%% of winners entered during exchange divergence vs %.0f%% losers - consider EXCHANGE_DIVERGENCE filter",
-                    winnerDivergenceRate, loserDivergenceRate));
-            } else if (loserDivergenceRate > winnerDivergenceRate + 10) {
-                suggestions.add(String.format(
-                    "Exchange divergence correlates with losses (%.0f%% losers vs %.0f%% winners) - consider excluding EXCHANGE_DIVERGENCE",
-                    loserDivergenceRate, winnerDivergenceRate));
             }
         }
 

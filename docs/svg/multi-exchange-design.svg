@@ -1,0 +1,40 @@
+<svg viewBox="0 0 850 400" xmlns="http://www.w3.org/2000/svg" font-family="monospace" font-size="11">
+  <text x="250" y="25" fill="#7ec8e3" font-weight="bold" font-size="16">Multi-Exchange: Primary + Secondaries</text>
+
+  <!-- Primary feed -->
+  <rect x="20" y="50" width="380" height="140" rx="8" fill="#1a3a1a" stroke="#4a8a4a" stroke-width="2"/>
+  <text x="35" y="75" fill="#7fff7f" font-weight="bold" font-size="13">PRIMARY FEED (strategy executes here)</text>
+  <text x="35" y="100" fill="#ccc">All basic indicators compute on this</text>
+  <text x="35" y="118" fill="#ccc">DSL conditions evaluate against this</text>
+  <text x="35" y="136" fill="#ccc">Footprint heatmap renders this</text>
+  <text x="35" y="158" fill="#ffa500">Candles + AggTrades + Funding + OI + ...</text>
+  <text x="35" y="176" fill="#888" font-size="9">Example: Binance BTCUSDT perp</text>
+
+  <!-- Secondary feeds -->
+  <rect x="420" y="50" width="410" height="140" rx="8" fill="#1a1a3a" stroke="#4a4a8a" stroke-width="2"/>
+  <text x="435" y="75" fill="#7f7fff" font-weight="bold" font-size="13">SECONDARY FEEDS (observation only)</text>
+  <text x="435" y="100" fill="#ccc">Only cross-exchange indicators use these</text>
+  <text x="435" y="118" fill="#ccc">Each is an additional AggTrades page</text>
+  <text x="435" y="136" fill="#ccc">SymbolResolver maps coin → exchange symbol</text>
+  <text x="435" y="158" fill="#ffa500">AggTrades only (per secondary exchange)</text>
+  <text x="435" y="176" fill="#888" font-size="9">Example: Bybit BTCUSDT perp, OKX BTC-USDT-SWAP perp</text>
+
+  <!-- Arrow: both feed into -->
+  <line x1="210" y1="190" x2="380" y2="260" stroke="#4a8a4a" stroke-width="2" marker-end="url(#arr2)"/>
+  <line x1="625" y1="190" x2="460" y2="260" stroke="#4a4a8a" stroke-width="2" marker-end="url(#arr2)"/>
+
+  <!-- Merged IndicatorEngine -->
+  <rect x="280" y="250" width="280" height="130" rx="8" fill="#2a1a2a" stroke="#8a4a8a" stroke-width="2"/>
+  <text x="340" y="278" fill="#ff9fff" font-weight="bold" font-size="13">IndicatorEngine</text>
+  <text x="300" y="300" fill="#7fff7f" font-size="10">setCandles(primaryCandles)</text>
+  <text x="300" y="316" fill="#7fff7f" font-size="10">setAggTrades(primaryAggTrades)</text>
+  <text x="300" y="336" fill="#7f7fff" font-size="10">setSecondaryAggTrades(Map&lt;Exchange,List&gt;)</text>
+  <text x="300" y="358" fill="#888" font-size="9">Cross-exchange DSL functions query secondaries</text>
+  <text x="300" y="372" fill="#888" font-size="9">Basic indicators only touch primary</text>
+
+  <defs>
+    <marker id="arr2" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#888"/>
+    </marker>
+  </defs>
+</svg>

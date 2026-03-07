@@ -443,7 +443,7 @@ public class IndicatorPageManager {
      * Uses the batch /profile/daily-binned endpoint — single ensureCoverage for the full range,
      * returns all days in one response. Much faster than N per-day calls.
      */
-    private List<com.tradery.forge.ui.charts.DailyVolumeProfileAnnotation.DayProfile> fetchDayProfilesFromDataService(
+    private List<com.tradery.charts.overlay.DailyVolumeProfileAnnotation.DayProfile> fetchDayProfilesFromDataService(
             com.tradery.dataclient.DataServiceClient client, String symbol,
             List<Candle> candles, int numBins, double valueAreaPct, int maxDays) {
 
@@ -471,7 +471,7 @@ public class IndicatorPageManager {
                 dailyBinned = dailyBinned.subList(dailyBinned.size() - maxDays, dailyBinned.size());
             }
 
-            var profiles = new java.util.ArrayList<com.tradery.forge.ui.charts.DailyVolumeProfileAnnotation.DayProfile>();
+            var profiles = new java.util.ArrayList<com.tradery.charts.overlay.DailyVolumeProfileAnnotation.DayProfile>();
             for (var day : dailyBinned) {
                 if (day.bins() == null) continue;
                 double[] priceLevels = day.bins().priceLevels();
@@ -492,7 +492,7 @@ public class IndicatorPageManager {
                 double minPrice = priceLevels[0];
                 double maxPrice = priceLevels[priceLevels.length - 1];
 
-                profiles.add(new com.tradery.forge.ui.charts.DailyVolumeProfileAnnotation.DayProfile(
+                profiles.add(new com.tradery.charts.overlay.DailyVolumeProfileAnnotation.DayProfile(
                     day.dayStart(), dayEnd, priceLevels, volumes, deltas,
                     day.poc(), day.vah(), day.val(),
                     maxVol, minPrice, maxPrice
@@ -517,7 +517,7 @@ public class IndicatorPageManager {
      * Candle-based daily volume profile fallback.
      * Less accurate than aggTrades-based profiles but always available.
      */
-    private List<com.tradery.forge.ui.charts.DailyVolumeProfileAnnotation.DayProfile> calculateDayProfilesFromCandles(
+    private List<com.tradery.charts.overlay.DailyVolumeProfileAnnotation.DayProfile> calculateDayProfilesFromCandles(
             List<Candle> candles, int numBins, double valueAreaPct, int maxDays) {
 
         // Group candles by UTC day
@@ -533,7 +533,7 @@ public class IndicatorPageManager {
             days = new java.util.ArrayList<>(days.subList(days.size() - maxDays, days.size()));
         }
 
-        var profiles = new java.util.ArrayList<com.tradery.forge.ui.charts.DailyVolumeProfileAnnotation.DayProfile>();
+        var profiles = new java.util.ArrayList<com.tradery.charts.overlay.DailyVolumeProfileAnnotation.DayProfile>();
         for (java.time.LocalDate day : days) {
             java.util.List<Candle> dayCandles = byDay.get(day);
             if (dayCandles == null || dayCandles.isEmpty()) continue;
@@ -554,7 +554,7 @@ public class IndicatorPageManager {
                 maxPrice = Math.max(maxPrice, c.high());
             }
 
-            profiles.add(new com.tradery.forge.ui.charts.DailyVolumeProfileAnnotation.DayProfile(
+            profiles.add(new com.tradery.charts.overlay.DailyVolumeProfileAnnotation.DayProfile(
                 dayStart, dayEnd, vp.priceLevels(), vp.volumes(),
                 vp.poc(), vp.vah(), vp.val(),
                 maxVol, minPrice, maxPrice

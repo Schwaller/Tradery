@@ -199,10 +199,24 @@ public class DataServiceConnection {
      * @param endTime    End time in milliseconds
      * @param callback   Callback for page updates
      */
+    /**
+     * Subscribe to a page (defaults to binance/perp).
+     */
     public void subscribePage(DataType dataType, String symbol, String timeframe,
                               long startTime, long endTime, PageUpdateCallback callback) {
-        String pageKey = makePageKey(dataType, symbol, timeframe, "perp", startTime, endTime);
-        PageRequest request = new PageRequest(dataType, symbol, timeframe, startTime, endTime);
+        subscribePage(dataType, symbol, timeframe, null, null, startTime, endTime, callback);
+    }
+
+    /**
+     * Subscribe to a page with exchange and market type.
+     */
+    public void subscribePage(DataType dataType, String symbol, String timeframe,
+                              String exchange, String marketType,
+                              long startTime, long endTime, PageUpdateCallback callback) {
+        String ex = exchange != null ? exchange : "binance";
+        String mt = marketType != null ? marketType : "perp";
+        String pageKey = makePageKey(dataType, symbol, timeframe, mt, startTime, endTime, ex);
+        PageRequest request = new PageRequest(dataType, symbol, timeframe, ex, mt, startTime, endTime);
 
         LOG.debug("Subscribing to page: {} (connected={})", pageKey, isConnected());
 
@@ -266,13 +280,29 @@ public class DataServiceConnection {
     /**
      * Unsubscribe from page updates.
      */
+    /**
+     * Unsubscribe from page updates (defaults to binance/perp).
+     */
     public void unsubscribePage(DataType dataType, String symbol, String timeframe,
                                 long startTime, long endTime, PageUpdateCallback callback) {
-        String pageKey = makePageKey(dataType, symbol, timeframe, "perp", startTime, endTime);
+        unsubscribePage(dataType, symbol, timeframe, null, null, startTime, endTime, callback);
+    }
+
+    /**
+     * Unsubscribe from page updates with exchange and market type.
+     */
+    public void unsubscribePage(DataType dataType, String symbol, String timeframe,
+                                String exchange, String marketType,
+                                long startTime, long endTime, PageUpdateCallback callback) {
+        String ex = exchange != null ? exchange : "binance";
+        String mt = marketType != null ? marketType : "perp";
+        String pageKey = makePageKey(dataType, symbol, timeframe, mt, startTime, endTime, ex);
 
         Set<PageUpdateCallback> callbacks = pageCallbacks.get(pageKey);
         if (callbacks != null) {
-            callbacks.remove(callback);
+            if (callback != null) {
+                callbacks.remove(callback);
+            }
             if (callbacks.isEmpty()) {
                 pageCallbacks.remove(pageKey);
                 activePageSubscriptions.remove(pageKey);
@@ -542,13 +572,16 @@ public class DataServiceConnection {
             if (request.timeframe != null) {
                 message.put("timeframe", request.timeframe);
             }
+            message.put("exchange", request.exchange != null ? request.exchange : "binance");
+            message.put("marketType", request.marketType != null ? request.marketType : "perp");
             message.put("startTime", request.startTime);
             message.put("endTime", request.endTime);
             message.put("consumerName", consumerName);
 
             String json = objectMapper.writeValueAsString(message);
             webSocket.send(json);
-            LOG.debug("Sent subscribe_page: {} {} {}", request.dataType, request.symbol, request.timeframe);
+            LOG.debug("Sent subscribe_page: {} {} {} exchange={} marketType={}",
+                request.dataType, request.symbol, request.timeframe, request.exchange, request.marketType);
         } catch (Exception e) {
             LOG.error("Failed to send subscribe_page", e);
         }
@@ -970,7 +1003,7 @@ public class DataServiceConnection {
             sendSubscribePage(request);
             String pageKey = request.isLive
                 ? makeLivePageKey(request.dataType, request.symbol, request.timeframe, request.marketType, request.windowDurationMillis)
-                : makePageKey(request.dataType, request.symbol, request.timeframe, request.marketType, request.startTime, request.endTime);
+                : makePageKey(request.dataType, request.symbol, request.timeframe, request.marketType, request.startTime, request.endTime, request.exchange);
             activePageSubscriptions.add(pageKey);
         }
         pendingPageRequests.clear();
@@ -1168,9 +1201,15 @@ public class DataServiceConnection {
 
     // ========== Key Generation ==========
 
-    private String makePageKey(DataType dataType, String symbol, String timeframe, String marketType, long startTime, long endTime) {
+    private String makePageKey(DataType dataType, String symbol, String timeframe, String marketType,
+                               long startTime, long endTime) {
+        return makePageKey(dataType, symbol, timeframe, marketType, startTime, endTime, "binance");
+    }
+
+    private String makePageKey(DataType dataType, String symbol, String timeframe, String marketType,
+                               long startTime, long endTime, String exchange) {
         return new PageKey(
-            dataType.toWireFormat(), "binance", symbol.toUpperCase(), timeframe,
+            dataType.toWireFormat(), exchange != null ? exchange : "binance", symbol.toUpperCase(), timeframe,
             marketType != null ? marketType : "perp", endTime, endTime - startTime
         ).toKeyString();
     }
@@ -1273,15 +1312,22 @@ public class DataServiceConnection {
     /**
      * Internal page request tracking.
      */
-    private record PageRequest(DataType dataType, String symbol, String timeframe, String marketType,
+    private record PageRequest(DataType dataType, String symbol, String timeframe, String exchange,
+                               String marketType,
                                long startTime, long endTime, long windowDurationMillis, boolean isLive) {
-        // Anchored page constructor (defaults to perp)
+        // Anchored page constructor (defaults to binance/perp)
         PageRequest(DataType dataType, String symbol, String timeframe, long startTime, long endTime) {
-            this(dataType, symbol, timeframe, "perp", startTime, endTime, endTime - startTime, false);
+            this(dataType, symbol, timeframe, "binance", "perp", startTime, endTime, endTime - startTime, false);
+        }
+        // Anchored page constructor with exchange/marketType
+        PageRequest(DataType dataType, String symbol, String timeframe, String exchange, String marketType,
+                    long startTime, long endTime) {
+            this(dataType, symbol, timeframe, exchange != null ? exchange : "binance",
+                marketType != null ? marketType : "perp", startTime, endTime, endTime - startTime, false);
         }
         // Live page constructor with marketType
         PageRequest(DataType dataType, String symbol, String timeframe, String marketType, long windowDurationMillis, boolean isLive) {
-            this(dataType, symbol, timeframe, marketType != null ? marketType : "perp", 0, 0, windowDurationMillis, isLive);
+            this(dataType, symbol, timeframe, "binance", marketType != null ? marketType : "perp", 0, 0, windowDurationMillis, isLive);
         }
     }
 

@@ -86,6 +86,16 @@ public class DeskDataProvider implements ChartDataProvider {
         }
     }
 
+    /**
+     * Get the indicator engine (for DeskIndicatorDataProvider delegation).
+     * May be null if no candle data is set.
+     */
+    public IndicatorEngine getEngine() {
+        synchronized (lock) {
+            return engine;
+        }
+    }
+
     @Override
     public List<Candle> getCandles() {
         synchronized (lock) {

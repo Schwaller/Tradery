@@ -15,7 +15,7 @@ public class SymbolsSchema {
     private static final Logger log = LoggerFactory.getLogger(SymbolsSchema.class);
 
     // Current schema version - increment when schema changes
-    public static final int CURRENT_VERSION = 3;
+    public static final int CURRENT_VERSION = 4;
 
     /**
      * Initialize the schema for the symbols database.
@@ -171,7 +171,9 @@ public class SymbolsSchema {
                     coingecko_id TEXT PRIMARY KEY,
                     symbol TEXT NOT NULL,
                     name TEXT NOT NULL,
-                    last_updated TEXT
+                    last_updated TEXT,
+                    market_cap_usd REAL,
+                    market_cap_rank INTEGER
                 )
                 """);
 
@@ -216,6 +218,7 @@ public class SymbolsSchema {
             switch (v) {
                 case 2 -> migrateToV2(conn);
                 case 3 -> migrateToV3(conn);
+                case 4 -> migrateToV4(conn);
                 default -> log.debug("No migration needed for version {}", v);
             }
         }
@@ -260,6 +263,17 @@ public class SymbolsSchema {
             stmt.execute("ALTER TABLE trading_pairs ADD COLUMN tick_size REAL NOT NULL DEFAULT 0");
         }
         log.info("Migrated to v3: added tick_size column to trading_pairs");
+    }
+
+    /**
+     * V4: Add market cap columns to coins_cache for display in symbol chooser.
+     */
+    private static void migrateToV4(Connection conn) throws SQLException {
+        try (Statement stmt = conn.createStatement()) {
+            stmt.execute("ALTER TABLE coins_cache ADD COLUMN market_cap_usd REAL");
+            stmt.execute("ALTER TABLE coins_cache ADD COLUMN market_cap_rank INTEGER");
+        }
+        log.info("Migrated to v4: added market_cap_usd and market_cap_rank to coins_cache");
     }
 
     /**

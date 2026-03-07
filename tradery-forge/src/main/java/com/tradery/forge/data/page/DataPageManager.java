@@ -97,12 +97,26 @@ public abstract class DataPageManager<T> {
      * @param consumerName Name of the consumer (for debugging/status display)
      * @return Read-only view of the data page (may be EMPTY/LOADING initially)
      */
+    /**
+     * Request a data page (defaults to binance/perp).
+     */
     public DataPageView<T> request(String symbol, String timeframe,
                                     long startTime, long endTime,
                                     DataPageListener<T> listener,
                                     String consumerName) {
+        return request(symbol, timeframe, null, null, startTime, endTime, listener, consumerName);
+    }
 
-        String key = makeKey(symbol, timeframe, startTime, endTime);
+    /**
+     * Request a data page with exchange and market type.
+     */
+    public DataPageView<T> request(String symbol, String timeframe,
+                                    String exchange, String marketType,
+                                    long startTime, long endTime,
+                                    DataPageListener<T> listener,
+                                    String consumerName) {
+
+        String key = makeKey(symbol, timeframe, exchange, marketType, startTime, endTime);
 
         // Cancel any pending deferred cleanup for this key
         ScheduledFuture<?> pendingCleanup = pendingCleanups.remove(key);
@@ -113,7 +127,7 @@ public abstract class DataPageManager<T> {
 
         // Get or create page (deduplication)
         DataPage<T> page = pages.computeIfAbsent(key, k ->
-            createPage(symbol, timeframe, startTime, endTime));
+            createPage(symbol, timeframe, exchange, marketType, startTime, endTime));
 
         log.info("DataPageManager.request: dataType={}, key={}, pageState={}",
             dataType, key, page.getState());
@@ -222,7 +236,13 @@ public abstract class DataPageManager<T> {
      * Used for checking if data is already available.
      */
     public DataPageView<T> peek(String symbol, String timeframe, long startTime, long endTime) {
-        String key = makeKey(symbol, timeframe, startTime, endTime);
+        return peek(symbol, timeframe, null, null, startTime, endTime);
+    }
+
+    public DataPageView<T> peek(String symbol, String timeframe,
+                                 String exchange, String marketType,
+                                 long startTime, long endTime) {
+        String key = makeKey(symbol, timeframe, exchange, marketType, startTime, endTime);
         return pages.get(key);
     }
 
@@ -274,7 +294,15 @@ public abstract class DataPageManager<T> {
      */
     protected DataPage<T> createPage(String symbol, String timeframe,
                                       long startTime, long endTime) {
-        DataPage<T> page = new DataPage<>(dataType, symbol, timeframe, startTime, endTime);
+        return createPage(symbol, timeframe, null, null, startTime, endTime);
+    }
+
+    protected DataPage<T> createPage(String symbol, String timeframe,
+                                      String exchange, String marketType,
+                                      long startTime, long endTime) {
+        String ex = exchange != null ? exchange : "binance";
+        String mt = marketType != null ? marketType : "perp";
+        DataPage<T> page = new DataPage<>(dataType, symbol, timeframe, mt, ex, startTime, endTime);
         DownloadLogStore.getInstance().logPageCreated(page.getKey(), dataType, symbol, timeframe);
         return page;
     }
@@ -284,12 +312,18 @@ public abstract class DataPageManager<T> {
      * Uses the unified PageKey format so all keys are consistent across modules.
      */
     protected PageKey makePageKey(String symbol, String timeframe, long startTime, long endTime) {
+        return makePageKey(symbol, timeframe, null, null, startTime, endTime);
+    }
+
+    protected PageKey makePageKey(String symbol, String timeframe,
+                                   String exchange, String marketType,
+                                   long startTime, long endTime) {
         return new PageKey(
             dataType.toWireFormat(),
-            "binance",
+            exchange != null ? exchange : "binance",
             symbol,
             timeframe,
-            "perp",
+            marketType != null ? marketType : "perp",
             endTime,
             endTime - startTime
         );
@@ -302,12 +336,20 @@ public abstract class DataPageManager<T> {
         return makePageKey(symbol, timeframe, startTime, endTime).toKeyString();
     }
 
+    protected String makeKey(String symbol, String timeframe,
+                              String exchange, String marketType,
+                              long startTime, long endTime) {
+        return makePageKey(symbol, timeframe, exchange, marketType, startTime, endTime).toKeyString();
+    }
+
     /**
      * Get the map key for a page view.
      * Uses PageKey.toKeyString() for consistent lookups.
      */
     private String keyOf(DataPageView<T> page) {
-        return makeKey(page.getSymbol(), page.getTimeframe(), page.getStartTime(), page.getEndTime());
+        return makeKey(page.getSymbol(), page.getTimeframe(),
+            page.getExchange(), page.getMarketType(),
+            page.getStartTime(), page.getEndTime());
     }
 
     /**

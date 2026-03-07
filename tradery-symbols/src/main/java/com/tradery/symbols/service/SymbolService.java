@@ -399,6 +399,208 @@ public class SymbolService implements AutoCloseable {
         );
     }
 
+    /**
+     * Info about a coin (base asset) for the coin picker combo.
+     */
+    public record CoinInfo(String base, String coinName, String coingeckoId) {}
+
+    /**
+     * A flat row for building the exchange × coin matrix.
+     * Each row represents one trading pair on one exchange/market.
+     */
+    public record MatrixEntry(String base, String coinName, String coingeckoId,
+                              String exchange, String marketType, String quote, String symbol,
+                              double marketCapUsd, int marketCapRank) {}
+
+    /**
+     * Get trading pairs across all exchanges, optionally filtered by quote and search query.
+     * Pass null for quote to get all quote currencies ("All" mode).
+     */
+    public List<MatrixEntry> getMatrix(String quote, String searchQuery, int limit) {
+        List<MatrixEntry> results = new ArrayList<>();
+        if (!isDatabaseAvailable()) return results;
+
+        var sb = new StringBuilder("""
+            SELECT tp.base_symbol, cc.name, tp.coingecko_base_id,
+                   tp.exchange, tp.market_type, tp.quote_symbol, tp.symbol,
+                   COALESCE(cc.market_cap_usd, 0) AS market_cap_usd,
+                   COALESCE(cc.market_cap_rank, 0) AS market_cap_rank
+            FROM trading_pairs tp
+            LEFT JOIN coins_cache cc ON tp.coingecko_base_id = cc.coingecko_id
+            WHERE tp.is_active = 1
+            """);
+
+        List<Object> params = new ArrayList<>();
+
+        if (quote != null && !quote.isBlank()) {
+            sb.append(" AND tp.quote_symbol = ?");
+            params.add(quote);
+        }
+
+        if (searchQuery != null && !searchQuery.isBlank()) {
+            sb.append(" AND (LOWER(tp.base_symbol) LIKE ? OR LOWER(tp.symbol) LIKE ? OR LOWER(cc.name) LIKE ?)");
+            String pattern = "%" + searchQuery.toLowerCase() + "%";
+            params.add(pattern);
+            params.add(pattern);
+            params.add(pattern);
+        }
+
+        sb.append("""
+             ORDER BY CASE WHEN cc.market_cap_rank IS NOT NULL AND cc.market_cap_rank > 0
+                      THEN 0 ELSE 1 END,
+                      cc.market_cap_rank,
+                      tp.base_symbol, tp.exchange, tp.market_type, tp.quote_symbol
+             LIMIT ?""");
+        params.add(limit);
+
+        try {
+            Connection c = getConnection();
+            try (PreparedStatement stmt = c.prepareStatement(sb.toString())) {
+                for (int i = 0; i < params.size(); i++) {
+                    Object p = params.get(i);
+                    if (p instanceof String s) stmt.setString(i + 1, s);
+                    else if (p instanceof Integer n) stmt.setInt(i + 1, n);
+                }
+                try (ResultSet rs = stmt.executeQuery()) {
+                    while (rs.next()) {
+                        results.add(new MatrixEntry(
+                            rs.getString("base_symbol"),
+                            rs.getString("name"),
+                            rs.getString("coingecko_base_id"),
+                            rs.getString("exchange"),
+                            rs.getString("market_type"),
+                            rs.getString("quote_symbol"),
+                            rs.getString("symbol"),
+                            rs.getDouble("market_cap_usd"),
+                            rs.getInt("market_cap_rank")
+                        ));
+                    }
+                }
+            }
+        } catch (SQLException e) {
+            log.error("Failed to get matrix data", e);
+        }
+        return results;
+    }
+
+    /**
+     * Get distinct quote currencies across all exchanges.
+     */
+    public List<String> getAllQuoteCurrencies() {
+        List<String> quotes = new ArrayList<>();
+        if (!isDatabaseAvailable()) return quotes;
+
+        try {
+            Connection c = getConnection();
+            try (PreparedStatement stmt = c.prepareStatement(
+                    "SELECT DISTINCT quote_symbol FROM trading_pairs WHERE is_active = 1 ORDER BY quote_symbol");
+                 ResultSet rs = stmt.executeQuery()) {
+                while (rs.next()) quotes.add(rs.getString(1));
+            }
+        } catch (SQLException e) {
+            log.error("Failed to get quote currencies", e);
+        }
+        return quotes;
+    }
+
+    /**
+     * Get distinct coins (base assets) available on an exchange/market, with display names from coins_cache.
+     */
+    public List<CoinInfo> getCoins(String exchange, String market, int limit) {
+        List<CoinInfo> results = new ArrayList<>();
+        if (!isDatabaseAvailable()) return results;
+
+        String sql = """
+            SELECT DISTINCT tp.base_symbol, cc.name, tp.coingecko_base_id
+            FROM trading_pairs tp
+            LEFT JOIN coins_cache cc ON tp.coingecko_base_id = cc.coingecko_id
+            WHERE tp.is_active = 1 AND tp.exchange = ? AND tp.market_type = ?
+            ORDER BY tp.base_symbol LIMIT ?
+            """;
+
+        try {
+            Connection c = getConnection();
+            try (PreparedStatement stmt = c.prepareStatement(sql)) {
+                stmt.setString(1, exchange);
+                stmt.setString(2, market);
+                stmt.setInt(3, limit);
+                try (ResultSet rs = stmt.executeQuery()) {
+                    while (rs.next()) {
+                        results.add(new CoinInfo(
+                            rs.getString("base_symbol"),
+                            rs.getString("name"),
+                            rs.getString("coingecko_base_id")
+                        ));
+                    }
+                }
+            }
+        } catch (SQLException e) {
+            log.error("Failed to get coins for {} {}", exchange, market, e);
+        }
+        return results;
+    }
+
+    /**
+     * Get available quote currencies for a specific base on an exchange/market.
+     */
+    public List<String> getQuoteCurrencies(String exchange, String market, String base) {
+        List<String> quotes = new ArrayList<>();
+        if (!isDatabaseAvailable()) return quotes;
+
+        String sql = """
+            SELECT DISTINCT quote_symbol FROM trading_pairs
+            WHERE is_active = 1 AND exchange = ? AND market_type = ? AND base_symbol = ?
+            ORDER BY quote_symbol
+            """;
+
+        try {
+            Connection c = getConnection();
+            try (PreparedStatement stmt = c.prepareStatement(sql)) {
+                stmt.setString(1, exchange);
+                stmt.setString(2, market);
+                stmt.setString(3, base);
+                try (ResultSet rs = stmt.executeQuery()) {
+                    while (rs.next()) {
+                        quotes.add(rs.getString(1));
+                    }
+                }
+            }
+        } catch (SQLException e) {
+            log.error("Failed to get quote currencies for {} {} {}", exchange, market, base, e);
+        }
+        return quotes;
+    }
+
+    /**
+     * Resolve base+quote to exchange-specific symbol.
+     */
+    public Optional<String> resolveToSymbol(String exchange, String market, String base, String quote) {
+        if (!isDatabaseAvailable()) return Optional.empty();
+
+        String sql = """
+            SELECT symbol FROM trading_pairs
+            WHERE is_active = 1 AND exchange = ? AND market_type = ?
+              AND base_symbol = ? AND quote_symbol = ?
+            LIMIT 1
+            """;
+
+        try {
+            Connection c = getConnection();
+            try (PreparedStatement stmt = c.prepareStatement(sql)) {
+                stmt.setString(1, exchange);
+                stmt.setString(2, market);
+                stmt.setString(3, base);
+                stmt.setString(4, quote);
+                try (ResultSet rs = stmt.executeQuery()) {
+                    if (rs.next()) return Optional.of(rs.getString(1));
+                }
+            }
+        } catch (SQLException e) {
+            log.error("Failed to resolve symbol for {} {} {}/{}", exchange, market, base, quote, e);
+        }
+        return Optional.empty();
+    }
+
     public record SyncStatus(int pairCount, Instant lastSync) {}
 
     public record ExchangeCoverage(String exchange, String marketType, int pairCount, int matchedCount) {}

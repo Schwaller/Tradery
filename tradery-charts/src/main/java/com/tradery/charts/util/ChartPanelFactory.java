@@ -1,5 +1,6 @@
 package com.tradery.charts.util;
 
+import com.tradery.ui.controls.ChartConfig;
 import org.jfree.chart.ChartPanel;
 import org.jfree.chart.JFreeChart;
 import org.jfree.chart.ui.RectangleInsets;
@@ -20,24 +21,23 @@ public final class ChartPanelFactory {
      */
     public static final String FULL_SCREEN_CALLBACK_KEY = "fullScreenCallback";
 
-    // Axis position state and callback
-    private static String axisPosition = "left";
+    // Optional callback invoked when user changes axis position via context menu
     private static Consumer<String> axisPositionCallback;
 
     /**
-     * Set the current axis position and callback for changes.
+     * Set the initial axis position in ChartConfig and a callback for changes.
      * The callback is invoked when the user changes the position via context menu.
      */
     public static void setAxisPositionConfig(String position, Consumer<String> onChange) {
-        axisPosition = position;
+        ChartConfig.getInstance().setPriceAxisPosition(position);
         axisPositionCallback = onChange;
     }
 
     /**
-     * Get the current axis position.
+     * Get the current axis position from ChartConfig (single source of truth).
      */
     public static String getAxisPosition() {
-        return axisPosition;
+        return ChartConfig.getInstance().getPriceAxisPosition();
     }
 
     /**
@@ -124,13 +124,14 @@ public final class ChartPanelFactory {
         JRadioButtonMenuItem rightItem = new JRadioButtonMenuItem("Right");
         JRadioButtonMenuItem bothItem = new JRadioButtonMenuItem("Both");
 
-        leftItem.setSelected("left".equals(axisPosition));
-        rightItem.setSelected("right".equals(axisPosition));
-        bothItem.setSelected("both".equals(axisPosition));
+        String currentPosition = getAxisPosition();
+        leftItem.setSelected("left".equals(currentPosition));
+        rightItem.setSelected("right".equals(currentPosition));
+        bothItem.setSelected("both".equals(currentPosition));
 
-        leftItem.addActionListener(e -> { axisPosition = "left"; if (axisPositionCallback != null) axisPositionCallback.accept("left"); });
-        rightItem.addActionListener(e -> { axisPosition = "right"; if (axisPositionCallback != null) axisPositionCallback.accept("right"); });
-        bothItem.addActionListener(e -> { axisPosition = "both"; if (axisPositionCallback != null) axisPositionCallback.accept("both"); });
+        leftItem.addActionListener(e -> applyAxisPositionChange("left"));
+        rightItem.addActionListener(e -> applyAxisPositionChange("right"));
+        bothItem.addActionListener(e -> applyAxisPositionChange("both"));
 
         axisGroup.add(leftItem);
         axisGroup.add(rightItem);
@@ -158,5 +159,10 @@ public final class ChartPanelFactory {
         popup.add(saveAs);
 
         panel.setPopupMenu(popup);
+    }
+
+    private static void applyAxisPositionChange(String position) {
+        ChartConfig.getInstance().setPriceAxisPosition(position);
+        if (axisPositionCallback != null) axisPositionCallback.accept(position);
     }
 }

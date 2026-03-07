@@ -1,0 +1,69 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 560 240">
+  <rect width="560" height="240" fill="#000000" fill-opacity="0.3" rx="8"/>
+  <text x="280" y="28" fill="#cdd6f4" font-family="sans-serif" font-size="16" font-weight="bold" text-anchor="middle">Liquidation Squeeze Mechanics</text>
+
+  <!-- Long Squeeze (left) -->
+  <g transform="translate(30, 48)">
+    <text x="115" y="0" fill="#f38ba8" font-family="sans-serif" font-size="12" font-weight="bold" text-anchor="middle">Long Squeeze</text>
+
+    <!-- Price dropping -->
+    <polyline
+      points="10,30 30,35 50,40 70,50 80,65 85,85 88,110 90,140 92,160"
+      fill="none" stroke="#f38ba8" stroke-width="2.5" stroke-linejoin="round"/>
+
+    <!-- Liquidation cascade arrows -->
+    <g opacity="0.7">
+      <text x="105" y="50" fill="#f38ba8" font-family="sans-serif" font-size="8">Price drops</text>
+      <polygon points="100,55 103,62 97,62" fill="#f38ba8"/>
+
+      <text x="105" y="80" fill="#f38ba8" font-family="sans-serif" font-size="8">Longs liquidated</text>
+      <polygon points="100,85 103,92 97,92" fill="#f38ba8"/>
+
+      <text x="105" y="110" fill="#f38ba8" font-family="sans-serif" font-size="8">Forced selling</text>
+      <polygon points="100,115 103,122 97,122" fill="#f38ba8"/>
+
+      <text x="105" y="140" fill="#f38ba8" font-family="sans-serif" font-size="8">More liquidations</text>
+      <polygon points="100,145 103,152 97,152" fill="#f38ba8"/>
+
+      <text x="105" y="168" fill="#f38ba8" font-family="sans-serif" font-size="8" font-weight="bold">CASCADE</text>
+    </g>
+
+    <!-- Feedback loop arrow -->
+    <path d="M 195,55 C 215,55 215,165 195,165" fill="none" stroke="#585b70" stroke-width="1.5" stroke-dasharray="4,3"/>
+    <polygon points="195,165 200,159 190,159" fill="#585b70"/>
+  </g>
+
+  <!-- Short Squeeze (right) -->
+  <g transform="translate(300, 48)">
+    <text x="115" y="0" fill="#a6e3a1" font-family="sans-serif" font-size="12" font-weight="bold" text-anchor="middle">Short Squeeze</text>
+
+    <!-- Price rising -->
+    <polyline
+      points="10,160 30,155 50,150 70,140 80,125 85,105 88,80 90,50 92,30"
+      fill="none" stroke="#a6e3a1" stroke-width="2.5" stroke-linejoin="round"/>
+
+    <!-- Liquidation cascade arrows -->
+    <g opacity="0.7">
+      <text x="105" y="148" fill="#a6e3a1" font-family="sans-serif" font-size="8">Price rises</text>
+      <polygon points="100,140 103,133 97,133" fill="#a6e3a1"/>
+
+      <text x="105" y="118" fill="#a6e3a1" font-family="sans-serif" font-size="8">Shorts liquidated</text>
+      <polygon points="100,110 103,103 97,103" fill="#a6e3a1"/>
+
+      <text x="105" y="88" fill="#a6e3a1" font-family="sans-serif" font-size="8">Forced buying</text>
+      <polygon points="100,80 103,73 97,73" fill="#a6e3a1"/>
+
+      <text x="105" y="58" fill="#a6e3a1" font-family="sans-serif" font-size="8">More liquidations</text>
+      <polygon points="100,50 103,43 97,43" fill="#a6e3a1"/>
+
+      <text x="105" y="30" fill="#a6e3a1" font-family="sans-serif" font-size="8" font-weight="bold">CASCADE</text>
+    </g>
+
+    <!-- Feedback loop arrow -->
+    <path d="M 195,155 C 215,155 215,30 195,30" fill="none" stroke="#585b70" stroke-width="1.5" stroke-dasharray="4,3"/>
+    <polygon points="195,30 200,36 190,36" fill="#585b70"/>
+  </g>
+
+  <!-- Bottom note -->
+  <text x="280" y="225" fill="#7f849c" font-family="sans-serif" font-size="10" text-anchor="middle">Extreme funding + delta divergence often precedes squeezes</text>
+</svg>

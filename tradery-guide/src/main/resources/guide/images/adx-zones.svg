@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 560 240">
+  <rect width="560" height="240" fill="#000000" fill-opacity="0.3" rx="8"/>
+  <text x="280" y="28" fill="#cdd6f4" font-family="sans-serif" font-size="16" font-weight="bold" text-anchor="middle">ADX: Trend Strength</text>
+
+  <g transform="translate(50, 45)">
+    <!-- Zone backgrounds -->
+    <rect x="0" y="0" width="460" height="50" fill="#f38ba8" fill-opacity="0.08" rx="3"/>
+    <rect x="0" y="50" width="460" height="55" fill="#a6e3a1" fill-opacity="0.08" rx="3"/>
+    <rect x="0" y="105" width="460" height="65" fill="#fab387" fill-opacity="0.08" rx="3"/>
+
+    <!-- Zone labels -->
+    <text x="-8" y="15" fill="#7f849c" font-family="sans-serif" font-size="10" text-anchor="end">40+</text>
+    <text x="-8" y="55" fill="#7f849c" font-family="sans-serif" font-size="10" text-anchor="end">40</text>
+    <text x="-8" y="110" fill="#7f849c" font-family="sans-serif" font-size="10" text-anchor="end">20</text>
+    <text x="-8" y="170" fill="#7f849c" font-family="sans-serif" font-size="10" text-anchor="end">0</text>
+
+    <!-- Zone lines -->
+    <line x1="0" y1="50" x2="460" y2="50" stroke="#585b70" stroke-width="1" stroke-dasharray="4,4"/>
+    <line x1="0" y1="105" x2="460" y2="105" stroke="#585b70" stroke-width="1" stroke-dasharray="4,4"/>
+
+    <!-- Zone descriptions (right side) -->
+    <text x="470" y="25" fill="#f38ba8" font-family="sans-serif" font-size="11" font-weight="bold">Strong Trend</text>
+    <text x="470" y="38" fill="#585b70" font-family="sans-serif" font-size="9">Stay with trend</text>
+
+    <text x="470" y="75" fill="#a6e3a1" font-family="sans-serif" font-size="11" font-weight="bold">Trending</text>
+    <text x="470" y="88" fill="#585b70" font-family="sans-serif" font-size="9">Trend following</text>
+
+    <text x="470" y="130" fill="#fab387" font-family="sans-serif" font-size="11" font-weight="bold">Ranging</text>
+    <text x="470" y="143" fill="#585b70" font-family="sans-serif" font-size="9">Mean reversion</text>
+
+    <!-- ADX line weaving through zones -->
+    <polyline
+      points="0,130 15,125 30,120 45,128 60,135 75,140 90,138 105,130 120,118 135,105 150,90 165,78 180,68 195,55 210,45 225,38 240,35 255,40 270,48 285,58 300,70 315,85 330,100 345,115 360,125 375,132 390,128 405,118 420,105 435,90 450,75 460,65"
+      fill="none" stroke="#cba6f7" stroke-width="2.5" stroke-linejoin="round"/>
+
+    <!-- Axis -->
+    <line x1="0" y1="0" x2="0" y2="170" stroke="#585b70" stroke-width="1"/>
+    <line x1="0" y1="170" x2="460" y2="170" stroke="#585b70" stroke-width="1"/>
+  </g>
+</svg>

@@ -1,0 +1,72 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 560 180">
+  <rect width="560" height="180" fill="#000000" fill-opacity="0.3" rx="8"/>
+  <text x="280" y="28" fill="#cdd6f4" font-family="sans-serif" font-size="16" font-weight="bold" text-anchor="middle">Strategy Lifecycle</text>
+
+  <!-- Step 1: Idea -->
+  <g transform="translate(18, 55)">
+    <rect x="0" y="0" width="72" height="60" fill="#313244" fill-opacity="0.5" rx="6"/>
+    <text x="36" y="22" fill="#cba6f7" font-family="sans-serif" font-size="18" text-anchor="middle">&#x1F4A1;</text>
+    <text x="36" y="42" fill="#cba6f7" font-family="sans-serif" font-size="10" font-weight="bold" text-anchor="middle">Idea</text>
+    <text x="36" y="54" fill="#585b70" font-family="sans-serif" font-size="8" text-anchor="middle">Hypothesis</text>
+  </g>
+
+  <!-- Arrow 1 -->
+  <polygon points="95,85 103,82 103,88" fill="#585b70"/>
+
+  <!-- Step 2: Entry -->
+  <g transform="translate(108, 55)">
+    <rect x="0" y="0" width="72" height="60" fill="#313244" fill-opacity="0.5" rx="6"/>
+    <text x="36" y="22" fill="#a6e3a1" font-family="sans-serif" font-size="18" text-anchor="middle">&#x25B6;</text>
+    <text x="36" y="42" fill="#a6e3a1" font-family="sans-serif" font-size="10" font-weight="bold" text-anchor="middle">Entry</text>
+    <text x="36" y="54" fill="#585b70" font-family="sans-serif" font-size="8" text-anchor="middle">DSL condition</text>
+  </g>
+
+  <!-- Arrow 2 -->
+  <polygon points="185,85 193,82 193,88" fill="#585b70"/>
+
+  <!-- Step 3: Position -->
+  <g transform="translate(198, 55)">
+    <rect x="0" y="0" width="72" height="60" fill="#313244" fill-opacity="0.5" rx="6"/>
+    <text x="36" y="22" fill="#89b4fa" font-family="sans-serif" font-size="18" text-anchor="middle">&#x1F4CA;</text>
+    <text x="36" y="42" fill="#89b4fa" font-family="sans-serif" font-size="10" font-weight="bold" text-anchor="middle">Position</text>
+    <text x="36" y="54" fill="#585b70" font-family="sans-serif" font-size="8" text-anchor="middle">Trade open</text>
+  </g>
+
+  <!-- Arrow 3 -->
+  <polygon points="275,85 283,82 283,88" fill="#585b70"/>
+
+  <!-- Step 4: Manage -->
+  <g transform="translate(288, 55)">
+    <rect x="0" y="0" width="72" height="60" fill="#313244" fill-opacity="0.5" rx="6"/>
+    <text x="36" y="22" fill="#fab387" font-family="sans-serif" font-size="18" text-anchor="middle">&#x2699;</text>
+    <text x="36" y="42" fill="#fab387" font-family="sans-serif" font-size="10" font-weight="bold" text-anchor="middle">Manage</text>
+    <text x="36" y="54" fill="#585b70" font-family="sans-serif" font-size="8" text-anchor="middle">Stops adjust</text>
+  </g>
+
+  <!-- Arrow 4 -->
+  <polygon points="365,85 373,82 373,88" fill="#585b70"/>
+
+  <!-- Step 5: Exit -->
+  <g transform="translate(378, 55)">
+    <rect x="0" y="0" width="72" height="60" fill="#313244" fill-opacity="0.5" rx="6"/>
+    <text x="36" y="22" fill="#f38ba8" font-family="sans-serif" font-size="18" text-anchor="middle">&#x2716;</text>
+    <text x="36" y="42" fill="#f38ba8" font-family="sans-serif" font-size="10" font-weight="bold" text-anchor="middle">Exit</text>
+    <text x="36" y="54" fill="#585b70" font-family="sans-serif" font-size="8" text-anchor="middle">TP / SL / cond</text>
+  </g>
+
+  <!-- Arrow 5 -->
+  <polygon points="455,85 463,82 463,88" fill="#585b70"/>
+
+  <!-- Step 6: Analyze -->
+  <g transform="translate(468, 55)">
+    <rect x="0" y="0" width="72" height="60" fill="#313244" fill-opacity="0.5" rx="6"/>
+    <text x="36" y="22" fill="#cdd6f4" font-family="sans-serif" font-size="18" text-anchor="middle">&#x1F50D;</text>
+    <text x="36" y="42" fill="#cdd6f4" font-family="sans-serif" font-size="10" font-weight="bold" text-anchor="middle">Analyze</text>
+    <text x="36" y="54" fill="#585b70" font-family="sans-serif" font-size="8" text-anchor="middle">Iterate</text>
+  </g>
+
+  <!-- Feedback loop arrow (below, from Analyze back to Idea) -->
+  <path d="M 504,120 L 504,145 L 54,145 L 54,120" fill="none" stroke="#585b70" stroke-width="1.5" stroke-dasharray="4,3"/>
+  <polygon points="51,122 54,115 57,122" fill="#585b70"/>
+  <text x="280" y="156" fill="#585b70" font-family="sans-serif" font-size="9" text-anchor="middle">Refine and repeat</text>
+</svg>

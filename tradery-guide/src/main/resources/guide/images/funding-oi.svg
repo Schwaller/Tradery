@@ -1,0 +1,82 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 560 280">
+  <rect width="560" height="280" fill="#000000" fill-opacity="0.3" rx="8"/>
+  <text x="280" y="28" fill="#cdd6f4" font-family="sans-serif" font-size="16" font-weight="bold" text-anchor="middle">Funding Rate &amp; Open Interest Signals</text>
+
+  <!-- Funding Rate (left) -->
+  <g transform="translate(30, 50)">
+    <text x="115" y="0" fill="#cdd6f4" font-family="sans-serif" font-size="12" font-weight="bold" text-anchor="middle">Funding Rate</text>
+
+    <!-- Zero line -->
+    <line x1="0" y1="90" x2="230" y2="90" stroke="#585b70" stroke-width="1"/>
+    <text x="-5" y="94" fill="#585b70" font-family="sans-serif" font-size="9" text-anchor="end">0%</text>
+
+    <!-- Extreme zone top -->
+    <rect x="0" y="10" width="230" height="30" fill="#f38ba8" fill-opacity="0.08"/>
+    <text x="235" y="28" fill="#f38ba8" font-family="sans-serif" font-size="8">Extreme</text>
+
+    <!-- Extreme zone bottom -->
+    <rect x="0" y="140" width="230" height="30" fill="#a6e3a1" fill-opacity="0.08"/>
+    <text x="235" y="158" fill="#a6e3a1" font-family="sans-serif" font-size="8">Extreme</text>
+
+    <!-- Funding rate bars -->
+    <rect x="5" y="70" width="10" height="20" fill="#a6e3a1" opacity="0.6"/>
+    <rect x="20" y="65" width="10" height="25" fill="#a6e3a1" opacity="0.6"/>
+    <rect x="35" y="55" width="10" height="35" fill="#a6e3a1" opacity="0.6"/>
+    <rect x="50" y="45" width="10" height="45" fill="#a6e3a1" opacity="0.6"/>
+    <rect x="65" y="35" width="10" height="55" fill="#a6e3a1" opacity="0.7"/>
+    <rect x="80" y="25" width="10" height="65" fill="#a6e3a1" opacity="0.8"/>
+    <rect x="95" y="20" width="10" height="70" fill="#f38ba8" opacity="0.9"/>
+    <rect x="110" y="90" width="10" height="30" fill="#f38ba8" opacity="0.6"/>
+    <rect x="125" y="90" width="10" height="20" fill="#f38ba8" opacity="0.5"/>
+    <rect x="140" y="75" width="10" height="15" fill="#a6e3a1" opacity="0.5"/>
+    <rect x="155" y="80" width="10" height="10" fill="#a6e3a1" opacity="0.5"/>
+    <rect x="170" y="90" width="10" height="15" fill="#f38ba8" opacity="0.5"/>
+    <rect x="185" y="90" width="10" height="25" fill="#f38ba8" opacity="0.6"/>
+    <rect x="200" y="90" width="10" height="40" fill="#f38ba8" opacity="0.7"/>
+    <rect x="215" y="90" width="10" height="55" fill="#f38ba8" opacity="0.8"/>
+
+    <!-- Squeeze annotation -->
+    <text x="95" y="15" fill="#f38ba8" font-family="sans-serif" font-size="9" text-anchor="middle" font-weight="bold">Squeeze!</text>
+
+    <text x="50" y="190" fill="#a6e3a1" font-family="sans-serif" font-size="9" text-anchor="middle">Longs pay shorts</text>
+    <text x="50" y="202" fill="#a6e3a1" font-family="sans-serif" font-size="9" text-anchor="middle">(overleveraged long)</text>
+    <text x="185" y="190" fill="#f38ba8" font-family="sans-serif" font-size="9" text-anchor="middle">Shorts pay longs</text>
+    <text x="185" y="202" fill="#f38ba8" font-family="sans-serif" font-size="9" text-anchor="middle">(overleveraged short)</text>
+  </g>
+
+  <!-- OI + Price combos (right) -->
+  <g transform="translate(310, 50)">
+    <text x="105" y="0" fill="#cdd6f4" font-family="sans-serif" font-size="12" font-weight="bold" text-anchor="middle">OI + Price</text>
+
+    <!-- Grid -->
+    <rect x="0" y="15" width="105" height="45" fill="#a6e3a1" fill-opacity="0.08" stroke="#585b70" stroke-width="0.5" rx="4"/>
+    <rect x="105" y="15" width="105" height="45" fill="#f38ba8" fill-opacity="0.08" stroke="#585b70" stroke-width="0.5" rx="4"/>
+    <rect x="0" y="60" width="105" height="45" fill="#fab387" fill-opacity="0.08" stroke="#585b70" stroke-width="0.5" rx="4"/>
+    <rect x="105" y="60" width="105" height="45" fill="#89b4fa" fill-opacity="0.08" stroke="#585b70" stroke-width="0.5" rx="4"/>
+
+    <!-- Headers -->
+    <text x="52" y="10" fill="#a6e3a1" font-family="sans-serif" font-size="9" text-anchor="middle">Price Up</text>
+    <text x="157" y="10" fill="#f38ba8" font-family="sans-serif" font-size="9" text-anchor="middle">Price Down</text>
+
+    <!-- Row labels -->
+    <text x="-5" y="42" fill="#7f849c" font-family="sans-serif" font-size="9" text-anchor="end">OI Up</text>
+    <text x="-5" y="87" fill="#7f849c" font-family="sans-serif" font-size="9" text-anchor="end">OI Down</text>
+
+    <!-- Cell content -->
+    <text x="52" y="35" fill="#a6e3a1" font-family="sans-serif" font-size="10" font-weight="bold" text-anchor="middle">Healthy Rally</text>
+    <text x="52" y="48" fill="#585b70" font-family="sans-serif" font-size="8" text-anchor="middle">New longs entering</text>
+
+    <text x="157" y="35" fill="#f38ba8" font-family="sans-serif" font-size="10" font-weight="bold" text-anchor="middle">Strong Selloff</text>
+    <text x="157" y="48" fill="#585b70" font-family="sans-serif" font-size="8" text-anchor="middle">New shorts entering</text>
+
+    <text x="52" y="80" fill="#fab387" font-family="sans-serif" font-size="10" font-weight="bold" text-anchor="middle">Short Covering</text>
+    <text x="52" y="93" fill="#585b70" font-family="sans-serif" font-size="8" text-anchor="middle">May not sustain</text>
+
+    <text x="157" y="80" fill="#89b4fa" font-family="sans-serif" font-size="10" font-weight="bold" text-anchor="middle">Capitulation</text>
+    <text x="157" y="93" fill="#585b70" font-family="sans-serif" font-size="8" text-anchor="middle">Longs closing out</text>
+
+    <!-- Bottom note -->
+    <text x="105" y="130" fill="#7f849c" font-family="sans-serif" font-size="9" text-anchor="middle">OI reveals who is entering/exiting</text>
+    <text x="105" y="143" fill="#7f849c" font-family="sans-serif" font-size="9" text-anchor="middle">the market, not just price direction</text>
+  </g>
+</svg>

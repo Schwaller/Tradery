@@ -1,0 +1,92 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 340">
+  <rect width="600" height="340" fill="#000000" fill-opacity="0.3" rx="8"/>
+
+  <text x="300" y="28" fill="#cdd6f4" font-family="sans-serif" font-size="16" font-weight="bold" text-anchor="middle">Trading Styles &amp; Timeframes</text>
+
+  <!-- Timeline arrow -->
+  <line x1="40" y1="290" x2="560" y2="290" stroke="#585b70" stroke-width="2"/>
+  <polygon points="560,285 570,290 560,295" fill="#585b70"/>
+  <text x="300" y="318" fill="#585b70" font-family="sans-serif" font-size="11" text-anchor="middle">Holding Period</text>
+  <text x="55" y="318" fill="#585b70" font-family="sans-serif" font-size="10" text-anchor="middle">Seconds</text>
+  <text x="555" y="318" fill="#585b70" font-family="sans-serif" font-size="10" text-anchor="middle">Months</text>
+
+  <!-- Scalper -->
+  <g transform="translate(55, 50)">
+    <rect x="-35" y="0" width="100" height="220" rx="8" fill="#f38ba8" fill-opacity="0.08" stroke="#f38ba8" stroke-width="1" stroke-opacity="0.3"/>
+    <text x="15" y="24" fill="#f38ba8" font-family="sans-serif" font-size="13" font-weight="bold" text-anchor="middle">Scalper</text>
+    <text x="15" y="44" fill="#7f849c" font-family="sans-serif" font-size="10" text-anchor="middle">1m - 5m</text>
+
+    <text x="15" y="70" fill="#585b70" font-family="sans-serif" font-size="9" text-anchor="middle">Dozens of trades</text>
+    <text x="15" y="82" fill="#585b70" font-family="sans-serif" font-size="9" text-anchor="middle">per day</text>
+
+    <text x="15" y="108" fill="#cdd6f4" font-family="sans-serif" font-size="9" text-anchor="middle">Orderflow</text>
+    <text x="15" y="120" fill="#cdd6f4" font-family="sans-serif" font-size="9" text-anchor="middle">Footprint</text>
+    <text x="15" y="132" fill="#cdd6f4" font-family="sans-serif" font-size="9" text-anchor="middle">Delta</text>
+
+    <line x1="-25" y1="148" x2="55" y2="148" stroke="#585b70" stroke-width="0.5" stroke-dasharray="2,2"/>
+    <text x="15" y="164" fill="#f38ba8" font-family="sans-serif" font-size="9" text-anchor="middle">Tiny targets</text>
+    <text x="15" y="176" fill="#f38ba8" font-family="sans-serif" font-size="9" text-anchor="middle">Tight stops</text>
+    <text x="15" y="188" fill="#f38ba8" font-family="sans-serif" font-size="9" text-anchor="middle">High volume</text>
+    <text x="15" y="204" fill="#7f849c" font-family="sans-serif" font-size="9" text-anchor="middle">Win rate: 60-70%</text>
+  </g>
+
+  <!-- Day Trader -->
+  <g transform="translate(185, 50)">
+    <rect x="-35" y="0" width="110" height="220" rx="8" fill="#fab387" fill-opacity="0.08" stroke="#fab387" stroke-width="1" stroke-opacity="0.3"/>
+    <text x="20" y="24" fill="#fab387" font-family="sans-serif" font-size="13" font-weight="bold" text-anchor="middle">Day Trader</text>
+    <text x="20" y="44" fill="#7f849c" font-family="sans-serif" font-size="10" text-anchor="middle">15m - 1h</text>
+
+    <text x="20" y="70" fill="#585b70" font-family="sans-serif" font-size="9" text-anchor="middle">3-10 trades</text>
+    <text x="20" y="82" fill="#585b70" font-family="sans-serif" font-size="9" text-anchor="middle">per day</text>
+
+    <text x="20" y="108" fill="#cdd6f4" font-family="sans-serif" font-size="9" text-anchor="middle">RSI, MACD</text>
+    <text x="20" y="120" fill="#cdd6f4" font-family="sans-serif" font-size="9" text-anchor="middle">Volume Profile</text>
+    <text x="20" y="132" fill="#cdd6f4" font-family="sans-serif" font-size="9" text-anchor="middle">Support/Resist</text>
+
+    <line x1="-25" y1="148" x2="65" y2="148" stroke="#585b70" stroke-width="0.5" stroke-dasharray="2,2"/>
+    <text x="20" y="164" fill="#fab387" font-family="sans-serif" font-size="9" text-anchor="middle">Moderate targets</text>
+    <text x="20" y="176" fill="#fab387" font-family="sans-serif" font-size="9" text-anchor="middle">Session-based</text>
+    <text x="20" y="188" fill="#fab387" font-family="sans-serif" font-size="9" text-anchor="middle">Flat by close</text>
+    <text x="20" y="204" fill="#7f849c" font-family="sans-serif" font-size="9" text-anchor="middle">Win rate: 50-60%</text>
+  </g>
+
+  <!-- Swing Trader -->
+  <g transform="translate(330, 50)">
+    <rect x="-35" y="0" width="110" height="220" rx="8" fill="#a6e3a1" fill-opacity="0.08" stroke="#a6e3a1" stroke-width="1" stroke-opacity="0.3"/>
+    <text x="20" y="24" fill="#a6e3a1" font-family="sans-serif" font-size="13" font-weight="bold" text-anchor="middle">Swing Trader</text>
+    <text x="20" y="44" fill="#7f849c" font-family="sans-serif" font-size="10" text-anchor="middle">4h - 1d</text>
+
+    <text x="20" y="70" fill="#585b70" font-family="sans-serif" font-size="9" text-anchor="middle">2-5 trades</text>
+    <text x="20" y="82" fill="#585b70" font-family="sans-serif" font-size="9" text-anchor="middle">per week</text>
+
+    <text x="20" y="108" fill="#cdd6f4" font-family="sans-serif" font-size="9" text-anchor="middle">Moving Averages</text>
+    <text x="20" y="120" fill="#cdd6f4" font-family="sans-serif" font-size="9" text-anchor="middle">ADX, Bollinger</text>
+    <text x="20" y="132" fill="#cdd6f4" font-family="sans-serif" font-size="9" text-anchor="middle">Market Phases</text>
+
+    <line x1="-25" y1="148" x2="65" y2="148" stroke="#585b70" stroke-width="0.5" stroke-dasharray="2,2"/>
+    <text x="20" y="164" fill="#a6e3a1" font-family="sans-serif" font-size="9" text-anchor="middle">Larger targets</text>
+    <text x="20" y="176" fill="#a6e3a1" font-family="sans-serif" font-size="9" text-anchor="middle">Trailing stops</text>
+    <text x="20" y="188" fill="#a6e3a1" font-family="sans-serif" font-size="9" text-anchor="middle">Ride the trend</text>
+    <text x="20" y="204" fill="#7f849c" font-family="sans-serif" font-size="9" text-anchor="middle">Win rate: 40-55%</text>
+  </g>
+
+  <!-- Position Trader -->
+  <g transform="translate(475, 50)">
+    <rect x="-35" y="0" width="110" height="220" rx="8" fill="#89b4fa" fill-opacity="0.08" stroke="#89b4fa" stroke-width="1" stroke-opacity="0.3"/>
+    <text x="20" y="24" fill="#89b4fa" font-family="sans-serif" font-size="13" font-weight="bold" text-anchor="middle">Position</text>
+    <text x="20" y="44" fill="#7f849c" font-family="sans-serif" font-size="10" text-anchor="middle">1d - 1w</text>
+
+    <text x="20" y="70" fill="#585b70" font-family="sans-serif" font-size="9" text-anchor="middle">1-3 trades</text>
+    <text x="20" y="82" fill="#585b70" font-family="sans-serif" font-size="9" text-anchor="middle">per month</text>
+
+    <text x="20" y="108" fill="#cdd6f4" font-family="sans-serif" font-size="9" text-anchor="middle">SMA(200)</text>
+    <text x="20" y="120" fill="#cdd6f4" font-family="sans-serif" font-size="9" text-anchor="middle">Fear &amp; Greed</text>
+    <text x="20" y="132" fill="#cdd6f4" font-family="sans-serif" font-size="9" text-anchor="middle">Funding, OI</text>
+
+    <line x1="-25" y1="148" x2="65" y2="148" stroke="#585b70" stroke-width="0.5" stroke-dasharray="2,2"/>
+    <text x="20" y="164" fill="#89b4fa" font-family="sans-serif" font-size="9" text-anchor="middle">Big picture</text>
+    <text x="20" y="176" fill="#89b4fa" font-family="sans-serif" font-size="9" text-anchor="middle">Wide stops</text>
+    <text x="20" y="188" fill="#89b4fa" font-family="sans-serif" font-size="9" text-anchor="middle">Macro thesis</text>
+    <text x="20" y="204" fill="#7f849c" font-family="sans-serif" font-size="9" text-anchor="middle">Win rate: 35-50%</text>
+  </g>
+</svg>

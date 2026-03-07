@@ -1,0 +1,84 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 560 240">
+  <rect width="560" height="240" fill="#000000" fill-opacity="0.3" rx="8"/>
+  <text x="280" y="28" fill="#cdd6f4" font-family="sans-serif" font-size="16" font-weight="bold" text-anchor="middle">ATR: Volatility Measurement</text>
+
+  <g transform="translate(50, 50)">
+    <!-- Left: Low volatility -->
+    <text x="100" y="0" fill="#89b4fa" font-family="sans-serif" font-size="12" font-weight="bold" text-anchor="middle">Low Volatility</text>
+    <text x="100" y="14" fill="#585b70" font-family="sans-serif" font-size="9" text-anchor="middle">ATR = small range per bar</text>
+
+    <!-- Low vol candles (tight range) -->
+    <g transform="translate(20, 25)">
+      <line x1="15" y1="55" x2="15" y2="75" stroke="#585b70" stroke-width="1"/>
+      <rect x="11" y="60" width="8" height="10" fill="#a6e3a1" rx="1"/>
+
+      <line x1="35" y1="52" x2="35" y2="72" stroke="#585b70" stroke-width="1"/>
+      <rect x="31" y="55" width="8" height="12" fill="#f38ba8" rx="1"/>
+
+      <line x1="55" y1="50" x2="55" y2="70" stroke="#585b70" stroke-width="1"/>
+      <rect x="51" y="54" width="8" height="10" fill="#a6e3a1" rx="1"/>
+
+      <line x1="75" y1="53" x2="75" y2="73" stroke="#585b70" stroke-width="1"/>
+      <rect x="71" y="58" width="8" height="8" fill="#a6e3a1" rx="1"/>
+
+      <line x1="95" y1="48" x2="95" y2="68" stroke="#585b70" stroke-width="1"/>
+      <rect x="91" y="52" width="8" height="10" fill="#f38ba8" rx="1"/>
+
+      <line x1="115" y1="50" x2="115" y2="70" stroke="#585b70" stroke-width="1"/>
+      <rect x="111" y="55" width="8" height="8" fill="#a6e3a1" rx="1"/>
+
+      <line x1="135" y1="52" x2="135" y2="72" stroke="#585b70" stroke-width="1"/>
+      <rect x="131" y="56" width="8" height="10" fill="#a6e3a1" rx="1"/>
+
+      <!-- ATR range indicator -->
+      <line x1="155" y1="50" x2="155" y2="75" stroke="#89b4fa" stroke-width="1.5" stroke-dasharray="3,2"/>
+      <line x1="150" y1="50" x2="160" y2="50" stroke="#89b4fa" stroke-width="1.5"/>
+      <line x1="150" y1="75" x2="160" y2="75" stroke="#89b4fa" stroke-width="1.5"/>
+      <text x="168" y="66" fill="#89b4fa" font-family="sans-serif" font-size="9">ATR</text>
+    </g>
+
+    <text x="100" y="130" fill="#585b70" font-family="sans-serif" font-size="9" text-anchor="middle">Tight stops, smaller positions OK</text>
+
+    <!-- Separator -->
+    <line x1="230" y1="10" x2="230" y2="145" stroke="#585b70" stroke-width="1" stroke-dasharray="4,4"/>
+
+    <!-- Right: High volatility -->
+    <text x="360" y="0" fill="#fab387" font-family="sans-serif" font-size="12" font-weight="bold" text-anchor="middle">High Volatility</text>
+    <text x="360" y="14" fill="#585b70" font-family="sans-serif" font-size="9" text-anchor="middle">ATR = large range per bar</text>
+
+    <!-- High vol candles (wide range) -->
+    <g transform="translate(280, 25)">
+      <line x1="15" y1="20" x2="15" y2="95" stroke="#585b70" stroke-width="1"/>
+      <rect x="11" y="35" width="8" height="40" fill="#a6e3a1" rx="1"/>
+
+      <line x1="35" y1="15" x2="35" y2="100" stroke="#585b70" stroke-width="1"/>
+      <rect x="31" y="25" width="8" height="50" fill="#f38ba8" rx="1"/>
+
+      <line x1="55" y1="10" x2="55" y2="85" stroke="#585b70" stroke-width="1"/>
+      <rect x="51" y="20" width="8" height="45" fill="#a6e3a1" rx="1"/>
+
+      <line x1="75" y1="25" x2="75" y2="105" stroke="#585b70" stroke-width="1"/>
+      <rect x="71" y="40" width="8" height="45" fill="#f38ba8" rx="1"/>
+
+      <line x1="95" y1="5" x2="95" y2="90" stroke="#585b70" stroke-width="1"/>
+      <rect x="91" y="15" width="8" height="55" fill="#a6e3a1" rx="1"/>
+
+      <line x1="115" y1="20" x2="115" y2="100" stroke="#585b70" stroke-width="1"/>
+      <rect x="111" y="30" width="8" height="50" fill="#a6e3a1" rx="1"/>
+
+      <line x1="135" y1="10" x2="135" y2="95" stroke="#585b70" stroke-width="1"/>
+      <rect x="131" y="20" width="8" height="55" fill="#f38ba8" rx="1"/>
+
+      <!-- ATR range indicator -->
+      <line x1="155" y1="5" x2="155" y2="105" stroke="#fab387" stroke-width="1.5" stroke-dasharray="3,2"/>
+      <line x1="150" y1="5" x2="160" y2="5" stroke="#fab387" stroke-width="1.5"/>
+      <line x1="150" y1="105" x2="160" y2="105" stroke="#fab387" stroke-width="1.5"/>
+      <text x="168" y="60" fill="#fab387" font-family="sans-serif" font-size="9">ATR</text>
+    </g>
+
+    <text x="360" y="130" fill="#585b70" font-family="sans-serif" font-size="9" text-anchor="middle">Wide stops needed, reduce position size</text>
+  </g>
+
+  <!-- Bottom tip -->
+  <text x="280" y="220" fill="#7f849c" font-family="sans-serif" font-size="10" text-anchor="middle">Use ATR multiples for stop loss sizing: stop = entry - 2 x ATR</text>
+</svg>

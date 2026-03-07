@@ -1,9 +1,13 @@
 package com.tradery.forge.ui.controls;
 
 import com.tradery.forge.ui.ChartsPanel;
-import com.tradery.forge.ui.charts.ChartConfig;
-import com.tradery.ui.controls.IndicatorSelectorPanel;
-import com.tradery.ui.controls.indicators.*;
+import com.tradery.ui.controls.ChartConfig;
+import com.tradery.ui.controls.indicators.FootprintDisplayMode;
+import com.tradery.ui.controls.indicators.FootprintHeatmapConfig;
+import com.tradery.ui.controls.IndicatorSelectorContent;
+import com.tradery.ui.controls.IndicatorSelectorContent.Feature;
+import com.tradery.ui.controls.indicators.SpectrumBucketMode;
+import com.tradery.ui.controls.indicators.SpectrumColorMode;
 
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
@@ -12,86 +16,19 @@ import java.awt.event.KeyEvent;
 import java.awt.event.MouseEvent;
 import java.awt.event.WindowEvent;
 import java.awt.event.WindowFocusListener;
+import java.util.ArrayList;
+import java.util.EnumSet;
 import java.util.List;
 
 /**
  * Popup dialog for selecting indicators and their parameters.
- * Uses shared indicator row components from tradery-ui-common.
+ * Delegates content assembly to shared {@link IndicatorSelectorContent}.
  */
 public class IndicatorSelectorPopup extends JDialog {
 
     private final ChartsPanel chartPanel;
     private final Runnable onBacktestNeeded;
-
-    // Overlays
-    private final DynamicOverlayPanel smaPanel;
-    private final DynamicOverlayPanel emaPanel;
-    private final PeriodMultiplierRow bb = new PeriodMultiplierRow("Bollinger", null, 20, 5, 100, "\u03C3:", 2.0, 0.5, 4.0, 0.5);
-    private final PeriodIndicatorRow hl = new PeriodIndicatorRow("High/Low", 20, 5, 200);
-    private final PeriodIndicatorRow mayer = new PeriodIndicatorRow("Mayer Multiple", 200, 50, 365);
-    private final IndicatorToggleRow dailyPoc = new IndicatorToggleRow("Daily POC/VAH/VAL", "Show previous day's POC, VAH, VAL (Value Area)");
-    private final FloatingPocRow floatingPoc = new FloatingPocRow();
-    private final IndicatorToggleRow vwap = new IndicatorToggleRow("VWAP", "Volume Weighted Average Price (session)");
-    private final PivotPointsRow pivotPoints = new PivotPointsRow();
-    private final PeriodMultiplierRow atrBands = new PeriodMultiplierRow("ATR Bands", "Volatility bands based on ATR (close \u00B1 ATR \u00D7 multiplier)", 14, 5, 50, "\u00D7", 2.0, 0.5, 5.0, 0.5);
-    private final PeriodMultiplierRow supertrend = new PeriodMultiplierRow("Supertrend", "Trend-following overlay that changes color based on trend direction", 10, 5, 50, "\u00D7", 3.0, 1.0, 5.0, 0.5);
-    private final KeltnerRow keltner = new KeltnerRow();
-    private final DonchianRow donchian = new DonchianRow();
-    private final RayRow rays = new RayRow();
-    private final IndicatorToggleRow ichimoku = new IndicatorToggleRow("Ichimoku Cloud", "Show Ichimoku Cloud (Tenkan-sen, Kijun-sen, Senkou Span A/B, Chikou Span)");
-    private final DailyVolumeProfileRow dailyVolumeProfile = new DailyVolumeProfileRow();
-
-    // Footprint Heatmap controls (complex, kept inline)
-    private JCheckBox footprintHeatmapCheckbox;
-    private JToggleButton footprintSplitButton;
-    private JToggleButton footprintDeltaButton;
-    private ButtonGroup footprintViewGroup;
-    private JToggleButton footprintAuto10Button;
-    private JToggleButton footprintAuto20Button;
-    private JToggleButton footprintAuto40Button;
-    private JToggleButton[] footprintGridButtons = new JToggleButton[4];
-    private ButtonGroup footprintBucketGroup;
-    private JCheckBox footprintGlobalNormCheckbox;
-    private JPanel footprintOptionsRow;
-    private double[] currentGridOptions = new double[4];
-
-    private static final double[] NICE_TICKS = {
-        0.01, 0.05, 0.1, 0.25, 0.5, 1, 2, 5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000
-    };
-
-    // Oscillators
-    private final PeriodIndicatorRow rsi = new PeriodIndicatorRow("RSI", 14, 2, 50);
-    private final MacdRow macd = new MacdRow();
-    private final PeriodIndicatorRow atr = new PeriodIndicatorRow("ATR", 14, 2, 50);
-    private final StochasticRow stochastic = new StochasticRow();
-    private final PeriodIndicatorRow rangePosition = new PeriodIndicatorRow("Range Position", "Shows position within range (-1 to +1), extends beyond for breakouts", 200, 5, 500);
-    private final PeriodIndicatorRow adx = new PeriodIndicatorRow("ADX", "Average Directional Index with +DI/-DI (trend strength)", 14, 2, 50);
-
-    // Orderflow
-    private final IndicatorToggleRow delta = new IndicatorToggleRow("Delta (per bar)", "Show per-candle buy-sell volume difference");
-    private final IndicatorToggleRow cvd = new IndicatorToggleRow("CVD (cumulative)", "Show cumulative volume delta");
-    private final IndicatorToggleRow volumeRatio = new IndicatorToggleRow("Buy/Sell Volume", "Show buy/sell volume divergence around zero line");
-    private final ThresholdRow whale = new ThresholdRow("Whale Delta", "Show delta from large trades only", "Min $:", 50000);
-    private final ThresholdRow retail = new ThresholdRow("Retail Delta", "Show delta from trades below threshold", "Max $:", 50000);
-    private final IndicatorToggleRow tradeCount = new IndicatorToggleRow("Trade Count", "Show number of trades per candle");
-
-    // Funding / OI / Premium / Holding Costs
-    private final IndicatorToggleRow funding = new IndicatorToggleRow("Funding Rate");
-    private final IndicatorToggleRow oi = new IndicatorToggleRow("Open Interest", "Show OI value and change chart (Binance 5m data)");
-    private final IndicatorToggleRow premium = new IndicatorToggleRow("Premium Index", "Show futures premium vs spot index (leading indicator)");
-    private final IndicatorToggleRow holdingCostCumulative = new IndicatorToggleRow("Cumulative Holding Costs", "Show running total of funding fees/margin interest");
-    private final IndicatorToggleRow holdingCostEvents = new IndicatorToggleRow("Holding Cost Events", "Show individual funding fee/interest charges per trade");
-    private final IndicatorToggleRow fearGreed = new IndicatorToggleRow("Fear & Greed", "Show Crypto Fear & Greed Index (0-100 sentiment)");
-    private final IndicatorToggleRow spectrum = new IndicatorToggleRow("Trade Size Spectrum", "Show trade size distribution heatmap (log10 buckets, requires aggTrades)");
-    private final JComboBox<com.tradery.forge.ui.charts.SpectrumColorMode> spectrumColorMode = new JComboBox<>(com.tradery.forge.ui.charts.SpectrumColorMode.values());
-    private final JComboBox<com.tradery.forge.ui.charts.SpectrumBucketMode> spectrumBucketMode = new JComboBox<>(com.tradery.forge.ui.charts.SpectrumBucketMode.values());
-
-    // Core charts
-    private final IndicatorToggleRow volumeChart = new IndicatorToggleRow("Volume", "Show volume chart");
-    private final IndicatorToggleRow equityChart = new IndicatorToggleRow("Equity", "Show portfolio equity chart");
-    private final IndicatorToggleRow comparisonChart = new IndicatorToggleRow("Strategy vs Buy & Hold", "Show strategy comparison chart");
-    private final IndicatorToggleRow capitalUsageChart = new IndicatorToggleRow("Capital Usage", "Show capital usage percentage chart");
-    private final IndicatorToggleRow tradePLChart = new IndicatorToggleRow("Trade P&L", "Show individual trade P&L chart");
+    private final IndicatorSelectorContent content;
 
     // Debounce timer
     private Timer updateTimer;
@@ -103,19 +40,16 @@ public class IndicatorSelectorPopup extends JDialog {
         this.chartPanel = chartPanel;
         this.onBacktestNeeded = onBacktestNeeded;
 
-        // Create dynamic overlay panels with Forge's color palette
         Color[] palette = com.tradery.forge.ui.charts.ChartStyles.OVERLAY_PALETTE;
-        smaPanel = new DynamicOverlayPanel("SMA", 20, 5, 200, palette);
-        emaPanel = new DynamicOverlayPanel("EMA", 20, 5, 200, palette);
-        smaPanel.setRepackListener(this::pack);
-        emaPanel.setRepackListener(this::pack);
+        content = new IndicatorSelectorContent(palette, EnumSet.allOf(Feature.class));
+        content.setRepackListener(this::pack);
 
         setUndecorated(true);
         setResizable(false);
 
         initComponents();
         initDebounceTimer();
-        wireChangeListeners();
+        content.wireListeners(this::scheduleUpdate);
         syncFromChartPanel();
 
         initializing = false;
@@ -169,78 +103,7 @@ public class IndicatorSelectorPopup extends JDialog {
             new EmptyBorder(8, 12, 8, 12)
         ));
 
-        // === OVERLAYS ===
-        contentPane.add(createSectionHeader("OVERLAYS"));
-        contentPane.add(smaPanel);
-        contentPane.add(emaPanel);
-        for (JPanel row : new JPanel[]{bb, hl, mayer, dailyPoc, floatingPoc, vwap, pivotPoints,
-                atrBands, supertrend, keltner, donchian, rays, ichimoku, dailyVolumeProfile}) {
-            contentPane.add(row);
-        }
-        contentPane.add(createFootprintHeatmapRow());
-
-        contentPane.add(createSectionSeparator());
-
-        // === INDICATOR CHARTS ===
-        contentPane.add(createSectionHeader("INDICATOR CHARTS"));
-        for (JPanel row : new JPanel[]{rsi, macd, atr, stochastic, rangePosition, adx}) {
-            contentPane.add(row);
-        }
-
-        contentPane.add(createSectionSeparator());
-
-        // === ORDERFLOW ===
-        contentPane.add(createSectionHeader("ORDERFLOW CHARTS"));
-        for (JPanel row : new JPanel[]{delta, cvd, volumeRatio, whale, retail, tradeCount}) {
-            contentPane.add(row);
-        }
-
-        contentPane.add(Box.createVerticalStrut(4));
-        contentPane.add(createSectionHeader("FUNDING"));
-        contentPane.add(funding);
-
-        contentPane.add(Box.createVerticalStrut(4));
-        contentPane.add(createSectionHeader("OPEN INTEREST"));
-        contentPane.add(oi);
-
-        contentPane.add(Box.createVerticalStrut(4));
-        contentPane.add(createSectionHeader("PREMIUM INDEX"));
-        contentPane.add(premium);
-
-        contentPane.add(Box.createVerticalStrut(4));
-        contentPane.add(createSectionHeader("SENTIMENT"));
-        contentPane.add(fearGreed);
-
-        contentPane.add(Box.createVerticalStrut(4));
-        contentPane.add(createSectionHeader("TRADE SIZE SPECTRUM"));
-        contentPane.add(spectrum);
-        // Color mode + bucket mode selector row
-        JPanel spectrumOptionsRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
-        spectrumOptionsRow.setOpaque(false);
-        spectrumOptionsRow.setMaximumSize(new Dimension(Integer.MAX_VALUE, 28));
-        JLabel colorLabel = new JLabel("Color:");
-        colorLabel.setFont(colorLabel.getFont().deriveFont(11f));
-        spectrumOptionsRow.add(Box.createHorizontalStrut(24));
-        spectrumOptionsRow.add(colorLabel);
-        spectrumColorMode.setFont(spectrumColorMode.getFont().deriveFont(11f));
-        spectrumOptionsRow.add(spectrumColorMode);
-        JLabel bucketLabel = new JLabel("Bucket:");
-        bucketLabel.setFont(bucketLabel.getFont().deriveFont(11f));
-        spectrumOptionsRow.add(bucketLabel);
-        spectrumBucketMode.setFont(spectrumBucketMode.getFont().deriveFont(11f));
-        spectrumOptionsRow.add(spectrumBucketMode);
-        contentPane.add(spectrumOptionsRow);
-
-        contentPane.add(createSectionSeparator());
-        contentPane.add(createSectionHeader("HOLDING COSTS"));
-        contentPane.add(holdingCostCumulative);
-        contentPane.add(holdingCostEvents);
-
-        contentPane.add(createSectionSeparator());
-        contentPane.add(createSectionHeader("CORE CHARTS"));
-        for (JPanel row : new JPanel[]{volumeChart, equityChart, comparisonChart, capitalUsageChart, tradePLChart}) {
-            contentPane.add(row);
-        }
+        content.buildContent(contentPane);
 
         JScrollPane scrollPane = new JScrollPane(contentPane);
         scrollPane.setBorder(null);
@@ -262,198 +125,6 @@ public class IndicatorSelectorPopup extends JDialog {
         }
     }
 
-    private void wireChangeListeners() {
-        // All shared components fire scheduleUpdate on change
-        Runnable update = this::scheduleUpdate;
-
-        smaPanel.addChangeListener(update);
-        emaPanel.addChangeListener(update);
-        bb.addChangeListener(update);
-        hl.addChangeListener(update);
-        mayer.addChangeListener(update);
-        dailyPoc.addChangeListener(update);
-        floatingPoc.addChangeListener(update);
-        vwap.addChangeListener(update);
-        pivotPoints.addChangeListener(update);
-        atrBands.addChangeListener(update);
-        supertrend.addChangeListener(update);
-        keltner.addChangeListener(update);
-        donchian.addChangeListener(update);
-        rays.addChangeListener(update);
-        ichimoku.addChangeListener(update);
-        dailyVolumeProfile.addChangeListener(update);
-        rsi.addChangeListener(update);
-        macd.addChangeListener(update);
-        atr.addChangeListener(update);
-        stochastic.addChangeListener(update);
-        rangePosition.addChangeListener(update);
-        adx.addChangeListener(update);
-        delta.addChangeListener(update);
-        cvd.addChangeListener(update);
-        volumeRatio.addChangeListener(update);
-        whale.addChangeListener(update);
-        retail.addChangeListener(update);
-        tradeCount.addChangeListener(update);
-        funding.addChangeListener(update);
-        oi.addChangeListener(update);
-        premium.addChangeListener(update);
-        holdingCostCumulative.addChangeListener(update);
-        holdingCostEvents.addChangeListener(update);
-        fearGreed.addChangeListener(update);
-        spectrum.addChangeListener(update);
-        spectrumColorMode.addActionListener(e -> update.run());
-        spectrumBucketMode.addActionListener(e -> update.run());
-        volumeChart.addChangeListener(update);
-        equityChart.addChangeListener(update);
-        comparisonChart.addChangeListener(update);
-        capitalUsageChart.addChangeListener(update);
-        tradePLChart.addChangeListener(update);
-    }
-
-    // ===== Footprint Heatmap (complex, kept inline) =====
-
-    private JPanel createFootprintHeatmapRow() {
-        footprintHeatmapCheckbox = new JCheckBox("Footprint");
-        footprintHeatmapCheckbox.setToolTipText("Show price-level volume heatmap (requires aggTrades data)");
-
-        footprintSplitButton = new JToggleButton("Split");
-        footprintSplitButton.setToolTipText("Split view: buy volume left (green), sell volume right (red)");
-        footprintSplitButton.setPreferredSize(new Dimension(50, 22));
-        footprintSplitButton.setMargin(new Insets(1, 4, 1, 4));
-
-        footprintDeltaButton = new JToggleButton("Delta");
-        footprintDeltaButton.setToolTipText("Show net delta (buy - sell) as single color");
-        footprintDeltaButton.setPreferredSize(new Dimension(50, 22));
-        footprintDeltaButton.setMargin(new Insets(1, 4, 1, 4));
-
-        footprintViewGroup = new ButtonGroup();
-        footprintViewGroup.add(footprintSplitButton);
-        footprintViewGroup.add(footprintDeltaButton);
-
-        footprintBucketGroup = new ButtonGroup();
-        footprintAuto10Button = createFootprintBucketButton("Auto(10)", "Fine detail - ~10 buckets per candle");
-        footprintAuto20Button = createFootprintBucketButton("Auto(20)", "Medium detail - ~20 buckets per candle (default)");
-        footprintAuto40Button = createFootprintBucketButton("Auto(40)", "Coarse view - ~40 buckets per candle");
-        footprintBucketGroup.add(footprintAuto10Button);
-        footprintBucketGroup.add(footprintAuto20Button);
-        footprintBucketGroup.add(footprintAuto40Button);
-
-        for (int i = 0; i < 4; i++) {
-            footprintGridButtons[i] = createFootprintBucketButton("$--", "Fixed grid tick size");
-            footprintBucketGroup.add(footprintGridButtons[i]);
-        }
-
-        footprintGlobalNormCheckbox = new JCheckBox("Global");
-        footprintGlobalNormCheckbox.setToolTipText("Color ramp uses min/max volume across all candles (on) or per candle (off)");
-        footprintGlobalNormCheckbox.setFont(footprintGlobalNormCheckbox.getFont().deriveFont(11f));
-        footprintGlobalNormCheckbox.addActionListener(e -> scheduleUpdate());
-
-        footprintSplitButton.addActionListener(e -> { if (footprintSplitButton.isSelected()) scheduleUpdate(); });
-        footprintDeltaButton.addActionListener(e -> { if (footprintDeltaButton.isSelected()) scheduleUpdate(); });
-
-        JPanel row1 = new JPanel(new FlowLayout(FlowLayout.LEFT, 2, 0));
-        row1.setAlignmentX(Component.LEFT_ALIGNMENT);
-        row1.add(footprintHeatmapCheckbox);
-        row1.add(footprintSplitButton);
-        row1.add(footprintDeltaButton);
-        row1.add(Box.createHorizontalStrut(4));
-        row1.add(footprintAuto10Button);
-        row1.add(footprintAuto20Button);
-        row1.add(footprintAuto40Button);
-        for (JToggleButton btn : footprintGridButtons) row1.add(btn);
-
-        footprintOptionsRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 2, 0));
-        footprintOptionsRow.setAlignmentX(Component.LEFT_ALIGNMENT);
-        footprintOptionsRow.add(Box.createHorizontalStrut(20));
-        footprintOptionsRow.add(footprintGlobalNormCheckbox);
-
-        footprintHeatmapCheckbox.addActionListener(e -> { updateFootprintControlVisibility(); scheduleUpdate(); });
-
-        JPanel wrapper = new JPanel();
-        wrapper.setLayout(new BoxLayout(wrapper, BoxLayout.Y_AXIS));
-        wrapper.setAlignmentX(Component.LEFT_ALIGNMENT);
-        wrapper.add(row1);
-        wrapper.add(footprintOptionsRow);
-        return wrapper;
-    }
-
-    private JToggleButton createFootprintBucketButton(String text, String tooltip) {
-        JToggleButton btn = new JToggleButton(text);
-        btn.setToolTipText(tooltip);
-        btn.setPreferredSize(new Dimension(text.length() > 6 ? 62 : 48, 22));
-        btn.setMargin(new Insets(1, 2, 1, 2));
-        btn.setFont(btn.getFont().deriveFont(11f));
-        btn.addActionListener(e -> { if (btn.isSelected()) scheduleUpdate(); });
-        return btn;
-    }
-
-    private double[] computeTickSizeOptions(List<com.tradery.core.model.Candle> candles) {
-        double[] result = new double[4];
-        if (candles == null || candles.isEmpty()) {
-            result[0] = 25; result[1] = 50; result[2] = 100; result[3] = 250;
-            return result;
-        }
-        int lookback = Math.min(14, candles.size());
-        double sumRange = 0;
-        for (int i = candles.size() - lookback; i < candles.size(); i++) {
-            var c = candles.get(i);
-            sumRange += c.high() - c.low();
-        }
-        double avgRange = sumRange / lookback;
-        double idealTick = avgRange / 20;
-        int idealIdx = 0;
-        double minDiff = Math.abs(NICE_TICKS[0] - idealTick);
-        for (int i = 1; i < NICE_TICKS.length; i++) {
-            double diff = Math.abs(NICE_TICKS[i] - idealTick);
-            if (diff < minDiff) { minDiff = diff; idealIdx = i; }
-        }
-        int startIdx = Math.max(0, Math.min(idealIdx - 1, NICE_TICKS.length - 4));
-        for (int i = 0; i < 4; i++) {
-            int idx = startIdx + i;
-            result[i] = idx < NICE_TICKS.length ? NICE_TICKS[idx] : NICE_TICKS[NICE_TICKS.length - 1];
-        }
-        return result;
-    }
-
-    private String formatTickSize(double tick) {
-        if (tick >= 1000) return String.format("$%.0fk", tick / 1000);
-        else if (tick >= 1) return tick == Math.floor(tick) ? String.format("$%.0f", tick) : String.format("$%.1f", tick);
-        else if (tick >= 0.01) return tick * 100 == Math.floor(tick * 100) ? String.format("$%.2f", tick) : String.format("$%.3f", tick);
-        else return String.format("$%.4f", tick);
-    }
-
-    private void updateFootprintTickButtons() {
-        List<com.tradery.core.model.Candle> candles = chartPanel.getCurrentCandles();
-        currentGridOptions = computeTickSizeOptions(candles);
-        for (int i = 0; i < 4; i++) {
-            String label = formatTickSize(currentGridOptions[i]);
-            footprintGridButtons[i].setText(label);
-            footprintGridButtons[i].setToolTipText("Fixed grid: " + label + " tick size");
-            footprintGridButtons[i].setPreferredSize(new Dimension(label.length() > 5 ? 52 : 44, 22));
-        }
-    }
-
-    private void updateFootprintControlVisibility() {
-        boolean enabled = footprintHeatmapCheckbox.isSelected();
-        footprintSplitButton.setVisible(enabled);
-        footprintDeltaButton.setVisible(enabled);
-        footprintAuto10Button.setVisible(enabled);
-        footprintAuto20Button.setVisible(enabled);
-        footprintAuto40Button.setVisible(enabled);
-        for (JToggleButton btn : footprintGridButtons) btn.setVisible(enabled);
-        footprintOptionsRow.setVisible(enabled);
-    }
-
-    // ===== Section helpers =====
-
-    private JLabel createSectionHeader(String text) {
-        return IndicatorSelectorPanel.createSectionHeader(text);
-    }
-
-    private JPanel createSectionSeparator() {
-        return IndicatorSelectorPanel.createSectionSeparator();
-    }
-
     // ===== Debounce =====
 
     private void initDebounceTimer() {
@@ -473,114 +144,124 @@ public class IndicatorSelectorPopup extends JDialog {
         ChartConfig config = ChartConfig.getInstance();
 
         // SMA/EMA
-        smaPanel.setPeriods(config.getSmaPeriods());
-        emaPanel.setColorOffset(config.getSmaPeriods().size());
-        emaPanel.setPeriods(config.getEmaPeriods());
+        content.smaPanel().setPeriods(config.getSmaPeriods());
+        content.emaPanel().setColorOffset(config.getSmaPeriods().size());
+        content.emaPanel().setPeriods(config.getEmaPeriods());
 
         // Overlays
-        bb.setSelected(config.isBollingerEnabled());
-        bb.setPeriod(config.getBollingerPeriod());
-        bb.setMultiplier(config.getBollingerStdDev());
-        hl.setSelected(config.isHighLowEnabled());
-        hl.setPeriod(config.getHighLowPeriod());
-        mayer.setSelected(config.isMayerEnabled());
-        mayer.setPeriod(config.getMayerPeriod());
-        dailyPoc.setSelected(config.isDailyPocEnabled());
-        floatingPoc.setSelected(config.isFloatingPocEnabled());
-        floatingPoc.setBars(config.getFloatingPocPeriod());
-        vwap.setSelected(config.isVwapEnabled());
-        pivotPoints.setSelected(config.isPivotPointsEnabled());
-        pivotPoints.setShowR3S3(config.isPivotPointsShowR3S3());
-        atrBands.setSelected(config.isAtrBandsEnabled());
-        atrBands.setPeriod(config.getAtrBandsPeriod());
-        atrBands.setMultiplier(config.getAtrBandsMultiplier());
-        supertrend.setSelected(config.isSupertrendEnabled());
-        supertrend.setPeriod(config.getSupertrendPeriod());
-        supertrend.setMultiplier(config.getSupertrendMultiplier());
-        keltner.setSelected(config.isKeltnerEnabled());
-        donchian.setSelected(config.isDonchianEnabled());
-        donchian.setPeriod(config.getDonchianPeriod());
-        donchian.setShowMiddle(config.isDonchianShowMiddle());
-        rays.setSelected(config.isRayOverlayEnabled());
-        rays.setLookback(config.getRayLookback());
-        rays.setSkip(config.getRaySkip());
-        rays.setHistoric(config.isRayHistoricEnabled());
-        ichimoku.setSelected(config.isIchimokuEnabled());
-        dailyVolumeProfile.setSelected(config.isDailyVolumeProfileEnabled());
-        dailyVolumeProfile.setBins(config.getDailyVolumeProfileBins());
+        content.bb().setSelected(config.isBollingerEnabled());
+        content.bb().setPeriod(config.getBollingerPeriod());
+        content.bb().setMultiplier(config.getBollingerStdDev());
+        content.hl().setSelected(config.isHighLowEnabled());
+        content.hl().setPeriod(config.getHighLowPeriod());
+        content.mayer().setSelected(config.isMayerEnabled());
+        content.mayer().setPeriod(config.getMayerPeriod());
+        content.dailyPoc().setSelected(config.isDailyPocEnabled());
+        content.floatingPoc().setSelected(config.isFloatingPocEnabled());
+        content.floatingPoc().setBars(config.getFloatingPocPeriod());
+        content.vwap().setSelected(config.isVwapEnabled());
+        content.pivotPoints().setSelected(config.isPivotPointsEnabled());
+        content.pivotPoints().setShowR3S3(config.isPivotPointsShowR3S3());
+        content.atrBands().setSelected(config.isAtrBandsEnabled());
+        content.atrBands().setPeriod(config.getAtrBandsPeriod());
+        content.atrBands().setMultiplier(config.getAtrBandsMultiplier());
+        content.supertrend().setSelected(config.isSupertrendEnabled());
+        content.supertrend().setPeriod(config.getSupertrendPeriod());
+        content.supertrend().setMultiplier(config.getSupertrendMultiplier());
+        content.keltner().setSelected(config.isKeltnerEnabled());
+        content.donchian().setSelected(config.isDonchianEnabled());
+        content.donchian().setPeriod(config.getDonchianPeriod());
+        content.donchian().setShowMiddle(config.isDonchianShowMiddle());
+        content.rays().setSelected(config.isRayOverlayEnabled());
+        content.rays().setLookback(config.getRayLookback());
+        content.rays().setSkip(config.getRaySkip());
+        content.rays().setHistoric(config.isRayHistoricEnabled());
+        content.ichimoku().setSelected(config.isIchimokuEnabled());
+        content.dailyVolumeProfile().setSelected(config.isDailyVolumeProfileEnabled());
+        content.dailyVolumeProfile().setBins(config.getDailyVolumeProfileBins());
         String colorMode = config.getDailyVolumeProfileColorMode();
         switch (colorMode) {
-            case "DELTA" -> dailyVolumeProfile.setColorMode("Delta");
-            case "DELTA_INTENSITY" -> dailyVolumeProfile.setColorMode("Delta+Volume");
-            default -> dailyVolumeProfile.setColorMode("Volume");
+            case "DELTA" -> content.dailyVolumeProfile().setColorMode("Delta");
+            case "DELTA_INTENSITY" -> content.dailyVolumeProfile().setColorMode("Delta+Volume");
+            default -> content.dailyVolumeProfile().setColorMode("Volume");
         }
 
         // Footprint
-        footprintHeatmapCheckbox.setSelected(config.isFootprintHeatmapEnabled());
-        footprintGlobalNormCheckbox.setSelected(config.getFootprintHeatmapConfig().isGlobalVolumeNorm());
+        content.footprintHeatmapCheckbox().setSelected(config.isFootprintHeatmapEnabled());
+        content.footprintGlobalNormCheckbox().setSelected(config.getFootprintHeatmapConfig().isGlobalVolumeNorm());
         updateFootprintTickButtons();
-        boolean isSplitMode = config.getFootprintHeatmapConfig().getDisplayMode() ==
-            com.tradery.forge.ui.charts.footprint.FootprintDisplayMode.SPLIT;
-        footprintSplitButton.setSelected(isSplitMode);
-        footprintDeltaButton.setSelected(!isSplitMode);
+        boolean isSplitMode = config.getFootprintHeatmapConfig().getDisplayMode() == FootprintDisplayMode.SPLIT;
+        content.footprintSplitButton().setSelected(isSplitMode);
+        content.footprintDeltaButton().setSelected(!isSplitMode);
         var fpConfig = config.getFootprintHeatmapConfig();
-        if (fpConfig.getTickSizeMode() == com.tradery.forge.ui.charts.footprint.FootprintHeatmapConfig.TickSizeMode.FIXED) {
+        if (fpConfig.getTickSizeMode() == FootprintHeatmapConfig.TickSizeMode.FIXED) {
             double fixedTick = fpConfig.getFixedTickSize();
+            double[] gridOptions = content.currentGridOptions();
             int nearestIdx = 0;
-            double minDiff = Math.abs(currentGridOptions[0] - fixedTick);
+            double minDiff = Math.abs(gridOptions[0] - fixedTick);
             for (int i = 1; i < 4; i++) {
-                double diff = Math.abs(currentGridOptions[i] - fixedTick);
+                double diff = Math.abs(gridOptions[i] - fixedTick);
                 if (diff < minDiff) { minDiff = diff; nearestIdx = i; }
             }
-            footprintGridButtons[nearestIdx].setSelected(true);
+            content.footprintGridButtons()[nearestIdx].setSelected(true);
         } else {
-            // AUTO and PER_CANDLE both map to the Auto(N) buttons
             int buckets = fpConfig.getTargetBuckets();
-            if (buckets <= 15) footprintAuto10Button.setSelected(true);
-            else if (buckets <= 30) footprintAuto20Button.setSelected(true);
-            else footprintAuto40Button.setSelected(true);
+            if (buckets <= 15) content.footprintAuto10Button().setSelected(true);
+            else if (buckets <= 30) content.footprintAuto20Button().setSelected(true);
+            else content.footprintAuto40Button().setSelected(true);
         }
-        updateFootprintControlVisibility();
+        content.updateFootprintControlVisibility();
 
         // Oscillators
-        rsi.setSelected(config.isRsiEnabled());
-        rsi.setPeriod(config.getRsiPeriod());
-        macd.setSelected(config.isMacdEnabled());
-        atr.setSelected(config.isAtrEnabled());
-        atr.setPeriod(config.getAtrPeriod());
-        stochastic.setSelected(config.isStochasticEnabled());
-        rangePosition.setSelected(config.isRangePositionEnabled());
-        rangePosition.setPeriod(config.getRangePositionPeriod());
-        adx.setSelected(config.isAdxEnabled());
-        adx.setPeriod(config.getAdxPeriod());
+        content.rsi().setSelected(config.isRsiEnabled());
+        content.rsi().setPeriod(config.getRsiPeriod());
+        content.macd().setSelected(config.isMacdEnabled());
+        content.atr().setSelected(config.isAtrEnabled());
+        content.atr().setPeriod(config.getAtrPeriod());
+        content.stochastic().setSelected(config.isStochasticEnabled());
+        content.rangePosition().setSelected(config.isRangePositionEnabled());
+        content.rangePosition().setPeriod(config.getRangePositionPeriod());
+        content.adx().setSelected(config.isAdxEnabled());
+        content.adx().setPeriod(config.getAdxPeriod());
 
         // Orderflow
-        delta.setSelected(config.isDeltaEnabled());
-        cvd.setSelected(config.isCvdEnabled());
-        volumeRatio.setSelected(config.isVolumeRatioEnabled());
-        whale.setSelected(config.isWhaleEnabled());
-        whale.setThreshold((int) config.getWhaleThreshold());
-        retail.setSelected(config.isRetailEnabled());
-        retail.setThreshold((int) config.getRetailThreshold());
-        tradeCount.setSelected(config.isTradeCountEnabled());
+        content.delta().setSelected(config.isDeltaEnabled());
+        content.cvd().setSelected(config.isCvdEnabled());
+        content.volumeRatio().setSelected(config.isVolumeRatioEnabled());
+        content.whale().setSelected(config.isWhaleEnabled());
+        content.whale().setThreshold((int) config.getWhaleThreshold());
+        content.retail().setSelected(config.isRetailEnabled());
+        content.retail().setThreshold((int) config.getRetailThreshold());
+        content.tradeCount().setSelected(config.isTradeCountEnabled());
 
-        // Funding / OI / Premium / Holding Costs
-        funding.setSelected(config.isFundingEnabled());
-        oi.setSelected(config.isOiEnabled());
-        premium.setSelected(config.isPremiumEnabled());
-        holdingCostCumulative.setSelected(config.isHoldingCostCumulativeEnabled());
-        holdingCostEvents.setSelected(config.isHoldingCostEventsEnabled());
-        fearGreed.setSelected(config.isFearGreedEnabled());
-        spectrum.setSelected(config.isSpectrumEnabled());
-        spectrumColorMode.setSelectedItem(config.getSpectrumColorMode());
-        spectrumBucketMode.setSelectedItem(config.getSpectrumBucketMode());
+        // Funding / OI / Premium / Holding Costs / Sentiment / Spectrum
+        content.funding().setSelected(config.isFundingEnabled());
+        content.oi().setSelected(config.isOiEnabled());
+        content.premium().setSelected(config.isPremiumEnabled());
+        content.holdingCostCumulative().setSelected(config.isHoldingCostCumulativeEnabled());
+        content.holdingCostEvents().setSelected(config.isHoldingCostEventsEnabled());
+        content.fearGreed().setSelected(config.isFearGreedEnabled());
+        content.spectrum().setSelected(config.isSpectrumEnabled());
+        content.spectrumColorModeCombo().setSelectedItem(config.getSpectrumColorMode());
+        content.spectrumBucketModeCombo().setSelectedItem(config.getSpectrumBucketMode());
 
         // Core charts
-        volumeChart.setSelected(config.isVolumeChartEnabled());
-        equityChart.setSelected(config.isEquityChartEnabled());
-        comparisonChart.setSelected(config.isComparisonChartEnabled());
-        capitalUsageChart.setSelected(config.isCapitalUsageChartEnabled());
-        tradePLChart.setSelected(config.isTradePLChartEnabled());
+        content.volumeChart().setSelected(config.isVolumeChartEnabled());
+        content.equityChart().setSelected(config.isEquityChartEnabled());
+        content.comparisonChart().setSelected(config.isComparisonChartEnabled());
+        content.capitalUsageChart().setSelected(config.isCapitalUsageChartEnabled());
+        content.tradePLChart().setSelected(config.isTradePLChartEnabled());
+    }
+
+    private void updateFootprintTickButtons() {
+        List<com.tradery.core.model.Candle> candles = chartPanel.getCurrentCandles();
+        List<double[]> highLows = new ArrayList<>();
+        if (candles != null) {
+            for (var c : candles) {
+                highLows.add(new double[]{c.high(), c.low()});
+            }
+        }
+        content.updateFootprintTickButtons(highLows);
     }
 
     // ===== Apply changes to ChartPanel + Config =====
@@ -588,118 +269,118 @@ public class IndicatorSelectorPopup extends JDialog {
     private void applyChanges() {
         ChartConfig config = ChartConfig.getInstance();
 
-        // SMA/EMA - update config from panel state
-        List<Integer> smaPeriods = smaPanel.getSelectedPeriods();
-        List<Integer> emaPeriods = emaPanel.getSelectedPeriods();
+        // SMA/EMA
+        List<Integer> smaPeriods = content.smaPanel().getSelectedPeriods();
+        List<Integer> emaPeriods = content.emaPanel().getSelectedPeriods();
         config.setSmaPeriods(smaPeriods);
         config.setEmaPeriods(emaPeriods);
-        emaPanel.setColorOffset(smaPanel.getAllPeriods().size());
+        content.emaPanel().setColorOffset(content.smaPanel().getAllPeriods().size());
 
         // Bollinger
-        if (bb.isSelected()) chartPanel.setBollingerOverlay(bb.getPeriod(), bb.getMultiplier(), null);
+        if (content.bb().isSelected()) chartPanel.setBollingerOverlay(content.bb().getPeriod(), content.bb().getMultiplier(), null);
         else chartPanel.clearBollingerOverlay();
-        config.setBollingerEnabled(bb.isSelected());
-        config.setBollingerPeriod(bb.getPeriod());
-        config.setBollingerStdDev(bb.getMultiplier());
+        config.setBollingerEnabled(content.bb().isSelected());
+        config.setBollingerPeriod(content.bb().getPeriod());
+        config.setBollingerStdDev(content.bb().getMultiplier());
 
         // High/Low
-        if (hl.isSelected()) chartPanel.setHighLowOverlay(hl.getPeriod(), null);
+        if (content.hl().isSelected()) chartPanel.setHighLowOverlay(content.hl().getPeriod(), null);
         else chartPanel.clearHighLowOverlay();
-        config.setHighLowEnabled(hl.isSelected());
-        config.setHighLowPeriod(hl.getPeriod());
+        config.setHighLowEnabled(content.hl().isSelected());
+        config.setHighLowPeriod(content.hl().getPeriod());
 
         // Mayer
-        chartPanel.setMayerMultipleEnabled(mayer.isSelected(), mayer.getPeriod());
-        config.setMayerEnabled(mayer.isSelected());
-        config.setMayerPeriod(mayer.getPeriod());
+        chartPanel.setMayerMultipleEnabled(content.mayer().isSelected(), content.mayer().getPeriod());
+        config.setMayerEnabled(content.mayer().isSelected());
+        config.setMayerPeriod(content.mayer().getPeriod());
 
         // Daily POC
-        if (dailyPoc.isSelected()) chartPanel.setDailyPocOverlay(null);
+        if (content.dailyPoc().isSelected()) chartPanel.setDailyPocOverlay(null);
         else chartPanel.clearDailyPocOverlay();
-        config.setDailyPocEnabled(dailyPoc.isSelected());
+        config.setDailyPocEnabled(content.dailyPoc().isSelected());
 
         // Floating POC
-        if (floatingPoc.isSelected()) chartPanel.setFloatingPocOverlay(null, floatingPoc.getBars());
+        if (content.floatingPoc().isSelected()) chartPanel.setFloatingPocOverlay(null, content.floatingPoc().getBars());
         else chartPanel.clearFloatingPocOverlay();
-        config.setFloatingPocEnabled(floatingPoc.isSelected());
-        config.setFloatingPocPeriod(floatingPoc.getBars());
+        config.setFloatingPocEnabled(content.floatingPoc().isSelected());
+        config.setFloatingPocPeriod(content.floatingPoc().getBars());
 
         // VWAP
-        if (vwap.isSelected()) chartPanel.setVwapOverlay(null);
+        if (content.vwap().isSelected()) chartPanel.setVwapOverlay(null);
         else chartPanel.clearVwapOverlay();
-        config.setVwapEnabled(vwap.isSelected());
+        config.setVwapEnabled(content.vwap().isSelected());
 
         // Pivot Points
-        if (pivotPoints.isSelected()) chartPanel.setPivotPointsOverlay(pivotPoints.isShowR3S3());
+        if (content.pivotPoints().isSelected()) chartPanel.setPivotPointsOverlay(content.pivotPoints().isShowR3S3());
         else chartPanel.clearPivotPointsOverlay();
-        config.setPivotPointsEnabled(pivotPoints.isSelected());
-        config.setPivotPointsShowR3S3(pivotPoints.isShowR3S3());
+        config.setPivotPointsEnabled(content.pivotPoints().isSelected());
+        config.setPivotPointsShowR3S3(content.pivotPoints().isShowR3S3());
 
         // ATR Bands
-        if (atrBands.isSelected()) chartPanel.setAtrBandsOverlay(atrBands.getPeriod(), atrBands.getMultiplier());
+        if (content.atrBands().isSelected()) chartPanel.setAtrBandsOverlay(content.atrBands().getPeriod(), content.atrBands().getMultiplier());
         else chartPanel.clearAtrBandsOverlay();
-        config.setAtrBandsEnabled(atrBands.isSelected());
-        config.setAtrBandsPeriod(atrBands.getPeriod());
-        config.setAtrBandsMultiplier(atrBands.getMultiplier());
+        config.setAtrBandsEnabled(content.atrBands().isSelected());
+        config.setAtrBandsPeriod(content.atrBands().getPeriod());
+        config.setAtrBandsMultiplier(content.atrBands().getMultiplier());
 
         // Supertrend
-        if (supertrend.isSelected()) chartPanel.setSupertrendOverlay(supertrend.getPeriod(), supertrend.getMultiplier());
+        if (content.supertrend().isSelected()) chartPanel.setSupertrendOverlay(content.supertrend().getPeriod(), content.supertrend().getMultiplier());
         else chartPanel.clearSupertrendOverlay();
-        config.setSupertrendEnabled(supertrend.isSelected());
-        config.setSupertrendPeriod(supertrend.getPeriod());
-        config.setSupertrendMultiplier(supertrend.getMultiplier());
+        config.setSupertrendEnabled(content.supertrend().isSelected());
+        config.setSupertrendPeriod(content.supertrend().getPeriod());
+        config.setSupertrendMultiplier(content.supertrend().getMultiplier());
 
         // Keltner
-        if (keltner.isSelected()) chartPanel.setKeltnerOverlay(keltner.getEmaPeriod(), keltner.getAtrPeriod(), keltner.getMultiplier());
+        if (content.keltner().isSelected()) chartPanel.setKeltnerOverlay(content.keltner().getEmaPeriod(), content.keltner().getAtrPeriod(), content.keltner().getMultiplier());
         else chartPanel.clearKeltnerOverlay();
-        config.setKeltnerEnabled(keltner.isSelected());
-        config.setKeltnerEmaPeriod(keltner.getEmaPeriod());
-        config.setKeltnerAtrPeriod(keltner.getAtrPeriod());
-        config.setKeltnerMultiplier(keltner.getMultiplier());
+        config.setKeltnerEnabled(content.keltner().isSelected());
+        config.setKeltnerEmaPeriod(content.keltner().getEmaPeriod());
+        config.setKeltnerAtrPeriod(content.keltner().getAtrPeriod());
+        config.setKeltnerMultiplier(content.keltner().getMultiplier());
 
         // Donchian
-        if (donchian.isSelected()) chartPanel.setDonchianOverlay(donchian.getPeriod(), donchian.isShowMiddle());
+        if (content.donchian().isSelected()) chartPanel.setDonchianOverlay(content.donchian().getPeriod(), content.donchian().isShowMiddle());
         else chartPanel.clearDonchianOverlay();
-        config.setDonchianEnabled(donchian.isSelected());
-        config.setDonchianPeriod(donchian.getPeriod());
-        config.setDonchianShowMiddle(donchian.isShowMiddle());
+        config.setDonchianEnabled(content.donchian().isSelected());
+        config.setDonchianPeriod(content.donchian().getPeriod());
+        config.setDonchianShowMiddle(content.donchian().isShowMiddle());
 
         // Rays
-        int rayLookback = rays.getLookback();
-        int raySkip = rays.getSkip();
-        boolean rayHistoric = rays.isHistoric();
-        if (rays.isSelected()) {
+        int rayLookback = content.rays().getLookback();
+        int raySkip = content.rays().getSkip();
+        boolean rayHistoric = content.rays().isHistoric();
+        if (content.rays().isSelected()) {
             chartPanel.setRayOverlay(true, rayLookback, raySkip);
             chartPanel.setRayShowHistoric(rayHistoric);
         } else {
             chartPanel.clearRayOverlay();
         }
-        config.setRayOverlayEnabled(rays.isSelected());
+        config.setRayOverlayEnabled(content.rays().isSelected());
         config.setRayLookback(rayLookback);
         config.setRaySkip(raySkip);
         config.setRayHistoricEnabled(rayHistoric);
 
         // Ichimoku
-        if (ichimoku.isSelected()) {
+        if (content.ichimoku().isSelected()) {
             chartPanel.setIchimokuOverlay(
                 config.getIchimokuConversionPeriod(), config.getIchimokuBasePeriod(),
                 config.getIchimokuSpanBPeriod(), config.getIchimokuDisplacement());
         } else {
             chartPanel.clearIchimokuOverlay();
         }
-        config.setIchimokuEnabled(ichimoku.isSelected());
+        config.setIchimokuEnabled(content.ichimoku().isSelected());
 
         // Daily Volume Profile
-        int vpBins = dailyVolumeProfile.getBins();
-        if (dailyVolumeProfile.isSelected()) {
+        int vpBins = content.dailyVolumeProfile().getBins();
+        if (content.dailyVolumeProfile().isSelected()) {
             chartPanel.setDailyVolumeProfileOverlay(
                 chartPanel.getCurrentCandles(), vpBins, 70.0, config.getDailyVolumeProfileWidth());
         } else {
             chartPanel.clearDailyVolumeProfileOverlay();
         }
-        config.setDailyVolumeProfileEnabled(dailyVolumeProfile.isSelected());
+        config.setDailyVolumeProfileEnabled(content.dailyVolumeProfile().isSelected());
         config.setDailyVolumeProfileBins(vpBins);
-        String colorModeEnum = switch (dailyVolumeProfile.getColorMode()) {
+        String colorModeEnum = switch (content.dailyVolumeProfile().getColorMode()) {
             case "Delta" -> "DELTA";
             case "Delta+Volume" -> "DELTA_INTENSITY";
             default -> "VOLUME_INTENSITY";
@@ -707,82 +388,82 @@ public class IndicatorSelectorPopup extends JDialog {
         config.setDailyVolumeProfileColorMode(colorModeEnum);
 
         // Footprint Heatmap
-        var fpMode = footprintSplitButton.isSelected()
-            ? com.tradery.forge.ui.charts.footprint.FootprintDisplayMode.SPLIT
-            : com.tradery.forge.ui.charts.footprint.FootprintDisplayMode.COMBINED;
+        var fpMode = content.isFootprintSplit() ? FootprintDisplayMode.SPLIT : FootprintDisplayMode.COMBINED;
         var fpConfig = config.getFootprintHeatmapConfig();
-        if (footprintAuto10Button.isSelected()) {
-            fpConfig.setTickSizeMode(com.tradery.forge.ui.charts.footprint.FootprintHeatmapConfig.TickSizeMode.PER_CANDLE);
+        if (content.footprintAuto10Button().isSelected()) {
+            fpConfig.setTickSizeMode(FootprintHeatmapConfig.TickSizeMode.PER_CANDLE);
             fpConfig.setTargetBuckets(10);
-        } else if (footprintAuto20Button.isSelected()) {
-            fpConfig.setTickSizeMode(com.tradery.forge.ui.charts.footprint.FootprintHeatmapConfig.TickSizeMode.PER_CANDLE);
+        } else if (content.footprintAuto20Button().isSelected()) {
+            fpConfig.setTickSizeMode(FootprintHeatmapConfig.TickSizeMode.PER_CANDLE);
             fpConfig.setTargetBuckets(20);
-        } else if (footprintAuto40Button.isSelected()) {
-            fpConfig.setTickSizeMode(com.tradery.forge.ui.charts.footprint.FootprintHeatmapConfig.TickSizeMode.PER_CANDLE);
+        } else if (content.footprintAuto40Button().isSelected()) {
+            fpConfig.setTickSizeMode(FootprintHeatmapConfig.TickSizeMode.PER_CANDLE);
             fpConfig.setTargetBuckets(40);
         } else {
+            double[] gridOptions = content.currentGridOptions();
+            JToggleButton[] gridButtons = content.footprintGridButtons();
             for (int i = 0; i < 4; i++) {
-                if (footprintGridButtons[i].isSelected()) {
-                    fpConfig.setTickSizeMode(com.tradery.forge.ui.charts.footprint.FootprintHeatmapConfig.TickSizeMode.FIXED);
-                    fpConfig.setFixedTickSize(currentGridOptions[i]);
+                if (gridButtons[i].isSelected()) {
+                    fpConfig.setTickSizeMode(FootprintHeatmapConfig.TickSizeMode.FIXED);
+                    fpConfig.setFixedTickSize(gridOptions[i]);
                     break;
                 }
             }
         }
         fpConfig.setDisplayMode(fpMode);
-        fpConfig.setGlobalVolumeNorm(footprintGlobalNormCheckbox.isSelected());
-        config.setFootprintHeatmapEnabled(footprintHeatmapCheckbox.isSelected());
-        chartPanel.setFootprintHeatmapEnabled(footprintHeatmapCheckbox.isSelected());
+        fpConfig.setGlobalVolumeNorm(content.footprintGlobalNormCheckbox().isSelected());
+        config.setFootprintHeatmapEnabled(content.footprintHeatmapCheckbox().isSelected());
+        chartPanel.setFootprintHeatmapEnabled(content.footprintHeatmapCheckbox().isSelected());
         chartPanel.refreshFootprintHeatmap();
 
-        // Update config with all indicator settings
-        config.setRsiEnabled(rsi.isSelected());
-        config.setRsiPeriod(rsi.getPeriod());
-        config.setMacdEnabled(macd.isSelected());
-        config.setMacdFast(macd.getFast());
-        config.setMacdSlow(macd.getSlow());
-        config.setMacdSignal(macd.getSignal());
-        config.setAtrEnabled(atr.isSelected());
-        config.setAtrPeriod(atr.getPeriod());
-        config.setStochasticEnabled(stochastic.isSelected());
-        config.setStochasticKPeriod(stochastic.getKPeriod());
-        config.setStochasticDPeriod(stochastic.getDPeriod());
-        config.setRangePositionEnabled(rangePosition.isSelected());
-        config.setRangePositionPeriod(rangePosition.getPeriod());
-        config.setAdxEnabled(adx.isSelected());
-        config.setAdxPeriod(adx.getPeriod());
-        config.setDeltaEnabled(delta.isSelected());
-        config.setCvdEnabled(cvd.isSelected());
-        config.setVolumeRatioEnabled(volumeRatio.isSelected());
-        config.setWhaleEnabled(whale.isSelected());
-        config.setWhaleThreshold(whale.getThreshold());
-        config.setRetailEnabled(retail.isSelected());
-        config.setRetailThreshold(retail.getThreshold());
-        config.setTradeCountEnabled(tradeCount.isSelected());
-        config.setFundingEnabled(funding.isSelected());
-        config.setOiEnabled(oi.isSelected());
-        config.setPremiumEnabled(premium.isSelected());
-        config.setHoldingCostCumulativeEnabled(holdingCostCumulative.isSelected());
-        config.setHoldingCostEventsEnabled(holdingCostEvents.isSelected());
-        config.setFearGreedEnabled(fearGreed.isSelected());
-        config.setSpectrumEnabled(spectrum.isSelected());
-        config.setSpectrumColorMode((com.tradery.forge.ui.charts.SpectrumColorMode) spectrumColorMode.getSelectedItem());
-        config.setSpectrumBucketMode((com.tradery.forge.ui.charts.SpectrumBucketMode) spectrumBucketMode.getSelectedItem());
+        // Oscillators + Orderflow config
+        config.setRsiEnabled(content.rsi().isSelected());
+        config.setRsiPeriod(content.rsi().getPeriod());
+        config.setMacdEnabled(content.macd().isSelected());
+        config.setMacdFast(content.macd().getFast());
+        config.setMacdSlow(content.macd().getSlow());
+        config.setMacdSignal(content.macd().getSignal());
+        config.setAtrEnabled(content.atr().isSelected());
+        config.setAtrPeriod(content.atr().getPeriod());
+        config.setStochasticEnabled(content.stochastic().isSelected());
+        config.setStochasticKPeriod(content.stochastic().getKPeriod());
+        config.setStochasticDPeriod(content.stochastic().getDPeriod());
+        config.setRangePositionEnabled(content.rangePosition().isSelected());
+        config.setRangePositionPeriod(content.rangePosition().getPeriod());
+        config.setAdxEnabled(content.adx().isSelected());
+        config.setAdxPeriod(content.adx().getPeriod());
+        config.setDeltaEnabled(content.delta().isSelected());
+        config.setCvdEnabled(content.cvd().isSelected());
+        config.setVolumeRatioEnabled(content.volumeRatio().isSelected());
+        config.setWhaleEnabled(content.whale().isSelected());
+        config.setWhaleThreshold(content.whale().getThreshold());
+        config.setRetailEnabled(content.retail().isSelected());
+        config.setRetailThreshold(content.retail().getThreshold());
+        config.setTradeCountEnabled(content.tradeCount().isSelected());
+        config.setFundingEnabled(content.funding().isSelected());
+        config.setOiEnabled(content.oi().isSelected());
+        config.setPremiumEnabled(content.premium().isSelected());
+        config.setHoldingCostCumulativeEnabled(content.holdingCostCumulative().isSelected());
+        config.setHoldingCostEventsEnabled(content.holdingCostEvents().isSelected());
+        config.setFearGreedEnabled(content.fearGreed().isSelected());
+        config.setSpectrumEnabled(content.spectrum().isSelected());
+        config.setSpectrumColorMode((SpectrumColorMode) content.spectrumColorModeCombo().getSelectedItem());
+        config.setSpectrumBucketMode((SpectrumBucketMode) content.spectrumBucketModeCombo().getSelectedItem());
 
         // Apply all indicator settings to the chart manager in one call
-        config.applyTo(chartPanel.getIndicatorManager());
+        chartPanel.getIndicatorManager().applyConfig(config);
 
         // Core charts
-        chartPanel.setVolumeChartEnabled(volumeChart.isSelected());
-        chartPanel.setEquityChartEnabled(equityChart.isSelected());
-        chartPanel.setComparisonChartEnabled(comparisonChart.isSelected());
-        chartPanel.setCapitalUsageChartEnabled(capitalUsageChart.isSelected());
-        chartPanel.setTradePLChartEnabled(tradePLChart.isSelected());
-        config.setVolumeChartEnabled(volumeChart.isSelected());
-        config.setEquityChartEnabled(equityChart.isSelected());
-        config.setComparisonChartEnabled(comparisonChart.isSelected());
-        config.setCapitalUsageChartEnabled(capitalUsageChart.isSelected());
-        config.setTradePLChartEnabled(tradePLChart.isSelected());
+        chartPanel.setVolumeChartEnabled(content.volumeChart().isSelected());
+        chartPanel.setEquityChartEnabled(content.equityChart().isSelected());
+        chartPanel.setComparisonChartEnabled(content.comparisonChart().isSelected());
+        chartPanel.setCapitalUsageChartEnabled(content.capitalUsageChart().isSelected());
+        chartPanel.setTradePLChartEnabled(content.tradePLChart().isSelected());
+        config.setVolumeChartEnabled(content.volumeChart().isSelected());
+        config.setEquityChartEnabled(content.equityChart().isSelected());
+        config.setComparisonChartEnabled(content.comparisonChart().isSelected());
+        config.setCapitalUsageChartEnabled(content.capitalUsageChart().isSelected());
+        config.setTradePLChartEnabled(content.tradePLChart().isSelected());
 
         if (onBacktestNeeded != null) onBacktestNeeded.run();
     }

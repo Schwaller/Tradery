@@ -69,7 +69,10 @@ public class DeskSettingsDialog extends SettingsDialog {
                 JOptionPane.QUESTION_MESSAGE);
             if (option == JOptionPane.OK_OPTION && getDeskFrame() != null) {
                 PriceChartPanel chart = getDeskFrame().getPriceChartPanel();
-                chart.clearOverlays();
+                chart.getOverlayManager().clearAll();
+                com.tradery.ui.controls.ChartConfig config = com.tradery.ui.controls.ChartConfig.getInstance();
+                config.resetToDefaults();
+                chart.applyIndicatorConfig(config);
                 summaryLabel.setText(getChartSummary());
             }
         });
@@ -80,21 +83,36 @@ public class DeskSettingsDialog extends SettingsDialog {
 
     private String getChartSummary() {
         if (getDeskFrame() == null) return "No chart available";
-        PriceChartPanel chart = getDeskFrame().getPriceChartPanel();
+        com.tradery.ui.controls.ChartConfig config = com.tradery.ui.controls.ChartConfig.getInstance();
 
         int indicators = 0;
-        if (chart.isRsiEnabled()) indicators++;
-        if (chart.isMacdEnabled()) indicators++;
-        if (chart.isAtrEnabled()) indicators++;
-        if (chart.isStochasticEnabled()) indicators++;
-        if (chart.isAdxEnabled()) indicators++;
-        if (chart.isRangePositionEnabled()) indicators++;
-        if (chart.isDeltaEnabled()) indicators++;
-        if (chart.isTradeCountEnabled()) indicators++;
-        if (chart.isVolumeRatioEnabled()) indicators++;
+        if (config.isRsiEnabled()) indicators++;
+        if (config.isMacdEnabled()) indicators++;
+        if (config.isAtrEnabled()) indicators++;
+        if (config.isStochasticEnabled()) indicators++;
+        if (config.isAdxEnabled()) indicators++;
+        if (config.isRangePositionEnabled()) indicators++;
+        if (config.isDeltaEnabled()) indicators++;
+        if (config.isTradeCountEnabled()) indicators++;
+        if (config.isVolumeRatioEnabled()) indicators++;
+        if (config.isCvdEnabled()) indicators++;
+        if (config.isWhaleEnabled()) indicators++;
+        if (config.isRetailEnabled()) indicators++;
+        if (config.isFundingEnabled()) indicators++;
+        if (config.isOiEnabled()) indicators++;
+        if (config.isPremiumEnabled()) indicators++;
+        if (config.isFearGreedEnabled()) indicators++;
+        if (config.isSpectrumEnabled()) indicators++;
+        if (config.isHoldingCostCumulativeEnabled()) indicators++;
+        if (config.isHoldingCostEventsEnabled()) indicators++;
 
-        return String.format("Volume: %s, %d indicator charts active",
-            chart.isVolumeEnabled() ? "on" : "off", indicators);
+        int overlays = 0;
+        if (config.isDailyVolumeProfileEnabled()) overlays++;
+        if (config.isFootprintHeatmapEnabled()) overlays++;
+
+        String overlayText = overlays > 0 ? ", " + overlays + " advanced overlays" : "";
+        return String.format("Volume: %s, %d indicator charts%s",
+            config.isVolumeChartEnabled() ? "on" : "off", indicators, overlayText);
     }
 
     private JPanel createDataStorageContent() {

@@ -12,6 +12,9 @@ dependencies {
     // Shared UI utilities (ThemeColors)
     api project(':tradery-ui-common')
 
+    // Data infrastructure (DataPageView, DataPageListener, PageState)
+    api project(':tradery-data')
+
     // JFreeChart for chart rendering
     api "org.jfree:jfreechart:${rootProject.ext.jfreeChartVersion}"
 

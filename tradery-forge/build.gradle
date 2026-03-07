@@ -22,6 +22,9 @@ dependencies {
     // Help dialog system (markdown-based help with TOC and search)
     implementation project(':tradery-help')
 
+    // Trading guide (educational content with SVG diagrams)
+    implementation project(':tradery-guide')
+
     // Core module for models, indicators, DSL
     implementation project(':tradery-core')
 
@@ -130,7 +133,7 @@ jlink {
     // Force merge non-modular/automatic module dependencies into the merged module
     // jlink cannot use automatic modules, so we merge them
     // Note: tradery-agent is merged because its JediTerm/pty4j deps need to be merged
-    forceMerge('tradery-agent', 'jediterm-merged', 'pty4j', 'purejavacomm', 'jna', 'flexmark', 'directory-watcher', 'log4j', 'okhttp', 'okio', 'jfreechart', 'pdfbox', 'fontbox', 'openhtmltopdf', 'jsoup', 'icu4j', 'graphics2d', 'xmpbox', 'autolink', 'commons-logging')
+    forceMerge('tradery-agent', 'jediterm-merged', 'pty4j', 'purejavacomm', 'jna', 'flexmark', 'directory-watcher', 'log4j', 'okhttp', 'okio', 'jfreechart', 'pdfbox', 'fontbox', 'openhtmltopdf', 'jsoup', 'icu4j', 'graphics2d', 'xmpbox', 'autolink', 'commons-logging', 'jsvg')
 
     jpackage {
         imageName = 'Strategy Forge'

@@ -18,24 +18,13 @@ public record Footprint(
     // Buckets sorted by price level (low to high)
     List<FootprintBucket> buckets,
 
-    // Per-exchange delta summary
-    Map<Exchange, Double> deltaByExchange,
-
     // Aggregated metrics
     double poc,                     // Point of Control price
     double vah,                     // Value Area High
     double val,                     // Value Area Low
     double totalDelta,              // Sum of delta across all buckets
     int stackedBuyImbalances,       // Consecutive buckets with buy imbalance
-    int stackedSellImbalances,      // Consecutive buckets with sell imbalance
-
-    // Exchange divergence metrics
-    double exchangeDivergenceScore, // 0-1 score of how much exchanges disagree
-    Exchange dominantExchange,      // Exchange with highest absolute delta
-
-    // Per-market-type breakdown
-    Map<DataMarketType, Double> deltaByMarketType,
-    Map<DataMarketType, Double> volumeByMarketType
+    int stackedSellImbalances       // Consecutive buckets with sell imbalance
 ) {
     /**
      * Get bucket at or nearest to a price level.
@@ -137,27 +126,6 @@ public record Footprint(
     }
 
     /**
-     * Get delta for a specific exchange.
-     */
-    public double getDeltaForExchange(Exchange exchange) {
-        return deltaByExchange.getOrDefault(exchange, 0.0);
-    }
-
-    /**
-     * Get delta for a specific market type.
-     */
-    public double getDeltaForMarketType(DataMarketType marketType) {
-        return deltaByMarketType.getOrDefault(marketType, 0.0);
-    }
-
-    /**
-     * Get volume for a specific market type.
-     */
-    public double getVolumeForMarketType(DataMarketType marketType) {
-        return volumeByMarketType.getOrDefault(marketType, 0.0);
-    }
-
-    /**
      * Builder for constructing Footprint instances.
      */
     public static class Builder {
@@ -167,9 +135,6 @@ public record Footprint(
         private double low;
         private double tickSize;
         private final List<FootprintBucket> buckets = new ArrayList<>();
-        private final Map<Exchange, Double> deltaByExchange = new EnumMap<>(Exchange.class);
-        private final Map<DataMarketType, Double> deltaByMarketType = new EnumMap<>(DataMarketType.class);
-        private final Map<DataMarketType, Double> volumeByMarketType = new EnumMap<>(DataMarketType.class);
 
         public Builder timestamp(long ts) { this.timestamp = ts; return this; }
         public Builder barIndex(int idx) { this.barIndex = idx; return this; }
@@ -179,25 +144,6 @@ public record Footprint(
 
         public Builder addBucket(FootprintBucket bucket) {
             buckets.add(bucket);
-            return this;
-        }
-
-        public Builder addDelta(Exchange exchange, double delta) {
-            deltaByExchange.merge(exchange, delta, Double::sum);
-            return this;
-        }
-
-        public Builder addMarketTypeDelta(DataMarketType marketType, double delta) {
-            if (marketType != null) {
-                deltaByMarketType.merge(marketType, delta, Double::sum);
-            }
-            return this;
-        }
-
-        public Builder addMarketTypeVolume(DataMarketType marketType, double volume) {
-            if (marketType != null) {
-                volumeByMarketType.merge(marketType, volume, Double::sum);
-            }
             return this;
         }
 
@@ -253,24 +199,11 @@ public record Footprint(
             int stackedBuy = countMaxConsecutiveImbalances(buckets, true);
             int stackedSell = countMaxConsecutiveImbalances(buckets, false);
 
-            // Calculate exchange divergence score
-            double divergenceScore = calculateDivergenceScore(deltaByExchange);
-
-            // Find dominant exchange
-            Exchange dominant = deltaByExchange.entrySet().stream()
-                .max(Comparator.comparingDouble(e -> Math.abs(e.getValue())))
-                .map(Map.Entry::getKey)
-                .orElse(Exchange.BINANCE);
-
             return new Footprint(
                 timestamp, barIndex, high, low, tickSize,
                 Collections.unmodifiableList(new ArrayList<>(buckets)),
-                Collections.unmodifiableMap(new EnumMap<>(deltaByExchange)),
                 poc, vah, val, totalDelta,
-                stackedBuy, stackedSell,
-                divergenceScore, dominant,
-                Collections.unmodifiableMap(new EnumMap<>(deltaByMarketType)),
-                Collections.unmodifiableMap(new EnumMap<>(volumeByMarketType))
+                stackedBuy, stackedSell
             );
         }
 
@@ -285,21 +218,6 @@ public record Footprint(
                 }
             }
             return max;
-        }
-
-        private double calculateDivergenceScore(Map<Exchange, Double> deltas) {
-            if (deltas.size() <= 1) return 0;
-
-            // Count exchanges with positive vs negative delta
-            long positive = deltas.values().stream().filter(d -> d > 0).count();
-            long negative = deltas.values().stream().filter(d -> d < 0).count();
-
-            // Score is 0 when all agree, 1 when split evenly
-            double total = positive + negative;
-            if (total == 0) return 0;
-
-            double minority = Math.min(positive, negative);
-            return minority / (total / 2);
         }
     }
 }

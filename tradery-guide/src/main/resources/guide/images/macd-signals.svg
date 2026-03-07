@@ -1,0 +1,87 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 560 260">
+  <rect width="560" height="260" fill="#000000" fill-opacity="0.3" rx="8"/>
+  <text x="280" y="28" fill="#cdd6f4" font-family="sans-serif" font-size="16" font-weight="bold" text-anchor="middle">MACD Components</text>
+
+  <g transform="translate(50, 45)">
+    <!-- Zero line -->
+    <line x1="0" y1="100" x2="470" y2="100" stroke="#585b70" stroke-width="1" stroke-dasharray="2,4"/>
+    <text x="-8" y="104" fill="#585b70" font-family="sans-serif" font-size="10" text-anchor="end">0</text>
+
+    <!-- Histogram bars -->
+    <g opacity="0.6">
+      <rect x="5" y="100" width="8" height="15" fill="#f38ba8"/>
+      <rect x="18" y="100" width="8" height="20" fill="#f38ba8"/>
+      <rect x="31" y="100" width="8" height="25" fill="#f38ba8"/>
+      <rect x="44" y="100" width="8" height="20" fill="#f38ba8"/>
+      <rect x="57" y="100" width="8" height="12" fill="#f38ba8"/>
+      <rect x="70" y="100" width="8" height="5" fill="#f38ba8"/>
+      <rect x="83" y="95" width="8" height="5" fill="#a6e3a1"/>
+      <rect x="96" y="88" width="8" height="12" fill="#a6e3a1"/>
+      <rect x="109" y="80" width="8" height="20" fill="#a6e3a1"/>
+      <rect x="122" y="72" width="8" height="28" fill="#a6e3a1"/>
+      <rect x="135" y="68" width="8" height="32" fill="#a6e3a1"/>
+      <rect x="148" y="65" width="8" height="35" fill="#a6e3a1"/>
+      <rect x="161" y="70" width="8" height="30" fill="#a6e3a1"/>
+      <rect x="174" y="75" width="8" height="25" fill="#a6e3a1"/>
+      <rect x="187" y="82" width="8" height="18" fill="#a6e3a1"/>
+      <rect x="200" y="88" width="8" height="12" fill="#a6e3a1"/>
+      <rect x="213" y="93" width="8" height="7" fill="#a6e3a1"/>
+      <rect x="226" y="97" width="8" height="3" fill="#a6e3a1"/>
+      <rect x="239" y="100" width="8" height="5" fill="#f38ba8"/>
+      <rect x="252" y="100" width="8" height="10" fill="#f38ba8"/>
+      <rect x="265" y="100" width="8" height="18" fill="#f38ba8"/>
+      <rect x="278" y="100" width="8" height="25" fill="#f38ba8"/>
+      <rect x="291" y="100" width="8" height="30" fill="#f38ba8"/>
+      <rect x="304" y="100" width="8" height="28" fill="#f38ba8"/>
+      <rect x="317" y="100" width="8" height="22" fill="#f38ba8"/>
+      <rect x="330" y="100" width="8" height="15" fill="#f38ba8"/>
+      <rect x="343" y="100" width="8" height="8" fill="#f38ba8"/>
+      <rect x="356" y="97" width="8" height="3" fill="#a6e3a1"/>
+      <rect x="369" y="90" width="8" height="10" fill="#a6e3a1"/>
+      <rect x="382" y="82" width="8" height="18" fill="#a6e3a1"/>
+      <rect x="395" y="75" width="8" height="25" fill="#a6e3a1"/>
+      <rect x="408" y="70" width="8" height="30" fill="#a6e3a1"/>
+      <rect x="421" y="68" width="8" height="32" fill="#a6e3a1"/>
+      <rect x="434" y="72" width="8" height="28" fill="#a6e3a1"/>
+      <rect x="447" y="78" width="8" height="22" fill="#a6e3a1"/>
+      <rect x="460" y="85" width="8" height="15" fill="#a6e3a1"/>
+    </g>
+
+    <!-- MACD line -->
+    <polyline
+      points="9,118 22,122 35,128 48,122 61,114 74,106 87,94 100,84 113,74 126,66 139,60 152,56 165,62 178,68 191,76 204,84 217,90 230,96 243,104 256,112 269,120 282,128 295,132 308,130 321,124 334,118 347,110 360,96 373,86 386,76 399,68 412,62 425,58 438,64 451,72 464,80"
+      fill="none" stroke="#89b4fa" stroke-width="2.5" stroke-linejoin="round"/>
+
+    <!-- Signal line -->
+    <polyline
+      points="9,112 22,116 35,120 48,120 61,118 74,112 87,104 100,96 113,88 126,80 139,74 152,70 165,68 178,70 191,74 204,80 217,86 230,92 243,98 256,104 269,110 282,118 295,124 308,128 321,128 334,126 347,120 360,112 373,102 386,92 399,84 412,76 425,70 438,66 451,68 464,72"
+      fill="none" stroke="#fab387" stroke-width="2" stroke-dasharray="6,3" stroke-linejoin="round"/>
+
+    <!-- Bullish cross markers -->
+    <circle cx="87" cy="94" r="6" fill="none" stroke="#a6e3a1" stroke-width="2"/>
+    <text x="87" y="45" fill="#a6e3a1" font-family="sans-serif" font-size="10" font-weight="bold" text-anchor="middle">BUY</text>
+    <line x1="87" y1="48" x2="87" y2="86" stroke="#a6e3a1" stroke-width="1" stroke-dasharray="2,2"/>
+
+    <circle cx="360" cy="96" r="6" fill="none" stroke="#a6e3a1" stroke-width="2"/>
+    <text x="360" y="45" fill="#a6e3a1" font-family="sans-serif" font-size="10" font-weight="bold" text-anchor="middle">BUY</text>
+    <line x1="360" y1="48" x2="360" y2="88" stroke="#a6e3a1" stroke-width="1" stroke-dasharray="2,2"/>
+
+    <!-- Bearish cross marker -->
+    <circle cx="239" cy="100" r="6" fill="none" stroke="#f38ba8" stroke-width="2"/>
+    <text x="239" y="155" fill="#f38ba8" font-family="sans-serif" font-size="10" font-weight="bold" text-anchor="middle">SELL</text>
+    <line x1="239" y1="108" x2="239" y2="148" stroke="#f38ba8" stroke-width="1" stroke-dasharray="2,2"/>
+
+    <!-- Legend -->
+    <g transform="translate(0, 170)">
+      <rect x="0" y="-4" width="12" height="10" fill="#a6e3a1" opacity="0.6"/>
+      <rect x="14" y="-4" width="12" height="10" fill="#f38ba8" opacity="0.6"/>
+      <text x="32" y="5" fill="#7f849c" font-family="sans-serif" font-size="10">Histogram</text>
+
+      <line x1="130" y1="0" x2="155" y2="0" stroke="#89b4fa" stroke-width="2.5"/>
+      <text x="160" y="4" fill="#89b4fa" font-family="sans-serif" font-size="10">MACD Line</text>
+
+      <line x1="270" y1="0" x2="295" y2="0" stroke="#fab387" stroke-width="2" stroke-dasharray="6,3"/>
+      <text x="300" y="4" fill="#fab387" font-family="sans-serif" font-size="10">Signal Line</text>
+    </g>
+  </g>
+</svg>

@@ -91,8 +91,11 @@ public class MacdRow extends JPanel {
     public boolean isSelected() { return checkbox.isSelected(); }
     public void setSelected(boolean selected) { checkbox.setSelected(selected); updateParamVisibility(); }
     public int getFast() { return (int) fastSpinner.getValue(); }
+    public void setFast(int fast) { fastSpinner.setValue(fast); fastSlider.setValue(fast); }
     public int getSlow() { return (int) slowSpinner.getValue(); }
+    public void setSlow(int slow) { slowSpinner.setValue(slow); slowSlider.setValue(slow); }
     public int getSignal() { return (int) signalSpinner.getValue(); }
+    public void setSignal(int signal) { signalSpinner.setValue(signal); signalSlider.setValue(signal); }
     public JCheckBox getCheckbox() { return checkbox; }
 
     public void addChangeListener(Runnable listener) { changeListeners.add(listener); }

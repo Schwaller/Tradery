@@ -6,6 +6,7 @@ import com.tradery.forge.ApplicationContext;
 import com.tradery.forge.TraderyApp;
 import com.tradery.dataclient.DataServiceClient;
 import com.tradery.forge.io.*;
+import com.tradery.guide.TradingGuideDialog;
 
 import com.formdev.flatlaf.FlatClientProperties;
 
@@ -675,6 +676,13 @@ public class LauncherFrame extends JFrame {
      */
     public void openStrategyHelp() {
         SwingUtilities.invokeLater(() -> StrategyHelpDialog.show(this));
+    }
+
+    /**
+     * Open the Trading Guide dialog (for API access).
+     */
+    public void openTradingGuide() {
+        SwingUtilities.invokeLater(() -> TradingGuideDialog.show(this));
     }
 
     /**

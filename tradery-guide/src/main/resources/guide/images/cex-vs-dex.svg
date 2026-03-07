@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 560 280">
+  <rect width="560" height="280" fill="#000000" fill-opacity="0.3" rx="8"/>
+  <text x="280" y="28" fill="#cdd6f4" font-family="sans-serif" font-size="16" font-weight="bold" text-anchor="middle">CEX vs DEX</text>
+
+  <!-- CEX card -->
+  <g transform="translate(30, 48)">
+    <rect x="0" y="0" width="235" height="210" fill="#313244" fill-opacity="0.5" rx="6"/>
+    <text x="118" y="24" fill="#89b4fa" font-family="sans-serif" font-size="13" font-weight="bold" text-anchor="middle">Centralized (CEX)</text>
+    <text x="118" y="40" fill="#585b70" font-family="sans-serif" font-size="9" text-anchor="middle">Binance, Coinbase, Bybit</text>
+
+    <line x1="15" y1="50" x2="220" y2="50" stroke="#585b70" stroke-width="0.5"/>
+
+    <text x="20" y="70" fill="#a6e3a1" font-family="sans-serif" font-size="10">+ Deep liquidity</text>
+    <text x="20" y="88" fill="#a6e3a1" font-family="sans-serif" font-size="10">+ Fast execution</text>
+    <text x="20" y="106" fill="#a6e3a1" font-family="sans-serif" font-size="10">+ Advanced order types</text>
+    <text x="20" y="124" fill="#a6e3a1" font-family="sans-serif" font-size="10">+ Futures &amp; leverage</text>
+    <text x="20" y="142" fill="#a6e3a1" font-family="sans-serif" font-size="10">+ Account protections</text>
+
+    <line x1="15" y1="152" x2="220" y2="152" stroke="#585b70" stroke-width="0.5"/>
+
+    <text x="20" y="170" fill="#f38ba8" font-family="sans-serif" font-size="10">- Custodial (not your keys)</text>
+    <text x="20" y="188" fill="#f38ba8" font-family="sans-serif" font-size="10">- KYC required</text>
+    <text x="20" y="206" fill="#f38ba8" font-family="sans-serif" font-size="10">- Can freeze accounts</text>
+  </g>
+
+  <!-- VS divider -->
+  <g transform="translate(272, 140)">
+    <circle cx="0" cy="0" r="16" fill="#313244" stroke="#585b70" stroke-width="1"/>
+    <text x="0" y="5" fill="#cdd6f4" font-family="sans-serif" font-size="11" font-weight="bold" text-anchor="middle">vs</text>
+  </g>
+
+  <!-- DEX card -->
+  <g transform="translate(295, 48)">
+    <rect x="0" y="0" width="235" height="210" fill="#313244" fill-opacity="0.5" rx="6"/>
+    <text x="118" y="24" fill="#cba6f7" font-family="sans-serif" font-size="13" font-weight="bold" text-anchor="middle">Decentralized (DEX)</text>
+    <text x="118" y="40" fill="#585b70" font-family="sans-serif" font-size="9" text-anchor="middle">Uniswap, dYdX, Jupiter</text>
+
+    <line x1="15" y1="50" x2="220" y2="50" stroke="#585b70" stroke-width="0.5"/>
+
+    <text x="20" y="70" fill="#a6e3a1" font-family="sans-serif" font-size="10">+ Self-custody (your keys)</text>
+    <text x="20" y="88" fill="#a6e3a1" font-family="sans-serif" font-size="10">+ No KYC</text>
+    <text x="20" y="106" fill="#a6e3a1" font-family="sans-serif" font-size="10">+ Censorship resistant</text>
+    <text x="20" y="124" fill="#a6e3a1" font-family="sans-serif" font-size="10">+ Transparent on-chain</text>
+    <text x="20" y="142" fill="#a6e3a1" font-family="sans-serif" font-size="10">+ Early access to tokens</text>
+
+    <line x1="15" y1="152" x2="220" y2="152" stroke="#585b70" stroke-width="0.5"/>
+
+    <text x="20" y="170" fill="#f38ba8" font-family="sans-serif" font-size="10">- Lower liquidity</text>
+    <text x="20" y="188" fill="#f38ba8" font-family="sans-serif" font-size="10">- Slippage on large orders</text>
+    <text x="20" y="206" fill="#f38ba8" font-family="sans-serif" font-size="10">- Smart contract risk</text>
+  </g>
+</svg>

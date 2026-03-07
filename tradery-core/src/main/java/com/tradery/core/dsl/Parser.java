@@ -246,11 +246,6 @@ public class Parser {
             return footprintFunctionCall();
         }
 
-        // Cross-exchange functions (BINANCE_DELTA, EXCHANGE_DIVERGENCE, etc.)
-        if (check(TokenType.EXCHANGE_FUNC)) {
-            return exchangeFunctionCall();
-        }
-
         // Fear & Greed Index functions (FEAR_GREED, FEAR_GREED_AVG)
         if (check(TokenType.FEAR_GREED_FUNC)) {
             return fearGreedFunctionCall();
@@ -720,40 +715,6 @@ public class Parser {
         }
 
         return new AstNode.FootprintFunctionCall(func, params);
-    }
-
-    private AstNode.ExchangeFunctionCall exchangeFunctionCall() {
-        String func = current().value();
-        advance();
-
-        List<Double> params = new ArrayList<>();
-
-        // Check for optional/required parameters
-        if (check(TokenType.LPAREN)) {
-            advance();
-            params = parseNumberList();
-            expect(TokenType.RPAREN, "Expected ')' after " + func + " parameters");
-        }
-
-        // Validate parameters based on function type
-        switch (func) {
-            case "WHALE_DELTA_COMBINED" -> {
-                // Required parameter: threshold
-                if (params.isEmpty()) {
-                    throw new ParserException(func + " requires a parameter (threshold), e.g., " + func + "(100000)");
-                }
-            }
-            case "BINANCE_DELTA", "BYBIT_DELTA", "OKX_DELTA",
-                 "COMBINED_DELTA", "EXCHANGE_DELTA_SPREAD", "EXCHANGE_DIVERGENCE",
-                 "COMBINED_IMBALANCE_AT_POC", "EXCHANGES_WITH_BUY_IMBALANCE",
-                 "EXCHANGES_WITH_SELL_IMBALANCE", "DOMINANT_EXCHANGE",
-                 "SPOT_DELTA", "FUTURES_DELTA", "SPOT_VOLUME", "FUTURES_VOLUME",
-                 "SPOT_FUTURES_DIVERGENCE", "SPOT_FUTURES_DELTA_SPREAD" -> {
-                // No parameters required
-            }
-        }
-
-        return new AstNode.ExchangeFunctionCall(func, params);
     }
 
     private AstNode.FearGreedFunctionCall fearGreedFunctionCall() {

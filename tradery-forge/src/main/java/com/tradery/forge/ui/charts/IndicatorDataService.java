@@ -12,6 +12,8 @@ import com.tradery.forge.data.page.IndicatorType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.tradery.charts.indicator.IndicatorDataProvider;
+
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -29,8 +31,11 @@ import java.util.concurrent.CopyOnWriteArraySet;
  *
  * This centralizes indicator data management and ensures all computation
  * happens in background threads, never blocking the EDT.
+ *
+ * Implements {@link IndicatorDataProvider} so it can be used by the shared
+ * IndicatorChartsManager from tradery-charts.
  */
-public class IndicatorDataService {
+public class IndicatorDataService implements IndicatorDataProvider {
 
     private static final Logger log = LoggerFactory.getLogger(IndicatorDataService.class);
 

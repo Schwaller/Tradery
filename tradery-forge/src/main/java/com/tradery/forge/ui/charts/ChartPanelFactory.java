@@ -1,5 +1,6 @@
 package com.tradery.forge.ui.charts;
 
+import com.tradery.ui.controls.ChartConfig;
 import org.jfree.chart.ChartPanel;
 import org.jfree.chart.JFreeChart;
 import org.jfree.chart.ui.RectangleInsets;

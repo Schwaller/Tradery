@@ -1,5 +1,6 @@
 package com.tradery.forge.ui.charts;
 
+import com.tradery.ui.controls.ChartConfig;
 import com.tradery.charts.core.ChartTheme;
 import com.tradery.charts.util.AdaptiveDateFormat;
 import org.jfree.chart.JFreeChart;
@@ -221,38 +222,8 @@ public final class ChartStyles {
             styleNumberAxis(rangeAxis, t);
         }
 
-        // Apply axis position from config
-        // First, remove any stale mirror axis from a previous "both" mode
-        if (plot.getRangeAxisCount() > 1) {
-            plot.setRangeAxis(1, null);
-        }
-
-        String axisPosition = ChartConfig.getInstance().getPriceAxisPosition();
-        if ("right".equals(axisPosition)) {
-            plot.setRangeAxisLocation(AxisLocation.TOP_OR_RIGHT);
-        } else if ("both".equals(axisPosition)) {
-            // Primary axis stays on left
-            plot.setRangeAxisLocation(AxisLocation.TOP_OR_LEFT);
-            // Create mirrored axis on right side (only for NumberAxis — SymbolAxis charts stay left-only)
-            if (plot.getRangeAxis() instanceof NumberAxis leftAxis) {
-                NumberAxis rightAxis = new NumberAxis();
-                styleNumberAxis(rightAxis, t);
-                rightAxis.setAutoRange(false);
-                rightAxis.setRange(leftAxis.getRange());  // Initial sync
-                plot.setRangeAxis(1, rightAxis);
-                plot.setRangeAxisLocation(1, AxisLocation.TOP_OR_RIGHT);
-                // Use plot change listener to sync axes (fires when data/range changes)
-                plot.addChangeListener(event -> {
-                    org.jfree.data.Range leftRange = leftAxis.getRange();
-                    org.jfree.data.Range rightRange = rightAxis.getRange();
-                    if (!leftRange.equals(rightRange)) {
-                        rightAxis.setRange(leftRange);
-                    }
-                });
-            }
-        } else {
-            plot.setRangeAxisLocation(AxisLocation.TOP_OR_LEFT);
-        }
+        // Apply axis position from config (single implementation in tradery-charts ChartStyles)
+        com.tradery.charts.util.ChartStyles.applyAxisPosition(plot, ChartConfig.getInstance().getPriceAxisPosition());
 
         // Set thin line stroke with rounded joins for all series
         if (plot.getRenderer() != null) {

@@ -14,7 +14,6 @@ import java.util.*;
  * - Delta and imbalances
  * - POC, VAH, VAL
  * - Stacked imbalances
- * - Per-exchange breakdown
  *
  * Uses auto-calculated tick size based on ATR for consistent bucketing.
  */
@@ -43,7 +42,7 @@ public class FootprintIndicator {
      * @return FootprintResult containing all footprints
      */
     public static FootprintResult calculate(List<Candle> candles, List<AggTrade> aggTrades, String resolution) {
-        return calculate(candles, aggTrades, resolution, DEFAULT_TARGET_BUCKETS, null, null);
+        return calculate(candles, aggTrades, resolution, DEFAULT_TARGET_BUCKETS, null, false);
     }
 
     /**
@@ -54,28 +53,6 @@ public class FootprintIndicator {
      * @param resolution Candle timeframe
      * @param targetBuckets Target number of buckets per candle
      * @param fixedTickSize Optional fixed tick size (null for auto)
-     * @param exchangeFilter Optional set of exchanges to include (null for all)
-     * @return FootprintResult containing all footprints
-     */
-    public static FootprintResult calculate(
-            List<Candle> candles,
-            List<AggTrade> aggTrades,
-            String resolution,
-            int targetBuckets,
-            Double fixedTickSize,
-            Set<Exchange> exchangeFilter) {
-        return calculate(candles, aggTrades, resolution, targetBuckets, fixedTickSize, exchangeFilter, false);
-    }
-
-    /**
-     * Calculate footprints with custom settings including per-candle bucket mode.
-     *
-     * @param candles List of candles
-     * @param aggTrades List of aggregated trades
-     * @param resolution Candle timeframe
-     * @param targetBuckets Target number of buckets per candle
-     * @param fixedTickSize Optional fixed tick size (null for auto, ignored when perCandle=true)
-     * @param exchangeFilter Optional set of exchanges to include (null for all)
      * @param perCandle When true, each candle gets its own tick size = (high-low)/targetBuckets
      * @return FootprintResult containing all footprints
      */
@@ -85,7 +62,6 @@ public class FootprintIndicator {
             String resolution,
             int targetBuckets,
             Double fixedTickSize,
-            Set<Exchange> exchangeFilter,
             boolean perCandle) {
 
         if (candles == null || candles.isEmpty()) {
@@ -108,7 +84,7 @@ public class FootprintIndicator {
         }
 
         // Group trades by bar index
-        Map<Integer, List<AggTrade>> tradesByBar = groupTradesByBar(aggTrades, barTimestamps, intervalMs, exchangeFilter);
+        Map<Integer, List<AggTrade>> tradesByBar = groupTradesByBar(aggTrades, barTimestamps, intervalMs);
 
         // Calculate footprint for each candle
         String symbol = null; // Will be set from trades
@@ -186,21 +162,11 @@ public class FootprintIndicator {
             FootprintBucket.Builder bucketBuilder = bucketBuilders.computeIfAbsent(
                 bucketPrice, FootprintBucket.Builder::new);
 
-            Exchange exchange = trade.exchange() != null ? trade.exchange() : Exchange.BINANCE;
-            DataMarketType marketType = trade.marketType();
-
             if (trade.isBuyerMaker()) {
-                // Seller is taker (aggressive sell)
-                bucketBuilder.addSellVolume(exchange, marketType, trade.quantity());
+                bucketBuilder.addSellVolume(trade.quantity());
             } else {
-                // Buyer is taker (aggressive buy)
-                bucketBuilder.addBuyVolume(exchange, marketType, trade.quantity());
+                bucketBuilder.addBuyVolume(trade.quantity());
             }
-
-            // Track per-exchange and per-market-type delta/volume
-            builder.addDelta(exchange, trade.delta());
-            builder.addMarketTypeDelta(marketType, trade.delta());
-            builder.addMarketTypeVolume(marketType, trade.quantity());
         }
 
         // Build all buckets
@@ -218,8 +184,7 @@ public class FootprintIndicator {
     private static Map<Integer, List<AggTrade>> groupTradesByBar(
             List<AggTrade> aggTrades,
             long[] barTimestamps,
-            long intervalMs,
-            Set<Exchange> exchangeFilter) {
+            long intervalMs) {
 
         Map<Integer, List<AggTrade>> result = new HashMap<>();
 
@@ -245,13 +210,6 @@ public class FootprintIndicator {
             // Stop once past the visible range
             if (trade.timestamp() >= rangeEnd) {
                 break;
-            }
-
-            // Apply exchange filter
-            if (exchangeFilter != null && !exchangeFilter.isEmpty()) {
-                if (trade.exchange() != null && !exchangeFilter.contains(trade.exchange())) {
-                    continue;
-                }
             }
 
             // Find the bar this trade belongs to

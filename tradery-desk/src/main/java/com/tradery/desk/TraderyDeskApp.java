@@ -95,6 +95,9 @@ public class TraderyDeskApp {
     private SpotReferenceService spotReferenceService;
 
     public TraderyDeskApp() {
+        // Use separate config file for desk chart settings
+        com.tradery.ui.controls.ChartConfig.setConfigFileName("desk-chart-config.json");
+
         this.config = DeskConfig.load();
         this.strategyStore = new DeskStrategyStore();
         this.library = new StrategyLibrary(config);
@@ -250,6 +253,11 @@ public class TraderyDeskApp {
             DeskAppContext.getInstance().setPageConnection(pageConnection);
             DeskAppContext.getInstance().setDataClient(dataClient);
             DeskAppContext.getInstance().setCandlePageManager(candlePageMgr);
+
+            // Wire data service to chart panel for footprint/DVP overlays
+            if (frame != null) {
+                frame.getPriceChartPanel().setDataServiceClient(dataClient);
+            }
 
             log.info("Initialized page-based data system");
         } catch (Exception e) {

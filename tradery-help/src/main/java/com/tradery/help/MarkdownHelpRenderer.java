@@ -34,7 +34,7 @@ public class MarkdownHelpRenderer {
      * Represents a table of contents entry extracted from markdown.
      */
     public static class TocEntry {
-        public final String id;      // HTML anchor id (e.g., "toc-0")
+        public final String id;      // HTML anchor id (slug-based, e.g., "rsi-relative-strength-index")
         public final String title;   // Display text
         public final int level;      // 2 for h2, 3 for h3
         public int yPosition;        // Calculated after render (for scroll sync)
@@ -67,7 +67,19 @@ public class MarkdownHelpRenderer {
      * @return The markdown content as a string, or null if not found
      */
     public static String loadFromResource(String resourcePath) {
-        try (InputStream is = MarkdownHelpRenderer.class.getResourceAsStream(resourcePath)) {
+        return loadFromResource(resourcePath, MarkdownHelpRenderer.class);
+    }
+
+    /**
+     * Load markdown content from a resource path using the given class for classloader resolution.
+     * Use this when the resource lives in a different JPMS module than tradery-help.
+     *
+     * @param resourcePath  Path to the resource (e.g., "/guide/trading-guide.md")
+     * @param resourceClass Class whose module/classloader should be used for loading
+     * @return The markdown content as a string, or null if not found
+     */
+    public static String loadFromResource(String resourcePath, Class<?> resourceClass) {
+        try (InputStream is = resourceClass.getResourceAsStream(resourcePath)) {
             if (is == null) {
                 System.err.println("Resource not found: " + resourcePath);
                 return null;
@@ -140,22 +152,43 @@ public class MarkdownHelpRenderer {
 
     /**
      * Extract TOC entries from h2 and h3 headings in the parsed document.
+     * Generates stable slug-based IDs from heading text (e.g., "RSI (Relative Strength Index)" → "rsi-relative-strength-index").
      */
     private static List<TocEntry> extractTocEntries(Document document) {
         List<TocEntry> entries = new ArrayList<>();
-        int tocIndex = 0;
+        java.util.Map<String, Integer> slugCounts = new java.util.HashMap<>();
 
         for (Node node : document.getChildren()) {
             if (node instanceof Heading heading) {
                 int level = heading.getLevel();
                 if (level == 2 || level == 3) {
                     String text = heading.getText().toString();
-                    entries.add(new TocEntry("toc-" + tocIndex++, text, level));
+                    String slug = toSlug(text);
+
+                    // Handle duplicate slugs by appending a counter
+                    int count = slugCounts.getOrDefault(slug, 0);
+                    slugCounts.put(slug, count + 1);
+                    String id = count == 0 ? slug : slug + "-" + count;
+
+                    entries.add(new TocEntry(id, text, level));
                 }
             }
         }
 
         return entries;
+    }
+
+    /**
+     * Convert heading text to a URL-friendly slug.
+     * "RSI (Relative Strength Index)" → "rsi-relative-strength-index"
+     */
+    static String toSlug(String text) {
+        return text.toLowerCase()
+                .replaceAll("[^a-z0-9\\s-]", "")  // remove non-alphanumeric except spaces/hyphens
+                .trim()
+                .replaceAll("\\s+", "-")           // spaces to hyphens
+                .replaceAll("-{2,}", "-")           // collapse multiple hyphens
+                .replaceAll("^-|-$", "");           // trim leading/trailing hyphens
     }
 
     /**

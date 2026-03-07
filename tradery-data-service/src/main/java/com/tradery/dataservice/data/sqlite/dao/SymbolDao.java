@@ -1,5 +1,6 @@
 package com.tradery.dataservice.data.sqlite.dao;
 
+import com.tradery.dataservice.coingecko.CoinGeckoClient.CoinMarketData;
 import com.tradery.dataservice.coingecko.CoinInfo;
 import com.tradery.dataservice.data.sqlite.SymbolsConnection;
 import com.tradery.dataservice.symbols.ExchangeAsset;
@@ -440,17 +441,50 @@ public class SymbolDao {
     }
 
     /**
+     * Update market cap data for coins in coins_cache.
+     */
+    public int updateMarketData(List<CoinMarketData> data) throws SQLException {
+        if (data.isEmpty()) return 0;
+
+        return conn.executeInTransaction(c -> {
+            String sql = """
+                UPDATE coins_cache SET market_cap_usd = ?, market_cap_rank = ?
+                WHERE coingecko_id = ?
+                """;
+
+            int count = 0;
+            try (PreparedStatement stmt = c.prepareStatement(sql)) {
+                for (CoinMarketData d : data) {
+                    stmt.setDouble(1, d.marketCapUsd());
+                    stmt.setInt(2, d.marketCapRank());
+                    stmt.setString(3, d.id());
+                    stmt.addBatch();
+
+                    if (++count % 500 == 0) {
+                        stmt.executeBatch();
+                    }
+                }
+                stmt.executeBatch();
+            }
+            return data.size();
+        });
+    }
+
+    /**
      * Look up CoinGecko ID by ticker symbol.
      * Returns the most common/relevant ID if multiple matches.
      */
     public Optional<String> lookupCoingeckoId(String symbol) throws SQLException {
         Connection c = conn.getConnection();
 
-        // Prioritize exact match
+        // Prefer the coin with the best market cap rank (legitimate coins are ranked)
         String sql = """
             SELECT coingecko_id FROM coins_cache
             WHERE LOWER(symbol) = LOWER(?)
-            ORDER BY LENGTH(coingecko_id)
+            ORDER BY CASE WHEN market_cap_rank IS NOT NULL AND market_cap_rank > 0
+                     THEN 0 ELSE 1 END,
+                     market_cap_rank,
+                     LENGTH(coingecko_id)
             LIMIT 1
             """;
 
@@ -464,6 +498,38 @@ public class SymbolDao {
             }
         }
         return Optional.empty();
+    }
+
+    /**
+     * Load the best symbol → coingecko_id mapping from coins_cache.
+     * For ambiguous symbols (multiple coins with same ticker), prefers the one with highest market cap rank.
+     */
+    public Map<String, String> loadSymbolToIdMap() throws SQLException {
+        Connection c = conn.getConnection();
+        Map<String, String> map = new HashMap<>();
+
+        // Get the best coingecko_id per symbol, preferring ranked coins
+        String sql = """
+            SELECT symbol, coingecko_id FROM (
+                SELECT symbol, coingecko_id,
+                       ROW_NUMBER() OVER (
+                           PARTITION BY LOWER(symbol)
+                           ORDER BY CASE WHEN market_cap_rank IS NOT NULL AND market_cap_rank > 0
+                                    THEN 0 ELSE 1 END,
+                                    market_cap_rank,
+                                    LENGTH(coingecko_id)
+                       ) AS rn
+                FROM coins_cache
+            ) WHERE rn = 1
+            """;
+
+        try (PreparedStatement stmt = c.prepareStatement(sql);
+             ResultSet rs = stmt.executeQuery()) {
+            while (rs.next()) {
+                map.put(rs.getString("symbol").toLowerCase(), rs.getString("coingecko_id"));
+            }
+        }
+        return map;
     }
 
     /**

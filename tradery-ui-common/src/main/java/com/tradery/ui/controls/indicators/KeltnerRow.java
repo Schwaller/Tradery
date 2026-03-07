@@ -71,8 +71,11 @@ public class KeltnerRow extends JPanel {
     public boolean isSelected() { return checkbox.isSelected(); }
     public void setSelected(boolean selected) { checkbox.setSelected(selected); updateParamVisibility(); }
     public int getEmaPeriod() { return (int) emaSpinner.getValue(); }
+    public void setEmaPeriod(int period) { emaSpinner.setValue(period); }
     public int getAtrPeriod() { return (int) atrSpinner.getValue(); }
+    public void setAtrPeriod(int period) { atrSpinner.setValue(period); }
     public double getMultiplier() { return (double) multSpinner.getValue(); }
+    public void setMultiplier(double mult) { multSpinner.setValue(mult); }
     public JCheckBox getCheckbox() { return checkbox; }
 
     public void addChangeListener(Runnable listener) { changeListeners.add(listener); }

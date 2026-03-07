@@ -225,51 +225,6 @@ Requires aggTrades sync. Footprint shows buy/sell volume distribution at price l
 
 > **Note:** Stacked imbalances indicate aggressive buying/selling at multiple price levels. Absorption suggests large orders absorbing price movement.
 
-### Cross-Exchange Functions
-
-Analyze and compare orderflow across multiple exchanges. Requires multi-exchange data sync.
-
-| Function | Description |
-|----------|-------------|
-| `BINANCE_DELTA` | Delta from Binance trades only |
-| `BYBIT_DELTA` | Delta from Bybit trades only |
-| `OKX_DELTA` | Delta from OKX trades only |
-| `COMBINED_DELTA` | Sum of delta across all enabled exchanges |
-| `EXCHANGE_DELTA_SPREAD` | Max exchange delta - min exchange delta |
-| `EXCHANGE_DIVERGENCE` | 1 if exchanges disagree on direction |
-| `COMBINED_IMBALANCE_AT_POC` | Aggregated imbalance at combined POC |
-| `EXCHANGES_WITH_BUY_IMBALANCE` | Count of exchanges showing buy imbalance |
-| `EXCHANGES_WITH_SELL_IMBALANCE` | Count of exchanges showing sell imbalance |
-| `WHALE_DELTA_COMBINED(t)` | Whale delta across all exchanges |
-| `DOMINANT_EXCHANGE` | Exchange with largest absolute delta |
-
-> **Example:**
-> `BINANCE_DELTA < -10000 AND BYBIT_DELTA > 10000`
-> `EXCHANGE_DIVERGENCE == 1 AND ADX(14) < 20`
-> `EXCHANGES_WITH_BUY_IMBALANCE >= 2 AND RSI(14) < 40`
-
-> **Note:** Exchange divergence (one exchange buying, another selling) can signal uncertainty or arbitrage opportunities. Convergence across exchanges strengthens signals.
-
-### Spot vs Futures Functions
-
-Compare orderflow between spot and futures markets. Requires aggTrades from both market types.
-
-| Function | Description |
-|----------|-------------|
-| `SPOT_DELTA` | Delta from spot market trades only |
-| `FUTURES_DELTA` | Delta from futures market trades (perp + dated) |
-| `SPOT_VOLUME` | Volume from spot market trades |
-| `FUTURES_VOLUME` | Volume from futures market trades |
-| `SPOT_FUTURES_DIVERGENCE` | 1 if spot and futures delta have opposite signs |
-| `SPOT_FUTURES_DELTA_SPREAD` | SPOT_DELTA - FUTURES_DELTA (positive = spot leading) |
-
-> **Example:**
-> `SPOT_FUTURES_DIVERGENCE == 1 AND RSI(14) < 40`
-> `SPOT_FUTURES_DELTA_SPREAD > 10000`
-> `SPOT_DELTA > 0 AND FUTURES_DELTA < 0`
-
-> **Note:** Spot-futures divergence can signal smart money positioning. When spot buyers diverge from futures sellers, it may indicate accumulation. Returns NaN if market type data is unavailable.
-
 ### Rotating Ray Functions
 
 Auto-detect trendlines from ATH/ATL. Parameters: `rayNum`, `lookback`, `skip`.

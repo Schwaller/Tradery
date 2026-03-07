@@ -1,11 +1,15 @@
 package com.tradery.forge.ui;
 
+import com.tradery.charts.core.ChartCoordinator;
 import com.tradery.charts.core.ChartInteractionManager;
+import com.tradery.charts.core.ChartLifecycleManager;
 import com.tradery.charts.renderer.TraderyCandlestickRenderer;
 import com.tradery.core.model.Candle;
 import com.tradery.core.model.Trade;
+import com.tradery.charts.core.IndicatorType;
+import com.tradery.charts.indicator.IndicatorChartsManager;
+import com.tradery.ui.controls.ChartConfig;
 import com.tradery.forge.ui.charts.*;
-import com.tradery.forge.ui.charts.footprint.FootprintHeatmapOverlay;
 import org.jfree.chart.ChartFactory;
 import org.jfree.chart.JFreeChart;
 import org.jfree.chart.annotations.XYLineAnnotation;
@@ -54,11 +58,11 @@ public class ChartsPanel extends JPanel {
     private JFreeChart volumeChart;
 
     // Managers
-    private OverlayManager overlayManager;
+    private ForgeOverlayManager overlayManager;
     private ForgeDataProvider forgeDataProvider;
     private final IndicatorChartsManager indicatorManager;
     private final ChartZoomManager zoomManager;
-    private final CrosshairManager crosshairManager;
+    private final ChartLifecycleManager lifecycleManager;
     private final ChartInteractionManager interactionManager;
     private final SplitPaneLayoutManager splitLayoutManager;
 
@@ -84,26 +88,45 @@ public class ChartsPanel extends JPanel {
         setBorder(null);
 
         // Initialize non-chart-dependent managers first
-        indicatorManager = new IndicatorChartsManager();
+        IndicatorDataService chartDataService = new IndicatorDataService();
+        indicatorManager = new IndicatorChartsManager(
+            chartDataService,
+            ForgeChartProviders.premiumDataSource(),
+            ForgeChartProviders.spectrumDataSource(),
+            ForgeChartProviders.spectrumConfig()
+        );
         zoomManager = new ChartZoomManager();
-        crosshairManager = new CrosshairManager();
         interactionManager = new ChartInteractionManager();
+        lifecycleManager = new ChartLifecycleManager(new ChartCoordinator(), interactionManager);
         interactionManager.setAxisPositionSupplier(() -> ChartConfig.getInstance().getPriceAxisPosition());
         splitLayoutManager = new SplitPaneLayoutManager();
 
         initializeCharts();
 
         // Initialize overlay manager with price chart
-        overlayManager = new OverlayManager(priceChart);
+        overlayManager = new ForgeOverlayManager(priceChart);
 
         // Initialize ForgeDataProvider for tradery-charts integration
         forgeDataProvider = new ForgeDataProvider(new IndicatorDataService());
         overlayManager.setChartDataProvider(forgeDataProvider);
 
+        // Wire footprint and DVP providers from forge data service
+        overlayManager.setFootprintProfileProvider(ForgeChartProviders.footprintProfileProvider());
+        overlayManager.setDailyProfileProvider(ForgeChartProviders.dailyProfileProvider());
+
+        // Wire status listener for forge UI (footprint status bar)
+        if (overlayManager.getFootprintHeatmapOverlay() != null) {
+            overlayManager.getFootprintHeatmapOverlay().setStatusListener((status, detail, count) -> {
+                var ctx = com.tradery.forge.ApplicationContext.getInstance();
+                if (ctx != null) {
+                    ctx.setFootprintStatus(
+                        com.tradery.forge.ApplicationContext.ProfileStatus.valueOf(status), detail, count);
+                }
+            });
+        }
+
         setupManagers();
         setupScrollableContainer();
-
-        // Note: Footprint heatmap overlay manages its own IndicatorPage and auto-refreshes
 
         // Listen for chart config changes (axis position, etc.)
         ChartConfig.getInstance().addChangeListener(this::refreshTheme);
@@ -111,7 +134,7 @@ public class ChartsPanel extends JPanel {
 
     public void setOnStatusUpdate(Consumer<String> callback) {
         this.onStatusUpdate = callback;
-        crosshairManager.setOnStatusUpdate(callback);
+        lifecycleManager.getCoordinator().setOnStatusUpdate(callback);
     }
 
     /**
@@ -120,7 +143,7 @@ public class ChartsPanel extends JPanel {
      */
     public void applySavedConfig() {
         ChartConfig config = ChartConfig.getInstance();
-        config.applyTo(indicatorManager);
+        indicatorManager.applyConfig(config);
 
         // Apply core chart settings
         setVolumeChartEnabled(config.isVolumeChartEnabled());
@@ -275,19 +298,11 @@ public class ChartsPanel extends JPanel {
         indicatorManager.setOnLayoutChange(this::updateChartLayout);
         indicatorManager.createWrappers(this::toggleIndicatorZoom, this::toggleIndicatorFullScreen, zoomManager::exitFullScreen);
 
-        // Setup crosshairs
-        crosshairManager.setupCoreChartCrosshairs(
-                priceChartPanel, equityChartPanel, comparisonChartPanel,
-                capitalUsageChartPanel, tradePLChartPanel, volumeChartPanel);
-        var indicatorPanelList = indicatorManager.getAllChartPanels();
-        crosshairManager.setupIndicatorChartCrosshairs(
-                indicatorPanelList.toArray(new org.jfree.chart.ChartPanel[0]));
+        // Register all charts with lifecycle manager (crosshairs + zoom/pan + listeners)
+        registerAllCharts();
 
-        // Sync domain axes
-        java.util.List<JFreeChart> otherChartList = new java.util.ArrayList<>(java.util.List.of(
-                volumeChart, equityChart, comparisonChart, capitalUsageChart, tradePLChart));
-        otherChartList.addAll(indicatorManager.getAllCharts());
-        crosshairManager.syncDomainAxes(priceChart, otherChartList.toArray(new JFreeChart[0]));
+        // Sync domain axes via coordinator
+        lifecycleManager.getCoordinator().syncDomainAxes();
     }
 
     private void addPriceOpacitySlider() {
@@ -361,30 +376,25 @@ public class ChartsPanel extends JPanel {
             }
         });
 
-        // Register all charts with interaction manager for synchronized zooming
-        registerChartsWithInteractionManager();
-
-        // Add zoom/pan/Y-axis drag listeners to all core chart panels with double-click callbacks
+        // Set up double-click callbacks for core chart panels
         org.jfree.chart.ChartPanel[] corePanels = {
                 priceChartPanel, equityChartPanel, comparisonChartPanel,
                 capitalUsageChartPanel, tradePLChartPanel, volumeChartPanel
         };
         int[] coreIndices = {0, 2, 3, 4, 5, 1}; // Map to zoomManager indices
         for (int i = 0; i < corePanels.length; i++) {
-            interactionManager.attachListeners(corePanels[i]);
             final int chartIndex = coreIndices[i];
             Runnable fullScreenCallback = () -> zoomManager.toggleFullScreen(chartIndex);
-            interactionManager.setDoubleClickCallback(corePanels[i], fullScreenCallback);
+            lifecycleManager.setDoubleClickCallback(corePanels[i], fullScreenCallback);
             ChartPanelFactory.setFullScreenCallback(corePanels[i], fullScreenCallback);
         }
 
-        // Add zoom/pan listeners to indicator chart panels with double-click callbacks
+        // Set up double-click callbacks for indicator chart panels
         for (IndicatorType type : IndicatorType.values()) {
             org.jfree.chart.ChartPanel panel = indicatorManager.getChartPanel(type);
-            interactionManager.attachListeners(panel);
             final int ordinal = type.ordinal();
             Runnable fullScreenCallback = () -> zoomManager.toggleIndicatorFullScreen(ordinal);
-            interactionManager.setDoubleClickCallback(panel, fullScreenCallback);
+            lifecycleManager.setDoubleClickCallback(panel, fullScreenCallback);
             ChartPanelFactory.setFullScreenCallback(panel, fullScreenCallback);
         }
 
@@ -412,16 +422,18 @@ public class ChartsPanel extends JPanel {
         }
     }
 
-    private void registerChartsWithInteractionManager() {
-        // Register all charts for synchronized domain axis updates
-        interactionManager.addChart(priceChart);
-        interactionManager.addChart(volumeChart);
-        interactionManager.addChart(equityChart);
-        interactionManager.addChart(comparisonChart);
-        interactionManager.addChart(capitalUsageChart);
-        interactionManager.addChart(tradePLChart);
-        for (JFreeChart chart : indicatorManager.getAllCharts()) {
-            interactionManager.addChart(chart);
+    private void registerAllCharts() {
+        // Register all core charts with lifecycle manager (crosshairs + zoom/pan + listeners)
+        lifecycleManager.addChart(priceChart, priceChartPanel);
+        lifecycleManager.addChart(volumeChart, volumeChartPanel);
+        lifecycleManager.addChart(equityChart, equityChartPanel);
+        lifecycleManager.addChart(comparisonChart, comparisonChartPanel);
+        lifecycleManager.addChart(capitalUsageChart, capitalUsageChartPanel);
+        lifecycleManager.addChart(tradePLChart, tradePLChartPanel);
+
+        // Register all indicator charts
+        for (IndicatorType type : IndicatorType.values()) {
+            lifecycleManager.addChart(indicatorManager.getChart(type), indicatorManager.getChartPanel(type));
         }
     }
 
@@ -476,7 +488,8 @@ public class ChartsPanel extends JPanel {
         chartsContainer.add(splitLayout, BorderLayout.CENTER);
 
         // Update time axis visibility - show on first and last chart
-        updateTimeAxisVisibility(allCharts, allWrappers, visibleCharts);
+        java.util.List<org.jfree.chart.ChartPanel> visibleChartPanels = buildVisibleChartPanelsList();
+        lifecycleManager.updateTimeAxisVisibility(visibleChartPanels);
 
         chartsContainer.revalidate();
         chartsContainer.repaint();
@@ -514,23 +527,43 @@ public class ChartsPanel extends JPanel {
         return visibleCharts;
     }
 
-    private void updateTimeAxisVisibility(JFreeChart[] allCharts, JPanel[] allWrappers, java.util.List<JPanel> visibleCharts) {
-        for (int i = 0; i < allCharts.length; i++) {
-            if (allCharts[i] != null && allWrappers[i] != null) {
-                XYPlot plot = allCharts[i].getXYPlot();
-                if (plot.getDomainAxis() instanceof DateAxis axis) {
-                    boolean isFirst = (allWrappers[i] == visibleCharts.get(0));
-                    boolean isLast = (allWrappers[i] == visibleCharts.get(visibleCharts.size() - 1));
-                    boolean showLabels = isFirst || isLast;
-                    axis.setTickLabelsVisible(showLabels);
-                    axis.setTickMarksVisible(showLabels);
-                    // Price chart (first) has time labels at top, others at bottom
-                    plot.setDomainAxisLocation(isFirst
-                            ? org.jfree.chart.axis.AxisLocation.TOP_OR_RIGHT
-                            : org.jfree.chart.axis.AxisLocation.BOTTOM_OR_LEFT);
-                }
+    /**
+     * Build ordered list of visible chart panels (matching the visible wrappers order).
+     */
+    private java.util.List<org.jfree.chart.ChartPanel> buildVisibleChartPanelsList() {
+        java.util.List<org.jfree.chart.ChartPanel> panels = new java.util.ArrayList<>();
+        JPanel[] chartWrappers = zoomManager.getChartWrappers();
+
+        // Price chart - always shown
+        panels.add(priceChartPanel);
+
+        // Volume chart
+        if (zoomManager.isVolumeChartEnabled()) {
+            panels.add(volumeChartPanel);
+        }
+
+        // Indicator charts
+        for (IndicatorType type : IndicatorType.values()) {
+            if (indicatorManager.isEnabled(type)) {
+                panels.add(indicatorManager.getChartPanel(type));
             }
         }
+
+        // Core charts at the end
+        if (zoomManager.isEquityChartEnabled()) {
+            panels.add(equityChartPanel);
+        }
+        if (zoomManager.isComparisonChartEnabled()) {
+            panels.add(comparisonChartPanel);
+        }
+        if (zoomManager.isCapitalUsageChartEnabled()) {
+            panels.add(capitalUsageChartPanel);
+        }
+        if (zoomManager.isTradePLChartEnabled()) {
+            panels.add(tradePLChartPanel);
+        }
+
+        return panels;
     }
 
     // ===== Public API =====
@@ -924,20 +957,7 @@ public class ChartsPanel extends JPanel {
     }
 
     public boolean isAnyOrderflowChartEnabled() {
-        // Footprint needs aggTrades only for exchange-specific modes (SINGLE_EXCHANGE, STACKED, DIVERGENCE)
-        // COMBINED/SPLIT use precomputed profiles from the data service
-        boolean footprintNeedsAggTrades = ChartConfig.getInstance().isFootprintHeatmapEnabled()
-            && FootprintHeatmapOverlay.requiresAggTrades(
-                ChartConfig.getInstance().getFootprintHeatmapConfig().getDisplayMode());
-        return indicatorManager.isAnyOrderflowEnabled() || footprintNeedsAggTrades;
-    }
-
-    /**
-     * Tell the footprint overlay to wait for aggTrades from BacktestCoordinator
-     * instead of loading its own page.
-     */
-    public void setFootprintWaitForCoordinator(boolean wait) {
-        overlayManager.setFootprintWaitForCoordinator(wait);
+        return indicatorManager.isAnyOrderflowEnabled();
     }
 
     public void setIndicatorEngine(com.tradery.core.indicators.IndicatorEngine engine) {
@@ -1242,7 +1262,7 @@ public class ChartsPanel extends JPanel {
     /**
      * Set phase overlays from pre-computed data.
      */
-    public void setPhaseOverlays(java.util.List<OverlayManager.PhaseOverlayData> phases) {
+    public void setPhaseOverlays(java.util.List<ForgeOverlayManager.PhaseOverlayData> phases) {
         overlayManager.setPhaseOverlays(phases);
     }
 
@@ -1282,7 +1302,7 @@ public class ChartsPanel extends JPanel {
 
         this.currentCandles = candles;
         this.currentTrades = trades;
-        crosshairManager.setCurrentCandles(candles);
+        lifecycleManager.getCoordinator().setCandles(candles);
         overlayManager.setCandles(candles);
         clearTradeHighlight();
 
@@ -1330,8 +1350,8 @@ public class ChartsPanel extends JPanel {
         // Clear annotations except title and overlays (footprint heatmap, daily volume profile)
         plot.getAnnotations().stream()
                 .filter(a -> !(a instanceof XYTitleAnnotation))
-                .filter(a -> !(a instanceof com.tradery.forge.ui.charts.footprint.FootprintHeatmapAnnotation))
-                .filter(a -> !(a instanceof com.tradery.forge.ui.charts.DailyVolumeProfileAnnotation))
+                .filter(a -> !(a instanceof com.tradery.charts.overlay.footprint.FootprintHeatmapAnnotation))
+                .filter(a -> !(a instanceof com.tradery.charts.overlay.DailyVolumeProfileAnnotation))
                 .toList()
                 .forEach(plot::removeAnnotation);
 
@@ -1857,8 +1877,8 @@ public class ChartsPanel extends JPanel {
                 IndicatorType.DELTA, IndicatorType.CVD, IndicatorType.VOLUME_RATIO,
                 IndicatorType.WHALE, IndicatorType.RETAIL);
 
-            // Update footprint heatmap if enabled — pass aggTrades to avoid duplicate load
-            overlayManager.updateFootprintHeatmapOverlay(aggTrades);
+            // Update footprint heatmap if enabled
+            overlayManager.updateFootprintHeatmapOverlay();
         }
     }
 

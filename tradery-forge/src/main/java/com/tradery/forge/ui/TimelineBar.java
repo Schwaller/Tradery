@@ -32,11 +32,15 @@ public class TimelineBar extends JPanel implements DataPageListener<Candle> {
     private static final Color GRID_LINE = new Color(128, 128, 128, 80);
 
     private static final long TEN_YEARS_MS = 10L * 365 * 24 * 60 * 60 * 1000;
+    private static final int MIN_CANDLES_FOR_WEEKLY = 30;
 
     private final CandlePageManager candlePageMgr;
 
     private String symbol = "BTCUSDT";
+    private String exchange = "binance";
+    private String marketType = "perp";
     private String title = "";
+    private String currentTimeframe = "1w";  // "1w" or "1d"
     private DataPageView<Candle> dataPage;
     private List<Candle> weeklyCandles;
     private long windowStart;
@@ -241,30 +245,40 @@ public class TimelineBar extends JPanel implements DataPageListener<Candle> {
     /**
      * Update the timeline with new symbol and window parameters.
      */
-    public void update(String symbol, long windowStart, long windowEnd) {
-        boolean symbolChanged = !symbol.equals(this.symbol);
+    public void update(String symbol, String exchange, String marketType, long windowStart, long windowEnd) {
+        boolean symbolChanged = !symbol.equals(this.symbol)
+            || !java.util.Objects.equals(exchange, this.exchange)
+            || !java.util.Objects.equals(marketType, this.marketType);
         this.symbol = symbol;
+        this.exchange = exchange;
+        this.marketType = marketType;
         this.windowStart = windowStart;
         this.windowEnd = windowEnd;
 
         if (symbolChanged || dataPage == null) {
-            // Release old page if switching symbols
-            if (dataPage != null) {
-                candlePageMgr.release(dataPage, this);
-            }
-
-            // Request new page - returns immediately with cached data, loads in background
-            long end = System.currentTimeMillis();
-            long start = end - TEN_YEARS_MS;
-            dataPage = candlePageMgr.request(symbol, "1w", start, end, this, "TimelineBar");
-
-            // Use whatever data is available immediately
-            weeklyCandles = dataPage.getData();
-            updateTimeRange();
-            repaint();
+            // Always start with weekly — onDataChanged will downgrade to daily if needed
+            currentTimeframe = "1w";
+            requestTimelinePage();
         } else {
             repaint();
         }
+    }
+
+    private void requestTimelinePage() {
+        // Release old page
+        if (dataPage != null) {
+            candlePageMgr.release(dataPage, this);
+        }
+
+        // Request page with current timeframe
+        long end = System.currentTimeMillis();
+        long start = end - TEN_YEARS_MS;
+        dataPage = candlePageMgr.request(symbol, currentTimeframe, exchange, marketType, start, end, this, "TimelineBar");
+
+        // Use whatever data is available immediately
+        weeklyCandles = dataPage.getData();
+        updateTimeRange();
+        repaint();
     }
 
     private void updateTimeRange() {
@@ -425,6 +439,17 @@ public class TimelineBar extends JPanel implements DataPageListener<Candle> {
         // Update candles when page data changes (called on EDT)
         weeklyCandles = page.getData();
         updateTimeRange();
+
+        // If weekly gives too few candles, switch to daily for better resolution
+        if ("1w".equals(currentTimeframe)
+                && weeklyCandles != null
+                && weeklyCandles.size() < MIN_CANDLES_FOR_WEEKLY
+                && weeklyCandles.size() > 0) {
+            currentTimeframe = "1d";
+            requestTimelinePage();
+            return;
+        }
+
         repaint();
     }
 

@@ -3,7 +3,7 @@ package com.tradery.forge.ui;
 import com.tradery.forge.TraderyApp;
 import com.tradery.forge.data.DataConfig;
 import com.tradery.forge.io.WindowStateStore;
-import com.tradery.forge.ui.charts.ChartConfig;
+import com.tradery.ui.controls.ChartConfig;
 
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;

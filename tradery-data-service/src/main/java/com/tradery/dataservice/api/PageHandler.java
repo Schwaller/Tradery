@@ -31,12 +31,14 @@ public class PageHandler {
             PageRequest request = ctx.bodyAsClass(PageRequest.class);
 
             // Convert startTime/endTime to endTime/windowDurationMillis
+            String exchange = request.exchange() != null ? request.exchange() : "binance";
+            String marketType = request.marketType() != null ? request.marketType() : "perp";
             PageKey key = new PageKey(
                 request.dataType(),
-                "binance",  // default exchange for HTTP API
+                exchange,
                 request.symbol(),
                 request.timeframe(),
-                "perp",  // default market type for HTTP API
+                marketType,
                 request.endTime(),  // anchored pages use endTime
                 request.endTime() - request.startTime()  // windowDurationMillis
             );
@@ -65,7 +67,9 @@ public class PageHandler {
             List<PageResponse> responses = request.requests().stream()
                 .map(r -> {
                     // Convert startTime/endTime to endTime/windowDurationMillis
-                    PageKey key = new PageKey(r.dataType(), "binance", r.symbol(), r.timeframe(), "perp", r.endTime(), r.endTime() - r.startTime());
+                    String ex = r.exchange() != null ? r.exchange() : "binance";
+                    String mt = r.marketType() != null ? r.marketType() : "perp";
+                    PageKey key = new PageKey(r.dataType(), ex, r.symbol(), r.timeframe(), mt, r.endTime(), r.endTime() - r.startTime());
                     PageStatus status = pageManager.requestPage(key, request.consumerId(), request.consumerName());
                     return new PageResponse(key.toKeyString(), status.state().name(), status.progress(), status.isNew());
                 })
@@ -190,7 +194,9 @@ public class PageHandler {
         long startTime,
         long endTime,
         String consumerId,
-        String consumerName
+        String consumerName,
+        String exchange,
+        String marketType
     ) {}
 
     public record BatchPageRequest(

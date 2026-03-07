@@ -10,7 +10,7 @@ import com.tradery.forge.TraderyApp;
 import com.tradery.forge.data.AggTradesStore;
 import com.tradery.forge.data.sqlite.SqliteDataStore;
 import com.tradery.forge.io.*;
-import com.tradery.forge.ui.charts.ChartConfig;
+import com.tradery.ui.controls.ChartConfig;
 import com.tradery.forge.ui.controls.IndicatorControlsPanel;
 import com.tradery.forge.ui.controls.IndicatorSelectorPopup;
 import com.tradery.forge.ui.coordination.AutoSaveScheduler;
@@ -18,6 +18,8 @@ import com.tradery.forge.ui.coordination.BacktestCoordinator;
 import com.tradery.agent.terminal.AiTerminalController;
 import com.tradery.ai.AiConfig;
 import com.tradery.ai.AiProfile;
+import com.tradery.symbols.service.SymbolService;
+import com.tradery.symbols.ui.SymbolComboBox;
 import com.tradery.ui.controls.SegmentedToggle;
 import com.tradery.ui.controls.ThinSplitPane;
 import com.tradery.ui.controls.ToolbarButton;
@@ -71,7 +73,7 @@ public class ProjectWindow extends JFrame {
     private JButton phaseAnalysisBtn;
     private JButton publishBtn;
     private JButton phaseOverlayBtn;
-    private JLabel titleLabel;
+    private SymbolComboBox symbolCombo;
     private PageManagerBadgesPanel pageManagerBadges;
     private MemoryStatusPanel memoryStatusPanel;
     private DataServiceStatusPanel dataServiceStatusPanel;
@@ -191,8 +193,12 @@ public class ProjectWindow extends JFrame {
     }
 
     private void initializeComponents() {
+        // Symbol combo lives in the toolbar, passed to DataRangePanel for data binding
+        symbolCombo = new SymbolComboBox(ApplicationContext.getInstance().getSymbolService(), true);
+        symbolCombo.setToolbarMode();
+
         editorPanel = new StrategyEditorPanel();
-        dataRangePanel = new DataRangePanel();
+        dataRangePanel = new DataRangePanel(symbolCombo);
         settingsPanel = new BacktestSettingsPanel();
         chartPanel = new ChartsPanel();
         metricsPanel = new MetricsPanel();
@@ -338,6 +344,10 @@ public class ProjectWindow extends JFrame {
 
         // Wire up panel change listeners
         editorPanel.setOnChange(autoSaveScheduler::scheduleUpdate);
+        editorPanel.setOnNameChange(() -> {
+            setTitle(strategy.getName() + " - " + TraderyApp.APP_NAME);
+            autoSaveScheduler.scheduleUpdate();
+        });
         settingsPanel.setOnChange(autoSaveScheduler::scheduleUpdate);
         dataRangePanel.setOnChange(() -> {
             autoSaveScheduler.scheduleUpdate();
@@ -347,6 +357,8 @@ public class ProjectWindow extends JFrame {
 
     private void updateTimeline() {
         String symbol = dataRangePanel.getSymbol();
+        String exchange = dataRangePanel.getExchange();
+        String marketType = dataRangePanel.getMarketType();
         String duration = dataRangePanel.getDuration();
         Long anchorDate = dataRangePanel.getAnchorDate();
 
@@ -354,7 +366,7 @@ public class ProjectWindow extends JFrame {
         long endTime = anchorDate != null ? anchorDate : System.currentTimeMillis();
         long startTime = endTime - durationMs;
 
-        timelineBar.update(symbol, startTime, endTime);
+        timelineBar.update(symbol, exchange, marketType, startTime, endTime);
     }
 
     private void onTimelineAnchorChanged(Long newAnchorDate) {
@@ -377,7 +389,6 @@ public class ProjectWindow extends JFrame {
             strategyStore.save(strategy);
             SwingUtilities.invokeLater(() -> {
                 setTitle(strategy.getName() + " - " + TraderyApp.APP_NAME);
-                if (titleLabel != null) titleLabel.setText(strategy.getName());
                 statusManager.setInfoStatus(StatusManager.SOURCE_AUTOSAVE, "Auto-saved");
             });
         });
@@ -448,17 +459,15 @@ public class ProjectWindow extends JFrame {
         chartControlsWrapper.add(chartControls, cc);
         toolbarPanel.add(chartControlsWrapper, gbc);
 
-        // Title (flex space on both sides)
+        // Center: Symbol combo (replaces strategy name title)
         gbc.gridx = 2;
         gbc.weightx = 1.0;
-        titleLabel = new JLabel(strategy.getName());
-        titleLabel.setFont(new Font("SansSerif", Font.BOLD, 13));
-        titleLabel.setForeground(textSecondary());
-        titleLabel.setHorizontalAlignment(SwingConstants.CENTER);
-        JPanel titleWrapper = new JPanel(new GridBagLayout());
-        titleWrapper.setOpaque(false);
-        titleWrapper.add(titleLabel);
-        toolbarPanel.add(titleWrapper, gbc);
+        JPanel symbolWrapper = new JPanel(new GridBagLayout());
+        symbolWrapper.setOpaque(false);
+        GridBagConstraints sc = new GridBagConstraints();
+        sc.anchor = GridBagConstraints.CENTER;
+        symbolWrapper.add(symbolCombo, sc);
+        toolbarPanel.add(symbolWrapper, gbc);
 
         // Indicator/phase controls (right of title)
         gbc.gridx = 3;
@@ -749,7 +758,6 @@ public class ProjectWindow extends JFrame {
                     this.strategy = reloaded;
                     loadStrategyData();
                     setTitle(strategy.getName() + " - " + TraderyApp.APP_NAME);
-                    if (titleLabel != null) titleLabel.setText(strategy.getName());
                     runBacktest();
                 });
             }
@@ -878,14 +886,14 @@ public class ProjectWindow extends JFrame {
                     phases, chartCandles, timeframe, phaseCandles);
 
                 // Build overlay data
-                java.util.List<com.tradery.forge.ui.charts.OverlayManager.PhaseOverlayData> overlayData = new java.util.ArrayList<>();
+                java.util.List<com.tradery.forge.ui.charts.ForgeOverlayManager.PhaseOverlayData> overlayData = new java.util.ArrayList<>();
                 for (Phase phase : phases) {
                     boolean[] state = phaseStates.get(phase.getId());
                     if (state == null) continue;
 
                     java.awt.Color color = com.tradery.forge.ui.controls.PhaseSelectorPopup.getPhaseColor(phase.getCategory());
                     String name = phase.getName() != null ? phase.getName() : phase.getId();
-                    overlayData.add(new com.tradery.forge.ui.charts.OverlayManager.PhaseOverlayData(
+                    overlayData.add(new com.tradery.forge.ui.charts.ForgeOverlayManager.PhaseOverlayData(
                         name, state, chartCandles, color));
                 }
 
@@ -972,16 +980,11 @@ public class ProjectWindow extends JFrame {
         var mgr = chartPanel.getIndicatorManager();
         backtestCoordinator.setViewRequirements(
             needsAggTrades,
-            mgr.isEnabled(com.tradery.forge.ui.charts.IndicatorType.FUNDING),
-            mgr.isEnabled(com.tradery.forge.ui.charts.IndicatorType.OI),
-            mgr.isEnabled(com.tradery.forge.ui.charts.IndicatorType.PREMIUM),
-            mgr.isEnabled(com.tradery.forge.ui.charts.IndicatorType.FEAR_GREED)
+            mgr.isEnabled(com.tradery.charts.core.IndicatorType.FUNDING),
+            mgr.isEnabled(com.tradery.charts.core.IndicatorType.OI),
+            mgr.isEnabled(com.tradery.charts.core.IndicatorType.PREMIUM),
+            mgr.isEnabled(com.tradery.charts.core.IndicatorType.FEAR_GREED)
         );
-
-        // Tell footprint to wait for coordinator's aggTrades instead of loading its own
-        if (needsAggTrades) {
-            chartPanel.setFootprintWaitForCoordinator(true);
-        }
 
         // Run backtest via coordinator
         backtestCoordinator.runBacktest(
@@ -1036,10 +1039,6 @@ public class ProjectWindow extends JFrame {
             // Apply saved overlays
             chartPanel.applySavedOverlays(candles);
 
-            // Reset the wait flag so the footprint overlay can load its own page if needed.
-            // If aggTrades are already available from the coordinator, pass them directly.
-            // If not (still loading or failed), the overlay falls back to its own page request.
-            chartPanel.setFootprintWaitForCoordinator(false);
             List<com.tradery.core.model.AggTrade> aggTrades = backtestCoordinator.getCurrentAggTrades();
             if (aggTrades != null && !aggTrades.isEmpty()) {
                 chartPanel.refreshOrderflowCharts(aggTrades);

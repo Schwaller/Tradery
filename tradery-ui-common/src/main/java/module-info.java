@@ -3,6 +3,8 @@ module com.tradery.ui.common {
     requires jdk.httpserver;
     requires com.formdev.flatlaf;
     requires com.formdev.flatlaf.intellijthemes;
+    requires com.fasterxml.jackson.databind;
+    requires com.fasterxml.jackson.annotation;
 
     exports com.tradery.ui;
     exports com.tradery.ui.controls;
@@ -11,4 +13,7 @@ module com.tradery.ui.common {
     exports com.tradery.ui.dashboard;
     exports com.tradery.ui.coverage;
     exports com.tradery.ui.settings;
+
+    opens com.tradery.ui.controls to com.fasterxml.jackson.databind;
+    opens com.tradery.ui.controls.indicators to com.fasterxml.jackson.databind;
 }

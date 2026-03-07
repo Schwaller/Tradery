@@ -1,0 +1,231 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 1000" font-family="Inter, -apple-system, system-ui, sans-serif">
+  <defs>
+    <style>
+      .title { font-size: 22px; font-weight: 700; fill: #e2e8f0; }
+      .subtitle { font-size: 11px; fill: #94a3b8; }
+      .group-label { font-size: 13px; font-weight: 600; }
+      .indicator { font-size: 10.5px; fill: #cbd5e1; font-family: 'JetBrains Mono', 'Fira Code', monospace; }
+      .note { font-size: 9.5px; fill: #64748b; font-style: italic; }
+    </style>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#0f172a"/>
+      <stop offset="100%" stop-color="#1e293b"/>
+    </linearGradient>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="2" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1200" height="1000" rx="12" fill="url(#bg)"/>
+  <rect x="1" y="1" width="1198" height="998" rx="12" fill="none" stroke="#334155" stroke-width="1"/>
+
+  <!-- Title -->
+  <text x="600" y="42" text-anchor="middle" class="title">Tradery DSL — Indicator Data Sources</text>
+  <text x="600" y="60" text-anchor="middle" class="subtitle">Which data feed each function requires</text>
+
+  <!-- ═══════════════════════════════════════════ -->
+  <!-- COLUMN 1: OHLCV Standard -->
+  <!-- ═══════════════════════════════════════════ -->
+  <rect x="20" y="80" width="370" height="540" rx="8" fill="#1e293b" stroke="#334155"/>
+  <rect x="20" y="80" width="370" height="32" rx="8" fill="#22c55e" opacity="0.15"/>
+  <circle cx="38" cy="96" r="5" fill="#22c55e"/>
+  <text x="50" y="100" class="group-label" fill="#22c55e">OHLCV Candles</text>
+  <text x="380" y="100" text-anchor="end" class="note">always available</text>
+
+  <!-- Price -->
+  <text x="34" y="130" class="indicator" font-weight="600" fill="#86efac">Price &amp; Core</text>
+  <text x="34" y="146" class="indicator">price  close  open  high  low  volume</text>
+
+  <!-- Moving Averages -->
+  <text x="34" y="172" class="indicator" font-weight="600" fill="#86efac">Moving Averages</text>
+  <text x="34" y="188" class="indicator">SMA(n)  EMA(n)</text>
+
+  <!-- Momentum -->
+  <text x="34" y="214" class="indicator" font-weight="600" fill="#86efac">Momentum</text>
+  <text x="34" y="230" class="indicator">RSI(n)  STOCHASTIC(k,d).k/.d</text>
+  <text x="34" y="246" class="indicator">MACD(f,s,sig).line/.signal/.histogram</text>
+
+  <!-- Volatility -->
+  <text x="34" y="272" class="indicator" font-weight="600" fill="#86efac">Volatility</text>
+  <text x="34" y="288" class="indicator">ATR(n)  BBANDS(n,std).upper/.middle/.lower/.width</text>
+
+  <!-- Trend -->
+  <text x="34" y="314" class="indicator" font-weight="600" fill="#86efac">Trend</text>
+  <text x="34" y="330" class="indicator">ADX(n)  PLUS_DI(n)  MINUS_DI(n)</text>
+  <text x="34" y="346" class="indicator">SUPERTREND(n,m).trend/.upper/.lower</text>
+  <text x="34" y="362" class="indicator">ICHIMOKU().tenkan/.kijun/.senkou_a/.senkou_b/.chikou</text>
+
+  <!-- Range -->
+  <text x="34" y="388" class="indicator" font-weight="600" fill="#86efac">Range &amp; Aggregates</text>
+  <text x="34" y="404" class="indicator">HIGH_OF(n)  LOW_OF(n)  AVG_VOLUME(n)</text>
+  <text x="34" y="420" class="indicator">RANGE_POSITION(n,skip)</text>
+  <text x="34" y="436" class="indicator">LOWEST(expr,n)  HIGHEST(expr,n)  PERCENTILE(expr,n)</text>
+
+  <!-- Candle Patterns -->
+  <text x="34" y="462" class="indicator" font-weight="600" fill="#86efac">Candle Patterns</text>
+  <text x="34" y="478" class="indicator">HAMMER(r)  SHOOTING_STAR(r)  DOJI(r)</text>
+  <text x="34" y="494" class="indicator">BODY_SIZE  BODY_RATIO  IS_BULLISH  IS_BEARISH</text>
+
+  <!-- Rotating Rays -->
+  <text x="34" y="520" class="indicator" font-weight="600" fill="#86efac">Rotating Rays</text>
+  <text x="34" y="536" class="indicator">RESISTANCE_RAY_BROKEN/CROSSED/DISTANCE</text>
+  <text x="34" y="552" class="indicator">SUPPORT_RAY_BROKEN/CROSSED/DISTANCE</text>
+  <text x="34" y="568" class="indicator">RESISTANCE_RAYS_BROKEN  RESISTANCE_RAY_COUNT</text>
+
+  <!-- Math -->
+  <text x="34" y="594" class="indicator" font-weight="600" fill="#86efac">Math</text>
+  <text x="34" y="610" class="indicator">abs(x)  min(a,b)  max(a,b)</text>
+
+  <!-- ═══════════════════════════════════════════ -->
+  <!-- COLUMN 2: OHLCV Extended + Tier1 + Full -->
+  <!-- ═══════════════════════════════════════════ -->
+
+  <!-- OHLCV Extended Volume -->
+  <rect x="410" y="80" width="370" height="160" rx="8" fill="#1e293b" stroke="#334155"/>
+  <rect x="410" y="80" width="370" height="32" rx="8" fill="#3b82f6" opacity="0.15"/>
+  <circle cx="428" cy="96" r="5" fill="#3b82f6"/>
+  <text x="440" y="100" class="group-label" fill="#3b82f6">OHLCV Extended Volume</text>
+  <text x="770" y="100" text-anchor="end" class="note">from Binance klines, instant</text>
+
+  <text x="424" y="130" class="indicator">QUOTE_VOLUME    BUY_VOLUME    SELL_VOLUME</text>
+  <text x="424" y="148" class="indicator">OHLCV_DELTA     OHLCV_CVD</text>
+  <text x="424" y="166" class="indicator">BUY_RATIO       TRADE_COUNT</text>
+  <text x="424" y="190" class="note">Taker buy/sell split from standard kline data</text>
+  <text x="424" y="204" class="note">No additional data download needed</text>
+
+  <!-- Tier 1 Orderflow -->
+  <rect x="410" y="260" width="370" height="180" rx="8" fill="#1e293b" stroke="#334155"/>
+  <rect x="410" y="260" width="370" height="32" rx="8" fill="#f59e0b" opacity="0.15"/>
+  <circle cx="428" cy="276" r="5" fill="#f59e0b"/>
+  <text x="440" y="280" class="group-label" fill="#f59e0b">Tier 1 Orderflow</text>
+  <text x="770" y="280" text-anchor="end" class="note">mode: tier1</text>
+
+  <text x="424" y="312" class="indicator" font-weight="600" fill="#fcd34d">Volume Profile</text>
+  <text x="424" y="330" class="indicator">VWAP</text>
+  <text x="424" y="348" class="indicator">POC(n)   VAH(n)   VAL(n)</text>
+  <text x="424" y="366" class="indicator">PREV_DAY_POC  PREV_DAY_VAH  PREV_DAY_VAL</text>
+  <text x="424" y="384" class="indicator">TODAY_POC     TODAY_VAH     TODAY_VAL</text>
+  <text x="424" y="410" class="note">Computed from OHLCV — no aggTrades download</text>
+
+  <!-- Full Orderflow -->
+  <rect x="410" y="460" width="370" height="160" rx="8" fill="#1e293b" stroke="#334155"/>
+  <rect x="410" y="460" width="370" height="32" rx="8" fill="#ef4444" opacity="0.15"/>
+  <circle cx="428" cy="476" r="5" fill="#ef4444"/>
+  <text x="440" y="480" class="group-label" fill="#ef4444">Full Orderflow</text>
+  <text x="770" y="480" text-anchor="end" class="note">mode: full — requires aggTrades</text>
+
+  <text x="424" y="512" class="indicator" font-weight="600" fill="#fca5a5">Delta &amp; Whales</text>
+  <text x="424" y="530" class="indicator">DELTA              CUM_DELTA</text>
+  <text x="424" y="548" class="indicator">WHALE_DELTA(t)     WHALE_BUY_VOL(t)</text>
+  <text x="424" y="566" class="indicator">WHALE_SELL_VOL(t)  LARGE_TRADE_COUNT(t)</text>
+  <text x="424" y="592" class="note">Requires downloading aggregated trade data</text>
+
+  <!-- ═══════════════════════════════════════════ -->
+  <!-- COLUMN 3: Footprint + External Feeds -->
+  <!-- ═══════════════════════════════════════════ -->
+
+  <!-- Footprint -->
+  <rect x="800" y="80" width="380" height="310" rx="8" fill="#1e293b" stroke="#334155"/>
+  <rect x="800" y="80" width="380" height="32" rx="8" fill="#a855f7" opacity="0.15"/>
+  <circle cx="818" cy="96" r="5" fill="#a855f7"/>
+  <text x="830" y="100" class="group-label" fill="#a855f7">Footprint Analysis</text>
+  <text x="1170" y="100" text-anchor="end" class="note">requires aggTrades</text>
+
+  <text x="814" y="130" class="indicator" font-weight="600" fill="#d8b4fe">Imbalance</text>
+  <text x="814" y="148" class="indicator">IMBALANCE_AT_POC   IMBALANCE_AT_VAH</text>
+  <text x="814" y="166" class="indicator">IMBALANCE_AT_VAL</text>
+
+  <text x="814" y="192" class="indicator" font-weight="600" fill="#d8b4fe">Stacked Imbalances</text>
+  <text x="814" y="210" class="indicator">STACKED_BUY_IMBALANCES(n)</text>
+  <text x="814" y="228" class="indicator">STACKED_SELL_IMBALANCES(n)</text>
+
+  <text x="814" y="254" class="indicator" font-weight="600" fill="#d8b4fe">Structure</text>
+  <text x="814" y="272" class="indicator">ABSORPTION(vol, move)</text>
+  <text x="814" y="290" class="indicator">HIGH_VOLUME_NODE_COUNT(t)</text>
+  <text x="814" y="308" class="indicator">VOLUME_ABOVE_POC_RATIO</text>
+  <text x="814" y="326" class="indicator">VOLUME_BELOW_POC_RATIO</text>
+
+  <text x="814" y="352" class="indicator" font-weight="600" fill="#d8b4fe">Footprint Derived</text>
+  <text x="814" y="370" class="indicator">FOOTPRINT_DELTA    FOOTPRINT_POC</text>
+
+  <!-- External Feeds -->
+  <rect x="800" y="410" width="380" height="210" rx="8" fill="#1e293b" stroke="#334155"/>
+  <rect x="800" y="410" width="380" height="32" rx="8" fill="#06b6d4" opacity="0.15"/>
+  <circle cx="818" cy="426" r="5" fill="#06b6d4"/>
+  <text x="830" y="430" class="group-label" fill="#06b6d4">External Data Feeds</text>
+  <text x="1170" y="430" text-anchor="end" class="note">separate APIs / CSV cache</text>
+
+  <text x="814" y="462" class="indicator" font-weight="600" fill="#67e8f9">Funding Rates</text>
+  <text x="814" y="480" class="indicator">FUNDING            FUNDING_8H</text>
+
+  <text x="814" y="506" class="indicator" font-weight="600" fill="#67e8f9">Open Interest</text>
+  <text x="814" y="524" class="indicator">OI    OI_CHANGE    OI_DELTA(n)</text>
+
+  <text x="814" y="550" class="indicator" font-weight="600" fill="#67e8f9">Futures Premium</text>
+  <text x="814" y="568" class="indicator">PREMIUM            PREMIUM_AVG(n)</text>
+
+  <text x="814" y="594" class="indicator" font-weight="600" fill="#67e8f9">Sentiment</text>
+  <text x="814" y="612" class="indicator">FEAR_GREED         FEAR_GREED_AVG(n)</text>
+
+  <!-- ═══════════════════════════════════════════ -->
+  <!-- Time & Calendar (bottom row) -->
+  <!-- ═══════════════════════════════════════════ -->
+  <rect x="410" y="640" width="370" height="120" rx="8" fill="#1e293b" stroke="#334155"/>
+  <rect x="410" y="640" width="370" height="32" rx="8" fill="#8b5cf6" opacity="0.15"/>
+  <circle cx="428" cy="656" r="5" fill="#8b5cf6"/>
+  <text x="440" y="660" class="group-label" fill="#8b5cf6">Time &amp; Calendar</text>
+  <text x="770" y="660" text-anchor="end" class="note">computed from candle timestamp</text>
+
+  <text x="424" y="692" class="indicator">HOUR  DAYOFWEEK  DAY  MONTH</text>
+  <text x="424" y="710" class="indicator">IS_US_HOLIDAY  IS_FOMC_MEETING</text>
+  <text x="424" y="728" class="indicator">MOON_PHASE</text>
+
+  <!-- ═══════════════════════════════════════════ -->
+  <!-- Legend -->
+  <!-- ═══════════════════════════════════════════ -->
+  <rect x="20" y="780" width="1160" height="80" rx="8" fill="#0f172a" stroke="#334155"/>
+  <text x="40" y="806" class="indicator" font-weight="600" fill="#94a3b8">DATA SOURCE HIERARCHY</text>
+
+  <circle cx="50" cy="832" r="5" fill="#22c55e"/>
+  <text x="62" y="836" class="indicator" fill="#94a3b8">OHLCV</text>
+
+  <text x="120" y="836" class="indicator" fill="#475569">→</text>
+
+  <circle cx="142" cy="832" r="5" fill="#3b82f6"/>
+  <text x="154" y="836" class="indicator" fill="#94a3b8">Extended Vol</text>
+
+  <text x="248" y="836" class="indicator" fill="#475569">→</text>
+
+  <circle cx="270" cy="832" r="5" fill="#f59e0b"/>
+  <text x="282" y="836" class="indicator" fill="#94a3b8">Tier 1</text>
+
+  <text x="332" y="836" class="indicator" fill="#475569">→</text>
+
+  <circle cx="354" cy="832" r="5" fill="#ef4444"/>
+  <text x="366" y="836" class="indicator" fill="#94a3b8">Full Orderflow</text>
+
+  <text x="470" y="836" class="indicator" fill="#475569">→</text>
+
+  <circle cx="492" cy="832" r="5" fill="#a855f7"/>
+  <text x="504" y="836" class="indicator" fill="#94a3b8">Footprint</text>
+
+  <line x1="600" y1="815" x2="600" y2="848" stroke="#334155" stroke-width="1"/>
+
+  <circle cx="630" cy="832" r="5" fill="#06b6d4"/>
+  <text x="642" y="836" class="indicator" fill="#94a3b8">External feeds (independent, fetched separately)</text>
+
+  <circle cx="630" cy="810" r="5" fill="#8b5cf6"/>
+  <text x="642" y="814" class="indicator" fill="#94a3b8">Time/Calendar (derived from timestamps, no extra data)</text>
+
+  <!-- Config hint -->
+  <rect x="20" y="880" width="1160" height="100" rx="8" fill="#1e293b" stroke="#334155" stroke-dasharray="4,4"/>
+  <text x="40" y="906" class="indicator" font-weight="600" fill="#94a3b8">STRATEGY CONFIG</text>
+  <text x="40" y="928" class="indicator" fill="#64748b">orderflowSettings.mode: disabled</text>
+  <text x="340" y="928" class="indicator" fill="#475569">→  OHLCV + Extended Vol + Time + External only</text>
+  <text x="40" y="948" class="indicator" fill="#f59e0b">orderflowSettings.mode: tier1</text>
+  <text x="340" y="948" class="indicator" fill="#475569">→  + VWAP, POC, VAH, VAL (no download needed)</text>
+  <text x="40" y="968" class="indicator" fill="#ef4444">orderflowSettings.mode: full</text>
+  <text x="340" y="968" class="indicator" fill="#475569">→  + Delta, Whales, Footprint (requires aggTrades download)</text>
+</svg>

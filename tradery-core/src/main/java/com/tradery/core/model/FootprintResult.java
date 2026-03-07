@@ -127,19 +127,6 @@ public record FootprintResult(
     }
 
     /**
-     * Find bars with exchange divergence.
-     */
-    public List<Integer> findBarsWithExchangeDivergence(double minScore) {
-        List<Integer> result = new ArrayList<>();
-        for (int i = 0; i < footprints.size(); i++) {
-            if (footprints.get(i).exchangeDivergenceScore() >= minScore) {
-                result.add(i);
-            }
-        }
-        return result;
-    }
-
-    /**
      * Builder for constructing FootprintResult instances.
      */
     public static class Builder {

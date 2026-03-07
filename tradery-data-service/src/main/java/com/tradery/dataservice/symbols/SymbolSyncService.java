@@ -396,25 +396,35 @@ public class SymbolSyncService {
         // Store in database
         symbolDao.upsertCoinsBatch(coins);
 
-        // Build lookup map
-        symbolToCoingeckoId.clear();
-        for (CoinInfo coin : coins) {
-            // Map symbol to ID (prefer first/most common)
-            symbolToCoingeckoId.putIfAbsent(coin.symbol().toLowerCase(), coin.id());
+        // Fetch market cap data for top 1000 coins (4 pages × 250)
+        try {
+            var marketData = coingeckoClient.fetchCoinsMarketData(4);
+            if (!marketData.isEmpty()) {
+                symbolDao.updateMarketData(marketData);
+                log.info("Updated market cap data for {} coins", marketData.size());
+            }
+        } catch (Exception e) {
+            log.warn("Failed to fetch market cap data (non-fatal): {}", e.getMessage());
         }
 
-        coinsListLastUpdated = Instant.now();
-        log.info("Cached {} coins from CoinGecko", coins.size());
+        // Build lookup map from DB (uses market cap rank to resolve ambiguous symbols)
+        loadCoinsFromDatabase();
+        log.info("Cached {} coins from CoinGecko, {} unique symbols mapped",
+            coins.size(), symbolToCoingeckoId.size());
     }
 
     /**
      * Load coins from database into memory cache.
+     * Uses market cap rank to resolve ambiguous symbols (e.g., "btc" → "bitcoin" not "batcat").
      */
     private void loadCoinsFromDatabase() {
-        // This is a lazy implementation - in production you'd query the database
-        // For now, we just mark it as loaded
-        coinsListLastUpdated = Instant.now();
-        log.debug("Coins cache marked as loaded from database");
+        try {
+            symbolToCoingeckoId = symbolDao.loadSymbolToIdMap();
+            coinsListLastUpdated = Instant.now();
+            log.debug("Loaded {} symbol→coingeckoId mappings from database", symbolToCoingeckoId.size());
+        } catch (SQLException e) {
+            log.error("Failed to load coins from database", e);
+        }
     }
 
     /**

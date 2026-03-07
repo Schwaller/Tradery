@@ -94,6 +94,8 @@ public class DataServicePageManager<T> extends DataPageManager<T> {
                                 DownloadLogStore logStore) throws Exception {
         String symbol = page.getSymbol();
         String timeframe = page.getTimeframe();
+        String exchange = page.getExchange();
+        String marketType = page.getMarketType();
         long startTime = page.getStartTime();
         long endTime = page.getEndTime();
         String forgePageKey = page.getKey();
@@ -109,7 +111,7 @@ public class DataServicePageManager<T> extends DataPageManager<T> {
 
         try {
             CompletableFuture<byte[]> future = client.subscribePage(
-                dataType, symbol, timeframe, startTime, endTime,
+                dataType, symbol, timeframe, exchange, marketType, startTime, endTime,
                 new DataServiceClient.DataPageCallback() {
                     @Override
                     public void onStateChanged(String state, int progress) {
@@ -150,7 +152,7 @@ public class DataServicePageManager<T> extends DataPageManager<T> {
             }
         } catch (Exception e) {
             log.error("{}.loadData (WS) failed: {}", dataType.getDisplayName(), e.getMessage());
-            client.unsubscribePage(dataType, symbol, timeframe, startTime, endTime);
+            client.unsubscribePage(dataType, symbol, timeframe, exchange, marketType, startTime, endTime);
             logStore.logError(forgePageKey, dataType,
                 "WS data load failed: " + e.getMessage());
             updatePageData(page, Collections.emptyList());

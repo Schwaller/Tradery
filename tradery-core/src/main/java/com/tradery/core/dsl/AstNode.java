@@ -210,22 +210,6 @@ public sealed interface AstNode {
     record FootprintFunctionCall(String func, List<Double> params) implements AstNode {}
 
     /**
-     * Cross-exchange function call for multi-exchange analysis:
-     * - BINANCE_DELTA, BYBIT_DELTA, OKX_DELTA: Delta from specific exchange
-     * - COMBINED_DELTA: Sum of delta across all enabled exchanges
-     * - EXCHANGE_DELTA_SPREAD: Difference between max and min exchange delta
-     * - EXCHANGE_DIVERGENCE: Returns 1 if exchanges disagree on direction
-     * - COMBINED_IMBALANCE_AT_POC: Aggregated imbalance at combined POC
-     * - EXCHANGES_WITH_BUY_IMBALANCE, EXCHANGES_WITH_SELL_IMBALANCE: Count of exchanges with imbalance
-     * - WHALE_DELTA_COMBINED(threshold): Large trade delta across all exchanges
-     * - DOMINANT_EXCHANGE: Returns enum value of highest volume exchange
-     *
-     * @param func Function name
-     * @param params Parameters (e.g., threshold for whale detection)
-     */
-    record ExchangeFunctionCall(String func, List<Double> params) implements AstNode {}
-
-    /**
      * Fear & Greed Index function call:
      * - FEAR_GREED: Current value (0-100)
      * - FEAR_GREED_AVG(period): Average over N bars

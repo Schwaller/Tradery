@@ -149,6 +149,49 @@ public class CoinGeckoClient {
     }
 
     /**
+     * Market data for a coin (market cap and rank).
+     */
+    public record CoinMarketData(String id, double marketCapUsd, int marketCapRank) {}
+
+    /**
+     * Fetch market data (market cap, rank) for the top coins by market cap.
+     * Uses /coins/markets endpoint, paginated at 250 per page.
+     *
+     * @param pages Number of pages to fetch (250 coins per page)
+     * @return List of market data entries
+     */
+    public List<CoinMarketData> fetchCoinsMarketData(int pages) throws IOException {
+        if (isCircuitOpen()) {
+            throw new IOException("Circuit breaker is open - CoinGecko API unavailable");
+        }
+
+        List<CoinMarketData> results = new ArrayList<>();
+        for (int page = 1; page <= pages; page++) {
+            String url = String.format(
+                "%s/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=250&page=%d",
+                BASE_URL, page);
+
+            JsonNode response = executeRequest(url);
+            if (response == null || !response.isArray() || response.isEmpty()) break;
+
+            for (JsonNode coin : response) {
+                String id = coin.has("id") ? coin.get("id").asText() : null;
+                if (id == null) continue;
+                double marketCap = coin.has("market_cap") && !coin.get("market_cap").isNull()
+                    ? coin.get("market_cap").asDouble() : 0;
+                int rank = coin.has("market_cap_rank") && !coin.get("market_cap_rank").isNull()
+                    ? coin.get("market_cap_rank").asInt() : 0;
+                results.add(new CoinMarketData(id, marketCap, rank));
+            }
+
+            if (response.size() < 250) break;
+        }
+
+        log.info("Fetched market data for {} coins", results.size());
+        return results;
+    }
+
+    /**
      * Fetch all coin IDs belonging to a CoinGecko category.
      * Uses /coins/markets?category={id} with pagination (250 per page).
      *

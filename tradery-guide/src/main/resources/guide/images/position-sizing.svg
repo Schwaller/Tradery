@@ -1,0 +1,69 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 560 240">
+  <rect width="560" height="240" fill="#000000" fill-opacity="0.3" rx="8"/>
+  <text x="280" y="28" fill="#cdd6f4" font-family="sans-serif" font-size="16" font-weight="bold" text-anchor="middle">Position Sizing: Surviving Losing Streaks</text>
+
+  <g transform="translate(60, 50)">
+    <!-- Y axis -->
+    <line x1="0" y1="0" x2="0" y2="150" stroke="#585b70" stroke-width="1"/>
+    <text x="-8" y="8" fill="#585b70" font-family="sans-serif" font-size="9" text-anchor="end">100%</text>
+    <text x="-8" y="78" fill="#585b70" font-family="sans-serif" font-size="9" text-anchor="end">50%</text>
+    <text x="-8" y="153" fill="#585b70" font-family="sans-serif" font-size="9" text-anchor="end">0%</text>
+    <text x="-30" y="80" fill="#585b70" font-family="sans-serif" font-size="9" text-anchor="middle" transform="rotate(-90,-30,80)">Capital Remaining</text>
+
+    <!-- X axis -->
+    <line x1="0" y1="150" x2="440" y2="150" stroke="#585b70" stroke-width="1"/>
+    <text x="220" y="172" fill="#585b70" font-family="sans-serif" font-size="9" text-anchor="middle">Consecutive Losses</text>
+
+    <!-- X labels -->
+    <text x="0" y="165" fill="#585b70" font-family="sans-serif" font-size="8" text-anchor="middle">0</text>
+    <text x="44" y="165" fill="#585b70" font-family="sans-serif" font-size="8" text-anchor="middle">2</text>
+    <text x="88" y="165" fill="#585b70" font-family="sans-serif" font-size="8" text-anchor="middle">4</text>
+    <text x="132" y="165" fill="#585b70" font-family="sans-serif" font-size="8" text-anchor="middle">6</text>
+    <text x="176" y="165" fill="#585b70" font-family="sans-serif" font-size="8" text-anchor="middle">8</text>
+    <text x="220" y="165" fill="#585b70" font-family="sans-serif" font-size="8" text-anchor="middle">10</text>
+    <text x="264" y="165" fill="#585b70" font-family="sans-serif" font-size="8" text-anchor="middle">12</text>
+    <text x="308" y="165" fill="#585b70" font-family="sans-serif" font-size="8" text-anchor="middle">14</text>
+    <text x="352" y="165" fill="#585b70" font-family="sans-serif" font-size="8" text-anchor="middle">16</text>
+    <text x="396" y="165" fill="#585b70" font-family="sans-serif" font-size="8" text-anchor="middle">18</text>
+    <text x="440" y="165" fill="#585b70" font-family="sans-serif" font-size="8" text-anchor="middle">20</text>
+
+    <!-- 1% risk line (barely dips) -->
+    <polyline
+      points="0,0 22,1.5 44,3 66,4.5 88,6 110,7.4 132,8.9 154,10.3 176,11.7 198,13.1 220,14.5 242,15.8 264,17.2 286,18.5 308,19.8 330,21.1 352,22.4 374,23.7 396,25 418,26.2 440,27.5"
+      fill="none" stroke="#a6e3a1" stroke-width="2.5" stroke-linejoin="round"/>
+
+    <!-- 2% risk line -->
+    <polyline
+      points="0,0 22,6 44,11.8 66,17.3 88,22.6 110,27.8 132,32.8 154,37.6 176,42.3 198,46.8 220,51.2 242,55.4 264,59.5 286,63.5 308,67.3 330,71.0 352,74.6 374,78.1 396,81.4 418,84.7 440,87.8"
+      fill="none" stroke="#89b4fa" stroke-width="2.5" stroke-linejoin="round"/>
+
+    <!-- 5% risk line -->
+    <polyline
+      points="0,0 22,14.6 44,28.4 66,41.4 88,53.6 110,64.9 132,75.6 154,85.5 176,94.7 198,103.3 220,111.2 242,118.5 264,125.2 286,131.4 308,137.1 330,142.3 352,147 374,150 396,150 418,150 440,150"
+      fill="none" stroke="#fab387" stroke-width="2.5" stroke-linejoin="round"/>
+
+    <!-- 10% risk line -->
+    <polyline
+      points="0,0 22,28.6 44,53.5 66,75.2 88,93.8 110,109.8 132,123.6 154,135.4 176,145.5 198,150 220,150 242,150 264,150 286,150 308,150 330,150 352,150 374,150 396,150 418,150 440,150"
+      fill="none" stroke="#f38ba8" stroke-width="2.5" stroke-linejoin="round"/>
+
+    <!-- Danger zone -->
+    <rect x="0" y="120" width="440" height="30" fill="#f38ba8" fill-opacity="0.05"/>
+    <text x="435" y="138" fill="#f38ba8" font-family="sans-serif" font-size="8" text-anchor="end">Ruin zone</text>
+
+    <!-- Legend -->
+    <g transform="translate(250, -5)">
+      <line x1="0" y1="0" x2="20" y2="0" stroke="#a6e3a1" stroke-width="2.5"/>
+      <text x="25" y="4" fill="#a6e3a1" font-family="sans-serif" font-size="9">1% risk</text>
+
+      <line x1="80" y1="0" x2="100" y2="0" stroke="#89b4fa" stroke-width="2.5"/>
+      <text x="105" y="4" fill="#89b4fa" font-family="sans-serif" font-size="9">2% risk</text>
+
+      <line x1="0" y1="16" x2="20" y2="16" stroke="#fab387" stroke-width="2.5"/>
+      <text x="25" y="20" fill="#fab387" font-family="sans-serif" font-size="9">5% risk</text>
+
+      <line x1="80" y1="16" x2="100" y2="16" stroke="#f38ba8" stroke-width="2.5"/>
+      <text x="105" y="20" fill="#f38ba8" font-family="sans-serif" font-size="9">10% risk</text>
+    </g>
+  </g>
+</svg>

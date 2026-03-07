@@ -23,8 +23,8 @@ import java.util.function.Consumer;
  * Coordinates synchronized behavior across multiple charts.
  * Handles crosshair sync and domain axis sync in a unified way.
  *
- * <p>This replaces the dual sync mechanisms (CrosshairManager and
- * ChartInteractionManager) with a single coordinator.</p>
+ * <p>Handles crosshair sync and domain axis sync. Used by
+ * {@link ChartLifecycleManager} alongside {@link ChartInteractionManager}.</p>
  *
  * <h2>Usage</h2>
  * <pre>{@code
@@ -70,7 +70,7 @@ public class ChartCoordinator {
      * The first registered panel becomes the master for coordinate conversion.
      */
     public void register(ChartPanel panel) {
-        if (panel == null) return;
+        if (panel == null || registeredPanels.contains(panel)) return;
 
         // First panel is the master
         if (masterPanel == null) {
@@ -203,25 +203,32 @@ public class ChartCoordinator {
     private void updateStatus(double timestamp) {
         if (onStatusUpdate == null || currentCandles == null || currentCandles.isEmpty()) return;
 
-        // Find the candle closest to this timestamp
+        // Binary search for the candle closest to this timestamp (candles are sorted by time)
         long ts = (long) timestamp;
-        Candle closest = null;
-        long minDiff = Long.MAX_VALUE;
+        int lo = 0, hi = currentCandles.size() - 1;
 
-        for (Candle c : currentCandles) {
-            long diff = Math.abs(c.timestamp() - ts);
-            if (diff < minDiff) {
-                minDiff = diff;
-                closest = c;
+        while (lo < hi) {
+            int mid = (lo + hi) >>> 1;
+            if (currentCandles.get(mid).timestamp() < ts) {
+                lo = mid + 1;
+            } else {
+                hi = mid;
             }
         }
 
-        if (closest != null) {
-            String status = String.format("%s  O: %.2f  H: %.2f  L: %.2f  C: %.2f  Vol: %.0f",
-                dateFormat.format(new Date(closest.timestamp())),
-                closest.open(), closest.high(), closest.low(), closest.close(), closest.volume());
-            onStatusUpdate.accept(status);
+        // lo is the insertion point - check lo and lo-1 for closest
+        Candle closest = currentCandles.get(lo);
+        if (lo > 0) {
+            Candle prev = currentCandles.get(lo - 1);
+            if (Math.abs(prev.timestamp() - ts) < Math.abs(closest.timestamp() - ts)) {
+                closest = prev;
+            }
         }
+
+        String status = String.format("%s  O: %.2f  H: %.2f  L: %.2f  C: %.2f  Vol: %.0f",
+            dateFormat.format(new Date(closest.timestamp())),
+            closest.open(), closest.high(), closest.low(), closest.close(), closest.volume());
+        onStatusUpdate.accept(status);
     }
 
     /**

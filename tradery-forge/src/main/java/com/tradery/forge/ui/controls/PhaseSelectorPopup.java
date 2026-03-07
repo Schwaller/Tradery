@@ -3,7 +3,7 @@ package com.tradery.forge.ui.controls;
 import com.tradery.core.model.Phase;
 import com.tradery.forge.ApplicationContext;
 import com.tradery.forge.io.PhaseStore;
-import com.tradery.forge.ui.charts.ChartConfig;
+import com.tradery.ui.controls.ChartConfig;
 import com.tradery.ui.controls.IndicatorSelectorPanel;
 
 import javax.swing.*;

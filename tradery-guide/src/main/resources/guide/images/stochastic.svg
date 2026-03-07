@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 560 220">
+  <rect width="560" height="220" fill="#000000" fill-opacity="0.3" rx="8"/>
+  <text x="280" y="28" fill="#cdd6f4" font-family="sans-serif" font-size="16" font-weight="bold" text-anchor="middle">Stochastic Oscillator</text>
+
+  <g transform="translate(50, 40)">
+    <!-- Overbought zone -->
+    <rect x="0" y="0" width="460" height="32" fill="#f38ba8" opacity="0.1"/>
+    <line x1="0" y1="32" x2="460" y2="32" stroke="#f38ba8" stroke-width="1" stroke-dasharray="4,4"/>
+    <text x="-8" y="22" fill="#f38ba8" font-family="sans-serif" font-size="11" text-anchor="end">80</text>
+    <text x="470" y="22" fill="#f38ba8" font-family="sans-serif" font-size="10">Overbought</text>
+
+    <!-- Neutral zone -->
+    <rect x="0" y="32" width="460" height="96" fill="#585b70" opacity="0.03"/>
+    <line x1="0" y1="80" x2="460" y2="80" stroke="#585b70" stroke-width="1" stroke-dasharray="2,4"/>
+    <text x="-8" y="84" fill="#585b70" font-family="sans-serif" font-size="11" text-anchor="end">50</text>
+
+    <!-- Oversold zone -->
+    <rect x="0" y="128" width="460" height="32" fill="#a6e3a1" opacity="0.1"/>
+    <line x1="0" y1="128" x2="460" y2="128" stroke="#a6e3a1" stroke-width="1" stroke-dasharray="4,4"/>
+    <text x="-8" y="148" fill="#a6e3a1" font-family="sans-serif" font-size="11" text-anchor="end">20</text>
+    <text x="470" y="148" fill="#a6e3a1" font-family="sans-serif" font-size="10">Oversold</text>
+
+    <!-- Scale labels -->
+    <text x="-8" y="8" fill="#7f849c" font-family="sans-serif" font-size="11" text-anchor="end">100</text>
+    <text x="-8" y="164" fill="#7f849c" font-family="sans-serif" font-size="11" text-anchor="end">0</text>
+
+    <!-- %K line (fast, solid) -->
+    <polyline
+      points="0,80 20,68 40,52 60,35 80,22 100,18 120,28 140,48 160,72 180,95 200,115 220,135 240,148 260,145 280,130 300,108 320,82 340,60 360,42 380,50 400,65 420,80 440,72 460,58"
+      fill="none" stroke="#89b4fa" stroke-width="2.5" stroke-linejoin="round"/>
+
+    <!-- %D line (slow, dashed) -->
+    <polyline
+      points="0,82 20,72 40,58 60,44 80,32 100,26 120,32 140,50 160,68 180,88 200,108 220,128 240,142 260,146 280,140 300,120 320,96 340,72 360,52 380,48 400,58 420,72 440,76 460,68"
+      fill="none" stroke="#fab387" stroke-width="2" stroke-dasharray="6,3" stroke-linejoin="round"/>
+
+    <!-- Buy signal: %K crosses above %D in oversold zone -->
+    <circle cx="260" cy="145" r="6" fill="none" stroke="#a6e3a1" stroke-width="2"/>
+    <text x="260" y="125" fill="#a6e3a1" font-family="sans-serif" font-size="10" font-weight="bold" text-anchor="middle">BUY</text>
+    <line x1="260" y1="128" x2="260" y2="137" stroke="#a6e3a1" stroke-width="1" stroke-dasharray="2,2"/>
+
+    <!-- Sell signal: %K crosses below %D in overbought zone -->
+    <circle cx="100" cy="18" r="6" fill="none" stroke="#f38ba8" stroke-width="2"/>
+    <text x="100" y="12" fill="#f38ba8" font-family="sans-serif" font-size="10" font-weight="bold" text-anchor="middle">SELL</text>
+
+    <!-- Axis -->
+    <line x1="0" y1="0" x2="0" y2="160" stroke="#585b70" stroke-width="1"/>
+    <line x1="0" y1="160" x2="460" y2="160" stroke="#585b70" stroke-width="1"/>
+
+    <!-- Legend -->
+    <line x1="120" y1="160" x2="145" y2="160" stroke="#89b4fa" stroke-width="2.5"/>
+    <text x="150" y="164" fill="#89b4fa" font-family="sans-serif" font-size="10">%K (fast)</text>
+    <line x1="250" y1="160" x2="275" y2="160" stroke="#fab387" stroke-width="2" stroke-dasharray="6,3"/>
+    <text x="280" y="164" fill="#fab387" font-family="sans-serif" font-size="10">%D (slow)</text>
+  </g>
+</svg>

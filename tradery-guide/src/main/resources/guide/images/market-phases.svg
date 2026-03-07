@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 560 280">
+  <rect width="560" height="280" fill="#000000" fill-opacity="0.3" rx="8"/>
+
+  <text x="280" y="28" fill="#cdd6f4" font-family="sans-serif" font-size="16" font-weight="bold" text-anchor="middle">Market Regimes: Trending vs Ranging</text>
+
+  <!-- Trending section -->
+  <g transform="translate(20, 50)">
+    <!-- Background -->
+    <rect x="0" y="0" width="240" height="190" fill="#313244" rx="6" opacity="0.5"/>
+    <text x="120" y="22" fill="#a6e3a1" font-family="sans-serif" font-size="13" font-weight="bold" text-anchor="middle">Trending</text>
+
+    <!-- Uptrend price line -->
+    <polyline
+      points="20,160 40,145 55,150 70,130 85,135 100,115 115,120 130,100 145,105 160,85 175,90 190,70 205,75 220,55"
+      fill="none" stroke="#a6e3a1" stroke-width="2.5" stroke-linejoin="round"/>
+
+    <!-- Higher highs / higher lows markers -->
+    <text x="55" y="165" fill="#585b70" font-family="sans-serif" font-size="8">HL</text>
+    <text x="70" y="125" fill="#585b70" font-family="sans-serif" font-size="8">HH</text>
+    <text x="115" y="130" fill="#585b70" font-family="sans-serif" font-size="8">HL</text>
+    <text x="130" y="95" fill="#585b70" font-family="sans-serif" font-size="8">HH</text>
+    <text x="175" y="100" fill="#585b70" font-family="sans-serif" font-size="8">HL</text>
+    <text x="190" y="65" fill="#585b70" font-family="sans-serif" font-size="8">HH</text>
+
+    <!-- Info -->
+    <text x="120" y="180" fill="#585b70" font-family="sans-serif" font-size="10" text-anchor="middle">ADX > 25 | Trend following</text>
+  </g>
+
+  <!-- Ranging section -->
+  <g transform="translate(290, 50)">
+    <!-- Background -->
+    <rect x="0" y="0" width="240" height="190" fill="#313244" rx="6" opacity="0.5"/>
+    <text x="120" y="22" fill="#fab387" font-family="sans-serif" font-size="13" font-weight="bold" text-anchor="middle">Ranging</text>
+
+    <!-- Resistance -->
+    <line x1="15" y1="60" x2="225" y2="60" stroke="#f38ba8" stroke-width="1" stroke-dasharray="4,4" opacity="0.5"/>
+    <!-- Support -->
+    <line x1="15" y1="140" x2="225" y2="140" stroke="#a6e3a1" stroke-width="1" stroke-dasharray="4,4" opacity="0.5"/>
+
+    <!-- Ranging price line -->
+    <polyline
+      points="20,100 35,80 50,65 65,85 80,120 95,135 110,115 125,75 140,65 155,90 170,130 185,135 200,110 215,70 225,80"
+      fill="none" stroke="#fab387" stroke-width="2.5" stroke-linejoin="round"/>
+
+    <!-- Info -->
+    <text x="120" y="180" fill="#585b70" font-family="sans-serif" font-size="10" text-anchor="middle">ADX &lt; 20 | Mean reversion</text>
+  </g>
+
+  <!-- Bottom note -->
+  <text x="280" y="262" fill="#7f849c" font-family="sans-serif" font-size="11" text-anchor="middle">Use market regime phases to match your strategy to current conditions</text>
+</svg>

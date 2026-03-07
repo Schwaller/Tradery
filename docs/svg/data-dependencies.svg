@@ -1,0 +1,93 @@
+<svg viewBox="0 0 850 520" xmlns="http://www.w3.org/2000/svg" font-family="monospace" font-size="11">
+  <text x="300" y="25" fill="#7ec8e3" font-weight="bold" font-size="16">What Needs What</text>
+
+  <!-- Column headers -->
+  <text x="20" y="55" fill="#888" font-weight="bold">FEATURE</text>
+  <text x="250" y="55" fill="#4a8a4a" font-weight="bold">Candles</text>
+  <text x="330" y="55" fill="#4a6a8a" font-weight="bold">AggTrades</text>
+  <text x="430" y="55" fill="#5a5a7a" font-weight="bold">Funding</text>
+  <text x="510" y="55" fill="#5a5a7a" font-weight="bold">OI</text>
+  <text x="560" y="55" fill="#5a5a7a" font-weight="bold">Premium</text>
+  <text x="640" y="55" fill="#5a5a7a" font-weight="bold">F&amp;G</text>
+  <text x="700" y="55" fill="#5a5a7a" font-weight="bold">Profiles</text>
+  <text x="780" y="55" fill="#5a5a7a" font-weight="bold">Spectrum</text>
+
+  <line x1="10" y1="62" x2="840" y2="62" stroke="#333"/>
+
+  <!-- Overlays section -->
+  <text x="20" y="82" fill="#7fffd4" font-weight="bold">OVERLAYS</text>
+  <text x="20" y="100" fill="#ccc">SMA / EMA / BB / Ichimoku</text>
+  <text x="272" y="100" fill="#7fff7f">●</text>
+
+  <text x="20" y="118" fill="#ccc">VWAP / POC / Volume Profile</text>
+  <text x="272" y="118" fill="#7fff7f">●</text>
+
+  <text x="20" y="136" fill="#ffa500">Footprint Heatmap</text>
+  <text x="272" y="136" fill="#7fff7f">●</text>
+  <text x="722" y="136" fill="#ffa500">●</text>
+  <text x="650" y="150" fill="#666" font-size="8">(via DataServiceClient, not page)</text>
+
+  <text x="20" y="168" fill="#ccc">Daily Volume Profile</text>
+  <text x="272" y="168" fill="#7fff7f">●</text>
+  <text x="722" y="168" fill="#888">●</text>
+
+  <line x1="10" y1="180" x2="840" y2="180" stroke="#222"/>
+
+  <!-- Technical indicators -->
+  <text x="20" y="200" fill="#ff9fff" font-weight="bold">INDICATORS (technical)</text>
+  <text x="20" y="218" fill="#ccc">RSI / ATR / ADX / MACD / Stoch</text>
+  <text x="272" y="218" fill="#7fff7f">●</text>
+
+  <text x="20" y="236" fill="#ccc">Range Position</text>
+  <text x="272" y="236" fill="#7fff7f">●</text>
+
+  <line x1="10" y1="248" x2="840" y2="248" stroke="#222"/>
+
+  <!-- Orderflow indicators -->
+  <text x="20" y="268" fill="#7fb8ff" font-weight="bold">INDICATORS (orderflow)</text>
+  <text x="20" y="286" fill="#ccc">Delta / CVD</text>
+  <text x="272" y="286" fill="#7fff7f">●</text>
+  <text x="352" y="286" fill="#7fb8ff">●</text>
+
+  <text x="20" y="304" fill="#ccc">Whale / Retail</text>
+  <text x="272" y="304" fill="#7fff7f">●</text>
+  <text x="352" y="304" fill="#7fb8ff">●</text>
+
+  <text x="20" y="322" fill="#ccc">Spectrum</text>
+  <text x="272" y="322" fill="#7fff7f">●</text>
+  <text x="800" y="322" fill="#888">●</text>
+
+  <line x1="10" y1="334" x2="840" y2="334" stroke="#222"/>
+
+  <!-- Market data indicators -->
+  <text x="20" y="354" fill="#c0c0ff" font-weight="bold">INDICATORS (market data)</text>
+  <text x="20" y="372" fill="#ccc">Funding Rate</text>
+  <text x="452" y="372" fill="#c0c0ff">●</text>
+
+  <text x="20" y="390" fill="#ccc">Open Interest</text>
+  <text x="522" y="390" fill="#c0c0ff">●</text>
+
+  <text x="20" y="408" fill="#ccc">Premium (Spot-Futures spread)</text>
+  <text x="582" y="408" fill="#c0c0ff">●</text>
+
+  <text x="20" y="426" fill="#ccc">Fear &amp; Greed Index</text>
+  <text x="657" y="426" fill="#c0c0ff">●</text>
+
+  <line x1="10" y1="440" x2="840" y2="440" stroke="#222"/>
+
+  <!-- DSL -->
+  <text x="20" y="460" fill="#ffa500" font-weight="bold">DSL (strategy conditions)</text>
+  <text x="20" y="478" fill="#ccc">Basic (RSI, SMA, price, etc.)</text>
+  <text x="272" y="478" fill="#7fff7f">●</text>
+
+  <text x="20" y="496" fill="#ccc">Orderflow (DELTA, VWAP, POC)</text>
+  <text x="272" y="496" fill="#7fff7f">●</text>
+  <text x="352" y="496" fill="#7fb8ff">●</text>
+  <text x="400" y="496" fill="#666" font-size="8">(tier2 only)</text>
+
+  <text x="20" y="514" fill="#ccc">FUNDING / OI / PREMIUM / F&amp;G</text>
+  <text x="452" y="514" fill="#c0c0ff">●</text>
+  <text x="522" y="514" fill="#c0c0ff">●</text>
+  <text x="582" y="514" fill="#c0c0ff">●</text>
+  <text x="657" y="514" fill="#c0c0ff">●</text>
+</svg>

@@ -1,0 +1,60 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 560 300">
+  <rect width="560" height="300" fill="#000000" fill-opacity="0.3" rx="8"/>
+
+  <text x="280" y="28" fill="#cdd6f4" font-family="sans-serif" font-size="16" font-weight="bold" text-anchor="middle">Volume Profile</text>
+
+  <!-- Price axis -->
+  <g transform="translate(80, 45)">
+    <!-- Price labels -->
+    <text x="-10" y="15" fill="#7f849c" font-family="sans-serif" font-size="10" text-anchor="end">$52k</text>
+    <text x="-10" y="55" fill="#7f849c" font-family="sans-serif" font-size="10" text-anchor="end">$51k</text>
+    <text x="-10" y="95" fill="#7f849c" font-family="sans-serif" font-size="10" text-anchor="end">$50k</text>
+    <text x="-10" y="135" fill="#7f849c" font-family="sans-serif" font-size="10" text-anchor="end">$49k</text>
+    <text x="-10" y="175" fill="#7f849c" font-family="sans-serif" font-size="10" text-anchor="end">$48k</text>
+    <text x="-10" y="215" fill="#7f849c" font-family="sans-serif" font-size="10" text-anchor="end">$47k</text>
+
+    <!-- Volume bars (horizontal) -->
+    <!-- VAH zone -->
+    <rect x="0" y="5" width="80" height="18" fill="#89b4fa" opacity="0.3" rx="2"/>
+    <rect x="0" y="25" width="120" height="18" fill="#89b4fa" opacity="0.3" rx="2"/>
+    <rect x="0" y="45" width="160" height="18" fill="#89b4fa" opacity="0.4" rx="2"/>
+    <rect x="0" y="65" width="200" height="18" fill="#89b4fa" opacity="0.5" rx="2"/>
+
+    <!-- POC (highest volume) -->
+    <rect x="0" y="85" width="340" height="18" fill="#cba6f7" opacity="0.6" rx="2"/>
+
+    <!-- Below POC -->
+    <rect x="0" y="105" width="240" height="18" fill="#89b4fa" opacity="0.5" rx="2"/>
+    <rect x="0" y="125" width="180" height="18" fill="#89b4fa" opacity="0.4" rx="2"/>
+    <rect x="0" y="145" width="140" height="18" fill="#89b4fa" opacity="0.3" rx="2"/>
+    <!-- VAL zone -->
+    <rect x="0" y="165" width="100" height="18" fill="#89b4fa" opacity="0.3" rx="2"/>
+    <rect x="0" y="185" width="60" height="18" fill="#89b4fa" opacity="0.2" rx="2"/>
+    <rect x="0" y="205" width="40" height="18" fill="#89b4fa" opacity="0.15" rx="2"/>
+
+    <!-- POC line -->
+    <line x1="0" y1="94" x2="420" y2="94" stroke="#cba6f7" stroke-width="1.5" stroke-dasharray="6,3"/>
+
+    <!-- VAH line -->
+    <line x1="0" y1="45" x2="420" y2="45" stroke="#fab387" stroke-width="1" stroke-dasharray="4,4"/>
+
+    <!-- VAL line -->
+    <line x1="0" y1="165" x2="420" y2="165" stroke="#fab387" stroke-width="1" stroke-dasharray="4,4"/>
+
+    <!-- Value area bracket -->
+    <line x1="410" y1="47" x2="410" y2="163" stroke="#fab387" stroke-width="1.5"/>
+    <line x1="405" y1="47" x2="415" y2="47" stroke="#fab387" stroke-width="1.5"/>
+    <line x1="405" y1="163" x2="415" y2="163" stroke="#fab387" stroke-width="1.5"/>
+
+    <!-- Labels -->
+    <text x="425" y="50" fill="#fab387" font-family="sans-serif" font-size="11" font-weight="bold">VAH</text>
+    <text x="425" y="98" fill="#cba6f7" font-family="sans-serif" font-size="11" font-weight="bold">POC</text>
+    <text x="425" y="170" fill="#fab387" font-family="sans-serif" font-size="11" font-weight="bold">VAL</text>
+    <text x="425" y="110" fill="#585b70" font-family="sans-serif" font-size="9">Value</text>
+    <text x="425" y="122" fill="#585b70" font-family="sans-serif" font-size="9">Area</text>
+    <text x="425" y="134" fill="#585b70" font-family="sans-serif" font-size="9">(70%)</text>
+  </g>
+
+  <!-- Legend -->
+  <text x="280" y="275" fill="#585b70" font-family="sans-serif" font-size="11" text-anchor="middle">POC = highest volume level | VAH/VAL = value area boundaries (70% of volume)</text>
+</svg>

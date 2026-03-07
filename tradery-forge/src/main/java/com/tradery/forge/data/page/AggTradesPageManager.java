@@ -40,6 +40,16 @@ public class AggTradesPageManager extends DataPageManager<AggTrade> {
     }
 
     @Override
+    public DataPageView<AggTrade> request(String symbol, String timeframe,
+                                           String exchange, String marketType,
+                                           long startTime, long endTime,
+                                           DataPageListener<AggTrade> listener,
+                                           String consumerName) {
+        // AggTrades are tick-level data — timeframe is irrelevant for deduplication.
+        return super.request(symbol, null, exchange, marketType, startTime, endTime, listener, consumerName);
+    }
+
+    @Override
     protected void loadData(DataPage<AggTrade> page) throws Exception {
         assertNotEDT("AggTradesPageManager.loadData");
 
@@ -72,6 +82,8 @@ public class AggTradesPageManager extends DataPageManager<AggTrade> {
     private void loadDataViaWs(DataPage<AggTrade> page, DataServiceClient client,
                                 DownloadLogStore logStore) throws Exception {
         String symbol = page.getSymbol();
+        String exchange = page.getExchange();
+        String marketType = page.getMarketType();
         long startTime = page.getStartTime();
         long endTime = page.getEndTime();
         String forgePageKey = page.getKey();
@@ -90,7 +102,7 @@ public class AggTradesPageManager extends DataPageManager<AggTrade> {
 
         try {
             CompletableFuture<byte[]> future = client.subscribePage(
-                DataType.AGG_TRADES, symbol, null, startTime, endTime,
+                DataType.AGG_TRADES, symbol, null, exchange, marketType, startTime, endTime,
                 new DataServiceClient.DataPageCallback() {
                     @Override
                     public void onStateChanged(String state, int progress) {
@@ -144,7 +156,7 @@ public class AggTradesPageManager extends DataPageManager<AggTrade> {
 
         } catch (Exception e) {
             log.error("AggTradesPageManager.loadData (WS) failed: {}", e.getMessage());
-            client.unsubscribePage(DataType.AGG_TRADES, symbol, null, startTime, endTime);
+            client.unsubscribePage(DataType.AGG_TRADES, symbol, null, exchange, marketType, startTime, endTime);
             logStore.logError(forgePageKey, DataType.AGG_TRADES,
                 "WS data load failed: " + e.getMessage());
             updatePageError(page, "Failed to load aggTrades: " + e.getMessage());

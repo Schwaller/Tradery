@@ -14,4 +14,7 @@ dependencies {
 
     // Markdown parsing
     api 'com.vladsch.flexmark:flexmark-all:0.64.8'
+
+    // SVG rendering for help dialogs
+    implementation 'com.github.weisj:jsvg:1.6.1'
 }

@@ -3,6 +3,7 @@ module com.tradery.forge {
     requires com.tradery.license;
     requires com.tradery.ui.common;
     requires com.tradery.help;
+    requires com.tradery.guide;
     requires transitive com.tradery.core;
     requires com.tradery.data;
     requires com.tradery.engine;

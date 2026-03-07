@@ -92,7 +92,20 @@ public class DataServiceClient {
      * @return A future that completes with the raw msgpack bytes when data arrives
      * @throws IllegalStateException if no WebSocket connection is available
      */
+    /**
+     * Subscribe to a page via WebSocket (defaults to binance/perp).
+     */
     public CompletableFuture<byte[]> subscribePage(DataType dataType, String symbol, String timeframe,
+                                                     long startTime, long endTime,
+                                                     DataPageCallback callback) {
+        return subscribePage(dataType, symbol, timeframe, null, null, startTime, endTime, callback);
+    }
+
+    /**
+     * Subscribe to a page via WebSocket with exchange and market type.
+     */
+    public CompletableFuture<byte[]> subscribePage(DataType dataType, String symbol, String timeframe,
+                                                     String exchange, String marketType,
                                                      long startTime, long endTime,
                                                      DataPageCallback callback) {
         DataServiceConnection conn = this.connection;
@@ -102,10 +115,13 @@ public class DataServiceClient {
             return failed;
         }
 
+        String ex = exchange != null ? exchange : "binance";
+        String mt = marketType != null ? marketType : "perp";
+
         // WS path: subscribe to page updates + register data callback
         CompletableFuture<byte[]> future = new CompletableFuture<>();
 
-        conn.subscribePage(dataType, symbol, timeframe, startTime, endTime,
+        conn.subscribePage(dataType, symbol, timeframe, ex, mt, startTime, endTime,
             new DataServiceConnection.PageUpdateCallback() {
                 @Override
                 public void onStateChanged(String state, int progress) {
@@ -140,7 +156,7 @@ public class DataServiceClient {
             });
 
         // Register for binary data push
-        String pageKey = makePageKey(dataType, symbol, timeframe, startTime, endTime);
+        String pageKey = makePageKey(dataType, symbol, timeframe, ex, mt, startTime, endTime);
         conn.setPageDataCallback(pageKey, new DataServiceConnection.PageDataCallback() {
             @Override
             public void onBinaryData(String key, String dt, long recordCount, byte[] msgpackData) {
@@ -170,22 +186,39 @@ public class DataServiceClient {
     }
 
     /**
-     * Unsubscribe from a page.
+     * Unsubscribe from a page (defaults to binance/perp).
      */
     public void unsubscribePage(DataType dataType, String symbol, String timeframe,
                                  long startTime, long endTime) {
+        unsubscribePage(dataType, symbol, timeframe, null, null, startTime, endTime);
+    }
+
+    /**
+     * Unsubscribe from a page with exchange and market type.
+     */
+    public void unsubscribePage(DataType dataType, String symbol, String timeframe,
+                                 String exchange, String marketType,
+                                 long startTime, long endTime) {
         DataServiceConnection conn = this.connection;
         if (conn != null) {
-            conn.unsubscribePage(dataType, symbol, timeframe, startTime, endTime, null);
-            String pageKey = makePageKey(dataType, symbol, timeframe, startTime, endTime);
+            String ex = exchange != null ? exchange : "binance";
+            String mt = marketType != null ? marketType : "perp";
+            conn.unsubscribePage(dataType, symbol, timeframe, ex, mt, startTime, endTime, null);
+            String pageKey = makePageKey(dataType, symbol, timeframe, ex, mt, startTime, endTime);
             conn.removePageDataCallback(pageKey);
         }
     }
 
-    private String makePageKey(DataType dataType, String symbol, String timeframe, long startTime, long endTime) {
+    private String makePageKey(DataType dataType, String symbol, String timeframe,
+                                String exchange, String marketType,
+                                long startTime, long endTime) {
         return new com.tradery.data.page.PageKey(
-            dataType.toWireFormat(), "binance", symbol.toUpperCase(), timeframe,
-            "perp", endTime, endTime - startTime
+            dataType.toWireFormat(),
+            exchange != null ? exchange : "binance",
+            symbol.toUpperCase(),
+            timeframe,
+            marketType != null ? marketType : "perp",
+            endTime, endTime - startTime
         ).toKeyString();
     }
 

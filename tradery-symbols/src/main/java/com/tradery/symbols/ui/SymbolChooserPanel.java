@@ -4,6 +4,7 @@ import com.tradery.core.model.DataMarketType;
 import com.tradery.core.model.Exchange;
 import com.tradery.symbols.model.SymbolEntry;
 import com.tradery.symbols.service.SymbolService;
+import com.tradery.symbols.service.SymbolService.MatrixEntry;
 import com.tradery.ui.controls.BorderlessTable;
 
 import javax.swing.*;
@@ -14,68 +15,46 @@ import java.awt.event.KeyAdapter;
 import java.awt.event.KeyEvent;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
-import java.util.ArrayList;
+import java.util.*;
 import java.util.List;
 import java.util.function.Consumer;
 
 /**
- * Panel with Exchange → Market → Search filter flow and a results table.
- * Fires a selection callback on double-click or Enter.
+ * Exchange × Coin matrix panel.
+ * Rows = coins (base assets), columns = exchange/market combos.
+ * Each cell shows all available quote currencies; tooltip reveals the actual pair ID.
  */
 public class SymbolChooserPanel extends JPanel {
 
-    private static final int SEARCH_LIMIT = 500;
+    private static final int MATRIX_LIMIT = 10000;
     private static final int DEBOUNCE_MS = 300;
+    private static final String ALL_QUOTES = "All";
+    private static final List<String> PREFERRED_QUOTES = List.of("USDT", "USD", "BUSD", "BTC", "ETH", "EUR");
 
     private final SymbolService service;
-    private final JComboBox<String> exchangeCombo;
-    private final JComboBox<String> marketCombo;
     private final JTextField searchField;
+    private final JComboBox<String> quoteCombo;
     private final JTable table;
-    private final SymbolTableModel tableModel;
+    private final MatrixTableModel tableModel;
     private final SyncStatusPanel syncStatusPanel;
 
-    private Timer debounceTimer;
+    private javax.swing.Timer debounceTimer;
     private Consumer<SymbolEntry> selectionCallback;
 
     public SymbolChooserPanel(SymbolService service) {
         this.service = service;
         setLayout(new BorderLayout(0, 4));
 
-        // --- Step-by-step filter bar ---
-        JPanel filterPanel = new JPanel();
-        filterPanel.setLayout(new BoxLayout(filterPanel, BoxLayout.Y_AXIS));
-        filterPanel.setBorder(BorderFactory.createEmptyBorder(4, 4, 4, 4));
+        // --- Filter bar ---
+        JPanel filterPanel = new JPanel(new BorderLayout(12, 0));
+        filterPanel.setBorder(BorderFactory.createEmptyBorder(6, 8, 6, 8));
 
-        // Row 1: Exchange and Market
-        JPanel row1 = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 2));
-
-        row1.add(makeLabel("1. Exchange:"));
-        exchangeCombo = new JComboBox<>();
-        exchangeCombo.addItem("All Exchanges");
-        for (String ex : service.getExchanges()) {
-            exchangeCombo.addItem(formatExchange(ex));
-        }
-        exchangeCombo.addActionListener(e -> triggerSearch());
-        row1.add(exchangeCombo);
-
-        row1.add(Box.createHorizontalStrut(12));
-
-        row1.add(makeLabel("2. Market:"));
-        marketCombo = new JComboBox<>(new String[]{
-            "All Markets",
-            DataMarketType.SPOT.getDisplayName(),
-            DataMarketType.FUTURES_PERP.getDisplayName()
-        });
-        marketCombo.addActionListener(e -> triggerSearch());
-        row1.add(marketCombo);
-
-        filterPanel.add(row1);
-
-        // Row 2: Search
-        JPanel row2 = new JPanel(new BorderLayout(6, 0));
-        row2.setBorder(BorderFactory.createEmptyBorder(2, 4, 2, 4));
-        row2.add(makeLabel("3. Search:"), BorderLayout.WEST);
+        // Search field (left, stretches)
+        JPanel searchPanel = new JPanel(new BorderLayout(6, 0));
+        searchPanel.setOpaque(false);
+        JLabel searchLabel = new JLabel("Search:");
+        searchLabel.setFont(searchLabel.getFont().deriveFont(Font.BOLD, 11f));
+        searchPanel.add(searchLabel, BorderLayout.WEST);
         searchField = new JTextField();
         searchField.putClientProperty("JTextField.placeholderText", "Type coin name, symbol, or ticker...");
         searchField.getDocument().addDocumentListener(new javax.swing.event.DocumentListener() {
@@ -83,38 +62,66 @@ public class SymbolChooserPanel extends JPanel {
             public void removeUpdate(javax.swing.event.DocumentEvent e) { debouncedSearch(); }
             public void changedUpdate(javax.swing.event.DocumentEvent e) { debouncedSearch(); }
         });
-        row2.add(searchField, BorderLayout.CENTER);
+        searchPanel.add(searchField, BorderLayout.CENTER);
+        filterPanel.add(searchPanel, BorderLayout.CENTER);
 
-        filterPanel.add(row2);
+        // Quote filter combo (right)
+        JPanel quotePanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 6, 0));
+        quotePanel.setOpaque(false);
+        JLabel quoteLabel = new JLabel("Quote:");
+        quoteLabel.setFont(quoteLabel.getFont().deriveFont(Font.BOLD, 11f));
+        quotePanel.add(quoteLabel);
+        quoteCombo = new JComboBox<>();
+        populateQuotes();
+        quoteCombo.addActionListener(e -> triggerSearch());
+        quotePanel.add(quoteCombo);
+        filterPanel.add(quotePanel, BorderLayout.EAST);
 
         add(filterPanel, BorderLayout.NORTH);
 
-        // --- Table ---
-        tableModel = new SymbolTableModel();
-        table = new BorderlessTable(tableModel);
-        table.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
-        table.setRowHeight(24);
-        table.getColumnModel().getColumn(0).setPreferredWidth(150); // Symbol
-        table.getColumnModel().getColumn(1).setPreferredWidth(80);  // Exchange
-        table.getColumnModel().getColumn(2).setPreferredWidth(60);  // Market
-        table.getColumnModel().getColumn(3).setPreferredWidth(70);  // Base
-        table.getColumnModel().getColumn(4).setPreferredWidth(60);  // Quote
-        table.getColumnModel().getColumn(5).setPreferredWidth(120); // Categories
-
-        // Dim exchange, market, and categories columns
-        DefaultTableCellRenderer dimRenderer = new DefaultTableCellRenderer() {
+        // --- Matrix table ---
+        tableModel = new MatrixTableModel();
+        table = new BorderlessTable(tableModel) {
             @Override
-            public Component getTableCellRendererComponent(JTable table, Object value, boolean isSelected, boolean hasFocus, int row, int column) {
-                Component c = super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column);
-                if (!isSelected) {
-                    c.setForeground(UIManager.getColor("Label.disabledForeground"));
+            public String getToolTipText(MouseEvent e) {
+                int row = rowAtPoint(e.getPoint());
+                int col = columnAtPoint(e.getPoint());
+                if (row >= 0 && col >= MatrixTableModel.FIXED_COLS) {
+                    return tableModel.getTooltip(row, col);
                 }
-                return c;
+                return null;
             }
         };
-        table.getColumnModel().getColumn(1).setCellRenderer(dimRenderer);
-        table.getColumnModel().getColumn(2).setCellRenderer(dimRenderer);
-        table.getColumnModel().getColumn(5).setCellRenderer(dimRenderer);
+        // Need to register so tooltips work
+        ToolTipManager.sharedInstance().registerComponent(table);
+
+        table.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+        table.setCellSelectionEnabled(true);
+        table.setRowSelectionAllowed(false);
+        table.setColumnSelectionAllowed(false);
+        table.setRowHeight(26);
+        table.setAutoResizeMode(JTable.AUTO_RESIZE_OFF);
+        table.setDefaultRenderer(Object.class, new MatrixCellRenderer());
+
+        // Click-to-sort on fixed column headers (Coin, Rank, Cap)
+        table.getTableHeader().addMouseListener(new MouseAdapter() {
+            private int lastSortCol = -1;
+            private boolean ascending = true;
+
+            @Override
+            public void mouseClicked(MouseEvent e) {
+                int col = table.columnAtPoint(e.getPoint());
+                if (col >= 0 && col < MatrixTableModel.FIXED_COLS) {
+                    if (col == lastSortCol) {
+                        ascending = !ascending;
+                    } else {
+                        lastSortCol = col;
+                        ascending = true;
+                    }
+                    tableModel.sortBy(col, ascending);
+                }
+            }
+        });
 
         table.addMouseListener(new MouseAdapter() {
             @Override
@@ -132,7 +139,9 @@ public class SymbolChooserPanel extends JPanel {
             }
         });
 
-        JScrollPane scrollPane = new JScrollPane(table);
+        JScrollPane scrollPane = new JScrollPane(table,
+            JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED,
+            JScrollPane.HORIZONTAL_SCROLLBAR_AS_NEEDED);
         add(scrollPane, BorderLayout.CENTER);
 
         // --- Status bar ---
@@ -142,7 +151,7 @@ public class SymbolChooserPanel extends JPanel {
         // Initial load
         triggerSearch();
 
-        // Auto-focus search field when panel is shown
+        // Auto-focus search
         addHierarchyListener(e -> {
             if ((e.getChangeFlags() & java.awt.event.HierarchyEvent.SHOWING_CHANGED) != 0 && isShowing()) {
                 SwingUtilities.invokeLater(searchField::requestFocusInWindow);
@@ -156,46 +165,80 @@ public class SymbolChooserPanel extends JPanel {
 
     public SymbolEntry getSelectedEntry() {
         int row = table.getSelectedRow();
-        if (row >= 0) return tableModel.getEntryAt(row);
+        int col = table.getSelectedColumn();
+        if (row >= 0 && col >= MatrixTableModel.FIXED_COLS) {
+            String quoteFilter = getSelectedQuote();
+            return tableModel.getEntryAt(row, col, quoteFilter);
+        }
         return null;
     }
 
-    private JLabel makeLabel(String text) {
-        JLabel label = new JLabel(text);
-        label.setFont(label.getFont().deriveFont(Font.BOLD, 11f));
-        return label;
+    private String getSelectedQuote() {
+        String sel = (String) quoteCombo.getSelectedItem();
+        return ALL_QUOTES.equals(sel) ? null : sel;
+    }
+
+    private void populateQuotes() {
+        quoteCombo.addItem(ALL_QUOTES);
+        List<String> allQuotes = service.getAllQuoteCurrencies();
+        // Preferred quotes first
+        for (String pq : PREFERRED_QUOTES) {
+            if (allQuotes.contains(pq)) quoteCombo.addItem(pq);
+        }
+        for (String q : allQuotes) {
+            if (!PREFERRED_QUOTES.contains(q)) quoteCombo.addItem(q);
+        }
+        // Default to All
+        quoteCombo.setSelectedItem(ALL_QUOTES);
     }
 
     private void debouncedSearch() {
         if (debounceTimer != null) debounceTimer.stop();
-        debounceTimer = new Timer(DEBOUNCE_MS, e -> triggerSearch());
+        debounceTimer = new javax.swing.Timer(DEBOUNCE_MS, e -> triggerSearch());
         debounceTimer.setRepeats(false);
         debounceTimer.start();
     }
 
     private void triggerSearch() {
         String query = searchField.getText().trim();
-        String exchange = exchangeCombo.getSelectedIndex() == 0 ? null
-            : exchangeConfigKey((String) exchangeCombo.getSelectedItem());
-        String market = marketCombo.getSelectedIndex() == 0 ? null
-            : marketConfigKey((String) marketCombo.getSelectedItem());
+        String quote = getSelectedQuote(); // null = all
 
-        // Run query off EDT
-        new SwingWorker<List<SymbolEntry>, Void>() {
+        new SwingWorker<List<MatrixEntry>, Void>() {
             @Override
-            protected List<SymbolEntry> doInBackground() {
-                return service.search(query.isEmpty() ? null : query, exchange, market, SEARCH_LIMIT);
+            protected List<MatrixEntry> doInBackground() {
+                return service.getMatrix(quote, query.isEmpty() ? null : query, MATRIX_LIMIT);
             }
 
             @Override
             protected void done() {
                 try {
-                    tableModel.setEntries(get());
+                    tableModel.setData(get());
+                    updateColumnWidths();
                 } catch (Exception ex) {
-                    tableModel.setEntries(List.of());
+                    tableModel.setData(List.of());
                 }
             }
         }.execute();
+    }
+
+    private void updateColumnWidths() {
+        if (tableModel.getColumnCount() == 0) return;
+        // Coin column
+        table.getColumnModel().getColumn(0).setPreferredWidth(160);
+        table.getColumnModel().getColumn(0).setMinWidth(120);
+        // Rank column
+        table.getColumnModel().getColumn(1).setPreferredWidth(50);
+        table.getColumnModel().getColumn(1).setMinWidth(40);
+        table.getColumnModel().getColumn(1).setMaxWidth(60);
+        // Cap column
+        table.getColumnModel().getColumn(2).setPreferredWidth(80);
+        table.getColumnModel().getColumn(2).setMinWidth(60);
+        table.getColumnModel().getColumn(2).setMaxWidth(100);
+        // Exchange columns
+        for (int i = MatrixTableModel.FIXED_COLS; i < tableModel.getColumnCount(); i++) {
+            table.getColumnModel().getColumn(i).setPreferredWidth(120);
+            table.getColumnModel().getColumn(i).setMinWidth(80);
+        }
     }
 
     private void fireSelection() {
@@ -205,38 +248,270 @@ public class SymbolChooserPanel extends JPanel {
         }
     }
 
-    // --- Table Model ---
+    // --- Matrix Table Model ---
 
-    private static class SymbolTableModel extends AbstractTableModel {
-        private static final String[] COLUMNS = {"Symbol", "Exchange", "Market", "Base", "Quote", "Categories"};
-        private List<SymbolEntry> entries = new ArrayList<>();
+    private static class MatrixTableModel extends AbstractTableModel {
 
-        void setEntries(List<SymbolEntry> entries) {
-            this.entries = entries;
-            fireTableDataChanged();
+        private List<ExchangeMarket> columns = new ArrayList<>();
+        private List<CoinRow> rows = new ArrayList<>();
+
+        record ExchangeMarket(String exchange, String marketType) {
+            String displayName() {
+                return formatExchange(exchange) + " " + formatMarket(marketType);
+            }
         }
 
-        SymbolEntry getEntryAt(int row) {
-            return entries.get(row);
+        /** One quote→symbol mapping within a cell. */
+        record QuotePair(String quote, String symbol) {}
+
+        /** A cell: all available quote/symbol pairs for one coin on one exchange/market. */
+        record CellData(List<QuotePair> pairs) {
+            String displayText() {
+                if (pairs.isEmpty()) return "";
+                StringJoiner sj = new StringJoiner("  ");
+                for (QuotePair qp : pairs) sj.add(qp.quote);
+                return sj.toString();
+            }
+
+            String tooltipText() {
+                if (pairs.isEmpty()) return null;
+                StringBuilder sb = new StringBuilder("<html>");
+                for (int i = 0; i < pairs.size(); i++) {
+                    QuotePair qp = pairs.get(i);
+                    if (i > 0) sb.append("<br>");
+                    sb.append("<b>").append(qp.quote).append("</b> → ").append(qp.symbol);
+                }
+                sb.append("</html>");
+                return sb.toString();
+            }
+
+            /** Pick best quote pair given a filter (null = pick preferred). */
+            QuotePair bestPair(String quoteFilter) {
+                if (pairs.isEmpty()) return null;
+                if (quoteFilter != null) {
+                    for (QuotePair qp : pairs) {
+                        if (qp.quote.equals(quoteFilter)) return qp;
+                    }
+                    return null;
+                }
+                // No filter — pick first from preferred order
+                for (String pref : List.of("USDT", "USD", "BUSD", "BTC", "ETH")) {
+                    for (QuotePair qp : pairs) {
+                        if (qp.quote.equals(pref)) return qp;
+                    }
+                }
+                return pairs.get(0);
+            }
         }
 
-        @Override public int getRowCount() { return entries.size(); }
-        @Override public int getColumnCount() { return COLUMNS.length; }
-        @Override public String getColumnName(int col) { return COLUMNS[col]; }
+        static class CoinRow {
+            final Set<String> bases = new LinkedHashSet<>();
+            final String coinName;
+            final String coingeckoId;
+            final double marketCapUsd;
+            final int marketCapRank;
+            final Map<ExchangeMarket, CellData> cells = new HashMap<>();
+
+            CoinRow(String base, String coinName, String coingeckoId,
+                    double marketCapUsd, int marketCapRank) {
+                this.bases.add(base);
+                this.coinName = coinName;
+                this.coingeckoId = coingeckoId;
+                this.marketCapUsd = marketCapUsd;
+                this.marketCapRank = marketCapRank;
+            }
+
+            String displayName() {
+                String baseStr = String.join("/", bases);
+                if (coinName != null && !coinName.isEmpty()) {
+                    return coinName + " (" + baseStr + ")";
+                }
+                return baseStr;
+            }
+
+            String rankDisplay() {
+                if (marketCapRank <= 0) return "";
+                return "#" + marketCapRank;
+            }
+
+            String capDisplay() {
+                return formatMarketCap(marketCapUsd);
+            }
+
+            private static String formatMarketCap(double usd) {
+                if (usd <= 0) return "";
+                if (usd >= 1_000_000_000_000L) return String.format("$%.1fT", usd / 1_000_000_000_000.0);
+                if (usd >= 1_000_000_000L) return String.format("$%.1fB", usd / 1_000_000_000.0);
+                if (usd >= 1_000_000L) return String.format("$%.1fM", usd / 1_000_000.0);
+                if (usd >= 1_000) return String.format("$%.0fK", usd / 1_000.0);
+                return String.format("$%.0f", usd);
+            }
+        }
+
+        void setData(List<MatrixEntry> entries) {
+            // Discover columns
+            LinkedHashSet<ExchangeMarket> colSet = new LinkedHashSet<>();
+            for (MatrixEntry e : entries) {
+                colSet.add(new ExchangeMarket(e.exchange(), e.marketType()));
+            }
+            columns = new ArrayList<>(colSet);
+
+            // Group by coingecko_id (merges BTC/XBT etc.), fall back to base_symbol
+            LinkedHashMap<String, CoinRow> rowMap = new LinkedHashMap<>();
+            for (MatrixEntry e : entries) {
+                String groupKey = (e.coingeckoId() != null && !e.coingeckoId().isEmpty())
+                    ? "cg:" + e.coingeckoId()
+                    : "base:" + e.base();
+
+                CoinRow row = rowMap.computeIfAbsent(groupKey,
+                    k -> new CoinRow(e.base(), e.coinName(), e.coingeckoId(),
+                        e.marketCapUsd(), e.marketCapRank()));
+                row.bases.add(e.base()); // collect aliases (BTC, XBT)
+
+                ExchangeMarket em = new ExchangeMarket(e.exchange(), e.marketType());
+                CellData cell = row.cells.computeIfAbsent(em, k -> new CellData(new ArrayList<>()));
+                cell.pairs().add(new QuotePair(e.quote(), e.symbol()));
+            }
+            // Sort by market cap rank (ranked first, unranked last, then alphabetically)
+            rows = new ArrayList<>(rowMap.values());
+            rows.sort((a, b) -> {
+                if (a.marketCapRank > 0 && b.marketCapRank > 0) return Integer.compare(a.marketCapRank, b.marketCapRank);
+                if (a.marketCapRank > 0) return -1;
+                if (b.marketCapRank > 0) return 1;
+                return a.bases.iterator().next().compareToIgnoreCase(b.bases.iterator().next());
+            });
+
+            fireTableStructureChanged();
+        }
+
+        /** Get entry for selection. quoteFilter=null means pick best available. */
+        SymbolEntry getEntryAt(int row, int col, String quoteFilter) {
+            if (row < 0 || row >= rows.size() || col < FIXED_COLS || col >= FIXED_COLS + columns.size()) return null;
+            CoinRow coinRow = rows.get(row);
+            ExchangeMarket em = columns.get(col - FIXED_COLS);
+            CellData cell = coinRow.cells.get(em);
+            if (cell == null) return null;
+
+            QuotePair qp = cell.bestPair(quoteFilter);
+            if (qp == null) return null;
+
+            return new SymbolEntry(qp.symbol, em.exchange, em.marketType,
+                coinRow.bases.iterator().next(), qp.quote, coinRow.coingeckoId, List.of());
+        }
+
+        String getTooltip(int row, int col) {
+            if (row < 0 || row >= rows.size() || col < FIXED_COLS || col >= FIXED_COLS + columns.size()) return null;
+            CoinRow coinRow = rows.get(row);
+            ExchangeMarket em = columns.get(col - FIXED_COLS);
+            CellData cell = coinRow.cells.get(em);
+            return cell != null ? cell.tooltipText() : null;
+        }
+
+        boolean hasData(int row, int col) {
+            if (row < 0 || row >= rows.size() || col < FIXED_COLS || col >= FIXED_COLS + columns.size()) return false;
+            CoinRow coinRow = rows.get(row);
+            ExchangeMarket em = columns.get(col - FIXED_COLS);
+            CellData cell = coinRow.cells.get(em);
+            return cell != null && !cell.pairs().isEmpty();
+        }
+
+        /** Number of fixed columns before exchange data columns. */
+        static final int FIXED_COLS = 3; // Coin, Rank, Cap
+
+        @Override public int getRowCount() { return rows.size(); }
+        @Override public int getColumnCount() { return FIXED_COLS + columns.size(); }
+
+        @Override
+        public String getColumnName(int col) {
+            return switch (col) {
+                case 0 -> "Coin";
+                case 1 -> "Rank";
+                case 2 -> "Cap";
+                default -> columns.get(col - FIXED_COLS).displayName();
+            };
+        }
 
         @Override
         public Object getValueAt(int row, int col) {
-            SymbolEntry e = entries.get(row);
+            CoinRow coinRow = rows.get(row);
             return switch (col) {
-                case 0 -> e.symbol();
-                case 1 -> formatExchange(e.exchange());
-                case 2 -> formatMarket(e.marketType());
-                case 3 -> e.base();
-                case 4 -> e.quote();
-                case 5 -> e.categories() != null && !e.categories().isEmpty()
-                    ? String.join(", ", e.categories()) : "";
-                default -> "";
+                case 0 -> coinRow.displayName();
+                case 1 -> coinRow.rankDisplay();
+                case 2 -> coinRow.capDisplay();
+                default -> {
+                    ExchangeMarket em = columns.get(col - FIXED_COLS);
+                    CellData cell = coinRow.cells.get(em);
+                    yield cell != null ? cell.displayText() : "";
+                }
             };
+        }
+
+        /** Sort rows by a fixed column. */
+        void sortBy(int col, boolean ascending) {
+            rows.sort((a, b) -> {
+                int cmp = switch (col) {
+                    case 0 -> a.displayName().compareToIgnoreCase(b.displayName());
+                    case 1, 2 -> {
+                        // Sort by rank — 0 means unranked, push to end
+                        if (a.marketCapRank > 0 && b.marketCapRank > 0)
+                            yield Integer.compare(a.marketCapRank, b.marketCapRank);
+                        if (a.marketCapRank > 0) yield -1;
+                        if (b.marketCapRank > 0) yield 1;
+                        yield a.displayName().compareToIgnoreCase(b.displayName());
+                    }
+                    default -> 0;
+                };
+                return ascending ? cmp : -cmp;
+            });
+            fireTableDataChanged();
+        }
+    }
+
+    // --- Cell Renderer ---
+
+    private static class MatrixCellRenderer extends DefaultTableCellRenderer {
+        @Override
+        public Component getTableCellRendererComponent(JTable table, Object value,
+                boolean isSelected, boolean hasFocus, int row, int col) {
+            Component c = super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, col);
+            String text = value != null ? value.toString() : "";
+
+            if (col == 0) {
+                // Coin name
+                c.setFont(c.getFont().deriveFont(Font.BOLD));
+                if (!isSelected) c.setForeground(UIManager.getColor("Table.foreground"));
+                setHorizontalAlignment(LEFT);
+            } else if (col == 1) {
+                // Rank
+                c.setFont(c.getFont().deriveFont(Font.PLAIN, 11f));
+                if (text.isEmpty()) {
+                    if (!isSelected) c.setForeground(UIManager.getColor("Label.disabledForeground"));
+                } else {
+                    if (!isSelected) c.setForeground(UIManager.getColor("Table.foreground"));
+                }
+                setHorizontalAlignment(RIGHT);
+            } else if (col == 2) {
+                // Cap
+                c.setFont(c.getFont().deriveFont(Font.PLAIN, 11f));
+                if (text.isEmpty()) {
+                    if (!isSelected) c.setForeground(UIManager.getColor("Label.disabledForeground"));
+                } else {
+                    if (!isSelected) c.setForeground(UIManager.getColor("Table.foreground"));
+                }
+                setHorizontalAlignment(RIGHT);
+            } else {
+                // Exchange cells
+                if (text.isEmpty()) {
+                    setText("\u2014");
+                    if (!isSelected) c.setForeground(UIManager.getColor("Label.disabledForeground"));
+                } else {
+                    c.setFont(c.getFont().deriveFont(Font.PLAIN, 11f));
+                    if (!isSelected) c.setForeground(UIManager.getColor("Table.foreground"));
+                }
+                setHorizontalAlignment(CENTER);
+            }
+
+            return c;
         }
     }
 
@@ -250,19 +525,5 @@ public class SymbolChooserPanel extends JPanel {
     private static String formatMarket(String configKey) {
         DataMarketType mt = DataMarketType.fromConfigKey(configKey);
         return mt != null ? mt.getDisplayName() : configKey;
-    }
-
-    private static String exchangeConfigKey(String displayName) {
-        for (Exchange ex : Exchange.values()) {
-            if (ex.getDisplayName().equals(displayName)) return ex.getConfigKey();
-        }
-        return displayName;
-    }
-
-    private static String marketConfigKey(String displayName) {
-        for (DataMarketType mt : DataMarketType.values()) {
-            if (mt.getDisplayName().equals(displayName)) return mt.getConfigKey();
-        }
-        return displayName;
     }
 }

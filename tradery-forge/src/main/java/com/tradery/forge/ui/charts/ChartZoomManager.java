@@ -1,5 +1,6 @@
 package com.tradery.forge.ui.charts;
 
+import com.tradery.charts.indicator.IndicatorChartsManager;
 import org.jfree.chart.JFreeChart;
 import org.jfree.chart.axis.DateAxis;
 import org.jfree.chart.plot.XYPlot;

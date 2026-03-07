@@ -95,7 +95,9 @@ public class StochasticRow extends JPanel {
     public boolean isSelected() { return checkbox.isSelected(); }
     public void setSelected(boolean selected) { checkbox.setSelected(selected); updateParamVisibility(); }
     public int getKPeriod() { return (int) kSpinner.getValue(); }
+    public void setKPeriod(int period) { kSpinner.setValue(period); kSlider.setValue(period); }
     public int getDPeriod() { return (int) dSpinner.getValue(); }
+    public void setDPeriod(int period) { dSpinner.setValue(period); dSlider.setValue(period); }
     public JCheckBox getCheckbox() { return checkbox; }
 
     public void addChangeListener(Runnable listener) { changeListeners.add(listener); }
