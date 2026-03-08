@@ -33,6 +33,7 @@ public class SettingsDialog extends com.tradery.ui.settings.SettingsDialog {
             new SectionEntry("AI Terminal", createAiTerminalContent()),
             new SectionEntry("Chart Defaults", createChartsContent()),
             new SectionEntry("Data Storage", createDataContent()),
+            new SectionEntry("Dex Data Collection", createDexCollectionContent()),
             new SectionEntry("Factory Reset", createFactoryResetContent())
         );
     }
@@ -354,6 +355,32 @@ public class SettingsDialog extends com.tradery.ui.settings.SettingsDialog {
     private String truncatePath(String path, int maxLen) {
         if (path.length() <= maxLen) return path;
         return "..." + path.substring(path.length() - maxLen + 3);
+    }
+
+    private JPanel createDexCollectionContent() {
+        JPanel panel = new JPanel(new GridBagLayout());
+
+        GridBagConstraints gbc = new GridBagConstraints();
+        gbc.insets = new Insets(4, 0, 4, 8);
+        gbc.anchor = GridBagConstraints.WEST;
+        gbc.fill = GridBagConstraints.HORIZONTAL;
+
+        // Info label
+        gbc.gridx = 0; gbc.gridy = 0; gbc.gridwidth = 2;
+        JLabel infoLabel = new JLabel("<html><small>Collect real-time trade data from decentralized exchanges (Hyperliquid).<br>Configure which coins to collect via the Dex Collection window.</small></html>");
+        infoLabel.setForeground(UIManager.getColor("Label.disabledForeground"));
+        panel.add(infoLabel, gbc);
+
+        // Open button
+        gbc.gridy = 1; gbc.gridwidth = 2;
+        gbc.fill = GridBagConstraints.NONE;
+        gbc.anchor = GridBagConstraints.EAST;
+
+        JButton openBtn = new JButton("Open Dex Collection...");
+        openBtn.addActionListener(e -> DexCollectionWindow.showWindow());
+        panel.add(openBtn, gbc);
+
+        return panel;
     }
 
     private JPanel createFactoryResetContent() {

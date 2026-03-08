@@ -16,8 +16,14 @@ import javax.swing.event.HyperlinkEvent;
 import javax.swing.text.*;
 import javax.swing.text.html.HTMLDocument;
 import java.awt.*;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.prefs.Preferences;
 
 /**
@@ -50,6 +56,7 @@ public class MarkdownHelpDialog extends JDialog {
     private int currentMatchIndex = -1;
     private Highlighter.HighlightPainter searchHighlightPainter;
     private Highlighter.HighlightPainter currentMatchPainter;
+    private JPanel crossTabHintPanel;
 
     /**
      * Create a new help dialog.
@@ -233,7 +240,17 @@ public class MarkdownHelpDialog extends JDialog {
         });
 
         contentScrollPane = new BorderlessScrollPane(helpPane);
-        contentScrollPane.getVerticalScrollBar().setUnitIncrement(16);
+        contentScrollPane.getVerticalScrollBar().setUnitIncrement(1);
+
+        // Override mouse wheel to dampen macOS trackpad/scroll acceleration
+        contentScrollPane.setWheelScrollingEnabled(false);
+        contentScrollPane.addMouseWheelListener(e -> {
+            JScrollBar vbar = contentScrollPane.getVerticalScrollBar();
+            // Use precise rotation for smooth trackpad, fallback to click count
+            double rotation = e.getPreciseWheelRotation();
+            int pixels = (int) Math.round(rotation * 8); // 8px per unit of rotation
+            vbar.setValue(vbar.getValue() + pixels);
+        });
 
         // Track scroll position to update TOC selection
         contentScrollPane.getViewport().addChangeListener(new ChangeListener() {
@@ -263,7 +280,15 @@ public class MarkdownHelpDialog extends JDialog {
         JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
         buttonPanel.add(closeButton);
 
+        // Cross-tab search hint panel (hidden by default)
+        crossTabHintPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 3));
+        crossTabHintPanel.setVisible(false);
+        crossTabHintPanel.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createMatteBorder(0, 0, 1, 0, UIManager.getColor("Separator.foreground")),
+                BorderFactory.createEmptyBorder(1, 8, 1, 8)));
+
         JPanel mainContent = new JPanel(new BorderLayout());
+        mainContent.add(crossTabHintPanel, BorderLayout.NORTH);
         mainContent.add(splitPane, BorderLayout.CENTER);
         mainContent.setPreferredSize(size);
 
@@ -338,13 +363,21 @@ public class MarkdownHelpDialog extends JDialog {
         helpPane.setCaretPosition(0);
         helpPane.getCaret().setVisible(false);
 
-        // Clear search
+        // Re-run search on new tab content if search is active
         searchMatches.clear();
         currentMatchIndex = -1;
-        searchField.clearMatchInfo();
 
-        // Recalculate TOC positions after layout
-        SwingUtilities.invokeLater(() -> SwingUtilities.invokeLater(this::calculateTocPositions));
+        // Recalculate TOC positions after layout, then re-run search if active
+        SwingUtilities.invokeLater(() -> SwingUtilities.invokeLater(() -> {
+            calculateTocPositions();
+            String searchText = searchField.getText().trim();
+            if (!searchText.isEmpty()) {
+                performSearch();
+            } else {
+                searchField.clearMatchInfo();
+                crossTabHintPanel.setVisible(false);
+            }
+        }));
     }
 
     private void scrollToSelectedSection() {
@@ -451,6 +484,8 @@ public class MarkdownHelpDialog extends JDialog {
         String searchText = searchField.getText().toLowerCase().trim();
         if (searchText.isEmpty()) {
             searchField.clearMatchInfo();
+            crossTabHintPanel.setVisible(false);
+            crossTabHintPanel.revalidate();
             return;
         }
 
@@ -480,6 +515,9 @@ public class MarkdownHelpDialog extends JDialog {
         } catch (BadLocationException e) {
             // Ignore
         }
+
+        // Search other tabs and show cross-tab hints
+        updateCrossTabHint(searchText);
     }
 
     private void highlightCurrentMatch() {
@@ -533,6 +571,109 @@ public class MarkdownHelpDialog extends JDialog {
 
     private void clearSearchHighlights() {
         helpPane.getHighlighter().removeAllHighlights();
+    }
+
+    /**
+     * Search other tabs for the given search term and return match counts.
+     */
+    private Map<String, Integer> searchOtherTabs(String searchText) {
+        Map<String, Integer> results = new LinkedHashMap<>();
+        if (tabs == null || tabs.length <= 1 || searchText.isEmpty()) return results;
+
+        int currentTabIndex = tabToggle != null ? tabToggle.getSelectedIndex() : 0;
+        String lowerSearch = searchText.toLowerCase();
+
+        for (int i = 0; i < tabs.length; i++) {
+            if (i == currentTabIndex) continue;
+            try (InputStream is = resourceClass.getResourceAsStream(tabs[i].resourcePath())) {
+                if (is == null) continue;
+                String content = new String(is.readAllBytes(), StandardCharsets.UTF_8).toLowerCase();
+                int count = 0;
+                int idx = 0;
+                while ((idx = content.indexOf(lowerSearch, idx)) != -1) {
+                    count++;
+                    idx += lowerSearch.length();
+                }
+                if (count > 0) {
+                    results.put(tabs[i].label(), count);
+                }
+            } catch (Exception e) {
+                // Skip this tab
+            }
+        }
+        return results;
+    }
+
+    /**
+     * Update the cross-tab hint panel to show which other tabs contain the search term.
+     */
+    private void updateCrossTabHint(String searchText) {
+        crossTabHintPanel.removeAll();
+
+        if (tabs == null || tabs.length <= 1 || searchText.isEmpty()) {
+            crossTabHintPanel.setVisible(false);
+            crossTabHintPanel.revalidate();
+            return;
+        }
+
+        Map<String, Integer> otherTabResults = searchOtherTabs(searchText);
+        if (otherTabResults.isEmpty()) {
+            crossTabHintPanel.setVisible(false);
+            crossTabHintPanel.revalidate();
+            return;
+        }
+
+        // Build hint text
+        Color dimColor = UIManager.getColor("Label.disabledForeground");
+        Color accentColor = UIManager.getColor("Component.accentColor");
+        if (accentColor == null) accentColor = new Color(120, 160, 255);
+
+        String prefix = searchMatches.isEmpty() ? "No results. Found in:" : "Also in:";
+        JLabel prefixLabel = new JLabel(prefix);
+        prefixLabel.setFont(prefixLabel.getFont().deriveFont(11f));
+        prefixLabel.setForeground(dimColor);
+        crossTabHintPanel.add(prefixLabel);
+
+        boolean first = true;
+        for (var entry : otherTabResults.entrySet()) {
+            if (!first) {
+                JLabel separator = new JLabel(" · ");
+                separator.setFont(separator.getFont().deriveFont(11f));
+                separator.setForeground(dimColor);
+                crossTabHintPanel.add(separator);
+            }
+            first = false;
+
+            String tabName = entry.getKey();
+            int count = entry.getValue();
+            JLabel tabLabel = new JLabel(tabName + " (" + count + ")");
+            tabLabel.setFont(tabLabel.getFont().deriveFont(11f));
+            tabLabel.setForeground(accentColor);
+            tabLabel.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+
+            // Underline on hover
+            tabLabel.addMouseListener(new MouseAdapter() {
+                @Override
+                public void mouseEntered(MouseEvent e) {
+                    tabLabel.setText("<html><u>" + tabName + " (" + count + ")</u></html>");
+                }
+
+                @Override
+                public void mouseExited(MouseEvent e) {
+                    tabLabel.setText(tabName + " (" + count + ")");
+                }
+
+                @Override
+                public void mouseClicked(MouseEvent e) {
+                    handleCrossTabLink(tabName);
+                }
+            });
+            crossTabHintPanel.add(tabLabel);
+        }
+
+        crossTabHintPanel.setVisible(true);
+        crossTabHintPanel.revalidate();
+        crossTabHintPanel.repaint();
     }
 
     /**

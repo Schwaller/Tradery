@@ -38,7 +38,7 @@ Re-backtest. Now you might see: 10 trades, 60% win rate, profit factor 1.8. Fewe
 
 ### Iteration 2: Add Phase and Adjust Exits
 
-Add `uptrend` as a required phase in your phase settings — this brings in the daily-timeframe trend confirmation. Switch your exit from fixed take-profit to a trailing stop at 3%, so you can ride the bounce further when momentum is strong. Keep the -5% fixed stop loss as your safety net.
+Add `uptrend` as a required [phase filter](tab:Advanced#the-phase-system) in your phase settings — this brings in the daily-timeframe trend confirmation. Switch your exit from fixed take-profit to a trailing stop at 3%, so you can ride the bounce further when momentum is strong. Keep the -5% fixed stop loss as your safety net.
 
 Re-backtest: 8 trades, 75% win rate, profit factor 2.4, max drawdown 7%. Fewer trades, but each one is high quality. The trailing stop lets winners run past the old +10% ceiling when the trend is strong.
 
@@ -58,9 +58,9 @@ Trade in the direction of the established trend. Buy in uptrends, sell in downtr
 **The mindset:** A trend follower doesn't try to catch the bottom. They wait for confirmation that a trend exists and then ride it. They accept missing the first 20% of a move in exchange for catching the middle 60%.
 
 **Example conditions:**
-- `ADX(14) > 25 AND PLUS_DI(14) > MINUS_DI(14)` — confirmed uptrend
+- `ADX(14) > 25 AND PLUS_DI(14) > MINUS_DI(14)` — confirmed uptrend (see [ADX](tab:Indicators#adx-average-directional-index))
 - `price > SMA(200) AND EMA(20) > EMA(50)` — multiple MA alignment (strong conviction)
-- `SUPERTREND(10,3).trend == 1 AND RSI(14) > 40` — supertrend bullish with momentum support
+- `SUPERTREND(10,3).trend == 1 AND RSI(14) > 40` — supertrend bullish with [RSI](tab:Indicators#rsi-relative-strength-index) momentum support
 
 > **Tip:** Trend following has a lower win rate (often 40-50%) but larger winners. A good trend-following strategy might lose 6 out of 10 trades and still be profitable because the 4 winners are each 3-5x larger than the losses. Use trailing stops to capture the full trend — cutting winners early is the biggest mistake trend followers make.
 
@@ -71,8 +71,8 @@ Trade the return to the mean after an overextension. Buy when oversold, sell whe
 **The mindset:** A mean reversion trader is a contrarian at heart. When everyone is panicking and price drops sharply, they buy. When everyone is euphoric and price spikes, they sell. They believe that extreme moves are temporary and price always returns to "fair value."
 
 **Example conditions:**
-- `RSI(14) < 30 AND price > SMA(200)` — oversold but still in uptrend (buying a dip, not catching a falling knife)
-- `price < BBANDS(20,2).lower AND ADX(14) < 20` — below lower band in a range
+- `RSI(14) < 30 AND price > SMA(200)` — oversold but still in uptrend (see [RSI](tab:Indicators#rsi-relative-strength-index))
+- `price < BBANDS(20,2).lower AND ADX(14) < 20` — below lower [Bollinger Band](tab:Indicators#bollinger-bands) in a range
 - `RANGE_POSITION(20) < -0.8` — near the bottom of the recent range
 
 > **Tip:** Mean reversion has a higher win rate (60-70%) but smaller winners. Use fixed take-profit targets rather than trailing stops. The key danger is that what looks like a mean reversion opportunity might actually be the start of a new trend — which is why the `ADX(14) < 20` filter is so important. If the market is trending, you're not mean-reverting, you're catching a falling knife.
@@ -84,8 +84,8 @@ Enter when momentum is accelerating, catching the "meat" of a move. This is like
 **The mindset:** Momentum traders look for acceleration, not just direction. They want to see not just that price is going up, but that it's going up *faster*. MACD histograms growing, RSI crossing above 50, volume surging — these are their signals.
 
 **Example conditions:**
-- `MACD(12,26,9).line crosses_above MACD(12,26,9).signal AND ADX(14) > 20`
-- `RSI(14) crosses_above 50 AND price > SMA(50)` — momentum turning bullish
+- [`MACD`](tab:Indicators#macd-moving-average-convergence-divergence)`(12,26,9).line crosses_above MACD(12,26,9).signal AND ADX(14) > 20`
+- [`RSI`](tab:Indicators#rsi-relative-strength-index)`(14) crosses_above 50 AND price > SMA(50)` — momentum turning bullish
 
 ### Breakout
 
@@ -95,10 +95,10 @@ Enter when price breaks through a significant level (support, resistance, or ran
 
 **Example conditions:**
 - `close > HIGH_OF(20)` — breakout above 20-period high
-- `BBANDS(20,2).width < LOWEST(BBANDS(20,2).width, 50) * 1.1` — volatility squeeze (precedes breakout)
+- `BBANDS(20,2).width < LOWEST(BBANDS(20,2).width, 50) * 1.1` — volatility squeeze (see [Bollinger Bands](tab:Indicators#bollinger-bands))
 - `RESISTANCE_RAY_CROSSED(1, 200, 5) == 1` — breaking through a resistance trendline
 
-> **Tip:** The best breakouts come after extended periods of compression (low volatility). In Strategy Forge, the Bollinger Band width squeeze is one of the best breakout filters. Combine it with a volume surge (`volume > AVG_VOLUME(20) * 1.5`) to filter out false breakouts.
+> **Tip:** The best breakouts come after extended periods of compression (low volatility). In Strategy Forge, the [Bollinger Band](tab:Indicators#bollinger-bands) width squeeze is one of the best breakout filters. Combine with volume filters or Bollinger Band squeezes to reduce false signals — a volume surge (`volume > AVG_VOLUME(20) * 1.5`) is particularly effective.
 
 
 ## Risk Management
@@ -146,7 +146,7 @@ Position sizing determines how much capital to allocate per trade. The goal is t
 
 ![Position Sizing](images/position-sizing.svg)
 
-- **Fixed percentage** — risk a fixed % of equity per trade (e.g., 1-2%). This is the industry standard. If you have $10,000 and risk 2% per trade, you lose $200 per losing trade. After 10 straight losses (unlikely but possible), you've lost 20% — painful but survivable.
+- **Fixed percentage** — risk a fixed % of equity per trade (e.g., 1-2%). This is the industry standard and depends on your [trading style](tab:Basics#trading-styles). If you have $10,000 and risk 2% per trade, you lose $200 per losing trade. After 10 straight losses (unlikely but possible), you've lost 20% — painful but survivable.
 - **Volatility-adjusted** — smaller positions in volatile markets (using ATR). If BTC's ATR doubles, halve your position size. Your dollar risk stays constant.
 - **Kelly criterion** — mathematically optimal sizing based on win rate and R:R. In practice, use quarter Kelly — full Kelly is too aggressive and one bad streak wipes you out.
 
@@ -192,6 +192,7 @@ Prevention:
 - Use standard indicator periods (14, 20, 50, 200). These are standard because lots of traders watch them, creating self-fulfilling effects.
 - Test on multiple symbols and timeframes. If it works on BTC, ETH, and SOL, the logic is probably sound.
 - Use out-of-sample testing (backtest on 6 months, validate on next 6). Strategy Forge's history tracking makes this easy.
+- Use [phase filters](tab:Advanced#the-phase-system) to segment by market regime — if your strategy only works in uptrends, that's valuable information, not a flaw.
 - Ask: "Does this make sense from a market structure perspective?" If you can't explain *why* your strategy works, it probably doesn't.
 
 > **Tip:** Strategy Forge's history tracking compares each backtest run to previous ones. If metrics swing wildly with small parameter changes (changing RSI from 14 to 15 flips the strategy from profitable to unprofitable), you're overfitting. A robust strategy shows gradual, not dramatic, sensitivity to parameter changes.

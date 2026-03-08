@@ -554,8 +554,7 @@ public class SymbolComboBox extends JPanel {
     // --- Display name helpers ---
 
     private static String formatExchange(String configKey) {
-        Exchange ex = Exchange.fromConfigKey(configKey);
-        return ex != null ? ex.getDisplayName() : configKey;
+        return Exchange.formatDisplayName(configKey);
     }
 
     private static String formatMarket(String configKey) {
@@ -564,11 +563,7 @@ public class SymbolComboBox extends JPanel {
     }
 
     private static String exchangeConfigKey(String displayName) {
-        if (displayName == null) return null;
-        for (Exchange ex : Exchange.values()) {
-            if (ex.getDisplayName().equals(displayName)) return ex.getConfigKey();
-        }
-        return displayName;
+        return Exchange.parseConfigKey(displayName);
     }
 
     private static String marketConfigKey(String displayName) {

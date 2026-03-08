@@ -518,8 +518,7 @@ public class SymbolChooserPanel extends JPanel {
     // --- Display name helpers ---
 
     private static String formatExchange(String configKey) {
-        Exchange ex = Exchange.fromConfigKey(configKey);
-        return ex != null ? ex.getDisplayName() : configKey;
+        return Exchange.formatDisplayName(configKey);
     }
 
     private static String formatMarket(String configKey) {

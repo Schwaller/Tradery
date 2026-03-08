@@ -33,7 +33,7 @@ Volume profile shows how much volume traded at each price level, revealing where
 
 - **Positive delta** — more aggressive buyers (hitting the ask). Buyers are willing to pay the higher price to get filled immediately.
 - **Negative delta** — more aggressive sellers (hitting the bid). Sellers are dumping.
-- **Cumulative delta (CVD)** — running total of delta over time
+- **Cumulative delta (CVD)** — running total of delta over time. Rising CVD with rising price = strong conviction; divergence (CVD falling, price rising) = weakening momentum.
 
 Delta divergences are powerful signals and a favorite of experienced traders: if price is making new highs but cumulative delta is making lower highs, the move is being driven by short covering or passive buying, not aggressive buying. It often reverses.
 
@@ -125,7 +125,7 @@ Strategy Forge includes 44+ built-in phases across several categories:
 
 **Momentum phases** like `overbought` and `oversold` use RSI on higher timeframes. Require `oversold` for a contrarian buy strategy, or exclude `overbought` to avoid entering longs at extremes.
 
-**Calendar phases** are unique to Strategy Forge. `fomc-meeting-day` goes active on Federal Reserve meeting days — events that routinely cause 3-5% swings in crypto. `us-bank-holiday` catches low-liquidity days where strategies often underperform. `month-end` and `quarter-end` capture rebalancing periods.
+**Calendar phases** are unique to Strategy Forge. `fomc-meeting-day` goes active on Federal Reserve meeting days — events that routinely cause 3-5% swings in crypto. `us-bank-holiday` catches low-liquidity days where strategies often underperform. `month-end` and `quarter-end` capture rebalancing periods. For deeper context on how Fed policy, inflation data, and geopolitical events drive crypto markets, see the [Macro](tab:Macro#why-macro-matters) tab.
 
 **Sentiment phases** use the Fear & Greed Index: `extreme-fear` (index below 25), `fear`, `greed`, `extreme-greed`. Combine with technical conditions for powerful contrarian setups.
 
@@ -156,14 +156,14 @@ timeframe: 4h
 
 This custom phase is active when 4-hour ATR is expanding (current ATR is 20%+ above the previous bar's ATR). You might require this for breakout strategies that need volatility to work, or exclude it for mean-reversion strategies that need calm conditions.
 
-Custom phases use the same DSL as entry conditions — any valid DSL expression works. Combine indicators, price levels, time functions, and even orderflow metrics. See the [DSL Reference](tab:Strategy#entry-conditions) for the full syntax.
+Custom phases use the same DSL as entry conditions — any valid DSL expression works. Combine indicators, price levels, time functions, and even orderflow metrics. See the [Entry Strategies](tab:Strategy#entry-strategies) section for condition examples.
 
 
 ## Chart Patterns with Hoops
 
 ### What Hoops Solve
 
-Many chart patterns — double bottoms, head and shoulders, bull flags, cup and handle — are sequences of price movements that unfold over time. You can't express them as a single DSL condition because they involve multiple checkpoints: price goes down, then up, then down again to a similar level, then breaks out.
+Many chart patterns — double bottoms, head and shoulders, bull flags, cup and handle — are sequences of price movements that unfold over time. Unlike single-bar [candlestick patterns](tab:Basics#candlestick-patterns), you can't express them as a single DSL condition because they involve multiple checkpoints: price goes down, then up, then down again to a similar level, then breaks out.
 
 Hoops solve this by defining **sequential price checkpoints** that price must hit in order. Each checkpoint (called a "hoop") specifies a price range relative to an anchor point and a timing window in bars. When price passes through all hoops in sequence, the pattern is detected.
 
@@ -227,6 +227,7 @@ The `AND` mode is particularly useful: detect a double bottom via hoops, but onl
 ### Tips
 
 - **`cooldownBars`** prevents overlapping signals. After a pattern triggers, the system waits this many bars before looking for the next one. Set to 20-30 for most patterns.
+- **Tolerance** controls timing precision. Wider tolerance (3-5 bars) catches more patterns; tighter (1-2) requires precise timing but produces higher-quality signals.
 - **`priceSmoothingType`** helps with noisy data. Use `SMA` or `EMA` smoothing if your pattern triggers too rarely because small wicks disrupt the checkpoints. `HLC3` (average of high, low, close) is a good middle ground.
 - **Start loose, then tighten.** Wide price ranges and generous tolerances find more patterns. Once you see which ones are profitable, narrow the ranges for higher-quality signals.
 - **Backtest the hoop alone first** before combining with DSL. Make sure the pattern fires at reasonable places in the chart.
@@ -295,7 +296,7 @@ In perpetual futures, **funding rates** are periodic payments between long and s
 - **Scalpers** fade funding spikes — when funding is extreme, the side paying funding is likely to capitulate soon.
 - **Cash-and-carry arbitrageurs** buy spot and short futures to collect funding — a completely different strategy that profits from the funding rate itself rather than price direction.
 
-Use `FUNDING` and `FUNDING_8H` in Strategy Forge conditions.
+Adjust [position sizing](tab:Strategy#position-sizing) when trading around extreme funding — smaller positions reduce exposure to the inevitable squeeze. Use `FUNDING` and `FUNDING_8H` in Strategy Forge conditions.
 
 ### Open Interest
 

@@ -20,6 +20,7 @@ public class TradingGuideDialog {
             new Tab("Indicators", "/guide/indicators.md"),
             new Tab("Strategy", "/guide/strategy.md"),
             new Tab("Advanced", "/guide/advanced.md"),
+            new Tab("Macro", "/guide/macro.md"),
     };
 
     private static MarkdownHelpDialog instance;

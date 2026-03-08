@@ -1,83 +1,118 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 560 240">
-  <rect width="560" height="240" fill="#000000" fill-opacity="0.3" rx="8"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 560 460">
+  <rect width="560" height="460" fill="#000000" fill-opacity="0.3" rx="8"/>
   <text x="280" y="28" fill="#cdd6f4" font-family="sans-serif" font-size="16" font-weight="bold" text-anchor="middle">Ichimoku Cloud</text>
 
   <g transform="translate(50, 45)">
-    <!-- Cloud (Senkou A and B) - bearish zone (price below) then bullish zone (price above) -->
-    <!-- Senkou A path -->
     <defs>
       <clipPath id="cloud-clip">
-        <rect x="0" y="0" width="460" height="170"/>
+        <rect x="0" y="0" width="460" height="340"/>
       </clipPath>
     </defs>
 
-    <!-- Cloud fill: bearish (red-tinted, left half) -->
-    <polygon
-      points="0,95 30,100 60,105 90,108 120,110 150,108 180,102 210,95 210,115 180,118 150,120 120,122 90,120 60,118 30,112 0,108"
-      fill="#f38ba8" opacity="0.12" clip-path="url(#cloud-clip)"/>
+    <!-- Axes -->
+    <line x1="0" y1="0" x2="0" y2="340" stroke="#585b70" stroke-width="1"/>
+    <line x1="0" y1="340" x2="460" y2="340" stroke="#585b70" stroke-width="1"/>
 
-    <!-- Cloud fill: bullish (green-tinted, right half) -->
+    <!-- ===== CLOUD ===== -->
+    <!-- Bearish cloud (left): Senkou A below Senkou B (A_y > B_y) -->
     <polygon
-      points="210,95 240,88 270,80 300,74 330,70 360,72 390,78 420,82 450,80 460,78 460,100 450,98 420,102 390,105 360,100 330,96 300,92 270,95 240,98 210,115"
-      fill="#a6e3a1" opacity="0.12" clip-path="url(#cloud-clip)"/>
+      points="0,172 40,180 80,190 120,198 160,200 200,194 240,180 260,168
+              260,155 240,162 200,170 160,168 120,160 80,155 40,150 0,148"
+      fill="#f38ba8" opacity="0.14" clip-path="url(#cloud-clip)"/>
 
-    <!-- Senkou Span A (cloud upper/lower boundary) -->
+    <!-- Bullish cloud (right): Senkou A above Senkou B (A_y < B_y) -->
+    <polygon
+      points="280,148 320,130 360,118 400,110 440,106 460,104
+              460,136 440,136 400,138 360,140 320,144 280,148"
+      fill="#a6e3a1" opacity="0.14" clip-path="url(#cloud-clip)"/>
+
+    <!-- Transition zone around twist (x=260-280) -->
+    <polygon
+      points="260,168 280,148 280,148 260,155"
+      fill="#f9e2af" opacity="0.08" clip-path="url(#cloud-clip)"/>
+
+    <!-- Senkou Span A (faster cloud line) -->
     <polyline
-      points="0,95 30,100 60,105 90,108 120,110 150,108 180,102 210,95 240,88 270,80 300,74 330,70 360,72 390,78 420,82 450,80 460,78"
+      points="0,172 40,180 80,190 120,198 160,200 200,194 240,180 260,168 280,148
+              320,130 360,118 400,110 440,106 460,104"
       fill="none" stroke="#a6e3a1" stroke-width="1.5" stroke-linejoin="round" opacity="0.6"/>
 
-    <!-- Senkou Span B (other cloud boundary) -->
+    <!-- Senkou Span B (slower cloud line) -->
     <polyline
-      points="0,108 30,112 60,118 90,120 120,122 150,120 180,118 210,115 240,98 270,95 300,92 330,96 360,100 390,105 420,102 450,98 460,100"
+      points="0,148 40,150 80,155 120,160 160,168 200,170 240,162 260,155 280,148
+              320,144 360,140 400,138 440,136 460,136"
       fill="none" stroke="#f38ba8" stroke-width="1.5" stroke-linejoin="round" opacity="0.6"/>
 
-    <!-- Tenkan-sen (conversion line, fast) -->
+    <!-- ===== TENKAN & KIJUN ===== -->
+    <!-- Tenkan (fast, 9-period) — starts below Kijun, crosses at x=160 -->
     <polyline
-      points="0,130 30,128 60,125 90,120 120,118 150,115 180,108 210,100 240,90 270,78 300,68 330,62 360,58 390,55 420,52 450,50 460,48"
+      points="0,278 40,270 80,260 120,248 140,238 160,225 180,210 200,196
+              240,170 280,146 320,126 360,110 400,94 440,82 460,76"
       fill="none" stroke="#89b4fa" stroke-width="2" stroke-linejoin="round"/>
 
-    <!-- Kijun-sen (base line, slow) -->
+    <!-- Kijun (slow, 26-period) — crosses Tenkan at x=160 -->
     <polyline
-      points="0,135 30,132 60,130 90,128 120,125 150,122 180,118 210,112 240,105 270,95 300,85 330,78 360,72 390,68 420,64 450,62 460,60"
+      points="0,268 40,262 80,256 120,248 140,238 160,225 180,218 200,208
+              240,188 280,168 320,150 360,134 400,120 440,110 460,106"
       fill="none" stroke="#fab387" stroke-width="2" stroke-dasharray="6,3" stroke-linejoin="round"/>
 
-    <!-- Price line -->
+    <!-- ===== CHIKOU SPAN (price shifted ~26 bars left) ===== -->
     <polyline
-      points="0,140 20,138 40,135 60,130 80,128 100,132 120,128 140,125 160,120 180,118 200,115 220,108 240,100 260,88 280,80 300,72 320,65 340,58 360,52 380,48 400,44 420,40 440,38 460,35"
+      points="0,270 20,262 40,252 60,242 80,230 100,215 120,198
+              140,178 160,155 180,138 200,124 230,108 260,96 290,86 320,78 350,70"
+      fill="none" stroke="#cba6f7" stroke-width="1.5" stroke-dasharray="3,3" stroke-linejoin="round" opacity="0.45"/>
+
+    <!-- ===== PRICE ===== -->
+    <polyline
+      points="0,288 30,280 60,270 90,262 120,256 150,246 180,234
+              210,218 230,200 250,178 270,155 290,138 310,124
+              340,108 370,96 400,86 430,78 460,70"
       fill="none" stroke="#cdd6f4" stroke-width="2.5" stroke-linejoin="round"/>
 
-    <!-- Labels: Bearish zone -->
-    <text x="80" y="155" fill="#f38ba8" font-family="sans-serif" font-size="10" font-weight="bold" text-anchor="middle">BEARISH</text>
-    <text x="80" y="166" fill="#585b70" font-family="sans-serif" font-size="8" text-anchor="middle">Price below cloud</text>
+    <!-- ===== ANNOTATIONS ===== -->
 
-    <!-- Labels: Bullish zone -->
-    <text x="380" y="155" fill="#a6e3a1" font-family="sans-serif" font-size="10" font-weight="bold" text-anchor="middle">BULLISH</text>
-    <text x="380" y="166" fill="#585b70" font-family="sans-serif" font-size="8" text-anchor="middle">Price above cloud</text>
+    <!-- 1. TK Cross at (160, 225) — where Tenkan and Kijun actually intersect -->
+    <circle cx="160" cy="225" r="5" fill="#89dceb" fill-opacity="0.2" stroke="#89dceb" stroke-width="1.5"/>
+    <line x1="160" y1="230" x2="160" y2="298" stroke="#89dceb" stroke-width="1" stroke-dasharray="3,3" opacity="0.6"/>
+    <text x="160" y="310" fill="#89dceb" font-family="sans-serif" font-size="9" font-weight="bold" text-anchor="middle">TK Cross</text>
+    <text x="160" y="322" fill="#585b70" font-family="sans-serif" font-size="8" text-anchor="middle">Tenkan crosses above Kijun</text>
 
-    <!-- Transition marker -->
-    <line x1="230" y1="40" x2="230" y2="130" stroke="#cba6f7" stroke-width="1" stroke-dasharray="3,3"/>
-    <text x="230" y="37" fill="#cba6f7" font-family="sans-serif" font-size="9" font-weight="bold" text-anchor="middle">Breakout</text>
+    <!-- 2. Cloud Breakout at ~(250, 178) — where price breaks above the cloud -->
+    <circle cx="250" cy="178" r="5" fill="#cba6f7" fill-opacity="0.2" stroke="#cba6f7" stroke-width="1.5"/>
+    <line x1="250" y1="172" x2="250" y2="58" stroke="#cba6f7" stroke-width="1" stroke-dasharray="3,3" opacity="0.6"/>
+    <text x="250" y="52" fill="#cba6f7" font-family="sans-serif" font-size="10" font-weight="bold" text-anchor="middle">Cloud Breakout</text>
+    <text x="250" y="64" fill="#585b70" font-family="sans-serif" font-size="8" text-anchor="middle">Price emerges above cloud</text>
 
-    <!-- Axis -->
-    <line x1="0" y1="0" x2="0" y2="170" stroke="#585b70" stroke-width="1"/>
-    <line x1="0" y1="170" x2="460" y2="170" stroke="#585b70" stroke-width="1"/>
+    <!-- 3. Kumo Twist at (280, 148) — where Senkou A and B actually intersect -->
+    <circle cx="280" cy="148" r="5" fill="#f9e2af" fill-opacity="0.2" stroke="#f9e2af" stroke-width="1.5"/>
+    <line x1="280" y1="153" x2="280" y2="298" stroke="#f9e2af" stroke-width="1" stroke-dasharray="3,3" opacity="0.6"/>
+    <text x="280" y="310" fill="#f9e2af" font-family="sans-serif" font-size="9" font-weight="bold" text-anchor="middle">Kumo Twist</text>
+    <text x="280" y="322" fill="#585b70" font-family="sans-serif" font-size="8" text-anchor="middle">Cloud flips bullish</text>
 
-    <!-- Legend -->
-    <g transform="translate(0, 180)">
+    <!-- Zone labels -->
+    <text x="80" y="138" fill="#f38ba8" font-family="sans-serif" font-size="11" font-weight="bold" text-anchor="middle" opacity="0.7">BEARISH</text>
+    <text x="80" y="150" fill="#585b70" font-family="sans-serif" font-size="8" text-anchor="middle">Price below cloud</text>
+
+    <text x="400" y="92" fill="#a6e3a1" font-family="sans-serif" font-size="11" font-weight="bold" text-anchor="middle" opacity="0.7">BULLISH</text>
+    <text x="400" y="104" fill="#585b70" font-family="sans-serif" font-size="8" text-anchor="middle">Price above cloud</text>
+
+    <!-- ===== LEGEND ===== -->
+    <g transform="translate(0, 370)">
       <line x1="0" y1="0" x2="20" y2="0" stroke="#cdd6f4" stroke-width="2.5"/>
       <text x="25" y="4" fill="#cdd6f4" font-family="sans-serif" font-size="9">Price</text>
 
-      <line x1="80" y1="0" x2="100" y2="0" stroke="#89b4fa" stroke-width="2"/>
-      <text x="105" y="4" fill="#89b4fa" font-family="sans-serif" font-size="9">Tenkan</text>
+      <line x1="75" y1="0" x2="95" y2="0" stroke="#89b4fa" stroke-width="2"/>
+      <text x="100" y="4" fill="#89b4fa" font-family="sans-serif" font-size="9">Tenkan (9)</text>
 
-      <line x1="165" y1="0" x2="185" y2="0" stroke="#fab387" stroke-width="2" stroke-dasharray="6,3"/>
-      <text x="190" y="4" fill="#fab387" font-family="sans-serif" font-size="9">Kijun</text>
+      <line x1="178" y1="0" x2="198" y2="0" stroke="#fab387" stroke-width="2" stroke-dasharray="6,3"/>
+      <text x="203" y="4" fill="#fab387" font-family="sans-serif" font-size="9">Kijun (26)</text>
 
-      <rect x="245" y="-5" width="14" height="10" fill="#a6e3a1" opacity="0.3"/>
-      <text x="264" y="4" fill="#a6e3a1" font-family="sans-serif" font-size="9">Senkou A</text>
+      <line x1="278" y1="0" x2="298" y2="0" stroke="#cba6f7" stroke-width="1.5" stroke-dasharray="3,3"/>
+      <text x="303" y="4" fill="#cba6f7" font-family="sans-serif" font-size="9">Chikou</text>
 
-      <rect x="335" y="-5" width="14" height="10" fill="#f38ba8" opacity="0.3"/>
-      <text x="354" y="4" fill="#f38ba8" font-family="sans-serif" font-size="9">Senkou B</text>
+      <rect x="360" y="-5" width="14" height="10" fill="#a6e3a1" opacity="0.25" rx="1"/>
+      <rect x="374" y="-5" width="14" height="10" fill="#f38ba8" opacity="0.25" rx="1"/>
+      <text x="393" y="4" fill="#7f849c" font-family="sans-serif" font-size="9">Cloud</text>
     </g>
   </g>
 </svg>

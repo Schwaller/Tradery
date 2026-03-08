@@ -26,6 +26,7 @@ import com.tradery.ui.controls.ToolbarButton;
 
 
 import static com.tradery.forge.ui.UIColors.textSecondary;
+import com.tradery.guide.TradingGuideDialog;
 import com.tradery.ui.status.MemoryStatusPanel;
 
 import javax.swing.*;
@@ -215,7 +216,7 @@ public class ProjectWindow extends JFrame {
                     ApplicationContext.getInstance().getAggTradesStore(),
                     ApplicationContext.getInstance().getPremiumIndexStore(),
                     () -> { /* refresh handled by dialog timer */ });
-            });
+            }, DexCollectionWindow::showWindow);
         });
 
         // Wire up chart status callback (hover info uses low priority)
@@ -429,8 +430,14 @@ public class ProjectWindow extends JFrame {
         aiGroup.add(aiProfileBtn);
         toolbarLeft.add(aiGroup);
         JButton helpBtn = new ToolbarButton("Help");
-        helpBtn.setToolTipText("Strategy Guide & DSL Reference");
-        helpBtn.addActionListener(e -> StrategyHelpDialog.show(this));
+        helpBtn.setToolTipText("Help & Guides");
+        helpBtn.addActionListener(e -> {
+            JPopupMenu menu = new JPopupMenu();
+            menu.add(new JMenuItem("Trading Guide")).addActionListener(a -> TradingGuideDialog.show(this));
+            menu.add(new JMenuItem("Strategy App Help")).addActionListener(a -> StrategyHelpDialog.show(this));
+            menu.add(new JMenuItem("DSL Reference")).addActionListener(a -> DslHelpDialog.show(this));
+            menu.show(helpBtn, 0, helpBtn.getHeight());
+        });
         toolbarLeft.add(helpBtn);
         GridBagConstraints lc = new GridBagConstraints();
         lc.anchor = GridBagConstraints.WEST;

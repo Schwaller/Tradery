@@ -161,6 +161,7 @@ public class BacktestEngine {
         List<String> excludedEntryPatternIds = hoopSettings.getExcludedEntryPatternIds();
         List<String> requiredExitPatternIds = hoopSettings.getRequiredExitPatternIds();
         List<String> excludedExitPatternIds = hoopSettings.getExcludedExitPatternIds();
+        int hoopCompletionWindow = hoopSettings.getCompletionWindowBars();
 
         if (onProgress != null) {
             onProgress.accept(new Progress(0, candles.size(), 0, "Parsing strategy..."));
@@ -508,7 +509,8 @@ public class BacktestEngine {
 
                             // Evaluate hoop exit pattern
                             boolean hoopExitSignal = HoopPatternEvaluator.patternsMatch(
-                                hoopPatternStates, requiredExitPatternIds, excludedExitPatternIds, i
+                                hoopPatternStates, requiredExitPatternIds, excludedExitPatternIds, i,
+                                hoopCompletionWindow
                             );
 
                             // Hoops are always AND'ed with DSL (like phases)
@@ -875,7 +877,8 @@ public class BacktestEngine {
 
                 // Check if hoop pattern signal is present
                 boolean hoopSignal = HoopPatternEvaluator.patternsMatch(
-                    hoopPatternStates, requiredEntryPatternIds, excludedEntryPatternIds, i
+                    hoopPatternStates, requiredEntryPatternIds, excludedEntryPatternIds, i,
+                    hoopCompletionWindow
                 );
 
                 // Hoops are always AND'ed with DSL (like phases)

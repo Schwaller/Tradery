@@ -15,7 +15,7 @@ import java.util.List;
 public abstract class SettingsDialog extends JDialog {
 
     protected SettingsDialog(Window owner) {
-        super(owner, "Settings", ModalityType.APPLICATION_MODAL);
+        super(owner, "Settings", ModalityType.MODELESS);
         setDefaultCloseOperation(DISPOSE_ON_CLOSE);
 
         // Integrated macOS title bar (string literals to avoid FlatLaf module dep)

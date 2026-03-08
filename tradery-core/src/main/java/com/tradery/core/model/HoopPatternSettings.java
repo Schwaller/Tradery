@@ -23,6 +23,11 @@ public class HoopPatternSettings {
     private List<String> requiredExitPatternIds = new ArrayList<>();
     private List<String> excludedExitPatternIds = new ArrayList<>();
 
+    // How many bars a pattern completion signal stays active.
+    // Default 1 = only the exact completion bar. Higher values give the DSL condition
+    // a window to co-fire (e.g., 3 = completion bar + 2 bars after).
+    private int completionWindowBars = 1;
+
     public HoopPatternSettings() {
         // For Jackson
     }
@@ -73,6 +78,16 @@ public class HoopPatternSettings {
 
     public void setExcludedExitPatternIds(List<String> ids) {
         this.excludedExitPatternIds = ids != null ? ids : new ArrayList<>();
+    }
+
+    // Completion window
+
+    public int getCompletionWindowBars() {
+        return completionWindowBars > 0 ? completionWindowBars : 1;
+    }
+
+    public void setCompletionWindowBars(int completionWindowBars) {
+        this.completionWindowBars = Math.max(1, completionWindowBars);
     }
 
     // Convenience checks

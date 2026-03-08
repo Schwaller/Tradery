@@ -1038,7 +1038,7 @@ public class ApiServer {
         String window = params.get("window");
         if (window == null || window.isEmpty()) {
             sendError(exchange, 400, "Missing required parameter: window. " +
-                "Valid options: phases, hoops, settings, data, dsl-help, strategy-help, trading-guide, downloads, launcher, project");
+                "Valid options: phases, hoops, settings, data, dsl-help, strategy-help, trading-guide, downloads, dex-collection, launcher, project");
             return;
         }
 
@@ -1092,6 +1092,11 @@ public class ApiServer {
                 response.put("success", true);
                 response.put("message", "Download Dashboard opened");
             }
+            case "dex-collection", "dex" -> {
+                launcher.openDexCollection();
+                response.put("success", true);
+                response.put("message", "Dex Data Collection window opened");
+            }
             case "launcher" -> {
                 launcher.bringToFront();
                 response.put("success", true);
@@ -1114,7 +1119,7 @@ public class ApiServer {
             }
             default -> {
                 sendError(exchange, 400, "Unknown window type: " + window + ". " +
-                    "Valid options: phases, hoops, settings, data, dsl-help, strategy-help, trading-guide, downloads, launcher, project");
+                    "Valid options: phases, hoops, settings, data, dsl-help, strategy-help, trading-guide, downloads, dex-collection, launcher, project");
                 return;
             }
         }

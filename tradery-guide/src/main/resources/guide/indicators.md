@@ -31,7 +31,7 @@ RSI measures momentum on a scale of 0 to 100. It compares the magnitude of recen
 - **Below 30** — oversold. Price may be overextended to the downside.
 - **Divergence** — when price makes a new high but RSI makes a lower high, it suggests weakening momentum (bearish divergence). This is one of the most powerful signals in technical analysis — it means price is rising on fumes.
 
-RSI works best in ranging markets. In strong trends, RSI can stay overbought or oversold for extended periods — a common trap for beginners who short every RSI reading above 70 in a bull market.
+RSI works best in ranging markets. In strong trends, RSI can stay overbought or oversold for extended periods — a common trap for beginners who short every RSI reading above 70 in a bull market. Combine with [ADX](tab:Indicators#adx-average-directional-index) or [phases](tab:Advanced#the-phase-system) to filter out these false signals.
 
 **How different traders use RSI:**
 - **Mean reversion trader:** Buys when RSI drops below 30 in an uptrend. The "oversold bounce" is their bread and butter.
@@ -52,7 +52,7 @@ MACD tracks the relationship between two EMAs (typically 12 and 26 period). It h
 - MACD crossing above Signal = bullish momentum
 - MACD crossing below Signal = bearish momentum
 - Histogram growing = momentum accelerating
-- Histogram shrinking = momentum weakening (early warning, even before a cross)
+- Histogram shrinking = momentum weakening (early warning, even before a cross). Consider tightening stops or exiting on the next cross.
 
 MACD is a favorite of swing traders because it confirms trends without being too noisy. A MACD cross on the daily chart is a significant event. On the 5-minute chart, it happens so often it's nearly useless.
 
@@ -62,7 +62,7 @@ Bollinger Bands plot a moving average with bands at a set number of standard dev
 
 ![Bollinger Bands](images/bollinger-bands.svg)
 
-- **Squeeze** — bands narrow significantly, indicating low volatility. Often precedes a breakout. Breakout traders live for the squeeze — they set alerts for when `BBANDS(20,2).width` hits a 50-period low and then wait for the explosive move.
+- **Squeeze** — bands narrow significantly, indicating low volatility. Often precedes a breakout. Breakout traders live for the squeeze — they set alerts for when `BBANDS(20,2).width` hits a 50-period low and then wait for the explosive move. See [Breakout strategies](tab:Strategy#breakout) for how to trade the squeeze.
 - **Walk the band** — price staying near the upper or lower band in a strong trend. This is not a reversal signal — it means the trend is strong.
 - **Mean reversion** — price returning to the middle band after touching an outer band. Range traders use this: buy at the lower band, sell at the upper band, but only when ADX confirms the market is actually ranging.
 
@@ -91,7 +91,7 @@ ADX measures trend strength (not direction) on a scale of 0 to 100.
 
 The companion indicators +DI and -DI show direction: +DI > -DI means bullish trend, -DI > +DI means bearish.
 
-> **Tip:** ADX is the ultimate "which strategy type should I use right now?" indicator. If you build two strategies — one trend-following, one mean reversion — use ADX phases to activate the right one for current conditions.
+> **Tip:** ADX is the ultimate "which strategy type should I use right now?" indicator. If you build two strategies — one trend-following, one mean reversion — use [phases](tab:Advanced#the-phase-system) to activate the right one for current conditions.
 
 ### Stochastic Oscillator
 
@@ -104,7 +104,7 @@ The Stochastic oscillator is another momentum tool, but it works differently fro
 - **%K crossing above %D in the oversold zone** — classic buy signal. The fast momentum is turning up while price is still cheap.
 - **%K crossing below %D in the overbought zone** — sell signal. Momentum fading at the top.
 
-Where RSI excels in trending markets (confirming momentum), Stochastic shines in ranging markets. It's more sensitive to short-term swings, which makes it better at catching turns within a range — and worse at staying out of trouble during strong trends, where it spends long periods stuck in overbought or oversold territory.
+Where RSI excels in trending markets (confirming momentum), Stochastic shines in ranging markets. See [Mean Reversion strategies](tab:Strategy#mean-reversion) for practical examples. It's more sensitive to short-term swings, which makes it better at catching turns within a range — and worse at staying out of trouble during strong trends, where it spends long periods stuck in overbought or oversold territory.
 
 **How different traders use Stochastic:**
 - **Range traders** use %K/%D crossovers in the extreme zones as their primary signal. Buy the oversold cross, sell the overbought cross, repeat.
@@ -148,6 +148,8 @@ The **cloud** (kumo) between Senkou A and B is the key feature. Price above the 
 DSL: `ICHIMOKU().tenkan`, `ICHIMOKU().kijun`, `ICHIMOKU().senkou_a`, `ICHIMOKU().senkou_b`, `ICHIMOKU().chikou`
 
 ### Range Position
+
+![Range Position](images/range-position.svg)
 
 Range Position is a simple but powerful indicator that answers one question: where is price within its recent range? It maps the current price to a scale from -1 (at the period low) to +1 (at the period high), with 0 being the midpoint.
 

@@ -1,0 +1,61 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 560 200">
+  <rect width="560" height="200" fill="#000000" fill-opacity="0.3" rx="8"/>
+  <text x="280" y="28" fill="#cdd6f4" font-family="sans-serif" font-size="16" font-weight="bold" text-anchor="middle">How Macro Events Move Crypto</text>
+
+  <!-- Step 1: Event -->
+  <g transform="translate(18, 65)">
+    <rect x="0" y="0" width="85" height="60" fill="#f38ba8" fill-opacity="0.12" rx="6" stroke="#f38ba8" stroke-width="1" stroke-opacity="0.4"/>
+    <text x="42" y="24" fill="#f38ba8" font-family="sans-serif" font-size="11" font-weight="bold" text-anchor="middle">Macro Event</text>
+    <text x="42" y="38" fill="#585b70" font-family="sans-serif" font-size="8" text-anchor="middle">Fed hike, war,</text>
+    <text x="42" y="49" fill="#585b70" font-family="sans-serif" font-size="8" text-anchor="middle">CPI print, halving</text>
+  </g>
+
+  <!-- Arrow 1 -->
+  <polygon points="108,95 116,92 116,98" fill="#585b70"/>
+
+  <!-- Step 2: Sentiment -->
+  <g transform="translate(121, 65)">
+    <rect x="0" y="0" width="85" height="60" fill="#fab387" fill-opacity="0.12" rx="6" stroke="#fab387" stroke-width="1" stroke-opacity="0.4"/>
+    <text x="42" y="24" fill="#fab387" font-family="sans-serif" font-size="11" font-weight="bold" text-anchor="middle">Sentiment</text>
+    <text x="42" y="38" fill="#585b70" font-family="sans-serif" font-size="8" text-anchor="middle">Risk-on / risk-off</text>
+    <text x="42" y="49" fill="#585b70" font-family="sans-serif" font-size="8" text-anchor="middle">Fear &amp; Greed shift</text>
+  </g>
+
+  <!-- Arrow 2 -->
+  <polygon points="211,95 219,92 219,98" fill="#585b70"/>
+
+  <!-- Step 3: Capital Flows -->
+  <g transform="translate(224, 65)">
+    <rect x="0" y="0" width="85" height="60" fill="#89b4fa" fill-opacity="0.12" rx="6" stroke="#89b4fa" stroke-width="1" stroke-opacity="0.4"/>
+    <text x="42" y="24" fill="#89b4fa" font-family="sans-serif" font-size="11" font-weight="bold" text-anchor="middle">Capital Flows</text>
+    <text x="42" y="38" fill="#585b70" font-family="sans-serif" font-size="8" text-anchor="middle">USD, bonds, gold</text>
+    <text x="42" y="49" fill="#585b70" font-family="sans-serif" font-size="8" text-anchor="middle">equities rotate</text>
+  </g>
+
+  <!-- Arrow 3 -->
+  <polygon points="314,95 322,92 322,98" fill="#585b70"/>
+
+  <!-- Step 4: Price Impact -->
+  <g transform="translate(327, 65)">
+    <rect x="0" y="0" width="85" height="60" fill="#f9e2af" fill-opacity="0.12" rx="6" stroke="#f9e2af" stroke-width="1" stroke-opacity="0.4"/>
+    <text x="42" y="24" fill="#f9e2af" font-family="sans-serif" font-size="11" font-weight="bold" text-anchor="middle">TradFi Impact</text>
+    <text x="42" y="38" fill="#585b70" font-family="sans-serif" font-size="8" text-anchor="middle">Stocks, DXY, yields</text>
+    <text x="42" y="49" fill="#585b70" font-family="sans-serif" font-size="8" text-anchor="middle">reprice first</text>
+  </g>
+
+  <!-- Arrow 4 -->
+  <polygon points="417,95 425,92 425,98" fill="#585b70"/>
+
+  <!-- Step 5: Crypto -->
+  <g transform="translate(430, 65)">
+    <rect x="0" y="0" width="110" height="60" fill="#cba6f7" fill-opacity="0.12" rx="6" stroke="#cba6f7" stroke-width="1" stroke-opacity="0.4"/>
+    <text x="55" y="24" fill="#cba6f7" font-family="sans-serif" font-size="11" font-weight="bold" text-anchor="middle">Crypto Reprices</text>
+    <text x="55" y="38" fill="#585b70" font-family="sans-serif" font-size="8" text-anchor="middle">BTC leads, alts follow</text>
+    <text x="55" y="49" fill="#585b70" font-family="sans-serif" font-size="8" text-anchor="middle">Leverage liquidations</text>
+  </g>
+
+  <!-- Bottom note -->
+  <text x="280" y="155" fill="#7f849c" font-family="sans-serif" font-size="9" text-anchor="middle">Minutes to hours for rate decisions &amp; data releases</text>
+  <text x="280" y="168" fill="#7f849c" font-family="sans-serif" font-size="9" text-anchor="middle">Days to weeks for geopolitical events &amp; regulatory shifts</text>
+  <text x="280" y="181" fill="#7f849c" font-family="sans-serif" font-size="9" text-anchor="middle">Months for halving cycles &amp; monetary policy regimes</text>
+</svg>

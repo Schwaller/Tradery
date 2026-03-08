@@ -8,6 +8,7 @@ import com.tradery.dataservice.config.DataServiceConfig;
 import com.tradery.dataservice.data.*;
 import com.tradery.dataservice.data.sqlite.DataStoreType;
 import com.tradery.dataservice.data.sqlite.SqliteDataStore;
+import com.tradery.dataservice.data.HyperliquidTradeCollector;
 import com.tradery.dataservice.live.LiveCandleManager;
 import org.msgpack.jackson.dataformat.MessagePackFactory;
 import org.slf4j.Logger;
@@ -54,6 +55,7 @@ public class PageManager implements BackfillCompletionCallback {
     private final FearGreedStore fearGreedStore;
     private SpectrumStore spectrumStore;
     private ProfileStore profileStore;
+    private final HyperliquidTradeCollector hlTradeCollector;
 
     // Live subscription callbacks (for cleanup on page removal)
     private final Map<String, BiConsumer<String, Candle>> liveUpdateCallbacks = new ConcurrentHashMap<>();
@@ -70,6 +72,7 @@ public class PageManager implements BackfillCompletionCallback {
         this.aggTradesStore = new AggTradesStore(new AggTradesClient(), dataStore);
         this.premiumIndexStore = new PremiumIndexStore(new PremiumIndexClient(), dataStore);
         this.fearGreedStore = new FearGreedStore(new FearGreedClient(), dataStore);
+        this.hlTradeCollector = new HyperliquidTradeCollector(dataStore);
         // Use default ObjectMapper for MessagePack - records are handled correctly
         this.msgpackMapper = new ObjectMapper(new MessagePackFactory());
         this.loadExecutor = Executors.newFixedThreadPool(config.getMaxConcurrentDownloads());
@@ -96,6 +99,9 @@ public class PageManager implements BackfillCompletionCallback {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
+
+        // Shutdown Hyperliquid trade collector
+        hlTradeCollector.shutdown();
 
         // Unsubscribe from all live streams
         for (String pageKeyStr : liveUpdateCallbacks.keySet()) {
@@ -183,15 +189,18 @@ public class PageManager implements BackfillCompletionCallback {
      *
      * @return number of trades written, or -1 on error
      */
-    public int writeAggTradesData(String symbol, Long start, Long end, java.io.OutputStream out) {
+    public int writeAggTradesData(String symbol, String exchange, String marketType,
+                                   Long start, Long end, java.io.OutputStream out) {
+        String ex = exchange != null ? exchange : "binance";
+        String mt = marketType != null ? marketType : "perp";
         try {
             // Get count first for the msgpack array header
-            long count = dataStore.countAggTrades(symbol, start, end);
+            long count = dataStore.countAggTrades(symbol, ex, mt, start, end);
             if (count > Integer.MAX_VALUE) {
                 LOG.error("writeAggTradesData: {} has {} trades, exceeds msgpack array limit", symbol, count);
                 return -1;
             }
-            LOG.debug("writeAggTradesData: {} streaming {} trades", symbol, count);
+            LOG.debug("writeAggTradesData: {} [{}:{}] streaming {} trades", symbol, ex, mt, count);
 
             // Write msgpack array header + stream chunks from SQLite
             var packer = org.msgpack.core.MessagePack.newDefaultPacker(out);
@@ -199,7 +208,7 @@ public class PageManager implements BackfillCompletionCallback {
             packer.flush();
 
             // Stream trades from SQLite in chunks, serializing each to msgpack
-            int total = dataStore.streamAggTrades(symbol, start, end, 10000, chunk -> {
+            int total = dataStore.streamAggTrades(symbol, ex, mt, start, end, 10000, chunk -> {
                 try {
                     for (AggTrade trade : chunk) {
                         msgpackMapper.writeValue(out, trade);
@@ -209,10 +218,10 @@ public class PageManager implements BackfillCompletionCallback {
                 }
             });
 
-            LOG.debug("writeAggTradesData: {} streamed {} trades", symbol, total);
+            LOG.debug("writeAggTradesData: {} [{}:{}] streamed {} trades", symbol, ex, mt, total);
             return total;
         } catch (Exception e) {
-            LOG.error("Failed to stream aggTrades for {}", symbol, e);
+            LOG.error("Failed to stream aggTrades for {} [{}:{}]", symbol, ex, mt, e);
             return -1;
         }
     }
@@ -229,13 +238,16 @@ public class PageManager implements BackfillCompletionCallback {
      */
     public int streamAggTradesBinary(PageKey key, int chunkSize, AggTradesChunkConsumer chunkConsumer) throws Exception {
         String symbol = key.symbol();
+        String exchange = key.exchange() != null ? key.exchange() : "binance";
+        String marketType = key.marketType() != null ? key.marketType() : "perp";
         long start = key.getEffectiveStartTime();
         long end = key.getEffectiveEndTime();
 
-        long count = dataStore.countAggTrades(symbol, start, end);
+        long count = dataStore.countAggTrades(symbol, exchange, marketType, start, end);
         int totalChunks = Math.max(1, (int) Math.ceil((double) count / chunkSize));
 
-        LOG.debug("streamAggTradesBinary: {} streaming {} trades in {} chunks", symbol, count, totalChunks);
+        LOG.debug("streamAggTradesBinary: {} [{}:{}] streaming {} trades in {} chunks",
+            symbol, exchange, marketType, count, totalChunks);
 
         if (count == 0) {
             chunkConsumer.onChunk(0, 1, 0, msgpackMapper.writeValueAsBytes(java.util.List.of()));
@@ -243,7 +255,7 @@ public class PageManager implements BackfillCompletionCallback {
         }
 
         java.util.concurrent.atomic.AtomicInteger chunkIndex = new java.util.concurrent.atomic.AtomicInteger(0);
-        int total = dataStore.streamAggTrades(symbol, start, end, chunkSize, chunk -> {
+        int total = dataStore.streamAggTrades(symbol, exchange, marketType, start, end, chunkSize, chunk -> {
             try {
                 byte[] msgpackData = msgpackMapper.writeValueAsBytes(chunk);
                 chunkConsumer.onChunk(chunkIndex.getAndIncrement(), totalChunks, chunk.size(), msgpackData);
@@ -252,7 +264,8 @@ public class PageManager implements BackfillCompletionCallback {
             }
         });
 
-        LOG.debug("streamAggTradesBinary: {} streamed {} trades in {} chunks", symbol, total, chunkIndex.get());
+        LOG.debug("streamAggTradesBinary: {} [{}:{}] streamed {} trades in {} chunks",
+            symbol, exchange, marketType, total, chunkIndex.get());
         return total;
     }
 
@@ -350,6 +363,13 @@ public class PageManager implements BackfillCompletionCallback {
      */
     public AggTradesStore getAggTradesStore() {
         return aggTradesStore;
+    }
+
+    /**
+     * Get the HyperliquidTradeCollector for managing persistent HL trade subscriptions.
+     */
+    public HyperliquidTradeCollector getHlTradeCollector() {
+        return hlTradeCollector;
     }
 
     /**
@@ -665,9 +685,16 @@ public class PageManager implements BackfillCompletionCallback {
      */
     private byte[] loadAggTrades(PageKey key, Page page) throws Exception {
         if (isHyperliquid(key.exchange())) {
-            // Hyperliquid doesn't provide historical aggTrades
-            page.setRecordCount(0);
-            LOG.info("loadAggTrades: skipped for Hyperliquid exchange {}", key.exchange());
+            // Start WebSocket trade collection for this coin (no historical backfill)
+            String coin = toHyperliquidCoin(key.symbol(), key.exchange());
+            hlTradeCollector.startCollecting(coin, key.exchange(), key.symbol());
+
+            String marketType = key.marketType() != null ? key.marketType() : "perp";
+            long count = dataStore.countAggTrades(key.symbol(), key.exchange(), marketType,
+                key.getEffectiveStartTime(), key.getEffectiveEndTime());
+            page.setRecordCount(count);
+            LOG.info("loadAggTrades: Hyperliquid {} collecting via WebSocket ({} existing trades)",
+                coin, count);
             return null;
         }
         String symbol = key.symbol();

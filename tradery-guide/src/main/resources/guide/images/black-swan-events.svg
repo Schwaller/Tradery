@@ -1,0 +1,75 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 560 260">
+  <rect width="560" height="260" fill="#000000" fill-opacity="0.3" rx="8"/>
+  <text x="280" y="28" fill="#cdd6f4" font-family="sans-serif" font-size="16" font-weight="bold" text-anchor="middle">Black Swan Events — Drawdown &amp; Recovery</text>
+
+  <g transform="translate(55, 48)">
+    <!-- Axes -->
+    <line x1="0" y1="0" x2="0" y2="160" stroke="#585b70" stroke-width="1"/>
+    <line x1="0" y1="10" x2="460" y2="10" stroke="#585b70" stroke-width="0.5" stroke-dasharray="3,3" stroke-opacity="0.3"/>
+
+    <!-- Y-axis: drawdown from peak -->
+    <text x="-8" y="14" fill="#585b70" font-family="sans-serif" font-size="9" text-anchor="end">0%</text>
+    <text x="-8" y="50" fill="#585b70" font-family="sans-serif" font-size="9" text-anchor="end">-25%</text>
+    <text x="-8" y="90" fill="#585b70" font-family="sans-serif" font-size="9" text-anchor="end">-50%</text>
+    <text x="-8" y="130" fill="#585b70" font-family="sans-serif" font-size="9" text-anchor="end">-75%</text>
+    <text x="-25" y="75" fill="#585b70" font-family="sans-serif" font-size="8" text-anchor="middle" transform="rotate(-90,-25,75)">Drawdown</text>
+
+    <!-- X-axis: time from event -->
+    <line x1="0" y1="160" x2="460" y2="160" stroke="#585b70" stroke-width="1"/>
+    <text x="0" y="175" fill="#585b70" font-family="sans-serif" font-size="8" text-anchor="middle">Event</text>
+    <text x="65" y="175" fill="#585b70" font-family="sans-serif" font-size="8" text-anchor="middle">1 week</text>
+    <text x="140" y="175" fill="#585b70" font-family="sans-serif" font-size="8" text-anchor="middle">1 month</text>
+    <text x="230" y="175" fill="#585b70" font-family="sans-serif" font-size="8" text-anchor="middle">3 months</text>
+    <text x="340" y="175" fill="#585b70" font-family="sans-serif" font-size="8" text-anchor="middle">6 months</text>
+    <text x="460" y="175" fill="#585b70" font-family="sans-serif" font-size="8" text-anchor="middle">12 months</text>
+
+    <!-- Grid lines -->
+    <line x1="0" y1="50" x2="460" y2="50" stroke="#585b70" stroke-width="0.5" stroke-opacity="0.15"/>
+    <line x1="0" y1="90" x2="460" y2="90" stroke="#585b70" stroke-width="0.5" stroke-opacity="0.15"/>
+    <line x1="0" y1="130" x2="460" y2="130" stroke="#585b70" stroke-width="0.5" stroke-opacity="0.15"/>
+
+    <!-- COVID crash (March 2020) - fastest V-recovery -->
+    <polyline fill="none" stroke="#89b4fa" stroke-width="2"
+      points="0,10 10,30 20,70 25,90 30,80 40,65 55,50 70,38 90,28 110,20 140,12 170,10 200,8 230,5 260,3 290,2 340,0 400,0 460,0"/>
+
+    <!-- Terra/Luna (May 2022) - slow grinding drawdown -->
+    <polyline fill="none" stroke="#fab387" stroke-width="2"
+      points="0,10 10,40 20,55 30,65 40,70 55,80 70,90 90,100 110,108 140,118 170,120 200,118 230,110 260,100 290,92 340,80 400,50 460,20"/>
+
+    <!-- FTX (Nov 2022) - sharp but contained -->
+    <polyline fill="none" stroke="#f38ba8" stroke-width="2"
+      points="0,10 10,35 20,50 30,55 40,52 55,48 70,42 90,35 110,28 140,20 170,15 200,12 230,10 260,8 290,5 340,0 400,0 460,0"/>
+
+    <!-- SVB (March 2023) - ironically bullish -->
+    <polyline fill="none" stroke="#a6e3a1" stroke-width="2"
+      points="0,10 10,20 15,25 20,22 30,15 40,10 55,5 70,3 90,0 110,0 140,0 170,0 200,0 230,0 260,0 290,0 340,0 400,0 460,0"/>
+
+    <!-- Event labels -->
+    <circle cx="25" cy="90" r="3" fill="#89b4fa"/>
+    <text x="35" y="95" fill="#89b4fa" font-family="sans-serif" font-size="8">COVID -50%</text>
+
+    <circle cx="170" cy="120" r="3" fill="#fab387"/>
+    <text x="180" y="125" fill="#fab387" font-family="sans-serif" font-size="8">Luna -58%</text>
+
+    <circle cx="30" cy="55" r="3" fill="#f38ba8"/>
+    <text x="40" y="62" fill="#f38ba8" font-family="sans-serif" font-size="8">FTX -26%</text>
+
+    <circle cx="15" cy="25" r="3" fill="#a6e3a1"/>
+    <text x="25" y="30" fill="#a6e3a1" font-family="sans-serif" font-size="8">SVB -8%</text>
+  </g>
+
+  <!-- Legend -->
+  <g transform="translate(60, 235)">
+    <line x1="0" y1="0" x2="18" y2="0" stroke="#89b4fa" stroke-width="2"/>
+    <text x="22" y="3" fill="#89b4fa" font-family="sans-serif" font-size="8">COVID Mar 2020</text>
+
+    <line x1="120" y1="0" x2="138" y2="0" stroke="#fab387" stroke-width="2"/>
+    <text x="142" y="3" fill="#fab387" font-family="sans-serif" font-size="8">Luna May 2022</text>
+
+    <line x1="240" y1="0" x2="258" y2="0" stroke="#f38ba8" stroke-width="2"/>
+    <text x="262" y="3" fill="#f38ba8" font-family="sans-serif" font-size="8">FTX Nov 2022</text>
+
+    <line x1="350" y1="0" x2="368" y2="0" stroke="#a6e3a1" stroke-width="2"/>
+    <text x="372" y="3" fill="#a6e3a1" font-family="sans-serif" font-size="8">SVB Mar 2023</text>
+  </g>
+</svg>

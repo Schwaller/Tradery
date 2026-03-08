@@ -1,5 +1,6 @@
 package com.tradery.data.ui;
 
+import com.tradery.core.model.Exchange;
 import com.tradery.dataclient.DataServiceClient;
 import com.tradery.dataclient.DataServiceClient.*;
 import com.tradery.ui.controls.BorderlessScrollPane;
@@ -30,6 +31,7 @@ public class DataManagementDialog extends JDialog {
 
     private final DataServiceClient client;
     private final Runnable onFetchNew;
+    private final Runnable onOpenDexCollection;
 
     private DataBrowserPanel browserPanel;
     private DataHealthPanel healthPanel;
@@ -49,10 +51,11 @@ public class DataManagementDialog extends JDialog {
     private String currentResolution;
     private Timer refreshTimer;
 
-    public DataManagementDialog(Frame owner, DataServiceClient client, Runnable onFetchNew) {
-        super(owner, "Data Service", true);
+    public DataManagementDialog(Frame owner, DataServiceClient client, Runnable onFetchNew, Runnable onOpenDexCollection) {
+        super(owner, "Data Service", false);
         this.client = client;
         this.onFetchNew = onFetchNew;
+        this.onOpenDexCollection = onOpenDexCollection;
 
         // Integrated macOS title bar
         getRootPane().putClientProperty("apple.awt.fullWindowContent", true);
@@ -262,14 +265,21 @@ public class DataManagementDialog extends JDialog {
         JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 6, 0));
         buttonPanel.setOpaque(false);
 
+        // Dex Collection button
+        if (onOpenDexCollection != null) {
+            JButton dexCollectionButton = new JButton("Dex Collection...");
+            dexCollectionButton.addActionListener(e -> onOpenDexCollection.run());
+            buttonPanel.add(dexCollectionButton);
+        }
+
         // Only show "Fetch New..." button if a fetch callback is provided
         if (onFetchNew != null) {
             JButton fetchButton = new JButton("Fetch New...");
             fetchButton.addActionListener(e -> showFetchDialog());
             buttonPanel.add(fetchButton);
-
-            buttonPanel.add(Box.createHorizontalStrut(12));
         }
+
+        buttonPanel.add(Box.createHorizontalStrut(12));
 
         deleteSeriesButton = new JButton("Delete Series");
         deleteSeriesButton.setEnabled(false);
@@ -323,6 +333,17 @@ public class DataManagementDialog extends JDialog {
         if ("exchange".equals(resolution)) {
             String exchange = browserPanel.getSelectedExchange();
             showExchangeInfo(exchange);
+            updateButtons();
+            return;
+        }
+
+        // HL Trade Collection selection
+        if ("hlTradeCollection".equals(resolution)) {
+            String coin = browserPanel.getSelectedSubKey();
+            String exchange = browserPanel.getSelectedExchange();
+            detailLabel.setText("HL Trade Collection \u2014 " + coin + " (" + exchange + ")");
+            healthPanel.setCustomMessage("Collecting trades from Hyperliquid WebSocket for " + coin);
+            showCard("heatmap");
             updateButtons();
             return;
         }
@@ -526,13 +547,7 @@ public class DataManagementDialog extends JDialog {
     }
 
     private String formatExchangeName(String exchange) {
-        if (exchange == null) return "";
-        return switch (exchange) {
-            case "binance" -> "Binance";
-            case "bybit" -> "Bybit";
-            case "okx" -> "OKX";
-            default -> exchange.substring(0, 1).toUpperCase() + exchange.substring(1);
-        };
+        return Exchange.formatDisplayName(exchange);
     }
 
     private String formatMarketTypeName(String mt) {
@@ -548,10 +563,40 @@ public class DataManagementDialog extends JDialog {
     private void updateButtons() {
         boolean canDeleteSeries = currentResolution != null;
         deleteSeriesButton.setEnabled(canDeleteSeries);
+        if ("hlTradeCollection".equals(currentResolution)) {
+            deleteSeriesButton.setText("Stop Collecting");
+        } else {
+            deleteSeriesButton.setText("Delete Series");
+        }
     }
 
     private void deleteSelectedSeries() {
         if (currentResolution == null) return;
+
+        // HL Trade Collection: stop collecting
+        if ("hlTradeCollection".equals(currentResolution)) {
+            String coin = browserPanel.getSelectedSubKey();
+            if (coin == null) return;
+            int result = JOptionPane.showConfirmDialog(this,
+                "Stop collecting trades for " + coin + "?",
+                "Confirm Stop", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE);
+            if (result == JOptionPane.YES_OPTION) {
+                Thread.startVirtualThread(() -> {
+                    try {
+                        client.removeHlTradeSubscription(coin);
+                        SwingUtilities.invokeLater(() -> {
+                            currentResolution = null;
+                            refreshAll();
+                        });
+                    } catch (Exception e) {
+                        SwingUtilities.invokeLater(() ->
+                            JOptionPane.showMessageDialog(this, "Failed: " + e.getMessage(),
+                                "Error", JOptionPane.ERROR_MESSAGE));
+                    }
+                });
+            }
+            return;
+        }
 
         String desc = currentSymbol != null ? currentSymbol + " / " + currentResolution : currentResolution;
         int result = JOptionPane.showConfirmDialog(this,
@@ -701,17 +746,24 @@ public class DataManagementDialog extends JDialog {
     }
 
     /**
+     * Show the dialog with fetch and dex collection callbacks.
+     */
+    public static void show(Frame owner, DataServiceClient client, Runnable onFetchNew, Runnable onOpenDexCollection) {
+        DataManagementDialog dialog = new DataManagementDialog(owner, client, onFetchNew, onOpenDexCollection);
+        dialog.setVisible(true);
+    }
+
+    /**
      * Show the dialog with a fetch callback (shows "Fetch New..." button).
      */
     public static void show(Frame owner, DataServiceClient client, Runnable onFetchNew) {
-        DataManagementDialog dialog = new DataManagementDialog(owner, client, onFetchNew);
-        dialog.setVisible(true);
+        show(owner, client, onFetchNew, null);
     }
 
     /**
      * Show the dialog without a fetch button.
      */
     public static void show(Frame owner, DataServiceClient client) {
-        show(owner, client, null);
+        show(owner, client, null, null);
     }
 }

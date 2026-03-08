@@ -110,6 +110,7 @@ public class DataServiceServer {
         configureInventoryRoutes();
         configureCoverageRoutes();
         configureSymbolRoutes();
+        configureHlTradesRoutes();
         configureWebSocket();
         configureNewsRoutes();
         configureHealthRoutes();
@@ -227,6 +228,31 @@ public class DataServiceServer {
         app.delete("/news/sources/{id}", newsHandler::deleteSource);
         app.put("/news/sources/{id}", newsHandler::updateSource);
         app.post("/news/poll", newsHandler::triggerPoll);
+    }
+
+    private void configureHlTradesRoutes() {
+        var collector = pageManager.getHlTradeCollector();
+
+        app.get("/hl-trades/subscriptions", ctx -> ctx.json(collector.getSubscriptions()));
+
+        app.post("/hl-trades/subscriptions", ctx -> {
+            var body = ctx.bodyAsClass(java.util.Map.class);
+            String coin = (String) body.get("coin");
+            String exchange = body.getOrDefault("exchange", "hyperliquid").toString();
+            String symbol = body.getOrDefault("symbol", coin).toString();
+            if (coin == null || coin.isBlank()) {
+                ctx.status(400).json(java.util.Map.of("error", "coin is required"));
+                return;
+            }
+            collector.addSubscription(coin, exchange, symbol);
+            ctx.json(java.util.Map.of("status", "ok", "coin", coin));
+        });
+
+        app.delete("/hl-trades/subscriptions/{coin}", ctx -> {
+            String coin = ctx.pathParam("coin");
+            collector.removeSubscription(coin);
+            ctx.json(java.util.Map.of("status", "ok", "coin", coin));
+        });
     }
 
     private void configureHealthRoutes() {

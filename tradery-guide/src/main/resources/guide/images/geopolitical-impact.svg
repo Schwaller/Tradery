@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 560 200">
+  <rect width="560" height="200" fill="#000000" fill-opacity="0.3" rx="8"/>
+  <text x="280" y="28" fill="#cdd6f4" font-family="sans-serif" font-size="16" font-weight="bold" text-anchor="middle">Geopolitical Event Impact Pattern</text>
+
+  <g transform="translate(50, 50)">
+    <!-- Axes -->
+    <line x1="0" y1="0" x2="0" y2="120" stroke="#585b70" stroke-width="1"/>
+    <line x1="0" y1="120" x2="470" y2="120" stroke="#585b70" stroke-width="1"/>
+
+    <!-- Y-axis labels -->
+    <text x="-8" y="25" fill="#585b70" font-family="sans-serif" font-size="8" text-anchor="end">Pre-event</text>
+    <text x="-8" y="25" fill="#585b70" font-family="sans-serif" font-size="8" text-anchor="end">price</text>
+
+    <!-- X-axis labels -->
+    <text x="45" y="135" fill="#585b70" font-family="sans-serif" font-size="8" text-anchor="middle">Event</text>
+    <text x="120" y="135" fill="#585b70" font-family="sans-serif" font-size="8" text-anchor="middle">Hours</text>
+    <text x="220" y="135" fill="#585b70" font-family="sans-serif" font-size="8" text-anchor="middle">Days</text>
+    <text x="340" y="135" fill="#585b70" font-family="sans-serif" font-size="8" text-anchor="middle">Weeks</text>
+    <text x="440" y="135" fill="#585b70" font-family="sans-serif" font-size="8" text-anchor="middle">Months</text>
+
+    <!-- Pre-event price line -->
+    <line x1="0" y1="20" x2="45" y2="20" stroke="#585b70" stroke-width="1" stroke-dasharray="3,3" stroke-opacity="0.4"/>
+    <line x1="45" y1="20" x2="470" y2="20" stroke="#585b70" stroke-width="0.5" stroke-dasharray="3,3" stroke-opacity="0.2"/>
+
+    <!-- Event vertical line -->
+    <line x1="45" y1="0" x2="45" y2="120" stroke="#f38ba8" stroke-width="1.5" stroke-dasharray="4,4" stroke-opacity="0.6"/>
+
+    <!-- Short conflict pattern (V-recovery) - green -->
+    <polyline fill="none" stroke="#a6e3a1" stroke-width="2"
+      points="0,20 45,20 55,50 70,80 85,90 100,85 120,70 150,50 180,35 220,25 260,20 300,18 340,15 380,12 420,10 460,8"/>
+    <text x="460" y="6" fill="#a6e3a1" font-family="sans-serif" font-size="8" text-anchor="end">Regional conflict</text>
+
+    <!-- Major escalation pattern (U-recovery) - orange -->
+    <polyline fill="none" stroke="#fab387" stroke-width="2"
+      points="0,20 45,20 55,55 70,85 85,100 100,105 120,108 150,105 180,100 220,90 260,78 300,65 340,50 380,38 420,30 460,25"/>
+    <text x="460" y="28" fill="#fab387" font-family="sans-serif" font-size="8" text-anchor="end">Major escalation</text>
+
+    <!-- Phase annotations -->
+    <g>
+      <rect x="48" y="92" width="40" height="18" fill="#f38ba8" fill-opacity="0.08" rx="3"/>
+      <text x="68" y="104" fill="#f38ba8" font-family="sans-serif" font-size="7" text-anchor="middle">Panic</text>
+    </g>
+    <g>
+      <rect x="95" y="92" width="55" height="18" fill="#fab387" fill-opacity="0.08" rx="3"/>
+      <text x="122" y="104" fill="#fab387" font-family="sans-serif" font-size="7" text-anchor="middle">Uncertainty</text>
+    </g>
+    <g>
+      <rect x="160" y="92" width="65" height="18" fill="#f9e2af" fill-opacity="0.08" rx="3"/>
+      <text x="192" y="104" fill="#f9e2af" font-family="sans-serif" font-size="7" text-anchor="middle">Stabilization</text>
+    </g>
+    <g>
+      <rect x="240" y="92" width="55" height="18" fill="#a6e3a1" fill-opacity="0.08" rx="3"/>
+      <text x="267" y="104" fill="#a6e3a1" font-family="sans-serif" font-size="7" text-anchor="middle">Recovery</text>
+    </g>
+  </g>
+</svg>

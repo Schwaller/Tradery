@@ -2,8 +2,6 @@
 
 This guide covers everything you need to understand trading charts, technical indicators, and how to build automated strategies. Start here with the fundamentals, then work through Indicators, Strategy, and Advanced topics at your own pace.
 
----
-
 ## Markets & Price
 
 ### What Is a Market?
@@ -54,7 +52,7 @@ Individual candles and short sequences form recognizable patterns that suggest w
 
 ![Candlestick Patterns](images/candlestick-patterns.svg)
 
-> **Tip:** No single candle pattern is reliable on its own. A hammer at a major support level after a long downtrend is a completely different signal than a hammer in the middle of nowhere. Context is everything.
+> **Tip:** No single candle pattern is reliable on its own. A hammer at a major support level after a long downtrend is a completely different signal than a hammer in the middle of nowhere. Context is everything. For multi-candle patterns that unfold over time, see [Hoops](tab:Advanced#chart-patterns-with-hoops).
 
 ### Support and Resistance
 
@@ -67,8 +65,8 @@ When price breaks through resistance, that level often becomes new support (and 
 Key support/resistance sources:
 - Previous highs and lows
 - Round numbers (e.g., $50,000 for BTC — humans love round numbers)
-- Volume profile levels (POC, VAH, VAL)
-- Moving averages (especially the 200-day SMA, which institutional traders watch)
+- [Volume profile](tab:Advanced#volume-profile) levels (POC, VAH, VAL)
+- [Moving averages](tab:Indicators#moving-averages) (especially the 200-day SMA, which institutional traders watch)
 - Trendlines
 
 ### Trendlines
@@ -130,7 +128,7 @@ Position traders operate on daily to weekly charts. They make 1-3 trades per mon
 
 **Personality fit:** Extremely patient, high conviction. Position traders need to hold through multiple sessions of their position going against them. They also need the discipline to wait months for the right setup rather than forcing trades.
 
-**Edge:** Position traders exploit sentiment extremes and macro cycles that shorter-term traders ignore. When everyone is panicking (extreme fear), position traders are building positions. When everyone is euphoric, they're taking profits.
+**Edge:** Position traders exploit sentiment extremes and [macro cycles](tab:Macro#why-macro-matters) that shorter-term traders ignore. When everyone is panicking (extreme fear), position traders are building positions. When everyone is euphoric, they're taking profits.
 
 **In Strategy Forge:** Position strategies use daily or weekly timeframes with sentiment filters: `FEAR_GREED < 25 AND RSI(14) < 35 AND price > SMA(200)`. Wide stops (10-15%), large targets (20-50%), and phases like `extreme-fear` or `negative-funding`.
 
@@ -187,7 +185,7 @@ Most beginners start with day trading because it feels active and engaging. Many
 
 **Open Interest** — the total number of outstanding derivative contracts (futures/options) that have not been settled.
 
-**POC (Point of Control)** — the price level with the highest traded volume in a volume profile; acts as a magnet for price.
+**POC (Point of Control)** — the price level with the highest traded volume in a volume profile; acts as a magnet for price. See [Volume Profile](tab:Advanced#volume-profile).
 
 **Profit Factor** — gross profit divided by gross loss; above 1.0 means the strategy is profitable overall.
 
@@ -207,8 +205,8 @@ Most beginners start with day trading because it feels active and engaging. Many
 
 **Trailing Stop** — a stop loss that moves with price as the trade goes in your favor, locking in profit.
 
-**VAH (Value Area High)** — the upper boundary of the price range containing a specified percentage (typically 70%) of traded volume.
+**VAH (Value Area High)** — the upper boundary of the price range containing a specified percentage (typically 70%) of traded volume. See [Volume Profile](tab:Advanced#volume-profile).
 
-**VAL (Value Area Low)** — the lower boundary of the value area.
+**VAL (Value Area Low)** — the lower boundary of the value area. See [Volume Profile](tab:Advanced#volume-profile).
 
 **Wick (Shadow)** — the thin lines above and below a candlestick body, showing the high and low prices that were rejected during the period.

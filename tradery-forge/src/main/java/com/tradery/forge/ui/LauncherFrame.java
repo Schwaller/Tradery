@@ -141,7 +141,7 @@ public class LauncherFrame extends JFrame {
                     ApplicationContext.getInstance().getAggTradesStore(),
                     ApplicationContext.getInstance().getPremiumIndexStore(),
                     () -> { /* refresh handled by dialog timer */ });
-            });
+            }, DexCollectionWindow::showWindow);
         });
 
         // Periodically update button text with disk usage
@@ -660,7 +660,7 @@ public class LauncherFrame extends JFrame {
                     ApplicationContext.getInstance().getAggTradesStore(),
                     ApplicationContext.getInstance().getPremiumIndexStore(),
                     () -> { /* refresh handled by dialog timer */ });
-            });
+            }, DexCollectionWindow::showWindow);
         });
     }
 
@@ -690,6 +690,13 @@ public class LauncherFrame extends JFrame {
      */
     public void openDownloadDashboard() {
         SwingUtilities.invokeLater(this::openDownloadDashboardWindow);
+    }
+
+    /**
+     * Open the Dex Data Collection window (for API access).
+     */
+    public void openDexCollection() {
+        SwingUtilities.invokeLater(DexCollectionWindow::showWindow);
     }
 
     /**

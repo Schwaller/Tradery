@@ -273,9 +273,19 @@ public class DataServiceClient {
      * Streams from response body to avoid allocating a huge intermediate byte[].
      */
     public List<AggTrade> getAggTrades(String symbol, Long start, Long end) throws IOException {
+        return getAggTrades(symbol, null, null, start, end);
+    }
+
+    /**
+     * Fetch aggregated trades for a specific exchange and market type.
+     */
+    public List<AggTrade> getAggTrades(String symbol, String exchange, String marketType,
+                                        Long start, Long end) throws IOException {
         HttpUrl.Builder urlBuilder = HttpUrl.parse(baseUrl + "/aggtrades").newBuilder()
             .addQueryParameter("symbol", symbol);
 
+        if (exchange != null) urlBuilder.addQueryParameter("exchange", exchange);
+        if (marketType != null) urlBuilder.addQueryParameter("marketType", marketType);
         if (start != null) urlBuilder.addQueryParameter("start", start.toString());
         if (end != null) urlBuilder.addQueryParameter("end", end.toString());
 
@@ -421,6 +431,68 @@ public class DataServiceClient {
                 throw new IOException("Symbol sync failed: " + response.code());
             }
             LOG.info("Symbol sync triggered");
+        }
+    }
+
+    // ==================== HL Trade Collection ====================
+
+    /**
+     * HL trade subscription info.
+     */
+    public record HlTradeSubscription(String coin, String exchange, String symbol, long tradeCount, long firstTradeTime, long lastTradeTime) {}
+
+    /**
+     * Get all active HL trade collection subscriptions.
+     */
+    public List<HlTradeSubscription> getHlTradeSubscriptions() throws IOException {
+        Request request = new Request.Builder()
+            .url(baseUrl + "/hl-trades/subscriptions")
+            .get()
+            .build();
+
+        try (Response response = httpClient.newCall(request).execute()) {
+            if (!response.isSuccessful()) {
+                throw new IOException("HL trade subscriptions request failed: " + response.code());
+            }
+            return jsonMapper.readValue(response.body().string(), jsonMapper.getTypeFactory()
+                .constructCollectionType(List.class, HlTradeSubscription.class));
+        }
+    }
+
+    /**
+     * Add a new HL trade collection subscription.
+     */
+    public void addHlTradeSubscription(String coin, String exchange, String symbol) throws IOException {
+        var body = new java.util.LinkedHashMap<String, String>();
+        body.put("coin", coin);
+        body.put("exchange", exchange);
+        body.put("symbol", symbol);
+
+        Request request = new Request.Builder()
+            .url(baseUrl + "/hl-trades/subscriptions")
+            .post(RequestBody.create(jsonMapper.writeValueAsString(body), MediaType.parse("application/json")))
+            .build();
+
+        try (Response response = httpClient.newCall(request).execute()) {
+            if (!response.isSuccessful()) {
+                throw new IOException("Add HL subscription failed: " + response.code());
+            }
+        }
+    }
+
+    /**
+     * Remove an HL trade collection subscription.
+     */
+    public void removeHlTradeSubscription(String coin) throws IOException {
+        Request request = new Request.Builder()
+            .url(baseUrl + "/hl-trades/subscriptions/" + coin)
+            .delete()
+            .build();
+
+        try (Response response = httpClient.newCall(request).execute()) {
+            if (!response.isSuccessful()) {
+                throw new IOException("Remove HL subscription failed: " + response.code());
+            }
         }
     }
 

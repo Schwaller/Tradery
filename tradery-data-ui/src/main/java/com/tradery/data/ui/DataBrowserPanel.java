@@ -1,5 +1,6 @@
 package com.tradery.data.ui;
 
+import com.tradery.core.model.Exchange;
 import com.tradery.dataclient.DataServiceClient;
 import com.tradery.dataclient.DataServiceClient.*;
 
@@ -34,6 +35,8 @@ public class DataBrowserPanel extends JPanel {
 
     // Cached data
     private volatile InventoryResponse inventory;
+    private volatile List<DataServiceClient.HlTradeSubscription> hlSubscriptions;
+    private volatile boolean loading = true;
     private Map<String, Long> symbolSizes = Map.of();
     private Map<String, Long> dataTypeSizes = Map.of();
     private Map<String, List<DataServiceClient.ExchangeMarketStats>> exchangeStats = Map.of();
@@ -124,6 +127,11 @@ public class DataBrowserPanel extends JPanel {
      * Refresh data from the data service inventory API.
      */
     public void refreshData() {
+        boolean isFirstLoad = inventory == null;
+        if (isFirstLoad) {
+            loading = true;
+            SwingUtilities.invokeLater(() -> { rebuildRows(); repaint(); });
+        }
         Thread.startVirtualThread(() -> {
             try {
                 if (client == null) return;
@@ -140,14 +148,21 @@ public class DataBrowserPanel extends JPanel {
                     DataServiceClient.SymbolStats ss = client.getSymbolStats();
                     if (ss.byExchange() != null) exStats = ss.byExchange();
                 } catch (Exception ignored) {}
+                List<DataServiceClient.HlTradeSubscription> hlSubs = List.of();
+                try {
+                    hlSubs = client.getHlTradeSubscriptions();
+                } catch (Exception ignored) {}
                 Map<String, Long> finalSizes = sizes;
                 Map<String, Long> finalDtSizes = dtSizes;
                 Map<String, List<DataServiceClient.ExchangeMarketStats>> finalExStats = exStats;
+                List<DataServiceClient.HlTradeSubscription> finalHlSubs = hlSubs;
                 SwingUtilities.invokeLater(() -> {
                     this.inventory = inv;
                     this.symbolSizes = finalSizes;
                     this.dataTypeSizes = finalDtSizes;
                     this.exchangeStats = finalExStats;
+                    this.hlSubscriptions = finalHlSubs;
+                    this.loading = false;
                     rebuildRows();
                     revalidate();
                     repaint();
@@ -155,6 +170,7 @@ public class DataBrowserPanel extends JPanel {
             } catch (Exception e) {
                 // Silently fail - data service may not be running
                 System.err.println("Failed to load inventory: " + e.getMessage());
+                loading = false;
             }
         });
     }
@@ -162,9 +178,26 @@ public class DataBrowserPanel extends JPanel {
     private void rebuildRows() {
         rows.clear();
 
+        // Show loading indicator on first load
+        if (loading && inventory == null) {
+            rows.add(RowData.emptyLabel("Loading inventory..."));
+            setPreferredSize(new Dimension(200, rows.size() * ROW_HEIGHT + 10));
+            return;
+        }
+
         // Always show all categories, even when inventory is null (data service not connected)
         List<SymbolInventory> symbols = (inventory != null && inventory.symbols() != null)
             ? inventory.symbols() : List.of();
+
+        // === HL Trade Collection ===
+        if (hlSubscriptions != null && !hlSubscriptions.isEmpty()) {
+            rows.add(RowData.sectionHeader("HL Trade Collection"));
+            for (DataServiceClient.HlTradeSubscription sub : hlSubscriptions) {
+                String info = COUNT_FORMAT.format(sub.tradeCount()) + " trades";
+                rows.add(new RowData(null, "hlTradeCollection", sub.exchange(), null, sub.coin(),
+                    true, false, false, false, 1, sub.coin(), info, COMPLETE_COLOR));
+            }
+        }
 
         // === Symbols & Pairs ===
         rows.add(RowData.sectionHeader("Symbols & Pairs"));
@@ -449,13 +482,7 @@ public class DataBrowserPanel extends JPanel {
     }
 
     private String formatExchange(String exchange) {
-        if (exchange == null) return "";
-        return switch (exchange) {
-            case "binance" -> "Binance";
-            case "bybit" -> "Bybit";
-            case "okx" -> "OKX";
-            default -> exchange.substring(0, 1).toUpperCase() + exchange.substring(1);
-        };
+        return Exchange.formatDisplayName(exchange);
     }
 
     // Row data model

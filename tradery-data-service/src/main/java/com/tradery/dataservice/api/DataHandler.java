@@ -20,11 +20,13 @@ public class DataHandler {
     }
 
     /**
-     * GET /aggtrades?symbol=X&start=Z&end=W
+     * GET /aggtrades?symbol=X&exchange=Y&marketType=Z&start=S&end=E
      */
     public void getAggTrades(Context ctx) {
         try {
             String symbol = ctx.queryParam("symbol");
+            String exchange = ctx.queryParam("exchange");
+            String marketType = ctx.queryParam("marketType");
             Long start = ctx.queryParamAsClass("start", Long.class).getOrDefault(null);
             Long end = ctx.queryParamAsClass("end", Long.class).getOrDefault(null);
 
@@ -34,10 +36,10 @@ public class DataHandler {
             }
 
             ctx.contentType("application/msgpack");
-            int count = pageManager.writeAggTradesData(symbol, start, end, ctx.outputStream());
+            int count = pageManager.writeAggTradesData(symbol, exchange, marketType, start, end, ctx.outputStream());
             if (count < 0) {
                 // Stream may have already started — log the error
-                LOG.error("Failed to stream aggTrades for {}", symbol);
+                LOG.error("Failed to stream aggTrades for {} [{}:{}]", symbol, exchange, marketType);
             }
         } catch (Exception e) {
             LOG.error("Failed to get aggTrades", e);
