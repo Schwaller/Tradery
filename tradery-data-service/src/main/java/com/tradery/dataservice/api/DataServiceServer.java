@@ -10,6 +10,7 @@ import com.tradery.dataservice.data.SpectrumStore;
 import com.tradery.dataservice.data.sqlite.SqliteDataStore;
 import com.tradery.dataservice.data.sqlite.SymbolsConnection;
 import com.tradery.dataservice.live.LiveAggTradeManager;
+import com.tradery.dataservice.live.LiveAggTradePersister;
 import com.tradery.dataservice.live.LiveCandleManager;
 import com.tradery.dataservice.live.LiveMarkPriceManager;
 import com.tradery.dataservice.live.LiveOpenInterestPoller;
@@ -43,6 +44,7 @@ public class DataServiceServer {
     private final LiveAggTradeManager liveAggTradeManager;
     private final LiveMarkPriceManager liveMarkPriceManager;
     private final LiveOpenInterestPoller liveOpenInterestPoller;
+    private final LiveAggTradePersister liveAggTradePersister;
     private final SqliteDataStore dataStore;
     private final WebSocketHandler webSocketHandler;
     private final SymbolHandler symbolHandler;
@@ -66,11 +68,12 @@ public class DataServiceServer {
         this.liveAggTradeManager = new LiveAggTradeManager();
         this.liveMarkPriceManager = new LiveMarkPriceManager();
         this.liveOpenInterestPoller = new LiveOpenInterestPoller();
+        this.liveAggTradePersister = new LiveAggTradePersister(dataStore, liveAggTradeManager);
         // PageManager gets LiveCandleManager for live page support
         this.pageManager = new PageManager(config, dataStore, liveCandleManager);
         this.webSocketHandler = new WebSocketHandler(pageManager, consumerRegistry,
             liveCandleManager, liveAggTradeManager, liveMarkPriceManager, liveOpenInterestPoller,
-            pageManager.getAggTradesStore(), objectMapper);
+            liveAggTradePersister, pageManager.getAggTradesStore(), objectMapper);
         this.symbolHandler = new SymbolHandler(symbolSyncService, symbolsConnection, coingeckoClient);
         this.inventoryHandler = new InventoryHandler(dataStore);
         this.tickSizeResolver = new TickSizeResolver(symbolsConnection);
@@ -136,6 +139,7 @@ public class DataServiceServer {
             app.stop();
         }
         pageManager.shutdown();
+        liveAggTradePersister.shutdown();
         liveCandleManager.shutdown();
         liveAggTradeManager.shutdown();
         liveMarkPriceManager.shutdown();

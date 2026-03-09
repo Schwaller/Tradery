@@ -16,7 +16,7 @@ public enum DataMarketType {
     /**
      * Perpetual futures (no expiration)
      */
-    FUTURES_PERP("Perpetual Futures", "perp", "PERP"),
+    FUTURES_PERP("Futures", "perp", "PERP"),
 
     /**
      * Dated/quarterly futures (with expiration)

@@ -366,7 +366,7 @@ public class IndicatorSidePanel extends JPanel {
         // Apply indicators (handles coordinator/interactionManager registration)
         chartPanel.applyIndicatorConfig(config);
 
-        // Refresh chart display
-        chartPanel.getCandlestickChart().updateData(chartPanel.getDataProvider());
+        // Refresh chart display (use updateDataset to preserve overlay annotations/datasets)
+        chartPanel.getCandlestickChart().updateDataset(chartPanel.getDataProvider());
     }
 }

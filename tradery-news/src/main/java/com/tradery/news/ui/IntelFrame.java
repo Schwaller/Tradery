@@ -5,12 +5,19 @@ import com.formdev.flatlaf.util.SystemInfo;
 import com.tradery.ai.AiClient;
 import com.tradery.ai.AiConfig;
 import com.tradery.ai.AiSetupDialog;
+import com.tradery.ai.challenges.execution.ChallengeExecutor;
+import com.tradery.ai.challenges.model.Challenge;
+import com.tradery.ai.challenges.model.ChallengeEscalation;
+import com.tradery.ai.challenges.model.ChallengeResult;
+import com.tradery.ai.challenges.schedule.ChallengeScheduler;
+import com.tradery.ai.challenges.store.ChallengeStore;
 import com.tradery.license.LicenseGate;
 import com.tradery.license.UpdateChecker;
 import com.tradery.news.model.Article;
 import com.tradery.news.store.SqliteNewsStore;
 import com.tradery.news.api.IntelApiServer;
 import com.tradery.news.source.*;
+import com.tradery.news.ui.challenges.*;
 import com.tradery.news.ui.coin.*;
 import com.tradery.ui.ThemeHelper;
 import com.tradery.ui.controls.BorderlessScrollPane;
@@ -95,6 +102,11 @@ public class IntelFrame extends JFrame {
     // API server
     private IntelApiServer apiServer;
 
+    // Challenges
+    private ChallengeStore challengeStore;
+    private ChallengeExecutor challengeExecutor;
+    private ChallengeScheduler challengeScheduler;
+
     // Current selection
     private enum DetailMode { NONE, ARTICLE, ENTITY }
     private DetailMode currentMode = DetailMode.NONE;
@@ -153,6 +165,17 @@ public class IntelFrame extends JFrame {
         sourceRegistry.register(new CoinGeckoSource());
         sourceRegistry.register(new RssNewsSource(store, dataDir));
 
+        // Initialize challenge infrastructure
+        this.challengeStore = new SqliteChallengeStore(dataDir.resolve("challenges.db"));
+        seedDefaultChallenges();
+        this.challengeExecutor = new ChallengeExecutor();
+        this.challengeScheduler = new ChallengeScheduler(challengeStore, challengeExecutor, subjectId -> {
+            CoinEntity entity = entityStore.getEntity(subjectId);
+            return entity != null ? new CoinEntitySubject(entity, schemaRegistry, entityStore) : null;
+        });
+        challengeScheduler.setEnabled(IntelConfig.get().isChallengeAutoRefreshEnabled());
+        challengeScheduler.start();
+
         setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
 
         // Transparent title bar - title shown in header bar instead
@@ -178,6 +201,7 @@ public class IntelFrame extends JFrame {
         try {
             EntitySearchProcessor searchProcessor = new EntitySearchProcessor(schemaRegistry);
             apiServer = new IntelApiServer(this::openWindow, entityStore, store, searchProcessor, schemaRegistry, null, this::getUiState);
+            apiServer.setChallengeInfrastructure(challengeStore, challengeExecutor);
             apiServer.start();
         } catch (Exception e) {
             System.err.println("Failed to start Intel API server: " + e.getMessage());
@@ -196,6 +220,7 @@ public class IntelFrame extends JFrame {
                 cfg.save();
 
                 if (autoFetchTimer != null) autoFetchTimer.stop();
+                if (challengeScheduler != null) challengeScheduler.stop();
                 if (apiServer != null) apiServer.stop();
                 for (PanelInstance pi : panelInstances) {
                     if (pi.graphPanel() instanceof TimelineGraphPanel tgp) tgp.stopPhysics();
@@ -728,17 +753,33 @@ public class IntelFrame extends JFrame {
         List<FormLayout> layouts = (schemaType != null) ? schemaType.formLayouts() : null;
         boolean hasLayouts = layouts != null && !layouts.isEmpty();
 
+        // Check for applicable challenges
+        List<Challenge> challenges = challengeStore.listChallenges().stream()
+            .filter(c -> c.enabled() && c.appliesTo(typeId))
+            .toList();
+        boolean hasChallenges = !challenges.isEmpty();
+
         detailContent.removeAll();
 
-        // Segmented toggle: form names + "All Data" (only when forms exist)
-        if (hasLayouts) {
-            String[] segments = new String[layouts.size() + 1];
-            for (int i = 0; i < layouts.size(); i++) segments[i] = layouts.get(i).name();
-            segments[layouts.size()] = "All Data";
+        // Build segmented toggle: [form layouts...] + "All Data" + "Challenges" (if applicable)
+        boolean needsToggle = hasLayouts || hasChallenges;
+        int challengesTabIndex = -1;
+
+        if (needsToggle) {
+            List<String> segmentList = new ArrayList<>();
+            if (hasLayouts) {
+                for (FormLayout l : layouts) segmentList.add(l.name());
+            }
+            segmentList.add("All Data");
+            if (hasChallenges) {
+                challengesTabIndex = segmentList.size();
+                segmentList.add("Challenges");
+            }
+            String[] segments = segmentList.toArray(new String[0]);
 
             SegmentedToggle detailToggle = new SegmentedToggle(segments);
             if (entityDetailViewIndex < 0 || entityDetailViewIndex >= segments.length) {
-                entityDetailViewIndex = 0;
+                entityDetailViewIndex = hasLayouts ? 0 : segments.length - (hasChallenges ? 2 : 1);
             }
             detailToggle.setSelectedIndex(entityDetailViewIndex);
             detailToggle.setAlignmentX(Component.LEFT_ALIGNMENT);
@@ -751,7 +792,9 @@ public class IntelFrame extends JFrame {
             addDetailSpacer();
         }
 
-        if (hasLayouts && entityDetailViewIndex < layouts.size()) {
+        if (hasChallenges && entityDetailViewIndex == challengesTabIndex) {
+            renderChallengesView(entity, challenges);
+        } else if (hasLayouts && entityDetailViewIndex < layouts.size()) {
             renderFormLayoutView(entity, schemaType, layouts.get(entityDetailViewIndex));
         } else {
             renderAllDataView(entity, schemaType);
@@ -878,6 +921,293 @@ public class IntelFrame extends JFrame {
         }
 
         addEntityActionButtons(entity);
+    }
+
+    private void renderChallengesView(CoinEntity entity, List<Challenge> challenges) {
+        addDetailHeader(entity.name());
+        addDetailSpacer();
+
+        // Global auto-refresh toggle
+        JPanel togglePanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 0));
+        togglePanel.setBackground(bgCard());
+        togglePanel.setAlignmentX(Component.LEFT_ALIGNMENT);
+        togglePanel.setMaximumSize(new Dimension(Integer.MAX_VALUE, 28));
+        JCheckBox autoToggle = new JCheckBox("Auto-refresh");
+        autoToggle.setFont(new Font("SansSerif", Font.PLAIN, 11));
+        autoToggle.setSelected(challengeScheduler.isEnabled());
+        autoToggle.addActionListener(e -> {
+            boolean enabled = autoToggle.isSelected();
+            challengeScheduler.setEnabled(enabled);
+            IntelConfig.get().setChallengeAutoRefreshEnabled(enabled);
+            IntelConfig.get().save();
+        });
+        togglePanel.add(autoToggle);
+        detailContent.add(togglePanel);
+        addDetailSpacer();
+
+        // Challenge rows
+        for (Challenge challenge : challenges) {
+            addChallengeRow(entity, challenge);
+        }
+
+        // Show latest result below the list
+        ChallengeResult latestResult = null;
+        for (Challenge c : challenges) {
+            ChallengeResult r = challengeStore.getLatestResult(c.id(), entity.id());
+            if (r != null && (latestResult == null || r.timestamp() > latestResult.timestamp())) {
+                latestResult = r;
+            }
+        }
+        if (latestResult != null) {
+            addDetailSpacer();
+            Challenge rc = challengeStore.getChallenge(latestResult.challengeId());
+            String title = rc != null ? rc.title() : latestResult.challengeId();
+            addDetailSection("LATEST: " + title.toUpperCase());
+            if (latestResult.hasError()) {
+                addDetailLabel("Error: " + latestResult.error(), new Color(220, 60, 60));
+            } else if (latestResult.textResult() != null) {
+                addDetailText(latestResult.textResult());
+            } else if (latestResult.listResult() != null) {
+                for (String item : latestResult.listResult()) {
+                    addDetailLabel("  \u2022 " + item);
+                }
+            } else if (latestResult.entityResult() != null && latestResult.entityResult().entities() != null) {
+                addDetailLabel(latestResult.entityResult().entities().size() + " entities found");
+            }
+            if (latestResult.hasSignal()) {
+                addDetailLabel("Signal: " + String.format("%.1f", latestResult.signalValue()), textSecondary());
+            }
+        }
+    }
+
+    private void addChallengeRow(CoinEntity entity, Challenge challenge) {
+        JPanel row = new JPanel(new BorderLayout(6, 0));
+        row.setBackground(bgCard());
+        row.setAlignmentX(Component.LEFT_ALIGNMENT);
+        row.setMaximumSize(new Dimension(Integer.MAX_VALUE, 48));
+        row.setBorder(BorderFactory.createEmptyBorder(4, 4, 4, 4));
+
+        // Left: title + description
+        JPanel textPanel = new JPanel();
+        textPanel.setLayout(new BoxLayout(textPanel, BoxLayout.Y_AXIS));
+        textPanel.setBackground(bgCard());
+
+        JLabel titleLabel = new JLabel(challenge.title());
+        titleLabel.setFont(new Font("SansSerif", Font.BOLD, 11));
+        titleLabel.setForeground(textPrimary());
+        textPanel.add(titleLabel);
+
+        // Status line: run count + last run time + signal sparkline
+        ChallengeResult latest = challengeStore.getLatestResult(challenge.id(), entity.id());
+        List<ChallengeResult> signalHistory = challengeStore.getSignalHistory(challenge.id(), entity.id(), 10);
+
+        StringBuilder status = new StringBuilder();
+        if (latest != null) {
+            long ago = System.currentTimeMillis() - latest.timestamp();
+            String agoStr = ago < 3600_000 ? (ago / 60_000) + "m ago"
+                : ago < 86_400_000 ? (ago / 3600_000) + "h ago"
+                : (ago / 86_400_000) + "d ago";
+            status.append("last: ").append(agoStr);
+            if (latest.hasSignal()) {
+                status.append(" \u2022 ").append(String.format("%.1f", latest.signalValue()));
+            }
+        } else {
+            status.append("not run");
+        }
+        if (challenge.refreshInterval() != null) {
+            long hours = challenge.refreshInterval().toHours();
+            String interval = hours >= 24 ? (hours / 24) + "d" : hours + "h";
+            status.append(" \u2022 \u23F1").append(interval);
+        }
+
+        JLabel statusLabel = new JLabel(status.toString());
+        statusLabel.setFont(new Font("SansSerif", Font.PLAIN, 9));
+        statusLabel.setForeground(textMuted());
+        textPanel.add(statusLabel);
+        row.add(textPanel, BorderLayout.CENTER);
+
+        // Right: escalation buttons
+        JPanel btnPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 3, 0));
+        btnPanel.setBackground(bgCard());
+
+        Color[] tierColors = { new Color(80, 180, 80), new Color(200, 180, 60), new Color(200, 80, 80) };
+        for (int i = 0; i < challenge.escalations().size(); i++) {
+            ChallengeEscalation esc = challenge.escalations().get(i);
+            int escIndex = i;
+            JButton btn = new JButton(esc.label());
+            btn.setFont(new Font("SansSerif", Font.PLAIN, 9));
+            btn.setToolTipText(esc.description());
+            btn.setForeground(tierColors[Math.min(i, tierColors.length - 1)]);
+            btn.addActionListener(e -> {
+                btn.setEnabled(false);
+                btn.setText("...");
+                CoinEntitySubject subject = new CoinEntitySubject(entity, schemaRegistry, entityStore);
+                ChallengeResult prev = challengeStore.getLatestResult(challenge.id(), subject.id());
+                Thread.ofVirtual().start(() -> {
+                    ChallengeResult result = challengeExecutor.execute(challenge, subject, escIndex,
+                        msg -> IntelLogPanel.logAI(msg), prev);
+                    challengeStore.saveResult(result);
+                    challengeScheduler.ensureSubscribed(challenge.id(), entity.id());
+                    SwingUtilities.invokeLater(() -> {
+                        btn.setEnabled(true);
+                        btn.setText(esc.label());
+                        showEntityDetails(entity);
+                    });
+                });
+            });
+            btnPanel.add(btn);
+        }
+        row.add(btnPanel, BorderLayout.EAST);
+
+        // Sparkline for signal history
+        if (!signalHistory.isEmpty() && signalHistory.size() > 1) {
+            JPanel sparkline = createSparkline(signalHistory);
+            row.add(sparkline, BorderLayout.SOUTH);
+        }
+
+        detailContent.add(row);
+        detailContent.add(Box.createVerticalStrut(4));
+    }
+
+    private JPanel createSparkline(List<ChallengeResult> history) {
+        // Reverse to get chronological order
+        List<Double> values = new ArrayList<>();
+        for (int i = history.size() - 1; i >= 0; i--) {
+            Double v = history.get(i).signalValue();
+            if (v != null) values.add(v);
+        }
+
+        JPanel panel = new JPanel() {
+            @Override
+            protected void paintComponent(Graphics g) {
+                super.paintComponent(g);
+                if (values.size() < 2) return;
+
+                Graphics2D g2 = (Graphics2D) g;
+                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+
+                double min = values.stream().mapToDouble(Double::doubleValue).min().orElse(0);
+                double max = values.stream().mapToDouble(Double::doubleValue).max().orElse(1);
+                if (max == min) { max = min + 1; }
+
+                int w = getWidth() - 4;
+                int h = getHeight() - 4;
+                int n = values.size();
+
+                // Trend color: green if trending up, red if down
+                boolean trendUp = values.get(values.size() - 1) >= values.get(0);
+                g2.setColor(trendUp ? new Color(80, 180, 80, 180) : new Color(200, 80, 80, 180));
+                g2.setStroke(new BasicStroke(1.5f));
+
+                int[] xPoints = new int[n];
+                int[] yPoints = new int[n];
+                for (int i = 0; i < n; i++) {
+                    xPoints[i] = 2 + (int) ((double) i / (n - 1) * w);
+                    yPoints[i] = 2 + h - (int) ((values.get(i) - min) / (max - min) * h);
+                }
+                g2.drawPolyline(xPoints, yPoints, n);
+            }
+        };
+        panel.setBackground(bgCard());
+        panel.setPreferredSize(new Dimension(0, 16));
+        panel.setMaximumSize(new Dimension(Integer.MAX_VALUE, 16));
+        return panel;
+    }
+
+    private void seedDefaultChallenges() {
+        // Only seed if store is empty
+        if (!challengeStore.listChallenges().isEmpty()) return;
+
+        Challenge c1 = new Challenge("tokenomics-analysis", "Tokenomics");
+        c1.setDescription("Analyze the tokenomics of this cryptocurrency: supply model, emission schedule, "
+            + "staking mechanics, burn mechanisms, vesting schedules, and inflation/deflation dynamics. "
+            + "Assess the long-term sustainability of the token economic model.");
+        c1.setTargetTypeIds(List.of("coin", "l2"));
+        c1.setOutput(new com.tradery.ai.challenges.model.ChallengeOutput(com.tradery.ai.challenges.model.ChallengeOutput.Type.TEXT));
+        c1.setSignalConfig(com.tradery.ai.challenges.model.SignalConfig.explicit(
+            "End your response with [SIGNAL: X] where X is a score from 0 (terrible tokenomics) to 10 (excellent)."));
+        c1.setEscalations(List.of(
+            createEsc("Quick", "fast", null, false, "Fast overview from cached knowledge"),
+            createEsc("Standard", "standard", null, false, "Detailed analysis"),
+            createEsc("Deep", "premium", null, true, "Comprehensive with verification")
+        ));
+        c1.setRefreshInterval(java.time.Duration.ofDays(7));
+        c1.setDisplayOrder(1);
+        challengeStore.saveChallenge(c1);
+
+        Challenge c2 = new Challenge("regulatory-risks", "Regulatory Risks");
+        c2.setDescription("Identify the key regulatory risks facing this entity. Consider jurisdiction-specific "
+            + "regulations, pending legislation, enforcement actions, and compliance challenges.");
+        c2.setTargetTypeIds(List.of("coin", "l2", "etf", "exchange"));
+        c2.setOutput(new com.tradery.ai.challenges.model.ChallengeOutput(com.tradery.ai.challenges.model.ChallengeOutput.Type.LIST));
+        c2.setSignalConfig(com.tradery.ai.challenges.model.SignalConfig.ordinal(
+            java.util.Map.of("LOW", 1.0, "MEDIUM", 2.0, "HIGH", 3.0, "CRITICAL", 4.0)));
+        c2.setEscalations(List.of(
+            createEsc("Standard", "standard", null, false, "Identify major risks"),
+            createEsc("Deep", "premium", null, true, "Comprehensive risk assessment with verification")
+        ));
+        c2.setRefreshInterval(java.time.Duration.ofDays(3));
+        c2.setDisplayOrder(2);
+        challengeStore.saveChallenge(c2);
+
+        Challenge c3 = new Challenge("investment-thesis", "Investment Thesis");
+        c3.setDescription("Construct a balanced investment thesis for this entity. Cover the bull case, "
+            + "bear case, key catalysts, major risks, competitive moat, and market positioning. "
+            + "Provide a clear assessment of the risk/reward profile.");
+        c3.setTargetTypeIds(List.of("coin", "l2"));
+        c3.setOutput(new com.tradery.ai.challenges.model.ChallengeOutput(com.tradery.ai.challenges.model.ChallengeOutput.Type.TEXT));
+        c3.setSignalConfig(com.tradery.ai.challenges.model.SignalConfig.explicit(
+            "End your response with [SIGNAL: X] where X is 0 (strong sell) to 10 (strong buy)."));
+        c3.setEscalations(List.of(
+            createEsc("Standard", "standard", null, false, "Balanced thesis overview"),
+            createEsc("Deep", "premium", null, true, "In-depth thesis with verification")
+        ));
+        c3.setRefreshInterval(java.time.Duration.ofDays(7));
+        c3.setDisplayOrder(3);
+        challengeStore.saveChallenge(c3);
+
+        Challenge c4 = new Challenge("competitive-landscape", "Competitors");
+        c4.setDescription("Find the main competitors of this entity based on market positioning, "
+            + "technology, target audience, and use case overlap.");
+        c4.setTargetTypeIds(List.of("coin", "l2", "exchange"));
+        com.tradery.ai.challenges.model.ChallengeOutput entityOutput =
+            new com.tradery.ai.challenges.model.ChallengeOutput(com.tradery.ai.challenges.model.ChallengeOutput.Type.ENTITY_SET);
+        entityOutput.config().put("relationshipTypeId", "competitor");
+        c4.setOutput(entityOutput);
+        c4.setSignalConfig(com.tradery.ai.challenges.model.SignalConfig.count());
+        c4.setEscalations(List.of(
+            createEsc("Quick", "fast", "quick", false, "Quick competitor scan"),
+            createEsc("Deep", "premium", "deep", false, "Comprehensive competitor discovery")
+        ));
+        c4.setRefreshInterval(java.time.Duration.ofDays(14));
+        c4.setDisplayOrder(4);
+        challengeStore.saveChallenge(c4);
+
+        Challenge c5 = new Challenge("sentiment-summary", "Market Sentiment");
+        c5.setDescription("Summarize the current market sentiment around this entity. "
+            + "Consider social media discourse, developer activity, whale movements, "
+            + "funding rates, and recent news narratives.");
+        c5.setTargetTypeIds(List.of("coin", "l2"));
+        c5.setOutput(new com.tradery.ai.challenges.model.ChallengeOutput(com.tradery.ai.challenges.model.ChallengeOutput.Type.TEXT));
+        c5.setSignalConfig(com.tradery.ai.challenges.model.SignalConfig.ordinal(
+            java.util.Map.of("VERY_BEARISH", 1.0, "BEARISH", 2.0, "NEUTRAL", 3.0, "BULLISH", 4.0, "VERY_BULLISH", 5.0)));
+        c5.setEscalations(List.of(
+            createEsc("Quick", "fast", null, false, "Quick sentiment read"),
+            createEsc("Standard", "standard", null, false, "Detailed sentiment analysis"),
+            createEsc("Deep", "premium", null, true, "Deep sentiment with verification")
+        ));
+        c5.setRefreshInterval(java.time.Duration.ofDays(1));
+        c5.setDisplayOrder(5);
+        challengeStore.saveChallenge(c5);
+    }
+
+    private static ChallengeEscalation createEsc(String label, String tier, String pipeline,
+                                                   boolean verify, String description) {
+        ChallengeEscalation esc = new ChallengeEscalation(label, tier);
+        esc.setPipeline(pipeline);
+        esc.setVerify(verify);
+        esc.setDescription(description);
+        return esc;
     }
 
     private void addEntityActionButtons(CoinEntity entity) {

@@ -158,6 +158,33 @@ public class CandlestickChart extends SyncedChart {
         }
     }
 
+    /**
+     * Update only the price dataset without clearing annotations or overlays.
+     * Used for live tick updates where overlays should persist.
+     * Re-applies the overlays list (LastPrice, ReferencePrice markers) so they
+     * update to the latest price, but does NOT clear annotations (preserving
+     * DVP/Footprint which are managed by OverlayManager).
+     */
+    public void updateDataset(ChartDataProvider provider) {
+        if (!provider.hasCandles()) return;
+
+        XYPlot plot = getPlot();
+        List<Candle> candles = provider.getCandles();
+
+        if (candlestickMode) {
+            createCandlestickData(plot, candles);
+        } else {
+            createLineData(plot, candles);
+        }
+
+        // Re-apply overlays (markers like LastPrice/ReferencePrice) without clearing annotations
+        int datasetIndex = OVERLAY_START_INDEX;
+        for (ChartOverlay overlay : overlays) {
+            overlay.apply(plot, provider, datasetIndex);
+            datasetIndex += overlay.getDatasetCount();
+        }
+    }
+
     // ===== Configuration =====
 
     /**

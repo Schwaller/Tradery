@@ -296,6 +296,95 @@ public class CoverageDao {
     }
 
     /**
+     * Remove coverage for a specific time range.
+     * Deletes ranges entirely within the range, and shrinks ranges that partially overlap.
+     * Used to invalidate profile coverage when new live aggTrades arrive.
+     */
+    public void removeCoverageRange(String dataType, String subKey, long rangeStart, long rangeEnd) throws SQLException {
+        conn.executeInTransaction(c -> {
+            // Find all ranges that overlap with the removal range
+            List<CoverageRange> overlapping = new ArrayList<>();
+            String selectSql = """
+                SELECT range_start, range_end, is_complete, last_updated
+                FROM data_coverage
+                WHERE data_type = ? AND sub_key = ?
+                  AND range_start <= ? AND range_end >= ?
+                ORDER BY range_start
+                """;
+
+            try (PreparedStatement stmt = c.prepareStatement(selectSql)) {
+                stmt.setString(1, dataType);
+                stmt.setString(2, subKey);
+                stmt.setLong(3, rangeEnd);
+                stmt.setLong(4, rangeStart);
+                try (ResultSet rs = stmt.executeQuery()) {
+                    while (rs.next()) {
+                        overlapping.add(new CoverageRange(
+                            rs.getLong("range_start"),
+                            rs.getLong("range_end"),
+                            rs.getInt("is_complete") == 1,
+                            rs.getLong("last_updated")
+                        ));
+                    }
+                }
+            }
+
+            if (overlapping.isEmpty()) return;
+
+            // Delete all overlapping ranges
+            String deleteSql = """
+                DELETE FROM data_coverage
+                WHERE data_type = ? AND sub_key = ?
+                  AND range_start <= ? AND range_end >= ?
+                """;
+            try (PreparedStatement stmt = c.prepareStatement(deleteSql)) {
+                stmt.setString(1, dataType);
+                stmt.setString(2, subKey);
+                stmt.setLong(3, rangeEnd);
+                stmt.setLong(4, rangeStart);
+                stmt.executeUpdate();
+            }
+
+            // Re-insert the parts that fall outside the removal range
+            String insertSql = """
+                INSERT INTO data_coverage
+                (data_type, sub_key, range_start, range_end, is_complete, last_updated)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """;
+
+            for (CoverageRange r : overlapping) {
+                // Left portion: range that extends before the removal start
+                if (r.rangeStart() < rangeStart) {
+                    try (PreparedStatement stmt = c.prepareStatement(insertSql)) {
+                        stmt.setString(1, dataType);
+                        stmt.setString(2, subKey);
+                        stmt.setLong(3, r.rangeStart());
+                        stmt.setLong(4, rangeStart - 1);
+                        stmt.setInt(5, r.isComplete() ? 1 : 0);
+                        stmt.setLong(6, System.currentTimeMillis());
+                        stmt.executeUpdate();
+                    }
+                }
+                // Right portion: range that extends after the removal end
+                if (r.rangeEnd() > rangeEnd) {
+                    try (PreparedStatement stmt = c.prepareStatement(insertSql)) {
+                        stmt.setString(1, dataType);
+                        stmt.setString(2, subKey);
+                        stmt.setLong(3, rangeEnd + 1);
+                        stmt.setLong(4, r.rangeEnd());
+                        stmt.setInt(5, r.isComplete() ? 1 : 0);
+                        stmt.setLong(6, System.currentTimeMillis());
+                        stmt.executeUpdate();
+                    }
+                }
+            }
+
+            log.debug("Removed coverage range [{} - {}] for {}/{}, affected {} ranges",
+                rangeStart, rangeEnd, dataType, subKey, overlapping.size());
+        });
+    }
+
+    /**
      * Delete coverage records for a data type (used when clearing cache).
      */
     public void deleteCoverage(String dataType, String subKey) throws SQLException {

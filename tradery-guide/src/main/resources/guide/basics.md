@@ -136,7 +136,7 @@ Position traders operate on daily to weekly charts. They make 1-3 trades per mon
 
 Most beginners start with day trading because it feels active and engaging. Many eventually migrate to swing trading when they realize that watching charts 8 hours a day leads to overtrading and exhaustion. There's no shame in being a swing trader who checks charts twice a day — many of the most profitable independent traders operate exactly this way.
 
-> **Tip:** Your trading style should match your personality and lifestyle. If you have a full-time job, trying to scalp during work hours is a recipe for losses. Swing trading with alerts and daily chart reviews might be your edge. Strategy Forge lets you backtest across all timeframes, so you can objectively see which holding period works best for your ideas.
+> **Tip:** Your trading style should match your personality and lifestyle. If you have a full-time job, trying to scalp during work hours is a recipe for losses. Swing trading with alerts and daily chart reviews might be your edge. Strategy Forge lets you backtest across all timeframes, so you can objectively see which holding period works best for your ideas. For a guided decision flow that takes you from style to strategy archetype, see [Strategy Classes](tab:Classes#planning-your-strategy).
 
 
 ## Glossary

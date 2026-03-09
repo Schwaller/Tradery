@@ -125,8 +125,8 @@ public class FootprintHeatmapOverlay {
      */
     public void requestData(List<Candle> candles, String symbol, String timeframe,
                             long startTime, long endTime) {
-        log.debug("FootprintHeatmapOverlay.requestData: candles={}, symbol={}, enabled={}",
-            candles != null ? candles.size() : 0, symbol, isEnabled());
+        log.debug("FootprintHeatmapOverlay.requestData: candles={}, symbol={}, enabled={}, marketType={}",
+            candles != null ? candles.size() : 0, symbol, isEnabled(), marketType);
 
         if (candles == null || candles.isEmpty()) {
             clear();
@@ -329,8 +329,9 @@ public class FootprintHeatmapOverlay {
      * Redraw using computed footprint result.
      */
     public void redraw() {
-        log.debug("FootprintHeatmapOverlay.redraw: enabled={}, hasResult={}",
-            isEnabled(), footprintResult != null);
+        log.debug("FootprintHeatmapOverlay.redraw: enabled={}, hasResult={}, fpCount={}",
+            isEnabled(), footprintResult != null,
+            footprintResult != null ? footprintResult.footprints().size() : 0);
 
         clear();
 

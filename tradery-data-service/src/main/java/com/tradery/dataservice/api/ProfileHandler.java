@@ -51,7 +51,9 @@ public class ProfileHandler {
 
             profileStore.ensureCoverage(symbol, marketType, start, end);
 
-            List<ProfileRow> profiles = dataStore.getProfiles(symbol, marketType, timeframe, start, end);
+            // Resolve to the best available pyramid timeframe
+            String profileTimeframe = resolveProfileTimeframe(timeframe);
+            List<ProfileRow> profiles = dataStore.getProfiles(symbol, marketType, profileTimeframe, start, end);
             double tickSize = tickSizeResolver.getTickSize(symbol);
 
             List<Map<String, Object>> result = new ArrayList<>();
@@ -266,5 +268,47 @@ public class ProfileHandler {
             LOG.error("Failed to get daily binned profiles", e);
             ctx.status(500).json(Map.of("error", e.getMessage()));
         }
+    }
+
+    /**
+     * Resolve a chart timeframe to the best available profile pyramid level.
+     * Profile pyramid: 10s, 1m, 5m, 30m, 1h, 4h, 1d.
+     * Returns the largest pyramid level that fits within the requested timeframe.
+     */
+    static String resolveProfileTimeframe(String timeframe) {
+        long ms = parseTimeframeMs(timeframe);
+        // Pyramid levels in ascending order
+        String[][] levels = {
+            {"10s", "10000"}, {"1m", "60000"}, {"5m", "300000"},
+            {"30m", "1800000"}, {"1h", "3600000"}, {"4h", "14400000"}, {"1d", "86400000"}
+        };
+        String best = "5m"; // default
+        for (String[] level : levels) {
+            long levelMs = Long.parseLong(level[1]);
+            if (levelMs <= ms) {
+                best = level[0];
+            }
+        }
+        return best;
+    }
+
+    private static long parseTimeframeMs(String tf) {
+        if (tf == null || tf.isEmpty()) return 300_000L; // 5m default
+        char unit = tf.charAt(tf.length() - 1);
+        long value;
+        try {
+            value = Long.parseLong(tf.substring(0, tf.length() - 1));
+        } catch (NumberFormatException e) {
+            return 300_000L;
+        }
+        return switch (unit) {
+            case 's' -> value * 1_000L;
+            case 'm' -> value * 60_000L;
+            case 'h' -> value * 3_600_000L;
+            case 'd' -> value * 86_400_000L;
+            case 'w' -> value * 604_800_000L;
+            case 'M' -> value * 2_592_000_000L;
+            default -> 300_000L;
+        };
     }
 }

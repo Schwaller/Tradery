@@ -12,11 +12,15 @@ import org.jfree.chart.panel.CrosshairOverlay;
 import org.jfree.chart.plot.Crosshair;
 import org.jfree.chart.plot.XYPlot;
 
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
 import java.awt.geom.Rectangle2D;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
+import java.util.IdentityHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.function.Consumer;
 
 /**
@@ -46,6 +50,7 @@ public class ChartCoordinator {
 
     private final List<ChartPanel> registeredPanels = new ArrayList<>();
     private final List<Crosshair> crosshairs = new ArrayList<>();
+    private final Map<ChartPanel, MouseAdapter> exitListeners = new IdentityHashMap<>();
 
     private ChartPanel masterPanel;
     private Consumer<String> onStatusUpdate;
@@ -88,6 +93,16 @@ public class ChartCoordinator {
         overlay.addDomainCrosshair(crosshair);
         panel.addOverlay(overlay);
         panel.addChartMouseListener(mouseListener);
+
+        // Clear crosshairs when mouse leaves any chart panel
+        MouseAdapter exitListener = new MouseAdapter() {
+            @Override
+            public void mouseExited(MouseEvent e) {
+                clearCrosshairs();
+            }
+        };
+        panel.addMouseListener(exitListener);
+        exitListeners.put(panel, exitListener);
     }
 
     /**
@@ -99,6 +114,11 @@ public class ChartCoordinator {
             registeredPanels.remove(index);
             crosshairs.remove(index);
             panel.removeChartMouseListener(mouseListener);
+
+            MouseAdapter exitListener = exitListeners.remove(panel);
+            if (exitListener != null) {
+                panel.removeMouseListener(exitListener);
+            }
 
             if (panel == masterPanel && !registeredPanels.isEmpty()) {
                 masterPanel = registeredPanels.get(0);
@@ -119,6 +139,15 @@ public class ChartCoordinator {
      */
     public void setCandles(List<Candle> candles) {
         this.currentCandles = candles;
+    }
+
+    /**
+     * Clear all crosshairs (set to NaN so they disappear).
+     */
+    public void clearCrosshairs() {
+        for (Crosshair crosshair : crosshairs) {
+            crosshair.setValue(Double.NaN);
+        }
     }
 
     /**

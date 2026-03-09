@@ -265,6 +265,15 @@ public class IndicatorChartsManager {
         setEnabled(IndicatorType.HOLDING_COST_EVENTS, config.isHoldingCostEventsEnabled());
     }
 
+    /**
+     * Replace the spectrum chart's data source and config after construction.
+     * Used by desk module which creates its data source asynchronously.
+     */
+    public void setSpectrumDataSource(SpectrumChart.SpectrumDataSource dataSource,
+                                       SpectrumChart.SpectrumConfig config) {
+        charts.put(IndicatorType.SPECTRUM, new SpectrumChart(dataSource, config));
+    }
+
     // ===== Chart access =====
 
     @SuppressWarnings("unchecked")

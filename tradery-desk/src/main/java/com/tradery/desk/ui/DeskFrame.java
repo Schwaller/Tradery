@@ -28,8 +28,11 @@ import java.util.List;
  */
 public class DeskFrame extends JFrame {
 
+    private static final String[] TIMEFRAMES = {"1m", "5m", "15m", "30m", "1h", "2h", "4h", "1d"};
+
     private final StatusPanel statusPanel;
     private final SymbolComboBox symbolCombo;
+    private final JComboBox<String> timeframeCombo;
     private final JLabel priceLabel;
     private final JLabel updatedLabel;
     private volatile long lastUpdateReceived;
@@ -60,6 +63,10 @@ public class DeskFrame extends JFrame {
         // Initialize header bar components before layout
         symbolCombo = new SymbolComboBox(new SymbolService(), true);
         symbolCombo.setToolbarMode();
+        timeframeCombo = new JComboBox<>(TIMEFRAMES);
+        timeframeCombo.setSelectedItem("1h");
+        timeframeCombo.setMaximumSize(new Dimension(70, 28));
+        timeframeCombo.setPreferredSize(new Dimension(70, 28));
         priceLabel = new JLabel("\u2014");
         priceLabel.setFont(new Font(Font.MONOSPACED, Font.BOLD, 14));
         updatedLabel = new JLabel("");
@@ -168,6 +175,7 @@ public class DeskFrame extends JFrame {
             leftContent.add(buttonsPlaceholder);
         }
         leftContent.add(symbolCombo);
+        leftContent.add(timeframeCombo);
         SegmentedToggle chartModeToggle = new SegmentedToggle("Line", "Candles");
         chartModeToggle.setSelectedIndex(1); // Desk defaults to candles
         chartModeToggle.setOnSelectionChanged(index ->
@@ -327,6 +335,13 @@ public class DeskFrame extends JFrame {
     }
 
     /**
+     * Set historical candles for the chart with explicit market type.
+     */
+    public void setChartCandles(List<Candle> candles, String symbol, String timeframe, String marketType) {
+        priceChartPanel.setCandles(candles, symbol, timeframe, marketType);
+    }
+
+    /**
      * Update the current (incomplete) candle on the chart.
      */
     public void updateChartCandle(Candle candle) {
@@ -352,6 +367,27 @@ public class DeskFrame extends JFrame {
      */
     public void addSymbolChangeListener(ActionListener listener) {
         symbolCombo.addActionListener(listener);
+    }
+
+    /**
+     * Add listener for timeframe changes from the header bar.
+     */
+    public void addTimeframeChangeListener(ActionListener listener) {
+        timeframeCombo.addActionListener(listener);
+    }
+
+    /**
+     * Get the currently selected timeframe.
+     */
+    public String getSelectedTimeframe() {
+        return (String) timeframeCombo.getSelectedItem();
+    }
+
+    /**
+     * Set the timeframe combo selection without firing listeners.
+     */
+    public void setSelectedTimeframe(String timeframe) {
+        timeframeCombo.setSelectedItem(timeframe);
     }
 
     /**

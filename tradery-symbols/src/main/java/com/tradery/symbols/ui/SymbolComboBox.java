@@ -50,9 +50,11 @@ public class SymbolComboBox extends JPanel {
         setOpaque(false);
 
         exchangeCombo = new JComboBox<>();
+        exchangeCombo.setPrototypeDisplayValue("Hyperliquid (KM)    ");
         exchangeCombo.addActionListener(e -> onExchangeChanged());
 
         marketCombo = new JComboBox<>();
+        marketCombo.setPrototypeDisplayValue("Futures");
         marketCombo.addActionListener(e -> onMarketChanged());
 
         coinCombo = new JComboBox<>();

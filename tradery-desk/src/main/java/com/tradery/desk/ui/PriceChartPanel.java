@@ -110,8 +110,15 @@ public class PriceChartPanel extends JPanel {
      * Set historical candles. Applies saved overlay and indicator config.
      */
     public void setCandles(List<Candle> historicalCandles, String symbol, String timeframe) {
+        setCandles(historicalCandles, symbol, timeframe, "perp");
+    }
+
+    /**
+     * Set historical candles with explicit market type. Applies saved overlay and indicator config.
+     */
+    public void setCandles(List<Candle> historicalCandles, String symbol, String timeframe, String marketType) {
         dataProvider.setCandles(historicalCandles, symbol, timeframe);
-        overlayManager.setDataContext(symbol, timeframe, "perp");
+        overlayManager.setDataContext(symbol, timeframe, marketType);
         overlayManager.setCandles(historicalCandles);
 
         long start = historicalCandles.isEmpty() ? 0 : historicalCandles.get(0).timestamp();
@@ -136,11 +143,19 @@ public class PriceChartPanel extends JPanel {
     }
 
     /**
-     * Add a completed candle.
+     * Add a completed candle. Refreshes overlays (SMA/EMA, footprint, DVP)
+     * since they depend on completed candle data.
      */
     public void addCandle(Candle candle) {
         dataProvider.updateCandle(candle);
-        indicatorManager.updateCharts(dataProvider.getCandles());
+        List<Candle> candles = dataProvider.getCandles();
+
+        // Update overlay manager with new candle data and refresh overlays
+        overlayManager.setCandles(candles);
+        overlayManager.refreshChartOverlays();
+        overlayManager.updateFootprintHeatmapOverlay();
+
+        indicatorManager.updateCharts(candles);
         SwingUtilities.invokeLater(this::refreshCharts);
     }
 
@@ -164,6 +179,26 @@ public class PriceChartPanel extends JPanel {
                 new com.tradery.desk.ui.charts.DeskFootprintProfileProvider(client));
             overlayManager.setDailyProfileProvider(
                 new com.tradery.desk.ui.charts.DeskDailyProfileProvider(client));
+        }
+    }
+
+    /**
+     * Wire spectrum data source for trade size spectrum indicator.
+     * Call this after the DataServiceConnection becomes available.
+     */
+    public void setSpectrumDataSource(com.tradery.charts.indicator.SpectrumChart.SpectrumDataSource dataSource) {
+        if (dataSource != null) {
+            com.tradery.charts.indicator.SpectrumChart.SpectrumConfig config = new com.tradery.charts.indicator.SpectrumChart.SpectrumConfig() {
+                @Override
+                public com.tradery.ui.controls.indicators.SpectrumColorMode getColorMode() {
+                    return ChartConfig.getInstance().getSpectrumColorMode();
+                }
+                @Override
+                public com.tradery.ui.controls.indicators.SpectrumBucketMode getBucketMode() {
+                    return ChartConfig.getInstance().getSpectrumBucketMode();
+                }
+            };
+            indicatorManager.setSpectrumDataSource(dataSource, config);
         }
     }
 
@@ -207,9 +242,10 @@ public class PriceChartPanel extends JPanel {
 
     /**
      * Refresh candlestick and volume charts with current data.
+     * Uses dataset-only update to preserve overlay annotations (DVP, footprint).
      */
     private void refreshCharts() {
-        candlestickChart.updateData(dataProvider);
+        candlestickChart.updateDataset(dataProvider);
         if (volumeChart != null) {
             volumeChart.updateData(dataProvider);
         }

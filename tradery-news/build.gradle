@@ -39,6 +39,7 @@ dependencies {
     // AI infrastructure
     implementation project(':tradery-ai')
     implementation project(':tradery-ai-pipeline')
+    implementation project(':tradery-ai-challenges')
 
     // Layout engine
     implementation project(':tradery-spring-layout')

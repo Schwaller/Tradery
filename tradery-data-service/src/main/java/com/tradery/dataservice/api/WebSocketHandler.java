@@ -9,6 +9,7 @@ import com.tradery.core.model.OpenInterestUpdate;
 import com.tradery.dataservice.ConsumerRegistry;
 import com.tradery.dataservice.data.AggTradesStore;
 import com.tradery.dataservice.live.LiveAggTradeManager;
+import com.tradery.dataservice.live.LiveAggTradePersister;
 import com.tradery.dataservice.live.LiveCandleManager;
 import com.tradery.dataservice.live.LiveMarkPriceManager;
 import com.tradery.dataservice.live.LiveOpenInterestPoller;
@@ -48,6 +49,7 @@ public class WebSocketHandler implements PageUpdateListener {
     private final LiveAggTradeManager liveAggTradeManager;
     private final LiveMarkPriceManager liveMarkPriceManager;
     private final LiveOpenInterestPoller liveOpenInterestPoller;
+    private final LiveAggTradePersister liveAggTradePersister;
     private final AggTradesStore aggTradesStore;
     private final ObjectMapper objectMapper;
     private final Map<String, WsConnectContext> connections = new ConcurrentHashMap<>();
@@ -84,7 +86,9 @@ public class WebSocketHandler implements PageUpdateListener {
     public WebSocketHandler(PageManager pageManager, ConsumerRegistry consumerRegistry,
                             LiveCandleManager liveCandleManager,
                             LiveAggTradeManager liveAggTradeManager, LiveMarkPriceManager liveMarkPriceManager,
-                            LiveOpenInterestPoller liveOpenInterestPoller, AggTradesStore aggTradesStore,
+                            LiveOpenInterestPoller liveOpenInterestPoller,
+                            LiveAggTradePersister liveAggTradePersister,
+                            AggTradesStore aggTradesStore,
                             ObjectMapper objectMapper) {
         this.pageManager = pageManager;
         this.consumerRegistry = consumerRegistry;
@@ -92,6 +96,7 @@ public class WebSocketHandler implements PageUpdateListener {
         this.liveAggTradeManager = liveAggTradeManager;
         this.liveMarkPriceManager = liveMarkPriceManager;
         this.liveOpenInterestPoller = liveOpenInterestPoller;
+        this.liveAggTradePersister = liveAggTradePersister;
         this.aggTradesStore = aggTradesStore;
         this.objectMapper = objectMapper;
         pageManager.addUpdateListener(this);
@@ -196,6 +201,18 @@ public class WebSocketHandler implements PageUpdateListener {
                 if (subscribers != null) {
                     subscribers.remove(consumerId);
                 }
+
+                // Stop persisting aggTrades if this was a live CANDLES page with no more subscribers
+                if (pageKey.startsWith("CANDLES:") && pageKey.contains(":LIVE:") &&
+                        (subscribers == null || subscribers.isEmpty())) {
+                    // Parse symbol and marketType from page key: CANDLES:exchange:SYMBOL:tf:mt:LIVE:dur
+                    String[] parts = pageKey.split(":");
+                    if (parts.length >= 5) {
+                        String sym = parts[2];
+                        String mt = parts[4];
+                        liveAggTradePersister.stopCollecting(sym, mt);
+                    }
+                }
             }
         }
 
@@ -215,6 +232,9 @@ public class WebSocketHandler implements PageUpdateListener {
                         BiConsumer<String, Candle> updateCb = updateCallbacks.remove(liveKey);
                         BiConsumer<String, Candle> closeCb = closeCallbacks.remove(liveKey);
                         liveCandleManager.unsubscribe(parts[0], parts[1], updateCb, closeCb);
+
+                        // Stop persisting aggTrades for this symbol
+                        liveAggTradePersister.stopCollecting(parts[0], "perp");
                     }
                 }
             }
@@ -379,6 +399,11 @@ public class WebSocketHandler implements PageUpdateListener {
             // Request page from manager
             PageStatus status = pageManager.requestPage(key, consumerId, consumerName);
 
+            // Start persisting aggTrades for this symbol so footprint profiles stay current
+            if ("CANDLES".equals(dataType)) {
+                liveAggTradePersister.startCollecting(symbol.toUpperCase(), marketType);
+            }
+
             // Add to subscription maps
             subscriptions.computeIfAbsent(consumerId, k -> new CopyOnWriteArraySet<>()).add(pageKeyStr);
             pageSubscribers.computeIfAbsent(pageKeyStr, k -> new CopyOnWriteArraySet<>()).add(consumerId);
@@ -433,6 +458,9 @@ public class WebSocketHandler implements PageUpdateListener {
             // Subscribe to LiveCandleManager
             Candle current = liveCandleManager.subscribe(symbol, timeframe, updateCb, closeCb);
 
+            // Start persisting aggTrades for this symbol so footprint profiles update
+            liveAggTradePersister.startCollecting(symbol.toUpperCase(), "perp");
+
             // Send current candle immediately if available
             if (current != null) {
                 sendLiveCandle(consumerId, liveKey, current, false);
@@ -467,6 +495,9 @@ public class WebSocketHandler implements PageUpdateListener {
                 BiConsumer<String, Candle> updateCb = updateCallbacks.remove(liveKey);
                 BiConsumer<String, Candle> closeCb = closeCallbacks.remove(liveKey);
                 liveCandleManager.unsubscribe(symbol, timeframe, updateCb, closeCb);
+
+                // Stop persisting aggTrades if no more live candle subscribers for this symbol
+                liveAggTradePersister.stopCollecting(symbol.toUpperCase(), "perp");
             }
         }
     }

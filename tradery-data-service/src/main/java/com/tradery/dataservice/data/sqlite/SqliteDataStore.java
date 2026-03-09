@@ -497,6 +497,21 @@ public class SqliteDataStore {
     }
 
     /**
+     * Remove coverage for a specific time range.
+     * Deletes ranges entirely within the range, and shrinks ranges that partially overlap.
+     */
+    public void removeCoverage(String symbol, String dataType, String subKey,
+                                long rangeStart, long rangeEnd) throws IOException {
+        try {
+            DataStoreType dbType = DataStoreType.fromCoverageKey(dataType);
+            String qualifier = deriveQualifier(dbType, subKey);
+            forSymbol(symbol).coverageFor(dbType, qualifier).removeCoverageRange(dataType, subKey, rangeStart, rangeEnd);
+        } catch (SQLException e) {
+            throw new IOException("SQLite error removing coverage: " + e.getMessage(), e);
+        }
+    }
+
+    /**
      * Find gaps in coverage.
      */
     public List<long[]> findGaps(String symbol, String dataType, String subKey,
@@ -548,6 +563,15 @@ public class SqliteDataStore {
     private String deriveQualifier(DataStoreType type, String subKey) {
         if (!type.isSplit()) return null;
         if (type.isSplitByMarket()) {
+            // Coverage sub_keys for candles/profiles/spectrum have format "timeframe:marketType"
+            // or just "marketType". Extract the market type to route to the correct DB file.
+            if (subKey != null && subKey.contains(":")) {
+                String mt = subKey.substring(subKey.lastIndexOf(':') + 1);
+                if ("spot".equals(mt) || "perp".equals(mt)) {
+                    return mt;
+                }
+            }
+            if ("spot".equals(subKey)) return "spot";
             return "perp";
         }
         // AGG_TRADES — map legacy sub_keys to file qualifiers

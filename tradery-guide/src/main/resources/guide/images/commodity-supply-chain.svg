@@ -1,0 +1,132 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 560 320">
+  <rect width="560" height="320" fill="#000000" fill-opacity="0.3" rx="8"/>
+  <text x="280" y="24" fill="#cdd6f4" font-family="sans-serif" font-size="16" font-weight="bold" text-anchor="middle">Commodity Supply Chain to Financial Impact</text>
+
+  <!-- Column headers -->
+  <text x="72" y="50" fill="#7f849c" font-family="sans-serif" font-size="10" font-weight="bold" text-anchor="middle">Source</text>
+  <text x="210" y="50" fill="#7f849c" font-family="sans-serif" font-size="10" font-weight="bold" text-anchor="middle">Chokepoint</text>
+  <text x="350" y="50" fill="#7f849c" font-family="sans-serif" font-size="10" font-weight="bold" text-anchor="middle">Market</text>
+  <text x="490" y="50" fill="#7f849c" font-family="sans-serif" font-size="10" font-weight="bold" text-anchor="middle">Financial Impact</text>
+
+  <!-- Separator line -->
+  <line x1="20" y1="58" x2="540" y2="58" stroke="#585b70" stroke-width="0.5" stroke-opacity="0.3"/>
+
+  <!-- Row 1: Oil (orange) -->
+  <g transform="translate(0, 68)">
+    <rect x="18" y="0" width="108" height="46" fill="#fab387" fill-opacity="0.10" rx="5" stroke="#fab387" stroke-width="0.8" stroke-opacity="0.35"/>
+    <text x="72" y="17" fill="#fab387" font-family="sans-serif" font-size="9" font-weight="bold" text-anchor="middle">Gulf States</text>
+    <text x="72" y="29" fill="#585b70" font-family="sans-serif" font-size="7" text-anchor="middle">Saudi, UAE, Iraq</text>
+    <text x="72" y="40" fill="#585b70" font-family="sans-serif" font-size="7" text-anchor="middle">30% global supply</text>
+
+    <polygon points="131,23 139,20 139,26" fill="#fab387" fill-opacity="0.5"/>
+
+    <rect x="148" y="0" width="108" height="46" fill="#fab387" fill-opacity="0.10" rx="5" stroke="#fab387" stroke-width="0.8" stroke-opacity="0.35"/>
+    <text x="202" y="17" fill="#fab387" font-family="sans-serif" font-size="9" font-weight="bold" text-anchor="middle">Strait of Hormuz</text>
+    <text x="202" y="29" fill="#585b70" font-family="sans-serif" font-size="7" text-anchor="middle">20% global oil</text>
+    <text x="202" y="40" fill="#585b70" font-family="sans-serif" font-size="7" text-anchor="middle">Bab el-Mandeb</text>
+
+    <polygon points="261,23 269,20 269,26" fill="#fab387" fill-opacity="0.5"/>
+
+    <rect x="278" y="0" width="130" height="46" fill="#fab387" fill-opacity="0.10" rx="5" stroke="#fab387" stroke-width="0.8" stroke-opacity="0.35"/>
+    <text x="343" y="17" fill="#fab387" font-family="sans-serif" font-size="9" font-weight="bold" text-anchor="middle">Oil spikes $10-30/bbl</text>
+    <text x="343" y="29" fill="#585b70" font-family="sans-serif" font-size="7" text-anchor="middle">CPI rises 0.5-1.5%</text>
+    <text x="343" y="40" fill="#585b70" font-family="sans-serif" font-size="7" text-anchor="middle">Within hours-days</text>
+
+    <polygon points="413,23 421,20 421,26" fill="#fab387" fill-opacity="0.5"/>
+
+    <rect x="430" y="0" width="112" height="46" fill="#f38ba8" fill-opacity="0.10" rx="5" stroke="#f38ba8" stroke-width="0.8" stroke-opacity="0.35"/>
+    <text x="486" y="17" fill="#f38ba8" font-family="sans-serif" font-size="9" font-weight="bold" text-anchor="middle">Rate hike fears</text>
+    <text x="486" y="29" fill="#585b70" font-family="sans-serif" font-size="7" text-anchor="middle">Risk-off cascade</text>
+    <text x="486" y="40" fill="#585b70" font-family="sans-serif" font-size="7" text-anchor="middle">BTC -5% to -15%</text>
+  </g>
+
+  <!-- Row 2: Semiconductors (purple) -->
+  <g transform="translate(0, 128)">
+    <rect x="18" y="0" width="108" height="46" fill="#cba6f7" fill-opacity="0.10" rx="5" stroke="#cba6f7" stroke-width="0.8" stroke-opacity="0.35"/>
+    <text x="72" y="17" fill="#cba6f7" font-family="sans-serif" font-size="9" font-weight="bold" text-anchor="middle">Taiwan (TSMC)</text>
+    <text x="72" y="29" fill="#585b70" font-family="sans-serif" font-size="7" text-anchor="middle">60% advanced chips</text>
+    <text x="72" y="40" fill="#585b70" font-family="sans-serif" font-size="7" text-anchor="middle">90% cutting-edge</text>
+
+    <polygon points="131,23 139,20 139,26" fill="#cba6f7" fill-opacity="0.5"/>
+
+    <rect x="148" y="0" width="108" height="46" fill="#cba6f7" fill-opacity="0.10" rx="5" stroke="#cba6f7" stroke-width="0.8" stroke-opacity="0.35"/>
+    <text x="202" y="17" fill="#cba6f7" font-family="sans-serif" font-size="9" font-weight="bold" text-anchor="middle">Taiwan Strait</text>
+    <text x="202" y="29" fill="#585b70" font-family="sans-serif" font-size="7" text-anchor="middle">Military tensions</text>
+    <text x="202" y="40" fill="#585b70" font-family="sans-serif" font-size="7" text-anchor="middle">Trade restrictions</text>
+
+    <polygon points="261,23 269,20 269,26" fill="#cba6f7" fill-opacity="0.5"/>
+
+    <rect x="278" y="0" width="130" height="46" fill="#cba6f7" fill-opacity="0.10" rx="5" stroke="#cba6f7" stroke-width="0.8" stroke-opacity="0.35"/>
+    <text x="343" y="17" fill="#cba6f7" font-family="sans-serif" font-size="9" font-weight="bold" text-anchor="middle">Chip shortage</text>
+    <text x="343" y="29" fill="#585b70" font-family="sans-serif" font-size="7" text-anchor="middle">Tech sector shock</text>
+    <text x="343" y="40" fill="#585b70" font-family="sans-serif" font-size="7" text-anchor="middle">Days to months</text>
+
+    <polygon points="413,23 421,20 421,26" fill="#cba6f7" fill-opacity="0.5"/>
+
+    <rect x="430" y="0" width="112" height="46" fill="#f38ba8" fill-opacity="0.10" rx="5" stroke="#f38ba8" stroke-width="0.8" stroke-opacity="0.35"/>
+    <text x="486" y="17" fill="#f38ba8" font-family="sans-serif" font-size="9" font-weight="bold" text-anchor="middle">NASDAQ crash</text>
+    <text x="486" y="29" fill="#585b70" font-family="sans-serif" font-size="7" text-anchor="middle">Mining hardware hit</text>
+    <text x="486" y="40" fill="#585b70" font-family="sans-serif" font-size="7" text-anchor="middle">BTC -10% to -30%</text>
+  </g>
+
+  <!-- Row 3: Grain (green) -->
+  <g transform="translate(0, 188)">
+    <rect x="18" y="0" width="108" height="46" fill="#a6e3a1" fill-opacity="0.10" rx="5" stroke="#a6e3a1" stroke-width="0.8" stroke-opacity="0.35"/>
+    <text x="72" y="17" fill="#a6e3a1" font-family="sans-serif" font-size="9" font-weight="bold" text-anchor="middle">Ukraine/Russia</text>
+    <text x="72" y="29" fill="#585b70" font-family="sans-serif" font-size="7" text-anchor="middle">25% wheat exports</text>
+    <text x="72" y="40" fill="#585b70" font-family="sans-serif" font-size="7" text-anchor="middle">15% corn exports</text>
+
+    <polygon points="131,23 139,20 139,26" fill="#a6e3a1" fill-opacity="0.5"/>
+
+    <rect x="148" y="0" width="108" height="46" fill="#a6e3a1" fill-opacity="0.10" rx="5" stroke="#a6e3a1" stroke-width="0.8" stroke-opacity="0.35"/>
+    <text x="202" y="17" fill="#a6e3a1" font-family="sans-serif" font-size="9" font-weight="bold" text-anchor="middle">Bosphorus</text>
+    <text x="202" y="29" fill="#585b70" font-family="sans-serif" font-size="7" text-anchor="middle">Black Sea ports</text>
+    <text x="202" y="40" fill="#585b70" font-family="sans-serif" font-size="7" text-anchor="middle">Blockade risk</text>
+
+    <polygon points="261,23 269,20 269,26" fill="#a6e3a1" fill-opacity="0.5"/>
+
+    <rect x="278" y="0" width="130" height="46" fill="#a6e3a1" fill-opacity="0.10" rx="5" stroke="#a6e3a1" stroke-width="0.8" stroke-opacity="0.35"/>
+    <text x="343" y="17" fill="#a6e3a1" font-family="sans-serif" font-size="9" font-weight="bold" text-anchor="middle">Food price inflation</text>
+    <text x="343" y="29" fill="#585b70" font-family="sans-serif" font-size="7" text-anchor="middle">Wheat +40-60%</text>
+    <text x="343" y="40" fill="#585b70" font-family="sans-serif" font-size="7" text-anchor="middle">Weeks to months</text>
+
+    <polygon points="413,23 421,20 421,26" fill="#a6e3a1" fill-opacity="0.5"/>
+
+    <rect x="430" y="0" width="112" height="46" fill="#f38ba8" fill-opacity="0.10" rx="5" stroke="#f38ba8" stroke-width="0.8" stroke-opacity="0.35"/>
+    <text x="486" y="17" fill="#f38ba8" font-family="sans-serif" font-size="9" font-weight="bold" text-anchor="middle">EM instability</text>
+    <text x="486" y="29" fill="#585b70" font-family="sans-serif" font-size="7" text-anchor="middle">CPI headwinds</text>
+    <text x="486" y="40" fill="#585b70" font-family="sans-serif" font-size="7" text-anchor="middle">Sustained risk-off</text>
+  </g>
+
+  <!-- Row 4: Natural Gas (yellow) -->
+  <g transform="translate(0, 248)">
+    <rect x="18" y="0" width="108" height="46" fill="#f9e2af" fill-opacity="0.10" rx="5" stroke="#f9e2af" stroke-width="0.8" stroke-opacity="0.35"/>
+    <text x="72" y="17" fill="#f9e2af" font-family="sans-serif" font-size="9" font-weight="bold" text-anchor="middle">Russia / Qatar</text>
+    <text x="72" y="29" fill="#585b70" font-family="sans-serif" font-size="7" text-anchor="middle">Russia 17% global gas</text>
+    <text x="72" y="40" fill="#585b70" font-family="sans-serif" font-size="7" text-anchor="middle">Qatar 20% LNG</text>
+
+    <polygon points="131,23 139,20 139,26" fill="#f9e2af" fill-opacity="0.5"/>
+
+    <rect x="148" y="0" width="108" height="46" fill="#f9e2af" fill-opacity="0.10" rx="5" stroke="#f9e2af" stroke-width="0.8" stroke-opacity="0.35"/>
+    <text x="202" y="17" fill="#f9e2af" font-family="sans-serif" font-size="9" font-weight="bold" text-anchor="middle">Pipelines / LNG</text>
+    <text x="202" y="29" fill="#585b70" font-family="sans-serif" font-size="7" text-anchor="middle">Nord Stream routes</text>
+    <text x="202" y="40" fill="#585b70" font-family="sans-serif" font-size="7" text-anchor="middle">Strait of Hormuz</text>
+
+    <polygon points="261,23 269,20 269,26" fill="#f9e2af" fill-opacity="0.5"/>
+
+    <rect x="278" y="0" width="130" height="46" fill="#f9e2af" fill-opacity="0.10" rx="5" stroke="#f9e2af" stroke-width="0.8" stroke-opacity="0.35"/>
+    <text x="343" y="17" fill="#f9e2af" font-family="sans-serif" font-size="9" font-weight="bold" text-anchor="middle">EU energy crisis</text>
+    <text x="343" y="29" fill="#585b70" font-family="sans-serif" font-size="7" text-anchor="middle">Gas prices 5-10x</text>
+    <text x="343" y="40" fill="#585b70" font-family="sans-serif" font-size="7" text-anchor="middle">Days to quarters</text>
+
+    <polygon points="413,23 421,20 421,26" fill="#f9e2af" fill-opacity="0.5"/>
+
+    <rect x="430" y="0" width="112" height="46" fill="#f38ba8" fill-opacity="0.10" rx="5" stroke="#f38ba8" stroke-width="0.8" stroke-opacity="0.35"/>
+    <text x="486" y="17" fill="#f38ba8" font-family="sans-serif" font-size="9" font-weight="bold" text-anchor="middle">EUR weakens</text>
+    <text x="486" y="29" fill="#585b70" font-family="sans-serif" font-size="7" text-anchor="middle">DXY strengthens</text>
+    <text x="486" y="40" fill="#585b70" font-family="sans-serif" font-size="7" text-anchor="middle">BTC headwind</text>
+  </g>
+
+  <!-- Bottom note -->
+  <text x="280" y="310" fill="#7f849c" font-family="sans-serif" font-size="8" text-anchor="middle">Each row traces how a physical commodity disruption cascades into crypto-relevant financial impact</text>
+</svg>

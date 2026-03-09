@@ -247,6 +247,87 @@ Where you trade matters as much as what you trade. Crypto has two fundamentally 
 
 > **Tip:** Most serious traders use CEX for execution and DEX for tokens not available on CEX. The strategies you build in Strategy Forge target CEX pairs, but the concepts (RSI, MACD, support/resistance) work everywhere.
 
+### Spot vs Perpetual Futures
+
+The most important structural distinction in crypto markets isn't which exchange you use — it's *which market type*. The spot market and the perpetual futures market look similar on a chart, but they work fundamentally differently, attract different participants, and move for different reasons.
+
+![Spot vs Perpetual Futures](images/futures-vs-spot.svg)
+
+**Spot** is simple: you buy BTC with USD, you own BTC. You sell BTC, you get USD back. No middleman contract, no expiry, no ongoing costs. Your profit or loss comes entirely from the price change of the asset you hold. The downside: you need the full capital upfront, you can only go long (on most platforms), and there's no leverage.
+
+**Perpetual futures** are contracts that track the price of the underlying asset without ever expiring. You don't buy BTC — you open a *position* that gains or loses value as BTC's price moves. You post a fraction of the position's value as margin (collateral), and the contract gives you leveraged exposure. You can go long or short with equal ease, and you can control a $100,000 position with $1,000 of margin at 100x leverage.
+
+The magic question: if the contract never expires, what keeps its price tied to spot? The answer is the **funding rate**.
+
+#### The Funding Mechanism
+
+Every 8 hours, the exchange calculates whether the perpetual futures price is above or below spot. If it's above (positive premium), longs pay shorts a small fee. If it's below (negative premium), shorts pay longs. This creates a financial incentive that constantly nudges the futures price back toward spot.
+
+Think of it like a rubber band: the further futures drifts from spot, the more expensive it gets to hold the side that's pushing the price away. Eventually, the cost becomes too high and positions close, snapping the price back. This is why perpetual futures track spot so closely despite being a completely separate market.
+
+The funding rate itself is a powerful trading signal — see [Funding Rates](#funding-rates) below for how to use `FUNDING` and `FUNDING_8H` in your strategies.
+
+#### Premium and Basis
+
+The **premium** (or basis) is the difference between the futures price and the spot price, expressed as a percentage. When futures trade above spot, the premium is positive. When below, it's negative (sometimes called a discount).
+
+```
+PREMIUM > 0.5 AND RSI(14) > 70
+```
+
+This condition fires when futures are trading at a 0.5%+ premium to spot *and* the market is overbought — a setup where overleveraged longs are paying a steep premium that's likely to correct. Use `PREMIUM` for the current spread and `PREMIUM_AVG(n)` for the smoothed average over `n` periods.
+
+What the premium tells you:
+- **Large positive premium (>0.5%)** — futures traders are aggressively long. They're paying a premium for leveraged upside exposure. Often seen during FOMO rallies. This premium funds the short side and eventually becomes unsustainable.
+- **Near zero (±0.1%)** — markets are balanced. Spot and futures are in agreement. Normal conditions.
+- **Negative premium (<-0.3%)** — futures traders are aggressively short or longs have capitulated. Spot is leading. This can signal a bottom — when futures traders are more bearish than spot holders, the pessimism may be overdone.
+
+#### Volume: Who's Really Moving the Market?
+
+Futures volume now dominates crypto markets by a wide margin. For BTC, futures typically account for 70-80% of total daily trading volume. This ratio has been steadily climbing since 2019, when futures were only about 30% of total volume.
+
+Why this matters: **the derivatives market is the price discovery engine.** When you see a sudden 5% move in BTC, it almost always originates in futures, not spot. Leveraged traders, liquidation cascades, and funding rate resets drive the price — spot follows. Understanding this dynamic is crucial because it means:
+
+- **Price signals from futures are leading.** Delta, open interest changes, and funding shifts on the futures market often precede spot price movements.
+- **Volume on spot confirms conviction.** When a futures-driven move is accompanied by heavy spot buying, the move is more likely to sustain. When spot volume doesn't follow, the move is hollow.
+- **Liquidation cascades amplify everything.** A 2% move in spot becomes a 10% move when leveraged positions start getting liquidated. See [Liquidations and Squeezes](#liquidations-and-squeezes) for the mechanics.
+
+In Strategy Forge, backtests run against perpetual futures data by default, because that's where the most complete and liquid data is. The indicators, orderflow, and volume signals you see reflect the dominant market.
+
+#### Margin: Isolated vs Cross
+
+When you open a futures position, you choose how to collateralize it:
+
+- **Isolated margin** — only the margin allocated to this specific position can be lost. If you open a 10x long with $1,000 isolated margin on a $10,000 position, you can lose at most $1,000. The rest of your account is safe. Liquidation happens when the position loss equals your isolated margin.
+- **Cross margin** — your entire account balance backs the position. This gives you more room before liquidation (the exchange can draw on all your funds), but it also means one bad trade can wipe your whole account. Experienced traders use cross margin with strict stop losses so they get the wider liquidation buffer without the wipeout risk.
+
+**Liquidation price calculation** (simplified): at 10x leverage, you get liquidated after roughly a 10% adverse move (100% / leverage). At 25x, it's ~4%. At 100x, it's ~1%. These are rough numbers — exchanges deduct fees, and the exact calculation depends on maintenance margin requirements.
+
+> **Tip:** Strategy Forge backtests assume spot-equivalent positioning (no leverage). This is intentional — it lets you evaluate the strategy's edge without the noise of leverage. If you plan to trade at 5x leverage, multiply the backtest's max drawdown by 5 to get your real drawdown expectation. A strategy with 10% max drawdown becomes 50% at 5x.
+
+#### When to Use Spot vs Futures
+
+| Scenario | Use Spot | Use Futures |
+|----------|----------|-------------|
+| Long-term hold (weeks/months) | Yes — no funding costs | No — funding bleeds you |
+| Short-term trades (hours/days) | Maybe — full capital needed | Yes — capital efficient |
+| Going short | Not available on most platforms | Yes — native short support |
+| Hedging an existing position | Sell spot (tax event) | Short futures (no sell needed) |
+| Trading with a small account | Limited by capital | Leverage multiplies exposure |
+| Avoiding liquidation risk | Yes — you can't be liquidated | No — liquidation is always possible |
+
+Most active traders use futures for their strategies and spot for long-term holdings. The two markets serve different purposes and complement each other.
+
+#### Arbitrage: Profiting from the Spread
+
+The gap between spot and futures prices creates arbitrage opportunities that exist nowhere else in traditional finance:
+
+- **Cash-and-carry** — buy BTC on spot, simultaneously short the same amount on futures. You're market-neutral (price movement doesn't matter). You profit from the funding rate that the short position receives when funding is positive. In a bull market with 0.05% funding every 8 hours, that's ~55% annualized with zero directional risk. The catch: capital is locked up, and if funding turns negative, you pay instead of receive.
+- **Reverse cash-and-carry** — the opposite: short spot (via margin borrowing), go long futures. Profits when funding is negative. Rare, but it happens during bear markets.
+- **Basis trading** — when premium spikes (during FOMO or panic), buy the cheap side and sell the expensive side, waiting for the spread to normalize. This is less mechanical than cash-and-carry and requires judgment about when the spread is "too wide."
+
+These are institutional strategies — they're low-risk but capital-intensive and require infrastructure to manage. Understanding them matters even if you don't trade them, because arbitrageurs are the mechanism that keeps spot and futures aligned. When they pull back (exchange hacks, regulatory scares), the spread can blow out, and that blowout is itself a tradeable signal.
+
 ### Account Protections
 
 Crypto trading has safeguards that traditional markets don't — and lacks some that traditional markets have. Understanding the differences keeps you from nasty surprises.

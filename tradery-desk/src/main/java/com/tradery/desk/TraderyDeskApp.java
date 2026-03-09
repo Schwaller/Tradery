@@ -7,6 +7,7 @@ import com.tradery.core.model.Candle;
 import com.tradery.dataclient.DataServiceClient;
 import com.tradery.dataclient.DataServiceLauncher;
 import com.tradery.dataclient.DataServiceLocator;
+import com.tradery.dataclient.page.RemoteSpectrumPageManager;
 import com.tradery.data.page.DataPageListener;
 import com.tradery.data.page.DataPageView;
 import com.tradery.data.page.PageState;
@@ -64,6 +65,7 @@ public class TraderyDeskApp {
     // Page-based data system with live sliding window
     private DataServiceConnection pageConnection;
     private RemoteCandlePageManager candlePageMgr;
+    private RemoteSpectrumPageManager spectrumPageMgr;
 
     // Per-strategy components
     private final Map<String, CandleAggregator> aggregators = new HashMap<>();
@@ -77,6 +79,7 @@ public class TraderyDeskApp {
     private List<Candle> initialChartCandles;
     private String initialChartSymbol;
     private String initialChartTimeframe;
+    private String initialChartMarketType;
 
     // Chart-specific page subscription (independent of strategies)
     private String chartSymbol;
@@ -232,8 +235,9 @@ public class TraderyDeskApp {
             // Create HTTP client (used for sync status polling)
             dataClient = new DataServiceClient(serviceInfo.get().host(), serviceInfo.get().port());
 
-            // Create page manager
+            // Create page managers
             candlePageMgr = new RemoteCandlePageManager(pageConnection, "TraderyDesk");
+            spectrumPageMgr = new RemoteSpectrumPageManager(pageConnection);
 
             // Monitor connection state and update UI
             pageConnection.addConnectionListener(state -> {
@@ -253,11 +257,6 @@ public class TraderyDeskApp {
             DeskAppContext.getInstance().setPageConnection(pageConnection);
             DeskAppContext.getInstance().setDataClient(dataClient);
             DeskAppContext.getInstance().setCandlePageManager(candlePageMgr);
-
-            // Wire data service to chart panel for footprint/DVP overlays
-            if (frame != null) {
-                frame.getPriceChartPanel().setDataServiceClient(dataClient);
-            }
 
             log.info("Initialized page-based data system");
         } catch (Exception e) {
@@ -325,6 +324,7 @@ public class TraderyDeskApp {
         String id = strategy.getId();
         String symbol = strategy.getSymbol();
         String timeframe = strategy.getTimeframe();
+        String marketType = strategy.getBacktestSettings().getSymbolMarket();
 
         // Calculate duration for live page (window size in milliseconds)
         long barDurationMs = parseTimeframeMs(timeframe);
@@ -349,11 +349,12 @@ public class TraderyDeskApp {
                             initialChartCandles = candles;
                             initialChartSymbol = symbol;
                             initialChartTimeframe = timeframe;
+                            initialChartMarketType = marketType;
                         }
 
                         // Update chart
                         if (frame != null) {
-                            frame.setChartCandles(candles, symbol, timeframe);
+                            frame.setChartCandles(candles, symbol, timeframe, marketType);
                             frame.updateSymbol(symbol, timeframe);
                         }
                     }
@@ -387,7 +388,6 @@ public class TraderyDeskApp {
         strategyPageListeners.put(id, listener);
 
         // Request live page (sliding window, async)
-        String marketType = strategy.getBacktestSettings().getSymbolMarket();
         DataPageView<Candle> page = candlePageMgr.requestLive(
             symbol, timeframe, marketType, duration, listener, "Strategy:" + id);
         strategyPages.put(id, page);
@@ -540,7 +540,7 @@ public class TraderyDeskApp {
                     List<Candle> candles = page.getData();
                     if (candles != null && !candles.isEmpty() && frame != null) {
                         SwingUtilities.invokeLater(() -> {
-                            frame.setChartCandles(candles, newSymbol, chartTimeframe);
+                            frame.setChartCandles(candles, newSymbol, chartTimeframe, mt);
                             frame.updateSymbol(newSymbol, chartTimeframe);
                             // Update price from last candle
                             Candle last = candles.get(candles.size() - 1);
@@ -586,6 +586,30 @@ public class TraderyDeskApp {
     }
 
     /**
+     * Switch the chart timeframe. Re-subscribes to data with the new timeframe.
+     */
+    private void switchChartTimeframe(String newTimeframe) {
+        if (newTimeframe == null || newTimeframe.equals(chartTimeframe)) return;
+
+        log.info("Switching chart timeframe from {} to {}", chartTimeframe, newTimeframe);
+        chartTimeframe = newTimeframe;
+
+        // Release old chart page
+        if (chartPage != null && candlePageMgr != null) {
+            candlePageMgr.release(chartPage, chartPageListener);
+            chartPage = null;
+            chartPageListener = null;
+        }
+
+        // Re-subscribe with new timeframe (reuse switchChartSymbol logic)
+        if (chartSymbol != null) {
+            String savedSymbol = chartSymbol;
+            chartSymbol = null; // Reset to force re-subscribe
+            switchChartSymbol(savedSymbol, chartMarketType);
+        }
+    }
+
+    /**
      * Start the debugging API server.
      */
     private void startApiServer() {
@@ -614,12 +638,37 @@ public class TraderyDeskApp {
             frame = new DeskFrame();
             frame.setOnClose(this::shutdown);
 
+            // Wire data service to chart panel for footprint/DVP overlays and spectrum
+            // (must happen BEFORE setChartCandles which triggers applyIndicatorConfig)
+            if (dataClient != null) {
+                frame.getPriceChartPanel().setDataServiceClient(dataClient);
+            }
+            if (spectrumPageMgr != null) {
+                frame.getPriceChartPanel().setSpectrumDataSource(
+                    new com.tradery.charts.indicator.SpectrumChart.SpectrumDataSource() {
+                        @Override
+                        public com.tradery.data.page.DataPageView<com.tradery.core.model.SpectrumWindow> request(
+                                String symbol, String bucketMode, long start, long end,
+                                com.tradery.data.page.DataPageListener<com.tradery.core.model.SpectrumWindow> listener,
+                                String consumer) {
+                            return spectrumPageMgr.request(symbol, bucketMode, start, end, listener, consumer);
+                        }
+                        @Override
+                        public void release(com.tradery.data.page.DataPageView<com.tradery.core.model.SpectrumWindow> page,
+                                com.tradery.data.page.DataPageListener<com.tradery.core.model.SpectrumWindow> listener) {
+                            spectrumPageMgr.release(page, listener);
+                        }
+                    });
+            }
+
             // Set initial chart data if available
             if (initialChartCandles != null && !initialChartCandles.isEmpty()) {
-                frame.setChartCandles(initialChartCandles, initialChartSymbol, initialChartTimeframe);
+                frame.setChartCandles(initialChartCandles, initialChartSymbol, initialChartTimeframe,
+                    initialChartMarketType);
                 frame.updateSymbol(initialChartSymbol, initialChartTimeframe);
                 chartSymbol = initialChartSymbol;
                 chartTimeframe = initialChartTimeframe;
+                chartMarketType = initialChartMarketType != null ? initialChartMarketType : "perp";
             }
 
             // Wire up symbol change listener
@@ -627,6 +676,15 @@ public class TraderyDeskApp {
                 String newSymbol = frame.getSelectedSymbol();
                 log.info("Symbol picker changed to: {}", newSymbol);
                 switchChartSymbol(newSymbol);
+            });
+
+            // Wire up timeframe change listener
+            frame.addTimeframeChangeListener(e -> {
+                String newTimeframe = frame.getSelectedTimeframe();
+                if (newTimeframe != null && !newTimeframe.equals(chartTimeframe)) {
+                    log.info("Timeframe changed to: {}", newTimeframe);
+                    switchChartTimeframe(newTimeframe);
+                }
             });
 
             // Start symbol sync status polling
@@ -725,6 +783,9 @@ public class TraderyDeskApp {
         }
 
         // Shutdown page system if used
+        if (spectrumPageMgr != null) {
+            spectrumPageMgr.shutdown();
+        }
         if (candlePageMgr != null) {
             candlePageMgr.shutdown();
         }

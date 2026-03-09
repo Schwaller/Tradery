@@ -1,0 +1,154 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 560 380">
+  <rect width="560" height="380" fill="#000000" fill-opacity="0.3" rx="8"/>
+  <text x="280" y="24" fill="#cdd6f4" font-family="sans-serif" font-size="15" font-weight="bold" text-anchor="middle">Strategy Decision Flow</text>
+
+  <!-- Row 1: Market Belief diamond -->
+  <g transform="translate(280, 56)">
+    <polygon points="0,-22 100,0 0,22 -100,0" fill="#313244" stroke="#585b70" stroke-width="1.5"/>
+    <text x="0" y="-4" fill="#cdd6f4" font-family="sans-serif" font-size="9" font-weight="bold" text-anchor="middle">What's your</text>
+    <text x="0" y="8" fill="#cdd6f4" font-family="sans-serif" font-size="9" font-weight="bold" text-anchor="middle">market belief?</text>
+  </g>
+
+  <!-- Branch labels from Row 1 -->
+  <!-- Left: Trends continue -->
+  <line x1="195" y1="56" x2="110" y2="130" stroke="#585b70" stroke-width="1.2"/>
+  <text x="130" y="87" fill="#a6e3a1" font-family="sans-serif" font-size="8" text-anchor="middle" transform="rotate(-26,130,87)">Trends continue</text>
+
+  <!-- Center-left: Extremes revert -->
+  <line x1="245" y1="74" x2="225" y2="130" stroke="#585b70" stroke-width="1.2"/>
+  <text x="220" y="100" fill="#89b4fa" font-family="sans-serif" font-size="8" text-anchor="middle">Extremes revert</text>
+
+  <!-- Center-right: Ranges break -->
+  <line x1="315" y1="74" x2="380" y2="145" stroke="#585b70" stroke-width="1.2"/>
+  <text x="360" y="100" fill="#cba6f7" font-family="sans-serif" font-size="8" text-anchor="middle">Ranges break</text>
+
+  <!-- Right: Read the tape -->
+  <line x1="365" y1="56" x2="480" y2="145" stroke="#585b70" stroke-width="1.2"/>
+  <text x="440" y="87" fill="#94e2d5" font-family="sans-serif" font-size="8" text-anchor="middle" transform="rotate(18,440,87)">Read the tape</text>
+
+  <!-- Row 2: Trend branch - Timeframe diamond -->
+  <g transform="translate(110, 148)">
+    <polygon points="0,-18 72,0 0,18 -72,0" fill="#313244" stroke="#585b70" stroke-width="1.2"/>
+    <text x="0" y="-3" fill="#cdd6f4" font-family="sans-serif" font-size="8" font-weight="bold" text-anchor="middle">Timeframe?</text>
+    <text x="0" y="8" fill="#585b70" font-family="sans-serif" font-size="7" text-anchor="middle">speed of moves</text>
+  </g>
+
+  <!-- Row 2: Reversion branch - Context diamond -->
+  <g transform="translate(225, 148)">
+    <polygon points="0,-18 72,0 0,18 -72,0" fill="#313244" stroke="#585b70" stroke-width="1.2"/>
+    <text x="0" y="-3" fill="#cdd6f4" font-family="sans-serif" font-size="8" font-weight="bold" text-anchor="middle">Context?</text>
+    <text x="0" y="8" fill="#585b70" font-family="sans-serif" font-size="7" text-anchor="middle">trend or range</text>
+  </g>
+
+  <!-- Trend branch: Slow → Trend Rider -->
+  <line x1="60" y1="153" x2="40" y2="210" stroke="#585b70" stroke-width="1.2"/>
+  <text x="36" y="185" fill="#585b70" font-family="sans-serif" font-size="7" text-anchor="middle">Slow</text>
+
+  <!-- Trend branch: Fast → Momentum Surfer -->
+  <line x1="110" y1="166" x2="110" y2="210" stroke="#585b70" stroke-width="1.2"/>
+  <text x="120" y="193" fill="#585b70" font-family="sans-serif" font-size="7" text-anchor="start">Fast</text>
+
+  <!-- Reversion branch: With trend → Dip Buyer -->
+  <line x1="175" y1="153" x2="180" y2="210" stroke="#585b70" stroke-width="1.2"/>
+  <text x="163" y="186" fill="#585b70" font-family="sans-serif" font-size="7" text-anchor="middle">In trend</text>
+
+  <!-- Reversion branch: No trend → Range Trader -->
+  <line x1="270" y1="153" x2="275" y2="210" stroke="#585b70" stroke-width="1.2"/>
+  <text x="288" y="186" fill="#585b70" font-family="sans-serif" font-size="7" text-anchor="middle">In range</text>
+
+  <!-- Reversion branch: Extreme conviction → Risk style diamond -->
+  <line x1="225" y1="166" x2="225" y2="210" stroke="#585b70" stroke-width="1.2"/>
+  <text x="226" y="196" fill="#585b70" font-family="sans-serif" font-size="7" text-anchor="start">Extreme</text>
+
+  <!-- Row 2.5: Risk style diamond for Contrarian -->
+  <g transform="translate(225, 228)">
+    <polygon points="0,-14 56,0 0,14 -56,0" fill="#313244" stroke="#585b70" stroke-width="1.2"/>
+    <text x="0" y="4" fill="#cdd6f4" font-family="sans-serif" font-size="8" font-weight="bold" text-anchor="middle">Conviction?</text>
+  </g>
+
+  <!-- Conviction: Yes → Contrarian -->
+  <line x1="225" y1="242" x2="225" y2="285" stroke="#585b70" stroke-width="1.2"/>
+  <text x="215" y="268" fill="#585b70" font-family="sans-serif" font-size="7" text-anchor="end">High</text>
+
+  <!-- Breakout branch direct to box -->
+  <line x1="380" y1="155" x2="380" y2="285" stroke="#585b70" stroke-width="1.2"/>
+
+  <!-- Tape branch direct to box -->
+  <line x1="480" y1="155" x2="480" y2="285" stroke="#585b70" stroke-width="1.2"/>
+
+  <!-- Bottom row: 7 class boxes -->
+  <!-- 1. Trend Rider -->
+  <g transform="translate(10, 285)">
+    <rect x="0" y="0" width="70" height="56" fill="#a6e3a1" fill-opacity="0.15" stroke="#a6e3a1" stroke-width="1.2" rx="5"/>
+    <text x="35" y="16" fill="#a6e3a1" font-family="sans-serif" font-size="9" font-weight="bold" text-anchor="middle">Trend</text>
+    <text x="35" y="27" fill="#a6e3a1" font-family="sans-serif" font-size="9" font-weight="bold" text-anchor="middle">Rider</text>
+    <text x="35" y="41" fill="#585b70" font-family="sans-serif" font-size="7" text-anchor="middle">Ride the wave</text>
+    <text x="35" y="51" fill="#585b70" font-family="sans-serif" font-size="7" text-anchor="middle">40-50% WR</text>
+  </g>
+  <!-- Connect -->
+  <line x1="40" y1="217" x2="45" y2="285" stroke="#585b70" stroke-width="1"/>
+
+  <!-- 2. Momentum Surfer -->
+  <g transform="translate(87, 285)">
+    <rect x="0" y="0" width="70" height="56" fill="#fab387" fill-opacity="0.15" stroke="#fab387" stroke-width="1.2" rx="5"/>
+    <text x="35" y="16" fill="#fab387" font-family="sans-serif" font-size="9" font-weight="bold" text-anchor="middle">Momentum</text>
+    <text x="35" y="27" fill="#fab387" font-family="sans-serif" font-size="9" font-weight="bold" text-anchor="middle">Surfer</text>
+    <text x="35" y="41" fill="#585b70" font-family="sans-serif" font-size="7" text-anchor="middle">Catch accel.</text>
+    <text x="35" y="51" fill="#585b70" font-family="sans-serif" font-size="7" text-anchor="middle">45-55% WR</text>
+  </g>
+  <!-- Connect -->
+  <line x1="110" y1="210" x2="122" y2="285" stroke="#585b70" stroke-width="1"/>
+
+  <!-- 3. Dip Buyer -->
+  <g transform="translate(164, 285)">
+    <rect x="0" y="0" width="70" height="56" fill="#89b4fa" fill-opacity="0.15" stroke="#89b4fa" stroke-width="1.2" rx="5"/>
+    <text x="35" y="16" fill="#89b4fa" font-family="sans-serif" font-size="9" font-weight="bold" text-anchor="middle">Dip</text>
+    <text x="35" y="27" fill="#89b4fa" font-family="sans-serif" font-size="9" font-weight="bold" text-anchor="middle">Buyer</text>
+    <text x="35" y="41" fill="#585b70" font-family="sans-serif" font-size="7" text-anchor="middle">Buy pullbacks</text>
+    <text x="35" y="51" fill="#585b70" font-family="sans-serif" font-size="7" text-anchor="middle">55-65% WR</text>
+  </g>
+  <!-- Connect -->
+  <line x1="180" y1="217" x2="199" y2="285" stroke="#585b70" stroke-width="1"/>
+
+  <!-- 4. Contrarian -->
+  <g transform="translate(241, 285)">
+    <rect x="0" y="0" width="70" height="56" fill="#f5c2e7" fill-opacity="0.15" stroke="#f5c2e7" stroke-width="1.2" rx="5"/>
+    <text x="35" y="20" fill="#f5c2e7" font-family="sans-serif" font-size="9" font-weight="bold" text-anchor="middle">Contrarian</text>
+    <text x="35" y="35" fill="#585b70" font-family="sans-serif" font-size="7" text-anchor="middle">Fade the crowd</text>
+    <text x="35" y="45" fill="#585b70" font-family="sans-serif" font-size="7" text-anchor="middle">35-50% WR</text>
+  </g>
+  <!-- Connect (from conviction diamond) -->
+
+  <!-- 5. Range Trader -->
+  <g transform="translate(318, 285)">
+    <rect x="0" y="0" width="70" height="56" fill="#74c7ec" fill-opacity="0.15" stroke="#74c7ec" stroke-width="1.2" rx="5"/>
+    <text x="35" y="16" fill="#74c7ec" font-family="sans-serif" font-size="9" font-weight="bold" text-anchor="middle">Range</text>
+    <text x="35" y="27" fill="#74c7ec" font-family="sans-serif" font-size="9" font-weight="bold" text-anchor="middle">Trader</text>
+    <text x="35" y="41" fill="#585b70" font-family="sans-serif" font-size="7" text-anchor="middle">Fade edges</text>
+    <text x="35" y="51" fill="#585b70" font-family="sans-serif" font-size="7" text-anchor="middle">60-70% WR</text>
+  </g>
+  <!-- Connect -->
+  <line x1="275" y1="217" x2="353" y2="285" stroke="#585b70" stroke-width="1"/>
+
+  <!-- 6. Breakout Hunter -->
+  <g transform="translate(395, 285)">
+    <rect x="0" y="0" width="70" height="56" fill="#cba6f7" fill-opacity="0.15" stroke="#cba6f7" stroke-width="1.2" rx="5"/>
+    <text x="35" y="16" fill="#cba6f7" font-family="sans-serif" font-size="9" font-weight="bold" text-anchor="middle">Breakout</text>
+    <text x="35" y="27" fill="#cba6f7" font-family="sans-serif" font-size="9" font-weight="bold" text-anchor="middle">Hunter</text>
+    <text x="35" y="41" fill="#585b70" font-family="sans-serif" font-size="7" text-anchor="middle">Catch breaks</text>
+    <text x="35" y="51" fill="#585b70" font-family="sans-serif" font-size="7" text-anchor="middle">35-45% WR</text>
+  </g>
+
+  <!-- 7. Tape Reader -->
+  <g transform="translate(472, 285)">
+    <rect x="0" y="0" width="70" height="56" fill="#94e2d5" fill-opacity="0.15" stroke="#94e2d5" stroke-width="1.2" rx="5"/>
+    <text x="35" y="16" fill="#94e2d5" font-family="sans-serif" font-size="9" font-weight="bold" text-anchor="middle">Tape</text>
+    <text x="35" y="27" fill="#94e2d5" font-family="sans-serif" font-size="9" font-weight="bold" text-anchor="middle">Reader</text>
+    <text x="35" y="41" fill="#585b70" font-family="sans-serif" font-size="7" text-anchor="middle">Follow flow</text>
+    <text x="35" y="51" fill="#585b70" font-family="sans-serif" font-size="7" text-anchor="middle">55-65% WR</text>
+  </g>
+
+  <!-- Legend -->
+  <polygon points="540,365 547,358 554,365 547,372" fill="#313244" stroke="#585b70" stroke-width="0.8"/>
+  <text x="535" y="370" fill="#585b70" font-family="sans-serif" font-size="7" text-anchor="end">= Decision</text>
+</svg>

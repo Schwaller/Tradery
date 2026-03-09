@@ -49,6 +49,8 @@ We started with a two-condition entry and ended with a filtered, phase-aware str
 
 ## Entry Strategies
 
+Not sure which entry style fits you? Start with [Strategy Classes](tab:Classes#planning-your-strategy) for a guided decision flow that matches your beliefs, timeframe, and risk personality to a proven archetype.
+
 ![Entry Strategy Types](images/entry-strategies.svg)
 
 ### Trend Following

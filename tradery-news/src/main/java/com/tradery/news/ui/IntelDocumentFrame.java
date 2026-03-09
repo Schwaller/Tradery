@@ -2,10 +2,20 @@ package com.tradery.news.ui;
 
 import com.formdev.flatlaf.FlatClientProperties;
 import com.formdev.flatlaf.util.SystemInfo;
+import com.tradery.ai.challenges.execution.ChallengeExecutor;
+import com.tradery.ai.challenges.model.Challenge;
+import com.tradery.ai.challenges.model.ChallengeEscalation;
+import com.tradery.ai.challenges.model.ChallengeOutput;
+import com.tradery.ai.challenges.model.ChallengeResult;
+import com.tradery.ai.challenges.model.SignalConfig;
+import com.tradery.ai.challenges.schedule.ChallengeScheduler;
+import com.tradery.ai.challenges.store.ChallengeStore;
+import com.tradery.ai.challenges.subject.ChallengeSubject;
 import com.tradery.news.model.Article;
 import com.tradery.news.store.SqliteNewsStore;
 import com.tradery.news.api.IntelApiServer;
 import com.tradery.news.source.*;
+import com.tradery.news.ui.challenges.*;
 import com.tradery.news.ui.coin.*;
 import com.tradery.ui.controls.BorderlessScrollPane;
 import com.tradery.ui.controls.SegmentedToggle;
@@ -23,6 +33,7 @@ import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.function.Consumer;
 
@@ -54,6 +65,11 @@ public class IntelDocumentFrame extends JFrame {
         JComponent graphPanel
     ) {}
     private List<PanelInstance> panelInstances = new ArrayList<>();
+
+    // Challenges panel (always added as last card, not in panelInstances)
+    private static final String CHALLENGES_CARD_ID = "__challenges__";
+    private JPanel challengesCard;
+    private JPanel challengesContent;
 
     // News state
     private volatile boolean fetching = false;
@@ -111,6 +127,11 @@ public class IntelDocumentFrame extends JFrame {
 
     // API server
     private IntelApiServer apiServer;
+
+    // Challenges
+    private ChallengeStore challengeStore;
+    private ChallengeExecutor challengeExecutor;
+    private ChallengeScheduler challengeScheduler;
 
     // Curated mode (USER_CURATED governance)
     private boolean isCuratedMode = false;
@@ -193,6 +214,17 @@ public class IntelDocumentFrame extends JFrame {
             sourceRegistry.register(new RssNewsSource(store, docDir));
         }
 
+        // Initialize challenge infrastructure
+        this.challengeStore = new SqliteChallengeStore(docDir.resolve("challenges.db"));
+        seedDefaultChallenges();
+        this.challengeExecutor = new ChallengeExecutor();
+        this.challengeScheduler = new ChallengeScheduler(challengeStore, challengeExecutor, subjectId -> {
+            CoinEntity entity = entityStore.getEntity(subjectId);
+            return entity != null ? new CoinEntitySubject(entity, schemaRegistry, entityStore) : null;
+        });
+        challengeScheduler.setEnabled(IntelConfig.get().isChallengeAutoRefreshEnabled());
+        challengeScheduler.start();
+
         // Register with sharing service for multi-device sync
         if (sharingService != null) {
             sharingService.registerDocument(docId, docDir, entityStore);
@@ -230,6 +262,7 @@ public class IntelDocumentFrame extends JFrame {
         try {
             EntitySearchProcessor searchProcessor = new EntitySearchProcessor(schemaRegistry);
             apiServer = new IntelApiServer(this::openWindow, entityStore, store, searchProcessor, schemaRegistry, sharingService, null);
+            apiServer.setChallengeInfrastructure(challengeStore, challengeExecutor);
             apiServer.start();
         } catch (Exception e) {
             System.err.println("Failed to start Intel API server: " + e.getMessage());
@@ -247,6 +280,7 @@ public class IntelDocumentFrame extends JFrame {
                 cfg.save();
 
                 if (autoFetchTimer != null) autoFetchTimer.stop();
+                if (challengeScheduler != null) challengeScheduler.stop();
                 if (networkStatusTimer != null) networkStatusTimer.stop();
                 if (apiServer != null) apiServer.stop();
                 for (PanelInstance pi : panelInstances) {
@@ -328,16 +362,22 @@ public class IntelDocumentFrame extends JFrame {
         }
 
         List<PanelConfig> panels = services.getPanels();
-        String[] views = panels.stream().map(PanelConfig::getName).toArray(String[]::new);
-        viewToggle = new SegmentedToggle(views);
+        List<String> viewNames = new ArrayList<>();
+        for (PanelConfig p : panels) viewNames.add(p.getName());
+        viewNames.add("Challenges");
+        viewToggle = new SegmentedToggle(viewNames.toArray(new String[0]));
         viewToggle.setOnSelectionChanged(i -> {
             if (i < panelInstances.size()) {
                 cardLayout.show(cardPanel, panelInstances.get(i).config().getId());
+            } else if (i == panelInstances.size()) {
+                // Challenges tab
+                refreshChallengesPanel();
+                cardLayout.show(cardPanel, CHALLENGES_CARD_ID);
             }
             updateHeaderButtons();
         });
-        // Hide toggle when there are 0 or 1 panels (nothing to toggle)
-        if (panels.size() > 1) {
+        // Always show toggle (we always have Challenges + at least the config panels)
+        if (viewNames.size() > 1) {
             leftContent.add(viewToggle);
         }
 
@@ -498,6 +538,18 @@ public class IntelDocumentFrame extends JFrame {
             cardPanel.add(card, config.getId());
             panelInstances.add(new PanelInstance(config, card, graphPanel));
         }
+
+        // Always add a Challenges card as the last panel
+        challengesCard = new JPanel(new BorderLayout());
+        challengesContent = new JPanel();
+        challengesContent.setLayout(new BoxLayout(challengesContent, BoxLayout.Y_AXIS));
+        challengesContent.setBackground(bgMain());
+        challengesContent.setBorder(new EmptyBorder(12, 16, 12, 16));
+        BorderlessScrollPane challengesScroll = new BorderlessScrollPane(challengesContent);
+        challengesScroll.getVerticalScrollBar().setUnitIncrement(16);
+        challengesCard.add(challengesScroll, BorderLayout.CENTER);
+        cardPanel.add(challengesCard, CHALLENGES_CARD_ID);
+        refreshChallengesPanel();
     }
 
     private void updateHeaderButtons() {
@@ -506,8 +558,7 @@ public class IntelDocumentFrame extends JFrame {
             resetViewBtn.setVisible(false);
             return;
         }
-        // When only 1 panel, use index 0 directly (no toggle)
-        int idx = panelInstances.size() == 1 ? 0 : viewToggle.getSelectedIndex();
+        int idx = viewToggle.getSelectedIndex();
         boolean isNewsView = idx >= 0 && idx < panelInstances.size()
             && panelInstances.get(idx).config().getType() == PanelConfig.PanelType.NEWS_MAP;
         boolean isCoinView = idx >= 0 && idx < panelInstances.size()
@@ -783,11 +834,12 @@ public class IntelDocumentFrame extends JFrame {
 
         detailContent.removeAll();
 
-        // Update form selector in header bar
+        // Build segmented toggle: [form layouts...] + "All Data"
         if (hasLayouts) {
-            String[] segments = new String[layouts.size() + 1];
-            for (int i = 0; i < layouts.size(); i++) segments[i] = layouts.get(i).name();
-            segments[layouts.size()] = "All Data";
+            List<String> segmentList = new ArrayList<>();
+            for (FormLayout l : layouts) segmentList.add(l.name());
+            segmentList.add("All Data");
+            String[] segments = segmentList.toArray(new String[0]);
 
             detailViewToggle.setSegments(segments);
             if (entityDetailViewIndex < 0 || entityDetailViewIndex >= segments.length) {
@@ -804,11 +856,14 @@ public class IntelDocumentFrame extends JFrame {
         }
 
         if (hasLayouts && entityDetailViewIndex < layouts.size()) {
-            // Render selected form layout
             renderFormLayoutView(entity, schemaType, layouts.get(entityDetailViewIndex));
         } else {
-            // "All Data" view (or no layouts — show everything)
             renderAllDataView(entity, schemaType);
+        }
+
+        // Refresh the challenges panel if it's visible, so it shows context for this entity
+        if (challengesCard != null) {
+            refreshChallengesPanel();
         }
 
         detailContent.revalidate();
@@ -935,6 +990,570 @@ public class IntelDocumentFrame extends JFrame {
 
         // Action buttons
         addEntityActionButtons(entity);
+    }
+
+    // ==================== CHALLENGES PANEL ====================
+
+    private static final int RESULT_BOX_WIDTH = 320;
+    private static final int RESULT_BOX_HEIGHT = 200;
+    private void refreshChallengesPanel() {
+        if (challengesContent == null) return;
+        challengesContent.removeAll();
+
+        List<Challenge> challenges = challengeStore.listChallenges().stream()
+            .filter(Challenge::enabled)
+            .toList();
+
+        // Top bar: auto-refresh + new button
+        JPanel topBar = new JPanel(new BorderLayout(8, 0));
+        topBar.setBackground(bgMain());
+        topBar.setAlignmentX(Component.LEFT_ALIGNMENT);
+        topBar.setMaximumSize(new Dimension(Integer.MAX_VALUE, 32));
+        topBar.setBorder(BorderFactory.createEmptyBorder(0, 0, 8, 0));
+
+        JPanel rightControls = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
+        rightControls.setBackground(bgMain());
+
+        JCheckBox autoToggle = new JCheckBox("Auto-refresh");
+        autoToggle.setFont(new Font("SansSerif", Font.PLAIN, 10));
+        autoToggle.setSelected(challengeScheduler.isEnabled());
+        autoToggle.addActionListener(e -> {
+            boolean enabled = autoToggle.isSelected();
+            challengeScheduler.setEnabled(enabled);
+            IntelConfig.get().setChallengeAutoRefreshEnabled(enabled);
+            IntelConfig.get().save();
+        });
+        rightControls.add(autoToggle);
+
+        JButton newChallengeBtn = new ToolbarButton("+ New");
+        newChallengeBtn.addActionListener(e -> {
+            ChallengeEditorDialog dlg = new ChallengeEditorDialog(this, challengeStore, null);
+            dlg.setVisible(true);
+            if (dlg.wasSaved()) refreshChallengesPanel();
+        });
+        rightControls.add(newChallengeBtn);
+
+        JButton runAllBtn = new ToolbarButton("Run All");
+        runAllBtn.addActionListener(e -> {
+            runAllBtn.setEnabled(false);
+            runAllBtn.setText("Running...");
+            Thread.ofVirtual().start(() -> {
+                for (Challenge ch : challenges) {
+                    ChallengeSubject subject = new StandaloneChallengeSubject(ch);
+                    ChallengeResult prev = challengeStore.getLatestResult(ch.id(), subject.id());
+                    ChallengeResult result = challengeExecutor.execute(ch, subject, 0,
+                        msg -> IntelLogPanel.logAI(msg), prev);
+                    challengeStore.saveResult(result);
+                }
+                SwingUtilities.invokeLater(() -> {
+                    runAllBtn.setEnabled(true);
+                    runAllBtn.setText("Run All");
+                    refreshChallengesPanel();
+                });
+            });
+        });
+        rightControls.add(runAllBtn);
+
+        topBar.add(rightControls, BorderLayout.EAST);
+        challengesContent.add(topBar);
+
+        // Challenge rows
+        for (Challenge challenge : challenges) {
+            addChallengeRow(challenge);
+        }
+
+        if (challenges.isEmpty()) {
+            JLabel empty = new JLabel("No challenges configured");
+            empty.setFont(new Font("SansSerif", Font.PLAIN, 12));
+            empty.setForeground(textMuted());
+            empty.setAlignmentX(Component.LEFT_ALIGNMENT);
+            challengesContent.add(empty);
+        }
+
+        challengesContent.add(Box.createVerticalGlue());
+        challengesContent.revalidate();
+        challengesContent.repaint();
+    }
+
+    private void addChallengeRow(Challenge challenge) {
+        // Row container
+        JPanel row = new JPanel(new BorderLayout(0, 4));
+        row.setBackground(bgMain());
+        row.setAlignmentX(Component.LEFT_ALIGNMENT);
+        row.setBorder(BorderFactory.createCompoundBorder(
+            BorderFactory.createMatteBorder(0, 0, 1, 0, UIManager.getColor("Separator.foreground")),
+            BorderFactory.createEmptyBorder(8, 0, 8, 0)
+        ));
+
+        // Top: title + run buttons
+        JPanel header = new JPanel(new BorderLayout(8, 0));
+        header.setBackground(bgMain());
+
+        // Left: title + description
+        JPanel titleArea = new JPanel();
+        titleArea.setLayout(new BoxLayout(titleArea, BoxLayout.Y_AXIS));
+        titleArea.setBackground(bgMain());
+
+        JPanel titleRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
+        titleRow.setBackground(bgMain());
+        titleRow.setAlignmentX(Component.LEFT_ALIGNMENT);
+
+        JLabel titleLabel = new JLabel(challenge.title());
+        titleLabel.setFont(new Font("SansSerif", Font.BOLD, 13));
+        titleLabel.setForeground(textPrimary());
+        titleRow.add(titleLabel);
+
+        JButton editBtn = new JButton("Edit");
+        editBtn.setFont(new Font("SansSerif", Font.PLAIN, 9));
+        editBtn.setForeground(linkColor());
+        editBtn.setBorderPainted(false);
+        editBtn.setContentAreaFilled(false);
+        editBtn.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+        editBtn.addActionListener(e -> {
+            ChallengeEditorDialog dlg = new ChallengeEditorDialog(this, challengeStore, challenge);
+            dlg.setVisible(true);
+            if (dlg.wasSaved()) refreshChallengesPanel();
+        });
+        titleRow.add(editBtn);
+
+        if (challenge.output().isTracking()) {
+            JButton itemsBtn = new JButton("Items");
+            itemsBtn.setFont(new Font("SansSerif", Font.PLAIN, 9));
+            itemsBtn.setForeground(linkColor());
+            itemsBtn.setBorderPainted(false);
+            itemsBtn.setContentAreaFilled(false);
+            itemsBtn.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+            itemsBtn.addActionListener(e -> {
+                String subjectId = challenge.id(); // standalone subject = challenge id
+                ChallengeItemsDialog dlg = new ChallengeItemsDialog(this, challenge, challengeStore, subjectId);
+                dlg.setVisible(true);
+                dlg.addWindowListener(new java.awt.event.WindowAdapter() {
+                    @Override
+                    public void windowClosed(java.awt.event.WindowEvent we) {
+                        if (dlg.wasChanged()) refreshChallengesPanel();
+                    }
+                });
+            });
+            titleRow.add(itemsBtn);
+        }
+
+        titleArea.add(titleRow);
+
+        if (challenge.description() != null) {
+            String shortDesc = challenge.description();
+            if (shortDesc.length() > 120) shortDesc = shortDesc.substring(0, 117) + "...";
+            JLabel desc = new JLabel(shortDesc);
+            desc.setFont(new Font("SansSerif", Font.PLAIN, 10));
+            desc.setForeground(textMuted());
+            desc.setAlignmentX(Component.LEFT_ALIGNMENT);
+            desc.setToolTipText("<html><body style='width:300px'>" + challenge.description() + "</body></html>");
+            titleArea.add(desc);
+        }
+        header.add(titleArea, BorderLayout.CENTER);
+
+        // Right: single run button
+        JButton runBtn = new JButton("Run");
+        runBtn.setFont(new Font("SansSerif", Font.PLAIN, 10));
+        runBtn.addActionListener(e -> {
+            runBtn.setEnabled(false);
+            runBtn.setText("...");
+            ChallengeSubject subject = new StandaloneChallengeSubject(challenge);
+            ChallengeResult prev = challengeStore.getLatestResult(challenge.id(), subject.id());
+            Thread.ofVirtual().start(() -> {
+                ChallengeResult result = challengeExecutor.execute(challenge, subject, 0,
+                    msg -> IntelLogPanel.logAI(msg), prev);
+                challengeStore.saveResult(result);
+                SwingUtilities.invokeLater(() -> {
+                    runBtn.setEnabled(true);
+                    runBtn.setText("Run");
+                    refreshChallengesPanel();
+                });
+            });
+        });
+        header.add(runBtn, BorderLayout.EAST);
+        row.add(header, BorderLayout.NORTH);
+
+        // Bottom: horizontal scrollable result boxes (oldest left → newest right)
+        List<ChallengeResult> results = challengeStore.getResultsForChallenge(challenge.id(), 50);
+
+        JPanel timeline = new JPanel();
+        timeline.setLayout(new BoxLayout(timeline, BoxLayout.X_AXIS));
+        timeline.setBackground(bgMain());
+
+        if (results.isEmpty()) {
+            JLabel noResults = new JLabel("  No results yet — click a run button above");
+            noResults.setFont(new Font("SansSerif", Font.ITALIC, 10));
+            noResults.setForeground(textMuted());
+            noResults.setPreferredSize(new Dimension(300, RESULT_BOX_HEIGHT));
+            timeline.add(noResults);
+        } else {
+            for (ChallengeResult r : results) {
+                timeline.add(createResultBox(r));
+                timeline.add(Box.createHorizontalStrut(4));
+            }
+        }
+
+        BorderlessScrollPane timelineScroll = new BorderlessScrollPane(timeline);
+        timelineScroll.setHorizontalScrollBarPolicy(ScrollPaneConstants.HORIZONTAL_SCROLLBAR_AS_NEEDED);
+        timelineScroll.setVerticalScrollBarPolicy(ScrollPaneConstants.VERTICAL_SCROLLBAR_NEVER);
+        timelineScroll.setPreferredSize(new Dimension(0, RESULT_BOX_HEIGHT + 12));
+        timelineScroll.setMinimumSize(new Dimension(0, RESULT_BOX_HEIGHT + 12));
+        timelineScroll.setMaximumSize(new Dimension(Integer.MAX_VALUE, RESULT_BOX_HEIGHT + 12));
+        // Scroll to the right (latest results)
+        SwingUtilities.invokeLater(() -> {
+            JScrollBar hbar = timelineScroll.getHorizontalScrollBar();
+            hbar.setValue(hbar.getMaximum());
+        });
+
+        // Per-field charts over time (one chart per numeric field)
+        List<ChallengeChartPanel> charts = ChallengeChartPanel.createCharts(challenge, results);
+        if (!charts.isEmpty()) {
+            JPanel centerPanel = new JPanel();
+            centerPanel.setLayout(new BoxLayout(centerPanel, BoxLayout.Y_AXIS));
+            centerPanel.setBackground(bgMain());
+            timelineScroll.setAlignmentX(Component.LEFT_ALIGNMENT);
+            centerPanel.add(timelineScroll);
+            for (ChallengeChartPanel chart : charts) {
+                chart.setAlignmentX(Component.LEFT_ALIGNMENT);
+                centerPanel.add(chart);
+            }
+            row.add(centerPanel, BorderLayout.CENTER);
+        } else {
+            row.add(timelineScroll, BorderLayout.CENTER);
+        }
+
+        challengesContent.add(row);
+    }
+
+    private JPanel createResultBox(ChallengeResult result) {
+        JPanel box = new JPanel();
+        box.setLayout(new BoxLayout(box, BoxLayout.Y_AXIS));
+        box.setBackground(darker(bgCard(), 0.03f));
+        box.setBorder(BorderFactory.createCompoundBorder(
+            BorderFactory.createLineBorder(darker(bgMain(), 0.12f), 1),
+            BorderFactory.createEmptyBorder(6, 8, 6, 8)
+        ));
+        box.setPreferredSize(new Dimension(RESULT_BOX_WIDTH, RESULT_BOX_HEIGHT));
+        box.setMinimumSize(new Dimension(RESULT_BOX_WIDTH, RESULT_BOX_HEIGHT));
+        box.setMaximumSize(new Dimension(RESULT_BOX_WIDTH, RESULT_BOX_HEIGHT));
+
+        // Timestamp
+        long ago = System.currentTimeMillis() - result.timestamp();
+        String agoStr = ago < 60_000 ? "just now"
+            : ago < 3600_000 ? (ago / 60_000) + "m ago"
+            : ago < 86_400_000 ? (ago / 3600_000) + "h ago"
+            : (ago / 86_400_000) + "d ago";
+        JLabel timeLabel = new JLabel(agoStr);
+        timeLabel.setFont(new Font("SansSerif", Font.PLAIN, 9));
+        timeLabel.setForeground(textMuted());
+        timeLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
+        box.add(timeLabel);
+        box.add(Box.createVerticalStrut(3));
+
+        // Signal badge
+        if (result.hasSignal()) {
+            JLabel signalLabel = new JLabel(String.format("%.1f", result.signalValue()));
+            signalLabel.setFont(new Font("SansSerif", Font.BOLD, 11));
+            signalLabel.setForeground(result.signalValue() >= 5
+                ? new Color(80, 180, 80) : new Color(200, 100, 60));
+            signalLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
+            box.add(signalLabel);
+            box.add(Box.createVerticalStrut(2));
+        }
+
+        // Result content
+        int contentWidth = RESULT_BOX_WIDTH - 20;
+        if (result.hasError()) {
+            JLabel errLabel = new JLabel("ERROR");
+            errLabel.setFont(new Font("SansSerif", Font.BOLD, 10));
+            errLabel.setForeground(new Color(220, 60, 60));
+            errLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
+            box.add(errLabel);
+            if (result.error() != null) {
+                JLabel errDetail = new JLabel("<html><body style='width:" + contentWidth + "px'>"
+                    + escapeHtml(result.error()) + "</body></html>");
+                errDetail.setFont(new Font("SansSerif", Font.PLAIN, 9));
+                errDetail.setForeground(textMuted());
+                errDetail.setAlignmentX(Component.LEFT_ALIGNMENT);
+                box.add(errDetail);
+            }
+        } else if (result.itemResults() != null && !result.itemResults().isEmpty()) {
+            // Structured list — HTML table (rows=entities, cols=fields)
+            Challenge ch = challengeStore.getChallenge(result.challengeId());
+            List<ChallengeOutput.Field> fieldDefs = (ch != null && ch.output().fields() != null)
+                ? ch.output().fields() : List.of();
+
+            StringBuilder html = new StringBuilder();
+            html.append("<html><body style='width:").append(contentWidth).append("px'>");
+            html.append("<table cellspacing='0' cellpadding='1' style='font-size:9px'>");
+
+            // Header row with field labels
+            html.append("<tr>");
+            for (ChallengeOutput.Field f : fieldDefs) {
+                String lbl = f.label() != null ? f.label() : f.name();
+                if (lbl.length() > 10) lbl = lbl.substring(0, 9) + ".";
+                html.append("<td><b>").append(escapeHtml(lbl)).append("</b></td>");
+            }
+            html.append("</tr>");
+
+            // Data rows
+            int shown = 0;
+            for (Map<String, String> item : result.itemResults()) {
+                if (shown >= 10) break;
+                boolean isRemoved = "removed".equals(item.get("_status"));
+                html.append(isRemoved ? "<tr style='color:gray'>" : "<tr>");
+                for (ChallengeOutput.Field f : fieldDefs) {
+                    String v = item.getOrDefault(f.name(), "");
+                    if (v.length() > 14) v = v.substring(0, 12) + "..";
+                    boolean isPrimary = f.primary();
+                    String reason = item.get(f.name() + "_reason");
+                    String titleAttr = reason != null ? " title='" + escapeHtml(reason).replace("'", "&#39;") + "'" : "";
+                    if (isRemoved) {
+                        html.append("<td").append(titleAttr).append("><s>").append(escapeHtml(v)).append("</s></td>");
+                    } else {
+                        html.append("<td").append(titleAttr).append(">").append(isPrimary ? "<b>" : "").append(escapeHtml(v))
+                            .append(isPrimary ? "</b>" : "").append("</td>");
+                    }
+                }
+                html.append("</tr>");
+                shown++;
+            }
+            if (result.itemResults().size() > 10) {
+                html.append("<tr><td colspan='").append(fieldDefs.size()).append("'><i>+")
+                    .append(result.itemResults().size() - 10).append(" more</i></td></tr>");
+            }
+            html.append("</table></body></html>");
+
+            JLabel tableLabel = new JLabel(html.toString());
+            tableLabel.setFont(new Font("SansSerif", Font.PLAIN, 9));
+            tableLabel.setForeground(textSecondary());
+            tableLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
+            box.add(tableLabel);
+
+            // Full table tooltip with _reason details
+            StringBuilder tip = new StringBuilder("<html><body style='width:600px'><table cellspacing='2' cellpadding='1'><tr>");
+            for (ChallengeOutput.Field f : fieldDefs) {
+                tip.append("<th style='text-align:left'><b>").append(escapeHtml(f.label())).append("</b></th>");
+            }
+            tip.append("</tr>");
+            for (Map<String, String> item : result.itemResults()) {
+                tip.append("<tr>");
+                for (ChallengeOutput.Field f : fieldDefs) {
+                    String val = item.getOrDefault(f.name(), "");
+                    String reason = item.get(f.name() + "_reason");
+                    tip.append("<td>").append(escapeHtml(val));
+                    if (reason != null) {
+                        tip.append("<br><i style='color:gray; font-size:9px'>").append(escapeHtml(reason)).append("</i>");
+                    }
+                    tip.append("</td>");
+                }
+                tip.append("</tr>");
+            }
+            tip.append("</table></body></html>");
+            box.setToolTipText(tip.toString());
+        } else if (result.fields() != null && !result.fields().isEmpty()) {
+            // Structured result — show all fields with labels
+            // Find the challenge to resolve field labels
+            Challenge ch = challengeStore.getChallenge(result.challengeId());
+            Map<String, String> labelMap = new LinkedHashMap<>();
+            if (ch != null && ch.output().fields() != null) {
+                for (ChallengeOutput.Field f : ch.output().fields()) {
+                    labelMap.put(f.name(), f.label());
+                }
+            }
+
+            StringBuilder tip = new StringBuilder("<html><body style='width:500px'>");
+            for (Map.Entry<String, String> entry : result.fields().entrySet()) {
+                String fieldName = entry.getKey();
+                if (fieldName.endsWith("_reason")) continue; // skip reason keys in iteration
+                String val = entry.getValue();
+                String label = labelMap.getOrDefault(fieldName, fieldName);
+                String reason = result.fields().get(fieldName + "_reason");
+                boolean isNumber = false;
+                try { Double.parseDouble(val); isNumber = true; } catch (NumberFormatException ignored) {}
+
+                if (isNumber) {
+                    JLabel numLabel = new JLabel(label + ": " + val);
+                    numLabel.setFont(new Font("SansSerif", Font.BOLD, 11));
+                    numLabel.setForeground(textPrimary());
+                    numLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
+                    if (reason != null) {
+                        numLabel.setToolTipText("<html><body style='width:400px'>" + escapeHtml(reason) + "</body></html>");
+                    }
+                    box.add(numLabel);
+                } else {
+                    // Label header
+                    JLabel headerLabel = new JLabel(label);
+                    headerLabel.setFont(new Font("SansSerif", Font.BOLD, 9));
+                    headerLabel.setForeground(textMuted());
+                    headerLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
+                    box.add(headerLabel);
+                    // Value — wrap text, show generously
+                    JLabel textLabel = new JLabel("<html><body style='width:" + contentWidth + "px'>"
+                        + escapeHtml(val) + "</body></html>");
+                    textLabel.setFont(new Font("SansSerif", Font.PLAIN, 10));
+                    textLabel.setForeground(textSecondary());
+                    textLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
+                    box.add(textLabel);
+                    box.add(Box.createVerticalStrut(3));
+                }
+                tip.append("<b>").append(escapeHtml(label)).append(":</b> ")
+                    .append(escapeHtml(val));
+                if (reason != null) {
+                    tip.append("<br><i style='color:gray'>").append(escapeHtml(reason)).append("</i>");
+                }
+                tip.append("<br><br>");
+            }
+            tip.append("</body></html>");
+            box.setToolTipText(tip.toString());
+        } else if (result.textResult() != null) {
+            JLabel textLabel = new JLabel("<html><body style='width:" + contentWidth + "px'>"
+                + escapeHtml(result.textResult()) + "</body></html>");
+            textLabel.setFont(new Font("SansSerif", Font.PLAIN, 10));
+            textLabel.setForeground(textSecondary());
+            textLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
+            box.add(textLabel);
+            box.setToolTipText("<html><body style='width:500px'>" + escapeHtml(result.textResult()) + "</body></html>");
+        } else if (result.listResult() != null) {
+            for (String item : result.listResult()) {
+                JLabel itemLabel = new JLabel("\u2022 " + item);
+                itemLabel.setFont(new Font("SansSerif", Font.PLAIN, 10));
+                itemLabel.setForeground(textSecondary());
+                itemLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
+                box.add(itemLabel);
+            }
+            StringBuilder tip = new StringBuilder("<html><body style='width:500px'>");
+            for (String s : result.listResult()) tip.append("\u2022 ").append(escapeHtml(s)).append("<br>");
+            tip.append("</body></html>");
+            box.setToolTipText(tip.toString());
+        } else if (result.entityResult() != null && result.entityResult().entities() != null) {
+            JLabel countLabel = new JLabel(result.entityResult().entities().size() + " entities");
+            countLabel.setFont(new Font("SansSerif", Font.PLAIN, 10));
+            countLabel.setForeground(textSecondary());
+            countLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
+            box.add(countLabel);
+        }
+
+        box.add(Box.createVerticalGlue());
+        return box;
+    }
+
+    private static String escapeHtml(String text) {
+        return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
+    }
+
+    private void seedDefaultChallenges() {
+        if (!challengeStore.listChallenges().isEmpty()) return;
+
+        List<ChallengeOutput.Field> sentimentFields = List.of(
+            ChallengeOutput.Field.text("headline", "Headline", true),
+            ChallengeOutput.Field.text("explanation", "Explanation"),
+            ChallengeOutput.Field.score("sentiment", "Sentiment", -1.0, 1.0),
+            ChallengeOutput.Field.score("confidence", "Confidence %", 0, 100)
+        );
+
+        // 1. US Markets
+        Challenge c1 = new Challenge("us-markets", "US Markets");
+        c1.setDescription("How are the US markets doing right now? Cover the S&P 500, Nasdaq, Dow Jones, "
+            + "and any major movers. Include recent Fed policy, economic data releases, earnings season impact, "
+            + "and key risks. What's the overall mood?");
+        ChallengeOutput usOutput = new ChallengeOutput(ChallengeOutput.Type.STRUCTURED);
+        usOutput.setFields(sentimentFields);
+        c1.setOutput(usOutput);
+        c1.setEscalations(List.of(createEsc("Run", "standard", null, false, "US market analysis")));
+        c1.setRefreshInterval(java.time.Duration.ofDays(1));
+        c1.setDisplayOrder(1);
+        challengeStore.saveChallenge(c1);
+
+        // 2. Crypto Markets
+        Challenge c2 = new Challenge("crypto-markets", "Crypto Markets");
+        c2.setDescription("How are the crypto markets doing right now? Cover Bitcoin, Ethereum, "
+            + "and the broader altcoin market. Include on-chain metrics, funding rates, exchange flows, "
+            + "regulatory developments, and institutional activity. What's the overall mood?");
+        ChallengeOutput cryptoOutput = new ChallengeOutput(ChallengeOutput.Type.STRUCTURED);
+        cryptoOutput.setFields(sentimentFields);
+        c2.setOutput(cryptoOutput);
+        c2.setEscalations(List.of(createEsc("Run", "standard", null, false, "Crypto market analysis")));
+        c2.setRefreshInterval(java.time.Duration.ofDays(1));
+        c2.setDisplayOrder(2);
+        challengeStore.saveChallenge(c2);
+
+        // 3. Active Wars & Conflicts
+        Challenge c3 = new Challenge("active-wars", "Active Wars & Conflicts");
+        c3.setDescription("Survey all currently active wars and armed conflicts worldwide, "
+            + "plus any that ended in the last 6 months. "
+            + "Provide a headline summarizing the global situation, "
+            + "list the high-intensity conflicts, medium-intensity conflicts, and low-intensity conflicts separately, "
+            + "list any recently ended conflicts, and rate the overall global conflict intensity.");
+        ChallengeOutput warsOutput = new ChallengeOutput(ChallengeOutput.Type.STRUCTURED);
+        warsOutput.setFields(List.of(
+            ChallengeOutput.Field.text("headline", "Headline", true),
+            ChallengeOutput.Field.text("high_intensity", "High Intensity"),
+            ChallengeOutput.Field.text("medium_intensity", "Medium Intensity"),
+            ChallengeOutput.Field.text("low_intensity", "Low Intensity"),
+            ChallengeOutput.Field.text("recently_ended", "Recently Ended"),
+            ChallengeOutput.Field.score("global_intensity", "Global Intensity", 0, 10)
+        ));
+        c3.setOutput(warsOutput);
+        c3.setEscalations(List.of(createEsc("Run", "standard", null, false, "Conflicts survey")));
+        c3.setRefreshInterval(java.time.Duration.ofDays(7));
+        c3.setDisplayOrder(3);
+        challengeStore.saveChallenge(c3);
+
+        // 4. War Market Impact (structured list mode)
+        Challenge c4 = new Challenge("war-impact", "War Market Impact");
+        c4.setDescription("For each currently active war or major armed conflict, estimate its market impact. "
+            + "Consider direct and indirect effects on commodity prices, trade disruption, sanctions, "
+            + "supply chain risks, and investor sentiment. "
+            + "List ALL active conflicts you know about.");
+        ChallengeOutput impactOutput = new ChallengeOutput(ChallengeOutput.Type.STRUCTURED);
+        impactOutput.setListMode(true);
+        impactOutput.setListBehavior(ChallengeOutput.ListBehavior.TRACKING);
+        impactOutput.setFields(List.of(
+            ChallengeOutput.Field.text("name", "Conflict", true),
+            ChallengeOutput.Field.score("intensity", "Intensity", 0, 10),
+            ChallengeOutput.Field.score("oil_impact", "Oil Impact", -10, 10),
+            ChallengeOutput.Field.score("us_impact", "US Market", -10, 10),
+            ChallengeOutput.Field.score("eu_impact", "EU Market", -10, 10),
+            ChallengeOutput.Field.score("asia_impact", "Asia Market", -10, 10)
+        ));
+        c4.setOutput(impactOutput);
+        c4.setEscalations(List.of(createEsc("Run", "standard", null, false, "War impact analysis")));
+        c4.setRefreshInterval(java.time.Duration.ofDays(3));
+        c4.setDisplayOrder(4);
+        challengeStore.saveChallenge(c4);
+
+        // 5. Meme Coins (structured list mode)
+        Challenge c5 = new Challenge("meme-coins", "Meme Coins");
+        c5.setDescription("Find the hippest and most talked-about meme coins right now. "
+            + "Only include coins with a market cap of at least $1M. "
+            + "Rank them by short-term potential (hype, momentum, community strength, catalysts). "
+            + "Include the current market cap and highlight standout sizes.");
+        ChallengeOutput memeOutput = new ChallengeOutput(ChallengeOutput.Type.STRUCTURED);
+        memeOutput.setListMode(true);
+        memeOutput.setListBehavior(ChallengeOutput.ListBehavior.SNAPSHOT);
+        memeOutput.setFields(List.of(
+            ChallengeOutput.Field.text("name", "Coin", true),
+            ChallengeOutput.Field.text("ticker", "Ticker"),
+            ChallengeOutput.Field.score("potential", "Potential", 0, 10),
+            ChallengeOutput.Field.score("hype", "Hype", 0, 10),
+            ChallengeOutput.Field.number("market_cap_m", "Mcap ($M)", 1, 50000),
+            ChallengeOutput.Field.score("risk", "Risk", 0, 10)
+        ));
+        c5.setOutput(memeOutput);
+        c5.setEscalations(List.of(createEsc("Run", "standard", null, false, "Meme coin scanner")));
+        c5.setRefreshInterval(java.time.Duration.ofDays(1));
+        c5.setDisplayOrder(5);
+        challengeStore.saveChallenge(c5);
+    }
+
+    private static ChallengeEscalation createEsc(String label, String tier, String pipeline,
+                                                   boolean verify, String description) {
+        ChallengeEscalation esc = new ChallengeEscalation(label, tier);
+        esc.setPipeline(pipeline);
+        esc.setVerify(verify);
+        esc.setDescription(description);
+        return esc;
     }
 
     private void addEntityActionButtons(CoinEntity entity) {
@@ -1306,22 +1925,27 @@ public class IntelDocumentFrame extends JFrame {
         buildPanelCards();
 
         List<PanelConfig> panels = services.getPanels();
-        String[] names = panels.stream().map(PanelConfig::getName).toArray(String[]::new);
+        List<String> names = new ArrayList<>();
+        for (PanelConfig p : panels) names.add(p.getName());
+        names.add("Challenges");
 
         Container toggleParent = viewToggle.getParent();
         // Remove old toggle if it was added
         if (toggleParent != null) {
             toggleParent.remove(viewToggle);
         }
-        viewToggle = new SegmentedToggle(names);
+        viewToggle = new SegmentedToggle(names.toArray(new String[0]));
         viewToggle.setOnSelectionChanged(i -> {
             if (i < panelInstances.size()) {
                 cardLayout.show(cardPanel, panelInstances.get(i).config().getId());
+            } else if (i == panelInstances.size()) {
+                refreshChallengesPanel();
+                cardLayout.show(cardPanel, CHALLENGES_CARD_ID);
             }
             updateHeaderButtons();
         });
-        // Only show toggle when there are 2+ panels
-        if (panels.size() > 1 && toggleParent != null) {
+        // Always show toggle when we have 2+ items
+        if (names.size() > 1 && toggleParent != null) {
             int insertIdx = toggleParent.getComponentCount() > 0
                 && toggleParent.getComponent(0) instanceof JPanel ? 1 : 0;
             toggleParent.add(viewToggle, insertIdx);

@@ -52,6 +52,8 @@ Wars, conflicts, and political crises create immediate uncertainty — and marke
 
 ![Geopolitical Impact](images/geopolitical-impact.svg)
 
+This section covers the *pattern* of geopolitical shocks. For the physical geography — which waterways, which producers, which supply chains — see the [Geopolitics tab](tab:Geopolitics#critical-waterways).
+
 ### The Pattern
 
 Almost every geopolitical shock follows the same playbook:
@@ -94,6 +96,8 @@ The pattern: events that threaten the traditional financial system's stability t
 Wars near oil-producing regions spike energy prices. Higher oil means higher inflation, which means rate hike fears, which means risk-off for crypto. Russia-Ukraine drove this chain clearly: oil spiked, inflation surged, the Fed hiked aggressively, and crypto crashed.
 
 **"Buy the invasion"** — historically, markets bottom near the start of conflict and recover. Fear of war is worse than war itself for markets. But this is a tendency, not a rule — position size accordingly.
+
+For a deep dive into how specific commodities and supply chains transmit geopolitical risk to financial markets, see [Commodity Sources & Concentration Risk](tab:Geopolitics#commodity-sources--concentration-risk).
 
 
 ## Bitcoin Halving Cycles

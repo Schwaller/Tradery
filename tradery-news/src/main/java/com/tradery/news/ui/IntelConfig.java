@@ -101,6 +101,9 @@ public class IntelConfig {
     private int coinGeckoRequestDelayMs = 1500; // ms between API requests
     private boolean coinGeckoFetchCategories = true;
 
+    // Challenge auto-refresh
+    private boolean challengeAutoRefreshEnabled = false;
+
     // News fetch settings (0 = manual only)
     private int fetchIntervalMinutes = 1;
     private Set<String> disabledFeedIds = new HashSet<>();
@@ -456,6 +459,16 @@ public class IntelConfig {
 
     public boolean isCoinGeckoFetchCategories() { return coinGeckoFetchCategories; }
     public void setCoinGeckoFetchCategories(boolean coinGeckoFetchCategories) { this.coinGeckoFetchCategories = coinGeckoFetchCategories; }
+
+    // ==================== Challenge Settings ====================
+
+    public boolean isChallengeAutoRefreshEnabled() {
+        return challengeAutoRefreshEnabled;
+    }
+
+    public void setChallengeAutoRefreshEnabled(boolean enabled) {
+        this.challengeAutoRefreshEnabled = enabled;
+    }
 
     // ==================== Fetch Settings ====================
 

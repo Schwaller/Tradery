@@ -2,11 +2,16 @@ package com.tradery.news.api;
 
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
+import com.tradery.ai.challenges.execution.ChallengeExecutor;
+import com.tradery.ai.challenges.model.Challenge;
+import com.tradery.ai.challenges.model.ChallengeResult;
+import com.tradery.ai.challenges.store.ChallengeStore;
 import com.tradery.news.store.SqliteNewsStore;
 import com.tradery.news.ui.IntelLogPanel;
 import com.tradery.news.ui.coin.EntitySearchProcessor;
 import com.tradery.news.ui.coin.EntityStore;
 import com.tradery.news.ui.coin.SchemaRegistry;
+import com.tradery.news.ui.challenges.StandaloneChallengeSubject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -71,6 +76,10 @@ public class IntelApiServer {
     private final Supplier<IntelFrame.UiState> uiStateProvider;
     private final SchemaRegistry schemaRegistry;
 
+    // Challenge infrastructure (optional, set after construction)
+    private ChallengeStore challengeStore;
+    private ChallengeExecutor challengeExecutor;
+
     // Handlers
     private final StatsHandler statsHandler;
     private final EntityHandler entityHandler;
@@ -94,6 +103,11 @@ public class IntelApiServer {
         this.discoverHandler = new DiscoverHandler(entityStore, searchProcessor, schemaRegistry);
         this.articleHandler = new ArticleHandler(newsStore);
         this.schemaHandler = new SchemaHandler(entityStore, schemaRegistry);
+    }
+
+    public void setChallengeInfrastructure(ChallengeStore store, ChallengeExecutor executor) {
+        this.challengeStore = store;
+        this.challengeExecutor = executor;
     }
 
     public void start() throws IOException {
@@ -143,6 +157,10 @@ public class IntelApiServer {
         server.createContext("/ui/views", this::handleViews);
         server.createContext("/context", this::handleContext);
         server.createContext("/logs", this::handleLogs);
+
+        // Challenge endpoints
+        server.createContext("/challenges", this::handleChallenges);
+        server.createContext("/challenge/", this::handleChallenge);
 
         server.start();
 
@@ -550,6 +568,185 @@ public class IntelApiServer {
             sb.append('}');
         }
         sb.append(']');
+    }
+
+    // ========== Challenge Handlers ==========
+
+    /**
+     * GET /challenges — list all challenges with latest results.
+     */
+    private void handleChallenges(HttpExchange exchange) throws IOException {
+        if (!checkGet(exchange)) return;
+        if (challengeStore == null) {
+            sendJson(exchange, 503, "{\"error\":\"Challenge infrastructure not available\"}");
+            return;
+        }
+
+        java.util.List<Challenge> challenges = challengeStore.listChallenges();
+        StringBuilder sb = new StringBuilder();
+        sb.append("{\"challenges\":[");
+        for (int i = 0; i < challenges.size(); i++) {
+            if (i > 0) sb.append(',');
+            Challenge c = challenges.get(i);
+            sb.append("{\"id\":\"").append(escape(c.id())).append('"');
+            sb.append(",\"title\":\"").append(escape(c.title())).append('"');
+            sb.append(",\"outputType\":\"").append(c.output().type().name()).append('"');
+            sb.append(",\"enabled\":").append(c.enabled());
+
+            // Latest result
+            ChallengeResult latest = challengeStore.getLatestResult(c.id(), c.id());
+            if (latest != null) {
+                sb.append(",\"latestResult\":{");
+                sb.append("\"timestamp\":").append(latest.timestamp());
+                sb.append(",\"outputType\":\"").append(latest.outputType().name()).append('"');
+                if (latest.hasError()) {
+                    sb.append(",\"error\":\"").append(escape(latest.error())).append('"');
+                }
+                if (latest.textResult() != null) {
+                    sb.append(",\"text\":\"").append(escape(latest.textResult())).append('"');
+                }
+                if (latest.fields() != null && !latest.fields().isEmpty()) {
+                    sb.append(",\"fields\":{");
+                    boolean first = true;
+                    for (Map.Entry<String, String> entry : latest.fields().entrySet()) {
+                        if (!first) sb.append(',');
+                        first = false;
+                        sb.append('"').append(escape(entry.getKey())).append("\":\"")
+                            .append(escape(entry.getValue())).append('"');
+                    }
+                    sb.append('}');
+                }
+                if (latest.hasSignal()) {
+                    sb.append(",\"signal\":").append(latest.signalValue());
+                }
+                sb.append('}');
+            }
+            sb.append('}');
+        }
+        sb.append("]}");
+        sendJson(exchange, 200, sb.toString());
+    }
+
+    /**
+     * POST /challenge/{id}/run — execute a challenge and return the result.
+     * GET  /challenge/{id}/results — list results for a challenge.
+     */
+    private void handleChallenge(HttpExchange exchange) throws IOException {
+        if (challengeStore == null || challengeExecutor == null) {
+            sendJson(exchange, 503, "{\"error\":\"Challenge infrastructure not available\"}");
+            return;
+        }
+
+        String path = exchange.getRequestURI().getPath();
+        String[] parts = path.split("/");
+        // /challenge/{id}/run or /challenge/{id}/results
+        if (parts.length < 3) {
+            sendJson(exchange, 400, "{\"error\":\"Missing challenge ID\"}");
+            return;
+        }
+        String challengeId = parts[2];
+        String action = parts.length >= 4 ? parts[3] : "";
+
+        Challenge challenge = challengeStore.getChallenge(challengeId);
+        if (challenge == null) {
+            sendJson(exchange, 404, "{\"error\":\"Challenge not found: " + escape(challengeId) + "\"}");
+            return;
+        }
+
+        if ("run".equals(action) && "POST".equalsIgnoreCase(exchange.getRequestMethod())) {
+            IntelLogPanel.logAI("API: Running challenge '" + challenge.title() + "'");
+            StandaloneChallengeSubject subject = new StandaloneChallengeSubject(challenge);
+            ChallengeResult prev = challengeStore.getLatestResult(challenge.id(), subject.id());
+            ChallengeResult result = challengeExecutor.execute(challenge, subject, 0,
+                msg -> IntelLogPanel.logAI(msg), prev);
+            challengeStore.saveResult(result);
+
+            StringBuilder sb = new StringBuilder();
+            sb.append("{\"ok\":true,\"result\":{");
+            sb.append("\"challengeId\":\"").append(escape(result.challengeId())).append('"');
+            sb.append(",\"outputType\":\"").append(result.outputType().name()).append('"');
+            sb.append(",\"timestamp\":").append(result.timestamp());
+            sb.append(",\"durationMs\":").append(result.durationMs());
+            if (result.hasError()) {
+                sb.append(",\"error\":\"").append(escape(result.error())).append('"');
+            }
+            if (result.textResult() != null) {
+                sb.append(",\"text\":\"").append(escape(result.textResult())).append('"');
+            }
+            if (result.fields() != null && !result.fields().isEmpty()) {
+                sb.append(",\"fields\":{");
+                boolean first = true;
+                for (Map.Entry<String, String> entry : result.fields().entrySet()) {
+                    if (!first) sb.append(',');
+                    first = false;
+                    sb.append('"').append(escape(entry.getKey())).append("\":\"")
+                        .append(escape(entry.getValue())).append('"');
+                }
+                sb.append('}');
+            }
+            if (result.itemResults() != null && !result.itemResults().isEmpty()) {
+                sb.append(",\"items\":[");
+                for (int i = 0; i < result.itemResults().size(); i++) {
+                    if (i > 0) sb.append(',');
+                    sb.append('{');
+                    boolean first = true;
+                    for (Map.Entry<String, String> entry : result.itemResults().get(i).entrySet()) {
+                        if (!first) sb.append(',');
+                        first = false;
+                        sb.append('"').append(escape(entry.getKey())).append("\":\"")
+                            .append(escape(entry.getValue())).append('"');
+                    }
+                    sb.append('}');
+                }
+                sb.append(']');
+            }
+            if (result.listResult() != null) {
+                sb.append(",\"list\":[");
+                for (int i = 0; i < result.listResult().size(); i++) {
+                    if (i > 0) sb.append(',');
+                    sb.append('"').append(escape(result.listResult().get(i))).append('"');
+                }
+                sb.append(']');
+            }
+            if (result.hasSignal()) {
+                sb.append(",\"signal\":").append(result.signalValue());
+            }
+            sb.append("}}");
+            sendJson(exchange, 200, sb.toString());
+        } else if ("results".equals(action) && "GET".equalsIgnoreCase(exchange.getRequestMethod())) {
+            java.util.List<ChallengeResult> results = challengeStore.getResultsForChallenge(challengeId, 20);
+            StringBuilder sb = new StringBuilder();
+            sb.append("{\"results\":[");
+            for (int i = 0; i < results.size(); i++) {
+                if (i > 0) sb.append(',');
+                ChallengeResult r = results.get(i);
+                sb.append("{\"timestamp\":").append(r.timestamp());
+                sb.append(",\"durationMs\":").append(r.durationMs());
+                sb.append(",\"outputType\":\"").append(r.outputType().name()).append('"');
+                if (r.hasError()) sb.append(",\"error\":\"").append(escape(r.error())).append('"');
+                if (r.textResult() != null) sb.append(",\"text\":\"").append(escape(r.textResult())).append('"');
+                if (r.fields() != null && !r.fields().isEmpty()) {
+                    sb.append(",\"fields\":{");
+                    boolean first = true;
+                    for (Map.Entry<String, String> entry : r.fields().entrySet()) {
+                        if (!first) sb.append(',');
+                        first = false;
+                        sb.append('"').append(escape(entry.getKey())).append("\":\"")
+                            .append(escape(entry.getValue())).append('"');
+                    }
+                    sb.append('}');
+                }
+                if (r.itemResults() != null && !r.itemResults().isEmpty()) {
+                    sb.append(",\"items\":").append(r.itemResults().size());
+                }
+                if (r.hasSignal()) sb.append(",\"signal\":").append(r.signalValue());
+                sb.append('}');
+            }
+            sb.append("]}");
+            sendJson(exchange, 200, sb.toString());
+        } else {
+            sendJson(exchange, 405, "{\"error\":\"Use POST /challenge/{id}/run or GET /challenge/{id}/results\"}");
+        }
     }
 
     // ========== Helpers ==========

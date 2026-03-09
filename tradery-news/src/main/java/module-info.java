@@ -6,6 +6,7 @@ module com.tradery.news {
     exports com.tradery.news.store;
     exports com.tradery.news.ai;
     exports com.tradery.news.ui;
+    exports com.tradery.news.ui.challenges;
     exports com.tradery.news.ui.coin;
     exports com.tradery.news.api;
     exports com.tradery.news.source;
@@ -19,6 +20,7 @@ module com.tradery.news {
     // AI infrastructure
     requires com.tradery.ai;
     requires com.tradery.ai.pipeline;
+    requires com.tradery.ai.challenges;
 
     // License
     requires com.tradery.license;

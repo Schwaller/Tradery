@@ -519,20 +519,20 @@ public class PageManager implements BackfillCompletionCallback {
         long startTime = key.getEffectiveStartTime();
         long endTime = key.getEffectiveEndTime();
 
-        // Check cache first
-        List<Candle> cached = dataStore.getCandles(symbol, marketType, timeframe, startTime, endTime);
-        long intervalMs = getIntervalMs(timeframe);
-        long expectedBars = (endTime - startTime) / intervalMs;
+        // Use coverage to decide whether to fetch, not a candle count heuristic.
+        // Pairs with shorter history (e.g. listed 2018, but requesting 10yr) would
+        // otherwise re-fetch from the API on every page load.
+        String coverageSubKey = timeframe + ":" + marketType;
+        boolean covered = dataStore.isFullyCovered(symbol, "klines", coverageSubKey, startTime, endTime);
 
         List<Candle> candles;
-        // If sufficient coverage, use cached data
-        if (cached.size() >= expectedBars * 0.9) {
-            candles = cached;
-            LOG.debug("loadCandles: {} {} {} cache hit ({} candles)", symbol, marketType, timeframe, cached.size());
+        if (covered) {
+            candles = dataStore.getCandles(symbol, marketType, timeframe, startTime, endTime);
+            LOG.debug("loadCandles: {} {} {} cache hit ({} candles, coverage complete)", symbol, marketType, timeframe, candles.size());
         } else {
-            // Need to fetch missing data
-            LOG.info("loadCandles: {} {} {} fetching (cached {}/{})", symbol, marketType, timeframe, cached.size(), expectedBars);
-            fetchCandles(key, page, expectedBars);
+            List<Candle> cached = dataStore.getCandles(symbol, marketType, timeframe, startTime, endTime);
+            LOG.info("loadCandles: {} {} {} fetching (cached {}, coverage incomplete)", symbol, marketType, timeframe, cached.size());
+            fetchCandles(key, page);
 
             // Read fresh data
             candles = dataStore.getCandles(symbol, marketType, timeframe, startTime, endTime);
@@ -551,8 +551,10 @@ public class PageManager implements BackfillCompletionCallback {
 
     /**
      * Fetch candles from Binance Vision + API.
+     * After fetching, extends coverage to the full requested range so that periods
+     * before the pair was listed don't trigger redundant re-fetches.
      */
-    private void fetchCandles(PageKey key, Page page, long expectedBars) throws Exception {
+    private void fetchCandles(PageKey key, Page page) throws Exception {
         String symbol = key.symbol();
         String timeframe = key.timeframe();
         String marketType = key.marketType();
@@ -572,6 +574,10 @@ public class PageManager implements BackfillCompletionCallback {
             if (!candles.isEmpty()) {
                 dataStore.saveCandles(symbol, marketType, timeframe, candles);
             }
+            // Mark the full requested range as covered — Binance returned everything
+            // it has, so periods before the pair's listing date are genuinely empty.
+            String coverageSubKey = timeframe + ":" + marketType;
+            dataStore.addCoverage(symbol, "klines", coverageSubKey, startTime, endTime, true);
             return;
         }
 
