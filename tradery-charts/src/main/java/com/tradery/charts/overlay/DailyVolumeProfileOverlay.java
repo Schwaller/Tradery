@@ -211,6 +211,10 @@ public class DailyVolumeProfileOverlay {
                 dailyBinned = dailyBinned.subList(dailyBinned.size() - days, dailyBinned.size());
             }
 
+            // Skip the current (incomplete) day — its profile is partial and looks odd
+            long todayStart = LocalDate.now(ZoneOffset.UTC)
+                .atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli();
+
             var profiles = new ArrayList<DailyVolumeProfileAnnotation.DayProfile>();
             for (var day : dailyBinned) {
                 double[] priceLevels = day.priceLevels();
@@ -218,6 +222,7 @@ public class DailyVolumeProfileOverlay {
                 double[] sellVolumes = day.sellVolumes();
 
                 if (priceLevels == null || priceLevels.length == 0) continue;
+                if (day.dayStart() >= todayStart) continue;
 
                 // Compute total volumes and deltas
                 double[] volumes = new double[priceLevels.length];

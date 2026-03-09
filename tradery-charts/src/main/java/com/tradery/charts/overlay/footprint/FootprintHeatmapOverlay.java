@@ -175,7 +175,9 @@ public class FootprintHeatmapOverlay {
         computeExecutor.submit(() -> {
             try {
                 long start = candles.get(0).timestamp();
-                long end = candles.get(candles.size() - 1).timestamp();
+                long candleMs = estimateCandleIntervalMs(candles);
+                // Extend end to cover profiles within the last candle's full window
+                long end = candles.get(candles.size() - 1).timestamp() + candleMs - 1;
 
                 var rawProfiles = profileProvider.getProfiles(symbol, timeframe, start, end, marketType);
                 if (rawProfiles == null || rawProfiles.isEmpty()) {
@@ -187,11 +189,14 @@ public class FootprintHeatmapOverlay {
                     return;
                 }
 
-                // Index profiles by window start timestamp
-                Map<Long, FootprintProfileProvider.RawProfile> profileByTimestamp = new HashMap<>();
+                // Index profiles by window start in a TreeMap for range queries
+                TreeMap<Long, FootprintProfileProvider.RawProfile> profileByTimestamp = new TreeMap<>();
                 for (var p : rawProfiles) {
                     profileByTimestamp.put(p.windowStart(), p);
                 }
+
+                // Calculate candle interval for range-based profile matching
+                long candleIntervalMs = estimateCandleIntervalMs(candles);
 
                 // Calculate tick size
                 double atr = calculateATR(candles, 14);
@@ -203,9 +208,18 @@ public class FootprintHeatmapOverlay {
                     .symbol(symbol)
                     .timeframe(timeframe);
 
+                int totalProfilesMatched = 0;
                 for (int i = 0; i < candles.size(); i++) {
                     Candle candle = candles.get(i);
-                    var profile = profileByTimestamp.get(candle.timestamp());
+
+                    // Find all profiles within this candle's time window
+                    long candleStart = candle.timestamp();
+                    long candleEnd = (i + 1 < candles.size())
+                        ? candles.get(i + 1).timestamp()
+                        : candleStart + candleIntervalMs;
+                    var matchingProfiles = profileByTimestamp.subMap(candleStart, candleEnd).values();
+                    totalProfilesMatched += matchingProfiles.size();
+                    var profile = mergeProfiles(matchingProfiles);
 
                     Footprint.Builder fpBuilder;
                     if (perCandle) {
@@ -232,6 +246,7 @@ public class FootprintHeatmapOverlay {
                 }
 
                 FootprintResult result = resultBuilder.build();
+                int matchedCount = totalProfilesMatched;
 
                 if (computeGeneration.get() == generation) {
                     SwingUtilities.invokeLater(() -> {
@@ -241,8 +256,8 @@ public class FootprintHeatmapOverlay {
                             int fpCount = result.footprints().size();
                             updateStatus("READY",
                                 fpCount + " footprints (profiles)", fpCount);
-                            log.info("Footprint computed from precomputed profiles: {} candles, {} profiles matched",
-                                candles.size(), rawProfiles.size());
+                            log.info("Footprint computed from profiles: {} candles, {} raw profiles, {} matched to candles",
+                                candles.size(), rawProfiles.size(), matchedCount);
                             if (onDataReady != null) {
                                 onDataReady.run();
                             }
@@ -257,6 +272,68 @@ public class FootprintHeatmapOverlay {
                 }
             }
         });
+    }
+
+    /**
+     * Estimate the candle interval in milliseconds from the first few candles.
+     */
+    static long estimateCandleIntervalMs(List<Candle> candles) {
+        if (candles.size() < 2) return 900_000L; // 15m default
+        long minInterval = Long.MAX_VALUE;
+        for (int i = 1; i < Math.min(10, candles.size()); i++) {
+            long diff = candles.get(i).timestamp() - candles.get(i - 1).timestamp();
+            if (diff > 0) {
+                minInterval = Math.min(minInterval, diff);
+            }
+        }
+        return minInterval == Long.MAX_VALUE ? 900_000L : minInterval;
+    }
+
+    /**
+     * Merge multiple raw profiles into one by summing volumes at each tick index.
+     * Returns null if the collection is empty.
+     */
+    static FootprintProfileProvider.RawProfile mergeProfiles(
+            Collection<FootprintProfileProvider.RawProfile> profiles) {
+        if (profiles.isEmpty()) return null;
+        if (profiles.size() == 1) return profiles.iterator().next();
+
+        var iter = profiles.iterator();
+        var first = iter.next();
+        double tickSize = first.tickSize();
+        double totalBuy = first.totalBuyVolume();
+        double totalSell = first.totalSellVolume();
+        Map<String, double[]> merged = new HashMap<>();
+        if (first.levels() != null) {
+            for (var e : first.levels().entrySet()) {
+                merged.put(e.getKey(), new double[]{
+                    e.getValue().length > 0 ? e.getValue()[0] : 0,
+                    e.getValue().length > 1 ? e.getValue()[1] : 0
+                });
+            }
+        }
+
+        while (iter.hasNext()) {
+            var p = iter.next();
+            totalBuy += p.totalBuyVolume();
+            totalSell += p.totalSellVolume();
+            if (p.levels() != null) {
+                for (var e : p.levels().entrySet()) {
+                    double buy = e.getValue().length > 0 ? e.getValue()[0] : 0;
+                    double sell = e.getValue().length > 1 ? e.getValue()[1] : 0;
+                    double[] existing = merged.get(e.getKey());
+                    if (existing == null) {
+                        merged.put(e.getKey(), new double[]{buy, sell});
+                    } else {
+                        existing[0] += buy;
+                        existing[1] += sell;
+                    }
+                }
+            }
+        }
+
+        return new FootprintProfileProvider.RawProfile(
+            first.windowStart(), tickSize, totalBuy, totalSell, merged);
     }
 
     /**

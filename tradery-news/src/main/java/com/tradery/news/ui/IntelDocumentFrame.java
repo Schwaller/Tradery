@@ -546,6 +546,7 @@ public class IntelDocumentFrame extends JFrame {
         challengesContent.setBackground(bgMain());
         challengesContent.setBorder(new EmptyBorder(12, 16, 12, 16));
         BorderlessScrollPane challengesScroll = new BorderlessScrollPane(challengesContent);
+        challengesScroll.setHorizontalScrollBarPolicy(ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
         challengesScroll.getVerticalScrollBar().setUnitIncrement(16);
         challengesCard.add(challengesScroll, BorderLayout.CENTER);
         cardPanel.add(challengesCard, CHALLENGES_CARD_ID);
@@ -1184,26 +1185,30 @@ public class IntelDocumentFrame extends JFrame {
             JLabel noResults = new JLabel("  No results yet — click a run button above");
             noResults.setFont(new Font("SansSerif", Font.ITALIC, 10));
             noResults.setForeground(textMuted());
-            noResults.setPreferredSize(new Dimension(300, RESULT_BOX_HEIGHT));
+            noResults.setPreferredSize(new Dimension(300, 40));
             timeline.add(noResults);
         } else {
-            for (ChallengeResult r : results) {
-                timeline.add(createResultBox(r));
-                timeline.add(Box.createHorizontalStrut(4));
+            for (int i = 0; i < results.size(); i++) {
+                if (i > 0) timeline.add(Box.createRigidArea(new Dimension(4, 0)));
+                timeline.add(createResultBox(results.get(i)));
             }
         }
+
+        // Let the timeline compute its preferred height from content
+        Dimension timelinePref = timeline.getPreferredSize();
+        int timelineH = timelinePref.height + 12;
 
         BorderlessScrollPane timelineScroll = new BorderlessScrollPane(timeline);
         timelineScroll.setHorizontalScrollBarPolicy(ScrollPaneConstants.HORIZONTAL_SCROLLBAR_AS_NEEDED);
         timelineScroll.setVerticalScrollBarPolicy(ScrollPaneConstants.VERTICAL_SCROLLBAR_NEVER);
-        timelineScroll.setPreferredSize(new Dimension(0, RESULT_BOX_HEIGHT + 12));
-        timelineScroll.setMinimumSize(new Dimension(0, RESULT_BOX_HEIGHT + 12));
-        timelineScroll.setMaximumSize(new Dimension(Integer.MAX_VALUE, RESULT_BOX_HEIGHT + 12));
-        // Scroll to the right (latest results)
-        SwingUtilities.invokeLater(() -> {
+        timelineScroll.setPreferredSize(new Dimension(0, timelineH));
+        timelineScroll.setMinimumSize(new Dimension(0, timelineH));
+        timelineScroll.setMaximumSize(new Dimension(Integer.MAX_VALUE, timelineH));
+        // Scroll to the right (latest results) — double invokeLater to ensure layout is done
+        SwingUtilities.invokeLater(() -> SwingUtilities.invokeLater(() -> {
             JScrollBar hbar = timelineScroll.getHorizontalScrollBar();
             hbar.setValue(hbar.getMaximum());
-        });
+        }));
 
         // Per-field charts over time (one chart per numeric field)
         List<ChallengeChartPanel> charts = ChallengeChartPanel.createCharts(challenge, results);
@@ -1215,6 +1220,7 @@ public class IntelDocumentFrame extends JFrame {
             centerPanel.add(timelineScroll);
             for (ChallengeChartPanel chart : charts) {
                 chart.setAlignmentX(Component.LEFT_ALIGNMENT);
+                centerPanel.add(Box.createVerticalStrut(8));
                 centerPanel.add(chart);
             }
             row.add(centerPanel, BorderLayout.CENTER);
@@ -1226,6 +1232,16 @@ public class IntelDocumentFrame extends JFrame {
     }
 
     private JPanel createResultBox(ChallengeResult result) {
+        // Compute box width: wider for structured lists with many columns
+        int boxWidth = RESULT_BOX_WIDTH;
+        if (result.itemResults() != null && !result.itemResults().isEmpty()) {
+            Challenge ch = challengeStore.getChallenge(result.challengeId());
+            if (ch != null && ch.output().fields() != null) {
+                int fieldCount = ch.output().fields().size();
+                boxWidth = Math.max(RESULT_BOX_WIDTH, 60 * fieldCount + 40);
+            }
+        }
+
         JPanel box = new JPanel();
         box.setLayout(new BoxLayout(box, BoxLayout.Y_AXIS));
         box.setBackground(darker(bgCard(), 0.03f));
@@ -1233,9 +1249,8 @@ public class IntelDocumentFrame extends JFrame {
             BorderFactory.createLineBorder(darker(bgMain(), 0.12f), 1),
             BorderFactory.createEmptyBorder(6, 8, 6, 8)
         ));
-        box.setPreferredSize(new Dimension(RESULT_BOX_WIDTH, RESULT_BOX_HEIGHT));
-        box.setMinimumSize(new Dimension(RESULT_BOX_WIDTH, RESULT_BOX_HEIGHT));
-        box.setMaximumSize(new Dimension(RESULT_BOX_WIDTH, RESULT_BOX_HEIGHT));
+        box.setMinimumSize(new Dimension(boxWidth, 60));
+        box.setMaximumSize(new Dimension(boxWidth, Integer.MAX_VALUE));
 
         // Timestamp
         long ago = System.currentTimeMillis() - result.timestamp();
@@ -1262,7 +1277,7 @@ public class IntelDocumentFrame extends JFrame {
         }
 
         // Result content
-        int contentWidth = RESULT_BOX_WIDTH - 20;
+        int contentWidth = boxWidth - 20;
         if (result.hasError()) {
             JLabel errLabel = new JLabel("ERROR");
             errLabel.setFont(new Font("SansSerif", Font.BOLD, 10));
@@ -1291,7 +1306,8 @@ public class IntelDocumentFrame extends JFrame {
             html.append("<tr>");
             for (ChallengeOutput.Field f : fieldDefs) {
                 String lbl = f.label() != null ? f.label() : f.name();
-                if (lbl.length() > 10) lbl = lbl.substring(0, 9) + ".";
+                int maxLbl = f.primary() ? 16 : 10;
+                if (lbl.length() > maxLbl) lbl = lbl.substring(0, maxLbl - 1) + ".";
                 html.append("<td><b>").append(escapeHtml(lbl)).append("</b></td>");
             }
             html.append("</tr>");
@@ -1304,7 +1320,8 @@ public class IntelDocumentFrame extends JFrame {
                 html.append(isRemoved ? "<tr style='color:gray'>" : "<tr>");
                 for (ChallengeOutput.Field f : fieldDefs) {
                     String v = item.getOrDefault(f.name(), "");
-                    if (v.length() > 14) v = v.substring(0, 12) + "..";
+                    int maxLen = f.primary() ? 22 : 14;
+                    if (v.length() > maxLen) v = v.substring(0, maxLen - 2) + "..";
                     boolean isPrimary = f.primary();
                     String reason = item.get(f.name() + "_reason");
                     String titleAttr = reason != null ? " title='" + escapeHtml(reason).replace("'", "&#39;") + "'" : "";
@@ -1434,7 +1451,9 @@ public class IntelDocumentFrame extends JFrame {
             box.add(countLabel);
         }
 
-        box.add(Box.createVerticalGlue());
+        // Fix width so BoxLayout doesn't inflate timeline preferred width
+        Dimension pref = box.getPreferredSize();
+        box.setPreferredSize(new Dimension(boxWidth, pref.height));
         return box;
     }
 

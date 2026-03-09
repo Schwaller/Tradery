@@ -44,6 +44,7 @@ public class PriceChartPanel extends JPanel {
     private final ChartInteractionManager interactionManager;
     private final ChartLifecycleManager lifecycleManager;
 
+
     public PriceChartPanel() {
         setLayout(new BorderLayout());
         setBackground(UIManager.getColor("Panel.background"));

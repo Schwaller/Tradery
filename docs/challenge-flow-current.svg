@@ -1,0 +1,119 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 820" font-family="'SF Pro Display', 'Helvetica Neue', sans-serif">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#0d1117"/>
+      <stop offset="100%" stop-color="#161b22"/>
+    </linearGradient>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="3" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#58a6ff"/>
+    </marker>
+    <marker id="arrow-dim" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#484f58"/>
+    </marker>
+  </defs>
+
+  <rect width="900" height="820" fill="url(#bg)" rx="12"/>
+
+  <!-- Title -->
+  <text x="450" y="42" text-anchor="middle" fill="#f0f6fc" font-size="18" font-weight="700">Current Challenge Execution Flow</text>
+  <text x="450" y="62" text-anchor="middle" fill="#484f58" font-size="11">ChallengeExecutor → TextQueryExecutor → PromptAssembler → AiClient</text>
+
+  <!-- Step 1: Challenge Definition -->
+  <rect x="310" y="85" width="280" height="52" rx="8" fill="#1c2128" stroke="#30363d" stroke-width="1.5"/>
+  <text x="330" y="107" fill="#58a6ff" font-size="9" font-weight="600">TRIGGER</text>
+  <text x="450" y="107" text-anchor="middle" fill="#f0f6fc" font-size="13" font-weight="600">Challenge Definition</text>
+  <text x="450" y="124" text-anchor="middle" fill="#8b949e" font-size="10">description, output type, fields, signal config</text>
+
+  <!-- Arrow -->
+  <line x1="450" y1="137" x2="450" y2="162" stroke="#58a6ff" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <!-- Step 2: Resolve Subject + Previous Result -->
+  <rect x="290" y="165" width="320" height="52" rx="8" fill="#1c2128" stroke="#30363d" stroke-width="1.5"/>
+  <text x="310" y="187" fill="#7ee787" font-size="9" font-weight="600">CONTEXT</text>
+  <text x="450" y="187" text-anchor="middle" fill="#f0f6fc" font-size="13" font-weight="600">Resolve Subject + Previous</text>
+  <text x="450" y="204" text-anchor="middle" fill="#8b949e" font-size="10">subject attrs, latest result for forward-feed (tracking)</text>
+
+  <!-- Arrow -->
+  <line x1="450" y1="217" x2="450" y2="242" stroke="#58a6ff" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <!-- Step 3: Web Search -->
+  <rect x="270" y="245" width="360" height="68" rx="8" fill="#1c2128" stroke="#30363d" stroke-width="1.5"/>
+  <text x="290" y="267" fill="#d2a8ff" font-size="9" font-weight="600">SEARCH</text>
+  <text x="450" y="267" text-anchor="middle" fill="#f0f6fc" font-size="13" font-weight="600">Web Search for Context</text>
+  <text x="450" y="284" text-anchor="middle" fill="#8b949e" font-size="10">Google News RSS (6 results) + DuckDuckGo (4 results)</text>
+  <text x="450" y="300" text-anchor="middle" fill="#8b949e" font-size="10">deduplicated by URL → search context string</text>
+
+  <!-- Arrow -->
+  <line x1="450" y1="313" x2="450" y2="338" stroke="#58a6ff" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <!-- Step 4: Build Prompt -->
+  <rect x="250" y="341" width="400" height="85" rx="8" fill="#1c2128" stroke="#30363d" stroke-width="1.5"/>
+  <text x="270" y="363" fill="#ffa657" font-size="9" font-weight="600">ASSEMBLE</text>
+  <text x="450" y="363" text-anchor="middle" fill="#f0f6fc" font-size="13" font-weight="600">PromptAssembler.build()</text>
+  <text x="450" y="382" text-anchor="middle" fill="#8b949e" font-size="10">subject context + web search results + challenge description</text>
+  <text x="450" y="397" text-anchor="middle" fill="#8b949e" font-size="10">+ output format instructions (JSON schema / field examples)</text>
+  <text x="450" y="412" text-anchor="middle" fill="#8b949e" font-size="10">+ previous items (tracking) + signal instructions + _reason prompts</text>
+
+  <!-- Arrow -->
+  <line x1="450" y1="426" x2="450" y2="451" stroke="#58a6ff" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <!-- Step 5: AI Query -->
+  <rect x="310" y="454" width="280" height="52" rx="8" fill="#1a1f35" stroke="#58a6ff" stroke-width="2" filter="url(#glow)"/>
+  <text x="330" y="476" fill="#58a6ff" font-size="9" font-weight="600">AI CALL 1</text>
+  <text x="450" y="476" text-anchor="middle" fill="#f0f6fc" font-size="13" font-weight="700">AiClient.query()</text>
+  <text x="450" y="493" text-anchor="middle" fill="#8b949e" font-size="10">tier-resolved profile (fast / standard / premium)</text>
+
+  <!-- Arrow -->
+  <line x1="450" y1="506" x2="450" y2="531" stroke="#58a6ff" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <!-- Step 6: Optional Verification -->
+  <rect x="280" y="534" width="340" height="52" rx="8" fill="#1a1f35" stroke="#484f58" stroke-width="1.5" stroke-dasharray="6,3"/>
+  <text x="300" y="556" fill="#ffa657" font-size="9" font-weight="600">OPTIONAL</text>
+  <text x="450" y="556" text-anchor="middle" fill="#c9d1d9" font-size="13" font-weight="600">Verification (AI Call 2)</text>
+  <text x="450" y="573" text-anchor="middle" fill="#8b949e" font-size="10">cross-checks answer, corrects errors, replaces response</text>
+
+  <!-- Arrow -->
+  <line x1="450" y1="586" x2="450" y2="611" stroke="#58a6ff" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <!-- Step 7: Parse Output -->
+  <rect x="260" y="614" width="380" height="68" rx="8" fill="#1c2128" stroke="#30363d" stroke-width="1.5"/>
+  <text x="280" y="636" fill="#7ee787" font-size="9" font-weight="600">PARSE</text>
+  <text x="450" y="636" text-anchor="middle" fill="#f0f6fc" font-size="13" font-weight="600">Parse Response</text>
+  <text x="450" y="653" text-anchor="middle" fill="#8b949e" font-size="10">Structured JSON → fields + _reason + _status</text>
+  <text x="450" y="668" text-anchor="middle" fill="#8b949e" font-size="10">List JSON → items | Text → raw string | Error → error obj</text>
+
+  <!-- Arrow -->
+  <line x1="450" y1="682" x2="450" y2="707" stroke="#58a6ff" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <!-- Step 8: Signal Extraction -->
+  <rect x="290" y="710" width="320" height="52" rx="8" fill="#1c2128" stroke="#30363d" stroke-width="1.5"/>
+  <text x="310" y="732" fill="#d2a8ff" font-size="9" font-weight="600">SIGNAL</text>
+  <text x="450" y="732" text-anchor="middle" fill="#f0f6fc" font-size="13" font-weight="600">SignalExtractor</text>
+  <text x="450" y="749" text-anchor="middle" fill="#8b949e" font-size="10">SCORE field / [SIGNAL: X] / ordinal / count → numeric value</text>
+
+  <!-- Arrow -->
+  <line x1="450" y1="762" x2="450" y2="787" stroke="#58a6ff" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <!-- Step 9: Save Result -->
+  <rect x="330" y="790" width="240" height="22" rx="6" fill="#238636" fill-opacity="0.15" stroke="#238636" stroke-width="1.5"/>
+  <text x="450" y="806" text-anchor="middle" fill="#7ee787" font-size="12" font-weight="700">ChallengeResult → Store</text>
+
+  <!-- Side annotation: Single AI call limitation -->
+  <rect x="40" y="445" width="220" height="68" rx="6" fill="#ffa65710" stroke="#ffa657" stroke-width="1" stroke-dasharray="4,3"/>
+  <text x="150" y="465" text-anchor="middle" fill="#ffa657" font-size="10" font-weight="600">Limitations</text>
+  <text x="150" y="480" text-anchor="middle" fill="#8b949e" font-size="9">Single AI perspective</text>
+  <text x="150" y="493" text-anchor="middle" fill="#8b949e" font-size="9">No structure validation/retry</text>
+  <text x="150" y="506" text-anchor="middle" fill="#8b949e" font-size="9">No cross-model consensus</text>
+  <line x1="260" y1="480" x2="310" y2="480" stroke="#ffa657" stroke-width="1" stroke-dasharray="3,3" marker-end="url(#arrow-dim)"/>
+
+  <!-- Side annotation: Escalation -->
+  <rect x="640" y="85" width="220" height="52" rx="6" fill="#58a6ff10" stroke="#58a6ff" stroke-width="1" stroke-dasharray="4,3"/>
+  <text x="750" y="105" text-anchor="middle" fill="#58a6ff" font-size="10" font-weight="600">Escalation Tiers</text>
+  <text x="750" y="120" text-anchor="middle" fill="#8b949e" font-size="9">fast → standard → premium</text>
+  <text x="750" y="133" text-anchor="middle" fill="#8b949e" font-size="9">each with optional verify flag</text>
+  <line x1="640" y1="111" x2="590" y2="111" stroke="#58a6ff" stroke-width="1" stroke-dasharray="3,3" marker-end="url(#arrow-dim)"/>
+</svg>

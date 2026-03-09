@@ -176,10 +176,10 @@ public class FootprintHeatmapAnnotation extends AbstractXYAnnotation {
                                 ValueAxis domainAxis, ValueAxis rangeAxis,
                                 Footprint footprint, double halfIntervalMs, int fpIndex) {
 
-        // Candle timestamp is the START of the candle, so box should span from timestamp to timestamp + interval
-        // Using timestamp as left edge and timestamp + 2*halfIntervalMs as right edge
-        double leftX = domainAxis.valueToJava2D(footprint.timestamp(), dataArea, RectangleEdge.BOTTOM);
-        double rightX = domainAxis.valueToJava2D(footprint.timestamp() + halfIntervalMs * 2, dataArea, RectangleEdge.BOTTOM);
+        // Time bucket is [timestamp, timestamp + interval). Footprint uses 80%, centered in bucket.
+        long candleInterval = (long) (halfIntervalMs / 0.4); // recover full interval
+        double leftX = domainAxis.valueToJava2D(footprint.timestamp() + candleInterval * 0.1, dataArea, RectangleEdge.BOTTOM);
+        double rightX = domainAxis.valueToJava2D(footprint.timestamp() + candleInterval * 0.9, dataArea, RectangleEdge.BOTTOM);
 
         // Skip if outside visible area
         if (rightX < dataArea.getMinX() || leftX > dataArea.getMaxX()) {
