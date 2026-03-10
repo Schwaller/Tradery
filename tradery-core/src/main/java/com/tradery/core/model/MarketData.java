@@ -19,4 +19,7 @@ public interface MarketData {
     List<FearGreedIndex> fearGreedIndex(); // nullable
     Map<Long, double[]> dailyProfiles();   // nullable — dayStartMs → {poc, vah, val}
     List<SpectrumWindow> spectrumWindows();  // nullable — 10s trade size distribution windows
+
+    /** Extra candles before the backtest window for RVOL historical volume profiles. Nullable. */
+    default List<Candle> historicalCandles() { return null; }
 }

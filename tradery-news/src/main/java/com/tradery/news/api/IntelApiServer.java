@@ -1,5 +1,8 @@
 package com.tradery.news.api;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import com.tradery.ai.challenges.execution.ChallengeExecutor;
@@ -79,6 +82,10 @@ public class IntelApiServer {
     // Challenge infrastructure (optional, set after construction)
     private ChallengeStore challengeStore;
     private ChallengeExecutor challengeExecutor;
+
+    private static final ObjectMapper challengeMapper = new ObjectMapper()
+        .registerModule(new JavaTimeModule())
+        .disable(SerializationFeature.WRITE_DURATIONS_AS_TIMESTAMPS);
 
     // Handlers
     private final StatsHandler statsHandler;
@@ -573,12 +580,40 @@ public class IntelApiServer {
     // ========== Challenge Handlers ==========
 
     /**
-     * GET /challenges — list all challenges with latest results.
+     * GET  /challenges — list all challenges with latest results.
+     * POST /challenges — create a new challenge from JSON body.
      */
     private void handleChallenges(HttpExchange exchange) throws IOException {
-        if (!checkGet(exchange)) return;
         if (challengeStore == null) {
             sendJson(exchange, 503, "{\"error\":\"Challenge infrastructure not available\"}");
+            return;
+        }
+        String method = exchange.getRequestMethod();
+
+        if ("POST".equalsIgnoreCase(method)) {
+            // Create challenge
+            try {
+                byte[] body = exchange.getRequestBody().readAllBytes();
+                Challenge challenge = challengeMapper.readValue(body, Challenge.class);
+                if (challenge.id() == null || challenge.id().isBlank()) {
+                    sendJson(exchange, 400, "{\"error\":\"Challenge must have an id\"}");
+                    return;
+                }
+                if (challengeStore.getChallenge(challenge.id()) != null) {
+                    sendJson(exchange, 409, "{\"error\":\"Challenge already exists: " + escape(challenge.id()) + "\"}");
+                    return;
+                }
+                challengeStore.saveChallenge(challenge);
+                String json = challengeMapper.writeValueAsString(challenge);
+                sendJson(exchange, 201, "{\"ok\":true,\"challenge\":" + json + "}");
+            } catch (Exception e) {
+                sendJson(exchange, 400, "{\"error\":\"Invalid challenge JSON: " + escape(e.getMessage()) + "\"}");
+            }
+            return;
+        }
+
+        if (!"GET".equalsIgnoreCase(method)) {
+            sendJson(exchange, 405, "{\"error\":\"Use GET or POST\"}");
             return;
         }
 
@@ -628,24 +663,80 @@ public class IntelApiServer {
     }
 
     /**
-     * POST /challenge/{id}/run — execute a challenge and return the result.
-     * GET  /challenge/{id}/results — list results for a challenge.
+     * GET    /challenge/{id}         — get full challenge definition as JSON.
+     * PUT    /challenge/{id}         — update challenge from JSON body (partial merge).
+     * DELETE /challenge/{id}         — delete challenge.
+     * POST   /challenge/{id}/run     — execute and return result.
+     * GET    /challenge/{id}/results — list results.
      */
     private void handleChallenge(HttpExchange exchange) throws IOException {
-        if (challengeStore == null || challengeExecutor == null) {
+        if (challengeStore == null) {
             sendJson(exchange, 503, "{\"error\":\"Challenge infrastructure not available\"}");
             return;
         }
 
         String path = exchange.getRequestURI().getPath();
         String[] parts = path.split("/");
-        // /challenge/{id}/run or /challenge/{id}/results
         if (parts.length < 3) {
             sendJson(exchange, 400, "{\"error\":\"Missing challenge ID\"}");
             return;
         }
         String challengeId = parts[2];
         String action = parts.length >= 4 ? parts[3] : "";
+        String method = exchange.getRequestMethod();
+
+        // DELETE /challenge/{id}
+        if ("DELETE".equalsIgnoreCase(method) && action.isEmpty()) {
+            Challenge existing = challengeStore.getChallenge(challengeId);
+            if (existing == null) {
+                sendJson(exchange, 404, "{\"error\":\"Challenge not found: " + escape(challengeId) + "\"}");
+                return;
+            }
+            challengeStore.deleteChallenge(challengeId);
+            sendJson(exchange, 200, "{\"ok\":true,\"deleted\":\"" + escape(challengeId) + "\"}");
+            return;
+        }
+
+        // GET /challenge/{id} — full definition
+        if ("GET".equalsIgnoreCase(method) && action.isEmpty()) {
+            Challenge challenge = challengeStore.getChallenge(challengeId);
+            if (challenge == null) {
+                sendJson(exchange, 404, "{\"error\":\"Challenge not found: " + escape(challengeId) + "\"}");
+                return;
+            }
+            String json = challengeMapper.writeValueAsString(challenge);
+            sendJson(exchange, 200, json);
+            return;
+        }
+
+        // PUT /challenge/{id} — update (merge)
+        if ("PUT".equalsIgnoreCase(method) && action.isEmpty()) {
+            Challenge existing = challengeStore.getChallenge(challengeId);
+            if (existing == null) {
+                sendJson(exchange, 404, "{\"error\":\"Challenge not found: " + escape(challengeId) + "\"}");
+                return;
+            }
+            try {
+                byte[] body = exchange.getRequestBody().readAllBytes();
+                Challenge updates = challengeMapper.readValue(body, Challenge.class);
+                // Merge non-null fields
+                if (updates.title() != null) existing.setTitle(updates.title());
+                if (updates.description() != null) existing.setDescription(updates.description());
+                if (updates.output() != null) existing.setOutput(updates.output());
+                if (updates.escalations() != null && !updates.escalations().isEmpty()) existing.setEscalations(updates.escalations());
+                if (updates.signalConfig() != null) existing.setSignalConfig(updates.signalConfig());
+                if (updates.refreshInterval() != null) existing.setRefreshInterval(updates.refreshInterval());
+                if (updates.displayOrder() != 0) existing.setDisplayOrder(updates.displayOrder());
+                // enabled is a primitive — always apply from body
+                existing.setEnabled(updates.enabled());
+                challengeStore.saveChallenge(existing);
+                String json = challengeMapper.writeValueAsString(existing);
+                sendJson(exchange, 200, "{\"ok\":true,\"challenge\":" + json + "}");
+            } catch (Exception e) {
+                sendJson(exchange, 400, "{\"error\":\"Invalid challenge JSON: " + escape(e.getMessage()) + "\"}");
+            }
+            return;
+        }
 
         Challenge challenge = challengeStore.getChallenge(challengeId);
         if (challenge == null) {
@@ -653,7 +744,11 @@ public class IntelApiServer {
             return;
         }
 
-        if ("run".equals(action) && "POST".equalsIgnoreCase(exchange.getRequestMethod())) {
+        if ("run".equals(action) && "POST".equalsIgnoreCase(method)) {
+            if (challengeExecutor == null) {
+                sendJson(exchange, 503, "{\"error\":\"Challenge executor not available\"}");
+                return;
+            }
             IntelLogPanel.logAI("API: Running challenge '" + challenge.title() + "'");
             StandaloneChallengeSubject subject = new StandaloneChallengeSubject(challenge);
             ChallengeResult prev = challengeStore.getLatestResult(challenge.id(), subject.id());
@@ -713,7 +808,7 @@ public class IntelApiServer {
             }
             sb.append("}}");
             sendJson(exchange, 200, sb.toString());
-        } else if ("results".equals(action) && "GET".equalsIgnoreCase(exchange.getRequestMethod())) {
+        } else if ("results".equals(action) && "GET".equalsIgnoreCase(method)) {
             java.util.List<ChallengeResult> results = challengeStore.getResultsForChallenge(challengeId, 20);
             StringBuilder sb = new StringBuilder();
             sb.append("{\"results\":[");
@@ -745,7 +840,7 @@ public class IntelApiServer {
             sb.append("]}");
             sendJson(exchange, 200, sb.toString());
         } else {
-            sendJson(exchange, 405, "{\"error\":\"Use POST /challenge/{id}/run or GET /challenge/{id}/results\"}");
+            sendJson(exchange, 405, "{\"error\":\"Use GET/PUT/DELETE /challenge/{id} or POST /challenge/{id}/run or GET /challenge/{id}/results\"}");
         }
     }
 

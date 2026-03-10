@@ -316,6 +316,26 @@ Auto-detect trendlines from ATH/ATL. Parameters: `rayNum`, `lookback`, `skip`.
 > `volume > AVG_VOLUME(20) * 1.2`
 > `close > SMA(20) + ATR(14) * 2`
 
+### Relative Volume (RVOL) Functions
+
+Compares current volume to historical volume at the same time-of-day.
+Uses candle data already cached — lookback is in weeks.
+
+| Function | Returns | Description |
+|----------|---------|-------------|
+| `RVOL(weeks)` | ratio | Volume vs median for this time slot (1.0 = normal, 2.0 = 2x) |
+| `RVOL(weeks, mode)` | ratio | With mode: 0=ANY, 1=DOW (same weekday), 2=DAYTYPE (holiday/workday) |
+| `RVOL(weeks, mode, smooth)` | ratio | With volume smoothing over N consecutive bars |
+| `RVOL_PERCENTILE(weeks)` | 0-100 | Volume percentile vs historical same time-of-day |
+| `RVOL_PERCENTILE(weeks, mode)` | 0-100 | With mode selection |
+| `RVOL_PERCENTILE(weeks, mode, smooth)` | 0-100 | With mode and smoothing |
+
+> **Examples:**
+> `RVOL(52) > 2.0` — Volume is 2x normal for this time of day
+> `RVOL(52, 1) > 1.5 AND RSI(14) < 30` — High relative volume on same weekday + oversold
+> `RVOL_PERCENTILE(52, 2) > 90` — Volume in top 10% for this day type (holiday/workday)
+> `RVOL(52, 0, 3) < 0.5` — Smoothed volume (3-bar avg) is half normal
+
 ### Lookback Syntax
 
 Use `[n]` to reference values from N bars ago:

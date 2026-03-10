@@ -311,6 +311,14 @@ public record PageKey(
     }
 
     /**
+     * Create a live volume profile page key with explicit market type.
+     */
+    public static PageKey liveProfile(String symbol, String timeframe, String marketType, long windowDurationMillis) {
+        return new PageKey("PROFILE", "binance", symbol.toUpperCase(), timeframe,
+            marketType != null ? marketType : "perp", null, windowDurationMillis);
+    }
+
+    /**
      * Create an anchored volume profile page key.
      */
     public static PageKey anchoredProfile(String symbol, String timeframe, long endTime, long windowDurationMillis) {

@@ -58,6 +58,7 @@ public class ConditionEvaluator {
             case AstNode.CandlePropCall c -> evaluateCandleProp(c, barIndex);
             case AstNode.FootprintFunctionCall f -> evaluateFootprintFunction(f, barIndex);
             case AstNode.FearGreedFunctionCall fg -> evaluateFearGreedFunction(fg, barIndex);
+            case AstNode.RvolFunctionCall r -> evaluateRvolFunction(r, barIndex);
             case AstNode.LookbackAccess l -> evaluateLookback(l, barIndex);
             case AstNode.PriceReference p -> evaluatePrice(p, barIndex);
             case AstNode.NumberLiteral n -> n.value();
@@ -654,6 +655,14 @@ public class ConditionEvaluator {
             }
 
             default -> throw new EvaluationException("Unknown footprint function: " + node.func());
+        };
+    }
+
+    private double evaluateRvolFunction(AstNode.RvolFunctionCall node, int barIndex) {
+        return switch (node.func()) {
+            case "RVOL" -> engine.getRvolAt(node.lookbackWeeks(), node.mode(), node.smooth(), barIndex);
+            case "RVOL_PERCENTILE" -> engine.getRvolPercentileAt(node.lookbackWeeks(), node.mode(), node.smooth(), barIndex);
+            default -> throw new EvaluationException("Unknown RVOL function: " + node.func());
         };
     }
 

@@ -96,6 +96,7 @@ public class IndicatorSelectorContent {
     private final IndicatorToggleRow holdingCostCumulative = new IndicatorToggleRow("Cumulative Holding Costs", "Show running total of funding fees/margin interest");
     private final IndicatorToggleRow holdingCostEvents = new IndicatorToggleRow("Holding Cost Events", "Show individual funding fee/interest charges per trade");
     private final IndicatorToggleRow fearGreed = new IndicatorToggleRow("Fear & Greed", "Show Crypto Fear & Greed Index (0-100 sentiment)");
+    private final IndicatorToggleRow rvol = new IndicatorToggleRow("RVOL", "Relative Volume vs historical same time-of-day (1.0 = normal)");
     private final IndicatorToggleRow spectrum = new IndicatorToggleRow("Trade Size Spectrum", "Show trade size distribution heatmap (log10 buckets, requires aggTrades)");
     private final JComboBox<SpectrumColorMode> spectrumColorModeCombo = new JComboBox<>(SpectrumColorMode.values());
     private final JComboBox<SpectrumBucketMode> spectrumBucketModeCombo = new JComboBox<>(SpectrumBucketMode.values());
@@ -195,6 +196,11 @@ public class IndicatorSelectorContent {
             target.add(fearGreed);
         }
 
+        // RVOL - always available (uses candle volume)
+        target.add(Box.createVerticalStrut(4));
+        target.add(IndicatorSelectorPanel.createSectionHeader("RELATIVE VOLUME"));
+        target.add(rvol);
+
         if (features.contains(Feature.SPECTRUM)) {
             target.add(Box.createVerticalStrut(4));
             target.add(IndicatorSelectorPanel.createSectionHeader("TRADE SIZE SPECTRUM"));
@@ -290,6 +296,8 @@ public class IndicatorSelectorContent {
         if (features.contains(Feature.PREMIUM)) premium.addChangeListener(onChange);
 
         if (features.contains(Feature.SENTIMENT)) fearGreed.addChangeListener(onChange);
+
+        rvol.addChangeListener(onChange);
 
         if (features.contains(Feature.SPECTRUM)) {
             spectrum.addChangeListener(onChange);
@@ -510,6 +518,7 @@ public class IndicatorSelectorContent {
     public IndicatorToggleRow holdingCostCumulative() { return holdingCostCumulative; }
     public IndicatorToggleRow holdingCostEvents() { return holdingCostEvents; }
     public IndicatorToggleRow fearGreed() { return fearGreed; }
+    public IndicatorToggleRow rvol() { return rvol; }
     public IndicatorToggleRow spectrum() { return spectrum; }
     public JComboBox<SpectrumColorMode> spectrumColorModeCombo() { return spectrumColorModeCombo; }
     public JComboBox<SpectrumBucketMode> spectrumBucketModeCombo() { return spectrumBucketModeCombo; }

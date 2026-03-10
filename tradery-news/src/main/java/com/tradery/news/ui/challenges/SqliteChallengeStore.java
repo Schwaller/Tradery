@@ -274,6 +274,16 @@ public class SqliteChallengeStore implements ChallengeStore {
         }
     }
 
+    @Override
+    public void deleteResult(long resultId) {
+        try (PreparedStatement ps = conn.prepareStatement("DELETE FROM challenge_results WHERE id = ?")) {
+            ps.setLong(1, resultId);
+            ps.executeUpdate();
+        } catch (Exception e) {
+            log.error("Failed to delete challenge result {}", resultId, e);
+        }
+    }
+
     // ==================== Subscriptions ====================
 
     @Override

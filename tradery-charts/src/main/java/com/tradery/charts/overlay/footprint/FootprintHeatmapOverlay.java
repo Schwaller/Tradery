@@ -444,6 +444,91 @@ public class FootprintHeatmapOverlay {
     }
 
     /**
+     * Compute footprint from pre-fetched profiles (pushed by page system).
+     * Skips the provider HTTP call — uses profiles already received via WebSocket.
+     */
+    public void computeWithProfiles(List<FootprintProfileProvider.RawProfile> rawProfiles) {
+        if (currentCandles == null || currentCandles.isEmpty()) return;
+        if (rawProfiles == null || rawProfiles.isEmpty()) return;
+
+        List<Candle> candles = List.copyOf(currentCandles);
+        String symbol = currentSymbol;
+        String timeframe = currentTimeframe;
+        int targetBuckets = config.getTargetBuckets();
+        Double fixedTickSize = config.getTickSizeMode() == FootprintHeatmapConfig.TickSizeMode.FIXED
+            ? config.getFixedTickSize() : null;
+        boolean perCandle = config.getTickSizeMode() == FootprintHeatmapConfig.TickSizeMode.PER_CANDLE;
+
+        int generation = computeGeneration.incrementAndGet();
+
+        computeExecutor.submit(() -> {
+            try {
+                TreeMap<Long, FootprintProfileProvider.RawProfile> profileByTimestamp = new TreeMap<>();
+                for (var p : rawProfiles) {
+                    profileByTimestamp.put(p.windowStart(), p);
+                }
+
+                long candleIntervalMs = estimateCandleIntervalMs(candles);
+                double atr = calculateATR(candles, 14);
+                double tickSize = fixedTickSize != null ? fixedTickSize
+                    : FootprintIndicator.calculateTickSize(atr, targetBuckets);
+
+                var resultBuilder = new FootprintResult.Builder()
+                    .tickSize(tickSize)
+                    .symbol(symbol)
+                    .timeframe(timeframe);
+
+                int totalProfilesMatched = 0;
+                for (int i = 0; i < candles.size(); i++) {
+                    Candle candle = candles.get(i);
+                    long candleStart = candle.timestamp();
+                    long candleEnd = (i + 1 < candles.size())
+                        ? candles.get(i + 1).timestamp()
+                        : candleStart + candleIntervalMs;
+                    var matchingProfiles = profileByTimestamp.subMap(candleStart, candleEnd).values();
+                    totalProfilesMatched += matchingProfiles.size();
+                    var profile = mergeProfiles(matchingProfiles);
+
+                    Footprint.Builder fpBuilder;
+                    if (perCandle) {
+                        double candleTickSize = FootprintIndicator.calculateTickSize(
+                            candle.high() - candle.low(), targetBuckets);
+                        fpBuilder = new Footprint.Builder()
+                            .timestamp(candle.timestamp()).barIndex(i)
+                            .high(candle.high()).low(candle.low()).tickSize(candleTickSize);
+                        buildFootprintFromProfile(fpBuilder, profile, candleTickSize, candle);
+                    } else {
+                        fpBuilder = new Footprint.Builder()
+                            .timestamp(candle.timestamp()).barIndex(i)
+                            .high(candle.high()).low(candle.low()).tickSize(tickSize);
+                        buildFootprintFromProfile(fpBuilder, profile, tickSize, candle);
+                    }
+                    resultBuilder.addFootprint(fpBuilder.build());
+                }
+
+                FootprintResult result = resultBuilder.build();
+                int matchedCount = totalProfilesMatched;
+
+                if (computeGeneration.get() == generation) {
+                    SwingUtilities.invokeLater(() -> {
+                        if (computeGeneration.get() == generation) {
+                            footprintResult = result;
+                            redraw();
+                            log.debug("Footprint updated from live profiles: {} candles, {} matched",
+                                candles.size(), matchedCount);
+                            if (onDataReady != null) {
+                                onDataReady.run();
+                            }
+                        }
+                    });
+                }
+            } catch (Exception e) {
+                log.error("Failed to compute footprint from live profiles: {}", e.getMessage(), e);
+            }
+        });
+    }
+
+    /**
      * Invalidate the cached footprint result (call when config changes).
      */
     public void invalidateCache() {

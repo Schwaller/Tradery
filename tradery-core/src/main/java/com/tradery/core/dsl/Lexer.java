@@ -191,7 +191,11 @@ public class Lexer {
 
         // Fear & Greed Index functions
         Map.entry("FEAR_GREED", TokenType.FEAR_GREED_FUNC),
-        Map.entry("FEAR_GREED_AVG", TokenType.FEAR_GREED_FUNC)
+        Map.entry("FEAR_GREED_AVG", TokenType.FEAR_GREED_FUNC),
+
+        // Relative Volume functions
+        Map.entry("RVOL", TokenType.RVOL_FUNC),
+        Map.entry("RVOL_PERCENTILE", TokenType.RVOL_FUNC)
     );
 
     private final String source;

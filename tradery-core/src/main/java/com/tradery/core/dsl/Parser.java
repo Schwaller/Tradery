@@ -251,6 +251,11 @@ public class Parser {
             return fearGreedFunctionCall();
         }
 
+        // Relative Volume functions (RVOL, RVOL_PERCENTILE)
+        if (check(TokenType.RVOL_FUNC)) {
+            return rvolFunctionCall();
+        }
+
         throw new ParserException("Unexpected token '" + current().value() +
             "' at position " + current().position());
     }
@@ -747,6 +752,50 @@ public class Parser {
         }
 
         return new AstNode.FearGreedFunctionCall(func, period);
+    }
+
+    private AstNode rvolFunctionCall() {
+        String func = current().value();
+        advance();
+
+        expect(TokenType.LPAREN, "Expected '(' after " + func);
+        List<Double> params = parseNumberList();
+        expect(TokenType.RPAREN, "Expected ')' after " + func + " parameters");
+
+        if (params.isEmpty() || params.size() > 3) {
+            throw new ParserException(func + " requires 1-3 parameters (lookbackWeeks [, mode [, smooth]]), got " + params.size());
+        }
+
+        int lookbackWeeks = params.get(0).intValue();
+        if (lookbackWeeks < 1) {
+            throw new ParserException(func + " lookbackWeeks must be >= 1, got " + lookbackWeeks);
+        }
+
+        int mode = params.size() > 1 ? params.get(1).intValue() : 0;
+        if (mode < 0 || mode > 2) {
+            throw new ParserException(func + " mode must be 0 (ANY), 1 (DOW), or 2 (DAYTYPE), got " + mode);
+        }
+
+        int smooth = params.size() > 2 ? params.get(2).intValue() : 1;
+        if (smooth < 1) {
+            throw new ParserException(func + " smooth must be >= 1, got " + smooth);
+        }
+
+        AstNode result = new AstNode.RvolFunctionCall(func, lookbackWeeks, mode, smooth);
+
+        // Support lookback access [n]
+        if (check(TokenType.LBRACKET)) {
+            advance();
+            if (!check(TokenType.NUMBER)) {
+                throw new ParserException("Expected number in lookback [], got '" + current().value() + "'");
+            }
+            int barsAgo = (int) Double.parseDouble(current().value());
+            advance();
+            expect(TokenType.RBRACKET, "Expected ']' after lookback number");
+            result = new AstNode.LookbackAccess(result, barsAgo);
+        }
+
+        return result;
     }
 
     // ========== Helper Methods ==========

@@ -218,4 +218,18 @@ public sealed interface AstNode {
      * @param period Averaging period (null for FEAR_GREED)
      */
     record FearGreedFunctionCall(String func, Integer period) implements AstNode {}
+
+    /**
+     * Relative Volume function call:
+     * - RVOL(lookbackWeeks): Volume ratio vs historical same time-of-day (1.0 = normal)
+     * - RVOL(lookbackWeeks, mode): With comparison mode (0=ANY, 1=DOW, 2=DAYTYPE)
+     * - RVOL(lookbackWeeks, mode, smooth): With volume smoothing over N consecutive bars
+     * - RVOL_PERCENTILE(lookbackWeeks): Volume percentile (0-100) vs historical same time-of-day
+     *
+     * @param func Function name (RVOL, RVOL_PERCENTILE)
+     * @param lookbackWeeks Number of weeks of history for the volume profile
+     * @param mode Comparison mode: 0=ANY (default), 1=DOW (same weekday), 2=DAYTYPE (holiday/workday)
+     * @param smooth Number of consecutive bars to average (1=no smoothing)
+     */
+    record RvolFunctionCall(String func, int lookbackWeeks, int mode, int smooth) implements AstNode {}
 }

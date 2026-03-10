@@ -10,6 +10,7 @@ import com.tradery.dataservice.data.sqlite.DataStoreType;
 import com.tradery.dataservice.data.sqlite.SqliteDataStore;
 import com.tradery.dataservice.data.HyperliquidTradeCollector;
 import com.tradery.dataservice.live.LiveCandleManager;
+import com.tradery.dataservice.profile.ProfileSerializer;
 import org.msgpack.jackson.dataformat.MessagePackFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -862,6 +863,27 @@ public class PageManager implements BackfillCompletionCallback {
         }
     }
 
+    // ========== Live Profile Invalidation ==========
+
+    /**
+     * Called by LiveAggTradePersister after flushing trades and invalidating profile coverage.
+     * Retriggers all live profile pages for the affected symbol so subscribers get updated data.
+     */
+    public void onLiveProfilesInvalidated(String symbol, String marketType) {
+        for (var entry : pages.entrySet()) {
+            Page page = entry.getValue();
+            PageKey pageKey = page.getKey();
+
+            if (!pageKey.isProfile()) continue;
+            if (!pageKey.isLive()) continue;
+            if (!pageKey.symbol().equalsIgnoreCase(symbol)) continue;
+            if (page.getState() != PageState.READY) continue;
+
+            LOG.debug("Retriggering live profile page after trade flush: {}", pageKey.toKeyString());
+            loadExecutor.submit(() -> loadPage(page));
+        }
+    }
+
     // ========== BackfillCompletionCallback ==========
 
     @Override
@@ -891,8 +913,22 @@ public class PageManager implements BackfillCompletionCallback {
 
         var profiles = dataStore.getProfiles(key.symbol(), marketType, timeframe, startTime, endTime);
         page.setRecordCount(profiles.size());
+
+        // Convert ProfileRow → ProfileEntry (shared wire format with deserialized levels)
+        var entries = new java.util.ArrayList<com.tradery.core.model.ProfileEntry>(profiles.size());
+        for (var row : profiles) {
+            Map<Integer, double[]> tickMap = ProfileSerializer.deserialize(row.profileData());
+            var levels = new java.util.LinkedHashMap<String, double[]>();
+            for (var e : tickMap.entrySet()) {
+                levels.put(String.valueOf(e.getKey()), e.getValue());
+            }
+            entries.add(new com.tradery.core.model.ProfileEntry(
+                row.windowStart(), row.tickSize(),
+                row.totalBuyVolume(), row.totalSellVolume(), levels));
+        }
+
         LOG.info("loadProfiles: loaded {} {} profiles for {} [{}]", profiles.size(), timeframe, key.symbol(), marketType);
-        return msgpackMapper.writeValueAsBytes(profiles);
+        return msgpackMapper.writeValueAsBytes(entries);
     }
 
     /**

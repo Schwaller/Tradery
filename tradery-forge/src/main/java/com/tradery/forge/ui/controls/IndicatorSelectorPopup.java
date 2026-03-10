@@ -241,6 +241,7 @@ public class IndicatorSelectorPopup extends JDialog {
         content.holdingCostCumulative().setSelected(config.isHoldingCostCumulativeEnabled());
         content.holdingCostEvents().setSelected(config.isHoldingCostEventsEnabled());
         content.fearGreed().setSelected(config.isFearGreedEnabled());
+        content.rvol().setSelected(config.isRvolEnabled());
         content.spectrum().setSelected(config.isSpectrumEnabled());
         content.spectrumColorModeCombo().setSelectedItem(config.getSpectrumColorMode());
         content.spectrumBucketModeCombo().setSelectedItem(config.getSpectrumBucketMode());
@@ -446,6 +447,7 @@ public class IndicatorSelectorPopup extends JDialog {
         config.setHoldingCostCumulativeEnabled(content.holdingCostCumulative().isSelected());
         config.setHoldingCostEventsEnabled(content.holdingCostEvents().isSelected());
         config.setFearGreedEnabled(content.fearGreed().isSelected());
+        config.setRvolEnabled(content.rvol().isSelected());
         config.setSpectrumEnabled(content.spectrum().isSelected());
         config.setSpectrumColorMode((SpectrumColorMode) content.spectrumColorModeCombo().getSelectedItem());
         config.setSpectrumBucketMode((SpectrumBucketMode) content.spectrumBucketModeCombo().getSelectedItem());

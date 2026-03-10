@@ -912,6 +912,23 @@ public class OverlayManager {
         );
     }
 
+    /**
+     * Update footprint overlay with pre-fetched profile data (from page system).
+     * Bypasses the HTTP provider and feeds data directly to the overlay.
+     */
+    public void updateFootprintWithProfiles(List<FootprintProfileProvider.RawProfile> profiles) {
+        if (footprintHeatmapOverlay == null) return;
+
+        ChartConfig config = ChartConfig.getInstance();
+        if (!config.isFootprintHeatmapEnabled()) return;
+        if (currentCandles == null || currentCandles.isEmpty()) return;
+
+        footprintHeatmapOverlay.setEnabled(true);
+        footprintHeatmapOverlay.setConfig(config.getFootprintHeatmapConfig());
+        footprintHeatmapOverlay.setMarketType(currentMarketType);
+        footprintHeatmapOverlay.computeWithProfiles(profiles);
+    }
+
     public void clearFootprintHeatmapOverlay() {
         if (footprintHeatmapOverlay != null) {
             footprintHeatmapOverlay.setEnabled(false);

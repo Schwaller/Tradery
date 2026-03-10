@@ -22,6 +22,7 @@ public class IndicatorEngine {
     private static final Logger log = LoggerFactory.getLogger(IndicatorEngine.class);
 
     private List<Candle> candles;
+    private List<Candle> historicalCandles; // Extra candles before backtest window for RVOL
     private List<AggTrade> aggTrades;
     private String resolution = "1h";
     private final Map<String, Object> cache = new ConcurrentHashMap<>();
@@ -62,6 +63,39 @@ public class IndicatorEngine {
         if (data.fearGreedIndex() != null) setFearGreedData(data.fearGreedIndex());
         if (data.dailyProfiles() != null) setPrecomputedDailyProfiles(data.dailyProfiles());
         if (data.spectrumWindows() != null) setSpectrumWindows(data.spectrumWindows());
+        if (data.historicalCandles() != null) setHistoricalCandles(data.historicalCandles());
+    }
+
+    /**
+     * Set historical candles (before the backtest window) for RVOL volume profile computation.
+     */
+    public void setHistoricalCandles(List<Candle> historicalCandles) {
+        log.info("setHistoricalCandles: {} bars", historicalCandles != null ? historicalCandles.size() : 0);
+        this.historicalCandles = historicalCandles;
+        // Clear RVOL cache entries since historical data changed
+        cache.keySet().removeIf(k -> k.startsWith("rvol:"));
+    }
+
+    // ========== Relative Volume (RVOL) ==========
+
+    public RvolComputer.RvolResult getRvol(int lookbackWeeks, int mode, int smooth) {
+        return computeIfAbsent("rvol:" + lookbackWeeks + ":" + mode + ":" + smooth,
+            () -> RvolComputer.compute(candles, historicalCandles, resolution, lookbackWeeks, mode, smooth));
+    }
+
+    public double getRvolAt(int lookbackWeeks, int mode, int smooth, int barIndex) {
+        RvolComputer.RvolResult result = getRvol(lookbackWeeks, mode, smooth);
+        return barIndex < result.ratio().length ? result.ratio()[barIndex] : Double.NaN;
+    }
+
+    public double getRvolPercentileAt(int lookbackWeeks, int mode, int smooth, int barIndex) {
+        RvolComputer.RvolResult result = getRvol(lookbackWeeks, mode, smooth);
+        return barIndex < result.percentile().length ? result.percentile()[barIndex] : Double.NaN;
+    }
+
+    public RvolComputer.RvolBands getRvolBands(int lookbackWeeks, int mode) {
+        return computeIfAbsent("rvolBands:" + lookbackWeeks + ":" + mode,
+            () -> RvolComputer.computeBands(candles, historicalCandles, resolution, lookbackWeeks, mode));
     }
 
     /**

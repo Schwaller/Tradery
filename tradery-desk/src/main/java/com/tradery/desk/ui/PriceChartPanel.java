@@ -9,12 +9,20 @@ import com.tradery.charts.core.IndicatorType;
 import com.tradery.charts.indicator.*;
 import com.tradery.charts.overlay.*;
 import com.tradery.charts.util.ChartPanelFactory;
+import com.tradery.charts.overlay.FootprintProfileProvider;
 import com.tradery.core.model.Candle;
+import com.tradery.core.model.ProfileEntry;
+import com.tradery.data.page.DataPageListener;
+import com.tradery.data.page.DataPageView;
+import com.tradery.data.page.PageState;
+import com.tradery.dataclient.page.RemoteProfilePageManager;
 import com.tradery.desk.ui.charts.DeskDataProvider;
 import com.tradery.desk.ui.charts.DeskIndicatorDataProvider;
 import com.tradery.ui.ThemeHelper;
 import com.tradery.ui.controls.ChartConfig;
 import com.tradery.ui.controls.ThinSplitPane;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import javax.swing.*;
 import java.awt.*;
@@ -28,6 +36,7 @@ import java.util.List;
  * Persists chart settings via ChartConfig.
  */
 public class PriceChartPanel extends JPanel {
+    private static final Logger log = LoggerFactory.getLogger(PriceChartPanel.class);
 
     private final DeskDataProvider dataProvider;
     private final DeskIndicatorDataProvider indicatorDataProvider;
@@ -44,6 +53,13 @@ public class PriceChartPanel extends JPanel {
     private final ChartInteractionManager interactionManager;
     private final ChartLifecycleManager lifecycleManager;
 
+    // Live profile page for footprint updates
+    private RemoteProfilePageManager profilePageMgr;
+    private DataPageView<ProfileEntry> profilePage;
+    private DataPageListener<ProfileEntry> profilePageListener;
+    private String profileSymbol;
+    private String profileTimeframe;
+    private String profileMarketType;
 
     public PriceChartPanel() {
         setLayout(new BorderLayout());
@@ -131,6 +147,9 @@ public class PriceChartPanel extends JPanel {
         overlayManager.applyConfig(config, historicalCandles);
         applyIndicatorConfig(config);
 
+        // Subscribe to live profile page for footprint updates
+        subscribeProfilePage(symbol, timeframe, marketType, end - start);
+
         SwingUtilities.invokeLater(this::refreshCharts);
     }
 
@@ -181,6 +200,15 @@ public class PriceChartPanel extends JPanel {
             overlayManager.setDailyProfileProvider(
                 new com.tradery.desk.ui.charts.DeskDailyProfileProvider(client));
         }
+    }
+
+    /**
+     * Wire profile page manager for live footprint updates via the page system.
+     * When profile data is pushed by the server (after trade flush), the footprint
+     * overlay is updated without an HTTP round-trip.
+     */
+    public void setProfilePageManager(RemoteProfilePageManager mgr) {
+        this.profilePageMgr = mgr;
     }
 
     /**
@@ -409,6 +437,83 @@ public class PriceChartPanel extends JPanel {
 
         // Volume chart
         setVolumeEnabled(config.isVolumeChartEnabled());
+    }
+
+    // ===== Live Profile Page =====
+
+    /**
+     * Subscribe to a live profile page for the current chart symbol.
+     * When the server pushes updated profiles (after trade flush), the footprint
+     * overlay is recomputed with the pushed data — no HTTP round-trip.
+     */
+    private void subscribeProfilePage(String symbol, String timeframe, String marketType, long duration) {
+        if (profilePageMgr == null) return;
+
+        // Skip if already subscribed to same params
+        if (symbol != null && symbol.equals(profileSymbol)
+                && timeframe != null && timeframe.equals(profileTimeframe)
+                && marketType != null && marketType.equals(profileMarketType)) {
+            return;
+        }
+
+        // Release old subscription
+        releaseProfilePage();
+
+        profileSymbol = symbol;
+        profileTimeframe = timeframe;
+        profileMarketType = marketType != null ? marketType : "perp";
+
+        profilePageListener = new DataPageListener<>() {
+            @Override
+            public void onStateChanged(DataPageView<ProfileEntry> page, PageState oldState, PageState newState) {
+                if (newState == PageState.READY) {
+                    List<ProfileEntry> entries = page.getData();
+                    if (entries != null && !entries.isEmpty()) {
+                        feedProfilesToOverlay(entries);
+                    }
+                }
+            }
+
+            @Override
+            public void onDataChanged(DataPageView<ProfileEntry> page) {
+                List<ProfileEntry> entries = page.getData();
+                if (entries != null && !entries.isEmpty()) {
+                    log.debug("Live profile data pushed: {} entries", entries.size());
+                    feedProfilesToOverlay(entries);
+                }
+            }
+        };
+
+        profilePage = profilePageMgr.requestLive(
+            symbol, timeframe, profileMarketType, duration, profilePageListener);
+
+        log.debug("Subscribed to live profile page: {} {} {} duration={}ms", symbol, timeframe, profileMarketType, duration);
+    }
+
+    /**
+     * Release the current profile page subscription.
+     */
+    private void releaseProfilePage() {
+        if (profilePage != null && profilePageMgr != null) {
+            profilePageMgr.release(profilePage, profilePageListener);
+            profilePage = null;
+            profilePageListener = null;
+            profileSymbol = null;
+            profileTimeframe = null;
+            profileMarketType = null;
+        }
+    }
+
+    /**
+     * Convert ProfileEntry list to RawProfile list and feed to the overlay manager.
+     */
+    private void feedProfilesToOverlay(List<ProfileEntry> entries) {
+        List<FootprintProfileProvider.RawProfile> profiles = entries.stream()
+            .map(e -> new FootprintProfileProvider.RawProfile(
+                e.windowStart(), e.tickSize(),
+                e.totalBuyVolume(), e.totalSellVolume(), e.levels()))
+            .toList();
+        overlayManager.updateFootprintWithProfiles(profiles);
     }
 
     // ===== Layout =====

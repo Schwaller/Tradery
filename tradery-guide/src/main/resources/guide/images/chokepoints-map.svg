@@ -1,112 +1,315 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 560 360">
-  <rect width="560" height="360" fill="#000000" fill-opacity="0.3" rx="8"/>
-  <text x="280" y="24" fill="#cdd6f4" font-family="sans-serif" font-size="16" font-weight="bold" text-anchor="middle">Critical Global Chokepoints</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 560 420">
+  <defs>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="2" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <marker id="arr-oil" markerWidth="5" markerHeight="4" refX="4" refY="2" orient="auto">
+      <path d="M0,0 L5,2 L0,4" fill="#fab387" fill-opacity="0.5"/>
+    </marker>
+    <marker id="arr-trade" markerWidth="5" markerHeight="4" refX="4" refY="2" orient="auto">
+      <path d="M0,0 L5,2 L0,4" fill="#89b4fa" fill-opacity="0.5"/>
+    </marker>
+    <marker id="arr-chip" markerWidth="5" markerHeight="4" refX="4" refY="2" orient="auto">
+      <path d="M0,0 L5,2 L0,4" fill="#cba6f7" fill-opacity="0.5"/>
+    </marker>
+    <marker id="arr-grain" markerWidth="5" markerHeight="4" refX="4" refY="2" orient="auto">
+      <path d="M0,0 L5,2 L0,4" fill="#a6e3a1" fill-opacity="0.5"/>
+    </marker>
+    <marker id="arr-gas" markerWidth="5" markerHeight="4" refX="4" refY="2" orient="auto">
+      <path d="M0,0 L5,2 L0,4" fill="#f9e2af" fill-opacity="0.5"/>
+    </marker>
+  </defs>
 
-  <!-- Legend -->
-  <g transform="translate(30, 335)">
-    <circle cx="0" cy="0" r="4" fill="#fab387" fill-opacity="0.6"/>
-    <text x="8" y="3" fill="#7f849c" font-family="sans-serif" font-size="7">Oil/Energy</text>
-    <circle cx="80" cy="0" r="4" fill="#89b4fa" fill-opacity="0.6"/>
-    <text x="88" y="3" fill="#7f849c" font-family="sans-serif" font-size="7">Trade Routes</text>
-    <circle cx="160" cy="0" r="4" fill="#cba6f7" fill-opacity="0.6"/>
-    <text x="168" y="3" fill="#7f849c" font-family="sans-serif" font-size="7">Semiconductors</text>
+  <rect width="560" height="420" fill="#000000" fill-opacity="0.3" rx="8"/>
+  <text x="280" y="24" fill="#cdd6f4" font-family="sans-serif" font-size="16" font-weight="bold" text-anchor="middle">Global Trade Network &amp; Chokepoints</text>
+  <text x="280" y="38" fill="#585b70" font-family="sans-serif" font-size="9" text-anchor="middle">Node size = trade volume  |  Line thickness = flow volume  |  Diamonds = chokepoints</text>
+
+  <!-- ═══════════════════════════════════════════ -->
+  <!-- TRADE ROUTES (drawn first, behind nodes)    -->
+  <!-- ═══════════════════════════════════════════ -->
+
+  <!-- OIL ROUTES (orange) -->
+  <!-- Gulf → Hormuz → eastward → Malacca → China -->
+  <path d="M 329,222 Q 342,222 358,224 Q 385,240 425,262 Q 445,258 455,230 Q 462,185 458,142"
+        fill="none" stroke="#fab387" stroke-width="3" stroke-opacity="0.25" marker-end="url(#arr-oil)"/>
+  <!-- Gulf → Hormuz → Malacca → Japan/Korea -->
+  <path d="M 329,222 Q 342,222 358,224 Q 385,240 425,262 Q 455,252 480,215 Q 510,155 528,100"
+        fill="none" stroke="#fab387" stroke-width="2" stroke-opacity="0.2" marker-end="url(#arr-oil)"/>
+  <!-- Gulf → westward → Bab el-Mandeb → Suez → EU -->
+  <path d="M 301,222 Q 288,240 260,262 Q 242,252 230,192 Q 218,160 195,140"
+        fill="none" stroke="#fab387" stroke-width="2.5" stroke-opacity="0.22" marker-end="url(#arr-oil)"/>
+  <!-- Gulf → Hormuz → India -->
+  <path d="M 329,222 Q 342,222 358,224 Q 370,222 385,212"
+        fill="none" stroke="#fab387" stroke-width="1.5" stroke-opacity="0.18" marker-end="url(#arr-oil)"/>
+  <!-- US oil exports → EU -->
+  <path d="M 92,148 Q 130,135 160,130 Q 175,128 185,128"
+        fill="none" stroke="#fab387" stroke-width="1.2" stroke-opacity="0.15" marker-end="url(#arr-oil)"/>
+
+  <!-- NATURAL GAS ROUTES (yellow) -->
+  <!-- Russia → EU (pipeline — direct, not through Bosphorus) -->
+  <path d="M 294,62 Q 265,80 240,100 Q 215,115 198,122"
+        fill="none" stroke="#f9e2af" stroke-width="2.5" stroke-opacity="0.25" marker-end="url(#arr-gas)"/>
+  <!-- Qatar/Gulf → Hormuz → LNG eastward to SE Asia -->
+  <path d="M 329,222 Q 342,222 358,224 Q 390,245 425,262 Q 438,268 448,272"
+        fill="none" stroke="#f9e2af" stroke-width="1.5" stroke-opacity="0.18" marker-end="url(#arr-gas)"/>
+  <!-- Australia LNG → China -->
+  <path d="M 498,302 Q 488,265 478,230 Q 472,195 462,155"
+        fill="none" stroke="#f9e2af" stroke-width="1.2" stroke-opacity="0.15" marker-end="url(#arr-gas)"/>
+
+  <!-- TRADE/GOODS ROUTES (blue) -->
+  <!-- China → Malacca → Bab el-Mandeb → Suez → EU  (largest container route) -->
+  <path d="M 445,140 Q 438,195 428,240 Q 426,255 425,262 Q 370,280 305,275 Q 272,270 260,262 Q 245,245 230,192 Q 220,162 198,142"
+        fill="none" stroke="#89b4fa" stroke-width="3" stroke-opacity="0.2" marker-end="url(#arr-trade)"/>
+  <!-- China → Taiwan Strait → Japan/Korea -->
+  <path d="M 465,118 Q 478,118 485,125 Q 490,138 488,152 Q 502,130 518,105 Q 524,95 528,88"
+        fill="none" stroke="#89b4fa" stroke-width="2" stroke-opacity="0.18" marker-end="url(#arr-trade)"/>
+  <!-- US → Panama → Pacific → SE Asia -->
+  <path d="M 82,168 Q 95,200 105,225 Q 108,233 108,238 Q 150,290 300,295 Q 400,288 440,275"
+        fill="none" stroke="#89b4fa" stroke-width="1.5" stroke-opacity="0.15" marker-end="url(#arr-trade)"/>
+  <!-- EU → Suez → India -->
+  <path d="M 200,140 Q 215,162 230,192 Q 245,230 260,262 Q 290,270 340,260 Q 365,240 385,218"
+        fill="none" stroke="#89b4fa" stroke-width="1.2" stroke-opacity="0.13" marker-end="url(#arr-trade)"/>
+  <!-- SE Asia → Malacca → India -->
+  <path d="M 438,275 Q 430,270 425,262 Q 415,248 400,218"
+        fill="none" stroke="#89b4fa" stroke-width="1" stroke-opacity="0.12" marker-end="url(#arr-trade)"/>
+  <!-- US ↔ EU transatlantic -->
+  <path d="M 95,142 Q 130,118 160,115 Q 175,115 185,118"
+        fill="none" stroke="#89b4fa" stroke-width="2" stroke-opacity="0.15" marker-end="url(#arr-trade)"/>
+
+  <!-- SEMICONDUCTOR ROUTES (purple) -->
+  <!-- Taiwan → Malacca → Suez → EU (chips to Europe) -->
+  <path d="M 492,185 Q 470,220 440,250 Q 430,258 425,262 Q 365,280 300,272 Q 268,268 260,262 Q 245,242 230,192 Q 218,160 200,142"
+        fill="none" stroke="#cba6f7" stroke-width="2" stroke-opacity="0.2" marker-end="url(#arr-chip)"/>
+  <!-- Taiwan → Japan/Korea -->
+  <path d="M 498,175 Q 508,152 518,128 Q 524,108 528,95"
+        fill="none" stroke="#cba6f7" stroke-width="1.5" stroke-opacity="0.18" marker-end="url(#arr-chip)"/>
+  <!-- Taiwan → US (via Pacific, southern arc) -->
+  <path d="M 488,188 Q 400,300 280,315 Q 170,315 110,270 Q 90,248 85,200 Q 82,178 80,168"
+        fill="none" stroke="#cba6f7" stroke-width="1.8" stroke-opacity="0.15" marker-end="url(#arr-chip)"/>
+
+  <!-- GRAIN ROUTES (green) -->
+  <!-- Ukraine → Bosphorus → Mediterranean → Africa -->
+  <path d="M 260,86 Q 255,92 252,102 Q 240,140 225,180 Q 210,230 195,268"
+        fill="none" stroke="#a6e3a1" stroke-width="1.5" stroke-opacity="0.2" marker-end="url(#arr-grain)"/>
+  <!-- US grain → Panama → World -->
+  <path d="M 78,168 Q 90,200 100,225 Q 105,233 108,238"
+        fill="none" stroke="#a6e3a1" stroke-width="1.2" stroke-opacity="0.15" marker-end="url(#arr-grain)"/>
+
+  <!-- ═══════════════════════════════════════════ -->
+  <!-- CHOKEPOINTS (diamonds, drawn above routes)  -->
+  <!-- ═══════════════════════════════════════════ -->
+
+  <!-- Strait of Hormuz — most critical -->
+  <g transform="translate(358, 224)" filter="url(#glow)">
+    <rect x="-10" y="-10" width="20" height="20" fill="#fab387" fill-opacity="0.15" stroke="#fab387" stroke-width="1.5" stroke-opacity="0.7" rx="3" transform="rotate(45)"/>
+    <text x="0" y="-16" fill="#fab387" font-family="sans-serif" font-size="7" font-weight="bold" text-anchor="middle">HORMUZ</text>
+    <text x="16" y="5" fill="#fab387" font-family="sans-serif" font-size="6" text-anchor="start">20% global oil</text>
   </g>
 
-  <!-- Continental blocks -->
-  <!-- Americas -->
-  <rect x="20" y="55" width="130" height="220" fill="#89b4fa" fill-opacity="0.04" rx="8" stroke="#89b4fa" stroke-width="0.5" stroke-opacity="0.15"/>
-  <text x="85" y="72" fill="#585b70" font-family="sans-serif" font-size="9" text-anchor="middle">Americas</text>
-  <text x="55" y="120" fill="#585b70" font-family="sans-serif" font-size="7" text-anchor="middle">US Shale</text>
-  <text x="55" y="132" fill="#585b70" font-family="sans-serif" font-size="7" text-anchor="middle">Oil &amp; Gas</text>
-  <text x="55" y="195" fill="#585b70" font-family="sans-serif" font-size="7" text-anchor="middle">Grain Belt</text>
-  <text x="55" y="207" fill="#585b70" font-family="sans-serif" font-size="7" text-anchor="middle">Corn, Soy</text>
-  <text x="105" y="245" fill="#585b70" font-family="sans-serif" font-size="7" text-anchor="middle">Chile/Arg</text>
-  <text x="105" y="257" fill="#585b70" font-family="sans-serif" font-size="7" text-anchor="middle">Lithium</text>
-
-  <!-- Europe-ME-Africa -->
-  <rect x="175" y="55" width="175" height="260" fill="#fab387" fill-opacity="0.04" rx="8" stroke="#fab387" stroke-width="0.5" stroke-opacity="0.15"/>
-  <text x="262" y="72" fill="#585b70" font-family="sans-serif" font-size="9" text-anchor="middle">Europe &amp; Middle East</text>
-  <text x="205" y="105" fill="#585b70" font-family="sans-serif" font-size="7" text-anchor="middle">EU</text>
-  <text x="205" y="117" fill="#585b70" font-family="sans-serif" font-size="7" text-anchor="middle">Consumer</text>
-  <text x="310" y="105" fill="#585b70" font-family="sans-serif" font-size="7" text-anchor="middle">Russia</text>
-  <text x="310" y="117" fill="#585b70" font-family="sans-serif" font-size="7" text-anchor="middle">Gas &amp; Oil</text>
-  <text x="295" y="190" fill="#585b70" font-family="sans-serif" font-size="7" text-anchor="middle">Gulf States</text>
-  <text x="295" y="202" fill="#585b70" font-family="sans-serif" font-size="7" text-anchor="middle">~30% Oil</text>
-  <text x="225" y="265" fill="#585b70" font-family="sans-serif" font-size="7" text-anchor="middle">Ukraine — Grain</text>
-  <text x="295" y="290" fill="#585b70" font-family="sans-serif" font-size="7" text-anchor="middle">Africa — Rare Earths</text>
-
-  <!-- Asia-Pacific -->
-  <rect x="375" y="55" width="165" height="220" fill="#cba6f7" fill-opacity="0.04" rx="8" stroke="#cba6f7" stroke-width="0.5" stroke-opacity="0.15"/>
-  <text x="457" y="72" fill="#585b70" font-family="sans-serif" font-size="9" text-anchor="middle">Asia-Pacific</text>
-  <text x="425" y="110" fill="#585b70" font-family="sans-serif" font-size="7" text-anchor="middle">China</text>
-  <text x="425" y="122" fill="#585b70" font-family="sans-serif" font-size="7" text-anchor="middle">Manufacturing</text>
-  <text x="505" y="110" fill="#585b70" font-family="sans-serif" font-size="7" text-anchor="middle">Japan/Korea</text>
-  <text x="505" y="122" fill="#585b70" font-family="sans-serif" font-size="7" text-anchor="middle">Tech</text>
-  <text x="470" y="165" fill="#585b70" font-family="sans-serif" font-size="7" text-anchor="middle">Taiwan</text>
-  <text x="470" y="177" fill="#585b70" font-family="sans-serif" font-size="7" text-anchor="middle">~60% Chips</text>
-  <text x="440" y="235" fill="#585b70" font-family="sans-serif" font-size="7" text-anchor="middle">Australia</text>
-  <text x="440" y="247" fill="#585b70" font-family="sans-serif" font-size="7" text-anchor="middle">Iron, LNG</text>
-
-  <!-- Trade flow lines (dashed) -->
-  <!-- Americas to Europe -->
-  <line x1="150" y1="150" x2="175" y2="150" stroke="#89b4fa" stroke-width="1" stroke-dasharray="4,3" stroke-opacity="0.3"/>
-  <!-- Europe to Asia -->
-  <line x1="350" y1="140" x2="375" y2="140" stroke="#89b4fa" stroke-width="1" stroke-dasharray="4,3" stroke-opacity="0.3"/>
-  <!-- Oil route: Gulf to Asia -->
-  <path d="M 320,200 Q 370,220 385,170" fill="none" stroke="#fab387" stroke-width="1" stroke-dasharray="4,3" stroke-opacity="0.3"/>
-  <!-- Oil route: Gulf to Europe -->
-  <path d="M 270,190 Q 240,160 210,140" fill="none" stroke="#fab387" stroke-width="1" stroke-dasharray="4,3" stroke-opacity="0.3"/>
-
-  <!-- Chokepoint circles -->
-  <!-- 1. Strait of Hormuz -->
-  <g transform="translate(330, 210)">
-    <circle cx="0" cy="0" r="14" fill="#fab387" fill-opacity="0.12" stroke="#fab387" stroke-width="1.5" stroke-opacity="0.6"/>
-    <text x="0" y="-2" fill="#fab387" font-family="sans-serif" font-size="6" font-weight="bold" text-anchor="middle">Hormuz</text>
-    <text x="0" y="6" fill="#fab387" font-family="sans-serif" font-size="5.5" text-anchor="middle">20% oil</text>
+  <!-- Suez Canal — above and left of Bab el-Mandeb -->
+  <g transform="translate(230, 192)">
+    <rect x="-9" y="-9" width="18" height="18" fill="#89b4fa" fill-opacity="0.15" stroke="#89b4fa" stroke-width="1.5" stroke-opacity="0.7" rx="3" transform="rotate(45)"/>
+    <text x="-16" y="-6" fill="#89b4fa" font-family="sans-serif" font-size="7" font-weight="bold" text-anchor="end">SUEZ</text>
+    <text x="-16" y="4" fill="#89b4fa" font-family="sans-serif" font-size="6" text-anchor="end">12% trade</text>
   </g>
 
-  <!-- 2. Suez Canal -->
-  <g transform="translate(265, 230)">
-    <circle cx="0" cy="0" r="14" fill="#89b4fa" fill-opacity="0.12" stroke="#89b4fa" stroke-width="1.5" stroke-opacity="0.6"/>
-    <text x="0" y="-2" fill="#89b4fa" font-family="sans-serif" font-size="6" font-weight="bold" text-anchor="middle">Suez</text>
-    <text x="0" y="6" fill="#89b4fa" font-family="sans-serif" font-size="5.5" text-anchor="middle">12% trade</text>
+  <!-- Bab el-Mandeb — well below Suez -->
+  <g transform="translate(260, 262)">
+    <rect x="-8" y="-8" width="16" height="16" fill="#fab387" fill-opacity="0.15" stroke="#fab387" stroke-width="1.2" stroke-opacity="0.6" rx="2" transform="rotate(45)"/>
+    <text x="15" y="-2" fill="#fab387" font-family="sans-serif" font-size="6" font-weight="bold" text-anchor="start">BAB EL-MANDEB</text>
+    <text x="15" y="8" fill="#fab387" font-family="sans-serif" font-size="5.5" text-anchor="start">7% oil, Suez gateway</text>
   </g>
 
-  <!-- 3. Bab el-Mandeb -->
-  <g transform="translate(290, 260)">
-    <circle cx="0" cy="0" r="13" fill="#fab387" fill-opacity="0.12" stroke="#fab387" stroke-width="1.5" stroke-opacity="0.6"/>
-    <text x="0" y="-2" fill="#fab387" font-family="sans-serif" font-size="5.5" font-weight="bold" text-anchor="middle">Bab el-</text>
-    <text x="0" y="6" fill="#fab387" font-family="sans-serif" font-size="5.5" text-anchor="middle">Mandeb</text>
+  <!-- Strait of Malacca — clearly separated from India -->
+  <g transform="translate(425, 262)" filter="url(#glow)">
+    <rect x="-9" y="-9" width="18" height="18" fill="#89b4fa" fill-opacity="0.15" stroke="#89b4fa" stroke-width="1.5" stroke-opacity="0.7" rx="3" transform="rotate(45)"/>
+    <text x="0" y="-15" fill="#89b4fa" font-family="sans-serif" font-size="7" font-weight="bold" text-anchor="middle">MALACCA</text>
+    <text x="0" y="20" fill="#89b4fa" font-family="sans-serif" font-size="6" text-anchor="middle">25% global trade</text>
   </g>
 
-  <!-- 4. Bosphorus -->
-  <g transform="translate(275, 140)">
-    <circle cx="0" cy="0" r="12" fill="#fab387" fill-opacity="0.12" stroke="#fab387" stroke-width="1.5" stroke-opacity="0.6"/>
-    <text x="0" y="-2" fill="#fab387" font-family="sans-serif" font-size="5.5" font-weight="bold" text-anchor="middle">Bosphr.</text>
-    <text x="0" y="6" fill="#fab387" font-family="sans-serif" font-size="5.5" text-anchor="middle">3% oil</text>
+  <!-- Taiwan Strait — labels go left to avoid right-edge clipping -->
+  <g transform="translate(488, 152)" filter="url(#glow)">
+    <rect x="-9" y="-9" width="18" height="18" fill="#cba6f7" fill-opacity="0.18" stroke="#cba6f7" stroke-width="1.5" stroke-opacity="0.8" rx="3" transform="rotate(45)"/>
+    <text x="-16" y="-4" fill="#cba6f7" font-family="sans-serif" font-size="7" font-weight="bold" text-anchor="end">TAIWAN</text>
+    <text x="-16" y="5" fill="#cba6f7" font-family="sans-serif" font-size="7" font-weight="bold" text-anchor="end">STRAIT</text>
+    <text x="-16" y="14" fill="#cba6f7" font-family="sans-serif" font-size="6" text-anchor="end">60% chips</text>
   </g>
 
-  <!-- 5. Strait of Malacca -->
-  <g transform="translate(395, 205)">
-    <circle cx="0" cy="0" r="14" fill="#89b4fa" fill-opacity="0.12" stroke="#89b4fa" stroke-width="1.5" stroke-opacity="0.6"/>
-    <text x="0" y="-2" fill="#89b4fa" font-family="sans-serif" font-size="6" font-weight="bold" text-anchor="middle">Malacca</text>
-    <text x="0" y="6" fill="#89b4fa" font-family="sans-serif" font-size="5.5" text-anchor="middle">25% trade</text>
+  <!-- Panama Canal — labels go left -->
+  <g transform="translate(108, 238)">
+    <rect x="-8" y="-8" width="16" height="16" fill="#89b4fa" fill-opacity="0.15" stroke="#89b4fa" stroke-width="1.2" stroke-opacity="0.6" rx="2" transform="rotate(45)"/>
+    <text x="-14" y="-4" fill="#89b4fa" font-family="sans-serif" font-size="6" font-weight="bold" text-anchor="end">PANAMA</text>
+    <text x="-14" y="6" fill="#89b4fa" font-family="sans-serif" font-size="5.5" text-anchor="end">5% trade</text>
   </g>
 
-  <!-- 6. Taiwan Strait -->
-  <g transform="translate(445, 150)">
-    <circle cx="0" cy="0" r="14" fill="#cba6f7" fill-opacity="0.12" stroke="#cba6f7" stroke-width="1.5" stroke-opacity="0.6"/>
-    <text x="0" y="-2" fill="#cba6f7" font-family="sans-serif" font-size="6" font-weight="bold" text-anchor="middle">Taiwan</text>
-    <text x="0" y="6" fill="#cba6f7" font-family="sans-serif" font-size="5.5" text-anchor="middle">60% chips</text>
+  <!-- Bosphorus — well above EU, labels go right -->
+  <g transform="translate(252, 102)">
+    <rect x="-8" y="-8" width="16" height="16" fill="#a6e3a1" fill-opacity="0.15" stroke="#a6e3a1" stroke-width="1.2" stroke-opacity="0.6" rx="2" transform="rotate(45)"/>
+    <text x="14" y="-2" fill="#a6e3a1" font-family="sans-serif" font-size="6" font-weight="bold" text-anchor="start">BOSPHORUS</text>
+    <text x="14" y="8" fill="#a6e3a1" font-family="sans-serif" font-size="5.5" text-anchor="start">Grain + 3% oil</text>
   </g>
 
-  <!-- 7. Panama Canal -->
-  <g transform="translate(140, 215)">
-    <circle cx="0" cy="0" r="13" fill="#89b4fa" fill-opacity="0.12" stroke="#89b4fa" stroke-width="1.5" stroke-opacity="0.6"/>
-    <text x="0" y="-2" fill="#89b4fa" font-family="sans-serif" font-size="6" font-weight="bold" text-anchor="middle">Panama</text>
-    <text x="0" y="6" fill="#89b4fa" font-family="sans-serif" font-size="5.5" text-anchor="middle">5% trade</text>
+  <!-- ═══════════════════════════════════════════ -->
+  <!-- ECONOMIC NODES (circles sized by trade vol) -->
+  <!-- ═══════════════════════════════════════════ -->
+
+  <!-- United States — r=20 ($5.6T trade) -->
+  <g transform="translate(75, 148)">
+    <circle cx="0" cy="0" r="20" fill="#89b4fa" fill-opacity="0.08" stroke="#89b4fa" stroke-width="1" stroke-opacity="0.4"/>
+    <path d="M 0,-20 A 20,20 0 0,1 19,6" fill="none" stroke="#fab387" stroke-width="2.5" stroke-opacity="0.5"/>
+    <path d="M 19,6 A 20,20 0 0,1 -17,10 A 20,20 0 0,1 0,-20" fill="none" stroke="#89b4fa" stroke-width="2.5" stroke-opacity="0.5"/>
+    <text x="0" y="-3" fill="#cdd6f4" font-family="sans-serif" font-size="8" font-weight="bold" text-anchor="middle">US</text>
+    <text x="0" y="7" fill="#585b70" font-family="sans-serif" font-size="6" text-anchor="middle">$5.6T</text>
+    <text x="0" y="34" fill="#585b70" font-family="sans-serif" font-size="5.5" text-anchor="middle" font-style="italic">Oil, Grain, Tech</text>
   </g>
 
-  <!-- Bottom summary -->
-  <text x="280" y="345" fill="#7f849c" font-family="sans-serif" font-size="8" text-anchor="middle">A single chokepoint disruption can cascade through global energy, trade, and financial markets within hours</text>
+  <!-- European Union — r=19 ($5.8T trade) -->
+  <g transform="translate(190, 128)">
+    <circle cx="0" cy="0" r="19" fill="#89b4fa" fill-opacity="0.08" stroke="#89b4fa" stroke-width="1" stroke-opacity="0.4"/>
+    <path d="M 0,-19 A 19,19 0 1,1 0,19 A 19,19 0 1,1 0,-19" fill="none" stroke="#89b4fa" stroke-width="2.5" stroke-opacity="0.5"/>
+    <text x="0" y="-3" fill="#cdd6f4" font-family="sans-serif" font-size="8" font-weight="bold" text-anchor="middle">EU</text>
+    <text x="0" y="7" fill="#585b70" font-family="sans-serif" font-size="6" text-anchor="middle">$5.8T</text>
+    <text x="0" y="33" fill="#585b70" font-family="sans-serif" font-size="5.5" text-anchor="middle" font-style="italic">Imports energy, chips</text>
+  </g>
+
+  <!-- Russia — r=11 ($0.8T trade) -->
+  <g transform="translate(305, 58)">
+    <circle cx="0" cy="0" r="11" fill="#f9e2af" fill-opacity="0.08" stroke="#f9e2af" stroke-width="1" stroke-opacity="0.4"/>
+    <path d="M 0,-11 A 11,11 0 1,1 0,11 A 11,11 0 1,1 0,-11" fill="none" stroke="#fab387" stroke-width="2.5" stroke-opacity="0.5"/>
+    <text x="0" y="-1" fill="#cdd6f4" font-family="sans-serif" font-size="7" font-weight="bold" text-anchor="middle">RU</text>
+    <text x="0" y="8" fill="#585b70" font-family="sans-serif" font-size="5.5" text-anchor="middle">$0.8T</text>
+    <text x="18" y="-5" fill="#585b70" font-family="sans-serif" font-size="5.5" text-anchor="start" font-style="italic">Gas, Oil, Grain</text>
+  </g>
+
+  <!-- Ukraine (small, grain exporter) -->
+  <g transform="translate(262, 82)">
+    <circle cx="0" cy="0" r="6" fill="#a6e3a1" fill-opacity="0.08" stroke="#a6e3a1" stroke-width="0.8" stroke-opacity="0.4"/>
+    <text x="0" y="2" fill="#a6e3a1" font-family="sans-serif" font-size="5" font-weight="bold" text-anchor="middle">UA</text>
+    <text x="-10" y="-4" fill="#585b70" font-family="sans-serif" font-size="5" text-anchor="end" font-style="italic">Grain</text>
+  </g>
+
+  <!-- Gulf States — r=14 (30% oil exports) -->
+  <g transform="translate(315, 222)">
+    <circle cx="0" cy="0" r="14" fill="#fab387" fill-opacity="0.1" stroke="#fab387" stroke-width="1" stroke-opacity="0.4"/>
+    <path d="M 0,-14 A 14,14 0 1,1 0,14 A 14,14 0 1,1 0,-14" fill="none" stroke="#fab387" stroke-width="2.5" stroke-opacity="0.6"/>
+    <text x="0" y="-2" fill="#cdd6f4" font-family="sans-serif" font-size="7" font-weight="bold" text-anchor="middle">Gulf</text>
+    <text x="0" y="7" fill="#585b70" font-family="sans-serif" font-size="5.5" text-anchor="middle">30% oil</text>
+  </g>
+
+  <!-- China — r=21 ($6.3T trade) -->
+  <g transform="translate(455, 118)">
+    <circle cx="0" cy="0" r="21" fill="#f38ba8" fill-opacity="0.06" stroke="#f38ba8" stroke-width="1" stroke-opacity="0.35"/>
+    <path d="M 0,-21 A 21,21 0 0,1 20,7" fill="none" stroke="#89b4fa" stroke-width="2.5" stroke-opacity="0.4"/>
+    <path d="M 20,7 A 21,21 0 0,1 -10,18" fill="none" stroke="#fab387" stroke-width="2.5" stroke-opacity="0.4"/>
+    <path d="M -10,18 A 21,21 0 0,1 0,-21" fill="none" stroke="#89b4fa" stroke-width="2.5" stroke-opacity="0.4"/>
+    <text x="0" y="-3" fill="#cdd6f4" font-family="sans-serif" font-size="8" font-weight="bold" text-anchor="middle">China</text>
+    <text x="0" y="7" fill="#585b70" font-family="sans-serif" font-size="6" text-anchor="middle">$6.3T</text>
+    <text x="-26" y="-10" fill="#585b70" font-family="sans-serif" font-size="5.5" text-anchor="end" font-style="italic">Mfg hub</text>
+    <text x="-26" y="-2" fill="#585b70" font-family="sans-serif" font-size="5.5" text-anchor="end" font-style="italic">imports oil</text>
+  </g>
+
+  <!-- Japan / Korea — r=14 ($2.8T trade) -->
+  <g transform="translate(528, 85)">
+    <circle cx="0" cy="0" r="14" fill="#cba6f7" fill-opacity="0.08" stroke="#cba6f7" stroke-width="1" stroke-opacity="0.4"/>
+    <path d="M 0,-14 A 14,14 0 0,1 14,0" fill="none" stroke="#cba6f7" stroke-width="2.5" stroke-opacity="0.5"/>
+    <path d="M 14,0 A 14,14 0 0,1 0,14 A 14,14 0 0,1 -14,0 A 14,14 0 0,1 0,-14" fill="none" stroke="#89b4fa" stroke-width="2.5" stroke-opacity="0.4"/>
+    <text x="0" y="-2" fill="#cdd6f4" font-family="sans-serif" font-size="7" font-weight="bold" text-anchor="middle">JP/KR</text>
+    <text x="0" y="7" fill="#585b70" font-family="sans-serif" font-size="5.5" text-anchor="middle">$2.8T</text>
+    <text x="-18" y="-12" fill="#585b70" font-family="sans-serif" font-size="5.5" text-anchor="end" font-style="italic">Tech, imports energy</text>
+  </g>
+
+  <!-- India — r=13 ($1.2T trade) — separated from Malacca -->
+  <g transform="translate(392, 205)">
+    <circle cx="0" cy="0" r="13" fill="#89b4fa" fill-opacity="0.06" stroke="#89b4fa" stroke-width="1" stroke-opacity="0.35"/>
+    <path d="M 0,-13 A 13,13 0 1,1 0,13 A 13,13 0 1,1 0,-13" fill="none" stroke="#89b4fa" stroke-width="2" stroke-opacity="0.4"/>
+    <text x="0" y="-1" fill="#cdd6f4" font-family="sans-serif" font-size="7" font-weight="bold" text-anchor="middle">India</text>
+    <text x="0" y="8" fill="#585b70" font-family="sans-serif" font-size="5.5" text-anchor="middle">$1.2T</text>
+  </g>
+
+  <!-- SE Asia — r=10 -->
+  <g transform="translate(448, 278)">
+    <circle cx="0" cy="0" r="10" fill="#89b4fa" fill-opacity="0.06" stroke="#89b4fa" stroke-width="0.8" stroke-opacity="0.3"/>
+    <path d="M 0,-10 A 10,10 0 1,1 0,10 A 10,10 0 1,1 0,-10" fill="none" stroke="#89b4fa" stroke-width="1.5" stroke-opacity="0.35"/>
+    <text x="0" y="-1" fill="#cdd6f4" font-family="sans-serif" font-size="6" font-weight="bold" text-anchor="middle">SEA</text>
+    <text x="0" y="7" fill="#585b70" font-family="sans-serif" font-size="5" text-anchor="middle">Mfg</text>
+  </g>
+
+  <!-- Australia — r=9 -->
+  <g transform="translate(500, 310)">
+    <circle cx="0" cy="0" r="9" fill="#f9e2af" fill-opacity="0.06" stroke="#f9e2af" stroke-width="0.8" stroke-opacity="0.3"/>
+    <path d="M 0,-9 A 9,9 0 1,1 0,9 A 9,9 0 1,1 0,-9" fill="none" stroke="#fab387" stroke-width="2" stroke-opacity="0.4"/>
+    <text x="0" y="-1" fill="#cdd6f4" font-family="sans-serif" font-size="6" font-weight="bold" text-anchor="middle">AU</text>
+    <text x="0" y="7" fill="#585b70" font-family="sans-serif" font-size="5" text-anchor="middle">LNG</text>
+  </g>
+
+  <!-- Africa — r=8 -->
+  <g transform="translate(190, 280)">
+    <circle cx="0" cy="0" r="8" fill="#a6e3a1" fill-opacity="0.06" stroke="#a6e3a1" stroke-width="0.8" stroke-opacity="0.3"/>
+    <path d="M 0,-8 A 8,8 0 1,1 0,8 A 8,8 0 1,1 0,-8" fill="none" stroke="#a6e3a1" stroke-width="1.5" stroke-opacity="0.35"/>
+    <text x="0" y="-1" fill="#cdd6f4" font-family="sans-serif" font-size="6" font-weight="bold" text-anchor="middle">AF</text>
+    <text x="0" y="7" fill="#585b70" font-family="sans-serif" font-size="5" text-anchor="middle">Rare E.</text>
+  </g>
+
+  <!-- S. America — r=9 -->
+  <g transform="translate(78, 295)">
+    <circle cx="0" cy="0" r="9" fill="#a6e3a1" fill-opacity="0.06" stroke="#a6e3a1" stroke-width="0.8" stroke-opacity="0.3"/>
+    <path d="M 0,-9 A 9,9 0 1,1 0,9 A 9,9 0 1,1 0,-9" fill="none" stroke="#a6e3a1" stroke-width="1.5" stroke-opacity="0.35"/>
+    <text x="0" y="-1" fill="#cdd6f4" font-family="sans-serif" font-size="6" font-weight="bold" text-anchor="middle">S.Am</text>
+    <text x="0" y="7" fill="#585b70" font-family="sans-serif" font-size="5" text-anchor="middle">Li, Grain</text>
+  </g>
+
+  <!-- Taiwan (small but critical) -->
+  <g transform="translate(498, 180)">
+    <circle cx="0" cy="0" r="7" fill="#cba6f7" fill-opacity="0.12" stroke="#cba6f7" stroke-width="1.2" stroke-opacity="0.6"/>
+    <text x="0" y="2" fill="#cba6f7" font-family="sans-serif" font-size="5.5" font-weight="bold" text-anchor="middle">TW</text>
+    <text x="8" y="16" fill="#cba6f7" font-family="sans-serif" font-size="5" text-anchor="start">TSMC 90%</text>
+    <text x="8" y="24" fill="#cba6f7" font-family="sans-serif" font-size="5" text-anchor="start">adv. chips</text>
+  </g>
+
+  <!-- ═══════════════════════════════════════════ -->
+  <!-- LEGEND                                       -->
+  <!-- ═══════════════════════════════════════════ -->
+
+  <g transform="translate(18, 340)">
+    <text x="0" y="0" fill="#7f849c" font-family="sans-serif" font-size="7" font-weight="bold">Node rings:</text>
+    <circle cx="60" cy="-3" r="5" fill="none" stroke="#fab387" stroke-width="2" stroke-opacity="0.6"/>
+    <text x="69" y="0" fill="#7f849c" font-family="sans-serif" font-size="6.5">Producer</text>
+    <circle cx="110" cy="-3" r="5" fill="none" stroke="#89b4fa" stroke-width="2" stroke-opacity="0.6"/>
+    <text x="119" y="0" fill="#7f849c" font-family="sans-serif" font-size="6.5">Consumer</text>
+  </g>
+
+  <g transform="translate(18, 358)">
+    <text x="0" y="0" fill="#7f849c" font-family="sans-serif" font-size="7" font-weight="bold">Flows:</text>
+    <line x1="40" y1="-2" x2="60" y2="-2" stroke="#fab387" stroke-width="2.5" stroke-opacity="0.4"/>
+    <text x="64" y="1" fill="#fab387" font-family="sans-serif" font-size="6.5">Oil</text>
+    <line x1="85" y1="-2" x2="105" y2="-2" stroke="#f9e2af" stroke-width="2" stroke-opacity="0.4"/>
+    <text x="109" y="1" fill="#f9e2af" font-family="sans-serif" font-size="6.5">Gas</text>
+    <line x1="130" y1="-2" x2="150" y2="-2" stroke="#89b4fa" stroke-width="2" stroke-opacity="0.4"/>
+    <text x="154" y="1" fill="#89b4fa" font-family="sans-serif" font-size="6.5">Trade</text>
+    <line x1="180" y1="-2" x2="200" y2="-2" stroke="#cba6f7" stroke-width="2" stroke-opacity="0.4"/>
+    <text x="204" y="1" fill="#cba6f7" font-family="sans-serif" font-size="6.5">Chips</text>
+    <line x1="230" y1="-2" x2="250" y2="-2" stroke="#a6e3a1" stroke-width="1.5" stroke-opacity="0.4"/>
+    <text x="254" y="1" fill="#a6e3a1" font-family="sans-serif" font-size="6.5">Grain</text>
+  </g>
+
+  <g transform="translate(18, 376)">
+    <text x="0" y="0" fill="#7f849c" font-family="sans-serif" font-size="7" font-weight="bold">Chokepoints:</text>
+    <rect x="72" y="-6" width="8" height="8" fill="#585b70" fill-opacity="0.15" stroke="#585b70" stroke-width="0.8" stroke-opacity="0.5" rx="1.5" transform="rotate(45, 76, -2)"/>
+    <text x="86" y="1" fill="#7f849c" font-family="sans-serif" font-size="6.5">Narrow waterways where trade is funneled — single points of failure</text>
+  </g>
+
+  <g transform="translate(18, 396)">
+    <text x="0" y="0" fill="#585b70" font-family="sans-serif" font-size="6.5">Thicker lines = higher trade volume. ~80% of global trade moves by sea through these routes.</text>
+  </g>
+
+  <!-- Vulnerability callout -->
+  <g transform="translate(340, 340)">
+    <rect x="0" y="-12" width="200" height="68" fill="#f38ba8" fill-opacity="0.04" rx="5" stroke="#f38ba8" stroke-width="0.5" stroke-opacity="0.2"/>
+    <text x="100" y="2" fill="#f38ba8" font-family="sans-serif" font-size="7" font-weight="bold" text-anchor="middle">Highest-Risk Chokepoints</text>
+    <text x="100" y="14" fill="#585b70" font-family="sans-serif" font-size="6" text-anchor="middle">1. Hormuz — 20% oil, no alternative route</text>
+    <text x="100" y="24" fill="#585b70" font-family="sans-serif" font-size="6" text-anchor="middle">2. Taiwan Strait — 90% adv. chips, irreplaceable</text>
+    <text x="100" y="34" fill="#585b70" font-family="sans-serif" font-size="6" text-anchor="middle">3. Malacca — 25% trade, Asia energy lifeline</text>
+    <text x="100" y="44" fill="#585b70" font-family="sans-serif" font-size="6" text-anchor="middle">4. Suez/Bab el-Mandeb — EU-Asia connector</text>
+  </g>
 </svg>

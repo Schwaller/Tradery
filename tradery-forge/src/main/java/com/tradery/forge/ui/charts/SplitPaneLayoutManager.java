@@ -84,8 +84,15 @@ public class SplitPaneLayoutManager {
             splitPane.setTopComponent(topPanel);
             splitPane.setBottomComponent((Component) bottomComponent);
 
-            // Set resize weight - top component gets proportional share
-            double weight = 1.0 / (visibleCharts.size() - i);
+            // Set resize weight - price chart (i=0) gets more space, rest shares equally
+            double weight;
+            if (i == 0) {
+                // Price chart gets ~45% of total space
+                weight = 0.45;
+            } else {
+                // Remaining charts share equally among themselves
+                weight = 1.0 / (visibleCharts.size() - i);
+            }
             splitPane.setResizeWeight(weight);
 
             // Track for position persistence - also store top chart ID for matching

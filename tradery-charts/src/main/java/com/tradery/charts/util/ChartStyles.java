@@ -4,6 +4,7 @@ import com.tradery.charts.core.ChartTheme;
 import com.tradery.charts.core.DefaultChartTheme;
 import com.tradery.ui.controls.ChartConfig;
 import org.jfree.chart.JFreeChart;
+import org.jfree.chart.annotations.XYAnnotation;
 import org.jfree.chart.annotations.XYTitleAnnotation;
 import org.jfree.chart.axis.AxisLocation;
 import org.jfree.chart.axis.DateAxis;
@@ -14,6 +15,8 @@ import org.jfree.chart.ui.RectangleAnchor;
 
 import java.awt.*;
 import java.text.DecimalFormat;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Central styling constants and methods for charts.
@@ -241,7 +244,15 @@ public final class ChartStyles {
         }
 
         // Add title as annotation only if chart has no legend
+        // Remove existing title annotations first to avoid duplicates on theme refresh
         if (chart.getLegend() == null) {
+            List<XYAnnotation> toRemove = new ArrayList<>();
+            for (int i = 0; i < plot.getAnnotations().size(); i++) {
+                if (plot.getAnnotations().get(i) instanceof XYTitleAnnotation) {
+                    toRemove.add((XYAnnotation) plot.getAnnotations().get(i));
+                }
+            }
+            for (XYAnnotation a : toRemove) plot.removeAnnotation(a);
             addChartTitleAnnotation(plot, title);
         }
     }

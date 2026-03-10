@@ -87,6 +87,9 @@ public class DataServiceServer {
         this.spectrumStore.setCompletionCallback(pageManager);
         this.pageManager.setProfileStore(profileStore);
         this.pageManager.setSpectrumStore(spectrumStore);
+
+        // Wire live trade flush → profile page retrigger
+        this.liveAggTradePersister.setOnProfilesInvalidated(pageManager::onLiveProfilesInvalidated);
     }
 
     public void setNewsManager(NewsManager newsManager) {

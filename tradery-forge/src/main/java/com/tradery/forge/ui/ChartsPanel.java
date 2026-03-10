@@ -128,8 +128,8 @@ public class ChartsPanel extends JPanel {
         setupManagers();
         setupScrollableContainer();
 
-        // Listen for chart config changes (axis position, etc.)
-        ChartConfig.getInstance().addChangeListener(this::refreshTheme);
+        // Listen for chart config changes (theme, overlays, indicators, etc.)
+        ChartConfig.getInstance().addChangeListener(this::onChartConfigChanged);
     }
 
     public void setOnStatusUpdate(Consumer<String> callback) {
@@ -1005,6 +1005,17 @@ public class ChartsPanel extends JPanel {
 
     public boolean isTradePLChartEnabled() {
         return zoomManager.isTradePLChartEnabled();
+    }
+
+    /**
+     * Called when ChartConfig changes (from API, indicator popup, or settings).
+     * Re-applies config to enable/disable indicators and rebuilds layout.
+     */
+    private void onChartConfigChanged() {
+        SwingUtilities.invokeLater(() -> {
+            applySavedConfig();
+            refreshTheme();
+        });
     }
 
     /**

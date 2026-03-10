@@ -390,8 +390,9 @@ public class WebSocketHandler implements PageUpdateListener {
             String consumerName = message.has("consumerName")
                 ? message.get("consumerName").asText() : "WebSocket-" + consumerId;
 
-            // Create live PageKey (anchor = null)
-            PageKey key = PageKey.liveCandles(symbol, timeframe, marketType, duration);
+            // Create live PageKey from the actual data type (not always candles)
+            PageKey key = new PageKey(dataType, "binance", symbol.toUpperCase(), timeframe,
+                marketType, null, duration);
             String pageKeyStr = key.toKeyString();
 
             LOG.info("Consumer {} requesting live page {}", consumerId, pageKeyStr);

@@ -89,6 +89,7 @@ DSL is used for entry/exit conditions and phase definitions.
 | **Funding** | `FUNDING`, `FUNDING_8H` |
 | **Premium** | `PREMIUM`, `PREMIUM_AVG(n)` - futures vs spot spread |
 | **Sentiment** | `FEAR_GREED` (0-100), `FEAR_GREED_AVG(n)` - Crypto Fear & Greed Index |
+| **Relative Volume** | `RVOL(weeks)`, `RVOL(weeks,mode)`, `RVOL(weeks,mode,smooth)` - ratio vs historical (1.0=normal). `RVOL_PERCENTILE(...)` - 0-100. Mode: 0=ANY, 1=DOW, 2=DAYTYPE |
 | **Open Interest** | `OI`, `OI_CHANGE`, `OI_DELTA(n)` |
 | **OHLCV Volume** | `QUOTE_VOLUME`, `BUY_VOLUME`, `SELL_VOLUME`, `OHLCV_DELTA`, `OHLCV_CVD`, `BUY_RATIO`, `TRADE_COUNT` |
 
@@ -148,6 +149,9 @@ SUPERTREND(10,3).trend == 1                          # Uptrend
 FUNDING > 0.05 AND DELTA < 0                         # Overleveraged + selling
 FEAR_GREED < 25                                       # Extreme fear (contrarian buy)
 FEAR_GREED_AVG(7) < 30 AND RSI(14) < 35             # Sustained fear + oversold
+RVOL(52) > 2.0 AND RSI(14) < 30                     # Unusual volume + oversold
+RVOL(52, 1) > 1.5                                    # 1.5x normal for this weekday+time
+RVOL_PERCENTILE(52, 2) > 90                          # Top 10% volume for this day type
 close crosses_above PREV_DAY_POC                     # Reclaim POC
 RESISTANCE_RAY_CROSSED(1, 200, 5) == 1               # Breakout
 
@@ -312,6 +316,7 @@ Trades also capture footprint metrics at entry/exit/mfe/mae points:
 - Orderflow (VWAP, POC, DELTA, whale detection)
 - Footprint functions (IMBALANCE_AT_POC, STACKED_IMBALANCES, ABSORPTION, etc.)
 - Footprint-aware trade analytics with AI suggestions
+- Relative Volume (RVOL) — time-of-day volume profiling with DOW/DAYTYPE modes, chart indicator
 - Aggregate functions, lookback syntax
 
 **Not implemented:**
@@ -418,7 +423,7 @@ curl -X POST http://localhost:PORT/ui/chart-config -d '{
 }'
 ```
 Available overlays: `SMA`, `EMA` (with `periods` array), `BBANDS`, `HighLow`, `Mayer` (with `period`), `VWAP`, `DailyPOC`, `FloatingPOC`, `Rays`, `Ichimoku`.
-Available indicators: `RSI`, `ATR`, `ADX`, `RANGE_POSITION` (with `period`), `MACD` (with `fast`, `slow`, `signal`), `STOCHASTIC` (with `kPeriod`, `dPeriod`), `DELTA`, `CVD`, `FUNDING`, `OI`, `PREMIUM`, `FEAR_GREED`.
+Available indicators: `RSI`, `ATR`, `ADX`, `RANGE_POSITION` (with `period`), `MACD` (with `fast`, `slow`, `signal`), `STOCHASTIC` (with `kPeriod`, `dPeriod`), `DELTA`, `CVD`, `FUNDING`, `OI`, `PREMIUM`, `FEAR_GREED`, `RVOL` (with `lookbackWeeks`, `mode`, `smooth`).
 
 ### Session Startup (IMPORTANT)
 **On every new session**, before doing any work, call `tradery_get_context`. This single call returns everything you need: open windows, last focused strategy ID, chart config, the focused strategy's full config, and its backtest summary with metrics and AI suggestions. Use this context — e.g. if the user asks about "this strategy", they mean the last focused one.

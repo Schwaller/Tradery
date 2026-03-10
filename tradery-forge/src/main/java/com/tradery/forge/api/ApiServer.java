@@ -912,6 +912,15 @@ public class ApiServer {
             applySimpleOverlay(indicators, "PREMIUM", config::setPremiumEnabled);
             applySimpleOverlay(indicators, "FEAR_GREED", config::setFearGreedEnabled);
             applySimpleOverlay(indicators, "SPECTRUM", config::setSpectrumEnabled);
+
+            // RVOL (with parameters)
+            if (indicators.has("RVOL")) {
+                var rvolNode = indicators.get("RVOL");
+                if (rvolNode.has("enabled")) config.setRvolEnabled(rvolNode.get("enabled").asBoolean());
+                if (rvolNode.has("lookbackWeeks")) config.setRvolLookbackWeeks(rvolNode.get("lookbackWeeks").asInt());
+                if (rvolNode.has("mode")) config.setRvolMode(rvolNode.get("mode").asInt());
+                if (rvolNode.has("smooth")) config.setRvolSmooth(rvolNode.get("smooth").asInt());
+            }
         }
 
         config.notifyChanged();
@@ -1008,6 +1017,12 @@ public class ApiServer {
         indicators.putObject("PREMIUM").put("enabled", config.isPremiumEnabled());
         indicators.putObject("FEAR_GREED").put("enabled", config.isFearGreedEnabled());
         indicators.putObject("SPECTRUM").put("enabled", config.isSpectrumEnabled());
+        // RVOL
+        ObjectNode rvol = indicators.putObject("RVOL");
+        rvol.put("enabled", config.isRvolEnabled());
+        rvol.put("lookbackWeeks", config.getRvolLookbackWeeks());
+        rvol.put("mode", config.getRvolMode());
+        rvol.put("smooth", config.getRvolSmooth());
 
         // Phase overlays
         ArrayNode phaseOverlays = root.putArray("phaseOverlays");

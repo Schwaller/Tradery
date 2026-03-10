@@ -41,6 +41,9 @@ public interface ChallengeStore {
 
     void saveResult(ChallengeResult result);
 
+    /** Delete a single result by its ID. */
+    void deleteResult(long resultId);
+
     // ==================== Subscriptions ====================
 
     /** All active subscriptions (for scheduler tick). */

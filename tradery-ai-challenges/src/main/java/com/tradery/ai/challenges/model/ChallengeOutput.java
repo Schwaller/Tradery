@@ -135,7 +135,7 @@ public class ChallengeOutput {
     /** When true with STRUCTURED type, the AI returns a JSON array of objects instead of a single object. */
     private boolean listMode;
     private ListBehavior listBehavior = ListBehavior.TRACKING;
-    private ReasonDetail reasonDetail = ReasonDetail.NONE;
+    private ReasonDetail reasonDetail = ReasonDetail.BRIEF;
 
     public ChallengeOutput() {}
 

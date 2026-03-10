@@ -28,6 +28,9 @@ public class LiveAggTradePersister {
     private final LiveAggTradeManager aggTradeManager;
     private final SpectrumAggregator spectrumAggregator = new SpectrumAggregator();
 
+    // Optional callback when profile coverage is invalidated after trade flush
+    private BiConsumer<String, String> onProfilesInvalidated;
+
     // Per-symbol state
     private final Map<String, SymbolCollector> collectors = new ConcurrentHashMap<>();
 
@@ -43,6 +46,14 @@ public class LiveAggTradePersister {
 
         // Periodic flush
         scheduler.scheduleAtFixedRate(this::flushAll, FLUSH_INTERVAL_MS, FLUSH_INTERVAL_MS, TimeUnit.MILLISECONDS);
+    }
+
+    /**
+     * Set callback invoked after trade flush invalidates profile coverage.
+     * Called with (symbol, marketType).
+     */
+    public void setOnProfilesInvalidated(BiConsumer<String, String> callback) {
+        this.onProfilesInvalidated = callback;
     }
 
     /**
@@ -129,6 +140,11 @@ public class LiveAggTradePersister {
             // Invalidate profile coverage for the current window so profiles get recomputed
             // Use the batch range — ProfileStore will recompute profiles from available aggTrades
             dataStore.removeCoverage(symbol, "volume_profiles", marketType, batchStart, batchEnd);
+
+            // Notify listeners (e.g. PageManager) so live profile pages get retriggered
+            if (onProfilesInvalidated != null) {
+                onProfilesInvalidated.accept(symbol, marketType);
+            }
 
             // Compute spectrum inline (like AggTradesStore does)
             var spectrumRows = spectrumAggregator.aggregate(trades);

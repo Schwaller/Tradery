@@ -62,6 +62,7 @@ public class IndicatorChartsManager {
         charts.put(IndicatorType.HOLDING_COST_EVENTS, new HoldingCostEventsChart());
         charts.put(IndicatorType.FEAR_GREED, new FearGreedChart());
         charts.put(IndicatorType.SPECTRUM, new SpectrumChart(spectrumDataSource, spectrumConfig));
+        charts.put(IndicatorType.RVOL, new RvolChart());
     }
 
     // ===== Enable/disable =====
@@ -263,6 +264,12 @@ public class IndicatorChartsManager {
         setEnabled(IndicatorType.SPECTRUM, config.isSpectrumEnabled());
         setEnabled(IndicatorType.HOLDING_COST_CUMULATIVE, config.isHoldingCostCumulativeEnabled());
         setEnabled(IndicatorType.HOLDING_COST_EVENTS, config.isHoldingCostEventsEnabled());
+
+        RvolChart rvol = getChartImpl(IndicatorType.RVOL);
+        rvol.setLookbackWeeks(config.getRvolLookbackWeeks());
+        rvol.setMode(config.getRvolMode());
+        rvol.setSmooth(config.getRvolSmooth());
+        setEnabled(IndicatorType.RVOL, config.isRvolEnabled());
     }
 
     /**

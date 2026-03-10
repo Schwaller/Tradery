@@ -98,6 +98,11 @@ public class InMemoryChallengeStore implements ChallengeStore {
     }
 
     @Override
+    public void deleteResult(long resultId) {
+        results.removeIf(r -> r.id() == resultId);
+    }
+
+    @Override
     public List<ChallengeSubscription> getActiveSubscriptions() {
         return new ArrayList<>(subscriptions.values());
     }

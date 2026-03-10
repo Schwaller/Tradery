@@ -88,6 +88,12 @@ public class ChartConfig {
     // Fear & Greed Index chart
     private boolean fearGreedEnabled = false;
 
+    // Relative Volume (RVOL) chart
+    private boolean rvolEnabled = false;
+    private int rvolLookbackWeeks = 52;
+    private int rvolMode = 0;    // 0=ANY, 1=DOW, 2=DAYTYPE
+    private int rvolSmooth = 1;  // 1=no smoothing
+
     // Spectrum chart
     private boolean spectrumEnabled = false;
     private SpectrumColorMode spectrumColorMode = SpectrumColorMode.RELATIVE;
@@ -389,6 +395,17 @@ public class ChartConfig {
     public boolean isFearGreedEnabled() { return fearGreedEnabled; }
     public void setFearGreedEnabled(boolean enabled) { this.fearGreedEnabled = enabled; save(); }
 
+    // ===== Relative Volume (RVOL) Chart Getters/Setters =====
+
+    public boolean isRvolEnabled() { return rvolEnabled; }
+    public void setRvolEnabled(boolean enabled) { this.rvolEnabled = enabled; save(); }
+    public int getRvolLookbackWeeks() { return rvolLookbackWeeks; }
+    public void setRvolLookbackWeeks(int weeks) { this.rvolLookbackWeeks = weeks; save(); }
+    public int getRvolMode() { return rvolMode; }
+    public void setRvolMode(int mode) { this.rvolMode = mode; save(); }
+    public int getRvolSmooth() { return rvolSmooth; }
+    public void setRvolSmooth(int smooth) { this.rvolSmooth = smooth; save(); }
+
     // ===== Spectrum Chart Getters/Setters =====
 
     public boolean isSpectrumEnabled() { return spectrumEnabled; }
@@ -655,6 +672,12 @@ public class ChartConfig {
         // Fear & Greed Index - off by default
         fearGreedEnabled = false;
 
+        // RVOL - off by default
+        rvolEnabled = false;
+        rvolLookbackWeeks = 52;
+        rvolMode = 0;
+        rvolSmooth = 1;
+
         // Spectrum - off by default
         spectrumEnabled = false;
         spectrumColorMode = SpectrumColorMode.RELATIVE;
@@ -841,6 +864,12 @@ public class ChartConfig {
 
         // Fear & Greed Index
         this.fearGreedEnabled = other.fearGreedEnabled;
+
+        // RVOL
+        this.rvolEnabled = other.rvolEnabled;
+        this.rvolLookbackWeeks = other.rvolLookbackWeeks;
+        this.rvolMode = other.rvolMode;
+        this.rvolSmooth = other.rvolSmooth;
 
         // Spectrum
         this.spectrumEnabled = other.spectrumEnabled;

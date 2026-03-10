@@ -13,6 +13,7 @@ import com.tradery.data.page.DataPageView;
 import com.tradery.data.page.PageState;
 import com.tradery.dataclient.page.DataServiceConnection;
 import com.tradery.dataclient.page.RemoteCandlePageManager;
+import com.tradery.dataclient.page.RemoteProfilePageManager;
 import com.tradery.desk.alert.AlertDispatcher;
 import com.tradery.desk.api.DeskApiServer;
 import com.tradery.desk.feed.BinanceWebSocketClient.ConnectionState;
@@ -65,6 +66,7 @@ public class TraderyDeskApp {
     // Page-based data system with live sliding window
     private DataServiceConnection pageConnection;
     private RemoteCandlePageManager candlePageMgr;
+    private RemoteProfilePageManager profilePageMgr;
     private RemoteSpectrumPageManager spectrumPageMgr;
 
     // Per-strategy components
@@ -237,6 +239,7 @@ public class TraderyDeskApp {
 
             // Create page managers
             candlePageMgr = new RemoteCandlePageManager(pageConnection, "TraderyDesk");
+            profilePageMgr = new RemoteProfilePageManager(pageConnection, "TraderyDesk");
             spectrumPageMgr = new RemoteSpectrumPageManager(pageConnection);
 
             // Monitor connection state and update UI
@@ -643,6 +646,9 @@ public class TraderyDeskApp {
             if (dataClient != null) {
                 frame.getPriceChartPanel().setDataServiceClient(dataClient);
             }
+            if (profilePageMgr != null) {
+                frame.getPriceChartPanel().setProfilePageManager(profilePageMgr);
+            }
             if (spectrumPageMgr != null) {
                 frame.getPriceChartPanel().setSpectrumDataSource(
                     new com.tradery.charts.indicator.SpectrumChart.SpectrumDataSource() {
@@ -785,6 +791,9 @@ public class TraderyDeskApp {
         // Shutdown page system if used
         if (spectrumPageMgr != null) {
             spectrumPageMgr.shutdown();
+        }
+        if (profilePageMgr != null) {
+            profilePageMgr.shutdown();
         }
         if (candlePageMgr != null) {
             candlePageMgr.shutdown();

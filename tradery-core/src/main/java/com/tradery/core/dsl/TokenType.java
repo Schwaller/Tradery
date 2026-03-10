@@ -27,6 +27,7 @@ public enum TokenType {
     CANDLE_PROP_FUNC,    // BODY_SIZE, BODY_RATIO, IS_BULLISH, IS_BEARISH (candle properties)
     FOOTPRINT_FUNC, // IMBALANCE_AT_POC, STACKED_BUY_IMBALANCES, FOOTPRINT_DELTA, etc.
     FEAR_GREED_FUNC, // FEAR_GREED, FEAR_GREED_AVG
+    RVOL_FUNC,      // RVOL, RVOL_PERCENTILE
 
     // Properties
     PROPERTY,       // .signal, .histogram, .upper, .lower, .middle
